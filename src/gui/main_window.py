@@ -2,11 +2,12 @@
 Chemuson Main Window
 Page-based molecular editor with vertical toolbar and paper canvas.
 """
-from PyQt6.QtWidgets import QMainWindow, QToolBar, QLabel
+from PyQt6.QtWidgets import QMainWindow, QToolBar
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction, QKeySequence
 
 from gui.canvas import ChemusonCanvas
+from gui.periodic_table import PeriodicTableDialog
 from gui.toolbar import ChemusonToolbar
 
 
@@ -65,9 +66,28 @@ class ChemusonWindow(QMainWindow):
         redo_action.setShortcut(QKeySequence.StandardKey.Redo)
         self.file_toolbar.addAction(undo_action)
         self.file_toolbar.addAction(redo_action)
+
+        # Clipboard actions
+        self.file_toolbar.addSeparator()
+        copy_action = QAction("Copiar", self)
+        copy_action.setShortcut(QKeySequence.StandardKey.Copy)
+        copy_action.triggered.connect(self.canvas.copy_to_clipboard)
+        paste_action = QAction("Pegar", self)
+        paste_action.setShortcut(QKeySequence.StandardKey.Paste)
+        paste_action.triggered.connect(self.canvas.paste_from_clipboard)
+        self.file_toolbar.addAction(copy_action)
+        self.file_toolbar.addAction(paste_action)
         
         # Connect toolbar to canvas
         self.toolbar.tool_changed.connect(self.canvas.set_current_tool)
+        self.toolbar.bond_palette_changed.connect(self._handle_bond_palette)
+        self.toolbar.ring_palette_changed.connect(self._handle_ring_palette)
+        self.toolbar.element_palette_changed.connect(self._handle_element_palette)
+        self.toolbar.periodic_table_requested.connect(self._show_periodic_table)
+        # Sync defaults selected during toolbar init
+        self._handle_bond_palette(self.toolbar.current_bond_spec())
+        self._handle_ring_palette(self.toolbar.current_ring_spec())
+        self._handle_element_palette(self.toolbar.current_element())
         
         # === STATUS BAR ===
         self.statusBar().showMessage("Herramienta: Carbono (C)")
@@ -101,23 +121,32 @@ class ChemusonWindow(QMainWindow):
             self.canvas.clear_canvas()
         else:
             self.statusBar().showMessage(f"Acción '{action_id}' no implementada aún")
+
+    def _handle_bond_palette(self, bond_spec: dict) -> None:
+        self.canvas.set_active_bond(bond_spec)
+        self._update_status("tool_bond")
+
+    def _handle_ring_palette(self, ring_spec: dict) -> None:
+        self.canvas.set_active_ring(ring_spec)
+        self._update_status("tool_ring")
+
+    def _handle_element_palette(self, element: str) -> None:
+        self.canvas.set_active_element(element)
+        self._update_status("tool_atom")
+
+    def _show_periodic_table(self) -> None:
+        dialog = PeriodicTableDialog(self)
+        dialog.element_selected.connect(self.toolbar.select_element)
+        dialog.exec()
     
     def _update_status(self, tool_id: str) -> None:
         """Update status bar with current tool."""
         tool_names = {
             'tool_select': 'Seleccionar',
             'tool_erase': 'Borrar',
-            'bond_single': 'Enlace Sencillo',
-            'bond_double': 'Enlace Doble',
-            'ring_benzene': 'Anillo de Benceno',
-            'atom_C': 'Carbono (C)',
-            'atom_N': 'Nitrógeno (N)',
-            'atom_O': 'Oxígeno (O)',
-            'atom_S': 'Azufre (S)',
-            'atom_P': 'Fósforo (P)',
-            'atom_F': 'Flúor (F)',
-            'atom_Cl': 'Cloro (Cl)',
-            'atom_Br': 'Bromo (Br)',
+            'tool_bond': 'Enlace',
+            'tool_ring': f'Anillo {self.canvas.state.active_ring_size}',
+            'tool_atom': f'Elemento {self.canvas.state.default_element}',
         }
         name = tool_names.get(tool_id, tool_id)
         self.statusBar().showMessage(f"Herramienta: {name}")

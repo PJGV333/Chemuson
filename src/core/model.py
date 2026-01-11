@@ -1,7 +1,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Dict, List, Optional, Set
+
+
+class BondStyle(str, Enum):
+    PLAIN = "plain"
+    WEDGE = "wedge"
+    HASHED = "hashed"
+    WAVY = "wavy"
+
+
+class BondStereo(str, Enum):
+    NONE = "none"
+    UP = "up"
+    DOWN = "down"
+    EITHER = "either"
 
 
 @dataclass
@@ -23,15 +38,21 @@ class Bond:
     a1_id: int
     a2_id: int
     order: int = 1
-    stereo: Optional[str] = None
+    style: BondStyle = BondStyle.PLAIN
+    stereo: BondStereo = BondStereo.NONE
     is_aromatic: bool = False
     is_query: bool = False
 
 
 @dataclass
 class ChemState:
-    active_tool: str = "atom_C"
-    bond_order: int = 1
+    active_tool: str = "tool_atom"
+    active_bond_order: int = 1
+    active_bond_style: BondStyle = BondStyle.PLAIN
+    active_bond_stereo: BondStereo = BondStereo.NONE
+    active_bond_mode: str = "increment"
+    active_ring_size: int = 6
+    active_ring_aromatic: bool = False
     default_element: str = "C"
     selected_atoms: Set[int] = field(default_factory=set)
     selected_bonds: Set[int] = field(default_factory=set)
@@ -89,7 +110,8 @@ class MolGraph:
         a2_id: int,
         order: int = 1,
         bond_id: Optional[int] = None,
-        stereo: Optional[str] = None,
+        style: BondStyle = BondStyle.PLAIN,
+        stereo: BondStereo = BondStereo.NONE,
         is_aromatic: bool = False,
         is_query: bool = False,
     ) -> Bond:
@@ -103,6 +125,7 @@ class MolGraph:
             a1_id=a1_id,
             a2_id=a2_id,
             order=order,
+            style=style,
             stereo=stereo,
             is_aromatic=is_aromatic,
             is_query=is_query,
@@ -129,6 +152,29 @@ class MolGraph:
         atom = self.atoms[atom_id]
         atom.x = x
         atom.y = y
+
+    def update_atom_element(self, atom_id: int, element: str) -> None:
+        atom = self.atoms[atom_id]
+        atom.element = element
+
+    def update_bond(
+        self,
+        bond_id: int,
+        order: Optional[int] = None,
+        style: Optional[BondStyle] = None,
+        stereo: Optional[BondStereo] = None,
+        is_aromatic: Optional[bool] = None,
+    ) -> Bond:
+        bond = self.bonds[bond_id]
+        if order is not None:
+            bond.order = order
+        if style is not None:
+            bond.style = style
+        if stereo is not None:
+            bond.stereo = stereo
+        if is_aromatic is not None:
+            bond.is_aromatic = is_aromatic
+        return bond
 
     def clear(self) -> None:
         self.atoms.clear()

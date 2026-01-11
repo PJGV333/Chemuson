@@ -3,7 +3,17 @@ Chemuson Icon Library
 Generate vector icons programmatically using QPainter for a professional look.
 """
 from PyQt6.QtWidgets import QApplication
-from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor, QPen, QFont, QPolygonF, QBrush
+from PyQt6.QtGui import (
+    QIcon,
+    QPixmap,
+    QPainter,
+    QColor,
+    QPen,
+    QFont,
+    QPolygonF,
+    QBrush,
+    QPainterPath,
+)
 from PyQt6.QtCore import Qt, QSize, QPointF, QRectF
 import math
 
@@ -91,7 +101,7 @@ def draw_bond_icon(bond_type: str = 'single') -> QIcon:
         pen = QPen(QColor('#333333'), 3)
         painter.setPen(pen)
         painter.drawLine(x1, y1, x2, y2)
-    
+
     elif bond_type == 'double':
         pen = QPen(QColor('#333333'), 2)
         painter.setPen(pen)
@@ -104,6 +114,71 @@ def draw_bond_icon(bond_type: str = 'single') -> QIcon:
         
         painter.drawLine(int(x1 + nx), int(y1 + ny), int(x2 + nx), int(y2 + ny))
         painter.drawLine(int(x1 - nx), int(y1 - ny), int(x2 - nx), int(y2 - ny))
+
+    elif bond_type == 'triple':
+        pen = QPen(QColor('#333333'), 2)
+        painter.setPen(pen)
+        offset = 4
+        dx, dy = x2 - x1, y2 - y1
+        length = math.sqrt(dx * dx + dy * dy)
+        nx, ny = -dy / length * offset, dx / length * offset
+        painter.drawLine(int(x1), int(y1), int(x2), int(y2))
+        painter.drawLine(int(x1 + nx), int(y1 + ny), int(x2 + nx), int(y2 + ny))
+        painter.drawLine(int(x1 - nx), int(y1 - ny), int(x2 - nx), int(y2 - ny))
+
+    elif bond_type == 'wedge':
+        painter.setPen(QPen(QColor('#333333'), 1))
+        painter.setBrush(QBrush(QColor('#333333')))
+        dx, dy = x2 - x1, y2 - y1
+        length = math.sqrt(dx * dx + dy * dy)
+        nx, ny = -dy / length * 4, dx / length * 4
+        points = [
+            QPointF(x1, y1),
+            QPointF(x2 + nx, y2 + ny),
+            QPointF(x2 - nx, y2 - ny),
+        ]
+        painter.drawPolygon(QPolygonF(points))
+
+    elif bond_type == 'hashed':
+        pen = QPen(QColor('#333333'), 1.5)
+        painter.setPen(pen)
+        dx, dy = x2 - x1, y2 - y1
+        length = math.sqrt(dx * dx + dy * dy)
+        nx, ny = -dy / length, dx / length
+        steps = 6
+        for i in range(1, steps + 1):
+            t = i / (steps + 1)
+            px = x1 + dx * t
+            py = y1 + dy * t
+            width = 4 * t
+            painter.drawLine(
+                int(px + nx * width),
+                int(py + ny * width),
+                int(px - nx * width),
+                int(py - ny * width),
+            )
+
+    elif bond_type == 'wavy':
+        pen = QPen(QColor('#333333'), 1.5)
+        painter.setPen(pen)
+        dx, dy = x2 - x1, y2 - y1
+        length = math.sqrt(dx * dx + dy * dy)
+        nx, ny = -dy / length, dx / length
+        path = QPainterPath()
+        segments = 8
+        amplitude = 2.5
+        for i in range(segments + 1):
+            t = i / segments
+            px = x1 + dx * t
+            py = y1 + dy * t
+            offset = math.sin(t * math.pi * 4) * amplitude
+            wx = px + nx * offset
+            wy = py + ny * offset
+            if i == 0:
+                path.moveTo(wx, wy)
+            else:
+                path.lineTo(wx, wy)
+        painter.drawPath(path)
     
     painter.end()
     return QIcon(pixmap)
