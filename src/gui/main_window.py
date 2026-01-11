@@ -4,7 +4,7 @@ Page-based molecular editor with vertical toolbar and paper canvas.
 """
 from PyQt6.QtWidgets import QMainWindow, QToolBar, QLabel
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QAction
+from PyQt6.QtGui import QAction, QKeySequence
 
 from gui.canvas import ChemusonCanvas
 from gui.toolbar import ChemusonToolbar
@@ -56,6 +56,15 @@ class ChemusonWindow(QMainWindow):
         # === CENTRAL CANVAS ===
         self.canvas = ChemusonCanvas()
         self.setCentralWidget(self.canvas)
+
+        # Undo/redo actions from the canvas stack
+        self.file_toolbar.addSeparator()
+        undo_action = self.canvas.undo_stack.createUndoAction(self, "Deshacer")
+        undo_action.setShortcut(QKeySequence.StandardKey.Undo)
+        redo_action = self.canvas.undo_stack.createRedoAction(self, "Rehacer")
+        redo_action.setShortcut(QKeySequence.StandardKey.Redo)
+        self.file_toolbar.addAction(undo_action)
+        self.file_toolbar.addAction(redo_action)
         
         # Connect toolbar to canvas
         self.toolbar.tool_changed.connect(self.canvas.set_current_tool)
