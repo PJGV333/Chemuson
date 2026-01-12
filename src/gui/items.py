@@ -15,6 +15,7 @@ from PyQt6.QtGui import QColor, QFont, QPainterPath, QPen, QBrush
 from PyQt6.QtCore import Qt, QRectF, QPointF
 
 from core.model import Atom, Bond, BondStyle
+from gui.style import DrawingStyle, CHEMDOODLE_LIKE
 
 
 # Element colors for heteroatoms (CPK coloring scheme)
@@ -41,6 +42,7 @@ class AtomItem(QGraphicsEllipseItem):
         radius: float = 12.0,
         show_carbon: bool = True,
         show_hydrogen: bool = True,
+        style: DrawingStyle = CHEMDOODLE_LIKE,
     ) -> None:
         super().__init__(-radius, -radius, radius * 2, radius * 2)
         self.atom_id = atom.id
@@ -50,6 +52,7 @@ class AtomItem(QGraphicsEllipseItem):
         self._show_hydrogen = show_hydrogen
         self._is_selected = False
         self._is_hover = False
+        self._style = style
         
         self.setPos(atom.x, atom.y)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
@@ -100,13 +103,22 @@ class AtomItem(QGraphicsEllipseItem):
         """Apply normal (non-hidden) styling based on selection state."""
         if self._is_selected:
             self.setBrush(QBrush(QColor("#C8DFFF")))
-            self.setPen(QPen(QColor("#4477AA"), 2))
+            pen = QPen(QColor("#4477AA"), self._style.stroke_px)
+            pen.setCapStyle(self._style.cap_style)
+            pen.setJoinStyle(self._style.join_style)
+            self.setPen(pen)
         elif self._is_hover:
             self.setBrush(QBrush(QColor("#F0F0F0")))
-            self.setPen(QPen(QColor("#333333"), 1.5))
+            pen = QPen(QColor("#333333"), self._style.stroke_px)
+            pen.setCapStyle(self._style.cap_style)
+            pen.setJoinStyle(self._style.join_style)
+            self.setPen(pen)
         else:
             self.setBrush(QBrush(Qt.GlobalColor.white))
-            self.setPen(QPen(QColor("#333333"), 1.5))
+            pen = QPen(QColor("#333333"), self._style.stroke_px)
+            pen.setCapStyle(self._style.cap_style)
+            pen.setJoinStyle(self._style.join_style)
+            self.setPen(pen)
     
     def set_visibility_flags(self, show_carbon: bool, show_hydrogen: bool) -> None:
         """Update visibility flags and refresh display."""
@@ -142,7 +154,14 @@ class AtomItem(QGraphicsEllipseItem):
 class BondItem(QGraphicsPathItem):
     """Graphics item representing a chemical bond."""
     
-    def __init__(self, bond: Bond, atom1: Atom, atom2: Atom, render_aromatic_as_circle: bool = True) -> None:
+    def __init__(
+        self,
+        bond: Bond,
+        atom1: Atom,
+        atom2: Atom,
+        render_aromatic_as_circle: bool = True,
+        style: DrawingStyle = CHEMDOODLE_LIKE,
+    ) -> None:
         super().__init__()
         self.bond_id = bond.id
         self.a1_id = bond.a1_id
@@ -151,9 +170,16 @@ class BondItem(QGraphicsPathItem):
         self.style = bond.style
         self.stereo = bond.stereo
         self.is_aromatic = bond.is_aromatic
+        self.ring_id = bond.ring_id
         self.render_aromatic_as_circle = render_aromatic_as_circle
+        self._style = style
+        self._offset_sign = 1
+        self._ring_center: QPointF | None = None
         self.setZValue(-5)
-        self.setPen(QPen(QColor("#333333"), 2))
+        pen = QPen(QColor("#333333"), self._style.stroke_px)
+        pen.setCapStyle(self._style.cap_style)
+        pen.setJoinStyle(self._style.join_style)
+        self.setPen(pen)
         self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
         self.update_positions(atom1, atom2)
@@ -164,12 +190,19 @@ class BondItem(QGraphicsPathItem):
         self.style = bond.style
         self.stereo = bond.stereo
         self.is_aromatic = bond.is_aromatic
+        self.ring_id = bond.ring_id
         self.update_positions(atom1, atom2)
 
     def set_render_aromatic_as_circle(self, enabled: bool) -> None:
         """Toggle aromatic rendering mode."""
         self.render_aromatic_as_circle = enabled
         # Canvas refresh will call update_positions with current atom positions.
+
+    def set_ring_context(self, ring_center: QPointF | None) -> None:
+        self._ring_center = ring_center
+
+    def set_offset_sign(self, sign: int) -> None:
+        self._offset_sign = 1 if sign >= 0 else -1
 
     def update_positions(self, atom1: Atom, atom2: Atom) -> None:
         """Redraw the bond path based on atom positions and bond type."""
@@ -181,61 +214,91 @@ class BondItem(QGraphicsPathItem):
         length = math.hypot(dx, dy) or 1.0
         nx = -dy / length  # Normal vector perpendicular to bond
         ny = dx / length
+        ux = dx / length
+        uy = dy / length
+        shrink = self._style.bond_end_shrink_px
+        p1x = x1 + ux * shrink
+        p1y = y1 + uy * shrink
+        p2x = x2 - ux * shrink
+        p2y = y2 - uy * shrink
+
+        offset_sign = self._offset_sign
+        if self._ring_center is not None:
+            midx = (x1 + x2) / 2
+            midy = (y1 + y2) / 2
+            vx = self._ring_center.x() - midx
+            vy = self._ring_center.y() - midy
+            offset_sign = -1 if (nx * vx + ny * vy) >= 0 else 1
 
         # Aromatic bonds: if circle mode, draw as single line
         if self.is_aromatic and self.render_aromatic_as_circle:
-            path.moveTo(x1, y1)
-            path.lineTo(x2, y2)
-            self.setPen(QPen(QColor("#333333"), 2))
+            path.moveTo(p1x, p1y)
+            path.lineTo(p2x, p2y)
+            pen = QPen(QColor("#333333"), self._style.stroke_px)
+            pen.setCapStyle(self._style.cap_style)
+            pen.setJoinStyle(self._style.join_style)
+            self.setPen(pen)
             self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
             self.setPath(path)
             return
 
         if self.style == BondStyle.PLAIN:
             if self.order == 1:
-                path.moveTo(x1, y1)
-                path.lineTo(x2, y2)
+                path.moveTo(p1x, p1y)
+                path.lineTo(p2x, p2y)
             else:
-                offset = 3.0
+                offset = self._style.double_offset_px
                 if self.order == 2:
-                    path.moveTo(x1 + nx * offset, y1 + ny * offset)
-                    path.lineTo(x2 + nx * offset, y2 + ny * offset)
-                    path.moveTo(x1 - nx * offset, y1 - ny * offset)
-                    path.lineTo(x2 - nx * offset, y2 - ny * offset)
+                    path.moveTo(p1x, p1y)
+                    path.lineTo(p2x, p2y)
+                    q1x = p1x + nx * offset * offset_sign + ux * self._style.inner_trim_px
+                    q1y = p1y + ny * offset * offset_sign + uy * self._style.inner_trim_px
+                    q2x = p2x + nx * offset * offset_sign - ux * self._style.inner_trim_px
+                    q2y = p2y + ny * offset * offset_sign - uy * self._style.inner_trim_px
+                    path.moveTo(q1x, q1y)
+                    path.lineTo(q2x, q2y)
                 else:  # Triple bond
-                    path.moveTo(x1, y1)
-                    path.lineTo(x2, y2)
-                    path.moveTo(x1 + nx * offset, y1 + ny * offset)
-                    path.lineTo(x2 + nx * offset, y2 + ny * offset)
-                    path.moveTo(x1 - nx * offset, y1 - ny * offset)
-                    path.lineTo(x2 - nx * offset, y2 - ny * offset)
-            self.setPen(QPen(QColor("#333333"), 2))
+                    path.moveTo(p1x, p1y)
+                    path.lineTo(p2x, p2y)
+                    path.moveTo(p1x + nx * offset, p1y + ny * offset)
+                    path.lineTo(p2x + nx * offset, p2y + ny * offset)
+                    path.moveTo(p1x - nx * offset, p1y - ny * offset)
+                    path.lineTo(p2x - nx * offset, p2y - ny * offset)
+            pen = QPen(QColor("#333333"), self._style.stroke_px)
+            pen.setCapStyle(self._style.cap_style)
+            pen.setJoinStyle(self._style.join_style)
+            self.setPen(pen)
             self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
             
         elif self.style == BondStyle.WEDGE:
-            width = 10.0
-            p1x = x2 + nx * width
-            p1y = y2 + ny * width
-            p2x = x2 - nx * width
-            p2y = y2 - ny * width
-            path.moveTo(x1, y1)
-            path.lineTo(p1x, p1y)
-            path.lineTo(p2x, p2y)
+            width = self._style.wedge_width_px
+            b1x = p2x + nx * (width / 2)
+            b1y = p2y + ny * (width / 2)
+            b2x = p2x - nx * (width / 2)
+            b2y = p2y - ny * (width / 2)
+            path.moveTo(p1x, p1y)
+            path.lineTo(b1x, b1y)
+            path.lineTo(b2x, b2y)
             path.closeSubpath()
-            self.setPen(QPen(QColor("#333333"), 1))
+            pen = QPen(QColor("#333333"), 1)
+            pen.setCapStyle(self._style.cap_style)
+            pen.setJoinStyle(self._style.join_style)
+            self.setPen(pen)
             self.setBrush(QBrush(QColor("#333333")))
             
         elif self.style == BondStyle.HASHED:
-            steps = 7
-            max_width = 10.0
+            steps = self._style.hash_count
             for i in range(1, steps + 1):
                 t = i / (steps + 1)
-                px = x1 + dx * t
-                py = y1 + dy * t
-                width = max_width * t
-                path.moveTo(px + nx * width, py + ny * width)
-                path.lineTo(px - nx * width, py - ny * width)
-            self.setPen(QPen(QColor("#333333"), 1.5))
+                px = p1x + (p2x - p1x) * t
+                py = p1y + (p2y - p1y) * t
+                width = self._style.hash_min_px + (self._style.hash_max_px - self._style.hash_min_px) * t
+                path.moveTo(px + nx * width / 2, py + ny * width / 2)
+                path.lineTo(px - nx * width / 2, py - ny * width / 2)
+            pen = QPen(QColor("#333333"), self._style.hash_stroke_px)
+            pen.setCapStyle(self._style.cap_style)
+            pen.setJoinStyle(self._style.join_style)
+            self.setPen(pen)
             self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
             
         elif self.style == BondStyle.WAVY:
@@ -243,8 +306,8 @@ class BondItem(QGraphicsPathItem):
             amplitude = 3.0
             for i in range(segments + 1):
                 t = i / segments
-                px = x1 + dx * t
-                py = y1 + dy * t
+                px = p1x + (p2x - p1x) * t
+                py = p1y + (p2y - p1y) * t
                 offset = math.sin(t * math.pi * 4) * amplitude
                 wx = px + nx * offset
                 wy = py + ny * offset
@@ -252,7 +315,10 @@ class BondItem(QGraphicsPathItem):
                     path.moveTo(wx, wy)
                 else:
                     path.lineTo(wx, wy)
-            self.setPen(QPen(QColor("#333333"), 1.5))
+            pen = QPen(QColor("#333333"), self._style.stroke_px)
+            pen.setCapStyle(self._style.cap_style)
+            pen.setJoinStyle(self._style.join_style)
+            self.setPen(pen)
             self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
 
         self.setPath(path)

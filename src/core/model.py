@@ -42,6 +42,7 @@ class Bond:
     stereo: BondStereo = BondStereo.NONE
     is_aromatic: bool = False
     is_query: bool = False
+    ring_id: Optional[int] = None
 
 
 @dataclass
@@ -123,6 +124,7 @@ class MolGraph:
         stereo: BondStereo = BondStereo.NONE,
         is_aromatic: bool = False,
         is_query: bool = False,
+        ring_id: Optional[int] = None,
     ) -> Bond:
         if bond_id is None:
             bond_id = self._next_bond_id
@@ -138,6 +140,7 @@ class MolGraph:
             stereo=stereo,
             is_aromatic=is_aromatic,
             is_query=is_query,
+            ring_id=ring_id,
         )
         self.bonds[bond_id] = bond
         return bond

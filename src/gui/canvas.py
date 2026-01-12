@@ -40,6 +40,7 @@ from gui.items import (
     PreviewChainItem,
     PreviewChainLabelItem,
 )
+from gui.style import CHEMDOODLE_LIKE, DrawingStyle
 from gui.geom import (
     angle_deg,
     snap_angle_deg,
@@ -97,6 +98,9 @@ class ChemusonCanvas(QGraphicsView):
         self.model = MolGraph()
         self.state = ChemState()
         self.undo_stack = QUndoStack(self)
+        self.drawing_style: DrawingStyle = CHEMDOODLE_LIKE
+        self._ring_centers: dict[int, QPointF] = {}
+        self._next_ring_id = 1
 
         self.atom_items: dict[int, AtomItem] = {}
         self.bond_items: dict[int, BondItem] = {}
@@ -400,6 +404,8 @@ class ChemusonCanvas(QGraphicsView):
         self.undo_stack.clear()
         self.atom_items.clear()
         self.bond_items.clear()
+        self._ring_centers.clear()
+        self._next_ring_id = 1
         self.state.selected_atoms.clear()
         self.state.selected_bonds.clear()
         self.bond_anchor_id = None
@@ -563,7 +569,12 @@ class ChemusonCanvas(QGraphicsView):
         # Determine visibility based on state preferences
         show_c = self.state.show_implicit_carbons or atom.element != "C"
         show_h = self.state.show_implicit_hydrogens or atom.element != "H"
-        item = AtomItem(atom, show_carbon=show_c, show_hydrogen=show_h)
+        item = AtomItem(
+            atom,
+            show_carbon=show_c,
+            show_hydrogen=show_h,
+            style=self.drawing_style,
+        )
         self.scene.addItem(item)
         self.atom_items[atom.id] = item
 
@@ -595,8 +606,12 @@ class ChemusonCanvas(QGraphicsView):
             bond,
             atom1,
             atom2,
-            render_aromatic_as_circle=self.state.use_aromatic_circles
+            render_aromatic_as_circle=self.state.use_aromatic_circles,
+            style=self.drawing_style,
         )
+        if bond.ring_id is not None:
+            item.set_ring_context(self._ring_centers.get(bond.ring_id))
+        item.set_offset_sign(self._bond_offset_sign(bond))
         self.scene.addItem(item)
         self.bond_items[bond.id] = item
 
@@ -606,6 +621,11 @@ class ChemusonCanvas(QGraphicsView):
         atom2 = self.model.get_atom(bond.a2_id)
         item = self.bond_items.get(bond_id)
         if item is not None:
+            if bond.ring_id is not None:
+                item.set_ring_context(self._ring_centers.get(bond.ring_id))
+            else:
+                item.set_ring_context(None)
+            item.set_offset_sign(self._bond_offset_sign(bond))
             item.set_bond(bond, atom1, atom2)
 
     def update_bond_items_for_atoms(self, atom_ids: set[int]) -> None:
@@ -617,6 +637,48 @@ class ChemusonCanvas(QGraphicsView):
         item = self.bond_items.pop(bond_id, None)
         if item is not None:
             self.scene.removeItem(item)
+
+    def allocate_ring_id(self) -> int:
+        ring_id = self._next_ring_id
+        self._next_ring_id += 1
+        return ring_id
+
+    def register_ring_center(self, ring_id: int, center: tuple[float, float]) -> None:
+        self._ring_centers[ring_id] = QPointF(center[0], center[1])
+
+    def unregister_ring_center(self, ring_id: int) -> None:
+        self._ring_centers.pop(ring_id, None)
+
+    def _bond_offset_sign(self, bond) -> int:
+        atom1 = self.model.get_atom(bond.a1_id)
+        atom2 = self.model.get_atom(bond.a2_id)
+        p1 = QPointF(atom1.x, atom1.y)
+        p2 = QPointF(atom2.x, atom2.y)
+        mid = QPointF((p1.x() + p2.x()) / 2, (p1.y() + p2.y()) / 2)
+        dx = p2.x() - p1.x()
+        dy = p2.y() - p1.y()
+        length = math.hypot(dx, dy) or 1.0
+        nx = -dy / length
+        ny = dx / length
+
+        def neighbor_score(atom_id: int) -> float:
+            score = 0.0
+            for other_bond in self.model.bonds.values():
+                if other_bond.id == bond.id:
+                    continue
+                if other_bond.a1_id == atom_id:
+                    other = self.model.get_atom(other_bond.a2_id)
+                elif other_bond.a2_id == atom_id:
+                    other = self.model.get_atom(other_bond.a1_id)
+                else:
+                    continue
+                vx = other.x - mid.x()
+                vy = other.y - mid.y()
+                score += nx * vx + ny * vy
+            return score
+
+        score = neighbor_score(atom1.id) + neighbor_score(atom2.id)
+        return -1 if score > 0 else 1
 
     # -------------------------------------------------------------------------
     # Visibility and Aromatic Circle Management
@@ -746,9 +808,11 @@ class ChemusonCanvas(QGraphicsView):
         selected_bonds = set()
         for item in self.scene.selectedItems():
             if isinstance(item, AtomItem):
-                selected_atoms.add(item.atom_id)
+                if item.atom_id in self.model.atoms:
+                    selected_atoms.add(item.atom_id)
             elif isinstance(item, BondItem):
-                selected_bonds.add(item.bond_id)
+                if item.bond_id in self.model.bonds:
+                    selected_bonds.add(item.bond_id)
 
         self.state.selected_atoms = selected_atoms
         self.state.selected_bonds = selected_bonds
@@ -762,8 +826,10 @@ class ChemusonCanvas(QGraphicsView):
             atom = self.model.get_atom(next(iter(selected_atoms)))
             details = {"type": "atom", "id": atom.id, "element": atom.element, "charge": atom.charge, "x": atom.x, "y": atom.y}
         elif len(selected_bonds) == 1 and not selected_atoms:
-            bond = self.model.get_bond(next(iter(selected_bonds)))
-            details = {"type": "bond", "id": bond.id, "order": bond.order, "style": bond.style, "aromatic": bond.is_aromatic}
+            bond_id = next(iter(selected_bonds))
+            if bond_id in self.model.bonds:
+                bond = self.model.get_bond(bond_id)
+                details = {"type": "bond", "id": bond.id, "order": bond.order, "style": bond.style, "aromatic": bond.is_aromatic}
             
         self.selection_changed.emit(len(selected_atoms), len(selected_bonds), details)
 

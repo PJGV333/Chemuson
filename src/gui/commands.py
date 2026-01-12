@@ -66,6 +66,7 @@ class AddBondCommand(QUndoCommand):
         style: BondStyle = BondStyle.PLAIN,
         stereo: BondStereo = BondStereo.NONE,
         is_aromatic: bool = False,
+        ring_id: Optional[int] = None,
         new_atom_element: Optional[str] = None,
         new_atom_pos: Optional[Tuple[float, float]] = None,
     ) -> None:
@@ -78,6 +79,7 @@ class AddBondCommand(QUndoCommand):
         self._style = style
         self._stereo = stereo
         self._is_aromatic = is_aromatic
+        self._ring_id = ring_id
         self._bond_id: Optional[int] = None
         self._new_atom_element = new_atom_element
         self._new_atom_pos = new_atom_pos
@@ -112,6 +114,7 @@ class AddBondCommand(QUndoCommand):
                 style=self._style,
                 stereo=self._stereo,
                 is_aromatic=self._is_aromatic,
+                ring_id=self._ring_id,
             )
             self._bond_id = bond.id
         else:
@@ -123,6 +126,7 @@ class AddBondCommand(QUndoCommand):
                 style=self._style,
                 stereo=self._stereo,
                 is_aromatic=self._is_aromatic,
+                ring_id=self._ring_id,
             )
         self._view.add_bond_item(bond)
 
@@ -301,10 +305,18 @@ class AddRingCommand(QUndoCommand):
         self._element = element
         self._created_atom_ids: List[Optional[int]] = []
         self._created_bonds = []
+        self._ring_id: Optional[int] = None
 
     def redo(self) -> None:
         if not self._created_atom_ids:
             self._created_atom_ids = [v[0] for v in self._vertices]
+
+        if self._ring_id is None:
+            self._ring_id = self._view.allocate_ring_id()
+            xs = [x for _, x, _ in self._vertices]
+            ys = [y for _, _, y in self._vertices]
+            center = (sum(xs) / len(xs), sum(ys) / len(ys))
+            self._view.register_ring_center(self._ring_id, center)
 
         atom_ids: List[int] = []
         for idx, (existing_id, x, y) in enumerate(self._vertices):
@@ -336,10 +348,16 @@ class AddRingCommand(QUndoCommand):
                     style=style,
                     stereo=stereo,
                     is_aromatic=is_aromatic,
+                    ring_id=self._ring_id,
                 )
                 self._created_bonds.append(replace(bond))
                 self._view.add_bond_item(bond)
         else:
+            if self._ring_id is not None:
+                xs = [x for _, x, _ in self._vertices]
+                ys = [y for _, _, y in self._vertices]
+                center = (sum(xs) / len(xs), sum(ys) / len(ys))
+                self._view.register_ring_center(self._ring_id, center)
             for bond in self._created_bonds:
                 self._model.add_bond(
                     bond.a1_id,
@@ -350,6 +368,7 @@ class AddRingCommand(QUndoCommand):
                     stereo=bond.stereo,
                     is_aromatic=bond.is_aromatic,
                     is_query=bond.is_query,
+                    ring_id=bond.ring_id,
                 )
                 self._view.add_bond_item(bond)
 
@@ -362,6 +381,8 @@ class AddRingCommand(QUndoCommand):
             if atom_id is not None and atom_id in self._model.atoms:
                 self._model.remove_atom(atom_id)
                 self._view.remove_atom_item(atom_id)
+        if self._ring_id is not None:
+            self._view.unregister_ring_center(self._ring_id)
 
 
 class AddChainCommand(QUndoCommand):
