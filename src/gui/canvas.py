@@ -13,12 +13,10 @@ from PyQt6.QtWidgets import (
     QGraphicsScene,
     QGraphicsRectItem,
     QGraphicsDropShadowEffect,
-    QGraphicsPathItem,
     QGraphicsPixmapItem,
 )
 from PyQt6.QtGui import (
     QPainter,
-    QPainterPath,
     QPen,
     QColor,
     QBrush,
@@ -30,11 +28,32 @@ from PyQt6.QtGui import (
 from PyQt6.QtCore import Qt, QPointF, QRectF, QBuffer, QMimeData, pyqtSignal
 
 from core.model import BondStyle, BondStereo, ChemState, MolGraph
-from gui.items import AtomItem, BondItem, AromaticCircleItem
+from gui.items import (
+    AtomItem,
+    BondItem,
+    AromaticCircleItem,
+    HoverAtomIndicatorItem,
+    HoverBondIndicatorItem,
+    OptimizeZoneItem,
+    PreviewBondItem,
+    PreviewRingItem,
+    PreviewChainItem,
+    PreviewChainLabelItem,
+)
+from gui.geom import (
+    angle_deg,
+    snap_angle_deg,
+    endpoint_from_angle_len,
+    choose_optimal_direction,
+    closest_atom,
+    closest_bond,
+    bond_side,
+)
 from gui.commands import (
     AddAtomCommand,
     AddBondCommand,
     AddRingCommand,
+    AddChainCommand,
     ChangeAtomCommand,
     ChangeBondCommand,
     DeleteSelectionCommand,
@@ -55,6 +74,10 @@ PAPER_HEIGHT = 1000
 PAPER_MARGIN = 40  # Margins where atoms shouldn't be placed
 ATOM_HIT_RADIUS = 20
 DEFAULT_BOND_LENGTH = 40.0
+HOVER_ATOM_RADIUS = 16.0
+HOVER_BOND_DISTANCE = 10.0
+OPTIMIZE_ZONE_SCALE = 1.2
+CHAIN_MAX_BONDS = 12
 
 
 class ChemusonCanvas(QGraphicsView):
@@ -81,7 +104,9 @@ class ChemusonCanvas(QGraphicsView):
 
         self.current_tool: str = self.state.active_tool
         self.bond_anchor_id: Optional[int] = None
-        self.hover_atom_id: Optional[int] = None
+        self.hovered_atom_id: Optional[int] = None
+        self.hovered_bond_id: Optional[int] = None
+        self._last_scene_pos = QPointF(0, 0)
         self._bond_last_angle: Optional[float] = None
         self._bond_zigzag_sign = 1
 
@@ -90,13 +115,14 @@ class ChemusonCanvas(QGraphicsView):
         self._drag_start_positions: Dict[int, Tuple[float, float]] = {}
         self._drag_has_moved = False
 
-        self._ring_dragging = False
-        self._ring_anchor = None
-        self._ring_preview_item: Optional[QGraphicsPathItem] = None
+        self._drag_mode = "none"
+        self._drag_anchor: Optional[dict] = None
         self._ring_last_vertices: Optional[List[QPointF]] = None
+        self._chain_last_points: Optional[List[QPointF]] = None
 
         self._setup_view()
         self._create_paper()
+        self._create_overlays()
 
         self.scene.selectionChanged.connect(self._sync_selection_from_scene)
         self.setMouseTracking(True)
@@ -144,6 +170,23 @@ class ChemusonCanvas(QGraphicsView):
         self.scene.addItem(self.paper)
         self.centerOn(PAPER_WIDTH / 2, PAPER_HEIGHT / 2)
 
+    def _create_overlays(self) -> None:
+        self._hover_atom_indicator = HoverAtomIndicatorItem()
+        self._hover_bond_indicator = HoverBondIndicatorItem()
+        self._optimize_zone = OptimizeZoneItem()
+        self._preview_bond_item = PreviewBondItem()
+        self._preview_ring_item = PreviewRingItem()
+        self._preview_chain_item = PreviewChainItem()
+        self._preview_chain_label = PreviewChainLabelItem()
+
+        self.scene.addItem(self._hover_atom_indicator)
+        self.scene.addItem(self._hover_bond_indicator)
+        self.scene.addItem(self._optimize_zone)
+        self.scene.addItem(self._preview_bond_item)
+        self.scene.addItem(self._preview_ring_item)
+        self.scene.addItem(self._preview_chain_item)
+        self.scene.addItem(self._preview_chain_label)
+
     def set_current_tool(self, tool_id: str) -> None:
         if tool_id.startswith("atom_"):
             self.state.default_element = tool_id.split("_", 1)[1]
@@ -154,6 +197,7 @@ class ChemusonCanvas(QGraphicsView):
         self.current_tool = tool_id
         self.state.active_tool = tool_id
         self._clear_bond_anchor()
+        self._cancel_drag()
 
         if tool_id == "tool_select":
             self.setCursor(Qt.CursorShape.ArrowCursor)
@@ -167,6 +211,11 @@ class ChemusonCanvas(QGraphicsView):
         self.state.active_bond_style = bond_spec.get("style", BondStyle.PLAIN)
         self.state.active_bond_stereo = bond_spec.get("stereo", BondStereo.NONE)
         self.state.active_bond_mode = bond_spec.get("mode", "increment")
+        self.state.active_bond_aromatic = bond_spec.get("aromatic", False)
+        if self.state.active_bond_aromatic:
+            self.state.active_bond_order = 1
+            self.state.active_bond_style = BondStyle.PLAIN
+            self.state.active_bond_stereo = BondStereo.NONE
         self.set_current_tool("tool_bond")
 
     def set_active_ring(self, ring_spec: dict) -> None:
@@ -180,6 +229,7 @@ class ChemusonCanvas(QGraphicsView):
 
     def mousePressEvent(self, event) -> None:
         scene_pos = self.mapToScene(event.pos())
+        self._last_scene_pos = scene_pos
 
         if not self._is_on_paper(scene_pos.x(), scene_pos.y()):
             super().mousePressEvent(event)
@@ -207,8 +257,7 @@ class ChemusonCanvas(QGraphicsView):
                 self._begin_drag(scene_pos)
             return
 
-        clicked_atom_id = self._get_atom_at(scene_pos.x(), scene_pos.y())
-        clicked_bond_id = self._get_bond_at(scene_pos)
+        clicked_atom_id, clicked_bond_id = self._pick_hover_target(scene_pos)
 
         if self.current_tool == "tool_atom":
             element = self.state.default_element
@@ -221,43 +270,33 @@ class ChemusonCanvas(QGraphicsView):
             return
 
         if self.current_tool == "tool_bond":
-            if clicked_bond_id is not None:
-                if self.state.active_bond_mode == "increment":
+            if clicked_bond_id is not None and clicked_atom_id is None:
+                if self.state.active_bond_mode == "increment" and not self.state.active_bond_aromatic:
                     self._cycle_bond_order(clicked_bond_id)
                 else:
                     self._apply_bond_style(clicked_bond_id)
                 return
 
-            if clicked_atom_id is None:
-                if self.bond_anchor_id is None:
-                    self._create_first_bond(scene_pos, event.modifiers())
-                else:
-                    self._extend_bond_from_anchor(scene_pos, event.modifiers())
+            if clicked_atom_id is not None:
+                self._begin_place_bond(clicked_atom_id, scene_pos)
                 return
-
-        if self.bond_anchor_id is None:
-            self._set_bond_anchor(clicked_atom_id, reset_angle=True)
-            return
-
-            if self.bond_anchor_id == clicked_atom_id:
-                self._clear_bond_anchor()
-                return
-
-            if self.model.find_bond_between(self.bond_anchor_id, clicked_atom_id) is None:
-                self._add_bond_between(self.bond_anchor_id, clicked_atom_id)
-                self._record_bond_angle_between(self.bond_anchor_id, clicked_atom_id)
-            self._set_bond_anchor(clicked_atom_id, reset_angle=False)
+            self._begin_place_bond(None, scene_pos)
             return
 
         if self.current_tool == "tool_ring":
-            if clicked_bond_id is not None:
-                self._start_ring_drag("bond", clicked_bond_id, scene_pos, event.modifiers())
+            if clicked_bond_id is not None and clicked_atom_id is None:
+                self._begin_place_ring("bond", clicked_bond_id, scene_pos)
                 return
             if clicked_atom_id is not None:
-                self._start_ring_drag("atom", clicked_atom_id, scene_pos, event.modifiers())
+                self._begin_place_ring("atom", clicked_atom_id, scene_pos)
                 return
-            self._start_ring_drag("free", None, scene_pos, event.modifiers())
+            self._begin_place_ring("free", None, scene_pos)
             return
+
+        if self.current_tool == "tool_chain":
+            if clicked_atom_id is not None:
+                self._begin_place_chain(clicked_atom_id, scene_pos)
+                return
 
         if self.current_tool == "tool_erase":
             if clicked_atom_id is not None:
@@ -270,9 +309,16 @@ class ChemusonCanvas(QGraphicsView):
 
     def mouseMoveEvent(self, event) -> None:
         scene_pos = self.mapToScene(event.pos())
+        self._last_scene_pos = scene_pos
 
-        if self._ring_dragging:
+        if self._drag_mode == "place_bond":
+            self._update_bond_preview(scene_pos, event.modifiers())
+            return
+        if self._drag_mode == "place_ring":
             self._update_ring_preview(scene_pos, event.modifiers())
+            return
+        if self._drag_mode == "place_chain":
+            self._update_chain_preview(scene_pos, event.modifiers())
             return
 
         if self._dragging_selection and self._drag_start_pos is not None:
@@ -287,22 +333,19 @@ class ChemusonCanvas(QGraphicsView):
                 self.update_bond_items_for_atoms(set(self._drag_start_positions.keys()))
             return
 
-        hover_atom_id = self._get_atom_at(scene_pos.x(), scene_pos.y())
-        if self.hover_atom_id is not None and self.hover_atom_id in self.atom_items:
-            if self.hover_atom_id not in self.state.selected_atoms and self.hover_atom_id != self.bond_anchor_id:
-                self.atom_items[self.hover_atom_id].set_hover(False)
-            self.hover_atom_id = None
-
-        if hover_atom_id is not None and hover_atom_id in self.atom_items:
-            if hover_atom_id not in self.state.selected_atoms and hover_atom_id != self.bond_anchor_id:
-                self.atom_items[hover_atom_id].set_hover(True)
-            self.hover_atom_id = hover_atom_id
+        self._update_hover(scene_pos)
 
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:
-        if self._ring_dragging:
-            self._finalize_ring_drag(event.modifiers())
+        if self._drag_mode == "place_bond":
+            self._finalize_bond(event.modifiers())
+            return
+        if self._drag_mode == "place_ring":
+            self._finalize_ring(event.modifiers())
+            return
+        if self._drag_mode == "place_chain":
+            self._finalize_chain(event.modifiers())
             return
 
         if self._dragging_selection:
@@ -337,6 +380,8 @@ class ChemusonCanvas(QGraphicsView):
         if event.key() == Qt.Key.Key_Delete:
             self.delete_selection()
             return
+        if self._handle_hotkeys(event):
+            return
         super().keyPressEvent(event)
 
     def zoom_in(self) -> None:
@@ -358,8 +403,10 @@ class ChemusonCanvas(QGraphicsView):
         self.state.selected_atoms.clear()
         self.state.selected_bonds.clear()
         self.bond_anchor_id = None
-        self.hover_atom_id = None
+        self.hovered_atom_id = None
+        self.hovered_bond_id = None
         self._create_paper()
+        self._create_overlays()
 
     def delete_selection(self) -> None:
         if not self.state.selected_atoms and not self.state.selected_bonds:
@@ -536,8 +583,8 @@ class ChemusonCanvas(QGraphicsView):
             self.scene.removeItem(item)
         if self.bond_anchor_id == atom_id:
             self.bond_anchor_id = None
-        if self.hover_atom_id == atom_id:
-            self.hover_atom_id = None
+        if self.hovered_atom_id == atom_id:
+            self.hovered_atom_id = None
 
     def add_bond_item(self, bond) -> None:
         if bond.id in self.bond_items:
@@ -743,9 +790,19 @@ class ChemusonCanvas(QGraphicsView):
         order = self.state.active_bond_order
         style = self.state.active_bond_style
         stereo = self.state.active_bond_stereo
+        is_aromatic = self.state.active_bond_aromatic
         if style != BondStyle.PLAIN:
             order = 1
-        cmd = AddBondCommand(self.model, self, a1_id, a2_id, order, style, stereo)
+        cmd = AddBondCommand(
+            self.model,
+            self,
+            a1_id,
+            a2_id,
+            order,
+            style,
+            stereo,
+            is_aromatic=is_aromatic,
+        )
         self.undo_stack.push(cmd)
 
     def _cycle_bond_order(self, bond_id: int) -> None:
@@ -758,19 +815,31 @@ class ChemusonCanvas(QGraphicsView):
                 new_order=1,
                 new_style=BondStyle.PLAIN,
                 new_stereo=BondStereo.NONE,
+                new_is_aromatic=False,
             )
             self.undo_stack.push(cmd)
             return
         new_order = 1 if bond.order >= 3 else bond.order + 1
-        cmd = ChangeBondCommand(self.model, self, bond_id, new_order=new_order)
+        cmd = ChangeBondCommand(
+            self.model,
+            self,
+            bond_id,
+            new_order=new_order,
+            new_is_aromatic=False,
+        )
         self.undo_stack.push(cmd)
 
     def _apply_bond_style(self, bond_id: int) -> None:
         order = self.state.active_bond_order
         style = self.state.active_bond_style
         stereo = self.state.active_bond_stereo
+        is_aromatic = self.state.active_bond_aromatic
         if style != BondStyle.PLAIN:
             order = 1
+        if is_aromatic:
+            order = 1
+            style = BondStyle.PLAIN
+            stereo = BondStereo.NONE
         cmd = ChangeBondCommand(
             self.model,
             self,
@@ -778,6 +847,7 @@ class ChemusonCanvas(QGraphicsView):
             new_order=order,
             new_style=style,
             new_stereo=stereo,
+            new_is_aromatic=is_aromatic,
         )
         self.undo_stack.push(cmd)
 
@@ -939,86 +1009,325 @@ class ChemusonCanvas(QGraphicsView):
         diff = (a - b + math.pi) % (2 * math.pi) - math.pi
         return abs(diff)
 
-    def _begin_drag(self, scene_pos: QPointF) -> None:
-        if not self.state.selected_atoms:
-            return
-        self._dragging_selection = True
-        self._drag_start_pos = scene_pos
-        self._drag_start_positions = {
-            atom_id: (self.model.get_atom(atom_id).x, self.model.get_atom(atom_id).y)
-            for atom_id in self.state.selected_atoms
-        }
-        self._drag_has_moved = False
+    # -------------------------------------------------------------------------
+    # Hover + Drag State
+    # -------------------------------------------------------------------------
+    def _pick_hover_target(self, scene_pos: QPointF) -> tuple[Optional[int], Optional[int]]:
+        atoms = [(atom.id, atom.x, atom.y) for atom in self.model.atoms.values()]
+        atom_id = closest_atom(scene_pos, atoms, HOVER_ATOM_RADIUS)
+        if atom_id is not None:
+            return atom_id, None
 
-    def _start_ring_drag(
-        self,
-        anchor_type: str,
-        anchor_id: Optional[int],
-        scene_pos: QPointF,
-        modifiers: Qt.KeyboardModifiers,
-    ) -> None:
-        self._ring_dragging = True
-        self._ring_anchor = {"type": anchor_type, "id": anchor_id, "pos": scene_pos}
+        bonds = []
+        for bond in self.model.bonds.values():
+            a1 = self.model.get_atom(bond.a1_id)
+            a2 = self.model.get_atom(bond.a2_id)
+            bonds.append((bond.id, QPointF(a1.x, a1.y), QPointF(a2.x, a2.y)))
+        bond_id = closest_bond(scene_pos, bonds, HOVER_BOND_DISTANCE)
+        return None, bond_id
+
+    def _update_hover(self, scene_pos: QPointF) -> None:
+        atom_id, bond_id = self._pick_hover_target(scene_pos)
+
+        if self.hovered_atom_id is not None and self.hovered_atom_id in self.atom_items:
+            if self.hovered_atom_id not in self.state.selected_atoms:
+                self.atom_items[self.hovered_atom_id].set_hover(False)
+
+        self.hovered_atom_id = atom_id
+        self.hovered_bond_id = bond_id if atom_id is None else None
+
+        if self.hovered_atom_id is not None and self.hovered_atom_id in self.atom_items:
+            if self.hovered_atom_id not in self.state.selected_atoms:
+                self.atom_items[self.hovered_atom_id].set_hover(True)
+            atom = self.model.get_atom(self.hovered_atom_id)
+            self._hover_atom_indicator.update_position(atom.x, atom.y)
+            self._hover_bond_indicator.hide_indicator()
+            return
+
+        self._hover_atom_indicator.hide_indicator()
+
+        if self.hovered_bond_id is not None:
+            bond = self.model.get_bond(self.hovered_bond_id)
+            a1 = self.model.get_atom(bond.a1_id)
+            a2 = self.model.get_atom(bond.a2_id)
+            self._hover_bond_indicator.update_for_bond(
+                QPointF(a1.x, a1.y),
+                QPointF(a2.x, a2.y),
+            )
+        else:
+            self._hover_bond_indicator.hide_indicator()
+
+    def _cancel_drag(self) -> None:
+        self._drag_mode = "none"
+        self._drag_anchor = None
         self._ring_last_vertices = None
-        if self._ring_preview_item is None:
-            self._ring_preview_item = QGraphicsPathItem()
-            pen = QPen(QColor("#6699CC"), 1.5, Qt.PenStyle.DashLine)
-            self._ring_preview_item.setPen(pen)
-            self._ring_preview_item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
-            self._ring_preview_item.setZValue(10)
-            self.scene.addItem(self._ring_preview_item)
-        self._update_ring_preview(scene_pos, modifiers)
+        self._chain_last_points = None
+        self._optimize_zone.hide_zone()
+        self._preview_bond_item.hide_preview()
+        self._preview_ring_item.hide_preview()
+        self._preview_chain_item.hide_preview()
+        self._preview_chain_label.hide_label()
+
+    def _get_anchor_bond_angles_deg(self, anchor_id: int) -> list[float]:
+        angles = []
+        anchor = self.model.get_atom(anchor_id)
+        p0 = QPointF(anchor.x, anchor.y)
+        for bond in self.model.bonds.values():
+            if bond.a1_id == anchor_id:
+                other = self.model.get_atom(bond.a2_id)
+            elif bond.a2_id == anchor_id:
+                other = self.model.get_atom(bond.a1_id)
+            else:
+                continue
+            p1 = QPointF(other.x, other.y)
+            angles.append(angle_deg(p0, p1))
+        return angles
+
+    def _anchor_geometry(self, anchor_id: int) -> str:
+        for bond in self.model.bonds.values():
+            if bond.a1_id == anchor_id or bond.a2_id == anchor_id:
+                if bond.order >= 3:
+                    return "sp"
+                if bond.order == 2 or bond.is_aromatic:
+                    return "sp2"
+        return "sp3"
+
+    def _preferred_angles(self, anchor_id: int) -> list[float]:
+        geometry = self._anchor_geometry(anchor_id)
+        existing = self._get_anchor_bond_angles_deg(anchor_id)
+        if not existing:
+            return []
+        candidates: list[float] = []
+        if geometry == "sp":
+            for angle in existing:
+                candidates.append((angle + 180.0) % 360.0)
+        else:
+            for angle in existing:
+                candidates.append((angle + 120.0) % 360.0)
+                candidates.append((angle - 120.0) % 360.0)
+        return candidates
+
+    def _select_preferred_angle(self, anchor_id: int, cursor_angle: float) -> float:
+        candidates = self._preferred_angles(anchor_id)
+        if not candidates:
+            return cursor_angle
+        def score(angle: float) -> float:
+            diff = abs(((angle - cursor_angle + 180.0) % 360.0) - 180.0)
+            return diff
+        return min(candidates, key=score)
+
+    # -------------------------------------------------------------------------
+    # Bond Placement
+    # -------------------------------------------------------------------------
+    def _begin_place_bond(self, anchor_id: Optional[int], scene_pos: QPointF) -> None:
+        self._drag_mode = "place_bond"
+        if anchor_id is None:
+            self._drag_anchor = {"type": "free", "id": None, "pos": scene_pos}
+            self._optimize_zone.hide_zone()
+        else:
+            anchor = self.model.get_atom(anchor_id)
+            self._drag_anchor = {"type": "atom", "id": anchor_id, "pos": QPointF(anchor.x, anchor.y)}
+            radius = self.state.bond_length * OPTIMIZE_ZONE_SCALE
+            self._optimize_zone.set_radius(radius)
+            self._optimize_zone.update_center(anchor.x, anchor.y)
+        self._update_bond_preview(scene_pos, Qt.KeyboardModifier.NoModifier)
+
+    def _update_bond_preview(self, scene_pos: QPointF, modifiers: Qt.KeyboardModifiers) -> None:
+        if self._drag_anchor is None:
+            return
+        if self._drag_anchor["id"] is None:
+            p0 = QPointF(self._drag_anchor["pos"].x(), self._drag_anchor["pos"].y())
+        else:
+            anchor = self.model.get_atom(self._drag_anchor["id"])
+            p0 = QPointF(anchor.x, anchor.y)
+        p1 = self._compute_bond_endpoint(p0, scene_pos, modifiers)
+        self._preview_bond_item.update_line(p0, p1)
+
+    def _finalize_bond(self, modifiers: Qt.KeyboardModifiers) -> None:
+        if self._drag_anchor is None:
+            self._cancel_drag()
+            return
+        anchor_id = self._drag_anchor["id"]
+        if anchor_id is None:
+            p0 = QPointF(self._drag_anchor["pos"].x(), self._drag_anchor["pos"].y())
+        else:
+            anchor = self.model.get_atom(anchor_id)
+            p0 = QPointF(anchor.x, anchor.y)
+        p1 = self._compute_bond_endpoint(p0, self._last_scene_pos, modifiers)
+
+        target_id = closest_atom(
+            p1,
+            [(atom.id, atom.x, atom.y) for atom in self.model.atoms.values()],
+            ATOM_HIT_RADIUS,
+        )
+        if target_id == anchor_id:
+            target_id = None
+
+        order = self.state.active_bond_order
+        style = self.state.active_bond_style
+        stereo = self.state.active_bond_stereo
+        is_aromatic = self.state.active_bond_aromatic
+        if style != BondStyle.PLAIN or is_aromatic:
+            order = 1
+
+        if anchor_id is None:
+            self.undo_stack.beginMacro("Add bond")
+            anchor_cmd = AddAtomCommand(
+                self.model,
+                self,
+                self.state.default_element,
+                p0.x(),
+                p0.y(),
+            )
+            self.undo_stack.push(anchor_cmd)
+            anchor_id = anchor_cmd.atom_id
+            if target_id is not None:
+                cmd = AddBondCommand(
+                    self.model,
+                    self,
+                    anchor_id,
+                    target_id,
+                    order,
+                    style,
+                    stereo,
+                    is_aromatic=is_aromatic,
+                )
+            else:
+                cmd = AddBondCommand(
+                    self.model,
+                    self,
+                    anchor_id,
+                    None,
+                    order,
+                    style,
+                    stereo,
+                    is_aromatic=is_aromatic,
+                    new_atom_element=self.state.default_element,
+                    new_atom_pos=(p1.x(), p1.y()),
+                )
+            self.undo_stack.push(cmd)
+            self.undo_stack.endMacro()
+        else:
+            if target_id is not None:
+                cmd = AddBondCommand(
+                    self.model,
+                    self,
+                    anchor_id,
+                    target_id,
+                    order,
+                    style,
+                    stereo,
+                    is_aromatic=is_aromatic,
+                )
+            else:
+                cmd = AddBondCommand(
+                    self.model,
+                    self,
+                    anchor_id,
+                    None,
+                    order,
+                    style,
+                    stereo,
+                    is_aromatic=is_aromatic,
+                    new_atom_element=self.state.default_element,
+                    new_atom_pos=(p1.x(), p1.y()),
+                )
+            self.undo_stack.push(cmd)
+        self._cancel_drag()
+
+    def _compute_bond_endpoint(
+        self, anchor: QPointF, scene_pos: QPointF, modifiers: Qt.KeyboardModifiers
+    ) -> QPointF:
+        dx = scene_pos.x() - anchor.x()
+        dy = scene_pos.y() - anchor.y()
+        dist = math.hypot(dx, dy)
+
+        use_alt = bool(modifiers & Qt.KeyboardModifier.AltModifier)
+        use_shift = bool(modifiers & Qt.KeyboardModifier.ShiftModifier)
+        use_optimize = False
+        if self._optimize_zone.isVisible():
+            use_optimize = dist <= self._optimize_zone.radius()
+
+        cursor_theta = angle_deg(anchor, scene_pos)
+        if use_optimize and not use_alt and self._drag_anchor["id"] is not None:
+            theta = self._select_preferred_angle(self._drag_anchor["id"], cursor_theta)
+        else:
+            theta = cursor_theta
+
+        if self.state.fixed_angles and not use_alt:
+            theta = snap_angle_deg(theta, self.state.angle_step_deg)
+
+        if self.state.fixed_lengths and not use_shift:
+            length = self.state.bond_length
+        else:
+            length = max(5.0, dist)
+
+        return endpoint_from_angle_len(anchor, theta, length)
+
+    # -------------------------------------------------------------------------
+    # Ring Placement
+    # -------------------------------------------------------------------------
+    def _begin_place_ring(self, anchor_type: str, anchor_id: Optional[int], scene_pos: QPointF) -> None:
+        self._drag_mode = "place_ring"
+        self._drag_anchor = {"type": anchor_type, "id": anchor_id, "pos": scene_pos}
+        if anchor_type == "atom":
+            atom = self.model.get_atom(anchor_id)
+            radius = self.state.bond_length * OPTIMIZE_ZONE_SCALE
+            self._optimize_zone.set_radius(radius)
+            self._optimize_zone.update_center(atom.x, atom.y)
+        elif anchor_type == "bond":
+            bond = self.model.get_bond(anchor_id)
+            a1 = self.model.get_atom(bond.a1_id)
+            a2 = self.model.get_atom(bond.a2_id)
+            mid = QPointF((a1.x + a2.x) / 2, (a1.y + a2.y) / 2)
+            radius = self.state.bond_length * OPTIMIZE_ZONE_SCALE
+            self._optimize_zone.set_radius(radius)
+            self._optimize_zone.update_center(mid.x(), mid.y())
+        else:
+            self._optimize_zone.hide_zone()
+        self._update_ring_preview(scene_pos, Qt.KeyboardModifier.NoModifier)
 
     def _update_ring_preview(self, scene_pos: QPointF, modifiers: Qt.KeyboardModifiers) -> None:
         vertices = self._compute_ring_vertices(scene_pos, modifiers)
         self._ring_last_vertices = vertices
-        if self._ring_preview_item is None or not vertices:
-            return
-        path = QPainterPath()
-        path.moveTo(vertices[0])
-        for v in vertices[1:]:
-            path.lineTo(v)
-        path.closeSubpath()
-        self._ring_preview_item.setPath(path)
+        self._preview_ring_item.update_polygon(vertices)
 
-    def _finalize_ring_drag(self, modifiers: Qt.KeyboardModifiers) -> None:
+    def _finalize_ring(self, modifiers: Qt.KeyboardModifiers) -> None:
         vertices = self._ring_last_vertices or []
-        if self._ring_preview_item is not None:
-            self.scene.removeItem(self._ring_preview_item)
-            self._ring_preview_item = None
-        self._ring_dragging = False
-        self._ring_last_vertices = None
-
-        if not vertices or self._ring_anchor is None:
-            self._ring_anchor = None
+        if not vertices or self._drag_anchor is None:
+            self._cancel_drag()
             return
 
-        ring_size = self.state.active_ring_size
+        ring_size = max(3, int(self.state.active_ring_size))
         aromatic = self.state.active_ring_aromatic
-        if modifiers & Qt.KeyboardModifier.ShiftModifier:
-            aromatic = not aromatic
 
         vertex_defs: List[Tuple[Optional[int], float, float]] = []
-        if self._ring_anchor["type"] == "bond":
-            bond = self.model.get_bond(self._ring_anchor["id"])
+        if self._drag_anchor["type"] == "bond":
+            bond = self.model.get_bond(self._drag_anchor["id"])
             vertex_defs.append((bond.a1_id, vertices[0].x(), vertices[0].y()))
             vertex_defs.append((bond.a2_id, vertices[1].x(), vertices[1].y()))
             for v in vertices[2:]:
                 vertex_defs.append((None, v.x(), v.y()))
-        elif self._ring_anchor["type"] == "free":
+        elif self._drag_anchor["type"] == "free":
             for v in vertices:
                 vertex_defs.append((None, v.x(), v.y()))
         else:
-            vertex_defs.append((self._ring_anchor["id"], vertices[0].x(), vertices[0].y()))
+            vertex_defs.append((self._drag_anchor["id"], vertices[0].x(), vertices[0].y()))
             for v in vertices[1:]:
                 vertex_defs.append((None, v.x(), v.y()))
 
         edge_defs: List[Tuple[int, int, int, BondStyle, BondStereo, bool]] = []
+        existing_first_order = None
+        if self._drag_anchor["type"] == "bond":
+            existing_first_order = self.model.get_bond(self._drag_anchor["id"]).order
         for i in range(ring_size):
             j = (i + 1) % ring_size
             order = 1
-            if aromatic and i % 2 == 0:
-                order = 2
+            if aromatic:
+                if existing_first_order is not None:
+                    order = 2 if ((i % 2 == 0) == (existing_first_order == 2)) else 1
+                else:
+                    order = 2 if i % 2 == 0 else 1
             edge_defs.append((i, j, order, BondStyle.PLAIN, BondStereo.NONE, aromatic))
 
         cmd = AddRingCommand(
@@ -1029,62 +1338,49 @@ class ChemusonCanvas(QGraphicsView):
             element=self.state.default_element,
         )
         self.undo_stack.push(cmd)
-        self._ring_anchor = None
+        self._cancel_drag()
 
     def _compute_ring_vertices(
         self, scene_pos: QPointF, modifiers: Qt.KeyboardModifiers
     ) -> List[QPointF]:
-        if self._ring_anchor is None:
+        if self._drag_anchor is None:
             return []
 
         ring_size = max(3, int(self.state.active_ring_size))
-        flip = bool(modifiers & Qt.KeyboardModifier.AltModifier)
+        anchor_type = self._drag_anchor["type"]
 
-        if self._ring_anchor["type"] == "free":
-            center = self._ring_anchor["pos"]
-            dx = scene_pos.x() - center.x()
-            dy = scene_pos.y() - center.y()
-            angle0 = math.atan2(dy, dx) if (dx or dy) else 0.0
-            radius = DEFAULT_BOND_LENGTH / (2 * math.sin(math.pi / ring_size))
+        if anchor_type == "free":
+            center = self._drag_anchor["pos"]
+            angle0 = angle_deg(center, scene_pos)
+            radius = self.state.bond_length / (2 * math.sin(math.pi / ring_size))
             vertices = []
-            step = 2 * math.pi / ring_size
+            step = 360.0 / ring_size
             for i in range(ring_size):
-                angle = angle0 + step * i
-                vertices.append(
-                    QPointF(
-                        center.x() + math.cos(angle) * radius,
-                        center.y() + math.sin(angle) * radius,
-                    )
-                )
+                theta = angle0 + step * i
+                vertices.append(endpoint_from_angle_len(center, theta, radius))
             return vertices
 
-        if self._ring_anchor["type"] == "bond":
-            bond = self.model.get_bond(self._ring_anchor["id"])
+        if anchor_type == "bond":
+            bond = self.model.get_bond(self._drag_anchor["id"])
             a1 = self.model.get_atom(bond.a1_id)
             a2 = self.model.get_atom(bond.a2_id)
             p1 = QPointF(a1.x, a1.y)
             p2 = QPointF(a2.x, a2.y)
-            return self._regular_polygon_from_edge(p1, p2, ring_size, scene_pos, flip)
+            direction = bond_side(p1, p2, scene_pos)
+            return self._regular_polygon_from_edge(p1, p2, ring_size, direction)
 
-        anchor_atom = self.model.get_atom(self._ring_anchor["id"])
-        p1 = QPointF(anchor_atom.x, anchor_atom.y)
-        direction = scene_pos - p1
-        length = math.hypot(direction.x(), direction.y())
-        if length < 1.0:
-            direction = QPointF(1.0, 0.0)
-            length = 1.0
-        unit = QPointF(direction.x() / length, direction.y() / length)
-        bond_length = DEFAULT_BOND_LENGTH
-        p2 = QPointF(p1.x() + unit.x() * bond_length, p1.y() + unit.y() * bond_length)
-        return self._regular_polygon_from_edge(p1, p2, ring_size, scene_pos, flip)
+        anchor = self.model.get_atom(self._drag_anchor["id"])
+        p1 = QPointF(anchor.x, anchor.y)
+        p2 = self._compute_bond_endpoint(p1, scene_pos, modifiers)
+        direction = bond_side(p1, p2, scene_pos)
+        return self._regular_polygon_from_edge(p1, p2, ring_size, direction)
 
     def _regular_polygon_from_edge(
         self,
         p1: QPointF,
         p2: QPointF,
         ring_size: int,
-        scene_pos: QPointF,
-        flip: bool,
+        direction: int,
     ) -> List[QPointF]:
         dx = p2.x() - p1.x()
         dy = p2.y() - p1.y()
@@ -1092,44 +1388,226 @@ class ChemusonCanvas(QGraphicsView):
         if length < 1e-6:
             return []
 
-        radius = length / (2 * math.sin(math.pi / ring_size))
-        mid = QPointF((p1.x() + p2.x()) / 2, (p1.y() + p2.y()) / 2)
-        h = math.sqrt(max(radius * radius - (length / 2) ** 2, 0.0))
-        nx = -dy / length
-        ny = dx / length
-
-        side = dx * (scene_pos.y() - mid.y()) - dy * (scene_pos.x() - mid.x())
-        side_sign = 1 if side >= 0 else -1
-        if flip:
-            side_sign *= -1
-
-        center = QPointF(mid.x() + nx * h * side_sign, mid.y() + ny * h * side_sign)
-        angle0 = math.atan2(p1.y() - center.y(), p1.x() - center.x())
-        step = 2 * math.pi / ring_size
-
-        cand1 = QPointF(
-            center.x() + math.cos(angle0 + step) * radius,
-            center.y() + math.sin(angle0 + step) * radius,
-        )
-        cand2 = QPointF(
-            center.x() + math.cos(angle0 - step) * radius,
-            center.y() + math.sin(angle0 - step) * radius,
-        )
-        if (cand1 - p2).manhattanLength() <= (cand2 - p2).manhattanLength():
-            direction = 1
-        else:
-            direction = -1
-
-        vertices = []
-        for i in range(ring_size):
-            angle = angle0 + direction * step * i
-            vertices.append(
-                QPointF(
-                    center.x() + math.cos(angle) * radius,
-                    center.y() + math.sin(angle) * radius,
-                )
-            )
+        step = 360.0 / ring_size
+        angle0 = angle_deg(p1, p2)
+        vertices = [p1, p2]
+        current = p2
+        current_angle = angle0
+        for _ in range(ring_size - 2):
+            current_angle = (current_angle + direction * step) % 360.0
+            next_point = endpoint_from_angle_len(current, current_angle, length)
+            vertices.append(next_point)
+            current = next_point
         return vertices
+
+    # -------------------------------------------------------------------------
+    # Chain Placement
+    # -------------------------------------------------------------------------
+    def _begin_place_chain(self, anchor_id: int, scene_pos: QPointF) -> None:
+        self._drag_mode = "place_chain"
+        anchor = self.model.get_atom(anchor_id)
+        self._drag_anchor = {"type": "atom", "id": anchor_id, "pos": QPointF(anchor.x, anchor.y)}
+        radius = self.state.bond_length * OPTIMIZE_ZONE_SCALE
+        self._optimize_zone.set_radius(radius)
+        self._optimize_zone.update_center(anchor.x, anchor.y)
+        self._update_chain_preview(scene_pos, Qt.KeyboardModifier.NoModifier)
+
+    def _update_chain_preview(self, scene_pos: QPointF, modifiers: Qt.KeyboardModifiers) -> None:
+        if self._drag_anchor is None:
+            return
+        anchor = self.model.get_atom(self._drag_anchor["id"])
+        p0 = QPointF(anchor.x, anchor.y)
+        dx = scene_pos.x() - p0.x()
+        dy = scene_pos.y() - p0.y()
+        dist = math.hypot(dx, dy)
+
+        if dist < 1.0:
+            points = [p0]
+            self._chain_last_points = points
+            self._preview_chain_item.update_polyline(points)
+            self._preview_chain_label.hide_label()
+            return
+
+        raw_angle = angle_deg(p0, scene_pos)
+        use_alt = bool(modifiers & Qt.KeyboardModifier.AltModifier)
+        use_shift = bool(modifiers & Qt.KeyboardModifier.ShiftModifier)
+        use_optimize = False
+        if self._optimize_zone.isVisible():
+            use_optimize = dist <= self._optimize_zone.radius()
+
+        if use_optimize and not use_alt:
+            raw_angle = self._select_preferred_angle(self._drag_anchor["id"], raw_angle)
+
+        if use_shift:
+            if abs(dx) >= abs(dy):
+                raw_angle = 0.0 if dx >= 0 else 180.0
+            else:
+                raw_angle = 90.0 if -(dy) >= 0 else 270.0
+
+        if self.state.fixed_angles and not use_alt:
+            raw_angle = snap_angle_deg(raw_angle, self.state.angle_step_deg)
+
+        n = max(1, min(CHAIN_MAX_BONDS, int(round(dist / self.state.bond_length))))
+        points = [p0]
+        geometry = self._anchor_geometry(self._drag_anchor["id"])
+        zigzag = geometry == "sp3" and not use_alt and self.state.fixed_angles
+        current = p0
+        for i in range(1, n + 1):
+            if zigzag:
+                step_angle = raw_angle + (60.0 if i % 2 == 1 else -60.0)
+            else:
+                step_angle = raw_angle
+            next_point = endpoint_from_angle_len(current, step_angle, self.state.bond_length)
+            points.append(next_point)
+            current = next_point
+
+        self._chain_last_points = points
+        self._preview_chain_item.update_polyline(points)
+        self._preview_chain_label.update_label(str(n), points[-1] + QPointF(0, -10))
+
+    def _finalize_chain(self, modifiers: Qt.KeyboardModifiers) -> None:
+        if not self._chain_last_points or self._drag_anchor is None:
+            self._cancel_drag()
+            return
+        anchor_id = self._drag_anchor["id"]
+        new_positions = [(p.x(), p.y()) for p in self._chain_last_points[1:]]
+        if not new_positions:
+            self._cancel_drag()
+            return
+        cmd = AddChainCommand(
+            self.model,
+            self,
+            anchor_id,
+            new_positions,
+            element=self.state.default_element,
+        )
+        self.undo_stack.push(cmd)
+        self._cancel_drag()
+
+    # -------------------------------------------------------------------------
+    # Hotkeys
+    # -------------------------------------------------------------------------
+    def _handle_hotkeys(self, event) -> bool:
+        key = event.key()
+        if Qt.Key.Key_0 <= key <= Qt.Key.Key_9:
+            digit = key - Qt.Key.Key_0
+            if digit == 0:
+                return False
+            if self.hovered_atom_id is not None:
+                if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+                    if digit >= 3:
+                        self._create_ring_hotkey(self.hovered_atom_id, digit)
+                        return True
+                else:
+                    self._create_chain_hotkey(self.hovered_atom_id, digit)
+                    return True
+            if self.hovered_bond_id is not None:
+                if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+                    if digit >= 3:
+                        self._create_ring_from_bond_hotkey(self.hovered_bond_id, digit)
+                        return True
+                else:
+                    self._set_bond_order_hotkey(self.hovered_bond_id, digit)
+                    return True
+        return False
+
+    def _create_chain_hotkey(self, anchor_id: int, n: int) -> None:
+        anchor = self.model.get_atom(anchor_id)
+        p0 = QPointF(anchor.x, anchor.y)
+        angles = self._get_anchor_bond_angles_deg(anchor_id)
+        theta = choose_optimal_direction(angles)
+        positions = []
+        for i in range(1, n + 1):
+            p = endpoint_from_angle_len(p0, theta, self.state.bond_length * i)
+            positions.append((p.x(), p.y()))
+        cmd = AddChainCommand(self.model, self, anchor_id, positions, self.state.default_element)
+        self.undo_stack.push(cmd)
+
+    def _create_ring_hotkey(self, anchor_id: int, ring_size: int) -> None:
+        anchor = self.model.get_atom(anchor_id)
+        p0 = QPointF(anchor.x, anchor.y)
+        angles = self._get_anchor_bond_angles_deg(anchor_id)
+        theta = choose_optimal_direction(angles)
+        p1 = endpoint_from_angle_len(p0, theta, self.state.bond_length)
+        direction = bond_side(p0, p1, self._last_scene_pos)
+        vertices = self._regular_polygon_from_edge(p0, p1, ring_size, direction)
+        self._commit_ring_vertices(vertices, anchor_type="atom", anchor_id=anchor_id)
+
+    def _create_ring_from_bond_hotkey(self, bond_id: int, ring_size: int) -> None:
+        bond = self.model.get_bond(bond_id)
+        a1 = self.model.get_atom(bond.a1_id)
+        a2 = self.model.get_atom(bond.a2_id)
+        p1 = QPointF(a1.x, a1.y)
+        p2 = QPointF(a2.x, a2.y)
+        direction = bond_side(p1, p2, self._last_scene_pos)
+        vertices = self._regular_polygon_from_edge(p1, p2, ring_size, direction)
+        self._commit_ring_vertices(vertices, anchor_type="bond", anchor_id=bond_id)
+
+    def _commit_ring_vertices(
+        self, vertices: List[QPointF], anchor_type: str, anchor_id: int
+    ) -> None:
+        if not vertices:
+            return
+        ring_size = len(vertices)
+        aromatic = self.state.active_ring_aromatic
+        vertex_defs: List[Tuple[Optional[int], float, float]] = []
+        if anchor_type == "bond":
+            bond = self.model.get_bond(anchor_id)
+            vertex_defs.append((bond.a1_id, vertices[0].x(), vertices[0].y()))
+            vertex_defs.append((bond.a2_id, vertices[1].x(), vertices[1].y()))
+            for v in vertices[2:]:
+                vertex_defs.append((None, v.x(), v.y()))
+        else:
+            vertex_defs.append((anchor_id, vertices[0].x(), vertices[0].y()))
+            for v in vertices[1:]:
+                vertex_defs.append((None, v.x(), v.y()))
+
+        edge_defs: List[Tuple[int, int, int, BondStyle, BondStereo, bool]] = []
+        existing_first_order = None
+        if anchor_type == "bond":
+            existing_first_order = self.model.get_bond(anchor_id).order
+        for i in range(ring_size):
+            j = (i + 1) % ring_size
+            order = 1
+            if aromatic:
+                if existing_first_order is not None:
+                    order = 2 if ((i % 2 == 0) == (existing_first_order == 2)) else 1
+                else:
+                    order = 2 if i % 2 == 0 else 1
+            edge_defs.append((i, j, order, BondStyle.PLAIN, BondStereo.NONE, aromatic))
+
+        cmd = AddRingCommand(
+            self.model,
+            self,
+            vertex_defs,
+            edge_defs,
+            element=self.state.default_element,
+        )
+        self.undo_stack.push(cmd)
+
+    def _set_bond_order_hotkey(self, bond_id: int, order: int) -> None:
+        order = max(1, min(3, order))
+        cmd = ChangeBondCommand(
+            self.model,
+            self,
+            bond_id,
+            new_order=order,
+            new_style=BondStyle.PLAIN,
+            new_stereo=BondStereo.NONE,
+            new_is_aromatic=False,
+        )
+        self.undo_stack.push(cmd)
+
+    def _begin_drag(self, scene_pos: QPointF) -> None:
+        if not self.state.selected_atoms:
+            return
+        self._dragging_selection = True
+        self._drag_start_pos = scene_pos
+        self._drag_start_positions = {
+            atom_id: (self.model.get_atom(atom_id).x, self.model.get_atom(atom_id).y)
+            for atom_id in self.state.selected_atoms
+        }
+        self._drag_has_moved = False
 
     def _is_on_paper(self, x: float, y: float) -> bool:
         return (

@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QGraphicsItem,
 )
 from PyQt6.QtGui import QColor, QFont, QPainterPath, QPen, QBrush
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QRectF, QPointF
 
 from core.model import Atom, Bond, BondStyle
 
@@ -169,13 +169,7 @@ class BondItem(QGraphicsPathItem):
     def set_render_aromatic_as_circle(self, enabled: bool) -> None:
         """Toggle aromatic rendering mode."""
         self.render_aromatic_as_circle = enabled
-        # We need atom positions to update, but we don't store atoms directly.
-        # However, update_positions is usually called by canvas.
-        # Here we can't easily trigger redraw without atoms.
-        # We will rely on canvas calling update_positions or us storing current positions?
-        # Better: canvas iterates and calls update_positions_from_cache or similar.
-        # Actually, let's just flag it; the canvas refresh method will handle triggering update.
-        pass 
+        # Canvas refresh will call update_positions with current atom positions.
 
     def update_positions(self, atom1: Atom, atom2: Atom) -> None:
         """Redraw the bond path based on atom positions and bond type."""
@@ -275,3 +269,191 @@ class AromaticCircleItem(QGraphicsEllipseItem):
         self.setPen(QPen(QColor("#333333"), 1.5))
         self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         self.setZValue(-10)  # Behind bonds and atoms
+
+
+class HoverAtomIndicatorItem(QGraphicsEllipseItem):
+    """Amber circle overlay for hovered atoms."""
+
+    def __init__(self, radius: float = 16.0) -> None:
+        super().__init__(-radius, -radius, radius * 2, radius * 2)
+        self._radius = radius
+        pen = QPen(QColor("#E0A825"), 1.5)
+        self.setPen(pen)
+        self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        self.setZValue(50)
+        self.setVisible(False)
+
+    def update_position(self, x: float, y: float) -> None:
+        self.setPos(x, y)
+        if not self.isVisible():
+            self.setVisible(True)
+
+    def hide_indicator(self) -> None:
+        self.setVisible(False)
+
+
+class HoverBondIndicatorItem(QGraphicsPathItem):
+    """Amber parentheses overlay for hovered bonds."""
+
+    def __init__(self, radius: float = 10.0, separation: float = 12.0) -> None:
+        super().__init__()
+        self._radius = radius
+        self._separation = separation
+        pen = QPen(QColor("#E0A825"), 1.5)
+        self.setPen(pen)
+        self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        self.setZValue(50)
+        self.setVisible(False)
+
+    def update_for_bond(self, p1: QPointF, p2: QPointF) -> None:
+        mid = QPointF((p1.x() + p2.x()) / 2, (p1.y() + p2.y()) / 2)
+        angle = math.degrees(math.atan2(p2.y() - p1.y(), p2.x() - p1.x()))
+
+        r = self._radius
+        sep = self._separation
+        path = QPainterPath()
+
+        left_rect = QRectF(-sep - r, -r, 2 * r, 2 * r)
+        right_rect = QRectF(sep - r, -r, 2 * r, 2 * r)
+        path.arcMoveTo(left_rect, 60)
+        path.arcTo(left_rect, 60, 240)
+        path.arcMoveTo(right_rect, 120)
+        path.arcTo(right_rect, 120, 240)
+
+        self.setPath(path)
+        self.setPos(mid)
+        self.setRotation(angle)
+        if not self.isVisible():
+            self.setVisible(True)
+
+    def hide_indicator(self) -> None:
+        self.setVisible(False)
+
+
+class OptimizeZoneItem(QGraphicsEllipseItem):
+    """Blue translucent optimize zone around sprout anchor."""
+
+    def __init__(self, radius: float = 28.0) -> None:
+        super().__init__(-radius, -radius, radius * 2, radius * 2)
+        self._radius = radius
+        pen = QPen(QColor("#4A90D9"), 1.2)
+        brush = QBrush(QColor(74, 144, 217, 40))
+        self.setPen(pen)
+        self.setBrush(brush)
+        self.setZValue(30)
+        self.setVisible(False)
+
+    def update_center(self, x: float, y: float) -> None:
+        self.setPos(x, y)
+        if not self.isVisible():
+            self.setVisible(True)
+
+    def set_radius(self, radius: float) -> None:
+        self._radius = radius
+        self.setRect(-radius, -radius, radius * 2, radius * 2)
+
+    def radius(self) -> float:
+        return self._radius
+
+    def hide_zone(self) -> None:
+        self.setVisible(False)
+
+
+class PreviewBondItem(QGraphicsPathItem):
+    """Preview line for bond placement."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        pen = QPen(QColor("#4A90D9"), 1.5, Qt.PenStyle.DashLine)
+        self.setPen(pen)
+        self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        self.setZValue(40)
+        self.setVisible(False)
+
+    def update_line(self, p1: QPointF, p2: QPointF) -> None:
+        path = QPainterPath()
+        path.moveTo(p1)
+        path.lineTo(p2)
+        self.setPath(path)
+        if not self.isVisible():
+            self.setVisible(True)
+
+    def hide_preview(self) -> None:
+        self.setVisible(False)
+
+
+class PreviewRingItem(QGraphicsPathItem):
+    """Preview polygon for ring placement."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        pen = QPen(QColor("#4A90D9"), 1.5, Qt.PenStyle.DashLine)
+        self.setPen(pen)
+        self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        self.setZValue(40)
+        self.setVisible(False)
+
+    def update_polygon(self, vertices: list[QPointF]) -> None:
+        if not vertices:
+            self.setVisible(False)
+            return
+        path = QPainterPath()
+        path.moveTo(vertices[0])
+        for v in vertices[1:]:
+            path.lineTo(v)
+        path.closeSubpath()
+        self.setPath(path)
+        if not self.isVisible():
+            self.setVisible(True)
+
+    def hide_preview(self) -> None:
+        self.setVisible(False)
+
+
+class PreviewChainItem(QGraphicsPathItem):
+    """Preview polyline for chain placement."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        pen = QPen(QColor("#4A90D9"), 1.5, Qt.PenStyle.DashLine)
+        self.setPen(pen)
+        self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        self.setZValue(40)
+        self.setVisible(False)
+
+    def update_polyline(self, points: list[QPointF]) -> None:
+        if len(points) < 2:
+            self.setVisible(False)
+            return
+        path = QPainterPath()
+        path.moveTo(points[0])
+        for p in points[1:]:
+            path.lineTo(p)
+        self.setPath(path)
+        if not self.isVisible():
+            self.setVisible(True)
+
+    def hide_preview(self) -> None:
+        self.setVisible(False)
+
+
+class PreviewChainLabelItem(QGraphicsTextItem):
+    """Preview label showing chain length."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setDefaultTextColor(QColor("#4A90D9"))
+        font = QFont("Arial", 10, QFont.Weight.Bold)
+        self.setFont(font)
+        self.setZValue(41)
+        self.setVisible(False)
+
+    def update_label(self, text: str, pos: QPointF) -> None:
+        self.setPlainText(text)
+        rect = self.boundingRect()
+        self.setPos(pos.x() - rect.width() / 2, pos.y() - rect.height() / 2)
+        if not self.isVisible():
+            self.setVisible(True)
+
+    def hide_label(self) -> None:
+        self.setVisible(False)

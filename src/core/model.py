@@ -51,6 +51,11 @@ class ChemState:
     active_bond_style: BondStyle = BondStyle.PLAIN
     active_bond_stereo: BondStereo = BondStereo.NONE
     active_bond_mode: str = "increment"
+    active_bond_aromatic: bool = False
+    fixed_angles: bool = True
+    fixed_lengths: bool = True
+    angle_step_deg: int = 30
+    bond_length: float = 40.0
     active_ring_size: int = 6
     active_ring_aromatic: bool = False
     default_element: str = "C"
@@ -59,7 +64,7 @@ class ChemState:
     # Display preferences
     show_implicit_carbons: bool = False  # Show C labels (False = hide like ChemDoodle)
     show_implicit_hydrogens: bool = False  # Show H labels
-    use_aromatic_circles: bool = True  # Draw circles in aromatic rings
+    use_aromatic_circles: bool = False  # Draw circles in aromatic rings
 
 
 class MolGraph:

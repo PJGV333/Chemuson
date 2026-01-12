@@ -61,10 +61,13 @@ class AddBondCommand(QUndoCommand):
         model: MolGraph,
         view,
         a1_id: int,
-        a2_id: int,
+        a2_id: Optional[int],
         order: int = 1,
         style: BondStyle = BondStyle.PLAIN,
         stereo: BondStereo = BondStereo.NONE,
+        is_aromatic: bool = False,
+        new_atom_element: Optional[str] = None,
+        new_atom_pos: Optional[Tuple[float, float]] = None,
     ) -> None:
         super().__init__("Add bond")
         self._model = model
@@ -74,9 +77,33 @@ class AddBondCommand(QUndoCommand):
         self._order = order
         self._style = style
         self._stereo = stereo
+        self._is_aromatic = is_aromatic
         self._bond_id: Optional[int] = None
+        self._new_atom_element = new_atom_element
+        self._new_atom_pos = new_atom_pos
+        self._created_atom_id: Optional[int] = None
 
     def redo(self) -> None:
+        if self._a2_id is None:
+            if self._created_atom_id is None:
+                if self._new_atom_element is None or self._new_atom_pos is None:
+                    return
+                atom = self._model.add_atom(
+                    self._new_atom_element,
+                    self._new_atom_pos[0],
+                    self._new_atom_pos[1],
+                )
+                self._created_atom_id = atom.id
+            else:
+                atom = self._model.add_atom(
+                    self._new_atom_element,
+                    self._new_atom_pos[0],
+                    self._new_atom_pos[1],
+                    atom_id=self._created_atom_id,
+                )
+            self._view.add_atom_item(atom)
+            self._a2_id = self._created_atom_id
+
         if self._bond_id is None:
             bond = self._model.add_bond(
                 self._a1_id,
@@ -84,6 +111,7 @@ class AddBondCommand(QUndoCommand):
                 self._order,
                 style=self._style,
                 stereo=self._stereo,
+                is_aromatic=self._is_aromatic,
             )
             self._bond_id = bond.id
         else:
@@ -94,12 +122,19 @@ class AddBondCommand(QUndoCommand):
                 bond_id=self._bond_id,
                 style=self._style,
                 stereo=self._stereo,
+                is_aromatic=self._is_aromatic,
             )
         self._view.add_bond_item(bond)
 
     def undo(self) -> None:
         bond = self._model.remove_bond(self._bond_id)
         self._view.remove_bond_item(bond.id)
+        if self._created_atom_id is not None:
+            atom, removed_bonds = self._model.remove_atom(self._created_atom_id)
+            for removed in removed_bonds:
+                self._view.remove_bond_item(removed.id)
+            self._view.remove_atom_item(atom.id)
+            self._a2_id = None
 
 
 class ChangeBondCommand(QUndoCommand):
@@ -111,6 +146,7 @@ class ChangeBondCommand(QUndoCommand):
         new_order: Optional[int] = None,
         new_style: Optional[BondStyle] = None,
         new_stereo: Optional[BondStereo] = None,
+        new_is_aromatic: Optional[bool] = None,
     ) -> None:
         super().__init__("Change bond")
         self._model = model
@@ -120,9 +156,13 @@ class ChangeBondCommand(QUndoCommand):
         self._old_order = bond.order
         self._old_style = bond.style
         self._old_stereo = bond.stereo
+        self._old_is_aromatic = bond.is_aromatic
         self._new_order = new_order if new_order is not None else bond.order
         self._new_style = new_style if new_style is not None else bond.style
         self._new_stereo = new_stereo if new_stereo is not None else bond.stereo
+        self._new_is_aromatic = (
+            new_is_aromatic if new_is_aromatic is not None else bond.is_aromatic
+        )
 
     def redo(self) -> None:
         self._model.update_bond(
@@ -130,6 +170,7 @@ class ChangeBondCommand(QUndoCommand):
             order=self._new_order,
             style=self._new_style,
             stereo=self._new_stereo,
+            is_aromatic=self._new_is_aromatic,
         )
         self._view.update_bond_item(self._bond_id)
 
@@ -139,6 +180,7 @@ class ChangeBondCommand(QUndoCommand):
             order=self._old_order,
             style=self._old_style,
             stereo=self._old_stereo,
+            is_aromatic=self._old_is_aromatic,
         )
         self._view.update_bond_item(self._bond_id)
 
@@ -316,6 +358,61 @@ class AddRingCommand(QUndoCommand):
             if bond.id in self._model.bonds:
                 self._model.remove_bond(bond.id)
                 self._view.remove_bond_item(bond.id)
+        for atom_id in list(self._created_atom_ids):
+            if atom_id is not None and atom_id in self._model.atoms:
+                self._model.remove_atom(atom_id)
+                self._view.remove_atom_item(atom_id)
+
+
+class AddChainCommand(QUndoCommand):
+    def __init__(
+        self,
+        model: MolGraph,
+        view,
+        anchor_id: int,
+        positions: List[Tuple[float, float]],
+        element: str = "C",
+    ) -> None:
+        super().__init__("Add chain")
+        self._model = model
+        self._view = view
+        self._anchor_id = anchor_id
+        self._positions = positions
+        self._element = element
+        self._created_atom_ids: List[Optional[int]] = []
+        self._created_bond_ids: List[Optional[int]] = []
+
+    def redo(self) -> None:
+        if not self._created_atom_ids:
+            self._created_atom_ids = [None for _ in self._positions]
+        if not self._created_bond_ids:
+            self._created_bond_ids = [None for _ in self._positions]
+
+        prev_id = self._anchor_id
+        for idx, (x, y) in enumerate(self._positions):
+            atom_id = self._created_atom_ids[idx]
+            if atom_id is None:
+                atom = self._model.add_atom(self._element, x, y)
+                self._created_atom_ids[idx] = atom.id
+            else:
+                atom = self._model.add_atom(self._element, x, y, atom_id=atom_id)
+            self._view.add_atom_item(atom)
+            bond_id = self._created_bond_ids[idx]
+            bond = self._model.add_bond(
+                prev_id,
+                self._created_atom_ids[idx],
+                bond_id=bond_id,
+            )
+            self._created_bond_ids[idx] = bond.id
+            self._view.add_bond_item(bond)
+            prev_id = self._created_atom_ids[idx]
+
+    def undo(self) -> None:
+        for bond_id in list(self._created_bond_ids):
+            if bond_id in self._model.bonds:
+                self._model.remove_bond(bond_id)
+                self._view.remove_bond_item(bond_id)
+
         for atom_id in list(self._created_atom_ids):
             if atom_id is not None and atom_id in self._model.atoms:
                 self._model.remove_atom(atom_id)

@@ -7,17 +7,21 @@ from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QLabel,
-    QListWidget,
+    QTreeWidget,
+    QTreeWidgetItem,
     QTableWidget,
     QTableWidgetItem,
     QHeaderView,
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 
-class TemplatesDock(QDockWidget):
+
+class PlantillasDock(QDockWidget):
     """
     Dock widget displaying a list of chemical templates.
     """
+    template_selected = pyqtSignal(dict)
+
     def __init__(self, parent=None):
         super().__init__("Plantillas", parent)
         self.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
@@ -26,24 +30,52 @@ class TemplatesDock(QDockWidget):
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
         
-        self.list_widget = QListWidget()
-        self.list_widget.addItems([
-            "Benceno",
-            "Ciclohexano (Silla)",
-            "Ciclohexano (Bote)",
-            "Ciclopentadieno",
-            "Nutraceúticos básicos",
-            "Aminoácidos",
-        ])
-        layout.addWidget(self.list_widget)
+        self.tree = QTreeWidget()
+        self.tree.setHeaderHidden(True)
+        self._populate_tree()
+        self.tree.itemActivated.connect(self._emit_template)
+        layout.addWidget(self.tree)
         
         self.setWidget(container)
+
+    def _populate_tree(self) -> None:
+        groups = {
+            "Grupos funcionales": [
+                {"name": "Alcohol", "type": "alcohol"},
+                {"name": "Aldehído", "type": "aldehyde"},
+                {"name": "Cetona", "type": "ketone"},
+            ],
+            "Aminoácidos": [
+                {"name": "Glicina", "type": "glycine"},
+                {"name": "Alanina", "type": "alanine"},
+            ],
+            "Protecciones": [
+                {"name": "Boc", "type": "boc"},
+                {"name": "Fmoc", "type": "fmoc"},
+            ],
+        }
+        for group_name, items in groups.items():
+            group_item = QTreeWidgetItem([group_name])
+            group_item.setFlags(group_item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+            for item in items:
+                child = QTreeWidgetItem([item["name"]])
+                child.setData(0, Qt.ItemDataRole.UserRole, item)
+                group_item.addChild(child)
+            self.tree.addTopLevelItem(group_item)
+            group_item.setExpanded(True)
+
+    def _emit_template(self, item: QTreeWidgetItem) -> None:
+        payload = item.data(0, Qt.ItemDataRole.UserRole)
+        if isinstance(payload, dict):
+            self.template_selected.emit(payload)
 
 
 class InspectorDock(QDockWidget):
     """
     Dock widget displaying properties of the selected object.
     """
+    property_changed = pyqtSignal(str, object)
+
     def __init__(self, parent=None):
         super().__init__("Inspector", parent)
         self.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
@@ -67,6 +99,22 @@ class InspectorDock(QDockWidget):
         
         layout.addStretch()
         self.setWidget(container)
+
+    def set_atom(self, atom) -> None:
+        self.update_selection(1, 0, {
+            "element": atom.element,
+            "id": atom.id,
+            "charge": atom.charge,
+            "x": atom.x,
+            "y": atom.y,
+        })
+
+    def set_bond(self, bond) -> None:
+        self.update_selection(0, 1, {
+            "order": bond.order,
+            "style": bond.style,
+            "aromatic": bond.is_aromatic,
+        })
 
     def update_selection(self, num_atoms: int, num_bonds: int, details: dict = None):
         """Update the inspector with selection info."""
@@ -108,3 +156,7 @@ class InspectorDock(QDockWidget):
         for i, (key, val) in enumerate(data):
             self.prop_table.setItem(i, 0, QTableWidgetItem(key))
             self.prop_table.setItem(i, 1, QTableWidgetItem(val))
+
+
+# Backwards-compatible alias
+TemplatesDock = PlantillasDock

@@ -227,7 +227,7 @@ def draw_generic_icon(shape: str) -> QIcon:
     Draw generic tool icons (pointer, eraser, etc).
     
     Args:
-        shape: 'pointer', 'eraser', 'pan', 'zoom_in', 'zoom_out'
+        shape: 'pointer', 'eraser', 'pan', 'zoom_in', 'zoom_out', 'chain'
     
     Returns:
         QIcon with the tool shape
@@ -319,6 +319,19 @@ def draw_generic_icon(shape: str) -> QIcon:
         painter.drawLine(19, 19, 27, 27)
         # Minus sign
         painter.drawLine(10, 13, 16, 13)
+
+    elif shape == 'chain':
+        pen = QPen(QColor('#333333'), 2)
+        painter.setPen(pen)
+        points = [
+            QPointF(6, 24),
+            QPointF(12, 18),
+            QPointF(18, 24),
+            QPointF(24, 18),
+            QPointF(28, 24),
+        ]
+        for i in range(len(points) - 1):
+            painter.drawLine(points[i], points[i + 1])
     
     painter.end()
     return QIcon(pixmap)

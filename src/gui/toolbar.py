@@ -51,22 +51,34 @@ class ChemusonToolbar(QToolBar):
             draw_bond_icon("single"), "Enlaces", "tool_bond"
         )
         self._build_bond_palette(self.bond_button.menu())
+        self._add_tool_action(draw_generic_icon("chain"), "Cadena", "tool_chain")
+        self.addSeparator()
 
         self.ring_button, self.ring_action = self._add_palette_button(
             draw_ring_icon(), "Anillos", "tool_ring"
         )
         self._build_ring_palette(self.ring_button.menu())
+        self.addSeparator()
 
         self.label_button, self.label_action = self._add_palette_button(
             draw_atom_icon("C"), "Labels", "tool_atom"
         )
         self._build_label_palette(self.label_button.menu())
+        self.addSeparator()
+
+        self.annotation_button, self.annotation_action = self._add_palette_button(
+            draw_atom_icon("T"), "Anotaciones", "tool_annotation"
+        )
+        self.annotation_action.setToolTip("Anotaciones (Próximamente)")
+        self.annotation_button.setToolTip("Anotaciones (Próximamente)")
+        self._build_annotation_palette(self.annotation_button.menu())
 
         default_bond_spec = {
             "order": 1,
             "style": BondStyle.PLAIN,
             "stereo": BondStereo.NONE,
             "mode": "increment",
+            "aromatic": False,
         }
         default_ring_spec = {"size": 6, "aromatic": True}
         default_element = "C"
@@ -139,6 +151,12 @@ class ChemusonToolbar(QToolBar):
             "Enlace triple",
             {"order": 3, "style": BondStyle.PLAIN, "stereo": BondStereo.NONE, "mode": "set"},
         )
+        self._add_bond_action(
+            menu,
+            draw_bond_icon("single"),
+            "Enlace aromático",
+            {"order": 1, "style": BondStyle.PLAIN, "stereo": BondStereo.NONE, "mode": "set", "aromatic": True},
+        )
         menu.addSeparator()
         self._add_bond_action(
             menu,
@@ -210,6 +228,20 @@ class ChemusonToolbar(QToolBar):
         periodic_action = QAction("Tabla periódica...", self)
         periodic_action.triggered.connect(self.periodic_table_requested.emit)
         menu.addAction(periodic_action)
+
+    def _build_annotation_palette(self, menu: QMenu) -> None:
+        actions = [
+            ("Texto", "tool_text", draw_atom_icon("T")),
+            ("Flecha directa", "tool_arrow_forward", draw_generic_icon("pan")),
+            ("Flecha retro", "tool_arrow_retro", draw_generic_icon("pan")),
+            ("Corchetes", "tool_brackets", draw_atom_icon("[]")),
+            ("Carga", "tool_charge", draw_atom_icon("+")),
+        ]
+        for label, tool_id, icon in actions:
+            action = QAction(icon, label, self)
+            action.setEnabled(False)
+            action.setToolTip(f"{label} (Próximamente)")
+            menu.addAction(action)
 
     def _select_bond_palette(self, button: QToolButton, icon, text: str, spec: dict) -> None:
         self.bond_action.setIcon(icon)

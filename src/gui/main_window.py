@@ -19,7 +19,8 @@ from gui.periodic_table import PeriodicTableDialog
 from gui.toolbar import ChemusonToolbar
 from gui.styles import MAIN_STYLESHEET, TOOL_PALETTE_STYLESHEET
 from gui.icons import draw_generic_icon
-from gui.docks import TemplatesDock, InspectorDock
+from gui.docks import PlantillasDock, InspectorDock
+from gui.dialogs import PreferencesDialog, QuickStartDialog
 
 
 class ChemusonWindow(QMainWindow):
@@ -41,9 +42,10 @@ class ChemusonWindow(QMainWindow):
         # === CENTRAL CANVAS ===
         self.canvas = ChemusonCanvas()
         self.setCentralWidget(self.canvas)
+        self.action_aromatic_circles.setChecked(self.canvas.state.use_aromatic_circles)
         
         # === DOCK WIDGETS ===
-        self.templates_dock = TemplatesDock(self)
+        self.templates_dock = PlantillasDock(self)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.templates_dock)
         self.templates_dock.hide()
         
@@ -129,7 +131,7 @@ class ChemusonWindow(QMainWindow):
         
         self.action_aromatic_circles = QAction("Aromáticos como círculos", self)
         self.action_aromatic_circles.setCheckable(True)
-        self.action_aromatic_circles.setChecked(True)
+        self.action_aromatic_circles.setChecked(False)
         self.action_aromatic_circles.triggered.connect(self._on_toggle_aromatic_circles)
         
         self.action_zoom_in = QAction("Zoom +", self)
@@ -143,6 +145,9 @@ class ChemusonWindow(QMainWindow):
         self.action_zoom_reset = QAction("Zoom 100%", self)
         self.action_zoom_reset.setShortcut("Ctrl+0")
         self.action_zoom_reset.triggered.connect(self._on_zoom_reset)
+
+        self.action_rules = QAction("Reglas", self)
+        self.action_rules.setEnabled(False)
         
         self.action_clean_2d = QAction("Limpiar 2D", self)
         self.action_clean_2d.triggered.connect(self._on_clean_2d)
@@ -212,6 +217,8 @@ class ChemusonWindow(QMainWindow):
         view_menu.addAction(self.action_zoom_out)
         view_menu.addAction(self.action_zoom_reset)
         view_menu.addSeparator()
+        view_menu.addAction(self.action_rules)
+        view_menu.addSeparator()
         
         # Docks visibility
         view_menu.addAction(self.templates_dock.toggleViewAction())
@@ -220,6 +227,12 @@ class ChemusonWindow(QMainWindow):
         # === Estructura (Structure) ===
         structure_menu = menubar.addMenu("Estructura")
         structure_menu.addAction(self.action_clean_2d)
+
+        # === Reacción (Reaction) ===
+        reaction_menu = menubar.addMenu("Reacción")
+        placeholder_reaction = QAction("Próximamente", self)
+        placeholder_reaction.setEnabled(False)
+        reaction_menu.addAction(placeholder_reaction)
         
         # === Ayuda (Help) ===
         help_menu = menubar.addMenu("Ayuda")
@@ -243,6 +256,7 @@ class ChemusonWindow(QMainWindow):
         self.main_toolbar.setMovable(False)
         self.main_toolbar.setFloatable(False)
         self.main_toolbar.setIconSize(QSize(24, 24))
+        self.main_toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self.main_toolbar)
         
         # Set icons for actions with fallbacks where possible
@@ -257,6 +271,7 @@ class ChemusonWindow(QMainWindow):
         from gui.icons import draw_generic_icon
         self.action_zoom_in.setIcon(draw_generic_icon("zoom_in"))
         self.action_zoom_out.setIcon(draw_generic_icon("zoom_out"))
+        self.action_clean_2d.setIcon(QIcon.fromTheme("edit-clear", QIcon()))
         
         # File actions
         self.main_toolbar.addAction(self.action_new)
@@ -409,7 +424,21 @@ class ChemusonWindow(QMainWindow):
     
     def _on_preferences(self) -> None:
         """Open preferences dialog."""
-        self.statusBar().showMessage("Preferencias no implementadas aún")
+        dialog = PreferencesDialog(self.canvas.state, self)
+        dialog.preferences_changed.connect(self._apply_preferences)
+        dialog.exec()
+
+    def _apply_preferences(self, prefs: dict) -> None:
+        self.canvas.state.show_implicit_carbons = prefs.get("show_carbons", False)
+        self.canvas.state.show_implicit_hydrogens = prefs.get("show_hydrogens", False)
+        self.canvas.state.use_aromatic_circles = prefs.get("aromatic_circles", False)
+
+        self.action_show_carbons.setChecked(self.canvas.state.show_implicit_carbons)
+        self.action_show_hydrogens.setChecked(self.canvas.state.show_implicit_hydrogens)
+        self.action_aromatic_circles.setChecked(self.canvas.state.use_aromatic_circles)
+
+        self.canvas.refresh_atom_visibility()
+        self.canvas.refresh_aromatic_circles()
     
     # -------------------------------------------------------------------------
     # View Menu Handlers
@@ -478,21 +507,8 @@ class ChemusonWindow(QMainWindow):
     # -------------------------------------------------------------------------
     def _on_quick_start(self) -> None:
         """Show quick start dialog."""
-        msg = (
-            "<h3>Guía Rápida de Chemuson</h3>"
-            "<p>Bienvenido a Chemuson, su editor molecular libre.</p>"
-            "<ul>"
-            "<li><b>Dibujar Átomos:</b> Seleccione un elemento en el panel izquierdo y haga clic en el folio.</li>"
-            "<li><b>Dibujar Enlaces:</b> Haga clic en un átomo y arrastre hacia otro o hacia un espacio vacío para crear un enlace."
-            " Haga clic en un enlace existente para cambiar su orden de forma incremental o use la paleta de enlaces.</li>"
-            "<li><b>Dibujar Anillos:</b> Seleccione una herramienta de anillo y haga clic o arrastre desde un enlace para fusionar anillos.</li>"
-            "<li><b>Borrar:</b> Use la herramienta de borrado (Eraser) o seleccione elementos y presione la tecla Supr.</li>"
-            "<li><b>Zoom:</b> Use la rueda del ratón o los botones Zoom+/Zoom- del menú Ver o la barra de herramientas.</li>"
-            "<li><b>Aromáticos:</b> Puede alternar la visualización entre 'Enlaces dobles' y 'Círculo aromático' en el menú Ver.</li>"
-            "</ul>"
-            "<p><i>Tip: Use 'Limpiar 2D' en el menú Estructura para organizar automáticamente sus moléculas.</i></p>"
-        )
-        QMessageBox.information(self, "Guía Rápida", msg)
+        dialog = QuickStartDialog(self)
+        dialog.exec()
     
     def _on_about(self) -> None:
         """Show about dialog."""
@@ -534,6 +550,7 @@ class ChemusonWindow(QMainWindow):
             "tool_bond": "Enlace",
             "tool_ring": f"Anillo {self.canvas.state.active_ring_size}",
             "tool_atom": f"Elemento {self.canvas.state.default_element}",
+            "tool_chain": "Cadena",
         }
         name = tool_names.get(tool_id, tool_id)
         self.statusBar().showMessage(f"Herramienta: {name}")
