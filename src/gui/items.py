@@ -170,6 +170,7 @@ class BondItem(QGraphicsPathItem):
         self.style = bond.style
         self.stereo = bond.stereo
         self.is_aromatic = bond.is_aromatic
+        self.display_order = bond.display_order
         self.ring_id = bond.ring_id
         self.render_aromatic_as_circle = render_aromatic_as_circle
         self._style = style
@@ -190,6 +191,7 @@ class BondItem(QGraphicsPathItem):
         self.style = bond.style
         self.stereo = bond.stereo
         self.is_aromatic = bond.is_aromatic
+        self.display_order = bond.display_order
         self.ring_id = bond.ring_id
         self.update_positions(atom1, atom2)
 
@@ -242,13 +244,17 @@ class BondItem(QGraphicsPathItem):
             self.setPath(path)
             return
 
+        effective_order = self.order
+        if self.is_aromatic and self.display_order is not None:
+            effective_order = self.display_order
+
         if self.style == BondStyle.PLAIN:
-            if self.order == 1:
+            if effective_order == 1:
                 path.moveTo(p1x, p1y)
                 path.lineTo(p2x, p2y)
             else:
                 offset = self._style.double_offset_px
-                if self.order == 2:
+                if effective_order == 2:
                     path.moveTo(p1x, p1y)
                     path.lineTo(p2x, p2y)
                     q1x = p1x + nx * offset * offset_sign + ux * self._style.inner_trim_px

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, Tuple
+from typing import Dict, Iterable, Optional, Tuple
 
 from core.model import BondStyle, BondStereo, MolGraph
 
@@ -127,6 +127,51 @@ def rdkit_to_molgraph(mol) -> MolGraph:
 
     _scale_to_default(graph)
     return graph
+
+
+def kekulize_display_orders(
+    molgraph: MolGraph, seed_atoms: Optional[Iterable[int]] = None
+) -> Optional[Dict[int, int]]:
+    if Chem is None:
+        return None
+    try:
+        mol, id_map = molgraph_to_rdkit_with_map(molgraph)
+        Chem.Kekulize(mol, clearAromaticFlags=True)
+    except Exception:
+        return None
+
+    aromatic_atoms: Optional[set[int]] = None
+    if seed_atoms is not None:
+        seeds = set(seed_atoms)
+        if seeds:
+            adjacency: dict[int, list[int]] = {}
+            for bond in molgraph.bonds.values():
+                if bond.is_aromatic:
+                    adjacency.setdefault(bond.a1_id, []).append(bond.a2_id)
+                    adjacency.setdefault(bond.a2_id, []).append(bond.a1_id)
+            aromatic_atoms = set()
+            stack = [atom_id for atom_id in seeds if atom_id in adjacency]
+            while stack:
+                node = stack.pop()
+                if node in aromatic_atoms:
+                    continue
+                aromatic_atoms.add(node)
+                for neighbor in adjacency.get(node, []):
+                    if neighbor not in aromatic_atoms:
+                        stack.append(neighbor)
+
+    display_orders: Dict[int, int] = {}
+    for bond in molgraph.bonds.values():
+        if not bond.is_aromatic:
+            continue
+        if aromatic_atoms is not None and bond.a1_id not in aromatic_atoms:
+            continue
+        rd_bond = mol.GetBondBetweenAtoms(id_map[bond.a1_id], id_map[bond.a2_id])
+        if rd_bond is None:
+            continue
+        bond_type = rd_bond.GetBondType()
+        display_orders[bond.id] = 2 if bond_type == Chem.BondType.DOUBLE else 1
+    return display_orders
 
 
 def _scale_to_default(graph: MolGraph, target: float = 40.0) -> None:

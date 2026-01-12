@@ -5,7 +5,7 @@ Page-based canvas using QGraphicsView/QGraphicsScene for document-style editing.
 from __future__ import annotations
 
 import math
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from PyQt6.QtWidgets import (
     QApplication,
@@ -43,9 +43,16 @@ from gui.items import (
 from gui.style import CHEMDOODLE_LIKE, DrawingStyle
 from gui.geom import (
     angle_deg,
-    snap_angle_deg,
     endpoint_from_angle_len,
     choose_optimal_direction,
+    geometry_for_bond,
+    candidate_directions_deg,
+    filter_occupied_angles_deg,
+    pick_closest_direction_deg,
+    angle_distance_deg,
+    segments_intersect,
+    segment_min_distance,
+    segments_nearly_equal,
     closest_atom,
     closest_bond,
     bond_side,
@@ -66,6 +73,7 @@ from chemio.rdkit_io import (
     molgraph_to_svg,
     molfile_to_molgraph,
     smiles_to_molgraph,
+    kekulize_display_orders,
 )
 
 
@@ -73,13 +81,18 @@ from chemio.rdkit_io import (
 PAPER_WIDTH = 800
 PAPER_HEIGHT = 1000
 PAPER_MARGIN = 40  # Margins where atoms shouldn't be placed
-ATOM_HIT_RADIUS = 20
+ATOM_HIT_RADIUS = 26
 DEFAULT_BOND_LENGTH = 40.0
 HOVER_ATOM_RADIUS = 20.0
 HOVER_BOND_DISTANCE = 14.0
 HOVER_BOND_DISTANCE = 10.0
 OPTIMIZE_ZONE_SCALE = 1.2
 CHAIN_MAX_BONDS = 12
+ANGLE_OCCUPIED_TOLERANCE_DEG = 20.0
+MIN_ATOM_DIST_SCALE = 0.65
+MIN_BOND_DIST_SCALE = 0.2
+COLLISION_LENGTH_BOOST = 1.2
+BOND_OVERLAP_TOLERANCE_PX = 5.0
 
 
 class ChemusonCanvas(QGraphicsView):
@@ -539,9 +552,12 @@ class ChemusonCanvas(QGraphicsView):
                 bond.order,
                 bond.style,
                 bond.stereo,
+                is_aromatic=bond.is_aromatic,
             )
             self.undo_stack.push(cmd)
         self.undo_stack.endMacro()
+        if any(bond.is_aromatic for bond in self.model.bonds.values()):
+            self._kekulize_aromatic_bonds()
 
     def _insert_image_from_clipboard(self, mime: QMimeData) -> None:
         pixmap = None
@@ -857,13 +873,46 @@ class ChemusonCanvas(QGraphicsView):
         self._bond_last_angle = None
         self._bond_zigzag_sign = 1
 
-    def _add_bond_between(self, a1_id: int, a2_id: int) -> None:
-        order = self.state.active_bond_order
-        style = self.state.active_bond_style
-        stereo = self.state.active_bond_stereo
-        is_aromatic = self.state.active_bond_aromatic
-        if style != BondStyle.PLAIN:
-            order = 1
+    def _create_or_update_bond(
+        self,
+        a1_id: int,
+        a2_id: int,
+        order: int,
+        style: BondStyle,
+        stereo: BondStereo,
+        is_aromatic: bool,
+    ) -> None:
+        existing = self.model.find_bond_between(a1_id, a2_id)
+        if existing is not None:
+            if (
+                self.state.active_bond_mode == "increment"
+                and not is_aromatic
+                and style == BondStyle.PLAIN
+                and stereo == BondStereo.NONE
+            ):
+                new_order = 1 if existing.order >= 3 else existing.order + 1
+                new_style = existing.style
+                new_stereo = existing.stereo
+                new_is_aromatic = False
+            else:
+                new_order = order
+                new_style = style
+                new_stereo = stereo
+                new_is_aromatic = is_aromatic
+            cmd = ChangeBondCommand(
+                self.model,
+                self,
+                existing.id,
+                new_order=new_order,
+                new_style=new_style,
+                new_stereo=new_stereo,
+                new_is_aromatic=new_is_aromatic,
+            )
+            self.undo_stack.push(cmd)
+            if new_is_aromatic:
+                self._kekulize_aromatic_bonds(seed_atoms={a1_id, a2_id})
+            return
+
         cmd = AddBondCommand(
             self.model,
             self,
@@ -875,6 +924,17 @@ class ChemusonCanvas(QGraphicsView):
             is_aromatic=is_aromatic,
         )
         self.undo_stack.push(cmd)
+        if is_aromatic:
+            self._kekulize_aromatic_bonds(seed_atoms={a1_id, a2_id})
+
+    def _add_bond_between(self, a1_id: int, a2_id: int) -> None:
+        order = self.state.active_bond_order
+        style = self.state.active_bond_style
+        stereo = self.state.active_bond_stereo
+        is_aromatic = self.state.active_bond_aromatic
+        if style != BondStyle.PLAIN or is_aromatic:
+            order = 1
+        self._create_or_update_bond(a1_id, a2_id, order, style, stereo, is_aromatic)
 
     def _cycle_bond_order(self, bond_id: int) -> None:
         bond = self.model.get_bond(bond_id)
@@ -921,6 +981,9 @@ class ChemusonCanvas(QGraphicsView):
             new_is_aromatic=is_aromatic,
         )
         self.undo_stack.push(cmd)
+        if is_aromatic:
+            bond = self.model.get_bond(bond_id)
+            self._kekulize_aromatic_bonds(seed_atoms={bond.a1_id, bond.a2_id})
 
     def _create_first_bond(self, scene_pos: QPointF, modifiers: Qt.KeyboardModifiers) -> None:
         self.undo_stack.beginMacro("Add bond")
@@ -1142,7 +1205,39 @@ class ChemusonCanvas(QGraphicsView):
 
     def _on_undo_stack_changed(self, _index: int) -> None:
         self._cancel_drag()
+        self._sync_scene_with_model()
+        self._kekulize_aromatic_bonds()
         self._update_hover(self._last_scene_pos)
+
+    def _sync_scene_with_model(self) -> None:
+        for item in list(self.scene.items()):
+            if isinstance(item, (AtomItem, BondItem)):
+                self.scene.removeItem(item)
+
+        for atom_id in list(self.atom_items.keys()):
+            self.remove_atom_item(atom_id)
+        for bond_id in list(self.bond_items.keys()):
+            self.remove_bond_item(bond_id)
+
+        self._ring_centers.clear()
+        ring_atoms: dict[int, set[int]] = {}
+        for bond in self.model.bonds.values():
+            if bond.ring_id is None:
+                continue
+            ring_atoms.setdefault(bond.ring_id, set()).update({bond.a1_id, bond.a2_id})
+        for ring_id, atom_ids in ring_atoms.items():
+            xs = [self.model.get_atom(aid).x for aid in atom_ids]
+            ys = [self.model.get_atom(aid).y for aid in atom_ids]
+            center = (sum(xs) / len(xs), sum(ys) / len(ys))
+            self.register_ring_center(ring_id, center)
+
+        for atom in self.model.atoms.values():
+            self.add_atom_item(atom)
+        for bond in self.model.bonds.values():
+            self.add_bond_item(bond)
+
+        self.refresh_atom_visibility()
+        self.refresh_aromatic_circles()
 
     def _get_anchor_bond_angles_deg(self, anchor_id: int) -> list[float]:
         angles = []
@@ -1159,38 +1254,255 @@ class ChemusonCanvas(QGraphicsView):
             angles.append(angle_deg(p0, p1))
         return angles
 
-    def _anchor_geometry(self, anchor_id: int) -> str:
+    def _bond_geometry(self, anchor_id: int, bond_order: int, is_aromatic: bool) -> str:
+        has_triple = bond_order >= 3
+        has_double = bond_order == 2 or is_aromatic
         for bond in self.model.bonds.values():
-            if bond.a1_id == anchor_id or bond.a2_id == anchor_id:
-                if bond.order >= 3:
-                    return "sp"
-                if bond.order == 2 or bond.is_aromatic:
-                    return "sp2"
+            if bond.a1_id != anchor_id and bond.a2_id != anchor_id:
+                continue
+            if bond.order >= 3:
+                has_triple = True
+            if bond.order == 2 or bond.is_aromatic:
+                has_double = True
+        if has_triple:
+            return "sp"
+        if has_double:
+            return "sp2"
         return "sp3"
 
-    def _preferred_angles(self, anchor_id: int) -> list[float]:
-        geometry = self._anchor_geometry(anchor_id)
-        existing = self._get_anchor_bond_angles_deg(anchor_id)
-        if not existing:
-            return []
-        candidates: list[float] = []
-        if geometry == "sp":
-            for angle in existing:
-                candidates.append((angle + 180.0) % 360.0)
-        else:
-            for angle in existing:
-                candidates.append((angle + 120.0) % 360.0)
-                candidates.append((angle - 120.0) % 360.0)
-        return candidates
+    def _incoming_angle_deg(self, anchor_id: int) -> Optional[float]:
+        angles = self._get_anchor_bond_angles_deg(anchor_id)
+        if len(angles) == 1:
+            return angles[0]
+        return None
 
-    def _select_preferred_angle(self, anchor_id: int, cursor_angle: float) -> float:
-        candidates = self._preferred_angles(anchor_id)
+    def _direction_collision_metrics(
+        self, anchor_id: Optional[int], p0: QPointF, p1: QPointF
+    ) -> tuple[int, float, float]:
+        intersections = 0
+        min_atom_dist = float("inf")
+        min_bond_dist = float("inf")
+        atom_threshold = self.state.bond_length * MIN_ATOM_DIST_SCALE
+        bond_threshold = self.state.bond_length * MIN_BOND_DIST_SCALE
+        excluded_atoms: set[int] = set()
+        if anchor_id is not None:
+            excluded_atoms.add(anchor_id)
+        target_id = closest_atom(
+            p1,
+            [(atom.id, atom.x, atom.y) for atom in self.model.atoms.values()],
+            ATOM_HIT_RADIUS,
+        )
+        if target_id is not None:
+            excluded_atoms.add(target_id)
+
+        for atom in self.model.atoms.values():
+            if atom.id in excluded_atoms:
+                continue
+            dist = math.hypot(p1.x() - atom.x, p1.y() - atom.y)
+            min_atom_dist = min(min_atom_dist, dist)
+            if dist < atom_threshold:
+                intersections += 1
+
+        for bond in self.model.bonds.values():
+            if bond.a1_id in excluded_atoms or bond.a2_id in excluded_atoms:
+                continue
+            a1 = self.model.get_atom(bond.a1_id)
+            a2 = self.model.get_atom(bond.a2_id)
+            pA = QPointF(a1.x, a1.y)
+            pB = QPointF(a2.x, a2.y)
+            if segments_intersect(p0, p1, pA, pB):
+                intersections += 1
+            bond_dist = segment_min_distance(p0, p1, pA, pB)
+            min_bond_dist = min(min_bond_dist, bond_dist)
+            if bond_dist < bond_threshold:
+                intersections += 1
+
+        return intersections, min_atom_dist, min_bond_dist
+
+    def _direction_score(
+        self,
+        anchor_id: Optional[int],
+        p0: QPointF,
+        p1: QPointF,
+        angle_deg_value: float,
+        mouse_angle_deg: float,
+        preferred_deg: list[float],
+    ) -> float:
+        intersections, min_atom_dist, min_bond_dist = self._direction_collision_metrics(
+            anchor_id, p0, p1
+        )
+        atom_threshold = self.state.bond_length * MIN_ATOM_DIST_SCALE
+        bond_threshold = self.state.bond_length * MIN_BOND_DIST_SCALE
+
+        score = angle_distance_deg(angle_deg_value, mouse_angle_deg)
+        if preferred_deg:
+            if min(angle_distance_deg(angle_deg_value, pref) for pref in preferred_deg) <= 15.0:
+                score -= 15.0
+        score += intersections * 100.0
+        if min_atom_dist < atom_threshold:
+            score += (atom_threshold - min_atom_dist) * 5.0
+        if min_bond_dist < bond_threshold:
+            score += (bond_threshold - min_bond_dist) * 5.0
+        return score
+
+    def _direction_is_valid(
+        self,
+        anchor_id: Optional[int],
+        p0: QPointF,
+        p1: QPointF,
+    ) -> bool:
+        intersections, min_atom_dist, min_bond_dist = self._direction_collision_metrics(
+            anchor_id, p0, p1
+        )
+        atom_threshold = self.state.bond_length * MIN_ATOM_DIST_SCALE
+        bond_threshold = self.state.bond_length * MIN_BOND_DIST_SCALE
+        if intersections > 0:
+            return False
+        if min_atom_dist < atom_threshold:
+            return False
+        if min_bond_dist < bond_threshold:
+            return False
+        return True
+
+    def _pick_bond_direction_deg(
+        self,
+        anchor: QPointF,
+        anchor_id: Optional[int],
+        mouse_angle_deg: float,
+        bond_order: int,
+        is_aromatic: bool,
+        length: float,
+        apply_collisions: bool = True,
+        allow_length_boost: bool = True,
+    ) -> tuple[float, float]:
+        existing_angles = self._get_anchor_bond_angles_deg(anchor_id) if anchor_id else []
+        geometry = (
+            self._bond_geometry(anchor_id, bond_order, is_aromatic)
+            if anchor_id is not None
+            else geometry_for_bond(bond_order, is_aromatic, [])
+        )
+        candidates = candidate_directions_deg(geometry, existing_angles, mouse_angle_deg)
+        candidates = filter_occupied_angles_deg(
+            candidates, existing_angles, ANGLE_OCCUPIED_TOLERANCE_DEG
+        )
         if not candidates:
-            return cursor_angle
-        def score(angle: float) -> float:
-            diff = abs(((angle - cursor_angle + 180.0) % 360.0) - 180.0)
-            return diff
-        return min(candidates, key=score)
+            candidates = candidate_directions_deg(geometry, [], mouse_angle_deg)
+
+        preferred: list[float] = []
+        if geometry == "sp3" and anchor_id is not None:
+            incoming = self._incoming_angle_deg(anchor_id)
+            if incoming is not None:
+                preferred = [(incoming + 60.0) % 360.0, (incoming - 60.0) % 360.0]
+
+        if not apply_collisions:
+            picked = pick_closest_direction_deg(candidates, mouse_angle_deg, preferred)
+            return (picked if picked is not None else mouse_angle_deg), length
+
+        length_candidates = (length, length * COLLISION_LENGTH_BOOST) if allow_length_boost else (length,)
+        valid_choices: list[tuple[float, float, float]] = []
+        for length_candidate in length_candidates:
+            for angle_candidate in candidates:
+                p1 = endpoint_from_angle_len(anchor, angle_candidate, length_candidate)
+                if not self._direction_is_valid(anchor_id, anchor, p1):
+                    continue
+                score = self._direction_score(
+                    anchor_id,
+                    anchor,
+                    p1,
+                    angle_candidate,
+                    mouse_angle_deg,
+                    preferred,
+                )
+                valid_choices.append((score, angle_candidate, length_candidate))
+
+        if valid_choices:
+            _, best_angle, best_length = min(valid_choices, key=lambda item: item[0])
+            return best_angle, best_length
+
+        best_score = None
+        best_angle = None
+        best_length = length
+        for length_candidate in length_candidates:
+            for angle_candidate in candidates:
+                p1 = endpoint_from_angle_len(anchor, angle_candidate, length_candidate)
+                score = self._direction_score(
+                    anchor_id,
+                    anchor,
+                    p1,
+                    angle_candidate,
+                    mouse_angle_deg,
+                    preferred,
+                )
+                if best_score is None or score < best_score:
+                    best_score = score
+                    best_angle = angle_candidate
+                    best_length = length_candidate
+
+        return (best_angle if best_angle is not None else mouse_angle_deg), best_length
+
+    def _select_preferred_angle(
+        self, anchor_id: int, cursor_angle: float, bond_order: int, is_aromatic: bool
+    ) -> float:
+        anchor = self.model.get_atom(anchor_id)
+        p0 = QPointF(anchor.x, anchor.y)
+        angle, _ = self._pick_bond_direction_deg(
+            p0,
+            anchor_id,
+            cursor_angle,
+            bond_order,
+            is_aromatic,
+            self.state.bond_length,
+            apply_collisions=False,
+            allow_length_boost=False,
+        )
+        return angle
+
+    def _find_overlapping_bond(self, p0: QPointF, p1: QPointF) -> Optional[int]:
+        for bond in self.model.bonds.values():
+            a1 = self.model.get_atom(bond.a1_id)
+            a2 = self.model.get_atom(bond.a2_id)
+            b0 = QPointF(a1.x, a1.y)
+            b1 = QPointF(a2.x, a2.y)
+            if segments_nearly_equal(p0, p1, b0, b1, BOND_OVERLAP_TOLERANCE_PX):
+                return bond.id
+        return None
+
+    def _snap_ring_vertex(self, pos: QPointF, excluded: set[int]) -> Optional[int]:
+        candidates = [
+            (atom.id, atom.x, atom.y)
+            for atom in self.model.atoms.values()
+            if atom.id not in excluded
+        ]
+        return closest_atom(pos, candidates, ATOM_HIT_RADIUS)
+
+    def _build_ring_vertex_defs(
+        self, vertices: List[QPointF], anchor_type: str, anchor_id: Optional[int]
+    ) -> List[Tuple[Optional[int], float, float]]:
+        vertex_defs: List[Tuple[Optional[int], float, float]] = []
+        used_ids: set[int] = set()
+
+        if anchor_type == "bond" and anchor_id is not None:
+            bond = self.model.get_bond(anchor_id)
+            used_ids.update({bond.a1_id, bond.a2_id})
+            vertex_defs.append((bond.a1_id, vertices[0].x(), vertices[0].y()))
+            vertex_defs.append((bond.a2_id, vertices[1].x(), vertices[1].y()))
+            remaining_vertices = vertices[2:]
+        elif anchor_type == "atom" and anchor_id is not None:
+            used_ids.add(anchor_id)
+            vertex_defs.append((anchor_id, vertices[0].x(), vertices[0].y()))
+            remaining_vertices = vertices[1:]
+        else:
+            remaining_vertices = vertices
+
+        for v in remaining_vertices:
+            snapped_id = self._snap_ring_vertex(v, used_ids)
+            if snapped_id is not None:
+                used_ids.add(snapped_id)
+                vertex_defs.append((snapped_id, v.x(), v.y()))
+            else:
+                vertex_defs.append((None, v.x(), v.y()))
+
+        return vertex_defs
 
     # -------------------------------------------------------------------------
     # Bond Placement
@@ -1231,13 +1543,30 @@ class ChemusonCanvas(QGraphicsView):
             p0 = QPointF(anchor.x, anchor.y)
         p1 = self._compute_bond_endpoint(p0, self._last_scene_pos, modifiers)
 
-        target_id = closest_atom(
-            p1,
-            [(atom.id, atom.x, atom.y) for atom in self.model.atoms.values()],
-            ATOM_HIT_RADIUS,
-        )
+        atom_positions = [(atom.id, atom.x, atom.y) for atom in self.model.atoms.values()]
+        target_id = closest_atom(self._last_scene_pos, atom_positions, ATOM_HIT_RADIUS)
+        if target_id is None:
+            target_id = closest_atom(p1, atom_positions, ATOM_HIT_RADIUS)
         if target_id == anchor_id:
             target_id = None
+
+        if target_id is None:
+            overlapping_bond = self._find_overlapping_bond(p0, p1)
+            if overlapping_bond is not None:
+                if self.state.active_bond_mode == "increment" and not self.state.active_bond_aromatic:
+                    self._cycle_bond_order(overlapping_bond)
+                else:
+                    self._apply_bond_style(overlapping_bond)
+                self._cancel_drag()
+                return
+            bond_hit = self._get_bond_at(self._last_scene_pos)
+            if bond_hit is not None:
+                if self.state.active_bond_mode == "increment" and not self.state.active_bond_aromatic:
+                    self._cycle_bond_order(bond_hit)
+                else:
+                    self._apply_bond_style(bond_hit)
+                self._cancel_drag()
+                return
 
         order = self.state.active_bond_order
         style = self.state.active_bond_style
@@ -1258,15 +1587,13 @@ class ChemusonCanvas(QGraphicsView):
             self.undo_stack.push(anchor_cmd)
             anchor_id = anchor_cmd.atom_id
             if target_id is not None:
-                cmd = AddBondCommand(
-                    self.model,
-                    self,
+                self._create_or_update_bond(
                     anchor_id,
                     target_id,
                     order,
                     style,
                     stereo,
-                    is_aromatic=is_aromatic,
+                    is_aromatic,
                 )
             else:
                 cmd = AddBondCommand(
@@ -1281,19 +1608,19 @@ class ChemusonCanvas(QGraphicsView):
                     new_atom_element=self.state.default_element,
                     new_atom_pos=(p1.x(), p1.y()),
                 )
-            self.undo_stack.push(cmd)
+                self.undo_stack.push(cmd)
+                if is_aromatic:
+                    self._kekulize_aromatic_bonds()
             self.undo_stack.endMacro()
         else:
             if target_id is not None:
-                cmd = AddBondCommand(
-                    self.model,
-                    self,
+                self._create_or_update_bond(
                     anchor_id,
                     target_id,
                     order,
                     style,
                     stereo,
-                    is_aromatic=is_aromatic,
+                    is_aromatic,
                 )
             else:
                 cmd = AddBondCommand(
@@ -1308,11 +1635,18 @@ class ChemusonCanvas(QGraphicsView):
                     new_atom_element=self.state.default_element,
                     new_atom_pos=(p1.x(), p1.y()),
                 )
-            self.undo_stack.push(cmd)
+                self.undo_stack.push(cmd)
+                if is_aromatic:
+                    self._kekulize_aromatic_bonds()
         self._cancel_drag()
 
     def _compute_bond_endpoint(
-        self, anchor: QPointF, scene_pos: QPointF, modifiers: Qt.KeyboardModifiers
+        self,
+        anchor: QPointF,
+        scene_pos: QPointF,
+        modifiers: Qt.KeyboardModifiers,
+        bond_order: Optional[int] = None,
+        is_aromatic: Optional[bool] = None,
     ) -> QPointF:
         dx = scene_pos.x() - anchor.x()
         dy = scene_pos.y() - anchor.y()
@@ -1325,20 +1659,54 @@ class ChemusonCanvas(QGraphicsView):
             use_optimize = dist <= self._optimize_zone.radius()
 
         cursor_theta = angle_deg(anchor, scene_pos)
-        if use_optimize and not use_alt and self._drag_anchor["id"] is not None:
-            theta = self._select_preferred_angle(self._drag_anchor["id"], cursor_theta)
-        else:
+        if not self.state.fixed_angles or use_alt:
             theta = cursor_theta
+            length = self.state.bond_length if self.state.fixed_lengths and not use_shift else max(5.0, dist)
+            p1 = endpoint_from_angle_len(anchor, theta, length)
+            snap_id = closest_atom(
+                p1,
+                [(atom.id, atom.x, atom.y) for atom in self.model.atoms.values()],
+                ATOM_HIT_RADIUS,
+            )
+            if snap_id is not None and (self._drag_anchor is None or snap_id != self._drag_anchor["id"]):
+                atom = self.model.get_atom(snap_id)
+                return QPointF(atom.x, atom.y)
+            return p1
 
-        if self.state.fixed_angles and not use_alt:
-            theta = snap_angle_deg(theta, self.state.angle_step_deg)
+        order = bond_order if bond_order is not None else self.state.active_bond_order
+        aromatic_flag = is_aromatic if is_aromatic is not None else self.state.active_bond_aromatic
+        style = (
+            self.state.active_bond_style if bond_order is None and is_aromatic is None else BondStyle.PLAIN
+        )
+        if style != BondStyle.PLAIN or aromatic_flag:
+            order = 1
 
-        if self.state.fixed_lengths and not use_shift:
-            length = self.state.bond_length
-        else:
-            length = max(5.0, dist)
+        if use_optimize and self._drag_anchor["id"] is not None:
+            cursor_theta = self._select_preferred_angle(
+                self._drag_anchor["id"], cursor_theta, order, aromatic_flag
+            )
 
-        return endpoint_from_angle_len(anchor, theta, length)
+        length = self.state.bond_length if self.state.fixed_lengths and not use_shift else max(5.0, dist)
+        theta, final_length = self._pick_bond_direction_deg(
+            anchor,
+            self._drag_anchor["id"] if self._drag_anchor else None,
+            cursor_theta,
+            order,
+            aromatic_flag,
+            length,
+            apply_collisions=True,
+            allow_length_boost=self.state.fixed_lengths and not use_shift,
+        )
+        p1 = endpoint_from_angle_len(anchor, theta, final_length)
+        snap_id = closest_atom(
+            p1,
+            [(atom.id, atom.x, atom.y) for atom in self.model.atoms.values()],
+            ATOM_HIT_RADIUS,
+        )
+        if snap_id is not None and (self._drag_anchor is None or snap_id != self._drag_anchor["id"]):
+            atom = self.model.get_atom(snap_id)
+            return QPointF(atom.x, atom.y)
+        return p1
 
     # -------------------------------------------------------------------------
     # Ring Placement
@@ -1377,20 +1745,9 @@ class ChemusonCanvas(QGraphicsView):
         ring_size = max(3, int(self.state.active_ring_size))
         aromatic = self.state.active_ring_aromatic
 
-        vertex_defs: List[Tuple[Optional[int], float, float]] = []
-        if self._drag_anchor["type"] == "bond":
-            bond = self.model.get_bond(self._drag_anchor["id"])
-            vertex_defs.append((bond.a1_id, vertices[0].x(), vertices[0].y()))
-            vertex_defs.append((bond.a2_id, vertices[1].x(), vertices[1].y()))
-            for v in vertices[2:]:
-                vertex_defs.append((None, v.x(), v.y()))
-        elif self._drag_anchor["type"] == "free":
-            for v in vertices:
-                vertex_defs.append((None, v.x(), v.y()))
-        else:
-            vertex_defs.append((self._drag_anchor["id"], vertices[0].x(), vertices[0].y()))
-            for v in vertices[1:]:
-                vertex_defs.append((None, v.x(), v.y()))
+        vertex_defs = self._build_ring_vertex_defs(
+            vertices, self._drag_anchor["type"], self._drag_anchor["id"]
+        )
 
         edge_defs: List[Tuple[int, int, int, BondStyle, BondStereo, bool]] = []
         if aromatic:
@@ -1443,7 +1800,13 @@ class ChemusonCanvas(QGraphicsView):
 
         anchor = self.model.get_atom(self._drag_anchor["id"])
         p1 = QPointF(anchor.x, anchor.y)
-        p2 = self._compute_bond_endpoint(p1, scene_pos, modifiers)
+        p2 = self._compute_bond_endpoint(
+            p1,
+            scene_pos,
+            modifiers,
+            bond_order=1,
+            is_aromatic=self.state.active_ring_aromatic,
+        )
         direction = bond_side(p1, p2, scene_pos)
         return self._regular_polygon_from_edge(p1, p2, ring_size, direction)
 
@@ -1507,9 +1870,6 @@ class ChemusonCanvas(QGraphicsView):
         if self._optimize_zone.isVisible():
             use_optimize = dist <= self._optimize_zone.radius()
 
-        if use_optimize and not use_alt:
-            raw_angle = self._select_preferred_angle(self._drag_anchor["id"], raw_angle)
-
         if use_shift:
             if abs(dx) >= abs(dy):
                 raw_angle = 0.0 if dx >= 0 else 180.0
@@ -1517,11 +1877,22 @@ class ChemusonCanvas(QGraphicsView):
                 raw_angle = 90.0 if -(dy) >= 0 else 270.0
 
         if self.state.fixed_angles and not use_alt:
-            raw_angle = snap_angle_deg(raw_angle, self.state.angle_step_deg)
+            if use_optimize:
+                raw_angle = self._select_preferred_angle(self._drag_anchor["id"], raw_angle, 1, False)
+            raw_angle, _ = self._pick_bond_direction_deg(
+                p0,
+                self._drag_anchor["id"],
+                raw_angle,
+                1,
+                False,
+                self.state.bond_length,
+                apply_collisions=True,
+                allow_length_boost=False,
+            )
 
         n = max(1, min(CHAIN_MAX_BONDS, int(round(dist / self.state.bond_length))))
         points = [p0]
-        geometry = self._anchor_geometry(self._drag_anchor["id"])
+        geometry = self._bond_geometry(self._drag_anchor["id"], 1, False)
         zigzag = geometry == "sp3" and not use_alt and self.state.fixed_angles
         current = p0
         for i in range(1, n + 1):
@@ -1622,17 +1993,7 @@ class ChemusonCanvas(QGraphicsView):
             return
         ring_size = len(vertices)
         aromatic = self.state.active_ring_aromatic
-        vertex_defs: List[Tuple[Optional[int], float, float]] = []
-        if anchor_type == "bond":
-            bond = self.model.get_bond(anchor_id)
-            vertex_defs.append((bond.a1_id, vertices[0].x(), vertices[0].y()))
-            vertex_defs.append((bond.a2_id, vertices[1].x(), vertices[1].y()))
-            for v in vertices[2:]:
-                vertex_defs.append((None, v.x(), v.y()))
-        else:
-            vertex_defs.append((anchor_id, vertices[0].x(), vertices[0].y()))
-            for v in vertices[1:]:
-                vertex_defs.append((None, v.x(), v.y()))
+        vertex_defs = self._build_ring_vertex_defs(vertices, anchor_type, anchor_id)
 
         edge_defs: List[Tuple[int, int, int, BondStyle, BondStereo, bool]] = []
         if aromatic:
@@ -1666,131 +2027,101 @@ class ChemusonCanvas(QGraphicsView):
         )
         self.undo_stack.push(cmd)
 
-    def _kekulize_aromatic_bonds(self) -> None:
+    def _kekulize_aromatic_bonds(self, seed_atoms: Optional[Iterable[int]] = None) -> None:
         aromatic_bonds = [bond for bond in self.model.bonds.values() if bond.is_aromatic]
         if not aromatic_bonds:
             return
 
-        adjacency: dict[int, list[int]] = {}
-        for bond in aromatic_bonds:
-            adjacency.setdefault(bond.a1_id, []).append(bond.a2_id)
-            adjacency.setdefault(bond.a2_id, []).append(bond.a1_id)
-
-        color: dict[int, int] = {}
-        for node in adjacency:
-            if node in color:
-                continue
-            color[node] = 0
-            stack = [node]
+        component_atoms: Optional[set[int]] = None
+        if seed_atoms is not None:
+            adjacency: dict[int, list[int]] = {}
+            for bond in aromatic_bonds:
+                adjacency.setdefault(bond.a1_id, []).append(bond.a2_id)
+                adjacency.setdefault(bond.a2_id, []).append(bond.a1_id)
+            seeds = [atom_id for atom_id in seed_atoms if atom_id in adjacency]
+            if not seeds:
+                return
+            component_atoms = set()
+            stack = list(seeds)
             while stack:
-                current = stack.pop()
-                for neighbor in adjacency.get(current, []):
-                    if neighbor in color:
-                        if color[neighbor] == color[current]:
-                            return
-                    else:
-                        color[neighbor] = 1 - color[current]
+                node = stack.pop()
+                if node in component_atoms:
+                    continue
+                component_atoms.add(node)
+                for neighbor in adjacency.get(node, []):
+                    if neighbor not in component_atoms:
                         stack.append(neighbor)
 
-        u_nodes = [n for n, c in color.items() if c == 0]
-        v_nodes = [n for n, c in color.items() if c == 1]
-        u_index = {u: i for i, u in enumerate(u_nodes)}
-        v_index = {v: i for i, v in enumerate(v_nodes)}
+        display_orders = kekulize_display_orders(self.model, seed_atoms=component_atoms)
 
-        degrees = {node: len(adjacency.get(node, [])) for node in adjacency}
+        if display_orders is None:
+            try:
+                import networkx as nx
+            except Exception:
+                nx = None
 
-        def edge_weight(u: int, v: int) -> int:
-            du = degrees.get(u, 0)
-            dv = degrees.get(v, 0)
-            if du == 2 and dv == 2:
-                return 3
-            if du == 2 or dv == 2:
-                return 2
-            return 1
-
-        class Edge:
-            def __init__(self, to: int, rev: int, cap: int, cost: int) -> None:
-                self.to = to
-                self.rev = rev
-                self.cap = cap
-                self.cost = cost
-
-        size = 2 + len(u_nodes) + len(v_nodes)
-        src = 0
-        sink = size - 1
-        graph: list[list[Edge]] = [[] for _ in range(size)]
-
-        def add_edge(frm: int, to: int, cap: int, cost: int) -> None:
-            graph[frm].append(Edge(to, len(graph[to]), cap, cost))
-            graph[to].append(Edge(frm, len(graph[frm]) - 1, 0, -cost))
-
-        for u in u_nodes:
-            add_edge(src, 1 + u_index[u], 1, 0)
-        for v in v_nodes:
-            add_edge(1 + len(u_nodes) + v_index[v], sink, 1, 0)
-
-        for u in u_nodes:
-            for v in adjacency.get(u, []):
-                if v not in v_index:
-                    continue
-                w = edge_weight(u, v)
-                add_edge(1 + u_index[u], 1 + len(u_nodes) + v_index[v], 1, -w)
-
-        flow = 0
-        while True:
-            dist = [10 ** 9] * size
-            in_queue = [False] * size
-            prev_node = [-1] * size
-            prev_edge = [-1] * size
-            dist[src] = 0
-            queue = [src]
-            in_queue[src] = True
-            while queue:
-                node = queue.pop(0)
-                in_queue[node] = False
-                for i, edge in enumerate(graph[node]):
-                    if edge.cap <= 0:
+            if nx is not None:
+                graph = nx.Graph()
+                bond_by_pair: dict[frozenset[int], int] = {}
+                for bond in aromatic_bonds:
+                    if component_atoms is not None and (
+                        bond.a1_id not in component_atoms or bond.a2_id not in component_atoms
+                    ):
                         continue
-                    nd = dist[node] + edge.cost
-                    if nd < dist[edge.to]:
-                        dist[edge.to] = nd
-                        prev_node[edge.to] = node
-                        prev_edge[edge.to] = i
-                        if not in_queue[edge.to]:
-                            in_queue[edge.to] = True
-                            queue.append(edge.to)
-            if dist[sink] == 10 ** 9:
-                break
-            v = sink
-            while v != src:
-                edge = graph[prev_node[v]][prev_edge[v]]
-                edge.cap -= 1
-                graph[v][edge.rev].cap += 1
-                v = prev_node[v]
-            flow += 1
+                    pair = frozenset({bond.a1_id, bond.a2_id})
+                    bond_by_pair[pair] = bond.id
+                    weight = 10_000_000 - (min(pair) * 1000 + max(pair))
+                    graph.add_edge(bond.a1_id, bond.a2_id, weight=weight)
+                matching = nx.max_weight_matching(graph, maxcardinality=True, weight="weight")
+                display_orders = {bond_id: 1 for bond_id in bond_by_pair.values()}
+                for u, v in matching:
+                    bond_id = bond_by_pair.get(frozenset({u, v}))
+                    if bond_id is not None:
+                        display_orders[bond_id] = 2
 
-        pair_u: dict[int, int | None] = {u: None for u in u_nodes}
-        for u in u_nodes:
-            node_u = 1 + u_index[u]
-            for edge in graph[node_u]:
-                if edge.to == src or edge.cap != 0:
+        if display_orders is None:
+            display_orders = {}
+            used_atoms: set[int] = set()
+            sorted_bonds = sorted(
+                aromatic_bonds,
+                key=lambda bond: (min(bond.a1_id, bond.a2_id), max(bond.a1_id, bond.a2_id)),
+            )
+            for bond in sorted_bonds:
+                if component_atoms is not None and (
+                    bond.a1_id not in component_atoms or bond.a2_id not in component_atoms
+                ):
                     continue
-                if edge.to == sink:
+                display_orders[bond.id] = 1
+            for bond in sorted_bonds:
+                if component_atoms is not None and (
+                    bond.a1_id not in component_atoms or bond.a2_id not in component_atoms
+                ):
                     continue
-                if edge.to >= 1 + len(u_nodes) and edge.to < sink:
-                    v = v_nodes[edge.to - 1 - len(u_nodes)]
-                    pair_u[u] = v
-                    break
+                if bond.a1_id in used_atoms or bond.a2_id in used_atoms:
+                    continue
+                display_orders[bond.id] = 2
+                used_atoms.add(bond.a1_id)
+                used_atoms.add(bond.a2_id)
+
+        external_double_atoms: set[int] = set()
+        for bond in self.model.bonds.values():
+            if bond.is_aromatic:
+                continue
+            if bond.order >= 2:
+                external_double_atoms.add(bond.a1_id)
+                external_double_atoms.add(bond.a2_id)
 
         for bond in aromatic_bonds:
-            double = False
-            if color.get(bond.a1_id) == 0:
-                double = pair_u.get(bond.a1_id) == bond.a2_id
-            else:
-                double = pair_u.get(bond.a2_id) == bond.a1_id
-            order = 2 if double else 1
-            if bond.order != order:
-                self.model.update_bond(bond.id, order=order)
+            if component_atoms is not None and (
+                bond.a1_id not in component_atoms or bond.a2_id not in component_atoms
+            ):
+                continue
+            new_order = display_orders.get(bond.id, 1)
+            if bond.a1_id in external_double_atoms or bond.a2_id in external_double_atoms:
+                new_order = 1
+            if bond.display_order != new_order or bond.order != new_order:
+                bond.display_order = new_order
+                bond.order = new_order
                 self.update_bond_item(bond.id)
 
     def _build_aromatic_edges(
@@ -1815,31 +2146,24 @@ class ChemusonCanvas(QGraphicsView):
             if existing is not None:
                 constraints[i] = 2 if existing.order >= 2 else 1
 
-        def double_neighbor_penalty(a_id: Optional[int], b_id: Optional[int]) -> int:
-            if a_id is None or b_id is None:
-                return 0
-            penalty = 0
-            for atom_id, other_id in ((a_id, b_id), (b_id, a_id)):
-                for bond in self.model.bonds.values():
-                    if bond.order < 2 or bond.is_aromatic:
-                        continue
-                    if bond.a1_id == atom_id and bond.a2_id != other_id:
-                        penalty += 1
-                    elif bond.a2_id == atom_id and bond.a1_id != other_id:
-                        penalty += 1
-            return penalty
+        def atom_has_double(atom_id: Optional[int], other_id: Optional[int]) -> bool:
+            if atom_id is None:
+                return False
+            for bond in self.model.bonds.values():
+                if bond.order < 2:
+                    continue
+                if bond.a1_id == atom_id and bond.a2_id != other_id:
+                    return True
+                if bond.a2_id == atom_id and bond.a1_id != other_id:
+                    return True
+            return False
 
         def score_phase(phase: int) -> int:
             score = 0
-            for idx, order in constraints.items():
-                desired = 2 if ((idx + phase) % 2 == 0) else 1
-                if order != desired:
-                    score += 5
-            for i in range(ring_size):
-                if ((i + phase) % 2) == 0:
-                    a_id = vertex_defs[i][0]
-                    b_id = vertex_defs[(i + 1) % ring_size][0]
-                    score += double_neighbor_penalty(a_id, b_id)
+            for idx, desired in constraints.items():
+                current = 2 if ((idx + phase) % 2 == 0) else 1
+                if current != desired:
+                    score += 1
             return score
 
         phase = 0 if score_phase(0) <= score_phase(1) else 1
@@ -1847,6 +2171,10 @@ class ChemusonCanvas(QGraphicsView):
         for i in range(ring_size):
             j = (i + 1) % ring_size
             order = 2 if ((i + phase) % 2 == 0) else 1
+            a_id = vertex_defs[i][0]
+            b_id = vertex_defs[j][0]
+            if order == 2 and (atom_has_double(a_id, b_id) or atom_has_double(b_id, a_id)):
+                order = 1
             edges.append((i, j, order, BondStyle.PLAIN, BondStereo.NONE, True))
         return edges
 

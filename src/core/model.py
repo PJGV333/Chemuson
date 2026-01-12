@@ -41,6 +41,7 @@ class Bond:
     style: BondStyle = BondStyle.PLAIN
     stereo: BondStereo = BondStereo.NONE
     is_aromatic: bool = False
+    display_order: Optional[int] = None
     is_query: bool = False
     ring_id: Optional[int] = None
 
@@ -111,7 +112,7 @@ class MolGraph:
         removed_bonds: List[Bond] = []
         for bond_id, bond in list(self.bonds.items()):
             if bond.a1_id == atom_id or bond.a2_id == atom_id:
-                removed_bonds.append(self.bonds.pop(bond_id))
+                removed_bonds.append(self.remove_bond(bond_id))
         return atom, removed_bonds
 
     def add_bond(
@@ -123,6 +124,7 @@ class MolGraph:
         style: BondStyle = BondStyle.PLAIN,
         stereo: BondStereo = BondStereo.NONE,
         is_aromatic: bool = False,
+        display_order: Optional[int] = None,
         is_query: bool = False,
         ring_id: Optional[int] = None,
     ) -> Bond:
@@ -139,6 +141,7 @@ class MolGraph:
             style=style,
             stereo=stereo,
             is_aromatic=is_aromatic,
+            display_order=display_order,
             is_query=is_query,
             ring_id=ring_id,
         )
@@ -176,6 +179,7 @@ class MolGraph:
         style: Optional[BondStyle] = None,
         stereo: Optional[BondStereo] = None,
         is_aromatic: Optional[bool] = None,
+        display_order: Optional[int] = None,
     ) -> Bond:
         bond = self.bonds[bond_id]
         if order is not None:
@@ -186,6 +190,8 @@ class MolGraph:
             bond.stereo = stereo
         if is_aromatic is not None:
             bond.is_aromatic = is_aromatic
+        if display_order is not None:
+            bond.display_order = display_order
         return bond
 
     def clear(self) -> None:
@@ -193,3 +199,20 @@ class MolGraph:
         self.bonds.clear()
         self._next_atom_id = 1
         self._next_bond_id = 1
+
+    def validate(self) -> List[str]:
+        errors: List[str] = []
+        seen_pairs: Set[frozenset[int]] = set()
+        for bond in self.bonds.values():
+            if bond.a1_id not in self.atoms:
+                errors.append(f"Bond {bond.id} missing atom {bond.a1_id}")
+            if bond.a2_id not in self.atoms:
+                errors.append(f"Bond {bond.id} missing atom {bond.a2_id}")
+            if bond.a1_id == bond.a2_id:
+                errors.append(f"Bond {bond.id} connects atom to itself")
+            pair = frozenset({bond.a1_id, bond.a2_id})
+            if pair in seen_pairs:
+                errors.append(f"Duplicate bond between {bond.a1_id} and {bond.a2_id}")
+            else:
+                seen_pairs.add(pair)
+        return errors

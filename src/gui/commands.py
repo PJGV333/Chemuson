@@ -283,7 +283,9 @@ class DeleteSelectionCommand(QUndoCommand):
                 style=bond.style,
                 stereo=bond.stereo,
                 is_aromatic=bond.is_aromatic,
+                display_order=bond.display_order,
                 is_query=bond.is_query,
+                ring_id=bond.ring_id,
             )
             self._view.add_bond_item(bond)
 
@@ -364,6 +366,7 @@ class AddRingCommand(QUndoCommand):
                     style=style,
                     stereo=stereo,
                     is_aromatic=is_aromatic,
+                    display_order=None,
                     ring_id=self._ring_id,
                 )
                 self._created_bonds.append(replace(bond))
@@ -394,6 +397,7 @@ class AddRingCommand(QUndoCommand):
                     style=bond.style,
                     stereo=bond.stereo,
                     is_aromatic=bond.is_aromatic,
+                    display_order=bond.display_order,
                     is_query=bond.is_query,
                     ring_id=bond.ring_id,
                 )
@@ -405,7 +409,10 @@ class AddRingCommand(QUndoCommand):
             if bond.id in self._model.bonds:
                 self._model.remove_bond(bond.id)
                 self._view.remove_bond_item(bond.id)
-        for atom_id in list(self._created_atom_ids):
+        for idx, (existing_id, _x, _y) in enumerate(self._vertices):
+            if existing_id is not None:
+                continue
+            atom_id = self._created_atom_ids[idx]
             if atom_id is not None and atom_id in self._model.atoms:
                 self._model.remove_atom(atom_id)
                 self._view.remove_atom_item(atom_id)
