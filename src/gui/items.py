@@ -174,6 +174,7 @@ class BondItem(QGraphicsPathItem):
         self.render_aromatic_as_circle = render_aromatic_as_circle
         self._style = style
         self._offset_sign = 1
+        self._visual_order: int | None = None
         self._ring_center: QPointF | None = None
         self.setZValue(-5)
         pen = QPen(QColor("#333333"), self._style.stroke_px)
@@ -203,6 +204,10 @@ class BondItem(QGraphicsPathItem):
 
     def set_offset_sign(self, sign: int) -> None:
         self._offset_sign = 1 if sign >= 0 else -1
+
+    def set_visual_order(self, order: int | None) -> None:
+        """Override the rendered bond order (e.g. for Kekulization)."""
+        self._visual_order = order
 
     def update_positions(self, atom1: Atom, atom2: Atom) -> None:
         """Redraw the bond path based on atom positions and bond type."""
@@ -243,12 +248,13 @@ class BondItem(QGraphicsPathItem):
             return
 
         if self.style == BondStyle.PLAIN:
-            if self.order == 1:
+            render_order = self._visual_order if self._visual_order is not None else self.order
+            if render_order == 1:
                 path.moveTo(p1x, p1y)
                 path.lineTo(p2x, p2y)
             else:
                 offset = self._style.double_offset_px
-                if self.order == 2:
+                if render_order == 2:
                     path.moveTo(p1x, p1y)
                     path.lineTo(p2x, p2y)
                     q1x = p1x + nx * offset * offset_sign + ux * self._style.inner_trim_px

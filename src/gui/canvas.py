@@ -5,6 +5,10 @@ Page-based canvas using QGraphicsView/QGraphicsScene for document-style editing.
 from __future__ import annotations
 
 import math
+try:
+    from PyQt6 import sip
+except ImportError:
+    import sip
 from typing import Dict, List, Optional, Tuple
 
 from PyQt6.QtWidgets import (
@@ -61,6 +65,8 @@ from gui.commands import (
     MoveAtomsCommand,
 )
 from chemio.rdkit_io import (
+    get_aromatic_ring_geometries,
+    get_visual_properties,
     molgraph_to_molfile,
     molgraph_to_smiles,
     molgraph_to_svg,
@@ -194,6 +200,36 @@ class ChemusonCanvas(QGraphicsView):
         self.scene.addItem(self._preview_chain_item)
         self.scene.addItem(self._preview_chain_label)
         self._overlays_ready = True
+
+    def _ensure_overlays(self) -> None:
+        """Check if any overlays have been deleted by C++ and recreate them if so."""
+        if not self._overlays_ready:
+            return
+            
+        needed_recreation = False
+        
+        # Helper to check and recreate a single overlay item
+        def check_item(attr_name, class_type):
+            nonlocal needed_recreation
+            item = getattr(self, attr_name, None)
+            if item is None or sip.isdeleted(item):
+                new_item = class_type()
+                setattr(self, attr_name, new_item)
+                self.scene.addItem(new_item)
+                needed_recreation = True
+                
+        check_item("_hover_atom_indicator", HoverAtomIndicatorItem)
+        check_item("_hover_bond_indicator", HoverBondIndicatorItem)
+        check_item("_optimize_zone", OptimizeZoneItem)
+        check_item("_preview_bond_item", PreviewBondItem)
+        check_item("_preview_ring_item", PreviewRingItem)
+        check_item("_preview_chain_item", PreviewChainItem)
+        check_item("_preview_chain_label", PreviewChainLabelItem)
+        
+        if needed_recreation:
+            # If we recreated anything, ensure they have proper Z values or other state
+            # but usually the __init__ of the items handles defaults.
+            pass
 
     def set_current_tool(self, tool_id: str) -> None:
         if tool_id.startswith("atom_"):
@@ -338,6 +374,7 @@ class ChemusonCanvas(QGraphicsView):
                     ny = y + delta.y()
                     self.model.update_atom_position(atom_id, nx, ny)
                     self.update_atom_item(atom_id, nx, ny)
+                self._update_ring_centers()
                 self.update_bond_items_for_atoms(set(self._drag_start_positions.keys()))
             return
 
@@ -614,8 +651,6 @@ class ChemusonCanvas(QGraphicsView):
             render_aromatic_as_circle=self.state.use_aromatic_circles,
             style=self.drawing_style,
         )
-        if bond.ring_id is not None:
-            item.set_ring_context(self._ring_centers.get(bond.ring_id))
         item.set_offset_sign(self._bond_offset_sign(bond))
         self.scene.addItem(item)
         self.bond_items[bond.id] = item
@@ -626,10 +661,6 @@ class ChemusonCanvas(QGraphicsView):
         atom2 = self.model.get_atom(bond.a2_id)
         item = self.bond_items.get(bond_id)
         if item is not None:
-            if bond.ring_id is not None:
-                item.set_ring_context(self._ring_centers.get(bond.ring_id))
-            else:
-                item.set_ring_context(None)
             item.set_offset_sign(self._bond_offset_sign(bond))
             item.set_bond(bond, atom1, atom2)
 
@@ -647,6 +678,9 @@ class ChemusonCanvas(QGraphicsView):
         ring_id = self._next_ring_id
         self._next_ring_id += 1
         return ring_id
+
+    def _update_ring_centers(self) -> None:
+        self._update_visual_properties_from_rdkit()
 
     def register_ring_center(self, ring_id: int, center: tuple[float, float]) -> None:
         self._ring_centers[ring_id] = QPointF(center[0], center[1])
@@ -698,95 +732,59 @@ class ChemusonCanvas(QGraphicsView):
 
     def refresh_aromatic_circles(self) -> None:
         """Add/remove aromatic circle items based on current state."""
-        # First, update all bond items to reflect the preference
-        use_circles = self.state.use_aromatic_circles
-        for bond_id, item in self.bond_items.items():
-            if item.is_aromatic:
-                item.set_render_aromatic_as_circle(use_circles)
-                # Force redraw
+        # Use common RDKit visual update
+        self._update_visual_properties_from_rdkit()
+
+    def _update_visual_properties_from_rdkit(self) -> None:
+        """
+        Update visual bond orders and ring centers using RDKit logic.
+        Also manages aromatic circles if enabled.
+        """
+        try:
+            orders, centers = get_visual_properties(self.model)
+            
+            # 1. Update Bond Orders and Centers
+            use_circles = self.state.use_aromatic_circles
+            for bond_id, item in self.bond_items.items():
+                # Bond Order (Kekulization)
+                if use_circles:
+                     # If circles are on, we usually don't force double bonds on aromatic rings,
+                     # we let them be single (or aromatic specific style).
+                     # But RDKit returns '2' for double in Kekule.
+                     # If we want circle, we might want to RESET visual order to None (use model)
+                     # or use '1' if we want strictly single lines under the circle?
+                     # ChemDraw style: Circle usually implies "don't show alternating".
+                     item.set_visual_order(None) 
+                else:
+                     # Apply Kekule order
+                     item.set_visual_order(orders.get(bond_id))
+                
+                # Ring Center (for 'inside' normal calculation)
+                # Even with circles, we might want this if we have double bonds?
+                # But mostly for non-circle mode.
+                center_tuple = centers.get(bond_id)
+                if center_tuple is not None:
+                    item.set_ring_context(QPointF(*center_tuple))
+                else:
+                    item.set_ring_context(None)
+                    
                 self.update_bond_item(bond_id)
 
-        # Remove existing circles
-        for circle in self.aromatic_circles:
-            self.scene.removeItem(circle)
-        self.aromatic_circles.clear()
-        
-        if not use_circles:
-            return
-        
-        # Find aromatic rings and add circles
-        rings = self._detect_aromatic_rings()
-        for center_x, center_y, radius in rings:
-            circle = AromaticCircleItem(center_x, center_y, radius)
-            self.scene.addItem(circle)
-            self.aromatic_circles.append(circle)
+            # 2. Update Aromatic Circles
+            # Clear existing
+            for circle in self.aromatic_circles:
+                self.scene.removeItem(circle)
+            self.aromatic_circles.clear()
 
-    def _detect_aromatic_rings(self) -> list:
-        """
-        Detect complete aromatic rings and return their centers.
-        Returns list of (center_x, center_y, radius) tuples.
-        """
-        # Collect aromatic bonds
-        aromatic_bonds = [b for b in self.model.bonds.values() if b.is_aromatic]
-        if not aromatic_bonds:
-            return []
-        
-        # Build adjacency for aromatic atoms only
-        aromatic_atoms = set()
-        adjacency: dict[int, list[int]] = {}
-        for bond in aromatic_bonds:
-            aromatic_atoms.add(bond.a1_id)
-            aromatic_atoms.add(bond.a2_id)
-            adjacency.setdefault(bond.a1_id, []).append(bond.a2_id)
-            adjacency.setdefault(bond.a2_id, []).append(bond.a1_id)
-        
-        # Find rings using simple DFS for small rings (5-7 members)
-        visited_rings = set()
-        rings = []
-        
-        for start in aromatic_atoms:
-            # Try to find rings starting from this atom
-            ring = self._find_ring_from(start, adjacency, max_size=7)
-            if ring:
-                ring_key = tuple(sorted(ring))
-                if ring_key not in visited_rings:
-                    visited_rings.add(ring_key)
-                    rings.append(ring)
-        
-        # Calculate centers and radii for each ring
-        result = []
-        for ring in rings:
-            atoms = [self.model.get_atom(aid) for aid in ring]
-            cx = sum(a.x for a in atoms) / len(atoms)
-            cy = sum(a.y for a in atoms) / len(atoms)
-            # Radius is about 60% of distance from center to atoms
-            avg_dist = sum(((a.x - cx)**2 + (a.y - cy)**2)**0.5 for a in atoms) / len(atoms)
-            radius = avg_dist * 0.55
-            result.append((cx, cy, radius))
-        
-        return result
-
-    def _find_ring_from(self, start: int, adjacency: dict, max_size: int) -> Optional[list]:
-        """Find a ring starting from the given atom using DFS."""
-        # Simple BFS to find shortest cycle
-        from collections import deque
-        
-        queue = deque([(start, [start])])
-        visited = {start}
-        
-        while queue:
-            current, path = queue.popleft()
-            if len(path) > max_size:
-                continue
-            
-            for neighbor in adjacency.get(current, []):
-                if neighbor == start and len(path) >= 5:
-                    return path
-                if neighbor not in visited:
-                    visited.add(neighbor)
-                    queue.append((neighbor, path + [neighbor]))
-        
-        return None
+            if use_circles:
+                for cx, cy, radius in get_aromatic_ring_geometries(self.model):
+                    circle = AromaticCircleItem(cx, cy, radius)
+                    self.scene.addItem(circle)
+                    self.aromatic_circles.append(circle)
+                    
+        except Exception:
+            # Fallback safe cleanup
+            pass
 
     def _get_atom_at(self, x: float, y: float) -> Optional[int]:
         for atom in self.model.atoms.values():
@@ -1098,6 +1096,7 @@ class ChemusonCanvas(QGraphicsView):
         return None, bond_id
 
     def _update_hover(self, scene_pos: QPointF) -> None:
+        self._ensure_overlays()
         atom_id, bond_id = self._pick_hover_target(scene_pos)
 
         if self.hovered_atom_id is not None and self.hovered_atom_id in self.atom_items:
@@ -1134,15 +1133,21 @@ class ChemusonCanvas(QGraphicsView):
         self._ring_last_vertices = None
         self._chain_last_points = None
         if self._overlays_ready:
-            self._optimize_zone.hide_zone()
-            self._preview_bond_item.hide_preview()
-            self._preview_ring_item.hide_preview()
-            self._preview_chain_item.hide_preview()
-            self._preview_chain_label.hide_label()
+            self._ensure_overlays()
+            try:
+                self._optimize_zone.hide_zone()
+                self._preview_bond_item.hide_preview()
+                self._preview_ring_item.hide_preview()
+                self._preview_chain_item.hide_preview()
+                self._preview_chain_label.hide_label()
+            except (RuntimeError, AttributeError):
+                pass
 
     def _on_undo_stack_changed(self, _index: int) -> None:
         self._cancel_drag()
         self._update_hover(self._last_scene_pos)
+        # Refresh visual properties (Kekulization/Rings) after any model change
+        self._update_visual_properties_from_rdkit()
 
     def _get_anchor_bond_angles_deg(self, anchor_id: int) -> list[float]:
         angles = []
@@ -1408,8 +1413,6 @@ class ChemusonCanvas(QGraphicsView):
             element=self.state.default_element,
         )
         self.undo_stack.push(cmd)
-        if aromatic:
-            self._kekulize_aromatic_bonds()
         self._cancel_drag()
 
     def _compute_ring_vertices(
@@ -1650,8 +1653,6 @@ class ChemusonCanvas(QGraphicsView):
             element=self.state.default_element,
         )
         self.undo_stack.push(cmd)
-        if aromatic:
-            self._kekulize_aromatic_bonds()
 
     def _set_bond_order_hotkey(self, bond_id: int, order: int) -> None:
         order = max(1, min(3, order))
@@ -1667,6 +1668,7 @@ class ChemusonCanvas(QGraphicsView):
         self.undo_stack.push(cmd)
 
     def _kekulize_aromatic_bonds(self) -> None:
+        """Deprecated: RDKit-based visuals handle Kekulization."""
         aromatic_bonds = [bond for bond in self.model.bonds.values() if bond.is_aromatic]
         if not aromatic_bonds:
             return
@@ -1798,12 +1800,6 @@ class ChemusonCanvas(QGraphicsView):
         vertex_defs: List[Tuple[Optional[int], float, float]],
         ring_size: int,
     ) -> List[Tuple[int, int, int, BondStyle, BondStereo, bool]]:
-        if ring_size % 2 != 0:
-            return [
-                (i, (i + 1) % ring_size, 1, BondStyle.PLAIN, BondStereo.NONE, True)
-                for i in range(ring_size)
-            ]
-
         constraints: dict[int, int] = {}
         for i in range(ring_size):
             j = (i + 1) % ring_size
@@ -1815,38 +1811,10 @@ class ChemusonCanvas(QGraphicsView):
             if existing is not None:
                 constraints[i] = 2 if existing.order >= 2 else 1
 
-        def double_neighbor_penalty(a_id: Optional[int], b_id: Optional[int]) -> int:
-            if a_id is None or b_id is None:
-                return 0
-            penalty = 0
-            for atom_id, other_id in ((a_id, b_id), (b_id, a_id)):
-                for bond in self.model.bonds.values():
-                    if bond.order < 2 or bond.is_aromatic:
-                        continue
-                    if bond.a1_id == atom_id and bond.a2_id != other_id:
-                        penalty += 1
-                    elif bond.a2_id == atom_id and bond.a1_id != other_id:
-                        penalty += 1
-            return penalty
-
-        def score_phase(phase: int) -> int:
-            score = 0
-            for idx, order in constraints.items():
-                desired = 2 if ((idx + phase) % 2 == 0) else 1
-                if order != desired:
-                    score += 5
-            for i in range(ring_size):
-                if ((i + phase) % 2) == 0:
-                    a_id = vertex_defs[i][0]
-                    b_id = vertex_defs[(i + 1) % ring_size][0]
-                    score += double_neighbor_penalty(a_id, b_id)
-            return score
-
-        phase = 0 if score_phase(0) <= score_phase(1) else 1
         edges: List[Tuple[int, int, int, BondStyle, BondStereo, bool]] = []
         for i in range(ring_size):
             j = (i + 1) % ring_size
-            order = 2 if ((i + phase) % 2 == 0) else 1
+            order = constraints.get(i, 1)
             edges.append((i, j, order, BondStyle.PLAIN, BondStereo.NONE, True))
         return edges
 
