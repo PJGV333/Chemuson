@@ -75,7 +75,8 @@ PAPER_HEIGHT = 1000
 PAPER_MARGIN = 40  # Margins where atoms shouldn't be placed
 ATOM_HIT_RADIUS = 20
 DEFAULT_BOND_LENGTH = 40.0
-HOVER_ATOM_RADIUS = 16.0
+HOVER_ATOM_RADIUS = 20.0
+HOVER_BOND_DISTANCE = 14.0
 HOVER_BOND_DISTANCE = 10.0
 OPTIMIZE_ZONE_SCALE = 1.2
 CHAIN_MAX_BONDS = 12
@@ -123,12 +124,14 @@ class ChemusonCanvas(QGraphicsView):
         self._drag_anchor: Optional[dict] = None
         self._ring_last_vertices: Optional[List[QPointF]] = None
         self._chain_last_points: Optional[List[QPointF]] = None
+        self._overlays_ready = False
 
         self._setup_view()
         self._create_paper()
         self._create_overlays()
 
         self.scene.selectionChanged.connect(self._sync_selection_from_scene)
+        self.undo_stack.indexChanged.connect(self._on_undo_stack_changed)
         self.setMouseTracking(True)
         self.viewport().setMouseTracking(True)
 
@@ -190,6 +193,7 @@ class ChemusonCanvas(QGraphicsView):
         self.scene.addItem(self._preview_ring_item)
         self.scene.addItem(self._preview_chain_item)
         self.scene.addItem(self._preview_chain_label)
+        self._overlays_ready = True
 
     def set_current_tool(self, tool_id: str) -> None:
         if tool_id.startswith("atom_"):
@@ -411,6 +415,7 @@ class ChemusonCanvas(QGraphicsView):
         self.bond_anchor_id = None
         self.hovered_atom_id = None
         self.hovered_bond_id = None
+        self._overlays_ready = False
         self._create_paper()
         self._create_overlays()
 
@@ -1128,11 +1133,16 @@ class ChemusonCanvas(QGraphicsView):
         self._drag_anchor = None
         self._ring_last_vertices = None
         self._chain_last_points = None
-        self._optimize_zone.hide_zone()
-        self._preview_bond_item.hide_preview()
-        self._preview_ring_item.hide_preview()
-        self._preview_chain_item.hide_preview()
-        self._preview_chain_label.hide_label()
+        if self._overlays_ready:
+            self._optimize_zone.hide_zone()
+            self._preview_bond_item.hide_preview()
+            self._preview_ring_item.hide_preview()
+            self._preview_chain_item.hide_preview()
+            self._preview_chain_label.hide_label()
+
+    def _on_undo_stack_changed(self, _index: int) -> None:
+        self._cancel_drag()
+        self._update_hover(self._last_scene_pos)
 
     def _get_anchor_bond_angles_deg(self, anchor_id: int) -> list[float]:
         angles = []
@@ -1383,18 +1393,12 @@ class ChemusonCanvas(QGraphicsView):
                 vertex_defs.append((None, v.x(), v.y()))
 
         edge_defs: List[Tuple[int, int, int, BondStyle, BondStereo, bool]] = []
-        existing_first_order = None
-        if self._drag_anchor["type"] == "bond":
-            existing_first_order = self.model.get_bond(self._drag_anchor["id"]).order
-        for i in range(ring_size):
-            j = (i + 1) % ring_size
-            order = 1
-            if aromatic:
-                if existing_first_order is not None:
-                    order = 2 if ((i % 2 == 0) == (existing_first_order == 2)) else 1
-                else:
-                    order = 2 if i % 2 == 0 else 1
-            edge_defs.append((i, j, order, BondStyle.PLAIN, BondStereo.NONE, aromatic))
+        if aromatic:
+            edge_defs = self._build_aromatic_edges(vertex_defs, ring_size)
+        else:
+            for i in range(ring_size):
+                j = (i + 1) % ring_size
+                edge_defs.append((i, j, 1, BondStyle.PLAIN, BondStereo.NONE, aromatic))
 
         cmd = AddRingCommand(
             self.model,
@@ -1404,6 +1408,8 @@ class ChemusonCanvas(QGraphicsView):
             element=self.state.default_element,
         )
         self.undo_stack.push(cmd)
+        if aromatic:
+            self._kekulize_aromatic_bonds()
         self._cancel_drag()
 
     def _compute_ring_vertices(
@@ -1629,18 +1635,12 @@ class ChemusonCanvas(QGraphicsView):
                 vertex_defs.append((None, v.x(), v.y()))
 
         edge_defs: List[Tuple[int, int, int, BondStyle, BondStereo, bool]] = []
-        existing_first_order = None
-        if anchor_type == "bond":
-            existing_first_order = self.model.get_bond(anchor_id).order
-        for i in range(ring_size):
-            j = (i + 1) % ring_size
-            order = 1
-            if aromatic:
-                if existing_first_order is not None:
-                    order = 2 if ((i % 2 == 0) == (existing_first_order == 2)) else 1
-                else:
-                    order = 2 if i % 2 == 0 else 1
-            edge_defs.append((i, j, order, BondStyle.PLAIN, BondStereo.NONE, aromatic))
+        if aromatic:
+            edge_defs = self._build_aromatic_edges(vertex_defs, ring_size)
+        else:
+            for i in range(ring_size):
+                j = (i + 1) % ring_size
+                edge_defs.append((i, j, 1, BondStyle.PLAIN, BondStereo.NONE, aromatic))
 
         cmd = AddRingCommand(
             self.model,
@@ -1650,6 +1650,8 @@ class ChemusonCanvas(QGraphicsView):
             element=self.state.default_element,
         )
         self.undo_stack.push(cmd)
+        if aromatic:
+            self._kekulize_aromatic_bonds()
 
     def _set_bond_order_hotkey(self, bond_id: int, order: int) -> None:
         order = max(1, min(3, order))
@@ -1663,6 +1665,190 @@ class ChemusonCanvas(QGraphicsView):
             new_is_aromatic=False,
         )
         self.undo_stack.push(cmd)
+
+    def _kekulize_aromatic_bonds(self) -> None:
+        aromatic_bonds = [bond for bond in self.model.bonds.values() if bond.is_aromatic]
+        if not aromatic_bonds:
+            return
+
+        adjacency: dict[int, list[int]] = {}
+        for bond in aromatic_bonds:
+            adjacency.setdefault(bond.a1_id, []).append(bond.a2_id)
+            adjacency.setdefault(bond.a2_id, []).append(bond.a1_id)
+
+        color: dict[int, int] = {}
+        for node in adjacency:
+            if node in color:
+                continue
+            color[node] = 0
+            stack = [node]
+            while stack:
+                current = stack.pop()
+                for neighbor in adjacency.get(current, []):
+                    if neighbor in color:
+                        if color[neighbor] == color[current]:
+                            return
+                    else:
+                        color[neighbor] = 1 - color[current]
+                        stack.append(neighbor)
+
+        u_nodes = [n for n, c in color.items() if c == 0]
+        v_nodes = [n for n, c in color.items() if c == 1]
+        u_index = {u: i for i, u in enumerate(u_nodes)}
+        v_index = {v: i for i, v in enumerate(v_nodes)}
+
+        degrees = {node: len(adjacency.get(node, [])) for node in adjacency}
+
+        def edge_weight(u: int, v: int) -> int:
+            du = degrees.get(u, 0)
+            dv = degrees.get(v, 0)
+            if du == 2 and dv == 2:
+                return 3
+            if du == 2 or dv == 2:
+                return 2
+            return 1
+
+        class Edge:
+            def __init__(self, to: int, rev: int, cap: int, cost: int) -> None:
+                self.to = to
+                self.rev = rev
+                self.cap = cap
+                self.cost = cost
+
+        size = 2 + len(u_nodes) + len(v_nodes)
+        src = 0
+        sink = size - 1
+        graph: list[list[Edge]] = [[] for _ in range(size)]
+
+        def add_edge(frm: int, to: int, cap: int, cost: int) -> None:
+            graph[frm].append(Edge(to, len(graph[to]), cap, cost))
+            graph[to].append(Edge(frm, len(graph[frm]) - 1, 0, -cost))
+
+        for u in u_nodes:
+            add_edge(src, 1 + u_index[u], 1, 0)
+        for v in v_nodes:
+            add_edge(1 + len(u_nodes) + v_index[v], sink, 1, 0)
+
+        for u in u_nodes:
+            for v in adjacency.get(u, []):
+                if v not in v_index:
+                    continue
+                w = edge_weight(u, v)
+                add_edge(1 + u_index[u], 1 + len(u_nodes) + v_index[v], 1, -w)
+
+        flow = 0
+        while True:
+            dist = [10 ** 9] * size
+            in_queue = [False] * size
+            prev_node = [-1] * size
+            prev_edge = [-1] * size
+            dist[src] = 0
+            queue = [src]
+            in_queue[src] = True
+            while queue:
+                node = queue.pop(0)
+                in_queue[node] = False
+                for i, edge in enumerate(graph[node]):
+                    if edge.cap <= 0:
+                        continue
+                    nd = dist[node] + edge.cost
+                    if nd < dist[edge.to]:
+                        dist[edge.to] = nd
+                        prev_node[edge.to] = node
+                        prev_edge[edge.to] = i
+                        if not in_queue[edge.to]:
+                            in_queue[edge.to] = True
+                            queue.append(edge.to)
+            if dist[sink] == 10 ** 9:
+                break
+            v = sink
+            while v != src:
+                edge = graph[prev_node[v]][prev_edge[v]]
+                edge.cap -= 1
+                graph[v][edge.rev].cap += 1
+                v = prev_node[v]
+            flow += 1
+
+        pair_u: dict[int, int | None] = {u: None for u in u_nodes}
+        for u in u_nodes:
+            node_u = 1 + u_index[u]
+            for edge in graph[node_u]:
+                if edge.to == src or edge.cap != 0:
+                    continue
+                if edge.to == sink:
+                    continue
+                if edge.to >= 1 + len(u_nodes) and edge.to < sink:
+                    v = v_nodes[edge.to - 1 - len(u_nodes)]
+                    pair_u[u] = v
+                    break
+
+        for bond in aromatic_bonds:
+            double = False
+            if color.get(bond.a1_id) == 0:
+                double = pair_u.get(bond.a1_id) == bond.a2_id
+            else:
+                double = pair_u.get(bond.a2_id) == bond.a1_id
+            order = 2 if double else 1
+            if bond.order != order:
+                self.model.update_bond(bond.id, order=order)
+                self.update_bond_item(bond.id)
+
+    def _build_aromatic_edges(
+        self,
+        vertex_defs: List[Tuple[Optional[int], float, float]],
+        ring_size: int,
+    ) -> List[Tuple[int, int, int, BondStyle, BondStereo, bool]]:
+        if ring_size % 2 != 0:
+            return [
+                (i, (i + 1) % ring_size, 1, BondStyle.PLAIN, BondStereo.NONE, True)
+                for i in range(ring_size)
+            ]
+
+        constraints: dict[int, int] = {}
+        for i in range(ring_size):
+            j = (i + 1) % ring_size
+            a_id = vertex_defs[i][0]
+            b_id = vertex_defs[j][0]
+            if a_id is None or b_id is None:
+                continue
+            existing = self.model.find_bond_between(a_id, b_id)
+            if existing is not None:
+                constraints[i] = 2 if existing.order >= 2 else 1
+
+        def double_neighbor_penalty(a_id: Optional[int], b_id: Optional[int]) -> int:
+            if a_id is None or b_id is None:
+                return 0
+            penalty = 0
+            for atom_id, other_id in ((a_id, b_id), (b_id, a_id)):
+                for bond in self.model.bonds.values():
+                    if bond.order < 2 or bond.is_aromatic:
+                        continue
+                    if bond.a1_id == atom_id and bond.a2_id != other_id:
+                        penalty += 1
+                    elif bond.a2_id == atom_id and bond.a1_id != other_id:
+                        penalty += 1
+            return penalty
+
+        def score_phase(phase: int) -> int:
+            score = 0
+            for idx, order in constraints.items():
+                desired = 2 if ((idx + phase) % 2 == 0) else 1
+                if order != desired:
+                    score += 5
+            for i in range(ring_size):
+                if ((i + phase) % 2) == 0:
+                    a_id = vertex_defs[i][0]
+                    b_id = vertex_defs[(i + 1) % ring_size][0]
+                    score += double_neighbor_penalty(a_id, b_id)
+            return score
+
+        phase = 0 if score_phase(0) <= score_phase(1) else 1
+        edges: List[Tuple[int, int, int, BondStyle, BondStereo, bool]] = []
+        for i in range(ring_size):
+            j = (i + 1) % ring_size
+            order = 2 if ((i + phase) % 2 == 0) else 1
+            edges.append((i, j, order, BondStyle.PLAIN, BondStereo.NONE, True))
+        return edges
 
     def _begin_drag(self, scene_pos: QPointF) -> None:
         if not self.state.selected_atoms:

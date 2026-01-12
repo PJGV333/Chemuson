@@ -19,7 +19,7 @@ def _require_rdkit():
         raise RuntimeError("RDKit no disponible")
 
 
-def molgraph_to_rdkit(molgraph: MolGraph):
+def molgraph_to_rdkit_with_map(molgraph: MolGraph):
     _require_rdkit()
     rw = Chem.RWMol()
     id_map: Dict[int, int] = {}
@@ -34,6 +34,8 @@ def molgraph_to_rdkit(molgraph: MolGraph):
 
     for bond in molgraph.bonds.values():
         if bond.is_aromatic:
+            rw.GetAtomWithIdx(id_map[bond.a1_id]).SetIsAromatic(True)
+            rw.GetAtomWithIdx(id_map[bond.a2_id]).SetIsAromatic(True)
             bond_type = Chem.BondType.AROMATIC
         elif bond.order == 2:
             bond_type = Chem.BondType.DOUBLE
@@ -49,6 +51,11 @@ def molgraph_to_rdkit(molgraph: MolGraph):
         atom = molgraph.atoms[atom_id]
         conf.SetAtomPosition(idx, (atom.x, atom.y, 0.0))
     mol.AddConformer(conf, assignId=True)
+    return mol, id_map
+
+
+def molgraph_to_rdkit(molgraph: MolGraph):
+    mol, _ = molgraph_to_rdkit_with_map(molgraph)
     return mol
 
 

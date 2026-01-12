@@ -228,7 +228,7 @@ class BondItem(QGraphicsPathItem):
             midy = (y1 + y2) / 2
             vx = self._ring_center.x() - midx
             vy = self._ring_center.y() - midy
-            offset_sign = -1 if (nx * vx + ny * vy) >= 0 else 1
+            offset_sign = 1 if (nx * vx + ny * vy) >= 0 else -1
 
         # Aromatic bonds: if circle mode, draw as single line
         if self.is_aromatic and self.render_aromatic_as_circle:

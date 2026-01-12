@@ -306,6 +306,7 @@ class AddRingCommand(QUndoCommand):
         self._created_atom_ids: List[Optional[int]] = []
         self._created_bonds = []
         self._ring_id: Optional[int] = None
+        self._updated_existing: List[Tuple[int, int, bool, int]] = []
 
     def redo(self) -> None:
         if not self._created_atom_ids:
@@ -313,10 +314,6 @@ class AddRingCommand(QUndoCommand):
 
         if self._ring_id is None:
             self._ring_id = self._view.allocate_ring_id()
-            xs = [x for _, x, _ in self._vertices]
-            ys = [y for _, _, y in self._vertices]
-            center = (sum(xs) / len(xs), sum(ys) / len(ys))
-            self._view.register_ring_center(self._ring_id, center)
 
         atom_ids: List[int] = []
         for idx, (existing_id, x, y) in enumerate(self._vertices):
@@ -332,6 +329,12 @@ class AddRingCommand(QUndoCommand):
             self._view.add_atom_item(atom)
             atom_ids.append(self._created_atom_ids[idx])
 
+        if self._ring_id is not None:
+            xs = [self._model.get_atom(aid).x for aid in atom_ids]
+            ys = [self._model.get_atom(aid).y for aid in atom_ids]
+            center = (sum(xs) / len(xs), sum(ys) / len(ys))
+            self._view.register_ring_center(self._ring_id, center)
+
         if not self._created_bonds:
             for edge in self._edges:
                 i, j, order, style, stereo = edge[:5]
@@ -340,6 +343,19 @@ class AddRingCommand(QUndoCommand):
                 a2_id = atom_ids[j]
                 existing = self._model.find_bond_between(a1_id, a2_id)
                 if existing is not None:
+                    if is_aromatic:
+                        if not any(bid == existing.id for bid, _, _, _ in self._updated_existing):
+                            self._updated_existing.append(
+                                (existing.id, existing.order, existing.is_aromatic, order)
+                            )
+                        self._model.update_bond(
+                            existing.id,
+                            order=order,
+                            style=existing.style,
+                            stereo=existing.stereo,
+                            is_aromatic=True,
+                        )
+                        self._view.update_bond_item(existing.id)
                     continue
                 bond = self._model.add_bond(
                     a1_id,
@@ -352,12 +368,23 @@ class AddRingCommand(QUndoCommand):
                 )
                 self._created_bonds.append(replace(bond))
                 self._view.add_bond_item(bond)
+                self._view.update_bond_item(bond.id)
         else:
             if self._ring_id is not None:
-                xs = [x for _, x, _ in self._vertices]
-                ys = [y for _, _, y in self._vertices]
+                xs = [self._model.get_atom(aid).x for aid in atom_ids]
+                ys = [self._model.get_atom(aid).y for aid in atom_ids]
                 center = (sum(xs) / len(xs), sum(ys) / len(ys))
                 self._view.register_ring_center(self._ring_id, center)
+            for bond_id, old_order, old_aromatic, new_order in self._updated_existing:
+                bond = self._model.get_bond(bond_id)
+                self._model.update_bond(
+                    bond_id,
+                    order=new_order,
+                    style=bond.style,
+                    stereo=bond.stereo,
+                    is_aromatic=True,
+                )
+                self._view.update_bond_item(bond_id)
             for bond in self._created_bonds:
                 self._model.add_bond(
                     bond.a1_id,
@@ -371,6 +398,7 @@ class AddRingCommand(QUndoCommand):
                     ring_id=bond.ring_id,
                 )
                 self._view.add_bond_item(bond)
+                self._view.update_bond_item(bond.id)
 
     def undo(self) -> None:
         for bond in list(self._created_bonds):
@@ -383,6 +411,17 @@ class AddRingCommand(QUndoCommand):
                 self._view.remove_atom_item(atom_id)
         if self._ring_id is not None:
             self._view.unregister_ring_center(self._ring_id)
+        for bond_id, old_order, old_aromatic, new_order in self._updated_existing:
+            if bond_id in self._model.bonds:
+                bond = self._model.get_bond(bond_id)
+                self._model.update_bond(
+                    bond_id,
+                    order=old_order,
+                    style=bond.style,
+                    stereo=bond.stereo,
+                    is_aromatic=old_aromatic,
+                )
+                self._view.update_bond_item(bond_id)
 
 
 class AddChainCommand(QUndoCommand):
