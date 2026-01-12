@@ -27,10 +27,10 @@ from PyQt6.QtGui import (
     QImage,
     QPixmap,
 )
-from PyQt6.QtCore import Qt, QPointF, QRectF, QBuffer, QMimeData
+from PyQt6.QtCore import Qt, QPointF, QRectF, QBuffer, QMimeData, pyqtSignal
 
 from core.model import BondStyle, BondStereo, ChemState, MolGraph
-from gui.items import AtomItem, BondItem
+from gui.items import AtomItem, BondItem, AromaticCircleItem
 from gui.commands import (
     AddAtomCommand,
     AddBondCommand,
@@ -62,6 +62,8 @@ class ChemusonCanvas(QGraphicsView):
     Page-based canvas for drawing molecules.
     Uses QGraphicsView/QGraphicsScene with a centered paper sheet.
     """
+    
+    selection_changed = pyqtSignal(int, int, dict)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -75,6 +77,7 @@ class ChemusonCanvas(QGraphicsView):
 
         self.atom_items: dict[int, AtomItem] = {}
         self.bond_items: dict[int, BondItem] = {}
+        self.aromatic_circles: list[AromaticCircleItem] = []
 
         self.current_tool: str = self.state.active_tool
         self.bond_anchor_id: Optional[int] = None
@@ -98,6 +101,11 @@ class ChemusonCanvas(QGraphicsView):
         self.scene.selectionChanged.connect(self._sync_selection_from_scene)
         self.setMouseTracking(True)
         self.viewport().setMouseTracking(True)
+
+    @property
+    def graph(self) -> MolGraph:
+        """Alias for model for compatibility."""
+        return self.model
 
     def _setup_view(self) -> None:
         self.setBackgroundBrush(QBrush(QColor("#E0E0E0")))
@@ -505,7 +513,10 @@ class ChemusonCanvas(QGraphicsView):
     def add_atom_item(self, atom) -> None:
         if atom.id in self.atom_items:
             return
-        item = AtomItem(atom)
+        # Determine visibility based on state preferences
+        show_c = self.state.show_implicit_carbons or atom.element != "C"
+        show_h = self.state.show_implicit_hydrogens or atom.element != "H"
+        item = AtomItem(atom, show_carbon=show_c, show_hydrogen=show_h)
         self.scene.addItem(item)
         self.atom_items[atom.id] = item
 
@@ -533,7 +544,12 @@ class ChemusonCanvas(QGraphicsView):
             return
         atom1 = self.model.get_atom(bond.a1_id)
         atom2 = self.model.get_atom(bond.a2_id)
-        item = BondItem(bond, atom1, atom2)
+        item = BondItem(
+            bond,
+            atom1,
+            atom2,
+            render_aromatic_as_circle=self.state.use_aromatic_circles
+        )
         self.scene.addItem(item)
         self.bond_items[bond.id] = item
 
@@ -554,6 +570,109 @@ class ChemusonCanvas(QGraphicsView):
         item = self.bond_items.pop(bond_id, None)
         if item is not None:
             self.scene.removeItem(item)
+
+    # -------------------------------------------------------------------------
+    # Visibility and Aromatic Circle Management
+    # -------------------------------------------------------------------------
+    def refresh_atom_visibility(self) -> None:
+        """Update visibility of all atoms based on current state settings."""
+        for atom_id, item in self.atom_items.items():
+            atom = self.model.get_atom(atom_id)
+            show_c = self.state.show_implicit_carbons or atom.element != "C"
+            show_h = self.state.show_implicit_hydrogens or atom.element != "H"
+            item.set_visibility_flags(show_c, show_h)
+
+    def refresh_aromatic_circles(self) -> None:
+        """Add/remove aromatic circle items based on current state."""
+        # First, update all bond items to reflect the preference
+        use_circles = self.state.use_aromatic_circles
+        for bond_id, item in self.bond_items.items():
+            if item.is_aromatic:
+                item.set_render_aromatic_as_circle(use_circles)
+                # Force redraw
+                self.update_bond_item(bond_id)
+
+        # Remove existing circles
+        for circle in self.aromatic_circles:
+            self.scene.removeItem(circle)
+        self.aromatic_circles.clear()
+        
+        if not use_circles:
+            return
+        
+        # Find aromatic rings and add circles
+        rings = self._detect_aromatic_rings()
+        for center_x, center_y, radius in rings:
+            circle = AromaticCircleItem(center_x, center_y, radius)
+            self.scene.addItem(circle)
+            self.aromatic_circles.append(circle)
+
+    def _detect_aromatic_rings(self) -> list:
+        """
+        Detect complete aromatic rings and return their centers.
+        Returns list of (center_x, center_y, radius) tuples.
+        """
+        # Collect aromatic bonds
+        aromatic_bonds = [b for b in self.model.bonds.values() if b.is_aromatic]
+        if not aromatic_bonds:
+            return []
+        
+        # Build adjacency for aromatic atoms only
+        aromatic_atoms = set()
+        adjacency: dict[int, list[int]] = {}
+        for bond in aromatic_bonds:
+            aromatic_atoms.add(bond.a1_id)
+            aromatic_atoms.add(bond.a2_id)
+            adjacency.setdefault(bond.a1_id, []).append(bond.a2_id)
+            adjacency.setdefault(bond.a2_id, []).append(bond.a1_id)
+        
+        # Find rings using simple DFS for small rings (5-7 members)
+        visited_rings = set()
+        rings = []
+        
+        for start in aromatic_atoms:
+            # Try to find rings starting from this atom
+            ring = self._find_ring_from(start, adjacency, max_size=7)
+            if ring:
+                ring_key = tuple(sorted(ring))
+                if ring_key not in visited_rings:
+                    visited_rings.add(ring_key)
+                    rings.append(ring)
+        
+        # Calculate centers and radii for each ring
+        result = []
+        for ring in rings:
+            atoms = [self.model.get_atom(aid) for aid in ring]
+            cx = sum(a.x for a in atoms) / len(atoms)
+            cy = sum(a.y for a in atoms) / len(atoms)
+            # Radius is about 60% of distance from center to atoms
+            avg_dist = sum(((a.x - cx)**2 + (a.y - cy)**2)**0.5 for a in atoms) / len(atoms)
+            radius = avg_dist * 0.55
+            result.append((cx, cy, radius))
+        
+        return result
+
+    def _find_ring_from(self, start: int, adjacency: dict, max_size: int) -> Optional[list]:
+        """Find a ring starting from the given atom using DFS."""
+        # Simple BFS to find shortest cycle
+        from collections import deque
+        
+        queue = deque([(start, [start])])
+        visited = {start}
+        
+        while queue:
+            current, path = queue.popleft()
+            if len(path) > max_size:
+                continue
+            
+            for neighbor in adjacency.get(current, []):
+                if neighbor == start and len(path) >= 5:
+                    return path
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    queue.append((neighbor, path + [neighbor]))
+        
+        return None
 
     def _get_atom_at(self, x: float, y: float) -> Optional[int]:
         for atom in self.model.atoms.values():
@@ -589,6 +708,17 @@ class ChemusonCanvas(QGraphicsView):
 
         for atom_id, item in self.atom_items.items():
             item.set_selected(atom_id in selected_atoms or atom_id == self.bond_anchor_id)
+            
+        # Emit selection signal
+        details = {}
+        if len(selected_atoms) == 1 and not selected_bonds:
+            atom = self.model.get_atom(next(iter(selected_atoms)))
+            details = {"type": "atom", "id": atom.id, "element": atom.element, "charge": atom.charge, "x": atom.x, "y": atom.y}
+        elif len(selected_bonds) == 1 and not selected_atoms:
+            bond = self.model.get_bond(next(iter(selected_bonds)))
+            details = {"type": "bond", "id": bond.id, "order": bond.order, "style": bond.style, "aromatic": bond.is_aromatic}
+            
+        self.selection_changed.emit(len(selected_atoms), len(selected_bonds), details)
 
     def _set_bond_anchor(self, atom_id: int, reset_angle: bool = False) -> None:
         if self.bond_anchor_id is not None and self.bond_anchor_id in self.atom_items:
@@ -679,19 +809,22 @@ class ChemusonCanvas(QGraphicsView):
         step = self._bond_environment_step(anchor_id)
         angle_from_click = math.atan2(dy, dx) if dist > 1e-6 else 0.0
         existing_angles = self._get_anchor_bond_angles(anchor_id)
-        near_anchor = dist < DEFAULT_BOND_LENGTH * 0.6
-        aligned_with_existing = False
-        if existing_angles:
-            nearest = min(self._angle_distance(angle_from_click, a) for a in existing_angles)
-            aligned_with_existing = nearest < math.radians(15)
-
-        if near_anchor or aligned_with_existing:
+        if not (modifiers & Qt.KeyboardModifier.AltModifier) and len(existing_angles) <= 1:
             angle = self._default_bond_angle(anchor_id)
         else:
-            angle = angle_from_click
-            if not (modifiers & Qt.KeyboardModifier.AltModifier):
-                angle = self._snap_angle_to_environment(angle, anchor_id, step)
-            self._reset_zigzag()
+            near_anchor = dist < DEFAULT_BOND_LENGTH * 0.6
+            aligned_with_existing = False
+            if existing_angles:
+                nearest = min(self._angle_distance(angle_from_click, a) for a in existing_angles)
+                aligned_with_existing = nearest < math.radians(30)
+
+            if near_anchor or aligned_with_existing:
+                angle = self._default_bond_angle(anchor_id)
+            else:
+                angle = angle_from_click
+                if not (modifiers & Qt.KeyboardModifier.AltModifier):
+                    angle = self._snap_angle_to_environment(angle, anchor_id, step)
+                self._reset_zigzag()
 
         self.undo_stack.beginMacro("Add bond")
         self._add_bond_with_new_atom(anchor_id, angle)
@@ -880,13 +1013,13 @@ class ChemusonCanvas(QGraphicsView):
             for v in vertices[1:]:
                 vertex_defs.append((None, v.x(), v.y()))
 
-        edge_defs: List[Tuple[int, int, int, BondStyle, BondStereo]] = []
+        edge_defs: List[Tuple[int, int, int, BondStyle, BondStereo, bool]] = []
         for i in range(ring_size):
             j = (i + 1) % ring_size
             order = 1
             if aromatic and i % 2 == 0:
                 order = 2
-            edge_defs.append((i, j, order, BondStyle.PLAIN, BondStereo.NONE))
+            edge_defs.append((i, j, order, BondStyle.PLAIN, BondStereo.NONE, aromatic))
 
         cmd = AddRingCommand(
             self.model,

@@ -56,6 +56,10 @@ class ChemState:
     default_element: str = "C"
     selected_atoms: Set[int] = field(default_factory=set)
     selected_bonds: Set[int] = field(default_factory=set)
+    # Display preferences
+    show_implicit_carbons: bool = False  # Show C labels (False = hide like ChemDoodle)
+    show_implicit_hydrogens: bool = False  # Show H labels
+    use_aromatic_circles: bool = True  # Draw circles in aromatic rings
 
 
 class MolGraph:

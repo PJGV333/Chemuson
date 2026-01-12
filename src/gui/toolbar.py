@@ -17,6 +17,8 @@ from gui.icons import (
 )
 
 
+from gui.styles import TOOL_PALETTE_STYLESHEET
+
 class ChemusonToolbar(QToolBar):
     """
     Vertical toolbar for selecting drawing tools.
@@ -36,30 +38,7 @@ class ChemusonToolbar(QToolBar):
         self.setFloatable(False)
         self.setIconSize(QSize(32, 32))
 
-        self.setStyleSheet(
-            """
-            QToolBar {
-                background-color: #F5F5F5;
-                border-right: 1px solid #CCCCCC;
-                spacing: 2px;
-                padding: 4px;
-            }
-            QToolButton {
-                border: 1px solid transparent;
-                border-radius: 4px;
-                padding: 4px;
-                margin: 1px;
-            }
-            QToolButton:hover {
-                background-color: #E0E0E0;
-                border: 1px solid #BBBBBB;
-            }
-            QToolButton:checked {
-                background-color: #C8DFFF;
-                border: 1px solid #6699CC;
-            }
-            """
-        )
+        self.setStyleSheet(TOOL_PALETTE_STYLESHEET)
 
         self.action_group = QActionGroup(self)
         self.action_group.setExclusive(True)

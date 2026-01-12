@@ -248,7 +248,7 @@ class AddRingCommand(QUndoCommand):
         model: MolGraph,
         view,
         vertices: List[Tuple[Optional[int], float, float]],
-        edges: List[Tuple[int, int, int, BondStyle, BondStereo]],
+        edges: List[Tuple],
         element: str = "C",
     ) -> None:
         super().__init__("Add ring")
@@ -279,7 +279,9 @@ class AddRingCommand(QUndoCommand):
             atom_ids.append(self._created_atom_ids[idx])
 
         if not self._created_bonds:
-            for i, j, order, style, stereo in self._edges:
+            for edge in self._edges:
+                i, j, order, style, stereo = edge[:5]
+                is_aromatic = edge[5] if len(edge) > 5 else False
                 a1_id = atom_ids[i]
                 a2_id = atom_ids[j]
                 existing = self._model.find_bond_between(a1_id, a2_id)
@@ -291,6 +293,7 @@ class AddRingCommand(QUndoCommand):
                     order,
                     style=style,
                     stereo=stereo,
+                    is_aromatic=is_aromatic,
                 )
                 self._created_bonds.append(replace(bond))
                 self._view.add_bond_item(bond)
