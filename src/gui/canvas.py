@@ -12,8 +12,10 @@ from PyQt6.QtWidgets import (
     QGraphicsView,
     QGraphicsScene,
     QGraphicsRectItem,
+    QGraphicsPathItem,
     QGraphicsDropShadowEffect,
     QGraphicsPixmapItem,
+    QInputDialog,
 )
 from PyQt6.QtGui import (
     QPainter,
@@ -24,6 +26,7 @@ from PyQt6.QtGui import (
     QUndoStack,
     QImage,
     QPixmap,
+    QPainterPath,
 )
 from PyQt6.QtCore import Qt, QPointF, QRectF, QBuffer, QMimeData, pyqtSignal
 
@@ -32,6 +35,8 @@ from gui.items import (
     AtomItem,
     BondItem,
     AromaticCircleItem,
+    ArrowItem,
+    BracketItem,
     HoverAtomIndicatorItem,
     HoverBondIndicatorItem,
     OptimizeZoneItem,
@@ -64,6 +69,8 @@ from gui.commands import (
     AddChainCommand,
     ChangeAtomCommand,
     ChangeBondCommand,
+    ChangeBondLengthCommand,
+    ChangeChargeCommand,
     DeleteSelectionCommand,
     MoveAtomsCommand,
 )
@@ -81,10 +88,9 @@ from chemio.rdkit_io import (
 PAPER_WIDTH = 800
 PAPER_HEIGHT = 1000
 PAPER_MARGIN = 40  # Margins where atoms shouldn't be placed
-ATOM_HIT_RADIUS = 26
+ATOM_HIT_RADIUS = 12
 DEFAULT_BOND_LENGTH = 40.0
-HOVER_ATOM_RADIUS = 20.0
-HOVER_BOND_DISTANCE = 14.0
+HOVER_ATOM_RADIUS = 10.0
 HOVER_BOND_DISTANCE = 10.0
 OPTIMIZE_ZONE_SCALE = 1.2
 CHAIN_MAX_BONDS = 12
@@ -127,11 +133,23 @@ class ChemusonCanvas(QGraphicsView):
         self._last_scene_pos = QPointF(0, 0)
         self._bond_last_angle: Optional[float] = None
         self._bond_zigzag_sign = 1
+        self._drag_free_orientation = False
+        self._arrow_start_pos: Optional[QPointF] = None
+        self.arrow_items: list[ArrowItem] = []
+        self._bracket_drag_start: Optional[QPointF] = None
+        self._bracket_preview: Optional[QGraphicsRectItem] = None
+        self.bracket_items: list[BracketItem] = []
 
         self._dragging_selection = False
         self._drag_start_pos: Optional[QPointF] = None
         self._drag_start_positions: Dict[int, Tuple[float, float]] = {}
         self._drag_has_moved = False
+        self._select_drag_mode: Optional[str] = None
+        self._select_start_pos: Optional[QPointF] = None
+        self._select_path: Optional[QPainterPath] = None
+        self._select_preview_path: Optional[QGraphicsPathItem] = None
+        self._select_preview_rect: Optional[QGraphicsRectItem] = None
+        self._select_additive = False
 
         self._drag_mode = "none"
         self._drag_anchor: Optional[dict] = None
@@ -214,15 +232,26 @@ class ChemusonCanvas(QGraphicsView):
             tool_id = "tool_atom"
         elif tool_id.startswith("bond_"):
             tool_id = "tool_bond"
+        elif tool_id.startswith("tool_brackets_"):
+            bracket_key = tool_id.split("tool_brackets_", 1)[1]
+            mapping = {
+                "round": "()",
+                "square": "[]",
+                "curly": "{}",
+            }
+            self.state.active_bracket_type = mapping.get(bracket_key, "[]")
+            tool_id = "tool_brackets"
 
         self.current_tool = tool_id
         self.state.active_tool = tool_id
         self._clear_bond_anchor()
         self._cancel_drag()
+        self._arrow_start_pos = None
+        self._clear_bracket_preview()
 
         if tool_id == "tool_select":
             self.setCursor(Qt.CursorShape.ArrowCursor)
-            self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
+            self.setDragMode(QGraphicsView.DragMode.NoDrag)
         else:
             self.setCursor(Qt.CursorShape.CrossCursor)
             self.setDragMode(QGraphicsView.DragMode.NoDrag)
@@ -263,9 +292,9 @@ class ChemusonCanvas(QGraphicsView):
         if self.current_tool == "tool_select":
             clicked_item = self._get_item_at(scene_pos)
             if clicked_item is None:
-                if not (event.modifiers() & Qt.KeyboardModifier.ShiftModifier):
-                    self.scene.clearSelection()
-                super().mousePressEvent(event)
+                additive = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+                free_select = bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
+                self._begin_selection_drag(scene_pos, free_select, additive)
                 return
             if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
                 clicked_item.setSelected(not clicked_item.isSelected())
@@ -279,6 +308,38 @@ class ChemusonCanvas(QGraphicsView):
             return
 
         clicked_atom_id, clicked_bond_id = self._pick_hover_target(scene_pos)
+
+        if self.current_tool in {"tool_arrow_forward", "tool_arrow_retro"}:
+            if self._arrow_start_pos is None:
+                self._arrow_start_pos = scene_pos
+                return
+            if (scene_pos - self._arrow_start_pos).manhattanLength() < 2.0:
+                self._arrow_start_pos = None
+                return
+            head_at_end = self.current_tool == "tool_arrow_forward"
+            self._add_arrow_item(self._arrow_start_pos, scene_pos, head_at_end=head_at_end)
+            self._arrow_start_pos = None
+            return
+
+        if self.current_tool == "tool_brackets":
+            self._bracket_drag_start = scene_pos
+            preview = self._ensure_bracket_preview()
+            preview.setRect(QRectF(scene_pos, scene_pos))
+            return
+
+        if self.current_tool == "tool_charge":
+            if clicked_atom_id is None:
+                return
+            atom = self.model.get_atom(clicked_atom_id)
+            if atom.charge == 0:
+                new_charge = 1
+            elif atom.charge > 0:
+                new_charge = -1
+            else:
+                new_charge = 0
+            cmd = ChangeChargeCommand(self.model, self, clicked_atom_id, new_charge)
+            self.undo_stack.push(cmd)
+            return
 
         if self.current_tool == "tool_atom":
             element = self.state.default_element
@@ -332,7 +393,25 @@ class ChemusonCanvas(QGraphicsView):
         scene_pos = self.mapToScene(event.pos())
         self._last_scene_pos = scene_pos
 
+        if self._select_drag_mode is not None:
+            self._update_selection_drag(scene_pos)
+            return
+
         if self._drag_mode == "place_bond":
+            if (
+                not self._drag_free_orientation
+                and (event.buttons() & Qt.MouseButton.LeftButton)
+                and self._drag_anchor is not None
+            ):
+                if self._drag_anchor["id"] is None:
+                    anchor_pos = QPointF(
+                        self._drag_anchor["pos"].x(), self._drag_anchor["pos"].y()
+                    )
+                else:
+                    anchor = self.model.get_atom(self._drag_anchor["id"])
+                    anchor_pos = QPointF(anchor.x, anchor.y)
+                if (scene_pos - anchor_pos).manhattanLength() > 3.0:
+                    self._drag_free_orientation = True
             self._update_bond_preview(scene_pos, event.modifiers())
             return
         if self._drag_mode == "place_ring":
@@ -340,6 +419,11 @@ class ChemusonCanvas(QGraphicsView):
             return
         if self._drag_mode == "place_chain":
             self._update_chain_preview(scene_pos, event.modifiers())
+            return
+
+        if self._bracket_drag_start is not None and self.current_tool == "tool_brackets":
+            preview = self._ensure_bracket_preview()
+            preview.setRect(QRectF(self._bracket_drag_start, scene_pos).normalized())
             return
 
         if self._dragging_selection and self._drag_start_pos is not None:
@@ -359,6 +443,9 @@ class ChemusonCanvas(QGraphicsView):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:
+        if self._select_drag_mode is not None:
+            self._finalize_selection_drag()
+            return
         if self._drag_mode == "place_bond":
             self._finalize_bond(event.modifiers())
             return
@@ -367,6 +454,31 @@ class ChemusonCanvas(QGraphicsView):
             return
         if self._drag_mode == "place_chain":
             self._finalize_chain(event.modifiers())
+            return
+
+        if self._bracket_drag_start is not None and self.current_tool == "tool_brackets":
+            rect = QRectF(self._bracket_drag_start, self._last_scene_pos).normalized()
+            self._clear_bracket_preview()
+            if rect.width() < 4.0 or rect.height() < 4.0:
+                return
+            items = [
+                item
+                for item in self.scene.items(rect)
+                if isinstance(item, (AtomItem, BondItem))
+            ]
+            if items:
+                bbox = items[0].sceneBoundingRect()
+                for item in items[1:]:
+                    bbox = bbox.united(item.sceneBoundingRect())
+            else:
+                bbox = rect
+            bracket = BracketItem(
+                bbox,
+                kind=self.state.active_bracket_type,
+                style=self.drawing_style,
+            )
+            self.scene.addItem(bracket)
+            self.bracket_items.append(bracket)
             return
 
         if self._dragging_selection:
@@ -390,6 +502,28 @@ class ChemusonCanvas(QGraphicsView):
             return
 
         super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event) -> None:
+        scene_pos = self.mapToScene(event.pos())
+        item = self._get_item_at(scene_pos)
+        if isinstance(item, BondItem):
+            bond = self.model.get_bond(item.bond_id)
+            current = bond.length_px if bond.length_px is not None else self.state.bond_length
+            value, ok = QInputDialog.getDouble(
+                self,
+                "Longitud de enlace",
+                "Longitud (px, 0 para usar global):",
+                float(current),
+                0.0,
+                999.0,
+                1,
+            )
+            if ok:
+                new_length = None if value <= 0 else float(value)
+                cmd = ChangeBondLengthCommand(self.model, self, bond.id, new_length)
+                self.undo_stack.push(cmd)
+            return
+        super().mouseDoubleClickEvent(event)
 
     def wheelEvent(self, event: QWheelEvent) -> None:
         if event.angleDelta().y() > 0:
@@ -416,9 +550,13 @@ class ChemusonCanvas(QGraphicsView):
             self.scale(1 / 1.2, 1 / 1.2)
 
     def clear_canvas(self) -> None:
+        self._overlays_ready = False
+        self._cancel_drag()
+        self.undo_stack.blockSignals(True)
         self.scene.clear()
         self.model.clear()
         self.undo_stack.clear()
+        self.undo_stack.blockSignals(False)
         self.atom_items.clear()
         self.bond_items.clear()
         self._ring_centers.clear()
@@ -428,7 +566,6 @@ class ChemusonCanvas(QGraphicsView):
         self.bond_anchor_id = None
         self.hovered_atom_id = None
         self.hovered_bond_id = None
-        self._overlays_ready = False
         self._create_paper()
         self._create_overlays()
 
@@ -535,6 +672,8 @@ class ChemusonCanvas(QGraphicsView):
                 atom.element,
                 atom.x + dx,
                 atom.y + dy,
+                is_explicit=atom.is_explicit,
+                auto_hydrogens=False,
             )
             self.undo_stack.push(cmd)
             if cmd.atom_id is not None:
@@ -604,10 +743,22 @@ class ChemusonCanvas(QGraphicsView):
         if item is not None:
             item.setPos(x, y)
 
-    def update_atom_item_element(self, atom_id: int, element: str) -> None:
+    def update_atom_item_element(
+        self,
+        atom_id: int,
+        element: str,
+        is_explicit: Optional[bool] = None,
+    ) -> None:
         item = self.atom_items.get(atom_id)
         if item is not None:
-            item.set_element(element)
+            if is_explicit is None:
+                is_explicit = self.model.get_atom(atom_id).is_explicit
+            item.set_element(element, is_explicit=is_explicit)
+
+    def update_atom_item_charge(self, atom_id: int, charge: int) -> None:
+        item = self.atom_items.get(atom_id)
+        if item is not None:
+            item.set_charge(charge)
 
     def remove_atom_item(self, atom_id: int) -> None:
         item = self.atom_items.pop(atom_id, None)
@@ -636,6 +787,29 @@ class ChemusonCanvas(QGraphicsView):
         self.scene.addItem(item)
         self.bond_items[bond.id] = item
 
+    def _add_arrow_item(self, start: QPointF, end: QPointF, head_at_end: bool) -> None:
+        item = ArrowItem(start, end, head_at_end=head_at_end, style=self.drawing_style)
+        self.scene.addItem(item)
+        self.arrow_items.append(item)
+
+    def _ensure_bracket_preview(self) -> QGraphicsRectItem:
+        if self._bracket_preview is None:
+            preview = QGraphicsRectItem()
+            pen = QPen(QColor("#4A90D9"), 1.0, Qt.PenStyle.DashLine)
+            preview.setPen(pen)
+            preview.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+            preview.setZValue(40)
+            self.scene.addItem(preview)
+            self._bracket_preview = preview
+        self._bracket_preview.setVisible(True)
+        return self._bracket_preview
+
+    def _clear_bracket_preview(self) -> None:
+        if self._bracket_preview is not None:
+            self.scene.removeItem(self._bracket_preview)
+            self._bracket_preview = None
+        self._bracket_drag_start = None
+
     def update_bond_item(self, bond_id: int) -> None:
         bond = self.model.get_bond(bond_id)
         atom1 = self.model.get_atom(bond.a1_id)
@@ -648,6 +822,7 @@ class ChemusonCanvas(QGraphicsView):
                 item.set_ring_context(None)
             item.set_offset_sign(self._bond_offset_sign(bond))
             item.set_bond(bond, atom1, atom2)
+            item.set_style(self.drawing_style, atom1, atom2)
 
     def update_bond_items_for_atoms(self, atom_ids: set[int]) -> None:
         for bond in self.model.bonds.values():
@@ -782,6 +957,19 @@ class ChemusonCanvas(QGraphicsView):
         
         return result
 
+    def apply_drawing_style(self, style: DrawingStyle) -> None:
+        """Apply a new drawing style and refresh items."""
+        self.drawing_style = style
+        self.state.bond_length = style.bond_length_px
+        for item in self.atom_items.values():
+            item.set_style(style)
+        self.update_bond_items_for_atoms(set(self.model.atoms.keys()))
+        for arrow in self.arrow_items:
+            arrow.set_style(style)
+        for bracket in self.bracket_items:
+            bracket.set_style(style)
+        self.refresh_atom_visibility()
+
     def _find_ring_from(self, start: int, adjacency: dict, max_size: int) -> Optional[list]:
         """Find a ring starting from the given atom using DFS."""
         # Simple BFS to find shortest cycle
@@ -853,6 +1041,89 @@ class ChemusonCanvas(QGraphicsView):
                 details = {"type": "bond", "id": bond.id, "order": bond.order, "style": bond.style, "aromatic": bond.is_aromatic}
             
         self.selection_changed.emit(len(selected_atoms), len(selected_bonds), details)
+
+    def _begin_selection_drag(
+        self,
+        start_pos: QPointF,
+        free_select: bool,
+        additive: bool,
+    ) -> None:
+        self._select_drag_mode = "free" if free_select else "rect"
+        self._select_start_pos = start_pos
+        self._select_additive = additive
+        if free_select:
+            path = QPainterPath(start_pos)
+            self._select_path = path
+            if self._select_preview_path is None:
+                item = QGraphicsPathItem()
+                pen = QPen(QColor("#4A90D9"), 1.2, Qt.PenStyle.DashLine)
+                item.setPen(pen)
+                item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+                item.setZValue(40)
+                self.scene.addItem(item)
+                self._select_preview_path = item
+            self._select_preview_path.setPath(path)
+            self._select_preview_path.setVisible(True)
+        else:
+            if self._select_preview_rect is None:
+                rect_item = QGraphicsRectItem()
+                pen = QPen(QColor("#4A90D9"), 1.2, Qt.PenStyle.DashLine)
+                rect_item.setPen(pen)
+                rect_item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+                rect_item.setZValue(40)
+                self.scene.addItem(rect_item)
+                self._select_preview_rect = rect_item
+            self._select_preview_rect.setRect(QRectF(start_pos, start_pos))
+            self._select_preview_rect.setVisible(True)
+
+    def _update_selection_drag(self, scene_pos: QPointF) -> None:
+        if self._select_drag_mode == "free" and self._select_path is not None:
+            self._select_path.lineTo(scene_pos)
+            if self._select_preview_path is not None:
+                self._select_preview_path.setPath(self._select_path)
+            return
+        if self._select_drag_mode == "rect" and self._select_start_pos is not None:
+            if self._select_preview_rect is not None:
+                self._select_preview_rect.setRect(QRectF(self._select_start_pos, scene_pos).normalized())
+
+    def _finalize_selection_drag(self) -> None:
+        if self._select_drag_mode is None:
+            return
+        items: list = []
+        if self._select_drag_mode == "free" and self._select_path is not None:
+            path = QPainterPath(self._select_path)
+            path.closeSubpath()
+            items = [
+                item
+                for item in self.scene.items(path)
+                if isinstance(item, (AtomItem, BondItem))
+            ]
+        elif self._select_drag_mode == "rect" and self._select_start_pos is not None:
+            rect = QRectF(self._select_start_pos, self._last_scene_pos).normalized()
+            items = [
+                item
+                for item in self.scene.items(rect)
+                if isinstance(item, (AtomItem, BondItem))
+            ]
+
+        if not self._select_additive:
+            self.scene.clearSelection()
+        for item in items:
+            item.setSelected(True)
+        self._sync_selection_from_scene()
+        self._clear_selection_drag()
+
+    def _clear_selection_drag(self) -> None:
+        self._select_drag_mode = None
+        self._select_start_pos = None
+        self._select_path = None
+        self._select_additive = False
+        if self._select_preview_path is not None:
+            self.scene.removeItem(self._select_preview_path)
+            self._select_preview_path = None
+        if self._select_preview_rect is not None:
+            self.scene.removeItem(self._select_preview_rect)
+            self._select_preview_rect = None
 
     def _set_bond_anchor(self, atom_id: int, reset_angle: bool = False) -> None:
         if self.bond_anchor_id is not None and self.bond_anchor_id in self.atom_items:
@@ -993,6 +1264,7 @@ class ChemusonCanvas(QGraphicsView):
             self.state.default_element,
             scene_pos.x(),
             scene_pos.y(),
+            expected_bonds=1,
         )
         self.undo_stack.push(atom_cmd)
         anchor_id = atom_cmd.atom_id
@@ -1016,7 +1288,7 @@ class ChemusonCanvas(QGraphicsView):
         if not (modifiers & Qt.KeyboardModifier.AltModifier) and len(existing_angles) <= 1:
             angle = self._default_bond_angle(anchor_id)
         else:
-            near_anchor = dist < DEFAULT_BOND_LENGTH * 0.6
+            near_anchor = dist < self.state.bond_length * 0.6
             aligned_with_existing = False
             if existing_angles:
                 nearest = min(self._angle_distance(angle_from_click, a) for a in existing_angles)
@@ -1036,14 +1308,15 @@ class ChemusonCanvas(QGraphicsView):
 
     def _add_bond_with_new_atom(self, anchor_id: int, angle: float) -> None:
         anchor = self.model.get_atom(anchor_id)
-        new_x = anchor.x + DEFAULT_BOND_LENGTH * math.cos(angle)
-        new_y = anchor.y + DEFAULT_BOND_LENGTH * math.sin(angle)
+        new_x = anchor.x + self.state.bond_length * math.cos(angle)
+        new_y = anchor.y + self.state.bond_length * math.sin(angle)
         atom_cmd = AddAtomCommand(
             self.model,
             self,
             self.state.default_element,
             new_x,
             new_y,
+            expected_bonds=1,
         )
         self.undo_stack.push(atom_cmd)
         new_atom_id = atom_cmd.atom_id
@@ -1196,6 +1469,8 @@ class ChemusonCanvas(QGraphicsView):
         self._drag_anchor = None
         self._ring_last_vertices = None
         self._chain_last_points = None
+        self._drag_free_orientation = False
+        self._clear_selection_drag()
         if self._overlays_ready:
             self._optimize_zone.hide_zone()
             self._preview_bond_item.hide_preview()
@@ -1207,6 +1482,7 @@ class ChemusonCanvas(QGraphicsView):
         self._cancel_drag()
         self._sync_scene_with_model()
         self._kekulize_aromatic_bonds()
+        self.show_valence_errors(self.model.validate())
         self._update_hover(self._last_scene_pos)
 
     def _sync_scene_with_model(self) -> None:
@@ -1238,6 +1514,11 @@ class ChemusonCanvas(QGraphicsView):
 
         self.refresh_atom_visibility()
         self.refresh_aromatic_circles()
+
+    def show_valence_errors(self, errors: Iterable[int]) -> None:
+        error_ids = set(errors)
+        for atom_id, item in self.atom_items.items():
+            item.set_valence_error(atom_id in error_ids)
 
     def _get_anchor_bond_angles_deg(self, anchor_id: int) -> list[float]:
         angles = []
@@ -1509,6 +1790,7 @@ class ChemusonCanvas(QGraphicsView):
     # -------------------------------------------------------------------------
     def _begin_place_bond(self, anchor_id: Optional[int], scene_pos: QPointF) -> None:
         self._drag_mode = "place_bond"
+        self._drag_free_orientation = False
         if anchor_id is None:
             self._drag_anchor = {"type": "free", "id": None, "pos": scene_pos}
             self._optimize_zone.hide_zone()
@@ -1583,6 +1865,7 @@ class ChemusonCanvas(QGraphicsView):
                 self.state.default_element,
                 p0.x(),
                 p0.y(),
+                expected_bonds=1,
             )
             self.undo_stack.push(anchor_cmd)
             anchor_id = anchor_cmd.atom_id
@@ -1659,7 +1942,8 @@ class ChemusonCanvas(QGraphicsView):
             use_optimize = dist <= self._optimize_zone.radius()
 
         cursor_theta = angle_deg(anchor, scene_pos)
-        if not self.state.fixed_angles or use_alt:
+        free_drag = self._drag_mode == "place_bond" and self._drag_free_orientation
+        if not self.state.fixed_angles or use_alt or free_drag:
             theta = cursor_theta
             length = self.state.bond_length if self.state.fixed_lengths and not use_shift else max(5.0, dist)
             p1 = endpoint_from_angle_len(anchor, theta, length)

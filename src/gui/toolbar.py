@@ -69,8 +69,8 @@ class ChemusonToolbar(QToolBar):
         self.annotation_button, self.annotation_action = self._add_palette_button(
             draw_atom_icon("T"), "Anotaciones", "tool_annotation"
         )
-        self.annotation_action.setToolTip("Anotaciones (Próximamente)")
-        self.annotation_button.setToolTip("Anotaciones (Próximamente)")
+        self.annotation_action.setToolTip("Anotaciones")
+        self.annotation_button.setToolTip("Anotaciones")
         self._build_annotation_palette(self.annotation_button.menu())
 
         default_bond_spec = {
@@ -176,6 +176,12 @@ class ChemusonToolbar(QToolBar):
             "Wavy",
             {"order": 1, "style": BondStyle.WAVY, "stereo": BondStereo.EITHER, "mode": "set"},
         )
+        self._add_bond_action(
+            menu,
+            draw_bond_icon("single"),
+            "Enlace intermolecular",
+            {"order": 1, "style": BondStyle.INTERACTION, "stereo": BondStereo.NONE, "mode": "set"},
+        )
 
     def _add_bond_action(self, menu: QMenu, icon, text: str, spec: dict) -> None:
         action = QAction(icon, text, self)
@@ -187,20 +193,22 @@ class ChemusonToolbar(QToolBar):
         menu.addAction(action)
 
     def _build_ring_palette(self, menu: QMenu) -> None:
-        for size in range(3, 9):
-            self._add_ring_action(
-                menu,
-                draw_ring_icon(),
-                f"Anillo {size}",
-                {"size": size, "aromatic": False},
-            )
-        menu.addSeparator()
+        menu.addSection("Anillos aromáticos")
         self._add_ring_action(
             menu,
             draw_ring_icon(),
             "Benceno",
             {"size": 6, "aromatic": True},
         )
+        menu.addSeparator()
+        menu.addSection("Cicloalcanos")
+        for size in range(3, 13):
+            self._add_ring_action(
+                menu,
+                draw_ring_icon(),
+                f"Anillo {size}",
+                {"size": size, "aromatic": False},
+            )
         menu.addSeparator()
         custom = QAction("Tamaño personalizado...", self)
         custom.triggered.connect(self._select_custom_ring_size)
@@ -230,18 +238,57 @@ class ChemusonToolbar(QToolBar):
         menu.addAction(periodic_action)
 
     def _build_annotation_palette(self, menu: QMenu) -> None:
-        actions = [
-            ("Texto", "tool_text", draw_atom_icon("T")),
-            ("Flecha directa", "tool_arrow_forward", draw_generic_icon("pan")),
-            ("Flecha retro", "tool_arrow_retro", draw_generic_icon("pan")),
-            ("Corchetes", "tool_brackets", draw_atom_icon("[]")),
-            ("Carga", "tool_charge", draw_atom_icon("+")),
-        ]
-        for label, tool_id, icon in actions:
-            action = QAction(icon, label, self)
-            action.setEnabled(False)
-            action.setToolTip(f"{label} (Próximamente)")
-            menu.addAction(action)
+        text_action = QAction(draw_atom_icon("T"), "Texto", self)
+        text_action.setEnabled(False)
+        text_action.setToolTip("Texto (Próximamente)")
+        menu.addAction(text_action)
+
+        menu.addSeparator()
+        forward_action = QAction(draw_generic_icon("pan"), "Flecha directa", self)
+        forward_action.triggered.connect(
+            lambda checked=False: self._select_annotation_tool("tool_arrow_forward")
+        )
+        menu.addAction(forward_action)
+
+        retro_action = QAction(draw_generic_icon("pan"), "Flecha retro", self)
+        retro_action.triggered.connect(
+            lambda checked=False: self._select_annotation_tool("tool_arrow_retro")
+        )
+        menu.addAction(retro_action)
+
+        menu.addSeparator()
+        brackets_menu = QMenu("Corchetes", menu)
+        menu.addMenu(brackets_menu)
+
+        paren_action = QAction(draw_atom_icon("()"), "Paréntesis ()", self)
+        paren_action.triggered.connect(
+            lambda checked=False: self._select_annotation_tool("tool_brackets_round")
+        )
+        brackets_menu.addAction(paren_action)
+
+        square_action = QAction(draw_atom_icon("[]"), "Corchetes []", self)
+        square_action.triggered.connect(
+            lambda checked=False: self._select_annotation_tool("tool_brackets_square")
+        )
+        brackets_menu.addAction(square_action)
+
+        curly_action = QAction(draw_atom_icon("{}"), "Llaves {}", self)
+        curly_action.triggered.connect(
+            lambda checked=False: self._select_annotation_tool("tool_brackets_curly")
+        )
+        brackets_menu.addAction(curly_action)
+
+        charge_action = QAction(draw_atom_icon("+"), "Carga", self)
+        charge_action.triggered.connect(
+            lambda checked=False: self._select_annotation_tool("tool_charge")
+        )
+        menu.addAction(charge_action)
+
+    def _select_annotation_tool(self, tool_id: str) -> None:
+        self.annotation_action.setChecked(True)
+        self.annotation_action.setToolTip("Anotaciones")
+        self.annotation_button.setToolTip("Anotaciones")
+        self.tool_changed.emit(tool_id)
 
     def _select_bond_palette(self, button: QToolButton, icon, text: str, spec: dict) -> None:
         self.bond_action.setIcon(icon)

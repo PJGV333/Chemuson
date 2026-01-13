@@ -10,6 +10,7 @@ class BondStyle(str, Enum):
     WEDGE = "wedge"
     HASHED = "hashed"
     WAVY = "wavy"
+    INTERACTION = "interaction"
 
 
 class BondStereo(str, Enum):
@@ -30,6 +31,7 @@ class Atom:
     explicit_h: Optional[int] = None
     mapping: Optional[int] = None
     is_query: bool = False
+    is_explicit: bool = False
 
 
 @dataclass
@@ -44,6 +46,7 @@ class Bond:
     display_order: Optional[int] = None
     is_query: bool = False
     ring_id: Optional[int] = None
+    length_px: Optional[float] = None
 
 
 @dataclass
@@ -60,6 +63,7 @@ class ChemState:
     bond_length: float = 40.0
     active_ring_size: int = 6
     active_ring_aromatic: bool = False
+    active_bracket_type: str = "[]"
     default_element: str = "C"
     selected_atoms: Set[int] = field(default_factory=set)
     selected_bonds: Set[int] = field(default_factory=set)
@@ -87,6 +91,7 @@ class MolGraph:
         explicit_h: Optional[int] = None,
         mapping: Optional[int] = None,
         is_query: bool = False,
+        is_explicit: bool = False,
     ) -> Atom:
         if atom_id is None:
             atom_id = self._next_atom_id
@@ -103,6 +108,7 @@ class MolGraph:
             explicit_h=explicit_h,
             mapping=mapping,
             is_query=is_query,
+            is_explicit=is_explicit,
         )
         self.atoms[atom_id] = atom
         return atom
@@ -127,6 +133,7 @@ class MolGraph:
         display_order: Optional[int] = None,
         is_query: bool = False,
         ring_id: Optional[int] = None,
+        length_px: Optional[float] = None,
     ) -> Bond:
         if bond_id is None:
             bond_id = self._next_bond_id
@@ -144,6 +151,7 @@ class MolGraph:
             display_order=display_order,
             is_query=is_query,
             ring_id=ring_id,
+            length_px=length_px,
         )
         self.bonds[bond_id] = bond
         return bond
@@ -168,9 +176,20 @@ class MolGraph:
         atom.x = x
         atom.y = y
 
-    def update_atom_element(self, atom_id: int, element: str) -> None:
+    def update_atom_element(
+        self,
+        atom_id: int,
+        element: str,
+        is_explicit: Optional[bool] = None,
+    ) -> None:
         atom = self.atoms[atom_id]
         atom.element = element
+        if is_explicit is not None:
+            atom.is_explicit = is_explicit
+
+    def update_atom_charge(self, atom_id: int, charge: int) -> None:
+        atom = self.atoms[atom_id]
+        atom.charge = charge
 
     def update_bond(
         self,
@@ -194,25 +213,41 @@ class MolGraph:
             bond.display_order = display_order
         return bond
 
+    def update_bond_length(self, bond_id: int, length_px: Optional[float]) -> None:
+        bond = self.bonds[bond_id]
+        bond.length_px = length_px
+
     def clear(self) -> None:
         self.atoms.clear()
         self.bonds.clear()
         self._next_atom_id = 1
         self._next_bond_id = 1
 
-    def validate(self) -> List[str]:
-        errors: List[str] = []
-        seen_pairs: Set[frozenset[int]] = set()
+    def validate(self) -> List[int]:
+        valence_map = {
+            "H": 1,
+            "C": 4,
+            "N": 3,
+            "O": 2,
+            "S": 2,
+            "P": 3,
+            "F": 1,
+            "Cl": 1,
+            "Br": 1,
+            "I": 1,
+        }
+        bond_order_sum: Dict[int, int] = {atom_id: 0 for atom_id in self.atoms}
         for bond in self.bonds.values():
-            if bond.a1_id not in self.atoms:
-                errors.append(f"Bond {bond.id} missing atom {bond.a1_id}")
-            if bond.a2_id not in self.atoms:
-                errors.append(f"Bond {bond.id} missing atom {bond.a2_id}")
-            if bond.a1_id == bond.a2_id:
-                errors.append(f"Bond {bond.id} connects atom to itself")
-            pair = frozenset({bond.a1_id, bond.a2_id})
-            if pair in seen_pairs:
-                errors.append(f"Duplicate bond between {bond.a1_id} and {bond.a2_id}")
-            else:
-                seen_pairs.add(pair)
+            if bond.a1_id in bond_order_sum:
+                bond_order_sum[bond.a1_id] += bond.order
+            if bond.a2_id in bond_order_sum:
+                bond_order_sum[bond.a2_id] += bond.order
+
+        errors: List[int] = []
+        for atom_id, atom in self.atoms.items():
+            expected = valence_map.get(atom.element)
+            if expected is None:
+                continue
+            if bond_order_sum.get(atom_id, 0) != expected:
+                errors.append(atom_id)
         return errors

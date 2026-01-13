@@ -3,12 +3,14 @@ Chemuson Main Window
 Page-based molecular editor with menu bar, toolbars, and paper canvas.
 """
 from PyQt6.QtWidgets import (
+    QDialog,
+    QInputDialog,
     QMainWindow,
-    QToolBar,
-    QMenuBar,
     QMenu,
+    QMenuBar,
     QFileDialog,
     QMessageBox,
+    QToolBar,
 )
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QAction, QKeySequence, QIcon, QPainter
@@ -20,7 +22,7 @@ from gui.toolbar import ChemusonToolbar
 from gui.styles import MAIN_STYLESHEET, TOOL_PALETTE_STYLESHEET
 from gui.icons import draw_generic_icon
 from gui.docks import PlantillasDock, InspectorDock
-from gui.dialogs import PreferencesDialog, QuickStartDialog
+from gui.dialogs import PreferencesDialog, QuickStartDialog, StyleDialog
 
 
 class ChemusonWindow(QMainWindow):
@@ -148,9 +150,21 @@ class ChemusonWindow(QMainWindow):
 
         self.action_rules = QAction("Reglas", self)
         self.action_rules.setEnabled(False)
-        
+
         self.action_clean_2d = QAction("Limpiar 2D", self)
         self.action_clean_2d.triggered.connect(self._on_clean_2d)
+
+        self.action_style = QAction("Estilo de dibujo...", self)
+        self.action_style.triggered.connect(self._on_style_dialog)
+
+        self.action_import_smiles = QAction("Importar SMILES...", self)
+        self.action_import_smiles.triggered.connect(self._on_import_smiles)
+
+        self.action_export_smiles = QAction("Exportar SMILES...", self)
+        self.action_export_smiles.triggered.connect(self._on_export_smiles)
+
+        self.action_draw_smiles = QAction("Dibujar desde SMILES...", self)
+        self.action_draw_smiles.triggered.connect(self._on_import_smiles)
 
     def _create_menu_bar(self) -> None:
         """Create the main menu bar with all menus."""
@@ -213,6 +227,8 @@ class ChemusonWindow(QMainWindow):
         view_menu.addSeparator()
         view_menu.addAction(self.action_aromatic_circles)
         view_menu.addSeparator()
+        view_menu.addAction(self.action_style)
+        view_menu.addSeparator()
         view_menu.addAction(self.action_zoom_in)
         view_menu.addAction(self.action_zoom_out)
         view_menu.addAction(self.action_zoom_reset)
@@ -227,6 +243,9 @@ class ChemusonWindow(QMainWindow):
         # === Estructura (Structure) ===
         structure_menu = menubar.addMenu("Estructura")
         structure_menu.addAction(self.action_clean_2d)
+        structure_menu.addSeparator()
+        structure_menu.addAction(self.action_import_smiles)
+        structure_menu.addAction(self.action_export_smiles)
 
         # === Reacción (Reaction) ===
         reaction_menu = menubar.addMenu("Reacción")
@@ -272,6 +291,8 @@ class ChemusonWindow(QMainWindow):
         self.action_zoom_in.setIcon(draw_generic_icon("zoom_in"))
         self.action_zoom_out.setIcon(draw_generic_icon("zoom_out"))
         self.action_clean_2d.setIcon(QIcon.fromTheme("edit-clear", QIcon()))
+        from gui.icons import draw_atom_icon
+        self.action_draw_smiles.setIcon(draw_atom_icon("SMI"))
         
         # File actions
         self.main_toolbar.addAction(self.action_new)
@@ -296,6 +317,8 @@ class ChemusonWindow(QMainWindow):
         
         # Structure actions
         self.main_toolbar.addAction(self.action_clean_2d)
+        self.main_toolbar.addSeparator()
+        self.main_toolbar.addAction(self.action_draw_smiles)
     
     def _connect_undo_redo(self) -> None:
         """Connect undo/redo actions to the canvas undo stack."""
@@ -428,6 +451,13 @@ class ChemusonWindow(QMainWindow):
         dialog.preferences_changed.connect(self._apply_preferences)
         dialog.exec()
 
+    def _on_style_dialog(self) -> None:
+        """Open drawing style dialog."""
+        dialog = StyleDialog(self.canvas.drawing_style, self.canvas.state.bond_length, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            style, _bond_length = dialog.selected_style()
+            self.canvas.apply_drawing_style(style)
+
     def _apply_preferences(self, prefs: dict) -> None:
         self.canvas.state.show_implicit_carbons = prefs.get("show_carbons", False)
         self.canvas.state.show_implicit_hydrogens = prefs.get("show_hydrogens", False)
@@ -501,6 +531,29 @@ class ChemusonWindow(QMainWindow):
             self.statusBar().showMessage("Estructura 2D limpiada")
         except Exception as e:
             self.statusBar().showMessage(f"Error: {e}")
+
+    def _on_import_smiles(self) -> None:
+        """Import a molecule from a SMILES string."""
+        smiles, ok = QInputDialog.getText(self, "Importar SMILES", "SMILES:")
+        if not ok or not smiles.strip():
+            return
+        try:
+            from chemio.rdkit_io import smiles_to_molgraph
+            graph = smiles_to_molgraph(smiles.strip())
+            self.canvas.clear_canvas()
+            self.canvas._insert_molgraph(graph)
+            self.statusBar().showMessage("SMILES importado")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"No se pudo importar SMILES:\n{e}")
+
+    def _on_export_smiles(self) -> None:
+        """Export the current molecule as SMILES."""
+        try:
+            from chemio.rdkit_io import molgraph_to_smiles
+            smiles = molgraph_to_smiles(self.canvas.graph)
+            QMessageBox.information(self, "SMILES", smiles)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"No se pudo exportar SMILES:\n{e}")
     
     # -------------------------------------------------------------------------
     # Help Menu Handlers

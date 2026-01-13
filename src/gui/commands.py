@@ -3,30 +3,192 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Dict, Iterable, List, Optional, Tuple
 
+from PyQt6.QtCore import QPointF
 from PyQt6.QtGui import QUndoCommand
 
 from core.model import BondStyle, BondStereo, MolGraph
+from gui.geom import angle_deg, angle_distance_deg, endpoint_from_angle_len
+
+_IMPLICIT_ELEMENTS = {"C", "H"}
+
+
+def _default_is_explicit(element: str) -> bool:
+    return element not in _IMPLICIT_ELEMENTS
+
+
+def _atom_degree(model: MolGraph, atom_id: int) -> int:
+    return sum(
+        1
+        for bond in model.bonds.values()
+        if bond.a1_id == atom_id or bond.a2_id == atom_id
+    )
+
+
+def _neighbor_angles_deg(model: MolGraph, atom_id: int) -> list[float]:
+    anchor = model.get_atom(atom_id)
+    origin = QPointF(anchor.x, anchor.y)
+    angles: list[float] = []
+    for bond in model.bonds.values():
+        if bond.a1_id == atom_id:
+            other = model.get_atom(bond.a2_id)
+        elif bond.a2_id == atom_id:
+            other = model.get_atom(bond.a1_id)
+        else:
+            continue
+        angles.append(angle_deg(origin, QPointF(other.x, other.y)))
+    return angles
+
+
+def _select_hydrogen_angles(existing_angles_deg: list[float], count: int) -> list[float]:
+    base_angles = [0.0, 120.0, 240.0]
+    if count <= 0:
+        return []
+    if not existing_angles_deg:
+        return base_angles[:count]
+
+    def min_distance(angle: float) -> float:
+        return min(angle_distance_deg(angle, existing) for existing in existing_angles_deg)
+
+    ordered = sorted(base_angles, key=min_distance, reverse=True)
+    return ordered[:count]
+
+
+def _bond_length_from_view(view) -> float:
+    return getattr(getattr(view, "state", None), "bond_length", 40.0)
+
+
+def _remove_hydrogen_specs(model: MolGraph, view, specs: list[tuple[int, float, float, int]]) -> None:
+    for _atom_id, _x, _y, bond_id in specs:
+        if bond_id in model.bonds:
+            model.remove_bond(bond_id)
+            view.remove_bond_item(bond_id)
+    for atom_id, _x, _y, _bond_id in specs:
+        if atom_id in model.atoms:
+            model.remove_atom(atom_id)
+            view.remove_atom_item(atom_id)
+
+
+def _readd_hydrogen_specs(
+    model: MolGraph,
+    view,
+    anchor_id: int,
+    specs: list[tuple[int, float, float, int]],
+) -> None:
+    for atom_id, x, y, _bond_id in specs:
+        atom = model.add_atom("H", x, y, atom_id=atom_id, is_explicit=True)
+        view.add_atom_item(atom)
+    for atom_id, _x, _y, bond_id in specs:
+        bond = model.add_bond(anchor_id, atom_id, bond_id=bond_id, style=BondStyle.PLAIN)
+        view.add_bond_item(bond)
+
+
+def _create_hydrogen_specs(
+    model: MolGraph,
+    view,
+    anchor_id: int,
+    angles_deg: list[float],
+    bond_length: float,
+) -> list[tuple[int, float, float, int]]:
+    anchor = model.get_atom(anchor_id)
+    origin = QPointF(anchor.x, anchor.y)
+    specs: list[tuple[int, float, float, int]] = []
+    for angle_deg_value in angles_deg:
+        pos = endpoint_from_angle_len(origin, angle_deg_value, bond_length)
+        atom = model.add_atom("H", pos.x(), pos.y(), is_explicit=True)
+        view.add_atom_item(atom)
+        bond = model.add_bond(anchor_id, atom.id, style=BondStyle.PLAIN)
+        view.add_bond_item(bond)
+        specs.append((atom.id, pos.x(), pos.y(), bond.id))
+    return specs
+
+
+def _collect_attached_hydrogens(
+    model: MolGraph,
+    atom_id: int,
+) -> tuple[list, list]:
+    removed_atoms = []
+    removed_bonds = []
+    for bond in model.bonds.values():
+        if bond.a1_id == atom_id:
+            other_id = bond.a2_id
+        elif bond.a2_id == atom_id:
+            other_id = bond.a1_id
+        else:
+            continue
+        other = model.atoms.get(other_id)
+        if other is None or other.element != "H":
+            continue
+        if _atom_degree(model, other_id) != 1:
+            continue
+        removed_atoms.append(replace(other))
+        removed_bonds.append(replace(bond))
+    return removed_atoms, removed_bonds
 
 
 class AddAtomCommand(QUndoCommand):
-    def __init__(self, model: MolGraph, view, element: str, x: float, y: float) -> None:
+    def __init__(
+        self,
+        model: MolGraph,
+        view,
+        element: str,
+        x: float,
+        y: float,
+        is_explicit: Optional[bool] = None,
+        auto_hydrogens: bool = True,
+        expected_bonds: int = 0,
+    ) -> None:
         super().__init__("Add atom")
         self._model = model
         self._view = view
         self._element = element
         self._x = x
         self._y = y
+        self._is_explicit = is_explicit
+        self._auto_hydrogens = auto_hydrogens
+        self._expected_bonds = expected_bonds
         self._atom_id: Optional[int] = None
+        self._hydrogen_specs: list[tuple[int, float, float, int]] = []
 
     def redo(self) -> None:
+        is_explicit = self._is_explicit
+        if is_explicit is None:
+            is_explicit = _default_is_explicit(self._element)
         if self._atom_id is None:
-            atom = self._model.add_atom(self._element, self._x, self._y)
+            atom = self._model.add_atom(
+                self._element,
+                self._x,
+                self._y,
+                is_explicit=is_explicit,
+            )
             self._atom_id = atom.id
         else:
-            atom = self._model.add_atom(self._element, self._x, self._y, atom_id=self._atom_id)
+            atom = self._model.add_atom(
+                self._element,
+                self._x,
+                self._y,
+                atom_id=self._atom_id,
+                is_explicit=is_explicit,
+            )
         self._view.add_atom_item(atom)
+        if self._auto_hydrogens and self._element == "N":
+            required = max(0, 3 - (_atom_degree(self._model, atom.id) + self._expected_bonds))
+            if required <= 0:
+                return
+            if self._hydrogen_specs:
+                _readd_hydrogen_specs(self._model, self._view, atom.id, self._hydrogen_specs)
+            else:
+                angles = _select_hydrogen_angles(_neighbor_angles_deg(self._model, atom.id), required)
+                self._hydrogen_specs = _create_hydrogen_specs(
+                    self._model,
+                    self._view,
+                    atom.id,
+                    angles,
+                    _bond_length_from_view(self._view),
+                )
 
     def undo(self) -> None:
+        if self._hydrogen_specs:
+            _remove_hydrogen_specs(self._model, self._view, self._hydrogen_specs)
         atom, removed_bonds = self._model.remove_atom(self._atom_id)
         for bond in removed_bonds:
             self._view.remove_bond_item(bond.id)
@@ -44,15 +206,126 @@ class ChangeAtomCommand(QUndoCommand):
         self._view = view
         self._atom_id = atom_id
         self._old_element = model.get_atom(atom_id).element
+        self._old_is_explicit = model.get_atom(atom_id).is_explicit
         self._new_element = new_element
+        self._new_is_explicit = _default_is_explicit(new_element)
+        self._added_hydrogen_specs: list[tuple[int, float, float, int]] = []
+        self._removed_hydrogens = []
+        self._removed_hydrogen_bonds = []
 
     def redo(self) -> None:
-        self._model.update_atom_element(self._atom_id, self._new_element)
-        self._view.update_atom_item_element(self._atom_id, self._new_element)
+        self._model.update_atom_element(
+            self._atom_id,
+            self._new_element,
+            is_explicit=self._new_is_explicit,
+        )
+        self._view.update_atom_item_element(
+            self._atom_id,
+            self._new_element,
+            is_explicit=self._new_is_explicit,
+        )
+        if self._old_element != "N" and self._new_element == "N":
+            required = max(0, 3 - _atom_degree(self._model, self._atom_id))
+            if required > 0:
+                if self._added_hydrogen_specs:
+                    _readd_hydrogen_specs(
+                        self._model,
+                        self._view,
+                        self._atom_id,
+                        self._added_hydrogen_specs,
+                    )
+                else:
+                    angles = _select_hydrogen_angles(
+                        _neighbor_angles_deg(self._model, self._atom_id),
+                        required,
+                    )
+                    self._added_hydrogen_specs = _create_hydrogen_specs(
+                        self._model,
+                        self._view,
+                        self._atom_id,
+                        angles,
+                        _bond_length_from_view(self._view),
+                    )
+        elif self._old_element == "N" and self._new_element != "N":
+            if not self._removed_hydrogens and not self._removed_hydrogen_bonds:
+                atoms, bonds = _collect_attached_hydrogens(self._model, self._atom_id)
+                self._removed_hydrogens = atoms
+                self._removed_hydrogen_bonds = bonds
+            for bond in list(self._removed_hydrogen_bonds):
+                if bond.id in self._model.bonds:
+                    self._model.remove_bond(bond.id)
+                    self._view.remove_bond_item(bond.id)
+            for atom in list(self._removed_hydrogens):
+                if atom.id in self._model.atoms:
+                    self._model.remove_atom(atom.id)
+                    self._view.remove_atom_item(atom.id)
 
     def undo(self) -> None:
-        self._model.update_atom_element(self._atom_id, self._old_element)
-        self._view.update_atom_item_element(self._atom_id, self._old_element)
+        if self._old_element != "N" and self._new_element == "N":
+            if self._added_hydrogen_specs:
+                _remove_hydrogen_specs(
+                    self._model,
+                    self._view,
+                    self._added_hydrogen_specs,
+                )
+        elif self._old_element == "N" and self._new_element != "N":
+            for atom in self._removed_hydrogens:
+                self._model.add_atom(
+                    atom.element,
+                    atom.x,
+                    atom.y,
+                    atom_id=atom.id,
+                    charge=atom.charge,
+                    isotope=atom.isotope,
+                    explicit_h=atom.explicit_h,
+                    mapping=atom.mapping,
+                    is_query=atom.is_query,
+                    is_explicit=atom.is_explicit,
+                )
+                self._view.add_atom_item(atom)
+            for bond in self._removed_hydrogen_bonds:
+                self._model.add_bond(
+                    bond.a1_id,
+                    bond.a2_id,
+                    bond.order,
+                    bond_id=bond.id,
+                    style=bond.style,
+                    stereo=bond.stereo,
+                    is_aromatic=bond.is_aromatic,
+                    display_order=bond.display_order,
+                    is_query=bond.is_query,
+                    ring_id=bond.ring_id,
+                    length_px=bond.length_px,
+                )
+                self._view.add_bond_item(bond)
+        self._model.update_atom_element(
+            self._atom_id,
+            self._old_element,
+            is_explicit=self._old_is_explicit,
+        )
+        self._view.update_atom_item_element(
+            self._atom_id,
+            self._old_element,
+            is_explicit=self._old_is_explicit,
+        )
+
+
+class ChangeChargeCommand(QUndoCommand):
+    def __init__(self, model: MolGraph, view, atom_id: int, new_charge: int) -> None:
+        super().__init__("Change charge")
+        self._model = model
+        self._view = view
+        self._atom_id = atom_id
+        self._old_charge = model.get_atom(atom_id).charge
+        self._new_charge = new_charge
+
+    def redo(self) -> None:
+        self._model.update_atom_charge(self._atom_id, self._new_charge)
+        self._view.update_atom_item_charge(self._atom_id, self._new_charge)
+
+    def undo(self) -> None:
+        self._model.update_atom_charge(self._atom_id, self._old_charge)
+        self._view.update_atom_item_charge(self._atom_id, self._old_charge)
 
 
 class AddBondCommand(QUndoCommand):
@@ -84,24 +357,29 @@ class AddBondCommand(QUndoCommand):
         self._new_atom_element = new_atom_element
         self._new_atom_pos = new_atom_pos
         self._created_atom_id: Optional[int] = None
+        self._hydrogen_specs: list[tuple[int, float, float, int]] = []
 
     def redo(self) -> None:
         if self._a2_id is None:
             if self._created_atom_id is None:
                 if self._new_atom_element is None or self._new_atom_pos is None:
                     return
+                is_explicit = _default_is_explicit(self._new_atom_element)
                 atom = self._model.add_atom(
                     self._new_atom_element,
                     self._new_atom_pos[0],
                     self._new_atom_pos[1],
+                    is_explicit=is_explicit,
                 )
                 self._created_atom_id = atom.id
             else:
+                is_explicit = _default_is_explicit(self._new_atom_element)
                 atom = self._model.add_atom(
                     self._new_atom_element,
                     self._new_atom_pos[0],
                     self._new_atom_pos[1],
                     atom_id=self._created_atom_id,
+                    is_explicit=is_explicit,
                 )
             self._view.add_atom_item(atom)
             self._a2_id = self._created_atom_id
@@ -129,8 +407,32 @@ class AddBondCommand(QUndoCommand):
                 ring_id=self._ring_id,
             )
         self._view.add_bond_item(bond)
+        if self._a2_id is not None and self._new_atom_element == "N":
+            required = max(0, 3 - _atom_degree(self._model, self._a2_id))
+            if required > 0:
+                if self._hydrogen_specs:
+                    _readd_hydrogen_specs(
+                        self._model,
+                        self._view,
+                        self._a2_id,
+                        self._hydrogen_specs,
+                    )
+                else:
+                    angles = _select_hydrogen_angles(
+                        _neighbor_angles_deg(self._model, self._a2_id),
+                        required,
+                    )
+                    self._hydrogen_specs = _create_hydrogen_specs(
+                        self._model,
+                        self._view,
+                        self._a2_id,
+                        angles,
+                        _bond_length_from_view(self._view),
+                    )
 
     def undo(self) -> None:
+        if self._hydrogen_specs:
+            _remove_hydrogen_specs(self._model, self._view, self._hydrogen_specs)
         bond = self._model.remove_bond(self._bond_id)
         self._view.remove_bond_item(bond.id)
         if self._created_atom_id is not None:
@@ -188,6 +490,24 @@ class ChangeBondCommand(QUndoCommand):
         )
         self._view.update_bond_item(self._bond_id)
 
+
+class ChangeBondLengthCommand(QUndoCommand):
+    def __init__(self, model: MolGraph, view, bond_id: int, new_length: Optional[float]) -> None:
+        super().__init__("Change bond length")
+        self._model = model
+        self._view = view
+        self._bond_id = bond_id
+        bond = model.get_bond(bond_id)
+        self._old_length = bond.length_px
+        self._new_length = new_length
+
+    def redo(self) -> None:
+        self._model.update_bond_length(self._bond_id, self._new_length)
+        self._view.update_bond_item(self._bond_id)
+
+    def undo(self) -> None:
+        self._model.update_bond_length(self._bond_id, self._old_length)
+        self._view.update_bond_item(self._bond_id)
 
 class MoveAtomsCommand(QUndoCommand):
     def __init__(
@@ -272,6 +592,7 @@ class DeleteSelectionCommand(QUndoCommand):
                 explicit_h=atom.explicit_h,
                 mapping=atom.mapping,
                 is_query=atom.is_query,
+                is_explicit=atom.is_explicit,
             )
             self._view.add_atom_item(atom)
         for bond in self._removed_bonds:
@@ -286,6 +607,7 @@ class DeleteSelectionCommand(QUndoCommand):
                 display_order=bond.display_order,
                 is_query=bond.is_query,
                 ring_id=bond.ring_id,
+                length_px=bond.length_px,
             )
             self._view.add_bond_item(bond)
 
@@ -324,10 +646,21 @@ class AddRingCommand(QUndoCommand):
                 continue
             atom_id = self._created_atom_ids[idx]
             if atom_id is None:
-                atom = self._model.add_atom(self._element, x, y)
+                atom = self._model.add_atom(
+                    self._element,
+                    x,
+                    y,
+                    is_explicit=_default_is_explicit(self._element),
+                )
                 self._created_atom_ids[idx] = atom.id
             else:
-                atom = self._model.add_atom(self._element, x, y, atom_id=atom_id)
+                atom = self._model.add_atom(
+                    self._element,
+                    x,
+                    y,
+                    atom_id=atom_id,
+                    is_explicit=_default_is_explicit(self._element),
+                )
             self._view.add_atom_item(atom)
             atom_ids.append(self._created_atom_ids[idx])
 
@@ -400,6 +733,7 @@ class AddRingCommand(QUndoCommand):
                     display_order=bond.display_order,
                     is_query=bond.is_query,
                     ring_id=bond.ring_id,
+                    length_px=bond.length_px,
                 )
                 self._view.add_bond_item(bond)
                 self._view.update_bond_item(bond.id)
@@ -459,10 +793,21 @@ class AddChainCommand(QUndoCommand):
         for idx, (x, y) in enumerate(self._positions):
             atom_id = self._created_atom_ids[idx]
             if atom_id is None:
-                atom = self._model.add_atom(self._element, x, y)
+                atom = self._model.add_atom(
+                    self._element,
+                    x,
+                    y,
+                    is_explicit=_default_is_explicit(self._element),
+                )
                 self._created_atom_ids[idx] = atom.id
             else:
-                atom = self._model.add_atom(self._element, x, y, atom_id=atom_id)
+                atom = self._model.add_atom(
+                    self._element,
+                    x,
+                    y,
+                    atom_id=atom_id,
+                    is_explicit=_default_is_explicit(self._element),
+                )
             self._view.add_atom_item(atom)
             bond_id = self._created_bond_ids[idx]
             bond = self._model.add_bond(

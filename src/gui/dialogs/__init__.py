@@ -1,20 +1,31 @@
 """
 Chemuson Dialogs
-Preferences and quick start dialogs.
+Preferences and style dialogs.
 """
-from PyQt6.QtWidgets import (
-    QDialog,
-    QTabWidget,
-    QWidget,
-    QVBoxLayout,
-    QLabel,
-    QCheckBox,
-    QDialogButtonBox,
-    QTextBrowser,
-)
+from __future__ import annotations
+
+from dataclasses import replace
+
 from PyQt6.QtCore import pyqtSignal, Qt
+from PyQt6.QtGui import QColor
+from PyQt6.QtWidgets import (
+    QCheckBox,
+    QColorDialog,
+    QDialog,
+    QDialogButtonBox,
+    QDoubleSpinBox,
+    QFormLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QTabWidget,
+    QTextBrowser,
+    QVBoxLayout,
+    QWidget,
+)
 
 from core.model import ChemState
+from gui.style import DrawingStyle
 
 
 class PreferencesDialog(QDialog):
@@ -91,6 +102,113 @@ class PreferencesDialog(QDialog):
         }
         self.preferences_changed.emit(prefs)
         self.accept()
+
+
+class StyleDialog(QDialog):
+    """Dialog for editing drawing style properties."""
+
+    def __init__(self, current_style: DrawingStyle, bond_length: float, parent=None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Estilo de dibujo")
+        self.setMinimumWidth(360)
+
+        self._style = current_style
+        self._bond_length = bond_length
+        self._bond_color = QColor(current_style.bond_color)
+        self._atom_fill_color = QColor(current_style.atom_fill_color)
+        self._atom_stroke_color = QColor(current_style.atom_stroke_color)
+        self._result_style: DrawingStyle | None = None
+        self._result_bond_length: float | None = None
+
+        form = QFormLayout()
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
+
+        self.stroke_spin = QDoubleSpinBox()
+        self.stroke_spin.setRange(0.5, 8.0)
+        self.stroke_spin.setSingleStep(0.1)
+        self.stroke_spin.setValue(current_style.stroke_px)
+        form.addRow("Grosor de línea", self.stroke_spin)
+
+        self.length_spin = QDoubleSpinBox()
+        self.length_spin.setRange(10.0, 120.0)
+        self.length_spin.setSingleStep(1.0)
+        self.length_spin.setValue(bond_length)
+        form.addRow("Longitud de enlace", self.length_spin)
+
+        bond_row, self.bond_color_btn = self._build_color_row(self._bond_color)
+        form.addRow("Color de enlaces", bond_row)
+
+        atom_fill_row, self.atom_fill_btn = self._build_color_row(self._atom_fill_color)
+        form.addRow("Relleno de vértices", atom_fill_row)
+
+        atom_stroke_row, self.atom_stroke_btn = self._build_color_row(self._atom_stroke_color)
+        form.addRow("Borde de vértices", atom_stroke_row)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self._on_accept)
+        buttons.rejected.connect(self.reject)
+
+        layout = QVBoxLayout(self)
+        layout.addLayout(form)
+        layout.addWidget(buttons)
+
+    def _build_color_row(self, color: QColor) -> tuple[QWidget, QPushButton]:
+        button = QPushButton()
+        button.setFixedWidth(60)
+        self._set_button_color(button, color)
+        button.clicked.connect(lambda: self._pick_color(button))
+
+        row = QWidget()
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(button)
+        layout.addStretch()
+        return row, button
+
+    def _set_button_color(self, button: QPushButton, color: QColor) -> None:
+        button.setStyleSheet(
+            f"background-color: {color.name()}; border: 1px solid #666666;")
+
+    def _pick_color(self, button: QPushButton) -> None:
+        if button is self.bond_color_btn:
+            initial = QColor(self._bond_color)
+        elif button is self.atom_fill_btn:
+            initial = QColor(self._atom_fill_color)
+        elif button is self.atom_stroke_btn:
+            initial = QColor(self._atom_stroke_color)
+        else:
+            initial = QColor(button.palette().button().color())
+        picked = QColorDialog.getColor(initial, self, "Seleccionar color")
+        if not picked.isValid():
+            return
+        self._set_button_color(button, picked)
+        if button is self.bond_color_btn:
+            self._bond_color = picked
+        elif button is self.atom_fill_btn:
+            self._atom_fill_color = picked
+        elif button is self.atom_stroke_btn:
+            self._atom_stroke_color = picked
+
+    def _on_accept(self) -> None:
+        stroke = self.stroke_spin.value()
+        bond_length = self.length_spin.value()
+        self._result_style = replace(
+            self._style,
+            bond_length_px=bond_length,
+            stroke_px=stroke,
+            bond_color=self._bond_color.name(),
+            atom_fill_color=self._atom_fill_color.name(),
+            atom_stroke_color=self._atom_stroke_color.name(),
+        )
+        self._result_bond_length = bond_length
+        self.accept()
+
+    def selected_style(self) -> tuple[DrawingStyle, float]:
+        if self._result_style is None or self._result_bond_length is None:
+            return self._style, self._bond_length
+        return self._result_style, self._result_bond_length
 
 
 class QuickStartDialog(QDialog):

@@ -11,6 +11,9 @@ from PyQt6.QtCore import Qt
 class DrawingStyle:
     bond_length_px: float
     stroke_px: float
+    bond_color: str
+    atom_fill_color: str
+    atom_stroke_color: str
     double_offset_px: float
     inner_trim_px: float
     bond_end_shrink_px: float
@@ -26,6 +29,9 @@ class DrawingStyle:
 CHEMDOODLE_LIKE = DrawingStyle(
     bond_length_px=40.0,
     stroke_px=2.6,
+    bond_color="#333333",
+    atom_fill_color="#FFFFFF",
+    atom_stroke_color="#333333",
     double_offset_px=4.2,
     inner_trim_px=7.0,
     bond_end_shrink_px=0.0,

@@ -104,7 +104,13 @@ def rdkit_to_molgraph(mol) -> MolGraph:
     for atom in mol.GetAtoms():
         idx = atom.GetIdx()
         pos = conf.GetAtomPosition(idx)
-        new_atom = graph.add_atom(atom.GetSymbol(), pos.x, pos.y)
+        symbol = atom.GetSymbol()
+        new_atom = graph.add_atom(
+            symbol,
+            pos.x,
+            pos.y,
+            is_explicit=symbol != "C",
+        )
         new_atom.charge = atom.GetFormalCharge()
         if atom.GetIsotope():
             new_atom.isotope = atom.GetIsotope()

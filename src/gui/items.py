@@ -5,6 +5,7 @@ QGraphicsItem subclasses for atoms and bonds with professional rendering.
 from __future__ import annotations
 
 import math
+from typing import Optional
 from PyQt6.QtWidgets import (
     QGraphicsEllipseItem,
     QGraphicsPathItem,
@@ -50,8 +51,12 @@ class AtomItem(QGraphicsEllipseItem):
         self._radius = radius
         self._show_carbon = show_carbon
         self._show_hydrogen = show_hydrogen
+        self._is_explicit = atom.is_explicit
         self._is_selected = False
         self._is_hover = False
+        self._valence_error = False
+        self._element_color = QColor(ELEMENT_COLORS.get(atom.element, "#333333"))
+        self._charge = atom.charge
         self._style = style
         
         self.setPos(atom.x, atom.y)
@@ -61,7 +66,15 @@ class AtomItem(QGraphicsEllipseItem):
         self.label = QGraphicsTextItem(atom.element, self)
         font = QFont("Arial", 10, QFont.Weight.Bold)
         self.label.setFont(font)
+
+        # Charge label
+        self.charge_label = QGraphicsTextItem("", self)
+        charge_font = QFont("Arial", 8, QFont.Weight.Bold)
+        self.charge_label.setFont(charge_font)
+        self.charge_label.setDefaultTextColor(QColor("#333333"))
+
         self._center_label()
+        self._update_charge_label()
         
         # Set color based on element
         self._set_element_color()
@@ -73,34 +86,60 @@ class AtomItem(QGraphicsEllipseItem):
         """Center the label text within the atom circle."""
         rect = self.label.boundingRect()
         self.label.setPos(-rect.width() / 2, -rect.height() / 2)
+        if hasattr(self, "charge_label"):
+            self._position_charge_label()
+
+    def _position_charge_label(self) -> None:
+        rect = self.label.boundingRect()
+        x = rect.width() / 2 + 2
+        y = -rect.height() / 2 - 2
+        self.charge_label.setPos(x, y)
     
     def _set_element_color(self) -> None:
         """Set the label color based on element type."""
-        color = ELEMENT_COLORS.get(self.element, '#333333')
-        self.label.setDefaultTextColor(QColor(color))
+        color = ELEMENT_COLORS.get(self.element, "#333333")
+        self._element_color = QColor(color)
+        self._apply_label_style()
+
+    def _apply_label_style(self) -> None:
+        font = self.label.font()
+        font.setUnderline(self._valence_error)
+        self.label.setFont(font)
+        if self._valence_error:
+            self.label.setDefaultTextColor(QColor("#C0392B"))
+        else:
+            self.label.setDefaultTextColor(self._element_color)
     
+    def _should_hide_element(self) -> bool:
+        if self._is_explicit:
+            return False
+        if self.element == "C" and not self._show_carbon:
+            return True
+        if self.element == "H" and not self._show_hydrogen:
+            return True
+        return False
+
+    def _should_draw_circle(self) -> bool:
+        return not (self._is_explicit and self.element not in {"C", "H"})
+
     def _update_visibility(self) -> None:
         """Hide circle/label for implicit C or H based on settings."""
-        hide_element = False
-        
-        # Check if this is an implicit carbon or hydrogen
-        if self.element == "C" and not self._show_carbon:
-            hide_element = True
-        elif self.element == "H" and not self._show_hydrogen:
-            hide_element = True
-        
-        if hide_element:
+        if self._should_hide_element():
             # Make circle invisible but keep selectable (minimal hit area)
             self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
             self.setPen(QPen(Qt.PenStyle.NoPen))
             self.label.setVisible(False)
-        else:
-            # Normal visible atom with proper styling
-            self._apply_normal_style()
-            self.label.setVisible(True)
+            return
+
+        self.label.setVisible(True)
+        self._apply_normal_style()
     
     def _apply_normal_style(self) -> None:
         """Apply normal (non-hidden) styling based on selection state."""
+        if not self._should_draw_circle():
+            self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+            self.setPen(QPen(Qt.PenStyle.NoPen))
+            return
         if self._is_selected:
             self.setBrush(QBrush(QColor("#C8DFFF")))
             pen = QPen(QColor("#4477AA"), self._style.stroke_px)
@@ -114,8 +153,8 @@ class AtomItem(QGraphicsEllipseItem):
             pen.setJoinStyle(self._style.join_style)
             self.setPen(pen)
         else:
-            self.setBrush(QBrush(Qt.GlobalColor.white))
-            pen = QPen(QColor("#333333"), self._style.stroke_px)
+            self.setBrush(QBrush(QColor(self._style.atom_fill_color)))
+            pen = QPen(QColor(self._style.atom_stroke_color), self._style.stroke_px)
             pen.setCapStyle(self._style.cap_style)
             pen.setJoinStyle(self._style.join_style)
             self.setPen(pen)
@@ -134,21 +173,45 @@ class AtomItem(QGraphicsEllipseItem):
     def set_hover(self, hover: bool) -> None:
         """Set hover state."""
         self._is_hover = hover
-        # Only update if currently visible
-        is_hidden = (
-            (self.element == "C" and not self._show_carbon) or
-            (self.element == "H" and not self._show_hydrogen)
-        )
-        if not is_hidden:
+        if not self._should_hide_element():
             self._apply_normal_style()
     
-    def set_element(self, element: str) -> None:
+    def set_element(self, element: str, is_explicit: Optional[bool] = None) -> None:
         """Change the element of this atom."""
         self.element = element
+        if is_explicit is not None:
+            self._is_explicit = is_explicit
         self.label.setPlainText(element)
         self._center_label()
         self._set_element_color()
         self._update_visibility()
+
+    def set_valence_error(self, has_error: bool) -> None:
+        """Toggle valence error underline on the label."""
+        self._valence_error = has_error
+        self._apply_label_style()
+
+    def set_charge(self, charge: int) -> None:
+        """Update charge label display."""
+        self._charge = charge
+        if charge == 0:
+            self.charge_label.setVisible(False)
+            return
+        sign = "+" if charge > 0 else "-"
+        magnitude = abs(charge)
+        label = sign if magnitude == 1 else f"{sign}{magnitude}"
+        self.charge_label.setPlainText(label)
+        self._position_charge_label()
+        self.charge_label.setVisible(True)
+
+    def _update_charge_label(self) -> None:
+        self.set_charge(self._charge)
+
+    def set_style(self, style: DrawingStyle) -> None:
+        """Update drawing style and refresh visuals."""
+        self._style = style
+        if not self._should_hide_element():
+            self._apply_normal_style()
 
 
 class BondItem(QGraphicsPathItem):
@@ -172,12 +235,13 @@ class BondItem(QGraphicsPathItem):
         self.is_aromatic = bond.is_aromatic
         self.display_order = bond.display_order
         self.ring_id = bond.ring_id
+        self.length_px = bond.length_px
         self.render_aromatic_as_circle = render_aromatic_as_circle
         self._style = style
         self._offset_sign = 1
         self._ring_center: QPointF | None = None
         self.setZValue(-5)
-        pen = QPen(QColor("#333333"), self._style.stroke_px)
+        pen = QPen(QColor(self._style.bond_color), self._style.stroke_px)
         pen.setCapStyle(self._style.cap_style)
         pen.setJoinStyle(self._style.join_style)
         self.setPen(pen)
@@ -193,6 +257,7 @@ class BondItem(QGraphicsPathItem):
         self.is_aromatic = bond.is_aromatic
         self.display_order = bond.display_order
         self.ring_id = bond.ring_id
+        self.length_px = bond.length_px
         self.update_positions(atom1, atom2)
 
     def set_render_aromatic_as_circle(self, enabled: bool) -> None:
@@ -211,18 +276,28 @@ class BondItem(QGraphicsPathItem):
         x1, y1 = atom1.x, atom1.y
         x2, y2 = atom2.x, atom2.y
         path = QPainterPath()
+        color = QColor(self._style.bond_color)
         dx = x2 - x1
         dy = y2 - y1
-        length = math.hypot(dx, dy) or 1.0
+        length = math.hypot(dx, dy)
+        if length <= 1e-6:
+            self.setPath(path)
+            return
         nx = -dy / length  # Normal vector perpendicular to bond
         ny = dx / length
         ux = dx / length
         uy = dy / length
-        shrink = self._style.bond_end_shrink_px
-        p1x = x1 + ux * shrink
-        p1y = y1 + uy * shrink
-        p2x = x2 - ux * shrink
-        p2y = y2 - uy * shrink
+        desired_length = self.length_px if self.length_px is not None else self._style.bond_length_px
+        if desired_length <= 0:
+            desired_length = length
+        render_length = desired_length
+        midx = (x1 + x2) / 2
+        midy = (y1 + y2) / 2
+        half = desired_length / 2
+        p1x = midx - ux * half
+        p1y = midy - uy * half
+        p2x = midx + ux * half
+        p2y = midy + uy * half
 
         offset_sign = self._offset_sign
         if self._ring_center is not None:
@@ -236,7 +311,7 @@ class BondItem(QGraphicsPathItem):
         if self.is_aromatic and self.render_aromatic_as_circle:
             path.moveTo(p1x, p1y)
             path.lineTo(p2x, p2y)
-            pen = QPen(QColor("#333333"), self._style.stroke_px)
+            pen = QPen(color, self._style.stroke_px)
             pen.setCapStyle(self._style.cap_style)
             pen.setJoinStyle(self._style.join_style)
             self.setPen(pen)
@@ -270,12 +345,21 @@ class BondItem(QGraphicsPathItem):
                     path.lineTo(p2x + nx * offset, p2y + ny * offset)
                     path.moveTo(p1x - nx * offset, p1y - ny * offset)
                     path.lineTo(p2x - nx * offset, p2y - ny * offset)
-            pen = QPen(QColor("#333333"), self._style.stroke_px)
+            pen = QPen(color, self._style.stroke_px)
             pen.setCapStyle(self._style.cap_style)
             pen.setJoinStyle(self._style.join_style)
             self.setPen(pen)
             self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
             
+        elif self.style == BondStyle.INTERACTION:
+            path.moveTo(p1x, p1y)
+            path.lineTo(p2x, p2y)
+            pen = QPen(color, self._style.stroke_px, Qt.PenStyle.DotLine)
+            pen.setCapStyle(self._style.cap_style)
+            pen.setJoinStyle(self._style.join_style)
+            self.setPen(pen)
+            self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+
         elif self.style == BondStyle.WEDGE:
             width = self._style.wedge_width_px
             b1x = p2x + nx * (width / 2)
@@ -286,11 +370,11 @@ class BondItem(QGraphicsPathItem):
             path.lineTo(b1x, b1y)
             path.lineTo(b2x, b2y)
             path.closeSubpath()
-            pen = QPen(QColor("#333333"), 1)
+            pen = QPen(color, 1)
             pen.setCapStyle(self._style.cap_style)
             pen.setJoinStyle(self._style.join_style)
             self.setPen(pen)
-            self.setBrush(QBrush(QColor("#333333")))
+            self.setBrush(QBrush(color))
             
         elif self.style == BondStyle.HASHED:
             steps = self._style.hash_count
@@ -301,14 +385,14 @@ class BondItem(QGraphicsPathItem):
                 width = self._style.hash_min_px + (self._style.hash_max_px - self._style.hash_min_px) * t
                 path.moveTo(px + nx * width / 2, py + ny * width / 2)
                 path.lineTo(px - nx * width / 2, py - ny * width / 2)
-            pen = QPen(QColor("#333333"), self._style.hash_stroke_px)
+            pen = QPen(color, self._style.hash_stroke_px)
             pen.setCapStyle(self._style.cap_style)
             pen.setJoinStyle(self._style.join_style)
             self.setPen(pen)
             self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
             
         elif self.style == BondStyle.WAVY:
-            segments = max(6, int(length / 6))
+            segments = max(6, int(render_length / 6))
             amplitude = 3.0
             for i in range(segments + 1):
                 t = i / segments
@@ -321,7 +405,7 @@ class BondItem(QGraphicsPathItem):
                     path.moveTo(wx, wy)
                 else:
                     path.lineTo(wx, wy)
-            pen = QPen(QColor("#333333"), self._style.stroke_px)
+            pen = QPen(color, self._style.stroke_px)
             pen.setCapStyle(self._style.cap_style)
             pen.setJoinStyle(self._style.join_style)
             self.setPen(pen)
@@ -329,6 +413,158 @@ class BondItem(QGraphicsPathItem):
 
         self.setPath(path)
 
+    def set_style(self, style: DrawingStyle, atom1: Atom, atom2: Atom) -> None:
+        """Update drawing style and redraw bond."""
+        self._style = style
+        self.update_positions(atom1, atom2)
+
+
+class ArrowItem(QGraphicsPathItem):
+    """Graphics item representing a reaction arrow."""
+
+    def __init__(
+        self,
+        start: QPointF,
+        end: QPointF,
+        head_at_end: bool = True,
+        style: DrawingStyle = CHEMDOODLE_LIKE,
+    ) -> None:
+        super().__init__()
+        self._style = style
+        self._head_at_end = head_at_end
+        pen = QPen(QColor(self._style.bond_color), self._style.stroke_px)
+        pen.setCapStyle(self._style.cap_style)
+        pen.setJoinStyle(self._style.join_style)
+        self.setPen(pen)
+        self.setBrush(QBrush(QColor(self._style.bond_color)))
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
+        self.setZValue(5)
+        self.update_positions(start, end)
+
+    def update_positions(self, start: QPointF, end: QPointF) -> None:
+        dx = end.x() - start.x()
+        dy = end.y() - start.y()
+        length = math.hypot(dx, dy)
+        if length < 1e-6:
+            self.setPath(QPainterPath())
+            return
+
+        ux = dx / length
+        uy = dy / length
+        head_len = 12.0
+        head_width = 6.0
+
+        if self._head_at_end:
+            tip = end
+            tail = start
+            dir_x = ux
+            dir_y = uy
+        else:
+            tip = start
+            tail = end
+            dir_x = -ux
+            dir_y = -uy
+
+        base_x = tip.x() - dir_x * head_len
+        base_y = tip.y() - dir_y * head_len
+        nx = -dir_y
+        ny = dir_x
+        left = QPointF(base_x + nx * head_width, base_y + ny * head_width)
+        right = QPointF(base_x - nx * head_width, base_y - ny * head_width)
+
+        path = QPainterPath()
+        path.moveTo(tail)
+        path.lineTo(QPointF(base_x, base_y))
+        path.moveTo(left)
+        path.lineTo(tip)
+        path.lineTo(right)
+        path.closeSubpath()
+        self.setPath(path)
+
+    def set_style(self, style: DrawingStyle) -> None:
+        self._style = style
+        pen = QPen(QColor(self._style.bond_color), self._style.stroke_px)
+        pen.setCapStyle(self._style.cap_style)
+        pen.setJoinStyle(self._style.join_style)
+        self.setPen(pen)
+        self.setBrush(QBrush(QColor(self._style.bond_color)))
+
+
+class BracketItem(QGraphicsPathItem):
+    """Graphics item representing brackets around a region."""
+
+    def __init__(
+        self,
+        rect: QRectF,
+        kind: str = "[]",
+        padding: float = 8.0,
+        style: DrawingStyle = CHEMDOODLE_LIKE,
+    ) -> None:
+        super().__init__()
+        self._rect = rect.adjusted(-padding, -padding, padding, padding)
+        self._kind = kind
+        self._style = style
+        pen = QPen(QColor(self._style.bond_color), self._style.stroke_px)
+        pen.setCapStyle(self._style.cap_style)
+        pen.setJoinStyle(self._style.join_style)
+        self.setPen(pen)
+        self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        self.setZValue(2)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
+        self._update_path()
+
+    def _update_path(self) -> None:
+        rect = self._rect
+        path = QPainterPath()
+        height = rect.height()
+        top = rect.top()
+        bottom = rect.bottom()
+        left = rect.left()
+        right = rect.right()
+
+        if self._kind == "()":
+            width = max(8.0, height * 0.12)
+            mid = (top + bottom) / 2
+            path.moveTo(left + width, top)
+            path.quadTo(left, top + height * 0.25, left, mid)
+            path.quadTo(left, bottom - height * 0.25, left + width, bottom)
+
+            path.moveTo(right - width, top)
+            path.quadTo(right, top + height * 0.25, right, mid)
+            path.quadTo(right, bottom - height * 0.25, right - width, bottom)
+        elif self._kind == "{}":
+            width = max(8.0, height * 0.12)
+            mid = (top + bottom) / 2
+            notch = height * 0.08
+            path.moveTo(left + width, top)
+            path.quadTo(left, top + height * 0.2, left + width, mid - notch)
+            path.quadTo(left + width * 1.4, mid, left + width, mid + notch)
+            path.quadTo(left, bottom - height * 0.2, left + width, bottom)
+
+            path.moveTo(right - width, top)
+            path.quadTo(right, top + height * 0.2, right - width, mid - notch)
+            path.quadTo(right - width * 1.4, mid, right - width, mid + notch)
+            path.quadTo(right, bottom - height * 0.2, right - width, bottom)
+        else:  # "[]"
+            arm = max(6.0, height * 0.08)
+            path.moveTo(left + arm, top)
+            path.lineTo(left, top)
+            path.lineTo(left, bottom)
+            path.lineTo(left + arm, bottom)
+
+            path.moveTo(right - arm, top)
+            path.lineTo(right, top)
+            path.lineTo(right, bottom)
+            path.lineTo(right - arm, bottom)
+
+        self.setPath(path)
+
+    def set_style(self, style: DrawingStyle) -> None:
+        self._style = style
+        pen = QPen(QColor(self._style.bond_color), self._style.stroke_px)
+        pen.setCapStyle(self._style.cap_style)
+        pen.setJoinStyle(self._style.join_style)
+        self.setPen(pen)
 
 class AromaticCircleItem(QGraphicsEllipseItem):
     """A circle drawn inside aromatic rings to indicate aromaticity."""
@@ -346,7 +582,7 @@ class AromaticCircleItem(QGraphicsEllipseItem):
 class HoverAtomIndicatorItem(QGraphicsEllipseItem):
     """Amber circle overlay for hovered atoms."""
 
-    def __init__(self, radius: float = 16.0) -> None:
+    def __init__(self, radius: float = 10.0) -> None:
         super().__init__(-radius, -radius, radius * 2, radius * 2)
         self._radius = radius
         pen = QPen(QColor("#E0A825"), 1.5)
