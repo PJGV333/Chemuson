@@ -289,6 +289,13 @@ class ChemusonCanvas(QGraphicsView):
             super().mousePressEvent(event)
             return
 
+        if event.button() == Qt.MouseButton.RightButton:
+            self._update_hover(scene_pos)
+            if self._delete_hovered():
+                return
+            super().mousePressEvent(event)
+            return
+
         if event.button() != Qt.MouseButton.LeftButton:
             super().mousePressEvent(event)
             return
@@ -523,9 +530,12 @@ class ChemusonCanvas(QGraphicsView):
             self.zoom_out()
 
     def keyPressEvent(self, event) -> None:
-        if event.key() == Qt.Key.Key_Delete:
-            self.delete_selection()
-            return
+        if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
+            if self.state.selected_atoms or self.state.selected_bonds:
+                self.delete_selection()
+                return
+            if self._delete_hovered():
+                return
         if self._handle_atom_text_entry(event):
             return
         if self._handle_hotkeys(event):
@@ -607,6 +617,15 @@ class ChemusonCanvas(QGraphicsView):
         if not self.state.selected_atoms and not self.state.selected_bonds:
             return
         self._delete_selection(set(self.state.selected_atoms), set(self.state.selected_bonds))
+
+    def _delete_hovered(self) -> bool:
+        if self.hovered_atom_id is not None:
+            self._delete_selection({self.hovered_atom_id}, set())
+            return True
+        if self.hovered_bond_id is not None:
+            self._delete_selection(set(), {self.hovered_bond_id})
+            return True
+        return False
 
     def _delete_selection(self, atom_ids: set[int], bond_ids: set[int]) -> None:
         if not atom_ids and not bond_ids:
