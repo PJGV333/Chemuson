@@ -29,7 +29,12 @@ from PyQt6.QtGui import (
     QPainterPath,
     QFont,
 )
-from PyQt6.QtCore import Qt, QPointF, QRectF, QBuffer, QMimeData, pyqtSignal
+from PyQt6.QtCore import Qt, QPointF, QRectF, QRect, QSize, QBuffer, QMimeData, pyqtSignal
+
+try:
+    from PyQt6.QtSvg import QSvgGenerator
+except Exception:  # Optional Qt module at runtime
+    QSvgGenerator = None
 
 from core.model import BondStyle, BondStereo, ChemState, MolGraph, VALENCE_MAP
 from gui.items import (
@@ -79,7 +84,6 @@ from gui.commands import (
 from chemio.rdkit_io import (
     molgraph_to_molfile,
     molgraph_to_smiles,
-    molgraph_to_svg,
     molfile_to_molgraph,
     smiles_to_molgraph,
     kekulize_display_orders,
@@ -706,10 +710,9 @@ class ChemusonCanvas(QGraphicsView):
         try:
             molfile = molgraph_to_molfile(self.model)
             smiles = molgraph_to_smiles(self.model)
-            svg = molgraph_to_svg(self.model)
             mime.setData("chemical/x-mdl-molfile", molfile.encode("utf-8"))
-            mime.setData("image/svg+xml", svg.encode("utf-8"))
-            mime.setText(smiles)
+            if smiles:
+                mime.setText(smiles)
         except Exception:
             pass
 
@@ -719,6 +722,7 @@ class ChemusonCanvas(QGraphicsView):
             buffer.open(QBuffer.OpenModeFlag.WriteOnly)
             image.save(buffer, "PNG")
             mime.setData("image/png", buffer.data())
+            mime.setImageData(image)
 
         QApplication.clipboard().setMimeData(mime)
 
@@ -750,22 +754,157 @@ class ChemusonCanvas(QGraphicsView):
         if mime.hasFormat("image/png") or mime.hasImage() or mime.hasFormat("image/svg+xml"):
             self._insert_image_from_clipboard(mime)
 
-    def _render_scene_image(self) -> Optional[QImage]:
-        items = list(self.atom_items.values()) + list(self.bond_items.values())
-        if not items:
+    def _render_scene_bounds(self) -> Optional[QRectF]:
+        rect: Optional[QRectF] = None
+
+        def extend(candidate: QRectF) -> None:
+            nonlocal rect
+            if not candidate.isValid() or candidate.isNull():
+                return
+            if rect is None:
+                rect = candidate
+            else:
+                rect = rect.united(candidate)
+
+        for item in self.atom_items.values():
+            if item.scene() is not self.scene:
+                continue
+            if item.isVisible():
+                extend(item.sceneBoundingRect())
+            if item.label.isVisible():
+                extend(item.label.sceneBoundingRect())
+            if item.charge_label.isVisible():
+                extend(item.charge_label.sceneBoundingRect())
+        for item in self.bond_items.values():
+            if item.scene() is not self.scene:
+                continue
+            if item.isVisible():
+                extend(item.sceneBoundingRect())
+        for item in self.aromatic_circles:
+            if item.scene() is not self.scene:
+                continue
+            if item.isVisible():
+                extend(item.sceneBoundingRect())
+        for item in self.arrow_items:
+            if item.scene() is not self.scene:
+                continue
+            if item.isVisible():
+                extend(item.sceneBoundingRect())
+        for item in self.bracket_items:
+            if item.scene() is not self.scene:
+                continue
+            if item.isVisible():
+                extend(item.sceneBoundingRect())
+
+        if rect is None:
             return None
-        rect = items[0].sceneBoundingRect()
-        for item in items[1:]:
-            rect = rect.united(item.sceneBoundingRect())
-        rect = rect.adjusted(-10, -10, 10, 10)
-        width = max(1, int(rect.width()))
-        height = max(1, int(rect.height()))
-        image = QImage(width, height, QImage.Format.Format_ARGB32)
-        image.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(image)
-        self.scene.render(painter, QRectF(0, 0, width, height), rect)
-        painter.end()
-        return image
+        pad = max(4.0, self.drawing_style.stroke_px * 2.0)
+        return rect.adjusted(-pad, -pad, pad, pad)
+
+    def _hidden_render_items(self) -> list:
+        items = [getattr(self, "paper", None)]
+        overlay_attrs = [
+            "_hover_atom_indicator",
+            "_hover_bond_indicator",
+            "_optimize_zone",
+            "_preview_bond_item",
+            "_preview_ring_item",
+            "_preview_chain_item",
+            "_preview_chain_label",
+        ]
+        for attr in overlay_attrs:
+            items.append(getattr(self, attr, None))
+        items.append(getattr(self, "_bracket_preview", None))
+        items.append(getattr(self, "_select_preview_path", None))
+        items.append(getattr(self, "_select_preview_rect", None))
+        return [
+            item
+            for item in items
+            if item is not None and item.scene() is self.scene
+        ]
+
+    def _with_hidden_render_items(self, render_fn):
+        hidden = []
+        for item in self._hidden_render_items():
+            if item.isVisible():
+                hidden.append(item)
+                item.setVisible(False)
+
+        selected_items = list(self.scene.selectedItems())
+        saved_anchor = self.bond_anchor_id
+        hovered_atom_id = self.hovered_atom_id
+        hovered_bond_id = self.hovered_bond_id
+
+        if hovered_atom_id in self.atom_items:
+            self.atom_items[hovered_atom_id].set_hover(False)
+        self.hovered_atom_id = None
+        self.hovered_bond_id = None
+
+        if selected_items or saved_anchor is not None:
+            self.scene.blockSignals(True)
+            self.scene.clearSelection()
+            self.bond_anchor_id = None
+            self.scene.blockSignals(False)
+            self._sync_selection_from_scene()
+
+        try:
+            return render_fn()
+        finally:
+            if selected_items or saved_anchor is not None:
+                self.scene.blockSignals(True)
+                for item in selected_items:
+                    item.setSelected(True)
+                self.bond_anchor_id = saved_anchor
+                self.scene.blockSignals(False)
+                self._sync_selection_from_scene()
+
+            self.hovered_atom_id = hovered_atom_id
+            self.hovered_bond_id = hovered_bond_id
+            if hovered_atom_id in self.atom_items:
+                self.atom_items[hovered_atom_id].set_hover(True)
+
+            for item in hidden:
+                item.setVisible(True)
+
+    def _render_scene_image(self) -> Optional[QImage]:
+        rect = self._render_scene_bounds()
+        if rect is None:
+            return None
+        width = max(1, math.ceil(rect.width()))
+        height = max(1, math.ceil(rect.height()))
+
+        def render():
+            image = QImage(width, height, QImage.Format.Format_ARGB32)
+            image.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(image)
+            self.scene.render(painter, QRectF(0, 0, width, height), rect)
+            painter.end()
+            return image
+
+        return self._with_hidden_render_items(render)
+
+    def _render_scene_svg(self) -> Optional[bytes]:
+        if QSvgGenerator is None:
+            return None
+        rect = self._render_scene_bounds()
+        if rect is None:
+            return None
+        width = max(1, math.ceil(rect.width()))
+        height = max(1, math.ceil(rect.height()))
+
+        def render():
+            buffer = QBuffer()
+            buffer.open(QBuffer.OpenModeFlag.WriteOnly)
+            generator = QSvgGenerator()
+            generator.setOutputDevice(buffer)
+            generator.setSize(QSize(width, height))
+            generator.setViewBox(QRect(0, 0, width, height))
+            painter = QPainter(generator)
+            self.scene.render(painter, QRectF(0, 0, width, height), rect)
+            painter.end()
+            return bytes(buffer.data())
+
+        return self._with_hidden_render_items(render)
 
     def _insert_molgraph(self, graph: MolGraph) -> None:
         if not graph.atoms:
