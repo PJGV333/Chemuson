@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QGraphicsTextItem,
     QGraphicsItem,
 )
-from PyQt6.QtGui import QColor, QFont, QPainterPath, QPen, QBrush
+from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPainterPath, QPen, QBrush
 from PyQt6.QtCore import Qt, QRectF, QPointF
 
 from core.model import Atom, Bond, BondStyle
@@ -33,6 +33,9 @@ ELEMENT_COLORS = {
     'H': '#FFFFFF',   # Hydrogen - white
 }
 
+LABEL_ELEMENT_COLORS = {**ELEMENT_COLORS, "H": "#333333"}
+ABBREVIATION_LABELS = {"Me", "Et", "Pr", "iPr", "tBu", "Bu", "Ph", "R"}
+
 
 class AtomItem(QGraphicsEllipseItem):
     """Graphics item representing an atom with optional implicit hiding."""
@@ -43,6 +46,7 @@ class AtomItem(QGraphicsEllipseItem):
         radius: float = 12.0,
         show_carbon: bool = True,
         show_hydrogen: bool = True,
+        label_font: Optional[QFont] = None,
         style: DrawingStyle = CHEMDOODLE_LIKE,
     ) -> None:
         super().__init__(-radius, -radius, radius * 2, radius * 2)
@@ -58,22 +62,29 @@ class AtomItem(QGraphicsEllipseItem):
         self._element_color = QColor(ELEMENT_COLORS.get(atom.element, "#333333"))
         self._charge = atom.charge
         self._style = style
+        self._display_label = atom.element
+        self._label_anchor_override: Optional[str] = None
+        self._label_anchor_width: Optional[float] = None
+        self._label_anchor_offset = 0.0
+        self._label_offset = QPointF(0.0, 0.0)
         
         self.setPos(atom.x, atom.y)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
         
         # Create text label
-        self.label = QGraphicsTextItem(atom.element, self)
-        font = QFont("Arial", 10, QFont.Weight.Bold)
-        self.label.setFont(font)
+        self.label = QGraphicsTextItem("", self)
+        base_font = label_font or QFont("Arial", 10, QFont.Weight.Bold)
+        self.label.setFont(base_font)
+        self.label.document().setDocumentMargin(0)
+        self._set_label_text(self._display_label)
 
         # Charge label
         self.charge_label = QGraphicsTextItem("", self)
-        charge_font = QFont("Arial", 8, QFont.Weight.Bold)
+        charge_font = QFont(base_font)
+        charge_font.setPointSizeF(max(base_font.pointSizeF() * 0.8, 6.0))
         self.charge_label.setFont(charge_font)
         self.charge_label.setDefaultTextColor(QColor("#333333"))
 
-        self._center_label()
         self._update_charge_label()
         
         # Set color based on element
@@ -85,19 +96,23 @@ class AtomItem(QGraphicsEllipseItem):
     def _center_label(self) -> None:
         """Center the label text within the atom circle."""
         rect = self.label.boundingRect()
-        self.label.setPos(-rect.width() / 2, -rect.height() / 2)
+        x = -rect.width() / 2
+        if self._label_anchor_width is not None:
+            x = -self._label_anchor_width / 2 - self._label_anchor_offset
+        self.label.setPos(x + self._label_offset.x(), -rect.height() / 2 + self._label_offset.y())
         if hasattr(self, "charge_label"):
             self._position_charge_label()
 
     def _position_charge_label(self) -> None:
         rect = self.label.boundingRect()
-        x = rect.width() / 2 + 2
-        y = -rect.height() / 2 - 2
+        label_pos = self.label.pos()
+        x = label_pos.x() + rect.width() / 2 + 2
+        y = label_pos.y() - rect.height() / 2 - 2
         self.charge_label.setPos(x, y)
     
     def _set_element_color(self) -> None:
         """Set the label color based on element type."""
-        color = ELEMENT_COLORS.get(self.element, "#333333")
+        color = LABEL_ELEMENT_COLORS.get(self.element, "#333333")
         self._element_color = QColor(color)
         self._apply_label_style()
 
@@ -109,6 +124,7 @@ class AtomItem(QGraphicsEllipseItem):
             self.label.setDefaultTextColor(QColor("#C0392B"))
         else:
             self.label.setDefaultTextColor(self._element_color)
+        self._set_label_text(self._display_label)
     
     def _should_hide_element(self) -> bool:
         if self._is_explicit:
@@ -183,10 +199,29 @@ class AtomItem(QGraphicsEllipseItem):
         self.element = element
         if is_explicit is not None:
             self._is_explicit = is_explicit
-        self.label.setPlainText(element)
-        self._center_label()
+        self._display_label = element
+        self._label_anchor_override = None
         self._set_element_color()
         self._update_visibility()
+
+    def set_display_label(self, label: str, anchor: Optional[str] = None) -> None:
+        """Set the label text displayed for this atom."""
+        self._display_label = label
+        self._label_anchor_override = anchor
+        self._set_label_text(label)
+
+    def set_label_offset(self, offset: QPointF) -> None:
+        """Offset label placement relative to the atom center."""
+        self._label_offset = QPointF(offset)
+        self._center_label()
+
+    def set_label_font(self, font: QFont) -> None:
+        """Update the label font and refresh layout."""
+        self.label.setFont(font)
+        charge_font = QFont(font)
+        charge_font.setPointSizeF(max(font.pointSizeF() * 0.8, 6.0))
+        self.charge_label.setFont(charge_font)
+        self._set_label_text(self._display_label)
 
     def set_valence_error(self, has_error: bool) -> None:
         """Toggle valence error underline on the label."""
@@ -208,6 +243,190 @@ class AtomItem(QGraphicsEllipseItem):
 
     def _update_charge_label(self) -> None:
         self.set_charge(self._charge)
+
+    def _set_label_text(self, text: str) -> None:
+        anchor = self._label_anchor_override or self._first_label_token(text)
+        if anchor:
+            metrics = QFontMetrics(self.label.font())
+            self._label_anchor_width = metrics.horizontalAdvance(anchor)
+            self._label_anchor_offset = self._anchor_prefix_width(text, anchor)
+        else:
+            self._label_anchor_width = None
+            self._label_anchor_offset = 0.0
+        html = self._format_label_html(text)
+        if html:
+            self.label.setHtml(html)
+        else:
+            self.label.setPlainText(text)
+        self._center_label()
+
+    def _anchor_prefix_width(self, text: str, anchor: str) -> float:
+        if not text or not anchor:
+            return 0.0
+        index = text.rfind(anchor)
+        if index <= 0:
+            return 0.0
+        prefix = text[:index]
+        return self._measure_label_width(prefix)
+
+    def _measure_label_width(self, text: str) -> float:
+        if not text:
+            return 0.0
+        base_font = self.label.font()
+        base_metrics = QFontMetrics(base_font)
+        base_size = base_font.pointSizeF()
+        if base_size <= 0:
+            base_size = 10.0
+        sub_size = max(base_size - 2.0, 6.0)
+        sub_font = QFont(base_font)
+        sub_font.setPointSizeF(sub_size)
+        sub_metrics = QFontMetrics(sub_font)
+        width = 0.0
+        i = 0
+        while i < len(text):
+            ch = text[i]
+            if ch.isdigit():
+                j = i + 1
+                while j < len(text) and text[j].isdigit():
+                    j += 1
+                width += sub_metrics.horizontalAdvance(text[i:j])
+                i = j
+                continue
+            width += base_metrics.horizontalAdvance(ch)
+            i += 1
+        return width
+
+    def _first_label_token(self, text: str) -> str | None:
+        cleaned = text.strip()
+        if not cleaned:
+            return None
+        if cleaned[-1] in "+-":
+            cleaned = cleaned[:-1]
+        if not cleaned:
+            return None
+        abbrs = sorted(ABBREVIATION_LABELS, key=len, reverse=True)
+        for abbr in abbrs:
+            if cleaned.startswith(abbr):
+                return abbr
+        ch = cleaned[0]
+        if ch.isalpha():
+            if ch.isupper():
+                if len(cleaned) > 1 and cleaned[1].islower():
+                    candidate = cleaned[:2]
+                    if candidate in LABEL_ELEMENT_COLORS:
+                        return candidate
+                if ch in LABEL_ELEMENT_COLORS:
+                    return ch
+                j = 1
+                while j < len(cleaned) and cleaned[j].islower():
+                    j += 1
+                return cleaned[:j]
+            j = 1
+            while j < len(cleaned) and cleaned[j].islower():
+                j += 1
+            return cleaned[:j]
+        if ch.isdigit():
+            return ch
+        return ch
+
+    def _format_label_html(self, text: str) -> str | None:
+        cleaned = text.strip()
+        if not cleaned:
+            return None
+
+        charge = None
+        if cleaned[-1] in "+-":
+            charge = cleaned[-1]
+            cleaned = cleaned[:-1]
+
+        tokens: list[tuple[str, str]] = []
+        i = 0
+        abbrs = sorted(ABBREVIATION_LABELS, key=len, reverse=True)
+        while i < len(cleaned):
+            matched = None
+            for abbr in abbrs:
+                if cleaned.startswith(abbr, i):
+                    matched = abbr
+                    break
+            if matched:
+                tokens.append(("abbr", matched))
+                i += len(matched)
+                continue
+            ch = cleaned[i]
+            if ch.isdigit():
+                j = i + 1
+                while j < len(cleaned) and cleaned[j].isdigit():
+                    j += 1
+                tokens.append(("sub", cleaned[i:j]))
+                i = j
+                continue
+            if ch.isalpha():
+                if ch.isupper():
+                    symbol = None
+                    if i + 1 < len(cleaned) and cleaned[i + 1].islower():
+                        candidate = cleaned[i : i + 2]
+                        if candidate in LABEL_ELEMENT_COLORS:
+                            symbol = candidate
+                            i += 2
+                    if symbol is None and ch in LABEL_ELEMENT_COLORS:
+                        symbol = ch
+                        i += 1
+                    if symbol is not None:
+                        tokens.append(("elem", symbol))
+                        continue
+                    j = i + 1
+                    while j < len(cleaned) and cleaned[j].islower():
+                        j += 1
+                    tokens.append(("abbr", cleaned[i:j]))
+                    i = j
+                    continue
+                j = i + 1
+                while j < len(cleaned) and cleaned[j].islower():
+                    j += 1
+                tokens.append(("abbr", cleaned[i:j]))
+                i = j
+                continue
+            if ch in "()":
+                tokens.append(("text", ch))
+                i += 1
+                continue
+            tokens.append(("text", ch))
+            i += 1
+
+        if not tokens:
+            return None
+
+        base_size = self.label.font().pointSizeF()
+        if base_size <= 0:
+            base_size = 10.0
+        sub_size = max(base_size - 2.0, 6.0)
+        parts: list[str] = []
+        error_color = "#C0392B"
+        use_error = self._valence_error
+        last_color = error_color if use_error else "#333333"
+        for kind, value in tokens:
+            if kind == "elem":
+                color = error_color if use_error else LABEL_ELEMENT_COLORS.get(value, "#333333")
+                parts.append(f'<span style="color:{color};">{value}</span>')
+                last_color = color
+                continue
+            if kind in {"abbr", "text"}:
+                color = error_color if use_error else "#333333"
+                parts.append(f'<span style="color:{color};">{value}</span>')
+                last_color = color
+                continue
+            if kind == "sub":
+                parts.append(
+                    f'<sub><span style="font-size:{sub_size}pt; color:{last_color};">{value}</span></sub>'
+                )
+                continue
+
+        if charge:
+            parts.append(
+                f'<sup><span style="font-size:{sub_size}pt; color:{last_color};">{charge}</span></sup>'
+            )
+
+        return "".join(parts)
 
     def set_style(self, style: DrawingStyle) -> None:
         """Update drawing style and refresh visuals."""

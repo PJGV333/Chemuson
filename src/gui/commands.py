@@ -170,21 +170,6 @@ class AddAtomCommand(QUndoCommand):
                 is_explicit=is_explicit,
             )
         self._view.add_atom_item(atom)
-        if self._auto_hydrogens and self._element == "N":
-            required = max(0, 3 - (_atom_degree(self._model, atom.id) + self._expected_bonds))
-            if required <= 0:
-                return
-            if self._hydrogen_specs:
-                _readd_hydrogen_specs(self._model, self._view, atom.id, self._hydrogen_specs)
-            else:
-                angles = _select_hydrogen_angles(_neighbor_angles_deg(self._model, atom.id), required)
-                self._hydrogen_specs = _create_hydrogen_specs(
-                    self._model,
-                    self._view,
-                    atom.id,
-                    angles,
-                    _bond_length_from_view(self._view),
-                )
 
     def undo(self) -> None:
         if self._hydrogen_specs:
@@ -224,80 +209,8 @@ class ChangeAtomCommand(QUndoCommand):
             self._new_element,
             is_explicit=self._new_is_explicit,
         )
-        if self._old_element != "N" and self._new_element == "N":
-            required = max(0, 3 - _atom_degree(self._model, self._atom_id))
-            if required > 0:
-                if self._added_hydrogen_specs:
-                    _readd_hydrogen_specs(
-                        self._model,
-                        self._view,
-                        self._atom_id,
-                        self._added_hydrogen_specs,
-                    )
-                else:
-                    angles = _select_hydrogen_angles(
-                        _neighbor_angles_deg(self._model, self._atom_id),
-                        required,
-                    )
-                    self._added_hydrogen_specs = _create_hydrogen_specs(
-                        self._model,
-                        self._view,
-                        self._atom_id,
-                        angles,
-                        _bond_length_from_view(self._view),
-                    )
-        elif self._old_element == "N" and self._new_element != "N":
-            if not self._removed_hydrogens and not self._removed_hydrogen_bonds:
-                atoms, bonds = _collect_attached_hydrogens(self._model, self._atom_id)
-                self._removed_hydrogens = atoms
-                self._removed_hydrogen_bonds = bonds
-            for bond in list(self._removed_hydrogen_bonds):
-                if bond.id in self._model.bonds:
-                    self._model.remove_bond(bond.id)
-                    self._view.remove_bond_item(bond.id)
-            for atom in list(self._removed_hydrogens):
-                if atom.id in self._model.atoms:
-                    self._model.remove_atom(atom.id)
-                    self._view.remove_atom_item(atom.id)
 
     def undo(self) -> None:
-        if self._old_element != "N" and self._new_element == "N":
-            if self._added_hydrogen_specs:
-                _remove_hydrogen_specs(
-                    self._model,
-                    self._view,
-                    self._added_hydrogen_specs,
-                )
-        elif self._old_element == "N" and self._new_element != "N":
-            for atom in self._removed_hydrogens:
-                self._model.add_atom(
-                    atom.element,
-                    atom.x,
-                    atom.y,
-                    atom_id=atom.id,
-                    charge=atom.charge,
-                    isotope=atom.isotope,
-                    explicit_h=atom.explicit_h,
-                    mapping=atom.mapping,
-                    is_query=atom.is_query,
-                    is_explicit=atom.is_explicit,
-                )
-                self._view.add_atom_item(atom)
-            for bond in self._removed_hydrogen_bonds:
-                self._model.add_bond(
-                    bond.a1_id,
-                    bond.a2_id,
-                    bond.order,
-                    bond_id=bond.id,
-                    style=bond.style,
-                    stereo=bond.stereo,
-                    is_aromatic=bond.is_aromatic,
-                    display_order=bond.display_order,
-                    is_query=bond.is_query,
-                    ring_id=bond.ring_id,
-                    length_px=bond.length_px,
-                )
-                self._view.add_bond_item(bond)
         self._model.update_atom_element(
             self._atom_id,
             self._old_element,
@@ -407,28 +320,6 @@ class AddBondCommand(QUndoCommand):
                 ring_id=self._ring_id,
             )
         self._view.add_bond_item(bond)
-        if self._a2_id is not None and self._new_atom_element == "N":
-            required = max(0, 3 - _atom_degree(self._model, self._a2_id))
-            if required > 0:
-                if self._hydrogen_specs:
-                    _readd_hydrogen_specs(
-                        self._model,
-                        self._view,
-                        self._a2_id,
-                        self._hydrogen_specs,
-                    )
-                else:
-                    angles = _select_hydrogen_angles(
-                        _neighbor_angles_deg(self._model, self._a2_id),
-                        required,
-                    )
-                    self._hydrogen_specs = _create_hydrogen_specs(
-                        self._model,
-                        self._view,
-                        self._a2_id,
-                        angles,
-                        _bond_length_from_view(self._view),
-                    )
 
     def undo(self) -> None:
         if self._hydrogen_specs:

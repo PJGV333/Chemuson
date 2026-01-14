@@ -4,6 +4,7 @@ Page-based molecular editor with menu bar, toolbars, and paper canvas.
 """
 from PyQt6.QtWidgets import (
     QDialog,
+    QFontDialog,
     QInputDialog,
     QMainWindow,
     QMenu,
@@ -58,6 +59,7 @@ class ChemusonWindow(QMainWindow):
         # === MENU AND TOOLBARS ===
         self._create_menu_bar()
         self._create_main_toolbar()
+        self._sync_label_menu_state()
         
         # === LEFT TOOLBAR (Drawing tools) ===
         self.toolbar = ChemusonToolbar()
@@ -166,6 +168,24 @@ class ChemusonWindow(QMainWindow):
         self.action_draw_smiles = QAction("Dibujar desde SMILES...", self)
         self.action_draw_smiles.triggered.connect(self._on_import_smiles)
 
+        # --- Text Actions ---
+        self.action_label_font = QAction("Fuente de etiquetas...", self)
+        self.action_label_font.triggered.connect(self._on_label_font)
+
+        self.action_label_bold = QAction("Negrita", self)
+        self.action_label_bold.setCheckable(True)
+        self.action_label_bold.triggered.connect(self._on_label_bold)
+
+        self.action_label_italic = QAction("Cursiva", self)
+        self.action_label_italic.setCheckable(True)
+        self.action_label_italic.triggered.connect(self._on_label_italic)
+
+        self.action_label_size_up = QAction("Aumentar tamaño", self)
+        self.action_label_size_up.triggered.connect(lambda: self._on_label_font_size(1.0))
+
+        self.action_label_size_down = QAction("Reducir tamaño", self)
+        self.action_label_size_down.triggered.connect(lambda: self._on_label_font_size(-1.0))
+
     def _create_menu_bar(self) -> None:
         """Create the main menu bar with all menus."""
         menubar = self.menuBar()
@@ -219,6 +239,16 @@ class ChemusonWindow(QMainWindow):
         self.action_preferences = QAction("Preferencias...", self)
         self.action_preferences.triggered.connect(self._on_preferences)
         edit_menu.addAction(self.action_preferences)
+
+        # === Texto (Text) ===
+        text_menu = menubar.addMenu("Texto")
+        text_menu.addAction(self.action_label_font)
+        text_menu.addSeparator()
+        text_menu.addAction(self.action_label_bold)
+        text_menu.addAction(self.action_label_italic)
+        text_menu.addSeparator()
+        text_menu.addAction(self.action_label_size_up)
+        text_menu.addAction(self.action_label_size_down)
         
         # === Ver (View) ===
         view_menu = menubar.addMenu("Ver")
@@ -469,6 +499,7 @@ class ChemusonWindow(QMainWindow):
 
         self.canvas.refresh_atom_visibility()
         self.canvas.refresh_aromatic_circles()
+        self._sync_label_menu_state()
     
     # -------------------------------------------------------------------------
     # View Menu Handlers
@@ -511,6 +542,46 @@ class ChemusonWindow(QMainWindow):
         from gui.canvas import PAPER_WIDTH, PAPER_HEIGHT
         self.canvas.centerOn(PAPER_WIDTH / 2, PAPER_HEIGHT / 2)
         self.statusBar().showMessage("Zoom: 100%")
+
+    # -------------------------------------------------------------------------
+    # Text Menu Handlers
+    # -------------------------------------------------------------------------
+    def _sync_label_menu_state(self) -> None:
+        self.action_label_bold.setChecked(self.canvas.state.label_font_bold)
+        self.action_label_italic.setChecked(self.canvas.state.label_font_italic)
+
+    def _on_label_font(self) -> None:
+        font, ok = QFontDialog.getFont(
+            self.canvas.label_font(),
+            self,
+            "Fuente de etiquetas",
+        )
+        if ok:
+            self.canvas.apply_label_font(font)
+            self._sync_label_menu_state()
+
+    def _on_label_bold(self, checked: bool) -> None:
+        font = self.canvas.label_font()
+        font.setBold(checked)
+        self.canvas.apply_label_font(font)
+        self._sync_label_menu_state()
+
+    def _on_label_italic(self, checked: bool) -> None:
+        font = self.canvas.label_font()
+        font.setItalic(checked)
+        self.canvas.apply_label_font(font)
+        self._sync_label_menu_state()
+
+    def _on_label_font_size(self, delta: float) -> None:
+        font = self.canvas.label_font()
+        size = font.pointSizeF()
+        if size <= 0:
+            size = font.pointSize()
+        if size <= 0:
+            size = 10.0
+        size = max(6.0, size + delta)
+        font.setPointSizeF(size)
+        self.canvas.apply_label_font(font)
     
     # -------------------------------------------------------------------------
     # Structure Menu Handlers

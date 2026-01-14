@@ -27,10 +27,11 @@ from PyQt6.QtGui import (
     QImage,
     QPixmap,
     QPainterPath,
+    QFont,
 )
 from PyQt6.QtCore import Qt, QPointF, QRectF, QBuffer, QMimeData, pyqtSignal
 
-from core.model import BondStyle, BondStereo, ChemState, MolGraph
+from core.model import BondStyle, BondStereo, ChemState, MolGraph, VALENCE_MAP
 from gui.items import (
     AtomItem,
     BondItem,
@@ -102,6 +103,30 @@ COLLISION_LENGTH_BOOST = 1.2
 BOND_OVERLAP_TOLERANCE_PX = 5.0
 BOND_DRAG_THRESHOLD_PX = 6.0
 BOND_LAST_ANGLE_TOLERANCE_DEG = 20.0
+FUNCTIONAL_GROUP_LABELS = [
+    "NH2",
+    "NO2",
+    "OH",
+    "COOH",
+    "CO2H",
+    "CHO",
+    "CN",
+    "SO3H",
+    "SH",
+    "OMe",
+    "OEt",
+    "Me",
+    "Et",
+    "iPr",
+    "tBu",
+    "Ph",
+    "R",
+]
+FUNCTIONAL_GROUP_ALIASES = {label.lower(): label for label in FUNCTIONAL_GROUP_LABELS}
+ELEMENT_SYMBOLS = {"C", "N", "O", "S", "P", "F", "Cl", "Br", "I", "H"}
+IMPLICIT_H_ELEMENTS = {"C", "N", "O", "S", "P"}
+LABEL_OFFSET_SCALE = 0.6
+LABEL_OFFSET_MIN_PX = 4.0
 
 
 class ChemusonCanvas(QGraphicsView):
@@ -521,6 +546,14 @@ class ChemusonCanvas(QGraphicsView):
                 cmd = ChangeBondLengthCommand(self.model, self, bond.id, new_length)
                 self.undo_stack.push(cmd)
             return
+        if isinstance(item, AtomItem):
+            atom = self.model.get_atom(item.atom_id)
+            value = self._prompt_atom_label(atom.element, initial=atom.element)
+            if value is None:
+                return
+            cmd = ChangeAtomCommand(self.model, self, atom.id, value)
+            self.undo_stack.push(cmd)
+            return
         super().mouseDoubleClickEvent(event)
 
     def wheelEvent(self, event: QWheelEvent) -> None:
@@ -558,30 +591,62 @@ class ChemusonCanvas(QGraphicsView):
             return False
 
         atom_id = next(iter(self.state.selected_atoms))
-        default_text = typed
-        value, ok = QInputDialog.getText(
-            self,
-            "Elemento",
-            "Símbolo del elemento:",
-            text=default_text,
-        )
-        if not ok:
+        atom = self.model.get_atom(atom_id)
+        seed = self._normalize_atom_label(typed) or typed
+        value = self._prompt_atom_label(atom.element, initial=seed)
+        if value is None:
             return True
-        normalized = self._normalize_element_label(value)
-        if not normalized:
-            return True
-        cmd = ChangeAtomCommand(self.model, self, atom_id, normalized)
+        cmd = ChangeAtomCommand(self.model, self, atom_id, value)
         self.undo_stack.push(cmd)
         return True
 
     @staticmethod
-    def _normalize_element_label(text: str) -> str | None:
+    def _normalize_atom_label(text: str) -> str | None:
         cleaned = text.strip()
-        if not cleaned or not cleaned.isalpha():
+        if not cleaned:
             return None
-        if len(cleaned) == 1:
-            return cleaned.upper()
-        return cleaned[0].upper() + cleaned[1:].lower()
+        allowed = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-()")
+        if any(ch not in allowed for ch in cleaned):
+            return None
+        alias = FUNCTIONAL_GROUP_ALIASES.get(cleaned.lower())
+        if alias:
+            return alias
+        if cleaned.isalpha() and len(cleaned) <= 2:
+            if len(cleaned) == 1:
+                normalized = cleaned.upper()
+            else:
+                normalized = cleaned[0].upper() + cleaned[1:].lower()
+            if normalized in ELEMENT_SYMBOLS:
+                return normalized
+        return cleaned
+
+    def _atom_label_items(self) -> list[str]:
+        elements = ["C", "N", "O", "S", "P", "F", "Cl", "Br", "I", "H"]
+        return elements + FUNCTIONAL_GROUP_LABELS
+
+    def _prompt_atom_label(self, current: str, initial: str | None = None) -> str | None:
+        items = self._atom_label_items()
+        seed = (initial or "").strip() or current
+        if seed:
+            if seed not in items:
+                items = [seed] + items
+            current_index = items.index(seed)
+        else:
+            current_index = 0
+        value, ok = QInputDialog.getItem(
+            self,
+            "Elemento",
+            "Símbolo del elemento o grupo funcional:",
+            items,
+            current_index,
+            True,
+        )
+        if not ok:
+            return None
+        normalized = self._normalize_atom_label(value)
+        if not normalized:
+            return None
+        return normalized
 
     def zoom_in(self) -> None:
         if self._zoom_factor < self._max_zoom:
@@ -786,10 +851,12 @@ class ChemusonCanvas(QGraphicsView):
             atom,
             show_carbon=show_c,
             show_hydrogen=show_h,
+            label_font=self._label_font(),
             style=self.drawing_style,
         )
         self.scene.addItem(item)
         self.atom_items[atom.id] = item
+        self._refresh_atom_label(atom.id)
 
     def update_atom_item(self, atom_id: int, x: float, y: float) -> None:
         item = self.atom_items.get(atom_id)
@@ -807,11 +874,145 @@ class ChemusonCanvas(QGraphicsView):
             if is_explicit is None:
                 is_explicit = self.model.get_atom(atom_id).is_explicit
             item.set_element(element, is_explicit=is_explicit)
+            self._refresh_atom_label(atom_id)
 
     def update_atom_item_charge(self, atom_id: int, charge: int) -> None:
         item = self.atom_items.get(atom_id)
         if item is not None:
             item.set_charge(charge)
+
+    def _label_font(self) -> QFont:
+        size = self.state.label_font_size
+        if size <= 0:
+            size = 10.0
+        font = QFont(self.state.label_font_family)
+        font.setPointSizeF(size)
+        font.setBold(self.state.label_font_bold)
+        font.setItalic(self.state.label_font_italic)
+        return font
+
+    def label_font(self) -> QFont:
+        return self._label_font()
+
+    def apply_label_font(self, font: QFont) -> None:
+        size = font.pointSizeF()
+        if size <= 0:
+            size = font.pointSize()
+        if size <= 0:
+            size = 10.0
+        self.state.label_font_family = font.family()
+        self.state.label_font_size = float(size)
+        self.state.label_font_bold = font.bold()
+        self.state.label_font_italic = font.italic()
+        self.refresh_label_fonts()
+
+    def refresh_label_fonts(self) -> None:
+        font = self._label_font()
+        for item in self.atom_items.values():
+            item.set_label_font(font)
+        self.refresh_atom_labels()
+
+    def refresh_atom_labels(self, atom_ids: Optional[Iterable[int]] = None) -> None:
+        if atom_ids is None:
+            atom_ids = list(self.atom_items.keys())
+        for atom_id in atom_ids:
+            self._refresh_atom_label(atom_id)
+
+    def _refresh_atom_label(self, atom_id: int) -> None:
+        item = self.atom_items.get(atom_id)
+        atom = self.model.atoms.get(atom_id)
+        if item is None or atom is None:
+            return
+        label, anchor, offset = self._build_atom_label(atom)
+        item.set_display_label(label, anchor)
+        item.set_label_offset(offset)
+
+    def _build_atom_label(self, atom) -> tuple[str, Optional[str], QPointF]:
+        label = atom.element
+        anchor: Optional[str] = None
+        if atom.element in ELEMENT_SYMBOLS:
+            if atom.element == "C" and not (
+                self.state.show_implicit_carbons or atom.is_explicit
+            ):
+                return label, None, QPointF(0.0, 0.0)
+            implicit_h = self._implicit_hydrogen_count(atom.id, atom.element)
+            if implicit_h > 0 and atom.element != "H":
+                h_text = "H" if implicit_h == 1 else f"H{implicit_h}"
+                if self._prefer_prefix_h(atom.id):
+                    label = f"{h_text}{atom.element}"
+                    anchor = atom.element
+                else:
+                    label = f"{atom.element}{h_text}"
+        offset = self._label_offset(atom.id)
+        return label, anchor, offset
+
+    def _implicit_hydrogen_count(self, atom_id: int, element: str) -> int:
+        if element not in IMPLICIT_H_ELEMENTS:
+            return 0
+        expected = VALENCE_MAP.get(element)
+        if expected is None:
+            return 0
+        bond_order = 0
+        for bond in self.model.bonds.values():
+            if bond.a1_id != atom_id and bond.a2_id != atom_id:
+                continue
+            order = bond.display_order if bond.display_order is not None else bond.order
+            bond_order += order
+        return max(0, expected - bond_order)
+
+    def _label_open_direction(self, atom_id: int) -> QPointF:
+        def collect_vectors(skip_hydrogen: bool) -> list[tuple[float, float]]:
+            atom = self.model.get_atom(atom_id)
+            vectors: list[tuple[float, float]] = []
+            for bond in self.model.bonds.values():
+                if bond.a1_id == atom_id:
+                    other = self.model.get_atom(bond.a2_id)
+                elif bond.a2_id == atom_id:
+                    other = self.model.get_atom(bond.a1_id)
+                else:
+                    continue
+                if skip_hydrogen and other.element == "H":
+                    continue
+                dx = other.x - atom.x
+                dy = other.y - atom.y
+                length = math.hypot(dx, dy)
+                if length <= 1e-6:
+                    continue
+                vectors.append((dx / length, dy / length))
+            return vectors
+
+        vectors = collect_vectors(skip_hydrogen=True)
+        if not vectors:
+            vectors = collect_vectors(skip_hydrogen=False)
+        if not vectors:
+            return QPointF(0.0, 0.0)
+        sum_x = sum(v[0] for v in vectors)
+        sum_y = sum(v[1] for v in vectors)
+        if abs(sum_x) + abs(sum_y) < 1e-3:
+            if len(vectors) == 1:
+                sum_x, sum_y = -vectors[0][0], -vectors[0][1]
+            else:
+                return QPointF(0.0, 0.0)
+        else:
+            sum_x, sum_y = -sum_x, -sum_y
+        length = math.hypot(sum_x, sum_y)
+        if length <= 1e-6:
+            return QPointF(0.0, 0.0)
+        return QPointF(sum_x / length, sum_y / length)
+
+    def _label_offset(self, atom_id: int) -> QPointF:
+        direction = self._label_open_direction(atom_id)
+        if direction == QPointF(0.0, 0.0):
+            return QPointF(0.0, 0.0)
+        size = self._label_font().pointSizeF()
+        if size <= 0:
+            size = 10.0
+        offset = max(LABEL_OFFSET_MIN_PX, size * LABEL_OFFSET_SCALE)
+        return QPointF(direction.x() * offset, direction.y() * offset)
+
+    def _prefer_prefix_h(self, atom_id: int) -> bool:
+        direction = self._label_open_direction(atom_id)
+        return direction.x() < -0.2
 
     def remove_atom_item(self, atom_id: int) -> None:
         item = self.atom_items.pop(atom_id, None)
@@ -839,6 +1040,8 @@ class ChemusonCanvas(QGraphicsView):
         item.set_offset_sign(self._bond_offset_sign(bond))
         self.scene.addItem(item)
         self.bond_items[bond.id] = item
+        self._refresh_atom_label(bond.a1_id)
+        self._refresh_atom_label(bond.a2_id)
 
     def _add_arrow_item(self, start: QPointF, end: QPointF, head_at_end: bool) -> None:
         item = ArrowItem(start, end, head_at_end=head_at_end, style=self.drawing_style)
@@ -876,6 +1079,8 @@ class ChemusonCanvas(QGraphicsView):
             item.set_offset_sign(self._bond_offset_sign(bond))
             item.set_bond(bond, atom1, atom2)
             item.set_style(self.drawing_style, atom1, atom2)
+        self._refresh_atom_label(bond.a1_id)
+        self._refresh_atom_label(bond.a2_id)
 
     def update_bond_items_for_atoms(self, atom_ids: set[int]) -> None:
         for bond in self.model.bonds.values():
@@ -885,7 +1090,11 @@ class ChemusonCanvas(QGraphicsView):
     def remove_bond_item(self, bond_id: int) -> None:
         item = self.bond_items.pop(bond_id, None)
         if item is not None:
+            a1_id = item.a1_id
+            a2_id = item.a2_id
             self.scene.removeItem(item)
+            self._refresh_atom_label(a1_id)
+            self._refresh_atom_label(a2_id)
 
     def allocate_ring_id(self) -> int:
         ring_id = self._next_ring_id
@@ -939,6 +1148,7 @@ class ChemusonCanvas(QGraphicsView):
             show_c = self.state.show_implicit_carbons or atom.element != "C"
             show_h = self.state.show_implicit_hydrogens or atom.element != "H"
             item.set_visibility_flags(show_c, show_h)
+            self._refresh_atom_label(atom_id)
 
     def refresh_aromatic_circles(self) -> None:
         """Add/remove aromatic circle items based on current state."""

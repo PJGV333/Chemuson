@@ -20,6 +20,20 @@ class BondStereo(str, Enum):
     EITHER = "either"
 
 
+VALENCE_MAP = {
+    "H": 1,
+    "C": 4,
+    "N": 3,
+    "O": 2,
+    "S": 2,
+    "P": 3,
+    "F": 1,
+    "Cl": 1,
+    "Br": 1,
+    "I": 1,
+}
+
+
 @dataclass
 class Atom:
     id: int
@@ -71,6 +85,10 @@ class ChemState:
     show_implicit_carbons: bool = False  # Show C labels (False = hide like ChemDoodle)
     show_implicit_hydrogens: bool = False  # Show H labels
     use_aromatic_circles: bool = False  # Draw circles in aromatic rings
+    label_font_family: str = "Arial"
+    label_font_size: float = 11.0
+    label_font_bold: bool = False
+    label_font_italic: bool = False
 
 
 class MolGraph:
@@ -224,18 +242,6 @@ class MolGraph:
         self._next_bond_id = 1
 
     def validate(self) -> List[int]:
-        valence_map = {
-            "H": 1,
-            "C": 4,
-            "N": 3,
-            "O": 2,
-            "S": 2,
-            "P": 3,
-            "F": 1,
-            "Cl": 1,
-            "Br": 1,
-            "I": 1,
-        }
         bond_order_sum: Dict[int, int] = {atom_id: 0 for atom_id in self.atoms}
         for bond in self.bonds.values():
             if bond.a1_id in bond_order_sum:
@@ -245,9 +251,9 @@ class MolGraph:
 
         errors: List[int] = []
         for atom_id, atom in self.atoms.items():
-            expected = valence_map.get(atom.element)
+            expected = VALENCE_MAP.get(atom.element)
             if expected is None:
                 continue
-            if bond_order_sum.get(atom_id, 0) != expected:
+            if bond_order_sum.get(atom_id, 0) > expected:
                 errors.append(atom_id)
         return errors
