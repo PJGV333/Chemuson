@@ -30,10 +30,10 @@ ELEMENT_COLORS = {
     'Cl': '#1FF01F',  # Chlorine - green
     'Br': '#A62929',  # Bromine - dark red
     'I': '#940094',   # Iodine - purple
-    'H': '#FFFFFF',   # Hydrogen - white
+    'H': '#000000',   # Hydrogen - black
 }
 
-LABEL_ELEMENT_COLORS = {**ELEMENT_COLORS, "H": "#333333"}
+LABEL_ELEMENT_COLORS = {**ELEMENT_COLORS, "H": "#000000"}
 ABBREVIATION_LABELS = {"Me", "Et", "Pr", "iPr", "tBu", "Bu", "Ph", "R"}
 
 
@@ -459,6 +459,8 @@ class BondItem(QGraphicsPathItem):
         self.length_px = bond.length_px
         self.render_aromatic_as_circle = render_aromatic_as_circle
         self._style = style
+        self._label_shrink_start = 0.0
+        self._label_shrink_end = 0.0
         self._offset_sign = 1
         self._ring_center: QPointF | None = None
         self.setZValue(-5)
@@ -492,6 +494,11 @@ class BondItem(QGraphicsPathItem):
     def set_offset_sign(self, sign: int) -> None:
         self._offset_sign = 1 if sign >= 0 else -1
 
+    def set_label_shrink(self, start: float, end: float) -> None:
+        """Set bond endpoint trims to avoid overlapping atom labels."""
+        self._label_shrink_start = max(0.0, float(start))
+        self._label_shrink_end = max(0.0, float(end))
+
     def update_positions(self, atom1: Atom, atom2: Atom) -> None:
         """Redraw the bond path based on atom positions and bond type."""
         x1, y1 = atom1.x, atom1.y
@@ -519,6 +526,20 @@ class BondItem(QGraphicsPathItem):
         p1y = midy - uy * half
         p2x = midx + ux * half
         p2y = midy + uy * half
+        trim_start = self._label_shrink_start
+        trim_end = self._label_shrink_end
+        if trim_start + trim_end > 0:
+            min_length = max(1.0, self._style.stroke_px)
+            max_trim = max(0.0, render_length - min_length)
+            if trim_start + trim_end > max_trim and max_trim > 0:
+                scale = max_trim / (trim_start + trim_end)
+                trim_start *= scale
+                trim_end *= scale
+            p1x += ux * trim_start
+            p1y += uy * trim_start
+            p2x -= ux * trim_end
+            p2y -= uy * trim_end
+            render_length = math.hypot(p2x - p1x, p2y - p1y)
 
         offset_sign = self._offset_sign
         if self._ring_center is not None:

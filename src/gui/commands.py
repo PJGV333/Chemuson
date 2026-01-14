@@ -9,7 +9,7 @@ from PyQt6.QtGui import QUndoCommand
 from core.model import BondStyle, BondStereo, MolGraph
 from gui.geom import angle_deg, angle_distance_deg, endpoint_from_angle_len
 
-_IMPLICIT_ELEMENTS = {"C", "H"}
+_IMPLICIT_ELEMENTS = {"C"}
 
 
 def _default_is_explicit(element: str) -> bool:

@@ -926,6 +926,7 @@ class ChemusonCanvas(QGraphicsView):
         label, anchor, offset = self._build_atom_label(atom)
         item.set_display_label(label, anchor)
         item.set_label_offset(offset)
+        self._update_bond_label_shrinks({atom_id})
 
     def _build_atom_label(self, atom) -> tuple[str, Optional[str], QPointF]:
         label = atom.element
@@ -1001,6 +1002,9 @@ class ChemusonCanvas(QGraphicsView):
         return QPointF(sum_x / length, sum_y / length)
 
     def _label_offset(self, atom_id: int) -> QPointF:
+        atom = self.model.get_atom(atom_id)
+        if any(ch.isalpha() for ch in atom.element):
+            return QPointF(0.0, 0.0)
         direction = self._label_open_direction(atom_id)
         if direction == QPointF(0.0, 0.0):
             return QPointF(0.0, 0.0)
@@ -1009,6 +1013,69 @@ class ChemusonCanvas(QGraphicsView):
             size = 10.0
         offset = max(LABEL_OFFSET_MIN_PX, size * LABEL_OFFSET_SCALE)
         return QPointF(direction.x() * offset, direction.y() * offset)
+
+    def _update_bond_label_shrinks(self, atom_ids: set[int]) -> None:
+        for bond in self.model.bonds.values():
+            if bond.a1_id not in atom_ids and bond.a2_id not in atom_ids:
+                continue
+            item = self.bond_items.get(bond.id)
+            if item is None:
+                continue
+            atom1 = self.model.get_atom(bond.a1_id)
+            atom2 = self.model.get_atom(bond.a2_id)
+            dx = atom2.x - atom1.x
+            dy = atom2.y - atom1.y
+            length = math.hypot(dx, dy)
+            if length <= 1e-6:
+                item.set_label_shrink(0.0, 0.0)
+                item.update_positions(atom1, atom2)
+                continue
+            ux = dx / length
+            uy = dy / length
+            shrink_start = self._label_shrink_for_atom(bond.a1_id, ux, uy)
+            shrink_end = self._label_shrink_for_atom(bond.a2_id, -ux, -uy)
+            item.set_label_shrink(shrink_start, shrink_end)
+            item.update_positions(atom1, atom2)
+
+    def _label_shrink_for_atom(self, atom_id: int, ux: float, uy: float) -> float:
+        item = self.atom_items.get(atom_id)
+        if item is None or not item.label.isVisible():
+            return 0.0
+        rect = item.label.mapRectToParent(item.label.boundingRect())
+        if rect.isNull() or rect.width() <= 0 or rect.height() <= 0:
+            return 0.0
+        pad = max(1.0, self.drawing_style.stroke_px * 0.6)
+        rect = rect.adjusted(-pad, -pad, pad, pad)
+        distance = self._ray_rect_distance(rect, ux, uy)
+        return distance if distance is not None else 0.0
+
+    @staticmethod
+    def _ray_rect_distance(rect: QRectF, ux: float, uy: float) -> Optional[float]:
+        eps = 1e-6
+        tmin = -math.inf
+        tmax = math.inf
+        if abs(ux) < eps:
+            if 0.0 < rect.left() or 0.0 > rect.right():
+                return None
+        else:
+            tx1 = rect.left() / ux
+            tx2 = rect.right() / ux
+            tmin = max(tmin, min(tx1, tx2))
+            tmax = min(tmax, max(tx1, tx2))
+        if abs(uy) < eps:
+            if 0.0 < rect.top() or 0.0 > rect.bottom():
+                return None
+        else:
+            ty1 = rect.top() / uy
+            ty2 = rect.bottom() / uy
+            tmin = max(tmin, min(ty1, ty2))
+            tmax = min(tmax, max(ty1, ty2))
+        if tmax < max(tmin, 0.0):
+            return None
+        hit = tmin if tmin >= 0.0 else tmax
+        if hit < 0.0:
+            return None
+        return hit
 
     def _prefer_prefix_h(self, atom_id: int) -> bool:
         direction = self._label_open_direction(atom_id)
