@@ -51,6 +51,7 @@ from gui.geom import (
     endpoint_from_angle_len,
     choose_optimal_direction,
     geometry_for_bond,
+    SP3_BOND_ANGLE_DEG,
     candidate_directions_deg,
     filter_occupied_angles_deg,
     pick_closest_direction_deg,
@@ -99,6 +100,8 @@ MIN_ATOM_DIST_SCALE = 0.65
 MIN_BOND_DIST_SCALE = 0.2
 COLLISION_LENGTH_BOOST = 1.2
 BOND_OVERLAP_TOLERANCE_PX = 5.0
+BOND_DRAG_THRESHOLD_PX = 6.0
+BOND_LAST_ANGLE_TOLERANCE_DEG = 20.0
 
 
 class ChemusonCanvas(QGraphicsView):
@@ -134,6 +137,7 @@ class ChemusonCanvas(QGraphicsView):
         self._bond_last_angle: Optional[float] = None
         self._bond_zigzag_sign = 1
         self._drag_free_orientation = False
+        self._bond_drag_start: Optional[QPointF] = None
         self._arrow_start_pos: Optional[QPointF] = None
         self.arrow_items: list[ArrowItem] = []
         self._bracket_drag_start: Optional[QPointF] = None
@@ -398,20 +402,7 @@ class ChemusonCanvas(QGraphicsView):
             return
 
         if self._drag_mode == "place_bond":
-            if (
-                not self._drag_free_orientation
-                and (event.buttons() & Qt.MouseButton.LeftButton)
-                and self._drag_anchor is not None
-            ):
-                if self._drag_anchor["id"] is None:
-                    anchor_pos = QPointF(
-                        self._drag_anchor["pos"].x(), self._drag_anchor["pos"].y()
-                    )
-                else:
-                    anchor = self.model.get_atom(self._drag_anchor["id"])
-                    anchor_pos = QPointF(anchor.x, anchor.y)
-                if (scene_pos - anchor_pos).manhattanLength() > 3.0:
-                    self._drag_free_orientation = True
+            self._update_bond_drag_state(scene_pos)
             self._update_bond_preview(scene_pos, event.modifiers())
             return
         if self._drag_mode == "place_ring":
@@ -535,9 +526,52 @@ class ChemusonCanvas(QGraphicsView):
         if event.key() == Qt.Key.Key_Delete:
             self.delete_selection()
             return
+        if self._handle_atom_text_entry(event):
+            return
         if self._handle_hotkeys(event):
             return
         super().keyPressEvent(event)
+
+    def _handle_atom_text_entry(self, event) -> bool:
+        if event.modifiers() & (
+            Qt.KeyboardModifier.ControlModifier
+            | Qt.KeyboardModifier.AltModifier
+            | Qt.KeyboardModifier.MetaModifier
+        ):
+            return False
+        if not self.state.selected_atoms or self.state.selected_bonds:
+            return False
+        if len(self.state.selected_atoms) != 1:
+            return False
+        typed = event.text()
+        if not typed or not typed.isalpha():
+            return False
+
+        atom_id = next(iter(self.state.selected_atoms))
+        default_text = typed
+        value, ok = QInputDialog.getText(
+            self,
+            "Elemento",
+            "Símbolo del elemento:",
+            text=default_text,
+        )
+        if not ok:
+            return True
+        normalized = self._normalize_element_label(value)
+        if not normalized:
+            return True
+        cmd = ChangeAtomCommand(self.model, self, atom_id, normalized)
+        self.undo_stack.push(cmd)
+        return True
+
+    @staticmethod
+    def _normalize_element_label(text: str) -> str | None:
+        cleaned = text.strip()
+        if not cleaned or not cleaned.isalpha():
+            return None
+        if len(cleaned) == 1:
+            return cleaned.upper()
+        return cleaned[0].upper() + cleaned[1:].lower()
 
     def zoom_in(self) -> None:
         if self._zoom_factor < self._max_zoom:
@@ -1383,7 +1417,7 @@ class ChemusonCanvas(QGraphicsView):
             return math.pi
         if max_order == 2:
             return 2 * math.pi / 3
-        return math.radians(60)
+        return math.radians(SP3_BOND_ANGLE_DEG)
 
     def _get_anchor_bond_angles(self, anchor_id: int) -> List[float]:
         angles = []
@@ -1470,6 +1504,7 @@ class ChemusonCanvas(QGraphicsView):
         self._ring_last_vertices = None
         self._chain_last_points = None
         self._drag_free_orientation = False
+        self._bond_drag_start = None
         self._clear_selection_drag()
         if self._overlays_ready:
             self._optimize_zone.hide_zone()
@@ -1673,7 +1708,10 @@ class ChemusonCanvas(QGraphicsView):
         if geometry == "sp3" and anchor_id is not None:
             incoming = self._incoming_angle_deg(anchor_id)
             if incoming is not None:
-                preferred = [(incoming + 60.0) % 360.0, (incoming - 60.0) % 360.0]
+                preferred = [
+                    (incoming + SP3_BOND_ANGLE_DEG) % 360.0,
+                    (incoming - SP3_BOND_ANGLE_DEG) % 360.0,
+                ]
 
         if not apply_collisions:
             picked = pick_closest_direction_deg(candidates, mouse_angle_deg, preferred)
@@ -1788,9 +1826,106 @@ class ChemusonCanvas(QGraphicsView):
     # -------------------------------------------------------------------------
     # Bond Placement
     # -------------------------------------------------------------------------
+    def _bond_drag_distance(self, scene_pos: QPointF) -> float:
+        if self._bond_drag_start is None:
+            return 0.0
+        return (scene_pos - self._bond_drag_start).manhattanLength()
+
+    def _update_bond_drag_state(self, scene_pos: QPointF) -> None:
+        self._drag_free_orientation = (
+            self._bond_drag_start is not None
+            and self._bond_drag_distance(scene_pos) >= BOND_DRAG_THRESHOLD_PX
+        )
+
+    def _should_use_default_bond_angle(
+        self, modifiers: Qt.KeyboardModifiers, scene_pos: Optional[QPointF] = None
+    ) -> bool:
+        if self._drag_mode != "place_bond":
+            return False
+        if modifiers & Qt.KeyboardModifier.AltModifier:
+            return False
+        if scene_pos is None:
+            scene_pos = self._last_scene_pos
+        if self._bond_drag_distance(scene_pos) >= BOND_DRAG_THRESHOLD_PX:
+            return False
+        return True
+
+    def _current_bond_geometry(self) -> tuple[int, bool]:
+        order = self.state.active_bond_order
+        is_aromatic = self.state.active_bond_aromatic
+        if self.state.active_bond_style != BondStyle.PLAIN or is_aromatic:
+            order = 1
+        return order, is_aromatic
+
+    def _peek_default_bond_angle(self, anchor_id: Optional[int]) -> float:
+        if anchor_id is None:
+            return 0.0
+        existing = self._get_anchor_bond_angles(anchor_id)
+        step = self._bond_environment_step(anchor_id)
+        if self._bond_last_angle is not None and existing:
+            tolerance = math.radians(BOND_LAST_ANGLE_TOLERANCE_DEG)
+            if min(self._angle_distance(self._bond_last_angle, a) for a in existing) <= tolerance:
+                angle = self._bond_last_angle + step * self._bond_zigzag_sign
+                return self._normalize_angle(angle)
+        if not existing:
+            return 0.0
+        candidates = []
+        for base in existing:
+            candidates.append(base + step)
+            candidates.append(base - step)
+        return self._best_separated_angle(candidates, existing)
+
+    def _compute_default_bond_endpoint(
+        self, anchor: QPointF, anchor_id: Optional[int]
+    ) -> QPointF:
+        order, aromatic = self._current_bond_geometry()
+        default_angle_deg = math.degrees(self._peek_default_bond_angle(anchor_id))
+        length = self.state.bond_length
+        theta, final_length = self._pick_bond_direction_deg(
+            anchor,
+            anchor_id,
+            default_angle_deg,
+            order,
+            aromatic,
+            length,
+            apply_collisions=True,
+            allow_length_boost=self.state.fixed_lengths,
+        )
+        p1 = endpoint_from_angle_len(anchor, theta, final_length)
+        snap_id = closest_atom(
+            p1,
+            [(atom.id, atom.x, atom.y) for atom in self.model.atoms.values()],
+            ATOM_HIT_RADIUS,
+        )
+        if snap_id is not None and (anchor_id is None or snap_id != anchor_id):
+            atom = self.model.get_atom(snap_id)
+            return QPointF(atom.x, atom.y)
+        return p1
+
+    def _update_bond_angle_state(
+        self,
+        p0: QPointF,
+        p1: QPointF,
+        used_default: bool,
+        anchor_id: Optional[int],
+    ) -> None:
+        angle = math.atan2(p1.y() - p0.y(), p1.x() - p0.x())
+        self._bond_last_angle = self._normalize_angle(angle)
+        if not used_default:
+            self._bond_zigzag_sign = 1
+            return
+        step = (
+            self._bond_environment_step(anchor_id)
+            if anchor_id is not None
+            else math.radians(SP3_BOND_ANGLE_DEG)
+        )
+        if step < math.pi:
+            self._bond_zigzag_sign *= -1
+
     def _begin_place_bond(self, anchor_id: Optional[int], scene_pos: QPointF) -> None:
         self._drag_mode = "place_bond"
         self._drag_free_orientation = False
+        self._bond_drag_start = scene_pos
         if anchor_id is None:
             self._drag_anchor = {"type": "free", "id": None, "pos": scene_pos}
             self._optimize_zone.hide_zone()
@@ -1810,7 +1945,10 @@ class ChemusonCanvas(QGraphicsView):
         else:
             anchor = self.model.get_atom(self._drag_anchor["id"])
             p0 = QPointF(anchor.x, anchor.y)
-        p1 = self._compute_bond_endpoint(p0, scene_pos, modifiers)
+        if self._should_use_default_bond_angle(modifiers, scene_pos):
+            p1 = self._compute_default_bond_endpoint(p0, self._drag_anchor["id"])
+        else:
+            p1 = self._compute_bond_endpoint(p0, scene_pos, modifiers)
         self._preview_bond_item.update_line(p0, p1)
 
     def _finalize_bond(self, modifiers: Qt.KeyboardModifiers) -> None:
@@ -1823,7 +1961,11 @@ class ChemusonCanvas(QGraphicsView):
         else:
             anchor = self.model.get_atom(anchor_id)
             p0 = QPointF(anchor.x, anchor.y)
-        p1 = self._compute_bond_endpoint(p0, self._last_scene_pos, modifiers)
+        use_default = self._should_use_default_bond_angle(modifiers, self._last_scene_pos)
+        if use_default:
+            p1 = self._compute_default_bond_endpoint(p0, anchor_id)
+        else:
+            p1 = self._compute_bond_endpoint(p0, self._last_scene_pos, modifiers)
 
         atom_positions = [(atom.id, atom.x, atom.y) for atom in self.model.atoms.values()]
         target_id = closest_atom(self._last_scene_pos, atom_positions, ATOM_HIT_RADIUS)
@@ -1856,6 +1998,11 @@ class ChemusonCanvas(QGraphicsView):
         is_aromatic = self.state.active_bond_aromatic
         if style != BondStyle.PLAIN or is_aromatic:
             order = 1
+
+        final_p1 = p1
+        if target_id is not None:
+            target_atom = self.model.get_atom(target_id)
+            final_p1 = QPointF(target_atom.x, target_atom.y)
 
         if anchor_id is None:
             self.undo_stack.beginMacro("Add bond")
@@ -1895,6 +2042,7 @@ class ChemusonCanvas(QGraphicsView):
                 if is_aromatic:
                     self._kekulize_aromatic_bonds()
             self.undo_stack.endMacro()
+            self._update_bond_angle_state(p0, final_p1, use_default, anchor_id)
         else:
             if target_id is not None:
                 self._create_or_update_bond(
@@ -1921,6 +2069,7 @@ class ChemusonCanvas(QGraphicsView):
                 self.undo_stack.push(cmd)
                 if is_aromatic:
                     self._kekulize_aromatic_bonds()
+            self._update_bond_angle_state(p0, final_p1, use_default, anchor_id)
         self._cancel_drag()
 
     def _compute_bond_endpoint(
@@ -2178,10 +2327,19 @@ class ChemusonCanvas(QGraphicsView):
         points = [p0]
         geometry = self._bond_geometry(self._drag_anchor["id"], 1, False)
         zigzag = geometry == "sp3" and not use_alt and self.state.fixed_angles
+        zigzag_delta = SP3_BOND_ANGLE_DEG / 2.0
+        if zigzag:
+            incoming = self._incoming_angle_deg(self._drag_anchor["id"])
+            if incoming is not None:
+                axis_options = [
+                    (incoming + zigzag_delta) % 360.0,
+                    (incoming - (SP3_BOND_ANGLE_DEG + zigzag_delta)) % 360.0,
+                ]
+                raw_angle = min(axis_options, key=lambda ang: angle_distance_deg(ang, raw_angle))
         current = p0
         for i in range(1, n + 1):
             if zigzag:
-                step_angle = raw_angle + (60.0 if i % 2 == 1 else -60.0)
+                step_angle = raw_angle + (zigzag_delta if i % 2 == 1 else -zigzag_delta)
             else:
                 step_angle = raw_angle
             next_point = endpoint_from_angle_len(current, step_angle, self.state.bond_length)

@@ -10,6 +10,9 @@ from typing import Iterable, Optional, Tuple
 from PyQt6.QtCore import QPointF
 
 
+SP3_BOND_ANGLE_DEG = 109.5
+
+
 def angle_deg(p0: QPointF, p1: QPointF) -> float:
     """Angle in degrees (0-360) using math coordinates (Y up)."""
     dx = p1.x() - p0.x()
@@ -73,15 +76,30 @@ def candidate_directions_deg(
     existing_angles_deg: Iterable[float],
     base_angle_deg: float,
 ) -> list[float]:
-    if geometry == "sp":
-        step = 180.0
-        count = 2
+    if geometry == "sp3":
+        angles = list(existing_angles_deg)
+        if angles:
+            candidates = []
+            for base in angles:
+                candidates.append(normalize_angle_deg(base + SP3_BOND_ANGLE_DEG))
+                candidates.append(normalize_angle_deg(base - SP3_BOND_ANGLE_DEG))
+            seen = set()
+            deduped = []
+            for cand in candidates:
+                key = round(cand, 6)
+                if key in seen:
+                    continue
+                seen.add(key)
+                deduped.append(cand)
+            return deduped
+        step = 60.0
+        count = 6
     elif geometry == "sp2":
         step = 120.0
         count = 3
     else:
-        step = 60.0
-        count = 6
+        step = 180.0
+        count = 2
 
     angles = list(existing_angles_deg)
     if angles:
