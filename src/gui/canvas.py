@@ -107,6 +107,7 @@ COLLISION_LENGTH_BOOST = 1.2
 BOND_OVERLAP_TOLERANCE_PX = 5.0
 BOND_DRAG_THRESHOLD_PX = 6.0
 BOND_LAST_ANGLE_TOLERANCE_DEG = 20.0
+CLIPBOARD_RENDER_SCALE = 3.0
 FUNCTIONAL_GROUP_LABELS = [
     "NH2",
     "NO2",
@@ -716,7 +717,7 @@ class ChemusonCanvas(QGraphicsView):
         except Exception:
             pass
 
-        image = self._render_scene_image()
+        image = self._render_scene_image(scale=CLIPBOARD_RENDER_SCALE)
         if image is not None:
             buffer = QBuffer()
             buffer.open(QBuffer.OpenModeFlag.WriteOnly)
@@ -798,7 +799,7 @@ class ChemusonCanvas(QGraphicsView):
 
         if rect is None:
             return None
-        pad = max(4.0, self.drawing_style.stroke_px * 2.0)
+        pad = max(1.0, self.drawing_style.stroke_px)
         return rect.adjusted(-pad, -pad, pad, pad)
 
     def _hidden_render_items(self) -> list:
@@ -866,12 +867,13 @@ class ChemusonCanvas(QGraphicsView):
             for item in hidden:
                 item.setVisible(True)
 
-    def _render_scene_image(self) -> Optional[QImage]:
+    def _render_scene_image(self, scale: float = 1.0) -> Optional[QImage]:
         rect = self._render_scene_bounds()
         if rect is None:
             return None
-        width = max(1, math.ceil(rect.width()))
-        height = max(1, math.ceil(rect.height()))
+        scale = max(1.0, float(scale))
+        width = max(1, math.ceil(rect.width() * scale))
+        height = max(1, math.ceil(rect.height() * scale))
 
         def render():
             image = QImage(width, height, QImage.Format.Format_ARGB32)
@@ -879,9 +881,52 @@ class ChemusonCanvas(QGraphicsView):
             painter = QPainter(image)
             self.scene.render(painter, QRectF(0, 0, width, height), rect)
             painter.end()
-            return image
+            trimmed = self._trim_transparent_image(image)
+            if trimmed is None:
+                return None
+            self._apply_image_dpi(trimmed, scale)
+            return trimmed
 
         return self._with_hidden_render_items(render)
+
+    def _apply_image_dpi(self, image: QImage, scale: float) -> None:
+        base_dpi_x = self.logicalDpiX() or 96.0
+        base_dpi_y = self.logicalDpiY() or 96.0
+        dpi_x = base_dpi_x * scale
+        dpi_y = base_dpi_y * scale
+        dpm_x = max(1, round(dpi_x * 1000.0 / 25.4))
+        dpm_y = max(1, round(dpi_y * 1000.0 / 25.4))
+        image.setDotsPerMeterX(dpm_x)
+        image.setDotsPerMeterY(dpm_y)
+
+    def _trim_transparent_image(self, image: QImage) -> Optional[QImage]:
+        width = image.width()
+        height = image.height()
+        if width <= 0 or height <= 0:
+            return None
+        left = width
+        right = -1
+        top = height
+        bottom = -1
+        for y in range(height):
+            for x in range(width):
+                if (image.pixel(x, y) >> 24) & 0xFF:
+                    if x < left:
+                        left = x
+                    if x > right:
+                        right = x
+                    if y < top:
+                        top = y
+                    if y > bottom:
+                        bottom = y
+        if right < left or bottom < top:
+            return None
+        pad = 1
+        left = max(0, left - pad)
+        top = max(0, top - pad)
+        right = min(width - 1, right + pad)
+        bottom = min(height - 1, bottom + pad)
+        return image.copy(QRect(left, top, right - left + 1, bottom - top + 1))
 
     def _render_scene_svg(self) -> Optional[bytes]:
         if QSvgGenerator is None:
