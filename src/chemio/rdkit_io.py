@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Dict, Iterable, Optional, Tuple
 
 from core.model import BondStyle, BondStereo, MolGraph
@@ -14,8 +15,12 @@ except Exception:  # pragma: no cover - optional dependency at runtime
     rdMolDraw2D = None
 
 
+def _rdkit_available() -> bool:
+    return Chem is not None and AllChem is not None and rdMolDraw2D is not None
+
+
 def _require_rdkit():
-    if Chem is None or AllChem is None or rdMolDraw2D is None:
+    if not _rdkit_available():
         raise RuntimeError("RDKit no disponible")
 
 
@@ -60,11 +65,15 @@ def molgraph_to_rdkit(molgraph: MolGraph):
 
 
 def molgraph_to_smiles(molgraph: MolGraph) -> str:
+    if not _rdkit_available():
+        return _molgraph_to_smiles_fallback(molgraph)
     mol = molgraph_to_rdkit(molgraph)
     return Chem.MolToSmiles(mol, canonical=True)
 
 
 def molgraph_to_molfile(molgraph: MolGraph) -> str:
+    if not _rdkit_available():
+        return _molgraph_to_molfile_fallback(molgraph)
     mol = molgraph_to_rdkit(molgraph)
     return Chem.MolToMolBlock(mol)
 
@@ -197,3 +206,157 @@ def _scale_to_default(graph: MolGraph, target: float = 40.0) -> None:
     for atom in graph.atoms.values():
         atom.x *= scale
         atom.y *= scale
+
+
+@dataclass
+class _SmilesNode:
+    atom_id: int
+    symbol: str
+    children: list[tuple[str, "_SmilesNode"]]
+    ring_closures: list[tuple[str, int]]
+
+
+def _molgraph_to_smiles_fallback(molgraph: MolGraph) -> str:
+    if not molgraph.atoms:
+        return ""
+    adjacency: dict[int, list[tuple[int, Bond]]] = {}
+    for bond in molgraph.bonds.values():
+        adjacency.setdefault(bond.a1_id, []).append((bond.a2_id, bond))
+        adjacency.setdefault(bond.a2_id, []).append((bond.a1_id, bond))
+    for neighbors in adjacency.values():
+        neighbors.sort(key=lambda item: item[0])
+
+    aromatic_atoms: set[int] = set()
+    for bond in molgraph.bonds.values():
+        if bond.is_aromatic:
+            aromatic_atoms.add(bond.a1_id)
+            aromatic_atoms.add(bond.a2_id)
+
+    nodes_by_id: dict[int, _SmilesNode] = {}
+    edge_handled: set[tuple[int, int]] = set()
+    ring_counter = 1
+
+    def bond_symbol(bond: Bond) -> str:
+        if bond.is_aromatic:
+            return ":"
+        if bond.order == 2:
+            return "="
+        if bond.order == 3:
+            return "#"
+        return ""
+
+    def atom_symbol(atom_id: int) -> str:
+        atom = molgraph.atoms[atom_id]
+        element = atom.element
+        aromatic = atom_id in aromatic_atoms and element in {"B", "C", "N", "O", "P", "S"}
+        symbol = element.lower() if aromatic else element
+        charge = ""
+        if atom.charge > 0:
+            charge = f"+{atom.charge}" if atom.charge > 1 else "+"
+        elif atom.charge < 0:
+            magnitude = abs(atom.charge)
+            charge = f"-{magnitude}" if magnitude > 1 else "-"
+        isotope = f"{atom.isotope}" if atom.isotope is not None else ""
+        explicit_h = ""
+        if atom.explicit_h is not None and atom.explicit_h > 0:
+            explicit_h = "H" if atom.explicit_h == 1 else f"H{atom.explicit_h}"
+        if atom.mapping is not None:
+            return f"[{isotope}{symbol}{explicit_h}{charge}:{atom.mapping}]"
+        if isotope or explicit_h or charge or symbol not in {"B", "C", "N", "O", "P", "S", "F", "Cl", "Br", "I"}:
+            return f"[{isotope}{symbol}{explicit_h}{charge}]"
+        return symbol
+
+    def build(node_id: int, parent_id: Optional[int]) -> _SmilesNode:
+        nonlocal ring_counter
+        node = nodes_by_id.get(node_id)
+        if node is None:
+            node = _SmilesNode(
+                atom_id=node_id,
+                symbol=atom_symbol(node_id),
+                children=[],
+                ring_closures=[],
+            )
+            nodes_by_id[node_id] = node
+        for neighbor_id, bond in adjacency.get(node_id, []):
+            if neighbor_id == parent_id:
+                continue
+            edge_key = (min(node_id, neighbor_id), max(node_id, neighbor_id))
+            if neighbor_id not in nodes_by_id:
+                child = build(neighbor_id, node_id)
+                node.children.append((bond_symbol(bond), child))
+            else:
+                if edge_key in edge_handled:
+                    continue
+                edge_handled.add(edge_key)
+                ring_id = ring_counter
+                ring_counter += 1
+                node.ring_closures.append((bond_symbol(bond), ring_id))
+                other = nodes_by_id[neighbor_id]
+                other.ring_closures.append((bond_symbol(bond), ring_id))
+        return node
+
+    def ring_token(symbol: str, ring_id: int) -> str:
+        if ring_id >= 10:
+            return f"{symbol}%{ring_id}"
+        return f"{symbol}{ring_id}"
+
+    def emit(node: _SmilesNode) -> str:
+        text = node.symbol
+        for symbol, ring_id in node.ring_closures:
+            text += ring_token(symbol, ring_id)
+        for idx, (symbol, child) in enumerate(node.children):
+            branch = emit(child)
+            if idx == 0:
+                text += f"{symbol}{branch}"
+            else:
+                text += f"({symbol}{branch})"
+        return text
+
+    seen: set[int] = set()
+    parts: list[str] = []
+    for atom_id in sorted(molgraph.atoms.keys()):
+        if atom_id in seen:
+            continue
+        node = build(atom_id, None)
+        for node_id in nodes_by_id:
+            seen.add(node_id)
+        parts.append(emit(node))
+    return ".".join(parts)
+
+
+def _molgraph_to_molfile_fallback(molgraph: MolGraph) -> str:
+    atoms = [molgraph.atoms[atom_id] for atom_id in sorted(molgraph.atoms.keys())]
+    bonds = [molgraph.bonds[bond_id] for bond_id in sorted(molgraph.bonds.keys())]
+    atom_index = {atom.id: idx + 1 for idx, atom in enumerate(atoms)}
+
+    lines = [
+        "Chemuson",
+        "Chemuson",
+        "",
+        f"{len(atoms):>3}{len(bonds):>3}  0  0  0  0  0  0  0  0  0  0  0  0 V2000",
+    ]
+
+    for atom in atoms:
+        lines.append(
+            f"{atom.x:>10.4f}{atom.y:>10.4f}{0.0:>10.4f} {atom.element:<3} 0  0  0  0  0  0  0  0  0  0  0  0"
+        )
+
+    for bond in bonds:
+        bond_type = 4 if bond.is_aromatic else max(1, min(3, bond.order))
+        lines.append(
+            f"{atom_index[bond.a1_id]:>3}{atom_index[bond.a2_id]:>3}{bond_type:>3}  0  0  0  0"
+        )
+
+    charges: list[tuple[int, int]] = []
+    for atom in atoms:
+        if atom.charge:
+            charges.append((atom_index[atom.id], atom.charge))
+    for i in range(0, len(charges), 8):
+        chunk = charges[i : i + 8]
+        parts = [f"{len(chunk):>3}"]
+        for idx, charge in chunk:
+            parts.append(f"{idx:>3}{charge:>3}")
+        lines.append(f"M  CHG{''.join(parts)}")
+
+    lines.append("M  END")
+    return "\n".join(lines)
