@@ -54,6 +54,7 @@ from gui.items import (
 from gui.style import CHEMDOODLE_LIKE, DrawingStyle
 from gui.geom import (
     angle_deg,
+    snap_angle_deg,
     endpoint_from_angle_len,
     choose_optimal_direction,
     geometry_for_bond,
@@ -1897,7 +1898,7 @@ class ChemusonCanvas(QGraphicsView):
             return math.pi
         if max_order == 2:
             return 2 * math.pi / 3
-        return math.radians(SP3_BOND_ANGLE_DEG)
+        return math.radians(self._sp3_display_angle_deg())
 
     def _get_anchor_bond_angles(self, anchor_id: int) -> List[float]:
         angles = []
@@ -1929,6 +1930,33 @@ class ChemusonCanvas(QGraphicsView):
     def _angle_distance(self, a: float, b: float) -> float:
         diff = (a - b + math.pi) % (2 * math.pi) - math.pi
         return abs(diff)
+
+    def _angle_snap_step_deg(self) -> float:
+        if not self.state.fixed_angles:
+            return 0.0
+        step = float(self.state.angle_step_deg)
+        return step if step > 0 else 0.0
+
+    def _snap_angles_to_grid(self, angles: Iterable[float]) -> list[float]:
+        step = self._angle_snap_step_deg()
+        if step <= 0:
+            return list(angles)
+        snapped = [snap_angle_deg(angle, step) for angle in angles]
+        seen: set[float] = set()
+        deduped: list[float] = []
+        for angle in snapped:
+            key = round(angle, 6)
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(angle)
+        return deduped
+
+    def _sp3_display_angle_deg(self) -> float:
+        step = self._angle_snap_step_deg()
+        if step <= 0:
+            return SP3_BOND_ANGLE_DEG
+        return snap_angle_deg(SP3_BOND_ANGLE_DEG, step)
 
     # -------------------------------------------------------------------------
     # Hover + Drag State
@@ -2178,20 +2206,27 @@ class ChemusonCanvas(QGraphicsView):
             else geometry_for_bond(bond_order, is_aromatic, [])
         )
         candidates = candidate_directions_deg(geometry, existing_angles, mouse_angle_deg)
+        if self.state.fixed_angles:
+            candidates = self._snap_angles_to_grid(candidates)
         candidates = filter_occupied_angles_deg(
             candidates, existing_angles, ANGLE_OCCUPIED_TOLERANCE_DEG
         )
         if not candidates:
             candidates = candidate_directions_deg(geometry, [], mouse_angle_deg)
+            if self.state.fixed_angles:
+                candidates = self._snap_angles_to_grid(candidates)
 
         preferred: list[float] = []
         if geometry == "sp3" and anchor_id is not None:
             incoming = self._incoming_angle_deg(anchor_id)
             if incoming is not None:
+                sp3_angle = self._sp3_display_angle_deg()
                 preferred = [
-                    (incoming + SP3_BOND_ANGLE_DEG) % 360.0,
-                    (incoming - SP3_BOND_ANGLE_DEG) % 360.0,
+                    (incoming + sp3_angle) % 360.0,
+                    (incoming - sp3_angle) % 360.0,
                 ]
+                if self.state.fixed_angles:
+                    preferred = self._snap_angles_to_grid(preferred)
 
         if not apply_collisions:
             picked = pick_closest_direction_deg(candidates, mouse_angle_deg, preferred)
@@ -2397,7 +2432,7 @@ class ChemusonCanvas(QGraphicsView):
         step = (
             self._bond_environment_step(anchor_id)
             if anchor_id is not None
-            else math.radians(SP3_BOND_ANGLE_DEG)
+            else math.radians(self._sp3_display_angle_deg())
         )
         if step < math.pi:
             self._bond_zigzag_sign *= -1
@@ -2807,14 +2842,16 @@ class ChemusonCanvas(QGraphicsView):
         points = [p0]
         geometry = self._bond_geometry(self._drag_anchor["id"], 1, False)
         zigzag = geometry == "sp3" and not use_alt and self.state.fixed_angles
-        zigzag_delta = SP3_BOND_ANGLE_DEG / 2.0
+        sp3_angle = self._sp3_display_angle_deg()
+        zigzag_delta = sp3_angle / 2.0
         if zigzag:
             incoming = self._incoming_angle_deg(self._drag_anchor["id"])
             if incoming is not None:
                 axis_options = [
                     (incoming + zigzag_delta) % 360.0,
-                    (incoming - (SP3_BOND_ANGLE_DEG + zigzag_delta)) % 360.0,
+                    (incoming - (sp3_angle + zigzag_delta)) % 360.0,
                 ]
+                axis_options = self._snap_angles_to_grid(axis_options)
                 raw_angle = min(axis_options, key=lambda ang: angle_distance_deg(ang, raw_angle))
         current = p0
         for i in range(1, n + 1):
