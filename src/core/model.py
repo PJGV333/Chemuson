@@ -89,6 +89,8 @@ class ChemState:
     label_font_size: float = 11.0
     label_font_bold: bool = False
     label_font_italic: bool = False
+    label_font_underline: bool = False
+    use_element_colors: bool = True
 
 
 class MolGraph:

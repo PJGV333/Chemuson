@@ -611,12 +611,14 @@ class ChemusonCanvas(QGraphicsView):
         cleaned = text.strip()
         if not cleaned:
             return None
-        allowed = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-()")
+        allowed = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-()_^")
         if any(ch not in allowed for ch in cleaned):
             return None
         alias = FUNCTIONAL_GROUP_ALIASES.get(cleaned.lower())
         if alias:
             return alias
+        if "_" in cleaned or "^" in cleaned:
+            return cleaned
         if cleaned.isalpha() and len(cleaned) <= 2:
             if len(cleaned) == 1:
                 normalized = cleaned.upper()
@@ -1038,6 +1040,7 @@ class ChemusonCanvas(QGraphicsView):
             show_hydrogen=show_h,
             label_font=self._label_font(),
             style=self.drawing_style,
+            use_element_colors=self.state.use_element_colors,
         )
         self.scene.addItem(item)
         self.atom_items[atom.id] = item
@@ -1074,6 +1077,7 @@ class ChemusonCanvas(QGraphicsView):
         font.setPointSizeF(size)
         font.setBold(self.state.label_font_bold)
         font.setItalic(self.state.label_font_italic)
+        font.setUnderline(self.state.label_font_underline)
         return font
 
     def label_font(self) -> QFont:
@@ -1089,12 +1093,19 @@ class ChemusonCanvas(QGraphicsView):
         self.state.label_font_size = float(size)
         self.state.label_font_bold = font.bold()
         self.state.label_font_italic = font.italic()
+        self.state.label_font_underline = font.underline()
         self.refresh_label_fonts()
 
     def refresh_label_fonts(self) -> None:
         font = self._label_font()
         for item in self.atom_items.values():
             item.set_label_font(font)
+        self.refresh_atom_labels()
+
+    def set_use_element_colors(self, use_element_colors: bool) -> None:
+        self.state.use_element_colors = use_element_colors
+        for item in self.atom_items.values():
+            item.set_use_element_colors(use_element_colors)
         self.refresh_atom_labels()
 
     def refresh_atom_labels(self, atom_ids: Optional[Iterable[int]] = None) -> None:

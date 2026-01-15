@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QToolBar,
 )
 from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtGui import QAction, QKeySequence, QIcon, QPainter
+from PyQt6.QtGui import QAction, QActionGroup, QKeySequence, QIcon, QPainter
 from PyQt6.QtPrintSupport import QPrinter
 
 from gui.canvas import ChemusonCanvas
@@ -24,6 +24,7 @@ from gui.styles import MAIN_STYLESHEET, TOOL_PALETTE_STYLESHEET
 from gui.icons import draw_generic_icon
 from gui.docks import PlantillasDock, InspectorDock
 from gui.dialogs import PreferencesDialog, QuickStartDialog, StyleDialog
+from gui.commands import ChangeAtomCommand
 
 
 class ChemusonWindow(QMainWindow):
@@ -172,6 +173,9 @@ class ChemusonWindow(QMainWindow):
         self.action_label_font = QAction("Fuente de etiquetas...", self)
         self.action_label_font.triggered.connect(self._on_label_font)
 
+        self.action_label_size_set = QAction("Tamaño...", self)
+        self.action_label_size_set.triggered.connect(self._on_label_font_size_dialog)
+
         self.action_label_bold = QAction("Negrita", self)
         self.action_label_bold.setCheckable(True)
         self.action_label_bold.triggered.connect(self._on_label_bold)
@@ -180,11 +184,38 @@ class ChemusonWindow(QMainWindow):
         self.action_label_italic.setCheckable(True)
         self.action_label_italic.triggered.connect(self._on_label_italic)
 
+        self.action_label_underline = QAction("Subrayado", self)
+        self.action_label_underline.setCheckable(True)
+        self.action_label_underline.triggered.connect(self._on_label_underline)
+
+        self.action_label_subscript = QAction("Subíndice...", self)
+        self.action_label_subscript.triggered.connect(self._on_label_subscript)
+
+        self.action_label_superscript = QAction("Superíndice...", self)
+        self.action_label_superscript.triggered.connect(self._on_label_superscript)
+
         self.action_label_size_up = QAction("Aumentar tamaño", self)
         self.action_label_size_up.triggered.connect(lambda: self._on_label_font_size(1.0))
 
         self.action_label_size_down = QAction("Reducir tamaño", self)
         self.action_label_size_down.triggered.connect(lambda: self._on_label_font_size(-1.0))
+
+        self.action_label_color_element = QAction("Por elemento", self)
+        self.action_label_color_element.setCheckable(True)
+        self.action_label_color_element.triggered.connect(
+            lambda checked=False: self._on_label_color_mode(True)
+        )
+
+        self.action_label_color_black = QAction("Negro", self)
+        self.action_label_color_black.setCheckable(True)
+        self.action_label_color_black.triggered.connect(
+            lambda checked=False: self._on_label_color_mode(False)
+        )
+
+        self._label_color_group = QActionGroup(self)
+        self._label_color_group.setExclusive(True)
+        self._label_color_group.addAction(self.action_label_color_element)
+        self._label_color_group.addAction(self.action_label_color_black)
 
     def _create_menu_bar(self) -> None:
         """Create the main menu bar with all menus."""
@@ -243,12 +274,21 @@ class ChemusonWindow(QMainWindow):
         # === Texto (Text) ===
         text_menu = menubar.addMenu("Texto")
         text_menu.addAction(self.action_label_font)
+        text_menu.addAction(self.action_label_size_set)
         text_menu.addSeparator()
         text_menu.addAction(self.action_label_bold)
         text_menu.addAction(self.action_label_italic)
+        text_menu.addAction(self.action_label_underline)
+        text_menu.addSeparator()
+        text_menu.addAction(self.action_label_subscript)
+        text_menu.addAction(self.action_label_superscript)
         text_menu.addSeparator()
         text_menu.addAction(self.action_label_size_up)
         text_menu.addAction(self.action_label_size_down)
+        text_menu.addSeparator()
+        label_color_menu = text_menu.addMenu("Color de etiquetas")
+        label_color_menu.addAction(self.action_label_color_element)
+        label_color_menu.addAction(self.action_label_color_black)
         
         # === Ver (View) ===
         view_menu = menubar.addMenu("Ver")
@@ -549,6 +589,9 @@ class ChemusonWindow(QMainWindow):
     def _sync_label_menu_state(self) -> None:
         self.action_label_bold.setChecked(self.canvas.state.label_font_bold)
         self.action_label_italic.setChecked(self.canvas.state.label_font_italic)
+        self.action_label_underline.setChecked(self.canvas.state.label_font_underline)
+        self.action_label_color_element.setChecked(self.canvas.state.use_element_colors)
+        self.action_label_color_black.setChecked(not self.canvas.state.use_element_colors)
 
     def _on_label_font(self) -> None:
         font, ok = QFontDialog.getFont(
@@ -559,6 +602,23 @@ class ChemusonWindow(QMainWindow):
         if ok:
             self.canvas.apply_label_font(font)
             self._sync_label_menu_state()
+
+    def _on_label_font_size_dialog(self) -> None:
+        size, ok = QInputDialog.getDouble(
+            self,
+            "Tamaño de etiquetas",
+            "Tamaño (pt):",
+            float(self.canvas.state.label_font_size),
+            6.0,
+            72.0,
+            1,
+        )
+        if not ok:
+            return
+        font = self.canvas.label_font()
+        font.setPointSizeF(float(size))
+        self.canvas.apply_label_font(font)
+        self._sync_label_menu_state()
 
     def _on_label_bold(self, checked: bool) -> None:
         font = self.canvas.label_font()
@@ -572,6 +632,12 @@ class ChemusonWindow(QMainWindow):
         self.canvas.apply_label_font(font)
         self._sync_label_menu_state()
 
+    def _on_label_underline(self, checked: bool) -> None:
+        font = self.canvas.label_font()
+        font.setUnderline(checked)
+        self.canvas.apply_label_font(font)
+        self._sync_label_menu_state()
+
     def _on_label_font_size(self, delta: float) -> None:
         font = self.canvas.label_font()
         size = font.pointSizeF()
@@ -582,6 +648,40 @@ class ChemusonWindow(QMainWindow):
         size = max(6.0, size + delta)
         font.setPointSizeF(size)
         self.canvas.apply_label_font(font)
+
+    def _apply_label_script(self, marker: str, title: str) -> None:
+        if self.canvas.state.selected_bonds or len(self.canvas.state.selected_atoms) != 1:
+            self.statusBar().showMessage("Selecciona un átomo para aplicar el formato.")
+            return
+        value, ok = QInputDialog.getText(self, title, "Texto:")
+        if not ok:
+            return
+        cleaned = value.strip()
+        if not cleaned:
+            return
+        atom_id = next(iter(self.canvas.state.selected_atoms))
+        atom = self.canvas.model.get_atom(atom_id)
+        label = atom.element
+        charge = ""
+        if label and label[-1] in "+-":
+            charge = label[-1]
+            label = label[:-1]
+        new_label = f"{label}{marker}{cleaned}{charge}"
+        cmd = ChangeAtomCommand(self.canvas.model, self.canvas, atom_id, new_label)
+        self.canvas.undo_stack.push(cmd)
+
+    def _on_label_subscript(self) -> None:
+        self._apply_label_script("_", "Subíndice")
+
+    def _on_label_superscript(self) -> None:
+        self._apply_label_script("^", "Superíndice")
+
+    def _on_label_color_mode(self, use_element_colors: bool) -> None:
+        self.canvas.set_use_element_colors(use_element_colors)
+        self._sync_label_menu_state()
+        self.statusBar().showMessage(
+            "Etiquetas: por elemento" if use_element_colors else "Etiquetas: negro"
+        )
     
     # -------------------------------------------------------------------------
     # Structure Menu Handlers

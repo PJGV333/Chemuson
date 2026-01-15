@@ -48,6 +48,7 @@ class AtomItem(QGraphicsEllipseItem):
         show_hydrogen: bool = True,
         label_font: Optional[QFont] = None,
         style: DrawingStyle = CHEMDOODLE_LIKE,
+        use_element_colors: bool = True,
     ) -> None:
         super().__init__(-radius, -radius, radius * 2, radius * 2)
         self.atom_id = atom.id
@@ -59,7 +60,8 @@ class AtomItem(QGraphicsEllipseItem):
         self._is_selected = False
         self._is_hover = False
         self._valence_error = False
-        self._element_color = QColor(ELEMENT_COLORS.get(atom.element, "#333333"))
+        self._use_element_colors = use_element_colors
+        self._element_color = QColor(self._label_color_for_element(atom.element))
         self._charge = atom.charge
         self._style = style
         self._display_label = atom.element
@@ -75,6 +77,7 @@ class AtomItem(QGraphicsEllipseItem):
         self.label = QGraphicsTextItem("", self)
         base_font = label_font or QFont("Arial", 10, QFont.Weight.Bold)
         self.label.setFont(base_font)
+        self._user_underline = base_font.underline()
         self.label.document().setDocumentMargin(0)
         self._set_label_text(self._display_label)
 
@@ -110,20 +113,31 @@ class AtomItem(QGraphicsEllipseItem):
         y = label_pos.y() - rect.height() / 2 - 2
         self.charge_label.setPos(x, y)
     
+    def _base_label_color(self) -> str:
+        return "#000000" if not self._use_element_colors else "#333333"
+
+    def _label_color_for_element(self, element: str) -> str:
+        if not self._use_element_colors:
+            return "#000000"
+        return LABEL_ELEMENT_COLORS.get(element, "#333333")
+
     def _set_element_color(self) -> None:
         """Set the label color based on element type."""
-        color = LABEL_ELEMENT_COLORS.get(self.element, "#333333")
-        self._element_color = QColor(color)
+        self._element_color = QColor(self._label_color_for_element(self.element))
         self._apply_label_style()
 
     def _apply_label_style(self) -> None:
         font = self.label.font()
-        font.setUnderline(self._valence_error)
+        font.setUnderline(self._user_underline or self._valence_error)
         self.label.setFont(font)
         if self._valence_error:
-            self.label.setDefaultTextColor(QColor("#C0392B"))
+            color = "#C0392B"
         else:
-            self.label.setDefaultTextColor(self._element_color)
+            color = self._element_color.name()
+        self.label.setDefaultTextColor(QColor(color))
+        charge_color = "#C0392B" if self._valence_error else self._base_label_color()
+        if hasattr(self, "charge_label"):
+            self.charge_label.setDefaultTextColor(QColor(charge_color))
         self._set_label_text(self._display_label)
     
     def _should_hide_element(self) -> bool:
@@ -218,10 +232,11 @@ class AtomItem(QGraphicsEllipseItem):
     def set_label_font(self, font: QFont) -> None:
         """Update the label font and refresh layout."""
         self.label.setFont(font)
+        self._user_underline = font.underline()
         charge_font = QFont(font)
         charge_font.setPointSizeF(max(font.pointSizeF() * 0.8, 6.0))
         self.charge_label.setFont(charge_font)
-        self._set_label_text(self._display_label)
+        self._apply_label_style()
 
     def set_valence_error(self, has_error: bool) -> None:
         """Toggle valence error underline on the label."""
@@ -283,8 +298,23 @@ class AtomItem(QGraphicsEllipseItem):
         sub_metrics = QFontMetrics(sub_font)
         width = 0.0
         i = 0
+        script_mode: Optional[str] = None
         while i < len(text):
             ch = text[i]
+            if ch in "_^":
+                script_mode = "sub" if ch == "_" else "sup"
+                i += 1
+                continue
+            if script_mode is not None:
+                j = i
+                while j < len(text) and text[j].isalnum():
+                    j += 1
+                if j > i:
+                    width += sub_metrics.horizontalAdvance(text[i:j])
+                    i = j
+                    script_mode = None
+                    continue
+                script_mode = None
             if ch.isdigit():
                 j = i + 1
                 while j < len(text) and text[j].isdigit():
@@ -302,6 +332,7 @@ class AtomItem(QGraphicsEllipseItem):
             return None
         if cleaned[-1] in "+-":
             cleaned = cleaned[:-1]
+        cleaned = cleaned.lstrip("_^")
         if not cleaned:
             return None
         abbrs = sorted(ABBREVIATION_LABELS, key=len, reverse=True)
@@ -342,7 +373,23 @@ class AtomItem(QGraphicsEllipseItem):
         tokens: list[tuple[str, str]] = []
         i = 0
         abbrs = sorted(ABBREVIATION_LABELS, key=len, reverse=True)
+        script_mode: Optional[str] = None
         while i < len(cleaned):
+            ch = cleaned[i]
+            if ch in "_^":
+                script_mode = "sub" if ch == "_" else "sup"
+                i += 1
+                continue
+            if script_mode is not None:
+                j = i
+                while j < len(cleaned) and cleaned[j].isalnum():
+                    j += 1
+                if j > i:
+                    tokens.append((script_mode, cleaned[i:j]))
+                    i = j
+                    script_mode = None
+                    continue
+                script_mode = None
             matched = None
             for abbr in abbrs:
                 if cleaned.startswith(abbr, i):
@@ -403,21 +450,27 @@ class AtomItem(QGraphicsEllipseItem):
         parts: list[str] = []
         error_color = "#C0392B"
         use_error = self._valence_error
-        last_color = error_color if use_error else "#333333"
+        base_color = self._base_label_color()
+        last_color = error_color if use_error else base_color
         for kind, value in tokens:
             if kind == "elem":
-                color = error_color if use_error else LABEL_ELEMENT_COLORS.get(value, "#333333")
+                color = error_color if use_error else self._label_color_for_element(value)
                 parts.append(f'<span style="color:{color};">{value}</span>')
                 last_color = color
                 continue
             if kind in {"abbr", "text"}:
-                color = error_color if use_error else "#333333"
+                color = error_color if use_error else base_color
                 parts.append(f'<span style="color:{color};">{value}</span>')
                 last_color = color
                 continue
             if kind == "sub":
                 parts.append(
                     f'<sub><span style="font-size:{sub_size}pt; color:{last_color};">{value}</span></sub>'
+                )
+                continue
+            if kind == "sup":
+                parts.append(
+                    f'<sup><span style="font-size:{sub_size}pt; color:{last_color};">{value}</span></sup>'
                 )
                 continue
 
@@ -433,6 +486,11 @@ class AtomItem(QGraphicsEllipseItem):
         self._style = style
         if not self._should_hide_element():
             self._apply_normal_style()
+
+    def set_use_element_colors(self, use_element_colors: bool) -> None:
+        """Toggle element-based label coloring."""
+        self._use_element_colors = use_element_colors
+        self._set_element_color()
 
 
 class BondItem(QGraphicsPathItem):
