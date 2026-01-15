@@ -50,6 +50,7 @@ from gui.items import (
     PreviewRingItem,
     PreviewChainItem,
     PreviewChainLabelItem,
+    ABBREVIATION_LABELS,
 )
 from gui.style import CHEMDOODLE_LIKE, DrawingStyle
 from gui.geom import (
@@ -1140,8 +1141,66 @@ class ChemusonCanvas(QGraphicsView):
                     anchor = atom.element
                 else:
                     label = f"{atom.element}{h_text}"
+        else:
+            label, anchor = self._reflow_group_label(label, atom.id)
         offset = self._label_offset(atom.id)
         return label, anchor, offset
+
+    def _reflow_group_label(self, label: str, atom_id: int) -> tuple[str, Optional[str]]:
+        cleaned = label.strip()
+        if not cleaned:
+            return label, None
+        if any(cleaned.startswith(abbr) for abbr in ABBREVIATION_LABELS):
+            return label, None
+        charge = ""
+        if cleaned and cleaned[-1] in "+-":
+            charge = cleaned[-1]
+            cleaned = cleaned[:-1]
+        tokens = self._group_label_tokens(cleaned)
+        if not tokens or len(tokens) < 2:
+            return label, None
+        anchor_symbol = tokens[0][0]
+        direction = self._label_open_direction(atom_id)
+        if direction.x() < -0.2:
+            tokens = tokens[1:] + tokens[:1]
+            cleaned = "".join(token for _symbol, token in tokens)
+        return f"{cleaned}{charge}", anchor_symbol
+
+    def _group_label_tokens(self, label: str) -> Optional[list[tuple[str, str]]]:
+        tokens: list[tuple[str, str]] = []
+        i = 0
+        while i < len(label):
+            ch = label[i]
+            if not ch.isupper():
+                return None
+            symbol = None
+            if i + 1 < len(label) and label[i + 1].islower():
+                candidate = label[i : i + 2]
+                if candidate in ELEMENT_SYMBOLS:
+                    symbol = candidate
+                    i += 2
+            if symbol is None and ch in ELEMENT_SYMBOLS:
+                symbol = ch
+                i += 1
+            if symbol is None:
+                return None
+            token = symbol
+            while i < len(label):
+                if label[i].isdigit():
+                    token += label[i]
+                    i += 1
+                    continue
+                if label[i] in "_^":
+                    marker = label[i]
+                    token += marker
+                    i += 1
+                    while i < len(label) and label[i].isalnum():
+                        token += label[i]
+                        i += 1
+                    continue
+                break
+            tokens.append((symbol, token))
+        return tokens
 
     def _implicit_hydrogen_count(self, atom_id: int, element: str) -> int:
         if element not in IMPLICIT_H_ELEMENTS:
