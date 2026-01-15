@@ -285,7 +285,7 @@ class ChemusonCanvas(QGraphicsView):
         self._arrow_start_pos = None
         self._clear_bracket_preview()
 
-        if tool_id == "tool_select":
+        if tool_id in {"tool_select", "tool_select_lasso"}:
             self.setCursor(Qt.CursorShape.ArrowCursor)
             self.setDragMode(QGraphicsView.DragMode.NoDrag)
         else:
@@ -332,11 +332,13 @@ class ChemusonCanvas(QGraphicsView):
             super().mousePressEvent(event)
             return
 
-        if self.current_tool == "tool_select":
+        if self.current_tool in {"tool_select", "tool_select_lasso"}:
             clicked_item = self._get_item_at(scene_pos)
             if clicked_item is None:
                 additive = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
-                free_select = bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
+                free_select = self.current_tool == "tool_select_lasso" or bool(
+                    event.modifiers() & Qt.KeyboardModifier.ControlModifier
+                )
                 self._begin_selection_drag(scene_pos, free_select, additive)
                 return
             if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
@@ -352,15 +354,21 @@ class ChemusonCanvas(QGraphicsView):
 
         clicked_atom_id, clicked_bond_id = self._pick_hover_target(scene_pos)
 
-        if self.current_tool in {"tool_arrow_forward", "tool_arrow_retro"}:
+        arrow_tools = {
+            "tool_arrow_forward": "forward",
+            "tool_arrow_retro": "retro",
+            "tool_arrow_both": "both",
+            "tool_arrow_equilibrium": "equilibrium",
+        }
+        if self.current_tool in arrow_tools:
             if self._arrow_start_pos is None:
                 self._arrow_start_pos = scene_pos
                 return
             if (scene_pos - self._arrow_start_pos).manhattanLength() < 2.0:
                 self._arrow_start_pos = None
                 return
-            head_at_end = self.current_tool == "tool_arrow_forward"
-            self._add_arrow_item(self._arrow_start_pos, scene_pos, head_at_end=head_at_end)
+            arrow_kind = arrow_tools[self.current_tool]
+            self._add_arrow_item(self._arrow_start_pos, scene_pos, kind=arrow_kind)
             self._arrow_start_pos = None
             return
 
@@ -1365,8 +1373,8 @@ class ChemusonCanvas(QGraphicsView):
         self._refresh_atom_label(bond.a1_id)
         self._refresh_atom_label(bond.a2_id)
 
-    def _add_arrow_item(self, start: QPointF, end: QPointF, head_at_end: bool) -> None:
-        item = ArrowItem(start, end, head_at_end=head_at_end, style=self.drawing_style)
+    def _add_arrow_item(self, start: QPointF, end: QPointF, kind: str) -> None:
+        item = ArrowItem(start, end, kind=kind, style=self.drawing_style)
         self.scene.addItem(item)
         self.arrow_items.append(item)
 

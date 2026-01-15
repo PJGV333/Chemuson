@@ -77,6 +77,30 @@ def draw_atom_icon(text: str, color: str = None) -> QIcon:
     return QIcon(pixmap)
 
 
+def draw_glyph_icon(text: str, color: str = None) -> QIcon:
+    """
+    Draw a minimal glyph icon (letters, brackets, symbols).
+    """
+    if color is None:
+        color = "#222222"
+
+    pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
+    pixmap.fill(Qt.GlobalColor.transparent)
+
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+
+    font_size = 15 if len(text) == 1 else 11
+    font = QFont("Arial", font_size, QFont.Weight.Bold)
+    painter.setFont(font)
+    painter.setPen(QColor(color))
+    painter.drawText(QRectF(0, 0, ICON_SIZE, ICON_SIZE), Qt.AlignmentFlag.AlignCenter, text)
+
+    painter.end()
+    return QIcon(pixmap)
+
+
 def draw_bond_icon(bond_type: str = 'single') -> QIcon:
     """
     Draw a bond icon showing a diagonal line.
@@ -184,12 +208,12 @@ def draw_bond_icon(bond_type: str = 'single') -> QIcon:
     return QIcon(pixmap)
 
 
-def draw_ring_icon() -> QIcon:
+def draw_ring_icon(size: int = 6, aromatic: bool = True) -> QIcon:
     """
-    Draw a benzene ring (hexagon) icon.
+    Draw a ring icon with the given number of sides.
     
     Returns:
-        QIcon with hexagon shape
+        QIcon with polygon shape
     """
     pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
     pixmap.fill(Qt.GlobalColor.transparent)
@@ -197,12 +221,15 @@ def draw_ring_icon() -> QIcon:
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     
-    # Create hexagon points
+    # Create polygon points
     center = ICON_SIZE / 2
-    radius = ICON_SIZE / 2 - 4
+    radius = ICON_SIZE / 2 - 5
     points = []
-    for i in range(6):
-        angle = math.pi / 6 + i * math.pi / 3  # Start from top-right vertex
+    sides = max(3, int(size))
+    step = 2 * math.pi / sides
+    start_angle = math.pi / 6  # Point-up orientation (ChemDraw-like)
+    for i in range(sides):
+        angle = start_angle + i * step
         x = center + radius * math.cos(angle)
         y = center - radius * math.sin(angle)
         points.append(QPointF(x, y))
@@ -215,9 +242,64 @@ def draw_ring_icon() -> QIcon:
     painter.drawPolygon(polygon)
     
     # Draw inner circle (aromatic indicator)
-    inner_radius = radius * 0.5
-    painter.drawEllipse(QPointF(center, center), inner_radius, inner_radius)
+    if aromatic:
+        inner_radius = radius * 0.5
+        painter.drawEllipse(QPointF(center, center), inner_radius, inner_radius)
     
+    painter.end()
+    return QIcon(pixmap)
+
+
+def draw_arrow_icon(kind: str = "forward") -> QIcon:
+    """
+    Draw arrow icons used in the annotation palette.
+    """
+    pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
+    pixmap.fill(Qt.GlobalColor.transparent)
+
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+    pen = QPen(QColor("#222222"), 2)
+    painter.setPen(pen)
+    painter.setBrush(QBrush(QColor("#222222")))
+
+    y = ICON_SIZE / 2
+    start_x = 6
+    end_x = ICON_SIZE - 6
+    head_len = 6
+    head_width = 4
+
+    def draw_head(tip_x: float, tip_y: float, direction: int) -> None:
+        base_x = tip_x - direction * head_len
+        points = [
+            QPointF(tip_x, tip_y),
+            QPointF(base_x, tip_y - head_width),
+            QPointF(base_x, tip_y + head_width),
+        ]
+        painter.drawPolygon(QPolygonF(points))
+
+    if kind == "forward":
+        painter.drawLine(QPointF(start_x, y), QPointF(end_x - head_len, y))
+        draw_head(end_x, y, 1)
+    elif kind == "retro":
+        painter.drawLine(QPointF(start_x + head_len, y), QPointF(end_x, y))
+        draw_head(start_x, y, -1)
+    elif kind == "both":
+        painter.drawLine(QPointF(start_x + head_len, y), QPointF(end_x - head_len, y))
+        draw_head(end_x, y, 1)
+        draw_head(start_x, y, -1)
+    elif kind == "equilibrium":
+        offset = 4
+        y_top = y - offset
+        y_bottom = y + offset
+        painter.drawLine(QPointF(start_x, y_top), QPointF(end_x - head_len, y_top))
+        draw_head(end_x, y_top, 1)
+        painter.drawLine(QPointF(start_x + head_len, y_bottom), QPointF(end_x, y_bottom))
+        draw_head(start_x, y_bottom, -1)
+    else:
+        painter.drawLine(QPointF(start_x, y), QPointF(end_x, y))
+
     painter.end()
     return QIcon(pixmap)
 
@@ -227,7 +309,7 @@ def draw_generic_icon(shape: str) -> QIcon:
     Draw generic tool icons (pointer, eraser, etc).
     
     Args:
-        shape: 'pointer', 'eraser', 'pan', 'zoom_in', 'zoom_out', 'chain'
+        shape: 'pointer', 'eraser', 'pan', 'zoom_in', 'zoom_out', 'chain', 'lasso'
     
     Returns:
         QIcon with the tool shape
@@ -251,13 +333,13 @@ def draw_generic_icon(shape: str) -> QIcon:
         ]
         polygon = QPolygonF(arrow_points)
         painter.setPen(QPen(QColor('#222222'), 1.5))
-        painter.setBrush(QBrush(QColor('#4A90D9')))
+        painter.setBrush(QBrush(QColor('#F2F2F2')))
         painter.drawPolygon(polygon)
     
     elif shape == 'eraser':
         # Draw eraser rectangle
         painter.setPen(QPen(QColor('#333333'), 1.5))
-        painter.setBrush(QBrush(QColor('#FFB6C1')))  # Light pink
+        painter.setBrush(QBrush(QColor('#E0E0E0')))
         # Draw angled eraser
         eraser_points = [
             QPointF(8, 26),
@@ -332,6 +414,15 @@ def draw_generic_icon(shape: str) -> QIcon:
         ]
         for i in range(len(points) - 1):
             painter.drawLine(points[i], points[i + 1])
+
+    elif shape == 'lasso':
+        pen = QPen(QColor('#333333'), 1.6, Qt.PenStyle.DashLine)
+        painter.setPen(pen)
+        path = QPainterPath()
+        path.addEllipse(QRectF(6, 8, 14, 10))
+        painter.drawPath(path)
+        painter.setPen(QPen(QColor('#333333'), 1.8))
+        painter.drawLine(16, 18, 24, 26)
     
     painter.end()
     return QIcon(pixmap)

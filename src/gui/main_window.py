@@ -770,11 +770,20 @@ class ChemusonWindow(QMainWindow):
         """Update status bar with current tool."""
         tool_names = {
             "tool_select": "Seleccionar",
+            "tool_select_lasso": "Seleccion (lazo)",
             "tool_erase": "Borrar",
             "tool_bond": "Enlace",
             "tool_ring": f"Anillo {self.canvas.state.active_ring_size}",
             "tool_atom": f"Elemento {self.canvas.state.default_element}",
             "tool_chain": "Cadena",
+            "tool_arrow_forward": "Flecha directa",
+            "tool_arrow_retro": "Flecha retro",
+            "tool_arrow_both": "Flecha doble",
+            "tool_arrow_equilibrium": "Equilibrio",
+            "tool_brackets_round": "Parentesis",
+            "tool_brackets_square": "Corchetes",
+            "tool_brackets_curly": "Llaves",
+            "tool_charge": "Carga",
         }
         name = tool_names.get(tool_id, tool_id)
         self.statusBar().showMessage(f"Herramienta: {name}")

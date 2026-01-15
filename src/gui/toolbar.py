@@ -4,20 +4,28 @@ Vertical toolbar with palette-style tool buttons.
 """
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QToolBar, QToolButton, QMenu, QInputDialog
+from PyQt6.QtWidgets import (
+    QToolBar,
+    QToolButton,
+    QMenu,
+    QInputDialog,
+    QWidget,
+    QGridLayout,
+    QWidgetAction,
+)
 from PyQt6.QtGui import QAction, QActionGroup
 from PyQt6.QtCore import pyqtSignal, Qt, QSize
 
 from core.model import BondStyle, BondStereo
 from gui.icons import (
-    draw_atom_icon,
+    draw_arrow_icon,
     draw_bond_icon,
     draw_generic_icon,
+    draw_glyph_icon,
     draw_ring_icon,
 )
-
-
 from gui.styles import TOOL_PALETTE_STYLESHEET
+
 
 class ChemusonToolbar(QToolBar):
     """
@@ -36,14 +44,39 @@ class ChemusonToolbar(QToolBar):
         self.setOrientation(Qt.Orientation.Vertical)
         self.setMovable(False)
         self.setFloatable(False)
-        self.setIconSize(QSize(32, 32))
+        self.setIconSize(QSize(26, 26))
 
         self.setStyleSheet(TOOL_PALETTE_STYLESHEET)
 
         self.action_group = QActionGroup(self)
         self.action_group.setExclusive(True)
 
-        self._add_tool_action(draw_generic_icon("pointer"), "Seleccionar", "tool_select")
+        self._selection_meta = {
+            "tool_select": (draw_generic_icon("pointer"), "Seleccionar"),
+            "tool_select_lasso": (draw_generic_icon("lasso"), "Seleccion libre"),
+        }
+        self._annotation_meta = {
+            "tool_arrow_forward": (draw_arrow_icon("forward"), "Flecha directa"),
+            "tool_arrow_retro": (draw_arrow_icon("retro"), "Flecha retro"),
+            "tool_arrow_both": (draw_arrow_icon("both"), "Flecha doble"),
+            "tool_arrow_equilibrium": (draw_arrow_icon("equilibrium"), "Equilibrio"),
+            "tool_brackets_round": (draw_glyph_icon("()"), "Parentesis ()"),
+            "tool_brackets_square": (draw_glyph_icon("[]"), "Corchetes []"),
+            "tool_brackets_curly": (draw_glyph_icon("{}"), "Llaves {}"),
+            "tool_charge": (draw_glyph_icon("+"), "Carga"),
+        }
+
+        self._current_select_tool_id = "tool_select"
+        self._current_annotation_tool_id = "tool_arrow_forward"
+
+        select_icon, select_tip = self._selection_meta[self._current_select_tool_id]
+        self.select_button, self.select_action = self._add_palette_button(
+            select_icon,
+            select_tip,
+            "tool_select",
+            trigger_callback=self._emit_current_selection_tool,
+        )
+        self._build_select_palette(self.select_button.menu())
         self._add_tool_action(draw_generic_icon("eraser"), "Borrar", "tool_erase")
         self.addSeparator()
 
@@ -55,22 +88,24 @@ class ChemusonToolbar(QToolBar):
         self.addSeparator()
 
         self.ring_button, self.ring_action = self._add_palette_button(
-            draw_ring_icon(), "Anillos", "tool_ring"
+            draw_ring_icon(6, aromatic=True), "Anillos", "tool_ring"
         )
         self._build_ring_palette(self.ring_button.menu())
         self.addSeparator()
 
         self.label_button, self.label_action = self._add_palette_button(
-            draw_atom_icon("C"), "Labels", "tool_atom"
+            draw_glyph_icon("C"), "Labels", "tool_atom"
         )
         self._build_label_palette(self.label_button.menu())
         self.addSeparator()
 
+        annotation_icon, annotation_tip = self._annotation_meta[self._current_annotation_tool_id]
         self.annotation_button, self.annotation_action = self._add_palette_button(
-            draw_atom_icon("T"), "Anotaciones", "tool_annotation"
+            annotation_icon,
+            annotation_tip,
+            "tool_annotation",
+            trigger_callback=self._emit_current_annotation_tool,
         )
-        self.annotation_action.setToolTip("Anotaciones")
-        self.annotation_button.setToolTip("Anotaciones")
         self._build_annotation_palette(self.annotation_button.menu())
 
         default_bond_spec = {
@@ -95,7 +130,7 @@ class ChemusonToolbar(QToolBar):
         )
         self._select_ring_palette(
             self.ring_button,
-            draw_ring_icon(),
+            draw_ring_icon(6, aromatic=True),
             "Benceno",
             default_ring_spec,
         )
@@ -111,13 +146,22 @@ class ChemusonToolbar(QToolBar):
         action.triggered.connect(lambda checked, id=internal_id: self.tool_changed.emit(id))
         return action
 
-    def _add_palette_button(self, icon, tooltip: str, internal_id: str):
+    def _add_palette_button(
+        self,
+        icon,
+        tooltip: str,
+        internal_id: str,
+        trigger_callback=None,
+    ):
         action = QAction(icon, "", self)
         action.setObjectName(internal_id)
         action.setToolTip(tooltip)
         action.setCheckable(True)
         self.action_group.addAction(action)
-        action.triggered.connect(lambda checked, id=internal_id: self.tool_changed.emit(id))
+        if trigger_callback is None:
+            action.triggered.connect(lambda checked, id=internal_id: self.tool_changed.emit(id))
+        else:
+            action.triggered.connect(trigger_callback)
 
         button = QToolButton(self)
         button.setDefaultAction(action)
@@ -126,168 +170,270 @@ class ChemusonToolbar(QToolBar):
         self.addWidget(button)
         return button, action
 
-    def _build_bond_palette(self, menu: QMenu) -> None:
-        self._add_bond_action(
-            menu,
-            draw_bond_icon("single"),
-            "Enlace sencillo (incremental)",
-            {"order": 1, "style": BondStyle.PLAIN, "stereo": BondStereo.NONE, "mode": "increment"},
-        )
-        self._add_bond_action(
-            menu,
-            draw_bond_icon("single"),
-            "Enlace sencillo",
-            {"order": 1, "style": BondStyle.PLAIN, "stereo": BondStereo.NONE, "mode": "set"},
-        )
-        self._add_bond_action(
-            menu,
-            draw_bond_icon("double"),
-            "Enlace doble",
-            {"order": 2, "style": BondStyle.PLAIN, "stereo": BondStereo.NONE, "mode": "set"},
-        )
-        self._add_bond_action(
-            menu,
-            draw_bond_icon("triple"),
-            "Enlace triple",
-            {"order": 3, "style": BondStyle.PLAIN, "stereo": BondStereo.NONE, "mode": "set"},
-        )
-        self._add_bond_action(
-            menu,
-            draw_bond_icon("single"),
-            "Enlace aromático",
-            {"order": 1, "style": BondStyle.PLAIN, "stereo": BondStereo.NONE, "mode": "set", "aromatic": True},
-        )
-        menu.addSeparator()
-        self._add_bond_action(
-            menu,
-            draw_bond_icon("wedge"),
-            "Wedge",
-            {"order": 1, "style": BondStyle.WEDGE, "stereo": BondStereo.UP, "mode": "set"},
-        )
-        self._add_bond_action(
-            menu,
-            draw_bond_icon("hashed"),
-            "Wedge hashed",
-            {"order": 1, "style": BondStyle.HASHED, "stereo": BondStereo.DOWN, "mode": "set"},
-        )
-        self._add_bond_action(
-            menu,
-            draw_bond_icon("wavy"),
-            "Wavy",
-            {"order": 1, "style": BondStyle.WAVY, "stereo": BondStereo.EITHER, "mode": "set"},
-        )
-        self._add_bond_action(
-            menu,
-            draw_bond_icon("single"),
-            "Enlace intermolecular",
-            {"order": 1, "style": BondStyle.INTERACTION, "stereo": BondStereo.NONE, "mode": "set"},
-        )
+    def _emit_current_selection_tool(self, checked: bool = False) -> None:
+        self.tool_changed.emit(self._current_select_tool_id)
 
-    def _add_bond_action(self, menu: QMenu, icon, text: str, spec: dict) -> None:
-        action = QAction(icon, text, self)
-        action.triggered.connect(
-            lambda checked=False, a=action, s=spec: self._select_bond_palette(
-                self.bond_button, a.icon(), a.text(), s
-            )
-        )
+    def _emit_current_annotation_tool(self, checked: bool = False) -> None:
+        self.tool_changed.emit(self._current_annotation_tool_id)
+
+    def _make_palette_entry(self, icon, tooltip: str, callback, enabled: bool = True) -> dict:
+        return {
+            "icon": icon,
+            "tooltip": tooltip,
+            "callback": callback,
+            "enabled": enabled,
+        }
+
+    def _trigger_palette_action(self, callback, menu: QMenu) -> None:
+        callback()
+        menu.close()
+
+    def _populate_grid_menu(self, menu: QMenu, entries: list[dict], columns: int) -> None:
+        container = QWidget(menu)
+        container.setObjectName("palette_grid")
+        layout = QGridLayout(container)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(4)
+        icon_size = QSize(22, 22)
+
+        for index, entry in enumerate(entries):
+            button = QToolButton(container)
+            button.setIcon(entry["icon"])
+            button.setIconSize(icon_size)
+            button.setToolTip(entry["tooltip"])
+            button.setEnabled(entry.get("enabled", True))
+            button.setAutoRaise(True)
+            callback = entry.get("callback")
+            if callback is not None:
+                button.clicked.connect(
+                    lambda checked=False, cb=callback, m=menu: self._trigger_palette_action(cb, m)
+                )
+            layout.addWidget(button, index // columns, index % columns)
+
+        action = QWidgetAction(menu)
+        action.setDefaultWidget(container)
         menu.addAction(action)
 
-    def _build_ring_palette(self, menu: QMenu) -> None:
-        menu.addSection("Anillos aromáticos")
-        self._add_ring_action(
-            menu,
-            draw_ring_icon(),
-            "Benceno",
-            {"size": 6, "aromatic": True},
-        )
-        menu.addSeparator()
-        menu.addSection("Cicloalcanos")
-        for size in range(3, 13):
-            self._add_ring_action(
-                menu,
-                draw_ring_icon(),
-                f"Anillo {size}",
-                {"size": size, "aromatic": False},
+    def _build_select_palette(self, menu: QMenu) -> None:
+        entries = []
+        for tool_id, (icon, tooltip) in self._selection_meta.items():
+            entries.append(
+                self._make_palette_entry(
+                    icon,
+                    tooltip,
+                    lambda tid=tool_id, ic=icon, tip=tooltip: self._select_selection_palette(
+                        tid, ic, tip
+                    ),
+                )
             )
+        self._populate_grid_menu(menu, entries, columns=2)
+
+    def _build_bond_palette(self, menu: QMenu) -> None:
+        icon_single = draw_bond_icon("single")
+        icon_double = draw_bond_icon("double")
+        icon_triple = draw_bond_icon("triple")
+        icon_wedge = draw_bond_icon("wedge")
+        icon_hashed = draw_bond_icon("hashed")
+        icon_wavy = draw_bond_icon("wavy")
+
+        entries = [
+            self._make_palette_entry(
+                icon_single,
+                "Enlace sencillo (incremental)",
+                lambda ic=icon_single: self._select_bond_palette(
+                    self.bond_button,
+                    ic,
+                    "Enlace sencillo (incremental)",
+                    {
+                        "order": 1,
+                        "style": BondStyle.PLAIN,
+                        "stereo": BondStereo.NONE,
+                        "mode": "increment",
+                    },
+                ),
+            ),
+            self._make_palette_entry(
+                icon_single,
+                "Enlace sencillo",
+                lambda ic=icon_single: self._select_bond_palette(
+                    self.bond_button,
+                    ic,
+                    "Enlace sencillo",
+                    {"order": 1, "style": BondStyle.PLAIN, "stereo": BondStereo.NONE, "mode": "set"},
+                ),
+            ),
+            self._make_palette_entry(
+                icon_double,
+                "Enlace doble",
+                lambda ic=icon_double: self._select_bond_palette(
+                    self.bond_button,
+                    ic,
+                    "Enlace doble",
+                    {"order": 2, "style": BondStyle.PLAIN, "stereo": BondStereo.NONE, "mode": "set"},
+                ),
+            ),
+            self._make_palette_entry(
+                icon_triple,
+                "Enlace triple",
+                lambda ic=icon_triple: self._select_bond_palette(
+                    self.bond_button,
+                    ic,
+                    "Enlace triple",
+                    {"order": 3, "style": BondStyle.PLAIN, "stereo": BondStereo.NONE, "mode": "set"},
+                ),
+            ),
+            self._make_palette_entry(
+                icon_single,
+                "Enlace aromatico",
+                lambda ic=icon_single: self._select_bond_palette(
+                    self.bond_button,
+                    ic,
+                    "Enlace aromatico",
+                    {
+                        "order": 1,
+                        "style": BondStyle.PLAIN,
+                        "stereo": BondStereo.NONE,
+                        "mode": "set",
+                        "aromatic": True,
+                    },
+                ),
+            ),
+            self._make_palette_entry(
+                icon_wedge,
+                "Wedge",
+                lambda ic=icon_wedge: self._select_bond_palette(
+                    self.bond_button,
+                    ic,
+                    "Wedge",
+                    {"order": 1, "style": BondStyle.WEDGE, "stereo": BondStereo.UP, "mode": "set"},
+                ),
+            ),
+            self._make_palette_entry(
+                icon_hashed,
+                "Wedge hashed",
+                lambda ic=icon_hashed: self._select_bond_palette(
+                    self.bond_button,
+                    ic,
+                    "Wedge hashed",
+                    {"order": 1, "style": BondStyle.HASHED, "stereo": BondStereo.DOWN, "mode": "set"},
+                ),
+            ),
+            self._make_palette_entry(
+                icon_wavy,
+                "Wavy",
+                lambda ic=icon_wavy: self._select_bond_palette(
+                    self.bond_button,
+                    ic,
+                    "Wavy",
+                    {"order": 1, "style": BondStyle.WAVY, "stereo": BondStereo.EITHER, "mode": "set"},
+                ),
+            ),
+            self._make_palette_entry(
+                icon_single,
+                "Enlace intermolecular",
+                lambda ic=icon_single: self._select_bond_palette(
+                    self.bond_button,
+                    ic,
+                    "Enlace intermolecular",
+                    {
+                        "order": 1,
+                        "style": BondStyle.INTERACTION,
+                        "stereo": BondStereo.NONE,
+                        "mode": "set",
+                    },
+                ),
+            ),
+        ]
+        self._populate_grid_menu(menu, entries, columns=3)
+
+    def _build_ring_palette(self, menu: QMenu) -> None:
+        entries = []
+        icon_benzene = draw_ring_icon(6, aromatic=True)
+        entries.append(
+            self._make_palette_entry(
+                icon_benzene,
+                "Benceno",
+                lambda ic=icon_benzene: self._select_ring_palette(
+                    self.ring_button, ic, "Benceno", {"size": 6, "aromatic": True}
+                ),
+            )
+        )
+        for size in range(3, 13):
+            icon = draw_ring_icon(size, aromatic=False)
+            entries.append(
+                self._make_palette_entry(
+                    icon,
+                    f"Anillo {size}",
+                    lambda s=size, ic=icon: self._select_ring_palette(
+                        self.ring_button, ic, f"Anillo {s}", {"size": s, "aromatic": False}
+                    ),
+                )
+            )
+        self._populate_grid_menu(menu, entries, columns=4)
         menu.addSeparator()
         custom = QAction("Tamaño personalizado...", self)
         custom.triggered.connect(self._select_custom_ring_size)
         menu.addAction(custom)
 
-    def _add_ring_action(self, menu: QMenu, icon, text: str, spec: dict) -> None:
-        action = QAction(icon, text, self)
-        action.triggered.connect(
-            lambda checked=False, a=action, s=spec: self._select_ring_palette(
-                self.ring_button, a.icon(), a.text(), s
-            )
-        )
-        menu.addAction(action)
-
     def _build_label_palette(self, menu: QMenu) -> None:
         elements = ["C", "N", "O", "S", "P", "F", "Cl", "Br", "I", "H"]
+        entries = []
         for element in elements:
-            icon = draw_atom_icon(element)
-            action = QAction(icon, element, self)
-            action.triggered.connect(
-                lambda checked=False, el=element: self._select_element_palette(el)
+            icon = draw_glyph_icon(element)
+            entries.append(
+                self._make_palette_entry(
+                    icon,
+                    element,
+                    lambda el=element: self._select_element_palette(el),
+                )
             )
-            menu.addAction(action)
+        self._populate_grid_menu(menu, entries, columns=5)
         menu.addSeparator()
         periodic_action = QAction("Tabla periódica...", self)
         periodic_action.triggered.connect(self.periodic_table_requested.emit)
         menu.addAction(periodic_action)
 
     def _build_annotation_palette(self, menu: QMenu) -> None:
-        text_action = QAction(draw_atom_icon("T"), "Texto", self)
-        text_action.setEnabled(False)
-        text_action.setToolTip("Texto (Próximamente)")
-        menu.addAction(text_action)
-
-        menu.addSeparator()
-        forward_action = QAction(draw_generic_icon("pan"), "Flecha directa", self)
-        forward_action.triggered.connect(
-            lambda checked=False: self._select_annotation_tool("tool_arrow_forward")
+        entries = []
+        text_icon = draw_glyph_icon("T")
+        entries.append(
+            self._make_palette_entry(text_icon, "Texto (Proximamente)", None, enabled=False)
         )
-        menu.addAction(forward_action)
+        for tool_id in (
+            "tool_arrow_forward",
+            "tool_arrow_retro",
+            "tool_arrow_both",
+            "tool_arrow_equilibrium",
+            "tool_charge",
+            "tool_brackets_round",
+            "tool_brackets_square",
+            "tool_brackets_curly",
+        ):
+            icon, tooltip = self._annotation_meta[tool_id]
+            entries.append(
+                self._make_palette_entry(
+                    icon,
+                    tooltip,
+                    lambda tid=tool_id: self._select_annotation_tool(tid),
+                )
+            )
+        self._populate_grid_menu(menu, entries, columns=3)
 
-        retro_action = QAction(draw_generic_icon("pan"), "Flecha retro", self)
-        retro_action.triggered.connect(
-            lambda checked=False: self._select_annotation_tool("tool_arrow_retro")
-        )
-        menu.addAction(retro_action)
-
-        menu.addSeparator()
-        brackets_menu = QMenu("Corchetes", menu)
-        menu.addMenu(brackets_menu)
-
-        paren_action = QAction(draw_atom_icon("()"), "Paréntesis ()", self)
-        paren_action.triggered.connect(
-            lambda checked=False: self._select_annotation_tool("tool_brackets_round")
-        )
-        brackets_menu.addAction(paren_action)
-
-        square_action = QAction(draw_atom_icon("[]"), "Corchetes []", self)
-        square_action.triggered.connect(
-            lambda checked=False: self._select_annotation_tool("tool_brackets_square")
-        )
-        brackets_menu.addAction(square_action)
-
-        curly_action = QAction(draw_atom_icon("{}"), "Llaves {}", self)
-        curly_action.triggered.connect(
-            lambda checked=False: self._select_annotation_tool("tool_brackets_curly")
-        )
-        brackets_menu.addAction(curly_action)
-
-        charge_action = QAction(draw_atom_icon("+"), "Carga", self)
-        charge_action.triggered.connect(
-            lambda checked=False: self._select_annotation_tool("tool_charge")
-        )
-        menu.addAction(charge_action)
+    def _select_selection_palette(self, tool_id: str, icon, tooltip: str) -> None:
+        self._current_select_tool_id = tool_id
+        self.select_action.setIcon(icon)
+        self.select_action.setToolTip(tooltip)
+        self.select_button.setToolTip(tooltip)
+        self.tool_changed.emit(tool_id)
+        self.select_action.setChecked(True)
 
     def _select_annotation_tool(self, tool_id: str) -> None:
+        icon, tooltip = self._annotation_meta[tool_id]
+        self._current_annotation_tool_id = tool_id
+        self.annotation_action.setIcon(icon)
+        self.annotation_action.setToolTip(tooltip)
+        self.annotation_button.setToolTip(tooltip)
         self.annotation_action.setChecked(True)
-        self.annotation_action.setToolTip("Anotaciones")
-        self.annotation_button.setToolTip("Anotaciones")
         self.tool_changed.emit(tool_id)
 
     def _select_bond_palette(self, button: QToolButton, icon, text: str, spec: dict) -> None:
@@ -309,7 +455,7 @@ class ChemusonToolbar(QToolBar):
         self.ring_action.setChecked(True)
 
     def _select_element_palette(self, element: str) -> None:
-        icon = draw_atom_icon(element)
+        icon = draw_glyph_icon(element)
         self.label_action.setIcon(icon)
         self.label_action.setToolTip(f"Elemento {element}")
         self.label_button.setToolTip(f"Elemento {element}")
@@ -324,7 +470,7 @@ class ChemusonToolbar(QToolBar):
             return
         self._select_ring_palette(
             self.ring_button,
-            draw_ring_icon(),
+            draw_ring_icon(size, aromatic=False),
             f"Anillo {size}",
             {"size": size, "aromatic": False},
         )

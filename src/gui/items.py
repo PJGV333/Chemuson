@@ -727,11 +727,15 @@ class ArrowItem(QGraphicsPathItem):
         start: QPointF,
         end: QPointF,
         head_at_end: bool = True,
+        kind: str | None = None,
         style: DrawingStyle = CHEMDOODLE_LIKE,
     ) -> None:
         super().__init__()
         self._style = style
-        self._head_at_end = head_at_end
+        if kind is None:
+            self._kind = "forward" if head_at_end else "retro"
+        else:
+            self._kind = kind
         pen = QPen(QColor(self._style.bond_color), self._style.stroke_px)
         pen.setCapStyle(self._style.cap_style)
         pen.setJoinStyle(self._style.join_style)
@@ -753,32 +757,60 @@ class ArrowItem(QGraphicsPathItem):
         uy = dy / length
         head_len = 12.0
         head_width = 6.0
+        nx = -uy
+        ny = ux
 
-        if self._head_at_end:
-            tip = end
-            tail = start
-            dir_x = ux
-            dir_y = uy
-        else:
-            tip = start
-            tail = end
-            dir_x = -ux
-            dir_y = -uy
-
-        base_x = tip.x() - dir_x * head_len
-        base_y = tip.y() - dir_y * head_len
-        nx = -dir_y
-        ny = dir_x
-        left = QPointF(base_x + nx * head_width, base_y + ny * head_width)
-        right = QPointF(base_x - nx * head_width, base_y - ny * head_width)
+        def add_head(path: QPainterPath, tip: QPointF, dir_x: float, dir_y: float) -> QPointF:
+            base_x = tip.x() - dir_x * head_len
+            base_y = tip.y() - dir_y * head_len
+            left = QPointF(base_x + nx * head_width, base_y + ny * head_width)
+            right = QPointF(base_x - nx * head_width, base_y - ny * head_width)
+            path.moveTo(left)
+            path.lineTo(tip)
+            path.lineTo(right)
+            path.closeSubpath()
+            return QPointF(base_x, base_y)
 
         path = QPainterPath()
-        path.moveTo(tail)
-        path.lineTo(QPointF(base_x, base_y))
-        path.moveTo(left)
-        path.lineTo(tip)
-        path.lineTo(right)
-        path.closeSubpath()
+        if self._kind == "both":
+            start_base = QPointF(start.x() + ux * head_len, start.y() + uy * head_len)
+            end_base = QPointF(end.x() - ux * head_len, end.y() - uy * head_len)
+            path.moveTo(start_base)
+            path.lineTo(end_base)
+            add_head(path, end, ux, uy)
+            add_head(path, start, -ux, -uy)
+        elif self._kind == "equilibrium":
+            offset = 4.0
+            top_start = QPointF(start.x() + nx * offset, start.y() + ny * offset)
+            top_end = QPointF(end.x() + nx * offset, end.y() + ny * offset)
+            bottom_start = QPointF(start.x() - nx * offset, start.y() - ny * offset)
+            bottom_end = QPointF(end.x() - nx * offset, end.y() - ny * offset)
+
+            top_base = QPointF(top_end.x() - ux * head_len, top_end.y() - uy * head_len)
+            path.moveTo(top_start)
+            path.lineTo(top_base)
+            add_head(path, top_end, ux, uy)
+
+            bottom_base = QPointF(bottom_start.x() + ux * head_len, bottom_start.y() + uy * head_len)
+            path.moveTo(bottom_end)
+            path.lineTo(bottom_base)
+            add_head(path, bottom_start, -ux, -uy)
+        else:
+            head_at_end = self._kind != "retro"
+            if head_at_end:
+                tip = end
+                tail = start
+                dir_x = ux
+                dir_y = uy
+            else:
+                tip = start
+                tail = end
+                dir_x = -ux
+                dir_y = -uy
+            base = add_head(path, tip, dir_x, dir_y)
+            path.moveTo(tail)
+            path.lineTo(base)
+
         self.setPath(path)
 
     def set_style(self, style: DrawingStyle) -> None:
