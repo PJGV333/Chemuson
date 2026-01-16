@@ -42,6 +42,7 @@ from gui.items import (
     BondItem,
     AromaticCircleItem,
     ArrowItem,
+    PreviewArrowItem,
     BracketItem,
     HoverAtomIndicatorItem,
     HoverBondIndicatorItem,
@@ -76,6 +77,7 @@ from gui.commands import (
     AddBondCommand,
     AddRingCommand,
     AddChainCommand,
+    AddArrowCommand,
     ChangeAtomCommand,
     ChangeBondCommand,
     ChangeBondLengthCommand,
@@ -252,6 +254,7 @@ class ChemusonCanvas(QGraphicsView):
         self._preview_ring_item = PreviewRingItem()
         self._preview_chain_item = PreviewChainItem()
         self._preview_chain_label = PreviewChainLabelItem()
+        self._preview_arrow_item = PreviewArrowItem()
 
         self.scene.addItem(self._hover_atom_indicator)
         self.scene.addItem(self._hover_bond_indicator)
@@ -260,6 +263,7 @@ class ChemusonCanvas(QGraphicsView):
         self.scene.addItem(self._preview_ring_item)
         self.scene.addItem(self._preview_chain_item)
         self.scene.addItem(self._preview_chain_label)
+        self.scene.addItem(self._preview_arrow_item)
         self._overlays_ready = True
 
     def set_current_tool(self, tool_id: str) -> None:
@@ -366,10 +370,13 @@ class ChemusonCanvas(QGraphicsView):
                 return
             if (scene_pos - self._arrow_start_pos).manhattanLength() < 2.0:
                 self._arrow_start_pos = None
+                self._preview_arrow_item.hide_preview()
                 return
             arrow_kind = arrow_tools[self.current_tool]
-            self._add_arrow_item(self._arrow_start_pos, scene_pos, kind=arrow_kind)
+            cmd = AddArrowCommand(self, self._arrow_start_pos, scene_pos, arrow_kind)
+            self.undo_stack.push(cmd)
             self._arrow_start_pos = None
+            self._preview_arrow_item.hide_preview()
             return
 
         if self.current_tool == "tool_brackets":
@@ -378,16 +385,21 @@ class ChemusonCanvas(QGraphicsView):
             preview.setRect(QRectF(scene_pos, scene_pos))
             return
 
-        if self.current_tool == "tool_charge":
+        if self.current_tool in {"tool_charge", "tool_charge_plus", "tool_charge_minus"}:
             if clicked_atom_id is None:
                 return
             atom = self.model.get_atom(clicked_atom_id)
-            if atom.charge == 0:
+            if self.current_tool == "tool_charge_plus":
                 new_charge = 1
-            elif atom.charge > 0:
+            elif self.current_tool == "tool_charge_minus":
                 new_charge = -1
             else:
-                new_charge = 0
+                if atom.charge == 0:
+                    new_charge = 1
+                elif atom.charge > 0:
+                    new_charge = -1
+                else:
+                    new_charge = 0
             cmd = ChangeChargeCommand(self.model, self, clicked_atom_id, new_charge)
             self.undo_stack.push(cmd)
             return
@@ -430,6 +442,9 @@ class ChemusonCanvas(QGraphicsView):
             if clicked_atom_id is not None:
                 self._begin_place_chain(clicked_atom_id, scene_pos)
                 return
+            if clicked_bond_id is None:
+                self._begin_place_chain(None, scene_pos)
+                return
 
         if self.current_tool == "tool_erase":
             if clicked_atom_id is not None:
@@ -446,6 +461,17 @@ class ChemusonCanvas(QGraphicsView):
 
         if self._select_drag_mode is not None:
             self._update_selection_drag(scene_pos)
+            return
+
+        arrow_tools = {
+            "tool_arrow_forward": "forward",
+            "tool_arrow_retro": "retro",
+            "tool_arrow_both": "both",
+            "tool_arrow_equilibrium": "equilibrium",
+        }
+        if self.current_tool in arrow_tools and self._arrow_start_pos is not None:
+            arrow_kind = arrow_tools[self.current_tool]
+            self._preview_arrow_item.update_preview(self._arrow_start_pos, scene_pos, arrow_kind)
             return
 
         if self._drag_mode == "place_bond":
@@ -579,7 +605,10 @@ class ChemusonCanvas(QGraphicsView):
 
     def keyPressEvent(self, event) -> None:
         if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
-            if self.state.selected_atoms or self.state.selected_bonds:
+            has_selected_arrows = any(
+                isinstance(item, ArrowItem) for item in self.scene.selectedItems()
+            )
+            if self.state.selected_atoms or self.state.selected_bonds or has_selected_arrows:
                 self.delete_selection()
                 return
             if self._delete_hovered():
@@ -696,9 +725,16 @@ class ChemusonCanvas(QGraphicsView):
         self._create_overlays()
 
     def delete_selection(self) -> None:
-        if not self.state.selected_atoms and not self.state.selected_bonds:
+        selected_arrows = [
+            item for item in self.scene.selectedItems() if isinstance(item, ArrowItem)
+        ]
+        if not self.state.selected_atoms and not self.state.selected_bonds and not selected_arrows:
             return
-        self._delete_selection(set(self.state.selected_atoms), set(self.state.selected_bonds))
+        self._delete_selection(
+            set(self.state.selected_atoms),
+            set(self.state.selected_bonds),
+            selected_arrows,
+        )
 
     def _delete_hovered(self) -> bool:
         if self.hovered_atom_id is not None:
@@ -709,10 +745,16 @@ class ChemusonCanvas(QGraphicsView):
             return True
         return False
 
-    def _delete_selection(self, atom_ids: set[int], bond_ids: set[int]) -> None:
-        if not atom_ids and not bond_ids:
+    def _delete_selection(
+        self,
+        atom_ids: set[int],
+        bond_ids: set[int],
+        arrow_items: Optional[list[ArrowItem]] = None,
+    ) -> None:
+        arrow_items = arrow_items or []
+        if not atom_ids and not bond_ids and not arrow_items:
             return
-        cmd = DeleteSelectionCommand(self.model, self, atom_ids, bond_ids)
+        cmd = DeleteSelectionCommand(self.model, self, atom_ids, bond_ids, arrow_items)
         self.undo_stack.push(cmd)
         self.scene.clearSelection()
 
@@ -824,6 +866,7 @@ class ChemusonCanvas(QGraphicsView):
             "_preview_ring_item",
             "_preview_chain_item",
             "_preview_chain_label",
+            "_preview_arrow_item",
         ]
         for attr in overlay_attrs:
             items.append(getattr(self, attr, None))
@@ -1373,10 +1416,25 @@ class ChemusonCanvas(QGraphicsView):
         self._refresh_atom_label(bond.a1_id)
         self._refresh_atom_label(bond.a2_id)
 
-    def _add_arrow_item(self, start: QPointF, end: QPointF, kind: str) -> None:
+    def add_arrow_item(self, start: QPointF, end: QPointF, kind: str) -> ArrowItem:
         item = ArrowItem(start, end, kind=kind, style=self.drawing_style)
         self.scene.addItem(item)
         self.arrow_items.append(item)
+        return item
+
+    def readd_arrow_item(self, item: ArrowItem, start: QPointF, end: QPointF, kind: str) -> None:
+        item.set_kind(kind)
+        item.update_positions(start, end)
+        if item.scene() is not self.scene:
+            self.scene.addItem(item)
+        if item not in self.arrow_items:
+            self.arrow_items.append(item)
+
+    def remove_arrow_item(self, item: ArrowItem) -> None:
+        if item in self.arrow_items:
+            self.arrow_items.remove(item)
+        if item.scene() is self.scene:
+            self.scene.removeItem(item)
 
     def _ensure_bracket_preview(self) -> QGraphicsRectItem:
         if self._bracket_preview is None:
@@ -1601,7 +1659,7 @@ class ChemusonCanvas(QGraphicsView):
 
     def _get_item_at(self, scene_pos: QPointF):
         for item in self.scene.items(scene_pos):
-            if isinstance(item, (AtomItem, BondItem)):
+            if isinstance(item, (AtomItem, BondItem, ArrowItem, BracketItem)):
                 return item
         return None
 
@@ -1689,14 +1747,14 @@ class ChemusonCanvas(QGraphicsView):
             items = [
                 item
                 for item in self.scene.items(path)
-                if isinstance(item, (AtomItem, BondItem))
+                if isinstance(item, (AtomItem, BondItem, ArrowItem))
             ]
         elif self._select_drag_mode == "rect" and self._select_start_pos is not None:
             rect = QRectF(self._select_start_pos, self._last_scene_pos).normalized()
             items = [
                 item
                 for item in self.scene.items(rect)
-                if isinstance(item, (AtomItem, BondItem))
+                if isinstance(item, (AtomItem, BondItem, ArrowItem))
             ]
 
         if not self._select_additive:
@@ -2098,6 +2156,7 @@ class ChemusonCanvas(QGraphicsView):
             self._preview_ring_item.hide_preview()
             self._preview_chain_item.hide_preview()
             self._preview_chain_label.hide_label()
+            self._preview_arrow_item.hide_preview()
 
     def _on_undo_stack_changed(self, _index: int) -> None:
         self._cancel_drag()
@@ -2864,20 +2923,28 @@ class ChemusonCanvas(QGraphicsView):
     # -------------------------------------------------------------------------
     # Chain Placement
     # -------------------------------------------------------------------------
-    def _begin_place_chain(self, anchor_id: int, scene_pos: QPointF) -> None:
+    def _begin_place_chain(self, anchor_id: Optional[int], scene_pos: QPointF) -> None:
         self._drag_mode = "place_chain"
-        anchor = self.model.get_atom(anchor_id)
-        self._drag_anchor = {"type": "atom", "id": anchor_id, "pos": QPointF(anchor.x, anchor.y)}
-        radius = self.state.bond_length * OPTIMIZE_ZONE_SCALE
-        self._optimize_zone.set_radius(radius)
-        self._optimize_zone.update_center(anchor.x, anchor.y)
+        if anchor_id is None:
+            self._drag_anchor = {"type": "free", "id": None, "pos": QPointF(scene_pos)}
+            self._optimize_zone.hide_zone()
+        else:
+            anchor = self.model.get_atom(anchor_id)
+            self._drag_anchor = {"type": "atom", "id": anchor_id, "pos": QPointF(anchor.x, anchor.y)}
+            radius = self.state.bond_length * OPTIMIZE_ZONE_SCALE
+            self._optimize_zone.set_radius(radius)
+            self._optimize_zone.update_center(anchor.x, anchor.y)
         self._update_chain_preview(scene_pos, Qt.KeyboardModifier.NoModifier)
 
     def _update_chain_preview(self, scene_pos: QPointF, modifiers: Qt.KeyboardModifiers) -> None:
         if self._drag_anchor is None:
             return
-        anchor = self.model.get_atom(self._drag_anchor["id"])
-        p0 = QPointF(anchor.x, anchor.y)
+        anchor_id = self._drag_anchor["id"]
+        if anchor_id is None:
+            p0 = QPointF(self._drag_anchor["pos"])
+        else:
+            anchor = self.model.get_atom(anchor_id)
+            p0 = QPointF(anchor.x, anchor.y)
         dx = scene_pos.x() - p0.x()
         dy = scene_pos.y() - p0.y()
         dist = math.hypot(dx, dy)
@@ -2902,41 +2969,49 @@ class ChemusonCanvas(QGraphicsView):
             else:
                 raw_angle = 90.0 if -(dy) >= 0 else 270.0
 
-        if self.state.fixed_angles and not use_alt:
-            if use_optimize:
-                raw_angle = self._select_preferred_angle(self._drag_anchor["id"], raw_angle, 1, False)
-            raw_angle, _ = self._pick_bond_direction_deg(
+        if not self.state.fixed_angles or use_alt:
+            base_angle = raw_angle
+        else:
+            cursor_angle = raw_angle
+            if use_optimize and anchor_id is not None:
+                cursor_angle = self._select_preferred_angle(anchor_id, cursor_angle, 1, False)
+            base_angle, _ = self._pick_bond_direction_deg(
                 p0,
-                self._drag_anchor["id"],
-                raw_angle,
+                anchor_id,
+                cursor_angle,
                 1,
                 False,
                 self.state.bond_length,
                 apply_collisions=True,
-                allow_length_boost=False,
+                allow_length_boost=self.state.fixed_lengths and not use_shift,
             )
 
         n = max(1, min(CHAIN_MAX_BONDS, int(round(dist / self.state.bond_length))))
         points = [p0]
-        geometry = self._bond_geometry(self._drag_anchor["id"], 1, False)
+        geometry = self._bond_geometry(anchor_id, 1, False)
         zigzag = geometry == "sp3" and not use_alt and self.state.fixed_angles
         sp3_angle = self._sp3_display_angle_deg()
-        zigzag_delta = sp3_angle / 2.0
+        zigzag_delta = (180.0 - sp3_angle) / 2.0
         if zigzag:
-            incoming = self._incoming_angle_deg(self._drag_anchor["id"])
+            incoming = (
+                self._incoming_angle_deg(anchor_id)
+                if anchor_id is not None
+                else None
+            )
             if incoming is not None:
-                axis_options = [
-                    (incoming + zigzag_delta) % 360.0,
-                    (incoming - (sp3_angle + zigzag_delta)) % 360.0,
+                target_angles = [
+                    (incoming + sp3_angle) % 360.0,
+                    (incoming - sp3_angle) % 360.0,
                 ]
+                axis_options = [(target - zigzag_delta) % 360.0 for target in target_angles]
                 axis_options = self._snap_angles_to_grid(axis_options)
-                raw_angle = min(axis_options, key=lambda ang: angle_distance_deg(ang, raw_angle))
+                base_angle = min(axis_options, key=lambda ang: angle_distance_deg(ang, base_angle))
         current = p0
         for i in range(1, n + 1):
             if zigzag:
-                step_angle = raw_angle + (zigzag_delta if i % 2 == 1 else -zigzag_delta)
+                step_angle = base_angle + (zigzag_delta if i % 2 == 1 else -zigzag_delta)
             else:
-                step_angle = raw_angle
+                step_angle = base_angle
             next_point = endpoint_from_angle_len(current, step_angle, self.state.bond_length)
             points.append(next_point)
             current = next_point
@@ -2954,12 +3029,17 @@ class ChemusonCanvas(QGraphicsView):
         if not new_positions:
             self._cancel_drag()
             return
+        anchor_pos = None
+        if anchor_id is None:
+            anchor_point = QPointF(self._drag_anchor["pos"])
+            anchor_pos = (anchor_point.x(), anchor_point.y())
         cmd = AddChainCommand(
             self.model,
             self,
             anchor_id,
             new_positions,
             element=self.state.default_element,
+            anchor_position=anchor_pos,
         )
         self.undo_stack.push(cmd)
         self._cancel_drag()

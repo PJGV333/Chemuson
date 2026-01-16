@@ -736,6 +736,8 @@ class ArrowItem(QGraphicsPathItem):
             self._kind = "forward" if head_at_end else "retro"
         else:
             self._kind = kind
+        self._start = QPointF(start)
+        self._end = QPointF(end)
         pen = QPen(QColor(self._style.bond_color), self._style.stroke_px)
         pen.setCapStyle(self._style.cap_style)
         pen.setJoinStyle(self._style.join_style)
@@ -746,6 +748,8 @@ class ArrowItem(QGraphicsPathItem):
         self.update_positions(start, end)
 
     def update_positions(self, start: QPointF, end: QPointF) -> None:
+        self._start = QPointF(start)
+        self._end = QPointF(end)
         dx = end.x() - start.x()
         dy = end.y() - start.y()
         length = math.hypot(dx, dy)
@@ -813,6 +817,18 @@ class ArrowItem(QGraphicsPathItem):
 
         self.setPath(path)
 
+    def kind(self) -> str:
+        return self._kind
+
+    def set_kind(self, kind: str) -> None:
+        self._kind = kind
+
+    def start_point(self) -> QPointF:
+        return QPointF(self._start)
+
+    def end_point(self) -> QPointF:
+        return QPointF(self._end)
+
     def set_style(self, style: DrawingStyle) -> None:
         self._style = style
         pen = QPen(QColor(self._style.bond_color), self._style.stroke_px)
@@ -820,6 +836,30 @@ class ArrowItem(QGraphicsPathItem):
         pen.setJoinStyle(self._style.join_style)
         self.setPen(pen)
         self.setBrush(QBrush(QColor(self._style.bond_color)))
+
+
+class PreviewArrowItem(ArrowItem):
+    """Preview arrow for annotation placement."""
+
+    def __init__(self) -> None:
+        super().__init__(QPointF(0, 0), QPointF(1, 0), kind="forward")
+        pen = QPen(QColor("#4A90D9"), 1.5, Qt.PenStyle.DashLine)
+        pen.setCapStyle(self._style.cap_style)
+        pen.setJoinStyle(self._style.join_style)
+        self.setPen(pen)
+        self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, False)
+        self.setZValue(40)
+        self.setVisible(False)
+
+    def update_preview(self, start: QPointF, end: QPointF, kind: str) -> None:
+        self.set_kind(kind)
+        self.update_positions(start, end)
+        if not self.isVisible():
+            self.setVisible(True)
+
+    def hide_preview(self) -> None:
+        self.setVisible(False)
 
 
 class BracketItem(QGraphicsPathItem):

@@ -783,7 +783,8 @@ class ChemusonWindow(QMainWindow):
             "tool_brackets_round": "Parentesis",
             "tool_brackets_square": "Corchetes",
             "tool_brackets_curly": "Llaves",
-            "tool_charge": "Carga",
+            "tool_charge_plus": "Carga positiva",
+            "tool_charge_minus": "Carga negativa",
         }
         name = tool_names.get(tool_id, tool_id)
         self.statusBar().showMessage(f"Herramienta: {name}")

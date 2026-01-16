@@ -63,7 +63,8 @@ class ChemusonToolbar(QToolBar):
             "tool_brackets_round": (draw_glyph_icon("()"), "Parentesis ()"),
             "tool_brackets_square": (draw_glyph_icon("[]"), "Corchetes []"),
             "tool_brackets_curly": (draw_glyph_icon("{}"), "Llaves {}"),
-            "tool_charge": (draw_glyph_icon("+"), "Carga"),
+            "tool_charge_plus": (draw_glyph_icon("+"), "Carga positiva"),
+            "tool_charge_minus": (draw_glyph_icon("-"), "Carga negativa"),
         }
 
         self._current_select_tool_id = "tool_select"
@@ -404,7 +405,8 @@ class ChemusonToolbar(QToolBar):
             "tool_arrow_retro",
             "tool_arrow_both",
             "tool_arrow_equilibrium",
-            "tool_charge",
+            "tool_charge_plus",
+            "tool_charge_minus",
             "tool_brackets_round",
             "tool_brackets_square",
             "tool_brackets_curly",

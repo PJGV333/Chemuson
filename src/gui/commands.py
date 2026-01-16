@@ -440,14 +440,17 @@ class DeleteSelectionCommand(QUndoCommand):
         view,
         atom_ids: Iterable[int],
         bond_ids: Iterable[int],
+        arrow_items: Iterable = (),
     ) -> None:
         super().__init__("Delete selection")
         self._model = model
         self._view = view
         self._atom_ids = sorted(set(atom_ids))
         self._bond_ids = sorted(set(bond_ids))
+        self._arrow_items = list(arrow_items)
         self._removed_atoms = []
         self._removed_bonds = []
+        self._removed_arrows = []
 
     def redo(self) -> None:
         if not self._removed_atoms and not self._removed_bonds:
@@ -461,6 +464,10 @@ class DeleteSelectionCommand(QUndoCommand):
                     or bond.a2_id in self._atom_ids
                 ):
                     self._removed_bonds.append(replace(bond))
+            for item in self._arrow_items:
+                self._removed_arrows.append(
+                    (item, item.start_point(), item.end_point(), item.kind())
+                )
 
         for bond in list(self._removed_bonds):
             if bond.id in self._model.bonds:
@@ -470,6 +477,8 @@ class DeleteSelectionCommand(QUndoCommand):
             if atom.id in self._model.atoms:
                 self._model.remove_atom(atom.id)
                 self._view.remove_atom_item(atom.id)
+        for item, _start, _end, _kind in list(self._removed_arrows):
+            self._view.remove_arrow_item(item)
 
     def undo(self) -> None:
         for atom in self._removed_atoms:
@@ -501,6 +510,28 @@ class DeleteSelectionCommand(QUndoCommand):
                 length_px=bond.length_px,
             )
             self._view.add_bond_item(bond)
+        for item, start, end, kind in self._removed_arrows:
+            self._view.readd_arrow_item(item, start, end, kind)
+
+
+class AddArrowCommand(QUndoCommand):
+    def __init__(self, view, start: QPointF, end: QPointF, kind: str) -> None:
+        super().__init__("Add arrow")
+        self._view = view
+        self._start = QPointF(start)
+        self._end = QPointF(end)
+        self._kind = kind
+        self._item = None
+
+    def redo(self) -> None:
+        if self._item is None:
+            self._item = self._view.add_arrow_item(self._start, self._end, self._kind)
+        else:
+            self._view.readd_arrow_item(self._item, self._start, self._end, self._kind)
+
+    def undo(self) -> None:
+        if self._item is not None:
+            self._view.remove_arrow_item(self._item)
 
 
 class AddRingCommand(QUndoCommand):
@@ -661,18 +692,21 @@ class AddChainCommand(QUndoCommand):
         self,
         model: MolGraph,
         view,
-        anchor_id: int,
+        anchor_id: Optional[int],
         positions: List[Tuple[float, float]],
         element: str = "C",
+        anchor_position: Optional[Tuple[float, float]] = None,
     ) -> None:
         super().__init__("Add chain")
         self._model = model
         self._view = view
         self._anchor_id = anchor_id
+        self._anchor_position = anchor_position
         self._positions = positions
         self._element = element
         self._created_atom_ids: List[Optional[int]] = []
         self._created_bond_ids: List[Optional[int]] = []
+        self._created_anchor_id: Optional[int] = None
 
     def redo(self) -> None:
         if not self._created_atom_ids:
@@ -681,6 +715,27 @@ class AddChainCommand(QUndoCommand):
             self._created_bond_ids = [None for _ in self._positions]
 
         prev_id = self._anchor_id
+        if prev_id is None:
+            if self._anchor_position is None:
+                raise RuntimeError("Anchor position required to place a free chain")
+            if self._created_anchor_id is None:
+                anchor_atom = self._model.add_atom(
+                    self._element,
+                    self._anchor_position[0],
+                    self._anchor_position[1],
+                    is_explicit=_default_is_explicit(self._element),
+                )
+                self._created_anchor_id = anchor_atom.id
+            else:
+                anchor_atom = self._model.add_atom(
+                    self._element,
+                    self._anchor_position[0],
+                    self._anchor_position[1],
+                    atom_id=self._created_anchor_id,
+                    is_explicit=_default_is_explicit(self._element),
+                )
+            self._view.add_atom_item(anchor_atom)
+            prev_id = self._created_anchor_id
         for idx, (x, y) in enumerate(self._positions):
             atom_id = self._created_atom_ids[idx]
             if atom_id is None:
@@ -720,3 +775,7 @@ class AddChainCommand(QUndoCommand):
             if atom_id is not None and atom_id in self._model.atoms:
                 self._model.remove_atom(atom_id)
                 self._view.remove_atom_item(atom_id)
+        if self._anchor_id is None and self._created_anchor_id is not None:
+            if self._created_anchor_id in self._model.atoms:
+                self._model.remove_atom(self._created_anchor_id)
+                self._view.remove_atom_item(self._created_anchor_id)
