@@ -919,24 +919,79 @@ class BracketItem(QGraphicsPathItem):
             path.quadTo(right, top + height * 0.25, right, mid)
             path.quadTo(right, bottom - height * 0.25, right - width, bottom)
         elif self._kind == "{}":
-            width = max(10.0, height * 0.12)
+            # Improved curly brace drawing (ChemDraw style)
             mid = (top + bottom) / 2
-            notch = max(4.0, height * 0.08)
-            notch = min(notch, height * 0.3)
-            top_curve_end = mid - notch
-            bottom_curve_start = mid + notch
-            ctrl = max(1.0, min(height * 0.25, (top_curve_end - top) * 0.8))
-            waist_offset = width * 0.5
+            total_width = max(10.0, height * 0.12)
+            half_width = total_width * 0.5
+            
+            # Corner radius for the tips
+            corner = min(height * 0.1, half_width)
+            
+            # Control point offsets for the sigmoid curves
+            # We want the curve to start vertical from the shoulder and arrive
+            # at the waist point with a sharp angle (not horizontal).
+            
+            def draw_brace_side(tip_x: float, spine_x: float, waist_x: float) -> None:
+                # Top Tip -> Top Shoulder
+                path.moveTo(tip_x, top)
+                path.quadTo(spine_x, top, spine_x, top + corner)
+                
+                # Top Shoulder -> Waist
+                # Use cubicTo to create a smooth "S" or "C" shape dependent on offset
+                # CP1: vertically aligned with spine, maintaining vertical tangent
+                # CP2: biased towards waist but kept high enough to avoid horizontal entry
+                
+                # Vertical span of the curve
+                v_span = mid - (top + corner)
+                
+                # CP1: Down along the spine
+                cp1_x = spine_x
+                cp1_y = top + corner + v_span * 0.5
+                
+                # CP2: Between spine and waist
+                # If we put CP2 at waist_x, the curve arrives tangent to (CP2->End), i.e. vertical?
+                # No, if CP2.x = waist_x, and CP2.y < mid.
+                # Vector is (0, mid - CP2.y). This is vertical!
+                # We want oblique. So CP2.x must be != waist_x.
+                # Let's pull CP2 back towards the spine.
+                cp2_x = waist_x + (spine_x - waist_x) * 0.4
+                cp2_y = mid - v_span * 0.1 # Close to mid
+                
+                path.cubicTo(cp1_x, cp1_y, cp2_x, cp2_y, waist_x, mid)
+                
+                # Waist -> Bottom Shoulder
+                # Inverse logic
+                v_span_bot = (bottom - corner) - mid
+                cp3_x = cp2_x
+                cp3_y = mid + v_span_bot * 0.1
+                
+                cp4_x = spine_x
+                cp4_y = bottom - corner - v_span_bot * 0.5
+                
+                path.cubicTo(cp3_x, cp3_y, cp4_x, cp4_y, spine_x, bottom - corner)
+                
+                # Bottom Shoulder -> Bottom Tip
+                path.quadTo(spine_x, bottom, tip_x, bottom)
 
-            def add_brace(outer_x: float, inner_x: float, waist_x: float) -> None:
-                path.moveTo(inner_x, top)
-                path.quadTo(outer_x, top + ctrl, outer_x, top_curve_end)
-                path.lineTo(waist_x, mid)
-                path.lineTo(outer_x, bottom_curve_start)
-                path.quadTo(outer_x, bottom - ctrl, inner_x, bottom)
-
-            add_brace(left, left + width, left + width + waist_offset)
-            add_brace(right, right - width, right - width - waist_offset)
+            # Left Bracket: } shape on the left? No, { shape.
+            # Point (Waist) is to the LEFT of the Spine.
+            # Tips (Inner) are to the RIGHT of the Spine.
+            # Waist < Spine < Tip
+            draw_brace_side(
+                tip_x=left + total_width,
+                spine_x=left + half_width,
+                waist_x=left
+            )
+            
+            # Right Bracket: } shape.
+            # Point (Waist) is to the RIGHT of the Spine.
+            # Tips (Inner) are to the LEFT of the Spine.
+            # Tip < Spine < Waist
+            draw_brace_side(
+                tip_x=right - total_width,
+                spine_x=right - half_width,
+                waist_x=right
+            )
         else:  # "[]"
             arm = max(6.0, height * 0.08)
             path.moveTo(left + arm, top)
