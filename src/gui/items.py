@@ -921,7 +921,7 @@ class BracketItem(QGraphicsPathItem):
         elif self._kind == "{}":
             # Improved curly brace drawing (ChemDraw style)
             mid = (top + bottom) / 2
-            total_width = max(10.0, height * 0.12)
+            total_width = max(8.0, height * 0.2)
             half_width = total_width * 0.5
             
             # Corner radius for the tips
@@ -954,8 +954,8 @@ class BracketItem(QGraphicsPathItem):
                 # Vector is (0, mid - CP2.y). This is vertical!
                 # We want oblique. So CP2.x must be != waist_x.
                 # Let's pull CP2 back towards the spine.
-                cp2_x = waist_x + (spine_x - waist_x) * 0.4
-                cp2_y = mid - v_span * 0.1 # Close to mid
+                cp2_x = waist_x + (spine_x - waist_x) * 0.5
+                cp2_y = mid - v_span * 0.05 # VERY Close to mid for sharpness
                 
                 path.cubicTo(cp1_x, cp1_y, cp2_x, cp2_y, waist_x, mid)
                 
