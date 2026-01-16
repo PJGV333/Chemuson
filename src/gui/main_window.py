@@ -25,6 +25,13 @@ from gui.icons import draw_generic_icon
 from gui.docks import PlantillasDock, InspectorDock
 from gui.dialogs import PreferencesDialog, QuickStartDialog, StyleDialog
 from gui.commands import ChangeAtomCommand
+from gui.templates import (
+    build_linear_chain_template,
+)
+import os
+import glob
+from chemio.rdkit_io import molfile_to_molgraph, molgraph_to_molfile
+from core.model import MolGraph
 
 
 class ChemusonWindow(QMainWindow):
@@ -156,6 +163,11 @@ class ChemusonWindow(QMainWindow):
 
         self.action_clean_2d = QAction("Limpiar 2D", self)
         self.action_clean_2d.triggered.connect(self._on_clean_2d)
+
+        self.action_template_linear_chain = QAction("Cadena lineal", self)
+        self.action_template_linear_chain.triggered.connect(self._on_insert_linear_chain)
+
+
 
         self.action_style = QAction("Estilo de dibujo...", self)
         self.action_style.triggered.connect(self._on_style_dialog)
@@ -313,6 +325,18 @@ class ChemusonWindow(QMainWindow):
         # === Estructura (Structure) ===
         structure_menu = menubar.addMenu("Estructura")
         structure_menu.addAction(self.action_clean_2d)
+        structure_menu.addSeparator()
+        structure_menu.addSeparator()
+        
+        # Dynamic Templates Menu
+        self.templates_menu = structure_menu.addMenu("Plantillas")
+        self._refresh_templates_menu()
+        
+        # Save Template Action
+        self.action_save_template = QAction("Guardar selección como plantilla...", self)
+        self.action_save_template.triggered.connect(self._on_save_template)
+        structure_menu.addAction(self.action_save_template)
+        
         structure_menu.addSeparator()
         structure_menu.addAction(self.action_import_smiles)
         structure_menu.addAction(self.action_export_smiles)
@@ -702,6 +726,138 @@ class ChemusonWindow(QMainWindow):
             self.statusBar().showMessage("Estructura 2D limpiada")
         except Exception as e:
             self.statusBar().showMessage(f"Error: {e}")
+
+    def _insert_template(self, label: str, graph) -> None:
+        self.canvas._insert_molgraph(graph)
+        self.statusBar().showMessage(f"Plantilla: {label}")
+
+    def _get_templates_dir(self) -> str:
+        """Get the directory where user templates are stored."""
+        # Use a local templates directory relative to the source
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        templates_dir = os.path.join(base_dir, "templates")
+        if not os.path.exists(templates_dir):
+            os.makedirs(templates_dir)
+        return templates_dir
+
+    def _refresh_templates_menu(self) -> None:
+        """Scan templates directory and populate the menu."""
+        self.templates_menu.clear()
+        
+        # Add standard linear chain (generated)
+        self.action_linear = QAction("Cadena lineal (Fischer)", self)
+        self.action_linear.triggered.connect(self._on_insert_linear_chain)
+        self.templates_menu.addAction(self.action_linear)
+        self.templates_menu.addSeparator()
+
+        templates_dir = self._get_templates_dir()
+        files = glob.glob(os.path.join(templates_dir, "*.mol"))
+        
+        if not files:
+            no_templates = QAction("(Sin plantillas guardadas)", self)
+            no_templates.setEnabled(False)
+            self.templates_menu.addAction(no_templates)
+            return
+
+        for filepath in sorted(files):
+            filename = os.path.basename(filepath)
+            name = os.path.splitext(filename)[0].replace("_", " ").title()
+            action = QAction(name, self)
+            # Use default argument capture for lambda loop
+            action.triggered.connect(lambda checked=False, f=filepath: self._insert_template_from_file(f))
+            self.templates_menu.addAction(action)
+
+    def _on_save_template(self) -> None:
+        """Save the current selection (or whole canvas) as a new template."""
+        # 1. Determine what to save
+        if self.canvas.state.selected_atoms:
+            # Create a subgraph from selection
+            # This requires extracting specific atoms and bonds
+            # For simplicity in this task, let's warn if multiple disjoint, 
+            # but currently we just allow saving the subgraph.
+            
+            # Since MolGraph doesn't have a 'subgraph' method easily exposed here,
+            # we can clone the graph and remove unselected.
+            # Or simplified: Serialize the Whole Canvas if selection is empty?
+            pass
+        
+        # Strategy: Save the WHOLE canvas if nothing is selected? 
+        # Or just the selection. let's support Selection Only if atoms selected.
+        
+        try:
+            graph_to_save = MolGraph()
+            
+            if self.canvas.state.selected_atoms:
+                # Copy selected atoms
+                visible_atoms = self.canvas.state.selected_atoms
+                # We need to copy them with new IDs or keep IDs? 
+                # molgraph_to_molfile handles arbitrary IDs usually.
+                
+                # Copy atoms
+                old_to_new = {}
+                for atom_id in visible_atoms:
+                    old_atom = self.canvas.model.get_atom(atom_id)
+                    new_atom = graph_to_save.add_atom(
+                        old_atom.element, 
+                        old_atom.x, 
+                        old_atom.y, 
+                        charge=old_atom.charge,
+                        explicit=old_atom.is_explicit
+                    )
+                    old_to_new[atom_id] = new_atom.id
+                
+                # Copy bonds if both ends are selected
+                for bond in self.canvas.model.bonds.values():
+                    if bond.a1_id in visible_atoms and bond.a2_id in visible_atoms:
+                        graph_to_save.add_bond(
+                            old_to_new[bond.a1_id],
+                            old_to_new[bond.a2_id],
+                            order=bond.order,
+                            style=bond.style,
+                            stereo=bond.stereo
+                        )
+            else:
+                # Save entire canvas
+                # We can just use deepcopy or serialize/deserialize
+                # Simplest: use rdkit io to roundtrip or just copy logic
+                # Let's use the canvas graph directly for serialization
+                graph_to_save = self.canvas.graph
+
+            if not graph_to_save.atoms:
+                QMessageBox.warning(self, "Aviso", "No hay nada para guardar.")
+                return
+
+            name, ok = QInputDialog.getText(self, "Nueva Plantilla", "Nombre de la plantilla:")
+            if not ok or not name.strip():
+                return
+            
+            safe_name = "".join(c for c in name if c.isalnum() or c in (' ', '_', '-')).strip()
+            filename = f"{safe_name}.mol"
+            path = os.path.join(self._get_templates_dir(), filename)
+            
+            molblock = molgraph_to_molfile(graph_to_save)
+            with open(path, "w") as f:
+                f.write(molblock)
+            
+            self.statusBar().showMessage(f"Plantilla guardada: {name}")
+            self._refresh_templates_menu()
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Error al guardar plantilla:\n{e}")
+
+    def _insert_template_from_file(self, filepath: str) -> None:
+        try:
+            with open(filepath, "r") as f:
+                molblock = f.read()
+            graph = molfile_to_molgraph(molblock)
+            name = os.path.splitext(os.path.basename(filepath))[0]
+            self._insert_template(name, graph)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Error al cargar plantilla:\n{e}")
+
+    def _on_insert_linear_chain(self) -> None:
+        graph = build_linear_chain_template(self.canvas.state.bond_length)
+        self._insert_template("Cadena lineal", graph)
 
     def _on_import_smiles(self) -> None:
         """Import a molecule from a SMILES string."""

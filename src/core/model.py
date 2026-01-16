@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Set
 
 class BondStyle(str, Enum):
     PLAIN = "plain"
+    BOLD = "bold"
     WEDGE = "wedge"
     HASHED = "hashed"
     WAVY = "wavy"
