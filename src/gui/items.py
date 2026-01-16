@@ -873,6 +873,8 @@ class BracketItem(QGraphicsPathItem):
         style: DrawingStyle = CHEMDOODLE_LIKE,
     ) -> None:
         super().__init__()
+        self._padding = padding
+        self._base_rect = QRectF(rect)
         self._rect = rect.adjusted(-padding, -padding, padding, padding)
         self._kind = kind
         self._style = style
@@ -883,6 +885,18 @@ class BracketItem(QGraphicsPathItem):
         self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         self.setZValue(2)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
+        self._update_path()
+
+    def base_rect(self) -> QRectF:
+        return QRectF(self._base_rect)
+
+    def set_rect(self, rect: QRectF, padding: float | None = None) -> None:
+        if padding is not None:
+            self._padding = padding
+        self._base_rect = QRectF(rect)
+        self._rect = self._base_rect.adjusted(
+            -self._padding, -self._padding, self._padding, self._padding
+        )
         self._update_path()
 
     def _update_path(self) -> None:
@@ -905,18 +919,24 @@ class BracketItem(QGraphicsPathItem):
             path.quadTo(right, top + height * 0.25, right, mid)
             path.quadTo(right, bottom - height * 0.25, right - width, bottom)
         elif self._kind == "{}":
-            width = max(8.0, height * 0.12)
+            width = max(10.0, height * 0.12)
             mid = (top + bottom) / 2
-            notch = height * 0.08
-            path.moveTo(left + width, top)
-            path.quadTo(left, top + height * 0.2, left + width, mid - notch)
-            path.quadTo(left + width * 1.4, mid, left + width, mid + notch)
-            path.quadTo(left, bottom - height * 0.2, left + width, bottom)
+            notch = max(4.0, height * 0.08)
+            notch = min(notch, height * 0.3)
+            top_curve_end = mid - notch
+            bottom_curve_start = mid + notch
+            ctrl = max(1.0, min(height * 0.25, (top_curve_end - top) * 0.8))
+            waist_offset = width * 0.5
 
-            path.moveTo(right - width, top)
-            path.quadTo(right, top + height * 0.2, right - width, mid - notch)
-            path.quadTo(right - width * 1.4, mid, right - width, mid + notch)
-            path.quadTo(right, bottom - height * 0.2, right - width, bottom)
+            def add_brace(outer_x: float, inner_x: float, waist_x: float) -> None:
+                path.moveTo(inner_x, top)
+                path.quadTo(outer_x, top + ctrl, outer_x, top_curve_end)
+                path.lineTo(waist_x, mid)
+                path.lineTo(outer_x, bottom_curve_start)
+                path.quadTo(outer_x, bottom - ctrl, inner_x, bottom)
+
+            add_brace(left, left + width, left + width + waist_offset)
+            add_brace(right, right - width, right - width - waist_offset)
         else:  # "[]"
             arm = max(6.0, height * 0.08)
             path.moveTo(left + arm, top)

@@ -78,6 +78,7 @@ from gui.commands import (
     AddRingCommand,
     AddChainCommand,
     AddArrowCommand,
+    AddBracketCommand,
     ChangeAtomCommand,
     ChangeBondCommand,
     ChangeBondLengthCommand,
@@ -387,6 +388,10 @@ class ChemusonCanvas(QGraphicsView):
 
         if self.current_tool in {"tool_charge", "tool_charge_plus", "tool_charge_minus"}:
             if clicked_atom_id is None:
+                item = self._get_item_at(scene_pos)
+                if isinstance(item, AtomItem):
+                    clicked_atom_id = item.atom_id
+            if clicked_atom_id is None:
                 return
             atom = self.model.get_atom(clicked_atom_id)
             if self.current_tool == "tool_charge_plus":
@@ -536,13 +541,8 @@ class ChemusonCanvas(QGraphicsView):
                     bbox = bbox.united(item.sceneBoundingRect())
             else:
                 bbox = rect
-            bracket = BracketItem(
-                bbox,
-                kind=self.state.active_bracket_type,
-                style=self.drawing_style,
-            )
-            self.scene.addItem(bracket)
-            self.bracket_items.append(bracket)
+            cmd = AddBracketCommand(self, bbox, self.state.active_bracket_type)
+            self.undo_stack.push(cmd)
             return
 
         if self._dragging_selection:
@@ -608,7 +608,15 @@ class ChemusonCanvas(QGraphicsView):
             has_selected_arrows = any(
                 isinstance(item, ArrowItem) for item in self.scene.selectedItems()
             )
-            if self.state.selected_atoms or self.state.selected_bonds or has_selected_arrows:
+            has_selected_brackets = any(
+                isinstance(item, BracketItem) for item in self.scene.selectedItems()
+            )
+            if (
+                self.state.selected_atoms
+                or self.state.selected_bonds
+                or has_selected_arrows
+                or has_selected_brackets
+            ):
                 self.delete_selection()
                 return
             if self._delete_hovered():
@@ -728,12 +736,21 @@ class ChemusonCanvas(QGraphicsView):
         selected_arrows = [
             item for item in self.scene.selectedItems() if isinstance(item, ArrowItem)
         ]
-        if not self.state.selected_atoms and not self.state.selected_bonds and not selected_arrows:
+        selected_brackets = [
+            item for item in self.scene.selectedItems() if isinstance(item, BracketItem)
+        ]
+        if (
+            not self.state.selected_atoms
+            and not self.state.selected_bonds
+            and not selected_arrows
+            and not selected_brackets
+        ):
             return
         self._delete_selection(
             set(self.state.selected_atoms),
             set(self.state.selected_bonds),
             selected_arrows,
+            selected_brackets,
         )
 
     def _delete_hovered(self) -> bool:
@@ -750,11 +767,15 @@ class ChemusonCanvas(QGraphicsView):
         atom_ids: set[int],
         bond_ids: set[int],
         arrow_items: Optional[list[ArrowItem]] = None,
+        bracket_items: Optional[list[BracketItem]] = None,
     ) -> None:
         arrow_items = arrow_items or []
-        if not atom_ids and not bond_ids and not arrow_items:
+        bracket_items = bracket_items or []
+        if not atom_ids and not bond_ids and not arrow_items and not bracket_items:
             return
-        cmd = DeleteSelectionCommand(self.model, self, atom_ids, bond_ids, arrow_items)
+        cmd = DeleteSelectionCommand(
+            self.model, self, atom_ids, bond_ids, arrow_items, bracket_items
+        )
         self.undo_stack.push(cmd)
         self.scene.clearSelection()
 
@@ -1436,6 +1457,32 @@ class ChemusonCanvas(QGraphicsView):
         if item.scene() is self.scene:
             self.scene.removeItem(item)
 
+    def add_bracket_item(self, rect: QRectF, kind: str) -> BracketItem:
+        item = BracketItem(rect, kind=kind, style=self.drawing_style)
+        self.scene.addItem(item)
+        self.bracket_items.append(item)
+        return item
+
+    def readd_bracket_item(
+        self,
+        item: BracketItem,
+        rect: QRectF,
+        kind: str,
+        padding: Optional[float] = None,
+    ) -> None:
+        item.set_rect(rect, padding=padding)
+        item._kind = kind
+        if item.scene() is not self.scene:
+            self.scene.addItem(item)
+        if item not in self.bracket_items:
+            self.bracket_items.append(item)
+
+    def remove_bracket_item(self, item: BracketItem) -> None:
+        if item in self.bracket_items:
+            self.bracket_items.remove(item)
+        if item.scene() is self.scene:
+            self.scene.removeItem(item)
+
     def _ensure_bracket_preview(self) -> QGraphicsRectItem:
         if self._bracket_preview is None:
             preview = QGraphicsRectItem()
@@ -1747,14 +1794,14 @@ class ChemusonCanvas(QGraphicsView):
             items = [
                 item
                 for item in self.scene.items(path)
-                if isinstance(item, (AtomItem, BondItem, ArrowItem))
+                if isinstance(item, (AtomItem, BondItem, ArrowItem, BracketItem))
             ]
         elif self._select_drag_mode == "rect" and self._select_start_pos is not None:
             rect = QRectF(self._select_start_pos, self._last_scene_pos).normalized()
             items = [
                 item
                 for item in self.scene.items(rect)
-                if isinstance(item, (AtomItem, BondItem, ArrowItem))
+                if isinstance(item, (AtomItem, BondItem, ArrowItem, BracketItem))
             ]
 
         if not self._select_additive:

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Dict, Iterable, List, Optional, Tuple
 
-from PyQt6.QtCore import QPointF
+from PyQt6.QtCore import QPointF, QRectF
 from PyQt6.QtGui import QUndoCommand
 
 from core.model import BondStyle, BondStereo, MolGraph
@@ -441,6 +441,7 @@ class DeleteSelectionCommand(QUndoCommand):
         atom_ids: Iterable[int],
         bond_ids: Iterable[int],
         arrow_items: Iterable = (),
+        bracket_items: Iterable = (),
     ) -> None:
         super().__init__("Delete selection")
         self._model = model
@@ -448,9 +449,11 @@ class DeleteSelectionCommand(QUndoCommand):
         self._atom_ids = sorted(set(atom_ids))
         self._bond_ids = sorted(set(bond_ids))
         self._arrow_items = list(arrow_items)
+        self._bracket_items = list(bracket_items)
         self._removed_atoms = []
         self._removed_bonds = []
         self._removed_arrows = []
+        self._removed_brackets = []
 
     def redo(self) -> None:
         if not self._removed_atoms and not self._removed_bonds:
@@ -468,6 +471,10 @@ class DeleteSelectionCommand(QUndoCommand):
                 self._removed_arrows.append(
                     (item, item.start_point(), item.end_point(), item.kind())
                 )
+            for item in self._bracket_items:
+                self._removed_brackets.append(
+                    (item, item.base_rect(), item._padding, item._kind)
+                )
 
         for bond in list(self._removed_bonds):
             if bond.id in self._model.bonds:
@@ -479,6 +486,8 @@ class DeleteSelectionCommand(QUndoCommand):
                 self._view.remove_atom_item(atom.id)
         for item, _start, _end, _kind in list(self._removed_arrows):
             self._view.remove_arrow_item(item)
+        for item, _rect, _padding, _kind in list(self._removed_brackets):
+            self._view.remove_bracket_item(item)
 
     def undo(self) -> None:
         for atom in self._removed_atoms:
@@ -512,6 +521,8 @@ class DeleteSelectionCommand(QUndoCommand):
             self._view.add_bond_item(bond)
         for item, start, end, kind in self._removed_arrows:
             self._view.readd_arrow_item(item, start, end, kind)
+        for item, rect, padding, kind in self._removed_brackets:
+            self._view.readd_bracket_item(item, rect, kind, padding=padding)
 
 
 class AddArrowCommand(QUndoCommand):
@@ -532,6 +543,25 @@ class AddArrowCommand(QUndoCommand):
     def undo(self) -> None:
         if self._item is not None:
             self._view.remove_arrow_item(self._item)
+
+
+class AddBracketCommand(QUndoCommand):
+    def __init__(self, view, rect: QRectF, kind: str) -> None:
+        super().__init__("Add brackets")
+        self._view = view
+        self._rect = QRectF(rect)
+        self._kind = kind
+        self._item = None
+
+    def redo(self) -> None:
+        if self._item is None:
+            self._item = self._view.add_bracket_item(self._rect, self._kind)
+        else:
+            self._view.readd_bracket_item(self._item, self._rect, self._kind)
+
+    def undo(self) -> None:
+        if self._item is not None:
+            self._view.remove_bracket_item(self._item)
 
 
 class AddRingCommand(QUndoCommand):
