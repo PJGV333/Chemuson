@@ -197,8 +197,17 @@ class ChangeAtomCommand(QUndoCommand):
         self._added_hydrogen_specs: list[tuple[int, float, float, int]] = []
         self._removed_hydrogens = []
         self._removed_hydrogen_bonds = []
+        self._removed_hydrogen_specs: list[tuple[int, float, float, int]] = []
 
     def redo(self) -> None:
+        # Check if we need to remove hydrogens due to valence
+        if not self._removed_hydrogen_specs:
+            self._check_and_remove_hydrogens()
+        else:
+            # Re-apply removal if we already calculated it
+            if self._removed_hydrogen_specs:
+                _remove_hydrogen_specs(self._model, self._view, self._removed_hydrogen_specs)
+
         self._model.update_atom_element(
             self._atom_id,
             self._new_element,
@@ -221,6 +230,62 @@ class ChangeAtomCommand(QUndoCommand):
             self._old_element,
             is_explicit=self._old_is_explicit,
         )
+        
+        # Restore hydrogens
+        if self._removed_hydrogen_specs:
+            _readd_hydrogen_specs(self._model, self._view, self._atom_id, self._removed_hydrogen_specs)
+
+    def _check_and_remove_hydrogens(self) -> None:
+        from core.model import VALENCE_MAP
+        
+        # 1. Get current bonds (excluding explicit H)
+        bonds = self._model.bonds.values()
+        non_h_bonds = 0
+        attached_hydrogens = []
+        
+        for bond in bonds:
+            if bond.a1_id == self._atom_id:
+                other_id = bond.a2_id
+            elif bond.a2_id == self._atom_id:
+                other_id = bond.a1_id
+            else:
+                continue
+                
+            other = self._model.get_atom(other_id)
+            if other.element == "H" and other.is_explicit:
+                # Check if it's a terminal H
+                if _atom_degree(self._model, other_id) == 1:
+                    attached_hydrogens.append((other, bond))
+                    continue
+            
+            non_h_bonds += bond.order
+
+        # 2. Get max valence for new element
+        max_valence = VALENCE_MAP.get(self._new_element, 0)
+        
+        # 3. Calculate allowed H
+        allowed_h = max(0, max_valence - non_h_bonds)
+        
+        # 4. If we have more H than allowed, mark for removal
+        if len(attached_hydrogens) > allowed_h:
+            # Remove excess hydrogens
+            # We remove all if 0 allowed, or just the excess
+            # Usually users expect all attached H to be recalculated or kept if they fit?
+            # If I change C to O in a ring (2 bonds). Valence O=2. allowed_h = 0.
+            # If there was an H attached (making it CH-), degree was 3.
+            # Now degree is 2 (bonds) + 1 (H) = 3 > 2. So H must go.
+            
+            # Sort hydrogens by id or position to be deterministic?
+            # Just take the excess
+            excess_count = len(attached_hydrogens) - allowed_h
+            to_remove = attached_hydrogens[:excess_count]
+            
+            specs = []
+            for h_atom, h_bond in to_remove:
+                specs.append((h_atom.id, h_atom.x, h_atom.y, h_bond.id))
+            
+            self._removed_hydrogen_specs = specs
+            _remove_hydrogen_specs(self._model, self._view, self._removed_hydrogen_specs)
 
 
 class ChangeChargeCommand(QUndoCommand):

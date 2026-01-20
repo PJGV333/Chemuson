@@ -1373,36 +1373,57 @@ class ChemusonCanvas(QGraphicsView):
             return 0.0
         pad = max(1.0, self.drawing_style.stroke_px * 0.6)
         rect = rect.adjusted(-pad, -pad, pad, pad)
-        distance = self._ray_rect_distance(rect, ux, uy)
+        distance = self._ray_ellipse_distance(rect, ux, uy)
         return distance if distance is not None else 0.0
 
     @staticmethod
-    def _ray_rect_distance(rect: QRectF, ux: float, uy: float) -> Optional[float]:
-        eps = 1e-6
-        tmin = -math.inf
-        tmax = math.inf
-        if abs(ux) < eps:
-            if 0.0 < rect.left() or 0.0 > rect.right():
-                return None
-        else:
-            tx1 = rect.left() / ux
-            tx2 = rect.right() / ux
-            tmin = max(tmin, min(tx1, tx2))
-            tmax = min(tmax, max(tx1, tx2))
-        if abs(uy) < eps:
-            if 0.0 < rect.top() or 0.0 > rect.bottom():
-                return None
-        else:
-            ty1 = rect.top() / uy
-            ty2 = rect.bottom() / uy
-            tmin = max(tmin, min(ty1, ty2))
-            tmax = min(tmax, max(ty1, ty2))
-        if tmax < max(tmin, 0.0):
+    def _ray_ellipse_distance(rect: QRectF, ux: float, uy: float) -> Optional[float]:
+        # Ray P = t * D, where D = (ux, uy). Origin (0,0).
+        # Ellipse defined by rect: Center C, radii a, b.
+        # Equation: ((x - cx)/a)^2 + ((y - cy)/b)^2 = 1
+        # Substitute x = t*ux, y = t*uy
+        
+        a = rect.width() / 2.0
+        b = rect.height() / 2.0
+        if a <= 1e-9 or b <= 1e-9:
             return None
-        hit = tmin if tmin >= 0.0 else tmax
-        if hit < 0.0:
+            
+        cx = rect.center().x()
+        cy = rect.center().y()
+        
+        # Coefficients for At^2 + Bt + K = 0
+        # (1/a^2)*(t*ux - cx)^2 + (1/b^2)*(t*uy - cy)^2 - 1 = 0
+        
+        inv_a2 = 1.0 / (a * a)
+        inv_b2 = 1.0 / (b * b)
+        
+        A = inv_a2 * ux * ux + inv_b2 * uy * uy
+        B = -2.0 * (inv_a2 * ux * cx + inv_b2 * uy * cy)
+        K = inv_a2 * cx * cx + inv_b2 * cy * cy - 1.0
+        
+        # Discriminant
+        disc = B * B - 4 * A * K
+        if disc < 0:
             return None
-        return hit
+            
+        sqrt_disc = math.sqrt(disc)
+        
+        # Solutions
+        t1 = (-B - sqrt_disc) / (2 * A)
+        t2 = (-B + sqrt_disc) / (2 * A)
+        
+        # We want the smallest positive t that is > 0
+        # Since ray starts at 0,0 which is usually inside, one t is neg, one is pos.
+        # We want the positive one.
+        
+        best = None
+        if t1 > 1e-6:
+            best = t1
+        if t2 > 1e-6:
+            if best is None or t2 < best:
+                best = t2
+                
+        return best
 
     def _prefer_prefix_h(self, atom_id: int) -> bool:
         direction = self._label_open_direction(atom_id)
