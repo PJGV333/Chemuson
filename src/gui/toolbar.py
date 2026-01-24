@@ -44,7 +44,7 @@ class ChemusonToolbar(QToolBar):
         self.setOrientation(Qt.Orientation.Vertical)
         self.setMovable(False)
         self.setFloatable(False)
-        self.setIconSize(QSize(26, 26))
+        self.setIconSize(QSize(28, 28))
 
         self.setStyleSheet(TOOL_PALETTE_STYLESHEET)
 
