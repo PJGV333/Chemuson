@@ -112,7 +112,7 @@ COLLISION_LENGTH_BOOST = 1.2
 BOND_OVERLAP_TOLERANCE_PX = 5.0
 BOND_DRAG_THRESHOLD_PX = 6.0
 BOND_LAST_ANGLE_TOLERANCE_DEG = 20.0
-CLIPBOARD_RENDER_SCALE = 3.0
+CLIPBOARD_RENDER_SCALE = 5.0
 FUNCTIONAL_GROUP_LABELS = [
     "NH2",
     "NO2",
@@ -1142,6 +1142,8 @@ class ChemusonCanvas(QGraphicsView):
             image = QImage(width, height, QImage.Format.Format_ARGB32)
             image.fill(Qt.GlobalColor.transparent)
             painter = QPainter(image)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
             self.scene.render(painter, QRectF(0, 0, width, height), rect)
             painter.end()
             trimmed = self._trim_transparent_image(image)

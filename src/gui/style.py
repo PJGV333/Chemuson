@@ -29,7 +29,7 @@ class DrawingStyle:
 CHEMDOODLE_LIKE = DrawingStyle(
     bond_length_px=40.0,
     stroke_px=2.6,
-    bond_color="#333333",
+    bond_color="#000000",
     atom_fill_color="#FFFFFF",
     atom_stroke_color="#333333",
     double_offset_px=4.2,
