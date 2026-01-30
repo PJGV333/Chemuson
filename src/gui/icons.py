@@ -260,9 +260,31 @@ def draw_arrow_icon(kind: str = "forward") -> QIcon:
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
+    open_head_kinds = {
+        "forward_open",
+        "retro_open",
+        "both_open",
+        "equilibrium_open",
+        "retrosynthetic",
+    }
+    dashed_kinds = {
+        "forward_dashed",
+        "retro_dashed",
+        "both_dashed",
+        "equilibrium_dashed",
+    }
+    curved_kinds = {"curved", "curved_fishhook"}
+
+    is_open = kind in open_head_kinds
+    is_dashed = kind in dashed_kinds
+    is_curved = kind in curved_kinds
+    is_fishhook = kind == "curved_fishhook"
+
     pen = QPen(QColor("#222222"), 2)
+    if is_dashed:
+        pen.setStyle(Qt.PenStyle.DashLine)
     painter.setPen(pen)
-    painter.setBrush(QBrush(QColor("#222222")))
+    painter.setBrush(QBrush(Qt.BrushStyle.NoBrush if (is_open or is_fishhook) else QColor("#222222")))
 
     y = ICON_SIZE / 2
     start_x = 6
@@ -270,33 +292,57 @@ def draw_arrow_icon(kind: str = "forward") -> QIcon:
     head_len = 6
     head_width = 4
 
-    def draw_head(tip_x: float, tip_y: float, direction: int) -> None:
+    def draw_head(tip_x: float, tip_y: float, direction: int, head_style: str) -> None:
         base_x = tip_x - direction * head_len
-        points = [
-            QPointF(tip_x, tip_y),
-            QPointF(base_x, tip_y - head_width),
-            QPointF(base_x, tip_y + head_width),
-        ]
-        painter.drawPolygon(QPolygonF(points))
+        left = QPointF(base_x, tip_y - head_width)
+        right = QPointF(base_x, tip_y + head_width)
+        tip = QPointF(tip_x, tip_y)
+        if head_style == "filled":
+            painter.drawPolygon(QPolygonF([tip, left, right]))
+        elif head_style == "open":
+            painter.drawLine(left, tip)
+            painter.drawLine(tip, right)
+        elif head_style == "half":
+            painter.drawLine(left, tip)
 
-    if kind == "forward":
+    head_style = "half" if is_fishhook else ("open" if is_open else "filled")
+
+    if kind in {"forward", "forward_open", "forward_dashed"}:
         painter.drawLine(QPointF(start_x, y), QPointF(end_x - head_len, y))
-        draw_head(end_x, y, 1)
-    elif kind == "retro":
+        draw_head(end_x, y, 1, head_style)
+    elif kind in {"retro", "retro_open", "retro_dashed"}:
         painter.drawLine(QPointF(start_x + head_len, y), QPointF(end_x, y))
-        draw_head(start_x, y, -1)
-    elif kind == "both":
+        draw_head(start_x, y, -1, head_style)
+    elif kind in {"both", "both_open", "both_dashed"}:
         painter.drawLine(QPointF(start_x + head_len, y), QPointF(end_x - head_len, y))
-        draw_head(end_x, y, 1)
-        draw_head(start_x, y, -1)
-    elif kind == "equilibrium":
+        draw_head(end_x, y, 1, head_style)
+        draw_head(start_x, y, -1, head_style)
+    elif kind in {"equilibrium", "equilibrium_dashed"}:
         offset = 4
         y_top = y - offset
         y_bottom = y + offset
         painter.drawLine(QPointF(start_x, y_top), QPointF(end_x - head_len, y_top))
-        draw_head(end_x, y_top, 1)
+        draw_head(end_x, y_top, 1, head_style)
         painter.drawLine(QPointF(start_x + head_len, y_bottom), QPointF(end_x, y_bottom))
-        draw_head(start_x, y_bottom, -1)
+        draw_head(start_x, y_bottom, -1, head_style)
+    elif kind == "retrosynthetic":
+        offset = 3
+        painter.drawLine(
+            QPointF(start_x, y - offset),
+            QPointF(end_x - head_len, y - offset),
+        )
+        painter.drawLine(
+            QPointF(start_x, y + offset),
+            QPointF(end_x - head_len, y + offset),
+        )
+        draw_head(end_x, y, 1, "open")
+    elif is_curved:
+        control = QPointF((start_x + end_x) * 0.5, y - 6)
+        path = QPainterPath()
+        path.moveTo(QPointF(start_x, y))
+        path.quadTo(control, QPointF(end_x - head_len, y))
+        painter.drawPath(path)
+        draw_head(end_x, y, 1, head_style)
     else:
         painter.drawLine(QPointF(start_x, y), QPointF(end_x, y))
 

@@ -496,9 +496,19 @@ class ChemusonCanvas(QGraphicsView):
 
         arrow_tools = {
             "tool_arrow_forward": "forward",
+            "tool_arrow_forward_open": "forward_open",
+            "tool_arrow_forward_dashed": "forward_dashed",
             "tool_arrow_retro": "retro",
+            "tool_arrow_retro_open": "retro_open",
+            "tool_arrow_retro_dashed": "retro_dashed",
             "tool_arrow_both": "both",
+            "tool_arrow_both_open": "both_open",
+            "tool_arrow_both_dashed": "both_dashed",
             "tool_arrow_equilibrium": "equilibrium",
+            "tool_arrow_equilibrium_dashed": "equilibrium_dashed",
+            "tool_arrow_retrosynthetic": "retrosynthetic",
+            "tool_arrow_curved": "curved",
+            "tool_arrow_curved_fishhook": "curved_fishhook",
         }
         if self.current_tool in arrow_tools:
             if self._arrow_start_pos is None:
@@ -605,9 +615,19 @@ class ChemusonCanvas(QGraphicsView):
 
         arrow_tools = {
             "tool_arrow_forward": "forward",
+            "tool_arrow_forward_open": "forward_open",
+            "tool_arrow_forward_dashed": "forward_dashed",
             "tool_arrow_retro": "retro",
+            "tool_arrow_retro_open": "retro_open",
+            "tool_arrow_retro_dashed": "retro_dashed",
             "tool_arrow_both": "both",
+            "tool_arrow_both_open": "both_open",
+            "tool_arrow_both_dashed": "both_dashed",
             "tool_arrow_equilibrium": "equilibrium",
+            "tool_arrow_equilibrium_dashed": "equilibrium_dashed",
+            "tool_arrow_retrosynthetic": "retrosynthetic",
+            "tool_arrow_curved": "curved",
+            "tool_arrow_curved_fishhook": "curved_fishhook",
         }
         if self.current_tool in arrow_tools and self._arrow_start_pos is not None:
             arrow_kind = arrow_tools[self.current_tool]

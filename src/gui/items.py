@@ -764,26 +764,64 @@ class ArrowItem(QGraphicsPathItem):
         nx = -uy
         ny = ux
 
-        def add_head(path: QPainterPath, tip: QPointF, dir_x: float, dir_y: float) -> QPointF:
+        open_head_kinds = {
+            "forward_open",
+            "retro_open",
+            "both_open",
+            "equilibrium_open",
+            "retrosynthetic",
+        }
+        dashed_kinds = {
+            "forward_dashed",
+            "retro_dashed",
+            "both_dashed",
+            "equilibrium_dashed",
+        }
+        curved_kinds = {"curved", "curved_fishhook"}
+
+        is_open = self._kind in open_head_kinds
+        is_dashed = self._kind in dashed_kinds
+        is_curved = self._kind in curved_kinds
+        is_fishhook = self._kind == "curved_fishhook"
+
+        self._apply_kind_style(is_open or is_fishhook, is_dashed)
+
+        def add_head(
+            path: QPainterPath,
+            tip: QPointF,
+            dir_x: float,
+            dir_y: float,
+            head_style: str,
+        ) -> QPointF:
             base_x = tip.x() - dir_x * head_len
             base_y = tip.y() - dir_y * head_len
             left = QPointF(base_x + nx * head_width, base_y + ny * head_width)
             right = QPointF(base_x - nx * head_width, base_y - ny * head_width)
-            path.moveTo(left)
-            path.lineTo(tip)
-            path.lineTo(right)
-            path.closeSubpath()
+            if head_style == "filled":
+                path.moveTo(left)
+                path.lineTo(tip)
+                path.lineTo(right)
+                path.closeSubpath()
+            elif head_style == "open":
+                path.moveTo(left)
+                path.lineTo(tip)
+                path.lineTo(right)
+            elif head_style == "half":
+                path.moveTo(left)
+                path.lineTo(tip)
             return QPointF(base_x, base_y)
 
         path = QPainterPath()
-        if self._kind == "both":
+        head_style = "half" if is_fishhook else ("open" if is_open else "filled")
+
+        if self._kind in {"both", "both_open", "both_dashed"}:
             start_base = QPointF(start.x() + ux * head_len, start.y() + uy * head_len)
             end_base = QPointF(end.x() - ux * head_len, end.y() - uy * head_len)
             path.moveTo(start_base)
             path.lineTo(end_base)
-            add_head(path, end, ux, uy)
-            add_head(path, start, -ux, -uy)
-        elif self._kind == "equilibrium":
+            add_head(path, end, ux, uy, head_style)
+            add_head(path, start, -ux, -uy, head_style)
+        elif self._kind in {"equilibrium", "equilibrium_dashed"}:
             offset = 4.0
             top_start = QPointF(start.x() + nx * offset, start.y() + ny * offset)
             top_end = QPointF(end.x() + nx * offset, end.y() + ny * offset)
@@ -793,12 +831,40 @@ class ArrowItem(QGraphicsPathItem):
             top_base = QPointF(top_end.x() - ux * head_len, top_end.y() - uy * head_len)
             path.moveTo(top_start)
             path.lineTo(top_base)
-            add_head(path, top_end, ux, uy)
+            add_head(path, top_end, ux, uy, head_style)
 
             bottom_base = QPointF(bottom_start.x() + ux * head_len, bottom_start.y() + uy * head_len)
             path.moveTo(bottom_end)
             path.lineTo(bottom_base)
-            add_head(path, bottom_start, -ux, -uy)
+            add_head(path, bottom_start, -ux, -uy, head_style)
+        elif self._kind == "retrosynthetic":
+            offset = 2.5
+            tip = end
+            tail = start
+            dir_x = ux
+            dir_y = uy
+            base = add_head(path, tip, dir_x, dir_y, "open")
+            for sign in (-1, 1):
+                path.moveTo(QPointF(tail.x() + nx * offset * sign, tail.y() + ny * offset * sign))
+                path.lineTo(QPointF(base.x() + nx * offset * sign, base.y() + ny * offset * sign))
+        elif is_curved:
+            curve_offset = max(12.0, min(24.0, length * 0.25))
+            control = QPointF(
+                (start.x() + end.x()) * 0.5 + nx * curve_offset,
+                (start.y() + end.y()) * 0.5 + ny * curve_offset,
+            )
+            tx = end.x() - control.x()
+            ty = end.y() - control.y()
+            tlen = math.hypot(tx, ty)
+            if tlen < 1e-6:
+                tx = ux
+                ty = uy
+            else:
+                tx /= tlen
+                ty /= tlen
+            base = add_head(path, end, tx, ty, head_style)
+            path.moveTo(start)
+            path.quadTo(control, base)
         else:
             head_at_end = self._kind != "retro"
             if head_at_end:
@@ -811,7 +877,7 @@ class ArrowItem(QGraphicsPathItem):
                 tail = end
                 dir_x = -ux
                 dir_y = -uy
-            base = add_head(path, tip, dir_x, dir_y)
+            base = add_head(path, tip, dir_x, dir_y, head_style)
             path.moveTo(tail)
             path.lineTo(base)
 
@@ -831,11 +897,19 @@ class ArrowItem(QGraphicsPathItem):
 
     def set_style(self, style: DrawingStyle) -> None:
         self._style = style
+        self.update_positions(self._start, self._end)
+
+    def _apply_kind_style(self, open_head: bool, dashed: bool) -> None:
         pen = QPen(QColor(self._style.bond_color), self._style.stroke_px)
         pen.setCapStyle(self._style.cap_style)
         pen.setJoinStyle(self._style.join_style)
+        if dashed:
+            pen.setStyle(Qt.PenStyle.DashLine)
         self.setPen(pen)
-        self.setBrush(QBrush(QColor(self._style.bond_color)))
+        if open_head:
+            self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        else:
+            self.setBrush(QBrush(QColor(self._style.bond_color)))
 
 
 class PreviewArrowItem(ArrowItem):
@@ -843,10 +917,10 @@ class PreviewArrowItem(ArrowItem):
 
     def __init__(self) -> None:
         super().__init__(QPointF(0, 0), QPointF(1, 0), kind="forward")
-        pen = QPen(QColor("#4A90D9"), 1.5, Qt.PenStyle.DashLine)
-        pen.setCapStyle(self._style.cap_style)
-        pen.setJoinStyle(self._style.join_style)
-        self.setPen(pen)
+        self._preview_pen = QPen(QColor("#4A90D9"), 1.5, Qt.PenStyle.DashLine)
+        self._preview_pen.setCapStyle(self._style.cap_style)
+        self._preview_pen.setJoinStyle(self._style.join_style)
+        self.setPen(self._preview_pen)
         self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, False)
         self.setZValue(40)
@@ -855,11 +929,20 @@ class PreviewArrowItem(ArrowItem):
     def update_preview(self, start: QPointF, end: QPointF, kind: str) -> None:
         self.set_kind(kind)
         self.update_positions(start, end)
+        self.setPen(self._preview_pen)
+        self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         if not self.isVisible():
             self.setVisible(True)
 
     def hide_preview(self) -> None:
         self.setVisible(False)
+
+    def _apply_kind_style(self, open_head: bool, dashed: bool) -> None:
+        if not hasattr(self, "_preview_pen"):
+            super()._apply_kind_style(open_head, dashed)
+            return
+        self.setPen(self._preview_pen)
+        self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
 
 
 class BracketItem(QGraphicsPathItem):

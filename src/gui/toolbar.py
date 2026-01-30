@@ -57,9 +57,37 @@ class ChemusonToolbar(QToolBar):
         }
         self._annotation_meta = {
             "tool_arrow_forward": (draw_arrow_icon("forward"), "Flecha directa"),
+            "tool_arrow_forward_open": (draw_arrow_icon("forward_open"), "Flecha directa abierta"),
+            "tool_arrow_forward_dashed": (
+                draw_arrow_icon("forward_dashed"),
+                "Flecha directa discontinua",
+            ),
             "tool_arrow_retro": (draw_arrow_icon("retro"), "Flecha retro"),
+            "tool_arrow_retro_open": (draw_arrow_icon("retro_open"), "Flecha retro abierta"),
+            "tool_arrow_retro_dashed": (
+                draw_arrow_icon("retro_dashed"),
+                "Flecha retro discontinua",
+            ),
             "tool_arrow_both": (draw_arrow_icon("both"), "Flecha doble"),
+            "tool_arrow_both_open": (draw_arrow_icon("both_open"), "Flecha doble abierta"),
+            "tool_arrow_both_dashed": (
+                draw_arrow_icon("both_dashed"),
+                "Flecha doble discontinua",
+            ),
             "tool_arrow_equilibrium": (draw_arrow_icon("equilibrium"), "Equilibrio"),
+            "tool_arrow_equilibrium_dashed": (
+                draw_arrow_icon("equilibrium_dashed"),
+                "Equilibrio discontinuo",
+            ),
+            "tool_arrow_retrosynthetic": (
+                draw_arrow_icon("retrosynthetic"),
+                "Flecha retrosintesis",
+            ),
+            "tool_arrow_curved": (draw_arrow_icon("curved"), "Flecha curva"),
+            "tool_arrow_curved_fishhook": (
+                draw_arrow_icon("curved_fishhook"),
+                "Flecha curva (1 e-)",
+            ),
             "tool_brackets_round": (draw_glyph_icon("()"), "Parentesis ()"),
             "tool_brackets_square": (draw_glyph_icon("[]"), "Corchetes []"),
             "tool_brackets_curly": (draw_glyph_icon("{}"), "Llaves {}"),
@@ -402,9 +430,19 @@ class ChemusonToolbar(QToolBar):
         )
         for tool_id in (
             "tool_arrow_forward",
+            "tool_arrow_forward_open",
+            "tool_arrow_forward_dashed",
             "tool_arrow_retro",
+            "tool_arrow_retro_open",
+            "tool_arrow_retro_dashed",
             "tool_arrow_both",
+            "tool_arrow_both_open",
+            "tool_arrow_both_dashed",
             "tool_arrow_equilibrium",
+            "tool_arrow_equilibrium_dashed",
+            "tool_arrow_retrosynthetic",
+            "tool_arrow_curved",
+            "tool_arrow_curved_fishhook",
             "tool_charge_plus",
             "tool_charge_minus",
             "tool_brackets_round",
@@ -419,7 +457,7 @@ class ChemusonToolbar(QToolBar):
                     lambda tid=tool_id: self._select_annotation_tool(tid),
                 )
             )
-        self._populate_grid_menu(menu, entries, columns=3)
+        self._populate_grid_menu(menu, entries, columns=6)
 
     def _select_selection_palette(self, tool_id: str, icon, tooltip: str) -> None:
         self._current_select_tool_id = tool_id
