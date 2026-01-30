@@ -1023,6 +1023,8 @@ class ChemusonCanvas(QGraphicsView):
             "_preview_chain_item",
             "_preview_chain_label",
             "_preview_arrow_item",
+            "_grid_minor_item",
+            "_grid_major_item",
         ]
         for attr in overlay_attrs:
             items.append(getattr(self, attr, None))
