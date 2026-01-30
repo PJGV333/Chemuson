@@ -927,7 +927,12 @@ class ChemusonCanvas(QGraphicsView):
         except Exception:
             pass
 
-        image = self._render_scene_image(scale=CLIPBOARD_RENDER_SCALE)
+        has_selection = bool(self.state.selected_atoms or self.state.selected_bonds)
+        has_selection = has_selection or bool(self.scene.selectedItems())
+        image = self._render_scene_image(
+            scale=CLIPBOARD_RENDER_SCALE,
+            selected_only=has_selection,
+        )
         if image is not None:
             buffer = QBuffer()
             buffer.open(QBuffer.OpenModeFlag.WriteOnly)
@@ -965,7 +970,7 @@ class ChemusonCanvas(QGraphicsView):
         if mime.hasFormat("image/png") or mime.hasImage() or mime.hasFormat("image/svg+xml"):
             self._insert_image_from_clipboard(mime)
 
-    def _render_scene_bounds(self) -> Optional[QRectF]:
+    def _render_scene_bounds(self, selected_only: bool = False) -> Optional[QRectF]:
         rect: Optional[QRectF] = None
 
         def extend(candidate: QRectF) -> None:
@@ -977,35 +982,54 @@ class ChemusonCanvas(QGraphicsView):
             else:
                 rect = rect.united(candidate)
 
-        for item in self.atom_items.values():
-            if item.scene() is not self.scene:
-                continue
-            if item.isVisible():
+        if selected_only:
+            for atom_id in self.state.selected_atoms:
+                item = self.atom_items.get(atom_id)
+                if item is None or item.scene() is not self.scene:
+                    continue
                 extend(item.sceneBoundingRect())
-            if item.label.isVisible():
-                extend(item.label.sceneBoundingRect())
-            if item.charge_label.isVisible():
-                extend(item.charge_label.sceneBoundingRect())
-        for item in self.bond_items.values():
-            if item.scene() is not self.scene:
-                continue
-            if item.isVisible():
+                if item.label.isVisible():
+                    extend(item.label.sceneBoundingRect())
+                if item.charge_label.isVisible():
+                    extend(item.charge_label.sceneBoundingRect())
+            for bond_id in self.state.selected_bonds:
+                item = self.bond_items.get(bond_id)
+                if item is None or item.scene() is not self.scene:
+                    continue
                 extend(item.sceneBoundingRect())
-        for item in self.aromatic_circles:
-            if item.scene() is not self.scene:
-                continue
-            if item.isVisible():
-                extend(item.sceneBoundingRect())
-        for item in self.arrow_items:
-            if item.scene() is not self.scene:
-                continue
-            if item.isVisible():
-                extend(item.sceneBoundingRect())
-        for item in self.bracket_items:
-            if item.scene() is not self.scene:
-                continue
-            if item.isVisible():
-                extend(item.sceneBoundingRect())
+            for item in self.scene.selectedItems():
+                if isinstance(item, (ArrowItem, BracketItem)):
+                    extend(item.sceneBoundingRect())
+        else:
+            for item in self.atom_items.values():
+                if item.scene() is not self.scene:
+                    continue
+                if item.isVisible():
+                    extend(item.sceneBoundingRect())
+                if item.label.isVisible():
+                    extend(item.label.sceneBoundingRect())
+                if item.charge_label.isVisible():
+                    extend(item.charge_label.sceneBoundingRect())
+            for item in self.bond_items.values():
+                if item.scene() is not self.scene:
+                    continue
+                if item.isVisible():
+                    extend(item.sceneBoundingRect())
+            for item in self.aromatic_circles:
+                if item.scene() is not self.scene:
+                    continue
+                if item.isVisible():
+                    extend(item.sceneBoundingRect())
+            for item in self.arrow_items:
+                if item.scene() is not self.scene:
+                    continue
+                if item.isVisible():
+                    extend(item.sceneBoundingRect())
+            for item in self.bracket_items:
+                if item.scene() is not self.scene:
+                    continue
+                if item.isVisible():
+                    extend(item.sceneBoundingRect())
 
         if rect is None:
             return None
@@ -1080,8 +1104,34 @@ class ChemusonCanvas(QGraphicsView):
             for item in hidden:
                 item.setVisible(True)
 
-    def _render_scene_image(self, scale: float = 1.0) -> Optional[QImage]:
-        rect = self._render_scene_bounds()
+    def _with_hidden_unselected(self, render_fn):
+        hidden = []
+        selected = set(self.scene.selectedItems())
+        for atom_id in self.state.selected_atoms:
+            item = self.atom_items.get(atom_id)
+            if item is not None:
+                selected.add(item)
+        for bond_id in self.state.selected_bonds:
+            item = self.bond_items.get(bond_id)
+            if item is not None:
+                selected.add(item)
+        for item in self.scene.items():
+            parent = item.parentItem()
+            if item in selected or (parent is not None and parent in selected):
+                continue
+            if item.isVisible():
+                hidden.append(item)
+                item.setVisible(False)
+        try:
+            return render_fn()
+        finally:
+            for item in hidden:
+                item.setVisible(True)
+
+    def _render_scene_image(
+        self, scale: float = 1.0, selected_only: bool = False
+    ) -> Optional[QImage]:
+        rect = self._render_scene_bounds(selected_only=selected_only)
         if rect is None:
             return None
         scale = max(1.0, float(scale))
@@ -1100,6 +1150,10 @@ class ChemusonCanvas(QGraphicsView):
             self._apply_image_dpi(trimmed, scale)
             return trimmed
 
+        if selected_only:
+            return self._with_hidden_unselected(
+                lambda: self._with_hidden_render_items(render)
+            )
         return self._with_hidden_render_items(render)
 
     def _apply_image_dpi(self, image: QImage, scale: float) -> None:
@@ -1949,10 +2003,15 @@ class ChemusonCanvas(QGraphicsView):
         if self._select_drag_mode == "free" and self._select_path is not None:
             path = QPainterPath(self._select_path)
             path.closeSubpath()
-            items = [
+            candidates = [
                 item
                 for item in self.scene.items(path)
                 if isinstance(item, (AtomItem, BondItem, ArrowItem, BracketItem))
+            ]
+            items = [
+                item
+                for item in candidates
+                if path.contains(item.sceneBoundingRect().center())
             ]
         elif self._select_drag_mode == "rect" and self._select_start_pos is not None:
             rect = QRectF(self._select_start_pos, self._last_scene_pos).normalized()
