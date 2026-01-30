@@ -137,6 +137,13 @@ ELEMENT_SYMBOLS = {"C", "N", "O", "S", "P", "F", "Cl", "Br", "I", "H"}
 IMPLICIT_H_ELEMENTS = {"C", "N", "O", "S", "P"}
 LABEL_OFFSET_SCALE = 0.6
 LABEL_OFFSET_MIN_PX = 4.0
+RULER_THICKNESS_PX = 24
+RULER_MAJOR_STEP_PX = 100
+RULER_MINOR_STEP_PX = 20
+GRID_MINOR_STEP_PX = 20
+GRID_MAJOR_STEP_PX = 100
+GRID_MINOR_STEP_PX = 20
+GRID_MAJOR_STEP_PX = 100
 
 
 class ChemusonCanvas(QGraphicsView):
@@ -195,6 +202,10 @@ class ChemusonCanvas(QGraphicsView):
         self._ring_last_vertices: Optional[List[QPointF]] = None
         self._chain_last_points: Optional[List[QPointF]] = None
         self._overlays_ready = False
+        self.show_rulers = False
+        self.show_grid = False
+        self._grid_minor_item: Optional[QGraphicsPathItem] = None
+        self._grid_major_item: Optional[QGraphicsPathItem] = None
 
         self._setup_view()
         self._create_paper()
@@ -232,6 +243,100 @@ class ChemusonCanvas(QGraphicsView):
         self._min_zoom = 0.25
         self._max_zoom = 4.0
 
+    def set_show_rulers(self, enabled: bool) -> None:
+        self.show_rulers = enabled
+        self.viewport().update()
+
+    def set_show_grid(self, enabled: bool) -> None:
+        self.show_grid = enabled
+        if self._grid_minor_item is not None:
+            self._grid_minor_item.setVisible(enabled)
+        if self._grid_major_item is not None:
+            self._grid_major_item.setVisible(enabled)
+        self.viewport().update()
+
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+        if not self.show_rulers:
+            return
+        painter = QPainter(self.viewport())
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+        if self.show_rulers:
+            self._paint_rulers(painter)
+        painter.end()
+
+
+    def _paint_rulers(self, painter: QPainter) -> None:
+        rect = self.viewport().rect()
+        thickness = RULER_THICKNESS_PX
+        bg = QColor("#F2F2F2")
+        border = QColor("#B0B0B0")
+        text_color = QColor("#4A4A4A")
+        painter.fillRect(0, 0, rect.width(), thickness, bg)
+        painter.fillRect(0, 0, thickness, rect.height(), bg)
+        painter.setPen(QPen(border, 1))
+        painter.drawLine(thickness, thickness, rect.width(), thickness)
+        painter.drawLine(thickness, thickness, thickness, rect.height())
+
+        font = painter.font()
+        font.setPointSize(8)
+        painter.setFont(font)
+        painter.setPen(QPen(text_color, 1))
+
+        top_left_scene = self.mapToScene(0, 0)
+        bottom_right_scene = self.mapToScene(rect.width(), rect.height())
+        x_start = math.floor(top_left_scene.x() / RULER_MAJOR_STEP_PX) * RULER_MAJOR_STEP_PX
+        x_end = math.ceil(bottom_right_scene.x() / RULER_MAJOR_STEP_PX) * RULER_MAJOR_STEP_PX
+        y_start = math.floor(top_left_scene.y() / RULER_MAJOR_STEP_PX) * RULER_MAJOR_STEP_PX
+        y_end = math.ceil(bottom_right_scene.y() / RULER_MAJOR_STEP_PX) * RULER_MAJOR_STEP_PX
+
+        minor_step_view = abs(
+            self.mapFromScene(QPointF(RULER_MINOR_STEP_PX, 0)).x()
+            - self.mapFromScene(QPointF(0, 0)).x()
+        )
+        draw_minor = minor_step_view >= 4
+
+        x = x_start
+        while x <= x_end:
+            x_view = self.mapFromScene(QPointF(x, 0)).x()
+            if x_view >= thickness:
+                painter.drawLine(
+                    x_view, thickness - 1, x_view, thickness - 9
+                )
+                painter.drawText(x_view + 2, thickness - 11, str(int(x)))
+                if draw_minor:
+                    minor = x + RULER_MINOR_STEP_PX
+                    while minor < x + RULER_MAJOR_STEP_PX and minor <= x_end:
+                        minor_view = self.mapFromScene(QPointF(minor, 0)).x()
+                        if minor_view >= thickness:
+                            painter.drawLine(
+                                minor_view, thickness - 1, minor_view, thickness - 5
+                            )
+                        minor += RULER_MINOR_STEP_PX
+            x += RULER_MAJOR_STEP_PX
+
+        y = y_start
+        while y <= y_end:
+            y_view = self.mapFromScene(QPointF(0, y)).y()
+            if y_view >= thickness:
+                painter.drawLine(
+                    thickness - 1, y_view, thickness - 9, y_view
+                )
+                painter.drawText(2, y_view - 2, str(int(y)))
+                if draw_minor:
+                    minor = y + RULER_MINOR_STEP_PX
+                    while minor < y + RULER_MAJOR_STEP_PX and minor <= y_end:
+                        minor_view = self.mapFromScene(QPointF(0, minor)).y()
+                        if minor_view >= thickness:
+                            painter.drawLine(
+                                thickness - 1, minor_view, thickness - 5, minor_view
+                            )
+                        minor += RULER_MINOR_STEP_PX
+            y += RULER_MAJOR_STEP_PX
+
+    def leaveEvent(self, event) -> None:
+        super().leaveEvent(event)
+
     def _create_paper(self) -> None:
         self.paper = QGraphicsRectItem(0, 0, PAPER_WIDTH, PAPER_HEIGHT)
         self.paper.setBrush(QBrush(Qt.GlobalColor.white))
@@ -245,7 +350,37 @@ class ChemusonCanvas(QGraphicsView):
         self.paper.setGraphicsEffect(shadow)
 
         self.scene.addItem(self.paper)
+        self._create_grid()
         self.centerOn(PAPER_WIDTH / 2, PAPER_HEIGHT / 2)
+
+    def _create_grid(self) -> None:
+        minor_path = QPainterPath()
+        for x in range(0, PAPER_WIDTH + 1, GRID_MINOR_STEP_PX):
+            minor_path.moveTo(x, 0)
+            minor_path.lineTo(x, PAPER_HEIGHT)
+        for y in range(0, PAPER_HEIGHT + 1, GRID_MINOR_STEP_PX):
+            minor_path.moveTo(0, y)
+            minor_path.lineTo(PAPER_WIDTH, y)
+
+        major_path = QPainterPath()
+        for x in range(0, PAPER_WIDTH + 1, GRID_MAJOR_STEP_PX):
+            major_path.moveTo(x, 0)
+            major_path.lineTo(x, PAPER_HEIGHT)
+        for y in range(0, PAPER_HEIGHT + 1, GRID_MAJOR_STEP_PX):
+            major_path.moveTo(0, y)
+            major_path.lineTo(PAPER_WIDTH, y)
+
+        self._grid_minor_item = QGraphicsPathItem(minor_path)
+        self._grid_minor_item.setPen(QPen(QColor("#D8D8D8"), 0))
+        self._grid_minor_item.setZValue(-9)
+        self._grid_minor_item.setVisible(self.show_grid)
+        self.scene.addItem(self._grid_minor_item)
+
+        self._grid_major_item = QGraphicsPathItem(major_path)
+        self._grid_major_item.setPen(QPen(QColor("#C4C4C4"), 0))
+        self._grid_major_item.setZValue(-9)
+        self._grid_major_item.setVisible(self.show_grid)
+        self.scene.addItem(self._grid_major_item)
 
     def _create_overlays(self) -> None:
         self._hover_atom_indicator = HoverAtomIndicatorItem()

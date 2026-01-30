@@ -54,6 +54,8 @@ class ChemusonWindow(QMainWindow):
         self.canvas = ChemusonCanvas()
         self.setCentralWidget(self.canvas)
         self.action_aromatic_circles.setChecked(self.canvas.state.use_aromatic_circles)
+        self.action_rules.setChecked(self.canvas.show_rulers)
+        self.action_crosshair.setChecked(self.canvas.show_grid)
         
         # === DOCK WIDGETS ===
         self.templates_dock = PlantillasDock(self)
@@ -159,7 +161,14 @@ class ChemusonWindow(QMainWindow):
         self.action_zoom_reset.triggered.connect(self._on_zoom_reset)
 
         self.action_rules = QAction("Reglas", self)
-        self.action_rules.setEnabled(False)
+        self.action_rules.setCheckable(True)
+        self.action_rules.setChecked(False)
+        self.action_rules.triggered.connect(self._on_toggle_rules)
+
+        self.action_crosshair = QAction("Cuadrícula", self)
+        self.action_crosshair.setCheckable(True)
+        self.action_crosshair.setChecked(False)
+        self.action_crosshair.triggered.connect(self._on_toggle_crosshair)
 
         self.action_clean_2d = QAction("Limpiar 2D", self)
         self.action_clean_2d.triggered.connect(self._on_clean_2d)
@@ -316,6 +325,7 @@ class ChemusonWindow(QMainWindow):
         view_menu.addAction(self.action_zoom_reset)
         view_menu.addSeparator()
         view_menu.addAction(self.action_rules)
+        view_menu.addAction(self.action_crosshair)
         view_menu.addSeparator()
         
         # Docks visibility
@@ -590,6 +600,20 @@ class ChemusonWindow(QMainWindow):
         self.canvas.refresh_aromatic_circles()
         self.statusBar().showMessage(
             "Aromáticos: círculos" if checked else "Aromáticos: Kekulé"
+        )
+
+    def _on_toggle_rules(self, checked: bool) -> None:
+        """Toggle rulers on the canvas."""
+        self.canvas.set_show_rulers(checked)
+        self.statusBar().showMessage(
+            "Reglas: visibles" if checked else "Reglas: ocultas"
+        )
+
+    def _on_toggle_crosshair(self, checked: bool) -> None:
+        """Toggle grid display on the canvas."""
+        self.canvas.set_show_grid(checked)
+        self.statusBar().showMessage(
+            "Cuadrícula: visible" if checked else "Cuadrícula: oculta"
         )
     
     def _on_zoom_in(self) -> None:
