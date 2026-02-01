@@ -1627,18 +1627,150 @@ class ChemusonCanvas(QGraphicsView):
             angles.append(angle_deg(origin, QPointF(other.x, other.y)))
         return angles
 
-    def _select_hydrogen_angles(self, existing_angles_deg: list[float], count: int) -> list[float]:
-        base_angles = [0.0, 120.0, 240.0]
+    def _atom_hybridization(self, atom_id: int) -> str:
+        has_double = False
+        has_triple = False
+        has_aromatic = False
+        for bond in self.model.bonds.values():
+            if bond.a1_id != atom_id and bond.a2_id != atom_id:
+                continue
+            if bond.is_aromatic:
+                has_aromatic = True
+            order = bond.display_order if bond.display_order is not None else bond.order
+            if order >= 3:
+                has_triple = True
+            elif order == 2:
+                has_double = True
+        if has_triple:
+            return "sp"
+        if has_double or has_aromatic:
+            return "sp2"
+        return "sp3"
+
+    def _angle_of_vector(self, vx: float, vy: float) -> float:
+        # Invert Y to convert from screen coordinates (Y down) to math coordinates (Y up)
+        # This matches the convention used in geom.angle_deg and endpoint_from_angle_len
+        return math.degrees(math.atan2(-vy, vx))
+
+    def _normalize_angle(self, angle: float) -> float:
+        value = angle % 360.0
+        return value + 360.0 if value < 0 else value
+
+    def _implicit_h_angles(self, atom_id: int, count: int) -> list[float]:
+        """
+        Calculate angles for implicit hydrogen atoms to be drawn.
+        
+        This function finds the best positions for implicit H atoms by:
+        1. Finding all gaps between existing bonds
+        2. Distributing H atoms into the largest gaps
+        """
         if count <= 0:
             return []
-        if not existing_angles_deg:
-            return base_angles[:count]
+        
+        atom = self.model.get_atom(atom_id)
+        origin = QPointF(atom.x, atom.y)
+        
+        # Collect all existing bond angles using angle_deg from geom.py
+        # This function correctly handles screen coordinates (Y down -> math Y up)
+        # Skip H atoms since we're computing where to place implicit H
+        neighbor_angles: list[float] = []
+        for bond in self.model.bonds.values():
+            if bond.a1_id == atom_id:
+                other = self.model.get_atom(bond.a2_id)
+            elif bond.a2_id == atom_id:
+                other = self.model.get_atom(bond.a1_id)
+            else:
+                continue
+            # Skip existing hydrogen atoms
+            if other.element == "H":
+                continue
+            # Use angle_deg from geom.py for consistent coordinate handling
+            a = angle_deg(origin, QPointF(other.x, other.y))
+            neighbor_angles.append(a)
+        
+        # No existing bonds - use default positions
+        if not neighbor_angles:
+            return [0.0, 120.0, 240.0, 300.0][:count]
+        
+        # Find gaps and place H atoms in the largest gaps
+        return self._find_best_h_positions(neighbor_angles, count)
+    
+    def _find_best_h_positions(self, occupied_angles: list[float], count: int) -> list[float]:
+        """
+        Find the best positions for implicit H atoms using a bisector strategy.
+        
+        Args:
+            occupied_angles: List of angles (in degrees) where bonds already exist
+            count: Number of H atoms to place
+            
+        Returns:
+            List of angles where H atoms should be placed
+        """
+        if count <= 0:
+            return []
+        
+        if not occupied_angles:
+            # Default positions (triangular/tetrahedral-ish)
+            if count == 1: return [0.0]
+            if count == 2: return [120.0, 240.0]
+            return [0.0, 120.0, 240.0]
+        
+        # Local function to normalize angle to [0, 360) degrees
+        def norm_deg(a: float) -> float:
+            v = a % 360.0
+            return v + 360.0 if v < 0 else v
+        
+        # Sort angles
+        sorted_angles = sorted(norm_deg(a) for a in occupied_angles)
+        n = len(sorted_angles)
+        
+        # Find the single largest gap
+        max_gap = 0.0
+        best_mid = 0.0
+        
+        for i in range(n):
+            start = sorted_angles[i]
+            end = sorted_angles[(i + 1) % n]
+            
+            if i == n - 1:
+                gap_size = (360.0 - start) + end
+            else:
+                gap_size = end - start
+            
+            if gap_size > max_gap:
+                max_gap = gap_size
+                # Bisector of the gap
+                best_mid = norm_deg(start + gap_size / 2.0)
+        
+        result_angles: list[float] = []
+        
+        # Distribute H atoms symmetrically around the bisector of the largest gap
+        if count == 1:
+            # Place directly in the middle
+            result_angles.append(best_mid)
+        elif count == 2:
+            # Place in a "V" shape (±30 degrees from bisector)
+            # This looks good for sp3 chains (tetrahedral projection)
+            spread = 30.0
+            if max_gap < 60.0: # If gap is very tight, reduce spread
+                spread = max_gap / 3.0
+            result_angles.append(norm_deg(best_mid - spread))
+            result_angles.append(norm_deg(best_mid + spread))
+        else:
+            # Count >= 3 (e.g. terminal CH3)
+            # Distribute in a fan shape (0, ±60 degrees) or similar
+            # Standard "Trident" look: center, +60, -60
+            result_angles.append(best_mid)
+            result_angles.append(norm_deg(best_mid - 60.0))
+            result_angles.append(norm_deg(best_mid + 60.0))
+            
+            # If we needed more than 3, we'd add more, but C is usually max 4 bonds
+            if count > 3:
+                # Fallback purely even distribution if strange valency
+                start_fan = best_mid - (count - 1) * 30.0
+                return [norm_deg(start_fan + i * 60.0) for i in range(count)]
 
-        def min_distance(angle: float) -> float:
-            return min(angle_distance_deg(angle, existing) for existing in existing_angles_deg)
-
-        ordered = sorted(base_angles, key=min_distance, reverse=True)
-        return ordered[:count]
+        return result_angles
 
     def _clear_implicit_h_overlays(self, atom_ids: Optional[Iterable[int]] = None) -> None:
         if atom_ids is None:
@@ -1666,12 +1798,30 @@ class ChemusonCanvas(QGraphicsView):
             count = self._implicit_hydrogen_count(atom_id, atom.element)
             if count <= 0:
                 continue
-            base_angles = self._neighbor_angles_deg(atom_id)
-            angles = self._select_hydrogen_angles(base_angles, count)
+            angles = self._implicit_h_angles(atom_id, count)
             overlays: list[tuple[QGraphicsLineItem, QGraphicsTextItem]] = []
             for angle_value in angles:
+                # Calculate full position for text center
                 pos = endpoint_from_angle_len(QPointF(0.0, 0.0), angle_value, bond_length)
-                line_item = QGraphicsLineItem(0.0, 0.0, pos.x(), pos.y())
+                
+                # Setup text item first to get its size
+                text_item = QGraphicsTextItem("H")
+                text_item.setFont(font)
+                text_item.setDefaultTextColor(QColor("#000000"))
+                text_item.setZValue(10)
+                text_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+                text_item.setParentItem(self.atom_items[atom_id])
+                
+                rect = text_item.boundingRect()
+                text_item.setPos(pos.x() - rect.width() / 2, pos.y() - rect.height() / 2)
+                
+                # Calculate shortened line end to avoid overlap with text
+                # Shrink by roughly half the text width plus a small padding
+                shrink = rect.width() / 2.0 + 3.0
+                line_len = max(0.0, bond_length - shrink)
+                line_end = endpoint_from_angle_len(QPointF(0.0, 0.0), angle_value, line_len)
+                
+                line_item = QGraphicsLineItem(0.0, 0.0, line_end.x(), line_end.y())
                 pen = QPen(QColor(self.drawing_style.bond_color), self.drawing_style.stroke_px)
                 pen.setCapStyle(self.drawing_style.cap_style)
                 pen.setJoinStyle(self.drawing_style.join_style)
@@ -1679,15 +1829,6 @@ class ChemusonCanvas(QGraphicsView):
                 line_item.setZValue(-5)
                 line_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
                 line_item.setParentItem(self.atom_items[atom_id])
-
-                text_item = QGraphicsTextItem("H")
-                text_item.setFont(font)
-                text_item.setDefaultTextColor(QColor("#000000"))
-                text_item.setZValue(10)
-                text_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
-                text_item.setParentItem(self.atom_items[atom_id])
-                rect = text_item.boundingRect()
-                text_item.setPos(pos.x() - rect.width() / 2, pos.y() - rect.height() / 2)
 
                 overlays.append((line_item, text_item))
             if overlays:
