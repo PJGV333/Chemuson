@@ -176,6 +176,37 @@ class ChemusonWindow(QMainWindow):
         self.action_template_linear_chain = QAction("Cadena lineal", self)
         self.action_template_linear_chain.triggered.connect(self._on_insert_linear_chain)
 
+        # --- Canvas Size Actions ---
+        self.action_canvas_size_letter_portrait = QAction("Carta (vertical)", self)
+        self.action_canvas_size_letter_portrait.triggered.connect(
+            lambda: self._set_canvas_size(816, 1056)
+        )
+        self.action_canvas_size_letter_landscape = QAction("Carta (horizontal)", self)
+        self.action_canvas_size_letter_landscape.triggered.connect(
+            lambda: self._set_canvas_size(1056, 816)
+        )
+
+        self.action_canvas_size_a4_portrait = QAction("A4 (vertical)", self)
+        self.action_canvas_size_a4_portrait.triggered.connect(
+            lambda: self._set_canvas_size(794, 1123)
+        )
+        self.action_canvas_size_a4_landscape = QAction("A4 (horizontal)", self)
+        self.action_canvas_size_a4_landscape.triggered.connect(
+            lambda: self._set_canvas_size(1123, 794)
+        )
+
+        self.action_canvas_size_a3_portrait = QAction("A3 (vertical)", self)
+        self.action_canvas_size_a3_portrait.triggered.connect(
+            lambda: self._set_canvas_size(1123, 1587)
+        )
+        self.action_canvas_size_a3_landscape = QAction("A3 (horizontal)", self)
+        self.action_canvas_size_a3_landscape.triggered.connect(
+            lambda: self._set_canvas_size(1587, 1123)
+        )
+
+        self.action_canvas_size_custom = QAction("Personalizado...", self)
+        self.action_canvas_size_custom.triggered.connect(self._on_canvas_custom_size)
+
 
 
         self.action_style = QAction("Estilo de dibujo...", self)
@@ -189,6 +220,19 @@ class ChemusonWindow(QMainWindow):
 
         self.action_draw_smiles = QAction("Dibujar desde SMILES...", self)
         self.action_draw_smiles.triggered.connect(self._on_import_smiles)
+
+        # --- Rotation Actions ---
+        self.action_rotate_left = QAction("Girar 90° a la izquierda", self)
+        self.action_rotate_left.triggered.connect(lambda: self._on_rotate_selection(-90.0))
+
+        self.action_rotate_right = QAction("Girar 90° a la derecha", self)
+        self.action_rotate_right.triggered.connect(lambda: self._on_rotate_selection(90.0))
+
+        self.action_flip_horizontal = QAction("Giro 180° horizontal", self)
+        self.action_flip_horizontal.triggered.connect(self._on_flip_horizontal)
+
+        self.action_flip_vertical = QAction("Giro 180° vertical", self)
+        self.action_flip_vertical.triggered.connect(self._on_flip_vertical)
 
         # --- Text Actions ---
         self.action_label_font = QAction("Fuente de etiquetas...", self)
@@ -287,7 +331,16 @@ class ChemusonWindow(QMainWindow):
         
         edit_menu.addAction(self.action_paste)
         edit_menu.addSeparator()
-        
+
+        rotate_menu = edit_menu.addMenu("Rotar")
+        rotate_menu.addAction(self.action_rotate_left)
+        rotate_menu.addAction(self.action_rotate_right)
+        rotate_menu.addSeparator()
+        rotate_menu.addAction(self.action_flip_horizontal)
+        rotate_menu.addAction(self.action_flip_vertical)
+
+        edit_menu.addSeparator()
+
         self.action_preferences = QAction("Preferencias...", self)
         self.action_preferences.triggered.connect(self._on_preferences)
         edit_menu.addAction(self.action_preferences)
@@ -326,6 +379,18 @@ class ChemusonWindow(QMainWindow):
         view_menu.addSeparator()
         view_menu.addAction(self.action_rules)
         view_menu.addAction(self.action_crosshair)
+        view_menu.addSeparator()
+        canvas_size_menu = view_menu.addMenu("Tamaño de lienzo")
+        canvas_size_menu.addAction(self.action_canvas_size_letter_portrait)
+        canvas_size_menu.addAction(self.action_canvas_size_letter_landscape)
+        canvas_size_menu.addSeparator()
+        canvas_size_menu.addAction(self.action_canvas_size_a4_portrait)
+        canvas_size_menu.addAction(self.action_canvas_size_a4_landscape)
+        canvas_size_menu.addSeparator()
+        canvas_size_menu.addAction(self.action_canvas_size_a3_portrait)
+        canvas_size_menu.addAction(self.action_canvas_size_a3_landscape)
+        canvas_size_menu.addSeparator()
+        canvas_size_menu.addAction(self.action_canvas_size_custom)
         view_menu.addSeparator()
         
         # Docks visibility
@@ -394,6 +459,10 @@ class ChemusonWindow(QMainWindow):
         from gui.icons import draw_generic_icon
         self.action_zoom_in.setIcon(draw_generic_icon("zoom_in"))
         self.action_zoom_out.setIcon(draw_generic_icon("zoom_out"))
+        self.action_rotate_left.setIcon(draw_generic_icon("rotate_left"))
+        self.action_rotate_right.setIcon(draw_generic_icon("rotate_right"))
+        self.action_flip_horizontal.setIcon(draw_generic_icon("flip_horizontal"))
+        self.action_flip_vertical.setIcon(draw_generic_icon("flip_vertical"))
         self.action_clean_2d.setIcon(QIcon.fromTheme("edit-clear", QIcon()))
         from gui.icons import draw_atom_icon
         self.action_draw_smiles.setIcon(draw_atom_icon("SMI"))
@@ -417,6 +486,13 @@ class ChemusonWindow(QMainWindow):
         # View actions
         self.main_toolbar.addAction(self.action_zoom_in)
         self.main_toolbar.addAction(self.action_zoom_out)
+        self.main_toolbar.addSeparator()
+
+        # Rotate actions
+        self.main_toolbar.addAction(self.action_rotate_left)
+        self.main_toolbar.addAction(self.action_rotate_right)
+        self.main_toolbar.addAction(self.action_flip_horizontal)
+        self.main_toolbar.addAction(self.action_flip_vertical)
         self.main_toolbar.addSeparator()
         
         # Structure actions
@@ -627,9 +703,17 @@ class ChemusonWindow(QMainWindow):
     def _on_zoom_reset(self) -> None:
         """Reset zoom to 100% and center view on paper."""
         self.canvas.resetTransform()
-        from gui.canvas import PAPER_WIDTH, PAPER_HEIGHT
-        self.canvas.centerOn(PAPER_WIDTH / 2, PAPER_HEIGHT / 2)
+        self.canvas.center_on_paper()
         self.statusBar().showMessage("Zoom: 100%")
+
+    def _on_rotate_selection(self, angle_deg: float) -> None:
+        self.canvas.rotate_selection_degrees(angle_deg)
+
+    def _on_flip_horizontal(self) -> None:
+        self.canvas.flip_selection_horizontal()
+
+    def _on_flip_vertical(self) -> None:
+        self.canvas.flip_selection_vertical()
 
     # -------------------------------------------------------------------------
     # Text Menu Handlers
@@ -696,6 +780,35 @@ class ChemusonWindow(QMainWindow):
         size = max(6.0, size + delta)
         font.setPointSizeF(size)
         self.canvas.apply_label_font(font)
+
+    def _set_canvas_size(self, width: int, height: int) -> None:
+        self.canvas.set_paper_size(width, height)
+        self.statusBar().showMessage(f"Lienzo: {width} x {height} px")
+
+    def _on_canvas_custom_size(self) -> None:
+        width, ok = QInputDialog.getInt(
+            self,
+            "Tamaño de lienzo",
+            "Ancho (px):",
+            int(self.canvas.paper_width),
+            200,
+            20000,
+            1,
+        )
+        if not ok:
+            return
+        height, ok = QInputDialog.getInt(
+            self,
+            "Tamaño de lienzo",
+            "Alto (px):",
+            int(self.canvas.paper_height),
+            200,
+            20000,
+            1,
+        )
+        if not ok:
+            return
+        self._set_canvas_size(width, height)
 
     def _apply_label_script(self, marker: str, title: str) -> None:
         if self.canvas.state.selected_bonds or len(self.canvas.state.selected_atoms) != 1:

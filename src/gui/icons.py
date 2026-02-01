@@ -355,7 +355,8 @@ def draw_generic_icon(shape: str) -> QIcon:
     Draw generic tool icons (pointer, eraser, etc).
     
     Args:
-        shape: 'pointer', 'eraser', 'pan', 'zoom_in', 'zoom_out', 'chain', 'lasso'
+        shape: 'pointer', 'eraser', 'pan', 'zoom_in', 'zoom_out', 'chain', 'lasso',
+            'rotate_left', 'rotate_right', 'flip_horizontal', 'flip_vertical'
     
     Returns:
         QIcon with the tool shape
@@ -427,6 +428,60 @@ def draw_generic_icon(shape: str) -> QIcon:
                 hy = y2 - head_len * math.sin(hrad)
                 painter.drawLine(int(x2), int(y2), int(hx), int(hy))
     
+    elif shape in {'rotate_left', 'rotate_right'}:
+        painter.setPen(QPen(QColor('#333333'), 2))
+        rect = QRectF(6, 6, 20, 20)
+        clockwise = shape == 'rotate_right'
+        start_angle = 45 if clockwise else 135
+        span = -270 if clockwise else 270
+        path = QPainterPath()
+        path.arcMoveTo(rect, start_angle)
+        path.arcTo(rect, start_angle, span)
+        painter.drawPath(path)
+
+        end_angle = start_angle + span
+        end_rad = math.radians(end_angle)
+        cx = rect.center().x()
+        cy = rect.center().y()
+        rx = rect.width() / 2
+        ry = rect.height() / 2
+        end_x = cx + rx * math.cos(end_rad)
+        end_y = cy - ry * math.sin(end_rad)
+        tangent_angle = end_rad + (-math.pi / 2 if clockwise else math.pi / 2)
+        head_len = 5
+        left = QPointF(
+            end_x - head_len * math.cos(tangent_angle - 0.5),
+            end_y + head_len * math.sin(tangent_angle - 0.5),
+        )
+        right = QPointF(
+            end_x - head_len * math.cos(tangent_angle + 0.5),
+            end_y + head_len * math.sin(tangent_angle + 0.5),
+        )
+        painter.drawLine(QPointF(end_x, end_y), left)
+        painter.drawLine(QPointF(end_x, end_y), right)
+
+    elif shape == 'flip_horizontal':
+        painter.setPen(QPen(QColor('#333333'), 2))
+        center = ICON_SIZE / 2
+        painter.drawLine(QPointF(center, 6), QPointF(center, ICON_SIZE - 6))
+        painter.drawLine(QPointF(6, center), QPointF(center - 2, center))
+        painter.drawLine(QPointF(ICON_SIZE - 6, center), QPointF(center + 2, center))
+        painter.drawLine(QPointF(6, center), QPointF(10, center - 3))
+        painter.drawLine(QPointF(6, center), QPointF(10, center + 3))
+        painter.drawLine(QPointF(ICON_SIZE - 6, center), QPointF(ICON_SIZE - 10, center - 3))
+        painter.drawLine(QPointF(ICON_SIZE - 6, center), QPointF(ICON_SIZE - 10, center + 3))
+
+    elif shape == 'flip_vertical':
+        painter.setPen(QPen(QColor('#333333'), 2))
+        center = ICON_SIZE / 2
+        painter.drawLine(QPointF(6, center), QPointF(ICON_SIZE - 6, center))
+        painter.drawLine(QPointF(center, 6), QPointF(center, center - 2))
+        painter.drawLine(QPointF(center, ICON_SIZE - 6), QPointF(center, center + 2))
+        painter.drawLine(QPointF(center, 6), QPointF(center - 3, 10))
+        painter.drawLine(QPointF(center, 6), QPointF(center + 3, 10))
+        painter.drawLine(QPointF(center, ICON_SIZE - 6), QPointF(center - 3, ICON_SIZE - 10))
+        painter.drawLine(QPointF(center, ICON_SIZE - 6), QPointF(center + 3, ICON_SIZE - 10))
+
     elif shape == 'zoom_in':
         # Draw magnifying glass with plus
         painter.setPen(QPen(QColor('#333333'), 2))

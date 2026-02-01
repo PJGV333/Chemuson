@@ -172,13 +172,7 @@ class AtomItem(QGraphicsEllipseItem):
             self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
             self.setPen(QPen(Qt.PenStyle.NoPen))
             return
-        if self._is_selected:
-            self.setBrush(QBrush(QColor("#C8DFFF")))
-            pen = QPen(QColor("#4477AA"), self._style.stroke_px)
-            pen.setCapStyle(self._style.cap_style)
-            pen.setJoinStyle(self._style.join_style)
-            self.setPen(pen)
-        elif self._is_hover:
+        if self._is_hover:
             self.setBrush(QBrush(QColor("#F0F0F0")))
             pen = QPen(QColor("#333333"), self._style.stroke_px)
             pen.setCapStyle(self._style.cap_style)
@@ -190,6 +184,11 @@ class AtomItem(QGraphicsEllipseItem):
             pen.setCapStyle(self._style.cap_style)
             pen.setJoinStyle(self._style.join_style)
             self.setPen(pen)
+
+    def paint(self, painter, option, widget=None) -> None:
+        painter.setPen(self.pen())
+        painter.setBrush(self.brush())
+        painter.drawEllipse(self.rect())
     
     def set_visibility_flags(self, show_carbon: bool, show_hydrogen: bool) -> None:
         """Update visibility flags and refresh display."""
@@ -530,6 +529,11 @@ class BondItem(QGraphicsPathItem):
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
         self.update_positions(atom1, atom2)
 
+    def paint(self, painter, option, widget=None) -> None:
+        painter.setPen(self.pen())
+        painter.setBrush(self.brush())
+        painter.drawPath(self.path())
+
     def set_bond(self, bond: Bond, atom1: Atom, atom2: Atom) -> None:
         """Update bond properties and redraw."""
         self.order = bond.order
@@ -573,17 +577,9 @@ class BondItem(QGraphicsPathItem):
         ny = dx / length
         ux = dx / length
         uy = dy / length
-        desired_length = self.length_px if self.length_px is not None else self._style.bond_length_px
-        if desired_length <= 0:
-            desired_length = length
-        render_length = desired_length
-        midx = (x1 + x2) / 2
-        midy = (y1 + y2) / 2
-        half = desired_length / 2
-        p1x = midx - ux * half
-        p1y = midy - uy * half
-        p2x = midx + ux * half
-        p2y = midy + uy * half
+        render_length = length
+        p1x, p1y = x1, y1
+        p2x, p2y = x2, y2
         trim_start = self._label_shrink_start
         trim_end = self._label_shrink_end
         if trim_start + trim_end > 0:
@@ -746,6 +742,11 @@ class ArrowItem(QGraphicsPathItem):
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
         self.setZValue(5)
         self.update_positions(start, end)
+
+    def paint(self, painter, option, widget=None) -> None:
+        painter.setPen(self.pen())
+        painter.setBrush(self.brush())
+        painter.drawPath(self.path())
 
     def update_positions(self, start: QPointF, end: QPointF) -> None:
         self._start = QPointF(start)
@@ -969,6 +970,11 @@ class BracketItem(QGraphicsPathItem):
         self.setZValue(2)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
         self._update_path()
+
+    def paint(self, painter, option, widget=None) -> None:
+        painter.setPen(self.pen())
+        painter.setBrush(self.brush())
+        painter.drawPath(self.path())
 
     def base_rect(self) -> QRectF:
         return QRectF(self._base_rect)
