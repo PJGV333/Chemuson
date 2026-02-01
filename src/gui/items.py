@@ -150,7 +150,7 @@ class AtomItem(QGraphicsEllipseItem):
         return False
 
     def _should_draw_circle(self) -> bool:
-        if self.element == "H":
+        if self.element == "H" or self.element == "C":
             return False
         return not (self._is_explicit and self.element not in {"C", "H"})
 
