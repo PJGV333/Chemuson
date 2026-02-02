@@ -523,6 +523,8 @@ class BondItem(QGraphicsPathItem):
         self._label_shrink_end = 0.0
         self._offset_sign = 1
         self._ring_center: QPointF | None = None
+        self._prefer_full_length = False
+        self._symmetric_double = False
         self.setZValue(-5)
         pen = QPen(QColor(self._style.bond_color), self._style.stroke_px)
         pen.setCapStyle(self._style.cap_style)
@@ -558,6 +560,10 @@ class BondItem(QGraphicsPathItem):
 
     def set_offset_sign(self, sign: int) -> None:
         self._offset_sign = 1 if sign >= 0 else -1
+
+    def set_multibond_rendering(self, prefer_full_length: bool, symmetric_double: bool) -> None:
+        self._prefer_full_length = bool(prefer_full_length)
+        self._symmetric_double = bool(symmetric_double)
 
     def set_label_shrink(self, start: float, end: float) -> None:
         """Set bond endpoint trims to avoid overlapping atom labels."""
@@ -629,14 +635,27 @@ class BondItem(QGraphicsPathItem):
             else:
                 offset = self._style.double_offset_px
                 if effective_order == 2:
-                    path.moveTo(p1x, p1y)
-                    path.lineTo(p2x, p2y)
-                    q1x = p1x + nx * offset * offset_sign + ux * self._style.inner_trim_px
-                    q1y = p1y + ny * offset * offset_sign + uy * self._style.inner_trim_px
-                    q2x = p2x + nx * offset * offset_sign - ux * self._style.inner_trim_px
-                    q2y = p2y + ny * offset * offset_sign - uy * self._style.inner_trim_px
-                    path.moveTo(q1x, q1y)
-                    path.lineTo(q2x, q2y)
+                    if self._symmetric_double:
+                        half_offset = offset * 0.5
+                        path.moveTo(p1x + nx * half_offset, p1y + ny * half_offset)
+                        path.lineTo(p2x + nx * half_offset, p2y + ny * half_offset)
+                        path.moveTo(p1x - nx * half_offset, p1y - ny * half_offset)
+                        path.lineTo(p2x - nx * half_offset, p2y - ny * half_offset)
+                    else:
+                        path.moveTo(p1x, p1y)
+                        path.lineTo(p2x, p2y)
+                        use_inner_trim = self.is_aromatic and self.ring_id is not None and not self._prefer_full_length
+                        q1x = p1x + nx * offset * offset_sign
+                        q1y = p1y + ny * offset * offset_sign
+                        q2x = p2x + nx * offset * offset_sign
+                        q2y = p2y + ny * offset * offset_sign
+                        if use_inner_trim:
+                            q1x += ux * self._style.inner_trim_px
+                            q1y += uy * self._style.inner_trim_px
+                            q2x -= ux * self._style.inner_trim_px
+                            q2y -= uy * self._style.inner_trim_px
+                        path.moveTo(q1x, q1y)
+                        path.lineTo(q2x, q2y)
                 else:  # Triple bond
                     path.moveTo(p1x, p1y)
                     path.lineTo(p2x, p2y)
@@ -1384,4 +1403,3 @@ class TextAnnotationItem(QGraphicsTextItem):
         path = QPainterPath()
         path.addRect(br)
         return path
-

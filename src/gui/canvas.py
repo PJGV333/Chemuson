@@ -41,7 +41,7 @@ try:
 except Exception:  # Optional Qt module at runtime
     QSvgGenerator = None
 
-from core.model import BondStyle, BondStereo, ChemState, MolGraph, VALENCE_MAP
+from core.model import Bond, BondStyle, BondStereo, ChemState, MolGraph, VALENCE_MAP
 from gui.items import (
     AtomItem,
     BondItem,
@@ -1215,6 +1215,7 @@ class ChemusonCanvas(QGraphicsView):
                 if bond.ring_id is not None:
                     item.set_ring_context(self._ring_centers.get(bond.ring_id))
                 item.set_offset_sign(self._bond_offset_sign(bond))
+                self._configure_bond_rendering(bond, item)
                 # Explicitly update positions now that context and sign are set
                 item.update_positions(a1, a2)
                 self.scene.addItem(item)
@@ -2109,6 +2110,9 @@ class ChemusonCanvas(QGraphicsView):
             for angle_value in angles:
                 # Calculate full position for text center
                 pos = endpoint_from_angle_len(QPointF(0.0, 0.0), angle_value, bond_length)
+                rad = math.radians(angle_value)
+                ux = math.cos(rad)
+                uy = -math.sin(rad)
                 
                 # Setup text item first to get its size
                 text_item = QGraphicsTextItem("H")
@@ -2124,10 +2128,22 @@ class ChemusonCanvas(QGraphicsView):
                 # Calculate shortened line end to avoid overlap with text
                 # Shrink by roughly half the text width plus a small padding
                 shrink = rect.width() / 2.0 + 3.0
-                line_len = max(0.0, bond_length - shrink)
-                line_end = endpoint_from_angle_len(QPointF(0.0, 0.0), angle_value, line_len)
+                line_end_len = max(0.0, bond_length - shrink)
+
+                # Also shrink the line start to avoid crossing atom labels (e.g., visible carbons).
+                start_shrink = self._label_shrink_for_atom(atom_id, ux, uy)
+                line_start_len = max(0.0, start_shrink)
+                if line_end_len < line_start_len:
+                    line_end_len = line_start_len
+                line_start = endpoint_from_angle_len(QPointF(0.0, 0.0), angle_value, line_start_len)
+                line_end = endpoint_from_angle_len(QPointF(0.0, 0.0), angle_value, line_end_len)
                 
-                line_item = QGraphicsLineItem(0.0, 0.0, line_end.x(), line_end.y())
+                line_item = QGraphicsLineItem(
+                    line_start.x(),
+                    line_start.y(),
+                    line_end.x(),
+                    line_end.y(),
+                )
                 pen = QPen(QColor(self.drawing_style.bond_color), self.drawing_style.stroke_px)
                 pen.setCapStyle(self.drawing_style.cap_style)
                 pen.setJoinStyle(self.drawing_style.join_style)
@@ -2147,6 +2163,7 @@ class ChemusonCanvas(QGraphicsView):
             item = self.bond_items.get(bond.id)
             if item is None:
                 continue
+            self._configure_bond_rendering(bond, item)
             atom1 = self.model.get_atom(bond.a1_id)
             atom2 = self.model.get_atom(bond.a2_id)
             dx = atom2.x - atom1.x
@@ -2173,10 +2190,19 @@ class ChemusonCanvas(QGraphicsView):
             return 0.0
         # Increased padding to clear label characters (especially "C")
         # 6.0px provides a comfortable margin for standard font sizes.
-        pad = 6.0 
+        pad = 6.0
+        atom = self.model.get_atom(atom_id)
+        if atom is not None and atom.element in ELEMENT_SYMBOLS and atom.element not in {"C", "H"}:
+            pad = 3.5
         rect = rect.adjusted(-pad, -pad, pad, pad)
         distance = self._ray_ellipse_distance(rect, ux, uy)
         return distance if distance is not None else 0.0
+
+    def _configure_bond_rendering(self, bond: Bond, item: BondItem) -> None:
+        prefer_full_length = self.state.show_implicit_carbons or self.state.show_implicit_hydrogens
+        is_aromatic_ring = bond.is_aromatic and bond.ring_id is not None
+        symmetric_double = bond.ring_id is None and not is_aromatic_ring
+        item.set_multibond_rendering(prefer_full_length, symmetric_double)
 
     @staticmethod
     def _ray_ellipse_distance(rect: QRectF, ux: float, uy: float) -> Optional[float]:
@@ -2256,6 +2282,8 @@ class ChemusonCanvas(QGraphicsView):
         if bond.ring_id is not None:
             item.set_ring_context(self._ring_centers.get(bond.ring_id))
         item.set_offset_sign(self._bond_offset_sign(bond))
+        self._configure_bond_rendering(bond, item)
+        item.update_positions(atom1, atom2)
         self.scene.addItem(item)
         self.bond_items[bond.id] = item
         self._refresh_atom_label(bond.a1_id)
@@ -2336,6 +2364,7 @@ class ChemusonCanvas(QGraphicsView):
             else:
                 item.set_ring_context(None)
             item.set_offset_sign(self._bond_offset_sign(bond))
+            self._configure_bond_rendering(bond, item)
             item.set_bond(bond, atom1, atom2)
             item.set_style(self.drawing_style, atom1, atom2)
         self._refresh_atom_label(bond.a1_id)
