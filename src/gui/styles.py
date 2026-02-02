@@ -263,6 +263,15 @@ QScrollBar::sub-line:vertical {{
     background-color: {BG_TOOLBAR};
     border: 1px solid {BORDER_LIGHT};
     border-radius: 4px;
+    subcontrol-origin: margin;
+}}
+
+QScrollBar::sub-line:vertical {{
+    subcontrol-position: top;
+}}
+
+QScrollBar::add-line:vertical {{
+    subcontrol-position: bottom;
 }}
 
 QScrollBar::add-page:vertical,
@@ -294,6 +303,15 @@ QScrollBar::sub-line:horizontal {{
     background-color: {BG_TOOLBAR};
     border: 1px solid {BORDER_LIGHT};
     border-radius: 4px;
+    subcontrol-origin: margin;
+}}
+
+QScrollBar::sub-line:horizontal {{
+    subcontrol-position: left;
+}}
+
+QScrollBar::add-line:horizontal {{
+    subcontrol-position: right;
 }}
 
 /* =========================================== */

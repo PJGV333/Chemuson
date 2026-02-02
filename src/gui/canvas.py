@@ -5837,10 +5837,14 @@ class ChemusonCanvas(QGraphicsView):
         )
 
     def _update_scene_rect(self) -> None:
-        margin = 100
+        margin = max(100, self.viewport().width(), self.viewport().height())
         self.scene.setSceneRect(
             -margin,
             -margin,
             self.paper_width + 2 * margin,
             self.paper_height + 2 * margin,
         )
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._update_scene_rect()
