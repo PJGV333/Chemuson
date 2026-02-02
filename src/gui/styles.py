@@ -259,7 +259,10 @@ QScrollBar::handle:vertical:pressed {{
 
 QScrollBar::add-line:vertical,
 QScrollBar::sub-line:vertical {{
-    height: 0px;
+    height: 14px;
+    background-color: {BG_TOOLBAR};
+    border: 1px solid {BORDER_LIGHT};
+    border-radius: 4px;
 }}
 
 QScrollBar::add-page:vertical,
@@ -287,7 +290,10 @@ QScrollBar::handle:horizontal:hover {{
 
 QScrollBar::add-line:horizontal,
 QScrollBar::sub-line:horizontal {{
-    width: 0px;
+    width: 14px;
+    background-color: {BG_TOOLBAR};
+    border: 1px solid {BORDER_LIGHT};
+    border-radius: 4px;
 }}
 
 /* =========================================== */

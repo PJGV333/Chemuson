@@ -181,6 +181,8 @@ class ChemusonCanvas(QGraphicsView):
 
         self.scene = QGraphicsScene()
         self.setScene(self.scene)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
 
         self.paper_width = DEFAULT_PAPER_WIDTH
         self.paper_height = DEFAULT_PAPER_HEIGHT
@@ -235,6 +237,9 @@ class ChemusonCanvas(QGraphicsView):
         self._select_preview_path: Optional[QGraphicsPathItem] = None
         self._select_preview_rect: Optional[QGraphicsRectItem] = None
         self._select_additive = False
+        self._panning = False
+        self._space_panning = False
+        self._pan_last_pos: Optional[QPoint] = None
 
         self._drag_mode = "none"
         self._drag_anchor: Optional[dict] = None
@@ -273,6 +278,7 @@ class ChemusonCanvas(QGraphicsView):
         self.undo_stack.indexChanged.connect(self._on_undo_stack_changed)
         self.setMouseTracking(True)
         self.viewport().setMouseTracking(True)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
     @property
     def graph(self) -> MolGraph:
@@ -284,8 +290,8 @@ class ChemusonCanvas(QGraphicsView):
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.setRenderHint(QPainter.RenderHint.TextAntialiasing)
 
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
 
         self._update_scene_rect()
 
@@ -529,6 +535,14 @@ class ChemusonCanvas(QGraphicsView):
         self.viewport().update()
 
     def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.MiddleButton or (
+            self._space_panning and event.button() == Qt.MouseButton.LeftButton
+        ):
+            self._panning = True
+            self._pan_last_pos = event.pos()
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            event.accept()
+            return
         scene_pos = self.mapToScene(event.pos())
         self._last_scene_pos = scene_pos
 
@@ -558,6 +572,8 @@ class ChemusonCanvas(QGraphicsView):
             return
 
         if self.current_tool in {"tool_select", "tool_select_lasso"}:
+            if self._space_panning:
+                return
             clicked_item = self._get_item_at(scene_pos)
             if (
                 (event.modifiers() & Qt.KeyboardModifier.AltModifier)
@@ -734,6 +750,15 @@ class ChemusonCanvas(QGraphicsView):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:
+        if self._panning and self._pan_last_pos is not None:
+            delta = event.pos() - self._pan_last_pos
+            self._pan_last_pos = event.pos()
+            hbar = self.horizontalScrollBar()
+            vbar = self.verticalScrollBar()
+            hbar.setValue(hbar.value() - delta.x())
+            vbar.setValue(vbar.value() - delta.y())
+            event.accept()
+            return
         scene_pos = self.mapToScene(event.pos())
         self._last_scene_pos = scene_pos
 
@@ -822,6 +847,12 @@ class ChemusonCanvas(QGraphicsView):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:
+        if self._panning:
+            self._panning = False
+            self._pan_last_pos = None
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+            event.accept()
+            return
         if self._scale_dragging:
             self._finalize_scale_drag()
             return
@@ -994,12 +1025,26 @@ class ChemusonCanvas(QGraphicsView):
         super().mouseDoubleClickEvent(event)
 
     def wheelEvent(self, event: QWheelEvent) -> None:
+        if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+            hbar = self.horizontalScrollBar()
+            delta = event.angleDelta().y()
+            if delta == 0:
+                delta = event.angleDelta().x()
+            if delta != 0:
+                hbar.setValue(hbar.value() - delta)
+                event.accept()
+                return
         if event.angleDelta().y() > 0:
             self.zoom_in()
         else:
             self.zoom_out()
 
     def keyPressEvent(self, event) -> None:
+        if event.key() == Qt.Key.Key_Space and not self._space_panning:
+            self._space_panning = True
+            self.setCursor(Qt.CursorShape.OpenHandCursor)
+            event.accept()
+            return
         if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
             has_selected_arrows = any(
                 isinstance(item, ArrowItem) for item in self.scene.selectedItems()
@@ -1030,6 +1075,15 @@ class ChemusonCanvas(QGraphicsView):
         if self._handle_hotkeys(event):
             return
         super().keyPressEvent(event)
+
+    def keyReleaseEvent(self, event) -> None:
+        if event.key() == Qt.Key.Key_Space and self._space_panning:
+            self._space_panning = False
+            if not self._panning:
+                self.setCursor(Qt.CursorShape.ArrowCursor)
+            event.accept()
+            return
+        super().keyReleaseEvent(event)
 
     def _handle_atom_text_entry(self, event) -> bool:
         if event.modifiers() & (
