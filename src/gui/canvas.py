@@ -238,10 +238,18 @@ class ChemusonCanvas(QGraphicsView):
         self._selection_box: Optional[QGraphicsRectItem] = None
         self._selection_handle: Optional[QGraphicsEllipseItem] = None
         self._selection_move_handle: Optional[QGraphicsEllipseItem] = None
+        self._selection_scale_handle: Optional[QGraphicsRectItem] = None
         self._rotation_dragging = False
         self._rotation_center: Optional[QPointF] = None
         self._rotation_start_angle: Optional[float] = None
         self._rotation_start_positions: Dict[int, Tuple[float, float]] = {}
+        self._scale_dragging = False
+        self._scale_anchor: Optional[QPointF] = None
+        self._scale_start_handle: Optional[QPointF] = None
+        self._scale_start_length = 0.0
+        self._scale_start_positions: Dict[int, Tuple[float, float]] = {}
+        self._scale_start_text_positions: Dict[TextAnnotationItem, Tuple[QPointF, float]] = {}
+        self._scale_has_moved = False
         self._implicit_h_overlays: Dict[int, list[tuple[QGraphicsLineItem, QGraphicsTextItem]]] = {}
 
         self._setup_view()
@@ -511,7 +519,7 @@ class ChemusonCanvas(QGraphicsView):
         scene_pos = self.mapToScene(event.pos())
         self._last_scene_pos = scene_pos
 
-        if not self._is_on_paper(scene_pos.x(), scene_pos.y()):
+        if not self._is_on_paper(scene_pos.x(), scene_pos.y()) and self.current_tool not in {"tool_select", "tool_select_lasso"}:
             super().mousePressEvent(event)
             return
 
@@ -527,6 +535,9 @@ class ChemusonCanvas(QGraphicsView):
             return
 
         if self.current_tool in {"tool_select", "tool_select_lasso"}:
+            if event.button() == Qt.MouseButton.LeftButton and self._hit_selection_scale_handle(scene_pos):
+                self._begin_scale_drag(scene_pos)
+                return
             if event.button() == Qt.MouseButton.LeftButton and self._hit_selection_handle(scene_pos):
                 self._begin_rotation_drag(scene_pos)
                 return
@@ -692,6 +703,9 @@ class ChemusonCanvas(QGraphicsView):
         scene_pos = self.mapToScene(event.pos())
         self._last_scene_pos = scene_pos
 
+        if self._scale_dragging:
+            self._update_scale_drag(scene_pos)
+            return
         if self._rotation_dragging:
             self._update_rotation_drag(scene_pos)
             return
@@ -764,6 +778,9 @@ class ChemusonCanvas(QGraphicsView):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:
+        if self._scale_dragging:
+            self._finalize_scale_drag()
+            return
         if self._rotation_dragging:
             self._finalize_rotation_drag()
             return
@@ -1366,16 +1383,27 @@ class ChemusonCanvas(QGraphicsView):
             else:
                 rect = rect.united(candidate)
 
-        if selected_only:
-            for atom_id in self.state.selected_atoms:
-                item = self.atom_items.get(atom_id)
-                if item is None or item.scene() is not self.scene:
-                    continue
+        def extend_atom_bounds(atom_id: int) -> None:
+            item = self.atom_items.get(atom_id)
+            if item is None or item.scene() is not self.scene:
+                return
+            if item.pen().style() != Qt.PenStyle.NoPen or item.brush().style() != Qt.BrushStyle.NoBrush:
                 extend(item.sceneBoundingRect())
-                if item.label.isVisible():
-                    extend(item.label.sceneBoundingRect())
-                if item.charge_label.isVisible():
-                    extend(item.charge_label.sceneBoundingRect())
+            if item.label.isVisible():
+                extend(item.label.sceneBoundingRect())
+            if item.charge_label.isVisible():
+                extend(item.charge_label.sceneBoundingRect())
+            overlays = self._implicit_h_overlays.get(atom_id)
+            if overlays:
+                for line_item, text_item in overlays:
+                    if line_item.scene() is self.scene and line_item.isVisible():
+                        extend(line_item.sceneBoundingRect())
+                    if text_item.scene() is self.scene and text_item.isVisible():
+                        extend(text_item.sceneBoundingRect())
+
+        if selected_only:
+            for atom_id in self._selected_atom_ids_for_transform():
+                extend_atom_bounds(atom_id)
             for bond_id in self.state.selected_bonds:
                 item = self.bond_items.get(bond_id)
                 if item is None or item.scene() is not self.scene:
@@ -1385,15 +1413,8 @@ class ChemusonCanvas(QGraphicsView):
                 if isinstance(item, (ArrowItem, BracketItem)):
                     extend(item.sceneBoundingRect())
         else:
-            for item in self.atom_items.values():
-                if item.scene() is not self.scene:
-                    continue
-                if item.isVisible():
-                    extend(item.sceneBoundingRect())
-                if item.label.isVisible():
-                    extend(item.label.sceneBoundingRect())
-                if item.charge_label.isVisible():
-                    extend(item.charge_label.sceneBoundingRect())
+            for atom_id in self.atom_items.keys():
+                extend_atom_bounds(atom_id)
             for item in self.bond_items.values():
                 if item.scene() is not self.scene:
                     continue
@@ -2096,7 +2117,6 @@ class ChemusonCanvas(QGraphicsView):
         self._clear_implicit_h_overlays(atom_ids)
         if not self.state.show_implicit_hydrogens:
             return
-        bond_length = max(1.0, float(self.state.bond_length))
         font = self._label_font()
         for atom_id in atom_ids:
             atom = self.model.atoms.get(atom_id)
@@ -2105,6 +2125,7 @@ class ChemusonCanvas(QGraphicsView):
             count = self._implicit_hydrogen_count(atom_id, atom.element)
             if count <= 0:
                 continue
+            bond_length = max(1.0, self._local_bond_length(atom_id))
             angles = self._implicit_h_angles(atom_id, count)
             overlays: list[tuple[QGraphicsLineItem, QGraphicsTextItem]] = []
             for angle_value in angles:
@@ -2156,6 +2177,28 @@ class ChemusonCanvas(QGraphicsView):
             if overlays:
                 self._implicit_h_overlays[atom_id] = overlays
 
+    def _local_bond_length(self, atom_id: int) -> float:
+        atom = self.model.get_atom(atom_id)
+        if atom is None:
+            return float(self.state.bond_length)
+        lengths: list[float] = []
+        for bond in self.model.bonds.values():
+            if bond.a1_id == atom_id:
+                other_id = bond.a2_id
+            elif bond.a2_id == atom_id:
+                other_id = bond.a1_id
+            else:
+                continue
+            other = self.model.get_atom(other_id)
+            if other is None:
+                continue
+            length = math.hypot(other.x - atom.x, other.y - atom.y)
+            if length > 1e-6:
+                lengths.append(length)
+        if lengths:
+            return sum(lengths) / len(lengths)
+        return float(self.state.bond_length)
+
     def _update_bond_label_shrinks(self, atom_ids: set[int]) -> None:
         for bond in self.model.bonds.values():
             if bond.a1_id not in atom_ids and bond.a2_id not in atom_ids:
@@ -2199,7 +2242,7 @@ class ChemusonCanvas(QGraphicsView):
         return distance if distance is not None else 0.0
 
     def _configure_bond_rendering(self, bond: Bond, item: BondItem) -> None:
-        prefer_full_length = self.state.show_implicit_carbons or self.state.show_implicit_hydrogens
+        prefer_full_length = self.state.show_implicit_carbons and self.state.show_implicit_hydrogens
         is_aromatic_ring = bond.is_aromatic and bond.ring_id is not None
         symmetric_double = bond.ring_id is None and not is_aromatic_ring
         item.set_multibond_rendering(prefer_full_length, symmetric_double)
@@ -2812,6 +2855,17 @@ class ChemusonCanvas(QGraphicsView):
             self.scene.addItem(handle)
             self._selection_move_handle = handle
 
+        if self._selection_scale_handle is None:
+            size = SELECTION_HANDLE_RADIUS_PX * 2.0
+            handle = QGraphicsRectItem(0, 0, size, size)
+            handle.setBrush(QBrush(QColor("#4A90D9")))
+            handle.setPen(QPen(QColor("#4A90D9"), 0))
+            handle.setZValue(46)
+            handle.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations, True)
+            handle.setCursor(Qt.CursorShape.SizeFDiagCursor)
+            self.scene.addItem(handle)
+            self._selection_scale_handle = handle
+
     def _clear_selection_overlay(self) -> None:
         if self._selection_box is not None:
             self.scene.removeItem(self._selection_box)
@@ -2822,26 +2876,48 @@ class ChemusonCanvas(QGraphicsView):
         if self._selection_move_handle is not None:
             self.scene.removeItem(self._selection_move_handle)
             self._selection_move_handle = None
+        if self._selection_scale_handle is not None:
+            self.scene.removeItem(self._selection_scale_handle)
+            self._selection_scale_handle = None
 
     def _selected_items_bbox(self) -> Optional[QRectF]:
         rect: Optional[QRectF] = None
-        for atom_id in self.state.selected_atoms:
+
+        def extend(candidate: QRectF) -> None:
+            nonlocal rect
+            if not candidate.isValid() or candidate.isNull():
+                return
+            rect = candidate if rect is None else rect.united(candidate)
+
+        def extend_atom_bounds(atom_id: int) -> None:
             item = self.atom_items.get(atom_id)
-            if item is None:
-                continue
-            item_rect = item.sceneBoundingRect()
-            rect = item_rect if rect is None else rect.united(item_rect)
+            if item is None or item.scene() is not self.scene:
+                return
+            if item.pen().style() != Qt.PenStyle.NoPen or item.brush().style() != Qt.BrushStyle.NoBrush:
+                extend(item.sceneBoundingRect())
+            if item.label.isVisible():
+                extend(item.label.sceneBoundingRect())
+            if item.charge_label.isVisible():
+                extend(item.charge_label.sceneBoundingRect())
+            overlays = self._implicit_h_overlays.get(atom_id)
+            if overlays:
+                for line_item, text_item in overlays:
+                    if line_item.scene() is self.scene and line_item.isVisible():
+                        extend(line_item.sceneBoundingRect())
+                    if text_item.scene() is self.scene and text_item.isVisible():
+                        extend(text_item.sceneBoundingRect())
+
+        for atom_id in self._selected_atom_ids_for_transform():
+            extend_atom_bounds(atom_id)
         for bond_id in self.state.selected_bonds:
             item = self.bond_items.get(bond_id)
             if item is None:
                 continue
-            item_rect = item.sceneBoundingRect()
-            rect = item_rect if rect is None else rect.united(item_rect)
+            extend(item.sceneBoundingRect())
         for item in self.scene.selectedItems():
             # Include TextAnnotationItem
             if isinstance(item, (ArrowItem, BracketItem, TextAnnotationItem)):
-                item_rect = item.sceneBoundingRect()
-                rect = item_rect if rect is None else rect.united(item_rect)
+                extend(item.sceneBoundingRect())
         return rect
 
     def _selected_atom_ids_for_transform(self) -> set[int]:
@@ -2862,10 +2938,13 @@ class ChemusonCanvas(QGraphicsView):
                 self._selection_handle.setVisible(False)
             if self._selection_move_handle is not None:
                 self._selection_move_handle.setVisible(False)
+            if self._selection_scale_handle is not None:
+                self._selection_scale_handle.setVisible(False)
             return
         self._ensure_selection_overlay()
         padded = QRectF(bbox)
-        padded.adjust(-SELECTION_BOX_PADDING_PX, -SELECTION_BOX_PADDING_PX, SELECTION_BOX_PADDING_PX, SELECTION_BOX_PADDING_PX)
+        pad = max(2.0, float(self.drawing_style.stroke_px))
+        padded.adjust(-pad, -pad, pad, pad)
         if self._selection_box is not None:
             self._selection_box.setRect(padded)
             self._selection_box.setVisible(True)
@@ -2884,6 +2963,12 @@ class ChemusonCanvas(QGraphicsView):
             self._selection_move_handle.setPos(handle_x, handle_y)
             self._selection_move_handle.setVisible(True)
 
+        if self._selection_scale_handle is not None:
+            handle_x = padded.right() - SELECTION_HANDLE_RADIUS_PX
+            handle_y = padded.bottom() - SELECTION_HANDLE_RADIUS_PX
+            self._selection_scale_handle.setPos(handle_x, handle_y)
+            self._selection_scale_handle.setVisible(True)
+
     def _hit_selection_handle(self, scene_pos: QPointF) -> bool:
         if self._selection_handle is None or not self._selection_handle.isVisible():
             return False
@@ -2893,6 +2978,11 @@ class ChemusonCanvas(QGraphicsView):
         if self._selection_move_handle is None or not self._selection_move_handle.isVisible():
             return False
         return self._selection_move_handle.sceneBoundingRect().contains(scene_pos)
+
+    def _hit_selection_scale_handle(self, scene_pos: QPointF) -> bool:
+        if self._selection_scale_handle is None or not self._selection_scale_handle.isVisible():
+            return False
+        return self._selection_scale_handle.sceneBoundingRect().contains(scene_pos)
 
     def _begin_rotation_drag(self, scene_pos: QPointF) -> None:
         if not self._selected_atom_ids_for_transform() and not self._selected_text_items():
@@ -2936,6 +3026,108 @@ class ChemusonCanvas(QGraphicsView):
         self._rotation_start_angle = None
         self._rotation_start_positions = {}
         self._rotation_start_text_transforms = {}
+        self._update_selection_overlay()
+
+    def _begin_scale_drag(self, scene_pos: QPointF) -> None:
+        if not self._selected_atom_ids_for_transform() and not self._selected_text_items():
+            return
+        bbox = self._selected_items_bbox()
+        if bbox is None or bbox.width() <= 1e-6 or bbox.height() <= 1e-6:
+            return
+        anchor = QPointF(bbox.left(), bbox.top())
+        handle = QPointF(scene_pos.x(), scene_pos.y())
+        start_len = math.hypot(handle.x() - anchor.x(), handle.y() - anchor.y())
+        if start_len <= 1e-6:
+            return
+
+        self._scale_dragging = True
+        self._scale_anchor = anchor
+        self._scale_start_handle = handle
+        self._scale_start_length = start_len
+
+        atom_ids = self._selected_atom_ids_for_transform()
+        self._scale_start_positions = {
+            atom_id: (self.model.get_atom(atom_id).x, self.model.get_atom(atom_id).y)
+            for atom_id in atom_ids
+            if atom_id in self.model.atoms
+        }
+
+        self._scale_start_text_positions = {
+            item: (item.pos(), item.rotation())
+            for item in self._selected_text_items()
+        }
+        self._scale_has_moved = False
+
+    def _update_scale_drag(self, scene_pos: QPointF) -> None:
+        if not self._scale_dragging or self._scale_anchor is None:
+            return
+        if self._scale_start_length <= 1e-6:
+            return
+        dx = scene_pos.x() - self._scale_anchor.x()
+        dy = scene_pos.y() - self._scale_anchor.y()
+        current_len = math.hypot(dx, dy)
+        scale = max(0.05, current_len / self._scale_start_length)
+        if abs(scale - 1.0) > 1e-4:
+            self._scale_has_moved = True
+
+        if self._scale_start_positions:
+            for atom_id, (x0, y0) in self._scale_start_positions.items():
+                nx = self._scale_anchor.x() + (x0 - self._scale_anchor.x()) * scale
+                ny = self._scale_anchor.y() + (y0 - self._scale_anchor.y()) * scale
+                self.model.update_atom_position(atom_id, nx, ny)
+                self.update_atom_item(atom_id, nx, ny)
+            self.update_bond_items_for_atoms(set(self._scale_start_positions.keys()))
+
+        if self._scale_start_text_positions:
+            for item, (pos, rot) in self._scale_start_text_positions.items():
+                nx = self._scale_anchor.x() + (pos.x() - self._scale_anchor.x()) * scale
+                ny = self._scale_anchor.y() + (pos.y() - self._scale_anchor.y()) * scale
+                item.setPos(QPointF(nx, ny))
+                item.setRotation(rot)
+
+        self._update_selection_overlay()
+
+    def _finalize_scale_drag(self) -> None:
+        if not self._scale_dragging:
+            return
+
+        if self._scale_has_moved:
+            move_atoms = bool(self._scale_start_positions)
+            move_text = bool(self._scale_start_text_positions)
+
+            if move_atoms and move_text:
+                self.undo_stack.beginMacro("Scale selection")
+
+            if move_atoms:
+                after = {
+                    atom_id: (self.model.get_atom(atom_id).x, self.model.get_atom(atom_id).y)
+                    for atom_id in self._scale_start_positions
+                }
+                cmd = MoveAtomsCommand(
+                    self.model,
+                    self,
+                    self._scale_start_positions,
+                    after,
+                    skip_first_redo=True,
+                )
+                self.undo_stack.push(cmd)
+
+            if move_text:
+                before = self._scale_start_text_positions
+                after = {item: (item.pos(), item.rotation()) for item in before.keys()}
+                cmd = MoveTextItemsCommand(self, before, after)
+                self.undo_stack.push(cmd)
+
+            if move_atoms and move_text:
+                self.undo_stack.endMacro()
+
+        self._scale_dragging = False
+        self._scale_anchor = None
+        self._scale_start_handle = None
+        self._scale_start_length = 0.0
+        self._scale_start_positions = {}
+        self._scale_start_text_positions = {}
+        self._scale_has_moved = False
         self._update_selection_overlay()
 
     def _selected_text_items(self) -> list[TextAnnotationItem]:
@@ -2999,8 +3191,13 @@ class ChemusonCanvas(QGraphicsView):
                     self.update_atom_item(aid, nx, ny)
                 self.update_bond_items_for_atoms(selected_atom_ids)
             else:
-                 self.undo_stack.push(
-                    MoveAtomsCommand(self.model, self, new_positions)
+                before = {
+                    atom_id: (self.model.get_atom(atom_id).x, self.model.get_atom(atom_id).y)
+                    for atom_id in selected_atom_ids
+                }
+                after = new_positions
+                self.undo_stack.push(
+                    MoveAtomsCommand(self.model, self, before, after)
                 )
 
         # Rotate Text Items
@@ -3525,6 +3722,7 @@ class ChemusonCanvas(QGraphicsView):
         self._drag_free_orientation = False
         self._bond_drag_start = None
         self._rotation_dragging = False
+        self._scale_dragging = False
         self._rotation_center = None
         self._rotation_start_angle = None
         self._rotation_start_positions = {}
