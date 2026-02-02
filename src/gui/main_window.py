@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QToolBar,
 )
-from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtCore import Qt, QSize, QSettings
 from PyQt6.QtGui import QAction, QActionGroup, QKeySequence, QIcon, QPainter
 from PyQt6.QtPrintSupport import QPrinter
 from typing import Optional
@@ -53,6 +53,8 @@ class ChemusonWindow(QMainWindow):
         # === CORE COMPONENTS ===
         self._create_actions()
         self._current_file_path: Optional[str] = None
+        self._settings = QSettings("Chemuson", "Chemuson")
+        self._recent_files = self._load_recent_files()
         
         # === CENTRAL CANVAS ===
         self.canvas = ChemusonCanvas()
@@ -308,6 +310,8 @@ class ChemusonWindow(QMainWindow):
         file_menu.addAction(self.action_new)
         file_menu.addAction(self.action_open)
         file_menu.addAction(self.action_save)
+        self.recent_menu = file_menu.addMenu("Archivos recientes")
+        self._update_recent_menu()
         file_menu.addSeparator()
         
         export_menu = file_menu.addMenu("Exportar como")
@@ -532,6 +536,50 @@ class ChemusonWindow(QMainWindow):
         # Connect copy/paste
         self.action_copy.triggered.connect(self.canvas.copy_to_clipboard)
         self.action_paste.triggered.connect(self.canvas.paste_from_clipboard)
+
+    def _load_recent_files(self) -> list[str]:
+        value = self._settings.value("recent_files", [])
+        if isinstance(value, str):
+            return [value]
+        if isinstance(value, list):
+            return [str(p) for p in value if p]
+        return []
+
+    def _save_recent_files(self) -> None:
+        self._settings.setValue("recent_files", self._recent_files)
+
+    def _add_recent_file(self, filepath: str) -> None:
+        if not filepath:
+            return
+        path = os.path.abspath(filepath)
+        self._recent_files = [p for p in self._recent_files if p != path]
+        self._recent_files.insert(0, path)
+        self._recent_files = self._recent_files[:10]
+        self._save_recent_files()
+        self._update_recent_menu()
+
+    def _update_recent_menu(self) -> None:
+        if not hasattr(self, "recent_menu"):
+            return
+        self.recent_menu.clear()
+        existing = [p for p in self._recent_files if os.path.exists(p)]
+        self._recent_files = existing
+        if not existing:
+            empty = QAction("Sin recientes", self)
+            empty.setEnabled(False)
+            self.recent_menu.addAction(empty)
+            return
+        for path in existing:
+            action = QAction(path, self)
+            action.triggered.connect(lambda checked=False, p=path: self._open_recent_file(p))
+            self.recent_menu.addAction(action)
+
+    def _open_recent_file(self, filepath: str) -> None:
+        if not filepath or not os.path.exists(filepath):
+            QMessageBox.warning(self, "Archivo no encontrado", "El archivo no existe.")
+            self._update_recent_menu()
+            return
+        self._open_file_path(filepath)
     
     # -------------------------------------------------------------------------
     # File Menu Handlers
@@ -540,6 +588,7 @@ class ChemusonWindow(QMainWindow):
         """Create a new empty canvas."""
         self.canvas.clear_canvas()
         self._current_file_path = None
+        self.canvas.undo_stack.setClean()
         self.statusBar().showMessage("Nuevo documento creado")
     
     def _on_file_open(self) -> None:
@@ -551,22 +600,26 @@ class ChemusonWindow(QMainWindow):
             "Archivos de Chemuson (*.cmsn);;Archivos MOL (*.mol *.sdf);;Todos los archivos (*.*)"
         )
         if filepath:
-            try:
-                if filepath.lower().endswith(".cmsn"):
-                    self.canvas.clear_canvas() # Ensure clean slate
-                    PersistenceManager.load_from_file(filepath, self.canvas)
-                else:
-                    # Fallback to RDKit for .mol/.sdf
-                    with open(filepath, "r") as f:
-                        molfile = f.read()
-                    from chemio.rdkit_io import molfile_to_molgraph
-                    graph = molfile_to_molgraph(molfile)
-                    self.canvas.clear_canvas()
-                    self.canvas._insert_molgraph(graph)
-                self._current_file_path = filepath
-                self.statusBar().showMessage(f"Abierto: {filepath}")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"No se pudo abrir el archivo:\n{e}")
+            self._open_file_path(filepath)
+
+    def _open_file_path(self, filepath: str) -> None:
+        try:
+            if filepath.lower().endswith(".cmsn"):
+                self.canvas.clear_canvas() # Ensure clean slate
+                PersistenceManager.load_from_file(filepath, self.canvas)
+            else:
+                # Fallback to RDKit for .mol/.sdf
+                with open(filepath, "r") as f:
+                    molfile = f.read()
+                graph = molfile_to_molgraph(molfile)
+                self.canvas.clear_canvas()
+                self.canvas._insert_molgraph(graph)
+            self._current_file_path = filepath
+            self.canvas.undo_stack.setClean()
+            self._add_recent_file(filepath)
+            self.statusBar().showMessage(f"Abierto: {filepath}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"No se pudo abrir el archivo:\n{e}")
     
     def _on_file_save(self) -> None:
         """Save the current work in .cmsn format."""
@@ -593,6 +646,8 @@ class ChemusonWindow(QMainWindow):
                         filepath += ".cmsn"
                     PersistenceManager.save_to_file(filepath, self.canvas)
                 self._current_file_path = filepath
+                self.canvas.undo_stack.setClean()
+                self._add_recent_file(filepath)
                 self.statusBar().showMessage(f"Guardado: {filepath}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"No se pudo guardar:\n{e}")
@@ -630,6 +685,31 @@ class ChemusonWindow(QMainWindow):
                     self.statusBar().showMessage(f"Exportado: {filepath}")
                 except Exception as e:
                     QMessageBox.warning(self, "Error", f"No se pudo exportar PDF:\n{e}")
+
+    def _confirm_discard_changes(self) -> bool:
+        if self.canvas.undo_stack.isClean():
+            return True
+        reply = QMessageBox.question(
+            self,
+            "Cambios sin guardar",
+            "Hay cambios sin guardar. ¿Deseas guardar antes de salir?",
+            QMessageBox.StandardButton.Save
+            | QMessageBox.StandardButton.Discard
+            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Save,
+        )
+        if reply == QMessageBox.StandardButton.Save:
+            self._on_file_save()
+            return self.canvas.undo_stack.isClean()
+        if reply == QMessageBox.StandardButton.Discard:
+            return True
+        return False
+
+    def closeEvent(self, event) -> None:
+        if self._confirm_discard_changes():
+            event.accept()
+        else:
+            event.ignore()
     
     # -------------------------------------------------------------------------
     # Edit Menu Handlers

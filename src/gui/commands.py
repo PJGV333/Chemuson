@@ -135,6 +135,12 @@ class AddAtomCommand(QUndoCommand):
         x: float,
         y: float,
         is_explicit: Optional[bool] = None,
+        charge: int | None = None,
+        isotope: Optional[int] = None,
+        explicit_h: Optional[int] = None,
+        mapping: Optional[int] = None,
+        is_query: bool = False,
+        anchor_override: Optional[str] = None,
         auto_hydrogens: bool = True,
         expected_bonds: int = 0,
     ) -> None:
@@ -145,6 +151,12 @@ class AddAtomCommand(QUndoCommand):
         self._x = x
         self._y = y
         self._is_explicit = is_explicit
+        self._charge = charge
+        self._isotope = isotope
+        self._explicit_h = explicit_h
+        self._mapping = mapping
+        self._is_query = is_query
+        self._anchor_override = anchor_override
         self._auto_hydrogens = auto_hydrogens
         self._expected_bonds = expected_bonds
         self._atom_id: Optional[int] = None
@@ -154,12 +166,18 @@ class AddAtomCommand(QUndoCommand):
         is_explicit = self._is_explicit
         if is_explicit is None:
             is_explicit = _default_is_explicit(self._element)
+        charge = 0 if self._charge is None else self._charge
         if self._atom_id is None:
             atom = self._model.add_atom(
                 self._element,
                 self._x,
                 self._y,
                 is_explicit=is_explicit,
+                charge=charge,
+                isotope=self._isotope,
+                explicit_h=self._explicit_h,
+                mapping=self._mapping,
+                is_query=self._is_query,
             )
             self._atom_id = atom.id
         else:
@@ -169,8 +187,16 @@ class AddAtomCommand(QUndoCommand):
                 self._y,
                 atom_id=self._atom_id,
                 is_explicit=is_explicit,
+                charge=charge,
+                isotope=self._isotope,
+                explicit_h=self._explicit_h,
+                mapping=self._mapping,
+                is_query=self._is_query,
             )
         self._view.add_atom_item(atom)
+        if self._anchor_override:
+            self._view.set_anchor_override(atom.id, self._anchor_override)
+            self._view._refresh_atom_label(atom.id)
 
     def undo(self) -> None:
         if self._hydrogen_specs:
@@ -333,6 +359,8 @@ class AddBondCommand(QUndoCommand):
         style: BondStyle = BondStyle.PLAIN,
         stereo: BondStereo = BondStereo.NONE,
         is_aromatic: bool = False,
+        display_order: Optional[int] = None,
+        length_px: Optional[float] = None,
         ring_id: Optional[int] = None,
         new_atom_element: Optional[str] = None,
         new_atom_pos: Optional[Tuple[float, float]] = None,
@@ -346,6 +374,8 @@ class AddBondCommand(QUndoCommand):
         self._style = style
         self._stereo = stereo
         self._is_aromatic = is_aromatic
+        self._display_order = display_order
+        self._length_px = length_px
         self._ring_id = ring_id
         self._bond_id: Optional[int] = None
         self._new_atom_element = new_atom_element
@@ -386,7 +416,9 @@ class AddBondCommand(QUndoCommand):
                 style=self._style,
                 stereo=self._stereo,
                 is_aromatic=self._is_aromatic,
+                display_order=self._display_order,
                 ring_id=self._ring_id,
+                length_px=self._length_px,
             )
             self._bond_id = bond.id
         else:
@@ -398,7 +430,9 @@ class AddBondCommand(QUndoCommand):
                 style=self._style,
                 stereo=self._stereo,
                 is_aromatic=self._is_aromatic,
+                display_order=self._display_order,
                 ring_id=self._ring_id,
+                length_px=self._length_px,
             )
         self._view.add_bond_item(bond)
 
@@ -531,6 +565,42 @@ class MoveTextItemsCommand(QUndoCommand):
         for item, (pos, rot) in self._before.items():
             item.setPos(pos)
             item.setRotation(rot)
+        self._view._update_selection_overlay()
+
+
+class MoveArrowItemsCommand(QUndoCommand):
+    def __init__(self, view, before: dict, after: dict):
+        super().__init__("Move arrows")
+        self._view = view
+        self._before = before  # {item: (start, end)}
+        self._after = after    # {item: (start, end)}
+
+    def redo(self) -> None:
+        for item, (start, end) in self._after.items():
+            item.update_positions(start, end)
+        self._view._update_selection_overlay()
+
+    def undo(self) -> None:
+        for item, (start, end) in self._before.items():
+            item.update_positions(start, end)
+        self._view._update_selection_overlay()
+
+
+class MoveBracketItemsCommand(QUndoCommand):
+    def __init__(self, view, before: dict, after: dict):
+        super().__init__("Move brackets")
+        self._view = view
+        self._before = before  # {item: QRectF}
+        self._after = after    # {item: QRectF}
+
+    def redo(self) -> None:
+        for item, rect in self._after.items():
+            item.set_rect(rect)
+        self._view._update_selection_overlay()
+
+    def undo(self) -> None:
+        for item, rect in self._before.items():
+            item.set_rect(rect)
         self._view._update_selection_overlay()
 
 

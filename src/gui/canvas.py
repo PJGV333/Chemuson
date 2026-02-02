@@ -96,6 +96,8 @@ from gui.commands import (
     DeleteSelectionCommand,
     MoveAtomsCommand,
     MoveTextItemsCommand,
+    MoveArrowItemsCommand,
+    MoveBracketItemsCommand,
 )
 from gui.dialogs import AtomLabelDialog
 from chemio.rdkit_io import (
@@ -223,6 +225,9 @@ class ChemusonCanvas(QGraphicsView):
         self._dragging_selection = False
         self._drag_start_pos: Optional[QPointF] = None
         self._drag_start_positions: Dict[int, Tuple[float, float]] = {}
+        self._drag_start_text_positions: Dict[TextAnnotationItem, Tuple[QPointF, float]] = {}
+        self._drag_start_arrow_positions: Dict[ArrowItem, Tuple[QPointF, QPointF]] = {}
+        self._drag_start_bracket_rects: Dict[BracketItem, QRectF] = {}
         self._drag_has_moved = False
         self._select_drag_mode: Optional[str] = None
         self._select_start_pos: Optional[QPointF] = None
@@ -254,6 +259,8 @@ class ChemusonCanvas(QGraphicsView):
         self._scale_start_length = 0.0
         self._scale_start_positions: Dict[int, Tuple[float, float]] = {}
         self._scale_start_text_positions: Dict[TextAnnotationItem, Tuple[QPointF, float]] = {}
+        self._scale_start_arrow_positions: Dict[ArrowItem, Tuple[QPointF, QPointF]] = {}
+        self._scale_start_bracket_rects: Dict[BracketItem, QRectF] = {}
         self._scale_has_moved = False
         self._implicit_h_overlays: Dict[int, list[tuple[QGraphicsLineItem, QGraphicsTextItem]]] = {}
         self._group_anchor_overrides: Dict[int, str] = {}
@@ -791,6 +798,16 @@ class ChemusonCanvas(QGraphicsView):
                     for item, (pos, rot) in self._drag_start_text_positions.items():
                         new_pos = pos + delta
                         item.setPos(new_pos)
+
+                # Move arrows
+                if hasattr(self, "_drag_start_arrow_positions"):
+                    for item, (start, end) in self._drag_start_arrow_positions.items():
+                        item.update_positions(start + delta, end + delta)
+
+                # Move brackets
+                if hasattr(self, "_drag_start_bracket_rects"):
+                    for item, rect in self._drag_start_bracket_rects.items():
+                        item.set_rect(rect.translated(delta))
                 
                 self._update_selection_overlay()
             return
@@ -846,8 +863,10 @@ class ChemusonCanvas(QGraphicsView):
                 # Capture end states
                 move_atoms = bool(self._drag_start_positions)
                 move_text = bool(getattr(self, "_drag_start_text_positions", {}))
+                move_arrows = bool(getattr(self, "_drag_start_arrow_positions", {}))
+                move_brackets = bool(getattr(self, "_drag_start_bracket_rects", {}))
                 
-                if move_atoms and move_text:
+                if sum([move_atoms, move_text, move_arrows, move_brackets]) > 1:
                     self.undo_stack.beginMacro("Move selection")
                 
                 if move_atoms:
@@ -876,14 +895,29 @@ class ChemusonCanvas(QGraphicsView):
                     # MoveItemsCommand.redo() sets position.
                     # It's fine to set it again to same value.
                     self.undo_stack.push(cmd)
+
+                if move_arrows:
+                    before = self._drag_start_arrow_positions
+                    after = {
+                        item: (item.start_point(), item.end_point())
+                        for item in before.keys()
+                    }
+                    self.undo_stack.push(MoveArrowItemsCommand(self, before, after))
+
+                if move_brackets:
+                    before = self._drag_start_bracket_rects
+                    after = {item: item.base_rect() for item in before.keys()}
+                    self.undo_stack.push(MoveBracketItemsCommand(self, before, after))
                     
-                if move_atoms and move_text:
+                if sum([move_atoms, move_text, move_arrows, move_brackets]) > 1:
                     self.undo_stack.endMacro()
 
             self._dragging_selection = False
             self._drag_start_pos = None
             self._drag_start_positions = {}
             self._drag_start_text_positions = {}
+            self._drag_start_arrow_positions = {}
+            self._drag_start_bracket_rects = {}
             self._drag_has_moved = False
             return
 
@@ -1040,7 +1074,9 @@ class ChemusonCanvas(QGraphicsView):
 
         selected_atom_ids = self._selected_atom_ids_for_transform()
         selected_text_items = self._selected_text_items()
-        if not selected_atom_ids and not selected_text_items:
+        selected_arrows = self._selected_arrow_items()
+        selected_brackets = self._selected_bracket_items()
+        if not selected_atom_ids and not selected_text_items and not selected_arrows and not selected_brackets:
             return False
 
         step = 1.0
@@ -1077,6 +1113,19 @@ class ChemusonCanvas(QGraphicsView):
                 for item, (pos, rot) in before.items()
             }
             self.undo_stack.push(MoveTextItemsCommand(self, before, after))
+
+        if selected_arrows:
+            before = {item: (item.start_point(), item.end_point()) for item in selected_arrows}
+            after = {
+                item: (start + QPointF(dx, dy), end + QPointF(dx, dy))
+                for item, (start, end) in before.items()
+            }
+            self.undo_stack.push(MoveArrowItemsCommand(self, before, after))
+
+        if selected_brackets:
+            before = {item: item.base_rect() for item in selected_brackets}
+            after = {item: rect.translated(dx, dy) for item, rect in before.items()}
+            self.undo_stack.push(MoveBracketItemsCommand(self, before, after))
 
         self._update_selection_overlay()
         return True
@@ -1553,23 +1602,306 @@ class ChemusonCanvas(QGraphicsView):
             return True
         return False
 
+    def _selected_structure_ids(self) -> tuple[set[int], list[Bond]]:
+        atom_ids = self._selected_atom_ids_for_transform()
+        if not atom_ids:
+            return set(), []
+        bonds: list[Bond] = []
+        for bond in self.model.bonds.values():
+            if bond.a1_id in atom_ids and bond.a2_id in atom_ids:
+                bonds.append(bond)
+        return atom_ids, bonds
+
+    def _build_selection_graph(self, atom_ids: set[int], bonds: list[Bond]) -> MolGraph:
+        graph = MolGraph()
+        for atom_id in atom_ids:
+            atom = self.model.get_atom(atom_id)
+            graph.add_atom(
+                atom.element,
+                atom.x,
+                atom.y,
+                atom_id=atom.id,
+                charge=atom.charge,
+                isotope=atom.isotope,
+                explicit_h=atom.explicit_h,
+                mapping=atom.mapping,
+                is_query=atom.is_query,
+                is_explicit=atom.is_explicit,
+            )
+        for bond in bonds:
+            graph.add_bond(
+                bond.a1_id,
+                bond.a2_id,
+                bond.order,
+                bond_id=bond.id,
+                style=bond.style,
+                stereo=bond.stereo,
+                is_aromatic=bond.is_aromatic,
+                display_order=bond.display_order,
+                is_query=bond.is_query,
+                ring_id=bond.ring_id,
+                length_px=bond.length_px,
+            )
+        return graph
+
+    def _build_selection_payload(self) -> Optional[dict]:
+        atom_ids, bonds = self._selected_structure_ids()
+        arrows = self._selected_arrow_items()
+        brackets = self._selected_bracket_items()
+        texts = self._selected_text_items()
+
+        if not atom_ids and not bonds and not arrows and not brackets and not texts:
+            return None
+
+        bbox = self._selected_items_bbox()
+        if bbox is None:
+            return None
+        left = bbox.left()
+        top = bbox.top()
+
+        atoms_payload = []
+        for atom_id in atom_ids:
+            atom = self.model.get_atom(atom_id)
+            atoms_payload.append(
+                {
+                    "id": atom_id,
+                    "element": atom.element,
+                    "x": atom.x - left,
+                    "y": atom.y - top,
+                    "charge": atom.charge,
+                    "isotope": atom.isotope,
+                    "explicit_h": atom.explicit_h,
+                    "mapping": atom.mapping,
+                    "is_query": atom.is_query,
+                    "is_explicit": atom.is_explicit,
+                    "anchor": self._group_anchor_overrides.get(atom_id),
+                }
+            )
+
+        bonds_payload = []
+        for bond in bonds:
+            bonds_payload.append(
+                {
+                    "a1": bond.a1_id,
+                    "a2": bond.a2_id,
+                    "order": bond.order,
+                    "style": bond.style.value if bond.style is not None else BondStyle.PLAIN.value,
+                    "stereo": bond.stereo.value if bond.stereo is not None else BondStereo.NONE.value,
+                    "is_aromatic": bond.is_aromatic,
+                    "display_order": bond.display_order,
+                    "is_query": bond.is_query,
+                    "ring_id": bond.ring_id,
+                    "length_px": bond.length_px,
+                }
+            )
+
+        arrows_payload = []
+        for item in arrows:
+            start = item.start_point()
+            end = item.end_point()
+            arrows_payload.append(
+                {
+                    "start": [start.x() - left, start.y() - top],
+                    "end": [end.x() - left, end.y() - top],
+                    "kind": item.kind(),
+                }
+            )
+
+        brackets_payload = []
+        for item in brackets:
+            rect = item.base_rect()
+            brackets_payload.append(
+                {
+                    "rect": [rect.x() - left, rect.y() - top, rect.width(), rect.height()],
+                    "kind": getattr(item, "_kind", "[]"),
+                    "padding": getattr(item, "_padding", None),
+                }
+            )
+
+        texts_payload = []
+        for item in texts:
+            texts_payload.append(
+                {
+                    "text": item.toPlainText(),
+                    "html": item.toHtml(),
+                    "x": item.pos().x() - left,
+                    "y": item.pos().y() - top,
+                    "rotation": item.rotation(),
+                    "font": item.font().toString(),
+                    "color": item.defaultTextColor().name(),
+                }
+            )
+
+        return {
+            "atoms": atoms_payload,
+            "bonds": bonds_payload,
+            "arrows": arrows_payload,
+            "brackets": brackets_payload,
+            "texts": texts_payload,
+        }
+
+    def _paste_selection_payload(self, payload: dict) -> None:
+        atoms = payload.get("atoms", [])
+        bonds = payload.get("bonds", [])
+        arrows = payload.get("arrows", [])
+        brackets = payload.get("brackets", [])
+        texts = payload.get("texts", [])
+        if not atoms and not bonds and not arrows and not brackets and not texts:
+            return
+
+        target = self._last_scene_pos
+        if target is None:
+            target = self.mapToScene(self.viewport().rect().center())
+        dx = target.x()
+        dy = target.y()
+
+        ring_map: dict[int, int] = {}
+
+        def map_ring(ring_id: Optional[int]) -> Optional[int]:
+            if ring_id is None:
+                return None
+            if ring_id not in ring_map:
+                ring_map[ring_id] = self.allocate_ring_id()
+            return ring_map[ring_id]
+
+        has_undo_items = bool(atoms or bonds or arrows or brackets)
+        if has_undo_items:
+            self.undo_stack.beginMacro("Paste selection")
+        id_map: Dict[int, int] = {}
+        for atom_d in atoms:
+            cmd = AddAtomCommand(
+                self.model,
+                self,
+                atom_d.get("element", "C"),
+                float(atom_d.get("x", 0.0)) + dx,
+                float(atom_d.get("y", 0.0)) + dy,
+                is_explicit=atom_d.get("is_explicit"),
+                charge=atom_d.get("charge"),
+                isotope=atom_d.get("isotope"),
+                explicit_h=atom_d.get("explicit_h"),
+                mapping=atom_d.get("mapping"),
+                is_query=bool(atom_d.get("is_query", False)),
+                anchor_override=atom_d.get("anchor"),
+                auto_hydrogens=False,
+            )
+            if has_undo_items:
+                self.undo_stack.push(cmd)
+            else:
+                cmd.redo()
+            if cmd.atom_id is not None:
+                id_map[int(atom_d.get("id"))] = cmd.atom_id
+
+        for bond_d in bonds:
+            a1 = id_map.get(int(bond_d.get("a1")))
+            a2 = id_map.get(int(bond_d.get("a2")))
+            if a1 is None or a2 is None:
+                continue
+            try:
+                style = BondStyle(bond_d.get("style", BondStyle.PLAIN.value))
+            except Exception:
+                style = BondStyle.PLAIN
+            try:
+                stereo = BondStereo(bond_d.get("stereo", BondStereo.NONE.value))
+            except Exception:
+                stereo = BondStereo.NONE
+            cmd = AddBondCommand(
+                self.model,
+                self,
+                a1,
+                a2,
+                int(bond_d.get("order", 1)),
+                style,
+                stereo,
+                bool(bond_d.get("is_aromatic", False)),
+                display_order=bond_d.get("display_order"),
+                length_px=bond_d.get("length_px"),
+                ring_id=map_ring(bond_d.get("ring_id")),
+            )
+            if has_undo_items:
+                self.undo_stack.push(cmd)
+            else:
+                cmd.redo()
+
+        for arrow_d in arrows:
+            start = arrow_d.get("start", [0.0, 0.0])
+            end = arrow_d.get("end", [10.0, 0.0])
+            kind = arrow_d.get("kind", "forward")
+            start_pt = QPointF(float(start[0]) + dx, float(start[1]) + dy)
+            end_pt = QPointF(float(end[0]) + dx, float(end[1]) + dy)
+            cmd = AddArrowCommand(self, start_pt, end_pt, kind)
+            if has_undo_items:
+                self.undo_stack.push(cmd)
+            else:
+                cmd.redo()
+
+        for bracket_d in brackets:
+            rect_vals = bracket_d.get("rect", [0.0, 0.0, 10.0, 10.0])
+            rect = QRectF(
+                float(rect_vals[0]) + dx,
+                float(rect_vals[1]) + dy,
+                float(rect_vals[2]),
+                float(rect_vals[3]),
+            )
+            kind = bracket_d.get("kind", "[]")
+            cmd = AddBracketCommand(self, rect, kind)
+            if has_undo_items:
+                self.undo_stack.push(cmd)
+            else:
+                cmd.redo()
+
+        for txt_d in texts:
+            text_item = TextAnnotationItem(txt_d.get("text", ""), 0.0, 0.0)
+            html = txt_d.get("html")
+            if html:
+                text_item.setHtml(html)
+            if "rotation" in txt_d:
+                text_item.setRotation(float(txt_d["rotation"]))
+            if "font" in txt_d:
+                font = QFont()
+                font.fromString(txt_d["font"])
+                text_item.setFont(font)
+            if "color" in txt_d:
+                text_item.setDefaultTextColor(QColor(txt_d["color"]))
+            text_item.setPos(
+                float(txt_d.get("x", 0.0)) + dx, float(txt_d.get("y", 0.0)) + dy
+            )
+            self.scene.addItem(text_item)
+
+        if has_undo_items:
+            self.undo_stack.endMacro()
+        if ring_map:
+            self.refresh_ring_centers()
+
 
 
     def copy_to_clipboard(self) -> None:
         selected_text_items = self._selected_text_items()
-        selected_arrows = any(isinstance(item, ArrowItem) for item in self.scene.selectedItems())
-        selected_brackets = any(isinstance(item, BracketItem) for item in self.scene.selectedItems())
-        has_structure_selection = bool(self.state.selected_atoms or self.state.selected_bonds)
+        selected_payload = self._build_selection_payload()
+        atom_ids, bonds = self._selected_structure_ids()
+        selected_arrows = bool(self._selected_arrow_items())
+        selected_brackets = bool(self._selected_bracket_items())
+        has_structure_selection = bool(atom_ids or bonds)
         only_text_selection = bool(selected_text_items) and not (
             has_structure_selection or selected_arrows or selected_brackets
         )
         if not self.model.atoms and not selected_text_items:
             return
         mime = QMimeData()
-        if self.model.atoms and not only_text_selection:
+        if selected_payload is not None:
+            mime.setData(
+                "application/x-chemuson-selection",
+                json.dumps(selected_payload).encode("utf-8"),
+            )
+        if has_structure_selection:
+            graph = self._build_selection_graph(atom_ids, bonds)
+        elif selected_payload is None:
+            graph = self.model if self.model.atoms and not only_text_selection else None
+        else:
+            graph = None
+        if graph is not None and graph.atoms:
             try:
-                molfile = molgraph_to_molfile(self.model)
-                smiles = molgraph_to_smiles(self.model)
+                molfile = molgraph_to_molfile(graph)
+                smiles = molgraph_to_smiles(graph)
                 mime.setData("chemical/x-mdl-molfile", molfile.encode("utf-8"))
                 if smiles:
                     mime.setText(smiles)
@@ -1615,6 +1947,14 @@ class ChemusonCanvas(QGraphicsView):
         mime = clipboard.mimeData()
         if mime is None:
             return
+
+        if mime.hasFormat("application/x-chemuson-selection"):
+            try:
+                payload = json.loads(bytes(mime.data("application/x-chemuson-selection")).decode("utf-8"))
+                self._paste_selection_payload(payload)
+                return
+            except Exception:
+                pass
 
         if mime.hasFormat("application/x-chemuson-text-items"):
             try:
@@ -3487,7 +3827,12 @@ class ChemusonCanvas(QGraphicsView):
         self._update_selection_overlay()
 
     def _begin_scale_drag(self, scene_pos: QPointF) -> None:
-        if not self._selected_atom_ids_for_transform() and not self._selected_text_items():
+        if (
+            not self._selected_atom_ids_for_transform()
+            and not self._selected_text_items()
+            and not self._selected_arrow_items()
+            and not self._selected_bracket_items()
+        ):
             return
         bbox = self._selected_items_bbox()
         if bbox is None or bbox.width() <= 1e-6 or bbox.height() <= 1e-6:
@@ -3513,6 +3858,14 @@ class ChemusonCanvas(QGraphicsView):
         self._scale_start_text_positions = {
             item: (item.pos(), item.rotation())
             for item in self._selected_text_items()
+        }
+        self._scale_start_arrow_positions = {
+            item: (item.start_point(), item.end_point())
+            for item in self._selected_arrow_items()
+        }
+        self._scale_start_bracket_rects = {
+            item: item.base_rect()
+            for item in self._selected_bracket_items()
         }
         self._scale_has_moved = False
 
@@ -3543,6 +3896,22 @@ class ChemusonCanvas(QGraphicsView):
                 item.setPos(QPointF(nx, ny))
                 item.setRotation(rot)
 
+        if self._scale_start_arrow_positions:
+            for item, (start, end) in self._scale_start_arrow_positions.items():
+                nsx = self._scale_anchor.x() + (start.x() - self._scale_anchor.x()) * scale
+                nsy = self._scale_anchor.y() + (start.y() - self._scale_anchor.y()) * scale
+                nex = self._scale_anchor.x() + (end.x() - self._scale_anchor.x()) * scale
+                ney = self._scale_anchor.y() + (end.y() - self._scale_anchor.y()) * scale
+                item.update_positions(QPointF(nsx, nsy), QPointF(nex, ney))
+
+        if self._scale_start_bracket_rects:
+            for item, rect in self._scale_start_bracket_rects.items():
+                x0 = self._scale_anchor.x() + (rect.left() - self._scale_anchor.x()) * scale
+                y0 = self._scale_anchor.y() + (rect.top() - self._scale_anchor.y()) * scale
+                x1 = self._scale_anchor.x() + (rect.right() - self._scale_anchor.x()) * scale
+                y1 = self._scale_anchor.y() + (rect.bottom() - self._scale_anchor.y()) * scale
+                item.set_rect(QRectF(x0, y0, x1 - x0, y1 - y0))
+
         self._update_selection_overlay()
 
     def _finalize_scale_drag(self) -> None:
@@ -3552,8 +3921,10 @@ class ChemusonCanvas(QGraphicsView):
         if self._scale_has_moved:
             move_atoms = bool(self._scale_start_positions)
             move_text = bool(self._scale_start_text_positions)
+            move_arrows = bool(self._scale_start_arrow_positions)
+            move_brackets = bool(self._scale_start_bracket_rects)
 
-            if move_atoms and move_text:
+            if sum([move_atoms, move_text, move_arrows, move_brackets]) > 1:
                 self.undo_stack.beginMacro("Scale selection")
 
             if move_atoms:
@@ -3576,7 +3947,17 @@ class ChemusonCanvas(QGraphicsView):
                 cmd = MoveTextItemsCommand(self, before, after)
                 self.undo_stack.push(cmd)
 
-            if move_atoms and move_text:
+            if move_arrows:
+                before = self._scale_start_arrow_positions
+                after = {item: (item.start_point(), item.end_point()) for item in before.keys()}
+                self.undo_stack.push(MoveArrowItemsCommand(self, before, after))
+
+            if move_brackets:
+                before = self._scale_start_bracket_rects
+                after = {item: item.base_rect() for item in before.keys()}
+                self.undo_stack.push(MoveBracketItemsCommand(self, before, after))
+
+            if sum([move_atoms, move_text, move_arrows, move_brackets]) > 1:
                 self.undo_stack.endMacro()
 
         self._scale_dragging = False
@@ -3585,11 +3966,19 @@ class ChemusonCanvas(QGraphicsView):
         self._scale_start_length = 0.0
         self._scale_start_positions = {}
         self._scale_start_text_positions = {}
+        self._scale_start_arrow_positions = {}
+        self._scale_start_bracket_rects = {}
         self._scale_has_moved = False
         self._update_selection_overlay()
 
     def _selected_text_items(self) -> list[TextAnnotationItem]:
         return [item for item in self.scene.selectedItems() if isinstance(item, TextAnnotationItem)]
+
+    def _selected_arrow_items(self) -> list[ArrowItem]:
+        return [item for item in self.scene.selectedItems() if isinstance(item, ArrowItem)]
+
+    def _selected_bracket_items(self) -> list[BracketItem]:
+        return [item for item in self.scene.selectedItems() if isinstance(item, BracketItem)]
 
     def rotate_selection_degrees(self, degrees: float, use_start_positions: bool = False) -> None:
         """Rotate selected items by degrees around their collective center."""
@@ -5343,7 +5732,12 @@ class ChemusonCanvas(QGraphicsView):
         return edges
 
     def _begin_drag(self, scene_pos: QPointF) -> None:
-        if not self._selected_atom_ids_for_transform() and not self._selected_text_items():
+        if (
+            not self._selected_atom_ids_for_transform()
+            and not self._selected_text_items()
+            and not self._selected_arrow_items()
+            and not self._selected_bracket_items()
+        ):
             return
         self._dragging_selection = True
         self._drag_start_pos = scene_pos
@@ -5360,6 +5754,16 @@ class ChemusonCanvas(QGraphicsView):
         self._drag_start_text_positions = {}
         for item in self._selected_text_items():
             self._drag_start_text_positions[item] = (item.pos(), item.rotation())
+
+        # Capture arrows
+        self._drag_start_arrow_positions = {}
+        for item in self._selected_arrow_items():
+            self._drag_start_arrow_positions[item] = (item.start_point(), item.end_point())
+
+        # Capture brackets
+        self._drag_start_bracket_rects = {}
+        for item in self._selected_bracket_items():
+            self._drag_start_bracket_rects[item] = item.base_rect()
             
         self._drag_has_moved = False
 
