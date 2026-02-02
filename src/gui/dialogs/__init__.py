@@ -10,6 +10,7 @@ from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QColorDialog,
     QDialog,
     QDialogButtonBox,
@@ -17,6 +18,7 @@ from PyQt6.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
     QTabWidget,
     QTextBrowser,
@@ -209,6 +211,105 @@ class StyleDialog(QDialog):
         if self._result_style is None or self._result_bond_length is None:
             return self._style, self._bond_length
         return self._result_style, self._result_bond_length
+
+
+class AtomLabelDialog(QDialog):
+    """Dialog for selecting atom/group label and attachment anchor."""
+
+    def __init__(
+        self,
+        label: str,
+        anchor: str | None,
+        items: list[str],
+        element_symbols: set[str],
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Elemento")
+        self._element_symbols = set(element_symbols)
+        self._anchor_default = (anchor or "").strip()
+
+        self.label_combo = QComboBox()
+        self.label_combo.setEditable(True)
+        self.label_combo.addItems(items)
+        self.label_combo.setCurrentText(label)
+
+        self.anchor_combo = QComboBox()
+        self.anchor_combo.setEditable(True)
+
+        form = QFormLayout()
+        form.addRow("Símbolo del elemento o grupo funcional:", self.label_combo)
+        form.addRow("Átomo de unión:", self.anchor_combo)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+
+        layout = QVBoxLayout(self)
+        layout.addLayout(form)
+        layout.addWidget(buttons)
+
+        self._refresh_anchor_candidates()
+        editor = self.label_combo.lineEdit()
+        if isinstance(editor, QLineEdit):
+            editor.textChanged.connect(self._refresh_anchor_candidates)
+
+    def _refresh_anchor_candidates(self) -> None:
+        label = self.label_combo.currentText().strip()
+        candidates = self._anchor_candidates_for_label(label)
+        current = self.anchor_combo.currentText().strip() or self._anchor_default
+        items = ["Auto"] + candidates
+        if current and current not in items and current != "Auto":
+            items.append(current)
+        self.anchor_combo.blockSignals(True)
+        self.anchor_combo.clear()
+        self.anchor_combo.addItems(items)
+        if current:
+            self.anchor_combo.setCurrentText(current)
+        else:
+            self.anchor_combo.setCurrentIndex(0)
+        self.anchor_combo.blockSignals(False)
+
+    def _anchor_candidates_for_label(self, label: str) -> list[str]:
+        cleaned = label.strip()
+        if not cleaned:
+            return []
+        ordered: list[str] = []
+        seen: set[str] = set()
+        i = 0
+        while i < len(cleaned):
+            ch = cleaned[i]
+            if not ch.isalpha():
+                i += 1
+                continue
+            if ch.isupper():
+                symbol = None
+                if i + 1 < len(cleaned) and cleaned[i + 1].islower():
+                    candidate = cleaned[i : i + 2]
+                    if candidate in self._element_symbols:
+                        symbol = candidate
+                        i += 2
+                if symbol is None and ch in self._element_symbols:
+                    symbol = ch
+                    i += 1
+                if symbol is None:
+                    i += 1
+                    continue
+                if symbol not in seen:
+                    seen.add(symbol)
+                    ordered.append(symbol)
+                continue
+            i += 1
+        return ordered
+
+    def value(self) -> tuple[str, str | None]:
+        label = self.label_combo.currentText().strip()
+        anchor = self.anchor_combo.currentText().strip()
+        if not anchor or anchor.lower() == "auto":
+            anchor = None
+        return label, anchor
 
 
 class QuickStartDialog(QDialog):

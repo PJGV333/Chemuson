@@ -97,6 +97,7 @@ from gui.commands import (
     MoveAtomsCommand,
     MoveTextItemsCommand,
 )
+from gui.dialogs import AtomLabelDialog
 from chemio.rdkit_io import (
     molgraph_to_molfile,
     molgraph_to_smiles,
@@ -140,11 +141,13 @@ FUNCTIONAL_GROUP_LABELS = [
     "Et",
     "iPr",
     "tBu",
+    "TBS",
+    "Si",
     "Ph",
     "R",
 ]
 FUNCTIONAL_GROUP_ALIASES = {label.lower(): label for label in FUNCTIONAL_GROUP_LABELS}
-ELEMENT_SYMBOLS = {"C", "N", "O", "S", "P", "F", "Cl", "Br", "I", "H"}
+ELEMENT_SYMBOLS = {"C", "N", "O", "S", "P", "F", "Cl", "Br", "I", "H", "Si", "B", "Se", "Li", "Na", "K", "Mg"}
 IMPLICIT_H_ELEMENTS = {"C", "N", "O", "S", "P"}
 LABEL_OFFSET_SCALE = 0.6
 LABEL_OFFSET_MIN_PX = 4.0
@@ -253,6 +256,7 @@ class ChemusonCanvas(QGraphicsView):
         self._scale_start_text_positions: Dict[TextAnnotationItem, Tuple[QPointF, float]] = {}
         self._scale_has_moved = False
         self._implicit_h_overlays: Dict[int, list[tuple[QGraphicsLineItem, QGraphicsTextItem]]] = {}
+        self._group_anchor_overrides: Dict[int, str] = {}
 
         self._setup_view()
         self._create_paper()
@@ -535,7 +539,11 @@ class ChemusonCanvas(QGraphicsView):
                     self.scene.clearSelection()
                 clicked_item.setSelected(True)
                 self._sync_selection_from_scene()
-            self._show_context_menu(scene_pos, event.globalPosition().toPoint())
+            self._show_context_menu(
+                scene_pos,
+                event.globalPosition().toPoint(),
+                clicked_item=clicked_item,
+            )
             return
 
         if event.button() != Qt.MouseButton.LeftButton:
@@ -543,6 +551,13 @@ class ChemusonCanvas(QGraphicsView):
             return
 
         if self.current_tool in {"tool_select", "tool_select_lasso"}:
+            clicked_item = self._get_item_at(scene_pos)
+            if (
+                (event.modifiers() & Qt.KeyboardModifier.AltModifier)
+                and isinstance(clicked_item, AtomItem)
+                and self._cycle_anchor_override(clicked_item.atom_id)
+            ):
+                return
             if event.button() == Qt.MouseButton.LeftButton and self._hit_selection_scale_handle(scene_pos):
                 self._begin_scale_drag(scene_pos)
                 return
@@ -554,7 +569,6 @@ class ChemusonCanvas(QGraphicsView):
                     self._selection_move_handle.setCursor(Qt.CursorShape.ClosedHandCursor)
                 self._begin_drag(scene_pos)
                 return
-            clicked_item = self._get_item_at(scene_pos)
             if clicked_item is None:
                 additive = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
                 free_select = self.current_tool == "tool_select_lasso" or bool(
@@ -924,10 +938,18 @@ class ChemusonCanvas(QGraphicsView):
             return
         if isinstance(item, AtomItem):
             atom = self.model.get_atom(item.atom_id)
-            value = self._prompt_atom_label(atom.element, initial=atom.element)
+            value, anchor = self._prompt_atom_label(
+                atom.element, atom_id=atom.id, initial=atom.element
+            )
             if value is None:
                 return
-            cmd = ChangeAtomCommand(self.model, self, atom.id, value)
+            cmd = ChangeAtomCommand(
+                self.model,
+                self,
+                atom.id,
+                value,
+                anchor_override=anchor,
+            )
             self.undo_stack.push(cmd)
             return
         super().mouseDoubleClickEvent(event)
@@ -984,10 +1006,18 @@ class ChemusonCanvas(QGraphicsView):
         atom_id = next(iter(self.state.selected_atoms))
         atom = self.model.get_atom(atom_id)
         seed = self._normalize_atom_label(typed) or typed
-        value = self._prompt_atom_label(atom.element, initial=seed)
+        value, anchor = self._prompt_atom_label(
+            atom.element, atom_id=atom_id, initial=seed
+        )
         if value is None:
             return True
-        cmd = ChangeAtomCommand(self.model, self, atom_id, value)
+        cmd = ChangeAtomCommand(
+            self.model,
+            self,
+            atom_id,
+            value,
+            anchor_override=anchor,
+        )
         self.undo_stack.push(cmd)
         return True
 
@@ -1101,7 +1131,97 @@ class ChemusonCanvas(QGraphicsView):
         elements = ["C", "N", "O", "S", "P", "F", "Cl", "Br", "I", "H"]
         return elements + FUNCTIONAL_GROUP_LABELS
 
-    def _prompt_atom_label(self, current: str, initial: str | None = None) -> str | None:
+    def _label_anchor_candidates(self, label: str) -> list[str]:
+        cleaned = label.strip()
+        if not cleaned:
+            return []
+        tokens = self._group_label_tokens(cleaned)
+        if tokens:
+            seen: set[str] = set()
+            ordered: list[str] = []
+            for symbol, _token in tokens:
+                if symbol in seen:
+                    continue
+                seen.add(symbol)
+                ordered.append(symbol)
+            return ordered
+        ordered: list[str] = []
+        seen: set[str] = set()
+        i = 0
+        while i < len(cleaned):
+            ch = cleaned[i]
+            if not ch.isalpha():
+                i += 1
+                continue
+            if ch.isupper():
+                symbol = None
+                if i + 1 < len(cleaned) and cleaned[i + 1].islower():
+                    candidate = cleaned[i : i + 2]
+                    if candidate in ELEMENT_SYMBOLS:
+                        symbol = candidate
+                        i += 2
+                if symbol is None and ch in ELEMENT_SYMBOLS:
+                    symbol = ch
+                    i += 1
+                if symbol is None:
+                    i += 1
+                    continue
+                if symbol not in seen:
+                    seen.add(symbol)
+                    ordered.append(symbol)
+                continue
+            i += 1
+        return ordered
+
+    def _prompt_anchor_for_atom(self, atom_id: int) -> None:
+        atom = self.model.get_atom(atom_id)
+        if atom is None:
+            return
+        label = atom.element
+        candidates = self._label_anchor_candidates(label)
+        if not candidates:
+            return
+        items = ["Auto"] + candidates
+        current = self._group_anchor_overrides.get(atom_id) or "Auto"
+        index = items.index(current) if current in items else 0
+        value, ok = QInputDialog.getItem(
+            self,
+            "Átomo de unión",
+            "Átomo de unión:",
+            items,
+            index,
+            True,
+        )
+        if not ok:
+            return
+        value = value.strip()
+        anchor = None
+        if value and value != "Auto":
+            anchor = self._normalize_atom_label(value)
+        self.set_anchor_override(atom_id, anchor)
+        self._refresh_atom_label(atom_id)
+
+    def _cycle_anchor_override(self, atom_id: int) -> bool:
+        atom = self.model.get_atom(atom_id)
+        if atom is None:
+            return False
+        if atom.element in ELEMENT_SYMBOLS:
+            return False
+        candidates = self._label_anchor_candidates(atom.element)
+        if not candidates:
+            return False
+        current = self._group_anchor_overrides.get(atom_id)
+        if current in candidates:
+            idx = (candidates.index(current) + 1) % len(candidates)
+        else:
+            idx = 0
+        self.set_anchor_override(atom_id, candidates[idx])
+        self._refresh_atom_label(atom_id)
+        return True
+
+    def _prompt_atom_label(
+        self, current: str, atom_id: Optional[int] = None, initial: str | None = None
+    ) -> tuple[Optional[str], Optional[str]]:
         items = self._atom_label_items()
         seed = (initial or "").strip() or current
         if seed:
@@ -1110,20 +1230,34 @@ class ChemusonCanvas(QGraphicsView):
             current_index = items.index(seed)
         else:
             current_index = 0
-        value, ok = QInputDialog.getItem(
-            self,
-            "Elemento",
-            "Símbolo del elemento o grupo funcional:",
+        anchor = self._group_anchor_overrides.get(atom_id) if atom_id is not None else None
+        dialog = AtomLabelDialog(
+            seed,
+            anchor,
             items,
-            current_index,
-            True,
+            ELEMENT_SYMBOLS,
+            self,
         )
-        if not ok:
-            return None
+        if not dialog.exec():
+            return None, None
+        value, anchor_value = dialog.value()
         normalized = self._normalize_atom_label(value)
         if not normalized:
-            return None
-        return normalized
+            return None, None
+        anchor_normalized = None
+        if anchor_value:
+            anchor_normalized = self._normalize_atom_label(anchor_value)
+        # If the user chose an anchor for a group label, reorder the label now
+        # so the visible text reflects the chosen attachment atom.
+        if (
+            anchor_normalized
+            and atom_id is not None
+            and normalized not in ELEMENT_SYMBOLS
+        ):
+            normalized, _ = self._reflow_group_label(
+                normalized, atom_id, anchor_normalized
+            )
+        return normalized, anchor_normalized
 
     def get_persistence_data(self) -> dict:
         """Collects canvas settings and non-structural items for serialization."""
@@ -1148,7 +1282,10 @@ class ChemusonCanvas(QGraphicsView):
                 "arrows": [],
                 "brackets": [],
                 "text_items": []
-            }
+            },
+            "label_anchors": {
+                str(atom_id): anchor for atom_id, anchor in self._group_anchor_overrides.items()
+            },
         }
 
         for item in self.scene.items():
@@ -1200,6 +1337,12 @@ class ChemusonCanvas(QGraphicsView):
         self.state.label_font_bold = settings.get("font_bold", False)
         self.state.label_font_italic = settings.get("font_italic", False)
         self.state.label_font_underline = settings.get("font_underline", False)
+
+        self._group_anchor_overrides = {
+            int(atom_id): anchor
+            for atom_id, anchor in data.get("label_anchors", {}).items()
+            if anchor
+        }
 
         # Re-apply paper size visual
         self._create_paper()
@@ -1282,6 +1425,7 @@ class ChemusonCanvas(QGraphicsView):
         self.arrow_items.clear()
         self.bracket_items.clear()
         self._implicit_h_overlays.clear()
+        self._group_anchor_overrides.clear()
         self._ring_centers.clear()
         self._next_ring_id = 1
         self.state.selected_atoms.clear()
@@ -1973,6 +2117,7 @@ class ChemusonCanvas(QGraphicsView):
     def _build_atom_label(self, atom) -> tuple[str, Optional[str], QPointF]:
         label = atom.element
         anchor: Optional[str] = None
+        anchor_override = self._group_anchor_overrides.get(atom.id)
         if atom.element in ELEMENT_SYMBOLS:
             if atom.element == "C" and not (
                 self.state.show_implicit_carbons or atom.is_explicit
@@ -1987,49 +2132,119 @@ class ChemusonCanvas(QGraphicsView):
                 else:
                     label = f"{atom.element}{h_text}"
         else:
-            label, anchor = self._reflow_group_label(label, atom.id)
+            label, anchor = self._reflow_group_label(label, atom.id, anchor_override)
+            if anchor is None and anchor_override and anchor_override in label:
+                anchor = anchor_override
         offset = self._label_offset(atom.id)
         return label, anchor, offset
 
-    def _reflow_group_label(self, label: str, atom_id: int) -> tuple[str, Optional[str]]:
+    def _reflow_group_label(
+        self, label: str, atom_id: int, anchor_override: Optional[str] = None
+    ) -> tuple[str, Optional[str]]:
         cleaned = label.strip()
         if not cleaned:
             return label, None
-        if any(cleaned.startswith(abbr) for abbr in ABBREVIATION_LABELS):
-            return label, None
+
         charge = ""
         if cleaned and cleaned[-1] in "+-":
             charge = cleaned[-1]
             cleaned = cleaned[:-1]
+
         tokens = self._group_label_tokens(cleaned)
+        # If the user explicitly chose an anchor atom, force it to the front.
+        # This keeps labels like "TBSO" consistent with an O-anchored bond.
+        if anchor_override:
+            anchor_first = True
+        else:
+            direction = self._label_open_direction(atom_id)
+            anchor_first = direction.x() >= -0.2
+
+        if anchor_override and anchor_override in cleaned:
+            if not tokens or len(tokens) < 2:
+                # Use bond direction to decide if anchor goes first or last
+                cleaned = self._move_anchor_in_label(cleaned, anchor_override, anchor_first)
+                return f"{cleaned}{charge}", anchor_override
+            if not any(symbol == anchor_override for symbol, _token in tokens):
+                # Anchor letter is inside an abbreviation token (e.g., TBSO -> B/S).
+                cleaned = self._move_anchor_in_label(cleaned, anchor_override, anchor_first)
+                return f"{cleaned}{charge}", anchor_override
         if not tokens or len(tokens) < 2:
             return label, None
-        anchor_symbol = tokens[0][0]
-        direction = self._label_open_direction(atom_id)
-        if direction.x() < -0.2:
-            tokens = tokens[1:] + tokens[:1]
-            cleaned = "".join(token for _symbol, token in tokens)
+
+        if anchor_override and any(symbol == anchor_override for symbol, _token in tokens):
+            if anchor_first:
+                while tokens[0][0] != anchor_override:
+                    tokens = tokens[1:] + tokens[:1]
+            else:
+                while tokens[-1][0] != anchor_override:
+                    tokens = tokens[1:] + tokens[:1]
+            anchor_symbol = anchor_override
+        else:
+            anchor_symbol = tokens[0][0]
+            if not anchor_first:
+                # Move first token to end
+                tokens = tokens[1:] + tokens[:1]
+                anchor_symbol = tokens[-1][0]
+        cleaned = "".join(token for _symbol, token in tokens)
         return f"{cleaned}{charge}", anchor_symbol
+
+    def _move_anchor_in_label(self, label: str, anchor: str, anchor_first: bool) -> str:
+        if not label or not anchor:
+            return label
+        if anchor_first:
+            idx = label.find(anchor)
+        else:
+            idx = label.rfind(anchor)
+        if idx < 0:
+            return label
+        before = label[:idx]
+        after = label[idx + len(anchor):]
+        core = before + after
+        return f"{anchor}{core}" if anchor_first else f"{core}{anchor}"
+
+    def get_anchor_override(self, atom_id: int) -> Optional[str]:
+        return self._group_anchor_overrides.get(atom_id)
+
+    def set_anchor_override(self, atom_id: int, anchor: Optional[str]) -> None:
+        if anchor:
+            self._group_anchor_overrides[atom_id] = anchor
+        else:
+            self._group_anchor_overrides.pop(atom_id, None)
 
     def _group_label_tokens(self, label: str) -> Optional[list[tuple[str, str]]]:
         tokens: list[tuple[str, str]] = []
         i = 0
+        sorted_abbrs = sorted(list(ABBREVIATION_LABELS), key=len, reverse=True)
+        
         while i < len(label):
             ch = label[i]
-            if not ch.isupper():
-                return None
             symbol = None
-            if i + 1 < len(label) and label[i + 1].islower():
-                candidate = label[i : i + 2]
-                if candidate in ELEMENT_SYMBOLS:
-                    symbol = candidate
-                    i += 2
-            if symbol is None and ch in ELEMENT_SYMBOLS:
-                symbol = ch
-                i += 1
+            
+            # 1. Try abbreviations first
+            for abbr in sorted_abbrs:
+                if label.startswith(abbr, i):
+                    symbol = abbr
+                    i += len(abbr)
+                    break
+            
+            # 2. Try element symbols if no abbreviation matched
+            if symbol is None:
+                if not ch.isupper():
+                    return None
+                if i + 1 < len(label) and label[i + 1].islower():
+                    candidate = label[i : i + 2]
+                    if candidate in ELEMENT_SYMBOLS:
+                        symbol = candidate
+                        i += 2
+                if symbol is None and ch in ELEMENT_SYMBOLS:
+                    symbol = ch
+                    i += 1
+            
             if symbol is None:
                 return None
+                
             token = symbol
+            # Collect numbers and script markers
             while i < len(label):
                 if label[i].isdigit():
                     token += label[i]
@@ -2045,7 +2260,8 @@ class ChemusonCanvas(QGraphicsView):
                     continue
                 break
             tokens.append((symbol, token))
-        return tokens
+            
+        return tokens if tokens else None
 
     def _implicit_hydrogen_count(self, atom_id: int, element: str) -> int:
         if element not in IMPLICIT_H_ELEMENTS:
@@ -2480,6 +2696,7 @@ class ChemusonCanvas(QGraphicsView):
         if item is not None:
             self.scene.removeItem(item)
         self._clear_implicit_h_overlays([atom_id])
+        self._group_anchor_overrides.pop(atom_id, None)
         if self.bond_anchor_id == atom_id:
             self.bond_anchor_id = None
         if self.hovered_atom_id == atom_id:
@@ -3009,7 +3226,12 @@ class ChemusonCanvas(QGraphicsView):
             self.scene.removeItem(self._select_preview_rect)
             self._select_preview_rect = None
 
-    def _show_context_menu(self, scene_pos: QPointF, global_pos) -> None:
+    def _show_context_menu(
+        self,
+        scene_pos: QPointF,
+        global_pos,
+        clicked_item: Optional[QGraphicsItem] = None,
+    ) -> None:
         menu = QMenu(self)
         has_selection = bool(
             self.state.selected_atoms
@@ -3023,6 +3245,14 @@ class ChemusonCanvas(QGraphicsView):
         act_paste = menu.addAction("Pegar")
         menu.addSeparator()
         act_delete = menu.addAction("Eliminar")
+        act_anchor = None
+        if isinstance(clicked_item, AtomItem):
+            atom = self.model.get_atom(clicked_item.atom_id)
+            if atom is not None and atom.element not in ELEMENT_SYMBOLS:
+                candidates = self._label_anchor_candidates(atom.element)
+                if candidates:
+                    menu.addSeparator()
+                    act_anchor = menu.addAction("Elegir átomo de unión...")
         menu.addSeparator()
         act_select_all = menu.addAction("Seleccionar todo")
 
@@ -3032,6 +3262,9 @@ class ChemusonCanvas(QGraphicsView):
 
         action = menu.exec(global_pos)
         if action is None:
+            return
+        if act_anchor is not None and action == act_anchor and isinstance(clicked_item, AtomItem):
+            self._prompt_anchor_for_atom(clicked_item.atom_id)
             return
         if action == act_copy:
             self.copy_to_clipboard()

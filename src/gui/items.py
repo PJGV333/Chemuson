@@ -37,7 +37,7 @@ ELEMENT_COLORS = {
 }
 
 LABEL_ELEMENT_COLORS = {**ELEMENT_COLORS, "H": "#000000"}
-ABBREVIATION_LABELS = {"Me", "Et", "Pr", "iPr", "tBu", "Bu", "Ph", "R"}
+ABBREVIATION_LABELS = {"Me", "Et", "Pr", "iPr", "tBu", "Bu", "Ph", "R", "TBS", "Si"}
 
 
 class AtomItem(QGraphicsEllipseItem):

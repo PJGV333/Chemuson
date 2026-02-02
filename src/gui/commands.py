@@ -10,6 +10,7 @@ from core.model import BondStyle, BondStereo, MolGraph
 from gui.geom import angle_deg, angle_distance_deg, endpoint_from_angle_len
 
 _IMPLICIT_ELEMENTS = {"C"}
+_ANCHOR_UNSET = object()
 
 
 def _default_is_explicit(element: str) -> bool:
@@ -185,7 +186,14 @@ class AddAtomCommand(QUndoCommand):
 
 
 class ChangeAtomCommand(QUndoCommand):
-    def __init__(self, model: MolGraph, view, atom_id: int, new_element: str) -> None:
+    def __init__(
+        self,
+        model: MolGraph,
+        view,
+        atom_id: int,
+        new_element: str,
+        anchor_override=_ANCHOR_UNSET,
+    ) -> None:
         super().__init__("Change atom")
         self._model = model
         self._view = view
@@ -194,6 +202,11 @@ class ChangeAtomCommand(QUndoCommand):
         self._old_is_explicit = model.get_atom(atom_id).is_explicit
         self._new_element = new_element
         self._new_is_explicit = _default_is_explicit(new_element)
+        self._anchor_override = anchor_override
+        if anchor_override is _ANCHOR_UNSET:
+            self._old_anchor_override = _ANCHOR_UNSET
+        else:
+            self._old_anchor_override = view.get_anchor_override(atom_id)
         self._added_hydrogen_specs: list[tuple[int, float, float, int]] = []
         self._removed_hydrogens = []
         self._removed_hydrogen_bonds = []
@@ -207,7 +220,8 @@ class ChangeAtomCommand(QUndoCommand):
             # Re-apply removal if we already calculated it
             if self._removed_hydrogen_specs:
                 _remove_hydrogen_specs(self._model, self._view, self._removed_hydrogen_specs)
-
+        if self._anchor_override is not _ANCHOR_UNSET:
+            self._view.set_anchor_override(self._atom_id, self._anchor_override)
         self._model.update_atom_element(
             self._atom_id,
             self._new_element,
@@ -220,6 +234,8 @@ class ChangeAtomCommand(QUndoCommand):
         )
 
     def undo(self) -> None:
+        if self._anchor_override is not _ANCHOR_UNSET:
+            self._view.set_anchor_override(self._atom_id, self._old_anchor_override)
         self._model.update_atom_element(
             self._atom_id,
             self._old_element,
