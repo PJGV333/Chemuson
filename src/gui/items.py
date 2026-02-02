@@ -678,7 +678,7 @@ class BondItem(QGraphicsPathItem):
         elif self.style == BondStyle.HASHED:
             steps = self._style.hash_count
             for i in range(1, steps + 1):
-                t = i / (steps + 1)
+                t = i / steps
                 px = p1x + (p2x - p1x) * t
                 py = p1y + (p2y - p1y) * t
                 width = self._style.hash_min_px + (self._style.hash_max_px - self._style.hash_min_px) * t
