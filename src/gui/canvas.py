@@ -542,7 +542,7 @@ class ChemusonCanvas(QGraphicsView):
                 clicked_item,
                 (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem),
             ):
-                if not (event.modifiers() & Qt.KeyboardModifier.ShiftModifier):
+                if not (event.modifiers() & (Qt.KeyboardModifier.ShiftModifier | Qt.KeyboardModifier.ControlModifier)):
                     self.scene.clearSelection()
                 clicked_item.setSelected(True)
                 self._sync_selection_from_scene()
@@ -577,14 +577,19 @@ class ChemusonCanvas(QGraphicsView):
                 self._begin_drag(scene_pos)
                 return
             if clicked_item is None:
-                additive = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+                additive = bool(
+                    event.modifiers()
+                    & (Qt.KeyboardModifier.ShiftModifier | Qt.KeyboardModifier.ControlModifier)
+                )
                 free_select = self.current_tool == "tool_select_lasso" or bool(
                     event.modifiers() & Qt.KeyboardModifier.ControlModifier
                 )
                 self._begin_selection_drag(scene_pos, free_select, additive)
                 return
-            if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+            if event.modifiers() & (Qt.KeyboardModifier.ShiftModifier | Qt.KeyboardModifier.ControlModifier):
                 clicked_item.setSelected(not clicked_item.isSelected())
+                self._sync_selection_from_scene()
+                return
             else:
                 if not clicked_item.isSelected():
                     self.scene.clearSelection()
@@ -1002,11 +1007,15 @@ class ChemusonCanvas(QGraphicsView):
             has_selected_brackets = any(
                 isinstance(item, BracketItem) for item in self.scene.selectedItems()
             )
+            has_selected_text = any(
+                isinstance(item, TextAnnotationItem) for item in self.scene.selectedItems()
+            )
             if (
                 self.state.selected_atoms
                 or self.state.selected_bonds
                 or has_selected_arrows
                 or has_selected_brackets
+                or has_selected_text
             ):
                 self.delete_selection()
                 return

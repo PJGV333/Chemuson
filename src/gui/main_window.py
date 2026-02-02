@@ -4,6 +4,7 @@ Page-based molecular editor with menu bar, toolbars, and paper canvas.
 """
 from PyQt6.QtWidgets import (
     QDialog,
+    QDialogButtonBox,
     QFontDialog,
     QInputDialog,
     QMainWindow,
@@ -12,6 +13,10 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QMessageBox,
     QToolBar,
+    QFormLayout,
+    QDoubleSpinBox,
+    QComboBox,
+    QVBoxLayout,
 )
 from PyQt6.QtCore import Qt, QSize, QSettings
 from PyQt6.QtGui import QAction, QActionGroup, QKeySequence, QIcon, QPainter
@@ -901,29 +906,101 @@ class ChemusonWindow(QMainWindow):
         self.statusBar().showMessage(f"Lienzo: {width} x {height} px")
 
     def _on_canvas_custom_size(self) -> None:
-        width, ok = QInputDialog.getInt(
-            self,
-            "Tamaño de lienzo",
-            "Ancho (px):",
-            int(self.canvas.paper_width),
-            200,
-            20000,
-            1,
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Tamaño de lienzo")
+
+        px_per_in = 96.0
+        px_per_cm = px_per_in / 2.54
+
+        width_spin = QDoubleSpinBox()
+        height_spin = QDoubleSpinBox()
+        width_spin.setDecimals(2)
+        height_spin.setDecimals(2)
+
+        unit_combo = QComboBox()
+        unit_combo.addItems(["cm", "px", "in"])
+        unit_combo.setCurrentText("cm")
+
+        def apply_unit_settings(unit: str) -> None:
+            if unit == "px":
+                width_spin.setRange(200.0, 20000.0)
+                height_spin.setRange(200.0, 20000.0)
+                width_spin.setDecimals(0)
+                height_spin.setDecimals(0)
+            elif unit == "in":
+                width_spin.setRange(1.0, 200.0)
+                height_spin.setRange(1.0, 200.0)
+                width_spin.setDecimals(2)
+                height_spin.setDecimals(2)
+            else:
+                width_spin.setRange(1.0, 500.0)
+                height_spin.setRange(1.0, 500.0)
+                width_spin.setDecimals(2)
+                height_spin.setDecimals(2)
+
+        apply_unit_settings("cm")
+        width_spin.setValue(self.canvas.paper_width / px_per_cm)
+        height_spin.setValue(self.canvas.paper_height / px_per_cm)
+
+        def on_unit_changed(text: str) -> None:
+            old_unit = "cm"
+            if unit_combo.property("last_unit"):
+                old_unit = unit_combo.property("last_unit")
+            unit_combo.setProperty("last_unit", text)
+
+            def to_px(value: float, unit: str) -> float:
+                if unit == "px":
+                    return value
+                if unit == "in":
+                    return value * px_per_in
+                return value * px_per_cm
+
+            def from_px(value: float, unit: str) -> float:
+                if unit == "px":
+                    return value
+                if unit == "in":
+                    return value / px_per_in
+                return value / px_per_cm
+
+            current_px_w = to_px(width_spin.value(), old_unit)
+            current_px_h = to_px(height_spin.value(), old_unit)
+            apply_unit_settings(text)
+            width_spin.setValue(from_px(current_px_w, text))
+            height_spin.setValue(from_px(current_px_h, text))
+
+        unit_combo.setProperty("last_unit", "cm")
+        unit_combo.currentTextChanged.connect(on_unit_changed)
+
+        form = QFormLayout()
+        form.addRow("Unidad:", unit_combo)
+        form.addRow("Ancho:", width_spin)
+        form.addRow("Alto:", height_spin)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
-        if not ok:
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+
+        layout = QVBoxLayout(dialog)
+        layout.addLayout(form)
+        layout.addWidget(buttons)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return
-        height, ok = QInputDialog.getInt(
-            self,
-            "Tamaño de lienzo",
-            "Alto (px):",
-            int(self.canvas.paper_height),
-            200,
-            20000,
-            1,
-        )
-        if not ok:
-            return
-        self._set_canvas_size(width, height)
+
+        unit = unit_combo.currentText()
+        if unit == "px":
+            width_px = int(width_spin.value())
+            height_px = int(height_spin.value())
+        elif unit == "in":
+            width_px = int(round(width_spin.value() * px_per_in))
+            height_px = int(round(height_spin.value() * px_per_in))
+        else:
+            width_px = int(round(width_spin.value() * px_per_cm))
+            height_px = int(round(height_spin.value() * px_per_cm))
+
+        self._set_canvas_size(width_px, height_px)
 
     def _apply_label_script(self, marker: str, title: str) -> None:
         if self.canvas.state.selected_bonds or len(self.canvas.state.selected_atoms) != 1:
