@@ -32,6 +32,7 @@ from gui.templates import (
 import os
 import glob
 from chemio.rdkit_io import molfile_to_molgraph, molgraph_to_molfile
+from chemio.persistence import PersistenceManager
 from core.model import MolGraph
 
 
@@ -537,39 +538,53 @@ class ChemusonWindow(QMainWindow):
         self.statusBar().showMessage("Nuevo documento creado")
     
     def _on_file_open(self) -> None:
-        """Open a molecule file."""
-        filepath, _ = QFileDialog.getOpenFileName(
+        """Open a molecule file (.cmsn or .mol)."""
+        filepath, selected_filter = QFileDialog.getOpenFileName(
             self,
             "Abrir archivo",
             "",
-            "Archivos MOL (*.mol *.sdf);;Todos los archivos (*.*)"
+            "Archivos de Chemuson (*.cmsn);;Archivos MOL (*.mol *.sdf);;Todos los archivos (*.*)"
         )
         if filepath:
             try:
-                with open(filepath, "r") as f:
-                    molfile = f.read()
-                from chemio.rdkit_io import molfile_to_molgraph
-                graph = molfile_to_molgraph(molfile)
-                self.canvas.clear_canvas()
-                self.canvas._insert_molgraph(graph)
+                if filepath.lower().endswith(".cmsn"):
+                    self.canvas.clear_canvas() # Ensure clean slate
+                    PersistenceManager.load_from_file(filepath, self.canvas)
+                else:
+                    # Fallback to RDKit for .mol/.sdf
+                    with open(filepath, "r") as f:
+                        molfile = f.read()
+                    from chemio.rdkit_io import molfile_to_molgraph
+                    graph = molfile_to_molgraph(molfile)
+                    self.canvas.clear_canvas()
+                    self.canvas._insert_molgraph(graph)
+                
                 self.statusBar().showMessage(f"Abierto: {filepath}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"No se pudo abrir el archivo:\n{e}")
     
     def _on_file_save(self) -> None:
-        """Save the current molecule."""
-        filepath, _ = QFileDialog.getSaveFileName(
+        """Save the current work in .cmsn format."""
+        filepath, selected_filter = QFileDialog.getSaveFileName(
             self,
             "Guardar archivo",
             "",
-            "Archivo MOL (*.mol);;Todos los archivos (*.*)"
+            "Archivo de Chemuson (*.cmsn);;Archivo MOL (*.mol);;Todos los archivos (*.*)"
         )
         if filepath:
             try:
-                from chemio.rdkit_io import molgraph_to_molfile
-                molfile = molgraph_to_molfile(self.canvas.graph)
-                with open(filepath, "w") as f:
-                    f.write(molfile)
+                if filepath.lower().endswith(".mol") or "MOL" in selected_filter:
+                    # Export as .mol if explicitly requested
+                    from chemio.rdkit_io import molgraph_to_molfile
+                    molfile = molgraph_to_molfile(self.canvas.graph)
+                    with open(filepath, "w") as f:
+                        f.write(molfile)
+                else:
+                    # Save as .cmsn (native)
+                    if not filepath.lower().endswith(".cmsn"):
+                        filepath += ".cmsn"
+                    PersistenceManager.save_to_file(filepath, self.canvas)
+                
                 self.statusBar().showMessage(f"Guardado: {filepath}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"No se pudo guardar:\n{e}")

@@ -1012,6 +1012,118 @@ class ChemusonCanvas(QGraphicsView):
             return None
         return normalized
 
+    def get_persistence_data(self) -> dict:
+        """Collects canvas settings and non-structural items for serialization."""
+        data = {
+            "settings": {
+                "paper_width": self.paper_width,
+                "paper_height": self.paper_height,
+                "show_grid": self.show_grid,
+                "show_rulers": self.show_rulers,
+                "bond_length": self.state.bond_length,
+                "use_aromatic_circles": self.state.use_aromatic_circles,
+                "show_carbons": self.state.show_implicit_carbons,
+                "show_hydrogens": self.state.show_implicit_hydrogens,
+                "use_element_colors": self.state.use_element_colors,
+                "font_family": self.state.label_font_family,
+                "font_size": self.state.label_font_size,
+                "font_bold": self.state.label_font_bold,
+                "font_italic": self.state.label_font_italic,
+                "font_underline": self.state.label_font_underline,
+            },
+            "annotations": {
+                "arrows": [],
+                "brackets": [],
+                "text_items": []
+            }
+        }
+
+        for item in self.scene.items():
+            if isinstance(item, ArrowItem):
+                if isinstance(item, PreviewArrowItem):
+                    continue
+                data["annotations"]["arrows"].append({
+                    "kind": item.kind(),
+                    "start": {"x": item.start_point().x(), "y": item.start_point().y()},
+                    "end": {"x": item.end_point().x(), "y": item.end_point().y()}
+                })
+            elif isinstance(item, BracketItem):
+                data["annotations"]["brackets"].append({
+                    "kind": item._kind,
+                    "rect": {
+                        "x": item._base_rect.x(),
+                        "y": item._base_rect.y(),
+                        "w": item._base_rect.width(),
+                        "h": item._base_rect.height()
+                    },
+                    "padding": item._padding
+                })
+            elif isinstance(item, TextAnnotationItem):
+                data["annotations"]["text_items"].append({
+                    "text": item.toPlainText(),
+                    "html": item.toHtml(), # Store HTML for rich text (formatting, colors)
+                    "x": item.pos().x(),
+                    "y": item.pos().y(),
+                    "rotation": item.rotation(),
+                    "font": item.font().toString(),
+                    "color": item.defaultTextColor().name()
+                })
+        return data
+
+    def load_persistence_data(self, data: dict) -> None:
+        """Restores canvas settings and non-structural items from a dictionary."""
+        settings = data.get("settings", {})
+        self.paper_width = settings.get("paper_width", DEFAULT_PAPER_WIDTH)
+        self.paper_height = settings.get("paper_height", DEFAULT_PAPER_HEIGHT)
+        self.set_show_grid(settings.get("show_grid", False))
+        self.set_show_rulers(settings.get("show_rulers", False))
+        self.state.bond_length = settings.get("bond_length", DEFAULT_BOND_LENGTH)
+        self.state.use_aromatic_circles = settings.get("use_aromatic_circles", False)
+        self.state.show_implicit_carbons = settings.get("show_carbons", False)
+        self.state.show_implicit_hydrogens = settings.get("show_hydrogens", False)
+        self.state.use_element_colors = settings.get("use_element_colors", True)
+        self.state.label_font_family = settings.get("font_family", "Arial")
+        self.state.label_font_size = settings.get("font_size", 11.0)
+        self.state.label_font_bold = settings.get("font_bold", False)
+        self.state.label_font_italic = settings.get("font_italic", False)
+        self.state.label_font_underline = settings.get("font_underline", False)
+
+        # Re-apply paper size visual
+        self._create_paper()
+
+        # Restore Annotations
+        annotations = data.get("annotations", {})
+        
+        for arrow_d in annotations.get("arrows", []):
+            start = QPointF(arrow_d["start"]["x"], arrow_d["start"]["y"])
+            end = QPointF(arrow_d["end"]["x"], arrow_d["end"]["y"])
+            arrow = ArrowItem(start, end, kind=arrow_d["kind"])
+            self.scene.addItem(arrow)
+
+        for br_d in annotations.get("brackets", []):
+            rect_d = br_d["rect"]
+            rect = QRectF(rect_d["x"], rect_d["y"], rect_d["w"], rect_d["h"])
+            bracket = BracketItem(rect, kind=br_d["kind"], padding=br_d.get("padding", 8.0))
+            self.scene.addItem(bracket)
+
+        for txt_d in annotations.get("text_items", []):
+            text_item = TextAnnotationItem(txt_d["text"], txt_d["x"], txt_d["y"])
+            if "html" in txt_d:
+                text_item.setHtml(txt_d["html"])
+            if "rotation" in txt_d:
+                text_item.setRotation(txt_d["rotation"])
+            if "font" in txt_d:
+                font = QFont()
+                font.fromString(txt_d["font"])
+                text_item.setFont(font)
+            if "color" in txt_d:
+                text_item.setDefaultTextColor(QColor(txt_d["color"]))
+            self.scene.addItem(text_item)
+
+        # Full refresh to update atom visibility and circles
+        self.refresh_atom_visibility()
+        self.refresh_aromatic_circles()
+
     def zoom_in(self) -> None:
         if self._zoom_factor < self._max_zoom:
             self._zoom_factor *= 1.2
@@ -1026,12 +1138,37 @@ class ChemusonCanvas(QGraphicsView):
         self._overlays_ready = False
         self._cancel_drag()
         self.undo_stack.blockSignals(True)
+        
+        # Nullify Python references to scene items before scene.clear()
+        # so that subsequent recreation logic doesn't try to access deleted C++ objects.
+        self.paper = None
+        self._grid_minor_item = None
+        self._grid_major_item = None
+        self._selection_box = None
+        self._selection_handle = None
+        self._selection_move_handle = None
+        self._select_preview_path = None
+        self._select_preview_rect = None
+        self._bracket_preview = None
+        self._hover_atom_indicator = None
+        self._hover_bond_indicator = None
+        self._optimize_zone = None
+        self._preview_bond_item = None
+        self._preview_ring_item = None
+        self._preview_chain_item = None
+        self._preview_chain_label = None
+        self._preview_arrow_item = None
+
         self.scene.clear()
         self.model.clear()
         self.undo_stack.clear()
         self.undo_stack.blockSignals(False)
         self.atom_items.clear()
         self.bond_items.clear()
+        self.aromatic_circles.clear()
+        self.arrow_items.clear()
+        self.bracket_items.clear()
+        self._implicit_h_overlays.clear()
         self._ring_centers.clear()
         self._next_ring_id = 1
         self.state.selected_atoms.clear()
@@ -1039,8 +1176,76 @@ class ChemusonCanvas(QGraphicsView):
         self.bond_anchor_id = None
         self.hovered_atom_id = None
         self.hovered_bond_id = None
+        
         self._create_paper()
         self._create_overlays()
+
+    def _rebuild_items_from_model(self) -> None:
+        """Create AtomItems and BondItems for everything currently in self.model."""
+        self.atom_items.clear()
+        self.bond_items.clear()
+        
+        # 1. Create AtomItems
+        for atom in self.model.atoms.values():
+            item = AtomItem(
+                atom,
+                radius=ATOM_HIT_RADIUS,
+                show_carbon=self.state.show_implicit_carbons,
+                show_hydrogen=self.state.show_implicit_hydrogens,
+                label_font=QFont(self.state.label_font_family, int(self.state.label_font_size)),
+                style=self.drawing_style,
+                use_element_colors=self.state.use_element_colors
+            )
+            self.scene.addItem(item)
+            self.atom_items[atom.id] = item
+        
+        # 2. Recalculate ring centers for double bond offsets
+        self.refresh_ring_centers()
+            
+        # 3. Create BondItems with ring context
+        for bond in self.model.bonds.values():
+            a1 = self.model.atoms.get(bond.a1_id)
+            a2 = self.model.atoms.get(bond.a2_id)
+            if a1 and a2:
+                item = BondItem(
+                    bond, a1, a2,
+                    render_aromatic_as_circle=self.state.use_aromatic_circles,
+                    style=self.drawing_style
+                )
+                if bond.ring_id is not None:
+                    item.set_ring_context(self._ring_centers.get(bond.ring_id))
+                item.set_offset_sign(self._bond_offset_sign(bond))
+                # Explicitly update positions now that context and sign are set
+                item.update_positions(a1, a2)
+                self.scene.addItem(item)
+                self.bond_items[bond.id] = item
+        
+        # 4. Global refresh: labels, visibility, shrinks, and implicit H overlays
+        self.refresh_atom_visibility()
+        self.refresh_aromatic_circles()
+
+    def refresh_ring_centers(self) -> None:
+        """Recalculate geometric centers for all rings in the model."""
+        self._ring_centers.clear()
+        ring_to_atoms = {}
+        for bond in self.model.bonds.values():
+            if bond.ring_id is not None:
+                atoms = ring_to_atoms.setdefault(bond.ring_id, set())
+                atoms.add(bond.a1_id)
+                atoms.add(bond.a2_id)
+        
+        for ring_id, atom_ids in ring_to_atoms.items():
+            sum_x = 0.0
+            sum_y = 0.0
+            count = 0
+            for aid in atom_ids:
+                atom = self.model.get_atom(aid)
+                if atom:
+                    sum_x += atom.x
+                    sum_y += atom.y
+                    count += 1
+            if count > 0:
+                self.register_ring_center(ring_id, (sum_x / count, sum_y / count))
 
     def add_text_item(self, item: TextAnnotationItem) -> None:
         if item.scene() is not self.scene:
@@ -1966,7 +2171,9 @@ class ChemusonCanvas(QGraphicsView):
         rect = item.label.mapRectToParent(item.label.boundingRect())
         if rect.isNull() or rect.width() <= 0 or rect.height() <= 0:
             return 0.0
-        pad = max(1.0, self.drawing_style.stroke_px * 0.6)
+        # Increased padding to clear label characters (especially "C")
+        # 6.0px provides a comfortable margin for standard font sizes.
+        pad = 6.0 
         rect = rect.adjusted(-pad, -pad, pad, pad)
         distance = self._ray_ellipse_distance(rect, ux, uy)
         return distance if distance is not None else 0.0
