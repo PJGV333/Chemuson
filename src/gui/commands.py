@@ -498,6 +498,26 @@ class MoveAtomsCommand(QUndoCommand):
         self._view.update_bond_items_for_atoms(set(positions.keys()))
 
 
+class MoveTextItemsCommand(QUndoCommand):
+    def __init__(self, view, before: dict, after: dict):
+        super().__init__("Move text items")
+        self._view = view
+        self._before = before # {item: (pos, rotation)}
+        self._after = after   # {item: (pos, rotation)}
+
+    def redo(self):
+        for item, (pos, rot) in self._after.items():
+            item.setPos(pos)
+            item.setRotation(rot)
+        self._view._update_selection_overlay()
+
+    def undo(self):
+        for item, (pos, rot) in self._before.items():
+            item.setPos(pos)
+            item.setRotation(rot)
+        self._view._update_selection_overlay()
+
+
 class DeleteSelectionCommand(QUndoCommand):
     def __init__(
         self,
@@ -507,6 +527,7 @@ class DeleteSelectionCommand(QUndoCommand):
         bond_ids: Iterable[int],
         arrow_items: Iterable = (),
         bracket_items: Iterable = (),
+        text_items: Iterable = (),
     ) -> None:
         super().__init__("Delete selection")
         self._model = model
@@ -515,10 +536,12 @@ class DeleteSelectionCommand(QUndoCommand):
         self._bond_ids = sorted(set(bond_ids))
         self._arrow_items = list(arrow_items)
         self._bracket_items = list(bracket_items)
+        self._text_items = list(text_items)
         self._removed_atoms = []
         self._removed_bonds = []
         self._removed_arrows = []
         self._removed_brackets = []
+        self._removed_texts = []
 
     def redo(self) -> None:
         if not self._removed_atoms and not self._removed_bonds:
@@ -540,6 +563,8 @@ class DeleteSelectionCommand(QUndoCommand):
                 self._removed_brackets.append(
                     (item, item.base_rect(), item._padding, item._kind)
                 )
+            for item in self._text_items:
+                self._removed_texts.append(item)
 
         for bond in list(self._removed_bonds):
             if bond.id in self._model.bonds:
@@ -553,6 +578,8 @@ class DeleteSelectionCommand(QUndoCommand):
             self._view.remove_arrow_item(item)
         for item, _rect, _padding, _kind in list(self._removed_brackets):
             self._view.remove_bracket_item(item)
+        for item in self._removed_texts:
+            self._view.remove_text_item(item)
 
     def undo(self) -> None:
         for atom in self._removed_atoms:
@@ -588,6 +615,8 @@ class DeleteSelectionCommand(QUndoCommand):
             self._view.readd_arrow_item(item, start, end, kind)
         for item, rect, padding, kind in self._removed_brackets:
             self._view.readd_bracket_item(item, rect, kind, padding=padding)
+        for item in self._removed_texts:
+            self._view.readd_text_item(item)
 
 
 class AddArrowCommand(QUndoCommand):

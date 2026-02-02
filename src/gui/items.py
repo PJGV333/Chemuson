@@ -11,9 +11,12 @@ from PyQt6.QtWidgets import (
     QGraphicsPathItem,
     QGraphicsTextItem,
     QGraphicsItem,
+    QGraphicsRectItem,
+    QStyle,
 )
 from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPainterPath, QPen, QBrush
 from PyQt6.QtCore import Qt, QRectF, QPointF
+
 
 from core.model import Atom, Bond, BondStyle
 from gui.style import DrawingStyle, CHEMDOODLE_LIKE
@@ -1301,3 +1304,84 @@ class PreviewChainLabelItem(QGraphicsTextItem):
 
     def hide_label(self) -> None:
         self.setVisible(False)
+
+
+
+
+class TextAnnotationItem(QGraphicsTextItem):
+    """Graphics item for free-standing text annotations."""
+    
+    def __init__(self, text: str = "", x: float = 0.0, y: float = 0.0) -> None:
+        super().__init__(text)
+        self.setPos(x, y)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsFocusable)
+        
+        # Default style
+        font = QFont("Arial", 12)
+        self.setFont(font)
+        self.setDefaultTextColor(QColor("black"))
+        
+        # Editor interaction
+        # Start in "NoInteraction" to allow dragging by default
+        self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        
+        self.setZValue(10)
+        
+        
+        # Drag Handle logic removed - handled by Canvas selection overlay
+        # self.handle = TextDragHandle(self)
+
+    def paint(self, painter, option, widget=None) -> None:
+        # Suppress default dashed line from QGraphicsTextItem if selected
+        # because the canvas draws its own selection overlay.
+        # But we must preserve other states like HasFocus for the cursor.
+        option.state &= ~QStyle.StateFlag.State_Selected
+        
+        super().paint(painter, option, widget)
+        
+        # If we are in edit mode, maybe we want a subtle background or border?
+        # For now, let's keep it clean since the selection overlay is handled by canvas.
+        if (self.textInteractionFlags() & Qt.TextInteractionFlag.TextEditorInteraction):
+             # When editing, show a very subtle dashed border to indicate focus area
+             painter.setPen(QPen(QColor("#CCCCCC"), 1.0, Qt.PenStyle.DashLine))
+             painter.drawRect(self.boundingRect())
+
+    def mouseDoubleClickEvent(self, event) -> None:
+        # Enable editing on double click
+        if self.textInteractionFlags() == Qt.TextInteractionFlag.NoTextInteraction:
+            self.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
+            self.setFocus()
+        super().mouseDoubleClickEvent(event)
+    
+    def focusOutEvent(self, event) -> None:
+        # When losing focus, go back to movable mode
+        self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        
+        # Clear any internal text selection to avoid lingering highlights
+        # (the green background for selection)
+        cursor = self.textCursor()
+        cursor.clearSelection()
+        self.setTextCursor(cursor)
+        
+        # If empty, delete the item
+        content = self.toPlainText()
+        if not content or content.strip() == "":
+             if self.scene():
+                 self.scene().removeItem(self)
+             
+        super().focusOutEvent(event)
+
+    def shape(self) -> QPainterPath:
+        # Ensure a minimum size for the hit-test even if empty
+        br = self.boundingRect()
+        if br.width() < 10:
+            br.setWidth(10)
+        if br.height() < 10:
+            br.setHeight(20) # Character-like height
+            
+        path = QPainterPath()
+        path.addRect(br)
+        return path
+

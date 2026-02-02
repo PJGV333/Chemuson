@@ -24,6 +24,7 @@ from gui.styles import MAIN_STYLESHEET, TOOL_PALETTE_STYLESHEET
 from gui.icons import draw_generic_icon
 from gui.docks import PlantillasDock, InspectorDock
 from gui.dialogs import PreferencesDialog, QuickStartDialog, StyleDialog
+from gui.text_toolbar import TextFormatToolbar
 from gui.commands import ChangeAtomCommand
 from gui.templates import (
     build_linear_chain_template,
@@ -76,6 +77,17 @@ class ChemusonWindow(QMainWindow):
         self.toolbar.setStyleSheet(TOOL_PALETTE_STYLESHEET)
         self.addToolBar(Qt.ToolBarArea.LeftToolBarArea, self.toolbar)
         
+        # === TEXT FORMAT TOOLBAR ===
+        self.text_toolbar = TextFormatToolbar()
+        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self.text_toolbar)
+        # Initially hide it, or show it only when text tool is active?
+        # User requested it to be available. We can leave it visible or toggle it.
+        # For now, visible is fine.
+
+        # Text Toolbar Connections
+        self.text_toolbar.format_changed.connect(self.canvas.update_text_format)
+        self.text_toolbar.color_changed.connect(self.canvas.update_text_color)
+        
         # === SIGNAL CONNECTIONS ===
         self._connect_undo_redo()
         
@@ -87,7 +99,7 @@ class ChemusonWindow(QMainWindow):
         self.toolbar.periodic_table_requested.connect(self._show_periodic_table)
         
         # Connect selection updates
-        self.canvas.selection_changed.connect(self.inspector_dock.update_selection)
+        self.canvas.selection_changed.connect(self._on_selection_changed)
 
         # Sync defaults selected during toolbar init
         self._handle_bond_palette(self.toolbar.current_bond_spec())
@@ -1091,3 +1103,17 @@ class ChemusonWindow(QMainWindow):
         }
         name = tool_names.get(tool_id, tool_id)
         self.statusBar().showMessage(f"Herramienta: {name}")
+
+    def _on_selection_changed(self, num_atoms: int, num_bonds: int, num_text: int, details: dict):
+        """Handle selection change to update UI components."""
+        self.inspector_dock.update_selection(num_atoms, num_bonds, num_text, details)
+        
+        # Sync Text Toolbar if a single text item is selected
+        if num_text == 1 and details.get("type") == "text":
+            font = details.get("font")
+            settings = {
+                "color": details.get("color"),
+                "sub": details.get("sub"),
+                "sup": details.get("sup")
+            }
+            self.text_toolbar.set_state(font, settings)

@@ -55,7 +55,13 @@ class ChemusonToolbar(QToolBar):
             "tool_select": (draw_generic_icon("pointer"), "Seleccionar"),
             "tool_select_lasso": (draw_generic_icon("lasso"), "Seleccion libre"),
         }
-        self._annotation_meta = {
+        self._bracket_meta = {
+            "tool_brackets_round": (draw_glyph_icon("()"), "Parentesis ()"),
+            "tool_brackets_square": (draw_glyph_icon("[]"), "Corchetes []"),
+            "tool_brackets_curly": (draw_glyph_icon("{}"), "Llaves {}"),
+        }
+        
+        self._arrow_meta = {
             "tool_arrow_forward": (draw_arrow_icon("forward"), "Flecha directa"),
             "tool_arrow_forward_open": (draw_arrow_icon("forward_open"), "Flecha directa abierta"),
             "tool_arrow_forward_dashed": (
@@ -88,15 +94,13 @@ class ChemusonToolbar(QToolBar):
                 draw_arrow_icon("curved_fishhook"),
                 "Flecha curva (1 e-)",
             ),
-            "tool_brackets_round": (draw_glyph_icon("()"), "Parentesis ()"),
-            "tool_brackets_square": (draw_glyph_icon("[]"), "Corchetes []"),
-            "tool_brackets_curly": (draw_glyph_icon("{}"), "Llaves {}"),
             "tool_charge_plus": (draw_glyph_icon("+"), "Carga positiva"),
             "tool_charge_minus": (draw_glyph_icon("-"), "Carga negativa"),
         }
 
         self._current_select_tool_id = "tool_select"
-        self._current_annotation_tool_id = "tool_arrow_forward"
+        self._current_bracket_tool_id = "tool_brackets_square"
+        self._current_arrow_tool_id = "tool_arrow_forward"
 
         select_icon, select_tip = self._selection_meta[self._current_select_tool_id]
         self.select_button, self.select_action = self._add_palette_button(
@@ -127,15 +131,31 @@ class ChemusonToolbar(QToolBar):
         )
         self._build_label_palette(self.label_button.menu())
         self.addSeparator()
-
-        annotation_icon, annotation_tip = self._annotation_meta[self._current_annotation_tool_id]
-        self.annotation_button, self.annotation_action = self._add_palette_button(
-            annotation_icon,
-            annotation_tip,
-            "tool_annotation",
-            trigger_callback=self._emit_current_annotation_tool,
+        
+        # --- Text Tool ---
+        self._add_tool_action(draw_glyph_icon("T"), "Texto", "tool_text")
+        
+        # --- Brackets Tool ---
+        bracket_icon, bracket_tip = self._bracket_meta[self._current_bracket_tool_id]
+        self.bracket_button, self.bracket_action = self._add_palette_button(
+            bracket_icon,
+            bracket_tip,
+            "tool_brackets",
+            trigger_callback=self._emit_current_bracket_tool
         )
-        self._build_annotation_palette(self.annotation_button.menu())
+        self._build_bracket_palette(self.bracket_button.menu())
+        
+        self.addSeparator()
+
+        # --- Arrows (Annotation) Tool ---
+        arrow_icon, arrow_tip = self._arrow_meta[self._current_arrow_tool_id]
+        self.annotation_button, self.annotation_action = self._add_palette_button(
+            arrow_icon,
+            arrow_tip,
+            "tool_annotation",
+            trigger_callback=self._emit_current_arrow_tool,
+        )
+        self._build_arrow_palette(self.annotation_button.menu())
 
         default_bond_spec = {
             "order": 1,
@@ -202,8 +222,11 @@ class ChemusonToolbar(QToolBar):
     def _emit_current_selection_tool(self, checked: bool = False) -> None:
         self.tool_changed.emit(self._current_select_tool_id)
 
-    def _emit_current_annotation_tool(self, checked: bool = False) -> None:
-        self.tool_changed.emit(self._current_annotation_tool_id)
+    def _emit_current_bracket_tool(self, checked: bool = False) -> None:
+        self.tool_changed.emit(self._current_bracket_tool_id)
+
+    def _emit_current_arrow_tool(self, checked: bool = False) -> None:
+        self.tool_changed.emit(self._current_arrow_tool_id)
 
     def _make_palette_entry(self, icon, tooltip: str, callback, enabled: bool = True) -> dict:
         return {
@@ -422,13 +445,23 @@ class ChemusonToolbar(QToolBar):
         periodic_action.triggered.connect(self.periodic_table_requested.emit)
         menu.addAction(periodic_action)
 
-    def _build_annotation_palette(self, menu: QMenu) -> None:
+    def _build_bracket_palette(self, menu: QMenu) -> None:
         entries = []
-        text_icon = draw_glyph_icon("T")
-        entries.append(
-            self._make_palette_entry(text_icon, "Texto (Proximamente)", None, enabled=False)
-        )
-        for tool_id in (
+        for tool_id in sorted(self._bracket_meta.keys()):
+            icon, tooltip = self._bracket_meta[tool_id]
+            entries.append(
+                self._make_palette_entry(
+                    icon,
+                    tooltip,
+                    lambda tid=tool_id: self._select_bracket_tool(tid),
+                )
+            )
+        self._populate_grid_menu(menu, entries, columns=3)
+
+    def _build_arrow_palette(self, menu: QMenu) -> None:
+        entries = []
+        # Defined order for arrow tools
+        tool_order = [
             "tool_arrow_forward",
             "tool_arrow_forward_open",
             "tool_arrow_forward_dashed",
@@ -445,19 +478,18 @@ class ChemusonToolbar(QToolBar):
             "tool_arrow_curved_fishhook",
             "tool_charge_plus",
             "tool_charge_minus",
-            "tool_brackets_round",
-            "tool_brackets_square",
-            "tool_brackets_curly",
-        ):
-            icon, tooltip = self._annotation_meta[tool_id]
+        ]
+        
+        for tool_id in tool_order:
+            icon, tooltip = self._arrow_meta[tool_id]
             entries.append(
                 self._make_palette_entry(
                     icon,
                     tooltip,
-                    lambda tid=tool_id: self._select_annotation_tool(tid),
+                    lambda tid=tool_id: self._select_arrow_tool(tid),
                 )
             )
-        self._populate_grid_menu(menu, entries, columns=6)
+        self._populate_grid_menu(menu, entries, columns=4)
 
     def _select_selection_palette(self, tool_id: str, icon, tooltip: str) -> None:
         self._current_select_tool_id = tool_id
@@ -467,9 +499,18 @@ class ChemusonToolbar(QToolBar):
         self.tool_changed.emit(tool_id)
         self.select_action.setChecked(True)
 
-    def _select_annotation_tool(self, tool_id: str) -> None:
-        icon, tooltip = self._annotation_meta[tool_id]
-        self._current_annotation_tool_id = tool_id
+    def _select_bracket_tool(self, tool_id: str) -> None:
+        icon, tooltip = self._bracket_meta[tool_id]
+        self._current_bracket_tool_id = tool_id
+        self.bracket_action.setIcon(icon)
+        self.bracket_action.setToolTip(tooltip)
+        self.bracket_button.setToolTip(tooltip)
+        self.bracket_action.setChecked(True)
+        self.tool_changed.emit(tool_id)
+
+    def _select_arrow_tool(self, tool_id: str) -> None:
+        icon, tooltip = self._arrow_meta[tool_id]
+        self._current_arrow_tool_id = tool_id
         self.annotation_action.setIcon(icon)
         self.annotation_action.setToolTip(tooltip)
         self.annotation_button.setToolTip(tooltip)

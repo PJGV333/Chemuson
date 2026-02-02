@@ -110,15 +110,15 @@ class InspectorDock(QDockWidget):
         })
 
     def set_bond(self, bond) -> None:
-        self.update_selection(0, 1, {
+        self.update_selection(0, 1, 0, {
             "order": bond.order,
             "style": bond.style,
             "aromatic": bond.is_aromatic,
         })
 
-    def update_selection(self, num_atoms: int, num_bonds: int, details: dict = None):
+    def update_selection(self, num_atoms: int, num_bonds: int, num_text: int, details: dict):
         """Update the inspector with selection info."""
-        if num_atoms == 0 and num_bonds == 0:
+        if num_atoms == 0 and num_bonds == 0 and num_text == 0:
             self.info_label.setText("Nada seleccionado")
             self.info_label.setVisible(True)
             self.prop_table.setVisible(False)
@@ -129,7 +129,7 @@ class InspectorDock(QDockWidget):
         self.prop_table.setRowCount(0)
         
         data = []
-        if num_atoms == 1 and num_bonds == 0:
+        if num_atoms == 1 and num_bonds == 0 and num_text == 0:
             data = [
                 ("Tipo", "Átomo"),
                 ("Elemento", details.get("element", "?")),
@@ -138,18 +138,27 @@ class InspectorDock(QDockWidget):
                 ("X", f"{details.get('x', 0):.1f}"),
                 ("Y", f"{details.get('y', 0):.1f}"),
             ]
-        elif num_atoms == 0 and num_bonds == 1:
+        elif num_atoms == 0 and num_bonds == 1 and num_text == 0:
             data = [
                 ("Tipo", "Enlace"),
                 ("Orden", str(details.get("order", 1))),
                 ("Estilo", str(details.get("style", "Plain"))),
                 ("Aromático", "Sí" if details.get("aromatic") else "No"),
             ]
+        elif num_text == 1 and num_atoms == 0 and num_bonds == 0:
+            font = details.get("font")
+            data = [
+                ("Tipo", "Texto"),
+                ("Fuente", font.family() if font else "?"),
+                ("Tamaño", str(font.pointSize()) if font else "?"),
+                ("Sub/Sup", "Sub" if details.get("sub") else ("Sup" if details.get("sup") else "Normal")),
+            ]
         else:
             data = [
                 ("Selección", "Múltiple"),
                 ("Átomos", str(num_atoms)),
                 ("Enlaces", str(num_bonds)),
+                ("Texto", str(num_text)),
             ]
             
         self.prop_table.setRowCount(len(data))

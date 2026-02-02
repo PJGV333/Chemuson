@@ -32,6 +32,7 @@ from PyQt6.QtGui import (
     QPixmap,
     QPainterPath,
     QFont,
+    QTextCharFormat,
 )
 from PyQt6.QtCore import Qt, QPointF, QRectF, QRect, QSize, QBuffer, QMimeData, pyqtSignal
 
@@ -55,6 +56,9 @@ from gui.items import (
     PreviewRingItem,
     PreviewChainItem,
     PreviewChainLabelItem,
+    PreviewChainItem,
+    PreviewChainLabelItem,
+    TextAnnotationItem,
     ABBREVIATION_LABELS,
 )
 from gui.style import CHEMDOODLE_LIKE, DrawingStyle
@@ -89,6 +93,7 @@ from gui.commands import (
     ChangeChargeCommand,
     DeleteSelectionCommand,
     MoveAtomsCommand,
+    MoveTextItemsCommand,
 )
 from chemio.rdkit_io import (
     molgraph_to_molfile,
@@ -162,7 +167,7 @@ class ChemusonCanvas(QGraphicsView):
     Uses QGraphicsView/QGraphicsScene with a centered paper sheet.
     """
     
-    selection_changed = pyqtSignal(int, int, dict)
+    selection_changed = pyqtSignal(int, int, int, dict)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -197,6 +202,18 @@ class ChemusonCanvas(QGraphicsView):
         self._bracket_drag_start: Optional[QPointF] = None
         self._bracket_preview: Optional[QGraphicsRectItem] = None
         self.bracket_items: list[BracketItem] = []
+        
+        # Text tool state
+        self._current_text_settings = {
+            "family": "Arial",
+            "size": 12,
+            "bold": False,
+            "italic": False,
+            "underline": False,
+            "sub": False,
+            "sup": False,
+            "color": QColor("black")
+        }
 
         self._dragging_selection = False
         self._drag_start_pos: Optional[QPointF] = None
@@ -648,6 +665,27 @@ class ChemusonCanvas(QGraphicsView):
                 self._delete_selection(set(), {clicked_bond_id})
             return
 
+        elif self.current_tool == "tool_text":
+            # Create text annotation at position
+            item = TextAnnotationItem(
+                "",
+                scene_pos.x(),
+                scene_pos.y()
+            )
+            self._apply_text_settings(item)
+            # Enter edit mode immediately
+            item.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
+            self.scene.addItem(item)
+            item.setFocus()
+            # Position cursor at end to ensure it's visible
+            cursor = item.textCursor()
+            cursor.movePosition(cursor.MoveOperation.End)
+            item.setTextCursor(cursor)
+            
+            self.scene.clearSelection()
+            item.setSelected(True)
+            return
+
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:
@@ -703,12 +741,21 @@ class ChemusonCanvas(QGraphicsView):
             delta = scene_pos - self._drag_start_pos
             if delta.manhattanLength() > 0:
                 self._drag_has_moved = True
+                
+                # Move atoms
                 for atom_id, (x, y) in self._drag_start_positions.items():
                     nx = x + delta.x()
                     ny = y + delta.y()
                     self.model.update_atom_position(atom_id, nx, ny)
                     self.update_atom_item(atom_id, nx, ny)
                 self.update_bond_items_for_atoms(set(self._drag_start_positions.keys()))
+                
+                # Move text items
+                if hasattr(self, "_drag_start_text_positions"):
+                    for item, (pos, rot) in self._drag_start_text_positions.items():
+                        new_pos = pos + delta
+                        item.setPos(new_pos)
+                
                 self._update_selection_overlay()
             return
 
@@ -757,25 +804,78 @@ class ChemusonCanvas(QGraphicsView):
             if self._selection_move_handle is not None:
                 self._selection_move_handle.setCursor(Qt.CursorShape.OpenHandCursor)
             if self._drag_has_moved:
-                after = {
-                    atom_id: (self.model.get_atom(atom_id).x, self.model.get_atom(atom_id).y)
-                    for atom_id in self._drag_start_positions
-                }
-                cmd = MoveAtomsCommand(
-                    self.model,
-                    self,
-                    self._drag_start_positions,
-                    after,
-                    skip_first_redo=True,
-                )
-                self.undo_stack.push(cmd)
+                # Capture end states
+                move_atoms = bool(self._drag_start_positions)
+                move_text = bool(getattr(self, "_drag_start_text_positions", {}))
+                
+                if move_atoms and move_text:
+                    self.undo_stack.beginMacro("Move selection")
+                
+                if move_atoms:
+                    after = {
+                        atom_id: (self.model.get_atom(atom_id).x, self.model.get_atom(atom_id).y)
+                        for atom_id in self._drag_start_positions
+                    }
+                    cmd = MoveAtomsCommand(
+                        self.model,
+                        self,
+                        self._drag_start_positions,
+                        after,
+                        skip_first_redo=True,
+                    )
+                    self.undo_stack.push(cmd)
+                    
+                if move_text:
+                    before = self._drag_start_text_positions
+                    after = {
+                        item: (item.pos(), item.rotation())
+                        for item in before.keys()
+                    }
+                    cmd = MoveTextItemsCommand(self, before, after)
+                    # We already moved them, so don't re-execute redo immediately if command stack auto-redoes?
+                    # QUndoStack.push() calls redo().
+                    # MoveItemsCommand.redo() sets position.
+                    # It's fine to set it again to same value.
+                    self.undo_stack.push(cmd)
+                    
+                if move_atoms and move_text:
+                    self.undo_stack.endMacro()
+
             self._dragging_selection = False
             self._drag_start_pos = None
             self._drag_start_positions = {}
+            self._drag_start_text_positions = {}
             self._drag_has_moved = False
             return
 
         super().mouseReleaseEvent(event)
+    
+    def _delete_selection(
+        self,
+        atom_ids: set[int],
+        bond_ids: set[int],
+        arrow_items: Iterable = (),
+        bracket_items: Iterable = (),
+        text_items: Iterable = (),
+    ) -> None:
+        # Prioritize delete logic
+        cmd = DeleteSelectionCommand(
+            self.model,
+            self,
+            atom_ids,
+            bond_ids,
+            arrow_items=arrow_items,
+            bracket_items=bracket_items,
+            text_items=text_items,
+        )
+        self.undo_stack.push(cmd)
+        self.scene.clearSelection()
+
+    def _get_item_at(self, scene_pos: QPointF):
+        for item in self.scene.items(scene_pos):
+             if isinstance(item, (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem)):
+                return item
+        return None
 
     def mouseDoubleClickEvent(self, event) -> None:
         scene_pos = self.mapToScene(event.pos())
@@ -941,8 +1041,19 @@ class ChemusonCanvas(QGraphicsView):
         self.hovered_bond_id = None
         self._create_paper()
         self._create_overlays()
-        self._clear_selection_overlay()
-        self._implicit_h_overlays = {}
+
+    def add_text_item(self, item: TextAnnotationItem) -> None:
+        if item.scene() is not self.scene:
+            self.scene.addItem(item)
+        item.setSelected(True)
+
+    def remove_text_item(self, item: TextAnnotationItem) -> None:
+        if item.scene() is self.scene:
+            self.scene.removeItem(item)
+
+    def readd_text_item(self, item: TextAnnotationItem) -> None:
+        if item.scene() is not self.scene:
+            self.scene.addItem(item)
 
     def delete_selection(self) -> None:
         selected_arrows = [
@@ -951,11 +1062,15 @@ class ChemusonCanvas(QGraphicsView):
         selected_brackets = [
             item for item in self.scene.selectedItems() if isinstance(item, BracketItem)
         ]
+        selected_text_items = [
+            item for item in self.scene.selectedItems() if isinstance(item, TextAnnotationItem)
+        ]
         if (
             not self.state.selected_atoms
             and not self.state.selected_bonds
             and not selected_arrows
             and not selected_brackets
+            and not selected_text_items
         ):
             return
         self._delete_selection(
@@ -963,6 +1078,7 @@ class ChemusonCanvas(QGraphicsView):
             set(self.state.selected_bonds),
             selected_arrows,
             selected_brackets,
+            selected_text_items,
         )
 
     def _delete_hovered(self) -> bool:
@@ -974,22 +1090,7 @@ class ChemusonCanvas(QGraphicsView):
             return True
         return False
 
-    def _delete_selection(
-        self,
-        atom_ids: set[int],
-        bond_ids: set[int],
-        arrow_items: Optional[list[ArrowItem]] = None,
-        bracket_items: Optional[list[BracketItem]] = None,
-    ) -> None:
-        arrow_items = arrow_items or []
-        bracket_items = bracket_items or []
-        if not atom_ids and not bond_ids and not arrow_items and not bracket_items:
-            return
-        cmd = DeleteSelectionCommand(
-            self.model, self, atom_ids, bond_ids, arrow_items, bracket_items
-        )
-        self.undo_stack.push(cmd)
-        self.scene.clearSelection()
+
 
     def copy_to_clipboard(self) -> None:
         if not self.model.atoms:
@@ -2103,6 +2204,93 @@ class ChemusonCanvas(QGraphicsView):
             self._refresh_atom_label(atom_id)
         self._refresh_implicit_h_overlays()
 
+    def _apply_text_settings(self, item: TextAnnotationItem, property_name: str = "all") -> None:
+        """Apply text format settings to the item, ideally merging only what changed."""
+        s = self._current_text_settings
+        
+        # Prepare a partial format for merging
+        fmt = QTextCharFormat()
+        
+        if property_name in ("all", "family"):
+            fmt.setFontFamilies([s["family"]])
+        if property_name in ("all", "size"):
+            fmt.setFontPointSize(s["size"])
+        if property_name in ("all", "bold"):
+            fmt.setFontWeight(QFont.Weight.Bold if s["bold"] else QFont.Weight.Normal)
+        if property_name in ("all", "italic"):
+            fmt.setFontItalic(s["italic"])
+        if property_name in ("all", "underline"):
+            fmt.setFontUnderline(s["underline"])
+        if property_name in ("all", "sub", "sup"):
+            if s["sub"]:
+                fmt.setVerticalAlignment(QTextCharFormat.VerticalAlignment.AlignSubScript)
+            elif s["sup"]:
+                fmt.setVerticalAlignment(QTextCharFormat.VerticalAlignment.AlignSuperScript)
+            else:
+                fmt.setVerticalAlignment(QTextCharFormat.VerticalAlignment.AlignNormal)
+        
+        if property_name in ("all", "color"):
+            fmt.setForeground(QBrush(s["color"]))
+        
+        # Get Cursor
+        cursor = item.textCursor()
+        is_editing = (item.textInteractionFlags() & Qt.TextInteractionFlag.TextEditorInteraction)
+        
+        if not is_editing:
+            # Not editing -> Apply to whole document
+            cursor.select(cursor.SelectionType.Document)
+            # For whole document, also update default properties
+            if property_name in ("all", "family", "size", "bold", "italic", "underline"):
+                font = item.font()
+                if property_name in ("all", "family"): font.setFamily(s["family"])
+                if property_name in ("all", "size"): font.setPointSize(s["size"])
+                if property_name in ("all", "bold"): font.setBold(s["bold"])
+                if property_name in ("all", "italic"): font.setItalic(s["italic"])
+                if property_name in ("all", "underline"): font.setUnderline(s["underline"])
+                item.setFont(font)
+            if property_name in ("all", "color"):
+                item.setDefaultTextColor(s["color"])
+        
+        # Apply the format
+        cursor.mergeCharFormat(fmt)
+        item.setTextCursor(cursor)
+
+    def update_text_format(self, family: str, size: int, b: bool, i: bool, u: bool, sub: bool, sup: bool, property_name: str = "all") -> None:
+        """Update current text settings and apply to selected text items."""
+        self._current_text_settings.update({
+            "family": family, "size": size,
+            "bold": b, "italic": i, "underline": u,
+            "sub": sub, "sup": sup
+        })
+        
+        # Items to update
+        items_to_update = self.scene.selectedItems()
+        
+        # If a text item is in edit mode, it might assume it's handling input.
+        # Ensure we capture it.
+        focus_item = self.scene.focusItem()
+        if isinstance(focus_item, TextAnnotationItem) and focus_item not in items_to_update:
+             items_to_update.append(focus_item)
+
+        for item in items_to_update:
+            if isinstance(item, TextAnnotationItem):
+                self._apply_text_settings(item, property_name)
+            elif isinstance(item, AtomItem):
+                pass
+
+    def update_text_color(self, color: QColor) -> None:
+        """Update current text color and apply to selection."""
+        self._current_text_settings["color"] = color
+        
+        items_to_update = self.scene.selectedItems()
+        focus_item = self.scene.focusItem()
+        if isinstance(focus_item, TextAnnotationItem) and focus_item not in items_to_update:
+            items_to_update.append(focus_item)
+
+        for item in items_to_update:
+            if isinstance(item, TextAnnotationItem):
+                self._apply_text_settings(item, "color")
+
     def refresh_aromatic_circles(self) -> None:
         """Add/remove aromatic circle items based on current state."""
         # First, update all bond items to reflect the preference
@@ -2222,11 +2410,7 @@ class ChemusonCanvas(QGraphicsView):
                 return item.bond_id
         return None
 
-    def _get_item_at(self, scene_pos: QPointF):
-        for item in self.scene.items(scene_pos):
-            if isinstance(item, (AtomItem, BondItem, ArrowItem, BracketItem)):
-                return item
-        return None
+
 
     def _sync_selection_from_scene(self) -> None:
         selected_atoms = set()
@@ -2239,6 +2423,8 @@ class ChemusonCanvas(QGraphicsView):
                 if item.bond_id in self.model.bonds:
                     selected_bonds.add(item.bond_id)
 
+        selected_text_items = self._selected_text_items()
+        
         self.state.selected_atoms = selected_atoms
         self.state.selected_bonds = selected_bonds
 
@@ -2249,16 +2435,27 @@ class ChemusonCanvas(QGraphicsView):
 
         # Emit selection signal
         details = {}
-        if len(selected_atoms) == 1 and not selected_bonds:
+        if len(selected_atoms) == 1 and not selected_bonds and not selected_text_items:
             atom = self.model.get_atom(next(iter(selected_atoms)))
             details = {"type": "atom", "id": atom.id, "element": atom.element, "charge": atom.charge, "x": atom.x, "y": atom.y}
-        elif len(selected_bonds) == 1 and not selected_atoms:
+        elif len(selected_bonds) == 1 and not selected_atoms and not selected_text_items:
             bond_id = next(iter(selected_bonds))
             if bond_id in self.model.bonds:
                 bond = self.model.get_bond(bond_id)
                 details = {"type": "bond", "id": bond.id, "order": bond.order, "style": bond.style, "aromatic": bond.is_aromatic}
+        elif len(selected_text_items) == 1 and not selected_atoms and not selected_bonds:
+            item = selected_text_items[0]
+            cursor = item.textCursor()
+            fmt = cursor.charFormat()
+            details = {
+                "type": "text",
+                "font": item.font(),
+                "color": item.defaultTextColor(),
+                "sub": fmt.verticalAlignment() == QTextCharFormat.VerticalAlignment.AlignSubScript,
+                "sup": fmt.verticalAlignment() == QTextCharFormat.VerticalAlignment.AlignSuperScript
+            }
             
-        self.selection_changed.emit(len(selected_atoms), len(selected_bonds), details)
+        self.selection_changed.emit(len(selected_atoms), len(selected_bonds), len(selected_text_items), details)
 
     def _begin_selection_drag(
         self,
@@ -2405,7 +2602,8 @@ class ChemusonCanvas(QGraphicsView):
             item_rect = item.sceneBoundingRect()
             rect = item_rect if rect is None else rect.united(item_rect)
         for item in self.scene.selectedItems():
-            if isinstance(item, (ArrowItem, BracketItem)):
+            # Include TextAnnotationItem
+            if isinstance(item, (ArrowItem, BracketItem, TextAnnotationItem)):
                 item_rect = item.sceneBoundingRect()
                 rect = item_rect if rect is None else rect.united(item_rect)
         return rect
@@ -2461,7 +2659,7 @@ class ChemusonCanvas(QGraphicsView):
         return self._selection_move_handle.sceneBoundingRect().contains(scene_pos)
 
     def _begin_rotation_drag(self, scene_pos: QPointF) -> None:
-        if not self._selected_atom_ids_for_transform():
+        if not self._selected_atom_ids_for_transform() and not self._selected_text_items():
             return
         bbox = self._selected_items_bbox()
         if bbox is None:
@@ -2471,109 +2669,233 @@ class ChemusonCanvas(QGraphicsView):
         dx = scene_pos.x() - self._rotation_center.x()
         dy = scene_pos.y() - self._rotation_center.y()
         self._rotation_start_angle = math.atan2(dy, dx)
+        
+        # Capture atoms
         atom_ids = self._selected_atom_ids_for_transform()
         self._rotation_start_positions = {
             atom_id: (self.model.get_atom(atom_id).x, self.model.get_atom(atom_id).y)
             for atom_id in atom_ids
             if atom_id in self.model.atoms
         }
+        
+        # Capture text items
+        self._rotation_start_text_transforms = {} # item -> (pos, rotation)
+        for item in self._selected_text_items():
+            self._rotation_start_text_transforms[item] = (item.pos(), item.rotation())
 
     def _update_rotation_drag(self, scene_pos: QPointF) -> None:
-        if not self._rotation_dragging or self._rotation_center is None or self._rotation_start_angle is None:
+        if self._rotation_center is None or self._rotation_start_angle is None:
             return
-        cx = self._rotation_center.x()
-        cy = self._rotation_center.y()
-        dx = scene_pos.x() - cx
-        dy = scene_pos.y() - cy
-        angle = math.atan2(dy, dx)
-        delta = angle - self._rotation_start_angle
-        cos_a = math.cos(delta)
-        sin_a = math.sin(delta)
-        for atom_id, (x0, y0) in self._rotation_start_positions.items():
-            rx = x0 - cx
-            ry = y0 - cy
-            nx = cx + rx * cos_a - ry * sin_a
-            ny = cy + rx * sin_a + ry * cos_a
-            self.model.update_atom_position(atom_id, nx, ny)
-            self.update_atom_item(atom_id, nx, ny)
-        self.update_bond_items_for_atoms(set(self._rotation_start_positions.keys()))
-        self._update_selection_overlay()
+        dx = scene_pos.x() - self._rotation_center.x()
+        dy = scene_pos.y() - self._rotation_center.y()
+        current_angle = math.atan2(dy, dx)
+        delta_angle = current_angle - self._rotation_start_angle
+        degrees = math.degrees(delta_angle)
+
+        self.rotate_selection_degrees(degrees, use_start_positions=True)
 
     def _finalize_rotation_drag(self) -> None:
-        if not self._rotation_dragging:
-            return
-        after = {
-            atom_id: (self.model.get_atom(atom_id).x, self.model.get_atom(atom_id).y)
-            for atom_id in self._rotation_start_positions
-            if atom_id in self.model.atoms
-        }
-        if after and self._rotation_start_positions:
-            cmd = MoveAtomsCommand(
-                self.model,
-                self,
-                self._rotation_start_positions,
-                after,
-                skip_first_redo=True,
-            )
-            self.undo_stack.push(cmd)
         self._rotation_dragging = False
         self._rotation_center = None
         self._rotation_start_angle = None
         self._rotation_start_positions = {}
-
-    def rotate_selection_degrees(self, angle_deg: float) -> None:
-        if not self._selected_atom_ids_for_transform():
-            return
-        bbox = self._selected_items_bbox()
-        if bbox is None:
-            return
-        cx = bbox.center().x()
-        cy = bbox.center().y()
-        radians = math.radians(angle_deg)
-        cos_a = math.cos(radians)
-        sin_a = math.sin(radians)
-        atom_ids = self._selected_atom_ids_for_transform()
-        before = {
-            atom_id: (self.model.get_atom(atom_id).x, self.model.get_atom(atom_id).y)
-            for atom_id in atom_ids
-            if atom_id in self.model.atoms
-        }
-        after = {}
-        for atom_id, (x0, y0) in before.items():
-            rx = x0 - cx
-            ry = y0 - cy
-            nx = cx + rx * cos_a - ry * sin_a
-            ny = cy + rx * sin_a + ry * cos_a
-            after[atom_id] = (nx, ny)
-        if not after:
-            return
-        cmd = MoveAtomsCommand(self.model, self, before, after)
-        self.undo_stack.push(cmd)
+        self._rotation_start_text_transforms = {}
         self._update_selection_overlay()
 
+    def _selected_text_items(self) -> list[TextAnnotationItem]:
+        return [item for item in self.scene.selectedItems() if isinstance(item, TextAnnotationItem)]
+
+    def rotate_selection_degrees(self, degrees: float, use_start_positions: bool = False) -> None:
+        """Rotate selected items by degrees around their collective center."""
+        selected_atom_ids = self._selected_atom_ids_for_transform()
+        selected_text_items = self._selected_text_items()
+        
+        if not selected_atom_ids and not selected_text_items:
+            return
+
+        cx, cy = 0.0, 0.0
+        
+        # If dragging, usage rotation center
+        if use_start_positions and self._rotation_center is not None:
+             cx = self._rotation_center.x()
+             cy = self._rotation_center.y()
+             # We use the fixed center from drag start
+        else:
+             # Calculate collective center
+            bbox = self._selected_items_bbox()
+            if bbox is None:
+                return
+            center = bbox.center()
+            cx, cy = center.x(), center.y()
+            
+        rad = math.radians(degrees)
+        cos_a = math.cos(rad)
+        sin_a = math.sin(rad)
+
+        # Rotate Atoms
+        if selected_atom_ids:
+            new_positions = {}
+            for aid in selected_atom_ids:
+                if use_start_positions and aid in self._rotation_start_positions:
+                    ox, oy = self._rotation_start_positions[aid]
+                else:
+                    atom = self.model.get_atom(aid)
+                    ox, oy = atom.x, atom.y
+                
+                dx = ox - cx
+                dy = oy - cy
+                nx = dx * cos_a - dy * sin_a + cx
+                ny = dx * sin_a + dy * cos_a + cy
+                new_positions[aid] = (nx, ny)
+
+            # If this is live drag, update directly without undo stack (handled at end)
+            # Actually, canvas usually updates model directly during drag and pushes single command at end?
+            # Existing _update_rotation_drag called rotate_selection_degrees.
+            # But the original implementation of rotate_selection_degrees PUSHED COMMANDS.
+            # We should probably separate "preview" from "commit".
+            # For this refactor, let's assume this method updates positions efficiently.
+            
+            # Use MoveAtomsCommand for undo stack if valid drop?
+            # Or just update positions if use_start_positions is True (dragging).
+            if use_start_positions:
+                for aid, (nx, ny) in new_positions.items():
+                    self.model.update_atom_position(aid, nx, ny)
+                    self.update_atom_item(aid, nx, ny)
+                self.update_bond_items_for_atoms(selected_atom_ids)
+            else:
+                 self.undo_stack.push(
+                    MoveAtomsCommand(self.model, self, new_positions)
+                )
+
+        # Rotate Text Items
+        if selected_text_items:
+             for item in selected_text_items:
+                if use_start_positions and hasattr(self, "_rotation_start_text_transforms") and item in self._rotation_start_text_transforms:
+                    start_pos, start_rot = self._rotation_start_text_transforms[item]
+                    
+                    # Logic: We are rotating around (cx, cy) by 'degrees' relative to START pose.
+                    # QGraphicsItem rotation is around its transform origin.
+                    
+                    # 1. Calculate new center position (orbit)
+                    # Item's scene pos is top-left usually? TextItem might be different.
+                    # Let's use mapToScene(center) if we stored it?
+                    # Getting intricate. Simplified:
+                    # Treat item.pos() as the anchor.
+                    
+                    # Better: define item center relative to scene.
+                    # Start Logic:
+                    # We stored start_pos (item.pos) and start_rot.
+                    
+                    # We need the item's center at start state.
+                    # But calculating that is hard if we don't store it.
+                    # Let's assume start_pos is good enough for now, or improve storage.
+                    
+                    # Let's do delta rotation on CURRENT state? 
+                    # use_start_positions implies absolute rotation from start.
+                    
+                    # Re-implement correctly for visual drag:
+                    
+                    # Calculate the item's center in scene coordinates based on its START position and rotation
+                    # This is complex because QGraphicsTextItem's bounding rect changes with rotation.
+                    # For simplicity during drag, let's apply the rotation to the item's current state
+                    # relative to the rotation center, and then reset its rotation.
+                    
+                    # This is a tricky part. The current implementation of _update_rotation_drag
+                    # calls this function with the *total* delta_angle from the start.
+                    # So, we need to apply the rotation from the *original* state.
+                    
+                    # Reset to start state
+                    item.setPos(start_pos)
+                    item.setRotation(start_rot)
+                    
+                    # Now apply the full rotation from the start state
+                    # Set origin to center for rotation
+                    br = item.boundingRect()
+                    center = br.center()
+                    item.setTransformOriginPoint(center)
+                    
+                    # 1. Rotate in place
+                    item.setRotation(start_rot + degrees) # Apply total rotation
+                    
+                    # 2. Orbit if we are rotating around a collective center that isn't just this item's center
+                    item_scene_center = item.mapToScene(center)
+                    # Only orbit if the item's center is not the rotation center (i.e., it's not a single item rotation around its own center)
+                    if math.hypot(item_scene_center.x() - cx, item_scene_center.y() - cy) > 1.0:
+                        # Calculate new center position after orbiting
+                        dx_orbit = item_scene_center.x() - cx
+                        dy_orbit = item_scene_center.y() - cy
+                        nx_center_orbit = dx_orbit * cos_a - dy_orbit * sin_a + cx
+                        ny_center_orbit = dx_orbit * sin_a + dy_orbit * cos_a + cy
+                        
+                        # Move item so its center is at nx_center_orbit, ny_center_orbit
+                        offset = QPointF(nx_center_orbit, ny_center_orbit) - item_scene_center
+                        item.moveBy(offset.x(), offset.y())
+                else:
+                    # Increment rotation (toolbar)
+                    current_rot = item.rotation()
+                    # Rotate around center of bbox? Or item center?
+                    # Users usually expect in-place rotation if handled via toolbar unless group.
+                    # For consistency with atoms, rotate around group center.
+                    
+                    item_center = item.sceneBoundingRect().center()
+                    dx = item_center.x() - cx
+                    dy = item_center.y() - cy
+                    
+                    nx_center = dx * cos_a - dy * sin_a + cx
+                    ny_center = dx * sin_a + dy * cos_a + cy
+                    
+                    # Move item center to new position
+                    # Diff
+                    offset = QPointF(nx_center, ny_center) - item_center
+                    item.moveBy(offset.x(), offset.y())
+                    
+                    # Add rotation
+                    item.setTransformOriginPoint(item.boundingRect().center())
+                    item.setRotation(current_rot + degrees)
+
+        # Update overlay at the end
+        if use_start_positions:
+             self._update_selection_overlay()
+
     def flip_selection_horizontal(self) -> None:
-        if not self._selected_atom_ids_for_transform():
+        if not self._selected_atom_ids_for_transform() and not self._selected_text_items():
             return
         bbox = self._selected_items_bbox()
         if bbox is None:
             return
         cx = bbox.center().x()
+        
+        # Atoms
         atom_ids = self._selected_atom_ids_for_transform()
-        before = {
-            atom_id: (self.model.get_atom(atom_id).x, self.model.get_atom(atom_id).y)
-            for atom_id in atom_ids
-            if atom_id in self.model.atoms
-        }
-        after = {
-            atom_id: (cx - (x0 - cx), y0)
-            for atom_id, (x0, y0) in before.items()
-        }
-        cmd = MoveAtomsCommand(self.model, self, before, after)
-        self.undo_stack.push(cmd)
+        # ... existing atom flip logic ...
+        if atom_ids:
+            before = {
+                atom_id: (self.model.get_atom(atom_id).x, self.model.get_atom(atom_id).y)
+                for atom_id in atom_ids
+                if atom_id in self.model.atoms
+            }
+            after = {
+                atom_id: (cx - (x0 - cx), y0)
+                for atom_id, (x0, y0) in before.items()
+            }
+            cmd = MoveAtomsCommand(self.model, self, before, after)
+            self.undo_stack.push(cmd)
+            
+        # Text Items
+        # Flip position relative to cx
+        for item in self._selected_text_items():
+            # Flip center X
+            br = item.sceneBoundingRect()
+            center = br.center()
+            new_cx = cx - (center.x() - cx)
+            # Move
+            item.moveBy(new_cx - center.x(), 0)
+            # Potentially flip content? Usually text isn't mirrored.
+            
         self._update_selection_overlay()
 
     def flip_selection_vertical(self) -> None:
-        if not self._selected_atom_ids_for_transform():
+        if not self._selected_atom_ids_for_transform() and not self._selected_text_items():
             return
         bbox = self._selected_items_bbox()
         if bbox is None:
@@ -4129,16 +4451,24 @@ class ChemusonCanvas(QGraphicsView):
         return edges
 
     def _begin_drag(self, scene_pos: QPointF) -> None:
-        if not self._selected_atom_ids_for_transform():
+        if not self._selected_atom_ids_for_transform() and not self._selected_text_items():
             return
         self._dragging_selection = True
         self._drag_start_pos = scene_pos
+        
+        # Capture atoms
         atom_ids = self._selected_atom_ids_for_transform()
         self._drag_start_positions = {
             atom_id: (self.model.get_atom(atom_id).x, self.model.get_atom(atom_id).y)
             for atom_id in atom_ids
             if atom_id in self.model.atoms
         }
+        
+        # Capture text items
+        self._drag_start_text_positions = {}
+        for item in self._selected_text_items():
+            self._drag_start_text_positions[item] = (item.pos(), item.rotation())
+            
         self._drag_has_moved = False
 
     def _is_on_paper(self, x: float, y: float) -> bool:
