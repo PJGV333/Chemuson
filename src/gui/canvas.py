@@ -4,11 +4,13 @@ Page-based canvas using QGraphicsView/QGraphicsScene for document-style editing.
 """
 from __future__ import annotations
 
+import json
 import math
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from PyQt6.QtWidgets import (
     QApplication,
+    QMenu,
     QGraphicsView,
     QGraphicsScene,
     QGraphicsRectItem,
@@ -524,10 +526,16 @@ class ChemusonCanvas(QGraphicsView):
             return
 
         if event.button() == Qt.MouseButton.RightButton:
-            self._update_hover(scene_pos)
-            if self._delete_hovered():
-                return
-            super().mousePressEvent(event)
+            clicked_item = self._get_item_at(scene_pos)
+            if isinstance(
+                clicked_item,
+                (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem),
+            ):
+                if not (event.modifiers() & Qt.KeyboardModifier.ShiftModifier):
+                    self.scene.clearSelection()
+                clicked_item.setSelected(True)
+                self._sync_selection_from_scene()
+            self._show_context_menu(scene_pos, event.globalPosition().toPoint())
             return
 
         if event.button() != Qt.MouseButton.LeftButton:
@@ -950,6 +958,10 @@ class ChemusonCanvas(QGraphicsView):
                 return
         if self._handle_atom_text_entry(event):
             return
+        if self._handle_select_all(event):
+            return
+        if self._handle_nudge(event):
+            return
         if self._handle_hotkeys(event):
             return
         super().keyPressEvent(event)
@@ -977,6 +989,90 @@ class ChemusonCanvas(QGraphicsView):
             return True
         cmd = ChangeAtomCommand(self.model, self, atom_id, value)
         self.undo_stack.push(cmd)
+        return True
+
+    def _handle_nudge(self, event) -> bool:
+        key = event.key()
+        if key not in (
+            Qt.Key.Key_Left,
+            Qt.Key.Key_Right,
+            Qt.Key.Key_Up,
+            Qt.Key.Key_Down,
+        ):
+            return False
+
+        focus_item = self.scene.focusItem()
+        if isinstance(focus_item, TextAnnotationItem) and (
+            focus_item.textInteractionFlags()
+            & Qt.TextInteractionFlag.TextEditorInteraction
+        ):
+            return False
+
+        selected_atom_ids = self._selected_atom_ids_for_transform()
+        selected_text_items = self._selected_text_items()
+        if not selected_atom_ids and not selected_text_items:
+            return False
+
+        step = 1.0
+        if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+            step = 10.0
+
+        dx = 0.0
+        dy = 0.0
+        if key == Qt.Key.Key_Left:
+            dx = -step
+        elif key == Qt.Key.Key_Right:
+            dx = step
+        elif key == Qt.Key.Key_Up:
+            dy = -step
+        elif key == Qt.Key.Key_Down:
+            dy = step
+
+        if selected_atom_ids:
+            before = {
+                atom_id: (self.model.get_atom(atom_id).x, self.model.get_atom(atom_id).y)
+                for atom_id in selected_atom_ids
+                if atom_id in self.model.atoms
+            }
+            after = {
+                atom_id: (x + dx, y + dy)
+                for atom_id, (x, y) in before.items()
+            }
+            self.undo_stack.push(MoveAtomsCommand(self.model, self, before, after))
+
+        if selected_text_items:
+            before = {item: (item.pos(), item.rotation()) for item in selected_text_items}
+            after = {
+                item: (QPointF(pos.x() + dx, pos.y() + dy), rot)
+                for item, (pos, rot) in before.items()
+            }
+            self.undo_stack.push(MoveTextItemsCommand(self, before, after))
+
+        self._update_selection_overlay()
+        return True
+
+    def _select_all_items(self) -> None:
+        self.scene.clearSelection()
+        for item in self.scene.items():
+            if isinstance(
+                item,
+                (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem),
+            ) and item.isVisible():
+                item.setSelected(True)
+        self._sync_selection_from_scene()
+
+    def _handle_select_all(self, event) -> bool:
+        if not (event.modifiers() & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.MetaModifier)):
+            return False
+        if event.key() not in (Qt.Key.Key_A, Qt.Key.Key_E):
+            return False
+        focus_item = self.scene.focusItem()
+        if isinstance(focus_item, TextAnnotationItem) and (
+            focus_item.textInteractionFlags()
+            & Qt.TextInteractionFlag.TextEditorInteraction
+        ):
+            return False
+        self._select_all_items()
         return True
 
     @staticmethod
@@ -1316,17 +1412,44 @@ class ChemusonCanvas(QGraphicsView):
 
 
     def copy_to_clipboard(self) -> None:
-        if not self.model.atoms:
+        selected_text_items = self._selected_text_items()
+        selected_arrows = any(isinstance(item, ArrowItem) for item in self.scene.selectedItems())
+        selected_brackets = any(isinstance(item, BracketItem) for item in self.scene.selectedItems())
+        has_structure_selection = bool(self.state.selected_atoms or self.state.selected_bonds)
+        only_text_selection = bool(selected_text_items) and not (
+            has_structure_selection or selected_arrows or selected_brackets
+        )
+        if not self.model.atoms and not selected_text_items:
             return
         mime = QMimeData()
-        try:
-            molfile = molgraph_to_molfile(self.model)
-            smiles = molgraph_to_smiles(self.model)
-            mime.setData("chemical/x-mdl-molfile", molfile.encode("utf-8"))
-            if smiles:
-                mime.setText(smiles)
-        except Exception:
-            pass
+        if self.model.atoms and not only_text_selection:
+            try:
+                molfile = molgraph_to_molfile(self.model)
+                smiles = molgraph_to_smiles(self.model)
+                mime.setData("chemical/x-mdl-molfile", molfile.encode("utf-8"))
+                if smiles:
+                    mime.setText(smiles)
+            except Exception:
+                pass
+        if only_text_selection:
+            data = {
+                "text_items": [
+                    {
+                        "text": item.toPlainText(),
+                        "html": item.toHtml(),
+                        "x": item.pos().x(),
+                        "y": item.pos().y(),
+                        "rotation": item.rotation(),
+                        "font": item.font().toString(),
+                        "color": item.defaultTextColor().name(),
+                    }
+                    for item in selected_text_items
+                ]
+            }
+            mime.setData(
+                "application/x-chemuson-text-items",
+                json.dumps(data).encode("utf-8"),
+            )
 
         has_selection = bool(self.state.selected_atoms or self.state.selected_bonds)
         has_selection = has_selection or bool(self.scene.selectedItems())
@@ -1349,6 +1472,14 @@ class ChemusonCanvas(QGraphicsView):
         if mime is None:
             return
 
+        if mime.hasFormat("application/x-chemuson-text-items"):
+            try:
+                payload = json.loads(bytes(mime.data("application/x-chemuson-text-items")).decode("utf-8"))
+                self._paste_text_items(payload)
+                return
+            except Exception:
+                pass
+
         if mime.hasFormat("chemical/x-mdl-molfile"):
             molfile = bytes(mime.data("chemical/x-mdl-molfile")).decode("utf-8", errors="ignore")
             try:
@@ -1370,6 +1501,47 @@ class ChemusonCanvas(QGraphicsView):
 
         if mime.hasFormat("image/png") or mime.hasImage() or mime.hasFormat("image/svg+xml"):
             self._insert_image_from_clipboard(mime)
+
+    def _paste_text_items(self, payload: dict) -> None:
+        items = payload.get("text_items", [])
+        if not items:
+            return
+        created: list[TextAnnotationItem] = []
+        for txt_d in items:
+            text_item = TextAnnotationItem(txt_d.get("text", ""), 0.0, 0.0)
+            html = txt_d.get("html")
+            if html:
+                text_item.setHtml(html)
+            if "rotation" in txt_d:
+                text_item.setRotation(float(txt_d["rotation"]))
+            if "font" in txt_d:
+                font = QFont()
+                font.fromString(txt_d["font"])
+                text_item.setFont(font)
+            if "color" in txt_d:
+                text_item.setDefaultTextColor(QColor(txt_d["color"]))
+            text_item.setPos(float(txt_d.get("x", 0.0)), float(txt_d.get("y", 0.0)))
+            self.scene.addItem(text_item)
+            created.append(text_item)
+
+        bbox: Optional[QRectF] = None
+        for item in created:
+            rect = item.sceneBoundingRect()
+            bbox = rect if bbox is None else bbox.united(rect)
+        if bbox is None:
+            return
+        target = self._last_scene_pos
+        if target is None:
+            target = self.mapToScene(self.viewport().rect().center())
+        dx = target.x() - bbox.left()
+        dy = target.y() - bbox.top()
+        for item in created:
+            item.setPos(item.pos() + QPointF(dx, dy))
+
+        self.scene.clearSelection()
+        for item in created:
+            item.setSelected(True)
+        self._sync_selection_from_scene()
 
     def _render_scene_bounds(self, selected_only: bool = False) -> Optional[QRectF]:
         rect: Optional[QRectF] = None
@@ -1410,7 +1582,7 @@ class ChemusonCanvas(QGraphicsView):
                     continue
                 extend(item.sceneBoundingRect())
             for item in self.scene.selectedItems():
-                if isinstance(item, (ArrowItem, BracketItem)):
+                if isinstance(item, (ArrowItem, BracketItem, TextAnnotationItem)):
                     extend(item.sceneBoundingRect())
         else:
             for atom_id in self.atom_items.keys():
@@ -1434,6 +1606,9 @@ class ChemusonCanvas(QGraphicsView):
                 if item.scene() is not self.scene:
                     continue
                 if item.isVisible():
+                    extend(item.sceneBoundingRect())
+            for item in self.scene.items():
+                if isinstance(item, TextAnnotationItem) and item.isVisible():
                     extend(item.sceneBoundingRect())
 
         if rect is None:
@@ -2692,9 +2867,13 @@ class ChemusonCanvas(QGraphicsView):
 
 
     def _sync_selection_from_scene(self) -> None:
+        try:
+            selected_items = list(self.scene.selectedItems())
+        except RuntimeError:
+            return
         selected_atoms = set()
         selected_bonds = set()
-        for item in self.scene.selectedItems():
+        for item in selected_items:
             if isinstance(item, AtomItem):
                 if item.atom_id in self.model.atoms:
                     selected_atoms.add(item.atom_id)
@@ -2702,7 +2881,7 @@ class ChemusonCanvas(QGraphicsView):
                 if item.bond_id in self.model.bonds:
                     selected_bonds.add(item.bond_id)
 
-        selected_text_items = self._selected_text_items()
+        selected_text_items = [item for item in selected_items if isinstance(item, TextAnnotationItem)]
         
         self.state.selected_atoms = selected_atoms
         self.state.selected_bonds = selected_bonds
@@ -2790,7 +2969,10 @@ class ChemusonCanvas(QGraphicsView):
             candidates = [
                 item
                 for item in self.scene.items(path)
-                if isinstance(item, (AtomItem, BondItem, ArrowItem, BracketItem))
+                if isinstance(
+                    item,
+                    (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem),
+                )
             ]
             items = [
                 item
@@ -2802,7 +2984,10 @@ class ChemusonCanvas(QGraphicsView):
             items = [
                 item
                 for item in self.scene.items(rect)
-                if isinstance(item, (AtomItem, BondItem, ArrowItem, BracketItem))
+                if isinstance(
+                    item,
+                    (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem),
+                )
             ]
 
         if not self._select_additive:
@@ -2823,6 +3008,46 @@ class ChemusonCanvas(QGraphicsView):
         if self._select_preview_rect is not None:
             self.scene.removeItem(self._select_preview_rect)
             self._select_preview_rect = None
+
+    def _show_context_menu(self, scene_pos: QPointF, global_pos) -> None:
+        menu = QMenu(self)
+        has_selection = bool(
+            self.state.selected_atoms
+            or self.state.selected_bonds
+            or self._selected_text_items()
+            or any(isinstance(item, (ArrowItem, BracketItem)) for item in self.scene.selectedItems())
+        )
+
+        act_cut = menu.addAction("Cortar")
+        act_copy = menu.addAction("Copiar")
+        act_paste = menu.addAction("Pegar")
+        menu.addSeparator()
+        act_delete = menu.addAction("Eliminar")
+        menu.addSeparator()
+        act_select_all = menu.addAction("Seleccionar todo")
+
+        act_cut.setEnabled(has_selection)
+        act_copy.setEnabled(has_selection)
+        act_delete.setEnabled(has_selection)
+
+        action = menu.exec(global_pos)
+        if action is None:
+            return
+        if action == act_copy:
+            self.copy_to_clipboard()
+            return
+        if action == act_paste:
+            self.paste_from_clipboard()
+            return
+        if action == act_cut:
+            self.copy_to_clipboard()
+            self.delete_selection()
+            return
+        if action == act_delete:
+            self.delete_selection()
+            return
+        if action == act_select_all:
+            self._select_all_items()
 
 
     def _ensure_selection_overlay(self) -> None:

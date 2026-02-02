@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QAction, QActionGroup, QKeySequence, QIcon, QPainter
 from PyQt6.QtPrintSupport import QPrinter
+from typing import Optional
 
 from gui.canvas import ChemusonCanvas
 from gui.periodic_table import PeriodicTableDialog
@@ -48,9 +49,10 @@ class ChemusonWindow(QMainWindow):
         
         # Apply main stylesheet
         self.setStyleSheet(MAIN_STYLESHEET)
-        
+
         # === CORE COMPONENTS ===
         self._create_actions()
+        self._current_file_path: Optional[str] = None
         
         # === CENTRAL CANVAS ===
         self.canvas = ChemusonCanvas()
@@ -125,7 +127,9 @@ class ChemusonWindow(QMainWindow):
         self.action_open.triggered.connect(self._on_file_open)
         
         self.action_save = QAction("Guardar", self)
-        self.action_save.setShortcut(QKeySequence.StandardKey.Save)
+        self.action_save.setShortcuts(
+            [QKeySequence.StandardKey.Save, QKeySequence("Ctrl+G")]
+        )
         self.action_save.triggered.connect(self._on_file_save)
         
         self.action_quit = QAction("Salir", self)
@@ -535,6 +539,7 @@ class ChemusonWindow(QMainWindow):
     def _on_file_new(self) -> None:
         """Create a new empty canvas."""
         self.canvas.clear_canvas()
+        self._current_file_path = None
         self.statusBar().showMessage("Nuevo documento creado")
     
     def _on_file_open(self) -> None:
@@ -558,22 +563,25 @@ class ChemusonWindow(QMainWindow):
                     graph = molfile_to_molgraph(molfile)
                     self.canvas.clear_canvas()
                     self.canvas._insert_molgraph(graph)
-                
+                self._current_file_path = filepath
                 self.statusBar().showMessage(f"Abierto: {filepath}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"No se pudo abrir el archivo:\n{e}")
     
     def _on_file_save(self) -> None:
         """Save the current work in .cmsn format."""
-        filepath, selected_filter = QFileDialog.getSaveFileName(
-            self,
-            "Guardar archivo",
-            "",
-            "Archivo de Chemuson (*.cmsn);;Archivo MOL (*.mol);;Todos los archivos (*.*)"
-        )
+        filepath = self._current_file_path
+        selected_filter = ""
+        if not filepath:
+            filepath, selected_filter = QFileDialog.getSaveFileName(
+                self,
+                "Guardar archivo",
+                "",
+                "Archivo de Chemuson (*.cmsn);;Archivo MOL (*.mol);;Todos los archivos (*.*)"
+            )
         if filepath:
             try:
-                if filepath.lower().endswith(".mol") or "MOL" in selected_filter:
+                if filepath.lower().endswith(".mol") or filepath.lower().endswith(".sdf") or "MOL" in selected_filter:
                     # Export as .mol if explicitly requested
                     from chemio.rdkit_io import molgraph_to_molfile
                     molfile = molgraph_to_molfile(self.canvas.graph)
@@ -584,7 +592,7 @@ class ChemusonWindow(QMainWindow):
                     if not filepath.lower().endswith(".cmsn"):
                         filepath += ".cmsn"
                     PersistenceManager.save_to_file(filepath, self.canvas)
-                
+                self._current_file_path = filepath
                 self.statusBar().showMessage(f"Guardado: {filepath}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"No se pudo guardar:\n{e}")
