@@ -382,6 +382,21 @@ class AddBondCommand(QUndoCommand):
         self._new_atom_pos = new_atom_pos
         self._created_atom_id: Optional[int] = None
         self._hydrogen_specs: list[tuple[int, float, float, int]] = []
+        self._demoted_explicit_atoms: Optional[list[int]] = None
+
+    def _should_demote_explicit_carbon(self, atom_id: int) -> bool:
+        atom = self._model.get_atom(atom_id)
+        if atom.element != "C" or not atom.is_explicit:
+            return False
+        if getattr(getattr(self._view, "state", None), "show_implicit_carbons", True):
+            return False
+        if atom.charge != 0 or atom.isotope is not None or atom.explicit_h is not None:
+            return False
+        if atom.mapping is not None or atom.is_query:
+            return False
+        if _atom_degree(self._model, atom_id) <= 0:
+            return False
+        return True
 
     def redo(self) -> None:
         if self._a2_id is None:
@@ -435,6 +450,19 @@ class AddBondCommand(QUndoCommand):
                 length_px=self._length_px,
             )
         self._view.add_bond_item(bond)
+        if self._demoted_explicit_atoms is None:
+            demoted: list[int] = []
+            for atom_id in (self._a1_id, self._a2_id):
+                if atom_id is None:
+                    continue
+                if self._should_demote_explicit_carbon(atom_id):
+                    demoted.append(atom_id)
+            self._demoted_explicit_atoms = demoted
+        for atom_id in self._demoted_explicit_atoms:
+            if atom_id in self._model.atoms:
+                atom = self._model.get_atom(atom_id)
+                self._model.update_atom_element(atom_id, atom.element, is_explicit=False)
+                self._view.update_atom_item_element(atom_id, atom.element, is_explicit=False)
 
     def undo(self) -> None:
         if self._hydrogen_specs:
@@ -447,6 +475,12 @@ class AddBondCommand(QUndoCommand):
                 self._view.remove_bond_item(removed.id)
             self._view.remove_atom_item(atom.id)
             self._a2_id = None
+        if self._demoted_explicit_atoms:
+            for atom_id in self._demoted_explicit_atoms:
+                if atom_id in self._model.atoms:
+                    atom = self._model.get_atom(atom_id)
+                    self._model.update_atom_element(atom_id, atom.element, is_explicit=True)
+                    self._view.update_atom_item_element(atom_id, atom.element, is_explicit=True)
 
 
 class ChangeBondCommand(QUndoCommand):

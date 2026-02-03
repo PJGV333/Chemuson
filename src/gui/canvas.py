@@ -682,7 +682,19 @@ class ChemusonCanvas(QGraphicsView):
         if self.current_tool == "tool_atom":
             element = self.state.default_element
             if clicked_atom_id is None:
-                cmd = AddAtomCommand(self.model, self, element, scene_pos.x(), scene_pos.y())
+                is_explicit = None
+                if element == "C" and not self.state.show_implicit_carbons:
+                    is_explicit = True
+                elif element == "H" and not self.state.show_implicit_hydrogens:
+                    is_explicit = True
+                cmd = AddAtomCommand(
+                    self.model,
+                    self,
+                    element,
+                    scene_pos.x(),
+                    scene_pos.y(),
+                    is_explicit=is_explicit,
+                )
                 self.undo_stack.push(cmd)
             else:
                 cmd = ChangeAtomCommand(self.model, self, clicked_atom_id, element)
