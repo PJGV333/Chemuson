@@ -1040,6 +1040,14 @@ class ChemusonCanvas(QGraphicsView):
             self.zoom_out()
 
     def keyPressEvent(self, event) -> None:
+        focus_item = self.scene.focusItem()
+        if isinstance(focus_item, TextAnnotationItem) and (
+            focus_item.textInteractionFlags()
+            & Qt.TextInteractionFlag.TextEditorInteraction
+        ):
+            # Let the text editor handle Delete/Backspace while editing text.
+            super().keyPressEvent(event)
+            return
         if event.key() == Qt.Key.Key_Space and not self._space_panning:
             self._space_panning = True
             self.setCursor(Qt.CursorShape.OpenHandCursor)
@@ -1075,6 +1083,19 @@ class ChemusonCanvas(QGraphicsView):
         if self._handle_hotkeys(event):
             return
         super().keyPressEvent(event)
+
+    def remember_text_edit_item(self, item: TextAnnotationItem | None) -> None:
+        self._last_text_edit_item = item
+
+    def restore_text_edit_focus(self) -> None:
+        item = getattr(self, "_last_text_edit_item", None)
+        if item is None:
+            return
+        if item.scene() is not self.scene:
+            self._last_text_edit_item = None
+            return
+        item.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
+        item.setFocus()
 
     def keyReleaseEvent(self, event) -> None:
         if event.key() == Qt.Key.Key_Space and self._space_panning:
@@ -3038,7 +3059,12 @@ class ChemusonCanvas(QGraphicsView):
     def _configure_bond_rendering(self, bond: Bond, item: BondItem) -> None:
         prefer_full_length = self.state.show_implicit_carbons and self.state.show_implicit_hydrogens
         is_aromatic_ring = bond.is_aromatic and bond.ring_id is not None
-        symmetric_double = bond.ring_id is None and not is_aromatic_ring
+        a1 = self.model.get_atom(bond.a1_id)
+        a2 = self.model.get_atom(bond.a2_id)
+        has_hetero = False
+        if a1 is not None and a2 is not None:
+            has_hetero = (a1.element != "C") or (a2.element != "C")
+        symmetric_double = has_hetero and not is_aromatic_ring
         item.set_multibond_rendering(prefer_full_length, symmetric_double)
 
     @staticmethod
@@ -3309,7 +3335,7 @@ class ChemusonCanvas(QGraphicsView):
         # Get Cursor
         cursor = item.textCursor()
         is_editing = (item.textInteractionFlags() & Qt.TextInteractionFlag.TextEditorInteraction)
-        
+
         if not is_editing:
             # Not editing -> Apply to whole document
             cursor.select(cursor.SelectionType.Document)
@@ -3327,6 +3353,10 @@ class ChemusonCanvas(QGraphicsView):
         
         # Apply the format
         cursor.mergeCharFormat(fmt)
+        if is_editing and property_name in ("sub", "sup") and cursor.hasSelection():
+            end_pos = cursor.selectionEnd()
+            cursor.setPosition(end_pos)
+            cursor.setCharFormat(fmt)
         item.setTextCursor(cursor)
 
     def update_text_format(self, family: str, size: int, b: bool, i: bool, u: bool, sub: bool, sup: bool, property_name: str = "all") -> None:
@@ -3351,6 +3381,38 @@ class ChemusonCanvas(QGraphicsView):
                 self._apply_text_settings(item, property_name)
             elif isinstance(item, AtomItem):
                 pass
+
+    def update_text_alignment(self, alignment: Qt.AlignmentFlag) -> None:
+        items_to_update = self.scene.selectedItems()
+        focus_item = self.scene.focusItem()
+        if isinstance(focus_item, TextAnnotationItem) and focus_item not in items_to_update:
+            items_to_update.append(focus_item)
+
+        for item in items_to_update:
+            if not isinstance(item, TextAnnotationItem):
+                continue
+            # Ensure there's a text width so alignment has visible effect.
+            if alignment == Qt.AlignmentFlag.AlignLeft:
+                item.setTextWidth(-1)
+            else:
+                rect = item.boundingRect()
+                min_width = max(60.0, rect.width() + 20.0)
+                item.setTextWidth(min_width)
+            cursor = item.textCursor()
+            is_editing = (
+                item.textInteractionFlags()
+                & Qt.TextInteractionFlag.TextEditorInteraction
+            )
+            if not is_editing:
+                cursor.select(cursor.SelectionType.Document)
+            block_format = cursor.blockFormat()
+            block_format.setAlignment(alignment)
+            cursor.setBlockFormat(block_format)
+            item.setTextCursor(cursor)
+            doc = item.document()
+            option = doc.defaultTextOption()
+            option.setAlignment(alignment)
+            doc.setDefaultTextOption(option)
 
     def update_text_color(self, color: QColor) -> None:
         """Update current text color and apply to selection."""
@@ -3833,17 +3895,27 @@ class ChemusonCanvas(QGraphicsView):
     def _hit_selection_handle(self, scene_pos: QPointF) -> bool:
         if self._selection_handle is None or not self._selection_handle.isVisible():
             return False
-        return self._selection_handle.sceneBoundingRect().contains(scene_pos)
+        return self._hit_handle_item(self._selection_handle, scene_pos)
 
     def _hit_selection_move_handle(self, scene_pos: QPointF) -> bool:
         if self._selection_move_handle is None or not self._selection_move_handle.isVisible():
             return False
-        return self._selection_move_handle.sceneBoundingRect().contains(scene_pos)
+        return self._hit_handle_item(self._selection_move_handle, scene_pos)
 
     def _hit_selection_scale_handle(self, scene_pos: QPointF) -> bool:
         if self._selection_scale_handle is None or not self._selection_scale_handle.isVisible():
             return False
-        return self._selection_scale_handle.sceneBoundingRect().contains(scene_pos)
+        return self._hit_handle_item(self._selection_scale_handle, scene_pos)
+
+    def _hit_handle_item(self, handle: QGraphicsItem, scene_pos: QPointF) -> bool:
+        # Use a screen-space hit target so handles stay clickable at low zoom.
+        view_pos = self.mapFromScene(scene_pos)
+        center = handle.sceneBoundingRect().center()
+        center_view = self.mapFromScene(center)
+        dx = view_pos.x() - center_view.x()
+        dy = view_pos.y() - center_view.y()
+        radius = max(SELECTION_HANDLE_RADIUS_PX * 2.0, 10.0)
+        return (dx * dx + dy * dy) <= (radius * radius)
 
     def _begin_rotation_drag(self, scene_pos: QPointF) -> None:
         if not self._selected_atom_ids_for_transform() and not self._selected_text_items():

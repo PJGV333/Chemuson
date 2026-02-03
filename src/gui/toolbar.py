@@ -133,7 +133,9 @@ class ChemusonToolbar(QToolBar):
         self.addSeparator()
         
         # --- Text Tool ---
-        self._add_tool_action(draw_glyph_icon("T"), "Texto", "tool_text")
+        self.text_button, self.text_action = self._add_palette_button(
+            draw_glyph_icon("T"), "Texto", "tool_text"
+        )
         
         # --- Brackets Tool ---
         bracket_icon, bracket_tip = self._bracket_meta[self._current_bracket_tool_id]
@@ -239,6 +241,21 @@ class ChemusonToolbar(QToolBar):
     def _trigger_palette_action(self, callback, menu: QMenu) -> None:
         callback()
         menu.close()
+
+    def set_text_menu(self, actions: list[QAction], color_actions: list[QAction]) -> None:
+        if not hasattr(self, "text_button"):
+            return
+        menu = self.text_button.menu()
+        menu.clear()
+        for action in actions:
+            if action is None:
+                menu.addSeparator()
+            else:
+                menu.addAction(action)
+        if color_actions:
+            color_menu = menu.addMenu("Color de etiquetas")
+            for action in color_actions:
+                color_menu.addAction(action)
 
     def _populate_grid_menu(self, menu: QMenu, entries: list[dict], columns: int) -> None:
         container = QWidget(menu)

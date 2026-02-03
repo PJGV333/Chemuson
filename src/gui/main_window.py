@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QVBoxLayout,
 )
-from PyQt6.QtCore import Qt, QSize, QSettings
+from PyQt6.QtCore import Qt, QSize, QSettings, QEvent
 from PyQt6.QtGui import QAction, QActionGroup, QKeySequence, QIcon, QPainter
 from PyQt6.QtPrintSupport import QPrinter
 from typing import Optional
@@ -86,6 +86,23 @@ class ChemusonWindow(QMainWindow):
         self.toolbar = ChemusonToolbar()
         self.toolbar.setStyleSheet(TOOL_PALETTE_STYLESHEET)
         self.addToolBar(Qt.ToolBarArea.LeftToolBarArea, self.toolbar)
+        self.toolbar.set_text_menu(
+            [
+                self.action_label_font,
+                self.action_label_size_set,
+                None,
+                self.action_label_bold,
+                self.action_label_italic,
+                self.action_label_underline,
+                None,
+                self.action_label_subscript,
+                self.action_label_superscript,
+                None,
+                self.action_label_size_up,
+                self.action_label_size_down,
+            ],
+            [self.action_label_color_element, self.action_label_color_black],
+        )
         
         # === TEXT FORMAT TOOLBAR ===
         self.text_toolbar = TextFormatToolbar()
@@ -97,6 +114,7 @@ class ChemusonWindow(QMainWindow):
         # Text Toolbar Connections
         self.text_toolbar.format_changed.connect(self.canvas.update_text_format)
         self.text_toolbar.color_changed.connect(self.canvas.update_text_color)
+        self.text_toolbar.alignment_changed.connect(self.canvas.update_text_alignment)
         
         # === SIGNAL CONNECTIONS ===
         self._connect_undo_redo()
@@ -289,6 +307,19 @@ class ChemusonWindow(QMainWindow):
         self.action_label_size_down = QAction("Reducir tamaño", self)
         self.action_label_size_down.triggered.connect(lambda: self._on_label_font_size(-1.0))
 
+        self.action_text_align_left = QAction("Alinear a la izquierda", self)
+        self.action_text_align_left.triggered.connect(
+            lambda: self.canvas.update_text_alignment(Qt.AlignmentFlag.AlignLeft)
+        )
+        self.action_text_align_center = QAction("Centrar", self)
+        self.action_text_align_center.triggered.connect(
+            lambda: self.canvas.update_text_alignment(Qt.AlignmentFlag.AlignHCenter)
+        )
+        self.action_text_align_justify = QAction("Justificar", self)
+        self.action_text_align_justify.triggered.connect(
+            lambda: self.canvas.update_text_alignment(Qt.AlignmentFlag.AlignJustify)
+        )
+
         self.action_label_color_element = QAction("Por elemento", self)
         self.action_label_color_element.setCheckable(True)
         self.action_label_color_element.triggered.connect(
@@ -371,25 +402,6 @@ class ChemusonWindow(QMainWindow):
         self.action_preferences.triggered.connect(self._on_preferences)
         edit_menu.addAction(self.action_preferences)
 
-        # === Texto (Text) ===
-        text_menu = menubar.addMenu("Texto")
-        text_menu.addAction(self.action_label_font)
-        text_menu.addAction(self.action_label_size_set)
-        text_menu.addSeparator()
-        text_menu.addAction(self.action_label_bold)
-        text_menu.addAction(self.action_label_italic)
-        text_menu.addAction(self.action_label_underline)
-        text_menu.addSeparator()
-        text_menu.addAction(self.action_label_subscript)
-        text_menu.addAction(self.action_label_superscript)
-        text_menu.addSeparator()
-        text_menu.addAction(self.action_label_size_up)
-        text_menu.addAction(self.action_label_size_down)
-        text_menu.addSeparator()
-        label_color_menu = text_menu.addMenu("Color de etiquetas")
-        label_color_menu.addAction(self.action_label_color_element)
-        label_color_menu.addAction(self.action_label_color_black)
-        
         # === Ver (View) ===
         view_menu = menubar.addMenu("Ver")
         view_menu.addAction(self.action_show_carbons)
@@ -715,6 +727,11 @@ class ChemusonWindow(QMainWindow):
             event.accept()
         else:
             event.ignore()
+
+    def changeEvent(self, event) -> None:
+        if event.type() == QEvent.Type.ActivationChange and self.isActiveWindow():
+            self.canvas.restore_text_edit_focus()
+        super().changeEvent(event)
     
     # -------------------------------------------------------------------------
     # Edit Menu Handlers

@@ -644,7 +644,7 @@ class BondItem(QGraphicsPathItem):
                     else:
                         path.moveTo(p1x, p1y)
                         path.lineTo(p2x, p2y)
-                        use_inner_trim = self.is_aromatic and self.ring_id is not None and not self._prefer_full_length
+                        use_inner_trim = (not self._symmetric_double) and (not self._prefer_full_length)
                         q1x = p1x + nx * offset * offset_sign
                         q1y = p1y + ny * offset * offset_sign
                         q2x = p2x + nx * offset * offset_sign
@@ -1373,8 +1373,25 @@ class TextAnnotationItem(QGraphicsTextItem):
             self.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
             self.setFocus()
         super().mouseDoubleClickEvent(event)
+
+    def focusInEvent(self, event) -> None:
+        # Remember last focused text item for restore on window activation
+        try:
+            scene = self.scene()
+            if scene:
+                for view in scene.views():
+                    if hasattr(view, "remember_text_edit_item"):
+                        view.remember_text_edit_item(self)
+        except Exception:
+            pass
+        super().focusInEvent(event)
     
     def focusOutEvent(self, event) -> None:
+        # If focus loss is due to window deactivation, keep edit mode.
+        if event.reason() == Qt.FocusReason.ActiveWindowFocusReason:
+            super().focusOutEvent(event)
+            return
+
         # When losing focus, go back to movable mode
         self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         
@@ -1389,6 +1406,15 @@ class TextAnnotationItem(QGraphicsTextItem):
         if not content or content.strip() == "":
              if self.scene():
                  self.scene().removeItem(self)
+
+        try:
+            scene = self.scene()
+            if scene:
+                for view in scene.views():
+                    if hasattr(view, "remember_text_edit_item"):
+                        view.remember_text_edit_item(None)
+        except Exception:
+            pass
              
         super().focusOutEvent(event)
 

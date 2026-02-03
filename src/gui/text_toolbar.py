@@ -28,6 +28,7 @@ class TextFormatToolbar(QToolBar):
     
     # Signal emitted when color changes
     color_changed = pyqtSignal(QColor)
+    alignment_changed = pyqtSignal(Qt.AlignmentFlag)
 
     def __init__(self, parent=None):
         super().__init__("Formato de Texto", parent)
@@ -76,6 +77,13 @@ class TextFormatToolbar(QToolBar):
         self.action_sup.triggered.connect(lambda c: self._handle_exclusive(self.action_sup, self.action_sub, "sup"))
 
         self.addSeparator()
+
+        # --- Alignment ---
+        self._add_align_button("format-justify-left", "Alinear a la izquierda", "≡", Qt.AlignmentFlag.AlignLeft)
+        self._add_align_button("format-justify-center", "Centrar", "≣", Qt.AlignmentFlag.AlignHCenter)
+        self._add_align_button("format-justify-fill", "Justificar", "☰", Qt.AlignmentFlag.AlignJustify)
+
+        self.addSeparator()
         
         # --- Color ---
         self.color_btn = QToolButton()
@@ -92,6 +100,23 @@ class TextFormatToolbar(QToolBar):
         action.triggered.connect(lambda: self._emit_change(prop_name))
         self.addAction(action)
         return action
+
+    def _add_align_button(
+        self,
+        theme_name: str,
+        tooltip: str,
+        fallback_glyph: str,
+        alignment: Qt.AlignmentFlag,
+    ) -> None:
+        button = QToolButton(self)
+        icon = QIcon.fromTheme(theme_name)
+        if icon.isNull():
+            icon = draw_glyph_icon(fallback_glyph)
+        button.setIcon(icon)
+        button.setToolTip(tooltip)
+        button.setAutoRaise(True)
+        button.clicked.connect(lambda: self.alignment_changed.emit(alignment))
+        self.addWidget(button)
 
     def _handle_exclusive(self, trigger_action: QAction, other_action: QAction, prop_name: str):
         if trigger_action.isChecked():
@@ -143,4 +168,3 @@ class TextFormatToolbar(QToolBar):
             self._update_color_icon()
             
         self.blockSignals(False)
-
