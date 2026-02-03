@@ -301,6 +301,8 @@ class ChemusonToolbar(QToolBar):
         icon_single = draw_bond_icon("single")
         icon_double = draw_bond_icon("double")
         icon_triple = draw_bond_icon("triple")
+        icon_aromatic = draw_bond_icon("aromatic")
+        icon_interaction = draw_bond_icon("interaction")
         icon_wedge = draw_bond_icon("wedge")
         icon_hashed = draw_bond_icon("hashed")
         icon_wavy = draw_bond_icon("wavy")
@@ -319,16 +321,6 @@ class ChemusonToolbar(QToolBar):
                         "stereo": BondStereo.NONE,
                         "mode": "increment",
                     },
-                ),
-            ),
-            self._make_palette_entry(
-                icon_single,
-                "Enlace sencillo",
-                lambda ic=icon_single: self._select_bond_palette(
-                    self.bond_button,
-                    ic,
-                    "Enlace sencillo",
-                    {"order": 1, "style": BondStyle.PLAIN, "stereo": BondStereo.NONE, "mode": "set"},
                 ),
             ),
             self._make_palette_entry(
@@ -352,9 +344,9 @@ class ChemusonToolbar(QToolBar):
                 ),
             ),
             self._make_palette_entry(
-                icon_single,
+                icon_aromatic,
                 "Enlace aromatico",
-                lambda ic=icon_single: self._select_bond_palette(
+                lambda ic=icon_aromatic: self._select_bond_palette(
                     self.bond_button,
                     ic,
                     "Enlace aromatico",
@@ -398,9 +390,9 @@ class ChemusonToolbar(QToolBar):
                 ),
             ),
             self._make_palette_entry(
-                icon_single,
+                icon_interaction,
                 "Enlace intermolecular",
-                lambda ic=icon_single: self._select_bond_palette(
+                lambda ic=icon_interaction: self._select_bond_palette(
                     self.bond_button,
                     ic,
                     "Enlace intermolecular",

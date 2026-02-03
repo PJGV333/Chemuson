@@ -183,6 +183,7 @@ class ChemusonCanvas(QGraphicsView):
         self.setScene(self.scene)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.paper_width = DEFAULT_PAPER_WIDTH
         self.paper_height = DEFAULT_PAPER_HEIGHT
@@ -532,6 +533,7 @@ class ChemusonCanvas(QGraphicsView):
             self.paper = None
         self._update_scene_rect()
         self._create_paper()
+        self.center_on_paper()
         self.viewport().update()
 
     def mousePressEvent(self, event) -> None:
@@ -1604,6 +1606,8 @@ class ChemusonCanvas(QGraphicsView):
                 )
                 if bond.ring_id is not None:
                     item.set_ring_context(self._ring_centers.get(bond.ring_id))
+                elif bond.is_aromatic:
+                    item.set_ring_context(self._aromatic_ring_center_for_bond(bond))
                 item.set_offset_sign(self._bond_offset_sign(bond))
                 self._configure_bond_rendering(bond, item)
                 # Explicitly update positions now that context and sign are set
@@ -3145,6 +3149,8 @@ class ChemusonCanvas(QGraphicsView):
         )
         if bond.ring_id is not None:
             item.set_ring_context(self._ring_centers.get(bond.ring_id))
+        elif bond.is_aromatic:
+            item.set_ring_context(self._aromatic_ring_center_for_bond(bond))
         item.set_offset_sign(self._bond_offset_sign(bond))
         self._configure_bond_rendering(bond, item)
         item.update_positions(atom1, atom2)
@@ -3225,6 +3231,8 @@ class ChemusonCanvas(QGraphicsView):
         if item is not None:
             if bond.ring_id is not None:
                 item.set_ring_context(self._ring_centers.get(bond.ring_id))
+            elif bond.is_aromatic:
+                item.set_ring_context(self._aromatic_ring_center_for_bond(bond))
             else:
                 item.set_ring_context(None)
             item.set_offset_sign(self._bond_offset_sign(bond))
@@ -3271,6 +3279,29 @@ class ChemusonCanvas(QGraphicsView):
         length = math.hypot(dx, dy) or 1.0
         nx = -dy / length
         ny = dx / length
+
+        if bond.is_aromatic:
+            neighbor_points = []
+            for other_bond in self.model.bonds.values():
+                if not other_bond.is_aromatic or other_bond.id == bond.id:
+                    continue
+                if other_bond.a1_id == atom1.id and other_bond.a2_id != atom2.id:
+                    other = self.model.get_atom(other_bond.a2_id)
+                elif other_bond.a2_id == atom1.id and other_bond.a1_id != atom2.id:
+                    other = self.model.get_atom(other_bond.a1_id)
+                elif other_bond.a1_id == atom2.id and other_bond.a2_id != atom1.id:
+                    other = self.model.get_atom(other_bond.a2_id)
+                elif other_bond.a2_id == atom2.id and other_bond.a1_id != atom1.id:
+                    other = self.model.get_atom(other_bond.a1_id)
+                else:
+                    continue
+                neighbor_points.append(QPointF(other.x, other.y))
+            if neighbor_points:
+                avg_x = sum(p.x() for p in neighbor_points) / len(neighbor_points)
+                avg_y = sum(p.y() for p in neighbor_points) / len(neighbor_points)
+                vx = avg_x - mid.x()
+                vy = avg_y - mid.y()
+                return 1 if (nx * vx + ny * vy) >= 0 else -1
 
         def neighbor_score(atom_id: int) -> float:
             score = 0.0
@@ -3447,15 +3478,15 @@ class ChemusonCanvas(QGraphicsView):
         
         # Find aromatic rings and add circles
         rings = self._detect_aromatic_rings()
-        for center_x, center_y, radius in rings:
-            circle = AromaticCircleItem(center_x, center_y, radius)
+        for ring in rings:
+            circle = AromaticCircleItem(ring["center"].x(), ring["center"].y(), ring["radius"])
             self.scene.addItem(circle)
             self.aromatic_circles.append(circle)
 
-    def _detect_aromatic_rings(self) -> list:
+    def _detect_aromatic_rings(self, with_atoms: bool = False) -> list:
         """
         Detect complete aromatic rings and return their centers.
-        Returns list of (center_x, center_y, radius) tuples.
+        Returns list of dicts with center and radius (and optionally atoms).
         """
         # Collect aromatic bonds
         aromatic_bonds = [b for b in self.model.bonds.values() if b.is_aromatic]
@@ -3493,9 +3524,178 @@ class ChemusonCanvas(QGraphicsView):
             # Radius is about 60% of distance from center to atoms
             avg_dist = sum(((a.x - cx)**2 + (a.y - cy)**2)**0.5 for a in atoms) / len(atoms)
             radius = avg_dist * 0.55
-            result.append((cx, cy, radius))
+            entry = {
+                "center": QPointF(cx, cy),
+                "radius": radius,
+            }
+            if with_atoms:
+                entry["atoms"] = set(ring)
+            result.append(entry)
         
         return result
+
+    def _aromatic_ring_center_for_bond(self, bond: Bond) -> Optional[QPointF]:
+        if not bond.is_aromatic:
+            return None
+        adjacency: dict[int, list[tuple[int, int]]] = {}
+        for b in self.model.bonds.values():
+            if not b.is_aromatic:
+                continue
+            adjacency.setdefault(b.a1_id, []).append((b.a2_id, b.id))
+            adjacency.setdefault(b.a2_id, []).append((b.a1_id, b.id))
+        cycle = self._find_cycle_for_bond(bond, adjacency)
+        if not cycle:
+            return None
+        return self._center_for_atoms(cycle["atom_ids"])
+
+    def _refresh_aromatic_ring_contexts(self) -> None:
+        adjacency: dict[int, list[tuple[int, int]]] = {}
+        for bond in self.model.bonds.values():
+            if not bond.is_aromatic:
+                continue
+            adjacency.setdefault(bond.a1_id, []).append((bond.a2_id, bond.id))
+            adjacency.setdefault(bond.a2_id, []).append((bond.a1_id, bond.id))
+        if not adjacency:
+            for bond in self.model.bonds.values():
+                if bond.is_aromatic and bond.ring_id is None:
+                    item = self.bond_items.get(bond.id)
+                    if item is not None:
+                        item.set_ring_context(None)
+                        atom1 = self.model.get_atom(bond.a1_id)
+                        atom2 = self.model.get_atom(bond.a2_id)
+                        if atom1 and atom2:
+                            item.update_positions(atom1, atom2)
+            return
+        for bond in self.model.bonds.values():
+            if not bond.is_aromatic or bond.ring_id is not None:
+                continue
+            item = self.bond_items.get(bond.id)
+            if item is None:
+                continue
+            cycle = self._find_cycle_for_bond(bond, adjacency)
+            center = self._center_for_atoms(cycle["atom_ids"]) if cycle else None
+            item.set_ring_context(center)
+            atom1 = self.model.get_atom(bond.a1_id)
+            atom2 = self.model.get_atom(bond.a2_id)
+            if atom1 and atom2:
+                item.update_positions(atom1, atom2)
+
+    def _build_aromatic_adjacency(self) -> dict[int, list[int]]:
+        adjacency: dict[int, list[int]] = {}
+        for bond in self.model.bonds.values():
+            if not bond.is_aromatic:
+                continue
+            adjacency.setdefault(bond.a1_id, []).append(bond.a2_id)
+            adjacency.setdefault(bond.a2_id, []).append(bond.a1_id)
+        return adjacency
+
+    def _center_for_atoms(self, atom_ids: list[int]) -> Optional[QPointF]:
+        if not atom_ids:
+            return None
+        xs = []
+        ys = []
+        for aid in atom_ids:
+            atom = self.model.get_atom(aid)
+            if atom is None:
+                continue
+            xs.append(atom.x)
+            ys.append(atom.y)
+        if not xs:
+            return None
+        return QPointF(sum(xs) / len(xs), sum(ys) / len(ys))
+
+    def clean_2d_fallback(self, atom_ids: Optional[set[int]] = None) -> None:
+        """Basic 2D cleanup without RDKit using simple spring relaxation."""
+        if atom_ids is None:
+            atom_ids = set(self.model.atoms.keys())
+        if not atom_ids:
+            return
+        fixed_ids = set(self.model.atoms.keys()) - set(atom_ids)
+
+        before = {
+            aid: (self.model.get_atom(aid).x, self.model.get_atom(aid).y) for aid in atom_ids
+        }
+        before_center = self._center_for_atoms(list(atom_ids)) or QPointF(0.0, 0.0)
+
+        positions = {aid: QPointF(x, y) for aid, (x, y) in before.items()}
+
+        target_len = float(self.state.bond_length)
+        k_spring = 0.2
+        k_rep = 200.0
+        dt = 0.08
+        iterations = 200
+
+        selected_list = list(atom_ids)
+        for _ in range(iterations):
+            forces = {aid: QPointF(0.0, 0.0) for aid in atom_ids}
+
+            # Bond springs
+            for bond in self.model.bonds.values():
+                if bond.a1_id not in atom_ids and bond.a2_id not in atom_ids:
+                    continue
+                a1 = positions.get(bond.a1_id) if bond.a1_id in atom_ids else None
+                a2 = positions.get(bond.a2_id) if bond.a2_id in atom_ids else None
+                p1 = a1 if a1 is not None else QPointF(
+                    self.model.get_atom(bond.a1_id).x, self.model.get_atom(bond.a1_id).y
+                )
+                p2 = a2 if a2 is not None else QPointF(
+                    self.model.get_atom(bond.a2_id).x, self.model.get_atom(bond.a2_id).y
+                )
+                dx = p2.x() - p1.x()
+                dy = p2.y() - p1.y()
+                dist = math.hypot(dx, dy) or 1e-3
+                delta = dist - target_len
+                fx = k_spring * delta * dx / dist
+                fy = k_spring * delta * dy / dist
+                if a1 is not None:
+                    f = forces[bond.a1_id]
+                    forces[bond.a1_id] = QPointF(f.x() + fx, f.y() + fy)
+                if a2 is not None:
+                    f = forces[bond.a2_id]
+                    forces[bond.a2_id] = QPointF(f.x() - fx, f.y() - fy)
+
+            # Repulsion between selected atoms
+            for i in range(len(selected_list)):
+                a_id = selected_list[i]
+                p1 = positions[a_id]
+                for j in range(i + 1, len(selected_list)):
+                    b_id = selected_list[j]
+                    p2 = positions[b_id]
+                    dx = p2.x() - p1.x()
+                    dy = p2.y() - p1.y()
+                    dist = math.hypot(dx, dy) or 1e-3
+                    rep = k_rep / (dist * dist)
+                    fx = rep * dx / dist
+                    fy = rep * dy / dist
+                    f1 = forces[a_id]
+                    f2 = forces[b_id]
+                    forces[a_id] = QPointF(f1.x() - fx, f1.y() - fy)
+                    forces[b_id] = QPointF(f2.x() + fx, f2.y() + fy)
+
+            for aid in atom_ids:
+                if aid in fixed_ids:
+                    continue
+                p = positions[aid]
+                f = forces[aid]
+                positions[aid] = QPointF(p.x() + f.x() * dt, p.y() + f.y() * dt)
+
+        after_center = self._center_for_atoms(list(atom_ids)) or QPointF(0.0, 0.0)
+        # Use computed positions for center
+        xs = [positions[aid].x() for aid in atom_ids]
+        ys = [positions[aid].y() for aid in atom_ids]
+        if xs and ys:
+            after_center = QPointF(sum(xs) / len(xs), sum(ys) / len(ys))
+        shift = QPointF(before_center.x() - after_center.x(), before_center.y() - after_center.y())
+
+        after = {}
+        for aid in atom_ids:
+            p = positions[aid]
+            after[aid] = (p.x() + shift.x(), p.y() + shift.y())
+
+        from gui.commands import MoveAtomsCommand
+        cmd = MoveAtomsCommand(self.model, self, before, after)
+        self.undo_stack.push(cmd)
+        self._update_selection_overlay()
 
     def apply_drawing_style(self, style: DrawingStyle) -> None:
         """Apply a new drawing style and refresh items."""
@@ -3855,55 +4055,90 @@ class ChemusonCanvas(QGraphicsView):
     def _update_selection_overlay(self) -> None:
         bbox = self._selected_items_bbox()
         if bbox is None:
-            if self._selection_box is not None:
-                self._selection_box.setVisible(False)
-            if self._selection_handle is not None:
-                self._selection_handle.setVisible(False)
-            if self._selection_move_handle is not None:
-                self._selection_move_handle.setVisible(False)
-            if self._selection_scale_handle is not None:
-                self._selection_scale_handle.setVisible(False)
+            for attr in (
+                "_selection_box",
+                "_selection_handle",
+                "_selection_move_handle",
+                "_selection_scale_handle",
+            ):
+                item = getattr(self, attr)
+                if item is None:
+                    continue
+                try:
+                    item.setVisible(False)
+                except RuntimeError:
+                    setattr(self, attr, None)
             return
         self._ensure_selection_overlay()
         padded = QRectF(bbox)
         pad = max(2.0, float(self.drawing_style.stroke_px))
         padded.adjust(-pad, -pad, pad, pad)
         if self._selection_box is not None:
-            self._selection_box.setRect(padded)
-            self._selection_box.setVisible(True)
+            try:
+                self._selection_box.setRect(padded)
+                self._selection_box.setVisible(True)
+            except RuntimeError:
+                self._selection_box = None
         if self._selection_handle is not None:
             center_x = padded.center().x()
             handle_x = center_x - SELECTION_HANDLE_RADIUS_PX
             handle_y = padded.top() - SELECTION_HANDLE_OFFSET_PX - SELECTION_HANDLE_RADIUS_PX
-            self._selection_handle.setPos(handle_x, handle_y)
-            self._selection_handle.setVisible(True)
+            try:
+                self._selection_handle.setPos(handle_x, handle_y)
+                self._selection_handle.setVisible(True)
+            except RuntimeError:
+                self._selection_handle = None
 
         if self._selection_move_handle is not None:
             center_x = padded.center().x()
             center_y = padded.center().y()
             handle_x = center_x - SELECTION_HANDLE_RADIUS_PX
             handle_y = center_y - SELECTION_HANDLE_RADIUS_PX
-            self._selection_move_handle.setPos(handle_x, handle_y)
-            self._selection_move_handle.setVisible(True)
+            try:
+                self._selection_move_handle.setPos(handle_x, handle_y)
+                self._selection_move_handle.setVisible(True)
+            except RuntimeError:
+                self._selection_move_handle = None
 
         if self._selection_scale_handle is not None:
             handle_x = padded.right() - SELECTION_HANDLE_RADIUS_PX
             handle_y = padded.bottom() - SELECTION_HANDLE_RADIUS_PX
-            self._selection_scale_handle.setPos(handle_x, handle_y)
-            self._selection_scale_handle.setVisible(True)
+            try:
+                self._selection_scale_handle.setPos(handle_x, handle_y)
+                self._selection_scale_handle.setVisible(True)
+            except RuntimeError:
+                self._selection_scale_handle = None
 
     def _hit_selection_handle(self, scene_pos: QPointF) -> bool:
-        if self._selection_handle is None or not self._selection_handle.isVisible():
+        if self._selection_handle is None:
+            return False
+        try:
+            if not self._selection_handle.isVisible():
+                return False
+        except RuntimeError:
+            self._selection_handle = None
             return False
         return self._hit_handle_item(self._selection_handle, scene_pos)
 
     def _hit_selection_move_handle(self, scene_pos: QPointF) -> bool:
-        if self._selection_move_handle is None or not self._selection_move_handle.isVisible():
+        if self._selection_move_handle is None:
+            return False
+        try:
+            if not self._selection_move_handle.isVisible():
+                return False
+        except RuntimeError:
+            self._selection_move_handle = None
             return False
         return self._hit_handle_item(self._selection_move_handle, scene_pos)
 
     def _hit_selection_scale_handle(self, scene_pos: QPointF) -> bool:
-        if self._selection_scale_handle is None or not self._selection_scale_handle.isVisible():
+        if self._selection_scale_handle is None:
+            return False
+        try:
+            if not self._selection_scale_handle.isVisible():
+                return False
+        except RuntimeError:
+            self._selection_scale_handle = None
             return False
         return self._hit_handle_item(self._selection_scale_handle, scene_pos)
 
@@ -5112,7 +5347,7 @@ class ChemusonCanvas(QGraphicsView):
             aromatic,
             length,
             apply_collisions=True,
-            allow_length_boost=self.state.fixed_lengths,
+            allow_length_boost=False,
         )
         p1 = endpoint_from_angle_len(anchor, theta, final_length)
         snap_id = closest_atom(
@@ -5351,7 +5586,7 @@ class ChemusonCanvas(QGraphicsView):
             aromatic_flag,
             length,
             apply_collisions=True,
-            allow_length_boost=self.state.fixed_lengths and not use_shift,
+            allow_length_boost=False,
         )
         p1 = endpoint_from_angle_len(anchor, theta, final_length)
         snap_id = closest_atom(
@@ -5811,6 +6046,73 @@ class ChemusonCanvas(QGraphicsView):
                 bond.display_order = new_order
                 bond.order = new_order
                 self.update_bond_item(bond.id)
+        for bond in aromatic_bonds:
+            if component_atoms is not None and (
+                bond.a1_id not in component_atoms or bond.a2_id not in component_atoms
+            ):
+                continue
+            self.update_bond_item(bond.id)
+        self._assign_ring_ids_for_aromatic_cycles()
+        self._refresh_aromatic_ring_contexts()
+
+    def _assign_ring_ids_for_aromatic_cycles(self) -> None:
+        adjacency: dict[int, list[tuple[int, int]]] = {}
+        for bond in self.model.bonds.values():
+            if not bond.is_aromatic:
+                continue
+            adjacency.setdefault(bond.a1_id, []).append((bond.a2_id, bond.id))
+            adjacency.setdefault(bond.a2_id, []).append((bond.a1_id, bond.id))
+
+        for bond in self.model.bonds.values():
+            if not bond.is_aromatic or bond.ring_id is not None:
+                continue
+            cycle = self._find_cycle_for_bond(bond, adjacency)
+            if not cycle:
+                continue
+            ring_id = None
+            for bond_id in cycle["bond_ids"]:
+                existing = self.model.get_bond(bond_id)
+                if existing.ring_id is not None:
+                    ring_id = existing.ring_id
+                    break
+            if ring_id is None:
+                ring_id = self.allocate_ring_id()
+            for bond_id in cycle["bond_ids"]:
+                b = self.model.get_bond(bond_id)
+                if b.ring_id is None:
+                    b.ring_id = ring_id
+                    self.update_bond_item(bond_id)
+            center = self._center_for_atoms(cycle["atom_ids"])
+            if center is not None:
+                self.register_ring_center(ring_id, (center.x(), center.y()))
+
+    def _find_cycle_for_bond(
+        self, bond: Bond, adjacency: dict[int, list[tuple[int, int]]]
+    ) -> Optional[dict[str, list[int]]]:
+        a1 = bond.a1_id
+        a2 = bond.a2_id
+        if a1 not in adjacency or a2 not in adjacency:
+            return None
+        from collections import deque
+
+        queue = deque([(a1, [a1], [])])
+        while queue:
+            node, path_atoms, path_bonds = queue.popleft()
+            if len(path_atoms) > 8:
+                continue
+            for neighbor, bond_id in adjacency.get(node, []):
+                if bond_id == bond.id:
+                    continue
+                if neighbor == a2:
+                    if len(path_atoms) >= 4:
+                        atom_ids = path_atoms + [a2]
+                        bond_ids = path_bonds + [bond_id, bond.id]
+                        return {"atom_ids": atom_ids, "bond_ids": bond_ids}
+                    continue
+                if neighbor in path_atoms:
+                    continue
+                queue.append((neighbor, path_atoms + [neighbor], path_bonds + [bond_id]))
+        return None
 
     def _build_aromatic_edges(
         self,
@@ -5920,3 +6222,5 @@ class ChemusonCanvas(QGraphicsView):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._update_scene_rect()
+        if self.paper_width <= self.viewport().width() and self.paper_height <= self.viewport().height():
+            self.center_on_paper()

@@ -1059,18 +1059,62 @@ class ChemusonWindow(QMainWindow):
     def _on_clean_2d(self) -> None:
         """Clean 2D coordinates using RDKit."""
         try:
-            from chemio.rdkit_io import molgraph_to_rdkit, rdkit_to_molgraph
+            from chemio.rdkit_io import molgraph_to_rdkit, molgraph_to_rdkit_with_map, rdkit_to_molgraph
             from rdkit.Chem import AllChem
-            
+
+            atom_ids, bonds = self.canvas._selected_structure_ids()
+            if atom_ids:
+                selection = self.canvas._build_selection_graph(atom_ids, bonds)
+                mol, id_map = molgraph_to_rdkit_with_map(selection)
+                AllChem.Compute2DCoords(mol)
+                conf = mol.GetConformer()
+
+                before = {aid: (self.canvas.model.get_atom(aid).x, self.canvas.model.get_atom(aid).y) for aid in atom_ids}
+                before_cx = sum(x for x, _ in before.values()) / len(before)
+                before_cy = sum(y for _, y in before.values()) / len(before)
+
+                after = {}
+                xs = []
+                ys = []
+                for aid, rd_idx in id_map.items():
+                    pos = conf.GetAtomPosition(rd_idx)
+                    xs.append(pos.x)
+                    ys.append(pos.y)
+                if xs:
+                    after_cx = sum(xs) / len(xs)
+                    after_cy = sum(ys) / len(ys)
+                else:
+                    after_cx = before_cx
+                    after_cy = before_cy
+
+                for aid, rd_idx in id_map.items():
+                    pos = conf.GetAtomPosition(rd_idx)
+                    after[aid] = (pos.x - after_cx + before_cx, pos.y - after_cy + before_cy)
+
+                from gui.commands import MoveAtomsCommand
+                cmd = MoveAtomsCommand(self.canvas.model, self.canvas, before, after)
+                self.canvas.undo_stack.push(cmd)
+                self.canvas._update_selection_overlay()
+                self.statusBar().showMessage("Selección 2D limpiada")
+                return
+
             mol = molgraph_to_rdkit(self.canvas.graph)
             AllChem.Compute2DCoords(mol)
             cleaned = rdkit_to_molgraph(mol)
-            
-            # Preserve current center position
+
             self.canvas.clear_canvas()
             self.canvas._insert_molgraph(cleaned)
             self.statusBar().showMessage("Estructura 2D limpiada")
         except Exception as e:
+            message = str(e)
+            if "No module named" in message and "rdkit" in message:
+                atom_ids, _ = self.canvas._selected_structure_ids()
+                if atom_ids:
+                    self.canvas.clean_2d_fallback(atom_ids)
+                else:
+                    self.canvas.clean_2d_fallback()
+                self.statusBar().showMessage("RDKit no disponible. Limpieza 2D básica aplicada.")
+                return
             self.statusBar().showMessage(f"Error: {e}")
 
     def _insert_template(self, label: str, graph) -> None:

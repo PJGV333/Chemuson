@@ -138,6 +138,26 @@ def draw_bond_icon(bond_type: str = 'single') -> QIcon:
         
         painter.drawLine(int(x1 + nx), int(y1 + ny), int(x2 + nx), int(y2 + ny))
         painter.drawLine(int(x1 - nx), int(y1 - ny), int(x2 - nx), int(y2 - ny))
+    elif bond_type == 'aromatic':
+        pen = QPen(QColor('#333333'), 2)
+        painter.setPen(pen)
+        # One full line plus a shorter inner line
+        painter.drawLine(int(x1), int(y1), int(x2), int(y2))
+        trim = 0.25
+        sx = x1 + (x2 - x1) * trim
+        sy = y1 + (y2 - y1) * trim
+        ex = x2 - (x2 - x1) * trim
+        ey = y2 - (y2 - y1) * trim
+        offset = 3
+        dx, dy = x2 - x1, y2 - y1
+        length = math.sqrt(dx * dx + dy * dy)
+        nx, ny = -dy / length * offset, dx / length * offset
+        painter.drawLine(int(sx + nx), int(sy + ny), int(ex + nx), int(ey + ny))
+    elif bond_type == 'interaction':
+        pen = QPen(QColor('#333333'), 2, Qt.PenStyle.DotLine)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+        painter.drawLine(int(x1), int(y1), int(x2), int(y2))
 
     elif bond_type == 'triple':
         pen = QPen(QColor('#333333'), 2)
