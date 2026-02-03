@@ -1519,11 +1519,13 @@ class ChemusonCanvas(QGraphicsView):
         if self._zoom_factor < self._max_zoom:
             self._zoom_factor *= 1.2
             self.scale(1.2, 1.2)
+            self._update_scene_rect()
 
     def zoom_out(self) -> None:
         if self._zoom_factor > self._min_zoom:
             self._zoom_factor /= 1.2
             self.scale(1 / 1.2, 1 / 1.2)
+            self._update_scene_rect()
 
     def clear_canvas(self) -> None:
         self._overlays_ready = False
@@ -6294,16 +6296,41 @@ class ChemusonCanvas(QGraphicsView):
         )
 
     def _update_scene_rect(self) -> None:
-        margin = max(100, self.viewport().width(), self.viewport().height())
+        # NOTE: The sceneRect drives scroll bar ranges. If we compute its margin
+        # purely in view pixels, zooming out makes the visible scene area
+        # (in scene units) much larger than the margin, which can clamp the view
+        # and make parts of the paper unreachable after resizes.
+        viewport_rect = self.viewport().rect()
+        if viewport_rect.isEmpty():
+            view_w = float(self.viewport().width())
+            view_h = float(self.viewport().height())
+        else:
+            view_poly = self.mapToScene(viewport_rect)
+            view_bounds = view_poly.boundingRect()
+            view_w = float(view_bounds.width())
+            view_h = float(view_bounds.height())
+
+        margin = max(100.0, view_w, view_h)
+
+        # Preserve current view center so changing the scene rect doesn't jump
+        # the document to a corner.
+        current_center = self.mapToScene(viewport_rect.center()) if not viewport_rect.isEmpty() else None
         self.scene.setSceneRect(
             -margin,
             -margin,
-            self.paper_width + 2 * margin,
-            self.paper_height + 2 * margin,
+            float(self.paper_width) + 2.0 * margin,
+            float(self.paper_height) + 2.0 * margin,
         )
+        if current_center is not None:
+            self.centerOn(current_center)
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._update_scene_rect()
-        if self.paper_width <= self.viewport().width() and self.paper_height <= self.viewport().height():
+        # Compare in scene units so zoom level is respected.
+        viewport_rect = self.viewport().rect()
+        if viewport_rect.isEmpty():
+            return
+        view_bounds = self.mapToScene(viewport_rect).boundingRect()
+        if view_bounds.width() >= self.paper_width and view_bounds.height() >= self.paper_height:
             self.center_on_paper()
