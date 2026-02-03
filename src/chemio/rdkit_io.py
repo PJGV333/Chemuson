@@ -30,7 +30,17 @@ def molgraph_to_rdkit_with_map(molgraph: MolGraph):
     id_map: Dict[int, int] = {}
 
     for atom in sorted(molgraph.atoms.values(), key=lambda a: a.id):
-        rd_atom = Chem.Atom(atom.element)
+        element = atom.element
+        try:
+            atomic_number = Chem.GetPeriodicTable().GetAtomicNumber(element)
+        except Exception:
+            atomic_number = 0
+        if atomic_number <= 0:
+            rd_atom = Chem.Atom(0)
+            rd_atom.SetProp("atomLabel", element)
+            rd_atom.SetProp("dummyLabel", element)
+        else:
+            rd_atom = Chem.Atom(element)
         rd_atom.SetFormalCharge(atom.charge)
         if atom.isotope is not None:
             rd_atom.SetIsotope(atom.isotope)

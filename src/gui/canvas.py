@@ -2022,6 +2022,7 @@ class ChemusonCanvas(QGraphicsView):
         image = self._render_scene_image(
             scale=CLIPBOARD_RENDER_SCALE,
             selected_only=has_selection,
+            background=Qt.GlobalColor.white,
         )
         if image is not None:
             buffer = QBuffer()
@@ -2029,6 +2030,9 @@ class ChemusonCanvas(QGraphicsView):
             image.save(buffer, "PNG")
             mime.setData("image/png", buffer.data())
             mime.setImageData(image)
+        svg_data = self._render_scene_svg(selected_only=has_selection)
+        if svg_data:
+            mime.setData("image/svg+xml", svg_data)
 
         QApplication.clipboard().setMimeData(mime)
 
@@ -2283,7 +2287,10 @@ class ChemusonCanvas(QGraphicsView):
                 item.setVisible(True)
 
     def _render_scene_image(
-        self, scale: float = 1.0, selected_only: bool = False
+        self,
+        scale: float = 1.0,
+        selected_only: bool = False,
+        background: Optional[QColor] = None,
     ) -> Optional[QImage]:
         rect = self._render_scene_bounds(selected_only=selected_only)
         if rect is None:
@@ -2303,6 +2310,16 @@ class ChemusonCanvas(QGraphicsView):
             trimmed = self._trim_transparent_image(image)
             if trimmed is None:
                 return None
+            if background is not None:
+                flattened = QImage(trimmed.width(), trimmed.height(), QImage.Format.Format_RGB32)
+                flattened.fill(background)
+                painter = QPainter(flattened)
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+                painter.drawImage(0, 0, trimmed)
+                painter.end()
+                self._apply_image_dpi(flattened, scale)
+                return flattened
             self._apply_image_dpi(trimmed, scale)
             return trimmed
 
@@ -2351,10 +2368,10 @@ class ChemusonCanvas(QGraphicsView):
         bottom = min(height - 1, bottom + pad)
         return image.copy(QRect(left, top, right - left + 1, bottom - top + 1))
 
-    def _render_scene_svg(self) -> Optional[bytes]:
+    def _render_scene_svg(self, selected_only: bool = False) -> Optional[bytes]:
         if QSvgGenerator is None:
             return None
-        rect = self._render_scene_bounds()
+        rect = self._render_scene_bounds(selected_only=selected_only)
         if rect is None:
             return None
         width = max(1, math.ceil(rect.width()))
@@ -2372,6 +2389,10 @@ class ChemusonCanvas(QGraphicsView):
             painter.end()
             return bytes(buffer.data())
 
+        if selected_only:
+            return self._with_hidden_unselected(
+                lambda: self._with_hidden_render_items(render)
+            )
         return self._with_hidden_render_items(render)
 
     def _insert_molgraph(self, graph: MolGraph) -> None:
