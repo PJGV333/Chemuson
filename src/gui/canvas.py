@@ -3604,13 +3604,12 @@ class ChemusonCanvas(QGraphicsView):
             return None
         return QPointF(sum(xs) / len(xs), sum(ys) / len(ys))
 
-    def clean_2d_fallback(self, atom_ids: Optional[set[int]] = None) -> None:
-        """Basic 2D cleanup without RDKit using simple spring relaxation."""
+    def clean_2d_fallback(self, atom_ids: Optional[set[int]] = None, iterations: int = 50) -> None:
+        """Basic 2D cleanup without RDKit using length + angle relaxation."""
         if atom_ids is None:
             atom_ids = set(self.model.atoms.keys())
         if not atom_ids:
             return
-        fixed_ids = set(self.model.atoms.keys()) - set(atom_ids)
 
         before = {
             aid: (self.model.get_atom(aid).x, self.model.get_atom(aid).y) for aid in atom_ids
@@ -3620,64 +3619,145 @@ class ChemusonCanvas(QGraphicsView):
         positions = {aid: QPointF(x, y) for aid, (x, y) in before.items()}
 
         target_len = float(self.state.bond_length)
-        k_spring = 0.2
-        k_rep = 200.0
-        dt = 0.08
-        iterations = 200
+        angle_step_deg = 12.0
+        iterations = max(1, int(iterations))
 
-        selected_list = list(atom_ids)
-        for _ in range(iterations):
-            forces = {aid: QPointF(0.0, 0.0) for aid in atom_ids}
+        neighbor_map: dict[int, list[int]] = {}
+        bonds_in_selection = []
+        for bond in self.model.bonds.values():
+            if bond.a1_id in atom_ids and bond.a2_id in atom_ids:
+                neighbor_map.setdefault(bond.a1_id, []).append(bond.a2_id)
+                neighbor_map.setdefault(bond.a2_id, []).append(bond.a1_id)
+                bonds_in_selection.append(bond)
 
-            # Bond springs
-            for bond in self.model.bonds.values():
-                if bond.a1_id not in atom_ids and bond.a2_id not in atom_ids:
+        components: list[set[int]] = []
+        visited: set[int] = set()
+        for aid in atom_ids:
+            if aid in visited:
+                continue
+            stack = [aid]
+            comp = set()
+            while stack:
+                node = stack.pop()
+                if node in visited:
                     continue
-                a1 = positions.get(bond.a1_id) if bond.a1_id in atom_ids else None
-                a2 = positions.get(bond.a2_id) if bond.a2_id in atom_ids else None
-                p1 = a1 if a1 is not None else QPointF(
-                    self.model.get_atom(bond.a1_id).x, self.model.get_atom(bond.a1_id).y
-                )
-                p2 = a2 if a2 is not None else QPointF(
-                    self.model.get_atom(bond.a2_id).x, self.model.get_atom(bond.a2_id).y
-                )
-                dx = p2.x() - p1.x()
-                dy = p2.y() - p1.y()
-                dist = math.hypot(dx, dy) or 1e-3
-                delta = dist - target_len
-                fx = k_spring * delta * dx / dist
-                fy = k_spring * delta * dy / dist
-                if a1 is not None:
-                    f = forces[bond.a1_id]
-                    forces[bond.a1_id] = QPointF(f.x() + fx, f.y() + fy)
-                if a2 is not None:
-                    f = forces[bond.a2_id]
-                    forces[bond.a2_id] = QPointF(f.x() - fx, f.y() - fy)
+                visited.add(node)
+                comp.add(node)
+                for nb in neighbor_map.get(node, []):
+                    if nb not in visited:
+                        stack.append(nb)
+            components.append(comp)
 
-            # Repulsion between selected atoms
-            for i in range(len(selected_list)):
-                a_id = selected_list[i]
-                p1 = positions[a_id]
-                for j in range(i + 1, len(selected_list)):
-                    b_id = selected_list[j]
-                    p2 = positions[b_id]
+        def rotate_point(p: QPointF, center: QPointF, delta_deg: float) -> QPointF:
+            rad = math.radians(delta_deg)
+            dx = p.x() - center.x()
+            dy = p.y() - center.y()
+            cos_t = math.cos(rad)
+            sin_t = math.sin(rad)
+            return QPointF(center.x() + dx * cos_t - dy * sin_t, center.y() + dx * sin_t + dy * cos_t)
+
+        def normalize_tree(component: set[int], roots: list[int]) -> None:
+            placed = set(roots)
+            queue = list(roots)
+            while queue:
+                parent = queue.pop(0)
+                p_parent = positions[parent]
+                for neigh in neighbor_map.get(parent, []):
+                    if neigh not in component or neigh in placed:
+                        continue
+                    ox, oy = before[neigh]
+                    px, py = before[parent]
+                    dx = ox - px
+                    dy = oy - py
+                    dist = math.hypot(dx, dy)
+                    if dist < 1e-3:
+                        dx, dy = target_len, 0.0
+                        dist = target_len
+                    nx = dx / dist
+                    ny = dy / dist
+                    positions[neigh] = QPointF(p_parent.x() + nx * target_len, p_parent.y() + ny * target_len)
+                    placed.add(neigh)
+                    queue.append(neigh)
+
+        for component in components:
+            if len(component) <= 1:
+                continue
+            # Find ring core by peeling leaves
+            degrees = {aid: len([n for n in neighbor_map.get(aid, []) if n in component]) for aid in component}
+            ring_atoms = set(component)
+            leaf_queue = [aid for aid, deg in degrees.items() if deg <= 1]
+            while leaf_queue:
+                node = leaf_queue.pop()
+                if node not in ring_atoms:
+                    continue
+                ring_atoms.remove(node)
+                for nb in neighbor_map.get(node, []):
+                    if nb in ring_atoms:
+                        degrees[nb] -= 1
+                        if degrees[nb] <= 1:
+                            leaf_queue.append(nb)
+
+            if not ring_atoms:
+                # Acyclic: only normalize bond lengths, preserve angles
+                root = next(iter(component))
+                normalize_tree(component, [root])
+                continue
+
+            # Relax ring core
+            for _ in range(iterations):
+                for bond in bonds_in_selection:
+                    if bond.a1_id not in ring_atoms or bond.a2_id not in ring_atoms:
+                        continue
+                    p1 = positions[bond.a1_id]
+                    p2 = positions[bond.a2_id]
                     dx = p2.x() - p1.x()
                     dy = p2.y() - p1.y()
                     dist = math.hypot(dx, dy) or 1e-3
-                    rep = k_rep / (dist * dist)
-                    fx = rep * dx / dist
-                    fy = rep * dy / dist
-                    f1 = forces[a_id]
-                    f2 = forces[b_id]
-                    forces[a_id] = QPointF(f1.x() - fx, f1.y() - fy)
-                    forces[b_id] = QPointF(f2.x() + fx, f2.y() + fy)
+                    delta = (dist - target_len) / dist
+                    p1 = QPointF(p1.x() + dx * 0.5 * delta, p1.y() + dy * 0.5 * delta)
+                    p2 = QPointF(p2.x() - dx * 0.5 * delta, p2.y() - dy * 0.5 * delta)
+                    positions[bond.a1_id] = p1
+                    positions[bond.a2_id] = p2
 
-            for aid in atom_ids:
-                if aid in fixed_ids:
-                    continue
-                p = positions[aid]
-                f = forces[aid]
-                positions[aid] = QPointF(p.x() + f.x() * dt, p.y() + f.y() * dt)
+                for aid in ring_atoms:
+                    neighbors = [n for n in neighbor_map.get(aid, []) if n in ring_atoms]
+                    if len(neighbors) != 2:
+                        continue
+                    n1, n2 = neighbors
+                    center = positions[aid]
+                    p1 = positions[n1]
+                    p2 = positions[n2]
+                    a1 = angle_deg(center, p1)
+                    a2 = angle_deg(center, p2)
+                    current = angle_distance_deg(a1, a2)
+
+                    has_triple = False
+                    has_double = False
+                    for bond in bonds_in_selection:
+                        if bond.a1_id != aid and bond.a2_id != aid:
+                            continue
+                        if bond.order >= 3:
+                            has_triple = True
+                        if bond.order == 2 or bond.is_aromatic:
+                            has_double = True
+                    if has_triple:
+                        target = 180.0
+                    elif has_double:
+                        target = 120.0
+                    else:
+                        target = SP3_BOND_ANGLE_DEG
+
+                    delta = target - current
+                    if abs(delta) < 1e-2:
+                        continue
+                    delta = max(-angle_step_deg, min(angle_step_deg, delta))
+                    p1_new = rotate_point(p1, center, delta * 0.5)
+                    p2_new = rotate_point(p2, center, -delta * 0.5)
+                    positions[n1] = p1_new
+                    positions[n2] = p2_new
+
+            # Normalize trees attached to ring core
+            normalize_tree(component, list(ring_atoms))
 
         after_center = self._center_for_atoms(list(atom_ids)) or QPointF(0.0, 0.0)
         # Use computed positions for center
@@ -3768,8 +3848,11 @@ class ChemusonCanvas(QGraphicsView):
         self.state.selected_atoms = selected_atoms
         self.state.selected_bonds = selected_bonds
 
-        for atom_id, item in self.atom_items.items():
-            item.set_selected(atom_id in selected_atoms or atom_id == self.bond_anchor_id)
+        for atom_id, item in list(self.atom_items.items()):
+            try:
+                item.set_selected(atom_id in selected_atoms or atom_id == self.bond_anchor_id)
+            except RuntimeError:
+                self.atom_items.pop(atom_id, None)
 
         self._update_selection_overlay()
 

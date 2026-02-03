@@ -214,6 +214,9 @@ class ChemusonWindow(QMainWindow):
 
         self.action_clean_2d = QAction("Limpiar 2D", self)
         self.action_clean_2d.triggered.connect(self._on_clean_2d)
+        self.action_clean_2d_full = QAction("Limpiar 2D (1 paso)", self)
+        self.action_clean_2d_full.setShortcut(QKeySequence("Ctrl+K"))
+        self.action_clean_2d_full.triggered.connect(self._on_clean_2d_full)
 
         self.action_template_linear_chain = QAction("Cadena lineal", self)
         self.action_template_linear_chain.triggered.connect(self._on_insert_linear_chain)
@@ -438,6 +441,7 @@ class ChemusonWindow(QMainWindow):
         # === Estructura (Structure) ===
         structure_menu = menubar.addMenu("Estructura")
         structure_menu.addAction(self.action_clean_2d)
+        structure_menu.addAction(self.action_clean_2d_full)
         structure_menu.addSeparator()
         structure_menu.addSeparator()
         
@@ -1057,63 +1061,71 @@ class ChemusonWindow(QMainWindow):
     # Structure Menu Handlers
     # -------------------------------------------------------------------------
     def _on_clean_2d(self) -> None:
-        """Clean 2D coordinates using RDKit."""
+        self._run_clean_2d(step_ratio=0.35, fallback_iterations=30, status_suffix="(paso)")
+
+    def _on_clean_2d_full(self) -> None:
+        self._run_clean_2d(step_ratio=1.0, fallback_iterations=200, status_suffix="(1 paso)")
+
+    def _run_clean_2d(self, step_ratio: float, fallback_iterations: int, status_suffix: str) -> None:
+        """Clean 2D coordinates using RDKit or fallback."""
+        atom_ids, bonds = self.canvas._selected_structure_ids()
+        target_ids = atom_ids if atom_ids else set(self.canvas.model.atoms.keys())
+        if not target_ids:
+            return
+
+        def center(coords: dict[int, tuple[float, float]]) -> tuple[float, float]:
+            xs = [x for x, _ in coords.values()]
+            ys = [y for _, y in coords.values()]
+            if not xs:
+                return 0.0, 0.0
+            return sum(xs) / len(xs), sum(ys) / len(ys)
+
         try:
-            from chemio.rdkit_io import molgraph_to_rdkit, molgraph_to_rdkit_with_map, rdkit_to_molgraph
+            from chemio.rdkit_io import molgraph_to_rdkit_with_map
             from rdkit.Chem import AllChem
 
-            atom_ids, bonds = self.canvas._selected_structure_ids()
-            if atom_ids:
-                selection = self.canvas._build_selection_graph(atom_ids, bonds)
-                mol, id_map = molgraph_to_rdkit_with_map(selection)
-                AllChem.Compute2DCoords(mol)
-                conf = mol.GetConformer()
-
-                before = {aid: (self.canvas.model.get_atom(aid).x, self.canvas.model.get_atom(aid).y) for aid in atom_ids}
-                before_cx = sum(x for x, _ in before.values()) / len(before)
-                before_cy = sum(y for _, y in before.values()) / len(before)
-
-                after = {}
-                xs = []
-                ys = []
-                for aid, rd_idx in id_map.items():
-                    pos = conf.GetAtomPosition(rd_idx)
-                    xs.append(pos.x)
-                    ys.append(pos.y)
-                if xs:
-                    after_cx = sum(xs) / len(xs)
-                    after_cy = sum(ys) / len(ys)
-                else:
-                    after_cx = before_cx
-                    after_cy = before_cy
-
-                for aid, rd_idx in id_map.items():
-                    pos = conf.GetAtomPosition(rd_idx)
-                    after[aid] = (pos.x - after_cx + before_cx, pos.y - after_cy + before_cy)
-
-                from gui.commands import MoveAtomsCommand
-                cmd = MoveAtomsCommand(self.canvas.model, self.canvas, before, after)
-                self.canvas.undo_stack.push(cmd)
-                self.canvas._update_selection_overlay()
-                self.statusBar().showMessage("Selección 2D limpiada")
-                return
-
-            mol = molgraph_to_rdkit(self.canvas.graph)
+            graph = self.canvas._build_selection_graph(atom_ids, bonds) if atom_ids else self.canvas.graph
+            mol, id_map = molgraph_to_rdkit_with_map(graph)
             AllChem.Compute2DCoords(mol)
-            cleaned = rdkit_to_molgraph(mol)
+            conf = mol.GetConformer()
 
-            self.canvas.clear_canvas()
-            self.canvas._insert_molgraph(cleaned)
-            self.statusBar().showMessage("Estructura 2D limpiada")
+            before = {
+                aid: (self.canvas.model.get_atom(aid).x, self.canvas.model.get_atom(aid).y)
+                for aid in target_ids
+            }
+            before_cx, before_cy = center(before)
+
+            raw_after = {}
+            for aid, rd_idx in id_map.items():
+                if aid not in target_ids:
+                    continue
+                pos = conf.GetAtomPosition(rd_idx)
+                raw_after[aid] = (pos.x, pos.y)
+
+            after_cx, after_cy = center(raw_after)
+            after = {}
+            for aid, (x, y) in raw_after.items():
+                x = x - after_cx + before_cx
+                y = y - after_cy + before_cy
+                if step_ratio < 1.0:
+                    bx, by = before[aid]
+                    x = bx + (x - bx) * step_ratio
+                    y = by + (y - by) * step_ratio
+                after[aid] = (x, y)
+
+            from gui.commands import MoveAtomsCommand
+            cmd = MoveAtomsCommand(self.canvas.model, self.canvas, before, after)
+            self.canvas.undo_stack.push(cmd)
+            self.canvas._update_selection_overlay()
+            msg = "Selección 2D limpiada" if atom_ids else "Estructura 2D limpiada"
+            self.statusBar().showMessage(f"{msg} {status_suffix}".strip())
+            return
         except Exception as e:
             message = str(e)
             if "No module named" in message and "rdkit" in message:
-                atom_ids, _ = self.canvas._selected_structure_ids()
-                if atom_ids:
-                    self.canvas.clean_2d_fallback(atom_ids)
-                else:
-                    self.canvas.clean_2d_fallback()
-                self.statusBar().showMessage("RDKit no disponible. Limpieza 2D básica aplicada.")
+                self.canvas.clean_2d_fallback(target_ids, iterations=fallback_iterations)
+                msg = "Selección 2D limpiada" if atom_ids else "Estructura 2D limpiada"
+                self.statusBar().showMessage(f"{msg} {status_suffix} (básico)")
                 return
             self.statusBar().showMessage(f"Error: {e}")
 
