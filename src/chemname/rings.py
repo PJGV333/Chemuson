@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections import deque
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
+from chemcalc.valence import implicit_h_count
+
 from .molview import MolView
 
 
@@ -91,31 +93,109 @@ def perceive_aromaticity_basic(view: MolView, rings: Iterable[frozenset[int]]) -
             continue
         if any(view.element(atom_id) != "C" for atom_id in ring_nodes):
             continue
-
-        bond_pairs = list(ring_bonds(view, ring_nodes))
-        if not bond_pairs:
-            continue
-
-        if all(view.bond_is_aromatic(*tuple(pair)) for pair in bond_pairs):
+        if _ring_aromatic_basic(view, ring_nodes):
             aromatic.add(ring_nodes)
-            continue
-
-        double_bonds = 0
-        double_bond_count_per_atom: Dict[int, int] = {atom_id: 0 for atom_id in ring_nodes}
-        for pair in bond_pairs:
-            a, b = tuple(pair)
-            order = view.bond_order_between(a, b)
-            if order not in {1, 2}:
-                double_bonds = -1
-                break
-            if order == 2:
-                double_bonds += 1
-                double_bond_count_per_atom[a] += 1
-                double_bond_count_per_atom[b] += 1
-        if double_bonds == 3 and all(count == 1 for count in double_bond_count_per_atom.values()):
-            aromatic.add(ring_nodes)
-
     return aromatic
+
+
+def classify_aromatic_ring(view: MolView, ring_nodes: Iterable[int]) -> Optional[dict]:
+    """Classify simple aromatic rings into retained-name kinds."""
+    ring_set = set(ring_nodes)
+    if not is_simple_ring(view, ring_set):
+        return None
+    order = ring_order(view, ring_set)
+    if not order:
+        return None
+    size = len(order)
+    if size not in {5, 6}:
+        return None
+    if not _ring_aromatic_basic(view, ring_set):
+        return None
+
+    hetero_atoms = [atom_id for atom_id in order if view.element(atom_id) != "C"]
+    hetero_positions = [idx + 1 for idx, atom_id in enumerate(order) if atom_id in hetero_atoms]
+    hetero_elements = [view.element(atom_id) for atom_id in hetero_atoms]
+
+    kind = None
+    if size == 6:
+        if not hetero_atoms:
+            kind = "benzene"
+        elif len(hetero_atoms) == 1 and hetero_elements[0] == "N":
+            kind = "pyridine"
+        elif len(hetero_atoms) == 2 and all(elem == "N" for elem in hetero_elements):
+            positions = sorted(hetero_positions)
+            delta = positions[1] - positions[0]
+            distance = min(delta, size - delta)
+            if distance == 1:
+                kind = "pyridazine"
+            elif distance == 2:
+                kind = "pyrimidine"
+            elif distance == 3:
+                kind = "pyrazine"
+    else:
+        if len(hetero_atoms) == 1:
+            elem = hetero_elements[0]
+            if elem == "O":
+                kind = "furan"
+            elif elem == "S":
+                kind = "thiophene"
+            elif elem == "N":
+                if _hetero_has_h(view, hetero_atoms[0]):
+                    kind = "pyrrole"
+        elif len(hetero_atoms) == 2:
+            elements = sorted(hetero_elements)
+            if elements == ["N", "N"]:
+                if any(_hetero_has_h(view, atom_id) for atom_id in hetero_atoms):
+                    kind = "imidazole"
+            elif elements == ["N", "O"]:
+                kind = "oxazole"
+            elif elements == ["N", "S"]:
+                kind = "thiazole"
+
+    if kind is None:
+        return None
+    return {
+        "kind": kind,
+        "order": order,
+        "hetero_atoms": hetero_atoms,
+        "hetero_positions": hetero_positions,
+    }
+
+
+def detect_naphthalene(
+    view: MolView, rings: Iterable[frozenset[int]]
+) -> Optional[dict]:
+    ring_list = [ring for ring in rings if len(ring) == 6]
+    if len(ring_list) < 2:
+        return None
+    candidates = []
+    for i in range(len(ring_list)):
+        for j in range(i + 1, len(ring_list)):
+            r1 = ring_list[i]
+            r2 = ring_list[j]
+            if not _ring_aromatic_basic(view, r1) or not _ring_aromatic_basic(view, r2):
+                continue
+            if any(view.element(atom_id) != "C" for atom_id in r1 | r2):
+                continue
+            shared = r1 & r2
+            if len(shared) != 2:
+                continue
+            a, b = tuple(shared)
+            if view.bond_order_between(a, b) <= 0:
+                continue
+            union = r1 | r2
+            if len(union) != 10:
+                continue
+            candidates.append((tuple(sorted(shared)), union, (r1, r2)))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: (tuple(sorted(item[1])), item[0]))
+    fusion_atoms, union, rings_pair = candidates[0]
+    return {
+        "atoms": union,
+        "fusion_atoms": fusion_atoms,
+        "rings": rings_pair,
+    }
 
 
 def _build_adjacency(view: MolView) -> Dict[int, List[int]]:
@@ -123,6 +203,38 @@ def _build_adjacency(view: MolView) -> Dict[int, List[int]]:
     for atom_id in view.atoms():
         adjacency[atom_id] = list(view.neighbors(atom_id))
     return adjacency
+
+
+def _ring_aromatic_basic(view: MolView, ring_nodes: Iterable[int]) -> bool:
+    ring_set = set(ring_nodes)
+    bond_pairs = list(ring_bonds(view, ring_set))
+    if not bond_pairs:
+        return False
+    if all(view.bond_is_aromatic(*tuple(pair)) for pair in bond_pairs):
+        return True
+
+    size = len(ring_set)
+    double_bonds = 0
+    double_bond_count_per_atom: Dict[int, int] = {atom_id: 0 for atom_id in ring_set}
+    for pair in bond_pairs:
+        a, b = tuple(pair)
+        order = view.bond_order_between(a, b)
+        if order not in {1, 2}:
+            return False
+        if order == 2:
+            double_bonds += 1
+            double_bond_count_per_atom[a] += 1
+            double_bond_count_per_atom[b] += 1
+
+    if size == 6:
+        return double_bonds == 3 and all(count == 1 for count in double_bond_count_per_atom.values())
+    if size == 5:
+        return double_bonds == 2 and all(count <= 1 for count in double_bond_count_per_atom.values())
+    return False
+
+
+def _hetero_has_h(view: MolView, atom_id: int) -> bool:
+    return implicit_h_count(view, atom_id) + view.explicit_h(atom_id) > 0
 
 
 def _shortest_path_excluding_edge(

@@ -6,6 +6,8 @@ Supported (v0):
 - Single -ol or -amine functional group.
 - Simple cycloalkanes (C3–C8) with simple substituents.
 - Benzene with simple substituents (halogens, alkyl, hydroxy, nitro).
+- Heteroaromatics: furan, thiophene, pyrrole, pyridine, diazines, imidazole, oxazole, thiazole.
+- Naphthalene and mono-substituted derivatives (simple substituents).
 Outside scope returns "N/D".
 """
 

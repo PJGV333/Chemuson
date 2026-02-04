@@ -3,14 +3,24 @@ from __future__ import annotations
 from .errors import ChemNameInternalError, ChemNameNotSupported
 from chemcalc.valence import implicit_h_count
 
-from .locants import orientation_key, substituents_on_chain
+from .locants import Sub, orientation_key, substituents_on_chain
 from .molview import MolView
 from .options import NameOptions
 from .parent_chain import longest_carbon_chain
 from .render import render_name
-from .ring_naming import choose_ring_orientation, ring_substituents
-from .rings import find_rings_simple, is_simple_ring, perceive_aromaticity_basic, ring_order
-from .substituents import CYCLO_PARENT, parent_name
+from .ring_naming import (
+    choose_hetero_ring_orientation,
+    choose_ring_orientation,
+    ring_substituents,
+)
+from .rings import (
+    classify_aromatic_ring,
+    detect_naphthalene,
+    find_rings_simple,
+    is_simple_ring,
+    ring_order,
+)
+from .substituents import ALKYL, CYCLO_PARENT, HALO_MAP, alkyl_length_linear, parent_name
 
 
 def iupac_name(graph, opts: NameOptions = NameOptions()) -> str:
@@ -81,22 +91,28 @@ def _name_linear(view: MolView, opts: NameOptions) -> str:
 
 
 def _name_cyclic(view: MolView, rings: list[frozenset[int]], opts: NameOptions) -> str:
-    if len(rings) != 1:
-        raise ChemNameNotSupported("Multiple rings not supported")
+    if len(rings) == 1:
+        ring_nodes = rings[0]
+        if not is_simple_ring(view, ring_nodes):
+            raise ChemNameNotSupported("Fused rings not supported")
 
-    ring_nodes = rings[0]
-    if not is_simple_ring(view, ring_nodes):
-        raise ChemNameNotSupported("Fused rings not supported")
+        ring_atoms = ring_order(view, ring_nodes)
+        if not ring_atoms:
+            raise ChemNameNotSupported("Ring ordering failed")
 
-    ring_atoms = ring_order(view, ring_nodes)
-    if not ring_atoms:
-        raise ChemNameNotSupported("Ring ordering failed")
+        aromatic_info = classify_aromatic_ring(view, ring_nodes)
+        if aromatic_info and aromatic_info.get("kind") == "benzene":
+            return _name_benzene(view, ring_atoms, opts)
+        if aromatic_info and aromatic_info.get("kind") is not None:
+            return _name_heteroaromatic(view, aromatic_info, opts)
 
-    aromatic_rings = perceive_aromaticity_basic(view, rings)
-    if ring_nodes in aromatic_rings:
-        return _name_benzene(view, ring_atoms, opts)
+        return _name_cycloalkane(view, ring_atoms, opts)
 
-    return _name_cycloalkane(view, ring_atoms, opts)
+    naph = detect_naphthalene(view, rings)
+    if naph is not None:
+        return _name_naphthalene(view, naph, opts)
+
+    raise ChemNameNotSupported("Multiple rings not supported")
 
 
 def _name_cycloalkane(view: MolView, ring_atoms: list[int], opts: NameOptions) -> str:
@@ -134,6 +150,77 @@ def _name_benzene(view: MolView, ring_atoms: list[int], opts: NameOptions) -> st
         allow_nitro=True,
     )
     return render_name(substituents, "benzene", always_include_locant=False)
+
+
+def _name_heteroaromatic(view: MolView, info: dict, opts: NameOptions) -> str:
+    kind = info.get("kind")
+    ring_atoms = info.get("order") or []
+    hetero_atoms = info.get("hetero_atoms") or []
+    if not kind or not ring_atoms or not hetero_atoms:
+        raise ChemNameNotSupported("Unsupported heteroaromatic ring")
+
+    oriented = choose_hetero_ring_orientation(
+        view,
+        ring_atoms,
+        hetero_atoms,
+        opts,
+        allow_hydroxy=True,
+        allow_nitro=False,
+        forbid_hetero_substituents=True,
+    )
+    substituents = ring_substituents(
+        view,
+        oriented,
+        allow_hydroxy=True,
+        allow_nitro=False,
+        forbid_hetero_substituents=True,
+    )
+    return render_name(substituents, kind, always_include_locant=False)
+
+
+def _name_naphthalene(view: MolView, info: dict, opts: NameOptions) -> str:
+    ring_atoms = set(info.get("atoms", set()))
+    fusion_atoms = set(info.get("fusion_atoms", ()))
+    if len(ring_atoms) != 10 or len(fusion_atoms) != 2:
+        raise ChemNameNotSupported("Unsupported fused ring")
+
+    # classify alpha/beta positions
+    alpha_atoms: set[int] = set()
+    for fusion in fusion_atoms:
+        for nbr in view.neighbors(fusion):
+            if nbr in ring_atoms and nbr not in fusion_atoms:
+                alpha_atoms.add(nbr)
+    beta_atoms = ring_atoms - fusion_atoms - alpha_atoms
+
+    subs: list[Sub] = []
+    for atom_id in ring_atoms:
+        for nbr in view.neighbors(atom_id):
+            if nbr in ring_atoms:
+                continue
+            if view.element(nbr) == "H":
+                continue
+            if atom_id in fusion_atoms:
+                raise ChemNameNotSupported("Fusion-atom substitution not supported")
+            name = _simple_substituent_name(view, atom_id, nbr, ring_atoms)
+            locant = 1 if atom_id in alpha_atoms else 2
+            subs.append(Sub(name, locant))
+
+    if len(subs) > 1:
+        raise ChemNameNotSupported("Multiple substitutions not supported")
+    return render_name(subs, "naphthalene", always_include_locant=True)
+
+
+def _simple_substituent_name(view: MolView, ring_atom: int, nbr: int, ring_set: set[int]) -> str:
+    elem = view.element(nbr)
+    if elem in HALO_MAP:
+        return HALO_MAP[elem]
+    if elem == "C":
+        length = alkyl_length_linear(view, nbr, ring_set)
+        name = ALKYL.get(length)
+        if name is None:
+            raise ChemNameNotSupported("Unsupported alkyl length")
+        return name
+    raise ChemNameNotSupported("Unsupported substituent")
 
 
 def _find_unsaturation(view: MolView, chain: list[int]) -> tuple[int | None, int | None]:

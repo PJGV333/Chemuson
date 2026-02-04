@@ -27,6 +27,7 @@ def choose_ring_orientation(
     opts,
     allow_hydroxy: bool = False,
     allow_nitro: bool = False,
+    forbid_hetero_substituents: bool = False,
 ) -> List[int]:
     best = None
     best_key = None
@@ -36,9 +37,40 @@ def choose_ring_orientation(
             numbering,
             allow_hydroxy=allow_hydroxy,
             allow_nitro=allow_nitro,
+            forbid_hetero_substituents=forbid_hetero_substituents,
         )
         locants = sorted(sub.locant for sub in subs)
         key = orientation_key(subs, opts, primary_locants=locants)
+        if best_key is None or key < best_key:
+            best_key = key
+            best = numbering
+    return list(best) if best is not None else list(ring_order)
+
+
+def choose_hetero_ring_orientation(
+    view: MolView,
+    ring_order: Sequence[int],
+    hetero_atoms: Iterable[int],
+    opts,
+    allow_hydroxy: bool = False,
+    allow_nitro: bool = False,
+    forbid_hetero_substituents: bool = False,
+) -> List[int]:
+    hetero_set = set(hetero_atoms)
+    best = None
+    best_key = None
+    for numbering in enumerate_ring_numberings(ring_order):
+        if numbering[0] not in hetero_set:
+            continue
+        subs = ring_substituents(
+            view,
+            numbering,
+            allow_hydroxy=allow_hydroxy,
+            allow_nitro=allow_nitro,
+            forbid_hetero_substituents=forbid_hetero_substituents,
+        )
+        hetero_locants = [idx + 1 for idx, atom_id in enumerate(numbering) if atom_id in hetero_set]
+        key = orientation_key(subs, opts, primary_locants=hetero_locants)
         if best_key is None or key < best_key:
             best_key = key
             best = numbering
@@ -50,6 +82,7 @@ def ring_substituents(
     ring_order: Sequence[int],
     allow_hydroxy: bool = False,
     allow_nitro: bool = False,
+    forbid_hetero_substituents: bool = False,
 ) -> List[Sub]:
     ring_set = set(ring_order)
     index_map = {atom_id: idx + 1 for idx, atom_id in enumerate(ring_order)}
@@ -61,6 +94,8 @@ def ring_substituents(
                 continue
             if view.element(nbr) == "H":
                 continue
+            if forbid_hetero_substituents and view.element(atom_id) != "C":
+                raise ChemNameNotSupported("Unsupported hetero substituent")
             name = _substituent_name_for_neighbor(
                 view,
                 atom_id,
