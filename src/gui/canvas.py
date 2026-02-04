@@ -110,6 +110,7 @@ from chemio.rdkit_io import (
     smiles_to_molgraph,
     kekulize_display_orders,
 )
+from chemname import iupac_name, NameOptions
 
 
 # Paper dimensions (default: A4-ish, in px)
@@ -4925,13 +4926,22 @@ class ChemusonCanvas(QGraphicsView):
         peaks = self._analysis_isotope_peaks(counts)
 
         lines: list[str] = []
+        if mode in {"name", "all", "iupac"}:
+            try:
+                iupac = iupac_name(graph, NameOptions())
+            except Exception:
+                iupac = "N/D"
+            if mode in {"name", "all"}:
+                lines.append(f"IUPAC: {iupac}")
+            else:
+                lines.append(iupac)
         if mode in {"name", "all"}:
             smiles = ""
             try:
                 smiles = molgraph_to_smiles(graph)
             except Exception:
                 smiles = ""
-            lines.append(smiles or "N/D")
+            lines.append(f"SMILES: {smiles or 'N/D'}")
         if mode in {"formula", "all"}:
             lines.append(f"Chemical Formula: {formula}")
         if mode in {"exact", "all"}:
@@ -5034,6 +5044,7 @@ class ChemusonCanvas(QGraphicsView):
         menu.addSeparator()
         analysis_menu = menu.addMenu("Análisis")
         act_analysis_name = analysis_menu.addAction("Nombre (SMILES)")
+        act_analysis_iupac = analysis_menu.addAction("Nombre (IUPAC)")
         act_analysis_formula = analysis_menu.addAction("Fórmula química")
         act_analysis_exact = analysis_menu.addAction("Masa exacta")
         act_analysis_weight = analysis_menu.addAction("Peso molecular")
@@ -5055,6 +5066,9 @@ class ChemusonCanvas(QGraphicsView):
             return
         if action == act_analysis_name:
             self._run_analysis_action("name", scene_pos)
+            return
+        if action == act_analysis_iupac:
+            self._run_analysis_action("iupac", scene_pos)
             return
         if action == act_analysis_formula:
             self._run_analysis_action("formula", scene_pos)
