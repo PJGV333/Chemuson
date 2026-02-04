@@ -25,7 +25,7 @@ from typing import Optional
 
 from gui.canvas import ChemusonCanvas
 from gui.periodic_table import PeriodicTableDialog
-from gui.toolbar import ChemusonToolbar
+from gui.toolbar import ChemusonToolbar, SymbolPaletteToolbar
 from gui.styles import MAIN_STYLESHEET, TOOL_PALETTE_STYLESHEET
 from gui.icons import draw_generic_icon
 from gui.docks import PlantillasDock, InspectorDock
@@ -76,12 +76,7 @@ class ChemusonWindow(QMainWindow):
         self.inspector_dock = InspectorDock(self)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.inspector_dock)
         self.inspector_dock.hide()
-        
-        # === MENU AND TOOLBARS ===
-        self._create_menu_bar()
-        self._create_main_toolbar()
-        self._sync_label_menu_state()
-        
+
         # === LEFT TOOLBAR (Drawing tools) ===
         self.toolbar = ChemusonToolbar()
         self.toolbar.setStyleSheet(TOOL_PALETTE_STYLESHEET)
@@ -103,6 +98,16 @@ class ChemusonWindow(QMainWindow):
             ],
             [self.action_label_color_element, self.action_label_color_black],
         )
+
+        # === RIGHT SYMBOLS TOOLBAR ===
+        self.symbols_toolbar = SymbolPaletteToolbar(action_group=self.toolbar.action_group)
+        self.symbols_toolbar.setStyleSheet(TOOL_PALETTE_STYLESHEET)
+        self.addToolBar(Qt.ToolBarArea.RightToolBarArea, self.symbols_toolbar)
+
+        # === MENU AND TOOLBARS ===
+        self._create_menu_bar()
+        self._create_main_toolbar()
+        self._sync_label_menu_state()
         
         # === TEXT FORMAT TOOLBAR ===
         self.text_toolbar = TextFormatToolbar()
@@ -128,6 +133,10 @@ class ChemusonWindow(QMainWindow):
         
         # Connect selection updates
         self.canvas.selection_changed.connect(self._on_selection_changed)
+
+        # Connect symbols dock to canvas
+        self.symbols_toolbar.tool_changed.connect(self.canvas.set_current_tool)
+        self.symbols_toolbar.tool_changed.connect(self._update_status)
 
         # Sync defaults selected during toolbar init
         self._handle_bond_palette(self.toolbar.current_bond_spec())
@@ -435,6 +444,7 @@ class ChemusonWindow(QMainWindow):
         view_menu.addSeparator()
         
         # Docks visibility
+        view_menu.addAction(self.symbols_toolbar.toggleViewAction())
         view_menu.addAction(self.templates_dock.toggleViewAction())
         view_menu.addAction(self.inspector_dock.toggleViewAction())
         
@@ -1353,6 +1363,15 @@ class ChemusonWindow(QMainWindow):
             "tool_brackets_curly": "Llaves",
             "tool_charge_plus": "Carga positiva",
             "tool_charge_minus": "Carga negativa",
+            "tool_charge": "Carga alterna",
+            "tool_symbol_plus": "Signo más",
+            "tool_symbol_minus": "Signo menos",
+            "tool_symbol_radical": "Electrón desapareado",
+            "tool_symbol_lone_pair": "Par solitario",
+            "tool_symbol_radical_cation": "Radical catión",
+            "tool_symbol_radical_anion": "Radical anión",
+            "tool_symbol_partial_plus": "Carga parcial (+)",
+            "tool_symbol_partial_minus": "Carga parcial (-)",
         }
         name = tool_names.get(tool_id, tool_id)
         self.statusBar().showMessage(f"Herramienta: {name}")

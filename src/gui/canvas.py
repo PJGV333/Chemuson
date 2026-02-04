@@ -36,7 +36,7 @@ from PyQt6.QtGui import (
     QFont,
     QTextCharFormat,
 )
-from PyQt6.QtCore import Qt, QPointF, QRectF, QRect, QSize, QBuffer, QMimeData, pyqtSignal
+from PyQt6.QtCore import Qt, QPoint, QPointF, QRectF, QRect, QSize, QBuffer, QMimeData, QTimer, pyqtSignal
 
 try:
     from PyQt6.QtSvg import QSvgGenerator
@@ -89,6 +89,7 @@ from gui.commands import (
     AddChainCommand,
     AddArrowCommand,
     AddBracketCommand,
+    AddTextItemCommand,
     ChangeAtomCommand,
     ChangeBondCommand,
     ChangeBondLengthCommand,
@@ -161,11 +162,34 @@ GRID_MAJOR_STEP_PX = 100
 SELECTION_BOX_PADDING_PX = 6.0
 SELECTION_HANDLE_RADIUS_PX = 6.0
 SELECTION_HANDLE_OFFSET_PX = 18.0
+SELECTION_ROTATE_OFFSET_PX = 13.0
+SELECTION_MOVE_OFFSET_PX = 0.0
 GRID_MINOR_STEP_PX = 20
 GRID_MAJOR_STEP_PX = 100
 SELECTION_BOX_PADDING_PX = 6.0
 SELECTION_HANDLE_RADIUS_PX = 6.0
 SELECTION_HANDLE_OFFSET_PX = 18.0
+
+HETERO_ELECTRON_ATOMS = {"N", "O", "S", "P", "F", "Cl", "Br", "I", "Se", "B"}
+ELECTRON_SLOT_ANGLES = [0, 45, 90, 135, 180, 225, 270, 315]
+ELECTRON_SLOT_TOLERANCE_DEG = 18.0
+ELECTRON_PAIR_SPREAD_PX = 6.5
+ELECTRON_DOT_ROLE = 1001
+ELECTRON_ANCHOR_ROLE = 1002
+ELECTRON_SLOT_ROLE = 1003
+ELECTRON_SIDE_ROLE = 1004
+ELECTRON_SCALE_ROLE = 1005
+
+SYMBOL_TEXT_TOOLS = {
+    "tool_symbol_plus": {"text": "+", "scale": 1.0, "anchor": True},
+    "tool_symbol_minus": {"text": "-", "scale": 1.0, "anchor": True},
+    "tool_symbol_radical": {"text": "•", "scale": 1.2, "anchor": True, "rotate": False, "electrons": 1},
+    "tool_symbol_lone_pair": {"text": "··", "scale": 1.1, "anchor": True, "rotate": True, "electrons": 2},
+    "tool_symbol_radical_cation": {"text": "•+", "scale": 1.1, "anchor": True, "rotate": False},
+    "tool_symbol_radical_anion": {"text": "•-", "scale": 1.1, "anchor": True, "rotate": False},
+    "tool_symbol_partial_plus": {"text": "δ+", "scale": 1.0, "anchor": True, "rotate": False},
+    "tool_symbol_partial_minus": {"text": "δ-", "scale": 1.0, "anchor": True, "rotate": False},
+}
 
 
 class ChemusonCanvas(QGraphicsView):
@@ -193,6 +217,7 @@ class ChemusonCanvas(QGraphicsView):
         self.drawing_style: DrawingStyle = CHEMDOODLE_LIKE
         self._ring_centers: dict[int, QPointF] = {}
         self._next_ring_id = 1
+        self._electron_dots: set[TextAnnotationItem] = set()
 
         self.atom_items: dict[int, AtomItem] = {}
         self.bond_items: dict[int, BondItem] = {}
@@ -272,6 +297,7 @@ class ChemusonCanvas(QGraphicsView):
         self._group_anchor_overrides: Dict[int, str] = {}
 
         self._setup_view()
+        self._pending_initial_center = True
         self._create_paper()
         self._create_overlays()
 
@@ -534,6 +560,7 @@ class ChemusonCanvas(QGraphicsView):
         self._update_scene_rect()
         self._create_paper()
         self.center_on_paper()
+        self._update_selection_overlay()
         self.viewport().update()
 
     def mousePressEvent(self, event) -> None:
@@ -613,8 +640,14 @@ class ChemusonCanvas(QGraphicsView):
                     self.scene.clearSelection()
                     clicked_item.setSelected(True)
             self._sync_selection_from_scene()
-            if isinstance(clicked_item, AtomItem) and clicked_item.isSelected():
-                self._begin_drag(scene_pos)
+            if clicked_item.isSelected():
+                if isinstance(clicked_item, TextAnnotationItem) and (
+                    clicked_item.textInteractionFlags()
+                    & Qt.TextInteractionFlag.TextEditorInteraction
+                ):
+                    return
+                if isinstance(clicked_item, (AtomItem, TextAnnotationItem, ArrowItem, BracketItem)):
+                    self._begin_drag(scene_pos)
             return
 
         clicked_atom_id, clicked_bond_id = self._pick_hover_target(scene_pos)
@@ -662,6 +695,8 @@ class ChemusonCanvas(QGraphicsView):
                 if isinstance(item, AtomItem):
                     clicked_atom_id = item.atom_id
             if clicked_atom_id is None:
+                if self.current_tool == "tool_charge":
+                    self._insert_symbol_item("±", scene_pos, None, 1.0, False)
                 return
             atom = self.model.get_atom(clicked_atom_id)
             if self.current_tool == "tool_charge_plus":
@@ -677,6 +712,37 @@ class ChemusonCanvas(QGraphicsView):
                     new_charge = 0
             cmd = ChangeChargeCommand(self.model, self, clicked_atom_id, new_charge)
             self.undo_stack.push(cmd)
+            return
+
+        symbol_spec = SYMBOL_TEXT_TOOLS.get(self.current_tool)
+        if symbol_spec is not None:
+            anchor_atom_id = clicked_atom_id
+            if anchor_atom_id is None:
+                item = self._get_item_at(scene_pos)
+                if isinstance(item, AtomItem):
+                    anchor_atom_id = item.atom_id
+            if anchor_atom_id is None and self.model.atoms:
+                atoms = [(atom.id, atom.x, atom.y) for atom in self.model.atoms.values()]
+                pick_radius = max(ATOM_HIT_RADIUS * 3, self.state.bond_length * 1.5)
+                anchor_atom_id = closest_atom(scene_pos, atoms, pick_radius)
+            if symbol_spec.get("electrons"):
+                self._insert_electron_dots(
+                    scene_pos,
+                    anchor_atom_id,
+                    symbol_spec["electrons"],
+                    symbol_spec.get("scale", 1.0),
+                    spread=None,
+                    mode="lone_pair" if self.current_tool == "tool_symbol_lone_pair" else "default",
+                )
+                return
+            self._insert_symbol_item(
+                symbol_spec["text"],
+                scene_pos,
+                anchor_atom_id,
+                symbol_spec.get("scale", 1.0),
+                symbol_spec.get("anchor", True),
+                symbol_spec.get("rotate", False),
+            )
             return
 
         if self.current_tool == "tool_atom":
@@ -981,6 +1047,12 @@ class ChemusonCanvas(QGraphicsView):
         bracket_items: Iterable = (),
         text_items: Iterable = (),
     ) -> None:
+        extra_text_items = list(text_items)
+        if atom_ids and self._electron_dots:
+            for item in list(self._electron_dots):
+                anchor_id = item.data(ELECTRON_ANCHOR_ROLE)
+                if anchor_id in atom_ids:
+                    extra_text_items.append(item)
         # Prioritize delete logic
         cmd = DeleteSelectionCommand(
             self.model,
@@ -989,7 +1061,7 @@ class ChemusonCanvas(QGraphicsView):
             bond_ids,
             arrow_items=arrow_items,
             bracket_items=bracket_items,
-            text_items=text_items,
+            text_items=extra_text_items,
         )
         self.undo_stack.push(cmd)
         self.scene.clearSelection()
@@ -998,7 +1070,381 @@ class ChemusonCanvas(QGraphicsView):
         for item in self.scene.items(scene_pos):
              if isinstance(item, (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem)):
                 return item
+             # If we clicked a label/text child of an atom, return the atom.
+             if isinstance(item, QGraphicsTextItem):
+                parent = item.parentItem()
+                if isinstance(parent, AtomItem):
+                    return parent
         return None
+
+    def _symbol_insert_position(self, scene_pos: QPointF, atom_id: Optional[int]) -> QPointF:
+        if atom_id is None:
+            return scene_pos
+        atom = self.model.get_atom(atom_id)
+        center = QPointF(atom.x, atom.y)
+        direction = scene_pos - center
+        if direction.manhattanLength() < 2.0:
+            direction = self._label_open_direction(atom_id)
+        if direction.manhattanLength() < 1e-3:
+            direction = QPointF(1.0, -1.0)
+        length = math.hypot(direction.x(), direction.y())
+        if length <= 1e-6:
+            return scene_pos
+        nx = direction.x() / length
+        ny = direction.y() / length
+        offset = max(12.0, self.state.bond_length * 0.3)
+        return QPointF(center.x() + nx * offset, center.y() + ny * offset)
+
+    def _symbol_anchor_data(
+        self,
+        atom_id: int,
+        scene_pos: QPointF,
+        offset: Optional[float] = None,
+    ) -> tuple[QPointF, float]:
+        atom = self.model.get_atom(atom_id)
+        center = QPointF(atom.x, atom.y)
+        direction = scene_pos - center
+        if direction.manhattanLength() < 2.0:
+            direction = self._label_open_direction(atom_id)
+        if direction.manhattanLength() < 1e-3:
+            direction = QPointF(1.0, -1.0)
+        length = math.hypot(direction.x(), direction.y())
+        if length <= 1e-6:
+            return center, 0.0
+        nx = direction.x() / length
+        ny = direction.y() / length
+        use_offset = max(12.0, self.state.bond_length * 0.3) if offset is None else offset
+        pos = QPointF(center.x() + nx * use_offset, center.y() + ny * use_offset)
+        angle = math.degrees(math.atan2(ny, nx))
+        return pos, angle
+
+    def _electron_dot_font_size(self, atom_id: int, scale: float) -> float:
+        item = self.atom_items.get(atom_id)
+        if item is not None:
+            base_font = item.label.font()
+        else:
+            base_font = self._label_font()
+        base_size = base_font.pointSizeF() or float(base_font.pointSize())
+        return max(5.0, base_size * 0.55 * scale)
+
+    def _electron_radial_offset(self, atom_id: int, scale: float) -> float:
+        item = self.atom_items.get(atom_id)
+        dot_size = self._electron_dot_font_size(atom_id, scale)
+        if item is not None and item.label.isVisible():
+            rect = item.label.boundingRect()
+            label_radius = max(rect.width(), rect.height()) * 0.5
+            return label_radius + dot_size * 0.45 + 2.0
+        return max(14.0, self.state.bond_length * 0.25 + dot_size * 0.4)
+
+    def _electron_pair_spread(self, atom_id: int, scale: float) -> float:
+        dot_size = self._electron_dot_font_size(atom_id, scale)
+        return max(3.0, dot_size * 0.55)
+
+    def _bond_angles_for_atom(self, atom_id: int) -> list[float]:
+        atom = self.model.get_atom(atom_id)
+        angles: list[float] = []
+        for bond in self.model.bonds.values():
+            if bond.a1_id == atom_id:
+                other = self.model.get_atom(bond.a2_id)
+            elif bond.a2_id == atom_id:
+                other = self.model.get_atom(bond.a1_id)
+            else:
+                continue
+            dx = other.x - atom.x
+            dy = other.y - atom.y
+            angle = (math.degrees(math.atan2(dy, dx)) + 360.0) % 360.0
+            angles.append(angle)
+        return angles
+
+    def _occupied_electron_slots(self, atom_id: int) -> set[int]:
+        occupied: set[int] = set()
+        for item in self._electron_dots:
+            if item.data(ELECTRON_ANCHOR_ROLE) != atom_id:
+                continue
+            slot_idx = item.data(ELECTRON_SLOT_ROLE)
+            if slot_idx is None:
+                continue
+            occupied.add(int(slot_idx))
+        return occupied
+
+    def _candidate_electron_slots(self, atom_id: int, mode: str) -> list[int]:
+        bond_angles = self._bond_angles_for_atom(atom_id)
+        bond_count = len(bond_angles)
+        if mode != "lone_pair":
+            return list(range(len(ELECTRON_SLOT_ANGLES)))
+
+        # Lone pair tool: 90-degree spacing when free, tetrahedral when bonded.
+        if bond_count == 0:
+            return [0, 2, 4, 6]
+
+        ideal_angles: list[float] = []
+        if bond_count == 1:
+            b = bond_angles[0]
+            ideal_angles = [b + 109.5, b - 109.5, b + 180.0]
+        elif bond_count == 2:
+            b1, b2 = bond_angles[0], bond_angles[1]
+            ideal_angles = [
+                b1 + 109.5,
+                b1 - 109.5,
+                b2 + 109.5,
+                b2 - 109.5,
+            ]
+        else:
+            ideal_angles = []
+
+        candidates: list[int] = []
+        if ideal_angles:
+            for ang in ideal_angles:
+                ang = (ang + 360.0) % 360.0
+                best_idx = None
+                best_dist = 1e9
+                for idx, slot_angle in enumerate(ELECTRON_SLOT_ANGLES):
+                    dist = angle_distance_deg(slot_angle, ang)
+                    if dist < best_dist:
+                        best_dist = dist
+                        best_idx = idx
+                if best_idx is not None and best_idx not in candidates:
+                    candidates.append(best_idx)
+
+        if not candidates:
+            candidates = list(range(len(ELECTRON_SLOT_ANGLES)))
+
+        # Remove slots blocked by bonds
+        filtered: list[int] = []
+        for idx in candidates:
+            slot_angle = ELECTRON_SLOT_ANGLES[idx]
+            blocked = any(
+                angle_distance_deg(slot_angle, b) <= ELECTRON_SLOT_TOLERANCE_DEG
+                for b in bond_angles
+            )
+            if not blocked:
+                filtered.append(idx)
+        return filtered if filtered else candidates
+
+    def _select_electron_slot(
+        self,
+        atom_id: int,
+        scene_pos: QPointF,
+        candidate_slots: Optional[list[int]] = None,
+    ) -> Optional[int]:
+        atom = self.model.get_atom(atom_id)
+        center = QPointF(atom.x, atom.y)
+        direction = scene_pos - center
+        if direction.manhattanLength() < 2.0:
+            direction = self._label_open_direction(atom_id)
+        if direction.manhattanLength() < 1e-3:
+            direction = QPointF(1.0, 0.0)
+        target_angle = (math.degrees(math.atan2(direction.y(), direction.x())) + 360.0) % 360.0
+
+        bond_angles = self._bond_angles_for_atom(atom_id)
+        occupied = self._occupied_electron_slots(atom_id)
+
+        if candidate_slots is None:
+            candidate_slots = list(range(len(ELECTRON_SLOT_ANGLES)))
+
+        best_idx: Optional[int] = None
+        best_dist = 1e9
+        for idx in candidate_slots:
+            slot_angle = ELECTRON_SLOT_ANGLES[idx]
+            if idx in occupied:
+                continue
+            blocked = any(angle_distance_deg(slot_angle, b) <= ELECTRON_SLOT_TOLERANCE_DEG for b in bond_angles)
+            if blocked:
+                continue
+            dist = angle_distance_deg(slot_angle, target_angle)
+            if dist < best_dist:
+                best_dist = dist
+                best_idx = idx
+        return best_idx
+
+    def _electron_slot_position(self, atom_id: int, slot_idx: int, scale: float) -> tuple[QPointF, QPointF]:
+        atom = self.model.get_atom(atom_id)
+        angle = math.radians(ELECTRON_SLOT_ANGLES[slot_idx])
+        nx = math.cos(angle)
+        ny = math.sin(angle)
+        px, py = -ny, nx
+        radial_offset = self._electron_radial_offset(atom_id, scale)
+        center = QPointF(atom.x, atom.y)
+        pos = QPointF(center.x() + nx * radial_offset, center.y() + ny * radial_offset)
+        tangent = QPointF(px, py)
+        return pos, tangent
+
+    def _position_electron_dot(self, item: TextAnnotationItem) -> None:
+        if not item.data(ELECTRON_DOT_ROLE):
+            return
+        anchor_id = item.data(ELECTRON_ANCHOR_ROLE)
+        slot_idx = item.data(ELECTRON_SLOT_ROLE)
+        side = item.data(ELECTRON_SIDE_ROLE) or 0
+        if anchor_id is None or slot_idx is None:
+            return
+        scale = float(item.data(ELECTRON_SCALE_ROLE) or 1.0)
+        pos, tangent = self._electron_slot_position(int(anchor_id), int(slot_idx), scale)
+        offset = self._electron_pair_spread(int(anchor_id), scale) * int(side)
+        pos = QPointF(pos.x() + tangent.x() * offset, pos.y() + tangent.y() * offset)
+        # Update font size to match atom label scale
+        item_font = item.font()
+        item_font.setPointSizeF(self._electron_dot_font_size(int(anchor_id), scale))
+        item_font.setBold(False)
+        item.setFont(item_font)
+        rect = item.boundingRect()
+        item.setPos(pos.x() - rect.width() / 2, pos.y() - rect.height() / 2)
+
+    def _update_electron_dots_for_atom(self, atom_id: int) -> None:
+        for item in list(self._electron_dots):
+            if item.data(ELECTRON_ANCHOR_ROLE) != atom_id:
+                continue
+            self._position_electron_dot(item)
+
+    def _create_dot_item(
+        self,
+        pos: QPointF,
+        atom_item: Optional[AtomItem],
+        scale: float,
+        anchor_atom_id: Optional[int] = None,
+        slot_idx: Optional[int] = None,
+        side: int = 0,
+    ) -> None:
+        item = TextAnnotationItem("•", 0.0, 0.0)
+        self._apply_text_settings(item)
+        item.setDefaultTextColor(QColor("#222222"))
+        item.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        try:
+            item.document().setDocumentMargin(0)
+            item.document().setDefaultStyleSheet("body { background: transparent; }")
+        except Exception:
+            pass
+        cursor = item.textCursor()
+        cursor.clearSelection()
+        item.setTextCursor(cursor)
+        fmt = QTextCharFormat()
+        fmt.setBackground(QBrush(Qt.BrushStyle.NoBrush))
+        cursor.select(cursor.SelectionType.Document)
+        cursor.mergeCharFormat(fmt)
+
+        if scale and abs(scale - 1.0) > 1e-3:
+            font = item.font()
+            font.setPointSizeF(font.pointSizeF() * scale)
+            item.setFont(font)
+        if anchor_atom_id is not None:
+            font = item.font()
+            font.setPointSizeF(self._electron_dot_font_size(anchor_atom_id, scale))
+            font.setBold(False)
+            item.setFont(font)
+
+        rect = item.boundingRect()
+        item.setPos(pos.x() - rect.width() / 2, pos.y() - rect.height() / 2)
+        item.setData(ELECTRON_DOT_ROLE, True)
+        if anchor_atom_id is not None:
+            item.setData(ELECTRON_ANCHOR_ROLE, anchor_atom_id)
+        if slot_idx is not None:
+            item.setData(ELECTRON_SLOT_ROLE, slot_idx)
+            item.setData(ELECTRON_SIDE_ROLE, int(side))
+        item.setData(ELECTRON_SCALE_ROLE, float(scale))
+        self._electron_dots.add(item)
+
+        self.undo_stack.push(AddTextItemCommand(self, item))
+
+    def _insert_electron_dots(
+        self,
+        scene_pos: QPointF,
+        atom_id: Optional[int],
+        count: int,
+        scale: float,
+        spread: Optional[float] = None,
+        mode: str = "default",
+    ) -> None:
+        if atom_id is None:
+            return
+        atom = self.model.get_atom(atom_id)
+        if atom.element not in HETERO_ELECTRON_ATOMS:
+            return
+
+        slot_candidates = self._candidate_electron_slots(atom_id, mode)
+        slot_idx = self._select_electron_slot(atom_id, scene_pos, slot_candidates)
+        if slot_idx is None:
+            return
+
+        pos, tangent = self._electron_slot_position(atom_id, slot_idx, scale)
+        if count <= 1:
+            self._create_dot_item(
+                pos,
+                self.atom_items.get(atom_id),
+                scale,
+                anchor_atom_id=atom_id,
+                slot_idx=slot_idx,
+                side=0,
+            )
+            return
+
+        base_spread = self._electron_pair_spread(atom_id, scale)
+        if mode == "lone_pair":
+            base_spread *= 1.25
+        use_spread = base_spread if spread is None else spread
+        dx = tangent.x() * use_spread
+        dy = tangent.y() * use_spread
+        p1 = QPointF(pos.x() + dx, pos.y() + dy)
+        p2 = QPointF(pos.x() - dx, pos.y() - dy)
+        self._create_dot_item(
+            p1,
+            self.atom_items.get(atom_id),
+            scale,
+            anchor_atom_id=atom_id,
+            slot_idx=slot_idx,
+            side=1,
+        )
+        self._create_dot_item(
+            p2,
+            self.atom_items.get(atom_id),
+            scale,
+            anchor_atom_id=atom_id,
+            slot_idx=slot_idx,
+            side=-1,
+        )
+
+    def _insert_symbol_item(
+        self,
+        text: str,
+        scene_pos: QPointF,
+        atom_id: Optional[int],
+        scale: float,
+        anchor_to_atom: bool,
+        rotate: bool = False,
+    ) -> None:
+        pos = scene_pos
+        angle = 0.0
+        if anchor_to_atom and atom_id is not None:
+            pos, angle = self._symbol_anchor_data(atom_id, scene_pos)
+        item = TextAnnotationItem(text, 0.0, 0.0)
+        self._apply_text_settings(item)
+        item.setDefaultTextColor(QColor("#222222"))
+        item.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        try:
+            item.document().setDocumentMargin(0)
+            item.document().setDefaultStyleSheet("body { background: transparent; }")
+        except Exception:
+            pass
+        cursor = item.textCursor()
+        cursor.clearSelection()
+        item.setTextCursor(cursor)
+        fmt = QTextCharFormat()
+        fmt.setBackground(QBrush(Qt.BrushStyle.NoBrush))
+        cursor.select(cursor.SelectionType.Document)
+        cursor.mergeCharFormat(fmt)
+        if scale and abs(scale - 1.0) > 1e-3:
+            font = item.font()
+            font.setPointSizeF(font.pointSizeF() * scale)
+            item.setFont(font)
+        rect = item.boundingRect()
+        if anchor_to_atom and atom_id is not None and atom_id in self.atom_items:
+            atom_item = self.atom_items[atom_id]
+            local = atom_item.mapFromScene(QPointF(pos.x(), pos.y()))
+            item.setParentItem(atom_item)
+            item.setPos(local.x() - rect.width() / 2, local.y() - rect.height() / 2)
+        else:
+            item.setPos(pos.x() - rect.width() / 2, pos.y() - rect.height() / 2)
+        if rotate:
+            item.setRotation(angle)
+        self.undo_stack.push(AddTextItemCommand(self, item))
 
     def mouseDoubleClickEvent(self, event) -> None:
         scene_pos = self.mapToScene(event.pos())
@@ -1532,12 +1978,14 @@ class ChemusonCanvas(QGraphicsView):
             self._zoom_factor *= 1.2
             self.scale(1.2, 1.2)
             self._update_scene_rect()
+            self._update_selection_overlay()
 
     def zoom_out(self) -> None:
         if self._zoom_factor > self._min_zoom:
             self._zoom_factor /= 1.2
             self.scale(1 / 1.2, 1 / 1.2)
             self._update_scene_rect()
+            self._update_selection_overlay()
 
     def clear_canvas(self) -> None:
         self._overlays_ready = False
@@ -1573,6 +2021,7 @@ class ChemusonCanvas(QGraphicsView):
         self.aromatic_circles.clear()
         self.arrow_items.clear()
         self.bracket_items.clear()
+        self._electron_dots.clear()
         self._implicit_h_overlays.clear()
         self._group_anchor_overrides.clear()
         self._ring_centers.clear()
@@ -1659,15 +2108,19 @@ class ChemusonCanvas(QGraphicsView):
     def add_text_item(self, item: TextAnnotationItem) -> None:
         if item.scene() is not self.scene:
             self.scene.addItem(item)
-        item.setSelected(True)
 
     def remove_text_item(self, item: TextAnnotationItem) -> None:
         if item.scene() is self.scene:
             self.scene.removeItem(item)
+        if item in self._electron_dots:
+            self._electron_dots.discard(item)
 
     def readd_text_item(self, item: TextAnnotationItem) -> None:
         if item.scene() is not self.scene:
             self.scene.addItem(item)
+        if item.data(ELECTRON_DOT_ROLE):
+            self._electron_dots.add(item)
+            self._position_electron_dot(item)
 
     def delete_selection(self) -> None:
         selected_arrows = [
@@ -2503,6 +2956,7 @@ class ChemusonCanvas(QGraphicsView):
         item = self.atom_items.get(atom_id)
         if item is not None:
             item.setPos(x, y)
+        self._update_electron_dots_for_atom(atom_id)
 
     def update_atom_item_element(
         self,
@@ -2516,6 +2970,7 @@ class ChemusonCanvas(QGraphicsView):
                 is_explicit = self.model.get_atom(atom_id).is_explicit
             item.set_element(element, is_explicit=is_explicit)
             self._refresh_atom_label(atom_id)
+        self._update_electron_dots_for_atom(atom_id)
 
     def update_atom_item_charge(self, atom_id: int, charge: int) -> None:
         item = self.atom_items.get(atom_id)
@@ -4077,7 +4532,7 @@ class ChemusonCanvas(QGraphicsView):
             self._selection_box = box
         if self._selection_handle is None:
             radius = SELECTION_HANDLE_RADIUS_PX
-            handle = QGraphicsEllipseItem(0, 0, radius * 2.0, radius * 2.0)
+            handle = QGraphicsEllipseItem(-radius, -radius, radius * 2.0, radius * 2.0)
             handle.setBrush(QBrush(QColor("#4A90D9")))
             handle.setPen(QPen(QColor("#4A90D9"), 0))
             handle.setZValue(46)
@@ -4087,7 +4542,7 @@ class ChemusonCanvas(QGraphicsView):
 
         if self._selection_move_handle is None:
             radius = SELECTION_HANDLE_RADIUS_PX
-            handle = QGraphicsEllipseItem(0, 0, radius * 2.0, radius * 2.0)
+            handle = QGraphicsEllipseItem(-radius, -radius, radius * 2.0, radius * 2.0)
             handle.setBrush(QBrush(QColor("#FFFFFF")))
             handle.setPen(QPen(QColor("#4A90D9"), 1))
             handle.setZValue(46)
@@ -4098,7 +4553,7 @@ class ChemusonCanvas(QGraphicsView):
 
         if self._selection_scale_handle is None:
             size = SELECTION_HANDLE_RADIUS_PX * 2.0
-            handle = QGraphicsRectItem(0, 0, size, size)
+            handle = QGraphicsRectItem(-size / 2.0, -size / 2.0, size, size)
             handle.setBrush(QBrush(QColor("#4A90D9")))
             handle.setPen(QPen(QColor("#4A90D9"), 0))
             handle.setZValue(46)
@@ -4191,6 +4646,14 @@ class ChemusonCanvas(QGraphicsView):
         padded = QRectF(bbox)
         pad = max(2.0, float(self.drawing_style.stroke_px))
         padded.adjust(-pad, -pad, pad, pad)
+
+        def offset_in_scene(base: QPointF, dx_view: float, dy_view: float) -> QPointF:
+            view_pt = self.mapFromScene(base)
+            view_x = float(view_pt.x()) + dx_view
+            view_y = float(view_pt.y()) + dy_view
+            view_pt = QPoint(int(round(view_x)), int(round(view_y)))
+            return self.mapToScene(view_pt)
+
         if self._selection_box is not None:
             try:
                 self._selection_box.setRect(padded)
@@ -4198,31 +4661,30 @@ class ChemusonCanvas(QGraphicsView):
             except RuntimeError:
                 self._selection_box = None
         if self._selection_handle is not None:
-            center_x = padded.center().x()
-            handle_x = center_x - SELECTION_HANDLE_RADIUS_PX
-            handle_y = padded.top() - SELECTION_HANDLE_OFFSET_PX - SELECTION_HANDLE_RADIUS_PX
+            top_center = QPointF(padded.center().x(), padded.top())
+            handle_pos = offset_in_scene(top_center, 0.0, -SELECTION_ROTATE_OFFSET_PX)
             try:
-                self._selection_handle.setPos(handle_x, handle_y)
+                self._selection_handle.setPos(handle_pos)
                 self._selection_handle.setVisible(True)
             except RuntimeError:
                 self._selection_handle = None
 
         if self._selection_move_handle is not None:
-            center_x = padded.center().x()
-            center_y = padded.center().y()
-            handle_x = center_x - SELECTION_HANDLE_RADIUS_PX
-            handle_y = center_y - SELECTION_HANDLE_RADIUS_PX
+            top_center = QPointF(padded.center().x(), padded.top())
+            handle_pos = offset_in_scene(top_center, 0.0, SELECTION_MOVE_OFFSET_PX)
             try:
-                self._selection_move_handle.setPos(handle_x, handle_y)
+                self._selection_move_handle.setPos(handle_pos)
                 self._selection_move_handle.setVisible(True)
             except RuntimeError:
                 self._selection_move_handle = None
 
         if self._selection_scale_handle is not None:
-            handle_x = padded.right() - SELECTION_HANDLE_RADIUS_PX
-            handle_y = padded.bottom() - SELECTION_HANDLE_RADIUS_PX
+            corner = QPointF(padded.right(), padded.bottom())
+            handle_pos = offset_in_scene(
+                corner, -SELECTION_HANDLE_RADIUS_PX, -SELECTION_HANDLE_RADIUS_PX
+            )
             try:
-                self._selection_scale_handle.setPos(handle_x, handle_y)
+                self._selection_scale_handle.setPos(handle_pos)
                 self._selection_scale_handle.setVisible(True)
             except RuntimeError:
                 self._selection_scale_handle = None
@@ -4263,11 +4725,11 @@ class ChemusonCanvas(QGraphicsView):
     def _hit_handle_item(self, handle: QGraphicsItem, scene_pos: QPointF) -> bool:
         # Use a screen-space hit target so handles stay clickable at low zoom.
         view_pos = self.mapFromScene(scene_pos)
-        center = handle.sceneBoundingRect().center()
+        center = handle.pos() + handle.boundingRect().center()
         center_view = self.mapFromScene(center)
         dx = view_pos.x() - center_view.x()
         dy = view_pos.y() - center_view.y()
-        radius = max(SELECTION_HANDLE_RADIUS_PX * 2.0, 10.0)
+        radius = max(SELECTION_HANDLE_RADIUS_PX * 2.0, 12.0)
         return (dx * dx + dy * dy) <= (radius * radius)
 
     def _begin_rotation_drag(self, scene_pos: QPointF) -> None:
@@ -6360,6 +6822,7 @@ class ChemusonCanvas(QGraphicsView):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._update_scene_rect()
+        self._update_selection_overlay()
         # Compare in scene units so zoom level is respected.
         viewport_rect = self.viewport().rect()
         if viewport_rect.isEmpty():
@@ -6367,3 +6830,18 @@ class ChemusonCanvas(QGraphicsView):
         view_bounds = self.mapToScene(viewport_rect).boundingRect()
         if view_bounds.width() >= self.paper_width and view_bounds.height() >= self.paper_height:
             self.center_on_paper()
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        if not getattr(self, "_pending_initial_center", False):
+            return
+        self._pending_initial_center = False
+        QTimer.singleShot(0, self._center_canvas_initial)
+
+    def _center_canvas_initial(self) -> None:
+        if self.viewport().rect().isEmpty():
+            self._pending_initial_center = True
+            return
+        self._update_scene_rect()
+        self.center_on_paper()
+        self._update_selection_overlay()

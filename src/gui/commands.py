@@ -778,6 +778,21 @@ class AddBracketCommand(QUndoCommand):
             self._view.remove_bracket_item(self._item)
 
 
+class AddTextItemCommand(QUndoCommand):
+    def __init__(self, view, item) -> None:
+        super().__init__("Add text")
+        self._view = view
+        self._item = item
+
+    def redo(self) -> None:
+        if self._item is not None:
+            self._view.readd_text_item(self._item)
+
+    def undo(self) -> None:
+        if self._item is not None:
+            self._view.remove_text_item(self._item)
+
+
 class AddRingCommand(QUndoCommand):
     def __init__(
         self,

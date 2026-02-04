@@ -253,7 +253,10 @@ class AtomItem(QGraphicsEllipseItem):
             return
         sign = "+" if charge > 0 else "-"
         magnitude = abs(charge)
-        label = sign if magnitude == 1 else f"{sign}{magnitude}"
+        if magnitude == 1:
+            label = "⊕" if charge > 0 else "⊖"
+        else:
+            label = f"{sign}{magnitude}"
         self.charge_label.setPlainText(label)
         self._position_charge_label()
         self.charge_label.setVisible(True)

@@ -101,6 +101,100 @@ def draw_glyph_icon(text: str, color: str = None) -> QIcon:
     return QIcon(pixmap)
 
 
+def draw_charge_icon(sign: str) -> QIcon:
+    """
+    Draw a circled charge icon with + or -.
+    """
+    pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
+    pixmap.fill(Qt.GlobalColor.transparent)
+
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+    center = ICON_SIZE / 2
+    radius = ICON_SIZE / 2 - 6
+
+    painter.setPen(QPen(QColor("#222222"), 2))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawEllipse(QPointF(center, center), radius, radius)
+
+    line_len = 6
+    painter.drawLine(
+        QPointF(center - line_len, center),
+        QPointF(center + line_len, center),
+    )
+    if sign == "+":
+        painter.drawLine(
+            QPointF(center, center - line_len),
+            QPointF(center, center + line_len),
+        )
+
+    painter.end()
+    return QIcon(pixmap)
+
+
+def draw_electron_icon(count: int = 1, spread: float = 6.0) -> QIcon:
+    """
+    Draw electron dot icons (single, pair, etc).
+    """
+    count = max(1, int(count))
+    pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
+    pixmap.fill(Qt.GlobalColor.transparent)
+
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+    painter.setPen(QPen(Qt.PenStyle.NoPen))
+    painter.setBrush(QBrush(QColor("#222222")))
+
+    center_x = ICON_SIZE / 2
+    center_y = ICON_SIZE / 2
+    radius = 2.2
+    total_width = (count - 1) * spread
+    start_x = center_x - total_width / 2
+
+    for i in range(count):
+        x = start_x + i * spread
+        painter.drawEllipse(QPointF(x, center_y), radius, radius)
+
+    painter.end()
+    return QIcon(pixmap)
+
+
+def draw_radical_charge_icon(sign: str) -> QIcon:
+    """
+    Draw a radical dot with a small charge sign.
+    """
+    pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
+    pixmap.fill(Qt.GlobalColor.transparent)
+
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+    # Radical dot (left-center)
+    painter.setPen(QPen(Qt.PenStyle.NoPen))
+    painter.setBrush(QBrush(QColor("#222222")))
+    dot_pos = QPointF(ICON_SIZE * 0.38, ICON_SIZE * 0.58)
+    painter.drawEllipse(dot_pos, 2.2, 2.2)
+
+    # Charge sign (top-right)
+    painter.setPen(QPen(QColor("#222222"), 2))
+    sign_center = QPointF(ICON_SIZE * 0.65, ICON_SIZE * 0.40)
+    line_len = 4.0
+    painter.drawLine(
+        QPointF(sign_center.x() - line_len, sign_center.y()),
+        QPointF(sign_center.x() + line_len, sign_center.y()),
+    )
+    if sign == "+":
+        painter.drawLine(
+            QPointF(sign_center.x(), sign_center.y() - line_len),
+            QPointF(sign_center.x(), sign_center.y() + line_len),
+        )
+
+    painter.end()
+    return QIcon(pixmap)
+
+
 def draw_bond_icon(bond_type: str = 'single') -> QIcon:
     """
     Draw a bond icon showing a diagonal line.

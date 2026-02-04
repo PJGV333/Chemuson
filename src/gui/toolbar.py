@@ -23,6 +23,9 @@ from gui.icons import (
     draw_generic_icon,
     draw_glyph_icon,
     draw_ring_icon,
+    draw_charge_icon,
+    draw_electron_icon,
+    draw_radical_charge_icon,
 )
 from gui.styles import TOOL_PALETTE_STYLESHEET
 
@@ -94,8 +97,6 @@ class ChemusonToolbar(QToolBar):
                 draw_arrow_icon("curved_fishhook"),
                 "Flecha curva (1 e-)",
             ),
-            "tool_charge_plus": (draw_glyph_icon("+"), "Carga positiva"),
-            "tool_charge_minus": (draw_glyph_icon("-"), "Carga negativa"),
         }
 
         self._current_select_tool_id = "tool_select"
@@ -485,8 +486,6 @@ class ChemusonToolbar(QToolBar):
             "tool_arrow_retrosynthetic",
             "tool_arrow_curved",
             "tool_arrow_curved_fishhook",
-            "tool_charge_plus",
-            "tool_charge_minus",
         ]
         
         for tool_id in tool_order:
@@ -576,3 +575,131 @@ class ChemusonToolbar(QToolBar):
 
     def current_element(self) -> str:
         return self._current_element
+
+
+class SymbolPaletteToolbar(QToolBar):
+    """
+    Right-side toolbar for chemical symbol tools (charges, radicals, electrons, etc.).
+    """
+
+    tool_changed = pyqtSignal(str)
+
+    def __init__(self, action_group: QActionGroup, parent=None) -> None:
+        super().__init__("Simbolismos químicos", parent)
+        self.setOrientation(Qt.Orientation.Vertical)
+        self.setMovable(False)
+        self.setFloatable(False)
+        self.setIconSize(QSize(28, 28))
+        self.setStyleSheet(TOOL_PALETTE_STYLESHEET)
+
+        self._action_group = action_group
+        self._current_symbol_tool_id = "tool_charge_plus"
+
+        icon, tip = self._symbol_meta()[self._current_symbol_tool_id]
+        self.symbol_button, self.symbol_action = self._add_palette_button(
+            icon,
+            tip,
+            "tool_symbol_palette",
+            trigger_callback=self._emit_current_symbol_tool,
+        )
+        self._build_symbol_palette(self.symbol_button.menu())
+
+    def _add_palette_button(
+        self,
+        icon,
+        tooltip: str,
+        internal_id: str,
+        trigger_callback=None,
+    ):
+        action = QAction(icon, "", self)
+        action.setObjectName(internal_id)
+        action.setToolTip(tooltip)
+        action.setCheckable(True)
+        if self._action_group is not None:
+            self._action_group.addAction(action)
+        if trigger_callback is None:
+            action.triggered.connect(lambda checked, id=internal_id: self.tool_changed.emit(id))
+        else:
+            action.triggered.connect(trigger_callback)
+
+        button = QToolButton(self)
+        button.setDefaultAction(action)
+        button.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+        button.setMenu(QMenu(button))
+        self.addWidget(button)
+        return button, action
+
+    def _symbol_meta(self) -> dict[str, tuple]:
+        return {
+            "tool_charge_plus": (draw_charge_icon("+"), "Carga positiva"),
+            "tool_charge_minus": (draw_charge_icon("-"), "Carga negativa"),
+            "tool_charge": (draw_glyph_icon("±"), "Carga alterna (+/-)"),
+            "tool_symbol_plus": (draw_glyph_icon("+"), "Signo más"),
+            "tool_symbol_minus": (draw_glyph_icon("-"), "Signo menos"),
+            "tool_symbol_radical": (draw_electron_icon(1), "Electrón desapareado"),
+            "tool_symbol_lone_pair": (draw_electron_icon(2, spread=5.0), "Par solitario"),
+            "tool_symbol_radical_cation": (draw_radical_charge_icon("+"), "Radical catión"),
+            "tool_symbol_radical_anion": (draw_radical_charge_icon("-"), "Radical anión"),
+            "tool_symbol_partial_plus": (draw_glyph_icon("δ+"), "Carga parcial (δ+)"),
+            "tool_symbol_partial_minus": (draw_glyph_icon("δ-"), "Carga parcial (δ-)"),
+        }
+
+    def _make_palette_entry(self, icon, tooltip: str, callback, enabled: bool = True) -> dict:
+        return {
+            "icon": icon,
+            "tooltip": tooltip,
+            "callback": callback,
+            "enabled": enabled,
+        }
+
+    def _populate_grid_menu(self, menu: QMenu, entries: list[dict], columns: int) -> None:
+        container = QWidget(menu)
+        container.setObjectName("palette_grid")
+        layout = QGridLayout(container)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(4)
+        icon_size = QSize(22, 22)
+
+        for index, entry in enumerate(entries):
+            button = QToolButton(container)
+            button.setIcon(entry["icon"])
+            button.setIconSize(icon_size)
+            button.setToolTip(entry["tooltip"])
+            button.setEnabled(entry.get("enabled", True))
+            button.setAutoRaise(True)
+            callback = entry.get("callback")
+            if callback is not None:
+                button.clicked.connect(lambda checked=False, cb=callback, m=menu: self._trigger_palette_action(cb, m))
+            layout.addWidget(button, index // columns, index % columns)
+
+        action = QWidgetAction(menu)
+        action.setDefaultWidget(container)
+        menu.addAction(action)
+
+    def _trigger_palette_action(self, callback, menu: QMenu) -> None:
+        callback()
+        menu.close()
+
+    def _build_symbol_palette(self, menu: QMenu) -> None:
+        entries = []
+        for tool_id, (icon, tooltip) in self._symbol_meta().items():
+            entries.append(
+                self._make_palette_entry(
+                    icon,
+                    tooltip,
+                    lambda tid=tool_id: self._select_symbol_tool(tid),
+                )
+            )
+        self._populate_grid_menu(menu, entries, columns=4)
+
+    def _emit_current_symbol_tool(self, checked: bool = False) -> None:
+        self.tool_changed.emit(self._current_symbol_tool_id)
+
+    def _select_symbol_tool(self, tool_id: str) -> None:
+        icon, tooltip = self._symbol_meta()[tool_id]
+        self._current_symbol_tool_id = tool_id
+        self.symbol_action.setIcon(icon)
+        self.symbol_action.setToolTip(tooltip)
+        self.symbol_button.setToolTip(tooltip)
+        self.symbol_action.setChecked(True)
+        self.tool_changed.emit(tool_id)
