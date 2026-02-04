@@ -4,6 +4,7 @@ Page-based canvas using QGraphicsView/QGraphicsScene for document-style editing.
 """
 from __future__ import annotations
 
+import base64
 import json
 import math
 from typing import Dict, Iterable, List, Optional, Tuple
@@ -2725,13 +2726,12 @@ class ChemusonCanvas(QGraphicsView):
             graph = self.model if self.model.atoms and not only_text_selection else None
         else:
             graph = None
+        smiles = ""
         if graph is not None and graph.atoms:
             try:
                 molfile = molgraph_to_molfile(graph)
                 smiles = molgraph_to_smiles(graph)
                 mime.setData("chemical/x-mdl-molfile", molfile.encode("utf-8"))
-                if smiles:
-                    mime.setText(smiles)
             except Exception:
                 pass
         if only_text_selection:
@@ -2767,6 +2767,14 @@ class ChemusonCanvas(QGraphicsView):
             image.save(buffer, "PNG")
             mime.setData("image/png", buffer.data())
             mime.setImageData(image)
+            try:
+                png_b64 = base64.b64encode(bytes(buffer.data())).decode("ascii")
+                html = f'<img src="data:image/png;base64,{png_b64}" alt="{smiles}">'
+                mime.setHtml(html)
+            except Exception:
+                pass
+        elif smiles:
+            mime.setText(smiles)
         svg_data = self._render_scene_svg(selected_only=has_selection)
         if svg_data:
             mime.setData("image/svg+xml", svg_data)
