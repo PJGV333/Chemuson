@@ -35,6 +35,15 @@ ALKANE_PARENT: Dict[int, str] = {
     20: "eicosane",
 }
 
+CYCLO_PARENT: Dict[int, str] = {
+    3: "cyclopropane",
+    4: "cyclobutane",
+    5: "cyclopentane",
+    6: "cyclohexane",
+    7: "cycloheptane",
+    8: "cyclooctane",
+}
+
 ALKYL: Dict[int, str] = {
     1: "methyl",
     2: "ethyl",
@@ -131,6 +140,8 @@ def alkyl_length_linear(view: MolView, start_atom: int, chain_set: Set[int]) -> 
                 continue
             if elem != "C":
                 raise ChemNameNotSupported("Non-carbon in alkyl branch")
+            if view.bond_order_between(current, nbr) != 1:
+                raise ChemNameNotSupported("Unsaturated bond in alkyl branch")
             next_candidates.append(nbr)
 
         if len(next_candidates) > 1:

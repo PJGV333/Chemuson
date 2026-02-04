@@ -8,7 +8,9 @@ from .molview import MolView
 from .options import NameOptions
 from .parent_chain import longest_carbon_chain
 from .render import render_name
-from .substituents import parent_name
+from .ring_naming import choose_ring_orientation, ring_substituents
+from .rings import find_rings_simple, is_simple_ring, perceive_aromaticity_basic, ring_order
+from .substituents import CYCLO_PARENT, parent_name
 
 
 def iupac_name(graph, opts: NameOptions = NameOptions()) -> str:
@@ -28,7 +30,13 @@ def iupac_name(graph, opts: NameOptions = NameOptions()) -> str:
 def iupac_name_lite(graph, opts: NameOptions) -> str:
     """Lite naming engine for acyclic hydrocarbons with simple substituents."""
     view = MolView(graph)
+    rings = find_rings_simple(view)
+    if not rings:
+        return _name_linear(view, opts)
+    return _name_cyclic(view, rings, opts)
 
+
+def _name_linear(view: MolView, opts: NameOptions) -> str:
     if not view.is_acyclic():
         raise ChemNameNotSupported("Cyclic structures not supported")
 
@@ -42,7 +50,7 @@ def iupac_name_lite(graph, opts: NameOptions) -> str:
     if not chain:
         raise ChemNameNotSupported("No carbon chain found")
 
-    unsat_order, unsat_index = _find_unsaturation(view, chain)
+    unsat_order, _ = _find_unsaturation(view, chain)
     func = _find_functional_group(view, chain)
     func_atom = func[1] if func else None
     func_suffix = func[0] if func else None
@@ -70,6 +78,62 @@ def iupac_name_lite(graph, opts: NameOptions) -> str:
     )
 
     return render_name(substituents, parent)
+
+
+def _name_cyclic(view: MolView, rings: list[frozenset[int]], opts: NameOptions) -> str:
+    if len(rings) != 1:
+        raise ChemNameNotSupported("Multiple rings not supported")
+
+    ring_nodes = rings[0]
+    if not is_simple_ring(view, ring_nodes):
+        raise ChemNameNotSupported("Fused rings not supported")
+
+    ring_atoms = ring_order(view, ring_nodes)
+    if not ring_atoms:
+        raise ChemNameNotSupported("Ring ordering failed")
+
+    aromatic_rings = perceive_aromaticity_basic(view, rings)
+    if ring_nodes in aromatic_rings:
+        return _name_benzene(view, ring_atoms, opts)
+
+    return _name_cycloalkane(view, ring_atoms, opts)
+
+
+def _name_cycloalkane(view: MolView, ring_atoms: list[int], opts: NameOptions) -> str:
+    for idx in range(len(ring_atoms)):
+        if view.bond_order_between(ring_atoms[idx], ring_atoms[(idx + 1) % len(ring_atoms)]) != 1:
+            raise ChemNameNotSupported("Unsaturated ring not supported")
+    for atom_id in ring_atoms:
+        if view.element(atom_id) != "C":
+            raise ChemNameNotSupported("Non-carbon ring not supported")
+
+    parent = CYCLO_PARENT.get(len(ring_atoms))
+    if parent is None:
+        raise ChemNameNotSupported("Unsupported ring size")
+
+    oriented = choose_ring_orientation(view, ring_atoms, opts)
+    substituents = ring_substituents(view, oriented)
+    return render_name(substituents, parent, always_include_locant=False)
+
+
+def _name_benzene(view: MolView, ring_atoms: list[int], opts: NameOptions) -> str:
+    for atom_id in ring_atoms:
+        if view.element(atom_id) != "C":
+            raise ChemNameNotSupported("Unsupported aromatic ring")
+    oriented = choose_ring_orientation(
+        view,
+        ring_atoms,
+        opts,
+        allow_hydroxy=True,
+        allow_nitro=True,
+    )
+    substituents = ring_substituents(
+        view,
+        oriented,
+        allow_hydroxy=True,
+        allow_nitro=True,
+    )
+    return render_name(substituents, "benzene", always_include_locant=False)
 
 
 def _find_unsaturation(view: MolView, chain: list[int]) -> tuple[int | None, int | None]:

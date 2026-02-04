@@ -15,7 +15,11 @@ MULTIPLIER = {
 }
 
 
-def render_name(substituents: Iterable[Sub], parent: str) -> str:
+def render_name(
+    substituents: Iterable[Sub],
+    parent: str,
+    always_include_locant: bool = True,
+) -> str:
     """Render name as locants-substituents-parent."""
     groups: Dict[str, List[int]] = defaultdict(list)
     for sub in substituents:
@@ -28,7 +32,10 @@ def render_name(substituents: Iterable[Sub], parent: str) -> str:
     for name in sorted(groups.keys()):
         locants = sorted(groups[name])
         if len(locants) == 1:
-            blocks.append(f"{locants[0]}-{name}")
+            if not always_include_locant and locants[0] == 1 and len(groups) == 1:
+                blocks.append(f"{name}")
+            else:
+                blocks.append(f"{locants[0]}-{name}")
         else:
             prefix = MULTIPLIER.get(len(locants))
             if prefix is None:

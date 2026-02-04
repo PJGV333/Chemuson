@@ -12,6 +12,7 @@ class MolView:
         self.graph = graph
         self._adj: Optional[Dict[int, Set[int]]] = None
         self._bond_orders: Optional[Dict[frozenset[int], int]] = None
+        self._bond_aromatic: Optional[Dict[frozenset[int], bool]] = None
         self._bond_order_list: Optional[List[int]] = None
 
     def atoms(self) -> List[int]:
@@ -59,6 +60,10 @@ class MolView:
     def bond_order_between(self, atom_id_1: int, atom_id_2: int) -> int:
         self._ensure_adjacency()
         return self._bond_orders.get(frozenset({atom_id_1, atom_id_2}), 1)
+
+    def bond_is_aromatic(self, atom_id_1: int, atom_id_2: int) -> bool:
+        self._ensure_adjacency()
+        return self._bond_aromatic.get(frozenset({atom_id_1, atom_id_2}), False)
 
     def bonds(self) -> List[Tuple[int, int, int]]:
         return list(self._iter_bonds())
@@ -146,6 +151,10 @@ class MolView:
         return None
 
     def _iter_bonds(self) -> Iterable[Tuple[int, int, int]]:
+        for a1, a2, order, _is_aromatic in self._iter_bonds_with_meta():
+            yield a1, a2, order
+
+    def _iter_bonds_with_meta(self) -> Iterable[Tuple[int, int, int, bool]]:
         graph = self.graph
         bonds_attr = getattr(graph, "bonds", None)
         if bonds_attr is not None and not callable(bonds_attr):
@@ -160,14 +169,15 @@ class MolView:
                     if isinstance(bond, (tuple, list)) and len(bond) >= 2:
                         a1, a2 = bond[0], bond[1]
                         order = bond[2] if len(bond) >= 3 else 1
-                        yield int(a1), int(a2), int(order) if order is not None else 1
+                        yield int(a1), int(a2), int(order) if order is not None else 1, False
                     continue
                 order = getattr(bond, "order", None)
                 if order is None:
                     order = getattr(bond, "bond_order", None)
                 if order is None:
                     order = 1
-                yield int(a1), int(a2), int(order)
+                is_aromatic = getattr(bond, "is_aromatic", False)
+                yield int(a1), int(a2), int(order), bool(is_aromatic)
             return
 
         edges_attr = getattr(graph, "edges", None)
@@ -177,9 +187,11 @@ class MolView:
                 if isinstance(edge, (tuple, list)) and len(edge) >= 2:
                     a1, a2 = edge[0], edge[1]
                     order = 1
+                    is_aromatic = False
                     if len(edge) >= 3 and isinstance(edge[2], dict):
                         order = edge[2].get("order", 1)
-                    yield int(a1), int(a2), int(order) if order is not None else 1
+                        is_aromatic = edge[2].get("is_aromatic", False)
+                    yield int(a1), int(a2), int(order) if order is not None else 1, bool(is_aromatic)
             return
 
     def _ensure_adjacency(self) -> None:
@@ -187,14 +199,16 @@ class MolView:
             return
         adjacency: Dict[int, Set[int]] = {atom_id: set() for atom_id in self.atoms()}
         bond_orders: Dict[frozenset[int], int] = {}
+        bond_aromatic: Dict[frozenset[int], bool] = {}
         bond_order_list: List[int] = []
 
-        bonds = list(self._iter_bonds())
+        bonds = list(self._iter_bonds_with_meta())
         if bonds:
-            for a1, a2, order in bonds:
+            for a1, a2, order, is_aromatic in bonds:
                 adjacency.setdefault(a1, set()).add(a2)
                 adjacency.setdefault(a2, set()).add(a1)
                 bond_orders[frozenset({a1, a2})] = order
+                bond_aromatic[frozenset({a1, a2})] = bool(is_aromatic)
                 bond_order_list.append(order)
         else:
             neighbors_attr = getattr(self.graph, "neighbors", None)
@@ -207,4 +221,5 @@ class MolView:
 
         self._adj = adjacency
         self._bond_orders = bond_orders
+        self._bond_aromatic = bond_aromatic
         self._bond_order_list = bond_order_list

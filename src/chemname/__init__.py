@@ -4,6 +4,8 @@ Supported (v0):
 - Acyclic carbon chains (alkanes), halogens, linear alkyl substituents.
 - Single C=C or C#C within the parent chain.
 - Single -ol or -amine functional group.
+- Simple cycloalkanes (C3–C8) with simple substituents.
+- Benzene with simple substituents (halogens, alkyl, hydroxy, nitro).
 Outside scope returns "N/D".
 """
 
