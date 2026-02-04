@@ -152,6 +152,86 @@ FUNCTIONAL_GROUP_LABELS = [
     "R",
 ]
 FUNCTIONAL_GROUP_ALIASES = {label.lower(): label for label in FUNCTIONAL_GROUP_LABELS}
+ANALYSIS_MARGIN_PX = 14.0
+ANALYSIS_MIN_PEAK_PERCENT = 1.0
+ANALYSIS_MAX_PEAKS = 10
+ANALYSIS_DIST_KEEP = 400
+
+ATOMIC_WEIGHTS = {
+    "H": 1.00794,
+    "C": 12.0107,
+    "N": 14.0067,
+    "O": 15.9994,
+    "S": 32.065,
+    "P": 30.973762,
+    "F": 18.998403,
+    "Cl": 35.453,
+    "Br": 79.904,
+    "I": 126.90447,
+    "Si": 28.0855,
+    "B": 10.811,
+    "Se": 78.96,
+    "Li": 6.941,
+    "Na": 22.98977,
+    "K": 39.0983,
+    "Mg": 24.305,
+}
+
+MONOISOTOPIC_MASSES = {
+    "H": 1.007825032,
+    "C": 12.0,
+    "N": 14.003074005,
+    "O": 15.99491462,
+    "S": 31.972071,
+    "P": 30.973761998,
+    "F": 18.998403163,
+    "Cl": 34.96885268,
+    "Br": 78.9183376,
+    "I": 126.904468,
+    "Si": 27.9769265,
+    "B": 11.009305,
+    "Se": 79.916521,
+    "Li": 7.016003,
+    "Na": 22.98976928,
+    "K": 38.96370668,
+    "Mg": 23.9850417,
+}
+
+ISOTOPE_ABUNDANCES = {
+    "H": [(1.007825032, 0.999885), (2.014101778, 0.000115)],
+    "C": [(12.0, 0.9893), (13.003354835, 0.0107)],
+    "N": [(14.003074005, 0.99632), (15.000108898, 0.00368)],
+    "O": [
+        (15.99491462, 0.99757),
+        (16.999131757, 0.00038),
+        (17.999159613, 0.00205),
+    ],
+    "S": [
+        (31.972071, 0.9499),
+        (32.971458, 0.0075),
+        (33.967867, 0.0425),
+        (35.967081, 0.0001),
+    ],
+    "P": [(30.973761998, 1.0)],
+    "F": [(18.998403163, 1.0)],
+    "Cl": [(34.96885268, 0.7576), (36.96590260, 0.2424)],
+    "Br": [(78.9183376, 0.5069), (80.916291, 0.4931)],
+    "I": [(126.904468, 1.0)],
+    "Si": [(27.9769265, 0.92223), (28.9764947, 0.04685), (29.9737701, 0.03092)],
+    "B": [(10.012937, 0.199), (11.009305, 0.801)],
+    "Se": [
+        (73.922476, 0.0089),
+        (75.919214, 0.0937),
+        (76.919915, 0.0763),
+        (77.917309, 0.2377),
+        (79.916522, 0.4961),
+        (81.916700, 0.0873),
+    ],
+    "Li": [(6.015123, 0.075), (7.016004, 0.925)],
+    "Na": [(22.98976928, 1.0)],
+    "K": [(38.96370668, 0.9326), (39.96399848, 0.000117), (40.96182576, 0.0673)],
+    "Mg": [(23.9850417, 0.7899), (24.9858369, 0.10), (25.9825929, 0.1101)],
+}
 ELEMENT_SYMBOLS = {"C", "N", "O", "S", "P", "F", "Cl", "Br", "I", "H", "Si", "B", "Se", "Li", "Na", "K", "Mg"}
 IMPLICIT_H_ELEMENTS = {"C", "N", "O", "S", "P"}
 LABEL_OFFSET_SCALE = 0.6
@@ -4657,6 +4737,271 @@ class ChemusonCanvas(QGraphicsView):
             self.scene.removeItem(self._select_preview_rect)
             self._select_preview_rect = None
 
+    def _structure_bbox(self) -> Optional[QRectF]:
+        rect: Optional[QRectF] = None
+
+        def extend(candidate: QRectF) -> None:
+            nonlocal rect
+            if not candidate.isValid() or candidate.isNull():
+                return
+            rect = candidate if rect is None else rect.united(candidate)
+
+        def extend_atom_bounds(atom_id: int) -> None:
+            item = self.atom_items.get(atom_id)
+            if item is None or item.scene() is not self.scene:
+                return
+            if item.pen().style() != Qt.PenStyle.NoPen or item.brush().style() != Qt.BrushStyle.NoBrush:
+                extend(item.sceneBoundingRect())
+            if item.label.isVisible():
+                extend(item.label.sceneBoundingRect())
+            if item.charge_label.isVisible():
+                extend(item.charge_label.sceneBoundingRect())
+            overlays = self._implicit_h_overlays.get(atom_id)
+            if overlays:
+                for line_item, text_item in overlays:
+                    if line_item.scene() is self.scene and line_item.isVisible():
+                        extend(line_item.sceneBoundingRect())
+                    if text_item.scene() is self.scene and text_item.isVisible():
+                        extend(text_item.sceneBoundingRect())
+
+        for atom_id in self.model.atoms.keys():
+            extend_atom_bounds(atom_id)
+        for bond_id in self.model.bonds.keys():
+            item = self.bond_items.get(bond_id)
+            if item is None:
+                continue
+            extend(item.sceneBoundingRect())
+        return rect
+
+    def _analysis_graph_and_bbox(self) -> tuple[Optional[MolGraph], Optional[QRectF]]:
+        atom_ids, bonds = self._selected_structure_ids()
+        if atom_ids:
+            return self._build_selection_graph(atom_ids, bonds), self._selected_items_bbox()
+        if self.model.atoms:
+            return self.model, self._structure_bbox()
+        return None, None
+
+    def _implicit_h_for_graph(self, graph: MolGraph, atom_id: int, element: str) -> int:
+        if element not in IMPLICIT_H_ELEMENTS:
+            return 0
+        expected = VALENCE_MAP.get(element)
+        if expected is None:
+            return 0
+        bond_order = 0
+        for bond in graph.bonds.values():
+            if bond.a1_id != atom_id and bond.a2_id != atom_id:
+                continue
+            order = bond.display_order if bond.display_order is not None else bond.order
+            bond_order += order
+        return max(0, expected - bond_order)
+
+    def _analysis_atom_counts(self, graph: MolGraph) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for atom in graph.atoms.values():
+            counts[atom.element] = counts.get(atom.element, 0) + 1
+            if atom.explicit_h:
+                counts["H"] = counts.get("H", 0) + int(atom.explicit_h)
+        for atom in graph.atoms.values():
+            if atom.element == "H":
+                continue
+            implicit_h = self._implicit_h_for_graph(graph, atom.id, atom.element)
+            if implicit_h > 0:
+                counts["H"] = counts.get("H", 0) + implicit_h
+        return {element: count for element, count in counts.items() if count > 0}
+
+    @staticmethod
+    def _analysis_formula(counts: dict[str, int]) -> str:
+        if not counts:
+            return ""
+        order: list[str] = []
+        if "C" in counts:
+            order.append("C")
+        if "H" in counts:
+            order.append("H")
+        for element in sorted(e for e in counts.keys() if e not in {"C", "H"}):
+            order.append(element)
+        parts = []
+        for element in order:
+            count = counts.get(element, 0)
+            if count <= 0:
+                continue
+            parts.append(element if count == 1 else f"{element}{count}")
+        return "".join(parts)
+
+    @staticmethod
+    def _analysis_exact_mass(counts: dict[str, int]) -> Optional[float]:
+        total = 0.0
+        for element, count in counts.items():
+            mass = MONOISOTOPIC_MASSES.get(element)
+            if mass is None:
+                return None
+            total += mass * count
+        return total
+
+    @staticmethod
+    def _analysis_molecular_weight(counts: dict[str, int]) -> Optional[float]:
+        total = 0.0
+        for element, count in counts.items():
+            mass = ATOMIC_WEIGHTS.get(element)
+            if mass is None:
+                return None
+            total += mass * count
+        return total
+
+    @staticmethod
+    def _analysis_convolve(
+        distribution: list[tuple[float, float]],
+        isotopes: list[tuple[float, float]],
+    ) -> list[tuple[float, float]]:
+        if not distribution:
+            return []
+        new_dist: dict[float, float] = {}
+        for mass, prob in distribution:
+            for iso_mass, iso_prob in isotopes:
+                combined_mass = round(mass + iso_mass, 4)
+                new_dist[combined_mass] = new_dist.get(combined_mass, 0.0) + prob * iso_prob
+        if not new_dist:
+            return []
+        max_prob = max(new_dist.values())
+        min_prob = max_prob * 1e-8
+        pruned = {m: p for m, p in new_dist.items() if p >= min_prob}
+        if len(pruned) > ANALYSIS_DIST_KEEP:
+            items = sorted(pruned.items(), key=lambda item: item[1], reverse=True)[:ANALYSIS_DIST_KEEP]
+            pruned = dict(items)
+        return list(pruned.items())
+
+    def _analysis_isotope_peaks(self, counts: dict[str, int]) -> Optional[list[tuple[float, float]]]:
+        distribution: list[tuple[float, float]] = [(0.0, 1.0)]
+        for element in sorted(counts.keys()):
+            isotopes = ISOTOPE_ABUNDANCES.get(element)
+            if isotopes is None:
+                return None
+            for _ in range(counts[element]):
+                distribution = self._analysis_convolve(distribution, isotopes)
+        if not distribution:
+            return None
+        binned: dict[float, float] = {}
+        for mass, prob in distribution:
+            mass_key = round(mass, 2)
+            binned[mass_key] = binned.get(mass_key, 0.0) + prob
+        max_prob = max(binned.values())
+        if max_prob <= 0:
+            return None
+        peaks = [(mass, (prob / max_prob) * 100.0) for mass, prob in binned.items()]
+        peaks = [peak for peak in peaks if peak[1] >= ANALYSIS_MIN_PEAK_PERCENT]
+        peaks.sort(key=lambda item: item[1], reverse=True)
+        if len(peaks) > ANALYSIS_MAX_PEAKS:
+            peaks = peaks[:ANALYSIS_MAX_PEAKS]
+        return peaks
+
+    def _analysis_elemental_line(self, counts: dict[str, int], molecular_weight: Optional[float]) -> Optional[str]:
+        if molecular_weight is None or molecular_weight <= 0:
+            return None
+        order: list[str] = []
+        if "C" in counts:
+            order.append("C")
+        if "H" in counts:
+            order.append("H")
+        for element in sorted(e for e in counts.keys() if e not in {"C", "H"}):
+            order.append(element)
+        parts = []
+        for element in order:
+            weight = ATOMIC_WEIGHTS.get(element)
+            if weight is None:
+                continue
+            percent = (weight * counts[element] / molecular_weight) * 100.0
+            parts.append(f"{element}, {percent:.2f}")
+        if not parts:
+            return None
+        return "Elemental Analysis: " + "; ".join(parts)
+
+    def _analysis_build_text(self, graph: MolGraph, mode: str) -> str:
+        counts = self._analysis_atom_counts(graph)
+        if not counts:
+            return ""
+        formula = self._analysis_formula(counts)
+        exact_mass = self._analysis_exact_mass(counts)
+        molecular_weight = self._analysis_molecular_weight(counts)
+        peaks = self._analysis_isotope_peaks(counts)
+
+        lines: list[str] = []
+        if mode in {"name", "all"}:
+            smiles = ""
+            try:
+                smiles = molgraph_to_smiles(graph)
+            except Exception:
+                smiles = ""
+            lines.append(smiles or "N/D")
+        if mode in {"formula", "all"}:
+            lines.append(f"Chemical Formula: {formula}")
+        if mode in {"exact", "all"}:
+            lines.append(
+                f"Exact Mass: {exact_mass:.2f}" if exact_mass is not None else "Exact Mass: N/D"
+            )
+        if mode in {"weight", "all"}:
+            lines.append(
+                f"Molecular Weight: {molecular_weight:.2f}"
+                if molecular_weight is not None
+                else "Molecular Weight: N/D"
+            )
+        if mode in {"mz", "all"}:
+            if peaks:
+                formatted = ", ".join(f"{mass:.2f} ({percent:.1f}%)" for mass, percent in peaks)
+                lines.append(f"m/z: {formatted}")
+            else:
+                lines.append("m/z: N/D")
+        if mode in {"elemental", "all"}:
+            elemental_line = self._analysis_elemental_line(counts, molecular_weight)
+            lines.append(elemental_line or "Elemental Analysis: N/D")
+        return "\n".join(lines)
+
+    def _insert_analysis_text(
+        self,
+        text: str,
+        bbox: Optional[QRectF],
+        scene_pos: QPointF,
+    ) -> None:
+        item = TextAnnotationItem(text, 0.0, 0.0)
+        self._apply_text_settings(item)
+        item.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        try:
+            item.document().setDocumentMargin(0)
+            item.document().setDefaultStyleSheet("body { background: transparent; }")
+        except Exception:
+            pass
+        if bbox is not None and bbox.isValid():
+            x = bbox.left()
+            y = bbox.bottom() + ANALYSIS_MARGIN_PX
+        else:
+            x = scene_pos.x() + 10.0
+            y = scene_pos.y() + 10.0
+        item.setPos(x, y)
+        self.scene.clearSelection()
+        self.undo_stack.push(AddTextItemCommand(self, item))
+        try:
+            item.setSelected(True)
+        except RuntimeError:
+            pass
+
+    def _run_analysis_action(self, mode: str, scene_pos: QPointF) -> None:
+        graph, bbox = self._analysis_graph_and_bbox()
+        if graph is None:
+            return
+        text = self._analysis_build_text(graph, mode)
+        if not text:
+            return
+        self._insert_analysis_text(text, bbox, scene_pos)
+
+    def run_analysis(self, mode: str) -> None:
+        scene_pos = self._last_scene_pos
+        if scene_pos is None:
+            try:
+                center = self.viewport().rect().center()
+                scene_pos = self.mapToScene(center)
+            except Exception:
+                scene_pos = QPointF(0.0, 0.0)
+        self._run_analysis_action(mode, scene_pos)
+
     def _show_context_menu(
         self,
         scene_pos: QPointF,
@@ -4686,16 +5031,48 @@ class ChemusonCanvas(QGraphicsView):
                     act_anchor = menu.addAction("Elegir átomo de unión...")
         menu.addSeparator()
         act_select_all = menu.addAction("Seleccionar todo")
+        menu.addSeparator()
+        analysis_menu = menu.addMenu("Análisis")
+        act_analysis_name = analysis_menu.addAction("Nombre (SMILES)")
+        act_analysis_formula = analysis_menu.addAction("Fórmula química")
+        act_analysis_exact = analysis_menu.addAction("Masa exacta")
+        act_analysis_weight = analysis_menu.addAction("Peso molecular")
+        act_analysis_mz = analysis_menu.addAction("m/z")
+        act_analysis_elemental = analysis_menu.addAction("Análisis elemental")
+        analysis_menu.addSeparator()
+        act_analysis_all = analysis_menu.addAction("Todo")
 
         act_cut.setEnabled(has_selection)
         act_copy.setEnabled(has_selection)
         act_delete.setEnabled(has_selection)
+        analysis_menu.setEnabled(bool(self.model.atoms))
 
         action = menu.exec(global_pos)
         if action is None:
             return
         if act_anchor is not None and action == act_anchor and isinstance(clicked_item, AtomItem):
             self._prompt_anchor_for_atom(clicked_item.atom_id)
+            return
+        if action == act_analysis_name:
+            self._run_analysis_action("name", scene_pos)
+            return
+        if action == act_analysis_formula:
+            self._run_analysis_action("formula", scene_pos)
+            return
+        if action == act_analysis_exact:
+            self._run_analysis_action("exact", scene_pos)
+            return
+        if action == act_analysis_weight:
+            self._run_analysis_action("weight", scene_pos)
+            return
+        if action == act_analysis_mz:
+            self._run_analysis_action("mz", scene_pos)
+            return
+        if action == act_analysis_elemental:
+            self._run_analysis_action("elemental", scene_pos)
+            return
+        if action == act_analysis_all:
+            self._run_analysis_action("all", scene_pos)
             return
         if action == act_copy:
             self.copy_to_clipboard()

@@ -275,6 +275,22 @@ class ChemusonWindow(QMainWindow):
         self.action_draw_smiles = QAction("Dibujar desde SMILES...", self)
         self.action_draw_smiles.triggered.connect(self._on_import_smiles)
 
+        # --- Analysis Actions ---
+        self.action_analysis_name = QAction("Nombre (SMILES)", self)
+        self.action_analysis_name.triggered.connect(lambda: self.canvas.run_analysis("name"))
+        self.action_analysis_formula = QAction("Fórmula química", self)
+        self.action_analysis_formula.triggered.connect(lambda: self.canvas.run_analysis("formula"))
+        self.action_analysis_exact = QAction("Masa exacta", self)
+        self.action_analysis_exact.triggered.connect(lambda: self.canvas.run_analysis("exact"))
+        self.action_analysis_weight = QAction("Peso molecular", self)
+        self.action_analysis_weight.triggered.connect(lambda: self.canvas.run_analysis("weight"))
+        self.action_analysis_mz = QAction("m/z", self)
+        self.action_analysis_mz.triggered.connect(lambda: self.canvas.run_analysis("mz"))
+        self.action_analysis_elemental = QAction("Análisis elemental", self)
+        self.action_analysis_elemental.triggered.connect(lambda: self.canvas.run_analysis("elemental"))
+        self.action_analysis_all = QAction("Todo", self)
+        self.action_analysis_all.triggered.connect(lambda: self.canvas.run_analysis("all"))
+
         # --- Rotation Actions ---
         self.action_rotate_left = QAction("Girar 90° a la izquierda", self)
         self.action_rotate_left.triggered.connect(lambda: self._on_rotate_selection(-90.0))
@@ -467,6 +483,16 @@ class ChemusonWindow(QMainWindow):
         structure_menu.addSeparator()
         structure_menu.addAction(self.action_import_smiles)
         structure_menu.addAction(self.action_export_smiles)
+        structure_menu.addSeparator()
+        analysis_menu = structure_menu.addMenu("Análisis")
+        analysis_menu.addAction(self.action_analysis_name)
+        analysis_menu.addAction(self.action_analysis_formula)
+        analysis_menu.addAction(self.action_analysis_exact)
+        analysis_menu.addAction(self.action_analysis_weight)
+        analysis_menu.addAction(self.action_analysis_mz)
+        analysis_menu.addAction(self.action_analysis_elemental)
+        analysis_menu.addSeparator()
+        analysis_menu.addAction(self.action_analysis_all)
 
         # === Reacción (Reaction) ===
         reaction_menu = menubar.addMenu("Reacción")
