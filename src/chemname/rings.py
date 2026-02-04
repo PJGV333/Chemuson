@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import deque
+from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 from chemcalc.valence import implicit_h_count
@@ -196,6 +197,46 @@ def detect_naphthalene(
         "fusion_atoms": fusion_atoms,
         "rings": rings_pair,
     }
+
+
+def ring_type_basic(view: MolView, ring_nodes: Iterable[int]) -> Optional[str]:
+    ring_set = set(ring_nodes)
+    if not is_simple_ring(view, ring_set):
+        return None
+    size = len(ring_set)
+    if size == 6 and all(view.element(atom_id) == "C" for atom_id in ring_set):
+        if _ring_aromatic_basic(view, ring_set):
+            return "benzene"
+        if all(
+            view.bond_order_between(
+                ring_order(view, ring_set)[idx],
+                ring_order(view, ring_set)[(idx + 1) % size],
+            )
+            == 1
+            for idx in range(size)
+        ):
+            return "cyclohexane"
+    return None
+
+
+@dataclass(frozen=True)
+class RingContext:
+    rings: List[frozenset[int]]
+    ring_types: Dict[frozenset[int], str]
+    atom_rings: Dict[int, List[frozenset[int]]]
+
+
+def build_ring_context(view: MolView) -> RingContext:
+    rings = find_rings_simple(view)
+    ring_types: Dict[frozenset[int], str] = {}
+    atom_rings: Dict[int, List[frozenset[int]]] = {}
+    for ring in rings:
+        rtype = ring_type_basic(view, ring)
+        if rtype:
+            ring_types[ring] = rtype
+        for atom_id in ring:
+            atom_rings.setdefault(atom_id, []).append(ring)
+    return RingContext(rings=rings, ring_types=ring_types, atom_rings=atom_rings)
 
 
 def _build_adjacency(view: MolView) -> Dict[int, List[int]]:

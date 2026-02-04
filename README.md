@@ -35,16 +35,22 @@ Para iniciar la aplicación usando el ambiente virtual:
 - Benceno con sustituyentes simples (halógenos, alquilos lineales, hydroxy, nitro).
 - Heteroaromáticos monocíclicos simples (furan, thiophene, pyrrole, pyridine).
 - Heteroaromáticos con 2 heteroátomos: diazinas (pyridazine/pyrimidine/pyrazine) y imidazole/oxazole/thiazole.
-- Naftaleno y monosustituidos simples (halógenos, alquilos lineales).
+- Naftaleno con mono/di-sustituidos simples (halógenos, alquilos lineales).
+- Sustituyentes alquilo ramificados simples (isopropyl, sec-butyl, tert-butyl, neopentyl).
+- Anillos como sustituyentes: phenyl, benzyl, cyclohexyl.
+- Aromáticos fusionados: anthracene y phenanthrene (mono-sustituidos).
+- Hetero-fusionados: quinoline, isoquinoline, indole (mono-sustituidos).
 
 **No soportado aún**
-- Anillos fusionados o puenteados.
-- Heterociclos aromáticos/no aromáticos.
+- Anillos fusionados complejos (fuera de naphthalene/anthracene/phenanthrene).
+- Hetero-fusionados fuera de quinoline/isoquinoline/indole.
+- Heterociclos no aromáticos.
+- Heteroaromáticos fuera del subset listado.
 - Múltiples insaturaciones.
 - Múltiples grupos funcionales (dioles, diaminas, etc.).
-- Sustituyentes ramificados o con insaturación.
+- Sustituyentes ramificados fuera del set soportado o con insaturación.
 - Heteroaromáticos con 3+ heteroátomos.
-- Naftaleno polisustituido o fusionados mayores.
+- Fusionados mayores (tres+ anillos aromáticos) con di-sustitución.
 
 **Ejemplos (entrada → salida)**
 - `C1CCCCC1` → `cyclohexane`
@@ -58,3 +64,5 @@ Para iniciar la aplicación usando el ambiente virtual:
 - `s1cccc1` → `thiophene`
 - `c1ccc2cccc3` → `naphthalene`
 - `Br-(CH2)12-Cl` → `1-bromo-12-chlorododecane`
+- `c1ccc2ccccc2n1` → `quinoline`
+- `c1ccc2ccccc2[nH]1` → `indole`

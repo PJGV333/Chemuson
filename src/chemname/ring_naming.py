@@ -7,7 +7,13 @@ from chemcalc.valence import implicit_h_count
 from .errors import ChemNameNotSupported
 from .locants import Sub, orientation_key
 from .molview import MolView
-from .substituents import ALKYL, HALO_MAP, alkyl_length_linear
+from .substituents import (
+    HALO_MAP,
+    alkyl_substituent_name,
+    halomethyl_substituent_name,
+    ring_substituent_name,
+)
+from .rings import RingContext
 
 
 def enumerate_ring_numberings(ring_order: Sequence[int]) -> List[List[int]]:
@@ -28,6 +34,7 @@ def choose_ring_orientation(
     allow_hydroxy: bool = False,
     allow_nitro: bool = False,
     forbid_hetero_substituents: bool = False,
+    ring_ctx: RingContext | None = None,
 ) -> List[int]:
     best = None
     best_key = None
@@ -38,6 +45,7 @@ def choose_ring_orientation(
             allow_hydroxy=allow_hydroxy,
             allow_nitro=allow_nitro,
             forbid_hetero_substituents=forbid_hetero_substituents,
+            ring_ctx=ring_ctx,
         )
         locants = sorted(sub.locant for sub in subs)
         key = orientation_key(subs, opts, primary_locants=locants)
@@ -55,6 +63,7 @@ def choose_hetero_ring_orientation(
     allow_hydroxy: bool = False,
     allow_nitro: bool = False,
     forbid_hetero_substituents: bool = False,
+    ring_ctx: RingContext | None = None,
 ) -> List[int]:
     hetero_set = set(hetero_atoms)
     best = None
@@ -68,6 +77,7 @@ def choose_hetero_ring_orientation(
             allow_hydroxy=allow_hydroxy,
             allow_nitro=allow_nitro,
             forbid_hetero_substituents=forbid_hetero_substituents,
+            ring_ctx=ring_ctx,
         )
         hetero_locants = [idx + 1 for idx, atom_id in enumerate(numbering) if atom_id in hetero_set]
         key = orientation_key(subs, opts, primary_locants=hetero_locants)
@@ -83,6 +93,7 @@ def ring_substituents(
     allow_hydroxy: bool = False,
     allow_nitro: bool = False,
     forbid_hetero_substituents: bool = False,
+    ring_ctx: RingContext | None = None,
 ) -> List[Sub]:
     ring_set = set(ring_order)
     index_map = {atom_id: idx + 1 for idx, atom_id in enumerate(ring_order)}
@@ -103,6 +114,7 @@ def ring_substituents(
                 ring_set,
                 allow_hydroxy=allow_hydroxy,
                 allow_nitro=allow_nitro,
+                ring_ctx=ring_ctx,
             )
             subs.append(Sub(name, locant))
     return subs
@@ -115,16 +127,19 @@ def _substituent_name_for_neighbor(
     ring_set: Iterable[int],
     allow_hydroxy: bool,
     allow_nitro: bool,
+    ring_ctx: RingContext | None = None,
 ) -> str:
     elem = view.element(nbr)
     if elem in HALO_MAP:
         return HALO_MAP[elem]
     if elem == "C":
-        length = alkyl_length_linear(view, nbr, set(ring_set))
-        name = ALKYL.get(length)
-        if name is None:
-            raise ChemNameNotSupported("Unsupported alkyl length")
-        return name
+        halo_name = halomethyl_substituent_name(view, nbr, set(ring_set))
+        if halo_name is not None:
+            return halo_name
+        ring_name = ring_substituent_name(view, nbr, set(ring_set), ring_ctx)
+        if ring_name is not None:
+            return ring_name
+        return alkyl_substituent_name(view, nbr, set(ring_set))
     if allow_hydroxy and elem == "O":
         if view.bond_order_between(ring_atom, nbr) != 1:
             raise ChemNameNotSupported("Unsupported hydroxy bond")

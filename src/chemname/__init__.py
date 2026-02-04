@@ -1,4 +1,4 @@
-"""IUPAC-lite naming for acyclic hydrocarbons.
+"""IUPAC-lite naming for selected hydrocarbons and simple aromatics.
 
 Supported (v0):
 - Acyclic carbon chains (alkanes), halogens, linear alkyl substituents.
@@ -7,7 +7,11 @@ Supported (v0):
 - Simple cycloalkanes (C3–C8) with simple substituents.
 - Benzene with simple substituents (halogens, alkyl, hydroxy, nitro).
 - Heteroaromatics: furan, thiophene, pyrrole, pyridine, diazines, imidazole, oxazole, thiazole.
-- Naphthalene and mono-substituted derivatives (simple substituents).
+- Naphthalene with mono/di-substituted derivatives (simple substituents).
+- Branched alkyl substituents: isopropyl, sec-butyl, tert-butyl, neopentyl.
+- Ring substituents: phenyl, benzyl, cyclohexyl.
+- Fused aromatics: anthracene, phenanthrene (mono-substituted).
+- Fused heteroaromatics: quinoline, isoquinoline, indole (mono-substituted).
 Outside scope returns "N/D".
 """
 

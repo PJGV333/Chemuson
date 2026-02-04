@@ -5,7 +5,13 @@ from typing import Iterable, List, Optional, Sequence, Set, Tuple
 
 from .errors import ChemNameNotSupported
 from .molview import MolView
-from .substituents import ALKYL, HALO_MAP, alkyl_length_linear
+from .substituents import (
+    HALO_MAP,
+    alkyl_substituent_name,
+    halomethyl_substituent_name,
+    ring_substituent_name,
+)
+from .rings import RingContext
 
 
 @dataclass(frozen=True)
@@ -18,6 +24,7 @@ def substituents_on_chain(
     view: MolView,
     chain: Sequence[int],
     ignore_atoms: Optional[Set[int]] = None,
+    ring_ctx: RingContext | None = None,
 ) -> List[Sub]:
     """Return substituents attached to the given chain."""
     chain_set = set(chain)
@@ -39,10 +46,15 @@ def substituents_on_chain(
                 substituents.append(Sub(HALO_MAP[elem], locant))
                 continue
             if elem == "C":
-                length = alkyl_length_linear(view, nbr, chain_set)
-                name = ALKYL.get(length)
-                if name is None:
-                    raise ChemNameNotSupported("Unsupported alkyl length")
+                halo_name = halomethyl_substituent_name(view, nbr, chain_set)
+                if halo_name is not None:
+                    substituents.append(Sub(halo_name, locant))
+                    continue
+                ring_name = ring_substituent_name(view, nbr, chain_set, ring_ctx)
+                if ring_name is not None:
+                    substituents.append(Sub(ring_name, locant))
+                    continue
+                name = alkyl_substituent_name(view, nbr, chain_set)
                 substituents.append(Sub(name, locant))
                 continue
             raise ChemNameNotSupported("Unsupported substituent")

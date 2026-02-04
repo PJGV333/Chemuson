@@ -32,7 +32,7 @@ class ChemNamePR15Test(unittest.TestCase):
         graph = MolGraph()
         atoms = build_naphthalene(graph)
         cl = graph.add_atom("Cl", -1.0, 0.0)
-        graph.add_bond(atoms[2], cl.id, order=1)
+        graph.add_bond(atoms[5], cl.id, order=1)
         self.assertEqual(iupac_name(graph), "1-chloronaphthalene")
 
     def test_2_chloronaphthalene(self):
