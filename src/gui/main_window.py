@@ -1368,6 +1368,7 @@ class ChemusonWindow(QMainWindow):
             "tool_symbol_minus": "Signo menos",
             "tool_symbol_radical": "Electrón desapareado",
             "tool_symbol_lone_pair": "Par solitario",
+            "tool_symbol_wavy_anchor": "Ancla ondulada",
             "tool_symbol_radical_cation": "Radical catión",
             "tool_symbol_radical_anion": "Radical anión",
             "tool_symbol_partial_plus": "Carga parcial (+)",

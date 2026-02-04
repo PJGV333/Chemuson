@@ -60,6 +60,7 @@ from gui.items import (
     PreviewChainLabelItem,
     PreviewChainItem,
     PreviewChainLabelItem,
+    WavyAnchorItem,
     TextAnnotationItem,
     ABBREVIATION_LABELS,
 )
@@ -90,6 +91,7 @@ from gui.commands import (
     AddArrowCommand,
     AddBracketCommand,
     AddTextItemCommand,
+    AddWavyAnchorCommand,
     ChangeAtomCommand,
     ChangeBondCommand,
     ChangeBondLengthCommand,
@@ -179,6 +181,10 @@ ELECTRON_ANCHOR_ROLE = 1002
 ELECTRON_SLOT_ROLE = 1003
 ELECTRON_SIDE_ROLE = 1004
 ELECTRON_SCALE_ROLE = 1005
+WAVY_ANCHOR_ROLE = 2001
+WAVY_ANCHOR_ANGLE_ROLE = 2002
+WAVY_ANCHOR_LENGTH_ROLE = 2003
+WAVY_ANCHOR_BOND_ROLE = 2004
 
 SYMBOL_TEXT_TOOLS = {
     "tool_symbol_plus": {"text": "+", "scale": 1.0, "anchor": True},
@@ -218,6 +224,7 @@ class ChemusonCanvas(QGraphicsView):
         self._ring_centers: dict[int, QPointF] = {}
         self._next_ring_id = 1
         self._electron_dots: set[TextAnnotationItem] = set()
+        self._wavy_anchors: set[WavyAnchorItem] = set()
 
         self.atom_items: dict[int, AtomItem] = {}
         self.bond_items: dict[int, BondItem] = {}
@@ -714,6 +721,17 @@ class ChemusonCanvas(QGraphicsView):
             self.undo_stack.push(cmd)
             return
 
+        if self.current_tool == "tool_symbol_wavy_anchor":
+            anchor_atom_id = clicked_atom_id
+            if anchor_atom_id is None:
+                item = self._get_item_at(scene_pos)
+                if isinstance(item, AtomItem):
+                    anchor_atom_id = item.atom_id
+            if anchor_atom_id is None:
+                return
+            self._insert_wavy_anchor(scene_pos, anchor_atom_id)
+            return
+
         symbol_spec = SYMBOL_TEXT_TOOLS.get(self.current_tool)
         if symbol_spec is not None:
             anchor_atom_id = clicked_atom_id
@@ -1046,13 +1064,20 @@ class ChemusonCanvas(QGraphicsView):
         arrow_items: Iterable = (),
         bracket_items: Iterable = (),
         text_items: Iterable = (),
+        wavy_items: Iterable = (),
     ) -> None:
         extra_text_items = list(text_items)
+        extra_wavy_items = list(wavy_items)
         if atom_ids and self._electron_dots:
             for item in list(self._electron_dots):
                 anchor_id = item.data(ELECTRON_ANCHOR_ROLE)
                 if anchor_id in atom_ids:
                     extra_text_items.append(item)
+        if atom_ids and self._wavy_anchors:
+            for item in list(self._wavy_anchors):
+                anchor_id = item.data(WAVY_ANCHOR_ROLE)
+                if anchor_id in atom_ids:
+                    extra_wavy_items.append(item)
         # Prioritize delete logic
         cmd = DeleteSelectionCommand(
             self.model,
@@ -1062,13 +1087,14 @@ class ChemusonCanvas(QGraphicsView):
             arrow_items=arrow_items,
             bracket_items=bracket_items,
             text_items=extra_text_items,
+            wavy_items=extra_wavy_items,
         )
         self.undo_stack.push(cmd)
         self.scene.clearSelection()
 
     def _get_item_at(self, scene_pos: QPointF):
         for item in self.scene.items(scene_pos):
-             if isinstance(item, (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem)):
+             if isinstance(item, (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, WavyAnchorItem)):
                 return item
              # If we clicked a label/text child of an atom, return the atom.
              if isinstance(item, QGraphicsTextItem):
@@ -1139,6 +1165,93 @@ class ChemusonCanvas(QGraphicsView):
     def _electron_pair_spread(self, atom_id: int, scale: float) -> float:
         dot_size = self._electron_dot_font_size(atom_id, scale)
         return max(3.0, dot_size * 0.55)
+
+    def _wavy_anchor_length(self) -> float:
+        return max(18.0, self.state.bond_length * 1.5)
+
+    def _wavy_anchor_bond_angle(self, atom_id: int, scene_pos: QPointF) -> tuple[Optional[int], float]:
+        atom = self.model.get_atom(atom_id)
+        center = QPointF(atom.x, atom.y)
+        direction = scene_pos - center
+        if direction.manhattanLength() < 2.0:
+            direction = self._label_open_direction(atom_id)
+        target_angle = None
+        if direction.manhattanLength() >= 1e-3:
+            target_angle = (
+                math.degrees(math.atan2(direction.y(), direction.x())) + 360.0
+            ) % 360.0
+
+        bonds: list[tuple[int, float]] = []
+        for bond in self.model.bonds.values():
+            if bond.a1_id == atom_id:
+                other = self.model.get_atom(bond.a2_id)
+            elif bond.a2_id == atom_id:
+                other = self.model.get_atom(bond.a1_id)
+            else:
+                continue
+            dx = other.x - atom.x
+            dy = other.y - atom.y
+            angle = (math.degrees(math.atan2(dy, dx)) + 360.0) % 360.0
+            bonds.append((bond.id, angle))
+
+        if bonds:
+            if target_angle is None:
+                return bonds[0][0], bonds[0][1]
+            best = min(bonds, key=lambda item: angle_distance_deg(item[1], target_angle))
+            return best[0], best[1]
+
+        if target_angle is None:
+            return None, 0.0
+        return None, target_angle
+
+    def _position_wavy_anchor(self, item: WavyAnchorItem) -> None:
+        anchor_id = item.data(WAVY_ANCHOR_ROLE)
+        base_angle = item.data(WAVY_ANCHOR_ANGLE_ROLE)
+        bond_id = item.data(WAVY_ANCHOR_BOND_ROLE)
+        length = item.data(WAVY_ANCHOR_LENGTH_ROLE)
+        if anchor_id is None:
+            return
+        if anchor_id not in self.model.atoms:
+            return
+        atom = self.model.get_atom(anchor_id)
+        use_length = float(length) if length is not None else self._wavy_anchor_length()
+
+        angle_deg_value: Optional[float] = None
+        if bond_id is not None and bond_id in self.model.bonds:
+            bond = self.model.get_bond(int(bond_id))
+            if bond.a1_id == anchor_id:
+                other = self.model.get_atom(bond.a2_id)
+            elif bond.a2_id == anchor_id:
+                other = self.model.get_atom(bond.a1_id)
+            else:
+                other = None
+            if other is not None:
+                dx = other.x - atom.x
+                dy = other.y - atom.y
+                angle_deg_value = (math.degrees(math.atan2(dy, dx)) + 360.0) % 360.0
+
+        if angle_deg_value is None and base_angle is not None:
+            angle_deg_value = float(base_angle)
+        if angle_deg_value is None:
+            return
+
+        perp_angle = math.radians(angle_deg_value + 90.0)
+        nx = math.cos(perp_angle)
+        ny = math.sin(perp_angle)
+        center = QPointF(atom.x, atom.y)
+        half = use_length * 0.5
+        start = QPointF(center.x() - nx * half, center.y() - ny * half)
+        end = QPointF(center.x() + nx * half, center.y() + ny * half)
+        try:
+            item.update_positions(start, end)
+        except RuntimeError:
+            self._wavy_anchors.discard(item)
+
+    def _update_wavy_anchors_for_atom(self, atom_id: int) -> None:
+        for item in list(self._wavy_anchors):
+            if item.data(WAVY_ANCHOR_ROLE) != atom_id:
+                continue
+            self._position_wavy_anchor(item)
 
     def _bond_angles_for_atom(self, atom_id: int) -> list[float]:
         atom = self.model.get_atom(atom_id)
@@ -1400,6 +1513,30 @@ class ChemusonCanvas(QGraphicsView):
             slot_idx=slot_idx,
             side=-1,
         )
+
+    def _insert_wavy_anchor(self, scene_pos: QPointF, atom_id: int) -> None:
+        if atom_id not in self.model.atoms:
+            return
+        bond_id, base_angle = self._wavy_anchor_bond_angle(atom_id, scene_pos)
+        length = self._wavy_anchor_length()
+
+        atom = self.model.get_atom(atom_id)
+        perp_angle = math.radians(base_angle + 90.0)
+        nx = math.cos(perp_angle)
+        ny = math.sin(perp_angle)
+        center = QPointF(atom.x, atom.y)
+        half = length * 0.5
+        start = QPointF(center.x() - nx * half, center.y() - ny * half)
+        end = QPointF(center.x() + nx * half, center.y() + ny * half)
+
+        item = WavyAnchorItem(start, end, style=self.drawing_style)
+        item.setData(WAVY_ANCHOR_ROLE, atom_id)
+        item.setData(WAVY_ANCHOR_ANGLE_ROLE, base_angle)
+        item.setData(WAVY_ANCHOR_LENGTH_ROLE, length)
+        if bond_id is not None:
+            item.setData(WAVY_ANCHOR_BOND_ROLE, int(bond_id))
+        self._wavy_anchors.add(item)
+        self.undo_stack.push(AddWavyAnchorCommand(self, item))
 
     def _insert_symbol_item(
         self,
@@ -1679,7 +1816,7 @@ class ChemusonCanvas(QGraphicsView):
         for item in self.scene.items():
             if isinstance(
                 item,
-                (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem),
+                (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, WavyAnchorItem),
             ) and item.isVisible():
                 item.setSelected(True)
         self._sync_selection_from_scene()
@@ -1874,7 +2011,8 @@ class ChemusonCanvas(QGraphicsView):
             "annotations": {
                 "arrows": [],
                 "brackets": [],
-                "text_items": []
+                "text_items": [],
+                "wavy_anchors": []
             },
             "label_anchors": {
                 str(atom_id): anchor for atom_id, anchor in self._group_anchor_overrides.items()
@@ -1910,6 +2048,19 @@ class ChemusonCanvas(QGraphicsView):
                     "rotation": item.rotation(),
                     "font": item.font().toString(),
                     "color": item.defaultTextColor().name()
+                })
+            elif isinstance(item, WavyAnchorItem):
+                anchor_id = item.data(WAVY_ANCHOR_ROLE)
+                angle = item.data(WAVY_ANCHOR_ANGLE_ROLE)
+                length = item.data(WAVY_ANCHOR_LENGTH_ROLE)
+                bond_id = item.data(WAVY_ANCHOR_BOND_ROLE)
+                if anchor_id is None:
+                    continue
+                data["annotations"]["wavy_anchors"].append({
+                    "anchor_id": int(anchor_id),
+                    "angle": float(angle) if angle is not None else 0.0,
+                    "length": float(length) if length is not None else self._wavy_anchor_length(),
+                    "bond_id": int(bond_id) if bond_id is not None else None,
                 })
         return data
 
@@ -1969,6 +2120,21 @@ class ChemusonCanvas(QGraphicsView):
                 text_item.setDefaultTextColor(QColor(txt_d["color"]))
             self.scene.addItem(text_item)
 
+        for anchor_d in annotations.get("wavy_anchors", []):
+            anchor_id = anchor_d.get("anchor_id")
+            if anchor_id is None or anchor_id not in self.model.atoms:
+                continue
+            angle = float(anchor_d.get("angle", 0.0))
+            length = float(anchor_d.get("length", self._wavy_anchor_length()))
+            bond_id = anchor_d.get("bond_id")
+            item = WavyAnchorItem(QPointF(0.0, 0.0), QPointF(1.0, 0.0), style=self.drawing_style)
+            item.setData(WAVY_ANCHOR_ROLE, int(anchor_id))
+            item.setData(WAVY_ANCHOR_ANGLE_ROLE, angle)
+            item.setData(WAVY_ANCHOR_LENGTH_ROLE, length)
+            if bond_id is not None:
+                item.setData(WAVY_ANCHOR_BOND_ROLE, int(bond_id))
+            self.readd_wavy_anchor_item(item)
+
         # Full refresh to update atom visibility and circles
         self.refresh_atom_visibility()
         self.refresh_aromatic_circles()
@@ -2011,6 +2177,8 @@ class ChemusonCanvas(QGraphicsView):
         self._preview_chain_item = None
         self._preview_chain_label = None
         self._preview_arrow_item = None
+        self._electron_dots.clear()
+        self._wavy_anchors.clear()
 
         self.scene.clear()
         self.model.clear()
@@ -2109,11 +2277,23 @@ class ChemusonCanvas(QGraphicsView):
         if item.scene() is not self.scene:
             self.scene.addItem(item)
 
+    def add_wavy_anchor_item(self, item: WavyAnchorItem) -> None:
+        if item.scene() is not self.scene:
+            self.scene.addItem(item)
+        self._wavy_anchors.add(item)
+        self._position_wavy_anchor(item)
+
     def remove_text_item(self, item: TextAnnotationItem) -> None:
         if item.scene() is self.scene:
             self.scene.removeItem(item)
         if item in self._electron_dots:
             self._electron_dots.discard(item)
+
+    def remove_wavy_anchor_item(self, item: WavyAnchorItem) -> None:
+        if item.scene() is self.scene:
+            self.scene.removeItem(item)
+        if item in self._wavy_anchors:
+            self._wavy_anchors.discard(item)
 
     def readd_text_item(self, item: TextAnnotationItem) -> None:
         if item.scene() is not self.scene:
@@ -2121,6 +2301,12 @@ class ChemusonCanvas(QGraphicsView):
         if item.data(ELECTRON_DOT_ROLE):
             self._electron_dots.add(item)
             self._position_electron_dot(item)
+
+    def readd_wavy_anchor_item(self, item: WavyAnchorItem) -> None:
+        if item.scene() is not self.scene:
+            self.scene.addItem(item)
+        self._wavy_anchors.add(item)
+        self._position_wavy_anchor(item)
 
     def delete_selection(self) -> None:
         selected_arrows = [
@@ -2132,20 +2318,25 @@ class ChemusonCanvas(QGraphicsView):
         selected_text_items = [
             item for item in self.scene.selectedItems() if isinstance(item, TextAnnotationItem)
         ]
+        selected_wavy = [
+            item for item in self.scene.selectedItems() if isinstance(item, WavyAnchorItem)
+        ]
         if (
             not self.state.selected_atoms
             and not self.state.selected_bonds
             and not selected_arrows
             and not selected_brackets
             and not selected_text_items
+            and not selected_wavy
         ):
             return
         self._delete_selection(
             set(self.state.selected_atoms),
             set(self.state.selected_bonds),
-            selected_arrows,
-            selected_brackets,
-            selected_text_items,
+            arrow_items=selected_arrows,
+            bracket_items=selected_brackets,
+            text_items=selected_text_items,
+            wavy_items=selected_wavy,
         )
 
     def _delete_hovered(self) -> bool:
@@ -2957,6 +3148,7 @@ class ChemusonCanvas(QGraphicsView):
         if item is not None:
             item.setPos(x, y)
         self._update_electron_dots_for_atom(atom_id)
+        self._update_wavy_anchors_for_atom(atom_id)
 
     def update_atom_item_element(
         self,
@@ -2971,6 +3163,7 @@ class ChemusonCanvas(QGraphicsView):
             item.set_element(element, is_explicit=is_explicit)
             self._refresh_atom_label(atom_id)
         self._update_electron_dots_for_atom(atom_id)
+        self._update_wavy_anchors_for_atom(atom_id)
 
     def update_atom_item_charge(self, atom_id: int, charge: int) -> None:
         item = self.atom_items.get(atom_id)
@@ -4612,7 +4805,7 @@ class ChemusonCanvas(QGraphicsView):
             extend(item.sceneBoundingRect())
         for item in self.scene.selectedItems():
             # Include TextAnnotationItem
-            if isinstance(item, (ArrowItem, BracketItem, TextAnnotationItem)):
+            if isinstance(item, (ArrowItem, BracketItem, TextAnnotationItem, WavyAnchorItem)):
                 extend(item.sceneBoundingRect())
         return rect
 

@@ -648,6 +648,7 @@ class DeleteSelectionCommand(QUndoCommand):
         arrow_items: Iterable = (),
         bracket_items: Iterable = (),
         text_items: Iterable = (),
+        wavy_items: Iterable = (),
     ) -> None:
         super().__init__("Delete selection")
         self._model = model
@@ -657,11 +658,13 @@ class DeleteSelectionCommand(QUndoCommand):
         self._arrow_items = list(arrow_items)
         self._bracket_items = list(bracket_items)
         self._text_items = list(text_items)
+        self._wavy_items = list(wavy_items)
         self._removed_atoms = []
         self._removed_bonds = []
         self._removed_arrows = []
         self._removed_brackets = []
         self._removed_texts = []
+        self._removed_wavy = []
 
     def redo(self) -> None:
         if not self._removed_atoms and not self._removed_bonds:
@@ -685,6 +688,8 @@ class DeleteSelectionCommand(QUndoCommand):
                 )
             for item in self._text_items:
                 self._removed_texts.append(item)
+            for item in self._wavy_items:
+                self._removed_wavy.append(item)
 
         for bond in list(self._removed_bonds):
             if bond.id in self._model.bonds:
@@ -700,6 +705,8 @@ class DeleteSelectionCommand(QUndoCommand):
             self._view.remove_bracket_item(item)
         for item in self._removed_texts:
             self._view.remove_text_item(item)
+        for item in self._removed_wavy:
+            self._view.remove_wavy_anchor_item(item)
 
     def undo(self) -> None:
         for atom in self._removed_atoms:
@@ -737,6 +744,8 @@ class DeleteSelectionCommand(QUndoCommand):
             self._view.readd_bracket_item(item, rect, kind, padding=padding)
         for item in self._removed_texts:
             self._view.readd_text_item(item)
+        for item in self._removed_wavy:
+            self._view.readd_wavy_anchor_item(item)
 
 
 class AddArrowCommand(QUndoCommand):
@@ -791,6 +800,21 @@ class AddTextItemCommand(QUndoCommand):
     def undo(self) -> None:
         if self._item is not None:
             self._view.remove_text_item(self._item)
+
+
+class AddWavyAnchorCommand(QUndoCommand):
+    def __init__(self, view, item) -> None:
+        super().__init__("Add wavy anchor")
+        self._view = view
+        self._item = item
+
+    def redo(self) -> None:
+        if self._item is not None:
+            self._view.readd_wavy_anchor_item(self._item)
+
+    def undo(self) -> None:
+        if self._item is not None:
+            self._view.remove_wavy_anchor_item(self._item)
 
 
 class AddRingCommand(QUndoCommand):

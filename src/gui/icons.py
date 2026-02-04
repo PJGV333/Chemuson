@@ -322,6 +322,39 @@ def draw_bond_icon(bond_type: str = 'single') -> QIcon:
     return QIcon(pixmap)
 
 
+def draw_wavy_anchor_icon() -> QIcon:
+    """Draw a wavy anchor stub icon."""
+    pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
+    pixmap.fill(Qt.GlobalColor.transparent)
+
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    pen = QPen(QColor('#333333'), 2)
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+    painter.setPen(pen)
+
+    x = ICON_SIZE * 0.55
+    y1 = ICON_SIZE * 0.2
+    y2 = ICON_SIZE * 0.8
+    dy = y2 - y1
+    segments = 8
+    amplitude = ICON_SIZE * 0.08
+    path = QPainterPath()
+    for i in range(segments + 1):
+        t = i / segments
+        px = x + math.sin(t * math.pi * 4) * amplitude
+        py = y1 + dy * t
+        if i == 0:
+            path.moveTo(px, py)
+        else:
+            path.lineTo(px, py)
+    painter.drawPath(path)
+
+    painter.end()
+    return QIcon(pixmap)
+
+
 def draw_ring_icon(size: int = 6, aromatic: bool = True) -> QIcon:
     """
     Draw a ring icon with the given number of sides.

@@ -740,6 +740,70 @@ class BondItem(QGraphicsPathItem):
         self.update_positions(atom1, atom2)
 
 
+class WavyAnchorItem(QGraphicsPathItem):
+    """Wavy anchor stub attached to an atom."""
+
+    def __init__(
+        self,
+        start: QPointF,
+        end: QPointF,
+        style: DrawingStyle = CHEMDOODLE_LIKE,
+    ) -> None:
+        super().__init__()
+        self._style = style
+        self._start = QPointF(start)
+        self._end = QPointF(end)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
+        self.setZValue(30)
+        self.update_positions(start, end)
+
+    def update_positions(self, start: QPointF, end: QPointF) -> None:
+        self._start = QPointF(start)
+        self._end = QPointF(end)
+
+        dx = self._end.x() - self._start.x()
+        dy = self._end.y() - self._start.y()
+        length = math.hypot(dx, dy)
+        if length <= 1e-6:
+            length = 1.0
+            dx = 1.0
+            dy = 0.0
+
+        ux = dx / length
+        uy = dy / length
+        nx, ny = -uy, ux
+
+        segments = max(24, int(length / 2.5))
+        amplitude = max(2.0, self._style.stroke_px * 1.4)
+        cycles = max(3, int(length / 10.0))
+
+        path = QPainterPath()
+        for i in range(segments + 1):
+            t = i / segments
+            px = self._start.x() + dx * t
+            py = self._start.y() + dy * t
+            offset = math.sin(t * math.pi * 2 * cycles) * amplitude
+            wx = px + nx * offset
+            wy = py + ny * offset
+            if i == 0:
+                path.moveTo(wx, wy)
+            else:
+                path.lineTo(wx, wy)
+
+        pen = QPen(QColor(self._style.bond_color), self._style.stroke_px)
+        pen.setCapStyle(self._style.cap_style)
+        pen.setJoinStyle(self._style.join_style)
+        self.setPen(pen)
+        self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        self.setPath(path)
+
+    def start_point(self) -> QPointF:
+        return QPointF(self._start)
+
+    def end_point(self) -> QPointF:
+        return QPointF(self._end)
+
+
 class ArrowItem(QGraphicsPathItem):
     """Graphics item representing a reaction arrow."""
 

@@ -26,6 +26,7 @@ from gui.icons import (
     draw_charge_icon,
     draw_electron_icon,
     draw_radical_charge_icon,
+    draw_wavy_anchor_icon,
 )
 from gui.styles import TOOL_PALETTE_STYLESHEET
 
@@ -638,6 +639,7 @@ class SymbolPaletteToolbar(QToolBar):
             "tool_symbol_minus": (draw_glyph_icon("-"), "Signo menos"),
             "tool_symbol_radical": (draw_electron_icon(1), "Electrón desapareado"),
             "tool_symbol_lone_pair": (draw_electron_icon(2, spread=5.0), "Par solitario"),
+            "tool_symbol_wavy_anchor": (draw_wavy_anchor_icon(), "Ancla ondulada"),
             "tool_symbol_radical_cation": (draw_radical_charge_icon("+"), "Radical catión"),
             "tool_symbol_radical_anion": (draw_radical_charge_icon("-"), "Radical anión"),
             "tool_symbol_partial_plus": (draw_glyph_icon("δ+"), "Carga parcial (δ+)"),
