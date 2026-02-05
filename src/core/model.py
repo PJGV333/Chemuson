@@ -21,6 +21,8 @@ class BondStereo(str, Enum):
     EITHER = "either"
 
 
+# Default/typical valence used by the UI to estimate implicit H placement.
+# This is *not* a hard chemical validator (hypervalent/charged states exist).
 VALENCE_MAP = {
     "H": 1,
     "C": 4,
@@ -32,6 +34,36 @@ VALENCE_MAP = {
     "Cl": 1,
     "Br": 1,
     "I": 1,
+}
+
+# Maximum valence (sum of bond orders) tolerated before flagging a valence error.
+# This is intentionally permissive for common hypervalent/main-group patterns:
+# - P(V/VI): phosphates, phosphoranes, PF6-
+# - S(IV/VI): sulfoxides/sulfones/sulfates, SF6
+# - Halogens(III/V/VII): interhalogens, oxoacids (e.g., IF7, ClO4- drawings)
+# - Xe(II/IV/VI/VIII): xenon fluorides and XeO4-style depictions
+MAX_VALENCE_MAP = {
+    "H": 1,
+    "C": 4,
+    "N": 4,
+    "O": 3,
+    "F": 1,
+    "Cl": 7,
+    "Br": 7,
+    "I": 7,
+    "P": 6,
+    "S": 6,
+    "Xe": 8,
+    "Se": 6,
+    "Te": 6,
+    "As": 6,
+    "Sb": 6,
+    "Bi": 6,
+    "Si": 6,
+    "Ge": 6,
+    "Sn": 6,
+    "Pb": 6,
+    "B": 4,
 }
 
 
@@ -254,7 +286,7 @@ class MolGraph:
 
         errors: List[int] = []
         for atom_id, atom in self.atoms.items():
-            expected = VALENCE_MAP.get(atom.element)
+            expected = MAX_VALENCE_MAP.get(atom.element)
             if expected is None:
                 continue
             if bond_order_sum.get(atom_id, 0) > expected:

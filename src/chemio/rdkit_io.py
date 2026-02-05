@@ -75,17 +75,25 @@ def molgraph_to_rdkit(molgraph: MolGraph):
 
 
 def molgraph_to_smiles(molgraph: MolGraph) -> str:
-    if not _rdkit_available():
-        return _molgraph_to_smiles_fallback(molgraph)
-    mol = molgraph_to_rdkit(molgraph)
-    return Chem.MolToSmiles(mol, canonical=True)
+    if _rdkit_available():
+        try:
+            mol = molgraph_to_rdkit(molgraph)
+            return Chem.MolToSmiles(mol, canonical=True)
+        except Exception:
+            # RDKit can reject some hypervalent depictions (e.g., interhalogens, noble gases).
+            # Fall back to the internal writer so the editor can still export something useful.
+            return _molgraph_to_smiles_fallback(molgraph)
+    return _molgraph_to_smiles_fallback(molgraph)
 
 
 def molgraph_to_molfile(molgraph: MolGraph) -> str:
-    if not _rdkit_available():
-        return _molgraph_to_molfile_fallback(molgraph)
-    mol = molgraph_to_rdkit(molgraph)
-    return Chem.MolToMolBlock(mol)
+    if _rdkit_available():
+        try:
+            mol = molgraph_to_rdkit(molgraph)
+            return Chem.MolToMolBlock(mol)
+        except Exception:
+            return _molgraph_to_molfile_fallback(molgraph)
+    return _molgraph_to_molfile_fallback(molgraph)
 
 
 def molgraph_to_svg(molgraph: MolGraph, size: Tuple[int, int] = (300, 200)) -> str:
