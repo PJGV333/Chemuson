@@ -1100,101 +1100,72 @@ class BracketItem(QGraphicsPathItem):
         left = rect.left()
         right = rect.right()
 
-        if self._kind == "()":
+        if self._kind in {"()", "(", ")"}:
             width = max(8.0, height * 0.12)
             mid = (top + bottom) / 2
-            path.moveTo(left + width, top)
-            path.quadTo(left, top + height * 0.25, left, mid)
-            path.quadTo(left, bottom - height * 0.25, left + width, bottom)
-
-            path.moveTo(right - width, top)
-            path.quadTo(right, top + height * 0.25, right, mid)
-            path.quadTo(right, bottom - height * 0.25, right - width, bottom)
-        elif self._kind == "{}":
-            # Improved curly brace drawing (ChemDraw style)
+            if self._kind in {"()", "("}:
+                path.moveTo(left + width, top)
+                path.quadTo(left, top + height * 0.25, left, mid)
+                path.quadTo(left, bottom - height * 0.25, left + width, bottom)
+            if self._kind in {"()", ")"}:
+                path.moveTo(right - width, top)
+                path.quadTo(right, top + height * 0.25, right, mid)
+                path.quadTo(right, bottom - height * 0.25, right - width, bottom)
+        elif self._kind in {"{}", "{", "}"}:
             mid = (top + bottom) / 2
-            total_width = max(8.0, height * 0.2)
-            half_width = total_width * 0.5
-            
-            # Corner radius for the tips
-            corner = min(height * 0.1, half_width)
-            
-            # Control point offsets for the sigmoid curves
-            # We want the curve to start vertical from the shoulder and arrive
-            # at the waist point with a sharp angle (not horizontal).
-            
-            def draw_brace_side(tip_x: float, spine_x: float, waist_x: float) -> None:
-                # Top Tip -> Top Shoulder
+            total_width = max(10.0, height * 0.18)
+            spine_offset = total_width * 0.45
+            corner = min(height * 0.08, total_width * 0.4)
+            # Smaller neck => sharper middle cusp
+            neck = max(4.0, height * 0.05)
+
+            def draw_curly_side(tip_x: float, spine_x: float, waist_x: float) -> None:
                 path.moveTo(tip_x, top)
                 path.quadTo(spine_x, top, spine_x, top + corner)
-                
-                # Top Shoulder -> Waist
-                # Use cubicTo to create a smooth "S" or "C" shape dependent on offset
-                # CP1: vertically aligned with spine, maintaining vertical tangent
-                # CP2: biased towards waist but kept high enough to avoid horizontal entry
-                
-                # Vertical span of the curve
-                v_span = mid - (top + corner)
-                
-                # CP1: Down along the spine
-                cp1_x = spine_x
-                cp1_y = top + corner + v_span * 0.5
-                
-                # CP2: Between spine and waist
-                # If we put CP2 at waist_x, the curve arrives tangent to (CP2->End), i.e. vertical?
-                # No, if CP2.x = waist_x, and CP2.y < mid.
-                # Vector is (0, mid - CP2.y). This is vertical!
-                # We want oblique. So CP2.x must be != waist_x.
-                # Let's pull CP2 back towards the spine.
-                cp2_x = waist_x + (spine_x - waist_x) * 0.5
-                cp2_y = mid - v_span * 0.05 # VERY Close to mid for sharpness
-                
-                path.cubicTo(cp1_x, cp1_y, cp2_x, cp2_y, waist_x, mid)
-                
-                # Waist -> Bottom Shoulder
-                # Inverse logic
-                v_span_bot = (bottom - corner) - mid
-                cp3_x = cp2_x
-                cp3_y = mid + v_span_bot * 0.1
-                
-                cp4_x = spine_x
-                cp4_y = bottom - corner - v_span_bot * 0.5
-                
-                path.cubicTo(cp3_x, cp3_y, cp4_x, cp4_y, spine_x, bottom - corner)
-                
-                # Bottom Shoulder -> Bottom Tip
+                path.lineTo(spine_x, mid - neck)
+                path.cubicTo(
+                    spine_x,
+                    mid - neck * 0.25,
+                    waist_x,
+                    mid - neck * 0.05,
+                    waist_x,
+                    mid,
+                )
+                path.cubicTo(
+                    waist_x,
+                    mid + neck * 0.05,
+                    spine_x,
+                    mid + neck * 0.25,
+                    spine_x,
+                    mid + neck,
+                )
+                path.lineTo(spine_x, bottom - corner)
                 path.quadTo(spine_x, bottom, tip_x, bottom)
 
-            # Left Bracket: } shape on the left? No, { shape.
-            # Point (Waist) is to the LEFT of the Spine.
-            # Tips (Inner) are to the RIGHT of the Spine.
-            # Waist < Spine < Tip
-            draw_brace_side(
-                tip_x=left + total_width,
-                spine_x=left + half_width,
-                waist_x=left
-            )
-            
-            # Right Bracket: } shape.
-            # Point (Waist) is to the RIGHT of the Spine.
-            # Tips (Inner) are to the LEFT of the Spine.
-            # Tip < Spine < Waist
-            draw_brace_side(
-                tip_x=right - total_width,
-                spine_x=right - half_width,
-                waist_x=right
-            )
-        else:  # "[]"
+            if self._kind in {"{}", "{"}:
+                draw_curly_side(
+                    tip_x=left + total_width,
+                    spine_x=left + spine_offset,
+                    waist_x=left,
+                )
+            if self._kind in {"{}", "}"}:
+                draw_curly_side(
+                    tip_x=right - total_width,
+                    spine_x=right - spine_offset,
+                    waist_x=right,
+                )
+        else:  # "[]", "[", "]"
             arm = max(6.0, height * 0.08)
-            path.moveTo(left + arm, top)
-            path.lineTo(left, top)
-            path.lineTo(left, bottom)
-            path.lineTo(left + arm, bottom)
-
-            path.moveTo(right - arm, top)
-            path.lineTo(right, top)
-            path.lineTo(right, bottom)
-            path.lineTo(right - arm, bottom)
+            if self._kind in {"[]", "["}:
+                path.moveTo(left + arm, top)
+                path.lineTo(left, top)
+                path.lineTo(left, bottom)
+                path.lineTo(left + arm, bottom)
+            if self._kind in {"[]", "]"}:
+                path.moveTo(right - arm, top)
+                path.lineTo(right, top)
+                path.lineTo(right, bottom)
+                path.lineTo(right - arm, bottom)
 
         self.setPath(path)
 

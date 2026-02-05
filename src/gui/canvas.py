@@ -1068,8 +1068,16 @@ class ChemusonCanvas(QGraphicsView):
                     bbox = bbox.united(item.sceneBoundingRect())
             else:
                 bbox = rect
-            cmd = AddBracketCommand(self, bbox, self.state.active_bracket_type)
-            self.undo_stack.push(cmd)
+            kind = self.state.active_bracket_type
+            pair = self._split_bracket_kind(kind)
+            if pair:
+                self.undo_stack.beginMacro("Add brackets")
+                for side in pair:
+                    self.undo_stack.push(AddBracketCommand(self, bbox, side))
+                self.undo_stack.endMacro()
+            else:
+                cmd = AddBracketCommand(self, bbox, kind)
+                self.undo_stack.push(cmd)
             return
 
         if self._dragging_selection:
@@ -2185,8 +2193,16 @@ class ChemusonCanvas(QGraphicsView):
         for br_d in annotations.get("brackets", []):
             rect_d = br_d["rect"]
             rect = QRectF(rect_d["x"], rect_d["y"], rect_d["w"], rect_d["h"])
-            bracket = BracketItem(rect, kind=br_d["kind"], padding=br_d.get("padding", 8.0))
-            self.scene.addItem(bracket)
+            kind = br_d.get("kind", "[]")
+            padding = br_d.get("padding", 8.0)
+            pair = self._split_bracket_kind(kind)
+            if pair:
+                for side in pair:
+                    bracket = BracketItem(rect, kind=side, padding=padding, style=self.drawing_style)
+                    self.readd_bracket_item(bracket, rect, side, padding=padding)
+            else:
+                bracket = BracketItem(rect, kind=kind, padding=padding, style=self.drawing_style)
+                self.readd_bracket_item(bracket, rect, kind, padding=padding)
 
         for txt_d in annotations.get("text_items", []):
             text_item = TextAnnotationItem(txt_d["text"], txt_d["x"], txt_d["y"])
@@ -2671,11 +2687,20 @@ class ChemusonCanvas(QGraphicsView):
                 float(rect_vals[3]),
             )
             kind = bracket_d.get("kind", "[]")
-            cmd = AddBracketCommand(self, rect, kind)
-            if has_undo_items:
-                self.undo_stack.push(cmd)
+            pair = self._split_bracket_kind(kind)
+            if pair:
+                for side in pair:
+                    cmd = AddBracketCommand(self, rect, side)
+                    if has_undo_items:
+                        self.undo_stack.push(cmd)
+                    else:
+                        cmd.redo()
             else:
-                cmd.redo()
+                cmd = AddBracketCommand(self, rect, kind)
+                if has_undo_items:
+                    self.undo_stack.push(cmd)
+                else:
+                    cmd.redo()
 
         for txt_d in texts:
             text_item = TextAnnotationItem(txt_d.get("text", ""), 0.0, 0.0)
@@ -3976,6 +4001,12 @@ class ChemusonCanvas(QGraphicsView):
             self.bracket_items.remove(item)
         if item.scene() is self.scene:
             self.scene.removeItem(item)
+
+    @staticmethod
+    def _split_bracket_kind(kind: str) -> Optional[tuple[str, str]]:
+        if kind in {"()", "[]", "{}"} and len(kind) == 2:
+            return kind[0], kind[1]
+        return None
 
     def _ensure_bracket_preview(self) -> QGraphicsRectItem:
         if self._bracket_preview is None:
