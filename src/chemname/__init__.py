@@ -11,6 +11,7 @@ Supported (v0):
 - Branched alkyl substituents: isopropyl, sec-butyl, tert-butyl, neopentyl.
 - Ring substituents: phenyl, benzyl, cyclohexyl.
 - Fused aromatics: anthracene, phenanthrene (mono-substituted).
+- Fused aromatics: pyrene (mono/di-substituted, template-based numbering).
 - Fused heteroaromatics: quinoline, isoquinoline, indole (mono-substituted).
 Outside scope returns "N/D".
 """

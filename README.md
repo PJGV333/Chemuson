@@ -29,16 +29,18 @@ Para iniciar la aplicación usando el ambiente virtual:
 
 **Soportado**
 - Lineales: alcanos acíclicos, halógenos, alquilos lineales.
-- Lineales con una insaturación: `-ene` o `-yne`.
-- Lineales con un grupo funcional: `-ol` o `-amine` (uno solo).
+- Lineales con insaturaciones múltiples: `-diene`, `-triene`, `-diyne` y `en-yne`.
+- Lineales con un grupo funcional: `-ol`, `-amine`, `-al`, `-one`, `-oic acid`, `-nitrile` (uno solo).
 - Cicloalcanos simples (3–8) con sustituyentes simples (halógenos, alquilos lineales).
 - Benceno con sustituyentes simples (halógenos, alquilos lineales, hydroxy, nitro).
+- Sustituyentes simples en cadena/anillo: alkoxy (C1–C3), nitro, amino.
 - Heteroaromáticos monocíclicos simples (furan, thiophene, pyrrole, pyridine).
 - Heteroaromáticos con 2 heteroátomos: diazinas (pyridazine/pyrimidine/pyrazine) y imidazole/oxazole/thiazole.
+- Heteroaromáticos con 3 N: triazine y triazole.
 - Naftaleno con mono/di-sustituidos simples (halógenos, alquilos lineales).
 - Sustituyentes alquilo ramificados simples (isopropyl, sec-butyl, tert-butyl, neopentyl).
 - Anillos como sustituyentes: phenyl, benzyl, cyclohexyl.
-- Aromáticos fusionados: anthracene y phenanthrene (mono-sustituidos).
+- Aromáticos fusionados: anthracene, phenanthrene (mono-sustituidos) y pyrene (mono/di-sustituidos).
 - Hetero-fusionados: quinoline, isoquinoline, indole (mono-sustituidos).
 
 **No soportado aún**
@@ -51,6 +53,11 @@ Para iniciar la aplicación usando el ambiente virtual:
 - Sustituyentes ramificados fuera del set soportado o con insaturación.
 - Heteroaromáticos con 3+ heteroátomos.
 - Fusionados mayores (tres+ anillos aromáticos) con di-sustitución.
+- Numeración alternativa para fused systems fuera de pyrene.
+
+**Pyrene (numeración)**
+- Por defecto: IUPAC 2004.
+- Alternativa: CAS. Usa `NameOptions(fused_numbering_scheme="cas")`.
 
 **Ejemplos (entrada → salida)**
 - `C1CCCCC1` → `cyclohexane`

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Dict, Set
 
+from chemcalc.valence import implicit_h_count
+
 from .errors import ChemNameNotSupported
 from .molview import MolView
 from .rings import RingContext, ring_type_basic
@@ -66,6 +68,12 @@ ALKYL: Dict[int, str] = {
     18: "octadecyl",
     19: "nonadecyl",
     20: "eicosyl",
+}
+
+ALKOXY: Dict[int, str] = {
+    1: "methoxy",
+    2: "ethoxy",
+    3: "propoxy",
 }
 
 BRANCHED_ALKYL = {
@@ -143,6 +151,73 @@ def halomethyl_substituent_name(
     if len(halogens) == 1 and not carbons:
         return f"{HALO_MAP[view.element(halogens[0])]}methyl"
     return None
+
+
+def alkoxy_substituent_name(
+    view: MolView,
+    start_atom: int,
+    parent_set: Set[int],
+    max_len: int = 3,
+) -> str | None:
+    if view.element(start_atom) != "O":
+        return None
+    heavy_neighbors = [nbr for nbr in view.neighbors(start_atom) if view.element(nbr) != "H"]
+    if len(heavy_neighbors) != 2:
+        return None
+    parent_neighbor = next((nbr for nbr in heavy_neighbors if nbr in parent_set), None)
+    alkyl_neighbor = next((nbr for nbr in heavy_neighbors if nbr not in parent_set), None)
+    if parent_neighbor is None or alkyl_neighbor is None:
+        return None
+    if view.bond_order_between(start_atom, parent_neighbor) != 1:
+        raise ChemNameNotSupported("Unsupported alkoxy bond")
+    if view.bond_order_between(start_atom, alkyl_neighbor) != 1:
+        raise ChemNameNotSupported("Unsupported alkoxy bond")
+    length = alkyl_length_linear(view, alkyl_neighbor, parent_set | {start_atom})
+    if length > max_len:
+        raise ChemNameNotSupported("Alkoxy substituent too large")
+    name = ALKOXY.get(length)
+    if name is None:
+        raise ChemNameNotSupported("Unsupported alkoxy substituent")
+    return name
+
+
+def nitro_substituent_name(
+    view: MolView, start_atom: int, parent_set: Set[int]
+) -> str | None:
+    if view.element(start_atom) != "N":
+        return None
+    if implicit_h_count(view, start_atom) + view.explicit_h(start_atom) != 0:
+        return None
+    heavy_neighbors = [nbr for nbr in view.neighbors(start_atom) if view.element(nbr) != "H"]
+    if len(heavy_neighbors) != 3:
+        return None
+    if not any(nbr in parent_set for nbr in heavy_neighbors):
+        return None
+    oxygen_neighbors = [nbr for nbr in heavy_neighbors if view.element(nbr) == "O"]
+    if len(oxygen_neighbors) != 2:
+        return None
+    for o_id in oxygen_neighbors:
+        order = view.bond_order_between(start_atom, o_id)
+        if order not in {1, 2}:
+            raise ChemNameNotSupported("Unsupported nitro substituent")
+    return "nitro"
+
+
+def amino_substituent_name(
+    view: MolView, start_atom: int, parent_set: Set[int]
+) -> str | None:
+    if view.element(start_atom) != "N":
+        return None
+    heavy_neighbors = [nbr for nbr in view.neighbors(start_atom) if view.element(nbr) != "H"]
+    if len(heavy_neighbors) != 1:
+        return None
+    if heavy_neighbors[0] not in parent_set:
+        return None
+    if implicit_h_count(view, start_atom) + view.explicit_h(start_atom) < 1:
+        return None
+    if view.bond_order_between(start_atom, heavy_neighbors[0]) != 1:
+        raise ChemNameNotSupported("Unsupported amino substituent")
+    return "amino"
 
 
 def _collect_alkyl_branch(
@@ -230,16 +305,66 @@ def _classify_branched_alkyl(
 
     return None
 
-def alkane_root(parent: str) -> str:
+def alkane_root(parent: str, use_a: bool = False) -> str:
     if parent.endswith("ane"):
-        return parent[:-3]
-    return parent
+        root = parent[:-3]
+    else:
+        root = parent
+    if use_a and not root.endswith("a"):
+        root = f"{root}a"
+    return root
+
+
+def _format_unsaturations(
+    unsaturations: list[tuple[int, int]], with_terminal_e: bool
+) -> tuple[str, bool]:
+    """Return unsaturation descriptor and whether to use 'a' in the root."""
+    if not unsaturations:
+        return "", False
+    doubles = sorted(loc for order, loc in unsaturations if order == 2)
+    triples = sorted(loc for order, loc in unsaturations if order == 3)
+    if len(doubles) + len(triples) != len(unsaturations):
+        raise ChemNameNotSupported("Unsupported bond order")
+
+    if doubles and triples:
+        if len(doubles) != 1 or len(triples) != 1:
+            raise ChemNameNotSupported("Unsupported unsaturation pattern")
+        en_part = "en"
+        yn_part = "yne" if with_terminal_e else "yn"
+        descriptor = f"{doubles[0]}-{en_part}-{triples[0]}-{yn_part}"
+        return descriptor, False
+
+    if doubles:
+        if len(doubles) > 3:
+            raise ChemNameNotSupported("Too many double bonds")
+        count = len(doubles)
+        locants = ",".join(str(loc) for loc in doubles)
+        if count == 1:
+            suffix = "ene" if with_terminal_e else "en"
+            return f"{locants}-{suffix}", False
+        if count == 2:
+            suffix = "diene" if with_terminal_e else "dien"
+            return f"{locants}-{suffix}", True
+        suffix = "triene" if with_terminal_e else "trien"
+        return f"{locants}-{suffix}", True
+
+    if triples:
+        if len(triples) > 2:
+            raise ChemNameNotSupported("Too many triple bonds")
+        count = len(triples)
+        locants = ",".join(str(loc) for loc in triples)
+        if count == 1:
+            suffix = "yne" if with_terminal_e else "yn"
+            return f"{locants}-{suffix}", False
+        suffix = "diyne" if with_terminal_e else "diyn"
+        return f"{locants}-{suffix}", True
+
+    raise ChemNameNotSupported("Unsupported unsaturation pattern")
 
 
 def parent_name(
     length: int,
-    unsat_order: int | None = None,
-    unsat_locant: int | None = None,
+    unsaturations: list[tuple[int, int]] | None = None,
     suffix: str | None = None,
     suffix_locant: int | None = None,
 ) -> str:
@@ -247,27 +372,43 @@ def parent_name(
     if parent is None:
         raise ChemNameNotSupported("Unsupported parent length")
 
-    if suffix is not None:
-        if suffix_locant is None:
-            raise ChemNameNotSupported("Missing suffix locant")
-        if unsat_order is not None:
-            if unsat_locant is None:
-                raise ChemNameNotSupported("Missing unsaturation locant")
-            root = alkane_root(parent)
-            infix = "en" if unsat_order == 2 else "yn"
-            base = f"{root}-{unsat_locant}-{infix}"
+    unsaturations = unsaturations or []
+    unsat_descriptor = ""
+    use_a = False
+    if unsaturations:
+        with_terminal_e = suffix is None or suffix == "nitrile"
+        unsat_descriptor, use_a = _format_unsaturations(unsaturations, with_terminal_e)
+
+    if suffix is None:
+        if not unsaturations:
+            return parent
+        root = alkane_root(parent, use_a=use_a)
+        return f"{root}-{unsat_descriptor}"
+
+    if suffix in {"al", "oic acid", "nitrile"}:
+        if suffix_locant not in {None, 1}:
+            raise ChemNameNotSupported("Unsupported suffix locant")
+        if unsaturations:
+            root = alkane_root(parent, use_a=use_a)
+            base = f"{root}-{unsat_descriptor}"
         else:
-            base = parent[:-1] if parent.endswith("e") else parent
-        return f"{base}-{suffix_locant}-{suffix}"
+            if suffix == "nitrile":
+                base = parent
+            else:
+                base = parent[:-1] if parent.endswith("e") else parent
+        if suffix == "oic acid":
+            return f"{base}oic acid"
+        return f"{base}{suffix}"
 
-    if unsat_order is not None:
-        if unsat_locant is None:
-            raise ChemNameNotSupported("Missing unsaturation locant")
-        root = alkane_root(parent)
-        infix = "ene" if unsat_order == 2 else "yne"
-        return f"{root}-{unsat_locant}-{infix}"
+    if suffix_locant is None:
+        raise ChemNameNotSupported("Missing suffix locant")
 
-    return parent
+    if unsaturations:
+        root = alkane_root(parent, use_a=use_a)
+        base = f"{root}-{unsat_descriptor}"
+    else:
+        base = parent[:-1] if parent.endswith("e") else parent
+    return f"{base}-{suffix_locant}-{suffix}"
 
 
 def alkyl_length_linear(view: MolView, start_atom: int, chain_set: Set[int]) -> int:

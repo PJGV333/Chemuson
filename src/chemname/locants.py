@@ -7,8 +7,11 @@ from .errors import ChemNameNotSupported
 from .molview import MolView
 from .substituents import (
     HALO_MAP,
+    alkoxy_substituent_name,
+    amino_substituent_name,
     alkyl_substituent_name,
     halomethyl_substituent_name,
+    nitro_substituent_name,
     ring_substituent_name,
 )
 from .rings import RingContext
@@ -57,6 +60,20 @@ def substituents_on_chain(
                 name = alkyl_substituent_name(view, nbr, chain_set)
                 substituents.append(Sub(name, locant))
                 continue
+            if elem == "O":
+                name = alkoxy_substituent_name(view, nbr, chain_set)
+                if name is not None:
+                    substituents.append(Sub(name, locant))
+                    continue
+            if elem == "N":
+                name = nitro_substituent_name(view, nbr, chain_set)
+                if name is not None:
+                    substituents.append(Sub(name, locant))
+                    continue
+                name = amino_substituent_name(view, nbr, chain_set)
+                if name is not None:
+                    substituents.append(Sub(name, locant))
+                    continue
             raise ChemNameNotSupported("Unsupported substituent")
 
     return substituents

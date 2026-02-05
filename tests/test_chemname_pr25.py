@@ -1,0 +1,46 @@
+import os
+import sys
+import unittest
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
+
+from core.model import MolGraph
+from chemname import iupac_name
+
+
+def build_ring(graph: MolGraph, elements: list[str], double_bonds: set[int]) -> list[int]:
+    atoms = [graph.add_atom(elem, float(i), 0.0) for i, elem in enumerate(elements)]
+    size = len(atoms)
+    for i in range(size):
+        order = 2 if i in double_bonds else 1
+        graph.add_bond(atoms[i].id, atoms[(i + 1) % size].id, order=order)
+    return [atom.id for atom in atoms]
+
+
+class ChemNamePR25Test(unittest.TestCase):
+    def test_triazine(self):
+        graph = MolGraph()
+        elements = ["N", "C", "N", "C", "N", "C"]
+        ring = build_ring(graph, elements, {0, 2, 4})
+        self.assertEqual(iupac_name(graph), "triazine")
+
+    def test_chlorotriazine(self):
+        graph = MolGraph()
+        elements = ["N", "C", "N", "C", "N", "C"]
+        ring = build_ring(graph, elements, {0, 2, 4})
+        cl = graph.add_atom("Cl", -1.0, 0.0)
+        graph.add_bond(ring[1], cl.id, order=1)
+        self.assertEqual(iupac_name(graph), "2-chlorotriazine")
+
+    def test_triazole(self):
+        graph = MolGraph()
+        elements = ["N", "N", "N", "C", "C"]
+        atoms = [graph.add_atom(elem, float(i), 0.0, explicit_h=1 if i == 0 else None) for i, elem in enumerate(elements)]
+        for i in range(len(atoms)):
+            order = 2 if i in {0, 2} else 1
+            graph.add_bond(atoms[i].id, atoms[(i + 1) % len(atoms)].id, order=order)
+        self.assertEqual(iupac_name(graph), "triazole")
+
+
+if __name__ == "__main__":
+    unittest.main()
