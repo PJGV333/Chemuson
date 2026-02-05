@@ -110,6 +110,8 @@ class ChemState:
     bond_length: float = 40.0
     active_ring_size: int = 6
     active_ring_aromatic: bool = False
+    active_ring_template: Optional[str] = None
+    active_ring_anomeric: Optional[str] = None
     active_bracket_type: str = "[]"
     default_element: str = "C"
     selected_atoms: Set[int] = field(default_factory=set)

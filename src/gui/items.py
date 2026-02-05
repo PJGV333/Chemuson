@@ -708,6 +708,16 @@ class BondItem(QGraphicsPathItem):
             self.setPen(pen)
             self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
             
+        elif self.style == BondStyle.BOLD:
+            path.moveTo(p1x, p1y)
+            path.lineTo(p2x, p2y)
+            bold_px = max(self._style.stroke_px * 2.2, self._style.stroke_px + 1.0)
+            pen = QPen(color, bold_px)
+            pen.setCapStyle(self._style.cap_style)
+            pen.setJoinStyle(self._style.join_style)
+            self.setPen(pen)
+            self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+
         elif self.style == BondStyle.INTERACTION:
             path.moveTo(p1x, p1y)
             path.lineTo(p2x, p2y)

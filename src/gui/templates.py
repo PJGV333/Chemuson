@@ -6,7 +6,7 @@ from __future__ import annotations
 import math
 from typing import List, Tuple
 
-from core.model import MolGraph
+from core.model import BondStyle, MolGraph
 
 
 def _add_atom(
@@ -23,8 +23,31 @@ def _add_atom(
     return atom.id
 
 
-def _add_bond(graph: MolGraph, a1_id: int, a2_id: int, order: int = 1) -> None:
-    graph.add_bond(a1_id, a2_id, order)
+def _add_bond(
+    graph: MolGraph,
+    a1_id: int,
+    a2_id: int,
+    order: int = 1,
+    style: BondStyle = BondStyle.PLAIN,
+) -> None:
+    graph.add_bond(a1_id, a2_id, order, style=style)
+
+
+def _front_edge_indices(coords: List[Tuple[float, float]]) -> set[int]:
+    if not coords:
+        return set()
+    ys = [y for _x, y in coords]
+    center_y = sum(ys) / len(ys)
+    height = max(ys) - min(ys)
+    threshold = height * 0.05
+    n = len(coords)
+    bold: set[int] = set()
+    for i in range(n):
+        j = (i + 1) % n
+        mid_y = (coords[i][1] + coords[j][1]) / 2.0
+        if mid_y > center_y + threshold:
+            bold.add(i)
+    return bold
 
 
 def build_linear_chain_template(bond_length: float) -> MolGraph:
@@ -78,7 +101,12 @@ def build_linear_chain_template(bond_length: float) -> MolGraph:
     return graph
 
 
-def build_haworth_template(bond_length: float) -> MolGraph:
+def build_haworth_template(
+    bond_length: float,
+    *,
+    anomeric_up: bool = True,
+    bold_front: bool = True,
+) -> MolGraph:
     graph = MolGraph()
     L = float(bond_length)
     
@@ -146,9 +174,10 @@ def build_haworth_template(bond_length: float) -> MolGraph:
         chain_el = atoms[i]
         ring_ids.append(_add_atom(graph, chain_el, x, y, explicit=(chain_el!="C")))
         
-    # Bonds
+    bold_edges = _front_edge_indices(coords) if bold_front else set()
     for i in range(6):
-        _add_bond(graph, ring_ids[i], ring_ids[(i + 1) % 6])
+        style = BondStyle.BOLD if i in bold_edges else BondStyle.PLAIN
+        _add_bond(graph, ring_ids[i], ring_ids[(i + 1) % 6], style=style)
         
     # Substituents
     # Vertical offsets
@@ -162,9 +191,10 @@ def build_haworth_template(bond_length: float) -> MolGraph:
     # C4: OH Down
     # C5: CH2OH Up
     
+    anomeric_offset = v_up if anomeric_up else v_down
     subs = [
         # (RingAtomIdx, Element, OffsetY, OffsetX)
-        (1, "OH", v_up,   0.0), # C1
+        (1, "OH", anomeric_offset,   0.0), # C1
         (2, "OH", v_down, 0.0), # C2
         (3, "OH", v_up,   0.0), # C3
         (4, "OH", v_down, 0.0), # C4
@@ -179,7 +209,12 @@ def build_haworth_template(bond_length: float) -> MolGraph:
     return graph
 
 
-def build_chair_template(bond_length: float) -> MolGraph:
+def build_chair_template(
+    bond_length: float,
+    *,
+    anomeric_up: bool = True,
+    bold_front: bool = True,
+) -> MolGraph:
     graph = MolGraph()
     L = float(bond_length)
     
@@ -205,8 +240,10 @@ def build_chair_template(bond_length: float) -> MolGraph:
         # Explicit carbons usually not needed for ring, but helps debugging
         ring_ids.append(_add_atom(graph, chain_el, x, y, explicit=(chain_el!="C")))
         
+    bold_edges = _front_edge_indices(r_coords) if bold_front else set()
     for i in range(6):
-        _add_bond(graph, ring_ids[i], ring_ids[(i + 1) % 6])
+        style = BondStyle.BOLD if i in bold_edges else BondStyle.PLAIN
+        _add_bond(graph, ring_ids[i], ring_ids[(i + 1) % 6], style=style)
         
     # Substituents (Beta-D-Glucose = All Equatorial)
     # Equatorial bonds point "out" away from the ring center
@@ -251,8 +288,9 @@ def build_chair_template(bond_length: float) -> MolGraph:
     }
     
     # Re-defining visually good offsets
+    c1_dy = -0.4 * L if anomeric_up else 0.4 * L
     subs = [
-        (1, "OH",     1.0 * L, -0.4 * L), # C1: Right-Up
+        (1, "OH",     1.0 * L, c1_dy), # C1: Right-Up / Right-Down
         (2, "OH",     0.6 * L,  1.0 * L), # C2: Right-Down
         (3, "OH",    -0.6 * L,  1.0 * L), # C3: Left-Down
         (4, "OH",    -1.0 * L, -0.4 * L), # C4: Left-Up (Back)

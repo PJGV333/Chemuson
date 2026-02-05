@@ -23,6 +23,7 @@ from gui.icons import (
     draw_generic_icon,
     draw_glyph_icon,
     draw_ring_icon,
+    draw_ring_template_icon,
     draw_charge_icon,
     draw_electron_icon,
     draw_radical_charge_icon,
@@ -433,6 +434,63 @@ class ChemusonToolbar(QToolBar):
                 )
             )
         self._populate_grid_menu(menu, entries, columns=4)
+        menu.addSeparator()
+        icon_haworth_alpha = draw_ring_template_icon("Hα")
+        icon_haworth_beta = draw_ring_template_icon("Hβ")
+        icon_chair_alpha = draw_ring_template_icon("Sα")
+        icon_chair_beta = draw_ring_template_icon("Sβ")
+        menu.addAction(
+            QAction(
+                icon_haworth_alpha,
+                "Haworth α (piranosa)",
+                self,
+                triggered=lambda checked=False, ic=icon_haworth_alpha: self._select_ring_palette(
+                    self.ring_button,
+                    ic,
+                    "Haworth α",
+                    {"size": 6, "aromatic": False, "template": "haworth", "anomeric": "alpha"},
+                ),
+            )
+        )
+        menu.addAction(
+            QAction(
+                icon_haworth_beta,
+                "Haworth β (piranosa)",
+                self,
+                triggered=lambda checked=False, ic=icon_haworth_beta: self._select_ring_palette(
+                    self.ring_button,
+                    ic,
+                    "Haworth β",
+                    {"size": 6, "aromatic": False, "template": "haworth", "anomeric": "beta"},
+                ),
+            )
+        )
+        menu.addAction(
+            QAction(
+                icon_chair_alpha,
+                "Silla α (4C1)",
+                self,
+                triggered=lambda checked=False, ic=icon_chair_alpha: self._select_ring_palette(
+                    self.ring_button,
+                    ic,
+                    "Silla α",
+                    {"size": 6, "aromatic": False, "template": "chair", "anomeric": "alpha"},
+                ),
+            )
+        )
+        menu.addAction(
+            QAction(
+                icon_chair_beta,
+                "Silla β (4C1)",
+                self,
+                triggered=lambda checked=False, ic=icon_chair_beta: self._select_ring_palette(
+                    self.ring_button,
+                    ic,
+                    "Silla β",
+                    {"size": 6, "aromatic": False, "template": "chair", "anomeric": "beta"},
+                ),
+            )
+        )
         menu.addSeparator()
         custom = QAction("Tamaño personalizado...", self)
         custom.triggered.connect(self._select_custom_ring_size)

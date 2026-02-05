@@ -66,6 +66,7 @@ from gui.items import (
     ABBREVIATION_LABELS,
 )
 from gui.style import CHEMDOODLE_LIKE, DrawingStyle
+from gui.templates import build_haworth_template, build_chair_template
 from gui.geom import (
     angle_deg,
     snap_angle_deg,
@@ -627,6 +628,8 @@ class ChemusonCanvas(QGraphicsView):
     def set_active_ring(self, ring_spec: dict) -> None:
         self.state.active_ring_size = ring_spec.get("size", 6)
         self.state.active_ring_aromatic = ring_spec.get("aromatic", False)
+        self.state.active_ring_template = ring_spec.get("template")
+        self.state.active_ring_anomeric = ring_spec.get("anomeric")
         self.set_current_tool("tool_ring")
 
     def set_active_element(self, element: str) -> None:
@@ -882,6 +885,9 @@ class ChemusonCanvas(QGraphicsView):
             return
 
         if self.current_tool == "tool_ring":
+            if self.state.active_ring_template:
+                self._insert_ring_template(scene_pos)
+                return
             if clicked_bond_id is not None and clicked_atom_id is None:
                 self._begin_place_ring("bond", clicked_bond_id, scene_pos)
                 return
@@ -3213,6 +3219,72 @@ class ChemusonCanvas(QGraphicsView):
         self.undo_stack.endMacro()
         if any(bond.is_aromatic for bond in self.model.bonds.values()):
             self._kekulize_aromatic_bonds()
+
+    def _insert_molgraph_at(self, graph: MolGraph, target: QPointF) -> None:
+        if not graph.atoms:
+            return
+        xs = [atom.x for atom in graph.atoms.values()]
+        ys = [atom.y for atom in graph.atoms.values()]
+        min_x, max_x = min(xs), max(xs)
+        min_y, max_y = min(ys), max(ys)
+        center_x = (min_x + max_x) / 2
+        center_y = (min_y + max_y) / 2
+        dx = target.x() - center_x
+        dy = target.y() - center_y
+
+        self.undo_stack.beginMacro("Paste molecule")
+        id_map: Dict[int, int] = {}
+        for atom in graph.atoms.values():
+            cmd = AddAtomCommand(
+                self.model,
+                self,
+                atom.element,
+                atom.x + dx,
+                atom.y + dy,
+                is_explicit=atom.is_explicit,
+                auto_hydrogens=False,
+            )
+            self.undo_stack.push(cmd)
+            if cmd.atom_id is not None:
+                id_map[atom.id] = cmd.atom_id
+        for bond in graph.bonds.values():
+            a1 = id_map.get(bond.a1_id)
+            a2 = id_map.get(bond.a2_id)
+            if a1 is None or a2 is None:
+                continue
+            cmd = AddBondCommand(
+                self.model,
+                self,
+                a1,
+                a2,
+                bond.order,
+                bond.style,
+                bond.stereo,
+                is_aromatic=bond.is_aromatic,
+            )
+            self.undo_stack.push(cmd)
+        self.undo_stack.endMacro()
+        if any(bond.is_aromatic for bond in self.model.bonds.values()):
+            self._kekulize_aromatic_bonds()
+
+    def _insert_ring_template(self, scene_pos: QPointF) -> None:
+        template = self.state.active_ring_template
+        if not template:
+            return
+        anomeric = (self.state.active_ring_anomeric or "beta").lower()
+        anomeric_up = anomeric != "alpha"
+        graph = None
+        if template == "haworth":
+            graph = build_haworth_template(
+                self.state.bond_length, anomeric_up=anomeric_up, bold_front=True
+            )
+        elif template == "chair":
+            graph = build_chair_template(
+                self.state.bond_length, anomeric_up=anomeric_up, bold_front=True
+            )
+        if graph is None:
+            return
+        self._insert_molgraph_at(graph, scene_pos)
 
     def _insert_image_from_clipboard(self, mime: QMimeData) -> None:
         pixmap = None

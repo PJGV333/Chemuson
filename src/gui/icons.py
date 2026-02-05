@@ -402,6 +402,58 @@ def draw_ring_icon(size: int = 6, aromatic: bool = True) -> QIcon:
     return QIcon(pixmap)
 
 
+def draw_ring_template_icon(label: str, size: int = 6) -> QIcon:
+    """
+    Draw a ring icon with a small label for template presets.
+    """
+    pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
+    pixmap.fill(Qt.GlobalColor.transparent)
+
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+
+    center = ICON_SIZE / 2
+    radius = ICON_SIZE / 2 - 6
+    points = []
+    sides = max(3, int(size))
+    step = 2 * math.pi / sides
+    start_angle = math.pi / 6
+    for i in range(sides):
+        angle = start_angle + i * step
+        x = center + radius * math.cos(angle)
+        y = center - radius * math.sin(angle)
+        points.append(QPointF(x, y))
+
+    polygon = QPolygonF(points)
+    pen = QPen(QColor("#333333"), 2)
+    painter.setPen(pen)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawPolygon(polygon)
+
+    # Bold the lowest edge for a Haworth-like hint
+    lowest = sorted(points, key=lambda p: p.y(), reverse=True)[:2]
+    if len(lowest) == 2:
+        bold_pen = QPen(QColor("#333333"), 3.4)
+        bold_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(bold_pen)
+        painter.drawLine(lowest[0], lowest[1])
+
+    if label:
+        font_size = 10 if len(label) <= 2 else 9
+        font = QFont("Arial", font_size, QFont.Weight.Bold)
+        painter.setFont(font)
+        painter.setPen(QColor("#222222"))
+        painter.drawText(
+            QRectF(0, 0, ICON_SIZE, ICON_SIZE),
+            Qt.AlignmentFlag.AlignCenter,
+            label,
+        )
+
+    painter.end()
+    return QIcon(pixmap)
+
+
 def draw_arrow_icon(kind: str = "forward") -> QIcon:
     """
     Draw arrow icons used in the annotation palette.

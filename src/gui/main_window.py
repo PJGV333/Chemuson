@@ -1362,12 +1362,25 @@ class ChemusonWindow(QMainWindow):
     
     def _update_status(self, tool_id: str) -> None:
         """Update status bar with current tool."""
+        ring_label = f"Anillo {self.canvas.state.active_ring_size}"
+        if self.canvas.state.active_ring_template:
+            template_name = {
+                "haworth": "Haworth",
+                "chair": "Silla",
+            }.get(self.canvas.state.active_ring_template, "Anillo")
+            anomeric = self.canvas.state.active_ring_anomeric
+            suffix = ""
+            if anomeric == "alpha":
+                suffix = " α"
+            elif anomeric == "beta":
+                suffix = " β"
+            ring_label = f"{template_name}{suffix}".strip()
         tool_names = {
             "tool_select": "Seleccionar",
             "tool_select_lasso": "Seleccion (lazo)",
             "tool_erase": "Borrar",
             "tool_bond": "Enlace",
-            "tool_ring": f"Anillo {self.canvas.state.active_ring_size}",
+            "tool_ring": ring_label,
             "tool_atom": f"Elemento {self.canvas.state.default_element}",
             "tool_chain": "Cadena",
             "tool_arrow_forward": "Flecha directa",
