@@ -97,6 +97,7 @@ from gui.commands import (
     ChangeAtomCommand,
     ChangeBondCommand,
     ChangeBondLengthCommand,
+    ChangeBondStrokeCommand,
     ChangeChargeCommand,
     DeleteSelectionCommand,
     MoveAtomsCommand,
@@ -2491,6 +2492,7 @@ class ChemusonCanvas(QGraphicsView):
                 is_query=bond.is_query,
                 ring_id=bond.ring_id,
                 length_px=bond.length_px,
+                stroke_px=bond.stroke_px,
             )
         return graph
 
@@ -2542,6 +2544,7 @@ class ChemusonCanvas(QGraphicsView):
                     "is_query": bond.is_query,
                     "ring_id": bond.ring_id,
                     "length_px": bond.length_px,
+                    "stroke_px": bond.stroke_px,
                 }
             )
 
@@ -2665,6 +2668,7 @@ class ChemusonCanvas(QGraphicsView):
                 bool(bond_d.get("is_aromatic", False)),
                 display_order=bond_d.get("display_order"),
                 length_px=bond_d.get("length_px"),
+                stroke_px=bond_d.get("stroke_px"),
                 ring_id=map_ring(bond_d.get("ring_id")),
             )
             if has_undo_items:
@@ -3214,6 +3218,7 @@ class ChemusonCanvas(QGraphicsView):
                 bond.style,
                 bond.stereo,
                 is_aromatic=bond.is_aromatic,
+                stroke_px=bond.stroke_px,
             )
             self.undo_stack.push(cmd)
         self.undo_stack.endMacro()
@@ -3261,6 +3266,7 @@ class ChemusonCanvas(QGraphicsView):
                 bond.style,
                 bond.stereo,
                 is_aromatic=bond.is_aromatic,
+                stroke_px=bond.stroke_px,
             )
             self.undo_stack.push(cmd)
         self.undo_stack.endMacro()
@@ -3421,6 +3427,12 @@ class ChemusonCanvas(QGraphicsView):
             ):
                 return label, None, QPointF(0.0, 0.0)
             implicit_h = self._implicit_hydrogen_count(atom.id, atom.element)
+            if (
+                implicit_h > 0
+                and atom.element in {"O", "S"}
+                and self._atom_degree(atom.id) >= 2
+            ):
+                implicit_h = 0
             if implicit_h > 0 and atom.element != "H" and not self.state.show_implicit_hydrogens:
                 h_text = "H" if implicit_h == 1 else f"H{implicit_h}"
                 if self._prefer_prefix_h(atom.id):
@@ -3434,6 +3446,13 @@ class ChemusonCanvas(QGraphicsView):
                 anchor = anchor_override
         offset = self._label_offset(atom.id)
         return label, anchor, offset
+
+    def _atom_degree(self, atom_id: int) -> int:
+        return sum(
+            1
+            for bond in self.model.bonds.values()
+            if bond.a1_id == atom_id or bond.a2_id == atom_id
+        )
 
     def _reflow_group_label(
         self, label: str, atom_id: int, anchor_override: Optional[str] = None
@@ -5136,12 +5155,22 @@ class ChemusonCanvas(QGraphicsView):
             or self._selected_text_items()
             or any(isinstance(item, (ArrowItem, BracketItem)) for item in self.scene.selectedItems())
         )
+        has_bond_selection = bool(self.state.selected_bonds)
 
         act_cut = menu.addAction("Cortar")
         act_copy = menu.addAction("Copiar")
         act_paste = menu.addAction("Pegar")
         menu.addSeparator()
         act_delete = menu.addAction("Eliminar")
+        act_thicker = None
+        act_thinner = None
+        act_reset_thickness = None
+        if has_bond_selection:
+            menu.addSeparator()
+            thickness_menu = menu.addMenu("Grosor de enlace")
+            act_thicker = thickness_menu.addAction("Incrementar grosor")
+            act_thinner = thickness_menu.addAction("Disminuir grosor")
+            act_reset_thickness = thickness_menu.addAction("Restablecer grosor")
         act_anchor = None
         if isinstance(clicked_item, AtomItem):
             atom = self.model.get_atom(clicked_item.atom_id)
@@ -5171,6 +5200,15 @@ class ChemusonCanvas(QGraphicsView):
 
         action = menu.exec(global_pos)
         if action is None:
+            return
+        if act_thicker is not None and action == act_thicker:
+            self._adjust_selected_bond_stroke(self._bond_stroke_step())
+            return
+        if act_thinner is not None and action == act_thinner:
+            self._adjust_selected_bond_stroke(-self._bond_stroke_step())
+            return
+        if act_reset_thickness is not None and action == act_reset_thickness:
+            self._reset_selected_bond_stroke()
             return
         if act_anchor is not None and action == act_anchor and isinstance(clicked_item, AtomItem):
             self._prompt_anchor_for_atom(clicked_item.atom_id)
@@ -5214,6 +5252,44 @@ class ChemusonCanvas(QGraphicsView):
             return
         if action == act_select_all:
             self._select_all_items()
+
+    def _bond_stroke_step(self) -> float:
+        return max(0.6, self.drawing_style.stroke_px * 0.35)
+
+    def increase_selected_bond_thickness(self) -> None:
+        self._adjust_selected_bond_stroke(self._bond_stroke_step())
+
+    def decrease_selected_bond_thickness(self) -> None:
+        self._adjust_selected_bond_stroke(-self._bond_stroke_step())
+
+    def reset_selected_bond_thickness(self) -> None:
+        self._reset_selected_bond_stroke()
+
+    def _adjust_selected_bond_stroke(self, delta: float) -> None:
+        bond_ids = list(self.state.selected_bonds)
+        if not bond_ids:
+            return
+        default_stroke = self.drawing_style.stroke_px
+        self.undo_stack.beginMacro("Change bond thickness")
+        for bond_id in bond_ids:
+            bond = self.model.get_bond(bond_id)
+            current = bond.stroke_px if bond.stroke_px is not None else default_stroke
+            new_value = max(0.6, current + delta)
+            if abs(new_value - default_stroke) < 0.05:
+                new_value = None
+            cmd = ChangeBondStrokeCommand(self.model, self, bond_id, new_value)
+            self.undo_stack.push(cmd)
+        self.undo_stack.endMacro()
+
+    def _reset_selected_bond_stroke(self) -> None:
+        bond_ids = list(self.state.selected_bonds)
+        if not bond_ids:
+            return
+        self.undo_stack.beginMacro("Reset bond thickness")
+        for bond_id in bond_ids:
+            cmd = ChangeBondStrokeCommand(self.model, self, bond_id, None)
+            self.undo_stack.push(cmd)
+        self.undo_stack.endMacro()
 
 
     def _ensure_selection_overlay(self) -> None:

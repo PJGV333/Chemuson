@@ -302,6 +302,7 @@ class ChemusonToolbar(QToolBar):
 
     def _build_bond_palette(self, menu: QMenu) -> None:
         icon_single = draw_bond_icon("single")
+        icon_bold = draw_bond_icon("bold")
         icon_double = draw_bond_icon("double")
         icon_triple = draw_bond_icon("triple")
         icon_aromatic = draw_bond_icon("aromatic")
@@ -323,6 +324,21 @@ class ChemusonToolbar(QToolBar):
                         "style": BondStyle.PLAIN,
                         "stereo": BondStereo.NONE,
                         "mode": "increment",
+                    },
+                ),
+            ),
+            self._make_palette_entry(
+                icon_bold,
+                "Enlace grueso (bold)",
+                lambda ic=icon_bold: self._select_bond_palette(
+                    self.bond_button,
+                    ic,
+                    "Enlace grueso (bold)",
+                    {
+                        "order": 1,
+                        "style": BondStyle.BOLD,
+                        "stereo": BondStereo.NONE,
+                        "mode": "set",
                     },
                 ),
             ),

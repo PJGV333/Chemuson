@@ -304,6 +304,19 @@ class ChemusonWindow(QMainWindow):
         self.action_flip_vertical = QAction("Giro 180° vertical", self)
         self.action_flip_vertical.triggered.connect(self._on_flip_vertical)
 
+        # --- Bond Thickness Actions ---
+        self.action_bond_thickness_up = QAction("Aumentar grosor de enlace", self)
+        self.action_bond_thickness_up.setShortcut(QKeySequence("Ctrl+Shift+Up"))
+        self.action_bond_thickness_up.triggered.connect(self._on_bond_thickness_up)
+
+        self.action_bond_thickness_down = QAction("Reducir grosor de enlace", self)
+        self.action_bond_thickness_down.setShortcut(QKeySequence("Ctrl+Shift+Down"))
+        self.action_bond_thickness_down.triggered.connect(self._on_bond_thickness_down)
+
+        self.action_bond_thickness_reset = QAction("Restablecer grosor de enlace", self)
+        self.action_bond_thickness_reset.setShortcut(QKeySequence("Ctrl+Shift+0"))
+        self.action_bond_thickness_reset.triggered.connect(self._on_bond_thickness_reset)
+
         # --- Text Actions ---
         self.action_label_font = QAction("Fuente de etiquetas...", self)
         self.action_label_font.triggered.connect(self._on_label_font)
@@ -423,6 +436,12 @@ class ChemusonWindow(QMainWindow):
         rotate_menu.addSeparator()
         rotate_menu.addAction(self.action_flip_horizontal)
         rotate_menu.addAction(self.action_flip_vertical)
+
+        edit_menu.addSeparator()
+        bond_thickness_menu = edit_menu.addMenu("Grosor de enlace")
+        bond_thickness_menu.addAction(self.action_bond_thickness_up)
+        bond_thickness_menu.addAction(self.action_bond_thickness_down)
+        bond_thickness_menu.addAction(self.action_bond_thickness_reset)
 
         edit_menu.addSeparator()
 
@@ -891,6 +910,15 @@ class ChemusonWindow(QMainWindow):
 
     def _on_flip_vertical(self) -> None:
         self.canvas.flip_selection_vertical()
+
+    def _on_bond_thickness_up(self) -> None:
+        self.canvas.increase_selected_bond_thickness()
+
+    def _on_bond_thickness_down(self) -> None:
+        self.canvas.decrease_selected_bond_thickness()
+
+    def _on_bond_thickness_reset(self) -> None:
+        self.canvas.reset_selected_bond_thickness()
 
     # -------------------------------------------------------------------------
     # Text Menu Handlers

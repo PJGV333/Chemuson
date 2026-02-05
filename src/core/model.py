@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Set
 
+_STROKE_UNSET = object()
+
 
 class BondStyle(str, Enum):
     PLAIN = "plain"
@@ -94,6 +96,7 @@ class Bond:
     is_query: bool = False
     ring_id: Optional[int] = None
     length_px: Optional[float] = None
+    stroke_px: Optional[float] = None
 
 
 @dataclass
@@ -189,6 +192,7 @@ class MolGraph:
         is_query: bool = False,
         ring_id: Optional[int] = None,
         length_px: Optional[float] = None,
+        stroke_px: Optional[float] = None,
     ) -> Bond:
         if bond_id is None:
             bond_id = self._next_bond_id
@@ -207,6 +211,7 @@ class MolGraph:
             is_query=is_query,
             ring_id=ring_id,
             length_px=length_px,
+            stroke_px=stroke_px,
         )
         self.bonds[bond_id] = bond
         return bond
@@ -254,6 +259,7 @@ class MolGraph:
         stereo: Optional[BondStereo] = None,
         is_aromatic: Optional[bool] = None,
         display_order: Optional[int] = None,
+        stroke_px: Optional[float] | object = _STROKE_UNSET,
     ) -> Bond:
         bond = self.bonds[bond_id]
         if order is not None:
@@ -266,6 +272,8 @@ class MolGraph:
             bond.is_aromatic = is_aromatic
         if display_order is not None:
             bond.display_order = display_order
+        if stroke_px is not _STROKE_UNSET:
+            bond.stroke_px = None if stroke_px is None else float(stroke_px)
         return bond
 
     def update_bond_length(self, bond_id: int, length_px: Optional[float]) -> None:

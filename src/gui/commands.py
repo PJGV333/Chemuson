@@ -362,6 +362,7 @@ class AddBondCommand(QUndoCommand):
         display_order: Optional[int] = None,
         length_px: Optional[float] = None,
         ring_id: Optional[int] = None,
+        stroke_px: Optional[float] = None,
         new_atom_element: Optional[str] = None,
         new_atom_pos: Optional[Tuple[float, float]] = None,
     ) -> None:
@@ -377,6 +378,7 @@ class AddBondCommand(QUndoCommand):
         self._display_order = display_order
         self._length_px = length_px
         self._ring_id = ring_id
+        self._stroke_px = stroke_px
         self._bond_id: Optional[int] = None
         self._new_atom_element = new_atom_element
         self._new_atom_pos = new_atom_pos
@@ -434,6 +436,7 @@ class AddBondCommand(QUndoCommand):
                 display_order=self._display_order,
                 ring_id=self._ring_id,
                 length_px=self._length_px,
+                stroke_px=self._stroke_px,
             )
             self._bond_id = bond.id
         else:
@@ -448,6 +451,7 @@ class AddBondCommand(QUndoCommand):
                 display_order=self._display_order,
                 ring_id=self._ring_id,
                 length_px=self._length_px,
+                stroke_px=self._stroke_px,
             )
         self._view.add_bond_item(bond)
         if self._demoted_explicit_atoms is None:
@@ -547,6 +551,30 @@ class ChangeBondLengthCommand(QUndoCommand):
 
     def undo(self) -> None:
         self._model.update_bond_length(self._bond_id, self._old_length)
+        self._view.update_bond_item(self._bond_id)
+
+class ChangeBondStrokeCommand(QUndoCommand):
+    def __init__(
+        self,
+        model: MolGraph,
+        view,
+        bond_id: int,
+        new_stroke_px: Optional[float],
+    ) -> None:
+        super().__init__("Change bond thickness")
+        self._model = model
+        self._view = view
+        self._bond_id = bond_id
+        bond = model.get_bond(bond_id)
+        self._old_stroke = bond.stroke_px
+        self._new_stroke = new_stroke_px
+
+    def redo(self) -> None:
+        self._model.update_bond(self._bond_id, stroke_px=self._new_stroke)
+        self._view.update_bond_item(self._bond_id)
+
+    def undo(self) -> None:
+        self._model.update_bond(self._bond_id, stroke_px=self._old_stroke)
         self._view.update_bond_item(self._bond_id)
 
 class MoveAtomsCommand(QUndoCommand):

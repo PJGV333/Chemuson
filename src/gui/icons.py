@@ -232,7 +232,7 @@ def draw_bond_icon(bond_type: str = 'single') -> QIcon:
     Draw a bond icon showing a diagonal line.
     
     Args:
-        bond_type: 'single' or 'double'
+        bond_type: 'single', 'double', 'bold', etc.
     
     Returns:
         QIcon with bond representation
@@ -249,6 +249,12 @@ def draw_bond_icon(bond_type: str = 'single') -> QIcon:
     
     if bond_type == 'single':
         pen = QPen(QColor('#333333'), 3)
+        painter.setPen(pen)
+        painter.drawLine(x1, y1, x2, y2)
+
+    elif bond_type == 'bold':
+        pen = QPen(QColor('#333333'), 6)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         painter.setPen(pen)
         painter.drawLine(x1, y1, x2, y2)
 

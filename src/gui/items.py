@@ -556,6 +556,7 @@ class BondItem(QGraphicsPathItem):
         self.display_order = bond.display_order
         self.ring_id = bond.ring_id
         self.length_px = bond.length_px
+        self._stroke_px = bond.stroke_px
         self.render_aromatic_as_circle = render_aromatic_as_circle
         self._style = style
         self._label_shrink_start = 0.0
@@ -587,6 +588,7 @@ class BondItem(QGraphicsPathItem):
         self.display_order = bond.display_order
         self.ring_id = bond.ring_id
         self.length_px = bond.length_px
+        self._stroke_px = bond.stroke_px
         self.update_positions(atom1, atom2)
 
     def set_render_aromatic_as_circle(self, enabled: bool) -> None:
@@ -655,7 +657,8 @@ class BondItem(QGraphicsPathItem):
         if self.is_aromatic and self.render_aromatic_as_circle:
             path.moveTo(p1x, p1y)
             path.lineTo(p2x, p2y)
-            pen = QPen(color, self._style.stroke_px)
+            stroke_px = self._stroke_px if self._stroke_px is not None else self._style.stroke_px
+            pen = QPen(color, stroke_px)
             pen.setCapStyle(self._style.cap_style)
             pen.setJoinStyle(self._style.join_style)
             self.setPen(pen)
@@ -666,6 +669,8 @@ class BondItem(QGraphicsPathItem):
         effective_order = self.order
         if self.is_aromatic and self.display_order is not None:
             effective_order = self.display_order
+
+        stroke_px = self._stroke_px if self._stroke_px is not None else self._style.stroke_px
 
         if self.style == BondStyle.PLAIN:
             if effective_order == 1:
@@ -702,7 +707,7 @@ class BondItem(QGraphicsPathItem):
                     path.lineTo(p2x + nx * offset, p2y + ny * offset)
                     path.moveTo(p1x - nx * offset, p1y - ny * offset)
                     path.lineTo(p2x - nx * offset, p2y - ny * offset)
-            pen = QPen(color, self._style.stroke_px)
+            pen = QPen(color, stroke_px)
             pen.setCapStyle(self._style.cap_style)
             pen.setJoinStyle(self._style.join_style)
             self.setPen(pen)
@@ -711,7 +716,7 @@ class BondItem(QGraphicsPathItem):
         elif self.style == BondStyle.BOLD:
             path.moveTo(p1x, p1y)
             path.lineTo(p2x, p2y)
-            bold_px = max(self._style.stroke_px * 2.2, self._style.stroke_px + 1.0)
+            bold_px = max(stroke_px * 2.2, stroke_px + 1.0)
             pen = QPen(color, bold_px)
             pen.setCapStyle(self._style.cap_style)
             pen.setJoinStyle(self._style.join_style)
@@ -721,7 +726,7 @@ class BondItem(QGraphicsPathItem):
         elif self.style == BondStyle.INTERACTION:
             path.moveTo(p1x, p1y)
             path.lineTo(p2x, p2y)
-            pen = QPen(color, self._style.stroke_px, Qt.PenStyle.DotLine)
+            pen = QPen(color, stroke_px, Qt.PenStyle.DotLine)
             pen.setCapStyle(self._style.cap_style)
             pen.setJoinStyle(self._style.join_style)
             self.setPen(pen)
@@ -752,22 +757,23 @@ class BondItem(QGraphicsPathItem):
                 width = self._style.hash_min_px + (self._style.hash_max_px - self._style.hash_min_px) * t
                 path.moveTo(px + nx * width / 2, py + ny * width / 2)
                 path.lineTo(px - nx * width / 2, py - ny * width / 2)
-            pen = QPen(color, self._style.hash_stroke_px)
+            hash_stroke = max(self._style.hash_stroke_px, stroke_px * 0.85)
+            pen = QPen(color, hash_stroke)
             pen.setCapStyle(self._style.cap_style)
             pen.setJoinStyle(self._style.join_style)
             self.setPen(pen)
             self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
             
         elif self.style == BondStyle.WAVY:
-            wavelength = max(8.0, self._style.stroke_px * 3.5)
-            amplitude = max(self._style.stroke_px * 0.9, wavelength * 0.28)
+            wavelength = max(8.0, stroke_px * 3.5)
+            amplitude = max(stroke_px * 0.9, wavelength * 0.28)
             path = _build_wavy_path(
                 QPointF(p1x, p1y),
                 QPointF(p2x, p2y),
                 amplitude,
                 wavelength,
             )
-            pen = QPen(color, self._style.stroke_px)
+            pen = QPen(color, stroke_px)
             pen.setCapStyle(self._style.cap_style)
             pen.setJoinStyle(self._style.join_style)
             self.setPen(pen)
