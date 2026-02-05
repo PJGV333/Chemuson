@@ -40,6 +40,6 @@ CHEMDOODLE_LIKE = DrawingStyle(
     hash_min_px=2.0,
     hash_max_px=10.0,
     hash_stroke_px=2.2,
-    cap_style=Qt.PenCapStyle.RoundCap,
-    join_style=Qt.PenJoinStyle.RoundJoin,
+    cap_style=Qt.PenCapStyle.FlatCap,
+    join_style=Qt.PenJoinStyle.MiterJoin,
 )

@@ -5,6 +5,7 @@ from enum import Enum
 from typing import Dict, List, Optional, Set
 
 _STROKE_UNSET = object()
+_COLOR_UNSET = object()
 
 
 class BondStyle(str, Enum):
@@ -97,6 +98,7 @@ class Bond:
     ring_id: Optional[int] = None
     length_px: Optional[float] = None
     stroke_px: Optional[float] = None
+    color: Optional[str] = None
 
 
 @dataclass
@@ -193,6 +195,7 @@ class MolGraph:
         ring_id: Optional[int] = None,
         length_px: Optional[float] = None,
         stroke_px: Optional[float] = None,
+        color: Optional[str] = None,
     ) -> Bond:
         if bond_id is None:
             bond_id = self._next_bond_id
@@ -212,6 +215,7 @@ class MolGraph:
             ring_id=ring_id,
             length_px=length_px,
             stroke_px=stroke_px,
+            color=color,
         )
         self.bonds[bond_id] = bond
         return bond
@@ -260,6 +264,7 @@ class MolGraph:
         is_aromatic: Optional[bool] = None,
         display_order: Optional[int] = None,
         stroke_px: Optional[float] | object = _STROKE_UNSET,
+        color: Optional[str] | object = _COLOR_UNSET,
     ) -> Bond:
         bond = self.bonds[bond_id]
         if order is not None:
@@ -274,6 +279,8 @@ class MolGraph:
             bond.display_order = display_order
         if stroke_px is not _STROKE_UNSET:
             bond.stroke_px = None if stroke_px is None else float(stroke_px)
+        if color is not _COLOR_UNSET:
+            bond.color = None if color is None else str(color)
         return bond
 
     def update_bond_length(self, bond_id: int, length_px: Optional[float]) -> None:

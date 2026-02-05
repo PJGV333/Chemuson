@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
     QGraphicsTextItem,
     QGraphicsItem,
     QInputDialog,
+    QColorDialog,
 )
 from PyQt6.QtGui import (
     QPainter,
@@ -98,6 +99,7 @@ from gui.commands import (
     ChangeBondCommand,
     ChangeBondLengthCommand,
     ChangeBondStrokeCommand,
+    ChangeBondColorCommand,
     ChangeChargeCommand,
     DeleteSelectionCommand,
     MoveAtomsCommand,
@@ -2493,6 +2495,7 @@ class ChemusonCanvas(QGraphicsView):
                 ring_id=bond.ring_id,
                 length_px=bond.length_px,
                 stroke_px=bond.stroke_px,
+                color=bond.color,
             )
         return graph
 
@@ -2532,21 +2535,22 @@ class ChemusonCanvas(QGraphicsView):
 
         bonds_payload = []
         for bond in bonds:
-            bonds_payload.append(
-                {
-                    "a1": bond.a1_id,
-                    "a2": bond.a2_id,
-                    "order": bond.order,
-                    "style": bond.style.value if bond.style is not None else BondStyle.PLAIN.value,
-                    "stereo": bond.stereo.value if bond.stereo is not None else BondStereo.NONE.value,
-                    "is_aromatic": bond.is_aromatic,
-                    "display_order": bond.display_order,
-                    "is_query": bond.is_query,
-                    "ring_id": bond.ring_id,
-                    "length_px": bond.length_px,
-                    "stroke_px": bond.stroke_px,
-                }
-            )
+                bonds_payload.append(
+                    {
+                        "a1": bond.a1_id,
+                        "a2": bond.a2_id,
+                        "order": bond.order,
+                        "style": bond.style.value if bond.style is not None else BondStyle.PLAIN.value,
+                        "stereo": bond.stereo.value if bond.stereo is not None else BondStereo.NONE.value,
+                        "is_aromatic": bond.is_aromatic,
+                        "display_order": bond.display_order,
+                        "is_query": bond.is_query,
+                        "ring_id": bond.ring_id,
+                        "length_px": bond.length_px,
+                        "stroke_px": bond.stroke_px,
+                        "color": bond.color,
+                    }
+                )
 
         arrows_payload = []
         for item in arrows:
@@ -2669,6 +2673,7 @@ class ChemusonCanvas(QGraphicsView):
                 display_order=bond_d.get("display_order"),
                 length_px=bond_d.get("length_px"),
                 stroke_px=bond_d.get("stroke_px"),
+                color=bond_d.get("color"),
                 ring_id=map_ring(bond_d.get("ring_id")),
             )
             if has_undo_items:
@@ -3219,6 +3224,7 @@ class ChemusonCanvas(QGraphicsView):
                 bond.stereo,
                 is_aromatic=bond.is_aromatic,
                 stroke_px=bond.stroke_px,
+                color=bond.color,
             )
             self.undo_stack.push(cmd)
         self.undo_stack.endMacro()
@@ -3267,6 +3273,7 @@ class ChemusonCanvas(QGraphicsView):
                 bond.stereo,
                 is_aromatic=bond.is_aromatic,
                 stroke_px=bond.stroke_px,
+                color=bond.color,
             )
             self.undo_stack.push(cmd)
         self.undo_stack.endMacro()
@@ -4041,6 +4048,12 @@ class ChemusonCanvas(QGraphicsView):
             item.set_ring_context(self._aromatic_ring_center_for_bond(bond))
         item.set_offset_sign(self._bond_offset_sign(bond))
         self._configure_bond_rendering(bond, item)
+        trim_start = self._bond_endpoint_trim(bond, bond.a1_id)
+        trim_end = self._bond_endpoint_trim(bond, bond.a2_id)
+        item.set_endpoint_trim(trim_start, trim_end)
+        extend_start = self._bond_endpoint_extend(bond, bond.a1_id)
+        extend_end = self._bond_endpoint_extend(bond, bond.a2_id)
+        item.set_endpoint_extend(extend_start, extend_end)
         item.update_positions(atom1, atom2)
         self.scene.addItem(item)
         self.bond_items[bond.id] = item
@@ -4131,10 +4144,87 @@ class ChemusonCanvas(QGraphicsView):
                 item.set_ring_context(None)
             item.set_offset_sign(self._bond_offset_sign(bond))
             self._configure_bond_rendering(bond, item)
+            trim_start = self._bond_endpoint_trim(bond, bond.a1_id)
+            trim_end = self._bond_endpoint_trim(bond, bond.a2_id)
+            item.set_endpoint_trim(trim_start, trim_end)
+            extend_start = self._bond_endpoint_extend(bond, bond.a1_id)
+            extend_end = self._bond_endpoint_extend(bond, bond.a2_id)
+            item.set_endpoint_extend(extend_start, extend_end)
             item.set_bond(bond, atom1, atom2)
             item.set_style(self.drawing_style, atom1, atom2)
         self._refresh_atom_label(bond.a1_id)
         self._refresh_atom_label(bond.a2_id)
+
+    def _bond_render_width(self, bond: Bond) -> float:
+        base = bond.stroke_px if bond.stroke_px is not None else self.drawing_style.stroke_px
+        if bond.style == BondStyle.BOLD:
+            return max(base * 2.2, base + 1.0)
+        if bond.style == BondStyle.WEDGE:
+            return max(self.drawing_style.wedge_width_px, base)
+        if bond.style == BondStyle.HASHED:
+            return max(self.drawing_style.hash_stroke_px, base * 0.85)
+        return base
+
+    def _bond_endpoint_extend(self, bond: Bond, atom_id: int) -> float:
+        if self.drawing_style.cap_style != Qt.PenCapStyle.FlatCap:
+            return 0.0
+        if self._atom_degree(atom_id) != 2:
+            return 0.0
+        atom = self.model.get_atom(atom_id)
+        if self._atom_label_visible(atom):
+            return 0.0
+        other_bond = None
+        for candidate in self.model.bonds.values():
+            if candidate.id == bond.id:
+                continue
+            if candidate.a1_id == atom_id or candidate.a2_id == atom_id:
+                other_bond = candidate
+                break
+        if other_bond is None:
+            return 0.0
+
+        def unit_vector(b: Bond) -> tuple[float, float]:
+            other_id = b.a2_id if b.a1_id == atom_id else b.a1_id
+            other_atom = self.model.get_atom(other_id)
+            dx = other_atom.x - atom.x
+            dy = other_atom.y - atom.y
+            length = math.hypot(dx, dy) or 1.0
+            return dx / length, dy / length
+
+        v1x, v1y = unit_vector(bond)
+        v2x, v2y = unit_vector(other_bond)
+        dot = max(-1.0, min(1.0, v1x * v2x + v1y * v2y))
+        theta = math.acos(dot)
+        if theta <= 1e-3:
+            return 0.0
+        width = max(self._bond_render_width(bond), self._bond_render_width(other_bond))
+        extension = (width * 0.5) / math.tan(theta / 2.0)
+        return max(0.0, min(extension, width * 2.0))
+
+    def _atom_label_visible(self, atom) -> bool:
+        if atom.is_explicit:
+            return True
+        if atom.element == "C":
+            return self.state.show_implicit_carbons
+        if atom.element == "H":
+            return self.state.show_implicit_hydrogens
+        return True
+
+    def _bond_endpoint_trim(self, bond: Bond, atom_id: int) -> float:
+        if self._atom_degree(atom_id) < 2:
+            return 0.0
+        width = self._bond_render_width(bond)
+        max_other = 0.0
+        for other in self.model.bonds.values():
+            if other.id == bond.id:
+                continue
+            if other.a1_id == atom_id or other.a2_id == atom_id:
+                max_other = max(max_other, self._bond_render_width(other))
+        if max_other <= 0.0:
+            return 0.0
+        if width <= max_other:
+            return 0.0
+        return max(0.0, (width - max_other) * 0.5)
 
     def update_bond_items_for_atoms(self, atom_ids: set[int]) -> None:
         for bond in self.model.bonds.values():
@@ -5165,12 +5255,16 @@ class ChemusonCanvas(QGraphicsView):
         act_thicker = None
         act_thinner = None
         act_reset_thickness = None
+        act_color = None
+        act_reset_color = None
         if has_bond_selection:
             menu.addSeparator()
             thickness_menu = menu.addMenu("Grosor de enlace")
             act_thicker = thickness_menu.addAction("Incrementar grosor")
             act_thinner = thickness_menu.addAction("Disminuir grosor")
             act_reset_thickness = thickness_menu.addAction("Restablecer grosor")
+            act_color = menu.addAction("Color de enlace...")
+            act_reset_color = menu.addAction("Restablecer color de enlace")
         act_anchor = None
         if isinstance(clicked_item, AtomItem):
             atom = self.model.get_atom(clicked_item.atom_id)
@@ -5209,6 +5303,12 @@ class ChemusonCanvas(QGraphicsView):
             return
         if act_reset_thickness is not None and action == act_reset_thickness:
             self._reset_selected_bond_stroke()
+            return
+        if act_color is not None and action == act_color:
+            self._prompt_bond_color()
+            return
+        if act_reset_color is not None and action == act_reset_color:
+            self._set_selected_bond_color(None)
             return
         if act_anchor is not None and action == act_anchor and isinstance(clicked_item, AtomItem):
             self._prompt_anchor_for_atom(clicked_item.atom_id)
@@ -5264,6 +5364,31 @@ class ChemusonCanvas(QGraphicsView):
 
     def reset_selected_bond_thickness(self) -> None:
         self._reset_selected_bond_stroke()
+
+    def _prompt_bond_color(self) -> None:
+        bond_ids = list(self.state.selected_bonds)
+        if not bond_ids:
+            return
+        initial = QColor(self.drawing_style.bond_color)
+        for bond_id in bond_ids:
+            bond = self.model.get_bond(bond_id)
+            if bond.color:
+                initial = QColor(bond.color)
+                break
+        color = QColorDialog.getColor(initial, self, "Seleccionar color de enlace")
+        if not color.isValid():
+            return
+        self._set_selected_bond_color(color.name())
+
+    def _set_selected_bond_color(self, color: Optional[str]) -> None:
+        bond_ids = list(self.state.selected_bonds)
+        if not bond_ids:
+            return
+        self.undo_stack.beginMacro("Change bond color")
+        for bond_id in bond_ids:
+            cmd = ChangeBondColorCommand(self.model, self, bond_id, color)
+            self.undo_stack.push(cmd)
+        self.undo_stack.endMacro()
 
     def _adjust_selected_bond_stroke(self, delta: float) -> None:
         bond_ids = list(self.state.selected_bonds)

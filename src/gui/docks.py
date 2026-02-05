@@ -7,6 +7,8 @@ from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QLabel,
+    QFormLayout,
+    QComboBox,
     QTreeWidget,
     QTreeWidgetItem,
     QTableWidget,
@@ -14,6 +16,7 @@ from PyQt6.QtWidgets import (
     QHeaderView,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
+from gui.style import DrawingStyle
 
 
 class PlantillasDock(QDockWidget):
@@ -165,6 +168,49 @@ class InspectorDock(QDockWidget):
         for i, (key, val) in enumerate(data):
             self.prop_table.setItem(i, 0, QTableWidgetItem(key))
             self.prop_table.setItem(i, 1, QTableWidgetItem(val))
+
+
+class AppearanceDock(QDockWidget):
+    """Dock widget for appearance preferences."""
+
+    appearance_changed = pyqtSignal(dict)
+
+    def __init__(self, current_style: DrawingStyle, parent=None):
+        super().__init__("Apariencia", parent)
+        self.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
+
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(8, 8, 8, 8)
+
+        form = QFormLayout()
+        self.bond_cap_combo = QComboBox()
+        self.bond_cap_combo.addItem("Redondeados", "round")
+        self.bond_cap_combo.addItem("Rectos", "flat")
+        current_cap = (
+            "round"
+            if current_style.cap_style == Qt.PenCapStyle.RoundCap
+            else "flat"
+        )
+        index = self.bond_cap_combo.findData(current_cap)
+        if index >= 0:
+            self.bond_cap_combo.setCurrentIndex(index)
+        self.bond_cap_combo.currentIndexChanged.connect(self._emit_change)
+        form.addRow("Bordes de enlace", self.bond_cap_combo)
+
+        layout.addLayout(form)
+        layout.addStretch()
+        self.setWidget(container)
+
+    def _emit_change(self) -> None:
+        self.appearance_changed.emit({"bond_caps": self.bond_cap_combo.currentData()})
+
+    def set_bond_caps(self, value: str) -> None:
+        index = self.bond_cap_combo.findData(value)
+        if index >= 0:
+            self.bond_cap_combo.blockSignals(True)
+            self.bond_cap_combo.setCurrentIndex(index)
+            self.bond_cap_combo.blockSignals(False)
 
 
 # Backwards-compatible alias

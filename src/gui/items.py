@@ -557,16 +557,26 @@ class BondItem(QGraphicsPathItem):
         self.ring_id = bond.ring_id
         self.length_px = bond.length_px
         self._stroke_px = bond.stroke_px
+        self._color = bond.color
         self.render_aromatic_as_circle = render_aromatic_as_circle
         self._style = style
         self._label_shrink_start = 0.0
         self._label_shrink_end = 0.0
+        self._endpoint_trim_start = 0.0
+        self._endpoint_trim_end = 0.0
+        self._endpoint_extend_start = 0.0
+        self._endpoint_extend_end = 0.0
         self._offset_sign = 1
         self._ring_center: QPointF | None = None
         self._prefer_full_length = False
         self._symmetric_double = False
         self.setZValue(-5)
-        pen = QPen(QColor(self._style.bond_color), self._style.stroke_px)
+        pen_color = QColor(self._style.bond_color)
+        if self._color:
+            candidate = QColor(self._color)
+            if candidate.isValid():
+                pen_color = candidate
+        pen = QPen(pen_color, self._style.stroke_px)
         pen.setCapStyle(self._style.cap_style)
         pen.setJoinStyle(self._style.join_style)
         self.setPen(pen)
@@ -589,6 +599,7 @@ class BondItem(QGraphicsPathItem):
         self.ring_id = bond.ring_id
         self.length_px = bond.length_px
         self._stroke_px = bond.stroke_px
+        self._color = bond.color
         self.update_positions(atom1, atom2)
 
     def set_render_aromatic_as_circle(self, enabled: bool) -> None:
@@ -611,12 +622,50 @@ class BondItem(QGraphicsPathItem):
         self._label_shrink_start = max(0.0, float(start))
         self._label_shrink_end = max(0.0, float(end))
 
+    def set_endpoint_trim(self, start: float, end: float) -> None:
+        self._endpoint_trim_start = max(0.0, float(start))
+        self._endpoint_trim_end = max(0.0, float(end))
+
+    def set_endpoint_extend(self, start: float, end: float) -> None:
+        self._endpoint_extend_start = max(0.0, float(start))
+        self._endpoint_extend_end = max(0.0, float(end))
+
+    def _extend_line_endpoints(
+        self,
+        p1x: float,
+        p1y: float,
+        p2x: float,
+        p2y: float,
+        ux: float,
+        uy: float,
+        trim_start: float,
+        trim_end: float,
+        pen_width: float,
+    ) -> tuple[float, float, float, float]:
+        if self._style.cap_style != Qt.PenCapStyle.FlatCap:
+            return p1x, p1y, p2x, p2y
+        extend_start = self._endpoint_extend_start
+        extend_end = self._endpoint_extend_end
+        if extend_start <= 0.0 and extend_end <= 0.0:
+            return p1x, p1y, p2x, p2y
+        if trim_start <= 0.0:
+            p1x -= ux * extend_start
+            p1y -= uy * extend_start
+        if trim_end <= 0.0:
+            p2x += ux * extend_end
+            p2y += uy * extend_end
+        return p1x, p1y, p2x, p2y
+
     def update_positions(self, atom1: Atom, atom2: Atom) -> None:
         """Redraw the bond path based on atom positions and bond type."""
         x1, y1 = atom1.x, atom1.y
         x2, y2 = atom2.x, atom2.y
         path = QPainterPath()
         color = QColor(self._style.bond_color)
+        if self._color:
+            candidate = QColor(self._color)
+            if candidate.isValid():
+                color = candidate
         dx = x2 - x1
         dy = y2 - y1
         length = math.hypot(dx, dy)
@@ -630,8 +679,8 @@ class BondItem(QGraphicsPathItem):
         render_length = length
         p1x, p1y = x1, y1
         p2x, p2y = x2, y2
-        trim_start = self._label_shrink_start
-        trim_end = self._label_shrink_end
+        trim_start = self._label_shrink_start + self._endpoint_trim_start
+        trim_end = self._label_shrink_end + self._endpoint_trim_end
         if trim_start + trim_end > 0:
             min_length = max(1.0, self._style.stroke_px)
             max_trim = max(0.0, render_length - min_length)
@@ -655,9 +704,12 @@ class BondItem(QGraphicsPathItem):
 
         # Aromatic bonds: if circle mode, draw as single line
         if self.is_aromatic and self.render_aromatic_as_circle:
-            path.moveTo(p1x, p1y)
-            path.lineTo(p2x, p2y)
             stroke_px = self._stroke_px if self._stroke_px is not None else self._style.stroke_px
+            e1x, e1y, e2x, e2y = self._extend_line_endpoints(
+                p1x, p1y, p2x, p2y, ux, uy, trim_start, trim_end, stroke_px
+            )
+            path.moveTo(e1x, e1y)
+            path.lineTo(e2x, e2y)
             pen = QPen(color, stroke_px)
             pen.setCapStyle(self._style.cap_style)
             pen.setJoinStyle(self._style.join_style)
@@ -673,26 +725,29 @@ class BondItem(QGraphicsPathItem):
         stroke_px = self._stroke_px if self._stroke_px is not None else self._style.stroke_px
 
         if self.style == BondStyle.PLAIN:
+            e1x, e1y, e2x, e2y = self._extend_line_endpoints(
+                p1x, p1y, p2x, p2y, ux, uy, trim_start, trim_end, stroke_px
+            )
             if effective_order == 1:
-                path.moveTo(p1x, p1y)
-                path.lineTo(p2x, p2y)
+                path.moveTo(e1x, e1y)
+                path.lineTo(e2x, e2y)
             else:
                 offset = self._style.double_offset_px
                 if effective_order == 2:
                     if self._symmetric_double:
                         half_offset = offset * 0.5
-                        path.moveTo(p1x + nx * half_offset, p1y + ny * half_offset)
-                        path.lineTo(p2x + nx * half_offset, p2y + ny * half_offset)
-                        path.moveTo(p1x - nx * half_offset, p1y - ny * half_offset)
-                        path.lineTo(p2x - nx * half_offset, p2y - ny * half_offset)
+                        path.moveTo(e1x + nx * half_offset, e1y + ny * half_offset)
+                        path.lineTo(e2x + nx * half_offset, e2y + ny * half_offset)
+                        path.moveTo(e1x - nx * half_offset, e1y - ny * half_offset)
+                        path.lineTo(e2x - nx * half_offset, e2y - ny * half_offset)
                     else:
-                        path.moveTo(p1x, p1y)
-                        path.lineTo(p2x, p2y)
+                        path.moveTo(e1x, e1y)
+                        path.lineTo(e2x, e2y)
                         use_inner_trim = (not self._symmetric_double) and (not self._prefer_full_length)
-                        q1x = p1x + nx * offset * offset_sign
-                        q1y = p1y + ny * offset * offset_sign
-                        q2x = p2x + nx * offset * offset_sign
-                        q2y = p2y + ny * offset * offset_sign
+                        q1x = e1x + nx * offset * offset_sign
+                        q1y = e1y + ny * offset * offset_sign
+                        q2x = e2x + nx * offset * offset_sign
+                        q2y = e2y + ny * offset * offset_sign
                         if use_inner_trim:
                             q1x += ux * self._style.inner_trim_px
                             q1y += uy * self._style.inner_trim_px
@@ -701,12 +756,12 @@ class BondItem(QGraphicsPathItem):
                         path.moveTo(q1x, q1y)
                         path.lineTo(q2x, q2y)
                 else:  # Triple bond
-                    path.moveTo(p1x, p1y)
-                    path.lineTo(p2x, p2y)
-                    path.moveTo(p1x + nx * offset, p1y + ny * offset)
-                    path.lineTo(p2x + nx * offset, p2y + ny * offset)
-                    path.moveTo(p1x - nx * offset, p1y - ny * offset)
-                    path.lineTo(p2x - nx * offset, p2y - ny * offset)
+                    path.moveTo(e1x, e1y)
+                    path.lineTo(e2x, e2y)
+                    path.moveTo(e1x + nx * offset, e1y + ny * offset)
+                    path.lineTo(e2x + nx * offset, e2y + ny * offset)
+                    path.moveTo(e1x - nx * offset, e1y - ny * offset)
+                    path.lineTo(e2x - nx * offset, e2y - ny * offset)
             pen = QPen(color, stroke_px)
             pen.setCapStyle(self._style.cap_style)
             pen.setJoinStyle(self._style.join_style)
@@ -714,9 +769,12 @@ class BondItem(QGraphicsPathItem):
             self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
             
         elif self.style == BondStyle.BOLD:
-            path.moveTo(p1x, p1y)
-            path.lineTo(p2x, p2y)
             bold_px = max(stroke_px * 2.2, stroke_px + 1.0)
+            e1x, e1y, e2x, e2y = self._extend_line_endpoints(
+                p1x, p1y, p2x, p2y, ux, uy, trim_start, trim_end, bold_px
+            )
+            path.moveTo(e1x, e1y)
+            path.lineTo(e2x, e2y)
             pen = QPen(color, bold_px)
             pen.setCapStyle(self._style.cap_style)
             pen.setJoinStyle(self._style.join_style)
@@ -724,8 +782,11 @@ class BondItem(QGraphicsPathItem):
             self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
 
         elif self.style == BondStyle.INTERACTION:
-            path.moveTo(p1x, p1y)
-            path.lineTo(p2x, p2y)
+            e1x, e1y, e2x, e2y = self._extend_line_endpoints(
+                p1x, p1y, p2x, p2y, ux, uy, trim_start, trim_end, stroke_px
+            )
+            path.moveTo(e1x, e1y)
+            path.lineTo(e2x, e2y)
             pen = QPen(color, stroke_px, Qt.PenStyle.DotLine)
             pen.setCapStyle(self._style.cap_style)
             pen.setJoinStyle(self._style.join_style)
@@ -750,10 +811,13 @@ class BondItem(QGraphicsPathItem):
             
         elif self.style == BondStyle.HASHED:
             steps = self._style.hash_count
+            e1x, e1y, e2x, e2y = self._extend_line_endpoints(
+                p1x, p1y, p2x, p2y, ux, uy, trim_start, trim_end, stroke_px
+            )
             for i in range(1, steps + 1):
                 t = i / steps
-                px = p1x + (p2x - p1x) * t
-                py = p1y + (p2y - p1y) * t
+                px = e1x + (e2x - e1x) * t
+                py = e1y + (e2y - e1y) * t
                 width = self._style.hash_min_px + (self._style.hash_max_px - self._style.hash_min_px) * t
                 path.moveTo(px + nx * width / 2, py + ny * width / 2)
                 path.lineTo(px - nx * width / 2, py - ny * width / 2)
@@ -767,9 +831,12 @@ class BondItem(QGraphicsPathItem):
         elif self.style == BondStyle.WAVY:
             wavelength = max(8.0, stroke_px * 3.5)
             amplitude = max(stroke_px * 0.9, wavelength * 0.28)
+            e1x, e1y, e2x, e2y = self._extend_line_endpoints(
+                p1x, p1y, p2x, p2y, ux, uy, trim_start, trim_end, stroke_px
+            )
             path = _build_wavy_path(
-                QPointF(p1x, p1y),
-                QPointF(p2x, p2y),
+                QPointF(e1x, e1y),
+                QPointF(e2x, e2y),
                 amplitude,
                 wavelength,
             )

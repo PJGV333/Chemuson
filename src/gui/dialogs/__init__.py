@@ -35,10 +35,11 @@ class PreferencesDialog(QDialog):
 
     preferences_changed = pyqtSignal(dict)
 
-    def __init__(self, current_state: ChemState, parent=None) -> None:
+    def __init__(self, current_state: ChemState, current_style: DrawingStyle, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Preferencias")
         self.setMinimumWidth(420)
+        self._current_style = current_style
 
         tabs = QTabWidget(self)
         tabs.addTab(self._build_general_tab(current_state), "General")
@@ -81,9 +82,22 @@ class PreferencesDialog(QDialog):
     def _build_appearance_tab(self) -> QWidget:
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        label = QLabel("Opciones de color, fuentes e iconos próximamente.")
-        label.setStyleSheet("color: #666666;")
-        layout.addWidget(label)
+        form = QFormLayout()
+
+        self.bond_cap_combo = QComboBox()
+        self.bond_cap_combo.addItem("Redondeados", "round")
+        self.bond_cap_combo.addItem("Rectos", "flat")
+        current_cap = (
+            "round"
+            if self._current_style.cap_style == Qt.PenCapStyle.RoundCap
+            else "flat"
+        )
+        index = self.bond_cap_combo.findData(current_cap)
+        if index >= 0:
+            self.bond_cap_combo.setCurrentIndex(index)
+        form.addRow("Bordes de enlace", self.bond_cap_combo)
+
+        layout.addLayout(form)
         layout.addStretch()
         return widget
 
@@ -101,6 +115,7 @@ class PreferencesDialog(QDialog):
             "show_carbons": self.carbons_checkbox.isChecked(),
             "show_hydrogens": self.hydrogens_checkbox.isChecked(),
             "aromatic_circles": self.aromatic_checkbox.isChecked(),
+            "bond_caps": self.bond_cap_combo.currentData(),
         }
         self.preferences_changed.emit(prefs)
         self.accept()

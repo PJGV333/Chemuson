@@ -47,7 +47,8 @@ class PersistenceManager:
                 "is_query": bond.is_query,
                 "ring_id": bond.ring_id,
                 "length_px": bond.length_px,
-                "stroke_px": bond.stroke_px
+                "stroke_px": bond.stroke_px,
+                "color": bond.color,
             })
             
         # 2. Serialize Canvas Items (Arrows, Brackets, Text)
@@ -104,6 +105,7 @@ class PersistenceManager:
                 ring_id=bond_d.get("ring_id"),
                 length_px=bond_d.get("length_px"),
                 stroke_px=bond_d.get("stroke_px"),
+                color=bond_d.get("color"),
             )
             
         canvas.model._next_atom_id = model_data.get("_next_atom_id", canvas.model._next_atom_id)

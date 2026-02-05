@@ -22,13 +22,14 @@ from PyQt6.QtCore import Qt, QSize, QSettings, QEvent
 from PyQt6.QtGui import QAction, QActionGroup, QKeySequence, QIcon, QPainter
 from PyQt6.QtPrintSupport import QPrinter
 from typing import Optional
+from dataclasses import replace
 
 from gui.canvas import ChemusonCanvas
 from gui.periodic_table import PeriodicTableDialog
 from gui.toolbar import ChemusonToolbar, SymbolPaletteToolbar
 from gui.styles import MAIN_STYLESHEET, TOOL_PALETTE_STYLESHEET
 from gui.icons import draw_generic_icon
-from gui.docks import PlantillasDock, InspectorDock
+from gui.docks import PlantillasDock, InspectorDock, AppearanceDock
 from gui.dialogs import PreferencesDialog, QuickStartDialog, StyleDialog
 from gui.text_toolbar import TextFormatToolbar
 from gui.commands import ChangeAtomCommand
@@ -76,6 +77,11 @@ class ChemusonWindow(QMainWindow):
         self.inspector_dock = InspectorDock(self)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.inspector_dock)
         self.inspector_dock.hide()
+
+        self.appearance_dock = AppearanceDock(self.canvas.drawing_style, self)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.appearance_dock)
+        self.appearance_dock.hide()
+        self.appearance_dock.appearance_changed.connect(self._apply_appearance_settings)
 
         # === LEFT TOOLBAR (Drawing tools) ===
         self.toolbar = ChemusonToolbar()
@@ -482,6 +488,7 @@ class ChemusonWindow(QMainWindow):
         view_menu.addAction(self.symbols_toolbar.toggleViewAction())
         view_menu.addAction(self.templates_dock.toggleViewAction())
         view_menu.addAction(self.inspector_dock.toggleViewAction())
+        view_menu.addAction(self.appearance_dock.toggleViewAction())
         
         # === Estructura (Structure) ===
         structure_menu = menubar.addMenu("Estructura")
@@ -823,7 +830,7 @@ class ChemusonWindow(QMainWindow):
     
     def _on_preferences(self) -> None:
         """Open preferences dialog."""
-        dialog = PreferencesDialog(self.canvas.state, self)
+        dialog = PreferencesDialog(self.canvas.state, self.canvas.drawing_style, self)
         dialog.preferences_changed.connect(self._apply_preferences)
         dialog.exec()
 
@@ -838,6 +845,9 @@ class ChemusonWindow(QMainWindow):
         self.canvas.state.show_implicit_carbons = prefs.get("show_carbons", False)
         self.canvas.state.show_implicit_hydrogens = prefs.get("show_hydrogens", False)
         self.canvas.state.use_aromatic_circles = prefs.get("aromatic_circles", False)
+        bond_caps = prefs.get("bond_caps")
+        if bond_caps:
+            self._apply_bond_caps(bond_caps)
 
         self.action_show_carbons.setChecked(self.canvas.state.show_implicit_carbons)
         self.action_show_hydrogens.setChecked(self.canvas.state.show_implicit_hydrogens)
@@ -846,6 +856,32 @@ class ChemusonWindow(QMainWindow):
         self.canvas.refresh_atom_visibility()
         self.canvas.refresh_aromatic_circles()
         self._sync_label_menu_state()
+
+        if bond_caps:
+            self.appearance_dock.set_bond_caps(bond_caps)
+
+    def _apply_appearance_settings(self, prefs: dict) -> None:
+        bond_caps = prefs.get("bond_caps")
+        if bond_caps:
+            self._apply_bond_caps(bond_caps)
+
+    def _apply_bond_caps(self, bond_caps: str) -> None:
+        if bond_caps == "round":
+            cap_style = Qt.PenCapStyle.RoundCap
+            join_style = Qt.PenJoinStyle.RoundJoin
+        else:
+            cap_style = Qt.PenCapStyle.FlatCap
+            join_style = Qt.PenJoinStyle.MiterJoin
+        if (
+            self.canvas.drawing_style.cap_style != cap_style
+            or self.canvas.drawing_style.join_style != join_style
+        ):
+            style = replace(
+                self.canvas.drawing_style,
+                cap_style=cap_style,
+                join_style=join_style,
+            )
+            self.canvas.apply_drawing_style(style)
     
     # -------------------------------------------------------------------------
     # View Menu Handlers
