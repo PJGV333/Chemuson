@@ -35,6 +35,38 @@ ATOM_COLORS = {
 }
 
 
+def _build_wavy_icon_path(
+    start: QPointF,
+    end: QPointF,
+    cycles: int = 4,
+    amplitude_ratio: float = 0.28,
+) -> QPainterPath:
+    path = QPainterPath()
+    dx = end.x() - start.x()
+    dy = end.y() - start.y()
+    length = math.hypot(dx, dy)
+    if length <= 1e-6:
+        return path
+
+    cycles = max(1, int(cycles))
+    wavelength = length / cycles
+    amplitude = wavelength * amplitude_ratio
+
+    nx = -dy / length
+    ny = dx / length
+    segments = max(24, cycles * 12)
+    for i in range(segments + 1):
+        t = i / segments
+        offset = math.sin(t * 2.0 * math.pi * cycles) * amplitude
+        px = start.x() + dx * t + nx * offset
+        py = start.y() + dy * t + ny * offset
+        if i == 0:
+            path.moveTo(px, py)
+        else:
+            path.lineTo(px, py)
+    return path
+
+
 def draw_atom_icon(text: str, color: str = None) -> QIcon:
     """
     Draw an atom icon with the element symbol centered.
@@ -299,23 +331,7 @@ def draw_bond_icon(bond_type: str = 'single') -> QIcon:
     elif bond_type == 'wavy':
         pen = QPen(QColor('#333333'), 1.5)
         painter.setPen(pen)
-        dx, dy = x2 - x1, y2 - y1
-        length = math.sqrt(dx * dx + dy * dy)
-        nx, ny = -dy / length, dx / length
-        path = QPainterPath()
-        segments = 8
-        amplitude = 2.5
-        for i in range(segments + 1):
-            t = i / segments
-            px = x1 + dx * t
-            py = y1 + dy * t
-            offset = math.sin(t * math.pi * 4) * amplitude
-            wx = px + nx * offset
-            wy = py + ny * offset
-            if i == 0:
-                path.moveTo(wx, wy)
-            else:
-                path.lineTo(wx, wy)
+        path = _build_wavy_icon_path(QPointF(x1, y1), QPointF(x2, y2))
         painter.drawPath(path)
     
     painter.end()
@@ -337,18 +353,7 @@ def draw_wavy_anchor_icon() -> QIcon:
     x = ICON_SIZE * 0.55
     y1 = ICON_SIZE * 0.2
     y2 = ICON_SIZE * 0.8
-    dy = y2 - y1
-    segments = 8
-    amplitude = ICON_SIZE * 0.08
-    path = QPainterPath()
-    for i in range(segments + 1):
-        t = i / segments
-        px = x + math.sin(t * math.pi * 4) * amplitude
-        py = y1 + dy * t
-        if i == 0:
-            path.moveTo(px, py)
-        else:
-            path.lineTo(px, py)
+    path = _build_wavy_icon_path(QPointF(x, y1), QPointF(x, y2), cycles=4, amplitude_ratio=0.28)
     painter.drawPath(path)
 
     painter.end()

@@ -40,6 +40,42 @@ LABEL_ELEMENT_COLORS = {**ELEMENT_COLORS, "H": "#000000"}
 ABBREVIATION_LABELS = {"Me", "Et", "Pr", "iPr", "tBu", "Bu", "Ph", "R", "TBS", "Si"}
 
 
+def _build_wavy_path(
+    start: QPointF,
+    end: QPointF,
+    amplitude: float,
+    wavelength: float,
+    min_cycles: int = 2,
+    segments_per_cycle: int = 12,
+) -> QPainterPath:
+    path = QPainterPath()
+    dx = end.x() - start.x()
+    dy = end.y() - start.y()
+    length = math.hypot(dx, dy)
+    if length <= 1e-6:
+        return path
+
+    base_wavelength = max(wavelength, 1e-3)
+    cycles = max(min_cycles, int(length / base_wavelength))
+    cycles = max(1, cycles)
+    actual_wavelength = length / cycles
+    amplitude = min(amplitude, actual_wavelength * 0.3)
+
+    nx = -dy / length
+    ny = dx / length
+    segments = max(24, cycles * segments_per_cycle)
+    for i in range(segments + 1):
+        t = i / segments
+        offset = math.sin(t * 2.0 * math.pi * cycles) * amplitude
+        px = start.x() + dx * t + nx * offset
+        py = start.y() + dy * t + ny * offset
+        if i == 0:
+            path.moveTo(px, py)
+        else:
+            path.lineTo(px, py)
+    return path
+
+
 class AtomItem(QGraphicsEllipseItem):
     """Graphics item representing an atom with optional implicit hiding."""
     
@@ -713,19 +749,14 @@ class BondItem(QGraphicsPathItem):
             self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
             
         elif self.style == BondStyle.WAVY:
-            segments = max(6, int(render_length / 6))
-            amplitude = 3.0
-            for i in range(segments + 1):
-                t = i / segments
-                px = p1x + (p2x - p1x) * t
-                py = p1y + (p2y - p1y) * t
-                offset = math.sin(t * math.pi * 4) * amplitude
-                wx = px + nx * offset
-                wy = py + ny * offset
-                if i == 0:
-                    path.moveTo(wx, wy)
-                else:
-                    path.lineTo(wx, wy)
+            wavelength = max(8.0, self._style.stroke_px * 3.5)
+            amplitude = max(self._style.stroke_px * 0.9, wavelength * 0.28)
+            path = _build_wavy_path(
+                QPointF(p1x, p1y),
+                QPointF(p2x, p2y),
+                amplitude,
+                wavelength,
+            )
             pen = QPen(color, self._style.stroke_px)
             pen.setCapStyle(self._style.cap_style)
             pen.setJoinStyle(self._style.join_style)
@@ -769,26 +800,9 @@ class WavyAnchorItem(QGraphicsPathItem):
             dx = 1.0
             dy = 0.0
 
-        ux = dx / length
-        uy = dy / length
-        nx, ny = -uy, ux
-
-        segments = max(24, int(length / 2.5))
-        amplitude = max(2.0, self._style.stroke_px * 1.4)
-        cycles = max(3, int(length / 10.0))
-
-        path = QPainterPath()
-        for i in range(segments + 1):
-            t = i / segments
-            px = self._start.x() + dx * t
-            py = self._start.y() + dy * t
-            offset = math.sin(t * math.pi * 2 * cycles) * amplitude
-            wx = px + nx * offset
-            wy = py + ny * offset
-            if i == 0:
-                path.moveTo(wx, wy)
-            else:
-                path.lineTo(wx, wy)
+        wavelength = max(8.0, self._style.stroke_px * 3.5)
+        amplitude = max(self._style.stroke_px * 0.9, wavelength * 0.28)
+        path = _build_wavy_path(self._start, self._end, amplitude, wavelength)
 
         pen = QPen(QColor(self._style.bond_color), self._style.stroke_px)
         pen.setCapStyle(self._style.cap_style)
