@@ -1,3 +1,5 @@
+"""Pruebas unitarias para test_chemname_pr15."""
+
 import os
 import sys
 import unittest
@@ -9,6 +11,15 @@ from chemname import iupac_name
 
 
 def build_naphthalene(graph: MolGraph) -> list[int]:
+    """Función de prueba auxiliar para build naphthalene.
+
+    Args:
+        graph: Descripción del parámetro.
+
+    Returns:
+        None.
+
+    """
     atoms = [graph.add_atom("C", float(i), 0.0) for i in range(10)]
     ring1 = [0, 1, 2, 3, 4, 5]
     ring2 = [3, 4, 6, 7, 8, 9]
@@ -23,12 +34,25 @@ def build_naphthalene(graph: MolGraph) -> list[int]:
 
 
 class ChemNamePR15Test(unittest.TestCase):
+    """Casos de prueba para ChemNamePR15Test."""
     def test_naphthalene(self):
+        """Verifica naphthalene.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         build_naphthalene(graph)
         self.assertEqual(iupac_name(graph), "naphthalene")
 
     def test_1_chloronaphthalene(self):
+        """Verifica 1 chloronaphthalene.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         atoms = build_naphthalene(graph)
         cl = graph.add_atom("Cl", -1.0, 0.0)
@@ -36,6 +60,12 @@ class ChemNamePR15Test(unittest.TestCase):
         self.assertEqual(iupac_name(graph), "1-chloronaphthalene")
 
     def test_2_chloronaphthalene(self):
+        """Verifica 2 chloronaphthalene.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         atoms = build_naphthalene(graph)
         cl = graph.add_atom("Cl", -1.0, 0.0)
@@ -43,6 +73,12 @@ class ChemNamePR15Test(unittest.TestCase):
         self.assertEqual(iupac_name(graph), "2-chloronaphthalene")
 
     def test_1_methylnaphthalene(self):
+        """Verifica 1 methylnaphthalene.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         atoms = build_naphthalene(graph)
         me = graph.add_atom("C", -1.0, 0.0)

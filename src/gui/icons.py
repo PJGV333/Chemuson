@@ -1,6 +1,8 @@
 """
-Chemuson Icon Library
-Generate vector icons programmatically using QPainter for a professional look.
+Biblioteca de iconos vectoriales de Chemuson.
+
+Genera iconos programáticamente con QPainter para mantener consistencia
+visual en la barra de herramientas y paletas.
 """
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import (
@@ -18,10 +20,10 @@ from PyQt6.QtCore import Qt, QSize, QPointF, QRectF
 import math
 
 
-# Standard icon size
+# Tamaño estándar de iconos (px)
 ICON_SIZE = 32
 
-# Color palette for atoms
+# Paleta de colores para símbolos atómicos
 ATOM_COLORS = {
     'C': '#333333',   # Carbon - dark gray
     'N': '#3050F8',   # Nitrogen - blue
@@ -41,6 +43,17 @@ def _build_wavy_icon_path(
     cycles: int = 4,
     amplitude_ratio: float = 0.28,
 ) -> QPainterPath:
+    """Construye un trazo ondulado entre dos puntos.
+
+    Args:
+        start: Punto inicial.
+        end: Punto final.
+        cycles: Número de ciclos de la onda.
+        amplitude_ratio: Amplitud relativa respecto a la longitud.
+
+    Returns:
+        QPainterPath con la geometría ondulada.
+    """
     path = QPainterPath()
     dx = end.x() - start.x()
     dy = end.y() - start.y()
@@ -68,15 +81,14 @@ def _build_wavy_icon_path(
 
 
 def draw_atom_icon(text: str, color: str = None) -> QIcon:
-    """
-    Draw an atom icon with the element symbol centered.
-    
+    """Dibuja un icono de átomo con el símbolo centrado.
+
     Args:
-        text: Element symbol (e.g., 'C', 'N', 'Cl')
-        color: Hex color string. If None, uses ATOM_COLORS or defaults to black.
-    
+        text: Símbolo del elemento (p. ej., "C", "N", "Cl").
+        color: Color hex; si es `None`, usa `ATOM_COLORS`.
+
     Returns:
-        QIcon with the element symbol
+        QIcon con el símbolo del elemento.
     """
     if color is None:
         color = ATOM_COLORS.get(text, '#333333')
@@ -110,9 +122,7 @@ def draw_atom_icon(text: str, color: str = None) -> QIcon:
 
 
 def draw_glyph_icon(text: str, color: str = None) -> QIcon:
-    """
-    Draw a minimal glyph icon (letters, brackets, symbols).
-    """
+    """Dibuja un icono tipográfico minimalista (letras, corchetes, símbolos)."""
     if color is None:
         color = "#222222"
 
@@ -134,9 +144,7 @@ def draw_glyph_icon(text: str, color: str = None) -> QIcon:
 
 
 def draw_charge_icon(sign: str) -> QIcon:
-    """
-    Draw a circled charge icon with + or -.
-    """
+    """Dibuja un icono de carga circular con signo + o -."""
     pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
     pixmap.fill(Qt.GlobalColor.transparent)
 
@@ -166,9 +174,7 @@ def draw_charge_icon(sign: str) -> QIcon:
 
 
 def draw_electron_icon(count: int = 1, spread: float = 6.0) -> QIcon:
-    """
-    Draw electron dot icons (single, pair, etc).
-    """
+    """Dibuja puntos de electrones (simple, par, etc.)."""
     count = max(1, int(count))
     pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
     pixmap.fill(Qt.GlobalColor.transparent)
@@ -194,9 +200,7 @@ def draw_electron_icon(count: int = 1, spread: float = 6.0) -> QIcon:
 
 
 def draw_radical_charge_icon(sign: str) -> QIcon:
-    """
-    Draw a radical dot with a small charge sign.
-    """
+    """Dibuja un radical (punto) con un pequeño signo de carga."""
     pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
     pixmap.fill(Qt.GlobalColor.transparent)
 
@@ -228,14 +232,13 @@ def draw_radical_charge_icon(sign: str) -> QIcon:
 
 
 def draw_bond_icon(bond_type: str = 'single') -> QIcon:
-    """
-    Draw a bond icon showing a diagonal line.
-    
+    """Dibuja un icono de enlace (simple, doble, cuña, etc.).
+
     Args:
-        bond_type: 'single', 'double', 'bold', etc.
-    
+        bond_type: Tipo de enlace ('single', 'double', 'bold', etc.).
+
     Returns:
-        QIcon with bond representation
+        QIcon con la representación del enlace.
     """
     pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
     pixmap.fill(Qt.GlobalColor.transparent)
@@ -345,7 +348,7 @@ def draw_bond_icon(bond_type: str = 'single') -> QIcon:
 
 
 def draw_wavy_anchor_icon() -> QIcon:
-    """Draw a wavy anchor stub icon."""
+    """Dibuja un icono de ancla ondulada."""
     pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
     pixmap.fill(Qt.GlobalColor.transparent)
 
@@ -367,11 +370,14 @@ def draw_wavy_anchor_icon() -> QIcon:
 
 
 def draw_ring_icon(size: int = 6, aromatic: bool = True) -> QIcon:
-    """
-    Draw a ring icon with the given number of sides.
-    
+    """Dibuja un icono de anillo con el número de lados indicado.
+
+    Args:
+        size: Número de lados del polígono.
+        aromatic: Si se dibuja el círculo interno aromático.
+
     Returns:
-        QIcon with polygon shape
+        QIcon con el polígono del anillo.
     """
     pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
     pixmap.fill(Qt.GlobalColor.transparent)
@@ -409,9 +415,7 @@ def draw_ring_icon(size: int = 6, aromatic: bool = True) -> QIcon:
 
 
 def draw_ring_template_icon(label: str, size: int = 6) -> QIcon:
-    """
-    Draw a ring icon with a small label for template presets.
-    """
+    """Dibuja un anillo con etiqueta para presets de plantillas."""
     pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
     pixmap.fill(Qt.GlobalColor.transparent)
 
@@ -461,9 +465,7 @@ def draw_ring_template_icon(label: str, size: int = 6) -> QIcon:
 
 
 def draw_arrow_icon(kind: str = "forward") -> QIcon:
-    """
-    Draw arrow icons used in the annotation palette.
-    """
+    """Dibuja iconos de flechas usados en la paleta de anotaciones."""
     pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
     pixmap.fill(Qt.GlobalColor.transparent)
 
@@ -503,6 +505,7 @@ def draw_arrow_icon(kind: str = "forward") -> QIcon:
     head_width = 4
 
     def draw_head(tip_x: float, tip_y: float, direction: int, head_style: str) -> None:
+        """Dibuja la cabeza de la flecha según estilo y dirección."""
         base_x = tip_x - direction * head_len
         left = QPointF(base_x, tip_y - head_width)
         right = QPointF(base_x, tip_y + head_width)
@@ -561,15 +564,15 @@ def draw_arrow_icon(kind: str = "forward") -> QIcon:
 
 
 def draw_generic_icon(shape: str) -> QIcon:
-    """
-    Draw generic tool icons (pointer, eraser, etc).
-    
+    """Dibuja iconos genéricos de herramientas (puntero, borrador, etc.).
+
     Args:
-        shape: 'pointer', 'eraser', 'pan', 'zoom_in', 'zoom_out', 'chain', 'lasso',
-            'rotate_left', 'rotate_right', 'flip_horizontal', 'flip_vertical'
-    
+        shape: 'pointer', 'eraser', 'pan', 'zoom_in', 'zoom_out', 'chain',
+            'lasso', 'rotate_left', 'rotate_right', 'flip_horizontal',
+            'flip_vertical'.
+
     Returns:
-        QIcon with the tool shape
+        QIcon con la forma de la herramienta.
     """
     pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
     pixmap.fill(Qt.GlobalColor.transparent)
@@ -741,16 +744,21 @@ def draw_generic_icon(shape: str) -> QIcon:
 
 # Convenience functions for common icons
 def get_pointer_icon() -> QIcon:
+    """Atajo para icono de puntero."""
     return draw_generic_icon('pointer')
 
 def get_eraser_icon() -> QIcon:
+    """Atajo para icono de borrador."""
     return draw_generic_icon('eraser')
 
 def get_single_bond_icon() -> QIcon:
+    """Atajo para icono de enlace simple."""
     return draw_bond_icon('single')
 
 def get_double_bond_icon() -> QIcon:
+    """Atajo para icono de enlace doble."""
     return draw_bond_icon('double')
 
 def get_benzene_icon() -> QIcon:
+    """Atajo para icono de anillo bencénico."""
     return draw_ring_icon()

@@ -1,3 +1,5 @@
+"""Nombres de sustituyentes y cadenas padres para nomenclatura IUPAC-lite."""
+
 from __future__ import annotations
 
 from typing import Dict, Set
@@ -8,6 +10,7 @@ from .errors import ChemNameNotSupported
 from .molview import MolView
 from .rings import RingContext, ring_type_basic
 
+# Mapeo de halógenos a prefijos de sustituyentes.
 HALO_MAP: Dict[str, str] = {
     "F": "fluoro",
     "Cl": "chloro",
@@ -15,6 +18,7 @@ HALO_MAP: Dict[str, str] = {
     "I": "iodo",
 }
 
+# Nombres base de alcanos (cadena principal).
 ALKANE_PARENT: Dict[int, str] = {
     1: "methane",
     2: "ethane",
@@ -38,6 +42,7 @@ ALKANE_PARENT: Dict[int, str] = {
     20: "eicosane",
 }
 
+# Nombres base para cicloalcanos simples.
 CYCLO_PARENT: Dict[int, str] = {
     3: "cyclopropane",
     4: "cyclobutane",
@@ -47,6 +52,7 @@ CYCLO_PARENT: Dict[int, str] = {
     8: "cyclooctane",
 }
 
+# Nombres base de sustituyentes alquilo lineales.
 ALKYL: Dict[int, str] = {
     1: "methyl",
     2: "ethyl",
@@ -70,12 +76,14 @@ ALKYL: Dict[int, str] = {
     20: "eicosyl",
 }
 
+# Nombres base de sustituyentes alcoxi lineales.
 ALKOXY: Dict[int, str] = {
     1: "methoxy",
     2: "ethoxy",
     3: "propoxy",
 }
 
+# Sustituyentes alquilo ramificados soportados explícitamente.
 BRANCHED_ALKYL = {
     "isopropyl",
     "sec-butyl",
@@ -85,7 +93,21 @@ BRANCHED_ALKYL = {
 
 
 def alkyl_substituent_name(view: MolView, start_atom: int, chain_set: Set[int]) -> str:
-    """Return alkyl substituent name, supporting select branched patterns."""
+    """Devuelve el nombre del sustituyente alquilo.
+
+    Soporta patrones ramificados específicos y cadenas lineales.
+
+    Args:
+        view: Vista del grafo molecular.
+        start_atom: Átomo inicial del sustituyente.
+        chain_set: Conjunto de átomos de la cadena principal.
+
+    Returns:
+        Nombre del sustituyente (p. ej., "ethyl", "isopropyl").
+
+    Raises:
+        ChemNameNotSupported: Si el patrón no está soportado.
+    """
     branch_nodes, adjacency = _collect_alkyl_branch(view, start_atom, chain_set)
     if not branch_nodes:
         raise ChemNameNotSupported("Unsupported alkyl branch")
@@ -110,6 +132,17 @@ def ring_substituent_name(
     parent_set: Set[int],
     ring_ctx: RingContext | None,
 ) -> str | None:
+    """Detecta sustituyentes de anillo (fenilo, bencilo, ciclohexilo).
+
+    Args:
+        view: Vista del grafo molecular.
+        start_atom: Átomo del sustituyente conectado a la cadena principal.
+        parent_set: Conjunto de átomos de la cadena principal.
+        ring_ctx: Contexto de anillos precomputado.
+
+    Returns:
+        Nombre del sustituyente de anillo o `None` si no aplica.
+    """
     if ring_ctx is None:
         return None
     for ring in ring_ctx.atom_rings.get(start_atom, []):
@@ -121,7 +154,7 @@ def ring_substituent_name(
         if rtype == "cyclohexane":
             return "cyclohexyl"
 
-    # benzyl: CH2 attached to benzene ring and parent
+    # bencilo: CH2 unido a un anillo bencénico y a la cadena principal.
     if view.element(start_atom) != "C":
         return None
     if start_atom in ring_ctx.atom_rings:
@@ -143,6 +176,16 @@ def ring_substituent_name(
 def halomethyl_substituent_name(
     view: MolView, start_atom: int, parent_set: Set[int]
 ) -> str | None:
+    """Detecta sustituyentes halometilo (p. ej., clorometilo).
+
+    Args:
+        view: Vista del grafo molecular.
+        start_atom: Átomo inicial del sustituyente.
+        parent_set: Conjunto de la cadena principal.
+
+    Returns:
+        Nombre halometilo o `None` si no aplica.
+    """
     if view.element(start_atom) != "C":
         return None
     neighbors = [nbr for nbr in view.neighbors(start_atom) if nbr not in parent_set]
@@ -159,6 +202,20 @@ def alkoxy_substituent_name(
     parent_set: Set[int],
     max_len: int = 3,
 ) -> str | None:
+    """Devuelve el nombre de un sustituyente alcoxi simple.
+
+    Args:
+        view: Vista del grafo molecular.
+        start_atom: Átomo de oxígeno conectado al anillo/cadena.
+        parent_set: Conjunto de la cadena principal.
+        max_len: Longitud máxima del sustituyente alcoxi admitida.
+
+    Returns:
+        Nombre alcoxi o `None` si no aplica.
+
+    Raises:
+        ChemNameNotSupported: Si el patrón de alcoxi no es válido.
+    """
     if view.element(start_atom) != "O":
         return None
     heavy_neighbors = [nbr for nbr in view.neighbors(start_atom) if view.element(nbr) != "H"]
@@ -184,6 +241,16 @@ def alkoxy_substituent_name(
 def nitro_substituent_name(
     view: MolView, start_atom: int, parent_set: Set[int]
 ) -> str | None:
+    """Detecta sustituyente nitro (-NO2) conectado a la cadena principal.
+
+    Args:
+        view: Vista del grafo molecular.
+        start_atom: Átomo de nitrógeno del grupo nitro.
+        parent_set: Conjunto de la cadena principal.
+
+    Returns:
+        "nitro" si coincide, o `None` si no aplica.
+    """
     if view.element(start_atom) != "N":
         return None
     if implicit_h_count(view, start_atom) + view.explicit_h(start_atom) != 0:
@@ -206,6 +273,16 @@ def nitro_substituent_name(
 def amino_substituent_name(
     view: MolView, start_atom: int, parent_set: Set[int]
 ) -> str | None:
+    """Detecta sustituyentes amino simples (-NH2, -NHR).
+
+    Args:
+        view: Vista del grafo molecular.
+        start_atom: Átomo de nitrógeno.
+        parent_set: Conjunto de la cadena principal.
+
+    Returns:
+        "amino" si coincide, o `None` si no aplica.
+    """
     if view.element(start_atom) != "N":
         return None
     heavy_neighbors = [nbr for nbr in view.neighbors(start_atom) if view.element(nbr) != "H"]
@@ -223,6 +300,20 @@ def amino_substituent_name(
 def _collect_alkyl_branch(
     view: MolView, start_atom: int, chain_set: Set[int], max_atoms: int = 5
 ) -> tuple[Set[int], Dict[int, Set[int]]]:
+    """Recolecta nodos de un sustituyente alquilo conectado a la cadena.
+
+    Args:
+        view: Vista del grafo molecular.
+        start_atom: Átomo inicial del sustituyente.
+        chain_set: Conjunto de átomos de la cadena principal.
+        max_atoms: Límite de tamaño del sustituyente para evitar combinatoria.
+
+    Returns:
+        Conjunto de nodos del sustituyente y su adyacencia interna.
+
+    Raises:
+        ChemNameNotSupported: Si el sustituyente no es válido o es demasiado grande.
+    """
     if start_atom in chain_set:
         raise ChemNameNotSupported("Branch atom is part of the chain")
 
@@ -260,6 +351,7 @@ def _collect_alkyl_branch(
 
 
 def _is_linear_branch(adjacency: Dict[int, Set[int]]) -> bool:
+    """Indica si el sustituyente es lineal (sin ramificaciones)."""
     if not adjacency:
         return False
     degrees = [len(neighbors) for neighbors in adjacency.values()]
@@ -271,19 +363,32 @@ def _is_linear_branch(adjacency: Dict[int, Set[int]]) -> bool:
 def _classify_branched_alkyl(
     root: int, branch_nodes: Set[int], adjacency: Dict[int, Set[int]]
 ) -> str | None:
+    """Clasifica sustituyentes alquilo ramificados conocidos.
+
+    Args:
+        root: Átomo de unión al esqueleto principal.
+        branch_nodes: Nodos del sustituyente.
+        adjacency: Adyacencia del sustituyente.
+
+    Returns:
+        Nombre reconocido (isopropyl, sec-butyl, etc.) o `None`.
+    """
     if root not in branch_nodes:
         return None
     degrees = {node: len(neighbors) for node, neighbors in adjacency.items()}
     total = len(branch_nodes)
 
+    # isopropil: carbono central con dos metilos.
     if total == 3 and degrees[root] == 2:
         if all(degrees[node] == 1 for node in branch_nodes if node != root):
             return "isopropyl"
 
+    # tert-butil: carbono central con tres metilos.
     if total == 4 and degrees[root] == 3:
         if all(degrees[node] == 1 for node in branch_nodes if node != root):
             return "tert-butyl"
 
+    # sec-butil: cadena de 4 con sustitución en carbono secundario.
     if total == 4 and degrees[root] == 2:
         neighbors = list(adjacency[root])
         if len(neighbors) != 2:
@@ -295,6 +400,7 @@ def _classify_branched_alkyl(
             if len(other) == 1 and degrees[other[0]] == 1:
                 return "sec-butyl"
 
+    # neopentil: carbono terciario unido a cuatro metilos.
     if total == 5 and degrees[root] == 1:
         neighbor = next(iter(adjacency[root]), None)
         if neighbor is not None and degrees.get(neighbor) == 4:
@@ -306,6 +412,15 @@ def _classify_branched_alkyl(
     return None
 
 def alkane_root(parent: str, use_a: bool = False) -> str:
+    """Devuelve la raíz del nombre del alcano (sin 'ane').
+
+    Args:
+        parent: Nombre base (p. ej., "propane").
+        use_a: Si se debe insertar la vocal 'a' en la raíz.
+
+    Returns:
+        Raíz modificada para combinar con insaturaciones.
+    """
     if parent.endswith("ane"):
         root = parent[:-3]
     else:
@@ -318,7 +433,15 @@ def alkane_root(parent: str, use_a: bool = False) -> str:
 def _format_unsaturations(
     unsaturations: list[tuple[int, int]], with_terminal_e: bool
 ) -> tuple[str, bool]:
-    """Return unsaturation descriptor and whether to use 'a' in the root."""
+    """Formatea insaturaciones y decide si insertar 'a' en la raíz.
+
+    Args:
+        unsaturations: Lista de (orden, locante) para dobles/triples.
+        with_terminal_e: Si se conserva la 'e' final (p. ej., nitrilo).
+
+    Returns:
+        Tupla (descriptor, use_a) con el texto de insaturaciones y flag.
+    """
     if not unsaturations:
         return "", False
     doubles = sorted(loc for order, loc in unsaturations if order == 2)
@@ -326,6 +449,7 @@ def _format_unsaturations(
     if len(doubles) + len(triples) != len(unsaturations):
         raise ChemNameNotSupported("Unsupported bond order")
 
+    # Caso mixto: un doble y un triple permitido.
     if doubles and triples:
         if len(doubles) != 1 or len(triples) != 1:
             raise ChemNameNotSupported("Unsupported unsaturation pattern")
@@ -334,6 +458,7 @@ def _format_unsaturations(
         descriptor = f"{doubles[0]}-{en_part}-{triples[0]}-{yn_part}"
         return descriptor, False
 
+    # Solo dobles enlaces.
     if doubles:
         if len(doubles) > 3:
             raise ChemNameNotSupported("Too many double bonds")
@@ -348,6 +473,7 @@ def _format_unsaturations(
         suffix = "triene" if with_terminal_e else "trien"
         return f"{locants}-{suffix}", True
 
+    # Solo triples enlaces.
     if triples:
         if len(triples) > 2:
             raise ChemNameNotSupported("Too many triple bonds")
@@ -368,6 +494,20 @@ def parent_name(
     suffix: str | None = None,
     suffix_locant: int | None = None,
 ) -> str:
+    """Construye el nombre del padre con insaturaciones y sufijo.
+
+    Args:
+        length: Longitud de la cadena principal.
+        unsaturations: Lista de insaturaciones (orden, locante).
+        suffix: Sufijo funcional (al, one, ol, etc.).
+        suffix_locant: Locante del sufijo si corresponde.
+
+    Returns:
+        Nombre del padre con insaturaciones y sufijos aplicados.
+
+    Raises:
+        ChemNameNotSupported: Si la longitud o el patrón no están soportados.
+    """
     parent = ALKANE_PARENT.get(length)
     if parent is None:
         raise ChemNameNotSupported("Unsupported parent length")
@@ -412,9 +552,18 @@ def parent_name(
 
 
 def alkyl_length_linear(view: MolView, start_atom: int, chain_set: Set[int]) -> int:
-    """Return the length of a linear alkyl substituent.
+    """Calcula la longitud de un sustituyente alquilo lineal.
 
-    Raises ChemNameNotSupported if the branch is not a simple linear alkyl.
+    Args:
+        view: Vista del grafo molecular.
+        start_atom: Átomo inicial del sustituyente.
+        chain_set: Conjunto de átomos de la cadena principal.
+
+    Returns:
+        Longitud del sustituyente lineal.
+
+    Raises:
+        ChemNameNotSupported: Si el sustituyente no es lineal o válido.
     """
     if start_atom in chain_set:
         raise ChemNameNotSupported("Branch atom is part of the chain")

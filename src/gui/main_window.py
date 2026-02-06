@@ -1,6 +1,7 @@
 """
-Chemuson Main Window
-Page-based molecular editor with menu bar, toolbars, and paper canvas.
+Ventana principal de Chemuson.
+
+Compone menús, barras de herramientas, docks y el lienzo central.
 """
 from PyQt6.QtWidgets import (
     QDialog,
@@ -45,10 +46,18 @@ from core.model import MolGraph
 
 class ChemusonWindow(QMainWindow):
     """
-    Main window for the Chemuson molecular editor.
-    Features a page-based editing interface similar to ChemDoodle.
+    Ventana principal del editor molecular Chemuson.
+    Coordina acciones de menú, toolbars y el lienzo de dibujo.
     """
     def __init__(self) -> None:
+        """Inicializa la instancia.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         super().__init__()
         self.setWindowTitle("Chemuson - Editor Molecular Libre")
         self.resize(1200, 900)
@@ -621,6 +630,14 @@ class ChemusonWindow(QMainWindow):
         self.action_paste.triggered.connect(self.canvas.paste_from_clipboard)
 
     def _load_recent_files(self) -> list[str]:
+        """Método auxiliar para  load recent files.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         value = self._settings.value("recent_files", [])
         if isinstance(value, str):
             return [value]
@@ -629,9 +646,28 @@ class ChemusonWindow(QMainWindow):
         return []
 
     def _save_recent_files(self) -> None:
+        """Método auxiliar para  save recent files.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         self._settings.setValue("recent_files", self._recent_files)
 
     def _add_recent_file(self, filepath: str) -> None:
+        """Método auxiliar para  add recent file.
+
+        Args:
+            filepath: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         if not filepath:
             return
         path = os.path.abspath(filepath)
@@ -642,6 +678,14 @@ class ChemusonWindow(QMainWindow):
         self._update_recent_menu()
 
     def _update_recent_menu(self) -> None:
+        """Método auxiliar para  update recent menu.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         if not hasattr(self, "recent_menu"):
             return
         self.recent_menu.clear()
@@ -658,6 +702,17 @@ class ChemusonWindow(QMainWindow):
             self.recent_menu.addAction(action)
 
     def _open_recent_file(self, filepath: str) -> None:
+        """Método auxiliar para  open recent file.
+
+        Args:
+            filepath: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         if not filepath or not os.path.exists(filepath):
             QMessageBox.warning(self, "Archivo no encontrado", "El archivo no existe.")
             self._update_recent_menu()
@@ -686,6 +741,17 @@ class ChemusonWindow(QMainWindow):
             self._open_file_path(filepath)
 
     def _open_file_path(self, filepath: str) -> None:
+        """Método auxiliar para  open file path.
+
+        Args:
+            filepath: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         try:
             if filepath.lower().endswith(".cmsn"):
                 self.canvas.clear_canvas() # Ensure clean slate
@@ -770,6 +836,14 @@ class ChemusonWindow(QMainWindow):
                     QMessageBox.warning(self, "Error", f"No se pudo exportar PDF:\n{e}")
 
     def _confirm_discard_changes(self) -> bool:
+        """Método auxiliar para  confirm discard changes.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         if self.canvas.undo_stack.isClean():
             return True
         reply = QMessageBox.question(
@@ -789,12 +863,34 @@ class ChemusonWindow(QMainWindow):
         return False
 
     def closeEvent(self, event) -> None:
+        """Método auxiliar para closeEvent.
+
+        Args:
+            event: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         if self._confirm_discard_changes():
             event.accept()
         else:
             event.ignore()
 
     def changeEvent(self, event) -> None:
+        """Método auxiliar para changeEvent.
+
+        Args:
+            event: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         if event.type() == QEvent.Type.ActivationChange and self.isActiveWindow():
             self.canvas.restore_text_edit_focus()
         super().changeEvent(event)
@@ -842,6 +938,17 @@ class ChemusonWindow(QMainWindow):
             self.canvas.apply_drawing_style(style)
 
     def _apply_preferences(self, prefs: dict) -> None:
+        """Aplica preferences.
+
+        Args:
+            prefs: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         self.canvas.state.show_implicit_carbons = prefs.get("show_carbons", False)
         self.canvas.state.show_implicit_hydrogens = prefs.get("show_hydrogens", False)
         self.canvas.state.use_aromatic_circles = prefs.get("aromatic_circles", False)
@@ -861,11 +968,33 @@ class ChemusonWindow(QMainWindow):
             self.appearance_dock.set_bond_caps(bond_caps)
 
     def _apply_appearance_settings(self, prefs: dict) -> None:
+        """Aplica appearance settings.
+
+        Args:
+            prefs: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         bond_caps = prefs.get("bond_caps")
         if bond_caps:
             self._apply_bond_caps(bond_caps)
 
     def _apply_bond_caps(self, bond_caps: str) -> None:
+        """Aplica bond caps.
+
+        Args:
+            bond_caps: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         if bond_caps == "round":
             cap_style = Qt.PenCapStyle.RoundCap
             join_style = Qt.PenJoinStyle.RoundJoin
@@ -939,27 +1068,86 @@ class ChemusonWindow(QMainWindow):
         self.statusBar().showMessage("Zoom: 100%")
 
     def _on_rotate_selection(self, angle_deg: float) -> None:
+        """Maneja rotate selection.
+
+        Args:
+            angle_deg: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         self.canvas.rotate_selection_degrees(angle_deg)
 
     def _on_flip_horizontal(self) -> None:
+        """Maneja flip horizontal.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         self.canvas.flip_selection_horizontal()
 
     def _on_flip_vertical(self) -> None:
+        """Maneja flip vertical.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         self.canvas.flip_selection_vertical()
 
     def _on_bond_thickness_up(self) -> None:
+        """Maneja bond thickness up.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         self.canvas.increase_selected_bond_thickness()
 
     def _on_bond_thickness_down(self) -> None:
+        """Maneja bond thickness down.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         self.canvas.decrease_selected_bond_thickness()
 
     def _on_bond_thickness_reset(self) -> None:
+        """Maneja bond thickness reset.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         self.canvas.reset_selected_bond_thickness()
 
     # -------------------------------------------------------------------------
     # Text Menu Handlers
     # -------------------------------------------------------------------------
     def _sync_label_menu_state(self) -> None:
+        """Sincroniza label menu state.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         self.action_label_bold.setChecked(self.canvas.state.label_font_bold)
         self.action_label_italic.setChecked(self.canvas.state.label_font_italic)
         self.action_label_underline.setChecked(self.canvas.state.label_font_underline)
@@ -967,6 +1155,14 @@ class ChemusonWindow(QMainWindow):
         self.action_label_color_black.setChecked(not self.canvas.state.use_element_colors)
 
     def _on_label_font(self) -> None:
+        """Maneja label font.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         font, ok = QFontDialog.getFont(
             self.canvas.label_font(),
             self,
@@ -977,6 +1173,14 @@ class ChemusonWindow(QMainWindow):
             self._sync_label_menu_state()
 
     def _on_label_font_size_dialog(self) -> None:
+        """Maneja label font size dialog.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         size, ok = QInputDialog.getDouble(
             self,
             "Tamaño de etiquetas",
@@ -994,24 +1198,68 @@ class ChemusonWindow(QMainWindow):
         self._sync_label_menu_state()
 
     def _on_label_bold(self, checked: bool) -> None:
+        """Maneja label bold.
+
+        Args:
+            checked: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         font = self.canvas.label_font()
         font.setBold(checked)
         self.canvas.apply_label_font(font)
         self._sync_label_menu_state()
 
     def _on_label_italic(self, checked: bool) -> None:
+        """Maneja label italic.
+
+        Args:
+            checked: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         font = self.canvas.label_font()
         font.setItalic(checked)
         self.canvas.apply_label_font(font)
         self._sync_label_menu_state()
 
     def _on_label_underline(self, checked: bool) -> None:
+        """Maneja label underline.
+
+        Args:
+            checked: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         font = self.canvas.label_font()
         font.setUnderline(checked)
         self.canvas.apply_label_font(font)
         self._sync_label_menu_state()
 
     def _on_label_font_size(self, delta: float) -> None:
+        """Maneja label font size.
+
+        Args:
+            delta: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         font = self.canvas.label_font()
         size = font.pointSizeF()
         if size <= 0:
@@ -1023,10 +1271,30 @@ class ChemusonWindow(QMainWindow):
         self.canvas.apply_label_font(font)
 
     def _set_canvas_size(self, width: int, height: int) -> None:
+        """Método auxiliar para  set canvas size.
+
+        Args:
+            width: Descripción del parámetro.
+            height: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         self.canvas.set_paper_size(width, height)
         self.statusBar().showMessage(f"Lienzo: {width} x {height} px")
 
     def _on_canvas_custom_size(self) -> None:
+        """Maneja canvas custom size.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         dialog = QDialog(self)
         dialog.setWindowTitle("Tamaño de lienzo")
 
@@ -1043,6 +1311,17 @@ class ChemusonWindow(QMainWindow):
         unit_combo.setCurrentText("cm")
 
         def apply_unit_settings(unit: str) -> None:
+            """Método auxiliar para apply unit settings.
+
+            Args:
+                unit: Descripción del parámetro.
+
+            Returns:
+                Resultado de la operación o None.
+
+            Side Effects:
+                Puede modificar el estado interno o la interfaz.
+            """
             if unit == "px":
                 width_spin.setRange(200.0, 20000.0)
                 height_spin.setRange(200.0, 20000.0)
@@ -1064,12 +1343,35 @@ class ChemusonWindow(QMainWindow):
         height_spin.setValue(self.canvas.paper_height / px_per_cm)
 
         def on_unit_changed(text: str) -> None:
+            """Método auxiliar para on unit changed.
+
+            Args:
+                text: Descripción del parámetro.
+
+            Returns:
+                Resultado de la operación o None.
+
+            Side Effects:
+                Puede modificar el estado interno o la interfaz.
+            """
             old_unit = "cm"
             if unit_combo.property("last_unit"):
                 old_unit = unit_combo.property("last_unit")
             unit_combo.setProperty("last_unit", text)
 
             def to_px(value: float, unit: str) -> float:
+                """Método auxiliar para to px.
+
+                Args:
+                    value: Descripción del parámetro.
+                    unit: Descripción del parámetro.
+
+                Returns:
+                    Resultado de la operación o None.
+
+                Side Effects:
+                    Puede modificar el estado interno o la interfaz.
+                """
                 if unit == "px":
                     return value
                 if unit == "in":
@@ -1077,6 +1379,18 @@ class ChemusonWindow(QMainWindow):
                 return value * px_per_cm
 
             def from_px(value: float, unit: str) -> float:
+                """Método auxiliar para from px.
+
+                Args:
+                    value: Descripción del parámetro.
+                    unit: Descripción del parámetro.
+
+                Returns:
+                    Resultado de la operación o None.
+
+                Side Effects:
+                    Puede modificar el estado interno o la interfaz.
+                """
                 if unit == "px":
                     return value
                 if unit == "in":
@@ -1124,6 +1438,18 @@ class ChemusonWindow(QMainWindow):
         self._set_canvas_size(width_px, height_px)
 
     def _apply_label_script(self, marker: str, title: str) -> None:
+        """Aplica label script.
+
+        Args:
+            marker: Descripción del parámetro.
+            title: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         if self.canvas.state.selected_bonds or len(self.canvas.state.selected_atoms) != 1:
             self.statusBar().showMessage("Selecciona un átomo para aplicar el formato.")
             return
@@ -1145,12 +1471,39 @@ class ChemusonWindow(QMainWindow):
         self.canvas.undo_stack.push(cmd)
 
     def _on_label_subscript(self) -> None:
+        """Maneja label subscript.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         self._apply_label_script("_", "Subíndice")
 
     def _on_label_superscript(self) -> None:
+        """Maneja label superscript.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         self._apply_label_script("^", "Superíndice")
 
     def _on_label_color_mode(self, use_element_colors: bool) -> None:
+        """Maneja label color mode.
+
+        Args:
+            use_element_colors: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         self.canvas.set_use_element_colors(use_element_colors)
         self._sync_label_menu_state()
         self.statusBar().showMessage(
@@ -1161,9 +1514,25 @@ class ChemusonWindow(QMainWindow):
     # Structure Menu Handlers
     # -------------------------------------------------------------------------
     def _on_clean_2d(self) -> None:
+        """Maneja clean 2d.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         self._run_clean_2d(step_ratio=0.35, fallback_iterations=30, status_suffix="(paso)")
 
     def _on_clean_2d_full(self) -> None:
+        """Maneja clean 2d full.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         self._run_clean_2d(step_ratio=1.0, fallback_iterations=200, status_suffix="(1 paso)")
 
     def _run_clean_2d(self, step_ratio: float, fallback_iterations: int, status_suffix: str) -> None:
@@ -1174,6 +1543,17 @@ class ChemusonWindow(QMainWindow):
             return
 
         def center(coords: dict[int, tuple[float, float]]) -> tuple[float, float]:
+            """Método auxiliar para center.
+
+            Args:
+                coords: Descripción del parámetro.
+
+            Returns:
+                Resultado de la operación o None.
+
+            Side Effects:
+                Puede modificar el estado interno o la interfaz.
+            """
             xs = [x for x, _ in coords.values()]
             ys = [y for _, y in coords.values()]
             if not xs:
@@ -1230,6 +1610,18 @@ class ChemusonWindow(QMainWindow):
             self.statusBar().showMessage(f"Error: {e}")
 
     def _insert_template(self, label: str, graph) -> None:
+        """Método auxiliar para  insert template.
+
+        Args:
+            label: Descripción del parámetro.
+            graph: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         self.canvas._insert_molgraph(graph)
         self.statusBar().showMessage(f"Plantilla: {label}")
 
@@ -1348,6 +1740,17 @@ class ChemusonWindow(QMainWindow):
             QMessageBox.critical(self, "Error", f"Error al guardar plantilla:\n{e}")
 
     def _insert_template_from_file(self, filepath: str) -> None:
+        """Método auxiliar para  insert template from file.
+
+        Args:
+            filepath: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         try:
             with open(filepath, "r") as f:
                 molblock = f.read()
@@ -1358,6 +1761,14 @@ class ChemusonWindow(QMainWindow):
             QMessageBox.critical(self, "Error", f"Error al cargar plantilla:\n{e}")
 
     def _on_insert_linear_chain(self) -> None:
+        """Maneja insert linear chain.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         graph = build_linear_chain_template(self.canvas.state.bond_length)
         self._insert_template("Cadena lineal", graph)
 
@@ -1408,18 +1819,59 @@ class ChemusonWindow(QMainWindow):
     # Toolbar Handlers
     # -------------------------------------------------------------------------
     def _handle_bond_palette(self, bond_spec: dict) -> None:
+        """Método auxiliar para  handle bond palette.
+
+        Args:
+            bond_spec: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         self.canvas.set_active_bond(bond_spec)
         self._update_status("tool_bond")
 
     def _handle_ring_palette(self, ring_spec: dict) -> None:
+        """Método auxiliar para  handle ring palette.
+
+        Args:
+            ring_spec: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         self.canvas.set_active_ring(ring_spec)
         self._update_status("tool_ring")
 
     def _handle_element_palette(self, element: str) -> None:
+        """Método auxiliar para  handle element palette.
+
+        Args:
+            element: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         self.canvas.set_active_element(element)
         self._update_status("tool_atom")
 
     def _show_periodic_table(self) -> None:
+        """Método auxiliar para  show periodic table.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la interfaz.
+        """
         dialog = PeriodicTableDialog(self)
         dialog.element_selected.connect(self.toolbar.select_element)
         dialog.exec()

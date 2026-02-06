@@ -1,6 +1,7 @@
 """
-Text Formatting Toolbar
-Provides controls for font settings, text styles, and colors.
+Barra de formato de texto para Chemuson.
+
+Provee controles de fuente, tamaño, estilos y color de etiquetas.
 """
 from __future__ import annotations
 
@@ -19,7 +20,7 @@ from gui.icons import draw_glyph_icon
 
 class TextFormatToolbar(QToolBar):
     """
-    Toolbar for text formatting options (Font, Size, B/I/U, Color).
+    Barra de herramientas para formato de texto (fuente, tamaño, estilos, color).
     """
     
     # Signal emitted when any font style changes
@@ -31,6 +32,11 @@ class TextFormatToolbar(QToolBar):
     alignment_changed = pyqtSignal(Qt.AlignmentFlag)
 
     def __init__(self, parent=None):
+        """Inicializa la barra de formato de texto.
+
+        Args:
+            parent: Widget padre opcional.
+        """
         super().__init__("Formato de Texto", parent)
         self.setIconSize(QSize(16, 16))
         self.setMovable(False)
@@ -94,6 +100,16 @@ class TextFormatToolbar(QToolBar):
         self.addWidget(self.color_btn)
 
     def _add_toggle_action(self, text: str, tooltip: str, prop_name: str) -> QAction:
+        """Crea una acción conmutadora (toggle) para formato.
+
+        Args:
+            text: Texto mostrado en el botón.
+            tooltip: Texto de ayuda.
+            prop_name: Nombre de la propiedad asociada.
+
+        Returns:
+            Acción Qt configurada.
+        """
         action = QAction(text, self)
         action.setToolTip(tooltip)
         action.setCheckable(True)
@@ -108,6 +124,7 @@ class TextFormatToolbar(QToolBar):
         fallback_glyph: str,
         alignment: Qt.AlignmentFlag,
     ) -> None:
+        """Añade un botón de alineación con icono temático o de respaldo."""
         button = QToolButton(self)
         icon = QIcon.fromTheme(theme_name)
         if icon.isNull():
@@ -119,11 +136,13 @@ class TextFormatToolbar(QToolBar):
         self.addWidget(button)
 
     def _handle_exclusive(self, trigger_action: QAction, other_action: QAction, prop_name: str):
+        """Fuerza exclusividad entre subíndice y superíndice."""
         if trigger_action.isChecked():
             other_action.setChecked(False)
         self._emit_change(prop_name)
 
     def _pick_color(self):
+        """Abre un diálogo para seleccionar el color de texto."""
         color = QColorDialog.getColor(self._current_color, self, "Seleccionar color de texto")
         if color.isValid():
             self._current_color = color
@@ -131,12 +150,14 @@ class TextFormatToolbar(QToolBar):
             self.color_changed.emit(color)
 
     def _update_color_icon(self):
-        # Create a simple icon with the current color
+        """Actualiza el icono de color actual."""
+        # Crear un icono simple con el color actual
         pixmap = draw_glyph_icon("■", color=self._current_color.name())
         self.color_btn.setIcon(pixmap)
 
     def _emit_change(self, property_name: str = "all"):
-        # Gather all states and emit
+        """Emite la señal con el estado actual de formato."""
+        # Recolectar estado actual y emitir señal.
         family = self.font_combo.currentFont().family()
         size = self.size_spin.value()
         b = self.action_bold.isChecked()
@@ -148,7 +169,7 @@ class TextFormatToolbar(QToolBar):
         self.format_changed.emit(family, size, b, i, u, sub, sup, property_name)
     
     def set_state(self, font: QFont, settings: dict):
-        """Update toolbar to reflect current selection state."""
+        """Actualiza la barra según el estado de selección actual."""
         self.blockSignals(True)
         self.font_combo.setCurrentFont(font)
         self.size_spin.setValue(max(6, int(font.pointSizeF())))

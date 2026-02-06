@@ -1,3 +1,9 @@
+"""Detección y clasificación básica de anillos.
+
+Incluye utilidades para encontrar anillos simples, estimar aromaticidad
+de forma conservadora y construir un contexto reutilizable.
+"""
+
 from __future__ import annotations
 
 from collections import deque
@@ -10,9 +16,16 @@ from .molview import MolView
 
 
 def find_rings_simple(view: MolView) -> List[frozenset[int]]:
-    """Find simple rings using shortest-path edge removal.
+    """Encuentra anillos simples eliminando aristas y buscando ciclos mínimos.
 
-    Returns a list of ring atom sets. Best effort for non-fused rings.
+    Args:
+        view: Vista del grafo molecular.
+
+    Returns:
+        Lista de conjuntos de átomos que forman anillos simples.
+
+    Notes:
+        Es un método de mejor esfuerzo y funciona mejor en anillos no fusionados.
     """
     adjacency = _build_adjacency(view)
     edges: Set[Tuple[int, int]] = set()
@@ -23,6 +36,8 @@ def find_rings_simple(view: MolView) -> List[frozenset[int]]:
 
     rings: Dict[frozenset[int], List[int]] = {}
     for a, b in edges:
+        # Buscamos el camino más corto ignorando la arista (a, b). Ese camino
+        # junto con la arista forma un anillo candidato.
         path = _shortest_path_excluding_edge(adjacency, a, b, blocked_edge=(a, b))
         if not path:
             continue
@@ -36,10 +51,20 @@ def find_rings_simple(view: MolView) -> List[frozenset[int]]:
 
 
 def has_ring(view: MolView) -> bool:
+    """Indica si el grafo contiene al menos un anillo."""
     return bool(find_rings_simple(view))
 
 
 def is_simple_ring(view: MolView, ring_nodes: Iterable[int]) -> bool:
+    """Comprueba si un conjunto de nodos forma un anillo simple.
+
+    Args:
+        view: Vista del grafo molecular.
+        ring_nodes: Nodos candidatos al anillo.
+
+    Returns:
+        `True` si cada nodo tiene exactamente dos vecinos dentro del anillo.
+    """
     ring_set = set(ring_nodes)
     if len(ring_set) < 3:
         return False
@@ -51,6 +76,15 @@ def is_simple_ring(view: MolView, ring_nodes: Iterable[int]) -> bool:
 
 
 def ring_bonds(view: MolView, ring_nodes: Iterable[int]) -> Set[frozenset[int]]:
+    """Devuelve las aristas internas de un anillo.
+
+    Args:
+        view: Vista del grafo molecular.
+        ring_nodes: Nodos del anillo.
+
+    Returns:
+        Conjunto de pares no ordenados (a, b) que forman los enlaces del anillo.
+    """
     ring_set = set(ring_nodes)
     bonds: Set[frozenset[int]] = set()
     for atom_id in ring_set:
@@ -61,6 +95,15 @@ def ring_bonds(view: MolView, ring_nodes: Iterable[int]) -> Set[frozenset[int]]:
 
 
 def ring_order(view: MolView, ring_nodes: Iterable[int]) -> List[int]:
+    """Devuelve un orden cíclico de los átomos del anillo.
+
+    Args:
+        view: Vista del grafo molecular.
+        ring_nodes: Nodos del anillo.
+
+    Returns:
+        Lista ordenada de IDs en recorrido circular, o vacía si falla.
+    """
     ring_set = set(ring_nodes)
     if not is_simple_ring(view, ring_set):
         return []
@@ -85,7 +128,7 @@ def ring_order(view: MolView, ring_nodes: Iterable[int]) -> List[int]:
 
 
 def perceive_aromaticity_basic(view: MolView, rings: Iterable[frozenset[int]]) -> Set[frozenset[int]]:
-    """Mark benzene-like rings as aromatic (conservative)."""
+    """Marca anillos tipo benceno como aromáticos (criterio conservador)."""
     aromatic: Set[frozenset[int]] = set()
     for ring_nodes in rings:
         if len(ring_nodes) != 6:
@@ -100,7 +143,15 @@ def perceive_aromaticity_basic(view: MolView, rings: Iterable[frozenset[int]]) -
 
 
 def classify_aromatic_ring(view: MolView, ring_nodes: Iterable[int]) -> Optional[dict]:
-    """Classify simple aromatic rings into retained-name kinds."""
+    """Clasifica anillos aromáticos simples por nombre retenido.
+
+    Args:
+        view: Vista del grafo molecular.
+        ring_nodes: Nodos del anillo.
+
+    Returns:
+        Diccionario con información del anillo o `None` si no se reconoce.
+    """
     ring_set = set(ring_nodes)
     if not is_simple_ring(view, ring_set):
         return None
@@ -182,6 +233,15 @@ def classify_aromatic_ring(view: MolView, ring_nodes: Iterable[int]) -> Optional
 def detect_naphthalene(
     view: MolView, rings: Iterable[frozenset[int]]
 ) -> Optional[dict]:
+    """Detecta si dos anillos aromáticos forman naftaleno.
+
+    Args:
+        view: Vista del grafo molecular.
+        rings: Lista de anillos candidatos.
+
+    Returns:
+        Diccionario con átomos/fusiones o `None` si no coincide.
+    """
     ring_list = [ring for ring in rings if len(ring) == 6]
     if len(ring_list) < 2:
         return None
@@ -216,6 +276,15 @@ def detect_naphthalene(
 
 
 def ring_type_basic(view: MolView, ring_nodes: Iterable[int]) -> Optional[str]:
+    """Clasifica anillos básicos (benceno/ciclohexano) si aplica.
+
+    Args:
+        view: Vista del grafo molecular.
+        ring_nodes: Nodos del anillo.
+
+    Returns:
+        Nombre básico del anillo o `None` si no coincide.
+    """
     ring_set = set(ring_nodes)
     if not is_simple_ring(view, ring_set):
         return None
@@ -237,12 +306,21 @@ def ring_type_basic(view: MolView, ring_nodes: Iterable[int]) -> Optional[str]:
 
 @dataclass(frozen=True)
 class RingContext:
+    """Contexto precalculado de anillos para consultas rápidas."""
     rings: List[frozenset[int]]
     ring_types: Dict[frozenset[int], str]
     atom_rings: Dict[int, List[frozenset[int]]]
 
 
 def build_ring_context(view: MolView) -> RingContext:
+    """Construye un contexto de anillos con tipos y pertenencias.
+
+    Args:
+        view: Vista del grafo molecular.
+
+    Returns:
+        `RingContext` con anillos detectados y metadatos.
+    """
     rings = find_rings_simple(view)
     ring_types: Dict[frozenset[int], str] = {}
     atom_rings: Dict[int, List[frozenset[int]]] = {}
@@ -256,6 +334,7 @@ def build_ring_context(view: MolView) -> RingContext:
 
 
 def _build_adjacency(view: MolView) -> Dict[int, List[int]]:
+    """Genera una lista de adyacencia simple del grafo."""
     adjacency: Dict[int, List[int]] = {}
     for atom_id in view.atoms():
         adjacency[atom_id] = list(view.neighbors(atom_id))
@@ -263,10 +342,15 @@ def _build_adjacency(view: MolView) -> Dict[int, List[int]]:
 
 
 def _ring_aromatic_basic(view: MolView, ring_nodes: Iterable[int]) -> bool:
+    """Evalúa aromaticidad de forma básica (Hückel simplificado).
+
+    Este criterio solo considera órdenes de enlace 1/2 o marcado aromático.
+    """
     ring_set = set(ring_nodes)
     bond_pairs = list(ring_bonds(view, ring_set))
     if not bond_pairs:
         return False
+    # Si todos los enlaces ya están marcados como aromáticos, aceptamos.
     if all(view.bond_is_aromatic(*tuple(pair)) for pair in bond_pairs):
         return True
 
@@ -283,6 +367,7 @@ def _ring_aromatic_basic(view: MolView, ring_nodes: Iterable[int]) -> bool:
             double_bond_count_per_atom[a] += 1
             double_bond_count_per_atom[b] += 1
 
+    # Patrón de dobles alternados: 6 miembros (3 dobles), 5 miembros (2 dobles).
     if size == 6:
         return double_bonds == 3 and all(count == 1 for count in double_bond_count_per_atom.values())
     if size == 5:
@@ -291,6 +376,7 @@ def _ring_aromatic_basic(view: MolView, ring_nodes: Iterable[int]) -> bool:
 
 
 def _hetero_has_h(view: MolView, atom_id: int) -> bool:
+    """Indica si un heteroátomo posee H implícitos o explícitos."""
     return implicit_h_count(view, atom_id) + view.explicit_h(atom_id) > 0
 
 
@@ -300,6 +386,17 @@ def _shortest_path_excluding_edge(
     goal: int,
     blocked_edge: Tuple[int, int],
 ) -> List[int]:
+    """Busca el camino más corto evitando una arista específica.
+
+    Args:
+        adjacency: Lista de adyacencia.
+        start: Nodo inicial.
+        goal: Nodo objetivo.
+        blocked_edge: Arista a excluir (a, b).
+
+    Returns:
+        Lista de nodos del camino o lista vacía si no hay ruta.
+    """
     blocked = {blocked_edge, (blocked_edge[1], blocked_edge[0])}
     queue: deque[int] = deque([start])
     parent: Dict[int, Optional[int]] = {start: None}
@@ -327,4 +424,5 @@ def _shortest_path_excluding_edge(
 
 
 def _sorted_rings(rings: Iterable[frozenset[int]]) -> List[frozenset[int]]:
+    """Ordena anillos por tamaño y luego por IDs."""
     return sorted(rings, key=lambda ring: (len(ring), tuple(sorted(ring))))

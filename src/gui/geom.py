@@ -1,6 +1,7 @@
 """
-Geometry helpers for Chemuson drawing engine.
-Pure functions for snapping and picking.
+Utilidades geométricas para el motor de dibujo de Chemuson.
+
+Incluye funciones puras para ángulos, snapping y selección de elementos.
 """
 from __future__ import annotations
 
@@ -14,7 +15,7 @@ SP3_BOND_ANGLE_DEG = 109.5
 
 
 def angle_deg(p0: QPointF, p1: QPointF) -> float:
-    """Angle in degrees (0-360) using math coordinates (Y up)."""
+    """Calcula el ángulo en grados (0-360) usando coordenadas matemáticas."""
     dx = p1.x() - p0.x()
     dy = -(p1.y() - p0.y())
     if dx == 0 and dy == 0:
@@ -23,25 +24,30 @@ def angle_deg(p0: QPointF, p1: QPointF) -> float:
 
 
 def snap_angle_deg(theta_deg: float, step_deg: float) -> float:
+    """Ajusta un ángulo a un múltiplo del paso dado."""
     if step_deg <= 0:
         return theta_deg
     return (round(theta_deg / step_deg) * step_deg) % 360.0
 
 
 def normalize_angle_deg(theta_deg: float) -> float:
+    """Normaliza un ángulo al rango [0, 360)."""
     return theta_deg % 360.0
 
 
 def angle_distance_deg(a_deg: float, b_deg: float) -> float:
+    """Distancia angular mínima entre dos ángulos."""
     diff = (a_deg - b_deg + 180.0) % 360.0 - 180.0
     return abs(diff)
 
 
 def nearly_colinear_deg(a_deg: float, b_deg: float, tolerance_deg: float = 20.0) -> bool:
+    """Indica si dos direcciones son casi colineales (180° +/- tolerancia)."""
     return abs(angle_distance_deg(a_deg, b_deg) - 180.0) <= tolerance_deg
 
 
 def endpoint_from_angle_len(p0: QPointF, theta_deg: float, length: float) -> QPointF:
+    """Calcula el punto final desde un origen, ángulo y longitud."""
     rad = math.radians(theta_deg)
     dx = math.cos(rad) * length
     dy = -math.sin(rad) * length
@@ -54,6 +60,17 @@ def geometry_for_bond(
     neighbor_angles_deg: Iterable[float],
     colinear_tolerance_deg: float = 20.0,
 ) -> str:
+    """Infere la geometría (sp/sp2/sp3) según órdenes y vecinos.
+
+    Args:
+        bond_order: Orden del enlace principal.
+        is_aromatic: Si el enlace es aromático.
+        neighbor_angles_deg: Ángulos de enlaces vecinos.
+        colinear_tolerance_deg: Tolerancia para detectar colinealidad.
+
+    Returns:
+        Cadena "sp", "sp2" o "sp3".
+    """
     if bond_order >= 3:
         base = "sp"
     elif bond_order == 2 or is_aromatic:
@@ -76,6 +93,16 @@ def candidate_directions_deg(
     existing_angles_deg: Iterable[float],
     base_angle_deg: float,
 ) -> list[float]:
+    """Genera direcciones candidatas según la geometría.
+
+    Args:
+        geometry: Tipo de geometría ("sp", "sp2", "sp3").
+        existing_angles_deg: Ángulos ya ocupados por enlaces existentes.
+        base_angle_deg: Ángulo base sugerido por el cursor.
+
+    Returns:
+        Lista de ángulos candidatos (grados).
+    """
     if geometry == "sp3":
         angles = list(existing_angles_deg)
         if angles:
@@ -116,6 +143,7 @@ def filter_occupied_angles_deg(
     occupied_deg: Iterable[float],
     tolerance_deg: float = 20.0,
 ) -> list[float]:
+    """Filtra direcciones cercanas a ángulos ya ocupados."""
     occupied = list(occupied_deg)
     if not occupied:
         return list(candidates_deg)
@@ -133,12 +161,25 @@ def pick_closest_direction_deg(
     preferred_tolerance_deg: float = 15.0,
     preferred_bonus: float = 20.0,
 ) -> Optional[float]:
+    """Elige el ángulo candidato más cercano al cursor.
+
+    Args:
+        candidates_deg: Ángulos candidatos.
+        mouse_angle_deg: Ángulo del cursor.
+        preferred_deg: Lista de ángulos preferidos (opcional).
+        preferred_tolerance_deg: Tolerancia para preferir un ángulo.
+        preferred_bonus: Bonificación (reducción) en la puntuación.
+
+    Returns:
+        Ángulo seleccionado o `None` si no hay candidatos.
+    """
     candidates = list(candidates_deg)
     if not candidates:
         return None
     preferred = list(preferred_deg or [])
 
     def score(angle_deg: float) -> float:
+        """Calcula la puntuación de un ángulo candidato."""
         score_value = angle_distance_deg(angle_deg, mouse_angle_deg)
         if preferred:
             if min(angle_distance_deg(angle_deg, pref) for pref in preferred) <= preferred_tolerance_deg:
@@ -149,7 +190,7 @@ def pick_closest_direction_deg(
 
 
 def choose_optimal_direction(angles_deg: Iterable[float]) -> float:
-    """Return the midpoint of the largest gap between angles."""
+    """Devuelve el punto medio del mayor hueco angular."""
     angles = sorted(a % 360.0 for a in angles_deg)
     if not angles:
         return 0.0
@@ -169,7 +210,7 @@ def choose_optimal_direction(angles_deg: Iterable[float]) -> float:
 
 
 def distance_point_to_segment(p: QPointF, a: QPointF, b: QPointF) -> float:
-    """Distance from point to segment AB."""
+    """Distancia de un punto al segmento AB."""
     dx = b.x() - a.x()
     dy = b.y() - a.y()
     if dx == 0 and dy == 0:
@@ -183,6 +224,7 @@ def distance_point_to_segment(p: QPointF, a: QPointF, b: QPointF) -> float:
 def closest_atom(
     pos: QPointF, atoms: Iterable[Tuple[int, float, float]], threshold: float
 ) -> Optional[int]:
+    """Devuelve el ID del átomo más cercano dentro de un umbral."""
     best_id = None
     best_dist = threshold
     for atom_id, x, y in atoms:
@@ -198,6 +240,7 @@ def closest_bond(
     bonds: Iterable[Tuple[int, QPointF, QPointF]],
     threshold: float,
 ) -> Optional[int]:
+    """Devuelve el ID del enlace más cercano dentro de un umbral."""
     best_id = None
     best_dist = threshold
     for bond_id, a, b in bonds:
@@ -209,7 +252,7 @@ def closest_bond(
 
 
 def bond_side(a: QPointF, b: QPointF, cursor: QPointF) -> int:
-    """Return 1 for left of AB, -1 for right."""
+    """Indica si el cursor está a la izquierda (1) o derecha (-1) del segmento."""
     dx1 = b.x() - a.x()
     dy1 = b.y() - a.y()
     dx2 = cursor.x() - a.x()
@@ -226,10 +269,25 @@ def segments_intersect(
     exclude_endpoints: bool = True,
     eps: float = 1e-6,
 ) -> bool:
+    """Determina si dos segmentos se intersectan.
+
+    Args:
+        a: Punto inicial del segmento AB.
+        b: Punto final del segmento AB.
+        c: Punto inicial del segmento CD.
+        d: Punto final del segmento CD.
+        exclude_endpoints: Si se excluyen intersecciones en extremos.
+        eps: Tolerancia numérica.
+
+    Returns:
+        `True` si hay intersección según los criterios.
+    """
     def orient(p: QPointF, q: QPointF, r: QPointF) -> float:
+        """Orientación (producto cruzado) para test de intersección."""
         return (q.x() - p.x()) * (r.y() - p.y()) - (q.y() - p.y()) * (r.x() - p.x())
 
     def on_segment(p: QPointF, q: QPointF, r: QPointF) -> bool:
+        """Comprueba si q está sobre el segmento pr (con tolerancia)."""
         return (
             min(p.x(), r.x()) - eps <= q.x() <= max(p.x(), r.x()) + eps
             and min(p.y(), r.y()) - eps <= q.y() <= max(p.y(), r.y()) + eps
@@ -253,6 +311,7 @@ def segments_intersect(
 
 
 def segment_min_distance(a: QPointF, b: QPointF, c: QPointF, d: QPointF) -> float:
+    """Distancia mínima entre dos segmentos."""
     return min(
         distance_point_to_segment(a, c, d),
         distance_point_to_segment(b, c, d),
@@ -268,7 +327,9 @@ def segments_nearly_equal(
     d: QPointF,
     tolerance: float = 5.0,
 ) -> bool:
+    """Indica si dos segmentos son casi iguales (dentro de tolerancia)."""
     def dist(p: QPointF, q: QPointF) -> float:
+        """Distancia euclídea entre dos puntos."""
         return math.hypot(p.x() - q.x(), p.y() - q.y())
 
     return (dist(a, c) <= tolerance and dist(b, d) <= tolerance) or (

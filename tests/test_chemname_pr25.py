@@ -1,3 +1,5 @@
+"""Pruebas unitarias para test_chemname_pr25."""
+
 import os
 import sys
 import unittest
@@ -9,6 +11,17 @@ from chemname import iupac_name
 
 
 def build_ring(graph: MolGraph, elements: list[str], double_bonds: set[int]) -> list[int]:
+    """Función de prueba auxiliar para build ring.
+
+    Args:
+        graph: Descripción del parámetro.
+        elements: Descripción del parámetro.
+        double_bonds: Descripción del parámetro.
+
+    Returns:
+        None.
+
+    """
     atoms = [graph.add_atom(elem, float(i), 0.0) for i, elem in enumerate(elements)]
     size = len(atoms)
     for i in range(size):
@@ -18,13 +31,26 @@ def build_ring(graph: MolGraph, elements: list[str], double_bonds: set[int]) -> 
 
 
 class ChemNamePR25Test(unittest.TestCase):
+    """Casos de prueba para ChemNamePR25Test."""
     def test_triazine(self):
+        """Verifica triazine.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         elements = ["N", "C", "N", "C", "N", "C"]
         ring = build_ring(graph, elements, {0, 2, 4})
         self.assertEqual(iupac_name(graph), "triazine")
 
     def test_chlorotriazine(self):
+        """Verifica chlorotriazine.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         elements = ["N", "C", "N", "C", "N", "C"]
         ring = build_ring(graph, elements, {0, 2, 4})
@@ -33,6 +59,12 @@ class ChemNamePR25Test(unittest.TestCase):
         self.assertEqual(iupac_name(graph), "2-chlorotriazine")
 
     def test_triazole(self):
+        """Verifica triazole.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         elements = ["N", "N", "N", "C", "C"]
         atoms = [graph.add_atom(elem, float(i), 0.0, explicit_h=1 if i == 0 else None) for i, elem in enumerate(elements)]

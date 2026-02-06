@@ -1,3 +1,9 @@
+"""Cálculo y formateo de fórmulas moleculares.
+
+Este módulo agrega utilidades para contar elementos a partir de un grafo
+molecular y formatear la fórmula siguiendo el orden de Hill.
+"""
+
 from __future__ import annotations
 
 from typing import Dict
@@ -7,7 +13,17 @@ from .valence import implicit_h_count
 
 
 def molecular_formula(graph) -> Dict[str, int]:
-    """Return a molecular formula as a dict of element -> count."""
+    """Calcula la fórmula molecular como diccionario de elemento -> conteo.
+
+    Args:
+        graph: Grafo molecular compatible con `MolView`.
+
+    Returns:
+        Diccionario con símbolos atómicos y sus cantidades totales.
+
+    Side Effects:
+        No tiene efectos laterales; solo calcula y devuelve datos.
+    """
     view = MolView(graph)
     counts: Dict[str, int] = {}
 
@@ -29,7 +45,17 @@ def molecular_formula(graph) -> Dict[str, int]:
 
 
 def format_formula(formula_dict: Dict[str, int]) -> str:
-    """Format a formula dict using Hill order (C, H, then alphabetical)."""
+    """Formatea una fórmula usando el orden de Hill (C, H, luego alfabético).
+
+    Args:
+        formula_dict: Diccionario con símbolos de elementos y cantidades.
+
+    Returns:
+        Cadena con la fórmula formateada (p. ej., "C6H6O").
+
+    Side Effects:
+        No tiene efectos laterales.
+    """
     if not formula_dict:
         return ""
     order = []

@@ -1,9 +1,12 @@
+"""Cálculo de hidrógenos implícitos según valencias típicas."""
+
 from __future__ import annotations
 
 from typing import Dict
 
 from chemname.molview import MolView
 
+# Valencias típicas usadas para inferir H implícitos en cálculos sencillos.
 TYPICAL_VALENCE: Dict[str, int] = {
     "H": 1,
     "C": 4,
@@ -19,7 +22,18 @@ TYPICAL_VALENCE: Dict[str, int] = {
 
 
 def implicit_h_count(view: MolView, atom_id: int) -> int:
-    """Compute implicit hydrogens for a single atom using typical valence."""
+    """Calcula los hidrógenos implícitos para un átomo.
+
+    Args:
+        view: Vista del grafo molecular con operaciones de consulta.
+        atom_id: Identificador del átomo a evaluar.
+
+    Returns:
+        Número de H implícitos estimados (>= 0).
+
+    Side Effects:
+        No tiene efectos laterales.
+    """
     element = view.element(atom_id)
     typical = TYPICAL_VALENCE.get(element)
     if typical is None:

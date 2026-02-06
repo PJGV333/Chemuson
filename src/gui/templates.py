@@ -1,5 +1,5 @@
 """
-Template builders for common carbohydrate projections.
+Constructores de plantillas para proyecciones de carbohidratos.
 """
 from __future__ import annotations
 
@@ -17,6 +17,18 @@ def _add_atom(
     *,
     explicit: bool | None = None,
 ) -> int:
+    """Añade un átomo al grafo y retorna su ID.
+
+    Args:
+        graph: Grafo molecular destino.
+        element: Símbolo del elemento o etiqueta (p. ej., "OH").
+        x: Coordenada X.
+        y: Coordenada Y.
+        explicit: Forzar visibilidad del símbolo.
+
+    Returns:
+        ID del átomo creado.
+    """
     if explicit is None:
         explicit = element != "C"
     atom = graph.add_atom(element, x, y, is_explicit=explicit)
@@ -30,10 +42,15 @@ def _add_bond(
     order: int = 1,
     style: BondStyle = BondStyle.PLAIN,
 ) -> None:
+    """Añade un enlace al grafo con estilo opcional."""
     graph.add_bond(a1_id, a2_id, order, style=style)
 
 
 def _front_edge_indices(coords: List[Tuple[float, float]]) -> set[int]:
+    """Devuelve índices de aristas "frontales" para resaltar en negrita.
+
+    Se usa para dar profundidad a proyecciones (Haworth/silla).
+    """
     if not coords:
         return set()
     ys = [y for _x, y in coords]
@@ -51,6 +68,14 @@ def _front_edge_indices(coords: List[Tuple[float, float]]) -> set[int]:
 
 
 def build_linear_chain_template(bond_length: float) -> MolGraph:
+    """Construye una plantilla de cadena lineal tipo Fischer (glucosa).
+
+    Args:
+        bond_length: Longitud base de enlace para el escalado.
+
+    Returns:
+        `MolGraph` con la proyección lineal y sustituyentes.
+    """
     graph = MolGraph()
     length = float(bond_length)
     x0 = 0.0
@@ -107,6 +132,16 @@ def build_haworth_template(
     anomeric_up: bool = True,
     bold_front: bool = True,
 ) -> MolGraph:
+    """Construye una plantilla de anillo tipo Haworth (piranosa).
+
+    Args:
+        bond_length: Longitud base de enlace.
+        anomeric_up: Si el OH anomérico apunta hacia arriba.
+        bold_front: Si se resaltan los enlaces frontales.
+
+    Returns:
+        `MolGraph` con la proyección Haworth.
+    """
     graph = MolGraph()
     L = float(bond_length)
     
@@ -215,6 +250,16 @@ def build_chair_template(
     anomeric_up: bool = True,
     bold_front: bool = True,
 ) -> MolGraph:
+    """Construye una plantilla de conformación silla (4C1).
+
+    Args:
+        bond_length: Longitud base de enlace.
+        anomeric_up: Si el OH anomérico apunta hacia arriba.
+        bold_front: Si se resaltan los enlaces frontales.
+
+    Returns:
+        `MolGraph` con la conformación silla.
+    """
     graph = MolGraph()
     L = float(bond_length)
     

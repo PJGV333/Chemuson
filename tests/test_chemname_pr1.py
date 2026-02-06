@@ -1,3 +1,5 @@
+"""Pruebas unitarias para test_chemname_pr1."""
+
 import os
 import sys
 import unittest
@@ -9,6 +11,16 @@ from chemname.molview import MolView
 
 
 def build_linear_chain(graph: MolGraph, length: int) -> list[int]:
+    """Función de prueba auxiliar para build linear chain.
+
+    Args:
+        graph: Descripción del parámetro.
+        length: Descripción del parámetro.
+
+    Returns:
+        None.
+
+    """
     ids = []
     prev_id = None
     for i in range(length):
@@ -21,13 +33,26 @@ def build_linear_chain(graph: MolGraph, length: int) -> list[int]:
 
 
 class ChemNamePR1Test(unittest.TestCase):
+    """Casos de prueba para ChemNamePR1Test."""
     def test_is_acyclic_true(self):
+        """Verifica is acyclic true.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         build_linear_chain(graph, 3)
         view = MolView(graph)
         self.assertTrue(view.is_acyclic())
 
     def test_is_acyclic_false(self):
+        """Verifica is acyclic false.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         a1 = graph.add_atom("C", 0.0, 0.0)
         a2 = graph.add_atom("C", 1.0, 0.0)

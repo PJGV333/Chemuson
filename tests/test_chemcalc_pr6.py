@@ -1,3 +1,5 @@
+"""Pruebas unitarias para test_chemcalc_pr6."""
+
 import os
 import sys
 import unittest
@@ -9,6 +11,16 @@ from chemcalc import molecular_formula, format_formula, molecular_weight
 
 
 def build_linear_chain(graph: MolGraph, length: int) -> list[int]:
+    """Función de prueba auxiliar para build linear chain.
+
+    Args:
+        graph: Descripción del parámetro.
+        length: Descripción del parámetro.
+
+    Returns:
+        None.
+
+    """
     ids = []
     prev_id = None
     for i in range(length):
@@ -21,13 +33,26 @@ def build_linear_chain(graph: MolGraph, length: int) -> list[int]:
 
 
 class ChemCalcPR6Test(unittest.TestCase):
+    """Casos de prueba para ChemCalcPR6Test."""
     def test_methane_formula(self):
+        """Verifica methane formula.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         graph.add_atom("C", 0.0, 0.0)
         formula = molecular_formula(graph)
         self.assertEqual(format_formula(formula), "CH4")
 
     def test_chloromethane_formula(self):
+        """Verifica chloromethane formula.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         c1 = graph.add_atom("C", 0.0, 0.0)
         cl = graph.add_atom("Cl", 1.0, 0.0)
@@ -36,6 +61,12 @@ class ChemCalcPR6Test(unittest.TestCase):
         self.assertEqual(format_formula(formula), "CH3Cl")
 
     def test_bromo_chloro_dodecane_formula(self):
+        """Verifica bromo chloro dodecane formula.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         chain_ids = build_linear_chain(graph, 12)
         cl = graph.add_atom("Cl", -1.0, 0.0)

@@ -1,3 +1,9 @@
+"""Persistencia del estado del editor en archivos `.cmsn`.
+
+Este módulo serializa y deserializa el modelo químico y los elementos
+de la interfaz para reconstruir el lienzo al abrir un archivo.
+"""
+
 from __future__ import annotations
 import json
 import os
@@ -8,16 +14,26 @@ if TYPE_CHECKING:
     from gui.canvas import ChemusonCanvas
 
 class PersistenceManager:
-    """Manages saving and loading of Chemuson (.cmsn) files."""
+    """Gestiona el guardado y carga de archivos `.cmsn` de Chemuson."""
     
     VERSION = "0.1.0"
 
     @staticmethod
     def save_to_dict(canvas: 'ChemusonCanvas') -> Dict[str, Any]:
-        """Collects all data from the canvas and model into a serializable dictionary."""
+        """Serializa el estado del canvas y su modelo en un diccionario.
+
+        Args:
+            canvas: Instancia activa del lienzo de Chemuson.
+
+        Returns:
+            Diccionario serializable con información de modelo y GUI.
+
+        Side Effects:
+            No tiene efectos laterales; solo lee el estado del canvas.
+        """
         graph = canvas.model
         
-        # 1. Serialize MolGraph
+        # 1. Serializar MolGraph (átomos y enlaces)
         atoms_data = []
         for atom in graph.atoms.values():
             atoms_data.append({
@@ -51,10 +67,10 @@ class PersistenceManager:
                 "color": bond.color,
             })
             
-        # 2. Serialize Canvas Items (Arrows, Brackets, Text)
+        # 2. Serializar elementos del canvas (flechas, brackets, texto)
         canvas_data = canvas.get_persistence_data()
         
-        # 3. Combine everything
+        # 3. Combinar todo en un único documento
         return {
             "application": "Chemuson",
             "version": PersistenceManager.VERSION,
@@ -69,11 +85,22 @@ class PersistenceManager:
 
     @staticmethod
     def load_from_dict(data: Dict[str, Any], canvas: 'ChemusonCanvas') -> None:
-        """Restores the canvas and model from a dictionary."""
+        """Restaura el estado del canvas y el modelo desde un diccionario.
+
+        Args:
+            data: Diccionario de estado (resultado de `save_to_dict`).
+            canvas: Instancia de lienzo donde se cargará la información.
+
+        Raises:
+            ValueError: Si el archivo no corresponde a Chemuson.
+
+        Side Effects:
+            Modifica el modelo y reconstruye la vista del canvas.
+        """
         if data.get("application") != "Chemuson":
             raise ValueError("Not a valid Chemuson file")
             
-        # 1. Restore MolGraph
+        # 1. Restaurar MolGraph
         canvas.model.clear()
         model_data = data.get("model", {})
         
@@ -111,20 +138,38 @@ class PersistenceManager:
         canvas.model._next_atom_id = model_data.get("_next_atom_id", canvas.model._next_atom_id)
         canvas.model._next_bond_id = model_data.get("_next_bond_id", canvas.model._next_bond_id)
         
-        # 2. Restore Canvas Items and Settings
+        # 2. Restaurar elementos del canvas y preferencias visuales
         canvas.load_persistence_data(data.get("canvas", {}))
         
-        # 3. Visual Reconstruction of molecules
+        # 3. Reconstrucción visual de moléculas en el lienzo
         canvas._rebuild_items_from_model()
 
     @staticmethod
     def save_to_file(filepath: str, canvas: 'ChemusonCanvas') -> None:
+        """Guarda el estado del canvas en un archivo `.cmsn`.
+
+        Args:
+            filepath: Ruta de destino.
+            canvas: Instancia del lienzo a serializar.
+
+        Side Effects:
+            Escribe en disco el archivo indicado.
+        """
         data = PersistenceManager.save_to_dict(canvas)
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2)
 
     @staticmethod
     def load_from_file(filepath: str, canvas: 'ChemusonCanvas') -> None:
+        """Carga un archivo `.cmsn` y restaura el lienzo.
+
+        Args:
+            filepath: Ruta del archivo de entrada.
+            canvas: Instancia del lienzo donde se cargará el estado.
+
+        Side Effects:
+            Lee desde disco y modifica el canvas.
+        """
         with open(filepath, 'r', encoding='utf-8') as f:
             data = json.load(f)
         PersistenceManager.load_from_dict(data, canvas)

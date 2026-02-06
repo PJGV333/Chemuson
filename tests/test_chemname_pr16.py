@@ -1,3 +1,5 @@
+"""Pruebas unitarias para test_chemname_pr16."""
+
 import os
 import sys
 import unittest
@@ -9,6 +11,15 @@ from chemname import iupac_name
 
 
 def build_benzene_kekule(graph: MolGraph) -> list[int]:
+    """Función de prueba auxiliar para build benzene kekule.
+
+    Args:
+        graph: Descripción del parámetro.
+
+    Returns:
+        None.
+
+    """
     atoms = [graph.add_atom("C", float(i), 0.0) for i in range(6)]
     for i in range(6):
         order = 2 if i % 2 == 0 else 1
@@ -17,6 +28,15 @@ def build_benzene_kekule(graph: MolGraph) -> list[int]:
 
 
 def build_cyclohexane(graph: MolGraph) -> list[int]:
+    """Función de prueba auxiliar para build cyclohexane.
+
+    Args:
+        graph: Descripción del parámetro.
+
+    Returns:
+        None.
+
+    """
     atoms = [graph.add_atom("C", float(i), 0.0) for i in range(6)]
     for i in range(6):
         graph.add_bond(atoms[i].id, atoms[(i + 1) % 6].id, order=1)
@@ -24,7 +44,14 @@ def build_cyclohexane(graph: MolGraph) -> list[int]:
 
 
 class ChemNamePR16Test(unittest.TestCase):
+    """Casos de prueba para ChemNamePR16Test."""
     def test_isopropylbenzene(self):
+        """Verifica isopropylbenzene.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         ring = build_benzene_kekule(graph)
         root = graph.add_atom("C", -1.0, 0.0)
@@ -36,6 +63,12 @@ class ChemNamePR16Test(unittest.TestCase):
         self.assertEqual(iupac_name(graph), "isopropylbenzene")
 
     def test_tert_butylbenzene(self):
+        """Verifica tert butylbenzene.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         ring = build_benzene_kekule(graph)
         root = graph.add_atom("C", -1.0, 0.0)
@@ -49,6 +82,12 @@ class ChemNamePR16Test(unittest.TestCase):
         self.assertEqual(iupac_name(graph), "tert-butylbenzene")
 
     def test_sec_butylcyclohexane(self):
+        """Verifica sec butylcyclohexane.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         ring = build_cyclohexane(graph)
         root = graph.add_atom("C", -1.0, 0.0)

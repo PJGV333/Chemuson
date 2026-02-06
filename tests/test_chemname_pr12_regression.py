@@ -1,3 +1,5 @@
+"""Pruebas unitarias para test_chemname_pr12_regression."""
+
 import os
 import sys
 import unittest
@@ -9,6 +11,16 @@ from chemname import iupac_name
 
 
 def build_linear_chain(graph: MolGraph, length: int) -> list[int]:
+    """Función de prueba auxiliar para build linear chain.
+
+    Args:
+        graph: Descripción del parámetro.
+        length: Descripción del parámetro.
+
+    Returns:
+        None.
+
+    """
     ids = []
     prev_id = None
     for i in range(length):
@@ -21,6 +33,16 @@ def build_linear_chain(graph: MolGraph, length: int) -> list[int]:
 
 
 def build_ring(graph: MolGraph, size: int) -> list[int]:
+    """Función de prueba auxiliar para build ring.
+
+    Args:
+        graph: Descripción del parámetro.
+        size: Descripción del parámetro.
+
+    Returns:
+        None.
+
+    """
     atoms = [graph.add_atom("C", float(i), 0.0) for i in range(size)]
     for i in range(size):
         graph.add_bond(atoms[i].id, atoms[(i + 1) % size].id, order=1)
@@ -28,6 +50,15 @@ def build_ring(graph: MolGraph, size: int) -> list[int]:
 
 
 def build_benzene_kekule(graph: MolGraph) -> list[int]:
+    """Función de prueba auxiliar para build benzene kekule.
+
+    Args:
+        graph: Descripción del parámetro.
+
+    Returns:
+        None.
+
+    """
     atoms = [graph.add_atom("C", float(i), 0.0) for i in range(6)]
     for i in range(6):
         order = 2 if i % 2 == 0 else 1
@@ -36,7 +67,14 @@ def build_benzene_kekule(graph: MolGraph) -> list[int]:
 
 
 class ChemNamePR12Regression(unittest.TestCase):
+    """Casos de prueba para ChemNamePR12Regression."""
     def test_linear_regressions(self):
+        """Verifica linear regressions.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         chain = build_linear_chain(graph, 12)
         cl = graph.add_atom("Cl", -1.0, 0.0)
@@ -74,6 +112,12 @@ class ChemNamePR12Regression(unittest.TestCase):
         self.assertEqual(iupac_name(graph), "propan-1-ol")
 
     def test_ring_regressions(self):
+        """Verifica ring regressions.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         build_ring(graph, 6)
         self.assertEqual(iupac_name(graph), "cyclohexane")

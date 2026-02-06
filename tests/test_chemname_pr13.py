@@ -1,3 +1,5 @@
+"""Pruebas unitarias para test_chemname_pr13."""
+
 import os
 import sys
 import unittest
@@ -9,6 +11,17 @@ from chemname import iupac_name
 
 
 def build_kekule_ring(graph: MolGraph, elements, explicit_h=None):
+    """Función de prueba auxiliar para build kekule ring.
+
+    Args:
+        graph: Descripción del parámetro.
+        elements: Descripción del parámetro.
+        explicit_h: Descripción del parámetro.
+
+    Returns:
+        None.
+
+    """
     explicit_h = explicit_h or {}
     atoms = []
     for i, elem in enumerate(elements):
@@ -24,12 +37,25 @@ def build_kekule_ring(graph: MolGraph, elements, explicit_h=None):
 
 
 class ChemNamePR13Test(unittest.TestCase):
+    """Casos de prueba para ChemNamePR13Test."""
     def test_pyridine(self):
+        """Verifica pyridine.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         build_kekule_ring(graph, ["N", "C", "C", "C", "C", "C"])
         self.assertEqual(iupac_name(graph), "pyridine")
 
     def test_chloropyridine_2(self):
+        """Verifica chloropyridine 2.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         ring = build_kekule_ring(graph, ["N", "C", "C", "C", "C", "C"])
         cl = graph.add_atom("Cl", -1.0, 0.0)
@@ -37,6 +63,12 @@ class ChemNamePR13Test(unittest.TestCase):
         self.assertEqual(iupac_name(graph), "2-chloropyridine")
 
     def test_methylpyridine_3(self):
+        """Verifica methylpyridine 3.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         ring = build_kekule_ring(graph, ["N", "C", "C", "C", "C", "C"])
         me = graph.add_atom("C", -1.0, 0.0)
@@ -44,16 +76,34 @@ class ChemNamePR13Test(unittest.TestCase):
         self.assertEqual(iupac_name(graph), "3-methylpyridine")
 
     def test_furan(self):
+        """Verifica furan.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         build_kekule_ring(graph, ["O", "C", "C", "C", "C"])
         self.assertEqual(iupac_name(graph), "furan")
 
     def test_thiophene(self):
+        """Verifica thiophene.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         build_kekule_ring(graph, ["S", "C", "C", "C", "C"])
         self.assertEqual(iupac_name(graph), "thiophene")
 
     def test_pyrrole(self):
+        """Verifica pyrrole.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         build_kekule_ring(graph, ["N", "C", "C", "C", "C"], explicit_h={0: 1})
         self.assertEqual(iupac_name(graph), "pyrrole")

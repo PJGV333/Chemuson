@@ -1,3 +1,5 @@
+"""Pruebas unitarias para test_chemname_pr10."""
+
 import os
 import sys
 import unittest
@@ -9,6 +11,16 @@ from chemname import iupac_name
 
 
 def build_ring(graph: MolGraph, size: int) -> list[int]:
+    """Función de prueba auxiliar para build ring.
+
+    Args:
+        graph: Descripción del parámetro.
+        size: Descripción del parámetro.
+
+    Returns:
+        None.
+
+    """
     atoms = [graph.add_atom("C", float(i), 0.0) for i in range(size)]
     for i in range(size):
         graph.add_bond(atoms[i].id, atoms[(i + 1) % size].id, order=1)
@@ -16,7 +28,14 @@ def build_ring(graph: MolGraph, size: int) -> list[int]:
 
 
 class ChemNamePR10Test(unittest.TestCase):
+    """Casos de prueba para ChemNamePR10Test."""
     def test_dimethylcyclohexane(self):
+        """Verifica dimethylcyclohexane.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         ring = build_ring(graph, 6)
         m1 = graph.add_atom("C", -1.0, 0.0)
@@ -26,6 +45,12 @@ class ChemNamePR10Test(unittest.TestCase):
         self.assertEqual(iupac_name(graph), "1,4-dimethylcyclohexane")
 
     def test_bromochlorocyclohexane(self):
+        """Verifica bromochlorocyclohexane.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         ring = build_ring(graph, 6)
         br = graph.add_atom("Br", -1.0, 0.0)

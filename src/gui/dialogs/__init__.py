@@ -1,6 +1,7 @@
 """
-Chemuson Dialogs
-Preferences and style dialogs.
+Diálogos de Chemuson.
+
+Incluye preferencias, estilos y ayudas de inicio rápido.
 """
 from __future__ import annotations
 
@@ -31,11 +32,24 @@ from gui.style import DrawingStyle
 
 
 class PreferencesDialog(QDialog):
-    """Application preferences with tabbed layout."""
+    """Preferencias de la aplicación en pestañas."""
 
     preferences_changed = pyqtSignal(dict)
 
     def __init__(self, current_state: ChemState, current_style: DrawingStyle, parent=None) -> None:
+        """Inicializa el diálogo.
+
+        Args:
+            current_state: Descripción del parámetro.
+            current_style: Descripción del parámetro.
+            parent: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado del diálogo.
+        """
         super().__init__(parent)
         self.setWindowTitle("Preferencias")
         self.setMinimumWidth(420)
@@ -61,6 +75,17 @@ class PreferencesDialog(QDialog):
         self._use_aromatic_circles = current_state.use_aromatic_circles
 
     def _build_general_tab(self, current_state: ChemState) -> QWidget:
+        """Construye general tab.
+
+        Args:
+            current_state: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado del diálogo.
+        """
         widget = QWidget()
         layout = QVBoxLayout(widget)
 
@@ -80,6 +105,14 @@ class PreferencesDialog(QDialog):
         return widget
 
     def _build_appearance_tab(self) -> QWidget:
+        """Construye appearance tab.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado del diálogo.
+        """
         widget = QWidget()
         layout = QVBoxLayout(widget)
         form = QFormLayout()
@@ -102,6 +135,14 @@ class PreferencesDialog(QDialog):
         return widget
 
     def _build_rdkit_tab(self) -> QWidget:
+        """Construye rdkit tab.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado del diálogo.
+        """
         widget = QWidget()
         layout = QVBoxLayout(widget)
         label = QLabel("Preferencias de RDKit (longitud de enlace, limpieza 2D) próximamente.")
@@ -111,6 +152,14 @@ class PreferencesDialog(QDialog):
         return widget
 
     def _on_accept(self) -> None:
+        """Maneja accept.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado del diálogo.
+        """
         prefs = {
             "show_carbons": self.carbons_checkbox.isChecked(),
             "show_hydrogens": self.hydrogens_checkbox.isChecked(),
@@ -122,9 +171,22 @@ class PreferencesDialog(QDialog):
 
 
 class StyleDialog(QDialog):
-    """Dialog for editing drawing style properties."""
+    """Diálogo para editar propiedades del estilo de dibujo."""
 
     def __init__(self, current_style: DrawingStyle, bond_length: float, parent=None) -> None:
+        """Inicializa el diálogo.
+
+        Args:
+            current_style: Descripción del parámetro.
+            bond_length: Descripción del parámetro.
+            parent: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado del diálogo.
+        """
         super().__init__(parent)
         self.setWindowTitle("Estilo de dibujo")
         self.setMinimumWidth(360)
@@ -172,6 +234,17 @@ class StyleDialog(QDialog):
         layout.addWidget(buttons)
 
     def _build_color_row(self, color: QColor) -> tuple[QWidget, QPushButton]:
+        """Construye color row.
+
+        Args:
+            color: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado del diálogo.
+        """
         button = QPushButton()
         button.setFixedWidth(60)
         self._set_button_color(button, color)
@@ -185,10 +258,33 @@ class StyleDialog(QDialog):
         return row, button
 
     def _set_button_color(self, button: QPushButton, color: QColor) -> None:
+        """Configura button color.
+
+        Args:
+            button: Descripción del parámetro.
+            color: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado del diálogo.
+        """
         button.setStyleSheet(
             f"background-color: {color.name()}; border: 1px solid #666666;")
 
     def _pick_color(self, button: QPushButton) -> None:
+        """Selecciona color.
+
+        Args:
+            button: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado del diálogo.
+        """
         if button is self.bond_color_btn:
             initial = QColor(self._bond_color)
         elif button is self.atom_fill_btn:
@@ -209,6 +305,14 @@ class StyleDialog(QDialog):
             self._atom_stroke_color = picked
 
     def _on_accept(self) -> None:
+        """Maneja accept.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado del diálogo.
+        """
         stroke = self.stroke_spin.value()
         bond_length = self.length_spin.value()
         self._result_style = replace(
@@ -223,6 +327,14 @@ class StyleDialog(QDialog):
         self.accept()
 
     def selected_style(self) -> tuple[DrawingStyle, float]:
+        """Método auxiliar para selected style.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado del diálogo.
+        """
         if self._result_style is None or self._result_bond_length is None:
             return self._style, self._bond_length
         return self._result_style, self._result_bond_length
@@ -239,6 +351,21 @@ class AtomLabelDialog(QDialog):
         element_symbols: set[str],
         parent=None,
     ) -> None:
+        """Inicializa el diálogo.
+
+        Args:
+            label: Descripción del parámetro.
+            anchor: Descripción del parámetro.
+            items: Descripción del parámetro.
+            element_symbols: Descripción del parámetro.
+            parent: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado del diálogo.
+        """
         super().__init__(parent)
         self.setWindowTitle("Elemento")
         self._element_symbols = set(element_symbols)
@@ -272,6 +399,14 @@ class AtomLabelDialog(QDialog):
             editor.textChanged.connect(self._refresh_anchor_candidates)
 
     def _refresh_anchor_candidates(self) -> None:
+        """Método auxiliar para  refresh anchor candidates.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado del diálogo.
+        """
         label = self.label_combo.currentText().strip()
         candidates = self._anchor_candidates_for_label(label)
         current = self.anchor_combo.currentText().strip() or self._anchor_default
@@ -288,6 +423,17 @@ class AtomLabelDialog(QDialog):
         self.anchor_combo.blockSignals(False)
 
     def _anchor_candidates_for_label(self, label: str) -> list[str]:
+        """Método auxiliar para  anchor candidates for label.
+
+        Args:
+            label: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado del diálogo.
+        """
         cleaned = label.strip()
         if not cleaned:
             return []
@@ -320,6 +466,14 @@ class AtomLabelDialog(QDialog):
         return ordered
 
     def value(self) -> tuple[str, str | None]:
+        """Método auxiliar para value.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado del diálogo.
+        """
         label = self.label_combo.currentText().strip()
         anchor = self.anchor_combo.currentText().strip()
         if not anchor or anchor.lower() == "auto":
@@ -331,6 +485,17 @@ class QuickStartDialog(QDialog):
     """First-launch tutorial dialog."""
 
     def __init__(self, parent=None) -> None:
+        """Inicializa el diálogo.
+
+        Args:
+            parent: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado del diálogo.
+        """
         super().__init__(parent)
         self.setWindowTitle("Guía Rápida")
         self.setMinimumWidth(520)

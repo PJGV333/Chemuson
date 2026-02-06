@@ -1,5 +1,5 @@
 """
-Pure geometry helpers for wedge bonds.
+Utilidades geométricas para enlaces en cuña.
 """
 from __future__ import annotations
 
@@ -17,7 +17,18 @@ def compute_wedge_points(
     trim_start: float = 0.0,
     trim_end: float = 0.0,
 ) -> tuple[Point, Point, Point]:
-    """Return (tip, base1, base2) for a wedge from p0 (tip) to p1 (base center)."""
+    """Calcula los puntos de una cuña (tip, base1, base2).
+
+    Args:
+        p0: Punto del vértice (punta de la cuña).
+        p1: Punto del centro de la base.
+        width: Ancho total de la base.
+        trim_start: Recorte desde la punta (evita solapar etiquetas).
+        trim_end: Recorte desde la base.
+
+    Returns:
+        Tupla `(tip, base1, base2)` con coordenadas 2D.
+    """
     dx = p1[0] - p0[0]
     dy = p1[1] - p0[1]
     length = math.hypot(dx, dy)

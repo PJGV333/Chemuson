@@ -1,3 +1,9 @@
+"""Carga de plantillas moleculares para numeración específica.
+
+Las plantillas se usan para sistemas fusionados (p. ej., pireno) donde la
+numeración estándar requiere correspondencia con un patrón conocido.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,6 +16,7 @@ from .errors import ChemNameNotSupported
 
 @dataclass(frozen=True)
 class TemplateAtom:
+    """Átomo de plantilla con metadatos de aromaticidad y grado."""
     element: str
     aromatic: bool
     degree: int
@@ -17,6 +24,7 @@ class TemplateAtom:
 
 @dataclass(frozen=True)
 class TemplateBond:
+    """Enlace de plantilla entre índices de átomos."""
     a: int
     b: int
     order: int
@@ -25,12 +33,24 @@ class TemplateBond:
 
 @dataclass(frozen=True)
 class TemplateMol:
+    """Representación inmutable de una molécula plantilla."""
     atoms: List[TemplateAtom]
     bonds: List[TemplateBond]
     locant_by_atom_idx: Dict[int, int]
 
 
 def load_template(path: str | Path) -> TemplateMol:
+    """Carga una plantilla desde un archivo `.json` o `.mol`.
+
+    Args:
+        path: Ruta al archivo de plantilla.
+
+    Returns:
+        `TemplateMol` con átomos, enlaces y locantes.
+
+    Raises:
+        ChemNameNotSupported: Si el formato no está soportado.
+    """
     path = Path(path)
     if path.suffix.lower() in {".json"}:
         return _load_template_json(path)
@@ -40,6 +60,14 @@ def load_template(path: str | Path) -> TemplateMol:
 
 
 def _load_template_json(path: Path) -> TemplateMol:
+    """Carga una plantilla desde un JSON estructurado.
+
+    Args:
+        path: Ruta al archivo JSON.
+
+    Returns:
+        Plantilla parseada con metadatos de locantes.
+    """
     data = json.loads(path.read_text(encoding="utf-8"))
     atoms_data = data.get("atoms", [])
     bonds_data = data.get("bonds", [])
@@ -80,6 +108,14 @@ def _load_template_json(path: Path) -> TemplateMol:
 
 
 def _load_template_mol(path: Path) -> TemplateMol:
+    """Carga una plantilla desde un MOL (V2000).
+
+    Args:
+        path: Ruta al archivo `.mol`.
+
+    Returns:
+        Plantilla parseada con mapa de locantes por índice de átomo.
+    """
     lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     if len(lines) < 4:
         raise ChemNameNotSupported("Invalid mol template")

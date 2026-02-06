@@ -1,3 +1,5 @@
+"""Pruebas unitarias para test_rdkit_roundtrip."""
+
 import os
 import sys
 import unittest
@@ -15,8 +17,15 @@ except Exception:
 
 
 class RdkitRoundtripTest(unittest.TestCase):
+    """Casos de prueba para RdkitRoundtripTest."""
     @unittest.skipIf(not RDKit_AVAILABLE, "RDKit no disponible")
     def test_molgraph_roundtrip_smiles(self):
+        """Verifica molgraph roundtrip smiles.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         a1 = graph.add_atom("C", 0.0, 0.0)
         a2 = graph.add_atom("C", 1.5, 0.0)

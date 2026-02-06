@@ -1,19 +1,22 @@
-"""IUPAC-lite naming for selected hydrocarbons and simple aromatics.
+"""Motor de nomenclatura IUPAC-lite para Chemuson.
 
-Supported (v0):
-- Acyclic carbon chains (alkanes), halogens, linear alkyl substituents.
-- Single C=C or C#C within the parent chain.
-- Single -ol or -amine functional group.
-- Simple cycloalkanes (C3–C8) with simple substituents.
-- Benzene with simple substituents (halogens, alkyl, hydroxy, nitro).
-- Heteroaromatics: furan, thiophene, pyrrole, pyridine, diazines, imidazole, oxazole, thiazole.
-- Naphthalene with mono/di-substituted derivatives (simple substituents).
-- Branched alkyl substituents: isopropyl, sec-butyl, tert-butyl, neopentyl.
-- Ring substituents: phenyl, benzyl, cyclohexyl.
-- Fused aromatics: anthracene, phenanthrene (mono-substituted).
-- Fused aromatics: pyrene (mono/di-substituted, template-based numbering).
-- Fused heteroaromatics: quinoline, isoquinoline, indole (mono-substituted).
-Outside scope returns "N/D".
+Soporta (v0) un subconjunto de hidrocarburos y aromáticos sencillos:
+- Cadenas acíclicas (alcanos), halógenos y sustituyentes alquilo lineales.
+- Una sola insaturación C=C o C#C en la cadena principal.
+- Un único grupo funcional simple (-ol o -amine).
+- Cicloalcanos simples (C3–C8) con sustituyentes sencillos.
+- Benceno con sustituyentes simples (halógenos, alquilo, hidroxi, nitro).
+- Heteroaromáticos: furano, tiofeno, pirrol, piridina, diazinas, imidazol,
+  oxazol, tiazol.
+- Naftaleno con derivados mono/di-sustituidos (sustituyentes simples).
+- Sustituyentes alquilo ramificados: isopropilo, sec-butilo, tert-butilo,
+  neopentilo.
+- Sustituyentes de anillo: fenilo, bencilo, ciclohexilo.
+- Aromáticos fusionados: antraceno y fenantreno (mono-sustituidos).
+- Aromáticos fusionados: pireno (mono/di-sustituidos con numeración por plantilla).
+- Heteroaromáticos fusionados: quinolina, isoquinolina, indol (mono-sustituidos).
+
+Fuera de alcance se devuelve "N/D" si está habilitada la opción.
 """
 
 from .engine import iupac_name

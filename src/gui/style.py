@@ -1,6 +1,4 @@
-"""
-Drawing style presets for Chemuson.
-"""
+"""Presets de estilo de dibujo para Chemuson."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -9,6 +7,7 @@ from PyQt6.QtCore import Qt
 
 @dataclass(frozen=True)
 class DrawingStyle:
+    """Agrupa parámetros gráficos para el renderizado de enlaces y átomos."""
     bond_length_px: float
     stroke_px: float
     bond_color: str
@@ -26,6 +25,7 @@ class DrawingStyle:
     join_style: Qt.PenJoinStyle
 
 
+# Preset inspirado en el estilo visual de ChemDoodle.
 CHEMDOODLE_LIKE = DrawingStyle(
     bond_length_px=40.0,
     stroke_px=2.6,

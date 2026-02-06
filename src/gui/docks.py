@@ -1,6 +1,7 @@
 """
-Chemuson Dock Widgets
-Interactive panels for templates and property inspection.
+Docks de Chemuson.
+
+Paneles laterales para plantillas, inspección de propiedades y apariencia.
 """
 from PyQt6.QtWidgets import (
     QDockWidget,
@@ -21,11 +22,12 @@ from gui.style import DrawingStyle
 
 class PlantillasDock(QDockWidget):
     """
-    Dock widget displaying a list of chemical templates.
+    Dock que muestra listas de plantillas químicas.
     """
     template_selected = pyqtSignal(dict)
 
     def __init__(self, parent=None):
+        """Inicializa el dock de plantillas."""
         super().__init__("Plantillas", parent)
         self.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
         
@@ -42,6 +44,7 @@ class PlantillasDock(QDockWidget):
         self.setWidget(container)
 
     def _populate_tree(self) -> None:
+        """Carga la estructura de grupos y plantillas en el árbol."""
         groups = {
             "Grupos funcionales": [
                 {"name": "Alcohol", "type": "alcohol"},
@@ -68,6 +71,7 @@ class PlantillasDock(QDockWidget):
             group_item.setExpanded(True)
 
     def _emit_template(self, item: QTreeWidgetItem) -> None:
+        """Emite la plantilla seleccionada si el item tiene datos."""
         payload = item.data(0, Qt.ItemDataRole.UserRole)
         if isinstance(payload, dict):
             self.template_selected.emit(payload)
@@ -75,11 +79,12 @@ class PlantillasDock(QDockWidget):
 
 class InspectorDock(QDockWidget):
     """
-    Dock widget displaying properties of the selected object.
+    Dock que muestra propiedades del objeto seleccionado.
     """
     property_changed = pyqtSignal(str, object)
 
     def __init__(self, parent=None):
+        """Inicializa el dock de inspección."""
         super().__init__("Inspector", parent)
         self.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
         
@@ -104,6 +109,7 @@ class InspectorDock(QDockWidget):
         self.setWidget(container)
 
     def set_atom(self, atom) -> None:
+        """Carga detalles de un átomo en el inspector."""
         self.update_selection(1, 0, {
             "element": atom.element,
             "id": atom.id,
@@ -113,6 +119,7 @@ class InspectorDock(QDockWidget):
         })
 
     def set_bond(self, bond) -> None:
+        """Carga detalles de un enlace en el inspector."""
         self.update_selection(0, 1, 0, {
             "order": bond.order,
             "style": bond.style,
@@ -120,7 +127,7 @@ class InspectorDock(QDockWidget):
         })
 
     def update_selection(self, num_atoms: int, num_bonds: int, num_text: int, details: dict):
-        """Update the inspector with selection info."""
+        """Actualiza el inspector con información de selección."""
         if num_atoms == 0 and num_bonds == 0 and num_text == 0:
             self.info_label.setText("Nada seleccionado")
             self.info_label.setVisible(True)
@@ -171,11 +178,12 @@ class InspectorDock(QDockWidget):
 
 
 class AppearanceDock(QDockWidget):
-    """Dock widget for appearance preferences."""
+    """Dock para preferencias de apariencia."""
 
     appearance_changed = pyqtSignal(dict)
 
     def __init__(self, current_style: DrawingStyle, parent=None):
+        """Inicializa el dock de apariencia con el estilo actual."""
         super().__init__("Apariencia", parent)
         self.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
 
@@ -203,9 +211,11 @@ class AppearanceDock(QDockWidget):
         self.setWidget(container)
 
     def _emit_change(self) -> None:
+        """Emite cambios de apariencia al resto de la aplicación."""
         self.appearance_changed.emit({"bond_caps": self.bond_cap_combo.currentData()})
 
     def set_bond_caps(self, value: str) -> None:
+        """Actualiza el selector de extremos de enlace."""
         index = self.bond_cap_combo.findData(value)
         if index >= 0:
             self.bond_cap_combo.blockSignals(True)

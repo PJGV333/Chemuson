@@ -1,3 +1,5 @@
+"""Pruebas unitarias para test_chemname_pr26."""
+
 import os
 import sys
 import unittest
@@ -11,6 +13,17 @@ from chemname.template import load_template
 
 
 def add_aromatic_ring(graph: MolGraph, atoms: list, ring: list[int]) -> None:
+    """Función de prueba auxiliar para add aromatic ring.
+
+    Args:
+        graph: Descripción del parámetro.
+        atoms: Descripción del parámetro.
+        ring: Descripción del parámetro.
+
+    Returns:
+        None.
+
+    """
     for i in range(len(ring)):
         a1 = atoms[ring[i]].id
         a2 = atoms[ring[(i + 1) % len(ring)]].id
@@ -19,6 +32,15 @@ def add_aromatic_ring(graph: MolGraph, atoms: list, ring: list[int]) -> None:
 
 
 def build_benzofuran(graph: MolGraph) -> list[int]:
+    """Función de prueba auxiliar para build benzofuran.
+
+    Args:
+        graph: Descripción del parámetro.
+
+    Returns:
+        None.
+
+    """
     elements = ["C"] * 9
     elements[6] = "O"
     atoms = [graph.add_atom(elem, float(i), 0.0) for i, elem in enumerate(elements)]
@@ -30,6 +52,15 @@ def build_benzofuran(graph: MolGraph) -> list[int]:
 
 
 def build_benzothiophene(graph: MolGraph) -> list[int]:
+    """Función de prueba auxiliar para build benzothiophene.
+
+    Args:
+        graph: Descripción del parámetro.
+
+    Returns:
+        None.
+
+    """
     elements = ["C"] * 9
     elements[6] = "S"
     atoms = [graph.add_atom(elem, float(i), 0.0) for i, elem in enumerate(elements)]
@@ -41,6 +72,15 @@ def build_benzothiophene(graph: MolGraph) -> list[int]:
 
 
 def build_pyrene(graph: MolGraph) -> list[int]:
+    """Función de prueba auxiliar para build pyrene.
+
+    Args:
+        graph: Descripción del parámetro.
+
+    Returns:
+        None.
+
+    """
     template_path = os.path.join(
         os.path.dirname(__file__),
         "..",
@@ -63,17 +103,36 @@ def build_pyrene(graph: MolGraph) -> list[int]:
 
 
 class ChemNamePR26Test(unittest.TestCase):
+    """Casos de prueba para ChemNamePR26Test."""
     def test_pyrene(self):
+        """Verifica pyrene.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         build_pyrene(graph)
         self.assertEqual(iupac_name(graph), "pyrene")
 
     def test_benzofuran(self):
+        """Verifica benzofuran.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         build_benzofuran(graph)
         self.assertEqual(iupac_name(graph), "benzofuran")
 
     def test_chlorobenzofuran(self):
+        """Verifica chlorobenzofuran.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         atoms = build_benzofuran(graph)
         cl = graph.add_atom("Cl", -1.0, 0.0)
@@ -81,11 +140,23 @@ class ChemNamePR26Test(unittest.TestCase):
         self.assertEqual(iupac_name(graph), "2-chlorobenzofuran")
 
     def test_benzothiophene(self):
+        """Verifica benzothiophene.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         build_benzothiophene(graph)
         self.assertEqual(iupac_name(graph), "benzothiophene")
 
     def test_chloropyrene(self):
+        """Verifica chloropyrene.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         atoms = build_pyrene(graph)
         template_path = os.path.join(
@@ -104,6 +175,12 @@ class ChemNamePR26Test(unittest.TestCase):
         self.assertEqual(iupac_name(graph), "1-chloropyrene")
 
     def test_pyrene_dichloro_1_6(self):
+        """Verifica pyrene dichloro 1 6.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         atoms = build_pyrene(graph)
         template_path = os.path.join(
@@ -123,6 +200,12 @@ class ChemNamePR26Test(unittest.TestCase):
         self.assertEqual(iupac_name(graph), "1,6-dichloropyrene")
 
     def test_pyrene_dichloro_1_8(self):
+        """Verifica pyrene dichloro 1 8.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         atoms = build_pyrene(graph)
         template_path = os.path.join(
@@ -142,6 +225,12 @@ class ChemNamePR26Test(unittest.TestCase):
         self.assertEqual(iupac_name(graph), "1,8-dichloropyrene")
 
     def test_pyrene_dichloro_2_7(self):
+        """Verifica pyrene dichloro 2 7.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         atoms = build_pyrene(graph)
         template_path = os.path.join(
@@ -161,6 +250,12 @@ class ChemNamePR26Test(unittest.TestCase):
         self.assertEqual(iupac_name(graph), "2,7-dichloropyrene")
 
     def test_pyrene_scheme_switch(self):
+        """Verifica pyrene scheme switch.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         atoms = build_pyrene(graph)
         template_path_iupac = os.path.join(

@@ -1,3 +1,9 @@
+"""Cálculo de locantes y sustituyentes para la nomenclatura.
+
+Este módulo identifica sustituyentes en una cadena principal y define
+criterios de orientación para minimizar locantes.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -19,6 +25,7 @@ from .rings import RingContext
 
 @dataclass(frozen=True)
 class Sub:
+    """Representa un sustituyente con su nombre y locante."""
     name: str
     locant: int
 
@@ -29,7 +36,20 @@ def substituents_on_chain(
     ignore_atoms: Optional[Set[int]] = None,
     ring_ctx: RingContext | None = None,
 ) -> List[Sub]:
-    """Return substituents attached to the given chain."""
+    """Devuelve los sustituyentes conectados a la cadena indicada.
+
+    Args:
+        view: Vista del grafo molecular.
+        chain: Secuencia de IDs que forman la cadena principal.
+        ignore_atoms: Conjunto de átomos a ignorar (p. ej., grupo funcional).
+        ring_ctx: Contexto de anillos para detectar sustituyentes aromáticos.
+
+    Returns:
+        Lista de sustituyentes con su locante en la cadena.
+
+    Raises:
+        ChemNameNotSupported: Si se encuentra un sustituyente no soportado.
+    """
     chain_set = set(chain)
     ignored = ignore_atoms or set()
     index_map = {atom_id: idx + 1 for idx, atom_id in enumerate(chain)}
@@ -49,6 +69,7 @@ def substituents_on_chain(
                 substituents.append(Sub(HALO_MAP[elem], locant))
                 continue
             if elem == "C":
+                # Priorizamos sustituyentes especiales antes del alquilo genérico.
                 halo_name = halomethyl_substituent_name(view, nbr, chain_set)
                 if halo_name is not None:
                     substituents.append(Sub(halo_name, locant))
@@ -66,6 +87,7 @@ def substituents_on_chain(
                     substituents.append(Sub(name, locant))
                     continue
             if elem == "N":
+                # Nitro tiene prioridad sobre amino cuando aplica.
                 name = nitro_substituent_name(view, nbr, chain_set)
                 if name is not None:
                     substituents.append(Sub(name, locant))
@@ -80,13 +102,23 @@ def substituents_on_chain(
 
 
 def choose_orientation(view: MolView, chain: Sequence[int], opts) -> List[int]:
-    """Choose chain orientation based on substituent locants."""
+    """Elige la orientación de la cadena según reglas de locantes.
+
+    Args:
+        view: Vista del grafo molecular.
+        chain: Cadena principal candidata.
+        opts: Opciones del motor (desempate alfabético o por locantes).
+
+    Returns:
+        Cadena orientada (lista de IDs) que minimiza locantes.
+    """
     forward = list(chain)
     reverse = list(reversed(chain))
 
     forward_subs = substituents_on_chain(view, forward)
     reverse_subs = substituents_on_chain(view, reverse)
 
+    # Desempate: alfabético por sustituyente o por locantes según opciones.
     if opts.prefer_alphabetical_tiebreak:
         f_key = _alphabetical_key(forward_subs)
         r_key = _alphabetical_key(reverse_subs)
@@ -100,10 +132,12 @@ def choose_orientation(view: MolView, chain: Sequence[int], opts) -> List[int]:
 
 
 def _alphabetical_key(subs: Iterable[Sub]) -> Tuple[Tuple[str, int], ...]:
+    """Clave de orden basada en (nombre, locante) para desempate."""
     return tuple(sorted(((sub.name, sub.locant) for sub in subs)))
 
 
 def _locant_key(subs: Iterable[Sub]) -> Tuple[int, ...]:
+    """Clave de orden basada solo en locantes."""
     return tuple(sorted(sub.locant for sub in subs))
 
 
@@ -113,6 +147,17 @@ def orientation_key(
     primary_locants: Iterable[int] = (),
     secondary_locants: Iterable[int] = (),
 ) -> Tuple[Tuple[int, ...], Tuple[int, ...], Tuple]:
+    """Crea una clave compuesta de orientación para comparar alternativas.
+
+    Args:
+        subs: Sustituyentes detectados.
+        opts: Opciones de desempate.
+        primary_locants: Locantes prioritarios (p. ej., grupo funcional).
+        secondary_locants: Locantes secundarios (p. ej., insaturaciones).
+
+    Returns:
+        Tupla comparable que minimiza locantes y aplica desempates.
+    """
     primary = tuple(sorted(primary_locants))
     secondary = tuple(sorted(secondary_locants))
     if opts.prefer_alphabetical_tiebreak:

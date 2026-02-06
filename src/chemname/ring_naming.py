@@ -1,3 +1,5 @@
+"""Selección de orientación y sustituyentes en anillos."""
+
 from __future__ import annotations
 
 from typing import Iterable, List, Sequence
@@ -20,6 +22,14 @@ from .rings import RingContext
 
 
 def enumerate_ring_numberings(ring_order: Sequence[int]) -> List[List[int]]:
+    """Genera todas las numeraciones posibles para un anillo.
+
+    Args:
+        ring_order: Orden base de los átomos en el anillo.
+
+    Returns:
+        Lista de numeraciones en ambos sentidos para cada rotación.
+    """
     n = len(ring_order)
     numberings: List[List[int]] = []
     for i in range(n):
@@ -41,6 +51,22 @@ def choose_ring_orientation(
     forbid_hetero_substituents: bool = False,
     ring_ctx: RingContext | None = None,
 ) -> List[int]:
+    """Elige la orientación del anillo minimizando locantes.
+
+    Args:
+        view: Vista del grafo molecular.
+        ring_order: Orden base del anillo.
+        opts: Opciones de desempate.
+        allow_hydroxy: Permite sustituyentes hidroxi.
+        allow_nitro: Permite sustituyentes nitro.
+        allow_amino: Permite sustituyentes amino.
+        allow_alkoxy: Permite sustituyentes alcoxi.
+        forbid_hetero_substituents: Prohíbe sustitución en heteroátomos.
+        ring_ctx: Contexto de anillos para sustituyentes aromáticos.
+
+    Returns:
+        Lista con la orientación elegida (IDs en orden).
+    """
     best = None
     best_key = None
     for numbering in enumerate_ring_numberings(ring_order):
@@ -55,6 +81,7 @@ def choose_ring_orientation(
             ring_ctx=ring_ctx,
         )
         locants = sorted(sub.locant for sub in subs)
+        # La orientación óptima minimiza locantes y aplica desempate alfabético.
         key = orientation_key(subs, opts, primary_locants=locants)
         if best_key is None or key < best_key:
             best_key = key
@@ -75,11 +102,30 @@ def choose_hetero_ring_orientation(
     forbid_hetero_substituents: bool = False,
     ring_ctx: RingContext | None = None,
 ) -> List[int]:
+    """Elige orientación para anillos con heteroátomos.
+
+    Args:
+        view: Vista del grafo molecular.
+        ring_order: Orden base del anillo.
+        hetero_atoms: IDs de heteroátomos que deben tener prioridad.
+        opts: Opciones de desempate.
+        allow_hydroxy: Permite sustituyentes hidroxi.
+        allow_nitro: Permite sustituyentes nitro.
+        allow_amino: Permite sustituyentes amino.
+        allow_alkoxy: Permite sustituyentes alcoxi.
+        preferred_start_atoms: Lista de átomos preferidos para iniciar numeración.
+        forbid_hetero_substituents: Prohíbe sustitución en heteroátomos.
+        ring_ctx: Contexto de anillos para sustituyentes aromáticos.
+
+    Returns:
+        Lista con la orientación elegida (IDs en orden).
+    """
     hetero_set = set(hetero_atoms)
     preferred_set = set(preferred_start_atoms or [])
     best = None
     best_key = None
     for numbering in enumerate_ring_numberings(ring_order):
+        # Si existe una lista preferida, forzamos el inicio en esos átomos.
         if preferred_set:
             if numbering[0] not in preferred_set:
                 continue
@@ -96,6 +142,7 @@ def choose_hetero_ring_orientation(
             forbid_hetero_substituents=forbid_hetero_substituents,
             ring_ctx=ring_ctx,
         )
+        # Priorizamos locantes de heteroátomos en el desempate.
         hetero_locants = [idx + 1 for idx, atom_id in enumerate(numbering) if atom_id in hetero_set]
         key = orientation_key(subs, opts, primary_locants=hetero_locants)
         if best_key is None or key < best_key:
@@ -103,6 +150,7 @@ def choose_hetero_ring_orientation(
             best = numbering
 
     if best is None and preferred_set:
+        # Reintentamos sin preferencias si no se encontró orientación válida.
         return choose_hetero_ring_orientation(
             view,
             ring_order,
@@ -129,6 +177,21 @@ def ring_substituents(
     forbid_hetero_substituents: bool = False,
     ring_ctx: RingContext | None = None,
 ) -> List[Sub]:
+    """Lista los sustituyentes presentes en un anillo.
+
+    Args:
+        view: Vista del grafo molecular.
+        ring_order: Orden de átomos del anillo.
+        allow_hydroxy: Permite sustituyentes hidroxi.
+        allow_nitro: Permite sustituyentes nitro.
+        allow_amino: Permite sustituyentes amino.
+        allow_alkoxy: Permite sustituyentes alcoxi.
+        forbid_hetero_substituents: Prohíbe sustitución en heteroátomos.
+        ring_ctx: Contexto de anillos para sustituyentes aromáticos.
+
+    Returns:
+        Lista de sustituyentes detectados con locantes.
+    """
     ring_set = set(ring_order)
     index_map = {atom_id: idx + 1 for idx, atom_id in enumerate(ring_order)}
     subs: List[Sub] = []
@@ -167,6 +230,25 @@ def _substituent_name_for_neighbor(
     allow_alkoxy: bool,
     ring_ctx: RingContext | None = None,
 ) -> str:
+    """Determina el nombre de un sustituyente según el átomo vecino.
+
+    Args:
+        view: Vista del grafo molecular.
+        ring_atom: Átomo del anillo al que se conecta el sustituyente.
+        nbr: Átomo externo conectado al anillo.
+        ring_set: Conjunto de átomos del anillo.
+        allow_hydroxy: Permite sustituyente hidroxi.
+        allow_nitro: Permite sustituyente nitro.
+        allow_amino: Permite sustituyente amino.
+        allow_alkoxy: Permite sustituyente alcoxi.
+        ring_ctx: Contexto de anillos para sustituyentes aromáticos.
+
+    Returns:
+        Nombre del sustituyente.
+
+    Raises:
+        ChemNameNotSupported: Si el sustituyente no está soportado.
+    """
     elem = view.element(nbr)
     if elem in HALO_MAP:
         return HALO_MAP[elem]

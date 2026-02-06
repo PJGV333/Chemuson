@@ -1,3 +1,5 @@
+"""Pruebas unitarias para test_chemname_pr2."""
+
 import os
 import sys
 import unittest
@@ -10,6 +12,16 @@ from chemname.parent_chain import longest_carbon_chain
 
 
 def build_linear_chain(graph: MolGraph, length: int) -> list[int]:
+    """Función de prueba auxiliar para build linear chain.
+
+    Args:
+        graph: Descripción del parámetro.
+        length: Descripción del parámetro.
+
+    Returns:
+        None.
+
+    """
     ids = []
     prev_id = None
     for i in range(length):
@@ -22,6 +34,16 @@ def build_linear_chain(graph: MolGraph, length: int) -> list[int]:
 
 
 def is_valid_chain(view: MolView, chain: list[int]) -> bool:
+    """Función de prueba auxiliar para is valid chain.
+
+    Args:
+        view: Descripción del parámetro.
+        chain: Descripción del parámetro.
+
+    Returns:
+        None.
+
+    """
     for i in range(len(chain) - 1):
         if chain[i + 1] not in view.neighbors(chain[i]):
             return False
@@ -29,7 +51,14 @@ def is_valid_chain(view: MolView, chain: list[int]) -> bool:
 
 
 class ChemNamePR2Test(unittest.TestCase):
+    """Casos de prueba para ChemNamePR2Test."""
     def test_longest_chain_dodecane(self):
+        """Verifica longest chain dodecane.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         build_linear_chain(graph, 12)
         view = MolView(graph)
@@ -38,6 +67,12 @@ class ChemNamePR2Test(unittest.TestCase):
         self.assertTrue(is_valid_chain(view, chain))
 
     def test_longest_chain_branch(self):
+        """Verifica longest chain branch.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         main = build_linear_chain(graph, 4)
         b1 = graph.add_atom("C", 1.0, 1.0)

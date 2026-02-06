@@ -1,3 +1,5 @@
+"""Pruebas unitarias para test_template_match_prA."""
+
 import os
 import sys
 import unittest
@@ -11,6 +13,15 @@ from chemname.template_match import match_template_exact, select_template_mappin
 
 
 def build_benzene(graph: MolGraph) -> list[int]:
+    """Función de prueba auxiliar para build benzene.
+
+    Args:
+        graph: Descripción del parámetro.
+
+    Returns:
+        None.
+
+    """
     atoms = [graph.add_atom("C", float(i), 0.0) for i in range(6)]
     for i in range(6):
         a1 = atoms[i].id
@@ -21,7 +32,14 @@ def build_benzene(graph: MolGraph) -> list[int]:
 
 
 class TemplateMatchPRATest(unittest.TestCase):
+    """Casos de prueba para TemplateMatchPRATest."""
     def test_benzene_template_match(self):
+        """Verifica benzene template match.
+
+        Returns:
+            None.
+
+        """
         template_path = os.path.join(
             os.path.dirname(__file__),
             "..",
@@ -39,6 +57,12 @@ class TemplateMatchPRATest(unittest.TestCase):
         self.assertGreaterEqual(len(mappings), 1)
 
     def test_selector_lowest_locant(self):
+        """Verifica selector lowest locant.
+
+        Returns:
+            None.
+
+        """
         template_path = os.path.join(
             os.path.dirname(__file__),
             "..",

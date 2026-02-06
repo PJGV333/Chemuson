@@ -1,3 +1,5 @@
+"""Pruebas unitarias para test_chemname_pr21."""
+
 import os
 import sys
 import unittest
@@ -9,6 +11,17 @@ from chemname import iupac_name
 
 
 def add_aromatic_ring(graph: MolGraph, atoms: list, ring: list[int]) -> None:
+    """Función de prueba auxiliar para add aromatic ring.
+
+    Args:
+        graph: Descripción del parámetro.
+        atoms: Descripción del parámetro.
+        ring: Descripción del parámetro.
+
+    Returns:
+        None.
+
+    """
     for i in range(len(ring)):
         a1 = atoms[ring[i]].id
         a2 = atoms[ring[(i + 1) % len(ring)]].id
@@ -17,6 +30,16 @@ def add_aromatic_ring(graph: MolGraph, atoms: list, ring: list[int]) -> None:
 
 
 def build_quinoline(graph: MolGraph, n_index: int) -> list[int]:
+    """Función de prueba auxiliar para build quinoline.
+
+    Args:
+        graph: Descripción del parámetro.
+        n_index: Descripción del parámetro.
+
+    Returns:
+        None.
+
+    """
     elements = ["C"] * 10
     elements[n_index] = "N"
     atoms = [graph.add_atom(elem, float(i), 0.0) for i, elem in enumerate(elements)]
@@ -28,6 +51,15 @@ def build_quinoline(graph: MolGraph, n_index: int) -> list[int]:
 
 
 def build_indole(graph: MolGraph) -> list[int]:
+    """Función de prueba auxiliar para build indole.
+
+    Args:
+        graph: Descripción del parámetro.
+
+    Returns:
+        None.
+
+    """
     elements = ["C"] * 9
     elements[6] = "N"
     atoms = [graph.add_atom(elem, float(i), 0.0) for i, elem in enumerate(elements)]
@@ -39,12 +71,25 @@ def build_indole(graph: MolGraph) -> list[int]:
 
 
 class ChemNamePR21Test(unittest.TestCase):
+    """Casos de prueba para ChemNamePR21Test."""
     def test_quinoline(self):
+        """Verifica quinoline.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         build_quinoline(graph, n_index=6)
         self.assertEqual(iupac_name(graph), "quinoline")
 
     def test_chloroquinoline(self):
+        """Verifica chloroquinoline.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         atoms = build_quinoline(graph, n_index=6)
         cl = graph.add_atom("Cl", -1.0, 0.0)
@@ -52,11 +97,23 @@ class ChemNamePR21Test(unittest.TestCase):
         self.assertEqual(iupac_name(graph), "2-chloroquinoline")
 
     def test_isoquinoline(self):
+        """Verifica isoquinoline.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         build_quinoline(graph, n_index=7)
         self.assertEqual(iupac_name(graph), "isoquinoline")
 
     def test_chloroisoquinoline(self):
+        """Verifica chloroisoquinoline.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         atoms = build_quinoline(graph, n_index=7)
         cl = graph.add_atom("Cl", -1.0, 0.0)
@@ -64,11 +121,23 @@ class ChemNamePR21Test(unittest.TestCase):
         self.assertEqual(iupac_name(graph), "2-chloroisoquinoline")
 
     def test_indole(self):
+        """Verifica indole.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         build_indole(graph)
         self.assertEqual(iupac_name(graph), "indole")
 
     def test_methylindole(self):
+        """Verifica methylindole.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         atoms = build_indole(graph)
         methyl = graph.add_atom("C", -1.0, 0.0)

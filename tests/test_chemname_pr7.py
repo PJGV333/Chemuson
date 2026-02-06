@@ -1,3 +1,5 @@
+"""Pruebas unitarias para test_chemname_pr7."""
+
 import os
 import sys
 import unittest
@@ -9,6 +11,16 @@ from chemname import iupac_name
 
 
 def build_linear_chain(graph: MolGraph, length: int) -> list[int]:
+    """Función de prueba auxiliar para build linear chain.
+
+    Args:
+        graph: Descripción del parámetro.
+        length: Descripción del parámetro.
+
+    Returns:
+        None.
+
+    """
     ids = []
     prev_id = None
     for i in range(length):
@@ -21,7 +33,14 @@ def build_linear_chain(graph: MolGraph, length: int) -> list[int]:
 
 
 class ChemNamePR7Test(unittest.TestCase):
+    """Casos de prueba para ChemNamePR7Test."""
     def test_propene_orientation(self):
+        """Verifica propene orientation.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         c1 = graph.add_atom("C", 0.0, 0.0)
         c2 = graph.add_atom("C", 1.0, 0.0)
@@ -31,6 +50,12 @@ class ChemNamePR7Test(unittest.TestCase):
         self.assertEqual(iupac_name(graph), "prop-1-ene")
 
     def test_propene_reverse_orientation(self):
+        """Verifica propene reverse orientation.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         c1 = graph.add_atom("C", 0.0, 0.0)
         c2 = graph.add_atom("C", 1.0, 0.0)
@@ -40,6 +65,12 @@ class ChemNamePR7Test(unittest.TestCase):
         self.assertEqual(iupac_name(graph), "prop-1-ene")
 
     def test_bromopropene(self):
+        """Verifica bromopropene.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         c1 = graph.add_atom("C", 0.0, 0.0)
         c2 = graph.add_atom("C", 1.0, 0.0)
@@ -51,6 +82,12 @@ class ChemNamePR7Test(unittest.TestCase):
         self.assertEqual(iupac_name(graph), "3-bromoprop-1-ene")
 
     def test_propan_1_ol(self):
+        """Verifica propan 1 ol.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         chain = build_linear_chain(graph, 3)
         o = graph.add_atom("O", 3.0, 0.0)
@@ -58,6 +95,12 @@ class ChemNamePR7Test(unittest.TestCase):
         self.assertEqual(iupac_name(graph), "propan-1-ol")
 
     def test_propan_2_ol(self):
+        """Verifica propan 2 ol.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         chain = build_linear_chain(graph, 3)
         o = graph.add_atom("O", 1.0, 1.0)
@@ -65,6 +108,12 @@ class ChemNamePR7Test(unittest.TestCase):
         self.assertEqual(iupac_name(graph), "propan-2-ol")
 
     def test_propan_1_amine(self):
+        """Verifica propan 1 amine.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         chain = build_linear_chain(graph, 3)
         n = graph.add_atom("N", 3.0, 0.0)

@@ -1,3 +1,5 @@
+"""Renderizado final de nombres IUPAC-lite."""
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -6,6 +8,7 @@ from typing import Dict, Iterable, List
 from .errors import ChemNameNotSupported
 from .locants import Sub
 
+# Prefijos multiplicativos para sustituyentes idénticos.
 MULTIPLIER = {
     2: "di",
     3: "tri",
@@ -20,7 +23,19 @@ def render_name(
     parent: str,
     always_include_locant: bool = True,
 ) -> str:
-    """Render name as locants-substituents-parent."""
+    """Renderiza el nombre combinando sustituyentes y padre.
+
+    Args:
+        substituents: Iterable de sustituyentes con locantes.
+        parent: Nombre del padre (cadena o anillo principal).
+        always_include_locant: Forzar locante incluso si es 1 único.
+
+    Returns:
+        Nombre final en formato IUPAC-lite.
+
+    Raises:
+        ChemNameNotSupported: Si hay demasiados sustituyentes idénticos.
+    """
     groups: Dict[str, List[int]] = defaultdict(list)
     for sub in substituents:
         groups[sub.name].append(sub.locant)

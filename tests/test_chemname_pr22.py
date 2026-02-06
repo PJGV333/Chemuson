@@ -1,3 +1,5 @@
+"""Pruebas unitarias para test_chemname_pr22."""
+
 import os
 import sys
 import unittest
@@ -9,6 +11,16 @@ from chemname import iupac_name
 
 
 def build_linear_chain(graph: MolGraph, length: int) -> list[int]:
+    """Función de prueba auxiliar para build linear chain.
+
+    Args:
+        graph: Descripción del parámetro.
+        length: Descripción del parámetro.
+
+    Returns:
+        None.
+
+    """
     ids = []
     prev_id = None
     for i in range(length):
@@ -21,6 +33,16 @@ def build_linear_chain(graph: MolGraph, length: int) -> list[int]:
 
 
 def build_ring(graph: MolGraph, size: int) -> list[int]:
+    """Función de prueba auxiliar para build ring.
+
+    Args:
+        graph: Descripción del parámetro.
+        size: Descripción del parámetro.
+
+    Returns:
+        None.
+
+    """
     atoms = [graph.add_atom("C", float(i), 0.0) for i in range(size)]
     for i in range(size):
         a1 = atoms[i].id
@@ -30,7 +52,14 @@ def build_ring(graph: MolGraph, size: int) -> list[int]:
 
 
 class ChemNamePR22Test(unittest.TestCase):
+    """Casos de prueba para ChemNamePR22Test."""
     def test_butadiene(self):
+        """Verifica butadiene.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         chain = build_linear_chain(graph, 4)
         graph.find_bond_between(chain[0], chain[1]).order = 2
@@ -38,6 +67,12 @@ class ChemNamePR22Test(unittest.TestCase):
         self.assertEqual(iupac_name(graph), "buta-1,3-diene")
 
     def test_hexadiyne(self):
+        """Verifica hexadiyne.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         chain = build_linear_chain(graph, 6)
         graph.find_bond_between(chain[0], chain[1]).order = 3
@@ -45,6 +80,12 @@ class ChemNamePR22Test(unittest.TestCase):
         self.assertEqual(iupac_name(graph), "hexa-1,5-diyne")
 
     def test_hexatriene(self):
+        """Verifica hexatriene.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         chain = build_linear_chain(graph, 6)
         graph.find_bond_between(chain[0], chain[1]).order = 2
@@ -53,6 +94,12 @@ class ChemNamePR22Test(unittest.TestCase):
         self.assertEqual(iupac_name(graph), "hexa-1,3,5-triene")
 
     def test_hex_en_yne(self):
+        """Verifica hex en yne.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         chain = build_linear_chain(graph, 6)
         graph.find_bond_between(chain[0], chain[1]).order = 2
@@ -60,6 +107,12 @@ class ChemNamePR22Test(unittest.TestCase):
         self.assertEqual(iupac_name(graph), "hex-1-en-5-yne")
 
     def test_cyclohexadiene(self):
+        """Verifica cyclohexadiene.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         ring = build_ring(graph, 6)
         graph.find_bond_between(ring[0], ring[1]).order = 2

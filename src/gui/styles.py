@@ -1,37 +1,39 @@
 """
-Chemuson Application Styles
-Modern, professional stylesheet with dark accent header and clean aesthetics.
+Estilos visuales de la aplicación Chemuson.
+
+Define paletas de color y hojas de estilo Qt para la ventana principal,
+menús, barras de herramientas y docks.
 """
 
 # ============================================================================
-# Modern Color Palette
+# Paleta moderna de colores
 # ============================================================================
 
-# Primary colors
+# Colores principales
 PRIMARY_DARK = "#2D3E50"        # Deep blue-gray for headers
 PRIMARY_MEDIUM = "#34495E"      # Slightly lighter variant
 ACCENT_PRIMARY = "#00BCD4"      # Cyan/teal accent
 ACCENT_HOVER = "#26C6DA"        # Lighter cyan for hover
 ACCENT_PRESSED = "#00ACC1"      # Darker cyan for pressed
 
-# Background colors
+# Colores de fondo
 BG_MAIN = "#ECEFF1"             # Light blue-gray background
 BG_ELEVATED = "#FFFFFF"         # White for elevated surfaces
 BG_TOOLBAR = "#F5F7FA"          # Very light gray for toolbars
 BG_DOCK = "#FAFBFC"             # Almost white for dock panels
 
-# Border and separator colors
+# Colores de bordes y separadores
 BORDER_LIGHT = "#E0E4E8"        # Subtle border
 BORDER_MEDIUM = "#CFD8DC"       # Medium border
 BORDER_DARK = "#B0BEC5"         # Darker border
 
-# Text colors
+# Colores de texto
 TEXT_PRIMARY = "#212121"        # Near-black for primary text
 TEXT_SECONDARY = "#546E7A"      # Blue-gray for secondary text
 TEXT_MUTED = "#78909C"          # Muted text
 TEXT_INVERSE = "#FFFFFF"        # White text on dark backgrounds
 
-# Tool palette specific
+# Paleta específica de herramientas
 PALETTE_BG = "#F5F7FA"
 PALETTE_BORDER = "#E0E4E8"
 PALETTE_BUTTON_BG = "#FFFFFF"
@@ -40,11 +42,11 @@ PALETTE_BUTTON_HOVER = "#E3F2FD"
 PALETTE_SELECTED_BG = "#B2EBF2"
 PALETTE_SELECTED_BORDER = "#00BCD4"
 
-# Shadow for depth effect (CSS box-shadow not supported, using borders)
+# Sombra para efecto de profundidad (Qt no soporta box-shadow estándar)
 SHADOW_COLOR = "rgba(0, 0, 0, 0.1)"
 
 # ============================================================================
-# Main Application Stylesheet
+# Hoja de estilos principal
 # ============================================================================
 
 MAIN_STYLESHEET = f"""

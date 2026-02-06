@@ -1,5 +1,5 @@
 """
-Periodic table dialog for selecting elements.
+Diálogo de tabla periódica para seleccionar elementos.
 """
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import QDialog, QGridLayout, QPushButton, QVBoxLayout, QLab
 from PyQt6.QtCore import pyqtSignal, Qt
 
 
+# Representación de la tabla periódica como cuadrícula de símbolos.
 ELEMENT_GRID = [
     ["H", None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, "He"],
     ["Li", "Be", None, None, None, None, None, None, None, None, None, None, "B", "C", "N", "O", "F", "Ne"],
@@ -21,15 +22,18 @@ ELEMENT_GRID = [
 
 
 class PeriodicTableDialog(QDialog):
+    """Diálogo modal con una tabla periódica simplificada."""
     element_selected = pyqtSignal(str)
 
     def __init__(self, parent=None) -> None:
+        """Inicializa el diálogo y construye la interfaz."""
         super().__init__(parent)
         self.setWindowTitle("Tabla Periódica")
         self.setModal(True)
         self._build_ui()
 
     def _build_ui(self) -> None:
+        """Construye la cuadrícula de botones de elementos."""
         layout = QVBoxLayout(self)
         title = QLabel("Selecciona un elemento")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -50,5 +54,6 @@ class PeriodicTableDialog(QDialog):
         layout.addLayout(grid)
 
     def _select(self, symbol: str) -> None:
+        """Emite el elemento seleccionado y cierra el diálogo."""
         self.element_selected.emit(symbol)
         self.accept()

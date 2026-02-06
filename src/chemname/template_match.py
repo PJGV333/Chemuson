@@ -1,3 +1,5 @@
+"""Emparejamiento de plantillas moleculares con grafos dibujados."""
+
 from __future__ import annotations
 
 from typing import Dict, Iterable, List
@@ -13,6 +15,16 @@ def match_template_exact(
     view: MolView,
     atom_ids: Iterable[int] | None = None,
 ) -> List[Dict[int, int]]:
+    """Busca mapeos exactos entre una plantilla y el grafo.
+
+    Args:
+        template: Plantilla con átomos, enlaces y locantes.
+        view: Vista del grafo molecular.
+        atom_ids: Subconjunto de átomos candidatos (opcional).
+
+    Returns:
+        Lista de mapeos `template_idx -> mol_atom_id` válidos.
+    """
     atom_ids = list(atom_ids) if atom_ids is not None else view.atoms()
     atom_set = set(atom_ids)
     if len(atom_ids) != len(template.atoms):
@@ -53,6 +65,7 @@ def match_template_exact(
         pair = (bond.a, bond.b) if bond.a < bond.b else (bond.b, bond.a)
         bonded_pairs.add(pair)
 
+    # Ordenamos por grado/aromaticidad para podar el backtracking.
     order = sorted(
         range(len(template.atoms)),
         key=lambda idx: (
@@ -84,6 +97,7 @@ def match_template_exact(
     used = set()
 
     def bond_compatible(tbond: TemplateBond, mol_key: tuple[int, int]) -> bool:
+        """Comprueba compatibilidad de un enlace plantilla con el grafo."""
         if mol_key not in mol_bonds:
             return False
         order, aromatic = mol_bonds[mol_key]
@@ -92,6 +106,7 @@ def match_template_exact(
         return order == tbond.order
 
     def backtrack(pos: int) -> None:
+        """Búsqueda en profundidad con poda por enlaces incompatibles."""
         if pos == len(order):
             if _mapping_is_exact(mapping, bonded_pairs, mol_bonds):
                 results.append(dict(mapping))
@@ -111,6 +126,8 @@ def match_template_exact(
                     break
             if not ok:
                 continue
+            # Evitar falsos positivos: no se permiten enlaces extra fuera
+            # de los definidos en la plantilla.
             for t_other, m_other in mapping.items():
                 if t_other == t_idx:
                     continue
@@ -138,6 +155,16 @@ def select_template_mapping(
     view: MolView,
     mappings: Iterable[Dict[int, int]],
 ) -> Dict[int, int] | None:
+    """Selecciona el mejor mapeo según locantes y orden estable.
+
+    Args:
+        template: Plantilla de referencia.
+        view: Vista del grafo molecular.
+        mappings: Iterable de mapeos candidatos.
+
+    Returns:
+        Mapeo elegido o `None` si no hay candidatos.
+    """
     best = None
     best_key = None
     for mapping in mappings:
@@ -155,6 +182,7 @@ def select_template_mapping(
 def _mapping_substituent_locants(
     template: TemplateMol, view: MolView, mapping: Dict[int, int]
 ) -> List[int]:
+    """Extrae los locantes de sustitución dados un mapeo."""
     inverse = {mol_id: t_idx for t_idx, mol_id in mapping.items()}
     ring_set = set(mapping.values())
     locants: List[int] = []
@@ -173,6 +201,7 @@ def _mapping_substituent_locants(
 
 
 def _mapping_key(mapping: Dict[int, int]) -> tuple[int, ...]:
+    """Clave determinista de un mapeo para desempates."""
     return tuple(mapping[idx] for idx in sorted(mapping.keys()))
 
 
@@ -181,6 +210,7 @@ def _mapping_is_exact(
     bonded_pairs: set[tuple[int, int]],
     mol_bonds: Dict[tuple[int, int], tuple[int, bool]],
 ) -> bool:
+    """Verifica que el mapeo respete exactamente enlaces y no-enlaces."""
     t_indices = list(mapping.keys())
     for i in range(len(t_indices)):
         for j in range(i + 1, len(t_indices)):
@@ -200,6 +230,7 @@ def _mapping_is_exact(
 
 
 def _aromatic_atoms(view: MolView, atom_set: set[int]) -> Dict[int, bool]:
+    """Marca átomos aromáticos dentro del subconjunto dado."""
     aromatic: Dict[int, bool] = {atom_id: False for atom_id in atom_set}
     rings = find_rings_simple(view)
     for ring in rings:

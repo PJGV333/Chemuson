@@ -1,3 +1,9 @@
+"""Vista de lectura sobre grafos moleculares heterogéneos.
+
+`MolView` actúa como adaptador para distintos formatos de grafo, ofreciendo
+una API uniforme a los módulos de nomenclatura.
+"""
+
 from __future__ import annotations
 
 from typing import Dict, Iterable, List, Optional, Set, Tuple
@@ -6,9 +12,17 @@ from .errors import ChemNameNotSupported
 
 
 class MolView:
-    """Thin adapter over the repo's MolGraph-like objects."""
+    """Adaptador ligero sobre objetos tipo `MolGraph`."""
 
     def __init__(self, graph) -> None:
+        """Inicializa la vista sobre un grafo arbitrario.
+
+        Args:
+            graph: Objeto con atributos compatibles (atoms/bonds/nodes/edges).
+
+        Side Effects:
+            Inicializa cachés internas para adyacencias y órdenes de enlace.
+        """
         self.graph = graph
         self._adj: Optional[Dict[int, Set[int]]] = None
         self._bond_orders: Optional[Dict[frozenset[int], int]] = None
@@ -16,6 +30,14 @@ class MolView:
         self._bond_order_list: Optional[List[int]] = None
 
     def atoms(self) -> List[int]:
+        """Devuelve la lista de IDs atómicos disponibles.
+
+        Returns:
+            Lista de IDs de átomos detectados en el grafo.
+
+        Raises:
+            ChemNameNotSupported: Si el grafo no expone átomos accesibles.
+        """
         graph = self.graph
         atoms_attr = getattr(graph, "atoms", None)
         if atoms_attr is not None:
@@ -38,6 +60,17 @@ class MolView:
         raise ChemNameNotSupported("Cannot read atoms from graph")
 
     def element(self, atom_id: int) -> str:
+        """Obtiene el símbolo del elemento para un átomo.
+
+        Args:
+            atom_id: Identificador del átomo.
+
+        Returns:
+            Símbolo químico (por ejemplo, "C", "O").
+
+        Raises:
+            ChemNameNotSupported: Si no se puede resolver el elemento.
+        """
         atom = self._get_atom(atom_id)
         if atom is None:
             raise ChemNameNotSupported("Cannot resolve atom element")
@@ -54,25 +87,58 @@ class MolView:
         raise ChemNameNotSupported("Cannot resolve atom element")
 
     def neighbors(self, atom_id: int) -> List[int]:
+        """Devuelve la lista de vecinos conectados al átomo.
+
+        Args:
+            atom_id: Identificador del átomo.
+
+        Returns:
+            Lista de IDs vecinos.
+        """
         self._ensure_adjacency()
         return list(self._adj.get(atom_id, set()))
 
     def bond_order_between(self, atom_id_1: int, atom_id_2: int) -> int:
+        """Obtiene el orden de enlace entre dos átomos.
+
+        Args:
+            atom_id_1: ID del primer átomo.
+            atom_id_2: ID del segundo átomo.
+
+        Returns:
+            Orden de enlace (1 por defecto si no se conoce).
+        """
         self._ensure_adjacency()
         return self._bond_orders.get(frozenset({atom_id_1, atom_id_2}), 1)
 
     def bond_is_aromatic(self, atom_id_1: int, atom_id_2: int) -> bool:
+        """Indica si el enlace entre dos átomos es aromático.
+
+        Args:
+            atom_id_1: ID del primer átomo.
+            atom_id_2: ID del segundo átomo.
+
+        Returns:
+            `True` si el enlace está marcado como aromático.
+        """
         self._ensure_adjacency()
         return self._bond_aromatic.get(frozenset({atom_id_1, atom_id_2}), False)
 
     def bonds(self) -> List[Tuple[int, int, int]]:
+        """Lista de enlaces como tuplas (a1, a2, orden)."""
         return list(self._iter_bonds())
 
     def bond_orders(self) -> List[int]:
+        """Lista de órdenes de enlace presentes en el grafo."""
         self._ensure_adjacency()
         return list(self._bond_order_list or [])
 
     def is_acyclic(self) -> bool:
+        """Determina si el grafo es acíclico (sin anillos).
+
+        Returns:
+            `True` si no se detectan ciclos, `False` en caso contrario.
+        """
         atoms = self.atoms()
         visited: Set[int] = set()
         for start in atoms:
@@ -93,6 +159,17 @@ class MolView:
         return True
 
     def _atom_id(self, atom) -> int:
+        """Normaliza un objeto átomo a su ID entero.
+
+        Args:
+            atom: Objeto átomo o ID directo.
+
+        Returns:
+            Identificador entero del átomo.
+
+        Raises:
+            ChemNameNotSupported: Si no se puede extraer el ID.
+        """
         if isinstance(atom, int):
             return atom
         atom_id = getattr(atom, "id", None)
@@ -104,6 +181,14 @@ class MolView:
         raise ChemNameNotSupported("Atom object has no id")
 
     def atom_charge(self, atom_id: int) -> int:
+        """Obtiene la carga formal del átomo.
+
+        Args:
+            atom_id: Identificador del átomo.
+
+        Returns:
+            Carga formal (0 por defecto).
+        """
         atom = self._get_atom(atom_id)
         if atom is None:
             return 0
@@ -114,6 +199,14 @@ class MolView:
         return int(charge) if charge is not None else 0
 
     def explicit_h(self, atom_id: int) -> int:
+        """Obtiene el número de H explícitos asociados al átomo.
+
+        Args:
+            atom_id: Identificador del átomo.
+
+        Returns:
+            Número de hidrógenos explícitos (0 si no hay).
+        """
         atom = self._get_atom(atom_id)
         if atom is None:
             return 0
@@ -124,6 +217,14 @@ class MolView:
         return int(value) if value is not None else 0
 
     def _get_atom(self, atom_id: int):
+        """Resuelve un átomo desde el grafo usando múltiples convenciones.
+
+        Args:
+            atom_id: Identificador del átomo a recuperar.
+
+        Returns:
+            Objeto átomo o `None` si no se encuentra.
+        """
         graph = self.graph
         get_atom = getattr(graph, "get_atom", None)
         if callable(get_atom):
@@ -151,10 +252,12 @@ class MolView:
         return None
 
     def _iter_bonds(self) -> Iterable[Tuple[int, int, int]]:
+        """Itera enlaces sin metadatos adicionales."""
         for a1, a2, order, _is_aromatic in self._iter_bonds_with_meta():
             yield a1, a2, order
 
     def _iter_bonds_with_meta(self) -> Iterable[Tuple[int, int, int, bool]]:
+        """Itera enlaces con orden y aromaticidad si están disponibles."""
         graph = self.graph
         bonds_attr = getattr(graph, "bonds", None)
         if bonds_attr is not None and not callable(bonds_attr):
@@ -195,6 +298,7 @@ class MolView:
             return
 
     def _ensure_adjacency(self) -> None:
+        """Construye y cachea adyacencias y órdenes de enlace."""
         if self._adj is not None:
             return
         adjacency: Dict[int, Set[int]] = {atom_id: set() for atom_id in self.atoms()}
@@ -204,6 +308,7 @@ class MolView:
 
         bonds = list(self._iter_bonds_with_meta())
         if bonds:
+            # La fuente principal es la lista de enlaces estructurados.
             for a1, a2, order, is_aromatic in bonds:
                 adjacency.setdefault(a1, set()).add(a2)
                 adjacency.setdefault(a2, set()).add(a1)
@@ -211,6 +316,7 @@ class MolView:
                 bond_aromatic[frozenset({a1, a2})] = bool(is_aromatic)
                 bond_order_list.append(order)
         else:
+            # Ruta de respaldo si el grafo solo expone vecinos.
             neighbors_attr = getattr(self.graph, "neighbors", None)
             if neighbors_attr is not None:
                 for atom_id in list(adjacency.keys()):

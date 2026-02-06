@@ -1,3 +1,9 @@
+"""Conversión entre el grafo interno y formatos químicos externos.
+
+Este módulo integra RDKit (si está disponible) para exportar/importar
+SMILES, MOL y SVG. Incluye rutas de respaldo para exportar sin RDKit.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -16,15 +22,32 @@ except Exception:  # pragma: no cover - optional dependency at runtime
 
 
 def _rdkit_available() -> bool:
+    """Indica si RDKit está disponible en tiempo de ejecución."""
     return Chem is not None and AllChem is not None and rdMolDraw2D is not None
 
 
 def _require_rdkit():
+    """Lanza un error si RDKit no está instalado."""
     if not _rdkit_available():
         raise RuntimeError("RDKit no disponible")
 
 
 def molgraph_to_rdkit_with_map(molgraph: MolGraph):
+    """Convierte un `MolGraph` a RDKit `Mol` y mapea IDs internos.
+
+    Args:
+        molgraph: Grafo molecular de Chemuson.
+
+    Returns:
+        Tupla `(mol, id_map)` donde `mol` es un RDKit Mol y `id_map` mapea
+        IDs de átomos del grafo a índices RDKit.
+
+    Raises:
+        RuntimeError: Si RDKit no está disponible.
+
+    Side Effects:
+        No modifica el grafo; construye objetos RDKit en memoria.
+    """
     _require_rdkit()
     rw = Chem.RWMol()
     id_map: Dict[int, int] = {}
@@ -48,6 +71,7 @@ def molgraph_to_rdkit_with_map(molgraph: MolGraph):
         id_map[atom.id] = rd_idx
 
     for bond in molgraph.bonds.values():
+        # RDKit distingue enlaces aromáticos y órdenes discretos.
         if bond.is_aromatic:
             rw.GetAtomWithIdx(id_map[bond.a1_id]).SetIsAromatic(True)
             rw.GetAtomWithIdx(id_map[bond.a2_id]).SetIsAromatic(True)
@@ -61,6 +85,7 @@ def molgraph_to_rdkit_with_map(molgraph: MolGraph):
         rw.AddBond(id_map[bond.a1_id], id_map[bond.a2_id], bond_type)
 
     mol = rw.GetMol()
+    # Preservar coordenadas 2D del editor.
     conf = Chem.Conformer(mol.GetNumAtoms())
     for atom_id, idx in id_map.items():
         atom = molgraph.atoms[atom_id]
@@ -70,11 +95,29 @@ def molgraph_to_rdkit_with_map(molgraph: MolGraph):
 
 
 def molgraph_to_rdkit(molgraph: MolGraph):
+    """Convierte un `MolGraph` a RDKit `Mol` ignorando el mapeo de IDs.
+
+    Args:
+        molgraph: Grafo molecular de Chemuson.
+
+    Returns:
+        Mol de RDKit con conformación 2D.
+    """
     mol, _ = molgraph_to_rdkit_with_map(molgraph)
     return mol
 
 
 def molgraph_to_smiles(molgraph: MolGraph) -> str:
+    """Genera SMILES desde un `MolGraph`.
+
+    Usa RDKit si está disponible; si falla, utiliza un escritor interno.
+
+    Args:
+        molgraph: Grafo molecular de Chemuson.
+
+    Returns:
+        SMILES canónico o aproximado en el camino de respaldo.
+    """
     if _rdkit_available():
         try:
             mol = molgraph_to_rdkit(molgraph)
@@ -87,6 +130,14 @@ def molgraph_to_smiles(molgraph: MolGraph) -> str:
 
 
 def molgraph_to_molfile(molgraph: MolGraph) -> str:
+    """Genera un bloque MOL (V2000) desde un `MolGraph`.
+
+    Args:
+        molgraph: Grafo molecular de Chemuson.
+
+    Returns:
+        Cadena MOL. Si RDKit falla, usa un exportador interno básico.
+    """
     if _rdkit_available():
         try:
             mol = molgraph_to_rdkit(molgraph)
@@ -97,6 +148,15 @@ def molgraph_to_molfile(molgraph: MolGraph) -> str:
 
 
 def molgraph_to_svg(molgraph: MolGraph, size: Tuple[int, int] = (300, 200)) -> str:
+    """Renderiza un `MolGraph` como SVG con RDKit.
+
+    Args:
+        molgraph: Grafo molecular de Chemuson.
+        size: Tamaño del lienzo (ancho, alto) en píxeles.
+
+    Returns:
+        SVG como cadena.
+    """
     _require_rdkit()
     mol = molgraph_to_rdkit(molgraph)
     drawer = rdMolDraw2D.MolDraw2DSVG(size[0], size[1])
@@ -106,18 +166,45 @@ def molgraph_to_svg(molgraph: MolGraph, size: Tuple[int, int] = (300, 200)) -> s
 
 
 def molfile_to_molgraph(molfile: str) -> MolGraph:
+    """Importa un bloque MOL (V2000) a `MolGraph`.
+
+    Args:
+        molfile: Texto MOL.
+
+    Returns:
+        Grafo molecular equivalente.
+    """
     _require_rdkit()
     mol = Chem.MolFromMolBlock(molfile, sanitize=True)
     return rdkit_to_molgraph(mol)
 
 
 def smiles_to_molgraph(smiles: str) -> MolGraph:
+    """Importa un SMILES a `MolGraph` usando RDKit.
+
+    Args:
+        smiles: Cadena SMILES.
+
+    Returns:
+        Grafo molecular equivalente.
+    """
     _require_rdkit()
     mol = Chem.MolFromSmiles(smiles)
     return rdkit_to_molgraph(mol)
 
 
 def rdkit_to_molgraph(mol) -> MolGraph:
+    """Convierte un RDKit Mol a `MolGraph`.
+
+    Args:
+        mol: Instancia de RDKit Mol.
+
+    Returns:
+        Grafo molecular con coordenadas 2D.
+
+    Raises:
+        ValueError: Si el Mol es `None`.
+    """
     _require_rdkit()
     if mol is None:
         raise ValueError("Mol inválido")
@@ -165,6 +252,18 @@ def rdkit_to_molgraph(mol) -> MolGraph:
 def kekulize_display_orders(
     molgraph: MolGraph, seed_atoms: Optional[Iterable[int]] = None
 ) -> Optional[Dict[int, int]]:
+    """Calcula órdenes de dibujo para enlaces aromáticos.
+
+    Usa la kekulización de RDKit y, opcionalmente, restringe el cálculo
+    a los átomos conectados a una lista de semillas.
+
+    Args:
+        molgraph: Grafo molecular de Chemuson.
+        seed_atoms: IDs de átomos desde los cuales expandir el cálculo.
+
+    Returns:
+        Diccionario de `bond_id -> display_order` o `None` si falla.
+    """
     if Chem is None:
         return None
     try:
@@ -175,6 +274,7 @@ def kekulize_display_orders(
 
     aromatic_atoms: Optional[set[int]] = None
     if seed_atoms is not None:
+        # Expandimos las semillas a todo el componente aromático conectado.
         seeds = set(seed_atoms)
         if seeds:
             adjacency: dict[int, list[int]] = {}
@@ -208,6 +308,15 @@ def kekulize_display_orders(
 
 
 def _scale_to_default(graph: MolGraph, target: float = 40.0) -> None:
+    """Escala el grafo para aproximar una longitud de enlace objetivo.
+
+    Args:
+        graph: Grafo molecular a escalar.
+        target: Longitud promedio deseada (px).
+
+    Side Effects:
+        Modifica las coordenadas de los átomos del grafo.
+    """
     if not graph.bonds:
         return
     lengths = []
@@ -228,6 +337,7 @@ def _scale_to_default(graph: MolGraph, target: float = 40.0) -> None:
 
 @dataclass
 class _SmilesNode:
+    """Nodo auxiliar para emitir SMILES en el escritor de respaldo."""
     atom_id: int
     symbol: str
     children: list[tuple[str, "_SmilesNode"]]
@@ -235,6 +345,17 @@ class _SmilesNode:
 
 
 def _molgraph_to_smiles_fallback(molgraph: MolGraph) -> str:
+    """Emite un SMILES básico sin RDKit.
+
+    Este exportador es deliberadamente simple: maneja aromaticidad básica,
+    ramificaciones y cierres de anillo con numeración incremental.
+
+    Args:
+        molgraph: Grafo molecular de Chemuson.
+
+    Returns:
+        Cadena SMILES aproximada.
+    """
     if not molgraph.atoms:
         return ""
     adjacency: dict[int, list[tuple[int, Bond]]] = {}
@@ -255,6 +376,7 @@ def _molgraph_to_smiles_fallback(molgraph: MolGraph) -> str:
     ring_counter = 1
 
     def bond_symbol(bond: Bond) -> str:
+        """Convierte un enlace en su símbolo SMILES."""
         if bond.is_aromatic:
             return ":"
         if bond.order == 2:
@@ -264,6 +386,7 @@ def _molgraph_to_smiles_fallback(molgraph: MolGraph) -> str:
         return ""
 
     def atom_symbol(atom_id: int) -> str:
+        """Construye el símbolo SMILES del átomo con carga/isótopo."""
         atom = molgraph.atoms[atom_id]
         element = atom.element
         aromatic = atom_id in aromatic_atoms and element in {"B", "C", "N", "O", "P", "S"}
@@ -285,6 +408,7 @@ def _molgraph_to_smiles_fallback(molgraph: MolGraph) -> str:
         return symbol
 
     def build(node_id: int, parent_id: Optional[int]) -> _SmilesNode:
+        """Construye el árbol DFS y registra cierres de anillo."""
         nonlocal ring_counter
         node = nodes_by_id.get(node_id)
         if node is None:
@@ -303,6 +427,7 @@ def _molgraph_to_smiles_fallback(molgraph: MolGraph) -> str:
                 child = build(neighbor_id, node_id)
                 node.children.append((bond_symbol(bond), child))
             else:
+                # Enlace ya visto: representamos un cierre de anillo.
                 if edge_key in edge_handled:
                     continue
                 edge_handled.add(edge_key)
@@ -314,11 +439,13 @@ def _molgraph_to_smiles_fallback(molgraph: MolGraph) -> str:
         return node
 
     def ring_token(symbol: str, ring_id: int) -> str:
+        """Convierte ID de anillo en token SMILES, usando % para >=10."""
         if ring_id >= 10:
             return f"{symbol}%{ring_id}"
         return f"{symbol}{ring_id}"
 
     def emit(node: _SmilesNode) -> str:
+        """Emite SMILES recorriendo el árbol con ramificaciones."""
         text = node.symbol
         for symbol, ring_id in node.ring_closures:
             text += ring_token(symbol, ring_id)
@@ -343,6 +470,14 @@ def _molgraph_to_smiles_fallback(molgraph: MolGraph) -> str:
 
 
 def _molgraph_to_molfile_fallback(molgraph: MolGraph) -> str:
+    """Serializa un `MolGraph` a un MOL V2000 mínimo sin RDKit.
+
+    Args:
+        molgraph: Grafo molecular de Chemuson.
+
+    Returns:
+        Cadena con el bloque MOL (V2000) básico.
+    """
     atoms = [molgraph.atoms[atom_id] for atom_id in sorted(molgraph.atoms.keys())]
     bonds = [molgraph.bonds[bond_id] for bond_id in sorted(molgraph.bonds.keys())]
     atom_index = {atom.id: idx + 1 for idx, atom in enumerate(atoms)}

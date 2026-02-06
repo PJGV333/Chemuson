@@ -1,6 +1,9 @@
+"""Excepciones específicas del motor de nomenclatura."""
+
+
 class ChemNameNotSupported(Exception):
-    """Raised when the naming engine does not support the input."""
+    """Se lanza cuando la molécula está fuera del alcance soportado."""
 
 
 class ChemNameInternalError(Exception):
-    """Raised for unexpected internal errors in the naming engine."""
+    """Se lanza ante errores internos inesperados del motor."""

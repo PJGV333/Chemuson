@@ -1,6 +1,5 @@
 """
-Chemuson Toolbar
-Vertical toolbar with palette-style tool buttons.
+Barra de herramientas de Chemuson con paletas de dibujo.
 """
 from __future__ import annotations
 
@@ -34,8 +33,8 @@ from gui.styles import TOOL_PALETTE_STYLESHEET
 
 class ChemusonToolbar(QToolBar):
     """
-    Vertical toolbar for selecting drawing tools.
-    Organized into tools + palettes (bonds, rings, labels).
+    Barra vertical de herramientas para seleccionar acciones de dibujo.
+    Organiza herramientas y paletas (enlaces, anillos, etiquetas).
     """
 
     tool_changed = pyqtSignal(str)
@@ -45,6 +44,11 @@ class ChemusonToolbar(QToolBar):
     periodic_table_requested = pyqtSignal()
 
     def __init__(self, parent=None) -> None:
+        """Inicializa la barra principal y construye todas las paletas.
+
+        Args:
+            parent: Widget padre opcional.
+        """
         super().__init__("Herramientas de Dibujo", parent)
         self.setOrientation(Qt.Orientation.Vertical)
         self.setMovable(False)
@@ -191,6 +195,16 @@ class ChemusonToolbar(QToolBar):
         self._select_element_palette(default_element)
 
     def _add_tool_action(self, icon, tooltip: str, internal_id: str) -> QAction:
+        """Crea y registra una acción simple en la barra.
+
+        Args:
+            icon: Icono asociado.
+            tooltip: Texto de ayuda.
+            internal_id: Identificador interno para señales.
+
+        Returns:
+            QAction configurada.
+        """
         action = QAction(icon, "", self)
         action.setObjectName(internal_id)
         action.setToolTip(tooltip)
@@ -207,6 +221,17 @@ class ChemusonToolbar(QToolBar):
         internal_id: str,
         trigger_callback=None,
     ):
+        """Crea un botón con menú desplegable para una paleta.
+
+        Args:
+            icon: Icono del botón.
+            tooltip: Texto de ayuda.
+            internal_id: Identificador interno.
+            trigger_callback: Callback opcional al activar la acción.
+
+        Returns:
+            Tupla `(button, action)` creada.
+        """
         action = QAction(icon, "", self)
         action.setObjectName(internal_id)
         action.setToolTip(tooltip)
@@ -225,15 +250,19 @@ class ChemusonToolbar(QToolBar):
         return button, action
 
     def _emit_current_selection_tool(self, checked: bool = False) -> None:
+        """Emite la herramienta de selección actualmente activa."""
         self.tool_changed.emit(self._current_select_tool_id)
 
     def _emit_current_bracket_tool(self, checked: bool = False) -> None:
+        """Emite la herramienta de corchetes actualmente activa."""
         self.tool_changed.emit(self._current_bracket_tool_id)
 
     def _emit_current_arrow_tool(self, checked: bool = False) -> None:
+        """Emite la herramienta de flecha actualmente activa."""
         self.tool_changed.emit(self._current_arrow_tool_id)
 
     def _make_palette_entry(self, icon, tooltip: str, callback, enabled: bool = True) -> dict:
+        """Construye un descriptor de entrada para menús de paleta."""
         return {
             "icon": icon,
             "tooltip": tooltip,
@@ -242,10 +271,17 @@ class ChemusonToolbar(QToolBar):
         }
 
     def _trigger_palette_action(self, callback, menu: QMenu) -> None:
+        """Ejecuta una acción de paleta y cierra el menú."""
         callback()
         menu.close()
 
     def set_text_menu(self, actions: list[QAction], color_actions: list[QAction]) -> None:
+        """Configura el submenú de herramientas de texto.
+
+        Args:
+            actions: Acciones de formato de texto.
+            color_actions: Acciones para seleccionar color de etiqueta.
+        """
         if not hasattr(self, "text_button"):
             return
         menu = self.text_button.menu()
@@ -261,6 +297,13 @@ class ChemusonToolbar(QToolBar):
                 color_menu.addAction(action)
 
     def _populate_grid_menu(self, menu: QMenu, entries: list[dict], columns: int) -> None:
+        """Rellena un menú con botones en cuadrícula.
+
+        Args:
+            menu: Menú Qt donde se inserta la cuadrícula.
+            entries: Lista de entradas de paleta.
+            columns: Número de columnas de la cuadrícula.
+        """
         container = QWidget(menu)
         container.setObjectName("palette_grid")
         layout = QGridLayout(container)
@@ -287,6 +330,7 @@ class ChemusonToolbar(QToolBar):
         menu.addAction(action)
 
     def _build_select_palette(self, menu: QMenu) -> None:
+        """Construye la paleta de herramientas de selección."""
         entries = []
         for tool_id, (icon, tooltip) in self._selection_meta.items():
             entries.append(
@@ -301,6 +345,7 @@ class ChemusonToolbar(QToolBar):
         self._populate_grid_menu(menu, entries, columns=2)
 
     def _build_bond_palette(self, menu: QMenu) -> None:
+        """Construye la paleta de enlaces con estilos disponibles."""
         icon_single = draw_bond_icon("single")
         icon_bold = draw_bond_icon("bold")
         icon_double = draw_bond_icon("double")
@@ -427,6 +472,7 @@ class ChemusonToolbar(QToolBar):
         self._populate_grid_menu(menu, entries, columns=3)
 
     def _build_ring_palette(self, menu: QMenu) -> None:
+        """Construye la paleta de anillos (tamaños y plantillas)."""
         entries = []
         icon_benzene = draw_ring_icon(6, aromatic=True)
         entries.append(
@@ -513,6 +559,7 @@ class ChemusonToolbar(QToolBar):
         menu.addAction(custom)
 
     def _build_label_palette(self, menu: QMenu) -> None:
+        """Construye la paleta de elementos químicos."""
         elements = ["C", "N", "O", "S", "P", "F", "Cl", "Br", "I", "H"]
         entries = []
         for element in elements:
@@ -531,6 +578,7 @@ class ChemusonToolbar(QToolBar):
         menu.addAction(periodic_action)
 
     def _build_bracket_palette(self, menu: QMenu) -> None:
+        """Construye la paleta de corchetes/paréntesis."""
         entries = []
         for tool_id in sorted(self._bracket_meta.keys()):
             icon, tooltip = self._bracket_meta[tool_id]
@@ -544,6 +592,7 @@ class ChemusonToolbar(QToolBar):
         self._populate_grid_menu(menu, entries, columns=3)
 
     def _build_arrow_palette(self, menu: QMenu) -> None:
+        """Construye la paleta de flechas de anotación."""
         entries = []
         # Defined order for arrow tools
         tool_order = [
@@ -575,6 +624,7 @@ class ChemusonToolbar(QToolBar):
         self._populate_grid_menu(menu, entries, columns=4)
 
     def _select_selection_palette(self, tool_id: str, icon, tooltip: str) -> None:
+        """Actualiza la herramienta de selección activa."""
         self._current_select_tool_id = tool_id
         self.select_action.setIcon(icon)
         self.select_action.setToolTip(tooltip)
@@ -583,6 +633,7 @@ class ChemusonToolbar(QToolBar):
         self.select_action.setChecked(True)
 
     def _select_bracket_tool(self, tool_id: str) -> None:
+        """Actualiza la herramienta de corchetes activa."""
         icon, tooltip = self._bracket_meta[tool_id]
         self._current_bracket_tool_id = tool_id
         self.bracket_action.setIcon(icon)
@@ -592,6 +643,7 @@ class ChemusonToolbar(QToolBar):
         self.tool_changed.emit(tool_id)
 
     def _select_arrow_tool(self, tool_id: str) -> None:
+        """Actualiza la herramienta de flechas activa."""
         icon, tooltip = self._arrow_meta[tool_id]
         self._current_arrow_tool_id = tool_id
         self.annotation_action.setIcon(icon)
@@ -601,6 +653,7 @@ class ChemusonToolbar(QToolBar):
         self.tool_changed.emit(tool_id)
 
     def _select_bond_palette(self, button: QToolButton, icon, text: str, spec: dict) -> None:
+        """Actualiza la selección de enlace y emite el cambio."""
         self.bond_action.setIcon(icon)
         self.bond_action.setToolTip(text)
         button.setToolTip(text)
@@ -610,6 +663,7 @@ class ChemusonToolbar(QToolBar):
         self.bond_action.setChecked(True)
 
     def _select_ring_palette(self, button: QToolButton, icon, text: str, spec: dict) -> None:
+        """Actualiza la selección de anillo y emite el cambio."""
         self.ring_action.setIcon(icon)
         self.ring_action.setToolTip(text)
         button.setToolTip(text)
@@ -619,6 +673,7 @@ class ChemusonToolbar(QToolBar):
         self.ring_action.setChecked(True)
 
     def _select_element_palette(self, element: str) -> None:
+        """Actualiza el elemento químico seleccionado."""
         icon = draw_glyph_icon(element)
         self.label_action.setIcon(icon)
         self.label_action.setToolTip(f"Elemento {element}")
@@ -629,6 +684,7 @@ class ChemusonToolbar(QToolBar):
         self.label_action.setChecked(True)
 
     def _select_custom_ring_size(self) -> None:
+        """Solicita un tamaño de anillo personalizado al usuario."""
         size, ok = QInputDialog.getInt(self, "Tamaño de anillo", "Número de miembros:", 6, 3, 12)
         if not ok:
             return
@@ -640,26 +696,36 @@ class ChemusonToolbar(QToolBar):
         )
 
     def select_element(self, element: str) -> None:
+        """Atajo público para seleccionar un elemento de la paleta."""
         self._select_element_palette(element)
 
     def current_bond_spec(self) -> dict:
+        """Devuelve la especificación de enlace actualmente activa."""
         return dict(self._current_bond_spec)
 
     def current_ring_spec(self) -> dict:
+        """Devuelve la especificación de anillo actualmente activa."""
         return dict(self._current_ring_spec)
 
     def current_element(self) -> str:
+        """Devuelve el símbolo del elemento actualmente activo."""
         return self._current_element
 
 
 class SymbolPaletteToolbar(QToolBar):
     """
-    Right-side toolbar for chemical symbol tools (charges, radicals, electrons, etc.).
+    Barra derecha para símbolos químicos (cargas, radicales, electrones).
     """
 
     tool_changed = pyqtSignal(str)
 
     def __init__(self, action_group: QActionGroup, parent=None) -> None:
+        """Inicializa la paleta de símbolos químicos.
+
+        Args:
+            action_group: Grupo de acciones compartido con la barra principal.
+            parent: Widget padre opcional.
+        """
         super().__init__("Simbolismos químicos", parent)
         self.setOrientation(Qt.Orientation.Vertical)
         self.setMovable(False)
@@ -686,6 +752,17 @@ class SymbolPaletteToolbar(QToolBar):
         internal_id: str,
         trigger_callback=None,
     ):
+        """Crea un botón con menú desplegable para símbolos.
+
+        Args:
+            icon: Icono del botón.
+            tooltip: Texto de ayuda.
+            internal_id: Identificador interno.
+            trigger_callback: Callback opcional al activar la acción.
+
+        Returns:
+            Tupla `(button, action)` creada.
+        """
         action = QAction(icon, "", self)
         action.setObjectName(internal_id)
         action.setToolTip(tooltip)
@@ -705,6 +782,7 @@ class SymbolPaletteToolbar(QToolBar):
         return button, action
 
     def _symbol_meta(self) -> dict[str, tuple]:
+        """Define el catálogo de símbolos disponibles y sus iconos."""
         return {
             "tool_charge_plus": (draw_charge_icon("+"), "Carga positiva"),
             "tool_charge_minus": (draw_charge_icon("-"), "Carga negativa"),
@@ -721,6 +799,7 @@ class SymbolPaletteToolbar(QToolBar):
         }
 
     def _make_palette_entry(self, icon, tooltip: str, callback, enabled: bool = True) -> dict:
+        """Construye un descriptor de entrada para el menú de símbolos."""
         return {
             "icon": icon,
             "tooltip": tooltip,
@@ -729,6 +808,7 @@ class SymbolPaletteToolbar(QToolBar):
         }
 
     def _populate_grid_menu(self, menu: QMenu, entries: list[dict], columns: int) -> None:
+        """Rellena el menú de símbolos en una cuadrícula."""
         container = QWidget(menu)
         container.setObjectName("palette_grid")
         layout = QGridLayout(container)
@@ -753,10 +833,12 @@ class SymbolPaletteToolbar(QToolBar):
         menu.addAction(action)
 
     def _trigger_palette_action(self, callback, menu: QMenu) -> None:
+        """Ejecuta una acción de paleta y cierra el menú."""
         callback()
         menu.close()
 
     def _build_symbol_palette(self, menu: QMenu) -> None:
+        """Construye el menú de símbolos químicos."""
         entries = []
         for tool_id, (icon, tooltip) in self._symbol_meta().items():
             entries.append(
@@ -769,9 +851,11 @@ class SymbolPaletteToolbar(QToolBar):
         self._populate_grid_menu(menu, entries, columns=4)
 
     def _emit_current_symbol_tool(self, checked: bool = False) -> None:
+        """Emite la herramienta de símbolo actualmente activa."""
         self.tool_changed.emit(self._current_symbol_tool_id)
 
     def _select_symbol_tool(self, tool_id: str) -> None:
+        """Actualiza el símbolo activo y emite el cambio."""
         icon, tooltip = self._symbol_meta()[tool_id]
         self._current_symbol_tool_id = tool_id
         self.symbol_action.setIcon(icon)

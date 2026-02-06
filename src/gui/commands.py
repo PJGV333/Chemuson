@@ -1,3 +1,9 @@
+"""Comandos de edición con soporte de deshacer/rehacer (QUndoCommand).
+
+Este módulo centraliza operaciones de modificación del modelo/GUI
+para integrarlas con la pila de undo/redo de Qt.
+"""
+
 from __future__ import annotations
 
 from dataclasses import replace
@@ -14,10 +20,12 @@ _ANCHOR_UNSET = object()
 
 
 def _default_is_explicit(element: str) -> bool:
+    """Determina si un elemento debe mostrarse explícitamente por defecto."""
     return element not in _IMPLICIT_ELEMENTS
 
 
 def _atom_degree(model: MolGraph, atom_id: int) -> int:
+    """Calcula el grado (número de enlaces) de un átomo en el modelo."""
     return sum(
         1
         for bond in model.bonds.values()
@@ -26,6 +34,7 @@ def _atom_degree(model: MolGraph, atom_id: int) -> int:
 
 
 def _neighbor_angles_deg(model: MolGraph, atom_id: int) -> list[float]:
+    """Devuelve los ángulos hacia los vecinos de un átomo."""
     anchor = model.get_atom(atom_id)
     origin = QPointF(anchor.x, anchor.y)
     angles: list[float] = []
@@ -41,6 +50,7 @@ def _neighbor_angles_deg(model: MolGraph, atom_id: int) -> list[float]:
 
 
 def _select_hydrogen_angles(existing_angles_deg: list[float], count: int) -> list[float]:
+    """Selecciona ángulos base para colocar hidrógenos implícitos."""
     base_angles = [0.0, 120.0, 240.0]
     if count <= 0:
         return []
@@ -48,6 +58,7 @@ def _select_hydrogen_angles(existing_angles_deg: list[float], count: int) -> lis
         return base_angles[:count]
 
     def min_distance(angle: float) -> float:
+        """Calcula la distancia mínima a los ángulos existentes."""
         return min(angle_distance_deg(angle, existing) for existing in existing_angles_deg)
 
     ordered = sorted(base_angles, key=min_distance, reverse=True)
@@ -55,10 +66,12 @@ def _select_hydrogen_angles(existing_angles_deg: list[float], count: int) -> lis
 
 
 def _bond_length_from_view(view) -> float:
+    """Obtiene la longitud de enlace configurada desde la vista."""
     return getattr(getattr(view, "state", None), "bond_length", 40.0)
 
 
 def _remove_hydrogen_specs(model: MolGraph, view, specs: list[tuple[int, float, float, int]]) -> None:
+    """Elimina hidrógenos y enlaces descritos por `specs` del modelo y la vista."""
     for _atom_id, _x, _y, bond_id in specs:
         if bond_id in model.bonds:
             model.remove_bond(bond_id)
@@ -75,6 +88,7 @@ def _readd_hydrogen_specs(
     anchor_id: int,
     specs: list[tuple[int, float, float, int]],
 ) -> None:
+    """Recrea hidrógenos y enlaces a partir de `specs`."""
     for atom_id, x, y, _bond_id in specs:
         atom = model.add_atom("H", x, y, atom_id=atom_id, is_explicit=True)
         view.add_atom_item(atom)
@@ -90,6 +104,11 @@ def _create_hydrogen_specs(
     angles_deg: list[float],
     bond_length: float,
 ) -> list[tuple[int, float, float, int]]:
+    """Crea hidrógenos explícitos alrededor de un átomo ancla.
+
+    Returns:
+        Lista de especificaciones `(atom_id, x, y, bond_id)` creadas.
+    """
     anchor = model.get_atom(anchor_id)
     origin = QPointF(anchor.x, anchor.y)
     specs: list[tuple[int, float, float, int]] = []
@@ -107,6 +126,7 @@ def _collect_attached_hydrogens(
     model: MolGraph,
     atom_id: int,
 ) -> tuple[list, list]:
+    """Recolecta hidrógenos unidos a un átomo para poder restaurarlos."""
     removed_atoms = []
     removed_bonds = []
     for bond in model.bonds.values():
@@ -127,6 +147,8 @@ def _collect_attached_hydrogens(
 
 
 class AddAtomCommand(QUndoCommand):
+    """Comando para añadir un átomo al modelo y a la vista."""
+
     def __init__(
         self,
         model: MolGraph,
@@ -144,6 +166,24 @@ class AddAtomCommand(QUndoCommand):
         auto_hydrogens: bool = True,
         expected_bonds: int = 0,
     ) -> None:
+        """Inicializa el comando de adición de átomo.
+
+        Args:
+            model: Modelo molecular a modificar.
+            view: Vista/lienzo asociado.
+            element: Símbolo del elemento.
+            x: Coordenada X.
+            y: Coordenada Y.
+            is_explicit: Si el símbolo debe mostrarse explícitamente.
+            charge: Carga formal.
+            isotope: Isótopo (número másico).
+            explicit_h: Hidrógenos explícitos.
+            mapping: Índice de mapeo.
+            is_query: Marca de átomo de consulta.
+            anchor_override: Ancla visual alternativa.
+            auto_hydrogens: Si se auto-generan hidrógenos.
+            expected_bonds: Número de enlaces esperados (para H implícitos).
+        """
         super().__init__("Add atom")
         self._model = model
         self._view = view
@@ -163,6 +203,7 @@ class AddAtomCommand(QUndoCommand):
         self._hydrogen_specs: list[tuple[int, float, float, int]] = []
 
     def redo(self) -> None:
+        """Ejecuta la adición del átomo (redo)."""
         is_explicit = self._is_explicit
         if is_explicit is None:
             is_explicit = _default_is_explicit(self._element)
@@ -199,6 +240,7 @@ class AddAtomCommand(QUndoCommand):
             self._view._refresh_atom_label(atom.id)
 
     def undo(self) -> None:
+        """Deshace la adición del átomo y sus hidrógenos."""
         if self._hydrogen_specs:
             _remove_hydrogen_specs(self._model, self._view, self._hydrogen_specs)
         atom, removed_bonds = self._model.remove_atom(self._atom_id)
@@ -208,10 +250,13 @@ class AddAtomCommand(QUndoCommand):
 
     @property
     def atom_id(self) -> Optional[int]:
+        """Devuelve el ID del átomo creado (si existe)."""
         return self._atom_id
 
 
 class ChangeAtomCommand(QUndoCommand):
+    """Comando para cambiar el elemento de un átomo existente."""
+
     def __init__(
         self,
         model: MolGraph,
@@ -220,6 +265,15 @@ class ChangeAtomCommand(QUndoCommand):
         new_element: str,
         anchor_override=_ANCHOR_UNSET,
     ) -> None:
+        """Inicializa el comando de cambio de átomo.
+
+        Args:
+            model: Modelo molecular.
+            view: Vista/lienzo asociado.
+            atom_id: ID del átomo a modificar.
+            new_element: Nuevo símbolo de elemento.
+            anchor_override: Ancla visual opcional.
+        """
         super().__init__("Change atom")
         self._model = model
         self._view = view
@@ -239,6 +293,7 @@ class ChangeAtomCommand(QUndoCommand):
         self._removed_hydrogen_specs: list[tuple[int, float, float, int]] = []
 
     def redo(self) -> None:
+        """Aplica el cambio de elemento y actualiza la vista."""
         # Check if we need to remove hydrogens due to valence
         if not self._removed_hydrogen_specs:
             self._check_and_remove_hydrogens()
@@ -260,6 +315,7 @@ class ChangeAtomCommand(QUndoCommand):
         )
 
     def undo(self) -> None:
+        """Revierte el cambio de elemento y restaura hidrógenos."""
         if self._anchor_override is not _ANCHOR_UNSET:
             self._view.set_anchor_override(self._atom_id, self._old_anchor_override)
         self._model.update_atom_element(
@@ -278,6 +334,7 @@ class ChangeAtomCommand(QUndoCommand):
             _readd_hydrogen_specs(self._model, self._view, self._atom_id, self._removed_hydrogen_specs)
 
     def _check_and_remove_hydrogens(self) -> None:
+        """Elimina hidrógenos explícitos si exceden la valencia permitida."""
         from core.model import VALENCE_MAP
         
         # 1. Get current bonds (excluding explicit H)
@@ -331,7 +388,17 @@ class ChangeAtomCommand(QUndoCommand):
 
 
 class ChangeChargeCommand(QUndoCommand):
+    """Comando para modificar la carga formal de un átomo."""
+
     def __init__(self, model: MolGraph, view, atom_id: int, new_charge: int) -> None:
+        """Inicializa el comando de cambio de carga.
+
+        Args:
+            model: Modelo molecular.
+            view: Vista/lienzo asociado.
+            atom_id: ID del átomo a modificar.
+            new_charge: Nueva carga formal.
+        """
         super().__init__("Change charge")
         self._model = model
         self._view = view
@@ -340,15 +407,19 @@ class ChangeChargeCommand(QUndoCommand):
         self._new_charge = new_charge
 
     def redo(self) -> None:
+        """Aplica el cambio de carga."""
         self._model.update_atom_charge(self._atom_id, self._new_charge)
         self._view.update_atom_item_charge(self._atom_id, self._new_charge)
 
     def undo(self) -> None:
+        """Revierte el cambio de carga."""
         self._model.update_atom_charge(self._atom_id, self._old_charge)
         self._view.update_atom_item_charge(self._atom_id, self._old_charge)
 
 
 class AddBondCommand(QUndoCommand):
+    """Comando para añadir un enlace (y opcionalmente un átomo nuevo)."""
+
     def __init__(
         self,
         model: MolGraph,
@@ -367,6 +438,25 @@ class AddBondCommand(QUndoCommand):
         new_atom_element: Optional[str] = None,
         new_atom_pos: Optional[Tuple[float, float]] = None,
     ) -> None:
+        """Inicializa el comando de adición de enlace.
+
+        Args:
+            model: Modelo molecular.
+            view: Vista/lienzo asociado.
+            a1_id: ID del átomo inicial.
+            a2_id: ID del átomo final (o `None` si se crea uno nuevo).
+            order: Orden del enlace.
+            style: Estilo visual del enlace.
+            stereo: Estereoquímica del enlace.
+            is_aromatic: Si el enlace se marca como aromático.
+            display_order: Orden visual alternativo.
+            length_px: Longitud de dibujo fija.
+            ring_id: Identificador de anillo asociado.
+            stroke_px: Grosor de línea.
+            color: Color del enlace.
+            new_atom_element: Elemento del átomo a crear si `a2_id` es `None`.
+            new_atom_pos: Posición del átomo a crear.
+        """
         super().__init__("Add bond")
         self._model = model
         self._view = view
@@ -389,6 +479,7 @@ class AddBondCommand(QUndoCommand):
         self._demoted_explicit_atoms: Optional[list[int]] = None
 
     def _should_demote_explicit_carbon(self, atom_id: int) -> bool:
+        """Decide si un carbono explícito debe ocultarse tras crear el enlace."""
         atom = self._model.get_atom(atom_id)
         if atom.element != "C" or not atom.is_explicit:
             return False
@@ -403,6 +494,7 @@ class AddBondCommand(QUndoCommand):
         return True
 
     def redo(self) -> None:
+        """Aplica la creación del enlace y del átomo opcional."""
         if self._a2_id is None:
             if self._created_atom_id is None:
                 if self._new_atom_element is None or self._new_atom_pos is None:
@@ -473,6 +565,7 @@ class AddBondCommand(QUndoCommand):
                 self._view.update_atom_item_element(atom_id, atom.element, is_explicit=False)
 
     def undo(self) -> None:
+        """Deshace la creación del enlace y restaura estado previo."""
         if self._hydrogen_specs:
             _remove_hydrogen_specs(self._model, self._view, self._hydrogen_specs)
         bond = self._model.remove_bond(self._bond_id)
@@ -492,6 +585,8 @@ class AddBondCommand(QUndoCommand):
 
 
 class ChangeBondCommand(QUndoCommand):
+    """Comando para modificar propiedades de un enlace."""
+
     def __init__(
         self,
         model: MolGraph,
@@ -502,6 +597,17 @@ class ChangeBondCommand(QUndoCommand):
         new_stereo: Optional[BondStereo] = None,
         new_is_aromatic: Optional[bool] = None,
     ) -> None:
+        """Inicializa el comando de cambio de enlace.
+
+        Args:
+            model: Modelo molecular.
+            view: Vista/lienzo asociado.
+            bond_id: ID del enlace a modificar.
+            new_order: Nuevo orden de enlace.
+            new_style: Nuevo estilo de enlace.
+            new_stereo: Nueva estereoquímica.
+            new_is_aromatic: Nueva bandera de aromaticidad.
+        """
         super().__init__("Change bond")
         self._model = model
         self._view = view
@@ -519,6 +625,7 @@ class ChangeBondCommand(QUndoCommand):
         )
 
     def redo(self) -> None:
+        """Aplica el cambio de propiedades del enlace."""
         self._model.update_bond(
             self._bond_id,
             order=self._new_order,
@@ -529,6 +636,7 @@ class ChangeBondCommand(QUndoCommand):
         self._view.update_bond_item(self._bond_id)
 
     def undo(self) -> None:
+        """Revierte el cambio de propiedades del enlace."""
         self._model.update_bond(
             self._bond_id,
             order=self._old_order,
@@ -540,7 +648,10 @@ class ChangeBondCommand(QUndoCommand):
 
 
 class ChangeBondLengthCommand(QUndoCommand):
+    """Comando para cambiar la longitud visual de un enlace."""
+
     def __init__(self, model: MolGraph, view, bond_id: int, new_length: Optional[float]) -> None:
+        """Inicializa el comando de cambio de longitud de enlace."""
         super().__init__("Change bond length")
         self._model = model
         self._view = view
@@ -550,14 +661,18 @@ class ChangeBondLengthCommand(QUndoCommand):
         self._new_length = new_length
 
     def redo(self) -> None:
+        """Aplica la nueva longitud."""
         self._model.update_bond_length(self._bond_id, self._new_length)
         self._view.update_bond_item(self._bond_id)
 
     def undo(self) -> None:
+        """Revierte a la longitud anterior."""
         self._model.update_bond_length(self._bond_id, self._old_length)
         self._view.update_bond_item(self._bond_id)
 
 class ChangeBondStrokeCommand(QUndoCommand):
+    """Comando para cambiar el grosor de un enlace."""
+
     def __init__(
         self,
         model: MolGraph,
@@ -565,6 +680,7 @@ class ChangeBondStrokeCommand(QUndoCommand):
         bond_id: int,
         new_stroke_px: Optional[float],
     ) -> None:
+        """Inicializa el comando de cambio de grosor."""
         super().__init__("Change bond thickness")
         self._model = model
         self._view = view
@@ -574,14 +690,18 @@ class ChangeBondStrokeCommand(QUndoCommand):
         self._new_stroke = new_stroke_px
 
     def redo(self) -> None:
+        """Aplica el nuevo grosor."""
         self._model.update_bond(self._bond_id, stroke_px=self._new_stroke)
         self._view.update_bond_item(self._bond_id)
 
     def undo(self) -> None:
+        """Revierte al grosor anterior."""
         self._model.update_bond(self._bond_id, stroke_px=self._old_stroke)
         self._view.update_bond_item(self._bond_id)
 
 class ChangeBondColorCommand(QUndoCommand):
+    """Comando para cambiar el color de un enlace."""
+
     def __init__(
         self,
         model: MolGraph,
@@ -589,6 +709,7 @@ class ChangeBondColorCommand(QUndoCommand):
         bond_id: int,
         new_color: Optional[str],
     ) -> None:
+        """Inicializa el comando de cambio de color."""
         super().__init__("Change bond color")
         self._model = model
         self._view = view
@@ -598,14 +719,18 @@ class ChangeBondColorCommand(QUndoCommand):
         self._new_color = new_color
 
     def redo(self) -> None:
+        """Aplica el nuevo color."""
         self._model.update_bond(self._bond_id, color=self._new_color)
         self._view.update_bond_item(self._bond_id)
 
     def undo(self) -> None:
+        """Revierte al color anterior."""
         self._model.update_bond(self._bond_id, color=self._old_color)
         self._view.update_bond_item(self._bond_id)
 
 class MoveAtomsCommand(QUndoCommand):
+    """Comando para mover átomos y actualizar enlaces."""
+
     def __init__(
         self,
         model: MolGraph,
@@ -614,6 +739,7 @@ class MoveAtomsCommand(QUndoCommand):
         after: Dict[int, Tuple[float, float]],
         skip_first_redo: bool = False,
     ) -> None:
+        """Inicializa el comando de movimiento de átomos."""
         super().__init__("Move atoms")
         self._model = model
         self._view = view
@@ -623,15 +749,18 @@ class MoveAtomsCommand(QUndoCommand):
         self._first_redo = True
 
     def redo(self) -> None:
+        """Aplica el movimiento (redo) considerando la primera ejecución."""
         if self._skip_first_redo and self._first_redo:
             self._first_redo = False
             return
         self._apply_positions(self._after)
 
     def undo(self) -> None:
+        """Revierte las posiciones anteriores."""
         self._apply_positions(self._before)
 
     def _apply_positions(self, positions: Dict[int, Tuple[float, float]]) -> None:
+        """Aplica un conjunto de posiciones a átomos y refresca enlaces."""
         for atom_id, (x, y) in positions.items():
             self._model.update_atom_position(atom_id, x, y)
             self._view.update_atom_item(atom_id, x, y)
@@ -639,19 +768,24 @@ class MoveAtomsCommand(QUndoCommand):
 
 
 class MoveTextItemsCommand(QUndoCommand):
+    """Comando para mover elementos de texto en el lienzo."""
+
     def __init__(self, view, before: dict, after: dict):
+        """Inicializa el comando de movimiento de textos."""
         super().__init__("Move text items")
         self._view = view
         self._before = before # {item: (pos, rotation)}
         self._after = after   # {item: (pos, rotation)}
 
     def redo(self):
+        """Aplica nuevas posiciones/rotaciones de texto."""
         for item, (pos, rot) in self._after.items():
             item.setPos(pos)
             item.setRotation(rot)
         self._view._update_selection_overlay()
 
     def undo(self):
+        """Revierte a las posiciones/rotaciones anteriores."""
         for item, (pos, rot) in self._before.items():
             item.setPos(pos)
             item.setRotation(rot)
@@ -659,42 +793,54 @@ class MoveTextItemsCommand(QUndoCommand):
 
 
 class MoveArrowItemsCommand(QUndoCommand):
+    """Comando para mover elementos de flecha."""
+
     def __init__(self, view, before: dict, after: dict):
+        """Inicializa el comando de movimiento de flechas."""
         super().__init__("Move arrows")
         self._view = view
         self._before = before  # {item: (start, end)}
         self._after = after    # {item: (start, end)}
 
     def redo(self) -> None:
+        """Aplica nuevas posiciones de flechas."""
         for item, (start, end) in self._after.items():
             item.update_positions(start, end)
         self._view._update_selection_overlay()
 
     def undo(self) -> None:
+        """Revierte posiciones de flechas."""
         for item, (start, end) in self._before.items():
             item.update_positions(start, end)
         self._view._update_selection_overlay()
 
 
 class MoveBracketItemsCommand(QUndoCommand):
+    """Comando para mover elementos de corchetes."""
+
     def __init__(self, view, before: dict, after: dict):
+        """Inicializa el comando de movimiento de corchetes."""
         super().__init__("Move brackets")
         self._view = view
         self._before = before  # {item: QRectF}
         self._after = after    # {item: QRectF}
 
     def redo(self) -> None:
+        """Aplica nuevos rectángulos de corchetes."""
         for item, rect in self._after.items():
             item.set_rect(rect)
         self._view._update_selection_overlay()
 
     def undo(self) -> None:
+        """Revierte los rectángulos de corchetes."""
         for item, rect in self._before.items():
             item.set_rect(rect)
         self._view._update_selection_overlay()
 
 
 class DeleteSelectionCommand(QUndoCommand):
+    """Comando para eliminar selección (átomos, enlaces y anotaciones)."""
+
     def __init__(
         self,
         model: MolGraph,
@@ -706,6 +852,7 @@ class DeleteSelectionCommand(QUndoCommand):
         text_items: Iterable = (),
         wavy_items: Iterable = (),
     ) -> None:
+        """Inicializa el comando de borrado de selección."""
         super().__init__("Delete selection")
         self._model = model
         self._view = view
@@ -723,6 +870,7 @@ class DeleteSelectionCommand(QUndoCommand):
         self._removed_wavy = []
 
     def redo(self) -> None:
+        """Aplica el borrado y guarda copias para restaurar."""
         if not self._removed_atoms and not self._removed_bonds:
             for atom_id in self._atom_ids:
                 if atom_id in self._model.atoms:
@@ -765,6 +913,7 @@ class DeleteSelectionCommand(QUndoCommand):
             self._view.remove_wavy_anchor_item(item)
 
     def undo(self) -> None:
+        """Restaura los elementos eliminados."""
         for atom in self._removed_atoms:
             self._model.add_atom(
                 atom.element,
@@ -805,7 +954,10 @@ class DeleteSelectionCommand(QUndoCommand):
 
 
 class AddArrowCommand(QUndoCommand):
+    """Comando para añadir una flecha de anotación."""
+
     def __init__(self, view, start: QPointF, end: QPointF, kind: str) -> None:
+        """Inicializa el comando de flecha."""
         super().__init__("Add arrow")
         self._view = view
         self._start = QPointF(start)
@@ -814,18 +966,23 @@ class AddArrowCommand(QUndoCommand):
         self._item = None
 
     def redo(self) -> None:
+        """Crea o reintroduce la flecha."""
         if self._item is None:
             self._item = self._view.add_arrow_item(self._start, self._end, self._kind)
         else:
             self._view.readd_arrow_item(self._item, self._start, self._end, self._kind)
 
     def undo(self) -> None:
+        """Elimina la flecha añadida."""
         if self._item is not None:
             self._view.remove_arrow_item(self._item)
 
 
 class AddBracketCommand(QUndoCommand):
+    """Comando para añadir corchetes/llaves de anotación."""
+
     def __init__(self, view, rect: QRectF, kind: str) -> None:
+        """Inicializa el comando de corchetes."""
         super().__init__("Add brackets")
         self._view = view
         self._rect = QRectF(rect)
@@ -833,47 +990,61 @@ class AddBracketCommand(QUndoCommand):
         self._item = None
 
     def redo(self) -> None:
+        """Crea o reintroduce los corchetes."""
         if self._item is None:
             self._item = self._view.add_bracket_item(self._rect, self._kind)
         else:
             self._view.readd_bracket_item(self._item, self._rect, self._kind)
 
     def undo(self) -> None:
+        """Elimina los corchetes añadidos."""
         if self._item is not None:
             self._view.remove_bracket_item(self._item)
 
 
 class AddTextItemCommand(QUndoCommand):
+    """Comando para añadir un elemento de texto."""
+
     def __init__(self, view, item) -> None:
+        """Inicializa el comando de texto."""
         super().__init__("Add text")
         self._view = view
         self._item = item
 
     def redo(self) -> None:
+        """Reintroduce el texto en el lienzo."""
         if self._item is not None:
             self._view.readd_text_item(self._item)
 
     def undo(self) -> None:
+        """Elimina el texto añadido."""
         if self._item is not None:
             self._view.remove_text_item(self._item)
 
 
 class AddWavyAnchorCommand(QUndoCommand):
+    """Comando para añadir un ancla ondulada."""
+
     def __init__(self, view, item) -> None:
+        """Inicializa el comando de ancla ondulada."""
         super().__init__("Add wavy anchor")
         self._view = view
         self._item = item
 
     def redo(self) -> None:
+        """Reintroduce el ancla ondulada."""
         if self._item is not None:
             self._view.readd_wavy_anchor_item(self._item)
 
     def undo(self) -> None:
+        """Elimina el ancla ondulada añadida."""
         if self._item is not None:
             self._view.remove_wavy_anchor_item(self._item)
 
 
 class AddRingCommand(QUndoCommand):
+    """Comando para añadir un anillo (posiblemente con átomos nuevos)."""
+
     def __init__(
         self,
         model: MolGraph,
@@ -882,6 +1053,7 @@ class AddRingCommand(QUndoCommand):
         edges: List[Tuple],
         element: str = "C",
     ) -> None:
+        """Inicializa el comando de creación de anillo."""
         super().__init__("Add ring")
         self._model = model
         self._view = view
@@ -894,6 +1066,7 @@ class AddRingCommand(QUndoCommand):
         self._updated_existing: List[Tuple[int, int, bool, int]] = []
 
     def redo(self) -> None:
+        """Crea o reintroduce el anillo con sus enlaces."""
         if not self._created_atom_ids:
             self._created_atom_ids = [v[0] for v in self._vertices]
 
@@ -1000,6 +1173,7 @@ class AddRingCommand(QUndoCommand):
                 self._view.update_bond_item(bond.id)
 
     def undo(self) -> None:
+        """Elimina el anillo y restaura enlaces previos."""
         for bond in list(self._created_bonds):
             if bond.id in self._model.bonds:
                 self._model.remove_bond(bond.id)
@@ -1027,6 +1201,8 @@ class AddRingCommand(QUndoCommand):
 
 
 class AddChainCommand(QUndoCommand):
+    """Comando para añadir una cadena lineal de átomos."""
+
     def __init__(
         self,
         model: MolGraph,
@@ -1036,6 +1212,7 @@ class AddChainCommand(QUndoCommand):
         element: str = "C",
         anchor_position: Optional[Tuple[float, float]] = None,
     ) -> None:
+        """Inicializa el comando de creación de cadena."""
         super().__init__("Add chain")
         self._model = model
         self._view = view
@@ -1048,6 +1225,7 @@ class AddChainCommand(QUndoCommand):
         self._created_anchor_id: Optional[int] = None
 
     def redo(self) -> None:
+        """Crea o reintroduce la cadena."""
         if not self._created_atom_ids:
             self._created_atom_ids = [None for _ in self._positions]
         if not self._created_bond_ids:
@@ -1105,6 +1283,7 @@ class AddChainCommand(QUndoCommand):
             prev_id = self._created_atom_ids[idx]
 
     def undo(self) -> None:
+        """Elimina la cadena y sus enlaces."""
         for bond_id in list(self._created_bond_ids):
             if bond_id in self._model.bonds:
                 self._model.remove_bond(bond_id)

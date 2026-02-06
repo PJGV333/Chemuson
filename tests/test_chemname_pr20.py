@@ -1,3 +1,5 @@
+"""Pruebas unitarias para test_chemname_pr20."""
+
 import os
 import sys
 import unittest
@@ -9,6 +11,15 @@ from chemname import iupac_name
 
 
 def build_anthracene(graph: MolGraph) -> list[int]:
+    """Función de prueba auxiliar para build anthracene.
+
+    Args:
+        graph: Descripción del parámetro.
+
+    Returns:
+        None.
+
+    """
     atoms = [graph.add_atom("C", float(i), 0.0) for i in range(14)]
     ring1 = [0, 1, 2, 3, 4, 5]
     ring2 = [3, 4, 6, 7, 8, 9]
@@ -23,6 +34,15 @@ def build_anthracene(graph: MolGraph) -> list[int]:
 
 
 def build_phenanthrene(graph: MolGraph) -> list[int]:
+    """Función de prueba auxiliar para build phenanthrene.
+
+    Args:
+        graph: Descripción del parámetro.
+
+    Returns:
+        None.
+
+    """
     atoms = [graph.add_atom("C", float(i), 0.0) for i in range(14)]
     ring1 = [0, 1, 2, 3, 4, 5]
     ring2 = [3, 4, 6, 7, 8, 9]
@@ -37,12 +57,25 @@ def build_phenanthrene(graph: MolGraph) -> list[int]:
 
 
 class ChemNamePR20Test(unittest.TestCase):
+    """Casos de prueba para ChemNamePR20Test."""
     def test_anthracene(self):
+        """Verifica anthracene.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         build_anthracene(graph)
         self.assertEqual(iupac_name(graph), "anthracene")
 
     def test_chloroanthracene(self):
+        """Verifica chloroanthracene.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         atoms = build_anthracene(graph)
         cl = graph.add_atom("Cl", -1.0, 0.0)
@@ -50,11 +83,23 @@ class ChemNamePR20Test(unittest.TestCase):
         self.assertEqual(iupac_name(graph), "1-chloroanthracene")
 
     def test_phenanthrene(self):
+        """Verifica phenanthrene.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         build_phenanthrene(graph)
         self.assertEqual(iupac_name(graph), "phenanthrene")
 
     def test_chlorophenanthrene(self):
+        """Verifica chlorophenanthrene.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         atoms = build_phenanthrene(graph)
         cl = graph.add_atom("Cl", -1.0, 0.0)

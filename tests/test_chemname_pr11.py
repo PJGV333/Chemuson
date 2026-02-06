@@ -1,3 +1,5 @@
+"""Pruebas unitarias para test_chemname_pr11."""
+
 import os
 import sys
 import unittest
@@ -9,6 +11,15 @@ from chemname import iupac_name
 
 
 def build_benzene_kekule(graph: MolGraph) -> list[int]:
+    """Función de prueba auxiliar para build benzene kekule.
+
+    Args:
+        graph: Descripción del parámetro.
+
+    Returns:
+        None.
+
+    """
     atoms = [graph.add_atom("C", float(i), 0.0) for i in range(6)]
     for i in range(6):
         order = 2 if i % 2 == 0 else 1
@@ -17,12 +28,25 @@ def build_benzene_kekule(graph: MolGraph) -> list[int]:
 
 
 class ChemNamePR11Test(unittest.TestCase):
+    """Casos de prueba para ChemNamePR11Test."""
     def test_benzene(self):
+        """Verifica benzene.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         build_benzene_kekule(graph)
         self.assertEqual(iupac_name(graph), "benzene")
 
     def test_chlorobenzene(self):
+        """Verifica chlorobenzene.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         ring = build_benzene_kekule(graph)
         cl = graph.add_atom("Cl", -1.0, 0.0)
@@ -30,6 +54,12 @@ class ChemNamePR11Test(unittest.TestCase):
         self.assertEqual(iupac_name(graph), "chlorobenzene")
 
     def test_methylbenzene(self):
+        """Verifica methylbenzene.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         ring = build_benzene_kekule(graph)
         me = graph.add_atom("C", -1.0, 0.0)
@@ -37,6 +67,12 @@ class ChemNamePR11Test(unittest.TestCase):
         self.assertEqual(iupac_name(graph), "methylbenzene")
 
     def test_bromochlorobenzene(self):
+        """Verifica bromochlorobenzene.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         ring = build_benzene_kekule(graph)
         br = graph.add_atom("Br", -1.0, 0.0)
@@ -46,6 +82,12 @@ class ChemNamePR11Test(unittest.TestCase):
         self.assertEqual(iupac_name(graph), "1-bromo-4-chlorobenzene")
 
     def test_hydroxybenzene(self):
+        """Verifica hydroxybenzene.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         ring = build_benzene_kekule(graph)
         o = graph.add_atom("O", -1.0, 0.0)
@@ -53,6 +95,12 @@ class ChemNamePR11Test(unittest.TestCase):
         self.assertEqual(iupac_name(graph), "hydroxybenzene")
 
     def test_nitrobenzene(self):
+        """Verifica nitrobenzene.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         ring = build_benzene_kekule(graph)
         n = graph.add_atom("N", -1.0, 0.0)

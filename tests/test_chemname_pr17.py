@@ -1,3 +1,5 @@
+"""Pruebas unitarias para test_chemname_pr17."""
+
 import os
 import sys
 import unittest
@@ -9,6 +11,15 @@ from chemname import iupac_name
 
 
 def build_benzene_kekule(graph: MolGraph) -> list[int]:
+    """Función de prueba auxiliar para build benzene kekule.
+
+    Args:
+        graph: Descripción del parámetro.
+
+    Returns:
+        None.
+
+    """
     atoms = [graph.add_atom("C", float(i), 0.0) for i in range(6)]
     for i in range(6):
         order = 2 if i % 2 == 0 else 1
@@ -17,6 +28,15 @@ def build_benzene_kekule(graph: MolGraph) -> list[int]:
 
 
 def build_cyclohexane(graph: MolGraph) -> list[int]:
+    """Función de prueba auxiliar para build cyclohexane.
+
+    Args:
+        graph: Descripción del parámetro.
+
+    Returns:
+        None.
+
+    """
     atoms = [graph.add_atom("C", float(i), 0.0) for i in range(6)]
     for i in range(6):
         graph.add_bond(atoms[i].id, atoms[(i + 1) % 6].id, order=1)
@@ -24,6 +44,16 @@ def build_cyclohexane(graph: MolGraph) -> list[int]:
 
 
 def build_linear_chain(graph: MolGraph, length: int) -> list[int]:
+    """Función de prueba auxiliar para build linear chain.
+
+    Args:
+        graph: Descripción del parámetro.
+        length: Descripción del parámetro.
+
+    Returns:
+        None.
+
+    """
     ids = []
     prev = None
     for i in range(length):
@@ -36,7 +66,14 @@ def build_linear_chain(graph: MolGraph, length: int) -> list[int]:
 
 
 class ChemNamePR17Test(unittest.TestCase):
+    """Casos de prueba para ChemNamePR17Test."""
     def test_phenylheptane(self):
+        """Verifica phenylheptane.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         chain = build_linear_chain(graph, 7)
         ring = build_benzene_kekule(graph)
@@ -44,6 +81,12 @@ class ChemNamePR17Test(unittest.TestCase):
         self.assertEqual(iupac_name(graph), "1-phenylheptane")
 
     def test_benzylheptane(self):
+        """Verifica benzylheptane.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         chain = build_linear_chain(graph, 7)
         benzyl = graph.add_atom("C", -1.0, 0.0)
@@ -53,6 +96,12 @@ class ChemNamePR17Test(unittest.TestCase):
         self.assertEqual(iupac_name(graph), "1-benzylheptane")
 
     def test_cyclohexylheptane(self):
+        """Verifica cyclohexylheptane.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         chain = build_linear_chain(graph, 7)
         ring = build_cyclohexane(graph)

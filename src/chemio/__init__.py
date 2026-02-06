@@ -1,1 +1,1 @@
-"""IO helpers for Chemuson."""
+"""Utilidades de entrada/salida para Chemuson."""

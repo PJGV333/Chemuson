@@ -1,3 +1,5 @@
+"""Pruebas unitarias para test_core_model."""
+
 import os
 import sys
 import unittest
@@ -8,7 +10,14 @@ from core.model import BondStyle, BondStereo, MolGraph
 
 
 class MolGraphTest(unittest.TestCase):
+    """Casos de prueba para MolGraphTest."""
     def test_add_atom_and_bond(self):
+        """Verifica add atom and bond.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         a1 = graph.add_atom("C", 0.0, 0.0)
         a2 = graph.add_atom("O", 1.0, 0.0)
@@ -19,6 +28,12 @@ class MolGraphTest(unittest.TestCase):
         self.assertEqual(bond.order, 2)
 
     def test_update_bond(self):
+        """Verifica update bond.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         a1 = graph.add_atom("C", 0.0, 0.0)
         a2 = graph.add_atom("C", 1.0, 0.0)
@@ -30,6 +45,12 @@ class MolGraphTest(unittest.TestCase):
         self.assertEqual(updated.style, BondStyle.WAVY)
 
     def test_validate_allows_hypervalent_phosphorus(self):
+        """Verifica validate allows hypervalent phosphorus.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         p = graph.add_atom("P", 0.0, 0.0)
         o_dbl = graph.add_atom("O", 0.0, 1.0)
@@ -45,6 +66,12 @@ class MolGraphTest(unittest.TestCase):
         self.assertNotIn(p.id, graph.validate())
 
     def test_validate_allows_sf6(self):
+        """Verifica validate allows sf6.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         s = graph.add_atom("S", 0.0, 0.0)
         fs = [graph.add_atom("F", float(i), 1.0) for i in range(6)]
@@ -53,6 +80,12 @@ class MolGraphTest(unittest.TestCase):
         self.assertNotIn(s.id, graph.validate())
 
     def test_validate_allows_if7(self):
+        """Verifica validate allows if7.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         i = graph.add_atom("I", 0.0, 0.0)
         fs = [graph.add_atom("F", float(n), 1.0) for n in range(7)]
@@ -61,6 +94,12 @@ class MolGraphTest(unittest.TestCase):
         self.assertNotIn(i.id, graph.validate())
 
     def test_validate_allows_ammonium(self):
+        """Verifica validate allows ammonium.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         n = graph.add_atom("N", 0.0, 0.0)
         hs = [graph.add_atom("H", float(k), 1.0) for k in range(4)]
@@ -69,6 +108,12 @@ class MolGraphTest(unittest.TestCase):
         self.assertNotIn(n.id, graph.validate())
 
     def test_validate_still_flags_overvalent_carbon(self):
+        """Verifica validate still flags overvalent carbon.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         c = graph.add_atom("C", 0.0, 0.0)
         hs = [graph.add_atom("H", float(k), 1.0) for k in range(5)]

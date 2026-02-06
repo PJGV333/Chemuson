@@ -1,3 +1,5 @@
+"""Pruebas unitarias para test_chemname_pr3."""
+
 import os
 import sys
 import unittest
@@ -12,6 +14,16 @@ from chemname.parent_chain import longest_carbon_chain
 
 
 def build_linear_chain(graph: MolGraph, length: int) -> list[int]:
+    """Función de prueba auxiliar para build linear chain.
+
+    Args:
+        graph: Descripción del parámetro.
+        length: Descripción del parámetro.
+
+    Returns:
+        None.
+
+    """
     ids = []
     prev_id = None
     for i in range(length):
@@ -24,7 +36,14 @@ def build_linear_chain(graph: MolGraph, length: int) -> list[int]:
 
 
 class ChemNamePR3Test(unittest.TestCase):
+    """Casos de prueba para ChemNamePR3Test."""
     def test_orientation_prefers_bromo_at_one(self):
+        """Verifica orientation prefers bromo at one.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         chain_ids = build_linear_chain(graph, 12)
 

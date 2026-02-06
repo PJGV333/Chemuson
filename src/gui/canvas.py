@@ -1,6 +1,8 @@
 """
-Chemuson Canvas
-Page-based canvas using QGraphicsView/QGraphicsScene for document-style editing.
+Lienzo principal de Chemuson (QGraphicsView/QGraphicsScene).
+
+Gestiona el dibujo de moléculas, herramientas de edición, anotaciones,
+persistencia visual y renderización para exportaciones.
 """
 from __future__ import annotations
 
@@ -120,10 +122,10 @@ from chemio.rdkit_io import (
 from chemname import iupac_name, NameOptions
 
 
-# Paper dimensions (default: A4-ish, in px)
+# Dimensiones de papel (aprox. A4 en px)
 DEFAULT_PAPER_WIDTH = 800
 DEFAULT_PAPER_HEIGHT = 1000
-PAPER_MARGIN = 40  # Margins where atoms shouldn't be placed
+PAPER_MARGIN = 40  # Márgenes donde no se deben colocar átomos
 ATOM_HIT_RADIUS = 16.0
 DEFAULT_BOND_LENGTH = 40.0
 HOVER_ATOM_RADIUS = 16.0
@@ -138,6 +140,7 @@ BOND_OVERLAP_TOLERANCE_PX = 5.0
 BOND_DRAG_THRESHOLD_PX = 6.0
 BOND_LAST_ANGLE_TOLERANCE_DEG = 20.0
 CLIPBOARD_RENDER_SCALE = 5.0
+# Etiquetas rápidas para grupos funcionales comunes.
 FUNCTIONAL_GROUP_LABELS = [
     "NH2",
     "NO2",
@@ -288,13 +291,24 @@ SYMBOL_TEXT_TOOLS = {
 
 class ChemusonCanvas(QGraphicsView):
     """
-    Page-based canvas for drawing molecules.
-    Uses QGraphicsView/QGraphicsScene with a centered paper sheet.
+    Lienzo principal para dibujar moléculas en páginas.
+    Usa QGraphicsView/QGraphicsScene con una hoja centrada.
     """
     
     selection_changed = pyqtSignal(int, int, int, dict)
 
     def __init__(self, parent=None) -> None:
+        """Inicializa la instancia.
+
+        Args:
+            parent: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         super().__init__(parent)
 
         self.scene = QGraphicsScene()
@@ -408,6 +422,14 @@ class ChemusonCanvas(QGraphicsView):
         return self.model
 
     def _setup_view(self) -> None:
+        """Método auxiliar para  setup view.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         self.setBackgroundBrush(QBrush(QColor("#E0E0E0")))
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.setRenderHint(QPainter.RenderHint.TextAntialiasing)
@@ -424,10 +446,32 @@ class ChemusonCanvas(QGraphicsView):
         self._max_zoom = 4.0
 
     def set_show_rulers(self, enabled: bool) -> None:
+        """Actualiza el estado de show rulers.
+
+        Args:
+            enabled: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         self.show_rulers = enabled
         self.viewport().update()
 
     def set_show_grid(self, enabled: bool) -> None:
+        """Actualiza el estado de show grid.
+
+        Args:
+            enabled: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         self.show_grid = enabled
         if self._grid_minor_item is not None:
             self._grid_minor_item.setVisible(enabled)
@@ -436,6 +480,17 @@ class ChemusonCanvas(QGraphicsView):
         self.viewport().update()
 
     def paintEvent(self, event) -> None:
+        """Método auxiliar para paintEvent.
+
+        Args:
+            event: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         super().paintEvent(event)
         if not self.show_rulers:
             return
@@ -447,6 +502,17 @@ class ChemusonCanvas(QGraphicsView):
 
 
     def _paint_rulers(self, painter: QPainter) -> None:
+        """Método auxiliar para  paint rulers.
+
+        Args:
+            painter: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         rect = self.viewport().rect()
         thickness = RULER_THICKNESS_PX
         bg = QColor("#F2F2F2")
@@ -515,9 +581,28 @@ class ChemusonCanvas(QGraphicsView):
             y += RULER_MAJOR_STEP_PX
 
     def leaveEvent(self, event) -> None:
+        """Método auxiliar para leaveEvent.
+
+        Args:
+            event: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         super().leaveEvent(event)
 
     def _create_paper(self) -> None:
+        """Método auxiliar para  create paper.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         self.paper = QGraphicsRectItem(0, 0, self.paper_width, self.paper_height)
         self.paper.setBrush(QBrush(Qt.GlobalColor.white))
         self.paper.setPen(QPen(QColor("#CCCCCC"), 1))
@@ -534,6 +619,14 @@ class ChemusonCanvas(QGraphicsView):
         self.center_on_paper()
 
     def _create_grid(self) -> None:
+        """Método auxiliar para  create grid.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if self._grid_minor_item is not None:
             self.scene.removeItem(self._grid_minor_item)
             self._grid_minor_item = None
@@ -569,6 +662,14 @@ class ChemusonCanvas(QGraphicsView):
         self.scene.addItem(self._grid_major_item)
 
     def _create_overlays(self) -> None:
+        """Método auxiliar para  create overlays.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         self._hover_atom_indicator = HoverAtomIndicatorItem()
         self._hover_bond_indicator = HoverBondIndicatorItem()
         self._optimize_zone = OptimizeZoneItem()
@@ -589,6 +690,17 @@ class ChemusonCanvas(QGraphicsView):
         self._overlays_ready = True
 
     def set_current_tool(self, tool_id: str) -> None:
+        """Actualiza el estado de current tool.
+
+        Args:
+            tool_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if tool_id.startswith("atom_"):
             self.state.default_element = tool_id.split("_", 1)[1]
             tool_id = "tool_atom"
@@ -619,6 +731,17 @@ class ChemusonCanvas(QGraphicsView):
             self.setDragMode(QGraphicsView.DragMode.NoDrag)
 
     def set_active_bond(self, bond_spec: dict) -> None:
+        """Actualiza el estado de active bond.
+
+        Args:
+            bond_spec: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         self.state.active_bond_order = bond_spec.get("order", 1)
         self.state.active_bond_style = bond_spec.get("style", BondStyle.PLAIN)
         self.state.active_bond_stereo = bond_spec.get("stereo", BondStereo.NONE)
@@ -631,6 +754,17 @@ class ChemusonCanvas(QGraphicsView):
         self.set_current_tool("tool_bond")
 
     def set_active_ring(self, ring_spec: dict) -> None:
+        """Actualiza el estado de active ring.
+
+        Args:
+            ring_spec: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         self.state.active_ring_size = ring_spec.get("size", 6)
         self.state.active_ring_aromatic = ring_spec.get("aromatic", False)
         self.state.active_ring_template = ring_spec.get("template")
@@ -638,13 +772,44 @@ class ChemusonCanvas(QGraphicsView):
         self.set_current_tool("tool_ring")
 
     def set_active_element(self, element: str) -> None:
+        """Actualiza el estado de active element.
+
+        Args:
+            element: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         self.state.default_element = element
         self.set_current_tool("tool_atom")
 
     def center_on_paper(self) -> None:
+        """Método auxiliar para center on paper.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         self.centerOn(self.paper_width / 2, self.paper_height / 2)
 
     def set_paper_size(self, width: int, height: int) -> None:
+        """Actualiza el estado de paper size.
+
+        Args:
+            width: Descripción del parámetro.
+            height: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         width = max(200, int(width))
         height = max(200, int(height))
         if width == self.paper_width and height == self.paper_height:
@@ -661,6 +826,17 @@ class ChemusonCanvas(QGraphicsView):
         self.viewport().update()
 
     def mousePressEvent(self, event) -> None:
+        """Método auxiliar para mousePressEvent.
+
+        Args:
+            event: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if event.button() == Qt.MouseButton.MiddleButton or (
             self._space_panning and event.button() == Qt.MouseButton.LeftButton
         ):
@@ -941,6 +1117,17 @@ class ChemusonCanvas(QGraphicsView):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:
+        """Método auxiliar para mouseMoveEvent.
+
+        Args:
+            event: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if self._panning and self._pan_last_pos is not None:
             delta = event.pos() - self._pan_last_pos
             self._pan_last_pos = event.pos()
@@ -1038,6 +1225,17 @@ class ChemusonCanvas(QGraphicsView):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:
+        """Método auxiliar para mouseReleaseEvent.
+
+        Args:
+            event: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if self._panning:
             self._panning = False
             self._pan_last_pos = None
@@ -1167,6 +1365,22 @@ class ChemusonCanvas(QGraphicsView):
         text_items: Iterable = (),
         wavy_items: Iterable = (),
     ) -> None:
+        """Método auxiliar para  delete selection.
+
+        Args:
+            atom_ids: Descripción del parámetro.
+            bond_ids: Descripción del parámetro.
+            arrow_items: Descripción del parámetro.
+            bracket_items: Descripción del parámetro.
+            text_items: Descripción del parámetro.
+            wavy_items: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         extra_text_items = list(text_items)
         extra_wavy_items = list(wavy_items)
         if atom_ids and self._electron_dots:
@@ -1194,6 +1408,17 @@ class ChemusonCanvas(QGraphicsView):
         self.scene.clearSelection()
 
     def _get_item_at(self, scene_pos: QPointF):
+        """Método auxiliar para  get item at.
+
+        Args:
+            scene_pos: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         for item in self.scene.items(scene_pos):
              if isinstance(item, (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, WavyAnchorItem)):
                 return item
@@ -1205,6 +1430,18 @@ class ChemusonCanvas(QGraphicsView):
         return None
 
     def _symbol_insert_position(self, scene_pos: QPointF, atom_id: Optional[int]) -> QPointF:
+        """Método auxiliar para  symbol insert position.
+
+        Args:
+            scene_pos: Descripción del parámetro.
+            atom_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if atom_id is None:
             return scene_pos
         atom = self.model.get_atom(atom_id)
@@ -1228,6 +1465,19 @@ class ChemusonCanvas(QGraphicsView):
         scene_pos: QPointF,
         offset: Optional[float] = None,
     ) -> tuple[QPointF, float]:
+        """Método auxiliar para  symbol anchor data.
+
+        Args:
+            atom_id: Descripción del parámetro.
+            scene_pos: Descripción del parámetro.
+            offset: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         atom = self.model.get_atom(atom_id)
         center = QPointF(atom.x, atom.y)
         direction = scene_pos - center
@@ -1246,6 +1496,18 @@ class ChemusonCanvas(QGraphicsView):
         return pos, angle
 
     def _electron_dot_font_size(self, atom_id: int, scale: float) -> float:
+        """Método auxiliar para  electron dot font size.
+
+        Args:
+            atom_id: Descripción del parámetro.
+            scale: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         item = self.atom_items.get(atom_id)
         if item is not None:
             base_font = item.label.font()
@@ -1255,6 +1517,18 @@ class ChemusonCanvas(QGraphicsView):
         return max(5.0, base_size * 0.55 * scale)
 
     def _electron_radial_offset(self, atom_id: int, scale: float) -> float:
+        """Método auxiliar para  electron radial offset.
+
+        Args:
+            atom_id: Descripción del parámetro.
+            scale: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         item = self.atom_items.get(atom_id)
         dot_size = self._electron_dot_font_size(atom_id, scale)
         if item is not None and item.label.isVisible():
@@ -1264,13 +1538,45 @@ class ChemusonCanvas(QGraphicsView):
         return max(14.0, self.state.bond_length * 0.25 + dot_size * 0.4)
 
     def _electron_pair_spread(self, atom_id: int, scale: float) -> float:
+        """Método auxiliar para  electron pair spread.
+
+        Args:
+            atom_id: Descripción del parámetro.
+            scale: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         dot_size = self._electron_dot_font_size(atom_id, scale)
         return max(3.0, dot_size * 0.55)
 
     def _wavy_anchor_length(self) -> float:
+        """Método auxiliar para  wavy anchor length.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         return max(18.0, self.state.bond_length * 1.5)
 
     def _wavy_anchor_bond_angle(self, atom_id: int, scene_pos: QPointF) -> tuple[Optional[int], float]:
+        """Método auxiliar para  wavy anchor bond angle.
+
+        Args:
+            atom_id: Descripción del parámetro.
+            scene_pos: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         atom = self.model.get_atom(atom_id)
         center = QPointF(atom.x, atom.y)
         direction = scene_pos - center
@@ -1306,6 +1612,17 @@ class ChemusonCanvas(QGraphicsView):
         return None, target_angle
 
     def _position_wavy_anchor(self, item: WavyAnchorItem) -> None:
+        """Método auxiliar para  position wavy anchor.
+
+        Args:
+            item: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         anchor_id = item.data(WAVY_ANCHOR_ROLE)
         base_angle = item.data(WAVY_ANCHOR_ANGLE_ROLE)
         bond_id = item.data(WAVY_ANCHOR_BOND_ROLE)
@@ -1349,12 +1666,34 @@ class ChemusonCanvas(QGraphicsView):
             self._wavy_anchors.discard(item)
 
     def _update_wavy_anchors_for_atom(self, atom_id: int) -> None:
+        """Método auxiliar para  update wavy anchors for atom.
+
+        Args:
+            atom_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         for item in list(self._wavy_anchors):
             if item.data(WAVY_ANCHOR_ROLE) != atom_id:
                 continue
             self._position_wavy_anchor(item)
 
     def _bond_angles_for_atom(self, atom_id: int) -> list[float]:
+        """Método auxiliar para  bond angles for atom.
+
+        Args:
+            atom_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         atom = self.model.get_atom(atom_id)
         angles: list[float] = []
         for bond in self.model.bonds.values():
@@ -1371,6 +1710,17 @@ class ChemusonCanvas(QGraphicsView):
         return angles
 
     def _occupied_electron_slots(self, atom_id: int) -> set[int]:
+        """Método auxiliar para  occupied electron slots.
+
+        Args:
+            atom_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         occupied: set[int] = set()
         for item in self._electron_dots:
             if item.data(ELECTRON_ANCHOR_ROLE) != atom_id:
@@ -1382,6 +1732,18 @@ class ChemusonCanvas(QGraphicsView):
         return occupied
 
     def _candidate_electron_slots(self, atom_id: int, mode: str) -> list[int]:
+        """Método auxiliar para  candidate electron slots.
+
+        Args:
+            atom_id: Descripción del parámetro.
+            mode: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         bond_angles = self._bond_angles_for_atom(atom_id)
         bond_count = len(bond_angles)
         if mode != "lone_pair":
@@ -1441,6 +1803,19 @@ class ChemusonCanvas(QGraphicsView):
         scene_pos: QPointF,
         candidate_slots: Optional[list[int]] = None,
     ) -> Optional[int]:
+        """Método auxiliar para  select electron slot.
+
+        Args:
+            atom_id: Descripción del parámetro.
+            scene_pos: Descripción del parámetro.
+            candidate_slots: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         atom = self.model.get_atom(atom_id)
         center = QPointF(atom.x, atom.y)
         direction = scene_pos - center
@@ -1472,6 +1847,19 @@ class ChemusonCanvas(QGraphicsView):
         return best_idx
 
     def _electron_slot_position(self, atom_id: int, slot_idx: int, scale: float) -> tuple[QPointF, QPointF]:
+        """Método auxiliar para  electron slot position.
+
+        Args:
+            atom_id: Descripción del parámetro.
+            slot_idx: Descripción del parámetro.
+            scale: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         atom = self.model.get_atom(atom_id)
         angle = math.radians(ELECTRON_SLOT_ANGLES[slot_idx])
         nx = math.cos(angle)
@@ -1484,6 +1872,17 @@ class ChemusonCanvas(QGraphicsView):
         return pos, tangent
 
     def _position_electron_dot(self, item: TextAnnotationItem) -> None:
+        """Método auxiliar para  position electron dot.
+
+        Args:
+            item: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if not item.data(ELECTRON_DOT_ROLE):
             return
         anchor_id = item.data(ELECTRON_ANCHOR_ROLE)
@@ -1504,6 +1903,17 @@ class ChemusonCanvas(QGraphicsView):
         item.setPos(pos.x() - rect.width() / 2, pos.y() - rect.height() / 2)
 
     def _update_electron_dots_for_atom(self, atom_id: int) -> None:
+        """Método auxiliar para  update electron dots for atom.
+
+        Args:
+            atom_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         for item in list(self._electron_dots):
             if item.data(ELECTRON_ANCHOR_ROLE) != atom_id:
                 continue
@@ -1518,6 +1928,22 @@ class ChemusonCanvas(QGraphicsView):
         slot_idx: Optional[int] = None,
         side: int = 0,
     ) -> None:
+        """Método auxiliar para  create dot item.
+
+        Args:
+            pos: Descripción del parámetro.
+            atom_item: Descripción del parámetro.
+            scale: Descripción del parámetro.
+            anchor_atom_id: Descripción del parámetro.
+            slot_idx: Descripción del parámetro.
+            side: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         item = TextAnnotationItem("•", 0.0, 0.0)
         self._apply_text_settings(item)
         item.setDefaultTextColor(QColor("#222222"))
@@ -1567,6 +1993,22 @@ class ChemusonCanvas(QGraphicsView):
         spread: Optional[float] = None,
         mode: str = "default",
     ) -> None:
+        """Método auxiliar para  insert electron dots.
+
+        Args:
+            scene_pos: Descripción del parámetro.
+            atom_id: Descripción del parámetro.
+            count: Descripción del parámetro.
+            scale: Descripción del parámetro.
+            spread: Descripción del parámetro.
+            mode: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if atom_id is None:
             return
         atom = self.model.get_atom(atom_id)
@@ -1616,6 +2058,18 @@ class ChemusonCanvas(QGraphicsView):
         )
 
     def _insert_wavy_anchor(self, scene_pos: QPointF, atom_id: int) -> None:
+        """Método auxiliar para  insert wavy anchor.
+
+        Args:
+            scene_pos: Descripción del parámetro.
+            atom_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if atom_id not in self.model.atoms:
             return
         bond_id, base_angle = self._wavy_anchor_bond_angle(atom_id, scene_pos)
@@ -1648,6 +2102,22 @@ class ChemusonCanvas(QGraphicsView):
         anchor_to_atom: bool,
         rotate: bool = False,
     ) -> None:
+        """Método auxiliar para  insert symbol item.
+
+        Args:
+            text: Descripción del parámetro.
+            scene_pos: Descripción del parámetro.
+            atom_id: Descripción del parámetro.
+            scale: Descripción del parámetro.
+            anchor_to_atom: Descripción del parámetro.
+            rotate: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         pos = scene_pos
         angle = 0.0
         if anchor_to_atom and atom_id is not None:
@@ -1685,6 +2155,17 @@ class ChemusonCanvas(QGraphicsView):
         self.undo_stack.push(AddTextItemCommand(self, item))
 
     def mouseDoubleClickEvent(self, event) -> None:
+        """Método auxiliar para mouseDoubleClickEvent.
+
+        Args:
+            event: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         scene_pos = self.mapToScene(event.pos())
         item = self._get_item_at(scene_pos)
         if isinstance(item, BondItem):
@@ -1723,6 +2204,17 @@ class ChemusonCanvas(QGraphicsView):
         super().mouseDoubleClickEvent(event)
 
     def wheelEvent(self, event: QWheelEvent) -> None:
+        """Método auxiliar para wheelEvent.
+
+        Args:
+            event: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
             hbar = self.horizontalScrollBar()
             delta = event.angleDelta().y()
@@ -1738,6 +2230,17 @@ class ChemusonCanvas(QGraphicsView):
             self.zoom_out()
 
     def keyPressEvent(self, event) -> None:
+        """Método auxiliar para keyPressEvent.
+
+        Args:
+            event: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         focus_item = self.scene.focusItem()
         if isinstance(focus_item, TextAnnotationItem) and (
             focus_item.textInteractionFlags()
@@ -1783,9 +2286,28 @@ class ChemusonCanvas(QGraphicsView):
         super().keyPressEvent(event)
 
     def remember_text_edit_item(self, item: TextAnnotationItem | None) -> None:
+        """Método auxiliar para remember text edit item.
+
+        Args:
+            item: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         self._last_text_edit_item = item
 
     def restore_text_edit_focus(self) -> None:
+        """Método auxiliar para restore text edit focus.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         item = getattr(self, "_last_text_edit_item", None)
         if item is None:
             return
@@ -1796,6 +2318,17 @@ class ChemusonCanvas(QGraphicsView):
         item.setFocus()
 
     def keyReleaseEvent(self, event) -> None:
+        """Método auxiliar para keyReleaseEvent.
+
+        Args:
+            event: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if event.key() == Qt.Key.Key_Space and self._space_panning:
             self._space_panning = False
             if not self._panning:
@@ -1805,6 +2338,17 @@ class ChemusonCanvas(QGraphicsView):
         super().keyReleaseEvent(event)
 
     def _handle_atom_text_entry(self, event) -> bool:
+        """Método auxiliar para  handle atom text entry.
+
+        Args:
+            event: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if event.modifiers() & (
             Qt.KeyboardModifier.ControlModifier
             | Qt.KeyboardModifier.AltModifier
@@ -1838,6 +2382,17 @@ class ChemusonCanvas(QGraphicsView):
         return True
 
     def _handle_nudge(self, event) -> bool:
+        """Método auxiliar para  handle nudge.
+
+        Args:
+            event: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         key = event.key()
         if key not in (
             Qt.Key.Key_Left,
@@ -1913,6 +2468,14 @@ class ChemusonCanvas(QGraphicsView):
         return True
 
     def _select_all_items(self) -> None:
+        """Método auxiliar para  select all items.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         self.scene.clearSelection()
         for item in self.scene.items():
             if isinstance(
@@ -1923,6 +2486,17 @@ class ChemusonCanvas(QGraphicsView):
         self._sync_selection_from_scene()
 
     def _handle_select_all(self, event) -> bool:
+        """Método auxiliar para  handle select all.
+
+        Args:
+            event: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if not (event.modifiers() & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.MetaModifier)):
             return False
         if event.key() not in (Qt.Key.Key_A, Qt.Key.Key_E):
@@ -1938,6 +2512,17 @@ class ChemusonCanvas(QGraphicsView):
 
     @staticmethod
     def _normalize_atom_label(text: str) -> str | None:
+        """Método auxiliar para  normalize atom label.
+
+        Args:
+            text: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         cleaned = text.strip()
         if not cleaned:
             return None
@@ -1959,10 +2544,29 @@ class ChemusonCanvas(QGraphicsView):
         return cleaned
 
     def _atom_label_items(self) -> list[str]:
+        """Método auxiliar para  atom label items.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         elements = ["C", "N", "O", "S", "P", "F", "Cl", "Br", "I", "H"]
         return elements + FUNCTIONAL_GROUP_LABELS
 
     def _label_anchor_candidates(self, label: str) -> list[str]:
+        """Método auxiliar para  label anchor candidates.
+
+        Args:
+            label: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         cleaned = label.strip()
         if not cleaned:
             return []
@@ -2005,6 +2609,17 @@ class ChemusonCanvas(QGraphicsView):
         return ordered
 
     def _prompt_anchor_for_atom(self, atom_id: int) -> None:
+        """Método auxiliar para  prompt anchor for atom.
+
+        Args:
+            atom_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         atom = self.model.get_atom(atom_id)
         if atom is None:
             return
@@ -2033,6 +2648,17 @@ class ChemusonCanvas(QGraphicsView):
         self._refresh_atom_label(atom_id)
 
     def _cycle_anchor_override(self, atom_id: int) -> bool:
+        """Método auxiliar para  cycle anchor override.
+
+        Args:
+            atom_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         atom = self.model.get_atom(atom_id)
         if atom is None:
             return False
@@ -2053,6 +2679,19 @@ class ChemusonCanvas(QGraphicsView):
     def _prompt_atom_label(
         self, current: str, atom_id: Optional[int] = None, initial: str | None = None
     ) -> tuple[Optional[str], Optional[str]]:
+        """Método auxiliar para  prompt atom label.
+
+        Args:
+            current: Descripción del parámetro.
+            atom_id: Descripción del parámetro.
+            initial: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         items = self._atom_label_items()
         seed = (initial or "").strip() or current
         if seed:
@@ -2249,6 +2888,14 @@ class ChemusonCanvas(QGraphicsView):
         self.refresh_aromatic_circles()
 
     def zoom_in(self) -> None:
+        """Método auxiliar para zoom in.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if self._zoom_factor < self._max_zoom:
             self._zoom_factor *= 1.2
             self.scale(1.2, 1.2)
@@ -2256,6 +2903,14 @@ class ChemusonCanvas(QGraphicsView):
             self._update_selection_overlay()
 
     def zoom_out(self) -> None:
+        """Método auxiliar para zoom out.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if self._zoom_factor > self._min_zoom:
             self._zoom_factor /= 1.2
             self.scale(1 / 1.2, 1 / 1.2)
@@ -2263,6 +2918,14 @@ class ChemusonCanvas(QGraphicsView):
             self._update_selection_overlay()
 
     def clear_canvas(self) -> None:
+        """Método auxiliar para clear canvas.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         self._overlays_ready = False
         self._cancel_drag()
         self.undo_stack.blockSignals(True)
@@ -2387,6 +3050,14 @@ class ChemusonCanvas(QGraphicsView):
                 self.register_ring_center(ring_id, (sum_x / count, sum_y / count))
 
     def _compute_ring_bond_pairs(self) -> set[frozenset[int]]:
+        """Método auxiliar para  compute ring bond pairs.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         view = MolView(self.model)
         rings = find_rings_simple(view)
         if not rings:
@@ -2398,6 +3069,18 @@ class ChemusonCanvas(QGraphicsView):
 
     @staticmethod
     def _bond_in_ring_for_pairs(bond: Bond, ring_pairs: set[frozenset[int]]) -> bool:
+        """Método auxiliar para  bond in ring for pairs.
+
+        Args:
+            bond: Descripción del parámetro.
+            ring_pairs: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if bond.ring_id is not None:
             return True
         return frozenset({bond.a1_id, bond.a2_id}) in ring_pairs
@@ -2406,6 +3089,17 @@ class ChemusonCanvas(QGraphicsView):
         self,
         ring_pairs: Optional[set[frozenset[int]]] = None,
     ) -> None:
+        """Método auxiliar para  refresh bond ring flags.
+
+        Args:
+            ring_pairs: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if ring_pairs is None:
             ring_pairs = self._compute_ring_bond_pairs()
         for bond in self.model.bonds.values():
@@ -2420,28 +3114,83 @@ class ChemusonCanvas(QGraphicsView):
                     item.update_positions(atom1, atom2)
 
     def add_text_item(self, item: TextAnnotationItem) -> None:
+        """Añade text item.
+
+        Args:
+            item: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if item.scene() is not self.scene:
             self.scene.addItem(item)
 
     def add_wavy_anchor_item(self, item: WavyAnchorItem) -> None:
+        """Añade wavy anchor item.
+
+        Args:
+            item: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if item.scene() is not self.scene:
             self.scene.addItem(item)
         self._wavy_anchors.add(item)
         self._position_wavy_anchor(item)
 
     def remove_text_item(self, item: TextAnnotationItem) -> None:
+        """Elimina text item.
+
+        Args:
+            item: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if item.scene() is self.scene:
             self.scene.removeItem(item)
         if item in self._electron_dots:
             self._electron_dots.discard(item)
 
     def remove_wavy_anchor_item(self, item: WavyAnchorItem) -> None:
+        """Elimina wavy anchor item.
+
+        Args:
+            item: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if item.scene() is self.scene:
             self.scene.removeItem(item)
         if item in self._wavy_anchors:
             self._wavy_anchors.discard(item)
 
     def readd_text_item(self, item: TextAnnotationItem) -> None:
+        """Método auxiliar para readd text item.
+
+        Args:
+            item: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if item.scene() is not self.scene:
             self.scene.addItem(item)
         if item.data(ELECTRON_DOT_ROLE):
@@ -2449,12 +3198,31 @@ class ChemusonCanvas(QGraphicsView):
             self._position_electron_dot(item)
 
     def readd_wavy_anchor_item(self, item: WavyAnchorItem) -> None:
+        """Método auxiliar para readd wavy anchor item.
+
+        Args:
+            item: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if item.scene() is not self.scene:
             self.scene.addItem(item)
         self._wavy_anchors.add(item)
         self._position_wavy_anchor(item)
 
     def delete_selection(self) -> None:
+        """Método auxiliar para delete selection.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         selected_arrows = [
             item for item in self.scene.selectedItems() if isinstance(item, ArrowItem)
         ]
@@ -2486,6 +3254,14 @@ class ChemusonCanvas(QGraphicsView):
         )
 
     def _delete_hovered(self) -> bool:
+        """Método auxiliar para  delete hovered.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if self.hovered_atom_id is not None:
             self._delete_selection({self.hovered_atom_id}, set())
             return True
@@ -2495,6 +3271,14 @@ class ChemusonCanvas(QGraphicsView):
         return False
 
     def _selected_structure_ids(self) -> tuple[set[int], list[Bond]]:
+        """Método auxiliar para  selected structure ids.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         atom_ids = self._selected_atom_ids_for_transform()
         if not atom_ids:
             return set(), []
@@ -2505,6 +3289,18 @@ class ChemusonCanvas(QGraphicsView):
         return atom_ids, bonds
 
     def _build_selection_graph(self, atom_ids: set[int], bonds: list[Bond]) -> MolGraph:
+        """Método auxiliar para  build selection graph.
+
+        Args:
+            atom_ids: Descripción del parámetro.
+            bonds: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         graph = MolGraph()
         for atom_id in atom_ids:
             atom = self.model.get_atom(atom_id)
@@ -2539,6 +3335,14 @@ class ChemusonCanvas(QGraphicsView):
         return graph
 
     def _build_selection_payload(self) -> Optional[dict]:
+        """Método auxiliar para  build selection payload.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         atom_ids, bonds = self._selected_structure_ids()
         arrows = self._selected_arrow_items()
         brackets = self._selected_bracket_items()
@@ -2637,6 +3441,17 @@ class ChemusonCanvas(QGraphicsView):
         }
 
     def _paste_selection_payload(self, payload: dict) -> None:
+        """Método auxiliar para  paste selection payload.
+
+        Args:
+            payload: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         atoms = payload.get("atoms", [])
         bonds = payload.get("bonds", [])
         arrows = payload.get("arrows", [])
@@ -2654,6 +3469,17 @@ class ChemusonCanvas(QGraphicsView):
         ring_map: dict[int, int] = {}
 
         def map_ring(ring_id: Optional[int]) -> Optional[int]:
+            """Método auxiliar para map ring.
+
+            Args:
+                ring_id: Descripción del parámetro.
+
+            Returns:
+                Resultado de la operación o None.
+
+            Side Effects:
+                Puede modificar el estado interno o la escena.
+            """
             if ring_id is None:
                 return None
             if ring_id not in ring_map:
@@ -2782,6 +3608,14 @@ class ChemusonCanvas(QGraphicsView):
 
 
     def copy_to_clipboard(self) -> None:
+        """Método auxiliar para copy to clipboard.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         selected_text_items = self._selected_text_items()
         selected_payload = self._build_selection_payload()
         atom_ids, bonds = self._selected_structure_ids()
@@ -2861,6 +3695,14 @@ class ChemusonCanvas(QGraphicsView):
         QApplication.clipboard().setMimeData(mime)
 
     def paste_from_clipboard(self) -> None:
+        """Método auxiliar para paste from clipboard.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         clipboard = QApplication.clipboard()
         mime = clipboard.mimeData()
         if mime is None:
@@ -2905,6 +3747,17 @@ class ChemusonCanvas(QGraphicsView):
             self._insert_image_from_clipboard(mime)
 
     def _paste_text_items(self, payload: dict) -> None:
+        """Método auxiliar para  paste text items.
+
+        Args:
+            payload: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         items = payload.get("text_items", [])
         if not items:
             return
@@ -2946,9 +3799,31 @@ class ChemusonCanvas(QGraphicsView):
         self._sync_selection_from_scene()
 
     def _render_scene_bounds(self, selected_only: bool = False) -> Optional[QRectF]:
+        """Método auxiliar para  render scene bounds.
+
+        Args:
+            selected_only: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         rect: Optional[QRectF] = None
 
         def extend(candidate: QRectF) -> None:
+            """Método auxiliar para extend.
+
+            Args:
+                candidate: Descripción del parámetro.
+
+            Returns:
+                Resultado de la operación o None.
+
+            Side Effects:
+                Puede modificar el estado interno o la escena.
+            """
             nonlocal rect
             if not candidate.isValid() or candidate.isNull():
                 return
@@ -2958,6 +3833,17 @@ class ChemusonCanvas(QGraphicsView):
                 rect = rect.united(candidate)
 
         def extend_atom_bounds(atom_id: int) -> None:
+            """Método auxiliar para extend atom bounds.
+
+            Args:
+                atom_id: Descripción del parámetro.
+
+            Returns:
+                Resultado de la operación o None.
+
+            Side Effects:
+                Puede modificar el estado interno o la escena.
+            """
             item = self.atom_items.get(atom_id)
             if item is None or item.scene() is not self.scene:
                 return
@@ -3019,6 +3905,14 @@ class ChemusonCanvas(QGraphicsView):
         return rect.adjusted(-pad, -pad, pad, pad)
 
     def _hidden_render_items(self) -> list:
+        """Método auxiliar para  hidden render items.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         items = [getattr(self, "paper", None)]
         overlay_attrs = [
             "_hover_atom_indicator",
@@ -3044,6 +3938,17 @@ class ChemusonCanvas(QGraphicsView):
         ]
 
     def _with_hidden_render_items(self, render_fn):
+        """Método auxiliar para  with hidden render items.
+
+        Args:
+            render_fn: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         hidden = []
         for item in self._hidden_render_items():
             if item.isVisible():
@@ -3087,6 +3992,17 @@ class ChemusonCanvas(QGraphicsView):
                 item.setVisible(True)
 
     def _with_hidden_unselected(self, render_fn):
+        """Método auxiliar para  with hidden unselected.
+
+        Args:
+            render_fn: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         hidden = []
         selected = set(self.scene.selectedItems())
         for atom_id in self.state.selected_atoms:
@@ -3116,6 +4032,19 @@ class ChemusonCanvas(QGraphicsView):
         selected_only: bool = False,
         background: Optional[QColor] = None,
     ) -> Optional[QImage]:
+        """Método auxiliar para  render scene image.
+
+        Args:
+            scale: Descripción del parámetro.
+            selected_only: Descripción del parámetro.
+            background: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         rect = self._render_scene_bounds(selected_only=selected_only)
         if rect is None:
             return None
@@ -3124,6 +4053,14 @@ class ChemusonCanvas(QGraphicsView):
         height = max(1, math.ceil(rect.height() * scale))
 
         def render():
+            """Método auxiliar para render.
+
+            Returns:
+                Resultado de la operación o None.
+
+            Side Effects:
+                Puede modificar el estado interno o la escena.
+            """
             image = QImage(width, height, QImage.Format.Format_ARGB32)
             image.fill(Qt.GlobalColor.transparent)
             painter = QPainter(image)
@@ -3154,6 +4091,18 @@ class ChemusonCanvas(QGraphicsView):
         return self._with_hidden_render_items(render)
 
     def _apply_image_dpi(self, image: QImage, scale: float) -> None:
+        """Método auxiliar para  apply image dpi.
+
+        Args:
+            image: Descripción del parámetro.
+            scale: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         base_dpi_x = self.logicalDpiX() or 96.0
         base_dpi_y = self.logicalDpiY() or 96.0
         dpi_x = base_dpi_x * scale
@@ -3164,6 +4113,17 @@ class ChemusonCanvas(QGraphicsView):
         image.setDotsPerMeterY(dpm_y)
 
     def _trim_transparent_image(self, image: QImage) -> Optional[QImage]:
+        """Método auxiliar para  trim transparent image.
+
+        Args:
+            image: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         width = image.width()
         height = image.height()
         if width <= 0 or height <= 0:
@@ -3193,6 +4153,17 @@ class ChemusonCanvas(QGraphicsView):
         return image.copy(QRect(left, top, right - left + 1, bottom - top + 1))
 
     def _render_scene_svg(self, selected_only: bool = False) -> Optional[bytes]:
+        """Método auxiliar para  render scene svg.
+
+        Args:
+            selected_only: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if QSvgGenerator is None:
             return None
         rect = self._render_scene_bounds(selected_only=selected_only)
@@ -3202,6 +4173,14 @@ class ChemusonCanvas(QGraphicsView):
         height = max(1, math.ceil(rect.height()))
 
         def render():
+            """Método auxiliar para render.
+
+            Returns:
+                Resultado de la operación o None.
+
+            Side Effects:
+                Puede modificar el estado interno o la escena.
+            """
             buffer = QBuffer()
             buffer.open(QBuffer.OpenModeFlag.WriteOnly)
             generator = QSvgGenerator()
@@ -3220,6 +4199,17 @@ class ChemusonCanvas(QGraphicsView):
         return self._with_hidden_render_items(render)
 
     def _insert_molgraph(self, graph: MolGraph) -> None:
+        """Método auxiliar para  insert molgraph.
+
+        Args:
+            graph: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if not graph.atoms:
             return
         xs = [atom.x for atom in graph.atoms.values()]
@@ -3271,6 +4261,18 @@ class ChemusonCanvas(QGraphicsView):
             self._kekulize_aromatic_bonds()
 
     def _insert_molgraph_at(self, graph: MolGraph, target: QPointF) -> None:
+        """Método auxiliar para  insert molgraph at.
+
+        Args:
+            graph: Descripción del parámetro.
+            target: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if not graph.atoms:
             return
         xs = [atom.x for atom in graph.atoms.values()]
@@ -3320,6 +4322,17 @@ class ChemusonCanvas(QGraphicsView):
             self._kekulize_aromatic_bonds()
 
     def _insert_ring_template(self, scene_pos: QPointF) -> None:
+        """Método auxiliar para  insert ring template.
+
+        Args:
+            scene_pos: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         template = self.state.active_ring_template
         if not template:
             return
@@ -3339,6 +4352,17 @@ class ChemusonCanvas(QGraphicsView):
         self._insert_molgraph_at(graph, scene_pos)
 
     def _insert_image_from_clipboard(self, mime: QMimeData) -> None:
+        """Método auxiliar para  insert image from clipboard.
+
+        Args:
+            mime: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         pixmap = None
         if mime.hasImage():
             image = mime.imageData()
@@ -3364,6 +4388,17 @@ class ChemusonCanvas(QGraphicsView):
         self.scene.addItem(item)
 
     def add_atom_item(self, atom) -> None:
+        """Añade atom item.
+
+        Args:
+            atom: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if atom.id in self.atom_items:
             return
         # Determine visibility based on state preferences
@@ -3382,6 +4417,19 @@ class ChemusonCanvas(QGraphicsView):
         self._refresh_atom_label(atom.id)
 
     def update_atom_item(self, atom_id: int, x: float, y: float) -> None:
+        """Actualiza atom item.
+
+        Args:
+            atom_id: Descripción del parámetro.
+            x: Descripción del parámetro.
+            y: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         item = self.atom_items.get(atom_id)
         if item is not None:
             item.setPos(x, y)
@@ -3394,6 +4442,19 @@ class ChemusonCanvas(QGraphicsView):
         element: str,
         is_explicit: Optional[bool] = None,
     ) -> None:
+        """Actualiza atom item element.
+
+        Args:
+            atom_id: Descripción del parámetro.
+            element: Descripción del parámetro.
+            is_explicit: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         item = self.atom_items.get(atom_id)
         if item is not None:
             if is_explicit is None:
@@ -3404,11 +4465,31 @@ class ChemusonCanvas(QGraphicsView):
         self._update_wavy_anchors_for_atom(atom_id)
 
     def update_atom_item_charge(self, atom_id: int, charge: int) -> None:
+        """Actualiza atom item charge.
+
+        Args:
+            atom_id: Descripción del parámetro.
+            charge: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         item = self.atom_items.get(atom_id)
         if item is not None:
             item.set_charge(charge)
 
     def _label_font(self) -> QFont:
+        """Método auxiliar para  label font.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         size = self.state.label_font_size
         if size <= 0:
             size = 10.0
@@ -3420,9 +4501,28 @@ class ChemusonCanvas(QGraphicsView):
         return font
 
     def label_font(self) -> QFont:
+        """Método auxiliar para label font.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         return self._label_font()
 
     def apply_label_font(self, font: QFont) -> None:
+        """Aplica label font.
+
+        Args:
+            font: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         size = font.pointSizeF()
         if size <= 0:
             size = font.pointSize()
@@ -3436,24 +4536,65 @@ class ChemusonCanvas(QGraphicsView):
         self.refresh_label_fonts()
 
     def refresh_label_fonts(self) -> None:
+        """Método auxiliar para refresh label fonts.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         font = self._label_font()
         for item in self.atom_items.values():
             item.set_label_font(font)
         self.refresh_atom_labels()
 
     def set_use_element_colors(self, use_element_colors: bool) -> None:
+        """Actualiza el estado de use element colors.
+
+        Args:
+            use_element_colors: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         self.state.use_element_colors = use_element_colors
         for item in self.atom_items.values():
             item.set_use_element_colors(use_element_colors)
         self.refresh_atom_labels()
 
     def refresh_atom_labels(self, atom_ids: Optional[Iterable[int]] = None) -> None:
+        """Método auxiliar para refresh atom labels.
+
+        Args:
+            atom_ids: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if atom_ids is None:
             atom_ids = list(self.atom_items.keys())
         for atom_id in atom_ids:
             self._refresh_atom_label(atom_id)
 
     def _refresh_atom_label(self, atom_id: int) -> None:
+        """Método auxiliar para  refresh atom label.
+
+        Args:
+            atom_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         item = self.atom_items.get(atom_id)
         atom = self.model.atoms.get(atom_id)
         if item is None or atom is None:
@@ -3464,6 +4605,17 @@ class ChemusonCanvas(QGraphicsView):
         self._update_bond_label_shrinks({atom_id})
 
     def _build_atom_label(self, atom) -> tuple[str, Optional[str], QPointF]:
+        """Método auxiliar para  build atom label.
+
+        Args:
+            atom: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         label = atom.element
         anchor: Optional[str] = None
         anchor_override = self._group_anchor_overrides.get(atom.id)
@@ -3494,6 +4646,17 @@ class ChemusonCanvas(QGraphicsView):
         return label, anchor, offset
 
     def _atom_degree(self, atom_id: int) -> int:
+        """Método auxiliar para  atom degree.
+
+        Args:
+            atom_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         return sum(
             1
             for bond in self.model.bonds.values()
@@ -3503,6 +4666,19 @@ class ChemusonCanvas(QGraphicsView):
     def _reflow_group_label(
         self, label: str, atom_id: int, anchor_override: Optional[str] = None
     ) -> tuple[str, Optional[str]]:
+        """Método auxiliar para  reflow group label.
+
+        Args:
+            label: Descripción del parámetro.
+            atom_id: Descripción del parámetro.
+            anchor_override: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         cleaned = label.strip()
         if not cleaned:
             return label, None
@@ -3551,6 +4727,19 @@ class ChemusonCanvas(QGraphicsView):
         return f"{cleaned}{charge}", anchor_symbol
 
     def _move_anchor_in_label(self, label: str, anchor: str, anchor_first: bool) -> str:
+        """Método auxiliar para  move anchor in label.
+
+        Args:
+            label: Descripción del parámetro.
+            anchor: Descripción del parámetro.
+            anchor_first: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if not label or not anchor:
             return label
         if anchor_first:
@@ -3565,15 +4754,49 @@ class ChemusonCanvas(QGraphicsView):
         return f"{anchor}{core}" if anchor_first else f"{core}{anchor}"
 
     def get_anchor_override(self, atom_id: int) -> Optional[str]:
+        """Método auxiliar para get anchor override.
+
+        Args:
+            atom_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         return self._group_anchor_overrides.get(atom_id)
 
     def set_anchor_override(self, atom_id: int, anchor: Optional[str]) -> None:
+        """Actualiza el estado de anchor override.
+
+        Args:
+            atom_id: Descripción del parámetro.
+            anchor: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if anchor:
             self._group_anchor_overrides[atom_id] = anchor
         else:
             self._group_anchor_overrides.pop(atom_id, None)
 
     def _group_label_tokens(self, label: str) -> Optional[list[tuple[str, str]]]:
+        """Método auxiliar para  group label tokens.
+
+        Args:
+            label: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         tokens: list[tuple[str, str]] = []
         i = 0
         sorted_abbrs = sorted(list(ABBREVIATION_LABELS), key=len, reverse=True)
@@ -3626,6 +4849,18 @@ class ChemusonCanvas(QGraphicsView):
         return tokens if tokens else None
 
     def _implicit_hydrogen_count(self, atom_id: int, element: str) -> int:
+        """Método auxiliar para  implicit hydrogen count.
+
+        Args:
+            atom_id: Descripción del parámetro.
+            element: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if element not in IMPLICIT_H_ELEMENTS:
             return 0
         expected = VALENCE_MAP.get(element)
@@ -3640,7 +4875,29 @@ class ChemusonCanvas(QGraphicsView):
         return max(0, expected - bond_order)
 
     def _label_open_direction(self, atom_id: int) -> QPointF:
+        """Método auxiliar para  label open direction.
+
+        Args:
+            atom_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         def collect_vectors(skip_hydrogen: bool) -> list[tuple[float, float]]:
+            """Método auxiliar para collect vectors.
+
+            Args:
+                skip_hydrogen: Descripción del parámetro.
+
+            Returns:
+                Resultado de la operación o None.
+
+            Side Effects:
+                Puede modificar el estado interno o la escena.
+            """
             atom = self.model.get_atom(atom_id)
             vectors: list[tuple[float, float]] = []
             for bond in self.model.bonds.values():
@@ -3680,6 +4937,17 @@ class ChemusonCanvas(QGraphicsView):
         return QPointF(sum_x / length, sum_y / length)
 
     def _label_offset(self, atom_id: int) -> QPointF:
+        """Método auxiliar para  label offset.
+
+        Args:
+            atom_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         atom = self.model.get_atom(atom_id)
         if any(ch.isalpha() for ch in atom.element):
             return QPointF(0.0, 0.0)
@@ -3693,6 +4961,17 @@ class ChemusonCanvas(QGraphicsView):
         return QPointF(direction.x() * offset, direction.y() * offset)
 
     def _neighbor_angles_deg(self, atom_id: int) -> list[float]:
+        """Método auxiliar para  neighbor angles deg.
+
+        Args:
+            atom_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         atom = self.model.get_atom(atom_id)
         origin = QPointF(atom.x, atom.y)
         angles: list[float] = []
@@ -3709,6 +4988,17 @@ class ChemusonCanvas(QGraphicsView):
         return angles
 
     def _atom_hybridization(self, atom_id: int) -> str:
+        """Método auxiliar para  atom hybridization.
+
+        Args:
+            atom_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         has_double = False
         has_triple = False
         has_aromatic = False
@@ -3731,9 +5021,32 @@ class ChemusonCanvas(QGraphicsView):
     def _angle_of_vector(self, vx: float, vy: float) -> float:
         # Invert Y to convert from screen coordinates (Y down) to math coordinates (Y up)
         # This matches the convention used in geom.angle_deg and endpoint_from_angle_len
+        """Método auxiliar para  angle of vector.
+
+        Args:
+            vx: Descripción del parámetro.
+            vy: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         return math.degrees(math.atan2(-vy, vx))
 
     def _normalize_angle(self, angle: float) -> float:
+        """Método auxiliar para  normalize angle.
+
+        Args:
+            angle: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         value = angle % 360.0
         return value + 360.0 if value < 0 else value
 
@@ -3798,6 +5111,17 @@ class ChemusonCanvas(QGraphicsView):
         
         # Local function to normalize angle to [0, 360) degrees
         def norm_deg(a: float) -> float:
+            """Método auxiliar para norm deg.
+
+            Args:
+                a: Descripción del parámetro.
+
+            Returns:
+                Resultado de la operación o None.
+
+            Side Effects:
+                Puede modificar el estado interno o la escena.
+            """
             v = a % 360.0
             return v + 360.0 if v < 0 else v
         
@@ -3854,6 +5178,17 @@ class ChemusonCanvas(QGraphicsView):
         return result_angles
 
     def _clear_implicit_h_overlays(self, atom_ids: Optional[Iterable[int]] = None) -> None:
+        """Método auxiliar para  clear implicit h overlays.
+
+        Args:
+            atom_ids: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if atom_ids is None:
             atom_ids = list(self._implicit_h_overlays.keys())
         for atom_id in list(atom_ids):
@@ -3865,6 +5200,17 @@ class ChemusonCanvas(QGraphicsView):
                     self.scene.removeItem(text_item)
 
     def _refresh_implicit_h_overlays(self, atom_ids: Optional[Iterable[int]] = None) -> None:
+        """Método auxiliar para  refresh implicit h overlays.
+
+        Args:
+            atom_ids: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if atom_ids is None:
             atom_ids = list(self.atom_items.keys())
         self._clear_implicit_h_overlays(atom_ids)
@@ -3931,6 +5277,17 @@ class ChemusonCanvas(QGraphicsView):
                 self._implicit_h_overlays[atom_id] = overlays
 
     def _local_bond_length(self, atom_id: int) -> float:
+        """Método auxiliar para  local bond length.
+
+        Args:
+            atom_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         atom = self.model.get_atom(atom_id)
         if atom is None:
             return float(self.state.bond_length)
@@ -3953,6 +5310,17 @@ class ChemusonCanvas(QGraphicsView):
         return float(self.state.bond_length)
 
     def _update_bond_label_shrinks(self, atom_ids: set[int]) -> None:
+        """Método auxiliar para  update bond label shrinks.
+
+        Args:
+            atom_ids: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         for bond in self.model.bonds.values():
             if bond.a1_id not in atom_ids and bond.a2_id not in atom_ids:
                 continue
@@ -3978,6 +5346,19 @@ class ChemusonCanvas(QGraphicsView):
         self._refresh_implicit_h_overlays(atom_ids)
 
     def _label_shrink_for_atom(self, atom_id: int, ux: float, uy: float) -> float:
+        """Método auxiliar para  label shrink for atom.
+
+        Args:
+            atom_id: Descripción del parámetro.
+            ux: Descripción del parámetro.
+            uy: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         item = self.atom_items.get(atom_id)
         if item is None or not item.label.isVisible():
             return 0.0
@@ -3995,6 +5376,18 @@ class ChemusonCanvas(QGraphicsView):
         return distance if distance is not None else 0.0
 
     def _configure_bond_rendering(self, bond: Bond, item: BondItem) -> None:
+        """Método auxiliar para  configure bond rendering.
+
+        Args:
+            bond: Descripción del parámetro.
+            item: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         prefer_full_length = self.state.show_implicit_carbons and self.state.show_implicit_hydrogens
         is_aromatic_ring = bond.is_aromatic and bond.ring_id is not None
         a1 = self.model.get_atom(bond.a1_id)
@@ -4012,6 +5405,19 @@ class ChemusonCanvas(QGraphicsView):
         # Equation: ((x - cx)/a)^2 + ((y - cy)/b)^2 = 1
         # Substitute x = t*ux, y = t*uy
         
+        """Método auxiliar para  ray ellipse distance.
+
+        Args:
+            rect: Descripción del parámetro.
+            ux: Descripción del parámetro.
+            uy: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         a = rect.width() / 2.0
         b = rect.height() / 2.0
         if a <= 1e-9 or b <= 1e-9:
@@ -4055,10 +5461,32 @@ class ChemusonCanvas(QGraphicsView):
         return best
 
     def _prefer_prefix_h(self, atom_id: int) -> bool:
+        """Método auxiliar para  prefer prefix h.
+
+        Args:
+            atom_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         direction = self._label_open_direction(atom_id)
         return direction.x() < -0.2
 
     def remove_atom_item(self, atom_id: int) -> None:
+        """Elimina atom item.
+
+        Args:
+            atom_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         item = self.atom_items.pop(atom_id, None)
         if item is not None:
             self.scene.removeItem(item)
@@ -4070,6 +5498,17 @@ class ChemusonCanvas(QGraphicsView):
             self.hovered_atom_id = None
 
     def add_bond_item(self, bond) -> None:
+        """Añade bond item.
+
+        Args:
+            bond: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if bond.id in self.bond_items:
             return
         atom1 = self.model.get_atom(bond.a1_id)
@@ -4105,12 +5544,39 @@ class ChemusonCanvas(QGraphicsView):
         self._refresh_bond_ring_flags(ring_pairs)
 
     def add_arrow_item(self, start: QPointF, end: QPointF, kind: str) -> ArrowItem:
+        """Añade arrow item.
+
+        Args:
+            start: Descripción del parámetro.
+            end: Descripción del parámetro.
+            kind: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         item = ArrowItem(start, end, kind=kind, style=self.drawing_style)
         self.scene.addItem(item)
         self.arrow_items.append(item)
         return item
 
     def readd_arrow_item(self, item: ArrowItem, start: QPointF, end: QPointF, kind: str) -> None:
+        """Método auxiliar para readd arrow item.
+
+        Args:
+            item: Descripción del parámetro.
+            start: Descripción del parámetro.
+            end: Descripción del parámetro.
+            kind: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         item.set_kind(kind)
         item.update_positions(start, end)
         if item.scene() is not self.scene:
@@ -4119,12 +5585,35 @@ class ChemusonCanvas(QGraphicsView):
             self.arrow_items.append(item)
 
     def remove_arrow_item(self, item: ArrowItem) -> None:
+        """Elimina arrow item.
+
+        Args:
+            item: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if item in self.arrow_items:
             self.arrow_items.remove(item)
         if item.scene() is self.scene:
             self.scene.removeItem(item)
 
     def add_bracket_item(self, rect: QRectF, kind: str) -> BracketItem:
+        """Añade bracket item.
+
+        Args:
+            rect: Descripción del parámetro.
+            kind: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         item = BracketItem(rect, kind=kind, style=self.drawing_style)
         self.scene.addItem(item)
         self.bracket_items.append(item)
@@ -4137,6 +5626,20 @@ class ChemusonCanvas(QGraphicsView):
         kind: str,
         padding: Optional[float] = None,
     ) -> None:
+        """Método auxiliar para readd bracket item.
+
+        Args:
+            item: Descripción del parámetro.
+            rect: Descripción del parámetro.
+            kind: Descripción del parámetro.
+            padding: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         item.set_rect(rect, padding=padding)
         item._kind = kind
         if item.scene() is not self.scene:
@@ -4145,6 +5648,17 @@ class ChemusonCanvas(QGraphicsView):
             self.bracket_items.append(item)
 
     def remove_bracket_item(self, item: BracketItem) -> None:
+        """Elimina bracket item.
+
+        Args:
+            item: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if item in self.bracket_items:
             self.bracket_items.remove(item)
         if item.scene() is self.scene:
@@ -4152,11 +5666,30 @@ class ChemusonCanvas(QGraphicsView):
 
     @staticmethod
     def _split_bracket_kind(kind: str) -> Optional[tuple[str, str]]:
+        """Método auxiliar para  split bracket kind.
+
+        Args:
+            kind: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if kind in {"()", "[]", "{}"} and len(kind) == 2:
             return kind[0], kind[1]
         return None
 
     def _ensure_bracket_preview(self) -> QGraphicsRectItem:
+        """Método auxiliar para  ensure bracket preview.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if self._bracket_preview is None:
             preview = QGraphicsRectItem()
             pen = QPen(QColor("#4A90D9"), 1.0, Qt.PenStyle.DashLine)
@@ -4169,12 +5702,31 @@ class ChemusonCanvas(QGraphicsView):
         return self._bracket_preview
 
     def _clear_bracket_preview(self) -> None:
+        """Método auxiliar para  clear bracket preview.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if self._bracket_preview is not None:
             self.scene.removeItem(self._bracket_preview)
             self._bracket_preview = None
         self._bracket_drag_start = None
 
     def update_bond_item(self, bond_id: int) -> None:
+        """Actualiza bond item.
+
+        Args:
+            bond_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         bond = self.model.get_bond(bond_id)
         atom1 = self.model.get_atom(bond.a1_id)
         atom2 = self.model.get_atom(bond.a2_id)
@@ -4203,6 +5755,17 @@ class ChemusonCanvas(QGraphicsView):
         self._refresh_atom_label(bond.a2_id)
 
     def _bond_render_width(self, bond: Bond) -> float:
+        """Método auxiliar para  bond render width.
+
+        Args:
+            bond: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         base = bond.stroke_px if bond.stroke_px is not None else self.drawing_style.stroke_px
         if bond.style == BondStyle.BOLD:
             return max(base * 2.2, base + 1.0)
@@ -4215,6 +5778,18 @@ class ChemusonCanvas(QGraphicsView):
         return base
 
     def _bond_endpoint_extend(self, bond: Bond, atom_id: int) -> float:
+        """Método auxiliar para  bond endpoint extend.
+
+        Args:
+            bond: Descripción del parámetro.
+            atom_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if self.drawing_style.cap_style != Qt.PenCapStyle.FlatCap:
             return 0.0
         if self._atom_degree(atom_id) != 2:
@@ -4233,6 +5808,17 @@ class ChemusonCanvas(QGraphicsView):
             return 0.0
 
         def unit_vector(b: Bond) -> tuple[float, float]:
+            """Método auxiliar para unit vector.
+
+            Args:
+                b: Descripción del parámetro.
+
+            Returns:
+                Resultado de la operación o None.
+
+            Side Effects:
+                Puede modificar el estado interno o la escena.
+            """
             other_id = b.a2_id if b.a1_id == atom_id else b.a1_id
             other_atom = self.model.get_atom(other_id)
             dx = other_atom.x - atom.x
@@ -4251,6 +5837,17 @@ class ChemusonCanvas(QGraphicsView):
         return max(0.0, min(extension, width * 2.0))
 
     def _atom_label_visible(self, atom) -> bool:
+        """Método auxiliar para  atom label visible.
+
+        Args:
+            atom: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if atom.is_explicit:
             return True
         if atom.element == "C":
@@ -4260,6 +5857,18 @@ class ChemusonCanvas(QGraphicsView):
         return True
 
     def _bond_endpoint_trim(self, bond: Bond, atom_id: int) -> float:
+        """Método auxiliar para  bond endpoint trim.
+
+        Args:
+            bond: Descripción del parámetro.
+            atom_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if self._atom_degree(atom_id) < 2:
             return 0.0
         width = self._bond_render_width(bond)
@@ -4276,12 +5885,34 @@ class ChemusonCanvas(QGraphicsView):
         return max(0.0, (width - max_other) * 0.5)
 
     def update_bond_items_for_atoms(self, atom_ids: set[int]) -> None:
+        """Actualiza bond items for atoms.
+
+        Args:
+            atom_ids: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         for bond in self.model.bonds.values():
             if bond.a1_id in atom_ids or bond.a2_id in atom_ids:
                 self.update_bond_item(bond.id)
         self._refresh_implicit_h_overlays(atom_ids)
 
     def remove_bond_item(self, bond_id: int) -> None:
+        """Elimina bond item.
+
+        Args:
+            bond_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         item = self.bond_items.pop(bond_id, None)
         if item is not None:
             a1_id = item.a1_id
@@ -4292,17 +5923,59 @@ class ChemusonCanvas(QGraphicsView):
         self._refresh_bond_ring_flags()
 
     def allocate_ring_id(self) -> int:
+        """Método auxiliar para allocate ring id.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         ring_id = self._next_ring_id
         self._next_ring_id += 1
         return ring_id
 
     def register_ring_center(self, ring_id: int, center: tuple[float, float]) -> None:
+        """Método auxiliar para register ring center.
+
+        Args:
+            ring_id: Descripción del parámetro.
+            center: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         self._ring_centers[ring_id] = QPointF(center[0], center[1])
 
     def unregister_ring_center(self, ring_id: int) -> None:
+        """Método auxiliar para unregister ring center.
+
+        Args:
+            ring_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         self._ring_centers.pop(ring_id, None)
 
     def _bond_offset_sign(self, bond) -> int:
+        """Método auxiliar para  bond offset sign.
+
+        Args:
+            bond: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         atom1 = self.model.get_atom(bond.a1_id)
         atom2 = self.model.get_atom(bond.a2_id)
         p1 = QPointF(atom1.x, atom1.y)
@@ -4338,6 +6011,17 @@ class ChemusonCanvas(QGraphicsView):
                 return 1 if (nx * vx + ny * vy) >= 0 else -1
 
         def neighbor_score(atom_id: int) -> float:
+            """Método auxiliar para neighbor score.
+
+            Args:
+                atom_id: Descripción del parámetro.
+
+            Returns:
+                Resultado de la operación o None.
+
+            Side Effects:
+                Puede modificar el estado interno o la escena.
+            """
             score = 0.0
             for other_bond in self.model.bonds.values():
                 if other_bond.id == bond.id:
@@ -4448,6 +6132,17 @@ class ChemusonCanvas(QGraphicsView):
                 pass
 
     def update_text_alignment(self, alignment: Qt.AlignmentFlag) -> None:
+        """Actualiza text alignment.
+
+        Args:
+            alignment: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         items_to_update = self.scene.selectedItems()
         focus_item = self.scene.focusItem()
         if isinstance(focus_item, TextAnnotationItem) and focus_item not in items_to_update:
@@ -4569,6 +6264,17 @@ class ChemusonCanvas(QGraphicsView):
         return result
 
     def _aromatic_ring_center_for_bond(self, bond: Bond) -> Optional[QPointF]:
+        """Método auxiliar para  aromatic ring center for bond.
+
+        Args:
+            bond: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if not bond.is_aromatic:
             return None
         adjacency: dict[int, list[tuple[int, int]]] = {}
@@ -4583,6 +6289,14 @@ class ChemusonCanvas(QGraphicsView):
         return self._center_for_atoms(cycle["atom_ids"])
 
     def _refresh_aromatic_ring_contexts(self) -> None:
+        """Método auxiliar para  refresh aromatic ring contexts.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         adjacency: dict[int, list[tuple[int, int]]] = {}
         for bond in self.model.bonds.values():
             if not bond.is_aromatic:
@@ -4615,6 +6329,14 @@ class ChemusonCanvas(QGraphicsView):
                 item.update_positions(atom1, atom2)
 
     def _build_aromatic_adjacency(self) -> dict[int, list[int]]:
+        """Método auxiliar para  build aromatic adjacency.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         adjacency: dict[int, list[int]] = {}
         for bond in self.model.bonds.values():
             if not bond.is_aromatic:
@@ -4624,6 +6346,17 @@ class ChemusonCanvas(QGraphicsView):
         return adjacency
 
     def _center_for_atoms(self, atom_ids: list[int]) -> Optional[QPointF]:
+        """Método auxiliar para  center for atoms.
+
+        Args:
+            atom_ids: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if not atom_ids:
             return None
         xs = []
@@ -4683,6 +6416,19 @@ class ChemusonCanvas(QGraphicsView):
             components.append(comp)
 
         def rotate_point(p: QPointF, center: QPointF, delta_deg: float) -> QPointF:
+            """Método auxiliar para rotate point.
+
+            Args:
+                p: Descripción del parámetro.
+                center: Descripción del parámetro.
+                delta_deg: Descripción del parámetro.
+
+            Returns:
+                Resultado de la operación o None.
+
+            Side Effects:
+                Puede modificar el estado interno o la escena.
+            """
             rad = math.radians(delta_deg)
             dx = p.x() - center.x()
             dy = p.y() - center.y()
@@ -4691,6 +6437,18 @@ class ChemusonCanvas(QGraphicsView):
             return QPointF(center.x() + dx * cos_t - dy * sin_t, center.y() + dx * sin_t + dy * cos_t)
 
         def normalize_tree(component: set[int], roots: list[int]) -> None:
+            """Método auxiliar para normalize tree.
+
+            Args:
+                component: Descripción del parámetro.
+                roots: Descripción del parámetro.
+
+            Returns:
+                Resultado de la operación o None.
+
+            Side Effects:
+                Puede modificar el estado interno o la escena.
+            """
             placed = set(roots)
             queue = list(roots)
             while queue:
@@ -4847,6 +6605,18 @@ class ChemusonCanvas(QGraphicsView):
         return None
 
     def _get_atom_at(self, x: float, y: float) -> Optional[int]:
+        """Método auxiliar para  get atom at.
+
+        Args:
+            x: Descripción del parámetro.
+            y: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         for atom in self.model.atoms.values():
             dx = atom.x - x
             dy = atom.y - y
@@ -4855,6 +6625,17 @@ class ChemusonCanvas(QGraphicsView):
         return None
 
     def _get_bond_at(self, scene_pos: QPointF) -> Optional[int]:
+        """Método auxiliar para  get bond at.
+
+        Args:
+            scene_pos: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         for item in self.scene.items(scene_pos):
             if isinstance(item, BondItem):
                 return item.bond_id
@@ -4863,6 +6644,14 @@ class ChemusonCanvas(QGraphicsView):
 
 
     def _sync_selection_from_scene(self) -> None:
+        """Método auxiliar para  sync selection from scene.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         try:
             selected_items = list(self.scene.selectedItems())
         except RuntimeError:
@@ -4920,6 +6709,19 @@ class ChemusonCanvas(QGraphicsView):
         free_select: bool,
         additive: bool,
     ) -> None:
+        """Método auxiliar para  begin selection drag.
+
+        Args:
+            start_pos: Descripción del parámetro.
+            free_select: Descripción del parámetro.
+            additive: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         self._select_drag_mode = "free" if free_select else "rect"
         self._select_start_pos = start_pos
         self._select_additive = additive
@@ -4949,6 +6751,17 @@ class ChemusonCanvas(QGraphicsView):
             self._select_preview_rect.setVisible(True)
 
     def _update_selection_drag(self, scene_pos: QPointF) -> None:
+        """Método auxiliar para  update selection drag.
+
+        Args:
+            scene_pos: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if self._select_drag_mode == "free" and self._select_path is not None:
             self._select_path.lineTo(scene_pos)
             if self._select_preview_path is not None:
@@ -4959,6 +6772,14 @@ class ChemusonCanvas(QGraphicsView):
                 self._select_preview_rect.setRect(QRectF(self._select_start_pos, scene_pos).normalized())
 
     def _finalize_selection_drag(self) -> None:
+        """Método auxiliar para  finalize selection drag.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if self._select_drag_mode is None:
             return
         items: list = []
@@ -4997,6 +6818,14 @@ class ChemusonCanvas(QGraphicsView):
         self._clear_selection_drag()
 
     def _clear_selection_drag(self) -> None:
+        """Método auxiliar para  clear selection drag.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         self._select_drag_mode = None
         self._select_start_pos = None
         self._select_path = None
@@ -5009,15 +6838,45 @@ class ChemusonCanvas(QGraphicsView):
             self._select_preview_rect = None
 
     def _structure_bbox(self) -> Optional[QRectF]:
+        """Método auxiliar para  structure bbox.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         rect: Optional[QRectF] = None
 
         def extend(candidate: QRectF) -> None:
+            """Método auxiliar para extend.
+
+            Args:
+                candidate: Descripción del parámetro.
+
+            Returns:
+                Resultado de la operación o None.
+
+            Side Effects:
+                Puede modificar el estado interno o la escena.
+            """
             nonlocal rect
             if not candidate.isValid() or candidate.isNull():
                 return
             rect = candidate if rect is None else rect.united(candidate)
 
         def extend_atom_bounds(atom_id: int) -> None:
+            """Método auxiliar para extend atom bounds.
+
+            Args:
+                atom_id: Descripción del parámetro.
+
+            Returns:
+                Resultado de la operación o None.
+
+            Side Effects:
+                Puede modificar el estado interno o la escena.
+            """
             item = self.atom_items.get(atom_id)
             if item is None or item.scene() is not self.scene:
                 return
@@ -5045,6 +6904,14 @@ class ChemusonCanvas(QGraphicsView):
         return rect
 
     def _analysis_graph_and_bbox(self) -> tuple[Optional[MolGraph], Optional[QRectF]]:
+        """Método auxiliar para  analysis graph and bbox.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         atom_ids, bonds = self._selected_structure_ids()
         if atom_ids:
             return self._build_selection_graph(atom_ids, bonds), self._selected_items_bbox()
@@ -5053,6 +6920,19 @@ class ChemusonCanvas(QGraphicsView):
         return None, None
 
     def _implicit_h_for_graph(self, graph: MolGraph, atom_id: int, element: str) -> int:
+        """Método auxiliar para  implicit h for graph.
+
+        Args:
+            graph: Descripción del parámetro.
+            atom_id: Descripción del parámetro.
+            element: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if element not in IMPLICIT_H_ELEMENTS:
             return 0
         expected = VALENCE_MAP.get(element)
@@ -5067,6 +6947,17 @@ class ChemusonCanvas(QGraphicsView):
         return max(0, expected - bond_order)
 
     def _analysis_atom_counts(self, graph: MolGraph) -> dict[str, int]:
+        """Método auxiliar para  analysis atom counts.
+
+        Args:
+            graph: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         counts: dict[str, int] = {}
         for atom in graph.atoms.values():
             counts[atom.element] = counts.get(atom.element, 0) + 1
@@ -5082,6 +6973,17 @@ class ChemusonCanvas(QGraphicsView):
 
     @staticmethod
     def _analysis_formula(counts: dict[str, int]) -> str:
+        """Método auxiliar para  analysis formula.
+
+        Args:
+            counts: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if not counts:
             return ""
         order: list[str] = []
@@ -5101,6 +7003,17 @@ class ChemusonCanvas(QGraphicsView):
 
     @staticmethod
     def _analysis_exact_mass(counts: dict[str, int]) -> Optional[float]:
+        """Método auxiliar para  analysis exact mass.
+
+        Args:
+            counts: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         total = 0.0
         for element, count in counts.items():
             mass = MONOISOTOPIC_MASSES.get(element)
@@ -5111,6 +7024,17 @@ class ChemusonCanvas(QGraphicsView):
 
     @staticmethod
     def _analysis_molecular_weight(counts: dict[str, int]) -> Optional[float]:
+        """Método auxiliar para  analysis molecular weight.
+
+        Args:
+            counts: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         total = 0.0
         for element, count in counts.items():
             mass = ATOMIC_WEIGHTS.get(element)
@@ -5124,6 +7048,18 @@ class ChemusonCanvas(QGraphicsView):
         distribution: list[tuple[float, float]],
         isotopes: list[tuple[float, float]],
     ) -> list[tuple[float, float]]:
+        """Método auxiliar para  analysis convolve.
+
+        Args:
+            distribution: Descripción del parámetro.
+            isotopes: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if not distribution:
             return []
         new_dist: dict[float, float] = {}
@@ -5142,6 +7078,17 @@ class ChemusonCanvas(QGraphicsView):
         return list(pruned.items())
 
     def _analysis_isotope_peaks(self, counts: dict[str, int]) -> Optional[list[tuple[float, float]]]:
+        """Método auxiliar para  analysis isotope peaks.
+
+        Args:
+            counts: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         distribution: list[tuple[float, float]] = [(0.0, 1.0)]
         for element in sorted(counts.keys()):
             isotopes = ISOTOPE_ABUNDANCES.get(element)
@@ -5166,6 +7113,18 @@ class ChemusonCanvas(QGraphicsView):
         return peaks
 
     def _analysis_elemental_line(self, counts: dict[str, int], molecular_weight: Optional[float]) -> Optional[str]:
+        """Método auxiliar para  analysis elemental line.
+
+        Args:
+            counts: Descripción del parámetro.
+            molecular_weight: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if molecular_weight is None or molecular_weight <= 0:
             return None
         order: list[str] = []
@@ -5187,6 +7146,18 @@ class ChemusonCanvas(QGraphicsView):
         return "Elemental Analysis: " + "; ".join(parts)
 
     def _analysis_build_text(self, graph: MolGraph, mode: str) -> str:
+        """Método auxiliar para  analysis build text.
+
+        Args:
+            graph: Descripción del parámetro.
+            mode: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         counts = self._analysis_atom_counts(graph)
         if not counts:
             return ""
@@ -5241,6 +7212,19 @@ class ChemusonCanvas(QGraphicsView):
         bbox: Optional[QRectF],
         scene_pos: QPointF,
     ) -> None:
+        """Método auxiliar para  insert analysis text.
+
+        Args:
+            text: Descripción del parámetro.
+            bbox: Descripción del parámetro.
+            scene_pos: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         item = TextAnnotationItem(text, 0.0, 0.0)
         self._apply_text_settings(item)
         item.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
@@ -5264,6 +7248,18 @@ class ChemusonCanvas(QGraphicsView):
             pass
 
     def _run_analysis_action(self, mode: str, scene_pos: QPointF) -> None:
+        """Método auxiliar para  run analysis action.
+
+        Args:
+            mode: Descripción del parámetro.
+            scene_pos: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         graph, bbox = self._analysis_graph_and_bbox()
         if graph is None:
             return
@@ -5273,6 +7269,17 @@ class ChemusonCanvas(QGraphicsView):
         self._insert_analysis_text(text, bbox, scene_pos)
 
     def run_analysis(self, mode: str) -> None:
+        """Método auxiliar para run analysis.
+
+        Args:
+            mode: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         scene_pos = self._last_scene_pos
         if scene_pos is None:
             try:
@@ -5288,6 +7295,19 @@ class ChemusonCanvas(QGraphicsView):
         global_pos,
         clicked_item: Optional[QGraphicsItem] = None,
     ) -> None:
+        """Método auxiliar para  show context menu.
+
+        Args:
+            scene_pos: Descripción del parámetro.
+            global_pos: Descripción del parámetro.
+            clicked_item: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         menu = QMenu(self)
         has_selection = bool(
             self.state.selected_atoms
@@ -5404,18 +7424,58 @@ class ChemusonCanvas(QGraphicsView):
             self._select_all_items()
 
     def _bond_stroke_step(self) -> float:
+        """Método auxiliar para  bond stroke step.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         return max(0.6, self.drawing_style.stroke_px * 0.35)
 
     def increase_selected_bond_thickness(self) -> None:
+        """Método auxiliar para increase selected bond thickness.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         self._adjust_selected_bond_stroke(self._bond_stroke_step())
 
     def decrease_selected_bond_thickness(self) -> None:
+        """Método auxiliar para decrease selected bond thickness.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         self._adjust_selected_bond_stroke(-self._bond_stroke_step())
 
     def reset_selected_bond_thickness(self) -> None:
+        """Método auxiliar para reset selected bond thickness.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         self._reset_selected_bond_stroke()
 
     def _prompt_bond_color(self) -> None:
+        """Método auxiliar para  prompt bond color.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         bond_ids = list(self.state.selected_bonds)
         if not bond_ids:
             return
@@ -5431,6 +7491,17 @@ class ChemusonCanvas(QGraphicsView):
         self._set_selected_bond_color(color.name())
 
     def _set_selected_bond_color(self, color: Optional[str]) -> None:
+        """Método auxiliar para  set selected bond color.
+
+        Args:
+            color: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         bond_ids = list(self.state.selected_bonds)
         if not bond_ids:
             return
@@ -5441,6 +7512,17 @@ class ChemusonCanvas(QGraphicsView):
         self.undo_stack.endMacro()
 
     def _adjust_selected_bond_stroke(self, delta: float) -> None:
+        """Método auxiliar para  adjust selected bond stroke.
+
+        Args:
+            delta: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         bond_ids = list(self.state.selected_bonds)
         if not bond_ids:
             return
@@ -5457,6 +7539,14 @@ class ChemusonCanvas(QGraphicsView):
         self.undo_stack.endMacro()
 
     def _reset_selected_bond_stroke(self) -> None:
+        """Método auxiliar para  reset selected bond stroke.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         bond_ids = list(self.state.selected_bonds)
         if not bond_ids:
             return
@@ -5468,6 +7558,14 @@ class ChemusonCanvas(QGraphicsView):
 
 
     def _ensure_selection_overlay(self) -> None:
+        """Método auxiliar para  ensure selection overlay.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if self._selection_box is None:
             box = QGraphicsRectItem()
             pen = QPen(QColor("#4A90D9"), 0)
@@ -5509,6 +7607,14 @@ class ChemusonCanvas(QGraphicsView):
             self._selection_scale_handle = handle
 
     def _clear_selection_overlay(self) -> None:
+        """Método auxiliar para  clear selection overlay.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if self._selection_box is not None:
             self.scene.removeItem(self._selection_box)
             self._selection_box = None
@@ -5523,15 +7629,45 @@ class ChemusonCanvas(QGraphicsView):
             self._selection_scale_handle = None
 
     def _selected_items_bbox(self) -> Optional[QRectF]:
+        """Método auxiliar para  selected items bbox.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         rect: Optional[QRectF] = None
 
         def extend(candidate: QRectF) -> None:
+            """Método auxiliar para extend.
+
+            Args:
+                candidate: Descripción del parámetro.
+
+            Returns:
+                Resultado de la operación o None.
+
+            Side Effects:
+                Puede modificar el estado interno o la escena.
+            """
             nonlocal rect
             if not candidate.isValid() or candidate.isNull():
                 return
             rect = candidate if rect is None else rect.united(candidate)
 
         def extend_atom_bounds(atom_id: int) -> None:
+            """Método auxiliar para extend atom bounds.
+
+            Args:
+                atom_id: Descripción del parámetro.
+
+            Returns:
+                Resultado de la operación o None.
+
+            Side Effects:
+                Puede modificar el estado interno o la escena.
+            """
             item = self.atom_items.get(atom_id)
             if item is None or item.scene() is not self.scene:
                 return
@@ -5563,6 +7699,14 @@ class ChemusonCanvas(QGraphicsView):
         return rect
 
     def _selected_atom_ids_for_transform(self) -> set[int]:
+        """Método auxiliar para  selected atom ids for transform.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         atom_ids = set(self.state.selected_atoms)
         for bond_id in self.state.selected_bonds:
             if bond_id in self.model.bonds:
@@ -5572,6 +7716,14 @@ class ChemusonCanvas(QGraphicsView):
         return atom_ids
 
     def _update_selection_overlay(self) -> None:
+        """Método auxiliar para  update selection overlay.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         bbox = self._selected_items_bbox()
         if bbox is None:
             for attr in (
@@ -5594,6 +7746,19 @@ class ChemusonCanvas(QGraphicsView):
         padded.adjust(-pad, -pad, pad, pad)
 
         def offset_in_scene(base: QPointF, dx_view: float, dy_view: float) -> QPointF:
+            """Método auxiliar para offset in scene.
+
+            Args:
+                base: Descripción del parámetro.
+                dx_view: Descripción del parámetro.
+                dy_view: Descripción del parámetro.
+
+            Returns:
+                Resultado de la operación o None.
+
+            Side Effects:
+                Puede modificar el estado interno o la escena.
+            """
             view_pt = self.mapFromScene(base)
             view_x = float(view_pt.x()) + dx_view
             view_y = float(view_pt.y()) + dy_view
@@ -5636,6 +7801,17 @@ class ChemusonCanvas(QGraphicsView):
                 self._selection_scale_handle = None
 
     def _hit_selection_handle(self, scene_pos: QPointF) -> bool:
+        """Método auxiliar para  hit selection handle.
+
+        Args:
+            scene_pos: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if self._selection_handle is None:
             return False
         try:
@@ -5647,6 +7823,17 @@ class ChemusonCanvas(QGraphicsView):
         return self._hit_handle_item(self._selection_handle, scene_pos)
 
     def _hit_selection_move_handle(self, scene_pos: QPointF) -> bool:
+        """Método auxiliar para  hit selection move handle.
+
+        Args:
+            scene_pos: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if self._selection_move_handle is None:
             return False
         try:
@@ -5658,6 +7845,17 @@ class ChemusonCanvas(QGraphicsView):
         return self._hit_handle_item(self._selection_move_handle, scene_pos)
 
     def _hit_selection_scale_handle(self, scene_pos: QPointF) -> bool:
+        """Método auxiliar para  hit selection scale handle.
+
+        Args:
+            scene_pos: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if self._selection_scale_handle is None:
             return False
         try:
@@ -5670,6 +7868,18 @@ class ChemusonCanvas(QGraphicsView):
 
     def _hit_handle_item(self, handle: QGraphicsItem, scene_pos: QPointF) -> bool:
         # Use a screen-space hit target so handles stay clickable at low zoom.
+        """Método auxiliar para  hit handle item.
+
+        Args:
+            handle: Descripción del parámetro.
+            scene_pos: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         view_pos = self.mapFromScene(scene_pos)
         center = handle.pos() + handle.boundingRect().center()
         center_view = self.mapFromScene(center)
@@ -5679,6 +7889,17 @@ class ChemusonCanvas(QGraphicsView):
         return (dx * dx + dy * dy) <= (radius * radius)
 
     def _begin_rotation_drag(self, scene_pos: QPointF) -> None:
+        """Método auxiliar para  begin rotation drag.
+
+        Args:
+            scene_pos: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if not self._selected_atom_ids_for_transform() and not self._selected_text_items():
             return
         bbox = self._selected_items_bbox()
@@ -5704,6 +7925,17 @@ class ChemusonCanvas(QGraphicsView):
             self._rotation_start_text_transforms[item] = (item.pos(), item.rotation())
 
     def _update_rotation_drag(self, scene_pos: QPointF) -> None:
+        """Método auxiliar para  update rotation drag.
+
+        Args:
+            scene_pos: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if self._rotation_center is None or self._rotation_start_angle is None:
             return
         dx = scene_pos.x() - self._rotation_center.x()
@@ -5715,6 +7947,14 @@ class ChemusonCanvas(QGraphicsView):
         self.rotate_selection_degrees(degrees, use_start_positions=True)
 
     def _finalize_rotation_drag(self) -> None:
+        """Método auxiliar para  finalize rotation drag.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         self._rotation_dragging = False
         self._rotation_center = None
         self._rotation_start_angle = None
@@ -5723,6 +7963,17 @@ class ChemusonCanvas(QGraphicsView):
         self._update_selection_overlay()
 
     def _begin_scale_drag(self, scene_pos: QPointF) -> None:
+        """Método auxiliar para  begin scale drag.
+
+        Args:
+            scene_pos: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if (
             not self._selected_atom_ids_for_transform()
             and not self._selected_text_items()
@@ -5766,6 +8017,17 @@ class ChemusonCanvas(QGraphicsView):
         self._scale_has_moved = False
 
     def _update_scale_drag(self, scene_pos: QPointF) -> None:
+        """Método auxiliar para  update scale drag.
+
+        Args:
+            scene_pos: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if not self._scale_dragging or self._scale_anchor is None:
             return
         if self._scale_start_length <= 1e-6:
@@ -5811,6 +8073,14 @@ class ChemusonCanvas(QGraphicsView):
         self._update_selection_overlay()
 
     def _finalize_scale_drag(self) -> None:
+        """Método auxiliar para  finalize scale drag.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if not self._scale_dragging:
             return
 
@@ -5868,12 +8138,36 @@ class ChemusonCanvas(QGraphicsView):
         self._update_selection_overlay()
 
     def _selected_text_items(self) -> list[TextAnnotationItem]:
+        """Método auxiliar para  selected text items.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         return [item for item in self.scene.selectedItems() if isinstance(item, TextAnnotationItem)]
 
     def _selected_arrow_items(self) -> list[ArrowItem]:
+        """Método auxiliar para  selected arrow items.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         return [item for item in self.scene.selectedItems() if isinstance(item, ArrowItem)]
 
     def _selected_bracket_items(self) -> list[BracketItem]:
+        """Método auxiliar para  selected bracket items.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         return [item for item in self.scene.selectedItems() if isinstance(item, BracketItem)]
 
     def rotate_selection_degrees(self, degrees: float, use_start_positions: bool = False) -> None:
@@ -6034,6 +8328,14 @@ class ChemusonCanvas(QGraphicsView):
              self._update_selection_overlay()
 
     def flip_selection_horizontal(self) -> None:
+        """Método auxiliar para flip selection horizontal.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if not self._selected_atom_ids_for_transform() and not self._selected_text_items():
             return
         bbox = self._selected_items_bbox()
@@ -6071,6 +8373,14 @@ class ChemusonCanvas(QGraphicsView):
         self._update_selection_overlay()
 
     def flip_selection_vertical(self) -> None:
+        """Método auxiliar para flip selection vertical.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if not self._selected_atom_ids_for_transform() and not self._selected_text_items():
             return
         bbox = self._selected_items_bbox()
@@ -6092,6 +8402,18 @@ class ChemusonCanvas(QGraphicsView):
         self._update_selection_overlay()
 
     def _set_bond_anchor(self, atom_id: int, reset_angle: bool = False) -> None:
+        """Método auxiliar para  set bond anchor.
+
+        Args:
+            atom_id: Descripción del parámetro.
+            reset_angle: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if self.bond_anchor_id is not None and self.bond_anchor_id in self.atom_items:
             if self.bond_anchor_id not in self.state.selected_atoms:
                 self.atom_items[self.bond_anchor_id].set_selected(False)
@@ -6103,6 +8425,14 @@ class ChemusonCanvas(QGraphicsView):
             self._bond_zigzag_sign = 1
 
     def _clear_bond_anchor(self) -> None:
+        """Método auxiliar para  clear bond anchor.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if self.bond_anchor_id is not None and self.bond_anchor_id in self.atom_items:
             if self.bond_anchor_id not in self.state.selected_atoms:
                 self.atom_items[self.bond_anchor_id].set_selected(False)
@@ -6119,6 +8449,22 @@ class ChemusonCanvas(QGraphicsView):
         stereo: BondStereo,
         is_aromatic: bool,
     ) -> None:
+        """Método auxiliar para  create or update bond.
+
+        Args:
+            a1_id: Descripción del parámetro.
+            a2_id: Descripción del parámetro.
+            order: Descripción del parámetro.
+            style: Descripción del parámetro.
+            stereo: Descripción del parámetro.
+            is_aromatic: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         existing = self.model.find_bond_between(a1_id, a2_id)
         if existing is not None:
             if (
@@ -6165,6 +8511,18 @@ class ChemusonCanvas(QGraphicsView):
             self._kekulize_aromatic_bonds(seed_atoms={a1_id, a2_id})
 
     def _add_bond_between(self, a1_id: int, a2_id: int) -> None:
+        """Método auxiliar para  add bond between.
+
+        Args:
+            a1_id: Descripción del parámetro.
+            a2_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         order = self.state.active_bond_order
         style = self.state.active_bond_style
         stereo = self.state.active_bond_stereo
@@ -6174,6 +8532,17 @@ class ChemusonCanvas(QGraphicsView):
         self._create_or_update_bond(a1_id, a2_id, order, style, stereo, is_aromatic)
 
     def _cycle_bond_order(self, bond_id: int) -> None:
+        """Método auxiliar para  cycle bond order.
+
+        Args:
+            bond_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         bond = self.model.get_bond(bond_id)
         if bond.style != BondStyle.PLAIN or bond.stereo != BondStereo.NONE:
             cmd = ChangeBondCommand(
@@ -6198,6 +8567,17 @@ class ChemusonCanvas(QGraphicsView):
         self.undo_stack.push(cmd)
 
     def _apply_bond_style(self, bond_id: int) -> None:
+        """Método auxiliar para  apply bond style.
+
+        Args:
+            bond_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         order = self.state.active_bond_order
         style = self.state.active_bond_style
         stereo = self.state.active_bond_stereo
@@ -6223,6 +8603,18 @@ class ChemusonCanvas(QGraphicsView):
             self._kekulize_aromatic_bonds(seed_atoms={bond.a1_id, bond.a2_id})
 
     def _create_first_bond(self, scene_pos: QPointF, modifiers: Qt.KeyboardModifiers) -> None:
+        """Método auxiliar para  create first bond.
+
+        Args:
+            scene_pos: Descripción del parámetro.
+            modifiers: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         self.undo_stack.beginMacro("Add bond")
         atom_cmd = AddAtomCommand(
             self.model,
@@ -6241,6 +8633,18 @@ class ChemusonCanvas(QGraphicsView):
         self.undo_stack.endMacro()
 
     def _extend_bond_from_anchor(self, scene_pos: QPointF, modifiers: Qt.KeyboardModifiers) -> None:
+        """Método auxiliar para  extend bond from anchor.
+
+        Args:
+            scene_pos: Descripción del parámetro.
+            modifiers: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         anchor_id = self.bond_anchor_id
         if anchor_id is None:
             return
@@ -6273,6 +8677,18 @@ class ChemusonCanvas(QGraphicsView):
         self.undo_stack.endMacro()
 
     def _add_bond_with_new_atom(self, anchor_id: int, angle: float) -> None:
+        """Método auxiliar para  add bond with new atom.
+
+        Args:
+            anchor_id: Descripción del parámetro.
+            angle: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         anchor = self.model.get_atom(anchor_id)
         new_x = anchor.x + self.state.bond_length * math.cos(angle)
         new_y = anchor.y + self.state.bond_length * math.sin(angle)
@@ -6293,15 +8709,49 @@ class ChemusonCanvas(QGraphicsView):
         self._set_bond_anchor(new_atom_id, reset_angle=False)
 
     def _record_bond_angle_between(self, a1_id: int, a2_id: int) -> None:
+        """Método auxiliar para  record bond angle between.
+
+        Args:
+            a1_id: Descripción del parámetro.
+            a2_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         a1 = self.model.get_atom(a1_id)
         a2 = self.model.get_atom(a2_id)
         angle = math.atan2(a2.y - a1.y, a2.x - a1.x)
         self._record_bond_angle(angle)
 
     def _record_bond_angle(self, angle: float) -> None:
+        """Método auxiliar para  record bond angle.
+
+        Args:
+            angle: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         self._bond_last_angle = self._normalize_angle(angle)
 
     def _default_bond_angle(self, anchor_id: int) -> float:
+        """Método auxiliar para  default bond angle.
+
+        Args:
+            anchor_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         step = self._bond_environment_step(anchor_id)
         if self._bond_last_angle is not None:
             angle = self._bond_last_angle + step * self._bond_zigzag_sign
@@ -6319,9 +8769,30 @@ class ChemusonCanvas(QGraphicsView):
         return self._best_separated_angle(candidates, existing)
 
     def _reset_zigzag(self) -> None:
+        """Método auxiliar para  reset zigzag.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         self._bond_zigzag_sign = 1
 
     def _snap_angle_to_environment(self, angle: float, anchor_id: int, step: float) -> float:
+        """Método auxiliar para  snap angle to environment.
+
+        Args:
+            angle: Descripción del parámetro.
+            anchor_id: Descripción del parámetro.
+            step: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if step <= 0:
             return angle
         existing = self._get_anchor_bond_angles(anchor_id)
@@ -6335,11 +8806,34 @@ class ChemusonCanvas(QGraphicsView):
         return self._normalize_angle(best)
 
     def _snap_angle(self, angle: float, step: float) -> float:
+        """Método auxiliar para  snap angle.
+
+        Args:
+            angle: Descripción del parámetro.
+            step: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if step <= 0:
             return angle
         return self._normalize_angle(round(angle / step) * step)
 
     def _bond_environment_step(self, anchor_id: int) -> float:
+        """Método auxiliar para  bond environment step.
+
+        Args:
+            anchor_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         max_order = max(1, self.state.active_bond_order)
         for bond in self.model.bonds.values():
             if bond.a1_id == anchor_id or bond.a2_id == anchor_id:
@@ -6352,6 +8846,17 @@ class ChemusonCanvas(QGraphicsView):
         return math.radians(self._sp3_display_angle_deg())
 
     def _get_anchor_bond_angles(self, anchor_id: int) -> List[float]:
+        """Método auxiliar para  get anchor bond angles.
+
+        Args:
+            anchor_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         angles = []
         anchor = self.model.get_atom(anchor_id)
         for bond in self.model.bonds.values():
@@ -6366,6 +8871,18 @@ class ChemusonCanvas(QGraphicsView):
         return angles
 
     def _best_separated_angle(self, candidates: List[float], existing: List[float]) -> float:
+        """Método auxiliar para  best separated angle.
+
+        Args:
+            candidates: Descripción del parámetro.
+            existing: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         best = None
         best_sep = -1.0
         for candidate in candidates:
@@ -6376,19 +8893,61 @@ class ChemusonCanvas(QGraphicsView):
         return self._normalize_angle(best) if best is not None else 0.0
 
     def _normalize_angle(self, angle: float) -> float:
+        """Método auxiliar para  normalize angle.
+
+        Args:
+            angle: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         return (angle + math.pi * 2) % (math.pi * 2)
 
     def _angle_distance(self, a: float, b: float) -> float:
+        """Método auxiliar para  angle distance.
+
+        Args:
+            a: Descripción del parámetro.
+            b: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         diff = (a - b + math.pi) % (2 * math.pi) - math.pi
         return abs(diff)
 
     def _angle_snap_step_deg(self) -> float:
+        """Método auxiliar para  angle snap step deg.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if not self.state.fixed_angles:
             return 0.0
         step = float(self.state.angle_step_deg)
         return step if step > 0 else 0.0
 
     def _snap_angles_to_grid(self, angles: Iterable[float]) -> list[float]:
+        """Método auxiliar para  snap angles to grid.
+
+        Args:
+            angles: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         step = self._angle_snap_step_deg()
         if step <= 0:
             return list(angles)
@@ -6404,6 +8963,14 @@ class ChemusonCanvas(QGraphicsView):
         return deduped
 
     def _sp3_display_angle_deg(self) -> float:
+        """Método auxiliar para  sp3 display angle deg.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         step = self._angle_snap_step_deg()
         if step <= 0:
             return SP3_BOND_ANGLE_DEG
@@ -6413,6 +8980,17 @@ class ChemusonCanvas(QGraphicsView):
     # Hover + Drag State
     # -------------------------------------------------------------------------
     def _pick_hover_target(self, scene_pos: QPointF) -> tuple[Optional[int], Optional[int]]:
+        """Método auxiliar para  pick hover target.
+
+        Args:
+            scene_pos: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         atoms = [(atom.id, atom.x, atom.y) for atom in self.model.atoms.values()]
         atom_id = closest_atom(scene_pos, atoms, HOVER_ATOM_RADIUS)
         if atom_id is not None:
@@ -6427,6 +9005,17 @@ class ChemusonCanvas(QGraphicsView):
         return None, bond_id
 
     def _update_hover(self, scene_pos: QPointF) -> None:
+        """Método auxiliar para  update hover.
+
+        Args:
+            scene_pos: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         atom_id, bond_id = self._pick_hover_target(scene_pos)
 
         if self.hovered_atom_id is not None and self.hovered_atom_id in self.atom_items:
@@ -6458,6 +9047,14 @@ class ChemusonCanvas(QGraphicsView):
             self._hover_bond_indicator.hide_indicator()
 
     def _cancel_drag(self) -> None:
+        """Método auxiliar para  cancel drag.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         self._drag_mode = "none"
         self._drag_anchor = None
         self._ring_last_vertices = None
@@ -6479,6 +9076,17 @@ class ChemusonCanvas(QGraphicsView):
             self._preview_arrow_item.hide_preview()
 
     def _on_undo_stack_changed(self, _index: int) -> None:
+        """Método auxiliar para  on undo stack changed.
+
+        Args:
+            _index: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         saved_atoms = set(self.state.selected_atoms)
         saved_bonds = set(self.state.selected_bonds)
         self._cancel_drag()
@@ -6498,6 +9106,14 @@ class ChemusonCanvas(QGraphicsView):
         self._update_selection_overlay()
 
     def _sync_scene_with_model(self) -> None:
+        """Método auxiliar para  sync scene with model.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         for item in list(self.scene.items()):
             if isinstance(item, (AtomItem, BondItem)):
                 self.scene.removeItem(item)
@@ -6528,11 +9144,33 @@ class ChemusonCanvas(QGraphicsView):
         self.refresh_aromatic_circles()
 
     def show_valence_errors(self, errors: Iterable[int]) -> None:
+        """Método auxiliar para show valence errors.
+
+        Args:
+            errors: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         error_ids = set(errors)
         for atom_id, item in self.atom_items.items():
             item.set_valence_error(atom_id in error_ids)
 
     def _get_anchor_bond_angles_deg(self, anchor_id: int) -> list[float]:
+        """Método auxiliar para  get anchor bond angles deg.
+
+        Args:
+            anchor_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         angles = []
         anchor = self.model.get_atom(anchor_id)
         p0 = QPointF(anchor.x, anchor.y)
@@ -6548,6 +9186,19 @@ class ChemusonCanvas(QGraphicsView):
         return angles
 
     def _bond_geometry(self, anchor_id: int, bond_order: int, is_aromatic: bool) -> str:
+        """Método auxiliar para  bond geometry.
+
+        Args:
+            anchor_id: Descripción del parámetro.
+            bond_order: Descripción del parámetro.
+            is_aromatic: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         has_triple = bond_order >= 3
         has_double = bond_order == 2 or is_aromatic
         for bond in self.model.bonds.values():
@@ -6564,6 +9215,17 @@ class ChemusonCanvas(QGraphicsView):
         return "sp3"
 
     def _incoming_angle_deg(self, anchor_id: int) -> Optional[float]:
+        """Método auxiliar para  incoming angle deg.
+
+        Args:
+            anchor_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         angles = self._get_anchor_bond_angles_deg(anchor_id)
         if len(angles) == 1:
             return angles[0]
@@ -6572,6 +9234,19 @@ class ChemusonCanvas(QGraphicsView):
     def _direction_collision_metrics(
         self, anchor_id: Optional[int], p0: QPointF, p1: QPointF
     ) -> tuple[int, float, float]:
+        """Método auxiliar para  direction collision metrics.
+
+        Args:
+            anchor_id: Descripción del parámetro.
+            p0: Descripción del parámetro.
+            p1: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         intersections = 0
         min_atom_dist = float("inf")
         min_bond_dist = float("inf")
@@ -6621,6 +9296,22 @@ class ChemusonCanvas(QGraphicsView):
         mouse_angle_deg: float,
         preferred_deg: list[float],
     ) -> float:
+        """Método auxiliar para  direction score.
+
+        Args:
+            anchor_id: Descripción del parámetro.
+            p0: Descripción del parámetro.
+            p1: Descripción del parámetro.
+            angle_deg_value: Descripción del parámetro.
+            mouse_angle_deg: Descripción del parámetro.
+            preferred_deg: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         intersections, min_atom_dist, min_bond_dist = self._direction_collision_metrics(
             anchor_id, p0, p1
         )
@@ -6644,6 +9335,19 @@ class ChemusonCanvas(QGraphicsView):
         p0: QPointF,
         p1: QPointF,
     ) -> bool:
+        """Método auxiliar para  direction is valid.
+
+        Args:
+            anchor_id: Descripción del parámetro.
+            p0: Descripción del parámetro.
+            p1: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         intersections, min_atom_dist, min_bond_dist = self._direction_collision_metrics(
             anchor_id, p0, p1
         )
@@ -6668,6 +9372,24 @@ class ChemusonCanvas(QGraphicsView):
         apply_collisions: bool = True,
         allow_length_boost: bool = True,
     ) -> tuple[float, float]:
+        """Método auxiliar para  pick bond direction deg.
+
+        Args:
+            anchor: Descripción del parámetro.
+            anchor_id: Descripción del parámetro.
+            mouse_angle_deg: Descripción del parámetro.
+            bond_order: Descripción del parámetro.
+            is_aromatic: Descripción del parámetro.
+            length: Descripción del parámetro.
+            apply_collisions: Descripción del parámetro.
+            allow_length_boost: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         existing_angles = self._get_anchor_bond_angles_deg(anchor_id) if anchor_id else []
         geometry = (
             self._bond_geometry(anchor_id, bond_order, is_aromatic)
@@ -6746,6 +9468,20 @@ class ChemusonCanvas(QGraphicsView):
     def _select_preferred_angle(
         self, anchor_id: int, cursor_angle: float, bond_order: int, is_aromatic: bool
     ) -> float:
+        """Método auxiliar para  select preferred angle.
+
+        Args:
+            anchor_id: Descripción del parámetro.
+            cursor_angle: Descripción del parámetro.
+            bond_order: Descripción del parámetro.
+            is_aromatic: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         anchor = self.model.get_atom(anchor_id)
         p0 = QPointF(anchor.x, anchor.y)
         angle, _ = self._pick_bond_direction_deg(
@@ -6761,6 +9497,18 @@ class ChemusonCanvas(QGraphicsView):
         return angle
 
     def _find_overlapping_bond(self, p0: QPointF, p1: QPointF) -> Optional[int]:
+        """Método auxiliar para  find overlapping bond.
+
+        Args:
+            p0: Descripción del parámetro.
+            p1: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         for bond in self.model.bonds.values():
             a1 = self.model.get_atom(bond.a1_id)
             a2 = self.model.get_atom(bond.a2_id)
@@ -6771,6 +9519,18 @@ class ChemusonCanvas(QGraphicsView):
         return None
 
     def _snap_ring_vertex(self, pos: QPointF, excluded: set[int]) -> Optional[int]:
+        """Método auxiliar para  snap ring vertex.
+
+        Args:
+            pos: Descripción del parámetro.
+            excluded: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         candidates = [
             (atom.id, atom.x, atom.y)
             for atom in self.model.atoms.values()
@@ -6781,6 +9541,19 @@ class ChemusonCanvas(QGraphicsView):
     def _build_ring_vertex_defs(
         self, vertices: List[QPointF], anchor_type: str, anchor_id: Optional[int]
     ) -> List[Tuple[Optional[int], float, float]]:
+        """Método auxiliar para  build ring vertex defs.
+
+        Args:
+            vertices: Descripción del parámetro.
+            anchor_type: Descripción del parámetro.
+            anchor_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         vertex_defs: List[Tuple[Optional[int], float, float]] = []
         used_ids: set[int] = set()
 
@@ -6811,11 +9584,33 @@ class ChemusonCanvas(QGraphicsView):
     # Bond Placement
     # -------------------------------------------------------------------------
     def _bond_drag_distance(self, scene_pos: QPointF) -> float:
+        """Método auxiliar para  bond drag distance.
+
+        Args:
+            scene_pos: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if self._bond_drag_start is None:
             return 0.0
         return (scene_pos - self._bond_drag_start).manhattanLength()
 
     def _update_bond_drag_state(self, scene_pos: QPointF) -> None:
+        """Método auxiliar para  update bond drag state.
+
+        Args:
+            scene_pos: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         self._drag_free_orientation = (
             self._bond_drag_start is not None
             and self._bond_drag_distance(scene_pos) >= BOND_DRAG_THRESHOLD_PX
@@ -6824,6 +9619,18 @@ class ChemusonCanvas(QGraphicsView):
     def _should_use_default_bond_angle(
         self, modifiers: Qt.KeyboardModifiers, scene_pos: Optional[QPointF] = None
     ) -> bool:
+        """Método auxiliar para  should use default bond angle.
+
+        Args:
+            modifiers: Descripción del parámetro.
+            scene_pos: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if self._drag_mode != "place_bond":
             return False
         if modifiers & Qt.KeyboardModifier.AltModifier:
@@ -6835,6 +9642,14 @@ class ChemusonCanvas(QGraphicsView):
         return True
 
     def _current_bond_geometry(self) -> tuple[int, bool]:
+        """Método auxiliar para  current bond geometry.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         order = self.state.active_bond_order
         is_aromatic = self.state.active_bond_aromatic
         if self.state.active_bond_style != BondStyle.PLAIN or is_aromatic:
@@ -6842,6 +9657,17 @@ class ChemusonCanvas(QGraphicsView):
         return order, is_aromatic
 
     def _peek_default_bond_angle(self, anchor_id: Optional[int]) -> float:
+        """Método auxiliar para  peek default bond angle.
+
+        Args:
+            anchor_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if anchor_id is None:
             return 0.0
         existing = self._get_anchor_bond_angles(anchor_id)
@@ -6862,6 +9688,18 @@ class ChemusonCanvas(QGraphicsView):
     def _compute_default_bond_endpoint(
         self, anchor: QPointF, anchor_id: Optional[int]
     ) -> QPointF:
+        """Método auxiliar para  compute default bond endpoint.
+
+        Args:
+            anchor: Descripción del parámetro.
+            anchor_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         order, aromatic = self._current_bond_geometry()
         default_angle_deg = math.degrees(self._peek_default_bond_angle(anchor_id))
         length = self.state.bond_length
@@ -6893,6 +9731,20 @@ class ChemusonCanvas(QGraphicsView):
         used_default: bool,
         anchor_id: Optional[int],
     ) -> None:
+        """Método auxiliar para  update bond angle state.
+
+        Args:
+            p0: Descripción del parámetro.
+            p1: Descripción del parámetro.
+            used_default: Descripción del parámetro.
+            anchor_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         angle = math.atan2(p1.y() - p0.y(), p1.x() - p0.x())
         self._bond_last_angle = self._normalize_angle(angle)
         if not used_default:
@@ -6907,6 +9759,18 @@ class ChemusonCanvas(QGraphicsView):
             self._bond_zigzag_sign *= -1
 
     def _begin_place_bond(self, anchor_id: Optional[int], scene_pos: QPointF) -> None:
+        """Método auxiliar para  begin place bond.
+
+        Args:
+            anchor_id: Descripción del parámetro.
+            scene_pos: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         self._drag_mode = "place_bond"
         self._drag_free_orientation = False
         self._bond_drag_start = scene_pos
@@ -6922,6 +9786,18 @@ class ChemusonCanvas(QGraphicsView):
         self._update_bond_preview(scene_pos, Qt.KeyboardModifier.NoModifier)
 
     def _update_bond_preview(self, scene_pos: QPointF, modifiers: Qt.KeyboardModifiers) -> None:
+        """Método auxiliar para  update bond preview.
+
+        Args:
+            scene_pos: Descripción del parámetro.
+            modifiers: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if self._drag_anchor is None:
             return
         if self._drag_anchor["id"] is None:
@@ -6936,6 +9812,17 @@ class ChemusonCanvas(QGraphicsView):
         self._preview_bond_item.update_line(p0, p1)
 
     def _finalize_bond(self, modifiers: Qt.KeyboardModifiers) -> None:
+        """Método auxiliar para  finalize bond.
+
+        Args:
+            modifiers: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if self._drag_anchor is None:
             self._cancel_drag()
             return
@@ -7064,6 +9951,21 @@ class ChemusonCanvas(QGraphicsView):
         bond_order: Optional[int] = None,
         is_aromatic: Optional[bool] = None,
     ) -> QPointF:
+        """Método auxiliar para  compute bond endpoint.
+
+        Args:
+            anchor: Descripción del parámetro.
+            scene_pos: Descripción del parámetro.
+            modifiers: Descripción del parámetro.
+            bond_order: Descripción del parámetro.
+            is_aromatic: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         dx = scene_pos.x() - anchor.x()
         dy = scene_pos.y() - anchor.y()
         dist = math.hypot(dx, dy)
@@ -7129,6 +10031,19 @@ class ChemusonCanvas(QGraphicsView):
     # Ring Placement
     # -------------------------------------------------------------------------
     def _begin_place_ring(self, anchor_type: str, anchor_id: Optional[int], scene_pos: QPointF) -> None:
+        """Método auxiliar para  begin place ring.
+
+        Args:
+            anchor_type: Descripción del parámetro.
+            anchor_id: Descripción del parámetro.
+            scene_pos: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         self._drag_mode = "place_ring"
         self._drag_anchor = {"type": anchor_type, "id": anchor_id, "pos": scene_pos}
         if anchor_type == "atom":
@@ -7149,11 +10064,34 @@ class ChemusonCanvas(QGraphicsView):
         self._update_ring_preview(scene_pos, Qt.KeyboardModifier.NoModifier)
 
     def _update_ring_preview(self, scene_pos: QPointF, modifiers: Qt.KeyboardModifiers) -> None:
+        """Método auxiliar para  update ring preview.
+
+        Args:
+            scene_pos: Descripción del parámetro.
+            modifiers: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         vertices = self._compute_ring_vertices(scene_pos, modifiers)
         self._ring_last_vertices = vertices
         self._preview_ring_item.update_polygon(vertices)
 
     def _finalize_ring(self, modifiers: Qt.KeyboardModifiers) -> None:
+        """Método auxiliar para  finalize ring.
+
+        Args:
+            modifiers: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         vertices = self._ring_last_vertices or []
         if not vertices or self._drag_anchor is None:
             self._cancel_drag()
@@ -7189,6 +10127,18 @@ class ChemusonCanvas(QGraphicsView):
     def _compute_ring_vertices(
         self, scene_pos: QPointF, modifiers: Qt.KeyboardModifiers
     ) -> List[QPointF]:
+        """Método auxiliar para  compute ring vertices.
+
+        Args:
+            scene_pos: Descripción del parámetro.
+            modifiers: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if self._drag_anchor is None:
             return []
 
@@ -7234,6 +10184,20 @@ class ChemusonCanvas(QGraphicsView):
         ring_size: int,
         direction: int,
     ) -> List[QPointF]:
+        """Método auxiliar para  regular polygon from edge.
+
+        Args:
+            p1: Descripción del parámetro.
+            p2: Descripción del parámetro.
+            ring_size: Descripción del parámetro.
+            direction: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         dx = p2.x() - p1.x()
         dy = p2.y() - p1.y()
         length = math.hypot(dx, dy)
@@ -7256,6 +10220,18 @@ class ChemusonCanvas(QGraphicsView):
     # Chain Placement
     # -------------------------------------------------------------------------
     def _begin_place_chain(self, anchor_id: Optional[int], scene_pos: QPointF) -> None:
+        """Método auxiliar para  begin place chain.
+
+        Args:
+            anchor_id: Descripción del parámetro.
+            scene_pos: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         self._drag_mode = "place_chain"
         if anchor_id is None:
             self._drag_anchor = {"type": "free", "id": None, "pos": QPointF(scene_pos)}
@@ -7269,6 +10245,18 @@ class ChemusonCanvas(QGraphicsView):
         self._update_chain_preview(scene_pos, Qt.KeyboardModifier.NoModifier)
 
     def _update_chain_preview(self, scene_pos: QPointF, modifiers: Qt.KeyboardModifiers) -> None:
+        """Método auxiliar para  update chain preview.
+
+        Args:
+            scene_pos: Descripción del parámetro.
+            modifiers: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if self._drag_anchor is None:
             return
         anchor_id = self._drag_anchor["id"]
@@ -7353,6 +10341,17 @@ class ChemusonCanvas(QGraphicsView):
         self._preview_chain_label.update_label(str(n), points[-1] + QPointF(0, -10))
 
     def _finalize_chain(self, modifiers: Qt.KeyboardModifiers) -> None:
+        """Método auxiliar para  finalize chain.
+
+        Args:
+            modifiers: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if not self._chain_last_points or self._drag_anchor is None:
             self._cancel_drag()
             return
@@ -7380,6 +10379,17 @@ class ChemusonCanvas(QGraphicsView):
     # Hotkeys
     # -------------------------------------------------------------------------
     def _handle_hotkeys(self, event) -> bool:
+        """Método auxiliar para  handle hotkeys.
+
+        Args:
+            event: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         key = event.key()
         if Qt.Key.Key_0 <= key <= Qt.Key.Key_9:
             digit = key - Qt.Key.Key_0
@@ -7404,6 +10414,18 @@ class ChemusonCanvas(QGraphicsView):
         return False
 
     def _create_chain_hotkey(self, anchor_id: int, n: int) -> None:
+        """Método auxiliar para  create chain hotkey.
+
+        Args:
+            anchor_id: Descripción del parámetro.
+            n: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         anchor = self.model.get_atom(anchor_id)
         p0 = QPointF(anchor.x, anchor.y)
         angles = self._get_anchor_bond_angles_deg(anchor_id)
@@ -7416,6 +10438,18 @@ class ChemusonCanvas(QGraphicsView):
         self.undo_stack.push(cmd)
 
     def _create_ring_hotkey(self, anchor_id: int, ring_size: int) -> None:
+        """Método auxiliar para  create ring hotkey.
+
+        Args:
+            anchor_id: Descripción del parámetro.
+            ring_size: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         anchor = self.model.get_atom(anchor_id)
         p0 = QPointF(anchor.x, anchor.y)
         angles = self._get_anchor_bond_angles_deg(anchor_id)
@@ -7426,6 +10460,18 @@ class ChemusonCanvas(QGraphicsView):
         self._commit_ring_vertices(vertices, anchor_type="atom", anchor_id=anchor_id)
 
     def _create_ring_from_bond_hotkey(self, bond_id: int, ring_size: int) -> None:
+        """Método auxiliar para  create ring from bond hotkey.
+
+        Args:
+            bond_id: Descripción del parámetro.
+            ring_size: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         bond = self.model.get_bond(bond_id)
         a1 = self.model.get_atom(bond.a1_id)
         a2 = self.model.get_atom(bond.a2_id)
@@ -7438,6 +10484,19 @@ class ChemusonCanvas(QGraphicsView):
     def _commit_ring_vertices(
         self, vertices: List[QPointF], anchor_type: str, anchor_id: int
     ) -> None:
+        """Método auxiliar para  commit ring vertices.
+
+        Args:
+            vertices: Descripción del parámetro.
+            anchor_type: Descripción del parámetro.
+            anchor_id: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if not vertices:
             return
         ring_size = len(vertices)
@@ -7464,6 +10523,18 @@ class ChemusonCanvas(QGraphicsView):
             self._kekulize_aromatic_bonds()
 
     def _set_bond_order_hotkey(self, bond_id: int, order: int) -> None:
+        """Método auxiliar para  set bond order hotkey.
+
+        Args:
+            bond_id: Descripción del parámetro.
+            order: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         order = max(1, min(3, order))
         cmd = ChangeBondCommand(
             self.model,
@@ -7477,6 +10548,17 @@ class ChemusonCanvas(QGraphicsView):
         self.undo_stack.push(cmd)
 
     def _kekulize_aromatic_bonds(self, seed_atoms: Optional[Iterable[int]] = None) -> None:
+        """Método auxiliar para  kekulize aromatic bonds.
+
+        Args:
+            seed_atoms: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         aromatic_bonds = [bond for bond in self.model.bonds.values() if bond.is_aromatic]
         if not aromatic_bonds:
             return
@@ -7582,6 +10664,14 @@ class ChemusonCanvas(QGraphicsView):
         self._refresh_aromatic_ring_contexts()
 
     def _assign_ring_ids_for_aromatic_cycles(self) -> None:
+        """Método auxiliar para  assign ring ids for aromatic cycles.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         adjacency: dict[int, list[tuple[int, int]]] = {}
         for bond in self.model.bonds.values():
             if not bond.is_aromatic:
@@ -7615,6 +10705,18 @@ class ChemusonCanvas(QGraphicsView):
     def _find_cycle_for_bond(
         self, bond: Bond, adjacency: dict[int, list[tuple[int, int]]]
     ) -> Optional[dict[str, list[int]]]:
+        """Método auxiliar para  find cycle for bond.
+
+        Args:
+            bond: Descripción del parámetro.
+            adjacency: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         a1 = bond.a1_id
         a2 = bond.a2_id
         if a1 not in adjacency or a2 not in adjacency:
@@ -7645,6 +10747,18 @@ class ChemusonCanvas(QGraphicsView):
         vertex_defs: List[Tuple[Optional[int], float, float]],
         ring_size: int,
     ) -> List[Tuple[int, int, int, BondStyle, BondStereo, bool]]:
+        """Método auxiliar para  build aromatic edges.
+
+        Args:
+            vertex_defs: Descripción del parámetro.
+            ring_size: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if ring_size % 2 != 0:
             return [
                 (i, (i + 1) % ring_size, 1, BondStyle.PLAIN, BondStereo.NONE, True)
@@ -7663,6 +10777,18 @@ class ChemusonCanvas(QGraphicsView):
                 constraints[i] = 2 if existing.order >= 2 else 1
 
         def atom_has_double(atom_id: Optional[int], other_id: Optional[int]) -> bool:
+            """Método auxiliar para atom has double.
+
+            Args:
+                atom_id: Descripción del parámetro.
+                other_id: Descripción del parámetro.
+
+            Returns:
+                Resultado de la operación o None.
+
+            Side Effects:
+                Puede modificar el estado interno o la escena.
+            """
             if atom_id is None:
                 return False
             for bond in self.model.bonds.values():
@@ -7675,6 +10801,17 @@ class ChemusonCanvas(QGraphicsView):
             return False
 
         def score_phase(phase: int) -> int:
+            """Método auxiliar para score phase.
+
+            Args:
+                phase: Descripción del parámetro.
+
+            Returns:
+                Resultado de la operación o None.
+
+            Side Effects:
+                Puede modificar el estado interno o la escena.
+            """
             score = 0
             for idx, desired in constraints.items():
                 current = 2 if ((idx + phase) % 2 == 0) else 1
@@ -7695,6 +10832,17 @@ class ChemusonCanvas(QGraphicsView):
         return edges
 
     def _begin_drag(self, scene_pos: QPointF) -> None:
+        """Método auxiliar para  begin drag.
+
+        Args:
+            scene_pos: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if (
             not self._selected_atom_ids_for_transform()
             and not self._selected_text_items()
@@ -7731,6 +10879,18 @@ class ChemusonCanvas(QGraphicsView):
         self._drag_has_moved = False
 
     def _is_on_paper(self, x: float, y: float) -> bool:
+        """Método auxiliar para  is on paper.
+
+        Args:
+            x: Descripción del parámetro.
+            y: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         return (
             PAPER_MARGIN <= x <= self.paper_width - PAPER_MARGIN
             and PAPER_MARGIN <= y <= self.paper_height - PAPER_MARGIN
@@ -7741,6 +10901,14 @@ class ChemusonCanvas(QGraphicsView):
         # purely in view pixels, zooming out makes the visible scene area
         # (in scene units) much larger than the margin, which can clamp the view
         # and make parts of the paper unreachable after resizes.
+        """Método auxiliar para  update scene rect.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         viewport_rect = self.viewport().rect()
         if viewport_rect.isEmpty():
             view_w = float(self.viewport().width())
@@ -7766,6 +10934,17 @@ class ChemusonCanvas(QGraphicsView):
             self.centerOn(current_center)
 
     def resizeEvent(self, event) -> None:
+        """Método auxiliar para resizeEvent.
+
+        Args:
+            event: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         super().resizeEvent(event)
         self._update_scene_rect()
         self._update_selection_overlay()
@@ -7778,6 +10957,17 @@ class ChemusonCanvas(QGraphicsView):
             self.center_on_paper()
 
     def showEvent(self, event) -> None:
+        """Método auxiliar para showEvent.
+
+        Args:
+            event: Descripción del parámetro.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         super().showEvent(event)
         if not getattr(self, "_pending_initial_center", False):
             return
@@ -7785,6 +10975,14 @@ class ChemusonCanvas(QGraphicsView):
         QTimer.singleShot(0, self._center_canvas_initial)
 
     def _center_canvas_initial(self) -> None:
+        """Método auxiliar para  center canvas initial.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
         if self.viewport().rect().isEmpty():
             self._pending_initial_center = True
             return

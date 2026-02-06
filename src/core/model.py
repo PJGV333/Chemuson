@@ -1,14 +1,24 @@
+"""Modelos de datos base del editor molecular Chemuson.
+
+Este módulo concentra las estructuras que representan el grafo molecular
+(átomos y enlaces) y el estado químico de la interfaz. El resto de la
+aplicación (GUI, persistencia y nomenclatura) interactúa con estas clases
+para añadir, modificar y validar la química dibujada.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Set
 
+# Marcadores internos para distinguir "no se especificó" de "se desea borrar".
 _STROKE_UNSET = object()
 _COLOR_UNSET = object()
 
 
 class BondStyle(str, Enum):
+    """Estilos de representación de enlaces en el lienzo."""
     PLAIN = "plain"
     BOLD = "bold"
     WEDGE = "wedge"
@@ -18,14 +28,16 @@ class BondStyle(str, Enum):
 
 
 class BondStereo(str, Enum):
+    """Categorías de estereoquímica para enlaces dibujados."""
     NONE = "none"
     UP = "up"
     DOWN = "down"
     EITHER = "either"
 
 
-# Default/typical valence used by the UI to estimate implicit H placement.
-# This is *not* a hard chemical validator (hypervalent/charged states exist).
+# Valencias "típicas" usadas por la UI para estimar hidrógenos implícitos.
+# Nota: no es un validador químico estricto; se admiten estados cargados
+# e hipervalentes en otras partes del flujo.
 VALENCE_MAP = {
     "H": 1,
     "C": 4,
@@ -39,12 +51,12 @@ VALENCE_MAP = {
     "I": 1,
 }
 
-# Maximum valence (sum of bond orders) tolerated before flagging a valence error.
-# This is intentionally permissive for common hypervalent/main-group patterns:
-# - P(V/VI): phosphates, phosphoranes, PF6-
-# - S(IV/VI): sulfoxides/sulfones/sulfates, SF6
-# - Halogens(III/V/VII): interhalogens, oxoacids (e.g., IF7, ClO4- drawings)
-# - Xe(II/IV/VI/VIII): xenon fluorides and XeO4-style depictions
+# Valencias máximas (suma de órdenes de enlace) antes de marcar error.
+# Se usa un umbral permisivo para patrones comunes hipervalentes:
+# - P(V/VI): fosfatos, fosforanos, PF6-
+# - S(IV/VI): sulfóxidos/sulfonas/sulfatos, SF6
+# - Halógenos(III/V/VII): interhalógenos, oxoácidos (p. ej., IF7, ClO4-)
+# - Xe(II/IV/VI/VIII): fluoruro de xenón y XeO4 en dibujos
 MAX_VALENCE_MAP = {
     "H": 1,
     "C": 4,
@@ -72,6 +84,7 @@ MAX_VALENCE_MAP = {
 
 @dataclass
 class Atom:
+    """Representa un átomo en el grafo molecular."""
     id: int
     element: str
     x: float
@@ -86,6 +99,7 @@ class Atom:
 
 @dataclass
 class Bond:
+    """Representa un enlace químico entre dos átomos."""
     id: int
     a1_id: int
     a2_id: int
@@ -103,6 +117,7 @@ class Bond:
 
 @dataclass
 class ChemState:
+    """Estado químico y de visualización activo en la interfaz."""
     active_tool: str = "tool_atom"
     active_bond_order: int = 1
     active_bond_style: BondStyle = BondStyle.PLAIN
@@ -134,7 +149,10 @@ class ChemState:
 
 
 class MolGraph:
+    """Grafo molecular mutable con operaciones de edición básicas."""
+
     def __init__(self) -> None:
+        """Inicializa el grafo vacío y contadores internos de IDs."""
         self.atoms: Dict[int, Atom] = {}
         self.bonds: Dict[int, Bond] = {}
         self._next_atom_id = 1
@@ -153,6 +171,26 @@ class MolGraph:
         is_query: bool = False,
         is_explicit: bool = False,
     ) -> Atom:
+        """Crea y registra un átomo en el grafo.
+
+        Args:
+            element: Símbolo del elemento químico (p. ej., "C", "O").
+            x: Posición X en coordenadas del lienzo.
+            y: Posición Y en coordenadas del lienzo.
+            atom_id: ID explícito si se desea restaurar desde un archivo.
+            charge: Carga formal del átomo.
+            isotope: Número másico si se desea mostrar el isótopo.
+            explicit_h: Número de hidrógenos explícitos asociados.
+            mapping: Índice de mapeo (útil en exportaciones/reacciones).
+            is_query: Marca de átomo de consulta (SMARTS-like).
+            is_explicit: Si el símbolo debe mostrarse aunque sea implícito.
+
+        Returns:
+            El átomo creado y almacenado en el diccionario interno.
+
+        Side Effects:
+            Incrementa el contador de IDs y modifica `self.atoms`.
+        """
         if atom_id is None:
             atom_id = self._next_atom_id
             self._next_atom_id += 1
@@ -174,6 +212,17 @@ class MolGraph:
         return atom
 
     def remove_atom(self, atom_id: int) -> tuple[Atom, List[Bond]]:
+        """Elimina un átomo y todos los enlaces conectados.
+
+        Args:
+            atom_id: Identificador del átomo a eliminar.
+
+        Returns:
+            Una tupla con el átomo eliminado y la lista de enlaces removidos.
+
+        Side Effects:
+            Modifica `self.atoms` y `self.bonds`, actualizando el grafo.
+        """
         atom = self.atoms.pop(atom_id)
         removed_bonds: List[Bond] = []
         for bond_id, bond in list(self.bonds.items()):
@@ -197,6 +246,29 @@ class MolGraph:
         stroke_px: Optional[float] = None,
         color: Optional[str] = None,
     ) -> Bond:
+        """Crea y registra un enlace entre dos átomos.
+
+        Args:
+            a1_id: ID del primer átomo.
+            a2_id: ID del segundo átomo.
+            order: Orden de enlace (1, 2, 3).
+            bond_id: ID explícito si se restaura desde un archivo.
+            style: Estilo visual del enlace.
+            stereo: Estereoquímica dibujada (cuña, trazos, etc.).
+            is_aromatic: Marca si el enlace pertenece a un sistema aromático.
+            display_order: Orden visual alternativo para dibujado.
+            is_query: Indica si es enlace de consulta.
+            ring_id: Identificador de anillo (si aplica).
+            length_px: Longitud de dibujo fija (px).
+            stroke_px: Grosor de línea (px).
+            color: Color personalizado del enlace.
+
+        Returns:
+            El enlace creado.
+
+        Side Effects:
+            Incrementa el contador de IDs y modifica `self.bonds`.
+        """
         if bond_id is None:
             bond_id = self._next_bond_id
             self._next_bond_id += 1
@@ -221,21 +293,67 @@ class MolGraph:
         return bond
 
     def remove_bond(self, bond_id: int) -> Bond:
+        """Elimina un enlace del grafo.
+
+        Args:
+            bond_id: Identificador del enlace.
+
+        Returns:
+            El enlace eliminado.
+
+        Side Effects:
+            Modifica el diccionario `self.bonds`.
+        """
         return self.bonds.pop(bond_id)
 
     def get_atom(self, atom_id: int) -> Atom:
+        """Obtiene un átomo por ID.
+
+        Args:
+            atom_id: Identificador del átomo.
+
+        Returns:
+            El átomo correspondiente.
+        """
         return self.atoms[atom_id]
 
     def get_bond(self, bond_id: int) -> Bond:
+        """Obtiene un enlace por ID.
+
+        Args:
+            bond_id: Identificador del enlace.
+
+        Returns:
+            El enlace correspondiente.
+        """
         return self.bonds[bond_id]
 
     def find_bond_between(self, a1_id: int, a2_id: int) -> Optional[Bond]:
+        """Busca un enlace existente entre dos átomos.
+
+        Args:
+            a1_id: ID del primer átomo.
+            a2_id: ID del segundo átomo.
+
+        Returns:
+            El enlace si existe, o `None` en caso contrario.
+        """
         for bond in self.bonds.values():
             if {bond.a1_id, bond.a2_id} == {a1_id, a2_id}:
                 return bond
         return None
 
     def update_atom_position(self, atom_id: int, x: float, y: float) -> None:
+        """Actualiza la posición de un átomo en el lienzo.
+
+        Args:
+            atom_id: Identificador del átomo.
+            x: Nueva coordenada X.
+            y: Nueva coordenada Y.
+
+        Side Effects:
+            Modifica el objeto `Atom` en `self.atoms`.
+        """
         atom = self.atoms[atom_id]
         atom.x = x
         atom.y = y
@@ -246,12 +364,31 @@ class MolGraph:
         element: str,
         is_explicit: Optional[bool] = None,
     ) -> None:
+        """Cambia el elemento químico de un átomo.
+
+        Args:
+            atom_id: Identificador del átomo.
+            element: Nuevo símbolo del elemento.
+            is_explicit: Si se debe forzar la visibilidad del símbolo.
+
+        Side Effects:
+            Modifica `Atom.element` y opcionalmente `Atom.is_explicit`.
+        """
         atom = self.atoms[atom_id]
         atom.element = element
         if is_explicit is not None:
             atom.is_explicit = is_explicit
 
     def update_atom_charge(self, atom_id: int, charge: int) -> None:
+        """Actualiza la carga formal de un átomo.
+
+        Args:
+            atom_id: Identificador del átomo.
+            charge: Nueva carga formal.
+
+        Side Effects:
+            Modifica `Atom.charge`.
+        """
         atom = self.atoms[atom_id]
         atom.charge = charge
 
@@ -266,6 +403,24 @@ class MolGraph:
         stroke_px: Optional[float] | object = _STROKE_UNSET,
         color: Optional[str] | object = _COLOR_UNSET,
     ) -> Bond:
+        """Actualiza propiedades de un enlace existente.
+
+        Args:
+            bond_id: Identificador del enlace a modificar.
+            order: Nuevo orden de enlace.
+            style: Estilo visual del enlace.
+            stereo: Estereoquímica dibujada.
+            is_aromatic: Marca de aromaticidad.
+            display_order: Orden visual alternativo.
+            stroke_px: Grosor de línea; `None` limpia el valor.
+            color: Color del enlace; `None` limpia el valor.
+
+        Returns:
+            El enlace actualizado.
+
+        Side Effects:
+            Modifica el objeto `Bond` dentro de `self.bonds`.
+        """
         bond = self.bonds[bond_id]
         if order is not None:
             bond.order = order
@@ -284,16 +439,41 @@ class MolGraph:
         return bond
 
     def update_bond_length(self, bond_id: int, length_px: Optional[float]) -> None:
+        """Ajusta la longitud de dibujo del enlace.
+
+        Args:
+            bond_id: Identificador del enlace.
+            length_px: Longitud en píxeles o `None` para usar la automática.
+
+        Side Effects:
+            Modifica el atributo `Bond.length_px`.
+        """
         bond = self.bonds[bond_id]
         bond.length_px = length_px
 
     def clear(self) -> None:
+        """Elimina todos los átomos y enlaces del grafo.
+
+        Side Effects:
+            Limpia `self.atoms`, `self.bonds` y reinicia contadores.
+        """
         self.atoms.clear()
         self.bonds.clear()
         self._next_atom_id = 1
         self._next_bond_id = 1
 
     def validate(self) -> List[int]:
+        """Valida valencias máximas según `MAX_VALENCE_MAP`.
+
+        Calcula la suma de órdenes de enlace por átomo y reporta aquellos
+        que superan la valencia máxima permitida.
+
+        Returns:
+            Lista de IDs de átomos que exceden la valencia permitida.
+
+        Side Effects:
+            No tiene efectos laterales; solo calcula y devuelve resultados.
+        """
         bond_order_sum: Dict[int, int] = {atom_id: 0 for atom_id in self.atoms}
         for bond in self.bonds.values():
             if bond.a1_id in bond_order_sum:

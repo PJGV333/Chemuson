@@ -1,3 +1,5 @@
+"""Pruebas unitarias para test_chemname_pr8."""
+
 import os
 import sys
 import unittest
@@ -10,6 +12,18 @@ from chemname.rings import find_rings_simple, is_simple_ring, perceive_aromatici
 
 
 def build_ring(graph: MolGraph, size: int, aromatic: bool = False, kekule: bool = False):
+    """Función de prueba auxiliar para build ring.
+
+    Args:
+        graph: Descripción del parámetro.
+        size: Descripción del parámetro.
+        aromatic: Descripción del parámetro.
+        kekule: Descripción del parámetro.
+
+    Returns:
+        None.
+
+    """
     atoms = [graph.add_atom("C", float(i), 0.0) for i in range(size)]
     for i in range(size):
         order = 1
@@ -25,7 +39,14 @@ def build_ring(graph: MolGraph, size: int, aromatic: bool = False, kekule: bool 
 
 
 class ChemNamePR8Test(unittest.TestCase):
+    """Casos de prueba para ChemNamePR8Test."""
     def test_cyclohexane_ring_non_aromatic(self):
+        """Verifica cyclohexane ring non aromatic.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         build_ring(graph, 6)
         view = MolView(graph)
@@ -37,6 +58,12 @@ class ChemNamePR8Test(unittest.TestCase):
         self.assertFalse(aromatic)
 
     def test_benzene_aromatic_flagged(self):
+        """Verifica benzene aromatic flagged.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         build_ring(graph, 6, aromatic=True)
         view = MolView(graph)
@@ -45,6 +72,12 @@ class ChemNamePR8Test(unittest.TestCase):
         self.assertEqual(len(aromatic), 1)
 
     def test_benzene_kekule_aromatic(self):
+        """Verifica benzene kekule aromatic.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         build_ring(graph, 6, kekule=True)
         view = MolView(graph)
@@ -53,6 +86,12 @@ class ChemNamePR8Test(unittest.TestCase):
         self.assertEqual(len(aromatic), 1)
 
     def test_fused_ring_no_crash(self):
+        """Verifica fused ring no crash.
+
+        Returns:
+            None.
+
+        """
         graph = MolGraph()
         atoms = [graph.add_atom("C", float(i), 0.0) for i in range(10)]
         # ring 1: 1-2-3-4-5-6-1

@@ -1,3 +1,9 @@
+"""Motor principal de nomenclatura IUPAC-lite.
+
+Orquesta la selección de cadena principal, detección de anillos y
+composición final del nombre para las moléculas soportadas.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -35,6 +41,15 @@ _TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 
 
 def _load_template_cached(key: str, path: Path) -> TemplateMol:
+    """Carga una plantilla con caché en memoria.
+
+    Args:
+        key: Clave única para identificar la plantilla.
+        path: Ruta del archivo de plantilla.
+
+    Returns:
+        `TemplateMol` cargada o reutilizada desde caché.
+    """
     if key in _TEMPLATE_CACHE:
         return _TEMPLATE_CACHE[key]
     template = load_template(path)
@@ -43,6 +58,14 @@ def _load_template_cached(key: str, path: Path) -> TemplateMol:
 
 
 def _pyrene_template(scheme: str) -> TemplateMol:
+    """Selecciona la plantilla de pireno según el esquema de numeración.
+
+    Args:
+        scheme: Nombre del esquema ("cas" o "iupac2004").
+
+    Returns:
+        Plantilla de pireno correspondiente.
+    """
     scheme_key = scheme.lower()
     if scheme_key == "cas":
         filename = "pyrene_cas.mol"
@@ -53,7 +76,19 @@ def _pyrene_template(scheme: str) -> TemplateMol:
 
 
 def iupac_name(graph, opts: NameOptions = NameOptions()) -> str:
-    """Public entry point for the lite naming engine."""
+    """Punto de entrada público del motor de nombres.
+
+    Args:
+        graph: Grafo molecular a nombrar.
+        opts: Opciones del motor.
+
+    Returns:
+        Nombre IUPAC-lite o "N/D" si `return_nd_on_fail` está habilitado.
+
+    Raises:
+        ChemNameNotSupported: Si la molécula no es soportada y no se pide "N/D".
+        ChemNameInternalError: Si ocurre un error interno inesperado.
+    """
     try:
         return iupac_name_lite(graph, opts)
     except ChemNameNotSupported:
@@ -67,7 +102,18 @@ def iupac_name(graph, opts: NameOptions = NameOptions()) -> str:
 
 
 def iupac_name_lite(graph, opts: NameOptions) -> str:
-    """Lite naming engine for acyclic hydrocarbons with simple substituents."""
+    """Nomenclatura IUPAC-lite para moléculas sencillas.
+
+    Decide si usar la ruta lineal o cíclica, priorizando sistemas fusionados
+    y anillos aromáticos cuando corresponda.
+
+    Args:
+        graph: Grafo molecular a nombrar.
+        opts: Opciones del motor.
+
+    Returns:
+        Nombre IUPAC-lite generado.
+    """
     view = MolView(graph)
     ring_ctx = build_ring_context(view)
     rings = ring_ctx.rings
@@ -87,7 +133,7 @@ def iupac_name_lite(graph, opts: NameOptions) -> str:
                 allow_rings=True,
             )
 
-    # fused systems first
+    # Sistemas fusionados primero: si se reconoce, se retorna de inmediato.
     try:
         return _name_cyclic(view, rings, opts, ring_ctx)
     except ChemNameNotSupported:
@@ -131,6 +177,21 @@ def _name_linear(
     ring_ctx: "RingContext | None" = None,
     allow_rings: bool = False,
 ) -> str:
+    """Nombra una cadena lineal (o linealizada) con sustituyentes simples.
+
+    Args:
+        view: Vista del grafo molecular.
+        opts: Opciones del motor.
+        chain_override: Cadena principal preseleccionada (opcional).
+        ring_ctx: Contexto de anillos (opcional, para sustituyentes).
+        allow_rings: Permite enlazar anillos como sustituyentes.
+
+    Returns:
+        Nombre IUPAC-lite de la cadena.
+
+    Raises:
+        ChemNameNotSupported: Si hay elementos o estructuras no soportadas.
+    """
     if not allow_rings and not view.is_acyclic():
         raise ChemNameNotSupported("Cyclic structures not supported")
 
@@ -140,17 +201,21 @@ def _name_linear(
         if elem not in allowed_elements:
             raise ChemNameNotSupported("Unsupported element")
 
+    # Selección de cadena principal (o la proporcionada por el llamador).
     chain = chain_override or longest_carbon_chain(view)
     if not chain:
         raise ChemNameNotSupported("No carbon chain found")
 
+    # Identificar grupo funcional principal (ácido, aldehído, etc.).
     func = _find_functional_group(view, chain)
     func_atom = func[1] if func else None
     func_suffix = func[0] if func else None
     ignore_atoms = func[2] if func else set()
 
+    # Determinar insaturaciones C=C/C#C dentro de la cadena.
     unsaturations = _unsaturations_for_chain(view, chain)
     if allow_rings and ring_ctx is not None and func is None and not unsaturations:
+        # Recorta un carbono "puente" entre anillo aromático y cadena.
         chain = _trim_aromatic_linker(view, chain, ring_ctx)
 
     chain = _choose_oriented_chain(
@@ -162,6 +227,7 @@ def _name_linear(
         ring_ctx=ring_ctx,
     )
 
+    # Recolectamos sustituyentes y calculamos el nombre del padre.
     substituents = substituents_on_chain(
         view, chain, ignore_atoms=ignore_atoms, ring_ctx=ring_ctx
     )
@@ -179,6 +245,15 @@ def _name_linear(
 
 
 def _longest_chain_excluding(view: MolView, excluded_atoms: set[int]) -> list[int]:
+    """Devuelve la cadena más larga excluyendo un conjunto de átomos.
+
+    Args:
+        view: Vista del grafo molecular.
+        excluded_atoms: Átomos que no pueden pertenecer a la cadena.
+
+    Returns:
+        Lista de IDs de la cadena más larga encontrada.
+    """
     allowed = {atom_id for atom_id in view.atoms() if atom_id not in excluded_atoms}
     return longest_chain_in_subset(view, allowed)
 
@@ -189,6 +264,20 @@ def _name_cyclic(
     opts: NameOptions,
     ring_ctx: RingContext | None = None,
 ) -> str:
+    """Nombra sistemas cíclicos simples o fusionados.
+
+    Args:
+        view: Vista del grafo molecular.
+        rings: Lista de anillos detectados.
+        opts: Opciones del motor.
+        ring_ctx: Contexto de anillos para sustituyentes.
+
+    Returns:
+        Nombre IUPAC-lite de la estructura cíclica.
+
+    Raises:
+        ChemNameNotSupported: Si la topología no está soportada.
+    """
     if len(rings) == 1:
         ring_nodes = rings[0]
         if not is_simple_ring(view, ring_nodes):
@@ -231,6 +320,17 @@ def _name_cycloalkane(
     opts: NameOptions,
     ring_ctx: RingContext | None = None,
 ) -> str:
+    """Nombra cicloalcanos simples con sustituyentes.
+
+    Args:
+        view: Vista del grafo molecular.
+        ring_atoms: Lista de átomos en orden circular.
+        opts: Opciones del motor.
+        ring_ctx: Contexto de anillos para sustituyentes.
+
+    Returns:
+        Nombre IUPAC-lite del cicloalcano.
+    """
     ring_unsats: list[int] = []
     for idx in range(len(ring_atoms)):
         order = view.bond_order_between(ring_atoms[idx], ring_atoms[(idx + 1) % len(ring_atoms)])
@@ -252,6 +352,7 @@ def _name_cycloalkane(
             raise ChemNameNotSupported("Multiple unsaturations not supported")
         best = None
         best_key = None
+        # Probamos todas las numeraciones para minimizar locantes.
         for numbering in enumerate_ring_numberings(ring_atoms):
             unsat_locants: list[int] = []
             for idx in range(len(numbering)):
@@ -291,6 +392,17 @@ def _name_benzene(
     opts: NameOptions,
     ring_ctx: RingContext | None = None,
 ) -> str:
+    """Nombra benceno con sustituyentes simples.
+
+    Args:
+        view: Vista del grafo molecular.
+        ring_atoms: Átomos del anillo en orden.
+        opts: Opciones del motor.
+        ring_ctx: Contexto de anillos.
+
+    Returns:
+        Nombre IUPAC-lite del benceno sustituido.
+    """
     for atom_id in ring_atoms:
         if view.element(atom_id) != "C":
             raise ChemNameNotSupported("Unsupported aromatic ring")
@@ -322,6 +434,17 @@ def _name_heteroaromatic(
     opts: NameOptions,
     ring_ctx: RingContext | None = None,
 ) -> str:
+    """Nombra anillos heteroaromáticos simples (furano, piridina, etc.).
+
+    Args:
+        view: Vista del grafo molecular.
+        info: Diccionario de clasificación del anillo.
+        opts: Opciones del motor.
+        ring_ctx: Contexto de anillos.
+
+    Returns:
+        Nombre IUPAC-lite del heteroaromático.
+    """
     kind = info.get("kind")
     ring_atoms = info.get("order") or []
     hetero_atoms = info.get("hetero_atoms") or []
@@ -356,6 +479,16 @@ def _name_heteroaromatic(
 
 
 def _name_naphthalene(view: MolView, info: dict, opts: NameOptions) -> str:
+    """Nombra derivados simples de naftaleno.
+
+    Args:
+        view: Vista del grafo molecular.
+        info: Información de naftaleno (átomos y fusiones).
+        opts: Opciones del motor.
+
+    Returns:
+        Nombre IUPAC-lite con locantes según reglas de orientación.
+    """
     ring_atoms = set(info.get("atoms", set()))
     fusion_atoms = set(info.get("fusion_atoms", ()))
     if len(ring_atoms) != 10 or len(fusion_atoms) != 2:
@@ -394,6 +527,15 @@ def _name_naphthalene(view: MolView, info: dict, opts: NameOptions) -> str:
 
 
 def _detect_tricyclic(view: MolView, rings: list[frozenset[int]]) -> dict | None:
+    """Detecta sistemas tricíclicos tipo antraceno/fenantreno.
+
+    Args:
+        view: Vista del grafo molecular.
+        rings: Anillos detectados.
+
+    Returns:
+        Diccionario con metadatos del sistema o `None` si no coincide.
+    """
     benzene_rings: list[frozenset[int]] = []
     ring_edges: dict[frozenset[int], set[frozenset[int]]] = {}
     for ring in rings:
@@ -414,7 +556,7 @@ def _detect_tricyclic(view: MolView, rings: list[frozenset[int]]) -> dict | None
     if len(benzene_rings) < 3:
         return None
 
-    # build ring adjacency by shared edges
+    # Construimos adyacencia de anillos por aristas compartidas.
     adjacency: dict[frozenset[int], list[frozenset[int]]] = {r: [] for r in benzene_rings}
     shared_edges: dict[tuple[frozenset[int], frozenset[int]], set[frozenset[int]]] = {}
     for i in range(len(benzene_rings)):
@@ -427,7 +569,7 @@ def _detect_tricyclic(view: MolView, rings: list[frozenset[int]]) -> dict | None
                 adjacency[r2].append(r1)
                 shared_edges[(r1, r2)] = shared
 
-    # find chain of three rings
+    # Buscamos una cadena de tres anillos con el patrón correcto.
     for mid, neighbors in adjacency.items():
         if len(neighbors) != 2:
             continue
@@ -457,6 +599,15 @@ def _detect_tricyclic(view: MolView, rings: list[frozenset[int]]) -> dict | None
 
 
 def _detect_pyrene(view: MolView, rings: list[frozenset[int]]) -> dict | None:
+    """Detecta sistemas tipo pireno por conectividad de anillos bencénicos.
+
+    Args:
+        view: Vista del grafo molecular.
+        rings: Anillos detectados.
+
+    Returns:
+        Diccionario con metadatos del sistema o `None` si no coincide.
+    """
     benzene_rings: list[frozenset[int]] = []
     ring_edges: dict[frozenset[int], set[frozenset[int]]] = {}
     for ring in rings:
@@ -528,6 +679,16 @@ def _detect_pyrene(view: MolView, rings: list[frozenset[int]]) -> dict | None:
 
 
 def _name_tricyclic(view: MolView, info: dict, opts: NameOptions) -> str:
+    """Nombra antraceno o fenantreno con sustitución simple.
+
+    Args:
+        view: Vista del grafo molecular.
+        info: Metadatos del sistema tricíclico.
+        opts: Opciones del motor.
+
+    Returns:
+        Nombre IUPAC-lite del sistema tricíclico.
+    """
     ring_atoms = set(info.get("atoms", set()))
     fusion_edges = info.get("fusion_edges", set())
     kind = info.get("kind")
@@ -572,6 +733,14 @@ def _name_tricyclic(view: MolView, info: dict, opts: NameOptions) -> str:
 
 
 def _aromatic_components(view: MolView) -> list[set[int]]:
+    """Calcula componentes conexos aromáticos en el grafo.
+
+    Args:
+        view: Vista del grafo molecular.
+
+    Returns:
+        Lista de conjuntos de átomos aromáticos conectados.
+    """
     rings = find_rings_simple(view)
     aromatic_atoms: set[int] = set()
     for ring in rings:
@@ -600,6 +769,15 @@ def _aromatic_components(view: MolView) -> list[set[int]]:
 
 
 def _detect_pyrene_template(view: MolView, opts: NameOptions) -> dict | None:
+    """Intenta reconocer pireno usando una plantilla de numeración.
+
+    Args:
+        view: Vista del grafo molecular.
+        opts: Opciones del motor.
+
+    Returns:
+        Diccionario con plantilla y mapeo o `None` si no coincide.
+    """
     template = _pyrene_template(opts.fused_numbering_scheme)
     for comp in _aromatic_components(view):
         if len(comp) != len(template.atoms):
@@ -615,6 +793,16 @@ def _detect_pyrene_template(view: MolView, opts: NameOptions) -> dict | None:
 
 
 def _name_pyrene_template(view: MolView, info: dict, opts: NameOptions) -> str:
+    """Nombra pireno usando el mapeo de una plantilla.
+
+    Args:
+        view: Vista del grafo molecular.
+        info: Diccionario con plantilla y mapeo.
+        opts: Opciones del motor.
+
+    Returns:
+        Nombre IUPAC-lite del pireno sustituido.
+    """
     template: TemplateMol = info.get("template")
     mapping: dict[int, int] = info.get("mapping", {})
     if template is None or not mapping:
@@ -646,6 +834,16 @@ def _name_pyrene_template(view: MolView, info: dict, opts: NameOptions) -> str:
 
 
 def _name_pyrene(view: MolView, info: dict, opts: NameOptions) -> str:
+    """Nombra pireno sin plantilla (ruta alternativa).
+
+    Args:
+        view: Vista del grafo molecular.
+        info: Metadatos del sistema tipo pireno.
+        opts: Opciones del motor.
+
+    Returns:
+        Nombre IUPAC-lite del pireno sustituido.
+    """
     ring_atoms = set(info.get("atoms", set()))
     fusion_edges = info.get("fusion_edges", set())
     rings = info.get("rings", [])
@@ -718,6 +916,15 @@ def _name_pyrene(view: MolView, info: dict, opts: NameOptions) -> str:
 
 
 def _detect_fused_hetero(view: MolView, rings: list[frozenset[int]]) -> dict | None:
+    """Detecta sistemas heteroaromáticos fusionados conocidos.
+
+    Args:
+        view: Vista del grafo molecular.
+        rings: Anillos detectados.
+
+    Returns:
+        Diccionario con metadatos del sistema o `None` si no coincide.
+    """
     ring_infos: dict[frozenset[int], dict] = {}
     for ring in rings:
         info = classify_aromatic_ring(view, ring)
@@ -795,6 +1002,16 @@ def _detect_fused_hetero(view: MolView, rings: list[frozenset[int]]) -> dict | N
 
 
 def _name_fused_hetero(view: MolView, info: dict, opts: NameOptions) -> str:
+    """Nombra sistemas heteroaromáticos fusionados simples.
+
+    Args:
+        view: Vista del grafo molecular.
+        info: Metadatos del sistema fusionado.
+        opts: Opciones del motor.
+
+    Returns:
+        Nombre IUPAC-lite del sistema fusionado.
+    """
     kind = info.get("kind")
     ring_atoms = set(info.get("atoms", set()))
     fusion_atoms = set(info.get("fusion_atoms", set()))
@@ -839,6 +1056,16 @@ def _name_fused_hetero(view: MolView, info: dict, opts: NameOptions) -> str:
 def _hetero_fused_locant_maps(
     order: list[int], fusion_atoms: set[int], hetero_atom: int
 ) -> list[dict[int, int]]:
+    """Genera mapas de locantes para anillos hetero fusionados.
+
+    Args:
+        order: Orden perimetral de átomos.
+        fusion_atoms: Átomos de fusión entre anillos.
+        hetero_atom: Heteroátomo que debe iniciar la numeración.
+
+    Returns:
+        Lista de mapas `atom_id -> locante`.
+    """
     if hetero_atom not in order:
         return []
     idx0 = order.index(hetero_atom)
@@ -865,6 +1092,16 @@ def _hetero_fused_locant_maps(
 def _perimeter_cycle_multi(
     view: MolView, ring_atoms: set[int], fusion_edges: set[frozenset[int]]
 ) -> list[int]:
+    """Obtiene el ciclo perimetral de un sistema fusionado múltiple.
+
+    Args:
+        view: Vista del grafo molecular.
+        ring_atoms: Conjunto de átomos del sistema.
+        fusion_edges: Enlaces internos de fusión que se eliminan del perímetro.
+
+    Returns:
+        Lista de átomos en orden perimetral o vacía si falla.
+    """
     adjacency = {
         atom_id: sorted(nbr for nbr in view.neighbors(atom_id) if nbr in ring_atoms)
         for atom_id in ring_atoms
@@ -882,6 +1119,15 @@ def _perimeter_cycle_multi(
 
 
 def _fused_locant_maps(order: list[int], fusion_atoms: set[int]) -> list[dict[int, int]]:
+    """Genera mapas de locantes para sistemas fusionados.
+
+    Args:
+        order: Orden perimetral de átomos.
+        fusion_atoms: Átomos de fusión que no reciben locante.
+
+    Returns:
+        Lista de mapas `atom_id -> locante`.
+    """
     if not order:
         return []
     start_fusion = min(fusion_atoms) if fusion_atoms else order[0]
@@ -906,6 +1152,16 @@ def _fused_locant_maps(order: list[int], fusion_atoms: set[int]) -> list[dict[in
 def _perimeter_cycle(
     view: MolView, ring_atoms: set[int], fusion_atoms: set[int]
 ) -> list[int]:
+    """Obtiene el ciclo perimetral de un sistema fusionado simple.
+
+    Args:
+        view: Vista del grafo molecular.
+        ring_atoms: Conjunto de átomos del sistema.
+        fusion_atoms: Par de átomos de fusión.
+
+    Returns:
+        Lista de átomos en orden perimetral o vacía si falla.
+    """
     adjacency = {
         atom_id: sorted(nbr for nbr in view.neighbors(atom_id) if nbr in ring_atoms)
         for atom_id in ring_atoms
@@ -925,6 +1181,15 @@ def _perimeter_cycle(
 
 
 def _cycle_order(adjacency: dict[int, list[int]], start: int) -> list[int]:
+    """Devuelve el ciclo en orden dado una adyacencia 2-regular.
+
+    Args:
+        adjacency: Diccionario de vecinos (cada nodo con 2 vecinos).
+        start: Nodo inicial.
+
+    Returns:
+        Orden del ciclo o lista vacía si la estructura no es válida.
+    """
     order = [start]
     if not adjacency.get(start):
         return []
@@ -948,6 +1213,15 @@ def _cycle_order(adjacency: dict[int, list[int]], start: int) -> list[int]:
 def _naphthalene_locant_maps(
     order: list[int], fusion_atoms: set[int]
 ) -> list[dict[int, int]]:
+    """Genera mapas de locantes válidos para naftaleno.
+
+    Args:
+        order: Orden perimetral del naftaleno.
+        fusion_atoms: Átomos de fusión.
+
+    Returns:
+        Lista de mapas `atom_id -> locante` válidos.
+    """
     fusion_list = list(fusion_atoms)
     if len(fusion_list) != 2:
         return []
@@ -976,6 +1250,17 @@ def _naphthalene_locant_maps(
 
 
 def _simple_substituent_name(view: MolView, ring_atom: int, nbr: int, ring_set: set[int]) -> str:
+    """Devuelve el nombre de un sustituyente simple en anillos fusionados.
+
+    Args:
+        view: Vista del grafo molecular.
+        ring_atom: Átomo del anillo.
+        nbr: Átomo sustituyente.
+        ring_set: Conjunto de átomos del sistema.
+
+    Returns:
+        Nombre del sustituyente.
+    """
     elem = view.element(nbr)
     if elem in HALO_MAP:
         return HALO_MAP[elem]
@@ -985,6 +1270,15 @@ def _simple_substituent_name(view: MolView, ring_atom: int, nbr: int, ring_set: 
 
 
 def _unsaturations_for_chain(view: MolView, chain: list[int]) -> list[tuple[int, int]]:
+    """Detecta insaturaciones dentro de una cadena.
+
+    Args:
+        view: Vista del grafo molecular.
+        chain: Lista de IDs de la cadena.
+
+    Returns:
+        Lista de (orden, locante) para dobles/triples enlaces.
+    """
     unsaturations: list[tuple[int, int]] = []
     for idx in range(len(chain) - 1):
         order = view.bond_order_between(chain[idx], chain[idx + 1])
@@ -999,6 +1293,19 @@ def _unsaturations_for_chain(view: MolView, chain: list[int]) -> list[tuple[int,
 def _find_functional_group(
     view: MolView, chain: list[int], allow_other_hetero: bool = False
 ) -> tuple[str, int, set[int]] | None:
+    """Detecta un único grupo funcional principal en la cadena.
+
+    Args:
+        view: Vista del grafo molecular.
+        chain: Lista de IDs de la cadena.
+        allow_other_hetero: Permite heteroátomos fuera de la cadena.
+
+    Returns:
+        Tupla (sufijo, atom_id, hetero_ids) o `None` si no hay grupo.
+
+    Raises:
+        ChemNameNotSupported: Si hay múltiples grupos funcionales.
+    """
     chain_set = set(chain)
     acids: list[tuple[int, set[int]]] = []
     aldehydes: list[tuple[int, set[int]]] = []
@@ -1067,6 +1374,7 @@ def _find_functional_group(
     def _select(
         group: list[tuple[int, set[int]]], suffix: str
     ) -> tuple[str, int, set[int]] | None:
+        """Selecciona un único grupo funcional y valida unicidad."""
         if not group:
             return None
         if len(group) > 1:
@@ -1096,11 +1404,17 @@ def _find_functional_group(
 def _trim_aromatic_linker(
     view: MolView, chain: list[int], ring_ctx: RingContext
 ) -> list[int]:
+    """Recorta un carbono puente entre cadena y anillo aromático.
+
+    Esto evita elegir como cadena principal un átomo que solo conecta
+    la cadena con un anillo aromático y no aporta longitud real.
+    """
     if len(chain) <= 1:
         return chain
     chain_set = set(chain)
 
     def should_trim(atom_id: int) -> bool:
+        """Decide si el átomo es un enlace puente hacia un anillo aromático."""
         if view.element(atom_id) != "C":
             return False
         heavy_neighbors = [n for n in view.neighbors(atom_id) if view.element(n) != "H"]
@@ -1128,6 +1442,7 @@ def _trim_aromatic_linker(
 def _assert_no_heteroatoms(
     view: MolView, chain_set: set[int], allowed: set[int] | None = None
 ) -> None:
+    """Lanza error si hay heteroátomos fuera de la cadena permitida."""
     allowed = allowed or set()
     for atom_id in view.atoms():
         if atom_id in chain_set or atom_id in allowed:
@@ -1138,6 +1453,7 @@ def _assert_no_heteroatoms(
 
 
 def _locant_for_atom(chain: list[int], atom_id: int | None) -> int | None:
+    """Obtiene el locante (1-based) de un átomo dentro de la cadena."""
     if atom_id is None:
         return None
     for idx, cid in enumerate(chain):
@@ -1154,6 +1470,19 @@ def _choose_oriented_chain(
     ignore_atoms: set[int],
     ring_ctx: RingContext | None = None,
 ) -> list[int]:
+    """Selecciona orientación de la cadena minimizando locantes.
+
+    Args:
+        view: Vista del grafo molecular.
+        chain: Cadena candidata.
+        opts: Opciones del motor.
+        func_atom: Átomo funcional principal (si aplica).
+        ignore_atoms: Átomos a ignorar al calcular sustituyentes.
+        ring_ctx: Contexto de anillos.
+
+    Returns:
+        Cadena orientada (lista de IDs).
+    """
     forward = list(chain)
     reverse = list(reversed(chain))
 
