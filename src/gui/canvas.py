@@ -108,6 +108,8 @@ from gui.commands import (
     MoveBracketItemsCommand,
 )
 from gui.dialogs import AtomLabelDialog
+from chemname.molview import MolView
+from chemname.rings import find_rings_simple, ring_bonds
 from chemio.rdkit_io import (
     molgraph_to_molfile,
     molgraph_to_smiles,
@@ -2333,6 +2335,7 @@ class ChemusonCanvas(QGraphicsView):
         self.refresh_ring_centers()
             
         # 3. Create BondItems with ring context
+        ring_pairs = self._compute_ring_bond_pairs()
         for bond in self.model.bonds.values():
             a1 = self.model.atoms.get(bond.a1_id)
             a2 = self.model.atoms.get(bond.a2_id)
@@ -2346,6 +2349,9 @@ class ChemusonCanvas(QGraphicsView):
                     item.set_ring_context(self._ring_centers.get(bond.ring_id))
                 elif bond.is_aromatic:
                     item.set_ring_context(self._aromatic_ring_center_for_bond(bond))
+                else:
+                    item.set_ring_context(None)
+                item.set_bond_in_ring(self._bond_in_ring_for_pairs(bond, ring_pairs))
                 item.set_offset_sign(self._bond_offset_sign(bond))
                 self._configure_bond_rendering(bond, item)
                 # Explicitly update positions now that context and sign are set
@@ -2379,6 +2385,39 @@ class ChemusonCanvas(QGraphicsView):
                     count += 1
             if count > 0:
                 self.register_ring_center(ring_id, (sum_x / count, sum_y / count))
+
+    def _compute_ring_bond_pairs(self) -> set[frozenset[int]]:
+        view = MolView(self.model)
+        rings = find_rings_simple(view)
+        if not rings:
+            return set()
+        pairs: set[frozenset[int]] = set()
+        for ring in rings:
+            pairs.update(ring_bonds(view, ring))
+        return pairs
+
+    @staticmethod
+    def _bond_in_ring_for_pairs(bond: Bond, ring_pairs: set[frozenset[int]]) -> bool:
+        if bond.ring_id is not None:
+            return True
+        return frozenset({bond.a1_id, bond.a2_id}) in ring_pairs
+
+    def _refresh_bond_ring_flags(
+        self,
+        ring_pairs: Optional[set[frozenset[int]]] = None,
+    ) -> None:
+        if ring_pairs is None:
+            ring_pairs = self._compute_ring_bond_pairs()
+        for bond in self.model.bonds.values():
+            item = self.bond_items.get(bond.id)
+            if item is None:
+                continue
+            item.set_bond_in_ring(self._bond_in_ring_for_pairs(bond, ring_pairs))
+            if item.style in (BondStyle.WEDGE, BondStyle.HASHED):
+                atom1 = self.model.get_atom(bond.a1_id)
+                atom2 = self.model.get_atom(bond.a2_id)
+                if atom1 and atom2:
+                    item.update_positions(atom1, atom2)
 
     def add_text_item(self, item: TextAnnotationItem) -> None:
         if item.scene() is not self.scene:
@@ -4042,10 +4081,14 @@ class ChemusonCanvas(QGraphicsView):
             render_aromatic_as_circle=self.state.use_aromatic_circles,
             style=self.drawing_style,
         )
+        ring_pairs = self._compute_ring_bond_pairs()
         if bond.ring_id is not None:
             item.set_ring_context(self._ring_centers.get(bond.ring_id))
         elif bond.is_aromatic:
             item.set_ring_context(self._aromatic_ring_center_for_bond(bond))
+        else:
+            item.set_ring_context(None)
+        item.set_bond_in_ring(self._bond_in_ring_for_pairs(bond, ring_pairs))
         item.set_offset_sign(self._bond_offset_sign(bond))
         self._configure_bond_rendering(bond, item)
         trim_start = self._bond_endpoint_trim(bond, bond.a1_id)
@@ -4059,6 +4102,7 @@ class ChemusonCanvas(QGraphicsView):
         self.bond_items[bond.id] = item
         self._refresh_atom_label(bond.a1_id)
         self._refresh_atom_label(bond.a2_id)
+        self._refresh_bond_ring_flags(ring_pairs)
 
     def add_arrow_item(self, start: QPointF, end: QPointF, kind: str) -> ArrowItem:
         item = ArrowItem(start, end, kind=kind, style=self.drawing_style)
@@ -4136,12 +4180,14 @@ class ChemusonCanvas(QGraphicsView):
         atom2 = self.model.get_atom(bond.a2_id)
         item = self.bond_items.get(bond_id)
         if item is not None:
+            ring_pairs = self._compute_ring_bond_pairs()
             if bond.ring_id is not None:
                 item.set_ring_context(self._ring_centers.get(bond.ring_id))
             elif bond.is_aromatic:
                 item.set_ring_context(self._aromatic_ring_center_for_bond(bond))
             else:
                 item.set_ring_context(None)
+            item.set_bond_in_ring(self._bond_in_ring_for_pairs(bond, ring_pairs))
             item.set_offset_sign(self._bond_offset_sign(bond))
             self._configure_bond_rendering(bond, item)
             trim_start = self._bond_endpoint_trim(bond, bond.a1_id)
@@ -4152,6 +4198,7 @@ class ChemusonCanvas(QGraphicsView):
             item.set_endpoint_extend(extend_start, extend_end)
             item.set_bond(bond, atom1, atom2)
             item.set_style(self.drawing_style, atom1, atom2)
+        self._refresh_bond_ring_flags(ring_pairs if item is not None else None)
         self._refresh_atom_label(bond.a1_id)
         self._refresh_atom_label(bond.a2_id)
 
@@ -4240,6 +4287,7 @@ class ChemusonCanvas(QGraphicsView):
             self.scene.removeItem(item)
             self._refresh_atom_label(a1_id)
             self._refresh_atom_label(a2_id)
+        self._refresh_bond_ring_flags()
 
     def allocate_ring_id(self) -> int:
         ring_id = self._next_ring_id

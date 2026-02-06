@@ -20,6 +20,7 @@ from PyQt6.QtCore import Qt, QRectF, QPointF
 
 from core.model import Atom, Bond, BondStyle
 from gui.style import DrawingStyle, CHEMDOODLE_LIKE
+from gui.wedge_geometry import compute_wedge_points
 
 
 # Element colors for heteroatoms (CPK coloring scheme)
@@ -568,6 +569,7 @@ class BondItem(QGraphicsPathItem):
         self._endpoint_extend_end = 0.0
         self._offset_sign = 1
         self._ring_center: QPointF | None = None
+        self._bond_in_ring = False
         self._prefer_full_length = False
         self._symmetric_double = False
         self.setZValue(-5)
@@ -609,6 +611,9 @@ class BondItem(QGraphicsPathItem):
 
     def set_ring_context(self, ring_center: QPointF | None) -> None:
         self._ring_center = ring_center
+
+    def set_bond_in_ring(self, in_ring: bool) -> None:
+        self._bond_in_ring = bool(in_ring)
 
     def set_offset_sign(self, sign: int) -> None:
         self._offset_sign = 1 if sign >= 0 else -1
@@ -795,13 +800,22 @@ class BondItem(QGraphicsPathItem):
 
         elif self.style == BondStyle.WEDGE:
             width = self._style.wedge_width_px
-            b1x = p2x + nx * (width / 2)
-            b1y = p2y + ny * (width / 2)
-            b2x = p2x - nx * (width / 2)
-            b2y = p2y - ny * (width / 2)
-            path.moveTo(p1x, p1y)
-            path.lineTo(b1x, b1y)
-            path.lineTo(b2x, b2y)
+            wedge_trim_start = 0.0 if self._bond_in_ring else trim_start
+            wedge_trim_end = 0.0 if self._bond_in_ring else trim_end
+            tip, base1, base2 = compute_wedge_points(
+                (x1, y1),
+                (x2, y2),
+                width,
+                trim_start=wedge_trim_start,
+                trim_end=wedge_trim_end,
+            )
+            if wedge_trim_start <= 1e-6 and self._style.cap_style == Qt.PenCapStyle.RoundCap:
+                tip_overlap = min(self._style.stroke_px * 0.45, width * 0.08)
+                if tip_overlap > 0.0:
+                    tip = (tip[0] - ux * tip_overlap, tip[1] - uy * tip_overlap)
+            path.moveTo(tip[0], tip[1])
+            path.lineTo(base1[0], base1[1])
+            path.lineTo(base2[0], base2[1])
             path.closeSubpath()
             pen = QPen(color, 1)
             pen.setCapStyle(self._style.cap_style)
@@ -811,8 +825,21 @@ class BondItem(QGraphicsPathItem):
             
         elif self.style == BondStyle.HASHED:
             steps = self._style.hash_count
+            if self._bond_in_ring:
+                use_trim_start = trim_start if trim_start > 0 else 0.0
+                use_trim_end = trim_end if trim_end > 0 else 0.0
+                if use_trim_start > 0.0 or use_trim_end > 0.0:
+                    h1x, h1y, h2x, h2y = p1x, p1y, p2x, p2y
+                else:
+                    h1x, h1y, h2x, h2y = x1, y1, x2, y2
+                h_trim_start = use_trim_start
+                h_trim_end = use_trim_end
+            else:
+                h1x, h1y, h2x, h2y = p1x, p1y, p2x, p2y
+                h_trim_start = trim_start
+                h_trim_end = trim_end
             e1x, e1y, e2x, e2y = self._extend_line_endpoints(
-                p1x, p1y, p2x, p2y, ux, uy, trim_start, trim_end, stroke_px
+                h1x, h1y, h2x, h2y, ux, uy, h_trim_start, h_trim_end, stroke_px
             )
             for i in range(1, steps + 1):
                 t = i / steps
