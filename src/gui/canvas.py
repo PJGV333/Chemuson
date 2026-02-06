@@ -4207,9 +4207,11 @@ class ChemusonCanvas(QGraphicsView):
         if bond.style == BondStyle.BOLD:
             return max(base * 2.2, base + 1.0)
         if bond.style == BondStyle.WEDGE:
-            return max(self.drawing_style.wedge_width_px, base)
+            scale = base / self.drawing_style.stroke_px if self.drawing_style.stroke_px > 1e-6 else 1.0
+            return max(self.drawing_style.wedge_width_px * scale, base)
         if bond.style == BondStyle.HASHED:
-            return max(self.drawing_style.hash_stroke_px, base * 0.85)
+            scale = base / self.drawing_style.stroke_px if self.drawing_style.stroke_px > 1e-6 else 1.0
+            return max(self.drawing_style.hash_stroke_px * scale, base * 0.85)
         return base
 
     def _bond_endpoint_extend(self, bond: Bond, atom_id: int) -> float:

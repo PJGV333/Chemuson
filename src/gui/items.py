@@ -728,6 +728,7 @@ class BondItem(QGraphicsPathItem):
             effective_order = self.display_order
 
         stroke_px = self._stroke_px if self._stroke_px is not None else self._style.stroke_px
+        stroke_scale = stroke_px / self._style.stroke_px if self._style.stroke_px > 1e-6 else 1.0
 
         if self.style == BondStyle.PLAIN:
             e1x, e1y, e2x, e2y = self._extend_line_endpoints(
@@ -799,7 +800,7 @@ class BondItem(QGraphicsPathItem):
             self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
 
         elif self.style == BondStyle.WEDGE:
-            width = self._style.wedge_width_px
+            width = self._style.wedge_width_px * stroke_scale
             wedge_trim_start = 0.0 if self._bond_in_ring else trim_start
             wedge_trim_end = 0.0 if self._bond_in_ring else trim_end
             tip, base1, base2 = compute_wedge_points(
@@ -845,10 +846,13 @@ class BondItem(QGraphicsPathItem):
                 t = i / steps
                 px = e1x + (e2x - e1x) * t
                 py = e1y + (e2y - e1y) * t
-                width = self._style.hash_min_px + (self._style.hash_max_px - self._style.hash_min_px) * t
+                width = (
+                    self._style.hash_min_px
+                    + (self._style.hash_max_px - self._style.hash_min_px) * t
+                ) * stroke_scale
                 path.moveTo(px + nx * width / 2, py + ny * width / 2)
                 path.lineTo(px - nx * width / 2, py - ny * width / 2)
-            hash_stroke = max(self._style.hash_stroke_px, stroke_px * 0.85)
+            hash_stroke = max(self._style.hash_stroke_px * stroke_scale, stroke_px * 0.85)
             pen = QPen(color, hash_stroke)
             pen.setCapStyle(self._style.cap_style)
             pen.setJoinStyle(self._style.join_style)
