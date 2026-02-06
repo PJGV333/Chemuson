@@ -53,7 +53,22 @@ def _build_wavy_path(
     min_cycles: int = 2,
     segments_per_cycle: int = 12,
 ) -> QPainterPath:
-    """Construye un trazo ondulado entre dos puntos."""
+    """Construye un trazo ondulado entre dos puntos.
+
+    Args:
+        start: Punto inicial en escena.
+        end: Punto final en escena.
+        amplitude: Amplitud de la onda.
+        wavelength: Longitud de onda.
+        min_cycles: Número mínimo de ciclos.
+        segments_per_cycle: Segmentos por ciclo.
+
+    Returns:
+        Ruta QPainterPath con la onda calculada.
+
+    Side Effects:
+        No tiene efectos laterales.
+    """
     path = QPainterPath()
     dx = end.x() - start.x()
     dy = end.y() - start.y()
@@ -95,22 +110,22 @@ class AtomItem(QGraphicsEllipseItem):
         style: DrawingStyle = CHEMDOODLE_LIKE,
         use_element_colors: bool = True,
     ) -> None:
-        """Inicializa la instancia.
+        """Inicializa la instancia y configura el elemento gráfico.
 
         Args:
-            atom: Descripción del parámetro.
-            radius: Descripción del parámetro.
-            show_carbon: Descripción del parámetro.
-            show_hydrogen: Descripción del parámetro.
-            label_font: Descripción del parámetro.
-            style: Descripción del parámetro.
-            use_element_colors: Descripción del parámetro.
+            atom: Átomo del modelo asociado.
+            radius: Radio visual en píxeles.
+            show_carbon: Si se muestran etiquetas de carbono implícito.
+            show_hydrogen: Si se muestran etiquetas de hidrógeno implícito.
+            label_font: Fuente base para la etiqueta.
+            style: Estilo de dibujo aplicado.
+            use_element_colors: Si se colorea la etiqueta según el elemento.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         super().__init__(-radius, -radius, radius * 2, radius * 2)
         self.atom_id = atom.id
@@ -159,7 +174,14 @@ class AtomItem(QGraphicsEllipseItem):
         self._update_visibility()
     
     def _center_label(self) -> None:
-        """Centra la etiqueta de texto dentro del círculo del átomo."""
+        """Centra la etiqueta del átomo.
+
+        Returns:
+            None.
+
+        Side Effects:
+            Modifica el estado del item o la escena.
+        """
         rect = self.label.boundingRect()
         x = -rect.width() / 2
         if self._label_anchor_width is not None:
@@ -169,13 +191,13 @@ class AtomItem(QGraphicsEllipseItem):
             self._position_charge_label()
 
     def _position_charge_label(self) -> None:
-        """Método auxiliar para  position charge label.
+        """Posiciona la etiqueta de carga.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         rect = self.label.boundingRect()
         label_pos = self.label.pos()
@@ -184,45 +206,52 @@ class AtomItem(QGraphicsEllipseItem):
         self.charge_label.setPos(x, y)
     
     def _base_label_color(self) -> str:
-        """Método auxiliar para  base label color.
+        """Calcula el color base de la etiqueta.
 
         Returns:
-            Resultado de la operación o None.
+            Color base (hex) para etiquetas.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            No tiene efectos laterales.
         """
         return "#000000" if not self._use_element_colors else "#333333"
 
     def _label_color_for_element(self, element: str) -> str:
-        """Método auxiliar para  label color for element.
+        """Calcula el color de etiqueta para un elemento.
 
         Args:
-            element: Descripción del parámetro.
+            element: Símbolo del elemento químico.
 
         Returns:
-            Resultado de la operación o None.
+            Color (hex) según el elemento.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            No tiene efectos laterales.
         """
         if not self._use_element_colors:
             return "#000000"
         return LABEL_ELEMENT_COLORS.get(element, "#333333")
 
     def _set_element_color(self) -> None:
-        """Define el color de la etiqueta según el elemento."""
+        """Actualiza el color del elemento.
+
+        Returns:
+            None.
+
+        Side Effects:
+            Modifica el estado del item o la escena.
+        """
         self._element_color = QColor(self._label_color_for_element(self.element))
         self._apply_label_style()
 
     def _apply_label_style(self) -> None:
-        """Método auxiliar para  apply label style.
+        """Aplica el estilo visual de la etiqueta.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         font = self.label.font()
         font.setUnderline(self._user_underline or self._valence_error)
@@ -238,13 +267,13 @@ class AtomItem(QGraphicsEllipseItem):
         self._set_label_text(self._display_label)
     
     def _should_hide_element(self) -> bool:
-        """Método auxiliar para  should hide element.
+        """Determina si hide elemento.
 
         Returns:
-            Resultado de la operación o None.
+            True si debe ocultarse la etiqueta/círculo.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            No tiene efectos laterales.
         """
         if self._is_explicit:
             return False
@@ -255,20 +284,27 @@ class AtomItem(QGraphicsEllipseItem):
         return False
 
     def _should_draw_circle(self) -> bool:
-        """Método auxiliar para  should draw circle.
+        """Determina si draw círculo.
 
         Returns:
-            Resultado de la operación o None.
+            True si debe dibujarse el círculo del átomo.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            No tiene efectos laterales.
         """
         if self.element == "H" or self.element == "C":
             return False
         return not (self._is_explicit and self.element not in {"C", "H"})
 
     def _update_visibility(self) -> None:
-        """Oculta círculo/etiqueta para C o H implícitos según configuración."""
+        """Actualiza la visibilidad del átomo.
+
+        Returns:
+            None.
+
+        Side Effects:
+            Modifica el estado del item o la escena.
+        """
         if self._should_hide_element():
             # Make circle invisible but keep selectable (minimal hit area)
             self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
@@ -280,7 +316,14 @@ class AtomItem(QGraphicsEllipseItem):
         self._apply_normal_style()
     
     def _apply_normal_style(self) -> None:
-        """Aplica el estilo normal según el estado de selección/hover."""
+        """Aplica el estilo normal según el estado.
+
+        Returns:
+            None.
+
+        Side Effects:
+            Modifica el estado del item o la escena.
+        """
         if not self._should_draw_circle():
             self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
             self.setPen(QPen(Qt.PenStyle.NoPen))
@@ -299,42 +342,84 @@ class AtomItem(QGraphicsEllipseItem):
             self.setPen(pen)
 
     def paint(self, painter, option, widget=None) -> None:
-        """Dibuja el elemento en la escena.
+        """Dibuja el elemento en la escena con el estilo actual.
 
         Args:
-            painter: Descripción del parámetro.
-            option: Descripción del parámetro.
-            widget: Descripción del parámetro.
+            painter: Pintor Qt usado para dibujar.
+            option: Opciones de estilo del render.
+            widget: Widget contenedor opcional.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         painter.setPen(self.pen())
         painter.setBrush(self.brush())
         painter.drawEllipse(self.rect())
     
     def set_visibility_flags(self, show_carbon: bool, show_hydrogen: bool) -> None:
-        """Actualiza banderas de visibilidad y refresca la visualización."""
+        """Actualiza banderas de visibilidad.
+
+        Args:
+            show_carbon: Si se muestran etiquetas de carbono implícito.
+            show_hydrogen: Si se muestran etiquetas de hidrógeno implícito.
+
+        Returns:
+            None.
+
+        Side Effects:
+            Modifica el estado del item o la escena.
+        """
         self._show_carbon = show_carbon
         self._show_hydrogen = show_hydrogen
         self._update_visibility()
     
     def set_selected(self, selected: bool) -> None:
-        """Actualiza el estado de selección."""
+        """Actualiza selección.
+
+        Args:
+            selected: Estado de selección (True/False).
+
+        Returns:
+            None.
+
+        Side Effects:
+            Modifica el estado del item o la escena.
+        """
         self._is_selected = selected
         self._update_visibility()
     
     def set_hover(self, hover: bool) -> None:
-        """Actualiza el estado de hover."""
+        """Actualiza estado hover.
+
+        Args:
+            hover: Estado de hover (True/False).
+
+        Returns:
+            None.
+
+        Side Effects:
+            Modifica el estado del item o la escena.
+        """
         self._is_hover = hover
         if not self._should_hide_element():
             self._apply_normal_style()
     
     def set_element(self, element: str, is_explicit: Optional[bool] = None) -> None:
-        """Cambia el elemento químico del átomo."""
+        """Actualiza elemento.
+
+        Args:
+            element: Símbolo del elemento químico.
+            is_explicit: Si el símbolo debe mostrarse explícito.
+
+        Returns:
+            None.
+
+        Side Effects:
+            Modifica el estado del item o la escena.
+        """
         self.element = element
         if is_explicit is not None:
             self._is_explicit = is_explicit
@@ -344,18 +429,49 @@ class AtomItem(QGraphicsEllipseItem):
         self._update_visibility()
 
     def set_display_label(self, label: str, anchor: Optional[str] = None) -> None:
-        """Define el texto de etiqueta mostrado para este átomo."""
+        """Actualiza etiqueta mostrada.
+
+        Args:
+            label: Texto de etiqueta a mostrar.
+            anchor: Ancla opcional para centrar la etiqueta.
+
+        Returns:
+            None.
+
+        Side Effects:
+            Modifica el estado del item o la escena.
+        """
         self._display_label = label
         self._label_anchor_override = anchor
         self._set_label_text(label)
 
     def set_label_offset(self, offset: QPointF) -> None:
-        """Desplaza la etiqueta respecto al centro del átomo."""
+        """Actualiza desplazamiento de etiqueta.
+
+        Args:
+            offset: Desplazamiento en coordenadas de escena.
+
+        Returns:
+            None.
+
+        Side Effects:
+            Modifica el estado del item o la escena.
+        """
         self._label_offset = QPointF(offset)
         self._center_label()
 
     def set_label_font(self, font: QFont) -> None:
-        """Actualiza la fuente de la etiqueta y recalcula el layout."""
+        """Actualiza fuente de etiqueta.
+
+        Args:
+            font: Fuente tipográfica a aplicar.
+
+        Returns:
+            None.
+
+        Side Effects:
+            Modifica el estado del item o la escena.
+        """
         self.label.setFont(font)
         self._user_underline = font.underline()
         charge_font = QFont(font)
@@ -364,12 +480,32 @@ class AtomItem(QGraphicsEllipseItem):
         self._apply_label_style()
 
     def set_valence_error(self, has_error: bool) -> None:
-        """Activa/desactiva subrayado de error de valencia."""
+        """Actualiza error de valencia.
+
+        Args:
+            has_error: Indica si hay error de valencia.
+
+        Returns:
+            None.
+
+        Side Effects:
+            Modifica el estado del item o la escena.
+        """
         self._valence_error = has_error
         self._apply_label_style()
 
     def set_charge(self, charge: int) -> None:
-        """Actualiza la visualización de la carga formal."""
+        """Actualiza carga.
+
+        Args:
+            charge: Carga formal del átomo.
+
+        Returns:
+            None.
+
+        Side Effects:
+            Modifica el estado del item o la escena.
+        """
         self._charge = charge
         if charge == 0:
             self.charge_label.setVisible(False)
@@ -385,27 +521,27 @@ class AtomItem(QGraphicsEllipseItem):
         self.charge_label.setVisible(True)
 
     def _update_charge_label(self) -> None:
-        """Método auxiliar para  update charge label.
+        """Actualiza la etiqueta de carga.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         self.set_charge(self._charge)
 
     def _set_label_text(self, text: str) -> None:
-        """Método auxiliar para  set label text.
+        """Establece el texto de la etiqueta.
 
         Args:
-            text: Descripción del parámetro.
+            text: Texto a mostrar.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         anchor = self._label_anchor_override or self._first_label_token(text)
         if anchor:
@@ -423,17 +559,17 @@ class AtomItem(QGraphicsEllipseItem):
         self._center_label()
 
     def _anchor_prefix_width(self, text: str, anchor: str) -> float:
-        """Método auxiliar para  anchor prefix width.
+        """Calcula el ancho del prefijo antes del ancla.
 
         Args:
-            text: Descripción del parámetro.
-            anchor: Descripción del parámetro.
+            text: Texto a mostrar.
+            anchor: Ancla opcional para centrar la etiqueta.
 
         Returns:
-            Resultado de la operación o None.
+            Ancho del prefijo antes del ancla en píxeles.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            No tiene efectos laterales.
         """
         if not text or not anchor:
             return 0.0
@@ -444,16 +580,16 @@ class AtomItem(QGraphicsEllipseItem):
         return self._measure_label_width(prefix)
 
     def _measure_label_width(self, text: str) -> float:
-        """Método auxiliar para  measure label width.
+        """Calcula etiqueta width.
 
         Args:
-            text: Descripción del parámetro.
+            text: Texto a mostrar.
 
         Returns:
-            Resultado de la operación o None.
+            Ancho calculado del texto en píxeles.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            No tiene efectos laterales.
         """
         if not text:
             return 0.0
@@ -497,16 +633,16 @@ class AtomItem(QGraphicsEllipseItem):
         return width
 
     def _first_label_token(self, text: str) -> str | None:
-        """Método auxiliar para  first label token.
+        """Obtiene el primer token de la etiqueta.
 
         Args:
-            text: Descripción del parámetro.
+            text: Texto a mostrar.
 
         Returns:
-            Resultado de la operación o None.
+            Primer token relevante o None si no existe.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            No tiene efectos laterales.
         """
         cleaned = text.strip()
         if not cleaned:
@@ -542,16 +678,16 @@ class AtomItem(QGraphicsEllipseItem):
         return ch
 
     def _format_label_html(self, text: str) -> str | None:
-        """Método auxiliar para  format label html.
+        """Formatea etiqueta html.
 
         Args:
-            text: Descripción del parámetro.
+            text: Texto a mostrar.
 
         Returns:
-            Resultado de la operación o None.
+            HTML formateado o None si no aplica.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            No tiene efectos laterales.
         """
         cleaned = text.strip()
         if not cleaned:
@@ -674,13 +810,33 @@ class AtomItem(QGraphicsEllipseItem):
         return "".join(parts)
 
     def set_style(self, style: DrawingStyle) -> None:
-        """Actualiza el estilo de dibujo y refresca la vista."""
+        """Actualiza estilo.
+
+        Args:
+            style: Estilo de dibujo aplicado.
+
+        Returns:
+            None.
+
+        Side Effects:
+            Modifica el estado del item o la escena.
+        """
         self._style = style
         if not self._should_hide_element():
             self._apply_normal_style()
 
     def set_use_element_colors(self, use_element_colors: bool) -> None:
-        """Activa/desactiva el color por elemento en las etiquetas."""
+        """Actualiza uso de colores por elemento.
+
+        Args:
+            use_element_colors: Si se colorea la etiqueta según el elemento.
+
+        Returns:
+            None.
+
+        Side Effects:
+            Modifica el estado del item o la escena.
+        """
         self._use_element_colors = use_element_colors
         self._set_element_color()
 
@@ -696,20 +852,20 @@ class BondItem(QGraphicsPathItem):
         render_aromatic_as_circle: bool = True,
         style: DrawingStyle = CHEMDOODLE_LIKE,
     ) -> None:
-        """Inicializa la instancia.
+        """Inicializa la instancia y configura el elemento gráfico.
 
         Args:
-            bond: Descripción del parámetro.
-            atom1: Descripción del parámetro.
-            atom2: Descripción del parámetro.
-            render_aromatic_as_circle: Descripción del parámetro.
-            style: Descripción del parámetro.
+            bond: Enlace del modelo asociado.
+            atom1: Átomo inicial del enlace.
+            atom2: Átomo final del enlace.
+            render_aromatic_as_circle: Si los aromáticos se dibujan con círculo.
+            style: Estilo de dibujo aplicado.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         super().__init__()
         self.bond_id = bond.id
@@ -752,25 +908,37 @@ class BondItem(QGraphicsPathItem):
         self.update_positions(atom1, atom2)
 
     def paint(self, painter, option, widget=None) -> None:
-        """Dibuja el elemento en la escena.
+        """Dibuja el elemento en la escena con el estilo actual.
 
         Args:
-            painter: Descripción del parámetro.
-            option: Descripción del parámetro.
-            widget: Descripción del parámetro.
+            painter: Pintor Qt usado para dibujar.
+            option: Opciones de estilo del render.
+            widget: Widget contenedor opcional.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         painter.setPen(self.pen())
         painter.setBrush(self.brush())
         painter.drawPath(self.path())
 
     def set_bond(self, bond: Bond, atom1: Atom, atom2: Atom) -> None:
-        """Actualiza propiedades del enlace y redibuja."""
+        """Actualiza enlace.
+
+        Args:
+            bond: Enlace del modelo asociado.
+            atom1: Átomo inicial del enlace.
+            atom2: Átomo final del enlace.
+
+        Returns:
+            None.
+
+        Side Effects:
+            Modifica el estado del item o la escena.
+        """
         self.order = bond.order
         self.style = bond.style
         self.stereo = bond.stereo
@@ -783,101 +951,122 @@ class BondItem(QGraphicsPathItem):
         self.update_positions(atom1, atom2)
 
     def set_render_aromatic_as_circle(self, enabled: bool) -> None:
-        """Activa/desactiva render aromático con círculo."""
+        """Actualiza renderizado aromático con círculo.
+
+        Args:
+            enabled: Habilita o deshabilita el modo.
+
+        Returns:
+            None.
+
+        Side Effects:
+            Modifica el estado del item o la escena.
+        """
         self.render_aromatic_as_circle = enabled
         # Canvas refresh will call update_positions with current atom positions.
 
     def set_ring_context(self, ring_center: QPointF | None) -> None:
-        """Actualiza el estado de ring context.
+        """Actualiza contexto de anillo.
 
         Args:
-            ring_center: Descripción del parámetro.
+            ring_center: Centro del anillo en coordenadas de escena.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         self._ring_center = ring_center
 
     def set_bond_in_ring(self, in_ring: bool) -> None:
-        """Actualiza el estado de bond in ring.
+        """Actualiza enlace en anillo.
 
         Args:
-            in_ring: Descripción del parámetro.
+            in_ring: Indica si el enlace pertenece a un anillo.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         self._bond_in_ring = bool(in_ring)
 
     def set_offset_sign(self, sign: int) -> None:
-        """Actualiza el estado de offset sign.
+        """Actualiza signo de desplazamiento.
 
         Args:
-            sign: Descripción del parámetro.
+            sign: Signo de desplazamiento (+1/-1).
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         self._offset_sign = 1 if sign >= 0 else -1
 
     def set_multibond_rendering(self, prefer_full_length: bool, symmetric_double: bool) -> None:
-        """Actualiza el estado de multibond rendering.
+        """Actualiza renderizado de multienlaces.
 
         Args:
-            prefer_full_length: Descripción del parámetro.
-            symmetric_double: Descripción del parámetro.
+            prefer_full_length: Si se prefiere longitud completa en multienlaces.
+            symmetric_double: Si el doble enlace se dibuja simétrico.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         self._prefer_full_length = bool(prefer_full_length)
         self._symmetric_double = bool(symmetric_double)
 
     def set_label_shrink(self, start: float, end: float) -> None:
-        """Define recortes para evitar solapes con etiquetas."""
+        """Actualiza recorte de etiquetas.
+
+        Args:
+            start: Punto inicial en escena.
+            end: Punto final en escena.
+
+        Returns:
+            None.
+
+        Side Effects:
+            Modifica el estado del item o la escena.
+        """
         self._label_shrink_start = max(0.0, float(start))
         self._label_shrink_end = max(0.0, float(end))
 
     def set_endpoint_trim(self, start: float, end: float) -> None:
-        """Actualiza el estado de endpoint trim.
+        """Actualiza recorte de extremos.
 
         Args:
-            start: Descripción del parámetro.
-            end: Descripción del parámetro.
+            start: Punto inicial en escena.
+            end: Punto final en escena.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         self._endpoint_trim_start = max(0.0, float(start))
         self._endpoint_trim_end = max(0.0, float(end))
 
     def set_endpoint_extend(self, start: float, end: float) -> None:
-        """Actualiza el estado de endpoint extend.
+        """Actualiza extensión de extremos.
 
         Args:
-            start: Descripción del parámetro.
-            end: Descripción del parámetro.
+            start: Punto inicial en escena.
+            end: Punto final en escena.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         self._endpoint_extend_start = max(0.0, float(start))
         self._endpoint_extend_end = max(0.0, float(end))
@@ -894,24 +1083,24 @@ class BondItem(QGraphicsPathItem):
         trim_end: float,
         pen_width: float,
     ) -> tuple[float, float, float, float]:
-        """Método auxiliar para  extend line endpoints.
+        """Extiende extremos de línea para trazos planos.
 
         Args:
-            p1x: Descripción del parámetro.
-            p1y: Descripción del parámetro.
-            p2x: Descripción del parámetro.
-            p2y: Descripción del parámetro.
-            ux: Descripción del parámetro.
-            uy: Descripción del parámetro.
-            trim_start: Descripción del parámetro.
-            trim_end: Descripción del parámetro.
-            pen_width: Descripción del parámetro.
+            p1x: Coordenada X inicial.
+            p1y: Coordenada Y inicial.
+            p2x: Coordenada X final.
+            p2y: Coordenada Y final.
+            ux: Componente X del vector unitario.
+            uy: Componente Y del vector unitario.
+            trim_start: Recorte desde el inicio.
+            trim_end: Recorte desde el final.
+            pen_width: Grosor del trazo actual.
 
         Returns:
-            Resultado de la operación o None.
+            Resultado calculado.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         if self._style.cap_style != Qt.PenCapStyle.FlatCap:
             return p1x, p1y, p2x, p2y
@@ -928,7 +1117,18 @@ class BondItem(QGraphicsPathItem):
         return p1x, p1y, p2x, p2y
 
     def update_positions(self, atom1: Atom, atom2: Atom) -> None:
-        """Redibuja la geometría del enlace según los átomos."""
+        """Actualiza posiciones.
+
+        Args:
+            atom1: Átomo inicial del enlace.
+            atom2: Átomo final del enlace.
+
+        Returns:
+            None.
+
+        Side Effects:
+            Modifica el estado del item o la escena.
+        """
         x1, y1 = atom1.x, atom1.y
         x2, y2 = atom2.x, atom2.y
         path = QPainterPath()
@@ -1146,7 +1346,19 @@ class BondItem(QGraphicsPathItem):
         self.setPath(path)
 
     def set_style(self, style: DrawingStyle, atom1: Atom, atom2: Atom) -> None:
-        """Actualiza el estilo de dibujo y redibuja el enlace."""
+        """Actualiza estilo.
+
+        Args:
+            style: Estilo de dibujo aplicado.
+            atom1: Átomo inicial del enlace.
+            atom2: Átomo final del enlace.
+
+        Returns:
+            None.
+
+        Side Effects:
+            Modifica el estado del item o la escena.
+        """
         self._style = style
         self.update_positions(atom1, atom2)
 
@@ -1160,18 +1372,18 @@ class WavyAnchorItem(QGraphicsPathItem):
         end: QPointF,
         style: DrawingStyle = CHEMDOODLE_LIKE,
     ) -> None:
-        """Inicializa la instancia.
+        """Inicializa la instancia y configura el elemento gráfico.
 
         Args:
-            start: Descripción del parámetro.
-            end: Descripción del parámetro.
-            style: Descripción del parámetro.
+            start: Punto inicial en escena.
+            end: Punto final en escena.
+            style: Estilo de dibujo aplicado.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         super().__init__()
         self._style = style
@@ -1182,17 +1394,17 @@ class WavyAnchorItem(QGraphicsPathItem):
         self.update_positions(start, end)
 
     def update_positions(self, start: QPointF, end: QPointF) -> None:
-        """Actualiza positions.
+        """Actualiza posiciones.
 
         Args:
-            start: Descripción del parámetro.
-            end: Descripción del parámetro.
+            start: Punto inicial en escena.
+            end: Punto final en escena.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         self._start = QPointF(start)
         self._end = QPointF(end)
@@ -1217,24 +1429,24 @@ class WavyAnchorItem(QGraphicsPathItem):
         self.setPath(path)
 
     def start_point(self) -> QPointF:
-        """Método auxiliar para start point.
+        """Devuelve el punto inicial.
 
         Returns:
-            Resultado de la operación o None.
+            Punto inicial (QPointF).
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            No tiene efectos laterales.
         """
         return QPointF(self._start)
 
     def end_point(self) -> QPointF:
-        """Método auxiliar para end point.
+        """Devuelve el punto final.
 
         Returns:
-            Resultado de la operación o None.
+            Punto final (QPointF).
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            No tiene efectos laterales.
         """
         return QPointF(self._end)
 
@@ -1250,20 +1462,20 @@ class ArrowItem(QGraphicsPathItem):
         kind: str | None = None,
         style: DrawingStyle = CHEMDOODLE_LIKE,
     ) -> None:
-        """Inicializa la instancia.
+        """Inicializa la instancia y configura el elemento gráfico.
 
         Args:
-            start: Descripción del parámetro.
-            end: Descripción del parámetro.
-            head_at_end: Descripción del parámetro.
-            kind: Descripción del parámetro.
-            style: Descripción del parámetro.
+            start: Punto inicial en escena.
+            end: Punto final en escena.
+            head_at_end: Si la cabeza va en el extremo final.
+            kind: Tipo de flecha/corchete.
+            style: Estilo de dibujo aplicado.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         super().__init__()
         self._style = style
@@ -1283,35 +1495,35 @@ class ArrowItem(QGraphicsPathItem):
         self.update_positions(start, end)
 
     def paint(self, painter, option, widget=None) -> None:
-        """Dibuja el elemento en la escena.
+        """Dibuja el elemento en la escena con el estilo actual.
 
         Args:
-            painter: Descripción del parámetro.
-            option: Descripción del parámetro.
-            widget: Descripción del parámetro.
+            painter: Pintor Qt usado para dibujar.
+            option: Opciones de estilo del render.
+            widget: Widget contenedor opcional.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         painter.setPen(self.pen())
         painter.setBrush(self.brush())
         painter.drawPath(self.path())
 
     def update_positions(self, start: QPointF, end: QPointF) -> None:
-        """Actualiza positions.
+        """Actualiza posiciones.
 
         Args:
-            start: Descripción del parámetro.
-            end: Descripción del parámetro.
+            start: Punto inicial en escena.
+            end: Punto final en escena.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         self._start = QPointF(start)
         self._end = QPointF(end)
@@ -1358,20 +1570,20 @@ class ArrowItem(QGraphicsPathItem):
             dir_y: float,
             head_style: str,
         ) -> QPointF:
-            """Añade head.
+            """Dibuja la cabeza de la flecha.
 
             Args:
-                path: Descripción del parámetro.
-                tip: Descripción del parámetro.
-                dir_x: Descripción del parámetro.
-                dir_y: Descripción del parámetro.
-                head_style: Descripción del parámetro.
+                path: Ruta QPainterPath donde se dibuja.
+                tip: Punto de la punta de la flecha.
+                dir_x: Componente X de la dirección.
+                dir_y: Componente Y de la dirección.
+                head_style: Estilo de cabeza (filled/open/half).
 
             Returns:
-                Resultado de la operación o None.
+                None.
 
             Side Effects:
-                Puede modificar el estado interno o la escena.
+                Modifica el estado del item o la escena.
             """
             base_x = tip.x() - dir_x * head_len
             base_y = tip.y() - dir_y * head_len
@@ -1464,79 +1676,79 @@ class ArrowItem(QGraphicsPathItem):
         self.setPath(path)
 
     def kind(self) -> str:
-        """Método auxiliar para kind.
+        """Devuelve el tipo actual.
 
         Returns:
-            Resultado de la operación o None.
+            Tipo de flecha/corchete.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            No tiene efectos laterales.
         """
         return self._kind
 
     def set_kind(self, kind: str) -> None:
-        """Actualiza el estado de kind.
+        """Actualiza tipo.
 
         Args:
-            kind: Descripción del parámetro.
+            kind: Tipo de flecha/corchete.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         self._kind = kind
 
     def start_point(self) -> QPointF:
-        """Método auxiliar para start point.
+        """Devuelve el punto inicial.
 
         Returns:
-            Resultado de la operación o None.
+            Punto inicial (QPointF).
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            No tiene efectos laterales.
         """
         return QPointF(self._start)
 
     def end_point(self) -> QPointF:
-        """Método auxiliar para end point.
+        """Devuelve el punto final.
 
         Returns:
-            Resultado de la operación o None.
+            Punto final (QPointF).
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            No tiene efectos laterales.
         """
         return QPointF(self._end)
 
     def set_style(self, style: DrawingStyle) -> None:
-        """Actualiza el estado de style.
+        """Actualiza estilo.
 
         Args:
-            style: Descripción del parámetro.
+            style: Estilo de dibujo aplicado.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         self._style = style
         self.update_positions(self._start, self._end)
 
     def _apply_kind_style(self, open_head: bool, dashed: bool) -> None:
-        """Método auxiliar para  apply kind style.
+        """Aplica el estilo según el tipo.
 
         Args:
-            open_head: Descripción del parámetro.
-            dashed: Descripción del parámetro.
+            open_head: Si la cabeza es abierta.
+            dashed: Si el trazo es discontinuo.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         pen = QPen(QColor(self._style.bond_color), self._style.stroke_px)
         pen.setCapStyle(self._style.cap_style)
@@ -1551,16 +1763,16 @@ class ArrowItem(QGraphicsPathItem):
 
 
 class PreviewArrowItem(ArrowItem):
-    """Preview arrow for annotation placement."""
+    """Flecha de previsualización para colocar anotaciones."""
 
     def __init__(self) -> None:
-        """Inicializa la instancia.
+        """Inicializa la instancia y configura el elemento gráfico.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         super().__init__(QPointF(0, 0), QPointF(1, 0), kind="forward")
         self._preview_pen = QPen(QColor("#4A90D9"), 1.5, Qt.PenStyle.DashLine)
@@ -1573,18 +1785,18 @@ class PreviewArrowItem(ArrowItem):
         self.setVisible(False)
 
     def update_preview(self, start: QPointF, end: QPointF, kind: str) -> None:
-        """Actualiza preview.
+        """Actualiza la previsualización.
 
         Args:
-            start: Descripción del parámetro.
-            end: Descripción del parámetro.
-            kind: Descripción del parámetro.
+            start: Punto inicial en escena.
+            end: Punto final en escena.
+            kind: Tipo de flecha/corchete.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         self.set_kind(kind)
         self.update_positions(start, end)
@@ -1594,28 +1806,28 @@ class PreviewArrowItem(ArrowItem):
             self.setVisible(True)
 
     def hide_preview(self) -> None:
-        """Método auxiliar para hide preview.
+        """Oculta la previsualización.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         self.setVisible(False)
 
     def _apply_kind_style(self, open_head: bool, dashed: bool) -> None:
-        """Método auxiliar para  apply kind style.
+        """Aplica el estilo según el tipo.
 
         Args:
-            open_head: Descripción del parámetro.
-            dashed: Descripción del parámetro.
+            open_head: Si la cabeza es abierta.
+            dashed: Si el trazo es discontinuo.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         if not hasattr(self, "_preview_pen"):
             super()._apply_kind_style(open_head, dashed)
@@ -1634,19 +1846,19 @@ class BracketItem(QGraphicsPathItem):
         padding: float = 8.0,
         style: DrawingStyle = CHEMDOODLE_LIKE,
     ) -> None:
-        """Inicializa la instancia.
+        """Inicializa la instancia y configura el elemento gráfico.
 
         Args:
-            rect: Descripción del parámetro.
-            kind: Descripción del parámetro.
-            padding: Descripción del parámetro.
-            style: Descripción del parámetro.
+            rect: Rectángulo base de la anotación.
+            kind: Tipo de flecha/corchete.
+            padding: Margen interno alrededor del contenido.
+            style: Estilo de dibujo aplicado.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         super().__init__()
         self._padding = padding
@@ -1664,46 +1876,46 @@ class BracketItem(QGraphicsPathItem):
         self._update_path()
 
     def paint(self, painter, option, widget=None) -> None:
-        """Dibuja el elemento en la escena.
+        """Dibuja el elemento en la escena con el estilo actual.
 
         Args:
-            painter: Descripción del parámetro.
-            option: Descripción del parámetro.
-            widget: Descripción del parámetro.
+            painter: Pintor Qt usado para dibujar.
+            option: Opciones de estilo del render.
+            widget: Widget contenedor opcional.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         painter.setPen(self.pen())
         painter.setBrush(self.brush())
         painter.drawPath(self.path())
 
     def base_rect(self) -> QRectF:
-        """Método auxiliar para base rect.
+        """Devuelve el rectángulo base.
 
         Returns:
-            Resultado de la operación o None.
+            Rectángulo base de la anotación.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            No tiene efectos laterales.
         """
         return QRectF(self._base_rect)
 
     def set_rect(self, rect: QRectF, padding: float | None = None) -> None:
-        """Actualiza el estado de rect.
+        """Actualiza rectángulo.
 
         Args:
-            rect: Descripción del parámetro.
-            padding: Descripción del parámetro.
+            rect: Rectángulo base de la anotación.
+            padding: Margen interno alrededor del contenido.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         if padding is not None:
             self._padding = padding
@@ -1714,13 +1926,13 @@ class BracketItem(QGraphicsPathItem):
         self._update_path()
 
     def _update_path(self) -> None:
-        """Método auxiliar para  update path.
+        """Recalcula la geometría del trazado.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         rect = self._rect
         path = QPainterPath()
@@ -1750,18 +1962,18 @@ class BracketItem(QGraphicsPathItem):
             neck = max(4.0, height * 0.05)
 
             def draw_curly_side(tip_x: float, spine_x: float, waist_x: float) -> None:
-                """Método auxiliar para draw curly side.
+                """Dibuja un lateral de llave curva.
 
                 Args:
-                    tip_x: Descripción del parámetro.
-                    spine_x: Descripción del parámetro.
-                    waist_x: Descripción del parámetro.
+                    tip_x: Coordenada X de la punta.
+                    spine_x: Coordenada X del lomo de la llave.
+                    waist_x: Coordenada X de la cintura de la llave.
 
                 Returns:
-                    Resultado de la operación o None.
+                    None.
 
                 Side Effects:
-                    Puede modificar el estado interno o la escena.
+                    Modifica el estado del item o la escena.
                 """
                 path.moveTo(tip_x, top)
                 path.quadTo(spine_x, top, spine_x, top + corner)
@@ -1813,16 +2025,16 @@ class BracketItem(QGraphicsPathItem):
         self.setPath(path)
 
     def set_style(self, style: DrawingStyle) -> None:
-        """Actualiza el estado de style.
+        """Actualiza estilo.
 
         Args:
-            style: Descripción del parámetro.
+            style: Estilo de dibujo aplicado.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         self._style = style
         pen = QPen(QColor(self._style.bond_color), self._style.stroke_px)
@@ -1831,21 +2043,21 @@ class BracketItem(QGraphicsPathItem):
         self.setPen(pen)
 
 class AromaticCircleItem(QGraphicsEllipseItem):
-    """A circle drawn inside aromatic rings to indicate aromaticity."""
+    """Círculo interior que indica aromaticidad en anillos."""
     
     def __init__(self, center_x: float, center_y: float, radius: float) -> None:
-        """Inicializa la instancia.
+        """Inicializa la instancia y configura el elemento gráfico.
 
         Args:
-            center_x: Descripción del parámetro.
-            center_y: Descripción del parámetro.
-            radius: Descripción del parámetro.
+            center_x: Coordenada X del centro.
+            center_y: Coordenada Y del centro.
+            radius: Radio visual en píxeles.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         super().__init__(
             center_x - radius, center_y - radius,
@@ -1857,19 +2069,19 @@ class AromaticCircleItem(QGraphicsEllipseItem):
 
 
 class HoverAtomIndicatorItem(QGraphicsEllipseItem):
-    """Amber circle overlay for hovered atoms."""
+    """Indicador circular para átomos en estado hover."""
 
     def __init__(self, radius: float = 10.0) -> None:
-        """Inicializa la instancia.
+        """Inicializa la instancia y configura el elemento gráfico.
 
         Args:
-            radius: Descripción del parámetro.
+            radius: Radio visual en píxeles.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         super().__init__(-radius, -radius, radius * 2, radius * 2)
         self._radius = radius
@@ -1880,49 +2092,49 @@ class HoverAtomIndicatorItem(QGraphicsEllipseItem):
         self.setVisible(False)
 
     def update_position(self, x: float, y: float) -> None:
-        """Actualiza position.
+        """Actualiza posición.
 
         Args:
-            x: Descripción del parámetro.
-            y: Descripción del parámetro.
+            x: Coordenada X.
+            y: Coordenada Y.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         self.setPos(x, y)
         if not self.isVisible():
             self.setVisible(True)
 
     def hide_indicator(self) -> None:
-        """Método auxiliar para hide indicator.
+        """Oculta el indicador.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         self.setVisible(False)
 
 
 class HoverBondIndicatorItem(QGraphicsPathItem):
-    """Amber parentheses overlay for hovered bonds."""
+    """Indicador de paréntesis para enlaces en hover."""
 
     def __init__(self, radius: float = 10.0, separation: float = 12.0) -> None:
-        """Inicializa la instancia.
+        """Inicializa la instancia y configura el elemento gráfico.
 
         Args:
-            radius: Descripción del parámetro.
-            separation: Descripción del parámetro.
+            radius: Radio visual en píxeles.
+            separation: Separación entre paréntesis del indicador.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         super().__init__()
         self._radius = radius
@@ -1934,17 +2146,17 @@ class HoverBondIndicatorItem(QGraphicsPathItem):
         self.setVisible(False)
 
     def update_for_bond(self, p1: QPointF, p2: QPointF) -> None:
-        """Actualiza for bond.
+        """Actualiza estado para enlace.
 
         Args:
-            p1: Descripción del parámetro.
-            p2: Descripción del parámetro.
+            p1: Punto final.
+            p2: Punto final del segmento.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         mid = QPointF((p1.x() + p2.x()) / 2, (p1.y() + p2.y()) / 2)
         angle = math.degrees(math.atan2(p2.y() - p1.y(), p2.x() - p1.x()))
@@ -1967,13 +2179,13 @@ class HoverBondIndicatorItem(QGraphicsPathItem):
             self.setVisible(True)
 
     def hide_indicator(self) -> None:
-        """Método auxiliar para hide indicator.
+        """Oculta el indicador.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         self.setVisible(False)
 
@@ -1982,16 +2194,16 @@ class OptimizeZoneItem(QGraphicsEllipseItem):
     """Blue translucent optimize zone around sprout anchor."""
 
     def __init__(self, radius: float = 28.0) -> None:
-        """Inicializa la instancia.
+        """Inicializa la instancia y configura el elemento gráfico.
 
         Args:
-            radius: Descripción del parámetro.
+            radius: Radio visual en píxeles.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         super().__init__(-radius, -radius, radius * 2, radius * 2)
         self._radius = radius
@@ -2003,71 +2215,71 @@ class OptimizeZoneItem(QGraphicsEllipseItem):
         self.setVisible(False)
 
     def update_center(self, x: float, y: float) -> None:
-        """Actualiza center.
+        """Actualiza centro.
 
         Args:
-            x: Descripción del parámetro.
-            y: Descripción del parámetro.
+            x: Coordenada X.
+            y: Coordenada Y.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         self.setPos(x, y)
         if not self.isVisible():
             self.setVisible(True)
 
     def set_radius(self, radius: float) -> None:
-        """Actualiza el estado de radius.
+        """Actualiza radio.
 
         Args:
-            radius: Descripción del parámetro.
+            radius: Radio visual en píxeles.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         self._radius = radius
         self.setRect(-radius, -radius, radius * 2, radius * 2)
 
     def radius(self) -> float:
-        """Método auxiliar para radius.
+        """Devuelve el radio actual.
 
         Returns:
-            Resultado de la operación o None.
+            Radio actual en píxeles.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            No tiene efectos laterales.
         """
         return self._radius
 
     def hide_zone(self) -> None:
-        """Método auxiliar para hide zone.
+        """Oculta la zona de optimización.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         self.setVisible(False)
 
 
 class PreviewBondItem(QGraphicsPathItem):
-    """Preview line for bond placement."""
+    """Línea de previsualización para colocar enlaces."""
 
     def __init__(self) -> None:
-        """Inicializa la instancia.
+        """Inicializa la instancia y configura el elemento gráfico.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         super().__init__()
         pen = QPen(QColor("#4A90D9"), 1.5, Qt.PenStyle.DashLine)
@@ -2077,17 +2289,17 @@ class PreviewBondItem(QGraphicsPathItem):
         self.setVisible(False)
 
     def update_line(self, p1: QPointF, p2: QPointF) -> None:
-        """Actualiza line.
+        """Actualiza línea.
 
         Args:
-            p1: Descripción del parámetro.
-            p2: Descripción del parámetro.
+            p1: Punto final.
+            p2: Punto final del segmento.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         path = QPainterPath()
         path.moveTo(p1)
@@ -2097,28 +2309,28 @@ class PreviewBondItem(QGraphicsPathItem):
             self.setVisible(True)
 
     def hide_preview(self) -> None:
-        """Método auxiliar para hide preview.
+        """Oculta la previsualización.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         self.setVisible(False)
 
 
 class PreviewRingItem(QGraphicsPathItem):
-    """Preview polygon for ring placement."""
+    """Polígono de previsualización para colocar anillos."""
 
     def __init__(self) -> None:
-        """Inicializa la instancia.
+        """Inicializa la instancia y configura el elemento gráfico.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         super().__init__()
         pen = QPen(QColor("#4A90D9"), 1.5, Qt.PenStyle.DashLine)
@@ -2128,16 +2340,16 @@ class PreviewRingItem(QGraphicsPathItem):
         self.setVisible(False)
 
     def update_polygon(self, vertices: list[QPointF]) -> None:
-        """Actualiza polygon.
+        """Actualiza polígono.
 
         Args:
-            vertices: Descripción del parámetro.
+            vertices: Lista de vértices del polígono.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         if not vertices:
             self.setVisible(False)
@@ -2152,28 +2364,28 @@ class PreviewRingItem(QGraphicsPathItem):
             self.setVisible(True)
 
     def hide_preview(self) -> None:
-        """Método auxiliar para hide preview.
+        """Oculta la previsualización.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         self.setVisible(False)
 
 
 class PreviewChainItem(QGraphicsPathItem):
-    """Preview polyline for chain placement."""
+    """Polilínea de previsualización para colocar cadenas."""
 
     def __init__(self) -> None:
-        """Inicializa la instancia.
+        """Inicializa la instancia y configura el elemento gráfico.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         super().__init__()
         pen = QPen(QColor("#4A90D9"), 1.5, Qt.PenStyle.DashLine)
@@ -2183,16 +2395,16 @@ class PreviewChainItem(QGraphicsPathItem):
         self.setVisible(False)
 
     def update_polyline(self, points: list[QPointF]) -> None:
-        """Actualiza polyline.
+        """Actualiza polilínea.
 
         Args:
-            points: Descripción del parámetro.
+            points: Lista de puntos del trazo.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         if len(points) < 2:
             self.setVisible(False)
@@ -2206,28 +2418,28 @@ class PreviewChainItem(QGraphicsPathItem):
             self.setVisible(True)
 
     def hide_preview(self) -> None:
-        """Método auxiliar para hide preview.
+        """Oculta la previsualización.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         self.setVisible(False)
 
 
 class PreviewChainLabelItem(QGraphicsTextItem):
-    """Preview label showing chain length."""
+    """Etiqueta de previsualización con la longitud de cadena."""
 
     def __init__(self) -> None:
-        """Inicializa la instancia.
+        """Inicializa la instancia y configura el elemento gráfico.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         super().__init__()
         self.setDefaultTextColor(QColor("#4A90D9"))
@@ -2237,17 +2449,17 @@ class PreviewChainLabelItem(QGraphicsTextItem):
         self.setVisible(False)
 
     def update_label(self, text: str, pos: QPointF) -> None:
-        """Actualiza label.
+        """Actualiza etiqueta.
 
         Args:
-            text: Descripción del parámetro.
-            pos: Descripción del parámetro.
+            text: Texto a mostrar.
+            pos: Posición en escena.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         self.setPlainText(text)
         rect = self.boundingRect()
@@ -2256,13 +2468,13 @@ class PreviewChainLabelItem(QGraphicsTextItem):
             self.setVisible(True)
 
     def hide_label(self) -> None:
-        """Método auxiliar para hide label.
+        """Oculta la etiqueta.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         self.setVisible(False)
 
@@ -2273,18 +2485,18 @@ class TextAnnotationItem(QGraphicsTextItem):
     """Elemento gráfico para anotaciones de texto libres."""
     
     def __init__(self, text: str = "", x: float = 0.0, y: float = 0.0) -> None:
-        """Inicializa la instancia.
+        """Inicializa la instancia y configura el elemento gráfico.
 
         Args:
-            text: Descripción del parámetro.
-            x: Descripción del parámetro.
-            y: Descripción del parámetro.
+            text: Texto a mostrar.
+            x: Coordenada X.
+            y: Coordenada Y.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         super().__init__(text)
         self.setPos(x, y)
@@ -2311,18 +2523,18 @@ class TextAnnotationItem(QGraphicsTextItem):
         # Suppress default dashed line from QGraphicsTextItem if selected
         # because the canvas draws its own selection overlay.
         # But we must preserve other states like HasFocus for the cursor.
-        """Dibuja el elemento en la escena.
+        """Dibuja el elemento en la escena con el estilo actual.
 
         Args:
-            painter: Descripción del parámetro.
-            option: Descripción del parámetro.
-            widget: Descripción del parámetro.
+            painter: Pintor Qt usado para dibujar.
+            option: Opciones de estilo del render.
+            widget: Widget contenedor opcional.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         option.state &= ~QStyle.StateFlag.State_Selected
         
@@ -2337,16 +2549,16 @@ class TextAnnotationItem(QGraphicsTextItem):
 
     def mouseDoubleClickEvent(self, event) -> None:
         # Enable editing on double click
-        """Método auxiliar para mouseDoubleClickEvent.
+        """Maneja el doble clic del mouse.
 
         Args:
-            event: Descripción del parámetro.
+            event: Evento de Qt recibido.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         if self.textInteractionFlags() == Qt.TextInteractionFlag.NoTextInteraction:
             self.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
@@ -2355,16 +2567,16 @@ class TextAnnotationItem(QGraphicsTextItem):
 
     def focusInEvent(self, event) -> None:
         # Remember last focused text item for restore on window activation
-        """Método auxiliar para focusInEvent.
+        """Maneja la ganancia de foco.
 
         Args:
-            event: Descripción del parámetro.
+            event: Evento de Qt recibido.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         try:
             scene = self.scene()
@@ -2378,16 +2590,16 @@ class TextAnnotationItem(QGraphicsTextItem):
     
     def focusOutEvent(self, event) -> None:
         # If focus loss is due to window deactivation, keep edit mode.
-        """Método auxiliar para focusOutEvent.
+        """Maneja la pérdida de foco.
 
         Args:
-            event: Descripción del parámetro.
+            event: Evento de Qt recibido.
 
         Returns:
-            Resultado de la operación o None.
+            None.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            Modifica el estado del item o la escena.
         """
         if event.reason() == Qt.FocusReason.ActiveWindowFocusReason:
             super().focusOutEvent(event)
@@ -2421,13 +2633,13 @@ class TextAnnotationItem(QGraphicsTextItem):
 
     def shape(self) -> QPainterPath:
         # Ensure a minimum size for the hit-test even if empty
-        """Método auxiliar para shape.
+        """Devuelve la forma para hit-testing.
 
         Returns:
-            Resultado de la operación o None.
+            QPainterPath usado para detección de colisiones.
 
         Side Effects:
-            Puede modificar el estado interno o la escena.
+            No tiene efectos laterales.
         """
         br = self.boundingRect()
         if br.width() < 10:
