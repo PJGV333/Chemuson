@@ -49,6 +49,18 @@ ABBREVIATION_LABELS = {"Me", "Et", "Pr", "iPr", "tBu", "Bu", "Ph", "R", "TBS", "
 # easy to tweak without touching geometry logic.
 WEDGE_SINGLE_END_OVERLAP_STROKE_MULT = 4.0
 WEDGE_SINGLE_END_OVERLAP_WIDTH_MULT = 3.0
+# Single fine-tuning knob for end_deg == 1 terminal join.
+# >1.0 pushes the wide corner more into the simple bond; <1.0 retracts it.
+WEDGE_SINGLE_END_JOIN_TUNE = 1
+# Terminal cap for end_deg == 1: keeps a short flat base segment colinear
+# with the outgoing simple bond (ChemDraw-like trapezoid ending).
+WEDGE_SINGLE_END_TERMINAL_CLIP_STROKE_MULT = 10000
+WEDGE_SINGLE_END_TERMINAL_CLIP_WIDTH_MULT = 50000
+# Small forward overlay so wedge cap sits on top of the simple bond and
+# hides round line caps at the junction.
+WEDGE_SINGLE_END_CAP_OVERLAY_STROKE_MULT = 0.1
+WEDGE_SINGLE_END_CAP_OVERLAY_WIDTH_MULT = 10000
+WEDGE_SINGLE_END_CAP_OVERLAY_SPAN_MULT = 0.12
 WEDGE_SINGLE_END_MIN_SEP_MULT = 0.22
 WEDGE_MULTI_END_MIN_SEP_MULT = 1.6
 WEDGE_MULTI_END_CORNER_JOIN_STROKE_MULT = 0.90
@@ -1511,21 +1523,38 @@ class BondItem(QGraphicsPathItem):
                 base_pos, base_neg = base_neg, base_pos
             # Keep a minimum terminal width while allowing strong integration.
             end_deg = len(self._wedge_join_end)
+            anchored_corner = 0  # 1 => base_pos locked, -1 => base_neg locked
+            single_end_dir: tuple[float, float] | None = None
             if end_deg == 1:
                 # Lock only the corner that points toward the outgoing bond
                 # to the shared atom vertex (tiny overlap for a seamless join).
-                nux, nuy, _ = self._wedge_join_end[0]
+                nux, nuy, nwidth = self._wedge_join_end[0]
+                single_end_dir = (nux, nuy)
                 overlap = min(
                     stroke_px * WEDGE_SINGLE_END_OVERLAP_STROKE_MULT,
                     width * WEDGE_SINGLE_END_OVERLAP_WIDTH_MULT,
                 )
-                joint = (base_cx + nux * overlap, base_cy + nuy * overlap)
+                overlap *= max(0.0, WEDGE_SINGLE_END_JOIN_TUNE)
+                # Snap to the nearest edge of the outgoing simple-bond stroke
+                # (not to its centerline) to eliminate tiny terminal nubs.
+                joint_cx = base_cx + nux * overlap
+                joint_cy = base_cy + nuy * overlap
+                nnx, nny = -nuy, nux
+                half_neighbor = max(nwidth * 0.5, stroke_px * 0.50)
+                edge_a = (joint_cx + nnx * half_neighbor, joint_cy + nny * half_neighbor)
+                edge_b = (joint_cx - nnx * half_neighbor, joint_cy - nny * half_neighbor)
                 pos_along = (base_pos[0] - base_cx) * nux + (base_pos[1] - base_cy) * nuy
                 neg_along = (base_neg[0] - base_cx) * nux + (base_neg[1] - base_cy) * nuy
                 if pos_along >= neg_along:
-                    base_pos = joint
+                    d_a = (base_pos[0] - edge_a[0]) ** 2 + (base_pos[1] - edge_a[1]) ** 2
+                    d_b = (base_pos[0] - edge_b[0]) ** 2 + (base_pos[1] - edge_b[1]) ** 2
+                    base_pos = edge_a if d_a <= d_b else edge_b
+                    anchored_corner = 1
                 else:
-                    base_neg = joint
+                    d_a = (base_neg[0] - edge_a[0]) ** 2 + (base_neg[1] - edge_a[1]) ** 2
+                    d_b = (base_neg[0] - edge_b[0]) ** 2 + (base_neg[1] - edge_b[1]) ** 2
+                    base_neg = edge_a if d_a <= d_b else edge_b
+                    anchored_corner = -1
             sep = (base_pos[0] - base_neg[0]) * w_nx + (base_pos[1] - base_neg[1]) * w_ny
             if end_deg >= 2:
                 min_sep = width * WEDGE_MULTI_END_MIN_SEP_MULT
@@ -1536,8 +1565,53 @@ class BondItem(QGraphicsPathItem):
             if abs(sep) < min_sep:
                 corr = (min_sep - abs(sep)) * 0.5
                 sign = 1.0 if sep >= 0.0 else -1.0
-                base_pos = (base_pos[0] + w_nx * corr * sign, base_pos[1] + w_ny * corr * sign)
-                base_neg = (base_neg[0] - w_nx * corr * sign, base_neg[1] - w_ny * corr * sign)
+                if end_deg == 1 and anchored_corner != 0:
+                    # Preserve the bonded corner exactly on the atom/bond join;
+                    # widen only the opposite corner to avoid tiny protrusions.
+                    full_corr = min_sep - abs(sep)
+                    if anchored_corner > 0:
+                        base_neg = (
+                            base_neg[0] - w_nx * full_corr * sign,
+                            base_neg[1] - w_ny * full_corr * sign,
+                        )
+                    else:
+                        base_pos = (
+                            base_pos[0] + w_nx * full_corr * sign,
+                            base_pos[1] + w_ny * full_corr * sign,
+                        )
+                else:
+                    base_pos = (base_pos[0] + w_nx * corr * sign, base_pos[1] + w_ny * corr * sign)
+                    base_neg = (base_neg[0] - w_nx * corr * sign, base_neg[1] - w_ny * corr * sign)
+            if end_deg == 1 and anchored_corner != 0 and single_end_dir is not None:
+                # Enforce a short flat terminal base (trapezoid), using only the
+                # two base corners and no extra midpoint to avoid collapses.
+                nux, nuy = single_end_dir
+                if anchored_corner > 0:
+                    ax, ay = base_pos
+                else:
+                    ax, ay = base_neg
+                current_span = math.hypot(base_pos[0] - base_neg[0], base_pos[1] - base_neg[1])
+                cap_len = min(
+                    stroke_px * max(0.0, WEDGE_SINGLE_END_TERMINAL_CLIP_STROKE_MULT),
+                    width * max(0.0, WEDGE_SINGLE_END_TERMINAL_CLIP_WIDTH_MULT),
+                    current_span * 0.85,
+                )
+                if cap_len > 0.0:
+                    bx = ax - nux * cap_len
+                    by = ay - nuy * cap_len
+                    if anchored_corner > 0:
+                        base_neg = (bx, by)
+                    else:
+                        base_pos = (bx, by)
+                cap_overlay = min(
+                    stroke_px * max(0.0, WEDGE_SINGLE_END_CAP_OVERLAY_STROKE_MULT),
+                    width * max(0.0, WEDGE_SINGLE_END_CAP_OVERLAY_WIDTH_MULT),
+                    current_span * max(0.0, WEDGE_SINGLE_END_CAP_OVERLAY_SPAN_MULT),
+                )
+                if cap_overlay > 0.0:
+                    half_overlay = cap_overlay * 0.5
+                    base_pos = (base_pos[0] + nux * half_overlay, base_pos[1] + nuy * half_overlay)
+                    base_neg = (base_neg[0] + nux * half_overlay, base_neg[1] + nuy * half_overlay)
             end_extension = 0.0
             if end_deg >= 2 and self._wedge_join_end:
                 # Re-anchor each wide-end corner toward the bond on its side so
