@@ -3017,6 +3017,13 @@ class ChemusonCanvas(QGraphicsView):
                 item.set_bond_in_ring(self._bond_in_ring_for_pairs(bond, ring_pairs))
                 item.set_offset_sign(self._bond_offset_sign(bond))
                 self._configure_bond_rendering(bond, item)
+                self._set_bond_item_join_context(bond, item)
+                trim_start = self._bond_endpoint_trim(bond, bond.a1_id)
+                trim_end = self._bond_endpoint_trim(bond, bond.a2_id)
+                item.set_endpoint_trim(trim_start, trim_end)
+                extend_start = self._bond_endpoint_extend(bond, bond.a1_id)
+                extend_end = self._bond_endpoint_extend(bond, bond.a2_id)
+                item.set_endpoint_extend(extend_start, extend_end)
                 # Explicitly update positions now that context and sign are set
                 item.update_positions(a1, a2)
                 self.scene.addItem(item)
@@ -5530,6 +5537,7 @@ class ChemusonCanvas(QGraphicsView):
         item.set_bond_in_ring(self._bond_in_ring_for_pairs(bond, ring_pairs))
         item.set_offset_sign(self._bond_offset_sign(bond))
         self._configure_bond_rendering(bond, item)
+        self._set_bond_item_join_context(bond, item)
         trim_start = self._bond_endpoint_trim(bond, bond.a1_id)
         trim_end = self._bond_endpoint_trim(bond, bond.a2_id)
         item.set_endpoint_trim(trim_start, trim_end)
@@ -5742,6 +5750,7 @@ class ChemusonCanvas(QGraphicsView):
             item.set_bond_in_ring(self._bond_in_ring_for_pairs(bond, ring_pairs))
             item.set_offset_sign(self._bond_offset_sign(bond))
             self._configure_bond_rendering(bond, item)
+            self._set_bond_item_join_context(bond, item)
             trim_start = self._bond_endpoint_trim(bond, bond.a1_id)
             trim_end = self._bond_endpoint_trim(bond, bond.a2_id)
             item.set_endpoint_trim(trim_start, trim_end)
@@ -5771,11 +5780,46 @@ class ChemusonCanvas(QGraphicsView):
             return max(base * 2.2, base + 1.0)
         if bond.style == BondStyle.WEDGE:
             scale = base / self.drawing_style.stroke_px if self.drawing_style.stroke_px > 1e-6 else 1.0
-            return max(self.drawing_style.wedge_width_px * scale, base)
+            width = self.drawing_style.wedge_width_px * (0.72 + 0.28 * math.sqrt(max(scale, 1e-6)))
+            return max(width, base * 2.3)
         if bond.style == BondStyle.HASHED:
             scale = base / self.drawing_style.stroke_px if self.drawing_style.stroke_px > 1e-6 else 1.0
             return max(self.drawing_style.hash_stroke_px * scale, base * 0.85)
         return base
+
+    def _bond_neighbor_vectors(self, bond: Bond, atom_id: int) -> list[tuple[float, float, float]]:
+        """Devuelve vecinos de un extremo de enlace como vectores unitarios + ancho."""
+        anchor = self.model.get_atom(atom_id)
+        if anchor is None:
+            return []
+        neighbors: list[tuple[float, float, float]] = []
+        for other in self.model.bonds.values():
+            if other.id == bond.id:
+                continue
+            if other.a1_id == atom_id:
+                other_atom = self.model.get_atom(other.a2_id)
+            elif other.a2_id == atom_id:
+                other_atom = self.model.get_atom(other.a1_id)
+            else:
+                continue
+            if other_atom is None:
+                continue
+            dx = other_atom.x - anchor.x
+            dy = other_atom.y - anchor.y
+            length = math.hypot(dx, dy)
+            if length <= 1e-6:
+                continue
+            neighbors.append((dx / length, dy / length, self._bond_render_width(other)))
+        return neighbors
+
+    def _set_bond_item_join_context(self, bond: Bond, item: BondItem) -> None:
+        """Inyecta contexto de enlaces vecinos para geometrías dependientes de unión."""
+        if bond.style != BondStyle.WEDGE:
+            item.set_wedge_join_neighbors([], [])
+            return
+        start_neighbors = self._bond_neighbor_vectors(bond, bond.a1_id)
+        end_neighbors = self._bond_neighbor_vectors(bond, bond.a2_id)
+        item.set_wedge_join_neighbors(start_neighbors, end_neighbors)
 
     def _bond_endpoint_extend(self, bond: Bond, atom_id: int) -> float:
         """Método auxiliar para  bond endpoint extend.
@@ -5869,6 +5913,10 @@ class ChemusonCanvas(QGraphicsView):
         Side Effects:
             Puede modificar el estado interno o la escena.
         """
+        # Keep stereo wedges visually full-length at junctions (ChemDraw-like).
+        # Label collision avoidance is handled separately via label_shrink.
+        if bond.style in (BondStyle.WEDGE, BondStyle.HASHED):
+            return 0.0
         if self._atom_degree(atom_id) < 2:
             return 0.0
         width = self._bond_render_width(bond)

@@ -44,6 +44,26 @@ LABEL_ELEMENT_COLORS = {**ELEMENT_COLORS, "H": "#000000"}
 # Etiquetas abreviadas que se muestran como texto directo.
 ABBREVIATION_LABELS = {"Me", "Et", "Pr", "iPr", "tBu", "Bu", "Ph", "R", "TBS", "Si"}
 
+# Fine-tuning knobs for wedge integration at the wide terminal when there is
+# exactly one outgoing simple bond. Keep these at module scope so they are
+# easy to tweak without touching geometry logic.
+WEDGE_SINGLE_END_OVERLAP_STROKE_MULT = 4.0
+WEDGE_SINGLE_END_OVERLAP_WIDTH_MULT = 3.0
+WEDGE_SINGLE_END_MIN_SEP_MULT = 0.22
+WEDGE_MULTI_END_MIN_SEP_MULT = 1.6
+WEDGE_MULTI_END_CORNER_JOIN_STROKE_MULT = 0.90
+WEDGE_MULTI_END_CORNER_JOIN_WIDTH_MULT = 0.22
+WEDGE_MULTI_END_CORNER_BLEND = 0.72
+# Extra outward reach at the wide end so wedge corners touch adjacent
+# simple bonds without changing fork/bifurcation geometry.
+WEDGE_MULTI_END_CONTACT_STROKE_MULT = 0.6
+WEDGE_MULTI_END_CONTACT_WIDTH_MULT = 0.14
+WEDGE_MULTI_END_EXTENSION_STROKE_MULT = 0.87 #0.85
+WEDGE_MULTI_END_EXTENSION_WIDTH_MULT = 0.22 #0.2
+WEDGE_MULTI_END_FORK_DEPTH_STROKE_MULT = 1.8 #1.8
+WEDGE_MULTI_END_FORK_DEPTH_WIDTH_MULT = 0.45 #0.45
+WEDGE_MULTI_END_FORK_BLEND = 0.85
+
 
 def _build_wavy_path(
     start: QPointF,
@@ -893,6 +913,8 @@ class BondItem(QGraphicsPathItem):
         self._bond_in_ring = False
         self._prefer_full_length = False
         self._symmetric_double = False
+        self._wedge_join_start: list[tuple[float, float, float]] = []
+        self._wedge_join_end: list[tuple[float, float, float]] = []
         self.setZValue(-5)
         pen_color = QColor(self._style.bond_color)
         if self._color:
@@ -1070,6 +1092,147 @@ class BondItem(QGraphicsPathItem):
         """
         self._endpoint_extend_start = max(0.0, float(start))
         self._endpoint_extend_end = max(0.0, float(end))
+
+    def set_wedge_join_neighbors(
+        self,
+        start_neighbors: list[tuple[float, float, float]],
+        end_neighbors: list[tuple[float, float, float]],
+    ) -> None:
+        """Configura contexto de enlaces vecinos para adaptar la cuña.
+
+        Cada vecino se representa como `(ux, uy, width_px)` en coordenadas de
+        escena, donde `(ux, uy)` es el vector unitario desde el átomo del
+        extremo de la cuña hacia el vecino.
+        """
+        cleaned_start: list[tuple[float, float, float]] = []
+        for ux, uy, width in start_neighbors:
+            length = math.hypot(ux, uy)
+            if length <= 1e-6:
+                continue
+            cleaned_start.append((ux / length, uy / length, max(0.0, float(width))))
+        cleaned_end: list[tuple[float, float, float]] = []
+        for ux, uy, width in end_neighbors:
+            length = math.hypot(ux, uy)
+            if length <= 1e-6:
+                continue
+            cleaned_end.append((ux / length, uy / length, max(0.0, float(width))))
+        self._wedge_join_start = cleaned_start
+        self._wedge_join_end = cleaned_end
+
+    def _adapt_wedge_corner_for_neighbors(
+        self,
+        base_cx: float,
+        base_cy: float,
+        ux: float,
+        uy: float,
+        nx: float,
+        ny: float,
+        side_sign: float,
+        default_corner: tuple[float, float],
+        neighbors: list[tuple[float, float, float]],
+        stroke_px: float,
+    ) -> tuple[float, float]:
+        """Adapta una esquina de base al enlace vecino del mismo lado."""
+        dx = default_corner[0] - base_cx
+        dy = default_corner[1] - base_cy
+        default_x = dx * ux + dy * uy
+        default_y = side_sign * (dx * nx + dy * ny)
+        if default_y <= 1e-6:
+            return default_corner
+
+        best_neighbor: tuple[float, float, float] | None = None
+        best_neighbor_any: tuple[float, float, float] | None = None
+        best_score = -1e9
+        best_score_any = -1e9
+        for nux, nuy, nwidth in neighbors:
+            cross = ux * nuy - uy * nux
+            dot = ux * nux + uy * nuy
+            any_score = abs(cross) + max(0.0, dot) * 10 #0.28
+            if any_score > best_score_any:
+                best_score_any = any_score
+                best_neighbor_any = (nux, nuy, nwidth)
+            if side_sign * cross <= 0.03:
+                continue
+            score = abs(cross) + max(0.0, dot) * 15  # 0.3
+            if score > best_score:
+                best_score = score
+                best_neighbor = (nux, nuy, nwidth)
+        # If no neighbor falls on this side, keep default for single-neighbor
+        # terminals; fallback to strongest only when multiple neighbors exist.
+        if best_neighbor is None:
+            if len(neighbors) <= 1 or best_neighbor_any is None:
+                return default_corner
+            best_neighbor = best_neighbor_any
+
+        nux, nuy, nwidth = best_neighbor
+        nnx = -nuy
+        nny = nux
+        half_neighbor = max(nwidth * 0.5, stroke_px * 0.45)
+        e1x = base_cx + nnx * half_neighbor
+        e1y = base_cy + nny * half_neighbor
+        e2x = base_cx - nnx * half_neighbor
+        e2y = base_cy - nny * half_neighbor
+        e1_side = side_sign * ((e1x - base_cx) * nx + (e1y - base_cy) * ny)
+        e2_side = side_sign * ((e2x - base_cx) * nx + (e2y - base_cy) * ny)
+        edge_x, edge_y = (e1x, e1y) if e1_side >= e2_side else (e2x, e2y)
+
+        join = max(stroke_px * 1.05, min(default_y * 1.35, nwidth * 1.10))
+        target_x = edge_x + nux * join
+        target_y = edge_y + nuy * join
+        tx = (target_x - base_cx) * ux + (target_y - base_cy) * uy
+        ty = side_sign * ((target_x - base_cx) * nx + (target_y - base_cy) * ny)
+
+        # Constrain adaptation: allow elongated joins without collapsing width.
+        max_forward = max(stroke_px * 1.70, default_y * 2.10)
+        max_back = stroke_px * 0.16
+        tx = max(default_x - max_back, min(default_x + max_forward, tx))
+        min_y = max(stroke_px * 0.45, default_y * 0.42)
+        max_y = max(default_y * 1.25, min_y + 0.1)
+        ty = max(min_y, min(max_y, ty))
+
+        blend = 0.95
+        fx = default_x * (1.0 - blend) + tx * blend
+        fy = default_y * (1.0 - blend) + ty * blend
+        return (
+            base_cx + ux * fx + nx * side_sign * fy,
+            base_cy + uy * fx + ny * side_sign * fy,
+        )
+
+    def _adapt_wedge_tip_for_neighbors(
+        self,
+        tip_x: float,
+        tip_y: float,
+        ux: float,
+        uy: float,
+        nx: float,
+        ny: float,
+        width: float,
+        stroke_px: float,
+        neighbors: list[tuple[float, float, float]],
+    ) -> tuple[tuple[float, float], tuple[float, float]]:
+        """Adapta la punta: punto agudo o borde corto (trapezoidal)."""
+        best: tuple[float, float, float] | None = None
+        best_score = -1e9
+        for nux, nuy, nwidth in neighbors:
+            # Prefer neighbor opposite to wedge axis (chain continuation).
+            oppose = -(ux * nux + uy * nuy)
+            if oppose <= 0.05:
+                continue
+            cross = abs(ux * nuy - uy * nux)
+            score = oppose + cross * 0.2
+            if score > best_score:
+                best_score = score
+                best = (nux, nuy, nwidth)
+
+        if best is None:
+            return (tip_x, tip_y), (tip_x, tip_y)
+
+        _, _, nwidth = best
+        tip_half = max(stroke_px * 0.42, min(nwidth * 0.32, width * 0.14))
+        tip_back = max(stroke_px * 0.10, min(stroke_px * 0.36, width * 0.06))
+        cx = tip_x - ux * tip_back
+        cy = tip_y - uy * tip_back
+        return (cx + nx * tip_half, cy + ny * tip_half), (cx - nx * tip_half, cy - ny * tip_half)
 
     def _extend_line_endpoints(
         self,
@@ -1266,7 +1429,11 @@ class BondItem(QGraphicsPathItem):
             self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
 
         elif self.style == BondStyle.WEDGE:
-            width = self._style.wedge_width_px * stroke_scale
+            # ChemDraw-like wedge proportions: moderate base width and
+            # sub-linear growth when custom stroke is increased.
+            width = self._style.wedge_width_px * (0.72 + 0.28 * math.sqrt(max(stroke_scale, 1e-6)))
+            width = max(width, stroke_px * 2.3)
+            width = min(width, render_length * 0.34)
             wedge_trim_start = 0.0 if self._bond_in_ring else trim_start
             wedge_trim_end = 0.0 if self._bond_in_ring else trim_end
             tip, base1, base2 = compute_wedge_points(
@@ -1276,18 +1443,232 @@ class BondItem(QGraphicsPathItem):
                 trim_start=wedge_trim_start,
                 trim_end=wedge_trim_end,
             )
+            base_cx = (base1[0] + base2[0]) * 0.5
+            base_cy = (base1[1] + base2[1]) * 0.5
+            tip_cx, tip_cy = tip
+            wedge_dx = base_cx - tip_cx
+            wedge_dy = base_cy - tip_cy
+            wedge_len = math.hypot(wedge_dx, wedge_dy)
+            if wedge_len <= 1e-6:
+                self.setPath(path)
+                return
+            w_ux = wedge_dx / wedge_len
+            w_uy = wedge_dy / wedge_len
+            w_nx = -w_uy
+            w_ny = w_ux
+            half_w = width * 0.5
+
+            # Tip adapts to incoming bond(s): point, short edge (trapezoid),
+            # or elongated arrow-like profile depending on connectivity.
+            tip_pos, tip_neg = self._adapt_wedge_tip_for_neighbors(
+                tip_cx,
+                tip_cy,
+                w_ux,
+                w_uy,
+                w_nx,
+                w_ny,
+                width,
+                stroke_px,
+                self._wedge_join_start,
+            )
             if wedge_trim_start <= 1e-6 and self._style.cap_style == Qt.PenCapStyle.RoundCap:
-                tip_overlap = min(self._style.stroke_px * 0.45, width * 0.08)
+                tip_overlap = min(stroke_px * 0.18, width * 0.035)
                 if tip_overlap > 0.0:
-                    tip = (tip[0] - ux * tip_overlap, tip[1] - uy * tip_overlap)
-            path.moveTo(tip[0], tip[1])
-            path.lineTo(base1[0], base1[1])
-            path.lineTo(base2[0], base2[1])
+                    tip_pos = (tip_pos[0] - w_ux * tip_overlap, tip_pos[1] - w_uy * tip_overlap)
+                    tip_neg = (tip_neg[0] - w_ux * tip_overlap, tip_neg[1] - w_uy * tip_overlap)
+
+            # Base adaptation: each side can bend toward a neighbor bond edge.
+            base_pos_default = (base_cx + w_nx * half_w, base_cy + w_ny * half_w)
+            base_neg_default = (base_cx - w_nx * half_w, base_cy - w_ny * half_w)
+            base_pos = self._adapt_wedge_corner_for_neighbors(
+                base_cx,
+                base_cy,
+                w_ux,
+                w_uy,
+                w_nx,
+                w_ny,
+                1.0,
+                base_pos_default,
+                self._wedge_join_end,
+                stroke_px,
+            )
+            base_neg = self._adapt_wedge_corner_for_neighbors(
+                base_cx,
+                base_cy,
+                w_ux,
+                w_uy,
+                w_nx,
+                w_ny,
+                -1.0,
+                base_neg_default,
+                self._wedge_join_end,
+                stroke_px,
+            )
+            # Prevent corner inversion around the base axis.
+            pos_proj = (base_pos[0] - base_cx) * w_nx + (base_pos[1] - base_cy) * w_ny
+            neg_proj = (base_neg[0] - base_cx) * w_nx + (base_neg[1] - base_cy) * w_ny
+            if pos_proj < neg_proj:
+                base_pos, base_neg = base_neg, base_pos
+            # Keep a minimum terminal width while allowing strong integration.
+            end_deg = len(self._wedge_join_end)
+            if end_deg == 1:
+                # Lock only the corner that points toward the outgoing bond
+                # to the shared atom vertex (tiny overlap for a seamless join).
+                nux, nuy, _ = self._wedge_join_end[0]
+                overlap = min(
+                    stroke_px * WEDGE_SINGLE_END_OVERLAP_STROKE_MULT,
+                    width * WEDGE_SINGLE_END_OVERLAP_WIDTH_MULT,
+                )
+                joint = (base_cx + nux * overlap, base_cy + nuy * overlap)
+                pos_along = (base_pos[0] - base_cx) * nux + (base_pos[1] - base_cy) * nuy
+                neg_along = (base_neg[0] - base_cx) * nux + (base_neg[1] - base_cy) * nuy
+                if pos_along >= neg_along:
+                    base_pos = joint
+                else:
+                    base_neg = joint
+            sep = (base_pos[0] - base_neg[0]) * w_nx + (base_pos[1] - base_neg[1]) * w_ny
+            if end_deg >= 2:
+                min_sep = width * WEDGE_MULTI_END_MIN_SEP_MULT
+            elif end_deg == 1:
+                min_sep = width * WEDGE_SINGLE_END_MIN_SEP_MULT
+            else:
+                min_sep = width * 0.50
+            if abs(sep) < min_sep:
+                corr = (min_sep - abs(sep)) * 0.5
+                sign = 1.0 if sep >= 0.0 else -1.0
+                base_pos = (base_pos[0] + w_nx * corr * sign, base_pos[1] + w_ny * corr * sign)
+                base_neg = (base_neg[0] - w_nx * corr * sign, base_neg[1] - w_ny * corr * sign)
+            end_extension = 0.0
+            if end_deg >= 2 and self._wedge_join_end:
+                # Re-anchor each wide-end corner toward the bond on its side so
+                # large terminal width still looks connected, not detached.
+                pos_neighbor = None
+                neg_neighbor = None
+                pos_best = -1e9
+                neg_best = -1e9
+                any_best = -1e9
+                any_neighbor = None
+                for nux, nuy, nwidth in self._wedge_join_end:
+                    cross = w_ux * nuy - w_uy * nux
+                    dot = w_ux * nux + w_uy * nuy
+                    score = abs(cross) + max(0.0, dot) * 0.25
+                    if score > any_best:
+                        any_best = score
+                        any_neighbor = (nux, nuy, nwidth)
+                    if cross > 0.03 and score > pos_best:
+                        pos_best = score
+                        pos_neighbor = (nux, nuy, nwidth)
+                    if cross < -0.03 and score > neg_best:
+                        neg_best = score
+                        neg_neighbor = (nux, nuy, nwidth)
+                if pos_neighbor is None:
+                    pos_neighbor = any_neighbor
+                if neg_neighbor is None:
+                    neg_neighbor = any_neighbor
+                if pos_neighbor is not None:
+                    p_nux, p_nuy, _ = pos_neighbor
+                    p_overlap = min(
+                        stroke_px * WEDGE_MULTI_END_CORNER_JOIN_STROKE_MULT,
+                        width * WEDGE_MULTI_END_CORNER_JOIN_WIDTH_MULT,
+                    )
+                    p_joint = (base_cx + p_nux * p_overlap, base_cy + p_nuy * p_overlap)
+                    base_pos = (
+                        base_pos[0] * (1.0 - WEDGE_MULTI_END_CORNER_BLEND)
+                        + p_joint[0] * WEDGE_MULTI_END_CORNER_BLEND,
+                        base_pos[1] * (1.0 - WEDGE_MULTI_END_CORNER_BLEND)
+                        + p_joint[1] * WEDGE_MULTI_END_CORNER_BLEND,
+                    )
+                if neg_neighbor is not None:
+                    n_nux, n_nuy, _ = neg_neighbor
+                    n_overlap = min(
+                        stroke_px * WEDGE_MULTI_END_CORNER_JOIN_STROKE_MULT,
+                        width * WEDGE_MULTI_END_CORNER_JOIN_WIDTH_MULT,
+                    )
+                    n_joint = (base_cx + n_nux * n_overlap, base_cy + n_nuy * n_overlap)
+                    base_neg = (
+                        base_neg[0] * (1.0 - WEDGE_MULTI_END_CORNER_BLEND)
+                        + n_joint[0] * WEDGE_MULTI_END_CORNER_BLEND,
+                        base_neg[1] * (1.0 - WEDGE_MULTI_END_CORNER_BLEND)
+                        + n_joint[1] * WEDGE_MULTI_END_CORNER_BLEND,
+                    )
+                # Re-apply terminal width floor after corner re-anchoring so the
+                # wide end remains conical and does not collapse.
+                sep = (base_pos[0] - base_neg[0]) * w_nx + (base_pos[1] - base_neg[1]) * w_ny
+                min_sep = width * WEDGE_MULTI_END_MIN_SEP_MULT
+                if abs(sep) < min_sep:
+                    corr = (min_sep - abs(sep)) * 0.5
+                    sign = 1.0 if sep >= 0.0 else -1.0
+                    base_pos = (base_pos[0] + w_nx * corr * sign, base_pos[1] + w_ny * corr * sign)
+                    base_neg = (base_neg[0] - w_nx * corr * sign, base_neg[1] - w_ny * corr * sign)
+
+                # Keep existing fork shape, but extend each wide-end corner a
+                # little along its neighbor direction to close tiny visual gaps.
+                contact_push = min(
+                    stroke_px * WEDGE_MULTI_END_CONTACT_STROKE_MULT,
+                    width * WEDGE_MULTI_END_CONTACT_WIDTH_MULT,
+                )
+                if contact_push > 0.0:
+                    if pos_neighbor is not None:
+                        p_nux, p_nuy, _ = pos_neighbor
+                        base_pos = (
+                            base_pos[0] + p_nux * contact_push,
+                            base_pos[1] + p_nuy * contact_push,
+                        )
+                    if neg_neighbor is not None:
+                        n_nux, n_nuy, _ = neg_neighbor
+                        base_neg = (
+                            base_neg[0] + n_nux * contact_push,
+                            base_neg[1] + n_nuy * contact_push,
+                        )
+
+                # True longitudinal extension: moves the wide terminal outward
+                # along the wedge axis (does not change atom positions).
+                end_extension = min(
+                    stroke_px * WEDGE_MULTI_END_EXTENSION_STROKE_MULT,
+                    width * WEDGE_MULTI_END_EXTENSION_WIDTH_MULT,
+                )
+                if end_extension > 0.0:
+                    base_pos = (
+                        base_pos[0] + w_ux * end_extension,
+                        base_pos[1] + w_uy * end_extension,
+                    )
+                    base_neg = (
+                        base_neg[0] + w_ux * end_extension,
+                        base_neg[1] + w_uy * end_extension,
+                    )
+
+            fork_point: tuple[float, float] | None = None
+            if end_deg >= 2:
+                # Add a small inward "fork" at the wide end to mimic ChemDraw's
+                # terminal bifurcation when wedge meets two simple bonds.
+                depth = min(
+                    stroke_px * WEDGE_MULTI_END_FORK_DEPTH_STROKE_MULT,
+                    width * WEDGE_MULTI_END_FORK_DEPTH_WIDTH_MULT,
+                )
+                mid_x = (base_pos[0] + base_neg[0]) * 0.5
+                mid_y = (base_pos[1] + base_neg[1]) * 0.5
+                # Move fork inward (toward the narrow tip), not outward.
+                target_x = base_cx - w_ux * depth
+                target_y = base_cy - w_uy * depth
+                fork_point = (
+                    mid_x * (1.0 - WEDGE_MULTI_END_FORK_BLEND) + target_x * WEDGE_MULTI_END_FORK_BLEND,
+                    mid_y * (1.0 - WEDGE_MULTI_END_FORK_BLEND) + target_y * WEDGE_MULTI_END_FORK_BLEND,
+                )
+                if end_extension > 0.0:
+                    fork_point = (
+                        fork_point[0] + w_ux * end_extension,
+                        fork_point[1] + w_uy * end_extension,
+                    )
+
+            path.moveTo(tip_pos[0], tip_pos[1])
+            path.lineTo(base_pos[0], base_pos[1])
+            if fork_point is not None:
+                path.lineTo(fork_point[0], fork_point[1])
+            path.lineTo(base_neg[0], base_neg[1])
+            path.lineTo(tip_neg[0], tip_neg[1])
             path.closeSubpath()
-            pen = QPen(color, 1)
-            pen.setCapStyle(self._style.cap_style)
-            pen.setJoinStyle(self._style.join_style)
-            self.setPen(pen)
+            # Fill-only wedge avoids a 1px outline that makes the base look bulky.
+            self.setPen(QPen(Qt.PenStyle.NoPen))
             self.setBrush(QBrush(color))
             
         elif self.style == BondStyle.HASHED:
