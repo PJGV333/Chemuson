@@ -75,6 +75,14 @@ WEDGE_MULTI_END_EXTENSION_WIDTH_MULT = 0.22 #0.2
 WEDGE_MULTI_END_FORK_DEPTH_STROKE_MULT = 1.8 #1.8
 WEDGE_MULTI_END_FORK_DEPTH_WIDTH_MULT = 0.45 #0.45
 WEDGE_MULTI_END_FORK_BLEND = 0.85
+# Geometric miter at wide end (final corner integration with simple bonds).
+WEDGE_WIDE_END_MITER_OVERLAP_PX = 1.0
+WEDGE_WIDE_END_MITER_OVERLAP_STROKE_MULT = 0.30
+WEDGE_WIDE_END_MITER_MAX_DIST_STROKE_MULT = 4.0
+WEDGE_WIDE_END_MITER_MAX_DIST_WIDTH_MULT = 1.1
+WEDGE_WIDE_END_MITER_BACKTRACK_STROKE_MULT = 0.60
+
+WedgeNeighbor = tuple[float, float, float, float, float]
 
 
 def _build_wavy_path(
@@ -925,9 +933,9 @@ class BondItem(QGraphicsPathItem):
         self._bond_in_ring = False
         self._prefer_full_length = False
         self._symmetric_double = False
-        self._wedge_join_start: list[tuple[float, float, float]] = []
-        self._wedge_join_end: list[tuple[float, float, float]] = []
-        self.setZValue(-5)
+        self._wedge_join_start: list[WedgeNeighbor] = []
+        self._wedge_join_end: list[WedgeNeighbor] = []
+        self._update_z_order()
         pen_color = QColor(self._style.bond_color)
         if self._color:
             candidate = QColor(self._color)
@@ -959,6 +967,15 @@ class BondItem(QGraphicsPathItem):
         painter.setBrush(self.brush())
         painter.drawPath(self.path())
 
+    def _update_z_order(self) -> None:
+        """Ordena enlaces por profundidad para unión estereoquímica estable."""
+        z = -5.0
+        if self.style == BondStyle.WEDGE:
+            z = -4.0
+        elif self.style == BondStyle.HASHED:
+            z = -6.0
+        self.setZValue(z)
+
     def set_bond(self, bond: Bond, atom1: Atom, atom2: Atom) -> None:
         """Actualiza enlace.
 
@@ -982,6 +999,7 @@ class BondItem(QGraphicsPathItem):
         self.length_px = bond.length_px
         self._stroke_px = bond.stroke_px
         self._color = bond.color
+        self._update_z_order()
         self.update_positions(atom1, atom2)
 
     def set_render_aromatic_as_circle(self, enabled: bool) -> None:
@@ -1107,27 +1125,43 @@ class BondItem(QGraphicsPathItem):
 
     def set_wedge_join_neighbors(
         self,
-        start_neighbors: list[tuple[float, float, float]],
-        end_neighbors: list[tuple[float, float, float]],
+        start_neighbors: list[WedgeNeighbor],
+        end_neighbors: list[WedgeNeighbor],
     ) -> None:
         """Configura contexto de enlaces vecinos para adaptar la cuña.
 
-        Cada vecino se representa como `(ux, uy, width_px)` en coordenadas de
-        escena, donde `(ux, uy)` es el vector unitario desde el átomo del
-        extremo de la cuña hacia el vecino.
+        Cada vecino se representa como `(ux, uy, width_px, edge_cx, edge_cy)`,
+        donde `(edge_cx, edge_cy)` es el centro renderizado del extremo del
+        enlace vecino en el átomo compartido.
         """
-        cleaned_start: list[tuple[float, float, float]] = []
-        for ux, uy, width in start_neighbors:
+        cleaned_start: list[WedgeNeighbor] = []
+        for ux, uy, width, edge_cx, edge_cy in start_neighbors:
             length = math.hypot(ux, uy)
             if length <= 1e-6:
                 continue
-            cleaned_start.append((ux / length, uy / length, max(0.0, float(width))))
-        cleaned_end: list[tuple[float, float, float]] = []
-        for ux, uy, width in end_neighbors:
+            cleaned_start.append(
+                (
+                    ux / length,
+                    uy / length,
+                    max(0.0, float(width)),
+                    float(edge_cx),
+                    float(edge_cy),
+                )
+            )
+        cleaned_end: list[WedgeNeighbor] = []
+        for ux, uy, width, edge_cx, edge_cy in end_neighbors:
             length = math.hypot(ux, uy)
             if length <= 1e-6:
                 continue
-            cleaned_end.append((ux / length, uy / length, max(0.0, float(width))))
+            cleaned_end.append(
+                (
+                    ux / length,
+                    uy / length,
+                    max(0.0, float(width)),
+                    float(edge_cx),
+                    float(edge_cy),
+                )
+            )
         self._wedge_join_start = cleaned_start
         self._wedge_join_end = cleaned_end
 
@@ -1141,7 +1175,7 @@ class BondItem(QGraphicsPathItem):
         ny: float,
         side_sign: float,
         default_corner: tuple[float, float],
-        neighbors: list[tuple[float, float, float]],
+        neighbors: list[WedgeNeighbor],
         stroke_px: float,
     ) -> tuple[float, float]:
         """Adapta una esquina de base al enlace vecino del mismo lado."""
@@ -1156,7 +1190,8 @@ class BondItem(QGraphicsPathItem):
         best_neighbor_any: tuple[float, float, float] | None = None
         best_score = -1e9
         best_score_any = -1e9
-        for nux, nuy, nwidth in neighbors:
+        for neighbor in neighbors:
+            nux, nuy, nwidth = neighbor[:3]
             cross = ux * nuy - uy * nux
             dot = ux * nux + uy * nuy
             any_score = abs(cross) + max(0.0, dot) * 10 #0.28
@@ -1220,12 +1255,13 @@ class BondItem(QGraphicsPathItem):
         ny: float,
         width: float,
         stroke_px: float,
-        neighbors: list[tuple[float, float, float]],
+        neighbors: list[WedgeNeighbor],
     ) -> tuple[tuple[float, float], tuple[float, float]]:
         """Adapta la punta: punto agudo o borde corto (trapezoidal)."""
         best: tuple[float, float, float] | None = None
         best_score = -1e9
-        for nux, nuy, nwidth in neighbors:
+        for neighbor in neighbors:
+            nux, nuy, nwidth = neighbor[:3]
             # Prefer neighbor opposite to wedge axis (chain continuation).
             oppose = -(ux * nux + uy * nuy)
             if oppose <= 0.05:
@@ -1245,6 +1281,250 @@ class BondItem(QGraphicsPathItem):
         cx = tip_x - ux * tip_back
         cy = tip_y - uy * tip_back
         return (cx + nx * tip_half, cy + ny * tip_half), (cx - nx * tip_half, cy - ny * tip_half)
+
+    @staticmethod
+    def _normalize_vec(vx: float, vy: float) -> tuple[float, float] | None:
+        """Normaliza un vector 2D."""
+        length = math.hypot(vx, vy)
+        if length <= 1e-9:
+            return None
+        return vx / length, vy / length
+
+    @staticmethod
+    def _perp(vx: float, vy: float) -> tuple[float, float]:
+        """Vector perpendicular 2D (rotación +90°)."""
+        return -vy, vx
+
+    @staticmethod
+    def _dot2d(ax: float, ay: float, bx: float, by: float) -> float:
+        """Producto punto 2D."""
+        return ax * bx + ay * by
+
+    @staticmethod
+    def _cross2d(ax: float, ay: float, bx: float, by: float) -> float:
+        """Producto cruzado 2D (escalar)."""
+        return ax * by - ay * bx
+
+    @staticmethod
+    def _line_line_intersection(
+        px: float,
+        py: float,
+        rx: float,
+        ry: float,
+        qx: float,
+        qy: float,
+        sx: float,
+        sy: float,
+        eps: float = 1e-9,
+    ) -> tuple[bool, tuple[float, float]]:
+        """Intersección de líneas infinitas P+tR y Q+uS."""
+        den = rx * sy - ry * sx
+        if abs(den) <= eps:
+            return False, (0.0, 0.0)
+        qpx = qx - px
+        qpy = qy - py
+        t = (qpx * sy - qpy * sx) / den
+        return True, (px + t * rx, py + t * ry)
+
+    def _pick_wedge_neighbor_for_corner(
+        self,
+        corner_xy: tuple[float, float],
+        base_cx: float,
+        base_cy: float,
+        axis_ux: float,
+        axis_uy: float,
+        neighbors: list[WedgeNeighbor],
+        stroke_px: float,
+    ) -> WedgeNeighbor | None:
+        """Elige el vecino cuya edge line queda más cerca de una esquina."""
+        if not neighbors:
+            return None
+        best: WedgeNeighbor | None = None
+        best_d = 1e12
+        fallback: WedgeNeighbor | None = None
+        fallback_d = 1e12
+        cx, cy = corner_xy
+        anx, any = self._perp(axis_ux, axis_uy)
+        corner_side = 1.0 if self._dot2d(cx - base_cx, cy - base_cy, anx, any) >= 0.0 else -1.0
+        for nux, nuy, nwidth, edge_cx, edge_cy in neighbors:
+            bnx, bny = self._perp(nux, nuy)
+            half_neighbor = max(nwidth * 0.5, stroke_px * 0.5)
+            side = 1.0 if self._dot2d(cx - base_cx, cy - base_cy, bnx, bny) >= 0.0 else -1.0
+            edge_px = edge_cx + bnx * half_neighbor * side
+            edge_py = edge_cy + bny * half_neighbor * side
+            d = abs(self._dot2d(cx - edge_px, cy - edge_py, bnx, bny))
+            cross_side = self._cross2d(axis_ux, axis_uy, nux, nuy)
+            if corner_side * cross_side <= 0.0:
+                d += stroke_px * 1.2
+            if d < fallback_d:
+                fallback_d = d
+                fallback = (nux, nuy, nwidth, edge_cx, edge_cy)
+            # Ignore neighbors clearly pointing backward relative to wedge axis.
+            if self._dot2d(nux, nuy, axis_ux, axis_uy) < -0.2:
+                continue
+            if d < best_d:
+                best_d = d
+                best = (nux, nuy, nwidth, edge_cx, edge_cy)
+        return best if best is not None else fallback
+
+    def _miter_wedge_corner_into_neighbor(
+        self,
+        tip_corner: tuple[float, float],
+        base_corner: tuple[float, float],
+        base_center: tuple[float, float],
+        neighbor: WedgeNeighbor | None,
+        stroke_px: float,
+        wedge_width: float,
+    ) -> tuple[float, float]:
+        """Recorta una esquina de la base por intersección con el stroke vecino."""
+        if neighbor is None:
+            return base_corner
+        bcx, bcy = base_center
+        nux, nuy, nwidth, edge_cx, edge_cy = neighbor
+        side_rx = base_corner[0] - tip_corner[0]
+        side_ry = base_corner[1] - tip_corner[1]
+        if math.hypot(side_rx, side_ry) <= 1e-6:
+            return base_corner
+
+        bnx, bny = self._perp(nux, nuy)
+        half_neighbor = max(nwidth * 0.5, stroke_px * 0.5)
+        cdx = base_corner[0] - bcx
+        cdy = base_corner[1] - bcy
+        c_norm = self._normalize_vec(cdx, cdy)
+        if c_norm is None:
+            return base_corner
+        cux, cuy = c_norm
+        side = 1.0 if self._dot2d(cux, cuy, bnx, bny) >= 0.0 else -1.0
+        edge_px = edge_cx + bnx * half_neighbor * side
+        edge_py = edge_cy + bny * half_neighbor * side
+
+        backtrack = max(stroke_px * max(0.0, WEDGE_WIDE_END_MITER_BACKTRACK_STROKE_MULT), 0.2)
+        max_dist = max(
+            stroke_px * max(0.0, WEDGE_WIDE_END_MITER_MAX_DIST_STROKE_MULT),
+            wedge_width * max(0.0, WEDGE_WIDE_END_MITER_MAX_DIST_WIDTH_MULT),
+        )
+
+        def _is_valid_candidate(px: float, py: float) -> bool:
+            dist = math.hypot(px - bcx, py - bcy)
+            if dist > max_dist:
+                return False
+            forward = self._dot2d(px - bcx, py - bcy, nux, nuy)
+            if forward < -backtrack:
+                return False
+            return True
+
+        chosen_x = base_corner[0]
+        chosen_y = base_corner[1]
+        has_candidate = False
+
+        ok, inter = self._line_line_intersection(
+            tip_corner[0], tip_corner[1], side_rx, side_ry, edge_px, edge_py, nux, nuy
+        )
+        if ok:
+            ix, iy = inter
+            side_len2 = side_rx * side_rx + side_ry * side_ry
+            if side_len2 > 1e-9:
+                # Keep the wedge-side intersection on/after tip direction.
+                t_side = ((ix - tip_corner[0]) * side_rx + (iy - tip_corner[1]) * side_ry) / side_len2
+                if t_side >= -0.05 and _is_valid_candidate(ix, iy):
+                    chosen_x, chosen_y = ix, iy
+                    has_candidate = True
+
+        if not has_candidate:
+            # Fallback: project base corner onto the selected edge line.
+            t_proj = self._dot2d(base_corner[0] - edge_px, base_corner[1] - edge_py, nux, nuy)
+            proj_x = edge_px + nux * t_proj
+            proj_y = edge_py + nuy * t_proj
+            if _is_valid_candidate(proj_x, proj_y):
+                chosen_x, chosen_y = proj_x, proj_y
+                has_candidate = True
+
+        if not has_candidate:
+            return base_corner
+
+        overlap_raw = max(
+            WEDGE_WIDE_END_MITER_OVERLAP_PX,
+            stroke_px * max(0.0, WEDGE_WIDE_END_MITER_OVERLAP_STROKE_MULT),
+        )
+        is_round_like = self._style.cap_style in (
+            Qt.PenCapStyle.RoundCap,
+            Qt.PenCapStyle.SquareCap,
+        )
+        if is_round_like:
+            overlap = max(overlap_raw, half_neighbor)
+            overlap = min(overlap, max_dist * 0.35)
+        else:
+            overlap = min(
+                overlap_raw,
+                half_neighbor * 0.25,
+                stroke_px * 0.8,
+            )
+        overlap = max(0.0, overlap)
+        return (chosen_x + nux * overlap, chosen_y + nuy * overlap)
+
+    def _miter_wedge_wide_end_into_neighbors(
+        self,
+        tip_pos: tuple[float, float],
+        tip_neg: tuple[float, float],
+        base_pos: tuple[float, float],
+        base_neg: tuple[float, float],
+        base_cx: float,
+        base_cy: float,
+        axis_ux: float,
+        axis_uy: float,
+        stroke_px: float,
+        wedge_width: float,
+    ) -> tuple[tuple[float, float], tuple[float, float]]:
+        """Aplica miter en extremo ancho de cuña contra enlaces vecinos."""
+        neighbors = self._wedge_join_end
+        if not neighbors:
+            return base_pos, base_neg
+
+        if len(neighbors) == 1:
+            pos_neighbor = neighbors[0]
+            neg_neighbor = neighbors[0]
+        else:
+            pos_neighbor = self._pick_wedge_neighbor_for_corner(
+                base_pos,
+                base_cx,
+                base_cy,
+                axis_ux,
+                axis_uy,
+                neighbors,
+                stroke_px,
+            )
+            neg_neighbor = self._pick_wedge_neighbor_for_corner(
+                base_neg,
+                base_cx,
+                base_cy,
+                axis_ux,
+                axis_uy,
+                neighbors,
+                stroke_px,
+            )
+
+        new_pos = self._miter_wedge_corner_into_neighbor(
+            tip_pos,
+            base_pos,
+            (base_cx, base_cy),
+            pos_neighbor,
+            stroke_px,
+            wedge_width,
+        )
+        new_neg = self._miter_wedge_corner_into_neighbor(
+            tip_neg,
+            base_neg,
+            (base_cx, base_cy),
+            neg_neighbor,
+            stroke_px,
+            wedge_width,
+        )
+
+        wnx, wny = self._perp(axis_ux, axis_uy)
+        sep = self._dot2d(new_pos[0] - new_neg[0], new_pos[1] - new_neg[1], wnx, wny)
+        if sep <= 1e-5:
+            return base_pos, base_neg
+        return new_pos, new_neg
 
     def _extend_line_endpoints(
         self,
@@ -1528,7 +1808,7 @@ class BondItem(QGraphicsPathItem):
             if end_deg == 1:
                 # Lock only the corner that points toward the outgoing bond
                 # to the shared atom vertex (tiny overlap for a seamless join).
-                nux, nuy, nwidth = self._wedge_join_end[0]
+                nux, nuy, nwidth = self._wedge_join_end[0][:3]
                 single_end_dir = (nux, nuy)
                 overlap = min(
                     stroke_px * WEDGE_SINGLE_END_OVERLAP_STROKE_MULT,
@@ -1616,13 +1896,15 @@ class BondItem(QGraphicsPathItem):
             if end_deg >= 2 and self._wedge_join_end:
                 # Re-anchor each wide-end corner toward the bond on its side so
                 # large terminal width still looks connected, not detached.
+                blend_used = min(WEDGE_MULTI_END_CORNER_BLEND, 0.35)
                 pos_neighbor = None
                 neg_neighbor = None
                 pos_best = -1e9
                 neg_best = -1e9
                 any_best = -1e9
                 any_neighbor = None
-                for nux, nuy, nwidth in self._wedge_join_end:
+                for neighbor in self._wedge_join_end:
+                    nux, nuy, nwidth = neighbor[:3]
                     cross = w_ux * nuy - w_uy * nux
                     dot = w_ux * nux + w_uy * nuy
                     score = abs(cross) + max(0.0, dot) * 0.25
@@ -1647,10 +1929,10 @@ class BondItem(QGraphicsPathItem):
                     )
                     p_joint = (base_cx + p_nux * p_overlap, base_cy + p_nuy * p_overlap)
                     base_pos = (
-                        base_pos[0] * (1.0 - WEDGE_MULTI_END_CORNER_BLEND)
-                        + p_joint[0] * WEDGE_MULTI_END_CORNER_BLEND,
-                        base_pos[1] * (1.0 - WEDGE_MULTI_END_CORNER_BLEND)
-                        + p_joint[1] * WEDGE_MULTI_END_CORNER_BLEND,
+                        base_pos[0] * (1.0 - blend_used)
+                        + p_joint[0] * blend_used,
+                        base_pos[1] * (1.0 - blend_used)
+                        + p_joint[1] * blend_used,
                     )
                 if neg_neighbor is not None:
                     n_nux, n_nuy, _ = neg_neighbor
@@ -1660,10 +1942,10 @@ class BondItem(QGraphicsPathItem):
                     )
                     n_joint = (base_cx + n_nux * n_overlap, base_cy + n_nuy * n_overlap)
                     base_neg = (
-                        base_neg[0] * (1.0 - WEDGE_MULTI_END_CORNER_BLEND)
-                        + n_joint[0] * WEDGE_MULTI_END_CORNER_BLEND,
-                        base_neg[1] * (1.0 - WEDGE_MULTI_END_CORNER_BLEND)
-                        + n_joint[1] * WEDGE_MULTI_END_CORNER_BLEND,
+                        base_neg[0] * (1.0 - blend_used)
+                        + n_joint[0] * blend_used,
+                        base_neg[1] * (1.0 - blend_used)
+                        + n_joint[1] * blend_used,
                     )
                 # Re-apply terminal width floor after corner re-anchoring so the
                 # wide end remains conical and does not collapse.
@@ -1710,6 +1992,21 @@ class BondItem(QGraphicsPathItem):
                         base_neg[0] + w_ux * end_extension,
                         base_neg[1] + w_uy * end_extension,
                     )
+
+            # Final geometric miter at the wide end: intersect wedge side lines
+            # against the selected stroke edge(s) of adjacent simple bonds.
+            base_pos, base_neg = self._miter_wedge_wide_end_into_neighbors(
+                tip_pos,
+                tip_neg,
+                base_pos,
+                base_neg,
+                base_cx,
+                base_cy,
+                w_ux,
+                w_uy,
+                stroke_px,
+                width,
+            )
 
             fork_point: tuple[float, float] | None = None
             if end_deg >= 2:

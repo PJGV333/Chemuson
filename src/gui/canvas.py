@@ -5787,14 +5787,24 @@ class ChemusonCanvas(QGraphicsView):
             return max(self.drawing_style.hash_stroke_px * scale, base * 0.85)
         return base
 
-    def _bond_neighbor_vectors(self, bond: Bond, atom_id: int) -> list[tuple[float, float, float]]:
-        """Devuelve vecinos de un extremo de enlace como vectores unitarios + ancho."""
+    def _bond_neighbor_vectors(
+        self,
+        bond: Bond,
+        atom_id: int,
+        *,
+        simple_only: bool = False,
+    ) -> list[tuple[float, float, float, float, float]]:
+        """Devuelve vecinos con dirección, ancho y centro de extremo renderizado."""
         anchor = self.model.get_atom(atom_id)
         if anchor is None:
             return []
-        neighbors: list[tuple[float, float, float]] = []
+        neighbors: list[tuple[float, float, float, float, float]] = []
         for other in self.model.bonds.values():
             if other.id == bond.id:
+                continue
+            if simple_only and (
+                other.style != BondStyle.PLAIN or other.order != 1 or other.is_aromatic
+            ):
                 continue
             if other.a1_id == atom_id:
                 other_atom = self.model.get_atom(other.a2_id)
@@ -5809,7 +5819,29 @@ class ChemusonCanvas(QGraphicsView):
             length = math.hypot(dx, dy)
             if length <= 1e-6:
                 continue
-            neighbors.append((dx / length, dy / length, self._bond_render_width(other)))
+            nux = dx / length
+            nuy = dy / length
+            nwidth = self._bond_render_width(other)
+            shrink = self._label_shrink_for_atom(atom_id, nux, nuy)
+            trim = self._bond_endpoint_trim(other, atom_id)
+            advance = max(0.0, shrink + trim)
+            end_x = anchor.x + nux * advance
+            end_y = anchor.y + nuy * advance
+
+            cap_extra = 0.0
+            if self.drawing_style.cap_style in (
+                Qt.PenCapStyle.RoundCap,
+                Qt.PenCapStyle.SquareCap,
+            ):
+                cap_extra = nwidth * 0.5
+
+            extend = 0.0
+            if self.drawing_style.cap_style == Qt.PenCapStyle.FlatCap and advance <= 1e-6:
+                extend = self._bond_endpoint_extend(other, atom_id)
+
+            edge_cx = end_x - nux * (cap_extra + extend)
+            edge_cy = end_y - nuy * (cap_extra + extend)
+            neighbors.append((nux, nuy, nwidth, edge_cx, edge_cy))
         return neighbors
 
     def _set_bond_item_join_context(self, bond: Bond, item: BondItem) -> None:
@@ -5818,7 +5850,8 @@ class ChemusonCanvas(QGraphicsView):
             item.set_wedge_join_neighbors([], [])
             return
         start_neighbors = self._bond_neighbor_vectors(bond, bond.a1_id)
-        end_neighbors = self._bond_neighbor_vectors(bond, bond.a2_id)
+        # Miter in the wide terminal uses only plain single neighbors.
+        end_neighbors = self._bond_neighbor_vectors(bond, bond.a2_id, simple_only=True)
         item.set_wedge_join_neighbors(start_neighbors, end_neighbors)
 
     def _bond_endpoint_extend(self, bond: Bond, atom_id: int) -> float:
