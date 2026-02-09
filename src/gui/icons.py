@@ -493,17 +493,9 @@ def draw_arrow_icon(kind: str = "forward") -> QIcon:
     is_fishhook = kind == "curved_fishhook"
 
     pen_width = 2.0
-    if kind == "curved":
-        # Keep this stem slimmer; user reported it still looked too thick.
-        pen_width = 1.28
-    elif kind == "curved_fishhook":
-        # Make fishhook icon more visible.
-        pen_width = 2.05
+
     pen = QPen(QColor("#222222"), pen_width)
-    if kind == "curved":
-        pen.setCapStyle(Qt.PenCapStyle.FlatCap)
-    else:
-        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
     pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
     if is_dashed:
         pen.setStyle(Qt.PenStyle.DashLine)
@@ -561,87 +553,73 @@ def draw_arrow_icon(kind: str = "forward") -> QIcon:
             QPointF(end_x - head_len, y + offset),
         )
         draw_head(end_x, y, 1, "open")
-    elif kind == "curved":
-        start = QPointF(start_x + 0.8, y + 5.2)
-        end = QPointF(end_x - 2.2, y + 1.6)
-        control = QPointF((start_x + end_x) * 0.50, y - 8.4)
+    elif kind in {"curved", "curved_fishhook"}:
+        # ── Curved arrow icon (electron-pushing style) ──
+        # Arc from lower-left, curving upward, ending lower-right.
+        arc_start = QPointF(4.0, 24.0)
+        arc_ctrl  = QPointF(16.0, 5.0)
+        arc_end   = QPointF(27.0, 22.0)
 
-        tx = end.x() - control.x()
-        ty = end.y() - control.y()
-        tlen = math.hypot(tx, ty)
+        # Tangent at t=1: proportional to (P2 − P1)
+        tdx = arc_end.x() - arc_ctrl.x()
+        tdy = arc_end.y() - arc_ctrl.y()
+        tlen = math.hypot(tdx, tdy)
         if tlen > 1e-6:
-            tx /= tlen
-            ty /= tlen
-        else:
-            tx, ty = 1.0, 0.0
-        hnx = -ty
-        hny = tx
+            tdx /= tlen
+            tdy /= tlen
 
-        head_back = head_len * 0.92
-        head_out = head_width * 0.64
-        base = QPointF(end.x() - tx * head_back, end.y() - ty * head_back)
-        left = QPointF(base.x() + hnx * head_out, base.y() + hny * head_out)
-        right = QPointF(base.x() - hnx * head_out, base.y() - hny * head_out)
+        h_len = 5.5   # arrowhead length
+        h_wid = 3.2   # arrowhead half-width
 
-        curve_path = QPainterPath()
-        curve_path.moveTo(start)
-        curve_path.quadTo(control, base)
-        painter.drawPath(curve_path)
-
-        saved_pen = painter.pen()
-        saved_brush = painter.brush()
-        painter.setPen(QPen(Qt.PenStyle.NoPen))
-        painter.setBrush(QBrush(QColor("#222222")))
-        painter.drawPolygon(QPolygonF([end, left, right]))
-        painter.setPen(saved_pen)
-        painter.setBrush(saved_brush)
-    elif kind == "curved_fishhook":
-        start = QPointF(start_x + 0.8, y + 5.6)
-        end = QPointF(end_x - 2.3, y + 1.8)
-        control = QPointF((start_x + end_x) * 0.50, y - 7.8)
-
-        tx = end.x() - control.x()
-        ty = end.y() - control.y()
-        tlen = math.hypot(tx, ty)
-        if tlen > 1e-6:
-            tx /= tlen
-            ty /= tlen
-        else:
-            tx, ty = 1.0, 0.0
-        hnx = -ty
-        hny = tx
-        hook_side = -1.0
-
-        barb_back = head_len * 1.26
-        barb_out = head_width * 0.80
-        barb = QPointF(
-            end.x() - tx * barb_back + hnx * barb_out * hook_side,
-            end.y() - ty * barb_back + hny * barb_out * hook_side,
-        )
-        stem_base = QPointF(
-            end.x() - tx * (head_len * 0.58),
-            end.y() - ty * (head_len * 0.58),
+        # Retract stem so it doesn't poke through the head
+        stem_end = QPointF(
+            arc_end.x() - tdx * h_len * 0.5,
+            arc_end.y() - tdy * h_len * 0.5,
         )
 
+        # ── Draw the curved stem ──
+        # CRITICAL: set brush to NoBrush so the Bezier area is NOT filled.
+        curve_pen = QPen(QColor("#222222"), 1.5)
+        curve_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(curve_pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+
         curve_path = QPainterPath()
-        curve_path.moveTo(start)
-        curve_path.quadTo(control, stem_base)
+        curve_path.moveTo(arc_start)
+        curve_path.quadTo(arc_ctrl, stem_end)
         painter.drawPath(curve_path)
 
-        saved_pen = painter.pen()
-        saved_brush = painter.brush()
-        painter.setPen(QPen(Qt.PenStyle.NoPen))
-        painter.setBrush(QBrush(QColor("#222222")))
-        painter.drawPolygon(QPolygonF([stem_base, end, barb]))
-        painter.setPen(saved_pen)
-        painter.setBrush(saved_brush)
-    elif is_curved:
-        control = QPointF((start_x + end_x) * 0.5, y - 6)
-        path = QPainterPath()
-        path.moveTo(QPointF(start_x, y))
-        path.quadTo(control, QPointF(end_x - head_len, y))
-        painter.drawPath(path)
-        draw_head(end_x, y, 1, head_style)
+        # ── Arrowhead ──
+        hnx = -tdy   # perpendicular to tangent
+        hny =  tdx
+
+        base = QPointF(arc_end.x() - tdx * h_len, arc_end.y() - tdy * h_len)
+        left  = QPointF(base.x() + hnx * h_wid, base.y() + hny * h_wid)
+        right = QPointF(base.x() - hnx * h_wid, base.y() - hny * h_wid)
+
+        if kind == "curved":
+            # Full filled triangular head
+            painter.setPen(QPen(Qt.PenStyle.NoPen))
+            painter.setBrush(QBrush(QColor("#222222")))
+            painter.drawPolygon(QPolygonF([arc_end, left, right]))
+        else:
+            # Fishhook: filled wedge (stem_base → tip → barb),
+            # same approach as the canvas ArrowItem uses.
+            barb_back = h_len * 1.0
+            barb_out  = h_wid * 1.2
+            barb = QPointF(
+                arc_end.x() - tdx * barb_back + hnx * barb_out,
+                arc_end.y() - tdy * barb_back + hny * barb_out,
+            )
+            # stem_base sits on the arc just behind the tip
+            stem_base = QPointF(
+                arc_end.x() - tdx * h_len * 0.6,
+                arc_end.y() - tdy * h_len * 0.6,
+            )
+            painter.setPen(QPen(Qt.PenStyle.NoPen))
+            painter.setBrush(QBrush(QColor("#222222")))
+            painter.drawPolygon(QPolygonF([stem_base, arc_end, barb]))
+
     else:
         painter.drawLine(QPointF(start_x, y), QPointF(end_x, y))
 
