@@ -117,7 +117,6 @@ class ChemusonToolbar(QToolBar):
             trigger_callback=self._emit_current_selection_tool,
         )
         self._build_select_palette(self.select_button.menu())
-        self._add_tool_action(draw_generic_icon("eraser"), "Borrar", "tool_erase")
         self.addSeparator()
 
         self.bond_button, self.bond_action = self._add_palette_button(
@@ -192,7 +191,10 @@ class ChemusonToolbar(QToolBar):
             "Benceno",
             default_ring_spec,
         )
-        self._select_element_palette(default_element)
+        # Initialize element palette visuals without activating atom tool.
+        self._set_element_palette_ui(default_element)
+        # Startup default tool is selection, not atom insertion.
+        self.select_action.setChecked(True)
 
     def _add_tool_action(self, icon, tooltip: str, internal_id: str) -> QAction:
         """Crea y registra una acción simple en la barra.
@@ -674,14 +676,18 @@ class ChemusonToolbar(QToolBar):
 
     def _select_element_palette(self, element: str) -> None:
         """Actualiza el elemento químico seleccionado."""
-        icon = draw_glyph_icon(element)
-        self.label_action.setIcon(icon)
-        self.label_action.setToolTip(f"Elemento {element}")
-        self.label_button.setToolTip(f"Elemento {element}")
+        self._set_element_palette_ui(element)
         self._current_element = element
         self.element_palette_changed.emit(element)
         self.tool_changed.emit("tool_atom")
         self.label_action.setChecked(True)
+
+    def _set_element_palette_ui(self, element: str) -> None:
+        """Actualiza icono y tooltip de la paleta de elementos."""
+        icon = draw_glyph_icon(element)
+        self.label_action.setIcon(icon)
+        self.label_action.setToolTip(f"Elemento {element}")
+        self.label_button.setToolTip(f"Elemento {element}")
 
     def _select_custom_ring_size(self) -> None:
         """Solicita un tamaño de anillo personalizado al usuario."""

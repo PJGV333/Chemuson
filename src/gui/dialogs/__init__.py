@@ -510,7 +510,7 @@ class QuickStartDialog(QDialog):
             "<li><b>Dibujar Enlaces:</b> Haga clic en un átomo y arrastre hacia otro o hacia un espacio vacío para crear un enlace."
             " Haga clic en un enlace existente para cambiar su orden de forma incremental o use la paleta de enlaces.</li>"
             "<li><b>Dibujar Anillos:</b> Seleccione una herramienta de anillo y haga clic o arrastre desde un enlace para fusionar anillos.</li>"
-            "<li><b>Borrar:</b> Use la herramienta de borrado o seleccione elementos y presione Supr.</li>"
+            "<li><b>Borrar:</b> Seleccione elementos y presione Supr.</li>"
             "<li><b>Zoom:</b> Use la rueda del ratón o los botones Zoom+/Zoom- del menú Ver o la barra de herramientas.</li>"
             "<li><b>Aromáticos:</b> Puede alternar la visualización entre 'Enlaces dobles' y 'Círculo aromático' en el menú Ver.</li>"
             "</ul>"

@@ -154,12 +154,23 @@ class ChemusonWindow(QMainWindow):
         self.symbols_toolbar.tool_changed.connect(self._update_status)
 
         # Sync defaults selected during toolbar init
-        self._handle_bond_palette(self.toolbar.current_bond_spec())
-        self._handle_ring_palette(self.toolbar.current_ring_spec())
-        self._handle_element_palette(self.toolbar.current_element())
+        bond_spec = self.toolbar.current_bond_spec()
+        self.canvas.state.active_bond_order = bond_spec.get("order", 1)
+        self.canvas.state.active_bond_style = bond_spec.get("style", self.canvas.state.active_bond_style)
+        self.canvas.state.active_bond_stereo = bond_spec.get("stereo", self.canvas.state.active_bond_stereo)
+        self.canvas.state.active_bond_mode = bond_spec.get("mode", "increment")
+        self.canvas.state.active_bond_aromatic = bond_spec.get("aromatic", False)
+
+        ring_spec = self.toolbar.current_ring_spec()
+        self.canvas.state.active_ring_size = ring_spec.get("size", self.canvas.state.active_ring_size)
+        self.canvas.state.active_ring_aromatic = ring_spec.get("aromatic", False)
+        self.canvas.state.active_ring_template = ring_spec.get("template")
+        self.canvas.state.active_ring_anomeric = ring_spec.get("anomeric")
+
+        self.canvas.state.default_element = self.toolbar.current_element()
         
         # === STATUS BAR ===
-        self.statusBar().showMessage("Herramienta: Carbono (C)")
+        self._update_status(self.canvas.state.active_tool)
         
         # Update status bar when tool changes
         self.toolbar.tool_changed.connect(self._update_status)
@@ -225,6 +236,14 @@ class ChemusonWindow(QMainWindow):
         self.action_zoom_reset = QAction("Zoom 100%", self)
         self.action_zoom_reset.setShortcut("Ctrl+0")
         self.action_zoom_reset.triggered.connect(self._on_zoom_reset)
+        
+        self.action_show_main_toolbar_aux = QAction(
+            "Mostrar copiar/pegar/zoom en barra superior",
+            self,
+        )
+        self.action_show_main_toolbar_aux.setCheckable(True)
+        self.action_show_main_toolbar_aux.setChecked(False)
+        self.action_show_main_toolbar_aux.toggled.connect(self._on_toggle_main_toolbar_aux)
 
         self.action_rules = QAction("Reglas", self)
         self.action_rules.setCheckable(True)
@@ -477,6 +496,8 @@ class ChemusonWindow(QMainWindow):
         view_menu.addAction(self.action_zoom_out)
         view_menu.addAction(self.action_zoom_reset)
         view_menu.addSeparator()
+        view_menu.addAction(self.action_show_main_toolbar_aux)
+        view_menu.addSeparator()
         view_menu.addAction(self.action_rules)
         view_menu.addAction(self.action_crosshair)
         view_menu.addSeparator()
@@ -590,16 +611,6 @@ class ChemusonWindow(QMainWindow):
         self.main_toolbar.addAction(self.action_undo)
         self.main_toolbar.addAction(self.action_redo)
         self.main_toolbar.addSeparator()
-        
-        # Clipboard actions
-        self.main_toolbar.addAction(self.action_copy)
-        self.main_toolbar.addAction(self.action_paste)
-        self.main_toolbar.addSeparator()
-        
-        # View actions
-        self.main_toolbar.addAction(self.action_zoom_in)
-        self.main_toolbar.addAction(self.action_zoom_out)
-        self.main_toolbar.addSeparator()
 
         # Rotate actions
         self.main_toolbar.addAction(self.action_rotate_left)
@@ -612,6 +623,44 @@ class ChemusonWindow(QMainWindow):
         self.main_toolbar.addAction(self.action_clean_2d)
         self.main_toolbar.addSeparator()
         self.main_toolbar.addAction(self.action_draw_smiles)
+
+        # Optional top-toolbar actions (copy/paste/zoom +/-).
+        self._main_toolbar_aux_separator_1 = QAction(self)
+        self._main_toolbar_aux_separator_1.setSeparator(True)
+        self._main_toolbar_aux_separator_2 = QAction(self)
+        self._main_toolbar_aux_separator_2.setSeparator(True)
+        self._set_main_toolbar_aux_visible(self.action_show_main_toolbar_aux.isChecked())
+
+    def _set_main_toolbar_aux_visible(self, visible: bool) -> None:
+        """Muestra/oculta copiar, pegar y zoom +/- en la barra superior."""
+        if not hasattr(self, "main_toolbar"):
+            return
+        aux_actions = (
+            self.action_copy,
+            self.action_paste,
+            self._main_toolbar_aux_separator_1,
+            self.action_zoom_in,
+            self.action_zoom_out,
+            self._main_toolbar_aux_separator_2,
+        )
+        current = self.main_toolbar.actions()
+        if visible:
+            anchor = self.action_rotate_left if self.action_rotate_left in current else None
+            for action in aux_actions:
+                if action in self.main_toolbar.actions():
+                    continue
+                if anchor is not None:
+                    self.main_toolbar.insertAction(anchor, action)
+                else:
+                    self.main_toolbar.addAction(action)
+        else:
+            for action in aux_actions:
+                if action in self.main_toolbar.actions():
+                    self.main_toolbar.removeAction(action)
+
+    def _on_toggle_main_toolbar_aux(self, checked: bool) -> None:
+        """Actualiza visibilidad de atajos auxiliares en barra superior."""
+        self._set_main_toolbar_aux_visible(bool(checked))
     
     def _connect_undo_redo(self) -> None:
         """Connect undo/redo actions to the canvas undo stack."""
@@ -1894,7 +1943,6 @@ class ChemusonWindow(QMainWindow):
         tool_names = {
             "tool_select": "Seleccionar",
             "tool_select_lasso": "Seleccion (lazo)",
-            "tool_erase": "Borrar",
             "tool_bond": "Enlace",
             "tool_ring": ring_label,
             "tool_atom": f"Elemento {self.canvas.state.default_element}",
