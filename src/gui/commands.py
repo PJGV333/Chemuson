@@ -884,7 +884,13 @@ class DeleteSelectionCommand(QUndoCommand):
                     self._removed_bonds.append(replace(bond))
             for item in self._arrow_items:
                 self._removed_arrows.append(
-                    (item, item.start_point(), item.end_point(), item.kind())
+                    (
+                        item,
+                        item.start_point(),
+                        item.end_point(),
+                        item.kind(),
+                        item.curve_factor(),
+                    )
                 )
             for item in self._bracket_items:
                 self._removed_brackets.append(
@@ -903,7 +909,7 @@ class DeleteSelectionCommand(QUndoCommand):
             if atom.id in self._model.atoms:
                 self._model.remove_atom(atom.id)
                 self._view.remove_atom_item(atom.id)
-        for item, _start, _end, _kind in list(self._removed_arrows):
+        for item, _start, _end, _kind, _curve_factor in list(self._removed_arrows):
             self._view.remove_arrow_item(item)
         for item, _rect, _padding, _kind in list(self._removed_brackets):
             self._view.remove_bracket_item(item)
@@ -943,8 +949,8 @@ class DeleteSelectionCommand(QUndoCommand):
                 length_px=bond.length_px,
             )
             self._view.add_bond_item(bond)
-        for item, start, end, kind in self._removed_arrows:
-            self._view.readd_arrow_item(item, start, end, kind)
+        for item, start, end, kind, curve_factor in self._removed_arrows:
+            self._view.readd_arrow_item(item, start, end, kind, curve_factor=curve_factor)
         for item, rect, padding, kind in self._removed_brackets:
             self._view.readd_bracket_item(item, rect, kind, padding=padding)
         for item in self._removed_texts:
@@ -956,21 +962,40 @@ class DeleteSelectionCommand(QUndoCommand):
 class AddArrowCommand(QUndoCommand):
     """Comando para añadir una flecha de anotación."""
 
-    def __init__(self, view, start: QPointF, end: QPointF, kind: str) -> None:
+    def __init__(
+        self,
+        view,
+        start: QPointF,
+        end: QPointF,
+        kind: str,
+        curve_factor: float | None = None,
+    ) -> None:
         """Inicializa el comando de flecha."""
         super().__init__("Add arrow")
         self._view = view
         self._start = QPointF(start)
         self._end = QPointF(end)
         self._kind = kind
+        self._curve_factor = curve_factor
         self._item = None
 
     def redo(self) -> None:
         """Crea o reintroduce la flecha."""
         if self._item is None:
-            self._item = self._view.add_arrow_item(self._start, self._end, self._kind)
+            self._item = self._view.add_arrow_item(
+                self._start,
+                self._end,
+                self._kind,
+                curve_factor=self._curve_factor,
+            )
         else:
-            self._view.readd_arrow_item(self._item, self._start, self._end, self._kind)
+            self._view.readd_arrow_item(
+                self._item,
+                self._start,
+                self._end,
+                self._kind,
+                curve_factor=self._curve_factor,
+            )
 
     def undo(self) -> None:
         """Elimina la flecha añadida."""

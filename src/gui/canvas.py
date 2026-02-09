@@ -342,6 +342,9 @@ class ChemusonCanvas(QGraphicsView):
         self._drag_free_orientation = False
         self._bond_drag_start: Optional[QPointF] = None
         self._arrow_start_pos: Optional[QPointF] = None
+        self._arrow_end_pos: Optional[QPointF] = None
+        self._arrow_curve_adjust_mode = False
+        self._arrow_curve_factor = ArrowItem.CURVE_FACTOR_DEFAULT
         self.arrow_items: list[ArrowItem] = []
         self._bracket_drag_start: Optional[QPointF] = None
         self._bracket_preview: Optional[QGraphicsRectItem] = None
@@ -393,6 +396,7 @@ class ChemusonCanvas(QGraphicsView):
         self._rotation_center: Optional[QPointF] = None
         self._rotation_start_angle: Optional[float] = None
         self._rotation_start_positions: Dict[int, Tuple[float, float]] = {}
+        self._rotation_start_arrow_positions: Dict[ArrowItem, Tuple[QPointF, QPointF]] = {}
         self._scale_dragging = False
         self._scale_anchor: Optional[QPointF] = None
         self._scale_start_handle: Optional[QPointF] = None
@@ -721,6 +725,11 @@ class ChemusonCanvas(QGraphicsView):
         self._clear_bond_anchor()
         self._cancel_drag()
         self._arrow_start_pos = None
+        self._arrow_end_pos = None
+        self._arrow_curve_adjust_mode = False
+        self._arrow_curve_factor = ArrowItem.CURVE_FACTOR_DEFAULT
+        if hasattr(self, "_preview_arrow_item") and self._preview_arrow_item is not None:
+            self._preview_arrow_item.hide_preview()
         self._clear_bracket_preview()
 
         if tool_id in {"tool_select", "tool_select_lasso"}:
@@ -785,6 +794,23 @@ class ChemusonCanvas(QGraphicsView):
         """
         self.state.default_element = element
         self.set_current_tool("tool_atom")
+
+    @staticmethod
+    def _curve_factor_from_pointer(start: QPointF, end: QPointF, pointer: QPointF) -> float:
+        """Calcula curvatura normalizada a partir de la distancia perpendicular."""
+        dx = end.x() - start.x()
+        dy = end.y() - start.y()
+        length = math.hypot(dx, dy)
+        if length <= 1e-6:
+            return ArrowItem.CURVE_FACTOR_DEFAULT
+        nx = -dy / length
+        ny = dx / length
+        mid_x = (start.x() + end.x()) * 0.5
+        mid_y = (start.y() + end.y()) * 0.5
+        offset = (pointer.x() - mid_x) * nx + (pointer.y() - mid_y) * ny
+        # Higher sensitivity so users can reach strong curvature comfortably.
+        factor = offset / (length * 0.65)
+        return max(ArrowItem.CURVE_FACTOR_MIN, min(ArrowItem.CURVE_FACTOR_MAX, factor))
 
     def center_on_paper(self) -> None:
         """Método auxiliar para center on paper.
@@ -942,17 +968,60 @@ class ChemusonCanvas(QGraphicsView):
             "tool_arrow_curved_fishhook": "curved_fishhook",
         }
         if self.current_tool in arrow_tools:
+            arrow_kind = arrow_tools[self.current_tool]
+            curved_tools = {"tool_arrow_curved", "tool_arrow_curved_fishhook"}
+            is_curved_tool = self.current_tool in curved_tools
             if self._arrow_start_pos is None:
                 self._arrow_start_pos = scene_pos
+                self._arrow_end_pos = None
+                self._arrow_curve_adjust_mode = False
+                self._arrow_curve_factor = ArrowItem.CURVE_FACTOR_DEFAULT
+                return
+            if is_curved_tool:
+                if self._arrow_end_pos is None:
+                    if (scene_pos - self._arrow_start_pos).manhattanLength() < 2.0:
+                        self._arrow_start_pos = None
+                        self._arrow_end_pos = None
+                        self._arrow_curve_adjust_mode = False
+                        self._arrow_curve_factor = ArrowItem.CURVE_FACTOR_DEFAULT
+                        self._preview_arrow_item.hide_preview()
+                        return
+                    self._arrow_end_pos = scene_pos
+                    self._arrow_curve_adjust_mode = True
+                    self._preview_arrow_item.update_preview(
+                        self._arrow_start_pos,
+                        self._arrow_end_pos,
+                        arrow_kind,
+                        curve_factor=self._arrow_curve_factor,
+                    )
+                    return
+                cmd = AddArrowCommand(
+                    self,
+                    self._arrow_start_pos,
+                    self._arrow_end_pos,
+                    arrow_kind,
+                    curve_factor=self._arrow_curve_factor,
+                )
+                self.undo_stack.push(cmd)
+                self._arrow_start_pos = None
+                self._arrow_end_pos = None
+                self._arrow_curve_adjust_mode = False
+                self._arrow_curve_factor = ArrowItem.CURVE_FACTOR_DEFAULT
+                self._preview_arrow_item.hide_preview()
                 return
             if (scene_pos - self._arrow_start_pos).manhattanLength() < 2.0:
                 self._arrow_start_pos = None
+                self._arrow_end_pos = None
+                self._arrow_curve_adjust_mode = False
+                self._arrow_curve_factor = ArrowItem.CURVE_FACTOR_DEFAULT
                 self._preview_arrow_item.hide_preview()
                 return
-            arrow_kind = arrow_tools[self.current_tool]
             cmd = AddArrowCommand(self, self._arrow_start_pos, scene_pos, arrow_kind)
             self.undo_stack.push(cmd)
             self._arrow_start_pos = None
+            self._arrow_end_pos = None
+            self._arrow_curve_adjust_mode = False
+            self._arrow_curve_factor = ArrowItem.CURVE_FACTOR_DEFAULT
             self._preview_arrow_item.hide_preview()
             return
 
@@ -1169,7 +1238,32 @@ class ChemusonCanvas(QGraphicsView):
         }
         if self.current_tool in arrow_tools and self._arrow_start_pos is not None:
             arrow_kind = arrow_tools[self.current_tool]
-            self._preview_arrow_item.update_preview(self._arrow_start_pos, scene_pos, arrow_kind)
+            curved_tools = {"tool_arrow_curved", "tool_arrow_curved_fishhook"}
+            is_curved_tool = self.current_tool in curved_tools
+            if is_curved_tool and self._arrow_end_pos is not None and self._arrow_curve_adjust_mode:
+                curve_factor = self._curve_factor_from_pointer(
+                    self._arrow_start_pos,
+                    self._arrow_end_pos,
+                    scene_pos,
+                )
+                if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+                    curve_factor = -curve_factor
+                self._arrow_curve_factor = curve_factor
+                self._preview_arrow_item.update_preview(
+                    self._arrow_start_pos,
+                    self._arrow_end_pos,
+                    arrow_kind,
+                    curve_factor=self._arrow_curve_factor,
+                )
+            else:
+                preview_end = self._arrow_end_pos if (is_curved_tool and self._arrow_end_pos is not None) else scene_pos
+                preview_curve = self._arrow_curve_factor if is_curved_tool else None
+                self._preview_arrow_item.update_preview(
+                    self._arrow_start_pos,
+                    preview_end,
+                    arrow_kind,
+                    curve_factor=preview_curve,
+                )
             return
 
         if self._drag_mode == "place_bond":
@@ -2766,7 +2860,8 @@ class ChemusonCanvas(QGraphicsView):
                 data["annotations"]["arrows"].append({
                     "kind": item.kind(),
                     "start": {"x": item.start_point().x(), "y": item.start_point().y()},
-                    "end": {"x": item.end_point().x(), "y": item.end_point().y()}
+                    "end": {"x": item.end_point().x(), "y": item.end_point().y()},
+                    "curve_factor": item.curve_factor(),
                 })
             elif isinstance(item, BracketItem):
                 data["annotations"]["brackets"].append({
@@ -2837,8 +2932,12 @@ class ChemusonCanvas(QGraphicsView):
         for arrow_d in annotations.get("arrows", []):
             start = QPointF(arrow_d["start"]["x"], arrow_d["start"]["y"])
             end = QPointF(arrow_d["end"]["x"], arrow_d["end"]["y"])
-            arrow = ArrowItem(start, end, kind=arrow_d["kind"])
-            self.scene.addItem(arrow)
+            curve_factor = arrow_d.get("curve_factor")
+            try:
+                curve_factor_value = float(curve_factor) if curve_factor is not None else None
+            except Exception:
+                curve_factor_value = None
+            self.add_arrow_item(start, end, kind=arrow_d["kind"], curve_factor=curve_factor_value)
 
         for br_d in annotations.get("brackets", []):
             rect_d = br_d["rect"]
@@ -3411,6 +3510,7 @@ class ChemusonCanvas(QGraphicsView):
                     "start": [start.x() - left, start.y() - top],
                     "end": [end.x() - left, end.y() - top],
                     "kind": item.kind(),
+                    "curve_factor": item.curve_factor(),
                 }
             )
 
@@ -3557,9 +3657,14 @@ class ChemusonCanvas(QGraphicsView):
             start = arrow_d.get("start", [0.0, 0.0])
             end = arrow_d.get("end", [10.0, 0.0])
             kind = arrow_d.get("kind", "forward")
+            curve_factor = arrow_d.get("curve_factor")
+            try:
+                curve_factor_value = float(curve_factor) if curve_factor is not None else None
+            except Exception:
+                curve_factor_value = None
             start_pt = QPointF(float(start[0]) + dx, float(start[1]) + dy)
             end_pt = QPointF(float(end[0]) + dx, float(end[1]) + dy)
-            cmd = AddArrowCommand(self, start_pt, end_pt, kind)
+            cmd = AddArrowCommand(self, start_pt, end_pt, kind, curve_factor=curve_factor_value)
             if has_undo_items:
                 self.undo_stack.push(cmd)
             else:
@@ -5551,13 +5656,20 @@ class ChemusonCanvas(QGraphicsView):
         self._refresh_atom_label(bond.a2_id)
         self._refresh_bond_ring_flags(ring_pairs)
 
-    def add_arrow_item(self, start: QPointF, end: QPointF, kind: str) -> ArrowItem:
+    def add_arrow_item(
+        self,
+        start: QPointF,
+        end: QPointF,
+        kind: str,
+        curve_factor: float | None = None,
+    ) -> ArrowItem:
         """Añade arrow item.
 
         Args:
             start: Descripción del parámetro.
             end: Descripción del parámetro.
             kind: Descripción del parámetro.
+            curve_factor: Curvatura normalizada para flechas curvas.
 
         Returns:
             Resultado de la operación o None.
@@ -5565,12 +5677,25 @@ class ChemusonCanvas(QGraphicsView):
         Side Effects:
             Puede modificar el estado interno o la escena.
         """
-        item = ArrowItem(start, end, kind=kind, style=self.drawing_style)
+        item = ArrowItem(
+            start,
+            end,
+            kind=kind,
+            curve_factor=curve_factor,
+            style=self.drawing_style,
+        )
         self.scene.addItem(item)
         self.arrow_items.append(item)
         return item
 
-    def readd_arrow_item(self, item: ArrowItem, start: QPointF, end: QPointF, kind: str) -> None:
+    def readd_arrow_item(
+        self,
+        item: ArrowItem,
+        start: QPointF,
+        end: QPointF,
+        kind: str,
+        curve_factor: float | None = None,
+    ) -> None:
         """Método auxiliar para readd arrow item.
 
         Args:
@@ -5578,6 +5703,7 @@ class ChemusonCanvas(QGraphicsView):
             start: Descripción del parámetro.
             end: Descripción del parámetro.
             kind: Descripción del parámetro.
+            curve_factor: Curvatura normalizada para flechas curvas.
 
         Returns:
             Resultado de la operación o None.
@@ -5586,7 +5712,7 @@ class ChemusonCanvas(QGraphicsView):
             Puede modificar el estado interno o la escena.
         """
         item.set_kind(kind)
-        item.update_positions(start, end)
+        item.update_positions(start, end, curve_factor=curve_factor)
         if item.scene() is not self.scene:
             self.scene.addItem(item)
         if item not in self.arrow_items:
@@ -7981,7 +8107,11 @@ class ChemusonCanvas(QGraphicsView):
         Side Effects:
             Puede modificar el estado interno o la escena.
         """
-        if not self._selected_atom_ids_for_transform() and not self._selected_text_items():
+        if (
+            not self._selected_atom_ids_for_transform()
+            and not self._selected_text_items()
+            and not self._selected_arrow_items()
+        ):
             return
         bbox = self._selected_items_bbox()
         if bbox is None:
@@ -8004,6 +8134,10 @@ class ChemusonCanvas(QGraphicsView):
         self._rotation_start_text_transforms = {} # item -> (pos, rotation)
         for item in self._selected_text_items():
             self._rotation_start_text_transforms[item] = (item.pos(), item.rotation())
+        self._rotation_start_arrow_positions = {
+            item: (item.start_point(), item.end_point())
+            for item in self._selected_arrow_items()
+        }
 
     def _update_rotation_drag(self, scene_pos: QPointF) -> None:
         """Método auxiliar para  update rotation drag.
@@ -8041,6 +8175,7 @@ class ChemusonCanvas(QGraphicsView):
         self._rotation_start_angle = None
         self._rotation_start_positions = {}
         self._rotation_start_text_transforms = {}
+        self._rotation_start_arrow_positions = {}
         self._update_selection_overlay()
 
     def _begin_scale_drag(self, scene_pos: QPointF) -> None:
@@ -8255,8 +8390,9 @@ class ChemusonCanvas(QGraphicsView):
         """Rotate selected items by degrees around their collective center."""
         selected_atom_ids = self._selected_atom_ids_for_transform()
         selected_text_items = self._selected_text_items()
+        selected_arrow_items = self._selected_arrow_items()
         
-        if not selected_atom_ids and not selected_text_items:
+        if not selected_atom_ids and not selected_text_items and not selected_arrow_items:
             return
 
         cx, cy = 0.0, 0.0
@@ -8277,6 +8413,11 @@ class ChemusonCanvas(QGraphicsView):
         rad = math.radians(degrees)
         cos_a = math.cos(rad)
         sin_a = math.sin(rad)
+
+        def rotate_point(pt: QPointF) -> QPointF:
+            dx = pt.x() - cx
+            dy = pt.y() - cy
+            return QPointF(dx * cos_a - dy * sin_a + cx, dx * sin_a + dy * cos_a + cy)
 
         # Rotate Atoms
         if selected_atom_ids:
@@ -8403,6 +8544,27 @@ class ChemusonCanvas(QGraphicsView):
                     # Add rotation
                     item.setTransformOriginPoint(item.boundingRect().center())
                     item.setRotation(current_rot + degrees)
+
+        # Rotate Arrow Items
+        if selected_arrow_items:
+            if use_start_positions:
+                for item in selected_arrow_items:
+                    if item in self._rotation_start_arrow_positions:
+                        start_pt, end_pt = self._rotation_start_arrow_positions[item]
+                    else:
+                        start_pt, end_pt = item.start_point(), item.end_point()
+                    item.update_positions(rotate_point(start_pt), rotate_point(end_pt))
+            else:
+                before = {
+                    item: (item.start_point(), item.end_point())
+                    for item in selected_arrow_items
+                }
+                after = {
+                    item: (rotate_point(start), rotate_point(end))
+                    for item, (start, end) in before.items()
+                }
+                if before:
+                    self.undo_stack.push(MoveArrowItemsCommand(self, before, after))
 
         # Update overlay at the end
         if use_start_positions:
@@ -9147,6 +9309,7 @@ class ChemusonCanvas(QGraphicsView):
         self._rotation_center = None
         self._rotation_start_angle = None
         self._rotation_start_positions = {}
+        self._rotation_start_arrow_positions = {}
         self._clear_selection_drag()
         if self._overlays_ready:
             self._optimize_zone.hide_zone()

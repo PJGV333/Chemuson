@@ -2217,6 +2217,9 @@ class WavyAnchorItem(QGraphicsPathItem):
 
 class ArrowItem(QGraphicsPathItem):
     """Elemento gráfico que representa una flecha de reacción/anotación."""
+    CURVE_FACTOR_DEFAULT = 0.36
+    CURVE_FACTOR_MIN = -2.20
+    CURVE_FACTOR_MAX = 2.20
 
     def __init__(
         self,
@@ -2224,6 +2227,7 @@ class ArrowItem(QGraphicsPathItem):
         end: QPointF,
         head_at_end: bool = True,
         kind: str | None = None,
+        curve_factor: float | None = None,
         style: DrawingStyle = CHEMDOODLE_LIKE,
     ) -> None:
         """Inicializa la instancia y configura el elemento gráfico.
@@ -2233,6 +2237,7 @@ class ArrowItem(QGraphicsPathItem):
             end: Punto final en escena.
             head_at_end: Si la cabeza va en el extremo final.
             kind: Tipo de flecha/corchete.
+            curve_factor: Curvatura normalizada de flechas curvas.
             style: Estilo de dibujo aplicado.
 
         Returns:
@@ -2247,6 +2252,13 @@ class ArrowItem(QGraphicsPathItem):
             self._kind = "forward" if head_at_end else "retro"
         else:
             self._kind = kind
+        if curve_factor is None:
+            if self._kind in {"curved", "curved_fishhook"}:
+                self._curve_factor = self.CURVE_FACTOR_DEFAULT
+            else:
+                self._curve_factor = 0.0
+        else:
+            self._curve_factor = self._clamp_curve_factor(float(curve_factor))
         self._start = QPointF(start)
         self._end = QPointF(end)
         pen = QPen(QColor(self._style.bond_color), self._style.stroke_px)
@@ -2276,12 +2288,32 @@ class ArrowItem(QGraphicsPathItem):
         painter.setBrush(self.brush())
         painter.drawPath(self.path())
 
-    def update_positions(self, start: QPointF, end: QPointF) -> None:
+    @classmethod
+    def _clamp_curve_factor(cls, value: float) -> float:
+        """Limita la curvatura normalizada a un rango estable."""
+        return max(cls.CURVE_FACTOR_MIN, min(cls.CURVE_FACTOR_MAX, value))
+
+    def curve_factor(self) -> float:
+        """Devuelve la curvatura normalizada actual."""
+        return float(self._curve_factor)
+
+    def set_curve_factor(self, curve_factor: float) -> None:
+        """Actualiza la curvatura y redibuja la flecha."""
+        self._curve_factor = self._clamp_curve_factor(float(curve_factor))
+        self.update_positions(self._start, self._end)
+
+    def update_positions(
+        self,
+        start: QPointF,
+        end: QPointF,
+        curve_factor: float | None = None,
+    ) -> None:
         """Actualiza posiciones.
 
         Args:
             start: Punto inicial en escena.
             end: Punto final en escena.
+            curve_factor: Curvatura normalizada opcional para flechas curvas.
 
         Returns:
             None.
@@ -2300,10 +2332,17 @@ class ArrowItem(QGraphicsPathItem):
 
         ux = dx / length
         uy = dy / length
-        head_len = 12.0
-        head_width = 6.0
+        stroke_px = max(float(self._style.stroke_px), 1.0)
+        head_len = max(10.0, stroke_px * 5.8)
+        head_width = max(4.6, stroke_px * 2.35)
         nx = -uy
         ny = ux
+
+        curved_kinds = {"curved", "curved_fishhook"}
+        if curve_factor is not None:
+            self._curve_factor = self._clamp_curve_factor(float(curve_factor))
+        elif self._kind in curved_kinds and abs(self._curve_factor) <= 1e-9:
+            self._curve_factor = self.CURVE_FACTOR_DEFAULT
 
         open_head_kinds = {
             "forward_open",
@@ -2318,14 +2357,81 @@ class ArrowItem(QGraphicsPathItem):
             "both_dashed",
             "equilibrium_dashed",
         }
-        curved_kinds = {"curved", "curved_fishhook"}
 
         is_open = self._kind in open_head_kinds
         is_dashed = self._kind in dashed_kinds
         is_curved = self._kind in curved_kinds
         is_fishhook = self._kind == "curved_fishhook"
+        is_preview = hasattr(self, "_preview_pen")
+        use_manual_dashes = is_dashed and not is_preview
 
         self._apply_kind_style(is_open or is_fishhook, is_dashed)
+
+        def add_manual_dashed_line(path: QPainterPath, a: QPointF, b: QPointF) -> None:
+            """Dibuja una línea discontinua manual para mantener cabeza sólida."""
+            lx = b.x() - a.x()
+            ly = b.y() - a.y()
+            llen = math.hypot(lx, ly)
+            if llen <= 1e-6:
+                return
+            l_ux = lx / llen
+            l_uy = ly / llen
+            dash_len = max(5.0, stroke_px * 2.8)
+            gap_len = max(3.5, stroke_px * 1.9)
+            pos = 0.0
+            while pos < llen:
+                seg_start = pos
+                seg_end = min(llen, pos + dash_len)
+                sx = a.x() + l_ux * seg_start
+                sy = a.y() + l_uy * seg_start
+                ex = a.x() + l_ux * seg_end
+                ey = a.y() + l_uy * seg_end
+                path.moveTo(sx, sy)
+                path.lineTo(ex, ey)
+                pos += dash_len + gap_len
+
+        def sample_quad(
+            p0: QPointF,
+            p1: QPointF,
+            p2: QPointF,
+            steps: int,
+        ) -> list[QPointF]:
+            """Muestrea una curva cuadrática en puntos equiespaciados en t."""
+            result: list[QPointF] = []
+            steps = max(4, steps)
+            for i in range(steps + 1):
+                t = i / steps
+                mt = 1.0 - t
+                x = mt * mt * p0.x() + 2.0 * mt * t * p1.x() + t * t * p2.x()
+                y = mt * mt * p0.y() + 2.0 * mt * t * p1.y() + t * t * p2.y()
+                result.append(QPointF(x, y))
+            return result
+
+        def add_polyline_as_segments(path: QPainterPath, points: list[QPointF]) -> None:
+            """Añade polilínea como segmentos separados (evita áreas de relleno)."""
+            for i in range(len(points) - 1):
+                path.moveTo(points[i])
+                path.lineTo(points[i + 1])
+
+        def half_head_barb(
+            tip: QPointF,
+            dir_x: float,
+            dir_y: float,
+            hook_side: float | None = None,
+        ) -> QPointF:
+            """Calcula el punto externo de la media cabeza (fishhook)."""
+            hnx = -dir_y
+            hny = dir_x
+            if hook_side is None:
+                hook_side = -1.0
+                if self._kind == "curved_fishhook" and self._curve_factor < 0.0:
+                    hook_side = 1.0
+            barb_back = head_len * 0.90
+            barb_out = head_width * 1.15
+            return QPointF(
+                tip.x() - dir_x * barb_back + hnx * barb_out * hook_side,
+                tip.y() - dir_y * barb_back + hny * barb_out * hook_side,
+            )
 
         def add_head(
             path: QPainterPath,
@@ -2349,22 +2455,28 @@ class ArrowItem(QGraphicsPathItem):
             Side Effects:
                 Modifica el estado del item o la escena.
             """
+            hnx = -dir_y
+            hny = dir_x
             base_x = tip.x() - dir_x * head_len
             base_y = tip.y() - dir_y * head_len
-            left = QPointF(base_x + nx * head_width, base_y + ny * head_width)
-            right = QPointF(base_x - nx * head_width, base_y - ny * head_width)
+            left = QPointF(base_x + hnx * head_width, base_y + hny * head_width)
+            right = QPointF(base_x - hnx * head_width, base_y - hny * head_width)
             if head_style == "filled":
                 path.moveTo(left)
                 path.lineTo(tip)
                 path.lineTo(right)
                 path.closeSubpath()
+                return QPointF(base_x, base_y)
             elif head_style == "open":
                 path.moveTo(left)
                 path.lineTo(tip)
                 path.lineTo(right)
+                return QPointF(base_x, base_y)
             elif head_style == "half":
-                path.moveTo(left)
+                barb = half_head_barb(tip, dir_x, dir_y)
+                path.moveTo(barb)
                 path.lineTo(tip)
+                return QPointF(tip)
             return QPointF(base_x, base_y)
 
         path = QPainterPath()
@@ -2373,8 +2485,11 @@ class ArrowItem(QGraphicsPathItem):
         if self._kind in {"both", "both_open", "both_dashed"}:
             start_base = QPointF(start.x() + ux * head_len, start.y() + uy * head_len)
             end_base = QPointF(end.x() - ux * head_len, end.y() - uy * head_len)
-            path.moveTo(start_base)
-            path.lineTo(end_base)
+            if use_manual_dashes:
+                add_manual_dashed_line(path, start_base, end_base)
+            else:
+                path.moveTo(start_base)
+                path.lineTo(end_base)
             add_head(path, end, ux, uy, head_style)
             add_head(path, start, -ux, -uy, head_style)
         elif self._kind in {"equilibrium", "equilibrium_dashed"}:
@@ -2385,13 +2500,19 @@ class ArrowItem(QGraphicsPathItem):
             bottom_end = QPointF(end.x() - nx * offset, end.y() - ny * offset)
 
             top_base = QPointF(top_end.x() - ux * head_len, top_end.y() - uy * head_len)
-            path.moveTo(top_start)
-            path.lineTo(top_base)
+            if use_manual_dashes:
+                add_manual_dashed_line(path, top_start, top_base)
+            else:
+                path.moveTo(top_start)
+                path.lineTo(top_base)
             add_head(path, top_end, ux, uy, head_style)
 
             bottom_base = QPointF(bottom_start.x() + ux * head_len, bottom_start.y() + uy * head_len)
-            path.moveTo(bottom_end)
-            path.lineTo(bottom_base)
+            if use_manual_dashes:
+                add_manual_dashed_line(path, bottom_end, bottom_base)
+            else:
+                path.moveTo(bottom_end)
+                path.lineTo(bottom_base)
             add_head(path, bottom_start, -ux, -uy, head_style)
         elif self._kind == "retrosynthetic":
             offset = 2.5
@@ -2404,7 +2525,12 @@ class ArrowItem(QGraphicsPathItem):
                 path.moveTo(QPointF(tail.x() + nx * offset * sign, tail.y() + ny * offset * sign))
                 path.lineTo(QPointF(base.x() + nx * offset * sign, base.y() + ny * offset * sign))
         elif is_curved:
-            curve_offset = max(12.0, min(24.0, length * 0.25))
+            curve_offset = length * self._curve_factor
+            max_curve_offset = length * max(
+                abs(self.CURVE_FACTOR_MIN),
+                abs(self.CURVE_FACTOR_MAX),
+            )
+            curve_offset = max(-max_curve_offset, min(max_curve_offset, curve_offset))
             control = QPointF(
                 (start.x() + end.x()) * 0.5 + nx * curve_offset,
                 (start.y() + end.y()) * 0.5 + ny * curve_offset,
@@ -2418,9 +2544,43 @@ class ArrowItem(QGraphicsPathItem):
             else:
                 tx /= tlen
                 ty /= tlen
-            base = add_head(path, end, tx, ty, head_style)
-            path.moveTo(start)
-            path.quadTo(control, base)
+            if head_style == "half":
+                # Place fishhook barb on the OUTER side of the curve.
+                # Use local curvature sign at t=1:
+                # cross(B'(1), B''(1)) > 0 => inside is left normal, so use right.
+                ddx = end.x() - 2.0 * control.x() + start.x()
+                ddy = end.y() - 2.0 * control.y() + start.y()
+                curvature_cross = tx * ddy - ty * ddx
+                if curvature_cross > 1e-6:
+                    hook_side = -1.0
+                elif curvature_cross < -1e-6:
+                    hook_side = 1.0
+                else:
+                    hook_side = -1.0 if self._curve_factor >= 0.0 else 1.0
+                barb = half_head_barb(end, tx, ty, hook_side=hook_side)
+
+                # Draw stem as independent segments to avoid unintended fills.
+                pts = sample_quad(start, control, end, steps=max(14, int(length / 3.5)))
+                add_polyline_as_segments(path, pts)
+
+                # Fill the wedge between stem and fishhook barb.
+                stem_base = QPointF(
+                    end.x() - tx * head_len * 0.58,
+                    end.y() - ty * head_len * 0.58,
+                )
+                path.moveTo(stem_base)
+                path.lineTo(end)
+                path.lineTo(barb)
+                path.closeSubpath()
+            else:
+                base = add_head(path, end, tx, ty, head_style)
+            if head_style == "filled":
+                # Avoid brush filling the implicit closed area under the curve.
+                pts = sample_quad(start, control, base, steps=max(14, int(length / 3.5)))
+                add_polyline_as_segments(path, pts)
+            elif head_style != "half":
+                path.moveTo(start)
+                path.quadTo(control, base)
         else:
             head_at_end = self._kind != "retro"
             if head_at_end:
@@ -2434,8 +2594,11 @@ class ArrowItem(QGraphicsPathItem):
                 dir_x = -ux
                 dir_y = -uy
             base = add_head(path, tip, dir_x, dir_y, head_style)
-            path.moveTo(tail)
-            path.lineTo(base)
+            if use_manual_dashes:
+                add_manual_dashed_line(path, tail, base)
+            else:
+                path.moveTo(tail)
+                path.lineTo(base)
 
         self.setPath(path)
 
@@ -2463,6 +2626,8 @@ class ArrowItem(QGraphicsPathItem):
             Modifica el estado del item o la escena.
         """
         self._kind = kind
+        if kind in {"curved", "curved_fishhook"} and abs(self._curve_factor) <= 1e-9:
+            self._curve_factor = self.CURVE_FACTOR_DEFAULT
 
     def start_point(self) -> QPointF:
         """Devuelve el punto inicial.
@@ -2516,11 +2681,16 @@ class ArrowItem(QGraphicsPathItem):
         """
         pen = QPen(QColor(self._style.bond_color), self._style.stroke_px)
         pen.setCapStyle(self._style.cap_style)
-        pen.setJoinStyle(self._style.join_style)
-        if dashed:
-            pen.setStyle(Qt.PenStyle.DashLine)
+        if self._kind == "curved_fishhook":
+            pen.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
+        else:
+            pen.setJoinStyle(self._style.join_style)
+        # Dashed stems are built manually in geometry so heads remain solid.
+        pen.setStyle(Qt.PenStyle.SolidLine)
         self.setPen(pen)
-        if open_head:
+        if self._kind == "curved_fishhook":
+            self.setBrush(QBrush(QColor(self._style.bond_color)))
+        elif open_head:
             self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         else:
             self.setBrush(QBrush(QColor(self._style.bond_color)))
@@ -2548,7 +2718,13 @@ class PreviewArrowItem(ArrowItem):
         self.setZValue(40)
         self.setVisible(False)
 
-    def update_preview(self, start: QPointF, end: QPointF, kind: str) -> None:
+    def update_preview(
+        self,
+        start: QPointF,
+        end: QPointF,
+        kind: str,
+        curve_factor: float | None = None,
+    ) -> None:
         """Actualiza la previsualización.
 
         Args:
@@ -2563,7 +2739,7 @@ class PreviewArrowItem(ArrowItem):
             Modifica el estado del item o la escena.
         """
         self.set_kind(kind)
-        self.update_positions(start, end)
+        self.update_positions(start, end, curve_factor=curve_factor)
         self.setPen(self._preview_pen)
         self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         if not self.isVisible():
