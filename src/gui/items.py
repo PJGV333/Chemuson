@@ -1825,15 +1825,27 @@ class BondItem(QGraphicsPathItem):
                 edge_b = (joint_cx - nnx * half_neighbor, joint_cy - nny * half_neighbor)
                 pos_along = (base_pos[0] - base_cx) * nux + (base_pos[1] - base_cy) * nuy
                 neg_along = (base_neg[0] - base_cx) * nux + (base_neg[1] - base_cy) * nuy
+                # For single-bond terminals, ChemDraw-like rendering anchors
+                # the wedge on the exterior edge of the outgoing simple bond.
+                # Determine that edge from the turning orientation at the atom.
+                turn = (-w_ux) * nuy - (-w_uy) * nux
+                if abs(turn) <= 1e-6:
+                    # Near-colinear fallback: keep prior nearest-edge behavior.
+                    d_a_pos = (base_pos[0] - edge_a[0]) ** 2 + (base_pos[1] - edge_a[1]) ** 2
+                    d_b_pos = (base_pos[0] - edge_b[0]) ** 2 + (base_pos[1] - edge_b[1]) ** 2
+                    preferred_edge_pos = edge_a if d_a_pos <= d_b_pos else edge_b
+                    d_a_neg = (base_neg[0] - edge_a[0]) ** 2 + (base_neg[1] - edge_a[1]) ** 2
+                    d_b_neg = (base_neg[0] - edge_b[0]) ** 2 + (base_neg[1] - edge_b[1]) ** 2
+                    preferred_edge_neg = edge_a if d_a_neg <= d_b_neg else edge_b
+                else:
+                    exterior_edge = edge_a if turn > 0.0 else edge_b
+                    preferred_edge_pos = exterior_edge
+                    preferred_edge_neg = exterior_edge
                 if pos_along >= neg_along:
-                    d_a = (base_pos[0] - edge_a[0]) ** 2 + (base_pos[1] - edge_a[1]) ** 2
-                    d_b = (base_pos[0] - edge_b[0]) ** 2 + (base_pos[1] - edge_b[1]) ** 2
-                    base_pos = edge_a if d_a <= d_b else edge_b
+                    base_pos = preferred_edge_pos
                     anchored_corner = 1
                 else:
-                    d_a = (base_neg[0] - edge_a[0]) ** 2 + (base_neg[1] - edge_a[1]) ** 2
-                    d_b = (base_neg[0] - edge_b[0]) ** 2 + (base_neg[1] - edge_b[1]) ** 2
-                    base_neg = edge_a if d_a <= d_b else edge_b
+                    base_neg = preferred_edge_neg
                     anchored_corner = -1
             sep = (base_pos[0] - base_neg[0]) * w_nx + (base_pos[1] - base_neg[1]) * w_ny
             if end_deg >= 2:
