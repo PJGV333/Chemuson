@@ -54,6 +54,43 @@ def endpoint_from_angle_len(p0: QPointF, theta_deg: float, length: float) -> QPo
     return QPointF(p0.x() + dx, p0.y() + dy)
 
 
+def project_3d_rotation(
+    points_2d: Iterable[Tuple[float, float]],
+    center: Tuple[float, float],
+    angle_x: float,
+    angle_y: float,
+) -> list[tuple[float, float]]:
+    """Rota puntos 2D con un modelo pseudo-3D (X/Y) y proyecta al plano XY.
+
+    El eje Z inicial se asume en 0 para todos los puntos.
+    """
+    cx, cy = center
+    cos_x = math.cos(angle_x)
+    sin_x = math.sin(angle_x)
+    cos_y = math.cos(angle_y)
+    sin_y = math.sin(angle_y)
+
+    rotated: list[tuple[float, float]] = []
+    for x, y in points_2d:
+        # 1) Trasladar al origen
+        x0 = x - cx
+        y0 = y - cy
+        z0 = 0.0
+
+        # 2) Rotación sobre X
+        y_new = y0 * cos_x - z0 * sin_x
+        z_new = y0 * sin_x + z0 * cos_x
+
+        # 3) Rotación sobre Y
+        x_final = x0 * cos_y + z_new * sin_y
+        y_final = y_new
+
+        # 4) Volver al centro
+        rotated.append((x_final + cx, y_final + cy))
+
+    return rotated
+
+
 def geometry_for_bond(
     bond_order: int,
     is_aromatic: bool,

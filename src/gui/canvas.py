@@ -74,6 +74,7 @@ from gui.geom import (
     angle_deg,
     snap_angle_deg,
     endpoint_from_angle_len,
+    project_3d_rotation,
     choose_optimal_direction,
     geometry_for_bond,
     SP3_BOND_ANGLE_DEG,
@@ -140,6 +141,8 @@ BOND_OVERLAP_TOLERANCE_PX = 5.0
 BOND_DRAG_THRESHOLD_PX = 6.0
 BOND_LAST_ANGLE_TOLERANCE_DEG = 20.0
 CLIPBOARD_RENDER_SCALE = 5.0
+TRACKBALL_ROTATION_DEG_PER_PIXEL = 1.0
+TRACKBALL_MAX_TILT_DEG = 60.0
 # Etiquetas rápidas para grupos funcionales comunes.
 FUNCTIONAL_GROUP_LABELS = [
     "NH2",
@@ -397,6 +400,17 @@ class ChemusonCanvas(QGraphicsView):
         self._rotation_start_angle: Optional[float] = None
         self._rotation_start_positions: Dict[int, Tuple[float, float]] = {}
         self._rotation_start_arrow_positions: Dict[ArrowItem, Tuple[QPointF, QPointF]] = {}
+        self._is_rotating_3d = False
+        self._rotation_3d_start_view_pos: Optional[QPoint] = None
+        self._rotation_3d_before_positions: Dict[int, Tuple[float, float]] = {}
+        self._rotation_3d_click_atom_id: Optional[int] = None
+        self._rotation_3d_has_moved = False
+        self._rotation_3d_ref_atom_ids: tuple[int, ...] = tuple()
+        self._rotation_3d_ref_positions: Dict[int, Tuple[float, float]] = {}
+        self._rotation_3d_pitch_deg = 0.0
+        self._rotation_3d_yaw_deg = 0.0
+        self._rotation_3d_drag_start_pitch_deg = 0.0
+        self._rotation_3d_drag_start_yaw_deg = 0.0
         self._scale_dragging = False
         self._scale_anchor: Optional[QPointF] = None
         self._scale_start_handle: Optional[QPointF] = None
@@ -903,6 +917,20 @@ class ChemusonCanvas(QGraphicsView):
             if self._space_panning:
                 return
             clicked_item = self._get_item_at(scene_pos)
+            blocked_modifiers = (
+                Qt.KeyboardModifier.ShiftModifier
+                | Qt.KeyboardModifier.ControlModifier
+                | Qt.KeyboardModifier.MetaModifier
+            )
+            if (
+                event.modifiers() & Qt.KeyboardModifier.AltModifier
+                and not (event.modifiers() & blocked_modifiers)
+                and self._begin_3d_rotation_drag(
+                    scene_pos,
+                    clicked_item.atom_id if isinstance(clicked_item, AtomItem) else None,
+                )
+            ):
+                return
             if (
                 (event.modifiers() & Qt.KeyboardModifier.AltModifier)
                 and isinstance(clicked_item, AtomItem)
@@ -1209,6 +1237,10 @@ class ChemusonCanvas(QGraphicsView):
         scene_pos = self.mapToScene(event.pos())
         self._last_scene_pos = scene_pos
 
+        if self._is_rotating_3d:
+            self._update_3d_rotation_drag(scene_pos)
+            return
+
         if self._scale_dragging:
             self._update_scale_drag(scene_pos)
             return
@@ -1335,6 +1367,9 @@ class ChemusonCanvas(QGraphicsView):
             self._pan_last_pos = None
             self.setCursor(Qt.CursorShape.ArrowCursor)
             event.accept()
+            return
+        if self._is_rotating_3d:
+            self._finalize_3d_rotation_drag()
             return
         if self._scale_dragging:
             self._finalize_scale_drag()
@@ -8095,6 +8130,207 @@ class ChemusonCanvas(QGraphicsView):
         radius = max(SELECTION_HANDLE_RADIUS_PX * 2.0, 12.0)
         return (dx * dx + dy * dy) <= (radius * radius)
 
+    def _trackball_atom_ids(self) -> tuple[int, ...]:
+        """Devuelve IDs objetivo para trackball (selección o toda la molécula)."""
+        atom_ids = self._selected_atom_ids_for_transform()
+        if not atom_ids:
+            atom_ids = set(self.model.atoms.keys())
+        return tuple(sorted(atom_id for atom_id in atom_ids if atom_id in self.model.atoms))
+
+    def _project_trackball_reference(
+        self,
+        atom_ids: tuple[int, ...],
+        pitch_deg: float,
+        yaw_deg: float,
+    ) -> Dict[int, Tuple[float, float]]:
+        """Proyecta la referencia 2D con ángulos pseudo-3D absolutos."""
+        if not atom_ids:
+            return {}
+        points = [self._rotation_3d_ref_positions[atom_id] for atom_id in atom_ids]
+        count = len(points)
+        cx = sum(x for x, _ in points) / count
+        cy = sum(y for _, y in points) / count
+        rotated = project_3d_rotation(
+            points,
+            (cx, cy),
+            math.radians(pitch_deg),
+            math.radians(yaw_deg),
+        )
+        return {atom_id: point for atom_id, point in zip(atom_ids, rotated)}
+
+    def _begin_3d_rotation_drag(
+        self,
+        scene_pos: QPointF,
+        click_atom_id: Optional[int] = None,
+    ) -> bool:
+        """Inicia rotación pseudo-3D usando una referencia estable para evitar colapso."""
+        atom_ids = self._trackball_atom_ids()
+        if not atom_ids:
+            return False
+
+        before_positions = {
+            atom_id: (self.model.get_atom(atom_id).x, self.model.get_atom(atom_id).y)
+            for atom_id in atom_ids
+        }
+        reset_reference = atom_ids != self._rotation_3d_ref_atom_ids
+        if not reset_reference:
+            for atom_id in atom_ids:
+                if atom_id not in self._rotation_3d_ref_positions:
+                    reset_reference = True
+                    break
+        if not reset_reference:
+            projected = self._project_trackball_reference(
+                atom_ids,
+                self._rotation_3d_pitch_deg,
+                self._rotation_3d_yaw_deg,
+            )
+            max_delta = 0.0
+            for atom_id in atom_ids:
+                px, py = projected[atom_id]
+                cx, cy = before_positions[atom_id]
+                max_delta = max(max_delta, math.hypot(px - cx, py - cy))
+            if max_delta > 1.5:
+                # La geometría cambió por otro flujo (mover, editar, undo, etc.).
+                reset_reference = True
+        if reset_reference:
+            self._rotation_3d_ref_atom_ids = atom_ids
+            self._rotation_3d_ref_positions = dict(before_positions)
+            self._rotation_3d_pitch_deg = 0.0
+            self._rotation_3d_yaw_deg = 0.0
+
+        self._is_rotating_3d = True
+        self._rotation_3d_start_view_pos = self.mapFromScene(scene_pos)
+        self._rotation_3d_before_positions = before_positions
+        self._rotation_3d_click_atom_id = click_atom_id
+        self._rotation_3d_has_moved = False
+        self._rotation_3d_drag_start_pitch_deg = self._rotation_3d_pitch_deg
+        self._rotation_3d_drag_start_yaw_deg = self._rotation_3d_yaw_deg
+        self.setCursor(Qt.CursorShape.ClosedHandCursor)
+        return True
+
+    def _update_3d_rotation_drag(self, scene_pos: QPointF) -> None:
+        """Actualiza rotación pseudo-3D con ángulos absolutos sobre referencia fija."""
+        if not self._is_rotating_3d or self._rotation_3d_start_view_pos is None:
+            return
+
+        atom_ids = self._rotation_3d_ref_atom_ids
+        if not atom_ids:
+            return
+
+        view_pos = self.mapFromScene(scene_pos)
+        dx = float(view_pos.x() - self._rotation_3d_start_view_pos.x())
+        dy = float(view_pos.y() - self._rotation_3d_start_view_pos.y())
+
+        pitch_deg = self._rotation_3d_drag_start_pitch_deg + dy * TRACKBALL_ROTATION_DEG_PER_PIXEL
+        yaw_deg = self._rotation_3d_drag_start_yaw_deg + dx * TRACKBALL_ROTATION_DEG_PER_PIXEL
+        pitch_deg = max(-TRACKBALL_MAX_TILT_DEG, min(TRACKBALL_MAX_TILT_DEG, pitch_deg))
+        yaw_deg = max(-TRACKBALL_MAX_TILT_DEG, min(TRACKBALL_MAX_TILT_DEG, yaw_deg))
+
+        projected = self._project_trackball_reference(atom_ids, pitch_deg, yaw_deg)
+        changed = False
+        moved_atom_ids: set[int] = set()
+        for atom_id in atom_ids:
+            if atom_id not in self.model.atoms:
+                continue
+            new_x, new_y = projected[atom_id]
+            atom = self.model.get_atom(atom_id)
+            if not changed and (abs(new_x - atom.x) > 1e-9 or abs(new_y - atom.y) > 1e-9):
+                changed = True
+            self.model.update_atom_position(atom_id, new_x, new_y)
+            self.update_atom_item(atom_id, new_x, new_y)
+            moved_atom_ids.add(atom_id)
+
+        self._rotation_3d_pitch_deg = pitch_deg
+        self._rotation_3d_yaw_deg = yaw_deg
+
+        if changed and moved_atom_ids:
+            self.update_bond_items_for_atoms(moved_atom_ids)
+            self._rotation_3d_has_moved = True
+
+    def _reset_3d_rotation_perspective(self) -> bool:
+        """Restaura la perspectiva base del trackball para selección o toda la molécula."""
+        selected_atom_ids = self._selected_atom_ids_for_transform()
+        if selected_atom_ids:
+            atom_ids = tuple(
+                sorted(atom_id for atom_id in selected_atom_ids if atom_id in self.model.atoms)
+            )
+        elif self._rotation_3d_ref_atom_ids:
+            atom_ids = self._rotation_3d_ref_atom_ids
+        else:
+            atom_ids = self._trackball_atom_ids()
+        if not atom_ids:
+            return False
+        if atom_ids != self._rotation_3d_ref_atom_ids:
+            return False
+        if any(atom_id not in self.model.atoms for atom_id in atom_ids):
+            return False
+        if any(atom_id not in self._rotation_3d_ref_positions for atom_id in atom_ids):
+            return False
+
+        before = {
+            atom_id: (self.model.get_atom(atom_id).x, self.model.get_atom(atom_id).y)
+            for atom_id in atom_ids
+        }
+        after = {
+            atom_id: self._rotation_3d_ref_positions[atom_id]
+            for atom_id in atom_ids
+        }
+        changed = any(
+            abs(before[atom_id][0] - after[atom_id][0]) > 1e-9
+            or abs(before[atom_id][1] - after[atom_id][1]) > 1e-9
+            for atom_id in atom_ids
+        )
+        self._rotation_3d_pitch_deg = 0.0
+        self._rotation_3d_yaw_deg = 0.0
+        self._rotation_3d_drag_start_pitch_deg = 0.0
+        self._rotation_3d_drag_start_yaw_deg = 0.0
+        if changed:
+            self.undo_stack.push(MoveAtomsCommand(self.model, self, before, after))
+        else:
+            self._update_selection_overlay()
+        return True
+
+    def _finalize_3d_rotation_drag(self) -> None:
+        """Finaliza la rotación pseudo-3D y registra un único comando de undo."""
+        if not self._is_rotating_3d:
+            return
+
+        if self._rotation_3d_has_moved and self._rotation_3d_before_positions:
+            before: Dict[int, Tuple[float, float]] = {}
+            after: Dict[int, Tuple[float, float]] = {}
+            changed = False
+            for atom_id, (x0, y0) in self._rotation_3d_before_positions.items():
+                if atom_id not in self.model.atoms:
+                    continue
+                atom = self.model.get_atom(atom_id)
+                before[atom_id] = (x0, y0)
+                after[atom_id] = (atom.x, atom.y)
+                if not changed and (abs(atom.x - x0) > 1e-9 or abs(atom.y - y0) > 1e-9):
+                    changed = True
+            if changed and before:
+                self.undo_stack.push(
+                    MoveAtomsCommand(
+                        self.model,
+                        self,
+                        before,
+                        after,
+                        skip_first_redo=True,
+                    )
+                )
+        elif not self._rotation_3d_has_moved and self._rotation_3d_click_atom_id is not None:
+            self._cycle_anchor_override(self._rotation_3d_click_atom_id)
+
+        self._is_rotating_3d = False
+        self._rotation_3d_start_view_pos = None
+        self._rotation_3d_before_positions = {}
+        self._rotation_3d_click_atom_id = None
+        self._rotation_3d_has_moved = False
+        self._rotation_3d_drag_start_pitch_deg = 0.0
+        self._rotation_3d_drag_start_yaw_deg = 0.0
+        if self.current_tool in {"tool_select", "tool_select_lasso"}:
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+        self._update_selection_overlay()
+
     def _begin_rotation_drag(self, scene_pos: QPointF) -> None:
         """Método auxiliar para  begin rotation drag.
 
@@ -9310,6 +9546,13 @@ class ChemusonCanvas(QGraphicsView):
         self._rotation_start_angle = None
         self._rotation_start_positions = {}
         self._rotation_start_arrow_positions = {}
+        self._is_rotating_3d = False
+        self._rotation_3d_start_view_pos = None
+        self._rotation_3d_before_positions = {}
+        self._rotation_3d_click_atom_id = None
+        self._rotation_3d_has_moved = False
+        self._rotation_3d_drag_start_pitch_deg = 0.0
+        self._rotation_3d_drag_start_yaw_deg = 0.0
         self._clear_selection_drag()
         if self._overlays_ready:
             self._optimize_zone.hide_zone()
@@ -10635,12 +10878,31 @@ class ChemusonCanvas(QGraphicsView):
             Puede modificar el estado interno o la escena.
         """
         key = event.key()
+        modifiers = event.modifiers()
+
+        if (
+            key == Qt.Key.Key_0
+            and (modifiers & Qt.KeyboardModifier.AltModifier)
+            and not (
+                modifiers
+                & (
+                    Qt.KeyboardModifier.ControlModifier
+                    | Qt.KeyboardModifier.MetaModifier
+                    | Qt.KeyboardModifier.ShiftModifier
+                )
+            )
+        ):
+            if self._is_rotating_3d:
+                self._finalize_3d_rotation_drag()
+            self._reset_3d_rotation_perspective()
+            return True
+
         if Qt.Key.Key_0 <= key <= Qt.Key.Key_9:
             digit = key - Qt.Key.Key_0
             if digit == 0:
                 return False
             if self.hovered_atom_id is not None:
-                if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+                if modifiers & Qt.KeyboardModifier.ShiftModifier:
                     if digit >= 3:
                         self._create_ring_hotkey(self.hovered_atom_id, digit)
                         return True
@@ -10648,7 +10910,7 @@ class ChemusonCanvas(QGraphicsView):
                     self._create_chain_hotkey(self.hovered_atom_id, digit)
                     return True
             if self.hovered_bond_id is not None:
-                if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+                if modifiers & Qt.KeyboardModifier.ShiftModifier:
                     if digit >= 3:
                         self._create_ring_from_bond_hotkey(self.hovered_bond_id, digit)
                         return True
