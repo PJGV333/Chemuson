@@ -19,6 +19,50 @@ class PersistenceManager:
     VERSION = "0.1.0"
 
     @staticmethod
+    def _parse_bond_style(bond_data: Dict[str, Any]) -> BondStyle:
+        """Resuelve el estilo de enlace aceptando llaves nuevas y legadas."""
+        raw_style = bond_data.get("style")
+        if raw_style is None:
+            raw_style = bond_data.get("type", BondStyle.PLAIN.value)
+        try:
+            return BondStyle(raw_style)
+        except Exception:
+            return BondStyle.PLAIN
+
+    @staticmethod
+    def _parse_bond_stereo(bond_data: Dict[str, Any]) -> BondStereo:
+        """Resuelve estereoquímica de enlace con fallback seguro."""
+        raw_stereo = bond_data.get("stereo", BondStereo.NONE.value)
+        try:
+            return BondStereo(raw_stereo)
+        except Exception:
+            return BondStereo.NONE
+
+    @staticmethod
+    def _infer_coordination_donor(
+        graph: MolGraph,
+        a1_id: int,
+        a2_id: int,
+        preferred: Any = None,
+    ) -> int:
+        """Infere donador para enlaces coordinativos cuando no está serializado."""
+        try:
+            preferred_id = int(preferred) if preferred is not None else None
+        except Exception:
+            preferred_id = None
+        if preferred_id in {a1_id, a2_id}:
+            return preferred_id
+        atom1 = graph.atoms.get(a1_id)
+        atom2 = graph.atoms.get(a2_id)
+        a1_is_center = bool(getattr(atom1, "is_coordination_center", False))
+        a2_is_center = bool(getattr(atom2, "is_coordination_center", False))
+        if a1_is_center and not a2_is_center:
+            return a2_id
+        if a2_is_center and not a1_is_center:
+            return a1_id
+        return a1_id
+
+    @staticmethod
     def save_to_dict(canvas: 'ChemusonCanvas') -> Dict[str, Any]:
         """Serializa el estado del canvas y su modelo en un diccionario.
 
@@ -62,6 +106,7 @@ class PersistenceManager:
                 "a2_id": bond.a2_id,
                 "order": bond.order,
                 "style": bond.style.value,
+                "type": bond.style.value,
                 "stereo": bond.stereo.value,
                 "is_aromatic": bond.is_aromatic,
                 "display_order": bond.display_order,
@@ -130,13 +175,27 @@ class PersistenceManager:
             )
             
         for bond_d in model_data.get("bonds", []):
+            a1_id = bond_d["a1_id"]
+            a2_id = bond_d["a2_id"]
+            style = PersistenceManager._parse_bond_style(bond_d)
+            stereo = PersistenceManager._parse_bond_stereo(bond_d)
+            donor = bond_d.get("donor_atom_id")
+            if style == BondStyle.COORDINATION:
+                donor = PersistenceManager._infer_coordination_donor(
+                    canvas.model,
+                    a1_id,
+                    a2_id,
+                    preferred=donor,
+                )
+            else:
+                donor = None
             canvas.model.add_bond(
-                a1_id=bond_d["a1_id"],
-                a2_id=bond_d["a2_id"],
+                a1_id=a1_id,
+                a2_id=a2_id,
                 order=bond_d.get("order", 1),
                 bond_id=bond_d["id"],
-                style=BondStyle(bond_d.get("style", "plain")),
-                stereo=BondStereo(bond_d.get("stereo", "none")),
+                style=style,
+                stereo=stereo,
                 is_aromatic=bond_d.get("is_aromatic", False),
                 display_order=bond_d.get("display_order"),
                 is_query=bond_d.get("is_query", False),
@@ -144,7 +203,7 @@ class PersistenceManager:
                 length_px=bond_d.get("length_px"),
                 stroke_px=bond_d.get("stroke_px"),
                 color=bond_d.get("color"),
-                donor_atom_id=bond_d.get("donor_atom_id"),
+                donor_atom_id=donor,
             )
             
         canvas.model._next_atom_id = model_data.get("_next_atom_id", canvas.model._next_atom_id)

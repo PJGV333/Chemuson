@@ -1028,6 +1028,9 @@ class BondItem(QGraphicsPathItem):
         self._symmetric_double = False
         self._wedge_join_start: list[WedgeNeighbor] = []
         self._wedge_join_end: list[WedgeNeighbor] = []
+        self._secondary_path = QPainterPath()
+        self._secondary_pen: Optional[QPen] = None
+        self._has_secondary_path = False
         self._update_z_order()
         pen_color = QColor(self._style.bond_color)
         if self._color:
@@ -1059,6 +1062,10 @@ class BondItem(QGraphicsPathItem):
         painter.setPen(self.pen())
         painter.setBrush(self.brush())
         painter.drawPath(self.path())
+        if self._has_secondary_path and self._secondary_pen is not None and not self._secondary_path.isEmpty():
+            painter.setPen(self._secondary_pen)
+            painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+            painter.drawPath(self._secondary_path)
 
     def _update_z_order(self) -> None:
         """Ordena enlaces por profundidad para unión estereoquímica estable."""
@@ -1681,6 +1688,9 @@ class BondItem(QGraphicsPathItem):
         x1, y1 = atom1.x, atom1.y
         x2, y2 = atom2.x, atom2.y
         path = QPainterPath()
+        self._secondary_path = QPainterPath()
+        self._secondary_pen = None
+        self._has_secondary_path = False
         color = QColor(self._style.bond_color)
         if self._color:
             candidate = QColor(self._color)
@@ -1722,10 +1732,14 @@ class BondItem(QGraphicsPathItem):
             vy = self._ring_center.y() - midy
             offset_sign = 1 if (nx * vx + ny * vy) >= 0 else -1
 
-        # Aromatic bonds with circle mode keep single edge line plus central ring marker.
-        # Respect visual styles like BOLD so users can thicken Haworth-like projections
-        # without losing aromatic circle semantics.
-        if self.is_aromatic and self.render_aromatic_as_circle:
+        # En modo de círculo aromático, los enlaces aromáticos "planos" se dibujan
+        # como una sola arista; estilos estereográficos (p. ej. cuña/hashed) deben
+        # conservar su geometría para no perder información de proyección.
+        if (
+            self.is_aromatic
+            and self.render_aromatic_as_circle
+            and self.style in {BondStyle.PLAIN, BondStyle.BOLD, BondStyle.INTERACTION}
+        ):
             base_stroke_px = self._stroke_px if self._stroke_px is not None else self._style.stroke_px
             stroke_px = base_stroke_px
             pen_style = Qt.PenStyle.SolidLine
@@ -1810,17 +1824,41 @@ class BondItem(QGraphicsPathItem):
                 if effective_order == 2:
                     path.moveTo(e1x, e1y)
                     path.lineTo(e2x, e2y)
-                    q1x = e1x + nx * offset * offset_sign
-                    q1y = e1y + ny * offset * offset_sign
-                    q2x = e2x + nx * offset * offset_sign
-                    q2y = e2y + ny * offset * offset_sign
-                    if not self._prefer_full_length:
-                        q1x += ux * self._style.inner_trim_px
-                        q1y += uy * self._style.inner_trim_px
-                        q2x -= ux * self._style.inner_trim_px
-                        q2y -= uy * self._style.inner_trim_px
-                    path.moveTo(q1x, q1y)
-                    path.lineTo(q2x, q2y)
+                    if self.is_aromatic:
+                        # Aromatic double + bold: only sigma line is bold.
+                        # Keep pi line at normal thickness for uniform rings.
+                        s1x, s1y, s2x, s2y = self._extend_line_endpoints(
+                            p1x, p1y, p2x, p2y, ux, uy, trim_start, trim_end, stroke_px
+                        )
+                        pi_offset = self._style.double_offset_px
+                        q1x = s1x + nx * pi_offset * offset_sign
+                        q1y = s1y + ny * pi_offset * offset_sign
+                        q2x = s2x + nx * pi_offset * offset_sign
+                        q2y = s2y + ny * pi_offset * offset_sign
+                        if (not self._symmetric_double) and (not self._prefer_full_length):
+                            q1x += ux * self._style.inner_trim_px
+                            q1y += uy * self._style.inner_trim_px
+                            q2x -= ux * self._style.inner_trim_px
+                            q2y -= uy * self._style.inner_trim_px
+                        self._secondary_path.moveTo(q1x, q1y)
+                        self._secondary_path.lineTo(q2x, q2y)
+                        secondary_pen = QPen(color, stroke_px)
+                        secondary_pen.setCapStyle(self._style.cap_style)
+                        secondary_pen.setJoinStyle(self._style.join_style)
+                        self._secondary_pen = secondary_pen
+                        self._has_secondary_path = True
+                    else:
+                        q1x = e1x + nx * offset * offset_sign
+                        q1y = e1y + ny * offset * offset_sign
+                        q2x = e2x + nx * offset * offset_sign
+                        q2y = e2y + ny * offset * offset_sign
+                        if not self._prefer_full_length:
+                            q1x += ux * self._style.inner_trim_px
+                            q1y += uy * self._style.inner_trim_px
+                            q2x -= ux * self._style.inner_trim_px
+                            q2y -= uy * self._style.inner_trim_px
+                        path.moveTo(q1x, q1y)
+                        path.lineTo(q2x, q2y)
                 else:
                     path.moveTo(e1x, e1y)
                     path.lineTo(e2x, e2y)

@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import QApplication
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from core.model import Atom, Bond, BondStyle, BondStereo
+from gui.canvas import ChemusonCanvas
 from gui.items import (
     BondItem,
     WEDGE_WIDE_END_MITER_OVERLAP_PX,
@@ -238,3 +239,82 @@ def test_bond_z_order_stereo_priority():
     )
     assert wedge.zValue() > plain.zValue()
     assert plain.zValue() > hashed.zValue()
+
+
+def test_aromatic_circle_mode_keeps_wedge_geometry():
+    """En modo círculo aromático, una cuña aromática no debe colapsar a línea."""
+    atom_a = Atom(id=20, element="C", x=0.0, y=0.0)
+    atom_b = Atom(id=21, element="C", x=40.0, y=0.0)
+    bond = Bond(
+        id=30,
+        a1_id=20,
+        a2_id=21,
+        style=BondStyle.WEDGE,
+        stereo=BondStereo.UP,
+        is_aromatic=True,
+        display_order=2,
+        stroke_px=2.0,
+    )
+    item = BondItem(
+        bond,
+        atom_a,
+        atom_b,
+        render_aromatic_as_circle=True,
+    )
+    rect = item.path().boundingRect()
+    assert rect.height() > 0.5
+
+
+def test_wedge_join_context_includes_bold_neighbor():
+    """La integración de cuña en extremo ancho debe considerar enlace bold."""
+    canvas = ChemusonCanvas()
+    atom_a = canvas.model.add_atom("C", 80.0, 220.0)
+    atom_b = canvas.model.add_atom("C", 140.0, 220.0)
+    atom_c = canvas.model.add_atom("C", 190.0, 250.0)
+
+    wedge = canvas.model.add_bond(
+        atom_a.id,
+        atom_b.id,
+        style=BondStyle.WEDGE,
+        stereo=BondStereo.UP,
+    )
+    canvas.model.add_bond(
+        atom_b.id,
+        atom_c.id,
+        style=BondStyle.BOLD,
+        stereo=BondStereo.NONE,
+    )
+
+    canvas._rebuild_items_from_model()
+    wedge_item = canvas.bond_items[wedge.id]
+    assert wedge_item._wedge_join_end, "No se detectaron vecinos en extremo ancho de la cuña"
+    # El vecino bold debe entrar con un ancho mayor que el trazo base.
+    max_neighbor_width = max(neighbor[2] for neighbor in wedge_item._wedge_join_end)
+    assert max_neighbor_width > canvas.drawing_style.stroke_px * 1.5
+
+
+def test_aromatic_double_bold_uses_thin_secondary_pi_line():
+    """En doble aromático bold, el trazo pi debe conservar grosor normal."""
+    atom_a = Atom(id=30, element="C", x=0.0, y=0.0)
+    atom_b = Atom(id=31, element="C", x=40.0, y=0.0)
+    bond = Bond(
+        id=40,
+        a1_id=30,
+        a2_id=31,
+        order=2,
+        style=BondStyle.BOLD,
+        stereo=BondStereo.NONE,
+        is_aromatic=True,
+        display_order=2,
+        stroke_px=2.0,
+    )
+    item = BondItem(
+        bond,
+        atom_a,
+        atom_b,
+        render_aromatic_as_circle=False,
+    )
+    assert item._has_secondary_path
+    assert item._secondary_pen is not None
+    assert item.pen().widthF() > item._secondary_pen.widthF()
+    assert item._secondary_pen.widthF() == pytest.approx(2.0, abs=1e-6)

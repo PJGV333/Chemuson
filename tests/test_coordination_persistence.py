@@ -52,6 +52,8 @@ class CoordinationPersistenceTest(unittest.TestCase):
         )
 
         data = PersistenceManager.save_to_dict(canvas)
+        self.assertEqual(data["model"]["bonds"][0]["style"], BondStyle.COORDINATION.value)
+        self.assertEqual(data["model"]["bonds"][0]["type"], BondStyle.COORDINATION.value)
         restored = _FakeCanvas()
         PersistenceManager.load_from_dict(data, restored)
 
@@ -70,6 +72,67 @@ class CoordinationPersistenceTest(unittest.TestCase):
         restored_bond = next(iter(restored.model.bonds.values()))
         self.assertEqual(restored_bond.style, BondStyle.COORDINATION)
         self.assertEqual(restored_bond.donor_atom_id, donor.id)
+
+    def test_load_defaults_plain_when_style_missing(self):
+        canvas = _FakeCanvas()
+        data = {
+            "application": "Chemuson",
+            "version": PersistenceManager.VERSION,
+            "model": {
+                "atoms": [
+                    {"id": 1, "element": "C", "x": 0.0, "y": 0.0},
+                    {"id": 2, "element": "O", "x": 40.0, "y": 0.0},
+                ],
+                "bonds": [
+                    {
+                        "id": 1,
+                        "a1_id": 1,
+                        "a2_id": 2,
+                        "order": 1,
+                    }
+                ],
+            },
+            "canvas": {"ok": True},
+        }
+        PersistenceManager.load_from_dict(data, canvas)
+
+        bond = canvas.model.get_bond(1)
+        self.assertEqual(bond.style, BondStyle.PLAIN)
+        self.assertIsNone(bond.donor_atom_id)
+
+    def test_load_coordination_without_donor_infers_non_center_as_donor(self):
+        canvas = _FakeCanvas()
+        data = {
+            "application": "Chemuson",
+            "version": PersistenceManager.VERSION,
+            "model": {
+                "atoms": [
+                    {"id": 1, "element": "N", "x": 40.0, "y": 0.0},
+                    {
+                        "id": 2,
+                        "element": "Pd",
+                        "x": 0.0,
+                        "y": 0.0,
+                        "is_coordination_center": True,
+                    },
+                ],
+                "bonds": [
+                    {
+                        "id": 1,
+                        "a1_id": 1,
+                        "a2_id": 2,
+                        "order": 1,
+                        "type": BondStyle.COORDINATION.value,
+                    }
+                ],
+            },
+            "canvas": {"ok": True},
+        }
+        PersistenceManager.load_from_dict(data, canvas)
+
+        bond = canvas.model.get_bond(1)
+        self.assertEqual(bond.style, BondStyle.COORDINATION)
+        self.assertEqual(bond.donor_atom_id, 1)
 
 
 if __name__ == "__main__":

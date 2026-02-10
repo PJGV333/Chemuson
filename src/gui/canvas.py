@@ -1170,7 +1170,9 @@ class ChemusonCanvas(QGraphicsView):
             return
 
         if self.current_tool == "tool_coordination_center":
-            element = self.state.default_element or "C"
+            element = self.state.default_element or "Pd"
+            if element == "C":
+                element = "Pd"
             if clicked_atom_id is None:
                 cmd = AddAtomCommand(
                     self.model,
@@ -3193,12 +3195,10 @@ class ChemusonCanvas(QGraphicsView):
                     render_aromatic_as_circle=self.state.use_aromatic_circles,
                     style=self.drawing_style
                 )
-                if bond.ring_id is not None:
-                    item.set_ring_context(self._ring_centers.get(bond.ring_id))
-                elif bond.is_aromatic:
-                    item.set_ring_context(self._aromatic_ring_center_for_bond(bond))
-                else:
-                    item.set_ring_context(None)
+                ring_center = self._aromatic_ring_center_for_bond(bond) if bond.is_aromatic else None
+                if ring_center is None and bond.ring_id is not None:
+                    ring_center = self._ring_centers.get(bond.ring_id)
+                item.set_ring_context(ring_center)
                 item.set_bond_in_ring(self._bond_in_ring_for_pairs(bond, ring_pairs))
                 item.set_offset_sign(self._bond_offset_sign(bond))
                 self._configure_bond_rendering(bond, item)
@@ -3587,6 +3587,7 @@ class ChemusonCanvas(QGraphicsView):
                         "a2": bond.a2_id,
                         "order": bond.order,
                         "style": bond.style.value if bond.style is not None else BondStyle.PLAIN.value,
+                        "type": bond.style.value if bond.style is not None else BondStyle.PLAIN.value,
                         "stereo": bond.stereo.value if bond.stereo is not None else BondStereo.NONE.value,
                         "is_aromatic": bond.is_aromatic,
                         "display_order": bond.display_order,
@@ -3728,14 +3729,21 @@ class ChemusonCanvas(QGraphicsView):
             a2 = id_map.get(int(bond_d.get("a2")))
             if a1 is None or a2 is None:
                 continue
-            try:
-                style = BondStyle(bond_d.get("style", BondStyle.PLAIN.value))
-            except Exception:
-                style = BondStyle.PLAIN
-            try:
-                stereo = BondStereo(bond_d.get("stereo", BondStereo.NONE.value))
-            except Exception:
-                stereo = BondStereo.NONE
+            style = self._parse_bond_style_payload(bond_d)
+            stereo = self._parse_bond_stereo_payload(bond_d)
+            donor_atom_id = None
+            raw_donor = bond_d.get("donor_atom_id")
+            if raw_donor is not None:
+                try:
+                    donor_atom_id = id_map.get(int(raw_donor))
+                except Exception:
+                    donor_atom_id = None
+            if style == BondStyle.COORDINATION:
+                donor_atom_id = self._infer_coordination_donor_atom(
+                    a1,
+                    a2,
+                    preferred=donor_atom_id,
+                )
             cmd = AddBondCommand(
                 self.model,
                 self,
@@ -3750,11 +3758,7 @@ class ChemusonCanvas(QGraphicsView):
                 stroke_px=bond_d.get("stroke_px"),
                 color=bond_d.get("color"),
                 ring_id=map_ring(bond_d.get("ring_id")),
-                donor_atom_id=id_map.get(
-                    int(bond_d.get("donor_atom_id"))
-                )
-                if bond_d.get("donor_atom_id") is not None
-                else None,
+                donor_atom_id=donor_atom_id,
             )
             if has_undo_items:
                 self.undo_stack.push(cmd)
@@ -5781,12 +5785,10 @@ class ChemusonCanvas(QGraphicsView):
             style=self.drawing_style,
         )
         ring_pairs = self._compute_ring_bond_pairs()
-        if bond.ring_id is not None:
-            item.set_ring_context(self._ring_centers.get(bond.ring_id))
-        elif bond.is_aromatic:
-            item.set_ring_context(self._aromatic_ring_center_for_bond(bond))
-        else:
-            item.set_ring_context(None)
+        ring_center = self._aromatic_ring_center_for_bond(bond) if bond.is_aromatic else None
+        if ring_center is None and bond.ring_id is not None:
+            ring_center = self._ring_centers.get(bond.ring_id)
+        item.set_ring_context(ring_center)
         item.set_bond_in_ring(self._bond_in_ring_for_pairs(bond, ring_pairs))
         item.set_offset_sign(self._bond_offset_sign(bond))
         self._configure_bond_rendering(bond, item)
@@ -6015,12 +6017,10 @@ class ChemusonCanvas(QGraphicsView):
         item = self.bond_items.get(bond_id)
         if item is not None:
             ring_pairs = self._compute_ring_bond_pairs()
-            if bond.ring_id is not None:
-                item.set_ring_context(self._ring_centers.get(bond.ring_id))
-            elif bond.is_aromatic:
-                item.set_ring_context(self._aromatic_ring_center_for_bond(bond))
-            else:
-                item.set_ring_context(None)
+            ring_center = self._aromatic_ring_center_for_bond(bond) if bond.is_aromatic else None
+            if ring_center is None and bond.ring_id is not None:
+                ring_center = self._ring_centers.get(bond.ring_id)
+            item.set_ring_context(ring_center)
             item.set_bond_in_ring(self._bond_in_ring_for_pairs(bond, ring_pairs))
             item.set_offset_sign(self._bond_offset_sign(bond))
             self._configure_bond_rendering(bond, item)
@@ -6076,7 +6076,7 @@ class ChemusonCanvas(QGraphicsView):
         for other in self.model.bonds.values():
             if other.id == bond.id:
                 continue
-            if simple_only and other.style != BondStyle.PLAIN:
+            if simple_only and other.style not in {BondStyle.PLAIN, BondStyle.BOLD}:
                 continue
             if other.a1_id == atom_id:
                 other_atom = self.model.get_atom(other.a2_id)
@@ -6122,9 +6122,10 @@ class ChemusonCanvas(QGraphicsView):
             item.set_wedge_join_neighbors([], [])
             return
         start_neighbors = self._bond_neighbor_vectors(bond, bond.a1_id)
-        # El extremo ancho de la cuña se integra contra enlaces planos
-        # (incluye dobles/aromáticos), reutilizando la misma lógica de join
-        # que ya funciona para enlaces sencillos.
+        # El extremo ancho de la cuña se integra contra enlaces planos:
+        # - Plain (incluye dobles/aromáticos por order/display_order)
+        # - Bold
+        # Esto permite vértices limpios en uniones cuña->bold.
         end_neighbors = self._bond_neighbor_vectors(bond, bond.a2_id, simple_only=True)
         item.set_wedge_join_neighbors(start_neighbors, end_neighbors)
 
@@ -6344,6 +6345,11 @@ class ChemusonCanvas(QGraphicsView):
         ny = dx / length
 
         if bond.is_aromatic:
+            aromatic_center = self._aromatic_ring_center_for_bond(bond)
+            if aromatic_center is not None:
+                vx = aromatic_center.x() - mid.x()
+                vy = aromatic_center.y() - mid.y()
+                return 1 if (nx * vx + ny * vy) >= 0 else -1
             neighbor_points = []
             for other_bond in self.model.bonds.values():
                 if not other_bond.is_aromatic or other_bond.id == bond.id:
@@ -6761,9 +6767,13 @@ class ChemusonCanvas(QGraphicsView):
         if not rings:
             return []
 
-        aromatic_pairs = {
-            frozenset({bond.a1_id, bond.a2_id})
+        bond_by_pair = {
+            frozenset({bond.a1_id, bond.a2_id}): bond
             for bond in self.model.bonds.values()
+        }
+        aromatic_pairs = {
+            pair
+            for pair, bond in bond_by_pair.items()
             if bond.is_aromatic
         }
         if not aromatic_pairs:
@@ -6775,8 +6785,27 @@ class ChemusonCanvas(QGraphicsView):
             ring_pairs = ring_bonds(view, ring)
             if not ring_pairs:
                 continue
-            # Aromático si todos los enlaces del anillo están marcados como aromáticos.
-            if not all(pair in aromatic_pairs for pair in ring_pairs):
+            # Modo estricto: todos los enlaces del ciclo son aromáticos.
+            missing_pairs = [pair for pair in ring_pairs if pair not in aromatic_pairs]
+            if missing_pairs:
+                # Tolerancia visual: permitir hasta dos enlaces no aromáticos
+                # cuando fueron estilizados como proyección estereográfica
+                # (cuña/hash). Esto evita perder el círculo aromático por un
+                # ajuste de estilo local en anillos aromáticos.
+                if len(missing_pairs) > 2:
+                    continue
+                missing_bonds = [bond_by_pair.get(pair) for pair in missing_pairs]
+                if any(bond is None for bond in missing_bonds):
+                    continue
+                if any(
+                    bond.style not in {BondStyle.WEDGE, BondStyle.HASHED}
+                    for bond in missing_bonds
+                ):
+                    continue
+                aromatic_count = len(ring_pairs) - len(missing_pairs)
+                if aromatic_count < max(1, len(ring_pairs) - 2):
+                    continue
+            if not ring_pairs:
                 continue
 
             atom_ids = list(ring)
@@ -7922,6 +7951,7 @@ class ChemusonCanvas(QGraphicsView):
         act_coord_sphere_toggle_fill = None
         act_coord_sphere_toggle_transparent = None
         act_coord_sphere_radius = None
+        act_arrange_coordination = None
         if isinstance(clicked_item, AtomItem):
             atom = self.model.get_atom(clicked_item.atom_id)
             if atom is not None and atom.element not in ELEMENT_SYMBOLS:
@@ -7968,6 +7998,18 @@ class ChemusonCanvas(QGraphicsView):
                 coordination_has_custom_color and not coordination_all_transparent
             )
             act_coord_sphere_toggle_fill.setEnabled(not coordination_all_transparent)
+        arrangement_center_ids = [
+            atom_id
+            for atom_id in coordination_atom_ids
+            if bool(getattr(self.model.get_atom(atom_id), "is_coordination_center", False))
+        ]
+        if arrangement_center_ids:
+            can_arrange = any(
+                len(self._coordination_ligands_for_center(center_id)) >= 2
+                for center_id in arrangement_center_ids
+            )
+            act_arrange_coordination = menu.addAction("Distribuir ligandos alrededor")
+            act_arrange_coordination.setEnabled(can_arrange)
         menu.addSeparator()
         act_select_all = menu.addAction("Seleccionar todo")
         menu.addSeparator()
@@ -8034,6 +8076,9 @@ class ChemusonCanvas(QGraphicsView):
             return
         if act_coord_sphere_radius is not None and action == act_coord_sphere_radius:
             self._prompt_coordination_sphere_radius(styled_coordination_ids)
+            return
+        if act_arrange_coordination is not None and action == act_arrange_coordination:
+            self._auto_arrange_coordination_ligands(arrangement_center_ids)
             return
         if action == act_analysis_name:
             self._run_analysis_action("name", scene_pos)
@@ -8248,6 +8293,108 @@ class ChemusonCanvas(QGraphicsView):
                 )
             )
         self.undo_stack.endMacro()
+
+    def _coordination_ligands_for_center(self, center_atom_id: int) -> list[int]:
+        """Lista ligandos conectados al centro mediante enlaces coordinativos."""
+        if center_atom_id not in self.model.atoms:
+            return []
+        ligands: list[int] = []
+        seen: set[int] = set()
+        for bond in self.model.bonds.values():
+            if bond.style != BondStyle.COORDINATION:
+                continue
+            other_id: Optional[int] = None
+            if bond.a1_id == center_atom_id:
+                other_id = bond.a2_id
+            elif bond.a2_id == center_atom_id:
+                other_id = bond.a1_id
+            if other_id is None or other_id == center_atom_id:
+                continue
+            if other_id not in self.model.atoms or other_id in seen:
+                continue
+            seen.add(other_id)
+            ligands.append(other_id)
+        return ligands
+
+    @staticmethod
+    def _coordination_arrangement_step_deg(count: int) -> float:
+        """Devuelve separación angular para distribuir ligandos."""
+        if count <= 1:
+            return 360.0
+        if count == 2:
+            return 180.0
+        if count == 3:
+            return 120.0
+        if count == 4:
+            return 90.0
+        if count == 6:
+            return 60.0
+        return 360.0 / float(count)
+
+    def _coordination_arrangement_radius(self, center_id: int, ligand_ids: list[int]) -> float:
+        """Calcula radio objetivo para auto-arrange de ligandos."""
+        center = self.model.get_atom(center_id)
+        distances: list[float] = []
+        for ligand_id in ligand_ids:
+            ligand = self.model.atoms.get(ligand_id)
+            if ligand is None:
+                continue
+            distances.append(math.hypot(ligand.x - center.x, ligand.y - center.y))
+        base_length = max(18.0, float(self.state.bond_length))
+        if not distances:
+            return base_length
+        avg = sum(distances) / float(len(distances))
+        target = max(base_length * 0.8, avg)
+        return min(target, base_length * 2.2)
+
+    def _auto_arrange_coordination_ligands(self, center_atom_ids: Iterable[int]) -> None:
+        """Distribuye ligandos coordinativos alrededor de uno o más centros."""
+        centers = [
+            atom_id
+            for atom_id in center_atom_ids
+            if atom_id in self.model.atoms
+            and bool(getattr(self.model.get_atom(atom_id), "is_coordination_center", False))
+        ]
+        if not centers:
+            return
+        before: Dict[int, Tuple[float, float]] = {}
+        after: Dict[int, Tuple[float, float]] = {}
+        moved_ligands: set[int] = set()
+        for center_id in centers:
+            center = self.model.get_atom(center_id)
+            ligand_ids = self._coordination_ligands_for_center(center_id)
+            if len(ligand_ids) < 2:
+                continue
+            ordered_ligands = sorted(
+                ligand_ids,
+                key=lambda atom_id: math.atan2(
+                    self.model.get_atom(atom_id).y - center.y,
+                    self.model.get_atom(atom_id).x - center.x,
+                ),
+            )
+            step_deg = self._coordination_arrangement_step_deg(len(ordered_ligands))
+            first_atom = self.model.get_atom(ordered_ligands[0])
+            start_angle_deg = math.degrees(
+                math.atan2(first_atom.y - center.y, first_atom.x - center.x)
+            )
+            radius = self._coordination_arrangement_radius(center_id, ordered_ligands)
+
+            for index, ligand_id in enumerate(ordered_ligands):
+                if ligand_id in moved_ligands:
+                    continue
+                ligand = self.model.get_atom(ligand_id)
+                angle_deg = start_angle_deg + step_deg * index
+                angle_rad = math.radians(angle_deg)
+                new_x = center.x + radius * math.cos(angle_rad)
+                new_y = center.y + radius * math.sin(angle_rad)
+                if abs(new_x - ligand.x) < 0.05 and abs(new_y - ligand.y) < 0.05:
+                    continue
+                before[ligand_id] = (ligand.x, ligand.y)
+                after[ligand_id] = (new_x, new_y)
+                moved_ligands.add(ligand_id)
+        if not after:
+            return
+        self.undo_stack.push(MoveAtomsCommand(self.model, self, before, after))
 
     def _bond_stroke_step(self) -> float:
         """Método auxiliar para  bond stroke step.
@@ -9672,6 +9819,26 @@ class ChemusonCanvas(QGraphicsView):
             return a1_id
         # Si no hay centro claro, conservar dirección del primer click.
         return a1_id
+
+    @staticmethod
+    def _parse_bond_style_payload(bond_data: dict) -> BondStyle:
+        """Resuelve estilo de enlace para payloads nuevos y legados."""
+        raw_style = bond_data.get("style")
+        if raw_style is None:
+            raw_style = bond_data.get("type", BondStyle.PLAIN.value)
+        try:
+            return BondStyle(raw_style)
+        except Exception:
+            return BondStyle.PLAIN
+
+    @staticmethod
+    def _parse_bond_stereo_payload(bond_data: dict) -> BondStereo:
+        """Resuelve estereo de enlace para payloads con fallback seguro."""
+        raw_stereo = bond_data.get("stereo", BondStereo.NONE.value)
+        try:
+            return BondStereo(raw_stereo)
+        except Exception:
+            return BondStereo.NONE
 
     def _create_or_update_bond(
         self,
