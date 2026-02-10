@@ -5976,9 +5976,7 @@ class ChemusonCanvas(QGraphicsView):
         for other in self.model.bonds.values():
             if other.id == bond.id:
                 continue
-            if simple_only and (
-                other.style != BondStyle.PLAIN or other.order != 1 or other.is_aromatic
-            ):
+            if simple_only and other.style != BondStyle.PLAIN:
                 continue
             if other.a1_id == atom_id:
                 other_atom = self.model.get_atom(other.a2_id)
@@ -6024,7 +6022,9 @@ class ChemusonCanvas(QGraphicsView):
             item.set_wedge_join_neighbors([], [])
             return
         start_neighbors = self._bond_neighbor_vectors(bond, bond.a1_id)
-        # Miter in the wide terminal uses only plain single neighbors.
+        # El extremo ancho de la cuña se integra contra enlaces planos
+        # (incluye dobles/aromáticos), reutilizando la misma lógica de join
+        # que ya funciona para enlaces sencillos.
         end_neighbors = self._bond_neighbor_vectors(bond, bond.a2_id, simple_only=True)
         item.set_wedge_join_neighbors(start_neighbors, end_neighbors)
 
