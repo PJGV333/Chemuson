@@ -6252,6 +6252,7 @@ class ChemusonCanvas(QGraphicsView):
         Side Effects:
             Puede modificar el estado interno o la escena.
         """
+        self._clear_trackball_reference_if_desynced(atom_ids)
         for bond in self.model.bonds.values():
             if bond.a1_id in atom_ids or bond.a2_id in atom_ids:
                 self.update_bond_item(bond.id)
@@ -6569,10 +6570,9 @@ class ChemusonCanvas(QGraphicsView):
         
         # Find aromatic rings and add circles
         rings = self._detect_aromatic_rings(with_atoms=True)
-        trackball_affine = self._trackball_affine_context()
         for ring in rings:
             atom_ids = sorted(ring.get("atoms", set()))
-            self._draw_aromatic_circle(atom_ids, trackball_affine=trackball_affine)
+            self._draw_aromatic_circle(atom_ids)
 
     def _trackball_affine_context(
         self,
@@ -6675,14 +6675,6 @@ class ChemusonCanvas(QGraphicsView):
         if len(atom_id_list) < 3:
             return None
 
-        if trackball_affine is not None:
-            projected = self._aromatic_circle_geometry_from_trackball_reference(
-                atom_id_list,
-                trackball_affine,
-            )
-            if projected is not None:
-                return projected
-
         ring_atoms = []
         for atom_id in atom_id_list:
             atom = self.model.atoms.get(atom_id)
@@ -6697,8 +6689,32 @@ class ChemusonCanvas(QGraphicsView):
             sum(math.hypot(atom.x - cx, atom.y - cy) for atom in ring_atoms)
             / len(ring_atoms)
         )
-        radius = max(2.0, avg_dist * 0.65)
-        return cx, cy, radius, radius, 0.0
+        circular_radius = max(2.0, avg_dist * 0.65)
+
+        centered = [(atom.x - cx, atom.y - cy) for atom in ring_atoms]
+        c11 = sum(dx * dx for dx, _ in centered) / len(centered)
+        c22 = sum(dy * dy for _, dy in centered) / len(centered)
+        c12 = sum(dx * dy for dx, dy in centered) / len(centered)
+        trace = c11 + c22
+        disc = max(0.0, (c11 - c22) * (c11 - c22) + 4.0 * c12 * c12)
+        root = math.sqrt(disc)
+        eig_1 = max(0.0, 0.5 * (trace + root))
+        eig_2 = max(0.0, 0.5 * (trace - root))
+
+        max_eig = max(eig_1, eig_2)
+        if max_eig <= 1e-9:
+            return cx, cy, circular_radius, circular_radius, 0.0
+
+        # Evita jitter angular en anillos prácticamente isotrópicos.
+        if abs(eig_1 - eig_2) <= max(1e-6, max_eig * 1e-4):
+            return cx, cy, circular_radius, circular_radius, 0.0
+
+        # Para puntos distribuidos sobre una elipse, var ~= r^2 / 2.
+        scale = 0.65 * math.sqrt(2.0)
+        radius_x = max(2.0, math.sqrt(eig_1) * scale)
+        radius_y = max(2.0, math.sqrt(eig_2) * scale)
+        angle_deg = 0.5 * math.degrees(math.atan2(2.0 * c12, c11 - c22))
+        return cx, cy, radius_x, radius_y, angle_deg
 
     def _draw_aromatic_circle(
         self,
@@ -6729,7 +6745,6 @@ class ChemusonCanvas(QGraphicsView):
         if not atom_ids:
             return
 
-        trackball_affine = self._trackball_affine_context()
         changed_atoms = set(atom_ids)
         force_refresh = False
         for circle in list(self.aromatic_circles):
@@ -6746,7 +6761,6 @@ class ChemusonCanvas(QGraphicsView):
                 continue
             geometry = self._aromatic_circle_geometry_for_atom_ids(
                 ring_set,
-                trackball_affine=trackball_affine,
             )
             if geometry is None:
                 force_refresh = True
@@ -6789,16 +6803,16 @@ class ChemusonCanvas(QGraphicsView):
             missing_pairs = [pair for pair in ring_pairs if pair not in aromatic_pairs]
             if missing_pairs:
                 # Tolerancia visual: permitir hasta dos enlaces no aromáticos
-                # cuando fueron estilizados como proyección estereográfica
-                # (cuña/hash). Esto evita perder el círculo aromático por un
-                # ajuste de estilo local en anillos aromáticos.
+                # cuando fueron estilizados para proyección 2D
+                # (cuña/hash/bold). Esto evita perder el círculo aromático por
+                # un ajuste de estilo local en anillos aromáticos.
                 if len(missing_pairs) > 2:
                     continue
                 missing_bonds = [bond_by_pair.get(pair) for pair in missing_pairs]
                 if any(bond is None for bond in missing_bonds):
                     continue
                 if any(
-                    bond.style not in {BondStyle.WEDGE, BondStyle.HASHED}
+                    bond.style not in {BondStyle.WEDGE, BondStyle.HASHED, BondStyle.BOLD}
                     for bond in missing_bonds
                 ):
                     continue
@@ -7364,13 +7378,18 @@ class ChemusonCanvas(QGraphicsView):
             ]
         elif self._select_drag_mode == "rect" and self._select_start_pos is not None:
             rect = QRectF(self._select_start_pos, self._last_scene_pos).normalized()
-            items = [
+            candidates = [
                 item
                 for item in self.scene.items(rect)
                 if isinstance(
                     item,
                     (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem),
                 )
+            ]
+            items = [
+                item
+                for item in candidates
+                if rect.contains(item.sceneBoundingRect().center())
             ]
 
         if not self._select_additive:
@@ -8865,6 +8884,45 @@ class ChemusonCanvas(QGraphicsView):
         """Devuelve IDs objetivo para trackball (solo selección activa)."""
         atom_ids = self._selected_atom_ids_for_transform()
         return tuple(sorted(atom_id for atom_id in atom_ids if atom_id in self.model.atoms))
+
+    def _clear_trackball_reference(self) -> None:
+        """Limpia la referencia pseudo-3D cuando deja de representar la geometría actual."""
+        self._rotation_3d_ref_atom_ids = tuple()
+        self._rotation_3d_ref_positions = {}
+        self._rotation_3d_pitch_deg = 0.0
+        self._rotation_3d_yaw_deg = 0.0
+
+    def _clear_trackball_reference_if_desynced(self, atom_ids: set[int]) -> None:
+        """Invalida trackball si un movimiento 2D rompe la referencia afín."""
+        if self._is_rotating_3d:
+            return
+        if not atom_ids:
+            return
+        ref_atom_ids = self._rotation_3d_ref_atom_ids
+        if not ref_atom_ids or not self._rotation_3d_ref_positions:
+            return
+        ref_set = set(ref_atom_ids)
+        moved_tracked = ref_set.intersection(atom_ids)
+        if not moved_tracked:
+            return
+        if any(atom_id not in self.model.atoms for atom_id in ref_atom_ids):
+            self._clear_trackball_reference()
+            return
+        if any(atom_id not in self._rotation_3d_ref_positions for atom_id in ref_atom_ids):
+            self._clear_trackball_reference()
+            return
+
+        projected = self._project_trackball_reference(
+            ref_atom_ids,
+            self._rotation_3d_pitch_deg,
+            self._rotation_3d_yaw_deg,
+        )
+        for atom_id in moved_tracked:
+            atom = self.model.get_atom(atom_id)
+            expected_x, expected_y = projected[atom_id]
+            if math.hypot(expected_x - atom.x, expected_y - atom.y) > 1e-4:
+                self._clear_trackball_reference()
+                return
 
     def _connected_component_atom_ids(self, seed_atom_id: int) -> set[int]:
         """Obtiene la componente conectada del átomo semilla."""
