@@ -19,6 +19,7 @@ from core.model import BondStyle, BondStereo
 from gui.icons import (
     draw_arrow_icon,
     draw_bond_icon,
+    draw_coordination_sphere_icon,
     draw_generic_icon,
     draw_glyph_icon,
     draw_ring_icon,
@@ -136,6 +137,17 @@ class ChemusonToolbar(QToolBar):
             draw_glyph_icon("C"), "Labels", "tool_atom"
         )
         self._build_label_palette(self.label_button.menu())
+
+        self.coord_action = self._add_tool_action(
+            draw_coordination_sphere_icon(),
+            "Centro de coordinación (esfera)",
+            "tool_coordination_center",
+        )
+        self._add_tool_action(
+            draw_generic_icon("rotate_right"),
+            "Rotación 3D precisa",
+            "tool_rotate_3d_precise",
+        )
         self.addSeparator()
         
         # --- Text Tool ---
@@ -263,6 +275,10 @@ class ChemusonToolbar(QToolBar):
         """Emite la herramienta de flecha actualmente activa."""
         self.tool_changed.emit(self._current_arrow_tool_id)
 
+    def _emit_current_coordination_tool(self, checked: bool = False) -> None:
+        """Emite la herramienta de centro metálico actualmente activa."""
+        self.tool_changed.emit("tool_coordination_center")
+
     def _make_palette_entry(self, icon, tooltip: str, callback, enabled: bool = True) -> dict:
         """Construye un descriptor de entrada para menús de paleta."""
         return {
@@ -357,6 +373,7 @@ class ChemusonToolbar(QToolBar):
         icon_wedge = draw_bond_icon("wedge")
         icon_hashed = draw_bond_icon("hashed")
         icon_wavy = draw_bond_icon("wavy")
+        icon_coordination = draw_bond_icon("coordination")
 
         entries = [
             self._make_palette_entry(
@@ -465,6 +482,21 @@ class ChemusonToolbar(QToolBar):
                     {
                         "order": 1,
                         "style": BondStyle.INTERACTION,
+                        "stereo": BondStereo.NONE,
+                        "mode": "set",
+                    },
+                ),
+            ),
+            self._make_palette_entry(
+                icon_coordination,
+                "Enlace coordinativo",
+                lambda ic=icon_coordination: self._select_bond_palette(
+                    self.bond_button,
+                    ic,
+                    "Enlace coordinativo",
+                    {
+                        "order": 1,
+                        "style": BondStyle.COORDINATION,
                         "stereo": BondStereo.NONE,
                         "mode": "set",
                     },
@@ -579,6 +611,13 @@ class ChemusonToolbar(QToolBar):
         periodic_action.triggered.connect(self.periodic_table_requested.emit)
         menu.addAction(periodic_action)
 
+    def _build_coordination_palette(self, menu: QMenu) -> None:
+        """Mantenido por compatibilidad; no se usa paleta de metales."""
+        menu.clear()
+        act = QAction(draw_coordination_sphere_icon(), "Centro de coordinación", self)
+        act.triggered.connect(lambda checked=False: self.tool_changed.emit("tool_coordination_center"))
+        menu.addAction(act)
+
     def _build_bracket_palette(self, menu: QMenu) -> None:
         """Construye la paleta de corchetes/paréntesis."""
         entries = []
@@ -681,6 +720,11 @@ class ChemusonToolbar(QToolBar):
         self.element_palette_changed.emit(element)
         self.tool_changed.emit("tool_atom")
         self.label_action.setChecked(True)
+
+    def _select_coordination_palette(self, element: str) -> None:
+        """Compatibilidad: selecciona la herramienta única de coordinación."""
+        self.tool_changed.emit("tool_coordination_center")
+        self.coord_action.setChecked(True)
 
     def _set_element_palette_ui(self, element: str) -> None:
         """Actualiza icono y tooltip de la paleta de elementos."""

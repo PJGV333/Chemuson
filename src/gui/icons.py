@@ -15,6 +15,7 @@ from PyQt6.QtGui import (
     QPolygonF,
     QBrush,
     QPainterPath,
+    QRadialGradient,
 )
 from PyQt6.QtCore import Qt, QSize, QPointF, QRectF
 import math
@@ -117,6 +118,38 @@ def draw_atom_icon(text: str, color: str = None) -> QIcon:
     painter.setPen(QColor(text_color))
     painter.drawText(QRectF(0, 0, ICON_SIZE, ICON_SIZE), Qt.AlignmentFlag.AlignCenter, text)
     
+    painter.end()
+    return QIcon(pixmap)
+
+
+def draw_coordination_sphere_icon(color: str = "#8D99A6") -> QIcon:
+    """Dibuja un icono de esfera de coordinación genérica."""
+    pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
+    pixmap.fill(Qt.GlobalColor.transparent)
+
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+    radius = ICON_SIZE * 0.34
+    center = QPointF(ICON_SIZE * 0.5, ICON_SIZE * 0.5)
+    base = QColor(color)
+    if not base.isValid():
+        base = QColor("#8D99A6")
+    highlight = base.lighter(170)
+    shadow = base.darker(165)
+
+    gradient = QRadialGradient(
+        QPointF(center.x() - radius * 0.35, center.y() - radius * 0.35),
+        radius,
+        QPointF(center.x() - radius * 0.35, center.y() - radius * 0.35),
+    )
+    gradient.setColorAt(0.0, highlight)
+    gradient.setColorAt(0.55, base)
+    gradient.setColorAt(1.0, shadow)
+
+    painter.setBrush(QBrush(gradient))
+    painter.setPen(QPen(base.darker(180), 1.5))
+    painter.drawEllipse(center, radius, radius)
     painter.end()
     return QIcon(pixmap)
 
@@ -293,6 +326,33 @@ def draw_bond_icon(bond_type: str = 'single') -> QIcon:
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         painter.setPen(pen)
         painter.drawLine(int(x1), int(y1), int(x2), int(y2))
+
+    elif bond_type == 'coordination':
+        pen = QPen(QColor('#333333'), 2, Qt.PenStyle.DashLine)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setDashPattern([4, 3])
+        painter.setPen(pen)
+        painter.drawLine(int(x1), int(y1), int(x2), int(y2))
+        # Flecha abierta orientada hacia el átomo aceptor.
+        dx, dy = x2 - x1, y2 - y1
+        length = max(1.0, math.sqrt(dx * dx + dy * dy))
+        ux, uy = dx / length, dy / length
+        nx, ny = -uy, ux
+        tip_x, tip_y = x2, y2
+        base_x = tip_x - ux * 6.0
+        base_y = tip_y - uy * 6.0
+        painter.drawLine(
+            int(base_x + nx * 3.0),
+            int(base_y + ny * 3.0),
+            int(tip_x),
+            int(tip_y),
+        )
+        painter.drawLine(
+            int(base_x - nx * 3.0),
+            int(base_y - ny * 3.0),
+            int(tip_x),
+            int(tip_y),
+        )
 
     elif bond_type == 'triple':
         pen = QPen(QColor('#333333'), 2)

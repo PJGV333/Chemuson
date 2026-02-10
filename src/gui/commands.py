@@ -17,6 +17,8 @@ from gui.geom import angle_deg, angle_distance_deg, endpoint_from_angle_len
 
 _IMPLICIT_ELEMENTS = {"C"}
 _ANCHOR_UNSET = object()
+_DONOR_UNSET = object()
+_SPHERE_STYLE_UNSET = object()
 
 
 def _default_is_explicit(element: str) -> bool:
@@ -166,6 +168,10 @@ class AddAtomCommand(QUndoCommand):
         auto_hydrogens: bool = True,
         expected_bonds: int = 0,
         is_coordination_center: bool = False,
+        sphere_radius: Optional[float] = None,
+        sphere_color: Optional[str] = None,
+        sphere_filled: bool = True,
+        sphere_transparent: bool = False,
     ) -> None:
         """Inicializa el comando de adición de átomo.
 
@@ -185,6 +191,10 @@ class AddAtomCommand(QUndoCommand):
             auto_hydrogens: Si se auto-generan hidrógenos.
             expected_bonds: Número de enlaces esperados (para H implícitos).
             is_coordination_center: Si el átomo se dibuja como esfera de coordinación.
+            sphere_radius: Radio visual de la esfera de coordinación.
+            sphere_color: Color base de la esfera (hex) o `None`.
+            sphere_filled: Si la esfera se dibuja con relleno.
+            sphere_transparent: Si la esfera se dibuja transparente (sin borde/fondo).
         """
         super().__init__("Add atom")
         self._model = model
@@ -202,6 +212,10 @@ class AddAtomCommand(QUndoCommand):
         self._auto_hydrogens = auto_hydrogens
         self._expected_bonds = expected_bonds
         self._is_coordination_center = bool(is_coordination_center)
+        self._sphere_radius = sphere_radius
+        self._sphere_color = sphere_color
+        self._sphere_filled = bool(sphere_filled)
+        self._sphere_transparent = bool(sphere_transparent)
         self._atom_id: Optional[int] = None
         self._hydrogen_specs: list[tuple[int, float, float, int]] = []
 
@@ -223,6 +237,10 @@ class AddAtomCommand(QUndoCommand):
                 mapping=self._mapping,
                 is_query=self._is_query,
                 is_coordination_center=self._is_coordination_center,
+                sphere_radius=self._sphere_radius,
+                sphere_color=self._sphere_color,
+                sphere_filled=self._sphere_filled,
+                sphere_transparent=self._sphere_transparent,
             )
             self._atom_id = atom.id
         else:
@@ -238,6 +256,10 @@ class AddAtomCommand(QUndoCommand):
                 mapping=self._mapping,
                 is_query=self._is_query,
                 is_coordination_center=self._is_coordination_center,
+                sphere_radius=self._sphere_radius,
+                sphere_color=self._sphere_color,
+                sphere_filled=self._sphere_filled,
+                sphere_transparent=self._sphere_transparent,
             )
         self._view.add_atom_item(atom)
         if self._anchor_override:
@@ -422,6 +444,147 @@ class ChangeChargeCommand(QUndoCommand):
         self._view.update_atom_item_charge(self._atom_id, self._old_charge)
 
 
+class SetCoordinationCenterCommand(QUndoCommand):
+    """Comando para activar/desactivar visualización de centro de coordinación."""
+
+    def __init__(self, model: MolGraph, view, atom_id: int, enabled: bool) -> None:
+        """Inicializa el comando de cambio de centro de coordinación."""
+        super().__init__("Set coordination center")
+        self._model = model
+        self._view = view
+        self._atom_id = atom_id
+        atom = model.get_atom(atom_id)
+        self._old_enabled = bool(getattr(atom, "is_coordination_center", False))
+        self._new_enabled = bool(enabled)
+        self._old_sphere_radius = getattr(atom, "sphere_radius", None)
+        self._old_sphere_color = getattr(atom, "sphere_color", None)
+        self._old_sphere_filled = bool(getattr(atom, "sphere_filled", True))
+        self._old_sphere_transparent = bool(getattr(atom, "sphere_transparent", False))
+
+    def _apply(self, enabled: bool) -> None:
+        """Aplica el estado solicitado y sincroniza el item visual."""
+        if self._atom_id not in self._model.atoms:
+            return
+        atom = self._model.get_atom(self._atom_id)
+        atom.is_coordination_center = bool(enabled)
+        if enabled and getattr(atom, "sphere_radius", None) is None:
+            atom.sphere_radius = 16.0
+        if enabled and getattr(atom, "sphere_color", None) is None:
+            atom.sphere_color = "#D9DDE3"
+        if enabled and not hasattr(atom, "sphere_filled"):
+            atom.sphere_filled = True
+        if enabled and not hasattr(atom, "sphere_transparent"):
+            atom.sphere_transparent = False
+        item = self._view.atom_items.get(self._atom_id)
+        if item is not None:
+            item.set_coordination_center(bool(enabled))
+        else:
+            self._view.update_atom_item(self._atom_id, atom.x, atom.y)
+        self._view.update_bond_items_for_atoms({self._atom_id})
+
+    def redo(self) -> None:
+        """Aplica el cambio."""
+        self._apply(self._new_enabled)
+
+    def undo(self) -> None:
+        """Revierte el cambio."""
+        self._apply(self._old_enabled)
+        atom = self._model.atoms.get(self._atom_id)
+        if atom is None:
+            return
+        atom.sphere_radius = self._old_sphere_radius
+        atom.sphere_color = self._old_sphere_color
+        atom.sphere_filled = self._old_sphere_filled
+        atom.sphere_transparent = self._old_sphere_transparent
+        item = self._view.atom_items.get(self._atom_id)
+        if item is not None and hasattr(item, "refresh_coordination_visual"):
+            item.refresh_coordination_visual()
+        self._view.update_bond_items_for_atoms({self._atom_id})
+
+
+class ChangeCoordinationSphereStyleCommand(QUndoCommand):
+    """Comando para cambiar estilo visual de una esfera de coordinación."""
+
+    def __init__(
+        self,
+        model: MolGraph,
+        view,
+        atom_id: int,
+        new_radius: Optional[float] | object = _SPHERE_STYLE_UNSET,
+        new_color: Optional[str] | object = _SPHERE_STYLE_UNSET,
+        new_filled: bool | object = _SPHERE_STYLE_UNSET,
+        new_transparent: bool | object = _SPHERE_STYLE_UNSET,
+    ) -> None:
+        """Inicializa el cambio de estilo de esfera."""
+        super().__init__("Change coordination sphere style")
+        self._model = model
+        self._view = view
+        self._atom_id = atom_id
+        atom = model.get_atom(atom_id)
+        self._old_radius = getattr(atom, "sphere_radius", None)
+        self._old_color = getattr(atom, "sphere_color", None)
+        self._old_filled = bool(getattr(atom, "sphere_filled", True))
+        self._old_transparent = bool(getattr(atom, "sphere_transparent", False))
+        self._new_radius = (
+            self._old_radius if new_radius is _SPHERE_STYLE_UNSET else new_radius
+        )
+        self._new_color = (
+            self._old_color if new_color is _SPHERE_STYLE_UNSET else new_color
+        )
+        self._new_filled = (
+            self._old_filled if new_filled is _SPHERE_STYLE_UNSET else bool(new_filled)
+        )
+        self._new_transparent = (
+            self._old_transparent
+            if new_transparent is _SPHERE_STYLE_UNSET
+            else bool(new_transparent)
+        )
+
+    def _apply(
+        self,
+        radius: Optional[float] | object,
+        color: Optional[str] | object,
+        filled: bool | object,
+        transparent: bool | object,
+    ) -> None:
+        """Aplica estado visual sobre átomo e item."""
+        atom = self._model.atoms.get(self._atom_id)
+        if atom is None:
+            return
+        if radius is not _SPHERE_STYLE_UNSET:
+            atom.sphere_radius = None if radius is None else max(4.0, float(radius))
+        if color is not _SPHERE_STYLE_UNSET:
+            atom.sphere_color = None if color is None else str(color)
+        if filled is not _SPHERE_STYLE_UNSET:
+            atom.sphere_filled = bool(filled)
+        if transparent is not _SPHERE_STYLE_UNSET:
+            atom.sphere_transparent = bool(transparent)
+        item = self._view.atom_items.get(self._atom_id)
+        if item is not None and hasattr(item, "refresh_coordination_visual"):
+            item.refresh_coordination_visual()
+        else:
+            self._view.update_atom_item(self._atom_id, atom.x, atom.y)
+        self._view.update_bond_items_for_atoms({self._atom_id})
+
+    def redo(self) -> None:
+        """Aplica nuevo estilo."""
+        self._apply(
+            self._new_radius,
+            self._new_color,
+            self._new_filled,
+            self._new_transparent,
+        )
+
+    def undo(self) -> None:
+        """Restaura estilo anterior."""
+        self._apply(
+            self._old_radius,
+            self._old_color,
+            self._old_filled,
+            self._old_transparent,
+        )
+
+
 class AddBondCommand(QUndoCommand):
     """Comando para añadir un enlace (y opcionalmente un átomo nuevo)."""
 
@@ -440,6 +603,7 @@ class AddBondCommand(QUndoCommand):
         ring_id: Optional[int] = None,
         stroke_px: Optional[float] = None,
         color: Optional[str] = None,
+        donor_atom_id: Optional[int] = None,
         new_atom_element: Optional[str] = None,
         new_atom_pos: Optional[Tuple[float, float]] = None,
     ) -> None:
@@ -459,6 +623,7 @@ class AddBondCommand(QUndoCommand):
             ring_id: Identificador de anillo asociado.
             stroke_px: Grosor de línea.
             color: Color del enlace.
+            donor_atom_id: ID del átomo donador (si es coordinativo).
             new_atom_element: Elemento del átomo a crear si `a2_id` es `None`.
             new_atom_pos: Posición del átomo a crear.
         """
@@ -476,6 +641,7 @@ class AddBondCommand(QUndoCommand):
         self._ring_id = ring_id
         self._stroke_px = stroke_px
         self._color = color
+        self._donor_atom_id = donor_atom_id
         self._bond_id: Optional[int] = None
         self._new_atom_element = new_atom_element
         self._new_atom_pos = new_atom_pos
@@ -537,6 +703,7 @@ class AddBondCommand(QUndoCommand):
                 length_px=self._length_px,
                 stroke_px=self._stroke_px,
                 color=self._color,
+                donor_atom_id=self._donor_atom_id,
             )
             self._bond_id = bond.id
         else:
@@ -553,6 +720,7 @@ class AddBondCommand(QUndoCommand):
                 length_px=self._length_px,
                 stroke_px=self._stroke_px,
                 color=self._color,
+                donor_atom_id=self._donor_atom_id,
             )
         self._view.add_bond_item(bond)
         if self._demoted_explicit_atoms is None:
@@ -601,6 +769,7 @@ class ChangeBondCommand(QUndoCommand):
         new_style: Optional[BondStyle] = None,
         new_stereo: Optional[BondStereo] = None,
         new_is_aromatic: Optional[bool] = None,
+        new_donor_atom_id: Optional[int] | object = _DONOR_UNSET,
     ) -> None:
         """Inicializa el comando de cambio de enlace.
 
@@ -612,6 +781,7 @@ class ChangeBondCommand(QUndoCommand):
             new_style: Nuevo estilo de enlace.
             new_stereo: Nueva estereoquímica.
             new_is_aromatic: Nueva bandera de aromaticidad.
+            new_donor_atom_id: Nuevo átomo donador (si aplica).
         """
         super().__init__("Change bond")
         self._model = model
@@ -622,11 +792,17 @@ class ChangeBondCommand(QUndoCommand):
         self._old_style = bond.style
         self._old_stereo = bond.stereo
         self._old_is_aromatic = bond.is_aromatic
+        self._old_donor_atom_id = getattr(bond, "donor_atom_id", None)
         self._new_order = new_order if new_order is not None else bond.order
         self._new_style = new_style if new_style is not None else bond.style
         self._new_stereo = new_stereo if new_stereo is not None else bond.stereo
         self._new_is_aromatic = (
             new_is_aromatic if new_is_aromatic is not None else bond.is_aromatic
+        )
+        self._new_donor_atom_id = (
+            self._old_donor_atom_id
+            if new_donor_atom_id is _DONOR_UNSET
+            else new_donor_atom_id
         )
 
     def redo(self) -> None:
@@ -637,6 +813,7 @@ class ChangeBondCommand(QUndoCommand):
             style=self._new_style,
             stereo=self._new_stereo,
             is_aromatic=self._new_is_aromatic,
+            donor_atom_id=self._new_donor_atom_id,
         )
         self._view.update_bond_item(self._bond_id)
 
@@ -648,6 +825,7 @@ class ChangeBondCommand(QUndoCommand):
             style=self._old_style,
             stereo=self._old_stereo,
             is_aromatic=self._old_is_aromatic,
+            donor_atom_id=self._old_donor_atom_id,
         )
         self._view.update_bond_item(self._bond_id)
 
@@ -938,6 +1116,10 @@ class DeleteSelectionCommand(QUndoCommand):
                 is_query=atom.is_query,
                 is_explicit=atom.is_explicit,
                 is_coordination_center=getattr(atom, "is_coordination_center", False),
+                sphere_radius=getattr(atom, "sphere_radius", None),
+                sphere_color=getattr(atom, "sphere_color", None),
+                sphere_filled=bool(getattr(atom, "sphere_filled", True)),
+                sphere_transparent=bool(getattr(atom, "sphere_transparent", False)),
             )
             self._view.add_atom_item(restored_atom)
         for bond in self._removed_bonds:
@@ -953,6 +1135,9 @@ class DeleteSelectionCommand(QUndoCommand):
                 is_query=bond.is_query,
                 ring_id=bond.ring_id,
                 length_px=bond.length_px,
+                stroke_px=bond.stroke_px,
+                color=bond.color,
+                donor_atom_id=getattr(bond, "donor_atom_id", None),
             )
             self._view.add_bond_item(bond)
         for item, start, end, kind, curve_factor in self._removed_arrows:
@@ -1199,6 +1384,9 @@ class AddRingCommand(QUndoCommand):
                     is_query=bond.is_query,
                     ring_id=bond.ring_id,
                     length_px=bond.length_px,
+                    stroke_px=bond.stroke_px,
+                    color=bond.color,
+                    donor_atom_id=getattr(bond, "donor_atom_id", None),
                 )
                 self._view.add_bond_item(bond)
                 self._view.update_bond_item(bond.id)

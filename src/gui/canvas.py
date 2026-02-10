@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
     QGraphicsLineItem,
     QGraphicsTextItem,
     QGraphicsItem,
+    QDialog,
     QInputDialog,
     QColorDialog,
 )
@@ -104,13 +105,15 @@ from gui.commands import (
     ChangeBondStrokeCommand,
     ChangeBondColorCommand,
     ChangeChargeCommand,
+    ChangeCoordinationSphereStyleCommand,
+    SetCoordinationCenterCommand,
     DeleteSelectionCommand,
     MoveAtomsCommand,
     MoveTextItemsCommand,
     MoveArrowItemsCommand,
     MoveBracketItemsCommand,
 )
-from gui.dialogs import AtomLabelDialog
+from gui.dialogs import AtomLabelDialog, TrackballRotationDialog
 from chemname.molview import MolView
 from chemname.rings import find_rings_simple, ring_bonds
 from chemio.rdkit_io import (
@@ -724,7 +727,16 @@ class ChemusonCanvas(QGraphicsView):
         if tool_id.startswith("atom_"):
             self.state.default_element = tool_id.split("_", 1)[1]
             tool_id = "tool_atom"
+        elif tool_id.startswith("coord_"):
+            tool_id = "tool_coordination_center"
         elif tool_id.startswith("bond_"):
+            tool_id = "tool_bond"
+        elif tool_id == "tool_coordination_bond":
+            self.state.active_bond_order = 1
+            self.state.active_bond_style = BondStyle.COORDINATION
+            self.state.active_bond_stereo = BondStereo.NONE
+            self.state.active_bond_mode = "set"
+            self.state.active_bond_aromatic = False
             tool_id = "tool_bond"
         elif tool_id.startswith("tool_brackets_"):
             bracket_key = tool_id.split("tool_brackets_", 1)[1]
@@ -981,6 +993,13 @@ class ChemusonCanvas(QGraphicsView):
 
         clicked_atom_id, clicked_bond_id = self._pick_hover_target(scene_pos)
 
+        if self.current_tool == "tool_rotate_3d_precise":
+            self._prompt_precise_3d_rotation(
+                clicked_atom_id=clicked_atom_id,
+                clicked_bond_id=clicked_bond_id,
+            )
+            return
+
         arrow_tools = {
             "tool_arrow_forward": "forward",
             "tool_arrow_forward_open": "forward_open",
@@ -1148,6 +1167,36 @@ class ChemusonCanvas(QGraphicsView):
             else:
                 cmd = ChangeAtomCommand(self.model, self, clicked_atom_id, element)
                 self.undo_stack.push(cmd)
+            return
+
+        if self.current_tool == "tool_coordination_center":
+            element = self.state.default_element or "C"
+            if clicked_atom_id is None:
+                cmd = AddAtomCommand(
+                    self.model,
+                    self,
+                    element,
+                    scene_pos.x(),
+                    scene_pos.y(),
+                    is_explicit=True,
+                    is_coordination_center=True,
+                    sphere_radius=16.0,
+                    sphere_filled=True,
+                )
+                self.undo_stack.push(cmd)
+            else:
+                atom = self.model.get_atom(clicked_atom_id)
+                needs_center_flag = not getattr(atom, "is_coordination_center", False)
+                if not needs_center_flag:
+                    return
+                self.undo_stack.push(
+                    SetCoordinationCenterCommand(
+                        self.model,
+                        self,
+                        clicked_atom_id,
+                        True,
+                    )
+                )
             return
 
         if self.current_tool == "tool_bond":
@@ -3459,6 +3508,10 @@ class ChemusonCanvas(QGraphicsView):
                 is_query=atom.is_query,
                 is_explicit=atom.is_explicit,
                 is_coordination_center=getattr(atom, "is_coordination_center", False),
+                sphere_radius=getattr(atom, "sphere_radius", None),
+                sphere_color=getattr(atom, "sphere_color", None),
+                sphere_filled=bool(getattr(atom, "sphere_filled", True)),
+                sphere_transparent=bool(getattr(atom, "sphere_transparent", False)),
             )
         for bond in bonds:
             graph.add_bond(
@@ -3475,6 +3528,7 @@ class ChemusonCanvas(QGraphicsView):
                 length_px=bond.length_px,
                 stroke_px=bond.stroke_px,
                 color=bond.color,
+                donor_atom_id=getattr(bond, "donor_atom_id", None),
             )
         return graph
 
@@ -3517,6 +3571,10 @@ class ChemusonCanvas(QGraphicsView):
                     "is_query": atom.is_query,
                     "is_explicit": atom.is_explicit,
                     "is_coordination_center": getattr(atom, "is_coordination_center", False),
+                    "sphere_radius": getattr(atom, "sphere_radius", None),
+                    "sphere_color": getattr(atom, "sphere_color", None),
+                    "sphere_filled": bool(getattr(atom, "sphere_filled", True)),
+                    "sphere_transparent": bool(getattr(atom, "sphere_transparent", False)),
                     "anchor": self._group_anchor_overrides.get(atom_id),
                 }
             )
@@ -3537,6 +3595,7 @@ class ChemusonCanvas(QGraphicsView):
                         "length_px": bond.length_px,
                         "stroke_px": bond.stroke_px,
                         "color": bond.color,
+                        "donor_atom_id": getattr(bond, "donor_atom_id", None),
                     }
                 )
 
@@ -3652,6 +3711,10 @@ class ChemusonCanvas(QGraphicsView):
                 anchor_override=atom_d.get("anchor"),
                 auto_hydrogens=False,
                 is_coordination_center=bool(atom_d.get("is_coordination_center", False)),
+                sphere_radius=atom_d.get("sphere_radius"),
+                sphere_color=atom_d.get("sphere_color"),
+                sphere_filled=bool(atom_d.get("sphere_filled", True)),
+                sphere_transparent=bool(atom_d.get("sphere_transparent", False)),
             )
             if has_undo_items:
                 self.undo_stack.push(cmd)
@@ -3687,6 +3750,11 @@ class ChemusonCanvas(QGraphicsView):
                 stroke_px=bond_d.get("stroke_px"),
                 color=bond_d.get("color"),
                 ring_id=map_ring(bond_d.get("ring_id")),
+                donor_atom_id=id_map.get(
+                    int(bond_d.get("donor_atom_id"))
+                )
+                if bond_d.get("donor_atom_id") is not None
+                else None,
             )
             if has_undo_items:
                 self.undo_stack.push(cmd)
@@ -4387,6 +4455,10 @@ class ChemusonCanvas(QGraphicsView):
                 is_explicit=atom.is_explicit,
                 auto_hydrogens=False,
                 is_coordination_center=getattr(atom, "is_coordination_center", False),
+                sphere_radius=getattr(atom, "sphere_radius", None),
+                sphere_color=getattr(atom, "sphere_color", None),
+                sphere_filled=bool(getattr(atom, "sphere_filled", True)),
+                sphere_transparent=bool(getattr(atom, "sphere_transparent", False)),
             )
             self.undo_stack.push(cmd)
             if cmd.atom_id is not None:
@@ -4407,6 +4479,7 @@ class ChemusonCanvas(QGraphicsView):
                 is_aromatic=bond.is_aromatic,
                 stroke_px=bond.stroke_px,
                 color=bond.color,
+                donor_atom_id=id_map.get(getattr(bond, "donor_atom_id", -1)),
             )
             self.undo_stack.push(cmd)
         self.undo_stack.endMacro()
@@ -4449,6 +4522,10 @@ class ChemusonCanvas(QGraphicsView):
                 is_explicit=atom.is_explicit,
                 auto_hydrogens=False,
                 is_coordination_center=getattr(atom, "is_coordination_center", False),
+                sphere_radius=getattr(atom, "sphere_radius", None),
+                sphere_color=getattr(atom, "sphere_color", None),
+                sphere_filled=bool(getattr(atom, "sphere_filled", True)),
+                sphere_transparent=bool(getattr(atom, "sphere_transparent", False)),
             )
             self.undo_stack.push(cmd)
             if cmd.atom_id is not None:
@@ -4469,6 +4546,7 @@ class ChemusonCanvas(QGraphicsView):
                 is_aromatic=bond.is_aromatic,
                 stroke_px=bond.stroke_px,
                 color=bond.color,
+                donor_atom_id=id_map.get(getattr(bond, "donor_atom_id", -1)),
             )
             self.undo_stack.push(cmd)
         self.undo_stack.endMacro()
@@ -4779,9 +4857,14 @@ class ChemusonCanvas(QGraphicsView):
         label = atom.element
         anchor: Optional[str] = None
         anchor_override = self._group_anchor_overrides.get(atom.id)
+        is_coordination_center = bool(getattr(atom, "is_coordination_center", False))
         if atom.element in ELEMENT_SYMBOLS:
-            if atom.element == "C" and not (
+            if (
+                not is_coordination_center
+                and atom.element == "C"
+                and not (
                 self.state.show_implicit_carbons or atom.is_explicit
+                )
             ):
                 return label, None, QPointF(0.0, 0.0)
             implicit_h = self._implicit_hydrogen_count(atom.id, atom.element)
@@ -4791,7 +4874,12 @@ class ChemusonCanvas(QGraphicsView):
                 and self._atom_degree(atom.id) >= 2
             ):
                 implicit_h = 0
-            if implicit_h > 0 and atom.element != "H" and not self.state.show_implicit_hydrogens:
+            if (
+                implicit_h > 0
+                and atom.element != "H"
+                and not self.state.show_implicit_hydrogens
+                and not is_coordination_center
+            ):
                 h_text = "H" if implicit_h == 1 else f"H{implicit_h}"
                 if self._prefer_prefix_h(atom.id):
                     label = f"{h_text}{atom.element}"
@@ -5520,6 +5608,19 @@ class ChemusonCanvas(QGraphicsView):
             Puede modificar el estado interno o la escena.
         """
         item = self.atom_items.get(atom_id)
+        atom = self.model.atoms.get(atom_id)
+        if (
+            atom is not None
+            and bool(getattr(atom, "is_coordination_center", False))
+            and not bool(getattr(atom, "sphere_transparent", False))
+        ):
+            if item is not None and hasattr(item, "_coordination_draw_radius"):
+                try:
+                    return max(0.0, float(item._coordination_draw_radius()) + 1.5)
+                except Exception:
+                    pass
+            configured = getattr(atom, "sphere_radius", None)
+            return max(0.0, float(configured) if configured is not None else 16.0)
         if item is None or not item.label.isVisible():
             return 0.0
         rect = item.label.mapRectToParent(item.label.boundingRect())
@@ -5528,7 +5629,6 @@ class ChemusonCanvas(QGraphicsView):
         # Increased padding to clear label characters (especially "C")
         # 6.0px provides a comfortable margin for standard font sizes.
         pad = 6.0
-        atom = self.model.get_atom(atom_id)
         if atom is not None and atom.element in ELEMENT_SYMBOLS and atom.element not in {"C", "H"}:
             pad = 3.5
         rect = rect.adjusted(-pad, -pad, pad, pad)
@@ -6122,7 +6222,7 @@ class ChemusonCanvas(QGraphicsView):
         """
         # Keep stereo wedges visually full-length at junctions (ChemDraw-like).
         # Label collision avoidance is handled separately via label_shrink.
-        if bond.style in (BondStyle.WEDGE, BondStyle.HASHED):
+        if bond.style in (BondStyle.WEDGE, BondStyle.HASHED, BondStyle.COORDINATION):
             return 0.0
         if self._atom_degree(atom_id) < 2:
             return 0.0
@@ -7750,6 +7850,19 @@ class ChemusonCanvas(QGraphicsView):
             or any(isinstance(item, (ArrowItem, BracketItem)) for item in self.scene.selectedItems())
         )
         has_bond_selection = bool(self.state.selected_bonds)
+        coordination_bond_ids: list[int] = []
+        if isinstance(clicked_item, BondItem):
+            coordination_bond_ids = [clicked_item.bond_id]
+        elif has_bond_selection:
+            coordination_bond_ids = sorted(
+                bond_id for bond_id in self.state.selected_bonds if bond_id in self.model.bonds
+            )
+        coordination_bond_enable = False
+        if coordination_bond_ids:
+            coordination_bond_enable = not all(
+                self.model.get_bond(bond_id).style == BondStyle.COORDINATION
+                for bond_id in coordination_bond_ids
+            )
         coordination_atom_ids: list[int] = []
         if isinstance(clicked_item, AtomItem):
             coordination_atom_ids = [clicked_item.atom_id]
@@ -7765,6 +7878,23 @@ class ChemusonCanvas(QGraphicsView):
                 getattr(self.model.get_atom(atom_id), "is_coordination_center", False)
                 for atom_id in coordination_atom_ids
             )
+        styled_coordination_ids = [
+            atom_id
+            for atom_id in coordination_atom_ids
+            if bool(getattr(self.model.get_atom(atom_id), "is_coordination_center", False))
+        ]
+        coordination_all_filled = bool(styled_coordination_ids) and all(
+            bool(getattr(self.model.get_atom(atom_id), "sphere_filled", True))
+            for atom_id in styled_coordination_ids
+        )
+        coordination_all_transparent = bool(styled_coordination_ids) and all(
+            bool(getattr(self.model.get_atom(atom_id), "sphere_transparent", False))
+            for atom_id in styled_coordination_ids
+        )
+        coordination_has_custom_color = any(
+            bool(getattr(self.model.get_atom(atom_id), "sphere_color", None))
+            for atom_id in styled_coordination_ids
+        )
 
         act_cut = menu.addAction("Cortar")
         act_copy = menu.addAction("Copiar")
@@ -7786,6 +7916,12 @@ class ChemusonCanvas(QGraphicsView):
             act_reset_color = menu.addAction("Restablecer color de enlace")
         act_anchor = None
         act_toggle_coord_sphere = None
+        act_toggle_coord_bond = None
+        act_coord_sphere_color = None
+        act_coord_sphere_reset_color = None
+        act_coord_sphere_toggle_fill = None
+        act_coord_sphere_toggle_transparent = None
+        act_coord_sphere_radius = None
         if isinstance(clicked_item, AtomItem):
             atom = self.model.get_atom(clicked_item.atom_id)
             if atom is not None and atom.element not in ELEMENT_SYMBOLS:
@@ -7793,14 +7929,45 @@ class ChemusonCanvas(QGraphicsView):
                 if candidates:
                     menu.addSeparator()
                     act_anchor = menu.addAction("Elegir átomo de unión...")
+        if coordination_bond_ids:
+            menu.addSeparator()
+            bond_text = (
+                "Convertir a enlace coordinativo"
+                if coordination_bond_enable
+                else "Convertir a enlace normal"
+            )
+            act_toggle_coord_bond = menu.addAction(bond_text)
         if coordination_atom_ids:
             menu.addSeparator()
             coord_text = (
-                "Toggle Coordination Sphere (On)"
+                "Activar esfera de coordinación"
                 if coordination_enable
-                else "Toggle Coordination Sphere (Off)"
+                else "Desactivar esfera de coordinación"
             )
             act_toggle_coord_sphere = menu.addAction(coord_text)
+        if styled_coordination_ids:
+            sphere_style_menu = menu.addMenu("Estilo de esfera")
+            transparent_text = (
+                "Mostrar esfera"
+                if coordination_all_transparent
+                else "Hacer esfera transparente"
+            )
+            act_coord_sphere_toggle_transparent = sphere_style_menu.addAction(transparent_text)
+            act_coord_sphere_color = sphere_style_menu.addAction("Color de esfera...")
+            act_coord_sphere_reset_color = sphere_style_menu.addAction("Restablecer color")
+            fill_text = (
+                "Quitar fondo de esfera"
+                if coordination_all_filled
+                else "Mostrar fondo de esfera"
+            )
+            act_coord_sphere_toggle_fill = sphere_style_menu.addAction(fill_text)
+            act_coord_sphere_radius = sphere_style_menu.addAction("Tamaño de esfera...")
+            act_coord_sphere_reset_color.setEnabled(coordination_has_custom_color)
+            act_coord_sphere_color.setEnabled(not coordination_all_transparent)
+            act_coord_sphere_reset_color.setEnabled(
+                coordination_has_custom_color and not coordination_all_transparent
+            )
+            act_coord_sphere_toggle_fill.setEnabled(not coordination_all_transparent)
         menu.addSeparator()
         act_select_all = menu.addAction("Seleccionar todo")
         menu.addSeparator()
@@ -7841,8 +8008,32 @@ class ChemusonCanvas(QGraphicsView):
         if act_anchor is not None and action == act_anchor and isinstance(clicked_item, AtomItem):
             self._prompt_anchor_for_atom(clicked_item.atom_id)
             return
+        if act_toggle_coord_bond is not None and action == act_toggle_coord_bond:
+            self._set_bond_coordination_style(coordination_bond_ids, coordination_bond_enable)
+            return
         if act_toggle_coord_sphere is not None and action == act_toggle_coord_sphere:
             self._set_coordination_sphere(coordination_atom_ids, coordination_enable)
+            return
+        if (
+            act_coord_sphere_toggle_transparent is not None
+            and action == act_coord_sphere_toggle_transparent
+        ):
+            self._set_coordination_sphere_transparent(
+                styled_coordination_ids,
+                not coordination_all_transparent,
+            )
+            return
+        if act_coord_sphere_color is not None and action == act_coord_sphere_color:
+            self._prompt_coordination_sphere_color(styled_coordination_ids)
+            return
+        if act_coord_sphere_reset_color is not None and action == act_coord_sphere_reset_color:
+            self._set_coordination_sphere_color(styled_coordination_ids, None)
+            return
+        if act_coord_sphere_toggle_fill is not None and action == act_coord_sphere_toggle_fill:
+            self._set_coordination_sphere_fill(styled_coordination_ids, not coordination_all_filled)
+            return
+        if act_coord_sphere_radius is not None and action == act_coord_sphere_radius:
+            self._prompt_coordination_sphere_radius(styled_coordination_ids)
             return
         if action == act_analysis_name:
             self._run_analysis_action("name", scene_pos)
@@ -7886,21 +8077,177 @@ class ChemusonCanvas(QGraphicsView):
 
     def _set_coordination_sphere(self, atom_ids: Iterable[int], enabled: bool) -> None:
         """Activa/desactiva esfera de coordinación para una lista de átomos."""
-        changed = False
         enabled_flag = bool(enabled)
-        for atom_id in atom_ids:
-            if atom_id not in self.model.atoms:
-                continue
+        valid_ids = [
+            atom_id
+            for atom_id in atom_ids
+            if atom_id in self.model.atoms
+            and bool(getattr(self.model.get_atom(atom_id), "is_coordination_center", False))
+            != enabled_flag
+        ]
+        if not valid_ids:
+            return
+        self.undo_stack.beginMacro(
+            "Enable coordination spheres" if enabled_flag else "Disable coordination spheres"
+        )
+        for atom_id in valid_ids:
+            self.undo_stack.push(
+                SetCoordinationCenterCommand(
+                    self.model,
+                    self,
+                    atom_id,
+                    enabled_flag,
+                )
+            )
+        self.undo_stack.endMacro()
+
+    def _prompt_coordination_sphere_color(self, atom_ids: Iterable[int]) -> None:
+        """Solicita color de esfera y lo aplica a los átomos seleccionados."""
+        valid_ids = [atom_id for atom_id in atom_ids if atom_id in self.model.atoms]
+        if not valid_ids:
+            return
+        initial = QColor("#D9DDE3")
+        for atom_id in valid_ids:
             atom = self.model.get_atom(atom_id)
-            if getattr(atom, "is_coordination_center", False) == enabled_flag:
-                continue
-            atom.is_coordination_center = enabled_flag
-            item = self.atom_items.get(atom_id)
-            if item is not None:
-                item.set_coordination_center(enabled_flag)
-            changed = True
-        if changed:
-            self.viewport().update()
+            color = getattr(atom, "sphere_color", None)
+            if color:
+                candidate = QColor(color)
+                if candidate.isValid():
+                    initial = candidate
+                    break
+        color = QColorDialog.getColor(initial, self, "Seleccionar color de esfera")
+        if not color.isValid():
+            return
+        self._set_coordination_sphere_color(valid_ids, color.name())
+
+    def _set_coordination_sphere_color(
+        self, atom_ids: Iterable[int], color: Optional[str]
+    ) -> None:
+        """Aplica color de esfera a una lista de átomos."""
+        valid_ids = [atom_id for atom_id in atom_ids if atom_id in self.model.atoms]
+        if not valid_ids:
+            return
+        self.undo_stack.beginMacro("Set coordination sphere color")
+        for atom_id in valid_ids:
+            self.undo_stack.push(
+                ChangeCoordinationSphereStyleCommand(
+                    self.model,
+                    self,
+                    atom_id,
+                    new_color=color,
+                )
+            )
+        self.undo_stack.endMacro()
+
+    def _set_coordination_sphere_transparent(
+        self, atom_ids: Iterable[int], transparent: bool
+    ) -> None:
+        """Activa/desactiva esfera transparente (solo etiqueta)."""
+        valid_ids = [atom_id for atom_id in atom_ids if atom_id in self.model.atoms]
+        if not valid_ids:
+            return
+        self.undo_stack.beginMacro("Toggle coordination sphere transparency")
+        for atom_id in valid_ids:
+            self.undo_stack.push(
+                ChangeCoordinationSphereStyleCommand(
+                    self.model,
+                    self,
+                    atom_id,
+                    new_transparent=bool(transparent),
+                )
+            )
+        self.undo_stack.endMacro()
+
+    def _set_coordination_sphere_fill(self, atom_ids: Iterable[int], filled: bool) -> None:
+        """Activa o desactiva el relleno de la esfera de coordinación."""
+        valid_ids = [atom_id for atom_id in atom_ids if atom_id in self.model.atoms]
+        if not valid_ids:
+            return
+        self.undo_stack.beginMacro("Toggle coordination sphere fill")
+        for atom_id in valid_ids:
+            self.undo_stack.push(
+                ChangeCoordinationSphereStyleCommand(
+                    self.model,
+                    self,
+                    atom_id,
+                    new_filled=bool(filled),
+                )
+            )
+        self.undo_stack.endMacro()
+
+    def _prompt_coordination_sphere_radius(self, atom_ids: Iterable[int]) -> None:
+        """Solicita un radio de esfera y lo aplica a los átomos seleccionados."""
+        valid_ids = [atom_id for atom_id in atom_ids if atom_id in self.model.atoms]
+        if not valid_ids:
+            return
+        current = 16.0
+        for atom_id in valid_ids:
+            atom = self.model.get_atom(atom_id)
+            radius = getattr(atom, "sphere_radius", None)
+            if radius is not None:
+                current = float(radius)
+                break
+        value, ok = QInputDialog.getDouble(
+            self,
+            "Tamaño de esfera",
+            "Radio (px):",
+            current,
+            4.0,
+            200.0,
+            1,
+        )
+        if not ok:
+            return
+        self.undo_stack.beginMacro("Set coordination sphere radius")
+        for atom_id in valid_ids:
+            self.undo_stack.push(
+                ChangeCoordinationSphereStyleCommand(
+                    self.model,
+                    self,
+                    atom_id,
+                    new_radius=float(value),
+                )
+            )
+        self.undo_stack.endMacro()
+
+    def _set_bond_coordination_style(self, bond_ids: Iterable[int], enabled: bool) -> None:
+        """Convierte enlaces seleccionados entre normal y coordinativo."""
+        target_style = BondStyle.COORDINATION if enabled else BondStyle.PLAIN
+        valid_ids = [bond_id for bond_id in bond_ids if bond_id in self.model.bonds]
+        if not valid_ids:
+            return
+        changed_ids = [
+            bond_id
+            for bond_id in valid_ids
+            if self.model.get_bond(bond_id).style != target_style
+        ]
+        if not changed_ids:
+            return
+        self.undo_stack.beginMacro(
+            "Set coordination bond style" if enabled else "Set normal bond style"
+        )
+        for bond_id in changed_ids:
+            bond = self.model.get_bond(bond_id)
+            donor_atom_id = None
+            if enabled:
+                donor_atom_id = self._infer_coordination_donor_atom(
+                    bond.a1_id,
+                    bond.a2_id,
+                    preferred=getattr(bond, "donor_atom_id", None),
+                )
+            self.undo_stack.push(
+                ChangeBondCommand(
+                    self.model,
+                    self,
+                    bond_id,
+                    new_order=1,
+                    new_style=target_style,
+                    new_stereo=BondStereo.NONE,
+                    new_is_aromatic=False,
+                    new_donor_atom_id=donor_atom_id,
+                )
+            )
+        self.undo_stack.endMacro()
 
     def _bond_stroke_step(self) -> float:
         """Método auxiliar para  bond stroke step.
@@ -8374,6 +8721,89 @@ class ChemusonCanvas(QGraphicsView):
             atom_ids = set(self.model.atoms.keys())
         return tuple(sorted(atom_id for atom_id in atom_ids if atom_id in self.model.atoms))
 
+    def _connected_component_atom_ids(self, seed_atom_id: int) -> set[int]:
+        """Obtiene la componente conectada del átomo semilla."""
+        if seed_atom_id not in self.model.atoms:
+            return set()
+        visited: set[int] = set()
+        stack = [seed_atom_id]
+        while stack:
+            current = stack.pop()
+            if current in visited:
+                continue
+            visited.add(current)
+            for bond in self.model.bonds.values():
+                if bond.a1_id == current and bond.a2_id not in visited:
+                    stack.append(bond.a2_id)
+                elif bond.a2_id == current and bond.a1_id not in visited:
+                    stack.append(bond.a1_id)
+        return visited
+
+    def _precise_3d_target_atom_ids(
+        self,
+        clicked_atom_id: Optional[int] = None,
+        clicked_bond_id: Optional[int] = None,
+    ) -> tuple[int, ...]:
+        """Resuelve el conjunto de átomos objetivo para rotación 3D precisa."""
+        selected_atoms = self._selected_atom_ids_for_transform()
+        if selected_atoms:
+            return tuple(sorted(atom_id for atom_id in selected_atoms if atom_id in self.model.atoms))
+
+        selected_bonds = {
+            bond_id for bond_id in self.state.selected_bonds if bond_id in self.model.bonds
+        }
+        if clicked_bond_id is not None and clicked_bond_id in self.model.bonds:
+            selected_bonds.add(clicked_bond_id)
+        if selected_bonds:
+            atom_ids: set[int] = set()
+            for bond_id in selected_bonds:
+                bond = self.model.get_bond(bond_id)
+                if bond.a1_id in self.model.atoms:
+                    atom_ids.add(bond.a1_id)
+                if bond.a2_id in self.model.atoms:
+                    atom_ids.add(bond.a2_id)
+            if atom_ids:
+                return tuple(sorted(atom_ids))
+
+        if clicked_atom_id is not None and clicked_atom_id in self.model.atoms:
+            component = self._connected_component_atom_ids(clicked_atom_id)
+            if component:
+                return tuple(sorted(component))
+
+        return self._trackball_atom_ids()
+
+    def _ensure_trackball_reference(
+        self,
+        atom_ids: tuple[int, ...],
+        before_positions: Dict[int, Tuple[float, float]],
+    ) -> None:
+        """Garantiza referencia estable para proyecciones trackball."""
+        reset_reference = atom_ids != self._rotation_3d_ref_atom_ids
+        if not reset_reference:
+            for atom_id in atom_ids:
+                if atom_id not in self._rotation_3d_ref_positions:
+                    reset_reference = True
+                    break
+        if not reset_reference:
+            projected = self._project_trackball_reference(
+                atom_ids,
+                self._rotation_3d_pitch_deg,
+                self._rotation_3d_yaw_deg,
+            )
+            max_delta = 0.0
+            for atom_id in atom_ids:
+                px, py = projected[atom_id]
+                cx, cy = before_positions[atom_id]
+                max_delta = max(max_delta, math.hypot(px - cx, py - cy))
+            if max_delta > TRACKBALL_REFERENCE_MATCH_TOLERANCE_PX:
+                # La geometría cambió por otro flujo (mover, editar, undo, etc.).
+                reset_reference = True
+        if reset_reference:
+            self._rotation_3d_ref_atom_ids = atom_ids
+            self._rotation_3d_ref_positions = dict(before_positions)
+            self._rotation_3d_pitch_deg = 0.0
+            self._rotation_3d_yaw_deg = 0.0
+
     def _project_trackball_reference(
         self,
         atom_ids: tuple[int, ...],
@@ -8409,31 +8839,7 @@ class ChemusonCanvas(QGraphicsView):
             atom_id: (self.model.get_atom(atom_id).x, self.model.get_atom(atom_id).y)
             for atom_id in atom_ids
         }
-        reset_reference = atom_ids != self._rotation_3d_ref_atom_ids
-        if not reset_reference:
-            for atom_id in atom_ids:
-                if atom_id not in self._rotation_3d_ref_positions:
-                    reset_reference = True
-                    break
-        if not reset_reference:
-            projected = self._project_trackball_reference(
-                atom_ids,
-                self._rotation_3d_pitch_deg,
-                self._rotation_3d_yaw_deg,
-            )
-            max_delta = 0.0
-            for atom_id in atom_ids:
-                px, py = projected[atom_id]
-                cx, cy = before_positions[atom_id]
-                max_delta = max(max_delta, math.hypot(px - cx, py - cy))
-            if max_delta > 1.5:
-                # La geometría cambió por otro flujo (mover, editar, undo, etc.).
-                reset_reference = True
-        if reset_reference:
-            self._rotation_3d_ref_atom_ids = atom_ids
-            self._rotation_3d_ref_positions = dict(before_positions)
-            self._rotation_3d_pitch_deg = 0.0
-            self._rotation_3d_yaw_deg = 0.0
+        self._ensure_trackball_reference(atom_ids, before_positions)
 
         self._is_rotating_3d = True
         self._rotation_3d_start_view_pos = self.mapFromScene(scene_pos)
@@ -8567,6 +8973,101 @@ class ChemusonCanvas(QGraphicsView):
         if self.current_tool in {"tool_select", "tool_select_lasso"}:
             self.setCursor(Qt.CursorShape.ArrowCursor)
         self._update_selection_overlay()
+
+    def _prompt_precise_3d_rotation(
+        self,
+        clicked_atom_id: Optional[int] = None,
+        clicked_bond_id: Optional[int] = None,
+    ) -> None:
+        """Solicita ángulos precisos y aplica rotación pseudo-3D reproducible."""
+        atom_ids = self._precise_3d_target_atom_ids(
+            clicked_atom_id=clicked_atom_id,
+            clicked_bond_id=clicked_bond_id,
+        )
+        if not atom_ids:
+            return
+        before = {
+            atom_id: (self.model.get_atom(atom_id).x, self.model.get_atom(atom_id).y)
+            for atom_id in atom_ids
+            if atom_id in self.model.atoms
+        }
+        if not before:
+            return
+        atom_ids = tuple(sorted(before.keys()))
+        self._ensure_trackball_reference(atom_ids, before)
+
+        default_pitch = self._rotation_3d_pitch_deg
+        default_yaw = self._rotation_3d_yaw_deg
+        def apply_preview(pitch_deg: float, yaw_deg: float) -> None:
+            """Aplica proyección en vivo para previsualización."""
+            pitch_deg = max(-TRACKBALL_MAX_TILT_DEG, min(TRACKBALL_MAX_TILT_DEG, float(pitch_deg)))
+            yaw_deg = max(-TRACKBALL_MAX_TILT_DEG, min(TRACKBALL_MAX_TILT_DEG, float(yaw_deg)))
+            projected = self._project_trackball_reference(atom_ids, pitch_deg, yaw_deg)
+            moved_atom_ids: set[int] = set()
+            for atom_id in atom_ids:
+                if atom_id not in self.model.atoms:
+                    continue
+                new_x, new_y = projected[atom_id]
+                self.model.update_atom_position(atom_id, new_x, new_y)
+                self.update_atom_item(atom_id, new_x, new_y)
+                moved_atom_ids.add(atom_id)
+            if moved_atom_ids:
+                self.update_bond_items_for_atoms(moved_atom_ids)
+            else:
+                self._update_selection_overlay()
+
+        dialog = TrackballRotationDialog(
+            float(default_pitch),
+            float(default_yaw),
+            TRACKBALL_MAX_TILT_DEG,
+            parent=self,
+        )
+        dialog.preview_changed.connect(apply_preview)
+        result = dialog.exec()
+        if result == QDialog.DialogCode.Accepted:
+            pitch_deg, yaw_deg = dialog.angles()
+            self._rotation_3d_pitch_deg = float(pitch_deg)
+            self._rotation_3d_yaw_deg = float(yaw_deg)
+            after = {
+                atom_id: (self.model.get_atom(atom_id).x, self.model.get_atom(atom_id).y)
+                for atom_id in atom_ids
+                if atom_id in self.model.atoms
+            }
+            changed_ids = {
+                atom_id
+                for atom_id in after.keys()
+                if (
+                    abs(after[atom_id][0] - before[atom_id][0]) > 1e-9
+                    or abs(after[atom_id][1] - before[atom_id][1]) > 1e-9
+                )
+            }
+            if not changed_ids:
+                self._update_selection_overlay()
+                return
+            self.undo_stack.push(
+                MoveAtomsCommand(
+                    self.model,
+                    self,
+                    {atom_id: before[atom_id] for atom_id in changed_ids},
+                    {atom_id: after[atom_id] for atom_id in changed_ids},
+                    skip_first_redo=True,
+                )
+            )
+            return
+
+        restored_ids: set[int] = set()
+        for atom_id, (x0, y0) in before.items():
+            if atom_id not in self.model.atoms:
+                continue
+            self.model.update_atom_position(atom_id, x0, y0)
+            self.update_atom_item(atom_id, x0, y0)
+            restored_ids.add(atom_id)
+        self._rotation_3d_pitch_deg = default_pitch
+        self._rotation_3d_yaw_deg = default_yaw
+        if restored_ids:
+            self.update_bond_items_for_atoms(restored_ids)
+        else:
+            self._update_selection_overlay()
 
     def _begin_rotation_drag(self, scene_pos: QPointF) -> None:
         """Método auxiliar para  begin rotation drag.
@@ -9156,6 +9657,26 @@ class ChemusonCanvas(QGraphicsView):
         self._bond_last_angle = None
         self._bond_zigzag_sign = 1
 
+    def _infer_coordination_donor_atom(
+        self,
+        a1_id: int,
+        a2_id: int,
+        preferred: Optional[int] = None,
+    ) -> int:
+        """Infere el átomo donador para enlaces coordinativos."""
+        if preferred in {a1_id, a2_id}:
+            return int(preferred)
+        atom1 = self.model.get_atom(a1_id)
+        atom2 = self.model.get_atom(a2_id)
+        a1_is_center = bool(getattr(atom1, "is_coordination_center", False))
+        a2_is_center = bool(getattr(atom2, "is_coordination_center", False))
+        if a1_is_center and not a2_is_center:
+            return a2_id
+        if a2_is_center and not a1_is_center:
+            return a1_id
+        # Si no hay centro claro, conservar dirección del primer click.
+        return a1_id
+
     def _create_or_update_bond(
         self,
         a1_id: int,
@@ -9198,6 +9719,13 @@ class ChemusonCanvas(QGraphicsView):
                 new_style = style
                 new_stereo = stereo
                 new_is_aromatic = is_aromatic
+            new_donor_atom_id = None
+            if new_style == BondStyle.COORDINATION:
+                new_donor_atom_id = self._infer_coordination_donor_atom(
+                    existing.a1_id,
+                    existing.a2_id,
+                    preferred=getattr(existing, "donor_atom_id", None),
+                )
             cmd = ChangeBondCommand(
                 self.model,
                 self,
@@ -9206,12 +9734,16 @@ class ChemusonCanvas(QGraphicsView):
                 new_style=new_style,
                 new_stereo=new_stereo,
                 new_is_aromatic=new_is_aromatic,
+                new_donor_atom_id=new_donor_atom_id,
             )
             self.undo_stack.push(cmd)
             if new_is_aromatic:
                 self._kekulize_aromatic_bonds(seed_atoms={a1_id, a2_id})
             return
 
+        donor_atom_id = None
+        if style == BondStyle.COORDINATION:
+            donor_atom_id = self._infer_coordination_donor_atom(a1_id, a2_id, preferred=a1_id)
         cmd = AddBondCommand(
             self.model,
             self,
@@ -9221,6 +9753,7 @@ class ChemusonCanvas(QGraphicsView):
             style,
             stereo,
             is_aromatic=is_aromatic,
+            donor_atom_id=donor_atom_id,
         )
         self.undo_stack.push(cmd)
         if is_aromatic:
@@ -9269,6 +9802,7 @@ class ChemusonCanvas(QGraphicsView):
                 new_style=BondStyle.PLAIN,
                 new_stereo=BondStereo.NONE,
                 new_is_aromatic=False,
+                new_donor_atom_id=None,
             )
             self.undo_stack.push(cmd)
             return
@@ -9294,6 +9828,9 @@ class ChemusonCanvas(QGraphicsView):
         Side Effects:
             Puede modificar el estado interno o la escena.
         """
+        if bond_id not in self.model.bonds:
+            return
+        bond = self.model.get_bond(bond_id)
         order = self.state.active_bond_order
         style = self.state.active_bond_style
         stereo = self.state.active_bond_stereo
@@ -9304,6 +9841,13 @@ class ChemusonCanvas(QGraphicsView):
             order = 1
             style = BondStyle.PLAIN
             stereo = BondStereo.NONE
+        donor_atom_id = None
+        if style == BondStyle.COORDINATION:
+            donor_atom_id = self._infer_coordination_donor_atom(
+                bond.a1_id,
+                bond.a2_id,
+                preferred=getattr(bond, "donor_atom_id", None),
+            )
         cmd = ChangeBondCommand(
             self.model,
             self,
@@ -9312,10 +9856,10 @@ class ChemusonCanvas(QGraphicsView):
             new_style=style,
             new_stereo=stereo,
             new_is_aromatic=is_aromatic,
+            new_donor_atom_id=donor_atom_id,
         )
         self.undo_stack.push(cmd)
         if is_aromatic:
-            bond = self.model.get_bond(bond_id)
             self._kekulize_aromatic_bonds(seed_atoms={bond.a1_id, bond.a2_id})
 
     def _create_first_bond(self, scene_pos: QPointF, modifiers: Qt.KeyboardModifiers) -> None:

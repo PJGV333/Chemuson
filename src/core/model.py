@@ -15,6 +15,7 @@ from typing import Dict, List, Optional, Set
 # Marcadores internos para distinguir "no se especificó" de "se desea borrar".
 _STROKE_UNSET = object()
 _COLOR_UNSET = object()
+_DONOR_UNSET = object()
 
 
 class BondStyle(str, Enum):
@@ -25,6 +26,7 @@ class BondStyle(str, Enum):
     HASHED = "hashed"
     WAVY = "wavy"
     INTERACTION = "interaction"
+    COORDINATION = "coordination"
 
 
 class BondStereo(str, Enum):
@@ -96,6 +98,10 @@ class Atom:
     is_query: bool = False
     is_explicit: bool = False
     is_coordination_center: bool = False
+    sphere_radius: Optional[float] = None
+    sphere_color: Optional[str] = None
+    sphere_filled: bool = True
+    sphere_transparent: bool = False
 
 
 @dataclass
@@ -114,6 +120,7 @@ class Bond:
     length_px: Optional[float] = None
     stroke_px: Optional[float] = None
     color: Optional[str] = None
+    donor_atom_id: Optional[int] = None
 
 
 @dataclass
@@ -172,6 +179,10 @@ class MolGraph:
         is_query: bool = False,
         is_explicit: bool = False,
         is_coordination_center: bool = False,
+        sphere_radius: Optional[float] = None,
+        sphere_color: Optional[str] = None,
+        sphere_filled: bool = True,
+        sphere_transparent: bool = False,
     ) -> Atom:
         """Crea y registra un átomo en el grafo.
 
@@ -187,6 +198,10 @@ class MolGraph:
             is_query: Marca de átomo de consulta (SMARTS-like).
             is_explicit: Si el símbolo debe mostrarse aunque sea implícito.
             is_coordination_center: Si el átomo debe renderizarse como centro de coordinación.
+            sphere_radius: Radio visual para el modo esfera (si aplica).
+            sphere_color: Color base de la esfera (hex), o `None` para automático.
+            sphere_filled: Si la esfera se dibuja con relleno (gradiente).
+            sphere_transparent: Si la esfera se dibuja transparente (solo etiqueta).
 
         Returns:
             El átomo creado y almacenado en el diccionario interno.
@@ -199,6 +214,12 @@ class MolGraph:
             self._next_atom_id += 1
         else:
             self._next_atom_id = max(self._next_atom_id, atom_id + 1)
+        resolved_sphere_radius = sphere_radius
+        if is_coordination_center and resolved_sphere_radius is None:
+            resolved_sphere_radius = 16.0
+        resolved_sphere_color = sphere_color
+        if is_coordination_center and resolved_sphere_color is None:
+            resolved_sphere_color = "#D9DDE3"
         atom = Atom(
             id=atom_id,
             element=element,
@@ -211,6 +232,10 @@ class MolGraph:
             is_query=is_query,
             is_explicit=is_explicit,
             is_coordination_center=is_coordination_center,
+            sphere_radius=resolved_sphere_radius,
+            sphere_color=resolved_sphere_color,
+            sphere_filled=bool(sphere_filled),
+            sphere_transparent=bool(sphere_transparent),
         )
         self.atoms[atom_id] = atom
         return atom
@@ -249,6 +274,7 @@ class MolGraph:
         length_px: Optional[float] = None,
         stroke_px: Optional[float] = None,
         color: Optional[str] = None,
+        donor_atom_id: Optional[int] = None,
     ) -> Bond:
         """Crea y registra un enlace entre dos átomos.
 
@@ -266,6 +292,7 @@ class MolGraph:
             length_px: Longitud de dibujo fija (px).
             stroke_px: Grosor de línea (px).
             color: Color personalizado del enlace.
+            donor_atom_id: ID del átomo donador para enlace coordinativo.
 
         Returns:
             El enlace creado.
@@ -278,6 +305,12 @@ class MolGraph:
             self._next_bond_id += 1
         else:
             self._next_bond_id = max(self._next_bond_id, bond_id + 1)
+        donor = donor_atom_id
+        if style != BondStyle.COORDINATION:
+            donor = None
+        elif donor not in {a1_id, a2_id}:
+            donor = None
+
         bond = Bond(
             id=bond_id,
             a1_id=a1_id,
@@ -292,6 +325,7 @@ class MolGraph:
             length_px=length_px,
             stroke_px=stroke_px,
             color=color,
+            donor_atom_id=donor,
         )
         self.bonds[bond_id] = bond
         return bond
@@ -406,6 +440,7 @@ class MolGraph:
         display_order: Optional[int] = None,
         stroke_px: Optional[float] | object = _STROKE_UNSET,
         color: Optional[str] | object = _COLOR_UNSET,
+        donor_atom_id: Optional[int] | object = _DONOR_UNSET,
     ) -> Bond:
         """Actualiza propiedades de un enlace existente.
 
@@ -418,6 +453,7 @@ class MolGraph:
             display_order: Orden visual alternativo.
             stroke_px: Grosor de línea; `None` limpia el valor.
             color: Color del enlace; `None` limpia el valor.
+            donor_atom_id: ID del donador; `None` limpia el valor.
 
         Returns:
             El enlace actualizado.
@@ -440,6 +476,12 @@ class MolGraph:
             bond.stroke_px = None if stroke_px is None else float(stroke_px)
         if color is not _COLOR_UNSET:
             bond.color = None if color is None else str(color)
+        if donor_atom_id is not _DONOR_UNSET:
+            bond.donor_atom_id = int(donor_atom_id) if donor_atom_id is not None else None
+        if bond.style != BondStyle.COORDINATION:
+            bond.donor_atom_id = None
+        elif bond.donor_atom_id not in {bond.a1_id, bond.a2_id}:
+            bond.donor_atom_id = None
         return bond
 
     def update_bond_length(self, bond_id: int, length_px: Optional[float]) -> None:
@@ -480,6 +522,8 @@ class MolGraph:
         """
         bond_order_sum: Dict[int, int] = {atom_id: 0 for atom_id in self.atoms}
         for bond in self.bonds.values():
+            if bond.style == BondStyle.COORDINATION:
+                continue
             if bond.a1_id in bond_order_sum:
                 bond_order_sum[bond.a1_id] += bond.order
             if bond.a2_id in bond_order_sum:

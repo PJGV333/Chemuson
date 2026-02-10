@@ -121,6 +121,43 @@ class MolGraphTest(unittest.TestCase):
             graph.add_bond(c.id, h.id, order=1)
         self.assertIn(c.id, graph.validate())
 
+    def test_coordination_bond_preserves_donor(self):
+        """Verifica que el donador se guarda en enlaces coordinativos."""
+        graph = MolGraph()
+        metal = graph.add_atom("Pd", 0.0, 0.0, is_coordination_center=True)
+        donor = graph.add_atom("N", 1.5, 0.0)
+        self.assertEqual(metal.sphere_radius, 16.0)
+        self.assertTrue(metal.sphere_filled)
+        self.assertFalse(metal.sphere_transparent)
+        self.assertEqual(metal.sphere_color, "#D9DDE3")
+        bond = graph.add_bond(
+            donor.id,
+            metal.id,
+            order=1,
+            style=BondStyle.COORDINATION,
+            donor_atom_id=donor.id,
+        )
+        self.assertEqual(bond.style, BondStyle.COORDINATION)
+        self.assertEqual(bond.donor_atom_id, donor.id)
+
+        graph.update_bond(bond.id, style=BondStyle.PLAIN)
+        self.assertIsNone(graph.get_bond(bond.id).donor_atom_id)
+
+    def test_validate_ignores_coordination_bonds(self):
+        """Verifica que validate no cuente enlaces coordinativos para valencia."""
+        graph = MolGraph()
+        carbon = graph.add_atom("C", 0.0, 0.0)
+        for idx in range(6):
+            metal = graph.add_atom("Pd", float(idx + 1), 0.0, is_coordination_center=True)
+            graph.add_bond(
+                carbon.id,
+                metal.id,
+                order=1,
+                style=BondStyle.COORDINATION,
+                donor_atom_id=carbon.id,
+            )
+        self.assertNotIn(carbon.id, graph.validate())
+
 
 if __name__ == "__main__":
     unittest.main()

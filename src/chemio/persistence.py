@@ -48,6 +48,10 @@ class PersistenceManager:
                 "is_query": atom.is_query,
                 "is_explicit": atom.is_explicit,
                 "is_coordination_center": getattr(atom, "is_coordination_center", False),
+                "sphere_radius": getattr(atom, "sphere_radius", None),
+                "sphere_color": getattr(atom, "sphere_color", None),
+                "sphere_filled": bool(getattr(atom, "sphere_filled", True)),
+                "sphere_transparent": bool(getattr(atom, "sphere_transparent", False)),
             })
             
         bonds_data = []
@@ -66,6 +70,7 @@ class PersistenceManager:
                 "length_px": bond.length_px,
                 "stroke_px": bond.stroke_px,
                 "color": bond.color,
+                "donor_atom_id": getattr(bond, "donor_atom_id", None),
             })
             
         # 2. Serializar elementos del canvas (flechas, brackets, texto)
@@ -118,6 +123,10 @@ class PersistenceManager:
                 is_query=atom_d.get("is_query", False),
                 is_explicit=atom_d.get("is_explicit", False),
                 is_coordination_center=atom_d.get("is_coordination_center", False),
+                sphere_radius=atom_d.get("sphere_radius"),
+                sphere_color=atom_d.get("sphere_color"),
+                sphere_filled=bool(atom_d.get("sphere_filled", True)),
+                sphere_transparent=bool(atom_d.get("sphere_transparent", False)),
             )
             
         for bond_d in model_data.get("bonds", []):
@@ -135,6 +144,7 @@ class PersistenceManager:
                 length_px=bond_d.get("length_px"),
                 stroke_px=bond_d.get("stroke_px"),
                 color=bond_d.get("color"),
+                donor_atom_id=bond_d.get("donor_atom_id"),
             )
             
         canvas.model._next_atom_id = model_data.get("_next_atom_id", canvas.model._next_atom_id)

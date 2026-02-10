@@ -167,11 +167,13 @@ class AtomItem(QGraphicsEllipseItem):
         Side Effects:
             Modifica el estado del item o la escena.
         """
-        super().__init__(-radius, -radius, radius * 2, radius * 2)
+        base_radius = max(float(radius), 1.0)
+        super().__init__(-base_radius, -base_radius, base_radius * 2, base_radius * 2)
         self.atom = atom
         self.atom_id = atom.id
         self.element = atom.element
-        self._radius = radius
+        self._base_radius = base_radius
+        self._radius = base_radius
         self._show_carbon = show_carbon
         self._show_hydrogen = show_hydrogen
         self._is_explicit = atom.is_explicit
@@ -213,6 +215,7 @@ class AtomItem(QGraphicsEllipseItem):
         
         # Apply visibility
         self._update_visibility()
+        self._sync_geometry(force=True)
     
     def _center_label(self) -> None:
         """Centra la etiqueta del átomo.
@@ -230,6 +233,7 @@ class AtomItem(QGraphicsEllipseItem):
         self.label.setPos(x + self._label_offset.x(), -rect.height() / 2 + self._label_offset.y())
         if hasattr(self, "charge_label"):
             self._position_charge_label()
+        self._sync_geometry()
 
     def _position_charge_label(self) -> None:
         """Posiciona la etiqueta de carga.
@@ -255,6 +259,8 @@ class AtomItem(QGraphicsEllipseItem):
         Side Effects:
             No tiene efectos laterales.
         """
+        if getattr(self.atom, "is_coordination_center", False):
+            return "#000000"
         return "#000000" if not self._use_element_colors else "#333333"
 
     def _label_color_for_element(self, element: str) -> str:
@@ -269,6 +275,8 @@ class AtomItem(QGraphicsEllipseItem):
         Side Effects:
             No tiene efectos laterales.
         """
+        if getattr(self.atom, "is_coordination_center", False):
+            return "#000000"
         if not self._use_element_colors:
             return "#000000"
         return LABEL_ELEMENT_COLORS.get(element, "#333333")
@@ -316,6 +324,8 @@ class AtomItem(QGraphicsEllipseItem):
         Side Effects:
             No tiene efectos laterales.
         """
+        if getattr(self.atom, "is_coordination_center", False):
+            return False
         if self._is_explicit:
             return False
         if self.element == "C" and not self._show_carbon:
@@ -323,6 +333,34 @@ class AtomItem(QGraphicsEllipseItem):
         if self.element == "H" and not self._show_hydrogen:
             return True
         return False
+
+    def _coordination_draw_radius(self) -> float:
+        """Calcula el radio visual efectivo para la esfera de coordinación."""
+        label_rect = self.label.boundingRect()
+        label_radius = max(label_rect.width(), label_rect.height()) * 0.75
+        configured_radius = getattr(self.atom, "sphere_radius", None)
+        if configured_radius is None:
+            return max(self._base_radius * 0.95, label_radius * 1.35, 12.0)
+        return max(float(configured_radius), label_radius * 1.10, 8.0)
+
+    def _target_item_radius(self) -> float:
+        """Calcula el radio del rectángulo del item para evitar recortes."""
+        if getattr(self.atom, "is_coordination_center", False):
+            if bool(getattr(self.atom, "sphere_transparent", False)):
+                label_rect = self.label.boundingRect()
+                label_radius = max(label_rect.width(), label_rect.height()) * 0.55
+                return max(self._base_radius, label_radius + 3.0)
+            return max(self._base_radius, self._coordination_draw_radius() + 2.0)
+        return self._base_radius
+
+    def _sync_geometry(self, force: bool = False) -> None:
+        """Sincroniza la geometría del item con su radio de render actual."""
+        target_radius = self._target_item_radius()
+        if not force and abs(target_radius - self._radius) < 0.05:
+            return
+        self.prepareGeometryChange()
+        self._radius = target_radius
+        self.setRect(-target_radius, -target_radius, target_radius * 2.0, target_radius * 2.0)
 
     def _should_draw_circle(self) -> bool:
         """Determina si draw círculo.
@@ -351,10 +389,12 @@ class AtomItem(QGraphicsEllipseItem):
             self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
             self.setPen(QPen(Qt.PenStyle.NoPen))
             self.label.setVisible(False)
+            self._sync_geometry()
             return
 
         self.label.setVisible(True)
         self._apply_normal_style()
+        self._sync_geometry()
     
     def _apply_normal_style(self) -> None:
         """Aplica el estilo normal según el estado.
@@ -397,32 +437,41 @@ class AtomItem(QGraphicsEllipseItem):
             Modifica el estado del item o la escena.
         """
         if getattr(self.atom, "is_coordination_center", False):
+            if bool(getattr(self.atom, "sphere_transparent", False)):
+                return
             painter.save()
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            label_rect = self.label.boundingRect()
-            label_radius = max(label_rect.width(), label_rect.height()) * 0.75
-            radius = max(self._radius * 0.95, label_radius * 1.35, 12.0)
-            if self._use_element_colors:
-                base_color = QColor(self._element_color)
+            radius = self._coordination_draw_radius()
+            custom_color = getattr(self.atom, "sphere_color", None)
+            if custom_color:
+                base_color = QColor(custom_color)
             else:
-                base_color = QColor("#8D99A6")
-            highlight = base_color.lighter(170)
-            shadow = base_color.darker(160)
-            gradient = QRadialGradient(
-                QPointF(-radius * 0.35, -radius * 0.35),
-                radius,
-                QPointF(-radius * 0.35, -radius * 0.35),
-            )
-            gradient.setColorAt(0.0, highlight)
-            gradient.setColorAt(0.55, base_color)
-            gradient.setColorAt(1.0, shadow)
-            painter.setBrush(QBrush(gradient))
-            border = QPen(base_color.darker(180), max(0.8, self._style.stroke_px * 0.7))
+                base_color = QColor("#D9DDE3")
+            if not base_color.isValid():
+                base_color = QColor("#D9DDE3")
+            filled = bool(getattr(self.atom, "sphere_filled", True))
+            if filled:
+                highlight = base_color.lighter(170)
+                shadow = base_color.darker(160)
+                gradient = QRadialGradient(
+                    QPointF(-radius * 0.35, -radius * 0.35),
+                    radius,
+                    QPointF(-radius * 0.35, -radius * 0.35),
+                )
+                gradient.setColorAt(0.0, highlight)
+                gradient.setColorAt(0.55, base_color)
+                gradient.setColorAt(1.0, shadow)
+                painter.setBrush(QBrush(gradient))
+            else:
+                painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+            border_color = base_color.darker(180) if filled else base_color
+            border = QPen(border_color, max(0.8, self._style.stroke_px * 0.7))
             border.setCapStyle(self._style.cap_style)
             border.setJoinStyle(self._style.join_style)
             painter.setPen(border)
             painter.drawEllipse(QPointF(0.0, 0.0), radius, radius)
             painter.restore()
+            return
 
         painter.setPen(self.pen())
         painter.setBrush(self.brush())
@@ -431,6 +480,12 @@ class AtomItem(QGraphicsEllipseItem):
     def set_coordination_center(self, enabled: bool) -> None:
         """Activa/desactiva renderizado de esfera para centro de coordinación."""
         self.atom.is_coordination_center = bool(enabled)
+        self._update_visibility()
+        self.refresh_coordination_visual()
+
+    def refresh_coordination_visual(self) -> None:
+        """Sincroniza geometría/estilo de la esfera de coordinación."""
+        self._sync_geometry(force=True)
         self.update()
     
     def set_visibility_flags(self, show_carbon: bool, show_hydrogen: bool) -> None:
@@ -552,6 +607,7 @@ class AtomItem(QGraphicsEllipseItem):
         charge_font.setPointSizeF(max(font.pointSizeF() * 0.8, 6.0))
         self.charge_label.setFont(charge_font)
         self._apply_label_style()
+        self._sync_geometry()
 
     def set_valence_error(self, has_error: bool) -> None:
         """Actualiza error de valencia.
@@ -898,6 +954,7 @@ class AtomItem(QGraphicsEllipseItem):
         self._style = style
         if not self._should_hide_element():
             self._apply_normal_style()
+        self._sync_geometry()
 
     def set_use_element_colors(self, use_element_colors: bool) -> None:
         """Actualiza uso de colores por elemento.
@@ -913,6 +970,7 @@ class AtomItem(QGraphicsEllipseItem):
         """
         self._use_element_colors = use_element_colors
         self._set_element_color()
+        self._sync_geometry()
 
 
 class BondItem(QGraphicsPathItem):
@@ -954,6 +1012,7 @@ class BondItem(QGraphicsPathItem):
         self.length_px = bond.length_px
         self._stroke_px = bond.stroke_px
         self._color = bond.color
+        self.donor_atom_id = getattr(bond, "donor_atom_id", None)
         self.render_aromatic_as_circle = render_aromatic_as_circle
         self._style = style
         self._label_shrink_start = 0.0
@@ -1033,6 +1092,7 @@ class BondItem(QGraphicsPathItem):
         self.length_px = bond.length_px
         self._stroke_px = bond.stroke_px
         self._color = bond.color
+        self.donor_atom_id = getattr(bond, "donor_atom_id", None)
         self._update_z_order()
         self.update_positions(atom1, atom2)
 
@@ -1750,6 +1810,108 @@ class BondItem(QGraphicsPathItem):
             path.lineTo(e2x, e2y)
             pen = QPen(color, stroke_px, Qt.PenStyle.DotLine)
             pen.setCapStyle(self._style.cap_style)
+            pen.setJoinStyle(self._style.join_style)
+            self.setPen(pen)
+            self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+
+        elif self.style == BondStyle.COORDINATION:
+            # Donor -> acceptor direction:
+            # 1) explícita por donor_atom_id
+            # 2) inferida por centro de coordinación
+            # 3) fallback al orden del enlace (a1 -> a2)
+            donor_is_a1: bool
+            if self.donor_atom_id in {self.a1_id, self.a2_id}:
+                donor_is_a1 = self.donor_atom_id == self.a1_id
+            else:
+                a1_is_center = bool(getattr(atom1, "is_coordination_center", False))
+                a2_is_center = bool(getattr(atom2, "is_coordination_center", False))
+                if a1_is_center and not a2_is_center:
+                    donor_is_a1 = False
+                elif a2_is_center and not a1_is_center:
+                    donor_is_a1 = True
+                else:
+                    donor_is_a1 = True
+
+            if donor_is_a1:
+                sx, sy = p1x, p1y
+                ex, ey = p2x, p2y
+                donor_atom = atom1
+                acceptor_atom = atom2
+            else:
+                sx, sy = p2x, p2y
+                ex, ey = p1x, p1y
+                donor_atom = atom2
+                acceptor_atom = atom1
+
+            dx_da = ex - sx
+            dy_da = ey - sy
+            len_da = math.hypot(dx_da, dy_da)
+            if len_da <= 1e-6:
+                self.setPath(path)
+                return
+            ux_da = dx_da / len_da
+            uy_da = dy_da / len_da
+            nx_da = -uy_da
+            ny_da = ux_da
+
+            donor_radius = (
+                float(getattr(donor_atom, "sphere_radius", 16.0))
+                if (
+                    bool(getattr(donor_atom, "is_coordination_center", False))
+                    and not bool(getattr(donor_atom, "sphere_transparent", False))
+                )
+                else 0.0
+            )
+            acceptor_radius = (
+                float(getattr(acceptor_atom, "sphere_radius", 16.0))
+                if (
+                    bool(getattr(acceptor_atom, "is_coordination_center", False))
+                    and not bool(getattr(acceptor_atom, "sphere_transparent", False))
+                )
+                else 0.0
+            )
+            if donor_radius > 0.0:
+                move = min(donor_radius, len_da * 0.45)
+                sx += ux_da * move
+                sy += uy_da * move
+            if acceptor_radius > 0.0:
+                move = min(acceptor_radius, len_da * 0.45)
+                ex -= ux_da * move
+                ey -= uy_da * move
+
+            # Recalcular tras recortes
+            dx_da = ex - sx
+            dy_da = ey - sy
+            len_da = math.hypot(dx_da, dy_da)
+            if len_da <= 1e-6:
+                self.setPath(path)
+                return
+            ux_da = dx_da / len_da
+            uy_da = dy_da / len_da
+            nx_da = -uy_da
+            ny_da = ux_da
+
+            # Línea discontinua principal
+            path.moveTo(sx, sy)
+            path.lineTo(ex, ey)
+
+            # Flecha abierta opcional hacia el aceptor (si hay espacio)
+            arrow_len = max(7.0, stroke_px * 3.4)
+            arrow_half = max(2.8, stroke_px * 1.7)
+            if len_da > arrow_len * 1.35:
+                tip_x = ex
+                tip_y = ey
+                base_x = tip_x - ux_da * arrow_len
+                base_y = tip_y - uy_da * arrow_len
+                path.moveTo(base_x + nx_da * arrow_half, base_y + ny_da * arrow_half)
+                path.lineTo(tip_x, tip_y)
+                path.moveTo(base_x - nx_da * arrow_half, base_y - ny_da * arrow_half)
+                path.lineTo(tip_x, tip_y)
+
+            coord_stroke = max(1.0, stroke_px * 0.9)
+            pen = QPen(color, coord_stroke, Qt.PenStyle.DashLine)
+            pen.setDashPattern([4.0, 3.0])
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
             pen.setJoinStyle(self._style.join_style)
             self.setPen(pen)
             self.setBrush(QBrush(Qt.BrushStyle.NoBrush))

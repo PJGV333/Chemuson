@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
     QDialogButtonBox,
     QDoubleSpinBox,
     QFormLayout,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -29,6 +30,119 @@ from PyQt6.QtWidgets import (
 
 from core.model import ChemState
 from gui.style import DrawingStyle
+
+
+class TrackballRotationDialog(QDialog):
+    """Diálogo interactivo para rotación pseudo-3D con ejes X/Y."""
+
+    preview_changed = pyqtSignal(float, float)
+
+    def __init__(
+        self,
+        pitch_deg: float,
+        yaw_deg: float,
+        max_tilt_deg: float,
+        parent=None,
+    ) -> None:
+        """Inicializa el diálogo de rotación 3D."""
+        super().__init__(parent)
+        self.setWindowTitle("Rotación 3D precisa")
+        self.setMinimumWidth(360)
+        self._max_tilt_deg = max(1.0, float(max_tilt_deg))
+
+        help_label = QLabel("X = inclinación (arriba/abajo), Y = giro (izquierda/derecha)")
+        help_label.setStyleSheet("color: #555555;")
+
+        form = QFormLayout()
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
+
+        self.pitch_spin = QDoubleSpinBox()
+        self.pitch_spin.setRange(-self._max_tilt_deg, self._max_tilt_deg)
+        self.pitch_spin.setDecimals(2)
+        self.pitch_spin.setSingleStep(1.0)
+        self.pitch_spin.setValue(float(pitch_deg))
+        form.addRow("Ángulo X (°)", self.pitch_spin)
+
+        self.yaw_spin = QDoubleSpinBox()
+        self.yaw_spin.setRange(-self._max_tilt_deg, self._max_tilt_deg)
+        self.yaw_spin.setDecimals(2)
+        self.yaw_spin.setSingleStep(1.0)
+        self.yaw_spin.setValue(float(yaw_deg))
+        form.addRow("Ángulo Y (°)", self.yaw_spin)
+
+        self.step_spin = QDoubleSpinBox()
+        self.step_spin.setRange(0.1, 30.0)
+        self.step_spin.setDecimals(1)
+        self.step_spin.setSingleStep(0.5)
+        self.step_spin.setValue(2.0)
+        form.addRow("Paso (°)", self.step_spin)
+
+        arrows_widget = QWidget(self)
+        arrows = QGridLayout(arrows_widget)
+        arrows.setContentsMargins(0, 0, 0, 0)
+        arrows.setHorizontalSpacing(6)
+        arrows.setVerticalSpacing(6)
+
+        self.btn_x_up = QPushButton("↑ X")
+        self.btn_x_down = QPushButton("↓ X")
+        self.btn_y_left = QPushButton("← Y")
+        self.btn_y_right = QPushButton("→ Y")
+        self.btn_reset = QPushButton("Reset")
+
+        arrows.addWidget(self.btn_x_up, 0, 1)
+        arrows.addWidget(self.btn_y_left, 1, 0)
+        arrows.addWidget(self.btn_y_right, 1, 2)
+        arrows.addWidget(self.btn_x_down, 2, 1)
+        arrows.addWidget(self.btn_reset, 1, 1)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(help_label)
+        layout.addLayout(form)
+        layout.addWidget(arrows_widget)
+        layout.addWidget(buttons)
+
+        self.btn_x_up.clicked.connect(lambda: self._nudge("x", +1.0))
+        self.btn_x_down.clicked.connect(lambda: self._nudge("x", -1.0))
+        self.btn_y_left.clicked.connect(lambda: self._nudge("y", -1.0))
+        self.btn_y_right.clicked.connect(lambda: self._nudge("y", +1.0))
+        self.btn_reset.clicked.connect(self._reset_angles)
+        self.pitch_spin.valueChanged.connect(self._emit_preview)
+        self.yaw_spin.valueChanged.connect(self._emit_preview)
+
+    def _nudge(self, axis: str, sign: float) -> None:
+        """Aplica incremento/decremento en el eje solicitado."""
+        delta = float(self.step_spin.value()) * float(sign)
+        if axis == "x":
+            target = max(
+                -self._max_tilt_deg,
+                min(self._max_tilt_deg, float(self.pitch_spin.value()) + delta),
+            )
+            self.pitch_spin.setValue(target)
+            return
+        target = max(
+            -self._max_tilt_deg,
+            min(self._max_tilt_deg, float(self.yaw_spin.value()) + delta),
+        )
+        self.yaw_spin.setValue(target)
+
+    def _reset_angles(self) -> None:
+        """Restablece los dos ejes a cero."""
+        self.pitch_spin.setValue(0.0)
+        self.yaw_spin.setValue(0.0)
+
+    def _emit_preview(self, *_args) -> None:
+        """Emite ángulos actuales para previsualización."""
+        self.preview_changed.emit(float(self.pitch_spin.value()), float(self.yaw_spin.value()))
+
+    def angles(self) -> tuple[float, float]:
+        """Devuelve la pareja (pitch, yaw) actual."""
+        return float(self.pitch_spin.value()), float(self.yaw_spin.value())
 
 
 class PreferencesDialog(QDialog):
