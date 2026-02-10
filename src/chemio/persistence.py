@@ -46,7 +46,8 @@ class PersistenceManager:
                 "explicit_h": atom.explicit_h,
                 "mapping": atom.mapping,
                 "is_query": atom.is_query,
-                "is_explicit": atom.is_explicit
+                "is_explicit": atom.is_explicit,
+                "is_coordination_center": getattr(atom, "is_coordination_center", False),
             })
             
         bonds_data = []
@@ -115,7 +116,8 @@ class PersistenceManager:
                 explicit_h=atom_d.get("explicit_h"),
                 mapping=atom_d.get("mapping"),
                 is_query=atom_d.get("is_query", False),
-                is_explicit=atom_d.get("is_explicit", False)
+                is_explicit=atom_d.get("is_explicit", False),
+                is_coordination_center=atom_d.get("is_coordination_center", False),
             )
             
         for bond_d in model_data.get("bonds", []):

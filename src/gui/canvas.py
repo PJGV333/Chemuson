@@ -143,6 +143,7 @@ BOND_LAST_ANGLE_TOLERANCE_DEG = 20.0
 CLIPBOARD_RENDER_SCALE = 5.0
 TRACKBALL_ROTATION_DEG_PER_PIXEL = 1.0
 TRACKBALL_MAX_TILT_DEG = 60.0
+TRACKBALL_REFERENCE_MATCH_TOLERANCE_PX = 1.5
 # Etiquetas rápidas para grupos funcionales comunes.
 FUNCTIONAL_GROUP_LABELS = [
     "NH2",
@@ -279,6 +280,7 @@ WAVY_ANCHOR_ROLE = 2001
 WAVY_ANCHOR_ANGLE_ROLE = 2002
 WAVY_ANCHOR_LENGTH_ROLE = 2003
 WAVY_ANCHOR_BOND_ROLE = 2004
+AROMATIC_CIRCLE_ATOMS_ROLE = 3001
 
 SYMBOL_TEXT_TOOLS = {
     "tool_symbol_plus": {"text": "+", "scale": 1.0, "anchor": True},
@@ -3456,6 +3458,7 @@ class ChemusonCanvas(QGraphicsView):
                 mapping=atom.mapping,
                 is_query=atom.is_query,
                 is_explicit=atom.is_explicit,
+                is_coordination_center=getattr(atom, "is_coordination_center", False),
             )
         for bond in bonds:
             graph.add_bond(
@@ -3513,6 +3516,7 @@ class ChemusonCanvas(QGraphicsView):
                     "mapping": atom.mapping,
                     "is_query": atom.is_query,
                     "is_explicit": atom.is_explicit,
+                    "is_coordination_center": getattr(atom, "is_coordination_center", False),
                     "anchor": self._group_anchor_overrides.get(atom_id),
                 }
             )
@@ -3647,6 +3651,7 @@ class ChemusonCanvas(QGraphicsView):
                 is_query=bool(atom_d.get("is_query", False)),
                 anchor_override=atom_d.get("anchor"),
                 auto_hydrogens=False,
+                is_coordination_center=bool(atom_d.get("is_coordination_center", False)),
             )
             if has_undo_items:
                 self.undo_stack.push(cmd)
@@ -4381,6 +4386,7 @@ class ChemusonCanvas(QGraphicsView):
                 atom.y + dy,
                 is_explicit=atom.is_explicit,
                 auto_hydrogens=False,
+                is_coordination_center=getattr(atom, "is_coordination_center", False),
             )
             self.undo_stack.push(cmd)
             if cmd.atom_id is not None:
@@ -4442,6 +4448,7 @@ class ChemusonCanvas(QGraphicsView):
                 atom.y + dy,
                 is_explicit=atom.is_explicit,
                 auto_hydrogens=False,
+                is_coordination_center=getattr(atom, "is_coordination_center", False),
             )
             self.undo_stack.push(cmd)
             if cmd.atom_id is not None:
@@ -4579,6 +4586,9 @@ class ChemusonCanvas(QGraphicsView):
         """
         item = self.atom_items.get(atom_id)
         if item is not None:
+            atom_ref = self.model.atoms.get(atom_id)
+            if atom_ref is not None and hasattr(item, "atom"):
+                item.atom = atom_ref
             item.setPos(x, y)
         self._update_electron_dots_for_atom(atom_id)
         self._update_wavy_anchors_for_atom(atom_id)
@@ -4604,6 +4614,9 @@ class ChemusonCanvas(QGraphicsView):
         """
         item = self.atom_items.get(atom_id)
         if item is not None:
+            atom_ref = self.model.atoms.get(atom_id)
+            if atom_ref is not None and hasattr(item, "atom"):
+                item.atom = atom_ref
             if is_explicit is None:
                 is_explicit = self.model.get_atom(atom_id).is_explicit
             item.set_element(element, is_explicit=is_explicit)
@@ -6142,6 +6155,7 @@ class ChemusonCanvas(QGraphicsView):
             if bond.a1_id in atom_ids or bond.a2_id in atom_ids:
                 self.update_bond_item(bond.id)
         self._refresh_implicit_h_overlays(atom_ids)
+        self._update_aromatic_circles_for_atoms(atom_ids)
 
     def remove_bond_item(self, bond_id: int) -> None:
         """Elimina bond item.
@@ -6448,59 +6462,237 @@ class ChemusonCanvas(QGraphicsView):
             return
         
         # Find aromatic rings and add circles
-        rings = self._detect_aromatic_rings()
+        rings = self._detect_aromatic_rings(with_atoms=True)
+        trackball_affine = self._trackball_affine_context()
         for ring in rings:
-            circle = AromaticCircleItem(ring["center"].x(), ring["center"].y(), ring["radius"])
-            self.scene.addItem(circle)
-            self.aromatic_circles.append(circle)
+            atom_ids = sorted(ring.get("atoms", set()))
+            self._draw_aromatic_circle(atom_ids, trackball_affine=trackball_affine)
+
+    def _trackball_affine_context(
+        self,
+    ) -> Optional[tuple[float, float, float, float, float, float]]:
+        """Devuelve el contexto afín del trackball si la referencia sigue válida."""
+        atom_ids = self._rotation_3d_ref_atom_ids
+        if not atom_ids or not self._rotation_3d_ref_positions:
+            return None
+        if any(atom_id not in self.model.atoms for atom_id in atom_ids):
+            return None
+        if any(atom_id not in self._rotation_3d_ref_positions for atom_id in atom_ids):
+            return None
+
+        if not self._is_rotating_3d:
+            projected = self._project_trackball_reference(
+                atom_ids,
+                self._rotation_3d_pitch_deg,
+                self._rotation_3d_yaw_deg,
+            )
+            max_delta = 0.0
+            for atom_id in atom_ids:
+                px, py = projected[atom_id]
+                atom = self.model.get_atom(atom_id)
+                max_delta = max(max_delta, math.hypot(px - atom.x, py - atom.y))
+            if max_delta > TRACKBALL_REFERENCE_MATCH_TOLERANCE_PX:
+                return None
+
+        count = float(len(atom_ids))
+        center_x = sum(self._rotation_3d_ref_positions[atom_id][0] for atom_id in atom_ids) / count
+        center_y = sum(self._rotation_3d_ref_positions[atom_id][1] for atom_id in atom_ids) / count
+        pitch_rad = math.radians(self._rotation_3d_pitch_deg)
+        yaw_rad = math.radians(self._rotation_3d_yaw_deg)
+        return (
+            center_x,
+            center_y,
+            math.cos(pitch_rad),
+            math.sin(pitch_rad),
+            math.cos(yaw_rad),
+            math.sin(yaw_rad),
+        )
+
+    def _aromatic_circle_geometry_from_trackball_reference(
+        self,
+        atom_ids: Iterable[int],
+        affine_ctx: tuple[float, float, float, float, float, float],
+    ) -> Optional[tuple[float, float, float, float, float]]:
+        """Calcula la elipse aromática aplicando la misma afín pseudo-3D."""
+        ref_points: list[tuple[float, float]] = []
+        for atom_id in atom_ids:
+            point = self._rotation_3d_ref_positions.get(int(atom_id))
+            if point is None:
+                return None
+            ref_points.append(point)
+        if len(ref_points) < 3:
+            return None
+
+        ring_cx = sum(x for x, _ in ref_points) / len(ref_points)
+        ring_cy = sum(y for _, y in ref_points) / len(ref_points)
+        avg_dist = (
+            sum(math.hypot(x - ring_cx, y - ring_cy) for x, y in ref_points)
+            / len(ref_points)
+        )
+        base_radius = max(2.0, avg_dist * 0.65)
+
+        center_x, center_y, cos_x, sin_x, cos_y, sin_y = affine_ctx
+        x0 = ring_cx - center_x
+        y0 = ring_cy - center_y
+        y_new = y0 * cos_x
+        z_new = y0 * sin_x
+        proj_cx = x0 * cos_y + z_new * sin_y + center_x
+        proj_cy = y_new + center_y
+
+        # Imagen afín del círculo base de radio r en el plano XY.
+        v1x = base_radius * cos_y
+        v1y = 0.0
+        v2x = base_radius * sin_x * sin_y
+        v2y = base_radius * cos_x
+
+        c11 = v1x * v1x + v2x * v2x
+        c22 = v1y * v1y + v2y * v2y
+        c12 = v1x * v1y + v2x * v2y
+        trace = c11 + c22
+        disc = max(0.0, (c11 - c22) * (c11 - c22) + 4.0 * c12 * c12)
+        root = math.sqrt(disc)
+        eig_1 = max(0.0, 0.5 * (trace + root))
+        eig_2 = max(0.0, 0.5 * (trace - root))
+
+        radius_x = max(2.0, math.sqrt(eig_1))
+        radius_y = max(2.0, math.sqrt(eig_2))
+        angle_deg = 0.5 * math.degrees(math.atan2(2.0 * c12, c11 - c22))
+        return proj_cx, proj_cy, radius_x, radius_y, angle_deg
+
+    def _aromatic_circle_geometry_for_atom_ids(
+        self,
+        atom_ids: Iterable[int],
+        trackball_affine: Optional[tuple[float, float, float, float, float, float]] = None,
+    ) -> Optional[tuple[float, float, float, float, float]]:
+        """Calcula la geometría del marcador aromático."""
+        atom_id_list = [int(atom_id) for atom_id in atom_ids]
+        if len(atom_id_list) < 3:
+            return None
+
+        if trackball_affine is not None:
+            projected = self._aromatic_circle_geometry_from_trackball_reference(
+                atom_id_list,
+                trackball_affine,
+            )
+            if projected is not None:
+                return projected
+
+        ring_atoms = []
+        for atom_id in atom_id_list:
+            atom = self.model.atoms.get(atom_id)
+            if atom is not None:
+                ring_atoms.append(atom)
+        if len(ring_atoms) < 3:
+            return None
+
+        cx = sum(atom.x for atom in ring_atoms) / len(ring_atoms)
+        cy = sum(atom.y for atom in ring_atoms) / len(ring_atoms)
+        avg_dist = (
+            sum(math.hypot(atom.x - cx, atom.y - cy) for atom in ring_atoms)
+            / len(ring_atoms)
+        )
+        radius = max(2.0, avg_dist * 0.65)
+        return cx, cy, radius, radius, 0.0
+
+    def _draw_aromatic_circle(
+        self,
+        atom_ids: Iterable[int],
+        trackball_affine: Optional[tuple[float, float, float, float, float, float]] = None,
+    ) -> None:
+        """Crea y añade a escena el círculo interno de un anillo aromático."""
+        atom_ids_tuple = tuple(sorted(int(atom_id) for atom_id in atom_ids))
+        if not atom_ids_tuple:
+            return
+        geometry = self._aromatic_circle_geometry_for_atom_ids(
+            atom_ids_tuple,
+            trackball_affine=trackball_affine,
+        )
+        if geometry is None:
+            return
+        cx, cy, radius_x, radius_y, angle_deg = geometry
+        circle = AromaticCircleItem(QRectF(-radius_x, -radius_y, 2.0 * radius_x, 2.0 * radius_y))
+        circle.set_geometry(cx, cy, radius_x, radius_y, angle_deg)
+        circle.setData(AROMATIC_CIRCLE_ATOMS_ROLE, atom_ids_tuple)
+        self.scene.addItem(circle)
+        self.aromatic_circles.append(circle)
+
+    def _update_aromatic_circles_for_atoms(self, atom_ids: set[int]) -> None:
+        """Actualiza posición/tamaño de círculos aromáticos afectados por átomos movidos."""
+        if not self.state.use_aromatic_circles or not self.aromatic_circles:
+            return
+        if not atom_ids:
+            return
+
+        trackball_affine = self._trackball_affine_context()
+        changed_atoms = set(atom_ids)
+        force_refresh = False
+        for circle in list(self.aromatic_circles):
+            try:
+                ring_atom_ids = circle.data(AROMATIC_CIRCLE_ATOMS_ROLE)
+            except RuntimeError:
+                force_refresh = True
+                break
+            if not ring_atom_ids:
+                force_refresh = True
+                break
+            ring_set = {int(atom_id) for atom_id in ring_atom_ids}
+            if changed_atoms.isdisjoint(ring_set):
+                continue
+            geometry = self._aromatic_circle_geometry_for_atom_ids(
+                ring_set,
+                trackball_affine=trackball_affine,
+            )
+            if geometry is None:
+                force_refresh = True
+                break
+            cx, cy, radius_x, radius_y, angle_deg = geometry
+            circle.set_geometry(cx, cy, radius_x, radius_y, angle_deg)
+
+        if force_refresh:
+            self.refresh_aromatic_circles()
 
     def _detect_aromatic_rings(self, with_atoms: bool = False) -> list:
         """
         Detect complete aromatic rings and return their centers.
         Returns list of dicts with center and radius (and optionally atoms).
         """
-        # Collect aromatic bonds
-        aromatic_bonds = [b for b in self.model.bonds.values() if b.is_aromatic]
-        if not aromatic_bonds:
+        view = MolView(self.model)
+        rings = find_rings_simple(view)
+        if not rings:
             return []
-        
-        # Build adjacency for aromatic atoms only
-        aromatic_atoms = set()
-        adjacency: dict[int, list[int]] = {}
-        for bond in aromatic_bonds:
-            aromatic_atoms.add(bond.a1_id)
-            aromatic_atoms.add(bond.a2_id)
-            adjacency.setdefault(bond.a1_id, []).append(bond.a2_id)
-            adjacency.setdefault(bond.a2_id, []).append(bond.a1_id)
-        
-        # Find rings using simple DFS for small rings (5-7 members)
-        visited_rings = set()
-        rings = []
-        
-        for start in aromatic_atoms:
-            # Try to find rings starting from this atom
-            ring = self._find_ring_from(start, adjacency, max_size=7)
-            if ring:
-                ring_key = tuple(sorted(ring))
-                if ring_key not in visited_rings:
-                    visited_rings.add(ring_key)
-                    rings.append(ring)
+
+        aromatic_pairs = {
+            frozenset({bond.a1_id, bond.a2_id})
+            for bond in self.model.bonds.values()
+            if bond.is_aromatic
+        }
+        if not aromatic_pairs:
+            return []
         
         # Calculate centers and radii for each ring
         result = []
         for ring in rings:
-            atoms = [self.model.get_atom(aid) for aid in ring]
+            ring_pairs = ring_bonds(view, ring)
+            if not ring_pairs:
+                continue
+            # Aromático si todos los enlaces del anillo están marcados como aromáticos.
+            if not all(pair in aromatic_pairs for pair in ring_pairs):
+                continue
+
+            atom_ids = list(ring)
+            atoms = [self.model.get_atom(aid) for aid in atom_ids if aid in self.model.atoms]
+            if len(atoms) < 3:
+                continue
             cx = sum(a.x for a in atoms) / len(atoms)
             cy = sum(a.y for a in atoms) / len(atoms)
-            # Radius is about 60% of distance from center to atoms
             avg_dist = sum(((a.x - cx)**2 + (a.y - cy)**2)**0.5 for a in atoms) / len(atoms)
-            radius = avg_dist * 0.55
+            radius = max(2.0, avg_dist * 0.65)
             entry = {
                 "center": QPointF(cx, cy),
                 "radius": radius,
             }
             if with_atoms:
-                entry["atoms"] = set(ring)
+                entry["atoms"] = set(atom_ids)
             result.append(entry)
         
         return result
@@ -7558,6 +7750,21 @@ class ChemusonCanvas(QGraphicsView):
             or any(isinstance(item, (ArrowItem, BracketItem)) for item in self.scene.selectedItems())
         )
         has_bond_selection = bool(self.state.selected_bonds)
+        coordination_atom_ids: list[int] = []
+        if isinstance(clicked_item, AtomItem):
+            coordination_atom_ids = [clicked_item.atom_id]
+        else:
+            coordination_atom_ids = sorted(
+                atom_id
+                for atom_id in self._selected_atom_ids_for_transform()
+                if atom_id in self.model.atoms
+            )
+        coordination_enable = False
+        if coordination_atom_ids:
+            coordination_enable = not all(
+                getattr(self.model.get_atom(atom_id), "is_coordination_center", False)
+                for atom_id in coordination_atom_ids
+            )
 
         act_cut = menu.addAction("Cortar")
         act_copy = menu.addAction("Copiar")
@@ -7578,6 +7785,7 @@ class ChemusonCanvas(QGraphicsView):
             act_color = menu.addAction("Color de enlace...")
             act_reset_color = menu.addAction("Restablecer color de enlace")
         act_anchor = None
+        act_toggle_coord_sphere = None
         if isinstance(clicked_item, AtomItem):
             atom = self.model.get_atom(clicked_item.atom_id)
             if atom is not None and atom.element not in ELEMENT_SYMBOLS:
@@ -7585,6 +7793,14 @@ class ChemusonCanvas(QGraphicsView):
                 if candidates:
                     menu.addSeparator()
                     act_anchor = menu.addAction("Elegir átomo de unión...")
+        if coordination_atom_ids:
+            menu.addSeparator()
+            coord_text = (
+                "Toggle Coordination Sphere (On)"
+                if coordination_enable
+                else "Toggle Coordination Sphere (Off)"
+            )
+            act_toggle_coord_sphere = menu.addAction(coord_text)
         menu.addSeparator()
         act_select_all = menu.addAction("Seleccionar todo")
         menu.addSeparator()
@@ -7625,6 +7841,9 @@ class ChemusonCanvas(QGraphicsView):
         if act_anchor is not None and action == act_anchor and isinstance(clicked_item, AtomItem):
             self._prompt_anchor_for_atom(clicked_item.atom_id)
             return
+        if act_toggle_coord_sphere is not None and action == act_toggle_coord_sphere:
+            self._set_coordination_sphere(coordination_atom_ids, coordination_enable)
+            return
         if action == act_analysis_name:
             self._run_analysis_action("name", scene_pos)
             return
@@ -7664,6 +7883,24 @@ class ChemusonCanvas(QGraphicsView):
             return
         if action == act_select_all:
             self._select_all_items()
+
+    def _set_coordination_sphere(self, atom_ids: Iterable[int], enabled: bool) -> None:
+        """Activa/desactiva esfera de coordinación para una lista de átomos."""
+        changed = False
+        enabled_flag = bool(enabled)
+        for atom_id in atom_ids:
+            if atom_id not in self.model.atoms:
+                continue
+            atom = self.model.get_atom(atom_id)
+            if getattr(atom, "is_coordination_center", False) == enabled_flag:
+                continue
+            atom.is_coordination_center = enabled_flag
+            item = self.atom_items.get(atom_id)
+            if item is not None:
+                item.set_coordination_center(enabled_flag)
+            changed = True
+        if changed:
+            self.viewport().update()
 
     def _bond_stroke_step(self) -> float:
         """Método auxiliar para  bond stroke step.

@@ -165,6 +165,7 @@ class AddAtomCommand(QUndoCommand):
         anchor_override: Optional[str] = None,
         auto_hydrogens: bool = True,
         expected_bonds: int = 0,
+        is_coordination_center: bool = False,
     ) -> None:
         """Inicializa el comando de adición de átomo.
 
@@ -183,6 +184,7 @@ class AddAtomCommand(QUndoCommand):
             anchor_override: Ancla visual alternativa.
             auto_hydrogens: Si se auto-generan hidrógenos.
             expected_bonds: Número de enlaces esperados (para H implícitos).
+            is_coordination_center: Si el átomo se dibuja como esfera de coordinación.
         """
         super().__init__("Add atom")
         self._model = model
@@ -199,6 +201,7 @@ class AddAtomCommand(QUndoCommand):
         self._anchor_override = anchor_override
         self._auto_hydrogens = auto_hydrogens
         self._expected_bonds = expected_bonds
+        self._is_coordination_center = bool(is_coordination_center)
         self._atom_id: Optional[int] = None
         self._hydrogen_specs: list[tuple[int, float, float, int]] = []
 
@@ -219,6 +222,7 @@ class AddAtomCommand(QUndoCommand):
                 explicit_h=self._explicit_h,
                 mapping=self._mapping,
                 is_query=self._is_query,
+                is_coordination_center=self._is_coordination_center,
             )
             self._atom_id = atom.id
         else:
@@ -233,6 +237,7 @@ class AddAtomCommand(QUndoCommand):
                 explicit_h=self._explicit_h,
                 mapping=self._mapping,
                 is_query=self._is_query,
+                is_coordination_center=self._is_coordination_center,
             )
         self._view.add_atom_item(atom)
         if self._anchor_override:
@@ -921,7 +926,7 @@ class DeleteSelectionCommand(QUndoCommand):
     def undo(self) -> None:
         """Restaura los elementos eliminados."""
         for atom in self._removed_atoms:
-            self._model.add_atom(
+            restored_atom = self._model.add_atom(
                 atom.element,
                 atom.x,
                 atom.y,
@@ -932,8 +937,9 @@ class DeleteSelectionCommand(QUndoCommand):
                 mapping=atom.mapping,
                 is_query=atom.is_query,
                 is_explicit=atom.is_explicit,
+                is_coordination_center=getattr(atom, "is_coordination_center", False),
             )
-            self._view.add_atom_item(atom)
+            self._view.add_atom_item(restored_atom)
         for bond in self._removed_bonds:
             self._model.add_bond(
                 bond.a1_id,

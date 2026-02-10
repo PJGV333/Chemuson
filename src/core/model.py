@@ -95,6 +95,7 @@ class Atom:
     mapping: Optional[int] = None
     is_query: bool = False
     is_explicit: bool = False
+    is_coordination_center: bool = False
 
 
 @dataclass
@@ -170,6 +171,7 @@ class MolGraph:
         mapping: Optional[int] = None,
         is_query: bool = False,
         is_explicit: bool = False,
+        is_coordination_center: bool = False,
     ) -> Atom:
         """Crea y registra un átomo en el grafo.
 
@@ -184,6 +186,7 @@ class MolGraph:
             mapping: Índice de mapeo (útil en exportaciones/reacciones).
             is_query: Marca de átomo de consulta (SMARTS-like).
             is_explicit: Si el símbolo debe mostrarse aunque sea implícito.
+            is_coordination_center: Si el átomo debe renderizarse como centro de coordinación.
 
         Returns:
             El átomo creado y almacenado en el diccionario interno.
@@ -207,6 +210,7 @@ class MolGraph:
             mapping=mapping,
             is_query=is_query,
             is_explicit=is_explicit,
+            is_coordination_center=is_coordination_center,
         )
         self.atoms[atom_id] = atom
         return atom

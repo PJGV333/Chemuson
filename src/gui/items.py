@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
     QGraphicsRectItem,
     QStyle,
 )
-from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPainterPath, QPen, QBrush
+from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPainterPath, QPen, QBrush, QPainter, QRadialGradient
 from PyQt6.QtCore import Qt, QRectF, QPointF
 
 
@@ -168,6 +168,7 @@ class AtomItem(QGraphicsEllipseItem):
             Modifica el estado del item o la escena.
         """
         super().__init__(-radius, -radius, radius * 2, radius * 2)
+        self.atom = atom
         self.atom_id = atom.id
         self.element = atom.element
         self._radius = radius
@@ -395,9 +396,42 @@ class AtomItem(QGraphicsEllipseItem):
         Side Effects:
             Modifica el estado del item o la escena.
         """
+        if getattr(self.atom, "is_coordination_center", False):
+            painter.save()
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            label_rect = self.label.boundingRect()
+            label_radius = max(label_rect.width(), label_rect.height()) * 0.75
+            radius = max(self._radius * 0.95, label_radius * 1.35, 12.0)
+            if self._use_element_colors:
+                base_color = QColor(self._element_color)
+            else:
+                base_color = QColor("#8D99A6")
+            highlight = base_color.lighter(170)
+            shadow = base_color.darker(160)
+            gradient = QRadialGradient(
+                QPointF(-radius * 0.35, -radius * 0.35),
+                radius,
+                QPointF(-radius * 0.35, -radius * 0.35),
+            )
+            gradient.setColorAt(0.0, highlight)
+            gradient.setColorAt(0.55, base_color)
+            gradient.setColorAt(1.0, shadow)
+            painter.setBrush(QBrush(gradient))
+            border = QPen(base_color.darker(180), max(0.8, self._style.stroke_px * 0.7))
+            border.setCapStyle(self._style.cap_style)
+            border.setJoinStyle(self._style.join_style)
+            painter.setPen(border)
+            painter.drawEllipse(QPointF(0.0, 0.0), radius, radius)
+            painter.restore()
+
         painter.setPen(self.pen())
         painter.setBrush(self.brush())
         painter.drawEllipse(self.rect())
+
+    def set_coordination_center(self, enabled: bool) -> None:
+        """Activa/desactiva renderizado de esfera para centro de coordinación."""
+        self.atom.is_coordination_center = bool(enabled)
+        self.update()
     
     def set_visibility_flags(self, show_carbon: bool, show_hydrogen: bool) -> None:
         """Actualiza banderas de visibilidad.
@@ -2985,13 +3019,12 @@ class BracketItem(QGraphicsPathItem):
 class AromaticCircleItem(QGraphicsEllipseItem):
     """Círculo interior que indica aromaticidad en anillos."""
     
-    def __init__(self, center_x: float, center_y: float, radius: float) -> None:
+    def __init__(self, rect: QRectF, parent: Optional[QGraphicsItem] = None) -> None:
         """Inicializa la instancia y configura el elemento gráfico.
 
         Args:
-            center_x: Coordenada X del centro.
-            center_y: Coordenada Y del centro.
-            radius: Radio visual en píxeles.
+            rect: Rectángulo delimitador del círculo.
+            parent: Item padre opcional.
 
         Returns:
             None.
@@ -2999,13 +3032,27 @@ class AromaticCircleItem(QGraphicsEllipseItem):
         Side Effects:
             Modifica el estado del item o la escena.
         """
-        super().__init__(
-            center_x - radius, center_y - radius,
-            radius * 2, radius * 2
-        )
-        self.setPen(QPen(QColor("#333333"), 1.5))
+        super().__init__(rect, parent)
+        self.setPen(QPen(QColor("#333333"), 2.0))
         self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
-        self.setZValue(-10)  # Behind bonds and atoms
+        # Debe quedar sobre la hoja y debajo de enlaces/átomos.
+        self.setZValue(-6.5)
+
+    def set_geometry(
+        self,
+        center_x: float,
+        center_y: float,
+        radius_x: float,
+        radius_y: float,
+        angle_deg: float = 0.0,
+    ) -> None:
+        """Configura la geometría del marcador aromático como elipse orientada."""
+        rx = max(0.5, float(radius_x))
+        ry = max(0.5, float(radius_y))
+        self.setRect(QRectF(-rx, -ry, 2.0 * rx, 2.0 * ry))
+        self.setPos(center_x, center_y)
+        self.setTransformOriginPoint(QPointF(0.0, 0.0))
+        self.setRotation(float(angle_deg))
 
 
 class HoverAtomIndicatorItem(QGraphicsEllipseItem):
