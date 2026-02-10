@@ -1672,6 +1672,16 @@ class BondItem(QGraphicsPathItem):
             p2y += uy * extend_end
         return p1x, p1y, p2x, p2y
 
+    @staticmethod
+    def _screen_left_offset_sign(nx: float, ny: float, fallback_sign: int) -> int:
+        """Fuerza el desplazamiento del segundo trazo hacia la izquierda en pantalla."""
+        if abs(nx) > 1e-6:
+            return -1 if nx > 0.0 else 1
+        if abs(ny) > 1e-6:
+            # En casos casi horizontales, usar desplazamiento vertical estable.
+            return -1 if ny > 0.0 else 1
+        return 1 if fallback_sign >= 0 else -1
+
     def update_positions(self, atom1: Atom, atom2: Atom) -> None:
         """Actualiza posiciones.
 
@@ -1763,6 +1773,9 @@ class BondItem(QGraphicsPathItem):
         effective_order = self.order
         if self.is_aromatic and self.display_order is not None:
             effective_order = self.display_order
+        double_offset_sign = offset_sign
+        if effective_order == 2 and (not self.is_aromatic) and (not self._symmetric_double):
+            double_offset_sign = self._screen_left_offset_sign(nx, ny, offset_sign)
 
         stroke_px = self._stroke_px if self._stroke_px is not None else self._style.stroke_px
         stroke_scale = stroke_px / self._style.stroke_px if self._style.stroke_px > 1e-6 else 1.0
@@ -1787,10 +1800,10 @@ class BondItem(QGraphicsPathItem):
                         path.moveTo(e1x, e1y)
                         path.lineTo(e2x, e2y)
                         use_inner_trim = (not self._symmetric_double) and (not self._prefer_full_length)
-                        q1x = e1x + nx * offset * offset_sign
-                        q1y = e1y + ny * offset * offset_sign
-                        q2x = e2x + nx * offset * offset_sign
-                        q2y = e2y + ny * offset * offset_sign
+                        q1x = e1x + nx * offset * double_offset_sign
+                        q1y = e1y + ny * offset * double_offset_sign
+                        q2x = e2x + nx * offset * double_offset_sign
+                        q2y = e2y + ny * offset * double_offset_sign
                         if use_inner_trim:
                             q1x += ux * self._style.inner_trim_px
                             q1y += uy * self._style.inner_trim_px
@@ -1831,10 +1844,10 @@ class BondItem(QGraphicsPathItem):
                             p1x, p1y, p2x, p2y, ux, uy, trim_start, trim_end, stroke_px
                         )
                         pi_offset = self._style.double_offset_px
-                        q1x = s1x + nx * pi_offset * offset_sign
-                        q1y = s1y + ny * pi_offset * offset_sign
-                        q2x = s2x + nx * pi_offset * offset_sign
-                        q2y = s2y + ny * pi_offset * offset_sign
+                        q1x = s1x + nx * pi_offset * double_offset_sign
+                        q1y = s1y + ny * pi_offset * double_offset_sign
+                        q2x = s2x + nx * pi_offset * double_offset_sign
+                        q2y = s2y + ny * pi_offset * double_offset_sign
                         if (not self._symmetric_double) and (not self._prefer_full_length):
                             q1x += ux * self._style.inner_trim_px
                             q1y += uy * self._style.inner_trim_px
@@ -1848,10 +1861,10 @@ class BondItem(QGraphicsPathItem):
                         self._secondary_pen = secondary_pen
                         self._has_secondary_path = True
                     else:
-                        q1x = e1x + nx * offset * offset_sign
-                        q1y = e1y + ny * offset * offset_sign
-                        q2x = e2x + nx * offset * offset_sign
-                        q2y = e2y + ny * offset * offset_sign
+                        q1x = e1x + nx * offset * double_offset_sign
+                        q1y = e1y + ny * offset * double_offset_sign
+                        q2x = e2x + nx * offset * double_offset_sign
+                        q2y = e2y + ny * offset * double_offset_sign
                         if not self._prefer_full_length:
                             q1x += ux * self._style.inner_trim_px
                             q1y += uy * self._style.inner_trim_px

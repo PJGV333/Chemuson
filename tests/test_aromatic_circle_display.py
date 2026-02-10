@@ -301,3 +301,46 @@ def test_aromatic_circle_keeps_ellipse_on_move_and_rotate():
     assert abs(rx2 - rx0) < 0.3
     assert abs(ry2 - ry0) < 0.3
     assert abs(_angle_diff_mod_180(ang2, ang0) - rot_deg) < 1.5
+
+
+@pytest.mark.parametrize("edit_mode", ["double", "increment"])
+def test_partial_aromatic_ring_does_not_hide_pi_lines_with_circle_mode(edit_mode: str):
+    """Con círculos activos, un anillo parcialmente aromático no debe ocultar líneas pi."""
+    canvas = ChemusonCanvas()
+    _add_aromatic_ring(canvas, center_x=260.0, center_y=220.0)
+    canvas._rebuild_items_from_model()
+    canvas.state.use_aromatic_circles = True
+    canvas.refresh_aromatic_circles()
+    assert len(canvas.aromatic_circles) == 1
+
+    target_bond_id = next(iter(canvas.model.bonds.keys()))
+    if edit_mode == "double":
+        canvas.state.active_bond_order = 2
+        canvas.state.active_bond_style = BondStyle.PLAIN
+        canvas.state.active_bond_stereo = BondStereo.NONE
+        canvas.state.active_bond_mode = "set"
+        canvas.state.active_bond_aromatic = False
+        canvas._apply_bond_style(target_bond_id)
+    else:
+        canvas.state.active_bond_mode = "increment"
+        canvas.state.active_bond_aromatic = False
+        canvas._cycle_bond_order(target_bond_id)
+
+    assert len(canvas.aromatic_circles) == 0
+
+    remaining_aromatic = [bond for bond in canvas.model.bonds.values() if bond.is_aromatic]
+    assert remaining_aromatic
+    probe = remaining_aromatic[0]
+    canvas.model.update_bond(
+        probe.id,
+        order=2,
+        style=BondStyle.PLAIN,
+        stereo=BondStereo.NONE,
+        is_aromatic=True,
+        display_order=2,
+    )
+    canvas.update_bond_item(probe.id)
+    canvas.refresh_aromatic_circles()
+
+    assert len(canvas.aromatic_circles) == 0
+    assert canvas.bond_items[probe.id].path().elementCount() > 2

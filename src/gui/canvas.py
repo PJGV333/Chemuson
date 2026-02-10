@@ -5659,7 +5659,16 @@ class ChemusonCanvas(QGraphicsView):
         has_hetero = False
         if a1 is not None and a2 is not None:
             has_hetero = (a1.element != "C") or (a2.element != "C")
-        symmetric_double = has_hetero and not is_aromatic_ring
+        # Estilo base: vértice tipo C=C (línea sigma central + línea pi desplazada).
+        # En heteroátomos la línea pi debe ser completa (sin recorte), pero
+        # manteniendo la misma orientación del doble enlace tipo C=C.
+        effective_order = bond.display_order if bond.display_order is not None else bond.order
+        is_plain_double = (
+            bond.style == BondStyle.PLAIN and effective_order == 2 and not is_aromatic_ring
+        )
+        if has_hetero and is_plain_double:
+            prefer_full_length = True
+        symmetric_double = False
         item.set_multibond_rendering(prefer_full_length, symmetric_double)
 
     @staticmethod
@@ -6552,12 +6561,25 @@ class ChemusonCanvas(QGraphicsView):
 
     def refresh_aromatic_circles(self) -> None:
         """Add/remove aromatic circle items based on current state."""
-        # First, update all bond items to reflect the preference
         use_circles = self.state.use_aromatic_circles
+        rings = self._detect_aromatic_rings(with_atoms=True) if use_circles else []
+        ring_pairs_with_circle: set[frozenset[int]] = set()
+        for ring in rings:
+            ring_pairs_with_circle.update(ring.get("bond_pairs", set()))
+
+        # Update aromatic bond items:
+        # - Render as single-edge only when a visible aromatic circle exists
+        #   for that ring bond.
+        # - Fall back to normal bond rendering otherwise.
         for bond_id, item in self.bond_items.items():
             if item.is_aromatic:
-                item.set_render_aromatic_as_circle(use_circles)
-                # Force redraw
+                bond = self.model.bonds.get(bond_id)
+                render_as_circle = (
+                    use_circles
+                    and bond is not None
+                    and frozenset({bond.a1_id, bond.a2_id}) in ring_pairs_with_circle
+                )
+                item.set_render_aromatic_as_circle(render_as_circle)
                 self.update_bond_item(bond_id)
 
         # Remove existing circles
@@ -6568,8 +6590,7 @@ class ChemusonCanvas(QGraphicsView):
         if not use_circles:
             return
         
-        # Find aromatic rings and add circles
-        rings = self._detect_aromatic_rings(with_atoms=True)
+        # Draw circles for complete aromatic rings.
         for ring in rings:
             atom_ids = sorted(ring.get("atoms", set()))
             self._draw_aromatic_circle(atom_ids)
@@ -6836,6 +6857,7 @@ class ChemusonCanvas(QGraphicsView):
             }
             if with_atoms:
                 entry["atoms"] = set(atom_ids)
+                entry["bond_pairs"] = set(ring_pairs)
             result.append(entry)
         
         return result
