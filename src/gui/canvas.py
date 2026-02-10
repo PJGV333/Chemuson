@@ -8715,10 +8715,8 @@ class ChemusonCanvas(QGraphicsView):
         return (dx * dx + dy * dy) <= (radius * radius)
 
     def _trackball_atom_ids(self) -> tuple[int, ...]:
-        """Devuelve IDs objetivo para trackball (selección o toda la molécula)."""
+        """Devuelve IDs objetivo para trackball (solo selección activa)."""
         atom_ids = self._selected_atom_ids_for_transform()
-        if not atom_ids:
-            atom_ids = set(self.model.atoms.keys())
         return tuple(sorted(atom_id for atom_id in atom_ids if atom_id in self.model.atoms))
 
     def _connected_component_atom_ids(self, seed_atom_id: int) -> set[int]:
@@ -8744,7 +8742,7 @@ class ChemusonCanvas(QGraphicsView):
         clicked_atom_id: Optional[int] = None,
         clicked_bond_id: Optional[int] = None,
     ) -> tuple[int, ...]:
-        """Resuelve el conjunto de átomos objetivo para rotación 3D precisa."""
+        """Resuelve el conjunto de átomos objetivo (solo selección activa)."""
         selected_atoms = self._selected_atom_ids_for_transform()
         if selected_atoms:
             return tuple(sorted(atom_id for atom_id in selected_atoms if atom_id in self.model.atoms))
@@ -8752,8 +8750,6 @@ class ChemusonCanvas(QGraphicsView):
         selected_bonds = {
             bond_id for bond_id in self.state.selected_bonds if bond_id in self.model.bonds
         }
-        if clicked_bond_id is not None and clicked_bond_id in self.model.bonds:
-            selected_bonds.add(clicked_bond_id)
         if selected_bonds:
             atom_ids: set[int] = set()
             for bond_id in selected_bonds:
@@ -8765,12 +8761,7 @@ class ChemusonCanvas(QGraphicsView):
             if atom_ids:
                 return tuple(sorted(atom_ids))
 
-        if clicked_atom_id is not None and clicked_atom_id in self.model.atoms:
-            component = self._connected_component_atom_ids(clicked_atom_id)
-            if component:
-                return tuple(sorted(component))
-
-        return self._trackball_atom_ids()
+        return tuple()
 
     def _ensure_trackball_reference(
         self,
@@ -8998,10 +8989,15 @@ class ChemusonCanvas(QGraphicsView):
 
         default_pitch = self._rotation_3d_pitch_deg
         default_yaw = self._rotation_3d_yaw_deg
+
         def apply_preview(pitch_deg: float, yaw_deg: float) -> None:
             """Aplica proyección en vivo para previsualización."""
             pitch_deg = max(-TRACKBALL_MAX_TILT_DEG, min(TRACKBALL_MAX_TILT_DEG, float(pitch_deg)))
             yaw_deg = max(-TRACKBALL_MAX_TILT_DEG, min(TRACKBALL_MAX_TILT_DEG, float(yaw_deg)))
+            # Mantener estado trackball activo durante preview para que los
+            # círculos aromáticos usen el mismo contexto afín que Alt+Drag.
+            self._rotation_3d_pitch_deg = pitch_deg
+            self._rotation_3d_yaw_deg = yaw_deg
             projected = self._project_trackball_reference(atom_ids, pitch_deg, yaw_deg)
             moved_atom_ids: set[int] = set()
             for atom_id in atom_ids:
@@ -9719,6 +9715,10 @@ class ChemusonCanvas(QGraphicsView):
                 new_style = style
                 new_stereo = stereo
                 new_is_aromatic = is_aromatic
+                if existing.is_aromatic and not is_aromatic and style != BondStyle.PLAIN:
+                    # Mantener aromaticidad al aplicar estilos visuales no planos
+                    # (p. ej. bold para proyecciones tipo Haworth).
+                    new_is_aromatic = True
             new_donor_atom_id = None
             if new_style == BondStyle.COORDINATION:
                 new_donor_atom_id = self._infer_coordination_donor_atom(
@@ -9834,10 +9834,14 @@ class ChemusonCanvas(QGraphicsView):
         order = self.state.active_bond_order
         style = self.state.active_bond_style
         stereo = self.state.active_bond_stereo
-        is_aromatic = self.state.active_bond_aromatic
+        requested_aromatic = self.state.active_bond_aromatic
+        is_aromatic = requested_aromatic
+        if bond.is_aromatic and not requested_aromatic and style != BondStyle.PLAIN:
+            # Preservar aromaticidad si solo se cambia el estilo visual.
+            is_aromatic = True
         if style != BondStyle.PLAIN:
             order = 1
-        if is_aromatic:
+        if requested_aromatic:
             order = 1
             style = BondStyle.PLAIN
             stereo = BondStereo.NONE

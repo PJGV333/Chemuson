@@ -1722,15 +1722,23 @@ class BondItem(QGraphicsPathItem):
             vy = self._ring_center.y() - midy
             offset_sign = 1 if (nx * vx + ny * vy) >= 0 else -1
 
-        # Aromatic bonds: if circle mode, draw as single line
+        # Aromatic bonds with circle mode keep single edge line plus central ring marker.
+        # Respect visual styles like BOLD so users can thicken Haworth-like projections
+        # without losing aromatic circle semantics.
         if self.is_aromatic and self.render_aromatic_as_circle:
-            stroke_px = self._stroke_px if self._stroke_px is not None else self._style.stroke_px
+            base_stroke_px = self._stroke_px if self._stroke_px is not None else self._style.stroke_px
+            stroke_px = base_stroke_px
+            pen_style = Qt.PenStyle.SolidLine
+            if self.style == BondStyle.BOLD:
+                stroke_px = max(base_stroke_px * 2.2, base_stroke_px + 1.0)
+            elif self.style == BondStyle.INTERACTION:
+                pen_style = Qt.PenStyle.DotLine
             e1x, e1y, e2x, e2y = self._extend_line_endpoints(
                 p1x, p1y, p2x, p2y, ux, uy, trim_start, trim_end, stroke_px
             )
             path.moveTo(e1x, e1y)
             path.lineTo(e2x, e2y)
-            pen = QPen(color, stroke_px)
+            pen = QPen(color, stroke_px, pen_style)
             pen.setCapStyle(self._style.cap_style)
             pen.setJoinStyle(self._style.join_style)
             self.setPen(pen)
@@ -1794,8 +1802,32 @@ class BondItem(QGraphicsPathItem):
             e1x, e1y, e2x, e2y = self._extend_line_endpoints(
                 p1x, p1y, p2x, p2y, ux, uy, trim_start, trim_end, bold_px
             )
-            path.moveTo(e1x, e1y)
-            path.lineTo(e2x, e2y)
+            if effective_order <= 1:
+                path.moveTo(e1x, e1y)
+                path.lineTo(e2x, e2y)
+            else:
+                offset = max(self._style.double_offset_px * stroke_scale, bold_px * 0.9)
+                if effective_order == 2:
+                    path.moveTo(e1x, e1y)
+                    path.lineTo(e2x, e2y)
+                    q1x = e1x + nx * offset * offset_sign
+                    q1y = e1y + ny * offset * offset_sign
+                    q2x = e2x + nx * offset * offset_sign
+                    q2y = e2y + ny * offset * offset_sign
+                    if not self._prefer_full_length:
+                        q1x += ux * self._style.inner_trim_px
+                        q1y += uy * self._style.inner_trim_px
+                        q2x -= ux * self._style.inner_trim_px
+                        q2y -= uy * self._style.inner_trim_px
+                    path.moveTo(q1x, q1y)
+                    path.lineTo(q2x, q2y)
+                else:
+                    path.moveTo(e1x, e1y)
+                    path.lineTo(e2x, e2y)
+                    path.moveTo(e1x + nx * offset, e1y + ny * offset)
+                    path.lineTo(e2x + nx * offset, e2y + ny * offset)
+                    path.moveTo(e1x - nx * offset, e1y - ny * offset)
+                    path.lineTo(e2x - nx * offset, e2y - ny * offset)
             pen = QPen(color, bold_px)
             pen.setCapStyle(self._style.cap_style)
             pen.setJoinStyle(self._style.join_style)
