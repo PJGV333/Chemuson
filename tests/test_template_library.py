@@ -10,8 +10,10 @@ import pytest
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 import gui.template_library as template_library
+from chemio.rdkit_io import molgraph_to_molfile
 from core.model import MolGraph
 from gui.template_library import DEFAULT_CATEGORY_USER, TemplateLibrary
+from gui.templates import build_haworth_template
 
 
 def _simple_cc_graph() -> MolGraph:
@@ -30,6 +32,54 @@ def test_template_library_bootstraps_defaults(tmp_path):
     assert DEFAULT_CATEGORY_USER in categories
     names = {tpl["name"] for tpl in lib.list_templates()}
     assert "Benceno" in names
+
+
+def test_builtin_chair_is_simple_cyclohexane_chair(tmp_path):
+    """La plantilla Silla β debe ser un anillo silla sin heteroátomos ni sustituyentes."""
+    lib = TemplateLibrary(tmp_path / "library.json")
+    chairs = [
+        tpl
+        for tpl in lib.list_templates()
+        if tpl.get("name") == "Silla β" and tpl.get("category") == "Bioquímicos"
+    ]
+    assert len(chairs) == 1
+    chair_graph = lib.graph_from_template(chairs[0]["id"])
+    assert len(chair_graph.atoms) == 6
+    assert len(chair_graph.bonds) == 6
+    assert all(atom.element == "C" for atom in chair_graph.atoms.values())
+
+
+def test_load_replaces_legacy_builtin_chair_template(tmp_path):
+    """Al cargar biblioteca existente, Silla β debe sincronizarse a la versión corregida."""
+    library_path = tmp_path / "library.json"
+    legacy_graph = build_haworth_template(40.0, anomeric_up=True, bold_front=True)
+    raw = {
+        "version": 1,
+        "categories": ["Bioquímicos", DEFAULT_CATEGORY_USER],
+        "templates": [
+            {
+                "id": "tpl_legacy_chair",
+                "name": "Silla β",
+                "category": "Bioquímicos",
+                "molblock": molgraph_to_molfile(legacy_graph),
+                "smiles": "",
+            }
+        ],
+    }
+    library_path.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+
+    lib = TemplateLibrary(library_path)
+    chairs = [
+        tpl
+        for tpl in lib.list_templates()
+        if tpl.get("name") == "Silla β" and tpl.get("category") == "Bioquímicos"
+    ]
+    assert len(chairs) == 1
+    assert chairs[0]["id"] == "tpl_legacy_chair"
+    chair_graph = lib.graph_from_template(chairs[0]["id"])
+    assert len(chair_graph.atoms) == 6
+    assert len(chair_graph.bonds) == 6
+    assert all(atom.element == "C" for atom in chair_graph.atoms.values())
 
 
 def test_add_rename_and_delete_template_and_category(tmp_path):

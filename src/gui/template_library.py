@@ -156,6 +156,7 @@ class TemplateLibrary:
             with self._path.open("r", encoding="utf-8") as fh:
                 raw = json.load(fh)
             self._data = self._normalize(raw)
+            self._sync_builtin_templates()
             self.save()
             return
         self._data = _default_data()
@@ -208,6 +209,73 @@ class TemplateLibrary:
         if DEFAULT_CATEGORY_USER not in seen_categories:
             normalized["categories"].append(DEFAULT_CATEGORY_USER)
         return normalized
+
+    def _sync_builtin_templates(self) -> None:
+        """Sincroniza plantillas predefinidas por nombre/categoría.
+
+        Reemplaza contenido químico de built-ins existentes (mismo nombre y categoría)
+        para aplicar correcciones de geometría sin romper IDs usados en UI.
+        """
+        builtins = [
+            ("Benceno", "Aromáticos", _ring_graph(["C", "C", "C", "C", "C", "C"], aromatic=True)),
+            ("Piridina", "Heterociclos", _ring_graph(["N", "C", "C", "C", "C", "C"], aromatic=True)),
+            ("Cadena lineal", "Bioquímicos", build_linear_chain_template(40.0)),
+            ("Haworth β", "Bioquímicos", build_haworth_template(40.0, anomeric_up=True, bold_front=True)),
+            ("Silla β", "Bioquímicos", build_chair_template(40.0, anomeric_up=True, bold_front=True)),
+        ]
+        builtin_by_key: dict[tuple[str, str], dict[str, str]] = {}
+        for name, category, graph in builtins:
+            key = (_clean_name(name, name), _clean_name(category, category))
+            try:
+                molblock = molgraph_to_molfile(graph)
+            except Exception:
+                continue
+            builtin_by_key[key] = {
+                "name": key[0],
+                "category": key[1],
+                "molblock": molblock,
+                "smiles": _safe_smiles(graph),
+            }
+        if not builtin_by_key:
+            return
+
+        existing = list(self._data.get("templates", []))
+        keep_templates: list[dict[str, Any]] = []
+        matched_ids: dict[tuple[str, str], str] = {}
+        for template in existing:
+            key = (
+                _clean_name(template.get("name", ""), ""),
+                _clean_name(template.get("category", DEFAULT_CATEGORY_USER), DEFAULT_CATEGORY_USER),
+            )
+            if key in builtin_by_key:
+                matched_ids.setdefault(key, str(template.get("id", "")).strip() or f"tpl_{uuid4().hex}")
+                continue
+            keep_templates.append(template)
+
+        used_ids = {
+            str(template.get("id", "")).strip()
+            for template in keep_templates
+            if str(template.get("id", "")).strip()
+        }
+        builtin_templates: list[dict[str, Any]] = []
+        for key, payload in builtin_by_key.items():
+            template_id = matched_ids.get(key, f"tpl_{uuid4().hex}")
+            while template_id in used_ids:
+                template_id = f"tpl_{uuid4().hex}"
+            used_ids.add(template_id)
+            builtin_templates.append(
+                {
+                    "id": template_id,
+                    "name": payload["name"],
+                    "category": payload["category"],
+                    "molblock": payload["molblock"],
+                    "smiles": payload["smiles"],
+                }
+            )
+            if payload["category"] not in self._data["categories"]:
+                self._data["categories"].append(payload["category"])
+
+        self._data["templates"] = keep_templates + builtin_templates
 
     def as_dict(self) -> dict[str, Any]:
         """Devuelve una copia serializable del estado actual."""

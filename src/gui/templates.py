@@ -250,101 +250,41 @@ def build_chair_template(
     anomeric_up: bool = True,
     bold_front: bool = True,
 ) -> MolGraph:
-    """Construye una plantilla de conformación silla (4C1).
+    """Construye una plantilla de ciclohexano en conformación silla.
 
     Args:
         bond_length: Longitud base de enlace.
-        anomeric_up: Si el OH anomérico apunta hacia arriba.
+        anomeric_up: Parámetro legado; se conserva por compatibilidad.
         bold_front: Si se resaltan los enlaces frontales.
 
     Returns:
-        `MolGraph` con la conformación silla.
+        `MolGraph` con un anillo de 6 carbonos en forma de silla.
     """
     graph = MolGraph()
     L = float(bond_length)
-    
-    # 4C1 Chair Conformation (Zig-Zag)
-    # We use a standard skew.
-    
-    # Ring Coordinates
-    r_coords = [
-        ( 0.9 * L, -0.9 * L), # 0: O (Top-Rightish)
-        ( 1.7 * L,  0.0 * L), # 1: C1 (Right Point)
-        ( 0.9 * L,  0.9 * L), # 2: C2 (Bottom-Rightish)
-        (-0.9 * L,  0.9 * L), # 3: C3 (Bottom-Leftish)
-        (-1.7 * L,  0.0 * L), # 4: C4 (Left Point)
-        (-0.9 * L, -0.9 * L), # 5: C5 (Top-Leftish)
+
+    # Compatibilidad con API previa (beta/alpha no aplica a una silla simple).
+    _ = anomeric_up
+
+    # Geometría "chair" de ciclohexano.
+    # Coordenadas base normalizadas (longitud media de enlace ~= 1.0).
+    base_coords = [
+        (-1.35, 0.35),   # 0: extremo inferior izquierdo
+        (-0.80, -0.55),  # 1: extremo superior izquierdo
+        (0.15, -0.25),   # 2: valle superior central
+        (1.10, -0.55),   # 3: extremo superior derecho
+        (0.55, 0.35),    # 4: extremo inferior derecho
+        (-0.35, 0.05),   # 5: valle inferior central
     ]
-    # Connectivity 0-1-2-3-4-5-0
-    
+    coords = [(x * L, y * L) for (x, y) in base_coords]
+
     ring_ids: List[int] = []
-    atoms = ["O", "C", "C", "C", "C", "C"]
-    
-    for i, (x, y) in enumerate(r_coords):
-        chain_el = atoms[i]
-        # Explicit carbons usually not needed for ring, but helps debugging
-        ring_ids.append(_add_atom(graph, chain_el, x, y, explicit=(chain_el!="C")))
-        
-    bold_edges = _front_edge_indices(r_coords) if bold_front else set()
+    for x, y in coords:
+        ring_ids.append(_add_atom(graph, "C", x, y, explicit=False))
+
+    bold_edges = _front_edge_indices(coords) if bold_front else set()
     for i in range(6):
         style = BondStyle.BOLD if i in bold_edges else BondStyle.PLAIN
         _add_bond(graph, ring_ids[i], ring_ids[(i + 1) % 6], style=style)
-        
-    # Substituents (Beta-D-Glucose = All Equatorial)
-    # Equatorial bonds point "out" away from the ring center
-    
-    # Vector logic:
-    # C1 (Right): Eq is Right/Down? No, C1 Eq is Up/Right (Beta) or Down/Right (Alpha).
-    # Wait, in 4C1 Beta-D-Glc:
-    # C1 is Up-Right.
-    # C2 is Down-Right.
-    # C3 is Up-Left.
-    # C4 is Down-Left.
-    # C5 is Up-Left (CH2OH).
-    
-    off_weak = 0.5 * L
-    off_strong = 1.0 * L
-    
-    # (dx, dy)
-    sub_offsets = {
-        1: ( off_strong, -off_weak), # C1: Right, Up
-        2: ( off_strong,  off_weak), # C2: Right, Down
-        3: (-off_strong,  off_weak), # C3: Left, Down? No, C3 is usually Left-Up?
-                                     # Let's check: C1(R), C2(D), C3(L), C4(U), C5(D)... it alternates.
-                                     # Actually Beta-D-Glucose, all equatorial are roughly in plane.
-                                     # Let's use visual placement.
-        # C3 is at bottom-left (-0.9, 0.9). Eq bond goes Left/Up? Or Left/Down?
-        # Standard: C2 Eq is Down-Right. C3 Eq is Up-Left.
-        # Wait, if C2 is Down-Right, C3 must be Up-Left to be trans-diaxial? No they are equatorial.
-        # Equatorial bonds are roughly parallel to the ring bonds one bond away.
-        # C2-Eq || O-C1 and C3-C4.
-        # O-C1 is (0.8, 0.9). C3-C4 is (-0.8, -0.9).
-        # So C2-Eq should be vector (0.8, 0.9) approx. -> Down Right. Correct.
-        
-        # C3-Eq || C1-C2 and C4-C5.
-        # C1-C2 is (-0.8, -0.9). C4-C5 is (0.8, -0.9).
-        # C1-C2 is (-0.8, 0.9). (1.7->0.9, 0.0->0.9).
-        # So C3-Eq should be (-0.8, 0.9)? No parallelism is to C1-C2?
-        # Actually simplest rule: "Equatorial goes OUT".
-        
-        3: (-1.0 * L,  0.2 * L), # C3: Left, slightly Down
-        4: (-0.8 * L, -0.8 * L), # C4: Left, Up
-        # Let's just hardcode what looks good.
-    }
-    
-    # Re-defining visually good offsets
-    c1_dy = -0.4 * L if anomeric_up else 0.4 * L
-    subs = [
-        (1, "OH",     1.0 * L, c1_dy), # C1: Right-Up / Right-Down
-        (2, "OH",     0.6 * L,  1.0 * L), # C2: Right-Down
-        (3, "OH",    -0.6 * L,  1.0 * L), # C3: Left-Down
-        (4, "OH",    -1.0 * L, -0.4 * L), # C4: Left-Up (Back)
-        (5, "CH2OH", -0.8 * L, -1.0 * L), # C5: Left-Top
-    ]
-    
-    for (idx, el, dx, dy) in subs:
-        rx, ry = r_coords[idx]
-        sid = _add_atom(graph, el, rx + dx, ry + dy, explicit=True)
-        _add_bond(graph, ring_ids[idx], sid)
-        
+
     return graph
