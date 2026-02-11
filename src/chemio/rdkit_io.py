@@ -15,10 +15,15 @@ try:
     from rdkit import Chem
     from rdkit.Chem import AllChem
     from rdkit.Chem.Draw import rdMolDraw2D
+    try:
+        from rdkit.Chem.MolStandardize import rdMolStandardize
+    except Exception:  # pragma: no cover - optional dependency at runtime
+        rdMolStandardize = None
 except Exception:  # pragma: no cover - optional dependency at runtime
     Chem = None
     AllChem = None
     rdMolDraw2D = None
+    rdMolStandardize = None
 
 
 def _rdkit_available() -> bool:
@@ -30,6 +35,16 @@ def _require_rdkit():
     """Lanza un error si RDKit no está instalado."""
     if not _rdkit_available():
         raise RuntimeError("RDKit no disponible")
+
+
+@dataclass
+class StrictValidationResult:
+    """Resultado de validación/normalización estricta basada en RDKit."""
+
+    is_valid: bool
+    errors: list[str]
+    normalized_smiles: Optional[str] = None
+    normalized_graph: Optional[MolGraph] = None
 
 
 def molgraph_to_rdkit_with_map(molgraph: MolGraph):
@@ -72,7 +87,16 @@ def molgraph_to_rdkit_with_map(molgraph: MolGraph):
 
     for bond in molgraph.bonds.values():
         # RDKit distingue enlaces aromáticos y órdenes discretos.
-        if bond.is_aromatic:
+        begin_id = bond.a1_id
+        end_id = bond.a2_id
+        if bond.style == BondStyle.COORDINATION:
+            bond_type = Chem.BondType.DATIVE
+            donor = bond.donor_atom_id
+            if donor == bond.a2_id:
+                begin_id, end_id = bond.a2_id, bond.a1_id
+            elif donor == bond.a1_id:
+                begin_id, end_id = bond.a1_id, bond.a2_id
+        elif bond.is_aromatic:
             rw.GetAtomWithIdx(id_map[bond.a1_id]).SetIsAromatic(True)
             rw.GetAtomWithIdx(id_map[bond.a2_id]).SetIsAromatic(True)
             bond_type = Chem.BondType.AROMATIC
@@ -82,7 +106,7 @@ def molgraph_to_rdkit_with_map(molgraph: MolGraph):
             bond_type = Chem.BondType.TRIPLE
         else:
             bond_type = Chem.BondType.SINGLE
-        rw.AddBond(id_map[bond.a1_id], id_map[bond.a2_id], bond_type)
+        rw.AddBond(id_map[begin_id], id_map[end_id], bond_type)
 
     mol = rw.GetMol()
     # Preservar coordenadas 2D del editor.
@@ -232,21 +256,75 @@ def rdkit_to_molgraph(mol) -> MolGraph:
 
     for bond in mol.GetBonds():
         order = 1
-        if bond.GetBondType() == Chem.BondType.DOUBLE:
+        style = BondStyle.PLAIN
+        donor_atom_id = None
+        bond_type = bond.GetBondType()
+        if bond_type == Chem.BondType.DOUBLE:
             order = 2
-        elif bond.GetBondType() == Chem.BondType.TRIPLE:
+        elif bond_type == Chem.BondType.TRIPLE:
             order = 3
+        elif bond_type == Chem.BondType.DATIVE:
+            style = BondStyle.COORDINATION
+            donor_atom_id = idx_map[bond.GetBeginAtomIdx()]
         graph.add_bond(
             idx_map[bond.GetBeginAtomIdx()],
             idx_map[bond.GetEndAtomIdx()],
             order,
-            style=BondStyle.PLAIN,
+            style=style,
             stereo=BondStereo.NONE,
             is_aromatic=bond.GetIsAromatic(),
+            donor_atom_id=donor_atom_id,
         )
 
     _scale_to_default(graph)
     return graph
+
+
+def strict_validate_and_normalize(molgraph: MolGraph) -> StrictValidationResult:
+    """Valida y normaliza de forma estricta un `MolGraph` usando RDKit.
+
+    La validación estricta ejecuta sanitización de RDKit y, cuando está
+    disponible, aplica un pipeline de normalización (`Normalize`/`Reionize`).
+    Está orientada a chequeos avanzados de especies iónicas y complejos.
+    """
+    _require_rdkit()
+    mol, _ = molgraph_to_rdkit_with_map(molgraph)
+
+    try:
+        Chem.SanitizeMol(mol)
+    except Exception as exc:
+        errors = [f"SanitizeMol: {exc}"]
+        try:
+            problems = Chem.DetectChemistryProblems(mol)
+        except Exception:
+            problems = []
+        for problem in problems:
+            message = ""
+            if hasattr(problem, "Message"):
+                try:
+                    message = problem.Message()
+                except Exception:
+                    message = str(problem)
+            else:
+                message = str(problem)
+            errors.append(message)
+        return StrictValidationResult(is_valid=False, errors=errors)
+
+    normalized = Chem.Mol(mol)
+    if rdMolStandardize is not None:
+        normalized = rdMolStandardize.Cleanup(normalized)
+        normalized = rdMolStandardize.Normalize(normalized)
+        normalized = rdMolStandardize.Reionize(normalized)
+        Chem.SanitizeMol(normalized)
+
+    smiles = Chem.MolToSmiles(normalized, canonical=True)
+    normalized_graph = rdkit_to_molgraph(Chem.Mol(normalized))
+    return StrictValidationResult(
+        is_valid=True,
+        errors=[],
+        normalized_smiles=smiles,
+        normalized_graph=normalized_graph,
+    )
 
 
 def kekulize_display_orders(
