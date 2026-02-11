@@ -147,35 +147,6 @@ class ChemusonToolbar(QToolBar):
             "Rotación 3D precisa",
             "tool_rotate_3d_precise",
         )
-        self.addSeparator()
-        
-        # --- Text Tool ---
-        self.text_button, self.text_action = self._add_palette_button(
-            draw_glyph_icon("T"), "Texto", "tool_text"
-        )
-        
-        # --- Brackets Tool ---
-        bracket_icon, bracket_tip = self._bracket_meta[self._current_bracket_tool_id]
-        self.bracket_button, self.bracket_action = self._add_palette_button(
-            bracket_icon,
-            bracket_tip,
-            "tool_brackets",
-            trigger_callback=self._emit_current_bracket_tool
-        )
-        self._build_bracket_palette(self.bracket_button.menu())
-        
-        self.addSeparator()
-
-        # --- Arrows (Annotation) Tool ---
-        arrow_icon, arrow_tip = self._arrow_meta[self._current_arrow_tool_id]
-        self.annotation_button, self.annotation_action = self._add_palette_button(
-            arrow_icon,
-            arrow_tip,
-            "tool_annotation",
-            trigger_callback=self._emit_current_arrow_tool,
-        )
-        self._build_arrow_palette(self.annotation_button.menu())
-
         default_bond_spec = {
             "order": 1,
             "style": BondStyle.PLAIN,
@@ -750,7 +721,73 @@ class SymbolPaletteToolbar(QToolBar):
         self.setStyleSheet(TOOL_PALETTE_STYLESHEET)
 
         self._action_group = action_group
+        self._bracket_meta = {
+            "tool_brackets_round": (draw_glyph_icon("()"), "Parentesis ()"),
+            "tool_brackets_square": (draw_glyph_icon("[]"), "Corchetes []"),
+            "tool_brackets_curly": (draw_glyph_icon("{}"), "Llaves {}"),
+        }
+        self._arrow_meta = {
+            "tool_arrow_forward": (draw_arrow_icon("forward"), "Flecha directa"),
+            "tool_arrow_forward_open": (draw_arrow_icon("forward_open"), "Flecha directa abierta"),
+            "tool_arrow_forward_dashed": (
+                draw_arrow_icon("forward_dashed"),
+                "Flecha directa discontinua",
+            ),
+            "tool_arrow_retro": (draw_arrow_icon("retro"), "Flecha retro"),
+            "tool_arrow_retro_open": (draw_arrow_icon("retro_open"), "Flecha retro abierta"),
+            "tool_arrow_retro_dashed": (
+                draw_arrow_icon("retro_dashed"),
+                "Flecha retro discontinua",
+            ),
+            "tool_arrow_both": (draw_arrow_icon("both"), "Flecha doble"),
+            "tool_arrow_both_open": (draw_arrow_icon("both_open"), "Flecha doble abierta"),
+            "tool_arrow_both_dashed": (
+                draw_arrow_icon("both_dashed"),
+                "Flecha doble discontinua",
+            ),
+            "tool_arrow_equilibrium": (draw_arrow_icon("equilibrium"), "Equilibrio"),
+            "tool_arrow_equilibrium_dashed": (
+                draw_arrow_icon("equilibrium_dashed"),
+                "Equilibrio discontinuo",
+            ),
+            "tool_arrow_retrosynthetic": (
+                draw_arrow_icon("retrosynthetic"),
+                "Flecha retrosintesis",
+            ),
+            "tool_arrow_curved": (draw_arrow_icon("curved"), "Flecha curva"),
+            "tool_arrow_curved_fishhook": (
+                draw_arrow_icon("curved_fishhook"),
+                "Flecha curva (1 e-)",
+            ),
+        }
+
+        self._current_bracket_tool_id = "tool_brackets_square"
+        self._current_arrow_tool_id = "tool_arrow_forward"
         self._current_symbol_tool_id = "tool_charge_plus"
+
+        self.text_button, self.text_action = self._add_palette_button(
+            draw_glyph_icon("T"), "Texto", "tool_text"
+        )
+
+        bracket_icon, bracket_tip = self._bracket_meta[self._current_bracket_tool_id]
+        self.bracket_button, self.bracket_action = self._add_palette_button(
+            bracket_icon,
+            bracket_tip,
+            "tool_brackets",
+            trigger_callback=self._emit_current_bracket_tool,
+        )
+        self._build_bracket_palette(self.bracket_button.menu())
+
+        arrow_icon, arrow_tip = self._arrow_meta[self._current_arrow_tool_id]
+        self.annotation_button, self.annotation_action = self._add_palette_button(
+            arrow_icon,
+            arrow_tip,
+            "tool_annotation",
+            trigger_callback=self._emit_current_arrow_tool,
+        )
+        self._build_arrow_palette(self.annotation_button.menu())
+
+        self.addSeparator()
 
         icon, tip = self._symbol_meta()[self._current_symbol_tool_id]
         self.symbol_button, self.symbol_action = self._add_palette_button(
@@ -878,4 +915,92 @@ class SymbolPaletteToolbar(QToolBar):
         self.symbol_action.setToolTip(tooltip)
         self.symbol_button.setToolTip(tooltip)
         self.symbol_action.setChecked(True)
+        self.tool_changed.emit(tool_id)
+
+    def set_text_menu(self, actions: list[QAction], color_actions: list[QAction]) -> None:
+        """Configura el submenú de herramientas de texto."""
+        if not hasattr(self, "text_button"):
+            return
+        menu = self.text_button.menu()
+        menu.clear()
+        for action in actions:
+            if action is None:
+                menu.addSeparator()
+            else:
+                menu.addAction(action)
+        if color_actions:
+            color_menu = menu.addMenu("Color de etiquetas")
+            for action in color_actions:
+                color_menu.addAction(action)
+
+    def _build_bracket_palette(self, menu: QMenu) -> None:
+        """Construye la paleta de corchetes/paréntesis."""
+        entries = []
+        for tool_id in sorted(self._bracket_meta.keys()):
+            icon, tooltip = self._bracket_meta[tool_id]
+            entries.append(
+                self._make_palette_entry(
+                    icon,
+                    tooltip,
+                    lambda tid=tool_id: self._select_bracket_tool(tid),
+                )
+            )
+        self._populate_grid_menu(menu, entries, columns=3)
+
+    def _build_arrow_palette(self, menu: QMenu) -> None:
+        """Construye la paleta de flechas de anotación."""
+        entries = []
+        tool_order = [
+            "tool_arrow_forward",
+            "tool_arrow_forward_open",
+            "tool_arrow_forward_dashed",
+            "tool_arrow_retro",
+            "tool_arrow_retro_open",
+            "tool_arrow_retro_dashed",
+            "tool_arrow_both",
+            "tool_arrow_both_open",
+            "tool_arrow_both_dashed",
+            "tool_arrow_equilibrium",
+            "tool_arrow_equilibrium_dashed",
+            "tool_arrow_retrosynthetic",
+            "tool_arrow_curved",
+            "tool_arrow_curved_fishhook",
+        ]
+        for tool_id in tool_order:
+            icon, tooltip = self._arrow_meta[tool_id]
+            entries.append(
+                self._make_palette_entry(
+                    icon,
+                    tooltip,
+                    lambda tid=tool_id: self._select_arrow_tool(tid),
+                )
+            )
+        self._populate_grid_menu(menu, entries, columns=4)
+
+    def _emit_current_bracket_tool(self, checked: bool = False) -> None:
+        """Emite la herramienta de corchetes actualmente activa."""
+        self.tool_changed.emit(self._current_bracket_tool_id)
+
+    def _emit_current_arrow_tool(self, checked: bool = False) -> None:
+        """Emite la herramienta de flecha actualmente activa."""
+        self.tool_changed.emit(self._current_arrow_tool_id)
+
+    def _select_bracket_tool(self, tool_id: str) -> None:
+        """Actualiza la herramienta de corchetes activa."""
+        icon, tooltip = self._bracket_meta[tool_id]
+        self._current_bracket_tool_id = tool_id
+        self.bracket_action.setIcon(icon)
+        self.bracket_action.setToolTip(tooltip)
+        self.bracket_button.setToolTip(tooltip)
+        self.bracket_action.setChecked(True)
+        self.tool_changed.emit(tool_id)
+
+    def _select_arrow_tool(self, tool_id: str) -> None:
+        """Actualiza la herramienta de flechas activa."""
+        icon, tooltip = self._arrow_meta[tool_id]
+        self._current_arrow_tool_id = tool_id
+        self.annotation_action.setIcon(icon)
+        self.annotation_action.setToolTip(tooltip)
+        self.annotation_button.setToolTip(tooltip)
+        self.annotation_action.setChecked(True)
         self.tool_changed.emit(tool_id)

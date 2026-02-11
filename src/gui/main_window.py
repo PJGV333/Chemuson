@@ -123,7 +123,12 @@ class ChemusonWindow(QMainWindow):
         self.toolbar = ChemusonToolbar()
         self.toolbar.setStyleSheet(TOOL_PALETTE_STYLESHEET)
         self.addToolBar(Qt.ToolBarArea.LeftToolBarArea, self.toolbar)
-        self.toolbar.set_text_menu(
+
+        # === RIGHT SYMBOLS TOOLBAR ===
+        self.symbols_toolbar = SymbolPaletteToolbar(action_group=self.toolbar.action_group)
+        self.symbols_toolbar.setStyleSheet(TOOL_PALETTE_STYLESHEET)
+        self.addToolBar(Qt.ToolBarArea.RightToolBarArea, self.symbols_toolbar)
+        self.symbols_toolbar.set_text_menu(
             [
                 self.action_label_font,
                 self.action_label_size_set,
@@ -140,11 +145,6 @@ class ChemusonWindow(QMainWindow):
             ],
             [self.action_label_color_element, self.action_label_color_black],
         )
-
-        # === RIGHT SYMBOLS TOOLBAR ===
-        self.symbols_toolbar = SymbolPaletteToolbar(action_group=self.toolbar.action_group)
-        self.symbols_toolbar.setStyleSheet(TOOL_PALETTE_STYLESHEET)
-        self.addToolBar(Qt.ToolBarArea.RightToolBarArea, self.symbols_toolbar)
 
         # === MENU AND TOOLBARS ===
         self._create_menu_bar()
