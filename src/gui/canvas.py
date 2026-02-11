@@ -12384,18 +12384,24 @@ class ChemusonCanvas(QGraphicsView):
             first_angle = raw_angle
         else:
             cursor_angle = raw_angle
-            if use_optimize and anchor_id is not None:
-                cursor_angle = self._select_preferred_angle(anchor_id, cursor_angle, 1, False)
-            first_angle, _ = self._pick_bond_direction_deg(
-                p0,
-                anchor_id,
-                cursor_angle,
-                1,
-                False,
-                self.state.bond_length,
-                apply_collisions=True,
-                allow_length_boost=self.state.fixed_lengths and not use_shift,
-            )
+            if anchor_id is None:
+                # En cadena libre, usar el eje del cursor para permitir un zig-zag
+                # "recto" (estilo ChemDraw) en cualquier dirección.
+                step_deg = float(self.state.angle_step_deg)
+                first_angle = snap_angle_deg(cursor_angle, step_deg) if step_deg > 0 and not use_shift else cursor_angle
+            else:
+                if use_optimize:
+                    cursor_angle = self._select_preferred_angle(anchor_id, cursor_angle, 1, False)
+                first_angle, _ = self._pick_bond_direction_deg(
+                    p0,
+                    anchor_id,
+                    cursor_angle,
+                    1,
+                    False,
+                    self.state.bond_length,
+                    apply_collisions=True,
+                    allow_length_boost=self.state.fixed_lengths and not use_shift,
+                )
 
         n = max(1, min(CHAIN_MAX_BONDS, int(round(dist / self.state.bond_length))))
         points = [p0]
@@ -12406,12 +12412,21 @@ class ChemusonCanvas(QGraphicsView):
         zigzag_turn = 180.0 - sp3_angle
         turn_pref = ((raw_angle - first_angle + 180.0) % 360.0) - 180.0
         zigzag_sign = 1.0 if turn_pref >= 0.0 else -1.0
+        first_step_angle = first_angle
+        second_step_angle = first_angle + zigzag_sign * zigzag_turn
+        if zigzag and anchor_id is None:
+            # Cadena libre: alternar simétricamente alrededor del eje pedido
+            # por el cursor para formar una línea zig-zag recta.
+            half_turn = zigzag_turn * 0.5
+            axis_angle = first_angle
+            first_step_angle = axis_angle - zigzag_sign * half_turn
+            second_step_angle = axis_angle + zigzag_sign * half_turn
         current = p0
         for i in range(1, n + 1):
             if zigzag and i % 2 == 0:
-                step_angle = first_angle + zigzag_sign * zigzag_turn
+                step_angle = second_step_angle
             else:
-                step_angle = first_angle
+                step_angle = first_step_angle
             next_point = endpoint_from_angle_len(current, step_angle, self.state.bond_length)
             points.append(next_point)
             current = next_point
