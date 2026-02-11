@@ -480,6 +480,7 @@ class AtomItem(QGraphicsEllipseItem):
     def set_coordination_center(self, enabled: bool) -> None:
         """Activa/desactiva renderizado de esfera para centro de coordinación."""
         self.atom.is_coordination_center = bool(enabled)
+        self._set_label_text(self._display_label)
         self._update_visibility()
         self.refresh_coordination_visual()
 
@@ -674,6 +675,10 @@ class AtomItem(QGraphicsEllipseItem):
             Modifica el estado del item o la escena.
         """
         anchor = self._label_anchor_override or self._first_label_token(text)
+        # Para centros de coordinación (esfera), la etiqueta debe quedar
+        # centrada geométricamente en el centro de la esfera.
+        if bool(getattr(self.atom, "is_coordination_center", False)):
+            anchor = None
         if anchor:
             metrics = QFontMetrics(self.label.font())
             self._label_anchor_width = metrics.horizontalAdvance(anchor)

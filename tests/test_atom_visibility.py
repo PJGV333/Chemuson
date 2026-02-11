@@ -45,3 +45,26 @@ class AtomVisibilityTest(unittest.TestCase):
         atom = Atom(id=1, element="N", x=0, y=0)
         item = AtomItem(atom, show_carbon=False, show_hydrogen=False)
         self.assertTrue(item.label.isVisible())
+
+    def test_coordination_center_label_is_centered(self):
+        """La etiqueta del centro de coordinación se centra sobre la esfera."""
+        atom = Atom(id=1, element="Pd", x=0, y=0, is_coordination_center=True)
+        item = AtomItem(atom, show_carbon=False, show_hydrogen=False)
+        rect = item.label.boundingRect()
+        pos = item.label.pos()
+        cx = pos.x() + rect.width() / 2.0
+        cy = pos.y() + rect.height() / 2.0
+        self.assertAlmostEqual(cx, 0.0, delta=0.2)
+        self.assertAlmostEqual(cy, 0.0, delta=0.2)
+
+    def test_coordination_toggle_keeps_label_centered(self):
+        """Al activar centro de coordinación, la etiqueta permanece centrada."""
+        atom = Atom(id=1, element="Pd", x=0, y=0, is_coordination_center=False)
+        item = AtomItem(atom, show_carbon=False, show_hydrogen=False)
+        item.set_coordination_center(True)
+        rect = item.label.boundingRect()
+        pos = item.label.pos()
+        cx = pos.x() + rect.width() / 2.0
+        cy = pos.y() + rect.height() / 2.0
+        self.assertAlmostEqual(cx, 0.0, delta=0.2)
+        self.assertAlmostEqual(cy, 0.0, delta=0.2)
