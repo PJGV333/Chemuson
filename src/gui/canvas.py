@@ -396,6 +396,8 @@ class ChemusonCanvas(QGraphicsView):
         self._drag_anchor: Optional[dict] = None
         self._ring_last_vertices: Optional[List[QPointF]] = None
         self._chain_last_points: Optional[List[QPointF]] = None
+        self._pending_template_graph: Optional[MolGraph] = None
+        self._pending_template_label: Optional[str] = None
         self._overlays_ready = False
         self.show_rulers = False
         self.show_grid = False
@@ -755,6 +757,8 @@ class ChemusonCanvas(QGraphicsView):
 
         self.current_tool = tool_id
         self.state.active_tool = tool_id
+        if self._pending_template_graph is not None:
+            self.cancel_template_insert_mode()
         self._clear_bond_anchor()
         self._cancel_drag()
         self._arrow_start_pos = None
@@ -930,6 +934,18 @@ class ChemusonCanvas(QGraphicsView):
 
         if event.button() != Qt.MouseButton.LeftButton:
             super().mousePressEvent(event)
+            return
+
+        if self._pending_template_graph is not None:
+            clicked_atom_id, _clicked_bond_id = self._pick_hover_target(scene_pos)
+            if not self._is_on_paper(scene_pos.x(), scene_pos.y()):
+                return
+            self._insert_molgraph_at(
+                self._pending_template_graph,
+                scene_pos,
+                attach_to_atom_id=clicked_atom_id,
+            )
+            self.cancel_template_insert_mode()
             return
 
         if self.current_tool in {"tool_select", "tool_select_lasso"}:
@@ -2462,6 +2478,10 @@ class ChemusonCanvas(QGraphicsView):
                 return
             if self._delete_hovered():
                 return
+        if event.key() == Qt.Key.Key_Escape and self._pending_template_graph is not None:
+            self.cancel_template_insert_mode()
+            event.accept()
+            return
         if self._handle_atom_text_entry(event):
             return
         if self._handle_select_all(event):
@@ -4502,12 +4522,48 @@ class ChemusonCanvas(QGraphicsView):
         if any(bond.is_aromatic for bond in self.model.bonds.values()):
             self._kekulize_aromatic_bonds()
 
-    def _insert_molgraph_at(self, graph: MolGraph, target: QPointF) -> None:
+    def _pick_template_attachment_atom_id(self, graph: MolGraph) -> Optional[int]:
+        """Elige un átomo de la plantilla para conectar al átomo ancla.
+
+        Se priorizan vértices terminales (grado mínimo) y, entre ellos, el más
+        alejado del centro para favorecer una orientación externa.
+        """
+        if not graph.atoms:
+            return None
+        degrees: Dict[int, int] = {atom_id: 0 for atom_id in graph.atoms.keys()}
+        for bond in graph.bonds.values():
+            if bond.a1_id in degrees:
+                degrees[bond.a1_id] += 1
+            if bond.a2_id in degrees:
+                degrees[bond.a2_id] += 1
+        min_degree = min(degrees.values()) if degrees else 0
+        candidate_ids = [atom_id for atom_id, degree in degrees.items() if degree == min_degree]
+        if len(candidate_ids) == 1:
+            return candidate_ids[0]
+        xs = [atom.x for atom in graph.atoms.values()]
+        ys = [atom.y for atom in graph.atoms.values()]
+        center_x = (min(xs) + max(xs)) / 2.0
+        center_y = (min(ys) + max(ys)) / 2.0
+        return max(
+            candidate_ids,
+            key=lambda atom_id: (
+                (graph.get_atom(atom_id).x - center_x) ** 2
+                + (graph.get_atom(atom_id).y - center_y) ** 2
+            ),
+        )
+
+    def _insert_molgraph_at(
+        self,
+        graph: MolGraph,
+        target: QPointF,
+        attach_to_atom_id: Optional[int] = None,
+    ) -> None:
         """Método auxiliar para  insert molgraph at.
 
         Args:
             graph: Descripción del parámetro.
             target: Descripción del parámetro.
+            attach_to_atom_id: Átomo del lienzo al que se conectará la plantilla.
 
         Returns:
             Resultado de la operación o None.
@@ -4523,8 +4579,19 @@ class ChemusonCanvas(QGraphicsView):
         min_y, max_y = min(ys), max(ys)
         center_x = (min_x + max_x) / 2
         center_y = (min_y + max_y) / 2
-        dx = target.x() - center_x
-        dy = target.y() - center_y
+        attach_template_id = None
+        if attach_to_atom_id is not None and attach_to_atom_id in self.model.atoms:
+            attach_template_id = self._pick_template_attachment_atom_id(graph)
+        if attach_template_id is not None:
+            attach_atom = graph.get_atom(attach_template_id)
+            anchor = self.model.get_atom(attach_to_atom_id)
+            anchor_pos = QPointF(anchor.x, anchor.y)
+            attach_target = self._compute_default_bond_endpoint(anchor_pos, attach_to_atom_id)
+            dx = attach_target.x() - attach_atom.x
+            dy = attach_target.y() - attach_atom.y
+        else:
+            dx = target.x() - center_x
+            dy = target.y() - center_y
 
         self.undo_stack.beginMacro("Paste molecule")
         id_map: Dict[int, int] = {}
@@ -4567,9 +4634,38 @@ class ChemusonCanvas(QGraphicsView):
                 donor_atom_id=id_map.get(getattr(bond, "donor_atom_id", -1)),
             )
             self.undo_stack.push(cmd)
+        if attach_to_atom_id is not None and attach_template_id is not None:
+            template_new_id = id_map.get(attach_template_id)
+            if template_new_id is not None:
+                cmd = AddBondCommand(
+                    self.model,
+                    self,
+                    attach_to_atom_id,
+                    template_new_id,
+                    1,
+                    BondStyle.PLAIN,
+                    BondStereo.NONE,
+                    is_aromatic=False,
+                )
+                self.undo_stack.push(cmd)
         self.undo_stack.endMacro()
         if any(bond.is_aromatic for bond in self.model.bonds.values()):
             self._kekulize_aromatic_bonds()
+
+    def begin_template_insert_mode(self, graph: MolGraph, label: str) -> None:
+        """Activa la inserción por clic para una plantilla."""
+        self._pending_template_graph = graph
+        self._pending_template_label = label
+        self.setCursor(Qt.CursorShape.CrossCursor)
+
+    def cancel_template_insert_mode(self) -> None:
+        """Cancela la inserción pendiente de plantillas."""
+        self._pending_template_graph = None
+        self._pending_template_label = None
+        if self._space_panning:
+            self.setCursor(Qt.CursorShape.OpenHandCursor)
+        else:
+            self.unsetCursor()
 
     def _insert_ring_template(self, scene_pos: QPointF) -> None:
         """Método auxiliar para  insert ring template.

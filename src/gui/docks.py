@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
     QDockWidget,
     QWidget,
     QVBoxLayout,
+    QHBoxLayout,
     QLabel,
     QFormLayout,
     QComboBox,
@@ -15,6 +16,8 @@ from PyQt6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QHeaderView,
+    QPushButton,
+    QMenu,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from gui.style import DrawingStyle
@@ -25,6 +28,13 @@ class PlantillasDock(QDockWidget):
     Dock que muestra listas de plantillas químicas.
     """
     template_selected = pyqtSignal(dict)
+    new_category_requested = pyqtSignal()
+    import_requested = pyqtSignal()
+    export_requested = pyqtSignal()
+    rename_category_requested = pyqtSignal(str)
+    delete_category_requested = pyqtSignal(str)
+    rename_template_requested = pyqtSignal(str)
+    delete_template_requested = pyqtSignal(str)
 
     def __init__(self, parent=None):
         """Inicializa el dock de plantillas."""
@@ -34,47 +44,108 @@ class PlantillasDock(QDockWidget):
         container = QWidget()
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
+
+        controls = QHBoxLayout()
+        controls.setContentsMargins(6, 6, 6, 2)
+        self.btn_new_category = QPushButton("Nueva categoría")
+        self.btn_import = QPushButton("Importar")
+        self.btn_export = QPushButton("Exportar")
+        self.btn_new_category.clicked.connect(self.new_category_requested.emit)
+        self.btn_import.clicked.connect(self.import_requested.emit)
+        self.btn_export.clicked.connect(self.export_requested.emit)
+        controls.addWidget(self.btn_new_category)
+        controls.addWidget(self.btn_import)
+        controls.addWidget(self.btn_export)
+        layout.addLayout(controls)
         
         self.tree = QTreeWidget()
         self.tree.setHeaderHidden(True)
-        self._populate_tree()
+        self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tree.customContextMenuRequested.connect(self._show_context_menu)
         self.tree.itemActivated.connect(self._emit_template)
+        self.tree.itemDoubleClicked.connect(self._emit_template)
         layout.addWidget(self.tree)
         
         self.setWidget(container)
+        self.set_templates([])
 
-    def _populate_tree(self) -> None:
-        """Carga la estructura de grupos y plantillas en el árbol."""
-        groups = {
-            "Grupos funcionales": [
-                {"name": "Alcohol", "type": "alcohol"},
-                {"name": "Aldehído", "type": "aldehyde"},
-                {"name": "Cetona", "type": "ketone"},
-            ],
-            "Aminoácidos": [
-                {"name": "Glicina", "type": "glycine"},
-                {"name": "Alanina", "type": "alanine"},
-            ],
-            "Protecciones": [
-                {"name": "Boc", "type": "boc"},
-                {"name": "Fmoc", "type": "fmoc"},
-            ],
-        }
-        for group_name, items in groups.items():
-            group_item = QTreeWidgetItem([group_name])
-            group_item.setFlags(group_item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
-            for item in items:
-                child = QTreeWidgetItem([item["name"]])
-                child.setData(0, Qt.ItemDataRole.UserRole, item)
+    def set_templates(self, grouped_templates: list[dict]) -> None:
+        """Carga categorías y plantillas en el árbol del dock."""
+        self.tree.clear()
+        if not grouped_templates:
+            placeholder = QTreeWidgetItem(["(Sin plantillas)"])
+            placeholder.setFlags(placeholder.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+            self.tree.addTopLevelItem(placeholder)
+            return
+        for group in grouped_templates:
+            category = str(group.get("name", "")).strip()
+            if not category:
+                continue
+            group_item = QTreeWidgetItem([category])
+            group_item.setData(
+                0,
+                Qt.ItemDataRole.UserRole,
+                {"kind": "category", "name": category},
+            )
+            for template in group.get("templates", []):
+                name = str(template.get("name", "")).strip()
+                template_id = str(template.get("id", "")).strip()
+                if not name or not template_id:
+                    continue
+                child = QTreeWidgetItem([name])
+                icon = template.get("icon")
+                if icon is not None:
+                    child.setIcon(0, icon)
+                child.setData(
+                    0,
+                    Qt.ItemDataRole.UserRole,
+                    {
+                        "kind": "template",
+                        "id": template_id,
+                        "name": name,
+                        "category": category,
+                    },
+                )
                 group_item.addChild(child)
             self.tree.addTopLevelItem(group_item)
             group_item.setExpanded(True)
 
-    def _emit_template(self, item: QTreeWidgetItem) -> None:
+    def _emit_template(self, item: QTreeWidgetItem, _column: int = 0) -> None:
         """Emite la plantilla seleccionada si el item tiene datos."""
         payload = item.data(0, Qt.ItemDataRole.UserRole)
-        if isinstance(payload, dict):
+        if isinstance(payload, dict) and payload.get("kind") == "template":
             self.template_selected.emit(payload)
+
+    def _show_context_menu(self, pos) -> None:
+        """Muestra menú contextual según el tipo de item."""
+        item = self.tree.itemAt(pos)
+        if item is None:
+            return
+        payload = item.data(0, Qt.ItemDataRole.UserRole)
+        if not isinstance(payload, dict):
+            return
+        menu = QMenu(self.tree)
+        kind = payload.get("kind")
+        if kind == "template":
+            insert_action = menu.addAction("Insertar")
+            rename_action = menu.addAction("Renombrar plantilla...")
+            delete_action = menu.addAction("Eliminar plantilla")
+            chosen = menu.exec(self.tree.viewport().mapToGlobal(pos))
+            if chosen == insert_action:
+                self.template_selected.emit(payload)
+            elif chosen == rename_action:
+                self.rename_template_requested.emit(str(payload.get("id", "")))
+            elif chosen == delete_action:
+                self.delete_template_requested.emit(str(payload.get("id", "")))
+            return
+        if kind == "category":
+            rename_action = menu.addAction("Renombrar categoría...")
+            delete_action = menu.addAction("Eliminar categoría")
+            chosen = menu.exec(self.tree.viewport().mapToGlobal(pos))
+            if chosen == rename_action:
+                self.rename_category_requested.emit(str(payload.get("name", "")))
+            elif chosen == delete_action:
+                self.delete_category_requested.emit(str(payload.get("name", "")))
 
 
 class InspectorDock(QDockWidget):

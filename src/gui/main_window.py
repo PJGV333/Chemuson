@@ -21,7 +21,7 @@ from PyQt6.QtWidgets import (
     QLabel,
 )
 from PyQt6.QtCore import Qt, QSize, QSettings, QEvent
-from PyQt6.QtGui import QAction, QActionGroup, QKeySequence, QIcon, QPainter
+from PyQt6.QtGui import QAction, QActionGroup, QKeySequence, QIcon, QPainter, QPixmap, QPen, QColor
 from PyQt6.QtPrintSupport import QPrinter
 from typing import Optional
 from dataclasses import replace
@@ -35,11 +35,11 @@ from gui.docks import PlantillasDock, InspectorDock, AppearanceDock
 from gui.dialogs import PreferencesDialog, QuickStartDialog, StyleDialog
 from gui.text_toolbar import TextFormatToolbar
 from gui.commands import ChangeAtomCommand
+from gui.template_library import TemplateLibrary, DEFAULT_CATEGORY_USER
 from gui.templates import (
     build_linear_chain_template,
 )
 import os
-import glob
 from chemio.rdkit_io import molfile_to_molgraph, molgraph_to_molfile
 from chemio.persistence import PersistenceManager
 from core.model import MolGraph
@@ -71,6 +71,8 @@ class ChemusonWindow(QMainWindow):
         self._current_file_path: Optional[str] = None
         self._settings = QSettings("Chemuson", "Chemuson")
         self._recent_files = self._load_recent_files()
+        self.template_library = TemplateLibrary()
+        self._template_icon_cache: dict[str, QIcon] = {}
         
         # === CENTRAL CANVAS ===
         self.canvas = ChemusonCanvas()
@@ -83,6 +85,14 @@ class ChemusonWindow(QMainWindow):
         self.templates_dock = PlantillasDock(self)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.templates_dock)
         self.templates_dock.hide()
+        self.templates_dock.template_selected.connect(self._on_template_selected_from_gallery)
+        self.templates_dock.new_category_requested.connect(self._on_new_template_category)
+        self.templates_dock.import_requested.connect(self._on_import_template_library)
+        self.templates_dock.export_requested.connect(self._on_export_template_library)
+        self.templates_dock.rename_category_requested.connect(self._on_rename_template_category)
+        self.templates_dock.delete_category_requested.connect(self._on_delete_template_category)
+        self.templates_dock.rename_template_requested.connect(self._on_rename_template)
+        self.templates_dock.delete_template_requested.connect(self._on_delete_template)
         
         self.inspector_dock = InspectorDock(self)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.inspector_dock)
@@ -124,6 +134,8 @@ class ChemusonWindow(QMainWindow):
         self._create_menu_bar()
         self._create_main_toolbar()
         self._sync_label_menu_state()
+        self._migrate_legacy_templates()
+        self._refresh_template_views()
         
         # === TEXT FORMAT TOOLBAR ===
         self.text_toolbar = TextFormatToolbar()
@@ -270,6 +282,12 @@ class ChemusonWindow(QMainWindow):
 
         self.action_template_linear_chain = QAction("Cadena lineal", self)
         self.action_template_linear_chain.triggered.connect(self._on_insert_linear_chain)
+        self.action_template_new_category = QAction("Nueva categoría...", self)
+        self.action_template_new_category.triggered.connect(self._on_new_template_category)
+        self.action_template_import_library = QAction("Importar biblioteca...", self)
+        self.action_template_import_library.triggered.connect(self._on_import_template_library)
+        self.action_template_export_library = QAction("Exportar biblioteca...", self)
+        self.action_template_export_library.triggered.connect(self._on_export_template_library)
 
         # --- Canvas Size Actions ---
         self.action_canvas_size_letter_portrait = QAction("Carta (vertical)", self)
@@ -536,12 +554,14 @@ class ChemusonWindow(QMainWindow):
         
         # Dynamic Templates Menu
         self.templates_menu = structure_menu.addMenu("Plantillas")
-        self._refresh_templates_menu()
         
         # Save Template Action
         self.action_save_template = QAction("Guardar selección como plantilla...", self)
         self.action_save_template.triggered.connect(self._on_save_template)
+        self._refresh_templates_menu()
         structure_menu.addAction(self.action_save_template)
+        structure_menu.addAction(self.action_template_import_library)
+        structure_menu.addAction(self.action_template_export_library)
         
         structure_menu.addSeparator()
         structure_menu.addAction(self.action_import_smiles)
@@ -1680,122 +1700,417 @@ class ChemusonWindow(QMainWindow):
         Side Effects:
             Puede modificar el estado interno o la interfaz.
         """
-        self.canvas._insert_molgraph(graph)
-        self.statusBar().showMessage(f"Plantilla: {label}")
+        self.canvas.begin_template_insert_mode(graph, label)
+        self.statusBar().showMessage(
+            f"Plantilla '{label}' lista. Haz clic para colocar; clic sobre átomo para conectar."
+        )
 
     def _get_templates_dir(self) -> str:
-        """Get the directory where user templates are stored."""
-        # Use a local templates directory relative to the source
+        """Ruta legada para plantillas en disco (`src/templates`)."""
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         templates_dir = os.path.join(base_dir, "templates")
         if not os.path.exists(templates_dir):
             os.makedirs(templates_dir)
         return templates_dir
 
-    def _refresh_templates_menu(self) -> None:
-        """Scan templates directory and populate the menu."""
-        self.templates_menu.clear()
-        
-        # Add standard linear chain (generated)
-        self.action_linear = QAction("Cadena lineal (Fischer)", self)
-        self.action_linear.triggered.connect(self._on_insert_linear_chain)
-        self.templates_menu.addAction(self.action_linear)
-        self.templates_menu.addSeparator()
-
-        templates_dir = self._get_templates_dir()
-        files = glob.glob(os.path.join(templates_dir, "*.mol"))
-        
-        if not files:
-            no_templates = QAction("(Sin plantillas guardadas)", self)
-            no_templates.setEnabled(False)
-            self.templates_menu.addAction(no_templates)
+    def _migrate_legacy_templates(self) -> None:
+        """Importa plantillas `.mol` legadas a la nueva biblioteca JSON."""
+        try:
+            templates_dir = self._get_templates_dir()
+            files = [
+                path
+                for path in sorted(os.listdir(templates_dir))
+                if path.lower().endswith(".mol")
+            ]
+            if not files:
+                return
+            existing = {
+                (
+                    str(tpl.get("name", "")).strip().lower(),
+                    str(tpl.get("molblock", "")).strip(),
+                )
+                for tpl in self.template_library.list_templates()
+            }
+            changed = False
+            for filename in files:
+                filepath = os.path.join(templates_dir, filename)
+                try:
+                    with open(filepath, "r", encoding="utf-8") as fh:
+                        molblock = fh.read().strip()
+                except Exception:
+                    continue
+                if not molblock:
+                    continue
+                name = os.path.splitext(filename)[0].replace("_", " ").strip() or "Plantilla"
+                signature = (name.lower(), molblock)
+                if signature in existing:
+                    continue
+                self.template_library.add_template(
+                    name=name,
+                    category=DEFAULT_CATEGORY_USER,
+                    molblock=molblock,
+                )
+                existing.add(signature)
+                changed = True
+            if changed:
+                self.statusBar().showMessage("Plantillas legadas importadas a la biblioteca.")
+        except Exception:
+            # Migración best-effort: no bloquear inicio por fallos en archivos legados.
             return
 
-        for filepath in sorted(files):
-            filename = os.path.basename(filepath)
-            name = os.path.splitext(filename)[0].replace("_", " ").title()
-            action = QAction(name, self)
-            # Use default argument capture for lambda loop
-            action.triggered.connect(lambda checked=False, f=filepath: self._insert_template_from_file(f))
-            self.templates_menu.addAction(action)
+    def _template_preview_icon(self, template_id: str) -> QIcon:
+        """Genera miniatura de una plantilla para la galería lateral."""
+        cache = self._template_icon_cache.get(template_id)
+        if cache is not None:
+            return cache
+        icon = QIcon()
+        try:
+            graph = self.template_library.graph_from_template(template_id)
+            if not graph.atoms:
+                self._template_icon_cache[template_id] = icon
+                return icon
+            pixmap = QPixmap(88, 56)
+            pixmap.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(pixmap)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+            xs = [atom.x for atom in graph.atoms.values()]
+            ys = [atom.y for atom in graph.atoms.values()]
+            min_x, max_x = min(xs), max(xs)
+            min_y, max_y = min(ys), max(ys)
+            width = max(1.0, max_x - min_x)
+            height = max(1.0, max_y - min_y)
+            margin = 8.0
+            scale = min(
+                (pixmap.width() - 2.0 * margin) / width,
+                (pixmap.height() - 2.0 * margin) / height,
+            )
+
+            def map_point(x: float, y: float) -> tuple[float, float]:
+                sx = margin + (x - min_x) * scale
+                sy = margin + (max_y - y) * scale
+                return sx, sy
+
+            bond_pen = QPen(QColor("#222222"))
+            bond_pen.setWidth(2)
+            bond_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            painter.setPen(bond_pen)
+            for bond in graph.bonds.values():
+                a1 = graph.get_atom(bond.a1_id)
+                a2 = graph.get_atom(bond.a2_id)
+                x1, y1 = map_point(a1.x, a1.y)
+                x2, y2 = map_point(a2.x, a2.y)
+                painter.drawLine(int(round(x1)), int(round(y1)), int(round(x2)), int(round(y2)))
+
+            color_map = {
+                "N": QColor("#2A56D1"),
+                "O": QColor("#D11E1E"),
+                "S": QColor("#D48400"),
+                "P": QColor("#E66A00"),
+                "Cl": QColor("#18B81F"),
+                "Br": QColor("#A04300"),
+                "I": QColor("#5E2A88"),
+            }
+            font = painter.font()
+            font.setPointSize(8)
+            painter.setFont(font)
+            for atom in graph.atoms.values():
+                if atom.element == "C":
+                    continue
+                x, y = map_point(atom.x, atom.y)
+                painter.setPen(color_map.get(atom.element, QColor("#1A1A1A")))
+                painter.drawText(int(round(x)) - 6, int(round(y)) + 4, atom.element)
+            painter.end()
+            icon = QIcon(pixmap)
+        except Exception:
+            icon = QIcon()
+        self._template_icon_cache[template_id] = icon
+        return icon
+
+    def _refresh_template_views(self) -> None:
+        """Sincroniza menú y dock con la biblioteca de plantillas."""
+        self._template_icon_cache.clear()
+        grouped = self.template_library.grouped_templates()
+        grouped_with_icons: list[dict] = []
+        for group in grouped:
+            templates = []
+            for template in group.get("templates", []):
+                entry = dict(template)
+                template_id = str(entry.get("id", "")).strip()
+                if template_id:
+                    entry["icon"] = self._template_preview_icon(template_id)
+                templates.append(entry)
+            grouped_with_icons.append({"name": group.get("name", ""), "templates": templates})
+        self.templates_dock.set_templates(grouped_with_icons)
+        self._refresh_templates_menu()
+
+    def _refresh_templates_menu(self) -> None:
+        """Construye menú dinámico de plantillas por categoría."""
+        self.templates_menu.clear()
+        grouped = self.template_library.grouped_templates()
+        total_templates = 0
+        for group in grouped:
+            category = str(group.get("name", "")).strip()
+            if not category:
+                continue
+            submenu = self.templates_menu.addMenu(category)
+            templates = list(group.get("templates", []))
+            if not templates:
+                empty = QAction("(Vacío)", self)
+                empty.setEnabled(False)
+                submenu.addAction(empty)
+                continue
+            for template in templates:
+                template_id = str(template.get("id", "")).strip()
+                label = str(template.get("name", "")).strip() or "Plantilla"
+                if not template_id:
+                    continue
+                action = QAction(label, self)
+                action.triggered.connect(
+                    lambda checked=False, tid=template_id: self._start_template_insert_by_id(tid)
+                )
+                submenu.addAction(action)
+                total_templates += 1
+        if total_templates == 0:
+            empty = QAction("(Sin plantillas)", self)
+            empty.setEnabled(False)
+            self.templates_menu.addAction(empty)
+        self.templates_menu.addSeparator()
+        self.templates_menu.addAction(self.action_save_template)
+        self.templates_menu.addAction(self.action_template_new_category)
+        self.templates_menu.addAction(self.action_template_import_library)
+        self.templates_menu.addAction(self.action_template_export_library)
+
+    def _start_template_insert_by_id(self, template_id: str) -> None:
+        """Activa inserción por clic para una plantilla de biblioteca."""
+        try:
+            template = self.template_library.get_template(template_id)
+            graph = self.template_library.graph_from_template(template_id)
+            label = str(template.get("name", "Plantilla")).strip() or "Plantilla"
+            self._insert_template(label, graph)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"No se pudo cargar la plantilla:\n{e}")
+
+    def _on_template_selected_from_gallery(self, payload: dict) -> None:
+        """Maneja selección de plantilla desde el dock lateral."""
+        template_id = str(payload.get("id", "")).strip()
+        if not template_id:
+            return
+        self._start_template_insert_by_id(template_id)
+
+    def _prompt_template_destination(self) -> Optional[tuple[str, str]]:
+        """Solicita nombre y categoría para guardar plantilla."""
+        name, ok = QInputDialog.getText(self, "Guardar plantilla", "Nombre de la plantilla:")
+        if not ok:
+            return None
+        clean_name = " ".join(name.strip().split())
+        if not clean_name:
+            return None
+        categories = self.template_library.categories()
+        if not categories:
+            categories = [DEFAULT_CATEGORY_USER]
+        if DEFAULT_CATEGORY_USER not in categories:
+            categories.append(DEFAULT_CATEGORY_USER)
+        choices = categories + ["+ Nueva categoría..."]
+        default_idx = choices.index(DEFAULT_CATEGORY_USER) if DEFAULT_CATEGORY_USER in choices else 0
+        category_choice, ok = QInputDialog.getItem(
+            self,
+            "Guardar plantilla",
+            "Categoría:",
+            choices,
+            default_idx,
+            False,
+        )
+        if not ok:
+            return None
+        category = category_choice
+        if category_choice == "+ Nueva categoría...":
+            new_category, ok = QInputDialog.getText(self, "Nueva categoría", "Nombre de la categoría:")
+            if not ok:
+                return None
+            category = self.template_library.add_category(new_category)
+        else:
+            category = self.template_library.add_category(category_choice)
+        return clean_name, category
 
     def _on_save_template(self) -> None:
-        """Save the current selection (or whole canvas) as a new template."""
-        # 1. Determine what to save
-        if self.canvas.state.selected_atoms:
-            # Create a subgraph from selection
-            # This requires extracting specific atoms and bonds
-            # For simplicity in this task, let's warn if multiple disjoint, 
-            # but currently we just allow saving the subgraph.
-            
-            # Since MolGraph doesn't have a 'subgraph' method easily exposed here,
-            # we can clone the graph and remove unselected.
-            # Or simplified: Serialize the Whole Canvas if selection is empty?
-            pass
-        
-        # Strategy: Save the WHOLE canvas if nothing is selected? 
-        # Or just the selection. let's support Selection Only if atoms selected.
-        
+        """Guarda selección (o molécula completa) como plantilla reusable."""
         try:
-            graph_to_save = MolGraph()
-            
-            if self.canvas.state.selected_atoms:
-                # Copy selected atoms
-                visible_atoms = self.canvas.state.selected_atoms
-                # We need to copy them with new IDs or keep IDs? 
-                # molgraph_to_molfile handles arbitrary IDs usually.
-                
-                # Copy atoms
-                old_to_new = {}
-                for atom_id in visible_atoms:
-                    old_atom = self.canvas.model.get_atom(atom_id)
-                    new_atom = graph_to_save.add_atom(
-                        old_atom.element, 
-                        old_atom.x, 
-                        old_atom.y, 
-                        charge=old_atom.charge,
-                        explicit=old_atom.is_explicit
-                    )
-                    old_to_new[atom_id] = new_atom.id
-                
-                # Copy bonds if both ends are selected
-                for bond in self.canvas.model.bonds.values():
-                    if bond.a1_id in visible_atoms and bond.a2_id in visible_atoms:
-                        graph_to_save.add_bond(
-                            old_to_new[bond.a1_id],
-                            old_to_new[bond.a2_id],
-                            order=bond.order,
-                            style=bond.style,
-                            stereo=bond.stereo
-                        )
-            else:
-                # Save entire canvas
-                # We can just use deepcopy or serialize/deserialize
-                # Simplest: use rdkit io to roundtrip or just copy logic
-                # Let's use the canvas graph directly for serialization
-                graph_to_save = self.canvas.graph
-
+            atom_ids, bonds = self.canvas._selected_structure_ids()
+            graph_to_save = (
+                self.canvas._build_selection_graph(atom_ids, bonds)
+                if atom_ids
+                else self.canvas.graph
+            )
             if not graph_to_save.atoms:
                 QMessageBox.warning(self, "Aviso", "No hay nada para guardar.")
                 return
-
-            name, ok = QInputDialog.getText(self, "Nueva Plantilla", "Nombre de la plantilla:")
-            if not ok or not name.strip():
+            target = self._prompt_template_destination()
+            if target is None:
                 return
-            
-            safe_name = "".join(c for c in name if c.isalnum() or c in (' ', '_', '-')).strip()
-            filename = f"{safe_name}.mol"
-            path = os.path.join(self._get_templates_dir(), filename)
-            
-            molblock = molgraph_to_molfile(graph_to_save)
-            with open(path, "w") as f:
-                f.write(molblock)
-            
-            self.statusBar().showMessage(f"Plantilla guardada: {name}")
-            self._refresh_templates_menu()
-            
+            name, category = target
+            self.template_library.add_template_from_graph(name, category, graph_to_save)
+            self._refresh_template_views()
+            self.statusBar().showMessage(f"Plantilla guardada: {name} ({category})")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Error al guardar plantilla:\n{e}")
+
+    def _on_new_template_category(self) -> None:
+        """Crea categoría personalizada de plantillas."""
+        name, ok = QInputDialog.getText(self, "Nueva categoría", "Nombre de la categoría:")
+        if not ok:
+            return
+        category = " ".join(name.strip().split())
+        if not category:
+            return
+        self.template_library.add_category(category)
+        self._refresh_template_views()
+        self.statusBar().showMessage(f"Categoría creada: {category}")
+
+    def _on_rename_template_category(self, old_name: str) -> None:
+        """Renombra una categoría existente."""
+        if not old_name:
+            return
+        new_name, ok = QInputDialog.getText(
+            self,
+            "Renombrar categoría",
+            "Nuevo nombre:",
+            text=old_name,
+        )
+        if not ok:
+            return
+        clean_new = " ".join(new_name.strip().split())
+        if not clean_new:
+            return
+        try:
+            self.template_library.rename_category(old_name, clean_new)
+            self._refresh_template_views()
+            self.statusBar().showMessage(f"Categoría renombrada: {old_name} -> {clean_new}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"No se pudo renombrar la categoría:\n{e}")
+
+    def _on_delete_template_category(self, name: str) -> None:
+        """Elimina una categoría y conserva sus plantillas en categoría de respaldo."""
+        if not name:
+            return
+        reply = QMessageBox.question(
+            self,
+            "Eliminar categoría",
+            (
+                f"¿Eliminar la categoría '{name}'?\n"
+                f"Las plantillas se moverán a '{DEFAULT_CATEGORY_USER}'."
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            self.template_library.delete_category(name, fallback_category=DEFAULT_CATEGORY_USER)
+            self._refresh_template_views()
+            self.statusBar().showMessage(f"Categoría eliminada: {name}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"No se pudo eliminar la categoría:\n{e}")
+
+    def _on_rename_template(self, template_id: str) -> None:
+        """Renombra plantilla individual."""
+        if not template_id:
+            return
+        try:
+            template = self.template_library.get_template(template_id)
+        except Exception:
+            return
+        current_name = str(template.get("name", "Plantilla"))
+        new_name, ok = QInputDialog.getText(
+            self,
+            "Renombrar plantilla",
+            "Nuevo nombre:",
+            text=current_name,
+        )
+        if not ok:
+            return
+        clean_new = " ".join(new_name.strip().split())
+        if not clean_new:
+            return
+        try:
+            self.template_library.rename_template(template_id, clean_new)
+            self._refresh_template_views()
+            self.statusBar().showMessage(f"Plantilla renombrada: {clean_new}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"No se pudo renombrar la plantilla:\n{e}")
+
+    def _on_delete_template(self, template_id: str) -> None:
+        """Elimina plantilla de la biblioteca."""
+        if not template_id:
+            return
+        try:
+            template = self.template_library.get_template(template_id)
+        except Exception:
+            return
+        name = str(template.get("name", "Plantilla"))
+        reply = QMessageBox.question(
+            self,
+            "Eliminar plantilla",
+            f"¿Eliminar la plantilla '{name}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            self.template_library.delete_template(template_id)
+            self._refresh_template_views()
+            self.statusBar().showMessage(f"Plantilla eliminada: {name}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"No se pudo eliminar la plantilla:\n{e}")
+
+    def _on_import_template_library(self) -> None:
+        """Importa bibliotecas de plantillas desde JSON."""
+        filepath, _ = QFileDialog.getOpenFileName(
+            self,
+            "Importar biblioteca de plantillas",
+            "",
+            "Template Library (*.json)",
+        )
+        if not filepath:
+            return
+        choice = QMessageBox.question(
+            self,
+            "Importar biblioteca",
+            "¿Combinar con la biblioteca actual? (No = reemplazar)",
+            QMessageBox.StandardButton.Yes
+            | QMessageBox.StandardButton.No
+            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Yes,
+        )
+        if choice == QMessageBox.StandardButton.Cancel:
+            return
+        merge = choice == QMessageBox.StandardButton.Yes
+        try:
+            added = self.template_library.import_from_file(filepath, merge=merge)
+            self._refresh_template_views()
+            if merge:
+                self.statusBar().showMessage(f"Biblioteca importada: {added} plantilla(s) agregadas.")
+            else:
+                self.statusBar().showMessage("Biblioteca importada (reemplazo completo).")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"No se pudo importar la biblioteca:\n{e}")
+
+    def _on_export_template_library(self) -> None:
+        """Exporta biblioteca de plantillas a JSON."""
+        filepath, _ = QFileDialog.getSaveFileName(
+            self,
+            "Exportar biblioteca de plantillas",
+            "chemuson_templates.json",
+            "Template Library (*.json)",
+        )
+        if not filepath:
+            return
+        try:
+            self.template_library.export_to_file(filepath)
+            self.statusBar().showMessage("Biblioteca de plantillas exportada.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"No se pudo exportar la biblioteca:\n{e}")
 
     def _insert_template_from_file(self, filepath: str) -> None:
         """Método auxiliar para  insert template from file.
@@ -1810,7 +2125,7 @@ class ChemusonWindow(QMainWindow):
             Puede modificar el estado interno o la interfaz.
         """
         try:
-            with open(filepath, "r") as f:
+            with open(filepath, "r", encoding="utf-8") as f:
                 molblock = f.read()
             graph = molfile_to_molgraph(molblock)
             name = os.path.splitext(os.path.basename(filepath))[0]
