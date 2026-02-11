@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
     QFormLayout,
     QDoubleSpinBox,
     QComboBox,
+    QTabWidget,
     QVBoxLayout,
     QLabel,
 )
@@ -69,14 +70,27 @@ class ChemusonWindow(QMainWindow):
         # === CORE COMPONENTS ===
         self._create_actions()
         self._current_file_path: Optional[str] = None
+        self._canvas_file_paths: dict[ChemusonCanvas, Optional[str]] = {}
+        self._canvas_tab_titles: dict[ChemusonCanvas, str] = {}
+        self._untitled_counter = 1
+        self._active_canvas_connected: Optional[ChemusonCanvas] = None
+        self._numbering_default_mode = "atoms"
+        self._numbering_default_include_export = True
+        self._current_tool_id = "tool_select"
         self._settings = QSettings("Chemuson", "Chemuson")
         self._recent_files = self._load_recent_files()
         self.template_library = TemplateLibrary()
         self._template_icon_cache: dict[str, QIcon] = {}
         
-        # === CENTRAL CANVAS ===
-        self.canvas = ChemusonCanvas()
-        self.setCentralWidget(self.canvas)
+        # === CENTRAL TABS/CANVAS ===
+        self.tabs = QTabWidget(self)
+        self.tabs.setDocumentMode(True)
+        self.tabs.setTabsClosable(True)
+        self.tabs.setMovable(True)
+        self.setCentralWidget(self.tabs)
+        self.canvas = self._create_document_tab(make_current=True)
+        self.tabs.currentChanged.connect(self._on_tab_changed)
+        self.tabs.tabCloseRequested.connect(self._on_tab_close_requested)
         self.action_aromatic_circles.setChecked(self.canvas.state.use_aromatic_circles)
         self.action_rules.setChecked(self.canvas.show_rulers)
         self.action_crosshair.setChecked(self.canvas.show_grid)
@@ -147,42 +161,26 @@ class ChemusonWindow(QMainWindow):
         # For now, visible is fine.
 
         # Text Toolbar Connections
-        self.text_toolbar.format_changed.connect(self.canvas.update_text_format)
-        self.text_toolbar.color_changed.connect(self.canvas.update_text_color)
-        self.text_toolbar.alignment_changed.connect(self.canvas.update_text_alignment)
+        self.text_toolbar.format_changed.connect(self._on_text_format_changed)
+        self.text_toolbar.color_changed.connect(self._on_text_color_changed)
+        self.text_toolbar.alignment_changed.connect(self._on_text_alignment_changed)
         
         # === SIGNAL CONNECTIONS ===
         self._connect_undo_redo()
         
         # Connect toolbar to canvas
-        self.toolbar.tool_changed.connect(self.canvas.set_current_tool)
+        self.toolbar.tool_changed.connect(self._on_tool_changed)
         self.toolbar.bond_palette_changed.connect(self._handle_bond_palette)
         self.toolbar.ring_palette_changed.connect(self._handle_ring_palette)
         self.toolbar.element_palette_changed.connect(self._handle_element_palette)
         self.toolbar.periodic_table_requested.connect(self._show_periodic_table)
-        
-        # Connect selection updates
-        self.canvas.selection_changed.connect(self._on_selection_changed)
 
         # Connect symbols dock to canvas
-        self.symbols_toolbar.tool_changed.connect(self.canvas.set_current_tool)
+        self.symbols_toolbar.tool_changed.connect(self._on_tool_changed)
         self.symbols_toolbar.tool_changed.connect(self._update_status)
 
         # Sync defaults selected during toolbar init
-        bond_spec = self.toolbar.current_bond_spec()
-        self.canvas.state.active_bond_order = bond_spec.get("order", 1)
-        self.canvas.state.active_bond_style = bond_spec.get("style", self.canvas.state.active_bond_style)
-        self.canvas.state.active_bond_stereo = bond_spec.get("stereo", self.canvas.state.active_bond_stereo)
-        self.canvas.state.active_bond_mode = bond_spec.get("mode", "increment")
-        self.canvas.state.active_bond_aromatic = bond_spec.get("aromatic", False)
-
-        ring_spec = self.toolbar.current_ring_spec()
-        self.canvas.state.active_ring_size = ring_spec.get("size", self.canvas.state.active_ring_size)
-        self.canvas.state.active_ring_aromatic = ring_spec.get("aromatic", False)
-        self.canvas.state.active_ring_template = ring_spec.get("template")
-        self.canvas.state.active_ring_anomeric = ring_spec.get("anomeric")
-
-        self.canvas.state.default_element = self.toolbar.current_element()
+        self._apply_toolbar_defaults_to_canvas(self.canvas)
         
         # === STATUS BAR ===
         self._total_charge_label = QLabel()
@@ -192,9 +190,7 @@ class ChemusonWindow(QMainWindow):
         
         # Update status bar when tool changes
         self.toolbar.tool_changed.connect(self._update_status)
-        self.canvas.undo_stack.indexChanged.connect(
-            lambda _index: self._update_total_charge_indicator()
-        )
+        self._set_active_canvas(self.canvas)
 
     def _create_actions(self) -> None:
         """Initialize all QActions for menus and toolbars."""
@@ -735,22 +731,276 @@ class ChemusonWindow(QMainWindow):
     def _on_toggle_main_toolbar_aux(self, checked: bool) -> None:
         """Actualiza visibilidad de atajos auxiliares en barra superior."""
         self._set_main_toolbar_aux_visible(bool(checked))
-    
-    def _connect_undo_redo(self) -> None:
-        """Connect undo/redo actions to the canvas undo stack."""
-        self.action_undo.triggered.connect(self.canvas.undo_stack.undo)
-        self.action_redo.triggered.connect(self.canvas.undo_stack.redo)
-        
-        self.canvas.undo_stack.canUndoChanged.connect(self.action_undo.setEnabled)
-        self.canvas.undo_stack.canRedoChanged.connect(self.action_redo.setEnabled)
-        
-        # Initial state
+
+    def _create_document_tab(self, make_current: bool = False) -> ChemusonCanvas:
+        """Crea una nueva pestaña con su propio canvas independiente."""
+        canvas = ChemusonCanvas()
+        tab_title = (
+            "Sin título"
+            if self._untitled_counter == 1
+            else f"Sin título {self._untitled_counter}"
+        )
+        self._untitled_counter += 1
+        self._canvas_file_paths[canvas] = None
+        self._canvas_tab_titles[canvas] = tab_title
+        self._apply_default_numbering_to_canvas(canvas)
+        index = self.tabs.addTab(canvas, tab_title)
+        self.tabs.setTabToolTip(index, "Documento sin guardar")
+        canvas.undo_stack.cleanChanged.connect(
+            lambda _clean, c=canvas: self._on_canvas_clean_state_changed(c)
+        )
+        self._update_tab_title(canvas)
+        if make_current:
+            self.tabs.setCurrentIndex(index)
+        return canvas
+
+    def _apply_default_numbering_to_canvas(self, canvas: ChemusonCanvas) -> None:
+        """Aplica preferencias globales de numeración a un nuevo documento."""
+        canvas.set_numbering_mode(self._numbering_default_mode)
+        canvas.set_numbering_enabled(False)
+        canvas.set_numbering_include_in_export(self._numbering_default_include_export)
+
+    def _set_canvas_file_path(self, canvas: ChemusonCanvas, filepath: Optional[str]) -> None:
+        """Asigna ruta de archivo a una pestaña y actualiza su título."""
+        clean_path = os.path.abspath(filepath) if filepath else None
+        self._canvas_file_paths[canvas] = clean_path
+        if clean_path:
+            self._canvas_tab_titles[canvas] = os.path.basename(clean_path)
+        if canvas is self.canvas:
+            self._current_file_path = clean_path
+        self._update_tab_title(canvas)
+
+    def _on_canvas_clean_state_changed(self, canvas: ChemusonCanvas) -> None:
+        """Actualiza el título de pestaña cuando cambia estado clean/dirty."""
+        if not self._tabs_alive():
+            return
+        self._update_tab_title(canvas)
+
+    def _tabs_alive(self) -> bool:
+        """Indica si el widget de pestañas sigue disponible."""
+        tabs = getattr(self, "tabs", None)
+        if tabs is None:
+            return False
+        try:
+            tabs.count()
+        except RuntimeError:
+            return False
+        return True
+
+    def _canvas_from_tab_index(self, index: int) -> Optional[ChemusonCanvas]:
+        """Obtiene el canvas asociado al índice de pestaña."""
+        if not self._tabs_alive():
+            return None
+        if index < 0:
+            return None
+        widget = self.tabs.widget(index)
+        return widget if isinstance(widget, ChemusonCanvas) else None
+
+    def _update_tab_title(self, canvas: ChemusonCanvas) -> None:
+        """Actualiza título y tooltip de la pestaña asociada al canvas."""
+        if not self._tabs_alive():
+            return
+        try:
+            index = self.tabs.indexOf(canvas)
+            if index < 0:
+                return
+            base_title = self._canvas_tab_titles.get(canvas, "Sin título")
+            dirty_suffix = " *" if not canvas.undo_stack.isClean() else ""
+            self.tabs.setTabText(index, f"{base_title}{dirty_suffix}")
+            path = self._canvas_file_paths.get(canvas)
+            self.tabs.setTabToolTip(index, path or "Documento sin guardar")
+        except RuntimeError:
+            # Durante cierre, Qt puede destruir tabs/canvas antes de drenar señales.
+            return
+
+    def _on_tab_changed(self, index: int) -> None:
+        """Activa el canvas correspondiente al cambiar de pestaña."""
+        canvas = self._canvas_from_tab_index(index)
+        if canvas is None:
+            return
+        self._set_active_canvas(canvas)
+
+    def _on_tab_close_requested(self, index: int) -> None:
+        """Maneja cierre por botón X de una pestaña."""
+        canvas = self._canvas_from_tab_index(index)
+        if canvas is None:
+            return
+        self._close_canvas_tab(canvas)
+
+    def _close_canvas_tab(self, canvas: ChemusonCanvas) -> bool:
+        """Cierra una pestaña si no hay cambios pendientes o el usuario confirma."""
+        if not self._confirm_discard_changes(canvas):
+            return False
+        index = self.tabs.indexOf(canvas)
+        if index < 0:
+            return False
+        was_active = canvas is self.canvas
+        self.tabs.removeTab(index)
+        self._canvas_file_paths.pop(canvas, None)
+        self._canvas_tab_titles.pop(canvas, None)
+        if self._active_canvas_connected is canvas:
+            self._disconnect_canvas_signals(canvas)
+            self._active_canvas_connected = None
+        canvas.deleteLater()
+
+        if self.tabs.count() == 0:
+            created = self._create_document_tab(make_current=True)
+            self._set_active_canvas(created)
+            self.statusBar().showMessage("Se creó un documento nuevo.")
+            return True
+
+        if was_active:
+            current = self._canvas_from_tab_index(self.tabs.currentIndex())
+            if current is not None:
+                self._set_active_canvas(current)
+        return True
+
+    def _connect_canvas_signals(self, canvas: ChemusonCanvas) -> None:
+        """Conecta señales del canvas activo a la UI principal."""
+        canvas.selection_changed.connect(self._on_selection_changed)
+        canvas.undo_stack.canUndoChanged.connect(self.action_undo.setEnabled)
+        canvas.undo_stack.canRedoChanged.connect(self.action_redo.setEnabled)
+        canvas.undo_stack.indexChanged.connect(self._on_active_undo_index_changed)
+
+    def _disconnect_canvas_signals(self, canvas: ChemusonCanvas) -> None:
+        """Desconecta señales del canvas activo anterior."""
+        for signal, slot in (
+            (canvas.selection_changed, self._on_selection_changed),
+            (canvas.undo_stack.canUndoChanged, self.action_undo.setEnabled),
+            (canvas.undo_stack.canRedoChanged, self.action_redo.setEnabled),
+            (canvas.undo_stack.indexChanged, self._on_active_undo_index_changed),
+        ):
+            try:
+                signal.disconnect(slot)
+            except (TypeError, RuntimeError):
+                pass
+
+    def _sync_view_actions_from_canvas(self) -> None:
+        """Sincroniza checks de menú Ver con el estado del canvas activo."""
+        values = (
+            (self.action_show_carbons, bool(self.canvas.state.show_implicit_carbons)),
+            (self.action_show_hydrogens, bool(self.canvas.state.show_implicit_hydrogens)),
+            (self.action_aromatic_circles, bool(self.canvas.state.use_aromatic_circles)),
+            (self.action_rules, bool(self.canvas.show_rulers)),
+            (self.action_crosshair, bool(self.canvas.show_grid)),
+        )
+        for action, checked in values:
+            was_blocked = action.blockSignals(True)
+            action.setChecked(checked)
+            action.blockSignals(was_blocked)
+
+    def _set_active_canvas(self, canvas: ChemusonCanvas) -> None:
+        """Activa un canvas de pestaña y actualiza conexiones/estado de UI."""
+        if canvas is None:
+            return
+        if self._active_canvas_connected is not None and self._active_canvas_connected is not canvas:
+            self._disconnect_canvas_signals(self._active_canvas_connected)
+        self.canvas = canvas
+        self._current_file_path = self._canvas_file_paths.get(canvas)
+        if self._active_canvas_connected is not canvas:
+            self._connect_canvas_signals(canvas)
+            self._active_canvas_connected = canvas
+
         self.action_undo.setEnabled(self.canvas.undo_stack.canUndo())
         self.action_redo.setEnabled(self.canvas.undo_stack.canRedo())
-        
-        # Connect copy/paste
-        self.action_copy.triggered.connect(self.canvas.copy_to_clipboard)
-        self.action_paste.triggered.connect(self.canvas.paste_from_clipboard)
+        self._sync_view_actions_from_canvas()
+        self._sync_numbering_actions()
+        self._sync_label_menu_state()
+        if hasattr(self, "appearance_dock"):
+            cap_mode = (
+                "round"
+                if self.canvas.drawing_style.cap_style == Qt.PenCapStyle.RoundCap
+                else "flat"
+            )
+            self.appearance_dock.set_bond_caps(cap_mode)
+        self._update_total_charge_indicator()
+        self._update_status(self.canvas.state.active_tool)
+        if hasattr(self, "inspector_dock"):
+            self.inspector_dock.update_selection(0, 0, 0, {})
+
+    def _on_active_undo_index_changed(self, _index: int) -> None:
+        """Actualiza widgets dependientes del estado del undo activo."""
+        self._update_total_charge_indicator()
+        self._update_tab_title(self.canvas)
+
+    def _on_undo(self) -> None:
+        """Deshace en la pestaña activa."""
+        self.canvas.undo_stack.undo()
+
+    def _on_redo(self) -> None:
+        """Rehace en la pestaña activa."""
+        self.canvas.undo_stack.redo()
+
+    def _on_copy(self) -> None:
+        """Copia desde la pestaña activa."""
+        self.canvas.copy_to_clipboard()
+
+    def _on_paste(self) -> None:
+        """Pega en la pestaña activa."""
+        self.canvas.paste_from_clipboard()
+
+    def _on_text_format_changed(
+        self,
+        family: str,
+        size: int,
+        bold: bool,
+        italic: bool,
+        underline: bool,
+        sub: bool,
+        sup: bool,
+        property_name: str,
+    ) -> None:
+        """Propaga cambios de formato de texto al canvas activo."""
+        self.canvas.update_text_format(
+            family,
+            size,
+            bold,
+            italic,
+            underline,
+            sub,
+            sup,
+            property_name,
+        )
+
+    def _on_text_color_changed(self, color: QColor) -> None:
+        """Propaga cambio de color de texto al canvas activo."""
+        self.canvas.update_text_color(color)
+
+    def _on_text_alignment_changed(self, alignment: Qt.AlignmentFlag) -> None:
+        """Propaga cambio de alineación al canvas activo."""
+        self.canvas.update_text_alignment(alignment)
+
+    def _on_tool_changed(self, tool_id: str) -> None:
+        """Actualiza herramienta activa en el documento de la pestaña actual."""
+        self._current_tool_id = tool_id
+        self.canvas.set_current_tool(tool_id)
+
+    def _apply_toolbar_defaults_to_canvas(self, canvas: ChemusonCanvas) -> None:
+        """Aplica selección actual de paletas al canvas indicado."""
+        bond_spec = self.toolbar.current_bond_spec()
+        canvas.state.active_bond_order = bond_spec.get("order", 1)
+        canvas.state.active_bond_style = bond_spec.get("style", canvas.state.active_bond_style)
+        canvas.state.active_bond_stereo = bond_spec.get("stereo", canvas.state.active_bond_stereo)
+        canvas.state.active_bond_mode = bond_spec.get("mode", "increment")
+        canvas.state.active_bond_aromatic = bond_spec.get("aromatic", False)
+
+        ring_spec = self.toolbar.current_ring_spec()
+        canvas.state.active_ring_size = ring_spec.get("size", canvas.state.active_ring_size)
+        canvas.state.active_ring_aromatic = ring_spec.get("aromatic", False)
+        canvas.state.active_ring_template = ring_spec.get("template")
+        canvas.state.active_ring_anomeric = ring_spec.get("anomeric")
+
+        canvas.state.default_element = self.toolbar.current_element()
+        canvas.set_current_tool(self._current_tool_id)
+
+    def _connect_undo_redo(self) -> None:
+        """Conecta acciones globales a la pestaña activa."""
+        self.action_undo.triggered.connect(self._on_undo)
+        self.action_redo.triggered.connect(self._on_redo)
+        self.action_copy.triggered.connect(self._on_copy)
+        self.action_paste.triggered.connect(self._on_paste)
+        self.action_undo.setEnabled(False)
+        self.action_redo.setEnabled(False)
 
     def _load_recent_files(self) -> list[str]:
         """Método auxiliar para  load recent files.
@@ -799,25 +1049,28 @@ class ChemusonWindow(QMainWindow):
 
     def _load_numbering_preferences(self) -> None:
         """Carga preferencias globales de numeración del usuario."""
-        mode = str(self._settings.value("numbering/mode", "atoms") or "atoms")
+        mode = str(self._settings.value("numbering/mode", "atoms") or "atoms").strip().lower()
+        if mode not in {"atoms", "structures", "both"}:
+            mode = "atoms"
         include_export = self._setting_bool(
             self._settings.value("numbering/include_export", True),
             True,
         )
-        self.canvas.set_numbering_mode(mode)
-        # Arranque por defecto: numeración desactivada (no persistir "encendido").
-        self.canvas.set_numbering_enabled(False)
-        self.canvas.set_numbering_include_in_export(include_export)
+        self._numbering_default_mode = mode
+        self._numbering_default_include_export = bool(include_export)
+        self._apply_default_numbering_to_canvas(self.canvas)
 
     def _save_numbering_preferences(self) -> None:
         """Guarda preferencias globales de numeración del usuario."""
         # Se guarda modo/exports, pero no el estado "mostrar numeración" para
         # evitar que inicie activa en futuras aperturas.
         self._settings.remove("numbering/enabled")
-        self._settings.setValue("numbering/mode", str(self.canvas.state.numbering_mode))
+        self._numbering_default_mode = str(self.canvas.state.numbering_mode)
+        self._numbering_default_include_export = bool(self.canvas.state.numbering_include_in_export)
+        self._settings.setValue("numbering/mode", str(self._numbering_default_mode))
         self._settings.setValue(
             "numbering/include_export",
-            bool(self.canvas.state.numbering_include_in_export),
+            bool(self._numbering_default_include_export),
         )
 
     def _sync_numbering_actions(self) -> None:
@@ -922,22 +1175,35 @@ class ChemusonWindow(QMainWindow):
     # -------------------------------------------------------------------------
     def _on_file_new(self) -> None:
         """Create a new empty canvas."""
-        self.canvas.clear_canvas()
-        self._current_file_path = None
-        self.canvas.undo_stack.setClean()
+        canvas = self._create_document_tab(make_current=True)
+        self._apply_toolbar_defaults_to_canvas(canvas)
+        self._set_active_canvas(canvas)
         self._update_total_charge_indicator()
         self.statusBar().showMessage("Nuevo documento creado")
     
     def _on_file_open(self) -> None:
         """Open a molecule file (.cmsn or .mol)."""
-        filepath, selected_filter = QFileDialog.getOpenFileName(
+        filepaths, _selected_filter = QFileDialog.getOpenFileNames(
             self,
-            "Abrir archivo",
+            "Abrir archivo(s)",
             "",
             "Archivos de Chemuson (*.cmsn);;Archivos MOL (*.mol *.sdf);;Todos los archivos (*.*)"
         )
-        if filepath:
+        for filepath in filepaths:
             self._open_file_path(filepath)
+
+    def _load_file_into_canvas(self, filepath: str, canvas: ChemusonCanvas) -> None:
+        """Carga un archivo químico dentro de un canvas específico."""
+        if filepath.lower().endswith(".cmsn"):
+            canvas.clear_canvas()
+            PersistenceManager.load_from_file(filepath, canvas)
+            return
+
+        with open(filepath, "r", encoding="utf-8") as f:
+            molfile = f.read()
+        graph = molfile_to_molgraph(molfile)
+        canvas.clear_canvas()
+        canvas._insert_molgraph(graph)
 
     def _open_file_path(self, filepath: str) -> None:
         """Método auxiliar para  open file path.
@@ -951,28 +1217,35 @@ class ChemusonWindow(QMainWindow):
         Side Effects:
             Puede modificar el estado interno o la interfaz.
         """
+        if not filepath:
+            return
+        canvas = self._create_document_tab(make_current=True)
+        self._apply_toolbar_defaults_to_canvas(canvas)
         try:
-            if filepath.lower().endswith(".cmsn"):
-                self.canvas.clear_canvas() # Ensure clean slate
-                PersistenceManager.load_from_file(filepath, self.canvas)
-            else:
-                # Fallback to RDKit for .mol/.sdf
-                with open(filepath, "r") as f:
-                    molfile = f.read()
-                graph = molfile_to_molgraph(molfile)
-                self.canvas.clear_canvas()
-                self.canvas._insert_molgraph(graph)
-            self._current_file_path = filepath
-            self.canvas.undo_stack.setClean()
+            self._load_file_into_canvas(filepath, canvas)
+            canvas.undo_stack.setClean()
+            self._set_canvas_file_path(canvas, filepath)
+            self.tabs.setCurrentWidget(canvas)
+            self._set_active_canvas(canvas)
             self._add_recent_file(filepath)
             self._update_total_charge_indicator()
             self.statusBar().showMessage(f"Abierto: {filepath}")
         except Exception as e:
+            index = self.tabs.indexOf(canvas)
+            if index >= 0:
+                self.tabs.removeTab(index)
+            self._canvas_file_paths.pop(canvas, None)
+            self._canvas_tab_titles.pop(canvas, None)
+            canvas.deleteLater()
+            if self.tabs.count() == 0:
+                replacement = self._create_document_tab(make_current=True)
+                self._apply_toolbar_defaults_to_canvas(replacement)
+                self._set_active_canvas(replacement)
             QMessageBox.critical(self, "Error", f"No se pudo abrir el archivo:\n{e}")
     
     def _on_file_save(self) -> None:
         """Save the current work in .cmsn format."""
-        filepath = self._current_file_path
+        filepath = self._canvas_file_paths.get(self.canvas)
         selected_filter = ""
         if not filepath:
             filepath, selected_filter = QFileDialog.getSaveFileName(
@@ -994,7 +1267,7 @@ class ChemusonWindow(QMainWindow):
                     if not filepath.lower().endswith(".cmsn"):
                         filepath += ".cmsn"
                     PersistenceManager.save_to_file(filepath, self.canvas)
-                self._current_file_path = filepath
+                self._set_canvas_file_path(self.canvas, filepath)
                 self.canvas.undo_stack.setClean()
                 self._add_recent_file(filepath)
                 self.statusBar().showMessage(f"Guardado: {filepath}")
@@ -1063,7 +1336,7 @@ class ChemusonWindow(QMainWindow):
                 except Exception as e:
                     QMessageBox.warning(self, "Error", f"No se pudo exportar PDF:\n{e}")
 
-    def _confirm_discard_changes(self) -> bool:
+    def _confirm_discard_changes(self, canvas: Optional[ChemusonCanvas] = None) -> bool:
         """Método auxiliar para  confirm discard changes.
 
         Returns:
@@ -1072,20 +1345,36 @@ class ChemusonWindow(QMainWindow):
         Side Effects:
             Puede modificar el estado interno o la interfaz.
         """
-        if self.canvas.undo_stack.isClean():
+        target = canvas or self.canvas
+        if target.undo_stack.isClean():
             return True
+        index = self.tabs.indexOf(target)
+        title = self._canvas_tab_titles.get(target, "Documento")
+        if index >= 0:
+            title = self.tabs.tabText(index).replace(" *", "")
         reply = QMessageBox.question(
             self,
             "Cambios sin guardar",
-            "Hay cambios sin guardar. ¿Deseas guardar antes de salir?",
+            f"'{title}' tiene cambios sin guardar. ¿Deseas guardar antes de cerrar?",
             QMessageBox.StandardButton.Save
             | QMessageBox.StandardButton.Discard
             | QMessageBox.StandardButton.Cancel,
             QMessageBox.StandardButton.Save,
         )
         if reply == QMessageBox.StandardButton.Save:
+            previous_index = self.tabs.currentIndex()
+            if index >= 0 and previous_index != index:
+                self.tabs.setCurrentIndex(index)
+                self._set_active_canvas(target)
             self._on_file_save()
-            return self.canvas.undo_stack.isClean()
+            saved = target.undo_stack.isClean()
+            if (
+                previous_index >= 0
+                and previous_index < self.tabs.count()
+                and self.tabs.currentIndex() != previous_index
+            ):
+                self.tabs.setCurrentIndex(previous_index)
+            return saved
         if reply == QMessageBox.StandardButton.Discard:
             return True
         return False
@@ -1102,10 +1391,16 @@ class ChemusonWindow(QMainWindow):
         Side Effects:
             Puede modificar el estado interno o la interfaz.
         """
-        if self._confirm_discard_changes():
-            event.accept()
-        else:
-            event.ignore()
+        canvases = [
+            canvas
+            for i in range(self.tabs.count())
+            if (canvas := self._canvas_from_tab_index(i)) is not None
+        ]
+        for canvas in canvases:
+            if not self._confirm_discard_changes(canvas):
+                event.ignore()
+                return
+        event.accept()
 
     def changeEvent(self, event) -> None:
         """Método auxiliar para changeEvent.
