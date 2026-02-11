@@ -93,19 +93,15 @@ class MolGraphTest(unittest.TestCase):
             graph.add_bond(i.id, f.id, order=1)
         self.assertNotIn(i.id, graph.validate())
 
-    def test_validate_allows_ammonium(self):
-        """Verifica validate allows ammonium.
+    def test_validate_flags_neutral_ammonium(self):
+        """N neutro tetravalente debe marcarse como error de valencia."""
 
-        Returns:
-            None.
-
-        """
         graph = MolGraph()
         n = graph.add_atom("N", 0.0, 0.0)
         hs = [graph.add_atom("H", float(k), 1.0) for k in range(4)]
         for h in hs:
             graph.add_bond(n.id, h.id, order=1)
-        self.assertNotIn(n.id, graph.validate())
+        self.assertIn(n.id, graph.validate())
 
     def test_validate_allows_tetramethylammonium_with_positive_charge(self):
         """Verifica que una carga positiva permita valencia tetravalente en N."""
@@ -116,14 +112,14 @@ class MolGraphTest(unittest.TestCase):
             graph.add_bond(n.id, carbon.id, order=1)
         self.assertNotIn(n.id, graph.validate())
 
-    def test_validate_allows_pentavalent_carbon_when_charged(self):
-        """Verifica que añadir carga permita limpiar error visual en C hipervalente."""
+    def test_validate_flags_pentavalent_carbon_when_charged(self):
+        """C+ pentavalente sigue siendo inválido con regla iso-electrónica."""
         graph = MolGraph()
         c = graph.add_atom("C", 0.0, 0.0, charge=1)
         hs = [graph.add_atom("H", float(k), 1.0) for k in range(5)]
         for hydrogen in hs:
             graph.add_bond(c.id, hydrogen.id, order=1)
-        self.assertNotIn(c.id, graph.validate())
+        self.assertIn(c.id, graph.validate())
 
     def test_validate_still_flags_overvalent_carbon(self):
         """Verifica validate still flags overvalent carbon.
@@ -175,6 +171,27 @@ class MolGraphTest(unittest.TestCase):
                 donor_atom_id=carbon.id,
             )
         self.assertNotIn(carbon.id, graph.validate())
+
+    def test_formal_charge_property_and_total_charge(self):
+        """La carga formal por átomo y total de molécula deben estar sincronizadas."""
+        graph = MolGraph()
+        n = graph.add_atom("N", 0.0, 0.0, formal_charge=1)
+        cl = graph.add_atom("Cl", 1.0, 0.0, charge=-1)
+        self.assertEqual(n.charge, 1)
+        self.assertEqual(n.formal_charge, 1)
+        self.assertEqual(cl.formal_charge, -1)
+        self.assertEqual(graph.total_formal_charge(), 0)
+
+    def test_no_implicit_disables_auto_hydrogens(self):
+        """`no_implicit` debe forzar cero H implícitos."""
+        graph = MolGraph()
+        c1 = graph.add_atom("C", 0.0, 0.0, no_implicit=True)
+        c2 = graph.add_atom("C", 1.0, 0.0)
+        graph.add_bond(c1.id, c2.id, order=1)
+
+        self.assertEqual(graph.implicit_h_count(c1.id), 0)
+        errors = graph.validate()
+        self.assertIn(c1.id, errors)
 
 
 if __name__ == "__main__":

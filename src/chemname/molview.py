@@ -193,9 +193,13 @@ class MolView:
         if atom is None:
             return 0
         if isinstance(atom, dict):
-            charge = atom.get("charge")
+            charge = atom.get("formal_charge")
+            if charge is None:
+                charge = atom.get("charge")
             return int(charge) if charge is not None else 0
-        charge = getattr(atom, "charge", None)
+        charge = getattr(atom, "formal_charge", None)
+        if charge is None:
+            charge = getattr(atom, "charge", None)
         return int(charge) if charge is not None else 0
 
     def explicit_h(self, atom_id: int) -> int:

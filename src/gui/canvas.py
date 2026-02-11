@@ -48,7 +48,7 @@ try:
 except Exception:  # Optional Qt module at runtime
     QSvgGenerator = None
 
-from core.model import Bond, BondStyle, BondStereo, ChemState, MolGraph, VALENCE_MAP
+from core.model import Bond, BondStyle, BondStereo, ChemState, MolGraph
 from gui.items import (
     AtomItem,
     BondItem,
@@ -105,6 +105,7 @@ from gui.commands import (
     ChangeBondStrokeCommand,
     ChangeBondColorCommand,
     ChangeChargeCommand,
+    ChangeNoImplicitCommand,
     ChangeCoordinationSphereStyleCommand,
     SetCoordinationCenterCommand,
     DeleteSelectionCommand,
@@ -135,8 +136,12 @@ DEFAULT_BOND_LENGTH = 40.0
 HOVER_ATOM_RADIUS = 16.0
 HOVER_BOND_DISTANCE = 10.0
 OPTIMIZE_ZONE_SCALE = 1.2
-CHAIN_MAX_BONDS = 12
+# Límite superior de segmentos para herramienta de cadena (zig-zag).
+# Se mantiene un tope alto para evitar recortes prematuros en cadenas largas.
+CHAIN_MAX_BONDS = 120
 ANGLE_OCCUPIED_TOLERANCE_DEG = 20.0
+# Tolerancia específica para sp3: evita descartar candidatos tetraédricos.
+SP3_OCCUPIED_TOLERANCE_DEG = 8.0
 MIN_ATOM_DIST_SCALE = 0.65
 MIN_BOND_DIST_SCALE = 0.2
 COLLISION_LENGTH_BOOST = 1.2
@@ -1091,9 +1096,9 @@ class ChemusonCanvas(QGraphicsView):
                 return
             atom = self.model.get_atom(clicked_atom_id)
             if self.current_tool == "tool_charge_plus":
-                new_charge = 1
+                new_charge = int(atom.charge) + 1
             elif self.current_tool == "tool_charge_minus":
-                new_charge = -1
+                new_charge = int(atom.charge) - 1
             else:
                 if atom.charge == 0:
                     new_charge = 1
@@ -3217,6 +3222,7 @@ class ChemusonCanvas(QGraphicsView):
         # 4. Global refresh: labels, visibility, shrinks, and implicit H overlays
         self.refresh_atom_visibility()
         self.refresh_aromatic_circles()
+        self.validate_structure()
 
     def refresh_ring_centers(self) -> None:
         """Recalculate geometric centers for all rings in the model."""
@@ -3507,6 +3513,7 @@ class ChemusonCanvas(QGraphicsView):
                 mapping=atom.mapping,
                 is_query=atom.is_query,
                 is_explicit=atom.is_explicit,
+                no_implicit=bool(getattr(atom, "no_implicit", False)),
                 is_coordination_center=getattr(atom, "is_coordination_center", False),
                 sphere_radius=getattr(atom, "sphere_radius", None),
                 sphere_color=getattr(atom, "sphere_color", None),
@@ -3565,11 +3572,13 @@ class ChemusonCanvas(QGraphicsView):
                     "x": atom.x - left,
                     "y": atom.y - top,
                     "charge": atom.charge,
+                    "formal_charge": int(getattr(atom, "formal_charge", atom.charge)),
                     "isotope": atom.isotope,
                     "explicit_h": atom.explicit_h,
                     "mapping": atom.mapping,
                     "is_query": atom.is_query,
                     "is_explicit": atom.is_explicit,
+                    "no_implicit": bool(getattr(atom, "no_implicit", False)),
                     "is_coordination_center": getattr(atom, "is_coordination_center", False),
                     "sphere_radius": getattr(atom, "sphere_radius", None),
                     "sphere_color": getattr(atom, "sphere_color", None),
@@ -3704,13 +3713,14 @@ class ChemusonCanvas(QGraphicsView):
                 float(atom_d.get("x", 0.0)) + dx,
                 float(atom_d.get("y", 0.0)) + dy,
                 is_explicit=atom_d.get("is_explicit"),
-                charge=atom_d.get("charge"),
+                charge=atom_d.get("formal_charge", atom_d.get("charge")),
                 isotope=atom_d.get("isotope"),
                 explicit_h=atom_d.get("explicit_h"),
                 mapping=atom_d.get("mapping"),
                 is_query=bool(atom_d.get("is_query", False)),
                 anchor_override=atom_d.get("anchor"),
                 auto_hydrogens=False,
+                no_implicit=bool(atom_d.get("no_implicit", False)),
                 is_coordination_center=bool(atom_d.get("is_coordination_center", False)),
                 sphere_radius=atom_d.get("sphere_radius"),
                 sphere_color=atom_d.get("sphere_color"),
@@ -4457,6 +4467,8 @@ class ChemusonCanvas(QGraphicsView):
                 atom.x + dx,
                 atom.y + dy,
                 is_explicit=atom.is_explicit,
+                charge=atom.charge,
+                no_implicit=bool(getattr(atom, "no_implicit", False)),
                 auto_hydrogens=False,
                 is_coordination_center=getattr(atom, "is_coordination_center", False),
                 sphere_radius=getattr(atom, "sphere_radius", None),
@@ -4524,6 +4536,8 @@ class ChemusonCanvas(QGraphicsView):
                 atom.x + dx,
                 atom.y + dy,
                 is_explicit=atom.is_explicit,
+                charge=atom.charge,
+                no_implicit=bool(getattr(atom, "no_implicit", False)),
                 auto_hydrogens=False,
                 is_coordination_center=getattr(atom, "is_coordination_center", False),
                 sphere_radius=getattr(atom, "sphere_radius", None),
@@ -4721,7 +4735,12 @@ class ChemusonCanvas(QGraphicsView):
         """
         item = self.atom_items.get(atom_id)
         if item is not None:
+            atom_ref = self.model.atoms.get(atom_id)
+            if atom_ref is not None and hasattr(item, "atom"):
+                item.atom = atom_ref
             item.set_charge(charge)
+            self._refresh_atom_label(atom_id)
+        self._sync_selection_from_scene()
 
     def _label_font(self) -> QFont:
         """Método auxiliar para  label font.
@@ -5115,16 +5134,10 @@ class ChemusonCanvas(QGraphicsView):
         """
         if element not in IMPLICIT_H_ELEMENTS:
             return 0
-        expected = VALENCE_MAP.get(element)
-        if expected is None:
+        try:
+            return int(max(0, self.model.implicit_h_count(atom_id)))
+        except Exception:
             return 0
-        bond_order = 0
-        for bond in self.model.bonds.values():
-            if bond.a1_id != atom_id and bond.a2_id != atom_id:
-                continue
-            order = bond.display_order if bond.display_order is not None else bond.order
-            bond_order += order
-        return max(0, expected - bond_order)
 
     def _label_open_direction(self, atom_id: int) -> QPointF:
         """Método auxiliar para  label open direction.
@@ -5666,9 +5679,53 @@ class ChemusonCanvas(QGraphicsView):
         is_plain_double = (
             bond.style == BondStyle.PLAIN and effective_order == 2 and not is_aromatic_ring
         )
+        def _neighbor_bonds(atom_id: int) -> list[Bond]:
+            neighbors: list[Bond] = []
+            for other in self.model.bonds.values():
+                if other.id == bond.id:
+                    continue
+                if other.style == BondStyle.COORDINATION:
+                    continue
+                if other.a1_id != atom_id and other.a2_id != atom_id:
+                    continue
+                other_id = other.a2_id if other.a1_id == atom_id else other.a1_id
+                other_atom = self.model.atoms.get(other_id)
+                if other_atom is not None and other_atom.element == "H":
+                    continue
+                neighbors.append(other)
+            return neighbors
+
+        def _is_terminal_like(atom_id: int) -> bool:
+            total = 0
+            for other in self.model.bonds.values():
+                if other.style == BondStyle.COORDINATION:
+                    continue
+                if other.a1_id != atom_id and other.a2_id != atom_id:
+                    continue
+                other_id = other.a2_id if other.a1_id == atom_id else other.a1_id
+                other_atom = self.model.atoms.get(other_id)
+                if other_atom is not None and other_atom.element == "H":
+                    continue
+                total += 1
+            return total <= 1
+
+        def _needs_centered_double() -> bool:
+            if not is_plain_double or a1 is None or a2 is None:
+                return False
+            candidates = ((a1.id, a2.id), (a2.id, a1.id))
+            for center_id, terminal_id in candidates:
+                neighbors = _neighbor_bonds(center_id)
+                if len(neighbors) != 2:
+                    continue
+                if any((nb.display_order if nb.display_order is not None else nb.order) != 1 for nb in neighbors):
+                    continue
+                if _is_terminal_like(terminal_id):
+                    return True
+            return False
+
         if has_hetero and is_plain_double:
             prefer_full_length = True
-        symmetric_double = False
+        symmetric_double = _needs_centered_double()
         item.set_multibond_rendering(prefer_full_length, symmetric_double)
 
     @staticmethod
@@ -7282,7 +7339,14 @@ class ChemusonCanvas(QGraphicsView):
         details = {}
         if len(selected_atoms) == 1 and not selected_bonds and not selected_text_items:
             atom = self.model.get_atom(next(iter(selected_atoms)))
-            details = {"type": "atom", "id": atom.id, "element": atom.element, "charge": atom.charge, "x": atom.x, "y": atom.y}
+            details = {
+                "type": "atom",
+                "id": atom.id,
+                "element": atom.element,
+                "charge": int(getattr(atom, "formal_charge", atom.charge)),
+                "x": atom.x,
+                "y": atom.y,
+            }
         elif len(selected_bonds) == 1 and not selected_atoms and not selected_text_items:
             bond_id = next(iter(selected_bonds))
             if bond_id in self.model.bonds:
@@ -7539,16 +7603,10 @@ class ChemusonCanvas(QGraphicsView):
         """
         if element not in IMPLICIT_H_ELEMENTS:
             return 0
-        expected = VALENCE_MAP.get(element)
-        if expected is None:
+        try:
+            return int(max(0, graph.implicit_h_count(atom_id)))
+        except Exception:
             return 0
-        bond_order = 0
-        for bond in graph.bonds.values():
-            if bond.a1_id != atom_id and bond.a2_id != atom_id:
-                continue
-            order = bond.display_order if bond.display_order is not None else bond.order
-            bond_order += order
-        return max(0, expected - bond_order)
 
     def _analysis_atom_counts(self, graph: MolGraph) -> dict[str, int]:
         """Método auxiliar para  analysis atom counts.
@@ -7965,6 +8023,17 @@ class ChemusonCanvas(QGraphicsView):
             bool(getattr(self.model.get_atom(atom_id), "sphere_color", None))
             for atom_id in styled_coordination_ids
         )
+        charge_atom_ids: list[int] = []
+        if isinstance(clicked_item, AtomItem):
+            charge_atom_ids = [clicked_item.atom_id]
+        elif self.state.selected_atoms:
+            charge_atom_ids = sorted(
+                atom_id for atom_id in self.state.selected_atoms if atom_id in self.model.atoms
+            )
+        charge_all_no_implicit = bool(charge_atom_ids) and all(
+            bool(getattr(self.model.get_atom(atom_id), "no_implicit", False))
+            for atom_id in charge_atom_ids
+        )
 
         act_cut = menu.addAction("Cortar")
         act_copy = menu.addAction("Copiar")
@@ -7985,6 +8054,11 @@ class ChemusonCanvas(QGraphicsView):
             act_color = menu.addAction("Color de enlace...")
             act_reset_color = menu.addAction("Restablecer color de enlace")
         act_anchor = None
+        act_charge_increment = None
+        act_charge_decrement = None
+        act_charge_set = None
+        act_charge_reset = None
+        act_no_implicit = None
         act_toggle_coord_sphere = None
         act_toggle_coord_bond = None
         act_coord_sphere_color = None
@@ -8000,6 +8074,17 @@ class ChemusonCanvas(QGraphicsView):
                 if candidates:
                     menu.addSeparator()
                     act_anchor = menu.addAction("Elegir átomo de unión...")
+        if charge_atom_ids:
+            menu.addSeparator()
+            charge_menu = menu.addMenu("Carga formal")
+            act_charge_increment = charge_menu.addAction("Incrementar (+1)")
+            act_charge_decrement = charge_menu.addAction("Disminuir (-1)")
+            act_charge_set = charge_menu.addAction("Establecer...")
+            act_charge_reset = charge_menu.addAction("Restablecer a 0")
+            charge_menu.addSeparator()
+            act_no_implicit = charge_menu.addAction("No implícitos")
+            act_no_implicit.setCheckable(True)
+            act_no_implicit.setChecked(charge_all_no_implicit)
         if coordination_bond_ids:
             menu.addSeparator()
             bond_text = (
@@ -8091,6 +8176,21 @@ class ChemusonCanvas(QGraphicsView):
         if act_anchor is not None and action == act_anchor and isinstance(clicked_item, AtomItem):
             self._prompt_anchor_for_atom(clicked_item.atom_id)
             return
+        if act_charge_increment is not None and action == act_charge_increment:
+            self._adjust_atom_formal_charge(charge_atom_ids, +1)
+            return
+        if act_charge_decrement is not None and action == act_charge_decrement:
+            self._adjust_atom_formal_charge(charge_atom_ids, -1)
+            return
+        if act_charge_set is not None and action == act_charge_set:
+            self._prompt_set_atom_formal_charge(charge_atom_ids)
+            return
+        if act_charge_reset is not None and action == act_charge_reset:
+            self._set_atom_formal_charge(charge_atom_ids, 0)
+            return
+        if act_no_implicit is not None and action == act_no_implicit:
+            self._set_atom_no_implicit(charge_atom_ids, not charge_all_no_implicit)
+            return
         if act_toggle_coord_bond is not None and action == act_toggle_coord_bond:
             self._set_bond_coordination_style(coordination_bond_ids, coordination_bond_enable)
             return
@@ -8160,6 +8260,62 @@ class ChemusonCanvas(QGraphicsView):
             return
         if action == act_select_all:
             self._select_all_items()
+
+    def _adjust_atom_formal_charge(self, atom_ids: Iterable[int], delta: int) -> None:
+        """Ajusta la carga formal de los átomos seleccionados."""
+        valid_ids = [atom_id for atom_id in atom_ids if atom_id in self.model.atoms]
+        if not valid_ids:
+            return
+        self.undo_stack.beginMacro("Adjust atom formal charge")
+        for atom_id in valid_ids:
+            atom = self.model.get_atom(atom_id)
+            self.undo_stack.push(
+                ChangeChargeCommand(self.model, self, atom_id, int(atom.charge) + int(delta))
+            )
+        self.undo_stack.endMacro()
+
+    def _set_atom_formal_charge(self, atom_ids: Iterable[int], charge: int) -> None:
+        """Establece una carga formal fija para una lista de átomos."""
+        valid_ids = [atom_id for atom_id in atom_ids if atom_id in self.model.atoms]
+        if not valid_ids:
+            return
+        normalized_charge = int(charge)
+        self.undo_stack.beginMacro("Set atom formal charge")
+        for atom_id in valid_ids:
+            self.undo_stack.push(ChangeChargeCommand(self.model, self, atom_id, normalized_charge))
+        self.undo_stack.endMacro()
+
+    def _prompt_set_atom_formal_charge(self, atom_ids: Iterable[int]) -> None:
+        """Solicita la carga formal y la aplica a los átomos seleccionados."""
+        valid_ids = [atom_id for atom_id in atom_ids if atom_id in self.model.atoms]
+        if not valid_ids:
+            return
+        first_charge = int(self.model.get_atom(valid_ids[0]).charge)
+        value, ok = QInputDialog.getInt(
+            self,
+            "Carga formal",
+            "Carga formal:",
+            first_charge,
+            -15,
+            15,
+            1,
+        )
+        if not ok:
+            return
+        self._set_atom_formal_charge(valid_ids, value)
+
+    def _set_atom_no_implicit(self, atom_ids: Iterable[int], enabled: bool) -> None:
+        """Activa/desactiva la bandera `no_implicit` para átomos seleccionados."""
+        valid_ids = [atom_id for atom_id in atom_ids if atom_id in self.model.atoms]
+        if not valid_ids:
+            return
+        enabled_flag = bool(enabled)
+        self.undo_stack.beginMacro("Set no implicit hydrogens")
+        for atom_id in valid_ids:
+            self.undo_stack.push(
+                ChangeNoImplicitCommand(self.model, self, atom_id, enabled_flag)
+            )
+        self.undo_stack.endMacro()
 
     def _set_coordination_sphere(self, atom_ids: Iterable[int], enabled: bool) -> None:
         """Activa/desactiva esfera de coordinación para una lista de átomos."""
@@ -10354,6 +10510,10 @@ class ChemusonCanvas(QGraphicsView):
             return math.pi
         if max_order == 2:
             return 2 * math.pi / 3
+        if self.state.fixed_angles:
+            step_deg = self._angle_snap_step_deg()
+            if step_deg > 0:
+                return math.radians(snap_angle_deg(SP3_BOND_ANGLE_DEG, step_deg))
         return math.radians(self._sp3_display_angle_deg())
 
     def _get_anchor_bond_angles(self, anchor_id: int) -> List[float]:
@@ -10482,10 +10642,10 @@ class ChemusonCanvas(QGraphicsView):
         Side Effects:
             Puede modificar el estado interno o la escena.
         """
-        step = self._angle_snap_step_deg()
-        if step <= 0:
-            return SP3_BOND_ANGLE_DEG
-        return snap_angle_deg(SP3_BOND_ANGLE_DEG, step)
+        # Mantener 109.5° real para geometría sp3.
+        # Si se ajusta a una retícula de 30°, se vuelve 120° (trigonal) y
+        # termina bloqueando el 4º enlace en carbonos tetravalentes.
+        return SP3_BOND_ANGLE_DEG
 
     # -------------------------------------------------------------------------
     # Hover + Drag State
@@ -10620,7 +10780,7 @@ class ChemusonCanvas(QGraphicsView):
                 item.setSelected(True)
         self._sync_selection_from_scene()
         self._kekulize_aromatic_bonds()
-        self.show_valence_errors(self.model.validate())
+        self.validate_structure()
         self._update_hover(self._last_scene_pos)
         self._update_selection_overlay()
 
@@ -10677,6 +10837,12 @@ class ChemusonCanvas(QGraphicsView):
         error_ids = set(errors)
         for atom_id, item in self.atom_items.items():
             item.set_valence_error(atom_id in error_ids)
+
+    def validate_structure(self) -> list[int]:
+        """Valida estructura y aplica resaltado de valencias inválidas."""
+        errors = list(self.model.validate())
+        self.show_valence_errors(errors)
+        return errors
 
     def _get_anchor_bond_angles_deg(self, anchor_id: int) -> list[float]:
         """Método auxiliar para  get anchor bond angles deg.
@@ -10915,15 +11081,21 @@ class ChemusonCanvas(QGraphicsView):
             if anchor_id is not None
             else geometry_for_bond(bond_order, is_aromatic, [])
         )
+        # Solo forzamos geometría tetraédrica exacta (109.5°) cuando el átomo
+        # ya está congestionado (p. ej., intentando crear el 4º enlace).
+        sp3_exact_mode = geometry == "sp3" and anchor_id is not None and len(existing_angles) >= 3
         candidates = candidate_directions_deg(geometry, existing_angles, mouse_angle_deg)
-        if self.state.fixed_angles:
+        if self.state.fixed_angles and not sp3_exact_mode:
             candidates = self._snap_angles_to_grid(candidates)
+        occupied_tolerance = (
+            SP3_OCCUPIED_TOLERANCE_DEG if sp3_exact_mode else ANGLE_OCCUPIED_TOLERANCE_DEG
+        )
         candidates = filter_occupied_angles_deg(
-            candidates, existing_angles, ANGLE_OCCUPIED_TOLERANCE_DEG
+            candidates, existing_angles, occupied_tolerance
         )
         if not candidates:
             candidates = candidate_directions_deg(geometry, [], mouse_angle_deg)
-            if self.state.fixed_angles:
+            if self.state.fixed_angles and not sp3_exact_mode:
                 candidates = self._snap_angles_to_grid(candidates)
 
         preferred: list[float] = []
@@ -10935,7 +11107,7 @@ class ChemusonCanvas(QGraphicsView):
                     (incoming + sp3_angle) % 360.0,
                     (incoming - sp3_angle) % 360.0,
                 ]
-                if self.state.fixed_angles:
+                if self.state.fixed_angles and not sp3_exact_mode:
                     preferred = self._snap_angles_to_grid(preferred)
 
         if not apply_collisions:
@@ -11239,6 +11411,11 @@ class ChemusonCanvas(QGraphicsView):
             ATOM_HIT_RADIUS,
         )
         if snap_id is not None and (anchor_id is None or snap_id != anchor_id):
+            # Evita auto-snap al átomo que ya está enlazado con el ancla:
+            # en sp3 congestionado (3 enlaces), ese snap fuerza superposición
+            # y termina ciclando el enlace existente en vez de crear el 4º.
+            if anchor_id is not None and self.model.find_bond_between(anchor_id, snap_id) is not None:
+                return p1
             atom = self.model.get_atom(snap_id)
             return QPointF(atom.x, atom.y)
         return p1

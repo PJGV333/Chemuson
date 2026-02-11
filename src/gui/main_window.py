@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
     QDoubleSpinBox,
     QComboBox,
     QVBoxLayout,
+    QLabel,
 )
 from PyQt6.QtCore import Qt, QSize, QSettings, QEvent
 from PyQt6.QtGui import QAction, QActionGroup, QKeySequence, QIcon, QPainter
@@ -170,10 +171,16 @@ class ChemusonWindow(QMainWindow):
         self.canvas.state.default_element = self.toolbar.current_element()
         
         # === STATUS BAR ===
+        self._total_charge_label = QLabel()
+        self.statusBar().addPermanentWidget(self._total_charge_label)
+        self._update_total_charge_indicator()
         self._update_status(self.canvas.state.active_tool)
         
         # Update status bar when tool changes
         self.toolbar.tool_changed.connect(self._update_status)
+        self.canvas.undo_stack.indexChanged.connect(
+            lambda _index: self._update_total_charge_indicator()
+        )
 
     def _create_actions(self) -> None:
         """Initialize all QActions for menus and toolbars."""
@@ -776,6 +783,7 @@ class ChemusonWindow(QMainWindow):
         self.canvas.clear_canvas()
         self._current_file_path = None
         self.canvas.undo_stack.setClean()
+        self._update_total_charge_indicator()
         self.statusBar().showMessage("Nuevo documento creado")
     
     def _on_file_open(self) -> None:
@@ -815,6 +823,7 @@ class ChemusonWindow(QMainWindow):
             self._current_file_path = filepath
             self.canvas.undo_stack.setClean()
             self._add_recent_file(filepath)
+            self._update_total_charge_indicator()
             self.statusBar().showMessage(f"Abierto: {filepath}")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"No se pudo abrir el archivo:\n{e}")
@@ -1986,6 +1995,7 @@ class ChemusonWindow(QMainWindow):
     def _on_selection_changed(self, num_atoms: int, num_bonds: int, num_text: int, details: dict):
         """Handle selection change to update UI components."""
         self.inspector_dock.update_selection(num_atoms, num_bonds, num_text, details)
+        self._update_total_charge_indicator()
         
         # Sync Text Toolbar if a single text item is selected
         if num_text == 1 and details.get("type") == "text":
@@ -1996,3 +2006,12 @@ class ChemusonWindow(QMainWindow):
                 "sup": details.get("sup")
             }
             self.text_toolbar.set_state(font, settings)
+
+    def _update_total_charge_indicator(self) -> None:
+        """Actualiza el indicador de carga total en la barra de estado."""
+        charge = int(self.canvas.model.total_formal_charge())
+        if charge > 0:
+            charge_text = f"+{charge}"
+        else:
+            charge_text = str(charge)
+        self._total_charge_label.setText(f"Carga total: {charge_text}")

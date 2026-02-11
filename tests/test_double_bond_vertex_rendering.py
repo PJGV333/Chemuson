@@ -99,3 +99,33 @@ def test_double_bond_secondary_line_is_always_on_screen_left():
         sigma_mid_x = 0.5 * (p0.x + p1.x)
         pi_mid_x = 0.5 * (p2.x + p3.x)
         assert pi_mid_x < sigma_mid_x - 1e-6
+
+
+def test_sp2_carbonyl_double_is_centered_between_single_bonds():
+    """En centro sp2 (tipo acetona), el doble debe quedar centrado en el vértice."""
+    canvas = ChemusonCanvas()
+
+    c = canvas.model.add_atom("C", 200.0, 200.0)
+    c_left = canvas.model.add_atom("C", 160.0, 200.0)
+    c_down = canvas.model.add_atom("C", 220.0, 234.641016)  # ~300°
+    o = canvas.model.add_atom("O", 220.0, 165.358984)      # ~60°
+
+    canvas.model.add_bond(c.id, c_left.id, order=1, style=BondStyle.PLAIN)
+    canvas.model.add_bond(c.id, c_down.id, order=1, style=BondStyle.PLAIN)
+    b_co = canvas.model.add_bond(
+        c.id,
+        o.id,
+        order=2,
+        style=BondStyle.PLAIN,
+        stereo=BondStereo.NONE,
+        is_aromatic=False,
+    )
+
+    canvas._rebuild_items_from_model()
+
+    p0, _p1, p2, _p3 = _bond_path_elements(canvas.bond_items[b_co.id])
+    # Inicio de ambas líneas del doble enlace debe estar centrado en el átomo C.
+    start_mid_x = 0.5 * (p0.x + p2.x)
+    start_mid_y = 0.5 * (p0.y + p2.y)
+    assert abs(start_mid_x - c.x) < 1e-6
+    assert abs(start_mid_y - c.y) < 1e-6

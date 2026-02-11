@@ -43,6 +43,29 @@ ELEMENT_COLORS = {
 LABEL_ELEMENT_COLORS = {**ELEMENT_COLORS, "H": "#000000"}
 # Etiquetas abreviadas que se muestran como texto directo.
 ABBREVIATION_LABELS = {"Me", "Et", "Pr", "iPr", "tBu", "Bu", "Ph", "R", "TBS", "Si"}
+SUPERSCRIPT_DIGITS = str.maketrans({
+    "0": "⁰",
+    "1": "¹",
+    "2": "²",
+    "3": "³",
+    "4": "⁴",
+    "5": "⁵",
+    "6": "⁶",
+    "7": "⁷",
+    "8": "⁸",
+    "9": "⁹",
+})
+
+
+def _format_charge_superscript(charge: int) -> str:
+    """Convierte una carga formal a texto en superíndice Unicode."""
+    if charge == 0:
+        return ""
+    sign = "⁺" if charge > 0 else "⁻"
+    magnitude = abs(int(charge))
+    if magnitude == 1:
+        return sign
+    return f"{str(magnitude).translate(SUPERSCRIPT_DIGITS)}{sign}"
 
 # Fine-tuning knobs for wedge integration at the wide terminal when there is
 # exactly one outgoing simple bond. Keep these at module scope so they are
@@ -637,16 +660,12 @@ class AtomItem(QGraphicsEllipseItem):
         Side Effects:
             Modifica el estado del item o la escena.
         """
-        self._charge = charge
-        if charge == 0:
+        normalized_charge = int(charge)
+        self._charge = normalized_charge
+        if normalized_charge == 0:
             self.charge_label.setVisible(False)
             return
-        sign = "+" if charge > 0 else "-"
-        magnitude = abs(charge)
-        if magnitude == 1:
-            label = "⊕" if charge > 0 else "⊖"
-        else:
-            label = f"{sign}{magnitude}"
+        label = _format_charge_superscript(normalized_charge)
         self.charge_label.setPlainText(label)
         self._position_charge_label()
         self.charge_label.setVisible(True)

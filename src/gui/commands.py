@@ -167,6 +167,7 @@ class AddAtomCommand(QUndoCommand):
         anchor_override: Optional[str] = None,
         auto_hydrogens: bool = True,
         expected_bonds: int = 0,
+        no_implicit: bool = False,
         is_coordination_center: bool = False,
         sphere_radius: Optional[float] = None,
         sphere_color: Optional[str] = None,
@@ -190,6 +191,7 @@ class AddAtomCommand(QUndoCommand):
             anchor_override: Ancla visual alternativa.
             auto_hydrogens: Si se auto-generan hidrógenos.
             expected_bonds: Número de enlaces esperados (para H implícitos).
+            no_implicit: Si se desactivan hidrógenos implícitos en el átomo.
             is_coordination_center: Si el átomo se dibuja como esfera de coordinación.
             sphere_radius: Radio visual de la esfera de coordinación.
             sphere_color: Color base de la esfera (hex) o `None`.
@@ -211,6 +213,7 @@ class AddAtomCommand(QUndoCommand):
         self._anchor_override = anchor_override
         self._auto_hydrogens = auto_hydrogens
         self._expected_bonds = expected_bonds
+        self._no_implicit = bool(no_implicit)
         self._is_coordination_center = bool(is_coordination_center)
         self._sphere_radius = sphere_radius
         self._sphere_color = sphere_color
@@ -236,6 +239,7 @@ class AddAtomCommand(QUndoCommand):
                 explicit_h=self._explicit_h,
                 mapping=self._mapping,
                 is_query=self._is_query,
+                no_implicit=self._no_implicit,
                 is_coordination_center=self._is_coordination_center,
                 sphere_radius=self._sphere_radius,
                 sphere_color=self._sphere_color,
@@ -255,6 +259,7 @@ class AddAtomCommand(QUndoCommand):
                 explicit_h=self._explicit_h,
                 mapping=self._mapping,
                 is_query=self._is_query,
+                no_implicit=self._no_implicit,
                 is_coordination_center=self._is_coordination_center,
                 sphere_radius=self._sphere_radius,
                 sphere_color=self._sphere_color,
@@ -442,6 +447,27 @@ class ChangeChargeCommand(QUndoCommand):
         """Revierte el cambio de carga."""
         self._model.update_atom_charge(self._atom_id, self._old_charge)
         self._view.update_atom_item_charge(self._atom_id, self._old_charge)
+
+
+class ChangeNoImplicitCommand(QUndoCommand):
+    """Comando para activar/desactivar H implícitos en un átomo."""
+
+    def __init__(self, model: MolGraph, view, atom_id: int, enabled: bool) -> None:
+        super().__init__("Change no implicit H")
+        self._model = model
+        self._view = view
+        self._atom_id = atom_id
+        atom = model.get_atom(atom_id)
+        self._old_enabled = bool(getattr(atom, "no_implicit", False))
+        self._new_enabled = bool(enabled)
+
+    def redo(self) -> None:
+        self._model.update_atom_no_implicit(self._atom_id, self._new_enabled)
+        self._view.refresh_atom_labels([self._atom_id])
+
+    def undo(self) -> None:
+        self._model.update_atom_no_implicit(self._atom_id, self._old_enabled)
+        self._view.refresh_atom_labels([self._atom_id])
 
 
 class SetCoordinationCenterCommand(QUndoCommand):
@@ -1115,6 +1141,7 @@ class DeleteSelectionCommand(QUndoCommand):
                 mapping=atom.mapping,
                 is_query=atom.is_query,
                 is_explicit=atom.is_explicit,
+                no_implicit=bool(getattr(atom, "no_implicit", False)),
                 is_coordination_center=getattr(atom, "is_coordination_center", False),
                 sphere_radius=getattr(atom, "sphere_radius", None),
                 sphere_color=getattr(atom, "sphere_color", None),

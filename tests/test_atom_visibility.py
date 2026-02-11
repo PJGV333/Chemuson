@@ -68,3 +68,10 @@ class AtomVisibilityTest(unittest.TestCase):
         cy = pos.y() + rect.height() / 2.0
         self.assertAlmostEqual(cx, 0.0, delta=0.2)
         self.assertAlmostEqual(cy, 0.0, delta=0.2)
+
+    def test_charge_label_uses_superscript_notation(self):
+        """La carga se muestra con superíndice Unicode (ej. ²⁺)."""
+        atom = Atom(id=1, element="N", x=0, y=0, charge=2)
+        item = AtomItem(atom, show_carbon=False, show_hydrogen=False)
+        self.assertTrue(item.charge_label.isVisible())
+        self.assertEqual(item.charge_label.toPlainText(), "²⁺")

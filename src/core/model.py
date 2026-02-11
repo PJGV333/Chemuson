@@ -8,6 +8,7 @@ para añadir, modificar y validar la química dibujada.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Set
@@ -53,34 +54,162 @@ VALENCE_MAP = {
     "I": 1,
 }
 
-# Valencias máximas (suma de órdenes de enlace) antes de marcar error.
-# Se usa un umbral permisivo para patrones comunes hipervalentes:
-# - P(V/VI): fosfatos, fosforanos, PF6-
-# - S(IV/VI): sulfóxidos/sulfonas/sulfatos, SF6
-# - Halógenos(III/V/VII): interhalógenos, oxoácidos (p. ej., IF7, ClO4-)
-# - Xe(II/IV/VI/VIII): fluoruro de xenón y XeO4 en dibujos
-MAX_VALENCE_MAP = {
+# Elementos para los que se sugiere autocompletar H implícitos.
+IMPLICIT_H_DEFAULT_ELEMENTS = {"B", "C", "N", "O", "Si", "P", "S"}
+
+# Números atómicos usados para cálculo iso-electrónico.
+ATOMIC_NUMBERS: Dict[str, int] = {
     "H": 1,
-    "C": 4,
-    "N": 4,
-    "O": 3,
-    "F": 1,
-    "Cl": 7,
-    "Br": 7,
-    "I": 7,
-    "P": 6,
-    "S": 6,
-    "Xe": 8,
-    "Se": 6,
-    "Te": 6,
-    "As": 6,
-    "Sb": 6,
-    "Bi": 6,
-    "Si": 6,
-    "Ge": 6,
-    "Sn": 6,
-    "Pb": 6,
-    "B": 4,
+    "He": 2,
+    "Li": 3,
+    "Be": 4,
+    "B": 5,
+    "C": 6,
+    "N": 7,
+    "O": 8,
+    "F": 9,
+    "Ne": 10,
+    "Na": 11,
+    "Mg": 12,
+    "Al": 13,
+    "Si": 14,
+    "P": 15,
+    "S": 16,
+    "Cl": 17,
+    "Ar": 18,
+    "K": 19,
+    "Ca": 20,
+    "Sc": 21,
+    "Ti": 22,
+    "V": 23,
+    "Cr": 24,
+    "Mn": 25,
+    "Fe": 26,
+    "Co": 27,
+    "Ni": 28,
+    "Cu": 29,
+    "Zn": 30,
+    "Ga": 31,
+    "Ge": 32,
+    "As": 33,
+    "Se": 34,
+    "Br": 35,
+    "Kr": 36,
+    "Rb": 37,
+    "Sr": 38,
+    "Y": 39,
+    "Zr": 40,
+    "Nb": 41,
+    "Mo": 42,
+    "Tc": 43,
+    "Ru": 44,
+    "Rh": 45,
+    "Pd": 46,
+    "Ag": 47,
+    "Cd": 48,
+    "In": 49,
+    "Sn": 50,
+    "Sb": 51,
+    "Te": 52,
+    "I": 53,
+    "Xe": 54,
+    "Cs": 55,
+    "Ba": 56,
+    "La": 57,
+    "Ce": 58,
+    "Pr": 59,
+    "Nd": 60,
+    "Pm": 61,
+    "Sm": 62,
+    "Eu": 63,
+    "Gd": 64,
+    "Tb": 65,
+    "Dy": 66,
+    "Ho": 67,
+    "Er": 68,
+    "Tm": 69,
+    "Yb": 70,
+    "Lu": 71,
+    "Hf": 72,
+    "Ta": 73,
+    "W": 74,
+    "Re": 75,
+    "Os": 76,
+    "Ir": 77,
+    "Pt": 78,
+    "Au": 79,
+    "Hg": 80,
+    "Tl": 81,
+    "Pb": 82,
+    "Bi": 83,
+    "Po": 84,
+    "At": 85,
+    "Rn": 86,
+    "Fr": 87,
+    "Ra": 88,
+    "Ac": 89,
+    "Th": 90,
+    "Pa": 91,
+    "U": 92,
+    "Np": 93,
+    "Pu": 94,
+    "Am": 95,
+    "Cm": 96,
+    "Bk": 97,
+    "Cf": 98,
+    "Es": 99,
+    "Fm": 100,
+    "Md": 101,
+    "No": 102,
+    "Lr": 103,
+}
+
+# Valencias permitidas por número atómico iso-electrónico.
+# `-1` indica "sin límite" (usado para metales de transición/complejos).
+ISO_VALENCE_MAP: Dict[int, tuple[int, ...]] = {
+    1: (1,),
+    2: (0,),
+    3: (1,),
+    4: (2,),
+    5: (3,),
+    6: (4,),
+    7: (3, 5),
+    8: (2,),
+    9: (1,),
+    10: (0,),
+    11: (1,),
+    12: (2,),
+    13: (3,),
+    14: (4,),
+    15: (3, 5),
+    16: (2, 4, 6),
+    17: (1, 3, 5, 7),
+    18: (0,),
+    19: (1,),
+    20: (2,),
+    33: (3, 5),
+    34: (2, 4, 6),
+    35: (1, 3, 5, 7),
+    51: (3, 5),
+    52: (2, 4, 6),
+    53: (1, 3, 5, 7),
+    54: (2, 4, 6, 8),
+}
+
+UNLIMITED_VALENCE_ELEMENTS = {
+    "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn",
+    "Y", "Zr", "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd",
+    "La", "Ce", "Pr", "Nd", "Pm", "Sm", "Eu", "Gd", "Tb", "Dy",
+    "Ho", "Er", "Tm", "Yb", "Lu",
+    "Ac", "Th", "Pa", "U", "Np", "Pu", "Am", "Cm", "Bk", "Cf",
+    "Es", "Fm", "Md", "No", "Lr",
+    "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", "Au", "Hg",
+}
+
+# Excepciones manuales útiles para estados iónicos comunes.
+VALENCE_EXCEPTIONS: Dict[tuple[str, int], tuple[int, ...]] = {
+    ("P", -2): (3, 5),
+    ("S", -1): (2, 6),
 }
 
 
@@ -97,11 +226,23 @@ class Atom:
     mapping: Optional[int] = None
     is_query: bool = False
     is_explicit: bool = False
+    no_implicit: bool = False
+    implicit_h: int = 0
+    has_valence_error: bool = False
     is_coordination_center: bool = False
     sphere_radius: Optional[float] = None
     sphere_color: Optional[str] = None
     sphere_filled: bool = True
     sphere_transparent: bool = False
+
+    @property
+    def formal_charge(self) -> int:
+        """Alias semántico para la carga formal del átomo."""
+        return int(self.charge)
+
+    @formal_charge.setter
+    def formal_charge(self, value: int) -> None:
+        self.charge = int(value)
 
 
 @dataclass
@@ -173,11 +314,13 @@ class MolGraph:
         y: float,
         atom_id: Optional[int] = None,
         charge: int = 0,
+        formal_charge: Optional[int] = None,
         isotope: Optional[int] = None,
         explicit_h: Optional[int] = None,
         mapping: Optional[int] = None,
         is_query: bool = False,
         is_explicit: bool = False,
+        no_implicit: bool = False,
         is_coordination_center: bool = False,
         sphere_radius: Optional[float] = None,
         sphere_color: Optional[str] = None,
@@ -191,12 +334,14 @@ class MolGraph:
             x: Posición X en coordenadas del lienzo.
             y: Posición Y en coordenadas del lienzo.
             atom_id: ID explícito si se desea restaurar desde un archivo.
-            charge: Carga formal del átomo.
+            charge: Alias retrocompatible para la carga formal.
+            formal_charge: Carga formal del átomo (prioritaria sobre `charge`).
             isotope: Número másico si se desea mostrar el isótopo.
             explicit_h: Número de hidrógenos explícitos asociados.
             mapping: Índice de mapeo (útil en exportaciones/reacciones).
             is_query: Marca de átomo de consulta (SMARTS-like).
             is_explicit: Si el símbolo debe mostrarse aunque sea implícito.
+            no_implicit: Si se desactiva el ajuste automático de H implícitos.
             is_coordination_center: Si el átomo debe renderizarse como centro de coordinación.
             sphere_radius: Radio visual para el modo esfera (si aplica).
             sphere_color: Color base de la esfera (hex), o `None` para automático.
@@ -220,17 +365,21 @@ class MolGraph:
         resolved_sphere_color = sphere_color
         if is_coordination_center and resolved_sphere_color is None:
             resolved_sphere_color = "#D9DDE3"
+        resolved_formal_charge = int(charge)
+        if formal_charge is not None:
+            resolved_formal_charge = int(formal_charge)
         atom = Atom(
             id=atom_id,
             element=element,
             x=x,
             y=y,
-            charge=charge,
+            charge=resolved_formal_charge,
             isotope=isotope,
             explicit_h=explicit_h,
             mapping=mapping,
             is_query=is_query,
             is_explicit=is_explicit,
+            no_implicit=bool(no_implicit),
             is_coordination_center=is_coordination_center,
             sphere_radius=resolved_sphere_radius,
             sphere_color=resolved_sphere_color,
@@ -428,7 +577,12 @@ class MolGraph:
             Modifica `Atom.charge`.
         """
         atom = self.atoms[atom_id]
-        atom.charge = charge
+        atom.formal_charge = int(charge)
+
+    def update_atom_no_implicit(self, atom_id: int, enabled: bool) -> None:
+        """Activa/desactiva hidrógenos implícitos para un átomo."""
+        atom = self.atoms[atom_id]
+        atom.no_implicit = bool(enabled)
 
     def update_bond(
         self,
@@ -508,33 +662,146 @@ class MolGraph:
         self._next_atom_id = 1
         self._next_bond_id = 1
 
-    def validate(self) -> List[int]:
-        """Valida valencias máximas según `MAX_VALENCE_MAP`.
+    @property
+    def formal_charge(self) -> int:
+        """Carga formal total de la molécula."""
+        return int(sum(int(atom.formal_charge) for atom in self.atoms.values()))
 
-        Calcula la suma de órdenes de enlace por átomo y reporta aquellos
-        que superan la valencia máxima permitida.
+    def total_formal_charge(self) -> int:
+        """Alias explícito para la carga formal total."""
+        return self.formal_charge
 
-        Returns:
-            Lista de IDs de átomos que exceden la valencia permitida.
+    def _allowed_valences_for_atom(self, atom: Atom) -> List[int]:
+        """Resuelve la lista de valencias permitidas para un átomo."""
+        if bool(getattr(atom, "is_coordination_center", False)):
+            return [-1]
+        if atom.element in UNLIMITED_VALENCE_ELEMENTS:
+            return [-1]
 
-        Side Effects:
-            No tiene efectos laterales; solo calcula y devuelve resultados.
-        """
-        bond_order_sum: Dict[int, int] = {atom_id: 0 for atom_id in self.atoms}
+        charge = int(getattr(atom, "formal_charge", 0) or 0)
+        explicit_override = VALENCE_EXCEPTIONS.get((atom.element, charge))
+        if explicit_override is not None:
+            return list(explicit_override)
+
+        atomic_number = ATOMIC_NUMBERS.get(atom.element)
+        if atomic_number is None:
+            return []
+        iso_z = atomic_number - charge
+        if iso_z <= 0:
+            return []
+
+        valences = ISO_VALENCE_MAP.get(iso_z)
+        if valences is not None:
+            return list(valences)
+
+        typical = VALENCE_MAP.get(atom.element)
+        if typical is not None:
+            return [typical]
+        return []
+
+    def _bond_order_contribution(self, bond: Bond, aromatic_order: float = 1.5) -> float:
+        """Contribución de un enlace a la suma de órdenes de valencia."""
+        if bond.style == BondStyle.COORDINATION:
+            return 0.0
+        if bond.is_aromatic:
+            return float(aromatic_order)
+        if bond.order <= 0:
+            return 1.0
+        return float(bond.order)
+
+    def bond_order_sum(self, atom_id: int, aromatic_order: float = 1.5) -> float:
+        """Suma de órdenes de enlace para un átomo."""
+        total = 0.0
+        for bond in self.bonds.values():
+            if bond.a1_id != atom_id and bond.a2_id != atom_id:
+                continue
+            total += self._bond_order_contribution(bond, aromatic_order=aromatic_order)
+        return total
+
+    def explicit_hydrogen_count(self, atom_id: int) -> int:
+        """Cuenta hidrógenos explícitos dibujados/asignados al átomo."""
+        atom = self.atoms.get(atom_id)
+        if atom is None:
+            return 0
+        count = int(atom.explicit_h or 0)
         for bond in self.bonds.values():
             if bond.style == BondStyle.COORDINATION:
                 continue
-            if bond.a1_id in bond_order_sum:
-                bond_order_sum[bond.a1_id] += bond.order
-            if bond.a2_id in bond_order_sum:
-                bond_order_sum[bond.a2_id] += bond.order
+            if bond.a1_id == atom_id:
+                other_id = bond.a2_id
+            elif bond.a2_id == atom_id:
+                other_id = bond.a1_id
+            else:
+                continue
+            other = self.atoms.get(other_id)
+            if other is not None and other.element == "H":
+                count += 1
+        return max(0, int(count))
 
+    def _choose_implicit_h(self, atom: Atom, base_valence: float, allowed: List[int]) -> int:
+        """Calcula H implícitos para llevar al estado de menor valencia permitida."""
+        if atom.element not in IMPLICIT_H_DEFAULT_ELEMENTS:
+            return 0
+        if bool(getattr(atom, "no_implicit", False)):
+            return 0
+        allowed_nonnegative = sorted(v for v in allowed if v >= 0)
+        if not allowed_nonnegative:
+            return 0
+        preferred_valence = allowed_nonnegative[0]
+        missing = float(preferred_valence) - float(base_valence)
+        if missing <= 1e-6:
+            return 0
+        rounded = int(round(missing))
+        if rounded < 0:
+            return 0
+        if not math.isclose(float(rounded), missing, abs_tol=1e-4):
+            return 0
+        return rounded
+
+    def implicit_h_count(self, atom_id: int) -> int:
+        """Hidrógenos implícitos recomendados para un átomo."""
+        atom = self.atoms.get(atom_id)
+        if atom is None:
+            return 0
+        allowed = self._allowed_valences_for_atom(atom)
+        if not allowed or -1 in allowed:
+            atom.implicit_h = 0
+            return 0
+        base_valence = self.bond_order_sum(atom_id, aromatic_order=1.0) + self.explicit_hydrogen_count(atom_id)
+        implicit_h = self._choose_implicit_h(atom, base_valence, allowed)
+        atom.implicit_h = int(max(0, implicit_h))
+        return atom.implicit_h
+
+    def validate(self) -> List[int]:
+        """Valida valencias por átomo usando valencias iso-electrónicas.
+
+        Returns:
+            Lista de IDs de átomos con valencia no permitida.
+
+        Side Effects:
+            Actualiza `Atom.implicit_h` y `Atom.has_valence_error`.
+        """
         errors: List[int] = []
         for atom_id, atom in self.atoms.items():
-            expected = MAX_VALENCE_MAP.get(atom.element)
-            if expected is None:
+            allowed = self._allowed_valences_for_atom(atom)
+            if not allowed:
+                atom.implicit_h = 0
+                atom.has_valence_error = False
                 continue
-            allowed_valence = expected + abs(int(getattr(atom, "charge", 0) or 0))
-            if bond_order_sum.get(atom_id, 0) > allowed_valence:
+            if -1 in allowed:
+                atom.implicit_h = 0
+                atom.has_valence_error = False
+                continue
+
+            bond_sum = self.bond_order_sum(atom_id)
+            explicit_h = self.explicit_hydrogen_count(atom_id)
+            base_valence = bond_sum + float(explicit_h)
+            implicit_h = self._choose_implicit_h(atom, base_valence, allowed)
+            total_valence = base_valence + float(implicit_h)
+            is_valid = any(math.isclose(total_valence, float(v), abs_tol=1e-6) for v in allowed)
+
+            atom.implicit_h = int(max(0, implicit_h))
+            atom.has_valence_error = not is_valid
+            if atom.has_valence_error:
                 errors.append(atom_id)
         return errors

@@ -34,17 +34,45 @@ def implicit_h_count(view: MolView, atom_id: int) -> int:
     Side Effects:
         No tiene efectos laterales.
     """
+    graph = getattr(view, "graph", None)
+    if graph is not None and hasattr(graph, "implicit_h_count"):
+        try:
+            return int(max(0, graph.implicit_h_count(atom_id)))
+        except Exception:
+            pass
+
     element = view.element(atom_id)
     typical = TYPICAL_VALENCE.get(element)
     if typical is None:
         return 0
 
+    atom = None
+    try:
+        atom = view._get_atom(atom_id)  # type: ignore[attr-defined]
+    except Exception:
+        atom = None
+    if atom is not None:
+        no_implicit = False
+        if isinstance(atom, dict):
+            no_implicit = bool(atom.get("no_implicit", False))
+        else:
+            no_implicit = bool(getattr(atom, "no_implicit", False))
+        if no_implicit:
+            return 0
+
     bond_order_sum = 0
     for nbr in view.neighbors(atom_id):
-        bond_order_sum += view.bond_order_between(atom_id, nbr)
+        order = view.bond_order_between(atom_id, nbr)
+        if view.bond_is_aromatic(atom_id, nbr):
+            order = 1.5
+        bond_order_sum += order
 
     charge = view.atom_charge(atom_id)
-    implicit = typical - bond_order_sum - charge
+    explicit_h = view.explicit_h(atom_id)
+    implicit = typical - bond_order_sum - explicit_h - max(charge, 0)
     if implicit < 0:
         return 0
-    return int(implicit)
+    rounded = int(round(implicit))
+    if rounded < 0:
+        return 0
+    return rounded
