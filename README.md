@@ -25,6 +25,19 @@ Para iniciar la aplicación usando el ambiente virtual:
 ./chemuson/bin/python src/main.py
 ```
 
+## Numeración visual
+
+- Activa la numeración en `Ver > Numeración > Mostrar numeración`.
+- Modos disponibles:
+  - `Numerar átomos`
+  - `Numerar estructuras`
+  - `Numerar ambos`
+- Regla actual de orden para átomos: por estructura (componente conexa), `x` ascendente y luego `y` descendente.
+- La numeración atómica se reinicia en cada estructura desconectada.
+- Los números se dibujan como texto editable y movible (doble clic para editar).
+- La numeración es un overlay no destructivo (no modifica el modelo químico).
+- Exportación: controla inclusión/exclusión desde `Ver > Numeración > Incluir numeración en exportación`.
+
 ## IUPAC-Lite (soporte actual)
 
 **Soportado**

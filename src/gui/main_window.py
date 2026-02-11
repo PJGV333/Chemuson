@@ -80,6 +80,8 @@ class ChemusonWindow(QMainWindow):
         self.action_aromatic_circles.setChecked(self.canvas.state.use_aromatic_circles)
         self.action_rules.setChecked(self.canvas.show_rulers)
         self.action_crosshair.setChecked(self.canvas.show_grid)
+        self._load_numbering_preferences()
+        self._sync_numbering_actions()
         
         # === DOCK WIDGETS ===
         self.templates_dock = PlantillasDock(self)
@@ -273,6 +275,41 @@ class ChemusonWindow(QMainWindow):
         self.action_crosshair.setCheckable(True)
         self.action_crosshair.setChecked(False)
         self.action_crosshair.triggered.connect(self._on_toggle_crosshair)
+
+        self.action_numbering_enabled = QAction("Mostrar numeración", self)
+        self.action_numbering_enabled.setCheckable(True)
+        self.action_numbering_enabled.setChecked(False)
+        self.action_numbering_enabled.triggered.connect(self._on_toggle_numbering)
+
+        self.action_numbering_mode_atoms = QAction("Numerar átomos", self)
+        self.action_numbering_mode_atoms.setCheckable(True)
+        self.action_numbering_mode_atoms.triggered.connect(
+            lambda checked=False: self._on_set_numbering_mode("atoms")
+        )
+        self.action_numbering_mode_structures = QAction("Numerar estructuras", self)
+        self.action_numbering_mode_structures.setCheckable(True)
+        self.action_numbering_mode_structures.triggered.connect(
+            lambda checked=False: self._on_set_numbering_mode("structures")
+        )
+        self.action_numbering_mode_both = QAction("Numerar ambos", self)
+        self.action_numbering_mode_both.setCheckable(True)
+        self.action_numbering_mode_both.triggered.connect(
+            lambda checked=False: self._on_set_numbering_mode("both")
+        )
+        self._numbering_mode_group = QActionGroup(self)
+        self._numbering_mode_group.setExclusive(True)
+        self._numbering_mode_group.addAction(self.action_numbering_mode_atoms)
+        self._numbering_mode_group.addAction(self.action_numbering_mode_structures)
+        self._numbering_mode_group.addAction(self.action_numbering_mode_both)
+        self.action_numbering_mode_atoms.setChecked(True)
+
+        self.action_numbering_recalculate = QAction("Recalcular numeración", self)
+        self.action_numbering_recalculate.triggered.connect(self._on_recalculate_numbering)
+
+        self.action_numbering_export = QAction("Incluir numeración en exportación", self)
+        self.action_numbering_export.setCheckable(True)
+        self.action_numbering_export.setChecked(True)
+        self.action_numbering_export.triggered.connect(self._on_toggle_numbering_export)
 
         self.action_clean_2d = QAction("Limpiar 2D", self)
         self.action_clean_2d.triggered.connect(self._on_clean_2d)
@@ -526,6 +563,16 @@ class ChemusonWindow(QMainWindow):
         view_menu.addAction(self.action_rules)
         view_menu.addAction(self.action_crosshair)
         view_menu.addSeparator()
+        numbering_menu = view_menu.addMenu("Numeración")
+        numbering_menu.addAction(self.action_numbering_enabled)
+        numbering_menu.addSeparator()
+        numbering_menu.addAction(self.action_numbering_mode_atoms)
+        numbering_menu.addAction(self.action_numbering_mode_structures)
+        numbering_menu.addAction(self.action_numbering_mode_both)
+        numbering_menu.addSeparator()
+        numbering_menu.addAction(self.action_numbering_recalculate)
+        numbering_menu.addAction(self.action_numbering_export)
+        view_menu.addSeparator()
         canvas_size_menu = view_menu.addMenu("Tamaño de lienzo")
         canvas_size_menu.addAction(self.action_canvas_size_letter_portrait)
         canvas_size_menu.addAction(self.action_canvas_size_letter_landscape)
@@ -732,6 +779,81 @@ class ChemusonWindow(QMainWindow):
         """
         self._settings.setValue("recent_files", self._recent_files)
 
+    @staticmethod
+    def _setting_bool(value, default: bool) -> bool:
+        """Normaliza valores de QSettings a booleano."""
+        if value is None:
+            return bool(default)
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            lowered = value.strip().lower()
+            if lowered in {"1", "true", "yes", "on", "si", "sí"}:
+                return True
+            if lowered in {"0", "false", "no", "off"}:
+                return False
+        try:
+            return bool(int(value))
+        except Exception:
+            return bool(value)
+
+    def _load_numbering_preferences(self) -> None:
+        """Carga preferencias globales de numeración del usuario."""
+        mode = str(self._settings.value("numbering/mode", "atoms") or "atoms")
+        include_export = self._setting_bool(
+            self._settings.value("numbering/include_export", True),
+            True,
+        )
+        self.canvas.set_numbering_mode(mode)
+        # Arranque por defecto: numeración desactivada (no persistir "encendido").
+        self.canvas.set_numbering_enabled(False)
+        self.canvas.set_numbering_include_in_export(include_export)
+
+    def _save_numbering_preferences(self) -> None:
+        """Guarda preferencias globales de numeración del usuario."""
+        # Se guarda modo/exports, pero no el estado "mostrar numeración" para
+        # evitar que inicie activa en futuras aperturas.
+        self._settings.remove("numbering/enabled")
+        self._settings.setValue("numbering/mode", str(self.canvas.state.numbering_mode))
+        self._settings.setValue(
+            "numbering/include_export",
+            bool(self.canvas.state.numbering_include_in_export),
+        )
+
+    def _sync_numbering_actions(self) -> None:
+        """Sincroniza acciones de menú de numeración con el estado del canvas."""
+        mode = str(self.canvas.state.numbering_mode or "").strip().lower()
+        if mode not in {"atoms", "structures", "both"}:
+            mode = "atoms"
+        self.canvas.state.numbering_mode = mode
+        state_to_action = {
+            "atoms": self.action_numbering_mode_atoms,
+            "structures": self.action_numbering_mode_structures,
+            "both": self.action_numbering_mode_both,
+        }
+
+        actions = [
+            self.action_numbering_enabled,
+            self.action_numbering_mode_atoms,
+            self.action_numbering_mode_structures,
+            self.action_numbering_mode_both,
+            self.action_numbering_export,
+        ]
+        previous_blocks = []
+        for action in actions:
+            previous_blocks.append((action, action.blockSignals(True)))
+        try:
+            self.action_numbering_enabled.setChecked(bool(self.canvas.state.numbering_enabled))
+            for key, action in state_to_action.items():
+                action.setChecked(key == mode)
+            self.action_numbering_export.setChecked(
+                bool(self.canvas.state.numbering_include_in_export)
+            )
+            self.action_numbering_recalculate.setEnabled(bool(self.canvas.state.numbering_enabled))
+        finally:
+            for action, was_blocked in previous_blocks:
+                action.blockSignals(was_blocked)
+
     def _add_recent_file(self, filepath: str) -> None:
         """Método auxiliar para  add recent file.
 
@@ -889,12 +1011,24 @@ class ChemusonWindow(QMainWindow):
                     image.save(filepath, "PNG")
                     self.statusBar().showMessage(f"Exportado: {filepath}")
         elif format == "svg":
-            from chemio.rdkit_io import molgraph_to_svg
-            svg_text = molgraph_to_svg(self.canvas.graph)
+            svg_data = self.canvas._render_scene_svg()
             filepath, _ = QFileDialog.getSaveFileName(self, "Exportar SVG", "", "Imagen SVG (*.svg)")
             if filepath:
-                with open(filepath, "w") as f:
-                    f.write(svg_text)
+                if svg_data:
+                    with open(filepath, "w") as f:
+                        f.write(svg_data.decode("utf-8", errors="replace"))
+                else:
+                    from chemio.rdkit_io import molgraph_to_svg
+                    svg_text = molgraph_to_svg(self.canvas.graph)
+                    with open(filepath, "w") as f:
+                        f.write(svg_text)
+                    if self.canvas.state.numbering_enabled and self.canvas.state.numbering_include_in_export:
+                        QMessageBox.information(
+                            self,
+                            "SVG sin numeración",
+                            "Este entorno no permite render SVG desde la escena.\n"
+                            "Se exportó SVG químico base sin overlay de numeración.",
+                        )
                 self.statusBar().showMessage(f"Exportado: {filepath}")
         elif format == "pdf":
             filepath, _ = QFileDialog.getSaveFileName(self, "Exportar PDF", "", "Documento PDF (*.pdf)")
@@ -903,12 +1037,28 @@ class ChemusonWindow(QMainWindow):
                     printer = QPrinter(QPrinter.PrinterMode.HighResolution)
                     printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
                     printer.setOutputFileName(filepath)
-                    
-                    # Target rectangle for the paper on the PDF page
-                    painter = QPainter(printer)
-                    paper_rect = self.canvas.paper.sceneBoundingRect()
-                    self.canvas.scene.render(painter, printer.pageRect(QPrinter.Unit.Point), paper_rect)
-                    painter.end()
+
+                    bounds = self.canvas._render_scene_bounds(selected_only=False)
+                    if bounds is None:
+                        QMessageBox.warning(self, "Error", "No hay contenido para exportar.")
+                        return
+
+                    def render_pdf() -> bool:
+                        painter = QPainter(printer)
+                        if not painter.isActive():
+                            return False
+                        self.canvas.scene.render(
+                            painter,
+                            printer.pageRect(QPrinter.Unit.Point),
+                            bounds,
+                        )
+                        painter.end()
+                        return True
+
+                    ok = self.canvas._with_hidden_render_items(render_pdf)
+                    if not ok:
+                        QMessageBox.warning(self, "Error", "No se pudo exportar PDF.")
+                        return
                     self.statusBar().showMessage(f"Exportado: {filepath}")
                 except Exception as e:
                     QMessageBox.warning(self, "Error", f"No se pudo exportar PDF:\n{e}")
@@ -1093,6 +1243,44 @@ class ChemusonWindow(QMainWindow):
     # -------------------------------------------------------------------------
     # View Menu Handlers
     # -------------------------------------------------------------------------
+    def _on_toggle_numbering(self, checked: bool) -> None:
+        """Activa/desactiva numeración de átomos/estructuras."""
+        self.canvas.set_numbering_enabled(checked)
+        self._sync_numbering_actions()
+        self._save_numbering_preferences()
+        self.statusBar().showMessage(
+            "Numeración: visible" if checked else "Numeración: oculta"
+        )
+
+    def _on_set_numbering_mode(self, mode: str) -> None:
+        """Cambia el modo de numeración mostrado en el lienzo."""
+        self.canvas.set_numbering_mode(mode)
+        self._sync_numbering_actions()
+        self._save_numbering_preferences()
+        labels = {
+            "atoms": "átomos",
+            "structures": "estructuras",
+            "both": "átomos y estructuras",
+        }
+        active_mode = self.canvas.state.numbering_mode
+        self.statusBar().showMessage(f"Numeración: {labels.get(active_mode, active_mode)}")
+
+    def _on_recalculate_numbering(self) -> None:
+        """Recalcula explícitamente la numeración visual."""
+        self.canvas.recompute_numbering(force_reset=True)
+        self.statusBar().showMessage("Numeración recalculada")
+
+    def _on_toggle_numbering_export(self, checked: bool) -> None:
+        """Define si la numeración se incluye al exportar."""
+        self.canvas.set_numbering_include_in_export(checked)
+        self._sync_numbering_actions()
+        self._save_numbering_preferences()
+        self.statusBar().showMessage(
+            "Exportación: numeración incluida"
+            if checked
+            else "Exportación: numeración excluida"
+        )
+
     def _on_toggle_carbons(self, checked: bool) -> None:
         """Toggle visibility of implicit carbons."""
         self.canvas.state.show_implicit_carbons = checked

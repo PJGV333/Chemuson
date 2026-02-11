@@ -295,6 +295,15 @@ class ChemState:
     label_font_italic: bool = False
     label_font_underline: bool = False
     use_element_colors: bool = True
+    numbering_enabled: bool = False
+    numbering_mode: str = "atoms"  # atoms | structures | both
+    numbering_font_size: float = 10.0
+    numbering_offset_x: float = 8.0
+    numbering_offset_y: float = -8.0
+    numbering_circle: bool = False
+    numbering_color: str = "#1F2933"
+    numbering_background: str = "#FFFFFF"
+    numbering_include_in_export: bool = True
 
 
 class MolGraph:

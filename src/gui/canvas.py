@@ -70,6 +70,7 @@ from gui.items import (
     ABBREVIATION_LABELS,
 )
 from gui.style import CHEMDOODLE_LIKE, DrawingStyle
+from gui.numbering import NumberedStructure, compute_atom_numbers, compute_structure_numbers
 from gui.templates import build_haworth_template, build_chair_template
 from gui.geom import (
     angle_deg,
@@ -289,6 +290,10 @@ WAVY_ANCHOR_ANGLE_ROLE = 2002
 WAVY_ANCHOR_LENGTH_ROLE = 2003
 WAVY_ANCHOR_BOND_ROLE = 2004
 AROMATIC_CIRCLE_ATOMS_ROLE = 3001
+NUMBERING_TEXT_ROLE = 4001
+NUMBERING_KIND_ROLE = 4002
+NUMBERING_KEY_ROLE = 4003
+NUMBERING_AUTO_TEXT_ROLE = 4004
 
 SYMBOL_TEXT_TOOLS = {
     "tool_symbol_plus": {"text": "+", "scale": 1.0, "anchor": True},
@@ -434,6 +439,14 @@ class ChemusonCanvas(QGraphicsView):
         self._scale_has_moved = False
         self._implicit_h_overlays: Dict[int, list[tuple[QGraphicsLineItem, QGraphicsTextItem]]] = {}
         self._group_anchor_overrides: Dict[int, str] = {}
+        self._numbering_overlay_items: list[TextAnnotationItem] = []
+        self._numbering_atom_items: dict[int, TextAnnotationItem] = {}
+        self._numbering_structure_items: dict[int, TextAnnotationItem] = {}
+        self._numbering_atom_base_pos: dict[int, tuple[float, float]] = {}
+        self._numbering_structure_base_pos: dict[int, tuple[float, float]] = {}
+        self._atom_numbering: dict[int, int] = {}
+        self._structure_numbering: list[NumberedStructure] = []
+        self._suspend_numbering_refresh = False
 
         self._setup_view()
         self._pending_initial_center = True
@@ -508,6 +521,255 @@ class ChemusonCanvas(QGraphicsView):
         if self._grid_major_item is not None:
             self._grid_major_item.setVisible(enabled)
         self.viewport().update()
+
+    @staticmethod
+    def _normalize_numbering_mode(mode: str) -> str:
+        """Normaliza el modo de numeración a un valor soportado."""
+        value = str(mode or "").strip().lower()
+        if value in {"atoms", "structures", "both"}:
+            return value
+        return "atoms"
+
+    def set_numbering_enabled(self, enabled: bool) -> None:
+        """Activa/desactiva la numeración visual del lienzo."""
+        self.state.numbering_enabled = bool(enabled)
+        self.recompute_numbering()
+
+    def set_numbering_mode(self, mode: str) -> None:
+        """Configura modo de numeración: atoms, structures o both."""
+        self.state.numbering_mode = self._normalize_numbering_mode(mode)
+        self.recompute_numbering()
+
+    def set_numbering_include_in_export(self, enabled: bool) -> None:
+        """Define si la numeración se incluye en exportaciones."""
+        self.state.numbering_include_in_export = bool(enabled)
+
+    def set_numbering_style(
+        self,
+        *,
+        font_size: Optional[float] = None,
+        offset_x: Optional[float] = None,
+        offset_y: Optional[float] = None,
+        circle: Optional[bool] = None,
+        color: Optional[str] = None,
+        background: Optional[str] = None,
+    ) -> None:
+        """Actualiza estilo visual de numeración y refresca overlay."""
+        if font_size is not None:
+            self.state.numbering_font_size = max(1.0, float(font_size))
+        if offset_x is not None:
+            self.state.numbering_offset_x = float(offset_x)
+        if offset_y is not None:
+            self.state.numbering_offset_y = float(offset_y)
+        if circle is not None:
+            self.state.numbering_circle = bool(circle)
+        if color:
+            self.state.numbering_color = str(color)
+        if background:
+            self.state.numbering_background = str(background)
+        # Si se actualiza estilo explícitamente, aplicarlo en todos los números existentes.
+        if font_size is not None or color:
+            font = self._numbering_font()
+            color_value = QColor(self.state.numbering_color)
+            for item in self._numbering_overlay_items:
+                if item is None or item.scene() is not self.scene:
+                    continue
+                if font_size is not None:
+                    item.setFont(font)
+                if color:
+                    item.setDefaultTextColor(color_value)
+        self.recompute_numbering(force_reset=False)
+
+    def recompute_numbering(self, force_reset: bool = False) -> None:
+        """Recalcula y redibuja overlays de numeración."""
+        if self._suspend_numbering_refresh:
+            return
+        self._cleanup_numbering_overlays()
+        if not self.state.numbering_enabled or not self.model.atoms:
+            self._clear_numbering_overlays()
+            self._atom_numbering = {}
+            self._structure_numbering = []
+            return
+
+        font = self._numbering_font()
+        color = QColor(self.state.numbering_color)
+        mode = self._normalize_numbering_mode(self.state.numbering_mode)
+        self.state.numbering_mode = mode
+
+        required_atom_ids: set[int] = set()
+        required_structure_ids: set[int] = set()
+
+        if mode in {"atoms", "both"}:
+            self._atom_numbering = compute_atom_numbers(self.model)
+            off_x = float(self.state.numbering_offset_x)
+            off_y = float(self.state.numbering_offset_y)
+            for atom_id, number in sorted(self._atom_numbering.items(), key=lambda item: item[0]):
+                atom = self.model.atoms.get(atom_id)
+                if atom is None:
+                    continue
+                required_atom_ids.add(int(atom_id))
+                item = self._numbering_atom_items.get(int(atom_id))
+                if item is None or item.scene() is not self.scene:
+                    item = self._create_numbering_item(kind="atom", key=int(atom_id), auto_text=str(number))
+                    self._numbering_atom_items[int(atom_id)] = item
+                    self._numbering_overlay_items.append(item)
+                self._update_numbering_item(
+                    item=item,
+                    auto_text=str(number),
+                    anchor_x=float(atom.x) + off_x,
+                    anchor_y=float(atom.y) + off_y,
+                    base_positions=self._numbering_atom_base_pos,
+                    key=int(atom_id),
+                    font=font,
+                    color=color,
+                    force_reset=force_reset,
+                )
+        else:
+            self._atom_numbering = {}
+
+        if mode in {"structures", "both"}:
+            self._structure_numbering = compute_structure_numbers(self.model)
+            for numbered_structure in self._structure_numbering:
+                structure_id = int(numbered_structure.structure_id)
+                required_structure_ids.add(structure_id)
+                item = self._numbering_structure_items.get(structure_id)
+                auto_text = f"({numbered_structure.number})"
+                if item is None or item.scene() is not self.scene:
+                    item = self._create_numbering_item(
+                        kind="structure",
+                        key=structure_id,
+                        auto_text=auto_text,
+                    )
+                    self._numbering_structure_items[structure_id] = item
+                    self._numbering_overlay_items.append(item)
+                self._update_numbering_item(
+                    item=item,
+                    auto_text=auto_text,
+                    anchor_x=float(numbered_structure.x),
+                    anchor_y=float(numbered_structure.y),
+                    base_positions=self._numbering_structure_base_pos,
+                    key=structure_id,
+                    font=font,
+                    color=color,
+                    force_reset=force_reset,
+                )
+        else:
+            self._structure_numbering = []
+
+        for atom_id in list(self._numbering_atom_items.keys()):
+            if atom_id not in required_atom_ids:
+                self._drop_numbering_item(self._numbering_atom_items.pop(atom_id, None))
+                self._numbering_atom_base_pos.pop(atom_id, None)
+        for structure_id in list(self._numbering_structure_items.keys()):
+            if structure_id not in required_structure_ids:
+                self._drop_numbering_item(self._numbering_structure_items.pop(structure_id, None))
+                self._numbering_structure_base_pos.pop(structure_id, None)
+
+    def _numbering_font(self) -> QFont:
+        """Fuente por defecto para números de numeración."""
+        font = QFont(self.state.label_font_family)
+        font_size = float(self.state.numbering_font_size)
+        if font_size <= 0.0:
+            font_size = 10.0
+        font.setPointSizeF(font_size)
+        font.setBold(False)
+        font.setItalic(False)
+        font.setUnderline(False)
+        return font
+
+    def _create_numbering_item(self, *, kind: str, key: int, auto_text: str) -> TextAnnotationItem:
+        """Crea un item de texto para numeración editable/movible."""
+        item = TextAnnotationItem(auto_text, 0.0, 0.0)
+        item.setData(NUMBERING_TEXT_ROLE, True)
+        item.setData(NUMBERING_KIND_ROLE, str(kind))
+        item.setData(NUMBERING_KEY_ROLE, int(key))
+        item.setData(NUMBERING_AUTO_TEXT_ROLE, str(auto_text))
+        item.setFont(self._numbering_font())
+        item.setDefaultTextColor(QColor(self.state.numbering_color))
+        item.setZValue(35)
+        self.scene.addItem(item)
+        return item
+
+    def _update_numbering_item(
+        self,
+        *,
+        item: TextAnnotationItem,
+        auto_text: str,
+        anchor_x: float,
+        anchor_y: float,
+        base_positions: dict[int, tuple[float, float]],
+        key: int,
+        font: QFont,
+        color: QColor,
+        force_reset: bool,
+    ) -> None:
+        """Actualiza texto y posición de un item de numeración."""
+        previous_auto = str(item.data(NUMBERING_AUTO_TEXT_ROLE) or "")
+        current_text = item.toPlainText().strip()
+
+        # Mantiene texto manual del usuario, salvo recalculo forzado.
+        if force_reset or not current_text or current_text == previous_auto:
+            if item.toPlainText() != auto_text:
+                item.setPlainText(auto_text)
+        item.setData(NUMBERING_AUTO_TEXT_ROLE, str(auto_text))
+
+        if force_reset:
+            item.setFont(font)
+            item.setDefaultTextColor(color)
+
+        rect = item.boundingRect()
+        base_x = float(anchor_x) - rect.width() * 0.5
+        base_y = float(anchor_y) - rect.height() * 0.5
+
+        if force_reset:
+            offset_x = 0.0
+            offset_y = 0.0
+        else:
+            previous_base = base_positions.get(int(key))
+            if previous_base is None:
+                offset_x = 0.0
+                offset_y = 0.0
+            else:
+                offset_x = float(item.pos().x()) - float(previous_base[0])
+                offset_y = float(item.pos().y()) - float(previous_base[1])
+
+        item.setPos(base_x + offset_x, base_y + offset_y)
+        base_positions[int(key)] = (base_x, base_y)
+
+    def _drop_numbering_item(self, item: Optional[TextAnnotationItem]) -> None:
+        """Elimina un item de numeración de la escena y colecciones."""
+        if item is None:
+            return
+        if item in self._numbering_overlay_items:
+            self._numbering_overlay_items.remove(item)
+        if item.scene() is self.scene:
+            self.scene.removeItem(item)
+
+    def _cleanup_numbering_overlays(self) -> None:
+        """Limpia referencias a items de numeración borrados externamente."""
+        self._numbering_overlay_items = [
+            item
+            for item in self._numbering_overlay_items
+            if item is not None and item.scene() is self.scene
+        ]
+        for atom_id, item in list(self._numbering_atom_items.items()):
+            if item is None or item.scene() is not self.scene:
+                self._numbering_atom_items.pop(atom_id, None)
+                self._numbering_atom_base_pos.pop(atom_id, None)
+        for structure_id, item in list(self._numbering_structure_items.items()):
+            if item is None or item.scene() is not self.scene:
+                self._numbering_structure_items.pop(structure_id, None)
+                self._numbering_structure_base_pos.pop(structure_id, None)
+
+    def _clear_numbering_overlays(self) -> None:
+        """Elimina todos los overlays de numeración."""
+        for item in list(self._numbering_overlay_items):
+            self._drop_numbering_item(item)
+        self._numbering_overlay_items.clear()
+        self._numbering_atom_items.clear()
+        self._numbering_structure_items.clear()
+        self._numbering_atom_base_pos.clear()
+        self._numbering_structure_base_pos.clear()
 
     def paintEvent(self, event) -> None:
         """Método auxiliar para paintEvent.
@@ -2988,6 +3250,8 @@ class ChemusonCanvas(QGraphicsView):
                     "padding": item._padding
                 })
             elif isinstance(item, TextAnnotationItem):
+                if bool(item.data(NUMBERING_TEXT_ROLE)):
+                    continue
                 data["annotations"]["text_items"].append({
                     "text": item.toPlainText(),
                     "html": item.toHtml(), # Store HTML for rich text (formatting, colors)
@@ -3163,6 +3427,13 @@ class ChemusonCanvas(QGraphicsView):
         self._preview_arrow_item = None
         self._electron_dots.clear()
         self._wavy_anchors.clear()
+        self._numbering_overlay_items.clear()
+        self._numbering_atom_items.clear()
+        self._numbering_structure_items.clear()
+        self._numbering_atom_base_pos.clear()
+        self._numbering_structure_base_pos.clear()
+        self._atom_numbering.clear()
+        self._structure_numbering.clear()
 
         self.scene.clear()
         self.model.clear()
@@ -3186,63 +3457,68 @@ class ChemusonCanvas(QGraphicsView):
         
         self._create_paper()
         self._create_overlays()
+        self.recompute_numbering()
 
     def _rebuild_items_from_model(self) -> None:
         """Create AtomItems and BondItems for everything currently in self.model."""
         self.atom_items.clear()
         self.bond_items.clear()
-        
-        # 1. Create AtomItems
-        for atom in self.model.atoms.values():
-            item = AtomItem(
-                atom,
-                radius=ATOM_HIT_RADIUS,
-                show_carbon=self.state.show_implicit_carbons,
-                show_hydrogen=self.state.show_implicit_hydrogens,
-                label_font=QFont(self.state.label_font_family, int(self.state.label_font_size)),
-                style=self.drawing_style,
-                use_element_colors=self.state.use_element_colors
-            )
-            self.scene.addItem(item)
-            self.atom_items[atom.id] = item
-        
-        # 2. Recalculate ring centers for double bond offsets
-        self.refresh_ring_centers()
-            
-        # 3. Create BondItems with ring context
-        ring_pairs = self._compute_ring_bond_pairs()
-        for bond in self.model.bonds.values():
-            a1 = self.model.atoms.get(bond.a1_id)
-            a2 = self.model.atoms.get(bond.a2_id)
-            if a1 and a2:
-                item = BondItem(
-                    bond, a1, a2,
-                    render_aromatic_as_circle=self.state.use_aromatic_circles,
-                    style=self.drawing_style
+        self._suspend_numbering_refresh = True
+        try:
+            # 1. Create AtomItems
+            for atom in self.model.atoms.values():
+                item = AtomItem(
+                    atom,
+                    radius=ATOM_HIT_RADIUS,
+                    show_carbon=self.state.show_implicit_carbons,
+                    show_hydrogen=self.state.show_implicit_hydrogens,
+                    label_font=QFont(self.state.label_font_family, int(self.state.label_font_size)),
+                    style=self.drawing_style,
+                    use_element_colors=self.state.use_element_colors
                 )
-                ring_center = self._aromatic_ring_center_for_bond(bond) if bond.is_aromatic else None
-                if ring_center is None and bond.ring_id is not None:
-                    ring_center = self._ring_centers.get(bond.ring_id)
-                item.set_ring_context(ring_center)
-                item.set_bond_in_ring(self._bond_in_ring_for_pairs(bond, ring_pairs))
-                item.set_offset_sign(self._bond_offset_sign(bond))
-                self._configure_bond_rendering(bond, item)
-                self._set_bond_item_join_context(bond, item)
-                trim_start = self._bond_endpoint_trim(bond, bond.a1_id)
-                trim_end = self._bond_endpoint_trim(bond, bond.a2_id)
-                item.set_endpoint_trim(trim_start, trim_end)
-                extend_start = self._bond_endpoint_extend(bond, bond.a1_id)
-                extend_end = self._bond_endpoint_extend(bond, bond.a2_id)
-                item.set_endpoint_extend(extend_start, extend_end)
-                # Explicitly update positions now that context and sign are set
-                item.update_positions(a1, a2)
                 self.scene.addItem(item)
-                self.bond_items[bond.id] = item
-        
-        # 4. Global refresh: labels, visibility, shrinks, and implicit H overlays
-        self.refresh_atom_visibility()
-        self.refresh_aromatic_circles()
-        self.validate_structure()
+                self.atom_items[atom.id] = item
+
+            # 2. Recalculate ring centers for double bond offsets
+            self.refresh_ring_centers()
+
+            # 3. Create BondItems with ring context
+            ring_pairs = self._compute_ring_bond_pairs()
+            for bond in self.model.bonds.values():
+                a1 = self.model.atoms.get(bond.a1_id)
+                a2 = self.model.atoms.get(bond.a2_id)
+                if a1 and a2:
+                    item = BondItem(
+                        bond, a1, a2,
+                        render_aromatic_as_circle=self.state.use_aromatic_circles,
+                        style=self.drawing_style
+                    )
+                    ring_center = self._aromatic_ring_center_for_bond(bond) if bond.is_aromatic else None
+                    if ring_center is None and bond.ring_id is not None:
+                        ring_center = self._ring_centers.get(bond.ring_id)
+                    item.set_ring_context(ring_center)
+                    item.set_bond_in_ring(self._bond_in_ring_for_pairs(bond, ring_pairs))
+                    item.set_offset_sign(self._bond_offset_sign(bond))
+                    self._configure_bond_rendering(bond, item)
+                    self._set_bond_item_join_context(bond, item)
+                    trim_start = self._bond_endpoint_trim(bond, bond.a1_id)
+                    trim_end = self._bond_endpoint_trim(bond, bond.a2_id)
+                    item.set_endpoint_trim(trim_start, trim_end)
+                    extend_start = self._bond_endpoint_extend(bond, bond.a1_id)
+                    extend_end = self._bond_endpoint_extend(bond, bond.a2_id)
+                    item.set_endpoint_extend(extend_start, extend_end)
+                    # Explicitly update positions now that context and sign are set
+                    item.update_positions(a1, a2)
+                    self.scene.addItem(item)
+                    self.bond_items[bond.id] = item
+
+            # 4. Global refresh: labels, visibility, shrinks, and implicit H overlays
+            self.refresh_atom_visibility()
+            self.refresh_aromatic_circles()
+            self.validate_structure()
+        finally:
+            self._suspend_numbering_refresh = False
+        self.recompute_numbering()
 
     def refresh_ring_centers(self) -> None:
         """Recalculate geometric centers for all rings in the model."""
@@ -4150,8 +4426,18 @@ class ChemusonCanvas(QGraphicsView):
                 if item.isVisible():
                     extend(item.sceneBoundingRect())
             for item in self.scene.items():
-                if isinstance(item, TextAnnotationItem) and item.isVisible():
+                if (
+                    isinstance(item, TextAnnotationItem)
+                    and item.isVisible()
+                    and not bool(item.data(NUMBERING_TEXT_ROLE))
+                ):
                     extend(item.sceneBoundingRect())
+            if self.state.numbering_enabled and self.state.numbering_include_in_export:
+                for item in self._numbering_overlay_items:
+                    if item is None or item.scene() is not self.scene:
+                        continue
+                    if item.isVisible():
+                        extend(item.sceneBoundingRect())
 
         if rect is None:
             return None
@@ -4185,6 +4471,8 @@ class ChemusonCanvas(QGraphicsView):
         items.append(getattr(self, "_bracket_preview", None))
         items.append(getattr(self, "_select_preview_path", None))
         items.append(getattr(self, "_select_preview_rect", None))
+        if not self.state.numbering_include_in_export:
+            items.extend(self._numbering_overlay_items)
         return [
             item
             for item in items
@@ -4761,6 +5049,7 @@ class ChemusonCanvas(QGraphicsView):
         self.scene.addItem(item)
         self.atom_items[atom.id] = item
         self._refresh_atom_label(atom.id)
+        self.recompute_numbering()
 
     def update_atom_item(self, atom_id: int, x: float, y: float) -> None:
         """Actualiza atom item.
@@ -4905,6 +5194,7 @@ class ChemusonCanvas(QGraphicsView):
         for item in self.atom_items.values():
             item.set_label_font(font)
         self.refresh_atom_labels()
+        self.recompute_numbering()
 
     def set_use_element_colors(self, use_element_colors: bool) -> None:
         """Actualiza el estado de use element colors.
@@ -5922,6 +6212,7 @@ class ChemusonCanvas(QGraphicsView):
             self.bond_anchor_id = None
         if self.hovered_atom_id == atom_id:
             self.hovered_atom_id = None
+        self.recompute_numbering()
 
     def add_bond_item(self, bond) -> None:
         """Añade bond item.
@@ -5967,6 +6258,7 @@ class ChemusonCanvas(QGraphicsView):
         self._refresh_atom_label(bond.a1_id)
         self._refresh_atom_label(bond.a2_id)
         self._refresh_bond_ring_flags(ring_pairs)
+        self.recompute_numbering()
 
     def add_arrow_item(
         self,
@@ -6420,6 +6712,7 @@ class ChemusonCanvas(QGraphicsView):
                 self.update_bond_item(bond.id)
         self._refresh_implicit_h_overlays(atom_ids)
         self._update_aromatic_circles_for_atoms(atom_ids)
+        self.recompute_numbering()
 
     def remove_bond_item(self, bond_id: int) -> None:
         """Elimina bond item.
@@ -6441,6 +6734,7 @@ class ChemusonCanvas(QGraphicsView):
             self._refresh_atom_label(a1_id)
             self._refresh_atom_label(a2_id)
         self._refresh_bond_ring_flags()
+        self.recompute_numbering()
 
     def allocate_ring_id(self) -> int:
         """Método auxiliar para allocate ring id.
@@ -10889,34 +11183,39 @@ class ChemusonCanvas(QGraphicsView):
         Side Effects:
             Puede modificar el estado interno o la escena.
         """
-        for item in list(self.scene.items()):
-            if isinstance(item, (AtomItem, BondItem)):
-                self.scene.removeItem(item)
+        self._suspend_numbering_refresh = True
+        try:
+            for item in list(self.scene.items()):
+                if isinstance(item, (AtomItem, BondItem)):
+                    self.scene.removeItem(item)
 
-        for atom_id in list(self.atom_items.keys()):
-            self.remove_atom_item(atom_id)
-        for bond_id in list(self.bond_items.keys()):
-            self.remove_bond_item(bond_id)
+            for atom_id in list(self.atom_items.keys()):
+                self.remove_atom_item(atom_id)
+            for bond_id in list(self.bond_items.keys()):
+                self.remove_bond_item(bond_id)
 
-        self._ring_centers.clear()
-        ring_atoms: dict[int, set[int]] = {}
-        for bond in self.model.bonds.values():
-            if bond.ring_id is None:
-                continue
-            ring_atoms.setdefault(bond.ring_id, set()).update({bond.a1_id, bond.a2_id})
-        for ring_id, atom_ids in ring_atoms.items():
-            xs = [self.model.get_atom(aid).x for aid in atom_ids]
-            ys = [self.model.get_atom(aid).y for aid in atom_ids]
-            center = (sum(xs) / len(xs), sum(ys) / len(ys))
-            self.register_ring_center(ring_id, center)
+            self._ring_centers.clear()
+            ring_atoms: dict[int, set[int]] = {}
+            for bond in self.model.bonds.values():
+                if bond.ring_id is None:
+                    continue
+                ring_atoms.setdefault(bond.ring_id, set()).update({bond.a1_id, bond.a2_id})
+            for ring_id, atom_ids in ring_atoms.items():
+                xs = [self.model.get_atom(aid).x for aid in atom_ids]
+                ys = [self.model.get_atom(aid).y for aid in atom_ids]
+                center = (sum(xs) / len(xs), sum(ys) / len(ys))
+                self.register_ring_center(ring_id, center)
 
-        for atom in self.model.atoms.values():
-            self.add_atom_item(atom)
-        for bond in self.model.bonds.values():
-            self.add_bond_item(bond)
+            for atom in self.model.atoms.values():
+                self.add_atom_item(atom)
+            for bond in self.model.bonds.values():
+                self.add_bond_item(bond)
 
-        self.refresh_atom_visibility()
-        self.refresh_aromatic_circles()
+            self.refresh_atom_visibility()
+            self.refresh_aromatic_circles()
+        finally:
+            self._suspend_numbering_refresh = False
+        self.recompute_numbering()
 
     def show_valence_errors(self, errors: Iterable[int]) -> None:
         """Método auxiliar para show valence errors.
