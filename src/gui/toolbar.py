@@ -372,6 +372,7 @@ class ChemusonToolbar(QToolBar):
         icon_wedge = draw_bond_icon("wedge")
         icon_hashed = draw_bond_icon("hashed")
         icon_wavy = draw_bond_icon("wavy")
+        icon_flex = draw_bond_icon("flex")
         icon_coordination = draw_bond_icon("coordination")
 
         entries = [
@@ -469,6 +470,21 @@ class ChemusonToolbar(QToolBar):
                     ic,
                     "Wavy",
                     {"order": 1, "style": BondStyle.WAVY, "stereo": BondStereo.EITHER, "mode": "set"},
+                ),
+            ),
+            self._make_palette_entry(
+                icon_flex,
+                "Enlace flexible (curvo/S con Shift)",
+                lambda ic=icon_flex: self._select_bond_palette(
+                    self.bond_button,
+                    ic,
+                    "Enlace flexible (curvo/S con Shift)",
+                    {
+                        "order": 1,
+                        "style": BondStyle.FLEX,
+                        "stereo": BondStereo.NONE,
+                        "mode": "set",
+                    },
                 ),
             ),
             self._make_palette_entry(
@@ -702,6 +718,14 @@ class ChemusonToolbar(QToolBar):
     def current_element(self) -> str:
         """Devuelve el símbolo del elemento actualmente activo."""
         return self._current_element
+
+    def clear_tool_selection(self) -> None:
+        """Desmarca cualquier herramienta activa en la barra compartida."""
+        was_exclusive = self.action_group.isExclusive()
+        self.action_group.setExclusive(False)
+        for action in self.action_group.actions():
+            action.setChecked(False)
+        self.action_group.setExclusive(was_exclusive)
 
 
 class SymbolPaletteToolbar(QToolBar):

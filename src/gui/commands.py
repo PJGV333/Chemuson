@@ -18,6 +18,7 @@ from gui.geom import angle_deg, angle_distance_deg, endpoint_from_angle_len
 _IMPLICIT_ELEMENTS = {"C"}
 _ANCHOR_UNSET = object()
 _DONOR_UNSET = object()
+_FLEX_CURVE_UNSET = object()
 _SPHERE_STYLE_UNSET = object()
 
 
@@ -630,6 +631,8 @@ class AddBondCommand(QUndoCommand):
         stroke_px: Optional[float] = None,
         color: Optional[str] = None,
         donor_atom_id: Optional[int] = None,
+        flex_curve_1: Optional[float] = None,
+        flex_curve_2: Optional[float] = None,
         new_atom_element: Optional[str] = None,
         new_atom_pos: Optional[Tuple[float, float]] = None,
     ) -> None:
@@ -650,6 +653,8 @@ class AddBondCommand(QUndoCommand):
             stroke_px: Grosor de línea.
             color: Color del enlace.
             donor_atom_id: ID del átomo donador (si es coordinativo).
+            flex_curve_1: Curvatura normalizada de control 1 (estilo FLEX).
+            flex_curve_2: Curvatura normalizada de control 2 (estilo FLEX).
             new_atom_element: Elemento del átomo a crear si `a2_id` es `None`.
             new_atom_pos: Posición del átomo a crear.
         """
@@ -668,6 +673,8 @@ class AddBondCommand(QUndoCommand):
         self._stroke_px = stroke_px
         self._color = color
         self._donor_atom_id = donor_atom_id
+        self._flex_curve_1 = flex_curve_1
+        self._flex_curve_2 = flex_curve_2
         self._bond_id: Optional[int] = None
         self._new_atom_element = new_atom_element
         self._new_atom_pos = new_atom_pos
@@ -730,6 +737,8 @@ class AddBondCommand(QUndoCommand):
                 stroke_px=self._stroke_px,
                 color=self._color,
                 donor_atom_id=self._donor_atom_id,
+                flex_curve_1=self._flex_curve_1,
+                flex_curve_2=self._flex_curve_2,
             )
             self._bond_id = bond.id
         else:
@@ -747,6 +756,8 @@ class AddBondCommand(QUndoCommand):
                 stroke_px=self._stroke_px,
                 color=self._color,
                 donor_atom_id=self._donor_atom_id,
+                flex_curve_1=self._flex_curve_1,
+                flex_curve_2=self._flex_curve_2,
             )
         self._view.add_bond_item(bond)
         if self._demoted_explicit_atoms is None:
@@ -796,6 +807,8 @@ class ChangeBondCommand(QUndoCommand):
         new_stereo: Optional[BondStereo] = None,
         new_is_aromatic: Optional[bool] = None,
         new_donor_atom_id: Optional[int] | object = _DONOR_UNSET,
+        new_flex_curve_1: Optional[float] | object = _FLEX_CURVE_UNSET,
+        new_flex_curve_2: Optional[float] | object = _FLEX_CURVE_UNSET,
     ) -> None:
         """Inicializa el comando de cambio de enlace.
 
@@ -808,6 +821,8 @@ class ChangeBondCommand(QUndoCommand):
             new_stereo: Nueva estereoquímica.
             new_is_aromatic: Nueva bandera de aromaticidad.
             new_donor_atom_id: Nuevo átomo donador (si aplica).
+            new_flex_curve_1: Curvatura normalizada de control 1 (estilo FLEX).
+            new_flex_curve_2: Curvatura normalizada de control 2 (estilo FLEX).
         """
         super().__init__("Change bond")
         self._model = model
@@ -819,6 +834,8 @@ class ChangeBondCommand(QUndoCommand):
         self._old_stereo = bond.stereo
         self._old_is_aromatic = bond.is_aromatic
         self._old_donor_atom_id = getattr(bond, "donor_atom_id", None)
+        self._old_flex_curve_1 = getattr(bond, "flex_curve_1", None)
+        self._old_flex_curve_2 = getattr(bond, "flex_curve_2", None)
         self._new_order = new_order if new_order is not None else bond.order
         self._new_style = new_style if new_style is not None else bond.style
         self._new_stereo = new_stereo if new_stereo is not None else bond.stereo
@@ -830,6 +847,16 @@ class ChangeBondCommand(QUndoCommand):
             if new_donor_atom_id is _DONOR_UNSET
             else new_donor_atom_id
         )
+        self._new_flex_curve_1 = (
+            self._old_flex_curve_1
+            if new_flex_curve_1 is _FLEX_CURVE_UNSET
+            else new_flex_curve_1
+        )
+        self._new_flex_curve_2 = (
+            self._old_flex_curve_2
+            if new_flex_curve_2 is _FLEX_CURVE_UNSET
+            else new_flex_curve_2
+        )
 
     def redo(self) -> None:
         """Aplica el cambio de propiedades del enlace."""
@@ -840,6 +867,8 @@ class ChangeBondCommand(QUndoCommand):
             stereo=self._new_stereo,
             is_aromatic=self._new_is_aromatic,
             donor_atom_id=self._new_donor_atom_id,
+            flex_curve_1=self._new_flex_curve_1,
+            flex_curve_2=self._new_flex_curve_2,
         )
         self._view.update_bond_item(self._bond_id)
 
@@ -852,6 +881,8 @@ class ChangeBondCommand(QUndoCommand):
             stereo=self._old_stereo,
             is_aromatic=self._old_is_aromatic,
             donor_atom_id=self._old_donor_atom_id,
+            flex_curve_1=self._old_flex_curve_1,
+            flex_curve_2=self._old_flex_curve_2,
         )
         self._view.update_bond_item(self._bond_id)
 

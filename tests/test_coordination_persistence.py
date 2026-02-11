@@ -134,6 +134,33 @@ class CoordinationPersistenceTest(unittest.TestCase):
         self.assertEqual(bond.style, BondStyle.COORDINATION)
         self.assertEqual(bond.donor_atom_id, 1)
 
+    def test_roundtrip_flexible_bond_style(self):
+        canvas = _FakeCanvas()
+        a1 = canvas.model.add_atom("O", 0.0, 0.0)
+        a2 = canvas.model.add_atom("O", 90.0, 0.0)
+        canvas.model.add_bond(
+            a1.id,
+            a2.id,
+            style=BondStyle.FLEX,
+            order=1,
+            flex_curve_1=0.35,
+            flex_curve_2=-0.28,
+        )
+
+        data = PersistenceManager.save_to_dict(canvas)
+        self.assertEqual(data["model"]["bonds"][0]["style"], BondStyle.FLEX.value)
+        self.assertEqual(data["model"]["bonds"][0]["type"], BondStyle.FLEX.value)
+        self.assertEqual(data["model"]["bonds"][0]["flex_curve_1"], 0.35)
+        self.assertEqual(data["model"]["bonds"][0]["flex_curve_2"], -0.28)
+
+        restored = _FakeCanvas()
+        PersistenceManager.load_from_dict(data, restored)
+        bond = next(iter(restored.model.bonds.values()))
+        self.assertEqual(bond.style, BondStyle.FLEX)
+        self.assertIsNone(bond.donor_atom_id)
+        self.assertEqual(bond.flex_curve_1, 0.35)
+        self.assertEqual(bond.flex_curve_2, -0.28)
+
 
 if __name__ == "__main__":
     unittest.main()

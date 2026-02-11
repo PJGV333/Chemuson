@@ -44,6 +44,41 @@ class MolGraphTest(unittest.TestCase):
         self.assertEqual(updated.order, 3)
         self.assertEqual(updated.style, BondStyle.WAVY)
 
+    def test_update_bond_to_flexible_style(self):
+        """Verifica que el estilo flexible esté disponible en el modelo."""
+        graph = MolGraph()
+        a1 = graph.add_atom("C", 0.0, 0.0)
+        a2 = graph.add_atom("C", 1.0, 0.0)
+        bond = graph.add_bond(a1.id, a2.id, order=1, style=BondStyle.PLAIN, stereo=BondStereo.NONE)
+
+        graph.update_bond(bond.id, style=BondStyle.FLEX)
+        updated = graph.get_bond(bond.id)
+        self.assertEqual(updated.style, BondStyle.FLEX)
+        self.assertEqual(updated.order, 1)
+
+    def test_flexible_bond_curves_reset_when_style_changes(self):
+        """Al salir de FLEX, las curvas almacenadas deben limpiarse."""
+        graph = MolGraph()
+        a1 = graph.add_atom("C", 0.0, 0.0)
+        a2 = graph.add_atom("C", 1.0, 0.0)
+        bond = graph.add_bond(
+            a1.id,
+            a2.id,
+            order=1,
+            style=BondStyle.FLEX,
+            stereo=BondStereo.NONE,
+            flex_curve_1=0.3,
+            flex_curve_2=-0.25,
+        )
+        self.assertEqual(bond.flex_curve_1, 0.3)
+        self.assertEqual(bond.flex_curve_2, -0.25)
+
+        graph.update_bond(bond.id, style=BondStyle.PLAIN)
+        updated = graph.get_bond(bond.id)
+        self.assertEqual(updated.style, BondStyle.PLAIN)
+        self.assertIsNone(updated.flex_curve_1)
+        self.assertIsNone(updated.flex_curve_2)
+
     def test_validate_allows_hypervalent_phosphorus(self):
         """Verifica validate allows hypervalent phosphorus.
 

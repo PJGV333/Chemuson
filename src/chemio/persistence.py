@@ -118,6 +118,8 @@ class PersistenceManager:
                 "stroke_px": bond.stroke_px,
                 "color": bond.color,
                 "donor_atom_id": getattr(bond, "donor_atom_id", None),
+                "flex_curve_1": getattr(bond, "flex_curve_1", None),
+                "flex_curve_2": getattr(bond, "flex_curve_2", None),
             })
             
         # 2. Serializar elementos del canvas (flechas, brackets, texto)
@@ -207,6 +209,8 @@ class PersistenceManager:
                 stroke_px=bond_d.get("stroke_px"),
                 color=bond_d.get("color"),
                 donor_atom_id=donor,
+                flex_curve_1=bond_d.get("flex_curve_1"),
+                flex_curve_2=bond_d.get("flex_curve_2"),
             )
             
         canvas.model._next_atom_id = model_data.get("_next_atom_id", canvas.model._next_atom_id)

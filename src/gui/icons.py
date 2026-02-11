@@ -402,7 +402,26 @@ def draw_bond_icon(bond_type: str = 'single') -> QIcon:
         painter.setPen(pen)
         path = _build_wavy_icon_path(QPointF(x1, y1), QPointF(x2, y2))
         painter.drawPath(path)
-    
+    elif bond_type == 'flex':
+        # Curva suave para representar enlaces largos/flexibles.
+        pen = QPen(QColor('#333333'), 2.2)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+        dx, dy = x2 - x1, y2 - y1
+        length = math.hypot(dx, dy)
+        if length > 1e-6:
+            nx, ny = -dy / length, dx / length
+            ctrl = QPointF(
+                (x1 + x2) * 0.5 + nx * 6.0,
+                (y1 + y2) * 0.5 + ny * 6.0,
+            )
+            path = QPainterPath(QPointF(x1, y1))
+            path.quadTo(ctrl, QPointF(x2, y2))
+            painter.drawPath(path)
+        else:
+            painter.drawLine(x1, y1, x2, y2)
+
     painter.end()
     return QIcon(pixmap)
 

@@ -1037,6 +1037,8 @@ class BondItem(QGraphicsPathItem):
         self._stroke_px = bond.stroke_px
         self._color = bond.color
         self.donor_atom_id = getattr(bond, "donor_atom_id", None)
+        self.flex_curve_1 = getattr(bond, "flex_curve_1", None)
+        self.flex_curve_2 = getattr(bond, "flex_curve_2", None)
         self.render_aromatic_as_circle = render_aromatic_as_circle
         self._style = style
         self._label_shrink_start = 0.0
@@ -1124,6 +1126,8 @@ class BondItem(QGraphicsPathItem):
         self._stroke_px = bond.stroke_px
         self._color = bond.color
         self.donor_atom_id = getattr(bond, "donor_atom_id", None)
+        self.flex_curve_1 = getattr(bond, "flex_curve_1", None)
+        self.flex_curve_2 = getattr(bond, "flex_curve_2", None)
         self._update_z_order()
         self.update_positions(atom1, atom2)
 
@@ -2410,6 +2414,39 @@ class BondItem(QGraphicsPathItem):
             self.setPen(pen)
             self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
 
+        elif self.style == BondStyle.FLEX:
+            e1x, e1y, e2x, e2y = self._extend_line_endpoints(
+                p1x, p1y, p2x, p2y, ux, uy, trim_start, trim_end, stroke_px
+            )
+            render_len = math.hypot(e2x - e1x, e2y - e1y)
+            curve_1 = self.flex_curve_1
+            curve_2 = self.flex_curve_2
+            if curve_1 is None and curve_2 is None:
+                default_curve = 0.22 * offset_sign
+                curve_1 = default_curve
+                curve_2 = default_curve
+            elif curve_1 is None:
+                curve_1 = curve_2
+            elif curve_2 is None:
+                curve_2 = curve_1
+            curve_1 = float(curve_1)
+            curve_2 = float(curve_2)
+            ctrl_1x = e1x + ux * render_len * 0.33 + nx * render_len * curve_1
+            ctrl_1y = e1y + uy * render_len * 0.33 + ny * render_len * curve_1
+            ctrl_2x = e1x + ux * render_len * 0.67 + nx * render_len * curve_2
+            ctrl_2y = e1y + uy * render_len * 0.67 + ny * render_len * curve_2
+            path = QPainterPath(QPointF(e1x, e1y))
+            path.cubicTo(
+                QPointF(ctrl_1x, ctrl_1y),
+                QPointF(ctrl_2x, ctrl_2y),
+                QPointF(e2x, e2y),
+            )
+            pen = QPen(color, stroke_px)
+            pen.setCapStyle(self._style.cap_style)
+            pen.setJoinStyle(self._style.join_style)
+            self.setPen(pen)
+            self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+
         self.setPath(path)
 
     def set_style(self, style: DrawingStyle, atom1: Atom, atom2: Atom) -> None:
@@ -3560,6 +3597,34 @@ class PreviewBondItem(QGraphicsPathItem):
         path = QPainterPath()
         path.moveTo(p1)
         path.lineTo(p2)
+        self.setPath(path)
+        if not self.isVisible():
+            self.setVisible(True)
+
+    def update_flex_curve(self, p1: QPointF, p2: QPointF, curve_1: float, curve_2: float) -> None:
+        """Actualiza vista previa de enlace FLEX usando Bezier cúbica."""
+        dx = p2.x() - p1.x()
+        dy = p2.y() - p1.y()
+        length = math.hypot(dx, dy)
+        if length <= 1e-6:
+            self.update_line(p1, p2)
+            return
+        ux = dx / length
+        uy = dy / length
+        nx = -uy
+        ny = ux
+        c1 = float(curve_1)
+        c2 = float(curve_2)
+        cp1 = QPointF(
+            p1.x() + ux * length * 0.33 + nx * length * c1,
+            p1.y() + uy * length * 0.33 + ny * length * c1,
+        )
+        cp2 = QPointF(
+            p1.x() + ux * length * 0.67 + nx * length * c2,
+            p1.y() + uy * length * 0.67 + ny * length * c2,
+        )
+        path = QPainterPath(p1)
+        path.cubicTo(cp1, cp2, p2)
         self.setPath(path)
         if not self.isVisible():
             self.setVisible(True)

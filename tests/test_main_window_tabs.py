@@ -78,3 +78,23 @@ def test_open_file_path_creates_new_tab(tmp_path) -> None:
 
     assert window.tabs.count() == initial + 1
     assert window._canvas_file_paths[window.canvas] == os.path.abspath(str(sample_path))
+
+
+def test_tab_change_clears_active_tool_selection() -> None:
+    window = ChemusonWindow()
+    first = window.canvas
+
+    window._on_file_new()
+    second = window.canvas
+
+    window.tabs.setCurrentWidget(first)
+    window.toolbar.bond_action.trigger()
+    assert window.toolbar.action_group.checkedAction() is not None
+    assert window.canvas.current_tool == "tool_bond"
+
+    window.tabs.setCurrentWidget(second)
+
+    assert window.canvas is second
+    assert not any(action.isChecked() for action in window.toolbar.action_group.actions())
+    assert window.canvas.current_tool == "tool_none"
+    assert window.canvas.state.active_tool == "tool_none"

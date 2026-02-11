@@ -359,6 +359,7 @@ class ChemusonCanvas(QGraphicsView):
         self._bond_zigzag_sign = 1
         self._drag_free_orientation = False
         self._bond_drag_start: Optional[QPointF] = None
+        self._flex_bond_pending: Optional[dict] = None
         self._arrow_start_pos: Optional[QPointF] = None
         self._arrow_end_pos: Optional[QPointF] = None
         self._arrow_curve_adjust_mode = False
@@ -993,6 +994,7 @@ class ChemusonCanvas(QGraphicsView):
         Side Effects:
             Puede modificar el estado interno o la escena.
         """
+        tool_id = tool_id or "tool_none"
         if tool_id.startswith("atom_"):
             self.state.default_element = tool_id.split("_", 1)[1]
             tool_id = "tool_atom"
@@ -1031,7 +1033,7 @@ class ChemusonCanvas(QGraphicsView):
             self._preview_arrow_item.hide_preview()
         self._clear_bracket_preview()
 
-        if tool_id in {"tool_select", "tool_select_lasso"}:
+        if tool_id in {"tool_select", "tool_select_lasso", "tool_none"}:
             self.setCursor(Qt.CursorShape.ArrowCursor)
             self.setDragMode(QGraphicsView.DragMode.NoDrag)
         else:
@@ -1173,6 +1175,14 @@ class ChemusonCanvas(QGraphicsView):
         scene_pos = self.mapToScene(event.pos())
         self._last_scene_pos = scene_pos
 
+        if self._drag_mode == "flex_adjust":
+            if event.button() == Qt.MouseButton.LeftButton:
+                self._commit_flex_bond()
+                return
+            if event.button() == Qt.MouseButton.RightButton:
+                self._cancel_drag()
+                return
+
         if not self._is_on_paper(scene_pos.x(), scene_pos.y()) and self.current_tool not in {"tool_select", "tool_select_lasso"}:
             super().mousePressEvent(event)
             return
@@ -1196,6 +1206,9 @@ class ChemusonCanvas(QGraphicsView):
 
         if event.button() != Qt.MouseButton.LeftButton:
             super().mousePressEvent(event)
+            return
+
+        if self.current_tool == "tool_none":
             return
 
         if self._pending_template_graph is not None:
@@ -1588,6 +1601,10 @@ class ChemusonCanvas(QGraphicsView):
             self._update_selection_drag(scene_pos)
             return
 
+        if self._drag_mode == "flex_adjust":
+            self._update_flex_bond_preview(scene_pos, event.modifiers())
+            return
+
         arrow_tools = {
             "tool_arrow_forward": "forward",
             "tool_arrow_forward_open": "forward_open",
@@ -1715,6 +1732,8 @@ class ChemusonCanvas(QGraphicsView):
             return
         if self._select_drag_mode is not None:
             self._finalize_selection_drag()
+            return
+        if self._drag_mode == "flex_adjust":
             return
         if self._drag_mode == "place_bond":
             self._finalize_bond(event.modifiers())
@@ -3902,6 +3921,8 @@ class ChemusonCanvas(QGraphicsView):
                         "stroke_px": bond.stroke_px,
                         "color": bond.color,
                         "donor_atom_id": getattr(bond, "donor_atom_id", None),
+                        "flex_curve_1": getattr(bond, "flex_curve_1", None),
+                        "flex_curve_2": getattr(bond, "flex_curve_2", None),
                     }
                 )
 
@@ -4065,6 +4086,8 @@ class ChemusonCanvas(QGraphicsView):
                 color=bond_d.get("color"),
                 ring_id=map_ring(bond_d.get("ring_id")),
                 donor_atom_id=donor_atom_id,
+                flex_curve_1=bond_d.get("flex_curve_1"),
+                flex_curve_2=bond_d.get("flex_curve_2"),
             )
             if has_undo_items:
                 self.undo_stack.push(cmd)
@@ -4804,6 +4827,8 @@ class ChemusonCanvas(QGraphicsView):
                 stroke_px=bond.stroke_px,
                 color=bond.color,
                 donor_atom_id=id_map.get(getattr(bond, "donor_atom_id", -1)),
+                flex_curve_1=getattr(bond, "flex_curve_1", None),
+                flex_curve_2=getattr(bond, "flex_curve_2", None),
             )
             self.undo_stack.push(cmd)
         self.undo_stack.endMacro()
@@ -4920,6 +4945,8 @@ class ChemusonCanvas(QGraphicsView):
                 stroke_px=bond.stroke_px,
                 color=bond.color,
                 donor_atom_id=id_map.get(getattr(bond, "donor_atom_id", -1)),
+                flex_curve_1=getattr(bond, "flex_curve_1", None),
+                flex_curve_2=getattr(bond, "flex_curve_2", None),
             )
             self.undo_stack.push(cmd)
         if attach_to_atom_id is not None and attach_template_id is not None:
@@ -10474,6 +10501,8 @@ class ChemusonCanvas(QGraphicsView):
         style: BondStyle,
         stereo: BondStereo,
         is_aromatic: bool,
+        flex_curve_1: Optional[float] = None,
+        flex_curve_2: Optional[float] = None,
     ) -> None:
         """Método auxiliar para  create or update bond.
 
@@ -10484,6 +10513,8 @@ class ChemusonCanvas(QGraphicsView):
             style: Descripción del parámetro.
             stereo: Descripción del parámetro.
             is_aromatic: Descripción del parámetro.
+            flex_curve_1: Curvatura normalizada de control 1 (estilo FLEX).
+            flex_curve_2: Curvatura normalizada de control 2 (estilo FLEX).
 
         Returns:
             Resultado de la operación o None.
@@ -10519,6 +10550,19 @@ class ChemusonCanvas(QGraphicsView):
                     existing.a2_id,
                     preferred=getattr(existing, "donor_atom_id", None),
                 )
+            new_flex_curve_1 = None
+            new_flex_curve_2 = None
+            if new_style == BondStyle.FLEX:
+                if flex_curve_1 is not None or flex_curve_2 is not None:
+                    new_flex_curve_1 = (
+                        float(flex_curve_1) if flex_curve_1 is not None else None
+                    )
+                    new_flex_curve_2 = (
+                        float(flex_curve_2) if flex_curve_2 is not None else None
+                    )
+                elif getattr(existing, "style", None) == BondStyle.FLEX:
+                    new_flex_curve_1 = getattr(existing, "flex_curve_1", None)
+                    new_flex_curve_2 = getattr(existing, "flex_curve_2", None)
             cmd = ChangeBondCommand(
                 self.model,
                 self,
@@ -10528,6 +10572,8 @@ class ChemusonCanvas(QGraphicsView):
                 new_stereo=new_stereo,
                 new_is_aromatic=new_is_aromatic,
                 new_donor_atom_id=new_donor_atom_id,
+                new_flex_curve_1=new_flex_curve_1,
+                new_flex_curve_2=new_flex_curve_2,
             )
             self.undo_stack.push(cmd)
             if new_is_aromatic:
@@ -10547,6 +10593,8 @@ class ChemusonCanvas(QGraphicsView):
             stereo,
             is_aromatic=is_aromatic,
             donor_atom_id=donor_atom_id,
+            flex_curve_1=flex_curve_1,
+            flex_curve_2=flex_curve_2,
         )
         self.undo_stack.push(cmd)
         if is_aromatic:
@@ -11118,6 +11166,7 @@ class ChemusonCanvas(QGraphicsView):
         """
         self._drag_mode = "none"
         self._drag_anchor = None
+        self._flex_bond_pending = None
         self._ring_last_vertices = None
         self._chain_last_points = None
         self._drag_free_orientation = False
@@ -11900,7 +11949,188 @@ class ChemusonCanvas(QGraphicsView):
             p1 = self._compute_default_bond_endpoint(p0, self._drag_anchor["id"])
         else:
             p1 = self._compute_bond_endpoint(p0, scene_pos, modifiers)
-        self._preview_bond_item.update_line(p0, p1)
+        if self.state.active_bond_style == BondStyle.FLEX:
+            curve_1, curve_2 = self._flex_curve_from_pointer(p0, p1, scene_pos, modifiers)
+            self._preview_bond_item.update_flex_curve(p0, p1, curve_1, curve_2)
+        else:
+            self._preview_bond_item.update_line(p0, p1)
+
+    def _flex_curve_from_pointer(
+        self,
+        start: QPointF,
+        end: QPointF,
+        pointer: QPointF,
+        modifiers: Qt.KeyboardModifiers,
+    ) -> tuple[float, float]:
+        """Calcula curvaturas normalizadas para enlaces FLEX."""
+        dx = end.x() - start.x()
+        dy = end.y() - start.y()
+        length = math.hypot(dx, dy)
+        if length <= 1e-6:
+            return 0.22, 0.22
+        ux = dx / length
+        uy = dy / length
+        nx = -uy
+        ny = ux
+        mid_x = (start.x() + end.x()) * 0.5
+        mid_y = (start.y() + end.y()) * 0.5
+        signed = ((pointer.x() - mid_x) * nx + (pointer.y() - mid_y) * ny) / length
+        magnitude = min(0.95, max(0.12, abs(signed)))
+        sign = -1.0 if signed < 0.0 else 1.0
+        if abs(signed) < 0.02:
+            sign = 1.0
+        c1 = sign * magnitude
+        # Shift activa curva compleja en "S" (controles opuestos).
+        if modifiers & Qt.KeyboardModifier.ShiftModifier:
+            c2 = -c1
+        else:
+            c2 = c1
+        return c1, c2
+
+    def _begin_flex_adjust_mode(
+        self,
+        p0: QPointF,
+        p1: QPointF,
+        anchor_id: Optional[int],
+        target_id: Optional[int],
+        use_default: bool,
+        modifiers: Qt.KeyboardModifiers,
+    ) -> None:
+        """Activa ajuste interactivo de curvatura para enlace FLEX."""
+        curve_1, curve_2 = self._flex_curve_from_pointer(p0, p1, self._last_scene_pos, modifiers)
+        self._flex_bond_pending = {
+            "p0": QPointF(p0),
+            "p1": QPointF(p1),
+            "anchor_id": anchor_id,
+            "target_id": target_id,
+            "use_default": bool(use_default),
+            "curve_1": float(curve_1),
+            "curve_2": float(curve_2),
+        }
+        self._drag_mode = "flex_adjust"
+        self._drag_anchor = None
+        self._drag_free_orientation = False
+        self._bond_drag_start = None
+        if self._overlays_ready:
+            self._optimize_zone.hide_zone()
+            self._preview_bond_item.update_flex_curve(p0, p1, curve_1, curve_2)
+
+    def _update_flex_bond_preview(
+        self,
+        scene_pos: QPointF,
+        modifiers: Qt.KeyboardModifiers,
+    ) -> None:
+        """Actualiza previsualización durante ajuste de enlace FLEX."""
+        pending = self._flex_bond_pending
+        if not pending:
+            return
+        p0 = pending["p0"]
+        p1 = pending["p1"]
+        curve_1, curve_2 = self._flex_curve_from_pointer(p0, p1, scene_pos, modifiers)
+        pending["curve_1"] = float(curve_1)
+        pending["curve_2"] = float(curve_2)
+        if self._overlays_ready:
+            self._preview_bond_item.update_flex_curve(p0, p1, curve_1, curve_2)
+
+    def _commit_flex_bond(self) -> None:
+        """Confirma creación del enlace FLEX con la curvatura previsualizada."""
+        pending = self._flex_bond_pending
+        if not pending:
+            self._cancel_drag()
+            return
+
+        p0 = QPointF(pending["p0"])
+        p1 = QPointF(pending["p1"])
+        anchor_id = pending["anchor_id"]
+        target_id = pending["target_id"]
+        use_default = bool(pending["use_default"])
+        curve_1 = float(pending["curve_1"])
+        curve_2 = float(pending["curve_2"])
+
+        order = 1
+        style = BondStyle.FLEX
+        stereo = BondStereo.NONE
+        is_aromatic = False
+
+        if anchor_id is None:
+            self.undo_stack.beginMacro("Add flexible bond")
+            anchor_cmd = AddAtomCommand(
+                self.model,
+                self,
+                self.state.default_element,
+                p0.x(),
+                p0.y(),
+                expected_bonds=1,
+            )
+            self.undo_stack.push(anchor_cmd)
+            anchor_id = anchor_cmd.atom_id
+            if target_id is not None:
+                self._create_or_update_bond(
+                    anchor_id,
+                    target_id,
+                    order,
+                    style,
+                    stereo,
+                    is_aromatic,
+                    flex_curve_1=curve_1,
+                    flex_curve_2=curve_2,
+                )
+                target_atom = self.model.get_atom(target_id)
+                final_p1 = QPointF(target_atom.x, target_atom.y)
+            else:
+                cmd = AddBondCommand(
+                    self.model,
+                    self,
+                    anchor_id,
+                    None,
+                    order,
+                    style,
+                    stereo,
+                    is_aromatic=is_aromatic,
+                    new_atom_element=self.state.default_element,
+                    new_atom_pos=(p1.x(), p1.y()),
+                    flex_curve_1=curve_1,
+                    flex_curve_2=curve_2,
+                )
+                self.undo_stack.push(cmd)
+                final_p1 = QPointF(p1)
+            self.undo_stack.endMacro()
+            self._update_bond_angle_state(p0, final_p1, use_default, anchor_id)
+            self._cancel_drag()
+            return
+
+        if target_id is not None:
+            self._create_or_update_bond(
+                anchor_id,
+                target_id,
+                order,
+                style,
+                stereo,
+                is_aromatic,
+                flex_curve_1=curve_1,
+                flex_curve_2=curve_2,
+            )
+            target_atom = self.model.get_atom(target_id)
+            final_p1 = QPointF(target_atom.x, target_atom.y)
+        else:
+            cmd = AddBondCommand(
+                self.model,
+                self,
+                anchor_id,
+                None,
+                order,
+                style,
+                stereo,
+                is_aromatic=is_aromatic,
+                new_atom_element=self.state.default_element,
+                new_atom_pos=(p1.x(), p1.y()),
+                flex_curve_1=curve_1,
+                flex_curve_2=curve_2,
+            )
+            self.undo_stack.push(cmd)
+            final_p1 = QPointF(p1)
+        self._update_bond_angle_state(p0, final_p1, use_default, anchor_id)
+        self._cancel_drag()
 
     def _finalize_bond(self, modifiers: Qt.KeyboardModifiers) -> None:
         """Método auxiliar para  finalize bond.
@@ -11965,6 +12195,17 @@ class ChemusonCanvas(QGraphicsView):
         if target_id is not None:
             target_atom = self.model.get_atom(target_id)
             final_p1 = QPointF(target_atom.x, target_atom.y)
+
+        if style == BondStyle.FLEX:
+            self._begin_flex_adjust_mode(
+                p0,
+                final_p1,
+                anchor_id,
+                target_id,
+                use_default,
+                modifiers,
+            )
+            return
 
         if anchor_id is None:
             self.undo_stack.beginMacro("Add bond")

@@ -818,7 +818,7 @@ class ChemusonWindow(QMainWindow):
         canvas = self._canvas_from_tab_index(index)
         if canvas is None:
             return
-        self._set_active_canvas(canvas)
+        self._set_active_canvas(canvas, clear_tool_selection=True)
 
     def _on_tab_close_requested(self, index: int) -> None:
         """Maneja cierre por botón X de una pestaña."""
@@ -889,7 +889,11 @@ class ChemusonWindow(QMainWindow):
             action.setChecked(checked)
             action.blockSignals(was_blocked)
 
-    def _set_active_canvas(self, canvas: ChemusonCanvas) -> None:
+    def _set_active_canvas(
+        self,
+        canvas: ChemusonCanvas,
+        clear_tool_selection: bool = False,
+    ) -> None:
         """Activa un canvas de pestaña y actualiza conexiones/estado de UI."""
         if canvas is None:
             return
@@ -914,9 +918,19 @@ class ChemusonWindow(QMainWindow):
             )
             self.appearance_dock.set_bond_caps(cap_mode)
         self._update_total_charge_indicator()
-        self._update_status(self.canvas.state.active_tool)
+        if clear_tool_selection:
+            self._clear_active_tool_selection()
+        else:
+            self._update_status(self.canvas.state.active_tool)
         if hasattr(self, "inspector_dock"):
             self.inspector_dock.update_selection(0, 0, 0, {})
+
+    def _clear_active_tool_selection(self) -> None:
+        """Limpia herramienta activa al cambiar de pestaña."""
+        self._current_tool_id = "tool_none"
+        self.toolbar.clear_tool_selection()
+        self.canvas.set_current_tool(self._current_tool_id)
+        self._update_status(self._current_tool_id)
 
     def _on_active_undo_index_changed(self, _index: int) -> None:
         """Actualiza widgets dependientes del estado del undo activo."""
@@ -2748,6 +2762,7 @@ class ChemusonWindow(QMainWindow):
                 suffix = " β"
             ring_label = f"{template_name}{suffix}".strip()
         tool_names = {
+            "tool_none": "Ninguna",
             "tool_select": "Seleccionar",
             "tool_select_lasso": "Seleccion (lazo)",
             "tool_bond": "Enlace",
