@@ -107,6 +107,24 @@ class MolGraphTest(unittest.TestCase):
             graph.add_bond(n.id, h.id, order=1)
         self.assertNotIn(n.id, graph.validate())
 
+    def test_validate_allows_tetramethylammonium_with_positive_charge(self):
+        """Verifica que una carga positiva permita valencia tetravalente en N."""
+        graph = MolGraph()
+        n = graph.add_atom("N", 0.0, 0.0, charge=1)
+        carbons = [graph.add_atom("C", float(k), 1.0) for k in range(4)]
+        for carbon in carbons:
+            graph.add_bond(n.id, carbon.id, order=1)
+        self.assertNotIn(n.id, graph.validate())
+
+    def test_validate_allows_pentavalent_carbon_when_charged(self):
+        """Verifica que añadir carga permita limpiar error visual en C hipervalente."""
+        graph = MolGraph()
+        c = graph.add_atom("C", 0.0, 0.0, charge=1)
+        hs = [graph.add_atom("H", float(k), 1.0) for k in range(5)]
+        for hydrogen in hs:
+            graph.add_bond(c.id, hydrogen.id, order=1)
+        self.assertNotIn(c.id, graph.validate())
+
     def test_validate_still_flags_overvalent_carbon(self):
         """Verifica validate still flags overvalent carbon.
 

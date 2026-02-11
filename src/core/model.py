@@ -534,6 +534,7 @@ class MolGraph:
             expected = MAX_VALENCE_MAP.get(atom.element)
             if expected is None:
                 continue
-            if bond_order_sum.get(atom_id, 0) > expected:
+            allowed_valence = expected + abs(int(getattr(atom, "charge", 0) or 0))
+            if bond_order_sum.get(atom_id, 0) > allowed_valence:
                 errors.append(atom_id)
         return errors
