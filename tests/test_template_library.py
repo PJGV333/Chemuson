@@ -1,12 +1,15 @@
 """Pruebas para biblioteca de plantillas de usuario."""
 
+import json
 import os
 import sys
+from pathlib import Path
 
 import pytest
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
+import gui.template_library as template_library
 from core.model import MolGraph
 from gui.template_library import DEFAULT_CATEGORY_USER, TemplateLibrary
 
@@ -64,3 +67,92 @@ def test_import_export_template_library_merge(tmp_path):
     assert added >= 1
     assert after >= before + 1
     assert any(tpl["name"] == "Cadena prueba" for tpl in target.list_templates())
+
+
+def test_normalize_repair_molblock_header_on_load(tmp_path):
+    """Debe reparar MOL con línea de comentario CTAB faltante."""
+    library_path = tmp_path / "library.json"
+    broken_molblock = (
+        "RDKit          3D\n\n"
+        "  2  1  0  0  0  0  0  0  0  0999 V2000\n"
+        "   34.6410   20.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "    0.0000   40.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "  1  2  1  0\n"
+        "M  END\n"
+    )
+    raw = {
+        "version": 1,
+        "categories": [DEFAULT_CATEGORY_USER],
+        "templates": [
+            {
+                "id": "tpl_header_fix",
+                "name": "HeaderFix",
+                "category": DEFAULT_CATEGORY_USER,
+                "molblock": broken_molblock,
+                "smiles": "CC",
+            }
+        ],
+    }
+    library_path.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+    lib = TemplateLibrary(library_path)
+
+    molblock = lib.get_template("tpl_header_fix")["molblock"]
+    lines = molblock.splitlines()
+    assert lines[2] == ""
+    assert "V2000" in lines[3]
+
+
+def test_graph_from_template_falls_back_to_smiles_when_molblock_fails(tmp_path, monkeypatch):
+    """Si el MOL falla, debe usar SMILES como respaldo."""
+    lib = TemplateLibrary(tmp_path / "library.json")
+    tpl = lib.add_template(
+        "Fallback",
+        DEFAULT_CATEGORY_USER,
+        "MOL INVALIDO",
+        smiles="C",
+    )
+
+    def _fail_mol(_molblock: str):
+        raise ValueError("Mol inválido")
+
+    def _from_smiles(_smiles: str):
+        graph = MolGraph()
+        graph.add_atom("C", 0.0, 0.0)
+        return graph
+
+    monkeypatch.setattr("gui.template_library.molfile_to_molgraph", _fail_mol)
+    monkeypatch.setattr("gui.template_library.smiles_to_molgraph", _from_smiles)
+
+    graph = lib.graph_from_template(tpl["id"])
+    assert len(graph.atoms) == 1
+    assert len(graph.bonds) == 0
+
+
+def test_default_library_path_linux_uses_xdg(monkeypatch):
+    """En Linux debe preferir XDG_CONFIG_HOME."""
+    monkeypatch.setattr(template_library, "_is_windows_platform", lambda: False)
+    monkeypatch.delenv("CHEMUSON_CONFIG_HOME", raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", "/tmp/chemuson-xdg")
+    path = template_library._default_library_path()
+    assert path == Path("/tmp/chemuson-xdg") / "Chemuson" / "template_library.json"
+
+
+def test_default_library_path_windows_uses_appdata(monkeypatch):
+    """En Windows debe guardar en APPDATA cuando está disponible."""
+    monkeypatch.setattr(template_library, "_is_windows_platform", lambda: True)
+    monkeypatch.delenv("CHEMUSON_CONFIG_HOME", raising=False)
+    monkeypatch.setenv("APPDATA", r"C:\Users\Ana\AppData\Roaming")
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    path = template_library._default_library_path()
+    assert str(path).startswith(r"C:\Users\Ana\AppData\Roaming")
+    assert str(path).endswith("Chemuson/template_library.json")
+
+
+def test_default_library_path_honors_chemuson_config_home(monkeypatch):
+    """CHEMUSON_CONFIG_HOME debe tener prioridad en cualquier plataforma."""
+    monkeypatch.setattr(template_library, "_is_windows_platform", lambda: True)
+    monkeypatch.setenv("CHEMUSON_CONFIG_HOME", "/tmp/chemuson-portable")
+    monkeypatch.setenv("APPDATA", r"C:\Users\Ana\AppData\Roaming")
+    path = template_library._default_library_path()
+    assert path == Path("/tmp/chemuson-portable") / "Chemuson" / "template_library.json"

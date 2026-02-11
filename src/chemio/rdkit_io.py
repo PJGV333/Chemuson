@@ -6,10 +6,11 @@ SMILES, MOL y SVG. Incluye rutas de respaldo para exportar sin RDKit.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Dict, Iterable, Optional, Tuple
 
-from core.model import BondStyle, BondStereo, MolGraph
+from core.model import ATOMIC_NUMBERS, BondStyle, BondStereo, MolGraph
 
 try:
     from rdkit import Chem
@@ -142,6 +143,8 @@ def molgraph_to_smiles(molgraph: MolGraph) -> str:
     Returns:
         SMILES canónico o aproximado en el camino de respaldo.
     """
+    if _graph_requires_rdkit_fallback(molgraph):
+        return _molgraph_to_smiles_fallback(molgraph)
     if _rdkit_available():
         try:
             mol = molgraph_to_rdkit(molgraph)
@@ -162,6 +165,8 @@ def molgraph_to_molfile(molgraph: MolGraph) -> str:
     Returns:
         Cadena MOL. Si RDKit falla, usa un exportador interno básico.
     """
+    if _graph_requires_rdkit_fallback(molgraph):
+        return _molgraph_to_molfile_fallback(molgraph)
     if _rdkit_available():
         try:
             mol = molgraph_to_rdkit(molgraph)
@@ -189,6 +194,250 @@ def molgraph_to_svg(molgraph: MolGraph, size: Tuple[int, int] = (300, 200)) -> s
     return drawer.GetDrawingText()
 
 
+def _looks_like_counts_line(line: str) -> bool:
+    """Heurística para identificar la línea de conteo de un MOL V2000/V3000."""
+    text = str(line).rstrip()
+    if not text:
+        return False
+    if "V2000" in text or "V3000" in text:
+        return True
+    padded = f"{text:<6}"[:6]
+    left = padded[:3].strip()
+    right = padded[3:6].strip()
+    return left.isdigit() and right.isdigit()
+
+
+def _parse_counts(line: str) -> Optional[tuple[int, int]]:
+    """Extrae número de átomos/enlaces desde la línea de conteo."""
+    text = str(line or "")
+    if not text:
+        return None
+    try:
+        return int(text[0:3]), int(text[3:6])
+    except Exception:
+        pass
+    ints = re.findall(r"-?\d+", text)
+    if len(ints) < 2:
+        return None
+    try:
+        return int(ints[0]), int(ints[1])
+    except Exception:
+        return None
+
+
+def _find_counts_line_index(lines: list[str]) -> Optional[int]:
+    """Localiza la línea de conteo CTAB en las primeras líneas del bloque."""
+    limit = min(len(lines), 8)
+    for idx in range(limit):
+        if _looks_like_counts_line(lines[idx]):
+            if _parse_counts(lines[idx]) is not None:
+                return idx
+    return None
+
+
+def _is_float_token(token: str) -> bool:
+    """Verifica si un token representa un número real."""
+    try:
+        float(token)
+        return True
+    except Exception:
+        return False
+
+
+def _parse_atom_line(line: str) -> tuple[float, float, str]:
+    """Parsea coordenadas XY y símbolo desde una línea de átomo MOL."""
+    tokens = line.split()
+    if (
+        len(tokens) >= 4
+        and _is_float_token(tokens[0])
+        and _is_float_token(tokens[1])
+        and _is_float_token(tokens[2])
+    ):
+        x = float(tokens[0])
+        y = float(tokens[1])
+        symbol = tokens[3].strip() or "C"
+        return x, y, symbol
+    try:
+        x = float(line[0:10])
+        y = float(line[10:20])
+    except Exception as exc:
+        raise ValueError(f"Línea de átomo inválida: {line!r}") from exc
+    symbol = line[31:34].strip() if len(line) >= 34 else ""
+    if not symbol:
+        symbol = "C"
+    return x, y, symbol
+
+
+def _parse_bond_line(line: str) -> tuple[int, int, int]:
+    """Parsea índices de átomos y tipo de enlace desde una línea MOL."""
+    try:
+        return int(line[0:3]), int(line[3:6]), int(line[6:9])
+    except Exception:
+        tokens = line.split()
+        if len(tokens) < 3:
+            raise ValueError(f"Línea de enlace inválida: {line!r}")
+        return int(tokens[0]), int(tokens[1]), int(tokens[2])
+
+
+def _mol_symbol_requires_fallback(symbol: str) -> bool:
+    """Indica si un símbolo no es elemento estándar y conviene parseo local."""
+    clean = str(symbol or "").strip()
+    if not clean:
+        return True
+    if clean in ATOMIC_NUMBERS:
+        return False
+    if clean in {"*", "A", "Q", "L", "LP", "Du", "R", "R#"}:
+        return False
+    return True
+
+
+def _graph_requires_rdkit_fallback(molgraph: MolGraph) -> bool:
+    """Determina si conviene evitar RDKit por símbolos no estándar."""
+    for atom in molgraph.atoms.values():
+        if _mol_symbol_requires_fallback(atom.element):
+            return True
+    return False
+
+
+def _should_use_molfile_fallback(molfile: str) -> bool:
+    """Detecta MOL con pseudoátomos/estructura no compatible con RDKit parser."""
+    text = str(molfile or "")
+    if not text:
+        return True
+    lines = text.splitlines()
+    counts_idx = _find_counts_line_index(lines)
+    if counts_idx is None:
+        return True
+    counts = _parse_counts(lines[counts_idx])
+    if counts is None:
+        return True
+    atom_count, _ = counts
+    atom_start = counts_idx + 1
+    if atom_count < 0 or atom_start + atom_count > len(lines):
+        return True
+    for i in range(atom_count):
+        _, _, symbol = _parse_atom_line(lines[atom_start + i])
+        if _mol_symbol_requires_fallback(symbol):
+            return True
+    return False
+
+
+def _molfile_to_molgraph_fallback(molfile: str) -> MolGraph:
+    """Importa MOL mediante parser interno tolerante (sin RDKit)."""
+    text = str(molfile or "")
+    if not text.strip():
+        raise ValueError("Mol inválido")
+    lines = text.splitlines()
+    counts_idx = _find_counts_line_index(lines)
+    if counts_idx is None:
+        raise ValueError("Mol inválido")
+    counts = _parse_counts(lines[counts_idx])
+    if counts is None:
+        raise ValueError("Mol inválido")
+    atom_count, bond_count = counts
+    if atom_count < 0 or bond_count < 0:
+        raise ValueError("Mol inválido")
+
+    atom_start = counts_idx + 1
+    bond_start = atom_start + atom_count
+    if bond_start + bond_count > len(lines):
+        raise ValueError("Mol inválido")
+
+    graph = MolGraph()
+    atom_ids: list[int] = []
+    for offset in range(atom_count):
+        x, y, symbol = _parse_atom_line(lines[atom_start + offset])
+        atom = graph.add_atom(symbol, x, y, is_explicit=(symbol != "C"))
+        atom_ids.append(atom.id)
+
+    for offset in range(bond_count):
+        a1_idx, a2_idx, bond_type = _parse_bond_line(lines[bond_start + offset])
+        if not (1 <= a1_idx <= len(atom_ids) and 1 <= a2_idx <= len(atom_ids)):
+            continue
+        order = 1
+        aromatic = False
+        if bond_type == 2:
+            order = 2
+        elif bond_type == 3:
+            order = 3
+        elif bond_type == 4:
+            aromatic = True
+            order = 1
+        graph.add_bond(
+            atom_ids[a1_idx - 1],
+            atom_ids[a2_idx - 1],
+            order=order,
+            style=BondStyle.PLAIN,
+            stereo=BondStereo.NONE,
+            is_aromatic=aromatic,
+        )
+
+    aliases: dict[int, str] = {}
+    idx = bond_start + bond_count
+    while idx < len(lines):
+        line = lines[idx]
+        if line.startswith("M  END"):
+            break
+        if line.startswith("A  "):
+            try:
+                atom_idx = int(line[3:].strip())
+            except Exception:
+                parts = line.split()
+                atom_idx = int(parts[1]) if len(parts) > 1 else -1
+            if idx + 1 < len(lines):
+                aliases[atom_idx] = lines[idx + 1].strip()
+                idx += 2
+                continue
+        if line.startswith("M  CHG"):
+            tokens = line.split()
+            if len(tokens) >= 3:
+                try:
+                    count = int(tokens[2])
+                except Exception:
+                    count = 0
+                cursor = 3
+                for _ in range(count):
+                    if cursor + 1 >= len(tokens):
+                        break
+                    try:
+                        atom_idx = int(tokens[cursor])
+                        charge = int(tokens[cursor + 1])
+                    except Exception:
+                        break
+                    cursor += 2
+                    if 1 <= atom_idx <= len(atom_ids):
+                        graph.get_atom(atom_ids[atom_idx - 1]).charge = charge
+        idx += 1
+
+    for atom_idx, label in aliases.items():
+        if 1 <= atom_idx <= len(atom_ids):
+            atom = graph.get_atom(atom_ids[atom_idx - 1])
+            atom.element = label
+            atom.is_explicit = label != "C"
+
+    _scale_to_default(graph)
+    return graph
+
+
+def normalize_molblock_header(molfile: str) -> str:
+    """Normaliza cabecera CTAB para tolerar MOL con línea de comentario omitida.
+
+    Algunos bloques guardados en bibliotecas pueden perder una línea de
+    encabezado al aplicar `strip()`, desplazando la línea de conteo de CTAB.
+    Esta función inserta una línea vacía cuando detecta ese patrón.
+    """
+    text = str(molfile or "")
+    if not text:
+        return ""
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    lines = normalized.split("\n")
+    if len(lines) >= 3 and _looks_like_counts_line(lines[2]):
+        line4 = lines[3] if len(lines) > 3 else ""
+        if not _looks_like_counts_line(line4):
+            lines.insert(2, "")
+    return "\n".join(lines)
+
+
 def molfile_to_molgraph(molfile: str) -> MolGraph:
     """Importa un bloque MOL (V2000) a `MolGraph`.
 
@@ -198,9 +447,24 @@ def molfile_to_molgraph(molfile: str) -> MolGraph:
     Returns:
         Grafo molecular equivalente.
     """
-    _require_rdkit()
-    mol = Chem.MolFromMolBlock(molfile, sanitize=True)
-    return rdkit_to_molgraph(mol)
+    normalized = normalize_molblock_header(molfile)
+    if _should_use_molfile_fallback(normalized):
+        return _molfile_to_molgraph_fallback(normalized)
+    if not _rdkit_available():
+        return _molfile_to_molgraph_fallback(normalized)
+    try:
+        mol = Chem.MolFromMolBlock(normalized, sanitize=True)
+        if mol is not None:
+            return rdkit_to_molgraph(mol)
+    except Exception:
+        pass
+    try:
+        mol = Chem.MolFromMolBlock(normalized, sanitize=False)
+        if mol is not None:
+            return rdkit_to_molgraph(mol)
+    except Exception:
+        pass
+    return _molfile_to_molgraph_fallback(normalized)
 
 
 def smiles_to_molgraph(smiles: str) -> MolGraph:
@@ -559,17 +823,23 @@ def _molgraph_to_molfile_fallback(molgraph: MolGraph) -> str:
     atoms = [molgraph.atoms[atom_id] for atom_id in sorted(molgraph.atoms.keys())]
     bonds = [molgraph.bonds[bond_id] for bond_id in sorted(molgraph.bonds.keys())]
     atom_index = {atom.id: idx + 1 for idx, atom in enumerate(atoms)}
+    aliases: list[tuple[int, str]] = []
 
     lines = [
         "Chemuson",
         "Chemuson",
         "",
-        f"{len(atoms):>3}{len(bonds):>3}  0  0  0  0  0  0  0  0  0  0  0  0 V2000",
+        f"{len(atoms):>3}{len(bonds):>3}  0  0  0  0  0  0  0  0999 V2000",
     ]
 
-    for atom in atoms:
+    for idx, atom in enumerate(atoms, start=1):
+        symbol = atom.element.strip() or "C"
+        symbol_for_line = symbol
+        if _mol_symbol_requires_fallback(symbol) or len(symbol) > 3:
+            symbol_for_line = "*"
+            aliases.append((idx, symbol))
         lines.append(
-            f"{atom.x:>10.4f}{atom.y:>10.4f}{0.0:>10.4f} {atom.element:<3} 0  0  0  0  0  0  0  0  0  0  0  0"
+            f"{atom.x:>10.4f}{atom.y:>10.4f}{0.0:>10.4f} {symbol_for_line:<3} 0  0  0  0  0  0  0  0  0  0  0  0"
         )
 
     for bond in bonds:
@@ -588,6 +858,10 @@ def _molgraph_to_molfile_fallback(molgraph: MolGraph) -> str:
         for idx, charge in chunk:
             parts.append(f"{idx:>3}{charge:>3}")
         lines.append(f"M  CHG{''.join(parts)}")
+
+    for idx, label in aliases:
+        lines.append(f"A  {idx:>3}")
+        lines.append(label)
 
     lines.append("M  END")
     return "\n".join(lines)

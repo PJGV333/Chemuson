@@ -14,6 +14,7 @@ from chemio.rdkit_io import (
     molfile_to_molgraph,
     molgraph_to_molfile,
     molgraph_to_smiles,
+    normalize_molblock_header,
     smiles_to_molgraph,
 )
 from core.model import BondStereo, BondStyle, MolGraph
@@ -24,12 +25,37 @@ LIBRARY_VERSION = 1
 DEFAULT_CATEGORY_USER = "Usuario"
 
 
+def _is_windows_platform() -> bool:
+    """Indica si la plataforma de ejecución es Windows."""
+    return os.name == "nt"
+
+
+def _default_config_dir() -> Path:
+    """Devuelve directorio de configuración por plataforma.
+
+    Prioriza `CHEMUSON_CONFIG_HOME` para soportar modo portable controlado
+    por variable de entorno.
+    """
+    override = os.environ.get("CHEMUSON_CONFIG_HOME")
+    if override:
+        return Path(override)
+
+    if _is_windows_platform():
+        base = os.environ.get("APPDATA") or os.environ.get("LOCALAPPDATA")
+        if base:
+            return Path(base)
+        home = Path(os.path.expanduser("~"))
+        return home / "AppData" / "Roaming"
+
+    base = os.environ.get("XDG_CONFIG_HOME")
+    if base:
+        return Path(base)
+    return Path(os.path.expanduser("~")) / ".config"
+
+
 def _default_library_path() -> Path:
     """Devuelve la ruta por defecto de la biblioteca de plantillas."""
-    base = os.environ.get("XDG_CONFIG_HOME")
-    if not base:
-        base = os.path.join(os.path.expanduser("~"), ".config")
-    return Path(base) / "Chemuson" / "template_library.json"
+    return _default_config_dir() / "Chemuson" / "template_library.json"
 
 
 def _clean_name(value: str, fallback: str) -> str:
@@ -160,7 +186,7 @@ class TemplateLibrary:
                 continue
             name = _clean_name(template.get("name", ""), "")
             category = _clean_name(template.get("category", DEFAULT_CATEGORY_USER), DEFAULT_CATEGORY_USER)
-            molblock = str(template.get("molblock", "")).strip()
+            molblock = normalize_molblock_header(str(template.get("molblock", ""))).rstrip()
             smiles = str(template.get("smiles", "")).strip()
             if not name:
                 continue
@@ -282,7 +308,7 @@ class TemplateLibrary:
         """Agrega una plantilla cruda (molblock + smiles opcional)."""
         template_name = _clean_name(name, "Plantilla")
         template_category = self.add_category(category)
-        clean_molblock = str(molblock or "").strip()
+        clean_molblock = normalize_molblock_header(str(molblock or "")).rstrip()
         clean_smiles = str(smiles or "").strip()
         if not clean_molblock and not clean_smiles:
             raise ValueError("La plantilla requiere molblock o smiles")
@@ -332,9 +358,15 @@ class TemplateLibrary:
     def graph_from_template(self, template_id: str) -> MolGraph:
         """Convierte una plantilla almacenada a `MolGraph`."""
         template = self.get_template(template_id)
-        molblock = str(template.get("molblock", "")).strip()
+        molblock = str(template.get("molblock", ""))
         if molblock:
-            return molfile_to_molgraph(molblock)
+            try:
+                return molfile_to_molgraph(molblock)
+            except Exception:
+                smiles = str(template.get("smiles", "")).strip()
+                if smiles:
+                    return smiles_to_molgraph(smiles)
+                raise
         smiles = str(template.get("smiles", "")).strip()
         if smiles:
             return smiles_to_molgraph(smiles)
