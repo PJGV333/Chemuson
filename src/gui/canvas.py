@@ -11986,12 +11986,12 @@ class ChemusonCanvas(QGraphicsView):
                 raw_angle = 90.0 if -(dy) >= 0 else 270.0
 
         if not self.state.fixed_angles or use_alt:
-            base_angle = raw_angle
+            first_angle = raw_angle
         else:
             cursor_angle = raw_angle
             if use_optimize and anchor_id is not None:
                 cursor_angle = self._select_preferred_angle(anchor_id, cursor_angle, 1, False)
-            base_angle, _ = self._pick_bond_direction_deg(
+            first_angle, _ = self._pick_bond_direction_deg(
                 p0,
                 anchor_id,
                 cursor_angle,
@@ -12004,30 +12004,19 @@ class ChemusonCanvas(QGraphicsView):
 
         n = max(1, min(CHAIN_MAX_BONDS, int(round(dist / self.state.bond_length))))
         points = [p0]
-        geometry = self._bond_geometry(anchor_id, 1, False)
-        zigzag = geometry == "sp3" and not use_alt and self.state.fixed_angles
+        # La herramienta de cadena siempre debe zigzaguear (si ángulos fijos están activos),
+        # incluso cuando el ancla está en centros sp2/aromáticos.
+        zigzag = not use_alt and self.state.fixed_angles
         sp3_angle = self._sp3_display_angle_deg()
-        zigzag_delta = (180.0 - sp3_angle) / 2.0
-        if zigzag:
-            incoming = (
-                self._incoming_angle_deg(anchor_id)
-                if anchor_id is not None
-                else None
-            )
-            if incoming is not None:
-                target_angles = [
-                    (incoming + sp3_angle) % 360.0,
-                    (incoming - sp3_angle) % 360.0,
-                ]
-                axis_options = [(target - zigzag_delta) % 360.0 for target in target_angles]
-                axis_options = self._snap_angles_to_grid(axis_options)
-                base_angle = min(axis_options, key=lambda ang: angle_distance_deg(ang, base_angle))
+        zigzag_turn = 180.0 - sp3_angle
+        turn_pref = ((raw_angle - first_angle + 180.0) % 360.0) - 180.0
+        zigzag_sign = 1.0 if turn_pref >= 0.0 else -1.0
         current = p0
         for i in range(1, n + 1):
-            if zigzag:
-                step_angle = base_angle + (zigzag_delta if i % 2 == 1 else -zigzag_delta)
+            if zigzag and i % 2 == 0:
+                step_angle = first_angle + zigzag_sign * zigzag_turn
             else:
-                step_angle = base_angle
+                step_angle = first_angle
             next_point = endpoint_from_angle_len(current, step_angle, self.state.bond_length)
             points.append(next_point)
             current = next_point
