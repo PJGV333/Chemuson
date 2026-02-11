@@ -26,6 +26,7 @@ from PyQt6.QtGui import QAction, QActionGroup, QKeySequence, QIcon, QPainter, QP
 from PyQt6.QtPrintSupport import QPrinter
 from typing import Optional
 from dataclasses import replace
+import math
 
 from gui.canvas import ChemusonCanvas
 from gui.periodic_table import PeriodicTableDialog
@@ -2088,6 +2089,60 @@ class ChemusonWindow(QMainWindow):
     # -------------------------------------------------------------------------
     # Structure Menu Handlers
     # -------------------------------------------------------------------------
+    @staticmethod
+    def _coords_center(coords: dict[int, tuple[float, float]]) -> tuple[float, float]:
+        """Calcula el centro geométrico de un conjunto de coordenadas."""
+        xs = [x for x, _ in coords.values()]
+        ys = [y for _, y in coords.values()]
+        if not xs:
+            return 0.0, 0.0
+        return sum(xs) / len(xs), sum(ys) / len(ys)
+
+    @staticmethod
+    def _average_bond_length(coords: dict[int, tuple[float, float]], bonds) -> float:
+        """Promedio de longitudes de enlaces disponibles en `coords`."""
+        lengths: list[float] = []
+        for bond in bonds:
+            p1 = coords.get(bond.a1_id)
+            p2 = coords.get(bond.a2_id)
+            if p1 is None or p2 is None:
+                continue
+            dx = p2[0] - p1[0]
+            dy = p2[1] - p1[1]
+            dist = math.hypot(dx, dy)
+            if dist > 1e-6:
+                lengths.append(dist)
+        if not lengths:
+            return 0.0
+        return sum(lengths) / len(lengths)
+
+    @classmethod
+    def _rescale_coords_to_bond_length(
+        cls,
+        coords: dict[int, tuple[float, float]],
+        bonds,
+        target_length: float,
+    ) -> dict[int, tuple[float, float]]:
+        """Reescala coordenadas alrededor de su centro para ajustar longitud media."""
+        if not coords:
+            return {}
+        target = float(target_length)
+        if target <= 1e-6:
+            return dict(coords)
+        current = cls._average_bond_length(coords, bonds)
+        if current <= 1e-6:
+            return dict(coords)
+        scale = target / current
+        if not math.isfinite(scale):
+            return dict(coords)
+        # Evita explosiones numéricas por geometrías degeneradas.
+        scale = max(0.05, min(200.0, scale))
+        cx, cy = cls._coords_center(coords)
+        return {
+            atom_id: (cx + (x - cx) * scale, cy + (y - cy) * scale)
+            for atom_id, (x, y) in coords.items()
+        }
+
     def _on_clean_2d(self) -> None:
         """Maneja clean 2d.
 
@@ -2117,24 +2172,6 @@ class ChemusonWindow(QMainWindow):
         if not target_ids:
             return
 
-        def center(coords: dict[int, tuple[float, float]]) -> tuple[float, float]:
-            """Método auxiliar para center.
-
-            Args:
-                coords: Descripción del parámetro.
-
-            Returns:
-                Resultado de la operación o None.
-
-            Side Effects:
-                Puede modificar el estado interno o la interfaz.
-            """
-            xs = [x for x, _ in coords.values()]
-            ys = [y for _, y in coords.values()]
-            if not xs:
-                return 0.0, 0.0
-            return sum(xs) / len(xs), sum(ys) / len(ys)
-
         try:
             from chemio.rdkit_io import molgraph_to_rdkit_with_map
             from rdkit.Chem import AllChem
@@ -2148,7 +2185,9 @@ class ChemusonWindow(QMainWindow):
                 aid: (self.canvas.model.get_atom(aid).x, self.canvas.model.get_atom(aid).y)
                 for aid in target_ids
             }
-            before_cx, before_cy = center(before)
+            before_cx, before_cy = self._coords_center(before)
+            scale_bonds = bonds if atom_ids else list(self.canvas.model.bonds.values())
+            before_avg_len = self._average_bond_length(before, scale_bonds)
 
             raw_after = {}
             for aid, rd_idx in id_map.items():
@@ -2157,7 +2196,9 @@ class ChemusonWindow(QMainWindow):
                 pos = conf.GetAtomPosition(rd_idx)
                 raw_after[aid] = (pos.x, pos.y)
 
-            after_cx, after_cy = center(raw_after)
+            target_bond_len = before_avg_len if before_avg_len > 1e-6 else float(self.canvas.state.bond_length)
+            raw_after = self._rescale_coords_to_bond_length(raw_after, scale_bonds, target_bond_len)
+            after_cx, after_cy = self._coords_center(raw_after)
             after = {}
             for aid, (x, y) in raw_after.items():
                 x = x - after_cx + before_cx
@@ -2167,6 +2208,16 @@ class ChemusonWindow(QMainWindow):
                     x = bx + (x - bx) * step_ratio
                     y = by + (y - by) * step_ratio
                 after[aid] = (x, y)
+            # La interpolación lineal entre dos orientaciones del mismo esqueleto
+            # puede reducir temporalmente el tamaño percibido (especialmente anillos).
+            # Re-normalizamos la longitud media para mantener escala visual.
+            after = self._rescale_coords_to_bond_length(after, scale_bonds, target_bond_len)
+            final_cx, final_cy = self._coords_center(after)
+            if abs(final_cx - before_cx) > 1e-9 or abs(final_cy - before_cy) > 1e-9:
+                after = {
+                    aid: (x - final_cx + before_cx, y - final_cy + before_cy)
+                    for aid, (x, y) in after.items()
+                }
 
             from gui.commands import MoveAtomsCommand
             cmd = MoveAtomsCommand(self.canvas.model, self.canvas, before, after)
