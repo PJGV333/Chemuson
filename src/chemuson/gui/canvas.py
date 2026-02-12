@@ -294,6 +294,8 @@ NUMBERING_TEXT_ROLE = 4001
 NUMBERING_KIND_ROLE = 4002
 NUMBERING_KEY_ROLE = 4003
 NUMBERING_AUTO_TEXT_ROLE = 4004
+IMPLICIT_H_OVERLAY_ANCHOR_ROLE = 5001
+IMPLICIT_H_OVERLAY_ANGLE_ROLE = 5002
 
 SYMBOL_TEXT_TOOLS = {
     "tool_symbol_plus": {"text": "+", "scale": 1.0, "anchor": True},
@@ -1445,6 +1447,10 @@ class ChemusonCanvas(QGraphicsView):
 
         if self.current_tool == "tool_atom":
             element = self.state.default_element
+            implicit_anchor_id, implicit_angle = self._pick_implicit_h_overlay(scene_pos)
+            if implicit_anchor_id is not None:
+                if self._substitute_implicit_hydrogen(implicit_anchor_id, element, implicit_angle):
+                    return
             if clicked_atom_id is None:
                 is_explicit = None
                 if element == "C" and not self.state.show_implicit_carbons:
@@ -5918,6 +5924,8 @@ class ChemusonCanvas(QGraphicsView):
                 text_item.setDefaultTextColor(QColor("#000000"))
                 text_item.setZValue(10)
                 text_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+                text_item.setData(IMPLICIT_H_OVERLAY_ANCHOR_ROLE, atom_id)
+                text_item.setData(IMPLICIT_H_OVERLAY_ANGLE_ROLE, float(angle_value))
                 text_item.setParentItem(self.atom_items[atom_id])
                 
                 rect = text_item.boundingRect()
@@ -5948,6 +5956,8 @@ class ChemusonCanvas(QGraphicsView):
                 line_item.setPen(pen)
                 line_item.setZValue(-5)
                 line_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+                line_item.setData(IMPLICIT_H_OVERLAY_ANCHOR_ROLE, atom_id)
+                line_item.setData(IMPLICIT_H_OVERLAY_ANGLE_ROLE, float(angle_value))
                 line_item.setParentItem(self.atom_items[atom_id])
 
                 overlays.append((line_item, text_item))
@@ -11088,6 +11098,113 @@ class ChemusonCanvas(QGraphicsView):
     # -------------------------------------------------------------------------
     # Hover + Drag State
     # -------------------------------------------------------------------------
+    def _pick_implicit_h_overlay(self, scene_pos: QPointF) -> tuple[Optional[int], Optional[float]]:
+        """Devuelve el H implÃ­cito dibujado bajo el cursor (si existe)."""
+        best_anchor_id: Optional[int] = None
+        best_angle: Optional[float] = None
+        best_score = float("inf")
+        line_tolerance = max(5.0, self.drawing_style.stroke_px + 3.0)
+
+        def _parse_anchor(value) -> Optional[int]:
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return None
+
+        def _parse_angle(value) -> Optional[float]:
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return None
+
+        for _atom_id, overlays in self._implicit_h_overlays.items():
+            for line_item, text_item in overlays:
+                if text_item.scene() is self.scene:
+                    text_rect = text_item.mapRectToScene(text_item.boundingRect()).adjusted(
+                        -2.0,
+                        -2.0,
+                        2.0,
+                        2.0,
+                    )
+                    if text_rect.contains(scene_pos):
+                        anchor_id = _parse_anchor(
+                            text_item.data(IMPLICIT_H_OVERLAY_ANCHOR_ROLE)
+                        )
+                        if anchor_id is None or anchor_id not in self.model.atoms:
+                            continue
+                        text_center = text_item.mapToScene(text_item.boundingRect().center())
+                        score = math.hypot(
+                            scene_pos.x() - text_center.x(),
+                            scene_pos.y() - text_center.y(),
+                        )
+                        if score <= best_score:
+                            best_score = score
+                            best_anchor_id = anchor_id
+                            best_angle = _parse_angle(
+                                text_item.data(IMPLICIT_H_OVERLAY_ANGLE_ROLE)
+                            )
+
+                if line_item.scene() is not self.scene:
+                    continue
+                line = line_item.line()
+                p1 = line_item.mapToScene(line.p1())
+                p2 = line_item.mapToScene(line.p2())
+                line_dist = segment_min_distance(scene_pos, scene_pos, p1, p2)
+                if line_dist > line_tolerance or line_dist > best_score:
+                    continue
+                anchor_id = _parse_anchor(line_item.data(IMPLICIT_H_OVERLAY_ANCHOR_ROLE))
+                if anchor_id is None or anchor_id not in self.model.atoms:
+                    continue
+                best_score = line_dist
+                best_anchor_id = anchor_id
+                line_angle = _parse_angle(line_item.data(IMPLICIT_H_OVERLAY_ANGLE_ROLE))
+                if line_angle is None:
+                    anchor_atom = self.model.get_atom(anchor_id)
+                    line_angle = angle_deg(QPointF(anchor_atom.x, anchor_atom.y), p2)
+                best_angle = line_angle
+
+        return best_anchor_id, best_angle
+
+    def _substitute_implicit_hydrogen(
+        self,
+        anchor_id: int,
+        element: str,
+        angle_value: Optional[float],
+    ) -> bool:
+        """Convierte un H implÃ­cito visual en un Ã¡tomo real enlazado."""
+        if anchor_id not in self.model.atoms:
+            return False
+        anchor_atom = self.model.get_atom(anchor_id)
+        if anchor_atom.element == "H":
+            return False
+        if self._implicit_hydrogen_count(anchor_id, anchor_atom.element) <= 0:
+            return False
+
+        anchor_point = QPointF(anchor_atom.x, anchor_atom.y)
+        if angle_value is None:
+            direction = self._label_open_direction(anchor_id)
+            if direction.manhattanLength() <= 1e-6:
+                direction = QPointF(1.0, 0.0)
+            target_probe = QPointF(anchor_point.x() + direction.x(), anchor_point.y() + direction.y())
+            angle_value = angle_deg(anchor_point, target_probe)
+
+        bond_length = max(1.0, self._local_bond_length(anchor_id))
+        new_pos = endpoint_from_angle_len(anchor_point, angle_value, bond_length)
+        cmd = AddBondCommand(
+            self.model,
+            self,
+            anchor_id,
+            None,
+            1,
+            BondStyle.PLAIN,
+            BondStereo.NONE,
+            is_aromatic=False,
+            new_atom_element=element,
+            new_atom_pos=(new_pos.x(), new_pos.y()),
+        )
+        self.undo_stack.push(cmd)
+        return True
+
     def _pick_hover_target(self, scene_pos: QPointF) -> tuple[Optional[int], Optional[int]]:
         """Método auxiliar para  pick hover target.
 
