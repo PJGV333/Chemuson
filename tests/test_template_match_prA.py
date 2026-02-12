@@ -6,10 +6,11 @@ import unittest
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
-from core.model import MolGraph
-from chemname.molview import MolView
-from chemname.template import load_template
-from chemname.template_match import match_template_exact, select_template_mapping, _mapping_substituent_locants
+from chemuson.core.model import MolGraph
+from chemuson.chemname.molview import MolView
+from chemuson.chemname.template import load_template
+from chemuson.chemname.template_match import match_template_exact, select_template_mapping, _mapping_substituent_locants
+from chemuson.utils.resources import open_resource_path
 
 
 def build_benzene(graph: MolGraph) -> list[int]:
@@ -40,16 +41,8 @@ class TemplateMatchPRATest(unittest.TestCase):
             None.
 
         """
-        template_path = os.path.join(
-            os.path.dirname(__file__),
-            "..",
-            "src",
-            "chemname",
-            "templates",
-            "simple",
-            "benzene.mol",
-        )
-        template = load_template(template_path)
+        with open_resource_path("chemname", "templates", "simple", "benzene.mol") as template_path:
+            template = load_template(template_path)
         graph = MolGraph()
         ring = build_benzene(graph)
         view = MolView(graph)
@@ -63,16 +56,8 @@ class TemplateMatchPRATest(unittest.TestCase):
             None.
 
         """
-        template_path = os.path.join(
-            os.path.dirname(__file__),
-            "..",
-            "src",
-            "chemname",
-            "templates",
-            "simple",
-            "benzene.mol",
-        )
-        template = load_template(template_path)
+        with open_resource_path("chemname", "templates", "simple", "benzene.mol") as template_path:
+            template = load_template(template_path)
         graph = MolGraph()
         ring = build_benzene(graph)
         cl = graph.add_atom("Cl", -1.0, 0.0)

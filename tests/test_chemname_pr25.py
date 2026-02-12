@@ -6,8 +6,8 @@ import unittest
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
-from core.model import MolGraph
-from chemname import iupac_name
+from chemuson.core.model import MolGraph
+from chemuson.chemname import iupac_name
 
 
 def build_ring(graph: MolGraph, elements: list[str], double_bonds: set[int]) -> list[int]:

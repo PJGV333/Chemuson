@@ -6,8 +6,8 @@ import unittest
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
-from core.model import MolGraph
-from chemname.molview import MolView
+from chemuson.core.model import MolGraph
+from chemuson.chemname.molview import MolView
 
 
 def build_linear_chain(graph: MolGraph, length: int) -> list[int]:

@@ -9,8 +9,8 @@ from PyQt6.QtWidgets import QApplication
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
-from core.model import BondStereo, BondStyle
-from gui.canvas import ChemusonCanvas
+from chemuson.core.model import BondStereo, BondStyle
+from chemuson.gui.canvas import ChemusonCanvas
 
 
 @pytest.fixture(scope="module", autouse=True)

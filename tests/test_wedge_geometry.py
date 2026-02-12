@@ -10,9 +10,9 @@ from PyQt6.QtWidgets import QApplication
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
-from core.model import Atom, Bond, BondStyle, BondStereo
-from gui.canvas import ChemusonCanvas
-from gui.items import (
+from chemuson.core.model import Atom, Bond, BondStyle, BondStereo
+from chemuson.gui.canvas import ChemusonCanvas
+from chemuson.gui.items import (
     BondItem,
     WEDGE_WIDE_END_MITER_OVERLAP_PX,
     WEDGE_WIDE_END_MITER_OVERLAP_STROKE_MULT,
@@ -20,7 +20,7 @@ from gui.items import (
     WEDGE_WIDE_END_MITER_MAX_DIST_WIDTH_MULT,
     WEDGE_WIDE_END_MITER_BACKTRACK_STROKE_MULT,
 )
-from gui.wedge_geometry import compute_wedge_points
+from chemuson.gui.wedge_geometry import compute_wedge_points
 
 
 def _midpoint(p0, p1):

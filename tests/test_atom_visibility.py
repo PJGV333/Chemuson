@@ -8,8 +8,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "s
 
 from PyQt6.QtWidgets import QApplication
 
-from core.model import Atom
-from gui.items import AtomItem
+from chemuson.core.model import Atom
+from chemuson.gui.items import AtomItem
 
 
 class AtomVisibilityTest(unittest.TestCase):

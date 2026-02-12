@@ -6,9 +6,9 @@ import unittest
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
-from core.model import MolGraph
-from chemname.molview import MolView
-from chemname.rings import find_rings_simple, is_simple_ring, perceive_aromaticity_basic
+from chemuson.core.model import MolGraph
+from chemuson.chemname.molview import MolView
+from chemuson.chemname.rings import find_rings_simple, is_simple_ring, perceive_aromaticity_basic
 
 
 def build_ring(graph: MolGraph, size: int, aromatic: bool = False, kekule: bool = False):

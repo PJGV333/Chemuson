@@ -8,9 +8,9 @@ from PyQt6.QtWidgets import QApplication
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
-from chemio.persistence import PersistenceManager
-from gui.canvas import ChemusonCanvas
-from gui.main_window import ChemusonWindow
+from chemuson.chemio.persistence import PersistenceManager
+from chemuson.gui.canvas import ChemusonCanvas
+from chemuson.gui.main_window import ChemusonWindow
 
 
 @pytest.fixture(scope="module", autouse=True)

@@ -6,8 +6,8 @@ import unittest
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
-from core.model import BondStyle, MolGraph
-from chemio.rdkit_io import molgraph_to_rdkit_with_map, strict_validate_and_normalize
+from chemuson.core.model import BondStyle, MolGraph
+from chemuson.chemio.rdkit_io import molgraph_to_rdkit_with_map, strict_validate_and_normalize
 
 try:
     from rdkit import Chem

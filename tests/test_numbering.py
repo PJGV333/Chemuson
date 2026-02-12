@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from core.model import MolGraph
-from gui.numbering import compute_atom_numbers, compute_structure_numbers
+from chemuson.core.model import MolGraph
+from chemuson.gui.numbering import compute_atom_numbers, compute_structure_numbers
 
 
 def _build_simple_ethanol_like() -> MolGraph:

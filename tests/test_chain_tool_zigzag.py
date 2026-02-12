@@ -9,9 +9,9 @@ from PyQt6.QtWidgets import QApplication
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
-from core.model import BondStyle, BondStereo
-from gui.canvas import ChemusonCanvas
-from gui.geom import angle_deg, angle_distance_deg
+from chemuson.core.model import BondStyle, BondStereo
+from chemuson.gui.canvas import ChemusonCanvas
+from chemuson.gui.geom import angle_deg, angle_distance_deg
 
 
 @pytest.fixture(scope="module", autouse=True)

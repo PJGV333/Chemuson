@@ -6,8 +6,8 @@ import unittest
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
-from core.model import BondStyle, MolGraph
-from chemio.persistence import PersistenceManager
+from chemuson.core.model import BondStyle, MolGraph
+from chemuson.chemio.persistence import PersistenceManager
 
 
 class _FakeCanvas:

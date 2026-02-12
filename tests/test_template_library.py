@@ -9,11 +9,11 @@ import pytest
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
-import gui.template_library as template_library
-from chemio.rdkit_io import molgraph_to_molfile
-from core.model import MolGraph
-from gui.template_library import DEFAULT_CATEGORY_USER, TemplateLibrary
-from gui.templates import build_haworth_template
+import chemuson.gui.template_library as template_library
+from chemuson.chemio.rdkit_io import molgraph_to_molfile
+from chemuson.core.model import MolGraph
+from chemuson.gui.template_library import DEFAULT_CATEGORY_USER, TemplateLibrary
+from chemuson.gui.templates import build_haworth_template
 
 
 def _simple_cc_graph() -> MolGraph:

@@ -8,8 +8,8 @@ import pytest
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
-from core.model import Bond
-from gui.main_window import ChemusonWindow
+from chemuson.core.model import Bond
+from chemuson.gui.main_window import ChemusonWindow
 
 
 def _chain_bonds() -> list[Bond]:

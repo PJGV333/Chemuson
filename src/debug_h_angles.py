@@ -2,7 +2,7 @@
 """Script de depuración para probar ángulos de hidrógenos."""
 
 from PyQt6.QtWidgets import QApplication
-from gui.canvas import ChemusonCanvas
+from chemuson.gui.canvas import ChemusonCanvas
 
 app = QApplication([])
 canvas = ChemusonCanvas()

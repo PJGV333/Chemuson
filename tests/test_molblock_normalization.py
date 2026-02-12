@@ -5,8 +5,8 @@ import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
-from chemio.rdkit_io import molfile_to_molgraph, molgraph_to_molfile, normalize_molblock_header
-from core.model import MolGraph
+from chemuson.chemio.rdkit_io import molfile_to_molgraph, molgraph_to_molfile, normalize_molblock_header
+from chemuson.core.model import MolGraph
 
 
 def test_normalize_molblock_header_inserts_missing_comment_line():

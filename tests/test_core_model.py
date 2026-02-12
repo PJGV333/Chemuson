@@ -6,7 +6,7 @@ import unittest
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
-from core.model import BondStyle, BondStereo, MolGraph
+from chemuson.core.model import BondStyle, BondStereo, MolGraph
 
 
 class MolGraphTest(unittest.TestCase):

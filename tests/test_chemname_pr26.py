@@ -6,10 +6,10 @@ import unittest
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
-from core.model import MolGraph
-from chemname import iupac_name
-from chemname.options import NameOptions
-from chemname.template import load_template
+from chemuson.core.model import MolGraph
+from chemuson.chemname import iupac_name
+from chemuson.chemname.options import NameOptions
+from chemuson.chemname.template import load_template
 
 
 def add_aromatic_ring(graph: MolGraph, atoms: list, ring: list[int]) -> None:

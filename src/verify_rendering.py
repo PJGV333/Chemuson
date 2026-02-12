@@ -4,9 +4,9 @@ import os
 import sys
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import QPointF
-from gui.canvas import ChemusonCanvas
-from chemio.persistence import PersistenceManager
-from core.model import BondStyle, BondStereo
+from chemuson.gui.canvas import ChemusonCanvas
+from chemuson.chemio.persistence import PersistenceManager
+from chemuson.core.model import BondStyle, BondStereo
 
 def verify_benzene_rendering():
     """Verifica el renderizado de un anillo bencénico y su persistencia.

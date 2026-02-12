@@ -6,8 +6,8 @@ import unittest
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
-from core.model import MolGraph
-from chemio.rdkit_io import molfile_to_molgraph, molgraph_to_molfile, molgraph_to_smiles
+from chemuson.core.model import MolGraph
+from chemuson.chemio.rdkit_io import molfile_to_molgraph, molgraph_to_molfile, molgraph_to_smiles
 
 try:
     from rdkit import Chem  # noqa: F401
