@@ -319,6 +319,12 @@ def _should_use_molfile_fallback(molfile: str) -> bool:
         _, _, symbol = _parse_atom_line(lines[atom_start + i])
         if _mol_symbol_requires_fallback(symbol):
             return True
+    # Molblocks con alias `A  n` pueden venir de pseudoátomos serializados
+    # como `*` + etiqueta. RDKit tiende a devolver `*` y se pierde la etiqueta;
+    # forzamos parser interno para preservar el alias original.
+    for line in lines:
+        if line.startswith("A  "):
+            return True
     return False
 
 

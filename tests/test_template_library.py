@@ -82,6 +82,20 @@ def test_load_replaces_legacy_builtin_chair_template(tmp_path):
     assert all(atom.element == "C" for atom in chair_graph.atoms.values())
 
 
+def test_builtin_bio_templates_do_not_degrade_to_dummy_atoms(tmp_path):
+    """Cadena lineal/Haworth no deben mostrarse como `*` tras persistir/cargar."""
+    lib = TemplateLibrary(tmp_path / "library.json")
+    for name in ("Cadena lineal", "Haworth β"):
+        matches = [
+            tpl
+            for tpl in lib.list_templates()
+            if tpl.get("name") == name and tpl.get("category") == "Bioquímicos"
+        ]
+        assert len(matches) == 1
+        graph = lib.graph_from_template(matches[0]["id"])
+        assert all(atom.element != "*" for atom in graph.atoms.values())
+
+
 def test_add_rename_and_delete_template_and_category(tmp_path):
     """Operaciones básicas de gestión deben persistir sin inconsistencias."""
     lib = TemplateLibrary(tmp_path / "library.json")
@@ -170,8 +184,8 @@ def test_graph_from_template_falls_back_to_smiles_when_molblock_fails(tmp_path, 
         graph.add_atom("C", 0.0, 0.0)
         return graph
 
-    monkeypatch.setattr("gui.template_library.molfile_to_molgraph", _fail_mol)
-    monkeypatch.setattr("gui.template_library.smiles_to_molgraph", _from_smiles)
+    monkeypatch.setattr("chemuson.gui.template_library.molfile_to_molgraph", _fail_mol)
+    monkeypatch.setattr("chemuson.gui.template_library.smiles_to_molgraph", _from_smiles)
 
     graph = lib.graph_from_template(tpl["id"])
     assert len(graph.atoms) == 1

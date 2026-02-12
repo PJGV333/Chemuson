@@ -56,7 +56,10 @@ def test_sp3_default_fourth_bond_does_not_overlap_existing_bonds():
 
     new_angle = angle_deg(p0, p1)
     existing_angles = canvas._get_anchor_bond_angles_deg(center.id)
-    assert min(angle_distance_deg(new_angle, existing) for existing in existing_angles) > 5.0
+    # Debe salir por una bisectriz abierta (60°, 180° o 300° para este arreglo).
+    assert min(angle_distance_deg(new_angle, expected) for expected in (60.0, 180.0, 300.0)) < 1e-6
+    # Evita geometrías casi paralelas al enlace existente (regresión: 10.5°).
+    assert min(angle_distance_deg(new_angle, existing) for existing in existing_angles) >= 55.0
 
     # Debe mantenerse cercanía a la separación tetraédrica.
     assert math.isclose(canvas._sp3_display_angle_deg(), 109.5, abs_tol=1e-6)
@@ -96,3 +99,78 @@ def test_sp3_regular_growth_keeps_grid_alignment():
     # En modo normal (no 4º enlace), debe mantenerse alineado a la retícula.
     snapped = round(theta / 30.0) * 30.0
     assert math.isclose(theta, snapped % 360.0, abs_tol=1e-6)
+
+
+def test_sp3_fourth_bond_prioritizes_open_gap_for_skewed_tripod():
+    """Con 3 enlaces tipo trípode sesgado, el 4º debe ir al hueco amplio."""
+    canvas = ChemusonCanvas()
+
+    center = canvas.model.add_atom("C", 260.0, 260.0)
+    p0 = QPointF(center.x, center.y)
+    length = canvas.state.bond_length
+
+    # Caso visual cercano al reportado: 180°, 60°, 300°.
+    for theta in (180.0, 60.0, 300.0):
+        p = endpoint_from_angle_len(p0, theta, length)
+        neighbor = canvas.model.add_atom("C", p.x(), p.y())
+        canvas.model.add_bond(
+            center.id,
+            neighbor.id,
+            order=1,
+            style=BondStyle.PLAIN,
+            stereo=BondStereo.NONE,
+            is_aromatic=False,
+        )
+
+    canvas._rebuild_items_from_model()
+    canvas.state.fixed_angles = True
+    canvas.state.angle_step_deg = 30
+    canvas.state.active_bond_order = 1
+    canvas.state.active_bond_style = BondStyle.PLAIN
+    canvas.state.active_bond_stereo = BondStereo.NONE
+    canvas.state.active_bond_aromatic = False
+
+    p1 = canvas._compute_default_bond_endpoint(p0, center.id)
+    new_angle = angle_deg(p0, p1)
+    existing_angles = canvas._get_anchor_bond_angles_deg(center.id)
+
+    # Huecos esperados para ese trípode: 0°, 120°, 240°.
+    assert min(angle_distance_deg(new_angle, expected) for expected in (0.0, 120.0, 240.0)) < 1e-6
+    assert min(angle_distance_deg(new_angle, existing) for existing in existing_angles) >= 55.0
+
+
+def test_sp3_congested_fourth_bond_follows_cursor_across_gap_midpoints():
+    """Con 3 enlaces sp3 desbalanceados, el 4º debe poder elegir cualquier bisectriz."""
+    canvas = ChemusonCanvas()
+
+    center = canvas.model.add_atom("C", 240.0, 240.0)
+    p0 = QPointF(center.x, center.y)
+    length = canvas.state.bond_length
+
+    # Arreglo no simétrico: huecos de 110°, 140°, 110°.
+    for theta in (40.0, 150.0, 290.0):
+        p = endpoint_from_angle_len(p0, theta, length)
+        neighbor = canvas.model.add_atom("C", p.x(), p.y())
+        canvas.model.add_bond(
+            center.id,
+            neighbor.id,
+            order=1,
+            style=BondStyle.PLAIN,
+            stereo=BondStereo.NONE,
+            is_aromatic=False,
+        )
+
+    canvas._rebuild_items_from_model()
+    theta, _ = canvas._pick_bond_direction_deg(
+        p0,
+        center.id,
+        95.0,  # bisectriz del hueco 40°-150°
+        1,
+        False,
+        length,
+        apply_collisions=False,
+        allow_length_boost=False,
+    )
+
+    # Debe seguir la bisectriz cercana al cursor, no forzar solo el hueco máximo.
+    assert angle_distance_deg(theta, 95.0) < 1e-6

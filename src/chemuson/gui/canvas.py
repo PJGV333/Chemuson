@@ -997,6 +997,7 @@ class ChemusonCanvas(QGraphicsView):
         Side Effects:
             Puede modificar el estado interno o la escena.
         """
+        previous_tool = self.current_tool
         tool_id = tool_id or "tool_none"
         if tool_id.startswith("atom_"):
             self.state.default_element = tool_id.split("_", 1)[1]
@@ -1028,6 +1029,10 @@ class ChemusonCanvas(QGraphicsView):
             self.cancel_template_insert_mode()
         self._clear_bond_anchor()
         self._cancel_drag()
+        selection_tools = {"tool_select", "tool_select_lasso"}
+        if tool_id not in selection_tools and previous_tool in selection_tools:
+            self.scene.clearSelection()
+            self._sync_selection_from_scene()
         self._arrow_start_pos = None
         self._arrow_end_pos = None
         self._arrow_curve_adjust_mode = False
@@ -7638,7 +7643,10 @@ class ChemusonCanvas(QGraphicsView):
                     queue.append(neigh)
 
                 def pick_angle_for_neighbor(neigh: int, mouse_angle: float) -> float:
-                    candidates = candidate_directions_deg(geometry, existing_angles, mouse_angle)
+                    if geometry == "sp3" and len(existing_angles) >= 3:
+                        candidates = self._sp3_congested_directions_deg(existing_angles)
+                    else:
+                        candidates = candidate_directions_deg(geometry, existing_angles, mouse_angle)
                     occupied_tolerance = (
                         SP3_OCCUPIED_TOLERANCE_DEG
                         if geometry == "sp3" and len(existing_angles) >= 3
@@ -7650,7 +7658,10 @@ class ChemusonCanvas(QGraphicsView):
                         occupied_tolerance,
                     )
                     if not candidates:
-                        candidates = candidate_directions_deg(geometry, [], mouse_angle)
+                        if geometry == "sp3" and len(existing_angles) >= 3:
+                            candidates = self._sp3_congested_directions_deg(existing_angles)
+                        if not candidates:
+                            candidates = candidate_directions_deg(geometry, [], mouse_angle)
                     if not candidates:
                         candidates = [mouse_angle]
 
@@ -11802,6 +11813,33 @@ class ChemusonCanvas(QGraphicsView):
             return False
         return True
 
+    def _sp3_congested_directions_deg(self, existing_angles_deg: Iterable[float]) -> list[float]:
+        """Propone direcciones para centros sp3 congestionados (>=3 enlaces).
+
+        Con ±109.5° sobre cada enlace existente se generan candidatos casi
+        paralelos (separaciones ~10.5°). Aquí usamos bisectrices de todos los
+        huecos angulares y dejamos que el score (cursor/colisiones) elija.
+        """
+        angles = sorted((angle % 360.0) for angle in existing_angles_deg)
+        if len(angles) < 2:
+            return []
+
+        gap_midpoints: list[float] = []
+        for idx, start in enumerate(angles):
+            end = angles[(idx + 1) % len(angles)]
+            gap = (end - start) % 360.0
+            midpoint = (start + 0.5 * gap) % 360.0
+            gap_midpoints.append(midpoint)
+        seen: set[float] = set()
+        deduped: list[float] = []
+        for angle in gap_midpoints:
+            key = round(angle, 6)
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(angle)
+        return deduped
+
     def _pick_bond_direction_deg(
         self,
         anchor: QPointF,
@@ -11840,9 +11878,12 @@ class ChemusonCanvas(QGraphicsView):
         # Solo forzamos geometría tetraédrica exacta (109.5°) cuando el átomo
         # ya está congestionado (p. ej., intentando crear el 4º enlace).
         sp3_exact_mode = geometry == "sp3" and anchor_id is not None and len(existing_angles) >= 3
-        candidates = candidate_directions_deg(geometry, existing_angles, mouse_angle_deg)
-        if self.state.fixed_angles and not sp3_exact_mode:
-            candidates = self._snap_angles_to_grid(candidates)
+        if sp3_exact_mode:
+            candidates = self._sp3_congested_directions_deg(existing_angles)
+        else:
+            candidates = candidate_directions_deg(geometry, existing_angles, mouse_angle_deg)
+            if self.state.fixed_angles:
+                candidates = self._snap_angles_to_grid(candidates)
         occupied_tolerance = (
             SP3_OCCUPIED_TOLERANCE_DEG if sp3_exact_mode else ANGLE_OCCUPIED_TOLERANCE_DEG
         )
@@ -11850,9 +11891,12 @@ class ChemusonCanvas(QGraphicsView):
             candidates, existing_angles, occupied_tolerance
         )
         if not candidates:
-            candidates = candidate_directions_deg(geometry, [], mouse_angle_deg)
-            if self.state.fixed_angles and not sp3_exact_mode:
-                candidates = self._snap_angles_to_grid(candidates)
+            if sp3_exact_mode:
+                candidates = self._sp3_congested_directions_deg(existing_angles)
+            if not candidates:
+                candidates = candidate_directions_deg(geometry, [], mouse_angle_deg)
+                if self.state.fixed_angles and not sp3_exact_mode:
+                    candidates = self._snap_angles_to_grid(candidates)
 
         preferred: list[float] = []
         if geometry == "sp3" and anchor_id is not None:

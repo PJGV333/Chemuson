@@ -5,7 +5,12 @@ import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
-from chemuson.chemio.rdkit_io import molfile_to_molgraph, molgraph_to_molfile, normalize_molblock_header
+from chemuson.chemio.rdkit_io import (
+    _should_use_molfile_fallback,
+    molfile_to_molgraph,
+    molgraph_to_molfile,
+    normalize_molblock_header,
+)
 from chemuson.core.model import MolGraph
 
 
@@ -65,7 +70,7 @@ def test_molgraph_to_molfile_fallback_writes_alias_and_roundtrips(monkeypatch):
     a2 = graph.add_atom("OCH3", 40.0, 0.0, is_explicit=True)
     graph.add_bond(a1.id, a2.id, order=1)
 
-    monkeypatch.setattr("chemio.rdkit_io._rdkit_available", lambda: False)
+    monkeypatch.setattr("chemuson.chemio.rdkit_io._rdkit_available", lambda: False)
     molblock = molgraph_to_molfile(graph)
     assert "V2000" in molblock.splitlines()[3]
     assert "\nA  " in molblock
@@ -75,3 +80,20 @@ def test_molgraph_to_molfile_fallback_writes_alias_and_roundtrips(monkeypatch):
     restored = molfile_to_molgraph(molblock)
     restored_elements = [atom.element for atom in restored.atoms.values()]
     assert restored_elements == ["CHO", "OCH3"]
+
+
+def test_should_use_molfile_fallback_when_alias_lines_present():
+    """Si un MOL contiene alias `A  n`, debe usarse el parser fallback."""
+    molblock = (
+        "Chemuson\n"
+        "Chemuson\n"
+        "\n"
+        "  2  1  0  0  0  0  0  0  0  0999 V2000\n"
+        "    0.0000    0.0000    0.0000 *   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "   40.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "  1  2  1  0  0  0  0\n"
+        "A    1\n"
+        "OH\n"
+        "M  END\n"
+    )
+    assert _should_use_molfile_fallback(molblock)

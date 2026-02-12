@@ -51,3 +51,21 @@ def test_rect_selection_uses_item_centers_to_avoid_neighbor_leak():
 
     assert b1 in canvas.state.selected_bonds
     assert b2 not in canvas.state.selected_bonds
+
+
+def test_switching_from_selection_tool_clears_selection():
+    """Al pasar de selección a otra herramienta, la selección activa debe limpiarse."""
+    canvas = ChemusonCanvas()
+
+    atom = canvas.model.add_atom("C", 120.0, 120.0)
+    canvas._rebuild_items_from_model()
+    canvas.atom_items[atom.id].setSelected(True)
+    canvas._sync_selection_from_scene()
+    assert atom.id in canvas.state.selected_atoms
+
+    canvas.set_current_tool("tool_select")
+    canvas.set_current_tool("tool_bond")
+
+    assert canvas.state.selected_atoms == set()
+    assert canvas.state.selected_bonds == set()
+    assert not canvas.scene.selectedItems()
