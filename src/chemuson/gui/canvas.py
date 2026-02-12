@@ -7,6 +7,7 @@ persistencia visual y renderización para exportaciones.
 from __future__ import annotations
 
 import base64
+import itertools
 import json
 import math
 from typing import Dict, Iterable, List, Optional, Tuple
@@ -7474,11 +7475,14 @@ class ChemusonCanvas(QGraphicsView):
 
         neighbor_map: dict[int, list[int]] = {}
         bonds_in_selection = []
+        bond_lookup: dict[tuple[int, int], Bond] = {}
         for bond in self.model.bonds.values():
             if bond.a1_id in atom_ids and bond.a2_id in atom_ids:
                 neighbor_map.setdefault(bond.a1_id, []).append(bond.a2_id)
                 neighbor_map.setdefault(bond.a2_id, []).append(bond.a1_id)
                 bonds_in_selection.append(bond)
+                key = (min(bond.a1_id, bond.a2_id), max(bond.a1_id, bond.a2_id))
+                bond_lookup[key] = bond
 
         components: list[set[int]] = []
         visited: set[int] = set()
@@ -7519,6 +7523,48 @@ class ChemusonCanvas(QGraphicsView):
             sin_t = math.sin(rad)
             return QPointF(center.x() + dx * cos_t - dy * sin_t, center.y() + dx * sin_t + dy * cos_t)
 
+        def atom_geometry(atom_id: int) -> str:
+            """Infer geometry at `atom_id` from incident bonds in selection."""
+            has_triple = False
+            has_double = False
+            for bond in bonds_in_selection:
+                if bond.a1_id != atom_id and bond.a2_id != atom_id:
+                    continue
+                if bond.order >= 3:
+                    has_triple = True
+                if bond.order == 2 or bond.is_aromatic:
+                    has_double = True
+            if has_triple:
+                return "sp"
+            if has_double:
+                return "sp2"
+            return "sp3"
+
+        def non_h_degree(atom_id: int, component: set[int]) -> int:
+            """Degree inside component ignoring hydrogen neighbors."""
+            total = 0
+            for neigh in neighbor_map.get(atom_id, []):
+                if neigh not in component:
+                    continue
+                atom = self.model.get_atom(neigh)
+                if atom is not None and atom.element == "H":
+                    continue
+                total += 1
+            return total
+
+        def choose_tree_root(component: set[int]) -> int:
+            """Pick deterministic root favoring terminal heavy atoms."""
+            heavy_atoms = [
+                aid
+                for aid in component
+                if (self.model.get_atom(aid) is not None and self.model.get_atom(aid).element != "H")
+            ]
+            candidates = heavy_atoms if heavy_atoms else list(component)
+            leaves = [aid for aid in candidates if non_h_degree(aid, component) <= 1]
+            if leaves:
+                candidates = leaves
+            return min(candidates, key=lambda aid: (before[aid][0], before[aid][1], aid))
+
         def normalize_tree(component: set[int], roots: list[int]) -> None:
             """Método auxiliar para normalize tree.
 
@@ -7532,27 +7578,176 @@ class ChemusonCanvas(QGraphicsView):
             Side Effects:
                 Puede modificar el estado interno o la escena.
             """
-            placed = set(roots)
-            queue = list(roots)
+            queue = []
+            parent_of: dict[int, Optional[int]] = {}
+            placed = set()
+            for root in roots:
+                if root not in component:
+                    continue
+                parent_of[root] = None
+                placed.add(root)
+                queue.append(root)
+
             while queue:
                 parent = queue.pop(0)
                 p_parent = positions[parent]
+
+                incoming_angle: Optional[float] = None
+                parent_parent = parent_of.get(parent)
+                if parent_parent is not None and parent_parent in placed:
+                    incoming_angle = angle_deg(p_parent, positions[parent_parent])
+
+                existing_angles: list[float] = []
                 for neigh in neighbor_map.get(parent, []):
-                    if neigh not in component or neigh in placed:
+                    if neigh not in component or neigh not in placed:
                         continue
-                    ox, oy = before[neigh]
-                    px, py = before[parent]
-                    dx = ox - px
-                    dy = oy - py
-                    dist = math.hypot(dx, dy)
-                    if dist < 1e-3:
-                        dx, dy = target_len, 0.0
-                        dist = target_len
-                    nx = dx / dist
-                    ny = dy / dist
-                    positions[neigh] = QPointF(p_parent.x() + nx * target_len, p_parent.y() + ny * target_len)
+                    if neigh == parent_parent:
+                        continue
+                    existing_angles.append(angle_deg(p_parent, positions[neigh]))
+                if incoming_angle is not None:
+                    existing_angles = [incoming_angle] + existing_angles
+
+                neighbors = [
+                    neigh
+                    for neigh in neighbor_map.get(parent, [])
+                    if neigh in component and neigh not in placed
+                ]
+                if not neighbors:
+                    continue
+
+                def neighbor_sort_key(neigh: int) -> tuple[int, int, int]:
+                    atom = self.model.get_atom(neigh)
+                    is_h = 1 if (atom is not None and atom.element == "H") else 0
+                    return (is_h, -non_h_degree(neigh, component), neigh)
+
+                neighbors.sort(key=neighbor_sort_key)
+                parent_atom = self.model.get_atom(parent)
+                geometry = atom_geometry(parent)
+
+                def place_neighbor_with_angle(neigh: int, chosen_angle: float) -> None:
+                    key = (min(parent, neigh), max(parent, neigh))
+                    bond = bond_lookup.get(key)
+                    length = target_len
+                    if bond is not None and bond.order >= 2:
+                        # Keep a slight visual distinction for higher-order bonds.
+                        length = target_len * 0.98
+                    positions[neigh] = endpoint_from_angle_len(p_parent, chosen_angle, length)
+                    existing_angles.append(chosen_angle)
                     placed.add(neigh)
+                    parent_of[neigh] = parent
                     queue.append(neigh)
+
+                def pick_angle_for_neighbor(neigh: int, mouse_angle: float) -> float:
+                    candidates = candidate_directions_deg(geometry, existing_angles, mouse_angle)
+                    occupied_tolerance = (
+                        SP3_OCCUPIED_TOLERANCE_DEG
+                        if geometry == "sp3" and len(existing_angles) >= 3
+                        else ANGLE_OCCUPIED_TOLERANCE_DEG
+                    )
+                    candidates = filter_occupied_angles_deg(
+                        candidates,
+                        existing_angles,
+                        occupied_tolerance,
+                    )
+                    if not candidates:
+                        candidates = candidate_directions_deg(geometry, [], mouse_angle)
+                    if not candidates:
+                        candidates = [mouse_angle]
+
+                    preferred: list[float] = []
+                    if geometry == "sp3" and incoming_angle is not None:
+                        sp3_angle = self._sp3_display_angle_deg()
+                        preferred = [
+                            (incoming_angle + sp3_angle) % 360.0,
+                            (incoming_angle - sp3_angle) % 360.0,
+                        ]
+
+                    chosen = pick_closest_direction_deg(candidates, mouse_angle, preferred)
+                    return chosen if chosen is not None else mouse_angle
+
+                non_h_neighbors = []
+                h_neighbors = []
+                for neigh in neighbors:
+                    atom = self.model.get_atom(neigh)
+                    if atom is not None and atom.element == "H":
+                        h_neighbors.append(neigh)
+                    else:
+                        non_h_neighbors.append(neigh)
+
+                for neigh in non_h_neighbors:
+                    parent_before = before.get(parent)
+                    neigh_before = before.get(neigh)
+                    if parent_before is not None and neigh_before is not None:
+                        mouse_angle = angle_deg(
+                            QPointF(parent_before[0], parent_before[1]),
+                            QPointF(neigh_before[0], neigh_before[1]),
+                        )
+                    elif incoming_angle is not None:
+                        mouse_angle = incoming_angle
+                    else:
+                        mouse_angle = 0.0
+                    chosen = pick_angle_for_neighbor(neigh, mouse_angle)
+                    place_neighbor_with_angle(neigh, chosen)
+
+                if (
+                    h_neighbors
+                    and parent_atom is not None
+                    and parent_atom.element == "C"
+                    and geometry == "sp3"
+                ):
+                    target_h_angles = self._find_best_h_positions(existing_angles, len(h_neighbors))
+                    if target_h_angles:
+                        h_before_angles: list[float] = []
+                        for neigh in h_neighbors:
+                            parent_before = before.get(parent)
+                            neigh_before = before.get(neigh)
+                            if parent_before is not None and neigh_before is not None:
+                                h_before_angles.append(
+                                    angle_deg(
+                                        QPointF(parent_before[0], parent_before[1]),
+                                        QPointF(neigh_before[0], neigh_before[1]),
+                                    )
+                                )
+                            elif incoming_angle is not None:
+                                h_before_angles.append(incoming_angle)
+                            else:
+                                h_before_angles.append(0.0)
+
+                        best_perm = tuple(range(len(target_h_angles)))
+                        best_score = float("inf")
+                        for perm in itertools.permutations(range(len(target_h_angles)), len(h_neighbors)):
+                            score = 0.0
+                            for idx, target_idx in enumerate(perm):
+                                score += angle_distance_deg(h_before_angles[idx], target_h_angles[target_idx])
+                            if score < best_score:
+                                best_score = score
+                                best_perm = perm
+                        for idx, neigh in enumerate(h_neighbors):
+                            target_idx = best_perm[idx]
+                            place_neighbor_with_angle(neigh, target_h_angles[target_idx])
+                        h_neighbors = []
+
+                for neigh in h_neighbors:
+                    parent_before = before.get(parent)
+                    neigh_before = before.get(neigh)
+                    if parent_before is not None and neigh_before is not None:
+                        mouse_angle = angle_deg(
+                            QPointF(parent_before[0], parent_before[1]),
+                            QPointF(neigh_before[0], neigh_before[1]),
+                        )
+                    elif incoming_angle is not None:
+                        mouse_angle = incoming_angle
+                    else:
+                        mouse_angle = 0.0
+                    chosen = pick_angle_for_neighbor(neigh, mouse_angle)
+                    place_neighbor_with_angle(neigh, chosen)
+
+        def normalize_component_tree(component: set[int]) -> None:
+            """Normalize entire acyclic component from a deterministic root."""
+            if not component:
+                return
+            root = choose_tree_root(component)
+            normalize_tree(component, [root])
 
         for component in components:
             if len(component) <= 1:
@@ -7573,9 +7768,9 @@ class ChemusonCanvas(QGraphicsView):
                             leaf_queue.append(nb)
 
             if not ring_atoms:
-                # Acyclic: only normalize bond lengths, preserve angles
-                root = next(iter(component))
-                normalize_tree(component, [root])
+                # Acyclic: rebuild with ideal local geometry instead of preserving
+                # incoming orthogonal/skewed angles from the drawing state.
+                normalize_component_tree(component)
                 continue
 
             # Relax ring core

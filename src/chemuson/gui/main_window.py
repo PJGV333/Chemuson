@@ -2145,6 +2145,78 @@ class ChemusonWindow(QMainWindow):
             for atom_id, (x, y) in coords.items()
         }
 
+    @classmethod
+    def _project_missing_hydrogen_coords(
+        cls,
+        before: dict[int, tuple[float, float]],
+        after: dict[int, tuple[float, float]],
+        bonds,
+        atom_elements: dict[int, str],
+    ) -> dict[int, tuple[float, float]]:
+        """Projeta H faltantes trasladando su vector local desde átomos ancla."""
+        projected = dict(after)
+        if not before:
+            return projected
+
+        adjacency: dict[int, list[int]] = {}
+        for bond in bonds:
+            adjacency.setdefault(bond.a1_id, []).append(bond.a2_id)
+            adjacency.setdefault(bond.a2_id, []).append(bond.a1_id)
+
+        for atom_id, element in atom_elements.items():
+            if element != "H" or atom_id in projected:
+                continue
+            before_pos = before.get(atom_id)
+            if before_pos is None:
+                continue
+            candidate_positions: list[tuple[float, float]] = []
+            for anchor_id in adjacency.get(atom_id, []):
+                anchor_before = before.get(anchor_id)
+                anchor_after = projected.get(anchor_id)
+                if anchor_before is None or anchor_after is None:
+                    continue
+                dx = before_pos[0] - anchor_before[0]
+                dy = before_pos[1] - anchor_before[1]
+                candidate_positions.append((anchor_after[0] + dx, anchor_after[1] + dy))
+            if candidate_positions:
+                avg_x = sum(pos[0] for pos in candidate_positions) / len(candidate_positions)
+                avg_y = sum(pos[1] for pos in candidate_positions) / len(candidate_positions)
+                projected[atom_id] = (avg_x, avg_y)
+
+        for atom_id, coord in before.items():
+            projected.setdefault(atom_id, coord)
+        return projected
+
+    @staticmethod
+    def _is_acyclic_structure(atom_ids: set[int], bonds) -> bool:
+        """Indica si el subgrafo seleccionado no contiene ciclos."""
+        if not atom_ids:
+            return True
+        adjacency: dict[int, list[int]] = {}
+        for bond in bonds:
+            if bond.a1_id not in atom_ids or bond.a2_id not in atom_ids:
+                continue
+            adjacency.setdefault(bond.a1_id, []).append(bond.a2_id)
+            adjacency.setdefault(bond.a2_id, []).append(bond.a1_id)
+
+        visited: set[int] = set()
+        for start in atom_ids:
+            if start in visited:
+                continue
+            stack: list[tuple[int, int]] = [(start, -1)]
+            while stack:
+                node, parent = stack.pop()
+                if node in visited:
+                    continue
+                visited.add(node)
+                for neigh in adjacency.get(node, []):
+                    if neigh == parent:
+                        continue
+                    if neigh in visited:
+                        return False
+                    stack.append((neigh, node))
+        return True
+
     def _on_clean_2d(self) -> None:
         """Maneja clean 2d.
 
@@ -2173,30 +2245,73 @@ class ChemusonWindow(QMainWindow):
         target_ids = atom_ids if atom_ids else set(self.canvas.model.atoms.keys())
         if not target_ids:
             return
+        scale_bonds = bonds if atom_ids else list(self.canvas.model.bonds.values())
+
+        if self._is_acyclic_structure(target_ids, scale_bonds):
+            # Para cadenas acíclicas, el layout geométrico interno mantiene mejor
+            # ángulos ideales (sp3/sp2/sp) que la depicción RDKit con H explícitos.
+            self.canvas.clean_2d_fallback(target_ids, iterations=max(40, fallback_iterations))
+            msg = "Selección 2D limpiada" if atom_ids else "Estructura 2D limpiada"
+            self.statusBar().showMessage(f"{msg} {status_suffix} (acíclico)")
+            return
 
         try:
             from chemuson.chemio.rdkit_io import molgraph_to_rdkit_with_map
+            from rdkit import Chem
             from rdkit.Chem import AllChem
 
             graph = self.canvas._build_selection_graph(atom_ids, bonds) if atom_ids else self.canvas.graph
             mol, id_map = molgraph_to_rdkit_with_map(graph)
-            AllChem.Compute2DCoords(mol)
-            conf = mol.GetConformer()
+            for aid, rd_idx in id_map.items():
+                try:
+                    mol.GetAtomWithIdx(rd_idx).SetIntProp("_chemuson_id", int(aid))
+                except Exception:
+                    continue
 
             before = {
                 aid: (self.canvas.model.get_atom(aid).x, self.canvas.model.get_atom(aid).y)
                 for aid in target_ids
             }
             before_cx, before_cy = self._coords_center(before)
-            scale_bonds = bonds if atom_ids else list(self.canvas.model.bonds.values())
             before_avg_len = self._average_bond_length(before, scale_bonds)
 
             raw_after = {}
-            for aid, rd_idx in id_map.items():
-                if aid not in target_ids:
-                    continue
-                pos = conf.GetAtomPosition(rd_idx)
-                raw_after[aid] = (pos.x, pos.y)
+            used_no_h_layout = False
+            try:
+                mol_no_h = Chem.RemoveHs(Chem.Mol(mol), sanitize=True)
+                if 0 < mol_no_h.GetNumAtoms() < mol.GetNumAtoms():
+                    AllChem.Compute2DCoords(mol_no_h)
+                    conf_no_h = mol_no_h.GetConformer()
+                    for atom in mol_no_h.GetAtoms():
+                        if not atom.HasProp("_chemuson_id"):
+                            continue
+                        aid = int(atom.GetIntProp("_chemuson_id"))
+                        if aid not in target_ids:
+                            continue
+                        pos = conf_no_h.GetAtomPosition(atom.GetIdx())
+                        raw_after[aid] = (pos.x, pos.y)
+                    if raw_after:
+                        atom_elements = {
+                            aid: self.canvas.model.get_atom(aid).element for aid in target_ids
+                        }
+                        raw_after = self._project_missing_hydrogen_coords(
+                            before=before,
+                            after=raw_after,
+                            bonds=scale_bonds,
+                            atom_elements=atom_elements,
+                        )
+                        used_no_h_layout = True
+            except Exception:
+                used_no_h_layout = False
+
+            if not used_no_h_layout:
+                AllChem.Compute2DCoords(mol)
+                conf = mol.GetConformer()
+                for aid, rd_idx in id_map.items():
+                    if aid not in target_ids:
+                        continue
+                    pos = conf.GetAtomPosition(rd_idx)
+                    raw_after[aid] = (pos.x, pos.y)
 
             target_bond_len = before_avg_len if before_avg_len > 1e-6 else float(self.canvas.state.bond_length)
             raw_after = self._rescale_coords_to_bond_length(raw_after, scale_bonds, target_bond_len)
