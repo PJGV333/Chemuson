@@ -7629,18 +7629,61 @@ class ChemusonCanvas(QGraphicsView):
                 parent_atom = self.model.get_atom(parent)
                 geometry = atom_geometry(parent)
 
-                def place_neighbor_with_angle(neigh: int, chosen_angle: float) -> None:
+                def neighbor_bond_length(neigh: int) -> float:
                     key = (min(parent, neigh), max(parent, neigh))
                     bond = bond_lookup.get(key)
                     length = target_len
                     if bond is not None and bond.order >= 2:
-                        # Keep a slight visual distinction for higher-order bonds.
                         length = target_len * 0.98
+                    return length
+
+                def place_neighbor_with_angle(neigh: int, chosen_angle: float) -> None:
+                    length = neighbor_bond_length(neigh)
                     positions[neigh] = endpoint_from_angle_len(p_parent, chosen_angle, length)
                     existing_angles.append(chosen_angle)
                     placed.add(neigh)
                     parent_of[neigh] = parent
                     queue.append(neigh)
+
+                def candidate_collision_metrics(
+                    neigh: int,
+                    angle_value: float,
+                ) -> tuple[int, float, float]:
+                    p1 = endpoint_from_angle_len(p_parent, angle_value, neighbor_bond_length(neigh))
+                    intersections = 0
+                    min_atom_dist = float("inf")
+                    min_bond_dist = float("inf")
+                    atom_threshold = target_len * MIN_ATOM_DIST_SCALE
+                    bond_threshold = target_len * MIN_BOND_DIST_SCALE
+
+                    for atom_id in placed:
+                        if atom_id == parent:
+                            continue
+                        atom_pos = positions.get(atom_id)
+                        if atom_pos is None:
+                            continue
+                        dist = math.hypot(p1.x() - atom_pos.x(), p1.y() - atom_pos.y())
+                        min_atom_dist = min(min_atom_dist, dist)
+                        if dist < atom_threshold:
+                            intersections += 1
+
+                    for bond in bonds_in_selection:
+                        if bond.a1_id not in placed or bond.a2_id not in placed:
+                            continue
+                        if parent in {bond.a1_id, bond.a2_id}:
+                            continue
+                        p_a = positions.get(bond.a1_id)
+                        p_b = positions.get(bond.a2_id)
+                        if p_a is None or p_b is None:
+                            continue
+                        if segments_intersect(p_parent, p1, p_a, p_b):
+                            intersections += 1
+                        bond_dist = segment_min_distance(p_parent, p1, p_a, p_b)
+                        min_bond_dist = min(min_bond_dist, bond_dist)
+                        if bond_dist < bond_threshold:
+                            intersections += 1
+
+                    return intersections, min_atom_dist, min_bond_dist
 
                 def pick_angle_for_neighbor(neigh: int, mouse_angle: float) -> float:
                     if geometry == "sp3" and len(existing_angles) >= 3:
@@ -7673,8 +7716,37 @@ class ChemusonCanvas(QGraphicsView):
                             (incoming_angle - sp3_angle) % 360.0,
                         ]
 
-                    chosen = pick_closest_direction_deg(candidates, mouse_angle, preferred)
-                    return chosen if chosen is not None else mouse_angle
+                    atom_threshold = target_len * MIN_ATOM_DIST_SCALE
+                    bond_threshold = target_len * MIN_BOND_DIST_SCALE
+
+                    def _candidate_score(angle_value: float) -> tuple[int, float]:
+                        intersections, min_atom_dist, min_bond_dist = candidate_collision_metrics(
+                            neigh,
+                            angle_value,
+                        )
+                        score = angle_distance_deg(angle_value, mouse_angle)
+                        if preferred:
+                            if (
+                                min(
+                                    angle_distance_deg(angle_value, pref)
+                                    for pref in preferred
+                                )
+                                <= 15.0
+                            ):
+                                score -= 15.0
+                        score += intersections * 100.0
+                        if min_atom_dist < atom_threshold:
+                            score += (atom_threshold - min_atom_dist) * 5.0
+                        if min_bond_dist < bond_threshold:
+                            score += (bond_threshold - min_bond_dist) * 5.0
+                        valid = (
+                            intersections == 0
+                            and min_atom_dist >= atom_threshold
+                            and min_bond_dist >= bond_threshold
+                        )
+                        return (0 if valid else 1, score)
+
+                    return min(candidates, key=_candidate_score)
 
                 non_h_neighbors = []
                 h_neighbors = []
