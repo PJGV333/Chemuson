@@ -1,2 +1,7 @@
 __pycache__/
 *.py[cod]
+dist/
+build/
+*.spec
+!chemuson.spec
+*.AppImage
