@@ -1,88 +1,84 @@
 # Chemuson
 
-Editor de dibujo molecular 2D libre y open source.
+Chemuson es un editor molecular 2D libre y open source, desarrollado como **proyecto en marcha del Grupo de Química Supramolecular de la Universidad de Sonora**.
 
-## Stack Técnico
+## Estado del proyecto
+
+> **Proyecto en construcción.**
+>
+> Chemuson está en desarrollo activo. Las funciones, formatos y resultados pueden cambiar mientras el proyecto madura.
+
+## ¿Qué hace Chemuson?
+
+Chemuson permite dibujar estructuras químicas 2D, analizarlas y exportarlas en formatos comunes para trabajo académico y de investigación.
+
+Capacidades actuales (resumen):
+- Editor gráfico 2D con herramientas para átomos, enlaces, anillos, cadenas y anotaciones.
+- Soporte de estilos de enlace (simple, doble, triple, aromático, cuña, punteado, coordinativo, etc.).
+- Limpieza geométrica (`Limpiar 2D`) y opciones visuales (hidrógenos, carbonos, aromáticos como círculo, rejilla/reglas).
+- Numeración visual no destructiva (átomos, estructuras o ambos), configurable para exportación.
+- Importación y exportación química: `SMILES`, `Molfile` y archivos propios `.cmsn`.
+- Exportación gráfica: `PNG`, `SVG`, `PDF`.
+- Herramientas de análisis integradas: nombre, fórmula, masa exacta, peso molecular, `m/z` y análisis elemental.
+- Motor de nomenclatura **IUPAC-lite** para un subconjunto de estructuras orgánicas.
+- Biblioteca de plantillas (incluye base predefinida + categorías de usuario importables/exportables).
+
+## Fortalezas
+
+- Arquitectura modular (núcleo químico, GUI, nomenclatura, IO y persistencia separados).
+- Integración con RDKit y rutas de respaldo internas cuando RDKit no cubre ciertos casos.
+- Cobertura de pruebas amplia para una base en evolución (49 pruebas en `tests/`).
+- Orientado a uso docente y de laboratorio con enfoque práctico de dibujo y análisis rápido.
+
+## Debilidades y límites actuales
+
+- El motor de nombres es **IUPAC-lite**: no cubre toda la nomenclatura IUPAC ni todos los sistemas cíclicos/fusionados.
+- Algunas rutas de cálculo/exportación usan subconjuntos de elementos o aproximaciones, según el caso.
+- Al ser un proyecto en construcción, puede haber cambios de comportamiento entre versiones.
+- No sustituye herramientas de validación química regulatoria o flujos de producción validados.
+
+## Alcance de IUPAC-lite (actual)
+
+Incluye soporte para:
+- Cadenas lineales y algunas insaturaciones.
+- Sustituyentes comunes (halógenos, alquilos simples, algunos grupos funcionales).
+- Cicloalcanos simples, benceno y un subconjunto de heteroaromáticos.
+- Algunos sistemas aromáticos fusionados (por ejemplo: naftaleno, antraceno, fenantreno, pireno; y casos concretos heterofusionados).
+
+Limitaciones relevantes:
+- Cobertura parcial en anillos fusionados complejos.
+- Cobertura parcial en heterociclos fuera del subconjunto soportado.
+- Casos con múltiples grupos funcionales y escenarios avanzados aún no completamente soportados.
+
+## Stack técnico
 
 - **GUI**: PyQt6
 - **Química**: RDKit
 - **Lenguaje**: Python 3.10+
 
-## Instalación y Ambiente
-
-He creado un ambiente virtual llamado `chemuson`. Si necesitas recrearlo o instalarlo en otro lugar:
+## Instalación
 
 ```bash
 python3 -m venv chemuson
 ./chemuson/bin/pip install -r requirements.txt
 ```
 
+Opcional (modo editable):
+
+```bash
+./chemuson/bin/pip install -e .
+```
+
 ## Ejecución
 
-Para iniciar la aplicación usando el ambiente virtual:
+Desde el entorno virtual:
 
 ```bash
 ./chemuson/bin/python src/main.py
 ```
 
-## Numeración visual
+Si instalaste en modo editable:
 
-- Activa la numeración en `Ver > Numeración > Mostrar numeración`.
-- Modos disponibles:
-  - `Numerar átomos`
-  - `Numerar estructuras`
-  - `Numerar ambos`
-- Regla actual de orden para átomos: por estructura (componente conexa), `x` ascendente y luego `y` descendente.
-- La numeración atómica se reinicia en cada estructura desconectada.
-- Los números se dibujan como texto editable y movible (doble clic para editar).
-- La numeración es un overlay no destructivo (no modifica el modelo químico).
-- Exportación: controla inclusión/exclusión desde `Ver > Numeración > Incluir numeración en exportación`.
-
-## IUPAC-Lite (soporte actual)
-
-**Soportado**
-- Lineales: alcanos acíclicos, halógenos, alquilos lineales.
-- Lineales con insaturaciones múltiples: `-diene`, `-triene`, `-diyne` y `en-yne`.
-- Lineales con un grupo funcional: `-ol`, `-amine`, `-al`, `-one`, `-oic acid`, `-nitrile` (uno solo).
-- Cicloalcanos simples (3–8) con sustituyentes simples (halógenos, alquilos lineales).
-- Benceno con sustituyentes simples (halógenos, alquilos lineales, hydroxy, nitro).
-- Sustituyentes simples en cadena/anillo: alkoxy (C1–C3), nitro, amino.
-- Heteroaromáticos monocíclicos simples (furan, thiophene, pyrrole, pyridine).
-- Heteroaromáticos con 2 heteroátomos: diazinas (pyridazine/pyrimidine/pyrazine) y imidazole/oxazole/thiazole.
-- Heteroaromáticos con 3 N: triazine y triazole.
-- Naftaleno con mono/di-sustituidos simples (halógenos, alquilos lineales).
-- Sustituyentes alquilo ramificados simples (isopropyl, sec-butyl, tert-butyl, neopentyl).
-- Anillos como sustituyentes: phenyl, benzyl, cyclohexyl.
-- Aromáticos fusionados: anthracene, phenanthrene (mono-sustituidos) y pyrene (mono/di-sustituidos).
-- Hetero-fusionados: quinoline, isoquinoline, indole (mono-sustituidos).
-
-**No soportado aún**
-- Anillos fusionados complejos (fuera de naphthalene/anthracene/phenanthrene).
-- Hetero-fusionados fuera de quinoline/isoquinoline/indole.
-- Heterociclos no aromáticos.
-- Heteroaromáticos fuera del subset listado.
-- Múltiples insaturaciones.
-- Múltiples grupos funcionales (dioles, diaminas, etc.).
-- Sustituyentes ramificados fuera del set soportado o con insaturación.
-- Heteroaromáticos con 3+ heteroátomos.
-- Fusionados mayores (tres+ anillos aromáticos) con di-sustitución.
-- Numeración alternativa para fused systems fuera de pyrene.
-
-**Pyrene (numeración)**
-- Por defecto: IUPAC 2004.
-- Alternativa: CAS. Usa `NameOptions(fused_numbering_scheme="cas")`.
-
-**Ejemplos (entrada → salida)**
-- `C1CCCCC1` → `cyclohexane`
-- `CC1CCCCC1` → `methylcyclohexane`
-- `ClC1CCCCC1` → `chlorocyclohexane`
-- `C1=CC=CC=C1` → `benzene`
-- `Clc1ccccc1` → `chlorobenzene`
-- `Cc1ccccc1` → `methylbenzene`
-- `n1ccccc1` → `pyridine`
-- `o1cccc1` → `furan`
-- `s1cccc1` → `thiophene`
-- `c1ccc2cccc3` → `naphthalene`
-- `Br-(CH2)12-Cl` → `1-bromo-12-chlorododecane`
-- `c1ccc2ccccc2n1` → `quinoline`
-- `c1ccc2ccccc2[nH]1` → `indole`
+```bash
+./chemuson/bin/chemuson
+```
