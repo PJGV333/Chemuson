@@ -1029,7 +1029,7 @@ class ChemusonCanvas(QGraphicsView):
             self.cancel_template_insert_mode()
         self._clear_bond_anchor()
         self._cancel_drag()
-        selection_tools = {"tool_select", "tool_select_lasso"}
+        selection_tools = {"tool_select", "tool_select_lasso", "tool_rotate_3d_precise"}
         if tool_id not in selection_tools and previous_tool in selection_tools:
             self.scene.clearSelection()
             self._sync_selection_from_scene()
@@ -1041,7 +1041,7 @@ class ChemusonCanvas(QGraphicsView):
             self._preview_arrow_item.hide_preview()
         self._clear_bracket_preview()
 
-        if tool_id in {"tool_select", "tool_select_lasso", "tool_none"}:
+        if tool_id in {"tool_select", "tool_select_lasso", "tool_rotate_3d_precise", "tool_none"}:
             self.setCursor(Qt.CursorShape.ArrowCursor)
             self.setDragMode(QGraphicsView.DragMode.NoDrag)
         else:
@@ -1191,7 +1191,10 @@ class ChemusonCanvas(QGraphicsView):
                 self._cancel_drag()
                 return
 
-        if not self._is_on_paper(scene_pos.x(), scene_pos.y()) and self.current_tool not in {"tool_select", "tool_select_lasso"}:
+        if (
+            not self._is_on_paper(scene_pos.x(), scene_pos.y())
+            and self.current_tool not in {"tool_select", "tool_select_lasso", "tool_rotate_3d_precise"}
+        ):
             super().mousePressEvent(event)
             return
 
@@ -1231,51 +1234,59 @@ class ChemusonCanvas(QGraphicsView):
             self.cancel_template_insert_mode()
             return
 
-        if self.current_tool in {"tool_select", "tool_select_lasso"}:
+        if self.current_tool in {"tool_select", "tool_select_lasso", "tool_rotate_3d_precise"}:
             if self._space_panning:
                 return
             clicked_item = self._get_item_at(scene_pos)
-            blocked_modifiers = (
-                Qt.KeyboardModifier.ShiftModifier
-                | Qt.KeyboardModifier.ControlModifier
-                | Qt.KeyboardModifier.MetaModifier
-            )
-            if (
-                event.modifiers() & Qt.KeyboardModifier.AltModifier
-                and not (event.modifiers() & blocked_modifiers)
-                and self._begin_3d_rotation_drag(
-                    scene_pos,
-                    clicked_item.atom_id if isinstance(clicked_item, AtomItem) else None,
+            precise_mode = self.current_tool == "tool_rotate_3d_precise"
+            if not precise_mode:
+                blocked_modifiers = (
+                    Qt.KeyboardModifier.ShiftModifier
+                    | Qt.KeyboardModifier.ControlModifier
+                    | Qt.KeyboardModifier.MetaModifier
                 )
-            ):
-                return
-            if (
-                (event.modifiers() & Qt.KeyboardModifier.AltModifier)
-                and isinstance(clicked_item, AtomItem)
-                and self._cycle_anchor_override(clicked_item.atom_id)
-            ):
-                return
-            if event.button() == Qt.MouseButton.LeftButton and self._hit_selection_scale_handle(scene_pos):
-                self._begin_scale_drag(scene_pos)
-                return
-            if event.button() == Qt.MouseButton.LeftButton and self._hit_selection_handle(scene_pos):
-                self._begin_rotation_drag(scene_pos)
-                return
-            if event.button() == Qt.MouseButton.LeftButton and self._hit_selection_move_handle(scene_pos):
-                if self._selection_move_handle is not None:
-                    self._selection_move_handle.setCursor(Qt.CursorShape.ClosedHandCursor)
-                self._begin_drag(scene_pos)
-                return
+                if (
+                    event.modifiers() & Qt.KeyboardModifier.AltModifier
+                    and not (event.modifiers() & blocked_modifiers)
+                    and self._begin_3d_rotation_drag(
+                        scene_pos,
+                        clicked_item.atom_id if isinstance(clicked_item, AtomItem) else None,
+                    )
+                ):
+                    return
+                if (
+                    (event.modifiers() & Qt.KeyboardModifier.AltModifier)
+                    and isinstance(clicked_item, AtomItem)
+                    and self._cycle_anchor_override(clicked_item.atom_id)
+                ):
+                    return
+                if event.button() == Qt.MouseButton.LeftButton and self._hit_selection_scale_handle(scene_pos):
+                    self._begin_scale_drag(scene_pos)
+                    return
+                if event.button() == Qt.MouseButton.LeftButton and self._hit_selection_handle(scene_pos):
+                    self._begin_rotation_drag(scene_pos)
+                    return
+                if event.button() == Qt.MouseButton.LeftButton and self._hit_selection_move_handle(scene_pos):
+                    if self._selection_move_handle is not None:
+                        self._selection_move_handle.setCursor(Qt.CursorShape.ClosedHandCursor)
+                    self._begin_drag(scene_pos)
+                    return
             if clicked_item is None:
                 additive = bool(
                     event.modifiers()
                     & (Qt.KeyboardModifier.ShiftModifier | Qt.KeyboardModifier.ControlModifier)
                 )
-                free_select = self.current_tool == "tool_select_lasso" or bool(
+                free_select = precise_mode or self.current_tool == "tool_select_lasso" or bool(
                     event.modifiers() & Qt.KeyboardModifier.ControlModifier
                 )
                 self._begin_selection_drag(scene_pos, free_select, additive)
                 return
+
+            clicked_atom_id = None
+            clicked_bond_id = None
+            if precise_mode:
+                clicked_atom_id, clicked_bond_id = self._pick_hover_target(scene_pos)
+
             if event.modifiers() & (Qt.KeyboardModifier.ShiftModifier | Qt.KeyboardModifier.ControlModifier):
                 clicked_item.setSelected(not clicked_item.isSelected())
                 self._sync_selection_from_scene()
@@ -1285,6 +1296,12 @@ class ChemusonCanvas(QGraphicsView):
                     self.scene.clearSelection()
                     clicked_item.setSelected(True)
             self._sync_selection_from_scene()
+            if precise_mode:
+                self._prompt_precise_3d_rotation(
+                    clicked_atom_id=clicked_atom_id,
+                    clicked_bond_id=clicked_bond_id,
+                )
+                return
             if clicked_item.isSelected():
                 if isinstance(clicked_item, TextAnnotationItem) and (
                     clicked_item.textInteractionFlags()
@@ -1296,13 +1313,6 @@ class ChemusonCanvas(QGraphicsView):
             return
 
         clicked_atom_id, clicked_bond_id = self._pick_hover_target(scene_pos)
-
-        if self.current_tool == "tool_rotate_3d_precise":
-            self._prompt_precise_3d_rotation(
-                clicked_atom_id=clicked_atom_id,
-                clicked_bond_id=clicked_bond_id,
-            )
-            return
 
         arrow_tools = {
             "tool_arrow_forward": "forward",
@@ -1744,6 +1754,8 @@ class ChemusonCanvas(QGraphicsView):
             return
         if self._select_drag_mode is not None:
             self._finalize_selection_drag()
+            if self.current_tool == "tool_rotate_3d_precise":
+                self._prompt_precise_3d_rotation()
             return
         if self._drag_mode == "flex_adjust":
             return

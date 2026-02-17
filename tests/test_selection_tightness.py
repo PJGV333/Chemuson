@@ -4,7 +4,7 @@ import os
 import sys
 
 import pytest
-from PyQt6.QtCore import QPointF
+from PyQt6.QtCore import QPoint, QPointF, Qt
 from PyQt6.QtWidgets import QApplication
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
@@ -69,3 +69,73 @@ def test_switching_from_selection_tool_clears_selection():
     assert canvas.state.selected_atoms == set()
     assert canvas.state.selected_bonds == set()
     assert not canvas.scene.selectedItems()
+
+
+def test_switching_from_precise_rotation_tool_clears_selection_on_other_tool():
+    """La selección usada por rotación precisa no debe quedarse al pasar a otra herramienta."""
+    canvas = ChemusonCanvas()
+
+    atom = canvas.model.add_atom("C", 120.0, 120.0)
+    canvas._rebuild_items_from_model()
+    canvas.atom_items[atom.id].setSelected(True)
+    canvas._sync_selection_from_scene()
+    assert atom.id in canvas.state.selected_atoms
+
+    canvas.set_current_tool("tool_rotate_3d_precise")
+    canvas.set_current_tool("tool_bond")
+
+    assert canvas.state.selected_atoms == set()
+    assert canvas.state.selected_bonds == set()
+    assert not canvas.scene.selectedItems()
+
+
+def test_precise_rotation_prompts_after_delimiting_selection(monkeypatch):
+    """Rotación 3D precisa abre su diálogo al finalizar delimitación de selección."""
+    canvas = ChemusonCanvas()
+
+    atom = canvas.model.add_atom("C", 120.0, 120.0)
+    canvas._rebuild_items_from_model()
+    canvas.set_current_tool("tool_rotate_3d_precise")
+
+    prompts: list[dict] = []
+    monkeypatch.setattr(
+        canvas,
+        "_prompt_precise_3d_rotation",
+        lambda *args, **kwargs: prompts.append(dict(kwargs)),
+    )
+
+    canvas._begin_selection_drag(QPointF(100.0, 100.0), free_select=False, additive=False)
+    canvas._last_scene_pos = QPointF(140.0, 140.0)
+    canvas.mouseReleaseEvent(object())
+
+    assert atom.id in canvas.state.selected_atoms
+    assert len(prompts) == 1
+
+
+def test_precise_rotation_starts_free_selection_by_default(monkeypatch):
+    """Rotación 3D precisa debe iniciar delimitación como selección libre."""
+    canvas = ChemusonCanvas()
+    canvas.set_current_tool("tool_rotate_3d_precise")
+
+    calls: list[tuple[bool, bool]] = []
+    monkeypatch.setattr(canvas, "_is_on_paper", lambda x, y: True)
+    monkeypatch.setattr(canvas, "_get_item_at", lambda scene_pos: None)
+    monkeypatch.setattr(
+        canvas,
+        "_begin_selection_drag",
+        lambda scene_pos, free_select, additive: calls.append((bool(free_select), bool(additive))),
+    )
+
+    class _FakeMouseEvent:
+        def pos(self):
+            return QPoint(100, 100)
+
+        def button(self):
+            return Qt.MouseButton.LeftButton
+
+        def modifiers(self):
+            return Qt.KeyboardModifier.NoModifier
+
+    canvas.mousePressEvent(_FakeMouseEvent())
+
+    assert calls == [(True, False)]
