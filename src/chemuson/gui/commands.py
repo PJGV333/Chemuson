@@ -969,6 +969,30 @@ class ChangeBondColorCommand(QUndoCommand):
         self._view.update_bond_item(self._bond_id)
 
 
+class ChangeArrowStrokeCommand(QUndoCommand):
+    """Comando para cambiar el grosor de una flecha seleccionada."""
+
+    def __init__(self, view, item, new_stroke_px: Optional[float]) -> None:
+        super().__init__("Change arrow thickness")
+        self._view = view
+        self._item = item
+        self._new_stroke = new_stroke_px
+        self._old_stroke = item.stroke_px() if hasattr(item, "stroke_px") else None
+
+    def _apply(self, stroke_px: Optional[float]) -> None:
+        if self._item is None or not hasattr(self._item, "set_stroke_px"):
+            return
+        self._item.set_stroke_px(stroke_px)
+        if hasattr(self._view, "_update_selection_overlay"):
+            self._view._update_selection_overlay()
+
+    def redo(self) -> None:
+        self._apply(self._new_stroke)
+
+    def undo(self) -> None:
+        self._apply(self._old_stroke)
+
+
 class ChangeDoubleBondOrientationCommand(QUndoCommand):
     """Comando para fijar orientación manual de línea pi en un doble enlace."""
 
@@ -1256,6 +1280,7 @@ class AddArrowCommand(QUndoCommand):
         end: QPointF,
         kind: str,
         curve_factor: float | None = None,
+        stroke_px: float | None = None,
     ) -> None:
         """Inicializa el comando de flecha."""
         super().__init__("Add arrow")
@@ -1264,6 +1289,7 @@ class AddArrowCommand(QUndoCommand):
         self._end = QPointF(end)
         self._kind = kind
         self._curve_factor = curve_factor
+        self._stroke_px = stroke_px
         self._item = None
 
     def redo(self) -> None:
@@ -1274,6 +1300,7 @@ class AddArrowCommand(QUndoCommand):
                 self._end,
                 self._kind,
                 curve_factor=self._curve_factor,
+                stroke_px=self._stroke_px,
             )
         else:
             self._view.readd_arrow_item(

@@ -105,6 +105,7 @@ from chemuson.gui.commands import (
     ChangeBondCommand,
     ChangeBondLengthCommand,
     ChangeBondStrokeCommand,
+    ChangeArrowStrokeCommand,
     ChangeBondColorCommand,
     ChangeDoubleBondOrientationCommand,
     ChangeChargeCommand,
@@ -3333,6 +3334,7 @@ class ChemusonCanvas(QGraphicsView):
                     "start": {"x": item.start_point().x(), "y": item.start_point().y()},
                     "end": {"x": item.end_point().x(), "y": item.end_point().y()},
                     "curve_factor": item.curve_factor(),
+                    "stroke_px": item.stroke_px(),
                 })
             elif isinstance(item, BracketItem):
                 data["annotations"]["brackets"].append({
@@ -3406,11 +3408,22 @@ class ChemusonCanvas(QGraphicsView):
             start = QPointF(arrow_d["start"]["x"], arrow_d["start"]["y"])
             end = QPointF(arrow_d["end"]["x"], arrow_d["end"]["y"])
             curve_factor = arrow_d.get("curve_factor")
+            stroke_px = arrow_d.get("stroke_px")
             try:
                 curve_factor_value = float(curve_factor) if curve_factor is not None else None
             except Exception:
                 curve_factor_value = None
-            self.add_arrow_item(start, end, kind=arrow_d["kind"], curve_factor=curve_factor_value)
+            try:
+                stroke_px_value = float(stroke_px) if stroke_px is not None else None
+            except Exception:
+                stroke_px_value = None
+            self.add_arrow_item(
+                start,
+                end,
+                kind=arrow_d["kind"],
+                curve_factor=curve_factor_value,
+                stroke_px=stroke_px_value,
+            )
 
         for br_d in annotations.get("brackets", []):
             rect_d = br_d["rect"]
@@ -4013,6 +4026,7 @@ class ChemusonCanvas(QGraphicsView):
                     "end": [end.x() - left, end.y() - top],
                     "kind": item.kind(),
                     "curve_factor": item.curve_factor(),
+                    "stroke_px": item.stroke_px(),
                 }
             )
 
@@ -4176,13 +4190,25 @@ class ChemusonCanvas(QGraphicsView):
             end = arrow_d.get("end", [10.0, 0.0])
             kind = arrow_d.get("kind", "forward")
             curve_factor = arrow_d.get("curve_factor")
+            stroke_px = arrow_d.get("stroke_px")
             try:
                 curve_factor_value = float(curve_factor) if curve_factor is not None else None
             except Exception:
                 curve_factor_value = None
+            try:
+                stroke_px_value = float(stroke_px) if stroke_px is not None else None
+            except Exception:
+                stroke_px_value = None
             start_pt = QPointF(float(start[0]) + dx, float(start[1]) + dy)
             end_pt = QPointF(float(end[0]) + dx, float(end[1]) + dy)
-            cmd = AddArrowCommand(self, start_pt, end_pt, kind, curve_factor=curve_factor_value)
+            cmd = AddArrowCommand(
+                self,
+                start_pt,
+                end_pt,
+                kind,
+                curve_factor=curve_factor_value,
+                stroke_px=stroke_px_value,
+            )
             if has_undo_items:
                 self.undo_stack.push(cmd)
             else:
@@ -6374,6 +6400,7 @@ class ChemusonCanvas(QGraphicsView):
         end: QPointF,
         kind: str,
         curve_factor: float | None = None,
+        stroke_px: float | None = None,
     ) -> ArrowItem:
         """Añade arrow item.
 
@@ -6382,6 +6409,7 @@ class ChemusonCanvas(QGraphicsView):
             end: Descripción del parámetro.
             kind: Descripción del parámetro.
             curve_factor: Curvatura normalizada para flechas curvas.
+            stroke_px: Grosor personalizado de flecha.
 
         Returns:
             Resultado de la operación o None.
@@ -6394,6 +6422,7 @@ class ChemusonCanvas(QGraphicsView):
             end,
             kind=kind,
             curve_factor=curve_factor,
+            stroke_px=stroke_px,
             style=self.drawing_style,
         )
         self.scene.addItem(item)
@@ -9464,10 +9493,11 @@ class ChemusonCanvas(QGraphicsView):
             Puede modificar el estado interno o la escena.
         """
         bond_ids = list(self.state.selected_bonds)
-        if not bond_ids:
+        arrow_items = self._selected_arrow_items()
+        if not bond_ids and not arrow_items:
             return
         default_stroke = self.drawing_style.stroke_px
-        self.undo_stack.beginMacro("Change bond thickness")
+        self.undo_stack.beginMacro("Change bond/arrow thickness")
         for bond_id in bond_ids:
             bond = self.model.get_bond(bond_id)
             current = bond.stroke_px if bond.stroke_px is not None else default_stroke
@@ -9476,6 +9506,12 @@ class ChemusonCanvas(QGraphicsView):
                 new_value = None
             cmd = ChangeBondStrokeCommand(self.model, self, bond_id, new_value)
             self.undo_stack.push(cmd)
+        for item in arrow_items:
+            current = item.stroke_px() if item.stroke_px() is not None else default_stroke
+            new_value = max(0.6, current + delta)
+            if abs(new_value - default_stroke) < 0.05:
+                new_value = None
+            self.undo_stack.push(ChangeArrowStrokeCommand(self, item, new_value))
         self.undo_stack.endMacro()
 
     def _reset_selected_bond_stroke(self) -> None:
@@ -9488,12 +9524,15 @@ class ChemusonCanvas(QGraphicsView):
             Puede modificar el estado interno o la escena.
         """
         bond_ids = list(self.state.selected_bonds)
-        if not bond_ids:
+        arrow_items = self._selected_arrow_items()
+        if not bond_ids and not arrow_items:
             return
-        self.undo_stack.beginMacro("Reset bond thickness")
+        self.undo_stack.beginMacro("Reset bond/arrow thickness")
         for bond_id in bond_ids:
             cmd = ChangeBondStrokeCommand(self.model, self, bond_id, None)
             self.undo_stack.push(cmd)
+        for item in arrow_items:
+            self.undo_stack.push(ChangeArrowStrokeCommand(self, item, None))
         self.undo_stack.endMacro()
 
 

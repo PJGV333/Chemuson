@@ -2634,6 +2634,7 @@ class ArrowItem(QGraphicsPathItem):
         head_at_end: bool = True,
         kind: str | None = None,
         curve_factor: float | None = None,
+        stroke_px: float | None = None,
         style: DrawingStyle = CHEMDOODLE_LIKE,
     ) -> None:
         """Inicializa la instancia y configura el elemento gráfico.
@@ -2644,6 +2645,7 @@ class ArrowItem(QGraphicsPathItem):
             head_at_end: Si la cabeza va en el extremo final.
             kind: Tipo de flecha/corchete.
             curve_factor: Curvatura normalizada de flechas curvas.
+            stroke_px: Grosor personalizado; `None` usa el grosor del estilo.
             style: Estilo de dibujo aplicado.
 
         Returns:
@@ -2667,7 +2669,8 @@ class ArrowItem(QGraphicsPathItem):
             self._curve_factor = self._clamp_curve_factor(float(curve_factor))
         self._start = QPointF(start)
         self._end = QPointF(end)
-        pen = QPen(QColor(self._style.bond_color), self._style.stroke_px)
+        self._stroke_px = self._normalize_stroke(stroke_px)
+        pen = QPen(QColor(self._style.bond_color), self._effective_stroke_px())
         pen.setCapStyle(self._style.cap_style)
         pen.setJoinStyle(self._style.join_style)
         self.setPen(pen)
@@ -2699,6 +2702,21 @@ class ArrowItem(QGraphicsPathItem):
         """Limita la curvatura normalizada a un rango estable."""
         return max(cls.CURVE_FACTOR_MIN, min(cls.CURVE_FACTOR_MAX, value))
 
+    @staticmethod
+    def _normalize_stroke(stroke_px: float | None) -> float | None:
+        """Normaliza el grosor personalizado para mantener un mínimo visible."""
+        if stroke_px is None:
+            return None
+        try:
+            return max(0.6, float(stroke_px))
+        except Exception:
+            return None
+
+    def _effective_stroke_px(self) -> float:
+        """Devuelve el grosor efectivo (personalizado o el del estilo)."""
+        base = self._stroke_px if self._stroke_px is not None else self._style.stroke_px
+        return max(float(base), 1.0)
+
     def curve_factor(self) -> float:
         """Devuelve la curvatura normalizada actual."""
         return float(self._curve_factor)
@@ -2706,6 +2724,18 @@ class ArrowItem(QGraphicsPathItem):
     def set_curve_factor(self, curve_factor: float) -> None:
         """Actualiza la curvatura y redibuja la flecha."""
         self._curve_factor = self._clamp_curve_factor(float(curve_factor))
+        self.update_positions(self._start, self._end)
+
+    def stroke_px(self) -> float | None:
+        """Devuelve el grosor personalizado de la flecha (`None` = por estilo)."""
+        return self._stroke_px
+
+    def set_stroke_px(self, stroke_px: float | None) -> None:
+        """Define grosor personalizado y refresca geometría."""
+        normalized = self._normalize_stroke(stroke_px)
+        if self._stroke_px == normalized:
+            return
+        self._stroke_px = normalized
         self.update_positions(self._start, self._end)
 
     def update_positions(
@@ -2738,7 +2768,7 @@ class ArrowItem(QGraphicsPathItem):
 
         ux = dx / length
         uy = dy / length
-        stroke_px = max(float(self._style.stroke_px), 1.0)
+        stroke_px = self._effective_stroke_px()
         head_len = max(10.0, stroke_px * 5.8)
         head_width = max(4.6, stroke_px * 2.35)
         nx = -uy
@@ -3085,7 +3115,7 @@ class ArrowItem(QGraphicsPathItem):
         Side Effects:
             Modifica el estado del item o la escena.
         """
-        pen = QPen(QColor(self._style.bond_color), self._style.stroke_px)
+        pen = QPen(QColor(self._style.bond_color), self._effective_stroke_px())
         pen.setCapStyle(self._style.cap_style)
         if self._kind == "curved_fishhook":
             pen.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
