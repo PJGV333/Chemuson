@@ -25,17 +25,17 @@ modules:
       - pip3 install --prefix=/app --no-deps pyqt6_qt6-6.10.0-py3-none-manylinux_2_34_x86_64.whl
     sources:
       - type: file
-        url: https://files.pythonhosted.org/packages/4f/f1/f425b5bb96d0f404916256034f2f7de3f6f4922f42ddd1619f3bd5f8b398/pyqt6_qt6-6.10.0-py3-none-manylinux_2_34_x86_64.whl
-        sha256: 918441ff5ad5d57386ec72f0d9f5c0b35f5889856f3d2f7b62215d7507515f72
+        url: https://files.pythonhosted.org/packages/c1/32/1d84ab75795b0984935e32d2a51200b94328a45954c28360a97d02f1c376/pyqt6_qt6-6.10.0-py3-none-manylinux_2_34_x86_64.whl
+        sha256: cd38b281bb7229b8114f13126aacd77f831a97105fdb1d900260a48ead8c9fcd
 
   - name: python3-pyqt6-sip
     buildsystem: simple
     build-commands:
-      - pip3 install --prefix=/app --no-deps pyqt6_sip-13.10.2-cp313-cp313-manylinux_2_5_x86_64.whl
+      - pip3 install --prefix=/app --no-deps pyqt6_sip-13.10.2-cp313-cp313-manylinux_2_5_x86_64.manylinux1_x86_64.whl
     sources:
       - type: file
-        url: https://files.pythonhosted.org/packages/8b/c9/2c4d03a8a6ad8d794c67e07e8538f7f6ec1f7fef18f0452e98b39f473d75/pyqt6_sip-13.10.2-cp313-cp313-manylinux_2_5_x86_64.whl
-        sha256: 35d34f6a209be2de4f3b6f6a2f5d6f9f9dd1804f1f2a42b3b7807f8f458721b0
+        url: https://files.pythonhosted.org/packages/b0/1e/c6a28a142f14e735088534cc92951c3f48cccd77cdd4f3b10d7996be420f/pyqt6_sip-13.10.2-cp313-cp313-manylinux_2_5_x86_64.manylinux1_x86_64.whl
+        sha256: 3dde8024d055f496eba7d44061c5a1ba4eb72fc95e5a9d7a0dbc908317e0888b
 
   - name: python3-pyqt6
     buildsystem: simple
@@ -43,8 +43,8 @@ modules:
       - pip3 install --prefix=/app --no-deps pyqt6-6.10.0-1-cp39-abi3-manylinux_2_34_x86_64.whl
     sources:
       - type: file
-        url: https://files.pythonhosted.org/packages/c1/32/1d84ab75795b0984935e32d2a51200b94328a45954c28360a97d02f1c376/pyqt6-6.10.0-1-cp39-abi3-manylinux_2_34_x86_64.whl
-        sha256: 7f679ec7f8e70f17fc694d722a64554f2bf120ff3ecfce2611310ec91ef1ca0f
+        url: https://files.pythonhosted.org/packages/f8/99/ca0386e84e39e4f2ef30322f1d39d515f2a3efbc542cccb33e65a1cf7c46/pyqt6-6.10.0-1-cp39-abi3-manylinux_2_34_x86_64.whl
+        sha256: 54b6b022369e4e6ade8cf79c0f988558839df7b2c285f814b4567d15a0fcb756
 
   - name: python3-numpy
     buildsystem: simple
@@ -61,8 +61,8 @@ modules:
       - pip3 install --prefix=/app --no-deps pillow-12.0.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
     sources:
       - type: file
-        url: https://files.pythonhosted.org/packages/f2/2f/d7675ecae6c43e9f12aa8d58b6012683b20b6edfbdac7abcb4e6af7a3784/pillow-12.0.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
-        sha256: e31828b9f645802e3f5762818ea689ad131d55d4c7185ca1dd07fac24203c218
+        url: https://files.pythonhosted.org/packages/38/57/755dbd06530a27a5ed74f8cb0a7a44a21722ebf318edbe67ddbd7fb28f88/pillow-12.0.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+        sha256: f4f1231b7dec408e8670264ce63e9c71409d9583dd21d32c163e25213ee2a344
 
   - name: python3-rdkit
     buildsystem: simple
