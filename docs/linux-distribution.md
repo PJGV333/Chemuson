@@ -7,6 +7,18 @@ Fecha: 2026-02-26
 - **Canal principal instalable:** Flatpak.
 - **Canal portable:** AppImage (se mantiene).
 
+## Estrategia Flatpak reproducible
+
+- El manifiesto Flatpak declara dependencias Python como modulos explicitos con `url + sha256` pinneados.
+- El modulo de Chemuson instala el paquete con:
+  - `pip3 install --prefix=/app --no-build-isolation --no-deps .`
+- Resultado:
+  - evita resolucion dinamica de PyPI en el paso de instalacion de Chemuson,
+  - hace el build mas reproducible (mismas fuentes y checksums),
+  - previene fallos tipo `No matching distribution found for PyQt6` durante `pip install .`.
+- Runtime KDE actualizado:
+  - de `6.6` (EOL) a `6.10` (rama soportada actual para Qt6/KDE6).
+
 ## Artefactos publicados
 
 - Flatpak bundle: `Chemuson-vX.Y.Z-linux-x86_64.flatpak`
@@ -74,6 +86,19 @@ bash packaging/linux/build_flatpak.sh \
 
 Opcional:
 - definir `CHEMUSON_FLATPAK_REPO_URL` para que el script emita un `.flatpakref`.
+- exportar `ARCH` si se requiere override de arquitectura (default: `x86_64`).
+
+## Troubleshooting Flatpak
+
+- Error de ruta de manifiesto:
+  - mensaje esperado: `Flatpak manifest not found: ...`
+  - accion: validar el cuarto argumento de `build_flatpak.sh` o `FLATPAK_MANIFEST`.
+- Error de red / DNS / sandbox:
+  - mensaje esperado: `Unable to configure flathub remote` o `network/DNS or sandbox egress restrictions`.
+  - accion: verificar conectividad a `https://dl.flathub.org`, DNS y politicas de sandbox.
+- Error de dependencias Python en `flatpak-builder`:
+  - mensaje esperado: `failed while installing Python dependencies inside flatpak-builder`.
+  - accion: revisar wheels pinneados, `sha256` y compatibilidad ABI de Python con el runtime seleccionado.
 
 ## Pipeline CI/CD
 
