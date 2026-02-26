@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
     QDialogButtonBox,
+    QHBoxLayout,
     QFontDialog,
     QInputDialog,
     QMainWindow,
@@ -15,19 +16,28 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QMessageBox,
     QToolBar,
+    QWidget,
     QFormLayout,
     QDoubleSpinBox,
     QComboBox,
+    QAbstractItemView,
     QTabWidget,
+    QTableWidget,
+    QTableWidgetItem,
+    QPushButton,
     QVBoxLayout,
     QLabel,
+    QHeaderView,
 )
 from PyQt6.QtCore import Qt, QSize, QSettings, QEvent
 from PyQt6.QtGui import QAction, QActionGroup, QKeySequence, QIcon, QPainter, QPixmap, QPen, QColor
 from PyQt6.QtPrintSupport import QPrinter
 from typing import Optional
 from dataclasses import replace
+from datetime import datetime
+import json
 import math
+import os
 import sys
 
 from chemuson.gui.canvas import ChemusonCanvas
@@ -43,10 +53,11 @@ from chemuson.gui.template_library import TemplateLibrary, DEFAULT_CATEGORY_USER
 from chemuson.gui.templates import (
     build_linear_chain_template,
 )
-import os
 from chemuson.chemio.rdkit_io import molfile_to_molgraph, molgraph_to_molfile
 from chemuson.chemio.persistence import PersistenceManager
 from chemuson.core.model import MolGraph
+from chemuson.utils.autosave import AutosaveManager
+from chemuson.utils import crash_reporter
 
 
 class ChemusonWindow(QMainWindow):
@@ -75,6 +86,7 @@ class ChemusonWindow(QMainWindow):
         self._current_file_path: Optional[str] = None
         self._canvas_file_paths: dict[ChemusonCanvas, Optional[str]] = {}
         self._canvas_tab_titles: dict[ChemusonCanvas, str] = {}
+        self._canvas_autosave_managers: dict[ChemusonCanvas, AutosaveManager] = {}
         self._untitled_counter = 1
         self._active_canvas_connected: Optional[ChemusonCanvas] = None
         self._numbering_default_mode = "atoms"
@@ -749,8 +761,11 @@ class ChemusonWindow(QMainWindow):
         self._apply_default_numbering_to_canvas(canvas)
         index = self.tabs.addTab(canvas, tab_title)
         self.tabs.setTabToolTip(index, "Documento sin guardar")
+        autosave_manager = AutosaveManager(self, canvas, canvas.undo_stack)
+        autosave_manager.start()
+        self._canvas_autosave_managers[canvas] = autosave_manager
         canvas.undo_stack.cleanChanged.connect(
-            lambda _clean, c=canvas: self._on_canvas_clean_state_changed(c)
+            lambda clean, c=canvas: self._on_canvas_clean_state_changed(c, bool(clean))
         )
         self._update_tab_title(canvas)
         if make_current:
@@ -767,16 +782,30 @@ class ChemusonWindow(QMainWindow):
         """Asigna ruta de archivo a una pestaña y actualiza su título."""
         clean_path = os.path.abspath(filepath) if filepath else None
         self._canvas_file_paths[canvas] = clean_path
+        autosave_manager = self._canvas_autosave_managers.get(canvas)
+        if autosave_manager is not None:
+            autosave_manager.set_original_path(clean_path)
         if clean_path:
             self._canvas_tab_titles[canvas] = os.path.basename(clean_path)
         if canvas is self.canvas:
             self._current_file_path = clean_path
         self._update_tab_title(canvas)
 
-    def _on_canvas_clean_state_changed(self, canvas: ChemusonCanvas) -> None:
+    def _on_canvas_clean_state_changed(
+        self,
+        canvas: ChemusonCanvas,
+        clean: Optional[bool] = None,
+    ) -> None:
         """Actualiza el título de pestaña cuando cambia estado clean/dirty."""
         if not self._tabs_alive():
             return
+        autosave_manager = self._canvas_autosave_managers.get(canvas)
+        if autosave_manager is not None:
+            is_clean = canvas.undo_stack.isClean() if clean is None else bool(clean)
+            if is_clean:
+                autosave_manager.cancel_debounce()
+            else:
+                autosave_manager.restart_debounce()
         self._update_tab_title(canvas)
 
     def _tabs_alive(self) -> bool:
@@ -839,6 +868,9 @@ class ChemusonWindow(QMainWindow):
             return False
         was_active = canvas is self.canvas
         self.tabs.removeTab(index)
+        autosave_manager = self._canvas_autosave_managers.pop(canvas, None)
+        if autosave_manager is not None:
+            autosave_manager.stop()
         self._canvas_file_paths.pop(canvas, None)
         self._canvas_tab_titles.pop(canvas, None)
         if self._active_canvas_connected is canvas:
@@ -1222,6 +1254,164 @@ class ChemusonWindow(QMainWindow):
         canvas.clear_canvas()
         canvas._insert_molgraph(graph)
 
+    @staticmethod
+    def _read_autosave_metadata(filepath: str) -> Optional[dict]:
+        """Lee metadatos mínimos de un autosave para la tabla de recuperación."""
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+        except Exception:
+            return None
+        if payload.get("application") != "Chemuson":
+            return None
+        metadata = payload.get("autosave_metadata")
+        if not isinstance(metadata, dict):
+            metadata = {}
+        raw_path = metadata.get("original_path")
+        raw_timestamp = metadata.get("timestamp")
+        return {
+            "autosave_path": filepath,
+            "original_path": str(raw_path) if raw_path else None,
+            "timestamp": str(raw_timestamp) if raw_timestamp else "Desconocida",
+        }
+
+    @staticmethod
+    def check_autosaves(window: "ChemusonWindow") -> None:
+        """Busca autosaves pendientes y permite recuperarlos al iniciar."""
+        autosave_dir = AutosaveManager.default_autosave_dir()
+        if not os.path.isdir(autosave_dir):
+            return
+
+        entries: list[dict] = []
+        for name in sorted(os.listdir(autosave_dir)):
+            if not name.endswith(".json"):
+                continue
+            filepath = os.path.join(autosave_dir, name)
+            if not os.path.isfile(filepath):
+                continue
+            metadata = ChemusonWindow._read_autosave_metadata(filepath)
+            if metadata is not None:
+                entries.append(metadata)
+
+        if not entries:
+            return
+
+        # Mostramos primero los más recientes para facilitar recuperación.
+        entries.sort(
+            key=lambda entry: os.path.getmtime(entry["autosave_path"]),
+            reverse=True,
+        )
+
+        dialog = QDialog(window)
+        dialog.setWindowTitle("Recuperación de autosaves")
+        dialog.resize(900, 420)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(
+            QLabel(
+                "Se encontraron autosaves sin recuperar. "
+                "Puedes abrirlos en nuevas pestañas o descartarlos."
+            )
+        )
+
+        table = QTableWidget(len(entries), 3, dialog)
+        table.setHorizontalHeaderLabels(["Archivo original", "Timestamp", "Acciones"])
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        table.verticalHeader().setVisible(False)
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+
+        def _archive_autosave(path: str) -> None:
+            old_dir = os.path.join(autosave_dir, "old")
+            os.makedirs(old_dir, exist_ok=True)
+            basename = os.path.basename(path)
+            target = os.path.join(old_dir, basename)
+            if os.path.exists(target):
+                root, ext = os.path.splitext(basename)
+                target = os.path.join(
+                    old_dir,
+                    f"{root}_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}{ext}",
+                )
+            os.replace(path, target)
+
+        def _mark_done(row: int, status: str) -> None:
+            table.setCellWidget(row, 2, QLabel(status))
+            for col in (0, 1):
+                item = table.item(row, col)
+                if item is not None:
+                    item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
+
+        def _on_recover(row: int, autosave_path: str) -> None:
+            metadata = ChemusonWindow._read_autosave_metadata(autosave_path)
+            if metadata is None:
+                QMessageBox.warning(
+                    window,
+                    "Autosave inválido",
+                    f"No se pudo leer el autosave:\\n{autosave_path}",
+                )
+                return
+            try:
+                recovered_canvas = window._create_document_tab(make_current=True)
+                window._apply_toolbar_defaults_to_canvas(recovered_canvas)
+                PersistenceManager.load_from_file(autosave_path, recovered_canvas)
+                recovered_canvas.undo_stack.setClean()
+                window._set_canvas_file_path(recovered_canvas, metadata.get("original_path"))
+                window.tabs.setCurrentWidget(recovered_canvas)
+                window._set_active_canvas(recovered_canvas)
+                window._update_total_charge_indicator()
+                _archive_autosave(autosave_path)
+                _mark_done(row, "Recuperado")
+                window.statusBar().showMessage("Autosave recuperado")
+            except Exception as exc:
+                QMessageBox.warning(
+                    window,
+                    "Error al recuperar",
+                    f"No se pudo recuperar el autosave:\\n{exc}",
+                )
+
+        def _on_discard(row: int, autosave_path: str) -> None:
+            try:
+                _archive_autosave(autosave_path)
+                _mark_done(row, "Descartado")
+            except Exception as exc:
+                QMessageBox.warning(
+                    window,
+                    "Error al descartar",
+                    f"No se pudo mover el autosave:\\n{exc}",
+                )
+
+        for row, entry in enumerate(entries):
+            original_path = entry.get("original_path") or "Sin nombre"
+            timestamp = entry.get("timestamp") or "Desconocida"
+            autosave_path = entry["autosave_path"]
+
+            table.setItem(row, 0, QTableWidgetItem(original_path))
+            table.setItem(row, 1, QTableWidgetItem(timestamp))
+
+            action_widget = QWidget(table)
+            action_layout = QHBoxLayout(action_widget)
+            action_layout.setContentsMargins(0, 0, 0, 0)
+            action_layout.setSpacing(6)
+            recover_button = QPushButton("Recuperar", action_widget)
+            discard_button = QPushButton("Descartar", action_widget)
+            recover_button.clicked.connect(
+                lambda _checked=False, r=row, p=autosave_path: _on_recover(r, p)
+            )
+            discard_button.clicked.connect(
+                lambda _checked=False, r=row, p=autosave_path: _on_discard(r, p)
+            )
+            action_layout.addWidget(recover_button)
+            action_layout.addWidget(discard_button)
+            table.setCellWidget(row, 2, action_widget)
+
+        layout.addWidget(table)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(dialog.reject)
+        buttons.accepted.connect(dialog.accept)
+        layout.addWidget(buttons)
+        dialog.exec()
+
     def _open_file_path(self, filepath: str) -> None:
         """Método auxiliar para  open file path.
 
@@ -1251,6 +1441,9 @@ class ChemusonWindow(QMainWindow):
             index = self.tabs.indexOf(canvas)
             if index >= 0:
                 self.tabs.removeTab(index)
+            autosave_manager = self._canvas_autosave_managers.pop(canvas, None)
+            if autosave_manager is not None:
+                autosave_manager.stop()
             self._canvas_file_paths.pop(canvas, None)
             self._canvas_tab_titles.pop(canvas, None)
             canvas.deleteLater()
@@ -1273,6 +1466,7 @@ class ChemusonWindow(QMainWindow):
             )
         if filepath:
             try:
+                autosave_manager = self._canvas_autosave_managers.get(self.canvas)
                 if filepath.lower().endswith(".mol") or filepath.lower().endswith(".sdf") or "MOL" in selected_filter:
                     # Export as .mol if explicitly requested
                     from chemuson.chemio.rdkit_io import molgraph_to_molfile
@@ -1286,6 +1480,8 @@ class ChemusonWindow(QMainWindow):
                     PersistenceManager.save_to_file(filepath, self.canvas)
                 self._set_canvas_file_path(self.canvas, filepath)
                 self.canvas.undo_stack.setClean()
+                if autosave_manager is not None:
+                    autosave_manager.cleanup_after_save()
                 self._add_recent_file(filepath)
                 self.statusBar().showMessage(f"Guardado: {filepath}")
             except Exception as e:
@@ -3000,8 +3196,27 @@ class ChemusonWindow(QMainWindow):
 
 def run_app() -> None:
     """Punto de entrada de la GUI de Chemuson."""
-    app = QApplication(sys.argv)
-    app.setApplicationName("Chemuson")
-    window = ChemusonWindow()
-    window.show()
-    sys.exit(app.exec())
+    crash_reporter.install()
+    try:
+        app = QApplication(sys.argv)
+        app.setApplicationName("Chemuson")
+        window = ChemusonWindow()
+        ChemusonWindow.check_autosaves(window)
+        window.show()
+        exit_code = app.exec()
+    except Exception as exc:
+        log_path = crash_reporter.write_crash_log(exc)
+        if QApplication.instance() is not None:
+            QMessageBox.critical(
+                None,
+                "Chemuson - Error crítico",
+                "No se pudo iniciar la aplicación.\n"
+                f"Se guardó un reporte en:\n{log_path}",
+            )
+        else:
+            sys.stderr.write(
+                "No se pudo iniciar la aplicación.\n"
+                f"Se guardó un reporte en: {log_path}\n"
+            )
+        return
+    sys.exit(exit_code)

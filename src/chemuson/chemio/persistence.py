@@ -234,8 +234,10 @@ class PersistenceManager:
             Escribe en disco el archivo indicado.
         """
         data = PersistenceManager.save_to_dict(canvas)
-        with open(filepath, 'w', encoding='utf-8') as f:
+        temp_path = f"{filepath}.tmp"
+        with open(temp_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2)
+        os.replace(temp_path, filepath)
 
     @staticmethod
     def load_from_file(filepath: str, canvas: 'ChemusonCanvas') -> None:

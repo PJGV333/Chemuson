@@ -18,10 +18,22 @@ Capacidades actuales (resumen):
 - Limpieza geométrica (`Limpiar 2D`) y opciones visuales (hidrógenos, carbonos, aromáticos como círculo, rejilla/reglas).
 - Numeración visual no destructiva (átomos, estructuras o ambos), configurable para exportación.
 - Importación y exportación química: `SMILES`, `Molfile` y archivos propios `.cmsn`.
+- Autosave automático con backups rotativos por documento y recuperación de sesiones al iniciar.
 - Exportación gráfica: `PNG`, `SVG`, `PDF`.
 - Herramientas de análisis integradas: nombre, fórmula, masa exacta, peso molecular, `m/z` y análisis elemental.
 - Motor de nomenclatura **IUPAC-lite** para un subconjunto de estructuras orgánicas.
 - Biblioteca de plantillas (incluye base predefinida + categorías de usuario importables/exportables).
+
+## Autosave y recuperación
+
+- Chemuson guarda autosaves automáticamente cada ~2 minutos y también después de unos segundos de inactividad cuando hay cambios.
+- Al iniciar, si existen autosaves pendientes, aparece un diálogo para **recuperar** o **descartar** cada sesión.
+- Al guardar manualmente, se limpian autosaves obsoletos del documento y se conserva un respaldo rotativo reciente.
+
+Rutas locales de trabajo:
+- Autosaves: `~/.chemuson/autosave/`
+- Autosaves archivados tras recuperar/descartar: `~/.chemuson/autosave/old/`
+- Logs de crash: `~/.chemuson/crash_logs/crash_YYYYMMDD_HHMMSS.txt`
 
 ## Fortalezas
 
