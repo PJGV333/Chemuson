@@ -16,6 +16,7 @@ Capacidades actuales (resumen):
 - Editor gráfico 2D con herramientas para átomos, enlaces, anillos, cadenas y anotaciones.
 - Soporte de estilos de enlace (simple, doble, triple, aromático, cuña, punteado, coordinativo, etc.).
 - Limpieza geométrica (`Limpiar 2D`) y opciones visuales (hidrógenos, carbonos, aromáticos como círculo, rejilla/reglas).
+- Orientación inteligente de dobles enlaces en anillos (línea pi hacia dentro por defecto) con inversión manual mediante `Ctrl+Alt+Rueda`.
 - Numeración visual no destructiva (átomos, estructuras o ambos), configurable para exportación.
 - Importación y exportación química: `SMILES`, `Molfile` y archivos propios `.cmsn`.
 - Autosave automático con backups rotativos por documento y recuperación de sesiones al iniciar.

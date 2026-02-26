@@ -968,6 +968,43 @@ class ChangeBondColorCommand(QUndoCommand):
         self._model.update_bond(self._bond_id, color=self._old_color)
         self._view.update_bond_item(self._bond_id)
 
+
+class ChangeDoubleBondOrientationCommand(QUndoCommand):
+    """Comando para fijar orientación manual de línea pi en un doble enlace."""
+
+    def __init__(
+        self,
+        model: MolGraph,
+        view,
+        bond_id: int,
+        old_sign: Optional[int],
+        new_sign: Optional[int],
+    ) -> None:
+        super().__init__("Toggle double bond orientation")
+        self._model = model
+        self._view = view
+        self._bond_id = int(bond_id)
+        self._old_sign = old_sign if old_sign in {-1, 1} else None
+        self._new_sign = new_sign if new_sign in {-1, 1} else None
+
+    def _apply(self, sign: Optional[int]) -> None:
+        """Aplica orientación en modelo e item para mantener consistencia visual."""
+        if self._bond_id not in self._model.bonds:
+            return
+        self._model.update_bond(self._bond_id, pi_offset_sign=sign)
+        item = self._view.bond_items.get(self._bond_id)
+        if item is not None and hasattr(item, "set_manual_pi_offset"):
+            item.set_manual_pi_offset(sign)
+        else:
+            self._view.update_bond_item(self._bond_id)
+
+    def redo(self) -> None:
+        self._apply(self._new_sign)
+
+    def undo(self) -> None:
+        self._apply(self._old_sign)
+
+
 class MoveAtomsCommand(QUndoCommand):
     """Comando para mover átomos y actualizar enlaces."""
 
@@ -1196,6 +1233,7 @@ class DeleteSelectionCommand(QUndoCommand):
                 stroke_px=bond.stroke_px,
                 color=bond.color,
                 donor_atom_id=getattr(bond, "donor_atom_id", None),
+                pi_offset_sign=getattr(bond, "pi_offset_sign", None),
             )
             self._view.add_bond_item(bond)
         for item, start, end, kind, curve_factor in self._removed_arrows:
@@ -1445,6 +1483,7 @@ class AddRingCommand(QUndoCommand):
                     stroke_px=bond.stroke_px,
                     color=bond.color,
                     donor_atom_id=getattr(bond, "donor_atom_id", None),
+                    pi_offset_sign=getattr(bond, "pi_offset_sign", None),
                 )
                 self._view.add_bond_item(bond)
                 self._view.update_bond_item(bond.id)

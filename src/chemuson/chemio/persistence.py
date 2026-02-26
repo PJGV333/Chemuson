@@ -39,6 +39,16 @@ class PersistenceManager:
             return BondStereo.NONE
 
     @staticmethod
+    def _parse_pi_offset_sign(bond_data: Dict[str, Any]) -> int | None:
+        """Normaliza orientación manual de dobles enlaces (+1/-1)."""
+        raw_sign = bond_data.get("pi_offset_sign")
+        try:
+            parsed = int(raw_sign)
+        except Exception:
+            return None
+        return parsed if parsed in {-1, 1} else None
+
+    @staticmethod
     def _infer_coordination_donor(
         graph: MolGraph,
         a1_id: int,
@@ -120,6 +130,7 @@ class PersistenceManager:
                 "donor_atom_id": getattr(bond, "donor_atom_id", None),
                 "flex_curve_1": getattr(bond, "flex_curve_1", None),
                 "flex_curve_2": getattr(bond, "flex_curve_2", None),
+                "pi_offset_sign": getattr(bond, "pi_offset_sign", None),
             })
             
         # 2. Serializar elementos del canvas (flechas, brackets, texto)
@@ -211,6 +222,7 @@ class PersistenceManager:
                 donor_atom_id=donor,
                 flex_curve_1=bond_d.get("flex_curve_1"),
                 flex_curve_2=bond_d.get("flex_curve_2"),
+                pi_offset_sign=PersistenceManager._parse_pi_offset_sign(bond_d),
             )
             
         canvas.model._next_atom_id = model_data.get("_next_atom_id", canvas.model._next_atom_id)

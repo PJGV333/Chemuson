@@ -1050,6 +1050,13 @@ class BondItem(QGraphicsPathItem):
         self._offset_sign = 1
         self._ring_center: QPointF | None = None
         self._bond_in_ring = False
+        # None: orientación automática; +/-1: orientación manual de línea pi.
+        self._manual_pi_offset: int | None = self._normalize_pi_offset(
+            getattr(bond, "pi_offset_sign", None)
+        )
+        self._last_auto_double_offset_sign = 1
+        self._atom1_ref: Atom | None = None
+        self._atom2_ref: Atom | None = None
         self._prefer_full_length = False
         self._symmetric_double = False
         self._wedge_join_start: list[WedgeNeighbor] = []
@@ -1128,6 +1135,7 @@ class BondItem(QGraphicsPathItem):
         self.donor_atom_id = getattr(bond, "donor_atom_id", None)
         self.flex_curve_1 = getattr(bond, "flex_curve_1", None)
         self.flex_curve_2 = getattr(bond, "flex_curve_2", None)
+        self._manual_pi_offset = self._normalize_pi_offset(getattr(bond, "pi_offset_sign", None))
         self._update_z_order()
         self.update_positions(atom1, atom2)
 
@@ -1203,6 +1211,50 @@ class BondItem(QGraphicsPathItem):
         """
         self._prefer_full_length = bool(prefer_full_length)
         self._symmetric_double = bool(symmetric_double)
+
+    @staticmethod
+    def _normalize_pi_offset(value: object) -> int | None:
+        """Normaliza el signo manual de orientación de dobles enlaces."""
+        try:
+            parsed = int(value)
+        except Exception:
+            return None
+        return parsed if parsed in {-1, 1} else None
+
+    @property
+    def manual_pi_offset(self) -> int | None:
+        """Devuelve el estado manual de orientación (+1/-1) o `None`."""
+        return self._manual_pi_offset
+
+    def _effective_order(self) -> int:
+        """Calcula orden efectivo considerando aromaticidad/display_order."""
+        if self.is_aromatic and self.display_order is not None:
+            return int(self.display_order)
+        return int(self.order)
+
+    def _toggled_manual_pi_offset(self) -> int:
+        """Calcula el nuevo signo manual al invertir orientación."""
+        auto_sign = 1 if self._last_auto_double_offset_sign >= 0 else -1
+        if self._manual_pi_offset is None:
+            return -auto_sign
+        return -self._manual_pi_offset
+
+    def next_manual_pi_offset(self) -> int:
+        """Obtiene el signo que se aplicaría al invertir orientación."""
+        return self._toggled_manual_pi_offset()
+
+    def set_manual_pi_offset(self, sign: int | None) -> None:
+        """Fija orientación manual de línea pi y refresca el trazo."""
+        self._manual_pi_offset = self._normalize_pi_offset(sign)
+        if self._atom1_ref is not None and self._atom2_ref is not None:
+            self.update_positions(self._atom1_ref, self._atom2_ref)
+        self.update()
+
+    def toggle_double_bond_orientation(self) -> None:
+        """Invierte orientación de línea pi en dobles enlaces seleccionados."""
+        if self._effective_order() != 2:
+            return
+        self.set_manual_pi_offset(self._toggled_manual_pi_offset())
 
     def set_label_shrink(self, start: float, end: float) -> None:
         """Actualiza recorte de etiquetas.
@@ -1723,6 +1775,8 @@ class BondItem(QGraphicsPathItem):
         Side Effects:
             Modifica el estado del item o la escena.
         """
+        self._atom1_ref = atom1
+        self._atom2_ref = atom2
         x1, y1 = atom1.x, atom1.y
         x2, y2 = atom2.x, atom2.y
         path = QPainterPath()
@@ -1798,12 +1852,24 @@ class BondItem(QGraphicsPathItem):
             self.setPath(path)
             return
 
-        effective_order = self.order
-        if self.is_aromatic and self.display_order is not None:
-            effective_order = self.display_order
+        effective_order = self._effective_order()
         double_offset_sign = offset_sign
-        if effective_order == 2 and (not self.is_aromatic) and (not self._symmetric_double):
-            double_offset_sign = self._screen_left_offset_sign(nx, ny, offset_sign)
+        if effective_order == 2:
+            # Regla por defecto:
+            # - En anillo: prioriza línea pi hacia el interior.
+            # - Fuera de anillo: convención pi a la izquierda en pantalla.
+            auto_double_offset_sign = offset_sign
+            if (
+                (not self._bond_in_ring or self._ring_center is None)
+                and (not self.is_aromatic)
+                and (not self._symmetric_double)
+            ):
+                auto_double_offset_sign = self._screen_left_offset_sign(nx, ny, offset_sign)
+            self._last_auto_double_offset_sign = 1 if auto_double_offset_sign >= 0 else -1
+            double_offset_sign = self._last_auto_double_offset_sign
+            if self._manual_pi_offset is not None:
+                # Si el usuario fijó orientación, se respeta sobre el automático.
+                double_offset_sign = self._manual_pi_offset
 
         stroke_px = self._stroke_px if self._stroke_px is not None else self._style.stroke_px
         stroke_scale = stroke_px / self._style.stroke_px if self._style.stroke_px > 1e-6 else 1.0

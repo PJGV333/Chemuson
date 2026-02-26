@@ -106,6 +106,7 @@ from chemuson.gui.commands import (
     ChangeBondLengthCommand,
     ChangeBondStrokeCommand,
     ChangeBondColorCommand,
+    ChangeDoubleBondOrientationCommand,
     ChangeChargeCommand,
     ChangeNoImplicitCommand,
     ChangeCoordinationSphereStyleCommand,
@@ -2711,6 +2712,48 @@ class ChemusonCanvas(QGraphicsView):
             return
         super().mouseDoubleClickEvent(event)
 
+    @staticmethod
+    def _bond_effective_order_for_render(bond: Bond) -> int:
+        """Devuelve el orden efectivo usado para dibujar el enlace."""
+        if bond.is_aromatic and bond.display_order is not None:
+            return int(bond.display_order)
+        return int(bond.order)
+
+    def _selected_double_bond_for_pi_toggle(self) -> tuple[Bond, BondItem] | None:
+        """Obtiene un único doble enlace seleccionado apto para invertir orientación."""
+        if len(self.state.selected_bonds) != 1:
+            return None
+        if self.state.selected_atoms:
+            return None
+        bond_id = next(iter(self.state.selected_bonds))
+        if bond_id not in self.model.bonds:
+            return None
+        bond = self.model.get_bond(bond_id)
+        if self._bond_effective_order_for_render(bond) != 2:
+            return None
+        item = self.bond_items.get(bond_id)
+        if item is None:
+            return None
+        return bond, item
+
+    def toggle_selected_double_bond_orientation(self) -> bool:
+        """Invierte orientación de un doble enlace seleccionado usando undo/redo."""
+        selected = self._selected_double_bond_for_pi_toggle()
+        if selected is None:
+            return False
+        bond, item = selected
+        old_sign = getattr(bond, "pi_offset_sign", None)
+        new_sign = item.next_manual_pi_offset()
+        cmd = ChangeDoubleBondOrientationCommand(
+            self.model,
+            self,
+            bond.id,
+            old_sign=old_sign,
+            new_sign=new_sign,
+        )
+        self.undo_stack.push(cmd)
+        return True
+
     def wheelEvent(self, event: QWheelEvent) -> None:
         """Método auxiliar para wheelEvent.
 
@@ -2723,7 +2766,17 @@ class ChemusonCanvas(QGraphicsView):
         Side Effects:
             Puede modificar el estado interno o la escena.
         """
-        if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+        modifiers = event.modifiers()
+        # Atajo para invertir línea pi en dobles enlaces:
+        # Ctrl+Alt+Rueda evita conflicto con Shift+Rueda (scroll horizontal).
+        if (
+            (modifiers & Qt.KeyboardModifier.ControlModifier)
+            and (modifiers & Qt.KeyboardModifier.AltModifier)
+        ):
+            if self.toggle_selected_double_bond_orientation():
+                event.accept()
+                return
+        if modifiers & Qt.KeyboardModifier.ShiftModifier:
             hbar = self.horizontalScrollBar()
             delta = event.angleDelta().y()
             if delta == 0:

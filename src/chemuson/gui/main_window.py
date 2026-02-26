@@ -28,11 +28,12 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QLabel,
     QHeaderView,
+    QSizePolicy,
 )
 from PyQt6.QtCore import Qt, QSize, QSettings, QEvent
 from PyQt6.QtGui import QAction, QActionGroup, QKeySequence, QIcon, QPainter, QPixmap, QPen, QColor
 from PyQt6.QtPrintSupport import QPrinter
-from typing import Optional
+from typing import Callable, Optional
 from dataclasses import replace
 from datetime import datetime
 import json
@@ -223,6 +224,9 @@ class ChemusonWindow(QMainWindow):
             [QKeySequence.StandardKey.Save, QKeySequence("Ctrl+G")]
         )
         self.action_save.triggered.connect(self._on_file_save)
+
+        self.action_recovery_center = QAction("Centro de recuperación...", self)
+        self.action_recovery_center.triggered.connect(self._on_open_recovery_center)
         
         self.action_quit = QAction("Salir", self)
         self.action_quit.setShortcut(QKeySequence.StandardKey.Quit)
@@ -496,6 +500,7 @@ class ChemusonWindow(QMainWindow):
         file_menu.addAction(self.action_save)
         self.recent_menu = file_menu.addMenu("Archivos recientes")
         self._update_recent_menu()
+        file_menu.addAction(self.action_recovery_center)
         file_menu.addSeparator()
         
         export_menu = file_menu.addMenu("Exportar como")
@@ -1276,141 +1281,295 @@ class ChemusonWindow(QMainWindow):
         }
 
     @staticmethod
-    def check_autosaves(window: "ChemusonWindow") -> None:
-        """Busca autosaves pendientes y permite recuperarlos al iniciar."""
-        autosave_dir = AutosaveManager.default_autosave_dir()
-        if not os.path.isdir(autosave_dir):
-            return
-
+    def _list_autosave_entries(directory: str) -> list[dict]:
+        """Lista autosaves válidos de un directorio ordenados por fecha desc."""
+        if not os.path.isdir(directory):
+            return []
         entries: list[dict] = []
-        for name in sorted(os.listdir(autosave_dir)):
+        for name in sorted(os.listdir(directory)):
             if not name.endswith(".json"):
                 continue
-            filepath = os.path.join(autosave_dir, name)
+            filepath = os.path.join(directory, name)
             if not os.path.isfile(filepath):
                 continue
             metadata = ChemusonWindow._read_autosave_metadata(filepath)
-            if metadata is not None:
-                entries.append(metadata)
+            if metadata is None:
+                continue
+            metadata["filename"] = name
+            entries.append(metadata)
+        entries.sort(key=lambda entry: os.path.getmtime(entry["autosave_path"]), reverse=True)
+        return entries
 
-        if not entries:
+    @staticmethod
+    def _archive_autosave(path: str, autosave_dir: str) -> str:
+        """Mueve un autosave a la carpeta `old` y devuelve su nueva ruta."""
+        old_dir = os.path.join(autosave_dir, "old")
+        os.makedirs(old_dir, exist_ok=True)
+        basename = os.path.basename(path)
+        target = os.path.join(old_dir, basename)
+        if os.path.exists(target):
+            root, ext = os.path.splitext(basename)
+            target = os.path.join(
+                old_dir,
+                f"{root}_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}{ext}",
+            )
+        os.replace(path, target)
+        return target
+
+    def _open_autosave_document(
+        self,
+        autosave_path: str,
+        original_path: Optional[str] = None,
+    ) -> bool:
+        """Abre un autosave como pestaña nueva."""
+        canvas = self._create_document_tab(make_current=True)
+        self._apply_toolbar_defaults_to_canvas(canvas)
+        try:
+            PersistenceManager.load_from_file(autosave_path, canvas)
+            canvas.undo_stack.setClean()
+            self._set_canvas_file_path(canvas, original_path)
+            self.tabs.setCurrentWidget(canvas)
+            self._set_active_canvas(canvas)
+            self._update_total_charge_indicator()
+            return True
+        except Exception as exc:
+            index = self.tabs.indexOf(canvas)
+            if index >= 0:
+                self.tabs.removeTab(index)
+            autosave_manager = self._canvas_autosave_managers.pop(canvas, None)
+            if autosave_manager is not None:
+                autosave_manager.stop()
+            self._canvas_file_paths.pop(canvas, None)
+            self._canvas_tab_titles.pop(canvas, None)
+            canvas.deleteLater()
+            if self.tabs.count() == 0:
+                replacement = self._create_document_tab(make_current=True)
+                self._apply_toolbar_defaults_to_canvas(replacement)
+                self._set_active_canvas(replacement)
+            QMessageBox.warning(
+                self,
+                "Error al abrir autosave",
+                f"No se pudo abrir el autosave:\n{exc}",
+            )
+            return False
+
+    def _on_open_recovery_center(self) -> None:
+        """Abre manualmente el centro de recuperación y archivos recientes."""
+        self._show_recovery_center(show_only_if_pending=False)
+
+    def _show_recovery_center(self, show_only_if_pending: bool = False) -> None:
+        """Muestra diálogo con pendientes, recientes y recuperados."""
+        autosave_dir = AutosaveManager.default_autosave_dir()
+        pending_entries = self._list_autosave_entries(autosave_dir)
+        recovered_entries = self._list_autosave_entries(os.path.join(autosave_dir, "old"))
+        recent_entries = [p for p in self._recent_files if os.path.exists(p)]
+        if recent_entries != self._recent_files:
+            self._recent_files = recent_entries
+            self._save_recent_files()
+            self._update_recent_menu()
+
+        if show_only_if_pending and not pending_entries:
             return
 
-        # Mostramos primero los más recientes para facilitar recuperación.
-        entries.sort(
-            key=lambda entry: os.path.getmtime(entry["autosave_path"]),
-            reverse=True,
-        )
-
-        dialog = QDialog(window)
-        dialog.setWindowTitle("Recuperación de autosaves")
-        dialog.resize(900, 420)
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Centro de recuperación")
+        dialog.resize(980, 560)
         layout = QVBoxLayout(dialog)
         layout.addWidget(
             QLabel(
-                "Se encontraron autosaves sin recuperar. "
-                "Puedes abrirlos en nuevas pestañas o descartarlos."
+                "Gestiona autosaves pendientes, sesiones recuperadas "
+                "y tus archivos recientes."
             )
         )
 
-        table = QTableWidget(len(entries), 3, dialog)
-        table.setHorizontalHeaderLabels(["Archivo original", "Timestamp", "Acciones"])
-        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        table.verticalHeader().setVisible(False)
-        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        tabs = QTabWidget(dialog)
+        layout.addWidget(tabs)
 
-        def _archive_autosave(path: str) -> None:
-            old_dir = os.path.join(autosave_dir, "old")
-            os.makedirs(old_dir, exist_ok=True)
-            basename = os.path.basename(path)
-            target = os.path.join(old_dir, basename)
-            if os.path.exists(target):
-                root, ext = os.path.splitext(basename)
-                target = os.path.join(
-                    old_dir,
-                    f"{root}_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}{ext}",
-                )
-            os.replace(path, target)
+        def _setup_table(table: QTableWidget, action_column: int, action_width: int) -> None:
+            """Configura tabla con filas legibles y columna de acciones estable."""
+            table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+            table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+            table.verticalHeader().setVisible(False)
+            table.verticalHeader().setDefaultSectionSize(48)
+            table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+            if table.columnCount() > 2:
+                table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+            table.horizontalHeader().setSectionResizeMode(action_column, QHeaderView.ResizeMode.Fixed)
+            table.setColumnWidth(action_column, action_width)
 
-        def _mark_done(row: int, status: str) -> None:
-            table.setCellWidget(row, 2, QLabel(status))
-            for col in (0, 1):
-                item = table.item(row, col)
-                if item is not None:
-                    item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
-
-        def _on_recover(row: int, autosave_path: str) -> None:
-            metadata = ChemusonWindow._read_autosave_metadata(autosave_path)
-            if metadata is None:
-                QMessageBox.warning(
-                    window,
-                    "Autosave inválido",
-                    f"No se pudo leer el autosave:\\n{autosave_path}",
-                )
-                return
-            try:
-                recovered_canvas = window._create_document_tab(make_current=True)
-                window._apply_toolbar_defaults_to_canvas(recovered_canvas)
-                PersistenceManager.load_from_file(autosave_path, recovered_canvas)
-                recovered_canvas.undo_stack.setClean()
-                window._set_canvas_file_path(recovered_canvas, metadata.get("original_path"))
-                window.tabs.setCurrentWidget(recovered_canvas)
-                window._set_active_canvas(recovered_canvas)
-                window._update_total_charge_indicator()
-                _archive_autosave(autosave_path)
-                _mark_done(row, "Recuperado")
-                window.statusBar().showMessage("Autosave recuperado")
-            except Exception as exc:
-                QMessageBox.warning(
-                    window,
-                    "Error al recuperar",
-                    f"No se pudo recuperar el autosave:\\n{exc}",
-                )
-
-        def _on_discard(row: int, autosave_path: str) -> None:
-            try:
-                _archive_autosave(autosave_path)
-                _mark_done(row, "Descartado")
-            except Exception as exc:
-                QMessageBox.warning(
-                    window,
-                    "Error al descartar",
-                    f"No se pudo mover el autosave:\\n{exc}",
-                )
-
-        for row, entry in enumerate(entries):
-            original_path = entry.get("original_path") or "Sin nombre"
-            timestamp = entry.get("timestamp") or "Desconocida"
-            autosave_path = entry["autosave_path"]
-
-            table.setItem(row, 0, QTableWidgetItem(original_path))
-            table.setItem(row, 1, QTableWidgetItem(timestamp))
-
+        def _set_actions_cell(
+            table: QTableWidget,
+            row: int,
+            buttons: list[tuple[str, Callable]],
+        ) -> None:
+            """Inserta botones de acción en una celda respetando márgenes."""
             action_widget = QWidget(table)
             action_layout = QHBoxLayout(action_widget)
-            action_layout.setContentsMargins(0, 0, 0, 0)
-            action_layout.setSpacing(6)
-            recover_button = QPushButton("Recuperar", action_widget)
-            discard_button = QPushButton("Descartar", action_widget)
-            recover_button.clicked.connect(
-                lambda _checked=False, r=row, p=autosave_path: _on_recover(r, p)
+            action_layout.setContentsMargins(8, 6, 8, 6)
+            action_layout.setSpacing(8)
+            button_widgets: list[QPushButton] = []
+            for text, callback in buttons:
+                button = QPushButton(text, action_widget)
+                # Garantiza legibilidad incluso con escalado alto del sistema.
+                button.setMinimumHeight(38)
+                button.setMinimumWidth(136)
+                button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+                button.clicked.connect(callback)
+                action_layout.addWidget(button)
+                button_widgets.append(button)
+            table.setCellWidget(row, table.columnCount() - 1, action_widget)
+            margins = action_layout.contentsMargins()
+            required_width = margins.left() + margins.right()
+            if button_widgets:
+                required_width += action_layout.spacing() * (len(button_widgets) - 1)
+            for button in button_widgets:
+                required_width += max(button.minimumSizeHint().width(), button.sizeHint().width())
+            action_column = table.columnCount() - 1
+            if required_width > table.columnWidth(action_column):
+                table.setColumnWidth(action_column, required_width)
+            required_height = margins.top() + margins.bottom()
+            required_height += max(button.minimumSizeHint().height() for button in button_widgets)
+            table.setRowHeight(
+                row,
+                max(
+                    table.rowHeight(row),
+                    required_height + 2,
+                ),
             )
-            discard_button.clicked.connect(
-                lambda _checked=False, r=row, p=autosave_path: _on_discard(r, p)
-            )
-            action_layout.addWidget(recover_button)
-            action_layout.addWidget(discard_button)
-            table.setCellWidget(row, 2, action_widget)
 
-        layout.addWidget(table)
+        pending_tab = QWidget()
+        pending_layout = QVBoxLayout(pending_tab)
+        if not pending_entries:
+            pending_layout.addWidget(QLabel("No hay autosaves pendientes."))
+        else:
+            pending_table = QTableWidget(len(pending_entries), 3, pending_tab)
+            pending_table.setHorizontalHeaderLabels(["Archivo original", "Timestamp", "Acciones"])
+            _setup_table(pending_table, action_column=2, action_width=360)
+
+            def _mark_pending_done(row: int, status: str) -> None:
+                pending_table.setCellWidget(row, 2, QLabel(status))
+                for col in (0, 1):
+                    item = pending_table.item(row, col)
+                    if item is not None:
+                        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
+
+            for row, entry in enumerate(pending_entries):
+                original_path_value = entry.get("original_path")
+                original_path = original_path_value or "Sin nombre"
+                timestamp = entry.get("timestamp") or "Desconocida"
+                autosave_path = entry["autosave_path"]
+
+                pending_table.setItem(row, 0, QTableWidgetItem(original_path))
+                pending_table.setItem(row, 1, QTableWidgetItem(timestamp))
+
+                def _recover_handler(
+                    _checked: bool = False,
+                    r: int = row,
+                    p: str = autosave_path,
+                    original: Optional[str] = original_path_value,
+                ) -> None:
+                    if not self._open_autosave_document(p, original_path=original):
+                        return
+                    try:
+                        self._archive_autosave(p, autosave_dir)
+                        _mark_pending_done(r, "Recuperado")
+                        self.statusBar().showMessage("Autosave recuperado")
+                    except Exception as exc:
+                        QMessageBox.warning(
+                            self,
+                            "Error al mover autosave",
+                            f"No se pudo archivar el autosave:\n{exc}",
+                        )
+
+                def _discard_handler(
+                    _checked: bool = False,
+                    r: int = row,
+                    p: str = autosave_path,
+                ) -> None:
+                    try:
+                        self._archive_autosave(p, autosave_dir)
+                        _mark_pending_done(r, "Descartado")
+                    except Exception as exc:
+                        QMessageBox.warning(
+                            self,
+                            "Error al descartar",
+                            f"No se pudo mover el autosave:\n{exc}",
+                        )
+
+                _set_actions_cell(
+                    pending_table,
+                    row,
+                    [
+                        ("Recuperar", _recover_handler),
+                        ("Descartar", _discard_handler),
+                    ],
+                )
+
+            pending_layout.addWidget(pending_table)
+        tabs.addTab(pending_tab, f"Pendientes ({len(pending_entries)})")
+
+        recent_tab = QWidget()
+        recent_layout = QVBoxLayout(recent_tab)
+        if not recent_entries:
+            recent_layout.addWidget(QLabel("No hay archivos recientes disponibles."))
+        else:
+            recent_table = QTableWidget(len(recent_entries), 2, recent_tab)
+            recent_table.setHorizontalHeaderLabels(["Archivo reciente", "Acciones"])
+            _setup_table(recent_table, action_column=1, action_width=170)
+            for row, filepath in enumerate(recent_entries):
+                recent_table.setItem(row, 0, QTableWidgetItem(filepath))
+
+                def _open_recent_handler(
+                    _checked: bool = False,
+                    p: str = filepath,
+                ) -> None:
+                    if not os.path.exists(p):
+                        QMessageBox.warning(self, "Archivo no encontrado", "El archivo no existe.")
+                        self._update_recent_menu()
+                        return
+                    self._open_file_path(p)
+
+                _set_actions_cell(recent_table, row, [("Abrir", _open_recent_handler)])
+            recent_layout.addWidget(recent_table)
+        tabs.addTab(recent_tab, f"Recientes ({len(recent_entries)})")
+
+        recovered_tab = QWidget()
+        recovered_layout = QVBoxLayout(recovered_tab)
+        if not recovered_entries:
+            recovered_layout.addWidget(QLabel("No hay autosaves recuperados/archivados."))
+        else:
+            recovered_table = QTableWidget(len(recovered_entries), 3, recovered_tab)
+            recovered_table.setHorizontalHeaderLabels(["Archivo original", "Timestamp", "Acciones"])
+            _setup_table(recovered_table, action_column=2, action_width=170)
+            for row, entry in enumerate(recovered_entries):
+                original_path_value = entry.get("original_path")
+                original_path = original_path_value or "Sin nombre"
+                timestamp = entry.get("timestamp") or "Desconocida"
+                autosave_path = entry["autosave_path"]
+                recovered_table.setItem(row, 0, QTableWidgetItem(original_path))
+                recovered_table.setItem(row, 1, QTableWidgetItem(timestamp))
+
+                def _open_recovered_handler(
+                    _checked: bool = False,
+                    p: str = autosave_path,
+                    original: Optional[str] = original_path_value,
+                ) -> None:
+                    self._open_autosave_document(p, original_path=original)
+
+                _set_actions_cell(recovered_table, row, [("Abrir", _open_recovered_handler)])
+            recovered_layout.addWidget(recovered_table)
+        tabs.addTab(recovered_tab, f"Recuperados ({len(recovered_entries)})")
+
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(dialog.reject)
         buttons.accepted.connect(dialog.accept)
         layout.addWidget(buttons)
         dialog.exec()
+
+    @staticmethod
+    def check_autosaves(window: "ChemusonWindow") -> None:
+        """Busca autosaves pendientes y abre el centro de recuperación al iniciar."""
+        window._show_recovery_center(show_only_if_pending=True)
 
     def _open_file_path(self, filepath: str) -> None:
         """Método auxiliar para  open file path.
