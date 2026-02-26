@@ -30,7 +30,7 @@ from PyQt6.QtWidgets import (
     QHeaderView,
     QSizePolicy,
 )
-from PyQt6.QtCore import Qt, QSize, QSettings, QEvent
+from PyQt6.QtCore import Qt, QSize, QSettings, QEvent, QTimer
 from PyQt6.QtGui import QAction, QActionGroup, QKeySequence, QIcon, QPainter, QPixmap, QPen, QColor
 from PyQt6.QtPrintSupport import QPrinter
 from typing import Callable, Optional
@@ -59,6 +59,21 @@ from chemuson.chemio.persistence import PersistenceManager
 from chemuson.core.model import MolGraph
 from chemuson.utils.autosave import AutosaveManager
 from chemuson.utils import crash_reporter
+from chemuson.version import get_app_version
+from chemuson.update import (
+    AutoUpdateCore,
+    GitHubReleasesProvider,
+    UpdateChannel,
+    UpdateMode,
+    UpdateSettings,
+    UpdateTelemetryLogger,
+    choose_windows_asset_flavor,
+    detect_windows_install_context,
+    is_windows_installer_asset,
+    launch_inno_installer,
+    mark_checked,
+    should_check_now,
+)
 
 
 class ChemusonWindow(QMainWindow):
@@ -76,7 +91,8 @@ class ChemusonWindow(QMainWindow):
             Puede modificar el estado interno o la interfaz.
         """
         super().__init__()
-        self.setWindowTitle("Chemuson - Editor Molecular Libre")
+        self._app_version = get_app_version()
+        self.setWindowTitle(f"Chemuson {self._app_version} - Editor Molecular Libre")
         self.resize(1200, 900)
         
         # Apply main stylesheet
@@ -94,6 +110,12 @@ class ChemusonWindow(QMainWindow):
         self._numbering_default_include_export = True
         self._current_tool_id = "tool_select"
         self._settings = QSettings("Chemuson", "Chemuson")
+        self._update_settings = self._load_update_preferences()
+        self._windows_install_context = detect_windows_install_context()
+        self._pending_windows_installer_path = ""
+        self._pending_windows_installer_version = ""
+        self._pending_windows_download = None
+        self._update_telemetry = UpdateTelemetryLogger()
         self._recent_files = self._load_recent_files()
         self.template_library = TemplateLibrary()
         self._template_icon_cache: dict[str, QIcon] = {}
@@ -207,6 +229,8 @@ class ChemusonWindow(QMainWindow):
         # Update status bar when tool changes
         self.toolbar.tool_changed.connect(self._update_status)
         self._set_active_canvas(self.canvas)
+        # Chequeo diferido para no bloquear arranque ni UI.
+        QTimer.singleShot(1200, self._maybe_check_updates_startup)
 
     def _create_actions(self) -> None:
         """Initialize all QActions for menus and toolbars."""
@@ -489,6 +513,10 @@ class ChemusonWindow(QMainWindow):
         self._label_color_group.addAction(self.action_label_color_element)
         self._label_color_group.addAction(self.action_label_color_black)
 
+        # --- Help / Updates ---
+        self.action_check_updates_now = QAction("Buscar actualizaciones...", self)
+        self.action_check_updates_now.triggered.connect(self._on_check_updates_now)
+
     def _create_menu_bar(self) -> None:
         """Create the main menu bar with all menus."""
         menubar = self.menuBar()
@@ -652,6 +680,7 @@ class ChemusonWindow(QMainWindow):
         self.action_quick_start = QAction("Guía rápida...", self)
         self.action_quick_start.triggered.connect(self._on_quick_start)
         help_menu.addAction(self.action_quick_start)
+        help_menu.addAction(self.action_check_updates_now)
         
         help_menu.addSeparator()
         
@@ -1083,6 +1112,74 @@ class ChemusonWindow(QMainWindow):
         """
         self._settings.setValue("recent_files", self._recent_files)
 
+    def _load_update_preferences(self) -> UpdateSettings:
+        """Carga preferencias de actualización persistidas en QSettings."""
+        enabled = self._setting_bool(self._settings.value("update/enabled", False), False)
+        raw_channel = str(self._settings.value("update/channel", "stable") or "stable").strip().lower()
+        raw_mode = str(self._settings.value("update/mode", "notify") or "notify").strip().lower()
+        try:
+            interval_hours = int(self._settings.value("update/check_interval_hours", 24) or 24)
+        except Exception:
+            interval_hours = 24
+        require_sha256 = self._setting_bool(self._settings.value("update/require_sha256", True), True)
+        require_signature = self._setting_bool(
+            self._settings.value("update/require_signature", False),
+            False,
+        )
+        highest_seen_version = str(
+            self._settings.value("update/highest_seen_version", "") or ""
+        ).strip()
+        channel = UpdateChannel.STABLE
+        mode = UpdateMode.NOTIFY
+        try:
+            channel = UpdateChannel(raw_channel)
+        except Exception:
+            channel = UpdateChannel.STABLE
+        try:
+            mode = UpdateMode(raw_mode)
+        except Exception:
+            mode = UpdateMode.NOTIFY
+        last_check_iso = str(self._settings.value("update/last_check_iso", "") or "").strip()
+        return UpdateSettings(
+            enabled=bool(enabled),
+            channel=channel,
+            mode=mode,
+            check_interval_hours=max(1, interval_hours),
+            last_check_iso=last_check_iso,
+            highest_seen_version=highest_seen_version,
+            require_sha256=bool(require_sha256),
+            require_signature=bool(require_signature),
+        )
+
+    def _save_update_preferences(self) -> None:
+        """Persiste preferencias de actualización en QSettings."""
+        self._settings.setValue("update/enabled", bool(self._update_settings.enabled))
+        self._settings.setValue("update/channel", str(self._update_settings.channel.value))
+        self._settings.setValue("update/mode", str(self._update_settings.mode.value))
+        self._settings.setValue(
+            "update/check_interval_hours",
+            int(max(1, self._update_settings.check_interval_hours)),
+        )
+        self._settings.setValue("update/last_check_iso", str(self._update_settings.last_check_iso or ""))
+        self._settings.setValue(
+            "update/highest_seen_version",
+            str(self._update_settings.highest_seen_version or ""),
+        )
+        self._settings.setValue("update/require_sha256", bool(self._update_settings.require_sha256))
+        self._settings.setValue(
+            "update/require_signature",
+            bool(self._update_settings.require_signature),
+        )
+
+    def _update_settings_payload(self) -> dict:
+        """Devuelve preferencias de update para precargar en diálogo."""
+        return {
+            "enabled": bool(self._update_settings.enabled),
+            "channel": str(self._update_settings.channel.value),
+            "mode": str(self._update_settings.mode.value),
+            "check_interval_hours": int(max(1, self._update_settings.check_interval_hours)),
+        }
+
     @staticmethod
     def _setting_bool(value, default: bool) -> bool:
         """Normaliza valores de QSettings a booleano."""
@@ -1160,6 +1257,322 @@ class ChemusonWindow(QMainWindow):
         finally:
             for action, was_blocked in previous_blocks:
                 action.blockSignals(was_blocked)
+
+    def _maybe_check_updates_startup(self) -> None:
+        """Chequea updates en inicio respetando política y frecuencia."""
+        self._check_for_updates(force=False, interactive=False)
+
+    def _on_check_updates_now(self) -> None:
+        """Lanza chequeo manual de actualizaciones desde el menú Ayuda."""
+        self._check_for_updates(force=True, interactive=True)
+
+    def _preferred_update_asset_flavor(self) -> str | None:
+        """Devuelve preferencia de asset según contexto de ejecución."""
+        self._windows_install_context = detect_windows_install_context()
+        flavor = choose_windows_asset_flavor(self._windows_install_context)
+        return flavor or None
+
+    def _log_update_event(self, event: str, **fields) -> None:
+        """Registra telemetría local mínima de update (sin datos sensibles)."""
+        try:
+            self._update_telemetry.log_event(event, **fields)
+        except Exception:
+            return
+
+    def _check_for_updates(self, force: bool, interactive: bool) -> None:
+        """Ejecuta chequeo de updates aplicando política y canal."""
+        self._log_update_event(
+            "check_start",
+            force=bool(force),
+            interactive=bool(interactive),
+            channel=self._update_settings.channel.value,
+            mode=self._update_settings.mode.value,
+        )
+        if os.getenv("CHEMUSON_DISABLE_UPDATE_CHECK", "").strip().lower() in {"1", "true", "yes"}:
+            self._log_update_event(
+                "check_skipped",
+                reason_code="disabled_env",
+                channel=self._update_settings.channel.value,
+                mode=self._update_settings.mode.value,
+            )
+            if interactive:
+                QMessageBox.information(
+                    self,
+                    "Actualizaciones",
+                    "El chequeo de actualizaciones está deshabilitado por entorno.",
+                )
+            return
+        if not force and not should_check_now(self._update_settings):
+            self._log_update_event(
+                "check_skipped",
+                reason_code="interval_not_elapsed",
+                channel=self._update_settings.channel.value,
+                mode=self._update_settings.mode.value,
+            )
+            return
+        mark_checked(self._update_settings)
+        self._save_update_preferences()
+        provider = None
+        try:
+            provider = GitHubReleasesProvider("PJGV333", "Chemuson", timeout=4.0)
+            updater = AutoUpdateCore(provider, self._update_settings)
+            result = updater.check_for_updates(
+                get_app_version(),
+                preferred_asset_flavor=self._preferred_update_asset_flavor(),
+            )
+        except Exception as exc:
+            self._log_update_event(
+                "check_error",
+                error_type=exc.__class__.__name__,
+                channel=self._update_settings.channel.value,
+                mode=self._update_settings.mode.value,
+            )
+            if self._update_settings.mode == UpdateMode.NOTIFY or interactive:
+                self.statusBar().showMessage(f"No se pudo comprobar actualización: {exc}", 10000)
+                QMessageBox.warning(
+                    self,
+                    "Actualizaciones",
+                    f"No se pudo comprobar actualización:\n{exc}",
+                )
+            return
+        source = ""
+        if provider is not None:
+            source = str(getattr(provider, "last_fetch_source", "") or "")
+        if source == "cache":
+            self.statusBar().showMessage(
+                "GitHub no disponible: se usó caché local de actualizaciones.",
+                12000,
+            )
+        self._log_update_event(
+            "check_result",
+            available=bool(getattr(result, "available", False)),
+            current_version=str(getattr(result, "current_version", "") or ""),
+            latest_version=str(getattr(result, "latest_version", "") or ""),
+            source=source or "unknown",
+            channel=self._update_settings.channel.value,
+            mode=self._update_settings.mode.value,
+        )
+        # Persiste metadatos de seguridad (p. ej. highest_seen_version anti-downgrade).
+        self._save_update_preferences()
+        self._handle_update_check_result(result, interactive=interactive, source=source)
+
+    def _download_update_candidate(self, candidate):
+        """Descarga y verifica un candidato de update; devuelve `DownloadedUpdate`."""
+        version = str(getattr(candidate.release, "version", "latest") or "latest")
+        self._log_update_event(
+            "download_start",
+            latest_version=version,
+            channel=self._update_settings.channel.value,
+            mode=self._update_settings.mode.value,
+        )
+        provider = GitHubReleasesProvider("PJGV333", "Chemuson", timeout=12.0)
+        updater = AutoUpdateCore(provider, self._update_settings)
+        download_dir = os.path.join(os.path.expanduser("~"), ".chemuson", "updates", version)
+        try:
+            downloaded = updater.download_candidate(candidate, download_dir)
+            verification = updater.verify_download(downloaded)
+            if not verification.ok:
+                reason = verification.reason or "Falló verificación del paquete descargado."
+                self._log_update_event(
+                    "download_failed",
+                    latest_version=version,
+                    reason_code="verification_failed",
+                )
+                raise RuntimeError(reason)
+            self._log_update_event("download_ok", latest_version=version)
+            return downloaded
+        except Exception as exc:
+            self._log_update_event(
+                "download_failed",
+                latest_version=version,
+                error_type=exc.__class__.__name__,
+            )
+            raise
+
+    def _queue_windows_installer_update(self, candidate, show_errors: bool = True) -> bool:
+        """Descarga instalador Windows y lo deja en cola para aplicar al salir."""
+        candidate_version = str(getattr(candidate.release, "version", "") or "")
+        if (
+            self._pending_windows_installer_path
+            and self._pending_windows_installer_version == candidate_version
+            and os.path.exists(self._pending_windows_installer_path)
+            and self._pending_windows_download is not None
+        ):
+            self._log_update_event(
+                "queue_reused",
+                latest_version=candidate_version,
+                context="windows_installer",
+            )
+            return True
+        try:
+            downloaded = self._download_update_candidate(candidate)
+        except Exception as exc:
+            self._log_update_event(
+                "queue_failed",
+                latest_version=candidate_version,
+                context="windows_installer",
+                error_type=exc.__class__.__name__,
+            )
+            if show_errors:
+                QMessageBox.warning(
+                    self,
+                    "Actualización",
+                    f"No se pudo preparar el instalador de actualización:\n{exc}",
+                )
+            else:
+                self.statusBar().showMessage(
+                    f"No se pudo preparar actualización automática: {exc}",
+                    12000,
+                )
+            return False
+        self._pending_windows_download = downloaded
+        self._pending_windows_installer_path = str(getattr(downloaded, "artifact_path", "") or "")
+        self._pending_windows_installer_version = candidate_version
+        self._log_update_event(
+            "queue_ok",
+            latest_version=candidate_version,
+            context="windows_installer",
+        )
+        return True
+
+    def _offer_windows_installer_update(self, result, interactive: bool) -> None:
+        """Gestiona oferta/cola de update para instalaciones Windows."""
+        candidate = getattr(result, "candidate", None)
+        if candidate is None:
+            return
+        version = str(getattr(result, "latest_version", "") or "")
+        if self._update_settings.mode == UpdateMode.SILENT and not interactive:
+            if self._queue_windows_installer_update(candidate, show_errors=False):
+                self.statusBar().showMessage(
+                    f"Actualización {version} lista para aplicar al cerrar Chemuson.",
+                    20000,
+                )
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Actualización disponible",
+            (
+                f"Hay una nueva versión disponible ({version}).\n\n"
+                "¿Quieres descargar el instalador y aplicarlo al cerrar Chemuson?"
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        if not self._queue_windows_installer_update(candidate):
+            return
+        self.statusBar().showMessage(
+            f"Actualización {version} preparada. Se aplicará al cerrar Chemuson.",
+            20000,
+        )
+        if interactive:
+            close_now = QMessageBox.question(
+                self,
+                "Aplicar actualización",
+                "La actualización está lista.\n¿Deseas cerrar Chemuson ahora para instalarla?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if close_now == QMessageBox.StandardButton.Yes:
+                self.close()
+
+    def _handle_update_check_result(self, result, interactive: bool = False, source: str = "") -> None:
+        """Notifica updates y habilita flujo de instalador en Windows instalado."""
+        if not getattr(result, "available", False):
+            if interactive:
+                QMessageBox.information(
+                    self,
+                    "Actualizaciones",
+                    "No hay actualizaciones disponibles para tu canal actual.",
+                )
+            return
+        candidate = getattr(result, "candidate", None)
+        artifact_name = ""
+        if candidate is not None and getattr(candidate, "artifact", None) is not None:
+            artifact_name = str(candidate.artifact.name)
+
+        # En instalaciones Windows se prioriza setup y se aplica al cierre.
+        if (
+            self._windows_install_context.is_windows
+            and self._windows_install_context.installed
+            and artifact_name
+            and is_windows_installer_asset(artifact_name)
+        ):
+            self._offer_windows_installer_update(result, interactive=interactive)
+            return
+
+        message = (
+            f"Actualización disponible: {result.latest_version}"
+            + (f" ({artifact_name})" if artifact_name else "")
+        )
+        self.statusBar().showMessage(message, 15000)
+        if self._update_settings.mode == UpdateMode.NOTIFY or interactive:
+            release_url = ""
+            if candidate is not None and getattr(candidate, "release", None) is not None:
+                release_url = str(candidate.release.html_url or "")
+            source_line = f"\n\nOrigen de datos: {'caché local' if source == 'cache' else 'GitHub'}"
+            extra = f"\n\nRelease: {release_url}" if release_url else ""
+            QMessageBox.information(
+                self,
+                "Actualización disponible",
+                f"Hay una nueva versión disponible ({result.latest_version}).{extra}{source_line}",
+            )
+
+    def _apply_pending_windows_update_on_exit(self) -> bool:
+        """Ejecuta instalador pendiente antes de salir cuando corresponde."""
+        installer_path = str(self._pending_windows_installer_path or "").strip()
+        if not installer_path:
+            return True
+        clear_pending = False
+        try:
+            downloaded = self._pending_windows_download
+            if downloaded is None:
+                raise RuntimeError("No hay metadata de verificación del instalador pendiente.")
+            provider = GitHubReleasesProvider("PJGV333", "Chemuson", timeout=6.0)
+            updater = AutoUpdateCore(provider, self._update_settings)
+            verify_result = updater.verify_download(downloaded)
+            if not verify_result.ok:
+                raise RuntimeError(
+                    f"No se ejecutará artefacto no verificado: {verify_result.reason}"
+                )
+            launch_inno_installer(installer_path, silent=True)
+            self._log_update_event(
+                "apply_queued",
+                latest_version=self._pending_windows_installer_version or "",
+                context="windows_installer",
+                result="launched",
+            )
+            clear_pending = True
+            return True
+        except Exception as exc:
+            self._log_update_event(
+                "apply_failed",
+                latest_version=self._pending_windows_installer_version or "",
+                context="windows_installer",
+                error_type=exc.__class__.__name__,
+            )
+            reply = QMessageBox.question(
+                self,
+                "Actualización pendiente",
+                (
+                    "No se pudo lanzar el instalador de actualización pendiente.\n"
+                    f"Error: {exc}\n\n"
+                    "¿Deseas salir de todas formas sin aplicar la actualización?"
+                ),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                clear_pending = True
+                return True
+            return False
+        finally:
+            if clear_pending:
+                self._pending_windows_download = None
+                self._pending_windows_installer_path = ""
+                self._pending_windows_installer_version = ""
 
     def _add_recent_file(self, filepath: str) -> None:
         """Método auxiliar para  add recent file.
@@ -1772,6 +2185,9 @@ class ChemusonWindow(QMainWindow):
             if not self._confirm_discard_changes(canvas):
                 event.ignore()
                 return
+        if not self._apply_pending_windows_update_on_exit():
+            event.ignore()
+            return
         event.accept()
 
     def changeEvent(self, event) -> None:
@@ -1821,7 +2237,12 @@ class ChemusonWindow(QMainWindow):
     
     def _on_preferences(self) -> None:
         """Open preferences dialog."""
-        dialog = PreferencesDialog(self.canvas.state, self.canvas.drawing_style, self)
+        dialog = PreferencesDialog(
+            self.canvas.state,
+            self.canvas.drawing_style,
+            update_settings=self._update_settings_payload(),
+            parent=self,
+        )
         dialog.preferences_changed.connect(self._apply_preferences)
         dialog.exec()
 
@@ -1861,6 +2282,27 @@ class ChemusonWindow(QMainWindow):
 
         if bond_caps:
             self.appearance_dock.set_bond_caps(bond_caps)
+
+        update_enabled = self._setting_bool(prefs.get("update_enabled", self._update_settings.enabled), self._update_settings.enabled)
+        update_channel_raw = str(prefs.get("update_channel", self._update_settings.channel.value) or self._update_settings.channel.value).strip().lower()
+        update_mode_raw = str(prefs.get("update_mode", self._update_settings.mode.value) or self._update_settings.mode.value).strip().lower()
+        try:
+            update_interval = int(prefs.get("update_check_interval_hours", self._update_settings.check_interval_hours))
+        except Exception:
+            update_interval = self._update_settings.check_interval_hours
+        try:
+            channel = UpdateChannel(update_channel_raw)
+        except Exception:
+            channel = UpdateChannel.STABLE
+        try:
+            mode = UpdateMode(update_mode_raw)
+        except Exception:
+            mode = UpdateMode.NOTIFY
+        self._update_settings.enabled = bool(update_enabled)
+        self._update_settings.channel = channel
+        self._update_settings.mode = mode
+        self._update_settings.check_interval_hours = max(1, int(update_interval))
+        self._save_update_preferences()
 
     def _apply_appearance_settings(self, prefs: dict) -> None:
         """Aplica appearance settings.
@@ -3198,12 +3640,13 @@ class ChemusonWindow(QMainWindow):
     
     def _on_about(self) -> None:
         """Show about dialog."""
+        version = get_app_version()
         QMessageBox.about(
             self,
             "Acerca de Chemuson",
             "<h2>Chemuson</h2>"
             "<p>Editor Molecular Libre</p>"
-            "<p>Versión 0.2.0</p>"
+            f"<p>Versión {version}</p>"
             "<p>Un editor de estructuras químicas de código abierto "
             "inspirado en ChemDoodle.</p>"
         )
@@ -3359,6 +3802,7 @@ def run_app() -> None:
     try:
         app = QApplication(sys.argv)
         app.setApplicationName("Chemuson")
+        app.setApplicationVersion(get_app_version())
         window = ChemusonWindow()
         ChemusonWindow.check_autosaves(window)
         window.show()

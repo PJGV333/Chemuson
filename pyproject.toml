@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chemuson"
-version = "0.1.0"
+dynamic = ["version"]
 requires-python = ">=3.10"
 dependencies = [
   "PyQt6",
@@ -24,3 +24,6 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 chemuson = ["assets/**/*", "**/*.png", "**/*.svg", "**/*.json", "**/*.ui", "**/*.mol"]
+
+[tool.setuptools.dynamic]
+version = {attr = "chemuson._version.__version__"}

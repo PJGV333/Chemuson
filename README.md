@@ -69,7 +69,116 @@ Limitaciones relevantes:
 - **Química**: RDKit
 - **Lenguaje**: Python 3.10+
 
-## Instalación
+## Distribución por plataforma
+
+Formatos soportados (estrategia híbrida):
+
+- **Windows**
+  - Portable: `Chemuson-vX.Y.Z-windows-x86_64-portable.exe`
+  - Instalador: `Chemuson-vX.Y.Z-windows-x86_64-setup.exe`
+- **Linux**
+  - Portable: `Chemuson-vX.Y.Z-linux-x86_64.AppImage`
+  - Instalable recomendado: **Flatpak** (canal oficial en despliegue incremental)
+
+Convención de nombres en release:
+
+- `Chemuson-v<version>-windows-x86_64-portable.exe`
+- `Chemuson-v<version>-windows-x86_64-setup.exe`
+- `Chemuson-v<version>-linux-x86_64.AppImage`
+
+### Windows: instalador oficial + portable
+
+- Se mantiene el `.exe` portable actual.
+- Instalador oficial elegido: **Inno Setup** (balancea simplicidad operativa, soporte de modo silencioso para updater y convivencia con portable).
+- Documento técnico y comandos completos: [docs/windows-distribution.md](docs/windows-distribution.md)
+
+Build local rápido en Windows (PowerShell):
+
+```powershell
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+pip install pyinstaller
+pyinstaller --clean --noconfirm chemuson.spec
+$env:CHEMUSON_VERSION = "0.2.1"
+& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "packaging\windows\Chemuson.iss"
+```
+
+### Linux: Flatpak principal + AppImage portable
+
+- Canal instalable principal: **Flatpak** (`.flatpak`).
+- Canal portable: **AppImage** (`.AppImage`) sin instalación.
+- Documento técnico y comandos completos: [docs/linux-distribution.md](docs/linux-distribution.md)
+
+Instalación rápida Flatpak (usuario final):
+
+```bash
+flatpak install --user ./Chemuson-vX.Y.Z-linux-x86_64.flatpak
+flatpak run io.github.PJGV333.Chemuson
+```
+
+Ejecución AppImage:
+
+```bash
+chmod +x Chemuson-vX.Y.Z-linux-x86_64.AppImage
+./Chemuson-vX.Y.Z-linux-x86_64.AppImage
+```
+
+## Actualización automática (MVP)
+
+- Se añadió núcleo de update en `src/chemuson/update/`.
+- Fuente de versión única: `src/chemuson/_version.py`.
+- Canales soportados: `stable` y `beta`.
+- Verificación de integridad:
+  - hash SHA-256 (`.sha256`),
+  - firma (`.sig`, MVP con HMAC-SHA256; preparado para ampliar a Ed25519).
+- Rollback básico: si falla reemplazo de binario, se restaura backup local.
+- En Windows instalado, el updater prioriza el asset `setup.exe` y lo aplica al cierre de la app.
+- En Flatpak se deshabilita update in-app y se delega a la política de Flatpak/remote.
+- Fallback seguro: si GitHub no responde, se usa caché local reciente de releases (si existe).
+- Telemetría local mínima del updater (sin datos sensibles): `~/.chemuson/update_logs/events.jsonl`.
+
+Preferencias persistentes de actualización (en `QSettings`):
+
+- `update/enabled`
+- `update/channel`
+- `update/mode` (`notify` / `silent`)
+- `update/check_interval_hours`
+- `update/last_check_iso`
+
+En GUI: `Editar -> Preferencias -> Actualizaciones`.
+Chequeo manual: `Ayuda -> Buscar actualizaciones...`.
+
+En CLI:
+
+```bash
+chemuson --version
+```
+
+## Migración sin romper portable actual
+
+- El flujo portable actual **se mantiene**.
+- Puedes seguir abriendo Chemuson con el ejecutable/AppImage sin instalar.
+- Si migras a instalador en Windows, conserva tus archivos de trabajo (`.cmsn`) y configuración local.
+- Los mecanismos nuevos de update no eliminan compatibilidad con releases portables existentes.
+
+## CI/CD Windows (resumen)
+
+- `test.yml` incluye smoke tests de updater/build de instalador en Windows.
+- `release.yml` publica portable + setup y deja firma Authenticode preparada con secretos:
+  - `WINDOWS_CODESIGN_CERT_BASE64`
+  - `WINDOWS_CODESIGN_CERT_PASSWORD`
+  - `WINDOWS_CODESIGN_TIMESTAMP_URL` (opcional)
+- Limitación conocida: CI no ejecuta instalación real sobre el runner; se simulan pasos críticos y se valida compilación de setup.
+
+## CI/CD Linux (resumen)
+
+- `release.yml` construye y publica:
+  - `Chemuson-vX.Y.Z-linux-x86_64.flatpak`
+  - `Chemuson-vX.Y.Z-linux-x86_64.AppImage`
+- `test.yml` valida manifiesto Flatpak con job `flatpak-smoke`.
+- Para AppImage se publican sidecars de metadata de update (`.updateinfo` y `.update.json`) y `.zsync` cuando esté disponible.
+
+## Instalación para desarrollo
 
 ```bash
 python3 -m venv chemuson

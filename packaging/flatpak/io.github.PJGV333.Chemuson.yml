@@ -1,0 +1,32 @@
+app-id: io.github.PJGV333.Chemuson
+runtime: org.kde.Platform
+runtime-version: "6.6"
+sdk: org.kde.Sdk
+command: chemuson
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --filesystem=home
+  - --env=CHEMUSON_DISABLE_UPDATE_CHECK=1
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+
+modules:
+  - name: chemuson
+    buildsystem: simple
+    build-commands:
+      # El update en Flatpak se delega a flatpak/remote oficial.
+      - pip3 install --prefix=/app --no-build-isolation .
+      - install -Dm644 packaging/flatpak/io.github.PJGV333.Chemuson.desktop /app/share/applications/io.github.PJGV333.Chemuson.desktop
+      - install -Dm644 packaging/flatpak/io.github.PJGV333.Chemuson.metainfo.xml /app/share/metainfo/io.github.PJGV333.Chemuson.metainfo.xml
+      - install -Dm644 packaging/flatpak/io.github.PJGV333.Chemuson.svg /app/share/icons/hicolor/scalable/apps/io.github.PJGV333.Chemuson.svg
+    sources:
+      - type: dir
+        path: ../..

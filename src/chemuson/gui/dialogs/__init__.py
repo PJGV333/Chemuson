@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (
     QTextBrowser,
     QVBoxLayout,
     QWidget,
+    QSpinBox,
 )
 
 from chemuson.core.model import ChemState
@@ -150,12 +151,19 @@ class PreferencesDialog(QDialog):
 
     preferences_changed = pyqtSignal(dict)
 
-    def __init__(self, current_state: ChemState, current_style: DrawingStyle, parent=None) -> None:
+    def __init__(
+        self,
+        current_state: ChemState,
+        current_style: DrawingStyle,
+        update_settings: dict | None = None,
+        parent=None,
+    ) -> None:
         """Inicializa el diálogo.
 
         Args:
             current_state: Descripción del parámetro.
             current_style: Descripción del parámetro.
+            update_settings: Preferencias persistentes de actualización.
             parent: Descripción del parámetro.
 
         Returns:
@@ -172,6 +180,7 @@ class PreferencesDialog(QDialog):
         tabs = QTabWidget(self)
         tabs.addTab(self._build_general_tab(current_state), "General")
         tabs.addTab(self._build_appearance_tab(), "Apariencia")
+        tabs.addTab(self._build_updates_tab(update_settings or {}), "Actualizaciones")
         tabs.addTab(self._build_rdkit_tab(), "RDKit")
 
         buttons = QDialogButtonBox(
@@ -248,6 +257,40 @@ class PreferencesDialog(QDialog):
         layout.addStretch()
         return widget
 
+    def _build_updates_tab(self, update_settings: dict) -> QWidget:
+        """Construye pestaña de configuración de auto-update."""
+        widget = QWidget()
+        form = QFormLayout(widget)
+
+        self.update_enabled_checkbox = QCheckBox("Buscar actualizaciones automáticamente")
+        self.update_enabled_checkbox.setChecked(bool(update_settings.get("enabled", False)))
+        form.addRow(self.update_enabled_checkbox)
+
+        self.update_channel_combo = QComboBox()
+        self.update_channel_combo.addItem("Estable", "stable")
+        self.update_channel_combo.addItem("Beta", "beta")
+        current_channel = str(update_settings.get("channel", "stable")).strip().lower()
+        idx_channel = self.update_channel_combo.findData(current_channel)
+        if idx_channel >= 0:
+            self.update_channel_combo.setCurrentIndex(idx_channel)
+        form.addRow("Canal", self.update_channel_combo)
+
+        self.update_mode_combo = QComboBox()
+        self.update_mode_combo.addItem("Notificar", "notify")
+        self.update_mode_combo.addItem("Silencioso", "silent")
+        current_mode = str(update_settings.get("mode", "notify")).strip().lower()
+        idx_mode = self.update_mode_combo.findData(current_mode)
+        if idx_mode >= 0:
+            self.update_mode_combo.setCurrentIndex(idx_mode)
+        form.addRow("Modo", self.update_mode_combo)
+
+        self.update_interval_spin = QSpinBox()
+        self.update_interval_spin.setRange(1, 24 * 30)
+        self.update_interval_spin.setSuffix(" h")
+        self.update_interval_spin.setValue(int(update_settings.get("check_interval_hours", 24) or 24))
+        form.addRow("Frecuencia de chequeo", self.update_interval_spin)
+        return widget
+
     def _build_rdkit_tab(self) -> QWidget:
         """Construye rdkit tab.
 
@@ -279,6 +322,10 @@ class PreferencesDialog(QDialog):
             "show_hydrogens": self.hydrogens_checkbox.isChecked(),
             "aromatic_circles": self.aromatic_checkbox.isChecked(),
             "bond_caps": self.bond_cap_combo.currentData(),
+            "update_enabled": self.update_enabled_checkbox.isChecked(),
+            "update_channel": str(self.update_channel_combo.currentData() or "stable"),
+            "update_mode": str(self.update_mode_combo.currentData() or "notify"),
+            "update_check_interval_hours": int(self.update_interval_spin.value()),
         }
         self.preferences_changed.emit(prefs)
         self.accept()

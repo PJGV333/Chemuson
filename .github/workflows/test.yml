@@ -1,0 +1,80 @@
+name: test
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e .
+
+      - name: Run tests
+        run: pytest -q
+
+  windows-smoke:
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install smoke test dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest
+
+      - name: Run windows updater smoke tests
+        shell: pwsh
+        run: |
+          pytest -q tests/test_update_windows.py
+
+      - name: Build installer smoke (Inno Setup)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Set-Content -Path dist\Chemuson.exe -Encoding Ascii -Value "stub portable binary for CI smoke"
+          choco install innosetup --no-progress -y
+          $env:CHEMUSON_VERSION = "0.0.0-ci"
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "packaging\windows\Chemuson.iss"
+          if (-not (Test-Path "dist-installer\Chemuson-v0.0.0-ci-windows-x86_64-setup.exe")) {
+            throw "No se generó instalador esperado."
+          }
+
+  flatpak-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install flatpak-builder
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak-builder
+
+      - name: Validate Flatpak manifest
+        run: |
+          flatpak-builder --show-manifest /tmp/flatpak-build packaging/flatpak/io.github.PJGV333.Chemuson.yml > /tmp/flatpak-manifest.json
