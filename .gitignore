@@ -18,3 +18,4 @@ dist-flatpak/
 *.update.json
 checksums.txt
 *.sig
+/dist-installer
