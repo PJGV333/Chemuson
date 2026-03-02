@@ -4124,6 +4124,7 @@ class ChemusonCanvas(QGraphicsView):
         if has_undo_items:
             self.undo_stack.beginMacro("Paste selection")
         id_map: Dict[int, int] = {}
+        inserted_pairs: set[frozenset[int]] = set()
         for atom_d in atoms:
             cmd = AddAtomCommand(
                 self.model,
@@ -4159,6 +4160,12 @@ class ChemusonCanvas(QGraphicsView):
             a1 = id_map.get(int(bond_d.get("a1")))
             a2 = id_map.get(int(bond_d.get("a2")))
             if a1 is None or a2 is None:
+                continue
+            pair = frozenset({a1, a2})
+            if pair in inserted_pairs:
+                continue
+            inserted_pairs.add(pair)
+            if self.model.find_bond_between(a1, a2) is not None:
                 continue
             style = self._parse_bond_style_payload(bond_d)
             stereo = self._parse_bond_stereo_payload(bond_d)
@@ -4906,6 +4913,7 @@ class ChemusonCanvas(QGraphicsView):
 
         self.undo_stack.beginMacro("Paste molecule")
         id_map: Dict[int, int] = {}
+        inserted_pairs: set[frozenset[int]] = set()
         for atom in graph.atoms.values():
             cmd = AddAtomCommand(
                 self.model,
@@ -4933,6 +4941,12 @@ class ChemusonCanvas(QGraphicsView):
             a1 = id_map.get(bond.a1_id)
             a2 = id_map.get(bond.a2_id)
             if a1 is None or a2 is None:
+                continue
+            pair = frozenset({a1, a2})
+            if pair in inserted_pairs:
+                continue
+            inserted_pairs.add(pair)
+            if self.model.find_bond_between(a1, a2) is not None:
                 continue
             cmd = AddBondCommand(
                 self.model,
@@ -5027,6 +5041,7 @@ class ChemusonCanvas(QGraphicsView):
 
         self.undo_stack.beginMacro("Paste molecule")
         id_map: Dict[int, int] = {}
+        inserted_pairs: set[frozenset[int]] = set()
         for atom in graph.atoms.values():
             cmd = AddAtomCommand(
                 self.model,
@@ -5055,6 +5070,12 @@ class ChemusonCanvas(QGraphicsView):
             a2 = id_map.get(bond.a2_id)
             if a1 is None or a2 is None:
                 continue
+            pair = frozenset({a1, a2})
+            if pair in inserted_pairs:
+                continue
+            inserted_pairs.add(pair)
+            if self.model.find_bond_between(a1, a2) is not None:
+                continue
             cmd = AddBondCommand(
                 self.model,
                 self,
@@ -5074,17 +5095,18 @@ class ChemusonCanvas(QGraphicsView):
         if attach_to_atom_id is not None and attach_template_id is not None:
             template_new_id = id_map.get(attach_template_id)
             if template_new_id is not None:
-                cmd = AddBondCommand(
-                    self.model,
-                    self,
-                    attach_to_atom_id,
-                    template_new_id,
-                    1,
-                    BondStyle.PLAIN,
-                    BondStereo.NONE,
-                    is_aromatic=False,
-                )
-                self.undo_stack.push(cmd)
+                if self.model.find_bond_between(attach_to_atom_id, template_new_id) is None:
+                    cmd = AddBondCommand(
+                        self.model,
+                        self,
+                        attach_to_atom_id,
+                        template_new_id,
+                        1,
+                        BondStyle.PLAIN,
+                        BondStereo.NONE,
+                        is_aromatic=False,
+                    )
+                    self.undo_stack.push(cmd)
         self.undo_stack.endMacro()
         if any(bond.is_aromatic for bond in self.model.bonds.values()):
             self._kekulize_aromatic_bonds()

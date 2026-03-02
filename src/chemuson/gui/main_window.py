@@ -3678,9 +3678,8 @@ class ChemusonWindow(QMainWindow):
         try:
             from chemuson.chemio.rdkit_io import smiles_to_molgraph
             graph = smiles_to_molgraph(smiles.strip())
-            self.canvas.clear_canvas()
             self.canvas._insert_molgraph(graph)
-            self.statusBar().showMessage("SMILES importado")
+            self.statusBar().showMessage("SMILES insertado")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"No se pudo importar SMILES:\n{e}")
 

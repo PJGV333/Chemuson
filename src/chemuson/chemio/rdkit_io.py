@@ -68,6 +68,19 @@ def molgraph_to_rdkit_with_map(molgraph: MolGraph):
     rw = Chem.RWMol()
     id_map: Dict[int, int] = {}
 
+    def _bond_priority(bond_type) -> int:
+        if bond_type == Chem.BondType.AROMATIC:
+            return 5
+        if bond_type == Chem.BondType.TRIPLE:
+            return 4
+        if bond_type == Chem.BondType.DOUBLE:
+            return 3
+        if bond_type == Chem.BondType.SINGLE:
+            return 2
+        if bond_type == Chem.BondType.DATIVE:
+            return 1
+        return 0
+
     for atom in sorted(molgraph.atoms.values(), key=lambda a: a.id):
         element = atom.element
         try:
@@ -116,8 +129,17 @@ def molgraph_to_rdkit_with_map(molgraph: MolGraph):
             bond_type = Chem.BondType.TRIPLE
         else:
             bond_type = Chem.BondType.SINGLE
-        rw.AddBond(id_map[begin_id], id_map[end_id], bond_type)
-        rd_bond = rw.GetBondBetweenAtoms(id_map[begin_id], id_map[end_id])
+        begin_idx = id_map[begin_id]
+        end_idx = id_map[end_id]
+        rd_bond = rw.GetBondBetweenAtoms(begin_idx, end_idx)
+        if rd_bond is None:
+            rw.AddBond(begin_idx, end_idx, bond_type)
+            rd_bond = rw.GetBondBetweenAtoms(begin_idx, end_idx)
+        elif _bond_priority(bond_type) > _bond_priority(rd_bond.GetBondType()):
+            rd_bond.SetBondType(bond_type)
+        if bond_type == Chem.BondType.AROMATIC:
+            rw.GetAtomWithIdx(id_map[bond.a1_id]).SetIsAromatic(True)
+            rw.GetAtomWithIdx(id_map[bond.a2_id]).SetIsAromatic(True)
         if rd_bond is not None:
             if getattr(bond, "stereo_axial", None):
                 rd_bond.SetProp("_ChemusonStereoAxial", str(bond.stereo_axial))
