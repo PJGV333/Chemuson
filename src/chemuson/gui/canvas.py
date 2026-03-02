@@ -4912,59 +4912,61 @@ class ChemusonCanvas(QGraphicsView):
         dy = target_y - center_y
 
         self.undo_stack.beginMacro("Paste molecule")
-        id_map: Dict[int, int] = {}
-        inserted_pairs: set[frozenset[int]] = set()
-        for atom in graph.atoms.values():
-            cmd = AddAtomCommand(
-                self.model,
-                self,
-                atom.element,
-                atom.x + dx,
-                atom.y + dy,
-                is_explicit=atom.is_explicit,
-                charge=atom.charge,
-                isotope=getattr(atom, "isotope", None),
-                radical_electrons=int(getattr(atom, "radical_electrons", 0) or 0),
-                oxidation_state=getattr(atom, "oxidation_state", None),
-                no_implicit=bool(getattr(atom, "no_implicit", False)),
-                auto_hydrogens=False,
-                is_coordination_center=getattr(atom, "is_coordination_center", False),
-                sphere_radius=getattr(atom, "sphere_radius", None),
-                sphere_color=getattr(atom, "sphere_color", None),
-                sphere_filled=bool(getattr(atom, "sphere_filled", True)),
-                sphere_transparent=bool(getattr(atom, "sphere_transparent", False)),
-            )
-            self.undo_stack.push(cmd)
-            if cmd.atom_id is not None:
-                id_map[atom.id] = cmd.atom_id
-        for bond in graph.bonds.values():
-            a1 = id_map.get(bond.a1_id)
-            a2 = id_map.get(bond.a2_id)
-            if a1 is None or a2 is None:
-                continue
-            pair = frozenset({a1, a2})
-            if pair in inserted_pairs:
-                continue
-            inserted_pairs.add(pair)
-            if self.model.find_bond_between(a1, a2) is not None:
-                continue
-            cmd = AddBondCommand(
-                self.model,
-                self,
-                a1,
-                a2,
-                bond.order,
-                bond.style,
-                bond.stereo,
-                is_aromatic=bond.is_aromatic,
-                stroke_px=bond.stroke_px,
-                color=bond.color,
-                donor_atom_id=id_map.get(getattr(bond, "donor_atom_id", -1)),
-                flex_curve_1=getattr(bond, "flex_curve_1", None),
-                flex_curve_2=getattr(bond, "flex_curve_2", None),
-            )
-            self.undo_stack.push(cmd)
-        self.undo_stack.endMacro()
+        try:
+            id_map: Dict[int, int] = {}
+            inserted_pairs: set[frozenset[int]] = set()
+            for atom in graph.atoms.values():
+                cmd = AddAtomCommand(
+                    self.model,
+                    self,
+                    atom.element,
+                    atom.x + dx,
+                    atom.y + dy,
+                    is_explicit=atom.is_explicit,
+                    charge=atom.charge,
+                    isotope=getattr(atom, "isotope", None),
+                    radical_electrons=int(getattr(atom, "radical_electrons", 0) or 0),
+                    oxidation_state=getattr(atom, "oxidation_state", None),
+                    no_implicit=bool(getattr(atom, "no_implicit", False)),
+                    auto_hydrogens=False,
+                    is_coordination_center=getattr(atom, "is_coordination_center", False),
+                    sphere_radius=getattr(atom, "sphere_radius", None),
+                    sphere_color=getattr(atom, "sphere_color", None),
+                    sphere_filled=bool(getattr(atom, "sphere_filled", True)),
+                    sphere_transparent=bool(getattr(atom, "sphere_transparent", False)),
+                )
+                self.undo_stack.push(cmd)
+                if cmd.atom_id is not None:
+                    id_map[atom.id] = cmd.atom_id
+            for bond in graph.bonds.values():
+                a1 = id_map.get(bond.a1_id)
+                a2 = id_map.get(bond.a2_id)
+                if a1 is None or a2 is None:
+                    continue
+                pair = frozenset({a1, a2})
+                if pair in inserted_pairs:
+                    continue
+                inserted_pairs.add(pair)
+                if self.model.find_bond_between(a1, a2) is not None:
+                    continue
+                cmd = AddBondCommand(
+                    self.model,
+                    self,
+                    a1,
+                    a2,
+                    bond.order,
+                    bond.style,
+                    bond.stereo,
+                    is_aromatic=bond.is_aromatic,
+                    stroke_px=bond.stroke_px,
+                    color=bond.color,
+                    donor_atom_id=id_map.get(getattr(bond, "donor_atom_id", -1)),
+                    flex_curve_1=getattr(bond, "flex_curve_1", None),
+                    flex_curve_2=getattr(bond, "flex_curve_2", None),
+                )
+                self.undo_stack.push(cmd)
+        finally:
+            self.undo_stack.endMacro()
         if any(bond.is_aromatic for bond in self.model.bonds.values()):
             self._kekulize_aromatic_bonds()
 
@@ -5040,74 +5042,76 @@ class ChemusonCanvas(QGraphicsView):
             dy = target.y() - center_y
 
         self.undo_stack.beginMacro("Paste molecule")
-        id_map: Dict[int, int] = {}
-        inserted_pairs: set[frozenset[int]] = set()
-        for atom in graph.atoms.values():
-            cmd = AddAtomCommand(
-                self.model,
-                self,
-                atom.element,
-                atom.x + dx,
-                atom.y + dy,
-                is_explicit=atom.is_explicit,
-                charge=atom.charge,
-                isotope=getattr(atom, "isotope", None),
-                radical_electrons=int(getattr(atom, "radical_electrons", 0) or 0),
-                oxidation_state=getattr(atom, "oxidation_state", None),
-                no_implicit=bool(getattr(atom, "no_implicit", False)),
-                auto_hydrogens=False,
-                is_coordination_center=getattr(atom, "is_coordination_center", False),
-                sphere_radius=getattr(atom, "sphere_radius", None),
-                sphere_color=getattr(atom, "sphere_color", None),
-                sphere_filled=bool(getattr(atom, "sphere_filled", True)),
-                sphere_transparent=bool(getattr(atom, "sphere_transparent", False)),
-            )
-            self.undo_stack.push(cmd)
-            if cmd.atom_id is not None:
-                id_map[atom.id] = cmd.atom_id
-        for bond in graph.bonds.values():
-            a1 = id_map.get(bond.a1_id)
-            a2 = id_map.get(bond.a2_id)
-            if a1 is None or a2 is None:
-                continue
-            pair = frozenset({a1, a2})
-            if pair in inserted_pairs:
-                continue
-            inserted_pairs.add(pair)
-            if self.model.find_bond_between(a1, a2) is not None:
-                continue
-            cmd = AddBondCommand(
-                self.model,
-                self,
-                a1,
-                a2,
-                bond.order,
-                bond.style,
-                bond.stereo,
-                is_aromatic=bond.is_aromatic,
-                stroke_px=bond.stroke_px,
-                color=bond.color,
-                donor_atom_id=id_map.get(getattr(bond, "donor_atom_id", -1)),
-                flex_curve_1=getattr(bond, "flex_curve_1", None),
-                flex_curve_2=getattr(bond, "flex_curve_2", None),
-            )
-            self.undo_stack.push(cmd)
-        if attach_to_atom_id is not None and attach_template_id is not None:
-            template_new_id = id_map.get(attach_template_id)
-            if template_new_id is not None:
-                if self.model.find_bond_between(attach_to_atom_id, template_new_id) is None:
-                    cmd = AddBondCommand(
-                        self.model,
-                        self,
-                        attach_to_atom_id,
-                        template_new_id,
-                        1,
-                        BondStyle.PLAIN,
-                        BondStereo.NONE,
-                        is_aromatic=False,
-                    )
-                    self.undo_stack.push(cmd)
-        self.undo_stack.endMacro()
+        try:
+            id_map: Dict[int, int] = {}
+            inserted_pairs: set[frozenset[int]] = set()
+            for atom in graph.atoms.values():
+                cmd = AddAtomCommand(
+                    self.model,
+                    self,
+                    atom.element,
+                    atom.x + dx,
+                    atom.y + dy,
+                    is_explicit=atom.is_explicit,
+                    charge=atom.charge,
+                    isotope=getattr(atom, "isotope", None),
+                    radical_electrons=int(getattr(atom, "radical_electrons", 0) or 0),
+                    oxidation_state=getattr(atom, "oxidation_state", None),
+                    no_implicit=bool(getattr(atom, "no_implicit", False)),
+                    auto_hydrogens=False,
+                    is_coordination_center=getattr(atom, "is_coordination_center", False),
+                    sphere_radius=getattr(atom, "sphere_radius", None),
+                    sphere_color=getattr(atom, "sphere_color", None),
+                    sphere_filled=bool(getattr(atom, "sphere_filled", True)),
+                    sphere_transparent=bool(getattr(atom, "sphere_transparent", False)),
+                )
+                self.undo_stack.push(cmd)
+                if cmd.atom_id is not None:
+                    id_map[atom.id] = cmd.atom_id
+            for bond in graph.bonds.values():
+                a1 = id_map.get(bond.a1_id)
+                a2 = id_map.get(bond.a2_id)
+                if a1 is None or a2 is None:
+                    continue
+                pair = frozenset({a1, a2})
+                if pair in inserted_pairs:
+                    continue
+                inserted_pairs.add(pair)
+                if self.model.find_bond_between(a1, a2) is not None:
+                    continue
+                cmd = AddBondCommand(
+                    self.model,
+                    self,
+                    a1,
+                    a2,
+                    bond.order,
+                    bond.style,
+                    bond.stereo,
+                    is_aromatic=bond.is_aromatic,
+                    stroke_px=bond.stroke_px,
+                    color=bond.color,
+                    donor_atom_id=id_map.get(getattr(bond, "donor_atom_id", -1)),
+                    flex_curve_1=getattr(bond, "flex_curve_1", None),
+                    flex_curve_2=getattr(bond, "flex_curve_2", None),
+                )
+                self.undo_stack.push(cmd)
+            if attach_to_atom_id is not None and attach_template_id is not None:
+                template_new_id = id_map.get(attach_template_id)
+                if template_new_id is not None:
+                    if self.model.find_bond_between(attach_to_atom_id, template_new_id) is None:
+                        cmd = AddBondCommand(
+                            self.model,
+                            self,
+                            attach_to_atom_id,
+                            template_new_id,
+                            1,
+                            BondStyle.PLAIN,
+                            BondStereo.NONE,
+                            is_aromatic=False,
+                        )
+                        self.undo_stack.push(cmd)
+        finally:
+            self.undo_stack.endMacro()
         if any(bond.is_aromatic for bond in self.model.bonds.values()):
             self._kekulize_aromatic_bonds()
 

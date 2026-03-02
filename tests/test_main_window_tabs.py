@@ -148,3 +148,23 @@ def test_insert_molgraph_skips_duplicate_bonds() -> None:
 
     canvas._insert_molgraph(source)
     assert len(canvas.model.bonds) == 1
+
+
+def test_gallery_template_selection_enters_insert_mode() -> None:
+    window = ChemusonWindow()
+    try:
+        baseline_atoms = len(window.canvas.model.atoms)
+
+        templates = window.template_library.list_templates()
+        benzene = next((tpl for tpl in templates if tpl.get("name") == "Benceno"), None)
+        assert benzene is not None
+
+        window._on_template_selected_from_gallery({"id": benzene["id"]})
+
+        assert len(window.canvas.model.atoms) == baseline_atoms
+        assert window.canvas._pending_template_graph is not None
+        assert window.canvas._pending_template_label
+    finally:
+        window.canvas.undo_stack.clear()
+        window.canvas.undo_stack.setClean()
+        window.close()

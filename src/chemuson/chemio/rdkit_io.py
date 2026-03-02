@@ -38,6 +38,20 @@ def _require_rdkit():
         raise RuntimeError("RDKit no disponible")
 
 
+def _atomic_number_for_symbol(symbol: str) -> int:
+    """Resuelve número atómico usando tabla interna (sin invocar RDKit)."""
+    text = str(symbol or "").strip()
+    if not text:
+        return 0
+    if text in ATOMIC_NUMBERS:
+        return int(ATOMIC_NUMBERS[text])
+    if len(text) == 1:
+        normalized = text.upper()
+    else:
+        normalized = text[0].upper() + text[1:].lower()
+    return int(ATOMIC_NUMBERS.get(normalized, 0) or 0)
+
+
 @dataclass
 class StrictValidationResult:
     """Resultado de validación/normalización estricta basada en RDKit."""
@@ -83,16 +97,13 @@ def molgraph_to_rdkit_with_map(molgraph: MolGraph):
 
     for atom in sorted(molgraph.atoms.values(), key=lambda a: a.id):
         element = atom.element
-        try:
-            atomic_number = Chem.GetPeriodicTable().GetAtomicNumber(element)
-        except Exception:
-            atomic_number = 0
+        atomic_number = _atomic_number_for_symbol(element)
         if atomic_number <= 0:
             rd_atom = Chem.Atom(0)
             rd_atom.SetProp("atomLabel", element)
             rd_atom.SetProp("dummyLabel", element)
         else:
-            rd_atom = Chem.Atom(element)
+            rd_atom = Chem.Atom(int(atomic_number))
         rd_atom.SetFormalCharge(atom.charge)
         if atom.isotope is not None:
             rd_atom.SetIsotope(atom.isotope)
@@ -318,6 +329,27 @@ def _parse_bond_line(line: str) -> tuple[int, int, int]:
         return int(tokens[0]), int(tokens[1]), int(tokens[2])
 
 
+def _fallback_bond_order_and_aromatic(bond_type: int) -> tuple[int, bool]:
+    """Normaliza tipo de enlace MOL a orden/aromaticidad para parser interno."""
+    order = 1
+    aromatic = False
+    if bond_type == 2:
+        order = 2
+    elif bond_type == 3:
+        order = 3
+    elif bond_type == 4:
+        aromatic = True
+        order = 1
+    return order, aromatic
+
+
+def _fallback_bond_rank(order: int, aromatic: bool) -> int:
+    """Ranking para resolver duplicados por par de átomos en parser MOL."""
+    if aromatic:
+        return 100
+    return int(order)
+
+
 def _mol_symbol_requires_fallback(symbol: str) -> bool:
     """Indica si un símbolo no es elemento estándar y conviene parseo local."""
     clean = str(symbol or "").strip()
@@ -358,6 +390,31 @@ def _should_use_molfile_fallback(molfile: str) -> bool:
         _, _, symbol = _parse_atom_line(lines[atom_start + i])
         if _mol_symbol_requires_fallback(symbol):
             return True
+    bond_start = atom_start + atom_count
+    if bond_start > len(lines):
+        return True
+    seen_pairs: set[tuple[int, int]] = set()
+    idx = bond_start
+    while idx < len(lines):
+        line = lines[idx]
+        if line.startswith("M  END"):
+            break
+        if line.startswith("M  "):
+            idx += 1
+            continue
+        try:
+            a1_idx, a2_idx, _bond_type = _parse_bond_line(line)
+        except Exception:
+            idx += 1
+            continue
+        if a1_idx == a2_idx:
+            return True
+        pair = (min(a1_idx, a2_idx), max(a1_idx, a2_idx))
+        if pair in seen_pairs:
+            # RDKit puede disparar "bond already exists" al parsear este caso.
+            return True
+        seen_pairs.add(pair)
+        idx += 1
     # Molblocks con alias `A  n` pueden venir de pseudoátomos serializados
     # como `*` + etiqueta. RDKit tiende a devolver `*` y se pierde la etiqueta;
     # forzamos parser interno para preservar el alias original.
@@ -395,19 +452,22 @@ def _molfile_to_molgraph_fallback(molfile: str) -> MolGraph:
         atom = graph.add_atom(symbol, x, y, is_explicit=(symbol != "C"))
         atom_ids.append(atom.id)
 
+    unique_bonds: dict[tuple[int, int], tuple[int, bool]] = {}
     for offset in range(bond_count):
         a1_idx, a2_idx, bond_type = _parse_bond_line(lines[bond_start + offset])
         if not (1 <= a1_idx <= len(atom_ids) and 1 <= a2_idx <= len(atom_ids)):
             continue
-        order = 1
-        aromatic = False
-        if bond_type == 2:
-            order = 2
-        elif bond_type == 3:
-            order = 3
-        elif bond_type == 4:
-            aromatic = True
-            order = 1
+        if a1_idx == a2_idx:
+            continue
+        order, aromatic = _fallback_bond_order_and_aromatic(int(bond_type))
+        pair = (min(a1_idx, a2_idx), max(a1_idx, a2_idx))
+        previous = unique_bonds.get(pair)
+        if previous is None or _fallback_bond_rank(order, aromatic) > _fallback_bond_rank(
+            previous[0], previous[1]
+        ):
+            unique_bonds[pair] = (order, aromatic)
+
+    for (a1_idx, a2_idx), (order, aromatic) in sorted(unique_bonds.items()):
         graph.add_bond(
             atom_ids[a1_idx - 1],
             atom_ids[a2_idx - 1],
@@ -730,6 +790,10 @@ def kekulize_display_orders(
         Diccionario de `bond_id -> display_order` o `None` si falla.
     """
     if Chem is None:
+        return None
+    # Con pseudoátomos (p. ej. OH/CH2OH) evitamos la ruta RDKit para no
+    # disparar errores nativos de tabla periódica.
+    if any(_mol_symbol_requires_fallback(atom.element) for atom in molgraph.atoms.values()):
         return None
     try:
         mol, id_map = molgraph_to_rdkit_with_map(molgraph)

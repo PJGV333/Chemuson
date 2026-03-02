@@ -3406,13 +3406,26 @@ class ChemusonWindow(QMainWindow):
         self.templates_menu.addAction(self.action_template_import_library)
         self.templates_menu.addAction(self.action_template_export_library)
 
-    def _start_template_insert_by_id(self, template_id: str) -> None:
-        """Activa inserción por clic para una plantilla de biblioteca."""
+    def _start_template_insert_by_id(self, template_id: str, *, place_now: bool = False) -> None:
+        """Carga plantilla desde biblioteca e inicia inserción.
+
+        Args:
+            template_id: ID de plantilla en biblioteca.
+            place_now: Si es `True`, inserta inmediatamente en el lienzo.
+        """
         try:
             template = self.template_library.get_template(template_id)
             graph = self.template_library.graph_from_template(template_id)
             label = str(template.get("name", "Plantilla")).strip() or "Plantilla"
-            self._insert_template(label, graph)
+            if place_now:
+                target = self.canvas._last_scene_pos
+                if target is None:
+                    target = self.canvas.mapToScene(self.canvas.viewport().rect().center())
+                self.canvas._insert_molgraph_at(graph, target)
+                self.canvas.cancel_template_insert_mode()
+                self.statusBar().showMessage(f"Plantilla '{label}' insertada")
+            else:
+                self._insert_template(label, graph)
         except Exception as e:
             QMessageBox.critical(self, "Error", f"No se pudo cargar la plantilla:\n{e}")
 

@@ -6,6 +6,16 @@ import json
 import sys
 from typing import Any
 
+try:
+    from pathlib import Path
+
+    _SRC_ROOT = Path(__file__).resolve().parents[2]
+    if str(_SRC_ROOT) not in sys.path:
+        sys.path.insert(0, str(_SRC_ROOT))
+    from chemuson.core.model import ATOMIC_NUMBERS as _ATOMIC_NUMBERS
+except Exception:  # pragma: no cover - fallback defensivo en worker aislado
+    _ATOMIC_NUMBERS = {}
+
 
 def _fail(message: str, **extra: Any) -> int:
     payload = {"ok": False, "error": message}
@@ -29,6 +39,33 @@ def _bond_type_from_payload(Chem, bond_data: dict[str, Any]):
     return Chem.BondType.SINGLE
 
 
+def _bond_priority(Chem, bond_type: Any) -> int:
+    if bond_type == Chem.BondType.AROMATIC:
+        return 5
+    if bond_type == Chem.BondType.TRIPLE:
+        return 4
+    if bond_type == Chem.BondType.DOUBLE:
+        return 3
+    if bond_type == Chem.BondType.SINGLE:
+        return 2
+    if bond_type == Chem.BondType.DATIVE:
+        return 1
+    return 0
+
+
+def _atomic_number_for_symbol(symbol: str) -> int:
+    text = str(symbol or "").strip()
+    if not text:
+        return 0
+    if text in _ATOMIC_NUMBERS:
+        return int(_ATOMIC_NUMBERS[text])
+    if len(text) == 1:
+        normalized = text.upper()
+    else:
+        normalized = text[0].upper() + text[1:].lower()
+    return int(_ATOMIC_NUMBERS.get(normalized, 0) or 0)
+
+
 def _build_mol_from_graph_payload(Chem, request: dict[str, Any]):
     """Reconstruye un RDKit Mol desde payload serializado."""
     atoms = request.get("atoms", [])
@@ -38,16 +75,10 @@ def _build_mol_from_graph_payload(Chem, request: dict[str, Any]):
 
     rw = Chem.RWMol()
     id_map: dict[int, int] = {}
-    periodic = Chem.GetPeriodicTable()
-
     for atom_data in atoms:
         atom_id = int(atom_data.get("id"))
         element = str(atom_data.get("element", "C"))
-        atomic_number = 0
-        try:
-            atomic_number = int(periodic.GetAtomicNumber(element))
-        except Exception:
-            atomic_number = 0
+        atomic_number = _atomic_number_for_symbol(element)
         rd_atom = Chem.Atom(atomic_number if atomic_number > 0 else 0)
         if atomic_number <= 0:
             rd_atom.SetProp("atomLabel", element)
@@ -84,8 +115,14 @@ def _build_mol_from_graph_payload(Chem, request: dict[str, Any]):
             elif donor_id == a1_id:
                 begin, end = a1_id, a2_id
         bond_type = _bond_type_from_payload(Chem, bond_data)
-        rw.AddBond(id_map[begin], id_map[end], bond_type)
-        rd_bond = rw.GetBondBetweenAtoms(id_map[begin], id_map[end])
+        begin_idx = id_map[begin]
+        end_idx = id_map[end]
+        rd_bond = rw.GetBondBetweenAtoms(begin_idx, end_idx)
+        if rd_bond is None:
+            rw.AddBond(begin_idx, end_idx, bond_type)
+            rd_bond = rw.GetBondBetweenAtoms(begin_idx, end_idx)
+        elif _bond_priority(Chem, bond_type) > _bond_priority(Chem, rd_bond.GetBondType()):
+            rd_bond.SetBondType(bond_type)
         if rd_bond is not None:
             if bond_data.get("stereo_axial"):
                 rd_bond.SetProp("_ChemusonStereoAxial", str(bond_data.get("stereo_axial")))
