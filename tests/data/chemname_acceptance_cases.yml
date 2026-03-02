@@ -1,0 +1,776 @@
+{
+  "meta": {
+    "description": "ChemName acceptance dataset (JSON-in-YAML format).",
+    "version": 1,
+    "total_cases": 70
+  },
+  "cases": [
+    {
+      "id": "special_alpha_glucopyranose_file",
+      "title": "Alpha D glucopyranose template",
+      "input_type": "file",
+      "input": "../../src/chemuson/chemname/templates/special/alpha_d_glucopyranose.mol",
+      "expect": "^alpha-d-glucopyranose$",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "special_beta_glucopyranose_file",
+      "title": "Beta D glucopyranose template",
+      "input_type": "file",
+      "input": "../../src/chemuson/chemname/templates/special/beta_d_glucopyranose.mol",
+      "expect": "^beta-d-glucopyranose$",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "special_beta_fructofuranose_file",
+      "title": "Beta D fructofuranose template",
+      "input_type": "file",
+      "input": "../../src/chemuson/chemname/templates/special/beta_d_fructofuranose.mol",
+      "expect": "^beta-d-fructofuranose$",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "special_d_ribose_file",
+      "title": "D ribose template",
+      "input_type": "file",
+      "input": "../../src/chemuson/chemname/templates/special/d_ribose.mol",
+      "expect": "^d-ribose$",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "special_androstane_file",
+      "title": "Androstane core template",
+      "input_type": "file",
+      "input": "../../src/chemuson/chemname/templates/special/androstane_core.mol",
+      "expect": "^androstane$",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "special_cholestane_file",
+      "title": "Cholestane core template",
+      "input_type": "file",
+      "input": "../../src/chemuson/chemname/templates/special/cholestane_core.mol",
+      "expect": "^cholestane$",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "simple_benzene_template_file",
+      "title": "Simple benzene template",
+      "input_type": "file",
+      "input": "../../src/chemuson/chemname/templates/simple/benzene.mol",
+      "expect": "^benzene$",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "fused_pyrene_iupac_file",
+      "title": "Fused pyrene template IUPAC",
+      "input_type": "file",
+      "input": "../../src/chemuson/chemname/templates/fused/pyrene_iupac2004.mol",
+      "expect": "^pyrene$",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "fused_pyrene_cas_file",
+      "title": "Fused pyrene template CAS",
+      "input_type": "file",
+      "input": "../../src/chemuson/chemname/templates/fused/pyrene_cas.mol",
+      "expect": "^pyrene$",
+      "options": {
+        "rdkit_isolated": true,
+        "fused_numbering_scheme": "cas"
+      }
+    },
+    {
+      "id": "mol_methylammonium",
+      "title": "Methylammonium",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/methylammonium.mol",
+      "expect": "amine$",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "mol_ethanoate",
+      "title": "Ethanoate anion",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/ethanoate.mol",
+      "expect": "^ethanoate$",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "mol_dideuterioethane",
+      "title": "1,1-dideuterioethane",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/dideuterioethane.mol",
+      "expect": "dideuterioethane$",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "mol_methoxy_oxyl",
+      "title": "Methoxy oxyl radical",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/methoxy_oxyl.mol",
+      "expect": "oxyl",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "mol_ethanethiol",
+      "title": "Ethanethiol",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/ethanethiol.mol",
+      "expect": "thiol$",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "mol_dimethyl_sulfoxide",
+      "title": "Dimethyl sulfoxide systematic",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/dimethyl_sulfoxide.mol",
+      "expect": "sulfinyl",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "mol_benzenesulfonic_acid",
+      "title": "Benzenesulfonic acid",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/benzenesulfonic_acid.mol",
+      "expect": "sulfonic acid$",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "mol_ethanesulfonate",
+      "title": "Ethanesulfonate",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/ethanesulfonate.mol",
+      "expect": "sulfonate$",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "mol_methanesulfonamide",
+      "title": "Methanesulfonamide",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/methanesulfonamide.mol",
+      "expect": "sulfonamido|sulfonamide",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "mol_dimethyl_sulfone",
+      "title": "Dimethyl sulfone",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/dimethyl_sulfone.mol",
+      "expect": "sulfonyl",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "mol_peroxyethane",
+      "title": "Peroxyethane",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/peroxyethane.mol",
+      "expect": "peroxy",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "mol_azidoethane",
+      "title": "Azidoethane",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/azidoethane.mol",
+      "expect": "azido",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "mol_triazole_123",
+      "title": "1,2,3-triazole",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/triazole_123.mol",
+      "expect": "1,2,3-triazole$",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "mol_triazole_124",
+      "title": "1,2,4-triazole",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/triazole_124.mol",
+      "expect": "1,2,4-triazole$",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "mol_tetrazole",
+      "title": "Tetrazole",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/tetrazole.mol",
+      "expect": "^tetrazole$",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "mol_benzotriazole",
+      "title": "Benzotriazole",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/benzotriazole.mol",
+      "expect": "benzotriazole$",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "mol_benzoquinone",
+      "title": "Benzoquinone as benzene-1,4-dione",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/benzene_14_dione.mol",
+      "expect": "benzene-1,4-dione$",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "mol_naphthoquinone_14",
+      "title": "1,4-naphthoquinone",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/naphthalene_14_dione.mol",
+      "expect": "naphthalene-1,4-dione$",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "mol_naphthoquinone_12",
+      "title": "1,2-naphthoquinone",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/naphthalene_12_dione.mol",
+      "expect": "naphthalene-1,2-dione$",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "mol_nickel_tetracarbonyl",
+      "title": "Nickel tetracarbonyl",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/nickel_tetracarbonyl.mol",
+      "expect": "tetracarbonylnickel\\(0\\)$",
+      "options": {
+        "rdkit_isolated": true,
+        "allow_coordination": true
+      }
+    },
+    {
+      "id": "mol_ferrocene",
+      "title": "Ferrocene",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/ferrocene.mol",
+      "expect": "cyclopentadienyl\\)iron\\(II\\)$",
+      "options": {
+        "rdkit_isolated": true,
+        "allow_coordination": true
+      }
+    },
+    {
+      "id": "mol_ethane_13c",
+      "title": "13C isotope in ethane",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/ethane_13c.mol",
+      "expect": "\\(13C\\).*ethane",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "mol_phosphabenzene_exotic_on",
+      "title": "Phosphabenzene with exotic hetero enabled",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/phosphabenzene.mol",
+      "expect": "^phosphabenzene$",
+      "options": {
+        "rdkit_isolated": true,
+        "enable_exotic_hetero": true
+      }
+    },
+    {
+      "id": "neg_invalid_element_xx",
+      "title": "Elemento no permitido",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/invalid_element_xx.mol",
+      "expect": "ND",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "neg_fusion_substitution_blocked",
+      "title": "Fusion substitution prohibida",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/aminopyrene_unsupported.mol",
+      "expect": "ND",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "neg_hetero_substitution_blocked",
+      "title": "Hetero substitution prohibida por flag",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/phosphabenzene.mol",
+      "expect": "ND",
+      "options": {
+        "rdkit_isolated": true,
+        "enable_exotic_hetero": false
+      }
+    },
+    {
+      "id": "neg_cisplatin_fixture_nd",
+      "title": "Cisplatin desde molfile sin metadata coord",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/cisplatin.mol",
+      "expect": "ND",
+      "options": {
+        "rdkit_isolated": true,
+        "allow_coordination": true
+      }
+    },
+    {
+      "id": "neg_transplatin_fixture_nd",
+      "title": "Transplatin desde molfile sin metadata coord",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/transplatin.mol",
+      "expect": "ND",
+      "options": {
+        "rdkit_isolated": true,
+        "allow_coordination": true
+      }
+    },
+    {
+      "id": "neg_coordination_disabled_ni",
+      "title": "Coordination disabled -> ND",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/nickel_tetracarbonyl.mol",
+      "expect": "ND",
+      "options": {
+        "rdkit_isolated": true,
+        "allow_coordination": false
+      }
+    },
+    {
+      "id": "neg_coordination_disabled_ferrocene",
+      "title": "Coordination disabled ferrocene -> ND",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/ferrocene.mol",
+      "expect": "ND",
+      "options": {
+        "rdkit_isolated": true,
+        "allow_coordination": false
+      }
+    },
+    {
+      "id": "inline_molblock_ethane",
+      "title": "Inline molblock ethane",
+      "input_type": "molblock",
+      "input": "Chemuson\nChemuson\n\n  2  1  0  0  0  0  0  0  0 0999 V2000\n    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    1.5000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\nM  END\n",
+      "expect": "^ethane$",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "smiles_ethanethiol",
+      "title": "SMILES ethanethiol",
+      "input_type": "smiles",
+      "input": "CCS",
+      "expect": "thiol",
+      "options": {
+        "rdkit_isolated": true
+      },
+      "skip_if_no_rdkit": true,
+      "max_ms": 4000
+    },
+    {
+      "id": "smiles_dmso",
+      "title": "SMILES dimethyl sulfoxide",
+      "input_type": "smiles",
+      "input": "CS(=O)C",
+      "expect": "sulfinyl|sulfox",
+      "options": {
+        "rdkit_isolated": true
+      },
+      "skip_if_no_rdkit": true,
+      "max_ms": 4000
+    },
+    {
+      "id": "smiles_benzenesulfonic_acid",
+      "title": "SMILES benzenesulfonic acid",
+      "input_type": "smiles",
+      "input": "O=S(=O)(O)c1ccccc1",
+      "expect": "sulfonic acid",
+      "options": {
+        "rdkit_isolated": true
+      },
+      "skip_if_no_rdkit": true,
+      "max_ms": 4000
+    },
+    {
+      "id": "smiles_ethanesulfonate",
+      "title": "SMILES ethanesulfonate",
+      "input_type": "smiles",
+      "input": "CCS(=O)(=O)[O-]",
+      "expect": "sulfonate",
+      "options": {
+        "rdkit_isolated": true
+      },
+      "skip_if_no_rdkit": true,
+      "max_ms": 4000
+    },
+    {
+      "id": "smiles_methanesulfonamide",
+      "title": "SMILES methanesulfonamide",
+      "input_type": "smiles",
+      "input": "CS(=O)(=O)N",
+      "expect": "sulfonamid",
+      "options": {
+        "rdkit_isolated": true
+      },
+      "skip_if_no_rdkit": true,
+      "max_ms": 4000
+    },
+    {
+      "id": "smiles_azidoethane",
+      "title": "SMILES azidoethane",
+      "input_type": "smiles",
+      "input": "CCN=[N+]=[N-]",
+      "expect": "azido",
+      "options": {
+        "rdkit_isolated": true
+      },
+      "skip_if_no_rdkit": true,
+      "max_ms": 4000
+    },
+    {
+      "id": "smiles_peroxyethane",
+      "title": "SMILES peroxyethane",
+      "input_type": "smiles",
+      "input": "CCOO",
+      "expect": "peroxy",
+      "options": {
+        "rdkit_isolated": true
+      },
+      "skip_if_no_rdkit": true,
+      "max_ms": 4000
+    },
+    {
+      "id": "smiles_triazole_123",
+      "title": "SMILES 1,2,3-triazole",
+      "input_type": "smiles",
+      "input": "n1nccn1",
+      "expect": "triazole",
+      "options": {
+        "rdkit_isolated": true
+      },
+      "skip_if_no_rdkit": true,
+      "max_ms": 4000
+    },
+    {
+      "id": "smiles_triazole_124",
+      "title": "SMILES 1,2,4-triazole",
+      "input_type": "smiles",
+      "input": "n1cnnc1",
+      "expect": "1,2,4-triazole|triazole",
+      "options": {
+        "rdkit_isolated": true
+      },
+      "skip_if_no_rdkit": true,
+      "max_ms": 4000
+    },
+    {
+      "id": "smiles_tetrazole",
+      "title": "SMILES tetrazole",
+      "input_type": "smiles",
+      "input": "n1nnnc1",
+      "expect": "tetrazole",
+      "options": {
+        "rdkit_isolated": true
+      },
+      "skip_if_no_rdkit": true,
+      "max_ms": 4000
+    },
+    {
+      "id": "smiles_benzotriazole",
+      "title": "SMILES benzotriazole",
+      "input_type": "smiles",
+      "input": "c1ccc2nnnc2c1",
+      "expect": "benzotriazole",
+      "options": {
+        "rdkit_isolated": true
+      },
+      "skip_if_no_rdkit": true,
+      "max_ms": 4000
+    },
+    {
+      "id": "smiles_benzoquinone",
+      "title": "SMILES benzoquinone",
+      "input_type": "smiles",
+      "input": "O=C1C=CC(=O)C=C1",
+      "expect": "dione",
+      "options": {
+        "rdkit_isolated": true
+      },
+      "skip_if_no_rdkit": true,
+      "max_ms": 4000
+    },
+    {
+      "id": "smiles_naphthoquinone_14",
+      "title": "SMILES 1,4-naphthoquinone",
+      "input_type": "smiles",
+      "input": "O=C1C=CC2=CC=CC=C2C1=O",
+      "expect": "naphthalene-1,4-dione|dione",
+      "options": {
+        "rdkit_isolated": true
+      },
+      "skip_if_no_rdkit": true,
+      "max_ms": 4000
+    },
+    {
+      "id": "smiles_naphthoquinone_12",
+      "title": "SMILES 1,2-naphthoquinone",
+      "input_type": "smiles",
+      "input": "O=C1C(=O)c2ccccc2C=C1",
+      "expect": "naphthalene-1,2-dione|dione",
+      "options": {
+        "rdkit_isolated": true
+      },
+      "skip_if_no_rdkit": true,
+      "max_ms": 4000
+    },
+    {
+      "id": "smiles_nickel_tetracarbonyl",
+      "title": "SMILES Ni(CO)4",
+      "input_type": "smiles",
+      "input": "[Ni](C#O)(C#O)(C#O)C#O",
+      "expect": "carbonyl.*nickel|nickel",
+      "options": {
+        "rdkit_isolated": true,
+        "allow_coordination": true
+      },
+      "skip_if_no_rdkit": true,
+      "max_ms": 5000
+    },
+    {
+      "id": "smiles_cisplatin",
+      "title": "SMILES cis-Pt(NH3)2Cl2",
+      "input_type": "smiles",
+      "input": "N[Pt@SP1](N)(Cl)Cl",
+      "expect": "cis-.*platinum|diamminedichloro|ND",
+      "options": {
+        "rdkit_isolated": true,
+        "allow_coordination": true
+      },
+      "skip_if_no_rdkit": true,
+      "max_ms": 5000
+    },
+    {
+      "id": "smiles_transplatin",
+      "title": "SMILES trans-Pt(NH3)2Cl2",
+      "input_type": "smiles",
+      "input": "N[Pt@SP2](N)(Cl)Cl",
+      "expect": "trans-.*platinum|diamminedichloro|ND",
+      "options": {
+        "rdkit_isolated": true,
+        "allow_coordination": true
+      },
+      "skip_if_no_rdkit": true,
+      "max_ms": 5000
+    },
+    {
+      "id": "smiles_ferrocene",
+      "title": "SMILES ferrocene",
+      "input_type": "smiles",
+      "input": "[Fe]12345(C=CC=C1)(C=CC=C2)(C=CC=C3)(C=CC=C4)C=CC=C5",
+      "expect": "cyclopentadienyl|iron|ND",
+      "options": {
+        "rdkit_isolated": true,
+        "allow_coordination": true
+      },
+      "skip_if_no_rdkit": true,
+      "max_ms": 5000
+    },
+    {
+      "id": "smiles_isotope_deuterated",
+      "title": "SMILES deuterated ethane",
+      "input_type": "smiles",
+      "input": "[2H]C([2H])C",
+      "expect": "deuterio|deuter",
+      "options": {
+        "rdkit_isolated": true
+      },
+      "skip_if_no_rdkit": true,
+      "max_ms": 4000
+    },
+    {
+      "id": "smiles_isotope_13c",
+      "title": "SMILES 13C ethane",
+      "input_type": "smiles",
+      "input": "[13CH3]C",
+      "expect": "13C|\\(13C\\)",
+      "options": {
+        "rdkit_isolated": true
+      },
+      "skip_if_no_rdkit": true,
+      "max_ms": 4000
+    },
+    {
+      "id": "smiles_neg_hetero_substitution_blocked",
+      "title": "SMILES phosphabenzene con exotic off",
+      "input_type": "smiles",
+      "input": "P1=CC=CC=C1",
+      "expect": "ND",
+      "options": {
+        "rdkit_isolated": true,
+        "enable_exotic_hetero": false
+      },
+      "skip_if_no_rdkit": true,
+      "max_ms": 4000
+    },
+    {
+      "id": "smiles_neg_invalid_element",
+      "title": "SMILES elemento no permitido",
+      "input_type": "smiles",
+      "input": "[Uue]",
+      "expect": "ND",
+      "options": {
+        "rdkit_isolated": true
+      },
+      "skip_if_no_rdkit": true,
+      "max_ms": 4000
+    },
+    {
+      "id": "smiles_neg_fusion_substitution_blocked",
+      "title": "SMILES aminopyrene unsupported",
+      "input_type": "smiles",
+      "input": "Nc1ccc2ccc3cccc4cccc(c1)c2c34",
+      "expect": "ND",
+      "options": {
+        "rdkit_isolated": true
+      },
+      "skip_if_no_rdkit": true,
+      "max_ms": 5000
+    },
+    {
+      "id": "variant_benzenesulfonic_fast_budget",
+      "title": "Benzenesulfonic acid with timing budget",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/benzenesulfonic_acid.mol",
+      "expect": "sulfonic acid$",
+      "options": {
+        "rdkit_isolated": true
+      },
+      "max_ms": 2500
+    },
+    {
+      "id": "variant_triazole123_no_adv_stereo",
+      "title": "Triazole without advanced stereo",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/triazole_123.mol",
+      "expect": "triazole$",
+      "options": {
+        "rdkit_isolated": true,
+        "enable_advanced_stereo": false
+      }
+    },
+    {
+      "id": "variant_tetrazole_no_special_templates",
+      "title": "Tetrazole with special templates disabled",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/tetrazole.mol",
+      "expect": "tetrazole$",
+      "options": {
+        "rdkit_isolated": true,
+        "enable_special_templates": false
+      }
+    },
+    {
+      "id": "variant_androstane_experimental_off",
+      "title": "Androstane with experimental off",
+      "input_type": "file",
+      "input": "../../src/chemuson/chemname/templates/special/androstane_core.mol",
+      "expect": "bicyclo|androstane|^(?!N/D$).+",
+      "options": {
+        "rdkit_isolated": true,
+        "enable_experimental": false
+      }
+    },
+    {
+      "id": "variant_alpha_special_disabled",
+      "title": "Alpha glucopyranose with special templates disabled",
+      "input_type": "file",
+      "input": "../../src/chemuson/chemname/templates/special/alpha_d_glucopyranose.mol",
+      "expect": "^(?!alpha-d-glucopyranose$).+",
+      "options": {
+        "rdkit_isolated": true,
+        "enable_special_templates": false
+      }
+    },
+    {
+      "id": "variant_phosphabenzene_strict_on",
+      "title": "Phosphabenzene strict naming",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/phosphabenzene.mol",
+      "expect": "^phosphabenzene$",
+      "options": {
+        "rdkit_isolated": true,
+        "strict": true
+      }
+    },
+    {
+      "id": "variant_ethanoate_strict_on",
+      "title": "Ethanoate strict naming",
+      "input_type": "file",
+      "input": "chemname_acceptance_mols/ethanoate.mol",
+      "expect": "^ethanoate$",
+      "options": {
+        "rdkit_isolated": true,
+        "strict": true
+      }
+    }
+  ]
+}

@@ -11,7 +11,9 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "s
 
 from chemuson.chemio.rdkit_safe import (
     advanced_stereo_descriptors_for_chain,
+    smiles_to_molgraph_isolated,
     run_rdkit_stereo_extract,
+    text_to_molblock,
 )
 from chemuson.core.model import MolGraph
 
@@ -44,6 +46,15 @@ class RdkitSmokeTest(unittest.TestCase):
         descriptors = advanced_stereo_descriptors_for_chain(graph, [a1.id, a2.id], timeout_s=5.0)
         # Si RDKit falla/no está, la API debe degradar limpiamente a lista vacía.
         self.assertIsInstance(descriptors, list)
+
+    def test_rdkit_safe_text_to_molblock_and_graph(self):
+        payload = text_to_molblock("CC", fmt="smiles", timeout_s=5.0)
+        if not payload.get("ok"):
+            self.skipTest("Worker RDKit no disponible en este entorno")
+        self.assertIn("molblock", payload)
+        graph, error = smiles_to_molgraph_isolated("CC", timeout_s=5.0)
+        self.assertIsNone(error)
+        self.assertIsNotNone(graph)
 
     def test_rdkit_safe_worker_tolerates_pseudoatoms_and_duplicate_bonds(self):
         graph = MolGraph()

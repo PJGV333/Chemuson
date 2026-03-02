@@ -23,6 +23,46 @@ def run_rdkit_stereo_extract(
     return _run_worker(request, timeout_s=timeout_s)
 
 
+def text_to_molblock(
+    value: str,
+    fmt: str = "smiles",
+    timeout_s: float = 8.0,
+) -> dict[str, Any]:
+    """Convierte SMILES/molblock a molblock mediante worker RDKit aislado."""
+    request = {
+        "mode": "to_molblock",
+        "format": str(fmt),
+        "value": str(value or ""),
+    }
+    return _run_worker(request, timeout_s=timeout_s)
+
+
+def smiles_to_molgraph_isolated(
+    smiles: str,
+    timeout_s: float = 8.0,
+):
+    """Convierte SMILES a `MolGraph` usando RDKit aislado + parser local."""
+    response = text_to_molblock(smiles, fmt="smiles", timeout_s=timeout_s)
+    if not response.get("ok"):
+        return None, str(response.get("error", "worker_error"))
+    molblock = str(response.get("molblock", "") or "")
+    if not molblock.strip():
+        return None, "empty_molblock"
+    try:
+        # Import local para evitar ciclos en carga de módulo.
+        from chemuson.chemio.rdkit_io import molfile_to_molgraph
+
+        return molfile_to_molgraph(molblock), None
+    except Exception as exc:
+        return None, str(exc)
+
+
+def is_rdkit_worker_available(timeout_s: float = 5.0) -> bool:
+    """Smoke-check liviano para saber si el worker RDKit está utilizable."""
+    result = run_rdkit_stereo_extract("CC", fmt="smiles", timeout_s=timeout_s)
+    return bool(result.get("ok"))
+
+
 def stereo_descriptors_for_chain(
     graph,
     chain_atom_ids: list[int],

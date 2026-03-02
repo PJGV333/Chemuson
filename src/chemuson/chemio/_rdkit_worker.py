@@ -294,6 +294,25 @@ def _handle_text_mode(Chem, request: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _handle_to_molblock_mode(Chem, request: dict[str, Any]) -> dict[str, Any]:
+    """Convierte entrada textual a molblock en proceso aislado."""
+    fmt = str(request.get("format", "smiles") or "smiles").lower()
+    value = str(request.get("value", "") or "")
+    if not value:
+        return {"ok": False, "error": "empty_input"}
+    if fmt == "molblock":
+        mol = Chem.MolFromMolBlock(value, sanitize=False)
+    else:
+        mol = Chem.MolFromSmiles(value)
+    if mol is None:
+        return {"ok": False, "error": "invalid_input"}
+    try:
+        molblock = Chem.MolToMolBlock(mol)
+    except Exception as exc:
+        return {"ok": False, "error": "molblock_failed", "detail": str(exc)}
+    return {"ok": True, "molblock": molblock}
+
+
 def main() -> int:
     try:
         request = json.loads(sys.stdin.read() or "{}")
@@ -310,6 +329,10 @@ def main() -> int:
     mode = str(request.get("mode", "graph") or "graph")
     if mode == "text":
         result = _handle_text_mode(Chem, request)
+        sys.stdout.write(json.dumps(result))
+        return 0
+    if mode == "to_molblock":
+        result = _handle_to_molblock_mode(Chem, request)
         sys.stdout.write(json.dumps(result))
         return 0
 
