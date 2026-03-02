@@ -227,6 +227,10 @@ class Atom:
     isotope: Optional[int] = None
     radical_electrons: int = 0
     oxidation_state: Optional[int] = None
+    stereo_cip: Optional[str] = None
+    stereo_axial: Optional[str] = None
+    stereo_helical: Optional[str] = None
+    stereo_si_re: Optional[str] = None
     explicit_h: Optional[int] = None
     mapping: Optional[int] = None
     is_query: bool = False
@@ -259,6 +263,10 @@ class Bond:
     order: int = 1
     style: BondStyle = BondStyle.PLAIN
     stereo: BondStereo = BondStereo.NONE
+    stereo_ez: Optional[str] = None
+    stereo_axial: Optional[str] = None
+    stereo_endo_exo: Optional[str] = None
+    stereo_helical: Optional[str] = None
     is_aromatic: bool = False
     display_order: Optional[int] = None
     is_query: bool = False
@@ -336,6 +344,10 @@ class MolGraph:
         isotope: Optional[int] = None,
         radical_electrons: int = 0,
         oxidation_state: Optional[int] = None,
+        stereo_cip: Optional[str] = None,
+        stereo_axial: Optional[str] = None,
+        stereo_helical: Optional[str] = None,
+        stereo_si_re: Optional[str] = None,
         explicit_h: Optional[int] = None,
         mapping: Optional[int] = None,
         is_query: bool = False,
@@ -359,6 +371,10 @@ class MolGraph:
             isotope: Número másico si se desea mostrar el isótopo.
             radical_electrons: Número de electrones desapareados.
             oxidation_state: Estado de oxidación estimado/asignado.
+            stereo_cip: Descriptor CIP absoluto (R/S) cuando se conoce.
+            stereo_axial: Descriptor axial (R_a/S_a), best-effort.
+            stereo_helical: Descriptor helicoidal (M/P), best-effort.
+            stereo_si_re: Descriptor de cara carbonílica (si/re), best-effort.
             explicit_h: Número de hidrógenos explícitos asociados.
             mapping: Índice de mapeo (útil en exportaciones/reacciones).
             is_query: Marca de átomo de consulta (SMARTS-like).
@@ -403,6 +419,10 @@ class MolGraph:
                 if oxidation_state is not None
                 else None
             ),
+            stereo_cip=(str(stereo_cip) if stereo_cip else None),
+            stereo_axial=(str(stereo_axial) if stereo_axial else None),
+            stereo_helical=(str(stereo_helical) if stereo_helical else None),
+            stereo_si_re=(str(stereo_si_re) if stereo_si_re else None),
             explicit_h=explicit_h,
             mapping=mapping,
             is_query=is_query,
@@ -444,6 +464,10 @@ class MolGraph:
         bond_id: Optional[int] = None,
         style: BondStyle = BondStyle.PLAIN,
         stereo: BondStereo = BondStereo.NONE,
+        stereo_ez: Optional[str] = None,
+        stereo_axial: Optional[str] = None,
+        stereo_endo_exo: Optional[str] = None,
+        stereo_helical: Optional[str] = None,
         is_aromatic: bool = False,
         display_order: Optional[int] = None,
         is_query: bool = False,
@@ -465,6 +489,10 @@ class MolGraph:
             bond_id: ID explícito si se restaura desde un archivo.
             style: Estilo visual del enlace.
             stereo: Estereoquímica dibujada (cuña, trazos, etc.).
+            stereo_ez: Descriptor geométrico E/Z cuando aplique.
+            stereo_axial: Descriptor axial de enlace (R_a/S_a), best-effort.
+            stereo_endo_exo: Descriptor endo/exo en sistemas bicíclicos.
+            stereo_helical: Descriptor helicoidal asociado al eje de enlace.
             is_aromatic: Marca si el enlace pertenece a un sistema aromático.
             display_order: Orden visual alternativo para dibujado.
             is_query: Indica si es enlace de consulta.
@@ -512,6 +540,10 @@ class MolGraph:
             order=order,
             style=style,
             stereo=stereo,
+            stereo_ez=(str(stereo_ez) if stereo_ez else None),
+            stereo_axial=(str(stereo_axial) if stereo_axial else None),
+            stereo_endo_exo=(str(stereo_endo_exo) if stereo_endo_exo else None),
+            stereo_helical=(str(stereo_helical) if stereo_helical else None),
             is_aromatic=is_aromatic,
             display_order=display_order,
             is_query=is_query,
@@ -638,6 +670,10 @@ class MolGraph:
         order: Optional[int] = None,
         style: Optional[BondStyle] = None,
         stereo: Optional[BondStereo] = None,
+        stereo_ez: Optional[str] | object = _COLOR_UNSET,
+        stereo_axial: Optional[str] | object = _COLOR_UNSET,
+        stereo_endo_exo: Optional[str] | object = _COLOR_UNSET,
+        stereo_helical: Optional[str] | object = _COLOR_UNSET,
         is_aromatic: Optional[bool] = None,
         display_order: Optional[int] = None,
         stroke_px: Optional[float] | object = _STROKE_UNSET,
@@ -654,6 +690,10 @@ class MolGraph:
             order: Nuevo orden de enlace.
             style: Estilo visual del enlace.
             stereo: Estereoquímica dibujada.
+            stereo_ez: Descriptor E/Z; `None` limpia el valor.
+            stereo_axial: Descriptor axial; `None` limpia el valor.
+            stereo_endo_exo: Descriptor endo/exo; `None` limpia el valor.
+            stereo_helical: Descriptor helicoidal; `None` limpia el valor.
             is_aromatic: Marca de aromaticidad.
             display_order: Orden visual alternativo.
             stroke_px: Grosor de línea; `None` limpia el valor.
@@ -676,6 +716,14 @@ class MolGraph:
             bond.style = style
         if stereo is not None:
             bond.stereo = stereo
+        if stereo_ez is not _COLOR_UNSET:
+            bond.stereo_ez = None if stereo_ez is None else str(stereo_ez)
+        if stereo_axial is not _COLOR_UNSET:
+            bond.stereo_axial = None if stereo_axial is None else str(stereo_axial)
+        if stereo_endo_exo is not _COLOR_UNSET:
+            bond.stereo_endo_exo = None if stereo_endo_exo is None else str(stereo_endo_exo)
+        if stereo_helical is not _COLOR_UNSET:
+            bond.stereo_helical = None if stereo_helical is None else str(stereo_helical)
         if is_aromatic is not None:
             bond.is_aromatic = is_aromatic
         if display_order is not None:

@@ -161,6 +161,32 @@ class CoordinationPersistenceTest(unittest.TestCase):
         self.assertEqual(bond.flex_curve_1, 0.35)
         self.assertEqual(bond.flex_curve_2, -0.28)
 
+    def test_roundtrip_advanced_stereo_annotations(self):
+        canvas = _FakeCanvas()
+        a1 = canvas.model.add_atom("C", 0.0, 0.0, stereo_axial="R_a", stereo_helical="M")
+        a2 = canvas.model.add_atom("C", 40.0, 0.0, stereo_si_re="si")
+        canvas.model.add_bond(
+            a1.id,
+            a2.id,
+            style=BondStyle.PLAIN,
+            stereo_axial="S_a",
+            stereo_endo_exo="endo",
+        )
+
+        data = PersistenceManager.save_to_dict(canvas)
+        restored = _FakeCanvas()
+        PersistenceManager.load_from_dict(data, restored)
+
+        atom_1 = restored.model.get_atom(a1.id)
+        atom_2 = restored.model.get_atom(a2.id)
+        bond = next(iter(restored.model.bonds.values()))
+
+        self.assertEqual(atom_1.stereo_axial, "R_a")
+        self.assertEqual(atom_1.stereo_helical, "M")
+        self.assertEqual(atom_2.stereo_si_re, "si")
+        self.assertEqual(bond.stereo_axial, "S_a")
+        self.assertEqual(bond.stereo_endo_exo, "endo")
+
 
 if __name__ == "__main__":
     unittest.main()

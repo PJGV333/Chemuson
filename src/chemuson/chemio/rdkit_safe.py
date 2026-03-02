@@ -29,8 +29,48 @@ def stereo_descriptors_for_chain(
     timeout_s: float = 8.0,
 ) -> list[str]:
     """Obtiene designadores estereo para una cadena orientada usando worker aislado."""
-    request = {
-        "mode": "graph",
+    request = _graph_request_payload(
+        graph=graph,
+        chain_atom_ids=chain_atom_ids,
+        mode="graph",
+    )
+    response = _run_worker(request, timeout_s=timeout_s)
+    if not response.get("ok"):
+        return []
+    descriptors = response.get("descriptors", [])
+    if not isinstance(descriptors, list):
+        return []
+    return [str(item) for item in descriptors if str(item).strip()]
+
+
+def advanced_stereo_descriptors_for_chain(
+    graph,
+    chain_atom_ids: list[int],
+    timeout_s: float = 8.0,
+) -> list[str]:
+    """Obtiene designadores estereo avanzados (M/P, R_a/S_a, endo/exo, si/re)."""
+    request = _graph_request_payload(
+        graph=graph,
+        chain_atom_ids=chain_atom_ids,
+        mode="advanced_graph",
+    )
+    response = _run_worker(request, timeout_s=timeout_s)
+    if not response.get("ok"):
+        return []
+    descriptors = response.get("descriptors", [])
+    if not isinstance(descriptors, list):
+        return []
+    return [str(item) for item in descriptors if str(item).strip()]
+
+
+def _graph_request_payload(
+    graph,
+    chain_atom_ids: list[int],
+    mode: str,
+) -> dict[str, Any]:
+    """Serializa un grafo interno para el worker aislado de RDKit."""
+    return {
+        "mode": str(mode),
         "chain": [int(atom_id) for atom_id in chain_atom_ids],
         "atoms": [
             {
@@ -39,6 +79,10 @@ def stereo_descriptors_for_chain(
                 "formal_charge": int(getattr(atom, "formal_charge", getattr(atom, "charge", 0)) or 0),
                 "isotope": getattr(atom, "isotope", None),
                 "radical_electrons": int(getattr(atom, "radical_electrons", 0) or 0),
+                "stereo_cip": getattr(atom, "stereo_cip", None),
+                "stereo_axial": getattr(atom, "stereo_axial", None),
+                "stereo_helical": getattr(atom, "stereo_helical", None),
+                "stereo_si_re": getattr(atom, "stereo_si_re", None),
             }
             for atom in sorted(getattr(graph, "atoms", {}).values(), key=lambda a: a.id)
         ],
@@ -50,17 +94,14 @@ def stereo_descriptors_for_chain(
                 "is_aromatic": bool(getattr(bond, "is_aromatic", False)),
                 "style": str(getattr(getattr(bond, "style", None), "value", getattr(bond, "style", ""))),
                 "donor_atom_id": getattr(bond, "donor_atom_id", None),
+                "stereo_ez": getattr(bond, "stereo_ez", None),
+                "stereo_axial": getattr(bond, "stereo_axial", None),
+                "stereo_endo_exo": getattr(bond, "stereo_endo_exo", None),
+                "stereo_helical": getattr(bond, "stereo_helical", None),
             }
             for bond in sorted(getattr(graph, "bonds", {}).values(), key=lambda b: b.id)
         ],
     }
-    response = _run_worker(request, timeout_s=timeout_s)
-    if not response.get("ok"):
-        return []
-    descriptors = response.get("descriptors", [])
-    if not isinstance(descriptors, list):
-        return []
-    return [str(item) for item in descriptors if str(item).strip()]
 
 
 def _worker_path() -> Path:

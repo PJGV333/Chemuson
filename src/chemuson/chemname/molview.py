@@ -250,6 +250,83 @@ class MolView:
         value = getattr(atom, "explicit_h", None)
         return int(value) if value is not None else 0
 
+    def stereo_cip(self, atom_id: int) -> str | None:
+        """Devuelve descriptor CIP atómico (R/S) si existe."""
+        atom = self._get_atom(atom_id)
+        if atom is None:
+            return None
+        if isinstance(atom, dict):
+            value = atom.get("stereo_cip")
+            return str(value) if value else None
+        value = getattr(atom, "stereo_cip", None)
+        return str(value) if value else None
+
+    def stereo_axial(self, atom_id: int) -> str | None:
+        """Devuelve descriptor axial atómico (`R_a`/`S_a`) si existe."""
+        atom = self._get_atom(atom_id)
+        if atom is None:
+            return None
+        if isinstance(atom, dict):
+            value = atom.get("stereo_axial")
+            return str(value) if value else None
+        value = getattr(atom, "stereo_axial", None)
+        return str(value) if value else None
+
+    def stereo_helical(self, atom_id: int) -> str | None:
+        """Devuelve descriptor helicoidal atómico (`M`/`P`) si existe."""
+        atom = self._get_atom(atom_id)
+        if atom is None:
+            return None
+        if isinstance(atom, dict):
+            value = atom.get("stereo_helical")
+            return str(value) if value else None
+        value = getattr(atom, "stereo_helical", None)
+        return str(value) if value else None
+
+    def stereo_si_re(self, atom_id: int) -> str | None:
+        """Devuelve descriptor de cara carbonílica (`si`/`re`) si existe."""
+        atom = self._get_atom(atom_id)
+        if atom is None:
+            return None
+        if isinstance(atom, dict):
+            value = atom.get("stereo_si_re")
+            return str(value) if value else None
+        value = getattr(atom, "stereo_si_re", None)
+        return str(value) if value else None
+
+    def bond_stereo_ez(self, atom_id_1: int, atom_id_2: int) -> str | None:
+        """Devuelve descriptor E/Z de un enlace si existe."""
+        bond = self._get_bond(atom_id_1, atom_id_2)
+        if bond is None:
+            return None
+        if isinstance(bond, dict):
+            value = bond.get("stereo_ez")
+            return str(value) if value else None
+        value = getattr(bond, "stereo_ez", None)
+        return str(value) if value else None
+
+    def bond_stereo_axial(self, atom_id_1: int, atom_id_2: int) -> str | None:
+        """Devuelve descriptor axial de enlace (`R_a`/`S_a`) si existe."""
+        bond = self._get_bond(atom_id_1, atom_id_2)
+        if bond is None:
+            return None
+        if isinstance(bond, dict):
+            value = bond.get("stereo_axial")
+            return str(value) if value else None
+        value = getattr(bond, "stereo_axial", None)
+        return str(value) if value else None
+
+    def bond_stereo_endo_exo(self, atom_id_1: int, atom_id_2: int) -> str | None:
+        """Devuelve descriptor endo/exo de un enlace si existe."""
+        bond = self._get_bond(atom_id_1, atom_id_2)
+        if bond is None:
+            return None
+        if isinstance(bond, dict):
+            value = bond.get("stereo_endo_exo")
+            return str(value) if value else None
+        value = getattr(bond, "stereo_endo_exo", None)
+        return str(value) if value else None
+
     def _get_atom(self, atom_id: int):
         """Resuelve un átomo desde el grafo usando múltiples convenciones.
 
@@ -289,6 +366,26 @@ class MolView:
         """Itera enlaces sin metadatos adicionales."""
         for a1, a2, order, _is_aromatic in self._iter_bonds_with_meta():
             yield a1, a2, order
+
+    def _get_bond(self, atom_id_1: int, atom_id_2: int):
+        """Resuelve un enlace entre dos átomos cuando el grafo lo permite."""
+        graph = self.graph
+        find_bond_between = getattr(graph, "find_bond_between", None)
+        if callable(find_bond_between):
+            try:
+                return find_bond_between(atom_id_1, atom_id_2)
+            except Exception:
+                return None
+        bonds_attr = getattr(graph, "bonds", None)
+        if isinstance(bonds_attr, dict):
+            for bond in bonds_attr.values():
+                a1 = getattr(bond, "a1_id", None)
+                a2 = getattr(bond, "a2_id", None)
+                if a1 is None or a2 is None:
+                    continue
+                if {int(a1), int(a2)} == {int(atom_id_1), int(atom_id_2)}:
+                    return bond
+        return None
 
     def _iter_bonds_with_meta(self) -> Iterable[Tuple[int, int, int, bool]]:
         """Itera enlaces con orden y aromaticidad si están disponibles."""

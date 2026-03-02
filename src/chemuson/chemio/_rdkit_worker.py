@@ -58,6 +58,12 @@ def _build_mol_from_graph_payload(Chem, request: dict[str, Any]):
         radical = int(atom_data.get("radical_electrons", 0) or 0)
         if radical > 0:
             rd_atom.SetNumRadicalElectrons(radical)
+        if atom_data.get("stereo_axial"):
+            rd_atom.SetProp("_ChemusonStereoAxial", str(atom_data.get("stereo_axial")))
+        if atom_data.get("stereo_helical"):
+            rd_atom.SetProp("_ChemusonStereoHelical", str(atom_data.get("stereo_helical")))
+        if atom_data.get("stereo_si_re"):
+            rd_atom.SetProp("_ChemusonStereoSiRe", str(atom_data.get("stereo_si_re")))
         id_map[atom_id] = rw.AddAtom(rd_atom)
 
     for bond_data in bonds:
@@ -79,6 +85,14 @@ def _build_mol_from_graph_payload(Chem, request: dict[str, Any]):
                 begin, end = a1_id, a2_id
         bond_type = _bond_type_from_payload(Chem, bond_data)
         rw.AddBond(id_map[begin], id_map[end], bond_type)
+        rd_bond = rw.GetBondBetweenAtoms(id_map[begin], id_map[end])
+        if rd_bond is not None:
+            if bond_data.get("stereo_axial"):
+                rd_bond.SetProp("_ChemusonStereoAxial", str(bond_data.get("stereo_axial")))
+            if bond_data.get("stereo_endo_exo"):
+                rd_bond.SetProp("_ChemusonStereoEndoExo", str(bond_data.get("stereo_endo_exo")))
+            if bond_data.get("stereo_helical"):
+                rd_bond.SetProp("_ChemusonStereoHelical", str(bond_data.get("stereo_helical")))
         if bond_type == Chem.BondType.AROMATIC:
             rw.GetAtomWithIdx(id_map[a1_id]).SetIsAromatic(True)
             rw.GetAtomWithIdx(id_map[a2_id]).SetIsAromatic(True)
@@ -124,6 +138,92 @@ def _stereo_descriptors_for_chain(Chem, mol, id_map: dict[int, int], chain: list
 
     descriptors.sort(key=lambda item: (item[0], item[1]))
     return [text for _loc, text in descriptors]
+
+
+def _normalize_axial_label(label: Any) -> str | None:
+    value = str(label or "").strip()
+    lowered = value.lower().replace("-", "").replace("_", "")
+    if lowered in {"ra", "r"}:
+        return "R_a"
+    if lowered in {"sa", "s"}:
+        return "S_a"
+    if value in {"R_a", "S_a"}:
+        return value
+    return None
+
+
+def _normalize_helical_label(label: Any) -> str | None:
+    value = str(label or "").strip().upper()
+    if value in {"M", "P"}:
+        return value
+    return None
+
+
+def _normalize_face_label(label: Any) -> str | None:
+    value = str(label or "").strip().lower()
+    if value in {"si", "re", "endo", "exo"}:
+        return value
+    return None
+
+
+def _advanced_stereo_descriptors_for_chain(
+    Chem,
+    mol,
+    id_map: dict[int, int],
+    chain: list[int],
+    request: dict[str, Any],
+) -> list[str]:
+    """Combina descriptores base con etiquetas avanzadas serializadas."""
+    base = _stereo_descriptors_for_chain(Chem, mol, id_map, chain)
+    locant_by_atom = {int(atom_id): idx + 1 for idx, atom_id in enumerate(chain)}
+    advanced: list[str] = []
+
+    for atom_data in request.get("atoms", []):
+        try:
+            atom_id = int(atom_data.get("id"))
+        except Exception:
+            continue
+        loc = locant_by_atom.get(atom_id)
+        if loc is None:
+            continue
+        helicity = _normalize_helical_label(atom_data.get("stereo_helical"))
+        if helicity:
+            advanced.append(helicity)
+        axial = _normalize_axial_label(atom_data.get("stereo_axial"))
+        if axial:
+            advanced.append(f"{loc}{axial}")
+        face = _normalize_face_label(atom_data.get("stereo_si_re"))
+        if face in {"si", "re"}:
+            advanced.append(f"{loc}{face}")
+
+    for bond_data in request.get("bonds", []):
+        try:
+            a1_id = int(bond_data.get("a1_id"))
+            a2_id = int(bond_data.get("a2_id"))
+        except Exception:
+            continue
+        if a1_id not in locant_by_atom or a2_id not in locant_by_atom:
+            continue
+        loc = min(locant_by_atom[a1_id], locant_by_atom[a2_id])
+        axial = _normalize_axial_label(bond_data.get("stereo_axial"))
+        if axial:
+            advanced.append(f"{loc}{axial}")
+        face = _normalize_face_label(bond_data.get("stereo_endo_exo"))
+        if face in {"endo", "exo"}:
+            advanced.append(f"{loc}{face}")
+        helicity = _normalize_helical_label(bond_data.get("stereo_helical"))
+        if helicity:
+            advanced.append(helicity)
+
+    merged: list[str] = []
+    seen: set[str] = set()
+    for token in list(base) + advanced:
+        text = str(token).strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        merged.append(text)
+    return merged
 
 
 def _handle_text_mode(Chem, request: dict[str, Any]) -> dict[str, Any]:
@@ -183,7 +283,17 @@ def main() -> int:
     if not isinstance(chain, list) or not chain:
         return _fail("missing_chain")
     try:
-        descriptors = _stereo_descriptors_for_chain(Chem, mol, id_map, [int(x) for x in chain])
+        normalized_chain = [int(x) for x in chain]
+        if mode == "advanced_graph":
+            descriptors = _advanced_stereo_descriptors_for_chain(
+                Chem,
+                mol,
+                id_map,
+                normalized_chain,
+                request,
+            )
+        else:
+            descriptors = _stereo_descriptors_for_chain(Chem, mol, id_map, normalized_chain)
     except Exception as exc:
         return _fail("stereo_failed", detail=str(exc))
     sys.stdout.write(json.dumps({"ok": True, "descriptors": descriptors}))

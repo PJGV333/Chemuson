@@ -86,6 +86,12 @@ def molgraph_to_rdkit_with_map(molgraph: MolGraph):
         radical_electrons = int(getattr(atom, "radical_electrons", 0) or 0)
         if radical_electrons > 0:
             rd_atom.SetNumRadicalElectrons(radical_electrons)
+        if getattr(atom, "stereo_axial", None):
+            rd_atom.SetProp("_ChemusonStereoAxial", str(atom.stereo_axial))
+        if getattr(atom, "stereo_helical", None):
+            rd_atom.SetProp("_ChemusonStereoHelical", str(atom.stereo_helical))
+        if getattr(atom, "stereo_si_re", None):
+            rd_atom.SetProp("_ChemusonStereoSiRe", str(atom.stereo_si_re))
         rd_idx = rw.AddAtom(rd_atom)
         id_map[atom.id] = rd_idx
 
@@ -111,6 +117,14 @@ def molgraph_to_rdkit_with_map(molgraph: MolGraph):
         else:
             bond_type = Chem.BondType.SINGLE
         rw.AddBond(id_map[begin_id], id_map[end_id], bond_type)
+        rd_bond = rw.GetBondBetweenAtoms(id_map[begin_id], id_map[end_id])
+        if rd_bond is not None:
+            if getattr(bond, "stereo_axial", None):
+                rd_bond.SetProp("_ChemusonStereoAxial", str(bond.stereo_axial))
+            if getattr(bond, "stereo_endo_exo", None):
+                rd_bond.SetProp("_ChemusonStereoEndoExo", str(bond.stereo_endo_exo))
+            if getattr(bond, "stereo_helical", None):
+                rd_bond.SetProp("_ChemusonStereoHelical", str(bond.stereo_helical))
 
     mol = rw.GetMol()
     # Preservar coordenadas 2D del editor.
@@ -575,9 +589,19 @@ def rdkit_to_molgraph(mol) -> MolGraph:
             new_atom.radical_electrons = 0
         if atom.HasProp("_CIPCode"):
             try:
-                setattr(new_atom, "stereo_cip", atom.GetProp("_CIPCode"))
+                new_atom.stereo_cip = atom.GetProp("_CIPCode")
             except Exception:
                 pass
+        for prop_name, attr_name in (
+            ("_ChemusonStereoAxial", "stereo_axial"),
+            ("_ChemusonStereoHelical", "stereo_helical"),
+            ("_ChemusonStereoSiRe", "stereo_si_re"),
+        ):
+            if atom.HasProp(prop_name):
+                try:
+                    setattr(new_atom, attr_name, atom.GetProp(prop_name))
+                except Exception:
+                    pass
         idx_map[idx] = new_atom.id
 
     for bond in mol.GetBonds():
@@ -603,9 +627,19 @@ def rdkit_to_molgraph(mol) -> MolGraph:
         )
         stereo = bond.GetStereo()
         if stereo == Chem.BondStereo.STEREOE:
-            setattr(new_bond, "stereo_ez", "E")
+            new_bond.stereo_ez = "E"
         elif stereo == Chem.BondStereo.STEREOZ:
-            setattr(new_bond, "stereo_ez", "Z")
+            new_bond.stereo_ez = "Z"
+        for prop_name, attr_name in (
+            ("_ChemusonStereoAxial", "stereo_axial"),
+            ("_ChemusonStereoEndoExo", "stereo_endo_exo"),
+            ("_ChemusonStereoHelical", "stereo_helical"),
+        ):
+            if bond.HasProp(prop_name):
+                try:
+                    setattr(new_bond, attr_name, bond.GetProp(prop_name))
+                except Exception:
+                    pass
 
     _scale_to_default(graph)
     return graph

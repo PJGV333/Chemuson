@@ -9,7 +9,11 @@ import unittest
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
-from chemuson.chemio.rdkit_safe import run_rdkit_stereo_extract
+from chemuson.chemio.rdkit_safe import (
+    advanced_stereo_descriptors_for_chain,
+    run_rdkit_stereo_extract,
+)
+from chemuson.core.model import MolGraph
 
 
 class RdkitSmokeTest(unittest.TestCase):
@@ -31,6 +35,15 @@ class RdkitSmokeTest(unittest.TestCase):
         if not result.get("ok"):
             self.skipTest("Worker RDKit no disponible en este entorno")
         self.assertTrue(result.get("ok"))
+
+    def test_rdkit_safe_advanced_worker_graceful(self):
+        graph = MolGraph()
+        a1 = graph.add_atom("C", 0.0, 0.0, stereo_axial="R_a")
+        a2 = graph.add_atom("C", 1.0, 0.0)
+        graph.add_bond(a1.id, a2.id, order=1, stereo_endo_exo="endo")
+        descriptors = advanced_stereo_descriptors_for_chain(graph, [a1.id, a2.id], timeout_s=5.0)
+        # Si RDKit falla/no está, la API debe degradar limpiamente a lista vacía.
+        self.assertIsInstance(descriptors, list)
 
 
 if __name__ == "__main__":
