@@ -11,9 +11,12 @@ from .locants import Sub, orientation_key
 from .molview import MolView
 from .substituents import (
     HALO_MAP,
+    amide_substituent_name,
     alkoxy_substituent_name,
     amino_substituent_name,
     alkyl_substituent_name,
+    cyano_substituent_name,
+    ester_substituent_name,
     halomethyl_substituent_name,
     nitro_substituent_name,
     ring_substituent_name,
@@ -48,6 +51,9 @@ def choose_ring_orientation(
     allow_nitro: bool = False,
     allow_amino: bool = False,
     allow_alkoxy: bool = False,
+    allow_ester: bool = False,
+    allow_amide: bool = False,
+    allow_nitrile: bool = False,
     forbid_hetero_substituents: bool = False,
     ring_ctx: RingContext | None = None,
 ) -> List[int]:
@@ -61,6 +67,9 @@ def choose_ring_orientation(
         allow_nitro: Permite sustituyentes nitro.
         allow_amino: Permite sustituyentes amino.
         allow_alkoxy: Permite sustituyentes alcoxi.
+        allow_ester: Permite sustituyentes éster/aciloxi.
+        allow_amide: Permite sustituyentes amida.
+        allow_nitrile: Permite sustituyentes nitrilo (ciano).
         forbid_hetero_substituents: Prohíbe sustitución en heteroátomos.
         ring_ctx: Contexto de anillos para sustituyentes aromáticos.
 
@@ -77,6 +86,9 @@ def choose_ring_orientation(
             allow_nitro=allow_nitro,
             allow_amino=allow_amino,
             allow_alkoxy=allow_alkoxy,
+            allow_ester=allow_ester,
+            allow_amide=allow_amide,
+            allow_nitrile=allow_nitrile,
             forbid_hetero_substituents=forbid_hetero_substituents,
             ring_ctx=ring_ctx,
         )
@@ -98,7 +110,11 @@ def choose_hetero_ring_orientation(
     allow_nitro: bool = False,
     allow_amino: bool = False,
     allow_alkoxy: bool = False,
+    allow_ester: bool = False,
+    allow_amide: bool = False,
+    allow_nitrile: bool = False,
     preferred_start_atoms: Iterable[int] | None = None,
+    hetero_priority: dict[int, int] | None = None,
     forbid_hetero_substituents: bool = False,
     ring_ctx: RingContext | None = None,
 ) -> List[int]:
@@ -113,7 +129,11 @@ def choose_hetero_ring_orientation(
         allow_nitro: Permite sustituyentes nitro.
         allow_amino: Permite sustituyentes amino.
         allow_alkoxy: Permite sustituyentes alcoxi.
+        allow_ester: Permite sustituyentes éster/aciloxi.
+        allow_amide: Permite sustituyentes amida.
+        allow_nitrile: Permite sustituyentes nitrilo (ciano).
         preferred_start_atoms: Lista de átomos preferidos para iniciar numeración.
+        hetero_priority: Prioridad de heteroátomos (menor valor = mayor prioridad).
         forbid_hetero_substituents: Prohíbe sustitución en heteroátomos.
         ring_ctx: Contexto de anillos para sustituyentes aromáticos.
 
@@ -139,12 +159,20 @@ def choose_hetero_ring_orientation(
             allow_nitro=allow_nitro,
             allow_amino=allow_amino,
             allow_alkoxy=allow_alkoxy,
+            allow_ester=allow_ester,
+            allow_amide=allow_amide,
+            allow_nitrile=allow_nitrile,
             forbid_hetero_substituents=forbid_hetero_substituents,
             ring_ctx=ring_ctx,
         )
         # Priorizamos locantes de heteroátomos en el desempate.
         hetero_locants = [idx + 1 for idx, atom_id in enumerate(numbering) if atom_id in hetero_set]
-        key = orientation_key(subs, opts, primary_locants=hetero_locants)
+        hetero_key = tuple(
+            (hetero_priority.get(atom_id, 9) if hetero_priority else 9, idx + 1)
+            for idx, atom_id in enumerate(numbering)
+            if atom_id in hetero_set
+        )
+        key = (hetero_key, orientation_key(subs, opts, primary_locants=hetero_locants))
         if best_key is None or key < best_key:
             best_key = key
             best = numbering
@@ -160,7 +188,11 @@ def choose_hetero_ring_orientation(
             allow_nitro=allow_nitro,
             allow_amino=allow_amino,
             allow_alkoxy=allow_alkoxy,
+            allow_ester=allow_ester,
+            allow_amide=allow_amide,
+            allow_nitrile=allow_nitrile,
             preferred_start_atoms=None,
+            hetero_priority=hetero_priority,
             forbid_hetero_substituents=forbid_hetero_substituents,
             ring_ctx=ring_ctx,
         )
@@ -174,6 +206,9 @@ def ring_substituents(
     allow_nitro: bool = False,
     allow_amino: bool = False,
     allow_alkoxy: bool = False,
+    allow_ester: bool = False,
+    allow_amide: bool = False,
+    allow_nitrile: bool = False,
     forbid_hetero_substituents: bool = False,
     ring_ctx: RingContext | None = None,
 ) -> List[Sub]:
@@ -186,6 +221,9 @@ def ring_substituents(
         allow_nitro: Permite sustituyentes nitro.
         allow_amino: Permite sustituyentes amino.
         allow_alkoxy: Permite sustituyentes alcoxi.
+        allow_ester: Permite sustituyentes éster/aciloxi.
+        allow_amide: Permite sustituyentes amida.
+        allow_nitrile: Permite sustituyentes nitrilo (ciano).
         forbid_hetero_substituents: Prohíbe sustitución en heteroátomos.
         ring_ctx: Contexto de anillos para sustituyentes aromáticos.
 
@@ -213,6 +251,9 @@ def ring_substituents(
                 allow_nitro=allow_nitro,
                 allow_amino=allow_amino,
                 allow_alkoxy=allow_alkoxy,
+                allow_ester=allow_ester,
+                allow_amide=allow_amide,
+                allow_nitrile=allow_nitrile,
                 ring_ctx=ring_ctx,
             )
             subs.append(Sub(name, locant))
@@ -228,6 +269,9 @@ def _substituent_name_for_neighbor(
     allow_nitro: bool,
     allow_amino: bool,
     allow_alkoxy: bool,
+    allow_ester: bool,
+    allow_amide: bool,
+    allow_nitrile: bool,
     ring_ctx: RingContext | None = None,
 ) -> str:
     """Determina el nombre de un sustituyente según el átomo vecino.
@@ -241,6 +285,9 @@ def _substituent_name_for_neighbor(
         allow_nitro: Permite sustituyente nitro.
         allow_amino: Permite sustituyente amino.
         allow_alkoxy: Permite sustituyente alcoxi.
+        allow_ester: Permite sustituyente éster/aciloxi.
+        allow_amide: Permite sustituyente amida.
+        allow_nitrile: Permite sustituyente nitrilo (ciano).
         ring_ctx: Contexto de anillos para sustituyentes aromáticos.
 
     Returns:
@@ -253,6 +300,14 @@ def _substituent_name_for_neighbor(
     if elem in HALO_MAP:
         return HALO_MAP[elem]
     if elem == "C":
+        if allow_nitrile:
+            nitrile_name = cyano_substituent_name(view, nbr, set(ring_set))
+            if nitrile_name is not None:
+                return nitrile_name
+        if allow_amide:
+            amide_name = amide_substituent_name(view, nbr, set(ring_set))
+            if amide_name is not None:
+                return amide_name
         halo_name = halomethyl_substituent_name(view, nbr, set(ring_set))
         if halo_name is not None:
             return halo_name
@@ -261,6 +316,10 @@ def _substituent_name_for_neighbor(
             return ring_name
         return alkyl_substituent_name(view, nbr, set(ring_set))
     if elem == "O":
+        if allow_ester:
+            name = ester_substituent_name(view, nbr, set(ring_set))
+            if name is not None:
+                return name
         if allow_alkoxy:
             name = alkoxy_substituent_name(view, nbr, set(ring_set))
             if name is not None:
@@ -276,6 +335,10 @@ def _substituent_name_for_neighbor(
             raise ChemNameNotSupported("Unsupported hydroxy substituent")
         return "hydroxy"
     if elem == "N":
+        if allow_amide:
+            name = amide_substituent_name(view, nbr, set(ring_set))
+            if name is not None:
+                return name
         if allow_nitro:
             name = nitro_substituent_name(view, nbr, set(ring_set))
             if name is not None:

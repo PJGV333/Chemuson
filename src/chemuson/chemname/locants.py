@@ -13,9 +13,12 @@ from .errors import ChemNameNotSupported
 from .molview import MolView
 from .substituents import (
     HALO_MAP,
+    amide_substituent_name,
     alkoxy_substituent_name,
     amino_substituent_name,
     alkyl_substituent_name,
+    cyano_substituent_name,
+    ester_substituent_name,
     halomethyl_substituent_name,
     nitro_substituent_name,
     ring_substituent_name,
@@ -70,6 +73,14 @@ def substituents_on_chain(
                 continue
             if elem == "C":
                 # Priorizamos sustituyentes especiales antes del alquilo genérico.
+                cyano_name = cyano_substituent_name(view, nbr, chain_set)
+                if cyano_name is not None:
+                    substituents.append(Sub(cyano_name, locant))
+                    continue
+                amide_name = amide_substituent_name(view, nbr, chain_set)
+                if amide_name is not None:
+                    substituents.append(Sub(amide_name, locant))
+                    continue
                 halo_name = halomethyl_substituent_name(view, nbr, chain_set)
                 if halo_name is not None:
                     substituents.append(Sub(halo_name, locant))
@@ -82,11 +93,19 @@ def substituents_on_chain(
                 substituents.append(Sub(name, locant))
                 continue
             if elem == "O":
+                name = ester_substituent_name(view, nbr, chain_set)
+                if name is not None:
+                    substituents.append(Sub(name, locant))
+                    continue
                 name = alkoxy_substituent_name(view, nbr, chain_set)
                 if name is not None:
                     substituents.append(Sub(name, locant))
                     continue
             if elem == "N":
+                name = amide_substituent_name(view, nbr, chain_set)
+                if name is not None:
+                    substituents.append(Sub(name, locant))
+                    continue
                 # Nitro tiene prioridad sobre amino cuando aplica.
                 name = nitro_substituent_name(view, nbr, chain_set)
                 if name is not None:

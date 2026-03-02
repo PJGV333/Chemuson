@@ -15,6 +15,10 @@ MULTIPLIER = {
     4: "tetra",
     5: "penta",
     6: "hexa",
+    7: "hepta",
+    8: "octa",
+    9: "nona",
+    10: "deca",
 }
 
 
@@ -22,6 +26,7 @@ def render_name(
     substituents: Iterable[Sub],
     parent: str,
     always_include_locant: bool = True,
+    stereo_descriptors: Iterable[str] | None = None,
 ) -> str:
     """Renderiza el nombre combinando sustituyentes y padre.
 
@@ -29,6 +34,7 @@ def render_name(
         substituents: Iterable de sustituyentes con locantes.
         parent: Nombre del padre (cadena o anillo principal).
         always_include_locant: Forzar locante incluso si es 1 único.
+        stereo_descriptors: Lista de designadores estereoquímicos (p. ej., 2R, 3S, E).
 
     Returns:
         Nombre final en formato IUPAC-lite.
@@ -36,12 +42,15 @@ def render_name(
     Raises:
         ChemNameNotSupported: Si hay demasiados sustituyentes idénticos.
     """
+    stereo_tokens = [str(token).strip() for token in (stereo_descriptors or []) if str(token).strip()]
+    stereo_prefix = f"({','.join(stereo_tokens)})-" if stereo_tokens else ""
+
     groups: Dict[str, List[int]] = defaultdict(list)
     for sub in substituents:
         groups[sub.name].append(sub.locant)
 
     if not groups:
-        return parent
+        return f"{stereo_prefix}{parent}"
 
     blocks: List[str] = []
     for name in sorted(groups.keys()):
@@ -58,4 +67,4 @@ def render_name(
             locant_str = ",".join(str(loc) for loc in locants)
             blocks.append(f"{locant_str}-{prefix}{name}")
 
-    return "-".join(blocks) + parent
+    return f"{stereo_prefix}{'-'.join(blocks)}{parent}"

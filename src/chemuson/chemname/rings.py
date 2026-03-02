@@ -206,7 +206,12 @@ def classify_aromatic_ring(view: MolView, ring_nodes: Iterable[int]) -> Optional
         elif len(hetero_atoms) == 2:
             elements = sorted(hetero_elements)
             if elements == ["N", "N"]:
-                if any(_hetero_has_h(view, atom_id) for atom_id in hetero_atoms):
+                positions = sorted(hetero_positions)
+                delta = positions[1] - positions[0]
+                distance = min(delta, size - delta)
+                if distance == 1:
+                    kind = "pyrazole"
+                elif distance == 2:
                     kind = "imidazole"
             elif elements == ["N", "O"]:
                 kind = "oxazole"
@@ -218,15 +223,27 @@ def classify_aromatic_ring(view: MolView, ring_nodes: Iterable[int]) -> Optional
 
     if kind is None:
         return None
+    priority = {"O": 0, "N": 1, "S": 2}
     preferred_start = None
+    hetero_priority = {
+        atom_id: priority.get(view.element(atom_id), 9) for atom_id in hetero_atoms
+    }
+    if hetero_atoms:
+        best_priority = min(hetero_priority.values())
+        preferred_start = [
+            atom_id for atom_id in hetero_atoms if hetero_priority.get(atom_id) == best_priority
+        ]
     if kind == "triazole":
-        preferred_start = [atom_id for atom_id in hetero_atoms if _hetero_has_h(view, atom_id)]
+        h_candidates = [atom_id for atom_id in hetero_atoms if _hetero_has_h(view, atom_id)]
+        if h_candidates:
+            preferred_start = h_candidates
     return {
         "kind": kind,
         "order": order,
         "hetero_atoms": hetero_atoms,
         "hetero_positions": hetero_positions,
         "preferred_start": preferred_start,
+        "hetero_priority": hetero_priority,
     }
 
 

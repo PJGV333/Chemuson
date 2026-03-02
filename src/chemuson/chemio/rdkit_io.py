@@ -502,6 +502,11 @@ def rdkit_to_molgraph(mol) -> MolGraph:
     _require_rdkit()
     if mol is None:
         raise ValueError("Mol inválido")
+    try:
+        Chem.AssignStereochemistry(mol, cleanIt=True, force=True)
+        Chem.FindPotentialStereoBonds(mol)
+    except Exception:
+        pass
     if mol.GetNumConformers() == 0:
         AllChem.Compute2DCoords(mol)
     conf = mol.GetConformer()
@@ -522,6 +527,11 @@ def rdkit_to_molgraph(mol) -> MolGraph:
         new_atom.charge = atom.GetFormalCharge()
         if atom.GetIsotope():
             new_atom.isotope = atom.GetIsotope()
+        if atom.HasProp("_CIPCode"):
+            try:
+                setattr(new_atom, "stereo_cip", atom.GetProp("_CIPCode"))
+            except Exception:
+                pass
         idx_map[idx] = new_atom.id
 
     for bond in mol.GetBonds():
@@ -536,7 +546,7 @@ def rdkit_to_molgraph(mol) -> MolGraph:
         elif bond_type == Chem.BondType.DATIVE:
             style = BondStyle.COORDINATION
             donor_atom_id = idx_map[bond.GetBeginAtomIdx()]
-        graph.add_bond(
+        new_bond = graph.add_bond(
             idx_map[bond.GetBeginAtomIdx()],
             idx_map[bond.GetEndAtomIdx()],
             order,
@@ -545,6 +555,11 @@ def rdkit_to_molgraph(mol) -> MolGraph:
             is_aromatic=bond.GetIsAromatic(),
             donor_atom_id=donor_atom_id,
         )
+        stereo = bond.GetStereo()
+        if stereo == Chem.BondStereo.STEREOE:
+            setattr(new_bond, "stereo_ez", "E")
+        elif stereo == Chem.BondStereo.STEREOZ:
+            setattr(new_bond, "stereo_ez", "Z")
 
     _scale_to_default(graph)
     return graph
