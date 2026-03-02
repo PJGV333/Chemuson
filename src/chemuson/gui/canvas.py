@@ -344,6 +344,9 @@ class ChemusonCanvas(QGraphicsView):
         self.paper_height = DEFAULT_PAPER_HEIGHT
         self.model = MolGraph()
         self.state = ChemState()
+        # Preferencias de nomenclatura avanzada (fase 4/6) por documento.
+        self.name_advanced_enabled = True
+        self.name_rdkit_isolated = True
         self.undo_stack = QUndoStack(self)
         self.drawing_style: DrawingStyle = CHEMDOODLE_LIKE
         self._ring_centers: dict[int, QPointF] = {}
@@ -3313,6 +3316,8 @@ class ChemusonCanvas(QGraphicsView):
                 "font_bold": self.state.label_font_bold,
                 "font_italic": self.state.label_font_italic,
                 "font_underline": self.state.label_font_underline,
+                "name_advanced_enabled": bool(getattr(self, "name_advanced_enabled", True)),
+                "name_rdkit_isolated": bool(getattr(self, "name_rdkit_isolated", True)),
             },
             "annotations": {
                 "arrows": [],
@@ -3391,6 +3396,8 @@ class ChemusonCanvas(QGraphicsView):
         self.state.label_font_bold = settings.get("font_bold", False)
         self.state.label_font_italic = settings.get("font_italic", False)
         self.state.label_font_underline = settings.get("font_underline", False)
+        self.name_advanced_enabled = bool(settings.get("name_advanced_enabled", True))
+        self.name_rdkit_isolated = bool(settings.get("name_rdkit_isolated", True))
 
         self._group_anchor_overrides = {
             int(atom_id): anchor
@@ -8641,12 +8648,9 @@ class ChemusonCanvas(QGraphicsView):
 
         lines: list[str] = []
         if mode in {"name", "all", "iupac"}:
-            try:
-                iupac = iupac_name(graph, NameOptions())
-            except Exception:
-                iupac = "N/D"
+            iupac = self.current_iupac_name(graph)
             if mode in {"name", "all"}:
-                lines.append(f"IUPAC: {iupac}")
+                lines.append(f"Nombre IUPAC: {iupac}")
             else:
                 lines.append(iupac)
         if mode in {"name", "all"}:
@@ -8678,6 +8682,26 @@ class ChemusonCanvas(QGraphicsView):
             elemental_line = self._analysis_elemental_line(counts, molecular_weight)
             lines.append(elemental_line or "Elemental Analysis: N/D")
         return "\n".join(lines)
+
+    def current_name_options(self) -> NameOptions:
+        """Construye opciones de nomenclatura según preferencias del documento."""
+        advanced = bool(getattr(self, "name_advanced_enabled", True))
+        isolated = bool(getattr(self, "name_rdkit_isolated", True))
+        return NameOptions(
+            enable_experimental=advanced,
+            enable_special_templates=advanced,
+            enable_advanced_stereo=advanced,
+            allow_coordination=advanced,
+            rdkit_isolated=isolated,
+        )
+
+    def current_iupac_name(self, graph: Optional[MolGraph] = None) -> str:
+        """Devuelve nombre IUPAC actual con degradación segura a `N/D`."""
+        target = graph or self.model
+        try:
+            return iupac_name(target, self.current_name_options())
+        except Exception:
+            return "N/D"
 
     def _insert_analysis_text(
         self,

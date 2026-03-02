@@ -111,6 +111,7 @@ class ChemusonWindow(QMainWindow):
         self._current_tool_id = "tool_select"
         self._settings = QSettings("Chemuson", "Chemuson")
         self._update_settings = self._load_update_preferences()
+        self._name_advanced_default, self._name_rdkit_isolated_default = self._load_naming_preferences()
         self._windows_install_context = detect_windows_install_context()
         self._pending_windows_installer_path = ""
         self._pending_windows_installer_version = ""
@@ -222,8 +223,12 @@ class ChemusonWindow(QMainWindow):
         
         # === STATUS BAR ===
         self._total_charge_label = QLabel()
+        self._iupac_name_label = QLabel("Nombre IUPAC: N/D")
+        self._iupac_name_label.setToolTip("Nombre IUPAC-lite del documento activo")
+        self.statusBar().addPermanentWidget(self._iupac_name_label, 1)
         self.statusBar().addPermanentWidget(self._total_charge_label)
         self._update_total_charge_indicator()
+        self._update_iupac_name_indicator()
         self._update_status(self.canvas.state.active_tool)
         
         # Update status bar when tool changes
@@ -793,6 +798,7 @@ class ChemusonWindow(QMainWindow):
         self._canvas_file_paths[canvas] = None
         self._canvas_tab_titles[canvas] = tab_title
         self._apply_default_numbering_to_canvas(canvas)
+        self._apply_default_naming_to_canvas(canvas)
         index = self.tabs.addTab(canvas, tab_title)
         self.tabs.setTabToolTip(index, "Documento sin guardar")
         autosave_manager = AutosaveManager(self, canvas, canvas.undo_stack)
@@ -811,6 +817,11 @@ class ChemusonWindow(QMainWindow):
         canvas.set_numbering_mode(self._numbering_default_mode)
         canvas.set_numbering_enabled(False)
         canvas.set_numbering_include_in_export(self._numbering_default_include_export)
+
+    def _apply_default_naming_to_canvas(self, canvas: ChemusonCanvas) -> None:
+        """Aplica preferencias globales de nomenclatura al documento."""
+        canvas.name_advanced_enabled = bool(self._name_advanced_default)
+        canvas.name_rdkit_isolated = bool(self._name_rdkit_isolated_default)
 
     def _set_canvas_file_path(self, canvas: ChemusonCanvas, filepath: Optional[str]) -> None:
         """Asigna ruta de archivo a una pestaña y actualiza su título."""
@@ -987,6 +998,7 @@ class ChemusonWindow(QMainWindow):
             )
             self.appearance_dock.set_bond_caps(cap_mode)
         self._update_total_charge_indicator()
+        self._update_iupac_name_indicator()
         if clear_tool_selection:
             self._clear_active_tool_selection()
         else:
@@ -1004,7 +1016,18 @@ class ChemusonWindow(QMainWindow):
     def _on_active_undo_index_changed(self, _index: int) -> None:
         """Actualiza widgets dependientes del estado del undo activo."""
         self._update_total_charge_indicator()
+        self._update_iupac_name_indicator()
         self._update_tab_title(self.canvas)
+
+    def _update_iupac_name_indicator(self) -> None:
+        """Refresca el indicador de nombre IUPAC en la barra de estado."""
+        if not hasattr(self, "_iupac_name_label"):
+            return
+        try:
+            name = self.canvas.current_iupac_name()
+        except Exception:
+            name = "N/D"
+        self._iupac_name_label.setText(f"Nombre IUPAC: {name or 'N/D'}")
 
     def _on_undo(self) -> None:
         """Deshace en la pestaña activa."""
@@ -1210,6 +1233,30 @@ class ChemusonWindow(QMainWindow):
         self._numbering_default_mode = mode
         self._numbering_default_include_export = bool(include_export)
         self._apply_default_numbering_to_canvas(self.canvas)
+
+    def _load_naming_preferences(self) -> tuple[bool, bool]:
+        """Carga preferencias globales de nomenclatura avanzada."""
+        advanced = self._setting_bool(
+            self._settings.value("naming/advanced_enabled", True),
+            True,
+        )
+        isolated = self._setting_bool(
+            self._settings.value("naming/rdkit_isolated", True),
+            True,
+        )
+        return bool(advanced), bool(isolated)
+
+    def _save_naming_preferences(self) -> None:
+        """Persiste preferencias globales de nomenclatura avanzada."""
+        self._settings.setValue("naming/advanced_enabled", bool(self._name_advanced_default))
+        self._settings.setValue("naming/rdkit_isolated", bool(self._name_rdkit_isolated_default))
+
+    def _naming_settings_payload(self) -> dict:
+        """Payload para precargar preferencias de nomenclatura en diálogo."""
+        return {
+            "advanced_enabled": bool(self.canvas.name_advanced_enabled),
+            "rdkit_isolated": bool(self.canvas.name_rdkit_isolated),
+        }
 
     def _save_numbering_preferences(self) -> None:
         """Guarda preferencias globales de numeración del usuario."""
@@ -2241,6 +2288,7 @@ class ChemusonWindow(QMainWindow):
             self.canvas.state,
             self.canvas.drawing_style,
             update_settings=self._update_settings_payload(),
+            naming_settings=self._naming_settings_payload(),
             parent=self,
         )
         dialog.preferences_changed.connect(self._apply_preferences)
@@ -2303,6 +2351,21 @@ class ChemusonWindow(QMainWindow):
         self._update_settings.mode = mode
         self._update_settings.check_interval_hours = max(1, int(update_interval))
         self._save_update_preferences()
+
+        advanced_enabled = self._setting_bool(
+            prefs.get("name_advanced_enabled", self.canvas.name_advanced_enabled),
+            self.canvas.name_advanced_enabled,
+        )
+        rdkit_isolated = self._setting_bool(
+            prefs.get("name_rdkit_isolated", self.canvas.name_rdkit_isolated),
+            self.canvas.name_rdkit_isolated,
+        )
+        self.canvas.name_advanced_enabled = bool(advanced_enabled)
+        self.canvas.name_rdkit_isolated = bool(rdkit_isolated)
+        self._name_advanced_default = bool(advanced_enabled)
+        self._name_rdkit_isolated_default = bool(rdkit_isolated)
+        self._save_naming_preferences()
+        self._update_iupac_name_indicator()
 
     def _apply_appearance_settings(self, prefs: dict) -> None:
         """Aplica appearance settings.

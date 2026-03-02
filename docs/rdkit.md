@@ -17,7 +17,15 @@ El motor de nombres soporta extracción estereo en subproceso para evitar que un
 
 - API: `NameOptions(rdkit_isolated=True)` (default actual).
 - Implementación: `chemuson.chemio.rdkit_safe` + worker `chemuson.chemio._rdkit_worker`.
+- Cobertura aislada:
+  - `stereo_descriptors_for_chain(...)` para `R/S` y `E/Z`.
+  - `advanced_stereo_descriptors_for_chain(...)` para `M/P`, `R_a/S_a`, `endo/exo`, `si/re` (best-effort).
 - Si el worker falla por código de salida, señal o timeout, el motor degrada a fallback sin crashear.
+
+En GUI, estas rutas se controlan desde:
+
+- `Editar -> Preferencias -> RDKit -> Nombre avanzado (fase 4/6)`
+- `Editar -> Preferencias -> RDKit -> Usar RDKit aislado`
 
 ## Smoke test recomendado
 

@@ -23,6 +23,8 @@ Capacidades actuales (resumen):
 - Exportación gráfica: `PNG`, `SVG`, `PDF`.
 - Herramientas de análisis integradas: nombre, fórmula, masa exacta, peso molecular, `m/z` y análisis elemental.
 - Motor de nomenclatura **IUPAC-lite** para un subconjunto de estructuras orgánicas.
+- Campo de estado en UI: **Nombre IUPAC** del documento activo (degradación a `N/D` sin crash).
+- Preferencias de nomenclatura: `Nombre avanzado (fase 4/6)` y `Usar RDKit aislado`.
 - Biblioteca de plantillas (incluye base predefinida + categorías de usuario importables/exportables).
 
 ## Autosave y recuperación
@@ -61,6 +63,8 @@ Incluye soporte para:
 - Grupos funcionales adicionales (thiol, sulfoxide/sulfone/sulfonic acid/sulfonate, azido, peroxy).
 - Cargas/isótopos/radicales básicos en modelo y round-trip (`formal_charge`, `isotope`, `radical_electrons`).
 - Coordinación (experimental, MVP): carbonyl, ammine, aqua, halo, cyano, η5-cyclopentadienyl, con estado de oxidación y `cis/trans` básico.
+- Plantillas especiales (MVP): carbohidratos seleccionados (`alpha/beta-d-glucopyranose`, `beta-d-fructofuranose`, `d-ribose`) y esteroides (`androstane`, `cholestane`), con sustitución simple (`hydroxy/oxo/amino`).
+- Estereoquímica avanzada best-effort: `M/P`, `R_a/S_a`, `endo/exo`, `si/re` (si hay anotación confiable o soporte RDKit).
 
 Limitaciones relevantes:
 - Cobertura parcial en anillos fusionados complejos.
@@ -68,6 +72,7 @@ Limitaciones relevantes:
 - Casos con múltiples grupos funcionales y escenarios avanzados aún no completamente soportados.
 - No cubre todo Blue Book; se prioriza estabilidad y degradación segura a `N/D` cuando procede.
 - Para estereoquímica vía RDKit se recomienda modo aislado en subproceso (ver [docs/rdkit.md](docs/rdkit.md)).
+- Descripción detallada del motor: [docs/chemname.md](docs/chemname.md).
 
 ## Stack técnico
 

@@ -156,6 +156,7 @@ class PreferencesDialog(QDialog):
         current_state: ChemState,
         current_style: DrawingStyle,
         update_settings: dict | None = None,
+        naming_settings: dict | None = None,
         parent=None,
     ) -> None:
         """Inicializa el diálogo.
@@ -181,7 +182,7 @@ class PreferencesDialog(QDialog):
         tabs.addTab(self._build_general_tab(current_state), "General")
         tabs.addTab(self._build_appearance_tab(), "Apariencia")
         tabs.addTab(self._build_updates_tab(update_settings or {}), "Actualizaciones")
-        tabs.addTab(self._build_rdkit_tab(), "RDKit")
+        tabs.addTab(self._build_rdkit_tab(naming_settings or {}), "RDKit")
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
@@ -291,7 +292,7 @@ class PreferencesDialog(QDialog):
         form.addRow("Frecuencia de chequeo", self.update_interval_spin)
         return widget
 
-    def _build_rdkit_tab(self) -> QWidget:
+    def _build_rdkit_tab(self, naming_settings: dict) -> QWidget:
         """Construye rdkit tab.
 
         Returns:
@@ -302,7 +303,17 @@ class PreferencesDialog(QDialog):
         """
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        label = QLabel("Preferencias de RDKit (longitud de enlace, limpieza 2D) próximamente.")
+        self.advanced_name_checkbox = QCheckBox("Nombre avanzado (fase 4/6)")
+        self.advanced_name_checkbox.setChecked(bool(naming_settings.get("advanced_enabled", True)))
+        layout.addWidget(self.advanced_name_checkbox)
+
+        self.rdkit_isolated_checkbox = QCheckBox("Usar RDKit aislado")
+        self.rdkit_isolated_checkbox.setChecked(bool(naming_settings.get("rdkit_isolated", True)))
+        layout.addWidget(self.rdkit_isolated_checkbox)
+
+        label = QLabel(
+            "Si RDKit falla al extraer estereo, Chemuson degrada a N/D sin crashear."
+        )
         label.setStyleSheet("color: #666666;")
         layout.addWidget(label)
         layout.addStretch()
@@ -326,6 +337,8 @@ class PreferencesDialog(QDialog):
             "update_channel": str(self.update_channel_combo.currentData() or "stable"),
             "update_mode": str(self.update_mode_combo.currentData() or "notify"),
             "update_check_interval_hours": int(self.update_interval_spin.value()),
+            "name_advanced_enabled": self.advanced_name_checkbox.isChecked(),
+            "name_rdkit_isolated": self.rdkit_isolated_checkbox.isChecked(),
         }
         self.preferences_changed.emit(prefs)
         self.accept()
