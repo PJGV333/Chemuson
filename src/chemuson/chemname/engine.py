@@ -38,6 +38,8 @@ from .rings import (
     ring_order,
     _ring_aromatic_basic,
 )
+from .special import detect_special_template, name_special_substituted
+from .stereo_advanced import extract_advanced_stereo
 from .substituents import (
     CYCLO_PARENT,
     HALO_MAP,
@@ -53,8 +55,12 @@ except Exception:  # pragma: no cover - runtime optional dependency
     Chem = None
 
 try:
+    from chemuson.chemio.rdkit_safe import (
+        advanced_stereo_descriptors_for_chain as safe_advanced_stereo_descriptors_for_chain,
+    )
     from chemuson.chemio.rdkit_safe import stereo_descriptors_for_chain as safe_stereo_descriptors_for_chain
 except Exception:  # pragma: no cover - runtime optional dependency
+    safe_advanced_stereo_descriptors_for_chain = None
     safe_stereo_descriptors_for_chain = None
 
 _TEMPLATE_CACHE: dict[str, TemplateMol] = {}
@@ -156,7 +162,12 @@ def iupac_name_lite(graph, opts: NameOptions) -> str:
         Nombre IUPAC-lite generado.
     """
     view = MolView(graph)
-    if opts.allow_coordination:
+    if opts.enable_experimental and opts.enable_special_templates:
+        special = detect_special_template(view)
+        if special is not None:
+            _special_name, mapping = special
+            return name_special_substituted(view, mapping)
+    if opts.enable_experimental and opts.allow_coordination:
         coordination_name = detect_coordination_name(view)
         if coordination_name:
             return coordination_name
@@ -1789,17 +1800,18 @@ def _stereo_descriptors_for_linear(
     almacenados en el grafo.
     """
     locant_by_atom = {atom_id: idx + 1 for idx, atom_id in enumerate(chain)}
-    descriptors: list[tuple[int, str]] = []
+    base_tokens: list[str] = []
 
     if opts.rdkit_isolated and callable(safe_stereo_descriptors_for_chain):
         try:
             isolated = safe_stereo_descriptors_for_chain(view.graph, chain)
             if isolated:
-                return list(isolated)
+                base_tokens = [str(item).strip() for item in isolated if str(item).strip()]
         except Exception:
-            descriptors = []
+            base_tokens = []
 
-    if Chem is not None:
+    if not base_tokens and Chem is not None:
+        descriptors: list[tuple[int, str]] = []
         try:
             mol, id_map = molgraph_to_rdkit_with_map(view.graph)
             Chem.AssignStereochemistry(mol, cleanIt=True, force=True)
@@ -1835,12 +1847,42 @@ def _stereo_descriptors_for_linear(
                 descriptors.append((loc, f"{loc}{label}"))
         except Exception:
             descriptors = []
+        if descriptors:
+            descriptors.sort(key=lambda item: (item[0], item[1]))
+            base_tokens = [text for _loc, text in descriptors]
 
-    if not descriptors:
-        descriptors = _stereo_descriptors_from_annotations(view, locant_by_atom)
+    if not base_tokens:
+        annotated = _stereo_descriptors_from_annotations(view, locant_by_atom)
+        annotated.sort(key=lambda item: (item[0], item[1]))
+        base_tokens = [text for _loc, text in annotated]
 
-    descriptors.sort(key=lambda item: (item[0], item[1]))
-    return [text for _loc, text in descriptors]
+    advanced_tokens: list[str] = []
+    if opts.enable_experimental and opts.enable_advanced_stereo:
+        if opts.rdkit_isolated and callable(safe_advanced_stereo_descriptors_for_chain):
+            try:
+                isolated_advanced = safe_advanced_stereo_descriptors_for_chain(view.graph, chain)
+                advanced_tokens.extend(
+                    str(item).strip() for item in isolated_advanced if str(item).strip()
+                )
+            except Exception:
+                advanced_tokens = []
+        if not advanced_tokens:
+            advanced_tokens = extract_advanced_stereo(
+                view,
+                locant_by_atom=locant_by_atom,
+                chain=chain,
+                opts=opts,
+            )
+
+    merged: list[str] = []
+    seen: set[str] = set()
+    for token in list(base_tokens) + list(advanced_tokens):
+        text = str(token).strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        merged.append(text)
+    return merged
 
 
 def _stereo_descriptors_from_annotations(

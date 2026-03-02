@@ -19,5 +19,11 @@ class NameOptions:
     allow_coordination: bool = True
     # Habilita heteroaromáticos exóticos (P/Si/B) en rutas experimentales.
     enable_exotic_hetero: bool = True
+    # Habilita plantillas especiales (carbohidratos/esteroides).
+    enable_special_templates: bool = True
+    # Habilita estereoquímica avanzada (R_a/S_a, M/P, endo/exo, si/re).
+    enable_advanced_stereo: bool = True
+    # Master switch para funcionalidades experimentales.
+    enable_experimental: bool = True
     # Ejecuta extracción estereo RDKit en subproceso para aislar fallos nativos.
     rdkit_isolated: bool = True

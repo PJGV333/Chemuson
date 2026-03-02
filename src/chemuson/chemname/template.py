@@ -83,11 +83,11 @@ def _load_template_json(path: Path) -> TemplateMol:
         aromatic = bool(bond.get("arom", False))
         bonds.append(TemplateBond(a=a, b=b, order=order, aromatic=aromatic))
 
-    degree = [0 for _ in atoms_data]
+    adjacency: List[set[int]] = [set() for _ in atoms_data]
     aromatic_atoms = [False for _ in atoms_data]
     for bond in bonds:
-        degree[bond.a] += 1
-        degree[bond.b] += 1
+        adjacency[bond.a].add(bond.b)
+        adjacency[bond.b].add(bond.a)
         if bond.aromatic:
             aromatic_atoms[bond.a] = True
             aromatic_atoms[bond.b] = True
@@ -99,7 +99,7 @@ def _load_template_json(path: Path) -> TemplateMol:
             raise ChemNameNotSupported("Invalid template atom")
         elem = element[0].upper() + element[1:].lower()
         aromatic = bool(atom.get("arom", False)) or aromatic_atoms[idx]
-        atoms.append(TemplateAtom(element=elem, aromatic=aromatic, degree=degree[idx]))
+        atoms.append(TemplateAtom(element=elem, aromatic=aromatic, degree=len(adjacency[idx])))
 
     locant_by_atom_idx: Dict[int, int] = {
         int(k): int(v) for k, v in locants_data.items()
@@ -167,7 +167,7 @@ def _load_template_mol(path: Path) -> TemplateMol:
             atom_map[idx] = map_num
 
     bonds: List[TemplateBond] = []
-    degree = [0 for _ in atoms_element]
+    adjacency: List[set[int]] = [set() for _ in atoms_element]
     aromatic_atoms = [False for _ in atoms_element]
     for line in bond_lines:
         parts = line.split()
@@ -181,14 +181,20 @@ def _load_template_mol(path: Path) -> TemplateMol:
             aromatic = True
             order = 1
         bonds.append(TemplateBond(a=a, b=b, order=order, aromatic=aromatic))
-        degree[a] += 1
-        degree[b] += 1
+        adjacency[a].add(b)
+        adjacency[b].add(a)
         if aromatic:
             aromatic_atoms[a] = True
             aromatic_atoms[b] = True
 
     atoms: List[TemplateAtom] = []
     for idx, elem in enumerate(atoms_element):
-        atoms.append(TemplateAtom(element=elem, aromatic=aromatic_atoms[idx], degree=degree[idx]))
+        atoms.append(
+            TemplateAtom(
+                element=elem,
+                aromatic=aromatic_atoms[idx],
+                degree=len(adjacency[idx]),
+            )
+        )
 
     return TemplateMol(atoms=atoms, bonds=bonds, locant_by_atom_idx=atom_map)
