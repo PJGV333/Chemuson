@@ -55,13 +55,19 @@ Rutas locales de trabajo:
 Incluye soporte para:
 - Cadenas lineales y algunas insaturaciones.
 - Sustituyentes comunes (halógenos, alquilos simples, algunos grupos funcionales).
-- Cicloalcanos simples, benceno y un subconjunto de heteroaromáticos.
-- Algunos sistemas aromáticos fusionados (por ejemplo: naftaleno, antraceno, fenantreno, pireno; y casos concretos heterofusionados).
+- Cicloalcanos simples, benceno y heteroaromáticos ampliados (incluye triazoles/tetrazol, oxazoles/isoxazoles, diazinas, oxazina).
+- Algunos sistemas aromáticos fusionados (por ejemplo: naftaleno, antraceno, fenantreno, pireno; y casos concretos heterofusionados como benzotriazol).
+- Carbonilos aromáticos tipo quinona (`benzene-1,4-dione`, `naphthalene-1,4-dione`, `naphthalene-1,2-dione`).
+- Grupos funcionales adicionales (thiol, sulfoxide/sulfone/sulfonic acid/sulfonate, azido, peroxy).
+- Cargas/isótopos/radicales básicos en modelo y round-trip (`formal_charge`, `isotope`, `radical_electrons`).
+- Coordinación (experimental, MVP): carbonyl, ammine, aqua, halo, cyano, η5-cyclopentadienyl, con estado de oxidación y `cis/trans` básico.
 
 Limitaciones relevantes:
 - Cobertura parcial en anillos fusionados complejos.
 - Cobertura parcial en heterociclos fuera del subconjunto soportado.
 - Casos con múltiples grupos funcionales y escenarios avanzados aún no completamente soportados.
+- No cubre todo Blue Book; se prioriza estabilidad y degradación segura a `N/D` cuando procede.
+- Para estereoquímica vía RDKit se recomienda modo aislado en subproceso (ver [docs/rdkit.md](docs/rdkit.md)).
 
 ## Stack técnico
 

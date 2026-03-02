@@ -225,6 +225,8 @@ class Atom:
     y: float
     charge: int = 0
     isotope: Optional[int] = None
+    radical_electrons: int = 0
+    oxidation_state: Optional[int] = None
     explicit_h: Optional[int] = None
     mapping: Optional[int] = None
     is_query: bool = False
@@ -332,6 +334,8 @@ class MolGraph:
         charge: int = 0,
         formal_charge: Optional[int] = None,
         isotope: Optional[int] = None,
+        radical_electrons: int = 0,
+        oxidation_state: Optional[int] = None,
         explicit_h: Optional[int] = None,
         mapping: Optional[int] = None,
         is_query: bool = False,
@@ -353,6 +357,8 @@ class MolGraph:
             charge: Alias retrocompatible para la carga formal.
             formal_charge: Carga formal del átomo (prioritaria sobre `charge`).
             isotope: Número másico si se desea mostrar el isótopo.
+            radical_electrons: Número de electrones desapareados.
+            oxidation_state: Estado de oxidación estimado/asignado.
             explicit_h: Número de hidrógenos explícitos asociados.
             mapping: Índice de mapeo (útil en exportaciones/reacciones).
             is_query: Marca de átomo de consulta (SMARTS-like).
@@ -391,6 +397,12 @@ class MolGraph:
             y=y,
             charge=resolved_formal_charge,
             isotope=isotope,
+            radical_electrons=int(radical_electrons or 0),
+            oxidation_state=(
+                int(oxidation_state)
+                if oxidation_state is not None
+                else None
+            ),
             explicit_h=explicit_h,
             mapping=mapping,
             is_query=is_query,

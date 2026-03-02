@@ -174,6 +174,12 @@ def classify_aromatic_ring(view: MolView, ring_nodes: Iterable[int]) -> Optional
             kind = "benzene"
         elif len(hetero_atoms) == 1 and hetero_elements[0] == "N":
             kind = "pyridine"
+        elif len(hetero_atoms) == 1 and hetero_elements[0] == "P":
+            kind = "phosphabenzene"
+        elif len(hetero_atoms) == 1 and hetero_elements[0] == "Si":
+            kind = "silabenzene"
+        elif len(hetero_atoms) == 1 and hetero_elements[0] == "B":
+            kind = "borabenzene"
         elif len(hetero_atoms) == 2 and all(elem == "N" for elem in hetero_elements):
             positions = sorted(hetero_positions)
             delta = positions[1] - positions[0]
@@ -184,6 +190,8 @@ def classify_aromatic_ring(view: MolView, ring_nodes: Iterable[int]) -> Optional
                 kind = "pyrimidine"
             elif distance == 3:
                 kind = "pyrazine"
+        elif sorted(hetero_elements) == ["N", "O"]:
+            kind = "oxazine"
         elif len(hetero_atoms) == 3 and all(elem == "N" for elem in hetero_elements):
             positions = sorted(hetero_positions)
             deltas = []
@@ -214,16 +222,41 @@ def classify_aromatic_ring(view: MolView, ring_nodes: Iterable[int]) -> Optional
                 elif distance == 2:
                     kind = "imidazole"
             elif elements == ["N", "O"]:
-                kind = "oxazole"
+                positions = sorted(hetero_positions)
+                delta = positions[1] - positions[0]
+                distance = min(delta, size - delta)
+                kind = "isoxazole" if distance == 1 else "oxazole"
             elif elements == ["N", "S"]:
-                kind = "thiazole"
+                positions = sorted(hetero_positions)
+                delta = positions[1] - positions[0]
+                distance = min(delta, size - delta)
+                kind = "isothiazole" if distance == 1 else "thiazole"
         elif len(hetero_atoms) == 3:
             if all(elem == "N" for elem in hetero_elements):
-                kind = "triazole"
+                aromatic_flagged = all(
+                    view.bond_is_aromatic(order[idx], order[(idx + 1) % size])
+                    for idx in range(size)
+                )
+                if aromatic_flagged:
+                    positions = sorted(hetero_positions)
+                    deltas = sorted(
+                        ((positions[(idx + 1) % len(positions)] - positions[idx]) % size)
+                        for idx in range(len(positions))
+                    )
+                    if deltas == [1, 1, 3]:
+                        kind = "1,2,3-triazole"
+                    elif deltas == [1, 2, 2]:
+                        kind = "1,2,4-triazole"
+                    else:
+                        kind = "triazole"
+                else:
+                    kind = "triazole"
+        elif len(hetero_atoms) == 4 and all(elem == "N" for elem in hetero_elements):
+            kind = "tetrazole"
 
     if kind is None:
         return None
-    priority = {"O": 0, "N": 1, "S": 2}
+    priority = {"O": 0, "N": 1, "S": 2, "P": 3, "Si": 4, "B": 5}
     preferred_start = None
     hetero_priority = {
         atom_id: priority.get(view.element(atom_id), 9) for atom_id in hetero_atoms
@@ -233,7 +266,7 @@ def classify_aromatic_ring(view: MolView, ring_nodes: Iterable[int]) -> Optional
         preferred_start = [
             atom_id for atom_id in hetero_atoms if hetero_priority.get(atom_id) == best_priority
         ]
-    if kind == "triazole":
+    if kind in {"triazole", "1,2,3-triazole", "1,2,4-triazole"}:
         h_candidates = [atom_id for atom_id in hetero_atoms if _hetero_has_h(view, atom_id)]
         if h_candidates:
             preferred_start = h_candidates

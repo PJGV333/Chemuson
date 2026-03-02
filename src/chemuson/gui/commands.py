@@ -162,6 +162,8 @@ class AddAtomCommand(QUndoCommand):
         is_explicit: Optional[bool] = None,
         charge: int | None = None,
         isotope: Optional[int] = None,
+        radical_electrons: int = 0,
+        oxidation_state: Optional[int] = None,
         explicit_h: Optional[int] = None,
         mapping: Optional[int] = None,
         is_query: bool = False,
@@ -186,6 +188,8 @@ class AddAtomCommand(QUndoCommand):
             is_explicit: Si el símbolo debe mostrarse explícitamente.
             charge: Carga formal.
             isotope: Isótopo (número másico).
+            radical_electrons: Número de electrones desapareados.
+            oxidation_state: Estado de oxidación si aplica.
             explicit_h: Hidrógenos explícitos.
             mapping: Índice de mapeo.
             is_query: Marca de átomo de consulta.
@@ -208,6 +212,12 @@ class AddAtomCommand(QUndoCommand):
         self._is_explicit = is_explicit
         self._charge = charge
         self._isotope = isotope
+        self._radical_electrons = int(radical_electrons or 0)
+        self._oxidation_state = (
+            int(oxidation_state)
+            if oxidation_state is not None
+            else None
+        )
         self._explicit_h = explicit_h
         self._mapping = mapping
         self._is_query = is_query
@@ -237,6 +247,8 @@ class AddAtomCommand(QUndoCommand):
                 is_explicit=is_explicit,
                 charge=charge,
                 isotope=self._isotope,
+                radical_electrons=self._radical_electrons,
+                oxidation_state=self._oxidation_state,
                 explicit_h=self._explicit_h,
                 mapping=self._mapping,
                 is_query=self._is_query,
@@ -257,6 +269,8 @@ class AddAtomCommand(QUndoCommand):
                 is_explicit=is_explicit,
                 charge=charge,
                 isotope=self._isotope,
+                radical_electrons=self._radical_electrons,
+                oxidation_state=self._oxidation_state,
                 explicit_h=self._explicit_h,
                 mapping=self._mapping,
                 is_query=self._is_query,
@@ -689,7 +703,12 @@ class AddBondCommand(QUndoCommand):
             return False
         if getattr(getattr(self._view, "state", None), "show_implicit_carbons", True):
             return False
-        if atom.charge != 0 or atom.isotope is not None or atom.explicit_h is not None:
+        if (
+            atom.charge != 0
+            or atom.isotope is not None
+            or int(getattr(atom, "radical_electrons", 0) or 0) > 0
+            or atom.explicit_h is not None
+        ):
             return False
         if atom.mapping is not None or atom.is_query:
             return False
@@ -1229,6 +1248,8 @@ class DeleteSelectionCommand(QUndoCommand):
                 atom_id=atom.id,
                 charge=atom.charge,
                 isotope=atom.isotope,
+                radical_electrons=int(getattr(atom, "radical_electrons", 0) or 0),
+                oxidation_state=getattr(atom, "oxidation_state", None),
                 explicit_h=atom.explicit_h,
                 mapping=atom.mapping,
                 is_query=atom.is_query,

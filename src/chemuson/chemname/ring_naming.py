@@ -7,6 +7,16 @@ from typing import Iterable, List, Sequence
 from chemuson.chemcalc.valence import implicit_h_count
 
 from .errors import ChemNameNotSupported
+from .functional_groups import (
+    azido_substituent_name,
+    isotope_substituent_name,
+    peroxy_substituent_name,
+    radical_substituent_name,
+    sulfinyl_substituent_name,
+    sulfonamido_substituent_name,
+    sulfonyl_substituent_name,
+    thiol_substituent_name,
+)
 from .locants import Sub, orientation_key
 from .molview import MolView
 from .substituents import (
@@ -55,6 +65,7 @@ def choose_ring_orientation(
     allow_amide: bool = False,
     allow_nitrile: bool = False,
     forbid_hetero_substituents: bool = False,
+    ignore_atoms: set[int] | None = None,
     ring_ctx: RingContext | None = None,
 ) -> List[int]:
     """Elige la orientación del anillo minimizando locantes.
@@ -71,6 +82,7 @@ def choose_ring_orientation(
         allow_amide: Permite sustituyentes amida.
         allow_nitrile: Permite sustituyentes nitrilo (ciano).
         forbid_hetero_substituents: Prohíbe sustitución en heteroátomos.
+        ignore_atoms: Átomos externos a ignorar (grupo funcional principal).
         ring_ctx: Contexto de anillos para sustituyentes aromáticos.
 
     Returns:
@@ -90,6 +102,7 @@ def choose_ring_orientation(
             allow_amide=allow_amide,
             allow_nitrile=allow_nitrile,
             forbid_hetero_substituents=forbid_hetero_substituents,
+            ignore_atoms=ignore_atoms,
             ring_ctx=ring_ctx,
         )
         locants = sorted(sub.locant for sub in subs)
@@ -116,6 +129,7 @@ def choose_hetero_ring_orientation(
     preferred_start_atoms: Iterable[int] | None = None,
     hetero_priority: dict[int, int] | None = None,
     forbid_hetero_substituents: bool = False,
+    ignore_atoms: set[int] | None = None,
     ring_ctx: RingContext | None = None,
 ) -> List[int]:
     """Elige orientación para anillos con heteroátomos.
@@ -135,6 +149,7 @@ def choose_hetero_ring_orientation(
         preferred_start_atoms: Lista de átomos preferidos para iniciar numeración.
         hetero_priority: Prioridad de heteroátomos (menor valor = mayor prioridad).
         forbid_hetero_substituents: Prohíbe sustitución en heteroátomos.
+        ignore_atoms: Átomos externos a ignorar (grupo funcional principal).
         ring_ctx: Contexto de anillos para sustituyentes aromáticos.
 
     Returns:
@@ -163,6 +178,7 @@ def choose_hetero_ring_orientation(
             allow_amide=allow_amide,
             allow_nitrile=allow_nitrile,
             forbid_hetero_substituents=forbid_hetero_substituents,
+            ignore_atoms=ignore_atoms,
             ring_ctx=ring_ctx,
         )
         # Priorizamos locantes de heteroátomos en el desempate.
@@ -194,6 +210,7 @@ def choose_hetero_ring_orientation(
             preferred_start_atoms=None,
             hetero_priority=hetero_priority,
             forbid_hetero_substituents=forbid_hetero_substituents,
+            ignore_atoms=ignore_atoms,
             ring_ctx=ring_ctx,
         )
     return list(best) if best is not None else list(ring_order)
@@ -210,6 +227,7 @@ def ring_substituents(
     allow_amide: bool = False,
     allow_nitrile: bool = False,
     forbid_hetero_substituents: bool = False,
+    ignore_atoms: set[int] | None = None,
     ring_ctx: RingContext | None = None,
 ) -> List[Sub]:
     """Lista los sustituyentes presentes en un anillo.
@@ -225,20 +243,28 @@ def ring_substituents(
         allow_amide: Permite sustituyentes amida.
         allow_nitrile: Permite sustituyentes nitrilo (ciano).
         forbid_hetero_substituents: Prohíbe sustitución en heteroátomos.
+        ignore_atoms: Átomos externos a ignorar (grupo funcional principal).
         ring_ctx: Contexto de anillos para sustituyentes aromáticos.
 
     Returns:
         Lista de sustituyentes detectados con locantes.
     """
     ring_set = set(ring_order)
+    ignored = ignore_atoms or set()
     index_map = {atom_id: idx + 1 for idx, atom_id in enumerate(ring_order)}
     subs: List[Sub] = []
     for atom_id in ring_order:
         locant = index_map[atom_id]
         for nbr in view.neighbors(atom_id):
+            if nbr in ignored:
+                continue
             if nbr in ring_set:
                 continue
-            if view.element(nbr) == "H":
+            elem = view.element(nbr)
+            if elem == "H":
+                isotope_name = isotope_substituent_name(view, nbr)
+                if isotope_name is not None:
+                    subs.append(Sub(isotope_name, locant))
                 continue
             if forbid_hetero_substituents and view.element(atom_id) != "C":
                 raise ChemNameNotSupported("Unsupported hetero substituent")
@@ -316,6 +342,12 @@ def _substituent_name_for_neighbor(
             return ring_name
         return alkyl_substituent_name(view, nbr, set(ring_set))
     if elem == "O":
+        radical_name = radical_substituent_name(view, nbr, set(ring_set))
+        if radical_name is not None:
+            return radical_name
+        peroxy_name = peroxy_substituent_name(view, nbr, set(ring_set))
+        if peroxy_name is not None:
+            return peroxy_name
         if allow_ester:
             name = ester_substituent_name(view, nbr, set(ring_set))
             if name is not None:
@@ -335,6 +367,9 @@ def _substituent_name_for_neighbor(
             raise ChemNameNotSupported("Unsupported hydroxy substituent")
         return "hydroxy"
     if elem == "N":
+        azido_name = azido_substituent_name(view, nbr, set(ring_set))
+        if azido_name is not None:
+            return azido_name
         if allow_amide:
             name = amide_substituent_name(view, nbr, set(ring_set))
             if name is not None:
@@ -347,5 +382,18 @@ def _substituent_name_for_neighbor(
             name = amino_substituent_name(view, nbr, set(ring_set))
             if name is not None:
                 return name
+    if elem == "S":
+        for detector in (
+            thiol_substituent_name,
+            sulfonamido_substituent_name,
+            sulfonyl_substituent_name,
+            sulfinyl_substituent_name,
+        ):
+            name = detector(view, nbr, set(ring_set))
+            if name is not None:
+                return name
+        heavy_neighbors = [n for n in view.neighbors(nbr) if view.element(n) != "H"]
+        if len([n for n in heavy_neighbors if n in set(ring_set)]) == 1 and len(heavy_neighbors) == 2:
+            return "thio"
 
     raise ChemNameNotSupported("Unsupported substituent")

@@ -836,14 +836,22 @@ def parent_name(
         root = alkane_root(parent, use_a=use_a)
         return _apply_prefixes(f"{root}-{unsat_descriptor}")
 
-    if suffix in {"al", "oic acid", "oate", "nitrile", "amide"}:
+    if suffix in {
+        "al",
+        "oic acid",
+        "oate",
+        "nitrile",
+        "amide",
+        "sulfonic acid",
+        "sulfonate",
+    }:
         if suffix_locant not in {None, 1}:
             raise ChemNameNotSupported("Unsupported suffix locant")
         if unsaturations:
             root = alkane_root(parent, use_a=use_a)
             base = f"{root}-{unsat_descriptor}"
         else:
-            if suffix == "nitrile":
+            if suffix in {"nitrile", "sulfonic acid", "sulfonate"}:
                 base = parent
             else:
                 base = parent[:-1] if parent.endswith("e") else parent
@@ -853,6 +861,10 @@ def parent_name(
             return _apply_prefixes(f"{base}oate")
         if suffix == "amide":
             return _apply_prefixes(f"{base}amide")
+        if suffix == "sulfonic acid":
+            return _apply_prefixes(f"{base}sulfonic acid")
+        if suffix == "sulfonate":
+            return _apply_prefixes(f"{base}sulfonate")
         return _apply_prefixes(f"{base}{suffix}")
 
     if suffix_locant is None:

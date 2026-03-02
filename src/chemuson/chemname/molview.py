@@ -189,6 +189,10 @@ class MolView:
         Returns:
             Carga formal (0 por defecto).
         """
+        return self.formal_charge(atom_id)
+
+    def formal_charge(self, atom_id: int) -> int:
+        """Obtiene la carga formal del átomo."""
         atom = self._get_atom(atom_id)
         if atom is None:
             return 0
@@ -201,6 +205,32 @@ class MolView:
         if charge is None:
             charge = getattr(atom, "charge", None)
         return int(charge) if charge is not None else 0
+
+    def isotope(self, atom_id: int) -> int | None:
+        """Obtiene número másico isotópico si existe."""
+        atom = self._get_atom(atom_id)
+        if atom is None:
+            return None
+        if isinstance(atom, dict):
+            value = atom.get("isotope")
+            return int(value) if value not in {None, 0} else None
+        value = getattr(atom, "isotope", None)
+        return int(value) if value not in {None, 0} else None
+
+    def radical_electrons(self, atom_id: int) -> int:
+        """Obtiene el número de electrones desapareados del átomo."""
+        atom = self._get_atom(atom_id)
+        if atom is None:
+            return 0
+        if isinstance(atom, dict):
+            value = atom.get("radical_electrons", 0)
+            return int(value) if value is not None else 0
+        value = getattr(atom, "radical_electrons", 0)
+        return int(value) if value is not None else 0
+
+    def has_radical(self, atom_id: int) -> bool:
+        """Indica si el átomo tiene al menos un electrón desapareado."""
+        return self.radical_electrons(atom_id) > 0
 
     def explicit_h(self, atom_id: int) -> int:
         """Obtiene el número de H explícitos asociados al átomo.

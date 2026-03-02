@@ -10,6 +10,16 @@ from dataclasses import dataclass
 from typing import Iterable, List, Optional, Sequence, Set, Tuple
 
 from .errors import ChemNameNotSupported
+from .functional_groups import (
+    azido_substituent_name,
+    isotope_substituent_name,
+    peroxy_substituent_name,
+    radical_substituent_name,
+    sulfinyl_substituent_name,
+    sulfonamido_substituent_name,
+    sulfonyl_substituent_name,
+    thiol_substituent_name,
+)
 from .molview import MolView
 from .substituents import (
     HALO_MAP,
@@ -67,6 +77,9 @@ def substituents_on_chain(
                 continue
             elem = view.element(nbr)
             if elem == "H":
+                isotope_name = isotope_substituent_name(view, nbr)
+                if isotope_name is not None:
+                    substituents.append(Sub(isotope_name, locant))
                 continue
             if elem in HALO_MAP:
                 substituents.append(Sub(HALO_MAP[elem], locant))
@@ -93,6 +106,14 @@ def substituents_on_chain(
                 substituents.append(Sub(name, locant))
                 continue
             if elem == "O":
+                name = radical_substituent_name(view, nbr, chain_set)
+                if name is not None:
+                    substituents.append(Sub(name, locant))
+                    continue
+                name = peroxy_substituent_name(view, nbr, chain_set)
+                if name is not None:
+                    substituents.append(Sub(name, locant))
+                    continue
                 name = ester_substituent_name(view, nbr, chain_set)
                 if name is not None:
                     substituents.append(Sub(name, locant))
@@ -102,6 +123,10 @@ def substituents_on_chain(
                     substituents.append(Sub(name, locant))
                     continue
             if elem == "N":
+                name = azido_substituent_name(view, nbr, chain_set)
+                if name is not None:
+                    substituents.append(Sub(name, locant))
+                    continue
                 name = amide_substituent_name(view, nbr, chain_set)
                 if name is not None:
                     substituents.append(Sub(name, locant))
@@ -115,6 +140,28 @@ def substituents_on_chain(
                 if name is not None:
                     substituents.append(Sub(name, locant))
                     continue
+            if elem == "S":
+                for detector in (
+                    thiol_substituent_name,
+                    sulfonamido_substituent_name,
+                    sulfonyl_substituent_name,
+                    sulfinyl_substituent_name,
+                ):
+                    name = detector(view, nbr, chain_set)
+                    if name is not None:
+                        substituents.append(Sub(name, locant))
+                        break
+                else:
+                    heavy_neighbors = [
+                        n
+                        for n in view.neighbors(nbr)
+                        if view.element(n) != "H"
+                    ]
+                    if len([n for n in heavy_neighbors if n in chain_set]) == 1 and len(heavy_neighbors) == 2:
+                        substituents.append(Sub("thio", locant))
+                        continue
+                    raise ChemNameNotSupported("Unsupported substituent")
+                continue
             raise ChemNameNotSupported("Unsupported substituent")
 
     return substituents

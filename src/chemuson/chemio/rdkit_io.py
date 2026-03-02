@@ -83,6 +83,9 @@ def molgraph_to_rdkit_with_map(molgraph: MolGraph):
         rd_atom.SetFormalCharge(atom.charge)
         if atom.isotope is not None:
             rd_atom.SetIsotope(atom.isotope)
+        radical_electrons = int(getattr(atom, "radical_electrons", 0) or 0)
+        if radical_electrons > 0:
+            rd_atom.SetNumRadicalElectrons(radical_electrons)
         rd_idx = rw.AddAtom(rd_atom)
         id_map[atom.id] = rd_idx
 
@@ -413,6 +416,45 @@ def _molfile_to_molgraph_fallback(molfile: str) -> MolGraph:
                     cursor += 2
                     if 1 <= atom_idx <= len(atom_ids):
                         graph.get_atom(atom_ids[atom_idx - 1]).charge = charge
+        if line.startswith("M  ISO"):
+            tokens = line.split()
+            if len(tokens) >= 3:
+                try:
+                    count = int(tokens[2])
+                except Exception:
+                    count = 0
+                cursor = 3
+                for _ in range(count):
+                    if cursor + 1 >= len(tokens):
+                        break
+                    try:
+                        atom_idx = int(tokens[cursor])
+                        mass = int(tokens[cursor + 1])
+                    except Exception:
+                        break
+                    cursor += 2
+                    if 1 <= atom_idx <= len(atom_ids):
+                        graph.get_atom(atom_ids[atom_idx - 1]).isotope = int(mass)
+        if line.startswith("M  RAD"):
+            tokens = line.split()
+            if len(tokens) >= 3:
+                try:
+                    count = int(tokens[2])
+                except Exception:
+                    count = 0
+                cursor = 3
+                for _ in range(count):
+                    if cursor + 1 >= len(tokens):
+                        break
+                    try:
+                        atom_idx = int(tokens[cursor])
+                        rad_code = int(tokens[cursor + 1])
+                    except Exception:
+                        break
+                    cursor += 2
+                    if 1 <= atom_idx <= len(atom_ids):
+                        electrons = {1: 2, 2: 1, 3: 2}.get(rad_code, 1)
+                        graph.get_atom(atom_ids[atom_idx - 1]).radical_electrons = int(electrons)
         idx += 1
 
     for atom_idx, label in aliases.items():
@@ -527,6 +569,10 @@ def rdkit_to_molgraph(mol) -> MolGraph:
         new_atom.charge = atom.GetFormalCharge()
         if atom.GetIsotope():
             new_atom.isotope = atom.GetIsotope()
+        try:
+            new_atom.radical_electrons = int(atom.GetNumRadicalElectrons() or 0)
+        except Exception:
+            new_atom.radical_electrons = 0
         if atom.HasProp("_CIPCode"):
             try:
                 setattr(new_atom, "stereo_cip", atom.GetProp("_CIPCode"))
@@ -870,15 +916,36 @@ def _molgraph_to_molfile_fallback(molgraph: MolGraph) -> str:
         )
 
     charges: list[tuple[int, int]] = []
+    isotopes: list[tuple[int, int]] = []
+    radicals: list[tuple[int, int]] = []
     for atom in atoms:
         if atom.charge:
             charges.append((atom_index[atom.id], atom.charge))
+        if atom.isotope is not None:
+            isotopes.append((atom_index[atom.id], int(atom.isotope)))
+        radical_electrons = int(getattr(atom, "radical_electrons", 0) or 0)
+        if radical_electrons > 0:
+            # Molfile RAD code: 1=singlet, 2=doublet, 3=triplet.
+            rad_code = {1: 2, 2: 1}.get(radical_electrons, 3)
+            radicals.append((atom_index[atom.id], rad_code))
     for i in range(0, len(charges), 8):
         chunk = charges[i : i + 8]
         parts = [f"{len(chunk):>3}"]
         for idx, charge in chunk:
             parts.append(f"{idx:>3}{charge:>3}")
         lines.append(f"M  CHG{''.join(parts)}")
+    for i in range(0, len(isotopes), 8):
+        chunk = isotopes[i : i + 8]
+        parts = [f"{len(chunk):>3}"]
+        for idx, mass in chunk:
+            parts.append(f"{idx:>3}{mass:>3}")
+        lines.append(f"M  ISO{''.join(parts)}")
+    for i in range(0, len(radicals), 8):
+        chunk = radicals[i : i + 8]
+        parts = [f"{len(chunk):>3}"]
+        for idx, rad_code in chunk:
+            parts.append(f"{idx:>3}{rad_code:>3}")
+        lines.append(f"M  RAD{''.join(parts)}")
 
     for idx, label in aliases:
         lines.append(f"A  {idx:>3}")

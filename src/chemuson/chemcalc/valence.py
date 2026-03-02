@@ -68,6 +68,11 @@ def implicit_h_count(view: MolView, atom_id: int) -> int:
         bond_order_sum += order
 
     charge = view.atom_charge(atom_id)
+    # Ajustes simples de especies iónicas frecuentes para evitar falsos positivos.
+    if element == "N" and charge > 0:
+        typical = 4
+    elif element == "O" and charge < 0:
+        typical = 1
     explicit_h = view.explicit_h(atom_id)
     implicit = typical - bond_order_sum - explicit_h - max(charge, 0)
     if implicit < 0:

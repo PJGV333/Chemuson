@@ -15,6 +15,8 @@ from chemuson.chemcalc.valence import implicit_h_count
 from chemuson.chemio.rdkit_io import molgraph_to_rdkit_with_map
 from chemuson.utils.resources import open_resource_path
 
+from .coordination import detect_coordination_name
+from .functional_groups import detect_sulfonic_attachment
 from .locants import Sub, orientation_key, substituents_on_chain
 from .molview import MolView
 from .options import NameOptions
@@ -49,6 +51,11 @@ try:
     from rdkit import Chem
 except Exception:  # pragma: no cover - runtime optional dependency
     Chem = None
+
+try:
+    from chemuson.chemio.rdkit_safe import stereo_descriptors_for_chain as safe_stereo_descriptors_for_chain
+except Exception:  # pragma: no cover - runtime optional dependency
+    safe_stereo_descriptors_for_chain = None
 
 _TEMPLATE_CACHE: dict[str, TemplateMol] = {}
 
@@ -149,6 +156,10 @@ def iupac_name_lite(graph, opts: NameOptions) -> str:
         Nombre IUPAC-lite generado.
     """
     view = MolView(graph)
+    if opts.allow_coordination:
+        coordination_name = detect_coordination_name(view)
+        if coordination_name:
+            return coordination_name
     ring_ctx = build_ring_context(view)
     rings = ring_ctx.rings
     if not rings:
@@ -250,7 +261,7 @@ def _name_linear(
     if not allow_rings and not view.is_acyclic():
         raise ChemNameNotSupported("Cyclic structures not supported")
 
-    allowed_elements = {"C", "H", "F", "Cl", "Br", "I", "O", "N"}
+    allowed_elements = {"C", "H", "F", "Cl", "Br", "I", "O", "N", "S", "P", "Si", "B"}
     for atom_id in view.atoms():
         elem = view.element(atom_id)
         if elem not in allowed_elements:
@@ -286,6 +297,7 @@ def _name_linear(
 
     # Recolectamos sustituyentes y calculamos el nombre del padre.
     substituents = substituents_on_chain(view, chain, ignore_atoms=ignore_atoms, ring_ctx=ring_ctx)
+    substituents.extend(_isotope_substituents_on_chain(view, chain))
     for prefix_name, prefix_atom in functional_prefixes:
         locant = _locant_for_atom(chain, prefix_atom)
         if locant is None:
@@ -301,8 +313,9 @@ def _name_linear(
         suffix_locant=func_locant,
     )
 
-    stereo = _stereo_descriptors_for_linear(view, chain)
-    return render_name(substituents, parent, stereo_descriptors=stereo)
+    stereo = _stereo_descriptors_for_linear(view, chain, opts)
+    rendered = render_name(substituents, parent, stereo_descriptors=stereo)
+    return _apply_radical_suffix_if_needed(view, chain, substituents, rendered, opts)
 
 
 def _longest_chain_excluding(view: MolView, excluded_atoms: set[int]) -> list[int]:
@@ -473,6 +486,18 @@ def _name_benzene(
     for atom_id in ring_atoms:
         if view.element(atom_id) != "C":
             raise ChemNameNotSupported("Unsupported aromatic ring")
+    dione_name = _name_aromatic_dione(
+        view,
+        ring_atoms,
+        parent_base="benzene",
+        opts=opts,
+        ring_ctx=ring_ctx,
+    )
+    if dione_name is not None:
+        return dione_name
+    sulfo_name = _name_benzene_sulfonic(view, ring_atoms, opts, ring_ctx)
+    if sulfo_name is not None:
+        return sulfo_name
     oriented = choose_ring_orientation(
         view,
         ring_atoms,
@@ -501,6 +526,157 @@ def _name_benzene(
     return render_name(substituents, "benzene", always_include_locant=False)
 
 
+def _name_benzene_sulfonic(
+    view: MolView,
+    ring_atoms: list[int],
+    opts: NameOptions,
+    ring_ctx: RingContext | None,
+) -> str | None:
+    """Nombra benzenos con grupo sulfónico/sulfonato como función principal."""
+    ring_set = set(ring_atoms)
+    matches: list[tuple[int, dict]] = []
+    for atom_id in ring_atoms:
+        for nbr in view.neighbors(atom_id):
+            if nbr in ring_set or view.element(nbr) != "S":
+                continue
+            info = detect_sulfonic_attachment(view, nbr, ring_set)
+            if info is None:
+                continue
+            if int(info.get("parent_atom", -1)) != atom_id:
+                continue
+            matches.append((nbr, info))
+    if not matches:
+        return None
+    if len(matches) > 1:
+        raise ChemNameNotSupported("Multiple sulfonic groups not supported")
+    sulfur_atom, info = matches[0]
+    kind = str(info.get("kind"))
+    parent = "benzenesulfonic acid" if kind == "sulfonic_acid" else "benzenesulfonate"
+    ignore_atoms = set(info.get("aux_atoms", set())) | {sulfur_atom}
+
+    oriented = choose_ring_orientation(
+        view,
+        ring_atoms,
+        opts,
+        allow_hydroxy=True,
+        allow_nitro=True,
+        allow_amino=True,
+        allow_alkoxy=True,
+        allow_ester=True,
+        allow_amide=True,
+        allow_nitrile=True,
+        ignore_atoms=ignore_atoms,
+        ring_ctx=ring_ctx,
+    )
+    substituents = ring_substituents(
+        view,
+        oriented,
+        allow_hydroxy=True,
+        allow_nitro=True,
+        allow_amino=True,
+        allow_alkoxy=True,
+        allow_ester=True,
+        allow_amide=True,
+        allow_nitrile=True,
+        ignore_atoms=ignore_atoms,
+        ring_ctx=ring_ctx,
+    )
+    return render_name(substituents, parent, always_include_locant=bool(substituents))
+
+
+def _name_aromatic_dione(
+    view: MolView,
+    ring_order_atoms: list[int],
+    parent_base: str,
+    opts: NameOptions,
+    ring_ctx: RingContext | None = None,
+    fusion_atoms: set[int] | None = None,
+) -> str | None:
+    """Nombra anillos aromáticos con dos carbonilos exocíclicos como dionas."""
+    ring_set = set(ring_order_atoms)
+    carbonyl_atoms: list[int] = []
+    carbonyl_oxygens: set[int] = set()
+    for atom_id in ring_order_atoms:
+        oxy = _exocyclic_carbonyl_oxygen(view, atom_id, ring_set)
+        if oxy is None:
+            continue
+        carbonyl_atoms.append(atom_id)
+        carbonyl_oxygens.add(oxy)
+    carbonyl_pair = list(carbonyl_atoms)
+    if len(carbonyl_pair) != 2:
+        return None
+
+    if parent_base == "benzene":
+        best_name = None
+        best_key = None
+        for numbering in enumerate_ring_numberings(ring_order_atoms):
+            locant_map = {atom_id: idx + 1 for idx, atom_id in enumerate(numbering)}
+            dione_locants = sorted(locant_map[atom_id] for atom_id in carbonyl_pair)
+            parent = f"{parent_base}-{dione_locants[0]},{dione_locants[1]}-dione"
+            subs = ring_substituents(
+                view,
+                numbering,
+                allow_hydroxy=True,
+                allow_nitro=True,
+                allow_amino=True,
+                allow_alkoxy=True,
+                allow_ester=True,
+                allow_amide=True,
+                allow_nitrile=True,
+                ignore_atoms=set(carbonyl_oxygens),
+                ring_ctx=ring_ctx,
+            )
+            key = orientation_key(subs, opts, primary_locants=dione_locants)
+            if best_key is None or key < best_key:
+                best_key = key
+                best_name = render_name(subs, parent, always_include_locant=bool(subs))
+        return best_name
+
+    if parent_base == "naphthalene":
+        if not fusion_atoms:
+            return None
+        locant_maps = _naphthalene_locant_maps(ring_order_atoms, set(fusion_atoms))
+        if not locant_maps:
+            return None
+
+        substituents: list[tuple[int, str]] = []
+        for atom_id in ring_set:
+            for nbr in view.neighbors(atom_id):
+                if nbr in ring_set or nbr in carbonyl_oxygens or view.element(nbr) == "H":
+                    continue
+                if atom_id in set(fusion_atoms):
+                    raise ChemNameNotSupported("Fusion-atom substitution not supported")
+                substituents.append((atom_id, _simple_substituent_name(view, atom_id, nbr, ring_set)))
+
+        best_name = None
+        best_key = None
+        for locant_map in locant_maps:
+            if any(atom_id not in locant_map for atom_id in carbonyl_pair):
+                continue
+            dione_locants = sorted(locant_map[atom_id] for atom_id in carbonyl_pair)
+            parent = f"{parent_base}-{dione_locants[0]},{dione_locants[1]}-dione"
+            subs = [Sub(name, locant_map[atom_id]) for atom_id, name in substituents]
+            key = orientation_key(subs, opts, primary_locants=dione_locants)
+            if best_key is None or key < best_key:
+                best_key = key
+                best_name = render_name(subs, parent, always_include_locant=bool(subs))
+        return best_name
+
+    return None
+
+
+def _exocyclic_carbonyl_oxygen(view: MolView, atom_id: int, ring_set: set[int]) -> int | None:
+    """Devuelve oxígeno de carbonilo exocíclico en un átomo del anillo, si existe."""
+    oxygens = [
+        nbr
+        for nbr in view.neighbors(atom_id)
+        if nbr not in ring_set and view.element(nbr) == "O" and view.bond_order_between(atom_id, nbr) == 2
+    ]
+    if len(oxygens) != 1:
+        return None
+    return oxygens[0]
+
+
 def _name_heteroaromatic(
     view: MolView,
     info: dict,
@@ -525,6 +701,8 @@ def _name_heteroaromatic(
     hetero_priority = info.get("hetero_priority") or {}
     if not kind or not ring_atoms or not hetero_atoms:
         raise ChemNameNotSupported("Unsupported heteroaromatic ring")
+    if kind in {"phosphabenzene", "silabenzene", "borabenzene"} and not opts.enable_exotic_hetero:
+        raise ChemNameNotSupported("Experimental heteroaromatic disabled")
 
     if not preferred_start:
         priority_to_atoms: dict[int, list[int]] = {}
@@ -586,6 +764,17 @@ def _name_naphthalene(view: MolView, info: dict, opts: NameOptions) -> str:
     order = _perimeter_cycle(view, ring_atoms, fusion_atoms)
     if not order:
         raise ChemNameNotSupported("Naphthalene ordering failed")
+
+    dione_name = _name_aromatic_dione(
+        view,
+        order,
+        parent_base="naphthalene",
+        opts=opts,
+        ring_ctx=None,
+        fusion_atoms=fusion_atoms,
+    )
+    if dione_name is not None:
+        return dione_name
 
     substituents: list[tuple[int, str]] = []
     for atom_id in ring_atoms:
@@ -1158,7 +1347,7 @@ def _detect_fused_hetero(view: MolView, rings: list[frozenset[int]]) -> dict | N
 
     def _ordered_hetero_atoms(candidates: set[int]) -> list[int]:
         """Ordena heteroátomos por prioridad O > N > S y luego por id."""
-        priorities = {"O": 0, "N": 1, "S": 2}
+        priorities = {"O": 0, "N": 1, "S": 2, "P": 3, "Si": 4, "B": 5}
         return sorted(candidates, key=lambda atom_id: (priorities.get(view.element(atom_id), 9), atom_id))
 
     for i in range(len(rings)):
@@ -1278,6 +1467,18 @@ def _detect_fused_hetero(view: MolView, rings: list[frozenset[int]]) -> dict | N
                     "fusion_atoms": set(shared),
                     "hetero_atoms": hetero_atoms,
                 }
+            triazole_kinds = {"triazole", "1,2,3-triazole", "1,2,4-triazole"}
+            if len(union) == 9 and "benzene" in kinds and any(k in triazole_kinds for k in kinds):
+                hetero_atoms = _ordered_hetero_atoms(
+                    {atom_id for atom_id in union if view.element(atom_id) == "N"}
+                )
+                if len(hetero_atoms) == 3:
+                    return {
+                        "kind": "benzotriazole",
+                        "atoms": union,
+                        "fusion_atoms": set(shared),
+                        "hetero_atoms": hetero_atoms,
+                    }
     return None
 
 
@@ -1577,7 +1778,11 @@ def _unsaturations_for_chain(view: MolView, chain: list[int]) -> list[tuple[int,
     return unsaturations
 
 
-def _stereo_descriptors_for_linear(view: MolView, chain: list[int]) -> list[str]:
+def _stereo_descriptors_for_linear(
+    view: MolView,
+    chain: list[int],
+    opts: NameOptions,
+) -> list[str]:
     """Detecta designadores estereoquímicos para una cadena orientada.
 
     Usa RDKit cuando está disponible y, como respaldo, metadatos estéreo
@@ -1585,6 +1790,14 @@ def _stereo_descriptors_for_linear(view: MolView, chain: list[int]) -> list[str]
     """
     locant_by_atom = {atom_id: idx + 1 for idx, atom_id in enumerate(chain)}
     descriptors: list[tuple[int, str]] = []
+
+    if opts.rdkit_isolated and callable(safe_stereo_descriptors_for_chain):
+        try:
+            isolated = safe_stereo_descriptors_for_chain(view.graph, chain)
+            if isolated:
+                return list(isolated)
+        except Exception:
+            descriptors = []
 
     if Chem is not None:
         try:
@@ -1708,6 +1921,11 @@ def _find_functional_group(
             for nbr in outside_neighbors
             if view.element(nbr) == "N" and view.bond_order_between(atom_id, nbr) == 1
         ]
+        sulfur_neighbors = [
+            nbr
+            for nbr in outside_neighbors
+            if view.element(nbr) == "S" and view.bond_order_between(atom_id, nbr) == 1
+        ]
 
         acid_oxygen: int | None = None
         if len(carbonyl_oxygen) == 1 and len(single_oxygen) == 1:
@@ -1722,6 +1940,22 @@ def _find_functional_group(
                         aux_atom_ids={carbonyl_oxygen[0], o_single},
                         prefix_name="carboxy",
                         suffix_name="oic acid",
+                    )
+                )
+                acid_oxygen = o_single
+            elif (
+                h_total == 0
+                and len(heavy_neighbors) == 1
+                and len(chain_neighbors) == 1
+                and view.formal_charge(o_single) <= -1
+            ):
+                occurrences.append(
+                    FunctionalOccurrence(
+                        kind="carboxylate",
+                        atom_id=atom_id,
+                        aux_atom_ids={carbonyl_oxygen[0], o_single},
+                        prefix_name="carboxylate",
+                        suffix_name="oate",
                     )
                 )
                 acid_oxygen = o_single
@@ -1762,6 +1996,33 @@ def _find_functional_group(
                 )
                 break
 
+        for sulfur_atom in sulfur_neighbors:
+            sulfo = detect_sulfonic_attachment(view, sulfur_atom, chain_set)
+            if sulfo is None:
+                continue
+            kind = str(sulfo.get("kind"))
+            aux = set(sulfo.get("aux_atoms", set())) | {sulfur_atom}
+            if kind == "sulfonic_acid":
+                occurrences.append(
+                    FunctionalOccurrence(
+                        kind="sulfonic_acid",
+                        atom_id=atom_id,
+                        aux_atom_ids=aux,
+                        prefix_name="sulfo",
+                        suffix_name="sulfonic acid",
+                    )
+                )
+            elif kind == "sulfonate":
+                occurrences.append(
+                    FunctionalOccurrence(
+                        kind="sulfonate",
+                        atom_id=atom_id,
+                        aux_atom_ids=aux,
+                        prefix_name="sulfo",
+                        suffix_name="sulfonate",
+                    )
+                )
+
         if len(carbonyl_oxygen) == 1 and len(outside_neighbors) == 1:
             if len(chain_neighbors) == 1:
                 occurrences.append(
@@ -1800,6 +2061,8 @@ def _find_functional_group(
                 continue
             elem = view.element(nbr)
             if elem == "O" and view.bond_order_between(atom_id, nbr) == 1:
+                if view.has_radical(nbr):
+                    continue
                 h_total = implicit_h_count(view, nbr) + view.explicit_h(nbr)
                 heavy_neighbors = [n for n in view.neighbors(nbr) if view.element(n) != "H"]
                 if h_total >= 1 and len(heavy_neighbors) == 1:
@@ -1825,6 +2088,19 @@ def _find_functional_group(
                             suffix_name="amine",
                         )
                     )
+            if elem == "S" and view.bond_order_between(atom_id, nbr) == 1:
+                h_total = implicit_h_count(view, nbr) + view.explicit_h(nbr)
+                heavy_neighbors = [n for n in view.neighbors(nbr) if view.element(n) != "H"]
+                if h_total >= 1 and len(heavy_neighbors) == 1:
+                    occurrences.append(
+                        FunctionalOccurrence(
+                            kind="thiol",
+                            atom_id=atom_id,
+                            aux_atom_ids={nbr},
+                            prefix_name="mercapto",
+                            suffix_name="thiol",
+                        )
+                    )
 
     if not occurrences:
         return None
@@ -1839,13 +2115,17 @@ def _find_functional_group(
 
     priority = {
         "acid": 0,
-        "ester": 1,
-        "amide": 2,
-        "nitrile": 3,
-        "aldehyde": 4,
-        "ketone": 5,
-        "alcohol": 6,
-        "amine": 7,
+        "sulfonic_acid": 0,
+        "carboxylate": 1,
+        "sulfonate": 1,
+        "ester": 2,
+        "amide": 3,
+        "nitrile": 4,
+        "aldehyde": 5,
+        "ketone": 6,
+        "alcohol": 7,
+        "thiol": 7,
+        "amine": 8,
     }
     primary = min(
         occurrences,
@@ -1928,6 +2208,50 @@ def _locant_for_atom(chain: list[int], atom_id: int | None) -> int | None:
         if cid == atom_id:
             return idx + 1
     return None
+
+
+def _isotope_substituents_on_chain(view: MolView, chain: list[int]) -> list[Sub]:
+    """Genera prefijos isotópicos para átomos isotópicos de la cadena."""
+    subs: list[Sub] = []
+    for idx, atom_id in enumerate(chain, start=1):
+        isotope = view.isotope(atom_id)
+        if isotope is None:
+            continue
+        elem = view.element(atom_id)
+        if elem == "H":
+            if isotope == 2:
+                name = "deuterio"
+            elif isotope == 3:
+                name = "tritio"
+            else:
+                name = f"({isotope}H)"
+        else:
+            name = f"({isotope}{elem})"
+        subs.append(Sub(name, idx))
+    return subs
+
+
+def _apply_radical_suffix_if_needed(
+    view: MolView,
+    chain: list[int],
+    substituents: list[Sub],
+    rendered: str,
+    opts: NameOptions,
+) -> str:
+    """Aplica degradación segura para radicales no capturados como sustituyente."""
+    radical_atoms = [atom_id for atom_id in view.atoms() if view.has_radical(atom_id)]
+    if not radical_atoms:
+        return rendered
+    if any(sub.name == "oxyl" for sub in substituents):
+        return rendered
+    chain_set = set(chain)
+    if all(atom_id in chain_set and view.element(atom_id) == "C" for atom_id in radical_atoms):
+        if rendered.endswith("e"):
+            return f"{rendered[:-1]}yl"
+        return f"{rendered}-yl"
+    if opts.strict:
+        raise ChemNameNotSupported("Unsupported radical placement")
+    return "N/D"
 
 
 def _choose_oriented_chain(

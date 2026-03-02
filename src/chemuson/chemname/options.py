@@ -13,3 +13,11 @@ class NameOptions:
     return_nd_on_fail: bool = True
     # Esquema de numeración para sistemas fusionados (p. ej., pireno).
     fused_numbering_scheme: str = "iupac2004"
+    # Modo estricto: ante ambigüedad, preferir excepción en lugar de degradar.
+    strict: bool = False
+    # Habilita nomenclatura de coordinación (experimental).
+    allow_coordination: bool = True
+    # Habilita heteroaromáticos exóticos (P/Si/B) en rutas experimentales.
+    enable_exotic_hetero: bool = True
+    # Ejecuta extracción estereo RDKit en subproceso para aislar fallos nativos.
+    rdkit_isolated: bool = True
