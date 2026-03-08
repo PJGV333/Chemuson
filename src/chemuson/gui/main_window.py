@@ -89,16 +89,52 @@ def _channel_display_name(channel: str) -> str:
     return value or "desconocido"
 
 
-def format_no_update_message(current_version: str, channel: str, reason: str = "") -> str:
+def _update_source_display_name(source: str) -> str:
+    """Devuelve un nombre legible para el origen del feed de updates."""
+    value = str(source or "").strip().lower()
+    if value == "cache":
+        return "caché local"
+    if value == "remote":
+        return "GitHub"
+    if value == "error":
+        return "error"
+    return ""
+
+
+def format_no_update_message(
+    current_version: str,
+    channel: str,
+    reason: str = "",
+    latest_version: str = "",
+    source: str = "",
+) -> str:
     """Construye mensaje explicativo cuando no hay update elegible."""
     lines = [
         "No hay una version publicada mas nueva para tu canal actual.",
         "",
         f"Version instalada: {str(current_version or '').strip() or 'desconocida'}",
         f"Canal: {_channel_display_name(channel)}",
-        "",
-        "Este verificador compara releases publicadas; no distribuye commits sueltos.",
     ]
+    latest = str(latest_version or "").strip()
+    if latest:
+        lines.append(f"Ultima version consultada: {latest}")
+    source_name = _update_source_display_name(source)
+    if source_name:
+        lines.append(f"Origen de datos: {source_name}")
+    lines.extend(
+        [
+            "",
+            "Este verificador compara releases publicadas; no distribuye commits sueltos.",
+        ]
+    )
+    if str(source or "").strip().lower() == "cache":
+        lines.extend(
+            [
+                "",
+                "Aviso: el resultado proviene de la caché local. Si acabas de publicar una release, "
+                "vuelve a intentarlo cuando GitHub esté accesible.",
+            ]
+        )
     detail = str(reason or "").strip()
     if detail:
         lines.extend(["", f"Detalle: {detail}"])
@@ -1411,7 +1447,13 @@ class ChemusonWindow(QMainWindow):
         self._save_update_preferences()
         provider = None
         try:
-            provider = GitHubReleasesProvider("PJGV333", "Chemuson", timeout=4.0)
+            manual_check = bool(force and interactive)
+            provider = GitHubReleasesProvider(
+                "PJGV333",
+                "Chemuson",
+                timeout=8.0 if manual_check else 4.0,
+                allow_cached_fallback=not manual_check,
+            )
             updater = AutoUpdateCore(provider, self._update_settings)
             result = updater.check_for_updates(
                 get_app_version(),
@@ -1586,6 +1628,8 @@ class ChemusonWindow(QMainWindow):
                         str(getattr(result, "current_version", "") or self._app_version),
                         str(getattr(result, "channel", "") or self._update_settings.channel.value),
                         str(getattr(result, "reason", "") or ""),
+                        str(getattr(result, "latest_version", "") or ""),
+                        source,
                     ),
                 )
             return

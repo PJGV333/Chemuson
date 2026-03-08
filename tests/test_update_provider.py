@@ -184,6 +184,29 @@ def test_provider_rejects_stale_cache(monkeypatch, tmp_path) -> None:
     assert provider.last_fetch_source == "error"
 
 
+def test_provider_can_disable_cache_fallback(monkeypatch, tmp_path) -> None:
+    provider = GitHubReleasesProvider(
+        "PJGV333",
+        "Chemuson",
+        cache_dir=str(tmp_path),
+        cache_max_age_hours=24,
+        allow_cached_fallback=False,
+    )
+    provider._write_cache(_sample_releases_payload())
+
+    def _raise(_url):
+        raise OSError("offline")
+
+    monkeypatch.setattr(provider, "_read_json", _raise)
+
+    try:
+        provider.fetch_releases_payload()
+        assert False, "No debe usar caché si el fallback está deshabilitado"
+    except OSError:
+        pass
+    assert provider.last_fetch_source == "error"
+
+
 def test_provider_rejects_insecure_api_base() -> None:
     try:
         GitHubReleasesProvider("PJGV333", "Chemuson", api_base="http://api.github.com")

@@ -118,6 +118,7 @@ class GitHubReleasesProvider:
         api_base: str = "https://api.github.com",
         cache_dir: str | None = None,
         cache_max_age_hours: int = 168,
+        allow_cached_fallback: bool = True,
         retries: int = 2,
         retry_backoff_sec: float = 0.35,
         max_payload_bytes: int = 4 * 1024 * 1024,
@@ -138,6 +139,7 @@ class GitHubReleasesProvider:
             else os.path.join(os.path.expanduser("~"), ".chemuson", "update_cache")
         )
         self.cache_max_age_hours = max(1, int(cache_max_age_hours))
+        self.allow_cached_fallback = bool(allow_cached_fallback)
         self.retries = max(0, int(retries))
         self.retry_backoff_sec = max(0.0, float(retry_backoff_sec))
         self.max_payload_bytes = max(1024, int(max_payload_bytes))
@@ -254,10 +256,11 @@ class GitHubReleasesProvider:
             return releases
         except Exception as exc:
             self.last_fetch_error = exc.__class__.__name__
-            cached = self._read_cache()
-            if cached is not None:
-                self.last_fetch_source = "cache"
-                return cached
+            if self.allow_cached_fallback:
+                cached = self._read_cache()
+                if cached is not None:
+                    self.last_fetch_source = "cache"
+                    return cached
             self.last_fetch_source = "error"
             raise
 
