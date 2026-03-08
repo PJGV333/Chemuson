@@ -76,6 +76,32 @@ from chemuson.update import (
 )
 
 
+def _channel_display_name(channel: str) -> str:
+    """Devuelve un nombre legible para el canal de updates."""
+    value = str(channel or "").strip().lower()
+    if value == "stable":
+        return "estable"
+    if value == "beta":
+        return "beta"
+    return value or "desconocido"
+
+
+def format_no_update_message(current_version: str, channel: str, reason: str = "") -> str:
+    """Construye mensaje explicativo cuando no hay update elegible."""
+    lines = [
+        "No hay una version publicada mas nueva para tu canal actual.",
+        "",
+        f"Version instalada: {str(current_version or '').strip() or 'desconocida'}",
+        f"Canal: {_channel_display_name(channel)}",
+        "",
+        "Este verificador compara releases publicadas; no distribuye commits sueltos.",
+    ]
+    detail = str(reason or "").strip()
+    if detail:
+        lines.extend(["", f"Detalle: {detail}"])
+    return "\n".join(lines)
+
+
 class ChemusonWindow(QMainWindow):
     """
     Ventana principal del editor molecular Chemuson.
@@ -1532,7 +1558,11 @@ class ChemusonWindow(QMainWindow):
                 QMessageBox.information(
                     self,
                     "Actualizaciones",
-                    "No hay actualizaciones disponibles para tu canal actual.",
+                    format_no_update_message(
+                        str(getattr(result, "current_version", "") or self._app_version),
+                        str(getattr(result, "channel", "") or self._update_settings.channel.value),
+                        str(getattr(result, "reason", "") or ""),
+                    ),
                 )
             return
         candidate = getattr(result, "candidate", None)
