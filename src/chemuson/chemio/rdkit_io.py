@@ -904,9 +904,25 @@ def _molgraph_to_smiles_fallback(molgraph: MolGraph) -> str:
     edge_handled: set[tuple[int, int]] = set()
     ring_counter = 1
 
+    organic_subset = {"B", "C", "N", "O", "P", "S", "F", "Cl", "Br", "I", "b", "c", "n", "o", "p", "s"}
+
+    def simple_aromatic_atom(atom_id: int) -> bool:
+        """Indica si el átomo puede emitirse como aromático sin corchetes."""
+        atom = molgraph.atoms[atom_id]
+        return (
+            atom_id in aromatic_atoms
+            and atom.element in {"B", "C", "N", "O", "P", "S"}
+            and atom.isotope is None
+            and not atom.charge
+            and not (atom.explicit_h is not None and atom.explicit_h > 0)
+            and atom.mapping is None
+        )
+
     def bond_symbol(bond: Bond) -> str:
         """Convierte un enlace en su símbolo SMILES."""
         if bond.is_aromatic:
+            if simple_aromatic_atom(bond.a1_id) and simple_aromatic_atom(bond.a2_id):
+                return ""
             return ":"
         if bond.order == 2:
             return "="
@@ -932,7 +948,7 @@ def _molgraph_to_smiles_fallback(molgraph: MolGraph) -> str:
             explicit_h = "H" if atom.explicit_h == 1 else f"H{atom.explicit_h}"
         if atom.mapping is not None:
             return f"[{isotope}{symbol}{explicit_h}{charge}:{atom.mapping}]"
-        if isotope or explicit_h or charge or symbol not in {"B", "C", "N", "O", "P", "S", "F", "Cl", "Br", "I"}:
+        if isotope or explicit_h or charge or symbol not in organic_subset:
             return f"[{isotope}{symbol}{explicit_h}{charge}]"
         return symbol
 
@@ -975,15 +991,52 @@ def _molgraph_to_smiles_fallback(molgraph: MolGraph) -> str:
 
     def emit(node: _SmilesNode) -> str:
         """Emite SMILES recorriendo el árbol con ramificaciones."""
+        subtree_sizes: dict[int, int] = {}
+
+        def subtree_size(current: _SmilesNode) -> int:
+            cached = subtree_sizes.get(current.atom_id)
+            if cached is not None:
+                return cached
+            size = 1
+            for _symbol, child in current.children:
+                size += subtree_size(child)
+            subtree_sizes[current.atom_id] = size
+            return size
+
+        def main_child_index(children: list[tuple[str, _SmilesNode]]) -> int:
+            def bond_priority(symbol: str) -> int:
+                if symbol == "":
+                    return 3
+                if symbol == ":":
+                    return 2
+                if symbol == "=":
+                    return 1
+                if symbol == "#":
+                    return 0
+                return -1
+
+            return max(
+                range(len(children)),
+                key=lambda idx: (
+                    subtree_size(children[idx][1]),
+                    bond_priority(children[idx][0]),
+                    -children[idx][1].atom_id,
+                ),
+            )
+
         text = node.symbol
         for symbol, ring_id in node.ring_closures:
             text += ring_token(symbol, ring_id)
+        if not node.children:
+            return text
+        main_idx = main_child_index(node.children)
         for idx, (symbol, child) in enumerate(node.children):
-            branch = emit(child)
-            if idx == 0:
-                text += f"{symbol}{branch}"
-            else:
-                text += f"({symbol}{branch})"
+            branch = f"{symbol}{emit(child)}"
+            if idx == main_idx:
+                continue
+            text += f"({branch})"
+        main_symbol, main_child = node.children[main_idx]
+        text += f"{main_symbol}{emit(main_child)}"
         return text
 
     seen: set[int] = set()

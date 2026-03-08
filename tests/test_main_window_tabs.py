@@ -150,6 +150,40 @@ def test_insert_molgraph_skips_duplicate_bonds() -> None:
     assert len(canvas.model.bonds) == 1
 
 
+def test_copy_as_smiles_uses_selected_structure_only(monkeypatch) -> None:
+    window = ChemusonWindow()
+    try:
+        first_a = window.canvas.model.add_atom("C", 10.0, 10.0)
+        first_b = window.canvas.model.add_atom("C", 40.0, 10.0)
+        second_a = window.canvas.model.add_atom("N", 110.0, 10.0)
+        second_b = window.canvas.model.add_atom("N", 140.0, 10.0)
+        window.canvas.model.add_bond(first_a.id, first_b.id, order=1)
+        window.canvas.model.add_bond(second_a.id, second_b.id, order=1)
+        window.canvas._rebuild_items_from_model()
+
+        window.canvas.scene.clearSelection()
+        window.canvas.atom_items[first_a.id].setSelected(True)
+        window.canvas.atom_items[first_b.id].setSelected(True)
+        window.canvas._sync_selection_from_scene()
+
+        captured: dict[str, set[int]] = {}
+
+        def _fake_molgraph_to_smiles(graph: MolGraph) -> str:
+            captured["atom_ids"] = set(graph.atoms.keys())
+            return "selected-smiles"
+
+        monkeypatch.setattr(rdkit_io, "molgraph_to_smiles", _fake_molgraph_to_smiles)
+
+        window._on_copy_as("smiles")
+
+        assert captured["atom_ids"] == {first_a.id, first_b.id}
+        assert second_a.id not in captured["atom_ids"]
+        assert second_b.id not in captured["atom_ids"]
+        assert QApplication.clipboard().text() == "selected-smiles"
+    finally:
+        window.close()
+
+
 def test_gallery_template_selection_enters_insert_mode() -> None:
     window = ChemusonWindow()
     try:

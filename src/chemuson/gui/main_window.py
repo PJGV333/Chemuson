@@ -2315,19 +2315,24 @@ class ChemusonWindow(QMainWindow):
         try:
             from PyQt6.QtWidgets import QApplication
             clipboard = QApplication.clipboard()
+            graph, _bbox = self.canvas._analysis_graph_and_bbox()
+            target_graph = graph if graph is not None else self.canvas.graph
             
             if format == "smiles":
                 from chemuson.chemio.rdkit_io import molgraph_to_smiles
-                text = molgraph_to_smiles(self.canvas.graph)
+                text = molgraph_to_smiles(target_graph) if target_graph.atoms else ""
             elif format == "molfile":
                 from chemuson.chemio.rdkit_io import molgraph_to_molfile
-                text = molgraph_to_molfile(self.canvas.graph)
+                text = molgraph_to_molfile(target_graph) if target_graph.atoms else ""
             elif format == "inchi":
                 # InChI requires additional RDKit import
                 from chemuson.chemio.rdkit_io import molgraph_to_rdkit
                 from rdkit.Chem.inchi import MolToInchi
-                mol = molgraph_to_rdkit(self.canvas.graph)
-                text = MolToInchi(mol)
+                if target_graph.atoms:
+                    mol = molgraph_to_rdkit(target_graph)
+                    text = MolToInchi(mol)
+                else:
+                    text = ""
             else:
                 text = ""
             

@@ -7,12 +7,14 @@ import unittest
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.core.model import MolGraph
+from chemuson.chemio import rdkit_io
 from chemuson.chemio.rdkit_io import (
     kekulize_display_orders,
     molfile_to_molgraph,
     molgraph_to_molfile,
     molgraph_to_smiles,
     molgraph_to_rdkit_with_map,
+    smiles_to_molgraph,
 )
 
 try:
@@ -24,6 +26,26 @@ except Exception:
 
 class RdkitRoundtripTest(unittest.TestCase):
     """Casos de prueba para RdkitRoundtripTest."""
+
+    def test_fallback_smiles_keeps_carbonyl_branch_on_parent_atom(self):
+        graph = MolGraph()
+        n1 = graph.add_atom("N", 0.0, 0.0)
+        carbonyl = graph.add_atom("C", 1.5, 0.0)
+        oxygen = graph.add_atom("O", 3.0, 0.0)
+        n2 = graph.add_atom("N", 1.5, -1.5)
+        graph.add_bond(n1.id, carbonyl.id, order=1)
+        graph.add_bond(carbonyl.id, oxygen.id, order=2)
+        graph.add_bond(carbonyl.id, n2.id, order=1)
+
+        original = rdkit_io._rdkit_available
+        rdkit_io._rdkit_available = lambda: False
+        try:
+            smiles = molgraph_to_smiles(graph)
+        finally:
+            rdkit_io._rdkit_available = original
+
+        self.assertEqual(smiles, "NC(=O)N")
+
     @unittest.skipIf(not RDKit_AVAILABLE, "RDKit no disponible")
     def test_molgraph_roundtrip_smiles(self):
         """Verifica molgraph roundtrip smiles.
@@ -42,6 +64,16 @@ class RdkitRoundtripTest(unittest.TestCase):
         smiles = molgraph_to_smiles(graph2)
 
         self.assertIn(smiles, {"CC", "C-C"})
+
+    @unittest.skipIf(not RDKit_AVAILABLE, "RDKit no disponible")
+    def test_smiles_import_regression_for_naphthyl_urea(self):
+        smiles = "O=C(NCCCl)Nc1cccc2ccccc12"
+        expected = Chem.MolToSmiles(Chem.MolFromSmiles(smiles), canonical=True)
+
+        graph = smiles_to_molgraph(smiles)
+
+        self.assertGreater(len(graph.atoms), 0)
+        self.assertEqual(molgraph_to_smiles(graph), expected)
 
     @unittest.skipIf(not RDKit_AVAILABLE, "RDKit no disponible")
     def test_duplicate_bonds_do_not_crash_rdkit_conversion(self):
