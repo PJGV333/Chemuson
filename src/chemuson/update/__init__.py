@@ -7,6 +7,15 @@ from chemuson.update.policy import (
     mark_checked,
     should_check_now,
 )
+from chemuson.update.portable import (
+    APPIMAGE_ENV_VAR,
+    PortableUpdateContext,
+    build_portable_update_launcher_command,
+    detect_portable_update_context,
+    is_portable_target_writable,
+    launch_portable_update_script,
+    write_portable_update_script,
+)
 from chemuson.update.provider import GitHubReleasesProvider, detect_platform_tag
 from chemuson.update.rollback import RollbackManager
 from chemuson.update.security import SignatureVerifier
@@ -57,6 +66,13 @@ __all__ = [
     "mark_checked",
     "can_offer_update",
     "is_downgrade_suspected",
+    "APPIMAGE_ENV_VAR",
+    "PortableUpdateContext",
+    "detect_portable_update_context",
+    "is_portable_target_writable",
+    "build_portable_update_launcher_command",
+    "write_portable_update_script",
+    "launch_portable_update_script",
     "DownloadedUpdate",
     "ReleaseAsset",
     "ReleaseInfo",

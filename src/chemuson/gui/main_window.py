@@ -63,16 +63,21 @@ from chemuson.version import get_app_version
 from chemuson.update import (
     AutoUpdateCore,
     GitHubReleasesProvider,
+    PortableUpdateContext,
     UpdateChannel,
     UpdateMode,
     UpdateSettings,
     UpdateTelemetryLogger,
     choose_windows_asset_flavor,
+    detect_portable_update_context,
     detect_windows_install_context,
+    is_portable_target_writable,
     is_windows_installer_asset,
+    launch_portable_update_script,
     launch_inno_installer,
     mark_checked,
     should_check_now,
+    write_portable_update_script,
 )
 
 
@@ -198,9 +203,24 @@ class ChemusonWindow(QMainWindow):
         self._update_settings = self._load_update_preferences()
         self._name_advanced_default, self._name_rdkit_isolated_default = self._load_naming_preferences()
         self._windows_install_context = detect_windows_install_context()
+        self._portable_update_context = detect_portable_update_context(
+            windows_context=self._windows_install_context
+        )
         self._pending_windows_installer_path = ""
         self._pending_windows_installer_version = ""
         self._pending_windows_download = None
+        self._pending_portable_target_path = ""
+        self._pending_portable_version = ""
+        self._pending_portable_download = None
+        self._pending_portable_relaunch = False
+        self._pending_portable_context = PortableUpdateContext(
+            is_portable=False,
+            is_windows=False,
+            is_appimage=False,
+            target_path="",
+            executable_path="",
+            display_name="",
+        )
         self._update_telemetry = UpdateTelemetryLogger()
         self._recent_files = self._load_recent_files()
         self.template_library = TemplateLibrary()
@@ -1401,8 +1421,19 @@ class ChemusonWindow(QMainWindow):
     def _preferred_update_asset_flavor(self) -> str | None:
         """Devuelve preferencia de asset según contexto de ejecución."""
         self._windows_install_context = detect_windows_install_context()
+        self._portable_update_context = detect_portable_update_context(
+            windows_context=self._windows_install_context
+        )
         flavor = choose_windows_asset_flavor(self._windows_install_context)
         return flavor or None
+
+    def _current_portable_update_context(self) -> PortableUpdateContext:
+        """Recalcula contexto de auto-update para AppImage/binario portable."""
+        self._windows_install_context = detect_windows_install_context()
+        self._portable_update_context = detect_portable_update_context(
+            windows_context=self._windows_install_context
+        )
+        return self._portable_update_context
 
     def _log_update_event(self, event: str, **fields) -> None:
         """Registra telemetría local mínima de update (sin datos sensibles)."""
@@ -1574,6 +1605,68 @@ class ChemusonWindow(QMainWindow):
         )
         return True
 
+    def _queue_portable_binary_update(
+        self,
+        candidate,
+        context: PortableUpdateContext,
+        show_errors: bool = True,
+    ) -> bool:
+        """Descarga un binario portable y lo deja listo para reemplazo al salir."""
+        candidate_version = str(getattr(candidate.release, "version", "") or "")
+        target_path = str(getattr(context, "target_path", "") or "").strip()
+        if (
+            self._pending_portable_target_path
+            and self._pending_portable_target_path == target_path
+            and self._pending_portable_version == candidate_version
+            and self._pending_portable_download is not None
+            and os.path.exists(str(getattr(self._pending_portable_download, "artifact_path", "") or ""))
+        ):
+            self._log_update_event(
+                "queue_reused",
+                latest_version=candidate_version,
+                context="portable_binary",
+            )
+            return True
+        try:
+            if not context.can_self_update:
+                raise RuntimeError("No se pudo determinar la ruta del ejecutable actual.")
+            if not is_portable_target_writable(target_path):
+                raise PermissionError(
+                    "Chemuson no tiene permisos para reemplazar el ejecutable actual."
+                )
+            downloaded = self._download_update_candidate(candidate)
+        except Exception as exc:
+            self._log_update_event(
+                "queue_failed",
+                latest_version=candidate_version,
+                context="portable_binary",
+                error_type=exc.__class__.__name__,
+            )
+            if show_errors:
+                QMessageBox.warning(
+                    self,
+                    "Actualización",
+                    f"No se pudo preparar la actualización portable:\n{exc}",
+                )
+            else:
+                self.statusBar().showMessage(
+                    f"No se pudo preparar actualización automática: {exc}",
+                    12000,
+                )
+            return False
+        self._pending_portable_download = downloaded
+        self._pending_portable_target_path = target_path
+        self._pending_portable_version = candidate_version
+        self._pending_portable_relaunch = False
+        self._pending_portable_context = context
+        self._log_update_event(
+            "queue_ok",
+            latest_version=candidate_version,
+            context="portable_binary",
+            target_kind="appimage" if context.is_appimage else "portable",
+        )
+        return True
+
     def _offer_windows_installer_update(self, result, interactive: bool) -> None:
         """Gestiona oferta/cola de update para instalaciones Windows."""
         candidate = getattr(result, "candidate", None)
@@ -1617,6 +1710,57 @@ class ChemusonWindow(QMainWindow):
             if close_now == QMessageBox.StandardButton.Yes:
                 self.close()
 
+    def _offer_portable_binary_update(
+        self,
+        result,
+        interactive: bool,
+        context: PortableUpdateContext,
+    ) -> None:
+        """Gestiona oferta/cola de update para AppImage o binario portable."""
+        candidate = getattr(result, "candidate", None)
+        if candidate is None:
+            return
+        version = str(getattr(result, "latest_version", "") or "")
+        target_label = "AppImage" if context.is_appimage else "ejecutable portable"
+        if self._update_settings.mode == UpdateMode.SILENT and not interactive:
+            if self._queue_portable_binary_update(candidate, context, show_errors=False):
+                self.statusBar().showMessage(
+                    f"Actualización {version} lista para reemplazar el {target_label} al cerrar Chemuson.",
+                    20000,
+                )
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Actualización disponible",
+            (
+                f"Hay una nueva versión disponible ({version}).\n\n"
+                f"¿Quieres descargarla y reemplazar el {target_label} actual al cerrar Chemuson?"
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        if not self._queue_portable_binary_update(candidate, context):
+            return
+        self.statusBar().showMessage(
+            f"Actualización {version} preparada. Se aplicará al cerrar Chemuson.",
+            20000,
+        )
+        if interactive:
+            close_now = QMessageBox.question(
+                self,
+                "Aplicar actualización",
+                "La actualización está lista.\n¿Deseas cerrar Chemuson ahora para completarla?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if close_now == QMessageBox.StandardButton.Yes:
+                self._pending_portable_relaunch = True
+                if not self.close():
+                    self._pending_portable_relaunch = False
+
     def _handle_update_check_result(self, result, interactive: bool = False, source: str = "") -> None:
         """Notifica updates y habilita flujo de instalador en Windows instalado."""
         if not getattr(result, "available", False):
@@ -1646,6 +1790,15 @@ class ChemusonWindow(QMainWindow):
             and is_windows_installer_asset(artifact_name)
         ):
             self._offer_windows_installer_update(result, interactive=interactive)
+            return
+
+        portable_context = self._current_portable_update_context()
+        if candidate is not None and portable_context.can_self_update:
+            self._offer_portable_binary_update(
+                result,
+                interactive=interactive,
+                context=portable_context,
+            )
             return
 
         message = (
@@ -1718,6 +1871,99 @@ class ChemusonWindow(QMainWindow):
                 self._pending_windows_download = None
                 self._pending_windows_installer_path = ""
                 self._pending_windows_installer_version = ""
+
+    def _apply_pending_portable_update_on_exit(self) -> bool:
+        """Lanza helper para reemplazar AppImage/binario portable al cerrar."""
+        target_path = str(self._pending_portable_target_path or "").strip()
+        if not target_path:
+            return True
+        clear_pending = False
+        try:
+            downloaded = self._pending_portable_download
+            if downloaded is None:
+                raise RuntimeError("No hay metadata de verificación del binario pendiente.")
+            provider = GitHubReleasesProvider("PJGV333", "Chemuson", timeout=6.0)
+            updater = AutoUpdateCore(provider, self._update_settings)
+            verify_result = updater.verify_download(downloaded)
+            if not verify_result.ok:
+                raise RuntimeError(
+                    f"No se reemplazará binario no verificado: {verify_result.reason}"
+                )
+            version = str(self._pending_portable_version or "latest").strip() or "latest"
+            script_dir = os.path.dirname(str(getattr(downloaded, "artifact_path", "") or ""))
+            rollback_dir = os.path.join(os.path.expanduser("~"), ".chemuson", "rollback")
+            os.makedirs(rollback_dir, exist_ok=True)
+            backup_name = (
+                f"{os.path.basename(target_path)}."
+                f"{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.bak"
+            )
+            backup_path = os.path.join(rollback_dir, backup_name)
+            log_path = os.path.join(script_dir, "portable-update.log")
+            script_name = (
+                "apply-portable-update.cmd"
+                if self._pending_portable_context.is_windows
+                else "apply-portable-update.sh"
+            )
+            script_path = os.path.join(script_dir, script_name)
+            write_portable_update_script(
+                script_path,
+                source_path=str(getattr(downloaded, "artifact_path", "") or ""),
+                target_path=target_path,
+                backup_path=backup_path,
+                log_path=log_path,
+                pid=os.getpid(),
+                relaunch=bool(self._pending_portable_relaunch),
+                platform_name="windows" if self._pending_portable_context.is_windows else "linux",
+            )
+            launch_portable_update_script(
+                script_path,
+                platform_name="windows" if self._pending_portable_context.is_windows else "linux",
+            )
+            self._log_update_event(
+                "apply_queued",
+                latest_version=version,
+                context="portable_binary",
+                result="helper_launched",
+                target_kind="appimage" if self._pending_portable_context.is_appimage else "portable",
+            )
+            clear_pending = True
+            return True
+        except Exception as exc:
+            self._log_update_event(
+                "apply_failed",
+                latest_version=self._pending_portable_version or "",
+                context="portable_binary",
+                error_type=exc.__class__.__name__,
+            )
+            reply = QMessageBox.question(
+                self,
+                "Actualización pendiente",
+                (
+                    "No se pudo preparar el reemplazo del ejecutable pendiente.\n"
+                    f"Error: {exc}\n\n"
+                    "¿Deseas salir de todas formas sin aplicar la actualización?"
+                ),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                clear_pending = True
+                return True
+            return False
+        finally:
+            if clear_pending:
+                self._pending_portable_download = None
+                self._pending_portable_target_path = ""
+                self._pending_portable_version = ""
+                self._pending_portable_relaunch = False
+                self._pending_portable_context = PortableUpdateContext(
+                    is_portable=False,
+                    is_windows=False,
+                    is_appimage=False,
+                    target_path="",
+                    executable_path="",
+                    display_name="",
+                )
 
     def _add_recent_file(self, filepath: str) -> None:
         """Método auxiliar para  add recent file.
@@ -2330,6 +2576,9 @@ class ChemusonWindow(QMainWindow):
             if not self._confirm_discard_changes(canvas):
                 event.ignore()
                 return
+        if not self._apply_pending_portable_update_on_exit():
+            event.ignore()
+            return
         if not self._apply_pending_windows_update_on_exit():
             event.ignore()
             return
