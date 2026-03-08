@@ -9,6 +9,7 @@ para añadir, modificar y validar la química dibujada.
 from __future__ import annotations
 
 import math
+from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Set
@@ -852,6 +853,76 @@ class MolGraph:
                 count += 1
         return max(0, int(count))
 
+    def _aromatic_neighbors(self, atom_id: int) -> List[int]:
+        """Devuelve vecinos conectados por enlaces aromáticos no coordinativos."""
+        neighbors: List[int] = []
+        for bond in self.bonds.values():
+            if bond.style == BondStyle.COORDINATION or not bond.is_aromatic:
+                continue
+            if bond.a1_id == atom_id:
+                neighbors.append(bond.a2_id)
+            elif bond.a2_id == atom_id:
+                neighbors.append(bond.a1_id)
+        return neighbors
+
+    def _shortest_aromatic_path_length(
+        self,
+        start_atom_id: int,
+        end_atom_id: int,
+        blocked_atom_id: int,
+        max_edges: int,
+    ) -> Optional[int]:
+        """Busca la ruta aromática más corta entre dos vecinos excluyendo un átomo."""
+        if start_atom_id == end_atom_id:
+            return 0
+        queue = deque([(start_atom_id, 0)])
+        visited = {blocked_atom_id, start_atom_id}
+        while queue:
+            current_atom_id, distance = queue.popleft()
+            if distance >= max_edges:
+                continue
+            for neighbor_id in self._aromatic_neighbors(current_atom_id):
+                if neighbor_id == blocked_atom_id:
+                    continue
+                next_distance = distance + 1
+                if neighbor_id == end_atom_id:
+                    return next_distance
+                if next_distance >= max_edges or neighbor_id in visited:
+                    continue
+                visited.add(neighbor_id)
+                queue.append((neighbor_id, next_distance))
+        return None
+
+    def _is_pyrrolic_like_aromatic_n(self, atom_id: int, atom: Atom) -> bool:
+        """Detecta N aromático neutro de cinco miembros que conserva un H implícito."""
+        if atom.element != "N" or int(getattr(atom, "formal_charge", 0) or 0) != 0:
+            return False
+        if bool(getattr(atom, "no_implicit", False)):
+            return False
+        if self.explicit_hydrogen_count(atom_id) > 0:
+            return False
+
+        aromatic_neighbors = self._aromatic_neighbors(atom_id)
+        if len(aromatic_neighbors) != 2:
+            return False
+
+        non_coordination_degree = 0
+        for bond in self.bonds.values():
+            if bond.style == BondStyle.COORDINATION:
+                continue
+            if bond.a1_id == atom_id or bond.a2_id == atom_id:
+                non_coordination_degree += 1
+        if non_coordination_degree != 2:
+            return False
+
+        path_length = self._shortest_aromatic_path_length(
+            aromatic_neighbors[0],
+            aromatic_neighbors[1],
+            blocked_atom_id=atom_id,
+            max_edges=4,
+        )
+        return path_length == 3
+
     def _choose_implicit_h(self, atom: Atom, base_valence: float, allowed: List[int]) -> int:
         """Calcula H implícitos para llevar al estado de menor valencia permitida."""
         if atom.element not in IMPLICIT_H_DEFAULT_ELEMENTS:
@@ -881,7 +952,13 @@ class MolGraph:
         if not allowed or -1 in allowed:
             atom.implicit_h = 0
             return 0
-        base_valence = self.bond_order_sum(atom_id, aromatic_order=1.0) + self.explicit_hydrogen_count(atom_id)
+        if self._is_pyrrolic_like_aromatic_n(atom_id, atom):
+            atom.implicit_h = 1
+            return 1
+        base_valence = (
+            self.bond_order_sum(atom_id, aromatic_order=1.5)
+            + self.explicit_hydrogen_count(atom_id)
+        )
         implicit_h = self._choose_implicit_h(atom, base_valence, allowed)
         atom.implicit_h = int(max(0, implicit_h))
         return atom.implicit_h

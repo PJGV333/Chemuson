@@ -147,6 +147,35 @@ class MolGraphTest(unittest.TestCase):
             graph.add_bond(n.id, carbon.id, order=1)
         self.assertNotIn(n.id, graph.validate())
 
+    def test_implicit_h_count_keeps_pyridine_like_aromatic_n_neutral(self):
+        """El N aromático de un anillo de seis miembros no debe recibir H implícito."""
+        graph = MolGraph()
+        atoms = [graph.add_atom("N" if idx == 0 else "C", float(idx), 0.0) for idx in range(6)]
+        for idx in range(6):
+            graph.add_bond(
+                atoms[idx].id,
+                atoms[(idx + 1) % 6].id,
+                order=1,
+                is_aromatic=True,
+            )
+
+        self.assertEqual(graph.implicit_h_count(atoms[0].id), 0)
+        self.assertEqual(graph.implicit_h_count(atoms[1].id), 1)
+
+    def test_implicit_h_count_preserves_pyrrolic_default_in_five_member_ring(self):
+        """El ajuste piridínico no debe eliminar el H implícito de un anillo de cinco miembros."""
+        graph = MolGraph()
+        atoms = [graph.add_atom("N" if idx == 0 else "C", float(idx), 0.0) for idx in range(5)]
+        for idx in range(5):
+            graph.add_bond(
+                atoms[idx].id,
+                atoms[(idx + 1) % 5].id,
+                order=1,
+                is_aromatic=True,
+            )
+
+        self.assertEqual(graph.implicit_h_count(atoms[0].id), 1)
+
     def test_validate_flags_pentavalent_carbon_when_charged(self):
         """C+ pentavalente sigue siendo inválido con regla iso-electrónica."""
         graph = MolGraph()
