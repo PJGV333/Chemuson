@@ -76,6 +76,9 @@ from chemuson.update import (
 )
 
 
+FLATPAK_APP_ID = "io.github.PJGV333.Chemuson"
+
+
 def _channel_display_name(channel: str) -> str:
     """Devuelve un nombre legible para el canal de updates."""
     value = str(channel or "").strip().lower()
@@ -100,6 +103,26 @@ def format_no_update_message(current_version: str, channel: str, reason: str = "
     if detail:
         lines.extend(["", f"Detalle: {detail}"])
     return "\n".join(lines)
+
+
+def is_running_in_flatpak() -> bool:
+    """Detecta si Chemuson corre dentro de un sandbox Flatpak."""
+    flatpak_id = str(os.getenv("FLATPAK_ID", "") or "").strip()
+    if flatpak_id:
+        return True
+    return os.path.exists("/.flatpak-info")
+
+
+def format_update_disabled_message(flatpak: bool = False, app_id: str = FLATPAK_APP_ID) -> str:
+    """Construye mensaje cuando el chequeo interno de updates está deshabilitado."""
+    if flatpak:
+        return (
+            "Esta edicion Flatpak se actualiza con Flatpak, no desde Chemuson.\n\n"
+            f"Usa:\nflatpak update {app_id}\n\n"
+            "Si instalaste desde un bundle local sin un remote configurado, "
+            "instala el bundle mas reciente manualmente."
+        )
+    return "El chequeo de actualizaciones está deshabilitado por entorno."
 
 
 class ChemusonWindow(QMainWindow):
@@ -1362,9 +1385,10 @@ class ChemusonWindow(QMainWindow):
             mode=self._update_settings.mode.value,
         )
         if os.getenv("CHEMUSON_DISABLE_UPDATE_CHECK", "").strip().lower() in {"1", "true", "yes"}:
+            flatpak_runtime = is_running_in_flatpak()
             self._log_update_event(
                 "check_skipped",
-                reason_code="disabled_env",
+                reason_code="disabled_flatpak" if flatpak_runtime else "disabled_env",
                 channel=self._update_settings.channel.value,
                 mode=self._update_settings.mode.value,
             )
@@ -1372,7 +1396,7 @@ class ChemusonWindow(QMainWindow):
                 QMessageBox.information(
                     self,
                     "Actualizaciones",
-                    "El chequeo de actualizaciones está deshabilitado por entorno.",
+                    format_update_disabled_message(flatpak=flatpak_runtime),
                 )
             return
         if not force and not should_check_now(self._update_settings):
