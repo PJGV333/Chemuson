@@ -42,6 +42,44 @@ def _normalize(vx, vy):
     return (vx / length, vy / length)
 
 
+def _default_wedge_base_corners(item: BondItem, atom_a: Atom, atom_b: Atom):
+    """Reconstruye la base ideal previa al miter final."""
+    dx = atom_b.x - atom_a.x
+    dy = atom_b.y - atom_a.y
+    length = math.hypot(dx, dy)
+    assert length > 1e-6
+
+    stroke_px = item._stroke_px if item._stroke_px is not None else item._style.stroke_px
+    stroke_scale = stroke_px / item._style.stroke_px if item._style.stroke_px > 1e-6 else 1.0
+    width = item._style.wedge_width_px * (0.72 + 0.28 * math.sqrt(max(stroke_scale, 1e-6)))
+    width = max(width, stroke_px * 2.3)
+    width = min(width, length * 0.34)
+
+    trim_start = item._label_shrink_start + item._endpoint_trim_start
+    trim_end = item._label_shrink_end + item._endpoint_trim_end
+    tip, base1, base2 = compute_wedge_points(
+        (atom_a.x, atom_a.y),
+        (atom_b.x, atom_b.y),
+        width,
+        trim_start=trim_start,
+        trim_end=trim_end,
+    )
+    base_cx = (base1[0] + base2[0]) * 0.5
+    base_cy = (base1[1] + base2[1]) * 0.5
+    wedge_dx = base_cx - tip[0]
+    wedge_dy = base_cy - tip[1]
+    wedge_len = math.hypot(wedge_dx, wedge_dy)
+    assert wedge_len > 1e-6
+    w_ux = wedge_dx / wedge_len
+    w_uy = wedge_dy / wedge_len
+    w_nx = -w_uy
+    w_ny = w_ux
+    half_w = width * 0.5
+    base_pos = (base_cx + w_nx * half_w, base_cy + w_ny * half_w)
+    base_neg = (base_cx - w_nx * half_w, base_cy - w_ny * half_w)
+    return base_pos, base_neg, (base_cx, base_cy), (w_ux, w_uy), stroke_px
+
+
 @pytest.fixture(scope="module", autouse=True)
 def _qapp():
     return QApplication.instance() or QApplication([])
@@ -291,6 +329,135 @@ def test_wedge_join_context_includes_bold_neighbor():
     # El vecino bold debe entrar con un ancho mayor que el trazo base.
     max_neighbor_width = max(neighbor[2] for neighbor in wedge_item._wedge_join_end)
     assert max_neighbor_width > canvas.drawing_style.stroke_px * 1.5
+
+
+def test_ring_wedge_respects_label_clearance_on_labeled_atom():
+    """Una cuña en anillo no debe meterse debajo de la etiqueta del heteroátomo."""
+    canvas = ChemusonCanvas()
+
+    atom_n = canvas.model.add_atom("N", 200.0, 200.0, formal_charge=1)
+    atom_a = canvas.model.add_atom("C", 240.0, 170.0)
+    atom_b = canvas.model.add_atom("C", 280.0, 210.0)
+    atom_c = canvas.model.add_atom("C", 250.0, 250.0)
+    atom_d = canvas.model.add_atom("C", 190.0, 245.0)
+
+    canvas.model.add_bond(atom_n.id, atom_a.id, style=BondStyle.BOLD)
+    canvas.model.add_bond(atom_a.id, atom_b.id)
+    canvas.model.add_bond(atom_b.id, atom_c.id)
+    canvas.model.add_bond(atom_c.id, atom_d.id)
+    wedge = canvas.model.add_bond(
+        atom_d.id,
+        atom_n.id,
+        style=BondStyle.WEDGE,
+        stereo=BondStereo.UP,
+    )
+
+    canvas._rebuild_items_from_model()
+
+    item = canvas.bond_items[wedge.id]
+    atom_item = canvas.atom_items[atom_n.id]
+    wedge_path = item.mapToScene(item.path())
+    label_shape = atom_item.label.mapToScene(atom_item.label.shape())
+    charge_shape = atom_item.charge_label.mapToScene(atom_item.charge_label.shape())
+
+    assert item._bond_in_ring
+    assert item._label_shrink_end > 0.0
+    assert item._label_shrink_end < 19.0
+    assert not wedge_path.intersects(label_shape)
+    assert not wedge_path.intersects(charge_shape)
+
+
+def test_wedge_neighbor_selection_keeps_opposite_sides_with_bold_asymmetry():
+    """Cada esquina de la base debe elegir el vecino de su lado aunque uno sea bold."""
+    canvas = ChemusonCanvas()
+
+    atom_n = canvas.model.add_atom("N", 200.0, 200.0, formal_charge=1)
+    atom_tip = canvas.model.add_atom("C", 190.0, 245.0)
+    atom_left = canvas.model.add_atom("C", 160.0, 220.0)
+    atom_right = canvas.model.add_atom("C", 250.0, 220.0)
+
+    wedge = canvas.model.add_bond(
+        atom_tip.id,
+        atom_n.id,
+        style=BondStyle.WEDGE,
+        stereo=BondStereo.UP,
+    )
+    plain = canvas.model.add_bond(atom_n.id, atom_left.id, style=BondStyle.PLAIN)
+    bold = canvas.model.add_bond(atom_n.id, atom_right.id, style=BondStyle.BOLD)
+
+    canvas._rebuild_items_from_model()
+
+    item = canvas.bond_items[wedge.id]
+    base_pos, base_neg, (base_cx, base_cy), (axis_ux, axis_uy), stroke_px = _default_wedge_base_corners(
+        item,
+        canvas.model.get_atom(wedge.a1_id),
+        canvas.model.get_atom(wedge.a2_id),
+    )
+
+    pos_neighbor = item._pick_wedge_neighbor_for_corner(
+        base_pos,
+        base_cx,
+        base_cy,
+        axis_ux,
+        axis_uy,
+        item._wedge_join_end,
+        stroke_px,
+    )
+    neg_neighbor = item._pick_wedge_neighbor_for_corner(
+        base_neg,
+        base_cx,
+        base_cy,
+        axis_ux,
+        axis_uy,
+        item._wedge_join_end,
+        stroke_px,
+    )
+
+    assert pos_neighbor is not None
+    assert neg_neighbor is not None
+
+    expected_widths = sorted(
+        [
+            canvas._bond_render_width(canvas.model.get_bond(plain.id)),
+            canvas._bond_render_width(canvas.model.get_bond(bold.id)),
+        ]
+    )
+    selected_widths = sorted([pos_neighbor[2], neg_neighbor[2]])
+    assert selected_widths == pytest.approx(expected_widths, rel=1e-6)
+
+
+def test_wedge_tip_on_labeled_nitrogen_is_not_overtrimmed():
+    """La punta de la cuña en un heteroátomo etiquetado no debe separarse en exceso."""
+    canvas = ChemusonCanvas()
+
+    atom_left = canvas.model.add_atom("C", 430.0, 320.0)
+    atom_n = canvas.model.add_atom("N", 490.0, 280.0, formal_charge=1)
+    atom_wedge = canvas.model.add_atom("C", 515.0, 338.0)
+    atom_plain = canvas.model.add_atom("C", 560.0, 300.0)
+    atom_bold = canvas.model.add_atom("C", 545.0, 365.0)
+
+    canvas.model.add_bond(atom_left.id, atom_n.id, style=BondStyle.PLAIN)
+    wedge = canvas.model.add_bond(
+        atom_n.id,
+        atom_wedge.id,
+        style=BondStyle.WEDGE,
+        stereo=BondStereo.UP,
+    )
+    canvas.model.add_bond(atom_n.id, atom_plain.id, style=BondStyle.PLAIN)
+    canvas.model.add_bond(atom_wedge.id, atom_bold.id, style=BondStyle.BOLD)
+    canvas.model.add_bond(atom_plain.id, atom_bold.id, style=BondStyle.PLAIN)
+
+    canvas._rebuild_items_from_model()
+
+    item = canvas.bond_items[wedge.id]
+    atom_item = canvas.atom_items[atom_n.id]
+    wedge_path = item.mapToScene(item.path())
+    label_shape = atom_item.label.mapToScene(atom_item.label.shape())
+    charge_shape = atom_item.charge_label.mapToScene(atom_item.charge_label.shape())
+
+    assert item._label_shrink_start < 12.0
+    assert not wedge_path.intersects(label_shape)
+    assert not wedge_path.intersects(charge_shape)
 
 
 def test_aromatic_double_bold_uses_thin_secondary_pi_line():

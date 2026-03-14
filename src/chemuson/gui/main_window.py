@@ -3358,6 +3358,71 @@ class ChemusonWindow(QMainWindow):
         }
 
     @classmethod
+    def _align_coords_to_reference(
+        cls,
+        reference: dict[int, tuple[float, float]],
+        coords: dict[int, tuple[float, float]],
+    ) -> dict[int, tuple[float, float]]:
+        """Alinea `coords` a la pose actual usando rotación rígida o reflexión."""
+        if not reference or not coords:
+            return dict(coords)
+
+        common_ids = [atom_id for atom_id in reference if atom_id in coords]
+        if not common_ids:
+            return dict(coords)
+
+        ref_common = {atom_id: reference[atom_id] for atom_id in common_ids}
+        coord_common = {atom_id: coords[atom_id] for atom_id in common_ids}
+        ref_cx, ref_cy = cls._coords_center(ref_common)
+        src_cx, src_cy = cls._coords_center(coord_common)
+
+        if len(common_ids) == 1:
+            dx = ref_cx - src_cx
+            dy = ref_cy - src_cy
+            return {
+                atom_id: (x + dx, y + dy)
+                for atom_id, (x, y) in coords.items()
+            }
+
+        def _candidate(mirror_x: bool) -> tuple[dict[int, tuple[float, float]], float]:
+            sum_cos = 0.0
+            sum_sin = 0.0
+            for atom_id in common_ids:
+                qx, qy = coords[atom_id]
+                px, py = reference[atom_id]
+                qx -= src_cx
+                qy -= src_cy
+                px -= ref_cx
+                py -= ref_cy
+                if mirror_x:
+                    qx = -qx
+                sum_cos += qx * px + qy * py
+                sum_sin += qx * py - qy * px
+
+            theta = math.atan2(sum_sin, sum_cos)
+            cos_t = math.cos(theta)
+            sin_t = math.sin(theta)
+
+            transformed: dict[int, tuple[float, float]] = {}
+            error = 0.0
+            for atom_id, (x, y) in coords.items():
+                qx = x - src_cx
+                qy = y - src_cy
+                if mirror_x:
+                    qx = -qx
+                rx = qx * cos_t - qy * sin_t + ref_cx
+                ry = qx * sin_t + qy * cos_t + ref_cy
+                transformed[atom_id] = (rx, ry)
+                if atom_id in reference:
+                    px, py = reference[atom_id]
+                    error += (rx - px) ** 2 + (ry - py) ** 2
+            return transformed, error
+
+        direct, direct_error = _candidate(False)
+        mirrored, mirrored_error = _candidate(True)
+        return mirrored if mirrored_error < direct_error else direct
+
+    @classmethod
     def _project_missing_hydrogen_coords(
         cls,
         before: dict[int, tuple[float, float]],
@@ -3527,6 +3592,7 @@ class ChemusonWindow(QMainWindow):
 
             target_bond_len = before_avg_len if before_avg_len > 1e-6 else float(self.canvas.state.bond_length)
             raw_after = self._rescale_coords_to_bond_length(raw_after, scale_bonds, target_bond_len)
+            raw_after = self._align_coords_to_reference(before, raw_after)
             after_cx, after_cy = self._coords_center(raw_after)
             after = {}
             for aid, (x, y) in raw_after.items():

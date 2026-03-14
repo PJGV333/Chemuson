@@ -1520,8 +1520,8 @@ class BondItem(QGraphicsPathItem):
         """Elige el vecino cuya edge line queda más cerca de una esquina."""
         if not neighbors:
             return None
-        best: WedgeNeighbor | None = None
-        best_d = 1e12
+        best_same_side: WedgeNeighbor | None = None
+        best_same_side_d = 1e12
         fallback: WedgeNeighbor | None = None
         fallback_d = 1e12
         cx, cy = corner_xy
@@ -1535,18 +1535,20 @@ class BondItem(QGraphicsPathItem):
             edge_py = edge_cy + bny * half_neighbor * side
             d = abs(self._dot2d(cx - edge_px, cy - edge_py, bnx, bny))
             cross_side = self._cross2d(axis_ux, axis_uy, nux, nuy)
-            if corner_side * cross_side <= 0.0:
-                d += stroke_px * 1.2
             if d < fallback_d:
                 fallback_d = d
                 fallback = (nux, nuy, nwidth, edge_cx, edge_cy)
-            # Ignore neighbors clearly pointing backward relative to wedge axis.
-            if self._dot2d(nux, nuy, axis_ux, axis_uy) < -0.2:
+            candidate = (nux, nuy, nwidth, edge_cx, edge_cy)
+            # When there are neighbors on both sides, keep each wedge corner on
+            # its side even if a bold stroke on the opposite side is wider.
+            if corner_side * cross_side <= 0.03:
                 continue
-            if d < best_d:
-                best_d = d
-                best = (nux, nuy, nwidth, edge_cx, edge_cy)
-        return best if best is not None else fallback
+            if d < best_same_side_d:
+                best_same_side_d = d
+                best_same_side = candidate
+        if best_same_side is not None:
+            return best_same_side
+        return fallback
 
     def _miter_wedge_corner_into_neighbor(
         self,
@@ -2099,8 +2101,14 @@ class BondItem(QGraphicsPathItem):
             width = self._style.wedge_width_px * (0.72 + 0.28 * math.sqrt(max(stroke_scale, 1e-6)))
             width = max(width, stroke_px * 2.3)
             width = min(width, render_length * 0.34)
-            wedge_trim_start = 0.0 if self._bond_in_ring else trim_start
-            wedge_trim_end = 0.0 if self._bond_in_ring else trim_end
+            # In ring bonds keep the vertex-length feel, but still respect the
+            # label-driven shrink so heteroatom labels do not end up under the
+            # filled wedge.
+            wedge_trim_start = self._label_shrink_start
+            wedge_trim_end = self._label_shrink_end
+            if not self._bond_in_ring:
+                wedge_trim_start += self._endpoint_trim_start
+                wedge_trim_end += self._endpoint_trim_end
             tip, base1, base2 = compute_wedge_points(
                 (x1, y1),
                 (x2, y2),

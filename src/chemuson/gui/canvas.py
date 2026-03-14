@@ -6169,19 +6169,47 @@ class ChemusonCanvas(QGraphicsView):
                 continue
             ux = dx / length
             uy = dy / length
-            shrink_start = self._label_shrink_for_atom(bond.a1_id, ux, uy)
-            shrink_end = self._label_shrink_for_atom(bond.a2_id, -ux, -uy)
+            shrink_start_extra = 0.0
+            shrink_end_extra = 0.0
+            if bond.style == BondStyle.WEDGE:
+                # A wedge is narrow at `a1` and wide at `a2`; only the wide end
+                # needs extra label clearance. Applying the same padding to the
+                # tip creates visible gaps on labeled heteroatoms.
+                shrink_end_extra = max(
+                    0.0,
+                    self._bond_render_width(bond) - self.drawing_style.stroke_px,
+                )
+            shrink_start = self._label_shrink_for_atom(
+                bond.a1_id,
+                ux,
+                uy,
+                extra_pad=shrink_start_extra,
+            )
+            shrink_end = self._label_shrink_for_atom(
+                bond.a2_id,
+                -ux,
+                -uy,
+                extra_pad=shrink_end_extra,
+            )
             item.set_label_shrink(shrink_start, shrink_end)
             item.update_positions(atom1, atom2)
         self._refresh_implicit_h_overlays(atom_ids)
 
-    def _label_shrink_for_atom(self, atom_id: int, ux: float, uy: float) -> float:
+    def _label_shrink_for_atom(
+        self,
+        atom_id: int,
+        ux: float,
+        uy: float,
+        *,
+        extra_pad: float = 0.0,
+    ) -> float:
         """Método auxiliar para  label shrink for atom.
 
         Args:
             atom_id: Descripción del parámetro.
             ux: Descripción del parámetro.
             uy: Descripción del parámetro.
+            extra_pad: Padding adicional para geometrías con ancho real.
 
         Returns:
             Resultado de la operación o None.
@@ -6213,6 +6241,7 @@ class ChemusonCanvas(QGraphicsView):
         pad = 6.0
         if atom is not None and atom.element in ELEMENT_SYMBOLS and atom.element not in {"C", "H"}:
             pad = 3.5
+        pad += max(0.0, float(extra_pad))
         rect = rect.adjusted(-pad, -pad, pad, pad)
         distance = self._ray_ellipse_distance(rect, ux, uy)
         return distance if distance is not None else 0.0

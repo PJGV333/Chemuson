@@ -36,6 +36,26 @@ def _regular_polygon(size: int, radius: float, rotation_deg: float = 0.0) -> dic
     return coords
 
 
+def _transform_coords(
+    coords: dict[int, tuple[float, float]],
+    *,
+    rotation_deg: float = 0.0,
+    translate: tuple[float, float] = (0.0, 0.0),
+    mirror_x: bool = False,
+) -> dict[int, tuple[float, float]]:
+    cos_t = math.cos(math.radians(rotation_deg))
+    sin_t = math.sin(math.radians(rotation_deg))
+    transformed: dict[int, tuple[float, float]] = {}
+    for atom_id, (x, y) in coords.items():
+        px = -x if mirror_x else x
+        py = y
+        transformed[atom_id] = (
+            px * cos_t - py * sin_t + translate[0],
+            px * sin_t + py * cos_t + translate[1],
+        )
+    return transformed
+
+
 def test_rescale_rdkit_coords_matches_target_bond_length() -> None:
     # Geometría típica de RDKit (~1.5 unidades por enlace).
     rdkit_coords = {
@@ -101,3 +121,35 @@ def test_partial_blend_of_rotated_cycle_keeps_size_after_rescale() -> None:
     restored = ChemusonWindow._rescale_coords_to_bond_length(blended, bonds, target)
     restored_avg = ChemusonWindow._average_bond_length(restored, bonds)
     assert restored_avg == pytest.approx(target, rel=1e-6)
+
+
+def test_align_coords_to_reference_recovers_rotation() -> None:
+    before = {
+        1: (-35.0, -10.0),
+        2: (-8.0, 22.0),
+        3: (26.0, 18.0),
+        4: (34.0, -14.0),
+        5: (3.0, -28.0),
+    }
+    after = _transform_coords(before, rotation_deg=90.0, translate=(120.0, -45.0))
+
+    aligned = ChemusonWindow._align_coords_to_reference(before, after)
+
+    for atom_id, expected in before.items():
+        assert aligned[atom_id] == pytest.approx(expected, abs=1e-6)
+
+
+def test_align_coords_to_reference_recovers_reflection() -> None:
+    before = {
+        1: (-35.0, -10.0),
+        2: (-8.0, 22.0),
+        3: (26.0, 18.0),
+        4: (34.0, -14.0),
+        5: (3.0, -28.0),
+    }
+    after = _transform_coords(before, rotation_deg=35.0, translate=(-80.0, 60.0), mirror_x=True)
+
+    aligned = ChemusonWindow._align_coords_to_reference(before, after)
+
+    for atom_id, expected in before.items():
+        assert aligned[atom_id] == pytest.approx(expected, abs=1e-6)
