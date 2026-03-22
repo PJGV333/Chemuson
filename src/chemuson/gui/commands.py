@@ -10,7 +10,7 @@ from dataclasses import replace
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from PyQt6.QtCore import QPointF, QRectF
-from PyQt6.QtGui import QUndoCommand
+from PyQt6.QtGui import QFont, QUndoCommand
 
 from chemuson.core.model import BondStyle, BondStereo, MolGraph
 from chemuson.gui.geom import angle_deg, angle_distance_deg, endpoint_from_angle_len
@@ -20,6 +20,9 @@ _ANCHOR_UNSET = object()
 _DONOR_UNSET = object()
 _FLEX_CURVE_UNSET = object()
 _SPHERE_STYLE_UNSET = object()
+_BOND_LENGTH_UNSET = object()
+_BOND_STROKE_UNSET = object()
+_LABEL_SCALE_UNSET = object()
 
 
 def _default_is_explicit(element: str) -> bool:
@@ -171,6 +174,7 @@ class AddAtomCommand(QUndoCommand):
         auto_hydrogens: bool = True,
         expected_bonds: int = 0,
         no_implicit: bool = False,
+        label_scale: Optional[float] = None,
         is_coordination_center: bool = False,
         sphere_radius: Optional[float] = None,
         sphere_color: Optional[str] = None,
@@ -197,6 +201,7 @@ class AddAtomCommand(QUndoCommand):
             auto_hydrogens: Si se auto-generan hidrógenos.
             expected_bonds: Número de enlaces esperados (para H implícitos).
             no_implicit: Si se desactivan hidrógenos implícitos en el átomo.
+            label_scale: Escala local de etiqueta o `None` para heredar.
             is_coordination_center: Si el átomo se dibuja como esfera de coordinación.
             sphere_radius: Radio visual de la esfera de coordinación.
             sphere_color: Color base de la esfera (hex) o `None`.
@@ -225,6 +230,7 @@ class AddAtomCommand(QUndoCommand):
         self._auto_hydrogens = auto_hydrogens
         self._expected_bonds = expected_bonds
         self._no_implicit = bool(no_implicit)
+        self._label_scale = label_scale
         self._is_coordination_center = bool(is_coordination_center)
         self._sphere_radius = sphere_radius
         self._sphere_color = sphere_color
@@ -253,6 +259,7 @@ class AddAtomCommand(QUndoCommand):
                 mapping=self._mapping,
                 is_query=self._is_query,
                 no_implicit=self._no_implicit,
+                label_scale=self._label_scale,
                 is_coordination_center=self._is_coordination_center,
                 sphere_radius=self._sphere_radius,
                 sphere_color=self._sphere_color,
@@ -275,6 +282,7 @@ class AddAtomCommand(QUndoCommand):
                 mapping=self._mapping,
                 is_query=self._is_query,
                 no_implicit=self._no_implicit,
+                label_scale=self._label_scale,
                 is_coordination_center=self._is_coordination_center,
                 sphere_radius=self._sphere_radius,
                 sphere_color=self._sphere_color,
@@ -485,6 +493,44 @@ class ChangeNoImplicitCommand(QUndoCommand):
         self._view.refresh_atom_labels([self._atom_id])
 
 
+class ChangeAtomLabelScaleCommand(QUndoCommand):
+    """Comando para ajustar la escala local de etiqueta de un átomo."""
+
+    def __init__(
+        self,
+        model: MolGraph,
+        view,
+        atom_id: int,
+        new_scale: Optional[float],
+        old_scale: Optional[float] | object = _LABEL_SCALE_UNSET,
+    ) -> None:
+        super().__init__("Change atom label scale")
+        self._model = model
+        self._view = view
+        self._atom_id = atom_id
+        atom = model.get_atom(atom_id)
+        self._old_scale = (
+            getattr(atom, "label_scale", None)
+            if old_scale is _LABEL_SCALE_UNSET
+            else old_scale
+        )
+        self._new_scale = new_scale
+
+    def _apply(self, value: Optional[float]) -> None:
+        if self._atom_id not in self._model.atoms:
+            return
+        self._model.update_atom_label_scale(self._atom_id, value)
+        self._view.refresh_label_fonts([self._atom_id])
+        if hasattr(self._view, "_update_selection_overlay"):
+            self._view._update_selection_overlay()
+
+    def redo(self) -> None:
+        self._apply(self._new_scale)
+
+    def undo(self) -> None:
+        self._apply(self._old_scale)
+
+
 class SetCoordinationCenterCommand(QUndoCommand):
     """Comando para activar/desactivar visualización de centro de coordinación."""
 
@@ -555,6 +601,7 @@ class ChangeCoordinationSphereStyleCommand(QUndoCommand):
         new_color: Optional[str] | object = _SPHERE_STYLE_UNSET,
         new_filled: bool | object = _SPHERE_STYLE_UNSET,
         new_transparent: bool | object = _SPHERE_STYLE_UNSET,
+        old_radius: Optional[float] | object = _SPHERE_STYLE_UNSET,
     ) -> None:
         """Inicializa el cambio de estilo de esfera."""
         super().__init__("Change coordination sphere style")
@@ -562,7 +609,11 @@ class ChangeCoordinationSphereStyleCommand(QUndoCommand):
         self._view = view
         self._atom_id = atom_id
         atom = model.get_atom(atom_id)
-        self._old_radius = getattr(atom, "sphere_radius", None)
+        self._old_radius = (
+            getattr(atom, "sphere_radius", None)
+            if old_radius is _SPHERE_STYLE_UNSET
+            else old_radius
+        )
         self._old_color = getattr(atom, "sphere_color", None)
         self._old_filled = bool(getattr(atom, "sphere_filled", True))
         self._old_transparent = bool(getattr(atom, "sphere_transparent", False))
@@ -909,14 +960,21 @@ class ChangeBondCommand(QUndoCommand):
 class ChangeBondLengthCommand(QUndoCommand):
     """Comando para cambiar la longitud visual de un enlace."""
 
-    def __init__(self, model: MolGraph, view, bond_id: int, new_length: Optional[float]) -> None:
+    def __init__(
+        self,
+        model: MolGraph,
+        view,
+        bond_id: int,
+        new_length: Optional[float],
+        old_length: Optional[float] | object = _BOND_LENGTH_UNSET,
+    ) -> None:
         """Inicializa el comando de cambio de longitud de enlace."""
         super().__init__("Change bond length")
         self._model = model
         self._view = view
         self._bond_id = bond_id
         bond = model.get_bond(bond_id)
-        self._old_length = bond.length_px
+        self._old_length = bond.length_px if old_length is _BOND_LENGTH_UNSET else old_length
         self._new_length = new_length
 
     def redo(self) -> None:
@@ -938,6 +996,7 @@ class ChangeBondStrokeCommand(QUndoCommand):
         view,
         bond_id: int,
         new_stroke_px: Optional[float],
+        old_stroke_px: Optional[float] | object = _BOND_STROKE_UNSET,
     ) -> None:
         """Inicializa el comando de cambio de grosor."""
         super().__init__("Change bond thickness")
@@ -945,7 +1004,9 @@ class ChangeBondStrokeCommand(QUndoCommand):
         self._view = view
         self._bond_id = bond_id
         bond = model.get_bond(bond_id)
-        self._old_stroke = bond.stroke_px
+        self._old_stroke = (
+            bond.stroke_px if old_stroke_px is _BOND_STROKE_UNSET else old_stroke_px
+        )
         self._new_stroke = new_stroke_px
 
     def redo(self) -> None:
@@ -1085,6 +1146,8 @@ class MoveAtomsCommand(QUndoCommand):
             self._model.update_atom_position(atom_id, x, y)
             self._view.update_atom_item(atom_id, x, y)
         self._view.update_bond_items_for_atoms(set(positions.keys()))
+        if hasattr(self._view, "recompute_numbering"):
+            self._view.recompute_numbering()
 
 
 class MoveTextItemsCommand(QUndoCommand):
@@ -1158,6 +1221,89 @@ class MoveBracketItemsCommand(QUndoCommand):
         self._view._update_selection_overlay()
 
 
+class ScaleTextItemsCommand(QUndoCommand):
+    """Comando para escalar textos libres conservando formato."""
+
+    def __init__(self, view, before: dict, after: dict) -> None:
+        super().__init__("Scale text items")
+        self._view = view
+        self._before = before
+        self._after = after
+
+    @staticmethod
+    def _apply_snapshot(item, snapshot) -> None:
+        pos, rot, font_str, text_width = snapshot
+        font = QFont()
+        if font_str:
+            font.fromString(font_str)
+            item.setFont(font)
+        item.setPos(pos)
+        item.setRotation(rot)
+        item.setTextWidth(float(text_width))
+
+    def redo(self) -> None:
+        for item, snapshot in self._after.items():
+            self._apply_snapshot(item, snapshot)
+        self._view._update_selection_overlay()
+
+    def undo(self) -> None:
+        for item, snapshot in self._before.items():
+            self._apply_snapshot(item, snapshot)
+        self._view._update_selection_overlay()
+
+
+class ScaleArrowItemsCommand(QUndoCommand):
+    """Comando para escalar geometría y grosor de flechas."""
+
+    def __init__(self, view, before: dict, after: dict) -> None:
+        super().__init__("Scale arrows")
+        self._view = view
+        self._before = before
+        self._after = after
+
+    @staticmethod
+    def _apply_snapshot(item, snapshot) -> None:
+        start, end, stroke_px = snapshot
+        item.update_positions(start, end)
+        item.set_stroke_px(stroke_px)
+
+    def redo(self) -> None:
+        for item, snapshot in self._after.items():
+            self._apply_snapshot(item, snapshot)
+        self._view._update_selection_overlay()
+
+    def undo(self) -> None:
+        for item, snapshot in self._before.items():
+            self._apply_snapshot(item, snapshot)
+        self._view._update_selection_overlay()
+
+
+class ScaleBracketItemsCommand(QUndoCommand):
+    """Comando para escalar corchetes, padding y grosor."""
+
+    def __init__(self, view, before: dict, after: dict) -> None:
+        super().__init__("Scale brackets")
+        self._view = view
+        self._before = before
+        self._after = after
+
+    @staticmethod
+    def _apply_snapshot(item, snapshot) -> None:
+        rect, padding, stroke_px = snapshot
+        item.set_rect(rect, padding=padding)
+        item.set_stroke_px(stroke_px)
+
+    def redo(self) -> None:
+        for item, snapshot in self._after.items():
+            self._apply_snapshot(item, snapshot)
+        self._view._update_selection_overlay()
+
+    def undo(self) -> None:
+        for item, snapshot in self._before.items():
+            self._apply_snapshot(item, snapshot)
+        self._view._update_selection_overlay()
+
+
 class DeleteSelectionCommand(QUndoCommand):
     """Comando para eliminar selección (átomos, enlaces y anotaciones)."""
 
@@ -1214,7 +1360,7 @@ class DeleteSelectionCommand(QUndoCommand):
                 )
             for item in self._bracket_items:
                 self._removed_brackets.append(
-                    (item, item.base_rect(), item._padding, item._kind)
+                    (item, item.base_rect(), item._padding, item._kind, item.stroke_px())
                 )
             for item in self._text_items:
                 self._removed_texts.append(item)
@@ -1231,7 +1377,7 @@ class DeleteSelectionCommand(QUndoCommand):
                 self._view.remove_atom_item(atom.id)
         for item, _start, _end, _kind, _curve_factor in list(self._removed_arrows):
             self._view.remove_arrow_item(item)
-        for item, _rect, _padding, _kind in list(self._removed_brackets):
+        for item, _rect, _padding, _kind, _stroke_px in list(self._removed_brackets):
             self._view.remove_bracket_item(item)
         for item in self._removed_texts:
             self._view.remove_text_item(item)
@@ -1255,6 +1401,7 @@ class DeleteSelectionCommand(QUndoCommand):
                 is_query=atom.is_query,
                 is_explicit=atom.is_explicit,
                 no_implicit=bool(getattr(atom, "no_implicit", False)),
+                label_scale=getattr(atom, "label_scale", None),
                 is_coordination_center=getattr(atom, "is_coordination_center", False),
                 sphere_radius=getattr(atom, "sphere_radius", None),
                 sphere_color=getattr(atom, "sphere_color", None),
@@ -1283,8 +1430,8 @@ class DeleteSelectionCommand(QUndoCommand):
             self._view.add_bond_item(bond)
         for item, start, end, kind, curve_factor in self._removed_arrows:
             self._view.readd_arrow_item(item, start, end, kind, curve_factor=curve_factor)
-        for item, rect, padding, kind in self._removed_brackets:
-            self._view.readd_bracket_item(item, rect, kind, padding=padding)
+        for item, rect, padding, kind, stroke_px in self._removed_brackets:
+            self._view.readd_bracket_item(item, rect, kind, padding=padding, stroke_px=stroke_px)
         for item in self._removed_texts:
             self._view.readd_text_item(item)
         for item in self._removed_wavy:
@@ -1341,20 +1488,40 @@ class AddArrowCommand(QUndoCommand):
 class AddBracketCommand(QUndoCommand):
     """Comando para añadir corchetes/llaves de anotación."""
 
-    def __init__(self, view, rect: QRectF, kind: str) -> None:
+    def __init__(
+        self,
+        view,
+        rect: QRectF,
+        kind: str,
+        padding: float | None = None,
+        stroke_px: float | None = None,
+    ) -> None:
         """Inicializa el comando de corchetes."""
         super().__init__("Add brackets")
         self._view = view
         self._rect = QRectF(rect)
         self._kind = kind
+        self._padding = 8.0 if padding is None else float(padding)
+        self._stroke_px = stroke_px
         self._item = None
 
     def redo(self) -> None:
         """Crea o reintroduce los corchetes."""
         if self._item is None:
-            self._item = self._view.add_bracket_item(self._rect, self._kind)
+            self._item = self._view.add_bracket_item(
+                self._rect,
+                self._kind,
+                padding=self._padding,
+                stroke_px=self._stroke_px,
+            )
         else:
-            self._view.readd_bracket_item(self._item, self._rect, self._kind)
+            self._view.readd_bracket_item(
+                self._item,
+                self._rect,
+                self._kind,
+                padding=self._padding,
+                stroke_px=self._stroke_px,
+            )
 
     def undo(self) -> None:
         """Elimina los corchetes añadidos."""

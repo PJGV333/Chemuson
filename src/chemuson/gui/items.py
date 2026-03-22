@@ -3228,6 +3228,7 @@ class BracketItem(QGraphicsPathItem):
         rect: QRectF,
         kind: str = "[]",
         padding: float = 8.0,
+        stroke_px: float | None = None,
         style: DrawingStyle = CHEMDOODLE_LIKE,
     ) -> None:
         """Inicializa la instancia y configura el elemento gráfico.
@@ -3236,6 +3237,7 @@ class BracketItem(QGraphicsPathItem):
             rect: Rectángulo base de la anotación.
             kind: Tipo de flecha/corchete.
             padding: Margen interno alrededor del contenido.
+            stroke_px: Grosor personalizado; `None` usa el grosor del estilo.
             style: Estilo de dibujo aplicado.
 
         Returns:
@@ -3250,7 +3252,8 @@ class BracketItem(QGraphicsPathItem):
         self._rect = rect.adjusted(-padding, -padding, padding, padding)
         self._kind = kind
         self._style = style
-        pen = QPen(QColor(self._style.bond_color), self._style.stroke_px)
+        self._stroke_px = self._normalize_stroke(stroke_px)
+        pen = QPen(QColor(self._style.bond_color), self._effective_stroke_px())
         pen.setCapStyle(self._style.cap_style)
         pen.setJoinStyle(self._style.join_style)
         self.setPen(pen)
@@ -3287,6 +3290,33 @@ class BracketItem(QGraphicsPathItem):
             No tiene efectos laterales.
         """
         return QRectF(self._base_rect)
+
+    @staticmethod
+    def _normalize_stroke(stroke_px: float | None) -> float | None:
+        """Normaliza grosor personalizado de corchetes."""
+        if stroke_px is None:
+            return None
+        try:
+            return max(0.6, float(stroke_px))
+        except Exception:
+            return None
+
+    def _effective_stroke_px(self) -> float:
+        """Devuelve el grosor efectivo de corchete."""
+        base = self._stroke_px if self._stroke_px is not None else self._style.stroke_px
+        return max(float(base), 1.0)
+
+    def stroke_px(self) -> float | None:
+        """Devuelve el grosor personalizado o `None` si hereda."""
+        return self._stroke_px
+
+    def set_stroke_px(self, stroke_px: float | None) -> None:
+        """Actualiza el grosor personalizado del corchete."""
+        normalized = self._normalize_stroke(stroke_px)
+        if self._stroke_px == normalized:
+            return
+        self._stroke_px = normalized
+        self.set_style(self._style)
 
     def set_rect(self, rect: QRectF, padding: float | None = None) -> None:
         """Actualiza rectángulo.
@@ -3421,7 +3451,7 @@ class BracketItem(QGraphicsPathItem):
             Modifica el estado del item o la escena.
         """
         self._style = style
-        pen = QPen(QColor(self._style.bond_color), self._style.stroke_px)
+        pen = QPen(QColor(self._style.bond_color), self._effective_stroke_px())
         pen.setCapStyle(self._style.cap_style)
         pen.setJoinStyle(self._style.join_style)
         self.setPen(pen)

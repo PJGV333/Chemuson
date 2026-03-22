@@ -508,7 +508,7 @@ class ChemusonWindow(QMainWindow):
 
 
 
-        self.action_style = QAction("Estilo de dibujo...", self)
+        self.action_style = QAction("Dimensiones del dibujo...", self)
         self.action_style.triggered.connect(self._on_style_dialog)
 
         self.action_import_smiles = QAction("Importar SMILES...", self)
@@ -548,6 +548,12 @@ class ChemusonWindow(QMainWindow):
 
         self.action_flip_vertical = QAction("Giro 180° vertical", self)
         self.action_flip_vertical.triggered.connect(self._on_flip_vertical)
+
+        self.action_scale_selection = QAction("Redimensionar selección...", self)
+        self.action_scale_selection.setShortcut(QKeySequence("Ctrl+Alt+S"))
+        self.action_scale_selection.triggered.connect(
+            lambda checked=False: self.canvas.open_selection_scale_dialog()
+        )
 
         # --- Bond Thickness Actions ---
         self.action_bond_thickness_up = QAction("Aumentar grosor de enlace/flecha", self)
@@ -686,6 +692,8 @@ class ChemusonWindow(QMainWindow):
         rotate_menu.addSeparator()
         rotate_menu.addAction(self.action_flip_horizontal)
         rotate_menu.addAction(self.action_flip_vertical)
+
+        edit_menu.addAction(self.action_scale_selection)
 
         edit_menu.addSeparator()
         bond_thickness_menu = edit_menu.addMenu("Grosor de enlace/flecha")
@@ -2648,10 +2656,22 @@ class ChemusonWindow(QMainWindow):
 
     def _on_style_dialog(self) -> None:
         """Open drawing style dialog."""
-        dialog = StyleDialog(self.canvas.drawing_style, self.canvas.state.bond_length, self)
+        dialog = StyleDialog(
+            self.canvas.drawing_style,
+            self.canvas.state.bond_length,
+            self.canvas.state.label_font_size,
+            self.canvas.state.numbering_font_size,
+            self,
+        )
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            style, _bond_length = dialog.selected_style()
-            self.canvas.apply_drawing_style(style)
+            result = dialog.selected_dimensions()
+            self.canvas.apply_document_dimensions(
+                style=result["style"],
+                label_font_size=result["label_font_size"],
+                numbering_font_size=result["numbering_font_size"],
+                scale_existing=result["scale_existing"],
+                scale_factor=result["scale_factor"],
+            )
 
     def _apply_preferences(self, prefs: dict) -> None:
         """Aplica preferences.

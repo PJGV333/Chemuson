@@ -345,48 +345,86 @@ class PreferencesDialog(QDialog):
 
 
 class StyleDialog(QDialog):
-    """Diálogo para editar propiedades del estilo de dibujo."""
+    """Diálogo para editar dimensiones globales del dibujo."""
 
-    def __init__(self, current_style: DrawingStyle, bond_length: float, parent=None) -> None:
-        """Inicializa el diálogo.
-
-        Args:
-            current_style: Descripción del parámetro.
-            bond_length: Descripción del parámetro.
-            parent: Descripción del parámetro.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado del diálogo.
-        """
+    def __init__(
+        self,
+        current_style: DrawingStyle,
+        bond_length: float,
+        label_font_size: float,
+        numbering_font_size: float,
+        parent=None,
+    ) -> None:
+        """Inicializa el diálogo de dimensiones globales."""
         super().__init__(parent)
-        self.setWindowTitle("Estilo de dibujo")
-        self.setMinimumWidth(360)
+        self.setWindowTitle("Dimensiones del dibujo")
+        self.setMinimumWidth(420)
 
         self._style = current_style
-        self._bond_length = bond_length
+        self._bond_length = float(bond_length)
+        self._label_font_size = float(label_font_size)
+        self._numbering_font_size = float(numbering_font_size)
         self._bond_color = QColor(current_style.bond_color)
         self._atom_fill_color = QColor(current_style.atom_fill_color)
         self._atom_stroke_color = QColor(current_style.atom_stroke_color)
-        self._result_style: DrawingStyle | None = None
-        self._result_bond_length: float | None = None
+        self._result: dict | None = None
+        self._initial_numeric = {
+            "bond_length": float(bond_length),
+            "stroke_px": float(current_style.stroke_px),
+            "label_font_size": float(label_font_size),
+            "numbering_font_size": float(numbering_font_size),
+            "double_offset_px": float(current_style.double_offset_px),
+            "wedge_width_px": float(current_style.wedge_width_px),
+            "hash_stroke_px": float(current_style.hash_stroke_px),
+        }
+        self._updating_scaled_fields = False
+
+        layout = QVBoxLayout(self)
+
+        scale_box = QWidget(self)
+        scale_form = QFormLayout(scale_box)
+        scale_form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
+
+        self.keep_proportions_checkbox = QCheckBox("Mantener proporciones")
+        self.keep_proportions_checkbox.setChecked(True)
+        scale_form.addRow(self.keep_proportions_checkbox)
+
+        self.scale_spin = QDoubleSpinBox()
+        self.scale_spin.setRange(10.0, 600.0)
+        self.scale_spin.setDecimals(1)
+        self.scale_spin.setSingleStep(5.0)
+        self.scale_spin.setSuffix(" %")
+        self.scale_spin.setValue(100.0)
+        scale_form.addRow("Escala global", self.scale_spin)
+
+        self.scale_existing_checkbox = QCheckBox("Redimensionar contenido existente")
+        self.scale_existing_checkbox.setChecked(True)
+        scale_form.addRow(self.scale_existing_checkbox)
+        layout.addWidget(scale_box)
 
         form = QFormLayout()
         form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
 
-        self.stroke_spin = QDoubleSpinBox()
-        self.stroke_spin.setRange(0.5, 8.0)
-        self.stroke_spin.setSingleStep(0.1)
-        self.stroke_spin.setValue(current_style.stroke_px)
+        self.length_spin = self._build_double_spin(10.0, 240.0, 1.0, self._bond_length)
+        form.addRow("Longitud de enlace", self.length_spin)
+
+        self.stroke_spin = self._build_double_spin(0.5, 12.0, 0.1, current_style.stroke_px)
         form.addRow("Grosor de línea", self.stroke_spin)
 
-        self.length_spin = QDoubleSpinBox()
-        self.length_spin.setRange(10.0, 120.0)
-        self.length_spin.setSingleStep(1.0)
-        self.length_spin.setValue(bond_length)
-        form.addRow("Longitud de enlace", self.length_spin)
+        self.label_font_spin = self._build_double_spin(4.0, 72.0, 0.5, label_font_size)
+        form.addRow("Tamaño de etiquetas", self.label_font_spin)
+
+        self.numbering_font_spin = self._build_double_spin(4.0, 72.0, 0.5, numbering_font_size)
+        form.addRow("Tamaño de numeración", self.numbering_font_spin)
+
+        self.double_offset_spin = self._build_double_spin(1.0, 24.0, 0.1, current_style.double_offset_px)
+        form.addRow("Separación de dobles", self.double_offset_spin)
+
+        self.wedge_width_spin = self._build_double_spin(2.0, 32.0, 0.1, current_style.wedge_width_px)
+        form.addRow("Ancho de cuña", self.wedge_width_spin)
+
+        self.hash_stroke_spin = self._build_double_spin(0.5, 12.0, 0.1, current_style.hash_stroke_px)
+        form.addRow("Grosor de trazos hash", self.hash_stroke_spin)
 
         bond_row, self.bond_color_btn = self._build_color_row(self._bond_color)
         form.addRow("Color de enlaces", bond_row)
@@ -397,15 +435,42 @@ class StyleDialog(QDialog):
         atom_stroke_row, self.atom_stroke_btn = self._build_color_row(self._atom_stroke_color)
         form.addRow("Borde de vértices", atom_stroke_row)
 
+        layout.addLayout(form)
+
+        self._scaled_widgets = [
+            self.length_spin,
+            self.stroke_spin,
+            self.label_font_spin,
+            self.numbering_font_spin,
+            self.double_offset_spin,
+            self.wedge_width_spin,
+            self.hash_stroke_spin,
+        ]
+
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
         buttons.accepted.connect(self._on_accept)
         buttons.rejected.connect(self.reject)
-
-        layout = QVBoxLayout(self)
-        layout.addLayout(form)
         layout.addWidget(buttons)
+
+        self.keep_proportions_checkbox.toggled.connect(self._on_keep_proportions_changed)
+        self.scale_spin.valueChanged.connect(self._on_scale_percent_changed)
+        self._on_keep_proportions_changed(self.keep_proportions_checkbox.isChecked())
+
+    @staticmethod
+    def _build_double_spin(
+        minimum: float,
+        maximum: float,
+        step: float,
+        value: float,
+    ) -> QDoubleSpinBox:
+        """Crea un `QDoubleSpinBox` con configuración compacta."""
+        spin = QDoubleSpinBox()
+        spin.setRange(minimum, maximum)
+        spin.setSingleStep(step)
+        spin.setValue(float(value))
+        return spin
 
     def _build_color_row(self, color: QColor) -> tuple[QWidget, QPushButton]:
         """Construye color row.
@@ -430,6 +495,36 @@ class StyleDialog(QDialog):
         layout.addWidget(button)
         layout.addStretch()
         return row, button
+
+    def _on_keep_proportions_changed(self, checked: bool) -> None:
+        """Activa o desactiva edición manual de dimensiones ligadas."""
+        for widget in self._scaled_widgets:
+            widget.setEnabled(not checked)
+        self.scale_spin.setEnabled(True)
+        if checked:
+            self._apply_scale_to_fields(self.scale_spin.value() / 100.0)
+
+    def _on_scale_percent_changed(self, value: float) -> None:
+        """Actualiza campos dependientes cuando la escala proporcional está activa."""
+        if not self.keep_proportions_checkbox.isChecked():
+            return
+        self._apply_scale_to_fields(float(value) / 100.0)
+
+    def _apply_scale_to_fields(self, factor: float) -> None:
+        """Propaga la escala proporcional a todos los campos geométricos."""
+        if self._updating_scaled_fields:
+            return
+        self._updating_scaled_fields = True
+        try:
+            self.length_spin.setValue(self._initial_numeric["bond_length"] * factor)
+            self.stroke_spin.setValue(self._initial_numeric["stroke_px"] * factor)
+            self.label_font_spin.setValue(self._initial_numeric["label_font_size"] * factor)
+            self.numbering_font_spin.setValue(self._initial_numeric["numbering_font_size"] * factor)
+            self.double_offset_spin.setValue(self._initial_numeric["double_offset_px"] * factor)
+            self.wedge_width_spin.setValue(self._initial_numeric["wedge_width_px"] * factor)
+            self.hash_stroke_spin.setValue(self._initial_numeric["hash_stroke_px"] * factor)
+        finally:
+            self._updating_scaled_fields = False
 
     def _set_button_color(self, button: QPushButton, color: QColor) -> None:
         """Configura button color.
@@ -479,39 +574,92 @@ class StyleDialog(QDialog):
             self._atom_stroke_color = picked
 
     def _on_accept(self) -> None:
-        """Maneja accept.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado del diálogo.
-        """
-        stroke = self.stroke_spin.value()
-        bond_length = self.length_spin.value()
-        self._result_style = replace(
-            self._style,
-            bond_length_px=bond_length,
-            stroke_px=stroke,
-            bond_color=self._bond_color.name(),
-            atom_fill_color=self._atom_fill_color.name(),
-            atom_stroke_color=self._atom_stroke_color.name(),
-        )
-        self._result_bond_length = bond_length
+        """Construye el resultado final del diálogo."""
+        bond_length = float(self.length_spin.value())
+        self._result = {
+            "style": replace(
+                self._style,
+                bond_length_px=bond_length,
+                stroke_px=float(self.stroke_spin.value()),
+                double_offset_px=float(self.double_offset_spin.value()),
+                wedge_width_px=float(self.wedge_width_spin.value()),
+                hash_stroke_px=float(self.hash_stroke_spin.value()),
+                bond_color=self._bond_color.name(),
+                atom_fill_color=self._atom_fill_color.name(),
+                atom_stroke_color=self._atom_stroke_color.name(),
+            ),
+            "label_font_size": float(self.label_font_spin.value()),
+            "numbering_font_size": float(self.numbering_font_spin.value()),
+            "scale_existing": bool(self.scale_existing_checkbox.isChecked()),
+            "scale_factor": (
+                float(self.scale_spin.value()) / 100.0
+                if self.keep_proportions_checkbox.isChecked()
+                else bond_length / max(self._bond_length, 1e-6)
+            ),
+        }
         self.accept()
 
+    def selected_dimensions(self) -> dict:
+        """Devuelve el payload final de dimensiones."""
+        if self._result is not None:
+            return self._result
+        return {
+            "style": self._style,
+            "label_font_size": self._label_font_size,
+            "numbering_font_size": self._numbering_font_size,
+            "scale_existing": False,
+            "scale_factor": 1.0,
+        }
+
     def selected_style(self) -> tuple[DrawingStyle, float]:
-        """Método auxiliar para selected style.
+        """Compatibilidad con llamadas antiguas."""
+        result = self.selected_dimensions()
+        style = result["style"]
+        return style, float(style.bond_length_px)
 
-        Returns:
-            Resultado de la operación o None.
 
-        Side Effects:
-            Puede modificar el estado del diálogo.
-        """
-        if self._result_style is None or self._result_bond_length is None:
-            return self._style, self._bond_length
-        return self._result_style, self._result_bond_length
+class SelectionScaleDialog(QDialog):
+    """Diálogo simple para redimensionar la selección actual."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Redimensionar selección")
+        self.setMinimumWidth(320)
+
+        layout = QVBoxLayout(self)
+        help_label = QLabel(
+            "Escala la geometría seleccionada y, opcionalmente, su estilo visual."
+        )
+        help_label.setWordWrap(True)
+        layout.addWidget(help_label)
+
+        form = QFormLayout()
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
+
+        self.scale_spin = QDoubleSpinBox()
+        self.scale_spin.setRange(5.0, 600.0)
+        self.scale_spin.setDecimals(1)
+        self.scale_spin.setSingleStep(5.0)
+        self.scale_spin.setSuffix(" %")
+        self.scale_spin.setValue(100.0)
+        form.addRow("Escala", self.scale_spin)
+
+        self.include_style_checkbox = QCheckBox("Escalar también grosor, texto y radios")
+        self.include_style_checkbox.setChecked(True)
+        form.addRow(self.include_style_checkbox)
+
+        layout.addLayout(form)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def values(self) -> tuple[float, bool]:
+        """Devuelve factor de escala y modo visual."""
+        return float(self.scale_spin.value()) / 100.0, bool(self.include_style_checkbox.isChecked())
 
 
 class AtomLabelDialog(QDialog):

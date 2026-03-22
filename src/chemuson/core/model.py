@@ -239,6 +239,7 @@ class Atom:
     no_implicit: bool = False
     implicit_h: int = 0
     has_valence_error: bool = False
+    label_scale: Optional[float] = None
     is_coordination_center: bool = False
     sphere_radius: Optional[float] = None
     sphere_color: Optional[str] = None
@@ -359,6 +360,7 @@ class MolGraph:
         sphere_color: Optional[str] = None,
         sphere_filled: bool = True,
         sphere_transparent: bool = False,
+        label_scale: Optional[float] = None,
     ) -> Atom:
         """Crea y registra un átomo en el grafo.
 
@@ -386,6 +388,7 @@ class MolGraph:
             sphere_color: Color base de la esfera (hex), o `None` para automático.
             sphere_filled: Si la esfera se dibuja con relleno (gradiente).
             sphere_transparent: Si la esfera se dibuja transparente (solo etiqueta).
+            label_scale: Escala local de etiqueta o `None` para heredar la global.
 
         Returns:
             El átomo creado y almacenado en el diccionario interno.
@@ -429,6 +432,7 @@ class MolGraph:
             is_query=is_query,
             is_explicit=is_explicit,
             no_implicit=bool(no_implicit),
+            label_scale=(None if label_scale is None else float(label_scale)),
             is_coordination_center=is_coordination_center,
             sphere_radius=resolved_sphere_radius,
             sphere_color=resolved_sphere_color,
@@ -664,6 +668,11 @@ class MolGraph:
         """Activa/desactiva hidrógenos implícitos para un átomo."""
         atom = self.atoms[atom_id]
         atom.no_implicit = bool(enabled)
+
+    def update_atom_label_scale(self, atom_id: int, label_scale: Optional[float]) -> None:
+        """Actualiza la escala local de etiqueta de un átomo."""
+        atom = self.atoms[atom_id]
+        atom.label_scale = None if label_scale is None else float(label_scale)
 
     def update_bond(
         self,

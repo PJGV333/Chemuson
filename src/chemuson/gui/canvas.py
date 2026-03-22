@@ -110,6 +110,7 @@ from chemuson.gui.commands import (
     ChangeDoubleBondOrientationCommand,
     ChangeChargeCommand,
     ChangeNoImplicitCommand,
+    ChangeAtomLabelScaleCommand,
     ChangeCoordinationSphereStyleCommand,
     SetCoordinationCenterCommand,
     DeleteSelectionCommand,
@@ -117,8 +118,15 @@ from chemuson.gui.commands import (
     MoveTextItemsCommand,
     MoveArrowItemsCommand,
     MoveBracketItemsCommand,
+    ScaleTextItemsCommand,
+    ScaleArrowItemsCommand,
+    ScaleBracketItemsCommand,
 )
-from chemuson.gui.dialogs import AtomLabelDialog, TrackballRotationDialog
+from chemuson.gui.dialogs import (
+    AtomLabelDialog,
+    TrackballRotationDialog,
+    SelectionScaleDialog,
+)
 from chemuson.chemname.molview import MolView
 from chemuson.chemname.rings import find_rings_simple, ring_bonds
 from chemuson.chemio.rdkit_io import (
@@ -443,8 +451,15 @@ class ChemusonCanvas(QGraphicsView):
         self._scale_start_length = 0.0
         self._scale_start_positions: Dict[int, Tuple[float, float]] = {}
         self._scale_start_text_positions: Dict[TextAnnotationItem, Tuple[QPointF, float]] = {}
+        self._scale_start_text_styles: Dict[TextAnnotationItem, Tuple[str, float]] = {}
         self._scale_start_arrow_positions: Dict[ArrowItem, Tuple[QPointF, QPointF]] = {}
+        self._scale_start_arrow_strokes: Dict[ArrowItem, Optional[float]] = {}
         self._scale_start_bracket_rects: Dict[BracketItem, QRectF] = {}
+        self._scale_start_bracket_styles: Dict[BracketItem, Tuple[float, Optional[float]]] = {}
+        self._scale_start_atom_label_scales: Dict[int, Optional[float]] = {}
+        self._scale_start_atom_sphere_radii: Dict[int, Tuple[Optional[float], float]] = {}
+        self._scale_start_bond_strokes: Dict[int, Tuple[Optional[float], float]] = {}
+        self._scale_start_bond_lengths: Dict[int, Optional[float]] = {}
         self._scale_has_moved = False
         self._implicit_h_overlays: Dict[int, list[tuple[QGraphicsLineItem, QGraphicsTextItem]]] = {}
         self._group_anchor_overrides: Dict[int, str] = {}
@@ -3350,7 +3365,8 @@ class ChemusonCanvas(QGraphicsView):
                         "w": item._base_rect.width(),
                         "h": item._base_rect.height()
                     },
-                    "padding": item._padding
+                    "padding": item._padding,
+                    "stroke_px": item.stroke_px(),
                 })
             elif isinstance(item, TextAnnotationItem):
                 if bool(item.data(NUMBERING_TEXT_ROLE)):
@@ -3362,7 +3378,8 @@ class ChemusonCanvas(QGraphicsView):
                     "y": item.pos().y(),
                     "rotation": item.rotation(),
                     "font": item.font().toString(),
-                    "color": item.defaultTextColor().name()
+                    "color": item.defaultTextColor().name(),
+                    "text_width": item.textWidth(),
                 })
             elif isinstance(item, WavyAnchorItem):
                 anchor_id = item.data(WAVY_ANCHOR_ROLE)
@@ -3437,14 +3454,21 @@ class ChemusonCanvas(QGraphicsView):
             rect = QRectF(rect_d["x"], rect_d["y"], rect_d["w"], rect_d["h"])
             kind = br_d.get("kind", "[]")
             padding = br_d.get("padding", 8.0)
-            pair = self._split_bracket_kind(kind)
-            if pair:
-                for side in pair:
-                    bracket = BracketItem(rect, kind=side, padding=padding, style=self.drawing_style)
-                    self.readd_bracket_item(bracket, rect, side, padding=padding)
-            else:
-                bracket = BracketItem(rect, kind=kind, padding=padding, style=self.drawing_style)
-                self.readd_bracket_item(bracket, rect, kind, padding=padding)
+            stroke_px = br_d.get("stroke_px")
+            bracket = BracketItem(
+                rect,
+                kind=kind,
+                padding=padding,
+                stroke_px=stroke_px,
+                style=self.drawing_style,
+            )
+            self.readd_bracket_item(
+                bracket,
+                rect,
+                kind,
+                padding=padding,
+                stroke_px=stroke_px,
+            )
 
         for txt_d in annotations.get("text_items", []):
             text_item = TextAnnotationItem(txt_d["text"], txt_d["x"], txt_d["y"])
@@ -3458,6 +3482,8 @@ class ChemusonCanvas(QGraphicsView):
                 text_item.setFont(font)
             if "color" in txt_d:
                 text_item.setDefaultTextColor(QColor(txt_d["color"]))
+            if "text_width" in txt_d:
+                text_item.setTextWidth(float(txt_d["text_width"]))
             self.scene.addItem(text_item)
 
         for anchor_d in annotations.get("wavy_anchors", []):
@@ -3588,7 +3614,7 @@ class ChemusonCanvas(QGraphicsView):
                     radius=ATOM_HIT_RADIUS,
                     show_carbon=self.state.show_implicit_carbons,
                     show_hydrogen=self.state.show_implicit_hydrogens,
-                    label_font=QFont(self.state.label_font_family, int(self.state.label_font_size)),
+                    label_font=self._label_font_for_atom(atom.id),
                     style=self.drawing_style,
                     use_element_colors=self.state.use_element_colors
                 )
@@ -3928,6 +3954,7 @@ class ChemusonCanvas(QGraphicsView):
                 is_query=atom.is_query,
                 is_explicit=atom.is_explicit,
                 no_implicit=bool(getattr(atom, "no_implicit", False)),
+                label_scale=getattr(atom, "label_scale", None),
                 is_coordination_center=getattr(atom, "is_coordination_center", False),
                 sphere_radius=getattr(atom, "sphere_radius", None),
                 sphere_color=getattr(atom, "sphere_color", None),
@@ -3995,6 +4022,7 @@ class ChemusonCanvas(QGraphicsView):
                     "is_query": atom.is_query,
                     "is_explicit": atom.is_explicit,
                     "no_implicit": bool(getattr(atom, "no_implicit", False)),
+                    "label_scale": getattr(atom, "label_scale", None),
                     "is_coordination_center": getattr(atom, "is_coordination_center", False),
                     "sphere_radius": getattr(atom, "sphere_radius", None),
                     "sphere_color": getattr(atom, "sphere_color", None),
@@ -4049,6 +4077,7 @@ class ChemusonCanvas(QGraphicsView):
                     "rect": [rect.x() - left, rect.y() - top, rect.width(), rect.height()],
                     "kind": getattr(item, "_kind", "[]"),
                     "padding": getattr(item, "_padding", None),
+                    "stroke_px": item.stroke_px(),
                 }
             )
 
@@ -4063,6 +4092,7 @@ class ChemusonCanvas(QGraphicsView):
                     "rotation": item.rotation(),
                     "font": item.font().toString(),
                     "color": item.defaultTextColor().name(),
+                    "text_width": item.textWidth(),
                 }
             )
 
@@ -4143,6 +4173,7 @@ class ChemusonCanvas(QGraphicsView):
                 anchor_override=atom_d.get("anchor"),
                 auto_hydrogens=False,
                 no_implicit=bool(atom_d.get("no_implicit", False)),
+                label_scale=atom_d.get("label_scale"),
                 is_coordination_center=bool(atom_d.get("is_coordination_center", False)),
                 sphere_radius=atom_d.get("sphere_radius"),
                 sphere_color=atom_d.get("sphere_color"),
@@ -4243,16 +4274,30 @@ class ChemusonCanvas(QGraphicsView):
                 float(rect_vals[3]),
             )
             kind = bracket_d.get("kind", "[]")
+            padding = bracket_d.get("padding")
+            stroke_px = bracket_d.get("stroke_px")
             pair = self._split_bracket_kind(kind)
             if pair:
                 for side in pair:
-                    cmd = AddBracketCommand(self, rect, side)
+                    cmd = AddBracketCommand(
+                        self,
+                        rect,
+                        side,
+                        padding=padding,
+                        stroke_px=stroke_px,
+                    )
                     if has_undo_items:
                         self.undo_stack.push(cmd)
                     else:
                         cmd.redo()
             else:
-                cmd = AddBracketCommand(self, rect, kind)
+                cmd = AddBracketCommand(
+                    self,
+                    rect,
+                    kind,
+                    padding=padding,
+                    stroke_px=stroke_px,
+                )
                 if has_undo_items:
                     self.undo_stack.push(cmd)
                 else:
@@ -4271,6 +4316,8 @@ class ChemusonCanvas(QGraphicsView):
                 text_item.setFont(font)
             if "color" in txt_d:
                 text_item.setDefaultTextColor(QColor(txt_d["color"]))
+            if "text_width" in txt_d:
+                text_item.setTextWidth(float(txt_d["text_width"]))
             text_item.setPos(
                 float(txt_d.get("x", 0.0)) + dx, float(txt_d.get("y", 0.0)) + dy
             )
@@ -4451,6 +4498,8 @@ class ChemusonCanvas(QGraphicsView):
                 text_item.setFont(font)
             if "color" in txt_d:
                 text_item.setDefaultTextColor(QColor(txt_d["color"]))
+            if "text_width" in txt_d:
+                text_item.setTextWidth(float(txt_d["text_width"]))
             text_item.setPos(float(txt_d.get("x", 0.0)), float(txt_d.get("y", 0.0)))
             self.scene.addItem(text_item)
             created.append(text_item)
@@ -5217,7 +5266,7 @@ class ChemusonCanvas(QGraphicsView):
             atom,
             show_carbon=show_c,
             show_hydrogen=show_h,
-            label_font=self._label_font(),
+            label_font=self._label_font_for_atom(atom.id),
             style=self.drawing_style,
             use_element_colors=self.state.use_element_colors,
         )
@@ -5321,6 +5370,25 @@ class ChemusonCanvas(QGraphicsView):
         font.setUnderline(self.state.label_font_underline)
         return font
 
+    def _atom_label_scale_factor(self, atom_id: int) -> float:
+        """Devuelve la escala efectiva de etiqueta para un átomo."""
+        atom = self.model.atoms.get(atom_id)
+        value = getattr(atom, "label_scale", None) if atom is not None else None
+        try:
+            scale = float(value) if value is not None else 1.0
+        except Exception:
+            scale = 1.0
+        return max(0.2, scale)
+
+    def _label_font_for_atom(self, atom_id: int) -> QFont:
+        """Construye la fuente efectiva para la etiqueta de un átomo."""
+        font = self._label_font()
+        size = font.pointSizeF()
+        if size <= 0.0:
+            size = float(font.pointSize()) if font.pointSize() > 0 else 10.0
+        font.setPointSizeF(size * self._atom_label_scale_factor(atom_id))
+        return font
+
     def label_font(self) -> QFont:
         """Método auxiliar para label font.
 
@@ -5356,7 +5424,7 @@ class ChemusonCanvas(QGraphicsView):
         self.state.label_font_underline = font.underline()
         self.refresh_label_fonts()
 
-    def refresh_label_fonts(self) -> None:
+    def refresh_label_fonts(self, atom_ids: Optional[Iterable[int]] = None) -> None:
         """Método auxiliar para refresh label fonts.
 
         Returns:
@@ -5365,10 +5433,15 @@ class ChemusonCanvas(QGraphicsView):
         Side Effects:
             Puede modificar el estado interno o la escena.
         """
-        font = self._label_font()
-        for item in self.atom_items.values():
-            item.set_label_font(font)
-        self.refresh_atom_labels()
+        if atom_ids is None:
+            atom_ids = list(self.atom_items.keys())
+        atom_ids = list(atom_ids)
+        for atom_id in atom_ids:
+            item = self.atom_items.get(atom_id)
+            if item is None:
+                continue
+            item.set_label_font(self._label_font_for_atom(atom_id))
+        self.refresh_atom_labels(atom_ids)
         self.recompute_numbering()
 
     def set_use_element_colors(self, use_element_colors: bool) -> None:
@@ -6042,11 +6115,11 @@ class ChemusonCanvas(QGraphicsView):
         self._clear_implicit_h_overlays(atom_ids)
         if not self.state.show_implicit_hydrogens:
             return
-        font = self._label_font()
         for atom_id in atom_ids:
             atom = self.model.atoms.get(atom_id)
             if atom is None or atom.element == "H":
                 continue
+            font = self._label_font_for_atom(atom_id)
             count = self._implicit_hydrogen_count(atom_id, atom.element)
             if count <= 0:
                 continue
@@ -6550,7 +6623,14 @@ class ChemusonCanvas(QGraphicsView):
         if item.scene() is self.scene:
             self.scene.removeItem(item)
 
-    def add_bracket_item(self, rect: QRectF, kind: str) -> BracketItem:
+    def add_bracket_item(
+        self,
+        rect: QRectF,
+        kind: str,
+        *,
+        padding: float = 8.0,
+        stroke_px: float | None = None,
+    ) -> BracketItem:
         """Añade bracket item.
 
         Args:
@@ -6563,7 +6643,13 @@ class ChemusonCanvas(QGraphicsView):
         Side Effects:
             Puede modificar el estado interno o la escena.
         """
-        item = BracketItem(rect, kind=kind, style=self.drawing_style)
+        item = BracketItem(
+            rect,
+            kind=kind,
+            padding=padding,
+            stroke_px=stroke_px,
+            style=self.drawing_style,
+        )
         self.scene.addItem(item)
         self.bracket_items.append(item)
         return item
@@ -6574,6 +6660,7 @@ class ChemusonCanvas(QGraphicsView):
         rect: QRectF,
         kind: str,
         padding: Optional[float] = None,
+        stroke_px: float | None = None,
     ) -> None:
         """Método auxiliar para readd bracket item.
 
@@ -6591,6 +6678,7 @@ class ChemusonCanvas(QGraphicsView):
         """
         item.set_rect(rect, padding=padding)
         item._kind = kind
+        item.set_stroke_px(stroke_px)
         if item.scene() is not self.scene:
             self.scene.addItem(item)
         if item not in self.bracket_items:
@@ -8930,6 +9018,7 @@ class ChemusonCanvas(QGraphicsView):
         act_paste = menu.addAction("Pegar")
         menu.addSeparator()
         act_delete = menu.addAction("Eliminar")
+        act_scale_selection = menu.addAction("Redimensionar selección...") if has_selection else None
         act_thicker = None
         act_thinner = None
         act_reset_thickness = None
@@ -9147,6 +9236,9 @@ class ChemusonCanvas(QGraphicsView):
             return
         if action == act_delete:
             self.delete_selection()
+            return
+        if act_scale_selection is not None and action == act_scale_selection:
+            self.open_selection_scale_dialog()
             return
         if action == act_select_all:
             self._select_all_items()
@@ -10431,18 +10523,424 @@ class ChemusonCanvas(QGraphicsView):
         self._rotation_start_arrow_positions = {}
         self._update_selection_overlay()
 
+    @staticmethod
+    def _optional_float_equal(a: Optional[float], b: Optional[float], tol: float = 0.05) -> bool:
+        """Compara dos flotantes opcionales con tolerancia visual."""
+        if a is None and b is None:
+            return True
+        if a is None or b is None:
+            return False
+        return abs(float(a) - float(b)) <= tol
+
+    @staticmethod
+    def _point_equal(a: QPointF, b: QPointF, tol: float = 1e-4) -> bool:
+        """Compara dos puntos con tolerancia."""
+        return abs(a.x() - b.x()) <= tol and abs(a.y() - b.y()) <= tol
+
+    @staticmethod
+    def _scale_point_from_anchor(anchor: QPointF, point: QPointF, scale: float) -> QPointF:
+        """Escala un punto alrededor de un ancla."""
+        return QPointF(
+            anchor.x() + (point.x() - anchor.x()) * scale,
+            anchor.y() + (point.y() - anchor.y()) * scale,
+        )
+
+    def _normalize_label_scale(self, value: float) -> Optional[float]:
+        """Normaliza una escala local de etiqueta para herencia/global."""
+        scale = max(0.2, float(value))
+        return None if abs(scale - 1.0) < 0.02 else scale
+
+    def _normalize_custom_stroke(self, value: float) -> Optional[float]:
+        """Convierte un grosor efectivo en override local o herencia."""
+        stroke = max(0.6, float(value))
+        return None if abs(stroke - float(self.drawing_style.stroke_px)) < 0.05 else stroke
+
+    def _selected_bonds_for_scale(self, atom_ids: set[int]) -> list[Bond]:
+        """Lista enlaces completamente contenidos en una selección de átomos."""
+        if not atom_ids:
+            return []
+        return [
+            bond
+            for bond in self.model.bonds.values()
+            if bond.a1_id in atom_ids and bond.a2_id in atom_ids
+        ]
+
+    def _effective_coordination_sphere_radius(self, atom_id: int) -> float:
+        """Obtiene el radio visual efectivo actual de una esfera de coordinación."""
+        item = self.atom_items.get(atom_id)
+        if item is not None and hasattr(item, "_coordination_draw_radius"):
+            try:
+                return max(4.0, float(item._coordination_draw_radius()))
+            except Exception:
+                pass
+        atom = self.model.atoms.get(atom_id)
+        configured = getattr(atom, "sphere_radius", None) if atom is not None else None
+        if configured is not None:
+            try:
+                return max(4.0, float(configured))
+            except Exception:
+                return 16.0
+        return 16.0
+
+    def _text_scale_snapshot(self, item: TextAnnotationItem) -> tuple[QPointF, float, str, float]:
+        """Captura estado geométrico y tipográfico de un texto."""
+        width = float(item.textWidth())
+        if not math.isfinite(width):
+            width = -1.0
+        return QPointF(item.pos()), float(item.rotation()), item.font().toString(), width
+
+    def _arrow_scale_snapshot(self, item: ArrowItem) -> tuple[QPointF, QPointF, Optional[float]]:
+        """Captura geometría y grosor de una flecha."""
+        return item.start_point(), item.end_point(), item.stroke_px()
+
+    def _bracket_scale_snapshot(self, item: BracketItem) -> tuple[QRectF, float, Optional[float]]:
+        """Captura rectángulo, padding y grosor de un corchete."""
+        return item.base_rect(), float(getattr(item, "_padding", 8.0)), item.stroke_px()
+
+    def _capture_scale_state(
+        self,
+        *,
+        atom_ids: Optional[set[int]] = None,
+        text_items: Optional[list[TextAnnotationItem]] = None,
+        arrow_items: Optional[list[ArrowItem]] = None,
+        bracket_items: Optional[list[BracketItem]] = None,
+    ) -> dict:
+        """Captura el estado base usado por el motor de escalado."""
+        if atom_ids is None:
+            atom_ids = self._selected_atom_ids_for_transform()
+        if text_items is None:
+            text_items = self._selected_text_items()
+        if arrow_items is None:
+            arrow_items = self._selected_arrow_items()
+        if bracket_items is None:
+            bracket_items = self._selected_bracket_items()
+
+        atom_label_scales: Dict[int, Optional[float]] = {}
+        atom_sphere_radii: Dict[int, Tuple[Optional[float], float]] = {}
+        for atom_id in atom_ids:
+            atom = self.model.atoms.get(atom_id)
+            if atom is None:
+                continue
+            atom_label_scales[atom_id] = getattr(atom, "label_scale", None)
+            if bool(getattr(atom, "is_coordination_center", False)):
+                atom_sphere_radii[atom_id] = (
+                    getattr(atom, "sphere_radius", None),
+                    self._effective_coordination_sphere_radius(atom_id),
+                )
+
+        bond_strokes: Dict[int, Tuple[Optional[float], float]] = {}
+        bond_lengths: Dict[int, Optional[float]] = {}
+        for bond in self._selected_bonds_for_scale(atom_ids):
+            configured = bond.stroke_px
+            effective = configured if configured is not None else float(self.drawing_style.stroke_px)
+            bond_strokes[bond.id] = (configured, float(effective))
+            bond_lengths[bond.id] = bond.length_px
+
+        return {
+            "atom_positions": {
+                atom_id: (self.model.get_atom(atom_id).x, self.model.get_atom(atom_id).y)
+                for atom_id in atom_ids
+                if atom_id in self.model.atoms
+            },
+            "atom_label_scales": atom_label_scales,
+            "atom_sphere_radii": atom_sphere_radii,
+            "bond_strokes": bond_strokes,
+            "bond_lengths": bond_lengths,
+            "text_snapshots": {item: self._text_scale_snapshot(item) for item in text_items},
+            "arrow_snapshots": {
+                item: (
+                    item.start_point(),
+                    item.end_point(),
+                    item.stroke_px(),
+                    float(item.stroke_px() if item.stroke_px() is not None else self.drawing_style.stroke_px),
+                )
+                for item in arrow_items
+            },
+            "bracket_snapshots": {
+                item: (
+                    item.base_rect(),
+                    float(getattr(item, "_padding", 8.0)),
+                    item.stroke_px(),
+                    float(item.stroke_px() if item.stroke_px() is not None else self.drawing_style.stroke_px),
+                )
+                for item in bracket_items
+            },
+        }
+
+    def _apply_scale_state(
+        self,
+        state: dict,
+        anchor: QPointF,
+        scale: float,
+        *,
+        include_style: bool = True,
+    ) -> None:
+        """Aplica en vivo una escala partiendo de un snapshot inicial."""
+        atom_positions = state.get("atom_positions", {})
+        atom_ids = set(atom_positions.keys())
+        for atom_id, (x0, y0) in atom_positions.items():
+            if atom_id not in self.model.atoms:
+                continue
+            new_pos = self._scale_point_from_anchor(anchor, QPointF(x0, y0), scale)
+            self.model.update_atom_position(atom_id, new_pos.x(), new_pos.y())
+            self.update_atom_item(atom_id, new_pos.x(), new_pos.y())
+
+        if include_style:
+            atom_label_scales = state.get("atom_label_scales", {})
+            if atom_label_scales:
+                for atom_id, base_scale in atom_label_scales.items():
+                    factor = float(base_scale) if base_scale is not None else 1.0
+                    self.model.update_atom_label_scale(
+                        atom_id,
+                        self._normalize_label_scale(factor * scale),
+                    )
+                self.refresh_label_fonts(atom_label_scales.keys())
+
+            for atom_id, (_configured, effective_radius) in state.get("atom_sphere_radii", {}).items():
+                atom = self.model.atoms.get(atom_id)
+                if atom is None:
+                    continue
+                atom.sphere_radius = max(4.0, float(effective_radius) * scale)
+                item = self.atom_items.get(atom_id)
+                if item is not None and hasattr(item, "refresh_coordination_visual"):
+                    item.refresh_coordination_visual()
+
+            for bond_id, (_configured, effective) in state.get("bond_strokes", {}).items():
+                if bond_id not in self.model.bonds:
+                    continue
+                self.model.update_bond(
+                    bond_id,
+                    stroke_px=self._normalize_custom_stroke(float(effective) * scale),
+                )
+            for bond_id, base_length in state.get("bond_lengths", {}).items():
+                if bond_id not in self.model.bonds or base_length is None:
+                    continue
+                self.model.update_bond_length(bond_id, max(1.0, float(base_length) * scale))
+
+        if atom_ids:
+            self.update_bond_items_for_atoms(atom_ids)
+            self.recompute_numbering()
+
+        for item, (pos, rot, font_str, text_width) in state.get("text_snapshots", {}).items():
+            item.setPos(self._scale_point_from_anchor(anchor, pos, scale))
+            item.setRotation(rot)
+            if include_style:
+                font = QFont()
+                if font_str:
+                    font.fromString(font_str)
+                size = font.pointSizeF()
+                if size <= 0.0:
+                    size = float(font.pointSize()) if font.pointSize() > 0 else 12.0
+                font.setPointSizeF(max(1.0, size * scale))
+                item.setFont(font)
+                item.setTextWidth(text_width * scale if text_width > 0.0 else -1.0)
+
+        for item, (start, end, _configured, effective_stroke) in state.get("arrow_snapshots", {}).items():
+            item.update_positions(
+                self._scale_point_from_anchor(anchor, start, scale),
+                self._scale_point_from_anchor(anchor, end, scale),
+            )
+            if include_style:
+                item.set_stroke_px(self._normalize_custom_stroke(float(effective_stroke) * scale))
+
+        for item, (rect, padding, _configured, effective_stroke) in state.get("bracket_snapshots", {}).items():
+            top_left = self._scale_point_from_anchor(anchor, rect.topLeft(), scale)
+            bottom_right = self._scale_point_from_anchor(anchor, rect.bottomRight(), scale)
+            item.set_rect(QRectF(top_left, bottom_right).normalized(), padding=max(0.0, padding * scale))
+            if include_style:
+                item.set_stroke_px(self._normalize_custom_stroke(float(effective_stroke) * scale))
+
+        self._update_selection_overlay()
+
+    def _push_scale_commands(
+        self,
+        state: dict,
+        *,
+        macro_name: str,
+        skip_first_redo_atoms: bool,
+    ) -> bool:
+        """Convierte el estado final de una escala en comandos de undo/redo."""
+        command_count = 0
+        atom_positions_before = state.get("atom_positions", {})
+        atom_positions_after = {
+            atom_id: (self.model.get_atom(atom_id).x, self.model.get_atom(atom_id).y)
+            for atom_id in atom_positions_before
+            if atom_id in self.model.atoms
+        }
+        moved_atoms = {
+            atom_id: atom_positions_before[atom_id]
+            for atom_id, after in atom_positions_after.items()
+            if (
+                abs(after[0] - atom_positions_before[atom_id][0]) > 1e-4
+                or abs(after[1] - atom_positions_before[atom_id][1]) > 1e-4
+            )
+        }
+        if moved_atoms:
+            command_count += 1
+
+        changed_label_scales = []
+        for atom_id, before_scale in state.get("atom_label_scales", {}).items():
+            atom = self.model.atoms.get(atom_id)
+            if atom is None:
+                continue
+            after_scale = getattr(atom, "label_scale", None)
+            if not self._optional_float_equal(before_scale, after_scale, tol=0.02):
+                changed_label_scales.append((atom_id, before_scale, after_scale))
+        command_count += len(changed_label_scales)
+
+        changed_spheres = []
+        for atom_id, (before_radius, _effective) in state.get("atom_sphere_radii", {}).items():
+            atom = self.model.atoms.get(atom_id)
+            if atom is None:
+                continue
+            after_radius = getattr(atom, "sphere_radius", None)
+            if not self._optional_float_equal(before_radius, after_radius, tol=0.05):
+                changed_spheres.append((atom_id, before_radius, after_radius))
+        command_count += len(changed_spheres)
+
+        changed_bond_strokes = []
+        for bond_id, (before_stroke, _effective) in state.get("bond_strokes", {}).items():
+            bond = self.model.bonds.get(bond_id)
+            if bond is None:
+                continue
+            after_stroke = bond.stroke_px
+            if not self._optional_float_equal(before_stroke, after_stroke, tol=0.05):
+                changed_bond_strokes.append((bond_id, before_stroke, after_stroke))
+        command_count += len(changed_bond_strokes)
+
+        changed_bond_lengths = []
+        for bond_id, before_length in state.get("bond_lengths", {}).items():
+            bond = self.model.bonds.get(bond_id)
+            if bond is None:
+                continue
+            after_length = bond.length_px
+            if not self._optional_float_equal(before_length, after_length, tol=0.05):
+                changed_bond_lengths.append((bond_id, before_length, after_length))
+        command_count += len(changed_bond_lengths)
+
+        text_before = dict(state.get("text_snapshots", {}))
+        text_after = {item: self._text_scale_snapshot(item) for item in text_before}
+        changed_text = any(
+            not (
+                self._point_equal(text_before[item][0], text_after[item][0])
+                and abs(text_before[item][1] - text_after[item][1]) <= 1e-4
+                and text_before[item][2] == text_after[item][2]
+                and abs(text_before[item][3] - text_after[item][3]) <= 0.05
+            )
+            for item in text_before
+        )
+        if changed_text:
+            command_count += 1
+
+        arrow_before = {
+            item: (start, end, configured)
+            for item, (start, end, configured, _effective) in state.get("arrow_snapshots", {}).items()
+        }
+        arrow_after = {item: self._arrow_scale_snapshot(item) for item in arrow_before}
+        changed_arrows = any(
+            not (
+                self._point_equal(arrow_before[item][0], arrow_after[item][0])
+                and self._point_equal(arrow_before[item][1], arrow_after[item][1])
+                and self._optional_float_equal(arrow_before[item][2], arrow_after[item][2], tol=0.05)
+            )
+            for item in arrow_before
+        )
+        if changed_arrows:
+            command_count += 1
+
+        bracket_before = {
+            item: (rect, padding, configured)
+            for item, (rect, padding, configured, _effective) in state.get("bracket_snapshots", {}).items()
+        }
+        bracket_after = {item: self._bracket_scale_snapshot(item) for item in bracket_before}
+        changed_brackets = any(
+            not (
+                self._point_equal(bracket_before[item][0].topLeft(), bracket_after[item][0].topLeft())
+                and self._point_equal(bracket_before[item][0].bottomRight(), bracket_after[item][0].bottomRight())
+                and abs(bracket_before[item][1] - bracket_after[item][1]) <= 0.05
+                and self._optional_float_equal(bracket_before[item][2], bracket_after[item][2], tol=0.05)
+            )
+            for item in bracket_before
+        )
+        if changed_brackets:
+            command_count += 1
+
+        if command_count <= 0:
+            return False
+
+        if command_count > 1:
+            self.undo_stack.beginMacro(macro_name)
+
+        if moved_atoms:
+            self.undo_stack.push(
+                MoveAtomsCommand(
+                    self.model,
+                    self,
+                    moved_atoms,
+                    {atom_id: atom_positions_after[atom_id] for atom_id in moved_atoms},
+                    skip_first_redo=skip_first_redo_atoms,
+                )
+            )
+
+        for atom_id, before_scale, after_scale in changed_label_scales:
+            self.undo_stack.push(
+                ChangeAtomLabelScaleCommand(
+                    self.model,
+                    self,
+                    atom_id,
+                    after_scale,
+                    old_scale=before_scale,
+                )
+            )
+
+        for atom_id, before_radius, after_radius in changed_spheres:
+            self.undo_stack.push(
+                ChangeCoordinationSphereStyleCommand(
+                    self.model,
+                    self,
+                    atom_id,
+                    new_radius=after_radius,
+                    old_radius=before_radius,
+                )
+            )
+
+        for bond_id, before_stroke, after_stroke in changed_bond_strokes:
+            self.undo_stack.push(
+                ChangeBondStrokeCommand(
+                    self.model,
+                    self,
+                    bond_id,
+                    after_stroke,
+                    old_stroke_px=before_stroke,
+                )
+            )
+
+        for bond_id, before_length, after_length in changed_bond_lengths:
+            self.undo_stack.push(
+                ChangeBondLengthCommand(
+                    self.model,
+                    self,
+                    bond_id,
+                    after_length,
+                    old_length=before_length,
+                )
+            )
+
+        if changed_text:
+            self.undo_stack.push(ScaleTextItemsCommand(self, text_before, text_after))
+
+        if changed_arrows:
+            self.undo_stack.push(ScaleArrowItemsCommand(self, arrow_before, arrow_after))
+
+        if changed_brackets:
+            self.undo_stack.push(ScaleBracketItemsCommand(self, bracket_before, bracket_after))
+
+        if command_count > 1:
+            self.undo_stack.endMacro()
+        return True
+
     def _begin_scale_drag(self, scene_pos: QPointF) -> None:
-        """Método auxiliar para  begin scale drag.
-
-        Args:
-            scene_pos: Descripción del parámetro.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la escena.
-        """
+        """Inicia el escalado interactivo de la selección."""
         if (
             not self._selected_atom_ids_for_transform()
             and not self._selected_text_items()
@@ -10464,39 +10962,35 @@ class ChemusonCanvas(QGraphicsView):
         self._scale_start_handle = handle
         self._scale_start_length = start_len
 
-        atom_ids = self._selected_atom_ids_for_transform()
-        self._scale_start_positions = {
-            atom_id: (self.model.get_atom(atom_id).x, self.model.get_atom(atom_id).y)
-            for atom_id in atom_ids
-            if atom_id in self.model.atoms
-        }
-
+        state = self._capture_scale_state()
+        self._scale_start_positions = state["atom_positions"]
+        self._scale_start_atom_label_scales = state["atom_label_scales"]
+        self._scale_start_atom_sphere_radii = state["atom_sphere_radii"]
+        self._scale_start_bond_strokes = state["bond_strokes"]
+        self._scale_start_bond_lengths = state["bond_lengths"]
         self._scale_start_text_positions = {
-            item: (item.pos(), item.rotation())
-            for item in self._selected_text_items()
+            item: (snapshot[0], snapshot[1]) for item, snapshot in state["text_snapshots"].items()
+        }
+        self._scale_start_text_styles = {
+            item: (snapshot[2], snapshot[3]) for item, snapshot in state["text_snapshots"].items()
         }
         self._scale_start_arrow_positions = {
-            item: (item.start_point(), item.end_point())
-            for item in self._selected_arrow_items()
+            item: (snapshot[0], snapshot[1]) for item, snapshot in state["arrow_snapshots"].items()
+        }
+        self._scale_start_arrow_strokes = {
+            item: (snapshot[2], snapshot[3]) for item, snapshot in state["arrow_snapshots"].items()
         }
         self._scale_start_bracket_rects = {
-            item: item.base_rect()
-            for item in self._selected_bracket_items()
+            item: snapshot[0] for item, snapshot in state["bracket_snapshots"].items()
+        }
+        self._scale_start_bracket_styles = {
+            item: (snapshot[1], snapshot[2], snapshot[3])
+            for item, snapshot in state["bracket_snapshots"].items()
         }
         self._scale_has_moved = False
 
     def _update_scale_drag(self, scene_pos: QPointF) -> None:
-        """Método auxiliar para  update scale drag.
-
-        Args:
-            scene_pos: Descripción del parámetro.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la escena.
-        """
+        """Actualiza la previsualización de escala interactiva."""
         if not self._scale_dragging or self._scale_anchor is None:
             return
         if self._scale_start_length <= 1e-6:
@@ -10507,93 +11001,90 @@ class ChemusonCanvas(QGraphicsView):
         scale = max(0.05, current_len / self._scale_start_length)
         if abs(scale - 1.0) > 1e-4:
             self._scale_has_moved = True
-
-        if self._scale_start_positions:
-            for atom_id, (x0, y0) in self._scale_start_positions.items():
-                nx = self._scale_anchor.x() + (x0 - self._scale_anchor.x()) * scale
-                ny = self._scale_anchor.y() + (y0 - self._scale_anchor.y()) * scale
-                self.model.update_atom_position(atom_id, nx, ny)
-                self.update_atom_item(atom_id, nx, ny)
-            self.update_bond_items_for_atoms(set(self._scale_start_positions.keys()))
-
-        if self._scale_start_text_positions:
-            for item, (pos, rot) in self._scale_start_text_positions.items():
-                nx = self._scale_anchor.x() + (pos.x() - self._scale_anchor.x()) * scale
-                ny = self._scale_anchor.y() + (pos.y() - self._scale_anchor.y()) * scale
-                item.setPos(QPointF(nx, ny))
-                item.setRotation(rot)
-
-        if self._scale_start_arrow_positions:
-            for item, (start, end) in self._scale_start_arrow_positions.items():
-                nsx = self._scale_anchor.x() + (start.x() - self._scale_anchor.x()) * scale
-                nsy = self._scale_anchor.y() + (start.y() - self._scale_anchor.y()) * scale
-                nex = self._scale_anchor.x() + (end.x() - self._scale_anchor.x()) * scale
-                ney = self._scale_anchor.y() + (end.y() - self._scale_anchor.y()) * scale
-                item.update_positions(QPointF(nsx, nsy), QPointF(nex, ney))
-
-        if self._scale_start_bracket_rects:
-            for item, rect in self._scale_start_bracket_rects.items():
-                x0 = self._scale_anchor.x() + (rect.left() - self._scale_anchor.x()) * scale
-                y0 = self._scale_anchor.y() + (rect.top() - self._scale_anchor.y()) * scale
-                x1 = self._scale_anchor.x() + (rect.right() - self._scale_anchor.x()) * scale
-                y1 = self._scale_anchor.y() + (rect.bottom() - self._scale_anchor.y()) * scale
-                item.set_rect(QRectF(x0, y0, x1 - x0, y1 - y0))
-
-        self._update_selection_overlay()
+        self._apply_scale_state(
+            {
+                "atom_positions": self._scale_start_positions,
+                "atom_label_scales": self._scale_start_atom_label_scales,
+                "atom_sphere_radii": self._scale_start_atom_sphere_radii,
+                "bond_strokes": self._scale_start_bond_strokes,
+                "bond_lengths": self._scale_start_bond_lengths,
+                "text_snapshots": {
+                    item: (
+                        pos,
+                        rot,
+                        self._scale_start_text_styles[item][0],
+                        self._scale_start_text_styles[item][1],
+                    )
+                    for item, (pos, rot) in self._scale_start_text_positions.items()
+                },
+                "arrow_snapshots": {
+                    item: (
+                        start,
+                        end,
+                        self._scale_start_arrow_strokes[item][0],
+                        self._scale_start_arrow_strokes[item][1],
+                    )
+                    for item, (start, end) in self._scale_start_arrow_positions.items()
+                },
+                "bracket_snapshots": {
+                    item: (
+                        rect,
+                        self._scale_start_bracket_styles[item][0],
+                        self._scale_start_bracket_styles[item][1],
+                        self._scale_start_bracket_styles[item][2],
+                    )
+                    for item, rect in self._scale_start_bracket_rects.items()
+                },
+            },
+            self._scale_anchor,
+            scale,
+            include_style=True,
+        )
 
     def _finalize_scale_drag(self) -> None:
-        """Método auxiliar para  finalize scale drag.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la escena.
-        """
+        """Finaliza el escalado interactivo y lo registra en undo/redo."""
         if not self._scale_dragging:
             return
 
         if self._scale_has_moved:
-            move_atoms = bool(self._scale_start_positions)
-            move_text = bool(self._scale_start_text_positions)
-            move_arrows = bool(self._scale_start_arrow_positions)
-            move_brackets = bool(self._scale_start_bracket_rects)
-
-            if sum([move_atoms, move_text, move_arrows, move_brackets]) > 1:
-                self.undo_stack.beginMacro("Scale selection")
-
-            if move_atoms:
-                after = {
-                    atom_id: (self.model.get_atom(atom_id).x, self.model.get_atom(atom_id).y)
-                    for atom_id in self._scale_start_positions
-                }
-                cmd = MoveAtomsCommand(
-                    self.model,
-                    self,
-                    self._scale_start_positions,
-                    after,
-                    skip_first_redo=True,
-                )
-                self.undo_stack.push(cmd)
-
-            if move_text:
-                before = self._scale_start_text_positions
-                after = {item: (item.pos(), item.rotation()) for item in before.keys()}
-                cmd = MoveTextItemsCommand(self, before, after)
-                self.undo_stack.push(cmd)
-
-            if move_arrows:
-                before = self._scale_start_arrow_positions
-                after = {item: (item.start_point(), item.end_point()) for item in before.keys()}
-                self.undo_stack.push(MoveArrowItemsCommand(self, before, after))
-
-            if move_brackets:
-                before = self._scale_start_bracket_rects
-                after = {item: item.base_rect() for item in before.keys()}
-                self.undo_stack.push(MoveBracketItemsCommand(self, before, after))
-
-            if sum([move_atoms, move_text, move_arrows, move_brackets]) > 1:
-                self.undo_stack.endMacro()
+            self._push_scale_commands(
+                {
+                    "atom_positions": self._scale_start_positions,
+                    "atom_label_scales": self._scale_start_atom_label_scales,
+                    "atom_sphere_radii": self._scale_start_atom_sphere_radii,
+                    "bond_strokes": self._scale_start_bond_strokes,
+                    "bond_lengths": self._scale_start_bond_lengths,
+                    "text_snapshots": {
+                        item: (
+                            pos,
+                            rot,
+                            self._scale_start_text_styles[item][0],
+                            self._scale_start_text_styles[item][1],
+                        )
+                        for item, (pos, rot) in self._scale_start_text_positions.items()
+                    },
+                    "arrow_snapshots": {
+                        item: (
+                            start,
+                            end,
+                            self._scale_start_arrow_strokes[item][0],
+                            self._scale_start_arrow_strokes[item][1],
+                        )
+                        for item, (start, end) in self._scale_start_arrow_positions.items()
+                    },
+                    "bracket_snapshots": {
+                        item: (
+                            rect,
+                            self._scale_start_bracket_styles[item][0],
+                            self._scale_start_bracket_styles[item][1],
+                            self._scale_start_bracket_styles[item][2],
+                        )
+                        for item, rect in self._scale_start_bracket_rects.items()
+                    },
+                },
+                macro_name="Scale selection",
+                skip_first_redo_atoms=True,
+            )
 
         self._scale_dragging = False
         self._scale_anchor = None
@@ -10601,8 +11092,15 @@ class ChemusonCanvas(QGraphicsView):
         self._scale_start_length = 0.0
         self._scale_start_positions = {}
         self._scale_start_text_positions = {}
+        self._scale_start_text_styles = {}
         self._scale_start_arrow_positions = {}
+        self._scale_start_arrow_strokes = {}
         self._scale_start_bracket_rects = {}
+        self._scale_start_bracket_styles = {}
+        self._scale_start_atom_label_scales = {}
+        self._scale_start_atom_sphere_radii = {}
+        self._scale_start_bond_strokes = {}
+        self._scale_start_bond_lengths = {}
         self._scale_has_moved = False
         self._update_selection_overlay()
 
@@ -10638,6 +11136,154 @@ class ChemusonCanvas(QGraphicsView):
             Puede modificar el estado interno o la escena.
         """
         return [item for item in self.scene.selectedItems() if isinstance(item, BracketItem)]
+
+    def _all_scalable_text_items(self) -> list[TextAnnotationItem]:
+        """Devuelve textos libres persistentes, excluyendo overlays automáticos."""
+        return [
+            item
+            for item in self.scene.items()
+            if isinstance(item, TextAnnotationItem)
+            and not bool(item.data(NUMBERING_TEXT_ROLE))
+            and item not in self._electron_dots
+        ]
+
+    def _targets_bbox(
+        self,
+        *,
+        atom_ids: Iterable[int] = (),
+        bond_ids: Iterable[int] = (),
+        text_items: Iterable[TextAnnotationItem] = (),
+        arrow_items: Iterable[ArrowItem] = (),
+        bracket_items: Iterable[BracketItem] = (),
+    ) -> Optional[QRectF]:
+        """Calcula un bounding box para un conjunto explícito de elementos."""
+        rect: Optional[QRectF] = None
+
+        def extend(candidate: QRectF) -> None:
+            nonlocal rect
+            if not candidate.isValid() or candidate.isNull():
+                return
+            rect = candidate if rect is None else rect.united(candidate)
+
+        def extend_atom_bounds(atom_id: int) -> None:
+            item = self.atom_items.get(atom_id)
+            if item is None or item.scene() is not self.scene:
+                return
+            if item.pen().style() != Qt.PenStyle.NoPen or item.brush().style() != Qt.BrushStyle.NoBrush:
+                extend(item.sceneBoundingRect())
+            if item.label.isVisible():
+                extend(item.label.sceneBoundingRect())
+            if item.charge_label.isVisible():
+                extend(item.charge_label.sceneBoundingRect())
+            overlays = self._implicit_h_overlays.get(atom_id)
+            if overlays:
+                for line_item, text_item in overlays:
+                    if line_item.scene() is self.scene and line_item.isVisible():
+                        extend(line_item.sceneBoundingRect())
+                    if text_item.scene() is self.scene and text_item.isVisible():
+                        extend(text_item.sceneBoundingRect())
+
+        for atom_id in atom_ids:
+            extend_atom_bounds(atom_id)
+        for bond_id in bond_ids:
+            item = self.bond_items.get(bond_id)
+            if item is not None:
+                extend(item.sceneBoundingRect())
+        for item in text_items:
+            if item.scene() is self.scene:
+                extend(item.sceneBoundingRect())
+        for item in arrow_items:
+            if item.scene() is self.scene:
+                extend(item.sceneBoundingRect())
+        for item in bracket_items:
+            if item.scene() is self.scene:
+                extend(item.sceneBoundingRect())
+        return rect
+
+    def scale_current_selection(self, scale: float, *, include_style: bool = True) -> bool:
+        """Escala la selección actual alrededor de su centro visual."""
+        bbox = self._selected_items_bbox()
+        if bbox is None:
+            return False
+        scale_factor = max(0.05, float(scale))
+        state = self._capture_scale_state()
+        if not include_style:
+            state["atom_label_scales"] = {}
+            state["atom_sphere_radii"] = {}
+            state["bond_strokes"] = {}
+            state["bond_lengths"] = {}
+        self._apply_scale_state(state, bbox.center(), scale_factor, include_style=include_style)
+        return self._push_scale_commands(
+            state,
+            macro_name="Scale selection",
+            skip_first_redo_atoms=True,
+        )
+
+    def apply_document_dimensions(
+        self,
+        *,
+        style: DrawingStyle,
+        label_font_size: float,
+        numbering_font_size: float,
+        scale_existing: bool,
+        scale_factor: float,
+    ) -> None:
+        """Aplica dimensiones globales del documento y opcionalmente reescala su contenido."""
+        state = None
+        anchor = None
+        if scale_existing and abs(float(scale_factor) - 1.0) > 1e-4:
+            atom_ids = set(self.model.atoms.keys())
+            text_items = self._all_scalable_text_items()
+            arrow_items = list(self.arrow_items)
+            bracket_items = list(self.bracket_items)
+            state = self._capture_scale_state(
+                atom_ids=atom_ids,
+                text_items=text_items,
+                arrow_items=arrow_items,
+                bracket_items=bracket_items,
+            )
+            state["atom_label_scales"] = {}
+            anchor_bbox = self._targets_bbox(
+                atom_ids=atom_ids,
+                bond_ids=self.bond_items.keys(),
+                text_items=text_items,
+                arrow_items=arrow_items,
+                bracket_items=bracket_items,
+            )
+            anchor = anchor_bbox.center() if anchor_bbox is not None else None
+
+        self.drawing_style = style
+        self.state.bond_length = style.bond_length_px
+        self.state.label_font_size = max(1.0, float(label_font_size))
+        self.state.numbering_font_size = max(1.0, float(numbering_font_size))
+        for item in self.atom_items.values():
+            item.set_style(style)
+        self.refresh_label_fonts()
+        self.update_bond_items_for_atoms(set(self.model.atoms.keys()))
+        for arrow in self.arrow_items:
+            arrow.set_style(style)
+        for bracket in self.bracket_items:
+            bracket.set_style(style)
+        self.refresh_atom_visibility()
+
+        if state is not None and anchor is not None:
+            self._apply_scale_state(
+                state,
+                anchor,
+                max(0.05, float(scale_factor)),
+                include_style=True,
+            )
+        self._update_selection_overlay()
+
+    def open_selection_scale_dialog(self) -> None:
+        """Abre el diálogo de redimensionado de selección."""
+        if self._selected_items_bbox() is None:
+            return
+        dialog = SelectionScaleDialog(self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        scale_factor, include_style = dialog.values()
+        self.scale_current_selection(scale_factor, include_style=include_style)
 
     def rotate_selection_degrees(self, degrees: float, use_start_positions: bool = False) -> None:
         """Rotate selected items by degrees around their collective center."""
