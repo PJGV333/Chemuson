@@ -174,3 +174,47 @@ def test_sp3_congested_fourth_bond_follows_cursor_across_gap_midpoints():
 
     # Debe seguir la bisectriz cercana al cursor, no forzar solo el hueco máximo.
     assert angle_distance_deg(theta, 95.0) < 1e-6
+
+
+def test_default_bond_endpoint_ignores_isolated_hidden_carbon_placeholder():
+    """Un carbono huérfano invisible no debe alterar el snap ni la geometría del nuevo enlace."""
+    canvas = ChemusonCanvas()
+
+    center = canvas.model.add_atom("C", 200.0, 200.0)
+    p0 = QPointF(center.x, center.y)
+    length = canvas.state.bond_length
+
+    neighbor_pos = endpoint_from_angle_len(p0, 180.0, length)
+    neighbor = canvas.model.add_atom("C", neighbor_pos.x(), neighbor_pos.y())
+    canvas.model.add_bond(center.id, neighbor.id)
+    canvas._rebuild_items_from_model()
+
+    baseline = canvas._compute_default_bond_endpoint(p0, center.id)
+
+    canvas.model.add_atom("C", baseline.x() + 6.0, baseline.y())
+    perturbed = canvas._compute_default_bond_endpoint(p0, center.id)
+
+    assert perturbed.x() == pytest.approx(baseline.x())
+    assert perturbed.y() == pytest.approx(baseline.y())
+
+
+def test_deleting_bond_prunes_hidden_carbon_orphans_but_keeps_meaningful_atoms():
+    """Al borrar un enlace, los carbonos invisibles aislados deben limpiarse automáticamente."""
+    canvas = ChemusonCanvas()
+
+    anchor = canvas.model.add_atom("N", 180.0, 180.0, is_explicit=True)
+    orphan = canvas.model.add_atom("C", 220.0, 180.0)
+    bond = canvas.model.add_bond(anchor.id, orphan.id)
+    canvas._rebuild_items_from_model()
+
+    canvas._delete_selection(set(), {bond.id})
+
+    assert bond.id not in canvas.model.bonds
+    assert anchor.id in canvas.model.atoms
+    assert orphan.id not in canvas.model.atoms
+
+    canvas.undo_stack.undo()
+
+    assert bond.id in canvas.model.bonds
+    assert anchor.id in canvas.model.atoms
+    assert orphan.id in canvas.model.atoms

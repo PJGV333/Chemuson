@@ -39,6 +39,17 @@ def _atom_degree(model: MolGraph, atom_id: int) -> int:
     )
 
 
+def _is_hidden_carbon_placeholder(model: MolGraph, atom_id: int) -> bool:
+    """Indica si el átomo es un carbono implícito auto-generado sin semántica propia."""
+    checker = getattr(model, "is_hidden_carbon_placeholder", None)
+    if callable(checker):
+        return bool(checker(atom_id))
+    atom = model.atoms.get(atom_id)
+    if atom is None:
+        return False
+    return atom.element == "C" and not atom.is_explicit
+
+
 def _neighbor_angles_deg(model: MolGraph, atom_id: int) -> list[float]:
     """Devuelve los ángulos hacia los vecinos de un átomo."""
     anchor = model.get_atom(atom_id)
@@ -1338,9 +1349,11 @@ class DeleteSelectionCommand(QUndoCommand):
     def redo(self) -> None:
         """Aplica el borrado y guarda copias para restaurar."""
         if not self._removed_atoms and not self._removed_bonds:
+            captured_atom_ids: set[int] = set()
             for atom_id in self._atom_ids:
                 if atom_id in self._model.atoms:
                     self._removed_atoms.append(replace(self._model.atoms[atom_id]))
+                    captured_atom_ids.add(atom_id)
             for bond in self._model.bonds.values():
                 if (
                     bond.id in self._bond_ids
@@ -1348,6 +1361,25 @@ class DeleteSelectionCommand(QUndoCommand):
                     or bond.a2_id in self._atom_ids
                 ):
                     self._removed_bonds.append(replace(bond))
+            candidate_orphans: set[int] = set()
+            for bond in self._removed_bonds:
+                candidate_orphans.add(bond.a1_id)
+                candidate_orphans.add(bond.a2_id)
+            candidate_orphans.difference_update(captured_atom_ids)
+            for atom_id in sorted(candidate_orphans):
+                if atom_id not in self._model.atoms:
+                    continue
+                if not _is_hidden_carbon_placeholder(self._model, atom_id):
+                    continue
+                removed_incident = sum(
+                    1
+                    for bond in self._removed_bonds
+                    if bond.a1_id == atom_id or bond.a2_id == atom_id
+                )
+                if _atom_degree(self._model, atom_id) - removed_incident > 0:
+                    continue
+                self._removed_atoms.append(replace(self._model.atoms[atom_id]))
+                captured_atom_ids.add(atom_id)
             for item in self._arrow_items:
                 self._removed_arrows.append(
                     (

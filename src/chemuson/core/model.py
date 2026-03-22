@@ -674,6 +674,43 @@ class MolGraph:
         atom = self.atoms[atom_id]
         atom.label_scale = None if label_scale is None else float(label_scale)
 
+    def atom_degree(self, atom_id: int) -> int:
+        """Devuelve el número de enlaces conectados a un átomo."""
+        return sum(
+            1
+            for bond in self.bonds.values()
+            if bond.a1_id == atom_id or bond.a2_id == atom_id
+        )
+
+    def is_hidden_carbon_placeholder(self, atom_id: int) -> bool:
+        """Indica si el átomo es un carbono implícito auto-generado y sin semántica propia."""
+        atom = self.atoms.get(atom_id)
+        if atom is None:
+            return False
+        if atom.element != "C" or atom.is_explicit:
+            return False
+        if atom.charge != 0 or atom.isotope is not None:
+            return False
+        if int(getattr(atom, "radical_electrons", 0) or 0) != 0:
+            return False
+        if atom.oxidation_state is not None or atom.explicit_h is not None:
+            return False
+        if atom.mapping is not None or atom.is_query or atom.no_implicit:
+            return False
+        if getattr(atom, "label_scale", None) is not None:
+            return False
+        if getattr(atom, "is_coordination_center", False):
+            return False
+        if getattr(atom, "sphere_radius", None) is not None:
+            return False
+        if getattr(atom, "sphere_color", None) is not None:
+            return False
+        return True
+
+    def is_disposable_orphan_atom(self, atom_id: int) -> bool:
+        """Indica si el átomo puede eliminarse automáticamente al quedar aislado."""
+        return self.is_hidden_carbon_placeholder(atom_id) and self.atom_degree(atom_id) <= 0
+
     def update_bond(
         self,
         bond_id: int,

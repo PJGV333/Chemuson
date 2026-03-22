@@ -1948,12 +1948,16 @@ class ChemusonCanvas(QGraphicsView):
             Puede modificar el estado interno o la escena.
         """
         for item in self.scene.items(scene_pos):
-             if isinstance(item, (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, WavyAnchorItem)):
+            if isinstance(item, AtomItem) and self._is_disposable_orphan_atom(item.atom_id):
+                continue
+            if isinstance(item, (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, WavyAnchorItem)):
                 return item
-             # If we clicked a label/text child of an atom, return the atom.
-             if isinstance(item, QGraphicsTextItem):
+            # If we clicked a label/text child of an atom, return the atom.
+            if isinstance(item, QGraphicsTextItem):
                 parent = item.parentItem()
                 if isinstance(parent, AtomItem):
+                    if self._is_disposable_orphan_atom(parent.atom_id):
+                        continue
                     return parent
         return None
 
@@ -5567,6 +5571,27 @@ class ChemusonCanvas(QGraphicsView):
             for bond in self.model.bonds.values()
             if bond.a1_id == atom_id or bond.a2_id == atom_id
         )
+
+    def _is_disposable_orphan_atom(self, atom_id: int) -> bool:
+        """Indica si el átomo es un placeholder invisible que no debe interferir con edición."""
+        checker = getattr(self.model, "is_disposable_orphan_atom", None)
+        if callable(checker):
+            return bool(checker(atom_id))
+        atom = self.model.atoms.get(atom_id)
+        return bool(
+            atom is not None
+            and atom.element == "C"
+            and not atom.is_explicit
+            and self._atom_degree(atom_id) <= 0
+        )
+
+    def _interactive_atom_candidates(self) -> list[tuple[int, float, float]]:
+        """Devuelve átomos válidos para hover, snap y colocación de enlaces."""
+        return [
+            (atom.id, atom.x, atom.y)
+            for atom in self.model.atoms.values()
+            if not self._is_disposable_orphan_atom(atom.id)
+        ]
 
     def _reflow_group_label(
         self, label: str, atom_id: int, anchor_override: Optional[str] = None
@@ -12336,7 +12361,7 @@ class ChemusonCanvas(QGraphicsView):
         Side Effects:
             Puede modificar el estado interno o la escena.
         """
-        atoms = [(atom.id, atom.x, atom.y) for atom in self.model.atoms.values()]
+        atoms = self._interactive_atom_candidates()
         atom_id = closest_atom(scene_pos, atoms, HOVER_ATOM_RADIUS)
         if atom_id is not None:
             return atom_id, None
@@ -12620,18 +12645,19 @@ class ChemusonCanvas(QGraphicsView):
         excluded_atoms: set[int] = set()
         if anchor_id is not None:
             excluded_atoms.add(anchor_id)
+        atom_candidates = self._interactive_atom_candidates()
         target_id = closest_atom(
             p1,
-            [(atom.id, atom.x, atom.y) for atom in self.model.atoms.values()],
+            atom_candidates,
             ATOM_HIT_RADIUS,
         )
         if target_id is not None:
             excluded_atoms.add(target_id)
 
-        for atom in self.model.atoms.values():
-            if atom.id in excluded_atoms:
+        for atom_id, atom_x, atom_y in atom_candidates:
+            if atom_id in excluded_atoms:
                 continue
-            dist = math.hypot(p1.x() - atom.x, p1.y() - atom.y)
+            dist = math.hypot(p1.x() - atom_x, p1.y() - atom_y)
             min_atom_dist = min(min_atom_dist, dist)
             if dist < atom_threshold:
                 intersections += 1
@@ -12936,9 +12962,9 @@ class ChemusonCanvas(QGraphicsView):
             Puede modificar el estado interno o la escena.
         """
         candidates = [
-            (atom.id, atom.x, atom.y)
-            for atom in self.model.atoms.values()
-            if atom.id not in excluded
+            (atom_id, atom_x, atom_y)
+            for atom_id, atom_x, atom_y in self._interactive_atom_candidates()
+            if atom_id not in excluded
         ]
         return closest_atom(pos, candidates, ATOM_HIT_RADIUS)
 
@@ -13120,7 +13146,7 @@ class ChemusonCanvas(QGraphicsView):
         p1 = endpoint_from_angle_len(anchor, theta, final_length)
         snap_id = closest_atom(
             p1,
-            [(atom.id, atom.x, atom.y) for atom in self.model.atoms.values()],
+            self._interactive_atom_candidates(),
             ATOM_HIT_RADIUS,
         )
         if snap_id is not None and (anchor_id is None or snap_id != anchor_id):
@@ -13428,7 +13454,7 @@ class ChemusonCanvas(QGraphicsView):
         else:
             p1 = self._compute_bond_endpoint(p0, self._last_scene_pos, modifiers)
 
-        atom_positions = [(atom.id, atom.x, atom.y) for atom in self.model.atoms.values()]
+        atom_positions = self._interactive_atom_candidates()
         target_id = closest_atom(self._last_scene_pos, atom_positions, ATOM_HIT_RADIUS)
         if target_id is None:
             target_id = closest_atom(p1, atom_positions, ATOM_HIT_RADIUS)
@@ -13585,7 +13611,7 @@ class ChemusonCanvas(QGraphicsView):
             p1 = endpoint_from_angle_len(anchor, theta, length)
             snap_id = closest_atom(
                 p1,
-                [(atom.id, atom.x, atom.y) for atom in self.model.atoms.values()],
+                self._interactive_atom_candidates(),
                 ATOM_HIT_RADIUS,
             )
             if snap_id is not None and (self._drag_anchor is None or snap_id != self._drag_anchor["id"]):
@@ -13620,7 +13646,7 @@ class ChemusonCanvas(QGraphicsView):
         p1 = endpoint_from_angle_len(anchor, theta, final_length)
         snap_id = closest_atom(
             p1,
-            [(atom.id, atom.x, atom.y) for atom in self.model.atoms.values()],
+            self._interactive_atom_candidates(),
             ATOM_HIT_RADIUS,
         )
         if snap_id is not None and (self._drag_anchor is None or snap_id != self._drag_anchor["id"]):
