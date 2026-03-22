@@ -69,6 +69,22 @@ class AtomVisibilityTest(unittest.TestCase):
         self.assertAlmostEqual(cx, 0.0, delta=0.2)
         self.assertAlmostEqual(cy, 0.0, delta=0.2)
 
+    def test_coordination_center_custom_radius_is_not_clamped_by_long_label(self):
+        """Un radio explícito debe controlar la esfera aunque la etiqueta sea larga."""
+        atom = Atom(
+            id=1,
+            element="Resin",
+            x=0,
+            y=0,
+            is_explicit=True,
+            is_coordination_center=True,
+            sphere_radius=4.0,
+        )
+        item = AtomItem(atom, show_carbon=False, show_hydrogen=False)
+
+        self.assertAlmostEqual(item._coordination_draw_radius(), 4.0, delta=0.01)
+        self.assertGreater(item._target_item_radius(), item._coordination_draw_radius())
+
     def test_charge_label_uses_superscript_notation(self):
         """La carga se muestra con superíndice Unicode (ej. ²⁺)."""
         atom = Atom(id=1, element="N", x=0, y=0, charge=2)

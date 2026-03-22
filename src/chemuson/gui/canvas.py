@@ -5393,6 +5393,33 @@ class ChemusonCanvas(QGraphicsView):
         font.setPointSizeF(size * self._atom_label_scale_factor(atom_id))
         return font
 
+    def _effective_label_font_size(self, atom_id: int) -> float:
+        """Devuelve el tamaño efectivo actual de la etiqueta de un átomo."""
+        font = self._label_font_for_atom(atom_id)
+        size = font.pointSizeF()
+        if size <= 0.0:
+            size = float(font.pointSize()) if font.pointSize() > 0 else 10.0
+        return max(1.0, float(size))
+
+    def _selected_structure_label_atom_ids(self) -> list[int]:
+        """Devuelve átomos estructurales afectados por cambios de tamaño de etiquetas."""
+        return sorted(
+            atom_id
+            for atom_id in self._selected_atom_ids_for_transform()
+            if atom_id in self.model.atoms
+        )
+
+    def _label_scale_from_target_size(self, size_pt: float) -> Optional[float]:
+        """Convierte un tamaño objetivo en escala local respecto a la fuente global."""
+        base_size = float(self.state.label_font_size)
+        if base_size <= 0.0:
+            base_size = 10.0
+        target_size = max(1.0, float(size_pt))
+        scale = target_size / base_size
+        if abs(scale - 1.0) < 0.02:
+            return None
+        return max(0.2, scale)
+
     def label_font(self) -> QFont:
         """Método auxiliar para label font.
 
@@ -5403,6 +5430,14 @@ class ChemusonCanvas(QGraphicsView):
             Puede modificar el estado interno o la escena.
         """
         return self._label_font()
+
+    def current_label_size_value(self) -> float:
+        """Devuelve el tamaño actual a mostrar en el diálogo de etiquetas."""
+        selected_atom_ids = self._selected_structure_label_atom_ids()
+        if selected_atom_ids:
+            return self._effective_label_font_size(selected_atom_ids[0])
+        size = float(self.state.label_font_size)
+        return size if size > 0.0 else 10.0
 
     def apply_label_font(self, font: QFont) -> None:
         """Aplica label font.
@@ -5427,6 +5462,86 @@ class ChemusonCanvas(QGraphicsView):
         self.state.label_font_italic = font.italic()
         self.state.label_font_underline = font.underline()
         self.refresh_label_fonts()
+
+    def apply_label_font_size(self, size_pt: float) -> bool:
+        """Aplica tamaño de etiqueta a selección estructural o globalmente."""
+        target_size = max(6.0, float(size_pt))
+        selected_atom_ids = self._selected_structure_label_atom_ids()
+        if not selected_atom_ids:
+            font = self.label_font()
+            font.setPointSizeF(target_size)
+            self.apply_label_font(font)
+            return True
+
+        changes: list[tuple[int, Optional[float], Optional[float]]] = []
+        for atom_id in selected_atom_ids:
+            atom = self.model.get_atom(atom_id)
+            old_scale = getattr(atom, "label_scale", None)
+            new_scale = self._label_scale_from_target_size(target_size)
+            if self._optional_float_equal(old_scale, new_scale, tol=0.01):
+                continue
+            changes.append((atom_id, old_scale, new_scale))
+
+        if not changes:
+            return False
+
+        if len(changes) > 1:
+            self.undo_stack.beginMacro("Set selected label size")
+        for atom_id, old_scale, new_scale in changes:
+            self.undo_stack.push(
+                ChangeAtomLabelScaleCommand(
+                    self.model,
+                    self,
+                    atom_id,
+                    new_scale,
+                    old_scale=old_scale,
+                )
+            )
+        if len(changes) > 1:
+            self.undo_stack.endMacro()
+        return True
+
+    def adjust_label_font_size(self, delta: float) -> bool:
+        """Aumenta o reduce tamaño de etiquetas en selección o globalmente."""
+        delta_value = float(delta)
+        selected_atom_ids = self._selected_structure_label_atom_ids()
+        if not selected_atom_ids:
+            font = self.label_font()
+            size = font.pointSizeF()
+            if size <= 0.0:
+                size = float(font.pointSize()) if font.pointSize() > 0 else 10.0
+            font.setPointSizeF(max(6.0, float(size) + delta_value))
+            self.apply_label_font(font)
+            return True
+
+        changes: list[tuple[int, Optional[float], Optional[float]]] = []
+        for atom_id in selected_atom_ids:
+            atom = self.model.get_atom(atom_id)
+            old_scale = getattr(atom, "label_scale", None)
+            current_size = self._effective_label_font_size(atom_id)
+            new_scale = self._label_scale_from_target_size(max(6.0, current_size + delta_value))
+            if self._optional_float_equal(old_scale, new_scale, tol=0.01):
+                continue
+            changes.append((atom_id, old_scale, new_scale))
+
+        if not changes:
+            return False
+
+        if len(changes) > 1:
+            self.undo_stack.beginMacro("Adjust selected label size")
+        for atom_id, old_scale, new_scale in changes:
+            self.undo_stack.push(
+                ChangeAtomLabelScaleCommand(
+                    self.model,
+                    self,
+                    atom_id,
+                    new_scale,
+                    old_scale=old_scale,
+                )
+            )
+        if len(changes) > 1:
+            self.undo_stack.endMacro()
+        return True
 
     def refresh_label_fonts(self, atom_ids: Optional[Iterable[int]] = None) -> None:
         """Método auxiliar para refresh label fonts.

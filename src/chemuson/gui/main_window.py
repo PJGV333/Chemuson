@@ -2995,16 +2995,14 @@ class ChemusonWindow(QMainWindow):
             self,
             "Tamaño de etiquetas",
             "Tamaño (pt):",
-            float(self.canvas.state.label_font_size),
+            float(self.canvas.current_label_size_value()),
             6.0,
             72.0,
             1,
         )
         if not ok:
             return
-        font = self.canvas.label_font()
-        font.setPointSizeF(float(size))
-        self.canvas.apply_label_font(font)
+        self.canvas.apply_label_font_size(float(size))
         self._sync_label_menu_state()
 
     def _on_label_bold(self, checked: bool) -> None:
@@ -3070,15 +3068,7 @@ class ChemusonWindow(QMainWindow):
         Side Effects:
             Puede modificar el estado interno o la interfaz.
         """
-        font = self.canvas.label_font()
-        size = font.pointSizeF()
-        if size <= 0:
-            size = font.pointSize()
-        if size <= 0:
-            size = 10.0
-        size = max(6.0, size + delta)
-        font.setPointSizeF(size)
-        self.canvas.apply_label_font(font)
+        self.canvas.adjust_label_font_size(delta)
 
     def _set_canvas_size(self, width: int, height: int) -> None:
         """Método auxiliar para  set canvas size.

@@ -359,21 +359,25 @@ class AtomItem(QGraphicsEllipseItem):
 
     def _coordination_draw_radius(self) -> float:
         """Calcula el radio visual efectivo para la esfera de coordinación."""
-        label_rect = self.label.boundingRect()
-        label_radius = max(label_rect.width(), label_rect.height()) * 0.75
         configured_radius = getattr(self.atom, "sphere_radius", None)
         if configured_radius is None:
+            label_rect = self.label.boundingRect()
+            label_radius = max(label_rect.width(), label_rect.height()) * 0.75
             return max(self._base_radius * 0.95, label_radius * 1.35, 12.0)
-        return max(float(configured_radius), label_radius * 1.10, 8.0)
+        return max(float(configured_radius), 4.0)
 
     def _target_item_radius(self) -> float:
         """Calcula el radio del rectángulo del item para evitar recortes."""
         if getattr(self.atom, "is_coordination_center", False):
+            label_rect = self.label.boundingRect()
+            label_radius = max(label_rect.width(), label_rect.height()) * 0.55
             if bool(getattr(self.atom, "sphere_transparent", False)):
-                label_rect = self.label.boundingRect()
-                label_radius = max(label_rect.width(), label_rect.height()) * 0.55
                 return max(self._base_radius, label_radius + 3.0)
-            return max(self._base_radius, self._coordination_draw_radius() + 2.0)
+            return max(
+                self._base_radius,
+                self._coordination_draw_radius() + 2.0,
+                label_radius + 3.0,
+            )
         return self._base_radius
 
     def _sync_geometry(self, force: bool = False) -> None:
