@@ -1084,6 +1084,30 @@ class ChangeArrowStrokeCommand(QUndoCommand):
         self._apply(self._old_stroke)
 
 
+class ChangeBracketStrokeCommand(QUndoCommand):
+    """Comando para cambiar el grosor de un corchete/llave/paréntesis."""
+
+    def __init__(self, view, item, new_stroke_px: Optional[float]) -> None:
+        super().__init__("Change bracket thickness")
+        self._view = view
+        self._item = item
+        self._new_stroke = new_stroke_px
+        self._old_stroke = item.stroke_px() if hasattr(item, "stroke_px") else None
+
+    def _apply(self, stroke_px: Optional[float]) -> None:
+        if self._item is None or not hasattr(self._item, "set_stroke_px"):
+            return
+        self._item.set_stroke_px(stroke_px)
+        if hasattr(self._view, "_update_selection_overlay"):
+            self._view._update_selection_overlay()
+
+    def redo(self) -> None:
+        self._apply(self._new_stroke)
+
+    def undo(self) -> None:
+        self._apply(self._old_stroke)
+
+
 class ChangeDoubleBondOrientationCommand(QUndoCommand):
     """Comando para fijar orientación manual de línea pi en un doble enlace."""
 
@@ -1516,6 +1540,11 @@ class AddArrowCommand(QUndoCommand):
         if self._item is not None:
             self._view.remove_arrow_item(self._item)
 
+    @property
+    def item(self):
+        """Devuelve el item de flecha creado por el comando."""
+        return self._item
+
 
 class AddBracketCommand(QUndoCommand):
     """Comando para añadir corchetes/llaves de anotación."""
@@ -1559,6 +1588,11 @@ class AddBracketCommand(QUndoCommand):
         """Elimina los corchetes añadidos."""
         if self._item is not None:
             self._view.remove_bracket_item(self._item)
+
+    @property
+    def item(self):
+        """Devuelve el item de corchete creado por el comando."""
+        return self._item
 
 
 class AddTextItemCommand(QUndoCommand):

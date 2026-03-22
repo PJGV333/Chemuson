@@ -106,6 +106,7 @@ from chemuson.gui.commands import (
     ChangeBondLengthCommand,
     ChangeBondStrokeCommand,
     ChangeArrowStrokeCommand,
+    ChangeBracketStrokeCommand,
     ChangeBondColorCommand,
     ChangeDoubleBondOrientationCommand,
     ChangeChargeCommand,
@@ -1794,26 +1795,15 @@ class ChemusonCanvas(QGraphicsView):
             self._clear_bracket_preview()
             if rect.width() < 4.0 or rect.height() < 4.0:
                 return
-            items = [
-                item
-                for item in self.scene.items(rect)
-                if isinstance(item, (AtomItem, BondItem))
-            ]
-            if items:
-                bbox = items[0].sceneBoundingRect()
-                for item in items[1:]:
-                    bbox = bbox.united(item.sceneBoundingRect())
-            else:
-                bbox = rect
             kind = self.state.active_bracket_type
             pair = self._split_bracket_kind(kind)
             if pair:
                 self.undo_stack.beginMacro("Add brackets")
                 for side in pair:
-                    self.undo_stack.push(AddBracketCommand(self, bbox, side))
+                    self.undo_stack.push(AddBracketCommand(self, rect, side, padding=0.0))
                 self.undo_stack.endMacro()
             else:
-                cmd = AddBracketCommand(self, bbox, kind)
+                cmd = AddBracketCommand(self, rect, kind, padding=0.0)
                 self.undo_stack.push(cmd)
             return
 
@@ -4158,6 +4148,8 @@ class ChemusonCanvas(QGraphicsView):
         if has_undo_items:
             self.undo_stack.beginMacro("Paste selection")
         id_map: Dict[int, int] = {}
+        inserted_atom_ids: list[int] = []
+        inserted_items: list[QGraphicsItem] = []
         inserted_pairs: set[frozenset[int]] = set()
         for atom_d in atoms:
             cmd = AddAtomCommand(
@@ -4190,6 +4182,7 @@ class ChemusonCanvas(QGraphicsView):
                 cmd.redo()
             if cmd.atom_id is not None:
                 id_map[int(atom_d.get("id"))] = cmd.atom_id
+                inserted_atom_ids.append(cmd.atom_id)
 
         for bond_d in bonds:
             a1 = id_map.get(int(bond_d.get("a1")))
@@ -4294,6 +4287,8 @@ class ChemusonCanvas(QGraphicsView):
                         self.undo_stack.push(cmd)
                     else:
                         cmd.redo()
+                    if cmd.item is not None:
+                        inserted_items.append(cmd.item)
             else:
                 cmd = AddBracketCommand(
                     self,
@@ -4306,6 +4301,8 @@ class ChemusonCanvas(QGraphicsView):
                     self.undo_stack.push(cmd)
                 else:
                     cmd.redo()
+                if cmd.item is not None:
+                    inserted_items.append(cmd.item)
 
         for txt_d in texts:
             text_item = TextAnnotationItem(txt_d.get("text", ""), 0.0, 0.0)
@@ -4326,11 +4323,45 @@ class ChemusonCanvas(QGraphicsView):
                 float(txt_d.get("x", 0.0)) + dx, float(txt_d.get("y", 0.0)) + dy
             )
             self.scene.addItem(text_item)
+            inserted_items.append(text_item)
 
         if has_undo_items:
             self.undo_stack.endMacro()
         if ring_map:
             self.refresh_ring_centers()
+        self._select_inserted_items(inserted_atom_ids, inserted_items)
+
+    def _select_inserted_items(
+        self,
+        atom_ids: Iterable[int] = (),
+        items: Iterable[QGraphicsItem] = (),
+    ) -> None:
+        """Selecciona por defecto los elementos recién insertados."""
+        target_items: list[QGraphicsItem] = []
+        seen: set[int] = set()
+        for atom_id in atom_ids:
+            item = self.atom_items.get(atom_id)
+            if item is None:
+                continue
+            marker = id(item)
+            if marker in seen:
+                continue
+            seen.add(marker)
+            target_items.append(item)
+        for item in items:
+            if item is None:
+                continue
+            marker = id(item)
+            if marker in seen:
+                continue
+            seen.add(marker)
+            target_items.append(item)
+        if not target_items:
+            return
+        self.scene.clearSelection()
+        for item in target_items:
+            item.setSelected(True)
+        self._sync_selection_from_scene()
 
 
 
@@ -4455,7 +4486,7 @@ class ChemusonCanvas(QGraphicsView):
             molfile = bytes(mime.data("chemical/x-mdl-molfile")).decode("utf-8", errors="ignore")
             try:
                 graph = molfile_to_molgraph(molfile)
-                self._insert_molgraph(graph)
+                self._insert_molgraph(graph, select_inserted=True)
                 return
             except Exception:
                 pass
@@ -4465,7 +4496,7 @@ class ChemusonCanvas(QGraphicsView):
             if smiles:
                 try:
                     graph = smiles_to_molgraph(smiles)
-                    self._insert_molgraph(graph)
+                    self._insert_molgraph(graph, select_inserted=True)
                     return
                 except Exception:
                     pass
@@ -4939,7 +4970,7 @@ class ChemusonCanvas(QGraphicsView):
             )
         return self._with_hidden_render_items(render)
 
-    def _insert_molgraph(self, graph: MolGraph) -> None:
+    def _insert_molgraph(self, graph: MolGraph, *, select_inserted: bool = False) -> None:
         """Método auxiliar para  insert molgraph.
 
         Args:
@@ -4965,6 +4996,7 @@ class ChemusonCanvas(QGraphicsView):
         dy = target_y - center_y
 
         self.undo_stack.beginMacro("Paste molecule")
+        inserted_atom_ids: list[int] = []
         try:
             id_map: Dict[int, int] = {}
             inserted_pairs: set[frozenset[int]] = set()
@@ -4991,6 +5023,7 @@ class ChemusonCanvas(QGraphicsView):
                 self.undo_stack.push(cmd)
                 if cmd.atom_id is not None:
                     id_map[atom.id] = cmd.atom_id
+                    inserted_atom_ids.append(cmd.atom_id)
             for bond in graph.bonds.values():
                 a1 = id_map.get(bond.a1_id)
                 a2 = id_map.get(bond.a2_id)
@@ -5022,6 +5055,8 @@ class ChemusonCanvas(QGraphicsView):
             self.undo_stack.endMacro()
         if any(bond.is_aromatic for bond in self.model.bonds.values()):
             self._kekulize_aromatic_bonds()
+        if select_inserted:
+            self._select_inserted_items(inserted_atom_ids)
 
     def _pick_template_attachment_atom_id(self, graph: MolGraph) -> Optional[int]:
         """Elige un átomo de la plantilla para conectar al átomo ancla.
@@ -9096,6 +9131,9 @@ class ChemusonCanvas(QGraphicsView):
             or any(isinstance(item, (ArrowItem, BracketItem)) for item in self.scene.selectedItems())
         )
         has_bond_selection = bool(self.state.selected_bonds)
+        has_stroke_selection = bool(
+            has_bond_selection or self._selected_arrow_items() or self._selected_bracket_items()
+        )
         coordination_bond_ids: list[int] = []
         if isinstance(clicked_item, BondItem):
             coordination_bond_ids = [clicked_item.bond_id]
@@ -9164,12 +9202,13 @@ class ChemusonCanvas(QGraphicsView):
         act_reset_thickness = None
         act_color = None
         act_reset_color = None
-        if has_bond_selection:
+        if has_stroke_selection:
             menu.addSeparator()
-            thickness_menu = menu.addMenu("Grosor de enlace")
+            thickness_menu = menu.addMenu("Grosor de enlace/flecha/corchete")
             act_thicker = thickness_menu.addAction("Incrementar grosor")
             act_thinner = thickness_menu.addAction("Disminuir grosor")
             act_reset_thickness = thickness_menu.addAction("Restablecer grosor")
+        if has_bond_selection:
             act_color = menu.addAction("Color de enlace...")
             act_reset_color = menu.addAction("Restablecer color de enlace")
         act_anchor = None
@@ -9817,10 +9856,11 @@ class ChemusonCanvas(QGraphicsView):
         """
         bond_ids = list(self.state.selected_bonds)
         arrow_items = self._selected_arrow_items()
-        if not bond_ids and not arrow_items:
+        bracket_items = self._selected_bracket_items()
+        if not bond_ids and not arrow_items and not bracket_items:
             return
         default_stroke = self.drawing_style.stroke_px
-        self.undo_stack.beginMacro("Change bond/arrow thickness")
+        self.undo_stack.beginMacro("Change bond/arrow/bracket thickness")
         for bond_id in bond_ids:
             bond = self.model.get_bond(bond_id)
             current = bond.stroke_px if bond.stroke_px is not None else default_stroke
@@ -9835,6 +9875,12 @@ class ChemusonCanvas(QGraphicsView):
             if abs(new_value - default_stroke) < 0.05:
                 new_value = None
             self.undo_stack.push(ChangeArrowStrokeCommand(self, item, new_value))
+        for item in bracket_items:
+            current = item.stroke_px() if item.stroke_px() is not None else default_stroke
+            new_value = max(0.6, current + delta)
+            if abs(new_value - default_stroke) < 0.05:
+                new_value = None
+            self.undo_stack.push(ChangeBracketStrokeCommand(self, item, new_value))
         self.undo_stack.endMacro()
 
     def _reset_selected_bond_stroke(self) -> None:
@@ -9848,14 +9894,17 @@ class ChemusonCanvas(QGraphicsView):
         """
         bond_ids = list(self.state.selected_bonds)
         arrow_items = self._selected_arrow_items()
-        if not bond_ids and not arrow_items:
+        bracket_items = self._selected_bracket_items()
+        if not bond_ids and not arrow_items and not bracket_items:
             return
-        self.undo_stack.beginMacro("Reset bond/arrow thickness")
+        self.undo_stack.beginMacro("Reset bond/arrow/bracket thickness")
         for bond_id in bond_ids:
             cmd = ChangeBondStrokeCommand(self.model, self, bond_id, None)
             self.undo_stack.push(cmd)
         for item in arrow_items:
             self.undo_stack.push(ChangeArrowStrokeCommand(self, item, None))
+        for item in bracket_items:
+            self.undo_stack.push(ChangeBracketStrokeCommand(self, item, None))
         self.undo_stack.endMacro()
 
 
