@@ -65,9 +65,19 @@ class ChemusonToolbar(QToolBar):
             "tool_select_lasso": (draw_generic_icon("lasso"), "Seleccion libre"),
         }
         self._bracket_meta = {
-            "tool_brackets_round": (draw_glyph_icon("()"), "Parentesis ()"),
             "tool_brackets_square": (draw_glyph_icon("[]"), "Corchetes []"),
+            "tool_brackets_square_left": (draw_glyph_icon("["), "Corchete izquierdo ["),
+            "tool_brackets_square_right": (draw_glyph_icon("]"), "Corchete derecho ]"),
+            "tool_brackets_corner": (draw_generic_icon("corner"), "Esquinas"),
             "tool_brackets_curly": (draw_glyph_icon("{}"), "Llaves {}"),
+            "tool_brackets_curly_left": (draw_glyph_icon("{"), "Llave izquierda {"),
+            "tool_brackets_curly_right": (draw_glyph_icon("}"), "Llave derecha }"),
+            "tool_brackets_frame": (draw_generic_icon("frame"), "Marco"),
+            "tool_brackets_frame_rounded": (
+                draw_generic_icon("rounded_frame"),
+                "Marco con esquinas redondeadas",
+            ),
+            "tool_brackets_round": (draw_glyph_icon("()"), "Parentesis ()"),
         }
         
         self._arrow_meta = {
@@ -550,7 +560,19 @@ class ChemusonToolbar(QToolBar):
     def _build_bracket_palette(self, menu: QMenu) -> None:
         """Construye la paleta de corchetes/paréntesis."""
         entries = []
-        for tool_id in sorted(self._bracket_meta.keys()):
+        tool_order = [
+            "tool_brackets_square",
+            "tool_brackets_square_left",
+            "tool_brackets_square_right",
+            "tool_brackets_corner",
+            "tool_brackets_curly",
+            "tool_brackets_curly_left",
+            "tool_brackets_curly_right",
+            "tool_brackets_frame",
+            "tool_brackets_frame_rounded",
+            "tool_brackets_round",
+        ]
+        for tool_id in tool_order:
             icon, tooltip = self._bracket_meta[tool_id]
             entries.append(
                 self._make_palette_entry(
@@ -559,7 +581,7 @@ class ChemusonToolbar(QToolBar):
                     lambda tid=tool_id: self._select_bracket_tool(tid),
                 )
             )
-        self._populate_grid_menu(menu, entries, columns=3)
+        self._populate_grid_menu(menu, entries, columns=2)
 
     def _build_arrow_palette(self, menu: QMenu) -> None:
         """Construye la paleta de flechas de anotación."""
@@ -722,9 +744,19 @@ class SymbolPaletteToolbar(QToolBar):
 
         self._action_group = action_group
         self._bracket_meta = {
-            "tool_brackets_round": (draw_glyph_icon("()"), "Parentesis ()"),
             "tool_brackets_square": (draw_glyph_icon("[]"), "Corchetes []"),
+            "tool_brackets_square_left": (draw_glyph_icon("["), "Corchete izquierdo ["),
+            "tool_brackets_square_right": (draw_glyph_icon("]"), "Corchete derecho ]"),
+            "tool_brackets_corner": (draw_generic_icon("corner"), "Esquinas"),
             "tool_brackets_curly": (draw_glyph_icon("{}"), "Llaves {}"),
+            "tool_brackets_curly_left": (draw_glyph_icon("{"), "Llave izquierda {"),
+            "tool_brackets_curly_right": (draw_glyph_icon("}"), "Llave derecha }"),
+            "tool_brackets_frame": (draw_generic_icon("frame"), "Marco"),
+            "tool_brackets_frame_rounded": (
+                draw_generic_icon("rounded_frame"),
+                "Marco con esquinas redondeadas",
+            ),
+            "tool_brackets_round": (draw_glyph_icon("()"), "Parentesis ()"),
         }
         self._arrow_meta = {
             "tool_arrow_forward": (draw_arrow_icon("forward"), "Flecha directa"),
@@ -936,7 +968,19 @@ class SymbolPaletteToolbar(QToolBar):
     def _build_bracket_palette(self, menu: QMenu) -> None:
         """Construye la paleta de corchetes/paréntesis."""
         entries = []
-        for tool_id in sorted(self._bracket_meta.keys()):
+        tool_order = [
+            "tool_brackets_square",
+            "tool_brackets_square_left",
+            "tool_brackets_square_right",
+            "tool_brackets_corner",
+            "tool_brackets_curly",
+            "tool_brackets_curly_left",
+            "tool_brackets_curly_right",
+            "tool_brackets_frame",
+            "tool_brackets_frame_rounded",
+            "tool_brackets_round",
+        ]
+        for tool_id in tool_order:
             icon, tooltip = self._bracket_meta[tool_id]
             entries.append(
                 self._make_palette_entry(
@@ -945,7 +989,7 @@ class SymbolPaletteToolbar(QToolBar):
                     lambda tid=tool_id: self._select_bracket_tool(tid),
                 )
             )
-        self._populate_grid_menu(menu, entries, columns=3)
+        self._populate_grid_menu(menu, entries, columns=2)
 
     def _build_arrow_palette(self, menu: QMenu) -> None:
         """Construye la paleta de flechas de anotación."""

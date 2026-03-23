@@ -712,7 +712,7 @@ def draw_generic_icon(shape: str) -> QIcon:
     Args:
         shape: 'pointer', 'eraser', 'pan', 'zoom_in', 'zoom_out', 'chain',
             'lasso', 'rotate_left', 'rotate_right', 'flip_horizontal',
-            'flip_vertical'.
+            'flip_vertical', 'corner', 'frame', 'rounded_frame'.
 
     Returns:
         QIcon con la forma de la herramienta.
@@ -880,7 +880,29 @@ def draw_generic_icon(shape: str) -> QIcon:
         painter.drawPath(path)
         painter.setPen(QPen(QColor('#333333'), 1.8))
         painter.drawLine(16, 18, 24, 26)
-    
+
+    elif shape == 'corner':
+        pen = QPen(QColor('#333333'), 2)
+        painter.setPen(pen)
+        left = 8
+        top = 6
+        right = ICON_SIZE - 8
+        bottom = ICON_SIZE - 8
+        painter.drawLine(left, top, right, top)
+        painter.drawLine(right, top, right, bottom)
+
+    elif shape == 'frame':
+        pen = QPen(QColor('#333333'), 2)
+        painter.setPen(pen)
+        painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        painter.drawRect(QRectF(6, 6, ICON_SIZE - 12, ICON_SIZE - 12))
+
+    elif shape == 'rounded_frame':
+        pen = QPen(QColor('#333333'), 2)
+        painter.setPen(pen)
+        painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        painter.drawRoundedRect(QRectF(6, 6, ICON_SIZE - 12, ICON_SIZE - 12), 4, 4)
+
     painter.end()
     return QIcon(pixmap)
 

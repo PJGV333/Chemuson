@@ -1055,7 +1055,14 @@ class ChemusonCanvas(QGraphicsView):
             mapping = {
                 "round": "()",
                 "square": "[]",
+                "square_left": "[",
+                "square_right": "]",
+                "corner": "corner",
                 "curly": "{}",
+                "curly_left": "{",
+                "curly_right": "}",
+                "frame": "frame",
+                "frame_rounded": "rounded_frame",
             }
             self.state.active_bracket_type = mapping.get(bracket_key, "[]")
             tool_id = "tool_brackets"

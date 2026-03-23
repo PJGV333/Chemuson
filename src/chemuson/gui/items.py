@@ -3355,12 +3355,24 @@ class BracketItem(QGraphicsPathItem):
         rect = self._rect
         path = QPainterPath()
         height = rect.height()
+        width = rect.width()
         top = rect.top()
         bottom = rect.bottom()
         left = rect.left()
         right = rect.right()
 
-        if self._kind in {"()", "(", ")"}:
+        if self._kind == "corner":
+            # Molsketch's "corner" is a single top-right angle, not a four-corner frame.
+            path.moveTo(left, top)
+            path.lineTo(right, top)
+            path.lineTo(right, bottom)
+        elif self._kind == "frame":
+            path.addRect(rect)
+        elif self._kind == "rounded_frame":
+            radius = max(4.0, min(width, height) * 0.12)
+            radius = min(radius, width * 0.45, height * 0.45)
+            path.addRoundedRect(rect, radius, radius)
+        elif self._kind in {"()", "(", ")"}:
             width = max(8.0, height * 0.12)
             mid = (top + bottom) / 2
             if self._kind in {"()", "("}:
