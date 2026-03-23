@@ -87,6 +87,31 @@ def _bond_length_from_view(view) -> float:
     return getattr(getattr(view, "state", None), "bond_length", 40.0)
 
 
+def _resolve_atom_label_spec(view, label: str) -> dict:
+    """Normaliza etiquetas de UI a la especificación química persistente."""
+    resolver = getattr(view, "resolve_atom_label_spec", None)
+    if callable(resolver):
+        try:
+            spec = resolver(label)
+            if isinstance(spec, dict):
+                return spec
+        except Exception:
+            pass
+    return {
+        "element": label,
+        "group_h_cap": None,
+        "explicit_h": None,
+        "no_implicit": False,
+    }
+
+
+def _validate_view_structure(view) -> None:
+    """Dispara la validación visual si la vista la soporta."""
+    validator = getattr(view, "validate_structure", None)
+    if callable(validator):
+        validator()
+
+
 def _remove_hydrogen_specs(model: MolGraph, view, specs: list[tuple[int, float, float, int]]) -> None:
     """Elimina hidrógenos y enlaces descritos por `specs` del modelo y la vista."""
     for _atom_id, _x, _y, bond_id in specs:
@@ -179,6 +204,7 @@ class AddAtomCommand(QUndoCommand):
         radical_electrons: int = 0,
         oxidation_state: Optional[int] = None,
         explicit_h: Optional[int] = None,
+        group_h_cap: Optional[int] = None,
         mapping: Optional[int] = None,
         is_query: bool = False,
         anchor_override: Optional[str] = None,
@@ -220,9 +246,10 @@ class AddAtomCommand(QUndoCommand):
             sphere_transparent: Si la esfera se dibuja transparente (sin borde/fondo).
         """
         super().__init__("Add atom")
+        resolved_label = _resolve_atom_label_spec(view, element)
         self._model = model
         self._view = view
-        self._element = element
+        self._element = str(resolved_label.get("element") or element)
         self._x = x
         self._y = y
         self._is_explicit = is_explicit
@@ -234,13 +261,22 @@ class AddAtomCommand(QUndoCommand):
             if oxidation_state is not None
             else None
         )
-        self._explicit_h = explicit_h
+        resolved_explicit_h = resolved_label.get("explicit_h")
+        self._explicit_h = explicit_h if explicit_h is not None else resolved_explicit_h
+        resolved_group_h_cap = (
+            group_h_cap
+            if group_h_cap is not None
+            else resolved_label.get("group_h_cap")
+        )
+        self._group_h_cap = (
+            None if resolved_group_h_cap is None else int(resolved_group_h_cap)
+        )
         self._mapping = mapping
         self._is_query = is_query
         self._anchor_override = anchor_override
         self._auto_hydrogens = auto_hydrogens
         self._expected_bonds = expected_bonds
-        self._no_implicit = bool(no_implicit)
+        self._no_implicit = bool(no_implicit or resolved_label.get("no_implicit", False))
         self._label_scale = label_scale
         self._is_coordination_center = bool(is_coordination_center)
         self._sphere_radius = sphere_radius
@@ -267,6 +303,7 @@ class AddAtomCommand(QUndoCommand):
                 radical_electrons=self._radical_electrons,
                 oxidation_state=self._oxidation_state,
                 explicit_h=self._explicit_h,
+                group_h_cap=self._group_h_cap,
                 mapping=self._mapping,
                 is_query=self._is_query,
                 no_implicit=self._no_implicit,
@@ -290,6 +327,7 @@ class AddAtomCommand(QUndoCommand):
                 radical_electrons=self._radical_electrons,
                 oxidation_state=self._oxidation_state,
                 explicit_h=self._explicit_h,
+                group_h_cap=self._group_h_cap,
                 mapping=self._mapping,
                 is_query=self._is_query,
                 no_implicit=self._no_implicit,
@@ -304,6 +342,7 @@ class AddAtomCommand(QUndoCommand):
         if self._anchor_override:
             self._view.set_anchor_override(atom.id, self._anchor_override)
             self._view._refresh_atom_label(atom.id)
+        _validate_view_structure(self._view)
 
     def undo(self) -> None:
         """Deshace la adición del átomo y sus hidrógenos."""
@@ -313,6 +352,7 @@ class AddAtomCommand(QUndoCommand):
         for bond in removed_bonds:
             self._view.remove_bond_item(bond.id)
         self._view.remove_atom_item(atom.id)
+        _validate_view_structure(self._view)
 
     @property
     def atom_id(self) -> Optional[int]:
@@ -341,13 +381,23 @@ class ChangeAtomCommand(QUndoCommand):
             anchor_override: Ancla visual opcional.
         """
         super().__init__("Change atom")
+        resolved_label = _resolve_atom_label_spec(view, new_element)
         self._model = model
         self._view = view
         self._atom_id = atom_id
         self._old_element = model.get_atom(atom_id).element
         self._old_is_explicit = model.get_atom(atom_id).is_explicit
-        self._new_element = new_element
-        self._new_is_explicit = _default_is_explicit(new_element)
+        self._old_explicit_h = model.get_atom(atom_id).explicit_h
+        self._old_group_h_cap = getattr(model.get_atom(atom_id), "group_h_cap", None)
+        self._old_no_implicit = bool(getattr(model.get_atom(atom_id), "no_implicit", False))
+        self._new_element = str(resolved_label.get("element") or new_element)
+        self._new_explicit_h = resolved_label.get("explicit_h")
+        resolved_group_h_cap = resolved_label.get("group_h_cap")
+        self._new_group_h_cap = (
+            None if resolved_group_h_cap is None else int(resolved_group_h_cap)
+        )
+        self._new_no_implicit = bool(resolved_label.get("no_implicit", False))
+        self._new_is_explicit = _default_is_explicit(self._new_element)
         self._anchor_override = anchor_override
         if anchor_override is _ANCHOR_UNSET:
             self._old_anchor_override = _ANCHOR_UNSET
@@ -374,11 +424,16 @@ class ChangeAtomCommand(QUndoCommand):
             self._new_element,
             is_explicit=self._new_is_explicit,
         )
+        atom = self._model.get_atom(self._atom_id)
+        atom.explicit_h = self._new_explicit_h
+        atom.group_h_cap = self._new_group_h_cap
+        atom.no_implicit = self._new_no_implicit
         self._view.update_atom_item_element(
             self._atom_id,
             self._new_element,
             is_explicit=self._new_is_explicit,
         )
+        _validate_view_structure(self._view)
 
     def undo(self) -> None:
         """Revierte el cambio de elemento y restaura hidrógenos."""
@@ -389,6 +444,10 @@ class ChangeAtomCommand(QUndoCommand):
             self._old_element,
             is_explicit=self._old_is_explicit,
         )
+        atom = self._model.get_atom(self._atom_id)
+        atom.explicit_h = self._old_explicit_h
+        atom.group_h_cap = self._old_group_h_cap
+        atom.no_implicit = self._old_no_implicit
         self._view.update_atom_item_element(
             self._atom_id,
             self._old_element,
@@ -398,6 +457,7 @@ class ChangeAtomCommand(QUndoCommand):
         # Restore hydrogens
         if self._removed_hydrogen_specs:
             _readd_hydrogen_specs(self._model, self._view, self._atom_id, self._removed_hydrogen_specs)
+        _validate_view_structure(self._view)
 
     def _check_and_remove_hydrogens(self) -> None:
         """Elimina hidrógenos explícitos si exceden la valencia permitida."""
@@ -476,11 +536,13 @@ class ChangeChargeCommand(QUndoCommand):
         """Aplica el cambio de carga."""
         self._model.update_atom_charge(self._atom_id, self._new_charge)
         self._view.update_atom_item_charge(self._atom_id, self._new_charge)
+        _validate_view_structure(self._view)
 
     def undo(self) -> None:
         """Revierte el cambio de carga."""
         self._model.update_atom_charge(self._atom_id, self._old_charge)
         self._view.update_atom_item_charge(self._atom_id, self._old_charge)
+        _validate_view_structure(self._view)
 
 
 class ChangeNoImplicitCommand(QUndoCommand):
@@ -498,10 +560,12 @@ class ChangeNoImplicitCommand(QUndoCommand):
     def redo(self) -> None:
         self._model.update_atom_no_implicit(self._atom_id, self._new_enabled)
         self._view.refresh_atom_labels([self._atom_id])
+        _validate_view_structure(self._view)
 
     def undo(self) -> None:
         self._model.update_atom_no_implicit(self._atom_id, self._old_enabled)
         self._view.refresh_atom_labels([self._atom_id])
+        _validate_view_structure(self._view)
 
 
 class ChangeAtomLabelScaleCommand(QUndoCommand):
@@ -752,7 +816,28 @@ class AddBondCommand(QUndoCommand):
         self._flex_curve_1 = flex_curve_1
         self._flex_curve_2 = flex_curve_2
         self._bond_id: Optional[int] = None
-        self._new_atom_element = new_atom_element
+        resolved_new_atom = (
+            _resolve_atom_label_spec(view, new_atom_element)
+            if new_atom_element is not None
+            else None
+        )
+        self._new_atom_element = (
+            str(resolved_new_atom.get("element") or new_atom_element)
+            if resolved_new_atom is not None
+            else new_atom_element
+        )
+        self._new_atom_explicit_h = (
+            None if resolved_new_atom is None else resolved_new_atom.get("explicit_h")
+        )
+        resolved_group_h_cap = (
+            None if resolved_new_atom is None else resolved_new_atom.get("group_h_cap")
+        )
+        self._new_atom_group_h_cap = (
+            None if resolved_group_h_cap is None else int(resolved_group_h_cap)
+        )
+        self._new_atom_no_implicit = bool(
+            resolved_new_atom is not None and resolved_new_atom.get("no_implicit", False)
+        )
         self._new_atom_pos = new_atom_pos
         self._created_atom_id: Optional[int] = None
         self._hydrogen_specs: list[tuple[int, float, float, int]] = []
@@ -790,6 +875,9 @@ class AddBondCommand(QUndoCommand):
                     self._new_atom_pos[0],
                     self._new_atom_pos[1],
                     is_explicit=is_explicit,
+                    explicit_h=self._new_atom_explicit_h,
+                    group_h_cap=self._new_atom_group_h_cap,
+                    no_implicit=self._new_atom_no_implicit,
                 )
                 self._created_atom_id = atom.id
             else:
@@ -800,6 +888,9 @@ class AddBondCommand(QUndoCommand):
                     self._new_atom_pos[1],
                     atom_id=self._created_atom_id,
                     is_explicit=is_explicit,
+                    explicit_h=self._new_atom_explicit_h,
+                    group_h_cap=self._new_atom_group_h_cap,
+                    no_implicit=self._new_atom_no_implicit,
                 )
             self._view.add_atom_item(atom)
             self._a2_id = self._created_atom_id
@@ -854,6 +945,7 @@ class AddBondCommand(QUndoCommand):
                 atom = self._model.get_atom(atom_id)
                 self._model.update_atom_element(atom_id, atom.element, is_explicit=False)
                 self._view.update_atom_item_element(atom_id, atom.element, is_explicit=False)
+        _validate_view_structure(self._view)
 
     def undo(self) -> None:
         """Deshace la creación del enlace y restaura estado previo."""
@@ -873,6 +965,7 @@ class AddBondCommand(QUndoCommand):
                     atom = self._model.get_atom(atom_id)
                     self._model.update_atom_element(atom_id, atom.element, is_explicit=True)
                     self._view.update_atom_item_element(atom_id, atom.element, is_explicit=True)
+        _validate_view_structure(self._view)
 
 
 class ChangeBondCommand(QUndoCommand):
@@ -952,6 +1045,7 @@ class ChangeBondCommand(QUndoCommand):
             flex_curve_2=self._new_flex_curve_2,
         )
         self._view.update_bond_item(self._bond_id)
+        _validate_view_structure(self._view)
 
     def undo(self) -> None:
         """Revierte el cambio de propiedades del enlace."""
@@ -966,6 +1060,7 @@ class ChangeBondCommand(QUndoCommand):
             flex_curve_2=self._old_flex_curve_2,
         )
         self._view.update_bond_item(self._bond_id)
+        _validate_view_structure(self._view)
 
 
 class ChangeBondLengthCommand(QUndoCommand):
@@ -1183,6 +1278,8 @@ class MoveAtomsCommand(QUndoCommand):
         self._view.update_bond_items_for_atoms(set(positions.keys()))
         if hasattr(self._view, "recompute_numbering"):
             self._view.recompute_numbering()
+        if hasattr(self._view, "_update_selection_overlay"):
+            self._view._update_selection_overlay()
 
 
 class MoveTextItemsCommand(QUndoCommand):

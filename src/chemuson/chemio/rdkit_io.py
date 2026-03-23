@@ -906,6 +906,18 @@ def _molgraph_to_smiles_fallback(molgraph: MolGraph) -> str:
 
     organic_subset = {"B", "C", "N", "O", "P", "S", "F", "Cl", "Br", "I", "b", "c", "n", "o", "p", "s"}
 
+    assigned_h_counter = getattr(molgraph, "assigned_hydrogen_count", None)
+
+    def assigned_hydrogens(atom_id: int) -> int:
+        """Devuelve H asignados en el átomo, excluyendo H explícitos como nodos."""
+        if callable(assigned_h_counter):
+            try:
+                return int(max(0, assigned_h_counter(atom_id)))
+            except Exception:
+                pass
+        atom = molgraph.atoms[atom_id]
+        return int(getattr(atom, "explicit_h", 0) or 0)
+
     def simple_aromatic_atom(atom_id: int) -> bool:
         """Indica si el átomo puede emitirse como aromático sin corchetes."""
         atom = molgraph.atoms[atom_id]
@@ -914,7 +926,7 @@ def _molgraph_to_smiles_fallback(molgraph: MolGraph) -> str:
             and atom.element in {"B", "C", "N", "O", "P", "S"}
             and atom.isotope is None
             and not atom.charge
-            and not (atom.explicit_h is not None and atom.explicit_h > 0)
+            and assigned_hydrogens(atom_id) <= 0
             and atom.mapping is None
         )
 
@@ -944,8 +956,9 @@ def _molgraph_to_smiles_fallback(molgraph: MolGraph) -> str:
             charge = f"-{magnitude}" if magnitude > 1 else "-"
         isotope = f"{atom.isotope}" if atom.isotope is not None else ""
         explicit_h = ""
-        if atom.explicit_h is not None and atom.explicit_h > 0:
-            explicit_h = "H" if atom.explicit_h == 1 else f"H{atom.explicit_h}"
+        assigned_h = assigned_hydrogens(atom_id)
+        if assigned_h > 0:
+            explicit_h = "H" if assigned_h == 1 else f"H{assigned_h}"
         if atom.mapping is not None:
             return f"[{isotope}{symbol}{explicit_h}{charge}:{atom.mapping}]"
         if isotope or explicit_h or charge or symbol not in organic_subset:

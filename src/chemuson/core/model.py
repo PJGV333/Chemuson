@@ -216,6 +216,17 @@ VALENCE_EXCEPTIONS: Dict[tuple[str, int], tuple[int, ...]] = {
     ("S", -1): (2, 6),
 }
 
+SIMPLE_HYDROGEN_GROUP_LABELS: Dict[str, tuple[str, int]] = {
+    "NH2": ("N", 2),
+    "H2N": ("N", 2),
+    "NH": ("N", 1),
+    "HN": ("N", 1),
+    "OH": ("O", 1),
+    "HO": ("O", 1),
+    "SH": ("S", 1),
+    "HS": ("S", 1),
+}
+
 
 @dataclass
 class Atom:
@@ -233,6 +244,7 @@ class Atom:
     stereo_helical: Optional[str] = None
     stereo_si_re: Optional[str] = None
     explicit_h: Optional[int] = None
+    group_h_cap: Optional[int] = None
     mapping: Optional[int] = None
     is_query: bool = False
     is_explicit: bool = False
@@ -351,6 +363,7 @@ class MolGraph:
         stereo_helical: Optional[str] = None,
         stereo_si_re: Optional[str] = None,
         explicit_h: Optional[int] = None,
+        group_h_cap: Optional[int] = None,
         mapping: Optional[int] = None,
         is_query: bool = False,
         is_explicit: bool = False,
@@ -379,6 +392,7 @@ class MolGraph:
             stereo_helical: Descriptor helicoidal (M/P), best-effort.
             stereo_si_re: Descriptor de cara carbonílica (si/re), best-effort.
             explicit_h: Número de hidrógenos explícitos asociados.
+            group_h_cap: Límite superior de H para grupos abreviados simples (`NH2`, `OH`, `SH`).
             mapping: Índice de mapeo (útil en exportaciones/reacciones).
             is_query: Marca de átomo de consulta (SMARTS-like).
             is_explicit: Si el símbolo debe mostrarse aunque sea implícito.
@@ -410,9 +424,19 @@ class MolGraph:
         resolved_formal_charge = int(charge)
         if formal_charge is not None:
             resolved_formal_charge = int(formal_charge)
+        resolved_element = element
+        resolved_group_h_cap = group_h_cap
+        resolved_explicit_h = explicit_h
+        resolved_no_implicit = bool(no_implicit)
+        simple_group = self._simple_hydrogen_group_spec(element)
+        if simple_group is not None:
+            resolved_element = simple_group[0]
+            if resolved_group_h_cap is None:
+                resolved_group_h_cap = simple_group[1]
+            resolved_no_implicit = True
         atom = Atom(
             id=atom_id,
-            element=element,
+            element=resolved_element,
             x=x,
             y=y,
             charge=resolved_formal_charge,
@@ -427,11 +451,14 @@ class MolGraph:
             stereo_axial=(str(stereo_axial) if stereo_axial else None),
             stereo_helical=(str(stereo_helical) if stereo_helical else None),
             stereo_si_re=(str(stereo_si_re) if stereo_si_re else None),
-            explicit_h=explicit_h,
+            explicit_h=resolved_explicit_h,
+            group_h_cap=(
+                None if resolved_group_h_cap is None else max(0, int(resolved_group_h_cap))
+            ),
             mapping=mapping,
             is_query=is_query,
             is_explicit=is_explicit,
-            no_implicit=bool(no_implicit),
+            no_implicit=resolved_no_implicit,
             label_scale=(None if label_scale is None else float(label_scale)),
             is_coordination_center=is_coordination_center,
             sphere_radius=resolved_sphere_radius,
@@ -674,6 +701,13 @@ class MolGraph:
         atom = self.atoms[atom_id]
         atom.label_scale = None if label_scale is None else float(label_scale)
 
+    def update_atom_group_h_cap(self, atom_id: int, group_h_cap: Optional[int]) -> None:
+        """Actualiza el límite de H asociado a un grupo abreviado simple."""
+        atom = self.atoms[atom_id]
+        atom.group_h_cap = (
+            None if group_h_cap is None else max(0, int(group_h_cap))
+        )
+
     def atom_degree(self, atom_id: int) -> int:
         """Devuelve el número de enlaces conectados a un átomo."""
         return sum(
@@ -694,6 +728,8 @@ class MolGraph:
         if int(getattr(atom, "radical_electrons", 0) or 0) != 0:
             return False
         if atom.oxidation_state is not None or atom.explicit_h is not None:
+            return False
+        if getattr(atom, "group_h_cap", None) is not None:
             return False
         if atom.mapping is not None or atom.is_query or atom.no_implicit:
             return False
@@ -832,19 +868,48 @@ class MolGraph:
         """Alias explícito para la carga formal total."""
         return self.formal_charge
 
+    @staticmethod
+    def _simple_hydrogen_group_spec(label: str) -> Optional[tuple[str, int]]:
+        """Resuelve alias simples como `NH2`, `OH` o `SH` a elemento + cupo H."""
+        cleaned = str(label or "").strip()
+        if not cleaned:
+            return None
+        spec = SIMPLE_HYDROGEN_GROUP_LABELS.get(cleaned)
+        if spec is not None:
+            return spec
+        return SIMPLE_HYDROGEN_GROUP_LABELS.get(cleaned.upper())
+
+    def _effective_atom_element(self, atom: Atom) -> str:
+        """Devuelve el elemento químico efectivo, incluyendo alias simples legacy."""
+        spec = self._simple_hydrogen_group_spec(atom.element)
+        if spec is not None:
+            return spec[0]
+        return atom.element
+
+    def _effective_group_h_cap(self, atom: Atom) -> Optional[int]:
+        """Devuelve el cupo H efectivo, incluso si el átomo viene de un alias legacy."""
+        cap = getattr(atom, "group_h_cap", None)
+        if cap is not None:
+            return max(0, int(cap))
+        spec = self._simple_hydrogen_group_spec(atom.element)
+        if spec is None:
+            return None
+        return max(0, int(spec[1]))
+
     def _allowed_valences_for_atom(self, atom: Atom) -> List[int]:
         """Resuelve la lista de valencias permitidas para un átomo."""
         if bool(getattr(atom, "is_coordination_center", False)):
             return [-1]
-        if atom.element in UNLIMITED_VALENCE_ELEMENTS:
+        element = self._effective_atom_element(atom)
+        if element in UNLIMITED_VALENCE_ELEMENTS:
             return [-1]
 
         charge = int(getattr(atom, "formal_charge", 0) or 0)
-        explicit_override = VALENCE_EXCEPTIONS.get((atom.element, charge))
+        explicit_override = VALENCE_EXCEPTIONS.get((element, charge))
         if explicit_override is not None:
             return list(explicit_override)
 
-        atomic_number = ATOMIC_NUMBERS.get(atom.element)
+        atomic_number = ATOMIC_NUMBERS.get(element)
         if atomic_number is None:
             return []
         iso_z = atomic_number - charge
@@ -855,7 +920,7 @@ class MolGraph:
         if valences is not None:
             return list(valences)
 
-        typical = VALENCE_MAP.get(atom.element)
+        typical = VALENCE_MAP.get(element)
         if typical is not None:
             return [typical]
         return []
@@ -879,12 +944,41 @@ class MolGraph:
             total += self._bond_order_contribution(bond, aromatic_order=aromatic_order)
         return total
 
+    def _group_hydrogen_target(self, atom_id: int, atom: Atom) -> int:
+        """Calcula H asignados dinámicamente para grupos simples como `NH2`."""
+        cap = self._effective_group_h_cap(atom)
+        if cap is None:
+            return int(atom.explicit_h or 0)
+        allowed = self._allowed_valences_for_atom(atom)
+        if not allowed or -1 in allowed:
+            return cap
+        allowed_nonnegative = sorted(v for v in allowed if v >= 0)
+        if not allowed_nonnegative:
+            return 0
+        preferred_valence = allowed_nonnegative[0]
+        missing = float(preferred_valence) - float(self.bond_order_sum(atom_id, aromatic_order=1.5))
+        if missing <= 1e-6:
+            return 0
+        rounded = int(round(missing))
+        if rounded < 0:
+            return 0
+        if not math.isclose(float(rounded), missing, abs_tol=1e-4):
+            return 0
+        return min(cap, rounded)
+
+    def assigned_hydrogen_count(self, atom_id: int) -> int:
+        """Cuenta H asignados en la etiqueta del átomo, excluyendo átomos H vecinos."""
+        atom = self.atoms.get(atom_id)
+        if atom is None:
+            return 0
+        return max(0, int(self._group_hydrogen_target(atom_id, atom)))
+
     def explicit_hydrogen_count(self, atom_id: int) -> int:
         """Cuenta hidrógenos explícitos dibujados/asignados al átomo."""
         atom = self.atoms.get(atom_id)
         if atom is None:
             return 0
-        count = int(atom.explicit_h or 0)
+        count = self.assigned_hydrogen_count(atom_id)
         for bond in self.bonds.values():
             if bond.style == BondStyle.COORDINATION:
                 continue
@@ -941,7 +1035,7 @@ class MolGraph:
 
     def _is_pyrrolic_like_aromatic_n(self, atom_id: int, atom: Atom) -> bool:
         """Detecta N aromático neutro de cinco miembros que conserva un H implícito."""
-        if atom.element != "N" or int(getattr(atom, "formal_charge", 0) or 0) != 0:
+        if self._effective_atom_element(atom) != "N" or int(getattr(atom, "formal_charge", 0) or 0) != 0:
             return False
         if bool(getattr(atom, "no_implicit", False)):
             return False
@@ -971,7 +1065,9 @@ class MolGraph:
 
     def _choose_implicit_h(self, atom: Atom, base_valence: float, allowed: List[int]) -> int:
         """Calcula H implícitos para llevar al estado de menor valencia permitida."""
-        if atom.element not in IMPLICIT_H_DEFAULT_ELEMENTS:
+        if self._effective_group_h_cap(atom) is not None:
+            return 0
+        if self._effective_atom_element(atom) not in IMPLICIT_H_DEFAULT_ELEMENTS:
             return 0
         if bool(getattr(atom, "no_implicit", False)):
             return 0

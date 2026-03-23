@@ -241,6 +241,13 @@ class MolView:
         Returns:
             Número de hidrógenos explícitos (0 si no hay).
         """
+        graph = getattr(self, "graph", None)
+        assigned_h = getattr(graph, "assigned_hydrogen_count", None)
+        if callable(assigned_h):
+            try:
+                return int(max(0, assigned_h(atom_id)))
+            except Exception:
+                pass
         atom = self._get_atom(atom_id)
         if atom is None:
             return 0

@@ -188,6 +188,22 @@ FUNCTIONAL_GROUP_LABELS = [
     "R",
 ]
 FUNCTIONAL_GROUP_ALIASES = {label.lower(): label for label in FUNCTIONAL_GROUP_LABELS}
+SIMPLE_HYDROGEN_GROUP_LABELS: dict[str, tuple[str, int]] = {
+    "NH2": ("N", 2),
+    "H2N": ("N", 2),
+    "NH": ("N", 1),
+    "HN": ("N", 1),
+    "OH": ("O", 1),
+    "HO": ("O", 1),
+    "SH": ("S", 1),
+    "HS": ("S", 1),
+}
+CANONICAL_SIMPLE_HYDROGEN_GROUP_LABELS: dict[tuple[str, int], str] = {
+    ("N", 2): "NH2",
+    ("N", 1): "NH",
+    ("O", 1): "OH",
+    ("S", 1): "SH",
+}
 ANALYSIS_MARGIN_PX = 14.0
 ANALYSIS_MIN_PEAK_PERCENT = 1.0
 ANALYSIS_MAX_PEAKS = 10
@@ -1810,58 +1826,44 @@ class ChemusonCanvas(QGraphicsView):
         if self._dragging_selection:
             if self._selection_move_handle is not None:
                 self._selection_move_handle.setCursor(Qt.CursorShape.OpenHandCursor)
-            if self._drag_has_moved:
-                # Capture end states
-                move_atoms = bool(self._drag_start_positions)
-                move_text = bool(getattr(self, "_drag_start_text_positions", {}))
-                move_arrows = bool(getattr(self, "_drag_start_arrow_positions", {}))
-                move_brackets = bool(getattr(self, "_drag_start_bracket_rects", {}))
-                
-                if sum([move_atoms, move_text, move_arrows, move_brackets]) > 1:
-                    self.undo_stack.beginMacro("Move selection")
-                
-                if move_atoms:
-                    after = {
-                        atom_id: (self.model.get_atom(atom_id).x, self.model.get_atom(atom_id).y)
-                        for atom_id in self._drag_start_positions
-                    }
-                    cmd = MoveAtomsCommand(
-                        self.model,
-                        self,
-                        self._drag_start_positions,
-                        after,
-                        skip_first_redo=True,
-                    )
-                    self.undo_stack.push(cmd)
-                    
-                if move_text:
-                    before = self._drag_start_text_positions
-                    after = {
-                        item: (item.pos(), item.rotation())
-                        for item in before.keys()
-                    }
-                    cmd = MoveTextItemsCommand(self, before, after)
-                    # We already moved them, so don't re-execute redo immediately if command stack auto-redoes?
-                    # QUndoStack.push() calls redo().
-                    # MoveItemsCommand.redo() sets position.
-                    # It's fine to set it again to same value.
-                    self.undo_stack.push(cmd)
-
-                if move_arrows:
-                    before = self._drag_start_arrow_positions
-                    after = {
-                        item: (item.start_point(), item.end_point())
-                        for item in before.keys()
-                    }
-                    self.undo_stack.push(MoveArrowItemsCommand(self, before, after))
-
-                if move_brackets:
-                    before = self._drag_start_bracket_rects
-                    after = {item: item.base_rect() for item in before.keys()}
-                    self.undo_stack.push(MoveBracketItemsCommand(self, before, after))
-                    
-                if sum([move_atoms, move_text, move_arrows, move_brackets]) > 1:
-                    self.undo_stack.endMacro()
+            had_moved = bool(self._drag_has_moved)
+            atom_before = dict(self._drag_start_positions)
+            text_before = dict(getattr(self, "_drag_start_text_positions", {}))
+            arrow_before = dict(getattr(self, "_drag_start_arrow_positions", {}))
+            bracket_before = dict(getattr(self, "_drag_start_bracket_rects", {}))
+            atom_after = (
+                {
+                    atom_id: (self.model.get_atom(atom_id).x, self.model.get_atom(atom_id).y)
+                    for atom_id in atom_before
+                    if atom_id in self.model.atoms
+                }
+                if had_moved and atom_before
+                else {}
+            )
+            text_after = (
+                {
+                    item: (item.pos(), item.rotation())
+                    for item in text_before.keys()
+                }
+                if had_moved and text_before
+                else {}
+            )
+            arrow_after = (
+                {
+                    item: (item.start_point(), item.end_point())
+                    for item in arrow_before.keys()
+                }
+                if had_moved and arrow_before
+                else {}
+            )
+            bracket_after = (
+                {
+                    item: item.base_rect()
+                    for item in bracket_before.keys()
+                }
+                if had_moved and bracket_before
+                else {}
+            )
 
             self._dragging_selection = False
             self._drag_start_pos = None
@@ -1870,6 +1872,41 @@ class ChemusonCanvas(QGraphicsView):
             self._drag_start_arrow_positions = {}
             self._drag_start_bracket_rects = {}
             self._drag_has_moved = False
+
+            if had_moved:
+                move_atoms = bool(atom_before and atom_after)
+                move_text = bool(text_before and text_after)
+                move_arrows = bool(arrow_before and arrow_after)
+                move_brackets = bool(bracket_before and bracket_after)
+                move_count = sum([move_atoms, move_text, move_arrows, move_brackets])
+
+                if move_count > 1:
+                    self.undo_stack.beginMacro("Move selection")
+
+                if move_atoms:
+                    self.undo_stack.push(
+                        MoveAtomsCommand(
+                            self.model,
+                            self,
+                            atom_before,
+                            atom_after,
+                            skip_first_redo=True,
+                        )
+                    )
+
+                if move_text:
+                    cmd = MoveTextItemsCommand(self, text_before, text_after)
+                    # QUndoStack.push() llama redo(); en este caso la posición ya es la final.
+                    self.undo_stack.push(cmd)
+
+                if move_arrows:
+                    self.undo_stack.push(MoveArrowItemsCommand(self, arrow_before, arrow_after))
+
+                if move_brackets:
+                    self.undo_stack.push(MoveBracketItemsCommand(self, bracket_before, bracket_after))
+
+                if move_count > 1:
+                    self.undo_stack.endMacro()
             return
 
         super().mouseReleaseEvent(event)
@@ -2709,8 +2746,9 @@ class ChemusonCanvas(QGraphicsView):
             return
         if isinstance(item, AtomItem):
             atom = self.model.get_atom(item.atom_id)
+            current_label = self._editable_atom_label(atom)
             value, anchor = self._prompt_atom_label(
-                atom.element, atom_id=atom.id, initial=atom.element
+                current_label, atom_id=atom.id, initial=current_label
             )
             if value is None:
                 return
@@ -2945,7 +2983,7 @@ class ChemusonCanvas(QGraphicsView):
         atom = self.model.get_atom(atom_id)
         seed = self._normalize_atom_label(typed) or typed
         value, anchor = self._prompt_atom_label(
-            atom.element, atom_id=atom_id, initial=seed
+            self._editable_atom_label(atom), atom_id=atom_id, initial=seed
         )
         if value is None:
             return True
@@ -3120,6 +3158,45 @@ class ChemusonCanvas(QGraphicsView):
             if normalized in ELEMENT_SYMBOLS:
                 return normalized
         return cleaned
+
+    def resolve_atom_label_spec(self, label: str) -> dict:
+        """Resuelve una etiqueta de UI a la especificación química persistente."""
+        normalized = self._normalize_atom_label(label) or label.strip()
+        if not normalized:
+            return {
+                "element": "",
+                "group_h_cap": None,
+                "explicit_h": None,
+                "no_implicit": False,
+            }
+        simple_group = SIMPLE_HYDROGEN_GROUP_LABELS.get(normalized)
+        if simple_group is None:
+            simple_group = SIMPLE_HYDROGEN_GROUP_LABELS.get(normalized.upper())
+        if simple_group is not None:
+            element, group_h_cap = simple_group
+            return {
+                "element": element,
+                "group_h_cap": int(group_h_cap),
+                "explicit_h": None,
+                "no_implicit": True,
+            }
+        return {
+            "element": normalized,
+            "group_h_cap": None,
+            "explicit_h": None,
+            "no_implicit": False,
+        }
+
+    def _editable_atom_label(self, atom) -> str:
+        """Devuelve la etiqueta canónica para edición en diálogos."""
+        cap = getattr(atom, "group_h_cap", None)
+        if cap is not None:
+            canonical = CANONICAL_SIMPLE_HYDROGEN_GROUP_LABELS.get(
+                (atom.element, int(cap))
+            )
+            if canonical:
+                return canonical
+        return atom.element
 
     def _atom_label_items(self) -> list[str]:
         """Método auxiliar para  atom label items.
@@ -3944,6 +4021,7 @@ class ChemusonCanvas(QGraphicsView):
                 radical_electrons=int(getattr(atom, "radical_electrons", 0) or 0),
                 oxidation_state=getattr(atom, "oxidation_state", None),
                 explicit_h=atom.explicit_h,
+                group_h_cap=getattr(atom, "group_h_cap", None),
                 mapping=atom.mapping,
                 is_query=atom.is_query,
                 is_explicit=atom.is_explicit,
@@ -4012,6 +4090,7 @@ class ChemusonCanvas(QGraphicsView):
                     "radical_electrons": int(getattr(atom, "radical_electrons", 0) or 0),
                     "oxidation_state": getattr(atom, "oxidation_state", None),
                     "explicit_h": atom.explicit_h,
+                    "group_h_cap": getattr(atom, "group_h_cap", None),
                     "mapping": atom.mapping,
                     "is_query": atom.is_query,
                     "is_explicit": atom.is_explicit,
@@ -4164,6 +4243,7 @@ class ChemusonCanvas(QGraphicsView):
                 radical_electrons=int(atom_d.get("radical_electrons", 0) or 0),
                 oxidation_state=atom_d.get("oxidation_state"),
                 explicit_h=atom_d.get("explicit_h"),
+                group_h_cap=atom_d.get("group_h_cap"),
                 mapping=atom_d.get("mapping"),
                 is_query=bool(atom_d.get("is_query", False)),
                 anchor_override=atom_d.get("anchor"),
@@ -5653,6 +5733,17 @@ class ChemusonCanvas(QGraphicsView):
         item.set_label_offset(offset)
         self._update_bond_label_shrinks({atom_id})
 
+    def _assigned_hydrogen_count(self, atom_id: int) -> int:
+        """Devuelve H asignados al átomo excluyendo H como nodos separados."""
+        counter = getattr(self.model, "assigned_hydrogen_count", None)
+        if callable(counter):
+            try:
+                return int(max(0, counter(atom_id)))
+            except Exception:
+                pass
+        atom = self.model.atoms.get(atom_id)
+        return int(getattr(atom, "explicit_h", 0) or 0) if atom is not None else 0
+
     def _build_atom_label(self, atom) -> tuple[str, Optional[str], QPointF]:
         """Método auxiliar para  build atom label.
 
@@ -5666,37 +5757,47 @@ class ChemusonCanvas(QGraphicsView):
             Puede modificar el estado interno o la escena.
         """
         label = atom.element
+        display_element = atom.element
         anchor: Optional[str] = None
         anchor_override = self._group_anchor_overrides.get(atom.id)
         is_coordination_center = bool(getattr(atom, "is_coordination_center", False))
-        if atom.element in ELEMENT_SYMBOLS:
+        if display_element not in ELEMENT_SYMBOLS:
+            legacy_spec = self.resolve_atom_label_spec(display_element)
+            legacy_element = str(legacy_spec.get("element") or "")
+            if legacy_element in ELEMENT_SYMBOLS and legacy_spec.get("group_h_cap") is not None:
+                display_element = legacy_element
+        if display_element in ELEMENT_SYMBOLS:
             if (
                 not is_coordination_center
-                and atom.element == "C"
+                and display_element == "C"
                 and not (
                 self.state.show_implicit_carbons or atom.is_explicit
                 )
             ):
-                return label, None, QPointF(0.0, 0.0)
-            implicit_h = self._implicit_hydrogen_count(atom.id, atom.element)
+                return display_element, None, QPointF(0.0, 0.0)
+            assigned_h = self._assigned_hydrogen_count(atom.id)
+            implicit_h = self._implicit_hydrogen_count(atom.id, display_element)
             if (
                 implicit_h > 0
-                and atom.element in {"O", "S"}
+                and display_element in {"O", "S"}
                 and self._atom_degree(atom.id) >= 2
             ):
                 implicit_h = 0
+            inline_implicit_h = 0 if self.state.show_implicit_hydrogens else implicit_h
+            total_h = assigned_h + inline_implicit_h
             if (
-                implicit_h > 0
-                and atom.element != "H"
-                and not self.state.show_implicit_hydrogens
+                total_h > 0
+                and display_element != "H"
                 and not is_coordination_center
             ):
-                h_text = "H" if implicit_h == 1 else f"H{implicit_h}"
+                h_text = "H" if total_h == 1 else f"H{total_h}"
                 if self._prefer_prefix_h(atom.id):
-                    label = f"{h_text}{atom.element}"
-                    anchor = atom.element
+                    label = f"{h_text}{display_element}"
+                    anchor = display_element
                 else:
-                    label = f"{atom.element}{h_text}"
+                    label = f"{display_element}{h_text}"
+            else:
+                label = display_element
         else:
             label, anchor = self._reflow_group_label(label, atom.id, anchor_override)
             if anchor is None and anchor_override and anchor_override in label:
@@ -8759,8 +8860,13 @@ class ChemusonCanvas(QGraphicsView):
         counts: dict[str, int] = {}
         for atom in graph.atoms.values():
             counts[atom.element] = counts.get(atom.element, 0) + 1
-            if atom.explicit_h:
-                counts["H"] = counts.get("H", 0) + int(atom.explicit_h)
+            assigned_h = (
+                graph.assigned_hydrogen_count(atom.id)
+                if hasattr(graph, "assigned_hydrogen_count")
+                else int(getattr(atom, "explicit_h", 0) or 0)
+            )
+            if assigned_h:
+                counts["H"] = counts.get("H", 0) + int(assigned_h)
         for atom in graph.atoms.values():
             if atom.element == "H":
                 continue
