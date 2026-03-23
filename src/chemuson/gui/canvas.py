@@ -40,6 +40,7 @@ from PyQt6.QtGui import (
     QPixmap,
     QPainterPath,
     QFont,
+    QFontMetrics,
     QTextCharFormat,
 )
 from PyQt6.QtCore import Qt, QPoint, QPointF, QRectF, QRect, QSize, QBuffer, QMimeData, QTimer, pyqtSignal
@@ -167,6 +168,9 @@ BOND_LAST_ANGLE_TOLERANCE_DEG = 20.0
 BRANCH_ROTATION_STEP_DEG = 60.0
 BRANCH_ROTATION_NOOP_TOLERANCE_DEG = 0.15
 CLIPBOARD_RENDER_SCALE = 5.0
+CLIPBOARD_LARGE_SELECTION_RENDER_SCALE = 2.5
+CLIPBOARD_LARGE_SELECTION_ATOM_THRESHOLD = 18
+CLIPBOARD_LARGE_SELECTION_BOND_THRESHOLD = 20
 PASTE_IMAGE_OFFSET_PX = 20.0
 PASTE_IMAGE_MAX_PAPER_FRACTION = 0.72
 TRACKBALL_ROTATION_DEG_PER_PIXEL = 1.0
@@ -506,6 +510,9 @@ class ChemusonCanvas(QGraphicsView):
         self._atom_numbering: dict[int, int] = {}
         self._structure_numbering: list[NumberedStructure] = []
         self._suspend_numbering_refresh = False
+        self._validation_batch_depth = 0
+        self._validation_dirty = False
+        self._force_full_scene_sync_on_undo_change = False
 
         self._setup_view()
         self._pending_initial_center = True
@@ -2179,6 +2186,32 @@ class ChemusonCanvas(QGraphicsView):
         self._update_selection_overlay()
         self.scene.invalidate()
         self.viewport().update()
+
+    def begin_validation_batch(self) -> None:
+        """Agrupa validaciones sucesivas para ejecutarlas una sola vez al final."""
+        self._validation_batch_depth += 1
+
+    def end_validation_batch(self) -> None:
+        """Cierra un lote de validación y ejecuta la validación pendiente si toca."""
+        if self._validation_batch_depth <= 0:
+            self._validation_batch_depth = 0
+            return
+        self._validation_batch_depth -= 1
+        if self._validation_batch_depth == 0 and self._validation_dirty:
+            self._validation_dirty = False
+            self.validate_structure()
+
+    def request_structure_validation(self) -> list[int]:
+        """Valida ahora o difiere la validación si se está en un batch."""
+        if self._validation_batch_depth > 0:
+            self._validation_dirty = True
+            return []
+        self._validation_dirty = False
+        return self.validate_structure()
+
+    def request_full_scene_sync(self) -> None:
+        """Marca que el siguiente cambio de undo stack debe resincronizar toda la escena."""
+        self._force_full_scene_sync_on_undo_change = True
 
     def _grab_interaction_mouse(self) -> None:
         """Fija el mouse a la vista durante transformaciones interactivas."""
@@ -4298,7 +4331,35 @@ class ChemusonCanvas(QGraphicsView):
         for bond in self.model.bonds.values():
             if bond.a1_id in atom_ids and bond.a2_id in atom_ids:
                 bonds.append(bond)
-        return atom_ids, bonds
+        return atom_ids, self._unique_bonds_for_copy(bonds)
+
+    @staticmethod
+    def _bond_copy_priority(bond: Bond) -> int:
+        """Prioriza la representación más informativa si hay enlaces duplicados."""
+        style_bonus = 5 if bond.style == BondStyle.COORDINATION else 0
+        aromatic_bonus = 50 if bond.is_aromatic else 0
+        display_bonus = int(bond.display_order or 0)
+        return int(bond.order or 1) * 10 + style_bonus + aromatic_bonus + display_bonus
+
+    def _unique_bonds_for_copy(self, bonds: Iterable[Bond]) -> list[Bond]:
+        """Elimina pares duplicados al copiar/exportar selección."""
+        unique: dict[tuple[int, int], Bond] = {}
+        for bond in sorted(bonds, key=lambda item: item.id):
+            pair = (min(int(bond.a1_id), int(bond.a2_id)), max(int(bond.a1_id), int(bond.a2_id)))
+            existing = unique.get(pair)
+            if existing is None or self._bond_copy_priority(bond) > self._bond_copy_priority(existing):
+                unique[pair] = bond
+        return list(unique.values())
+
+    @staticmethod
+    def _is_large_clipboard_structure(graph: Optional[MolGraph]) -> bool:
+        """Determina si una selección es suficientemente grande para exportación ligera."""
+        if graph is None:
+            return False
+        return (
+            len(graph.atoms) >= CLIPBOARD_LARGE_SELECTION_ATOM_THRESHOLD
+            or len(graph.bonds) >= CLIPBOARD_LARGE_SELECTION_BOND_THRESHOLD
+        )
 
     def _build_selection_graph(self, atom_ids: set[int], bonds: list[Bond]) -> MolGraph:
         """Método auxiliar para  build selection graph.
@@ -4338,7 +4399,7 @@ class ChemusonCanvas(QGraphicsView):
                 sphere_filled=bool(getattr(atom, "sphere_filled", True)),
                 sphere_transparent=bool(getattr(atom, "sphere_transparent", False)),
             )
-        for bond in bonds:
+        for bond in self._unique_bonds_for_copy(bonds):
             graph.add_bond(
                 bond.a1_id,
                 bond.a2_id,
@@ -4549,142 +4610,158 @@ class ChemusonCanvas(QGraphicsView):
             return ring_map[ring_id]
 
         has_undo_items = bool(atoms or bonds or arrows or brackets or texts or images)
+        self.begin_validation_batch()
         if has_undo_items:
             self.undo_stack.beginMacro("Paste selection")
         id_map: Dict[int, int] = {}
         inserted_atom_ids: list[int] = []
         inserted_items: list[QGraphicsItem] = []
         inserted_pairs: set[frozenset[int]] = set()
-        for atom_d in atoms:
-            cmd = AddAtomCommand(
-                self.model,
-                self,
-                atom_d.get("element", "C"),
-                float(atom_d.get("x", 0.0)) + dx,
-                float(atom_d.get("y", 0.0)) + dy,
-                is_explicit=atom_d.get("is_explicit"),
-                charge=atom_d.get("formal_charge", atom_d.get("charge")),
-                isotope=atom_d.get("isotope"),
-                radical_electrons=int(atom_d.get("radical_electrons", 0) or 0),
-                oxidation_state=atom_d.get("oxidation_state"),
-                explicit_h=atom_d.get("explicit_h"),
-                group_h_cap=atom_d.get("group_h_cap"),
-                mapping=atom_d.get("mapping"),
-                is_query=bool(atom_d.get("is_query", False)),
-                anchor_override=atom_d.get("anchor"),
-                auto_hydrogens=False,
-                no_implicit=bool(atom_d.get("no_implicit", False)),
-                label_scale=atom_d.get("label_scale"),
-                is_coordination_center=bool(atom_d.get("is_coordination_center", False)),
-                sphere_radius=atom_d.get("sphere_radius"),
-                sphere_color=atom_d.get("sphere_color"),
-                sphere_filled=bool(atom_d.get("sphere_filled", True)),
-                sphere_transparent=bool(atom_d.get("sphere_transparent", False)),
-            )
-            if has_undo_items:
-                self.undo_stack.push(cmd)
-            else:
-                cmd.redo()
-            if cmd.atom_id is not None:
-                id_map[int(atom_d.get("id"))] = cmd.atom_id
-                inserted_atom_ids.append(cmd.atom_id)
+        try:
+            for atom_d in atoms:
+                cmd = AddAtomCommand(
+                    self.model,
+                    self,
+                    atom_d.get("element", "C"),
+                    float(atom_d.get("x", 0.0)) + dx,
+                    float(atom_d.get("y", 0.0)) + dy,
+                    is_explicit=atom_d.get("is_explicit"),
+                    charge=atom_d.get("formal_charge", atom_d.get("charge")),
+                    isotope=atom_d.get("isotope"),
+                    radical_electrons=int(atom_d.get("radical_electrons", 0) or 0),
+                    oxidation_state=atom_d.get("oxidation_state"),
+                    explicit_h=atom_d.get("explicit_h"),
+                    group_h_cap=atom_d.get("group_h_cap"),
+                    mapping=atom_d.get("mapping"),
+                    is_query=bool(atom_d.get("is_query", False)),
+                    anchor_override=atom_d.get("anchor"),
+                    auto_hydrogens=False,
+                    no_implicit=bool(atom_d.get("no_implicit", False)),
+                    label_scale=atom_d.get("label_scale"),
+                    is_coordination_center=bool(atom_d.get("is_coordination_center", False)),
+                    sphere_radius=atom_d.get("sphere_radius"),
+                    sphere_color=atom_d.get("sphere_color"),
+                    sphere_filled=bool(atom_d.get("sphere_filled", True)),
+                    sphere_transparent=bool(atom_d.get("sphere_transparent", False)),
+                )
+                if has_undo_items:
+                    self.undo_stack.push(cmd)
+                else:
+                    cmd.redo()
+                if cmd.atom_id is not None:
+                    id_map[int(atom_d.get("id"))] = cmd.atom_id
+                    inserted_atom_ids.append(cmd.atom_id)
 
-        for bond_d in bonds:
-            a1 = id_map.get(int(bond_d.get("a1")))
-            a2 = id_map.get(int(bond_d.get("a2")))
-            if a1 is None or a2 is None:
-                continue
-            pair = frozenset({a1, a2})
-            if pair in inserted_pairs:
-                continue
-            inserted_pairs.add(pair)
-            if self.model.find_bond_between(a1, a2) is not None:
-                continue
-            style = self._parse_bond_style_payload(bond_d)
-            stereo = self._parse_bond_stereo_payload(bond_d)
-            donor_atom_id = None
-            raw_donor = bond_d.get("donor_atom_id")
-            if raw_donor is not None:
-                try:
-                    donor_atom_id = id_map.get(int(raw_donor))
-                except Exception:
-                    donor_atom_id = None
-            if style == BondStyle.COORDINATION:
-                donor_atom_id = self._infer_coordination_donor_atom(
+            for bond_d in bonds:
+                a1 = id_map.get(int(bond_d.get("a1")))
+                a2 = id_map.get(int(bond_d.get("a2")))
+                if a1 is None or a2 is None:
+                    continue
+                pair = frozenset({a1, a2})
+                if pair in inserted_pairs:
+                    continue
+                inserted_pairs.add(pair)
+                if self.model.find_bond_between(a1, a2) is not None:
+                    continue
+                style = self._parse_bond_style_payload(bond_d)
+                stereo = self._parse_bond_stereo_payload(bond_d)
+                donor_atom_id = None
+                raw_donor = bond_d.get("donor_atom_id")
+                if raw_donor is not None:
+                    try:
+                        donor_atom_id = id_map.get(int(raw_donor))
+                    except Exception:
+                        donor_atom_id = None
+                if style == BondStyle.COORDINATION:
+                    donor_atom_id = self._infer_coordination_donor_atom(
+                        a1,
+                        a2,
+                        preferred=donor_atom_id,
+                    )
+                cmd = AddBondCommand(
+                    self.model,
+                    self,
                     a1,
                     a2,
-                    preferred=donor_atom_id,
+                    int(bond_d.get("order", 1)),
+                    style,
+                    stereo,
+                    bool(bond_d.get("is_aromatic", False)),
+                    display_order=bond_d.get("display_order"),
+                    length_px=bond_d.get("length_px"),
+                    stroke_px=bond_d.get("stroke_px"),
+                    color=bond_d.get("color"),
+                    ring_id=map_ring(bond_d.get("ring_id")),
+                    donor_atom_id=donor_atom_id,
+                    flex_curve_1=bond_d.get("flex_curve_1"),
+                    flex_curve_2=bond_d.get("flex_curve_2"),
                 )
-            cmd = AddBondCommand(
-                self.model,
-                self,
-                a1,
-                a2,
-                int(bond_d.get("order", 1)),
-                style,
-                stereo,
-                bool(bond_d.get("is_aromatic", False)),
-                display_order=bond_d.get("display_order"),
-                length_px=bond_d.get("length_px"),
-                stroke_px=bond_d.get("stroke_px"),
-                color=bond_d.get("color"),
-                ring_id=map_ring(bond_d.get("ring_id")),
-                donor_atom_id=donor_atom_id,
-                flex_curve_1=bond_d.get("flex_curve_1"),
-                flex_curve_2=bond_d.get("flex_curve_2"),
-            )
-            if has_undo_items:
-                self.undo_stack.push(cmd)
-            else:
-                cmd.redo()
+                if has_undo_items:
+                    self.undo_stack.push(cmd)
+                else:
+                    cmd.redo()
 
-        for arrow_d in arrows:
-            start = arrow_d.get("start", [0.0, 0.0])
-            end = arrow_d.get("end", [10.0, 0.0])
-            kind = arrow_d.get("kind", "forward")
-            curve_factor = arrow_d.get("curve_factor")
-            stroke_px = arrow_d.get("stroke_px")
-            try:
-                curve_factor_value = float(curve_factor) if curve_factor is not None else None
-            except Exception:
-                curve_factor_value = None
-            try:
-                stroke_px_value = float(stroke_px) if stroke_px is not None else None
-            except Exception:
-                stroke_px_value = None
-            start_pt = QPointF(float(start[0]) + dx, float(start[1]) + dy)
-            end_pt = QPointF(float(end[0]) + dx, float(end[1]) + dy)
-            cmd = AddArrowCommand(
-                self,
-                start_pt,
-                end_pt,
-                kind,
-                curve_factor=curve_factor_value,
-                stroke_px=stroke_px_value,
-            )
-            if has_undo_items:
-                self.undo_stack.push(cmd)
-            else:
-                cmd.redo()
+            for arrow_d in arrows:
+                start = arrow_d.get("start", [0.0, 0.0])
+                end = arrow_d.get("end", [10.0, 0.0])
+                kind = arrow_d.get("kind", "forward")
+                curve_factor = arrow_d.get("curve_factor")
+                stroke_px = arrow_d.get("stroke_px")
+                try:
+                    curve_factor_value = float(curve_factor) if curve_factor is not None else None
+                except Exception:
+                    curve_factor_value = None
+                try:
+                    stroke_px_value = float(stroke_px) if stroke_px is not None else None
+                except Exception:
+                    stroke_px_value = None
+                start_pt = QPointF(float(start[0]) + dx, float(start[1]) + dy)
+                end_pt = QPointF(float(end[0]) + dx, float(end[1]) + dy)
+                cmd = AddArrowCommand(
+                    self,
+                    start_pt,
+                    end_pt,
+                    kind,
+                    curve_factor=curve_factor_value,
+                    stroke_px=stroke_px_value,
+                )
+                if has_undo_items:
+                    self.undo_stack.push(cmd)
+                else:
+                    cmd.redo()
 
-        for bracket_d in brackets:
-            rect_vals = bracket_d.get("rect", [0.0, 0.0, 10.0, 10.0])
-            rect = QRectF(
-                float(rect_vals[0]) + dx,
-                float(rect_vals[1]) + dy,
-                float(rect_vals[2]),
-                float(rect_vals[3]),
-            )
-            kind = bracket_d.get("kind", "[]")
-            padding = bracket_d.get("padding")
-            stroke_px = bracket_d.get("stroke_px")
-            pair = self._split_bracket_kind(kind)
-            if pair:
-                for side in pair:
+            for bracket_d in brackets:
+                rect_vals = bracket_d.get("rect", [0.0, 0.0, 10.0, 10.0])
+                rect = QRectF(
+                    float(rect_vals[0]) + dx,
+                    float(rect_vals[1]) + dy,
+                    float(rect_vals[2]),
+                    float(rect_vals[3]),
+                )
+                kind = bracket_d.get("kind", "[]")
+                padding = bracket_d.get("padding")
+                stroke_px = bracket_d.get("stroke_px")
+                pair = self._split_bracket_kind(kind)
+                if pair:
+                    for side in pair:
+                        cmd = AddBracketCommand(
+                            self,
+                            rect,
+                            side,
+                            padding=padding,
+                            stroke_px=stroke_px,
+                        )
+                        if has_undo_items:
+                            self.undo_stack.push(cmd)
+                        else:
+                            cmd.redo()
+                        if cmd.item is not None:
+                            inserted_items.append(cmd.item)
+                else:
                     cmd = AddBracketCommand(
                         self,
                         rect,
-                        side,
+                        kind,
                         padding=padding,
                         stroke_px=stroke_px,
                     )
@@ -4694,81 +4771,68 @@ class ChemusonCanvas(QGraphicsView):
                         cmd.redo()
                     if cmd.item is not None:
                         inserted_items.append(cmd.item)
-            else:
-                cmd = AddBracketCommand(
-                    self,
-                    rect,
-                    kind,
-                    padding=padding,
-                    stroke_px=stroke_px,
+
+            for txt_d in texts:
+                text_item = TextAnnotationItem(txt_d.get("text", ""), 0.0, 0.0)
+                html = txt_d.get("html")
+                if html:
+                    text_item.setHtml(html)
+                if "rotation" in txt_d:
+                    text_item.setRotation(float(txt_d["rotation"]))
+                if "font" in txt_d:
+                    font = QFont()
+                    font.fromString(txt_d["font"])
+                    text_item.setFont(font)
+                if "color" in txt_d:
+                    text_item.setDefaultTextColor(QColor(txt_d["color"]))
+                if "text_width" in txt_d:
+                    text_item.setTextWidth(float(txt_d["text_width"]))
+                text_item.setPos(
+                    float(txt_d.get("x", 0.0)) + dx, float(txt_d.get("y", 0.0)) + dy
                 )
                 if has_undo_items:
-                    self.undo_stack.push(cmd)
+                    self.undo_stack.push(AddTextItemCommand(self, text_item))
                 else:
-                    cmd.redo()
-                if cmd.item is not None:
-                    inserted_items.append(cmd.item)
+                    self.scene.addItem(text_item)
+                inserted_items.append(text_item)
 
-        for txt_d in texts:
-            text_item = TextAnnotationItem(txt_d.get("text", ""), 0.0, 0.0)
-            html = txt_d.get("html")
-            if html:
-                text_item.setHtml(html)
-            if "rotation" in txt_d:
-                text_item.setRotation(float(txt_d["rotation"]))
-            if "font" in txt_d:
-                font = QFont()
-                font.fromString(txt_d["font"])
-                text_item.setFont(font)
-            if "color" in txt_d:
-                text_item.setDefaultTextColor(QColor(txt_d["color"]))
-            if "text_width" in txt_d:
-                text_item.setTextWidth(float(txt_d["text_width"]))
-            text_item.setPos(
-                float(txt_d.get("x", 0.0)) + dx, float(txt_d.get("y", 0.0)) + dy
-            )
-            if has_undo_items:
-                self.undo_stack.push(AddTextItemCommand(self, text_item))
-            else:
-                self.scene.addItem(text_item)
-            inserted_items.append(text_item)
-
-        for idx, img_d in enumerate(images):
-            raw_b64 = img_d.get("data_b64")
-            mime_type = img_d.get("mime_type", "image/png")
-            if not raw_b64:
-                continue
-            try:
-                image_data = base64.b64decode(raw_b64)
-            except Exception:
-                continue
-            item = ImageAnnotationItem(
-                image_data,
-                mime_type,
-                width=float(img_d.get("width", 1.0)),
-                height=float(img_d.get("height", 1.0)),
-                source_name=img_d.get("source_name"),
-            )
-            if not item.is_valid_image():
-                continue
-            item.set_display_rect(
-                QRectF(
-                    float(img_d.get("x", 0.0)) + dx,
-                    float(img_d.get("y", 0.0)) + dy,
-                    float(img_d.get("width", 1.0)),
-                    float(img_d.get("height", 1.0)),
+            for idx, img_d in enumerate(images):
+                raw_b64 = img_d.get("data_b64")
+                mime_type = img_d.get("mime_type", "image/png")
+                if not raw_b64:
+                    continue
+                try:
+                    image_data = base64.b64decode(raw_b64)
+                except Exception:
+                    continue
+                item = ImageAnnotationItem(
+                    image_data,
+                    mime_type,
+                    width=float(img_d.get("width", 1.0)),
+                    height=float(img_d.get("height", 1.0)),
+                    source_name=img_d.get("source_name"),
                 )
-            )
-            item.setRotation(float(img_d.get("rotation", 0.0)))
-            item.setZValue(float(img_d.get("z", 8.0)))
+                if not item.is_valid_image():
+                    continue
+                item.set_display_rect(
+                    QRectF(
+                        float(img_d.get("x", 0.0)) + dx,
+                        float(img_d.get("y", 0.0)) + dy,
+                        float(img_d.get("width", 1.0)),
+                        float(img_d.get("height", 1.0)),
+                    )
+                )
+                item.setRotation(float(img_d.get("rotation", 0.0)))
+                item.setZValue(float(img_d.get("z", 8.0)))
+                if has_undo_items:
+                    self.undo_stack.push(AddImageItemCommand(self, item))
+                else:
+                    self.readd_image_item(item)
+                inserted_items.append(item)
+        finally:
             if has_undo_items:
-                self.undo_stack.push(AddImageItemCommand(self, item))
-            else:
-                self.readd_image_item(item)
-            inserted_items.append(item)
-
-        if has_undo_items:
-            self.undo_stack.endMacro()
+                self.undo_stack.endMacro()
+            self.end_validation_batch()
         if ring_map:
             self.refresh_ring_centers()
         self._select_inserted_items(inserted_atom_ids, inserted_items)
@@ -4840,8 +4904,13 @@ class ChemusonCanvas(QGraphicsView):
             graph = self.model if self.model.atoms and not only_text_selection else None
         else:
             graph = None
+        large_structure_selection = bool(
+            has_structure_selection
+            and selected_payload is not None
+            and self._is_large_clipboard_structure(graph)
+        )
         smiles = ""
-        if graph is not None and graph.atoms:
+        if graph is not None and graph.atoms and not large_structure_selection:
             try:
                 molfile = molgraph_to_molfile(graph)
                 smiles = molgraph_to_smiles(graph)
@@ -4871,7 +4940,11 @@ class ChemusonCanvas(QGraphicsView):
         has_selection = bool(self.state.selected_atoms or self.state.selected_bonds)
         has_selection = has_selection or bool(self.scene.selectedItems())
         image = self._render_scene_image(
-            scale=CLIPBOARD_RENDER_SCALE,
+            scale=(
+                CLIPBOARD_LARGE_SELECTION_RENDER_SCALE
+                if large_structure_selection
+                else CLIPBOARD_RENDER_SCALE
+            ),
             selected_only=has_selection,
             background=Qt.GlobalColor.white,
         )
@@ -4889,9 +4962,10 @@ class ChemusonCanvas(QGraphicsView):
                 pass
         elif smiles:
             mime.setText(smiles)
-        svg_data = self._render_scene_svg(selected_only=has_selection)
-        if svg_data:
-            mime.setData("image/svg+xml", svg_data)
+        if not large_structure_selection:
+            svg_data = self._render_scene_svg(selected_only=has_selection)
+            if svg_data:
+                mime.setData("image/svg+xml", svg_data)
 
         QApplication.clipboard().setMimeData(mime)
 
@@ -5447,6 +5521,7 @@ class ChemusonCanvas(QGraphicsView):
         dx = target_x - center_x
         dy = target_y - center_y
 
+        self.begin_validation_batch()
         self.undo_stack.beginMacro("Paste molecule")
         inserted_atom_ids: list[int] = []
         try:
@@ -5505,6 +5580,7 @@ class ChemusonCanvas(QGraphicsView):
                 self.undo_stack.push(cmd)
         finally:
             self.undo_stack.endMacro()
+            self.end_validation_batch()
         if any(bond.is_aromatic for bond in self.model.bonds.values()):
             self._kekulize_aromatic_bonds()
         if select_inserted:
@@ -5581,6 +5657,7 @@ class ChemusonCanvas(QGraphicsView):
             dx = target.x() - center_x
             dy = target.y() - center_y
 
+        self.begin_validation_batch()
         self.undo_stack.beginMacro("Paste molecule")
         try:
             id_map: Dict[int, int] = {}
@@ -5652,6 +5729,7 @@ class ChemusonCanvas(QGraphicsView):
                         self.undo_stack.push(cmd)
         finally:
             self.undo_stack.endMacro()
+            self.end_validation_batch()
         if any(bond.is_aromatic for bond in self.model.bonds.values()):
             self._kekulize_aromatic_bonds()
 
@@ -6225,6 +6303,36 @@ class ChemusonCanvas(QGraphicsView):
         atom = self.model.atoms.get(atom_id)
         return int(getattr(atom, "explicit_h", 0) or 0) if atom is not None else 0
 
+    def _resolved_display_element(self, atom) -> str:
+        """Resuelve alias legacy simples a su elemento visible real."""
+        display_element = atom.element
+        if display_element not in ELEMENT_SYMBOLS:
+            legacy_spec = self.resolve_atom_label_spec(display_element)
+            legacy_element = str(legacy_spec.get("element") or "")
+            if legacy_element in ELEMENT_SYMBOLS and legacy_spec.get("group_h_cap") is not None:
+                display_element = legacy_element
+        return display_element
+
+    def _inline_label_hydrogen_count(self, atom_id: int, display_element: str) -> int:
+        """Cuenta los H que se dibujan inline junto al símbolo del heteroátomo."""
+        atom = self.model.atoms.get(atom_id)
+        if (
+            atom is None
+            or display_element not in ELEMENT_SYMBOLS
+            or bool(getattr(atom, "is_coordination_center", False))
+        ):
+            return 0
+        assigned_h = self._assigned_hydrogen_count(atom_id)
+        implicit_h = self._implicit_hydrogen_count(atom_id, display_element)
+        if (
+            implicit_h > 0
+            and display_element in {"O", "S"}
+            and self._atom_degree(atom_id) >= 2
+        ):
+            implicit_h = 0
+        inline_implicit_h = 0 if self.state.show_implicit_hydrogens else implicit_h
+        return int(max(0, assigned_h + inline_implicit_h))
+
     def _build_atom_label(self, atom) -> tuple[str, Optional[str], QPointF]:
         """Método auxiliar para  build atom label.
 
@@ -6238,15 +6346,10 @@ class ChemusonCanvas(QGraphicsView):
             Puede modificar el estado interno o la escena.
         """
         label = atom.element
-        display_element = atom.element
+        display_element = self._resolved_display_element(atom)
         anchor: Optional[str] = None
         anchor_override = self._group_anchor_overrides.get(atom.id)
         is_coordination_center = bool(getattr(atom, "is_coordination_center", False))
-        if display_element not in ELEMENT_SYMBOLS:
-            legacy_spec = self.resolve_atom_label_spec(display_element)
-            legacy_element = str(legacy_spec.get("element") or "")
-            if legacy_element in ELEMENT_SYMBOLS and legacy_spec.get("group_h_cap") is not None:
-                display_element = legacy_element
         if display_element in ELEMENT_SYMBOLS:
             if (
                 not is_coordination_center
@@ -6256,23 +6359,14 @@ class ChemusonCanvas(QGraphicsView):
                 )
             ):
                 return display_element, None, QPointF(0.0, 0.0)
-            assigned_h = self._assigned_hydrogen_count(atom.id)
-            implicit_h = self._implicit_hydrogen_count(atom.id, display_element)
-            if (
-                implicit_h > 0
-                and display_element in {"O", "S"}
-                and self._atom_degree(atom.id) >= 2
-            ):
-                implicit_h = 0
-            inline_implicit_h = 0 if self.state.show_implicit_hydrogens else implicit_h
-            total_h = assigned_h + inline_implicit_h
+            total_h = self._inline_label_hydrogen_count(atom.id, display_element)
             if (
                 total_h > 0
                 and display_element != "H"
                 and not is_coordination_center
             ):
                 h_text = "H" if total_h == 1 else f"H{total_h}"
-                if self._prefer_prefix_h(atom.id):
+                if self._prefer_prefix_h(atom.id, display_element, total_h):
                     label = f"{h_text}{display_element}"
                     anchor = display_element
                 else:
@@ -6605,6 +6699,34 @@ class ChemusonCanvas(QGraphicsView):
             Puede modificar el estado interno o la escena.
         """
         atom = self.model.get_atom(atom_id)
+        if atom is None:
+            return QPointF(0.0, 0.0)
+        display_element = self._resolved_display_element(atom)
+        total_h = self._inline_label_hydrogen_count(atom_id, display_element)
+        if (
+            display_element in ELEMENT_SYMBOLS
+            and display_element not in {"C", "H"}
+            and total_h > 0
+        ):
+            direction = self._label_open_direction(atom_id)
+            if direction == QPointF(0.0, 0.0):
+                return QPointF(0.0, 0.0)
+            length = math.hypot(direction.x(), direction.y())
+            if length <= 1e-6:
+                return QPointF(0.0, 0.0)
+            direction = QPointF(direction.x() / length, direction.y() / length)
+            if self._atom_degree(atom_id) >= 2 and abs(direction.y()) < 0.35:
+                biased_y = 0.35 if direction.y() >= 0.0 else -0.35
+                biased_length = math.hypot(direction.x(), biased_y)
+                if biased_length > 1e-6:
+                    direction = QPointF(direction.x() / biased_length, biased_y / biased_length)
+            size = self._label_font_for_atom(atom_id).pointSizeF()
+            if size <= 0:
+                size = self._label_font().pointSizeF()
+            if size <= 0:
+                size = 10.0
+            offset = max(3.0, size * 0.38)
+            return QPointF(direction.x() * offset, direction.y() * offset)
         if any(ch.isalpha() for ch in atom.element):
             return QPointF(0.0, 0.0)
         direction = self._label_open_direction(atom_id)
@@ -7069,8 +7191,11 @@ class ChemusonCanvas(QGraphicsView):
         # Increased padding to clear label characters (especially "C")
         # 6.0px provides a comfortable margin for standard font sizes.
         pad = 6.0
-        if atom is not None and atom.element in ELEMENT_SYMBOLS and atom.element not in {"C", "H"}:
+        display_element = self._resolved_display_element(atom) if atom is not None else ""
+        if atom is not None and display_element in ELEMENT_SYMBOLS and display_element not in {"C", "H"}:
             pad = 3.5
+            if self._inline_label_hydrogen_count(atom_id, display_element) > 0:
+                pad = 5.0
         pad += max(0.0, float(extra_pad))
         rect = rect.adjusted(-pad, -pad, pad, pad)
         distance = self._ray_ellipse_distance(rect, ux, uy)
@@ -7214,18 +7339,134 @@ class ChemusonCanvas(QGraphicsView):
                 
         return best
 
-    def _prefer_prefix_h(self, atom_id: int) -> bool:
-        """Método auxiliar para  prefer prefix h.
+    @staticmethod
+    def _ray_rect_distance(rect: QRectF, ux: float, uy: float) -> Optional[float]:
+        """Devuelve la distancia positiva a la primera intersección rayo-rectángulo."""
+        t_enter = float("-inf")
+        t_exit = float("inf")
+        for minimum, maximum, direction in (
+            (float(rect.left()), float(rect.right()), float(ux)),
+            (float(rect.top()), float(rect.bottom()), float(uy)),
+        ):
+            if abs(direction) <= 1e-9:
+                if minimum <= 0.0 <= maximum:
+                    continue
+                return None
+            t1 = minimum / direction
+            t2 = maximum / direction
+            if t1 > t2:
+                t1, t2 = t2, t1
+            t_enter = max(t_enter, t1)
+            t_exit = min(t_exit, t2)
+            if t_exit < t_enter:
+                return None
+        if t_exit <= 1e-6:
+            return None
+        if t_enter > 1e-6:
+            return t_enter
+        return t_exit
 
-        Args:
-            atom_id: Descripción del parámetro.
+    def _hydrogen_label_side_rect(
+        self,
+        atom_id: int,
+        element_text: str,
+        h_text: str,
+        *,
+        prefix: bool,
+    ) -> Optional[QRectF]:
+        """Rectángulo aproximado ocupado por el bloque H/H2 a un lado del átomo."""
+        if not element_text or not h_text:
+            return None
+        font = self._label_font_for_atom(atom_id)
+        metrics = QFontMetrics(font)
+        element_width = float(metrics.horizontalAdvance(element_text))
+        hydrogen_width = float(metrics.horizontalAdvance(h_text))
+        text_height = float(metrics.height())
+        if element_width <= 0.0 or hydrogen_width <= 0.0 or text_height <= 0.0:
+            return None
 
-        Returns:
-            Resultado de la operación o None.
+        outer_pad = max(2.0, float(self.drawing_style.stroke_px) * 1.6)
+        inner_pad = min(1.0, hydrogen_width * 0.12)
+        vertical_pad = max(1.5, float(self.drawing_style.stroke_px) * 1.2)
+        half_element = element_width * 0.5
 
-        Side Effects:
-            Puede modificar el estado interno o la escena.
-        """
+        if prefix:
+            right = -half_element + inner_pad
+            left = right - hydrogen_width - outer_pad
+        else:
+            left = half_element - inner_pad
+            right = left + hydrogen_width + outer_pad
+
+        top = -text_height * 0.5 - vertical_pad
+        bottom = text_height * 0.5 + vertical_pad
+        return QRectF(QPointF(left, top), QPointF(right, bottom)).normalized()
+
+    def _hydrogen_side_obstruction_score(
+        self,
+        atom_id: int,
+        element_text: str,
+        h_count: int,
+        *,
+        prefix: bool,
+    ) -> float:
+        """Penaliza orientaciones donde el bloque H invade enlaces vecinos."""
+        atom = self.model.atoms.get(atom_id)
+        if atom is None or h_count <= 0:
+            return 0.0
+
+        h_text = "H" if h_count == 1 else f"H{int(h_count)}"
+        h_rect = self._hydrogen_label_side_rect(atom_id, element_text, h_text, prefix=prefix)
+        if h_rect is None:
+            return 0.0
+
+        score = 0.0
+        side_sign = -1.0 if prefix else 1.0
+        for bond in self.model.bonds.values():
+            if bond.a1_id == atom_id:
+                other = self.model.get_atom(bond.a2_id)
+            elif bond.a2_id == atom_id:
+                other = self.model.get_atom(bond.a1_id)
+            else:
+                continue
+            if other is None or other.element == "H":
+                continue
+            dx = float(other.x - atom.x)
+            dy = float(other.y - atom.y)
+            length = math.hypot(dx, dy)
+            if length <= 1e-6:
+                continue
+            ux = dx / length
+            uy = dy / length
+            hit_distance = self._ray_rect_distance(h_rect, ux, uy)
+            if hit_distance is not None and hit_distance < length - 1e-6:
+                proximity = max(0.0, 1.0 - hit_distance / max(length, 1.0))
+                score += 100.0 + proximity * 25.0 + abs(ux) * 10.0
+                continue
+
+            # Penalización suave si el enlace apunta hacia el mismo lado del H
+            # y se mantiene relativamente horizontal.
+            same_side = max(0.0, side_sign * ux)
+            horizontal = max(0.0, abs(ux) - abs(uy) * 0.35)
+            score += same_side * horizontal * 4.0
+        return score
+
+    def _prefer_prefix_h(self, atom_id: int, element_text: str, h_count: int) -> bool:
+        """Elige H antes/después del átomo minimizando obstrucción visual."""
+        prefix_score = self._hydrogen_side_obstruction_score(
+            atom_id,
+            element_text,
+            h_count,
+            prefix=True,
+        )
+        suffix_score = self._hydrogen_side_obstruction_score(
+            atom_id,
+            element_text,
+            h_count,
+            prefix=False,
+        )
+        if abs(prefix_score - suffix_score) > 0.5:
+            return prefix_score < suffix_score
+
         direction = self._label_open_direction(atom_id)
         return direction.x() < -0.2
 
@@ -13929,12 +14170,12 @@ class ChemusonCanvas(QGraphicsView):
         Side Effects:
             Puede modificar el estado interno o la escena.
         """
-        snapshot = self._selection_snapshot()
         self._cancel_drag()
-        self._sync_scene_with_model()
-        self._restore_selection_snapshot(snapshot)
-        self._kekulize_aromatic_bonds()
-        self.validate_structure()
+        if self._force_full_scene_sync_on_undo_change:
+            snapshot = self._selection_snapshot()
+            self._force_full_scene_sync_on_undo_change = False
+            self._sync_scene_with_model()
+            self._restore_selection_snapshot(snapshot)
         self._update_hover(self._last_scene_pos)
         self._update_selection_overlay()
 

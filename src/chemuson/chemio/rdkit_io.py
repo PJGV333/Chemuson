@@ -32,6 +32,39 @@ def _rdkit_available() -> bool:
     return Chem is not None and AllChem is not None and rdMolDraw2D is not None
 
 
+def _bond_priority_for_export(bond) -> int:
+    """Prioriza el enlace más informativo cuando hay duplicados por par de átomos."""
+    if getattr(bond, "is_aromatic", False):
+        return 50
+    style = getattr(bond, "style", BondStyle.PLAIN)
+    style_bonus = 5 if style == BondStyle.COORDINATION else 0
+    display_order = getattr(bond, "display_order", None)
+    display_bonus = int(display_order or 0)
+    return int(getattr(bond, "order", 1) or 1) * 10 + style_bonus + display_bonus
+
+
+def _unique_bonds_for_export(molgraph: MolGraph):
+    """Devuelve enlaces únicos por par de átomos para exportación robusta."""
+    unique: Dict[tuple[int, int], object] = {}
+    for bond in sorted(molgraph.bonds.values(), key=lambda item: item.id):
+        pair = (min(int(bond.a1_id), int(bond.a2_id)), max(int(bond.a1_id), int(bond.a2_id)))
+        existing = unique.get(pair)
+        if existing is None or _bond_priority_for_export(bond) > _bond_priority_for_export(existing):
+            unique[pair] = bond
+    return list(unique.values())
+
+
+def _graph_has_duplicate_bond_pairs(molgraph: MolGraph) -> bool:
+    """Indica si el grafo contiene dos enlaces para el mismo par de átomos."""
+    seen: set[tuple[int, int]] = set()
+    for bond in molgraph.bonds.values():
+        pair = (min(int(bond.a1_id), int(bond.a2_id)), max(int(bond.a1_id), int(bond.a2_id)))
+        if pair in seen:
+            return True
+        seen.add(pair)
+    return False
+
+
 def _require_rdkit():
     """Lanza un error si RDKit no está instalado."""
     if not _rdkit_available():
@@ -119,7 +152,7 @@ def molgraph_to_rdkit_with_map(molgraph: MolGraph):
         rd_idx = rw.AddAtom(rd_atom)
         id_map[atom.id] = rd_idx
 
-    for bond in molgraph.bonds.values():
+    for bond in _unique_bonds_for_export(molgraph):
         # RDKit distingue enlaces aromáticos y órdenes discretos.
         begin_id = bond.a1_id
         end_id = bond.a2_id
@@ -365,9 +398,11 @@ def _mol_symbol_requires_fallback(symbol: str) -> bool:
 def _graph_requires_rdkit_fallback(molgraph: MolGraph) -> bool:
     """Determina si conviene evitar RDKit por símbolos no estándar."""
     for atom in molgraph.atoms.values():
+        if bool(getattr(atom, "is_coordination_center", False)):
+            return True
         if _mol_symbol_requires_fallback(atom.element):
             return True
-    return False
+    return _graph_has_duplicate_bond_pairs(molgraph)
 
 
 def _should_use_molfile_fallback(molfile: str) -> bool:
@@ -1074,7 +1109,7 @@ def _molgraph_to_molfile_fallback(molgraph: MolGraph) -> str:
         Cadena con el bloque MOL (V2000) básico.
     """
     atoms = [molgraph.atoms[atom_id] for atom_id in sorted(molgraph.atoms.keys())]
-    bonds = [molgraph.bonds[bond_id] for bond_id in sorted(molgraph.bonds.keys())]
+    bonds = _unique_bonds_for_export(molgraph)
     atom_index = {atom.id: idx + 1 for idx, atom in enumerate(atoms)}
     aliases: list[tuple[int, str]] = []
 

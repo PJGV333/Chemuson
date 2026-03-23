@@ -107,6 +107,10 @@ def _resolve_atom_label_spec(view, label: str) -> dict:
 
 def _validate_view_structure(view) -> None:
     """Dispara la validación visual si la vista la soporta."""
+    requester = getattr(view, "request_structure_validation", None)
+    if callable(requester):
+        requester()
+        return
     validator = getattr(view, "validate_structure", None)
     if callable(validator):
         validator()

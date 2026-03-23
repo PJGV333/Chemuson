@@ -64,6 +64,58 @@ def test_nh2_group_shorthand_reduces_hydrogens_when_new_bond_is_added() -> None:
     assert target_id not in canvas.validate_structure()
 
 
+def test_nh_label_moves_h_to_left_when_right_bond_would_be_occluded() -> None:
+    canvas = ChemusonCanvas()
+    target_id = canvas.model.add_atom("C", 50.0, 10.0, is_explicit=True).id
+    anchor_id = canvas.model.add_atom("C", 15.0, -10.0, is_explicit=True).id
+    canvas.model.add_bond(anchor_id, target_id, order=1)
+    canvas._rebuild_items_from_model()
+
+    canvas.undo_stack.push(ChangeAtomCommand(canvas.model, canvas, target_id, "NH2"))
+
+    extra = canvas.model.add_atom("C", 92.0, 34.0, is_explicit=True).id
+    canvas.add_atom_item(canvas.model.get_atom(extra))
+    canvas.undo_stack.push(AddBondCommand(canvas.model, canvas, target_id, extra))
+
+    assert _label_text(canvas, target_id) == "HN"
+
+
+def test_nh_label_moves_h_to_right_when_left_side_is_more_crowded() -> None:
+    canvas = ChemusonCanvas()
+    target_id = canvas.model.add_atom("C", 50.0, 10.0, is_explicit=True).id
+    anchor_id = canvas.model.add_atom("C", 85.0, -10.0, is_explicit=True).id
+    canvas.model.add_bond(anchor_id, target_id, order=1)
+    canvas._rebuild_items_from_model()
+
+    canvas.undo_stack.push(ChangeAtomCommand(canvas.model, canvas, target_id, "NH2"))
+
+    extra = canvas.model.add_atom("C", 8.0, 34.0, is_explicit=True).id
+    canvas.add_atom_item(canvas.model.get_atom(extra))
+    canvas.undo_stack.push(AddBondCommand(canvas.model, canvas, target_id, extra))
+
+    assert _label_text(canvas, target_id) == "NH"
+
+
+def test_nh_label_offsets_out_of_crowded_vertex_in_amide_like_geometry() -> None:
+    canvas = ChemusonCanvas()
+    target_id = canvas.model.add_atom("C", 100.0, 100.0, is_explicit=True).id
+    left_id = canvas.model.add_atom("C", 66.0, 88.0, is_explicit=True).id
+    right_id = canvas.model.add_atom("C", 135.0, 78.0, is_explicit=True).id
+    canvas.model.add_bond(left_id, target_id, order=1)
+    canvas._rebuild_items_from_model()
+
+    canvas.undo_stack.push(ChangeAtomCommand(canvas.model, canvas, target_id, "NH2"))
+
+    canvas.add_atom_item(canvas.model.get_atom(right_id))
+    canvas.undo_stack.push(AddBondCommand(canvas.model, canvas, target_id, right_id))
+
+    atom = canvas.model.get_atom(target_id)
+    _label, _anchor, offset = canvas._build_atom_label(atom)
+
+    assert offset.y() > 2.5
+    assert abs(offset.x()) + abs(offset.y()) > 3.0
+
+
 @pytest.mark.parametrize(("shorthand", "element"), [("OH", "O"), ("SH", "S")])
 def test_oh_and_sh_shorthand_drop_h_after_second_bond(shorthand: str, element: str) -> None:
     canvas = ChemusonCanvas()
