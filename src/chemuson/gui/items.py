@@ -16,8 +16,13 @@ from PyQt6.QtWidgets import (
     QGraphicsRectItem,
     QStyle,
 )
-from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPainterPath, QPen, QBrush, QPainter, QRadialGradient
-from PyQt6.QtCore import Qt, QRectF, QPointF
+from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPainterPath, QPen, QBrush, QPainter, QRadialGradient, QPixmap
+from PyQt6.QtCore import Qt, QRectF, QPointF, QByteArray, QSizeF
+
+try:
+    from PyQt6.QtSvg import QSvgRenderer
+except Exception:  # Optional Qt module at runtime
+    QSvgRenderer = None
 
 
 from chemuson.core.model import Atom, Bond, BondStyle
@@ -4121,3 +4126,104 @@ class TextAnnotationItem(QGraphicsTextItem):
         path = QPainterPath()
         path.addRect(br)
         return path
+
+
+class ImageAnnotationItem(QGraphicsItem):
+    """Elemento gráfico persistente para imágenes raster y SVG."""
+
+    def __init__(
+        self,
+        data: bytes,
+        mime_type: str,
+        *,
+        width: float | None = None,
+        height: float | None = None,
+        source_name: str | None = None,
+    ) -> None:
+        super().__init__()
+        self._mime_type = (mime_type or "image/png").strip().lower()
+        self._data = bytes(data)
+        self._source_name = source_name or ""
+        self._pixmap = QPixmap()
+        self._svg_renderer = None
+        self._natural_size = QSizeF(1.0, 1.0)
+        self._display_size = QSizeF(1.0, 1.0)
+
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsFocusable)
+        # Keep imported/pasted images above normal chemistry graphics so they
+        # remain directly manipulable even on crowded canvases, but below the
+        # selection overlay/handles drawn by the canvas.
+        self.setZValue(44)
+
+        self._load_content()
+        target_w = float(width) if width is not None else float(self._natural_size.width())
+        target_h = float(height) if height is not None else float(self._natural_size.height())
+        self._display_size = QSizeF(max(1.0, target_w), max(1.0, target_h))
+        self.setTransformOriginPoint(self.boundingRect().center())
+
+    def _load_content(self) -> None:
+        """Carga el contenido visual y determina el tamaño natural."""
+        if self._mime_type == "image/svg+xml" and QSvgRenderer is not None:
+            renderer = QSvgRenderer(QByteArray(self._data))
+            if renderer.isValid():
+                self._svg_renderer = renderer
+                default_size = renderer.defaultSize()
+                if default_size.isValid():
+                    self._natural_size = QSizeF(default_size)
+                else:
+                    self._natural_size = QSizeF(256.0, 256.0)
+
+        if self._svg_renderer is None:
+            pixmap = QPixmap()
+            pixmap.loadFromData(self._data)
+            self._pixmap = pixmap
+            if not pixmap.isNull():
+                self._natural_size = QSizeF(float(pixmap.width()), float(pixmap.height()))
+
+    def boundingRect(self) -> QRectF:
+        return QRectF(0.0, 0.0, self._display_size.width(), self._display_size.height())
+
+    def shape(self) -> QPainterPath:
+        path = QPainterPath()
+        path.addRect(self.boundingRect())
+        return path
+
+    def paint(self, painter, option, widget=None) -> None:
+        option.state &= ~QStyle.StateFlag.State_Selected
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        target = self.boundingRect()
+        if self._svg_renderer is not None and self._svg_renderer.isValid():
+            self._svg_renderer.render(painter, target)
+            return
+        if not self._pixmap.isNull():
+            painter.drawPixmap(target, self._pixmap, QRectF(self._pixmap.rect()))
+
+    def set_display_rect(self, rect: QRectF) -> None:
+        """Actualiza posición y tamaño visible en escena."""
+        normalized = QRectF(rect).normalized()
+        self.prepareGeometryChange()
+        self.setPos(normalized.topLeft())
+        self._display_size = QSizeF(max(1.0, normalized.width()), max(1.0, normalized.height()))
+        self.setTransformOriginPoint(self.boundingRect().center())
+        self.update()
+
+    def display_rect(self) -> QRectF:
+        """Devuelve el rectángulo visible sin aplicar la rotación."""
+        return QRectF(self.pos(), self._display_size)
+
+    def mime_type(self) -> str:
+        return self._mime_type
+
+    def data_bytes(self) -> bytes:
+        return bytes(self._data)
+
+    def source_name(self) -> str:
+        return self._source_name
+
+    def is_valid_image(self) -> bool:
+        return (
+            (self._svg_renderer is not None and self._svg_renderer.isValid())
+            or not self._pixmap.isNull()
+        )

@@ -10,6 +10,7 @@ import base64
 import itertools
 import json
 import math
+import os
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from PyQt6.QtWidgets import (
@@ -20,7 +21,6 @@ from PyQt6.QtWidgets import (
     QGraphicsRectItem,
     QGraphicsPathItem,
     QGraphicsDropShadowEffect,
-    QGraphicsPixmapItem,
     QGraphicsEllipseItem,
     QGraphicsLineItem,
     QGraphicsTextItem,
@@ -68,6 +68,7 @@ from chemuson.gui.items import (
     PreviewChainLabelItem,
     WavyAnchorItem,
     TextAnnotationItem,
+    ImageAnnotationItem,
     ABBREVIATION_LABELS,
 )
 from chemuson.gui.style import CHEMDOODLE_LIKE, DrawingStyle
@@ -100,6 +101,7 @@ from chemuson.gui.commands import (
     AddArrowCommand,
     AddBracketCommand,
     AddTextItemCommand,
+    AddImageItemCommand,
     AddWavyAnchorCommand,
     ChangeAtomCommand,
     ChangeBondCommand,
@@ -119,6 +121,7 @@ from chemuson.gui.commands import (
     MoveTextItemsCommand,
     MoveArrowItemsCommand,
     MoveBracketItemsCommand,
+    TransformImageItemsCommand,
     ScaleTextItemsCommand,
     ScaleArrowItemsCommand,
     ScaleBracketItemsCommand,
@@ -161,10 +164,20 @@ COLLISION_LENGTH_BOOST = 1.2
 BOND_OVERLAP_TOLERANCE_PX = 5.0
 BOND_DRAG_THRESHOLD_PX = 6.0
 BOND_LAST_ANGLE_TOLERANCE_DEG = 20.0
+BRANCH_ROTATION_STEP_DEG = 60.0
+BRANCH_ROTATION_NOOP_TOLERANCE_DEG = 0.15
 CLIPBOARD_RENDER_SCALE = 5.0
+PASTE_IMAGE_OFFSET_PX = 20.0
+PASTE_IMAGE_MAX_PAPER_FRACTION = 0.72
 TRACKBALL_ROTATION_DEG_PER_PIXEL = 1.0
 TRACKBALL_MAX_TILT_DEG = 60.0
 TRACKBALL_REFERENCE_MATCH_TOLERANCE_PX = 1.5
+SUPPORTED_IMAGE_FILE_MIME_TYPES = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".svg": "image/svg+xml",
+}
 # Etiquetas rápidas para grupos funcionales comunes.
 FUNCTIONAL_GROUP_LABELS = [
     "NH2",
@@ -401,6 +414,7 @@ class ChemusonCanvas(QGraphicsView):
         self._bracket_drag_start: Optional[QPointF] = None
         self._bracket_preview: Optional[QGraphicsRectItem] = None
         self.bracket_items: list[BracketItem] = []
+        self.image_items: list[ImageAnnotationItem] = []
         
         # Text tool state
         self._current_text_settings = {
@@ -420,7 +434,9 @@ class ChemusonCanvas(QGraphicsView):
         self._drag_start_text_positions: Dict[TextAnnotationItem, Tuple[QPointF, float]] = {}
         self._drag_start_arrow_positions: Dict[ArrowItem, Tuple[QPointF, QPointF]] = {}
         self._drag_start_bracket_rects: Dict[BracketItem, QRectF] = {}
+        self._drag_start_image_snapshots: Dict[ImageAnnotationItem, Tuple[QPointF, float, float, float]] = {}
         self._drag_has_moved = False
+        self._interaction_mouse_grabbed = False
         self._select_drag_mode: Optional[str] = None
         self._select_start_pos: Optional[QPointF] = None
         self._select_path: Optional[QPainterPath] = None
@@ -451,6 +467,7 @@ class ChemusonCanvas(QGraphicsView):
         self._rotation_start_angle: Optional[float] = None
         self._rotation_start_positions: Dict[int, Tuple[float, float]] = {}
         self._rotation_start_arrow_positions: Dict[ArrowItem, Tuple[QPointF, QPointF]] = {}
+        self._rotation_start_image_snapshots: Dict[ImageAnnotationItem, Tuple[QPointF, float, float, float]] = {}
         self._is_rotating_3d = False
         self._rotation_3d_start_view_pos: Optional[QPoint] = None
         self._rotation_3d_before_positions: Dict[int, Tuple[float, float]] = {}
@@ -473,6 +490,7 @@ class ChemusonCanvas(QGraphicsView):
         self._scale_start_arrow_strokes: Dict[ArrowItem, Optional[float]] = {}
         self._scale_start_bracket_rects: Dict[BracketItem, QRectF] = {}
         self._scale_start_bracket_styles: Dict[BracketItem, Tuple[float, Optional[float]]] = {}
+        self._scale_start_image_snapshots: Dict[ImageAnnotationItem, Tuple[QPointF, float, float, float]] = {}
         self._scale_start_atom_label_scales: Dict[int, Optional[float]] = {}
         self._scale_start_atom_sphere_radii: Dict[int, Tuple[Optional[float], float]] = {}
         self._scale_start_bond_strokes: Dict[int, Tuple[Optional[float], float]] = {}
@@ -1243,10 +1261,10 @@ class ChemusonCanvas(QGraphicsView):
             return
 
         if event.button() == Qt.MouseButton.RightButton:
-            clicked_item = self._get_item_at(scene_pos)
+            clicked_item = self._selected_image_item_at(scene_pos) or self._get_item_at(scene_pos)
             if isinstance(
                 clicked_item,
-                (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem),
+                (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, ImageAnnotationItem),
             ):
                 if not (event.modifiers() & (Qt.KeyboardModifier.ShiftModifier | Qt.KeyboardModifier.ControlModifier)):
                     self.scene.clearSelection()
@@ -1261,6 +1279,9 @@ class ChemusonCanvas(QGraphicsView):
 
         if event.button() != Qt.MouseButton.LeftButton:
             super().mousePressEvent(event)
+            return
+
+        if self._maybe_begin_selected_image_transform(scene_pos, event):
             return
 
         if self.current_tool == "tool_none":
@@ -1281,7 +1302,7 @@ class ChemusonCanvas(QGraphicsView):
         if self.current_tool in {"tool_select", "tool_select_lasso", "tool_rotate_3d_precise"}:
             if self._space_panning:
                 return
-            clicked_item = self._get_item_at(scene_pos)
+            clicked_item = self._selected_image_item_at(scene_pos) or self._get_item_at(scene_pos)
             precise_mode = self.current_tool == "tool_rotate_3d_precise"
             if not precise_mode:
                 blocked_modifiers = (
@@ -1304,17 +1325,22 @@ class ChemusonCanvas(QGraphicsView):
                     and self._cycle_anchor_override(clicked_item.atom_id)
                 ):
                     return
-                if event.button() == Qt.MouseButton.LeftButton and self._hit_selection_scale_handle(scene_pos):
-                    self._begin_scale_drag(scene_pos)
-                    return
-                if event.button() == Qt.MouseButton.LeftButton and self._hit_selection_handle(scene_pos):
-                    self._begin_rotation_drag(scene_pos)
-                    return
-                if event.button() == Qt.MouseButton.LeftButton and self._hit_selection_move_handle(scene_pos):
-                    if self._selection_move_handle is not None:
-                        self._selection_move_handle.setCursor(Qt.CursorShape.ClosedHandCursor)
-                    self._begin_drag(scene_pos)
-                    return
+                if event.button() == Qt.MouseButton.LeftButton:
+                    handle_hit = self._selection_handle_hit_kind(scene_pos)
+                    if handle_hit == "scale":
+                        self._begin_scale_drag(scene_pos)
+                        self._accept_input_event(event)
+                        return
+                    if handle_hit == "rotate":
+                        self._begin_rotation_drag(scene_pos)
+                        self._accept_input_event(event)
+                        return
+                    if handle_hit == "move":
+                        if self._selection_move_handle is not None:
+                            self._selection_move_handle.setCursor(Qt.CursorShape.ClosedHandCursor)
+                        self._begin_drag(scene_pos)
+                        self._accept_input_event(event)
+                        return
             if clicked_item is None:
                 additive = bool(
                     event.modifiers()
@@ -1324,6 +1350,7 @@ class ChemusonCanvas(QGraphicsView):
                     event.modifiers() & Qt.KeyboardModifier.ControlModifier
                 )
                 self._begin_selection_drag(scene_pos, free_select, additive)
+                self._accept_input_event(event)
                 return
 
             clicked_atom_id = None
@@ -1352,8 +1379,9 @@ class ChemusonCanvas(QGraphicsView):
                     & Qt.TextInteractionFlag.TextEditorInteraction
                 ):
                     return
-                if isinstance(clicked_item, (AtomItem, TextAnnotationItem, ArrowItem, BracketItem)):
+                if isinstance(clicked_item, (AtomItem, TextAnnotationItem, ArrowItem, BracketItem, ImageAnnotationItem)):
                     self._begin_drag(scene_pos)
+                    self._accept_input_event(event)
             return
 
         clicked_atom_id, clicked_bond_id = self._pick_hover_target(scene_pos)
@@ -1658,9 +1686,11 @@ class ChemusonCanvas(QGraphicsView):
 
         if self._scale_dragging:
             self._update_scale_drag(scene_pos)
+            self._accept_input_event(event)
             return
         if self._rotation_dragging:
             self._update_rotation_drag(scene_pos)
+            self._accept_input_event(event)
             return
 
         if self._select_drag_mode is not None:
@@ -1761,8 +1791,21 @@ class ChemusonCanvas(QGraphicsView):
                 if hasattr(self, "_drag_start_bracket_rects"):
                     for item, rect in self._drag_start_bracket_rects.items():
                         item.set_rect(rect.translated(delta))
+
+                if hasattr(self, "_drag_start_image_snapshots"):
+                    for item, (pos, width, height, rotation) in self._drag_start_image_snapshots.items():
+                        item.set_display_rect(
+                            QRectF(
+                                pos.x() + delta.x(),
+                                pos.y() + delta.y(),
+                                width,
+                                height,
+                            )
+                        )
+                        item.setRotation(rotation)
                 
                 self._update_selection_overlay()
+            self._accept_input_event(event)
             return
 
         self._update_hover(scene_pos)
@@ -1792,9 +1835,11 @@ class ChemusonCanvas(QGraphicsView):
             return
         if self._scale_dragging:
             self._finalize_scale_drag()
+            self._accept_input_event(event)
             return
         if self._rotation_dragging:
             self._finalize_rotation_drag()
+            self._accept_input_event(event)
             return
         if self._select_drag_mode is not None:
             self._finalize_selection_drag()
@@ -1838,6 +1883,7 @@ class ChemusonCanvas(QGraphicsView):
             text_before = dict(getattr(self, "_drag_start_text_positions", {}))
             arrow_before = dict(getattr(self, "_drag_start_arrow_positions", {}))
             bracket_before = dict(getattr(self, "_drag_start_bracket_rects", {}))
+            image_before = dict(getattr(self, "_drag_start_image_snapshots", {}))
             atom_after = (
                 {
                     atom_id: (self.model.get_atom(atom_id).x, self.model.get_atom(atom_id).y)
@@ -1871,6 +1917,14 @@ class ChemusonCanvas(QGraphicsView):
                 if had_moved and bracket_before
                 else {}
             )
+            image_after = (
+                {
+                    item: self._image_transform_snapshot(item)
+                    for item in image_before.keys()
+                }
+                if had_moved and image_before
+                else {}
+            )
 
             self._dragging_selection = False
             self._drag_start_pos = None
@@ -1878,6 +1932,7 @@ class ChemusonCanvas(QGraphicsView):
             self._drag_start_text_positions = {}
             self._drag_start_arrow_positions = {}
             self._drag_start_bracket_rects = {}
+            self._drag_start_image_snapshots = {}
             self._drag_has_moved = False
 
             if had_moved:
@@ -1885,7 +1940,8 @@ class ChemusonCanvas(QGraphicsView):
                 move_text = bool(text_before and text_after)
                 move_arrows = bool(arrow_before and arrow_after)
                 move_brackets = bool(bracket_before and bracket_after)
-                move_count = sum([move_atoms, move_text, move_arrows, move_brackets])
+                move_images = bool(image_before and image_after)
+                move_count = sum([move_atoms, move_text, move_arrows, move_brackets, move_images])
 
                 if move_count > 1:
                     self.undo_stack.beginMacro("Move selection")
@@ -1912,8 +1968,15 @@ class ChemusonCanvas(QGraphicsView):
                 if move_brackets:
                     self.undo_stack.push(MoveBracketItemsCommand(self, bracket_before, bracket_after))
 
+                if move_images:
+                    self.undo_stack.push(
+                        TransformImageItemsCommand(self, image_before, image_after, "Move images")
+                    )
+
                 if move_count > 1:
                     self.undo_stack.endMacro()
+            self._release_interaction_mouse()
+            self._accept_input_event(event)
             return
 
         super().mouseReleaseEvent(event)
@@ -1926,6 +1989,7 @@ class ChemusonCanvas(QGraphicsView):
         bracket_items: Iterable = (),
         text_items: Iterable = (),
         wavy_items: Iterable = (),
+        image_items: Iterable = (),
     ) -> None:
         """Método auxiliar para  delete selection.
 
@@ -1936,6 +2000,7 @@ class ChemusonCanvas(QGraphicsView):
             bracket_items: Descripción del parámetro.
             text_items: Descripción del parámetro.
             wavy_items: Descripción del parámetro.
+            image_items: Descripción del parámetro.
 
         Returns:
             Resultado de la operación o None.
@@ -1965,6 +2030,7 @@ class ChemusonCanvas(QGraphicsView):
             bracket_items=bracket_items,
             text_items=extra_text_items,
             wavy_items=extra_wavy_items,
+            image_items=image_items,
         )
         self.undo_stack.push(cmd)
         self.scene.clearSelection()
@@ -1984,7 +2050,7 @@ class ChemusonCanvas(QGraphicsView):
         for item in self.scene.items(scene_pos):
             if isinstance(item, AtomItem) and self._is_disposable_orphan_atom(item.atom_id):
                 continue
-            if isinstance(item, (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, WavyAnchorItem)):
+            if isinstance(item, (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, ImageAnnotationItem, WavyAnchorItem)):
                 return item
             # If we clicked a label/text child of an atom, return the atom.
             if isinstance(item, QGraphicsTextItem):
@@ -1994,6 +2060,154 @@ class ChemusonCanvas(QGraphicsView):
                         continue
                     return parent
         return None
+
+    def _selected_image_item_at(self, scene_pos: QPointF) -> Optional[ImageAnnotationItem]:
+        """Prioriza una imagen ya seleccionada si el puntero cae sobre ella.
+
+        Esto evita que objetos químicos superpuestos secuestren el gesto de
+        mover/redimensionar/rotar cuando la intención del usuario es seguir
+        manipulando la imagen activa.
+        """
+        best_item: Optional[ImageAnnotationItem] = None
+        best_z = float("-inf")
+        for item in self._selected_image_items():
+            if item.scene() is not self.scene:
+                continue
+            try:
+                if not item.isVisible():
+                    continue
+                if not item.sceneBoundingRect().contains(scene_pos):
+                    continue
+                local_pos = item.mapFromScene(scene_pos)
+                if not item.contains(local_pos):
+                    continue
+                z_value = float(item.zValue())
+            except RuntimeError:
+                continue
+            if best_item is None or z_value >= best_z:
+                best_item = item
+                best_z = z_value
+        return best_item
+
+    def _maybe_begin_selected_image_transform(self, scene_pos: QPointF, event) -> bool:
+        """Permite transformar una imagen seleccionada incluso fuera de tool_select."""
+        selected_images = self._selected_image_items()
+        if not selected_images:
+            return False
+
+        handle_hit = self._selection_handle_hit_kind(scene_pos)
+        if handle_hit == "scale":
+            self._begin_scale_drag(scene_pos)
+            self._accept_input_event(event)
+            return True
+        if handle_hit == "rotate":
+            self._begin_rotation_drag(scene_pos)
+            self._accept_input_event(event)
+            return True
+        if handle_hit == "move":
+            if self._selection_move_handle is not None:
+                self._selection_move_handle.setCursor(Qt.CursorShape.ClosedHandCursor)
+            self._begin_drag(scene_pos)
+            self._accept_input_event(event)
+            return True
+
+        clicked_selected_image = self._selected_image_item_at(scene_pos)
+        if clicked_selected_image is None:
+            return False
+
+        selection_tools = {"tool_select", "tool_select_lasso", "tool_rotate_3d_precise"}
+        if self.current_tool not in selection_tools:
+            self._begin_drag(scene_pos)
+            self._accept_input_event(event)
+            return True
+        return False
+
+    def _selection_snapshot(self) -> dict:
+        """Captura la selección activa incluyendo elementos no moleculares."""
+        return {
+            "atom_ids": set(self.state.selected_atoms),
+            "bond_ids": set(self.state.selected_bonds),
+            "text_items": list(self._selected_text_items()),
+            "arrow_items": list(self._selected_arrow_items()),
+            "bracket_items": list(self._selected_bracket_items()),
+            "image_items": list(self._selected_image_items()),
+            "wavy_items": [
+                item for item in self.scene.selectedItems() if isinstance(item, WavyAnchorItem)
+            ],
+        }
+
+    def _restore_selection_snapshot(self, snapshot: dict) -> None:
+        """Restaura una selección previamente capturada."""
+        try:
+            self.scene.blockSignals(True)
+            self.scene.clearSelection()
+            for atom_id in snapshot.get("atom_ids", ()):
+                item = self.atom_items.get(atom_id)
+                if item is not None and item.scene() is self.scene:
+                    item.setSelected(True)
+            for bond_id in snapshot.get("bond_ids", ()):
+                item = self.bond_items.get(bond_id)
+                if item is not None and item.scene() is self.scene:
+                    item.setSelected(True)
+            for key in ("text_items", "arrow_items", "bracket_items", "image_items", "wavy_items"):
+                for item in snapshot.get(key, ()):
+                    try:
+                        if item is not None and item.scene() is self.scene:
+                            item.setSelected(True)
+                    except RuntimeError:
+                        continue
+        finally:
+            try:
+                self.scene.blockSignals(False)
+            except RuntimeError:
+                return
+        self._sync_selection_from_scene()
+
+    def _refresh_scene_after_image_insert(self) -> None:
+        """Sincroniza visuales químicos tras pegar imágenes sobre un canvas ocupado."""
+        if not self.model.atoms and not self.model.bonds:
+            self._update_hover(self._last_scene_pos)
+            self._update_selection_overlay()
+            self.scene.invalidate()
+            self.viewport().update()
+            return
+        snapshot = self._selection_snapshot()
+        self._sync_scene_with_model()
+        self._restore_selection_snapshot(snapshot)
+        self.validate_structure()
+        self._update_hover(self._last_scene_pos)
+        self._update_selection_overlay()
+        self.scene.invalidate()
+        self.viewport().update()
+
+    def _grab_interaction_mouse(self) -> None:
+        """Fija el mouse a la vista durante transformaciones interactivas."""
+        if self._interaction_mouse_grabbed:
+            return
+        viewport = self.viewport()
+        try:
+            viewport.grabMouse()
+            self._interaction_mouse_grabbed = True
+        except Exception:
+            self._interaction_mouse_grabbed = False
+
+    def _release_interaction_mouse(self) -> None:
+        """Libera el mouse previamente fijado a la vista."""
+        if not self._interaction_mouse_grabbed:
+            return
+        viewport = self.viewport()
+        try:
+            viewport.releaseMouse()
+        except Exception:
+            pass
+        self._interaction_mouse_grabbed = False
+
+    @staticmethod
+    def _accept_input_event(event) -> None:
+        """Acepta el evento solo si expone la API esperada por Qt."""
+        accept = getattr(event, "accept", None)
+        if callable(accept):
+            accept()
 
     def _symbol_insert_position(self, scene_pos: QPointF, atom_id: Optional[int]) -> QPointF:
         """Método auxiliar para  symbol insert position.
@@ -2883,12 +3097,16 @@ class ChemusonCanvas(QGraphicsView):
             has_selected_text = any(
                 isinstance(item, TextAnnotationItem) for item in self.scene.selectedItems()
             )
+            has_selected_images = any(
+                isinstance(item, ImageAnnotationItem) for item in self.scene.selectedItems()
+            )
             if (
                 self.state.selected_atoms
                 or self.state.selected_bonds
                 or has_selected_arrows
                 or has_selected_brackets
                 or has_selected_text
+                or has_selected_images
             ):
                 self.delete_selection()
                 return
@@ -3036,7 +3254,8 @@ class ChemusonCanvas(QGraphicsView):
         selected_text_items = self._selected_text_items()
         selected_arrows = self._selected_arrow_items()
         selected_brackets = self._selected_bracket_items()
-        if not selected_atom_ids and not selected_text_items and not selected_arrows and not selected_brackets:
+        selected_images = self._selected_image_items()
+        if not selected_atom_ids and not selected_text_items and not selected_arrows and not selected_brackets and not selected_images:
             return False
 
         step = 1.0
@@ -3087,6 +3306,14 @@ class ChemusonCanvas(QGraphicsView):
             after = {item: rect.translated(dx, dy) for item, rect in before.items()}
             self.undo_stack.push(MoveBracketItemsCommand(self, before, after))
 
+        if selected_images:
+            before = {item: self._image_transform_snapshot(item) for item in selected_images}
+            after = {
+                item: (QPointF(pos.x() + dx, pos.y() + dy), width, height, rotation)
+                for item, (pos, width, height, rotation) in before.items()
+            }
+            self.undo_stack.push(TransformImageItemsCommand(self, before, after, "Move images"))
+
         self._update_selection_overlay()
         return True
 
@@ -3103,7 +3330,7 @@ class ChemusonCanvas(QGraphicsView):
         for item in self.scene.items():
             if isinstance(
                 item,
-                (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, WavyAnchorItem),
+                (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, ImageAnnotationItem, WavyAnchorItem),
             ) and item.isVisible():
                 item.setSelected(True)
         self._sync_selection_from_scene()
@@ -3415,6 +3642,7 @@ class ChemusonCanvas(QGraphicsView):
             "annotations": {
                 "arrows": [],
                 "brackets": [],
+                "images": [],
                 "text_items": [],
                 "wavy_anchors": []
             },
@@ -3458,6 +3686,19 @@ class ChemusonCanvas(QGraphicsView):
                     "font": item.font().toString(),
                     "color": item.defaultTextColor().name(),
                     "text_width": item.textWidth(),
+                })
+            elif isinstance(item, ImageAnnotationItem):
+                rect = item.display_rect()
+                data["annotations"]["images"].append({
+                    "x": rect.x(),
+                    "y": rect.y(),
+                    "width": rect.width(),
+                    "height": rect.height(),
+                    "rotation": item.rotation(),
+                    "z": item.zValue(),
+                    "mime_type": item.mime_type(),
+                    "data_b64": base64.b64encode(item.data_bytes()).decode("ascii"),
+                    "source_name": item.source_name(),
                 })
             elif isinstance(item, WavyAnchorItem):
                 anchor_id = item.data(WAVY_ANCHOR_ROLE)
@@ -3564,6 +3805,36 @@ class ChemusonCanvas(QGraphicsView):
                 text_item.setTextWidth(float(txt_d["text_width"]))
             self.scene.addItem(text_item)
 
+        for img_d in annotations.get("images", []):
+            raw_b64 = img_d.get("data_b64")
+            mime_type = img_d.get("mime_type", "image/png")
+            if not raw_b64:
+                continue
+            try:
+                image_data = base64.b64decode(raw_b64)
+            except Exception:
+                continue
+            item = ImageAnnotationItem(
+                image_data,
+                mime_type,
+                width=float(img_d.get("width", 1.0)),
+                height=float(img_d.get("height", 1.0)),
+                source_name=img_d.get("source_name"),
+            )
+            if not item.is_valid_image():
+                continue
+            item.set_display_rect(
+                QRectF(
+                    float(img_d.get("x", 0.0)),
+                    float(img_d.get("y", 0.0)),
+                    float(img_d.get("width", 1.0)),
+                    float(img_d.get("height", 1.0)),
+                )
+            )
+            item.setRotation(float(img_d.get("rotation", 0.0)))
+            item.setZValue(float(img_d.get("z", 8.0)))
+            self.readd_image_item(item)
+
         for anchor_d in annotations.get("wavy_anchors", []):
             anchor_id = anchor_d.get("anchor_id")
             if anchor_id is None or anchor_id not in self.model.atoms:
@@ -3664,6 +3935,7 @@ class ChemusonCanvas(QGraphicsView):
         self.aromatic_circles.clear()
         self.arrow_items.clear()
         self.bracket_items.clear()
+        self.image_items.clear()
         self._electron_dots.clear()
         self._implicit_h_overlays.clear()
         self._group_anchor_overrides.clear()
@@ -3842,6 +4114,13 @@ class ChemusonCanvas(QGraphicsView):
         if item.scene() is not self.scene:
             self.scene.addItem(item)
 
+    def add_image_item(self, item: ImageAnnotationItem) -> None:
+        """Añade una imagen anotada persistente al lienzo."""
+        if item.scene() is not self.scene:
+            self.scene.addItem(item)
+        if item not in self.image_items:
+            self.image_items.append(item)
+
     def add_wavy_anchor_item(self, item: WavyAnchorItem) -> None:
         """Añade wavy anchor item.
 
@@ -3875,6 +4154,13 @@ class ChemusonCanvas(QGraphicsView):
             self.scene.removeItem(item)
         if item in self._electron_dots:
             self._electron_dots.discard(item)
+
+    def remove_image_item(self, item: ImageAnnotationItem) -> None:
+        """Elimina una imagen anotada del lienzo."""
+        if item in self.image_items:
+            self.image_items.remove(item)
+        if item.scene() is self.scene:
+            self.scene.removeItem(item)
 
     def remove_wavy_anchor_item(self, item: WavyAnchorItem) -> None:
         """Elimina wavy anchor item.
@@ -3910,6 +4196,13 @@ class ChemusonCanvas(QGraphicsView):
         if item.data(ELECTRON_DOT_ROLE):
             self._electron_dots.add(item)
             self._position_electron_dot(item)
+
+    def readd_image_item(self, item: ImageAnnotationItem) -> None:
+        """Reintroduce una imagen anotada en el lienzo."""
+        if item.scene() is not self.scene:
+            self.scene.addItem(item)
+        if item not in self.image_items:
+            self.image_items.append(item)
 
     def readd_wavy_anchor_item(self, item: WavyAnchorItem) -> None:
         """Método auxiliar para readd wavy anchor item.
@@ -3949,6 +4242,9 @@ class ChemusonCanvas(QGraphicsView):
         selected_wavy = [
             item for item in self.scene.selectedItems() if isinstance(item, WavyAnchorItem)
         ]
+        selected_images = [
+            item for item in self.scene.selectedItems() if isinstance(item, ImageAnnotationItem)
+        ]
         if (
             not self.state.selected_atoms
             and not self.state.selected_bonds
@@ -3956,6 +4252,7 @@ class ChemusonCanvas(QGraphicsView):
             and not selected_brackets
             and not selected_text_items
             and not selected_wavy
+            and not selected_images
         ):
             return
         self._delete_selection(
@@ -3965,6 +4262,7 @@ class ChemusonCanvas(QGraphicsView):
             bracket_items=selected_brackets,
             text_items=selected_text_items,
             wavy_items=selected_wavy,
+            image_items=selected_images,
         )
 
     def _delete_hovered(self) -> bool:
@@ -4072,8 +4370,9 @@ class ChemusonCanvas(QGraphicsView):
         arrows = self._selected_arrow_items()
         brackets = self._selected_bracket_items()
         texts = self._selected_text_items()
+        images = self._selected_image_items()
 
-        if not atom_ids and not bonds and not arrows and not brackets and not texts:
+        if not atom_ids and not bonds and not arrows and not brackets and not texts and not images:
             return None
 
         bbox = self._selected_items_bbox()
@@ -4176,12 +4475,30 @@ class ChemusonCanvas(QGraphicsView):
                 }
             )
 
+        images_payload = []
+        for item in images:
+            rect = item.display_rect()
+            images_payload.append(
+                {
+                    "x": rect.x() - left,
+                    "y": rect.y() - top,
+                    "width": rect.width(),
+                    "height": rect.height(),
+                    "rotation": item.rotation(),
+                    "z": item.zValue(),
+                    "mime_type": item.mime_type(),
+                    "data_b64": base64.b64encode(item.data_bytes()).decode("ascii"),
+                    "source_name": item.source_name(),
+                }
+            )
+
         return {
             "atoms": atoms_payload,
             "bonds": bonds_payload,
             "arrows": arrows_payload,
             "brackets": brackets_payload,
             "texts": texts_payload,
+            "images": images_payload,
         }
 
     def _paste_selection_payload(self, payload: dict) -> None:
@@ -4201,7 +4518,8 @@ class ChemusonCanvas(QGraphicsView):
         arrows = payload.get("arrows", [])
         brackets = payload.get("brackets", [])
         texts = payload.get("texts", [])
-        if not atoms and not bonds and not arrows and not brackets and not texts:
+        images = payload.get("images", [])
+        if not atoms and not bonds and not arrows and not brackets and not texts and not images:
             return
 
         target = self._last_scene_pos
@@ -4230,7 +4548,7 @@ class ChemusonCanvas(QGraphicsView):
                 ring_map[ring_id] = self.allocate_ring_id()
             return ring_map[ring_id]
 
-        has_undo_items = bool(atoms or bonds or arrows or brackets)
+        has_undo_items = bool(atoms or bonds or arrows or brackets or texts or images)
         if has_undo_items:
             self.undo_stack.beginMacro("Paste selection")
         id_map: Dict[int, int] = {}
@@ -4409,8 +4727,45 @@ class ChemusonCanvas(QGraphicsView):
             text_item.setPos(
                 float(txt_d.get("x", 0.0)) + dx, float(txt_d.get("y", 0.0)) + dy
             )
-            self.scene.addItem(text_item)
+            if has_undo_items:
+                self.undo_stack.push(AddTextItemCommand(self, text_item))
+            else:
+                self.scene.addItem(text_item)
             inserted_items.append(text_item)
+
+        for idx, img_d in enumerate(images):
+            raw_b64 = img_d.get("data_b64")
+            mime_type = img_d.get("mime_type", "image/png")
+            if not raw_b64:
+                continue
+            try:
+                image_data = base64.b64decode(raw_b64)
+            except Exception:
+                continue
+            item = ImageAnnotationItem(
+                image_data,
+                mime_type,
+                width=float(img_d.get("width", 1.0)),
+                height=float(img_d.get("height", 1.0)),
+                source_name=img_d.get("source_name"),
+            )
+            if not item.is_valid_image():
+                continue
+            item.set_display_rect(
+                QRectF(
+                    float(img_d.get("x", 0.0)) + dx,
+                    float(img_d.get("y", 0.0)) + dy,
+                    float(img_d.get("width", 1.0)),
+                    float(img_d.get("height", 1.0)),
+                )
+            )
+            item.setRotation(float(img_d.get("rotation", 0.0)))
+            item.setZValue(float(img_d.get("z", 8.0)))
+            if has_undo_items:
+                self.undo_stack.push(AddImageItemCommand(self, item))
+            else:
+                self.readd_image_item(item)
+            inserted_items.append(item)
 
         if has_undo_items:
             self.undo_stack.endMacro()
@@ -4462,6 +4817,7 @@ class ChemusonCanvas(QGraphicsView):
             Puede modificar el estado interno o la escena.
         """
         selected_text_items = self._selected_text_items()
+        selected_image_items = self._selected_image_items()
         selected_payload = self._build_selection_payload()
         atom_ids, bonds = self._selected_structure_ids()
         selected_arrows = bool(self._selected_arrow_items())
@@ -4470,7 +4826,7 @@ class ChemusonCanvas(QGraphicsView):
         only_text_selection = bool(selected_text_items) and not (
             has_structure_selection or selected_arrows or selected_brackets
         )
-        if not self.model.atoms and not selected_text_items:
+        if not self.model.atoms and not selected_text_items and not selected_image_items and selected_payload is None:
             return
         mime = QMimeData()
         if selected_payload is not None:
@@ -4578,6 +4934,10 @@ class ChemusonCanvas(QGraphicsView):
             except Exception:
                 pass
 
+        if mime.hasUrls():
+            if self._insert_images_from_clipboard(mime):
+                return
+
         if mime.hasText():
             smiles = mime.text().strip()
             if smiles:
@@ -4589,7 +4949,7 @@ class ChemusonCanvas(QGraphicsView):
                     pass
 
         if mime.hasFormat("image/png") or mime.hasImage() or mime.hasFormat("image/svg+xml"):
-            self._insert_image_from_clipboard(mime)
+            self._insert_images_from_clipboard(mime)
 
     def _paste_text_items(self, payload: dict) -> None:
         """Método auxiliar para  paste text items.
@@ -4717,7 +5077,7 @@ class ChemusonCanvas(QGraphicsView):
                     continue
                 extend(item.sceneBoundingRect())
             for item in self.scene.selectedItems():
-                if isinstance(item, (ArrowItem, BracketItem, TextAnnotationItem)):
+                if isinstance(item, (ArrowItem, BracketItem, TextAnnotationItem, ImageAnnotationItem)):
                     extend(item.sceneBoundingRect())
         else:
             for atom_id in self.atom_items.keys():
@@ -4738,6 +5098,11 @@ class ChemusonCanvas(QGraphicsView):
                 if item.isVisible():
                     extend(item.sceneBoundingRect())
             for item in self.bracket_items:
+                if item.scene() is not self.scene:
+                    continue
+                if item.isVisible():
+                    extend(item.sceneBoundingRect())
+            for item in self.image_items:
                 if item.scene() is not self.scene:
                     continue
                 if item.isVisible():
@@ -5335,41 +5700,150 @@ class ChemusonCanvas(QGraphicsView):
             return
         self._insert_molgraph_at(graph, scene_pos)
 
-    def _insert_image_from_clipboard(self, mime: QMimeData) -> None:
-        """Método auxiliar para  insert image from clipboard.
+    @staticmethod
+    def _encode_qimage_png(image: QImage) -> bytes:
+        """Serializa un QImage a PNG para persistencia interna."""
+        buffer = QBuffer()
+        buffer.open(QBuffer.OpenModeFlag.WriteOnly)
+        image.save(buffer, "PNG")
+        return bytes(buffer.data())
 
-        Args:
-            mime: Descripción del parámetro.
+    def _image_entries_from_clipboard(self, mime: QMimeData) -> list[dict]:
+        """Extrae imágenes pegables desde URLs locales o datos crudos del portapapeles."""
+        entries: list[dict] = []
 
-        Returns:
-            Resultado de la operación o None.
+        if mime.hasUrls():
+            for url in mime.urls():
+                if not url.isLocalFile():
+                    continue
+                path = url.toLocalFile()
+                ext = os.path.splitext(path)[1].lower()
+                mime_type = SUPPORTED_IMAGE_FILE_MIME_TYPES.get(ext)
+                if mime_type is None:
+                    continue
+                try:
+                    with open(path, "rb") as fh:
+                        data = fh.read()
+                except Exception:
+                    continue
+                item = ImageAnnotationItem(data, mime_type, source_name=os.path.basename(path))
+                if not item.is_valid_image():
+                    continue
+                entries.append(
+                    {
+                        "data": data,
+                        "mime_type": mime_type,
+                        "source_name": os.path.basename(path),
+                        "natural_width": item.boundingRect().width(),
+                        "natural_height": item.boundingRect().height(),
+                    }
+                )
+            if entries:
+                return entries
 
-        Side Effects:
-            Puede modificar el estado interno o la escena.
-        """
-        pixmap = None
+        if mime.hasFormat("image/svg+xml"):
+            data = bytes(mime.data("image/svg+xml"))
+            item = ImageAnnotationItem(data, "image/svg+xml")
+            if item.is_valid_image():
+                entries.append(
+                    {
+                        "data": data,
+                        "mime_type": "image/svg+xml",
+                        "source_name": "",
+                        "natural_width": item.boundingRect().width(),
+                        "natural_height": item.boundingRect().height(),
+                    }
+                )
+                return entries
+
+        raw_image = None
         if mime.hasImage():
             image = mime.imageData()
             if isinstance(image, QImage):
-                pixmap = QPixmap.fromImage(image)
+                raw_image = image
             elif isinstance(image, QPixmap):
-                pixmap = image
-        if pixmap is None and mime.hasFormat("image/png"):
-            pixmap = QPixmap()
-            pixmap.loadFromData(mime.data("image/png"), "PNG")
-        if pixmap is None and mime.hasFormat("image/svg+xml"):
-            data = bytes(mime.data("image/svg+xml"))
-            pixmap = QPixmap()
-            pixmap.loadFromData(data)
-        if pixmap is None or pixmap.isNull():
-            return
-        item = QGraphicsPixmapItem(pixmap)
-        item.setZValue(20)
-        item.setPos(
-            self.paper_width / 2 - pixmap.width() / 2,
-            self.paper_height / 2 - pixmap.height() / 2,
-        )
-        self.scene.addItem(item)
+                raw_image = image.toImage()
+        elif mime.hasFormat("image/png"):
+            png_data = bytes(mime.data("image/png"))
+            if png_data:
+                item = ImageAnnotationItem(png_data, "image/png")
+                if item.is_valid_image():
+                    entries.append(
+                        {
+                            "data": png_data,
+                            "mime_type": "image/png",
+                            "source_name": "",
+                            "natural_width": item.boundingRect().width(),
+                            "natural_height": item.boundingRect().height(),
+                        }
+                    )
+                    return entries
+        if raw_image is not None and not raw_image.isNull():
+            png_data = self._encode_qimage_png(raw_image)
+            item = ImageAnnotationItem(png_data, "image/png")
+            if item.is_valid_image():
+                entries.append(
+                    {
+                        "data": png_data,
+                        "mime_type": "image/png",
+                        "source_name": "",
+                        "natural_width": item.boundingRect().width(),
+                        "natural_height": item.boundingRect().height(),
+                    }
+                )
+        return entries
+
+    def _insert_images_from_clipboard(self, mime: QMimeData) -> bool:
+        """Inserta imágenes del portapapeles y las deja seleccionadas."""
+        entries = self._image_entries_from_clipboard(mime)
+        if not entries:
+            return False
+
+        target = self._last_scene_pos
+        if target is None:
+            target = self.mapToScene(self.viewport().rect().center())
+
+        self.undo_stack.beginMacro("Paste image")
+        created: list[ImageAnnotationItem] = []
+        try:
+            for index, entry in enumerate(entries):
+                natural_width = max(1.0, float(entry["natural_width"]))
+                natural_height = max(1.0, float(entry["natural_height"]))
+                max_width = max(32.0, (self.paper_width - 2.0 * PAPER_MARGIN) * PASTE_IMAGE_MAX_PAPER_FRACTION)
+                max_height = max(32.0, (self.paper_height - 2.0 * PAPER_MARGIN) * PASTE_IMAGE_MAX_PAPER_FRACTION)
+                fit_scale = min(max_width / natural_width, max_height / natural_height, 1.0)
+                width = natural_width * fit_scale
+                height = natural_height * fit_scale
+                item = ImageAnnotationItem(
+                    entry["data"],
+                    entry["mime_type"],
+                    width=width,
+                    height=height,
+                    source_name=entry.get("source_name"),
+                )
+                if not item.is_valid_image():
+                    continue
+                offset = float(index) * PASTE_IMAGE_OFFSET_PX
+                item.set_display_rect(
+                    QRectF(
+                        target.x() - width / 2.0 + offset,
+                        target.y() - height / 2.0 + offset,
+                        width,
+                        height,
+                    )
+                )
+                self.undo_stack.push(AddImageItemCommand(self, item))
+                created.append(item)
+        finally:
+            self.undo_stack.endMacro()
+
+        if created:
+            if self.current_tool != "tool_select":
+                self.set_current_tool("tool_select")
+            self._select_inserted_items(items=created)
+            self._refresh_scene_after_image_insert()
+            return True
+        return False
 
     def add_atom_item(self, atom) -> None:
         """Añade atom item.
@@ -8698,7 +9172,7 @@ class ChemusonCanvas(QGraphicsView):
                 for item in self.scene.items(path)
                 if isinstance(
                     item,
-                    (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem),
+                    (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, ImageAnnotationItem),
                 )
             ]
             items = [
@@ -8713,7 +9187,7 @@ class ChemusonCanvas(QGraphicsView):
                 for item in self.scene.items(rect)
                 if isinstance(
                     item,
-                    (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem),
+                    (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, ImageAnnotationItem),
                 )
             ]
             items = [
@@ -9315,12 +9789,70 @@ class ChemusonCanvas(QGraphicsView):
         act_reset_thickness = None
         act_color = None
         act_reset_color = None
+        branch_action_handlers: dict = {}
         if has_stroke_selection:
             menu.addSeparator()
             thickness_menu = menu.addMenu("Grosor de enlace/flecha/corchete")
             act_thicker = thickness_menu.addAction("Incrementar grosor")
             act_thinner = thickness_menu.addAction("Disminuir grosor")
             act_reset_thickness = thickness_menu.addAction("Restablecer grosor")
+        branch_bond_id = None
+        if isinstance(clicked_item, BondItem):
+            branch_bond_id = clicked_item.bond_id
+        else:
+            branch_bond_id = self._selected_single_bond_id()
+        if branch_bond_id is not None and branch_bond_id in self.model.bonds:
+            menu.addSeparator()
+            branch_menu = menu.addMenu("Reordenar rama")
+            bond = self.model.get_bond(branch_bond_id)
+            branch_contexts = [
+                self._branch_rotation_context(branch_bond_id, fixed_atom_id=bond.a1_id),
+                self._branch_rotation_context(branch_bond_id, fixed_atom_id=bond.a2_id),
+            ]
+            branch_contexts = [context for context in branch_contexts if context is not None]
+            if branch_contexts:
+                for context in branch_contexts:
+                    side_menu = branch_menu.addMenu(self._branch_context_title(context))
+                    act_branch_minus = side_menu.addAction(
+                        f"Girar -{int(BRANCH_ROTATION_STEP_DEG)}°"
+                    )
+                    act_branch_plus = side_menu.addAction(
+                        f"Girar +{int(BRANCH_ROTATION_STEP_DEG)}°"
+                    )
+                    act_branch_flip = side_menu.addAction("Invertir rama (180°)")
+                    side_menu.addSeparator()
+                    act_branch_auto = side_menu.addAction("Autoacomodar rama")
+                    branch_action_handlers[act_branch_minus] = (
+                        lambda ctx=context: self.rotate_branch_side_degrees(
+                            int(ctx["bond_id"]),
+                            int(ctx["fixed_atom_id"]),
+                            -BRANCH_ROTATION_STEP_DEG,
+                        )
+                    )
+                    branch_action_handlers[act_branch_plus] = (
+                        lambda ctx=context: self.rotate_branch_side_degrees(
+                            int(ctx["bond_id"]),
+                            int(ctx["fixed_atom_id"]),
+                            BRANCH_ROTATION_STEP_DEG,
+                        )
+                    )
+                    branch_action_handlers[act_branch_flip] = (
+                        lambda ctx=context: self.invert_branch_side(
+                            int(ctx["bond_id"]),
+                            int(ctx["fixed_atom_id"]),
+                        )
+                    )
+                    branch_action_handlers[act_branch_auto] = (
+                        lambda ctx=context: self.auto_arrange_branch_side(
+                            int(ctx["bond_id"]),
+                            int(ctx["fixed_atom_id"]),
+                        )
+                    )
+            else:
+                act_branch_unavailable = branch_menu.addAction(
+                    "No disponible en enlaces cíclicos o coordinativos"
+                )
+                act_branch_unavailable.setEnabled(False)
         if has_bond_selection:
             act_color = menu.addAction("Color de enlace...")
             act_reset_color = menu.addAction("Restablecer color de enlace")
@@ -9428,6 +9960,11 @@ class ChemusonCanvas(QGraphicsView):
 
         action = menu.exec(global_pos)
         if action is None:
+            return
+        if action in branch_action_handlers:
+            ok, message = branch_action_handlers[action]()
+            if not ok:
+                self._show_status_message(message)
             return
         if act_thicker is not None and action == act_thicker:
             self._adjust_selected_bond_stroke(self._bond_stroke_step())
@@ -10158,7 +10695,7 @@ class ChemusonCanvas(QGraphicsView):
             extend(item.sceneBoundingRect())
         for item in self.scene.selectedItems():
             # Include TextAnnotationItem
-            if isinstance(item, (ArrowItem, BracketItem, TextAnnotationItem, WavyAnchorItem)):
+            if isinstance(item, (ArrowItem, BracketItem, TextAnnotationItem, ImageAnnotationItem, WavyAnchorItem)):
                 extend(item.sceneBoundingRect())
         return rect
 
@@ -10344,13 +10881,64 @@ class ChemusonCanvas(QGraphicsView):
         Side Effects:
             Puede modificar el estado interno o la escena.
         """
+        distance_sq = self._handle_item_distance_sq(handle, scene_pos)
+        if distance_sq is None:
+            return False
+        radius = self._handle_item_hit_radius(handle)
+        return distance_sq <= (radius * radius)
+
+    def _handle_item_distance_sq(self, handle: QGraphicsItem, scene_pos: QPointF) -> Optional[float]:
+        """Calcula distancia cuadrática en pantalla entre el puntero y un handle."""
         view_pos = self.mapFromScene(scene_pos)
-        center = handle.pos() + handle.boundingRect().center()
-        center_view = self.mapFromScene(center)
-        dx = view_pos.x() - center_view.x()
-        dy = view_pos.y() - center_view.y()
-        radius = max(SELECTION_HANDLE_RADIUS_PX * 2.0, 12.0)
-        return (dx * dx + dy * dy) <= (radius * radius)
+        try:
+            center_scene = handle.mapToScene(handle.boundingRect().center())
+        except RuntimeError:
+            return None
+        center_view = self.mapFromScene(center_scene)
+        dx = float(view_pos.x() - center_view.x())
+        dy = float(view_pos.y() - center_view.y())
+        return dx * dx + dy * dy
+
+    def _handle_item_hit_radius(self, handle: QGraphicsItem) -> float:
+        """Devuelve el radio de click efectivo de un handle en píxeles de vista."""
+        try:
+            handle_rect_scene = handle.mapToScene(handle.boundingRect()).boundingRect()
+            top_left_view = self.mapFromScene(handle_rect_scene.topLeft())
+            bottom_right_view = self.mapFromScene(handle_rect_scene.bottomRight())
+            visual_radius = max(
+                abs(bottom_right_view.x() - top_left_view.x()),
+                abs(bottom_right_view.y() - top_left_view.y()),
+            ) * 0.75
+        except Exception:
+            visual_radius = 0.0
+        return max(float(visual_radius), SELECTION_HANDLE_RADIUS_PX * 3.0, 18.0)
+
+    def _selection_handle_hit_kind(self, scene_pos: QPointF) -> Optional[str]:
+        """Resuelve qué handle de selección está más cerca del puntero."""
+        candidates: list[tuple[float, str]] = []
+        handles = [
+            ("scale", self._selection_scale_handle),
+            ("rotate", self._selection_handle),
+            ("move", self._selection_move_handle),
+        ]
+        for kind, handle in handles:
+            if handle is None:
+                continue
+            try:
+                if not handle.isVisible():
+                    continue
+            except RuntimeError:
+                continue
+            distance_sq = self._handle_item_distance_sq(handle, scene_pos)
+            if distance_sq is None:
+                continue
+            radius = self._handle_item_hit_radius(handle)
+            if distance_sq <= (radius * radius):
+                candidates.append((distance_sq, kind))
+        if not candidates:
+            return None
+        candidates.sort(key=lambda item: item[0])
+        return candidates[0][1]
 
     def _trackball_atom_ids(self) -> tuple[int, ...]:
         """Devuelve IDs objetivo para trackball (solo selección activa)."""
@@ -10413,6 +11001,495 @@ class ChemusonCanvas(QGraphicsView):
                 elif bond.a2_id == current and bond.a1_id not in visited:
                     stack.append(bond.a1_id)
         return visited
+
+    def _show_status_message(self, message: str, timeout_ms: int = 7000) -> None:
+        """Muestra un mensaje transitorio si la ventana padre expone barra de estado."""
+        if not message:
+            return
+        try:
+            window = self.window()
+        except RuntimeError:
+            return
+        if window is None or not hasattr(window, "statusBar"):
+            return
+        try:
+            status_bar = window.statusBar()
+        except Exception:
+            return
+        if status_bar is None:
+            return
+        try:
+            status_bar.showMessage(str(message), int(timeout_ms))
+        except Exception:
+            return
+
+    @staticmethod
+    def _signed_angle_delta_deg(start_deg: float, end_deg: float) -> float:
+        """Devuelve el delta angular firmado mínimo `end - start`."""
+        return (float(end_deg) - float(start_deg) + 180.0) % 360.0 - 180.0
+
+    @staticmethod
+    def _rotate_scene_point(point: QPointF, center: QPointF, delta_deg: float) -> QPointF:
+        """Rota un punto del lienzo alrededor de un centro."""
+        rad = math.radians(float(delta_deg))
+        dx = point.x() - center.x()
+        dy = point.y() - center.y()
+        cos_t = math.cos(rad)
+        sin_t = math.sin(rad)
+        return QPointF(
+            center.x() + dx * cos_t - dy * sin_t,
+            center.y() + dx * sin_t + dy * cos_t,
+        )
+
+    def _selected_single_bond_id(self) -> Optional[int]:
+        """Devuelve el único enlace seleccionado si existe."""
+        valid = [bond_id for bond_id in self.state.selected_bonds if bond_id in self.model.bonds]
+        if len(valid) != 1:
+            return None
+        return int(valid[0])
+
+    def _branch_neighbor_angles_deg(
+        self,
+        anchor_id: int,
+        *,
+        exclude_bond_id: Optional[int] = None,
+    ) -> list[float]:
+        """Ángulos de los enlaces vecinos de `anchor_id`, excluyendo el pivote."""
+        if anchor_id not in self.model.atoms:
+            return []
+        anchor = self.model.get_atom(anchor_id)
+        origin = QPointF(anchor.x, anchor.y)
+        angles: list[float] = []
+        for bond in self.model.bonds.values():
+            if exclude_bond_id is not None and bond.id == exclude_bond_id:
+                continue
+            if bond.a1_id == anchor_id:
+                other = self.model.get_atom(bond.a2_id)
+            elif bond.a2_id == anchor_id:
+                other = self.model.get_atom(bond.a1_id)
+            else:
+                continue
+            angles.append(angle_deg(origin, QPointF(other.x, other.y)))
+        return angles
+
+    def _bond_components_without_bond(self, bond_id: int) -> Optional[dict[int, set[int]]]:
+        """Parte el grafo por `bond_id`; devuelve `None` si el enlace pertenece a un ciclo."""
+        if bond_id not in self.model.bonds:
+            return None
+        bond = self.model.get_bond(bond_id)
+        adjacency: dict[int, list[int]] = {}
+        for other in self.model.bonds.values():
+            if other.id == bond_id:
+                continue
+            adjacency.setdefault(other.a1_id, []).append(other.a2_id)
+            adjacency.setdefault(other.a2_id, []).append(other.a1_id)
+
+        def bfs(seed_atom_id: int) -> set[int]:
+            visited: set[int] = set()
+            stack = [seed_atom_id]
+            while stack:
+                current = stack.pop()
+                if current in visited:
+                    continue
+                visited.add(current)
+                for neighbor in adjacency.get(current, []):
+                    if neighbor not in visited:
+                        stack.append(neighbor)
+            return visited
+
+        comp_a = bfs(bond.a1_id)
+        if bond.a2_id in comp_a:
+            return None
+        comp_b = bfs(bond.a2_id)
+        return {bond.a1_id: comp_a, bond.a2_id: comp_b}
+
+    def _branch_component_sort_key(self, atom_ids: set[int]) -> tuple[int, int, int]:
+        """Orden estable para preferir la rama más pequeña."""
+        heavy = 0
+        for atom_id in atom_ids:
+            atom = self.model.atoms.get(atom_id)
+            if atom is not None and atom.element != "H":
+                heavy += 1
+        smallest_id = min(atom_ids) if atom_ids else 0
+        return (heavy, len(atom_ids), smallest_id)
+
+    def _branch_rotation_context(
+        self,
+        bond_id: int,
+        *,
+        fixed_atom_id: Optional[int] = None,
+        moving_atom_id: Optional[int] = None,
+    ) -> Optional[dict]:
+        """Describe la rama rotatable alrededor de un enlace pivote."""
+        if bond_id not in self.model.bonds:
+            return None
+        bond = self.model.get_bond(bond_id)
+        if bond.style == BondStyle.COORDINATION:
+            return None
+        components = self._bond_components_without_bond(bond_id)
+        if components is None:
+            return None
+
+        endpoint_ids = (bond.a1_id, bond.a2_id)
+        if fixed_atom_id is not None:
+            if fixed_atom_id not in endpoint_ids:
+                return None
+            moving_atom_id = bond.a2_id if fixed_atom_id == bond.a1_id else bond.a1_id
+        elif moving_atom_id is not None:
+            if moving_atom_id not in endpoint_ids:
+                return None
+            fixed_atom_id = bond.a2_id if moving_atom_id == bond.a1_id else bond.a1_id
+        else:
+            comp_a = components[bond.a1_id]
+            comp_b = components[bond.a2_id]
+            key_a = self._branch_component_sort_key(comp_a)
+            key_b = self._branch_component_sort_key(comp_b)
+            if key_a == key_b:
+                if self._last_scene_pos is not None:
+                    atom_a = self.model.get_atom(bond.a1_id)
+                    atom_b = self.model.get_atom(bond.a2_id)
+                    dist_a = math.hypot(
+                        self._last_scene_pos.x() - atom_a.x,
+                        self._last_scene_pos.y() - atom_a.y,
+                    )
+                    dist_b = math.hypot(
+                        self._last_scene_pos.x() - atom_b.x,
+                        self._last_scene_pos.y() - atom_b.y,
+                    )
+                    moving_atom_id = bond.a1_id if dist_a <= dist_b else bond.a2_id
+                else:
+                    moving_atom_id = min(endpoint_ids)
+            else:
+                moving_atom_id = bond.a1_id if key_a <= key_b else bond.a2_id
+            fixed_atom_id = bond.a2_id if moving_atom_id == bond.a1_id else bond.a1_id
+
+        if fixed_atom_id is None or moving_atom_id is None:
+            return None
+
+        fixed_atom = self.model.get_atom(fixed_atom_id)
+        moving_atom = self.model.get_atom(moving_atom_id)
+        fixed_point = QPointF(fixed_atom.x, fixed_atom.y)
+        moving_point = QPointF(moving_atom.x, moving_atom.y)
+        moving_atom_ids = set(components[moving_atom_id])
+        fixed_component_atom_ids = set(components[fixed_atom_id])
+
+        moving_bond_ids: set[int] = set()
+        for other in self.model.bonds.values():
+            endpoints = {other.a1_id, other.a2_id}
+            if endpoints == {fixed_atom_id, moving_atom_id}:
+                moving_bond_ids.add(other.id)
+                continue
+            if other.a1_id in moving_atom_ids and other.a2_id in moving_atom_ids:
+                moving_bond_ids.add(other.id)
+        static_atom_ids = set(self.model.atoms.keys()) - moving_atom_ids
+        static_bond_ids = {
+            other.id for other in self.model.bonds.values() if other.id not in moving_bond_ids
+        }
+
+        return {
+            "bond_id": int(bond_id),
+            "bond": bond,
+            "fixed_atom_id": int(fixed_atom_id),
+            "moving_atom_id": int(moving_atom_id),
+            "moving_atom_ids": moving_atom_ids,
+            "fixed_component_atom_ids": fixed_component_atom_ids,
+            "static_atom_ids": static_atom_ids,
+            "moving_bond_ids": moving_bond_ids,
+            "static_bond_ids": static_bond_ids,
+            "fixed_point": fixed_point,
+            "current_angle_deg": angle_deg(fixed_point, moving_point),
+            "pivot_length": math.hypot(moving_point.x() - fixed_point.x(), moving_point.y() - fixed_point.y()),
+        }
+
+    def _branch_context_title(self, context: dict) -> str:
+        """Etiqueta legible para el lado móvil de una rama."""
+        atom = self.model.get_atom(int(context["moving_atom_id"]))
+        label = self._editable_atom_label(atom)
+        count = len(set(context["moving_atom_ids"]))
+        return f"Rama de {label} ({count} át.)"
+
+    def _branch_candidate_angles_deg(self, context: dict, reference_angle_deg: float) -> list[float]:
+        """Devuelve candidatos químicos para reorientar una rama."""
+        fixed_atom_id = int(context["fixed_atom_id"])
+        bond = context["bond"]
+        existing_angles = self._branch_neighbor_angles_deg(
+            fixed_atom_id,
+            exclude_bond_id=int(context["bond_id"]),
+        )
+        geometry = self._bond_geometry(fixed_atom_id, bond.order, bond.is_aromatic)
+        sp3_exact_mode = geometry == "sp3" and len(existing_angles) >= 3
+        if sp3_exact_mode:
+            candidates = self._sp3_congested_directions_deg(existing_angles)
+        else:
+            candidates = candidate_directions_deg(geometry, existing_angles, reference_angle_deg)
+            if self.state.fixed_angles:
+                candidates = self._snap_angles_to_grid(candidates)
+        occupied_tolerance = (
+            SP3_OCCUPIED_TOLERANCE_DEG if sp3_exact_mode else ANGLE_OCCUPIED_TOLERANCE_DEG
+        )
+        filtered = filter_occupied_angles_deg(candidates, existing_angles, occupied_tolerance)
+        if filtered:
+            candidates = filtered
+        elif not candidates:
+            candidates = [reference_angle_deg]
+        candidates.append(float(context["current_angle_deg"]))
+        seen: set[float] = set()
+        deduped: list[float] = []
+        for candidate in candidates:
+            normalized = candidate % 360.0
+            key = round(normalized, 6)
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(normalized)
+        return deduped
+
+    def _pick_branch_step_angle_deg(self, context: dict, delta_deg: float) -> float:
+        """Avanza la rama al siguiente ángulo químicamente válido en la dirección dada."""
+        current = float(context["current_angle_deg"]) % 360.0
+        candidates = [
+            angle
+            for angle in self._branch_candidate_angles_deg(context, current + float(delta_deg))
+            if angle_distance_deg(angle, current) > BRANCH_ROTATION_NOOP_TOLERANCE_DEG
+        ]
+        if not candidates:
+            return current
+        step_mag = abs(float(delta_deg))
+        if delta_deg >= 0:
+            def sort_key(angle_value: float) -> tuple[float, float, float]:
+                travel = (angle_value - current) % 360.0
+                return (
+                    travel,
+                    abs(travel - step_mag),
+                    angle_distance_deg(angle_value, current + delta_deg),
+                )
+        else:
+            def sort_key(angle_value: float) -> tuple[float, float, float]:
+                travel = (current - angle_value) % 360.0
+                return (
+                    travel,
+                    abs(travel - step_mag),
+                    angle_distance_deg(angle_value, current + delta_deg),
+                )
+        return min(candidates, key=sort_key)
+
+    def _branch_positions_for_angle(
+        self,
+        context: dict,
+        target_angle_deg: float,
+    ) -> tuple[dict[int, tuple[float, float]], float]:
+        """Calcula las nuevas coordenadas de la rama móvil para un ángulo objetivo."""
+        current = float(context["current_angle_deg"])
+        delta_deg = self._signed_angle_delta_deg(current, target_angle_deg)
+        center = context["fixed_point"]
+        after: dict[int, tuple[float, float]] = {}
+        for atom_id in context["moving_atom_ids"]:
+            atom = self.model.get_atom(atom_id)
+            rotated = self._rotate_scene_point(QPointF(atom.x, atom.y), center, -delta_deg)
+            after[int(atom_id)] = (rotated.x(), rotated.y())
+        return after, delta_deg
+
+    def _branch_collision_score(
+        self,
+        context: dict,
+        after_positions: dict[int, tuple[float, float]],
+        target_angle_deg: float,
+    ) -> float:
+        """Evalúa qué tan limpia queda una rama respecto al resto del lienzo."""
+        moving_atom_ids = set(context["moving_atom_ids"])
+        static_atom_ids = set(context["static_atom_ids"])
+        moving_bond_ids = set(context["moving_bond_ids"])
+        static_bond_ids = set(context["static_bond_ids"])
+        fixed_atom_id = int(context["fixed_atom_id"])
+        atom_threshold = self.state.bond_length * MIN_ATOM_DIST_SCALE
+        bond_threshold = self.state.bond_length * MIN_BOND_DIST_SCALE
+
+        def point_for_atom(atom_id: int) -> QPointF:
+            coords = after_positions.get(atom_id)
+            if coords is not None:
+                return QPointF(coords[0], coords[1])
+            atom = self.model.get_atom(atom_id)
+            return QPointF(atom.x, atom.y)
+
+        intersections = 0
+        atom_penalty = 0.0
+        atom_bond_penalty = 0.0
+        bond_penalty = 0.0
+
+        for moving_atom_id in moving_atom_ids:
+            p_moving = point_for_atom(moving_atom_id)
+            for static_atom_id in static_atom_ids:
+                if static_atom_id == fixed_atom_id:
+                    continue
+                p_static = point_for_atom(static_atom_id)
+                dist = math.hypot(p_moving.x() - p_static.x(), p_moving.y() - p_static.y())
+                if dist < atom_threshold:
+                    intersections += 1
+                    atom_penalty += atom_threshold - dist
+
+        for moving_bond_id in moving_bond_ids:
+            moving_bond = self.model.get_bond(moving_bond_id)
+            moved_endpoints = {moving_bond.a1_id, moving_bond.a2_id}
+            p0 = point_for_atom(moving_bond.a1_id)
+            p1 = point_for_atom(moving_bond.a2_id)
+            for static_bond_id in static_bond_ids:
+                static_bond = self.model.get_bond(static_bond_id)
+                if moved_endpoints.intersection({static_bond.a1_id, static_bond.a2_id}):
+                    continue
+                p_a = point_for_atom(static_bond.a1_id)
+                p_b = point_for_atom(static_bond.a2_id)
+                if segments_intersect(p0, p1, p_a, p_b):
+                    intersections += 1
+                    bond_penalty += atom_threshold
+                bond_dist = segment_min_distance(p0, p1, p_a, p_b)
+                if bond_dist < bond_threshold:
+                    bond_penalty += bond_threshold - bond_dist
+                point_dist_a = segment_min_distance(p_a, p_a, p0, p1)
+                if point_dist_a < bond_threshold:
+                    atom_bond_penalty += bond_threshold - point_dist_a
+                point_dist_b = segment_min_distance(p_b, p_b, p0, p1)
+                if point_dist_b < bond_threshold:
+                    atom_bond_penalty += bond_threshold - point_dist_b
+
+        angular_penalty = angle_distance_deg(target_angle_deg, float(context["current_angle_deg"])) * 0.05
+        return (
+            intersections * 1000.0
+            + atom_penalty * 15.0
+            + atom_bond_penalty * 10.0
+            + bond_penalty * 8.0
+            + angular_penalty
+        )
+
+    def _apply_branch_rotation_context(
+        self,
+        context: Optional[dict],
+        *,
+        target_angle_deg: float,
+        status_message: str,
+    ) -> tuple[bool, str]:
+        """Aplica una rotación rígida de rama usando undo/redo."""
+        if context is None:
+            return False, "Selecciona un solo enlace acíclico para reordenar una rama."
+        after, delta_deg = self._branch_positions_for_angle(context, target_angle_deg)
+        if abs(delta_deg) <= BRANCH_ROTATION_NOOP_TOLERANCE_DEG:
+            return False, "No hay una orientación química alternativa para esa rama."
+        before = {
+            atom_id: (self.model.get_atom(atom_id).x, self.model.get_atom(atom_id).y)
+            for atom_id in context["moving_atom_ids"]
+            if atom_id in self.model.atoms
+        }
+        self.undo_stack.push(MoveAtomsCommand(self.model, self, before, after))
+        self.validate_structure()
+        self._show_status_message(status_message)
+        return True, status_message
+
+    def rotate_branch_side_degrees(
+        self,
+        bond_id: int,
+        fixed_atom_id: int,
+        delta_deg: float,
+    ) -> tuple[bool, str]:
+        """Rota una rama alrededor de un enlace usando snap químico."""
+        context = self._branch_rotation_context(bond_id, fixed_atom_id=fixed_atom_id)
+        if context is None:
+            return False, "No se puede rotar una rama alrededor de ese enlace."
+        target_angle = self._pick_branch_step_angle_deg(context, delta_deg)
+        direction = "+" if float(delta_deg) > 0 else "-"
+        return self._apply_branch_rotation_context(
+            context,
+            target_angle_deg=target_angle,
+            status_message=f"Rama girada {direction}{abs(float(delta_deg)):.0f}° con snap químico.",
+        )
+
+    def invert_branch_side(self, bond_id: int, fixed_atom_id: int) -> tuple[bool, str]:
+        """Invierte una rama 180° exactos alrededor del enlace pivote."""
+        context = self._branch_rotation_context(bond_id, fixed_atom_id=fixed_atom_id)
+        if context is None:
+            return False, "No se puede invertir una rama alrededor de ese enlace."
+        target_angle = (float(context["current_angle_deg"]) + 180.0) % 360.0
+        return self._apply_branch_rotation_context(
+            context,
+            target_angle_deg=target_angle,
+            status_message="Rama invertida 180°.",
+        )
+
+    def auto_arrange_branch_side(self, bond_id: int, fixed_atom_id: int) -> tuple[bool, str]:
+        """Elige la mejor orientación local de una rama sin deformar su geometría interna."""
+        context = self._branch_rotation_context(bond_id, fixed_atom_id=fixed_atom_id)
+        if context is None:
+            return False, "No se puede autoacomodar una rama alrededor de ese enlace."
+        current_angle = float(context["current_angle_deg"])
+        candidates = self._branch_candidate_angles_deg(context, current_angle)
+        if not candidates:
+            return False, "No hay orientaciones químicas disponibles para esa rama."
+
+        best_angle = current_angle
+        best_score = None
+        current_score = None
+        for angle_value in candidates:
+            after_positions, _delta = self._branch_positions_for_angle(context, angle_value)
+            score = self._branch_collision_score(context, after_positions, angle_value)
+            if angle_distance_deg(angle_value, current_angle) <= BRANCH_ROTATION_NOOP_TOLERANCE_DEG:
+                current_score = score
+            if best_score is None or score < best_score:
+                best_score = score
+                best_angle = angle_value
+
+        if angle_distance_deg(best_angle, current_angle) <= BRANCH_ROTATION_NOOP_TOLERANCE_DEG:
+            if current_score is None:
+                current_score = best_score
+            if current_score is None or best_score is None or best_score >= current_score - 1e-6:
+                return False, "La rama ya está en la mejor orientación local."
+
+        return self._apply_branch_rotation_context(
+            context,
+            target_angle_deg=best_angle,
+            status_message="Rama autoacomodada sin alterar su geometría interna.",
+        )
+
+    def _default_branch_rotation_context(self) -> Optional[dict]:
+        """Contexto por defecto para acciones globales de rama: un único enlace seleccionado."""
+        bond_id = self._selected_single_bond_id()
+        if bond_id is None:
+            return None
+        return self._branch_rotation_context(bond_id)
+
+    def rotate_selected_branch_degrees(self, delta_deg: float) -> tuple[bool, str]:
+        """Rota la rama menor del enlace seleccionado usando snap químico."""
+        context = self._default_branch_rotation_context()
+        if context is None:
+            message = "Selecciona un solo enlace acíclico para reordenar una rama."
+            self._show_status_message(message)
+            return False, message
+        return self.rotate_branch_side_degrees(
+            int(context["bond_id"]),
+            int(context["fixed_atom_id"]),
+            delta_deg,
+        )
+
+    def invert_selected_branch(self) -> tuple[bool, str]:
+        """Invierte 180° la rama menor del enlace seleccionado."""
+        context = self._default_branch_rotation_context()
+        if context is None:
+            message = "Selecciona un solo enlace acíclico para invertir una rama."
+            self._show_status_message(message)
+            return False, message
+        return self.invert_branch_side(
+            int(context["bond_id"]),
+            int(context["fixed_atom_id"]),
+        )
+
+    def auto_arrange_selected_branch(self) -> tuple[bool, str]:
+        """Autoacomoda la rama menor del enlace seleccionado."""
+        context = self._default_branch_rotation_context()
+        if context is None:
+            message = "Selecciona un solo enlace acíclico para autoacomodar una rama."
+            self._show_status_message(message)
+            return False, message
+        return self.auto_arrange_branch_side(
+            int(context["bond_id"]),
+            int(context["fixed_atom_id"]),
+        )
 
     def _precise_3d_target_atom_ids(
         self,
@@ -10758,12 +11835,14 @@ class ChemusonCanvas(QGraphicsView):
             not self._selected_atom_ids_for_transform()
             and not self._selected_text_items()
             and not self._selected_arrow_items()
+            and not self._selected_image_items()
         ):
             return
         bbox = self._selected_items_bbox()
         if bbox is None:
             return
         self._rotation_dragging = True
+        self._grab_interaction_mouse()
         self._rotation_center = bbox.center()
         dx = scene_pos.x() - self._rotation_center.x()
         dy = scene_pos.y() - self._rotation_center.y()
@@ -10784,6 +11863,10 @@ class ChemusonCanvas(QGraphicsView):
         self._rotation_start_arrow_positions = {
             item: (item.start_point(), item.end_point())
             for item in self._selected_arrow_items()
+        }
+        self._rotation_start_image_snapshots = {
+            item: self._image_transform_snapshot(item)
+            for item in self._selected_image_items()
         }
 
     def _update_rotation_drag(self, scene_pos: QPointF) -> None:
@@ -10823,6 +11906,8 @@ class ChemusonCanvas(QGraphicsView):
         self._rotation_start_positions = {}
         self._rotation_start_text_transforms = {}
         self._rotation_start_arrow_positions = {}
+        self._rotation_start_image_snapshots = {}
+        self._release_interaction_mouse()
         self._update_selection_overlay()
 
     @staticmethod
@@ -10891,6 +11976,11 @@ class ChemusonCanvas(QGraphicsView):
             width = -1.0
         return QPointF(item.pos()), float(item.rotation()), item.font().toString(), width
 
+    def _image_transform_snapshot(self, item: ImageAnnotationItem) -> tuple[QPointF, float, float, float]:
+        """Captura posición, tamaño y rotación de una imagen anotada."""
+        rect = item.display_rect()
+        return QPointF(rect.topLeft()), float(rect.width()), float(rect.height()), float(item.rotation())
+
     def _arrow_scale_snapshot(self, item: ArrowItem) -> tuple[QPointF, QPointF, Optional[float]]:
         """Captura geometría y grosor de una flecha."""
         return item.start_point(), item.end_point(), item.stroke_px()
@@ -10906,6 +11996,7 @@ class ChemusonCanvas(QGraphicsView):
         text_items: Optional[list[TextAnnotationItem]] = None,
         arrow_items: Optional[list[ArrowItem]] = None,
         bracket_items: Optional[list[BracketItem]] = None,
+        image_items: Optional[list[ImageAnnotationItem]] = None,
     ) -> dict:
         """Captura el estado base usado por el motor de escalado."""
         if atom_ids is None:
@@ -10916,6 +12007,8 @@ class ChemusonCanvas(QGraphicsView):
             arrow_items = self._selected_arrow_items()
         if bracket_items is None:
             bracket_items = self._selected_bracket_items()
+        if image_items is None:
+            image_items = self._selected_image_items()
 
         atom_label_scales: Dict[int, Optional[float]] = {}
         atom_sphere_radii: Dict[int, Tuple[Optional[float], float]] = {}
@@ -10966,6 +12059,10 @@ class ChemusonCanvas(QGraphicsView):
                     float(item.stroke_px() if item.stroke_px() is not None else self.drawing_style.stroke_px),
                 )
                 for item in bracket_items
+            },
+            "image_snapshots": {
+                item: self._image_transform_snapshot(item)
+                for item in image_items
             },
         }
 
@@ -11051,6 +12148,18 @@ class ChemusonCanvas(QGraphicsView):
             item.set_rect(QRectF(top_left, bottom_right).normalized(), padding=max(0.0, padding * scale))
             if include_style:
                 item.set_stroke_px(self._normalize_custom_stroke(float(effective_stroke) * scale))
+
+        for item, (pos, width, height, rotation) in state.get("image_snapshots", {}).items():
+            top_left = self._scale_point_from_anchor(anchor, pos, scale)
+            item.set_display_rect(
+                QRectF(
+                    top_left.x(),
+                    top_left.y(),
+                    max(1.0, float(width) * scale),
+                    max(1.0, float(height) * scale),
+                )
+            )
+            item.setRotation(rotation)
 
         self._update_selection_overlay()
 
@@ -11167,6 +12276,20 @@ class ChemusonCanvas(QGraphicsView):
         if changed_brackets:
             command_count += 1
 
+        image_before = dict(state.get("image_snapshots", {}))
+        image_after = {item: self._image_transform_snapshot(item) for item in image_before}
+        changed_images = any(
+            not (
+                self._point_equal(image_before[item][0], image_after[item][0])
+                and abs(image_before[item][1] - image_after[item][1]) <= 0.05
+                and abs(image_before[item][2] - image_after[item][2]) <= 0.05
+                and abs(image_before[item][3] - image_after[item][3]) <= 0.05
+            )
+            for item in image_before
+        )
+        if changed_images:
+            command_count += 1
+
         if command_count <= 0:
             return False
 
@@ -11237,6 +12360,11 @@ class ChemusonCanvas(QGraphicsView):
         if changed_brackets:
             self.undo_stack.push(ScaleBracketItemsCommand(self, bracket_before, bracket_after))
 
+        if changed_images:
+            self.undo_stack.push(
+                TransformImageItemsCommand(self, image_before, image_after, "Scale images")
+            )
+
         if command_count > 1:
             self.undo_stack.endMacro()
         return True
@@ -11248,6 +12376,7 @@ class ChemusonCanvas(QGraphicsView):
             and not self._selected_text_items()
             and not self._selected_arrow_items()
             and not self._selected_bracket_items()
+            and not self._selected_image_items()
         ):
             return
         bbox = self._selected_items_bbox()
@@ -11260,6 +12389,7 @@ class ChemusonCanvas(QGraphicsView):
             return
 
         self._scale_dragging = True
+        self._grab_interaction_mouse()
         self._scale_anchor = anchor
         self._scale_start_handle = handle
         self._scale_start_length = start_len
@@ -11289,6 +12419,7 @@ class ChemusonCanvas(QGraphicsView):
             item: (snapshot[1], snapshot[2], snapshot[3])
             for item, snapshot in state["bracket_snapshots"].items()
         }
+        self._scale_start_image_snapshots = dict(state["image_snapshots"])
         self._scale_has_moved = False
 
     def _update_scale_drag(self, scene_pos: QPointF) -> None:
@@ -11337,6 +12468,7 @@ class ChemusonCanvas(QGraphicsView):
                     )
                     for item, rect in self._scale_start_bracket_rects.items()
                 },
+                "image_snapshots": dict(self._scale_start_image_snapshots),
             },
             self._scale_anchor,
             scale,
@@ -11383,6 +12515,7 @@ class ChemusonCanvas(QGraphicsView):
                         )
                         for item, rect in self._scale_start_bracket_rects.items()
                     },
+                    "image_snapshots": dict(self._scale_start_image_snapshots),
                 },
                 macro_name="Scale selection",
                 skip_first_redo_atoms=True,
@@ -11399,11 +12532,13 @@ class ChemusonCanvas(QGraphicsView):
         self._scale_start_arrow_strokes = {}
         self._scale_start_bracket_rects = {}
         self._scale_start_bracket_styles = {}
+        self._scale_start_image_snapshots = {}
         self._scale_start_atom_label_scales = {}
         self._scale_start_atom_sphere_radii = {}
         self._scale_start_bond_strokes = {}
         self._scale_start_bond_lengths = {}
         self._scale_has_moved = False
+        self._release_interaction_mouse()
         self._update_selection_overlay()
 
     def _selected_text_items(self) -> list[TextAnnotationItem]:
@@ -11439,6 +12574,10 @@ class ChemusonCanvas(QGraphicsView):
         """
         return [item for item in self.scene.selectedItems() if isinstance(item, BracketItem)]
 
+    def _selected_image_items(self) -> list[ImageAnnotationItem]:
+        """Devuelve las imágenes anotadas actualmente seleccionadas."""
+        return [item for item in self.scene.selectedItems() if isinstance(item, ImageAnnotationItem)]
+
     def _all_scalable_text_items(self) -> list[TextAnnotationItem]:
         """Devuelve textos libres persistentes, excluyendo overlays automáticos."""
         return [
@@ -11457,6 +12596,7 @@ class ChemusonCanvas(QGraphicsView):
         text_items: Iterable[TextAnnotationItem] = (),
         arrow_items: Iterable[ArrowItem] = (),
         bracket_items: Iterable[BracketItem] = (),
+        image_items: Iterable[ImageAnnotationItem] = (),
     ) -> Optional[QRectF]:
         """Calcula un bounding box para un conjunto explícito de elementos."""
         rect: Optional[QRectF] = None
@@ -11500,6 +12640,9 @@ class ChemusonCanvas(QGraphicsView):
         for item in bracket_items:
             if item.scene() is self.scene:
                 extend(item.sceneBoundingRect())
+        for item in image_items:
+            if item.scene() is self.scene:
+                extend(item.sceneBoundingRect())
         return rect
 
     def scale_current_selection(self, scale: float, *, include_style: bool = True) -> bool:
@@ -11538,11 +12681,13 @@ class ChemusonCanvas(QGraphicsView):
             text_items = self._all_scalable_text_items()
             arrow_items = list(self.arrow_items)
             bracket_items = list(self.bracket_items)
+            image_items = list(self.image_items)
             state = self._capture_scale_state(
                 atom_ids=atom_ids,
                 text_items=text_items,
                 arrow_items=arrow_items,
                 bracket_items=bracket_items,
+                image_items=image_items,
             )
             state["atom_label_scales"] = {}
             anchor_bbox = self._targets_bbox(
@@ -11551,6 +12696,7 @@ class ChemusonCanvas(QGraphicsView):
                 text_items=text_items,
                 arrow_items=arrow_items,
                 bracket_items=bracket_items,
+                image_items=image_items,
             )
             anchor = anchor_bbox.center() if anchor_bbox is not None else None
 
@@ -11592,8 +12738,9 @@ class ChemusonCanvas(QGraphicsView):
         selected_atom_ids = self._selected_atom_ids_for_transform()
         selected_text_items = self._selected_text_items()
         selected_arrow_items = self._selected_arrow_items()
+        selected_image_items = self._selected_image_items()
         
-        if not selected_atom_ids and not selected_text_items and not selected_arrow_items:
+        if not selected_atom_ids and not selected_text_items and not selected_arrow_items and not selected_image_items:
             return
 
         cx, cy = 0.0, 0.0
@@ -11766,6 +12913,44 @@ class ChemusonCanvas(QGraphicsView):
                 }
                 if before:
                     self.undo_stack.push(MoveArrowItemsCommand(self, before, after))
+
+        if selected_image_items:
+            if use_start_positions:
+                for item in selected_image_items:
+                    if item in self._rotation_start_image_snapshots:
+                        start_pos, width, height, start_rotation = self._rotation_start_image_snapshots[item]
+                    else:
+                        start_pos, width, height, start_rotation = self._image_transform_snapshot(item)
+                    start_center = QPointF(start_pos.x() + width / 2.0, start_pos.y() + height / 2.0)
+                    rotated_center = rotate_point(start_center)
+                    item.set_display_rect(
+                        QRectF(
+                            rotated_center.x() - width / 2.0,
+                            rotated_center.y() - height / 2.0,
+                            width,
+                            height,
+                        )
+                    )
+                    item.setRotation(start_rotation + degrees)
+            else:
+                before = {
+                    item: self._image_transform_snapshot(item)
+                    for item in selected_image_items
+                }
+                after = {}
+                for item, (pos, width, height, rotation) in before.items():
+                    center_point = QPointF(pos.x() + width / 2.0, pos.y() + height / 2.0)
+                    rotated_center = rotate_point(center_point)
+                    after[item] = (
+                        QPointF(rotated_center.x() - width / 2.0, rotated_center.y() - height / 2.0),
+                        width,
+                        height,
+                        rotation + degrees,
+                    )
+                if before:
+                    self.undo_stack.push(
+                        TransformImageItemsCommand(self, before, after, "Rotate images")
+                    )
 
         # Update overlay at the end
         if use_start_positions:
@@ -12722,6 +13907,7 @@ class ChemusonCanvas(QGraphicsView):
         self._rotation_3d_has_moved = False
         self._rotation_3d_drag_start_pitch_deg = 0.0
         self._rotation_3d_drag_start_yaw_deg = 0.0
+        self._release_interaction_mouse()
         self._clear_selection_drag()
         if self._overlays_ready:
             self._optimize_zone.hide_zone()
@@ -12743,19 +13929,10 @@ class ChemusonCanvas(QGraphicsView):
         Side Effects:
             Puede modificar el estado interno o la escena.
         """
-        saved_atoms = set(self.state.selected_atoms)
-        saved_bonds = set(self.state.selected_bonds)
+        snapshot = self._selection_snapshot()
         self._cancel_drag()
         self._sync_scene_with_model()
-        for atom_id in saved_atoms:
-            item = self.atom_items.get(atom_id)
-            if item is not None:
-                item.setSelected(True)
-        for bond_id in saved_bonds:
-            item = self.bond_items.get(bond_id)
-            if item is not None:
-                item.setSelected(True)
-        self._sync_selection_from_scene()
+        self._restore_selection_snapshot(snapshot)
         self._kekulize_aromatic_bonds()
         self.validate_structure()
         self._update_hover(self._last_scene_pos)
@@ -14775,9 +15952,11 @@ class ChemusonCanvas(QGraphicsView):
             and not self._selected_text_items()
             and not self._selected_arrow_items()
             and not self._selected_bracket_items()
+            and not self._selected_image_items()
         ):
             return
         self._dragging_selection = True
+        self._grab_interaction_mouse()
         self._drag_start_pos = scene_pos
         
         # Capture atoms
@@ -14802,6 +15981,10 @@ class ChemusonCanvas(QGraphicsView):
         self._drag_start_bracket_rects = {}
         for item in self._selected_bracket_items():
             self._drag_start_bracket_rects[item] = item.base_rect()
+
+        self._drag_start_image_snapshots = {}
+        for item in self._selected_image_items():
+            self._drag_start_image_snapshots[item] = self._image_transform_snapshot(item)
             
         self._drag_has_moved = False
 

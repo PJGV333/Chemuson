@@ -1353,6 +1353,32 @@ class MoveBracketItemsCommand(QUndoCommand):
         self._view._update_selection_overlay()
 
 
+class TransformImageItemsCommand(QUndoCommand):
+    """Comando para mover/escalar imágenes anotadas."""
+
+    def __init__(self, view, before: dict, after: dict, text: str = "Transform images") -> None:
+        super().__init__(text)
+        self._view = view
+        self._before = before
+        self._after = after
+
+    @staticmethod
+    def _apply_snapshot(item, snapshot) -> None:
+        pos, width, height, rotation = snapshot
+        item.set_display_rect(QRectF(float(pos.x()), float(pos.y()), float(width), float(height)))
+        item.setRotation(float(rotation))
+
+    def redo(self) -> None:
+        for item, snapshot in self._after.items():
+            self._apply_snapshot(item, snapshot)
+        self._view._update_selection_overlay()
+
+    def undo(self) -> None:
+        for item, snapshot in self._before.items():
+            self._apply_snapshot(item, snapshot)
+        self._view._update_selection_overlay()
+
+
 class ScaleTextItemsCommand(QUndoCommand):
     """Comando para escalar textos libres conservando formato."""
 
@@ -1449,6 +1475,7 @@ class DeleteSelectionCommand(QUndoCommand):
         bracket_items: Iterable = (),
         text_items: Iterable = (),
         wavy_items: Iterable = (),
+        image_items: Iterable = (),
     ) -> None:
         """Inicializa el comando de borrado de selección."""
         super().__init__("Delete selection")
@@ -1460,12 +1487,14 @@ class DeleteSelectionCommand(QUndoCommand):
         self._bracket_items = list(bracket_items)
         self._text_items = list(text_items)
         self._wavy_items = list(wavy_items)
+        self._image_items = list(image_items)
         self._removed_atoms = []
         self._removed_bonds = []
         self._removed_arrows = []
         self._removed_brackets = []
         self._removed_texts = []
         self._removed_wavy = []
+        self._removed_images = []
 
     def redo(self) -> None:
         """Aplica el borrado y guarda copias para restaurar."""
@@ -1519,6 +1548,17 @@ class DeleteSelectionCommand(QUndoCommand):
                 self._removed_texts.append(item)
             for item in self._wavy_items:
                 self._removed_wavy.append(item)
+            for item in self._image_items:
+                rect = item.display_rect()
+                self._removed_images.append(
+                    (
+                        item,
+                        QPointF(rect.topLeft()),
+                        float(rect.width()),
+                        float(rect.height()),
+                        float(item.rotation()),
+                    )
+                )
 
         for bond in list(self._removed_bonds):
             if bond.id in self._model.bonds:
@@ -1536,6 +1576,8 @@ class DeleteSelectionCommand(QUndoCommand):
             self._view.remove_text_item(item)
         for item in self._removed_wavy:
             self._view.remove_wavy_anchor_item(item)
+        for item, _pos, _width, _height, _rotation in self._removed_images:
+            self._view.remove_image_item(item)
 
     def undo(self) -> None:
         """Restaura los elementos eliminados."""
@@ -1589,6 +1631,10 @@ class DeleteSelectionCommand(QUndoCommand):
             self._view.readd_text_item(item)
         for item in self._removed_wavy:
             self._view.readd_wavy_anchor_item(item)
+        for item, pos, width, height, rotation in self._removed_images:
+            item.set_display_rect(QRectF(pos.x(), pos.y(), width, height))
+            item.setRotation(rotation)
+            self._view.readd_image_item(item)
 
 
 class AddArrowCommand(QUndoCommand):
@@ -1710,6 +1756,23 @@ class AddTextItemCommand(QUndoCommand):
         """Elimina el texto añadido."""
         if self._item is not None:
             self._view.remove_text_item(self._item)
+
+
+class AddImageItemCommand(QUndoCommand):
+    """Comando para añadir una imagen anotada."""
+
+    def __init__(self, view, item) -> None:
+        super().__init__("Add image")
+        self._view = view
+        self._item = item
+
+    def redo(self) -> None:
+        if self._item is not None:
+            self._view.readd_image_item(self._item)
+
+    def undo(self) -> None:
+        if self._item is not None:
+            self._view.remove_image_item(self._item)
 
 
 class AddWavyAnchorCommand(QUndoCommand):

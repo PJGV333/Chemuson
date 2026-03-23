@@ -41,7 +41,7 @@ import math
 import os
 import sys
 
-from chemuson.gui.canvas import ChemusonCanvas
+from chemuson.gui.canvas import BRANCH_ROTATION_STEP_DEG, ChemusonCanvas
 from chemuson.gui.periodic_table import PeriodicTableDialog
 from chemuson.gui.toolbar import ChemusonToolbar, SymbolPaletteToolbar
 from chemuson.gui.styles import MAIN_STYLESHEET, TOOL_PALETTE_STYLESHEET
@@ -549,6 +549,32 @@ class ChemusonWindow(QMainWindow):
         self.action_flip_vertical = QAction("Giro 180° vertical", self)
         self.action_flip_vertical.triggered.connect(self._on_flip_vertical)
 
+        self.action_branch_rotate_minus = QAction(
+            f"Girar rama -{int(BRANCH_ROTATION_STEP_DEG)}°",
+            self,
+        )
+        self.action_branch_rotate_minus.setShortcut(QKeySequence("Ctrl+Alt+Left"))
+        self.action_branch_rotate_minus.triggered.connect(
+            lambda: self._on_rotate_branch(-BRANCH_ROTATION_STEP_DEG)
+        )
+
+        self.action_branch_rotate_plus = QAction(
+            f"Girar rama +{int(BRANCH_ROTATION_STEP_DEG)}°",
+            self,
+        )
+        self.action_branch_rotate_plus.setShortcut(QKeySequence("Ctrl+Alt+Right"))
+        self.action_branch_rotate_plus.triggered.connect(
+            lambda: self._on_rotate_branch(BRANCH_ROTATION_STEP_DEG)
+        )
+
+        self.action_branch_invert = QAction("Invertir rama (180°)", self)
+        self.action_branch_invert.setShortcut(QKeySequence("Ctrl+Alt+I"))
+        self.action_branch_invert.triggered.connect(self._on_invert_branch)
+
+        self.action_branch_auto_arrange = QAction("Autoacomodar rama", self)
+        self.action_branch_auto_arrange.setShortcut(QKeySequence("Ctrl+Alt+A"))
+        self.action_branch_auto_arrange.triggered.connect(self._on_auto_arrange_branch)
+
         self.action_scale_selection = QAction("Redimensionar selección...", self)
         self.action_scale_selection.setShortcut(QKeySequence("Ctrl+Alt+S"))
         self.action_scale_selection.triggered.connect(
@@ -692,6 +718,11 @@ class ChemusonWindow(QMainWindow):
         rotate_menu.addSeparator()
         rotate_menu.addAction(self.action_flip_horizontal)
         rotate_menu.addAction(self.action_flip_vertical)
+        rotate_menu.addSeparator()
+        rotate_menu.addAction(self.action_branch_rotate_minus)
+        rotate_menu.addAction(self.action_branch_rotate_plus)
+        rotate_menu.addAction(self.action_branch_invert)
+        rotate_menu.addAction(self.action_branch_auto_arrange)
 
         edit_menu.addAction(self.action_scale_selection)
 
@@ -834,6 +865,10 @@ class ChemusonWindow(QMainWindow):
         self.action_rotate_right.setIcon(draw_generic_icon("rotate_right"))
         self.action_flip_horizontal.setIcon(draw_generic_icon("flip_horizontal"))
         self.action_flip_vertical.setIcon(draw_generic_icon("flip_vertical"))
+        self.action_branch_rotate_minus.setIcon(draw_generic_icon("rotate_left"))
+        self.action_branch_rotate_plus.setIcon(draw_generic_icon("rotate_right"))
+        self.action_branch_invert.setIcon(draw_generic_icon("flip_horizontal"))
+        self.action_branch_auto_arrange.setIcon(QIcon.fromTheme("edit-clear", QIcon()))
         self.action_clean_2d.setIcon(QIcon.fromTheme("edit-clear", QIcon()))
         from chemuson.gui.icons import draw_atom_icon
         self.action_draw_smiles.setIcon(draw_atom_icon("SMI"))
@@ -2912,6 +2947,18 @@ class ChemusonWindow(QMainWindow):
             Puede modificar el estado interno o la interfaz.
         """
         self.canvas.flip_selection_vertical()
+
+    def _on_rotate_branch(self, angle_deg: float) -> None:
+        """Gira la rama menor del enlace seleccionado con snap químico."""
+        self.canvas.rotate_selected_branch_degrees(angle_deg)
+
+    def _on_invert_branch(self) -> None:
+        """Invierte 180° la rama menor del enlace seleccionado."""
+        self.canvas.invert_selected_branch()
+
+    def _on_auto_arrange_branch(self) -> None:
+        """Autoacomoda la rama menor del enlace seleccionado."""
+        self.canvas.auto_arrange_selected_branch()
 
     def _on_bond_thickness_up(self) -> None:
         """Maneja bond thickness up.
