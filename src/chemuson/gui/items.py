@@ -417,9 +417,15 @@ class AtomItem(QGraphicsEllipseItem):
             Modifica el estado del item o la escena.
         """
         if self._should_hide_element():
-            # Make circle invisible but keep selectable (minimal hit area)
+            # Hidden implicit atoms still need visible feedback once selected.
             self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
-            self.setPen(QPen(Qt.PenStyle.NoPen))
+            if self._is_selected:
+                pen = QPen(QColor("#4A90D9"), max(1.2, self._style.stroke_px))
+                pen.setCapStyle(self._style.cap_style)
+                pen.setJoinStyle(self._style.join_style)
+                self.setPen(pen)
+            else:
+                self.setPen(QPen(Qt.PenStyle.NoPen))
             self.label.setVisible(False)
             self._sync_geometry()
             return

@@ -1444,7 +1444,7 @@ class ChemusonCanvas(QGraphicsView):
             return
         scene_pos = self.mapToScene(event.pos())
         self._last_scene_pos = scene_pos
-        clicked_item = self._selected_image_item_at(scene_pos) or self._get_item_at(scene_pos)
+        clicked_item = self._selected_image_item_at(scene_pos) or self._resolve_click_item(scene_pos)
         active_text_item = self._active_text_edit_item()
         if event.button() == Qt.MouseButton.LeftButton and active_text_item is not None:
             if clicked_item is active_text_item:
@@ -2275,6 +2275,28 @@ class ChemusonCanvas(QGraphicsView):
                     if self._is_disposable_orphan_atom(parent.atom_id):
                         continue
                     return parent
+        return None
+
+    def _resolve_click_item(self, scene_pos: QPointF):
+        """Resuelve el objetivo de clic priorizando el pick geométrico de átomos."""
+        item = self._get_item_at(scene_pos)
+        if isinstance(
+            item,
+            (TextAnnotationItem, ImageAnnotationItem, ArrowItem, BracketItem, WavyAnchorItem),
+        ):
+            return item
+
+        atom_id, bond_id = self._pick_hover_target(scene_pos)
+        if atom_id is not None:
+            atom_item = self.atom_items.get(atom_id)
+            if atom_item is not None:
+                return atom_item
+
+        if item is not None:
+            return item
+
+        if bond_id is not None:
+            return self.bond_items.get(bond_id)
         return None
 
     def _selected_image_item_at(self, scene_pos: QPointF) -> Optional[ImageAnnotationItem]:
@@ -3189,7 +3211,7 @@ class ChemusonCanvas(QGraphicsView):
             Puede modificar el estado interno o la escena.
         """
         scene_pos = self.mapToScene(event.pos())
-        item = self._get_item_at(scene_pos)
+        item = self._resolve_click_item(scene_pos)
         if isinstance(item, BondItem):
             bond = self.model.get_bond(item.bond_id)
             current = bond.length_px if bond.length_px is not None else self.state.bond_length
