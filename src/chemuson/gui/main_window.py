@@ -41,7 +41,11 @@ import math
 import os
 import sys
 
-from chemuson.gui.canvas import BRANCH_ROTATION_STEP_DEG, ChemusonCanvas
+from chemuson.gui.canvas import (
+    BRANCH_ROTATION_STEP_DEG,
+    FRAGMENT_ROTATION_STEP_DEG,
+    ChemusonCanvas,
+)
 from chemuson.gui.periodic_table import PeriodicTableDialog
 from chemuson.gui.toolbar import ChemusonToolbar, SymbolPaletteToolbar
 from chemuson.gui.styles import MAIN_STYLESHEET, TOOL_PALETTE_STYLESHEET
@@ -575,6 +579,31 @@ class ChemusonWindow(QMainWindow):
         self.action_branch_auto_arrange.setShortcut(QKeySequence("Ctrl+Alt+A"))
         self.action_branch_auto_arrange.triggered.connect(self._on_auto_arrange_branch)
 
+        self.action_fragment_pivot_set = QAction("Definir átomo pivote desde selección", self)
+        self.action_fragment_pivot_set.triggered.connect(self._on_set_fragment_pivot)
+
+        self.action_fragment_pivot_clear = QAction("Limpiar átomo pivote", self)
+        self.action_fragment_pivot_clear.triggered.connect(self._on_clear_fragment_pivot)
+
+        self.action_fragment_rotate_minus = QAction(
+            f"Girar fragmento -{int(FRAGMENT_ROTATION_STEP_DEG)}°",
+            self,
+        )
+        self.action_fragment_rotate_minus.triggered.connect(
+            lambda: self._on_rotate_fragment(-FRAGMENT_ROTATION_STEP_DEG)
+        )
+
+        self.action_fragment_rotate_plus = QAction(
+            f"Girar fragmento +{int(FRAGMENT_ROTATION_STEP_DEG)}°",
+            self,
+        )
+        self.action_fragment_rotate_plus.triggered.connect(
+            lambda: self._on_rotate_fragment(FRAGMENT_ROTATION_STEP_DEG)
+        )
+
+        self.action_fragment_invert = QAction("Invertir fragmento (180°)", self)
+        self.action_fragment_invert.triggered.connect(self._on_invert_fragment)
+
         self.action_scale_selection = QAction("Redimensionar selección...", self)
         self.action_scale_selection.setShortcut(QKeySequence("Ctrl+Alt+S"))
         self.action_scale_selection.triggered.connect(
@@ -723,6 +752,14 @@ class ChemusonWindow(QMainWindow):
         rotate_menu.addAction(self.action_branch_rotate_plus)
         rotate_menu.addAction(self.action_branch_invert)
         rotate_menu.addAction(self.action_branch_auto_arrange)
+        rotate_menu.addSeparator()
+        self.fragment_rotate_menu = rotate_menu.addMenu("Fragmento con pivote")
+        self.fragment_rotate_menu.addAction(self.action_fragment_pivot_set)
+        self.fragment_rotate_menu.addAction(self.action_fragment_pivot_clear)
+        self.fragment_rotate_menu.addSeparator()
+        self.fragment_rotate_menu.addAction(self.action_fragment_rotate_minus)
+        self.fragment_rotate_menu.addAction(self.action_fragment_rotate_plus)
+        self.fragment_rotate_menu.addAction(self.action_fragment_invert)
 
         edit_menu.addAction(self.action_scale_selection)
 
@@ -1137,6 +1174,7 @@ class ChemusonWindow(QMainWindow):
         self.action_redo.setEnabled(self.canvas.undo_stack.canRedo())
         self._sync_view_actions_from_canvas()
         self._sync_numbering_actions()
+        self._sync_fragment_pivot_actions()
         self._sync_label_menu_state()
         if hasattr(self, "appearance_dock"):
             cap_mode = (
@@ -1165,6 +1203,7 @@ class ChemusonWindow(QMainWindow):
         """Actualiza widgets dependientes del estado del undo activo."""
         self._update_total_charge_indicator()
         self._update_iupac_name_indicator()
+        self._sync_fragment_pivot_actions()
         self._update_tab_title(self.canvas)
 
     def _update_iupac_name_indicator(self) -> None:
@@ -2960,6 +2999,80 @@ class ChemusonWindow(QMainWindow):
         """Autoacomoda la rama menor del enlace seleccionado."""
         self.canvas.auto_arrange_selected_branch()
 
+    def _selected_single_atom_id(self) -> Optional[int]:
+        """Devuelve el único átomo seleccionado si existe y es válido."""
+        atom_ids = [
+            atom_id
+            for atom_id in self.canvas.state.selected_atoms
+            if atom_id in self.canvas.model.atoms
+        ]
+        if self.canvas.state.selected_bonds or len(atom_ids) != 1:
+            return None
+        return int(atom_ids[0])
+
+    def _sync_fragment_pivot_actions(self) -> None:
+        """Sincroniza acciones del menú de rotación de fragmentos."""
+        pivot_atom_id = self.canvas.fragment_pivot_atom_id()
+        selected_atom_id = self._selected_single_atom_id()
+        has_transform_selection = bool(
+            self.canvas.state.selected_atoms or self.canvas.state.selected_bonds
+        )
+
+        if selected_atom_id is None:
+            self.action_fragment_pivot_set.setText("Definir átomo pivote desde selección")
+        else:
+            atom = self.canvas.model.get_atom(selected_atom_id)
+            self.action_fragment_pivot_set.setText(
+                f"Usar átomo {selected_atom_id} ({atom.element}) como pivote"
+            )
+
+        if pivot_atom_id is None:
+            self.action_fragment_pivot_clear.setText("Limpiar átomo pivote")
+            if hasattr(self, "fragment_rotate_menu"):
+                self.fragment_rotate_menu.setTitle("Fragmento con pivote")
+        else:
+            atom = self.canvas.model.get_atom(pivot_atom_id)
+            self.action_fragment_pivot_clear.setText(
+                f"Limpiar pivote (átomo {pivot_atom_id}, {atom.element})"
+            )
+            if hasattr(self, "fragment_rotate_menu"):
+                self.fragment_rotate_menu.setTitle(
+                    f"Fragmento con pivote (átomo {pivot_atom_id})"
+                )
+
+        self.action_fragment_pivot_set.setEnabled(selected_atom_id is not None)
+        self.action_fragment_pivot_clear.setEnabled(pivot_atom_id is not None)
+        can_rotate = pivot_atom_id is not None and has_transform_selection
+        self.action_fragment_rotate_minus.setEnabled(can_rotate)
+        self.action_fragment_rotate_plus.setEnabled(can_rotate)
+        self.action_fragment_invert.setEnabled(can_rotate)
+
+    def _on_set_fragment_pivot(self) -> None:
+        """Usa el átomo seleccionado como pivote para rotar fragmentos."""
+        atom_id = self._selected_single_atom_id()
+        if atom_id is None:
+            self.canvas._show_status_message(
+                "Selecciona un solo átomo para definir el pivote del fragmento."
+            )
+            self._sync_fragment_pivot_actions()
+            return
+        self.canvas.set_fragment_pivot_atom(atom_id)
+        self._sync_fragment_pivot_actions()
+
+    def _on_clear_fragment_pivot(self) -> None:
+        """Limpia el pivote activo de rotación de fragmentos."""
+        self.canvas.set_fragment_pivot_atom(None)
+        self._sync_fragment_pivot_actions()
+
+    def _on_rotate_fragment(self, angle_deg: float) -> None:
+        """Gira el fragmento seleccionado alrededor del pivote activo."""
+        self.canvas.rotate_selected_fragment_around_pivot(angle_deg)
+        self._sync_fragment_pivot_actions()
+
+    def _on_invert_fragment(self) -> None:
+        """Invierte 180° el fragmento seleccionado alrededor del pivote activo."""
+        self._on_rotate_fragment(180.0)
+
     def _on_bond_thickness_up(self) -> None:
         """Maneja bond thickness up.
 
@@ -4332,6 +4445,7 @@ class ChemusonWindow(QMainWindow):
         """Handle selection change to update UI components."""
         self.inspector_dock.update_selection(num_atoms, num_bonds, num_text, details)
         self._update_total_charge_indicator()
+        self._sync_fragment_pivot_actions()
         
         # Sync Text Toolbar if a single text item is selected
         if num_text == 1 and details.get("type") == "text":

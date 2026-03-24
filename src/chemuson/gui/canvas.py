@@ -169,6 +169,7 @@ BOND_DRAG_THRESHOLD_PX = 6.0
 BOND_LAST_ANGLE_TOLERANCE_DEG = 20.0
 BRANCH_ROTATION_STEP_DEG = 60.0
 BRANCH_ROTATION_NOOP_TOLERANCE_DEG = 0.15
+FRAGMENT_ROTATION_STEP_DEG = 30.0
 CLIPBOARD_RENDER_SCALE = 5.0
 CLIPBOARD_LARGE_SELECTION_RENDER_SCALE = 2.5
 CLIPBOARD_LARGE_SELECTION_ATOM_THRESHOLD = 18
@@ -489,6 +490,7 @@ class ChemusonCanvas(QGraphicsView):
         self._rotation_3d_yaw_deg = 0.0
         self._rotation_3d_drag_start_pitch_deg = 0.0
         self._rotation_3d_drag_start_yaw_deg = 0.0
+        self._fragment_pivot_atom_id: Optional[int] = None
         self._scale_dragging = False
         self._scale_anchor: Optional[QPointF] = None
         self._scale_start_handle: Optional[QPointF] = None
@@ -11545,6 +11547,40 @@ class ChemusonCanvas(QGraphicsView):
             return None
         return int(valid[0])
 
+    def fragment_pivot_atom_id(self) -> Optional[int]:
+        """Devuelve el átomo pivote de fragmento activo, si sigue existiendo."""
+        atom_id = self._fragment_pivot_atom_id
+        if atom_id is None:
+            return None
+        if atom_id not in self.model.atoms:
+            self._fragment_pivot_atom_id = None
+            return None
+        return int(atom_id)
+
+    def set_fragment_pivot_atom(self, atom_id: Optional[int]) -> tuple[bool, str]:
+        """Define o limpia el átomo pivote usado para rotar fragmentos."""
+        if atom_id is None:
+            self._fragment_pivot_atom_id = None
+            message = "Átomo pivote de fragmento limpiado."
+            self._show_status_message(message)
+            return True, message
+
+        pivot_atom_id = int(atom_id)
+        if pivot_atom_id not in self.model.atoms:
+            self._fragment_pivot_atom_id = None
+            message = "El átomo pivote seleccionado ya no existe."
+            self._show_status_message(message)
+            return False, message
+
+        self._fragment_pivot_atom_id = pivot_atom_id
+        atom = self.model.get_atom(pivot_atom_id)
+        message = (
+            f"Pivote de fragmento fijado en el átomo {pivot_atom_id} ({atom.element}). "
+            "Selecciona el fragmento y usa Rotar > Fragmento con pivote."
+        )
+        self._show_status_message(message)
+        return True, message
+
     def _branch_neighbor_angles_deg(
         self,
         anchor_id: int,
@@ -11609,6 +11645,135 @@ class ChemusonCanvas(QGraphicsView):
                 heavy += 1
         smallest_id = min(atom_ids) if atom_ids else 0
         return (heavy, len(atom_ids), smallest_id)
+
+    def _selected_fragment_rotation_context(self, pivot_atom_id: int) -> Optional[dict]:
+        """Describe un fragmento seleccionado rotatable alrededor de un átomo pivote."""
+        if pivot_atom_id not in self.model.atoms:
+            return None
+        selected_atom_ids = {
+            atom_id for atom_id in self._selected_atom_ids_for_transform()
+            if atom_id in self.model.atoms
+        }
+        if not selected_atom_ids:
+            return None
+
+        moving_atom_ids = set(selected_atom_ids)
+        moving_atom_ids.discard(int(pivot_atom_id))
+        if not moving_atom_ids:
+            return None
+
+        pivot_component = self._connected_component_atom_ids(int(pivot_atom_id))
+        if not moving_atom_ids.issubset(pivot_component):
+            return None
+
+        moving_bond_ids: set[int] = set()
+        for bond in self.model.bonds.values():
+            a_moving = bond.a1_id in moving_atom_ids
+            b_moving = bond.a2_id in moving_atom_ids
+            if a_moving and b_moving:
+                moving_bond_ids.add(bond.id)
+                continue
+            if not (a_moving or b_moving):
+                continue
+            static_atom_id = bond.a2_id if a_moving else bond.a1_id
+            if static_atom_id != pivot_atom_id:
+                return None
+            moving_bond_ids.add(bond.id)
+
+        pivot_atom = self.model.get_atom(int(pivot_atom_id))
+        fixed_point = QPointF(pivot_atom.x, pivot_atom.y)
+        static_atom_ids = set(self.model.atoms.keys()) - moving_atom_ids
+        static_bond_ids = {
+            bond.id for bond in self.model.bonds.values() if bond.id not in moving_bond_ids
+        }
+        return {
+            "pivot_atom_id": int(pivot_atom_id),
+            "selected_atom_ids": selected_atom_ids,
+            "moving_atom_ids": moving_atom_ids,
+            "moving_bond_ids": moving_bond_ids,
+            "static_atom_ids": static_atom_ids,
+            "static_bond_ids": static_bond_ids,
+            "fixed_point": fixed_point,
+        }
+
+    def _selected_fragment_positions_for_delta(
+        self,
+        context: dict,
+        delta_deg: float,
+    ) -> dict[int, tuple[float, float]]:
+        """Calcula las posiciones finales de un fragmento seleccionado tras rotación rígida."""
+        fixed_point = context["fixed_point"]
+        after: dict[int, tuple[float, float]] = {}
+        for atom_id in context["moving_atom_ids"]:
+            if atom_id not in self.model.atoms:
+                continue
+            atom = self.model.get_atom(atom_id)
+            rotated = self._rotate_scene_point(
+                QPointF(atom.x, atom.y),
+                fixed_point,
+                float(delta_deg),
+            )
+            after[int(atom_id)] = (rotated.x(), rotated.y())
+        return after
+
+    def rotate_selected_fragment_degrees(
+        self,
+        pivot_atom_id: int,
+        delta_deg: float,
+    ) -> tuple[bool, str]:
+        """Rota rígidamente el fragmento seleccionado alrededor de un átomo pivote fijo."""
+        context = self._selected_fragment_rotation_context(int(pivot_atom_id))
+        if context is None:
+            message = (
+                "El fragmento seleccionado debe conectarse al resto solo a través del átomo pivote."
+            )
+            self._show_status_message(message)
+            return False, message
+        if abs(float(delta_deg)) <= 1e-6:
+            message = "No hay rotación que aplicar al fragmento seleccionado."
+            self._show_status_message(message)
+            return False, message
+
+        before = {
+            atom_id: (self.model.get_atom(atom_id).x, self.model.get_atom(atom_id).y)
+            for atom_id in context["moving_atom_ids"]
+            if atom_id in self.model.atoms
+        }
+        after = self._selected_fragment_positions_for_delta(context, float(delta_deg))
+        changed = {
+            atom_id: coords_before
+            for atom_id, coords_before in before.items()
+            if atom_id in after and (
+                abs(after[atom_id][0] - coords_before[0]) > 1e-6
+                or abs(after[atom_id][1] - coords_before[1]) > 1e-6
+            )
+        }
+        if not changed:
+            message = "No hay rotación que aplicar al fragmento seleccionado."
+            self._show_status_message(message)
+            return False, message
+
+        self.undo_stack.push(
+            MoveAtomsCommand(
+                self.model,
+                self,
+                changed,
+                {atom_id: after[atom_id] for atom_id in changed},
+            )
+        )
+        self.validate_structure()
+        message = f"Fragmento girado {float(delta_deg):+.0f}° alrededor del átomo pivote."
+        self._show_status_message(message)
+        return True, message
+
+    def rotate_selected_fragment_around_pivot(self, delta_deg: float) -> tuple[bool, str]:
+        """Rota el fragmento seleccionado usando el pivote activo del canvas."""
+        pivot_atom_id = self.fragment_pivot_atom_id()
+        if pivot_atom_id is None:
+            message = "Define primero un átomo pivote para el fragmento."
+            self._show_status_message(message)
+            return False, message
+        return self.rotate_selected_fragment_degrees(pivot_atom_id, float(delta_deg))
 
     def _branch_rotation_context(
         self,
