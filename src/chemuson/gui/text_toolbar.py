@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QColorDialog,
 )
-from PyQt6.QtGui import QAction, QIcon, QFont, QColor
+from PyQt6.QtGui import QAction, QIcon, QFont, QColor, QKeySequence
 from PyQt6.QtCore import pyqtSignal, Qt, QSize
 from chemuson.gui.icons import draw_glyph_icon
 
@@ -40,6 +40,7 @@ class TextFormatToolbar(QToolBar):
         super().__init__("Formato de Texto", parent)
         self.setIconSize(QSize(16, 16))
         self.setMovable(False)
+        self._syncing_state = False
         
         # --- Font Family ---
         self.font_combo = QFontComboBox()
@@ -61,16 +62,22 @@ class TextFormatToolbar(QToolBar):
         # --- B / I / U ---
         self.action_bold = self._add_toggle_action("B", "Negrita", "bold")
         self.action_bold.setFont(QFont("Times", 10, QFont.Weight.Bold))
+        self.action_bold.setShortcut(QKeySequence("Ctrl+B"))
+        self.action_bold.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
         
         self.action_italic = self._add_toggle_action("I", "Cursiva", "italic")
         font_i = QFont("Times", 10)
         font_i.setItalic(True)
         self.action_italic.setFont(font_i)
+        self.action_italic.setShortcut(QKeySequence("Ctrl+I"))
+        self.action_italic.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
         
         self.action_underline = self._add_toggle_action("U", "Subrayado", "underline")
         font_u = QFont("Times", 10)
         font_u.setUnderline(True)
         self.action_underline.setFont(font_u)
+        self.action_underline.setShortcut(QKeySequence("Ctrl+U"))
+        self.action_underline.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
         
         self.addSeparator()
 
@@ -157,6 +164,8 @@ class TextFormatToolbar(QToolBar):
 
     def _emit_change(self, property_name: str = "all"):
         """Emite la señal con el estado actual de formato."""
+        if self._syncing_state:
+            return
         # Recolectar estado actual y emitir señal.
         family = self.font_combo.currentFont().family()
         size = self.size_spin.value()
@@ -170,22 +179,23 @@ class TextFormatToolbar(QToolBar):
     
     def set_state(self, font: QFont, settings: dict):
         """Actualiza la barra según el estado de selección actual."""
-        self.blockSignals(True)
-        self.font_combo.setCurrentFont(font)
-        self.size_spin.setValue(max(6, int(font.pointSizeF())))
-        self.action_bold.setChecked(font.bold())
-        self.action_italic.setChecked(font.italic())
-        self.action_underline.setChecked(font.underline())
-        
-        # Check specific flags/settings for sub/sup if available
-        is_sub = settings.get("sub", False)
-        is_sup = settings.get("sup", False)
-        self.action_sub.setChecked(is_sub)
-        self.action_sup.setChecked(is_sup)
-        
-        color = settings.get("color")
-        if color and isinstance(color, QColor):
-            self._current_color = color
-            self._update_color_icon()
-            
-        self.blockSignals(False)
+        self._syncing_state = True
+        try:
+            self.font_combo.setCurrentFont(font)
+            self.size_spin.setValue(max(6, int(font.pointSizeF())))
+            self.action_bold.setChecked(font.bold())
+            self.action_italic.setChecked(font.italic())
+            self.action_underline.setChecked(font.underline())
+
+            # Check specific flags/settings for sub/sup if available
+            is_sub = settings.get("sub", False)
+            is_sup = settings.get("sup", False)
+            self.action_sub.setChecked(is_sub)
+            self.action_sup.setChecked(is_sup)
+
+            color = settings.get("color")
+            if color and isinstance(color, QColor):
+                self._current_color = color
+                self._update_color_icon()
+        finally:
+            self._syncing_state = False

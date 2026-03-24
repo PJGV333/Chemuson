@@ -42,6 +42,7 @@ from PyQt6.QtGui import (
     QFont,
     QFontMetrics,
     QTextCharFormat,
+    QTextCursor,
 )
 from PyQt6.QtCore import Qt, QPoint, QPointF, QRectF, QRect, QSize, QBuffer, QMimeData, QTimer, pyqtSignal
 
@@ -124,6 +125,7 @@ from chemuson.gui.commands import (
     MoveBracketItemsCommand,
     TransformImageItemsCommand,
     ScaleTextItemsCommand,
+    FormatTextItemsCommand,
     ScaleArrowItemsCommand,
     ScaleBracketItemsCommand,
 )
@@ -1143,8 +1145,13 @@ class ChemusonCanvas(QGraphicsView):
             self.cancel_template_insert_mode()
         self._clear_bond_anchor()
         self._cancel_drag()
+        if tool_id != "tool_text":
+            self._finish_active_text_editing()
         selection_tools = {"tool_select", "tool_select_lasso", "tool_rotate_3d_precise"}
         if tool_id not in selection_tools and previous_tool in selection_tools:
+            self.scene.clearSelection()
+            self._sync_selection_from_scene()
+        if previous_tool == "tool_text" and tool_id != "tool_text":
             self.scene.clearSelection()
             self._sync_selection_from_scene()
         self._arrow_start_pos = None
@@ -1161,6 +1168,145 @@ class ChemusonCanvas(QGraphicsView):
         else:
             self.setCursor(Qt.CursorShape.CrossCursor)
             self.setDragMode(QGraphicsView.DragMode.NoDrag)
+
+    def _active_text_edit_item(self) -> TextAnnotationItem | None:
+        """Devuelve el item de texto actualmente en edición, si existe."""
+        focus_item = self.scene.focusItem()
+        if (
+            isinstance(focus_item, TextAnnotationItem)
+            and focus_item.scene() is self.scene
+            and (
+                focus_item.textInteractionFlags()
+                & Qt.TextInteractionFlag.TextEditorInteraction
+            )
+        ):
+            return focus_item
+        last_item = getattr(self, "_last_text_edit_item", None)
+        if (
+            isinstance(last_item, TextAnnotationItem)
+            and last_item.scene() is self.scene
+            and (
+                last_item.textInteractionFlags()
+                & Qt.TextInteractionFlag.TextEditorInteraction
+            )
+        ):
+            return last_item
+        return None
+
+    def _clear_text_cursor_selection(self, item: TextAnnotationItem) -> bool:
+        """Limpia una selección interna de QTextCursor si quedó visible."""
+        if item is None or item.scene() is not self.scene:
+            return False
+        cursor = item.textCursor()
+        if not cursor.hasSelection():
+            return False
+        cursor.clearSelection()
+        item.setTextCursor(cursor)
+        return True
+
+    def _text_item_format_snapshot(self, item: TextAnnotationItem) -> dict:
+        """Captura un snapshot del documento y cursor para undo/redo."""
+        cursor = item.textCursor()
+        return {
+            "html": item.document().toHtml(),
+            "font": item.font().toString(),
+            "color": item.defaultTextColor().name(QColor.NameFormat.HexArgb),
+            "text_width": float(item.textWidth()),
+            "editing": bool(
+                item.textInteractionFlags()
+                & Qt.TextInteractionFlag.TextEditorInteraction
+            ),
+            "selected": bool(item.isSelected()),
+            "cursor_position": int(cursor.position()),
+            "cursor_anchor": int(cursor.anchor()),
+        }
+
+    def _restore_text_item_format_snapshot(self, item: TextAnnotationItem, snapshot: dict) -> None:
+        """Restaura documento/cursor de un texto desde un snapshot."""
+        if item.scene() is not self.scene:
+            return
+        item.document().setHtml(snapshot.get("html", item.document().toHtml()))
+        font = QFont()
+        font_str = snapshot.get("font")
+        if font_str:
+            font.fromString(font_str)
+            item.setFont(font)
+        color_name = snapshot.get("color")
+        if color_name:
+            item.setDefaultTextColor(QColor(color_name))
+        item.setTextWidth(float(snapshot.get("text_width", item.textWidth())))
+        is_editing = bool(snapshot.get("editing", False))
+        item.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextEditorInteraction
+            if is_editing
+            else Qt.TextInteractionFlag.NoTextInteraction
+        )
+        item.setSelected(bool(snapshot.get("selected", False)))
+
+        text_len = len(item.toPlainText())
+        anchor = max(0, min(int(snapshot.get("cursor_anchor", 0)), text_len))
+        position = max(0, min(int(snapshot.get("cursor_position", anchor)), text_len))
+        cursor = item.textCursor()
+        cursor.setPosition(anchor)
+        move_mode = (
+            QTextCursor.MoveMode.KeepAnchor
+            if position != anchor
+            else QTextCursor.MoveMode.MoveAnchor
+        )
+        cursor.setPosition(position, move_mode)
+        item.setTextCursor(cursor)
+        if is_editing:
+            item.setFocus()
+        else:
+            self._clear_text_cursor_selection(item)
+            if self.scene.focusItem() is item:
+                self.scene.clearFocus()
+
+    def _text_items_for_formatting(self) -> list[TextAnnotationItem]:
+        """Devuelve los textos afectados por una acción de formato."""
+        items_to_update = [
+            item for item in self.scene.selectedItems() if isinstance(item, TextAnnotationItem)
+        ]
+        focus_item = self.scene.focusItem()
+        if isinstance(focus_item, TextAnnotationItem) and focus_item not in items_to_update:
+            items_to_update.append(focus_item)
+        return items_to_update
+
+    def sync_text_selection_state(self) -> None:
+        """Refresca la UI asociada al estado actual del cursor de texto."""
+        self._sync_selection_from_scene()
+
+    def _finish_active_text_editing(self, *, clear_scene_selection: bool = False) -> bool:
+        """Finaliza la edición activa de texto y elimina resaltados residuales."""
+        changed = False
+        for selected_item in list(self.scene.selectedItems()):
+            if isinstance(selected_item, TextAnnotationItem):
+                changed = self._clear_text_cursor_selection(selected_item) or changed
+
+        item = self._active_text_edit_item()
+        if item is None:
+            if clear_scene_selection and self.scene.selectedItems():
+                self.scene.clearSelection()
+                self._sync_selection_from_scene()
+                return True
+            if changed:
+                self._sync_selection_from_scene()
+            return changed
+
+        changed = True
+        item.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        self._clear_text_cursor_selection(item)
+        if self.scene.focusItem() is item:
+            self.scene.clearFocus()
+        item.clearFocus()
+        self.remember_text_edit_item(None)
+
+        if item.scene() is self.scene and not item.toPlainText().strip():
+            self.remove_text_item(item)
+        if clear_scene_selection:
+            self.scene.clearSelection()
+        self._sync_selection_from_scene()
+        return changed
 
     def set_active_bond(self, bond_spec: dict) -> None:
         """Actualiza el estado de active bond.
@@ -1296,6 +1442,16 @@ class ChemusonCanvas(QGraphicsView):
             return
         scene_pos = self.mapToScene(event.pos())
         self._last_scene_pos = scene_pos
+        clicked_item = self._selected_image_item_at(scene_pos) or self._get_item_at(scene_pos)
+        active_text_item = self._active_text_edit_item()
+        if event.button() == Qt.MouseButton.LeftButton and active_text_item is not None:
+            if clicked_item is active_text_item:
+                super().mousePressEvent(event)
+                return
+            self._finish_active_text_editing(clear_scene_selection=True)
+            if self.current_tool == "tool_text":
+                self._accept_input_event(event)
+                return
 
         if self._drag_mode == "flex_adjust":
             if event.button() == Qt.MouseButton.LeftButton:
@@ -1313,7 +1469,6 @@ class ChemusonCanvas(QGraphicsView):
             return
 
         if event.button() == Qt.MouseButton.RightButton:
-            clicked_item = self._selected_image_item_at(scene_pos) or self._get_item_at(scene_pos)
             if isinstance(
                 clicked_item,
                 (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, ImageAnnotationItem),
@@ -1354,7 +1509,6 @@ class ChemusonCanvas(QGraphicsView):
         if self.current_tool in {"tool_select", "tool_select_lasso", "tool_rotate_3d_precise"}:
             if self._space_panning:
                 return
-            clicked_item = self._selected_image_item_at(scene_pos) or self._get_item_at(scene_pos)
             precise_mode = self.current_tool == "tool_rotate_3d_precise"
             if not precise_mode:
                 blocked_modifiers = (
@@ -8293,29 +8447,30 @@ class ChemusonCanvas(QGraphicsView):
             cursor.setPosition(end_pos)
             cursor.setCharFormat(fmt)
         item.setTextCursor(cursor)
+        if not is_editing:
+            self._clear_text_cursor_selection(item)
 
     def update_text_format(self, family: str, size: int, b: bool, i: bool, u: bool, sub: bool, sup: bool, property_name: str = "all") -> None:
         """Update current text settings and apply to selected text items."""
+        before_settings = dict(self._current_text_settings)
         self._current_text_settings.update({
             "family": family, "size": size,
             "bold": b, "italic": i, "underline": u,
             "sub": sub, "sup": sup
         })
-        
-        # Items to update
-        items_to_update = self.scene.selectedItems()
-        
-        # If a text item is in edit mode, it might assume it's handling input.
-        # Ensure we capture it.
-        focus_item = self.scene.focusItem()
-        if isinstance(focus_item, TextAnnotationItem) and focus_item not in items_to_update:
-             items_to_update.append(focus_item)
-
-        for item in items_to_update:
-            if isinstance(item, TextAnnotationItem):
-                self._apply_text_settings(item, property_name)
-            elif isinstance(item, AtomItem):
-                pass
+        items_to_update = self._text_items_for_formatting()
+        if not items_to_update:
+            self.sync_text_selection_state()
+            return
+        self.undo_stack.push(
+            FormatTextItemsCommand(
+                self,
+                items_to_update,
+                before_settings,
+                self._current_text_settings,
+                property_name,
+            )
+        )
 
     def update_text_alignment(self, alignment: Qt.AlignmentFlag) -> None:
         """Actualiza text alignment.
@@ -8355,6 +8510,8 @@ class ChemusonCanvas(QGraphicsView):
             block_format.setAlignment(alignment)
             cursor.setBlockFormat(block_format)
             item.setTextCursor(cursor)
+            if not is_editing:
+                self._clear_text_cursor_selection(item)
             doc = item.document()
             option = doc.defaultTextOption()
             option.setAlignment(alignment)
@@ -9352,6 +9509,10 @@ class ChemusonCanvas(QGraphicsView):
                     selected_bonds.add(item.bond_id)
 
         selected_text_items = [item for item in selected_items if isinstance(item, TextAnnotationItem)]
+        if not selected_text_items and not selected_atoms and not selected_bonds:
+            focus_item = self._active_text_edit_item()
+            if focus_item is not None:
+                selected_text_items = [focus_item]
         
         self.state.selected_atoms = selected_atoms
         self.state.selected_bonds = selected_bonds
@@ -9385,10 +9546,24 @@ class ChemusonCanvas(QGraphicsView):
             item = selected_text_items[0]
             cursor = item.textCursor()
             fmt = cursor.charFormat()
+            font = QFont(item.font())
+            families = fmt.fontFamilies()
+            if families:
+                font.setFamily(families[0])
+            point_size = float(fmt.fontPointSize() or 0.0)
+            if point_size > 0.0:
+                font.setPointSizeF(point_size)
+            weight = int(fmt.fontWeight() or font.weight())
+            font.setWeight(weight)
+            font.setItalic(bool(fmt.fontItalic()))
+            font.setUnderline(bool(fmt.fontUnderline()))
+            color = fmt.foreground().color()
+            if not color.isValid():
+                color = item.defaultTextColor()
             details = {
                 "type": "text",
-                "font": item.font(),
-                "color": item.defaultTextColor(),
+                "font": font,
+                "color": color,
                 "sub": fmt.verticalAlignment() == QTextCharFormat.VerticalAlignment.AlignSubScript,
                 "sup": fmt.verticalAlignment() == QTextCharFormat.VerticalAlignment.AlignSuperScript
             }

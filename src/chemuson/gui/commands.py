@@ -1414,6 +1414,50 @@ class ScaleTextItemsCommand(QUndoCommand):
         self._view._update_selection_overlay()
 
 
+class FormatTextItemsCommand(QUndoCommand):
+    """Comando para aplicar formato tipográfico con undo/redo."""
+
+    def __init__(
+        self,
+        view,
+        items: list,
+        settings_before: dict,
+        settings_after: dict,
+        property_name: str,
+    ) -> None:
+        super().__init__("Format text")
+        self._view = view
+        self._items = [item for item in items if item is not None and item.scene() is view.scene]
+        self._settings_before = dict(settings_before)
+        self._settings_after = dict(settings_after)
+        self._property_name = property_name
+        self._before = {
+            item: view._text_item_format_snapshot(item)
+            for item in self._items
+        }
+        self._after = None
+
+    def redo(self) -> None:
+        self._view._current_text_settings.update(self._settings_after)
+        if self._after is None:
+            for item in self._items:
+                self._view._apply_text_settings(item, self._property_name)
+            self._after = {
+                item: self._view._text_item_format_snapshot(item)
+                for item in self._items
+            }
+        else:
+            for item, snapshot in self._after.items():
+                self._view._restore_text_item_format_snapshot(item, snapshot)
+        self._view.sync_text_selection_state()
+
+    def undo(self) -> None:
+        self._view._current_text_settings.update(self._settings_before)
+        for item, snapshot in self._before.items():
+            self._view._restore_text_item_format_snapshot(item, snapshot)
+        self._view.sync_text_selection_state()
+
+
 class ScaleArrowItemsCommand(QUndoCommand):
     """Comando para escalar geometría y grosor de flechas."""
 

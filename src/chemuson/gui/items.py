@@ -3995,6 +3995,17 @@ class TextAnnotationItem(QGraphicsTextItem):
         # Drag Handle logic removed - handled by Canvas selection overlay
         # self.handle = TextDragHandle(self)
 
+    def _notify_text_state_changed(self) -> None:
+        """Notifica a la vista que cambió el cursor o formato activo de texto."""
+        try:
+            scene = self.scene()
+            if scene:
+                for view in scene.views():
+                    if hasattr(view, "sync_text_selection_state"):
+                        view.sync_text_selection_state()
+        except Exception:
+            pass
+
     def paint(self, painter, option, widget=None) -> None:
         # Suppress default dashed line from QGraphicsTextItem if selected
         # because the canvas draws its own selection overlay.
@@ -4063,6 +4074,7 @@ class TextAnnotationItem(QGraphicsTextItem):
         except Exception:
             pass
         super().focusInEvent(event)
+        self._notify_text_state_changed()
     
     def focusOutEvent(self, event) -> None:
         # If focus loss is due to window deactivation, keep edit mode.
@@ -4106,6 +4118,17 @@ class TextAnnotationItem(QGraphicsTextItem):
             pass
              
         super().focusOutEvent(event)
+        self._notify_text_state_changed()
+
+    def mouseReleaseEvent(self, event) -> None:
+        """Propaga cambios de selección interna al soltar el mouse."""
+        super().mouseReleaseEvent(event)
+        self._notify_text_state_changed()
+
+    def keyReleaseEvent(self, event) -> None:
+        """Propaga cambios de cursor/formato al soltar teclas."""
+        super().keyReleaseEvent(event)
+        self._notify_text_state_changed()
 
     def shape(self) -> QPainterPath:
         # Ensure a minimum size for the hit-test even if empty
