@@ -439,6 +439,9 @@ class ChemusonCanvas(QGraphicsView):
         self._drag_start_arrow_positions: Dict[ArrowItem, Tuple[QPointF, QPointF]] = {}
         self._drag_start_bracket_rects: Dict[BracketItem, QRectF] = {}
         self._drag_start_image_snapshots: Dict[ImageAnnotationItem, Tuple[QPointF, float, float, float]] = {}
+        self._drag_start_selection_bbox: Optional[QRectF] = None
+        self._drag_affected_bond_ids: set[int] = set()
+        self._drag_affects_ring_centers = False
         self._drag_has_moved = False
         self._interaction_mouse_grabbed = False
         self._select_drag_mode: Optional[str] = None
@@ -1774,14 +1777,14 @@ class ChemusonCanvas(QGraphicsView):
             delta = scene_pos - self._drag_start_pos
             if delta.manhattanLength() > 0:
                 self._drag_has_moved = True
-                
+
                 # Move atoms
                 for atom_id, (x, y) in self._drag_start_positions.items():
                     nx = x + delta.x()
                     ny = y + delta.y()
                     self.model.update_atom_position(atom_id, nx, ny)
                     self.update_atom_item(atom_id, nx, ny)
-                self.update_bond_items_for_atoms(set(self._drag_start_positions.keys()))
+                self._update_live_drag_bond_geometry(set(self._drag_start_positions.keys()))
                 
                 # Move text items
                 if hasattr(self, "_drag_start_text_positions"):
@@ -1810,8 +1813,8 @@ class ChemusonCanvas(QGraphicsView):
                             )
                         )
                         item.setRotation(rotation)
-                
-                self._update_selection_overlay()
+
+                self._update_drag_selection_overlay(delta)
             self._accept_input_event(event)
             return
 
@@ -1932,6 +1935,7 @@ class ChemusonCanvas(QGraphicsView):
                 if had_moved and image_before
                 else {}
             )
+            moved_atom_ids = set(atom_after.keys())
 
             self._dragging_selection = False
             self._drag_start_pos = None
@@ -1940,9 +1944,16 @@ class ChemusonCanvas(QGraphicsView):
             self._drag_start_arrow_positions = {}
             self._drag_start_bracket_rects = {}
             self._drag_start_image_snapshots = {}
+            self._drag_start_selection_bbox = None
+            self._drag_affected_bond_ids = set()
+            self._drag_affects_ring_centers = False
             self._drag_has_moved = False
 
             if had_moved:
+                if moved_atom_ids:
+                    self.refresh_ring_centers()
+                    self.update_bond_items_for_atoms(moved_atom_ids)
+                self._update_selection_overlay()
                 move_atoms = bool(atom_before and atom_after)
                 move_text = bool(text_before and text_after)
                 move_arrows = bool(arrow_before and arrow_after)
@@ -10957,16 +10968,8 @@ class ChemusonCanvas(QGraphicsView):
                 atom_ids.add(bond.a2_id)
         return atom_ids
 
-    def _update_selection_overlay(self) -> None:
-        """Método auxiliar para  update selection overlay.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la escena.
-        """
-        bbox = self._selected_items_bbox()
+    def _apply_selection_overlay_bbox(self, bbox: Optional[QRectF]) -> None:
+        """Aplica el overlay de selección usando un bbox ya calculado."""
         if bbox is None:
             for attr in (
                 "_selection_box",
@@ -11041,6 +11044,25 @@ class ChemusonCanvas(QGraphicsView):
                 self._selection_scale_handle.setVisible(True)
             except RuntimeError:
                 self._selection_scale_handle = None
+
+    def _update_selection_overlay(self) -> None:
+        """Método auxiliar para  update selection overlay.
+
+        Returns:
+            Resultado de la operación o None.
+
+        Side Effects:
+            Puede modificar el estado interno o la escena.
+        """
+        self._apply_selection_overlay_bbox(self._selected_items_bbox())
+
+    def _update_drag_selection_overlay(self, delta: QPointF) -> None:
+        """Actualiza overlay durante drag trasladando el bbox inicial."""
+        bbox = self._drag_start_selection_bbox
+        if bbox is None:
+            self._update_selection_overlay()
+            return
+        self._apply_selection_overlay_bbox(bbox.translated(delta))
 
     def _hit_selection_handle(self, scene_pos: QPointF) -> bool:
         """Método auxiliar para  hit selection handle.
@@ -14148,6 +14170,9 @@ class ChemusonCanvas(QGraphicsView):
         self._rotation_3d_has_moved = False
         self._rotation_3d_drag_start_pitch_deg = 0.0
         self._rotation_3d_drag_start_yaw_deg = 0.0
+        self._drag_start_selection_bbox = None
+        self._drag_affected_bond_ids = set()
+        self._drag_affects_ring_centers = False
         self._release_interaction_mouse()
         self._clear_selection_drag()
         if self._overlays_ready:
@@ -16226,8 +16251,48 @@ class ChemusonCanvas(QGraphicsView):
         self._drag_start_image_snapshots = {}
         for item in self._selected_image_items():
             self._drag_start_image_snapshots[item] = self._image_transform_snapshot(item)
-            
+
+        self._drag_start_selection_bbox = self._selected_items_bbox()
+        self._drag_affected_bond_ids = {
+            bond.id
+            for bond in self.model.bonds.values()
+            if bond.a1_id in atom_ids or bond.a2_id in atom_ids
+        }
+        self._drag_affects_ring_centers = any(
+            self.model.bonds[bond_id].ring_id is not None
+            for bond_id in self._drag_affected_bond_ids
+            if bond_id in self.model.bonds
+        )
+
         self._drag_has_moved = False
+
+    def _update_live_drag_bond_geometry(self, atom_ids: set[int]) -> None:
+        """Actualiza sólo la geometría indispensable durante un drag."""
+        if not atom_ids or not self._drag_affected_bond_ids:
+            return
+        self._clear_trackball_reference_if_desynced(atom_ids)
+        if self._drag_affects_ring_centers:
+            self.refresh_ring_centers()
+
+        for bond_id in self._drag_affected_bond_ids:
+            bond = self.model.bonds.get(bond_id)
+            item = self.bond_items.get(bond_id)
+            if bond is None or item is None:
+                continue
+            atom1 = self.model.atoms.get(bond.a1_id)
+            atom2 = self.model.atoms.get(bond.a2_id)
+            if atom1 is None or atom2 is None:
+                continue
+
+            ring_center = self._aromatic_ring_center_for_bond(bond) if bond.is_aromatic else None
+            if ring_center is None and bond.ring_id is not None:
+                ring_center = self._ring_centers.get(bond.ring_id)
+
+            item.set_ring_context(ring_center)
+            item.set_offset_sign(self._bond_offset_sign(bond))
+            item.update_positions(atom1, atom2)
+
+        self._update_aromatic_circles_for_atoms(atom_ids)
 
     def _is_on_paper(self, x: float, y: float) -> bool:
         """Método auxiliar para  is on paper.

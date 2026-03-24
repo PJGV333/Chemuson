@@ -101,3 +101,74 @@ def test_drag_clears_live_state_before_undo_stack_index_changes() -> None:
 
     assert states_during_push
     assert states_during_push == [False]
+
+
+def test_live_drag_defers_expensive_refresh_until_release(monkeypatch) -> None:
+    canvas = ChemusonCanvas()
+    atom_a = canvas.model.add_atom("N", 100.0, 100.0, is_explicit=True)
+    atom_b = canvas.model.add_atom("C", 140.0, 100.0, is_explicit=True)
+    canvas.model.add_bond(atom_a.id, atom_b.id)
+    canvas.state.show_implicit_hydrogens = True
+    canvas._rebuild_items_from_model()
+
+    canvas.atom_items[atom_a.id].setSelected(True)
+    canvas.atom_items[atom_b.id].setSelected(True)
+    canvas._sync_selection_from_scene()
+
+    counts = {"implicit_h": 0, "numbering": 0, "bbox": 0}
+
+    orig_implicit = canvas._refresh_implicit_h_overlays
+    orig_numbering = canvas.recompute_numbering
+    orig_bbox = canvas._selected_items_bbox
+
+    def _count_implicit(*args, **kwargs):
+        counts["implicit_h"] += 1
+        return orig_implicit(*args, **kwargs)
+
+    def _count_numbering(*args, **kwargs):
+        counts["numbering"] += 1
+        return orig_numbering(*args, **kwargs)
+
+    def _count_bbox(*args, **kwargs):
+        counts["bbox"] += 1
+        return orig_bbox(*args, **kwargs)
+
+    monkeypatch.setattr(canvas, "_refresh_implicit_h_overlays", _count_implicit)
+    monkeypatch.setattr(canvas, "recompute_numbering", _count_numbering)
+    monkeypatch.setattr(canvas, "_selected_items_bbox", _count_bbox)
+
+    canvas.resize(900, 700)
+    canvas.show()
+    QApplication.processEvents()
+
+    start_scene = canvas.atom_items[atom_a.id].scenePos()
+    start_view = canvas.mapFromScene(start_scene)
+    end_view = QPoint(start_view.x() + 24, start_view.y() + 14)
+
+    QTest.mousePress(
+        canvas.viewport(),
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+        start_view,
+    )
+    QApplication.processEvents()
+    after_press = dict(counts)
+
+    QTest.mouseMove(canvas.viewport(), end_view)
+    QApplication.processEvents()
+
+    assert counts["implicit_h"] == after_press["implicit_h"]
+    assert counts["numbering"] == after_press["numbering"]
+    assert counts["bbox"] == after_press["bbox"]
+
+    QTest.mouseRelease(
+        canvas.viewport(),
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+        end_view,
+    )
+    QApplication.processEvents()
+
+    assert counts["implicit_h"] > after_press["implicit_h"]
+    assert counts["numbering"] > after_press["numbering"]
+    assert counts["bbox"] > after_press["bbox"]
