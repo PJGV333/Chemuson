@@ -1500,6 +1500,16 @@ class DeleteSelectionCommand(QUndoCommand):
         self._removed_wavy = []
         self._removed_images = []
 
+    def _refresh_view_after_structure_change(self) -> None:
+        """Sincroniza overlays derivados tras borrar/restaurar estructura."""
+        if hasattr(self._view, "refresh_ring_centers"):
+            self._view.refresh_ring_centers()
+        if hasattr(self._view, "refresh_aromatic_circles"):
+            self._view.refresh_aromatic_circles()
+        if hasattr(self._view, "recompute_numbering"):
+            self._view.recompute_numbering()
+        _validate_view_structure(self._view)
+
     def redo(self) -> None:
         """Aplica el borrado y guarda copias para restaurar."""
         if not self._removed_atoms and not self._removed_bonds:
@@ -1582,6 +1592,7 @@ class DeleteSelectionCommand(QUndoCommand):
             self._view.remove_wavy_anchor_item(item)
         for item, _pos, _width, _height, _rotation in self._removed_images:
             self._view.remove_image_item(item)
+        self._refresh_view_after_structure_change()
 
     def undo(self) -> None:
         """Restaura los elementos eliminados."""
@@ -1639,6 +1650,7 @@ class DeleteSelectionCommand(QUndoCommand):
             item.set_display_rect(QRectF(pos.x(), pos.y(), width, height))
             item.setRotation(rotation)
             self._view.readd_image_item(item)
+        self._refresh_view_after_structure_change()
 
 
 class AddArrowCommand(QUndoCommand):

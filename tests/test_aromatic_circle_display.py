@@ -344,3 +344,31 @@ def test_partial_aromatic_ring_does_not_hide_pi_lines_with_circle_mode(edit_mode
 
     assert len(canvas.aromatic_circles) == 0
     assert canvas.bond_items[probe.id].path().elementCount() > 2
+
+
+def test_delete_selection_removes_aromatic_circle_residues_and_undo_restores() -> None:
+    """Borrar una estructura aromática no debe dejar círculos huérfanos en escena."""
+    canvas = ChemusonCanvas()
+    atom_ids = _add_aromatic_ring(canvas, center_x=300.0, center_y=220.0)
+    canvas._rebuild_items_from_model()
+    canvas.state.use_aromatic_circles = True
+    canvas.refresh_aromatic_circles()
+
+    assert len(canvas.aromatic_circles) == 1
+    stale_circles = list(canvas.aromatic_circles)
+
+    for atom_id in atom_ids:
+        canvas.atom_items[atom_id].setSelected(True)
+    canvas._sync_selection_from_scene()
+    canvas._delete_selection(set(atom_ids), set())
+
+    assert len(canvas.model.atoms) == 0
+    assert len(canvas.model.bonds) == 0
+    assert len(canvas.aromatic_circles) == 0
+    assert all(circle.scene() is None for circle in stale_circles)
+
+    canvas.undo_stack.undo()
+
+    assert len(canvas.model.atoms) == 6
+    assert len(canvas.model.bonds) == 6
+    assert len(canvas.aromatic_circles) == 1

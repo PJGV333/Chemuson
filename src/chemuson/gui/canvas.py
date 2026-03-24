@@ -341,6 +341,7 @@ NUMBERING_KEY_ROLE = 4003
 NUMBERING_AUTO_TEXT_ROLE = 4004
 IMPLICIT_H_OVERLAY_ANCHOR_ROLE = 5001
 IMPLICIT_H_OVERLAY_ANGLE_ROLE = 5002
+PAPER_ITEM_ROLE = 7001
 
 SYMBOL_TEXT_TOOLS = {
     "tool_symbol_plus": {"text": "+", "scale": 1.0, "anchor": True},
@@ -964,10 +965,13 @@ class ChemusonCanvas(QGraphicsView):
         Side Effects:
             Puede modificar el estado interno o la escena.
         """
+        for item in self._paper_scene_items():
+            self.scene.removeItem(item)
         self.paper = QGraphicsRectItem(0, 0, self.paper_width, self.paper_height)
         self.paper.setBrush(QBrush(Qt.GlobalColor.white))
         self.paper.setPen(QPen(QColor("#CCCCCC"), 1))
         self.paper.setZValue(-10)
+        self.paper.setData(PAPER_ITEM_ROLE, True)
 
         shadow = QGraphicsDropShadowEffect()
         shadow.setBlurRadius(20)
@@ -978,6 +982,44 @@ class ChemusonCanvas(QGraphicsView):
         self.scene.addItem(self.paper)
         self._create_grid()
         self.center_on_paper()
+
+    def _is_paper_scene_item(self, item: QGraphicsItem) -> bool:
+        """Detecta la hoja de trabajo, incluyendo duplicados huérfanos legacy."""
+        if item is None or item.scene() is not self.scene:
+            return False
+        try:
+            if bool(item.data(PAPER_ITEM_ROLE)):
+                return True
+        except Exception:
+            return False
+        if not isinstance(item, QGraphicsRectItem):
+            return False
+        if item.parentItem() is not None or item.zValue() > -9.5:
+            return False
+        rect = item.rect()
+        if (
+            abs(float(rect.x())) > 0.1
+            or abs(float(rect.y())) > 0.1
+            or rect.width() <= 0.0
+            or rect.height() <= 0.0
+        ):
+            return False
+        try:
+            brush = item.brush()
+            pen = item.pen()
+            brush_color = brush.color().name().lower()
+            pen_color = pen.color().name().lower()
+        except Exception:
+            return False
+        return brush_color == "#ffffff" and pen_color == "#cccccc"
+
+    def _paper_scene_items(self) -> list[QGraphicsRectItem]:
+        """Devuelve todas las hojas visibles/huérfanas presentes en la escena."""
+        return [
+            item
+            for item in self.scene.items()
+            if isinstance(item, QGraphicsRectItem) and self._is_paper_scene_item(item)
+        ]
 
     def _create_grid(self) -> None:
         """Método auxiliar para  create grid.
@@ -5220,7 +5262,7 @@ class ChemusonCanvas(QGraphicsView):
         Side Effects:
             Puede modificar el estado interno o la escena.
         """
-        items = [getattr(self, "paper", None)]
+        items = list(self._paper_scene_items())
         overlay_attrs = [
             "_hover_atom_indicator",
             "_hover_bond_indicator",
@@ -5259,7 +5301,19 @@ class ChemusonCanvas(QGraphicsView):
             Puede modificar el estado interno o la escena.
         """
         hidden = []
+        disabled_effects: list[tuple[QGraphicsItem, object, bool]] = []
         for item in self._hidden_render_items():
+            try:
+                effect = item.graphicsEffect()
+            except Exception:
+                effect = None
+            if effect is not None:
+                try:
+                    was_enabled = bool(effect.isEnabled())
+                    effect.setEnabled(False)
+                    disabled_effects.append((item, effect, was_enabled))
+                except Exception:
+                    pass
             if item.isVisible():
                 hidden.append(item)
                 item.setVisible(False)
@@ -5299,6 +5353,11 @@ class ChemusonCanvas(QGraphicsView):
 
             for item in hidden:
                 item.setVisible(True)
+            for _item, effect, was_enabled in disabled_effects:
+                try:
+                    effect.setEnabled(was_enabled)
+                except Exception:
+                    pass
 
     def _with_hidden_unselected(self, render_fn):
         """Método auxiliar para  with hidden unselected.
