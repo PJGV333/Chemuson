@@ -4,7 +4,7 @@ import os
 import sys
 
 import pytest
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QLabel
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
@@ -59,6 +59,22 @@ def test_preferences_dialog_emits_naming_options() -> None:
 
     assert emitted.get("name_advanced_enabled") is False
     assert emitted.get("name_rdkit_isolated") is False
+
+
+def test_preferences_dialog_explains_update_delivery_modes() -> None:
+    dialog = PreferencesDialog(
+        ChemState(),
+        CHEMDOODLE_LIKE,
+        update_settings={},
+        naming_settings={"advanced_enabled": True, "rdkit_isolated": True},
+    )
+
+    all_text = "\n".join(label.text() for label in dialog.findChildren(QLabel))
+    assert "Buscar actualizaciones cuando esta edición lo permita" == dialog.update_enabled_checkbox.text()
+    assert "Notificar antes de aplicar" == dialog.update_mode_combo.itemText(0)
+    assert "Preparar en silencio cuando sea posible" == dialog.update_mode_combo.itemText(1)
+    assert "auto-update real" in all_text.lower()
+    assert "flatpak update io.github.pjgv333.chemuson" in all_text.lower()
 
 
 def test_main_window_shows_iupac_status_field() -> None:

@@ -26,9 +26,22 @@ def _has_xcb_plugin(platforms_dir: Path) -> bool:
     return any("qxcb" in p.name for p in platforms_dir.glob("*"))
 
 
+def _configure_ssl_cert_file() -> None:
+    try:
+        import certifi
+    except Exception:
+        return
+    try:
+        os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+    except Exception:
+        pass
+
+
 def _configure_qt_runtime() -> None:
     if not _is_frozen_app():
         return
+
+    _configure_ssl_cert_file()
 
     base_dir = Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
     plugin_root = _first_existing(

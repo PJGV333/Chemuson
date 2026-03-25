@@ -33,6 +33,18 @@ from chemuson.core.model import ChemState
 from chemuson.gui.style import DrawingStyle
 
 
+def format_update_behavior_summary(
+    app_id: str = "io.github.PJGV333.Chemuson",
+) -> str:
+    """Resume el comportamiento del updater según la edición instalada."""
+    return (
+        "Comportamiento según la edición:\n"
+        "- Auto-update real: AppImage y ejecutable portable. Chemuson reemplaza el binario al cerrar.\n"
+        "- Instalación silenciosa al cerrar: Windows instalado con setup. Chemuson descarga el instalador oficial y lo ejecuta al salir.\n"
+        f"- Flatpak: usa flatpak update {app_id}."
+    )
+
+
 class TrackballRotationDialog(QDialog):
     """Diálogo interactivo para rotación pseudo-3D con ejes X/Y."""
 
@@ -263,7 +275,14 @@ class PreferencesDialog(QDialog):
         widget = QWidget()
         form = QFormLayout(widget)
 
-        self.update_enabled_checkbox = QCheckBox("Buscar actualizaciones automáticamente")
+        info_label = QLabel(format_update_behavior_summary())
+        info_label.setWordWrap(True)
+        info_label.setStyleSheet("color: #666666;")
+        form.addRow(info_label)
+
+        self.update_enabled_checkbox = QCheckBox(
+            "Buscar actualizaciones cuando esta edición lo permita"
+        )
         self.update_enabled_checkbox.setChecked(bool(update_settings.get("enabled", False)))
         form.addRow(self.update_enabled_checkbox)
 
@@ -277,13 +296,13 @@ class PreferencesDialog(QDialog):
         form.addRow("Canal", self.update_channel_combo)
 
         self.update_mode_combo = QComboBox()
-        self.update_mode_combo.addItem("Notificar", "notify")
-        self.update_mode_combo.addItem("Silencioso", "silent")
+        self.update_mode_combo.addItem("Notificar antes de aplicar", "notify")
+        self.update_mode_combo.addItem("Preparar en silencio cuando sea posible", "silent")
         current_mode = str(update_settings.get("mode", "notify")).strip().lower()
         idx_mode = self.update_mode_combo.findData(current_mode)
         if idx_mode >= 0:
             self.update_mode_combo.setCurrentIndex(idx_mode)
-        form.addRow("Modo", self.update_mode_combo)
+        form.addRow("Modo de aplicación", self.update_mode_combo)
 
         self.update_interval_spin = QSpinBox()
         self.update_interval_spin.setRange(1, 24 * 30)

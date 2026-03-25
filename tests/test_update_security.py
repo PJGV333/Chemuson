@@ -37,8 +37,8 @@ def test_download_binary_rejects_non_https(tmp_path) -> None:
 def test_download_text_retries_and_succeeds(monkeypatch) -> None:
     attempts = {"n": 0}
 
-    def _fake_urlopen(_request, timeout=0):
-        _ = timeout
+    def _fake_urlopen(_request, timeout=0, context=None):
+        _ = timeout, context
         attempts["n"] += 1
         if attempts["n"] < 2:
             raise OSError("transient")
@@ -48,3 +48,22 @@ def test_download_text_retries_and_succeeds(monkeypatch) -> None:
     text = security.download_text("https://example.com/file.txt", retries=2, backoff_sec=0.0)
     assert text == "ok"
     assert attempts["n"] == 2
+
+
+def test_download_text_passes_ssl_context(monkeypatch) -> None:
+    sentinel = object()
+    seen: dict[str, object] = {}
+
+    def _fake_create_ssl_context():
+        return sentinel
+
+    def _fake_urlopen(_request, timeout=0, context=None):
+        _ = timeout
+        seen["context"] = context
+        return _FakeResponse(b"ok")
+
+    monkeypatch.setattr(security, "_create_ssl_context", _fake_create_ssl_context)
+    monkeypatch.setattr(security, "urlopen", _fake_urlopen)
+
+    assert security.download_text("https://example.com/file.txt", retries=0) == "ok"
+    assert seen["context"] is sentinel

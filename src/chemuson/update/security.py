@@ -6,8 +6,14 @@ import base64
 import hashlib
 import hmac
 import os
+import ssl
 import time
 from urllib.request import Request, urlopen
+
+try:
+    import certifi
+except Exception:
+    certifi = None
 
 
 def _validate_https_url(url: str) -> str:
@@ -15,6 +21,18 @@ def _validate_https_url(url: str) -> str:
     if not raw.lower().startswith("https://"):
         raise ValueError("Solo se permiten URLs HTTPS para descarga de updates.")
     return raw
+
+
+def _create_ssl_context() -> ssl.SSLContext:
+    """Crea un contexto SSL usando el bundle CA de certifi cuando esta disponible."""
+    context = ssl.create_default_context()
+    if certifi is None:
+        return context
+    try:
+        context.load_verify_locations(cafile=certifi.where())
+    except Exception:
+        pass
+    return context
 
 
 def sha256_file(path: str) -> str:
@@ -45,12 +63,15 @@ def download_binary(
     """Descarga binario a disco y devuelve ruta."""
     os.makedirs(os.path.dirname(os.path.abspath(target_path)), exist_ok=True)
     download_url = _validate_https_url(url)
+    ssl_context = _create_ssl_context()
     attempts = max(1, int(retries) + 1)
     last_error: Exception | None = None
     for attempt in range(attempts):
         try:
             request = Request(url=download_url, headers={"User-Agent": "chemuson-updater"})
-            with urlopen(request, timeout=timeout) as response, open(target_path, "wb") as out:
+            with urlopen(request, timeout=timeout, context=ssl_context) as response, open(
+                target_path, "wb"
+            ) as out:
                 total = 0
                 while True:
                     chunk = response.read(1024 * 256)
@@ -80,12 +101,13 @@ def download_text(
 ) -> str:
     """Descarga texto UTF-8."""
     download_url = _validate_https_url(url)
+    ssl_context = _create_ssl_context()
     attempts = max(1, int(retries) + 1)
     last_error: Exception | None = None
     for attempt in range(attempts):
         try:
             request = Request(url=download_url, headers={"User-Agent": "chemuson-updater"})
-            with urlopen(request, timeout=timeout) as response:
+            with urlopen(request, timeout=timeout, context=ssl_context) as response:
                 data = response.read(int(max_bytes) + 1)
             if len(data) > int(max_bytes):
                 raise ValueError("Respuesta de texto excede tamaño máximo permitido.")

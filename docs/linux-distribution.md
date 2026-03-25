@@ -47,7 +47,7 @@ flatpak uninstall io.github.PJGV333.Chemuson
 
 Nota:
 - En el MVP actual, el update de Flatpak depende del origen remoto configurado.
-- Si solo instalas desde bundle local y sin remote persistente, el update tipico es reinstalar el bundle de una version mas nueva.
+- Si solo instalaste desde un bundle local y sin remote persistente, el mecanismo de actualizacion de Flatpak no funcionara. Descarga un nuevo archivo `.flatpak` e instalalo para actualizar.
 
 ### AppImage (portable)
 

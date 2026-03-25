@@ -162,7 +162,8 @@ def format_update_disabled_message(flatpak: bool = False, app_id: str = FLATPAK_
     """Construye mensaje cuando el chequeo interno de updates está deshabilitado."""
     if flatpak:
         return (
-            "Esta edicion Flatpak se actualiza con Flatpak, no desde Chemuson.\n\n"
+            "Esta edicion Flatpak no usa auto-update real dentro de Chemuson.\n"
+            "Se actualiza con Flatpak, no desde la propia app.\n\n"
             f"Usa:\nflatpak update {app_id}\n\n"
             "Si instalaste desde un bundle local sin un remote configurado, "
             "instala el bundle mas reciente manualmente."
@@ -1673,7 +1674,7 @@ class ChemusonWindow(QMainWindow):
                 )
             else:
                 self.statusBar().showMessage(
-                    f"No se pudo preparar actualización automática: {exc}",
+                    f"No se pudo preparar la instalación silenciosa de actualización: {exc}",
                     12000,
                 )
             return False
@@ -1732,7 +1733,7 @@ class ChemusonWindow(QMainWindow):
                 )
             else:
                 self.statusBar().showMessage(
-                    f"No se pudo preparar actualización automática: {exc}",
+                    f"No se pudo preparar el auto-update real: {exc}",
                     12000,
                 )
             return False
@@ -1758,7 +1759,7 @@ class ChemusonWindow(QMainWindow):
         if self._update_settings.mode == UpdateMode.SILENT and not interactive:
             if self._queue_windows_installer_update(candidate, show_errors=False):
                 self.statusBar().showMessage(
-                    f"Actualización {version} lista para aplicar al cerrar Chemuson.",
+                    f"Instalación silenciosa {version} lista para aplicarse al cerrar Chemuson.",
                     20000,
                 )
             return
@@ -1768,7 +1769,9 @@ class ChemusonWindow(QMainWindow):
             "Actualización disponible",
             (
                 f"Hay una nueva versión disponible ({version}).\n\n"
-                "¿Quieres descargar el instalador y aplicarlo al cerrar Chemuson?"
+                "Esta edición no usa auto-update real.\n"
+                "Chemuson descargará el instalador oficial y lo ejecutará en silencio al cerrar.\n\n"
+                "¿Quieres prepararlo ahora?"
             ),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.Yes,
@@ -1778,14 +1781,15 @@ class ChemusonWindow(QMainWindow):
         if not self._queue_windows_installer_update(candidate):
             return
         self.statusBar().showMessage(
-            f"Actualización {version} preparada. Se aplicará al cerrar Chemuson.",
+            f"Instalador {version} preparado. Se ejecutará en silencio al cerrar Chemuson.",
             20000,
         )
         if interactive:
             close_now = QMessageBox.question(
                 self,
                 "Aplicar actualización",
-                "La actualización está lista.\n¿Deseas cerrar Chemuson ahora para instalarla?",
+                "El instalador de actualización está listo.\n"
+                "¿Deseas cerrar Chemuson ahora para ejecutar la instalación silenciosa?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
@@ -1807,7 +1811,7 @@ class ChemusonWindow(QMainWindow):
         if self._update_settings.mode == UpdateMode.SILENT and not interactive:
             if self._queue_portable_binary_update(candidate, context, show_errors=False):
                 self.statusBar().showMessage(
-                    f"Actualización {version} lista para reemplazar el {target_label} al cerrar Chemuson.",
+                    f"Auto-update real {version} listo: Chemuson reemplazará el {target_label} al cerrar.",
                     20000,
                 )
             return
@@ -1817,7 +1821,9 @@ class ChemusonWindow(QMainWindow):
             "Actualización disponible",
             (
                 f"Hay una nueva versión disponible ({version}).\n\n"
-                f"¿Quieres descargarla y reemplazar el {target_label} actual al cerrar Chemuson?"
+                "Esto es auto-update real.\n"
+                f"Chemuson descargará la actualización y reemplazará el {target_label} actual al cerrar.\n\n"
+                "¿Quieres prepararla ahora?"
             ),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.Yes,
@@ -1827,14 +1833,15 @@ class ChemusonWindow(QMainWindow):
         if not self._queue_portable_binary_update(candidate, context):
             return
         self.statusBar().showMessage(
-            f"Actualización {version} preparada. Se aplicará al cerrar Chemuson.",
+            f"Auto-update real {version} preparado. Se aplicará al cerrar Chemuson.",
             20000,
         )
         if interactive:
             close_now = QMessageBox.question(
                 self,
                 "Aplicar actualización",
-                "La actualización está lista.\n¿Deseas cerrar Chemuson ahora para completarla?",
+                "El auto-update real está listo.\n"
+                "¿Deseas cerrar Chemuson ahora para completar el reemplazo?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
