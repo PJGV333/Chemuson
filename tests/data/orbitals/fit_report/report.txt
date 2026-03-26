@@ -1,0 +1,23 @@
+reference=tests/data/orbitals/reference_sheet.png (redibujo vectorial fijo basado en la referencia del usuario)
+average IoU=0.7639
+
+s_outline                IoU=1.0000 dW=0.000 dH=0.000 dAR=0.000 dC=0.00px extra=0.00% missing=0.00%
+s_shaded                 IoU=1.0000 dW=0.000 dH=0.000 dAR=0.000 dC=0.00px extra=0.00% missing=0.00%
+p_shaded                 IoU=0.7994 dW=0.000 dH=0.036 dAR=0.038 dC=0.52px extra=6.57% missing=14.81%
+p_solid                  IoU=0.8825 dW=0.000 dH=0.024 dAR=0.025 dC=0.05px extra=2.85% missing=9.23%
+d_shaded                 IoU=0.9388 dW=0.027 dH=0.026 dAR=0.001 dC=0.36px extra=4.53% missing=1.87%
+d_solid                  IoU=0.9282 dW=0.027 dH=0.026 dAR=0.001 dC=0.00px extra=5.95% missing=1.66%
+torus_outline            IoU=0.6550 dW=0.054 dH=0.091 dAR=0.034 dC=0.00px extra=20.48% missing=21.08%
+torus_shaded             IoU=0.8473 dW=0.054 dH=0.091 dAR=0.034 dC=0.61px extra=12.10% missing=5.02%
+torus_solid              IoU=0.8822 dW=0.056 dH=0.100 dAR=0.040 dC=0.00px extra=12.50% missing=0.76%
+sp3_shaded               IoU=1.0000 dW=0.000 dH=0.000 dAR=0.000 dC=0.00px extra=0.00% missing=0.00%
+sp3_solid                IoU=1.0000 dW=0.000 dH=0.000 dAR=0.000 dC=0.00px extra=0.00% missing=0.00%
+dz2_shaded               IoU=0.8695 dW=0.000 dH=0.000 dAR=0.000 dC=0.71px extra=3.40% missing=10.09%
+dz2_solid                IoU=0.7679 dW=0.065 dH=0.051 dAR=0.122 dC=0.00px extra=21.15% missing=6.97%
+sp_lobe_outline          IoU=0.0479 dW=0.133 dH=0.408 dAR=0.195 dC=18.57px extra=116.09% missing=89.66%
+sp_lobe_shaded           IoU=0.7481 dW=0.000 dH=0.269 dAR=0.212 dC=4.41px extra=26.20% missing=5.60%
+sp_lobe_solid            IoU=0.7357 dW=0.000 dH=0.284 dAR=0.221 dC=5.38px extra=29.45% missing=4.76%
+sigma_bonding_shaded     IoU=0.5050 dW=0.062 dH=0.081 dAR=0.017 dC=2.91px extra=40.14% missing=29.23%
+sigma_bonding_solid      IoU=0.4674 dW=0.062 dH=0.082 dAR=0.018 dC=2.34px extra=42.38% missing=33.46%
+pi_bonding_shaded        IoU=0.6262 dW=0.000 dH=0.048 dAR=0.050 dC=0.09px extra=17.94% missing=26.15%
+pi_bonding_solid         IoU=0.5775 dW=0.000 dH=0.048 dAR=0.050 dC=0.00px extra=22.41% missing=29.31%

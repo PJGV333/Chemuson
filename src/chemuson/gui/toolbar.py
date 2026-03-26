@@ -28,6 +28,16 @@ from chemuson.gui.icons import (
     draw_radical_charge_icon,
     draw_wavy_anchor_icon,
 )
+from chemuson.gui.orbitals import (
+    DEFAULT_ORBITAL_KIND,
+    ORBITAL_MENU_ORDER,
+    ORBITAL_PALETTE_MODEL,
+    ORBITAL_SPECS,
+    draw_orbital_icon,
+    orbital_display_name,
+    orbital_kind_from_tool_id,
+    orbital_tool_id,
+)
 from chemuson.gui.styles import TOOL_PALETTE_STYLESHEET
 
 
@@ -796,6 +806,11 @@ class SymbolPaletteToolbar(QToolBar):
         self._current_bracket_tool_id = "tool_brackets_square"
         self._current_arrow_tool_id = "tool_arrow_forward"
         self._current_symbol_tool_id = "tool_charge_plus"
+        self._orbital_meta = {
+            orbital_tool_id(kind): (draw_orbital_icon(kind), orbital_display_name(kind))
+            for kind in ORBITAL_SPECS
+        }
+        self._current_orbital_tool_id = orbital_tool_id(DEFAULT_ORBITAL_KIND)
 
         self.text_button, self.text_action = self._add_palette_button(
             draw_glyph_icon("T"), "Texto", "tool_text"
@@ -829,6 +844,17 @@ class SymbolPaletteToolbar(QToolBar):
             trigger_callback=self._emit_current_symbol_tool,
         )
         self._build_symbol_palette(self.symbol_button.menu())
+
+        self.addSeparator()
+
+        orbital_icon, orbital_tip = self._orbital_meta[self._current_orbital_tool_id]
+        self.orbital_button, self.orbital_action = self._add_palette_button(
+            orbital_icon,
+            orbital_tip,
+            "tool_orbitals",
+            trigger_callback=self._emit_current_orbital_tool,
+        )
+        self._build_orbital_palette(self.orbital_button.menu())
 
     def _add_palette_button(
         self,
@@ -939,6 +965,10 @@ class SymbolPaletteToolbar(QToolBar):
         """Emite la herramienta de símbolo actualmente activa."""
         self.tool_changed.emit(self._current_symbol_tool_id)
 
+    def _emit_current_orbital_tool(self, checked: bool = False) -> None:
+        """Emite la herramienta de orbital actualmente activa."""
+        self.tool_changed.emit(self._current_orbital_tool_id)
+
     def _select_symbol_tool(self, tool_id: str) -> None:
         """Actualiza el símbolo activo y emite el cambio."""
         icon, tooltip = self._symbol_meta()[tool_id]
@@ -948,6 +978,64 @@ class SymbolPaletteToolbar(QToolBar):
         self.symbol_button.setToolTip(tooltip)
         self.symbol_action.setChecked(True)
         self.tool_changed.emit(tool_id)
+
+    def _build_orbital_palette(self, menu: QMenu) -> None:
+        """Construye la paleta de orbitales estilo ChemDraw."""
+        container = QWidget(menu)
+        layout = QGridLayout(container)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(0)
+        icon_size = ORBITAL_PALETTE_MODEL.icon_size
+
+        for row in range(ORBITAL_PALETTE_MODEL.rows):
+            for column in range(ORBITAL_PALETTE_MODEL.columns):
+                kind = ORBITAL_PALETTE_MODEL.kind_at(row, column)
+                button = QToolButton(container)
+                button.setFixedSize(ORBITAL_PALETTE_MODEL.cell_width, ORBITAL_PALETTE_MODEL.cell_height)
+                button.setIconSize(icon_size)
+                button.setAutoRaise(False)
+                button.setStyleSheet(
+                    "QToolButton {"
+                    "border: 1px solid #d9d9d9;"
+                    "background: #ffffff;"
+                    "padding: 0px;"
+                    "}"
+                    "QToolButton:hover { background: #eef3ff; }"
+                    "QToolButton:pressed { background: #dfe9ff; }"
+                )
+                if kind:
+                    tool_id = orbital_tool_id(kind)
+                    icon, tooltip = self._orbital_meta[tool_id]
+                    button.setIcon(icon)
+                    button.setToolTip(tooltip)
+                    button.clicked.connect(
+                        lambda checked=False, tid=tool_id, m=menu: self._trigger_palette_action(
+                            lambda: self._select_orbital_tool(tid),
+                            m,
+                        )
+                    )
+                else:
+                    button.setEnabled(False)
+                layout.addWidget(button, row, column)
+
+        action = QWidgetAction(menu)
+        action.setDefaultWidget(container)
+        menu.addAction(action)
+
+    def _select_orbital_tool(self, tool_id: str) -> None:
+        """Actualiza el orbital activo y emite el cambio."""
+        icon, tooltip = self._orbital_meta[tool_id]
+        self._current_orbital_tool_id = tool_id
+        self.orbital_action.setIcon(icon)
+        self.orbital_action.setToolTip(tooltip)
+        self.orbital_button.setToolTip(tooltip)
+        self.orbital_action.setChecked(True)
+        self.tool_changed.emit(tool_id)
+
+    def current_orbital_kind(self) -> str:
+        """Devuelve el kind de orbital seleccionado en la paleta."""
+        kind = orbital_kind_from_tool_id(self._current_orbital_tool_id)
+        return kind or DEFAULT_ORBITAL_KIND
 
     def set_text_menu(self, actions: list[QAction], color_actions: list[QAction]) -> None:
         """Configura el submenú de herramientas de texto."""

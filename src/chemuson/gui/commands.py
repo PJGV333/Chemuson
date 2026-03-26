@@ -1383,6 +1383,31 @@ class TransformImageItemsCommand(QUndoCommand):
         self._view._update_selection_overlay()
 
 
+class TransformOrbitalItemsCommand(QUndoCommand):
+    """Comando para mover/escalar/rotar orbitales por anchors."""
+
+    def __init__(self, view, before: dict, after: dict, text: str = "Transform orbitals") -> None:
+        super().__init__(text)
+        self._view = view
+        self._before = before
+        self._after = after
+
+    @staticmethod
+    def _apply_snapshot(item, snapshot) -> None:
+        anchor0, anchor1 = snapshot
+        item.set_anchors(anchor0, anchor1)
+
+    def redo(self) -> None:
+        for item, snapshot in self._after.items():
+            self._apply_snapshot(item, snapshot)
+        self._view._update_selection_overlay()
+
+    def undo(self) -> None:
+        for item, snapshot in self._before.items():
+            self._apply_snapshot(item, snapshot)
+        self._view._update_selection_overlay()
+
+
 class ScaleTextItemsCommand(QUndoCommand):
     """Comando para escalar textos libres conservando formato."""
 
@@ -1524,6 +1549,7 @@ class DeleteSelectionCommand(QUndoCommand):
         text_items: Iterable = (),
         wavy_items: Iterable = (),
         image_items: Iterable = (),
+        orbital_items: Iterable = (),
     ) -> None:
         """Inicializa el comando de borrado de selección."""
         super().__init__("Delete selection")
@@ -1536,6 +1562,7 @@ class DeleteSelectionCommand(QUndoCommand):
         self._text_items = list(text_items)
         self._wavy_items = list(wavy_items)
         self._image_items = list(image_items)
+        self._orbital_items = list(orbital_items)
         self._removed_atoms = []
         self._removed_bonds = []
         self._removed_arrows = []
@@ -1543,6 +1570,7 @@ class DeleteSelectionCommand(QUndoCommand):
         self._removed_texts = []
         self._removed_wavy = []
         self._removed_images = []
+        self._removed_orbitals = []
 
     def _refresh_view_after_structure_change(self) -> None:
         """Sincroniza overlays derivados tras borrar/restaurar estructura."""
@@ -1617,6 +1645,8 @@ class DeleteSelectionCommand(QUndoCommand):
                         float(item.rotation()),
                     )
                 )
+            for item in self._orbital_items:
+                self._removed_orbitals.append((item, item.anchor0(), item.anchor1()))
 
         for bond in list(self._removed_bonds):
             if bond.id in self._model.bonds:
@@ -1636,6 +1666,8 @@ class DeleteSelectionCommand(QUndoCommand):
             self._view.remove_wavy_anchor_item(item)
         for item, _pos, _width, _height, _rotation in self._removed_images:
             self._view.remove_image_item(item)
+        for item, _anchor0, _anchor1 in self._removed_orbitals:
+            self._view.remove_orbital_item(item)
         self._refresh_view_after_structure_change()
 
     def undo(self) -> None:
@@ -1694,6 +1726,9 @@ class DeleteSelectionCommand(QUndoCommand):
             item.set_display_rect(QRectF(pos.x(), pos.y(), width, height))
             item.setRotation(rotation)
             self._view.readd_image_item(item)
+        for item, anchor0, anchor1 in self._removed_orbitals:
+            item.set_anchors(anchor0, anchor1)
+            self._view.readd_orbital_item(item)
         self._refresh_view_after_structure_change()
 
 
@@ -1833,6 +1868,23 @@ class AddImageItemCommand(QUndoCommand):
     def undo(self) -> None:
         if self._item is not None:
             self._view.remove_image_item(self._item)
+
+
+class AddOrbitalItemCommand(QUndoCommand):
+    """Comando para añadir un orbital vectorial persistente."""
+
+    def __init__(self, view, item) -> None:
+        super().__init__("Add orbital")
+        self._view = view
+        self._item = item
+
+    def redo(self) -> None:
+        if self._item is not None:
+            self._view.readd_orbital_item(self._item)
+
+    def undo(self) -> None:
+        if self._item is not None:
+            self._view.remove_orbital_item(self._item)
 
 
 class AddWavyAnchorCommand(QUndoCommand):

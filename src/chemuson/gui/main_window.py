@@ -47,6 +47,7 @@ from chemuson.gui.canvas import (
     ChemusonCanvas,
 )
 from chemuson.gui.periodic_table import PeriodicTableDialog
+from chemuson.gui.orbitals import ORBITAL_MENU_ORDER, orbital_display_name, orbital_tool_id
 from chemuson.gui.toolbar import ChemusonToolbar, SymbolPaletteToolbar
 from chemuson.gui.styles import MAIN_STYLESHEET, TOOL_PALETTE_STYLESHEET
 from chemuson.gui.icons import draw_generic_icon
@@ -1285,6 +1286,7 @@ class ChemusonWindow(QMainWindow):
         canvas.state.active_ring_anomeric = ring_spec.get("anomeric")
 
         canvas.state.default_element = self.toolbar.current_element()
+        canvas.state.active_orbital_kind = self.symbols_toolbar.current_orbital_kind()
         canvas.set_current_tool(self._current_tool_id)
 
     def _connect_undo_redo(self) -> None:
@@ -4385,6 +4387,7 @@ class ChemusonWindow(QMainWindow):
     def _update_status(self, tool_id: str) -> None:
         """Update status bar with current tool."""
         ring_label = f"Anillo {self.canvas.state.active_ring_size}"
+        orbital_label = orbital_display_name(self.canvas.state.active_orbital_kind)
         if self.canvas.state.active_ring_template:
             template_name = {
                 "haworth": "Haworth",
@@ -4406,6 +4409,7 @@ class ChemusonWindow(QMainWindow):
             "tool_rotate_3d_precise": "Rotación 3D precisa",
             "tool_ring": ring_label,
             "tool_atom": f"Elemento {self.canvas.state.default_element}",
+            "tool_orbital": orbital_label,
             "tool_coordination_center": "Centro de coordinación (esfera)",
             "tool_chain": "Cadena",
             "tool_arrow_forward": "Flecha directa",
@@ -4445,6 +4449,12 @@ class ChemusonWindow(QMainWindow):
             "tool_symbol_partial_plus": "Carga parcial (+)",
             "tool_symbol_partial_minus": "Carga parcial (-)",
         }
+        tool_names.update(
+            {
+                orbital_tool_id(kind): orbital_display_name(kind)
+                for kind in ORBITAL_MENU_ORDER
+            }
+        )
         name = tool_names.get(tool_id, tool_id)
         self.statusBar().showMessage(f"Herramienta: {name}")
 

@@ -70,11 +70,17 @@ from chemuson.gui.items import (
     PreviewChainLabelItem,
     WavyAnchorItem,
     TextAnnotationItem,
+    OrbitalAnnotationItem,
     ImageAnnotationItem,
     ABBREVIATION_LABELS,
 )
 from chemuson.gui.style import CHEMDOODLE_LIKE, DrawingStyle
 from chemuson.gui.numbering import NumberedStructure, compute_atom_numbers, compute_structure_numbers
+from chemuson.gui.orbitals import (
+    DEFAULT_ORBITAL_KIND,
+    orbital_canvas_extent,
+    orbital_kind_from_tool_id,
+)
 from chemuson.gui.templates import build_haworth_template, build_chair_template
 from chemuson.gui.geom import (
     angle_deg,
@@ -104,6 +110,7 @@ from chemuson.gui.commands import (
     AddBracketCommand,
     AddTextItemCommand,
     AddImageItemCommand,
+    AddOrbitalItemCommand,
     AddWavyAnchorCommand,
     ChangeAtomCommand,
     ChangeBondCommand,
@@ -124,6 +131,7 @@ from chemuson.gui.commands import (
     MoveArrowItemsCommand,
     MoveBracketItemsCommand,
     TransformImageItemsCommand,
+    TransformOrbitalItemsCommand,
     ScaleTextItemsCommand,
     FormatTextItemsCommand,
     ScaleArrowItemsCommand,
@@ -422,6 +430,7 @@ class ChemusonCanvas(QGraphicsView):
         self._bracket_drag_start: Optional[QPointF] = None
         self._bracket_preview: Optional[QGraphicsRectItem] = None
         self.bracket_items: list[BracketItem] = []
+        self.orbital_items: list[OrbitalAnnotationItem] = []
         self.image_items: list[ImageAnnotationItem] = []
         
         # Text tool state
@@ -442,6 +451,7 @@ class ChemusonCanvas(QGraphicsView):
         self._drag_start_text_positions: Dict[TextAnnotationItem, Tuple[QPointF, float]] = {}
         self._drag_start_arrow_positions: Dict[ArrowItem, Tuple[QPointF, QPointF]] = {}
         self._drag_start_bracket_rects: Dict[BracketItem, QRectF] = {}
+        self._drag_start_orbital_snapshots: Dict[OrbitalAnnotationItem, Tuple[QPointF, QPointF]] = {}
         self._drag_start_image_snapshots: Dict[ImageAnnotationItem, Tuple[QPointF, float, float, float]] = {}
         self._drag_start_selection_bbox: Optional[QRectF] = None
         self._drag_affected_bond_ids: set[int] = set()
@@ -478,6 +488,7 @@ class ChemusonCanvas(QGraphicsView):
         self._rotation_start_angle: Optional[float] = None
         self._rotation_start_positions: Dict[int, Tuple[float, float]] = {}
         self._rotation_start_arrow_positions: Dict[ArrowItem, Tuple[QPointF, QPointF]] = {}
+        self._rotation_start_orbital_snapshots: Dict[OrbitalAnnotationItem, Tuple[QPointF, QPointF]] = {}
         self._rotation_start_image_snapshots: Dict[ImageAnnotationItem, Tuple[QPointF, float, float, float]] = {}
         self._is_rotating_3d = False
         self._rotation_3d_start_view_pos: Optional[QPoint] = None
@@ -502,6 +513,7 @@ class ChemusonCanvas(QGraphicsView):
         self._scale_start_arrow_strokes: Dict[ArrowItem, Optional[float]] = {}
         self._scale_start_bracket_rects: Dict[BracketItem, QRectF] = {}
         self._scale_start_bracket_styles: Dict[BracketItem, Tuple[float, Optional[float]]] = {}
+        self._scale_start_orbital_snapshots: Dict[OrbitalAnnotationItem, Tuple[QPointF, QPointF]] = {}
         self._scale_start_image_snapshots: Dict[ImageAnnotationItem, Tuple[QPointF, float, float, float]] = {}
         self._scale_start_atom_label_scales: Dict[int, Optional[float]] = {}
         self._scale_start_atom_sphere_radii: Dict[int, Tuple[Optional[float], float]] = {}
@@ -1140,6 +1152,11 @@ class ChemusonCanvas(QGraphicsView):
             }
             self.state.active_bracket_type = mapping.get(bracket_key, "[]")
             tool_id = "tool_brackets"
+        elif tool_id.startswith("tool_orbital_"):
+            orbital_kind = orbital_kind_from_tool_id(tool_id)
+            if orbital_kind:
+                self.state.active_orbital_kind = orbital_kind
+            tool_id = "tool_orbital"
 
         self.current_tool = tool_id
         self.state.active_tool = tool_id
@@ -1444,7 +1461,7 @@ class ChemusonCanvas(QGraphicsView):
             return
         scene_pos = self.mapToScene(event.pos())
         self._last_scene_pos = scene_pos
-        clicked_item = self._selected_image_item_at(scene_pos) or self._resolve_click_item(scene_pos)
+        clicked_item = self._selected_annotation_item_at(scene_pos) or self._resolve_click_item(scene_pos)
         active_text_item = self._active_text_edit_item()
         if event.button() == Qt.MouseButton.LeftButton and active_text_item is not None:
             if clicked_item is active_text_item:
@@ -1473,7 +1490,7 @@ class ChemusonCanvas(QGraphicsView):
         if event.button() == Qt.MouseButton.RightButton:
             if isinstance(
                 clicked_item,
-                (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, ImageAnnotationItem),
+                (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, OrbitalAnnotationItem, ImageAnnotationItem),
             ):
                 if not (event.modifiers() & (Qt.KeyboardModifier.ShiftModifier | Qt.KeyboardModifier.ControlModifier)):
                     self.scene.clearSelection()
@@ -1490,7 +1507,7 @@ class ChemusonCanvas(QGraphicsView):
             super().mousePressEvent(event)
             return
 
-        if self._maybe_begin_selected_image_transform(scene_pos, event):
+        if self._maybe_begin_selected_annotation_transform(scene_pos, event):
             return
 
         if self.current_tool == "tool_none":
@@ -1587,7 +1604,7 @@ class ChemusonCanvas(QGraphicsView):
                     & Qt.TextInteractionFlag.TextEditorInteraction
                 ):
                     return
-                if isinstance(clicked_item, (AtomItem, TextAnnotationItem, ArrowItem, BracketItem, ImageAnnotationItem)):
+                if isinstance(clicked_item, (AtomItem, TextAnnotationItem, ArrowItem, BracketItem, OrbitalAnnotationItem, ImageAnnotationItem)):
                     self._begin_drag(scene_pos)
                     self._accept_input_event(event)
             return
@@ -1739,6 +1756,15 @@ class ChemusonCanvas(QGraphicsView):
                 symbol_spec.get("anchor", True),
                 symbol_spec.get("rotate", False),
             )
+            return
+
+        if self.current_tool == "tool_orbital":
+            target_pos = scene_pos
+            if clicked_atom_id is not None:
+                atom = self.model.get_atom(clicked_atom_id)
+                if atom is not None:
+                    target_pos = QPointF(atom.x, atom.y)
+            self._insert_orbital_item(target_pos)
             return
 
         if self.current_tool == "tool_atom":
@@ -2000,6 +2026,10 @@ class ChemusonCanvas(QGraphicsView):
                     for item, rect in self._drag_start_bracket_rects.items():
                         item.set_rect(rect.translated(delta))
 
+                if hasattr(self, "_drag_start_orbital_snapshots"):
+                    for item, (anchor0, anchor1) in self._drag_start_orbital_snapshots.items():
+                        item.set_anchors(anchor0 + delta, anchor1 + delta)
+
                 if hasattr(self, "_drag_start_image_snapshots"):
                     for item, (pos, width, height, rotation) in self._drag_start_image_snapshots.items():
                         item.set_display_rect(
@@ -2091,6 +2121,7 @@ class ChemusonCanvas(QGraphicsView):
             text_before = dict(getattr(self, "_drag_start_text_positions", {}))
             arrow_before = dict(getattr(self, "_drag_start_arrow_positions", {}))
             bracket_before = dict(getattr(self, "_drag_start_bracket_rects", {}))
+            orbital_before = dict(getattr(self, "_drag_start_orbital_snapshots", {}))
             image_before = dict(getattr(self, "_drag_start_image_snapshots", {}))
             atom_after = (
                 {
@@ -2125,6 +2156,14 @@ class ChemusonCanvas(QGraphicsView):
                 if had_moved and bracket_before
                 else {}
             )
+            orbital_after = (
+                {
+                    item: self._orbital_transform_snapshot(item)
+                    for item in orbital_before.keys()
+                }
+                if had_moved and orbital_before
+                else {}
+            )
             image_after = (
                 {
                     item: self._image_transform_snapshot(item)
@@ -2141,6 +2180,7 @@ class ChemusonCanvas(QGraphicsView):
             self._drag_start_text_positions = {}
             self._drag_start_arrow_positions = {}
             self._drag_start_bracket_rects = {}
+            self._drag_start_orbital_snapshots = {}
             self._drag_start_image_snapshots = {}
             self._drag_start_selection_bbox = None
             self._drag_affected_bond_ids = set()
@@ -2156,8 +2196,9 @@ class ChemusonCanvas(QGraphicsView):
                 move_text = bool(text_before and text_after)
                 move_arrows = bool(arrow_before and arrow_after)
                 move_brackets = bool(bracket_before and bracket_after)
+                move_orbitals = bool(orbital_before and orbital_after)
                 move_images = bool(image_before and image_after)
-                move_count = sum([move_atoms, move_text, move_arrows, move_brackets, move_images])
+                move_count = sum([move_atoms, move_text, move_arrows, move_brackets, move_orbitals, move_images])
 
                 if move_count > 1:
                     self.undo_stack.beginMacro("Move selection")
@@ -2184,6 +2225,11 @@ class ChemusonCanvas(QGraphicsView):
                 if move_brackets:
                     self.undo_stack.push(MoveBracketItemsCommand(self, bracket_before, bracket_after))
 
+                if move_orbitals:
+                    self.undo_stack.push(
+                        TransformOrbitalItemsCommand(self, orbital_before, orbital_after, "Move orbitals")
+                    )
+
                 if move_images:
                     self.undo_stack.push(
                         TransformImageItemsCommand(self, image_before, image_after, "Move images")
@@ -2204,6 +2250,7 @@ class ChemusonCanvas(QGraphicsView):
         arrow_items: Iterable = (),
         bracket_items: Iterable = (),
         text_items: Iterable = (),
+        orbital_items: Iterable = (),
         wavy_items: Iterable = (),
         image_items: Iterable = (),
     ) -> None:
@@ -2245,6 +2292,7 @@ class ChemusonCanvas(QGraphicsView):
             arrow_items=arrow_items,
             bracket_items=bracket_items,
             text_items=extra_text_items,
+            orbital_items=orbital_items,
             wavy_items=extra_wavy_items,
             image_items=image_items,
         )
@@ -2266,7 +2314,7 @@ class ChemusonCanvas(QGraphicsView):
         for item in self.scene.items(scene_pos):
             if isinstance(item, AtomItem) and self._is_disposable_orphan_atom(item.atom_id):
                 continue
-            if isinstance(item, (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, ImageAnnotationItem, WavyAnchorItem)):
+            if isinstance(item, (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, OrbitalAnnotationItem, ImageAnnotationItem, WavyAnchorItem)):
                 return item
             # If we clicked a label/text child of an atom, return the atom.
             if isinstance(item, QGraphicsTextItem):
@@ -2282,7 +2330,7 @@ class ChemusonCanvas(QGraphicsView):
         item = self._get_item_at(scene_pos)
         if isinstance(
             item,
-            (TextAnnotationItem, ImageAnnotationItem, ArrowItem, BracketItem, WavyAnchorItem),
+            (TextAnnotationItem, OrbitalAnnotationItem, ImageAnnotationItem, ArrowItem, BracketItem, WavyAnchorItem),
         ):
             return item
 
@@ -2299,16 +2347,16 @@ class ChemusonCanvas(QGraphicsView):
             return self.bond_items.get(bond_id)
         return None
 
-    def _selected_image_item_at(self, scene_pos: QPointF) -> Optional[ImageAnnotationItem]:
-        """Prioriza una imagen ya seleccionada si el puntero cae sobre ella.
+    def _selected_annotation_item_at(self, scene_pos: QPointF) -> Optional[QGraphicsItem]:
+        """Prioriza un orbital/imagen ya seleccionado si el puntero cae sobre él.
 
         Esto evita que objetos químicos superpuestos secuestren el gesto de
         mover/redimensionar/rotar cuando la intención del usuario es seguir
-        manipulando la imagen activa.
+        manipulando una anotación activa.
         """
-        best_item: Optional[ImageAnnotationItem] = None
+        best_item: Optional[QGraphicsItem] = None
         best_z = float("-inf")
-        for item in self._selected_image_items():
+        for item in [*self._selected_orbital_items(), *self._selected_image_items()]:
             if item.scene() is not self.scene:
                 continue
             try:
@@ -2327,10 +2375,9 @@ class ChemusonCanvas(QGraphicsView):
                 best_z = z_value
         return best_item
 
-    def _maybe_begin_selected_image_transform(self, scene_pos: QPointF, event) -> bool:
-        """Permite transformar una imagen seleccionada incluso fuera de tool_select."""
-        selected_images = self._selected_image_items()
-        if not selected_images:
+    def _maybe_begin_selected_annotation_transform(self, scene_pos: QPointF, event) -> bool:
+        """Permite transformar una anotación seleccionada incluso fuera de tool_select."""
+        if not self._selected_orbital_items() and not self._selected_image_items():
             return False
 
         handle_hit = self._selection_handle_hit_kind(scene_pos)
@@ -2349,8 +2396,8 @@ class ChemusonCanvas(QGraphicsView):
             self._accept_input_event(event)
             return True
 
-        clicked_selected_image = self._selected_image_item_at(scene_pos)
-        if clicked_selected_image is None:
+        clicked_selected_annotation = self._selected_annotation_item_at(scene_pos)
+        if clicked_selected_annotation is None:
             return False
 
         selection_tools = {"tool_select", "tool_select_lasso", "tool_rotate_3d_precise"}
@@ -2368,6 +2415,7 @@ class ChemusonCanvas(QGraphicsView):
             "text_items": list(self._selected_text_items()),
             "arrow_items": list(self._selected_arrow_items()),
             "bracket_items": list(self._selected_bracket_items()),
+            "orbital_items": list(self._selected_orbital_items()),
             "image_items": list(self._selected_image_items()),
             "wavy_items": [
                 item for item in self.scene.selectedItems() if isinstance(item, WavyAnchorItem)
@@ -2387,7 +2435,7 @@ class ChemusonCanvas(QGraphicsView):
                 item = self.bond_items.get(bond_id)
                 if item is not None and item.scene() is self.scene:
                     item.setSelected(True)
-            for key in ("text_items", "arrow_items", "bracket_items", "image_items", "wavy_items"):
+            for key in ("text_items", "arrow_items", "bracket_items", "orbital_items", "image_items", "wavy_items"):
                 for item in snapshot.get(key, ()):
                     try:
                         if item is not None and item.scene() is self.scene:
@@ -3361,6 +3409,9 @@ class ChemusonCanvas(QGraphicsView):
             has_selected_text = any(
                 isinstance(item, TextAnnotationItem) for item in self.scene.selectedItems()
             )
+            has_selected_orbitals = any(
+                isinstance(item, OrbitalAnnotationItem) for item in self.scene.selectedItems()
+            )
             has_selected_images = any(
                 isinstance(item, ImageAnnotationItem) for item in self.scene.selectedItems()
             )
@@ -3370,6 +3421,7 @@ class ChemusonCanvas(QGraphicsView):
                 or has_selected_arrows
                 or has_selected_brackets
                 or has_selected_text
+                or has_selected_orbitals
                 or has_selected_images
             ):
                 self.delete_selection()
@@ -3518,8 +3570,9 @@ class ChemusonCanvas(QGraphicsView):
         selected_text_items = self._selected_text_items()
         selected_arrows = self._selected_arrow_items()
         selected_brackets = self._selected_bracket_items()
+        selected_orbitals = self._selected_orbital_items()
         selected_images = self._selected_image_items()
-        if not selected_atom_ids and not selected_text_items and not selected_arrows and not selected_brackets and not selected_images:
+        if not selected_atom_ids and not selected_text_items and not selected_arrows and not selected_brackets and not selected_orbitals and not selected_images:
             return False
 
         step = 1.0
@@ -3570,6 +3623,14 @@ class ChemusonCanvas(QGraphicsView):
             after = {item: rect.translated(dx, dy) for item, rect in before.items()}
             self.undo_stack.push(MoveBracketItemsCommand(self, before, after))
 
+        if selected_orbitals:
+            before = {item: self._orbital_transform_snapshot(item) for item in selected_orbitals}
+            after = {
+                item: (anchor0 + QPointF(dx, dy), anchor1 + QPointF(dx, dy))
+                for item, (anchor0, anchor1) in before.items()
+            }
+            self.undo_stack.push(TransformOrbitalItemsCommand(self, before, after, "Move orbitals"))
+
         if selected_images:
             before = {item: self._image_transform_snapshot(item) for item in selected_images}
             after = {
@@ -3594,7 +3655,7 @@ class ChemusonCanvas(QGraphicsView):
         for item in self.scene.items():
             if isinstance(
                 item,
-                (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, ImageAnnotationItem, WavyAnchorItem),
+                (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, OrbitalAnnotationItem, ImageAnnotationItem, WavyAnchorItem),
             ) and item.isVisible():
                 item.setSelected(True)
         self._sync_selection_from_scene()
@@ -3906,6 +3967,7 @@ class ChemusonCanvas(QGraphicsView):
             "annotations": {
                 "arrows": [],
                 "brackets": [],
+                "orbitals": [],
                 "images": [],
                 "text_items": [],
                 "wavy_anchors": []
@@ -3963,6 +4025,16 @@ class ChemusonCanvas(QGraphicsView):
                     "mime_type": item.mime_type(),
                     "data_b64": base64.b64encode(item.data_bytes()).decode("ascii"),
                     "source_name": item.source_name(),
+                })
+            elif isinstance(item, OrbitalAnnotationItem):
+                anchor0 = item.anchor0()
+                anchor1 = item.anchor1()
+                data["annotations"]["orbitals"].append({
+                    "kind": item.kind(),
+                    "anchor0": {"x": anchor0.x(), "y": anchor0.y()},
+                    "anchor1": {"x": anchor1.x(), "y": anchor1.y()},
+                    "stroke_shaded_lobes": item.stroke_shaded_lobes(),
+                    "z": item.zValue(),
                 })
             elif isinstance(item, WavyAnchorItem):
                 anchor_id = item.data(WAVY_ANCHOR_ROLE)
@@ -4099,6 +4171,21 @@ class ChemusonCanvas(QGraphicsView):
             item.setZValue(float(img_d.get("z", 8.0)))
             self.readd_image_item(item)
 
+        for orbital_d in annotations.get("orbitals", []):
+            try:
+                anchor0_d = orbital_d.get("anchor0", {})
+                anchor1_d = orbital_d.get("anchor1", {})
+                item = OrbitalAnnotationItem(
+                    orbital_d.get("kind", DEFAULT_ORBITAL_KIND),
+                    QPointF(float(anchor0_d.get("x", 0.0)), float(anchor0_d.get("y", 0.0))),
+                    QPointF(float(anchor1_d.get("x", 0.0)), float(anchor1_d.get("y", 0.0))),
+                    stroke_shaded_lobes=orbital_d.get("stroke_shaded_lobes"),
+                )
+            except Exception:
+                continue
+            item.setZValue(float(orbital_d.get("z", 44.0)))
+            self.readd_orbital_item(item)
+
         for anchor_d in annotations.get("wavy_anchors", []):
             anchor_id = anchor_d.get("anchor_id")
             if anchor_id is None or anchor_id not in self.model.atoms:
@@ -4199,6 +4286,7 @@ class ChemusonCanvas(QGraphicsView):
         self.aromatic_circles.clear()
         self.arrow_items.clear()
         self.bracket_items.clear()
+        self.orbital_items.clear()
         self.image_items.clear()
         self._electron_dots.clear()
         self._implicit_h_overlays.clear()
@@ -4385,6 +4473,13 @@ class ChemusonCanvas(QGraphicsView):
         if item not in self.image_items:
             self.image_items.append(item)
 
+    def add_orbital_item(self, item: OrbitalAnnotationItem) -> None:
+        """Añade un orbital vectorial persistente al lienzo."""
+        if item.scene() is not self.scene:
+            self.scene.addItem(item)
+        if item not in self.orbital_items:
+            self.orbital_items.append(item)
+
     def add_wavy_anchor_item(self, item: WavyAnchorItem) -> None:
         """Añade wavy anchor item.
 
@@ -4423,6 +4518,13 @@ class ChemusonCanvas(QGraphicsView):
         """Elimina una imagen anotada del lienzo."""
         if item in self.image_items:
             self.image_items.remove(item)
+        if item.scene() is self.scene:
+            self.scene.removeItem(item)
+
+    def remove_orbital_item(self, item: OrbitalAnnotationItem) -> None:
+        """Elimina un orbital persistente del lienzo."""
+        if item in self.orbital_items:
+            self.orbital_items.remove(item)
         if item.scene() is self.scene:
             self.scene.removeItem(item)
 
@@ -4468,6 +4570,13 @@ class ChemusonCanvas(QGraphicsView):
         if item not in self.image_items:
             self.image_items.append(item)
 
+    def readd_orbital_item(self, item: OrbitalAnnotationItem) -> None:
+        """Reintroduce un orbital persistente en el lienzo."""
+        if item.scene() is not self.scene:
+            self.scene.addItem(item)
+        if item not in self.orbital_items:
+            self.orbital_items.append(item)
+
     def readd_wavy_anchor_item(self, item: WavyAnchorItem) -> None:
         """Método auxiliar para readd wavy anchor item.
 
@@ -4503,6 +4612,9 @@ class ChemusonCanvas(QGraphicsView):
         selected_text_items = [
             item for item in self.scene.selectedItems() if isinstance(item, TextAnnotationItem)
         ]
+        selected_orbitals = [
+            item for item in self.scene.selectedItems() if isinstance(item, OrbitalAnnotationItem)
+        ]
         selected_wavy = [
             item for item in self.scene.selectedItems() if isinstance(item, WavyAnchorItem)
         ]
@@ -4515,6 +4627,7 @@ class ChemusonCanvas(QGraphicsView):
             and not selected_arrows
             and not selected_brackets
             and not selected_text_items
+            and not selected_orbitals
             and not selected_wavy
             and not selected_images
         ):
@@ -4525,6 +4638,7 @@ class ChemusonCanvas(QGraphicsView):
             arrow_items=selected_arrows,
             bracket_items=selected_brackets,
             text_items=selected_text_items,
+            orbital_items=selected_orbitals,
             wavy_items=selected_wavy,
             image_items=selected_images,
         )
@@ -4662,9 +4776,10 @@ class ChemusonCanvas(QGraphicsView):
         arrows = self._selected_arrow_items()
         brackets = self._selected_bracket_items()
         texts = self._selected_text_items()
+        orbitals = self._selected_orbital_items()
         images = self._selected_image_items()
 
-        if not atom_ids and not bonds and not arrows and not brackets and not texts and not images:
+        if not atom_ids and not bonds and not arrows and not brackets and not texts and not orbitals and not images:
             return None
 
         bbox = self._selected_items_bbox()
@@ -4767,6 +4882,20 @@ class ChemusonCanvas(QGraphicsView):
                 }
             )
 
+        orbitals_payload = []
+        for item in orbitals:
+            anchor0 = item.anchor0()
+            anchor1 = item.anchor1()
+            orbitals_payload.append(
+                {
+                    "kind": item.kind(),
+                    "anchor0": [anchor0.x() - left, anchor0.y() - top],
+                    "anchor1": [anchor1.x() - left, anchor1.y() - top],
+                    "stroke_shaded_lobes": item.stroke_shaded_lobes(),
+                    "z": item.zValue(),
+                }
+            )
+
         images_payload = []
         for item in images:
             rect = item.display_rect()
@@ -4790,6 +4919,7 @@ class ChemusonCanvas(QGraphicsView):
             "arrows": arrows_payload,
             "brackets": brackets_payload,
             "texts": texts_payload,
+            "orbitals": orbitals_payload,
             "images": images_payload,
         }
 
@@ -4810,8 +4940,9 @@ class ChemusonCanvas(QGraphicsView):
         arrows = payload.get("arrows", [])
         brackets = payload.get("brackets", [])
         texts = payload.get("texts", [])
+        orbitals = payload.get("orbitals", [])
         images = payload.get("images", [])
-        if not atoms and not bonds and not arrows and not brackets and not texts and not images:
+        if not atoms and not bonds and not arrows and not brackets and not texts and not orbitals and not images:
             return
 
         target = self._last_scene_pos
@@ -4840,7 +4971,7 @@ class ChemusonCanvas(QGraphicsView):
                 ring_map[ring_id] = self.allocate_ring_id()
             return ring_map[ring_id]
 
-        has_undo_items = bool(atoms or bonds or arrows or brackets or texts or images)
+        has_undo_items = bool(atoms or bonds or arrows or brackets or texts or orbitals or images)
         self.begin_validation_batch()
         if has_undo_items:
             self.undo_stack.beginMacro("Paste selection")
@@ -5026,6 +5157,22 @@ class ChemusonCanvas(QGraphicsView):
                 else:
                     self.scene.addItem(text_item)
                 inserted_items.append(text_item)
+
+            for orbital_d in orbitals:
+                anchor0_vals = orbital_d.get("anchor0", [0.0, 0.0])
+                anchor1_vals = orbital_d.get("anchor1", [0.0, -20.0])
+                item = OrbitalAnnotationItem(
+                    orbital_d.get("kind", DEFAULT_ORBITAL_KIND),
+                    QPointF(float(anchor0_vals[0]) + dx, float(anchor0_vals[1]) + dy),
+                    QPointF(float(anchor1_vals[0]) + dx, float(anchor1_vals[1]) + dy),
+                    stroke_shaded_lobes=orbital_d.get("stroke_shaded_lobes"),
+                )
+                item.setZValue(float(orbital_d.get("z", 44.0)))
+                if has_undo_items:
+                    self.undo_stack.push(AddOrbitalItemCommand(self, item))
+                else:
+                    self.readd_orbital_item(item)
+                inserted_items.append(item)
 
             for idx, img_d in enumerate(images):
                 raw_b64 = img_d.get("data_b64")
@@ -5382,7 +5529,7 @@ class ChemusonCanvas(QGraphicsView):
                     continue
                 extend(item.sceneBoundingRect())
             for item in self.scene.selectedItems():
-                if isinstance(item, (ArrowItem, BracketItem, TextAnnotationItem, ImageAnnotationItem)):
+                if isinstance(item, (ArrowItem, BracketItem, TextAnnotationItem, OrbitalAnnotationItem, ImageAnnotationItem)):
                     extend(item.sceneBoundingRect())
         else:
             for atom_id in self.atom_items.keys():
@@ -5403,6 +5550,11 @@ class ChemusonCanvas(QGraphicsView):
                 if item.isVisible():
                     extend(item.sceneBoundingRect())
             for item in self.bracket_items:
+                if item.scene() is not self.scene:
+                    continue
+                if item.isVisible():
+                    extend(item.sceneBoundingRect())
+            for item in self.orbital_items:
                 if item.scene() is not self.scene:
                     continue
                 if item.isVisible():
@@ -6170,6 +6322,20 @@ class ChemusonCanvas(QGraphicsView):
             self._refresh_scene_after_image_insert()
             return True
         return False
+
+    def _insert_orbital_item(self, scene_pos: QPointF, kind: str | None = None) -> Optional[OrbitalAnnotationItem]:
+        """Inserta un orbital vectorial persistente modelado por dos anchors."""
+        orbital_kind = kind or getattr(self.state, "active_orbital_kind", DEFAULT_ORBITAL_KIND)
+        extent = orbital_canvas_extent(orbital_kind, self.state.bond_length)
+        item = OrbitalAnnotationItem(
+            orbital_kind,
+            QPointF(scene_pos),
+            QPointF(scene_pos.x(), scene_pos.y() - extent),
+        )
+        self.undo_stack.push(AddOrbitalItemCommand(self, item))
+        self._select_inserted_items(items=[item])
+        self._refresh_scene_after_image_insert()
+        return item
 
     def add_atom_item(self, atom) -> None:
         """Añade atom item.
@@ -9682,7 +9848,7 @@ class ChemusonCanvas(QGraphicsView):
                 for item in self.scene.items(path)
                 if isinstance(
                     item,
-                    (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, ImageAnnotationItem),
+                    (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, OrbitalAnnotationItem, ImageAnnotationItem),
                 )
             ]
             items = [
@@ -9697,7 +9863,7 @@ class ChemusonCanvas(QGraphicsView):
                 for item in self.scene.items(rect)
                 if isinstance(
                     item,
-                    (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, ImageAnnotationItem),
+                    (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, OrbitalAnnotationItem, ImageAnnotationItem),
                 )
             ]
             items = [
@@ -10225,7 +10391,7 @@ class ChemusonCanvas(QGraphicsView):
             self.state.selected_atoms
             or self.state.selected_bonds
             or self._selected_text_items()
-            or any(isinstance(item, (ArrowItem, BracketItem)) for item in self.scene.selectedItems())
+            or any(isinstance(item, (ArrowItem, BracketItem, OrbitalAnnotationItem, ImageAnnotationItem)) for item in self.scene.selectedItems())
         )
         has_bond_selection = bool(self.state.selected_bonds)
         has_stroke_selection = bool(
@@ -11205,7 +11371,7 @@ class ChemusonCanvas(QGraphicsView):
             extend(item.sceneBoundingRect())
         for item in self.scene.selectedItems():
             # Include TextAnnotationItem
-            if isinstance(item, (ArrowItem, BracketItem, TextAnnotationItem, ImageAnnotationItem, WavyAnchorItem)):
+            if isinstance(item, (ArrowItem, BracketItem, TextAnnotationItem, OrbitalAnnotationItem, ImageAnnotationItem, WavyAnchorItem)):
                 extend(item.sceneBoundingRect())
         return rect
 
@@ -12519,6 +12685,7 @@ class ChemusonCanvas(QGraphicsView):
             not self._selected_atom_ids_for_transform()
             and not self._selected_text_items()
             and not self._selected_arrow_items()
+            and not self._selected_orbital_items()
             and not self._selected_image_items()
         ):
             return
@@ -12547,6 +12714,10 @@ class ChemusonCanvas(QGraphicsView):
         self._rotation_start_arrow_positions = {
             item: (item.start_point(), item.end_point())
             for item in self._selected_arrow_items()
+        }
+        self._rotation_start_orbital_snapshots = {
+            item: self._orbital_transform_snapshot(item)
+            for item in self._selected_orbital_items()
         }
         self._rotation_start_image_snapshots = {
             item: self._image_transform_snapshot(item)
@@ -12590,6 +12761,7 @@ class ChemusonCanvas(QGraphicsView):
         self._rotation_start_positions = {}
         self._rotation_start_text_transforms = {}
         self._rotation_start_arrow_positions = {}
+        self._rotation_start_orbital_snapshots = {}
         self._rotation_start_image_snapshots = {}
         self._release_interaction_mouse()
         self._update_selection_overlay()
@@ -12665,6 +12837,10 @@ class ChemusonCanvas(QGraphicsView):
         rect = item.display_rect()
         return QPointF(rect.topLeft()), float(rect.width()), float(rect.height()), float(item.rotation())
 
+    def _orbital_transform_snapshot(self, item: OrbitalAnnotationItem) -> tuple[QPointF, QPointF]:
+        """Captura anchors de un orbital persistente."""
+        return item.anchor0(), item.anchor1()
+
     def _arrow_scale_snapshot(self, item: ArrowItem) -> tuple[QPointF, QPointF, Optional[float]]:
         """Captura geometría y grosor de una flecha."""
         return item.start_point(), item.end_point(), item.stroke_px()
@@ -12680,6 +12856,7 @@ class ChemusonCanvas(QGraphicsView):
         text_items: Optional[list[TextAnnotationItem]] = None,
         arrow_items: Optional[list[ArrowItem]] = None,
         bracket_items: Optional[list[BracketItem]] = None,
+        orbital_items: Optional[list[OrbitalAnnotationItem]] = None,
         image_items: Optional[list[ImageAnnotationItem]] = None,
     ) -> dict:
         """Captura el estado base usado por el motor de escalado."""
@@ -12691,6 +12868,8 @@ class ChemusonCanvas(QGraphicsView):
             arrow_items = self._selected_arrow_items()
         if bracket_items is None:
             bracket_items = self._selected_bracket_items()
+        if orbital_items is None:
+            orbital_items = self._selected_orbital_items()
         if image_items is None:
             image_items = self._selected_image_items()
 
@@ -12743,6 +12922,10 @@ class ChemusonCanvas(QGraphicsView):
                     float(item.stroke_px() if item.stroke_px() is not None else self.drawing_style.stroke_px),
                 )
                 for item in bracket_items
+            },
+            "orbital_snapshots": {
+                item: self._orbital_transform_snapshot(item)
+                for item in orbital_items
             },
             "image_snapshots": {
                 item: self._image_transform_snapshot(item)
@@ -12832,6 +13015,12 @@ class ChemusonCanvas(QGraphicsView):
             item.set_rect(QRectF(top_left, bottom_right).normalized(), padding=max(0.0, padding * scale))
             if include_style:
                 item.set_stroke_px(self._normalize_custom_stroke(float(effective_stroke) * scale))
+
+        for item, (anchor0, anchor1) in state.get("orbital_snapshots", {}).items():
+            item.set_anchors(
+                self._scale_point_from_anchor(anchor, anchor0, scale),
+                self._scale_point_from_anchor(anchor, anchor1, scale),
+            )
 
         for item, (pos, width, height, rotation) in state.get("image_snapshots", {}).items():
             top_left = self._scale_point_from_anchor(anchor, pos, scale)
@@ -12960,6 +13149,18 @@ class ChemusonCanvas(QGraphicsView):
         if changed_brackets:
             command_count += 1
 
+        orbital_before = dict(state.get("orbital_snapshots", {}))
+        orbital_after = {item: self._orbital_transform_snapshot(item) for item in orbital_before}
+        changed_orbitals = any(
+            not (
+                self._point_equal(orbital_before[item][0], orbital_after[item][0])
+                and self._point_equal(orbital_before[item][1], orbital_after[item][1])
+            )
+            for item in orbital_before
+        )
+        if changed_orbitals:
+            command_count += 1
+
         image_before = dict(state.get("image_snapshots", {}))
         image_after = {item: self._image_transform_snapshot(item) for item in image_before}
         changed_images = any(
@@ -13044,6 +13245,11 @@ class ChemusonCanvas(QGraphicsView):
         if changed_brackets:
             self.undo_stack.push(ScaleBracketItemsCommand(self, bracket_before, bracket_after))
 
+        if changed_orbitals:
+            self.undo_stack.push(
+                TransformOrbitalItemsCommand(self, orbital_before, orbital_after, "Scale orbitals")
+            )
+
         if changed_images:
             self.undo_stack.push(
                 TransformImageItemsCommand(self, image_before, image_after, "Scale images")
@@ -13060,6 +13266,7 @@ class ChemusonCanvas(QGraphicsView):
             and not self._selected_text_items()
             and not self._selected_arrow_items()
             and not self._selected_bracket_items()
+            and not self._selected_orbital_items()
             and not self._selected_image_items()
         ):
             return
@@ -13103,6 +13310,7 @@ class ChemusonCanvas(QGraphicsView):
             item: (snapshot[1], snapshot[2], snapshot[3])
             for item, snapshot in state["bracket_snapshots"].items()
         }
+        self._scale_start_orbital_snapshots = dict(state["orbital_snapshots"])
         self._scale_start_image_snapshots = dict(state["image_snapshots"])
         self._scale_has_moved = False
 
@@ -13152,6 +13360,7 @@ class ChemusonCanvas(QGraphicsView):
                     )
                     for item, rect in self._scale_start_bracket_rects.items()
                 },
+                "orbital_snapshots": dict(self._scale_start_orbital_snapshots),
                 "image_snapshots": dict(self._scale_start_image_snapshots),
             },
             self._scale_anchor,
@@ -13199,6 +13408,7 @@ class ChemusonCanvas(QGraphicsView):
                         )
                         for item, rect in self._scale_start_bracket_rects.items()
                     },
+                    "orbital_snapshots": dict(self._scale_start_orbital_snapshots),
                     "image_snapshots": dict(self._scale_start_image_snapshots),
                 },
                 macro_name="Scale selection",
@@ -13216,6 +13426,7 @@ class ChemusonCanvas(QGraphicsView):
         self._scale_start_arrow_strokes = {}
         self._scale_start_bracket_rects = {}
         self._scale_start_bracket_styles = {}
+        self._scale_start_orbital_snapshots = {}
         self._scale_start_image_snapshots = {}
         self._scale_start_atom_label_scales = {}
         self._scale_start_atom_sphere_radii = {}
@@ -13258,6 +13469,10 @@ class ChemusonCanvas(QGraphicsView):
         """
         return [item for item in self.scene.selectedItems() if isinstance(item, BracketItem)]
 
+    def _selected_orbital_items(self) -> list[OrbitalAnnotationItem]:
+        """Devuelve los orbitales persistentes actualmente seleccionados."""
+        return [item for item in self.scene.selectedItems() if isinstance(item, OrbitalAnnotationItem)]
+
     def _selected_image_items(self) -> list[ImageAnnotationItem]:
         """Devuelve las imágenes anotadas actualmente seleccionadas."""
         return [item for item in self.scene.selectedItems() if isinstance(item, ImageAnnotationItem)]
@@ -13280,6 +13495,7 @@ class ChemusonCanvas(QGraphicsView):
         text_items: Iterable[TextAnnotationItem] = (),
         arrow_items: Iterable[ArrowItem] = (),
         bracket_items: Iterable[BracketItem] = (),
+        orbital_items: Iterable[OrbitalAnnotationItem] = (),
         image_items: Iterable[ImageAnnotationItem] = (),
     ) -> Optional[QRectF]:
         """Calcula un bounding box para un conjunto explícito de elementos."""
@@ -13324,6 +13540,9 @@ class ChemusonCanvas(QGraphicsView):
         for item in bracket_items:
             if item.scene() is self.scene:
                 extend(item.sceneBoundingRect())
+        for item in orbital_items:
+            if item.scene() is self.scene:
+                extend(item.sceneBoundingRect())
         for item in image_items:
             if item.scene() is self.scene:
                 extend(item.sceneBoundingRect())
@@ -13365,12 +13584,14 @@ class ChemusonCanvas(QGraphicsView):
             text_items = self._all_scalable_text_items()
             arrow_items = list(self.arrow_items)
             bracket_items = list(self.bracket_items)
+            orbital_items = list(self.orbital_items)
             image_items = list(self.image_items)
             state = self._capture_scale_state(
                 atom_ids=atom_ids,
                 text_items=text_items,
                 arrow_items=arrow_items,
                 bracket_items=bracket_items,
+                orbital_items=orbital_items,
                 image_items=image_items,
             )
             state["atom_label_scales"] = {}
@@ -13380,6 +13601,7 @@ class ChemusonCanvas(QGraphicsView):
                 text_items=text_items,
                 arrow_items=arrow_items,
                 bracket_items=bracket_items,
+                orbital_items=orbital_items,
                 image_items=image_items,
             )
             anchor = anchor_bbox.center() if anchor_bbox is not None else None
@@ -13422,9 +13644,10 @@ class ChemusonCanvas(QGraphicsView):
         selected_atom_ids = self._selected_atom_ids_for_transform()
         selected_text_items = self._selected_text_items()
         selected_arrow_items = self._selected_arrow_items()
+        selected_orbital_items = self._selected_orbital_items()
         selected_image_items = self._selected_image_items()
         
-        if not selected_atom_ids and not selected_text_items and not selected_arrow_items and not selected_image_items:
+        if not selected_atom_ids and not selected_text_items and not selected_arrow_items and not selected_orbital_items and not selected_image_items:
             return
 
         cx, cy = 0.0, 0.0
@@ -13597,6 +13820,25 @@ class ChemusonCanvas(QGraphicsView):
                 }
                 if before:
                     self.undo_stack.push(MoveArrowItemsCommand(self, before, after))
+
+        if selected_orbital_items:
+            if use_start_positions:
+                for item in selected_orbital_items:
+                    if item in self._rotation_start_orbital_snapshots:
+                        start_anchor0, start_anchor1 = self._rotation_start_orbital_snapshots[item]
+                    else:
+                        start_anchor0, start_anchor1 = self._orbital_transform_snapshot(item)
+                    item.set_anchors(rotate_point(start_anchor0), rotate_point(start_anchor1))
+            else:
+                before = {item: self._orbital_transform_snapshot(item) for item in selected_orbital_items}
+                after = {
+                    item: (rotate_point(anchor0), rotate_point(anchor1))
+                    for item, (anchor0, anchor1) in before.items()
+                }
+                if before:
+                    self.undo_stack.push(
+                        TransformOrbitalItemsCommand(self, before, after, "Rotate orbitals")
+                    )
 
         if selected_image_items:
             if use_start_positions:
@@ -16639,6 +16881,7 @@ class ChemusonCanvas(QGraphicsView):
             and not self._selected_text_items()
             and not self._selected_arrow_items()
             and not self._selected_bracket_items()
+            and not self._selected_orbital_items()
             and not self._selected_image_items()
         ):
             return
@@ -16668,6 +16911,10 @@ class ChemusonCanvas(QGraphicsView):
         self._drag_start_bracket_rects = {}
         for item in self._selected_bracket_items():
             self._drag_start_bracket_rects[item] = item.base_rect()
+
+        self._drag_start_orbital_snapshots = {}
+        for item in self._selected_orbital_items():
+            self._drag_start_orbital_snapshots[item] = self._orbital_transform_snapshot(item)
 
         self._drag_start_image_snapshots = {}
         for item in self._selected_image_items():

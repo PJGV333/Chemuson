@@ -26,6 +26,7 @@ except Exception:  # Optional Qt module at runtime
 
 
 from chemuson.core.model import Atom, Bond, BondStyle
+from chemuson.gui.orbitals import OrbitalRenderer, orbital_renderer
 from chemuson.gui.style import DrawingStyle, CHEMDOODLE_LIKE
 from chemuson.gui.wedge_geometry import compute_wedge_points
 
@@ -4155,6 +4156,93 @@ class TextAnnotationItem(QGraphicsTextItem):
         path = QPainterPath()
         path.addRect(br)
         return path
+
+
+class OrbitalAnnotationItem(QGraphicsItem):
+    """Elemento vectorial persistente para orbitales 2D con dos anchors."""
+
+    def __init__(
+        self,
+        kind: str,
+        anchor0: QPointF,
+        anchor1: QPointF,
+        *,
+        stroke_shaded_lobes: bool | None = None,
+        renderer: OrbitalRenderer | None = None,
+    ) -> None:
+        super().__init__()
+        self._renderer = renderer or orbital_renderer()
+        self._kind = kind
+        self._stroke_shaded_lobes = stroke_shaded_lobes
+        self._anchor0_scene = QPointF(anchor0)
+        self._anchor1_scene = QPointF(anchor1)
+        self._local_anchor0 = QPointF()
+        self._local_anchor1 = QPointF()
+        self._bounding_rect = QRectF(0.0, 0.0, 1.0, 1.0)
+        self._shape_path = QPainterPath()
+
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsFocusable)
+        self.setZValue(44)
+        self.set_anchors(anchor0, anchor1)
+
+    def kind(self) -> str:
+        return self._kind
+
+    def set_kind(self, kind: str) -> None:
+        if self._kind == kind:
+            return
+        self._kind = kind
+        self.set_anchors(self._anchor0_scene, self._anchor1_scene)
+
+    def stroke_shaded_lobes(self) -> bool | None:
+        return self._stroke_shaded_lobes
+
+    def set_stroke_shaded_lobes(self, value: bool | None) -> None:
+        self._stroke_shaded_lobes = value
+        self.update()
+
+    def anchor0(self) -> QPointF:
+        return QPointF(self._anchor0_scene)
+
+    def anchor1(self) -> QPointF:
+        return QPointF(self._anchor1_scene)
+
+    def set_anchors(self, anchor0: QPointF, anchor1: QPointF) -> None:
+        spec = self._renderer.spec_for_kind(self._kind)
+        scene_bbox = self._renderer.bounding_rect(spec, anchor0, anchor1)
+        pad = max(2.0, scene_bbox.width() * 0.06, scene_bbox.height() * 0.06)
+        scene_bbox = scene_bbox.adjusted(-pad, -pad, pad, pad)
+        if not scene_bbox.isValid() or scene_bbox.width() <= 0.0 or scene_bbox.height() <= 0.0:
+            scene_bbox = QRectF(anchor0.x() - 2.0, anchor0.y() - 2.0, 4.0, 4.0)
+
+        self.prepareGeometryChange()
+        self.setPos(scene_bbox.topLeft())
+        self._anchor0_scene = QPointF(anchor0)
+        self._anchor1_scene = QPointF(anchor1)
+        origin = scene_bbox.topLeft()
+        self._local_anchor0 = QPointF(anchor0.x() - origin.x(), anchor0.y() - origin.y())
+        self._local_anchor1 = QPointF(anchor1.x() - origin.x(), anchor1.y() - origin.y())
+        self._bounding_rect = QRectF(0.0, 0.0, scene_bbox.width(), scene_bbox.height())
+        self._shape_path = self._renderer.combined_path(spec, self._local_anchor0, self._local_anchor1)
+        self.update()
+
+    def boundingRect(self) -> QRectF:
+        return QRectF(self._bounding_rect)
+
+    def shape(self) -> QPainterPath:
+        return QPainterPath(self._shape_path)
+
+    def paint(self, painter, option, widget=None) -> None:
+        option.state &= ~QStyle.StateFlag.State_Selected
+        spec = self._renderer.spec_for_kind(self._kind)
+        self._renderer.paint_glyph(
+            painter,
+            spec,
+            self._local_anchor0,
+            self._local_anchor1,
+            stroke_shaded_lobes=self._stroke_shaded_lobes,
+        )
 
 
 class ImageAnnotationItem(QGraphicsItem):
