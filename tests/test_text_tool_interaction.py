@@ -6,7 +6,7 @@ import os
 import sys
 
 import pytest
-from PyQt6.QtCore import QPointF, Qt
+from PyQt6.QtCore import QPoint, QPointF, Qt
 from PyQt6.QtGui import QFont, QKeySequence
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication
@@ -229,3 +229,91 @@ def test_text_toolbar_button_resyncs_on_new_plain_selection(
         window.canvas.undo_stack.clear()
         window.canvas.undo_stack.setClean()
         window.close()
+
+
+def test_dragging_text_scale_handle_reflows_text_inside_new_box() -> None:
+    canvas = ChemusonCanvas()
+    try:
+        canvas.resize(960, 720)
+        canvas.show()
+        QApplication.processEvents()
+
+        item = TextAnnotationItem(
+            (
+                "Solid-phase heteroditopic receptors incorporating urea/thiourea "
+                "anion-binding sites and polyether cation-binding spacers were "
+                "designed for ion-pair recognition."
+            ),
+            100.0,
+            120.0,
+        )
+        font = item.font()
+        font.setPointSizeF(12.0)
+        item.setFont(font)
+        canvas.add_text_item(item)
+        item.setSelected(True)
+        canvas._sync_selection_from_scene()
+        QApplication.processEvents()
+
+        before_font_size = item.font().pointSizeF()
+        before_rect = item.boundingRect()
+        assert item.textWidth() < 0.0
+        assert canvas._selection_scale_handle is not None
+
+        handle_view = canvas.mapFromScene(canvas._selection_scale_handle.scenePos())
+        shrunk_view = QPoint(handle_view.x() - 120, handle_view.y() - 10)
+        QTest.mousePress(
+            canvas.viewport(),
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+            handle_view,
+        )
+        QTest.mouseMove(canvas.viewport(), shrunk_view)
+        QTest.mouseRelease(
+            canvas.viewport(),
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+            shrunk_view,
+        )
+        QApplication.processEvents()
+
+        assert item.font().pointSizeF() == pytest.approx(before_font_size)
+        assert item.textWidth() > 0.0
+        assert item.textWidth() < before_rect.width()
+        assert item.boundingRect().height() > before_rect.height()
+
+        canvas.undo_stack.undo()
+
+        assert item.font().pointSizeF() == pytest.approx(before_font_size)
+        assert item.textWidth() < 0.0
+    finally:
+        canvas.close()
+
+
+def test_justify_alignment_preserves_text_box_width_and_updates_blocks() -> None:
+    canvas = ChemusonCanvas()
+    try:
+        item = TextAnnotationItem(
+            (
+                "Solid-phase heteroditopic receptors incorporating urea/thiourea "
+                "anion-binding sites and polyether cation-binding spacers were "
+                "designed for ion-pair recognition."
+            ),
+            80.0,
+            90.0,
+        )
+        item.setTextWidth(220.0)
+        canvas.add_text_item(item)
+        item.setSelected(True)
+        canvas._sync_selection_from_scene()
+
+        before_width = item.textWidth()
+        canvas.update_text_alignment(Qt.AlignmentFlag.AlignJustify)
+
+        assert item.textWidth() == pytest.approx(before_width)
+        block = item.document().begin()
+        assert block.isValid()
+        assert bool(block.blockFormat().alignment() & Qt.AlignmentFlag.AlignJustify)
+        assert item.document().defaultTextOption().alignment() == Qt.AlignmentFlag.AlignJustify
+    finally:
+        canvas.close()

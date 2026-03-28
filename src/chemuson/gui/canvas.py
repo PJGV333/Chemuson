@@ -43,6 +43,7 @@ from PyQt6.QtGui import (
     QFontMetrics,
     QTextCharFormat,
     QTextCursor,
+    QTextOption,
 )
 from PyQt6.QtCore import Qt, QPoint, QPointF, QRectF, QRect, QSize, QBuffer, QMimeData, QTimer, pyqtSignal
 
@@ -531,6 +532,8 @@ class ChemusonCanvas(QGraphicsView):
         self._scale_start_atom_sphere_radii: Dict[int, Tuple[Optional[float], float]] = {}
         self._scale_start_bond_strokes: Dict[int, Tuple[Optional[float], float]] = {}
         self._scale_start_bond_lengths: Dict[int, Optional[float]] = {}
+        self._scale_start_text_effective_widths: Dict[TextAnnotationItem, float] = {}
+        self._scale_text_reflow_only = False
         self._scale_has_moved = False
         self._implicit_h_overlays: Dict[int, list[tuple[QGraphicsLineItem, QGraphicsTextItem]]] = {}
         self._group_anchor_overrides: Dict[int, str] = {}
@@ -9079,13 +9082,11 @@ class ChemusonCanvas(QGraphicsView):
         for item in items_to_update:
             if not isinstance(item, TextAnnotationItem):
                 continue
-            # Ensure there's a text width so alignment has visible effect.
-            if alignment == Qt.AlignmentFlag.AlignLeft:
-                item.setTextWidth(-1)
-            else:
-                rect = item.boundingRect()
-                min_width = max(60.0, rect.width() + 20.0)
-                item.setTextWidth(min_width)
+            width = float(item.textWidth())
+            if alignment != Qt.AlignmentFlag.AlignLeft and (
+                not math.isfinite(width) or width <= 0.0
+            ):
+                item.setTextWidth(max(60.0, self._text_effective_width(item)))
             cursor = item.textCursor()
             is_editing = (
                 item.textInteractionFlags()
@@ -9101,8 +9102,11 @@ class ChemusonCanvas(QGraphicsView):
                 self._clear_text_cursor_selection(item)
             doc = item.document()
             option = doc.defaultTextOption()
+            option.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
             option.setAlignment(alignment)
             doc.setDefaultTextOption(option)
+            item.update()
+        self.sync_text_selection_state()
 
     def update_text_color(self, color: QColor) -> None:
         """Update current text color and apply to selection."""
@@ -13463,6 +13467,28 @@ class ChemusonCanvas(QGraphicsView):
         stroke = max(0.6, float(value))
         return None if abs(stroke - float(self.drawing_style.stroke_px)) < 0.05 else stroke
 
+    @staticmethod
+    def _text_effective_width(item: TextAnnotationItem) -> float:
+        """Devuelve el ancho visual útil actual de un cuadro de texto."""
+        width = float(item.textWidth())
+        if math.isfinite(width) and width > 0.0:
+            return max(1.0, width)
+        rect_width = float(item.boundingRect().width())
+        if not math.isfinite(rect_width) or rect_width <= 1e-3:
+            rect_width = float(item.document().idealWidth())
+        return max(1.0, rect_width)
+
+    def _selection_is_text_reflow_only(self) -> bool:
+        """Indica si la selección actual solo contiene cuadros de texto libres."""
+        return (
+            bool(self._selected_text_items())
+            and not self._selected_atom_ids_for_transform()
+            and not self._selected_arrow_items()
+            and not self._selected_bracket_items()
+            and not self._selected_orbital_items()
+            and not self._selected_image_items()
+        )
+
     def _selected_bonds_for_scale(self, atom_ids: set[int]) -> list[Bond]:
         """Lista enlaces completamente contenidos en una selección de átomos."""
         if not atom_ids:
@@ -13570,6 +13596,9 @@ class ChemusonCanvas(QGraphicsView):
             "bond_strokes": bond_strokes,
             "bond_lengths": bond_lengths,
             "text_snapshots": {item: self._text_scale_snapshot(item) for item in text_items},
+            "text_effective_widths": {
+                item: self._text_effective_width(item) for item in text_items
+            },
             "arrow_snapshots": {
                 item: (
                     item.start_point(),
@@ -13605,6 +13634,7 @@ class ChemusonCanvas(QGraphicsView):
         scale: float,
         *,
         include_style: bool = True,
+        text_reflow_only: bool = False,
     ) -> None:
         """Aplica en vivo una escala partiendo de un snapshot inicial."""
         atom_positions = state.get("atom_positions", {})
@@ -13652,10 +13682,16 @@ class ChemusonCanvas(QGraphicsView):
             self.update_bond_items_for_atoms(atom_ids)
             self.recompute_numbering()
 
+        text_effective_widths = state.get("text_effective_widths", {})
         for item, (pos, rot, font_str, text_width) in state.get("text_snapshots", {}).items():
             item.setPos(self._scale_point_from_anchor(anchor, pos, scale))
             item.setRotation(rot)
-            if include_style:
+            if text_reflow_only:
+                base_width = float(text_effective_widths.get(item, 0.0))
+                if base_width <= 0.0:
+                    base_width = text_width if text_width > 0.0 else self._text_effective_width(item)
+                item.setTextWidth(max(1.0, float(base_width) * scale))
+            elif include_style:
                 font = QFont()
                 if font_str:
                     font.fromString(font_str)
@@ -13951,6 +13987,7 @@ class ChemusonCanvas(QGraphicsView):
         self._scale_start_length = start_len
 
         state = self._capture_scale_state()
+        self._scale_text_reflow_only = self._selection_is_text_reflow_only()
         self._scale_start_positions = state["atom_positions"]
         self._scale_start_atom_label_scales = state["atom_label_scales"]
         self._scale_start_atom_sphere_radii = state["atom_sphere_radii"]
@@ -13962,6 +13999,7 @@ class ChemusonCanvas(QGraphicsView):
         self._scale_start_text_styles = {
             item: (snapshot[2], snapshot[3]) for item, snapshot in state["text_snapshots"].items()
         }
+        self._scale_start_text_effective_widths = dict(state.get("text_effective_widths", {}))
         self._scale_start_arrow_positions = {
             item: (snapshot[0], snapshot[1]) for item, snapshot in state["arrow_snapshots"].items()
         }
@@ -14007,6 +14045,7 @@ class ChemusonCanvas(QGraphicsView):
                     )
                     for item, (pos, rot) in self._scale_start_text_positions.items()
                 },
+                "text_effective_widths": dict(self._scale_start_text_effective_widths),
                 "arrow_snapshots": {
                     item: (
                         start,
@@ -14031,6 +14070,7 @@ class ChemusonCanvas(QGraphicsView):
             self._scale_anchor,
             scale,
             include_style=True,
+            text_reflow_only=self._scale_text_reflow_only,
         )
 
     def _finalize_scale_drag(self) -> None:
@@ -14055,6 +14095,7 @@ class ChemusonCanvas(QGraphicsView):
                         )
                         for item, (pos, rot) in self._scale_start_text_positions.items()
                     },
+                    "text_effective_widths": dict(self._scale_start_text_effective_widths),
                     "arrow_snapshots": {
                         item: (
                             start,
@@ -14087,6 +14128,7 @@ class ChemusonCanvas(QGraphicsView):
         self._scale_start_positions = {}
         self._scale_start_text_positions = {}
         self._scale_start_text_styles = {}
+        self._scale_start_text_effective_widths = {}
         self._scale_start_arrow_positions = {}
         self._scale_start_arrow_strokes = {}
         self._scale_start_bracket_rects = {}
@@ -14097,6 +14139,7 @@ class ChemusonCanvas(QGraphicsView):
         self._scale_start_atom_sphere_radii = {}
         self._scale_start_bond_strokes = {}
         self._scale_start_bond_lengths = {}
+        self._scale_text_reflow_only = False
         self._scale_has_moved = False
         self._release_interaction_mouse()
         self._update_selection_overlay()
@@ -14220,12 +14263,19 @@ class ChemusonCanvas(QGraphicsView):
             return False
         scale_factor = max(0.05, float(scale))
         state = self._capture_scale_state()
+        text_reflow_only = self._selection_is_text_reflow_only()
         if not include_style:
             state["atom_label_scales"] = {}
             state["atom_sphere_radii"] = {}
             state["bond_strokes"] = {}
             state["bond_lengths"] = {}
-        self._apply_scale_state(state, bbox.center(), scale_factor, include_style=include_style)
+        self._apply_scale_state(
+            state,
+            bbox.center(),
+            scale_factor,
+            include_style=include_style,
+            text_reflow_only=text_reflow_only,
+        )
         return self._push_scale_commands(
             state,
             macro_name="Scale selection",
