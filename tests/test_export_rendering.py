@@ -76,3 +76,46 @@ def test_full_export_render_hides_orphan_paper_shadow_band() -> None:
             tall_gray_columns += 1
 
     assert tall_gray_columns == 0
+
+
+def test_png_export_keeps_coordination_sphere_inside_image_bounds() -> None:
+    """Una esfera de coordinación no debe quedar recortada por los bounds de export."""
+    canvas = ChemusonCanvas()
+    atom = canvas.model.add_atom(
+        "Na",
+        80.0,
+        120.0,
+        is_explicit=True,
+        is_coordination_center=True,
+        sphere_radius=28.0,
+    )
+    canvas._rebuild_items_from_model()
+
+    image = canvas._render_scene_image(background=QColor("white"))
+    assert image is not None
+
+    left_edge_has_non_white = any(
+        image.pixelColor(0, y) != QColor("white")
+        for y in range(image.height())
+    )
+    right_edge_has_non_white = any(
+        image.pixelColor(image.width() - 1, y) != QColor("white")
+        for y in range(image.height())
+    )
+
+    assert left_edge_has_non_white is False
+    assert right_edge_has_non_white is False
+
+    sphere_color_found = False
+    for y in range(image.height()):
+        for x in range(image.width()):
+            color = image.pixelColor(x, y)
+            if color == QColor("white"):
+                continue
+            if color.blue() > color.red() and color.green() > color.red():
+                sphere_color_found = True
+                break
+        if sphere_color_found:
+            break
+
+    assert sphere_color_found is True

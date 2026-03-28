@@ -5773,7 +5773,17 @@ class ChemusonCanvas(QGraphicsView):
             item = self.atom_items.get(atom_id)
             if item is None or item.scene() is not self.scene:
                 return
-            if item.pen().style() != Qt.PenStyle.NoPen or item.brush().style() != Qt.BrushStyle.NoBrush:
+            atom = self.model.atoms.get(atom_id)
+            draws_coordination_sphere = bool(
+                atom is not None
+                and getattr(atom, "is_coordination_center", False)
+                and not getattr(atom, "sphere_transparent", False)
+            )
+            if (
+                item.pen().style() != Qt.PenStyle.NoPen
+                or item.brush().style() != Qt.BrushStyle.NoBrush
+                or draws_coordination_sphere
+            ):
                 extend(item.sceneBoundingRect())
             if item.label.isVisible():
                 extend(item.label.sceneBoundingRect())
