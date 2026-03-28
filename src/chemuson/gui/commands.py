@@ -12,7 +12,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 from PyQt6.QtCore import QPointF, QRectF
 from PyQt6.QtGui import QFont, QUndoCommand
 
-from chemuson.core.model import BondStyle, BondStereo, MolGraph
+from chemuson.core.model import BondStyle, BondStereo, MolGraph, bond_is_structural
 from chemuson.gui.geom import angle_deg, angle_distance_deg, endpoint_from_angle_len
 
 _IMPLICIT_ELEMENTS = {"C"}
@@ -23,6 +23,7 @@ _SPHERE_STYLE_UNSET = object()
 _BOND_LENGTH_UNSET = object()
 _BOND_STROKE_UNSET = object()
 _LABEL_SCALE_UNSET = object()
+_OPACITY_UNSET = object()
 
 
 def _default_is_explicit(element: str) -> bool:
@@ -31,11 +32,17 @@ def _default_is_explicit(element: str) -> bool:
 
 
 def _atom_degree(model: MolGraph, atom_id: int) -> int:
-    """Calcula el grado (número de enlaces) de un átomo en el modelo."""
+    """Calcula el grado estructural (sin enlaces intermoleculares) de un átomo."""
+    degree_getter = getattr(model, "atom_degree", None)
+    if callable(degree_getter):
+        try:
+            return int(degree_getter(atom_id))
+        except Exception:
+            pass
     return sum(
         1
         for bond in model.bonds.values()
-        if bond.a1_id == atom_id or bond.a2_id == atom_id
+        if bond_is_structural(bond) and (bond.a1_id == atom_id or bond.a2_id == atom_id)
     )
 
 
@@ -56,6 +63,8 @@ def _neighbor_angles_deg(model: MolGraph, atom_id: int) -> list[float]:
     origin = QPointF(anchor.x, anchor.y)
     angles: list[float] = []
     for bond in model.bonds.values():
+        if not bond_is_structural(bond):
+            continue
         if bond.a1_id == atom_id:
             other = model.get_atom(bond.a2_id)
         elif bond.a2_id == atom_id:
@@ -221,6 +230,7 @@ class AddAtomCommand(QUndoCommand):
         sphere_color: Optional[str] = None,
         sphere_filled: bool = True,
         sphere_transparent: bool = False,
+        opacity: Optional[float] = None,
     ) -> None:
         """Inicializa el comando de adición de átomo.
 
@@ -248,6 +258,7 @@ class AddAtomCommand(QUndoCommand):
             sphere_color: Color base de la esfera (hex) o `None`.
             sphere_filled: Si la esfera se dibuja con relleno.
             sphere_transparent: Si la esfera se dibuja transparente (sin borde/fondo).
+            opacity: Opacidad local del átomo o `None` para heredar del canvas.
         """
         super().__init__("Add atom")
         resolved_label = _resolve_atom_label_spec(view, element)
@@ -287,6 +298,7 @@ class AddAtomCommand(QUndoCommand):
         self._sphere_color = sphere_color
         self._sphere_filled = bool(sphere_filled)
         self._sphere_transparent = bool(sphere_transparent)
+        self._opacity = opacity
         self._atom_id: Optional[int] = None
         self._hydrogen_specs: list[tuple[int, float, float, int]] = []
 
@@ -317,6 +329,7 @@ class AddAtomCommand(QUndoCommand):
                 sphere_color=self._sphere_color,
                 sphere_filled=self._sphere_filled,
                 sphere_transparent=self._sphere_transparent,
+                opacity=self._opacity,
             )
             self._atom_id = atom.id
         else:
@@ -341,6 +354,7 @@ class AddAtomCommand(QUndoCommand):
                 sphere_color=self._sphere_color,
                 sphere_filled=self._sphere_filled,
                 sphere_transparent=self._sphere_transparent,
+                opacity=self._opacity,
             )
         self._view.add_atom_item(atom)
         if self._anchor_override:
@@ -756,6 +770,109 @@ class ChangeCoordinationSphereStyleCommand(QUndoCommand):
         )
 
 
+class ChangeCanvasOpacityCommand(QUndoCommand):
+    """Comando para ajustar opacidad local o global de elementos del canvas."""
+
+    def __init__(
+        self,
+        model: MolGraph,
+        view,
+        *,
+        atom_values: Optional[Dict[int, Optional[float]]] = None,
+        bond_values: Optional[Dict[int, Optional[float]]] = None,
+        item_values: Optional[Dict[object, Optional[float]]] = None,
+        canvas_opacity: Optional[float] = None,
+        text: str = "Change opacity",
+    ) -> None:
+        super().__init__(text)
+        self._model = model
+        self._view = view
+        self._atom_after = dict(atom_values or {})
+        self._bond_after = dict(bond_values or {})
+        self._item_after = dict(item_values or {})
+        self._canvas_after = canvas_opacity
+        self._applies_canvas_default = canvas_opacity is not None
+        self._canvas_before = float(getattr(getattr(view, "state", None), "canvas_opacity", 1.0))
+        self._atom_before = {
+            atom_id: getattr(model.get_atom(atom_id), "opacity", None)
+            for atom_id in self._atom_after
+            if atom_id in model.atoms
+        }
+        self._bond_before = {
+            bond_id: getattr(model.get_bond(bond_id), "opacity", None)
+            for bond_id in self._bond_after
+            if bond_id in model.bonds
+        }
+        raw_item_opacity = getattr(view, "item_raw_opacity", None)
+        self._item_before: Dict[object, Optional[float]] = {}
+        if callable(raw_item_opacity):
+            for item in self._item_after:
+                try:
+                    self._item_before[item] = raw_item_opacity(item)
+                except Exception:
+                    continue
+
+    def _apply(
+        self,
+        atom_values: Dict[int, Optional[float]],
+        bond_values: Dict[int, Optional[float]],
+        item_values: Dict[object, Optional[float]],
+        canvas_opacity: Optional[float],
+    ) -> None:
+        if self._applies_canvas_default and canvas_opacity is not None and hasattr(self._view, "set_canvas_opacity_default"):
+            self._view.set_canvas_opacity_default(float(canvas_opacity))
+
+        refresh_aromatic = False
+        for atom_id, opacity in atom_values.items():
+            if atom_id not in self._model.atoms:
+                continue
+            self._model.update_atom_opacity(atom_id, opacity)
+            if hasattr(self._view, "update_atom_item_opacity"):
+                self._view.update_atom_item_opacity(atom_id)
+
+        for bond_id, opacity in bond_values.items():
+            if bond_id not in self._model.bonds:
+                continue
+            self._model.update_bond(bond_id, opacity=opacity)
+            if hasattr(self._view, "update_bond_item"):
+                self._view.update_bond_item(bond_id)
+            refresh_aromatic = True
+
+        if hasattr(self._view, "set_graphics_item_opacity"):
+            for item, opacity in item_values.items():
+                try:
+                    self._view.set_graphics_item_opacity(item, opacity)
+                except RuntimeError:
+                    continue
+
+        if self._applies_canvas_default and hasattr(self._view, "refresh_numbering_opacity"):
+            self._view.refresh_numbering_opacity()
+        if (refresh_aromatic or self._applies_canvas_default) and hasattr(
+            self._view,
+            "refresh_aromatic_circle_opacities",
+        ):
+            self._view.refresh_aromatic_circle_opacities()
+        if hasattr(self._view, "_update_selection_overlay"):
+            self._view._update_selection_overlay()
+
+    def redo(self) -> None:
+        self._apply(
+            self._atom_after,
+            self._bond_after,
+            self._item_after,
+            self._canvas_after,
+        )
+
+    def undo(self) -> None:
+        canvas_before = self._canvas_before if self._applies_canvas_default else None
+        self._apply(
+            self._atom_before,
+            self._bond_before,
+            self._item_before,
+            canvas_before,
+        )
+
+
 class AddBondCommand(QUndoCommand):
     """Comando para añadir un enlace (y opcionalmente un átomo nuevo)."""
 
@@ -777,6 +894,7 @@ class AddBondCommand(QUndoCommand):
         donor_atom_id: Optional[int] = None,
         flex_curve_1: Optional[float] = None,
         flex_curve_2: Optional[float] = None,
+        opacity: Optional[float] = None,
         new_atom_element: Optional[str] = None,
         new_atom_pos: Optional[Tuple[float, float]] = None,
     ) -> None:
@@ -799,6 +917,7 @@ class AddBondCommand(QUndoCommand):
             donor_atom_id: ID del átomo donador (si es coordinativo).
             flex_curve_1: Curvatura normalizada de control 1 (estilo FLEX).
             flex_curve_2: Curvatura normalizada de control 2 (estilo FLEX).
+            opacity: Opacidad local del enlace o `None` para heredar del canvas.
             new_atom_element: Elemento del átomo a crear si `a2_id` es `None`.
             new_atom_pos: Posición del átomo a crear.
         """
@@ -819,6 +938,7 @@ class AddBondCommand(QUndoCommand):
         self._donor_atom_id = donor_atom_id
         self._flex_curve_1 = flex_curve_1
         self._flex_curve_2 = flex_curve_2
+        self._opacity = opacity
         self._bond_id: Optional[int] = None
         resolved_new_atom = (
             _resolve_atom_label_spec(view, new_atom_element)
@@ -915,6 +1035,7 @@ class AddBondCommand(QUndoCommand):
                 donor_atom_id=self._donor_atom_id,
                 flex_curve_1=self._flex_curve_1,
                 flex_curve_2=self._flex_curve_2,
+                opacity=self._opacity,
             )
             self._bond_id = bond.id
         else:
@@ -934,6 +1055,7 @@ class AddBondCommand(QUndoCommand):
                 donor_atom_id=self._donor_atom_id,
                 flex_curve_1=self._flex_curve_1,
                 flex_curve_2=self._flex_curve_2,
+                opacity=self._opacity,
             )
         self._view.add_bond_item(bond)
         if self._demoted_explicit_atoms is None:
@@ -1693,6 +1815,7 @@ class DeleteSelectionCommand(QUndoCommand):
                 sphere_color=getattr(atom, "sphere_color", None),
                 sphere_filled=bool(getattr(atom, "sphere_filled", True)),
                 sphere_transparent=bool(getattr(atom, "sphere_transparent", False)),
+                opacity=getattr(atom, "opacity", None),
             )
             self._view.add_atom_item(restored_atom)
         for bond in self._removed_bonds:
@@ -1712,6 +1835,7 @@ class DeleteSelectionCommand(QUndoCommand):
                 color=bond.color,
                 donor_atom_id=getattr(bond, "donor_atom_id", None),
                 pi_offset_sign=getattr(bond, "pi_offset_sign", None),
+                opacity=getattr(bond, "opacity", None),
             )
             self._view.add_bond_item(bond)
         for item, start, end, kind, curve_factor in self._removed_arrows:
@@ -1743,6 +1867,7 @@ class AddArrowCommand(QUndoCommand):
         kind: str,
         curve_factor: float | None = None,
         stroke_px: float | None = None,
+        opacity: Optional[float] = None,
     ) -> None:
         """Inicializa el comando de flecha."""
         super().__init__("Add arrow")
@@ -1752,6 +1877,7 @@ class AddArrowCommand(QUndoCommand):
         self._kind = kind
         self._curve_factor = curve_factor
         self._stroke_px = stroke_px
+        self._opacity = opacity
         self._item = None
 
     def redo(self) -> None:
@@ -1763,6 +1889,7 @@ class AddArrowCommand(QUndoCommand):
                 self._kind,
                 curve_factor=self._curve_factor,
                 stroke_px=self._stroke_px,
+                opacity=self._opacity,
             )
         else:
             self._view.readd_arrow_item(
@@ -1771,6 +1898,7 @@ class AddArrowCommand(QUndoCommand):
                 self._end,
                 self._kind,
                 curve_factor=self._curve_factor,
+                opacity=self._opacity,
             )
 
     def undo(self) -> None:
@@ -1794,6 +1922,7 @@ class AddBracketCommand(QUndoCommand):
         kind: str,
         padding: float | None = None,
         stroke_px: float | None = None,
+        opacity: Optional[float] = None,
     ) -> None:
         """Inicializa el comando de corchetes."""
         super().__init__("Add brackets")
@@ -1802,6 +1931,7 @@ class AddBracketCommand(QUndoCommand):
         self._kind = kind
         self._padding = 8.0 if padding is None else float(padding)
         self._stroke_px = stroke_px
+        self._opacity = opacity
         self._item = None
 
     def redo(self) -> None:
@@ -1812,6 +1942,7 @@ class AddBracketCommand(QUndoCommand):
                 self._kind,
                 padding=self._padding,
                 stroke_px=self._stroke_px,
+                opacity=self._opacity,
             )
         else:
             self._view.readd_bracket_item(
@@ -1820,6 +1951,7 @@ class AddBracketCommand(QUndoCommand):
                 self._kind,
                 padding=self._padding,
                 stroke_px=self._stroke_px,
+                opacity=self._opacity,
             )
 
     def undo(self) -> None:

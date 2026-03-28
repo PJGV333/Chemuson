@@ -314,6 +314,7 @@ class ChemusonWindow(QMainWindow):
         self.text_toolbar.format_changed.connect(self._on_text_format_changed)
         self.text_toolbar.color_changed.connect(self._on_text_color_changed)
         self.text_toolbar.alignment_changed.connect(self._on_text_alignment_changed)
+        self.text_toolbar.opacity_changed.connect(self._on_opacity_changed)
         
         # === SIGNAL CONNECTIONS ===
         self._connect_undo_redo()
@@ -1187,6 +1188,7 @@ class ChemusonWindow(QMainWindow):
             self.appearance_dock.set_bond_caps(cap_mode)
         self._update_total_charge_indicator()
         self._update_iupac_name_indicator()
+        self.text_toolbar.set_opacity_percent(self.canvas.current_opacity_percent())
         if clear_tool_selection:
             self._clear_active_tool_selection()
         else:
@@ -1207,6 +1209,7 @@ class ChemusonWindow(QMainWindow):
         self._update_iupac_name_indicator()
         self._sync_fragment_pivot_actions()
         self._update_tab_title(self.canvas)
+        self.text_toolbar.set_opacity_percent(self.canvas.current_opacity_percent())
 
     def _update_iupac_name_indicator(self) -> None:
         """Refresca el indicador de nombre IUPAC en la barra de estado."""
@@ -1264,6 +1267,10 @@ class ChemusonWindow(QMainWindow):
     def _on_text_alignment_changed(self, alignment: Qt.AlignmentFlag) -> None:
         """Propaga cambio de alineación al canvas activo."""
         self.canvas.update_text_alignment(alignment)
+
+    def _on_opacity_changed(self, value: int) -> None:
+        """Propaga cambio de opacidad al canvas activo."""
+        self.canvas.apply_opacity_percent(float(value))
 
     def _on_tool_changed(self, tool_id: str) -> None:
         """Actualiza herramienta activa en el documento de la pestaña actual."""
@@ -4463,6 +4470,7 @@ class ChemusonWindow(QMainWindow):
         self.inspector_dock.update_selection(num_atoms, num_bonds, num_text, details)
         self._update_total_charge_indicator()
         self._sync_fragment_pivot_actions()
+        self.text_toolbar.set_opacity_percent(self.canvas.current_opacity_percent())
         
         # Sync Text Toolbar if a single text item is selected
         if num_text == 1 and details.get("type") == "text":

@@ -8,7 +8,16 @@ from __future__ import annotations
 
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
+from chemuson.core.model import bond_style_is_structural
+
 from .errors import ChemNameNotSupported
+
+
+def _bond_style_value(bond) -> object:
+    """Extrae el estilo bruto de un enlace heterogéneo."""
+    if isinstance(bond, dict):
+        return bond.get("style", bond.get("type"))
+    return getattr(bond, "style", None)
 
 
 class MolView:
@@ -386,6 +395,8 @@ class MolView:
         bonds_attr = getattr(graph, "bonds", None)
         if isinstance(bonds_attr, dict):
             for bond in bonds_attr.values():
+                if not bond_style_is_structural(_bond_style_value(bond)):
+                    continue
                 a1 = getattr(bond, "a1_id", None)
                 a2 = getattr(bond, "a2_id", None)
                 if a1 is None or a2 is None:
@@ -401,6 +412,8 @@ class MolView:
         if bonds_attr is not None and not callable(bonds_attr):
             bonds_iter = bonds_attr.values() if isinstance(bonds_attr, dict) else bonds_attr
             for bond in bonds_iter:
+                if not bond_style_is_structural(_bond_style_value(bond)):
+                    continue
                 a1 = getattr(bond, "a1_id", None)
                 a2 = getattr(bond, "a2_id", None)
                 if a1 is None or a2 is None:

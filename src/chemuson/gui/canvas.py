@@ -51,7 +51,16 @@ try:
 except Exception:  # Optional Qt module at runtime
     QSvgGenerator = None
 
-from chemuson.core.model import Bond, BondStyle, BondStereo, ChemState, MolGraph
+from chemuson.core.model import (
+    Bond,
+    BondStyle,
+    BondStereo,
+    ChemState,
+    MolGraph,
+    bond_is_structural,
+    normalize_opacity,
+    normalize_optional_opacity,
+)
 from chemuson.gui.items import (
     AtomItem,
     BondItem,
@@ -124,6 +133,7 @@ from chemuson.gui.commands import (
     ChangeNoImplicitCommand,
     ChangeAtomLabelScaleCommand,
     ChangeCoordinationSphereStyleCommand,
+    ChangeCanvasOpacityCommand,
     SetCoordinationCenterCommand,
     DeleteSelectionCommand,
     MoveAtomsCommand,
@@ -352,7 +362,9 @@ NUMBERING_KEY_ROLE = 4003
 NUMBERING_AUTO_TEXT_ROLE = 4004
 IMPLICIT_H_OVERLAY_ANCHOR_ROLE = 5001
 IMPLICIT_H_OVERLAY_ANGLE_ROLE = 5002
+ITEM_OPACITY_ROLE = 5003
 PAPER_ITEM_ROLE = 7001
+ITEM_OPACITY_UNSET = object()
 
 SYMBOL_TEXT_TOOLS = {
     "tool_symbol_plus": {"text": "+", "scale": 1.0, "anchor": True},
@@ -549,6 +561,140 @@ class ChemusonCanvas(QGraphicsView):
     def graph(self) -> MolGraph:
         """Alias for model for compatibility."""
         return self.model
+
+    def set_canvas_opacity_default(self, opacity: float) -> None:
+        """Define la opacidad por defecto del documento."""
+        self.state.canvas_opacity = normalize_opacity(opacity)
+
+    def canvas_default_opacity(self) -> float:
+        """Devuelve la opacidad por defecto efectiva del documento."""
+        return normalize_opacity(getattr(self.state, "canvas_opacity", 1.0))
+
+    @staticmethod
+    def _opacity_equal(left: object, right: object, tol: float = 0.004) -> bool:
+        """Compara opacidades normalizadas con una tolerancia pequeña."""
+        try:
+            return abs(normalize_opacity(left) - normalize_opacity(right)) <= float(tol)
+        except Exception:
+            return False
+
+    def item_raw_opacity(self, item: QGraphicsItem) -> Optional[float]:
+        """Lee la opacidad local persistida de un item o `None` si hereda."""
+        if item is None:
+            return None
+        try:
+            return normalize_optional_opacity(item.data(ITEM_OPACITY_ROLE))
+        except Exception:
+            return None
+
+    def effective_item_opacity(self, item: QGraphicsItem) -> float:
+        """Resuelve la opacidad efectiva de un item gráfico."""
+        raw = self.item_raw_opacity(item)
+        if raw is None:
+            return self.canvas_default_opacity()
+        return normalize_opacity(raw)
+
+    def effective_atom_opacity(self, atom_id: int | AtomItem | object) -> float:
+        """Resuelve la opacidad efectiva de un átomo."""
+        atom = atom_id
+        if isinstance(atom_id, AtomItem):
+            atom = getattr(atom_id, "atom", None)
+        elif not hasattr(atom_id, "opacity"):
+            atom = self.model.atoms.get(int(atom_id))
+        raw = getattr(atom, "opacity", None) if atom is not None else None
+        if raw is None:
+            return self.canvas_default_opacity()
+        return normalize_opacity(raw)
+
+    def effective_bond_opacity(self, bond_id: int | BondItem | object) -> float:
+        """Resuelve la opacidad efectiva de un enlace."""
+        bond = bond_id
+        if isinstance(bond_id, BondItem):
+            bond = self.model.bonds.get(bond_id.bond_id)
+        elif not hasattr(bond_id, "opacity"):
+            bond = self.model.bonds.get(int(bond_id))
+        raw = getattr(bond, "opacity", None) if bond is not None else None
+        if raw is None:
+            return self.canvas_default_opacity()
+        return normalize_opacity(raw)
+
+    def set_graphics_item_opacity(
+        self,
+        item: QGraphicsItem,
+        opacity: Optional[float] | object,
+    ) -> None:
+        """Fija una opacidad local persistente para un item gráfico."""
+        if item is None:
+            return
+        raw_opacity = normalize_optional_opacity(opacity)
+        try:
+            item.setData(ITEM_OPACITY_ROLE, raw_opacity)
+            item.setOpacity(
+                self.canvas_default_opacity()
+                if raw_opacity is None
+                else normalize_opacity(raw_opacity)
+            )
+        except RuntimeError:
+            return
+
+    def ensure_graphics_item_opacity(
+        self,
+        item: QGraphicsItem,
+        opacity: Optional[float] | object = ITEM_OPACITY_UNSET,
+    ) -> None:
+        """Aplica opacidad efectiva preservando la local existente si ya existe."""
+        if opacity is ITEM_OPACITY_UNSET:
+            opacity = self.item_raw_opacity(item)
+        self.set_graphics_item_opacity(item, opacity)
+
+    def update_atom_item_opacity(self, atom_id: int) -> None:
+        """Sincroniza la opacidad efectiva de un átomo ya dibujado."""
+        item = self.atom_items.get(atom_id)
+        if item is None:
+            return
+        try:
+            item.setOpacity(self.effective_atom_opacity(atom_id))
+        except RuntimeError:
+            return
+
+    def refresh_numbering_opacity(self) -> None:
+        """Reaplica la opacidad global a los overlays de numeración."""
+        opacity = self.canvas_default_opacity()
+        for item in list(self._numbering_overlay_items):
+            if item is None or item.scene() is not self.scene:
+                continue
+            try:
+                item.setOpacity(opacity)
+            except RuntimeError:
+                continue
+
+    def _aromatic_circle_effective_opacity(self, atom_ids: Iterable[int]) -> float:
+        """Calcula una opacidad efectiva para el círculo aromático de un anillo."""
+        ring_set = {int(atom_id) for atom_id in atom_ids}
+        if not ring_set:
+            return self.canvas_default_opacity()
+        opacities: list[float] = []
+        for bond in self.model.bonds.values():
+            if not bond.is_aromatic:
+                continue
+            if bond.a1_id in ring_set and bond.a2_id in ring_set:
+                opacities.append(self.effective_bond_opacity(bond))
+        if not opacities:
+            return self.canvas_default_opacity()
+        return sum(opacities) / len(opacities)
+
+    def refresh_aromatic_circle_opacities(self) -> None:
+        """Reaplica la opacidad efectiva de los círculos aromáticos visibles."""
+        for circle in list(self.aromatic_circles):
+            if circle is None or circle.scene() is not self.scene:
+                continue
+            atom_ids = circle.data(AROMATIC_CIRCLE_ATOMS_ROLE)
+            if not atom_ids:
+                continue
+            try:
+                circle.setOpacity(self._aromatic_circle_effective_opacity(atom_ids))
+            except RuntimeError:
+                continue
 
     def _setup_view(self) -> None:
         """Método auxiliar para  setup view.
@@ -772,6 +918,7 @@ class ChemusonCanvas(QGraphicsView):
         item.setData(NUMBERING_AUTO_TEXT_ROLE, str(auto_text))
         item.setFont(self._numbering_font())
         item.setDefaultTextColor(QColor(self.state.numbering_color))
+        item.setOpacity(self.canvas_default_opacity())
         item.setZValue(35)
         self.scene.addItem(item)
         return item
@@ -3961,6 +4108,7 @@ class ChemusonCanvas(QGraphicsView):
                 "font_bold": self.state.label_font_bold,
                 "font_italic": self.state.label_font_italic,
                 "font_underline": self.state.label_font_underline,
+                "canvas_opacity": self.state.canvas_opacity,
                 "name_advanced_enabled": bool(getattr(self, "name_advanced_enabled", True)),
                 "name_rdkit_isolated": bool(getattr(self, "name_rdkit_isolated", True)),
             },
@@ -3987,6 +4135,7 @@ class ChemusonCanvas(QGraphicsView):
                     "end": {"x": item.end_point().x(), "y": item.end_point().y()},
                     "curve_factor": item.curve_factor(),
                     "stroke_px": item.stroke_px(),
+                    "opacity": self.item_raw_opacity(item),
                 })
             elif isinstance(item, BracketItem):
                 data["annotations"]["brackets"].append({
@@ -3999,6 +4148,7 @@ class ChemusonCanvas(QGraphicsView):
                     },
                     "padding": item._padding,
                     "stroke_px": item.stroke_px(),
+                    "opacity": self.item_raw_opacity(item),
                 })
             elif isinstance(item, TextAnnotationItem):
                 if bool(item.data(NUMBERING_TEXT_ROLE)):
@@ -4012,6 +4162,7 @@ class ChemusonCanvas(QGraphicsView):
                     "font": item.font().toString(),
                     "color": item.defaultTextColor().name(),
                     "text_width": item.textWidth(),
+                    "opacity": self.item_raw_opacity(item),
                 })
             elif isinstance(item, ImageAnnotationItem):
                 rect = item.display_rect()
@@ -4025,6 +4176,7 @@ class ChemusonCanvas(QGraphicsView):
                     "mime_type": item.mime_type(),
                     "data_b64": base64.b64encode(item.data_bytes()).decode("ascii"),
                     "source_name": item.source_name(),
+                    "opacity": self.item_raw_opacity(item),
                 })
             elif isinstance(item, OrbitalAnnotationItem):
                 anchor0 = item.anchor0()
@@ -4035,6 +4187,7 @@ class ChemusonCanvas(QGraphicsView):
                     "anchor1": {"x": anchor1.x(), "y": anchor1.y()},
                     "stroke_shaded_lobes": item.stroke_shaded_lobes(),
                     "z": item.zValue(),
+                    "opacity": self.item_raw_opacity(item),
                 })
             elif isinstance(item, WavyAnchorItem):
                 anchor_id = item.data(WAVY_ANCHOR_ROLE)
@@ -4048,6 +4201,7 @@ class ChemusonCanvas(QGraphicsView):
                     "angle": float(angle) if angle is not None else 0.0,
                     "length": float(length) if length is not None else self._wavy_anchor_length(),
                     "bond_id": int(bond_id) if bond_id is not None else None,
+                    "opacity": self.item_raw_opacity(item),
                 })
         return data
 
@@ -4068,6 +4222,7 @@ class ChemusonCanvas(QGraphicsView):
         self.state.label_font_bold = settings.get("font_bold", False)
         self.state.label_font_italic = settings.get("font_italic", False)
         self.state.label_font_underline = settings.get("font_underline", False)
+        self.state.canvas_opacity = normalize_opacity(settings.get("canvas_opacity", 1.0))
         self.name_advanced_enabled = bool(settings.get("name_advanced_enabled", True))
         self.name_rdkit_isolated = bool(settings.get("name_rdkit_isolated", True))
 
@@ -4102,6 +4257,7 @@ class ChemusonCanvas(QGraphicsView):
                 kind=arrow_d["kind"],
                 curve_factor=curve_factor_value,
                 stroke_px=stroke_px_value,
+                opacity=arrow_d.get("opacity"),
             )
 
         for br_d in annotations.get("brackets", []):
@@ -4123,6 +4279,7 @@ class ChemusonCanvas(QGraphicsView):
                 kind,
                 padding=padding,
                 stroke_px=stroke_px,
+                opacity=br_d.get("opacity"),
             )
 
         for txt_d in annotations.get("text_items", []):
@@ -4139,6 +4296,7 @@ class ChemusonCanvas(QGraphicsView):
                 text_item.setDefaultTextColor(QColor(txt_d["color"]))
             if "text_width" in txt_d:
                 text_item.setTextWidth(float(txt_d["text_width"]))
+            self.set_graphics_item_opacity(text_item, txt_d.get("opacity"))
             self.scene.addItem(text_item)
 
         for img_d in annotations.get("images", []):
@@ -4169,6 +4327,7 @@ class ChemusonCanvas(QGraphicsView):
             )
             item.setRotation(float(img_d.get("rotation", 0.0)))
             item.setZValue(float(img_d.get("z", 8.0)))
+            self.set_graphics_item_opacity(item, img_d.get("opacity"))
             self.readd_image_item(item)
 
         for orbital_d in annotations.get("orbitals", []):
@@ -4184,6 +4343,7 @@ class ChemusonCanvas(QGraphicsView):
             except Exception:
                 continue
             item.setZValue(float(orbital_d.get("z", 44.0)))
+            self.set_graphics_item_opacity(item, orbital_d.get("opacity"))
             self.readd_orbital_item(item)
 
         for anchor_d in annotations.get("wavy_anchors", []):
@@ -4199,11 +4359,13 @@ class ChemusonCanvas(QGraphicsView):
             item.setData(WAVY_ANCHOR_LENGTH_ROLE, length)
             if bond_id is not None:
                 item.setData(WAVY_ANCHOR_BOND_ROLE, int(bond_id))
+            self.set_graphics_item_opacity(item, anchor_d.get("opacity"))
             self.readd_wavy_anchor_item(item)
 
         # Full refresh to update atom visibility and circles
         self.refresh_atom_visibility()
         self.refresh_aromatic_circles()
+        self.refresh_numbering_opacity()
 
     def zoom_in(self) -> None:
         """Método auxiliar para zoom in.
@@ -4320,6 +4482,7 @@ class ChemusonCanvas(QGraphicsView):
                     style=self.drawing_style,
                     use_element_colors=self.state.use_element_colors
                 )
+                item.setOpacity(self.effective_atom_opacity(atom))
                 self.scene.addItem(item)
                 self.atom_items[atom.id] = item
 
@@ -4353,6 +4516,7 @@ class ChemusonCanvas(QGraphicsView):
                     item.set_endpoint_extend(extend_start, extend_end)
                     # Explicitly update positions now that context and sign are set
                     item.update_positions(a1, a2)
+                    item.setOpacity(self.effective_bond_opacity(bond))
                     self.scene.addItem(item)
                     self.bond_items[bond.id] = item
 
@@ -4363,6 +4527,7 @@ class ChemusonCanvas(QGraphicsView):
         finally:
             self._suspend_numbering_refresh = False
         self.recompute_numbering()
+        self.refresh_numbering_opacity()
 
     def refresh_ring_centers(self) -> None:
         """Recalculate geometric centers for all rings in the model."""
@@ -4463,11 +4628,13 @@ class ChemusonCanvas(QGraphicsView):
         Side Effects:
             Puede modificar el estado interno o la escena.
         """
+        self.ensure_graphics_item_opacity(item)
         if item.scene() is not self.scene:
             self.scene.addItem(item)
 
     def add_image_item(self, item: ImageAnnotationItem) -> None:
         """Añade una imagen anotada persistente al lienzo."""
+        self.ensure_graphics_item_opacity(item)
         if item.scene() is not self.scene:
             self.scene.addItem(item)
         if item not in self.image_items:
@@ -4475,6 +4642,7 @@ class ChemusonCanvas(QGraphicsView):
 
     def add_orbital_item(self, item: OrbitalAnnotationItem) -> None:
         """Añade un orbital vectorial persistente al lienzo."""
+        self.ensure_graphics_item_opacity(item)
         if item.scene() is not self.scene:
             self.scene.addItem(item)
         if item not in self.orbital_items:
@@ -4492,6 +4660,7 @@ class ChemusonCanvas(QGraphicsView):
         Side Effects:
             Puede modificar el estado interno o la escena.
         """
+        self.ensure_graphics_item_opacity(item)
         if item.scene() is not self.scene:
             self.scene.addItem(item)
         self._wavy_anchors.add(item)
@@ -4557,6 +4726,7 @@ class ChemusonCanvas(QGraphicsView):
         Side Effects:
             Puede modificar el estado interno o la escena.
         """
+        self.ensure_graphics_item_opacity(item)
         if item.scene() is not self.scene:
             self.scene.addItem(item)
         if item.data(ELECTRON_DOT_ROLE):
@@ -4565,6 +4735,7 @@ class ChemusonCanvas(QGraphicsView):
 
     def readd_image_item(self, item: ImageAnnotationItem) -> None:
         """Reintroduce una imagen anotada en el lienzo."""
+        self.ensure_graphics_item_opacity(item)
         if item.scene() is not self.scene:
             self.scene.addItem(item)
         if item not in self.image_items:
@@ -4572,6 +4743,7 @@ class ChemusonCanvas(QGraphicsView):
 
     def readd_orbital_item(self, item: OrbitalAnnotationItem) -> None:
         """Reintroduce un orbital persistente en el lienzo."""
+        self.ensure_graphics_item_opacity(item)
         if item.scene() is not self.scene:
             self.scene.addItem(item)
         if item not in self.orbital_items:
@@ -4589,6 +4761,7 @@ class ChemusonCanvas(QGraphicsView):
         Side Effects:
             Puede modificar el estado interno o la escena.
         """
+        self.ensure_graphics_item_opacity(item)
         if item.scene() is not self.scene:
             self.scene.addItem(item)
         self._wavy_anchors.add(item)
@@ -4743,6 +4916,7 @@ class ChemusonCanvas(QGraphicsView):
                 sphere_color=getattr(atom, "sphere_color", None),
                 sphere_filled=bool(getattr(atom, "sphere_filled", True)),
                 sphere_transparent=bool(getattr(atom, "sphere_transparent", False)),
+                opacity=self.effective_atom_opacity(atom),
             )
         for bond in self._unique_bonds_for_copy(bonds):
             graph.add_bond(
@@ -4760,6 +4934,7 @@ class ChemusonCanvas(QGraphicsView):
                 stroke_px=bond.stroke_px,
                 color=bond.color,
                 donor_atom_id=getattr(bond, "donor_atom_id", None),
+                opacity=self.effective_bond_opacity(bond),
             )
         return graph
 
@@ -4778,8 +4953,20 @@ class ChemusonCanvas(QGraphicsView):
         texts = self._selected_text_items()
         orbitals = self._selected_orbital_items()
         images = self._selected_image_items()
+        wavy_items = [
+            item for item in self.scene.selectedItems() if isinstance(item, WavyAnchorItem)
+        ]
 
-        if not atom_ids and not bonds and not arrows and not brackets and not texts and not orbitals and not images:
+        if (
+            not atom_ids
+            and not bonds
+            and not arrows
+            and not brackets
+            and not texts
+            and not orbitals
+            and not images
+            and not wavy_items
+        ):
             return None
 
         bbox = self._selected_items_bbox()
@@ -4814,6 +5001,7 @@ class ChemusonCanvas(QGraphicsView):
                     "sphere_color": getattr(atom, "sphere_color", None),
                     "sphere_filled": bool(getattr(atom, "sphere_filled", True)),
                     "sphere_transparent": bool(getattr(atom, "sphere_transparent", False)),
+                    "opacity": self.effective_atom_opacity(atom),
                     "anchor": self._group_anchor_overrides.get(atom_id),
                 }
             )
@@ -4838,6 +5026,7 @@ class ChemusonCanvas(QGraphicsView):
                         "donor_atom_id": getattr(bond, "donor_atom_id", None),
                         "flex_curve_1": getattr(bond, "flex_curve_1", None),
                         "flex_curve_2": getattr(bond, "flex_curve_2", None),
+                        "opacity": self.effective_bond_opacity(bond),
                     }
                 )
 
@@ -4852,6 +5041,7 @@ class ChemusonCanvas(QGraphicsView):
                     "kind": item.kind(),
                     "curve_factor": item.curve_factor(),
                     "stroke_px": item.stroke_px(),
+                    "opacity": self.effective_item_opacity(item),
                 }
             )
 
@@ -4864,6 +5054,7 @@ class ChemusonCanvas(QGraphicsView):
                     "kind": getattr(item, "_kind", "[]"),
                     "padding": getattr(item, "_padding", None),
                     "stroke_px": item.stroke_px(),
+                    "opacity": self.effective_item_opacity(item),
                 }
             )
 
@@ -4879,6 +5070,7 @@ class ChemusonCanvas(QGraphicsView):
                     "font": item.font().toString(),
                     "color": item.defaultTextColor().name(),
                     "text_width": item.textWidth(),
+                    "opacity": self.effective_item_opacity(item),
                 }
             )
 
@@ -4893,6 +5085,7 @@ class ChemusonCanvas(QGraphicsView):
                     "anchor1": [anchor1.x() - left, anchor1.y() - top],
                     "stroke_shaded_lobes": item.stroke_shaded_lobes(),
                     "z": item.zValue(),
+                    "opacity": self.effective_item_opacity(item),
                 }
             )
 
@@ -4910,6 +5103,23 @@ class ChemusonCanvas(QGraphicsView):
                     "mime_type": item.mime_type(),
                     "data_b64": base64.b64encode(item.data_bytes()).decode("ascii"),
                     "source_name": item.source_name(),
+                    "opacity": self.effective_item_opacity(item),
+                }
+            )
+
+        wavy_payload = []
+        for item in wavy_items:
+            start = item.start_point()
+            end = item.end_point()
+            wavy_payload.append(
+                {
+                    "start": [start.x() - left, start.y() - top],
+                    "end": [end.x() - left, end.y() - top],
+                    "anchor_id": item.data(WAVY_ANCHOR_ROLE),
+                    "angle": item.data(WAVY_ANCHOR_ANGLE_ROLE),
+                    "length": item.data(WAVY_ANCHOR_LENGTH_ROLE),
+                    "bond_id": item.data(WAVY_ANCHOR_BOND_ROLE),
+                    "opacity": self.effective_item_opacity(item),
                 }
             )
 
@@ -4921,6 +5131,7 @@ class ChemusonCanvas(QGraphicsView):
             "texts": texts_payload,
             "orbitals": orbitals_payload,
             "images": images_payload,
+            "wavy_items": wavy_payload,
         }
 
     def _paste_selection_payload(self, payload: dict) -> None:
@@ -4942,7 +5153,17 @@ class ChemusonCanvas(QGraphicsView):
         texts = payload.get("texts", [])
         orbitals = payload.get("orbitals", [])
         images = payload.get("images", [])
-        if not atoms and not bonds and not arrows and not brackets and not texts and not orbitals and not images:
+        wavy_items = payload.get("wavy_items", [])
+        if (
+            not atoms
+            and not bonds
+            and not arrows
+            and not brackets
+            and not texts
+            and not orbitals
+            and not images
+            and not wavy_items
+        ):
             return
 
         target = self._last_scene_pos
@@ -4971,7 +5192,7 @@ class ChemusonCanvas(QGraphicsView):
                 ring_map[ring_id] = self.allocate_ring_id()
             return ring_map[ring_id]
 
-        has_undo_items = bool(atoms or bonds or arrows or brackets or texts or orbitals or images)
+        has_undo_items = bool(atoms or bonds or arrows or brackets or texts or orbitals or images or wavy_items)
         self.begin_validation_batch()
         if has_undo_items:
             self.undo_stack.beginMacro("Paste selection")
@@ -5005,6 +5226,7 @@ class ChemusonCanvas(QGraphicsView):
                     sphere_color=atom_d.get("sphere_color"),
                     sphere_filled=bool(atom_d.get("sphere_filled", True)),
                     sphere_transparent=bool(atom_d.get("sphere_transparent", False)),
+                    opacity=atom_d.get("opacity"),
                 )
                 if has_undo_items:
                     self.undo_stack.push(cmd)
@@ -5057,6 +5279,7 @@ class ChemusonCanvas(QGraphicsView):
                     donor_atom_id=donor_atom_id,
                     flex_curve_1=bond_d.get("flex_curve_1"),
                     flex_curve_2=bond_d.get("flex_curve_2"),
+                    opacity=bond_d.get("opacity"),
                 )
                 if has_undo_items:
                     self.undo_stack.push(cmd)
@@ -5086,6 +5309,7 @@ class ChemusonCanvas(QGraphicsView):
                     kind,
                     curve_factor=curve_factor_value,
                     stroke_px=stroke_px_value,
+                    opacity=arrow_d.get("opacity"),
                 )
                 if has_undo_items:
                     self.undo_stack.push(cmd)
@@ -5112,6 +5336,7 @@ class ChemusonCanvas(QGraphicsView):
                             side,
                             padding=padding,
                             stroke_px=stroke_px,
+                            opacity=bracket_d.get("opacity"),
                         )
                         if has_undo_items:
                             self.undo_stack.push(cmd)
@@ -5126,6 +5351,7 @@ class ChemusonCanvas(QGraphicsView):
                         kind,
                         padding=padding,
                         stroke_px=stroke_px,
+                        opacity=bracket_d.get("opacity"),
                     )
                     if has_undo_items:
                         self.undo_stack.push(cmd)
@@ -5149,6 +5375,7 @@ class ChemusonCanvas(QGraphicsView):
                     text_item.setDefaultTextColor(QColor(txt_d["color"]))
                 if "text_width" in txt_d:
                     text_item.setTextWidth(float(txt_d["text_width"]))
+                self.set_graphics_item_opacity(text_item, txt_d.get("opacity"))
                 text_item.setPos(
                     float(txt_d.get("x", 0.0)) + dx, float(txt_d.get("y", 0.0)) + dy
                 )
@@ -5168,6 +5395,7 @@ class ChemusonCanvas(QGraphicsView):
                     stroke_shaded_lobes=orbital_d.get("stroke_shaded_lobes"),
                 )
                 item.setZValue(float(orbital_d.get("z", 44.0)))
+                self.set_graphics_item_opacity(item, orbital_d.get("opacity"))
                 if has_undo_items:
                     self.undo_stack.push(AddOrbitalItemCommand(self, item))
                 else:
@@ -5202,10 +5430,44 @@ class ChemusonCanvas(QGraphicsView):
                 )
                 item.setRotation(float(img_d.get("rotation", 0.0)))
                 item.setZValue(float(img_d.get("z", 8.0)))
+                self.set_graphics_item_opacity(item, img_d.get("opacity"))
                 if has_undo_items:
                     self.undo_stack.push(AddImageItemCommand(self, item))
                 else:
                     self.readd_image_item(item)
+                inserted_items.append(item)
+
+            for anchor_d in wavy_items:
+                start_vals = anchor_d.get("start", [0.0, 0.0])
+                end_vals = anchor_d.get("end", [10.0, 0.0])
+                item = WavyAnchorItem(
+                    QPointF(float(start_vals[0]) + dx, float(start_vals[1]) + dy),
+                    QPointF(float(end_vals[0]) + dx, float(end_vals[1]) + dy),
+                    style=self.drawing_style,
+                )
+                anchor_id = anchor_d.get("anchor_id")
+                angle = anchor_d.get("angle")
+                length = anchor_d.get("length")
+                mapped_anchor_id = None
+                if anchor_id is not None:
+                    try:
+                        mapped_anchor_id = id_map.get(int(anchor_id))
+                    except Exception:
+                        mapped_anchor_id = None
+                    if mapped_anchor_id is None and anchor_id in self.model.atoms:
+                        mapped_anchor_id = int(anchor_id)
+                if mapped_anchor_id is None:
+                    continue
+                item.setData(WAVY_ANCHOR_ROLE, mapped_anchor_id)
+                if angle is not None:
+                    item.setData(WAVY_ANCHOR_ANGLE_ROLE, float(angle))
+                if length is not None:
+                    item.setData(WAVY_ANCHOR_LENGTH_ROLE, float(length))
+                self.set_graphics_item_opacity(item, anchor_d.get("opacity"))
+                if has_undo_items:
+                    self.undo_stack.push(AddWavyAnchorCommand(self, item))
+                else:
+                    self.readd_wavy_anchor_item(item)
                 inserted_items.append(item)
         finally:
             if has_undo_items:
@@ -5306,6 +5568,7 @@ class ChemusonCanvas(QGraphicsView):
                         "rotation": item.rotation(),
                         "font": item.font().toString(),
                         "color": item.defaultTextColor().name(),
+                        "opacity": self.effective_item_opacity(item),
                     }
                     for item in selected_text_items
                 ]
@@ -5434,6 +5697,7 @@ class ChemusonCanvas(QGraphicsView):
                 text_item.setDefaultTextColor(QColor(txt_d["color"]))
             if "text_width" in txt_d:
                 text_item.setTextWidth(float(txt_d["text_width"]))
+            self.set_graphics_item_opacity(text_item, txt_d.get("opacity"))
             text_item.setPos(float(txt_d.get("x", 0.0)), float(txt_d.get("y", 0.0)))
             self.scene.addItem(text_item)
             created.append(text_item)
@@ -5529,7 +5793,7 @@ class ChemusonCanvas(QGraphicsView):
                     continue
                 extend(item.sceneBoundingRect())
             for item in self.scene.selectedItems():
-                if isinstance(item, (ArrowItem, BracketItem, TextAnnotationItem, OrbitalAnnotationItem, ImageAnnotationItem)):
+                if isinstance(item, (ArrowItem, BracketItem, TextAnnotationItem, OrbitalAnnotationItem, ImageAnnotationItem, WavyAnchorItem)):
                     extend(item.sceneBoundingRect())
         else:
             for atom_id in self.atom_items.keys():
@@ -5560,6 +5824,11 @@ class ChemusonCanvas(QGraphicsView):
                 if item.isVisible():
                     extend(item.sceneBoundingRect())
             for item in self.image_items:
+                if item.scene() is not self.scene:
+                    continue
+                if item.isVisible():
+                    extend(item.sceneBoundingRect())
+            for item in self._wavy_anchors:
                 if item.scene() is not self.scene:
                     continue
                 if item.isVisible():
@@ -6362,6 +6631,7 @@ class ChemusonCanvas(QGraphicsView):
             style=self.drawing_style,
             use_element_colors=self.state.use_element_colors,
         )
+        item.setOpacity(self.effective_atom_opacity(atom))
         self.scene.addItem(item)
         self.atom_items[atom.id] = item
         self._refresh_atom_label(atom.id)
@@ -6387,6 +6657,7 @@ class ChemusonCanvas(QGraphicsView):
             if atom_ref is not None and hasattr(item, "atom"):
                 item.atom = atom_ref
             item.setPos(x, y)
+            item.setOpacity(self.effective_atom_opacity(atom_id))
         self._update_electron_dots_for_atom(atom_id)
         self._update_wavy_anchors_for_atom(atom_id)
 
@@ -6417,6 +6688,7 @@ class ChemusonCanvas(QGraphicsView):
             if is_explicit is None:
                 is_explicit = self.model.get_atom(atom_id).is_explicit
             item.set_element(element, is_explicit=is_explicit)
+            item.setOpacity(self.effective_atom_opacity(atom_id))
             self._refresh_atom_label(atom_id)
         self._update_electron_dots_for_atom(atom_id)
         self._update_wavy_anchors_for_atom(atom_id)
@@ -6440,6 +6712,7 @@ class ChemusonCanvas(QGraphicsView):
             if atom_ref is not None and hasattr(item, "atom"):
                 item.atom = atom_ref
             item.set_charge(charge)
+            item.setOpacity(self.effective_atom_opacity(atom_id))
             self._refresh_atom_label(atom_id)
         self._sync_selection_from_scene()
 
@@ -6806,10 +7079,17 @@ class ChemusonCanvas(QGraphicsView):
         Side Effects:
             Puede modificar el estado interno o la escena.
         """
+        degree_getter = getattr(self.model, "atom_degree", None)
+        if callable(degree_getter):
+            try:
+                return int(degree_getter(atom_id))
+            except Exception:
+                pass
         return sum(
             1
             for bond in self.model.bonds.values()
-            if bond.a1_id == atom_id or bond.a2_id == atom_id
+            if bond_is_structural(bond)
+            and (bond.a1_id == atom_id or bond.a2_id == atom_id)
         )
 
     def _is_disposable_orphan_atom(self, atom_id: int) -> bool:
@@ -7946,6 +8226,7 @@ class ChemusonCanvas(QGraphicsView):
         extend_end = self._bond_endpoint_extend(bond, bond.a2_id)
         item.set_endpoint_extend(extend_start, extend_end)
         item.update_positions(atom1, atom2)
+        item.setOpacity(self.effective_bond_opacity(bond))
         self.scene.addItem(item)
         self.bond_items[bond.id] = item
         self._refresh_atom_label(bond.a1_id)
@@ -7960,6 +8241,7 @@ class ChemusonCanvas(QGraphicsView):
         kind: str,
         curve_factor: float | None = None,
         stroke_px: float | None = None,
+        opacity: Optional[float] | object = ITEM_OPACITY_UNSET,
     ) -> ArrowItem:
         """Añade arrow item.
 
@@ -7984,6 +8266,7 @@ class ChemusonCanvas(QGraphicsView):
             stroke_px=stroke_px,
             style=self.drawing_style,
         )
+        self.ensure_graphics_item_opacity(item, opacity)
         self.scene.addItem(item)
         self.arrow_items.append(item)
         return item
@@ -7995,6 +8278,7 @@ class ChemusonCanvas(QGraphicsView):
         end: QPointF,
         kind: str,
         curve_factor: float | None = None,
+        opacity: Optional[float] | object = ITEM_OPACITY_UNSET,
     ) -> None:
         """Método auxiliar para readd arrow item.
 
@@ -8013,6 +8297,7 @@ class ChemusonCanvas(QGraphicsView):
         """
         item.set_kind(kind)
         item.update_positions(start, end, curve_factor=curve_factor)
+        self.ensure_graphics_item_opacity(item, opacity)
         if item.scene() is not self.scene:
             self.scene.addItem(item)
         if item not in self.arrow_items:
@@ -8042,6 +8327,7 @@ class ChemusonCanvas(QGraphicsView):
         *,
         padding: float = 8.0,
         stroke_px: float | None = None,
+        opacity: Optional[float] | object = ITEM_OPACITY_UNSET,
     ) -> BracketItem:
         """Añade bracket item.
 
@@ -8062,6 +8348,7 @@ class ChemusonCanvas(QGraphicsView):
             stroke_px=stroke_px,
             style=self.drawing_style,
         )
+        self.ensure_graphics_item_opacity(item, opacity)
         self.scene.addItem(item)
         self.bracket_items.append(item)
         return item
@@ -8073,6 +8360,7 @@ class ChemusonCanvas(QGraphicsView):
         kind: str,
         padding: Optional[float] = None,
         stroke_px: float | None = None,
+        opacity: Optional[float] | object = ITEM_OPACITY_UNSET,
     ) -> None:
         """Método auxiliar para readd bracket item.
 
@@ -8091,6 +8379,7 @@ class ChemusonCanvas(QGraphicsView):
         item.set_rect(rect, padding=padding)
         item._kind = kind
         item.set_stroke_px(stroke_px)
+        self.ensure_graphics_item_opacity(item, opacity)
         if item.scene() is not self.scene:
             self.scene.addItem(item)
         if item not in self.bracket_items:
@@ -8198,6 +8487,7 @@ class ChemusonCanvas(QGraphicsView):
             item.set_endpoint_extend(extend_start, extend_end)
             item.set_bond(bond, atom1, atom2)
             item.set_style(self.drawing_style, atom1, atom2)
+            item.setOpacity(self.effective_bond_opacity(bond))
         self._refresh_bond_ring_flags(ring_pairs if item is not None else None)
         self._refresh_atom_label(bond.a1_id)
         self._refresh_atom_label(bond.a2_id)
@@ -8917,6 +9207,7 @@ class ChemusonCanvas(QGraphicsView):
         circle = AromaticCircleItem(QRectF(-radius_x, -radius_y, 2.0 * radius_x, 2.0 * radius_y))
         circle.set_geometry(cx, cy, radius_x, radius_y, angle_deg)
         circle.setData(AROMATIC_CIRCLE_ATOMS_ROLE, atom_ids_tuple)
+        circle.setOpacity(self._aromatic_circle_effective_opacity(atom_ids_tuple))
         self.scene.addItem(circle)
         self.aromatic_circles.append(circle)
 
@@ -8949,6 +9240,7 @@ class ChemusonCanvas(QGraphicsView):
                 break
             cx, cy, radius_x, radius_y, angle_deg = geometry
             circle.set_geometry(cx, cy, radius_x, radius_y, angle_deg)
+            circle.setOpacity(self._aromatic_circle_effective_opacity(ring_set))
 
         if force_refresh:
             self.refresh_aromatic_circles()
@@ -11232,6 +11524,163 @@ class ChemusonCanvas(QGraphicsView):
         for item in bracket_items:
             self.undo_stack.push(ChangeBracketStrokeCommand(self, item, None))
         self.undo_stack.endMacro()
+
+    def _selected_text_items_for_opacity(self) -> list[TextAnnotationItem]:
+        """Devuelve textos manuales seleccionados o en edición para opacidad."""
+        items = [
+            item
+            for item in self.scene.selectedItems()
+            if isinstance(item, TextAnnotationItem) and not bool(item.data(NUMBERING_TEXT_ROLE))
+        ]
+        focus_item = self._active_text_edit_item()
+        if (
+            isinstance(focus_item, TextAnnotationItem)
+            and not bool(focus_item.data(NUMBERING_TEXT_ROLE))
+            and focus_item not in items
+        ):
+            items.append(focus_item)
+        return items
+
+    def _selected_wavy_items(self) -> list[WavyAnchorItem]:
+        """Devuelve anclas onduladas seleccionadas."""
+        return [item for item in self.scene.selectedItems() if isinstance(item, WavyAnchorItem)]
+
+    def _opacity_target_snapshot(self, *, selected_only: bool) -> dict:
+        """Recolecta objetivos de opacidad para selección o documento completo."""
+        if selected_only:
+            return {
+                "atom_ids": sorted(
+                    atom_id for atom_id in self.state.selected_atoms if atom_id in self.model.atoms
+                ),
+                "bond_ids": sorted(
+                    bond_id for bond_id in self.state.selected_bonds if bond_id in self.model.bonds
+                ),
+                "text_items": self._selected_text_items_for_opacity(),
+                "arrow_items": self._selected_arrow_items(),
+                "bracket_items": self._selected_bracket_items(),
+                "orbital_items": self._selected_orbital_items(),
+                "image_items": self._selected_image_items(),
+                "wavy_items": self._selected_wavy_items(),
+                "numbering_items": [],
+            }
+        return {
+            "atom_ids": sorted(self.model.atoms.keys()),
+            "bond_ids": sorted(self.model.bonds.keys()),
+            "text_items": [
+                item
+                for item in self.scene.items()
+                if isinstance(item, TextAnnotationItem) and not bool(item.data(NUMBERING_TEXT_ROLE))
+            ],
+            "arrow_items": [item for item in self.arrow_items if item.scene() is self.scene],
+            "bracket_items": [item for item in self.bracket_items if item.scene() is self.scene],
+            "orbital_items": [item for item in self.orbital_items if item.scene() is self.scene],
+            "image_items": [item for item in self.image_items if item.scene() is self.scene],
+            "wavy_items": [item for item in self._wavy_anchors if item.scene() is self.scene],
+            "numbering_items": [
+                item for item in self._numbering_overlay_items if item is not None and item.scene() is self.scene
+            ],
+        }
+
+    @staticmethod
+    def _snapshot_has_targets(snapshot: dict) -> bool:
+        """Indica si el snapshot contiene al menos un objetivo explícito."""
+        return any(
+            bool(snapshot.get(key))
+            for key in (
+                "atom_ids",
+                "bond_ids",
+                "text_items",
+                "arrow_items",
+                "bracket_items",
+                "orbital_items",
+                "image_items",
+                "wavy_items",
+            )
+        )
+
+    def current_opacity_percent(self) -> int:
+        """Devuelve la opacidad a mostrar en el control de transparencia."""
+        snapshot = self._opacity_target_snapshot(selected_only=True)
+        if not self._snapshot_has_targets(snapshot):
+            return int(round(self.canvas_default_opacity() * 100.0))
+
+        values: list[float] = []
+        values.extend(self.effective_atom_opacity(atom_id) for atom_id in snapshot["atom_ids"])
+        values.extend(self.effective_bond_opacity(bond_id) for bond_id in snapshot["bond_ids"])
+        for key in ("text_items", "arrow_items", "bracket_items", "orbital_items", "image_items", "wavy_items"):
+            values.extend(self.effective_item_opacity(item) for item in snapshot[key])
+        if not values:
+            return int(round(self.canvas_default_opacity() * 100.0))
+        return int(round((sum(values) / len(values)) * 100.0))
+
+    def apply_opacity_percent(self, percent: float) -> bool:
+        """Aplica una transparencia/opacidad a selección o a todo el documento."""
+        target_opacity = normalize_opacity(float(percent) / 100.0)
+        selection_snapshot = self._opacity_target_snapshot(selected_only=True)
+        selection_mode = self._snapshot_has_targets(selection_snapshot)
+        targets = selection_snapshot if selection_mode else self._opacity_target_snapshot(selected_only=False)
+
+        atom_values: dict[int, Optional[float]] = {}
+        for atom_id in targets["atom_ids"]:
+            atom = self.model.atoms.get(atom_id)
+            if atom is None:
+                continue
+            current_raw = getattr(atom, "opacity", None)
+            current_effective = self.effective_atom_opacity(atom_id)
+            if selection_mode:
+                if self._opacity_equal(current_effective, target_opacity):
+                    continue
+                atom_values[atom_id] = target_opacity
+            elif current_raw is not None or not self._opacity_equal(current_effective, target_opacity):
+                atom_values[atom_id] = None
+
+        bond_values: dict[int, Optional[float]] = {}
+        for bond_id in targets["bond_ids"]:
+            bond = self.model.bonds.get(bond_id)
+            if bond is None:
+                continue
+            current_raw = getattr(bond, "opacity", None)
+            current_effective = self.effective_bond_opacity(bond_id)
+            if selection_mode:
+                if self._opacity_equal(current_effective, target_opacity):
+                    continue
+                bond_values[bond_id] = target_opacity
+            elif current_raw is not None or not self._opacity_equal(current_effective, target_opacity):
+                bond_values[bond_id] = None
+
+        item_values: dict[object, Optional[float]] = {}
+        for key in ("text_items", "arrow_items", "bracket_items", "orbital_items", "image_items", "wavy_items"):
+            for item in targets[key]:
+                current_raw = self.item_raw_opacity(item)
+                current_effective = self.effective_item_opacity(item)
+                if selection_mode:
+                    if self._opacity_equal(current_effective, target_opacity):
+                        continue
+                    item_values[item] = target_opacity
+                elif current_raw is not None or not self._opacity_equal(current_effective, target_opacity):
+                    item_values[item] = None
+
+        canvas_opacity = target_opacity if not selection_mode else None
+        default_changed = not selection_mode and not self._opacity_equal(
+            self.canvas_default_opacity(),
+            target_opacity,
+        )
+        if not atom_values and not bond_values and not item_values and not default_changed:
+            return False
+
+        command_text = "Change selection opacity" if selection_mode else "Change canvas opacity"
+        self.undo_stack.push(
+            ChangeCanvasOpacityCommand(
+                self.model,
+                self,
+                atom_values=atom_values,
+                bond_values=bond_values,
+                item_values=item_values,
+                canvas_opacity=canvas_opacity,
+                text=command_text,
+            )
+        )
+        return True
 
 
     def _ensure_selection_overlay(self) -> None:
@@ -14483,6 +14932,8 @@ class ChemusonCanvas(QGraphicsView):
         """
         max_order = max(1, self.state.active_bond_order)
         for bond in self.model.bonds.values():
+            if not bond_is_structural(bond):
+                continue
             if bond.a1_id == anchor_id or bond.a2_id == anchor_id:
                 order = 2 if bond.is_aromatic else bond.order
                 max_order = max(max_order, order)
@@ -14511,6 +14962,8 @@ class ChemusonCanvas(QGraphicsView):
         angles = []
         anchor = self.model.get_atom(anchor_id)
         for bond in self.model.bonds.values():
+            if not bond_is_structural(bond):
+                continue
             if bond.a1_id == anchor_id:
                 other = self.model.get_atom(bond.a2_id)
             elif bond.a2_id == anchor_id:
@@ -14948,6 +15401,8 @@ class ChemusonCanvas(QGraphicsView):
         anchor = self.model.get_atom(anchor_id)
         p0 = QPointF(anchor.x, anchor.y)
         for bond in self.model.bonds.values():
+            if not bond_is_structural(bond):
+                continue
             if bond.a1_id == anchor_id:
                 other = self.model.get_atom(bond.a2_id)
             elif bond.a2_id == anchor_id:
@@ -14975,6 +15430,8 @@ class ChemusonCanvas(QGraphicsView):
         has_triple = bond_order >= 3
         has_double = bond_order == 2 or is_aromatic
         for bond in self.model.bonds.values():
+            if not bond_is_structural(bond):
+                continue
             if bond.a1_id != anchor_id and bond.a2_id != anchor_id:
                 continue
             if bond.order >= 3:

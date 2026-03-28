@@ -7,6 +7,7 @@ import unittest
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.core.model import BondStyle, BondStereo, MolGraph
+from chemuson.chemname.molview import MolView
 
 
 class MolGraphTest(unittest.TestCase):
@@ -235,6 +236,36 @@ class MolGraphTest(unittest.TestCase):
                 donor_atom_id=carbon.id,
             )
         self.assertNotIn(carbon.id, graph.validate())
+
+    def test_validate_ignores_interaction_bonds_on_hydrogen(self):
+        """Un enlace intermolecular no debe alterar la valencia real de un H."""
+        graph = MolGraph()
+        nitrogen = graph.add_atom("N", 0.0, 0.0)
+        hydrogen = graph.add_atom("H", 1.0, 0.0, is_explicit=True)
+        chloride = graph.add_atom("Cl", 2.0, 0.0, charge=-1)
+
+        graph.add_bond(nitrogen.id, hydrogen.id, order=1)
+        implicit_before = graph.implicit_h_count(nitrogen.id)
+        graph.add_bond(hydrogen.id, chloride.id, style=BondStyle.INTERACTION)
+
+        errors = graph.validate()
+        self.assertNotIn(nitrogen.id, errors)
+        self.assertNotIn(hydrogen.id, errors)
+        self.assertNotIn(chloride.id, errors)
+        self.assertEqual(graph.implicit_h_count(nitrogen.id), implicit_before)
+
+    def test_molview_ignores_interaction_bonds_in_connectivity(self):
+        """La vista estructural no debe conectar átomos unidos solo por interacción."""
+        graph = MolGraph()
+        donor = graph.add_atom("O", 0.0, 0.0)
+        acceptor = graph.add_atom("H", 1.0, 0.0, is_explicit=True)
+        graph.add_bond(donor.id, acceptor.id, style=BondStyle.INTERACTION)
+
+        view = MolView(graph)
+        self.assertEqual(view.neighbors(donor.id), [])
+        self.assertEqual(view.neighbors(acceptor.id), [])
+        self.assertEqual(view.bonds(), [])
+        self.assertEqual(view.bond_orders(), [])
 
     def test_formal_charge_property_and_total_charge(self):
         """La carga formal por átomo y total de molécula deben estar sincronizadas."""

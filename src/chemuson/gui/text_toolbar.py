@@ -30,6 +30,7 @@ class TextFormatToolbar(QToolBar):
     # Signal emitted when color changes
     color_changed = pyqtSignal(QColor)
     alignment_changed = pyqtSignal(Qt.AlignmentFlag)
+    opacity_changed = pyqtSignal(int)
 
     def __init__(self, parent=None):
         """Inicializa la barra de formato de texto.
@@ -106,6 +107,21 @@ class TextFormatToolbar(QToolBar):
         self._update_color_icon()
         self.addWidget(self.color_btn)
 
+        self.addSeparator()
+
+        # --- Opacity ---
+        self.opacity_spin = QSpinBox()
+        self.opacity_spin.setRange(0, 100)
+        self.opacity_spin.setSingleStep(5)
+        self.opacity_spin.setValue(100)
+        self.opacity_spin.setSuffix("%")
+        self.opacity_spin.setPrefix("Op ")
+        self.opacity_spin.setToolTip(
+            "Opacidad. Sin selección aplica a todo el canvas; con selección, solo a los elementos seleccionados."
+        )
+        self.opacity_spin.valueChanged.connect(self._emit_opacity_change)
+        self.addWidget(self.opacity_spin)
+
     def _add_toggle_action(self, text: str, tooltip: str, prop_name: str) -> QAction:
         """Crea una acción conmutadora (toggle) para formato.
 
@@ -176,7 +192,13 @@ class TextFormatToolbar(QToolBar):
         sup = self.action_sup.isChecked()
         
         self.format_changed.emit(family, size, b, i, u, sub, sup, property_name)
-    
+
+    def _emit_opacity_change(self, value: int) -> None:
+        """Emite cambios del control de opacidad evitando realimentación."""
+        if self._syncing_state:
+            return
+        self.opacity_changed.emit(int(value))
+
     def set_state(self, font: QFont, settings: dict):
         """Actualiza la barra según el estado de selección actual."""
         self._syncing_state = True
@@ -197,5 +219,13 @@ class TextFormatToolbar(QToolBar):
             if color and isinstance(color, QColor):
                 self._current_color = color
                 self._update_color_icon()
+        finally:
+            self._syncing_state = False
+
+    def set_opacity_percent(self, value: int) -> None:
+        """Sincroniza el control de opacidad sin reemitir la señal."""
+        self._syncing_state = True
+        try:
+            self.opacity_spin.setValue(max(0, min(100, int(value))))
         finally:
             self._syncing_state = False

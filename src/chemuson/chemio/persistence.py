@@ -116,6 +116,7 @@ class PersistenceManager:
                 "sphere_color": getattr(atom, "sphere_color", None),
                 "sphere_filled": bool(getattr(atom, "sphere_filled", True)),
                 "sphere_transparent": bool(getattr(atom, "sphere_transparent", False)),
+                "opacity": getattr(atom, "opacity", None),
             })
             
         bonds_data = []
@@ -143,6 +144,7 @@ class PersistenceManager:
                 "flex_curve_1": getattr(bond, "flex_curve_1", None),
                 "flex_curve_2": getattr(bond, "flex_curve_2", None),
                 "pi_offset_sign": getattr(bond, "pi_offset_sign", None),
+                "opacity": getattr(bond, "opacity", None),
             })
             
         # 2. Serializar elementos del canvas (flechas, brackets, texto)
@@ -208,6 +210,7 @@ class PersistenceManager:
                 sphere_color=atom_d.get("sphere_color"),
                 sphere_filled=bool(atom_d.get("sphere_filled", True)),
                 sphere_transparent=bool(atom_d.get("sphere_transparent", False)),
+                opacity=atom_d.get("opacity"),
             )
             
         for bond_d in model_data.get("bonds", []):
@@ -247,6 +250,7 @@ class PersistenceManager:
                 flex_curve_1=bond_d.get("flex_curve_1"),
                 flex_curve_2=bond_d.get("flex_curve_2"),
                 pi_offset_sign=PersistenceManager._parse_pi_offset_sign(bond_d),
+                opacity=bond_d.get("opacity"),
             )
             
         canvas.model._next_atom_id = model_data.get("_next_atom_id", canvas.model._next_atom_id)

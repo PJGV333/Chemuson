@@ -20,6 +20,7 @@ _COLOR_UNSET = object()
 _DONOR_UNSET = object()
 _FLEX_CURVE_UNSET = object()
 _PI_OFFSET_UNSET = object()
+_OPACITY_UNSET = object()
 
 
 class BondStyle(str, Enum):
@@ -40,6 +41,56 @@ class BondStereo(str, Enum):
     UP = "up"
     DOWN = "down"
     EITHER = "either"
+
+
+VALENCE_NEUTRAL_BOND_STYLES = frozenset({BondStyle.COORDINATION, BondStyle.INTERACTION})
+NON_STRUCTURAL_BOND_STYLES = frozenset({BondStyle.INTERACTION})
+
+
+def normalize_bond_style(style: BondStyle | str | None) -> BondStyle:
+    """Normaliza estilos de enlace con fallback seguro a `PLAIN`."""
+    if isinstance(style, BondStyle):
+        return style
+    try:
+        return BondStyle(style)
+    except Exception:
+        return BondStyle.PLAIN
+
+
+def bond_style_affects_valence(style: BondStyle | str | None) -> bool:
+    """Indica si un estilo debe contar para valencia/H implícitos."""
+    return normalize_bond_style(style) not in VALENCE_NEUTRAL_BOND_STYLES
+
+
+def bond_style_is_structural(style: BondStyle | str | None) -> bool:
+    """Indica si un estilo representa conectividad química estructural."""
+    return normalize_bond_style(style) not in NON_STRUCTURAL_BOND_STYLES
+
+
+def bond_affects_valence(bond: object) -> bool:
+    """Indica si un enlace concreto debe aportar a la valencia."""
+    return bond_style_affects_valence(getattr(bond, "style", BondStyle.PLAIN))
+
+
+def bond_is_structural(bond: object) -> bool:
+    """Indica si un enlace concreto forma parte de la estructura química."""
+    return bond_style_is_structural(getattr(bond, "style", BondStyle.PLAIN))
+
+
+def normalize_opacity(value: object, default: float = 1.0) -> float:
+    """Normaliza una opacidad al rango [0.0, 1.0]."""
+    try:
+        opacity = float(value)
+    except Exception:
+        opacity = float(default)
+    return max(0.0, min(1.0, opacity))
+
+
+def normalize_optional_opacity(value: object) -> Optional[float]:
+    """Normaliza una opacidad opcional; `None` significa heredar del canvas."""
+    if value is None:
+        return None
+    return normalize_opacity(value)
 
 
 # Valencias "típicas" usadas por la UI para estimar hidrógenos implícitos.
@@ -257,6 +308,7 @@ class Atom:
     sphere_color: Optional[str] = None
     sphere_filled: bool = True
     sphere_transparent: bool = False
+    opacity: Optional[float] = None
 
     @property
     def formal_charge(self) -> int:
@@ -293,6 +345,7 @@ class Bond:
     flex_curve_2: Optional[float] = None
     # Orientación manual de la línea pi en dobles enlaces: None (auto), +1 o -1.
     pi_offset_sign: Optional[int] = None
+    opacity: Optional[float] = None
 
 
 @dataclass
@@ -326,6 +379,7 @@ class ChemState:
     label_font_bold: bool = False
     label_font_italic: bool = False
     label_font_underline: bool = False
+    canvas_opacity: float = 1.0
     use_element_colors: bool = True
     numbering_enabled: bool = False
     numbering_mode: str = "atoms"  # atoms | structures | both
@@ -375,6 +429,7 @@ class MolGraph:
         sphere_filled: bool = True,
         sphere_transparent: bool = False,
         label_scale: Optional[float] = None,
+        opacity: Optional[float] = None,
     ) -> Atom:
         """Crea y registra un átomo en el grafo.
 
@@ -404,6 +459,7 @@ class MolGraph:
             sphere_filled: Si la esfera se dibuja con relleno (gradiente).
             sphere_transparent: Si la esfera se dibuja transparente (solo etiqueta).
             label_scale: Escala local de etiqueta o `None` para heredar la global.
+            opacity: Opacidad local del átomo o `None` para heredar del canvas.
 
         Returns:
             El átomo creado y almacenado en el diccionario interno.
@@ -466,6 +522,7 @@ class MolGraph:
             sphere_color=resolved_sphere_color,
             sphere_filled=bool(sphere_filled),
             sphere_transparent=bool(sphere_transparent),
+            opacity=normalize_optional_opacity(opacity),
         )
         self.atoms[atom_id] = atom
         return atom
@@ -512,6 +569,7 @@ class MolGraph:
         flex_curve_1: Optional[float] = None,
         flex_curve_2: Optional[float] = None,
         pi_offset_sign: Optional[int] = None,
+        opacity: Optional[float] = None,
     ) -> Bond:
         """Crea y registra un enlace entre dos átomos.
 
@@ -537,6 +595,7 @@ class MolGraph:
             flex_curve_1: Curvatura normalizada del primer control (estilo FLEX).
             flex_curve_2: Curvatura normalizada del segundo control (estilo FLEX).
             pi_offset_sign: Orientación manual de línea pi (+1/-1) o `None`.
+            opacity: Opacidad local del enlace o `None` para heredar del canvas.
 
         Returns:
             El enlace creado.
@@ -588,6 +647,7 @@ class MolGraph:
             flex_curve_1=curve_1,
             flex_curve_2=curve_2,
             pi_offset_sign=manual_pi,
+            opacity=normalize_optional_opacity(opacity),
         )
         self.bonds[bond_id] = bond
         return bond
@@ -702,6 +762,11 @@ class MolGraph:
         atom = self.atoms[atom_id]
         atom.label_scale = None if label_scale is None else float(label_scale)
 
+    def update_atom_opacity(self, atom_id: int, opacity: Optional[float]) -> None:
+        """Actualiza la opacidad local de un átomo."""
+        atom = self.atoms[atom_id]
+        atom.opacity = normalize_optional_opacity(opacity)
+
     def update_atom_group_h_cap(self, atom_id: int, group_h_cap: Optional[int]) -> None:
         """Actualiza el límite de H asociado a un grupo abreviado simple."""
         atom = self.atoms[atom_id]
@@ -710,11 +775,12 @@ class MolGraph:
         )
 
     def atom_degree(self, atom_id: int) -> int:
-        """Devuelve el número de enlaces conectados a un átomo."""
+        """Devuelve el número de enlaces estructurales conectados a un átomo."""
         return sum(
             1
             for bond in self.bonds.values()
-            if bond.a1_id == atom_id or bond.a2_id == atom_id
+            if bond_is_structural(bond)
+            and (bond.a1_id == atom_id or bond.a2_id == atom_id)
         )
 
     def is_hidden_carbon_placeholder(self, atom_id: int) -> bool:
@@ -735,6 +801,8 @@ class MolGraph:
         if atom.mapping is not None or atom.is_query or atom.no_implicit:
             return False
         if getattr(atom, "label_scale", None) is not None:
+            return False
+        if getattr(atom, "opacity", None) is not None:
             return False
         if getattr(atom, "is_coordination_center", False):
             return False
@@ -766,6 +834,7 @@ class MolGraph:
         flex_curve_1: Optional[float] | object = _FLEX_CURVE_UNSET,
         flex_curve_2: Optional[float] | object = _FLEX_CURVE_UNSET,
         pi_offset_sign: Optional[int] | object = _PI_OFFSET_UNSET,
+        opacity: Optional[float] | object = _OPACITY_UNSET,
     ) -> Bond:
         """Actualiza propiedades de un enlace existente.
 
@@ -786,6 +855,7 @@ class MolGraph:
             flex_curve_1: Curvatura normalizada de control 1; `None` limpia.
             flex_curve_2: Curvatura normalizada de control 2; `None` limpia.
             pi_offset_sign: Orientación manual de línea pi (+1/-1), `None` limpia.
+            opacity: Opacidad local del enlace; `None` hereda del canvas.
 
         Returns:
             El enlace actualizado.
@@ -827,6 +897,8 @@ class MolGraph:
                 bond.pi_offset_sign = int(pi_offset_sign)
             else:
                 bond.pi_offset_sign = None
+        if opacity is not _OPACITY_UNSET:
+            bond.opacity = normalize_optional_opacity(opacity)
         if bond.style != BondStyle.COORDINATION:
             bond.donor_atom_id = None
         elif bond.donor_atom_id not in {bond.a1_id, bond.a2_id}:
@@ -928,7 +1000,7 @@ class MolGraph:
 
     def _bond_order_contribution(self, bond: Bond, aromatic_order: float = 1.5) -> float:
         """Contribución de un enlace a la suma de órdenes de valencia."""
-        if bond.style == BondStyle.COORDINATION:
+        if not bond_affects_valence(bond):
             return 0.0
         if bond.is_aromatic:
             return float(aromatic_order)
@@ -981,7 +1053,7 @@ class MolGraph:
             return 0
         count = self.assigned_hydrogen_count(atom_id)
         for bond in self.bonds.values():
-            if bond.style == BondStyle.COORDINATION:
+            if not bond_affects_valence(bond):
                 continue
             if bond.a1_id == atom_id:
                 other_id = bond.a2_id
@@ -998,7 +1070,7 @@ class MolGraph:
         """Devuelve vecinos conectados por enlaces aromáticos no coordinativos."""
         neighbors: List[int] = []
         for bond in self.bonds.values():
-            if bond.style == BondStyle.COORDINATION or not bond.is_aromatic:
+            if not bond_affects_valence(bond) or not bond.is_aromatic:
                 continue
             if bond.a1_id == atom_id:
                 neighbors.append(bond.a2_id)
@@ -1047,13 +1119,13 @@ class MolGraph:
         if len(aromatic_neighbors) != 2:
             return False
 
-        non_coordination_degree = 0
+        valence_degree = 0
         for bond in self.bonds.values():
-            if bond.style == BondStyle.COORDINATION:
+            if not bond_affects_valence(bond):
                 continue
             if bond.a1_id == atom_id or bond.a2_id == atom_id:
-                non_coordination_degree += 1
-        if non_coordination_degree != 2:
+                valence_degree += 1
+        if valence_degree != 2:
             return False
 
         path_length = self._shortest_aromatic_path_length(

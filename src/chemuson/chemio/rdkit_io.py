@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass
 from typing import Dict, Iterable, Optional, Tuple
 
-from chemuson.core.model import ATOMIC_NUMBERS, BondStyle, BondStereo, MolGraph
+from chemuson.core.model import ATOMIC_NUMBERS, BondStyle, BondStereo, MolGraph, bond_is_structural
 
 try:
     from rdkit import Chem
@@ -47,6 +47,8 @@ def _unique_bonds_for_export(molgraph: MolGraph):
     """Devuelve enlaces únicos por par de átomos para exportación robusta."""
     unique: Dict[tuple[int, int], object] = {}
     for bond in sorted(molgraph.bonds.values(), key=lambda item: item.id):
+        if not bond_is_structural(bond):
+            continue
         pair = (min(int(bond.a1_id), int(bond.a2_id)), max(int(bond.a1_id), int(bond.a2_id)))
         existing = unique.get(pair)
         if existing is None or _bond_priority_for_export(bond) > _bond_priority_for_export(existing):
@@ -58,6 +60,8 @@ def _graph_has_duplicate_bond_pairs(molgraph: MolGraph) -> bool:
     """Indica si el grafo contiene dos enlaces para el mismo par de átomos."""
     seen: set[tuple[int, int]] = set()
     for bond in molgraph.bonds.values():
+        if not bond_is_structural(bond):
+            continue
         pair = (min(int(bond.a1_id), int(bond.a2_id)), max(int(bond.a1_id), int(bond.a2_id)))
         if pair in seen:
             return True
@@ -922,15 +926,16 @@ def _molgraph_to_smiles_fallback(molgraph: MolGraph) -> str:
     """
     if not molgraph.atoms:
         return ""
+    bonds = _unique_bonds_for_export(molgraph)
     adjacency: dict[int, list[tuple[int, Bond]]] = {}
-    for bond in molgraph.bonds.values():
+    for bond in bonds:
         adjacency.setdefault(bond.a1_id, []).append((bond.a2_id, bond))
         adjacency.setdefault(bond.a2_id, []).append((bond.a1_id, bond))
     for neighbors in adjacency.values():
         neighbors.sort(key=lambda item: item[0])
 
     aromatic_atoms: set[int] = set()
-    for bond in molgraph.bonds.values():
+    for bond in bonds:
         if bond.is_aromatic:
             aromatic_atoms.add(bond.a1_id)
             aromatic_atoms.add(bond.a2_id)
