@@ -1,0 +1,447 @@
+{
+  "_meta": {
+    "format_version": 1,
+    "path_hint": "/mnt/HDD_4TB/chemuson/Chemuson/config/orbitals_presets.json",
+    "notes": "Edita estos parametros y usa tools/orbital_tuner.py o tools/render_orbital_family_preview.py para previsualizar."
+  },
+  "s": {
+    "builder": "build_s_orbital",
+    "params": {
+      "radius_x": 34.0,
+      "radius_y": 34.0,
+      "visual_padding": 6.0,
+      "anchor_bias_x": 0.0,
+      "anchor_bias_y": 0.0,
+      "gradient_mode": "radial",
+      "light_dir": "northwest"
+    }
+  },
+  "p": {
+    "builder": "build_p_orbital",
+    "params": {
+      "lobe_width": 30.4,
+      "lobe_height": 41.0,
+      "waist_width": 0.355,
+      "shoulder_width": 1.0,
+      "tip_roundness": 0.71,
+      "node_gap": 0.0,
+      "vertical_offset": 0.0,
+      "outline_scale_x": 1.0,
+      "outline_scale_y": 1.0,
+      "visual_padding": 4.5,
+      "anchor_bias_x": 0.0,
+      "anchor_bias_y": 0.0,
+      "gradient_mode": "linear",
+      "light_dir": "northwest"
+    }
+  },
+  "d": {
+    "builder": "build_d_clover_orbital",
+    "params": {
+      "vertical_width": 29.6,
+      "vertical_height": 38.0,
+      "horizontal_width": 20.4,
+      "horizontal_height": 36.0,
+      "tip_roundness": 0.68,
+      "shoulder_width": 1.0,
+      "waist_width": 0.35,
+      "lobe_gap": 0.0,
+      "visual_padding": 5.0,
+      "anchor_bias_x": 0.0,
+      "anchor_bias_y": 0.0,
+      "gradient_mode": "linear",
+      "light_dir": "northwest"
+    }
+  },
+  "dz2": {
+    "builder": "build_dz2_orbital",
+    "params": {
+      "axial_width": 24.4,
+      "axial_height": 39.0,
+      "axial_tip_roundness": 0.672,
+      "axial_waist_width": 0.344,
+      "torus_outer_width": 62.0,
+      "torus_outer_height": 9.6,
+      "torus_inner_width_ratio": 0.46,
+      "torus_inner_height_ratio": 0.26,
+      "torus_offset_y": 0.0,
+      "visual_padding": 6.0,
+      "anchor_bias_x": 0.0,
+      "anchor_bias_y": -0.75,
+      "gradient_mode": "linear",
+      "torus_gradient_mode": "elliptical",
+      "light_dir": "northwest"
+    }
+  },
+  "torus": {
+    "builder": "build_torus_orbital",
+    "params": {
+      "torus_outer_width": 72.0,
+      "torus_outer_height": 20.0,
+      "torus_inner_width_ratio": 0.42,
+      "torus_inner_height_ratio": 0.38,
+      "torus_offset_y": 0.0,
+      "visual_padding": 6.0,
+      "anchor_bias_x": 0.0,
+      "anchor_bias_y": 0.0,
+      "gradient_mode": "elliptical",
+      "light_dir": "northwest",
+      "phase": "neutral"
+    }
+  },
+  "sp3": {
+    "builder": "build_sp3_orbital",
+    "params": {
+      "major_lobe": {
+        "width": 48.0,
+        "height": 48.0,
+        "tip_roundness": 0.7,
+        "shoulder_width": 1.0,
+        "waist_width": 0.32
+      },
+      "minor_lobe": {
+        "width": 24.0,
+        "height": 28.0,
+        "tip_roundness": 0.72,
+        "shoulder_width": 1.0,
+        "waist_width": 0.3
+      },
+      "major_offset_y": 1.5,
+      "minor_offset_y": -22.0,
+      "node_gap": 0.0,
+      "visual_padding": 6.0,
+      "anchor_bias_x": 0.0,
+      "anchor_bias_y": 0.8,
+      "gradient_mode": "linear",
+      "minor_gradient_mode": "radial",
+      "light_dir": "northwest"
+    }
+  },
+  "sp_lobe": {
+    "builder": "build_sp_lobe_orbital",
+    "params": {
+      "major_lobe": {
+        "width": 29.6,
+        "height": 44.0,
+        "tip_roundness": 0.42,
+        "shoulder_width": 0.76,
+        "waist_width": 0.58
+      },
+      "minor_lobe": {
+        "width": 11.4,
+        "height": 39.0,
+        "tip_roundness": 0.72,
+        "shoulder_width": 1.0,
+        "waist_width": 0.3
+      },
+      "major_offset_y": 0.0,
+      "minor_offset_y": 0.0,
+      "node_gap": 0.0,
+      "visual_padding": 4.0,
+      "anchor_bias_x": 0.0,
+      "anchor_bias_y": -4.5,
+      "gradient_mode": "linear",
+      "minor_gradient_mode": "linear",
+      "light_dir": "northwest"
+    }
+  },
+  "sigma_bonding": {
+    "builder": "build_sigma_bonding_orbital",
+    "params": {
+      "major_lobe": {
+        "width": 32.0,
+        "height": 38.0,
+        "tip_roundness": 0.75,
+        "shoulder_width": 1.0,
+        "waist_width": 0.44
+      },
+      "minor_lobe": {
+        "width": 13.0,
+        "height": 12.0,
+        "tip_roundness": 0.4,
+        "shoulder_width": 0.769,
+        "waist_width": 0.69
+      },
+      "major_offset_y": 0.0,
+      "minor_offset_y": 22.0,
+      "node_gap": 0.0,
+      "visual_padding": 5.0,
+      "anchor_bias_x": 0.0,
+      "anchor_bias_y": 2.75,
+      "gradient_mode": "linear",
+      "minor_gradient_mode": "radial",
+      "light_dir": "northwest"
+    }
+  },
+  "pi_bonding": {
+    "builder": "build_pi_bonding_orbital",
+    "params": {
+      "upper_lobe": {
+        "width": 26.0,
+        "height": 37.0,
+        "tip_roundness": 0.67,
+        "shoulder_width": 1.0,
+        "waist_width": 0.34
+      },
+      "lower_lobe": {
+        "width": 26.0,
+        "height": 37.0,
+        "tip_roundness": 0.67,
+        "shoulder_width": 1.0,
+        "waist_width": 0.34
+      },
+      "node_gap": 4.0,
+      "vertical_offset": 0.0,
+      "ring": {
+        "torus_outer_width": 48.0,
+        "torus_outer_height": 11.0,
+        "torus_inner_width_ratio": 0.44,
+        "torus_inner_height_ratio": 0.4,
+        "torus_offset_y": 0.0,
+        "visual_padding": 6.0,
+        "anchor_bias_x": 0.0,
+        "anchor_bias_y": 0.0,
+        "gradient_mode": "elliptical",
+        "light_dir": "northwest",
+        "phase": "neutral"
+      },
+      "visual_padding": 6.0,
+      "anchor_bias_x": 0.0,
+      "anchor_bias_y": 0.0,
+      "gradient_mode": "linear",
+      "light_dir": "northwest"
+    }
+  },
+  "f": {
+    "builder": "build_f_orbital",
+    "params": {
+      "lobes": [
+        {
+          "width": 24.0,
+          "height": 28.0,
+          "tip_roundness": 0.68,
+          "shoulder_width": 1.0,
+          "shoulder_height_ratio": 0.67,
+          "belly_width": 0.88,
+          "belly_height_ratio": 0.41,
+          "neck_width": 0.35,
+          "neck_height": 0.05,
+          "cusp_depth": 0.0,
+          "offset_x": 0.0,
+          "offset_y": 0.0,
+          "rotation_deg": 0.0,
+          "orientation": "up",
+          "mirror": false,
+          "outline_scale_x": 1.0,
+          "outline_scale_y": 1.0,
+          "gradient_mode": "linear",
+          "light_dir": "northwest",
+          "phase": "positive"
+        },
+        {
+          "width": 24.0,
+          "height": 28.0,
+          "tip_roundness": 0.68,
+          "shoulder_width": 1.0,
+          "shoulder_height_ratio": 0.67,
+          "belly_width": 0.88,
+          "belly_height_ratio": 0.41,
+          "neck_width": 0.35,
+          "neck_height": 0.05,
+          "cusp_depth": 0.0,
+          "offset_x": 0.0,
+          "offset_y": 0.0,
+          "rotation_deg": 0.0,
+          "orientation": "down",
+          "mirror": false,
+          "outline_scale_x": 1.0,
+          "outline_scale_y": 1.0,
+          "gradient_mode": "linear",
+          "light_dir": "northwest",
+          "phase": "negative"
+        },
+        {
+          "width": 24.0,
+          "height": 28.0,
+          "tip_roundness": 0.61,
+          "shoulder_width": 1.0,
+          "shoulder_height_ratio": 0.58,
+          "belly_width": 0.8,
+          "belly_height_ratio": 0.24,
+          "neck_width": 0.27,
+          "neck_height": 0.02,
+          "cusp_depth": 0.0,
+          "offset_x": 0.0,
+          "offset_y": 0.0,
+          "rotation_deg": 0.0,
+          "orientation": "left",
+          "mirror": false,
+          "outline_scale_x": 1.0,
+          "outline_scale_y": 1.0,
+          "gradient_mode": "linear",
+          "light_dir": "northwest",
+          "phase": "positive"
+        },
+        {
+          "width": 24.0,
+          "height": 28.0,
+          "tip_roundness": 0.61,
+          "shoulder_width": 1.0,
+          "shoulder_height_ratio": 0.58,
+          "belly_width": 0.8,
+          "belly_height_ratio": 0.24,
+          "neck_width": 0.27,
+          "neck_height": 0.02,
+          "cusp_depth": 0.0,
+          "offset_x": 0.0,
+          "offset_y": 0.0,
+          "rotation_deg": 0.0,
+          "orientation": "right",
+          "mirror": false,
+          "outline_scale_x": 1.0,
+          "outline_scale_y": 1.0,
+          "gradient_mode": "linear",
+          "light_dir": "northwest",
+          "phase": "negative"
+        },
+        {
+          "width": 16.0,
+          "height": 20.0,
+          "tip_roundness": 0.67,
+          "shoulder_width": 1.0,
+          "shoulder_height_ratio": 0.64,
+          "belly_width": 0.89,
+          "belly_height_ratio": 0.36,
+          "neck_width": 0.28,
+          "neck_height": 0.01,
+          "cusp_depth": 0.0,
+          "offset_x": 0.0,
+          "offset_y": 0.0,
+          "rotation_deg": -45.0,
+          "orientation": "up",
+          "mirror": false,
+          "outline_scale_x": 1.0,
+          "outline_scale_y": 1.0,
+          "gradient_mode": "linear",
+          "light_dir": "northwest",
+          "phase": "positive"
+        },
+        {
+          "width": 16.0,
+          "height": 20.0,
+          "tip_roundness": 0.67,
+          "shoulder_width": 1.0,
+          "shoulder_height_ratio": 0.64,
+          "belly_width": 0.89,
+          "belly_height_ratio": 0.36,
+          "neck_width": 0.28,
+          "neck_height": 0.01,
+          "cusp_depth": 0.0,
+          "offset_x": 0.0,
+          "offset_y": 0.0,
+          "rotation_deg": 135.0,
+          "orientation": "up",
+          "mirror": false,
+          "outline_scale_x": 1.0,
+          "outline_scale_y": 1.0,
+          "gradient_mode": "linear",
+          "light_dir": "northwest",
+          "phase": "negative"
+        }
+      ],
+      "torus": null,
+      "visual_padding": 8.0,
+      "anchor_bias_x": 0.0,
+      "anchor_bias_y": 0.0
+    }
+  },
+  "fz3": {
+    "builder": "build_f_orbital",
+    "params": {
+      "lobes": [
+        {
+          "width": 18.0,
+          "height": 22.0,
+          "tip_roundness": 0.7,
+          "shoulder_width": 1.0,
+          "shoulder_height_ratio": 0.66,
+          "belly_width": 0.86,
+          "belly_height_ratio": 0.4,
+          "neck_width": 0.32,
+          "neck_height": 0.05,
+          "cusp_depth": 0.0,
+          "offset_x": 0.0,
+          "offset_y": -28.0,
+          "rotation_deg": 0.0,
+          "orientation": "up",
+          "mirror": false,
+          "outline_scale_x": 1.0,
+          "outline_scale_y": 1.0,
+          "gradient_mode": "linear",
+          "light_dir": "northwest",
+          "phase": "positive"
+        },
+        {
+          "width": 12.0,
+          "height": 14.0,
+          "tip_roundness": 0.72,
+          "shoulder_width": 1.0,
+          "shoulder_height_ratio": 0.78,
+          "belly_width": 0.84,
+          "belly_height_ratio": 0.52,
+          "neck_width": 0.3,
+          "neck_height": 0.08,
+          "cusp_depth": 0.2,
+          "offset_x": 0.0,
+          "offset_y": 0.0,
+          "rotation_deg": 0.0,
+          "orientation": "up",
+          "mirror": false,
+          "outline_scale_x": 1.0,
+          "outline_scale_y": 1.0,
+          "gradient_mode": "linear",
+          "light_dir": "northwest",
+          "phase": "negative"
+        },
+        {
+          "width": 18.0,
+          "height": 22.0,
+          "tip_roundness": 0.7,
+          "shoulder_width": 1.0,
+          "shoulder_height_ratio": 0.66,
+          "belly_width": 0.86,
+          "belly_height_ratio": 0.4,
+          "neck_width": 0.32,
+          "neck_height": 0.05,
+          "cusp_depth": 0.0,
+          "offset_x": 0.0,
+          "offset_y": 28.0,
+          "rotation_deg": 0.0,
+          "orientation": "down",
+          "mirror": false,
+          "outline_scale_x": 1.0,
+          "outline_scale_y": 1.0,
+          "gradient_mode": "linear",
+          "light_dir": "northwest",
+          "phase": "positive"
+        }
+      ],
+      "torus": {
+        "torus_outer_width": 46.0,
+        "torus_outer_height": 12.0,
+        "torus_inner_width_ratio": 0.5,
+        "torus_inner_height_ratio": 0.42,
+        "torus_offset_y": 0.0,
+        "visual_padding": 8.0,
+        "anchor_bias_x": 0.0,
+        "anchor_bias_y": 0.0,
+        "gradient_mode": "elliptical",
+        "light_dir": "northwest",
+        "phase": "neutral"
+      },
+      "visual_padding": 8.0,
+      "anchor_bias_x": 0.0,
+      "anchor_bias_y": 0.0
+    }
+  }
+}

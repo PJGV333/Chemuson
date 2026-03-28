@@ -1,10 +1,13 @@
-"""Renderer vectorial para una paleta orbital tipo ChemDraw."""
+"""Renderer vectorial y parametrizable para la paleta orbital."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, replace
 from enum import Enum
+import json
 import math
+from pathlib import Path
+from typing import Any
 
 from PyQt6.QtCore import QPointF, QRectF, QSize, Qt
 from PyQt6.QtGui import (
@@ -30,31 +33,39 @@ _SOLID_FILL = QColor("#111111")
 _PALETTE_BG = QColor("#F2F2F2")
 _CELL_BG = QColor("#FFFFFF")
 _CELL_LINE = QColor("#D8D8D8")
+_DEFAULT_LIGHT_DIR = "northwest"
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[3]
+
+
+ORBITAL_PRESET_CONFIG_PATH = _repo_root() / "config" / "orbitals_presets.json"
 
 _GRADIENT_STOP_PRESETS: dict[str, tuple[tuple[float, str], ...]] = {
-    "default": (
-        (0.0, "#FFFFFF"),
-        (0.38, "#D9D9D9"),
-        (0.72, "#676767"),
-        (1.0, "#101010"),
+    "linear": (
+        (0.0, "#EDEDED"),
+        (0.34, "#D6D6D6"),
+        (0.72, "#9B9B9B"),
+        (1.0, "#6A6A6A"),
     ),
-    "dual_positive": (
-        (0.0, "#FFFFFF"),
-        (0.34, "#E8E8E8"),
-        (0.72, "#747474"),
-        (1.0, "#111111"),
+    "radial": (
+        (0.0, "#F4F4F4"),
+        (0.30, "#DDDDDD"),
+        (0.72, "#A1A1A1"),
+        (1.0, "#6E6E6E"),
     ),
-    "dual_negative": (
-        (0.0, "#202020"),
-        (0.34, "#5A5A5A"),
-        (0.74, "#BFBFBF"),
-        (1.0, "#F4F4F4"),
+    "elliptical": (
+        (0.0, "#DEDEDE"),
+        (0.30, "#C1C1C1"),
+        (0.72, "#8F8F8F"),
+        (1.0, "#666666"),
     ),
-    "inverted": (
-        (0.0, "#101010"),
-        (0.34, "#676767"),
-        (0.72, "#D9D9D9"),
-        (1.0, "#FFFFFF"),
+    "negative": (
+        (0.0, "#BCBCBC"),
+        (0.30, "#8D8D8D"),
+        (0.72, "#4B4B4B"),
+        (1.0, "#171717"),
     ),
 }
 
@@ -68,6 +79,63 @@ _LIGHT_DIRECTION_VECTORS: dict[str, tuple[float, float]] = {
     "southeast": (0.7071067812, 0.7071067812),
     "southwest": (-0.7071067812, 0.7071067812),
     "center": (0.0, 0.0),
+}
+
+ORBITAL_PARAMETER_DESCRIPTIONS: dict[str, str] = {
+    "radius_x": "Semieje horizontal de la esfera u orbital s.",
+    "radius_y": "Semieje vertical de la esfera u orbital s.",
+    "visual_padding": "Padding óptico alrededor del glifo al encajar en la palette.",
+    "anchor_bias_x": "Desplazamiento horizontal del centro visual del glifo.",
+    "anchor_bias_y": "Desplazamiento vertical del centro visual del glifo.",
+    "gradient_mode": "Modo base de sombreado: linear, radial o elliptical.",
+    "light_dir": "Dirección global de la luz del sombreado.",
+    "width": "Ancho total del lóbulo experimental.",
+    "height": "Altura total del lóbulo experimental.",
+    "tip_roundness": "Qué tan redondeada o aguda se ve la punta del lóbulo.",
+    "shoulder_width": "Apertura del hombro superior del lóbulo.",
+    "waist_width": "Ancho del cuello o cintura cerca del nodo.",
+    "node_gap": "Separación controlada entre lóbulos enfrentados en el nodo.",
+    "vertical_offset": "Desplazamiento vertical conjunto de la familia orbital.",
+    "geometry_scale_x": "Escala horizontal aplicada a la geometría base antes del estilo.",
+    "geometry_scale_y": "Escala vertical aplicada a la geometría base antes del estilo.",
+    "shoulder_height_ratio": "Altura relativa del hombro del lóbulo experimental.",
+    "belly_width": "Qué tan lleno se ve el vientre del lóbulo experimental.",
+    "belly_height_ratio": "Altura relativa del vientre del lóbulo experimental.",
+    "neck_width": "Ancho del cuello del lóbulo experimental.",
+    "neck_height": "Altura relativa del cuello experimental.",
+    "cusp_depth": "Profundidad del cierre en el nodo para formas experimentales.",
+    "offset_x": "Desplazamiento horizontal local del lóbulo.",
+    "offset_y": "Desplazamiento vertical local del lóbulo.",
+    "rotation_deg": "Rotación del lóbulo en grados.",
+    "orientation": "Orientación base del lóbulo: up, down, left o right.",
+    "mirror": "Espeja el lóbulo respecto al eje vertical antes de colocarlo.",
+    "outline_scale_x": "Escala horizontal aplicada a la geometría canónica base.",
+    "outline_scale_y": "Escala vertical aplicada a la geometría canónica base.",
+    "phase": "Fase visual de la parte: positive, negative o neutral.",
+    "lobe_width": "Ancho base del lóbulo principal de la familia.",
+    "lobe_height": "Altura base del lóbulo principal de la familia.",
+    "vertical_width": "Ancho de los lóbulos verticales del trébol.",
+    "vertical_height": "Altura de los lóbulos verticales del trébol.",
+    "horizontal_width": "Ancho de los lóbulos horizontales del trébol.",
+    "horizontal_height": "Altura de los lóbulos horizontales del trébol.",
+    "lobe_gap": "Separación entre lóbulos alrededor del nodo central.",
+    "axial_width": "Ancho de los lóbulos axiales del dz2.",
+    "axial_height": "Altura de los lóbulos axiales del dz2.",
+    "axial_tip_roundness": "Redondez de la punta axial.",
+    "axial_waist_width": "Ancho de la cintura axial cerca del plano nodal.",
+    "torus_outer_width": "Ancho exterior del toroide.",
+    "torus_outer_height": "Altura exterior del toroide.",
+    "torus_inner_width_ratio": "Tamaño relativo del hueco interior del toroide en X.",
+    "torus_inner_height_ratio": "Tamaño relativo del hueco interior del toroide en Y.",
+    "torus_offset_y": "Desplazamiento vertical del toroide.",
+    "major_lobe": "Parámetros del lóbulo grande o principal.",
+    "minor_lobe": "Parámetros del lóbulo pequeño o secundario.",
+    "upper_lobe": "Parámetros del lóbulo superior.",
+    "lower_lobe": "Parámetros del lóbulo inferior.",
+    "major_offset_y": "Desplazamiento vertical del lóbulo principal.",
+    "minor_offset_y": "Desplazamiento vertical del lóbulo secundario.",
+    "ring": "Parámetros del anillo o toroide ecuatorial.",
+    "torus_gradient_mode": "Modo de sombreado específico del toroide dentro del dz2.",
 }
 
 
@@ -102,15 +170,14 @@ class GlyphLayer:
     path: QPainterPath
     paint: str
     gradient: str = "linear"
-    stroke: bool = True
+    stroke: bool = False
     phase: str | None = None
     light_dir: str | None = None
-    light_variant: str | None = None
 
 
 @dataclass(frozen=True)
 class GlyphDefinition:
-    """Glifo manual trazado en coordenadas normalizadas."""
+    """Glifo ya resuelto a capas pintables."""
 
     id: str
     paths_outline: tuple[GlyphLayer, ...]
@@ -123,49 +190,220 @@ class GlyphDefinition:
 
 
 @dataclass(frozen=True)
-class LobeProfile:
-    """Coeficientes normalizados para un lóbulo cúbico simétrico."""
+class SphereParams:
+    """Parámetros geométricos de un orbital s.
 
-    tip_ctrl_x: float
-    tip_ctrl_y: float
-    shoulder_ctrl_x: float
-    shoulder_ctrl_y: float
-    waist_end_x: float
-    waist_end_y: float
-    neck_ctrl_x: float
-    neck_ctrl_y: float
-    neck_inner_y: float
-    end_y: float
-    neck_inner_x: float | None = None
+    `radius_x` y `radius_y` controlan el radio visual.
+    `gradient_mode` y `light_dir` controlan solo el sombreado, no la silueta.
+    """
+
+    radius_x: float
+    radius_y: float
+    visual_padding: float
+    anchor_bias_x: float
+    anchor_bias_y: float
+    gradient_mode: str = "radial"
+    light_dir: str = _DEFAULT_LIGHT_DIR
 
 
 @dataclass(frozen=True)
-class OrbitalGeometryPreset:
-    """Preset geométrico reusable para construir un glifo orbital."""
+class CanonicalLobeParams:
+    """Parámetros seguros de un lóbulo canónico y convexo."""
 
-    main_lobe_width: float
-    main_lobe_height: float
-    secondary_lobe_width: float
-    secondary_lobe_height: float
-    neck_ratio: float
-    lobe_separation: float
-    torus_thickness: float
-    upper_lobe_offset: float
-    lower_lobe_offset: float
+    width: float
+    height: float
+    tip_roundness: float
+    shoulder_width: float
+    waist_width: float
+
+
+@dataclass(frozen=True)
+class TeardropParams:
+    """Parámetros libres para lóbulos experimentales f/fz3."""
+
+    width: float
+    height: float
+    tip_roundness: float
+    shoulder_width: float
+    shoulder_height_ratio: float
+    belly_width: float
+    belly_height_ratio: float
+    neck_width: float
+    neck_height: float
+    cusp_depth: float
+    offset_x: float = 0.0
+    offset_y: float = 0.0
+    rotation_deg: float = 0.0
+    orientation: str = "up"
+    mirror: bool = False
+    outline_scale_x: float = 1.0
+    outline_scale_y: float = 1.0
+    gradient_mode: str = "linear"
+    light_dir: str = _DEFAULT_LIGHT_DIR
+    phase: str = "positive"
+
+
+@dataclass(frozen=True)
+class TorusParams:
+    """Parámetros de un toroide editable.
+
+    `torus_inner_width_ratio` y `torus_inner_height_ratio` controlan el hueco interior.
+    """
+
+    torus_outer_width: float
+    torus_outer_height: float
+    torus_inner_width_ratio: float
+    torus_inner_height_ratio: float
+    torus_offset_y: float = 0.0
+    visual_padding: float = 6.0
+    anchor_bias_x: float = 0.0
+    anchor_bias_y: float = 0.0
+    gradient_mode: str = "elliptical"
+    light_dir: str = _DEFAULT_LIGHT_DIR
+    phase: str = "neutral"
+
+
+@dataclass(frozen=True)
+class POrbitalParams:
+    """Parámetros seguros para un orbital p canónico."""
+
+    lobe_width: float
+    lobe_height: float
+    waist_width: float
+    shoulder_width: float
+    tip_roundness: float
+    node_gap: float
+    vertical_offset: float
+    outline_scale_x: float
+    outline_scale_y: float
     visual_padding: float
-    anchor_bias: tuple[float, float] = (0.0, 0.0)
-    default_bounds_override: tuple[float, float, float, float] | None = None
-    main_profile: str = "large"
-    secondary_profile: str | None = None
-    outline_main_profile: str | None = None
-    outline_secondary_profile: str | None = None
-    outline_main_scale: tuple[float, float] = (1.0, 1.0)
-    outline_secondary_scale: tuple[float, float] = (1.0, 1.0)
-    torus_outer_width: float = 0.0
-    torus_outer_height: float = 0.0
-    torus_inner_scale: tuple[float, float] = (0.0, 0.0)
-    outline_torus_scale: tuple[float, float] = (1.0, 1.0)
-    outline_torus_inner_scale: tuple[float, float] | None = None
+    anchor_bias_x: float
+    anchor_bias_y: float
+    gradient_mode: str = "linear"
+    light_dir: str = _DEFAULT_LIGHT_DIR
+
+
+@dataclass(frozen=True)
+class CloverParams:
+    """Parámetros seguros para un orbital d tipo trébol."""
+
+    vertical_width: float
+    vertical_height: float
+    horizontal_width: float
+    horizontal_height: float
+    tip_roundness: float
+    shoulder_width: float
+    waist_width: float
+    lobe_gap: float
+    visual_padding: float
+    anchor_bias_x: float
+    anchor_bias_y: float
+    gradient_mode: str = "linear"
+    light_dir: str = _DEFAULT_LIGHT_DIR
+
+
+@dataclass(frozen=True)
+class Dz2Params:
+    """Parámetros del dz2 con lóbulos axiales y toroide ecuatorial."""
+
+    axial_width: float
+    axial_height: float
+    axial_tip_roundness: float
+    axial_waist_width: float
+    torus_outer_width: float
+    torus_outer_height: float
+    torus_inner_width_ratio: float
+    torus_inner_height_ratio: float
+    torus_offset_y: float
+    visual_padding: float
+    anchor_bias_x: float
+    anchor_bias_y: float
+    gradient_mode: str = "linear"
+    torus_gradient_mode: str = "elliptical"
+    light_dir: str = _DEFAULT_LIGHT_DIR
+
+
+@dataclass(frozen=True)
+class HybridOrbitalParams:
+    """Parámetros seguros para híbridos tipo sp_lobe, sp3 y sigma."""
+
+    major_lobe: CanonicalLobeParams
+    minor_lobe: CanonicalLobeParams
+    major_offset_y: float = 0.0
+    minor_offset_y: float = 0.0
+    node_gap: float = 0.0
+    visual_padding: float = 6.0
+    anchor_bias_x: float = 0.0
+    anchor_bias_y: float = 0.0
+    gradient_mode: str = "linear"
+    minor_gradient_mode: str = "linear"
+    light_dir: str = _DEFAULT_LIGHT_DIR
+
+
+@dataclass(frozen=True)
+class PiBondingParams:
+    """Parámetros seguros para un orbital pi enlazante."""
+
+    upper_lobe: CanonicalLobeParams
+    lower_lobe: CanonicalLobeParams
+    node_gap: float = 0.0
+    vertical_offset: float = 0.0
+    ring: TorusParams | None = None
+    visual_padding: float = 6.0
+    anchor_bias_x: float = 0.0
+    anchor_bias_y: float = 0.0
+    gradient_mode: str = "linear"
+    light_dir: str = _DEFAULT_LIGHT_DIR
+
+
+@dataclass(frozen=True)
+class FOrbitalParams:
+    """Parámetros flexibles para orbitales f/fz3.
+
+    La cantidad de lóbulos se define por la lista `lobes`, no por código rígido.
+    """
+
+    lobes: tuple[TeardropParams, ...]
+    torus: TorusParams | None = None
+    visual_padding: float = 8.0
+    anchor_bias_x: float = 0.0
+    anchor_bias_y: float = 0.0
+
+
+@dataclass(frozen=True)
+class OrbitalFamilyPreset:
+    """Contenedor general de una familia orbital editable."""
+
+    family: str
+    builder: str
+    params: SphereParams | POrbitalParams | CloverParams | Dz2Params | FOrbitalParams | HybridOrbitalParams | PiBondingParams | TorusParams
+
+
+@dataclass(frozen=True)
+class GeometryPart:
+    """Parte geométrica reusable antes de estilizar."""
+
+    name: str
+    path: QPainterPath
+    phase: str = "positive"
+    gradient_mode: str = "linear"
+    light_dir: str = _DEFAULT_LIGHT_DIR
+
+
+@dataclass(frozen=True)
+class FamilyBuildResult:
+    """Resultado base de un builder antes de convertirlo en `GlyphDefinition`."""
+
+    family: str
+    parts: tuple[GeometryPart, ...]
+    outline_parts: tuple[str, ...]
+    shaded_fill_parts: tuple[str, ...]
+    shaded_outline_parts: tuple[str, ...]
+    solid_fill_parts: tuple[str, ...]
+    solid_outline_parts: tuple[str, ...]
+    visual_padding: float
+    anchor_bias_x: float
+    anchor_bias_y: float
 
 
 @dataclass(frozen=True)
@@ -241,17 +479,17 @@ _STYLE_LABELS = {
 }
 
 _ORBITAL_GLYPH_IDS = {
-    OrbitalType.S: "s_round",
-    OrbitalType.P: "p_vertical",
-    OrbitalType.D: "d_clover",
-    OrbitalType.DZ2: "dz2_axial",
-    OrbitalType.F: "f_clover",
-    OrbitalType.FZ3: "fz3_axial",
-    OrbitalType.SP3: "sp3_hybrid",
+    OrbitalType.S: "s",
+    OrbitalType.P: "p",
+    OrbitalType.D: "d",
+    OrbitalType.DZ2: "dz2",
+    OrbitalType.F: "f",
+    OrbitalType.FZ3: "fz3",
+    OrbitalType.SP3: "sp3",
     OrbitalType.SP_LOBE: "sp_lobe",
     OrbitalType.SIGMA_BONDING: "sigma_bonding",
     OrbitalType.PI_BONDING: "pi_bonding",
-    OrbitalType.TORUS: "torus_flat",
+    OrbitalType.TORUS: "torus",
 }
 
 _CANVAS_EXTENT_SCALES = {
@@ -266,168 +504,6 @@ _CANVAS_EXTENT_SCALES = {
     OrbitalType.SIGMA_BONDING: 0.96,
     OrbitalType.PI_BONDING: 0.98,
     OrbitalType.TORUS: 0.84,
-}
-
-ORBITAL_GEOMETRY_PRESETS: dict[str, OrbitalGeometryPreset] = {
-    "s_round": OrbitalGeometryPreset(
-        main_lobe_width=68.0,
-        main_lobe_height=68.0,
-        secondary_lobe_width=68.0,
-        secondary_lobe_height=68.0,
-        neck_ratio=1.0,
-        lobe_separation=0.0,
-        torus_thickness=0.0,
-        upper_lobe_offset=0.0,
-        lower_lobe_offset=0.0,
-        visual_padding=6.0,
-        default_bounds_override=(-34.0, -34.0, 68.0, 68.0),
-    ),
-    "torus_flat": OrbitalGeometryPreset(
-        main_lobe_width=72.0,
-        main_lobe_height=20.0,
-        secondary_lobe_width=28.8,
-        secondary_lobe_height=6.8,
-        neck_ratio=0.0,
-        lobe_separation=0.0,
-        torus_thickness=6.6,
-        upper_lobe_offset=0.0,
-        lower_lobe_offset=0.0,
-        visual_padding=6.0,
-        default_bounds_override=(-36.0, -10.0, 72.0, 20.0),
-        torus_outer_width=72.0,
-        torus_outer_height=20.0,
-        torus_inner_scale=(0.40, 0.34),
-    ),
-    "p_vertical": OrbitalGeometryPreset(
-        main_lobe_width=30.4,
-        main_lobe_height=41.0,
-        secondary_lobe_width=30.4,
-        secondary_lobe_height=41.0,
-        neck_ratio=0.3552631579,
-        lobe_separation=0.0,
-        torus_thickness=0.0,
-        upper_lobe_offset=0.0,
-        lower_lobe_offset=0.0,
-        visual_padding=4.5,
-        default_bounds_override=(-16.0, -41.0, 32.0, 82.0),
-        main_profile="p_refined",
-        secondary_profile="p_refined",
-        outline_main_profile="p_outline",
-        outline_secondary_profile="p_outline",
-        outline_main_scale=(1.3157894737, 0.9268292683),
-        outline_secondary_scale=(1.3157894737, 0.9268292683),
-    ),
-    "d_clover": OrbitalGeometryPreset(
-        main_lobe_width=29.6,
-        main_lobe_height=38.0,
-        secondary_lobe_width=20.4,
-        secondary_lobe_height=36.0,
-        neck_ratio=0.3552631579,
-        lobe_separation=0.0,
-        torus_thickness=0.0,
-        upper_lobe_offset=0.0,
-        lower_lobe_offset=0.0,
-        visual_padding=5.0,
-        default_bounds_override=(-36.0, -38.0, 72.0, 76.0),
-        main_profile="d_refined_vertical",
-        secondary_profile="d_refined_horizontal",
-        outline_main_profile="d_outline_vertical",
-        outline_secondary_profile="d_outline_horizontal",
-        outline_main_scale=(1.2162162162, 0.9210526316),
-        outline_secondary_scale=(1.2745098039, 0.8888888889),
-    ),
-    "dz2_axial": OrbitalGeometryPreset(
-        main_lobe_width=24.4,
-        main_lobe_height=39.0,
-        secondary_lobe_width=24.4,
-        secondary_lobe_height=39.0,
-        neck_ratio=0.3442622951,
-        lobe_separation=0.0,
-        torus_thickness=3.552,
-        upper_lobe_offset=0.0,
-        lower_lobe_offset=0.0,
-        visual_padding=6.0,
-        anchor_bias=(0.0, -0.75),
-        default_bounds_override=(-31.0, -39.0, 62.0, 78.0),
-        main_profile="dz2_refined",
-        secondary_profile="dz2_refined",
-        outline_main_profile="dz2_outline",
-        outline_secondary_profile="dz2_outline",
-        outline_main_scale=(1.0655737705, 0.9487179487),
-        outline_secondary_scale=(1.0655737705, 0.9487179487),
-        torus_outer_width=62.0,
-        torus_outer_height=9.6,
-        torus_inner_scale=(0.46, 0.26),
-        outline_torus_scale=(1.0645161290, 1.4583333333),
-        outline_torus_inner_scale=(0.44, 0.36),
-    ),
-    "sp3_hybrid": OrbitalGeometryPreset(
-        main_lobe_width=48.0,
-        main_lobe_height=48.0,
-        secondary_lobe_width=24.0,
-        secondary_lobe_height=28.0,
-        neck_ratio=0.34,
-        lobe_separation=23.5,
-        torus_thickness=0.0,
-        upper_lobe_offset=-22.0,
-        lower_lobe_offset=1.5,
-        visual_padding=6.0,
-        default_bounds_override=(-21.0, -50.0, 42.0, 101.0),
-        main_profile="large",
-        secondary_profile="small",
-    ),
-    "sp_lobe": OrbitalGeometryPreset(
-        main_lobe_width=29.6,
-        main_lobe_height=44.0,
-        secondary_lobe_width=11.4,
-        secondary_lobe_height=39.0,
-        neck_ratio=0.2982456140,
-        lobe_separation=0.0,
-        torus_thickness=0.0,
-        upper_lobe_offset=0.0,
-        lower_lobe_offset=0.0,
-        visual_padding=4.0,
-        anchor_bias=(0.0, -4.5),
-        default_bounds_override=(-17.0, -38.0, 34.0, 76.0),
-        main_profile="sp_refined_large",
-        secondary_profile="sp_refined_small",
-        outline_main_profile="sp_outline",
-        outline_main_scale=(1.1486486486, 0.8636363636),
-    ),
-    "sigma_bonding": OrbitalGeometryPreset(
-        main_lobe_width=32.0,
-        main_lobe_height=38.0,
-        secondary_lobe_width=13.0,
-        secondary_lobe_height=12.0,
-        neck_ratio=0.4375,
-        lobe_separation=22.0,
-        torus_thickness=0.0,
-        upper_lobe_offset=0.0,
-        lower_lobe_offset=22.0,
-        visual_padding=5.0,
-        anchor_bias=(0.0, 2.75),
-        default_bounds_override=(-16.0, -38.0, 32.0, 72.0),
-        main_profile="sigma_large",
-        secondary_profile="sigma_small",
-    ),
-    "pi_bonding": OrbitalGeometryPreset(
-        main_lobe_width=26.0,
-        main_lobe_height=37.0,
-        secondary_lobe_width=26.0,
-        secondary_lobe_height=37.0,
-        neck_ratio=0.3076923077,
-        lobe_separation=4.0,
-        torus_thickness=3.3,
-        upper_lobe_offset=-2.0,
-        lower_lobe_offset=2.0,
-        visual_padding=6.0,
-        default_bounds_override=(-24.0, -39.0, 48.0, 78.0),
-        main_profile="dz2_outline",
-        secondary_profile="dz2_outline",
-        torus_outer_width=48.0,
-        torus_outer_height=11.0,
-        torus_inner_scale=(0.44, 0.40),
-    ),
 }
 
 
@@ -454,28 +530,6 @@ def _build_all_specs() -> dict[str, OrbitalGlyphSpec]:
 
 ORBITAL_SPECS = _build_all_specs()
 
-# Correspondencia visual de la referencia del usuario:
-# fila 1, col 1 -> s_outline
-# fila 1, col 2 -> s_shaded
-# fila 1, col 3 -> p_shaded
-# fila 1, col 4 -> p_solid
-# fila 1, col 5 -> d_shaded
-# fila 1, col 6 -> d_solid
-# fila 1, col 7 -> vacío en la referencia recortada
-# fila 2, col 1 -> torus_outline
-# fila 2, col 2 -> torus_shaded
-# fila 2, col 3 -> torus_solid
-# fila 2, col 4 -> sp3_shaded
-# fila 2, col 5 -> sp3_solid
-# fila 2, col 6 -> dz2_shaded
-# fila 2, col 7 -> dz2_solid
-# fila 3, col 1 -> sp_lobe_outline
-# fila 3, col 2 -> sp_lobe_shaded
-# fila 3, col 3 -> sp_lobe_solid
-# fila 3, col 4 -> sigma_bonding_shaded
-# fila 3, col 5 -> sigma_bonding_solid
-# fila 3, col 6 -> pi_bonding_shaded
-# fila 3, col 7 -> pi_bonding_solid
 REFERENCE_PALETTE_CELLS = (
     ("s_outline", "s_shaded", "p_shaded", "p_solid", "d_shaded", "d_solid", None),
     ("torus_outline", "torus_shaded", "torus_solid", "sp3_shaded", "sp3_solid", "dz2_shaded", "dz2_solid"),
@@ -514,34 +568,567 @@ def orbital_canvas_extent(kind: str, bond_length: float) -> float:
     return max(14.0, float(bond_length or 40.0) * spec.canvas_extent_scale)
 
 
+def _default_family_presets() -> dict[str, OrbitalFamilyPreset]:
+    return {
+        "s": OrbitalFamilyPreset(
+            family="s",
+            builder="build_s_orbital",
+            params=SphereParams(
+                radius_x=34.0,
+                radius_y=34.0,
+                visual_padding=6.0,
+                anchor_bias_x=0.0,
+                anchor_bias_y=0.0,
+                gradient_mode="radial",
+                light_dir=_DEFAULT_LIGHT_DIR,
+            ),
+        ),
+        "p": OrbitalFamilyPreset(
+            family="p",
+            builder="build_p_orbital",
+            params=POrbitalParams(
+                lobe_width=30.4,
+                lobe_height=41.0,
+                waist_width=0.355,
+                shoulder_width=1.0,
+                tip_roundness=0.71,
+                node_gap=0.0,
+                vertical_offset=0.0,
+                outline_scale_x=1.0,
+                outline_scale_y=1.0,
+                visual_padding=4.5,
+                anchor_bias_x=0.0,
+                anchor_bias_y=0.0,
+            ),
+        ),
+        "d": OrbitalFamilyPreset(
+            family="d",
+            builder="build_d_clover_orbital",
+            params=CloverParams(
+                vertical_width=29.6,
+                vertical_height=38.0,
+                horizontal_width=20.4,
+                horizontal_height=36.0,
+                tip_roundness=0.68,
+                shoulder_width=1.0,
+                waist_width=0.35,
+                lobe_gap=0.0,
+                visual_padding=5.0,
+                anchor_bias_x=0.0,
+                anchor_bias_y=0.0,
+            ),
+        ),
+        "dz2": OrbitalFamilyPreset(
+            family="dz2",
+            builder="build_dz2_orbital",
+            params=Dz2Params(
+                axial_width=24.4,
+                axial_height=39.0,
+                axial_tip_roundness=0.672,
+                axial_waist_width=0.344,
+                torus_outer_width=62.0,
+                torus_outer_height=9.6,
+                torus_inner_width_ratio=0.46,
+                torus_inner_height_ratio=0.26,
+                torus_offset_y=0.0,
+                visual_padding=6.0,
+                anchor_bias_x=0.0,
+                anchor_bias_y=-0.75,
+            ),
+        ),
+        "torus": OrbitalFamilyPreset(
+            family="torus",
+            builder="build_torus_orbital",
+            params=TorusParams(
+                torus_outer_width=72.0,
+                torus_outer_height=20.0,
+                torus_inner_width_ratio=0.42,
+                torus_inner_height_ratio=0.38,
+                visual_padding=6.0,
+                gradient_mode="elliptical",
+            ),
+        ),
+        "sp3": OrbitalFamilyPreset(
+            family="sp3",
+            builder="build_sp3_orbital",
+            params=HybridOrbitalParams(
+                major_lobe=CanonicalLobeParams(
+                    width=48.0,
+                    height=48.0,
+                    tip_roundness=0.70,
+                    shoulder_width=1.0,
+                    waist_width=0.32,
+                ),
+                minor_lobe=CanonicalLobeParams(
+                    width=24.0,
+                    height=28.0,
+                    tip_roundness=0.72,
+                    shoulder_width=1.0,
+                    waist_width=0.30,
+                ),
+                major_offset_y=1.5,
+                minor_offset_y=-22.0,
+                visual_padding=6.0,
+                anchor_bias_x=0.0,
+                anchor_bias_y=0.8,
+                gradient_mode="linear",
+                minor_gradient_mode="radial",
+            ),
+        ),
+        "sp_lobe": OrbitalFamilyPreset(
+            family="sp_lobe",
+            builder="build_sp_lobe_orbital",
+            params=HybridOrbitalParams(
+                major_lobe=CanonicalLobeParams(
+                    width=29.6,
+                    height=44.0,
+                    tip_roundness=0.42,
+                    shoulder_width=0.76,
+                    waist_width=0.58,
+                ),
+                minor_lobe=CanonicalLobeParams(
+                    width=11.4,
+                    height=39.0,
+                    tip_roundness=0.72,
+                    shoulder_width=1.0,
+                    waist_width=0.30,
+                ),
+                visual_padding=4.0,
+                anchor_bias_x=0.0,
+                anchor_bias_y=-4.5,
+            ),
+        ),
+        "sigma_bonding": OrbitalFamilyPreset(
+            family="sigma_bonding",
+            builder="build_sigma_bonding_orbital",
+            params=HybridOrbitalParams(
+                major_lobe=CanonicalLobeParams(
+                    width=32.0,
+                    height=38.0,
+                    tip_roundness=0.75,
+                    shoulder_width=1.0,
+                    waist_width=0.44,
+                ),
+                minor_lobe=CanonicalLobeParams(
+                    width=13.0,
+                    height=12.0,
+                    tip_roundness=0.40,
+                    shoulder_width=0.769,
+                    waist_width=0.69,
+                ),
+                minor_offset_y=22.0,
+                visual_padding=5.0,
+                anchor_bias_x=0.0,
+                anchor_bias_y=2.75,
+                gradient_mode="linear",
+                minor_gradient_mode="radial",
+            ),
+        ),
+        "pi_bonding": OrbitalFamilyPreset(
+            family="pi_bonding",
+            builder="build_pi_bonding_orbital",
+            params=PiBondingParams(
+                upper_lobe=CanonicalLobeParams(
+                    width=26.0,
+                    height=37.0,
+                    tip_roundness=0.67,
+                    shoulder_width=1.0,
+                    waist_width=0.34,
+                ),
+                lower_lobe=CanonicalLobeParams(
+                    width=26.0,
+                    height=37.0,
+                    tip_roundness=0.67,
+                    shoulder_width=1.0,
+                    waist_width=0.34,
+                ),
+                node_gap=4.0,
+                ring=TorusParams(
+                    torus_outer_width=48.0,
+                    torus_outer_height=11.0,
+                    torus_inner_width_ratio=0.44,
+                    torus_inner_height_ratio=0.40,
+                    visual_padding=6.0,
+                    phase="neutral",
+                ),
+                visual_padding=6.0,
+                anchor_bias_x=0.0,
+                anchor_bias_y=0.0,
+                gradient_mode="linear",
+            ),
+        ),
+        "f": OrbitalFamilyPreset(
+            family="f",
+            builder="build_f_orbital",
+            params=FOrbitalParams(
+                lobes=(
+                    TeardropParams(24.0, 28.0, 0.68, 1.0, 0.67, 0.88, 0.41, 0.35, 0.05, 0.0, orientation="up", phase="positive"),
+                    TeardropParams(24.0, 28.0, 0.68, 1.0, 0.67, 0.88, 0.41, 0.35, 0.05, 0.0, orientation="down", phase="negative"),
+                    TeardropParams(24.0, 28.0, 0.61, 1.0, 0.58, 0.80, 0.24, 0.27, 0.02, 0.0, orientation="left", phase="positive"),
+                    TeardropParams(24.0, 28.0, 0.61, 1.0, 0.58, 0.80, 0.24, 0.27, 0.02, 0.0, orientation="right", phase="negative"),
+                    TeardropParams(16.0, 20.0, 0.67, 1.0, 0.64, 0.89, 0.36, 0.28, 0.01, 0.0, rotation_deg=-45.0, orientation="up", phase="positive"),
+                    TeardropParams(16.0, 20.0, 0.67, 1.0, 0.64, 0.89, 0.36, 0.28, 0.01, 0.0, rotation_deg=135.0, orientation="up", phase="negative"),
+                ),
+                visual_padding=8.0,
+            ),
+        ),
+        "fz3": OrbitalFamilyPreset(
+            family="fz3",
+            builder="build_f_orbital",
+            params=FOrbitalParams(
+                lobes=(
+                    TeardropParams(18.0, 22.0, 0.70, 1.0, 0.66, 0.86, 0.40, 0.32, 0.05, 0.0, offset_y=-28.0, orientation="up", phase="positive"),
+                    TeardropParams(12.0, 14.0, 0.72, 1.0, 0.78, 0.84, 0.52, 0.30, 0.08, 0.20, orientation="up", phase="negative"),
+                    TeardropParams(18.0, 22.0, 0.70, 1.0, 0.66, 0.86, 0.40, 0.32, 0.05, 0.0, offset_y=28.0, orientation="down", phase="positive"),
+                ),
+                torus=TorusParams(
+                    torus_outer_width=46.0,
+                    torus_outer_height=12.0,
+                    torus_inner_width_ratio=0.50,
+                    torus_inner_height_ratio=0.42,
+                    visual_padding=8.0,
+                    phase="neutral",
+                ),
+                visual_padding=8.0,
+            ),
+        ),
+    }
+
+
+_DEFAULT_ORBITAL_FAMILY_PRESETS = _default_family_presets()
+ORBITAL_FAMILY_ORDER = tuple(_DEFAULT_ORBITAL_FAMILY_PRESETS.keys())
+
+
+def _dataclass_payload(obj: Any) -> Any:
+    if isinstance(obj, tuple):
+        return [_dataclass_payload(item) for item in obj]
+    if isinstance(obj, list):
+        return [_dataclass_payload(item) for item in obj]
+    if isinstance(obj, dict):
+        return {key: _dataclass_payload(value) for key, value in obj.items()}
+    if hasattr(obj, "__dataclass_fields__"):
+        return {key: _dataclass_payload(value) for key, value in asdict(obj).items()}
+    return obj
+
+
+def _docs_for_value(value: Any) -> Any:
+    if hasattr(value, "__dataclass_fields__"):
+        docs: dict[str, Any] = {}
+        for key in value.__dataclass_fields__:
+            child = getattr(value, key)
+            nested = _docs_for_value(child)
+            docs[key] = nested if nested else ORBITAL_PARAMETER_DESCRIPTIONS.get(key, key)
+        return docs
+    if isinstance(value, (tuple, list)) and value and hasattr(value[0], "__dataclass_fields__"):
+        return {
+            key: ORBITAL_PARAMETER_DESCRIPTIONS.get(key, key)
+            for key in value[0].__dataclass_fields__
+        }
+    return {}
+
+
+def _family_docs(family_key: str) -> dict[str, Any]:
+    preset = _DEFAULT_ORBITAL_FAMILY_PRESETS[family_key]
+    docs = _docs_for_value(preset.params)
+    return docs if isinstance(docs, dict) else {}
+
+
+def default_orbital_presets_payload(*, include_docs: bool = True) -> dict[str, Any]:
+    """Payload serializable con los presets por defecto."""
+    payload: dict[str, Any] = {
+        "_meta": {
+            "format_version": 1,
+            "path_hint": str(ORBITAL_PRESET_CONFIG_PATH),
+            "notes": "Edita estos parámetros y usa tools/orbital_tuner.py o tools/render_orbital_family_preview.py para previsualizar.",
+        }
+    }
+    for family_key, preset in _DEFAULT_ORBITAL_FAMILY_PRESETS.items():
+        family_payload = {
+            "builder": preset.builder,
+            "params": _dataclass_payload(preset.params),
+        }
+        if include_docs:
+            family_payload["_docs"] = _family_docs(family_key)
+        payload[family_key] = family_payload
+    return payload
+
+
+def _strip_meta(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: _strip_meta(item) for key, item in value.items() if not str(key).startswith("_")}
+    if isinstance(value, list):
+        return [_strip_meta(item) for item in value]
+    return value
+
+
+def _deep_merge(base: Any, override: Any) -> Any:
+    if isinstance(base, dict) and isinstance(override, dict):
+        merged = dict(base)
+        for key, value in override.items():
+            if key in merged:
+                merged[key] = _deep_merge(merged[key], value)
+            else:
+                merged[key] = value
+        return merged
+    return override
+
+
+def _load_json_payload(path: Path, *, include_docs: bool) -> dict[str, Any]:
+    base = default_orbital_presets_payload(include_docs=include_docs)
+    if not path.exists():
+        return base
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    return _deep_merge(base, _strip_meta(raw))
+
+
+def load_orbital_presets_payload(
+    path: Path = ORBITAL_PRESET_CONFIG_PATH,
+    *,
+    include_docs: bool = False,
+) -> dict[str, Any]:
+    """Carga el payload editable completo desde disco con fallback a defaults."""
+    return _load_json_payload(path, include_docs=include_docs)
+
+
+def _parse_teardrop(payload: dict[str, Any]) -> TeardropParams:
+    data = _strip_meta(payload)
+    return TeardropParams(**data)
+
+
+def _parse_canonical_lobe(payload: dict[str, Any]) -> CanonicalLobeParams:
+    data = _strip_meta(payload)
+    return CanonicalLobeParams(**data)
+
+
+def _parse_torus(payload: dict[str, Any]) -> TorusParams:
+    data = _strip_meta(payload)
+    allowed = set(TorusParams.__dataclass_fields__)
+    filtered = {key: value for key, value in data.items() if key in allowed}
+    return TorusParams(**filtered)
+
+
+def _canonical_from_legacy_teardrop(payload: dict[str, Any]) -> dict[str, Any]:
+    data = _strip_meta(payload)
+    return {
+        "width": float(data.get("width", 24.0)),
+        "height": float(data.get("height", 32.0)),
+        "tip_roundness": float(data.get("tip_roundness", 0.68)),
+        "shoulder_width": float(data.get("shoulder_width", 1.0)),
+        "waist_width": float(data.get("waist_width", data.get("neck_width", 0.35))),
+    }
+
+
+def _normalize_p_params(payload: dict[str, Any]) -> dict[str, Any]:
+    data = dict(_strip_meta(payload))
+    if "waist_width" not in data:
+        data["waist_width"] = data.get("neck_width", 0.35)
+    if "node_gap" not in data:
+        upper = float(data.get("upper_offset", 0.0))
+        lower = float(data.get("lower_offset", 0.0))
+        data["node_gap"] = abs(lower - upper)
+    if "vertical_offset" not in data:
+        upper = float(data.get("upper_offset", 0.0))
+        lower = float(data.get("lower_offset", 0.0))
+        data["vertical_offset"] = (upper + lower) * 0.5
+    allowed = set(POrbitalParams.__dataclass_fields__)
+    return {key: value for key, value in data.items() if key in allowed}
+
+
+def _normalize_clover_params(payload: dict[str, Any]) -> dict[str, Any]:
+    data = dict(_strip_meta(payload))
+    data.setdefault("vertical_width", data.get("vertical_lobe_width", 29.6))
+    data.setdefault("vertical_height", data.get("vertical_lobe_height", 38.0))
+    data.setdefault("horizontal_width", data.get("horizontal_lobe_width", 20.4))
+    data.setdefault("horizontal_height", data.get("horizontal_lobe_height", 36.0))
+    data.setdefault("waist_width", data.get("neck_width", 0.35))
+    allowed = set(CloverParams.__dataclass_fields__)
+    return {key: value for key, value in data.items() if key in allowed}
+
+
+def _normalize_dz2_params(payload: dict[str, Any]) -> dict[str, Any]:
+    data = dict(_strip_meta(payload))
+    data.setdefault("axial_width", data.get("axial_lobe_width", 24.4))
+    data.setdefault("axial_height", data.get("axial_lobe_height", 39.0))
+    data.setdefault("axial_waist_width", data.get("axial_neck_width", 0.34))
+    allowed = set(Dz2Params.__dataclass_fields__)
+    return {key: value for key, value in data.items() if key in allowed}
+
+
+def _parse_hybrid_payload(payload: dict[str, Any], *, family_key: str) -> HybridOrbitalParams:
+    data = dict(_strip_meta(payload))
+    if "major_lobe" in data and "minor_lobe" in data:
+        return HybridOrbitalParams(
+            major_lobe=_parse_canonical_lobe(data["major_lobe"]),
+            minor_lobe=_parse_canonical_lobe(data["minor_lobe"]),
+            major_offset_y=float(data.get("major_offset_y", 0.0)),
+            minor_offset_y=float(data.get("minor_offset_y", 0.0)),
+            node_gap=float(data.get("node_gap", 0.0)),
+            visual_padding=float(data.get("visual_padding", 6.0)),
+            anchor_bias_x=float(data.get("anchor_bias_x", 0.0)),
+            anchor_bias_y=float(data.get("anchor_bias_y", 0.0)),
+            gradient_mode=str(data.get("gradient_mode", "linear")),
+            minor_gradient_mode=str(data.get("minor_gradient_mode", "linear")),
+            light_dir=str(data.get("light_dir", _DEFAULT_LIGHT_DIR)),
+        )
+
+    primary = _strip_meta(data.get("primary_lobe", {}))
+    secondary = _strip_meta(data.get("secondary_lobe", {}))
+    if family_key == "sp3":
+        major_payload = _canonical_from_legacy_teardrop(secondary)
+        minor_payload = _canonical_from_legacy_teardrop(primary)
+        major_offset_y = float(secondary.get("offset_y", 0.0))
+        minor_offset_y = float(primary.get("offset_y", 0.0))
+    else:
+        major_payload = _canonical_from_legacy_teardrop(primary)
+        minor_payload = _canonical_from_legacy_teardrop(secondary)
+        major_offset_y = float(primary.get("offset_y", 0.0))
+        minor_offset_y = float(secondary.get("offset_y", 0.0))
+
+    return HybridOrbitalParams(
+        major_lobe=_parse_canonical_lobe(major_payload),
+        minor_lobe=_parse_canonical_lobe(minor_payload),
+        major_offset_y=float(data.get("major_offset_y", major_offset_y)),
+        minor_offset_y=float(data.get("minor_offset_y", minor_offset_y)),
+        node_gap=float(data.get("node_gap", 0.0)),
+        visual_padding=float(data.get("visual_padding", 6.0)),
+        anchor_bias_x=float(data.get("anchor_bias_x", 0.0)),
+        anchor_bias_y=float(data.get("anchor_bias_y", 0.0)),
+        gradient_mode=str(data.get("gradient_mode", primary.get("gradient_mode", "linear"))),
+        minor_gradient_mode=str(data.get("minor_gradient_mode", secondary.get("gradient_mode", "linear"))),
+        light_dir=str(data.get("light_dir", _DEFAULT_LIGHT_DIR)),
+    )
+
+
+def _parse_pi_payload(payload: dict[str, Any]) -> PiBondingParams:
+    data = dict(_strip_meta(payload))
+    if "upper_lobe" in data and "lower_lobe" in data:
+        return PiBondingParams(
+            upper_lobe=_parse_canonical_lobe(data["upper_lobe"]),
+            lower_lobe=_parse_canonical_lobe(data["lower_lobe"]),
+            node_gap=float(data.get("node_gap", 0.0)),
+            vertical_offset=float(data.get("vertical_offset", 0.0)),
+            ring=_parse_torus(data["ring"]) if data.get("ring") else None,
+            visual_padding=float(data.get("visual_padding", 6.0)),
+            anchor_bias_x=float(data.get("anchor_bias_x", 0.0)),
+            anchor_bias_y=float(data.get("anchor_bias_y", 0.0)),
+            gradient_mode=str(data.get("gradient_mode", "linear")),
+            light_dir=str(data.get("light_dir", _DEFAULT_LIGHT_DIR)),
+        )
+
+    primary = _strip_meta(data.get("primary_lobe", {}))
+    secondary = _strip_meta(data.get("secondary_lobe", {}))
+    upper = _canonical_from_legacy_teardrop(primary)
+    lower = _canonical_from_legacy_teardrop(secondary)
+    upper_offset = float(primary.get("offset_y", 0.0))
+    lower_offset = float(secondary.get("offset_y", 0.0))
+    return PiBondingParams(
+        upper_lobe=_parse_canonical_lobe(upper),
+        lower_lobe=_parse_canonical_lobe(lower),
+        node_gap=float(data.get("node_gap", abs(lower_offset - upper_offset))),
+        vertical_offset=float(data.get("vertical_offset", (upper_offset + lower_offset) * 0.5)),
+        ring=_parse_torus(data["ring"]) if data.get("ring") else (_parse_torus(data["torus"]) if data.get("torus") else None),
+        visual_padding=float(data.get("visual_padding", 6.0)),
+        anchor_bias_x=float(data.get("anchor_bias_x", 0.0)),
+        anchor_bias_y=float(data.get("anchor_bias_y", 0.0)),
+        gradient_mode=str(data.get("gradient_mode", primary.get("gradient_mode", "linear"))),
+        light_dir=str(data.get("light_dir", _DEFAULT_LIGHT_DIR)),
+    )
+
+
+def _parse_preset_payload(payload: dict[str, Any]) -> dict[str, OrbitalFamilyPreset]:
+    families: dict[str, OrbitalFamilyPreset] = {}
+    for family_key, default_preset in _DEFAULT_ORBITAL_FAMILY_PRESETS.items():
+        family_payload = payload.get(family_key, {})
+        params_payload = _strip_meta(family_payload.get("params", {}))
+        builder = str(family_payload.get("builder") or default_preset.builder)
+        if family_key == "s":
+            params = SphereParams(**params_payload)
+        elif family_key == "p":
+            params = POrbitalParams(**_normalize_p_params(params_payload))
+        elif family_key == "d":
+            params = CloverParams(**_normalize_clover_params(params_payload))
+        elif family_key == "dz2":
+            params = Dz2Params(**_normalize_dz2_params(params_payload))
+        elif family_key == "torus":
+            params = _parse_torus(params_payload)
+        elif family_key in {"sp3", "sp_lobe", "sigma_bonding"}:
+            params = _parse_hybrid_payload(params_payload, family_key=family_key)
+        elif family_key == "pi_bonding":
+            params = _parse_pi_payload(params_payload)
+        elif family_key in {"f", "fz3"}:
+            params = FOrbitalParams(
+                lobes=tuple(_parse_teardrop(item) for item in params_payload.get("lobes", [])),
+                torus=_parse_torus(params_payload["torus"]) if params_payload.get("torus") else None,
+                visual_padding=float(params_payload.get("visual_padding", 8.0)),
+                anchor_bias_x=float(params_payload.get("anchor_bias_x", 0.0)),
+                anchor_bias_y=float(params_payload.get("anchor_bias_y", 0.0)),
+            )
+        else:
+            raise KeyError(family_key)
+        families[family_key] = OrbitalFamilyPreset(family=family_key, builder=builder, params=params)
+    return families
+
+
+def load_orbital_family_presets(path: Path = ORBITAL_PRESET_CONFIG_PATH) -> dict[str, OrbitalFamilyPreset]:
+    """Carga presets externos con fallback a defaults internos."""
+    return _parse_preset_payload(_load_json_payload(path, include_docs=False))
+
+
+def save_orbital_presets_payload(payload: dict[str, Any], path: Path = ORBITAL_PRESET_CONFIG_PATH) -> Path:
+    """Guarda un payload de presets externos en disco."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+    return path
+
+
+def save_default_orbital_presets(path: Path = ORBITAL_PRESET_CONFIG_PATH) -> Path:
+    """Escribe en disco el archivo editable de presets por defecto."""
+    return save_orbital_presets_payload(default_orbital_presets_payload(include_docs=True), path)
+
+
+def save_current_orbital_presets(path: Path = ORBITAL_PRESET_CONFIG_PATH) -> Path:
+    """Guarda el estado activo actual como archivo externo editable."""
+    return save_orbital_presets_payload(current_orbital_presets_payload(include_docs=True), path)
+
+
+def current_orbital_presets_payload(*, include_docs: bool = False) -> dict[str, Any]:
+    """Devuelve el estado activo actual serializado a payload."""
+    payload: dict[str, Any] = {"_meta": {"format_version": 1}}
+    for family_key, preset in _ACTIVE_ORBITAL_FAMILY_PRESETS.items():
+        family_payload = {
+            "builder": preset.builder,
+            "params": _dataclass_payload(preset.params),
+        }
+        if include_docs:
+            family_payload["_docs"] = _family_docs(family_key)
+        payload[family_key] = family_payload
+    return payload
+
+
 def _ellipse_path(x: float, y: float, w: float, h: float) -> QPainterPath:
     path = QPainterPath()
     path.addEllipse(QRectF(x, y, w, h))
     return path
 
 
-def _ring_path(x: float, y: float, w: float, h: float, inner_scale_x: float, inner_scale_y: float) -> QPainterPath:
+def _ring_path(x: float, y: float, w: float, h: float, inner_x: float, inner_y: float) -> QPainterPath:
     path = QPainterPath()
     path.setFillRule(Qt.FillRule.OddEvenFill)
     path.addEllipse(QRectF(x, y, w, h))
-    inset_x = w * (1.0 - inner_scale_x) * 0.5
-    inset_y = h * (1.0 - inner_scale_y) * 0.5
-    path.addEllipse(QRectF(x + inset_x, y + inset_y, w * inner_scale_x, h * inner_scale_y))
+    inset_x = w * (1.0 - inner_x) * 0.5
+    inset_y = h * (1.0 - inner_y) * 0.5
+    path.addEllipse(QRectF(x + inset_x, y + inset_y, w * inner_x, h * inner_y))
     return path
 
 
-def _closed_cubic_path(
-    start: tuple[float, float],
-    segments: tuple[tuple[tuple[float, float], tuple[float, float], tuple[float, float]], ...],
+def _transform_path(
+    path: QPainterPath,
+    *,
+    translate: tuple[float, float] = (0.0, 0.0),
+    rotate: float = 0.0,
+    scale_x: float = 1.0,
+    scale_y: float = 1.0,
 ) -> QPainterPath:
-    path = QPainterPath(QPointF(*start))
-    for c1, c2, end in segments:
-        path.cubicTo(QPointF(*c1), QPointF(*c2), QPointF(*end))
-    path.closeSubpath()
-    return path
-
-
-def _transform_path(path: QPainterPath, *, translate: tuple[float, float] = (0.0, 0.0), rotate: float = 0.0, scale_x: float = 1.0, scale_y: float = 1.0) -> QPainterPath:
     transform = QTransform()
     transform.translate(translate[0], translate[1])
     if rotate:
@@ -550,99 +1137,675 @@ def _transform_path(path: QPainterPath, *, translate: tuple[float, float] = (0.0
     return transform.map(path)
 
 
-_LOBE_PROFILES: dict[str, LobeProfile] = {
-    "large": LobeProfile(0.625, 0.96875, 1.0, 0.5625, 0.7916666667, 0.2916666667, 0.625, 0.09375, -0.0104166667, -0.025, neck_inner_x=0.3541666667),
-    "small": LobeProfile(0.6666666667, 0.9285714286, 1.0, 0.5714285714, 0.8333333333, 0.3214285714, 0.6666666667, 0.1428571429, 0.0357142857, 0.0, neck_inner_x=0.3333333333),
-    "micro": LobeProfile(0.7142857143, 0.9230769231, 1.0, 0.6153846154, 0.8571428571, 0.3076923077, 0.7142857143, 0.1384615385, 0.0153846154, 0.0, neck_inner_x=0.3714285714),
-    "horizontal_petal": LobeProfile(0.5625, 0.9, 1.0, 0.525, 0.78125, 0.225, 0.5625, 0.05, 0.0, 0.01, neck_inner_x=0.2625),
-    "diag_petal": LobeProfile(0.6666666667, 0.9545454545, 1.0, 0.6363636364, 0.8888888889, 0.3636363636, 0.6666666667, 0.1363636364, 0.0136363636, 0.0, neck_inner_x=0.2777777778),
-    "p_outline": LobeProfile(0.65, 0.9473684211, 1.0, 0.5, 0.8, 0.1842105263, 0.65, -0.0526315789, -0.1973684211, -0.2368421053, neck_inner_x=0.35),
-    "p_refined": LobeProfile(0.7105263158, 0.9634146341, 1.0, 0.7073170732, 0.8947368421, 0.4756097561, 0.7368421053, 0.2195121951, 0.0634146341, 0.0, neck_inner_x=0.3552631579),
-    "d_outline_vertical": LobeProfile(0.6111111111, 0.9428571429, 1.0, 0.5142857143, 0.7777777778, 0.2285714286, 0.6666666667, 0.0285714286, -0.1, -0.1428571429, neck_inner_x=0.3333333333),
-    "d_outline_horizontal": LobeProfile(0.6153846154, 0.9375, 1.0, 0.5625, 0.7692307692, 0.21875, 0.6153846154, 0.03125, -0.03125, -0.03125, neck_inner_x=0.3076923077),
-    "d_refined_vertical": LobeProfile(0.6756756757, 0.9526315789, 1.0, 0.6710526316, 0.8783783784, 0.4105263158, 0.7297297297, 0.1894736842, 0.0473684211, -0.0105263158, neck_inner_x=0.3513513514),
-    "d_refined_horizontal": LobeProfile(0.6078431373, 0.9305555556, 1.0, 0.5833333333, 0.8039215686, 0.2444444444, 0.6470588235, 0.0777777778, 0.0166666667, 0.0, neck_inner_x=0.2745098039),
-    "sp_outline": LobeProfile(0.7647058824, 0.9210526316, 1.0, 0.4736842105, 0.8823529412, 0.0789473684, 0.7647058824, -0.3421052632, -0.6842105263, -1.0, neck_inner_x=0.4411764706),
-    "sp_refined_small": LobeProfile(0.7192982456, 0.9743589744, 1.0, 0.8358974359, 0.8421052632, 0.6871794872, 0.6666666667, 0.5538461538, 0.4410256410, 0.3384615385, neck_inner_x=0.2982456140),
-    "sp_refined_large": LobeProfile(0.3513513514, 0.9045454545, 0.7162162162, 0.75, 0.8513513514, 0.4886363636, 1.0, 0.1318181818, -0.2045454545, -0.2454545455, neck_inner_x=0.7837837838),
-    "sigma_large": LobeProfile(0.75, 0.9210526316, 1.0, 0.5263157895, 0.875, 0.2105263158, 0.75, -0.0789473684, -0.3947368421, -0.7368421053, neck_inner_x=0.4375),
-    "sigma_small": LobeProfile(0.3846153846, 0.9166666667, 0.7692307692, 0.75, 0.9230769231, 0.5, 1.0, 0.1666666667, -0.0833333333, 0.0, neck_inner_x=0.6923076923),
-    "dz2_outline": LobeProfile(0.6923076923, 0.9459459459, 1.0, 0.6216216216, 0.8461538462, 0.3783783784, 0.6923076923, 0.1621621622, 0.0270270270, 0.0, neck_inner_x=0.3076923077),
-    "dz2_refined": LobeProfile(0.6721311475, 0.9589743590, 1.0, 0.6666666667, 0.8524590164, 0.4358974359, 0.7213114754, 0.2564102564, 0.1589743590, 0.1435897436, neck_inner_x=0.3442622951),
-}
+def mirror_path(path: QPainterPath, *, axis: str) -> QPainterPath:
+    """Espeja un path sobre el eje `x` o `y`."""
+    if axis == "x":
+        return _transform_path(path, scale_y=-1.0)
+    if axis == "y":
+        return _transform_path(path, scale_x=-1.0)
+    raise ValueError(axis)
 
 
-def _scale_dimensions(width: float, height: float, scale: tuple[float, float]) -> tuple[float, float]:
-    return width * scale[0], height * scale[1]
+def compose_parts(*groups: GeometryPart | tuple[GeometryPart, ...]) -> tuple[GeometryPart, ...]:
+    """Aplana grupos de partes manteniendo un orden explícito."""
+    parts: list[GeometryPart] = []
+    for group in groups:
+        if isinstance(group, GeometryPart):
+            parts.append(group)
+        else:
+            parts.extend(group)
+    return tuple(parts)
 
 
-def _profile(name: str) -> LobeProfile:
-    return _LOBE_PROFILES[name]
+def _bounds_for_parts(parts: tuple[GeometryPart, ...]) -> QRectF:
+    bounds: QRectF | None = None
+    for part in parts:
+        rect = part.path.boundingRect()
+        bounds = rect if bounds is None else bounds.united(rect)
+    return bounds if bounds is not None else QRectF(-1.0, -1.0, 2.0, 2.0)
 
 
-def _vertical_lobe_path(width: float, height: float, neck_ratio: float, profile_name: str) -> QPainterPath:
-    profile = _profile(profile_name)
-    half_width = width * 0.5
-    inner_x_ratio = profile.neck_inner_x if profile.neck_inner_x is not None else neck_ratio
-    return _closed_cubic_path(
-        (0.0, -height),
-        (
-            ((half_width * profile.tip_ctrl_x, -height * profile.tip_ctrl_y), (half_width * profile.shoulder_ctrl_x, -height * profile.shoulder_ctrl_y), (half_width * profile.waist_end_x, -height * profile.waist_end_y)),
-            ((half_width * profile.neck_ctrl_x, -height * profile.neck_ctrl_y), (half_width * inner_x_ratio, -height * profile.neck_inner_y), (0.0, -height * profile.end_y)),
-            ((-half_width * inner_x_ratio, -height * profile.neck_inner_y), (-half_width * profile.neck_ctrl_x, -height * profile.neck_ctrl_y), (-half_width * profile.waist_end_x, -height * profile.waist_end_y)),
-            ((-half_width * profile.shoulder_ctrl_x, -height * profile.shoulder_ctrl_y), (-half_width * profile.tip_ctrl_x, -height * profile.tip_ctrl_y), (0.0, -height)),
-        ),
+def scale_to_visual_box(parts: tuple[GeometryPart, ...], box: QRectF) -> tuple[GeometryPart, ...]:
+    """Escala un conjunto de partes a una caja visual explícita."""
+    source = _bounds_for_parts(parts)
+    if source.width() <= 1e-6 or source.height() <= 1e-6:
+        return parts
+    scale_x = box.width() / source.width()
+    scale_y = box.height() / source.height()
+    transform = QTransform()
+    transform.translate(box.center().x(), box.center().y())
+    transform.scale(scale_x, scale_y)
+    transform.translate(-source.center().x(), -source.center().y())
+    return tuple(replace(part, path=transform.map(part.path)) for part in parts)
+
+
+def _catmull_rom_path(points: list[QPointF]) -> QPainterPath:
+    path = QPainterPath(points[0])
+    if len(points) < 2:
+        return path
+    for index in range(len(points) - 1):
+        p0 = points[index - 1] if index > 0 else points[index]
+        p1 = points[index]
+        p2 = points[index + 1]
+        p3 = points[index + 2] if index + 2 < len(points) else points[index + 1]
+        c1 = QPointF(
+            p1.x() + (p2.x() - p0.x()) / 6.0,
+            p1.y() + (p2.y() - p0.y()) / 6.0,
+        )
+        c2 = QPointF(
+            p2.x() - (p3.x() - p1.x()) / 6.0,
+            p2.y() - (p3.y() - p1.y()) / 6.0,
+        )
+        path.cubicTo(c1, c2, p2)
+    return path
+
+
+def build_teardrop(params: TeardropParams) -> GeometryPart:
+    """Construye un lóbulo lágrima desde parámetros explícitos."""
+    half_width = params.width * 0.5
+    tip = QPointF(0.0, -params.height)
+    shoulder_y = -params.height * params.shoulder_height_ratio
+    belly_y = -params.height * params.belly_height_ratio
+    neck_y = -params.height * params.neck_height
+    node_y = params.height * params.cusp_depth
+    tip_round = QPointF(half_width * params.tip_roundness, (tip.y() + shoulder_y) * 0.5)
+    shoulder = QPointF(half_width * params.shoulder_width, shoulder_y)
+    belly = QPointF(half_width * params.belly_width, belly_y)
+    neck = QPointF(half_width * params.neck_width, neck_y)
+    node = QPointF(0.0, node_y)
+
+    right_points = [tip, tip_round, shoulder, belly, neck, node]
+    right_curve = _catmull_rom_path(right_points)
+    left_points = [node] + [QPointF(-point.x(), point.y()) for point in reversed(right_points[1:-1])] + [tip]
+    left_curve = _catmull_rom_path(left_points)
+    path = QPainterPath()
+    path.addPath(right_curve)
+    path.connectPath(left_curve)
+    path.closeSubpath()
+
+    if params.outline_scale_x != 1.0 or params.outline_scale_y != 1.0:
+        path = _transform_path(path, scale_x=params.outline_scale_x, scale_y=params.outline_scale_y)
+    if params.mirror:
+        path = mirror_path(path, axis="y")
+    if params.orientation == "down":
+        path = mirror_path(path, axis="x")
+    elif params.orientation == "left":
+        path = _transform_path(path, rotate=-90.0)
+    elif params.orientation == "right":
+        path = _transform_path(path, rotate=90.0)
+    elif params.orientation != "up":
+        raise ValueError(f"Orientación no soportada: {params.orientation}")
+    if params.rotation_deg:
+        path = _transform_path(path, rotate=params.rotation_deg)
+    if params.offset_x or params.offset_y:
+        path = _transform_path(path, translate=(params.offset_x, params.offset_y))
+
+    return GeometryPart(
+        name="lobe",
+        path=path,
+        phase=params.phase,
+        gradient_mode=params.gradient_mode,
+        light_dir=params.light_dir,
     )
 
 
-def _oriented_lobe_path(
-    width: float,
-    height: float,
-    neck_ratio: float,
-    profile_name: str,
+@dataclass(frozen=True)
+class _LobeTemplate:
+    shoulder_y: float
+    belly_y: float
+    belly_floor: float
+    belly_gap: float
+    neck_y: float
+
+
+_P_TEMPLATE = _LobeTemplate(shoulder_y=0.71, belly_y=0.48, belly_floor=0.86, belly_gap=0.18, neck_y=0.06)
+_D_VERTICAL_TEMPLATE = _LobeTemplate(shoulder_y=0.67, belly_y=0.41, belly_floor=0.86, belly_gap=0.18, neck_y=0.05)
+_D_HORIZONTAL_TEMPLATE = _LobeTemplate(shoulder_y=0.58, belly_y=0.24, belly_floor=0.78, belly_gap=0.14, neck_y=0.03)
+_DZ2_TEMPLATE = _LobeTemplate(shoulder_y=0.67, belly_y=0.44, belly_floor=0.84, belly_gap=0.17, neck_y=0.16)
+_HYBRID_MAJOR_TEMPLATE = _LobeTemplate(shoulder_y=0.70, belly_y=0.46, belly_floor=0.84, belly_gap=0.16, neck_y=0.08)
+_HYBRID_MINOR_TEMPLATE = _LobeTemplate(shoulder_y=0.76, belly_y=0.58, belly_floor=0.82, belly_gap=0.16, neck_y=0.14)
+_SIGMA_MAJOR_TEMPLATE = _LobeTemplate(shoulder_y=0.55, belly_y=0.26, belly_floor=0.86, belly_gap=0.18, neck_y=0.06)
+_SIGMA_MINOR_TEMPLATE = _LobeTemplate(shoulder_y=0.76, belly_y=0.54, belly_floor=0.86, belly_gap=0.14, neck_y=0.12)
+_PI_TEMPLATE = _LobeTemplate(shoulder_y=0.67, belly_y=0.44, belly_floor=0.84, belly_gap=0.16, neck_y=0.10)
+
+
+def _clamp(value: float, lower: float, upper: float) -> float:
+    return max(lower, min(upper, float(value)))
+
+
+def _canonical_lobe_path(
+    params: CanonicalLobeParams,
+    template: _LobeTemplate,
     *,
     orientation: str = "up",
-    offset: float = 0.0,
+    offset_x: float = 0.0,
+    offset_y: float = 0.0,
+    scale_x: float = 1.0,
+    scale_y: float = 1.0,
 ) -> QPainterPath:
-    base = _vertical_lobe_path(width, height, neck_ratio, profile_name)
-    if orientation == "up":
-        return _transform_path(base, translate=(0.0, offset))
+    width = _clamp(params.width, 6.0, 120.0)
+    height = _clamp(params.height, 8.0, 140.0)
+    tip_roundness = _clamp(params.tip_roundness, 0.18, 0.90)
+    waist_width = _clamp(params.waist_width, 0.12, 0.74)
+    shoulder_width = _clamp(params.shoulder_width, waist_width + 0.12, 1.0)
+    belly_width = _clamp(
+        max(template.belly_floor, shoulder_width * 0.88, waist_width + template.belly_gap),
+        shoulder_width * 0.80,
+        0.96,
+    )
+
+    half_width = width * 0.5
+    tip = QPointF(0.0, -height)
+    belly = QPointF(half_width * belly_width, -height * template.belly_y)
+    node = QPointF(0.0, 0.0)
+
+    tip_ctrl_1 = QPointF(half_width * tip_roundness, -height * 0.97)
+    tip_ctrl_2 = QPointF(half_width * shoulder_width, -height * template.shoulder_y)
+    root_ctrl_1 = QPointF(half_width * min(1.0, belly_width + 0.05), -height * max(template.neck_y + 0.08, template.belly_y * 0.48))
+    root_ctrl_2 = QPointF(half_width * waist_width, -height * template.neck_y)
+
+    path = QPainterPath(tip)
+    path.cubicTo(tip_ctrl_1, tip_ctrl_2, belly)
+    path.cubicTo(root_ctrl_1, root_ctrl_2, node)
+    path.cubicTo(
+        QPointF(-root_ctrl_2.x(), root_ctrl_2.y()),
+        QPointF(-root_ctrl_1.x(), root_ctrl_1.y()),
+        QPointF(-belly.x(), belly.y()),
+    )
+    path.cubicTo(
+        QPointF(-tip_ctrl_2.x(), tip_ctrl_2.y()),
+        QPointF(-tip_ctrl_1.x(), tip_ctrl_1.y()),
+        tip,
+    )
+    path.closeSubpath()
+
+    if scale_x != 1.0 or scale_y != 1.0:
+        path = _transform_path(path, scale_x=scale_x, scale_y=scale_y)
     if orientation == "down":
-        return _transform_path(base, scale_y=-1.0, translate=(0.0, offset))
-    if orientation == "left":
-        return _transform_path(base, rotate=-90.0, translate=(offset, 0.0))
-    if orientation == "right":
-        return _transform_path(base, rotate=90.0, translate=(offset, 0.0))
-    raise ValueError(f"Orientación de lóbulo no soportada: {orientation}")
+        path = mirror_path(path, axis="x")
+    elif orientation == "left":
+        path = _transform_path(path, rotate=-90.0)
+    elif orientation == "right":
+        path = _transform_path(path, rotate=90.0)
+    elif orientation != "up":
+        raise ValueError(f"Orientación no soportada: {orientation}")
+    if offset_x or offset_y:
+        path = _transform_path(path, translate=(offset_x, offset_y))
+    return path
 
 
-def _ring_from_metrics(width: float, height: float, inner_scale: tuple[float, float], *, offset_y: float = 0.0) -> QPainterPath:
-    return _ring_path(-width * 0.5, offset_y - height * 0.5, width, height, inner_scale[0], inner_scale[1])
+def _canonical_part(
+    name: str,
+    params: CanonicalLobeParams,
+    template: _LobeTemplate,
+    *,
+    orientation: str,
+    offset_x: float = 0.0,
+    offset_y: float = 0.0,
+    scale_x: float = 1.0,
+    scale_y: float = 1.0,
+    phase: str,
+    gradient_mode: str,
+    light_dir: str,
+) -> GeometryPart:
+    return GeometryPart(
+        name=name,
+        path=_canonical_lobe_path(
+            params,
+            template,
+            orientation=orientation,
+            offset_x=offset_x,
+            offset_y=offset_y,
+            scale_x=scale_x,
+            scale_y=scale_y,
+        ),
+        phase=phase,
+        gradient_mode=gradient_mode,
+        light_dir=light_dir,
+    )
 
 
-def _vertical_lobe_large() -> QPainterPath:
-    return _vertical_lobe_path(48.0, 48.0, 0.3541666667, "large")
+def build_s_orbital(params: SphereParams) -> FamilyBuildResult:
+    """Builder canónico para el orbital s."""
+    path = _ellipse_path(-params.radius_x, -params.radius_y, params.radius_x * 2.0, params.radius_y * 2.0)
+    part = GeometryPart("sphere", path, phase="positive", gradient_mode=params.gradient_mode, light_dir=params.light_dir)
+    return FamilyBuildResult(
+        family="s",
+        parts=(part,),
+        outline_parts=("sphere",),
+        shaded_fill_parts=("sphere",),
+        shaded_outline_parts=(),
+        solid_fill_parts=("sphere",),
+        solid_outline_parts=(),
+        visual_padding=params.visual_padding,
+        anchor_bias_x=params.anchor_bias_x,
+        anchor_bias_y=params.anchor_bias_y,
+    )
 
 
-def _vertical_lobe_small() -> QPainterPath:
-    return _vertical_lobe_path(24.0, 28.0, 0.3333333333, "small")
+def build_torus_orbital(params: TorusParams) -> FamilyBuildResult:
+    """Builder canónico para un toroide limpio."""
+    outer_width = _clamp(params.torus_outer_width, 18.0, 140.0)
+    outer_height = _clamp(params.torus_outer_height, 6.0, 64.0)
+    inner_width_ratio = _clamp(params.torus_inner_width_ratio, 0.18, 0.82)
+    inner_height_ratio = _clamp(params.torus_inner_height_ratio, 0.12, 0.78)
+    ring = _ring_path(
+        -outer_width * 0.5,
+        params.torus_offset_y - outer_height * 0.5,
+        outer_width,
+        outer_height,
+        inner_width_ratio,
+        inner_height_ratio,
+    )
+    part = GeometryPart("ring", ring, phase=params.phase, gradient_mode=params.gradient_mode, light_dir=params.light_dir)
+    return FamilyBuildResult(
+        family="torus",
+        parts=(part,),
+        outline_parts=("ring",),
+        shaded_fill_parts=("ring",),
+        shaded_outline_parts=(),
+        solid_fill_parts=("ring",),
+        solid_outline_parts=(),
+        visual_padding=params.visual_padding,
+        anchor_bias_x=params.anchor_bias_x,
+        anchor_bias_y=params.anchor_bias_y,
+    )
 
 
-def _vertical_lobe_micro() -> QPainterPath:
-    return _vertical_lobe_path(14.0, 13.0, 0.3714285714, "micro")
+def build_p_orbital(params: POrbitalParams) -> FamilyBuildResult:
+    """Builder canónico para un orbital p reconocible."""
+    base = CanonicalLobeParams(
+        width=params.lobe_width,
+        height=params.lobe_height,
+        tip_roundness=params.tip_roundness,
+        shoulder_width=params.shoulder_width,
+        waist_width=params.waist_width,
+    )
+    gap = _clamp(params.node_gap, 0.0, 12.0) * 0.5
+    top = _canonical_part(
+        "top",
+        base,
+        _P_TEMPLATE,
+        orientation="up",
+        offset_y=params.vertical_offset - gap,
+        scale_x=_clamp(params.outline_scale_x, 0.75, 1.35),
+        scale_y=_clamp(params.outline_scale_y, 0.75, 1.35),
+        phase="positive",
+        gradient_mode=params.gradient_mode,
+        light_dir=params.light_dir,
+    )
+    bottom = _canonical_part(
+        "bottom",
+        base,
+        _P_TEMPLATE,
+        orientation="down",
+        offset_y=params.vertical_offset + gap,
+        scale_x=_clamp(params.outline_scale_x, 0.75, 1.35),
+        scale_y=_clamp(params.outline_scale_y, 0.75, 1.35),
+        phase="negative",
+        gradient_mode=params.gradient_mode,
+        light_dir=params.light_dir,
+    )
+    return FamilyBuildResult(
+        family="p",
+        parts=(top, bottom),
+        outline_parts=("top", "bottom"),
+        shaded_fill_parts=("top",),
+        shaded_outline_parts=("bottom",),
+        solid_fill_parts=("top",),
+        solid_outline_parts=("bottom",),
+        visual_padding=params.visual_padding,
+        anchor_bias_x=params.anchor_bias_x,
+        anchor_bias_y=params.anchor_bias_y,
+    )
 
 
-def _horizontal_petal() -> QPainterPath:
-    return _oriented_lobe_path(32.0, 40.0, 0.2625, "horizontal_petal", orientation="left")
+def build_d_clover_orbital(params: CloverParams) -> FamilyBuildResult:
+    """Builder canónico para un trébol d de cuatro lóbulos independientes."""
+    vertical = CanonicalLobeParams(
+        width=params.vertical_width,
+        height=params.vertical_height,
+        tip_roundness=params.tip_roundness,
+        shoulder_width=params.shoulder_width,
+        waist_width=params.waist_width,
+    )
+    horizontal = CanonicalLobeParams(
+        width=params.horizontal_width,
+        height=params.horizontal_height,
+        tip_roundness=params.tip_roundness,
+        shoulder_width=params.shoulder_width,
+        waist_width=params.waist_width,
+    )
+    gap = _clamp(params.lobe_gap, 0.0, 14.0) * 0.5
+    parts = (
+        _canonical_part("top", vertical, _D_VERTICAL_TEMPLATE, orientation="up", offset_y=-gap, phase="positive", gradient_mode=params.gradient_mode, light_dir=params.light_dir),
+        _canonical_part("bottom", vertical, _D_VERTICAL_TEMPLATE, orientation="down", offset_y=gap, phase="positive", gradient_mode=params.gradient_mode, light_dir=params.light_dir),
+        _canonical_part("left", horizontal, _D_HORIZONTAL_TEMPLATE, orientation="left", offset_x=-gap, phase="negative", gradient_mode=params.gradient_mode, light_dir=params.light_dir),
+        _canonical_part("right", horizontal, _D_HORIZONTAL_TEMPLATE, orientation="right", offset_x=gap, phase="negative", gradient_mode=params.gradient_mode, light_dir=params.light_dir),
+    )
+    return FamilyBuildResult(
+        family="d",
+        parts=parts,
+        outline_parts=("top", "bottom", "left", "right"),
+        shaded_fill_parts=("top", "bottom"),
+        shaded_outline_parts=("left", "right"),
+        solid_fill_parts=("top", "bottom"),
+        solid_outline_parts=("left", "right"),
+        visual_padding=params.visual_padding,
+        anchor_bias_x=params.anchor_bias_x,
+        anchor_bias_y=params.anchor_bias_y,
+    )
 
 
-def _diag_petal_upper_left() -> QPainterPath:
-    base = _vertical_lobe_path(18.0, 22.0, 0.2777777778, "diag_petal")
-    return _transform_path(base, rotate=-38.0, translate=(-20.0, -9.0))
+def build_dz2_orbital(params: Dz2Params) -> FamilyBuildResult:
+    """Builder canónico para un dz2 con lóbulos axiales y toroide ecuatorial."""
+    axial = CanonicalLobeParams(
+        width=params.axial_width,
+        height=params.axial_height,
+        tip_roundness=params.axial_tip_roundness,
+        shoulder_width=1.0,
+        waist_width=params.axial_waist_width,
+    )
+    top = _canonical_part("top", axial, _DZ2_TEMPLATE, orientation="up", phase="positive", gradient_mode=params.gradient_mode, light_dir=params.light_dir)
+    bottom = _canonical_part("bottom", axial, _DZ2_TEMPLATE, orientation="down", phase="positive", gradient_mode=params.gradient_mode, light_dir=params.light_dir)
+    ring = build_torus_orbital(
+        TorusParams(
+            torus_outer_width=params.torus_outer_width,
+            torus_outer_height=params.torus_outer_height,
+            torus_inner_width_ratio=params.torus_inner_width_ratio,
+            torus_inner_height_ratio=params.torus_inner_height_ratio,
+            torus_offset_y=params.torus_offset_y,
+            visual_padding=params.visual_padding,
+            anchor_bias_x=params.anchor_bias_x,
+            anchor_bias_y=params.anchor_bias_y,
+            gradient_mode=params.torus_gradient_mode,
+            light_dir=params.light_dir,
+            phase="neutral",
+        )
+    ).parts[0]
+    ring = replace(ring, name="ring")
+    return FamilyBuildResult(
+        family="dz2",
+        parts=(top, ring, bottom),
+        outline_parts=("top", "ring", "bottom"),
+        shaded_fill_parts=("top", "bottom", "ring"),
+        shaded_outline_parts=(),
+        solid_fill_parts=("top", "bottom", "ring"),
+        solid_outline_parts=(),
+        visual_padding=params.visual_padding,
+        anchor_bias_x=params.anchor_bias_x,
+        anchor_bias_y=params.anchor_bias_y,
+    )
 
 
-def _diag_petal_lower_right() -> QPainterPath:
-    return _transform_path(_diag_petal_upper_left(), scale_x=-1.0, scale_y=-1.0)
+def _build_hybrid_result(
+    family: str,
+    params: HybridOrbitalParams,
+    *,
+    major_orientation: str,
+    minor_orientation: str,
+    major_template: _LobeTemplate,
+    minor_template: _LobeTemplate,
+    outline_parts: tuple[str, ...],
+    shaded_fill_parts: tuple[str, ...],
+    shaded_outline_parts: tuple[str, ...],
+    solid_fill_parts: tuple[str, ...],
+    solid_outline_parts: tuple[str, ...],
+) -> FamilyBuildResult:
+    gap = _clamp(params.node_gap, 0.0, 12.0) * 0.5
+    major = _canonical_part(
+        "major",
+        params.major_lobe,
+        major_template,
+        orientation=major_orientation,
+        offset_y=params.major_offset_y + gap,
+        phase="positive",
+        gradient_mode=params.gradient_mode,
+        light_dir=params.light_dir,
+    )
+    minor = _canonical_part(
+        "minor",
+        params.minor_lobe,
+        minor_template,
+        orientation=minor_orientation,
+        offset_y=params.minor_offset_y - gap,
+        phase="negative",
+        gradient_mode=params.minor_gradient_mode,
+        light_dir=params.light_dir,
+    )
+    return FamilyBuildResult(
+        family=family,
+        parts=(minor, major),
+        outline_parts=outline_parts,
+        shaded_fill_parts=shaded_fill_parts,
+        shaded_outline_parts=shaded_outline_parts,
+        solid_fill_parts=solid_fill_parts,
+        solid_outline_parts=solid_outline_parts,
+        visual_padding=params.visual_padding,
+        anchor_bias_x=params.anchor_bias_x,
+        anchor_bias_y=params.anchor_bias_y,
+    )
+
+
+def build_sp_lobe_orbital(params: HybridOrbitalParams) -> FamilyBuildResult:
+    """Builder canónico para un lóbulo sp."""
+    return _build_hybrid_result(
+        "sp_lobe",
+        params,
+        major_orientation="down",
+        minor_orientation="up",
+        major_template=_HYBRID_MAJOR_TEMPLATE,
+        minor_template=_HYBRID_MINOR_TEMPLATE,
+        outline_parts=("minor", "major"),
+        shaded_fill_parts=("minor", "major"),
+        shaded_outline_parts=(),
+        solid_fill_parts=("minor", "major"),
+        solid_outline_parts=(),
+    )
+
+
+def build_sp3_orbital(params: HybridOrbitalParams) -> FamilyBuildResult:
+    """Builder canónico para un orbital sp3."""
+    return _build_hybrid_result(
+        "sp3",
+        params,
+        major_orientation="down",
+        minor_orientation="up",
+        major_template=_HYBRID_MAJOR_TEMPLATE,
+        minor_template=_HYBRID_MINOR_TEMPLATE,
+        outline_parts=("minor", "major"),
+        shaded_fill_parts=("major",),
+        shaded_outline_parts=("minor",),
+        solid_fill_parts=("major",),
+        solid_outline_parts=("minor",),
+    )
+
+
+def build_sigma_bonding_orbital(params: HybridOrbitalParams) -> FamilyBuildResult:
+    """Builder canónico para sigma enlazante."""
+    return _build_hybrid_result(
+        "sigma_bonding",
+        params,
+        major_orientation="up",
+        minor_orientation="down",
+        major_template=_SIGMA_MAJOR_TEMPLATE,
+        minor_template=_SIGMA_MINOR_TEMPLATE,
+        outline_parts=("major", "minor"),
+        shaded_fill_parts=("minor",),
+        shaded_outline_parts=("major",),
+        solid_fill_parts=("minor",),
+        solid_outline_parts=("major",),
+    )
+
+
+def build_pi_bonding_orbital(params: PiBondingParams) -> FamilyBuildResult:
+    """Builder canónico para pi enlazante."""
+    gap = _clamp(params.node_gap, 0.0, 12.0) * 0.5
+    upper = _canonical_part(
+        "upper",
+        params.upper_lobe,
+        _PI_TEMPLATE,
+        orientation="up",
+        offset_y=params.vertical_offset - gap,
+        phase="positive",
+        gradient_mode=params.gradient_mode,
+        light_dir=params.light_dir,
+    )
+    lower = _canonical_part(
+        "lower",
+        params.lower_lobe,
+        _PI_TEMPLATE,
+        orientation="down",
+        offset_y=params.vertical_offset + gap,
+        phase="negative",
+        gradient_mode=params.gradient_mode,
+        light_dir=params.light_dir,
+    )
+    parts: list[GeometryPart] = [upper]
+    if params.ring is not None:
+        ring = build_torus_orbital(params.ring).parts[0]
+        parts.append(replace(ring, name="ring"))
+    parts.append(lower)
+    return FamilyBuildResult(
+        family="pi_bonding",
+        parts=tuple(parts),
+        outline_parts=tuple(part.name for part in parts),
+        shaded_fill_parts=("ring",) if params.ring is not None else (),
+        shaded_outline_parts=("upper", "lower"),
+        solid_fill_parts=("ring",) if params.ring is not None else (),
+        solid_outline_parts=("upper", "lower"),
+        visual_padding=params.visual_padding,
+        anchor_bias_x=params.anchor_bias_x,
+        anchor_bias_y=params.anchor_bias_y,
+    )
+
+
+def build_f_orbital(params: FOrbitalParams, *, family: str) -> FamilyBuildResult:
+    """Builder explícito para familias f/fz3 a partir de una lista de lóbulos."""
+    parts = [replace(build_teardrop(lobe), name=f"lobe_{index}") for index, lobe in enumerate(params.lobes)]
+    if params.torus is not None:
+        parts.append(replace(build_torus(params.torus).parts[0], name="ring"))
+    part_names = tuple(part.name for part in parts)
+    return FamilyBuildResult(
+        family=family,
+        parts=tuple(parts),
+        outline_parts=part_names,
+        shaded_fill_parts=part_names,
+        shaded_outline_parts=(),
+        solid_fill_parts=part_names,
+        solid_outline_parts=(),
+        visual_padding=params.visual_padding,
+        anchor_bias_x=params.anchor_bias_x,
+        anchor_bias_y=params.anchor_bias_y,
+    )
+
+
+def build_sphere(params: SphereParams) -> FamilyBuildResult:
+    return build_s_orbital(params)
+
+
+def build_torus(params: TorusParams) -> FamilyBuildResult:
+    return build_torus_orbital(params)
+
+
+def build_d_clover(params: CloverParams) -> FamilyBuildResult:
+    return build_d_clover_orbital(params)
+
+
+def build_dz2(params: Dz2Params) -> FamilyBuildResult:
+    return build_dz2_orbital(params)
+
+
+def build_sp_lobe(params: HybridOrbitalParams) -> FamilyBuildResult:
+    return build_sp_lobe_orbital(params)
+
+
+def build_sp3(params: HybridOrbitalParams) -> FamilyBuildResult:
+    return build_sp3_orbital(params)
+
+
+def build_sigma_bonding(params: HybridOrbitalParams) -> FamilyBuildResult:
+    return build_sigma_bonding_orbital(params)
+
+
+def build_pi_bonding(params: PiBondingParams) -> FamilyBuildResult:
+    return build_pi_bonding_orbital(params)
+
+
+_BUILDER_MAP = {
+    "build_s_orbital": lambda preset: build_s_orbital(preset.params),  # type: ignore[arg-type]
+    "build_sphere": lambda preset: build_s_orbital(preset.params),  # type: ignore[arg-type]
+    "build_p_orbital": lambda preset: build_p_orbital(preset.params),  # type: ignore[arg-type]
+    "build_d_clover_orbital": lambda preset: build_d_clover_orbital(preset.params),  # type: ignore[arg-type]
+    "build_d_clover": lambda preset: build_d_clover_orbital(preset.params),  # type: ignore[arg-type]
+    "build_dz2_orbital": lambda preset: build_dz2_orbital(preset.params),  # type: ignore[arg-type]
+    "build_dz2": lambda preset: build_dz2_orbital(preset.params),  # type: ignore[arg-type]
+    "build_torus_orbital": lambda preset: build_torus_orbital(preset.params),  # type: ignore[arg-type]
+    "build_torus": lambda preset: build_torus_orbital(preset.params),  # type: ignore[arg-type]
+    "build_sp3_orbital": lambda preset: build_sp3_orbital(preset.params),  # type: ignore[arg-type]
+    "build_sp3": lambda preset: build_sp3_orbital(preset.params),  # type: ignore[arg-type]
+    "build_sp_lobe_orbital": lambda preset: build_sp_lobe_orbital(preset.params),  # type: ignore[arg-type]
+    "build_sp_lobe": lambda preset: build_sp_lobe_orbital(preset.params),  # type: ignore[arg-type]
+    "build_sigma_bonding_orbital": lambda preset: build_sigma_bonding_orbital(preset.params),  # type: ignore[arg-type]
+    "build_sigma_bonding": lambda preset: build_sigma_bonding_orbital(preset.params),  # type: ignore[arg-type]
+    "build_pi_bonding_orbital": lambda preset: build_pi_bonding_orbital(preset.params),  # type: ignore[arg-type]
+    "build_pi_bonding": lambda preset: build_pi_bonding_orbital(preset.params),  # type: ignore[arg-type]
+    "build_f_orbital": lambda preset: build_f_orbital(preset.params, family=preset.family),  # type: ignore[arg-type]
+}
+
+
+def _parts_by_name(parts: tuple[GeometryPart, ...]) -> dict[str, GeometryPart]:
+    return {part.name: part for part in parts}
+
+
+def apply_outline_style(parts: tuple[GeometryPart, ...], names: tuple[str, ...] | None = None) -> tuple[GlyphLayer, ...]:
+    """Aplica el estilo outline sin alterar la silueta base."""
+    part_map = _parts_by_name(parts)
+    target_names = names or tuple(part_map.keys())
+    return tuple(GlyphLayer(part_map[name].path, "outline") for name in target_names)
+
+
+def apply_shaded_style(
+    parts: tuple[GeometryPart, ...],
+    fill_names: tuple[str, ...],
+    *,
+    outline_names: tuple[str, ...] = (),
+) -> tuple[GlyphLayer, ...]:
+    """Aplica sombreado usando exactamente la misma geometría base."""
+    part_map = _parts_by_name(parts)
+    layers = [
+        GlyphLayer(
+            part_map[name].path,
+            "shaded",
+            gradient=part_map[name].gradient_mode,
+            phase=part_map[name].phase,
+            light_dir=part_map[name].light_dir,
+        )
+        for name in fill_names
+    ]
+    layers.extend(GlyphLayer(part_map[name].path, "outline") for name in outline_names)
+    return tuple(layers)
+
+
+def apply_solid_style(
+    parts: tuple[GeometryPart, ...],
+    fill_names: tuple[str, ...],
+    *,
+    outline_names: tuple[str, ...] = (),
+) -> tuple[GlyphLayer, ...]:
+    """Aplica relleno sólido usando exactamente la misma geometría base."""
+    part_map = _parts_by_name(parts)
+    layers = [
+        GlyphLayer(
+            part_map[name].path,
+            "solid",
+            phase=part_map[name].phase,
+            light_dir=part_map[name].light_dir,
+        )
+        for name in fill_names
+    ]
+    layers.extend(GlyphLayer(part_map[name].path, "outline") for name in outline_names)
+    return tuple(layers)
 
 
 def _bounds_for_layers(*groups: tuple[GlyphLayer, ...]) -> QRectF:
@@ -654,424 +1817,71 @@ def _bounds_for_layers(*groups: tuple[GlyphLayer, ...]) -> QRectF:
     return bounds if bounds is not None else QRectF(-1.0, -1.0, 2.0, 2.0)
 
 
-def _glyph_from_layers(
-    glyph_id: str,
-    preset: OrbitalGeometryPreset,
-    *,
-    paths_outline: tuple[GlyphLayer, ...],
-    paths_shaded: tuple[GlyphLayer, ...],
-    paths_solid: tuple[GlyphLayer, ...],
-) -> GlyphDefinition:
-    default_bounds = (
-        QRectF(*preset.default_bounds_override)
-        if preset.default_bounds_override is not None
-        else _bounds_for_layers(paths_outline, paths_shaded, paths_solid)
-    )
+def _glyph_from_build_result(result: FamilyBuildResult) -> GlyphDefinition:
+    outline = apply_outline_style(result.parts, result.outline_parts)
+    shaded = apply_shaded_style(result.parts, result.shaded_fill_parts, outline_names=result.shaded_outline_parts)
+    solid = apply_solid_style(result.parts, result.solid_fill_parts, outline_names=result.solid_outline_parts)
     return GlyphDefinition(
-        id=glyph_id,
-        paths_outline=paths_outline,
-        paths_shaded=paths_shaded,
-        paths_solid=paths_solid,
-        default_bounds=default_bounds,
-        anchor_center=QPointF(0.0, 0.0),
-        anchor_bias=QPointF(*preset.anchor_bias),
-        visual_padding=preset.visual_padding,
-    )
-
-
-def _preset_ring_path(preset: OrbitalGeometryPreset, *, outline_variant: bool = False) -> QPainterPath:
-    width = preset.torus_outer_width
-    height = preset.torus_outer_height
-    inner_scale = preset.torus_inner_scale
-    if outline_variant:
-        width, height = _scale_dimensions(width, height, preset.outline_torus_scale)
-        inner_scale = preset.outline_torus_inner_scale or inner_scale
-    return _ring_from_metrics(width, height, inner_scale)
-
-
-def _phase_shaded_layer(
-    path: QPainterPath,
-    *,
-    phase: str,
-    light_dir: str,
-    gradient: str = "linear",
-    stroke: bool = False,
-    light_variant: str | None = None,
-) -> GlyphLayer:
-    return GlyphLayer(
-        path,
-        "shaded",
-        gradient=gradient,
-        stroke=stroke,
-        phase=phase,
-        light_dir=light_dir,
-        light_variant=light_variant,
-    )
-
-
-def _phase_solid_layer(
-    path: QPainterPath,
-    *,
-    phase: str,
-    light_dir: str | None = None,
-    stroke: bool = False,
-) -> GlyphLayer:
-    return GlyphLayer(
-        path,
-        "solid",
-        stroke=stroke,
-        phase=phase,
-        light_dir=light_dir,
-    )
-
-
-def _build_s_round_glyph() -> GlyphDefinition:
-    preset = ORBITAL_GEOMETRY_PRESETS["s_round"]
-    sphere = _ellipse_path(
-        -preset.main_lobe_width * 0.5,
-        -preset.main_lobe_height * 0.5,
-        preset.main_lobe_width,
-        preset.main_lobe_height,
-    )
-    return _glyph_from_layers(
-        "s_round",
-        preset,
-        paths_outline=(GlyphLayer(sphere, "outline"),),
-        paths_shaded=(
-            _phase_shaded_layer(
-                sphere,
-                phase="positive",
-                light_dir="southeast",
-                gradient="radial",
-                stroke=False,
-            ),
-        ),
-        paths_solid=(
-            _phase_solid_layer(
-                sphere,
-                phase="positive",
-                stroke=True,
-            ),
-        ),
-    )
-
-
-def _build_torus_flat_glyph() -> GlyphDefinition:
-    preset = ORBITAL_GEOMETRY_PRESETS["torus_flat"]
-    torus = _preset_ring_path(preset)
-    return _glyph_from_layers(
-        "torus_flat",
-        preset,
-        paths_outline=(GlyphLayer(torus, "outline"),),
-        paths_shaded=(
-            _phase_shaded_layer(
-                torus,
-                phase="positive",
-                light_dir="south",
-                gradient="elliptical",
-            ),
-        ),
-        paths_solid=(
-            _phase_solid_layer(
-                torus,
-                phase="positive",
-            ),
-        ),
-    )
-
-
-def _build_p_vertical_glyph() -> GlyphDefinition:
-    preset = ORBITAL_GEOMETRY_PRESETS["p_vertical"]
-    outline_w, outline_h = _scale_dimensions(preset.main_lobe_width, preset.main_lobe_height, preset.outline_main_scale)
-    outline_profile = preset.outline_main_profile or preset.main_profile
-    top_outline = _oriented_lobe_path(outline_w, outline_h, preset.neck_ratio, outline_profile, orientation="up", offset=preset.upper_lobe_offset)
-    bottom_outline = _oriented_lobe_path(outline_w, outline_h, preset.neck_ratio, outline_profile, orientation="down", offset=preset.lower_lobe_offset)
-    top_fill = _oriented_lobe_path(preset.main_lobe_width, preset.main_lobe_height, preset.neck_ratio, preset.main_profile, orientation="up", offset=preset.upper_lobe_offset)
-    bottom_fill = _oriented_lobe_path(preset.secondary_lobe_width, preset.secondary_lobe_height, preset.neck_ratio, preset.secondary_profile or preset.main_profile, orientation="down", offset=preset.lower_lobe_offset)
-    return _glyph_from_layers(
-        "p_vertical",
-        preset,
-        paths_outline=(
-            GlyphLayer(top_outline, "outline"),
-            GlyphLayer(bottom_outline, "outline"),
-        ),
-        paths_shaded=(
-            _phase_shaded_layer(top_fill, phase="positive", light_dir="south"),
-            _phase_shaded_layer(bottom_fill, phase="negative", light_dir="north"),
-        ),
-        paths_solid=(
-            _phase_solid_layer(top_fill, phase="positive"),
-            _phase_solid_layer(bottom_fill, phase="negative"),
-        ),
-    )
-
-
-def _build_d_clover_glyph() -> GlyphDefinition:
-    preset = ORBITAL_GEOMETRY_PRESETS["d_clover"]
-    outline_main_w, outline_main_h = _scale_dimensions(preset.main_lobe_width, preset.main_lobe_height, preset.outline_main_scale)
-    outline_secondary_w, outline_secondary_h = _scale_dimensions(preset.secondary_lobe_width, preset.secondary_lobe_height, preset.outline_secondary_scale)
-    outline_top = _oriented_lobe_path(outline_main_w, outline_main_h, preset.neck_ratio, preset.outline_main_profile or preset.main_profile, orientation="up")
-    outline_bottom = _oriented_lobe_path(outline_main_w, outline_main_h, preset.neck_ratio, preset.outline_main_profile or preset.main_profile, orientation="down")
-    outline_left = _oriented_lobe_path(outline_secondary_w, outline_secondary_h, preset.neck_ratio, preset.outline_secondary_profile or preset.secondary_profile or preset.main_profile, orientation="left")
-    outline_right = _oriented_lobe_path(outline_secondary_w, outline_secondary_h, preset.neck_ratio, preset.outline_secondary_profile or preset.secondary_profile or preset.main_profile, orientation="right")
-    fill_top = _oriented_lobe_path(preset.main_lobe_width, preset.main_lobe_height, preset.neck_ratio, preset.main_profile, orientation="up")
-    fill_bottom = _oriented_lobe_path(preset.main_lobe_width, preset.main_lobe_height, preset.neck_ratio, preset.main_profile, orientation="down")
-    fill_left = _oriented_lobe_path(preset.secondary_lobe_width, preset.secondary_lobe_height, preset.neck_ratio, preset.secondary_profile or preset.main_profile, orientation="left")
-    fill_right = _oriented_lobe_path(preset.secondary_lobe_width, preset.secondary_lobe_height, preset.neck_ratio, preset.secondary_profile or preset.main_profile, orientation="right")
-    return _glyph_from_layers(
-        "d_clover",
-        preset,
-        paths_outline=(
-            GlyphLayer(outline_left, "outline"),
-            GlyphLayer(outline_top, "outline"),
-            GlyphLayer(outline_right, "outline"),
-            GlyphLayer(outline_bottom, "outline"),
-        ),
-        paths_shaded=(
-            _phase_shaded_layer(fill_left, phase="positive", light_dir="east"),
-            _phase_shaded_layer(fill_top, phase="negative", light_dir="south"),
-            _phase_shaded_layer(fill_right, phase="positive", light_dir="west"),
-            _phase_shaded_layer(fill_bottom, phase="negative", light_dir="north"),
-        ),
-        paths_solid=(
-            _phase_solid_layer(fill_left, phase="positive"),
-            _phase_solid_layer(fill_top, phase="negative"),
-            _phase_solid_layer(fill_right, phase="positive"),
-            _phase_solid_layer(fill_bottom, phase="negative"),
-        ),
-    )
-
-
-def _build_sp3_hybrid_glyph() -> GlyphDefinition:
-    preset = ORBITAL_GEOMETRY_PRESETS["sp3_hybrid"]
-    top = _oriented_lobe_path(preset.secondary_lobe_width, preset.secondary_lobe_height, preset.neck_ratio, preset.secondary_profile or preset.main_profile, orientation="up", offset=preset.upper_lobe_offset)
-    bottom = _oriented_lobe_path(preset.main_lobe_width, preset.main_lobe_height, preset.neck_ratio, preset.main_profile, orientation="down", offset=preset.lower_lobe_offset)
-    return _glyph_from_layers(
-        "sp3_hybrid",
-        preset,
-        paths_outline=(
-            GlyphLayer(top, "outline"),
-            GlyphLayer(bottom, "outline"),
-        ),
-        paths_shaded=(
-            _phase_shaded_layer(top, phase="negative", light_dir="south"),
-            _phase_shaded_layer(bottom, phase="positive", light_dir="north"),
-        ),
-        paths_solid=(
-            _phase_solid_layer(top, phase="negative"),
-            _phase_solid_layer(bottom, phase="positive"),
-        ),
-    )
-
-
-def _build_sp_lobe_glyph() -> GlyphDefinition:
-    preset = ORBITAL_GEOMETRY_PRESETS["sp_lobe"]
-    top = _oriented_lobe_path(preset.secondary_lobe_width, preset.secondary_lobe_height, preset.neck_ratio, preset.secondary_profile or preset.main_profile, orientation="up", offset=preset.upper_lobe_offset)
-    bottom = _oriented_lobe_path(preset.main_lobe_width, preset.main_lobe_height, preset.neck_ratio, preset.main_profile, orientation="down", offset=preset.lower_lobe_offset)
-    if preset.outline_main_profile:
-        outline_w, outline_h = _scale_dimensions(preset.main_lobe_width, preset.main_lobe_height, preset.outline_main_scale)
-        outline = _vertical_lobe_path(outline_w, outline_h, preset.neck_ratio, preset.outline_main_profile)
-    else:
-        outline = top.united(bottom)
-    return _glyph_from_layers(
-        "sp_lobe",
-        preset,
-        paths_outline=(GlyphLayer(outline, "outline"),),
-        paths_shaded=(
-            _phase_shaded_layer(top, phase="negative", light_dir="south"),
-            _phase_shaded_layer(bottom, phase="positive", light_dir="north"),
-        ),
-        paths_solid=(
-            _phase_solid_layer(top, phase="negative"),
-            _phase_solid_layer(bottom, phase="positive"),
-        ),
-    )
-
-
-def _build_sigma_bonding_glyph() -> GlyphDefinition:
-    preset = ORBITAL_GEOMETRY_PRESETS["sigma_bonding"]
-    large = _oriented_lobe_path(preset.main_lobe_width, preset.main_lobe_height, preset.neck_ratio, preset.main_profile, orientation="up", offset=preset.upper_lobe_offset)
-    small = _oriented_lobe_path(preset.secondary_lobe_width, preset.secondary_lobe_height, preset.neck_ratio, preset.secondary_profile or preset.main_profile, orientation="down", offset=preset.lower_lobe_offset)
-    return _glyph_from_layers(
-        "sigma_bonding",
-        preset,
-        paths_outline=(
-            GlyphLayer(large, "outline"),
-            GlyphLayer(small, "outline"),
-        ),
-        paths_shaded=(
-            _phase_shaded_layer(large, phase="positive", light_dir="south"),
-            _phase_shaded_layer(small, phase="negative", light_dir="north"),
-        ),
-        paths_solid=(
-            _phase_solid_layer(large, phase="positive"),
-            _phase_solid_layer(small, phase="negative"),
-        ),
-    )
-
-
-def _build_dz2_axial_glyph() -> GlyphDefinition:
-    preset = ORBITAL_GEOMETRY_PRESETS["dz2_axial"]
-    outline_w, outline_h = _scale_dimensions(preset.main_lobe_width, preset.main_lobe_height, preset.outline_main_scale)
-    outline_profile = preset.outline_main_profile or preset.main_profile
-    top_outline = _oriented_lobe_path(outline_w, outline_h, preset.neck_ratio, outline_profile, orientation="up")
-    bottom_outline = _oriented_lobe_path(outline_w, outline_h, preset.neck_ratio, outline_profile, orientation="down")
-    outline_ring = _preset_ring_path(preset, outline_variant=True)
-    top_fill = _oriented_lobe_path(preset.main_lobe_width, preset.main_lobe_height, preset.neck_ratio, preset.main_profile, orientation="up")
-    bottom_fill = _oriented_lobe_path(preset.secondary_lobe_width, preset.secondary_lobe_height, preset.neck_ratio, preset.secondary_profile or preset.main_profile, orientation="down")
-    fill_ring = _preset_ring_path(preset)
-    return _glyph_from_layers(
-        "dz2_axial",
-        preset,
-        paths_outline=(
-            GlyphLayer(top_outline, "outline"),
-            GlyphLayer(outline_ring, "outline"),
-            GlyphLayer(bottom_outline, "outline"),
-        ),
-        paths_shaded=(
-            _phase_shaded_layer(top_fill, phase="positive", light_dir="south"),
-            _phase_shaded_layer(fill_ring, phase="negative", light_dir="south", gradient="elliptical"),
-            _phase_shaded_layer(bottom_fill, phase="positive", light_dir="north"),
-        ),
-        paths_solid=(
-            _phase_solid_layer(top_fill, phase="positive"),
-            _phase_solid_layer(fill_ring, phase="negative"),
-            _phase_solid_layer(bottom_fill, phase="positive"),
-        ),
-    )
-
-
-def _build_pi_bonding_glyph() -> GlyphDefinition:
-    preset = ORBITAL_GEOMETRY_PRESETS["pi_bonding"]
-    top = _oriented_lobe_path(preset.main_lobe_width, preset.main_lobe_height, preset.neck_ratio, preset.main_profile, orientation="up", offset=preset.upper_lobe_offset)
-    bottom = _oriented_lobe_path(preset.secondary_lobe_width, preset.secondary_lobe_height, preset.neck_ratio, preset.secondary_profile or preset.main_profile, orientation="down", offset=preset.lower_lobe_offset)
-    ring = _preset_ring_path(preset)
-    return _glyph_from_layers(
-        "pi_bonding",
-        preset,
-        paths_outline=(
-            GlyphLayer(top, "outline"),
-            GlyphLayer(ring, "outline"),
-            GlyphLayer(bottom, "outline"),
-        ),
-        paths_shaded=(
-            _phase_shaded_layer(top, phase="positive", light_dir="south"),
-            _phase_shaded_layer(ring, phase="neutral", light_dir="south", gradient="elliptical"),
-            _phase_shaded_layer(bottom, phase="negative", light_dir="north"),
-        ),
-        paths_solid=(
-            _phase_solid_layer(top, phase="positive"),
-            _phase_solid_layer(ring, phase="neutral"),
-            _phase_solid_layer(bottom, phase="negative"),
-        ),
-    )
-
-
-def _build_f_clover_glyph() -> GlyphDefinition:
-    f_top = _transform_path(_vertical_lobe_small(), translate=(0.0, -20.0))
-    f_bottom = _transform_path(f_top, scale_x=1.0, scale_y=-1.0)
-    f_left = _transform_path(_horizontal_petal(), translate=(-4.0, 0.0), scale_x=0.64, scale_y=0.64)
-    f_right = _transform_path(f_left, scale_x=-1.0, scale_y=1.0)
-    f_diag_a = _diag_petal_upper_left()
-    f_diag_b = _diag_petal_lower_right()
-    outline = (
-        GlyphLayer(f_left, "outline"),
-        GlyphLayer(f_top, "outline"),
-        GlyphLayer(f_diag_a, "outline"),
-        GlyphLayer(f_right, "outline"),
-        GlyphLayer(f_bottom, "outline"),
-        GlyphLayer(f_diag_b, "outline"),
-    )
-    shaded = (
-        GlyphLayer(f_left, "shaded", stroke=False),
-        GlyphLayer(f_top, "shaded", stroke=False),
-        GlyphLayer(f_diag_a, "shaded", stroke=False),
-        GlyphLayer(f_right, "shaded", stroke=False),
-        GlyphLayer(f_bottom, "shaded", stroke=False),
-        GlyphLayer(f_diag_b, "shaded", stroke=False),
-    )
-    solid = (
-        GlyphLayer(f_left, "solid", stroke=False),
-        GlyphLayer(f_top, "solid", stroke=False),
-        GlyphLayer(f_diag_a, "solid", stroke=False),
-        GlyphLayer(f_right, "solid", stroke=False),
-        GlyphLayer(f_bottom, "solid", stroke=False),
-        GlyphLayer(f_diag_b, "solid", stroke=False),
-    )
-    return GlyphDefinition(
-        id="f_clover",
+        id=result.family,
         paths_outline=outline,
         paths_shaded=shaded,
         paths_solid=solid,
         default_bounds=_bounds_for_layers(outline, shaded, solid),
         anchor_center=QPointF(0.0, 0.0),
-        anchor_bias=QPointF(0.0, 0.0),
-        visual_padding=10.0,
+        anchor_bias=QPointF(result.anchor_bias_x, result.anchor_bias_y),
+        visual_padding=result.visual_padding,
     )
 
 
-def _build_fz3_axial_glyph() -> GlyphDefinition:
-    fz3_top = _transform_path(_vertical_lobe_small(), translate=(0.0, -28.0))
-    fz3_mid = _transform_path(_vertical_lobe_micro(), translate=(0.0, 0.0))
-    fz3_bottom = _transform_path(_vertical_lobe_small(), scale_x=1.0, scale_y=-1.0, translate=(0.0, 28.0))
-    fz3_ring = _ring_path(-23.0, -6.0, 46.0, 12.0, 0.48, 0.46)
-    outline = (
-        GlyphLayer(fz3_top, "outline"),
-        GlyphLayer(fz3_mid, "outline"),
-        GlyphLayer(fz3_ring, "outline"),
-        GlyphLayer(fz3_bottom, "outline"),
-    )
-    shaded = (
-        GlyphLayer(fz3_top, "shaded", stroke=False),
-        GlyphLayer(fz3_mid, "shaded", stroke=False),
-        GlyphLayer(fz3_ring, "shaded", gradient="radial", stroke=False),
-        GlyphLayer(fz3_bottom, "shaded", stroke=False),
-    )
-    solid = (
-        GlyphLayer(fz3_top, "solid", stroke=False),
-        GlyphLayer(fz3_mid, "solid", stroke=False),
-        GlyphLayer(fz3_ring, "solid", stroke=False),
-        GlyphLayer(fz3_bottom, "solid", stroke=False),
-    )
-    return GlyphDefinition(
-        id="fz3_axial",
-        paths_outline=outline,
-        paths_shaded=shaded,
-        paths_solid=solid,
-        default_bounds=_bounds_for_layers(outline, shaded, solid),
-        anchor_center=QPointF(0.0, 0.0),
-        anchor_bias=QPointF(0.0, 0.0),
-        visual_padding=10.0,
-    )
+def _build_glyph_library_from_presets(presets: dict[str, OrbitalFamilyPreset]) -> dict[str, GlyphDefinition]:
+    library: dict[str, GlyphDefinition] = {}
+    for family_key, preset in presets.items():
+        builder = _BUILDER_MAP[preset.builder]
+        library[family_key] = _glyph_from_build_result(builder(preset))
+    return library
 
 
-def _build_glyph_library() -> dict[str, GlyphDefinition]:
-    return {
-        "s_round": _build_s_round_glyph(),
-        "torus_flat": _build_torus_flat_glyph(),
-        "p_vertical": _build_p_vertical_glyph(),
-        "d_clover": _build_d_clover_glyph(),
-        "sp3_hybrid": _build_sp3_hybrid_glyph(),
-        "sp_lobe": _build_sp_lobe_glyph(),
-        "sigma_bonding": _build_sigma_bonding_glyph(),
-        "dz2_axial": _build_dz2_axial_glyph(),
-        "pi_bonding": _build_pi_bonding_glyph(),
-        "f_clover": _build_f_clover_glyph(),
-        "fz3_axial": _build_fz3_axial_glyph(),
-    }
+def build_orbital_renderer(payload: dict[str, Any] | None = None) -> "OrbitalRenderer":
+    """Crea un renderer aislado a partir de un payload o de los presets activos."""
+    presets = _parse_preset_payload(_deep_merge(default_orbital_presets_payload(include_docs=False), _strip_meta(payload or {})))
+    library = _build_glyph_library_from_presets(presets)
+    return OrbitalRenderer(glyph_library=library, family_presets=presets)
 
 
-ORBITAL_GLYPH_LIBRARY = _build_glyph_library()
+_ACTIVE_ORBITAL_FAMILY_PRESETS = load_orbital_family_presets()
+ORBITAL_FAMILY_PRESETS = _ACTIVE_ORBITAL_FAMILY_PRESETS
+ORBITAL_GEOMETRY_PRESETS = ORBITAL_FAMILY_PRESETS
+ORBITAL_GLYPH_LIBRARY = _build_glyph_library_from_presets(_ACTIVE_ORBITAL_FAMILY_PRESETS)
 
 
 class OrbitalRenderer:
-    """Renderer compartido por toolbar y documento."""
+    """Renderer compartido por toolbar, documento y herramientas de tuning."""
+
+    def __init__(
+        self,
+        *,
+        glyph_library: dict[str, GlyphDefinition] | None = None,
+        family_presets: dict[str, OrbitalFamilyPreset] | None = None,
+    ) -> None:
+        self._glyph_library = glyph_library or dict(ORBITAL_GLYPH_LIBRARY)
+        self._family_presets = family_presets or dict(_ACTIVE_ORBITAL_FAMILY_PRESETS)
+
+    def set_glyph_library(
+        self,
+        glyph_library: dict[str, GlyphDefinition],
+        family_presets: dict[str, OrbitalFamilyPreset],
+    ) -> None:
+        self._glyph_library = glyph_library
+        self._family_presets = family_presets
 
     def spec_for_kind(self, kind: str) -> OrbitalGlyphSpec:
         return ORBITAL_SPECS.get(kind) or ORBITAL_SPECS[DEFAULT_ORBITAL_KIND]
 
     def glyph_for_spec(self, spec: OrbitalGlyphSpec) -> GlyphDefinition:
-        return ORBITAL_GLYPH_LIBRARY[spec.glyph_id]
+        return self._glyph_library[spec.glyph_id]
+
+    def family_preset(self, family: str) -> OrbitalFamilyPreset:
+        return self._family_presets[family]
 
     @staticmethod
     def _layers_for_style(glyph: GlyphDefinition, style: OrbitalStyle) -> tuple[GlyphLayer, ...]:
@@ -1127,20 +1937,17 @@ class OrbitalRenderer:
     ) -> tuple[GlyphLayer, ...]:
         glyph = self.glyph_for_spec(spec)
         transform = self._anchor_transform(glyph, anchor0, anchor1)
-        transformed: list[GlyphLayer] = []
-        for layer in self._layers_for_style(glyph, spec.style):
-            transformed.append(
-                GlyphLayer(
-                    transform.map(layer.path),
-                    layer.paint,
-                    gradient=layer.gradient,
-                    stroke=layer.stroke,
-                    phase=layer.phase,
-                    light_dir=layer.light_dir,
-                    light_variant=layer.light_variant,
-                )
+        return tuple(
+            GlyphLayer(
+                transform.map(layer.path),
+                layer.paint,
+                gradient=layer.gradient,
+                stroke=layer.stroke,
+                phase=layer.phase,
+                light_dir=layer.light_dir,
             )
-        return tuple(transformed)
+            for layer in self._layers_for_style(glyph, spec.style)
+        )
 
     def combined_path(self, spec: OrbitalGlyphSpec, anchor0: QPointF, anchor1: QPointF) -> QPainterPath:
         path = QPainterPath()
@@ -1157,94 +1964,42 @@ class OrbitalRenderer:
         return max(1.1, min(2.2, scale * 1.9))
 
     @staticmethod
-    def _gradient_stops_for_layer(layer: GlyphLayer) -> tuple[tuple[float, str], ...]:
-        if layer.light_variant and layer.light_variant in _GRADIENT_STOP_PRESETS:
-            return _GRADIENT_STOP_PRESETS[layer.light_variant]
+    def _gradient_stops(layer: GlyphLayer) -> tuple[tuple[float, str], ...]:
         if layer.phase == "negative":
-            return _GRADIENT_STOP_PRESETS["dual_negative"]
-        if layer.phase == "positive":
-            return _GRADIENT_STOP_PRESETS["dual_positive"]
-        return _GRADIENT_STOP_PRESETS["default"]
+            return _GRADIENT_STOP_PRESETS["negative"]
+        return _GRADIENT_STOP_PRESETS.get(layer.gradient, _GRADIENT_STOP_PRESETS["linear"])
 
     @staticmethod
-    def _apply_gradient_stops(gradient: QLinearGradient | QRadialGradient, layer: GlyphLayer) -> None:
-        for stop, color in OrbitalRenderer._gradient_stops_for_layer(layer):
-            gradient.setColorAt(stop, QColor(color))
-
-    @staticmethod
-    def _light_vector(light_dir: str | None, rect: QRectF) -> tuple[float, float]:
-        if light_dir and light_dir in _LIGHT_DIRECTION_VECTORS:
-            return _LIGHT_DIRECTION_VECTORS[light_dir]
-        if rect.height() >= rect.width():
-            return _LIGHT_DIRECTION_VECTORS["south"]
-        return _LIGHT_DIRECTION_VECTORS["east"]
-
-    @staticmethod
-    def _gradient_profile(rect: QRectF) -> dict[str, float | bool]:
-        major = max(rect.width(), rect.height(), 1.0)
-        minor = max(min(rect.width(), rect.height()), 1.0)
-        is_small = major <= 24.0 or rect.width() * rect.height() <= 420.0 or minor <= 10.0
-        if is_small:
-            return {
-                "small": True,
-                "focus_bias": 0.16,
-                "radius_scale": 0.84,
-                "linear_span": 0.92,
-            }
-        return {
-            "small": False,
-            "focus_bias": 0.30,
-            "radius_scale": 0.96,
-            "linear_span": 1.10,
-        }
-
-    @staticmethod
-    def _elliptical_brush_transform(rect: QRectF) -> QTransform:
-        center = rect.center()
-        width = max(rect.width(), 1.0)
-        height = max(rect.height(), 1.0)
-        transform = QTransform()
-        transform.translate(center.x(), center.y())
-        if width >= height:
-            transform.scale(1.0, width / height)
-        else:
-            transform.scale(height / width, 1.0)
-        transform.translate(-center.x(), -center.y())
-        return transform
+    def _light_vector(light_dir: str | None) -> tuple[float, float]:
+        return _LIGHT_DIRECTION_VECTORS.get(light_dir or _DEFAULT_LIGHT_DIR, _LIGHT_DIRECTION_VECTORS[_DEFAULT_LIGHT_DIR])
 
     @classmethod
     def _gradient_for_path(cls, layer: GlyphLayer) -> QBrush:
         rect = layer.path.boundingRect()
-        profile = cls._gradient_profile(rect)
-        vector_x, vector_y = cls._light_vector(layer.light_dir, rect)
         center = rect.center()
-
+        vx, vy = cls._light_vector(layer.light_dir)
         if layer.gradient in {"radial", "elliptical"}:
-            major = max(rect.width(), rect.height(), 1.0)
-            radius = major * float(profile["radius_scale"])
-            focus_bias = major * float(profile["focus_bias"])
-            focus = QPointF(
-                center.x() - vector_x * focus_bias,
-                center.y() - vector_y * focus_bias,
-            )
+            radius = max(rect.width(), rect.height(), 1.0) * 0.92
+            focus = QPointF(center.x() - vx * radius * 0.18, center.y() - vy * radius * 0.18)
             gradient = QRadialGradient(center, radius, focus)
-            cls._apply_gradient_stops(gradient, layer)
+            for stop, color in cls._gradient_stops(layer):
+                gradient.setColorAt(stop, QColor(color))
             brush = QBrush(gradient)
             if layer.gradient == "elliptical":
-                brush.setTransform(cls._elliptical_brush_transform(rect))
+                transform = QTransform()
+                transform.translate(center.x(), center.y())
+                if rect.width() >= rect.height():
+                    transform.scale(1.0, max(rect.width() / max(rect.height(), 1.0), 1.0))
+                else:
+                    transform.scale(max(rect.height() / max(rect.width(), 1.0), 1.0), 1.0)
+                transform.translate(-center.x(), -center.y())
+                brush.setTransform(transform)
             return brush
-
-        span = float(profile["linear_span"])
-        start = QPointF(
-            center.x() - vector_x * rect.width() * 0.5 * span,
-            center.y() - vector_y * rect.height() * 0.5 * span,
-        )
-        end = QPointF(
-            center.x() + vector_x * rect.width() * 0.5 * span,
-            center.y() + vector_y * rect.height() * 0.5 * span,
-        )
+        start = QPointF(center.x() - vx * rect.width() * 0.58, center.y() - vy * rect.height() * 0.58)
+        end = QPointF(center.x() + vx * rect.width() * 0.58, center.y() + vy * rect.height() * 0.58)
         gradient = QLinearGradient(start, end)
-        cls._apply_gradient_stops(gradient, layer)
+        for stop, color in cls._gradient_stops(layer):
+            gradient.setColorAt(stop, QColor(color))
         return QBrush(gradient)
 
     @staticmethod
@@ -1257,36 +2012,19 @@ class OrbitalRenderer:
             Qt.PenJoinStyle.RoundJoin,
         )
 
-    def _paint_layer(
-        self,
-        painter: QPainter,
-        layer: GlyphLayer,
-        stroke_width: float,
-        *,
-        stroke_shaded_lobes: bool,
-    ) -> None:
+    def _paint_layer(self, painter: QPainter, layer: GlyphLayer, stroke_width: float) -> None:
         if layer.paint == "outline":
             painter.setPen(self._outline_pen(stroke_width))
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawPath(layer.path)
             return
-
         if layer.paint == "shaded":
+            painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(self._gradient_for_path(layer))
-            if layer.stroke and stroke_shaded_lobes:
-                painter.setPen(self._outline_pen(stroke_width))
-            elif layer.stroke:
-                painter.setPen(self._outline_pen(max(1.0, stroke_width * 0.72)))
-            else:
-                painter.setPen(Qt.PenStyle.NoPen)
             painter.drawPath(layer.path)
             return
-
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QBrush(_SOLID_FILL))
-        if layer.stroke:
-            painter.setPen(self._outline_pen(max(1.0, stroke_width * 0.92)))
-        else:
-            painter.setPen(Qt.PenStyle.NoPen)
         painter.drawPath(layer.path)
 
     def paint_glyph(
@@ -1298,13 +2036,13 @@ class OrbitalRenderer:
         *,
         stroke_shaded_lobes: bool | None = None,
     ) -> None:
+        del stroke_shaded_lobes
         glyph = self.glyph_for_spec(spec)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
         stroke_width = self._stroke_width(glyph, anchor0, anchor1)
-        stroke_flag = spec.stroke_shaded_lobes if stroke_shaded_lobes is None else bool(stroke_shaded_lobes)
         for layer in self.transformed_layers(spec, anchor0, anchor1):
-            self._paint_layer(painter, layer, stroke_width, stroke_shaded_lobes=stroke_flag)
+            self._paint_layer(painter, layer, stroke_width)
 
     def canonical_anchors(self, spec: OrbitalGlyphSpec, rect: QRectF) -> tuple[QPointF, QPointF]:
         glyph = self.glyph_for_spec(spec)
@@ -1323,10 +2061,7 @@ class OrbitalRenderer:
         )
         anchor1 = QPointF(anchor0.x(), anchor0.y() - self._reference_extent(glyph) * scale)
         bbox = self.bounding_rect(spec, anchor0, anchor1)
-        target_center = inner.center() + QPointF(
-            glyph.anchor_bias.x() * scale,
-            glyph.anchor_bias.y() * scale,
-        )
+        target_center = inner.center() + QPointF(glyph.anchor_bias.x() * scale, glyph.anchor_bias.y() * scale)
         delta = target_center - bbox.center()
         return anchor0 + delta, anchor1 + delta
 
@@ -1350,7 +2085,6 @@ class OrbitalRenderer:
         image.fill(background)
         painter = QPainter(image)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-
         for row in range(model.rows):
             for column in range(model.columns):
                 cell = QRectF(
@@ -1375,12 +2109,41 @@ class OrbitalRenderer:
                 )
                 anchor0, anchor1 = self.canonical_anchors(spec, icon_rect)
                 self.paint_glyph(painter, spec, anchor0, anchor1)
+        painter.end()
+        return image
 
+    def render_style_triptych(self, family: str, panel_size: int = 180, gap: int = 18) -> QImage:
+        image = QImage(panel_size * 3 + gap * 4, panel_size + gap * 2, QImage.Format.Format_ARGB32_Premultiplied)
+        image.fill(QColor("#FFFFFF"))
+        painter = QPainter(image)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        styles = (OrbitalStyle.OUTLINE, OrbitalStyle.SHADED, OrbitalStyle.SOLID)
+        for index, style in enumerate(styles):
+            kind = f"{family}_{style.value}"
+            spec = self.spec_for_kind(kind)
+            rect = QRectF(float(gap + index * (panel_size + gap)), float(gap), float(panel_size), float(panel_size))
+            painter.fillRect(rect, QColor("#FFFFFF"))
+            painter.setPen(QPen(QColor("#D8D8D8"), 1.0))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRect(rect.adjusted(0.0, 0.0, -1.0, -1.0))
+            anchor0, anchor1 = self.canonical_anchors(spec, rect.adjusted(12.0, 12.0, -12.0, -12.0))
+            self.paint_glyph(painter, spec, anchor0, anchor1)
         painter.end()
         return image
 
 
-_RENDERER = OrbitalRenderer()
+_RENDERER = OrbitalRenderer(glyph_library=ORBITAL_GLYPH_LIBRARY, family_presets=_ACTIVE_ORBITAL_FAMILY_PRESETS)
+
+
+def reload_orbital_presets(path: Path = ORBITAL_PRESET_CONFIG_PATH) -> dict[str, OrbitalFamilyPreset]:
+    """Recarga presets desde disco y actualiza el renderer compartido."""
+    global _ACTIVE_ORBITAL_FAMILY_PRESETS, ORBITAL_FAMILY_PRESETS, ORBITAL_GEOMETRY_PRESETS, ORBITAL_GLYPH_LIBRARY
+    _ACTIVE_ORBITAL_FAMILY_PRESETS = load_orbital_family_presets(path)
+    ORBITAL_FAMILY_PRESETS = _ACTIVE_ORBITAL_FAMILY_PRESETS
+    ORBITAL_GEOMETRY_PRESETS = ORBITAL_FAMILY_PRESETS
+    ORBITAL_GLYPH_LIBRARY = _build_glyph_library_from_presets(_ACTIVE_ORBITAL_FAMILY_PRESETS)
+    _RENDERER.set_glyph_library(ORBITAL_GLYPH_LIBRARY, _ACTIVE_ORBITAL_FAMILY_PRESETS)
+    return _ACTIVE_ORBITAL_FAMILY_PRESETS
 
 
 def draw_orbital_icon(kind: str, size: int = ORBITAL_ICON_SIZE) -> QIcon:
@@ -1389,8 +2152,13 @@ def draw_orbital_icon(kind: str, size: int = ORBITAL_ICON_SIZE) -> QIcon:
 
 
 def render_orbital_palette_image(model: OrbitalPaletteModel = ORBITAL_PALETTE_MODEL) -> QImage:
-    """Renderiza el grid orbital completo."""
+    """Renderiza el grid orbital completo usando los presets activos."""
     return _RENDERER.render_palette_image(model)
+
+
+def render_orbital_family_triptych(family: str, panel_size: int = 180, gap: int = 18) -> QImage:
+    """Preview grande outline/shaded/solid para una familia orbital."""
+    return _RENDERER.render_style_triptych(family, panel_size=panel_size, gap=gap)
 
 
 def orbital_renderer() -> OrbitalRenderer:

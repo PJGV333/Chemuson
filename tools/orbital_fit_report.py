@@ -1,25 +1,36 @@
-"""Reporte geométrico de ajuste orbital contra una hoja de referencia 2D."""
+"""Preview y reporte geométrico opcional para orbitales parametrizados."""
 
 from __future__ import annotations
 
-import math
+import argparse
+import os
+import statistics
 import sys
 from pathlib import Path
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from PyQt6.QtCore import QPointF, QRectF, Qt
-from PyQt6.QtGui import QColor, QImage, QPainter, QPainterPath, QPen
+from PyQt6.QtCore import QRect, QRectF, Qt
+from PyQt6.QtGui import QColor, QImage, QPainter, QPen
 from PyQt6.QtWidgets import QApplication
 
 from chemuson.gui.orbitals import (
     ORBITAL_PALETTE_MODEL,
+    ORBITAL_PRESET_CONFIG_PATH,
     ORBITAL_SPECS,
-    GlyphLayer,
-    orbital_renderer,
+    Dz2Params,
+    FOrbitalParams,
+    PiBondingParams,
+    HybridOrbitalParams,
+    OrbitalStyle,
+    TorusParams,
+    build_orbital_renderer,
+    load_orbital_presets_payload,
 )
 
 
@@ -29,255 +40,89 @@ REFERENCE_CROPS_DIR = OUTPUT_DIR / "reference_crops"
 CURRENT_CROPS_DIR = OUTPUT_DIR / "current_crops"
 OVERLAY_DIR = OUTPUT_DIR / "overlay"
 REPORT_PATH = OUTPUT_DIR / "report.txt"
-GRID_PREVIEW_PATH = OUTPUT_DIR / "grid_preview.png"
 OVERLAY_SHEET_PATH = OUTPUT_DIR / "overlay_sheet.png"
+PALETTE_PREVIEW_PATH = ROOT / "tests" / "data" / "orbitals" / "palette_preview.png"
 
 CANVAS_SIZE = 96
 BG = QColor("#FFFFFF")
+_SYMMETRY_AXES = {
+    "s": ("vertical", "horizontal"),
+    "p": ("vertical", "horizontal"),
+    "d": ("vertical", "horizontal"),
+    "dz2": ("vertical", "horizontal"),
+    "torus": ("vertical", "horizontal"),
+    "pi_bonding": ("vertical", "horizontal"),
+    "fz3": ("vertical",),
+}
 
 
-def _ellipse(x: float, y: float, w: float, h: float) -> QPainterPath:
-    path = QPainterPath()
-    path.addEllipse(QRectF(x, y, w, h))
-    return path
+def _ensure_qapp() -> QApplication:
+    app = QApplication.instance()
+    return app if app is not None else QApplication([])
 
 
-def _ring(x: float, y: float, w: float, h: float, inner_x: float, inner_y: float) -> QPainterPath:
-    path = QPainterPath()
-    path.setFillRule(Qt.FillRule.OddEvenFill)
-    path.addEllipse(QRectF(x, y, w, h))
-    inset_x = w * (1.0 - inner_x) * 0.5
-    inset_y = h * (1.0 - inner_y) * 0.5
-    path.addEllipse(QRectF(x + inset_x, y + inset_y, w * inner_x, h * inner_y))
-    return path
+def _load_image(path: Path) -> QImage:
+    image = QImage(str(path)).convertToFormat(QImage.Format.Format_ARGB32)
+    if image.isNull():
+        raise FileNotFoundError(f"No se pudo cargar la imagen: {path}")
+    return image
 
 
-def _cubic(
-    start: tuple[float, float],
-    segments: tuple[tuple[tuple[float, float], tuple[float, float], tuple[float, float]], ...],
-) -> QPainterPath:
-    path = QPainterPath(QPointF(*start))
-    for c1, c2, end in segments:
-        path.cubicTo(QPointF(*c1), QPointF(*c2), QPointF(*end))
-    path.closeSubpath()
-    return path
+def _reference_cell_size(sheet: QImage) -> tuple[int, int]:
+    return sheet.width() // ORBITAL_PALETTE_MODEL.columns, sheet.height() // ORBITAL_PALETTE_MODEL.rows
 
 
-def _transform(path: QPainterPath, *, rotate: float = 0.0, tx: float = 0.0, ty: float = 0.0, sx: float = 1.0, sy: float = 1.0) -> QPainterPath:
-    from PyQt6.QtGui import QTransform
-
-    transform = QTransform()
-    transform.translate(tx, ty)
-    if rotate:
-        transform.rotate(rotate)
-    transform.scale(sx, sy)
-    return transform.map(path)
+def _cell_position(kind: str) -> tuple[int, int]:
+    for row in range(ORBITAL_PALETTE_MODEL.rows):
+        for column in range(ORBITAL_PALETTE_MODEL.columns):
+            if ORBITAL_PALETTE_MODEL.kind_at(row, column) == kind:
+                return row, column
+    raise KeyError(kind)
 
 
-def _draw_layers(image: QImage, layers: tuple[GlyphLayer, ...]) -> QImage:
+def _crop_reference(kind: str, sheet: QImage) -> QImage:
+    cell_w, cell_h = _reference_cell_size(sheet)
+    row, column = _cell_position(kind)
+    crop = sheet.copy(QRect(column * cell_w + 1, row * cell_h + 1, cell_w - 2, cell_h - 2))
+    return crop.scaled(
+        CANVAS_SIZE,
+        CANVAS_SIZE,
+        Qt.AspectRatioMode.IgnoreAspectRatio,
+        Qt.TransformationMode.SmoothTransformation,
+    ).convertToFormat(QImage.Format.Format_ARGB32)
+
+
+def _render_current_crop(renderer, kind: str) -> QImage:
+    image = QImage(CANVAS_SIZE, CANVAS_SIZE, QImage.Format.Format_ARGB32_Premultiplied)
+    image.fill(BG)
+    spec = renderer.spec_for_kind(kind)
+    painter = QPainter(image)
+    anchor0, anchor1 = renderer.canonical_anchors(spec, QRectF(0.0, 0.0, float(CANVAS_SIZE), float(CANVAS_SIZE)))
+    renderer.paint_glyph(painter, spec, anchor0, anchor1)
+    painter.end()
+    return image
+
+
+def _render_silhouette(renderer, kind: str, style: OrbitalStyle) -> QImage:
+    image = QImage(CANVAS_SIZE, CANVAS_SIZE, QImage.Format.Format_ARGB32_Premultiplied)
+    image.fill(BG)
+    base = ORBITAL_SPECS[kind]
+    spec = type(base)(
+        kind=base.kind,
+        orbital_type=base.orbital_type,
+        glyph_id=base.glyph_id,
+        style=style,
+        label=base.label,
+        canvas_extent_scale=base.canvas_extent_scale,
+        stroke_shaded_lobes=base.stroke_shaded_lobes,
+    )
     painter = QPainter(image)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-    for layer in layers:
-        if layer.paint == "outline":
-            painter.setPen(QPen(QColor("#111111"), 2.1, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-        elif layer.paint == "shaded":
-            if layer.stroke:
-                painter.setPen(QPen(QColor("#111111"), 1.7, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
-            else:
-                painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor("#7A7A7A"))
-        else:
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor("#111111"))
+    anchor0, anchor1 = renderer.canonical_anchors(spec, QRectF(0.0, 0.0, float(CANVAS_SIZE), float(CANVAS_SIZE)))
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor("#111111"))
+    for layer in renderer.transformed_layers(spec, anchor0, anchor1):
         painter.drawPath(layer.path)
-    painter.end()
-    return image
-
-
-def _reference_layers(kind: str) -> tuple[GlyphLayer, ...]:
-    cx = CANVAS_SIZE * 0.5
-    cy = CANVAS_SIZE * 0.5
-
-    def move(path: QPainterPath) -> QPainterPath:
-        return _transform(path, tx=cx, ty=cy)
-
-    p_top = _cubic(
-        (0.0, -41.0),
-        (
-            ((10.8, -39.5), (15.2, -29.0), (13.6, -19.5)),
-            ((11.2, -9.0), (5.4, -2.6), (0.0, 0.0)),
-            ((-5.4, -2.6), (-11.2, -9.0), (-13.6, -19.5)),
-            ((-15.2, -29.0), (-10.8, -39.5), (0.0, -41.0)),
-        ),
-    )
-    p_bottom = _transform(p_top, sy=-1.0)
-
-    sp_small = _cubic(
-        (0.0, -26.0),
-        (
-            ((3.8, -25.0), (5.3, -20.5), (4.4, -15.8)),
-            ((3.4, -11.2), (1.7, -8.2), (0.0, -6.0)),
-            ((-1.7, -8.2), (-3.4, -11.2), (-4.4, -15.8)),
-            ((-5.3, -20.5), (-3.8, -25.0), (0.0, -26.0)),
-        ),
-    )
-    sp_lobe = _cubic(
-        (0.0, -6.0),
-        (
-            ((11.8, -4.6), (15.0, 8.2), (12.4, 22.0)),
-            ((10.4, 31.5), (5.2, 37.2), (0.0, 41.0)),
-            ((-5.2, 37.2), (-10.4, 31.5), (-12.4, 22.0)),
-            ((-15.0, 8.2), (-11.8, -4.6), (0.0, -6.0)),
-        ),
-    )
-
-    d_top = _cubic(
-        (0.0, -38.0),
-        (
-            ((10.0, -36.2), (14.8, -25.5), (13.0, -15.6)),
-            ((10.8, -7.2), (5.2, -1.8), (0.0, 0.4)),
-            ((-5.2, -1.8), (-10.8, -7.2), (-13.0, -15.6)),
-            ((-14.8, -25.5), (-10.0, -36.2), (0.0, -38.0)),
-        ),
-    )
-    d_bottom = _transform(d_top, sy=-1.0)
-    d_left = _cubic(
-        (-36.0, 0.0),
-        (
-            ((-33.5, -6.2), (-21.0, -10.2), (-8.8, -8.2)),
-            ((-2.8, -6.6), (-0.6, -2.8), (0.0, 0.0)),
-            ((-0.6, 2.8), (-2.8, 6.6), (-8.8, 8.2)),
-            ((-21.0, 10.2), (-33.5, 6.2), (-36.0, 0.0)),
-        ),
-    )
-    d_right = _transform(d_left, sx=-1.0)
-
-    dz2_top = _cubic(
-        (0.0, -39.0),
-        (
-            ((8.2, -37.4), (12.2, -26.0), (10.4, -17.0)),
-            ((8.8, -10.0), (4.2, -6.2), (0.0, -5.6)),
-            ((-4.2, -6.2), (-8.8, -10.0), (-10.4, -17.0)),
-            ((-12.2, -26.0), (-8.2, -37.4), (0.0, -39.0)),
-        ),
-    )
-    dz2_bottom = _transform(dz2_top, sy=-1.0)
-    dz2_ring = _ring(-31.0, -4.8, 62.0, 9.6, 0.46, 0.26)
-
-    sigma_large = _cubic(
-        (0.0, -38.0),
-        (
-            ((12.0, -35.0), (16.0, -20.0), (14.0, -8.0)),
-            ((12.0, 3.0), (7.0, 15.0), (0.0, 28.0)),
-            ((-7.0, 15.0), (-12.0, 3.0), (-14.0, -8.0)),
-            ((-16.0, -20.0), (-12.0, -35.0), (0.0, -38.0)),
-        ),
-    )
-    sigma_small = _cubic(
-        (0.0, 22.0),
-        (
-            ((4.5, 21.0), (6.5, 24.0), (6.0, 28.0)),
-            ((5.0, 31.0), (2.5, 33.0), (0.0, 34.0)),
-            ((-2.5, 33.0), (-5.0, 31.0), (-6.0, 28.0)),
-            ((-6.5, 24.0), (-4.5, 21.0), (0.0, 22.0)),
-        ),
-    )
-
-    pi_top = _transform(dz2_top, ty=-2.0)
-    pi_bottom = _transform(pi_top, sy=-1.0)
-    pi_ring = _ring(-24.0, -5.5, 48.0, 11.0, 0.44, 0.40)
-
-    torus_outline = (GlyphLayer(move(_ring(-36.0, -10.0, 72.0, 20.0, 0.40, 0.34)), "outline"),)
-    torus_shaded = (GlyphLayer(move(_ring(-36.0, -10.0, 72.0, 20.0, 0.40, 0.34)), "shaded"),)
-    torus_solid = (GlyphLayer(move(_ring(-36.0, -10.0, 72.0, 20.0, 0.40, 0.34)), "solid"),)
-
-    reference = {
-        "p_shaded": (
-            GlyphLayer(move(p_top), "shaded", stroke=False),
-            GlyphLayer(move(p_bottom), "outline"),
-        ),
-        "p_solid": (GlyphLayer(move(p_top), "solid"), GlyphLayer(move(p_bottom), "outline")),
-        "sp_lobe_outline": (GlyphLayer(move(sp_lobe), "outline"),),
-        "sp_lobe_shaded": (
-            GlyphLayer(move(sp_small), "shaded", stroke=False),
-            GlyphLayer(move(sp_lobe), "shaded", stroke=False),
-        ),
-        "sp_lobe_solid": (
-            GlyphLayer(move(sp_small), "solid"),
-            GlyphLayer(move(sp_lobe), "solid"),
-        ),
-        "d_shaded": (
-            GlyphLayer(move(d_left), "outline"),
-            GlyphLayer(move(d_top), "shaded", stroke=False),
-            GlyphLayer(move(d_right), "outline"),
-            GlyphLayer(move(d_bottom), "shaded", stroke=False),
-        ),
-        "d_solid": (
-            GlyphLayer(move(d_left), "outline"),
-            GlyphLayer(move(d_top), "solid"),
-            GlyphLayer(move(d_right), "outline"),
-            GlyphLayer(move(d_bottom), "solid"),
-        ),
-        "dz2_shaded": (
-            GlyphLayer(move(dz2_top), "shaded", stroke=False),
-            GlyphLayer(move(dz2_ring), "shaded", stroke=False),
-            GlyphLayer(move(dz2_bottom), "shaded", stroke=False),
-        ),
-        "dz2_solid": (
-            GlyphLayer(move(dz2_top), "solid"),
-            GlyphLayer(move(dz2_ring), "solid"),
-            GlyphLayer(move(dz2_bottom), "solid"),
-        ),
-        "sigma_bonding_shaded": (
-            GlyphLayer(move(sigma_large), "outline"),
-            GlyphLayer(move(sigma_small), "shaded"),
-        ),
-        "sigma_bonding_solid": (
-            GlyphLayer(move(sigma_large), "outline"),
-            GlyphLayer(move(sigma_small), "solid"),
-        ),
-        "pi_bonding_shaded": (
-            GlyphLayer(move(pi_top), "outline"),
-            GlyphLayer(move(pi_ring), "shaded"),
-            GlyphLayer(move(pi_bottom), "outline"),
-        ),
-        "pi_bonding_solid": (
-            GlyphLayer(move(pi_top), "outline"),
-            GlyphLayer(move(pi_ring), "solid"),
-            GlyphLayer(move(pi_bottom), "outline"),
-        ),
-        "torus_outline": torus_outline,
-        "torus_shaded": torus_shaded,
-        "torus_solid": torus_solid,
-    }
-    return reference.get(kind, ())
-
-
-def _render_reference_crop(kind: str) -> QImage:
-    image = QImage(CANVAS_SIZE, CANVAS_SIZE, QImage.Format.Format_ARGB32_Premultiplied)
-    image.fill(BG)
-    layers = _reference_layers(kind)
-    if layers:
-        return _draw_layers(image, layers)
-
-    renderer = orbital_renderer()
-    spec = renderer.spec_for_kind(kind)
-    painter = QPainter(image)
-    anchor0, anchor1 = renderer.canonical_anchors(spec, QRectF(0.0, 0.0, float(CANVAS_SIZE), float(CANVAS_SIZE)))
-    renderer.paint_glyph(painter, spec, anchor0, anchor1)
-    painter.end()
-    return image
-
-
-def _render_current_crop(kind: str) -> QImage:
-    image = QImage(CANVAS_SIZE, CANVAS_SIZE, QImage.Format.Format_ARGB32_Premultiplied)
-    image.fill(BG)
-    renderer = orbital_renderer()
-    spec = renderer.spec_for_kind(kind)
-    painter = QPainter(image)
-    anchor0, anchor1 = renderer.canonical_anchors(spec, QRectF(0.0, 0.0, float(CANVAS_SIZE), float(CANVAS_SIZE)))
-    renderer.paint_glyph(painter, spec, anchor0, anchor1)
     painter.end()
     return image
 
@@ -289,16 +134,23 @@ def _mask_from_image(image: QImage) -> set[tuple[int, int]]:
             color = image.pixelColor(x, y)
             if color.alpha() <= 8:
                 continue
-            if color.red() > 245 and color.green() > 245 and color.blue() > 245:
+            if color.red() > 246 and color.green() > 246 and color.blue() > 246:
                 continue
             mask.add((x, y))
     return mask
 
 
 def _bbox(mask: set[tuple[int, int]]) -> tuple[int, int, int, int]:
+    if not mask:
+        return 0, 0, 0, 0
     xs = [x for x, _ in mask]
     ys = [y for _, y in mask]
     return min(xs), min(ys), max(xs), max(ys)
+
+
+def _bbox_dims(mask: set[tuple[int, int]]) -> tuple[int, int]:
+    left, top, right, bottom = _bbox(mask)
+    return max(0, right - left + 1), max(0, bottom - top + 1)
 
 
 def _centroid(mask: set[tuple[int, int]]) -> tuple[float, float]:
@@ -310,22 +162,33 @@ def _centroid(mask: set[tuple[int, int]]) -> tuple[float, float]:
     return sx / count, sy / count
 
 
-def _translate_mask(mask: set[tuple[int, int]], dx: int, dy: int) -> set[tuple[int, int]]:
-    translated: set[tuple[int, int]] = set()
+def _occupancy(mask: set[tuple[int, int]]) -> float:
+    return len(mask) / float(CANVAS_SIZE * CANVAS_SIZE)
+
+
+def _iou(mask_a: set[tuple[int, int]], mask_b: set[tuple[int, int]]) -> float:
+    union = len(mask_a | mask_b)
+    if not union:
+        return 1.0
+    return len(mask_a & mask_b) / float(union)
+
+
+def _symmetry_error(mask: set[tuple[int, int]], axis: str) -> float:
+    if not mask:
+        return 0.0
+    mismatches = 0
+    total = 0
     for x, y in mask:
-        nx = x + dx
-        ny = y + dy
-        if 0 <= nx < CANVAS_SIZE and 0 <= ny < CANVAS_SIZE:
-            translated.add((nx, ny))
-    return translated
-
-
-def _align_current_mask(reference_mask: set[tuple[int, int]], current_mask: set[tuple[int, int]]) -> tuple[set[tuple[int, int]], tuple[float, float]]:
-    rcx, rcy = _centroid(reference_mask)
-    ccx, ccy = _centroid(current_mask)
-    dx = int(round(rcx - ccx))
-    dy = int(round(rcy - ccy))
-    return _translate_mask(current_mask, dx, dy), (rcx - ccx, rcy - ccy)
+        if axis == "vertical":
+            mx, my = CANVAS_SIZE - 1 - x, y
+        elif axis == "horizontal":
+            mx, my = x, CANVAS_SIZE - 1 - y
+        else:
+            raise ValueError(axis)
+        total += 1
+        if (mx, my) not in mask:
+            mismatches += 1
+    return mismatches / float(total or 1)
 
 
 def _overlay(reference_mask: set[tuple[int, int]], current_mask: set[tuple[int, int]]) -> QImage:
@@ -341,40 +204,6 @@ def _overlay(reference_mask: set[tuple[int, int]], current_mask: set[tuple[int, 
                 image.setPixelColor(x, y, QColor("#D92B2B"))
             elif cur:
                 image.setPixelColor(x, y, QColor("#2DA44E"))
-    return image
-
-
-def _compose_sheet(kind_to_image: dict[str, QImage], path: Path) -> QImage:
-    image = QImage(ORBITAL_PALETTE_MODEL.image_size, QImage.Format.Format_ARGB32_Premultiplied)
-    image.fill(QColor("#F2F2F2"))
-    painter = QPainter(image)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-    painter.setBrush(Qt.BrushStyle.NoBrush)
-    for row in range(ORBITAL_PALETTE_MODEL.rows):
-        for col in range(ORBITAL_PALETTE_MODEL.columns):
-            cell = QRectF(
-                col * ORBITAL_PALETTE_MODEL.cell_width,
-                row * ORBITAL_PALETTE_MODEL.cell_height,
-                ORBITAL_PALETTE_MODEL.cell_width,
-                ORBITAL_PALETTE_MODEL.cell_height,
-            )
-            painter.fillRect(cell, QColor("#FFFFFF"))
-            painter.setPen(QPen(QColor("#D8D8D8"), 1.0))
-            painter.drawRect(cell.adjusted(0.0, 0.0, -1.0, -1.0))
-            kind = ORBITAL_PALETTE_MODEL.kind_at(row, col)
-            if not kind:
-                continue
-            crop = kind_to_image[kind]
-            inner = cell.adjusted(
-                ORBITAL_PALETTE_MODEL.inner_padding,
-                ORBITAL_PALETTE_MODEL.inner_padding,
-                -ORBITAL_PALETTE_MODEL.inner_padding,
-                -ORBITAL_PALETTE_MODEL.inner_padding,
-            )
-            painter.drawImage(inner, crop)
-    painter.end()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    image.save(str(path))
     return image
 
 
@@ -409,129 +238,206 @@ def _compose_normalized_sheet(kind_to_image: dict[str, QImage], path: Path) -> Q
     return image
 
 
-def _cell_rect(kind: str, cell_size: int) -> QRectF:
-    for row in range(ORBITAL_PALETTE_MODEL.rows):
-        for col in range(ORBITAL_PALETTE_MODEL.columns):
-            if ORBITAL_PALETTE_MODEL.kind_at(row, col) == kind:
-                return QRectF(
-                    float(col * cell_size),
-                    float(row * cell_size),
-                    float(cell_size),
-                    float(cell_size),
-                )
-    raise KeyError(kind)
-
-
-def _report_line(
-    kind: str,
-    iou: float,
-    bbox_ratio_w: float,
-    bbox_ratio_h: float,
-    aspect_ratio_delta: float,
-    centroid_px: float,
-    extra_pct: float,
-    missing_pct: float,
-) -> str:
+def _silhouette_consistency(renderer, family: str) -> tuple[float, float, float]:
+    outline = _mask_from_image(_render_silhouette(renderer, f"{family}_outline", OrbitalStyle.OUTLINE))
+    shaded = _mask_from_image(_render_silhouette(renderer, f"{family}_shaded", OrbitalStyle.SHADED))
+    solid = _mask_from_image(_render_silhouette(renderer, f"{family}_solid", OrbitalStyle.SOLID))
     return (
-        f"{kind:<24} "
-        f"IoU={iou:0.4f} "
-        f"dW={bbox_ratio_w:0.3f} "
-        f"dH={bbox_ratio_h:0.3f} "
-        f"dAR={aspect_ratio_delta:0.3f} "
-        f"dC={centroid_px:0.2f}px "
-        f"extra={extra_pct:0.2f}% "
-        f"missing={missing_pct:0.2f}%"
+        _iou(outline, shaded),
+        _iou(outline, solid),
+        _iou(shaded, solid),
     )
 
 
-def main() -> int:
-    app = QApplication.instance() or QApplication([])
+def _format_optional(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:.4f}"
+
+
+def _report_line(kind: str, metrics: dict[str, str]) -> str:
+    parts = [f"{kind:<24}"]
+    for key, value in metrics.items():
+        parts.append(f"{key}={value}")
+    return " ".join(parts)
+
+
+def _kind_family(kind: str) -> str:
+    return kind.rsplit("_", 1)[0]
+
+
+def _family_metric_strings(renderer, family: str) -> dict[str, str]:
+    preset = renderer.family_preset(family)
+    params = preset.params
+    metrics: dict[str, str] = {}
+
+    if isinstance(params, TorusParams):
+        metrics["torus_ratio"] = f"{params.torus_inner_width_ratio:.3f}x{params.torus_inner_height_ratio:.3f}"
+    elif isinstance(params, Dz2Params):
+        metrics["torus_ratio"] = f"{params.torus_inner_width_ratio:.3f}x{params.torus_inner_height_ratio:.3f}"
+        metrics["ring_offset"] = f"{params.torus_offset_y:.4f}"
+    elif isinstance(params, PiBondingParams) and params.ring is not None:
+        metrics["torus_ratio"] = (
+            f"{params.ring.torus_inner_width_ratio:.3f}x"
+            f"{params.ring.torus_inner_height_ratio:.3f}"
+        )
+    elif isinstance(params, HybridOrbitalParams):
+        metrics["major_ar"] = f"{params.major_lobe.width / max(params.major_lobe.height, 1.0):.3f}"
+        metrics["minor_ar"] = f"{params.minor_lobe.width / max(params.minor_lobe.height, 1.0):.3f}"
+    elif isinstance(params, FOrbitalParams):
+        metrics["lobes"] = str(len(params.lobes))
+        if params.torus is not None:
+            metrics["torus_ratio"] = (
+                f"{params.torus.torus_inner_width_ratio:.3f}x"
+                f"{params.torus.torus_inner_height_ratio:.3f}"
+            )
+    return metrics
+
+
+def _build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=ORBITAL_PRESET_CONFIG_PATH,
+        help=f"Archivo de presets a inspeccionar (default: {ORBITAL_PRESET_CONFIG_PATH})",
+    )
+    parser.add_argument(
+        "--reference",
+        type=Path,
+        default=REFERENCE_SHEET if REFERENCE_SHEET.exists() else None,
+        help="Hoja raster opcional para overlay. Si se omite, el reporte no fuerza comparacion externa.",
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _build_arg_parser().parse_args(argv)
+    _ensure_qapp()
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     REFERENCE_CROPS_DIR.mkdir(parents=True, exist_ok=True)
     CURRENT_CROPS_DIR.mkdir(parents=True, exist_ok=True)
     OVERLAY_DIR.mkdir(parents=True, exist_ok=True)
 
+    payload = load_orbital_presets_payload(args.config, include_docs=True)
+    renderer = build_orbital_renderer(payload)
+
+    reference_sheet = None
+    if args.reference is not None:
+        if not args.reference.exists():
+            raise FileNotFoundError(f"Referencia no encontrada: {args.reference}")
+        reference_sheet = _load_image(args.reference)
+
     reference_crops: dict[str, QImage] = {}
     current_crops: dict[str, QImage] = {}
     overlay_crops: dict[str, QImage] = {}
     report_lines: list[str] = []
-    ious: list[float] = []
+    reference_ious: list[float] = []
 
     for kind in ORBITAL_PALETTE_MODEL.entries:
-        current = _render_current_crop(kind)
+        current = _render_current_crop(renderer, kind)
         current.save(str(CURRENT_CROPS_DIR / f"{kind}.png"))
         current_crops[kind] = current
 
-    reference_source_crops = {kind: _render_reference_crop(kind) for kind in ORBITAL_PALETTE_MODEL.entries}
-    for kind, reference in reference_source_crops.items():
-        reference.save(str(REFERENCE_CROPS_DIR / f"{kind}.png"))
-        reference_crops[kind] = QImage(str(REFERENCE_CROPS_DIR / f"{kind}.png")).convertToFormat(
-            QImage.Format.Format_ARGB32
-        )
+        if reference_sheet is not None:
+            reference = _crop_reference(kind, reference_sheet)
+            reference.save(str(REFERENCE_CROPS_DIR / f"{kind}.png"))
+            reference_crops[kind] = reference
 
-    _compose_normalized_sheet(reference_crops, REFERENCE_SHEET)
-    _compose_sheet(current_crops, GRID_PREVIEW_PATH)
+    palette = renderer.render_palette_image(ORBITAL_PALETTE_MODEL)
+    palette.save(str(PALETTE_PREVIEW_PATH))
 
     for kind in ORBITAL_PALETTE_MODEL.entries:
-        reference_mask = _mask_from_image(reference_crops[kind])
+        family = _kind_family(kind)
         current_mask = _mask_from_image(current_crops[kind])
-        aligned_current_mask, centroid_delta = _align_current_mask(reference_mask, current_mask)
+        if family not in overlay_crops:
+            pass
 
-        intersection = len(reference_mask & aligned_current_mask)
-        union = len(reference_mask | aligned_current_mask) or 1
-        iou = intersection / union
-        ious.append(iou)
+        ref_iou: float | None = None
+        if reference_sheet is not None:
+            reference_mask = _mask_from_image(reference_crops[kind])
+            overlay = _overlay(reference_mask, current_mask)
+            overlay.save(str(OVERLAY_DIR / f"{kind}.png"))
+            overlay_crops[kind] = overlay
+            ref_iou = _iou(reference_mask, current_mask)
+            reference_ious.append(ref_iou)
+        else:
+            current_crops[kind].save(str(OVERLAY_DIR / f"{kind}.png"))
+            overlay_crops[kind] = current_crops[kind]
 
-        ref_bbox = _bbox(reference_mask)
-        cur_bbox = _bbox(aligned_current_mask)
-        ref_w = max(1, ref_bbox[2] - ref_bbox[0] + 1)
-        ref_h = max(1, ref_bbox[3] - ref_bbox[1] + 1)
-        cur_w = max(1, cur_bbox[2] - cur_bbox[0] + 1)
-        cur_h = max(1, cur_bbox[3] - cur_bbox[1] + 1)
+        bbox = _bbox(current_mask)
+        bbox_w, bbox_h = _bbox_dims(current_mask)
+        centroid_x, centroid_y = _centroid(current_mask)
+        centroid_dx = centroid_x - ((CANVAS_SIZE - 1) * 0.5)
+        centroid_dy = centroid_y - ((CANVAS_SIZE - 1) * 0.5)
+        occupancy = _occupancy(current_mask) * 100.0
+        aspect_ratio = bbox_w / float(bbox_h or 1)
 
-        bbox_ratio_w = abs(cur_w - ref_w) / float(ref_w)
-        bbox_ratio_h = abs(cur_h - ref_h) / float(ref_h)
-        ref_aspect = ref_w / float(ref_h)
-        cur_aspect = cur_w / float(cur_h)
-        aspect_ratio_delta = abs(cur_aspect - ref_aspect) / float(ref_aspect or 1.0)
-        centroid_px = math.hypot(*centroid_delta)
-        extra_pct = (len(aligned_current_mask - reference_mask) / float(len(reference_mask) or 1)) * 100.0
-        missing_pct = (len(reference_mask - aligned_current_mask) / float(len(reference_mask) or 1)) * 100.0
-
-        overlay = _overlay(reference_mask, aligned_current_mask)
-        overlay.save(str(OVERLAY_DIR / f"{kind}.png"))
-        overlay_crops[kind] = overlay
-        report_lines.append(
-            _report_line(
-                kind,
-                iou,
-                bbox_ratio_w,
-                bbox_ratio_h,
-                aspect_ratio_delta,
-                centroid_px,
-                extra_pct,
-                missing_pct,
+        sym_v: float | None = None
+        sym_h: float | None = None
+        for axis in _SYMMETRY_AXES.get(family, ()):
+            error = _symmetry_error(
+                _mask_from_image(_render_silhouette(renderer, f"{family}_outline", OrbitalStyle.OUTLINE)),
+                axis,
             )
+            if axis == "vertical":
+                sym_v = error
+            elif axis == "horizontal":
+                sym_h = error
+
+        sil_outline_shaded, sil_outline_solid, sil_shaded_solid = _silhouette_consistency(renderer, family)
+        metrics: dict[str, str] = {
+            "bbox": f"{bbox[0]},{bbox[1]},{bbox_w},{bbox_h}",
+            "centroid": f"{centroid_dx:+.2f},{centroid_dy:+.2f}",
+            "occupancy": f"{occupancy:.2f}%",
+            "aspect": f"{aspect_ratio:.3f}",
+            "ref_iou": _format_optional(ref_iou),
+            "sym_v": _format_optional(sym_v),
+            "sym_h": _format_optional(sym_h),
+            "sil_o_s": f"{sil_outline_shaded:.4f}",
+            "sil_o_f": f"{sil_outline_solid:.4f}",
+            "sil_s_f": f"{sil_shaded_solid:.4f}",
+        }
+        metrics.update(_family_metric_strings(renderer, family))
+        report_lines.append(_report_line(kind, metrics))
+
+    _compose_normalized_sheet(overlay_crops, OVERLAY_SHEET_PATH)
+
+    family_lines = []
+    seen_families: list[str] = []
+    for kind in ORBITAL_PALETTE_MODEL.entries:
+        family = _kind_family(kind)
+        if family in seen_families:
+            continue
+        seen_families.append(family)
+        o_s, o_f, s_f = _silhouette_consistency(renderer, family)
+        family_lines.append(
+            f"{family:<18} outline/shaded={o_s:.4f} outline/solid={o_f:.4f} shaded/solid={s_f:.4f}"
         )
 
-    summary = f"average IoU={sum(ious) / float(len(ious) or 1):0.4f}"
-    _compose_normalized_sheet(overlay_crops, OVERLAY_SHEET_PATH)
+    average_ref_iou = statistics.fmean(reference_ious) if reference_ious else 0.0
     REPORT_PATH.write_text(
         "\n".join(
             [
-                "reference=tests/data/orbitals/reference_sheet.png (redibujo vectorial fijo basado en la referencia del usuario)",
-                summary,
+                f"config={args.config}",
+                f"reference_sheet={args.reference if reference_sheet is not None else 'none'}",
+                "mode=preview_overlay_only",
+                f"palette_preview={PALETTE_PREVIEW_PATH}",
+                f"overlay_sheet={OVERLAY_SHEET_PATH}",
+                f"average_ref_iou={average_ref_iou:.4f}",
                 "",
+                "Silhouette Consistency",
+                *family_lines,
+                "",
+                "Per Glyph Metrics",
+                *report_lines,
             ]
-            + report_lines
         )
         + "\n",
         encoding="utf-8",
     )
-    print(summary)
-    print(f"report: {REPORT_PATH}")
-    print(f"reference sheet: {REFERENCE_SHEET}")
-    print(f"grid preview: {GRID_PREVIEW_PATH}")
+
+    print(f"palette_preview={PALETTE_PREVIEW_PATH}")
+    print(f"overlay_sheet={OVERLAY_SHEET_PATH}")
+    print(f"report={REPORT_PATH}")
     return 0
 
 

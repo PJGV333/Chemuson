@@ -1,23 +1,39 @@
-reference=tests/data/orbitals/reference_sheet.png (redibujo vectorial fijo basado en la referencia del usuario)
-average IoU=0.7639
+config=/mnt/HDD_4TB/chemuson/Chemuson/config/orbitals_presets.json
+reference_sheet=/mnt/HDD_4TB/chemuson/Chemuson/tests/data/orbitals/reference_sheet.png
+mode=preview_overlay_only
+palette_preview=/mnt/HDD_4TB/chemuson/Chemuson/tests/data/orbitals/palette_preview.png
+overlay_sheet=/mnt/HDD_4TB/chemuson/Chemuson/tests/data/orbitals/fit_report/overlay_sheet.png
+average_ref_iou=0.6461
 
-s_outline                IoU=1.0000 dW=0.000 dH=0.000 dAR=0.000 dC=0.00px extra=0.00% missing=0.00%
-s_shaded                 IoU=1.0000 dW=0.000 dH=0.000 dAR=0.000 dC=0.00px extra=0.00% missing=0.00%
-p_shaded                 IoU=0.7994 dW=0.000 dH=0.036 dAR=0.038 dC=0.52px extra=6.57% missing=14.81%
-p_solid                  IoU=0.8825 dW=0.000 dH=0.024 dAR=0.025 dC=0.05px extra=2.85% missing=9.23%
-d_shaded                 IoU=0.9388 dW=0.027 dH=0.026 dAR=0.001 dC=0.36px extra=4.53% missing=1.87%
-d_solid                  IoU=0.9282 dW=0.027 dH=0.026 dAR=0.001 dC=0.00px extra=5.95% missing=1.66%
-torus_outline            IoU=0.6550 dW=0.054 dH=0.091 dAR=0.034 dC=0.00px extra=20.48% missing=21.08%
-torus_shaded             IoU=0.8473 dW=0.054 dH=0.091 dAR=0.034 dC=0.61px extra=12.10% missing=5.02%
-torus_solid              IoU=0.8822 dW=0.056 dH=0.100 dAR=0.040 dC=0.00px extra=12.50% missing=0.76%
-sp3_shaded               IoU=1.0000 dW=0.000 dH=0.000 dAR=0.000 dC=0.00px extra=0.00% missing=0.00%
-sp3_solid                IoU=1.0000 dW=0.000 dH=0.000 dAR=0.000 dC=0.00px extra=0.00% missing=0.00%
-dz2_shaded               IoU=0.8695 dW=0.000 dH=0.000 dAR=0.000 dC=0.71px extra=3.40% missing=10.09%
-dz2_solid                IoU=0.7679 dW=0.065 dH=0.051 dAR=0.122 dC=0.00px extra=21.15% missing=6.97%
-sp_lobe_outline          IoU=0.0479 dW=0.133 dH=0.408 dAR=0.195 dC=18.57px extra=116.09% missing=89.66%
-sp_lobe_shaded           IoU=0.7481 dW=0.000 dH=0.269 dAR=0.212 dC=4.41px extra=26.20% missing=5.60%
-sp_lobe_solid            IoU=0.7357 dW=0.000 dH=0.284 dAR=0.221 dC=5.38px extra=29.45% missing=4.76%
-sigma_bonding_shaded     IoU=0.5050 dW=0.062 dH=0.081 dAR=0.017 dC=2.91px extra=40.14% missing=29.23%
-sigma_bonding_solid      IoU=0.4674 dW=0.062 dH=0.082 dAR=0.018 dC=2.34px extra=42.38% missing=33.46%
-pi_bonding_shaded        IoU=0.6262 dW=0.000 dH=0.048 dAR=0.050 dC=0.09px extra=17.94% missing=26.15%
-pi_bonding_solid         IoU=0.5775 dW=0.000 dH=0.048 dAR=0.050 dC=0.00px extra=22.41% missing=29.31%
+Silhouette Consistency
+s                  outline/shaded=1.0000 outline/solid=1.0000 shaded/solid=1.0000
+p                  outline/shaded=1.0000 outline/solid=1.0000 shaded/solid=1.0000
+d                  outline/shaded=1.0000 outline/solid=1.0000 shaded/solid=1.0000
+torus              outline/shaded=1.0000 outline/solid=1.0000 shaded/solid=1.0000
+sp3                outline/shaded=1.0000 outline/solid=1.0000 shaded/solid=1.0000
+dz2                outline/shaded=1.0000 outline/solid=1.0000 shaded/solid=1.0000
+sp_lobe            outline/shaded=1.0000 outline/solid=1.0000 shaded/solid=1.0000
+sigma_bonding      outline/shaded=1.0000 outline/solid=1.0000 shaded/solid=1.0000
+pi_bonding         outline/shaded=1.0000 outline/solid=1.0000 shaded/solid=1.0000
+
+Per Glyph Metrics
+s_outline                bbox=9,9,78,78 centroid=+0.00,+0.00 occupancy=7.55% aspect=1.000 ref_iou=0.7632 sym_v=0.0000 sym_h=0.0000 sil_o_s=1.0000 sil_o_f=1.0000 sil_s_f=1.0000
+s_shaded                 bbox=10,10,76,76 centroid=-0.02,-0.02 occupancy=48.61% aspect=1.000 ref_iou=0.9149 sym_v=0.0000 sym_h=0.0000 sil_o_s=1.0000 sil_o_f=1.0000 sil_s_f=1.0000
+p_shaded                 bbox=33,8,30,81 centroid=-0.06,-10.47 occupancy=12.11% aspect=0.370 ref_iou=0.8143 sym_v=0.0000 sym_h=0.0012 sil_o_s=1.0000 sil_o_f=1.0000 sil_s_f=1.0000
+p_solid                  bbox=33,8,30,81 centroid=+0.00,-10.52 occupancy=12.26% aspect=0.370 ref_iou=0.8161 sym_v=0.0000 sym_h=0.0012 sil_o_s=1.0000 sil_o_f=1.0000 sil_s_f=1.0000
+d_shaded                 bbox=10,9,76,78 centroid=-0.03,-0.10 occupancy=21.93% aspect=0.974 ref_iou=0.8922 sym_v=0.0000 sym_h=0.0000 sil_o_s=1.0000 sil_o_f=1.0000 sil_s_f=1.0000
+d_solid                  bbox=10,9,76,78 centroid=+0.00,+0.00 occupancy=22.22% aspect=0.974 ref_iou=0.8843 sym_v=0.0000 sym_h=0.0000 sil_o_s=1.0000 sil_o_f=1.0000 sil_s_f=1.0000
+torus_outline            bbox=9,36,78,24 centroid=+0.00,+0.00 occupancy=7.38% aspect=3.250 ref_iou=0.6996 sym_v=0.0000 sym_h=0.0000 sil_o_s=1.0000 sil_o_f=1.0000 sil_s_f=1.0000 torus_ratio=0.420x0.380
+torus_shaded             bbox=10,37,76,22 centroid=-0.10,-0.02 occupancy=12.26% aspect=3.455 ref_iou=0.8142 sym_v=0.0000 sym_h=0.0000 sil_o_s=1.0000 sil_o_f=1.0000 sil_s_f=1.0000 torus_ratio=0.420x0.380
+torus_solid              bbox=10,37,76,22 centroid=+0.00,+0.00 occupancy=12.59% aspect=3.455 ref_iou=0.9228 sym_v=0.0000 sym_h=0.0000 sil_o_s=1.0000 sil_o_f=1.0000 sil_s_f=1.0000 torus_ratio=0.420x0.380
+sp3_shaded               bbox=30,8,35,80 centroid=-0.10,+14.77 occupancy=12.73% aspect=0.438 ref_iou=0.2318 sym_v=n/a sym_h=n/a sil_o_s=1.0000 sil_o_f=1.0000 sil_s_f=1.0000 major_ar=1.000 minor_ar=0.857
+sp3_solid                bbox=30,8,36,80 centroid=+0.00,+14.92 occupancy=12.89% aspect=0.450 ref_iou=0.2170 sym_v=n/a sym_h=n/a sil_o_s=1.0000 sil_o_f=1.0000 sil_s_f=1.0000 major_ar=1.000 minor_ar=0.857
+dz2_shaded               bbox=17,9,62,76 centroid=-0.03,-0.90 occupancy=17.88% aspect=0.816 ref_iou=0.8671 sym_v=0.0000 sym_h=0.0858 sil_o_s=1.0000 sil_o_f=1.0000 sil_s_f=1.0000 torus_ratio=0.460x0.260 ring_offset=0.0000
+dz2_solid                bbox=17,9,62,77 centroid=+0.00,-0.75 occupancy=18.47% aspect=0.805 ref_iou=0.8681 sym_v=0.0000 sym_h=0.0858 sil_o_s=1.0000 sil_o_f=1.0000 sil_s_f=1.0000 torus_ratio=0.460x0.260 ring_offset=0.0000
+sp_lobe_outline          bbox=35,2,26,83 centroid=+0.00,-3.36 occupancy=5.32% aspect=0.313 ref_iou=0.1866 sym_v=n/a sym_h=n/a sil_o_s=1.0000 sil_o_f=1.0000 sil_s_f=1.0000 major_ar=0.673 minor_ar=0.292
+sp_lobe_shaded           bbox=36,3,24,81 centroid=-0.04,+2.23 occupancy=11.71% aspect=0.296 ref_iou=0.6538 sym_v=n/a sym_h=n/a sil_o_s=1.0000 sil_o_f=1.0000 sil_s_f=1.0000 major_ar=0.673 minor_ar=0.292
+sp_lobe_solid            bbox=35,3,26,81 centroid=+0.00,+2.42 occupancy=11.87% aspect=0.321 ref_iou=0.6506 sym_v=n/a sym_h=n/a sil_o_s=1.0000 sil_o_f=1.0000 sil_s_f=1.0000 major_ar=0.673 minor_ar=0.292
+sigma_bonding_shaded     bbox=31,11,34,79 centroid=+0.00,-0.53 occupancy=5.06% aspect=0.430 ref_iou=0.3379 sym_v=n/a sym_h=n/a sil_o_s=1.0000 sil_o_f=1.0000 sil_s_f=1.0000 major_ar=0.842 minor_ar=1.083
+sigma_bonding_solid      bbox=31,11,34,79 centroid=+0.00,-0.53 occupancy=5.06% aspect=0.430 ref_iou=0.3310 sym_v=n/a sym_h=n/a sil_o_s=1.0000 sil_o_f=1.0000 sil_s_f=1.0000 major_ar=0.842 minor_ar=1.083
+pi_bonding_shaded        bbox=24,9,48,78 centroid=+0.00,+0.00 occupancy=9.07% aspect=0.615 ref_iou=0.5131 sym_v=0.0000 sym_h=0.0000 sil_o_s=1.0000 sil_o_f=1.0000 sil_s_f=1.0000 torus_ratio=0.440x0.400
+pi_bonding_solid         bbox=24,9,48,78 centroid=+0.00,+0.00 occupancy=9.16% aspect=0.615 ref_iou=0.5437 sym_v=0.0000 sym_h=0.0000 sil_o_s=1.0000 sil_o_f=1.0000 sil_s_f=1.0000 torus_ratio=0.440x0.400
