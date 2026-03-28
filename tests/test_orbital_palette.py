@@ -18,6 +18,7 @@ from chemuson.gui.main_window import ChemusonWindow
 from chemuson.gui.orbitals import (
     ORBITAL_PALETTE_MODEL,
     orbital_display_name,
+    orbital_canvas_extent,
     orbital_tool_id,
     render_orbital_palette_image,
 )
@@ -99,6 +100,30 @@ def test_inserted_orbital_is_persistent_and_undoable() -> None:
     finally:
         if restored is not None:
             restored.close()
+        canvas.close()
+
+
+@pytest.mark.parametrize(
+    ("kind", "bond_length"),
+    (
+        ("sp_lobe_shaded", 40.0),
+        ("sigma_bonding_shaded", 40.0),
+        ("dz2_shaded", 40.0),
+    ),
+)
+def test_inserted_orbital_uses_canvas_extent(kind: str, bond_length: float) -> None:
+    canvas = ChemusonCanvas()
+    try:
+        canvas.state.bond_length = bond_length
+        center = QPointF(160.0, 140.0)
+
+        item = canvas._insert_orbital_item(center, kind=kind)
+
+        assert item is not None
+        assert item.anchor0() == center
+        assert item.anchor1().x() == pytest.approx(center.x())
+        assert item.anchor1().y() == pytest.approx(center.y() - orbital_canvas_extent(kind, bond_length))
+    finally:
         canvas.close()
 
 

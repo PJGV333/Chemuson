@@ -31,6 +31,45 @@ _PALETTE_BG = QColor("#F2F2F2")
 _CELL_BG = QColor("#FFFFFF")
 _CELL_LINE = QColor("#D8D8D8")
 
+_GRADIENT_STOP_PRESETS: dict[str, tuple[tuple[float, str], ...]] = {
+    "default": (
+        (0.0, "#FFFFFF"),
+        (0.38, "#D9D9D9"),
+        (0.72, "#676767"),
+        (1.0, "#101010"),
+    ),
+    "dual_positive": (
+        (0.0, "#FFFFFF"),
+        (0.34, "#E8E8E8"),
+        (0.72, "#747474"),
+        (1.0, "#111111"),
+    ),
+    "dual_negative": (
+        (0.0, "#202020"),
+        (0.34, "#5A5A5A"),
+        (0.74, "#BFBFBF"),
+        (1.0, "#F4F4F4"),
+    ),
+    "inverted": (
+        (0.0, "#101010"),
+        (0.34, "#676767"),
+        (0.72, "#D9D9D9"),
+        (1.0, "#FFFFFF"),
+    ),
+}
+
+_LIGHT_DIRECTION_VECTORS: dict[str, tuple[float, float]] = {
+    "north": (0.0, -1.0),
+    "south": (0.0, 1.0),
+    "east": (1.0, 0.0),
+    "west": (-1.0, 0.0),
+    "northeast": (0.7071067812, -0.7071067812),
+    "northwest": (-0.7071067812, -0.7071067812),
+    "southeast": (0.7071067812, 0.7071067812),
+    "southwest": (-0.7071067812, 0.7071067812),
+    "center": (0.0, 0.0),
+}
+
 
 class OrbitalType(str, Enum):
     """Tipos orbitales soportados por la UI."""
@@ -64,6 +103,9 @@ class GlyphLayer:
     paint: str
     gradient: str = "linear"
     stroke: bool = True
+    phase: str | None = None
+    light_dir: str | None = None
+    light_variant: str | None = None
 
 
 @dataclass(frozen=True)
@@ -76,7 +118,54 @@ class GlyphDefinition:
     paths_solid: tuple[GlyphLayer, ...]
     default_bounds: QRectF
     anchor_center: QPointF
+    anchor_bias: QPointF
     visual_padding: float
+
+
+@dataclass(frozen=True)
+class LobeProfile:
+    """Coeficientes normalizados para un lóbulo cúbico simétrico."""
+
+    tip_ctrl_x: float
+    tip_ctrl_y: float
+    shoulder_ctrl_x: float
+    shoulder_ctrl_y: float
+    waist_end_x: float
+    waist_end_y: float
+    neck_ctrl_x: float
+    neck_ctrl_y: float
+    neck_inner_y: float
+    end_y: float
+    neck_inner_x: float | None = None
+
+
+@dataclass(frozen=True)
+class OrbitalGeometryPreset:
+    """Preset geométrico reusable para construir un glifo orbital."""
+
+    main_lobe_width: float
+    main_lobe_height: float
+    secondary_lobe_width: float
+    secondary_lobe_height: float
+    neck_ratio: float
+    lobe_separation: float
+    torus_thickness: float
+    upper_lobe_offset: float
+    lower_lobe_offset: float
+    visual_padding: float
+    anchor_bias: tuple[float, float] = (0.0, 0.0)
+    default_bounds_override: tuple[float, float, float, float] | None = None
+    main_profile: str = "large"
+    secondary_profile: str | None = None
+    outline_main_profile: str | None = None
+    outline_secondary_profile: str | None = None
+    outline_main_scale: tuple[float, float] = (1.0, 1.0)
+    outline_secondary_scale: tuple[float, float] = (1.0, 1.0)
+    torus_outer_width: float = 0.0
+    torus_outer_height: float = 0.0
+    torus_inner_scale: tuple[float, float] = (0.0, 0.0)
+    outline_torus_scale: tuple[float, float] = (1.0, 1.0)
+    outline_torus_inner_scale: tuple[float, float] | None = None
 
 
 @dataclass(frozen=True)
@@ -165,6 +254,182 @@ _ORBITAL_GLYPH_IDS = {
     OrbitalType.TORUS: "torus_flat",
 }
 
+_CANVAS_EXTENT_SCALES = {
+    OrbitalType.S: 0.84,
+    OrbitalType.P: 0.92,
+    OrbitalType.D: 0.92,
+    OrbitalType.DZ2: 0.98,
+    OrbitalType.F: 0.94,
+    OrbitalType.FZ3: 0.98,
+    OrbitalType.SP3: 0.94,
+    OrbitalType.SP_LOBE: 0.88,
+    OrbitalType.SIGMA_BONDING: 0.96,
+    OrbitalType.PI_BONDING: 0.98,
+    OrbitalType.TORUS: 0.84,
+}
+
+ORBITAL_GEOMETRY_PRESETS: dict[str, OrbitalGeometryPreset] = {
+    "s_round": OrbitalGeometryPreset(
+        main_lobe_width=68.0,
+        main_lobe_height=68.0,
+        secondary_lobe_width=68.0,
+        secondary_lobe_height=68.0,
+        neck_ratio=1.0,
+        lobe_separation=0.0,
+        torus_thickness=0.0,
+        upper_lobe_offset=0.0,
+        lower_lobe_offset=0.0,
+        visual_padding=6.0,
+        default_bounds_override=(-34.0, -34.0, 68.0, 68.0),
+    ),
+    "torus_flat": OrbitalGeometryPreset(
+        main_lobe_width=72.0,
+        main_lobe_height=20.0,
+        secondary_lobe_width=28.8,
+        secondary_lobe_height=6.8,
+        neck_ratio=0.0,
+        lobe_separation=0.0,
+        torus_thickness=6.6,
+        upper_lobe_offset=0.0,
+        lower_lobe_offset=0.0,
+        visual_padding=6.0,
+        default_bounds_override=(-36.0, -10.0, 72.0, 20.0),
+        torus_outer_width=72.0,
+        torus_outer_height=20.0,
+        torus_inner_scale=(0.40, 0.34),
+    ),
+    "p_vertical": OrbitalGeometryPreset(
+        main_lobe_width=30.4,
+        main_lobe_height=41.0,
+        secondary_lobe_width=30.4,
+        secondary_lobe_height=41.0,
+        neck_ratio=0.3552631579,
+        lobe_separation=0.0,
+        torus_thickness=0.0,
+        upper_lobe_offset=0.0,
+        lower_lobe_offset=0.0,
+        visual_padding=4.5,
+        default_bounds_override=(-16.0, -41.0, 32.0, 82.0),
+        main_profile="p_refined",
+        secondary_profile="p_refined",
+        outline_main_profile="p_outline",
+        outline_secondary_profile="p_outline",
+        outline_main_scale=(1.3157894737, 0.9268292683),
+        outline_secondary_scale=(1.3157894737, 0.9268292683),
+    ),
+    "d_clover": OrbitalGeometryPreset(
+        main_lobe_width=29.6,
+        main_lobe_height=38.0,
+        secondary_lobe_width=20.4,
+        secondary_lobe_height=36.0,
+        neck_ratio=0.3552631579,
+        lobe_separation=0.0,
+        torus_thickness=0.0,
+        upper_lobe_offset=0.0,
+        lower_lobe_offset=0.0,
+        visual_padding=5.0,
+        default_bounds_override=(-36.0, -38.0, 72.0, 76.0),
+        main_profile="d_refined_vertical",
+        secondary_profile="d_refined_horizontal",
+        outline_main_profile="d_outline_vertical",
+        outline_secondary_profile="d_outline_horizontal",
+        outline_main_scale=(1.2162162162, 0.9210526316),
+        outline_secondary_scale=(1.2745098039, 0.8888888889),
+    ),
+    "dz2_axial": OrbitalGeometryPreset(
+        main_lobe_width=24.4,
+        main_lobe_height=39.0,
+        secondary_lobe_width=24.4,
+        secondary_lobe_height=39.0,
+        neck_ratio=0.3442622951,
+        lobe_separation=0.0,
+        torus_thickness=3.552,
+        upper_lobe_offset=0.0,
+        lower_lobe_offset=0.0,
+        visual_padding=6.0,
+        anchor_bias=(0.0, -0.75),
+        default_bounds_override=(-31.0, -39.0, 62.0, 78.0),
+        main_profile="dz2_refined",
+        secondary_profile="dz2_refined",
+        outline_main_profile="dz2_outline",
+        outline_secondary_profile="dz2_outline",
+        outline_main_scale=(1.0655737705, 0.9487179487),
+        outline_secondary_scale=(1.0655737705, 0.9487179487),
+        torus_outer_width=62.0,
+        torus_outer_height=9.6,
+        torus_inner_scale=(0.46, 0.26),
+        outline_torus_scale=(1.0645161290, 1.4583333333),
+        outline_torus_inner_scale=(0.44, 0.36),
+    ),
+    "sp3_hybrid": OrbitalGeometryPreset(
+        main_lobe_width=48.0,
+        main_lobe_height=48.0,
+        secondary_lobe_width=24.0,
+        secondary_lobe_height=28.0,
+        neck_ratio=0.34,
+        lobe_separation=23.5,
+        torus_thickness=0.0,
+        upper_lobe_offset=-22.0,
+        lower_lobe_offset=1.5,
+        visual_padding=6.0,
+        default_bounds_override=(-21.0, -50.0, 42.0, 101.0),
+        main_profile="large",
+        secondary_profile="small",
+    ),
+    "sp_lobe": OrbitalGeometryPreset(
+        main_lobe_width=29.6,
+        main_lobe_height=44.0,
+        secondary_lobe_width=11.4,
+        secondary_lobe_height=39.0,
+        neck_ratio=0.2982456140,
+        lobe_separation=0.0,
+        torus_thickness=0.0,
+        upper_lobe_offset=0.0,
+        lower_lobe_offset=0.0,
+        visual_padding=4.0,
+        anchor_bias=(0.0, -4.5),
+        default_bounds_override=(-17.0, -38.0, 34.0, 76.0),
+        main_profile="sp_refined_large",
+        secondary_profile="sp_refined_small",
+        outline_main_profile="sp_outline",
+        outline_main_scale=(1.1486486486, 0.8636363636),
+    ),
+    "sigma_bonding": OrbitalGeometryPreset(
+        main_lobe_width=32.0,
+        main_lobe_height=38.0,
+        secondary_lobe_width=13.0,
+        secondary_lobe_height=12.0,
+        neck_ratio=0.4375,
+        lobe_separation=22.0,
+        torus_thickness=0.0,
+        upper_lobe_offset=0.0,
+        lower_lobe_offset=22.0,
+        visual_padding=5.0,
+        anchor_bias=(0.0, 2.75),
+        default_bounds_override=(-16.0, -38.0, 32.0, 72.0),
+        main_profile="sigma_large",
+        secondary_profile="sigma_small",
+    ),
+    "pi_bonding": OrbitalGeometryPreset(
+        main_lobe_width=26.0,
+        main_lobe_height=37.0,
+        secondary_lobe_width=26.0,
+        secondary_lobe_height=37.0,
+        neck_ratio=0.3076923077,
+        lobe_separation=4.0,
+        torus_thickness=3.3,
+        upper_lobe_offset=-2.0,
+        lower_lobe_offset=2.0,
+        visual_padding=6.0,
+        default_bounds_override=(-24.0, -39.0, 48.0, 78.0),
+        main_profile="dz2_outline",
+        secondary_profile="dz2_outline",
+        torus_outer_width=48.0,
+        torus_outer_height=11.0,
+        torus_inner_scale=(0.44, 0.40),
+    ),
+}
+
 
 def _label_for(orbital_type: OrbitalType, style: OrbitalStyle) -> str:
     return f"{_TYPE_LABELS[orbital_type]} ({_STYLE_LABELS[style]})"
@@ -175,18 +440,13 @@ def _build_all_specs() -> dict[str, OrbitalGlyphSpec]:
     for orbital_type in OrbitalType:
         for style in OrbitalStyle:
             kind = f"{orbital_type.value}_{style.value}"
-            extent = 0.92
-            if orbital_type in {OrbitalType.S, OrbitalType.TORUS}:
-                extent = 0.84
-            if orbital_type in {OrbitalType.DZ2, OrbitalType.FZ3, OrbitalType.PI_BONDING}:
-                extent = 0.98
             specs[kind] = OrbitalGlyphSpec(
                 kind=kind,
                 orbital_type=orbital_type,
                 glyph_id=_ORBITAL_GLYPH_IDS[orbital_type],
                 style=style,
                 label=_label_for(orbital_type, style),
-                canvas_extent_scale=extent,
+                canvas_extent_scale=_CANVAS_EXTENT_SCALES[orbital_type],
                 stroke_shaded_lobes=True,
             )
     return specs
@@ -290,64 +550,94 @@ def _transform_path(path: QPainterPath, *, translate: tuple[float, float] = (0.0
     return transform.map(path)
 
 
-def _vertical_lobe_large() -> QPainterPath:
+_LOBE_PROFILES: dict[str, LobeProfile] = {
+    "large": LobeProfile(0.625, 0.96875, 1.0, 0.5625, 0.7916666667, 0.2916666667, 0.625, 0.09375, -0.0104166667, -0.025, neck_inner_x=0.3541666667),
+    "small": LobeProfile(0.6666666667, 0.9285714286, 1.0, 0.5714285714, 0.8333333333, 0.3214285714, 0.6666666667, 0.1428571429, 0.0357142857, 0.0, neck_inner_x=0.3333333333),
+    "micro": LobeProfile(0.7142857143, 0.9230769231, 1.0, 0.6153846154, 0.8571428571, 0.3076923077, 0.7142857143, 0.1384615385, 0.0153846154, 0.0, neck_inner_x=0.3714285714),
+    "horizontal_petal": LobeProfile(0.5625, 0.9, 1.0, 0.525, 0.78125, 0.225, 0.5625, 0.05, 0.0, 0.01, neck_inner_x=0.2625),
+    "diag_petal": LobeProfile(0.6666666667, 0.9545454545, 1.0, 0.6363636364, 0.8888888889, 0.3636363636, 0.6666666667, 0.1363636364, 0.0136363636, 0.0, neck_inner_x=0.2777777778),
+    "p_outline": LobeProfile(0.65, 0.9473684211, 1.0, 0.5, 0.8, 0.1842105263, 0.65, -0.0526315789, -0.1973684211, -0.2368421053, neck_inner_x=0.35),
+    "p_refined": LobeProfile(0.7105263158, 0.9634146341, 1.0, 0.7073170732, 0.8947368421, 0.4756097561, 0.7368421053, 0.2195121951, 0.0634146341, 0.0, neck_inner_x=0.3552631579),
+    "d_outline_vertical": LobeProfile(0.6111111111, 0.9428571429, 1.0, 0.5142857143, 0.7777777778, 0.2285714286, 0.6666666667, 0.0285714286, -0.1, -0.1428571429, neck_inner_x=0.3333333333),
+    "d_outline_horizontal": LobeProfile(0.6153846154, 0.9375, 1.0, 0.5625, 0.7692307692, 0.21875, 0.6153846154, 0.03125, -0.03125, -0.03125, neck_inner_x=0.3076923077),
+    "d_refined_vertical": LobeProfile(0.6756756757, 0.9526315789, 1.0, 0.6710526316, 0.8783783784, 0.4105263158, 0.7297297297, 0.1894736842, 0.0473684211, -0.0105263158, neck_inner_x=0.3513513514),
+    "d_refined_horizontal": LobeProfile(0.6078431373, 0.9305555556, 1.0, 0.5833333333, 0.8039215686, 0.2444444444, 0.6470588235, 0.0777777778, 0.0166666667, 0.0, neck_inner_x=0.2745098039),
+    "sp_outline": LobeProfile(0.7647058824, 0.9210526316, 1.0, 0.4736842105, 0.8823529412, 0.0789473684, 0.7647058824, -0.3421052632, -0.6842105263, -1.0, neck_inner_x=0.4411764706),
+    "sp_refined_small": LobeProfile(0.7192982456, 0.9743589744, 1.0, 0.8358974359, 0.8421052632, 0.6871794872, 0.6666666667, 0.5538461538, 0.4410256410, 0.3384615385, neck_inner_x=0.2982456140),
+    "sp_refined_large": LobeProfile(0.3513513514, 0.9045454545, 0.7162162162, 0.75, 0.8513513514, 0.4886363636, 1.0, 0.1318181818, -0.2045454545, -0.2454545455, neck_inner_x=0.7837837838),
+    "sigma_large": LobeProfile(0.75, 0.9210526316, 1.0, 0.5263157895, 0.875, 0.2105263158, 0.75, -0.0789473684, -0.3947368421, -0.7368421053, neck_inner_x=0.4375),
+    "sigma_small": LobeProfile(0.3846153846, 0.9166666667, 0.7692307692, 0.75, 0.9230769231, 0.5, 1.0, 0.1666666667, -0.0833333333, 0.0, neck_inner_x=0.6923076923),
+    "dz2_outline": LobeProfile(0.6923076923, 0.9459459459, 1.0, 0.6216216216, 0.8461538462, 0.3783783784, 0.6923076923, 0.1621621622, 0.0270270270, 0.0, neck_inner_x=0.3076923077),
+    "dz2_refined": LobeProfile(0.6721311475, 0.9589743590, 1.0, 0.6666666667, 0.8524590164, 0.4358974359, 0.7213114754, 0.2564102564, 0.1589743590, 0.1435897436, neck_inner_x=0.3442622951),
+}
+
+
+def _scale_dimensions(width: float, height: float, scale: tuple[float, float]) -> tuple[float, float]:
+    return width * scale[0], height * scale[1]
+
+
+def _profile(name: str) -> LobeProfile:
+    return _LOBE_PROFILES[name]
+
+
+def _vertical_lobe_path(width: float, height: float, neck_ratio: float, profile_name: str) -> QPainterPath:
+    profile = _profile(profile_name)
+    half_width = width * 0.5
+    inner_x_ratio = profile.neck_inner_x if profile.neck_inner_x is not None else neck_ratio
     return _closed_cubic_path(
-        (0.0, -48.0),
+        (0.0, -height),
         (
-            ((15.0, -46.5), (24.0, -27.0), (19.0, -14.0)),
-            ((15.0, -4.5), (8.5, 0.5), (0.0, 1.2)),
-            ((-8.5, 0.5), (-15.0, -4.5), (-19.0, -14.0)),
-            ((-24.0, -27.0), (-15.0, -46.5), (0.0, -48.0)),
+            ((half_width * profile.tip_ctrl_x, -height * profile.tip_ctrl_y), (half_width * profile.shoulder_ctrl_x, -height * profile.shoulder_ctrl_y), (half_width * profile.waist_end_x, -height * profile.waist_end_y)),
+            ((half_width * profile.neck_ctrl_x, -height * profile.neck_ctrl_y), (half_width * inner_x_ratio, -height * profile.neck_inner_y), (0.0, -height * profile.end_y)),
+            ((-half_width * inner_x_ratio, -height * profile.neck_inner_y), (-half_width * profile.neck_ctrl_x, -height * profile.neck_ctrl_y), (-half_width * profile.waist_end_x, -height * profile.waist_end_y)),
+            ((-half_width * profile.shoulder_ctrl_x, -height * profile.shoulder_ctrl_y), (-half_width * profile.tip_ctrl_x, -height * profile.tip_ctrl_y), (0.0, -height)),
         ),
     )
+
+
+def _oriented_lobe_path(
+    width: float,
+    height: float,
+    neck_ratio: float,
+    profile_name: str,
+    *,
+    orientation: str = "up",
+    offset: float = 0.0,
+) -> QPainterPath:
+    base = _vertical_lobe_path(width, height, neck_ratio, profile_name)
+    if orientation == "up":
+        return _transform_path(base, translate=(0.0, offset))
+    if orientation == "down":
+        return _transform_path(base, scale_y=-1.0, translate=(0.0, offset))
+    if orientation == "left":
+        return _transform_path(base, rotate=-90.0, translate=(offset, 0.0))
+    if orientation == "right":
+        return _transform_path(base, rotate=90.0, translate=(offset, 0.0))
+    raise ValueError(f"Orientación de lóbulo no soportada: {orientation}")
+
+
+def _ring_from_metrics(width: float, height: float, inner_scale: tuple[float, float], *, offset_y: float = 0.0) -> QPainterPath:
+    return _ring_path(-width * 0.5, offset_y - height * 0.5, width, height, inner_scale[0], inner_scale[1])
+
+
+def _vertical_lobe_large() -> QPainterPath:
+    return _vertical_lobe_path(48.0, 48.0, 0.3541666667, "large")
 
 
 def _vertical_lobe_small() -> QPainterPath:
-    return _closed_cubic_path(
-        (0.0, -28.0),
-        (
-            ((8.0, -26.0), (12.0, -16.0), (10.0, -9.0)),
-            ((8.0, -4.0), (4.0, -1.0), (0.0, 0.0)),
-            ((-4.0, -1.0), (-8.0, -4.0), (-10.0, -9.0)),
-            ((-12.0, -16.0), (-8.0, -26.0), (0.0, -28.0)),
-        ),
-    )
+    return _vertical_lobe_path(24.0, 28.0, 0.3333333333, "small")
 
 
 def _vertical_lobe_micro() -> QPainterPath:
-    return _closed_cubic_path(
-        (0.0, -13.0),
-        (
-            ((5.0, -12.0), (7.0, -8.0), (6.0, -4.0)),
-            ((5.0, -1.8), (2.6, -0.2), (0.0, 0.0)),
-            ((-2.6, -0.2), (-5.0, -1.8), (-6.0, -4.0)),
-            ((-7.0, -8.0), (-5.0, -12.0), (0.0, -13.0)),
-        ),
-    )
+    return _vertical_lobe_path(14.0, 13.0, 0.3714285714, "micro")
 
 
 def _horizontal_petal() -> QPainterPath:
-    return _closed_cubic_path(
-        (-40.0, 0.0),
-        (
-            ((-36.0, -9.0), (-21.0, -16.0), (-9.0, -12.5)),
-            ((-2.0, -9.0), (0.0, -4.2), (-0.4, 0.0)),
-            ((0.0, 4.2), (-2.0, 9.0), (-9.0, 12.5)),
-            ((-21.0, 16.0), (-36.0, 9.0), (-40.0, 0.0)),
-        ),
-    )
+    return _oriented_lobe_path(32.0, 40.0, 0.2625, "horizontal_petal", orientation="left")
 
 
 def _diag_petal_upper_left() -> QPainterPath:
-    base = _closed_cubic_path(
-        (0.0, -22.0),
-        (
-            ((6.0, -21.0), (9.0, -14.0), (8.0, -8.0)),
-            ((6.0, -3.0), (2.5, -0.3), (0.0, 0.0)),
-            ((-2.5, -0.3), (-6.0, -3.0), (-8.0, -8.0)),
-            ((-9.0, -14.0), (-6.0, -21.0), (0.0, -22.0)),
-        ),
-    )
+    base = _vertical_lobe_path(18.0, 22.0, 0.2777777778, "diag_petal")
     return _transform_path(base, rotate=-38.0, translate=(-20.0, -9.0))
 
 
@@ -355,372 +645,420 @@ def _diag_petal_lower_right() -> QPainterPath:
     return _transform_path(_diag_petal_upper_left(), scale_x=-1.0, scale_y=-1.0)
 
 
-def _build_glyph_library() -> dict[str, GlyphDefinition]:
-    circle_bounds = QRectF(-34.0, -34.0, 68.0, 68.0)
-    sphere = _ellipse_path(-34.0, -34.0, 68.0, 68.0)
-    torus = _ring_path(-36.0, -10.0, 72.0, 20.0, 0.40, 0.34)
+def _bounds_for_layers(*groups: tuple[GlyphLayer, ...]) -> QRectF:
+    bounds: QRectF | None = None
+    for group in groups:
+        for layer in group:
+            rect = layer.path.boundingRect()
+            bounds = rect if bounds is None else bounds.united(rect)
+    return bounds if bounds is not None else QRectF(-1.0, -1.0, 2.0, 2.0)
 
-    p_top = _closed_cubic_path(
-        (0.0, -38.0),
-        (
-            ((13.0, -36.0), (20.0, -19.0), (16.0, -7.0)),
-            ((13.0, 2.0), (7.0, 7.5), (0.0, 9.0)),
-            ((-7.0, 7.5), (-13.0, 2.0), (-16.0, -7.0)),
-            ((-20.0, -19.0), (-13.0, -36.0), (0.0, -38.0)),
-        ),
-    )
-    p_bottom = _transform_path(p_top, scale_x=1.0, scale_y=-1.0)
-    p_refined_top = _closed_cubic_path(
-        (0.0, -41.0),
-        (
-            ((10.8, -39.5), (15.2, -29.0), (13.6, -19.5)),
-            ((11.2, -9.0), (5.4, -2.6), (0.0, 0.0)),
-            ((-5.4, -2.6), (-11.2, -9.0), (-13.6, -19.5)),
-            ((-15.2, -29.0), (-10.8, -39.5), (0.0, -41.0)),
-        ),
-    )
-    p_refined_bottom = _transform_path(p_refined_top, scale_x=1.0, scale_y=-1.0)
 
-    d_top = _closed_cubic_path(
-        (0.0, -35.0),
-        (
-            ((11.0, -33.0), (18.0, -18.0), (14.0, -8.0)),
-            ((12.0, -1.0), (6.0, 3.5), (0.0, 5.0)),
-            ((-6.0, 3.5), (-12.0, -1.0), (-14.0, -8.0)),
-            ((-18.0, -18.0), (-11.0, -33.0), (0.0, -35.0)),
-        ),
+def _glyph_from_layers(
+    glyph_id: str,
+    preset: OrbitalGeometryPreset,
+    *,
+    paths_outline: tuple[GlyphLayer, ...],
+    paths_shaded: tuple[GlyphLayer, ...],
+    paths_solid: tuple[GlyphLayer, ...],
+) -> GlyphDefinition:
+    default_bounds = (
+        QRectF(*preset.default_bounds_override)
+        if preset.default_bounds_override is not None
+        else _bounds_for_layers(paths_outline, paths_shaded, paths_solid)
     )
-    d_bottom = _transform_path(d_top, scale_x=1.0, scale_y=-1.0)
-    d_left = _closed_cubic_path(
-        (-32.0, 0.0),
-        (
-            ((-30.0, -8.0), (-18.0, -13.0), (-7.0, -10.0)),
-            ((-1.0, -8.0), (1.0, -4.0), (1.0, 0.0)),
-            ((1.0, 4.0), (-1.0, 8.0), (-7.0, 10.0)),
-            ((-18.0, 13.0), (-30.0, 8.0), (-32.0, 0.0)),
-        ),
-    )
-    d_right = _transform_path(d_left, scale_x=-1.0, scale_y=1.0)
-    d_refined_top = _closed_cubic_path(
-        (0.0, -38.0),
-        (
-            ((10.0, -36.2), (14.8, -25.5), (13.0, -15.6)),
-            ((10.8, -7.2), (5.2, -1.8), (0.0, 0.4)),
-            ((-5.2, -1.8), (-10.8, -7.2), (-13.0, -15.6)),
-            ((-14.8, -25.5), (-10.0, -36.2), (0.0, -38.0)),
-        ),
-    )
-    d_refined_bottom = _transform_path(d_refined_top, scale_x=1.0, scale_y=-1.0)
-    d_refined_left = _closed_cubic_path(
-        (-36.0, 0.0),
-        (
-            ((-33.5, -6.2), (-21.0, -10.2), (-8.8, -8.2)),
-            ((-2.8, -6.6), (-0.6, -2.8), (0.0, 0.0)),
-            ((-0.6, 2.8), (-2.8, 6.6), (-8.8, 8.2)),
-            ((-21.0, 10.2), (-33.5, 6.2), (-36.0, 0.0)),
-        ),
-    )
-    d_refined_right = _transform_path(d_refined_left, scale_x=-1.0, scale_y=1.0)
-
-    sp_top = _transform_path(_vertical_lobe_small(), translate=(0.0, -22.0))
-    sp_bottom = _transform_path(_vertical_lobe_large(), scale_x=1.0, scale_y=-1.0, translate=(0.0, 1.5))
-
-    sp_single = _closed_cubic_path(
-        (0.0, -38.0),
-        (
-            ((13.0, -35.0), (17.0, -18.0), (15.0, -3.0)),
-            ((13.0, 13.0), (7.5, 26.0), (0.0, 38.0)),
-            ((-7.5, 26.0), (-13.0, 13.0), (-15.0, -3.0)),
-            ((-17.0, -18.0), (-13.0, -35.0), (0.0, -38.0)),
-        ),
-    )
-    sp_refined_small = _closed_cubic_path(
-        (0.0, -39.0),
-        (
-            ((4.1, -38.0), (5.7, -32.6), (4.8, -26.8)),
-            ((3.8, -21.6), (1.7, -17.2), (0.0, -13.2)),
-            ((-1.7, -17.2), (-3.8, -21.6), (-4.8, -26.8)),
-            ((-5.7, -32.6), (-4.1, -38.0), (0.0, -39.0)),
-        ),
-    )
-    sp_refined_large = _closed_cubic_path(
-        (0.0, -10.8),
-        (
-            ((11.6, -9.0), (14.8, 5.8), (12.6, 21.5)),
-            ((10.6, 33.0), (5.2, 39.8), (0.0, 44.0)),
-            ((-5.2, 39.8), (-10.6, 33.0), (-12.6, 21.5)),
-            ((-14.8, 5.8), (-11.6, -9.0), (0.0, -10.8)),
-        ),
+    return GlyphDefinition(
+        id=glyph_id,
+        paths_outline=paths_outline,
+        paths_shaded=paths_shaded,
+        paths_solid=paths_solid,
+        default_bounds=default_bounds,
+        anchor_center=QPointF(0.0, 0.0),
+        anchor_bias=QPointF(*preset.anchor_bias),
+        visual_padding=preset.visual_padding,
     )
 
-    sigma_large = _closed_cubic_path(
-        (0.0, -38.0),
-        (
-            ((12.0, -35.0), (16.0, -20.0), (14.0, -8.0)),
-            ((12.0, 3.0), (7.0, 15.0), (0.0, 28.0)),
-            ((-7.0, 15.0), (-12.0, 3.0), (-14.0, -8.0)),
-            ((-16.0, -20.0), (-12.0, -35.0), (0.0, -38.0)),
-        ),
+
+def _preset_ring_path(preset: OrbitalGeometryPreset, *, outline_variant: bool = False) -> QPainterPath:
+    width = preset.torus_outer_width
+    height = preset.torus_outer_height
+    inner_scale = preset.torus_inner_scale
+    if outline_variant:
+        width, height = _scale_dimensions(width, height, preset.outline_torus_scale)
+        inner_scale = preset.outline_torus_inner_scale or inner_scale
+    return _ring_from_metrics(width, height, inner_scale)
+
+
+def _phase_shaded_layer(
+    path: QPainterPath,
+    *,
+    phase: str,
+    light_dir: str,
+    gradient: str = "linear",
+    stroke: bool = False,
+    light_variant: str | None = None,
+) -> GlyphLayer:
+    return GlyphLayer(
+        path,
+        "shaded",
+        gradient=gradient,
+        stroke=stroke,
+        phase=phase,
+        light_dir=light_dir,
+        light_variant=light_variant,
     )
-    sigma_small = _closed_cubic_path(
-        (0.0, 22.0),
-        (
-            ((4.5, 21.0), (6.5, 24.0), (6.0, 28.0)),
-            ((5.0, 31.0), (2.5, 33.0), (0.0, 34.0)),
-            ((-2.5, 33.0), (-5.0, 31.0), (-6.0, 28.0)),
-            ((-6.5, 24.0), (-4.5, 21.0), (0.0, 22.0)),
+
+
+def _phase_solid_layer(
+    path: QPainterPath,
+    *,
+    phase: str,
+    light_dir: str | None = None,
+    stroke: bool = False,
+) -> GlyphLayer:
+    return GlyphLayer(
+        path,
+        "solid",
+        stroke=stroke,
+        phase=phase,
+        light_dir=light_dir,
+    )
+
+
+def _build_s_round_glyph() -> GlyphDefinition:
+    preset = ORBITAL_GEOMETRY_PRESETS["s_round"]
+    sphere = _ellipse_path(
+        -preset.main_lobe_width * 0.5,
+        -preset.main_lobe_height * 0.5,
+        preset.main_lobe_width,
+        preset.main_lobe_height,
+    )
+    return _glyph_from_layers(
+        "s_round",
+        preset,
+        paths_outline=(GlyphLayer(sphere, "outline"),),
+        paths_shaded=(
+            _phase_shaded_layer(
+                sphere,
+                phase="positive",
+                light_dir="southeast",
+                gradient="radial",
+                stroke=False,
+            ),
+        ),
+        paths_solid=(
+            _phase_solid_layer(
+                sphere,
+                phase="positive",
+                stroke=True,
+            ),
         ),
     )
 
-    dz2_top = _closed_cubic_path(
-        (0.0, -37.0),
-        (
-            ((9.0, -35.0), (13.0, -23.0), (11.0, -14.0)),
-            ((9.0, -6.0), (4.0, -1.0), (0.0, 0.0)),
-            ((-4.0, -1.0), (-9.0, -6.0), (-11.0, -14.0)),
-            ((-13.0, -23.0), (-9.0, -35.0), (0.0, -37.0)),
+
+def _build_torus_flat_glyph() -> GlyphDefinition:
+    preset = ORBITAL_GEOMETRY_PRESETS["torus_flat"]
+    torus = _preset_ring_path(preset)
+    return _glyph_from_layers(
+        "torus_flat",
+        preset,
+        paths_outline=(GlyphLayer(torus, "outline"),),
+        paths_shaded=(
+            _phase_shaded_layer(
+                torus,
+                phase="positive",
+                light_dir="south",
+                gradient="elliptical",
+            ),
+        ),
+        paths_solid=(
+            _phase_solid_layer(
+                torus,
+                phase="positive",
+            ),
         ),
     )
-    dz2_bottom = _transform_path(dz2_top, scale_x=1.0, scale_y=-1.0)
-    dz2_ring = _ring_path(-33.0, -7.0, 66.0, 14.0, 0.44, 0.36)
-    dz2_refined_top = _closed_cubic_path(
-        (0.0, -39.0),
-        (
-            ((8.2, -37.4), (12.2, -26.0), (10.4, -17.0)),
-            ((8.8, -10.0), (4.2, -6.2), (0.0, -5.6)),
-            ((-4.2, -6.2), (-8.8, -10.0), (-10.4, -17.0)),
-            ((-12.2, -26.0), (-8.2, -37.4), (0.0, -39.0)),
+
+
+def _build_p_vertical_glyph() -> GlyphDefinition:
+    preset = ORBITAL_GEOMETRY_PRESETS["p_vertical"]
+    outline_w, outline_h = _scale_dimensions(preset.main_lobe_width, preset.main_lobe_height, preset.outline_main_scale)
+    outline_profile = preset.outline_main_profile or preset.main_profile
+    top_outline = _oriented_lobe_path(outline_w, outline_h, preset.neck_ratio, outline_profile, orientation="up", offset=preset.upper_lobe_offset)
+    bottom_outline = _oriented_lobe_path(outline_w, outline_h, preset.neck_ratio, outline_profile, orientation="down", offset=preset.lower_lobe_offset)
+    top_fill = _oriented_lobe_path(preset.main_lobe_width, preset.main_lobe_height, preset.neck_ratio, preset.main_profile, orientation="up", offset=preset.upper_lobe_offset)
+    bottom_fill = _oriented_lobe_path(preset.secondary_lobe_width, preset.secondary_lobe_height, preset.neck_ratio, preset.secondary_profile or preset.main_profile, orientation="down", offset=preset.lower_lobe_offset)
+    return _glyph_from_layers(
+        "p_vertical",
+        preset,
+        paths_outline=(
+            GlyphLayer(top_outline, "outline"),
+            GlyphLayer(bottom_outline, "outline"),
+        ),
+        paths_shaded=(
+            _phase_shaded_layer(top_fill, phase="positive", light_dir="south"),
+            _phase_shaded_layer(bottom_fill, phase="negative", light_dir="north"),
+        ),
+        paths_solid=(
+            _phase_solid_layer(top_fill, phase="positive"),
+            _phase_solid_layer(bottom_fill, phase="negative"),
         ),
     )
-    dz2_refined_bottom = _transform_path(dz2_refined_top, scale_x=1.0, scale_y=-1.0)
-    dz2_refined_ring = _ring_path(-31.0, -4.8, 62.0, 9.6, 0.46, 0.26)
 
-    pi_top = _transform_path(dz2_top, translate=(0.0, -2.0))
-    pi_bottom = _transform_path(pi_top, scale_x=1.0, scale_y=-1.0)
-    pi_ring = _ring_path(-24.0, -5.5, 48.0, 11.0, 0.44, 0.40)
 
+def _build_d_clover_glyph() -> GlyphDefinition:
+    preset = ORBITAL_GEOMETRY_PRESETS["d_clover"]
+    outline_main_w, outline_main_h = _scale_dimensions(preset.main_lobe_width, preset.main_lobe_height, preset.outline_main_scale)
+    outline_secondary_w, outline_secondary_h = _scale_dimensions(preset.secondary_lobe_width, preset.secondary_lobe_height, preset.outline_secondary_scale)
+    outline_top = _oriented_lobe_path(outline_main_w, outline_main_h, preset.neck_ratio, preset.outline_main_profile or preset.main_profile, orientation="up")
+    outline_bottom = _oriented_lobe_path(outline_main_w, outline_main_h, preset.neck_ratio, preset.outline_main_profile or preset.main_profile, orientation="down")
+    outline_left = _oriented_lobe_path(outline_secondary_w, outline_secondary_h, preset.neck_ratio, preset.outline_secondary_profile or preset.secondary_profile or preset.main_profile, orientation="left")
+    outline_right = _oriented_lobe_path(outline_secondary_w, outline_secondary_h, preset.neck_ratio, preset.outline_secondary_profile or preset.secondary_profile or preset.main_profile, orientation="right")
+    fill_top = _oriented_lobe_path(preset.main_lobe_width, preset.main_lobe_height, preset.neck_ratio, preset.main_profile, orientation="up")
+    fill_bottom = _oriented_lobe_path(preset.main_lobe_width, preset.main_lobe_height, preset.neck_ratio, preset.main_profile, orientation="down")
+    fill_left = _oriented_lobe_path(preset.secondary_lobe_width, preset.secondary_lobe_height, preset.neck_ratio, preset.secondary_profile or preset.main_profile, orientation="left")
+    fill_right = _oriented_lobe_path(preset.secondary_lobe_width, preset.secondary_lobe_height, preset.neck_ratio, preset.secondary_profile or preset.main_profile, orientation="right")
+    return _glyph_from_layers(
+        "d_clover",
+        preset,
+        paths_outline=(
+            GlyphLayer(outline_left, "outline"),
+            GlyphLayer(outline_top, "outline"),
+            GlyphLayer(outline_right, "outline"),
+            GlyphLayer(outline_bottom, "outline"),
+        ),
+        paths_shaded=(
+            _phase_shaded_layer(fill_left, phase="positive", light_dir="east"),
+            _phase_shaded_layer(fill_top, phase="negative", light_dir="south"),
+            _phase_shaded_layer(fill_right, phase="positive", light_dir="west"),
+            _phase_shaded_layer(fill_bottom, phase="negative", light_dir="north"),
+        ),
+        paths_solid=(
+            _phase_solid_layer(fill_left, phase="positive"),
+            _phase_solid_layer(fill_top, phase="negative"),
+            _phase_solid_layer(fill_right, phase="positive"),
+            _phase_solid_layer(fill_bottom, phase="negative"),
+        ),
+    )
+
+
+def _build_sp3_hybrid_glyph() -> GlyphDefinition:
+    preset = ORBITAL_GEOMETRY_PRESETS["sp3_hybrid"]
+    top = _oriented_lobe_path(preset.secondary_lobe_width, preset.secondary_lobe_height, preset.neck_ratio, preset.secondary_profile or preset.main_profile, orientation="up", offset=preset.upper_lobe_offset)
+    bottom = _oriented_lobe_path(preset.main_lobe_width, preset.main_lobe_height, preset.neck_ratio, preset.main_profile, orientation="down", offset=preset.lower_lobe_offset)
+    return _glyph_from_layers(
+        "sp3_hybrid",
+        preset,
+        paths_outline=(
+            GlyphLayer(top, "outline"),
+            GlyphLayer(bottom, "outline"),
+        ),
+        paths_shaded=(
+            _phase_shaded_layer(top, phase="negative", light_dir="south"),
+            _phase_shaded_layer(bottom, phase="positive", light_dir="north"),
+        ),
+        paths_solid=(
+            _phase_solid_layer(top, phase="negative"),
+            _phase_solid_layer(bottom, phase="positive"),
+        ),
+    )
+
+
+def _build_sp_lobe_glyph() -> GlyphDefinition:
+    preset = ORBITAL_GEOMETRY_PRESETS["sp_lobe"]
+    top = _oriented_lobe_path(preset.secondary_lobe_width, preset.secondary_lobe_height, preset.neck_ratio, preset.secondary_profile or preset.main_profile, orientation="up", offset=preset.upper_lobe_offset)
+    bottom = _oriented_lobe_path(preset.main_lobe_width, preset.main_lobe_height, preset.neck_ratio, preset.main_profile, orientation="down", offset=preset.lower_lobe_offset)
+    if preset.outline_main_profile:
+        outline_w, outline_h = _scale_dimensions(preset.main_lobe_width, preset.main_lobe_height, preset.outline_main_scale)
+        outline = _vertical_lobe_path(outline_w, outline_h, preset.neck_ratio, preset.outline_main_profile)
+    else:
+        outline = top.united(bottom)
+    return _glyph_from_layers(
+        "sp_lobe",
+        preset,
+        paths_outline=(GlyphLayer(outline, "outline"),),
+        paths_shaded=(
+            _phase_shaded_layer(top, phase="negative", light_dir="south"),
+            _phase_shaded_layer(bottom, phase="positive", light_dir="north"),
+        ),
+        paths_solid=(
+            _phase_solid_layer(top, phase="negative"),
+            _phase_solid_layer(bottom, phase="positive"),
+        ),
+    )
+
+
+def _build_sigma_bonding_glyph() -> GlyphDefinition:
+    preset = ORBITAL_GEOMETRY_PRESETS["sigma_bonding"]
+    large = _oriented_lobe_path(preset.main_lobe_width, preset.main_lobe_height, preset.neck_ratio, preset.main_profile, orientation="up", offset=preset.upper_lobe_offset)
+    small = _oriented_lobe_path(preset.secondary_lobe_width, preset.secondary_lobe_height, preset.neck_ratio, preset.secondary_profile or preset.main_profile, orientation="down", offset=preset.lower_lobe_offset)
+    return _glyph_from_layers(
+        "sigma_bonding",
+        preset,
+        paths_outline=(
+            GlyphLayer(large, "outline"),
+            GlyphLayer(small, "outline"),
+        ),
+        paths_shaded=(
+            _phase_shaded_layer(large, phase="positive", light_dir="south"),
+            _phase_shaded_layer(small, phase="negative", light_dir="north"),
+        ),
+        paths_solid=(
+            _phase_solid_layer(large, phase="positive"),
+            _phase_solid_layer(small, phase="negative"),
+        ),
+    )
+
+
+def _build_dz2_axial_glyph() -> GlyphDefinition:
+    preset = ORBITAL_GEOMETRY_PRESETS["dz2_axial"]
+    outline_w, outline_h = _scale_dimensions(preset.main_lobe_width, preset.main_lobe_height, preset.outline_main_scale)
+    outline_profile = preset.outline_main_profile or preset.main_profile
+    top_outline = _oriented_lobe_path(outline_w, outline_h, preset.neck_ratio, outline_profile, orientation="up")
+    bottom_outline = _oriented_lobe_path(outline_w, outline_h, preset.neck_ratio, outline_profile, orientation="down")
+    outline_ring = _preset_ring_path(preset, outline_variant=True)
+    top_fill = _oriented_lobe_path(preset.main_lobe_width, preset.main_lobe_height, preset.neck_ratio, preset.main_profile, orientation="up")
+    bottom_fill = _oriented_lobe_path(preset.secondary_lobe_width, preset.secondary_lobe_height, preset.neck_ratio, preset.secondary_profile or preset.main_profile, orientation="down")
+    fill_ring = _preset_ring_path(preset)
+    return _glyph_from_layers(
+        "dz2_axial",
+        preset,
+        paths_outline=(
+            GlyphLayer(top_outline, "outline"),
+            GlyphLayer(outline_ring, "outline"),
+            GlyphLayer(bottom_outline, "outline"),
+        ),
+        paths_shaded=(
+            _phase_shaded_layer(top_fill, phase="positive", light_dir="south"),
+            _phase_shaded_layer(fill_ring, phase="negative", light_dir="south", gradient="elliptical"),
+            _phase_shaded_layer(bottom_fill, phase="positive", light_dir="north"),
+        ),
+        paths_solid=(
+            _phase_solid_layer(top_fill, phase="positive"),
+            _phase_solid_layer(fill_ring, phase="negative"),
+            _phase_solid_layer(bottom_fill, phase="positive"),
+        ),
+    )
+
+
+def _build_pi_bonding_glyph() -> GlyphDefinition:
+    preset = ORBITAL_GEOMETRY_PRESETS["pi_bonding"]
+    top = _oriented_lobe_path(preset.main_lobe_width, preset.main_lobe_height, preset.neck_ratio, preset.main_profile, orientation="up", offset=preset.upper_lobe_offset)
+    bottom = _oriented_lobe_path(preset.secondary_lobe_width, preset.secondary_lobe_height, preset.neck_ratio, preset.secondary_profile or preset.main_profile, orientation="down", offset=preset.lower_lobe_offset)
+    ring = _preset_ring_path(preset)
+    return _glyph_from_layers(
+        "pi_bonding",
+        preset,
+        paths_outline=(
+            GlyphLayer(top, "outline"),
+            GlyphLayer(ring, "outline"),
+            GlyphLayer(bottom, "outline"),
+        ),
+        paths_shaded=(
+            _phase_shaded_layer(top, phase="positive", light_dir="south"),
+            _phase_shaded_layer(ring, phase="neutral", light_dir="south", gradient="elliptical"),
+            _phase_shaded_layer(bottom, phase="negative", light_dir="north"),
+        ),
+        paths_solid=(
+            _phase_solid_layer(top, phase="positive"),
+            _phase_solid_layer(ring, phase="neutral"),
+            _phase_solid_layer(bottom, phase="negative"),
+        ),
+    )
+
+
+def _build_f_clover_glyph() -> GlyphDefinition:
     f_top = _transform_path(_vertical_lobe_small(), translate=(0.0, -20.0))
     f_bottom = _transform_path(f_top, scale_x=1.0, scale_y=-1.0)
     f_left = _transform_path(_horizontal_petal(), translate=(-4.0, 0.0), scale_x=0.64, scale_y=0.64)
     f_right = _transform_path(f_left, scale_x=-1.0, scale_y=1.0)
     f_diag_a = _diag_petal_upper_left()
     f_diag_b = _diag_petal_lower_right()
+    outline = (
+        GlyphLayer(f_left, "outline"),
+        GlyphLayer(f_top, "outline"),
+        GlyphLayer(f_diag_a, "outline"),
+        GlyphLayer(f_right, "outline"),
+        GlyphLayer(f_bottom, "outline"),
+        GlyphLayer(f_diag_b, "outline"),
+    )
+    shaded = (
+        GlyphLayer(f_left, "shaded", stroke=False),
+        GlyphLayer(f_top, "shaded", stroke=False),
+        GlyphLayer(f_diag_a, "shaded", stroke=False),
+        GlyphLayer(f_right, "shaded", stroke=False),
+        GlyphLayer(f_bottom, "shaded", stroke=False),
+        GlyphLayer(f_diag_b, "shaded", stroke=False),
+    )
+    solid = (
+        GlyphLayer(f_left, "solid", stroke=False),
+        GlyphLayer(f_top, "solid", stroke=False),
+        GlyphLayer(f_diag_a, "solid", stroke=False),
+        GlyphLayer(f_right, "solid", stroke=False),
+        GlyphLayer(f_bottom, "solid", stroke=False),
+        GlyphLayer(f_diag_b, "solid", stroke=False),
+    )
+    return GlyphDefinition(
+        id="f_clover",
+        paths_outline=outline,
+        paths_shaded=shaded,
+        paths_solid=solid,
+        default_bounds=_bounds_for_layers(outline, shaded, solid),
+        anchor_center=QPointF(0.0, 0.0),
+        anchor_bias=QPointF(0.0, 0.0),
+        visual_padding=10.0,
+    )
 
+
+def _build_fz3_axial_glyph() -> GlyphDefinition:
     fz3_top = _transform_path(_vertical_lobe_small(), translate=(0.0, -28.0))
     fz3_mid = _transform_path(_vertical_lobe_micro(), translate=(0.0, 0.0))
     fz3_bottom = _transform_path(_vertical_lobe_small(), scale_x=1.0, scale_y=-1.0, translate=(0.0, 28.0))
     fz3_ring = _ring_path(-23.0, -6.0, 46.0, 12.0, 0.48, 0.46)
+    outline = (
+        GlyphLayer(fz3_top, "outline"),
+        GlyphLayer(fz3_mid, "outline"),
+        GlyphLayer(fz3_ring, "outline"),
+        GlyphLayer(fz3_bottom, "outline"),
+    )
+    shaded = (
+        GlyphLayer(fz3_top, "shaded", stroke=False),
+        GlyphLayer(fz3_mid, "shaded", stroke=False),
+        GlyphLayer(fz3_ring, "shaded", gradient="radial", stroke=False),
+        GlyphLayer(fz3_bottom, "shaded", stroke=False),
+    )
+    solid = (
+        GlyphLayer(fz3_top, "solid", stroke=False),
+        GlyphLayer(fz3_mid, "solid", stroke=False),
+        GlyphLayer(fz3_ring, "solid", stroke=False),
+        GlyphLayer(fz3_bottom, "solid", stroke=False),
+    )
+    return GlyphDefinition(
+        id="fz3_axial",
+        paths_outline=outline,
+        paths_shaded=shaded,
+        paths_solid=solid,
+        default_bounds=_bounds_for_layers(outline, shaded, solid),
+        anchor_center=QPointF(0.0, 0.0),
+        anchor_bias=QPointF(0.0, 0.0),
+        visual_padding=10.0,
+    )
 
-    library = {
-        "s_round": GlyphDefinition(
-            id="s_round",
-            paths_outline=(GlyphLayer(sphere, "outline"),),
-            paths_shaded=(GlyphLayer(sphere, "shaded", gradient="radial"),),
-            paths_solid=(GlyphLayer(sphere, "solid", stroke=True),),
-            default_bounds=circle_bounds,
-            anchor_center=QPointF(0.0, 0.0),
-            visual_padding=6.0,
-        ),
-        "torus_flat": GlyphDefinition(
-            id="torus_flat",
-            paths_outline=(GlyphLayer(torus, "outline"),),
-            paths_shaded=(GlyphLayer(torus, "shaded", gradient="radial"),),
-            paths_solid=(GlyphLayer(torus, "solid", stroke=False),),
-            default_bounds=QRectF(-36.0, -10.0, 72.0, 20.0),
-            anchor_center=QPointF(0.0, 0.0),
-            visual_padding=6.0,
-        ),
-        "p_vertical": GlyphDefinition(
-            id="p_vertical",
-            paths_outline=(
-                GlyphLayer(p_top, "outline"),
-                GlyphLayer(p_bottom, "outline"),
-            ),
-            paths_shaded=(
-                GlyphLayer(p_refined_top, "shaded", stroke=False),
-                GlyphLayer(p_refined_bottom, "outline"),
-            ),
-            paths_solid=(
-                GlyphLayer(p_refined_top, "solid", stroke=False),
-                GlyphLayer(p_refined_bottom, "outline"),
-            ),
-            default_bounds=QRectF(-16.0, -41.0, 32.0, 82.0),
-            anchor_center=QPointF(0.0, 0.0),
-            visual_padding=4.5,
-        ),
-        "d_clover": GlyphDefinition(
-            id="d_clover",
-            paths_outline=(
-                GlyphLayer(d_left, "outline"),
-                GlyphLayer(d_top, "outline"),
-                GlyphLayer(d_right, "outline"),
-                GlyphLayer(d_bottom, "outline"),
-            ),
-            paths_shaded=(
-                GlyphLayer(d_refined_left, "outline"),
-                GlyphLayer(d_refined_top, "shaded", stroke=False),
-                GlyphLayer(d_refined_right, "outline"),
-                GlyphLayer(d_refined_bottom, "shaded", stroke=False),
-            ),
-            paths_solid=(
-                GlyphLayer(d_refined_left, "outline"),
-                GlyphLayer(d_refined_top, "solid", stroke=False),
-                GlyphLayer(d_refined_right, "outline"),
-                GlyphLayer(d_refined_bottom, "solid", stroke=False),
-            ),
-            default_bounds=QRectF(-36.0, -38.0, 72.0, 76.0),
-            anchor_center=QPointF(0.0, 0.0),
-            visual_padding=5.0,
-        ),
-        "sp3_hybrid": GlyphDefinition(
-            id="sp3_hybrid",
-            paths_outline=(
-                GlyphLayer(sp_top, "outline"),
-                GlyphLayer(sp_bottom, "outline"),
-            ),
-            paths_shaded=(
-                GlyphLayer(sp_top, "shaded"),
-                GlyphLayer(sp_bottom, "outline"),
-            ),
-            paths_solid=(
-                GlyphLayer(sp_top, "solid", stroke=False),
-                GlyphLayer(sp_bottom, "outline"),
-            ),
-            default_bounds=QRectF(-21.0, -50.0, 42.0, 101.0),
-            anchor_center=QPointF(0.0, 0.0),
-            visual_padding=6.0,
-        ),
-        "sp_lobe": GlyphDefinition(
-            id="sp_lobe",
-            paths_outline=(GlyphLayer(sp_single, "outline"),),
-            paths_shaded=(
-                GlyphLayer(sp_refined_small, "shaded", stroke=False),
-                GlyphLayer(sp_refined_large, "shaded", stroke=False),
-            ),
-            paths_solid=(
-                GlyphLayer(sp_refined_small, "solid", stroke=False),
-                GlyphLayer(sp_refined_large, "solid", stroke=False),
-            ),
-            default_bounds=QRectF(-17.0, -38.0, 34.0, 76.0),
-            anchor_center=QPointF(0.0, 0.0),
-            visual_padding=5.0,
-        ),
-        "sigma_bonding": GlyphDefinition(
-            id="sigma_bonding",
-            paths_outline=(
-                GlyphLayer(sigma_large, "outline"),
-                GlyphLayer(sigma_small, "outline"),
-            ),
-            paths_shaded=(
-                GlyphLayer(sigma_large, "outline"),
-                GlyphLayer(sigma_small, "shaded"),
-            ),
-            paths_solid=(
-                GlyphLayer(sigma_large, "outline"),
-                GlyphLayer(sigma_small, "solid", stroke=False),
-            ),
-            default_bounds=QRectF(-16.0, -38.0, 32.0, 72.0),
-            anchor_center=QPointF(0.0, 0.0),
-            visual_padding=5.0,
-        ),
-        "dz2_axial": GlyphDefinition(
-            id="dz2_axial",
-            paths_outline=(
-                GlyphLayer(dz2_top, "outline"),
-                GlyphLayer(dz2_ring, "outline"),
-                GlyphLayer(dz2_bottom, "outline"),
-            ),
-            paths_shaded=(
-                GlyphLayer(dz2_refined_top, "shaded", stroke=False),
-                GlyphLayer(dz2_refined_ring, "shaded", gradient="radial", stroke=False),
-                GlyphLayer(dz2_refined_bottom, "shaded", stroke=False),
-            ),
-            paths_solid=(
-                GlyphLayer(dz2_top, "solid", stroke=False),
-                GlyphLayer(dz2_ring, "solid", stroke=False),
-                GlyphLayer(dz2_bottom, "solid", stroke=False),
-            ),
-            default_bounds=QRectF(-31.0, -39.0, 62.0, 78.0),
-            anchor_center=QPointF(0.0, 0.0),
-            visual_padding=5.0,
-        ),
-        "pi_bonding": GlyphDefinition(
-            id="pi_bonding",
-            paths_outline=(
-                GlyphLayer(pi_top, "outline"),
-                GlyphLayer(pi_ring, "outline"),
-                GlyphLayer(pi_bottom, "outline"),
-            ),
-            paths_shaded=(
-                GlyphLayer(pi_top, "outline"),
-                GlyphLayer(pi_ring, "shaded", gradient="radial"),
-                GlyphLayer(pi_bottom, "outline"),
-            ),
-            paths_solid=(
-                GlyphLayer(pi_top, "outline"),
-                GlyphLayer(pi_ring, "solid", stroke=False),
-                GlyphLayer(pi_bottom, "outline"),
-            ),
-            default_bounds=QRectF(-24.0, -39.0, 48.0, 78.0),
-            anchor_center=QPointF(0.0, 0.0),
-            visual_padding=5.0,
-        ),
-        "f_clover": GlyphDefinition(
-            id="f_clover",
-            paths_outline=(
-                GlyphLayer(f_left, "outline"),
-                GlyphLayer(f_top, "outline"),
-                GlyphLayer(f_diag_a, "outline"),
-                GlyphLayer(f_right, "outline"),
-                GlyphLayer(f_bottom, "outline"),
-                GlyphLayer(f_diag_b, "outline"),
-            ),
-            paths_shaded=(
-                GlyphLayer(f_left, "outline"),
-                GlyphLayer(f_top, "shaded"),
-                GlyphLayer(f_diag_a, "shaded"),
-                GlyphLayer(f_right, "outline"),
-                GlyphLayer(f_bottom, "shaded"),
-                GlyphLayer(f_diag_b, "outline"),
-            ),
-            paths_solid=(
-                GlyphLayer(f_left, "outline"),
-                GlyphLayer(f_top, "solid", stroke=False),
-                GlyphLayer(f_diag_a, "solid", stroke=False),
-                GlyphLayer(f_right, "outline"),
-                GlyphLayer(f_bottom, "solid", stroke=False),
-                GlyphLayer(f_diag_b, "outline"),
-            ),
-            default_bounds=QRectF(-42.0, -42.0, 84.0, 84.0),
-            anchor_center=QPointF(0.0, 0.0),
-            visual_padding=10.0,
-        ),
-        "fz3_axial": GlyphDefinition(
-            id="fz3_axial",
-            paths_outline=(
-                GlyphLayer(fz3_top, "outline"),
-                GlyphLayer(fz3_mid, "outline"),
-                GlyphLayer(fz3_ring, "outline"),
-                GlyphLayer(fz3_bottom, "outline"),
-            ),
-            paths_shaded=(
-                GlyphLayer(fz3_top, "outline"),
-                GlyphLayer(fz3_mid, "shaded"),
-                GlyphLayer(fz3_ring, "shaded", gradient="radial"),
-                GlyphLayer(fz3_bottom, "outline"),
-            ),
-            paths_solid=(
-                GlyphLayer(fz3_top, "outline"),
-                GlyphLayer(fz3_mid, "solid", stroke=False),
-                GlyphLayer(fz3_ring, "solid", stroke=False),
-                GlyphLayer(fz3_bottom, "outline"),
-            ),
-            default_bounds=QRectF(-23.0, -50.0, 46.0, 100.0),
-            anchor_center=QPointF(0.0, 0.0),
-            visual_padding=10.0,
-        ),
+
+def _build_glyph_library() -> dict[str, GlyphDefinition]:
+    return {
+        "s_round": _build_s_round_glyph(),
+        "torus_flat": _build_torus_flat_glyph(),
+        "p_vertical": _build_p_vertical_glyph(),
+        "d_clover": _build_d_clover_glyph(),
+        "sp3_hybrid": _build_sp3_hybrid_glyph(),
+        "sp_lobe": _build_sp_lobe_glyph(),
+        "sigma_bonding": _build_sigma_bonding_glyph(),
+        "dz2_axial": _build_dz2_axial_glyph(),
+        "pi_bonding": _build_pi_bonding_glyph(),
+        "f_clover": _build_f_clover_glyph(),
+        "fz3_axial": _build_fz3_axial_glyph(),
     }
-    return library
 
 
 ORBITAL_GLYPH_LIBRARY = _build_glyph_library()
@@ -797,6 +1135,9 @@ class OrbitalRenderer:
                     layer.paint,
                     gradient=layer.gradient,
                     stroke=layer.stroke,
+                    phase=layer.phase,
+                    light_dir=layer.light_dir,
+                    light_variant=layer.light_variant,
                 )
             )
         return tuple(transformed)
@@ -816,23 +1157,94 @@ class OrbitalRenderer:
         return max(1.1, min(2.2, scale * 1.9))
 
     @staticmethod
-    def _gradient_for_path(path: QPainterPath, mode: str) -> QBrush:
-        rect = path.boundingRect()
-        if mode == "radial":
-            radius = max(rect.width(), rect.height()) * 0.88
-            focus = QPointF(rect.left() + rect.width() * 0.34, rect.top() + rect.height() * 0.28)
-            gradient = QRadialGradient(focus, radius, focus)
-            gradient.setColorAt(0.0, QColor("#FFFFFF"))
-            gradient.setColorAt(0.38, QColor("#D9D9D9"))
-            gradient.setColorAt(0.72, QColor("#676767"))
-            gradient.setColorAt(1.0, QColor("#101010"))
-            return QBrush(gradient)
+    def _gradient_stops_for_layer(layer: GlyphLayer) -> tuple[tuple[float, str], ...]:
+        if layer.light_variant and layer.light_variant in _GRADIENT_STOP_PRESETS:
+            return _GRADIENT_STOP_PRESETS[layer.light_variant]
+        if layer.phase == "negative":
+            return _GRADIENT_STOP_PRESETS["dual_negative"]
+        if layer.phase == "positive":
+            return _GRADIENT_STOP_PRESETS["dual_positive"]
+        return _GRADIENT_STOP_PRESETS["default"]
 
-        gradient = QLinearGradient(rect.left(), rect.top(), rect.right(), rect.bottom())
-        gradient.setColorAt(0.0, QColor("#FFFFFF"))
-        gradient.setColorAt(0.40, QColor("#D8D8D8"))
-        gradient.setColorAt(0.72, QColor("#727272"))
-        gradient.setColorAt(1.0, QColor("#151515"))
+    @staticmethod
+    def _apply_gradient_stops(gradient: QLinearGradient | QRadialGradient, layer: GlyphLayer) -> None:
+        for stop, color in OrbitalRenderer._gradient_stops_for_layer(layer):
+            gradient.setColorAt(stop, QColor(color))
+
+    @staticmethod
+    def _light_vector(light_dir: str | None, rect: QRectF) -> tuple[float, float]:
+        if light_dir and light_dir in _LIGHT_DIRECTION_VECTORS:
+            return _LIGHT_DIRECTION_VECTORS[light_dir]
+        if rect.height() >= rect.width():
+            return _LIGHT_DIRECTION_VECTORS["south"]
+        return _LIGHT_DIRECTION_VECTORS["east"]
+
+    @staticmethod
+    def _gradient_profile(rect: QRectF) -> dict[str, float | bool]:
+        major = max(rect.width(), rect.height(), 1.0)
+        minor = max(min(rect.width(), rect.height()), 1.0)
+        is_small = major <= 24.0 or rect.width() * rect.height() <= 420.0 or minor <= 10.0
+        if is_small:
+            return {
+                "small": True,
+                "focus_bias": 0.16,
+                "radius_scale": 0.84,
+                "linear_span": 0.92,
+            }
+        return {
+            "small": False,
+            "focus_bias": 0.30,
+            "radius_scale": 0.96,
+            "linear_span": 1.10,
+        }
+
+    @staticmethod
+    def _elliptical_brush_transform(rect: QRectF) -> QTransform:
+        center = rect.center()
+        width = max(rect.width(), 1.0)
+        height = max(rect.height(), 1.0)
+        transform = QTransform()
+        transform.translate(center.x(), center.y())
+        if width >= height:
+            transform.scale(1.0, width / height)
+        else:
+            transform.scale(height / width, 1.0)
+        transform.translate(-center.x(), -center.y())
+        return transform
+
+    @classmethod
+    def _gradient_for_path(cls, layer: GlyphLayer) -> QBrush:
+        rect = layer.path.boundingRect()
+        profile = cls._gradient_profile(rect)
+        vector_x, vector_y = cls._light_vector(layer.light_dir, rect)
+        center = rect.center()
+
+        if layer.gradient in {"radial", "elliptical"}:
+            major = max(rect.width(), rect.height(), 1.0)
+            radius = major * float(profile["radius_scale"])
+            focus_bias = major * float(profile["focus_bias"])
+            focus = QPointF(
+                center.x() - vector_x * focus_bias,
+                center.y() - vector_y * focus_bias,
+            )
+            gradient = QRadialGradient(center, radius, focus)
+            cls._apply_gradient_stops(gradient, layer)
+            brush = QBrush(gradient)
+            if layer.gradient == "elliptical":
+                brush.setTransform(cls._elliptical_brush_transform(rect))
+            return brush
+
+        span = float(profile["linear_span"])
+        start = QPointF(
+            center.x() - vector_x * rect.width() * 0.5 * span,
+            center.y() - vector_y * rect.height() * 0.5 * span,
+        )
+        end = QPointF(
+            center.x() + vector_x * rect.width() * 0.5 * span,
+            center.y() + vector_y * rect.height() * 0.5 * span,
+        )
+        gradient = QLinearGradient(start, end)
+        cls._apply_gradient_stops(gradient, layer)
         return QBrush(gradient)
 
     @staticmethod
@@ -860,7 +1272,7 @@ class OrbitalRenderer:
             return
 
         if layer.paint == "shaded":
-            painter.setBrush(self._gradient_for_path(layer.path, layer.gradient))
+            painter.setBrush(self._gradient_for_path(layer))
             if layer.stroke and stroke_shaded_lobes:
                 painter.setPen(self._outline_pen(stroke_width))
             elif layer.stroke:
@@ -911,7 +1323,11 @@ class OrbitalRenderer:
         )
         anchor1 = QPointF(anchor0.x(), anchor0.y() - self._reference_extent(glyph) * scale)
         bbox = self.bounding_rect(spec, anchor0, anchor1)
-        delta = inner.center() - bbox.center()
+        target_center = inner.center() + QPointF(
+            glyph.anchor_bias.x() * scale,
+            glyph.anchor_bias.y() * scale,
+        )
+        delta = target_center - bbox.center()
         return anchor0 + delta, anchor1 + delta
 
     def draw_icon(self, kind: str, size: int = ORBITAL_ICON_SIZE) -> QIcon:
