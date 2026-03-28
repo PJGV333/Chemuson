@@ -2,7 +2,7 @@
   "_meta": {
     "format_version": 1,
     "path_hint": "/mnt/HDD_4TB/chemuson/Chemuson/config/orbitals_presets.json",
-    "notes": "Edita estos parametros y usa tools/orbital_tuner.py o tools/render_orbital_family_preview.py para previsualizar."
+    "notes": "Edita estos par\u00e1metros y usa tools/orbital_tuner.py o tools/render_orbital_family_preview.py para previsualizar."
   },
   "s": {
     "builder": "build_s_orbital",
@@ -14,16 +14,25 @@
       "anchor_bias_y": 0.0,
       "gradient_mode": "radial",
       "light_dir": "northwest"
+    },
+    "_docs": {
+      "radius_x": "Semieje horizontal de la esfera u orbital s.",
+      "radius_y": "Semieje vertical de la esfera u orbital s.",
+      "visual_padding": "Padding \u00f3ptico alrededor del glifo al encajar en la palette.",
+      "anchor_bias_x": "Desplazamiento horizontal del centro visual del glifo.",
+      "anchor_bias_y": "Desplazamiento vertical del centro visual del glifo.",
+      "gradient_mode": "Modo base de sombreado: linear, radial o elliptical.",
+      "light_dir": "Direcci\u00f3n global de la luz del sombreado."
     }
   },
   "p": {
     "builder": "build_p_orbital",
     "params": {
-      "lobe_width": 30.4,
-      "lobe_height": 41.0,
-      "waist_width": 0.355,
-      "shoulder_width": 1.0,
-      "tip_roundness": 0.71,
+      "lobe_width": 27.399999999999956,
+      "lobe_height": 45.10000000000006,
+      "waist_width": -0.545,
+      "shoulder_width": 9.999999999999982,
+      "tip_roundness": 2.0100000000000007,
       "node_gap": 0.0,
       "vertical_offset": 0.0,
       "outline_scale_x": 1.0,
@@ -33,6 +42,22 @@
       "anchor_bias_y": 0.0,
       "gradient_mode": "linear",
       "light_dir": "northwest"
+    },
+    "_docs": {
+      "lobe_width": "Ancho base del l\u00f3bulo principal de la familia.",
+      "lobe_height": "Altura base del l\u00f3bulo principal de la familia.",
+      "waist_width": "Ancho del cuello o cintura cerca del nodo.",
+      "shoulder_width": "Apertura del hombro superior del l\u00f3bulo.",
+      "tip_roundness": "Qu\u00e9 tan redondeada o aguda se ve la punta del l\u00f3bulo.",
+      "node_gap": "Separaci\u00f3n controlada entre l\u00f3bulos enfrentados en el nodo.",
+      "vertical_offset": "Desplazamiento vertical conjunto de la familia orbital.",
+      "outline_scale_x": "Escala horizontal aplicada a la geometr\u00eda can\u00f3nica base.",
+      "outline_scale_y": "Escala vertical aplicada a la geometr\u00eda can\u00f3nica base.",
+      "visual_padding": "Padding \u00f3ptico alrededor del glifo al encajar en la palette.",
+      "anchor_bias_x": "Desplazamiento horizontal del centro visual del glifo.",
+      "anchor_bias_y": "Desplazamiento vertical del centro visual del glifo.",
+      "gradient_mode": "Modo base de sombreado: linear, radial o elliptical.",
+      "light_dir": "Direcci\u00f3n global de la luz del sombreado."
     }
   },
   "d": {
@@ -51,6 +76,21 @@
       "anchor_bias_y": 0.0,
       "gradient_mode": "linear",
       "light_dir": "northwest"
+    },
+    "_docs": {
+      "vertical_width": "Ancho de los l\u00f3bulos verticales del tr\u00e9bol.",
+      "vertical_height": "Altura de los l\u00f3bulos verticales del tr\u00e9bol.",
+      "horizontal_width": "Ancho de los l\u00f3bulos horizontales del tr\u00e9bol.",
+      "horizontal_height": "Altura de los l\u00f3bulos horizontales del tr\u00e9bol.",
+      "tip_roundness": "Qu\u00e9 tan redondeada o aguda se ve la punta del l\u00f3bulo.",
+      "shoulder_width": "Apertura del hombro superior del l\u00f3bulo.",
+      "waist_width": "Ancho del cuello o cintura cerca del nodo.",
+      "lobe_gap": "Separaci\u00f3n entre l\u00f3bulos alrededor del nodo central.",
+      "visual_padding": "Padding \u00f3ptico alrededor del glifo al encajar en la palette.",
+      "anchor_bias_x": "Desplazamiento horizontal del centro visual del glifo.",
+      "anchor_bias_y": "Desplazamiento vertical del centro visual del glifo.",
+      "gradient_mode": "Modo base de sombreado: linear, radial o elliptical.",
+      "light_dir": "Direcci\u00f3n global de la luz del sombreado."
     }
   },
   "dz2": {
@@ -71,6 +111,23 @@
       "gradient_mode": "linear",
       "torus_gradient_mode": "elliptical",
       "light_dir": "northwest"
+    },
+    "_docs": {
+      "axial_width": "Ancho de los l\u00f3bulos axiales del dz2.",
+      "axial_height": "Altura de los l\u00f3bulos axiales del dz2.",
+      "axial_tip_roundness": "Redondez de la punta axial.",
+      "axial_waist_width": "Ancho de la cintura axial cerca del plano nodal.",
+      "torus_outer_width": "Ancho exterior del toroide.",
+      "torus_outer_height": "Altura exterior del toroide.",
+      "torus_inner_width_ratio": "Tama\u00f1o relativo del hueco interior del toroide en X.",
+      "torus_inner_height_ratio": "Tama\u00f1o relativo del hueco interior del toroide en Y.",
+      "torus_offset_y": "Desplazamiento vertical del toroide.",
+      "visual_padding": "Padding \u00f3ptico alrededor del glifo al encajar en la palette.",
+      "anchor_bias_x": "Desplazamiento horizontal del centro visual del glifo.",
+      "anchor_bias_y": "Desplazamiento vertical del centro visual del glifo.",
+      "gradient_mode": "Modo base de sombreado: linear, radial o elliptical.",
+      "torus_gradient_mode": "Modo de sombreado espec\u00edfico del toroide dentro del dz2.",
+      "light_dir": "Direcci\u00f3n global de la luz del sombreado."
     }
   },
   "torus": {
@@ -87,6 +144,19 @@
       "gradient_mode": "elliptical",
       "light_dir": "northwest",
       "phase": "neutral"
+    },
+    "_docs": {
+      "torus_outer_width": "Ancho exterior del toroide.",
+      "torus_outer_height": "Altura exterior del toroide.",
+      "torus_inner_width_ratio": "Tama\u00f1o relativo del hueco interior del toroide en X.",
+      "torus_inner_height_ratio": "Tama\u00f1o relativo del hueco interior del toroide en Y.",
+      "torus_offset_y": "Desplazamiento vertical del toroide.",
+      "visual_padding": "Padding \u00f3ptico alrededor del glifo al encajar en la palette.",
+      "anchor_bias_x": "Desplazamiento horizontal del centro visual del glifo.",
+      "anchor_bias_y": "Desplazamiento vertical del centro visual del glifo.",
+      "gradient_mode": "Modo base de sombreado: linear, radial o elliptical.",
+      "light_dir": "Direcci\u00f3n global de la luz del sombreado.",
+      "phase": "Fase visual de la parte: positive, negative o neutral."
     }
   },
   "sp3": {
@@ -115,6 +185,31 @@
       "gradient_mode": "linear",
       "minor_gradient_mode": "radial",
       "light_dir": "northwest"
+    },
+    "_docs": {
+      "major_lobe": {
+        "width": "Ancho total del l\u00f3bulo experimental.",
+        "height": "Altura total del l\u00f3bulo experimental.",
+        "tip_roundness": "Qu\u00e9 tan redondeada o aguda se ve la punta del l\u00f3bulo.",
+        "shoulder_width": "Apertura del hombro superior del l\u00f3bulo.",
+        "waist_width": "Ancho del cuello o cintura cerca del nodo."
+      },
+      "minor_lobe": {
+        "width": "Ancho total del l\u00f3bulo experimental.",
+        "height": "Altura total del l\u00f3bulo experimental.",
+        "tip_roundness": "Qu\u00e9 tan redondeada o aguda se ve la punta del l\u00f3bulo.",
+        "shoulder_width": "Apertura del hombro superior del l\u00f3bulo.",
+        "waist_width": "Ancho del cuello o cintura cerca del nodo."
+      },
+      "major_offset_y": "Desplazamiento vertical del l\u00f3bulo principal.",
+      "minor_offset_y": "Desplazamiento vertical del l\u00f3bulo secundario.",
+      "node_gap": "Separaci\u00f3n controlada entre l\u00f3bulos enfrentados en el nodo.",
+      "visual_padding": "Padding \u00f3ptico alrededor del glifo al encajar en la palette.",
+      "anchor_bias_x": "Desplazamiento horizontal del centro visual del glifo.",
+      "anchor_bias_y": "Desplazamiento vertical del centro visual del glifo.",
+      "gradient_mode": "Modo base de sombreado: linear, radial o elliptical.",
+      "minor_gradient_mode": "minor_gradient_mode",
+      "light_dir": "Direcci\u00f3n global de la luz del sombreado."
     }
   },
   "sp_lobe": {
@@ -143,6 +238,31 @@
       "gradient_mode": "linear",
       "minor_gradient_mode": "linear",
       "light_dir": "northwest"
+    },
+    "_docs": {
+      "major_lobe": {
+        "width": "Ancho total del l\u00f3bulo experimental.",
+        "height": "Altura total del l\u00f3bulo experimental.",
+        "tip_roundness": "Qu\u00e9 tan redondeada o aguda se ve la punta del l\u00f3bulo.",
+        "shoulder_width": "Apertura del hombro superior del l\u00f3bulo.",
+        "waist_width": "Ancho del cuello o cintura cerca del nodo."
+      },
+      "minor_lobe": {
+        "width": "Ancho total del l\u00f3bulo experimental.",
+        "height": "Altura total del l\u00f3bulo experimental.",
+        "tip_roundness": "Qu\u00e9 tan redondeada o aguda se ve la punta del l\u00f3bulo.",
+        "shoulder_width": "Apertura del hombro superior del l\u00f3bulo.",
+        "waist_width": "Ancho del cuello o cintura cerca del nodo."
+      },
+      "major_offset_y": "Desplazamiento vertical del l\u00f3bulo principal.",
+      "minor_offset_y": "Desplazamiento vertical del l\u00f3bulo secundario.",
+      "node_gap": "Separaci\u00f3n controlada entre l\u00f3bulos enfrentados en el nodo.",
+      "visual_padding": "Padding \u00f3ptico alrededor del glifo al encajar en la palette.",
+      "anchor_bias_x": "Desplazamiento horizontal del centro visual del glifo.",
+      "anchor_bias_y": "Desplazamiento vertical del centro visual del glifo.",
+      "gradient_mode": "Modo base de sombreado: linear, radial o elliptical.",
+      "minor_gradient_mode": "minor_gradient_mode",
+      "light_dir": "Direcci\u00f3n global de la luz del sombreado."
     }
   },
   "sigma_bonding": {
@@ -171,6 +291,31 @@
       "gradient_mode": "linear",
       "minor_gradient_mode": "radial",
       "light_dir": "northwest"
+    },
+    "_docs": {
+      "major_lobe": {
+        "width": "Ancho total del l\u00f3bulo experimental.",
+        "height": "Altura total del l\u00f3bulo experimental.",
+        "tip_roundness": "Qu\u00e9 tan redondeada o aguda se ve la punta del l\u00f3bulo.",
+        "shoulder_width": "Apertura del hombro superior del l\u00f3bulo.",
+        "waist_width": "Ancho del cuello o cintura cerca del nodo."
+      },
+      "minor_lobe": {
+        "width": "Ancho total del l\u00f3bulo experimental.",
+        "height": "Altura total del l\u00f3bulo experimental.",
+        "tip_roundness": "Qu\u00e9 tan redondeada o aguda se ve la punta del l\u00f3bulo.",
+        "shoulder_width": "Apertura del hombro superior del l\u00f3bulo.",
+        "waist_width": "Ancho del cuello o cintura cerca del nodo."
+      },
+      "major_offset_y": "Desplazamiento vertical del l\u00f3bulo principal.",
+      "minor_offset_y": "Desplazamiento vertical del l\u00f3bulo secundario.",
+      "node_gap": "Separaci\u00f3n controlada entre l\u00f3bulos enfrentados en el nodo.",
+      "visual_padding": "Padding \u00f3ptico alrededor del glifo al encajar en la palette.",
+      "anchor_bias_x": "Desplazamiento horizontal del centro visual del glifo.",
+      "anchor_bias_y": "Desplazamiento vertical del centro visual del glifo.",
+      "gradient_mode": "Modo base de sombreado: linear, radial o elliptical.",
+      "minor_gradient_mode": "minor_gradient_mode",
+      "light_dir": "Direcci\u00f3n global de la luz del sombreado."
     }
   },
   "pi_bonding": {
@@ -210,6 +355,42 @@
       "anchor_bias_y": 0.0,
       "gradient_mode": "linear",
       "light_dir": "northwest"
+    },
+    "_docs": {
+      "upper_lobe": {
+        "width": "Ancho total del l\u00f3bulo experimental.",
+        "height": "Altura total del l\u00f3bulo experimental.",
+        "tip_roundness": "Qu\u00e9 tan redondeada o aguda se ve la punta del l\u00f3bulo.",
+        "shoulder_width": "Apertura del hombro superior del l\u00f3bulo.",
+        "waist_width": "Ancho del cuello o cintura cerca del nodo."
+      },
+      "lower_lobe": {
+        "width": "Ancho total del l\u00f3bulo experimental.",
+        "height": "Altura total del l\u00f3bulo experimental.",
+        "tip_roundness": "Qu\u00e9 tan redondeada o aguda se ve la punta del l\u00f3bulo.",
+        "shoulder_width": "Apertura del hombro superior del l\u00f3bulo.",
+        "waist_width": "Ancho del cuello o cintura cerca del nodo."
+      },
+      "node_gap": "Separaci\u00f3n controlada entre l\u00f3bulos enfrentados en el nodo.",
+      "vertical_offset": "Desplazamiento vertical conjunto de la familia orbital.",
+      "ring": {
+        "torus_outer_width": "Ancho exterior del toroide.",
+        "torus_outer_height": "Altura exterior del toroide.",
+        "torus_inner_width_ratio": "Tama\u00f1o relativo del hueco interior del toroide en X.",
+        "torus_inner_height_ratio": "Tama\u00f1o relativo del hueco interior del toroide en Y.",
+        "torus_offset_y": "Desplazamiento vertical del toroide.",
+        "visual_padding": "Padding \u00f3ptico alrededor del glifo al encajar en la palette.",
+        "anchor_bias_x": "Desplazamiento horizontal del centro visual del glifo.",
+        "anchor_bias_y": "Desplazamiento vertical del centro visual del glifo.",
+        "gradient_mode": "Modo base de sombreado: linear, radial o elliptical.",
+        "light_dir": "Direcci\u00f3n global de la luz del sombreado.",
+        "phase": "Fase visual de la parte: positive, negative o neutral."
+      },
+      "visual_padding": "Padding \u00f3ptico alrededor del glifo al encajar en la palette.",
+      "anchor_bias_x": "Desplazamiento horizontal del centro visual del glifo.",
+      "anchor_bias_y": "Desplazamiento vertical del centro visual del glifo.",
+      "gradient_mode": "Modo base de sombreado: linear, radial o elliptical.",
+      "light_dir": "Direcci\u00f3n global de la luz del sombreado."
     }
   },
   "f": {
@@ -353,6 +534,34 @@
       "visual_padding": 8.0,
       "anchor_bias_x": 0.0,
       "anchor_bias_y": 0.0
+    },
+    "_docs": {
+      "lobes": {
+        "width": "Ancho total del l\u00f3bulo experimental.",
+        "height": "Altura total del l\u00f3bulo experimental.",
+        "tip_roundness": "Qu\u00e9 tan redondeada o aguda se ve la punta del l\u00f3bulo.",
+        "shoulder_width": "Apertura del hombro superior del l\u00f3bulo.",
+        "shoulder_height_ratio": "Altura relativa del hombro del l\u00f3bulo experimental.",
+        "belly_width": "Qu\u00e9 tan lleno se ve el vientre del l\u00f3bulo experimental.",
+        "belly_height_ratio": "Altura relativa del vientre del l\u00f3bulo experimental.",
+        "neck_width": "Ancho del cuello del l\u00f3bulo experimental.",
+        "neck_height": "Altura relativa del cuello experimental.",
+        "cusp_depth": "Profundidad del cierre en el nodo para formas experimentales.",
+        "offset_x": "Desplazamiento horizontal local del l\u00f3bulo.",
+        "offset_y": "Desplazamiento vertical local del l\u00f3bulo.",
+        "rotation_deg": "Rotaci\u00f3n del l\u00f3bulo en grados.",
+        "orientation": "Orientaci\u00f3n base del l\u00f3bulo: up, down, left o right.",
+        "mirror": "Espeja el l\u00f3bulo respecto al eje vertical antes de colocarlo.",
+        "outline_scale_x": "Escala horizontal aplicada a la geometr\u00eda can\u00f3nica base.",
+        "outline_scale_y": "Escala vertical aplicada a la geometr\u00eda can\u00f3nica base.",
+        "gradient_mode": "Modo base de sombreado: linear, radial o elliptical.",
+        "light_dir": "Direcci\u00f3n global de la luz del sombreado.",
+        "phase": "Fase visual de la parte: positive, negative o neutral."
+      },
+      "torus": "torus",
+      "visual_padding": "Padding \u00f3ptico alrededor del glifo al encajar en la palette.",
+      "anchor_bias_x": "Desplazamiento horizontal del centro visual del glifo.",
+      "anchor_bias_y": "Desplazamiento vertical del centro visual del glifo."
     }
   },
   "fz3": {
@@ -442,6 +651,46 @@
       "visual_padding": 8.0,
       "anchor_bias_x": 0.0,
       "anchor_bias_y": 0.0
+    },
+    "_docs": {
+      "lobes": {
+        "width": "Ancho total del l\u00f3bulo experimental.",
+        "height": "Altura total del l\u00f3bulo experimental.",
+        "tip_roundness": "Qu\u00e9 tan redondeada o aguda se ve la punta del l\u00f3bulo.",
+        "shoulder_width": "Apertura del hombro superior del l\u00f3bulo.",
+        "shoulder_height_ratio": "Altura relativa del hombro del l\u00f3bulo experimental.",
+        "belly_width": "Qu\u00e9 tan lleno se ve el vientre del l\u00f3bulo experimental.",
+        "belly_height_ratio": "Altura relativa del vientre del l\u00f3bulo experimental.",
+        "neck_width": "Ancho del cuello del l\u00f3bulo experimental.",
+        "neck_height": "Altura relativa del cuello experimental.",
+        "cusp_depth": "Profundidad del cierre en el nodo para formas experimentales.",
+        "offset_x": "Desplazamiento horizontal local del l\u00f3bulo.",
+        "offset_y": "Desplazamiento vertical local del l\u00f3bulo.",
+        "rotation_deg": "Rotaci\u00f3n del l\u00f3bulo en grados.",
+        "orientation": "Orientaci\u00f3n base del l\u00f3bulo: up, down, left o right.",
+        "mirror": "Espeja el l\u00f3bulo respecto al eje vertical antes de colocarlo.",
+        "outline_scale_x": "Escala horizontal aplicada a la geometr\u00eda can\u00f3nica base.",
+        "outline_scale_y": "Escala vertical aplicada a la geometr\u00eda can\u00f3nica base.",
+        "gradient_mode": "Modo base de sombreado: linear, radial o elliptical.",
+        "light_dir": "Direcci\u00f3n global de la luz del sombreado.",
+        "phase": "Fase visual de la parte: positive, negative o neutral."
+      },
+      "torus": {
+        "torus_outer_width": "Ancho exterior del toroide.",
+        "torus_outer_height": "Altura exterior del toroide.",
+        "torus_inner_width_ratio": "Tama\u00f1o relativo del hueco interior del toroide en X.",
+        "torus_inner_height_ratio": "Tama\u00f1o relativo del hueco interior del toroide en Y.",
+        "torus_offset_y": "Desplazamiento vertical del toroide.",
+        "visual_padding": "Padding \u00f3ptico alrededor del glifo al encajar en la palette.",
+        "anchor_bias_x": "Desplazamiento horizontal del centro visual del glifo.",
+        "anchor_bias_y": "Desplazamiento vertical del centro visual del glifo.",
+        "gradient_mode": "Modo base de sombreado: linear, radial o elliptical.",
+        "light_dir": "Direcci\u00f3n global de la luz del sombreado.",
+        "phase": "Fase visual de la parte: positive, negative o neutral."
+      },
+      "visual_padding": "Padding \u00f3ptico alrededor del glifo al encajar en la palette.",
+      "anchor_bias_x": "Desplazamiento horizontal del centro visual del glifo.",
+      "anchor_bias_y": "Desplazamiento vertical del centro visual del glifo."
     }
   }
 }
