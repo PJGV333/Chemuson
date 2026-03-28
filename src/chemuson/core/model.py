@@ -1172,7 +1172,7 @@ class MolGraph:
             return 1
         base_valence = (
             self.bond_order_sum(atom_id, aromatic_order=1.5)
-            + self.explicit_hydrogen_count(atom_id)
+            + self.assigned_hydrogen_count(atom_id)
         )
         implicit_h = self._choose_implicit_h(atom, base_valence, allowed)
         atom.implicit_h = int(max(0, implicit_h))
@@ -1200,8 +1200,8 @@ class MolGraph:
                 continue
 
             bond_sum = self.bond_order_sum(atom_id)
-            explicit_h = self.explicit_hydrogen_count(atom_id)
-            base_valence = bond_sum + float(explicit_h)
+            assigned_h = self.assigned_hydrogen_count(atom_id)
+            base_valence = bond_sum + float(assigned_h)
             implicit_h = self._choose_implicit_h(atom, base_valence, allowed)
             total_valence = base_valence + float(implicit_h)
             is_valid = any(math.isclose(total_valence, float(v), abs_tol=1e-6) for v in allowed)

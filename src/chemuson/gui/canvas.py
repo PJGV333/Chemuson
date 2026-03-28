@@ -7395,6 +7395,15 @@ class ChemusonCanvas(QGraphicsView):
         atom = self.model.get_atom(atom_id)
         if atom is None:
             return QPointF(0.0, 0.0)
+        base_offset = self._base_label_offset(atom_id)
+        extra_offset = self._custom_bond_length_label_offset(atom_id, base_offset=base_offset)
+        return base_offset + extra_offset
+
+    def _base_label_offset(self, atom_id: int) -> QPointF:
+        """Calcula el offset base de etiqueta sin ajustes por longitud personalizada."""
+        atom = self.model.get_atom(atom_id)
+        if atom is None:
+            return QPointF(0.0, 0.0)
         display_element = self._resolved_display_element(atom)
         total_h = self._inline_label_hydrogen_count(atom_id, display_element)
         if (
@@ -7431,6 +7440,104 @@ class ChemusonCanvas(QGraphicsView):
             size = 10.0
         offset = max(LABEL_OFFSET_MIN_PX, size * LABEL_OFFSET_SCALE)
         return QPointF(direction.x() * offset, direction.y() * offset)
+
+    def _label_layout_center(self, atom_id: int, offset: QPointF) -> Optional[QPointF]:
+        """Estima el centro en escena de la etiqueta usando un offset propuesto."""
+        item = self.atom_items.get(atom_id)
+        if item is None or not item.label.isVisible():
+            return None
+        rect = item.label.mapRectToParent(item.label.boundingRect())
+        current_offset = QPointF(getattr(item, "_label_offset", QPointF(0.0, 0.0)))
+        center = rect.center()
+        center += QPointF(offset.x() - current_offset.x(), offset.y() - current_offset.y())
+        item_pos = item.pos()
+        return QPointF(item_pos.x() + center.x(), item_pos.y() + center.y())
+
+    def _label_axis_extent(self, atom_id: int, ux: float, uy: float) -> float:
+        """Semiextensión proyectada de la etiqueta/carga sobre el eje del enlace."""
+        item = self.atom_items.get(atom_id)
+        if item is None or not item.label.isVisible():
+            return 0.0
+        rect = item.label.mapRectToParent(item.label.boundingRect())
+        if item.charge_label.isVisible():
+            rect = rect.united(item.charge_label.mapRectToParent(item.charge_label.boundingRect()))
+        if rect.isNull():
+            return 0.0
+        return 0.5 * (abs(float(ux)) * rect.width() + abs(float(uy)) * rect.height())
+
+    def _custom_bond_length_label_offset(
+        self,
+        atom_id: int,
+        *,
+        base_offset: Optional[QPointF] = None,
+    ) -> QPointF:
+        """Desplaza una etiqueta hacia el extremo dibujado sin invadir la opuesta."""
+        atom = self.model.atoms.get(atom_id)
+        if atom is None or not self._atom_label_visible(atom):
+            return QPointF(0.0, 0.0)
+        if base_offset is None:
+            base_offset = self._base_label_offset(atom_id)
+
+        offset_x = 0.0
+        offset_y = 0.0
+        total_weight = 0.0
+        for bond in self.model.bonds.values():
+            if bond.a1_id == atom_id:
+                other_atom = self.model.atoms.get(bond.a2_id)
+            elif bond.a2_id == atom_id:
+                other_atom = self.model.atoms.get(bond.a1_id)
+            else:
+                continue
+            if other_atom is None:
+                continue
+            custom_length = getattr(bond, "length_px", None)
+            if custom_length is None:
+                continue
+            try:
+                target_length = float(custom_length)
+            except Exception:
+                continue
+            if not math.isfinite(target_length) or target_length <= 1e-6:
+                continue
+
+            dx = other_atom.x - atom.x
+            dy = other_atom.y - atom.y
+            actual_length = math.hypot(dx, dy)
+            if actual_length <= 1e-6:
+                continue
+
+            desired_shift = (actual_length - max(1.0, target_length)) * 0.5
+            if abs(desired_shift) <= 1e-4:
+                continue
+
+            applied_shift = desired_shift
+            ux = dx / actual_length
+            uy = dy / actual_length
+            if desired_shift > 0.0 and self._atom_label_visible(other_atom):
+                other_base_offset = self._base_label_offset(other_atom.id)
+                center = self._label_layout_center(atom_id, base_offset)
+                other_center = self._label_layout_center(other_atom.id, other_base_offset)
+                if center is not None and other_center is not None:
+                    available = (
+                        (other_center.x() - center.x()) * ux
+                        + (other_center.y() - center.y()) * uy
+                    )
+                    required_gap = (
+                        self._label_axis_extent(atom_id, ux, uy)
+                        + self._label_axis_extent(other_atom.id, ux, uy)
+                        + max(2.0, float(self.drawing_style.stroke_px))
+                    )
+                    max_inward_shift = max(0.0, (available - required_gap) * 0.5)
+                    applied_shift = min(desired_shift, max_inward_shift)
+
+            weight = abs(applied_shift)
+            offset_x += ux * applied_shift * weight
+            offset_y += uy * applied_shift * weight
+            total_weight += weight
+
+        if total_weight <= 1e-6:
+            return QPointF(0.0, 0.0)
+        return QPointF(offset_x / total_weight, offset_y / total_weight)
 
     def _neighbor_angles_deg(self, atom_id: int) -> list[float]:
         """Método auxiliar para  neighbor angles deg.
@@ -13204,6 +13311,115 @@ class ChemusonCanvas(QGraphicsView):
         Side Effects:
             Puede modificar el estado interno o la escena.
         """
+        atom_before = dict(self._rotation_start_positions)
+        atom_after = {
+            atom_id: (self.model.get_atom(atom_id).x, self.model.get_atom(atom_id).y)
+            for atom_id in atom_before
+            if atom_id in self.model.atoms
+        }
+        moved_atoms = {
+            atom_id: atom_before[atom_id]
+            for atom_id, (after_x, after_y) in atom_after.items()
+            if (
+                abs(after_x - atom_before[atom_id][0]) > 1e-4
+                or abs(after_y - atom_before[atom_id][1]) > 1e-4
+            )
+        }
+
+        text_before = dict(getattr(self, "_rotation_start_text_transforms", {}))
+        text_after = {item: (item.pos(), item.rotation()) for item in text_before}
+        moved_text = any(
+            not (
+                self._point_equal(text_before[item][0], text_after[item][0])
+                and abs(text_before[item][1] - text_after[item][1]) <= 1e-4
+            )
+            for item in text_before
+        )
+
+        arrow_before = dict(self._rotation_start_arrow_positions)
+        arrow_after = {item: (item.start_point(), item.end_point()) for item in arrow_before}
+        moved_arrows = any(
+            not (
+                self._point_equal(arrow_before[item][0], arrow_after[item][0])
+                and self._point_equal(arrow_before[item][1], arrow_after[item][1])
+            )
+            for item in arrow_before
+        )
+
+        orbital_before = dict(self._rotation_start_orbital_snapshots)
+        orbital_after = {item: self._orbital_transform_snapshot(item) for item in orbital_before}
+        moved_orbitals = any(
+            not (
+                self._point_equal(orbital_before[item][0], orbital_after[item][0])
+                and self._point_equal(orbital_before[item][1], orbital_after[item][1])
+            )
+            for item in orbital_before
+        )
+
+        image_before = dict(self._rotation_start_image_snapshots)
+        image_after = {item: self._image_transform_snapshot(item) for item in image_before}
+        moved_images = any(
+            not (
+                self._point_equal(image_before[item][0], image_after[item][0])
+                and abs(image_before[item][1] - image_after[item][1]) <= 0.05
+                and abs(image_before[item][2] - image_after[item][2]) <= 0.05
+                and abs(image_before[item][3] - image_after[item][3]) <= 0.05
+            )
+            for item in image_before
+        )
+
+        move_count = sum(
+            [
+                bool(moved_atoms),
+                bool(moved_text),
+                bool(moved_arrows),
+                bool(moved_orbitals),
+                bool(moved_images),
+            ]
+        )
+        if move_count > 1:
+            self.undo_stack.beginMacro("Rotate selection")
+
+        if moved_atoms:
+            self.undo_stack.push(
+                MoveAtomsCommand(
+                    self.model,
+                    self,
+                    moved_atoms,
+                    {atom_id: atom_after[atom_id] for atom_id in moved_atoms},
+                    skip_first_redo=True,
+                )
+            )
+
+        if moved_text:
+            self.undo_stack.push(MoveTextItemsCommand(self, text_before, text_after))
+
+        if moved_arrows:
+            self.undo_stack.push(MoveArrowItemsCommand(self, arrow_before, arrow_after))
+
+        if moved_orbitals:
+            self.undo_stack.push(
+                TransformOrbitalItemsCommand(
+                    self,
+                    orbital_before,
+                    orbital_after,
+                    "Rotate orbitals",
+                )
+            )
+
+        if moved_images:
+            self.undo_stack.push(
+                TransformImageItemsCommand(
+                    self,
+                    image_before,
+                    image_after,
+                    "Rotate images",
+                )
+            )
+
+        if move_count > 1:
+            self.undo_stack.endMacro()
+
         self._rotation_dragging = False
         self._rotation_center = None
         self._rotation_start_angle = None

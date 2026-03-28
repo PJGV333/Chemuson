@@ -148,6 +148,33 @@ class MolGraphTest(unittest.TestCase):
             graph.add_bond(n.id, carbon.id, order=1)
         self.assertNotIn(n.id, graph.validate())
 
+    def test_validate_allows_neutral_amine_with_drawn_hydrogen(self):
+        """Un N con dos enlaces pesados y un H explícito sigue siendo trivalente."""
+        graph = MolGraph()
+        n = graph.add_atom("N", 0.0, 0.0)
+        c1 = graph.add_atom("C", -1.0, 0.0)
+        c2 = graph.add_atom("C", 1.0, 0.0)
+        h = graph.add_atom("H", 0.0, 1.0, is_explicit=True)
+
+        graph.add_bond(n.id, c1.id, order=1)
+        graph.add_bond(n.id, c2.id, order=1)
+        graph.add_bond(n.id, h.id, order=1)
+
+        self.assertNotIn(n.id, graph.validate())
+
+    def test_implicit_h_count_does_not_double_count_drawn_hydrogen(self):
+        """Un H explícito enlazado no debe impedir el H implícito restante en una amina."""
+        graph = MolGraph()
+        n = graph.add_atom("N", 0.0, 0.0)
+        c = graph.add_atom("C", -1.0, 0.0)
+        h = graph.add_atom("H", 1.0, 0.0, is_explicit=True)
+
+        graph.add_bond(n.id, c.id, order=1)
+        graph.add_bond(n.id, h.id, order=1)
+
+        self.assertEqual(graph.implicit_h_count(n.id), 1)
+        self.assertNotIn(n.id, graph.validate())
+
     def test_implicit_h_count_keeps_pyridine_like_aromatic_n_neutral(self):
         """El N aromático de un anillo de seis miembros no debe recibir H implícito."""
         graph = MolGraph()

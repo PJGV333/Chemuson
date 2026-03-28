@@ -1816,9 +1816,28 @@ class BondItem(QGraphicsPathItem):
         ny = dx / length
         ux = dx / length
         uy = dy / length
+
+        custom_length = None
+        if self.length_px is not None:
+            try:
+                parsed_length = float(self.length_px)
+            except Exception:
+                parsed_length = 0.0
+            if math.isfinite(parsed_length) and parsed_length > 1e-6:
+                custom_length = max(1.0, parsed_length)
+        if custom_length is not None:
+            mid_x = (x1 + x2) * 0.5
+            mid_y = (y1 + y2) * 0.5
+            half_length = custom_length * 0.5
+            x1 = mid_x - ux * half_length
+            y1 = mid_y - uy * half_length
+            x2 = mid_x + ux * half_length
+            y2 = mid_y + uy * half_length
+
         render_length = length
         p1x, p1y = x1, y1
         p2x, p2y = x2, y2
+        render_length = math.hypot(p2x - p1x, p2y - p1y)
         trim_start = self._label_shrink_start + self._endpoint_trim_start
         trim_end = self._label_shrink_end + self._endpoint_trim_end
         if trim_start + trim_end > 0:
