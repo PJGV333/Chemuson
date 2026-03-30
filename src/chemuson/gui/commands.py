@@ -1530,6 +1530,30 @@ class TransformOrbitalItemsCommand(QUndoCommand):
         self._view._update_selection_overlay()
 
 
+class StyleOrbitalItemsCommand(QUndoCommand):
+    """Comando para aplicar overrides visuales por lóbulo en orbitales."""
+
+    def __init__(self, view, before: dict, after: dict, text: str = "Style orbitals") -> None:
+        super().__init__(text)
+        self._view = view
+        self._before = before
+        self._after = after
+
+    @staticmethod
+    def _apply_snapshot(item, snapshot) -> None:
+        item.set_part_styles(snapshot)
+
+    def redo(self) -> None:
+        for item, snapshot in self._after.items():
+            self._apply_snapshot(item, snapshot)
+        self._view._update_selection_overlay()
+
+    def undo(self) -> None:
+        for item, snapshot in self._before.items():
+            self._apply_snapshot(item, snapshot)
+        self._view._update_selection_overlay()
+
+
 class ScaleTextItemsCommand(QUndoCommand):
     """Comando para escalar textos libres conservando formato."""
 

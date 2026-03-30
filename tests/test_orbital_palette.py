@@ -81,6 +81,12 @@ def test_inserted_orbital_is_persistent_and_undoable() -> None:
         assert len(canvas.orbital_items) == 1
         assert canvas.orbital_items[0].kind() == "pi_bonding_shaded"
         assert canvas.orbital_items[0].anchor0() == center
+        canvas.orbital_items[0].set_part_styles(
+            {
+                "upper": {"color": "#AA3366", "opacity": 0.55, "offset_x": 4.0},
+                "lower": {"offset_y": 3.0},
+            }
+        )
 
         data = canvas.get_persistence_data()
         restored = ChemusonCanvas()
@@ -90,6 +96,10 @@ def test_inserted_orbital_is_persistent_and_undoable() -> None:
         assert restored.orbital_items[0].kind() == "pi_bonding_shaded"
         assert restored.orbital_items[0].anchor0() == center
         assert restored.orbital_items[0].anchor1().y() < center.y()
+        assert restored.orbital_items[0].part_styles() == {
+            "upper": {"color": "#aa3366", "opacity": 0.55, "offset_x": 4.0},
+            "lower": {"offset_y": 3.0},
+        }
 
         canvas.undo_stack.undo()
         assert len(canvas.orbital_items) == 0

@@ -135,6 +135,7 @@ from chemuson.gui.commands import (
     ChangeAtomLabelScaleCommand,
     ChangeCoordinationSphereStyleCommand,
     ChangeCanvasOpacityCommand,
+    StyleOrbitalItemsCommand,
     SetCoordinationCenterCommand,
     DeleteSelectionCommand,
     MoveAtomsCommand,
@@ -4189,6 +4190,7 @@ class ChemusonCanvas(QGraphicsView):
                     "anchor0": {"x": anchor0.x(), "y": anchor0.y()},
                     "anchor1": {"x": anchor1.x(), "y": anchor1.y()},
                     "stroke_shaded_lobes": item.stroke_shaded_lobes(),
+                    "part_styles": item.part_styles(),
                     "z": item.zValue(),
                     "opacity": self.item_raw_opacity(item),
                 })
@@ -4342,6 +4344,7 @@ class ChemusonCanvas(QGraphicsView):
                     QPointF(float(anchor0_d.get("x", 0.0)), float(anchor0_d.get("y", 0.0))),
                     QPointF(float(anchor1_d.get("x", 0.0)), float(anchor1_d.get("y", 0.0))),
                     stroke_shaded_lobes=orbital_d.get("stroke_shaded_lobes"),
+                    part_styles=orbital_d.get("part_styles"),
                 )
             except Exception:
                 continue
@@ -5087,6 +5090,7 @@ class ChemusonCanvas(QGraphicsView):
                     "anchor0": [anchor0.x() - left, anchor0.y() - top],
                     "anchor1": [anchor1.x() - left, anchor1.y() - top],
                     "stroke_shaded_lobes": item.stroke_shaded_lobes(),
+                    "part_styles": item.part_styles(),
                     "z": item.zValue(),
                     "opacity": self.effective_item_opacity(item),
                 }
@@ -5396,6 +5400,7 @@ class ChemusonCanvas(QGraphicsView):
                     QPointF(float(anchor0_vals[0]) + dx, float(anchor0_vals[1]) + dy),
                     QPointF(float(anchor1_vals[0]) + dx, float(anchor1_vals[1]) + dy),
                     stroke_shaded_lobes=orbital_d.get("stroke_shaded_lobes"),
+                    part_styles=orbital_d.get("part_styles"),
                 )
                 item.setZValue(float(orbital_d.get("z", 44.0)))
                 self.set_graphics_item_opacity(item, orbital_d.get("opacity"))
@@ -10855,6 +10860,8 @@ class ChemusonCanvas(QGraphicsView):
             bool(getattr(self.model.get_atom(atom_id), "sphere_color", None))
             for atom_id in styled_coordination_ids
         )
+        selected_orbital_items = self._selected_orbital_items()
+        orbital_target = self._single_orbital_target(clicked_item)
         charge_atom_ids: list[int] = []
         if isinstance(clicked_item, AtomItem):
             charge_atom_ids = [clicked_item.atom_id]
@@ -10959,6 +10966,13 @@ class ChemusonCanvas(QGraphicsView):
         act_coord_sphere_toggle_transparent = None
         act_coord_sphere_radius = None
         act_arrange_coordination = None
+        act_orbital_color = None
+        act_orbital_reset_color = None
+        act_orbital_opacity = None
+        act_orbital_lobe_color = None
+        act_orbital_lobe_opacity = None
+        act_orbital_lobe_move = None
+        act_orbital_lobe_reset = None
         if isinstance(clicked_item, AtomItem):
             atom = self.model.get_atom(clicked_item.atom_id)
             if atom is not None and atom.element not in ELEMENT_SYMBOLS:
@@ -11028,6 +11042,19 @@ class ChemusonCanvas(QGraphicsView):
             )
             act_arrange_coordination = menu.addAction("Distribuir ligandos alrededor")
             act_arrange_coordination.setEnabled(can_arrange)
+        if selected_orbital_items:
+            menu.addSeparator()
+            orbital_menu = menu.addMenu("Orbital")
+            act_orbital_color = orbital_menu.addAction("Color de orbital...")
+            act_orbital_reset_color = orbital_menu.addAction("Restablecer color de orbital")
+            act_orbital_opacity = orbital_menu.addAction("Opacidad de orbital...")
+            if orbital_target is not None:
+                orbital_menu.addSeparator()
+                lobe_menu = orbital_menu.addMenu("Editar lóbulo")
+                act_orbital_lobe_color = lobe_menu.addAction("Color por lóbulo...")
+                act_orbital_lobe_opacity = lobe_menu.addAction("Opacidad por lóbulo...")
+                act_orbital_lobe_move = lobe_menu.addAction("Mover lóbulo...")
+                act_orbital_lobe_reset = lobe_menu.addAction("Restablecer estilo de lóbulo")
         menu.addSeparator()
         act_select_all = menu.addAction("Seleccionar todo")
         menu.addSeparator()
@@ -11069,6 +11096,27 @@ class ChemusonCanvas(QGraphicsView):
             return
         if act_reset_color is not None and action == act_reset_color:
             self._set_selected_bond_color(None)
+            return
+        if act_orbital_color is not None and action == act_orbital_color:
+            self._prompt_selected_orbital_color()
+            return
+        if act_orbital_reset_color is not None and action == act_orbital_reset_color:
+            self._reset_selected_orbital_color()
+            return
+        if act_orbital_opacity is not None and action == act_orbital_opacity:
+            self._prompt_selected_orbital_opacity()
+            return
+        if orbital_target is not None and act_orbital_lobe_color is not None and action == act_orbital_lobe_color:
+            self._prompt_orbital_part_color(orbital_target)
+            return
+        if orbital_target is not None and act_orbital_lobe_opacity is not None and action == act_orbital_lobe_opacity:
+            self._prompt_orbital_part_opacity(orbital_target)
+            return
+        if orbital_target is not None and act_orbital_lobe_move is not None and action == act_orbital_lobe_move:
+            self._prompt_orbital_part_offset(orbital_target)
+            return
+        if orbital_target is not None and act_orbital_lobe_reset is not None and action == act_orbital_lobe_reset:
+            self._reset_orbital_part_style(orbital_target)
             return
         if act_anchor is not None and action == act_anchor and isinstance(clicked_item, AtomItem):
             self._prompt_anchor_for_atom(clicked_item.atom_id)
@@ -11580,6 +11628,262 @@ class ChemusonCanvas(QGraphicsView):
             cmd = ChangeBondColorCommand(self.model, self, bond_id, color)
             self.undo_stack.push(cmd)
         self.undo_stack.endMacro()
+
+    @staticmethod
+    def _orbital_part_display_name(name: str) -> str:
+        labels = {
+            "sphere": "Esfera",
+            "top": "Lóbulo superior",
+            "bottom": "Lóbulo inferior",
+            "left": "Lóbulo izquierdo",
+            "right": "Lóbulo derecho",
+            "major": "Lóbulo principal",
+            "minor": "Lóbulo secundario",
+            "minor_left": "Lóbulo menor izquierdo",
+            "minor_right": "Lóbulo menor derecho",
+            "bond": "Nube central",
+            "upper": "Nube superior",
+            "lower": "Nube inferior",
+            "ring": "Toroide",
+            "ring_upper": "Toroide superior",
+            "ring_lower": "Toroide inferior",
+        }
+        if name.startswith("lobe_"):
+            suffix = name.split("_", 1)[1]
+            if suffix.isdigit():
+                return f"Lóbulo {int(suffix) + 1}"
+        return labels.get(name, name.replace("_", " "))
+
+    def _single_orbital_target(
+        self,
+        clicked_item: Optional[QGraphicsItem] = None,
+    ) -> Optional[OrbitalAnnotationItem]:
+        if isinstance(clicked_item, OrbitalAnnotationItem):
+            return clicked_item
+        selected = self._selected_orbital_items()
+        return selected[0] if len(selected) == 1 else None
+
+    def _choose_orbital_part(
+        self,
+        item: OrbitalAnnotationItem,
+        *,
+        title: str = "Seleccionar lóbulo",
+    ) -> Optional[str]:
+        part_names = item.part_names()
+        if not part_names:
+            return None
+        display_to_name = {
+            self._orbital_part_display_name(name): name
+            for name in part_names
+        }
+        value, ok = QInputDialog.getItem(
+            self,
+            title,
+            "Lóbulo:",
+            list(display_to_name.keys()),
+            0,
+            False,
+        )
+        if not ok:
+            return None
+        return display_to_name.get(value)
+
+    def _push_orbital_style_change(
+        self,
+        updates: dict[OrbitalAnnotationItem, dict[str, dict[str, object]]],
+        *,
+        text: str,
+    ) -> bool:
+        before: dict[OrbitalAnnotationItem, dict[str, dict[str, object]]] = {}
+        after: dict[OrbitalAnnotationItem, dict[str, dict[str, object]]] = {}
+        for item, payload in updates.items():
+            if item.scene() is not self.scene:
+                continue
+            current = item.part_styles()
+            if current == payload:
+                continue
+            before[item] = current
+            after[item] = payload
+        if not after:
+            return False
+        self.undo_stack.push(StyleOrbitalItemsCommand(self, before, after, text))
+        return True
+
+    def _prompt_selected_orbital_color(self) -> None:
+        orbitals = self._selected_orbital_items()
+        if not orbitals:
+            return
+        initial = QColor("#111111")
+        for item in orbitals:
+            for name in item.part_names():
+                color_value = item.effective_part_style(name).get("color")
+                if color_value:
+                    candidate = QColor(str(color_value))
+                    if candidate.isValid():
+                        initial = candidate
+                        break
+            else:
+                continue
+            break
+        color = QColorDialog.getColor(initial, self, "Seleccionar color de orbital")
+        if not color.isValid():
+            return
+        updates: dict[OrbitalAnnotationItem, dict[str, dict[str, object]]] = {}
+        for item in orbitals:
+            payload = item.part_styles()
+            for name in item.part_names():
+                part_payload = dict(payload.get(name, {}))
+                part_payload["color"] = color.name(QColor.NameFormat.HexRgb)
+                payload[name] = part_payload
+            updates[item] = payload
+        self._push_orbital_style_change(updates, text="Change orbital color")
+
+    def _reset_selected_orbital_color(self) -> None:
+        orbitals = self._selected_orbital_items()
+        if not orbitals:
+            return
+        updates: dict[OrbitalAnnotationItem, dict[str, dict[str, object]]] = {}
+        for item in orbitals:
+            payload = item.part_styles()
+            for name in list(payload.keys()):
+                part_payload = dict(payload.get(name, {}))
+                part_payload.pop("color", None)
+                if part_payload:
+                    payload[name] = part_payload
+                else:
+                    payload.pop(name, None)
+            updates[item] = payload
+        self._push_orbital_style_change(updates, text="Reset orbital color")
+
+    def _prompt_selected_orbital_opacity(self) -> None:
+        orbitals = self._selected_orbital_items()
+        if not orbitals:
+            return
+        current = 100
+        values = [self.effective_item_opacity(item) for item in orbitals if item.scene() is self.scene]
+        if values:
+            current = int(round(sum(values) / float(len(values)) * 100.0))
+        value, ok = QInputDialog.getInt(
+            self,
+            "Opacidad de orbital",
+            "Opacidad (%):",
+            current,
+            0,
+            100,
+            1,
+        )
+        if not ok:
+            return
+        target = max(0.0, min(1.0, float(value) / 100.0))
+        item_values = {item: target for item in orbitals if item.scene() is self.scene}
+        if not item_values:
+            return
+        self.undo_stack.push(
+            ChangeCanvasOpacityCommand(
+                self.model,
+                self,
+                item_values=item_values,
+                text="Change orbital opacity",
+            )
+        )
+
+    def _prompt_orbital_part_color(self, item: OrbitalAnnotationItem) -> None:
+        part_name = self._choose_orbital_part(item, title="Color por lóbulo")
+        if not part_name:
+            return
+        current = item.effective_part_style(part_name).get("color")
+        initial = QColor(str(current)) if current else QColor("#111111")
+        color = QColorDialog.getColor(initial, self, f"Color de {self._orbital_part_display_name(part_name)}")
+        if not color.isValid():
+            return
+        payload = item.part_styles()
+        part_payload = dict(payload.get(part_name, {}))
+        part_payload["color"] = color.name(QColor.NameFormat.HexRgb)
+        payload[part_name] = part_payload
+        self._push_orbital_style_change({item: payload}, text="Change orbital lobe color")
+
+    def _prompt_orbital_part_opacity(self, item: OrbitalAnnotationItem) -> None:
+        part_name = self._choose_orbital_part(item, title="Opacidad por lóbulo")
+        if not part_name:
+            return
+        current = item.effective_part_style(part_name).get("opacity")
+        percent = 100 if current is None else int(round(float(current) * 100.0))
+        value, ok = QInputDialog.getInt(
+            self,
+            "Opacidad por lóbulo",
+            f"{self._orbital_part_display_name(part_name)} (%):",
+            percent,
+            0,
+            100,
+            1,
+        )
+        if not ok:
+            return
+        payload = item.part_styles()
+        part_payload = dict(payload.get(part_name, {}))
+        opacity = max(0.0, min(1.0, float(value) / 100.0))
+        if abs(opacity - 1.0) <= 1e-6:
+            part_payload.pop("opacity", None)
+        else:
+            part_payload["opacity"] = opacity
+        if part_payload:
+            payload[part_name] = part_payload
+        else:
+            payload.pop(part_name, None)
+        self._push_orbital_style_change({item: payload}, text="Change orbital lobe opacity")
+
+    def _prompt_orbital_part_offset(self, item: OrbitalAnnotationItem) -> None:
+        part_name = self._choose_orbital_part(item, title="Mover lóbulo")
+        if not part_name:
+            return
+        current = item.effective_part_style(part_name)
+        current_x = float(current.get("offset_x", 0.0) or 0.0)
+        current_y = float(current.get("offset_y", 0.0) or 0.0)
+        offset_x, ok = QInputDialog.getDouble(
+            self,
+            "Mover lóbulo",
+            f"{self._orbital_part_display_name(part_name)} desplazamiento X:",
+            current_x,
+            -80.0,
+            80.0,
+            1,
+        )
+        if not ok:
+            return
+        offset_y, ok = QInputDialog.getDouble(
+            self,
+            "Mover lóbulo",
+            f"{self._orbital_part_display_name(part_name)} desplazamiento Y:",
+            current_y,
+            -80.0,
+            80.0,
+            1,
+        )
+        if not ok:
+            return
+        payload = item.part_styles()
+        part_payload = dict(payload.get(part_name, {}))
+        if abs(offset_x) <= 1e-6:
+            part_payload.pop("offset_x", None)
+        else:
+            part_payload["offset_x"] = float(offset_x)
+        if abs(offset_y) <= 1e-6:
+            part_payload.pop("offset_y", None)
+        else:
+            part_payload["offset_y"] = float(offset_y)
+        if part_payload:
+            payload[part_name] = part_payload
+        else:
+            payload.pop(part_name, None)
+        self._push_orbital_style_change({item: payload}, text="Move orbital lobe")
+
+    def _reset_orbital_part_style(self, item: OrbitalAnnotationItem) -> None:
+        part_name = self._choose_orbital_part(item, title="Restablecer lóbulo")
+        if not part_name:
+            return
+        payload = item.part_styles()
+        payload.pop(part_name, None)
+        self._push_orbital_style_change({item: payload}, text="Reset orbital lobe style")
 
     def _adjust_selected_bond_stroke(self, delta: float) -> None:
         """Método auxiliar para  adjust selected bond stroke.

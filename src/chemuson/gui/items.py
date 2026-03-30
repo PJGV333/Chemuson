@@ -4187,12 +4187,14 @@ class OrbitalAnnotationItem(QGraphicsItem):
         anchor1: QPointF,
         *,
         stroke_shaded_lobes: bool | None = None,
+        part_styles: Optional[dict[str, dict[str, object]]] = None,
         renderer: OrbitalRenderer | None = None,
     ) -> None:
         super().__init__()
         self._renderer = renderer or orbital_renderer()
         self._kind = kind
         self._stroke_shaded_lobes = stroke_shaded_lobes
+        self._part_styles = self._normalize_part_styles(part_styles or {})
         self._anchor0_scene = QPointF(anchor0)
         self._anchor1_scene = QPointF(anchor1)
         self._local_anchor0 = QPointF()
@@ -4212,6 +4214,7 @@ class OrbitalAnnotationItem(QGraphicsItem):
         if self._kind == kind:
             return
         self._kind = kind
+        self._part_styles = self._normalize_part_styles(self._part_styles)
         self.set_anchors(self._anchor0_scene, self._anchor1_scene)
 
     def stroke_shaded_lobes(self) -> bool | None:
@@ -4221,6 +4224,62 @@ class OrbitalAnnotationItem(QGraphicsItem):
         self._stroke_shaded_lobes = value
         self.update()
 
+    def part_names(self) -> tuple[str, ...]:
+        spec = self._renderer.spec_for_kind(self._kind)
+        return self._renderer.part_names(spec)
+
+    def part_styles(self) -> dict[str, dict[str, object]]:
+        return {name: dict(style) for name, style in self._part_styles.items()}
+
+    def effective_part_style(self, name: str) -> dict[str, object]:
+        style = dict(self._part_styles.get(name, {}))
+        style.setdefault("color", None)
+        style.setdefault("opacity", None)
+        style.setdefault("offset_x", 0.0)
+        style.setdefault("offset_y", 0.0)
+        return style
+
+    def _normalize_part_styles(
+        self,
+        payload: dict[str, dict[str, object]],
+    ) -> dict[str, dict[str, object]]:
+        valid_names = set(self.part_names())
+        normalized: dict[str, dict[str, object]] = {}
+        for name, raw_style in dict(payload or {}).items():
+            if name not in valid_names or not isinstance(raw_style, dict):
+                continue
+            style: dict[str, object] = {}
+            color_value = raw_style.get("color")
+            if color_value:
+                color = QColor(str(color_value))
+                if color.isValid():
+                    style["color"] = color.name(QColor.NameFormat.HexRgb)
+            opacity_value = raw_style.get("opacity")
+            if opacity_value is not None:
+                try:
+                    opacity = max(0.0, min(1.0, float(opacity_value)))
+                except Exception:
+                    opacity = None
+                if opacity is not None and abs(opacity - 1.0) > 1e-6:
+                    style["opacity"] = opacity
+            for axis in ("offset_x", "offset_y"):
+                try:
+                    value = float(raw_style.get(axis, 0.0) or 0.0)
+                except Exception:
+                    value = 0.0
+                if abs(value) > 1e-6:
+                    style[axis] = value
+            if style:
+                normalized[name] = style
+        return normalized
+
+    def set_part_styles(self, payload: Optional[dict[str, dict[str, object]]]) -> None:
+        normalized = self._normalize_part_styles(payload or {})
+        if normalized == self._part_styles:
+            return
+        self._part_styles = normalized
+        self.set_anchors(self._anchor0_scene, self._anchor1_scene)
+
     def anchor0(self) -> QPointF:
         return QPointF(self._anchor0_scene)
 
@@ -4229,7 +4288,7 @@ class OrbitalAnnotationItem(QGraphicsItem):
 
     def set_anchors(self, anchor0: QPointF, anchor1: QPointF) -> None:
         spec = self._renderer.spec_for_kind(self._kind)
-        scene_bbox = self._renderer.bounding_rect(spec, anchor0, anchor1)
+        scene_bbox = self._renderer.bounding_rect(spec, anchor0, anchor1, part_styles=self._part_styles)
         pad = max(2.0, scene_bbox.width() * 0.06, scene_bbox.height() * 0.06)
         scene_bbox = scene_bbox.adjusted(-pad, -pad, pad, pad)
         if not scene_bbox.isValid() or scene_bbox.width() <= 0.0 or scene_bbox.height() <= 0.0:
@@ -4243,7 +4302,12 @@ class OrbitalAnnotationItem(QGraphicsItem):
         self._local_anchor0 = QPointF(anchor0.x() - origin.x(), anchor0.y() - origin.y())
         self._local_anchor1 = QPointF(anchor1.x() - origin.x(), anchor1.y() - origin.y())
         self._bounding_rect = QRectF(0.0, 0.0, scene_bbox.width(), scene_bbox.height())
-        self._shape_path = self._renderer.combined_path(spec, self._local_anchor0, self._local_anchor1)
+        self._shape_path = self._renderer.combined_path(
+            spec,
+            self._local_anchor0,
+            self._local_anchor1,
+            part_styles=self._part_styles,
+        )
         self.update()
 
     def boundingRect(self) -> QRectF:
@@ -4261,6 +4325,7 @@ class OrbitalAnnotationItem(QGraphicsItem):
             self._local_anchor0,
             self._local_anchor1,
             stroke_shaded_lobes=self._stroke_shaded_lobes,
+            part_styles=self._part_styles,
         )
 
 

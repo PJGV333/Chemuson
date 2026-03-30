@@ -99,8 +99,8 @@ ORBITAL_PARAMETER_DESCRIPTIONS: dict[str, str] = {
     "geometry_scale_x": "Escala horizontal aplicada a la geometría base antes del estilo.",
     "geometry_scale_y": "Escala vertical aplicada a la geometría base antes del estilo.",
     "shoulder_height_ratio": "Altura relativa del hombro del lóbulo experimental.",
-    "belly_width": "Qué tan lleno se ve el vientre del lóbulo experimental.",
-    "belly_height_ratio": "Altura relativa del vientre del lóbulo experimental.",
+    "belly_width": "Qué tan lleno se ve el vientre o zona media del lóbulo.",
+    "belly_height_ratio": "Altura relativa del vientre o zona media del lóbulo.",
     "neck_width": "Ancho del cuello del lóbulo experimental.",
     "neck_height": "Altura relativa del cuello experimental.",
     "cusp_depth": "Profundidad del cierre en el nodo para formas experimentales.",
@@ -118,11 +118,23 @@ ORBITAL_PARAMETER_DESCRIPTIONS: dict[str, str] = {
     "vertical_height": "Altura de los lóbulos verticales del trébol.",
     "horizontal_width": "Ancho de los lóbulos horizontales del trébol.",
     "horizontal_height": "Altura de los lóbulos horizontales del trébol.",
+    "center_roundness": "Redondeo del punto de anclaje central de cada lóbulo.",
     "lobe_gap": "Separación entre lóbulos alrededor del nodo central.",
+    "side_rotation_deg": "Rotación de los lóbulos laterales del conjunto sp3.",
+    "bottom_rotation_deg": "Rotación del lóbulo inferior del conjunto sp3.",
+    "side_scale": "Escala aplicada a los lóbulos laterales del conjunto sp3.",
+    "bottom_scale": "Escala aplicada al lóbulo inferior del conjunto sp3.",
+    "pair_rotation_deg": "Ángulo entre el lóbulo superior y cada lóbulo lateral del conjunto sp2.",
+    "planar_rotation_deg": "Rotación global del conjunto sp2 dentro del plano.",
+    "top_scale": "Escala aplicada al lóbulo superior del conjunto sp2.",
+    "pair_scale": "Escala aplicada al par lateral del conjunto sp2.",
+    "lateral_offset": "Apertura lateral de la nube enlazante del orbital pi.",
     "axial_width": "Ancho de los lóbulos axiales del dz2.",
     "axial_height": "Altura de los lóbulos axiales del dz2.",
     "axial_tip_roundness": "Redondez de la punta axial.",
+    "axial_shoulder_width": "Apertura del hombro del lóbulo axial del dz2.",
     "axial_waist_width": "Ancho de la cintura axial cerca del plano nodal.",
+    "axial_center_roundness": "Redondeo local del extremo axial hacia el centro.",
     "torus_outer_width": "Ancho exterior del toroide.",
     "torus_outer_height": "Altura exterior del toroide.",
     "torus_inner_width_ratio": "Tamaño relativo del hueco interior del toroide en X.",
@@ -132,9 +144,14 @@ ORBITAL_PARAMETER_DESCRIPTIONS: dict[str, str] = {
     "minor_lobe": "Parámetros del lóbulo pequeño o secundario.",
     "upper_lobe": "Parámetros del lóbulo superior.",
     "lower_lobe": "Parámetros del lóbulo inferior.",
+    "major_offset_x": "Desplazamiento horizontal del lóbulo principal.",
+    "minor_offset_x": "Desplazamiento horizontal del lóbulo secundario.",
     "major_offset_y": "Desplazamiento vertical del lóbulo principal.",
     "minor_offset_y": "Desplazamiento vertical del lóbulo secundario.",
-    "ring": "Parámetros del anillo o toroide ecuatorial.",
+    "bridge_width": "Ancho de la concavidad central de la nube enlazante pi.",
+    "bridge_height": "Profundidad vertical de la concavidad central de la nube pi.",
+    "cap_width": "Ancho de la corona exterior que redondea la nube pi.",
+    "cap_height": "Altura extra de la corona exterior de la nube pi.",
     "torus_gradient_mode": "Modo de sombreado específico del toroide dentro del dz2.",
 }
 
@@ -148,7 +165,11 @@ class OrbitalType(str, Enum):
     DZ2 = "dz2"
     F = "f"
     FZ3 = "fz3"
+    FXZ2 = "fxz2"
+    FZX2Y2 = "fzx2y2"
+    FXYZ = "fxyz"
     SP3 = "sp3"
+    SP2 = "sp2"
     SP_LOBE = "sp_lobe"
     SIGMA_BONDING = "sigma_bonding"
     PI_BONDING = "pi_bonding"
@@ -169,6 +190,7 @@ class GlyphLayer:
 
     path: QPainterPath
     paint: str
+    name: str = ""
     gradient: str = "linear"
     stroke: bool = False
     phase: str | None = None
@@ -215,6 +237,8 @@ class CanonicalLobeParams:
     tip_roundness: float
     shoulder_width: float
     waist_width: float
+    belly_width: float = 0.0
+    belly_height_ratio: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -294,7 +318,9 @@ class CloverParams:
     tip_roundness: float
     shoulder_width: float
     waist_width: float
+    center_roundness: float
     lobe_gap: float
+    rotation_deg: float
     visual_padding: float
     anchor_bias_x: float
     anchor_bias_y: float
@@ -309,7 +335,9 @@ class Dz2Params:
     axial_width: float
     axial_height: float
     axial_tip_roundness: float
+    axial_shoulder_width: float
     axial_waist_width: float
+    axial_center_roundness: float
     torus_outer_width: float
     torus_outer_height: float
     torus_inner_width_ratio: float
@@ -329,14 +357,51 @@ class HybridOrbitalParams:
 
     major_lobe: CanonicalLobeParams
     minor_lobe: CanonicalLobeParams
+    major_offset_x: float = 0.0
+    minor_offset_x: float = 0.0
     major_offset_y: float = 0.0
     minor_offset_y: float = 0.0
+    center_roundness: float = 0.0
     node_gap: float = 0.0
     visual_padding: float = 6.0
     anchor_bias_x: float = 0.0
     anchor_bias_y: float = 0.0
     gradient_mode: str = "linear"
     minor_gradient_mode: str = "linear"
+    light_dir: str = _DEFAULT_LIGHT_DIR
+
+
+@dataclass(frozen=True)
+class Sp3Params:
+    """Parámetros del conjunto de 4 lóbulos para un sp3 canónico."""
+
+    lobe: CanonicalLobeParams
+    center_roundness: float = 0.0
+    side_rotation_deg: float = 126.0
+    bottom_rotation_deg: float = 180.0
+    side_scale: float = 0.96
+    bottom_scale: float = 0.88
+    visual_padding: float = 7.0
+    anchor_bias_x: float = 0.0
+    anchor_bias_y: float = 2.0
+    gradient_mode: str = "linear"
+    light_dir: str = _DEFAULT_LIGHT_DIR
+
+
+@dataclass(frozen=True)
+class Sp2Params:
+    """Parámetros del conjunto trigonal plano para un sp2 canónico."""
+
+    lobe: CanonicalLobeParams
+    center_roundness: float = 0.0
+    pair_rotation_deg: float = 120.0
+    planar_rotation_deg: float = 0.0
+    top_scale: float = 1.0
+    pair_scale: float = 1.0
+    visual_padding: float = 7.0
+    anchor_bias_x: float = 0.0
+    anchor_bias_y: float = 1.5
+    gradient_mode: str = "linear"
     light_dir: str = _DEFAULT_LIGHT_DIR
 
 
@@ -348,7 +413,12 @@ class PiBondingParams:
     lower_lobe: CanonicalLobeParams
     node_gap: float = 0.0
     vertical_offset: float = 0.0
-    ring: TorusParams | None = None
+    center_roundness: float = 0.0
+    lateral_offset: float = 12.0
+    bridge_width: float = 0.0
+    bridge_height: float = 0.0
+    cap_width: float = 0.0
+    cap_height: float = 0.0
     visual_padding: float = 6.0
     anchor_bias_x: float = 0.0
     anchor_bias_y: float = 0.0
@@ -376,7 +446,7 @@ class OrbitalFamilyPreset:
 
     family: str
     builder: str
-    params: SphereParams | POrbitalParams | CloverParams | Dz2Params | FOrbitalParams | HybridOrbitalParams | PiBondingParams | TorusParams
+    params: SphereParams | POrbitalParams | CloverParams | Dz2Params | FOrbitalParams | HybridOrbitalParams | Sp3Params | Sp2Params | PiBondingParams | TorusParams
 
 
 @dataclass(frozen=True)
@@ -465,7 +535,11 @@ _TYPE_LABELS = {
     OrbitalType.DZ2: "Orbital dz2",
     OrbitalType.F: "Orbital f",
     OrbitalType.FZ3: "Orbital fz3",
+    OrbitalType.FXZ2: "Orbital fxz2",
+    OrbitalType.FZX2Y2: "Orbital fz(x2-y2)",
+    OrbitalType.FXYZ: "Orbital fxyz",
     OrbitalType.SP3: "Orbital sp3",
+    OrbitalType.SP2: "Orbital sp2",
     OrbitalType.SP_LOBE: "Lóbulo sp",
     OrbitalType.SIGMA_BONDING: "Sigma enlazante",
     OrbitalType.PI_BONDING: "Pi enlazante",
@@ -485,7 +559,11 @@ _ORBITAL_GLYPH_IDS = {
     OrbitalType.DZ2: "dz2",
     OrbitalType.F: "f",
     OrbitalType.FZ3: "fz3",
+    OrbitalType.FXZ2: "fxz2",
+    OrbitalType.FZX2Y2: "fzx2y2",
+    OrbitalType.FXYZ: "fxyz",
     OrbitalType.SP3: "sp3",
+    OrbitalType.SP2: "sp2",
     OrbitalType.SP_LOBE: "sp_lobe",
     OrbitalType.SIGMA_BONDING: "sigma_bonding",
     OrbitalType.PI_BONDING: "pi_bonding",
@@ -499,7 +577,11 @@ _CANVAS_EXTENT_SCALES = {
     OrbitalType.DZ2: 0.98,
     OrbitalType.F: 0.94,
     OrbitalType.FZ3: 0.98,
+    OrbitalType.FXZ2: 0.98,
+    OrbitalType.FZX2Y2: 0.98,
+    OrbitalType.FXYZ: 0.98,
     OrbitalType.SP3: 0.94,
+    OrbitalType.SP2: 0.92,
     OrbitalType.SP_LOBE: 0.88,
     OrbitalType.SIGMA_BONDING: 0.96,
     OrbitalType.PI_BONDING: 0.98,
@@ -534,6 +616,7 @@ REFERENCE_PALETTE_CELLS = (
     ("s_outline", "s_shaded", "p_shaded", "p_solid", "d_shaded", "d_solid", None),
     ("torus_outline", "torus_shaded", "torus_solid", "sp3_shaded", "sp3_solid", "dz2_shaded", "dz2_solid"),
     ("sp_lobe_outline", "sp_lobe_shaded", "sp_lobe_solid", "sigma_bonding_shaded", "sigma_bonding_solid", "pi_bonding_shaded", "pi_bonding_solid"),
+    ("sp2_outline", "sp2_shaded", "sp2_solid", None, None, None, None),
 )
 
 ORBITAL_PALETTE_MODEL = OrbitalPaletteModel(cells=REFERENCE_PALETTE_CELLS)
@@ -605,14 +688,16 @@ def _default_family_presets() -> dict[str, OrbitalFamilyPreset]:
             family="d",
             builder="build_d_clover_orbital",
             params=CloverParams(
-                vertical_width=29.6,
-                vertical_height=38.0,
-                horizontal_width=20.4,
-                horizontal_height=36.0,
-                tip_roundness=0.68,
+                vertical_width=30.4,
+                vertical_height=41.0,
+                horizontal_width=30.4,
+                horizontal_height=41.0,
+                tip_roundness=0.71,
                 shoulder_width=1.0,
                 waist_width=0.35,
+                center_roundness=0.12,
                 lobe_gap=0.0,
+                rotation_deg=45.0,
                 visual_padding=5.0,
                 anchor_bias_x=0.0,
                 anchor_bias_y=0.0,
@@ -622,10 +707,12 @@ def _default_family_presets() -> dict[str, OrbitalFamilyPreset]:
             family="dz2",
             builder="build_dz2_orbital",
             params=Dz2Params(
-                axial_width=24.4,
-                axial_height=39.0,
-                axial_tip_roundness=0.672,
-                axial_waist_width=0.344,
+                axial_width=28.0,
+                axial_height=41.0,
+                axial_tip_roundness=0.71,
+                axial_shoulder_width=1.0,
+                axial_waist_width=0.24,
+                axial_center_roundness=0.0,
                 torus_outer_width=62.0,
                 torus_outer_height=9.6,
                 torus_inner_width_ratio=0.46,
@@ -648,31 +735,50 @@ def _default_family_presets() -> dict[str, OrbitalFamilyPreset]:
                 gradient_mode="elliptical",
             ),
         ),
+        "sp2": OrbitalFamilyPreset(
+            family="sp2",
+            builder="build_sp2_orbital",
+            params=Sp2Params(
+                lobe=CanonicalLobeParams(
+                    width=22.0,
+                    height=38.0,
+                    tip_roundness=0.76,
+                    shoulder_width=0.95,
+                    waist_width=0.16,
+                    belly_width=0.88,
+                    belly_height_ratio=0.58,
+                ),
+                center_roundness=0.0,
+                pair_rotation_deg=120.0,
+                planar_rotation_deg=0.0,
+                top_scale=1.0,
+                pair_scale=1.0,
+                visual_padding=7.0,
+                anchor_bias_x=0.0,
+                anchor_bias_y=1.5,
+                gradient_mode="linear",
+            ),
+        ),
         "sp3": OrbitalFamilyPreset(
             family="sp3",
             builder="build_sp3_orbital",
-            params=HybridOrbitalParams(
-                major_lobe=CanonicalLobeParams(
-                    width=48.0,
-                    height=48.0,
-                    tip_roundness=0.70,
-                    shoulder_width=1.0,
-                    waist_width=0.32,
+            params=Sp3Params(
+                lobe=CanonicalLobeParams(
+                    width=22.0,
+                    height=38.0,
+                    tip_roundness=0.76,
+                    shoulder_width=0.95,
+                    waist_width=0.16,
                 ),
-                minor_lobe=CanonicalLobeParams(
-                    width=24.0,
-                    height=28.0,
-                    tip_roundness=0.72,
-                    shoulder_width=1.0,
-                    waist_width=0.30,
-                ),
-                major_offset_y=1.5,
-                minor_offset_y=-22.0,
-                visual_padding=6.0,
+                center_roundness=0.0,
+                side_rotation_deg=126.0,
+                bottom_rotation_deg=180.0,
+                side_scale=0.96,
+                bottom_scale=0.88,
+                visual_padding=7.0,
                 anchor_bias_x=0.0,
-                anchor_bias_y=0.8,
+                anchor_bias_y=2.0,
                 gradient_mode="linear",
-                minor_gradient_mode="radial",
             ),
         ),
         "sp_lobe": OrbitalFamilyPreset(
@@ -680,22 +786,26 @@ def _default_family_presets() -> dict[str, OrbitalFamilyPreset]:
             builder="build_sp_lobe_orbital",
             params=HybridOrbitalParams(
                 major_lobe=CanonicalLobeParams(
-                    width=29.6,
-                    height=44.0,
-                    tip_roundness=0.42,
-                    shoulder_width=0.76,
-                    waist_width=0.58,
+                    width=29.0,
+                    height=46.0,
+                    tip_roundness=0.56,
+                    shoulder_width=0.94,
+                    waist_width=0.34,
+                    belly_width=0.94,
+                    belly_height_ratio=0.56,
                 ),
                 minor_lobe=CanonicalLobeParams(
-                    width=11.4,
-                    height=39.0,
-                    tip_roundness=0.72,
-                    shoulder_width=1.0,
-                    waist_width=0.30,
+                    width=13.0,
+                    height=18.0,
+                    tip_roundness=0.78,
+                    shoulder_width=0.92,
+                    waist_width=0.42,
+                    belly_width=0.84,
+                    belly_height_ratio=0.58,
                 ),
-                visual_padding=4.0,
+                visual_padding=5.0,
                 anchor_bias_x=0.0,
-                anchor_bias_y=-4.5,
+                anchor_bias_y=0.0,
             ),
         ),
         "sigma_bonding": OrbitalFamilyPreset(
@@ -703,23 +813,31 @@ def _default_family_presets() -> dict[str, OrbitalFamilyPreset]:
             builder="build_sigma_bonding_orbital",
             params=HybridOrbitalParams(
                 major_lobe=CanonicalLobeParams(
-                    width=32.0,
-                    height=38.0,
-                    tip_roundness=0.75,
-                    shoulder_width=1.0,
-                    waist_width=0.44,
+                    width=30.0,
+                    height=34.0,
+                    tip_roundness=0.78,
+                    shoulder_width=0.98,
+                    waist_width=0.22,
+                    belly_width=0.96,
+                    belly_height_ratio=0.48,
                 ),
                 minor_lobe=CanonicalLobeParams(
-                    width=13.0,
-                    height=12.0,
-                    tip_roundness=0.40,
-                    shoulder_width=0.769,
-                    waist_width=0.69,
+                    width=12.0,
+                    height=15.0,
+                    tip_roundness=0.74,
+                    shoulder_width=0.92,
+                    waist_width=0.34,
+                    belly_width=0.82,
+                    belly_height_ratio=0.58,
                 ),
-                minor_offset_y=22.0,
+                major_offset_x=11.0,
+                minor_offset_x=27.0,
+                major_offset_y=0.0,
+                minor_offset_y=0.0,
+                center_roundness=0.18,
                 visual_padding=5.0,
                 anchor_bias_x=0.0,
-                anchor_bias_y=2.75,
+                anchor_bias_y=0.0,
                 gradient_mode="linear",
                 minor_gradient_mode="radial",
             ),
@@ -729,28 +847,30 @@ def _default_family_presets() -> dict[str, OrbitalFamilyPreset]:
             builder="build_pi_bonding_orbital",
             params=PiBondingParams(
                 upper_lobe=CanonicalLobeParams(
-                    width=26.0,
-                    height=37.0,
-                    tip_roundness=0.67,
-                    shoulder_width=1.0,
-                    waist_width=0.34,
+                    width=24.0,
+                    height=24.0,
+                    tip_roundness=0.72,
+                    shoulder_width=0.96,
+                    waist_width=0.26,
+                    belly_width=0.90,
+                    belly_height_ratio=0.52,
                 ),
                 lower_lobe=CanonicalLobeParams(
-                    width=26.0,
-                    height=37.0,
-                    tip_roundness=0.67,
-                    shoulder_width=1.0,
-                    waist_width=0.34,
+                    width=24.0,
+                    height=24.0,
+                    tip_roundness=0.72,
+                    shoulder_width=0.96,
+                    waist_width=0.26,
+                    belly_width=0.90,
+                    belly_height_ratio=0.52,
                 ),
-                node_gap=4.0,
-                ring=TorusParams(
-                    torus_outer_width=48.0,
-                    torus_outer_height=11.0,
-                    torus_inner_width_ratio=0.44,
-                    torus_inner_height_ratio=0.40,
-                    visual_padding=6.0,
-                    phase="neutral",
-                ),
+                node_gap=3.0,
+                center_roundness=0.16,
+                lateral_offset=5.0,
+                bridge_width=20.0,
+                bridge_height=11.0,
+                cap_width=22.0,
+                cap_height=6.0,
                 visual_padding=6.0,
                 anchor_bias_x=0.0,
                 anchor_bias_y=0.0,
@@ -762,12 +882,12 @@ def _default_family_presets() -> dict[str, OrbitalFamilyPreset]:
             builder="build_f_orbital",
             params=FOrbitalParams(
                 lobes=(
-                    TeardropParams(24.0, 28.0, 0.68, 1.0, 0.67, 0.88, 0.41, 0.35, 0.05, 0.0, orientation="up", phase="positive"),
-                    TeardropParams(24.0, 28.0, 0.68, 1.0, 0.67, 0.88, 0.41, 0.35, 0.05, 0.0, orientation="down", phase="negative"),
-                    TeardropParams(24.0, 28.0, 0.61, 1.0, 0.58, 0.80, 0.24, 0.27, 0.02, 0.0, orientation="left", phase="positive"),
-                    TeardropParams(24.0, 28.0, 0.61, 1.0, 0.58, 0.80, 0.24, 0.27, 0.02, 0.0, orientation="right", phase="negative"),
-                    TeardropParams(16.0, 20.0, 0.67, 1.0, 0.64, 0.89, 0.36, 0.28, 0.01, 0.0, rotation_deg=-45.0, orientation="up", phase="positive"),
-                    TeardropParams(16.0, 20.0, 0.67, 1.0, 0.64, 0.89, 0.36, 0.28, 0.01, 0.0, rotation_deg=135.0, orientation="up", phase="negative"),
+                    TeardropParams(20.0, 26.0, 0.72, 0.96, 0.66, 0.90, 0.46, 0.26, 0.03, 0.0, rotation_deg=0.0, orientation="up", phase="positive"),
+                    TeardropParams(20.0, 26.0, 0.72, 0.96, 0.66, 0.90, 0.46, 0.26, 0.03, 0.0, rotation_deg=60.0, orientation="up", phase="negative"),
+                    TeardropParams(20.0, 26.0, 0.72, 0.96, 0.66, 0.90, 0.46, 0.26, 0.03, 0.0, rotation_deg=120.0, orientation="up", phase="positive"),
+                    TeardropParams(20.0, 26.0, 0.72, 0.96, 0.66, 0.90, 0.46, 0.26, 0.03, 0.0, rotation_deg=180.0, orientation="up", phase="negative"),
+                    TeardropParams(20.0, 26.0, 0.72, 0.96, 0.66, 0.90, 0.46, 0.26, 0.03, 0.0, rotation_deg=240.0, orientation="up", phase="positive"),
+                    TeardropParams(20.0, 26.0, 0.72, 0.96, 0.66, 0.90, 0.46, 0.26, 0.03, 0.0, rotation_deg=300.0, orientation="up", phase="negative"),
                 ),
                 visual_padding=8.0,
             ),
@@ -777,17 +897,65 @@ def _default_family_presets() -> dict[str, OrbitalFamilyPreset]:
             builder="build_f_orbital",
             params=FOrbitalParams(
                 lobes=(
-                    TeardropParams(18.0, 22.0, 0.70, 1.0, 0.66, 0.86, 0.40, 0.32, 0.05, 0.0, offset_y=-28.0, orientation="up", phase="positive"),
-                    TeardropParams(12.0, 14.0, 0.72, 1.0, 0.78, 0.84, 0.52, 0.30, 0.08, 0.20, orientation="up", phase="negative"),
-                    TeardropParams(18.0, 22.0, 0.70, 1.0, 0.66, 0.86, 0.40, 0.32, 0.05, 0.0, offset_y=28.0, orientation="down", phase="positive"),
+                    TeardropParams(18.0, 24.0, 0.72, 0.96, 0.66, 0.90, 0.44, 0.28, 0.03, 0.0, offset_y=-30.0, orientation="up", phase="positive"),
+                    TeardropParams(18.0, 24.0, 0.72, 0.96, 0.66, 0.90, 0.44, 0.28, 0.03, 0.0, offset_y=30.0, orientation="down", phase="positive"),
                 ),
                 torus=TorusParams(
-                    torus_outer_width=46.0,
-                    torus_outer_height=12.0,
+                    torus_outer_width=40.0,
+                    torus_outer_height=10.0,
                     torus_inner_width_ratio=0.50,
                     torus_inner_height_ratio=0.42,
                     visual_padding=8.0,
                     phase="neutral",
+                ),
+                visual_padding=8.0,
+            ),
+        ),
+        "fxz2": OrbitalFamilyPreset(
+            family="fxz2",
+            builder="build_f_orbital",
+            params=FOrbitalParams(
+                lobes=(
+                    TeardropParams(16.0, 22.0, 0.72, 0.96, 0.66, 0.90, 0.44, 0.28, 0.03, 0.0, offset_y=-26.0, orientation="up", phase="positive"),
+                    TeardropParams(16.0, 22.0, 0.72, 0.96, 0.66, 0.90, 0.44, 0.28, 0.03, 0.0, offset_y=26.0, orientation="down", phase="negative"),
+                    TeardropParams(14.0, 26.0, 0.72, 0.96, 0.66, 0.88, 0.42, 0.24, 0.03, 0.0, rotation_deg=50.0, orientation="up", phase="positive"),
+                    TeardropParams(14.0, 26.0, 0.72, 0.96, 0.66, 0.88, 0.42, 0.24, 0.03, 0.0, rotation_deg=130.0, orientation="up", phase="negative"),
+                    TeardropParams(14.0, 26.0, 0.72, 0.96, 0.66, 0.88, 0.42, 0.24, 0.03, 0.0, rotation_deg=230.0, orientation="up", phase="positive"),
+                    TeardropParams(14.0, 26.0, 0.72, 0.96, 0.66, 0.88, 0.42, 0.24, 0.03, 0.0, rotation_deg=310.0, orientation="up", phase="negative"),
+                ),
+                visual_padding=8.0,
+            ),
+        ),
+        "fzx2y2": OrbitalFamilyPreset(
+            family="fzx2y2",
+            builder="build_f_orbital",
+            params=FOrbitalParams(
+                lobes=(
+                    TeardropParams(18.0, 26.0, 0.72, 0.96, 0.66, 0.90, 0.46, 0.26, 0.03, 0.0, rotation_deg=0.0, orientation="up", phase="positive"),
+                    TeardropParams(15.0, 21.0, 0.72, 0.94, 0.66, 0.86, 0.42, 0.24, 0.03, 0.0, rotation_deg=45.0, orientation="up", phase="negative"),
+                    TeardropParams(18.0, 26.0, 0.72, 0.96, 0.66, 0.90, 0.46, 0.26, 0.03, 0.0, rotation_deg=90.0, orientation="up", phase="positive"),
+                    TeardropParams(15.0, 21.0, 0.72, 0.94, 0.66, 0.86, 0.42, 0.24, 0.03, 0.0, rotation_deg=135.0, orientation="up", phase="negative"),
+                    TeardropParams(18.0, 26.0, 0.72, 0.96, 0.66, 0.90, 0.46, 0.26, 0.03, 0.0, rotation_deg=180.0, orientation="up", phase="positive"),
+                    TeardropParams(15.0, 21.0, 0.72, 0.94, 0.66, 0.86, 0.42, 0.24, 0.03, 0.0, rotation_deg=225.0, orientation="up", phase="negative"),
+                    TeardropParams(18.0, 26.0, 0.72, 0.96, 0.66, 0.90, 0.46, 0.26, 0.03, 0.0, rotation_deg=270.0, orientation="up", phase="positive"),
+                    TeardropParams(15.0, 21.0, 0.72, 0.94, 0.66, 0.86, 0.42, 0.24, 0.03, 0.0, rotation_deg=315.0, orientation="up", phase="negative"),
+                ),
+                visual_padding=8.0,
+            ),
+        ),
+        "fxyz": OrbitalFamilyPreset(
+            family="fxyz",
+            builder="build_f_orbital",
+            params=FOrbitalParams(
+                lobes=(
+                    TeardropParams(15.0, 20.0, 0.72, 0.94, 0.66, 0.88, 0.42, 0.24, 0.03, 0.0, rotation_deg=0.0, orientation="up", phase="positive"),
+                    TeardropParams(15.0, 20.0, 0.72, 0.94, 0.66, 0.88, 0.42, 0.24, 0.03, 0.0, rotation_deg=45.0, orientation="up", phase="negative"),
+                    TeardropParams(15.0, 20.0, 0.72, 0.94, 0.66, 0.88, 0.42, 0.24, 0.03, 0.0, rotation_deg=90.0, orientation="up", phase="positive"),
+                    TeardropParams(15.0, 20.0, 0.72, 0.94, 0.66, 0.88, 0.42, 0.24, 0.03, 0.0, rotation_deg=135.0, orientation="up", phase="negative"),
+                    TeardropParams(15.0, 20.0, 0.72, 0.94, 0.66, 0.88, 0.42, 0.24, 0.03, 0.0, rotation_deg=180.0, orientation="up", phase="positive"),
+                    TeardropParams(15.0, 20.0, 0.72, 0.94, 0.66, 0.88, 0.42, 0.24, 0.03, 0.0, rotation_deg=225.0, orientation="up", phase="negative"),
+                    TeardropParams(15.0, 20.0, 0.72, 0.94, 0.66, 0.88, 0.42, 0.24, 0.03, 0.0, rotation_deg=270.0, orientation="up", phase="positive"),
+                    TeardropParams(15.0, 20.0, 0.72, 0.94, 0.66, 0.88, 0.42, 0.24, 0.03, 0.0, rotation_deg=315.0, orientation="up", phase="negative"),
                 ),
                 visual_padding=8.0,
             ),
@@ -897,7 +1065,9 @@ def _parse_teardrop(payload: dict[str, Any]) -> TeardropParams:
 
 def _parse_canonical_lobe(payload: dict[str, Any]) -> CanonicalLobeParams:
     data = _strip_meta(payload)
-    return CanonicalLobeParams(**data)
+    allowed = set(CanonicalLobeParams.__dataclass_fields__)
+    filtered = {key: value for key, value in data.items() if key in allowed}
+    return CanonicalLobeParams(**filtered)
 
 
 def _parse_torus(payload: dict[str, Any]) -> TorusParams:
@@ -915,6 +1085,8 @@ def _canonical_from_legacy_teardrop(payload: dict[str, Any]) -> dict[str, Any]:
         "tip_roundness": float(data.get("tip_roundness", 0.68)),
         "shoulder_width": float(data.get("shoulder_width", 1.0)),
         "waist_width": float(data.get("waist_width", data.get("neck_width", 0.35))),
+        "belly_width": float(data.get("belly_width", 0.0)),
+        "belly_height_ratio": float(data.get("belly_height_ratio", 0.0)),
     }
 
 
@@ -938,18 +1110,22 @@ def _normalize_clover_params(payload: dict[str, Any]) -> dict[str, Any]:
     data = dict(_strip_meta(payload))
     data.setdefault("vertical_width", data.get("vertical_lobe_width", 29.6))
     data.setdefault("vertical_height", data.get("vertical_lobe_height", 38.0))
-    data.setdefault("horizontal_width", data.get("horizontal_lobe_width", 20.4))
-    data.setdefault("horizontal_height", data.get("horizontal_lobe_height", 36.0))
+    data.setdefault("horizontal_width", data.get("horizontal_lobe_width", data.get("vertical_width", 29.6)))
+    data.setdefault("horizontal_height", data.get("horizontal_lobe_height", data.get("vertical_height", 38.0)))
     data.setdefault("waist_width", data.get("neck_width", 0.35))
+    data.setdefault("center_roundness", data.get("node_roundness", 0.12))
+    data.setdefault("rotation_deg", data.get("clover_rotation_deg", 45.0))
     allowed = set(CloverParams.__dataclass_fields__)
     return {key: value for key, value in data.items() if key in allowed}
 
 
 def _normalize_dz2_params(payload: dict[str, Any]) -> dict[str, Any]:
     data = dict(_strip_meta(payload))
-    data.setdefault("axial_width", data.get("axial_lobe_width", 24.4))
-    data.setdefault("axial_height", data.get("axial_lobe_height", 39.0))
-    data.setdefault("axial_waist_width", data.get("axial_neck_width", 0.34))
+    data.setdefault("axial_width", data.get("axial_lobe_width", 28.0))
+    data.setdefault("axial_height", data.get("axial_lobe_height", 41.0))
+    data.setdefault("axial_shoulder_width", data.get("axial_shoulder", 1.0))
+    data.setdefault("axial_waist_width", data.get("axial_neck_width", 0.24))
+    data.setdefault("axial_center_roundness", data.get("axial_node_roundness", 0.0))
     allowed = set(Dz2Params.__dataclass_fields__)
     return {key: value for key, value in data.items() if key in allowed}
 
@@ -960,8 +1136,11 @@ def _parse_hybrid_payload(payload: dict[str, Any], *, family_key: str) -> Hybrid
         return HybridOrbitalParams(
             major_lobe=_parse_canonical_lobe(data["major_lobe"]),
             minor_lobe=_parse_canonical_lobe(data["minor_lobe"]),
+            major_offset_x=float(data.get("major_offset_x", 0.0)),
+            minor_offset_x=float(data.get("minor_offset_x", 0.0)),
             major_offset_y=float(data.get("major_offset_y", 0.0)),
             minor_offset_y=float(data.get("minor_offset_y", 0.0)),
+            center_roundness=float(data.get("center_roundness", 0.0)),
             node_gap=float(data.get("node_gap", 0.0)),
             visual_padding=float(data.get("visual_padding", 6.0)),
             anchor_bias_x=float(data.get("anchor_bias_x", 0.0)),
@@ -987,8 +1166,11 @@ def _parse_hybrid_payload(payload: dict[str, Any], *, family_key: str) -> Hybrid
     return HybridOrbitalParams(
         major_lobe=_parse_canonical_lobe(major_payload),
         minor_lobe=_parse_canonical_lobe(minor_payload),
+        major_offset_x=float(data.get("major_offset_x", 0.0)),
+        minor_offset_x=float(data.get("minor_offset_x", 0.0)),
         major_offset_y=float(data.get("major_offset_y", major_offset_y)),
         minor_offset_y=float(data.get("minor_offset_y", minor_offset_y)),
+        center_roundness=float(data.get("center_roundness", 0.0)),
         node_gap=float(data.get("node_gap", 0.0)),
         visual_padding=float(data.get("visual_padding", 6.0)),
         anchor_bias_x=float(data.get("anchor_bias_x", 0.0)),
@@ -999,15 +1181,102 @@ def _parse_hybrid_payload(payload: dict[str, Any], *, family_key: str) -> Hybrid
     )
 
 
+def _parse_sp3_payload(payload: dict[str, Any]) -> Sp3Params:
+    data = dict(_strip_meta(payload))
+    if "lobe" in data:
+        return Sp3Params(
+            lobe=_parse_canonical_lobe(data["lobe"]),
+            center_roundness=float(data.get("center_roundness", 0.0)),
+            side_rotation_deg=float(data.get("side_rotation_deg", 126.0)),
+            bottom_rotation_deg=float(data.get("bottom_rotation_deg", 180.0)),
+            side_scale=float(data.get("side_scale", 0.96)),
+            bottom_scale=float(data.get("bottom_scale", 0.88)),
+            visual_padding=float(data.get("visual_padding", 7.0)),
+            anchor_bias_x=float(data.get("anchor_bias_x", 0.0)),
+            anchor_bias_y=float(data.get("anchor_bias_y", 2.0)),
+            gradient_mode=str(data.get("gradient_mode", "linear")),
+            light_dir=str(data.get("light_dir", _DEFAULT_LIGHT_DIR)),
+        )
+
+    major_payload = _strip_meta(data.get("major_lobe", {}))
+    legacy_lobe = major_payload if major_payload else {
+        "width": 22.0,
+        "height": 38.0,
+        "tip_roundness": 0.76,
+        "shoulder_width": 0.95,
+        "waist_width": 0.16,
+    }
+    return Sp3Params(
+        lobe=_parse_canonical_lobe(legacy_lobe),
+        center_roundness=float(data.get("center_roundness", 0.0)),
+        side_rotation_deg=float(data.get("side_rotation_deg", 126.0)),
+        bottom_rotation_deg=float(data.get("bottom_rotation_deg", 180.0)),
+        side_scale=float(data.get("side_scale", 0.96)),
+        bottom_scale=float(data.get("bottom_scale", 0.88)),
+        visual_padding=float(data.get("visual_padding", 7.0)),
+        anchor_bias_x=float(data.get("anchor_bias_x", 0.0)),
+        anchor_bias_y=float(data.get("anchor_bias_y", 2.0)),
+        gradient_mode=str(data.get("gradient_mode", "linear")),
+        light_dir=str(data.get("light_dir", _DEFAULT_LIGHT_DIR)),
+    )
+
+
+def _parse_sp2_payload(payload: dict[str, Any]) -> Sp2Params:
+    data = dict(_strip_meta(payload))
+    if "lobe" in data:
+        return Sp2Params(
+            lobe=_parse_canonical_lobe(data["lobe"]),
+            center_roundness=float(data.get("center_roundness", 0.0)),
+            pair_rotation_deg=float(data.get("pair_rotation_deg", 120.0)),
+            planar_rotation_deg=float(data.get("planar_rotation_deg", 0.0)),
+            top_scale=float(data.get("top_scale", 1.0)),
+            pair_scale=float(data.get("pair_scale", 1.0)),
+            visual_padding=float(data.get("visual_padding", 7.0)),
+            anchor_bias_x=float(data.get("anchor_bias_x", 0.0)),
+            anchor_bias_y=float(data.get("anchor_bias_y", 1.5)),
+            gradient_mode=str(data.get("gradient_mode", "linear")),
+            light_dir=str(data.get("light_dir", _DEFAULT_LIGHT_DIR)),
+        )
+
+    major_payload = _strip_meta(data.get("major_lobe", {}))
+    legacy_lobe = major_payload if major_payload else {
+        "width": 22.0,
+        "height": 38.0,
+        "tip_roundness": 0.76,
+        "shoulder_width": 0.95,
+        "waist_width": 0.16,
+    }
+    return Sp2Params(
+        lobe=_parse_canonical_lobe(legacy_lobe),
+        center_roundness=float(data.get("center_roundness", 0.0)),
+        pair_rotation_deg=float(data.get("pair_rotation_deg", 120.0)),
+        planar_rotation_deg=float(data.get("planar_rotation_deg", 0.0)),
+        top_scale=float(data.get("top_scale", 1.0)),
+        pair_scale=float(data.get("pair_scale", 1.0)),
+        visual_padding=float(data.get("visual_padding", 7.0)),
+        anchor_bias_x=float(data.get("anchor_bias_x", 0.0)),
+        anchor_bias_y=float(data.get("anchor_bias_y", 1.5)),
+        gradient_mode=str(data.get("gradient_mode", "linear")),
+        light_dir=str(data.get("light_dir", _DEFAULT_LIGHT_DIR)),
+    )
+
+
 def _parse_pi_payload(payload: dict[str, Any]) -> PiBondingParams:
     data = dict(_strip_meta(payload))
+    legacy_ring = _parse_torus(data["ring"]) if data.get("ring") else (_parse_torus(data["torus"]) if data.get("torus") else None)
+    lateral_offset = float(data.get("lateral_offset", legacy_ring.torus_outer_width * 0.25 if legacy_ring is not None else 10.0))
     if "upper_lobe" in data and "lower_lobe" in data:
         return PiBondingParams(
             upper_lobe=_parse_canonical_lobe(data["upper_lobe"]),
             lower_lobe=_parse_canonical_lobe(data["lower_lobe"]),
             node_gap=float(data.get("node_gap", 0.0)),
             vertical_offset=float(data.get("vertical_offset", 0.0)),
-            ring=_parse_torus(data["ring"]) if data.get("ring") else None,
+            center_roundness=float(data.get("center_roundness", 0.16)),
+            lateral_offset=lateral_offset,
+            bridge_width=float(data.get("bridge_width", 20.0)),
+            bridge_height=float(data.get("bridge_height", 11.0)),
+            cap_width=float(data.get("cap_width", 22.0)),
+            cap_height=float(data.get("cap_height", 6.0)),
             visual_padding=float(data.get("visual_padding", 6.0)),
             anchor_bias_x=float(data.get("anchor_bias_x", 0.0)),
             anchor_bias_y=float(data.get("anchor_bias_y", 0.0)),
@@ -1026,7 +1295,12 @@ def _parse_pi_payload(payload: dict[str, Any]) -> PiBondingParams:
         lower_lobe=_parse_canonical_lobe(lower),
         node_gap=float(data.get("node_gap", abs(lower_offset - upper_offset))),
         vertical_offset=float(data.get("vertical_offset", (upper_offset + lower_offset) * 0.5)),
-        ring=_parse_torus(data["ring"]) if data.get("ring") else (_parse_torus(data["torus"]) if data.get("torus") else None),
+        center_roundness=float(data.get("center_roundness", 0.16)),
+        lateral_offset=lateral_offset,
+        bridge_width=float(data.get("bridge_width", 20.0)),
+        bridge_height=float(data.get("bridge_height", 11.0)),
+        cap_width=float(data.get("cap_width", 22.0)),
+        cap_height=float(data.get("cap_height", 6.0)),
         visual_padding=float(data.get("visual_padding", 6.0)),
         anchor_bias_x=float(data.get("anchor_bias_x", 0.0)),
         anchor_bias_y=float(data.get("anchor_bias_y", 0.0)),
@@ -1051,11 +1325,15 @@ def _parse_preset_payload(payload: dict[str, Any]) -> dict[str, OrbitalFamilyPre
             params = Dz2Params(**_normalize_dz2_params(params_payload))
         elif family_key == "torus":
             params = _parse_torus(params_payload)
-        elif family_key in {"sp3", "sp_lobe", "sigma_bonding"}:
+        elif family_key == "sp2":
+            params = _parse_sp2_payload(params_payload)
+        elif family_key == "sp3":
+            params = _parse_sp3_payload(params_payload)
+        elif family_key in {"sp_lobe", "sigma_bonding"}:
             params = _parse_hybrid_payload(params_payload, family_key=family_key)
         elif family_key == "pi_bonding":
             params = _parse_pi_payload(params_payload)
-        elif family_key in {"f", "fz3"}:
+        elif family_key in {"f", "fz3", "fxz2", "fzx2y2", "fxyz"}:
             params = FOrbitalParams(
                 lobes=tuple(_parse_teardrop(item) for item in params_payload.get("lobes", [])),
                 torus=_parse_torus(params_payload["torus"]) if params_payload.get("torus") else None,
@@ -1200,6 +1478,29 @@ def _catmull_rom_path(points: list[QPointF]) -> QPainterPath:
     return path
 
 
+def _closed_catmull_rom_path(points: list[QPointF]) -> QPainterPath:
+    path = QPainterPath(points[0])
+    if len(points) < 3:
+        return path
+    count = len(points)
+    for index in range(count):
+        p0 = points[(index - 1) % count]
+        p1 = points[index % count]
+        p2 = points[(index + 1) % count]
+        p3 = points[(index + 2) % count]
+        c1 = QPointF(
+            p1.x() + (p2.x() - p0.x()) / 6.0,
+            p1.y() + (p2.y() - p0.y()) / 6.0,
+        )
+        c2 = QPointF(
+            p2.x() - (p3.x() - p1.x()) / 6.0,
+            p2.y() - (p3.y() - p1.y()) / 6.0,
+        )
+        path.cubicTo(c1, c2, p2)
+    path.closeSubpath()
+    return path
+
+
 def build_teardrop(params: TeardropParams) -> GeometryPart:
     """Construye un lóbulo lágrima desde parámetros explícitos."""
     half_width = params.width * 0.5
@@ -1249,6 +1550,46 @@ def build_teardrop(params: TeardropParams) -> GeometryPart:
     )
 
 
+def build_teardrop_as_canonical_lobe(
+    params: TeardropParams,
+    *,
+    template: "_LobeTemplate",
+    smooth_profile: bool = True,
+    root_roundness: float = 0.0,
+) -> GeometryPart:
+    """Reinterpreta un teardrop legacy usando la silueta canónica moderna."""
+    canonical = CanonicalLobeParams(
+        width=params.width,
+        height=params.height,
+        tip_roundness=params.tip_roundness,
+        shoulder_width=params.shoulder_width,
+        waist_width=params.neck_width,
+        belly_width=params.belly_width,
+        belly_height_ratio=params.belly_height_ratio,
+    )
+    path = _canonical_lobe_path(
+        canonical,
+        template,
+        orientation=params.orientation,
+        offset_x=params.offset_x,
+        offset_y=params.offset_y,
+        scale_x=params.outline_scale_x,
+        scale_y=params.outline_scale_y,
+        root_roundness=root_roundness,
+        rotation_deg=params.rotation_deg,
+        smooth_profile=smooth_profile,
+    )
+    if params.mirror:
+        path = mirror_path(path, axis="y")
+    return GeometryPart(
+        name="lobe",
+        path=path,
+        phase=params.phase,
+        gradient_mode=params.gradient_mode,
+        light_dir=params.light_dir,
+    )
+
+
 @dataclass(frozen=True)
 class _LobeTemplate:
     shoulder_y: float
@@ -1259,8 +1600,8 @@ class _LobeTemplate:
 
 
 _P_TEMPLATE = _LobeTemplate(shoulder_y=0.71, belly_y=0.48, belly_floor=0.86, belly_gap=0.18, neck_y=0.06)
-_D_VERTICAL_TEMPLATE = _LobeTemplate(shoulder_y=0.67, belly_y=0.41, belly_floor=0.86, belly_gap=0.18, neck_y=0.05)
-_D_HORIZONTAL_TEMPLATE = _LobeTemplate(shoulder_y=0.58, belly_y=0.24, belly_floor=0.78, belly_gap=0.14, neck_y=0.03)
+_D_VERTICAL_TEMPLATE = _P_TEMPLATE
+_D_HORIZONTAL_TEMPLATE = _P_TEMPLATE
 _DZ2_TEMPLATE = _LobeTemplate(shoulder_y=0.67, belly_y=0.44, belly_floor=0.84, belly_gap=0.17, neck_y=0.16)
 _HYBRID_MAJOR_TEMPLATE = _LobeTemplate(shoulder_y=0.70, belly_y=0.46, belly_floor=0.84, belly_gap=0.16, neck_y=0.08)
 _HYBRID_MINOR_TEMPLATE = _LobeTemplate(shoulder_y=0.76, belly_y=0.58, belly_floor=0.82, belly_gap=0.16, neck_y=0.14)
@@ -1282,36 +1623,77 @@ def _canonical_lobe_path(
     offset_y: float = 0.0,
     scale_x: float = 1.0,
     scale_y: float = 1.0,
+    root_roundness: float = 0.0,
+    rotation_deg: float = 0.0,
+    smooth_profile: bool = False,
 ) -> QPainterPath:
     width = _clamp(params.width, 6.0, 120.0)
     height = _clamp(params.height, 8.0, 140.0)
     tip_roundness = _clamp(params.tip_roundness, 0.18, 0.90)
     waist_width = _clamp(params.waist_width, 0.12, 0.74)
     shoulder_width = _clamp(params.shoulder_width, waist_width + 0.12, 1.0)
+    custom_belly = params.belly_width > 1e-6 or params.belly_height_ratio > 1e-6
+    belly_y = _clamp(
+        params.belly_height_ratio if params.belly_height_ratio > 1e-6 else template.belly_y,
+        template.neck_y + 0.14,
+        template.shoulder_y - 0.04,
+    )
+    auto_belly_width = max(template.belly_floor, shoulder_width * 0.88, waist_width + template.belly_gap)
     belly_width = _clamp(
-        max(template.belly_floor, shoulder_width * 0.88, waist_width + template.belly_gap),
-        shoulder_width * 0.80,
-        0.96,
+        params.belly_width if params.belly_width > 1e-6 else auto_belly_width,
+        max(shoulder_width * 0.80, waist_width + template.belly_gap, 0.55),
+        0.98,
     )
 
     half_width = width * 0.5
     tip = QPointF(0.0, -height)
-    belly = QPointF(half_width * belly_width, -height * template.belly_y)
+    belly = QPointF(half_width * belly_width, -height * belly_y)
+    root_roundness = _clamp(root_roundness, 0.0, 0.38)
+    root_half_width = half_width * root_roundness
+    root_depth = height * root_roundness * 0.14
     node = QPointF(0.0, 0.0)
+    node_right = QPointF(root_half_width, 0.0)
+    node_left = QPointF(-root_half_width, 0.0)
 
+    tip_shoulder_width = shoulder_width
+    if custom_belly:
+        tip_shoulder_width = _clamp(max(shoulder_width, belly_width * 0.64), shoulder_width, belly_width)
     tip_ctrl_1 = QPointF(half_width * tip_roundness, -height * 0.97)
-    tip_ctrl_2 = QPointF(half_width * shoulder_width, -height * template.shoulder_y)
-    root_ctrl_1 = QPointF(half_width * min(1.0, belly_width + 0.05), -height * max(template.neck_y + 0.08, template.belly_y * 0.48))
+    tip_ctrl_2 = QPointF(half_width * tip_shoulder_width, -height * template.shoulder_y)
+    root_ctrl_1 = QPointF(
+        half_width * min(1.0, belly_width + 0.05),
+        -height * max(template.neck_y + 0.08, belly_y * (0.54 if custom_belly else 0.48)),
+    )
     root_ctrl_2 = QPointF(half_width * waist_width, -height * template.neck_y)
 
+    if smooth_profile:
+        tip_ctrl_2 = QPointF(belly.x(), tip_ctrl_2.y())
+        root_ctrl_1 = QPointF(belly.x(), 2.0 * belly.y() - tip_ctrl_2.y())
     path = QPainterPath(tip)
     path.cubicTo(tip_ctrl_1, tip_ctrl_2, belly)
-    path.cubicTo(root_ctrl_1, root_ctrl_2, node)
-    path.cubicTo(
-        QPointF(-root_ctrl_2.x(), root_ctrl_2.y()),
-        QPointF(-root_ctrl_1.x(), root_ctrl_1.y()),
-        QPointF(-belly.x(), belly.y()),
-    )
+    if root_roundness > 1e-6:
+        path.cubicTo(
+            root_ctrl_1,
+            QPointF(max(root_ctrl_2.x(), root_half_width * 1.05), root_ctrl_2.y()),
+            node_right,
+        )
+        path.cubicTo(
+            QPointF(root_half_width * 0.35, root_depth),
+            QPointF(-root_half_width * 0.35, root_depth),
+            node_left,
+        )
+        path.cubicTo(
+            QPointF(min(-root_ctrl_2.x(), -root_half_width * 1.05), root_ctrl_2.y()),
+            QPointF(-root_ctrl_1.x(), root_ctrl_1.y()),
+            QPointF(-belly.x(), belly.y()),
+        )
+    else:
+        path.cubicTo(root_ctrl_1, root_ctrl_2, node)
+        path.cubicTo(
+            QPointF(-root_ctrl_2.x(), root_ctrl_2.y()),
+            QPointF(-root_ctrl_1.x(), root_ctrl_1.y()),
+            QPointF(-belly.x(), belly.y()),
+        )
     path.cubicTo(
         QPointF(-tip_ctrl_2.x(), tip_ctrl_2.y()),
         QPointF(-tip_ctrl_1.x(), tip_ctrl_1.y()),
@@ -1329,6 +1711,8 @@ def _canonical_lobe_path(
         path = _transform_path(path, rotate=90.0)
     elif orientation != "up":
         raise ValueError(f"Orientación no soportada: {orientation}")
+    if rotation_deg:
+        path = _transform_path(path, rotate=rotation_deg)
     if offset_x or offset_y:
         path = _transform_path(path, translate=(offset_x, offset_y))
     return path
@@ -1344,6 +1728,9 @@ def _canonical_part(
     offset_y: float = 0.0,
     scale_x: float = 1.0,
     scale_y: float = 1.0,
+    root_roundness: float = 0.0,
+    rotation_deg: float = 0.0,
+    smooth_profile: bool = False,
     phase: str,
     gradient_mode: str,
     light_dir: str,
@@ -1358,6 +1745,9 @@ def _canonical_part(
             offset_y=offset_y,
             scale_x=scale_x,
             scale_y=scale_y,
+            root_roundness=root_roundness,
+            rotation_deg=rotation_deg,
+            smooth_profile=smooth_profile,
         ),
         phase=phase,
         gradient_mode=gradient_mode,
@@ -1430,6 +1820,7 @@ def build_p_orbital(params: POrbitalParams) -> FamilyBuildResult:
         offset_y=params.vertical_offset - gap,
         scale_x=_clamp(params.outline_scale_x, 0.75, 1.35),
         scale_y=_clamp(params.outline_scale_y, 0.75, 1.35),
+        smooth_profile=True,
         phase="positive",
         gradient_mode=params.gradient_mode,
         light_dir=params.light_dir,
@@ -1442,6 +1833,7 @@ def build_p_orbital(params: POrbitalParams) -> FamilyBuildResult:
         offset_y=params.vertical_offset + gap,
         scale_x=_clamp(params.outline_scale_x, 0.75, 1.35),
         scale_y=_clamp(params.outline_scale_y, 0.75, 1.35),
+        smooth_profile=True,
         phase="negative",
         gradient_mode=params.gradient_mode,
         light_dir=params.light_dir,
@@ -1478,11 +1870,14 @@ def build_d_clover_orbital(params: CloverParams) -> FamilyBuildResult:
     )
     gap = _clamp(params.lobe_gap, 0.0, 14.0) * 0.5
     parts = (
-        _canonical_part("top", vertical, _D_VERTICAL_TEMPLATE, orientation="up", offset_y=-gap, phase="positive", gradient_mode=params.gradient_mode, light_dir=params.light_dir),
-        _canonical_part("bottom", vertical, _D_VERTICAL_TEMPLATE, orientation="down", offset_y=gap, phase="positive", gradient_mode=params.gradient_mode, light_dir=params.light_dir),
-        _canonical_part("left", horizontal, _D_HORIZONTAL_TEMPLATE, orientation="left", offset_x=-gap, phase="negative", gradient_mode=params.gradient_mode, light_dir=params.light_dir),
-        _canonical_part("right", horizontal, _D_HORIZONTAL_TEMPLATE, orientation="right", offset_x=gap, phase="negative", gradient_mode=params.gradient_mode, light_dir=params.light_dir),
+        _canonical_part("top", vertical, _D_VERTICAL_TEMPLATE, orientation="up", offset_y=-gap, root_roundness=params.center_roundness, smooth_profile=True, phase="positive", gradient_mode=params.gradient_mode, light_dir=params.light_dir),
+        _canonical_part("bottom", vertical, _D_VERTICAL_TEMPLATE, orientation="down", offset_y=gap, root_roundness=params.center_roundness, smooth_profile=True, phase="positive", gradient_mode=params.gradient_mode, light_dir=params.light_dir),
+        _canonical_part("left", horizontal, _D_HORIZONTAL_TEMPLATE, orientation="left", offset_x=-gap, root_roundness=params.center_roundness, smooth_profile=True, phase="negative", gradient_mode=params.gradient_mode, light_dir=params.light_dir),
+        _canonical_part("right", horizontal, _D_HORIZONTAL_TEMPLATE, orientation="right", offset_x=gap, root_roundness=params.center_roundness, smooth_profile=True, phase="negative", gradient_mode=params.gradient_mode, light_dir=params.light_dir),
     )
+    rotation_deg = float(params.rotation_deg)
+    if rotation_deg:
+        parts = tuple(replace(part, path=_transform_path(part.path, rotate=rotation_deg)) for part in parts)
     return FamilyBuildResult(
         family="d",
         parts=parts,
@@ -1503,11 +1898,29 @@ def build_dz2_orbital(params: Dz2Params) -> FamilyBuildResult:
         width=params.axial_width,
         height=params.axial_height,
         tip_roundness=params.axial_tip_roundness,
-        shoulder_width=1.0,
+        shoulder_width=params.axial_shoulder_width,
         waist_width=params.axial_waist_width,
     )
-    top = _canonical_part("top", axial, _DZ2_TEMPLATE, orientation="up", phase="positive", gradient_mode=params.gradient_mode, light_dir=params.light_dir)
-    bottom = _canonical_part("bottom", axial, _DZ2_TEMPLATE, orientation="down", phase="positive", gradient_mode=params.gradient_mode, light_dir=params.light_dir)
+    top = _canonical_part(
+        "top",
+        axial,
+        _P_TEMPLATE,
+        orientation="up",
+        root_roundness=params.axial_center_roundness,
+        phase="positive",
+        gradient_mode=params.gradient_mode,
+        light_dir=params.light_dir,
+    )
+    bottom = _canonical_part(
+        "bottom",
+        axial,
+        _P_TEMPLATE,
+        orientation="down",
+        root_roundness=params.axial_center_roundness,
+        phase="positive",
+        gradient_mode=params.gradient_mode,
+        light_dir=params.light_dir,
+    )
     ring = build_torus_orbital(
         TorusParams(
             torus_outer_width=params.torus_outer_width,
@@ -1589,91 +2002,390 @@ def _build_hybrid_result(
 
 def build_sp_lobe_orbital(params: HybridOrbitalParams) -> FamilyBuildResult:
     """Builder canónico para un lóbulo sp."""
-    return _build_hybrid_result(
-        "sp_lobe",
-        params,
-        major_orientation="down",
-        minor_orientation="up",
-        major_template=_HYBRID_MAJOR_TEMPLATE,
-        minor_template=_HYBRID_MINOR_TEMPLATE,
+    gap = _clamp(params.node_gap, 0.0, 12.0) * 0.5
+    major = _canonical_part(
+        "major",
+        params.major_lobe,
+        _HYBRID_MAJOR_TEMPLATE,
+        orientation="right",
+        offset_x=gap,
+        offset_y=params.major_offset_y,
+        smooth_profile=True,
+        phase="positive",
+        gradient_mode=params.gradient_mode,
+        light_dir=params.light_dir,
+    )
+    minor = _canonical_part(
+        "minor",
+        params.minor_lobe,
+        _HYBRID_MINOR_TEMPLATE,
+        orientation="left",
+        offset_x=-gap,
+        offset_y=params.minor_offset_y,
+        smooth_profile=True,
+        phase="negative",
+        gradient_mode=params.minor_gradient_mode,
+        light_dir=params.light_dir,
+    )
+    return FamilyBuildResult(
+        family="sp_lobe",
+        parts=(minor, major),
         outline_parts=("minor", "major"),
         shaded_fill_parts=("minor", "major"),
         shaded_outline_parts=(),
         solid_fill_parts=("minor", "major"),
         solid_outline_parts=(),
+        visual_padding=params.visual_padding,
+        anchor_bias_x=params.anchor_bias_x,
+        anchor_bias_y=params.anchor_bias_y,
     )
 
 
-def build_sp3_orbital(params: HybridOrbitalParams) -> FamilyBuildResult:
+def build_sp3_orbital(params: Sp3Params) -> FamilyBuildResult:
     """Builder canónico para un orbital sp3."""
-    return _build_hybrid_result(
-        "sp3",
-        params,
-        major_orientation="down",
-        minor_orientation="up",
-        major_template=_HYBRID_MAJOR_TEMPLATE,
-        minor_template=_HYBRID_MINOR_TEMPLATE,
-        outline_parts=("minor", "major"),
-        shaded_fill_parts=("major",),
-        shaded_outline_parts=("minor",),
-        solid_fill_parts=("major",),
-        solid_outline_parts=("minor",),
+    parts = (
+        _canonical_part(
+            "bottom",
+            params.lobe,
+            _P_TEMPLATE,
+            orientation="up",
+            scale_x=params.bottom_scale,
+            scale_y=params.bottom_scale,
+            root_roundness=params.center_roundness,
+            rotation_deg=params.bottom_rotation_deg,
+            smooth_profile=True,
+            phase="positive",
+            gradient_mode=params.gradient_mode,
+            light_dir=params.light_dir,
+        ),
+        _canonical_part(
+            "left",
+            params.lobe,
+            _P_TEMPLATE,
+            orientation="up",
+            scale_x=params.side_scale,
+            scale_y=params.side_scale,
+            root_roundness=params.center_roundness,
+            rotation_deg=-params.side_rotation_deg,
+            smooth_profile=True,
+            phase="positive",
+            gradient_mode=params.gradient_mode,
+            light_dir=params.light_dir,
+        ),
+        _canonical_part(
+            "right",
+            params.lobe,
+            _P_TEMPLATE,
+            orientation="up",
+            scale_x=params.side_scale,
+            scale_y=params.side_scale,
+            root_roundness=params.center_roundness,
+            rotation_deg=params.side_rotation_deg,
+            smooth_profile=True,
+            phase="positive",
+            gradient_mode=params.gradient_mode,
+            light_dir=params.light_dir,
+        ),
+        _canonical_part(
+            "top",
+            params.lobe,
+            _P_TEMPLATE,
+            orientation="up",
+            root_roundness=params.center_roundness,
+            smooth_profile=True,
+            phase="positive",
+            gradient_mode=params.gradient_mode,
+            light_dir=params.light_dir,
+        ),
+    )
+    part_names = tuple(part.name for part in parts)
+    return FamilyBuildResult(
+        family="sp3",
+        parts=parts,
+        outline_parts=part_names,
+        shaded_fill_parts=part_names,
+        shaded_outline_parts=(),
+        solid_fill_parts=part_names,
+        solid_outline_parts=(),
+        visual_padding=params.visual_padding,
+        anchor_bias_x=params.anchor_bias_x,
+        anchor_bias_y=params.anchor_bias_y,
+    )
+
+
+def build_sp2_orbital(params: Sp2Params) -> FamilyBuildResult:
+    """Builder canónico para un orbital sp2 trigonal plano."""
+    parts = (
+        _canonical_part(
+            "top",
+            params.lobe,
+            _P_TEMPLATE,
+            orientation="up",
+            scale_x=params.top_scale,
+            scale_y=params.top_scale,
+            root_roundness=params.center_roundness,
+            rotation_deg=params.planar_rotation_deg,
+            smooth_profile=True,
+            phase="positive",
+            gradient_mode=params.gradient_mode,
+            light_dir=params.light_dir,
+        ),
+        _canonical_part(
+            "left",
+            params.lobe,
+            _P_TEMPLATE,
+            orientation="up",
+            scale_x=params.pair_scale,
+            scale_y=params.pair_scale,
+            root_roundness=params.center_roundness,
+            rotation_deg=params.planar_rotation_deg - params.pair_rotation_deg,
+            smooth_profile=True,
+            phase="positive",
+            gradient_mode=params.gradient_mode,
+            light_dir=params.light_dir,
+        ),
+        _canonical_part(
+            "right",
+            params.lobe,
+            _P_TEMPLATE,
+            orientation="up",
+            scale_x=params.pair_scale,
+            scale_y=params.pair_scale,
+            root_roundness=params.center_roundness,
+            rotation_deg=params.planar_rotation_deg + params.pair_rotation_deg,
+            smooth_profile=True,
+            phase="positive",
+            gradient_mode=params.gradient_mode,
+            light_dir=params.light_dir,
+        ),
+    )
+    part_names = tuple(part.name for part in parts)
+    return FamilyBuildResult(
+        family="sp2",
+        parts=parts,
+        outline_parts=part_names,
+        shaded_fill_parts=part_names,
+        shaded_outline_parts=(),
+        solid_fill_parts=part_names,
+        solid_outline_parts=(),
+        visual_padding=params.visual_padding,
+        anchor_bias_x=params.anchor_bias_x,
+        anchor_bias_y=params.anchor_bias_y,
     )
 
 
 def build_sigma_bonding_orbital(params: HybridOrbitalParams) -> FamilyBuildResult:
     """Builder canónico para sigma enlazante."""
-    return _build_hybrid_result(
-        "sigma_bonding",
-        params,
-        major_orientation="up",
-        minor_orientation="down",
-        major_template=_SIGMA_MAJOR_TEMPLATE,
-        minor_template=_SIGMA_MINOR_TEMPLATE,
-        outline_parts=("major", "minor"),
-        shaded_fill_parts=("minor",),
-        shaded_outline_parts=("major",),
-        solid_fill_parts=("minor",),
-        solid_outline_parts=("major",),
+    major_offset_x = _clamp(params.major_offset_x, 0.0, 40.0)
+    minor_offset_x = _clamp(max(params.minor_offset_x, major_offset_x + params.major_lobe.height * 0.46), 0.0, 90.0)
+    bond = GeometryPart(
+        "bond",
+        _ellipse_path(
+            -max(params.major_lobe.height + major_offset_x * 1.8, params.major_lobe.height * 1.3) * 0.5,
+            params.major_offset_y - params.major_lobe.width * 0.52,
+            max(params.major_lobe.height + major_offset_x * 1.8, params.major_lobe.height * 1.3),
+            params.major_lobe.width * 1.04,
+        ),
+        phase="positive",
+        gradient_mode=params.gradient_mode,
+        light_dir=params.light_dir,
     )
+    minor_left = _canonical_part(
+        "minor_left",
+        params.minor_lobe,
+        _SIGMA_MINOR_TEMPLATE,
+        orientation="left",
+        offset_x=-minor_offset_x,
+        offset_y=params.minor_offset_y,
+        smooth_profile=True,
+        phase="negative",
+        gradient_mode=params.minor_gradient_mode,
+        light_dir=params.light_dir,
+    )
+    minor_right = _canonical_part(
+        "minor_right",
+        params.minor_lobe,
+        _SIGMA_MINOR_TEMPLATE,
+        orientation="right",
+        offset_x=minor_offset_x,
+        offset_y=params.minor_offset_y,
+        smooth_profile=True,
+        phase="negative",
+        gradient_mode=params.minor_gradient_mode,
+        light_dir=params.light_dir,
+    )
+    return FamilyBuildResult(
+        family="sigma_bonding",
+        parts=(minor_left, bond, minor_right),
+        outline_parts=("minor_left", "bond", "minor_right"),
+        shaded_fill_parts=("minor_left", "bond", "minor_right"),
+        shaded_outline_parts=(),
+        solid_fill_parts=("minor_left", "bond", "minor_right"),
+        solid_outline_parts=(),
+        visual_padding=params.visual_padding,
+        anchor_bias_x=params.anchor_bias_x,
+        anchor_bias_y=params.anchor_bias_y,
+    )
+
+
+def _build_pi_cloud_path(
+    lobe: CanonicalLobeParams,
+    *,
+    orientation: str,
+    base_y: float,
+    lateral: float,
+    center_roundness: float,
+    bridge_width: float,
+    bridge_height: float,
+    cap_width: float,
+    cap_height: float,
+) -> QPainterPath:
+    """Construye una nube pi continua tipo riñón para la mitad superior o inferior."""
+    shoulder_width = _clamp(lobe.shoulder_width, lobe.waist_width + 0.12, 1.0)
+    belly_width = _clamp(
+        lobe.belly_width if lobe.belly_width > 1e-6 else max(shoulder_width * 0.92, 0.84),
+        0.55,
+        0.98,
+    )
+    belly_height = _clamp(
+        lobe.belly_height_ratio if lobe.belly_height_ratio > 1e-6 else _PI_TEMPLATE.belly_y,
+        _PI_TEMPLATE.neck_y + 0.14,
+        _PI_TEMPLATE.shoulder_y - 0.04,
+    )
+    waist_width = _clamp(lobe.waist_width, 0.12, 0.74)
+    tip_roundness = _clamp(lobe.tip_roundness, 0.18, 0.90)
+    center_roundness = _clamp(center_roundness, 0.0, 0.38)
+
+    outer_width = _clamp(
+        max(
+            lobe.width * (0.84 + 0.54 * max(shoulder_width, belly_width)),
+            lobe.width + lateral * 2.8,
+            (cap_width * 1.2) if cap_width > 1e-6 else 0.0,
+        ),
+        10.0,
+        150.0,
+    )
+    outer_height = _clamp(
+        max(
+            lobe.height * (0.78 + 0.18 * tip_roundness),
+            lobe.height * (0.68 + 0.24 * belly_height),
+        ),
+        8.0,
+        150.0,
+    )
+    default_notch_width = outer_width * (0.16 + 0.30 * waist_width)
+    default_notch_height = outer_height * (0.14 + 0.18 * belly_height + 0.10 * (1.0 - center_roundness))
+    notch_width = _clamp(
+        bridge_width if bridge_width > 1e-6 else default_notch_width,
+        outer_width * 0.12,
+        outer_width * 0.72,
+    )
+    notch_height = _clamp(
+        bridge_height if bridge_height > 1e-6 else default_notch_height,
+        outer_height * 0.10,
+        outer_height * 0.62,
+    )
+    crown_width = _clamp(
+        cap_width if cap_width > 1e-6 else outer_width * (0.72 + 0.12 * tip_roundness),
+        outer_width * 0.45,
+        outer_width * 1.05,
+    )
+    crown_height = _clamp(
+        cap_height if cap_height > 1e-6 else outer_height * (0.10 + 0.08 * tip_roundness),
+        outer_height * 0.05,
+        outer_height * 0.36,
+    )
+    half_outer = outer_width * 0.5
+    half_crown = crown_width * 0.5
+    half_notch = notch_width * 0.5
+    apex_y = -outer_height - crown_height * (0.08 + 0.08 * tip_roundness)
+    shoulder_y = -outer_height * (0.82 + 0.04 * (1.0 - tip_roundness))
+    belly_y = -outer_height * (0.46 + 0.08 * belly_height)
+    lower_y = -outer_height * (0.10 + 0.04 * center_roundness)
+    inner_y = -notch_height * (0.16 + 0.08 * center_roundness)
+    notch_y = -notch_height * (0.82 + 0.08 * (1.0 - center_roundness))
+
+    top_arc_x = half_crown * (0.46 + 0.06 * tip_roundness)
+    shoulder_x = half_outer * (0.70 + 0.08 * shoulder_width)
+    belly_x = half_outer * (0.92 + 0.06 * belly_width)
+    lower_x = half_outer * (0.82 + 0.04 * belly_width)
+    inner_x = max(half_notch * (0.88 + 0.08 * center_roundness), half_outer * (0.18 + 0.08 * waist_width))
+    notch_side_x = half_notch * (0.56 + 0.10 * center_roundness)
+    notch_side_y = (inner_y + notch_y) * 0.5
+
+    points = [
+        QPointF(top_arc_x, apex_y),
+        QPointF(shoulder_x, shoulder_y),
+        QPointF(belly_x, belly_y),
+        QPointF(lower_x, lower_y),
+        QPointF(inner_x, inner_y),
+        QPointF(notch_side_x, notch_side_y),
+        QPointF(0.0, notch_y),
+        QPointF(-notch_side_x, notch_side_y),
+        QPointF(-inner_x, inner_y),
+        QPointF(-lower_x, lower_y),
+        QPointF(-belly_x, belly_y),
+        QPointF(-shoulder_x, shoulder_y),
+        QPointF(-top_arc_x, apex_y),
+    ]
+    path = _closed_catmull_rom_path(points).simplified()
+
+    if orientation == "down":
+        path = mirror_path(path, axis="x")
+    elif orientation != "up":
+        raise ValueError(f"Orientación no soportada: {orientation}")
+    if base_y:
+        path = _transform_path(path, translate=(0.0, base_y))
+    return path
 
 
 def build_pi_bonding_orbital(params: PiBondingParams) -> FamilyBuildResult:
     """Builder canónico para pi enlazante."""
     gap = _clamp(params.node_gap, 0.0, 12.0) * 0.5
-    upper = _canonical_part(
+    lateral = _clamp(params.lateral_offset, 0.0, 40.0)
+    upper = GeometryPart(
         "upper",
-        params.upper_lobe,
-        _PI_TEMPLATE,
-        orientation="up",
-        offset_y=params.vertical_offset - gap,
+        _build_pi_cloud_path(
+            params.upper_lobe,
+            orientation="up",
+            base_y=params.vertical_offset - gap,
+            lateral=lateral,
+            center_roundness=params.center_roundness,
+            bridge_width=params.bridge_width,
+            bridge_height=params.bridge_height,
+            cap_width=params.cap_width,
+            cap_height=params.cap_height,
+        ),
         phase="positive",
         gradient_mode=params.gradient_mode,
         light_dir=params.light_dir,
     )
-    lower = _canonical_part(
+    lower = GeometryPart(
         "lower",
-        params.lower_lobe,
-        _PI_TEMPLATE,
-        orientation="down",
-        offset_y=params.vertical_offset + gap,
+        _build_pi_cloud_path(
+            params.lower_lobe,
+            orientation="down",
+            base_y=params.vertical_offset + gap,
+            lateral=lateral,
+            center_roundness=params.center_roundness,
+            bridge_width=params.bridge_width,
+            bridge_height=params.bridge_height,
+            cap_width=params.cap_width,
+            cap_height=params.cap_height,
+        ),
         phase="negative",
         gradient_mode=params.gradient_mode,
         light_dir=params.light_dir,
     )
-    parts: list[GeometryPart] = [upper]
-    if params.ring is not None:
-        ring = build_torus_orbital(params.ring).parts[0]
-        parts.append(replace(ring, name="ring"))
-    parts.append(lower)
+    parts = (upper, lower)
     return FamilyBuildResult(
         family="pi_bonding",
-        parts=tuple(parts),
-        outline_parts=tuple(part.name for part in parts),
-        shaded_fill_parts=("ring",) if params.ring is not None else (),
-        shaded_outline_parts=("upper", "lower"),
-        solid_fill_parts=("ring",) if params.ring is not None else (),
-        solid_outline_parts=("upper", "lower"),
+        parts=parts,
+        outline_parts=("upper", "lower"),
+        shaded_fill_parts=("upper", "lower"),
+        shaded_outline_parts=(),
+        solid_fill_parts=("upper", "lower"),
+        solid_outline_parts=(),
         visual_padding=params.visual_padding,
         anchor_bias_x=params.anchor_bias_x,
         anchor_bias_y=params.anchor_bias_y,
@@ -1682,9 +2394,36 @@ def build_pi_bonding_orbital(params: PiBondingParams) -> FamilyBuildResult:
 
 def build_f_orbital(params: FOrbitalParams, *, family: str) -> FamilyBuildResult:
     """Builder explícito para familias f/fz3 a partir de una lista de lóbulos."""
-    parts = [replace(build_teardrop(lobe), name=f"lobe_{index}") for index, lobe in enumerate(params.lobes)]
+    if family in {"f", "fz3", "fxz2", "fzx2y2", "fxyz"}:
+        root_roundness = 0.05 if family == "f" else (0.03 if family in {"fxz2", "fzx2y2", "fxyz"} else 0.0)
+        parts = [
+            replace(
+                build_teardrop_as_canonical_lobe(
+                    lobe,
+                    template=_P_TEMPLATE,
+                    smooth_profile=True,
+                    root_roundness=root_roundness,
+                ),
+                name=f"lobe_{index}",
+            )
+            for index, lobe in enumerate(params.lobes)
+        ]
+    else:
+        parts = [replace(build_teardrop(lobe), name=f"lobe_{index}") for index, lobe in enumerate(params.lobes)]
     if params.torus is not None:
-        parts.append(replace(build_torus(params.torus).parts[0], name="ring"))
+        if family == "fz3":
+            ring_delta = params.torus.torus_outer_height * 0.75
+            upper_ring = replace(
+                build_torus(replace(params.torus, torus_offset_y=params.torus.torus_offset_y - ring_delta)).parts[0],
+                name="ring_upper",
+            )
+            lower_ring = replace(
+                build_torus(replace(params.torus, torus_offset_y=params.torus.torus_offset_y + ring_delta)).parts[0],
+                name="ring_lower",
+            )
+            parts.extend((upper_ring, lower_ring))
+        else:
+            parts.append(replace(build_torus(params.torus).parts[0], name="ring"))
     part_names = tuple(part.name for part in parts)
     return FamilyBuildResult(
         family=family,
@@ -1720,7 +2459,11 @@ def build_sp_lobe(params: HybridOrbitalParams) -> FamilyBuildResult:
     return build_sp_lobe_orbital(params)
 
 
-def build_sp3(params: HybridOrbitalParams) -> FamilyBuildResult:
+def build_sp2(params: Sp2Params) -> FamilyBuildResult:
+    return build_sp2_orbital(params)
+
+
+def build_sp3(params: Sp3Params) -> FamilyBuildResult:
     return build_sp3_orbital(params)
 
 
@@ -1742,6 +2485,8 @@ _BUILDER_MAP = {
     "build_dz2": lambda preset: build_dz2_orbital(preset.params),  # type: ignore[arg-type]
     "build_torus_orbital": lambda preset: build_torus_orbital(preset.params),  # type: ignore[arg-type]
     "build_torus": lambda preset: build_torus_orbital(preset.params),  # type: ignore[arg-type]
+    "build_sp2_orbital": lambda preset: build_sp2_orbital(preset.params),  # type: ignore[arg-type]
+    "build_sp2": lambda preset: build_sp2_orbital(preset.params),  # type: ignore[arg-type]
     "build_sp3_orbital": lambda preset: build_sp3_orbital(preset.params),  # type: ignore[arg-type]
     "build_sp3": lambda preset: build_sp3_orbital(preset.params),  # type: ignore[arg-type]
     "build_sp_lobe_orbital": lambda preset: build_sp_lobe_orbital(preset.params),  # type: ignore[arg-type]
@@ -1762,7 +2507,7 @@ def apply_outline_style(parts: tuple[GeometryPart, ...], names: tuple[str, ...] 
     """Aplica el estilo outline sin alterar la silueta base."""
     part_map = _parts_by_name(parts)
     target_names = names or tuple(part_map.keys())
-    return tuple(GlyphLayer(part_map[name].path, "outline") for name in target_names)
+    return tuple(GlyphLayer(part_map[name].path, "outline", name=name) for name in target_names)
 
 
 def apply_shaded_style(
@@ -1777,6 +2522,7 @@ def apply_shaded_style(
         GlyphLayer(
             part_map[name].path,
             "shaded",
+            name=name,
             gradient=part_map[name].gradient_mode,
             phase=part_map[name].phase,
             light_dir=part_map[name].light_dir,
@@ -1799,6 +2545,7 @@ def apply_solid_style(
         GlyphLayer(
             part_map[name].path,
             "solid",
+            name=name,
             phase=part_map[name].phase,
             light_dir=part_map[name].light_dir,
         )
@@ -1934,13 +2681,16 @@ class OrbitalRenderer:
         spec: OrbitalGlyphSpec,
         anchor0: QPointF,
         anchor1: QPointF,
+        *,
+        part_styles: dict[str, dict[str, Any]] | None = None,
     ) -> tuple[GlyphLayer, ...]:
         glyph = self.glyph_for_spec(spec)
         transform = self._anchor_transform(glyph, anchor0, anchor1)
         return tuple(
             GlyphLayer(
-                transform.map(layer.path),
+                transform.map(self._layer_path_with_offset(layer, part_styles)),
                 layer.paint,
+                name=layer.name,
                 gradient=layer.gradient,
                 stroke=layer.stroke,
                 phase=layer.phase,
@@ -1949,14 +2699,28 @@ class OrbitalRenderer:
             for layer in self._layers_for_style(glyph, spec.style)
         )
 
-    def combined_path(self, spec: OrbitalGlyphSpec, anchor0: QPointF, anchor1: QPointF) -> QPainterPath:
+    def combined_path(
+        self,
+        spec: OrbitalGlyphSpec,
+        anchor0: QPointF,
+        anchor1: QPointF,
+        *,
+        part_styles: dict[str, dict[str, Any]] | None = None,
+    ) -> QPainterPath:
         path = QPainterPath()
-        for layer in self.transformed_layers(spec, anchor0, anchor1):
+        for layer in self.transformed_layers(spec, anchor0, anchor1, part_styles=part_styles):
             path.addPath(layer.path)
         return path
 
-    def bounding_rect(self, spec: OrbitalGlyphSpec, anchor0: QPointF, anchor1: QPointF) -> QRectF:
-        return self.combined_path(spec, anchor0, anchor1).boundingRect()
+    def bounding_rect(
+        self,
+        spec: OrbitalGlyphSpec,
+        anchor0: QPointF,
+        anchor1: QPointF,
+        *,
+        part_styles: dict[str, dict[str, Any]] | None = None,
+    ) -> QRectF:
+        return self.combined_path(spec, anchor0, anchor1, part_styles=part_styles).boundingRect()
 
     def _stroke_width(self, glyph: GlyphDefinition, anchor0: QPointF, anchor1: QPointF) -> float:
         extent = math.hypot(anchor1.x() - anchor0.x(), anchor1.y() - anchor0.y())
@@ -1974,16 +2738,23 @@ class OrbitalRenderer:
         return _LIGHT_DIRECTION_VECTORS.get(light_dir or _DEFAULT_LIGHT_DIR, _LIGHT_DIRECTION_VECTORS[_DEFAULT_LIGHT_DIR])
 
     @classmethod
-    def _gradient_for_path(cls, layer: GlyphLayer) -> QBrush:
+    def _gradient_for_path(
+        cls,
+        layer: GlyphLayer,
+        *,
+        color_override: QColor | None = None,
+        opacity: float = 1.0,
+    ) -> QBrush:
         rect = layer.path.boundingRect()
         center = rect.center()
         vx, vy = cls._light_vector(layer.light_dir)
+        opacity = max(0.0, min(1.0, float(opacity)))
         if layer.gradient in {"radial", "elliptical"}:
             radius = max(rect.width(), rect.height(), 1.0) * 0.92
             focus = QPointF(center.x() - vx * radius * 0.18, center.y() - vy * radius * 0.18)
             gradient = QRadialGradient(center, radius, focus)
             for stop, color in cls._gradient_stops(layer):
-                gradient.setColorAt(stop, QColor(color))
+                gradient.setColorAt(stop, cls._gradient_stop_color(color, stop, layer.phase, color_override, opacity))
             brush = QBrush(gradient)
             if layer.gradient == "elliptical":
                 transform = QTransform()
@@ -1999,32 +2770,111 @@ class OrbitalRenderer:
         end = QPointF(center.x() + vx * rect.width() * 0.58, center.y() + vy * rect.height() * 0.58)
         gradient = QLinearGradient(start, end)
         for stop, color in cls._gradient_stops(layer):
-            gradient.setColorAt(stop, QColor(color))
+            gradient.setColorAt(stop, cls._gradient_stop_color(color, stop, layer.phase, color_override, opacity))
         return QBrush(gradient)
 
     @staticmethod
-    def _outline_pen(width: float) -> QPen:
+    def _outline_pen(width: float, *, color: QColor | None = None, opacity: float = 1.0) -> QPen:
+        stroke_color = QColor(color or _STROKE_COLOR)
+        stroke_color.setAlphaF(max(0.0, min(1.0, float(opacity))))
         return QPen(
-            _STROKE_COLOR,
+            stroke_color,
             width,
             Qt.PenStyle.SolidLine,
             Qt.PenCapStyle.RoundCap,
             Qt.PenJoinStyle.RoundJoin,
         )
 
-    def _paint_layer(self, painter: QPainter, layer: GlyphLayer, stroke_width: float) -> None:
+    @staticmethod
+    def _gradient_stop_color(
+        fallback: str,
+        stop: float,
+        phase: str | None,
+        color_override: QColor | None,
+        opacity: float,
+    ) -> QColor:
+        if color_override is None or not color_override.isValid():
+            color = QColor(fallback)
+            color.setAlphaF(opacity)
+            return color
+        factor = (0.82 + stop * 0.42) if phase == "negative" else (1.38 - stop * 0.62)
+        factor = max(0.60, min(1.60, factor))
+        color = QColor(color_override)
+        if factor >= 1.0:
+            color = color.lighter(int(round(factor * 100.0)))
+        else:
+            color = color.darker(int(round((1.0 / max(factor, 0.05)) * 100.0)))
+        color.setAlphaF(opacity)
+        return color
+
+    @staticmethod
+    def _part_style(part_styles: dict[str, dict[str, Any]] | None, name: str) -> dict[str, Any]:
+        if not part_styles or not name:
+            return {}
+        raw = part_styles.get(name)
+        return raw if isinstance(raw, dict) else {}
+
+    @classmethod
+    def _layer_path_with_offset(
+        cls,
+        layer: GlyphLayer,
+        part_styles: dict[str, dict[str, Any]] | None,
+    ) -> QPainterPath:
+        part_style = cls._part_style(part_styles, layer.name)
+        try:
+            offset_x = float(part_style.get("offset_x", 0.0) or 0.0)
+        except Exception:
+            offset_x = 0.0
+        try:
+            offset_y = float(part_style.get("offset_y", 0.0) or 0.0)
+        except Exception:
+            offset_y = 0.0
+        if abs(offset_x) <= 1e-6 and abs(offset_y) <= 1e-6:
+            return layer.path
+        return _transform_path(layer.path, translate=(offset_x, offset_y))
+
+    def part_names(self, spec: OrbitalGlyphSpec) -> tuple[str, ...]:
+        glyph = self.glyph_for_spec(spec)
+        ordered: list[str] = []
+        seen: set[str] = set()
+        for group in (glyph.paths_outline, glyph.paths_shaded, glyph.paths_solid):
+            for layer in group:
+                if not layer.name or layer.name in seen:
+                    continue
+                seen.add(layer.name)
+                ordered.append(layer.name)
+        return tuple(ordered)
+
+    def _paint_layer(
+        self,
+        painter: QPainter,
+        layer: GlyphLayer,
+        stroke_width: float,
+        *,
+        part_styles: dict[str, dict[str, Any]] | None = None,
+    ) -> None:
+        part_style = self._part_style(part_styles, layer.name)
+        color_override = QColor(str(part_style["color"])) if part_style.get("color") else None
+        if color_override is not None and not color_override.isValid():
+            color_override = None
+        try:
+            opacity = max(0.0, min(1.0, float(part_style.get("opacity", 1.0))))
+        except Exception:
+            opacity = 1.0
         if layer.paint == "outline":
-            painter.setPen(self._outline_pen(stroke_width))
+            painter.setPen(self._outline_pen(stroke_width, color=color_override, opacity=opacity))
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawPath(layer.path)
             return
         if layer.paint == "shaded":
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(self._gradient_for_path(layer))
+            painter.setBrush(self._gradient_for_path(layer, color_override=color_override, opacity=opacity))
             painter.drawPath(layer.path)
             return
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QBrush(_SOLID_FILL))
+        solid_color = QColor(color_override or _SOLID_FILL)
+        solid_color.setAlphaF(opacity)
+        painter.setBrush(QBrush(solid_color))
         painter.drawPath(layer.path)
 
     def paint_glyph(
@@ -2035,14 +2885,15 @@ class OrbitalRenderer:
         anchor1: QPointF,
         *,
         stroke_shaded_lobes: bool | None = None,
+        part_styles: dict[str, dict[str, Any]] | None = None,
     ) -> None:
         del stroke_shaded_lobes
         glyph = self.glyph_for_spec(spec)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
         stroke_width = self._stroke_width(glyph, anchor0, anchor1)
-        for layer in self.transformed_layers(spec, anchor0, anchor1):
-            self._paint_layer(painter, layer, stroke_width)
+        for layer in self.transformed_layers(spec, anchor0, anchor1, part_styles=part_styles):
+            self._paint_layer(painter, layer, stroke_width, part_styles=part_styles)
 
     def canonical_anchors(self, spec: OrbitalGlyphSpec, rect: QRectF) -> tuple[QPointF, QPointF]:
         glyph = self.glyph_for_spec(spec)
