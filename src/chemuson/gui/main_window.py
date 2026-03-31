@@ -5,6 +5,7 @@ Compone menús, barras de herramientas, docks y el lienzo central.
 """
 from PyQt6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QDialog,
     QDialogButtonBox,
     QHBoxLayout,
@@ -27,10 +28,12 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QVBoxLayout,
     QLabel,
+    QLineEdit,
     QHeaderView,
     QSizePolicy,
+    QSpinBox,
 )
-from PyQt6.QtCore import Qt, QSize, QSettings, QEvent, QTimer
+from PyQt6.QtCore import Qt, QSize, QSettings, QEvent, QTimer, QPointF
 from PyQt6.QtGui import QAction, QActionGroup, QKeySequence, QIcon, QPainter, QPixmap, QPen, QColor
 from PyQt6.QtPrintSupport import QPrinter
 from typing import Callable, Optional
@@ -49,6 +52,7 @@ from chemuson.gui.canvas import (
 from chemuson.gui.periodic_table import PeriodicTableDialog
 from chemuson.gui.energy_diagrams import (
     ENERGY_DIAGRAM_MENU_ORDER,
+    build_atomic_subshell_diagram,
     energy_diagram_display_name,
     energy_diagram_tool_id,
 )
@@ -334,6 +338,9 @@ class ChemusonWindow(QMainWindow):
         # Connect symbols dock to canvas
         self.symbols_toolbar.tool_changed.connect(self._on_tool_changed)
         self.symbols_toolbar.tool_changed.connect(self._update_status)
+        self.symbols_toolbar.atomic_diagram_requested.connect(self._open_atomic_diagram_dialog)
+        self.symbols_toolbar.diatomic_mo_diagram_requested.connect(self._open_diatomic_mo_diagram_dialog)
+        self.symbols_toolbar.ligand_field_diagram_requested.connect(self._open_ligand_field_diagram_dialog)
 
         # Sync defaults selected during toolbar init
         self._apply_toolbar_defaults_to_canvas(self.canvas)
@@ -1180,6 +1187,7 @@ class ChemusonWindow(QMainWindow):
 
         self.action_undo.setEnabled(self.canvas.undo_stack.canUndo())
         self.action_redo.setEnabled(self.canvas.undo_stack.canRedo())
+        self._sync_clipboard_actions()
         self._sync_view_actions_from_canvas()
         self._sync_numbering_actions()
         self._sync_fragment_pivot_actions()
@@ -1302,6 +1310,110 @@ class ChemusonWindow(QMainWindow):
         canvas.state.active_orbital_kind = self.symbols_toolbar.current_orbital_kind()
         canvas.set_current_tool(self._current_tool_id)
 
+    def _visible_canvas_center_scene_pos(self) -> QPointF:
+        """Devuelve el centro visible actual del canvas activo."""
+        return self.canvas.mapToScene(self.canvas.viewport().rect().center())
+
+    def _open_atomic_diagram_dialog(self) -> None:
+        """Solicita parámetros y crea un diagrama atómico semántico."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Atomic diagram")
+        layout = QFormLayout(dialog)
+        electron_count = QSpinBox(dialog)
+        electron_count.setRange(0, 118)
+        electron_count.setValue(8)
+        expanded_subshells = QCheckBox("Expanded subshells", dialog)
+        expanded_subshells.setChecked(True)
+        layout.addRow("Electron count:", electron_count)
+        layout.addRow("", expanded_subshells)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
+            parent=dialog,
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addRow(buttons)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        diagram = build_atomic_subshell_diagram(
+            electron_count.value(),
+            expanded_subshells=expanded_subshells.isChecked(),
+        )
+        self.canvas.insert_semantic_diagram(diagram, self._visible_canvas_center_scene_pos())
+
+    def _open_diatomic_mo_diagram_dialog(self) -> None:
+        """Solicita parámetros y crea un diagrama MO diatómico."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Diatomic MO diagram")
+        layout = QFormLayout(dialog)
+        left_label = QLineEdit("A", dialog)
+        right_label = QLineEdit("B", dialog)
+        total_electrons = QSpinBox(dialog)
+        total_electrons.setRange(0, 20)
+        total_electrons.setValue(10)
+        ordering = QComboBox(dialog)
+        ordering.addItem("light_2p", "light_2p")
+        ordering.addItem("heavy_2p", "heavy_2p")
+        ordering.setCurrentIndex(1)
+        include_core_1s = QCheckBox("Include core 1s", dialog)
+        include_core_1s.setChecked(False)
+        layout.addRow("Left label:", left_label)
+        layout.addRow("Right label:", right_label)
+        layout.addRow("Total electrons:", total_electrons)
+        layout.addRow("Ordering:", ordering)
+        layout.addRow("", include_core_1s)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
+            parent=dialog,
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addRow(buttons)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        self.canvas.insert_mo_diatomic_diagram(
+            left_label.text().strip() or "A",
+            right_label.text().strip() or "B",
+            total_electrons.value(),
+            ordering.currentData(),
+            include_core_1s.isChecked(),
+            scene_pos=self._visible_canvas_center_scene_pos(),
+        )
+
+    def _open_ligand_field_diagram_dialog(self) -> None:
+        """Solicita parámetros y crea un diagrama de campo ligando."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Ligand field diagram")
+        layout = QFormLayout(dialog)
+        d_electrons = QSpinBox(dialog)
+        d_electrons.setRange(0, 10)
+        d_electrons.setValue(6)
+        geometry = QComboBox(dialog)
+        geometry.addItem("octahedral", "octahedral")
+        geometry.addItem("tetrahedral", "tetrahedral")
+        geometry.addItem("square_planar", "square_planar")
+        spin_mode = QComboBox(dialog)
+        spin_mode.addItem("high", "high")
+        spin_mode.addItem("low", "low")
+        layout.addRow("d electron count:", d_electrons)
+        layout.addRow("Geometry:", geometry)
+        layout.addRow("Spin mode:", spin_mode)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
+            parent=dialog,
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addRow(buttons)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        self.canvas.insert_ligand_field_diagram(
+            d_electrons.value(),
+            geometry.currentData(),
+            spin_mode.currentData(),
+            scene_pos=self._visible_canvas_center_scene_pos(),
+        )
+
     def _connect_undo_redo(self) -> None:
         """Conecta acciones globales a la pestaña activa."""
         self.action_undo.triggered.connect(self._on_undo)
@@ -1310,6 +1422,14 @@ class ChemusonWindow(QMainWindow):
         self.action_paste.triggered.connect(self._on_paste)
         self.action_undo.setEnabled(False)
         self.action_redo.setEnabled(False)
+        self.action_copy.setEnabled(False)
+        self.action_paste.setEnabled(
+            bool(getattr(self.canvas, "can_paste_from_clipboard", lambda: False)())
+        )
+        try:
+            QApplication.clipboard().dataChanged.connect(self._sync_clipboard_actions)
+        except Exception:
+            pass
 
     def _load_recent_files(self) -> list[str]:
         """Método auxiliar para  load recent files.
@@ -4488,6 +4608,7 @@ class ChemusonWindow(QMainWindow):
         self.inspector_dock.update_selection(num_atoms, num_bonds, num_text, details)
         self._update_total_charge_indicator()
         self._sync_fragment_pivot_actions()
+        self._sync_clipboard_actions()
         self.text_toolbar.set_opacity_percent(self.canvas.current_opacity_percent())
         
         # Sync Text Toolbar if a single text item is selected
@@ -4499,6 +4620,18 @@ class ChemusonWindow(QMainWindow):
                 "sup": details.get("sup")
             }
             self.text_toolbar.set_state(font, settings)
+
+    def _sync_clipboard_actions(self) -> None:
+        """Sincroniza Copiar/Pegar con la selección y el portapapeles activos."""
+        if not hasattr(self, "action_copy") or not hasattr(self, "action_paste"):
+            return
+        canvas = getattr(self, "canvas", None)
+        if canvas is None:
+            self.action_copy.setEnabled(False)
+            self.action_paste.setEnabled(False)
+            return
+        self.action_copy.setEnabled(bool(canvas.has_copyable_selection()))
+        self.action_paste.setEnabled(bool(canvas.can_paste_from_clipboard()))
 
     def _update_total_charge_indicator(self) -> None:
         """Actualiza el indicador de carga total en la barra de estado."""

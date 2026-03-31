@@ -3,8 +3,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any, Literal
 
 from PyQt6.QtCore import QSizeF
+
+from chemuson.gui.diagram_models import (
+    DiagramConnector,
+    DiagramLane,
+    DiagramLevel,
+    SemanticDiagram,
+)
 
 
 ENERGY_OCCUPANCY_VALUES = {"empty", "up", "down", "pair", "upup", "downdown"}
@@ -120,6 +128,34 @@ ENERGY_DIAGRAM_MENU_ORDER: tuple[str, ...] = (
 
 DEFAULT_ENERGY_DIAGRAM_KIND = "sublevel_s"
 
+SUBSHELL_DEGENERACY: dict[str, int] = {
+    "s": 1,
+    "p": 3,
+    "d": 5,
+    "f": 7,
+}
+MADELUNG_SEQUENCE: tuple[str, ...] = (
+    "1s",
+    "2s",
+    "2p",
+    "3s",
+    "3p",
+    "4s",
+    "3d",
+    "4p",
+    "5s",
+    "4d",
+    "5p",
+    "6s",
+    "4f",
+    "5d",
+    "6p",
+    "7s",
+    "5f",
+    "6d",
+    "7p",
+)
+
 
 def energy_diagram_preset(kind: str) -> EnergyDiagramPreset:
     """Devuelve el preset asociado o un fallback seguro."""
@@ -190,6 +226,18 @@ def normalize_energy_label_side(value: object, *, default: str = "left") -> str:
 
 def normalize_energy_occupancy(value: object) -> str:
     """Normaliza un estado de ocupacion electronica."""
+    if isinstance(value, bool):
+        return "up" if value else "empty"
+    if isinstance(value, (int, float)):
+        try:
+            numeric = int(value)
+        except Exception:
+            numeric = 0
+        if numeric <= 0:
+            return "empty"
+        if numeric == 1:
+            return "up"
+        return "pair"
     raw = str(value or "").strip().lower()
     aliases = {
         "": "empty",
@@ -286,3 +334,362 @@ def energy_diagram_default_size(kind: str, bond_length: float) -> QSizeF:
         width += label_space
     height = box_height + unit * 0.34
     return QSizeF(width, height)
+
+
+def _normalized_electron_count(value: int, *, capacity: int) -> int:
+    return max(0, min(int(value), max(0, int(capacity))))
+
+
+def _fill_level_hund(electron_count: int, degeneracy: int) -> list[int]:
+    """Llena un conjunto degenerado siguiendo Hund dentro del mismo nivel."""
+    box_count = max(1, int(degeneracy))
+    remaining = max(0, min(int(electron_count), box_count * 2))
+    occupancies = [0] * box_count
+    for index in range(min(remaining, box_count)):
+        occupancies[index] = 1
+    remaining -= min(remaining, box_count)
+    for index in range(box_count):
+        if remaining <= 0:
+            break
+        occupancies[index] += 1
+        remaining -= 1
+    return occupancies
+
+
+def _sequential_level_fill(
+    level_specs: list[dict[str, Any]],
+    electron_count: int,
+) -> dict[str, list[int]]:
+    """Llena niveles de menor a mayor energía."""
+    occupancies: dict[str, list[int]] = {}
+    remaining = max(0, int(electron_count))
+    for spec in level_specs:
+        capacity = int(spec["degeneracy"]) * 2
+        filled = min(remaining, capacity)
+        occupancies[str(spec["id"])] = _fill_level_hund(filled, int(spec["degeneracy"]))
+        remaining -= filled
+    return occupancies
+
+
+def _high_spin_level_fill(
+    level_specs: list[dict[str, Any]],
+    electron_count: int,
+) -> dict[str, list[int]]:
+    """Maximiza desapareados entre niveles antes de aparear."""
+    occupancies = {
+        str(spec["id"]): [0] * max(1, int(spec["degeneracy"]))
+        for spec in level_specs
+    }
+    orbital_order = [
+        (str(spec["id"]), orbital_index)
+        for spec in level_specs
+        for orbital_index in range(max(1, int(spec["degeneracy"])))
+    ]
+    remaining = max(0, int(electron_count))
+    for level_id, orbital_index in orbital_order:
+        if remaining <= 0:
+            break
+        occupancies[level_id][orbital_index] = 1
+        remaining -= 1
+    for level_id, orbital_index in orbital_order:
+        if remaining <= 0:
+            break
+        if occupancies[level_id][orbital_index] < 2:
+            occupancies[level_id][orbital_index] += 1
+            remaining -= 1
+    return occupancies
+
+
+def _count_level_electrons(occupancies: dict[str, list[int]]) -> int:
+    return sum(sum(level) for level in occupancies.values())
+
+
+def _count_unpaired_electrons(occupancies: dict[str, list[int]]) -> int:
+    return sum(1 for level in occupancies.values() for value in level if int(value) == 1)
+
+
+def build_atomic_subshell_diagram(
+    electron_count: int,
+    title: str | None = None,
+    expanded_subshells: bool = True,
+    max_n: int = 7,
+) -> SemanticDiagram:
+    """Construye un diagrama semántico de subniveles atómicos."""
+    max_n_value = max(1, min(7, int(max_n)))
+    sequence = [
+        label
+        for label in MADELUNG_SEQUENCE
+        if int(label[0]) <= max_n_value
+    ]
+    capacity = sum(SUBSHELL_DEGENERACY[label[1]] * 2 for label in sequence)
+    total_electrons = _normalized_electron_count(electron_count, capacity=capacity)
+
+    lane_positions = {"s": 0.0, "p": 132.0, "d": 276.0, "f": 444.0}
+    used_families = [family for family in ("s", "p", "d", "f") if any(label.endswith(family) for label in sequence)]
+    lanes = [
+        DiagramLane(id=f"{family}_lane", title=family, x=lane_positions[family])
+        for family in used_families
+    ]
+
+    levels: list[DiagramLevel] = []
+    remaining = total_electrons
+    for energy_index, label in enumerate(sequence):
+        if remaining <= 0:
+            break
+        family = label[1]
+        degeneracy = SUBSHELL_DEGENERACY[family]
+        capacity_here = degeneracy * 2
+        occupied_electrons = min(remaining, capacity_here)
+        levels.append(
+            DiagramLevel(
+                id=label,
+                lane_id=f"{family}_lane",
+                energy=float(energy_index),
+                label=label,
+                representation="bar" if (not expanded_subshells and degeneracy > 1) else "boxes",
+                degeneracy=degeneracy,
+                occupancies=_fill_level_hund(occupied_electrons, degeneracy),
+                metadata={
+                    "principal_quantum_number": int(label[0]),
+                    "subshell": family,
+                    "electron_capacity": capacity_here,
+                },
+            )
+        )
+        remaining -= occupied_electrons
+
+    return SemanticDiagram(
+        kind="atomic",
+        title=title or f"Atomic Diagram ({total_electrons} e-)",
+        lanes=lanes,
+        levels=levels,
+        connectors=[],
+        metadata={
+            "electron_count": total_electrons,
+            "filling_rule": "aufbau_hund",
+        },
+    )
+
+
+def build_diatomic_mo_diagram(
+    left_label: str,
+    right_label: str,
+    total_electrons: int,
+    ordering: Literal["light_2p", "heavy_2p"] = "heavy_2p",
+    include_core_1s: bool = False,
+    title: str | None = None,
+) -> SemanticDiagram:
+    """Construye un diagrama MO diatómico simple."""
+    ordering_value = "light_2p" if ordering == "light_2p" else "heavy_2p"
+    mo_specs: list[dict[str, Any]] = []
+    if include_core_1s:
+        mo_specs.extend(
+            [
+                {"id": "sigma_1s", "label": "σ1s", "energy": 0.0, "degeneracy": 1, "bonding": True},
+                {"id": "sigma_star_1s", "label": "σ*1s", "energy": 1.1, "degeneracy": 1, "bonding": False},
+            ]
+        )
+    mo_specs.extend(
+        [
+            {"id": "sigma_2s", "label": "σ2s", "energy": 2.2, "degeneracy": 1, "bonding": True},
+            {"id": "sigma_star_2s", "label": "σ*2s", "energy": 3.3, "degeneracy": 1, "bonding": False},
+        ]
+    )
+    if ordering_value == "light_2p":
+        mo_specs.extend(
+            [
+                {"id": "pi_2p", "label": "π2p", "energy": 4.2, "degeneracy": 2, "bonding": True},
+                {"id": "sigma_2p", "label": "σ2p", "energy": 4.8, "degeneracy": 1, "bonding": True},
+            ]
+        )
+    else:
+        mo_specs.extend(
+            [
+                {"id": "sigma_2p", "label": "σ2p", "energy": 4.2, "degeneracy": 1, "bonding": True},
+                {"id": "pi_2p", "label": "π2p", "energy": 4.8, "degeneracy": 2, "bonding": True},
+            ]
+        )
+    mo_specs.extend(
+        [
+            {"id": "pi_star_2p", "label": "π*2p", "energy": 5.9, "degeneracy": 2, "bonding": False},
+            {"id": "sigma_star_2p", "label": "σ*2p", "energy": 6.6, "degeneracy": 1, "bonding": False},
+        ]
+    )
+
+    ao_specs: list[dict[str, Any]] = []
+    if include_core_1s:
+        ao_specs.append({"id": "1s", "label": "1s", "energy": 0.6, "degeneracy": 1})
+    ao_specs.extend(
+        [
+            {"id": "2s", "label": "2s", "energy": 2.8, "degeneracy": 1},
+            {"id": "2p", "label": "2p", "energy": 5.2, "degeneracy": 3},
+        ]
+    )
+    atomic_capacity = sum(int(spec["degeneracy"]) * 2 for spec in ao_specs) * 2
+    normalized_total = _normalized_electron_count(total_electrons, capacity=atomic_capacity)
+    left_electrons = normalized_total // 2
+    right_electrons = normalized_total - left_electrons
+
+    left_fill = _sequential_level_fill(ao_specs, left_electrons)
+    right_fill = _sequential_level_fill(ao_specs, right_electrons)
+    mo_fill = _sequential_level_fill(mo_specs, normalized_total)
+
+    lanes = [
+        DiagramLane(id="left_atom", title=str(left_label or "Left"), x=-190.0),
+        DiagramLane(id="molecule", title="Molecule", x=0.0),
+        DiagramLane(id="right_atom", title=str(right_label or "Right"), x=190.0),
+    ]
+    levels: list[DiagramLevel] = []
+    connectors: list[DiagramConnector] = []
+
+    for spec in ao_specs:
+        level_id = str(spec["id"])
+        for lane_id, fill in (("left_atom", left_fill), ("right_atom", right_fill)):
+            levels.append(
+                DiagramLevel(
+                    id=f"{lane_id}_{level_id}",
+                    lane_id=lane_id,
+                    energy=float(spec["energy"]),
+                    label=str(spec["label"]),
+                    representation="boxes",
+                    degeneracy=int(spec["degeneracy"]),
+                    occupancies=list(fill[level_id]),
+                    metadata={
+                        "orbital_family": level_id,
+                        "orbital_origin": "atomic",
+                    },
+                )
+            )
+
+    for spec in mo_specs:
+        levels.append(
+            DiagramLevel(
+                id=str(spec["id"]),
+                lane_id="molecule",
+                energy=float(spec["energy"]),
+                label=str(spec["label"]),
+                representation="boxes",
+                degeneracy=int(spec["degeneracy"]),
+                occupancies=list(mo_fill[str(spec["id"])]),
+                metadata={
+                    "orbital_origin": "molecular",
+                    "bonding": bool(spec["bonding"]),
+                },
+            )
+        )
+
+    if include_core_1s:
+        for lane_id in ("left_atom", "right_atom"):
+            connectors.extend(
+                [
+                    DiagramConnector(f"{lane_id}_1s", "sigma_1s", "dashed"),
+                    DiagramConnector(f"{lane_id}_1s", "sigma_star_1s", "dashed"),
+                ]
+            )
+    for lane_id in ("left_atom", "right_atom"):
+        connectors.extend(
+            [
+                DiagramConnector(f"{lane_id}_2s", "sigma_2s", "dashed"),
+                DiagramConnector(f"{lane_id}_2s", "sigma_star_2s", "dashed"),
+                DiagramConnector(f"{lane_id}_2p", "sigma_2p", "dashed"),
+                DiagramConnector(f"{lane_id}_2p", "pi_2p", "dashed"),
+                DiagramConnector(f"{lane_id}_2p", "pi_star_2p", "dashed"),
+                DiagramConnector(f"{lane_id}_2p", "sigma_star_2p", "dashed"),
+            ]
+        )
+
+    bonding_electrons = sum(
+        sum(mo_fill[str(spec["id"])])
+        for spec in mo_specs
+        if bool(spec["bonding"])
+    )
+    antibonding_electrons = sum(
+        sum(mo_fill[str(spec["id"])])
+        for spec in mo_specs
+        if not bool(spec["bonding"])
+    )
+    bond_order = (bonding_electrons - antibonding_electrons) / 2.0
+    unpaired_electrons = _count_unpaired_electrons(mo_fill)
+
+    return SemanticDiagram(
+        kind="molecular_orbital",
+        title=title or f"{left_label}-{right_label} MO Diagram",
+        lanes=lanes,
+        levels=levels,
+        connectors=connectors,
+        metadata={
+            "total_electrons": normalized_total,
+            "ordering": ordering_value,
+            "bond_order": bond_order,
+            "unpaired_electrons": unpaired_electrons,
+        },
+    )
+
+
+def build_ligand_field_diagram(
+    d_electrons: int,
+    geometry: Literal["octahedral", "tetrahedral", "square_planar"] = "octahedral",
+    spin_mode: Literal["high", "low"] = "high",
+    title: str | None = None,
+) -> SemanticDiagram:
+    """Construye un diagrama simple de desdoblamiento de campo ligando."""
+    geometry_value = (
+        geometry
+        if geometry in {"octahedral", "tetrahedral", "square_planar"}
+        else "octahedral"
+    )
+    spin_value = "low" if spin_mode == "low" else "high"
+
+    if geometry_value == "octahedral":
+        level_specs = [
+            {"id": "t2g", "label": "t2g", "energy": 0.0, "degeneracy": 3},
+            {"id": "eg", "label": "eg", "energy": 1.6, "degeneracy": 2},
+        ]
+    elif geometry_value == "tetrahedral":
+        level_specs = [
+            {"id": "e", "label": "e", "energy": 0.0, "degeneracy": 2},
+            {"id": "t2", "label": "t2", "energy": 1.2, "degeneracy": 3},
+        ]
+    else:
+        # Orden razonable para complejos cuadrado-planares:
+        # d_xz/d_yz < d_z2 < d_xy < d_x2-y2.
+        level_specs = [
+            {"id": "d_xz_d_yz", "label": "d_xz / d_yz", "energy": 0.0, "degeneracy": 2},
+            {"id": "d_z2", "label": "d_z2", "energy": 1.0, "degeneracy": 1},
+            {"id": "d_xy", "label": "d_xy", "energy": 2.0, "degeneracy": 1},
+            {"id": "d_x2_y2", "label": "d_x2-y2", "energy": 3.0, "degeneracy": 1},
+        ]
+
+    total_electrons = _normalized_electron_count(d_electrons, capacity=10)
+    if spin_value == "high":
+        occupancies = _high_spin_level_fill(level_specs, total_electrons)
+    else:
+        occupancies = _sequential_level_fill(level_specs, total_electrons)
+
+    levels = [
+        DiagramLevel(
+            id=str(spec["id"]),
+            lane_id="ligand_field",
+            energy=float(spec["energy"]),
+            label=str(spec["label"]),
+            representation="boxes",
+            degeneracy=int(spec["degeneracy"]),
+            occupancies=list(occupancies[str(spec["id"])]),
+            metadata={"geometry": geometry_value},
+        )
+        for spec in level_specs
+    ]
+
+    return SemanticDiagram(
+        kind="ligand_field",
+        title=title or f"{geometry_value.replace('_', ' ').title()} d{total_electrons}",
+        lanes=[DiagramLane(id="ligand_field", title="", x=0.0)],
+        levels=levels,
+        connectors=[],
+        metadata={
+            "d_electrons": total_electrons,
+            "geometry": geometry_value,
+            "spin_mode": spin_value,
+            "unpaired_electrons": _count_unpaired_electrons(occupancies),
+        },
+    )

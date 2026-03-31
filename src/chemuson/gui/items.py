@@ -7,17 +7,18 @@ renderizado profesional.
 from __future__ import annotations
 
 import math
-from typing import Optional
+from typing import Any, Optional
 from PyQt6.QtWidgets import (
     QGraphicsEllipseItem,
     QGraphicsPathItem,
     QGraphicsTextItem,
     QGraphicsItem,
     QGraphicsRectItem,
+    QGraphicsLineItem,
     QStyle,
 )
 from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPainterPath, QPen, QBrush, QPainter, QRadialGradient, QPixmap
-from PyQt6.QtCore import Qt, QRectF, QPointF, QByteArray, QSizeF
+from PyQt6.QtCore import Qt, QRectF, QPointF, QByteArray, QSizeF, QLineF
 
 try:
     from PyQt6.QtSvg import QSvgRenderer
@@ -124,6 +125,7 @@ WEDGE_WIDE_END_MITER_MAX_DIST_WIDTH_MULT = 1.1
 WEDGE_WIDE_END_MITER_BACKTRACK_STROKE_MULT = 0.60
 
 WedgeNeighbor = tuple[float, float, float, float, float]
+BaseItem = QGraphicsItem
 
 
 def _build_wavy_path(
@@ -4411,9 +4413,10 @@ class EnergyDiagramItem(QGraphicsItem):
         *,
         label: str | None = None,
         label_side: str | None = None,
-        occupancies: Optional[list[str] | tuple[str, ...]] = None,
+        occupancies: Optional[list[object] | tuple[object, ...] | str] = None,
         slot_count: int | None = None,
         style_payload: Optional[dict[str, object]] = None,
+        metadata: Optional[dict[str, Any]] = None,
         width: float | None = None,
         height: float | None = None,
     ) -> None:
@@ -4435,6 +4438,7 @@ class EnergyDiagramItem(QGraphicsItem):
             box_count=self.slot_count(),
         )
         self._style_payload = self._normalize_style_payload(style_payload or {})
+        self._metadata = self._normalize_metadata(metadata)
         self._editing = False
         self._edit_index = 0
 
@@ -4502,7 +4506,7 @@ class EnergyDiagramItem(QGraphicsItem):
     def occupancies(self) -> tuple[str, ...]:
         return tuple(self._occupancies)
 
-    def set_occupancies(self, values: list[str] | tuple[str, ...] | str) -> None:
+    def set_occupancies(self, values: list[object] | tuple[object, ...] | str) -> None:
         normalized = normalize_energy_occupancies(
             values,
             kind=self._kind,
@@ -4511,6 +4515,16 @@ class EnergyDiagramItem(QGraphicsItem):
         if normalized == self._occupancies:
             return
         self._occupancies = normalized
+        self.update()
+
+    def metadata(self) -> dict[str, Any]:
+        return dict(self._metadata)
+
+    def set_metadata(self, metadata: Optional[dict[str, Any]]) -> None:
+        normalized = self._normalize_metadata(metadata)
+        if normalized == self._metadata:
+            return
+        self._metadata = normalized
         self.update()
 
     def set_slot_count(self, value: int | None) -> None:
@@ -4541,6 +4555,10 @@ class EnergyDiagramItem(QGraphicsItem):
             return
         self._style_payload = normalized
         self.update()
+
+    @staticmethod
+    def _normalize_metadata(payload: Optional[dict[str, Any]]) -> dict[str, Any]:
+        return dict(payload or {})
 
     @classmethod
     def _normalize_style_payload(cls, payload: dict[str, object]) -> dict[str, object]:
@@ -4586,6 +4604,7 @@ class EnergyDiagramItem(QGraphicsItem):
             "slot_count": self.slot_count(),
             "occupancies": list(self._occupancies),
             "style_payload": self.style_payload(),
+            "metadata": self.metadata(),
         }
 
     def apply_config_payload(self, payload: dict[str, object]) -> None:
@@ -4607,6 +4626,9 @@ class EnergyDiagramItem(QGraphicsItem):
         )
         self._style_payload = self._normalize_style_payload(
             dict(payload.get("style_payload", {}) or {})
+        )
+        self._metadata = self._normalize_metadata(
+            dict(payload.get("metadata", {}) or {})
         )
         self._edit_index = max(0, min(self._edit_index, max(0, self.slot_count() - 1)))
         self.update()
@@ -4640,7 +4662,7 @@ class EnergyDiagramItem(QGraphicsItem):
         label_width = float(metrics.horizontalAdvance(label_text) + 6) if label_text else 0.0
         margin_x = max(4.0, rect.width() * 0.05)
         margin_y = max(4.0, rect.height() * 0.18)
-        gap = max(2.0, rect.height() * 0.10)
+        gap = max(2.0, min(4.0, rect.height() * 0.10))
         side_gap = max(4.0, rect.height() * 0.18) if label_width > 0.0 else 0.0
         boxes_left = margin_x + (label_width + side_gap if label_text and self._label_side == "left" else 0.0)
         boxes_right = rect.width() - margin_x - (
@@ -4648,7 +4670,13 @@ class EnergyDiagramItem(QGraphicsItem):
         )
         box_height = max(8.0, rect.height() - margin_y * 2.0)
         available_box_width = max(8.0, boxes_right - boxes_left - gap * max(0, count - 1))
-        box_width = max(6.0, available_box_width / max(1, count))
+        box_width = max(
+            6.0,
+            min(
+                available_box_width / max(1, count),
+                max(10.0, rect.height() * 0.82),
+            ),
+        )
         boxes_total_width = box_width * count + gap * max(0, count - 1)
         box_y = rect.center().y() - box_height * 0.5
         box_start_x = boxes_left + max(0.0, (boxes_right - boxes_left - boxes_total_width) * 0.5)
@@ -4960,6 +4988,15 @@ class EnergyDiagramItem(QGraphicsItem):
         if family == "mo":
             return list(self._mo_layout_metrics()["slot_regions"])
         return list(self._row_layout_metrics()["slot_regions"])
+
+    def level_anchor_points(self) -> dict[str, QPointF]:
+        rect = self.boundingRect()
+        return {
+            "left_center": self.mapToScene(QPointF(rect.left(), rect.center().y())),
+            "right_center": self.mapToScene(QPointF(rect.right(), rect.center().y())),
+            "top_center": self.mapToScene(QPointF(rect.center().x(), rect.top())),
+            "bottom_center": self.mapToScene(QPointF(rect.center().x(), rect.bottom())),
+        }
 
     def _clamp_edit_index(self) -> None:
         self._edit_index = max(0, min(self._edit_index, max(0, self.slot_count() - 1)))
@@ -5381,6 +5418,58 @@ class EnergyDiagramItem(QGraphicsItem):
             self._paint_mo(painter, style)
             return
         self._paint_row(painter, style)
+
+
+class SemanticConnectorItem(QGraphicsLineItem):
+    """Conector ligero entre niveles de un diagrama semántico."""
+
+    def __init__(
+        self,
+        start: QPointF,
+        end: QPointF,
+        *,
+        style: str = "dashed",
+        color: str = "#7A7A7A",
+    ) -> None:
+        super().__init__()
+        self._style = "solid" if style == "solid" else "dashed"
+        self._color = QColor(color)
+        if not self._color.isValid():
+            self._color = QColor("#7A7A7A")
+        self.setZValue(43)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, False)
+        self.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+        self.set_points(start, end)
+        self._refresh_pen()
+
+    def connector_style(self) -> str:
+        return self._style
+
+    def set_connector_style(self, style: str) -> None:
+        normalized = "solid" if style == "solid" else "dashed"
+        if normalized == self._style:
+            return
+        self._style = normalized
+        self._refresh_pen()
+
+    def set_points(self, start: QPointF, end: QPointF) -> None:
+        self.setLine(QLineF(QPointF(start), QPointF(end)))
+
+    def points(self) -> tuple[QPointF, QPointF]:
+        line = self.line()
+        return line.p1(), line.p2()
+
+    def _refresh_pen(self) -> None:
+        pen = QPen(
+            self._color,
+            1.25,
+            Qt.PenStyle.SolidLine if self._style == "solid" else Qt.PenStyle.DashLine,
+            Qt.PenCapStyle.RoundCap,
+            Qt.PenJoinStyle.RoundJoin,
+        )
+        if self._style != "solid":
+            pen.setDashPattern([4.0, 3.0])
+        self.setPen(pen)
 
 
 class ImageAnnotationItem(QGraphicsItem):

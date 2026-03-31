@@ -1747,6 +1747,7 @@ class DeleteSelectionCommand(QUndoCommand):
         image_items: Iterable = (),
         orbital_items: Iterable = (),
         energy_diagram_items: Iterable = (),
+        semantic_diagram_items: Iterable = (),
     ) -> None:
         """Inicializa el comando de borrado de selección."""
         super().__init__("Delete selection")
@@ -1761,6 +1762,7 @@ class DeleteSelectionCommand(QUndoCommand):
         self._image_items = list(image_items)
         self._orbital_items = list(orbital_items)
         self._energy_diagram_items = list(energy_diagram_items)
+        self._semantic_diagram_items = list(semantic_diagram_items)
         self._removed_atoms = []
         self._removed_bonds = []
         self._removed_arrows = []
@@ -1770,6 +1772,7 @@ class DeleteSelectionCommand(QUndoCommand):
         self._removed_images = []
         self._removed_orbitals = []
         self._removed_energy_diagrams = []
+        self._removed_semantic_diagrams = []
 
     def _refresh_view_after_structure_change(self) -> None:
         """Sincroniza overlays derivados tras borrar/restaurar estructura."""
@@ -1858,6 +1861,8 @@ class DeleteSelectionCommand(QUndoCommand):
                         item.config_payload(),
                     )
                 )
+            for item in self._semantic_diagram_items:
+                self._removed_semantic_diagrams.append((item, item.to_json()))
 
         for bond in list(self._removed_bonds):
             if bond.id in self._model.bonds:
@@ -1881,6 +1886,8 @@ class DeleteSelectionCommand(QUndoCommand):
             self._view.remove_orbital_item(item)
         for item, _pos, _width, _height, _rotation, _payload in self._removed_energy_diagrams:
             self._view.remove_energy_diagram_item(item)
+        for item, _payload in self._removed_semantic_diagrams:
+            self._view.remove_semantic_diagram_item(item)
         self._refresh_view_after_structure_change()
 
     def undo(self) -> None:
@@ -1949,6 +1956,17 @@ class DeleteSelectionCommand(QUndoCommand):
             item.set_display_rect(QRectF(pos.x(), pos.y(), width, height))
             item.setRotation(rotation)
             self._view.readd_energy_diagram_item(item)
+        for item, payload in self._removed_semantic_diagrams:
+            item.set_display_rect(
+                QRectF(
+                    float(payload.get("x", 0.0)),
+                    float(payload.get("y", 0.0)),
+                    float(payload.get("width", 1.0)),
+                    float(payload.get("height", 1.0)),
+                )
+            )
+            item.setRotation(float(payload.get("rotation", 0.0)))
+            self._view.readd_semantic_diagram_item(item)
         self._refresh_view_after_structure_change()
 
 
@@ -2113,6 +2131,23 @@ class AddEnergyDiagramItemCommand(QUndoCommand):
     def undo(self) -> None:
         if self._item is not None:
             self._view.remove_energy_diagram_item(self._item)
+
+
+class AddCompositeDiagramItemCommand(QUndoCommand):
+    """Comando para añadir un diagrama semántico compuesto."""
+
+    def __init__(self, view, item) -> None:
+        super().__init__("Add semantic diagram")
+        self._view = view
+        self._item = item
+
+    def redo(self) -> None:
+        if self._item is not None:
+            self._view.readd_semantic_diagram_item(self._item)
+
+    def undo(self) -> None:
+        if self._item is not None:
+            self._view.remove_semantic_diagram_item(self._item)
 
 
 class AddOrbitalItemCommand(QUndoCommand):

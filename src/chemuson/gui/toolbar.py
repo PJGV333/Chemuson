@@ -757,6 +757,9 @@ class SymbolPaletteToolbar(QToolBar):
     """
 
     tool_changed = pyqtSignal(str)
+    atomic_diagram_requested = pyqtSignal()
+    diatomic_mo_diagram_requested = pyqtSignal()
+    ligand_field_diagram_requested = pyqtSignal()
 
     def __init__(self, action_group: QActionGroup, parent=None) -> None:
         """Inicializa la paleta de símbolos químicos.
@@ -1110,6 +1113,17 @@ class SymbolPaletteToolbar(QToolBar):
                 )
             )
         self._populate_grid_menu(menu, entries, columns=2)
+        menu.addSeparator()
+        electronic_menu = menu.addMenu("Electronic Diagrams")
+        atomic_action = QAction("Atomic diagram...", self)
+        atomic_action.triggered.connect(self.atomic_diagram_requested.emit)
+        electronic_menu.addAction(atomic_action)
+        mo_action = QAction("Diatomic MO diagram...", self)
+        mo_action.triggered.connect(self.diatomic_mo_diagram_requested.emit)
+        electronic_menu.addAction(mo_action)
+        ligand_action = QAction("Ligand field diagram...", self)
+        ligand_action.triggered.connect(self.ligand_field_diagram_requested.emit)
+        electronic_menu.addAction(ligand_action)
 
     def _select_energy_diagram_tool(self, tool_id: str) -> None:
         """Actualiza el preset activo de diagrama de energia."""

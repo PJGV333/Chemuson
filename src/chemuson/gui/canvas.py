@@ -83,10 +83,16 @@ from chemuson.gui.items import (
     EnergyDiagramItem,
     OrbitalAnnotationItem,
     ImageAnnotationItem,
+    BaseItem,
     ABBREVIATION_LABELS,
 )
+from chemuson.gui.composite_diagram_item import CompositeDiagramItem
+from chemuson.gui.diagram_models import SemanticDiagram
 from chemuson.gui.energy_diagrams import (
     DEFAULT_ENERGY_DIAGRAM_KIND,
+    build_atomic_subshell_diagram,
+    build_diatomic_mo_diagram,
+    build_ligand_field_diagram,
     default_energy_label,
     default_energy_label_side,
     energy_diagram_default_size,
@@ -131,6 +137,7 @@ from chemuson.gui.commands import (
     AddTextItemCommand,
     AddImageItemCommand,
     AddEnergyDiagramItemCommand,
+    AddCompositeDiagramItemCommand,
     AddOrbitalItemCommand,
     AddWavyAnchorCommand,
     ChangeAtomCommand,
@@ -458,6 +465,7 @@ class ChemusonCanvas(QGraphicsView):
         self._bracket_preview: Optional[QGraphicsRectItem] = None
         self.bracket_items: list[BracketItem] = []
         self.energy_diagram_items: list[EnergyDiagramItem] = []
+        self.semantic_diagram_items: list[CompositeDiagramItem] = []
         self.orbital_items: list[OrbitalAnnotationItem] = []
         self.image_items: list[ImageAnnotationItem] = []
         
@@ -480,6 +488,7 @@ class ChemusonCanvas(QGraphicsView):
         self._drag_start_arrow_positions: Dict[ArrowItem, Tuple[QPointF, QPointF]] = {}
         self._drag_start_bracket_rects: Dict[BracketItem, QRectF] = {}
         self._drag_start_energy_diagram_snapshots: Dict[EnergyDiagramItem, Tuple[QPointF, float, float, float]] = {}
+        self._drag_start_semantic_diagram_snapshots: Dict[CompositeDiagramItem, Tuple[QPointF, float, float, float]] = {}
         self._drag_start_orbital_snapshots: Dict[OrbitalAnnotationItem, Tuple[QPointF, QPointF]] = {}
         self._drag_start_image_snapshots: Dict[ImageAnnotationItem, Tuple[QPointF, float, float, float]] = {}
         self._drag_start_selection_bbox: Optional[QRectF] = None
@@ -518,6 +527,7 @@ class ChemusonCanvas(QGraphicsView):
         self._rotation_start_positions: Dict[int, Tuple[float, float]] = {}
         self._rotation_start_arrow_positions: Dict[ArrowItem, Tuple[QPointF, QPointF]] = {}
         self._rotation_start_energy_diagram_snapshots: Dict[EnergyDiagramItem, Tuple[QPointF, float, float, float]] = {}
+        self._rotation_start_semantic_diagram_snapshots: Dict[CompositeDiagramItem, Tuple[QPointF, float, float, float]] = {}
         self._rotation_start_orbital_snapshots: Dict[OrbitalAnnotationItem, Tuple[QPointF, QPointF]] = {}
         self._rotation_start_image_snapshots: Dict[ImageAnnotationItem, Tuple[QPointF, float, float, float]] = {}
         self._is_rotating_3d = False
@@ -544,6 +554,7 @@ class ChemusonCanvas(QGraphicsView):
         self._scale_start_bracket_rects: Dict[BracketItem, QRectF] = {}
         self._scale_start_bracket_styles: Dict[BracketItem, Tuple[float, Optional[float]]] = {}
         self._scale_start_energy_diagram_snapshots: Dict[EnergyDiagramItem, Tuple[QPointF, float, float, float]] = {}
+        self._scale_start_semantic_diagram_snapshots: Dict[CompositeDiagramItem, Tuple[QPointF, float, float, float]] = {}
         self._scale_start_orbital_snapshots: Dict[OrbitalAnnotationItem, Tuple[QPointF, QPointF]] = {}
         self._scale_start_image_snapshots: Dict[ImageAnnotationItem, Tuple[QPointF, float, float, float]] = {}
         self._scale_start_atom_label_scales: Dict[int, Optional[float]] = {}
@@ -1682,7 +1693,17 @@ class ChemusonCanvas(QGraphicsView):
         if event.button() == Qt.MouseButton.RightButton:
             if isinstance(
                 clicked_item,
-                (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, EnergyDiagramItem, OrbitalAnnotationItem, ImageAnnotationItem),
+                (
+                    AtomItem,
+                    BondItem,
+                    ArrowItem,
+                    BracketItem,
+                    TextAnnotationItem,
+                    EnergyDiagramItem,
+                    CompositeDiagramItem,
+                    OrbitalAnnotationItem,
+                    ImageAnnotationItem,
+                ),
             ):
                 if not (event.modifiers() & (Qt.KeyboardModifier.ShiftModifier | Qt.KeyboardModifier.ControlModifier)):
                     self.scene.clearSelection()
@@ -1796,7 +1817,19 @@ class ChemusonCanvas(QGraphicsView):
                     & Qt.TextInteractionFlag.TextEditorInteraction
                 ):
                     return
-                if isinstance(clicked_item, (AtomItem, TextAnnotationItem, ArrowItem, BracketItem, EnergyDiagramItem, OrbitalAnnotationItem, ImageAnnotationItem)):
+                if isinstance(
+                    clicked_item,
+                    (
+                        AtomItem,
+                        TextAnnotationItem,
+                        ArrowItem,
+                        BracketItem,
+                        EnergyDiagramItem,
+                        CompositeDiagramItem,
+                        OrbitalAnnotationItem,
+                        ImageAnnotationItem,
+                    ),
+                ):
                     self._begin_drag(scene_pos)
                     self._accept_input_event(event)
             return
@@ -2248,6 +2281,18 @@ class ChemusonCanvas(QGraphicsView):
                         )
                         item.setRotation(rotation)
 
+                if hasattr(self, "_drag_start_semantic_diagram_snapshots"):
+                    for item, (pos, width, height, rotation) in self._drag_start_semantic_diagram_snapshots.items():
+                        item.set_display_rect(
+                            QRectF(
+                                pos.x() + delta.x(),
+                                pos.y() + delta.y(),
+                                width,
+                                height,
+                            )
+                        )
+                        item.setRotation(rotation)
+
                 if hasattr(self, "_drag_start_orbital_snapshots"):
                     for item, (anchor0, anchor1) in self._drag_start_orbital_snapshots.items():
                         item.set_anchors(anchor0 + delta, anchor1 + delta)
@@ -2344,6 +2389,7 @@ class ChemusonCanvas(QGraphicsView):
             arrow_before = dict(getattr(self, "_drag_start_arrow_positions", {}))
             bracket_before = dict(getattr(self, "_drag_start_bracket_rects", {}))
             energy_before = dict(getattr(self, "_drag_start_energy_diagram_snapshots", {}))
+            semantic_before = dict(getattr(self, "_drag_start_semantic_diagram_snapshots", {}))
             orbital_before = dict(getattr(self, "_drag_start_orbital_snapshots", {}))
             image_before = dict(getattr(self, "_drag_start_image_snapshots", {}))
             atom_after = (
@@ -2387,6 +2433,14 @@ class ChemusonCanvas(QGraphicsView):
                 if had_moved and energy_before
                 else {}
             )
+            semantic_after = (
+                {
+                    item: self._semantic_diagram_transform_snapshot(item)
+                    for item in semantic_before.keys()
+                }
+                if had_moved and semantic_before
+                else {}
+            )
             orbital_after = (
                 {
                     item: self._orbital_transform_snapshot(item)
@@ -2412,6 +2466,7 @@ class ChemusonCanvas(QGraphicsView):
             self._drag_start_arrow_positions = {}
             self._drag_start_bracket_rects = {}
             self._drag_start_energy_diagram_snapshots = {}
+            self._drag_start_semantic_diagram_snapshots = {}
             self._drag_start_orbital_snapshots = {}
             self._drag_start_image_snapshots = {}
             self._drag_start_selection_bbox = None
@@ -2429,6 +2484,7 @@ class ChemusonCanvas(QGraphicsView):
                 move_arrows = bool(arrow_before and arrow_after)
                 move_brackets = bool(bracket_before and bracket_after)
                 move_energy_diagrams = bool(energy_before and energy_after)
+                move_semantic_diagrams = bool(semantic_before and semantic_after)
                 move_orbitals = bool(orbital_before and orbital_after)
                 move_images = bool(image_before and image_after)
                 move_count = sum(
@@ -2438,6 +2494,7 @@ class ChemusonCanvas(QGraphicsView):
                         move_arrows,
                         move_brackets,
                         move_energy_diagrams,
+                        move_semantic_diagrams,
                         move_orbitals,
                         move_images,
                     ]
@@ -2478,6 +2535,16 @@ class ChemusonCanvas(QGraphicsView):
                         )
                     )
 
+                if move_semantic_diagrams:
+                    self.undo_stack.push(
+                        TransformImageItemsCommand(
+                            self,
+                            semantic_before,
+                            semantic_after,
+                            "Move semantic diagrams",
+                        )
+                    )
+
                 if move_orbitals:
                     self.undo_stack.push(
                         TransformOrbitalItemsCommand(self, orbital_before, orbital_after, "Move orbitals")
@@ -2504,6 +2571,7 @@ class ChemusonCanvas(QGraphicsView):
         bracket_items: Iterable = (),
         text_items: Iterable = (),
         energy_diagram_items: Iterable = (),
+        semantic_diagram_items: Iterable = (),
         orbital_items: Iterable = (),
         wavy_items: Iterable = (),
         image_items: Iterable = (),
@@ -2547,6 +2615,7 @@ class ChemusonCanvas(QGraphicsView):
             bracket_items=bracket_items,
             text_items=extra_text_items,
             energy_diagram_items=energy_diagram_items,
+            semantic_diagram_items=semantic_diagram_items,
             orbital_items=orbital_items,
             wavy_items=extra_wavy_items,
             image_items=image_items,
@@ -2567,9 +2636,26 @@ class ChemusonCanvas(QGraphicsView):
             Puede modificar el estado interno o la escena.
         """
         for item in self.scene.items(scene_pos):
+            semantic_parent = self._semantic_diagram_parent(item)
+            if semantic_parent is not None:
+                return semantic_parent
             if isinstance(item, AtomItem) and self._is_disposable_orphan_atom(item.atom_id):
                 continue
-            if isinstance(item, (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, EnergyDiagramItem, OrbitalAnnotationItem, ImageAnnotationItem, WavyAnchorItem)):
+            if isinstance(
+                item,
+                (
+                    AtomItem,
+                    BondItem,
+                    ArrowItem,
+                    BracketItem,
+                    TextAnnotationItem,
+                    EnergyDiagramItem,
+                    CompositeDiagramItem,
+                    OrbitalAnnotationItem,
+                    ImageAnnotationItem,
+                    WavyAnchorItem,
+                ),
+            ):
                 return item
             # If we clicked a label/text child of an atom, return the atom.
             if isinstance(item, QGraphicsTextItem):
@@ -2578,6 +2664,19 @@ class ChemusonCanvas(QGraphicsView):
                     if self._is_disposable_orphan_atom(parent.atom_id):
                         continue
                     return parent
+                semantic_parent = self._semantic_diagram_parent(parent)
+                if semantic_parent is not None:
+                    return semantic_parent
+        return None
+
+    @staticmethod
+    def _semantic_diagram_parent(item: Optional[QGraphicsItem]) -> Optional[CompositeDiagramItem]:
+        """Promueve hijos internos de un diagrama semántico a su item raíz."""
+        current = item
+        while current is not None:
+            if isinstance(current, CompositeDiagramItem):
+                return current
+            current = current.parentItem()
         return None
 
     def _resolve_click_item(self, scene_pos: QPointF):
@@ -2585,7 +2684,16 @@ class ChemusonCanvas(QGraphicsView):
         item = self._get_item_at(scene_pos)
         if isinstance(
             item,
-            (TextAnnotationItem, EnergyDiagramItem, OrbitalAnnotationItem, ImageAnnotationItem, ArrowItem, BracketItem, WavyAnchorItem),
+            (
+                TextAnnotationItem,
+                EnergyDiagramItem,
+                CompositeDiagramItem,
+                OrbitalAnnotationItem,
+                ImageAnnotationItem,
+                ArrowItem,
+                BracketItem,
+                WavyAnchorItem,
+            ),
         ):
             return item
 
@@ -2611,7 +2719,12 @@ class ChemusonCanvas(QGraphicsView):
         """
         best_item: Optional[QGraphicsItem] = None
         best_z = float("-inf")
-        for item in [*self._selected_energy_diagram_items(), *self._selected_orbital_items(), *self._selected_image_items()]:
+        for item in [
+            *self._selected_energy_diagram_items(),
+            *self._selected_semantic_diagram_items(),
+            *self._selected_orbital_items(),
+            *self._selected_image_items(),
+        ]:
             if item.scene() is not self.scene:
                 continue
             try:
@@ -2634,6 +2747,7 @@ class ChemusonCanvas(QGraphicsView):
         """Permite transformar una anotación seleccionada incluso fuera de tool_select."""
         if (
             not self._selected_energy_diagram_items()
+            and not self._selected_semantic_diagram_items()
             and not self._selected_orbital_items()
             and not self._selected_image_items()
         ):
@@ -2675,6 +2789,7 @@ class ChemusonCanvas(QGraphicsView):
             "arrow_items": list(self._selected_arrow_items()),
             "bracket_items": list(self._selected_bracket_items()),
             "energy_diagram_items": list(self._selected_energy_diagram_items()),
+            "semantic_diagram_items": list(self._selected_semantic_diagram_items()),
             "orbital_items": list(self._selected_orbital_items()),
             "image_items": list(self._selected_image_items()),
             "wavy_items": [
@@ -2695,7 +2810,16 @@ class ChemusonCanvas(QGraphicsView):
                 item = self.bond_items.get(bond_id)
                 if item is not None and item.scene() is self.scene:
                     item.setSelected(True)
-            for key in ("text_items", "arrow_items", "bracket_items", "energy_diagram_items", "orbital_items", "image_items", "wavy_items"):
+            for key in (
+                "text_items",
+                "arrow_items",
+                "bracket_items",
+                "energy_diagram_items",
+                "semantic_diagram_items",
+                "orbital_items",
+                "image_items",
+                "wavy_items",
+            ):
                 for item in snapshot.get(key, ()):
                     try:
                         if item is not None and item.scene() is self.scene:
@@ -3838,9 +3962,19 @@ class ChemusonCanvas(QGraphicsView):
         selected_arrows = self._selected_arrow_items()
         selected_brackets = self._selected_bracket_items()
         selected_energy_diagrams = self._selected_energy_diagram_items()
+        selected_semantic_diagrams = self._selected_semantic_diagram_items()
         selected_orbitals = self._selected_orbital_items()
         selected_images = self._selected_image_items()
-        if not selected_atom_ids and not selected_text_items and not selected_arrows and not selected_brackets and not selected_energy_diagrams and not selected_orbitals and not selected_images:
+        if (
+            not selected_atom_ids
+            and not selected_text_items
+            and not selected_arrows
+            and not selected_brackets
+            and not selected_energy_diagrams
+            and not selected_semantic_diagrams
+            and not selected_orbitals
+            and not selected_images
+        ):
             return False
 
         step = 1.0
@@ -3901,6 +4035,16 @@ class ChemusonCanvas(QGraphicsView):
                 TransformEnergyDiagramItemsCommand(self, before, after, "Move energy diagrams")
             )
 
+        if selected_semantic_diagrams:
+            before = {item: self._semantic_diagram_transform_snapshot(item) for item in selected_semantic_diagrams}
+            after = {
+                item: (QPointF(pos.x() + dx, pos.y() + dy), width, height, rotation)
+                for item, (pos, width, height, rotation) in before.items()
+            }
+            self.undo_stack.push(
+                TransformImageItemsCommand(self, before, after, "Move semantic diagrams")
+            )
+
         if selected_orbitals:
             before = {item: self._orbital_transform_snapshot(item) for item in selected_orbitals}
             after = {
@@ -3933,7 +4077,18 @@ class ChemusonCanvas(QGraphicsView):
         for item in self.scene.items():
             if isinstance(
                 item,
-                (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, EnergyDiagramItem, OrbitalAnnotationItem, ImageAnnotationItem, WavyAnchorItem),
+                (
+                    AtomItem,
+                    BondItem,
+                    ArrowItem,
+                    BracketItem,
+                    TextAnnotationItem,
+                    EnergyDiagramItem,
+                    CompositeDiagramItem,
+                    OrbitalAnnotationItem,
+                    ImageAnnotationItem,
+                    WavyAnchorItem,
+                ),
             ) and item.isVisible():
                 item.setSelected(True)
         self._sync_selection_from_scene()
@@ -4247,6 +4402,7 @@ class ChemusonCanvas(QGraphicsView):
                 "arrows": [],
                 "brackets": [],
                 "energy_diagrams": [],
+                "semantic_diagrams": [],
                 "orbitals": [],
                 "images": [],
                 "text_items": [],
@@ -4258,6 +4414,9 @@ class ChemusonCanvas(QGraphicsView):
         }
 
         for item in self.scene.items():
+            parent_item = item.parentItem()
+            if isinstance(parent_item, CompositeDiagramItem):
+                continue
             if isinstance(item, ArrowItem):
                 if isinstance(item, PreviewArrowItem):
                     continue
@@ -4325,8 +4484,13 @@ class ChemusonCanvas(QGraphicsView):
                     "label_side": item.label_side(),
                     "occupancies": list(item.occupancies()),
                     "style_payload": item.style_payload(),
+                    "metadata": item.metadata(),
                     "opacity": self.item_raw_opacity(item),
                 })
+            elif isinstance(item, CompositeDiagramItem):
+                payload = item.to_json()
+                payload["opacity"] = self.item_raw_opacity(item)
+                data["annotations"]["semantic_diagrams"].append(payload)
             elif isinstance(item, OrbitalAnnotationItem):
                 anchor0 = item.anchor0()
                 anchor1 = item.anchor1()
@@ -4488,6 +4652,7 @@ class ChemusonCanvas(QGraphicsView):
                 occupancies=energy_d.get("occupancies"),
                 slot_count=energy_d.get("slot_count"),
                 style_payload=energy_d.get("style_payload"),
+                metadata=energy_d.get("metadata"),
                 width=float(energy_d.get("width", 1.0)),
                 height=float(energy_d.get("height", 1.0)),
             )
@@ -4503,6 +4668,14 @@ class ChemusonCanvas(QGraphicsView):
             item.setZValue(float(energy_d.get("z", 44.0)))
             self.set_graphics_item_opacity(item, energy_d.get("opacity"))
             self.readd_energy_diagram_item(item)
+
+        for semantic_d in annotations.get("semantic_diagrams", []):
+            try:
+                item = CompositeDiagramItem.from_json(semantic_d)
+            except Exception:
+                continue
+            self.set_graphics_item_opacity(item, semantic_d.get("opacity"))
+            self.readd_semantic_diagram_item(item)
 
         for orbital_d in annotations.get("orbitals", []):
             try:
@@ -4624,6 +4797,7 @@ class ChemusonCanvas(QGraphicsView):
         self.arrow_items.clear()
         self.bracket_items.clear()
         self.energy_diagram_items.clear()
+        self.semantic_diagram_items.clear()
         self.orbital_items.clear()
         self.image_items.clear()
         self._electron_dots.clear()
@@ -4824,6 +4998,14 @@ class ChemusonCanvas(QGraphicsView):
         if item not in self.energy_diagram_items:
             self.energy_diagram_items.append(item)
 
+    def add_semantic_diagram_item(self, item: CompositeDiagramItem) -> None:
+        """Añade un diagrama semántico compuesto al lienzo."""
+        self.ensure_graphics_item_opacity(item)
+        if item.scene() is not self.scene:
+            self.scene.addItem(item)
+        if item not in self.semantic_diagram_items:
+            self.semantic_diagram_items.append(item)
+
     def add_orbital_item(self, item: OrbitalAnnotationItem) -> None:
         """Añade un orbital vectorial persistente al lienzo."""
         self.ensure_graphics_item_opacity(item)
@@ -4878,6 +5060,13 @@ class ChemusonCanvas(QGraphicsView):
         """Elimina un diagrama de energia persistente."""
         if item in self.energy_diagram_items:
             self.energy_diagram_items.remove(item)
+        if item.scene() is self.scene:
+            self.scene.removeItem(item)
+
+    def remove_semantic_diagram_item(self, item: CompositeDiagramItem) -> None:
+        """Elimina un diagrama semántico compuesto."""
+        if item in self.semantic_diagram_items:
+            self.semantic_diagram_items.remove(item)
         if item.scene() is self.scene:
             self.scene.removeItem(item)
 
@@ -4940,6 +5129,14 @@ class ChemusonCanvas(QGraphicsView):
         if item not in self.energy_diagram_items:
             self.energy_diagram_items.append(item)
 
+    def readd_semantic_diagram_item(self, item: CompositeDiagramItem) -> None:
+        """Reintroduce un diagrama semántico compuesto en el lienzo."""
+        self.ensure_graphics_item_opacity(item)
+        if item.scene() is not self.scene:
+            self.scene.addItem(item)
+        if item not in self.semantic_diagram_items:
+            self.semantic_diagram_items.append(item)
+
     def readd_orbital_item(self, item: OrbitalAnnotationItem) -> None:
         """Reintroduce un orbital persistente en el lienzo."""
         self.ensure_graphics_item_opacity(item)
@@ -4987,6 +5184,9 @@ class ChemusonCanvas(QGraphicsView):
         selected_energy_diagrams = [
             item for item in self.scene.selectedItems() if isinstance(item, EnergyDiagramItem)
         ]
+        selected_semantic_diagrams = [
+            item for item in self.scene.selectedItems() if isinstance(item, CompositeDiagramItem)
+        ]
         selected_orbitals = [
             item for item in self.scene.selectedItems() if isinstance(item, OrbitalAnnotationItem)
         ]
@@ -5003,6 +5203,7 @@ class ChemusonCanvas(QGraphicsView):
             and not selected_brackets
             and not selected_text_items
             and not selected_energy_diagrams
+            and not selected_semantic_diagrams
             and not selected_orbitals
             and not selected_wavy
             and not selected_images
@@ -5015,6 +5216,7 @@ class ChemusonCanvas(QGraphicsView):
             bracket_items=selected_brackets,
             text_items=selected_text_items,
             energy_diagram_items=selected_energy_diagrams,
+            semantic_diagram_items=selected_semantic_diagrams,
             orbital_items=selected_orbitals,
             wavy_items=selected_wavy,
             image_items=selected_images,
@@ -5156,6 +5358,7 @@ class ChemusonCanvas(QGraphicsView):
         brackets = self._selected_bracket_items()
         texts = self._selected_text_items()
         energy_diagrams = self._selected_energy_diagram_items()
+        semantic_diagrams = self._selected_semantic_diagram_items()
         orbitals = self._selected_orbital_items()
         images = self._selected_image_items()
         wavy_items = [
@@ -5169,6 +5372,7 @@ class ChemusonCanvas(QGraphicsView):
             and not brackets
             and not texts
             and not energy_diagrams
+            and not semantic_diagrams
             and not orbitals
             and not images
             and not wavy_items
@@ -5297,9 +5501,18 @@ class ChemusonCanvas(QGraphicsView):
                     "label_side": item.label_side(),
                     "occupancies": list(item.occupancies()),
                     "style_payload": item.style_payload(),
+                    "metadata": item.metadata(),
                     "opacity": self.effective_item_opacity(item),
                 }
             )
+
+        semantic_diagrams_payload = []
+        for item in semantic_diagrams:
+            payload = item.to_json()
+            payload["x"] = float(payload.get("x", 0.0)) - left
+            payload["y"] = float(payload.get("y", 0.0)) - top
+            payload["opacity"] = self.effective_item_opacity(item)
+            semantic_diagrams_payload.append(payload)
 
         orbitals_payload = []
         for item in orbitals:
@@ -5358,6 +5571,7 @@ class ChemusonCanvas(QGraphicsView):
             "brackets": brackets_payload,
             "texts": texts_payload,
             "energy_diagrams": energy_diagrams_payload,
+            "semantic_diagrams": semantic_diagrams_payload,
             "orbitals": orbitals_payload,
             "images": images_payload,
             "wavy_items": wavy_payload,
@@ -5381,6 +5595,7 @@ class ChemusonCanvas(QGraphicsView):
         brackets = payload.get("brackets", [])
         texts = payload.get("texts", [])
         energy_diagrams = payload.get("energy_diagrams", [])
+        semantic_diagrams = payload.get("semantic_diagrams", [])
         orbitals = payload.get("orbitals", [])
         images = payload.get("images", [])
         wavy_items = payload.get("wavy_items", [])
@@ -5391,6 +5606,7 @@ class ChemusonCanvas(QGraphicsView):
             and not brackets
             and not texts
             and not energy_diagrams
+            and not semantic_diagrams
             and not orbitals
             and not images
             and not wavy_items
@@ -5430,6 +5646,7 @@ class ChemusonCanvas(QGraphicsView):
             or brackets
             or texts
             or energy_diagrams
+            or semantic_diagrams
             or orbitals
             or images
             or wavy_items
@@ -5638,6 +5855,7 @@ class ChemusonCanvas(QGraphicsView):
                     ),
                     slot_count=energy_d.get("slot_count"),
                     style_payload=energy_d.get("style_payload"),
+                    metadata=energy_d.get("metadata"),
                     width=float(energy_d.get("width", 1.0)),
                     height=float(energy_d.get("height", 1.0)),
                 )
@@ -5656,6 +5874,24 @@ class ChemusonCanvas(QGraphicsView):
                     self.undo_stack.push(AddEnergyDiagramItemCommand(self, item))
                 else:
                     self.readd_energy_diagram_item(item)
+                inserted_items.append(item)
+
+            for semantic_d in semantic_diagrams:
+                try:
+                    item = CompositeDiagramItem.from_json(
+                        {
+                            **dict(semantic_d),
+                            "x": float(semantic_d.get("x", 0.0)) + dx,
+                            "y": float(semantic_d.get("y", 0.0)) + dy,
+                        }
+                    )
+                except Exception:
+                    continue
+                self.set_graphics_item_opacity(item, semantic_d.get("opacity"))
+                if has_undo_items:
+                    self.undo_stack.push(AddCompositeDiagramItemCommand(self, item))
+                else:
+                    self.readd_semantic_diagram_item(item)
                 inserted_items.append(item)
 
             for orbital_d in orbitals:
@@ -5783,6 +6019,30 @@ class ChemusonCanvas(QGraphicsView):
             item.setSelected(True)
         self._sync_selection_from_scene()
 
+    def has_copyable_selection(self) -> bool:
+        """Indica si hay una selección que puede copiarse/cortarse."""
+        return bool(
+            self.state.selected_atoms
+            or self.state.selected_bonds
+            or self.scene.selectedItems()
+        )
+
+    def can_paste_from_clipboard(self) -> bool:
+        """Indica si el portapapeles contiene un formato pegable por Chemuson."""
+        mime = QApplication.clipboard().mimeData()
+        if mime is None:
+            return False
+        return bool(
+            mime.hasFormat("application/x-chemuson-selection")
+            or mime.hasFormat("application/x-chemuson-text-items")
+            or mime.hasFormat("chemical/x-mdl-molfile")
+            or mime.hasUrls()
+            or mime.hasText()
+            or mime.hasFormat("image/png")
+            or mime.hasImage()
+            or mime.hasFormat("image/svg+xml")
+        )
+
 
 
     def copy_to_clipboard(self) -> None:
@@ -5852,8 +6112,7 @@ class ChemusonCanvas(QGraphicsView):
                 json.dumps(data).encode("utf-8"),
             )
 
-        has_selection = bool(self.state.selected_atoms or self.state.selected_bonds)
-        has_selection = has_selection or bool(self.scene.selectedItems())
+        has_selection = self.has_copyable_selection()
         image = self._render_scene_image(
             scale=(
                 CLIPBOARD_LARGE_SELECTION_RENDER_SCALE
@@ -6921,6 +7180,78 @@ class ChemusonCanvas(QGraphicsView):
         self._select_inserted_items(items=[item])
         self._refresh_scene_after_image_insert()
         return item
+
+    def insert_semantic_diagram(
+        self,
+        diagram: SemanticDiagram,
+        scene_pos: QPointF,
+    ) -> list[BaseItem]:
+        """Inserta un diagrama electrónico semántico centrado cerca del click."""
+        item = CompositeDiagramItem(diagram)
+        rect = item.display_rect()
+        item.set_display_rect(
+            QRectF(
+                float(scene_pos.x()) - rect.width() * 0.5,
+                float(scene_pos.y()) - rect.height() * 0.5,
+                rect.width(),
+                rect.height(),
+            )
+        )
+        self.undo_stack.push(AddCompositeDiagramItemCommand(self, item))
+        self._select_inserted_items(items=[item])
+        self._refresh_scene_after_image_insert()
+        return [item]
+
+    def insert_atomic_diagram(self, electron_count: int, scene_pos: QPointF) -> list[BaseItem]:
+        """Construye e inserta un diagrama atómico semántico."""
+        return self.insert_semantic_diagram(
+            build_atomic_subshell_diagram(electron_count),
+            scene_pos,
+        )
+
+    def insert_mo_diatomic_diagram(
+        self,
+        left_label: str,
+        right_label: str,
+        total_electrons: int,
+        ordering: str = "heavy_2p",
+        include_core_1s: bool = False,
+        title: str | None = None,
+        scene_pos: QPointF | None = None,
+    ) -> list[BaseItem]:
+        """Construye e inserta un diagrama MO diatómico semántico."""
+        target_pos = scene_pos or self.mapToScene(self.viewport().rect().center())
+        return self.insert_semantic_diagram(
+            build_diatomic_mo_diagram(
+                left_label=left_label,
+                right_label=right_label,
+                total_electrons=total_electrons,
+                ordering="light_2p" if ordering == "light_2p" else "heavy_2p",
+                include_core_1s=include_core_1s,
+                title=title,
+            ),
+            target_pos,
+        )
+
+    def insert_ligand_field_diagram(
+        self,
+        d_electrons: int,
+        geometry: str = "octahedral",
+        spin_mode: str = "high",
+        title: str | None = None,
+        scene_pos: QPointF | None = None,
+    ) -> list[BaseItem]:
+        """Construye e inserta un diagrama de campo ligando semántico."""
+        target_pos = scene_pos or self.mapToScene(self.viewport().rect().center())
+        return self.insert_semantic_diagram(
+            build_ligand_field_diagram(
+                d_electrons=d_electrons,
+                geometry=geometry if geometry in {"octahedral", "tetrahedral", "square_planar"} else "octahedral",
+                spin_mode="low" if spin_mode == "low" else "high",
+                title=title,
+            ),
+            target_pos,
+        )
 
     def add_atom_item(self, atom) -> None:
         """Añade atom item.
@@ -10462,6 +10793,20 @@ class ChemusonCanvas(QGraphicsView):
                 "boxes": item.box_count(),
                 "occupancies": ", ".join(item.occupancies()),
             }
+        elif (
+            len(self._selected_semantic_diagram_items()) == 1
+            and not selected_atoms
+            and not selected_bonds
+            and not selected_text_items
+        ):
+            item = self._selected_semantic_diagram_items()[0]
+            details = {
+                "type": "semantic_diagram",
+                "kind": str(item.semantic_diagram.kind),
+                "title": str(item.semantic_diagram.title or ""),
+                "levels": len(item.semantic_diagram.levels),
+                "lanes": len(item.semantic_diagram.lanes),
+            }
         elif len(selected_text_items) == 1 and not selected_atoms and not selected_bonds:
             item = selected_text_items[0]
             cursor = item.textCursor()
@@ -11121,7 +11466,20 @@ class ChemusonCanvas(QGraphicsView):
             self.state.selected_atoms
             or self.state.selected_bonds
             or self._selected_text_items()
-            or any(isinstance(item, (ArrowItem, BracketItem, EnergyDiagramItem, OrbitalAnnotationItem, ImageAnnotationItem)) for item in self.scene.selectedItems())
+            or any(
+                isinstance(
+                    item,
+                    (
+                        ArrowItem,
+                        BracketItem,
+                        EnergyDiagramItem,
+                        CompositeDiagramItem,
+                        OrbitalAnnotationItem,
+                        ImageAnnotationItem,
+                    ),
+                )
+                for item in self.scene.selectedItems()
+            )
         )
         has_bond_selection = bool(self.state.selected_bonds)
         has_stroke_selection = bool(
@@ -11198,6 +11556,8 @@ class ChemusonCanvas(QGraphicsView):
         energy_has_custom_style = any(
             bool(item.style_payload()) for item in selected_energy_diagram_items
         )
+        selected_semantic_diagram_items = self._selected_semantic_diagram_items()
+        semantic_diagram_target = self._single_semantic_diagram_target(clicked_item)
         selected_orbital_items = self._selected_orbital_items()
         orbital_target = self._single_orbital_target(clicked_item)
         charge_atom_ids: list[int] = []
@@ -11330,6 +11690,9 @@ class ChemusonCanvas(QGraphicsView):
         act_energy_box_outline_toggle = None
         act_energy_box_base_toggle = None
         act_energy_reset_style = None
+        act_semantic_title = None
+        act_semantic_level_label = None
+        act_semantic_lane_label = None
         act_orbital_color = None
         act_orbital_reset_color = None
         act_orbital_opacity = None
@@ -11443,6 +11806,14 @@ class ChemusonCanvas(QGraphicsView):
             energy_style_menu.addSeparator()
             act_energy_reset_style = energy_style_menu.addAction("Restablecer estilo")
             act_energy_reset_style.setEnabled(energy_has_custom_style)
+        if selected_semantic_diagram_items and semantic_diagram_target is not None:
+            menu.addSeparator()
+            semantic_menu = menu.addMenu("Diagrama electrónico")
+            act_semantic_title = semantic_menu.addAction("Editar título...")
+            if semantic_diagram_target.semantic_diagram.levels:
+                act_semantic_level_label = semantic_menu.addAction("Editar etiqueta de nivel...")
+            if semantic_diagram_target.semantic_diagram.lanes:
+                act_semantic_lane_label = semantic_menu.addAction("Editar etiqueta de carril...")
         if selected_orbital_items:
             menu.addSeparator()
             orbital_menu = menu.addMenu("Orbital")
@@ -11472,6 +11843,7 @@ class ChemusonCanvas(QGraphicsView):
 
         act_cut.setEnabled(has_selection)
         act_copy.setEnabled(has_selection)
+        act_paste.setEnabled(self.can_paste_from_clipboard())
         act_delete.setEnabled(has_selection)
         analysis_menu.setEnabled(bool(self.model.atoms))
 
@@ -11558,6 +11930,15 @@ class ChemusonCanvas(QGraphicsView):
             return
         if act_energy_reset_style is not None and action == act_energy_reset_style:
             self._reset_selected_energy_diagram_style()
+            return
+        if semantic_diagram_target is not None and act_semantic_title is not None and action == act_semantic_title:
+            self._prompt_semantic_diagram_title(semantic_diagram_target)
+            return
+        if semantic_diagram_target is not None and act_semantic_level_label is not None and action == act_semantic_level_label:
+            self._prompt_semantic_diagram_level_label(semantic_diagram_target)
+            return
+        if semantic_diagram_target is not None and act_semantic_lane_label is not None and action == act_semantic_lane_label:
+            self._prompt_semantic_diagram_lane_title(semantic_diagram_target)
             return
         if orbital_target is not None and act_orbital_lobe_color is not None and action == act_orbital_lobe_color:
             self._prompt_orbital_part_color(orbital_target)
@@ -12348,6 +12729,117 @@ class ChemusonCanvas(QGraphicsView):
         selected = self._selected_energy_diagram_items()
         return selected[0] if len(selected) == 1 else None
 
+    def _single_semantic_diagram_target(
+        self,
+        clicked_item: Optional[QGraphicsItem] = None,
+    ) -> Optional[CompositeDiagramItem]:
+        """Devuelve un diagrama semántico único para acciones de edición."""
+        if isinstance(clicked_item, CompositeDiagramItem):
+            return clicked_item
+        selected = self._selected_semantic_diagram_items()
+        return selected[0] if len(selected) == 1 else None
+
+    def _prompt_semantic_diagram_title(self, item: CompositeDiagramItem) -> None:
+        """Solicita un nuevo título para el diagrama semántico."""
+        value, ok = QInputDialog.getText(
+            self,
+            "Título del diagrama",
+            "Título:",
+            text=str(item.semantic_diagram.title or ""),
+        )
+        if not ok:
+            return
+        if item.set_diagram_title(str(value or "")):
+            self._sync_selection_from_scene()
+
+    def _prompt_semantic_diagram_lane_title(
+        self,
+        item: CompositeDiagramItem,
+        lane_id: Optional[str] = None,
+    ) -> None:
+        """Edita la etiqueta de un carril del diagrama semántico."""
+        target_lane_id = str(lane_id or "")
+        lane = None
+        if target_lane_id:
+            lane = next(
+                (candidate for candidate in item.semantic_diagram.lanes if candidate.id == target_lane_id),
+                None,
+            )
+        if lane is None:
+            lanes = [candidate for candidate in item.semantic_diagram.lanes]
+            if not lanes:
+                return
+            lane_labels = [
+                str(candidate.title or candidate.id or f"Carril {index + 1}")
+                for index, candidate in enumerate(lanes)
+            ]
+            selected_label, ok = QInputDialog.getItem(
+                self,
+                "Etiqueta de carril",
+                "Carril:",
+                lane_labels,
+                0,
+                False,
+            )
+            if not ok:
+                return
+            chosen_index = lane_labels.index(selected_label)
+            lane = lanes[chosen_index]
+        value, ok = QInputDialog.getText(
+            self,
+            "Etiqueta de carril",
+            "Etiqueta:",
+            text=str(lane.title or ""),
+        )
+        if not ok:
+            return
+        if item.set_lane_title(lane.id, str(value or "")):
+            self._sync_selection_from_scene()
+
+    def _prompt_semantic_diagram_level_label(
+        self,
+        item: CompositeDiagramItem,
+        level_id: Optional[str] = None,
+    ) -> None:
+        """Edita la etiqueta de un nivel del diagrama semántico."""
+        target_level_id = str(level_id or "")
+        level = None
+        if target_level_id:
+            level = next(
+                (candidate for candidate in item.semantic_diagram.levels if candidate.id == target_level_id),
+                None,
+            )
+        if level is None:
+            levels = [candidate for candidate in item.semantic_diagram.levels]
+            if not levels:
+                return
+            level_labels = [
+                str(candidate.label or candidate.id or f"Nivel {index + 1}")
+                for index, candidate in enumerate(levels)
+            ]
+            selected_label, ok = QInputDialog.getItem(
+                self,
+                "Etiqueta de nivel",
+                "Nivel:",
+                level_labels,
+                0,
+                False,
+            )
+            if not ok:
+                return
+            chosen_index = level_labels.index(selected_label)
+            level = levels[chosen_index]
+        value, ok = QInputDialog.getText(
+            self,
+            "Etiqueta de nivel",
+            "Etiqueta:",
+            text=str(level.label or ""),
+        )
+        if not ok:
+            return
+        if item.set_level_label(level.id, str(value or "")):
+            self._sync_selection_from_scene()
+
     def _push_energy_diagram_config_change(
         self,
         updates: dict[EnergyDiagramItem, dict[str, object]],
@@ -12742,6 +13234,7 @@ class ChemusonCanvas(QGraphicsView):
                 "arrow_items": self._selected_arrow_items(),
                 "bracket_items": self._selected_bracket_items(),
                 "energy_diagram_items": self._selected_energy_diagram_items(),
+                "semantic_diagram_items": self._selected_semantic_diagram_items(),
                 "orbital_items": self._selected_orbital_items(),
                 "image_items": self._selected_image_items(),
                 "wavy_items": self._selected_wavy_items(),
@@ -12759,6 +13252,9 @@ class ChemusonCanvas(QGraphicsView):
             "bracket_items": [item for item in self.bracket_items if item.scene() is self.scene],
             "energy_diagram_items": [
                 item for item in self.energy_diagram_items if item.scene() is self.scene
+            ],
+            "semantic_diagram_items": [
+                item for item in self.semantic_diagram_items if item.scene() is self.scene
             ],
             "orbital_items": [item for item in self.orbital_items if item.scene() is self.scene],
             "image_items": [item for item in self.image_items if item.scene() is self.scene],
@@ -12780,6 +13276,7 @@ class ChemusonCanvas(QGraphicsView):
                 "arrow_items",
                 "bracket_items",
                 "energy_diagram_items",
+                "semantic_diagram_items",
                 "orbital_items",
                 "image_items",
                 "wavy_items",
@@ -12795,7 +13292,16 @@ class ChemusonCanvas(QGraphicsView):
         values: list[float] = []
         values.extend(self.effective_atom_opacity(atom_id) for atom_id in snapshot["atom_ids"])
         values.extend(self.effective_bond_opacity(bond_id) for bond_id in snapshot["bond_ids"])
-        for key in ("text_items", "arrow_items", "bracket_items", "energy_diagram_items", "orbital_items", "image_items", "wavy_items"):
+        for key in (
+            "text_items",
+            "arrow_items",
+            "bracket_items",
+            "energy_diagram_items",
+            "semantic_diagram_items",
+            "orbital_items",
+            "image_items",
+            "wavy_items",
+        ):
             values.extend(self.effective_item_opacity(item) for item in snapshot[key])
         if not values:
             return int(round(self.canvas_default_opacity() * 100.0))
@@ -12837,7 +13343,16 @@ class ChemusonCanvas(QGraphicsView):
                 bond_values[bond_id] = None
 
         item_values: dict[object, Optional[float]] = {}
-        for key in ("text_items", "arrow_items", "bracket_items", "energy_diagram_items", "orbital_items", "image_items", "wavy_items"):
+        for key in (
+            "text_items",
+            "arrow_items",
+            "bracket_items",
+            "energy_diagram_items",
+            "semantic_diagram_items",
+            "orbital_items",
+            "image_items",
+            "wavy_items",
+        ):
             for item in targets[key]:
                 current_raw = self.item_raw_opacity(item)
                 current_effective = self.effective_item_opacity(item)
@@ -13008,7 +13523,19 @@ class ChemusonCanvas(QGraphicsView):
             extend(item.sceneBoundingRect())
         for item in self.scene.selectedItems():
             # Include TextAnnotationItem
-            if isinstance(item, (ArrowItem, BracketItem, TextAnnotationItem, EnergyDiagramItem, OrbitalAnnotationItem, ImageAnnotationItem, WavyAnchorItem)):
+            if isinstance(
+                item,
+                (
+                    ArrowItem,
+                    BracketItem,
+                    TextAnnotationItem,
+                    EnergyDiagramItem,
+                    CompositeDiagramItem,
+                    OrbitalAnnotationItem,
+                    ImageAnnotationItem,
+                    WavyAnchorItem,
+                ),
+            ):
                 extend(item.sceneBoundingRect())
         return rect
 
@@ -14323,6 +14850,7 @@ class ChemusonCanvas(QGraphicsView):
             and not self._selected_text_items()
             and not self._selected_arrow_items()
             and not self._selected_energy_diagram_items()
+            and not self._selected_semantic_diagram_items()
             and not self._selected_orbital_items()
             and not self._selected_image_items()
         ):
@@ -14356,6 +14884,10 @@ class ChemusonCanvas(QGraphicsView):
         self._rotation_start_energy_diagram_snapshots = {
             item: self._energy_diagram_transform_snapshot(item)
             for item in self._selected_energy_diagram_items()
+        }
+        self._rotation_start_semantic_diagram_snapshots = {
+            item: self._semantic_diagram_transform_snapshot(item)
+            for item in self._selected_semantic_diagram_items()
         }
         self._rotation_start_orbital_snapshots = {
             item: self._orbital_transform_snapshot(item)
@@ -14466,12 +14998,28 @@ class ChemusonCanvas(QGraphicsView):
             for item in image_before
         )
 
+        semantic_before = dict(self._rotation_start_semantic_diagram_snapshots)
+        semantic_after = {
+            item: self._semantic_diagram_transform_snapshot(item)
+            for item in semantic_before
+        }
+        moved_semantic_diagrams = any(
+            not (
+                self._point_equal(semantic_before[item][0], semantic_after[item][0])
+                and abs(semantic_before[item][1] - semantic_after[item][1]) <= 0.05
+                and abs(semantic_before[item][2] - semantic_after[item][2]) <= 0.05
+                and abs(semantic_before[item][3] - semantic_after[item][3]) <= 0.05
+            )
+            for item in semantic_before
+        )
+
         move_count = sum(
             [
                 bool(moved_atoms),
                 bool(moved_text),
                 bool(moved_arrows),
                 bool(moved_energy_diagrams),
+                bool(moved_semantic_diagrams),
                 bool(moved_orbitals),
                 bool(moved_images),
             ]
@@ -14516,6 +15064,16 @@ class ChemusonCanvas(QGraphicsView):
                 )
             )
 
+        if moved_semantic_diagrams:
+            self.undo_stack.push(
+                TransformImageItemsCommand(
+                    self,
+                    semantic_before,
+                    semantic_after,
+                    "Rotate semantic diagrams",
+                )
+            )
+
         if moved_images:
             self.undo_stack.push(
                 TransformImageItemsCommand(
@@ -14536,6 +15094,7 @@ class ChemusonCanvas(QGraphicsView):
         self._rotation_start_text_transforms = {}
         self._rotation_start_arrow_positions = {}
         self._rotation_start_energy_diagram_snapshots = {}
+        self._rotation_start_semantic_diagram_snapshots = {}
         self._rotation_start_orbital_snapshots = {}
         self._rotation_start_image_snapshots = {}
         self._release_interaction_mouse()
@@ -14592,6 +15151,7 @@ class ChemusonCanvas(QGraphicsView):
             and not self._selected_arrow_items()
             and not self._selected_bracket_items()
             and not self._selected_energy_diagram_items()
+            and not self._selected_semantic_diagram_items()
             and not self._selected_orbital_items()
             and not self._selected_image_items()
         )
@@ -14640,6 +15200,11 @@ class ChemusonCanvas(QGraphicsView):
         rect = item.display_rect()
         return QPointF(rect.topLeft()), float(rect.width()), float(rect.height()), float(item.rotation())
 
+    def _semantic_diagram_transform_snapshot(self, item: CompositeDiagramItem) -> tuple[QPointF, float, float, float]:
+        """Captura posición, tamaño y rotación de un diagrama semántico compuesto."""
+        rect = item.display_rect()
+        return QPointF(rect.topLeft()), float(rect.width()), float(rect.height()), float(item.rotation())
+
     def _orbital_transform_snapshot(self, item: OrbitalAnnotationItem) -> tuple[QPointF, QPointF]:
         """Captura anchors de un orbital persistente."""
         return item.anchor0(), item.anchor1()
@@ -14660,6 +15225,7 @@ class ChemusonCanvas(QGraphicsView):
         arrow_items: Optional[list[ArrowItem]] = None,
         bracket_items: Optional[list[BracketItem]] = None,
         energy_diagram_items: Optional[list[EnergyDiagramItem]] = None,
+        semantic_diagram_items: Optional[list[CompositeDiagramItem]] = None,
         orbital_items: Optional[list[OrbitalAnnotationItem]] = None,
         image_items: Optional[list[ImageAnnotationItem]] = None,
     ) -> dict:
@@ -14674,6 +15240,8 @@ class ChemusonCanvas(QGraphicsView):
             bracket_items = self._selected_bracket_items()
         if energy_diagram_items is None:
             energy_diagram_items = self._selected_energy_diagram_items()
+        if semantic_diagram_items is None:
+            semantic_diagram_items = self._selected_semantic_diagram_items()
         if orbital_items is None:
             orbital_items = self._selected_orbital_items()
         if image_items is None:
@@ -14735,6 +15303,10 @@ class ChemusonCanvas(QGraphicsView):
             "energy_diagram_snapshots": {
                 item: self._energy_diagram_transform_snapshot(item)
                 for item in energy_diagram_items
+            },
+            "semantic_diagram_snapshots": {
+                item: self._semantic_diagram_transform_snapshot(item)
+                for item in semantic_diagram_items
             },
             "orbital_snapshots": {
                 item: self._orbital_transform_snapshot(item)
@@ -14837,6 +15409,18 @@ class ChemusonCanvas(QGraphicsView):
                 item.set_stroke_px(self._normalize_custom_stroke(float(effective_stroke) * scale))
 
         for item, (pos, width, height, rotation) in state.get("energy_diagram_snapshots", {}).items():
+            top_left = self._scale_point_from_anchor(anchor, pos, scale)
+            item.set_display_rect(
+                QRectF(
+                    top_left.x(),
+                    top_left.y(),
+                    max(1.0, float(width) * scale),
+                    max(1.0, float(height) * scale),
+                )
+            )
+            item.setRotation(rotation)
+
+        for item, (pos, width, height, rotation) in state.get("semantic_diagram_snapshots", {}).items():
             top_left = self._scale_point_from_anchor(anchor, pos, scale)
             item.set_display_rect(
                 QRectF(
@@ -14995,6 +15579,23 @@ class ChemusonCanvas(QGraphicsView):
         if changed_energy_diagrams:
             command_count += 1
 
+        semantic_before = dict(state.get("semantic_diagram_snapshots", {}))
+        semantic_after = {
+            item: self._semantic_diagram_transform_snapshot(item)
+            for item in semantic_before
+        }
+        changed_semantic_diagrams = any(
+            not (
+                self._point_equal(semantic_before[item][0], semantic_after[item][0])
+                and abs(semantic_before[item][1] - semantic_after[item][1]) <= 0.05
+                and abs(semantic_before[item][2] - semantic_after[item][2]) <= 0.05
+                and abs(semantic_before[item][3] - semantic_after[item][3]) <= 0.05
+            )
+            for item in semantic_before
+        )
+        if changed_semantic_diagrams:
+            command_count += 1
+
         orbital_before = dict(state.get("orbital_snapshots", {}))
         orbital_after = {item: self._orbital_transform_snapshot(item) for item in orbital_before}
         changed_orbitals = any(
@@ -15101,6 +15702,16 @@ class ChemusonCanvas(QGraphicsView):
                 )
             )
 
+        if changed_semantic_diagrams:
+            self.undo_stack.push(
+                TransformImageItemsCommand(
+                    self,
+                    semantic_before,
+                    semantic_after,
+                    "Scale semantic diagrams",
+                )
+            )
+
         if changed_orbitals:
             self.undo_stack.push(
                 TransformOrbitalItemsCommand(self, orbital_before, orbital_after, "Scale orbitals")
@@ -15123,6 +15734,7 @@ class ChemusonCanvas(QGraphicsView):
             and not self._selected_arrow_items()
             and not self._selected_bracket_items()
             and not self._selected_energy_diagram_items()
+            and not self._selected_semantic_diagram_items()
             and not self._selected_orbital_items()
             and not self._selected_image_items()
         ):
@@ -15170,6 +15782,7 @@ class ChemusonCanvas(QGraphicsView):
             for item, snapshot in state["bracket_snapshots"].items()
         }
         self._scale_start_energy_diagram_snapshots = dict(state["energy_diagram_snapshots"])
+        self._scale_start_semantic_diagram_snapshots = dict(state["semantic_diagram_snapshots"])
         self._scale_start_orbital_snapshots = dict(state["orbital_snapshots"])
         self._scale_start_image_snapshots = dict(state["image_snapshots"])
         self._scale_has_moved = False
@@ -15222,6 +15835,7 @@ class ChemusonCanvas(QGraphicsView):
                     for item, rect in self._scale_start_bracket_rects.items()
                 },
                 "energy_diagram_snapshots": dict(self._scale_start_energy_diagram_snapshots),
+                "semantic_diagram_snapshots": dict(self._scale_start_semantic_diagram_snapshots),
                 "orbital_snapshots": dict(self._scale_start_orbital_snapshots),
                 "image_snapshots": dict(self._scale_start_image_snapshots),
             },
@@ -15273,6 +15887,7 @@ class ChemusonCanvas(QGraphicsView):
                         for item, rect in self._scale_start_bracket_rects.items()
                     },
                     "energy_diagram_snapshots": dict(self._scale_start_energy_diagram_snapshots),
+                    "semantic_diagram_snapshots": dict(self._scale_start_semantic_diagram_snapshots),
                     "orbital_snapshots": dict(self._scale_start_orbital_snapshots),
                     "image_snapshots": dict(self._scale_start_image_snapshots),
                 },
@@ -15293,6 +15908,7 @@ class ChemusonCanvas(QGraphicsView):
         self._scale_start_bracket_rects = {}
         self._scale_start_bracket_styles = {}
         self._scale_start_energy_diagram_snapshots = {}
+        self._scale_start_semantic_diagram_snapshots = {}
         self._scale_start_orbital_snapshots = {}
         self._scale_start_image_snapshots = {}
         self._scale_start_atom_label_scales = {}
@@ -15348,7 +15964,16 @@ class ChemusonCanvas(QGraphicsView):
 
     def _selected_energy_diagram_items(self) -> list[EnergyDiagramItem]:
         """Devuelve diagramas de energia seleccionados."""
-        return [item for item in self.scene.selectedItems() if isinstance(item, EnergyDiagramItem)]
+        return [
+            item
+            for item in self.scene.selectedItems()
+            if isinstance(item, EnergyDiagramItem)
+            and not isinstance(item.parentItem(), CompositeDiagramItem)
+        ]
+
+    def _selected_semantic_diagram_items(self) -> list[CompositeDiagramItem]:
+        """Devuelve diagramas semánticos compuestos seleccionados."""
+        return [item for item in self.scene.selectedItems() if isinstance(item, CompositeDiagramItem)]
 
     def _selected_orbital_items(self) -> list[OrbitalAnnotationItem]:
         """Devuelve los orbitales persistentes actualmente seleccionados."""
@@ -15377,6 +16002,7 @@ class ChemusonCanvas(QGraphicsView):
         arrow_items: Iterable[ArrowItem] = (),
         bracket_items: Iterable[BracketItem] = (),
         energy_diagram_items: Iterable[EnergyDiagramItem] = (),
+        semantic_diagram_items: Iterable[CompositeDiagramItem] = (),
         orbital_items: Iterable[OrbitalAnnotationItem] = (),
         image_items: Iterable[ImageAnnotationItem] = (),
     ) -> Optional[QRectF]:
@@ -15423,6 +16049,9 @@ class ChemusonCanvas(QGraphicsView):
             if item.scene() is self.scene:
                 extend(item.sceneBoundingRect())
         for item in energy_diagram_items:
+            if item.scene() is self.scene:
+                extend(item.sceneBoundingRect())
+        for item in semantic_diagram_items:
             if item.scene() is self.scene:
                 extend(item.sceneBoundingRect())
         for item in orbital_items:
@@ -15477,6 +16106,7 @@ class ChemusonCanvas(QGraphicsView):
             arrow_items = list(self.arrow_items)
             bracket_items = list(self.bracket_items)
             energy_diagram_items = list(self.energy_diagram_items)
+            semantic_diagram_items = list(self.semantic_diagram_items)
             orbital_items = list(self.orbital_items)
             image_items = list(self.image_items)
             state = self._capture_scale_state(
@@ -15485,6 +16115,7 @@ class ChemusonCanvas(QGraphicsView):
                 arrow_items=arrow_items,
                 bracket_items=bracket_items,
                 energy_diagram_items=energy_diagram_items,
+                semantic_diagram_items=semantic_diagram_items,
                 orbital_items=orbital_items,
                 image_items=image_items,
             )
@@ -15496,6 +16127,7 @@ class ChemusonCanvas(QGraphicsView):
                 arrow_items=arrow_items,
                 bracket_items=bracket_items,
                 energy_diagram_items=energy_diagram_items,
+                semantic_diagram_items=semantic_diagram_items,
                 orbital_items=orbital_items,
                 image_items=image_items,
             )
@@ -15540,6 +16172,7 @@ class ChemusonCanvas(QGraphicsView):
         selected_text_items = self._selected_text_items()
         selected_arrow_items = self._selected_arrow_items()
         selected_energy_diagram_items = self._selected_energy_diagram_items()
+        selected_semantic_diagram_items = self._selected_semantic_diagram_items()
         selected_orbital_items = self._selected_orbital_items()
         selected_image_items = self._selected_image_items()
         
@@ -15548,6 +16181,7 @@ class ChemusonCanvas(QGraphicsView):
             and not selected_text_items
             and not selected_arrow_items
             and not selected_energy_diagram_items
+            and not selected_semantic_diagram_items
             and not selected_orbital_items
             and not selected_image_items
         ):
@@ -15765,6 +16399,44 @@ class ChemusonCanvas(QGraphicsView):
                             after,
                             "Rotate energy diagrams",
                         )
+                    )
+
+        if selected_semantic_diagram_items:
+            if use_start_positions:
+                for item in selected_semantic_diagram_items:
+                    if item in self._rotation_start_semantic_diagram_snapshots:
+                        start_pos, width, height, start_rotation = self._rotation_start_semantic_diagram_snapshots[item]
+                    else:
+                        start_pos, width, height, start_rotation = self._semantic_diagram_transform_snapshot(item)
+                    start_center = QPointF(start_pos.x() + width / 2.0, start_pos.y() + height / 2.0)
+                    rotated_center = rotate_point(start_center)
+                    item.set_display_rect(
+                        QRectF(
+                            rotated_center.x() - width / 2.0,
+                            rotated_center.y() - height / 2.0,
+                            width,
+                            height,
+                        )
+                    )
+                    item.setRotation(start_rotation + degrees)
+            else:
+                before = {
+                    item: self._semantic_diagram_transform_snapshot(item)
+                    for item in selected_semantic_diagram_items
+                }
+                after = {}
+                for item, (pos, width, height, rotation) in before.items():
+                    center_point = QPointF(pos.x() + width / 2.0, pos.y() + height / 2.0)
+                    rotated_center = rotate_point(center_point)
+                    after[item] = (
+                        QPointF(rotated_center.x() - width / 2.0, rotated_center.y() - height / 2.0),
+                        width,
+                        height,
+                        rotation + degrees,
+                    )
+                if before:
+                    self.undo_stack.push(
+                        TransformImageItemsCommand(self, before, after, "Rotate semantic diagrams")
                     )
 
         if selected_orbital_items:
@@ -18836,6 +19508,7 @@ class ChemusonCanvas(QGraphicsView):
             and not self._selected_arrow_items()
             and not self._selected_bracket_items()
             and not self._selected_energy_diagram_items()
+            and not self._selected_semantic_diagram_items()
             and not self._selected_orbital_items()
             and not self._selected_image_items()
         ):
@@ -18870,6 +19543,10 @@ class ChemusonCanvas(QGraphicsView):
         self._drag_start_energy_diagram_snapshots = {}
         for item in self._selected_energy_diagram_items():
             self._drag_start_energy_diagram_snapshots[item] = self._energy_diagram_transform_snapshot(item)
+
+        self._drag_start_semantic_diagram_snapshots = {}
+        for item in self._selected_semantic_diagram_items():
+            self._drag_start_semantic_diagram_snapshots[item] = self._semantic_diagram_transform_snapshot(item)
 
         self._drag_start_orbital_snapshots = {}
         for item in self._selected_orbital_items():
