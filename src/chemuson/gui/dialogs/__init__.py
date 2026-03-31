@@ -867,3 +867,62 @@ class QuickStartDialog(QDialog):
         layout.addWidget(text)
         layout.addWidget(self.no_show_checkbox, alignment=Qt.AlignmentFlag.AlignLeft)
         layout.addWidget(buttons)
+
+
+class TLCInsertDialog(QDialog):
+    """Diálogo para configurar nueva placa TLC."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Insertar Placa TLC")
+        self.setMinimumWidth(250)
+
+        self.lanes_spin = QSpinBox()
+        self.lanes_spin.setRange(1, 20)
+        self.lanes_spin.setValue(3)
+
+        form = QFormLayout()
+        form.addRow("Número de carriles:", self.lanes_spin)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+
+        layout = QVBoxLayout(self)
+        layout.addLayout(form)
+        layout.addWidget(buttons)
+
+    def lanes(self) -> int:
+        return self.lanes_spin.value()
+
+
+class GelInsertDialog(QDialog):
+    """Diálogo para configurar nuevo Gel de Electroforesis."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Insertar Gel Electroforesis")
+        self.setMinimumWidth(250)
+
+        self.lanes_spin = QSpinBox()
+        self.lanes_spin.setRange(1, 30)
+        self.lanes_spin.setValue(5)
+
+        form = QFormLayout()
+        form.addRow("Número de pocillos:", self.lanes_spin)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+
+        layout = QVBoxLayout(self)
+        layout.addLayout(form)
+        layout.addWidget(buttons)
+
+    def lanes(self) -> int:
+        return self.lanes_spin.value()
+

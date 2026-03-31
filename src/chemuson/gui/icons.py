@@ -1076,6 +1076,35 @@ def draw_generic_icon(shape: str) -> QIcon:
         painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         painter.drawRoundedRect(QRectF(6, 6, ICON_SIZE - 12, ICON_SIZE - 12), 4, 4)
 
+    elif shape == "tlc":
+        painter.setPen(QPen(QColor("#333333"), 1.5))
+        painter.setBrush(QBrush(QColor("#FFFFFF")))
+        painter.drawRect(QRectF(8, 4, 16, 24))
+        painter.setPen(QPen(QColor("#777777"), 1, Qt.PenStyle.DashLine))
+        painter.drawLine(QPointF(9, 24), QPointF(23, 24))
+        painter.drawLine(QPointF(9, 8), QPointF(23, 8))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(QColor("#3050F8")))
+        painter.drawEllipse(QPointF(12, 20), 2, 2)
+        painter.drawEllipse(QPointF(16, 16), 2, 2)
+        painter.drawEllipse(QPointF(20, 12), 2, 2)
+
+    elif shape == "electrophoresis":
+        painter.setPen(QPen(QColor("#333333"), 1.5))
+        painter.setBrush(QBrush(QColor("#F0F0F5")))
+        painter.drawRect(QRectF(6, 4, 20, 24))
+        painter.setPen(QPen(QColor("#777777"), 1))
+        for i in range(4):
+            x = 8 + i * 4
+            painter.drawRect(QRectF(x + 1, 5, 2.5, 3))
+        painter.setBrush(QBrush(QColor("#333333")))
+        painter.drawRect(QRectF(9, 12, 3, 1.5))
+        painter.drawRect(QRectF(9, 18, 3, 1.5))
+        painter.drawRect(QRectF(13, 15, 3, 1.5))
+        painter.drawRect(QRectF(13, 22, 3, 1.5))
+        painter.drawRect(QRectF(17, 10, 3, 1.5))
+        painter.drawRect(QRectF(21, 14, 3, 1.5))
+
     painter.end()
     return QIcon(pixmap)
 

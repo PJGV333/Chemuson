@@ -135,6 +135,9 @@ from chemuson.gui.commands import (
     AddBondCommand,
     AddRingCommand,
     AddChainCommand,
+    AddPlateItemCommand,
+    MovePlateItemsCommand,
+    ChangeAtomCommand,
     AddArrowCommand,
     AddBracketCommand,
     AddTextItemCommand,
@@ -143,7 +146,6 @@ from chemuson.gui.commands import (
     AddCompositeDiagramItemCommand,
     AddOrbitalItemCommand,
     AddWavyAnchorCommand,
-    ChangeAtomCommand,
     ChangeBondCommand,
     ChangeBondLengthCommand,
     ChangeBondStrokeCommand,
@@ -172,14 +174,19 @@ from chemuson.gui.commands import (
     ScaleArrowItemsCommand,
     ScaleBracketItemsCommand,
     ConfigureEnergyDiagramItemsCommand,
+    AddPlateItemCommand,
+    MovePlateItemsCommand,
 )
 from chemuson.gui.dialogs import (
     AtomLabelDialog,
     TrackballRotationDialog,
     SelectionScaleDialog,
+    TLCInsertDialog,
+    GelInsertDialog,
 )
 from chemuson.chemname.molview import MolView
 from chemuson.chemname.rings import find_rings_simple, ring_bonds
+from chemuson.gui.plate_items import TLCPlateItem, GelElectrophoresisItem, PlateItem
 from chemuson.chemio.rdkit_io import (
     molgraph_to_molfile,
     molgraph_to_smiles,
@@ -469,6 +476,7 @@ class ChemusonCanvas(QGraphicsView):
         self._bracket_preview: Optional[QGraphicsRectItem] = None
         self.bracket_items: list[BracketItem] = []
         self.energy_diagram_items: list[EnergyDiagramItem] = []
+        self.plate_items: list = []
         self.semantic_diagram_items: list[CompositeDiagramItem] = []
         self.orbital_items: list[OrbitalAnnotationItem] = []
         self.image_items: list[ImageAnnotationItem] = []
@@ -2007,6 +2015,14 @@ class ChemusonCanvas(QGraphicsView):
             self._insert_orbital_item(target_pos)
             return
 
+        if self.current_tool == "tool_tlc":
+            self._insert_tlc_plate_item(scene_pos)
+            return
+
+        if self.current_tool == "tool_electrophoresis":
+            self._insert_gel_electrophoresis_item(scene_pos)
+            return
+
         if self.current_tool == "tool_atom":
             element = self.state.default_element
             implicit_anchor_id, implicit_angle = self._pick_implicit_h_overlay(scene_pos)
@@ -2313,6 +2329,11 @@ class ChemusonCanvas(QGraphicsView):
                         )
                         item.setRotation(rotation)
 
+                if hasattr(self, "_drag_start_plate_snapshots"):
+                    for item, (pos, rotation) in self._drag_start_plate_snapshots.items():
+                        item.setPos(pos + delta)
+                        item.setRotation(rotation)
+
                 self._update_drag_selection_overlay(delta)
             self._accept_input_event(event)
             return
@@ -2396,6 +2417,7 @@ class ChemusonCanvas(QGraphicsView):
             semantic_before = dict(getattr(self, "_drag_start_semantic_diagram_snapshots", {}))
             orbital_before = dict(getattr(self, "_drag_start_orbital_snapshots", {}))
             image_before = dict(getattr(self, "_drag_start_image_snapshots", {}))
+            plate_before = dict(getattr(self, "_drag_start_plate_snapshots", {}))
             atom_after = (
                 {
                     atom_id: (self.model.get_atom(atom_id).x, self.model.get_atom(atom_id).y)
@@ -2461,6 +2483,14 @@ class ChemusonCanvas(QGraphicsView):
                 if had_moved and image_before
                 else {}
             )
+            plate_after = (
+                {
+                    item: (item.pos(), item.rotation())
+                    for item in plate_before.keys()
+                }
+                if had_moved and plate_before
+                else {}
+            )
             moved_atom_ids = set(atom_after.keys())
 
             self._dragging_selection = False
@@ -2473,6 +2503,7 @@ class ChemusonCanvas(QGraphicsView):
             self._drag_start_semantic_diagram_snapshots = {}
             self._drag_start_orbital_snapshots = {}
             self._drag_start_image_snapshots = {}
+            self._drag_start_plate_snapshots = {}
             self._drag_start_selection_bbox = None
             self._drag_affected_bond_ids = set()
             self._drag_affects_ring_centers = False
@@ -2491,6 +2522,7 @@ class ChemusonCanvas(QGraphicsView):
                 move_semantic_diagrams = bool(semantic_before and semantic_after)
                 move_orbitals = bool(orbital_before and orbital_after)
                 move_images = bool(image_before and image_after)
+                move_plates = bool(plate_before and plate_after)
                 move_count = sum(
                     [
                         move_atoms,
@@ -2501,6 +2533,7 @@ class ChemusonCanvas(QGraphicsView):
                         move_semantic_diagrams,
                         move_orbitals,
                         move_images,
+                        move_plates,
                     ]
                 )
 
@@ -2555,9 +2588,10 @@ class ChemusonCanvas(QGraphicsView):
                     )
 
                 if move_images:
-                    self.undo_stack.push(
-                        TransformImageItemsCommand(self, image_before, image_after, "Move images")
-                    )
+                    self.undo_stack.push(TransformImageItemsCommand(self, image_before, image_after, "Move images"))
+                    
+                if move_plates:
+                    self.undo_stack.push(MovePlateItemsCommand(self, plate_before, plate_after))
 
                 if move_count > 1:
                     self.undo_stack.endMacro()
@@ -2579,6 +2613,7 @@ class ChemusonCanvas(QGraphicsView):
         orbital_items: Iterable = (),
         wavy_items: Iterable = (),
         image_items: Iterable = (),
+        plate_items: Iterable = (),
     ) -> None:
         """Método auxiliar para  delete selection.
 
@@ -2623,6 +2658,7 @@ class ChemusonCanvas(QGraphicsView):
             orbital_items=orbital_items,
             wavy_items=extra_wavy_items,
             image_items=image_items,
+            plate_items=plate_items,
         )
         self.undo_stack.push(cmd)
         self.scene.clearSelection()
@@ -2784,6 +2820,46 @@ class ChemusonCanvas(QGraphicsView):
             return True
         return False
 
+    def _selected_text_items(self) -> list[TextAnnotationItem]:
+        return [
+            item for item in self.scene.selectedItems() if isinstance(item, TextAnnotationItem)
+        ]
+
+    def _selected_arrow_items(self) -> list[ArrowItem]:
+        return [
+            item for item in self.scene.selectedItems() if isinstance(item, ArrowItem)
+        ]
+
+    def _selected_bracket_items(self) -> list[BracketItem]:
+        return [
+            item for item in self.scene.selectedItems() if isinstance(item, BracketItem)
+        ]
+
+    def _selected_energy_diagram_items(self) -> list[EnergyDiagramItem]:
+        return [
+            item for item in self.scene.selectedItems() if isinstance(item, EnergyDiagramItem)
+        ]
+
+    def _selected_semantic_diagram_items(self) -> list[CompositeDiagramItem]:
+        return [
+            item for item in self.scene.selectedItems() if isinstance(item, CompositeDiagramItem)
+        ]
+
+    def _selected_orbital_items(self) -> list[OrbitalAnnotationItem]:
+        return [
+            item for item in self.scene.selectedItems() if isinstance(item, OrbitalAnnotationItem)
+        ]
+
+    def _selected_image_items(self) -> list[ImageAnnotationItem]:
+        return [
+            item for item in self.scene.selectedItems() if isinstance(item, ImageAnnotationItem)
+        ]
+
+    def _selected_plate_items(self) -> list:
+        return [
+            item for item in self.scene.selectedItems() if isinstance(item, (TLCPlateItem, GelElectrophoresisItem))
+        ]
+
     def _selection_snapshot(self) -> dict:
         """Captura la selección activa incluyendo elementos no moleculares."""
         return {
@@ -2796,6 +2872,7 @@ class ChemusonCanvas(QGraphicsView):
             "semantic_diagram_items": list(self._selected_semantic_diagram_items()),
             "orbital_items": list(self._selected_orbital_items()),
             "image_items": list(self._selected_image_items()),
+            "plate_items": list(self._selected_plate_items()),
             "wavy_items": [
                 item for item in self.scene.selectedItems() if isinstance(item, WavyAnchorItem)
             ],
@@ -2822,6 +2899,7 @@ class ChemusonCanvas(QGraphicsView):
                 "semantic_diagram_items",
                 "orbital_items",
                 "image_items",
+                "plate_items",
                 "wavy_items",
             ):
                 for item in snapshot.get(key, ()):
@@ -2834,7 +2912,7 @@ class ChemusonCanvas(QGraphicsView):
             try:
                 self.scene.blockSignals(False)
             except RuntimeError:
-                return
+                pass
         self._sync_selection_from_scene()
 
     def _refresh_scene_after_image_insert(self) -> None:
@@ -4414,7 +4492,8 @@ class ChemusonCanvas(QGraphicsView):
                 "orbitals": [],
                 "images": [],
                 "text_items": [],
-                "wavy_anchors": []
+                "wavy_anchors": [],
+                "plates": []
             },
             "label_anchors": {
                 str(atom_id): anchor for atom_id, anchor in self._group_anchor_overrides.items()
@@ -4477,6 +4556,8 @@ class ChemusonCanvas(QGraphicsView):
                     "source_name": item.source_name(),
                     "opacity": self.item_raw_opacity(item),
                 })
+            elif isinstance(item, (TLCPlateItem, GelElectrophoresisItem)):
+                data["annotations"]["plates"].append(item.to_dict())
             elif isinstance(item, EnergyDiagramItem):
                 rect = item.display_rect()
                 data["annotations"]["energy_diagrams"].append({
@@ -4717,6 +4798,11 @@ class ChemusonCanvas(QGraphicsView):
                 item.setData(WAVY_ANCHOR_BOND_ROLE, int(bond_id))
             self.set_graphics_item_opacity(item, anchor_d.get("opacity"))
             self.readd_wavy_anchor_item(item)
+            
+        for plate_d in annotations.get("plates", []):
+            item = PlateItem.from_json(plate_d)
+            if item:
+                self.readd_plate_item(item)
 
         # Full refresh to update atom visibility and circles
         self.refresh_atom_visibility()
@@ -5023,22 +5109,19 @@ class ChemusonCanvas(QGraphicsView):
             self.orbital_items.append(item)
 
     def add_wavy_anchor_item(self, item: WavyAnchorItem) -> None:
-        """Añade wavy anchor item.
-
-        Args:
-            item: Descripción del parámetro.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la escena.
-        """
+        """Añade wavy anchor item."""
         self.ensure_graphics_item_opacity(item)
         if item.scene() is not self.scene:
             self.scene.addItem(item)
         self._wavy_anchors.add(item)
         self._position_wavy_anchor(item)
+
+    def add_plate_item(self, item: TLCPlateItem | GelElectrophoresisItem) -> None:
+        """Añade una placa de análisis al lienzo."""
+        if item.scene() is not self.scene:
+            self.scene.addItem(item)
+        if item not in self.plate_items:
+            self.plate_items.append(item)
 
     def remove_text_item(self, item: TextAnnotationItem) -> None:
         """Elimina text item.
@@ -5086,21 +5169,18 @@ class ChemusonCanvas(QGraphicsView):
             self.scene.removeItem(item)
 
     def remove_wavy_anchor_item(self, item: WavyAnchorItem) -> None:
-        """Elimina wavy anchor item.
-
-        Args:
-            item: Descripción del parámetro.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la escena.
-        """
+        """Elimina wavy anchor item."""
         if item.scene() is self.scene:
             self.scene.removeItem(item)
         if item in self._wavy_anchors:
             self._wavy_anchors.discard(item)
+
+    def remove_plate_item(self, item: TLCPlateItem | GelElectrophoresisItem) -> None:
+        """Elimina una placa de análisis del lienzo."""
+        if item in self.plate_items:
+            self.plate_items.remove(item)
+        if item.scene() is self.scene:
+            self.scene.removeItem(item)
 
     def readd_text_item(self, item: TextAnnotationItem) -> None:
         """Método auxiliar para readd text item.
@@ -5153,6 +5233,21 @@ class ChemusonCanvas(QGraphicsView):
         if item not in self.orbital_items:
             self.orbital_items.append(item)
 
+    def remove_plate_item(self, item) -> None:
+        """Elimina una placa (TLC o Gel) del lienzo."""
+        if item in self.plate_items:
+            self.plate_items.remove(item)
+        if item.scene() is self.scene:
+            self.scene.removeItem(item)
+
+    def readd_plate_item(self, item) -> None:
+        """Reintroduce una placa en el lienzo."""
+        self.ensure_graphics_item_opacity(item)
+        if item.scene() is not self.scene:
+            self.scene.addItem(item)
+        if item not in self.plate_items:
+            self.plate_items.append(item)
+
     def readd_wavy_anchor_item(self, item: WavyAnchorItem) -> None:
         """Método auxiliar para readd wavy anchor item.
 
@@ -5204,6 +5299,7 @@ class ChemusonCanvas(QGraphicsView):
         selected_images = [
             item for item in self.scene.selectedItems() if isinstance(item, ImageAnnotationItem)
         ]
+        selected_plates = self._selected_plate_items()
         if (
             not self.state.selected_atoms
             and not self.state.selected_bonds
@@ -5215,6 +5311,7 @@ class ChemusonCanvas(QGraphicsView):
             and not selected_orbitals
             and not selected_wavy
             and not selected_images
+            and not selected_plates
         ):
             return
         self._delete_selection(
@@ -5228,6 +5325,7 @@ class ChemusonCanvas(QGraphicsView):
             orbital_items=selected_orbitals,
             wavy_items=selected_wavy,
             image_items=selected_images,
+            plate_items=selected_plates,
         )
 
     def _delete_hovered(self) -> bool:
@@ -7181,6 +7279,36 @@ class ChemusonCanvas(QGraphicsView):
         self._select_inserted_items(items=[item])
         self._refresh_scene_after_image_insert()
         return item
+
+    def _insert_tlc_plate_item(self, scene_pos: QPointF) -> None:
+        """Abre el diálogo e inserta una placa TLC."""
+        dialog = TLCInsertDialog(self.window())
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        lanes = dialog.lanes()
+        item = TLCPlateItem(lanes=lanes)
+        item.setPos(scene_pos)
+        self.undo_stack.push(AddPlateItemCommand(self, item))
+        self.set_current_tool("tool_select")
+        self.scene.clearSelection()
+        item.setSelected(True)
+        self._sync_selection_from_scene()
+
+    def _insert_gel_electrophoresis_item(self, scene_pos: QPointF) -> None:
+        """Abre el diálogo e inserta un gel de electroforesis."""
+        dialog = GelInsertDialog(self.window())
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        lanes = dialog.lanes()
+        item = GelElectrophoresisItem(lanes=lanes)
+        item.setPos(scene_pos)
+        self.undo_stack.push(AddPlateItemCommand(self, item))
+        self.set_current_tool("tool_select")
+        self.scene.clearSelection()
+        item.setSelected(True)
+        self._sync_selection_from_scene()
 
     def _insert_energy_diagram_item(
         self,
@@ -13664,6 +13792,8 @@ class ChemusonCanvas(QGraphicsView):
                     OrbitalAnnotationItem,
                     ImageAnnotationItem,
                     WavyAnchorItem,
+                    TLCPlateItem,
+                    GelElectrophoresisItem,
                 ),
             ):
                 extend(item.sceneBoundingRect())
@@ -19641,6 +19771,7 @@ class ChemusonCanvas(QGraphicsView):
             and not self._selected_semantic_diagram_items()
             and not self._selected_orbital_items()
             and not self._selected_image_items()
+            and not self._selected_plate_items()
         ):
             return
         self._dragging_selection = True
@@ -19685,6 +19816,10 @@ class ChemusonCanvas(QGraphicsView):
         self._drag_start_image_snapshots = {}
         for item in self._selected_image_items():
             self._drag_start_image_snapshots[item] = self._image_transform_snapshot(item)
+            
+        self._drag_start_plate_snapshots = {}
+        for item in self._selected_plate_items():
+            self._drag_start_plate_snapshots[item] = (item.pos(), item.rotation())
 
         self._drag_start_selection_bbox = self._selected_items_bbox()
         self._drag_affected_bond_ids = {

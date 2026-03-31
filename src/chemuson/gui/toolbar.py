@@ -147,6 +147,10 @@ class ChemusonToolbar(QToolBar):
                 "Flecha curva (1 e-)",
             ),
         }
+        self._plate_meta = {
+            "tool_tlc": (draw_generic_icon("tlc"), "Placa TLC"),
+            "tool_electrophoresis": (draw_generic_icon("electrophoresis"), "Gel de Electroforesis"),
+        }
 
         self._current_select_tool_id = "tool_select"
         self._current_bracket_tool_id = "tool_brackets_square"
@@ -285,7 +289,7 @@ class ChemusonToolbar(QToolBar):
         self.tool_changed.emit(self._current_bracket_tool_id)
 
     def _emit_current_arrow_tool(self, checked: bool = False) -> None:
-        """Emite la herramienta de flecha actualmente activa."""
+        """Emite la herramienta de flecha o análisis actualmente activa."""
         self.tool_changed.emit(self._current_arrow_tool_id)
 
     def _emit_current_coordination_tool(self, checked: bool = False) -> None:
@@ -836,9 +840,14 @@ class SymbolPaletteToolbar(QToolBar):
                 "Flecha curva (1 e-)",
             ),
         }
+        self._plate_meta = {
+            "tool_tlc": (draw_generic_icon("tlc"), "Placa TLC"),
+            "tool_electrophoresis": (draw_generic_icon("electrophoresis"), "Gel de Electroforesis"),
+        }
 
         self._current_bracket_tool_id = "tool_brackets_square"
         self._current_arrow_tool_id = "tool_arrow_forward"
+        self._current_plate_tool_id = "tool_tlc"
         self._current_symbol_tool_id = "tool_charge_plus"
         self._energy_diagram_meta = {
             energy_diagram_tool_id(kind): (
@@ -891,6 +900,17 @@ class SymbolPaletteToolbar(QToolBar):
             trigger_callback=self._emit_current_arrow_tool,
         )
         self._build_arrow_palette(self.annotation_button.menu())
+
+        self.addSeparator()
+
+        plate_icon, plate_tip = self._plate_meta[self._current_plate_tool_id]
+        self.plate_button, self.plate_action = self._add_palette_button(
+            plate_icon,
+            plate_tip,
+            "tool_plates",
+            trigger_callback=self._emit_current_plate_tool,
+        )
+        self._build_plate_palette(self.plate_button.menu())
 
         self.addSeparator()
 
@@ -1041,6 +1061,10 @@ class SymbolPaletteToolbar(QToolBar):
     def _emit_current_energy_diagram_tool(self, checked: bool = False) -> None:
         """Emite la herramienta de diagrama de energia actualmente activa."""
         self.tool_changed.emit(self._current_energy_diagram_tool_id)
+
+    def _emit_current_plate_tool(self, checked: bool = False) -> None:
+        """Emite la herramienta de placas/análisis actualmente activa."""
+        self.tool_changed.emit(self._current_plate_tool_id)
 
     def _select_symbol_tool(self, tool_id: str) -> None:
         """Actualiza el símbolo activo y emite el cambio."""
@@ -1252,6 +1276,29 @@ class SymbolPaletteToolbar(QToolBar):
                 )
             )
         self._populate_grid_menu(menu, entries, columns=4)
+
+    def _build_plate_palette(self, menu: QMenu) -> None:
+        """Construye la paleta de placas (TLC y Gel)."""
+        entries = []
+        for tool_id, (icon, tooltip) in self._plate_meta.items():
+            entries.append(
+                self._make_palette_entry(
+                    icon,
+                    tooltip,
+                    lambda tid=tool_id: self._select_plate_tool(tid),
+                )
+            )
+        self._populate_grid_menu(menu, entries, columns=2)
+
+    def _select_plate_tool(self, tool_id: str) -> None:
+        """Actualiza la herramienta de placas activa."""
+        icon, tooltip = self._plate_meta[tool_id]
+        self._current_plate_tool_id = tool_id
+        self.plate_action.setIcon(icon)
+        self.plate_action.setToolTip(tooltip)
+        self.plate_button.setToolTip(tooltip)
+        self.plate_action.setChecked(True)
+        self.tool_changed.emit(tool_id)
 
     def _emit_current_bracket_tool(self, checked: bool = False) -> None:
         """Emite la herramienta de corchetes actualmente activa."""
