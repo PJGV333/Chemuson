@@ -1402,25 +1402,37 @@ class ChemusonWindow(QMainWindow):
             self._external_text_selected_range = None
 
     def _external_text_cursor_for_formatting(self, editor: QTextEdit) -> QTextCursor:
-        """Recupera el cursor actual o la última selección activa del editor temporal."""
+        """Obtiene el cursor adecuado para formatear, priorizando selección."""
         cursor = editor.textCursor()
+        
+        # Si el editor ya tiene selección física, la usamos pero la normalizamos a 'adelante'
         if cursor.hasSelection():
+            start = cursor.selectionStart()
+            end = cursor.selectionEnd()
+            cursor.setPosition(start)
+            cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
             return cursor
-        stored = getattr(self, "_external_text_selected_range", None)
-        if not stored:
-            stored = getattr(self, "_external_text_cursor_state", None)
-        if not stored:
-            return cursor
-        anchor, position = stored
-        if anchor == position:
-            return cursor
-        text_len = len(editor.toPlainText())
-        anchor = max(0, min(int(anchor), text_len))
-        position = max(0, min(int(position), text_len))
-        restored = editor.textCursor()
-        restored.setPosition(anchor)
-        restored.setPosition(position, QTextCursor.MoveMode.KeepAnchor)
-        return restored
+            
+        # Si no tiene selección (ej. foco perdido), intentamos restaurar desde estado guardado
+        stored = getattr(self, "_external_text_cursor_state", None)
+        if stored:
+            anchor, position = stored
+            text_len = editor.document().characterCount() - 1
+            if text_len < 0:
+                text_len = 0
+            anchor = max(0, min(int(anchor), text_len))
+            position = max(0, min(int(position), text_len))
+            cursor.setPosition(anchor)
+            cursor.setPosition(position, QTextCursor.MoveMode.KeepAnchor)
+            
+            # Normalizamos también la selección restaurada
+            if cursor.hasSelection():
+                start = cursor.selectionStart()
+                end = cursor.selectionEnd()
+                cursor.setPosition(start)
+                cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+                
+        return cursor
 
     def _sync_text_toolbar_from_external_editor(self) -> None:
         """Sincroniza el toolbar desde un QTextEdit temporal."""
@@ -1468,11 +1480,11 @@ class ChemusonWindow(QMainWindow):
         editor = getattr(self, "_external_text_editor", None)
         if editor is None:
             return False
-        editor.activateWindow()
-        editor.raise_()
-        editor.setFocus()
+        
+        # Don't steal focus yet, but ensure we have focus for formatting to work on selection
         cursor = self._external_text_cursor_for_formatting(editor)
         fmt = QTextCharFormat()
+        
         if property_name in ("all", "family"):
             fmt.setFontFamilies([family])
         if property_name in ("all", "size"):
@@ -1490,10 +1502,19 @@ class ChemusonWindow(QMainWindow):
                 fmt.setVerticalAlignment(QTextCharFormat.VerticalAlignment.AlignSuperScript)
             else:
                 fmt.setVerticalAlignment(QTextCharFormat.VerticalAlignment.AlignNormal)
+        
         if cursor.hasSelection():
             cursor.mergeCharFormat(fmt)
             editor.setTextCursor(cursor)
-        editor.mergeCurrentCharFormat(fmt)
+        else:
+            editor.mergeCurrentCharFormat(fmt)
+            
+        # Refocus only if needed
+        if not editor.hasFocus():
+            editor.activateWindow()
+            editor.raise_()
+            editor.setFocus()
+            
         self._remember_external_text_cursor()
         self._sync_text_toolbar_from_external_editor()
         return True
@@ -1579,18 +1600,71 @@ class ChemusonWindow(QMainWindow):
         else:
             editor.setPlainText(str(initial_text or ""))
         layout.addWidget(editor)
+        def handle_format(prop_name: str) -> None:
+            """Maneja el formato directamente sobre el editor activo."""
+            editor.setFocus()
+            cursor = editor.textCursor()
+            fmt = QTextCharFormat()
+            
+            # Si hay selección, intentamos detectar si todo el bloque ya tiene el formato
+            # para actuar como toggle, de lo contrario usamos el estado del cursor.
+            current_fmt = editor.currentCharFormat()
+            
+            if prop_name == "bold":
+                is_bold = current_fmt.fontWeight() != QFont.Weight.Bold
+                fmt.setFontWeight(QFont.Weight.Bold if is_bold else QFont.Weight.Normal)
+            elif prop_name == "italic":
+                fmt.setFontItalic(not current_fmt.fontItalic())
+            elif prop_name == "underline":
+                fmt.setFontUnderline(not current_fmt.fontUnderline())
+            elif prop_name == "sub":
+                current_align = current_fmt.verticalAlignment()
+                if current_align == QTextCharFormat.VerticalAlignment.AlignSubScript:
+                    fmt.setVerticalAlignment(QTextCharFormat.VerticalAlignment.AlignNormal)
+                else:
+                    fmt.setVerticalAlignment(QTextCharFormat.VerticalAlignment.AlignSubScript)
+            elif prop_name == "sup":
+                current_align = current_fmt.verticalAlignment()
+                if current_align == QTextCharFormat.VerticalAlignment.AlignSuperScript:
+                    fmt.setVerticalAlignment(QTextCharFormat.VerticalAlignment.AlignNormal)
+                else:
+                    fmt.setVerticalAlignment(QTextCharFormat.VerticalAlignment.AlignSuperScript)
+            
+            if cursor.hasSelection():
+                # Normalizamos el cursor para asegurar que mergeCharFormat funcione correctamente
+                start = cursor.selectionStart()
+                end = cursor.selectionEnd()
+                cursor.setPosition(start)
+                cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+                
+                cursor.mergeCharFormat(fmt)
+                editor.setTextCursor(cursor)
+            else:
+                editor.mergeCurrentCharFormat(fmt)
+            self._sync_text_toolbar_from_external_editor()
+
         shortcuts = (
-            (QKeySequence.StandardKey.Bold, self.text_toolbar.action_bold.trigger),
-            (QKeySequence.StandardKey.Italic, self.text_toolbar.action_italic.trigger),
-            (QKeySequence.StandardKey.Underline, self.text_toolbar.action_underline.trigger),
-            (QKeySequence("Ctrl+="), self.text_toolbar.action_sub.trigger),
-            (QKeySequence("Ctrl+Shift+="), self.text_toolbar.action_sup.trigger),
-            (QKeySequence("Ctrl++"), self.text_toolbar.action_sup.trigger),
+            (QKeySequence.StandardKey.Bold, lambda: handle_format("bold")),
+            (QKeySequence.StandardKey.Italic, lambda: handle_format("italic")),
+            (QKeySequence.StandardKey.Underline, lambda: handle_format("underline")),
+            # Subscript shortcuts
+            (QKeySequence("Ctrl+="), lambda: handle_format("sub")),
+            (QKeySequence("Ctrl+,"), lambda: handle_format("sub")),
+            (QKeySequence("Ctrl+Shift+B"), lambda: handle_format("sub")),
+            # Superscript shortcuts
+            (QKeySequence("Ctrl+Shift+="), lambda: handle_format("sup")),
+            (QKeySequence("Ctrl++"), lambda: handle_format("sup")),
+            (QKeySequence("Ctrl+."), lambda: handle_format("sup")),
+            (QKeySequence("Ctrl+Shift+P"), lambda: handle_format("sup")),
+            # Symbols
+            (QKeySequence("Alt+-"), lambda: editor.insertPlainText("—")),
+            (QKeySequence("Alt+Shift+-"), lambda: editor.insertPlainText("—")),
         )
         for sequence, handler in shortcuts:
             shortcut = QShortcut(sequence, dialog)
             shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
             shortcut.activated.connect(handler)
+
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
             parent=dialog,
@@ -1607,6 +1681,7 @@ class ChemusonWindow(QMainWindow):
         dialog.activateWindow()
         editor.setFocus()
         loop.exec()
+        
         value = self._rich_text_editor_value(editor)
         accepted = dialog.result() == QDialog.DialogCode.Accepted
         self._set_external_text_editor(None)
@@ -3750,51 +3825,33 @@ class ChemusonWindow(QMainWindow):
         self._sync_label_menu_state()
 
     def _on_label_bold(self, checked: bool) -> None:
-        """Maneja label bold.
-
-        Args:
-            checked: Descripción del parámetro.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la interfaz.
-        """
+        """Maneja label bold."""
+        if self._apply_text_format_to_external_editor(
+            "", 0, checked, False, False, False, False, "bold"
+        ):
+            return
         font = self.canvas.label_font()
         font.setBold(checked)
         self.canvas.apply_label_font(font)
         self._sync_label_menu_state()
 
     def _on_label_italic(self, checked: bool) -> None:
-        """Maneja label italic.
-
-        Args:
-            checked: Descripción del parámetro.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la interfaz.
-        """
+        """Maneja label italic."""
+        if self._apply_text_format_to_external_editor(
+            "", 0, False, checked, False, False, False, "italic"
+        ):
+            return
         font = self.canvas.label_font()
         font.setItalic(checked)
         self.canvas.apply_label_font(font)
         self._sync_label_menu_state()
 
     def _on_label_underline(self, checked: bool) -> None:
-        """Maneja label underline.
-
-        Args:
-            checked: Descripción del parámetro.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la interfaz.
-        """
+        """Maneja label underline."""
+        if self._apply_text_format_to_external_editor(
+            "", 0, False, False, checked, False, False, "underline"
+        ):
+            return
         font = self.canvas.label_font()
         font.setUnderline(checked)
         self.canvas.apply_label_font(font)
@@ -4015,26 +4072,20 @@ class ChemusonWindow(QMainWindow):
         self.canvas.undo_stack.push(cmd)
 
     def _on_label_subscript(self) -> None:
-        """Maneja label subscript.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la interfaz.
-        """
-        self._apply_label_script("_", "Subíndice")
+        """Maneja label subscript."""
+        if self._apply_text_format_to_external_editor(
+            "", 0, False, False, False, True, False, "sub"
+        ):
+            return
+        self.canvas.update_text_format(sub=True, property_name="sub")
 
     def _on_label_superscript(self) -> None:
-        """Maneja label superscript.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la interfaz.
-        """
-        self._apply_label_script("^", "Superíndice")
+        """Maneja label superscript."""
+        if self._apply_text_format_to_external_editor(
+            "", 0, False, False, False, False, True, "sup"
+        ):
+            return
+        self.canvas.update_text_format(sup=True, property_name="sup")
 
     def _on_label_color_mode(self, use_element_colors: bool) -> None:
         """Maneja label color mode.
