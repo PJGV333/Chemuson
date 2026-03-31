@@ -3802,6 +3802,9 @@ class ChemusonCanvas(QGraphicsView):
             has_selected_energy_diagrams = any(
                 isinstance(item, EnergyDiagramItem) for item in self.scene.selectedItems()
             )
+            has_selected_semantic_diagrams = any(
+                isinstance(item, CompositeDiagramItem) for item in self.scene.selectedItems()
+            )
             has_selected_images = any(
                 isinstance(item, ImageAnnotationItem) for item in self.scene.selectedItems()
             )
@@ -3812,6 +3815,7 @@ class ChemusonCanvas(QGraphicsView):
                 or has_selected_brackets
                 or has_selected_text
                 or has_selected_energy_diagrams
+                or has_selected_semantic_diagrams
                 or has_selected_orbitals
                 or has_selected_images
             ):
@@ -6336,7 +6340,19 @@ class ChemusonCanvas(QGraphicsView):
                     continue
                 extend(item.sceneBoundingRect())
             for item in self.scene.selectedItems():
-                if isinstance(item, (ArrowItem, BracketItem, TextAnnotationItem, EnergyDiagramItem, OrbitalAnnotationItem, ImageAnnotationItem, WavyAnchorItem)):
+                if isinstance(
+                    item,
+                    (
+                        ArrowItem,
+                        BracketItem,
+                        TextAnnotationItem,
+                        EnergyDiagramItem,
+                        CompositeDiagramItem,
+                        OrbitalAnnotationItem,
+                        ImageAnnotationItem,
+                        WavyAnchorItem,
+                    ),
+                ):
                     extend(item.sceneBoundingRect())
         else:
             for atom_id in self.atom_items.keys():
@@ -6362,6 +6378,11 @@ class ChemusonCanvas(QGraphicsView):
                 if item.isVisible():
                     extend(item.sceneBoundingRect())
             for item in self.orbital_items:
+                if item.scene() is not self.scene:
+                    continue
+                if item.isVisible():
+                    extend(item.sceneBoundingRect())
+            for item in self.semantic_diagram_items:
                 if item.scene() is not self.scene:
                     continue
                 if item.isVisible():

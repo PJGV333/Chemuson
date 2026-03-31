@@ -6,7 +6,8 @@ import os
 import sys
 
 import pytest
-from PyQt6.QtCore import QPointF
+from PyQt6.QtCore import QPoint, QPointF, Qt
+from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QGraphicsTextItem
 from PyQt6.QtWidgets import QApplication
 
@@ -183,3 +184,76 @@ def test_semantic_diagram_labels_are_editable_and_persisted() -> None:
     assert payload["lanes"][0]["title"] == "Subniveles s"
     level_payload = next(level for level in payload["levels"] if level["id"] == "2p")
     assert level_payload["label"] == "2p valencia"
+
+
+def test_semantic_diagram_copy_exports_png_for_external_apps() -> None:
+    canvas = ChemusonCanvas()
+    try:
+        inserted = canvas.insert_semantic_diagram(
+            build_atomic_subshell_diagram(8),
+            QPointF(220.0, 180.0),
+        )
+        assert inserted
+        canvas.copy_to_clipboard()
+
+        mime = QApplication.clipboard().mimeData()
+        assert mime is not None
+        assert mime.hasFormat("application/x-chemuson-selection")
+        assert mime.hasFormat("image/png")
+        assert mime.hasImage()
+        assert bytes(mime.data("image/png"))
+    finally:
+        canvas.close()
+
+
+def test_pasted_semantic_diagram_can_drag_and_delete_with_keyboard() -> None:
+    source = ChemusonCanvas()
+    target = ChemusonCanvas()
+    try:
+        source.insert_semantic_diagram(
+            build_atomic_subshell_diagram(8),
+            QPointF(220.0, 180.0),
+        )
+        source.copy_to_clipboard()
+
+        target.resize(900, 700)
+        target.show()
+        QApplication.processEvents()
+        target._last_scene_pos = QPointF(320.0, 240.0)
+        target.paste_from_clipboard()
+        QApplication.processEvents()
+
+        assert len(target.semantic_diagram_items) == 1
+        item = target.semantic_diagram_items[0]
+        before_rect = item.display_rect()
+
+        start_view = target.mapFromScene(before_rect.center())
+        end_view = QPoint(start_view.x() + 32, start_view.y() + 18)
+        QTest.mousePress(
+            target.viewport(),
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+            start_view,
+        )
+        QTest.mouseMove(target.viewport(), end_view)
+        QTest.mouseRelease(
+            target.viewport(),
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+            end_view,
+        )
+        QApplication.processEvents()
+
+        moved_rect = item.display_rect()
+        assert moved_rect.x() == pytest.approx(before_rect.x() + 32.0, abs=1.0)
+        assert moved_rect.y() == pytest.approx(before_rect.y() + 18.0, abs=1.0)
+
+        target.setFocus()
+        target.viewport().setFocus()
+        QTest.keyClick(target.viewport(), Qt.Key.Key_Delete)
+        QApplication.processEvents()
+
+        assert len(target.semantic_diagram_items) == 0
+    finally:
+        source.close()
+        target.close()
