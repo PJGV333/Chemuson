@@ -2529,7 +2529,7 @@ def apply_shaded_style(
         )
         for name in fill_names
     ]
-    layers.extend(GlyphLayer(part_map[name].path, "outline") for name in outline_names)
+    layers.extend(GlyphLayer(part_map[name].path, "outline", name=name) for name in outline_names)
     return tuple(layers)
 
 
@@ -2551,7 +2551,7 @@ def apply_solid_style(
         )
         for name in fill_names
     ]
-    layers.extend(GlyphLayer(part_map[name].path, "outline") for name in outline_names)
+    layers.extend(GlyphLayer(part_map[name].path, "outline", name=name) for name in outline_names)
     return tuple(layers)
 
 
