@@ -408,38 +408,287 @@ def _count_unpaired_electrons(occupancies: dict[str, list[int]]) -> int:
     return sum(1 for level in occupancies.values() for value in level if int(value) == 1)
 
 
-def build_atomic_subshell_diagram(
-    electron_count: int,
-    title: str | None = None,
-    expanded_subshells: bool = True,
-    max_n: int = 7,
-) -> SemanticDiagram:
-    """Construye un diagrama semántico de subniveles atómicos."""
-    max_n_value = max(1, min(7, int(max_n)))
+SUBSHELL_ORDER: dict[str, int] = {
+    "s": 0,
+    "p": 1,
+    "d": 2,
+    "f": 3,
+}
+ATOMIC_NUMBERS: dict[str, int] = {
+    "H": 1,
+    "He": 2,
+    "Li": 3,
+    "Be": 4,
+    "B": 5,
+    "C": 6,
+    "N": 7,
+    "O": 8,
+    "F": 9,
+    "Ne": 10,
+    "Na": 11,
+    "Mg": 12,
+    "Al": 13,
+    "Si": 14,
+    "P": 15,
+    "S": 16,
+    "Cl": 17,
+    "Ar": 18,
+    "K": 19,
+    "Ca": 20,
+    "Sc": 21,
+    "Ti": 22,
+    "V": 23,
+    "Cr": 24,
+    "Mn": 25,
+    "Fe": 26,
+    "Co": 27,
+    "Ni": 28,
+    "Cu": 29,
+    "Zn": 30,
+    "Ga": 31,
+    "Ge": 32,
+    "As": 33,
+    "Se": 34,
+    "Br": 35,
+    "Kr": 36,
+}
+NEUTRAL_CONFIGURATION_EXCEPTIONS: dict[str, dict[str, int]] = {
+    "Cr": {
+        "1s": 2,
+        "2s": 2,
+        "2p": 6,
+        "3s": 2,
+        "3p": 6,
+        "3d": 5,
+        "4s": 1,
+    },
+    "Cu": {
+        "1s": 2,
+        "2s": 2,
+        "2p": 6,
+        "3s": 2,
+        "3p": 6,
+        "3d": 10,
+        "4s": 1,
+    },
+}
+
+
+def _level_electron_map(levels: list[DiagramLevel]) -> dict[str, list[int]]:
+    return {str(level.id): list(level.occupancies) for level in levels}
+
+
+def _magnetic_behavior(unpaired_electrons: int) -> str:
+    return "diamagnetic" if int(unpaired_electrons) <= 0 else "paramagnetic"
+
+
+def _format_metric_value(value: float | int) -> str:
+    numeric = float(value)
+    if abs(numeric - round(numeric)) <= 1e-6:
+        return str(int(round(numeric)))
+    return f"{numeric:.1f}".rstrip("0").rstrip(".")
+
+
+def _configuration_sort_key(level: DiagramLevel) -> tuple[int, int, str]:
+    label = str(level.id or level.label or "").strip()
+    principal_text = []
+    family = ""
+    for char in label:
+        if char.isdigit():
+            principal_text.append(char)
+            continue
+        family = char.lower()
+        break
+    try:
+        principal = int("".join(principal_text)) if principal_text else 999
+    except Exception:
+        principal = 999
+    return principal, SUBSHELL_ORDER.get(family, 99), label
+
+
+def configuration_string_from_levels(levels: list[DiagramLevel]) -> str:
+    """Construye una configuración electrónica legible a partir de niveles semánticos."""
+    parts: list[str] = []
+    for level in sorted(levels, key=_configuration_sort_key):
+        electrons = sum(int(value) for value in level.occupancies)
+        if electrons <= 0:
+            continue
+        token = str(level.id or level.label or "").strip()
+        if not token:
+            continue
+        parts.append(f"{token}{electrons}")
+    return " ".join(parts)
+
+
+def _builder_payload(name: str, params: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "name": str(name),
+        "params": dict(params),
+    }
+
+
+def _cfse_string(levels: list[DiagramLevel], geometry: str) -> tuple[float | None, str]:
+    totals = {str(level.id): sum(int(value) for value in level.occupancies) for level in levels}
+    if geometry == "octahedral":
+        value = totals.get("t2g", 0) * (-0.4) + totals.get("eg", 0) * 0.6
+        return value, f"CFSE: {_format_metric_value(value)} Δo"
+    if geometry == "tetrahedral":
+        value = totals.get("e", 0) * (-0.6) + totals.get("t2", 0) * 0.4
+        return value, f"CFSE: {_format_metric_value(value)} Δt"
+    return None, "CFSE: n/a"
+
+
+def refresh_semantic_diagram_metadata(diagram: SemanticDiagram) -> SemanticDiagram:
+    """Recalcula líneas de resumen y métricas derivadas sin perder metadatos previos."""
+    metadata = dict(diagram.metadata or {})
+    occupancies = _level_electron_map(diagram.levels)
+    unpaired_electrons = _count_unpaired_electrons(occupancies)
+    magnetic_behavior = _magnetic_behavior(unpaired_electrons)
+    metadata.setdefault("show_summary", True)
+
+    if diagram.kind == "atomic":
+        electron_count = int(
+            metadata.get("electron_count", _count_level_electrons(occupancies)) or 0
+        )
+        configuration_string = configuration_string_from_levels(diagram.levels)
+        derived_metrics = dict(metadata.get("derived_metrics", {}) or {})
+        derived_metrics.update(
+            {
+                "configuration_string": configuration_string,
+                "electron_count": electron_count,
+                "unpaired_electrons": unpaired_electrons,
+                "magnetic_behavior": magnetic_behavior,
+            }
+        )
+        summary_lines = []
+        if configuration_string:
+            summary_lines.append(configuration_string)
+        summary_lines.append(f"Electrons: {electron_count}")
+        summary_lines.append(
+            f"Unpaired electrons: {unpaired_electrons} ({magnetic_behavior})"
+        )
+        metadata.update(
+            {
+                "electron_count": electron_count,
+                "unpaired_electrons": unpaired_electrons,
+                "magnetic_behavior": magnetic_behavior,
+                "configuration_string": configuration_string,
+                "derived_metrics": derived_metrics,
+                "summary_lines": summary_lines,
+            }
+        )
+    elif diagram.kind == "molecular_orbital":
+        molecular_levels = [
+            level
+            for level in diagram.levels
+            if str(level.metadata.get("orbital_origin", "")) == "molecular"
+        ]
+        molecular_occupancies = _level_electron_map(molecular_levels)
+        bonding_electrons = sum(
+            sum(int(value) for value in level.occupancies)
+            for level in molecular_levels
+            if bool(level.metadata.get("bonding"))
+        )
+        antibonding_electrons = sum(
+            sum(int(value) for value in level.occupancies)
+            for level in molecular_levels
+            if not bool(level.metadata.get("bonding"))
+        )
+        bond_order = (bonding_electrons - antibonding_electrons) / 2.0
+        unpaired_electrons = _count_unpaired_electrons(molecular_occupancies)
+        magnetic_behavior = _magnetic_behavior(unpaired_electrons)
+        derived_metrics = dict(metadata.get("derived_metrics", {}) or {})
+        derived_metrics.update(
+            {
+                "bond_order": bond_order,
+                "unpaired_electrons": unpaired_electrons,
+                "magnetic_behavior": magnetic_behavior,
+            }
+        )
+        metadata.update(
+            {
+                "bond_order": bond_order,
+                "unpaired_electrons": unpaired_electrons,
+                "magnetic_behavior": magnetic_behavior,
+                "derived_metrics": derived_metrics,
+                "summary_lines": [
+                    f"Bond order: {_format_metric_value(bond_order)}",
+                    f"Unpaired electrons: {unpaired_electrons} ({magnetic_behavior})",
+                ],
+            }
+        )
+    else:
+        geometry = str(metadata.get("geometry", "octahedral") or "octahedral")
+        spin_mode = str(metadata.get("spin_mode", "high") or "high")
+        d_electrons = int(metadata.get("d_electrons", _count_level_electrons(occupancies)) or 0)
+        cfse_value, cfse_string = _cfse_string(diagram.levels, geometry)
+        derived_metrics = dict(metadata.get("derived_metrics", {}) or {})
+        derived_metrics.update(
+            {
+                "d_electrons": d_electrons,
+                "geometry": geometry,
+                "spin_mode": spin_mode,
+                "unpaired_electrons": unpaired_electrons,
+                "magnetic_behavior": magnetic_behavior,
+                "cfse": cfse_value,
+            }
+        )
+        summary_lines = [
+            f"d-count: d{d_electrons}",
+            f"Geometry: {geometry.replace('_', ' ')}",
+            f"Spin mode: {spin_mode}",
+            f"Unpaired electrons: {unpaired_electrons} ({magnetic_behavior})",
+        ]
+        if geometry in {"octahedral", "tetrahedral"}:
+            summary_lines.append(cfse_string)
+        elif geometry == "square_planar":
+            summary_lines.append("CFSE: n/a")
+        metadata.update(
+            {
+                "d_electrons": d_electrons,
+                "geometry": geometry,
+                "spin_mode": spin_mode,
+                "unpaired_electrons": unpaired_electrons,
+                "magnetic_behavior": magnetic_behavior,
+                "derived_metrics": derived_metrics,
+                "summary_lines": summary_lines,
+            }
+        )
+
+    diagram.metadata = metadata
+    return diagram
+
+
+def _atomic_diagram_levels_from_electron_map(
+    electron_map: dict[str, int],
+    *,
+    expanded_subshells: bool,
+    max_n: int,
+) -> tuple[list[DiagramLane], list[DiagramLevel]]:
     sequence = [
         label
         for label in MADELUNG_SEQUENCE
-        if int(label[0]) <= max_n_value
+        if int(label[0]) <= max_n and int(electron_map.get(label, 0) or 0) > 0
     ]
-    capacity = sum(SUBSHELL_DEGENERACY[label[1]] * 2 for label in sequence)
-    total_electrons = _normalized_electron_count(electron_count, capacity=capacity)
-
     lane_positions = {"s": 0.0, "p": 132.0, "d": 276.0, "f": 444.0}
-    used_families = [family for family in ("s", "p", "d", "f") if any(label.endswith(family) for label in sequence)]
+    used_families = [
+        family
+        for family in ("s", "p", "d", "f")
+        if any(label.endswith(family) for label in sequence)
+    ]
     lanes = [
         DiagramLane(id=f"{family}_lane", title=family, x=lane_positions[family])
         for family in used_families
     ]
-
     levels: list[DiagramLevel] = []
-    remaining = total_electrons
     for energy_index, label in enumerate(sequence):
-        if remaining <= 0:
-            break
         family = label[1]
         degeneracy = SUBSHELL_DEGENERACY[family]
         capacity_here = degeneracy * 2
-        occupied_electrons = min(remaining, capacity_here)
+        occupied_electrons = _normalized_electron_count(
+            int(electron_map.get(label, 0) or 0),
+            capacity=capacity_here,
+        )
         levels.append(
             DiagramLevel(
                 id=label,
@@ -456,9 +705,55 @@ def build_atomic_subshell_diagram(
                 },
             )
         )
+    return lanes, levels
+
+
+def _atomic_title(symbol: str | None, charge: int | None, electron_count: int, title: str | None) -> str:
+    if title:
+        return title
+    if symbol:
+        charge_value = int(charge or 0)
+        if charge_value == 0:
+            return f"{symbol} Atomic Diagram"
+        sign = "+" if charge_value > 0 else "-"
+        magnitude = abs(charge_value)
+        charge_label = sign if magnitude == 1 else f"{magnitude}{sign}"
+        return f"{symbol}{charge_label} Atomic Diagram"
+    return f"Atomic Diagram ({electron_count} e-)"
+
+
+def build_atomic_subshell_diagram(
+    electron_count: int,
+    title: str | None = None,
+    expanded_subshells: bool = True,
+    max_n: int = 7,
+) -> SemanticDiagram:
+    """Construye un diagrama semántico de subniveles atómicos."""
+    max_n_value = max(1, min(7, int(max_n)))
+    sequence = [
+        label
+        for label in MADELUNG_SEQUENCE
+        if int(label[0]) <= max_n_value
+    ]
+    capacity = sum(SUBSHELL_DEGENERACY[label[1]] * 2 for label in sequence)
+    total_electrons = _normalized_electron_count(electron_count, capacity=capacity)
+    electron_map: dict[str, int] = {}
+    remaining = total_electrons
+    for label in sequence:
+        if remaining <= 0:
+            break
+        family = label[1]
+        capacity_here = SUBSHELL_DEGENERACY[family] * 2
+        occupied_electrons = min(remaining, capacity_here)
+        electron_map[label] = occupied_electrons
         remaining -= occupied_electrons
 
-    return SemanticDiagram(
+    lanes, levels = _atomic_diagram_levels_from_electron_map(
+        electron_map,
+        expanded_subshells=expanded_subshells,
+        max_n=max_n_value,
+    )
+    diagram = SemanticDiagram(
         kind="atomic",
         title=title or f"Atomic Diagram ({total_electrons} e-)",
         lanes=lanes,
@@ -467,8 +762,89 @@ def build_atomic_subshell_diagram(
         metadata={
             "electron_count": total_electrons,
             "filling_rule": "aufbau_hund",
+            "builder": _builder_payload(
+                "build_atomic_subshell_diagram",
+                {
+                    "electron_count": total_electrons,
+                    "title": title,
+                    "expanded_subshells": bool(expanded_subshells),
+                    "max_n": max_n_value,
+                },
+            ),
         },
     )
+    return refresh_semantic_diagram_metadata(diagram)
+
+
+def build_atomic_species_diagram(
+    symbol: str,
+    charge: int = 0,
+    expanded_subshells: bool = True,
+    title: str | None = None,
+    use_known_exceptions: bool = True,
+) -> SemanticDiagram:
+    """Construye un diagrama atómico a partir de especie química y carga."""
+    normalized_symbol = str(symbol or "").strip().capitalize()
+    atomic_number = ATOMIC_NUMBERS.get(normalized_symbol)
+    if atomic_number is None:
+        raise ValueError(f"Unsupported atomic symbol: {symbol}")
+    electron_count = max(0, atomic_number - int(charge))
+    max_n_value = 7
+    capacity = sum(SUBSHELL_DEGENERACY[label[1]] * 2 for label in MADELUNG_SEQUENCE)
+    normalized_electrons = _normalized_electron_count(electron_count, capacity=capacity)
+
+    exception_map = None
+    if bool(use_known_exceptions) and int(charge) == 0:
+        exception_map = NEUTRAL_CONFIGURATION_EXCEPTIONS.get(normalized_symbol)
+
+    if exception_map is None or sum(exception_map.values()) != normalized_electrons:
+        diagram = build_atomic_subshell_diagram(
+            normalized_electrons,
+            title=_atomic_title(normalized_symbol, charge, normalized_electrons, title),
+            expanded_subshells=expanded_subshells,
+            max_n=max_n_value,
+        )
+        metadata = dict(diagram.metadata or {})
+    else:
+        lanes, levels = _atomic_diagram_levels_from_electron_map(
+            exception_map,
+            expanded_subshells=expanded_subshells,
+            max_n=max_n_value,
+        )
+        diagram = SemanticDiagram(
+            kind="atomic",
+            title=_atomic_title(normalized_symbol, charge, normalized_electrons, title),
+            lanes=lanes,
+            levels=levels,
+            connectors=[],
+            metadata={
+                "electron_count": normalized_electrons,
+                "filling_rule": "known_exception",
+            },
+        )
+        metadata = dict(diagram.metadata or {})
+
+    configuration_string = configuration_string_from_levels(diagram.levels)
+    metadata.update(
+        {
+            "symbol": normalized_symbol,
+            "charge": int(charge),
+            "electron_count": normalized_electrons,
+            "configuration_string": configuration_string,
+            "builder": _builder_payload(
+                "build_atomic_species_diagram",
+                {
+                    "symbol": normalized_symbol,
+                    "charge": int(charge),
+                    "expanded_subshells": bool(expanded_subshells),
+                    "title": title,
+                    "use_known_exceptions": bool(use_known_exceptions),
+                },
+            ),
+        }
+    )
+    diagram.metadata = metadata
+    return refresh_semantic_diagram_metadata(diagram)
 
 
 def build_diatomic_mo_diagram(
@@ -598,20 +974,7 @@ def build_diatomic_mo_diagram(
             ]
         )
 
-    bonding_electrons = sum(
-        sum(mo_fill[str(spec["id"])])
-        for spec in mo_specs
-        if bool(spec["bonding"])
-    )
-    antibonding_electrons = sum(
-        sum(mo_fill[str(spec["id"])])
-        for spec in mo_specs
-        if not bool(spec["bonding"])
-    )
-    bond_order = (bonding_electrons - antibonding_electrons) / 2.0
-    unpaired_electrons = _count_unpaired_electrons(mo_fill)
-
-    return SemanticDiagram(
+    diagram = SemanticDiagram(
         kind="molecular_orbital",
         title=title or f"{left_label}-{right_label} MO Diagram",
         lanes=lanes,
@@ -620,10 +983,20 @@ def build_diatomic_mo_diagram(
         metadata={
             "total_electrons": normalized_total,
             "ordering": ordering_value,
-            "bond_order": bond_order,
-            "unpaired_electrons": unpaired_electrons,
+            "builder": _builder_payload(
+                "build_diatomic_mo_diagram",
+                {
+                    "left_label": str(left_label),
+                    "right_label": str(right_label),
+                    "total_electrons": normalized_total,
+                    "ordering": ordering_value,
+                    "include_core_1s": bool(include_core_1s),
+                    "title": title,
+                },
+            ),
         },
     )
+    return refresh_semantic_diagram_metadata(diagram)
 
 
 def build_ligand_field_diagram(
@@ -680,7 +1053,7 @@ def build_ligand_field_diagram(
         for spec in level_specs
     ]
 
-    return SemanticDiagram(
+    diagram = SemanticDiagram(
         kind="ligand_field",
         title=title or f"{geometry_value.replace('_', ' ').title()} d{total_electrons}",
         lanes=[DiagramLane(id="ligand_field", title="", x=0.0)],
@@ -690,6 +1063,15 @@ def build_ligand_field_diagram(
             "d_electrons": total_electrons,
             "geometry": geometry_value,
             "spin_mode": spin_value,
-            "unpaired_electrons": _count_unpaired_electrons(occupancies),
+            "builder": _builder_payload(
+                "build_ligand_field_diagram",
+                {
+                    "d_electrons": total_electrons,
+                    "geometry": geometry_value,
+                    "spin_mode": spin_value,
+                    "title": title,
+                },
+            ),
         },
     )
+    return refresh_semantic_diagram_metadata(diagram)

@@ -6,6 +6,7 @@ renderizado profesional.
 """
 from __future__ import annotations
 
+import html
 import math
 from typing import Any, Optional
 from PyQt6.QtWidgets import (
@@ -17,7 +18,7 @@ from PyQt6.QtWidgets import (
     QGraphicsLineItem,
     QStyle,
 )
-from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPainterPath, QPen, QBrush, QPainter, QRadialGradient, QPixmap
+from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPainterPath, QPen, QBrush, QPainter, QRadialGradient, QPixmap, QTextDocument
 from PyQt6.QtCore import Qt, QRectF, QPointF, QByteArray, QSizeF, QLineF
 
 try:
@@ -4653,13 +4654,75 @@ class EnergyDiagramItem(QGraphicsItem):
         font.setPixelSize(max(8, int(round(self._display_size.height() * 0.12))))
         return font
 
+    @staticmethod
+    def _label_markup(text: str) -> tuple[str, bool]:
+        raw = str(text or "")
+        if Qt.mightBeRichText(raw):
+            return raw, True
+        return html.escape(raw), False
+
+    def _measure_label_width_text(self, text: str, font: QFont) -> float:
+        markup, is_rich = self._label_markup(text)
+        if not markup:
+            return 0.0
+        if not is_rich:
+            return float(QFontMetrics(font).horizontalAdvance(str(text or "")))
+        document = QTextDocument()
+        document.setDefaultFont(font)
+        document.setHtml(markup)
+        return float(document.idealWidth())
+
+    def _draw_label_text(
+        self,
+        painter: QPainter,
+        rect: QRectF,
+        text: str,
+        font: QFont,
+        color: QColor,
+        *,
+        alignment: Qt.AlignmentFlag = Qt.AlignmentFlag.AlignCenter,
+    ) -> None:
+        markup, is_rich = self._label_markup(text)
+        if not markup:
+            return
+        if not is_rich:
+            painter.save()
+            painter.setFont(font)
+            painter.setPen(color)
+            painter.drawText(rect, alignment, str(text or ""))
+            painter.restore()
+            return
+        document = QTextDocument()
+        document.setDefaultFont(font)
+        document.setDefaultStyleSheet(
+            f"body, p, span {{ color: {color.name()}; }}"
+        )
+        option = document.defaultTextOption()
+        option.setAlignment(alignment)
+        document.setDefaultTextOption(option)
+        document.setHtml(markup)
+        size = document.size()
+        draw_x = rect.left()
+        if alignment == Qt.AlignmentFlag.AlignCenter:
+            draw_x += max(0.0, (rect.width() - size.width()) * 0.5)
+        elif alignment == Qt.AlignmentFlag.AlignRight:
+            draw_x += max(0.0, rect.width() - size.width())
+        draw_y = rect.top() + max(0.0, (rect.height() - size.height()) * 0.5)
+        painter.save()
+        painter.translate(draw_x, draw_y)
+        document.drawContents(painter, QRectF(0.0, 0.0, rect.width(), rect.height()))
+        painter.restore()
+
     def _row_layout_metrics(self) -> dict[str, object]:
         rect = self.boundingRect()
         count = self.slot_count()
         font = self._label_font()
-        metrics = QFontMetrics(font)
         label_text = self._label.strip() if self.supports_free_label() else ""
-        label_width = float(metrics.horizontalAdvance(label_text) + 6) if label_text else 0.0
+        label_width = (
+            float(self._measure_label_width_text(label_text, font) + 6.0)
+            if label_text
+            else 0.0
+        )
         margin_x = max(4.0, rect.width() * 0.05)
         margin_y = max(4.0, rect.height() * 0.18)
         gap = max(2.0, min(4.0, rect.height() * 0.10))
@@ -5188,8 +5251,14 @@ class EnergyDiagramItem(QGraphicsItem):
         label_text = str(metrics["label_text"])
         label_rect = QRectF(metrics["label_rect"])
         if label_text:
-            painter.setPen(label_color)
-            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, label_text)
+            self._draw_label_text(
+                painter,
+                label_rect,
+                label_text,
+                metrics["font"],
+                label_color,
+                alignment=Qt.AlignmentFlag.AlignCenter,
+            )
 
         slot_regions = list(metrics["slot_regions"])
         pen_width = max(1.0, self.boundingRect().height() * 0.05)
@@ -5259,8 +5328,14 @@ class EnergyDiagramItem(QGraphicsItem):
                     stroke_color,
                     max(0.8, self.boundingRect().width() * 0.0028),
                 )
-            painter.setPen(label_color)
-            painter.drawText(QRectF(group["label_rect"]), Qt.AlignmentFlag.AlignCenter, str(group["label"]))
+            self._draw_label_text(
+                painter,
+                QRectF(group["label_rect"]),
+                str(group["label"]),
+                metrics["small_font"],
+                label_color,
+                alignment=Qt.AlignmentFlag.AlignCenter,
+            )
 
         self._draw_slot_occupancies(painter, slot_regions, up_color, down_color)
         self._draw_edit_cursor(painter, slot_regions)
@@ -5341,8 +5416,14 @@ class EnergyDiagramItem(QGraphicsItem):
                 box_stroke_visible=box_stroke_visible,
                 box_base_visible=box_base_visible,
             )
-            painter.setPen(label_color)
-            painter.drawText(QRectF(group["label_rect"]), Qt.AlignmentFlag.AlignCenter, str(group["label"]))
+            self._draw_label_text(
+                painter,
+                QRectF(group["label_rect"]),
+                str(group["label"]),
+                metrics["small_font"],
+                label_color,
+                alignment=Qt.AlignmentFlag.AlignCenter,
+            )
             slot_regions.extend(group["slot_regions"])
 
         self._draw_slot_occupancies(painter, slot_regions, up_color, down_color)

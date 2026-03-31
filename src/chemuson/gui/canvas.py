@@ -11,6 +11,7 @@ import itertools
 import json
 import math
 import os
+from copy import deepcopy
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from PyQt6.QtWidgets import (
@@ -43,6 +44,7 @@ from PyQt6.QtGui import (
     QFontMetrics,
     QTextCharFormat,
     QTextCursor,
+    QTextDocument,
     QTextOption,
 )
 from PyQt6.QtCore import Qt, QPoint, QPointF, QRectF, QRect, QSize, QBuffer, QMimeData, QTimer, pyqtSignal
@@ -87,6 +89,7 @@ from chemuson.gui.items import (
     ABBREVIATION_LABELS,
 )
 from chemuson.gui.composite_diagram_item import CompositeDiagramItem
+from chemuson.gui.diagram_presets import build_semantic_diagram_from_preset
 from chemuson.gui.diagram_models import SemanticDiagram
 from chemuson.gui.energy_diagrams import (
     DEFAULT_ENERGY_DIAGRAM_KIND,
@@ -156,6 +159,7 @@ from chemuson.gui.commands import (
     StyleOrbitalItemsCommand,
     SetCoordinationCenterCommand,
     DeleteSelectionCommand,
+    EditSemanticDiagramCommand,
     MoveAtomsCommand,
     MoveTextItemsCommand,
     MoveArrowItemsCommand,
@@ -6047,6 +6051,14 @@ class ChemusonCanvas(QGraphicsView):
             or mime.hasFormat("image/svg+xml")
         )
 
+    def selected_semantic_diagram_item(self) -> CompositeDiagramItem | None:
+        """Devuelve el diagrama semántico seleccionado si la selección es única."""
+        selected_items = list(self.scene.selectedItems())
+        if len(selected_items) != 1:
+            return None
+        item = selected_items[0]
+        return item if isinstance(item, CompositeDiagramItem) else None
+
 
 
     def copy_to_clipboard(self) -> None:
@@ -7227,6 +7239,13 @@ class ChemusonCanvas(QGraphicsView):
         """Construye e inserta un diagrama atómico semántico."""
         return self.insert_semantic_diagram(
             build_atomic_subshell_diagram(electron_count),
+            scene_pos,
+        )
+
+    def insert_semantic_preset(self, preset_name: str, scene_pos: QPointF) -> list[BaseItem]:
+        """Construye e inserta un preset químico semántico."""
+        return self.insert_semantic_diagram(
+            build_semantic_diagram_from_preset(preset_name),
             scene_pos,
         )
 
@@ -11712,6 +11731,8 @@ class ChemusonCanvas(QGraphicsView):
         act_energy_box_base_toggle = None
         act_energy_reset_style = None
         act_semantic_title = None
+        act_semantic_edit_builder = None
+        act_semantic_summary_toggle = None
         act_semantic_level_label = None
         act_semantic_lane_label = None
         act_orbital_color = None
@@ -11830,6 +11851,21 @@ class ChemusonCanvas(QGraphicsView):
         if selected_semantic_diagram_items and semantic_diagram_target is not None:
             menu.addSeparator()
             semantic_menu = menu.addMenu("Diagrama electrónico")
+            act_semantic_edit_builder = semantic_menu.addAction("Edit Electronic Diagram...")
+            summary_lines = [
+                str(line).strip()
+                for line in list(
+                    semantic_diagram_target.semantic_diagram.metadata.get("summary_lines", []) or []
+                )
+                if str(line).strip()
+            ]
+            act_semantic_summary_toggle = semantic_menu.addAction("Mostrar resumen inferior")
+            act_semantic_summary_toggle.setCheckable(True)
+            act_semantic_summary_toggle.setChecked(
+                bool(semantic_diagram_target.semantic_diagram.metadata.get("show_summary", True))
+            )
+            act_semantic_summary_toggle.setEnabled(bool(summary_lines))
+            semantic_menu.addSeparator()
             act_semantic_title = semantic_menu.addAction("Editar título...")
             if semantic_diagram_target.semantic_diagram.levels:
                 act_semantic_level_label = semantic_menu.addAction("Editar etiqueta de nivel...")
@@ -11951,6 +11987,26 @@ class ChemusonCanvas(QGraphicsView):
             return
         if act_energy_reset_style is not None and action == act_energy_reset_style:
             self._reset_selected_energy_diagram_style()
+            return
+        if (
+            semantic_diagram_target is not None
+            and act_semantic_edit_builder is not None
+            and action == act_semantic_edit_builder
+        ):
+            window = self.window()
+            edit_handler = getattr(window, "_edit_selected_semantic_diagram", None)
+            if callable(edit_handler):
+                edit_handler()
+            return
+        if (
+            semantic_diagram_target is not None
+            and act_semantic_summary_toggle is not None
+            and action == act_semantic_summary_toggle
+        ):
+            self._set_semantic_diagram_summary_visible(
+                semantic_diagram_target,
+                act_semantic_summary_toggle.isChecked(),
+            )
             return
         if semantic_diagram_target is not None and act_semantic_title is not None and action == act_semantic_title:
             self._prompt_semantic_diagram_title(semantic_diagram_target)
@@ -12760,13 +12816,69 @@ class ChemusonCanvas(QGraphicsView):
         selected = self._selected_semantic_diagram_items()
         return selected[0] if len(selected) == 1 else None
 
+    def _set_semantic_diagram_summary_visible(
+        self,
+        item: CompositeDiagramItem,
+        visible: bool,
+    ) -> bool:
+        """Alterna la visibilidad del resumen textual inferior con undo/redo."""
+        if item is None or item.scene() is not self.scene:
+            return False
+        before_payload = item.to_json()
+        before_payload["opacity"] = self.item_raw_opacity(item)
+        current_visible = bool(
+            item.semantic_diagram.metadata.get("show_summary", True)
+        )
+        if current_visible == bool(visible):
+            return False
+        after_payload = deepcopy(before_payload)
+        semantic_payload = dict(after_payload.get("semantic_diagram", {}) or {})
+        metadata = dict(semantic_payload.get("metadata", {}) or {})
+        metadata["show_summary"] = bool(visible)
+        semantic_payload["metadata"] = metadata
+        after_payload["semantic_diagram"] = semantic_payload
+        self.undo_stack.push(
+            EditSemanticDiagramCommand(
+                self,
+                item,
+                before_payload,
+                after_payload,
+                text="Toggle semantic diagram summary",
+            )
+        )
+        return True
+
+    @staticmethod
+    def _plain_text_from_markup(value: object) -> str:
+        raw = str(value or "")
+        if not raw:
+            return ""
+        if not Qt.mightBeRichText(raw):
+            return raw
+        document = QTextDocument()
+        document.setHtml(raw)
+        return document.toPlainText()
+
+    def _prompt_rich_text_value(
+        self,
+        title: str,
+        label: str,
+        initial_text: str,
+    ) -> tuple[str, bool]:
+        """Abre el editor enriquecido del main window o usa fallback plano."""
+        window = self.window()
+        prompt = getattr(window, "_open_rich_text_value_dialog", None)
+        if callable(prompt):
+            return prompt(title=title, label=label, initial_text=initial_text)
+        value, ok = QInputDialog.getText(self, title, label, text=str(initial_text or ""))
+        return str(value or ""), bool(ok)
+
     def _prompt_semantic_diagram_title(self, item: CompositeDiagramItem) -> None:
         """Solicita un nuevo título para el diagrama semántico."""
-        value, ok = QInputDialog.getText(
-            self,
+        value, ok = self._prompt_rich_text_value(
             "Título del diagrama",
             "Título:",
-            text=str(item.semantic_diagram.title or ""),
+            str(item.semantic_diagram.title or ""),
         )
         if not ok:
             return
@@ -12791,7 +12903,7 @@ class ChemusonCanvas(QGraphicsView):
             if not lanes:
                 return
             lane_labels = [
-                str(candidate.title or candidate.id or f"Carril {index + 1}")
+                self._plain_text_from_markup(candidate.title or candidate.id or f"Carril {index + 1}")
                 for index, candidate in enumerate(lanes)
             ]
             selected_label, ok = QInputDialog.getItem(
@@ -12806,11 +12918,10 @@ class ChemusonCanvas(QGraphicsView):
                 return
             chosen_index = lane_labels.index(selected_label)
             lane = lanes[chosen_index]
-        value, ok = QInputDialog.getText(
-            self,
+        value, ok = self._prompt_rich_text_value(
             "Etiqueta de carril",
             "Etiqueta:",
-            text=str(lane.title or ""),
+            str(lane.title or ""),
         )
         if not ok:
             return
@@ -12835,7 +12946,7 @@ class ChemusonCanvas(QGraphicsView):
             if not levels:
                 return
             level_labels = [
-                str(candidate.label or candidate.id or f"Nivel {index + 1}")
+                self._plain_text_from_markup(candidate.label or candidate.id or f"Nivel {index + 1}")
                 for index, candidate in enumerate(levels)
             ]
             selected_label, ok = QInputDialog.getItem(
@@ -12850,11 +12961,10 @@ class ChemusonCanvas(QGraphicsView):
                 return
             chosen_index = level_labels.index(selected_label)
             level = levels[chosen_index]
-        value, ok = QInputDialog.getText(
-            self,
+        value, ok = self._prompt_rich_text_value(
             "Etiqueta de nivel",
             "Etiqueta:",
-            text=str(level.label or ""),
+            str(level.label or ""),
         )
         if not ok:
             return
@@ -12887,11 +12997,10 @@ class ChemusonCanvas(QGraphicsView):
         """Solicita una nueva etiqueta para un diagrama."""
         if not item.supports_free_label():
             return
-        value, ok = QInputDialog.getText(
-            self,
+        value, ok = self._prompt_rich_text_value(
             "Etiqueta de diagrama",
             "Etiqueta:",
-            text=item.label(),
+            item.label(),
         )
         if not ok:
             return

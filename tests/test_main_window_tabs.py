@@ -4,7 +4,7 @@ import os
 import sys
 
 import pytest
-from PyQt6.QtWidgets import QApplication, QInputDialog
+from PyQt6.QtWidgets import QApplication, QInputDialog, QTextEdit
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
@@ -201,4 +201,60 @@ def test_gallery_template_selection_enters_insert_mode() -> None:
     finally:
         window.canvas.undo_stack.clear()
         window.canvas.undo_stack.setClean()
+        window.close()
+
+
+def test_external_rich_text_editor_uses_standard_text_toolbar() -> None:
+    window = ChemusonWindow()
+    try:
+        editor = QTextEdit()
+        editor.setPlainText("O2")
+        window._set_external_text_editor(editor)
+
+        cursor = editor.textCursor()
+        cursor.setPosition(1)
+        cursor.movePosition(cursor.MoveOperation.End, cursor.MoveMode.KeepAnchor)
+        editor.setTextCursor(cursor)
+
+        window._on_text_format_changed(
+            "Arial",
+            10,
+            False,
+            False,
+            False,
+            True,
+            False,
+            "sub",
+        )
+
+        assert "vertical-align:sub" in editor.toHtml().lower()
+    finally:
+        window._set_external_text_editor(None)
+        window.close()
+
+
+def test_external_rich_text_editor_preserves_selection_for_toolbar_action() -> None:
+    window = ChemusonWindow()
+    try:
+        editor = QTextEdit()
+        editor.setPlainText("O2")
+        window._set_external_text_editor(editor)
+
+        cursor = editor.textCursor()
+        cursor.setPosition(1)
+        cursor.movePosition(cursor.MoveOperation.End, cursor.MoveMode.KeepAnchor)
+        editor.setTextCursor(cursor)
+        window._external_text_cursor_state = (1, 2)
+        window._external_text_selected_range = (1, 2)
+
+        collapsed = editor.textCursor()
+        collapsed.setPosition(2)
+        editor.setTextCursor(collapsed)
+
+        window.text_toolbar.action_sup.trigger()
+
+        assert "vertical-align:super" in editor.toHtml().lower()
+        assert window.text_toolbar.action_sup.shortcuts()
+    finally:
+        window._set_external_text_editor(None)
         window.close()

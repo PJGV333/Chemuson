@@ -64,27 +64,31 @@ class TextFormatToolbar(QToolBar):
         self.action_bold = self._add_toggle_action("B", "Negrita", "bold")
         self.action_bold.setFont(QFont("Times", 10, QFont.Weight.Bold))
         self.action_bold.setShortcut(QKeySequence("Ctrl+B"))
-        self.action_bold.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+        self.action_bold.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
         
         self.action_italic = self._add_toggle_action("I", "Cursiva", "italic")
         font_i = QFont("Times", 10)
         font_i.setItalic(True)
         self.action_italic.setFont(font_i)
         self.action_italic.setShortcut(QKeySequence("Ctrl+I"))
-        self.action_italic.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+        self.action_italic.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
         
         self.action_underline = self._add_toggle_action("U", "Subrayado", "underline")
         font_u = QFont("Times", 10)
         font_u.setUnderline(True)
         self.action_underline.setFont(font_u)
         self.action_underline.setShortcut(QKeySequence("Ctrl+U"))
-        self.action_underline.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+        self.action_underline.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
         
         self.addSeparator()
 
         # --- Sub / Sup ---
         self.action_sub = self._add_toggle_action("x₂", "Subíndice", "sub")
         self.action_sup = self._add_toggle_action("x²", "Superíndice", "sup")
+        self.action_sub.setShortcut(QKeySequence("Ctrl+="))
+        self.action_sub.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
+        self.action_sup.setShortcuts([QKeySequence("Ctrl+Shift+="), QKeySequence("Ctrl++")])
+        self.action_sup.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
         
         # Ensure sub/sup are exclusive-ish
         self.action_sub.triggered.connect(lambda c: self._handle_exclusive(self.action_sub, self.action_sup, "sub"))

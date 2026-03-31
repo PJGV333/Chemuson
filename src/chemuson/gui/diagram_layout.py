@@ -14,6 +14,9 @@ ENERGY_SCALE = 48.0
 LEVEL_HEIGHT = 30.0
 LANE_TITLE_GAP = 18.0
 TITLE_GAP = 10.0
+SUMMARY_GAP = 12.0
+SUMMARY_FONT_SIZE = 7.5
+SUMMARY_COLOR = "#555555"
 DEFAULT_LEVEL_WIDTH = 96.0
 SEMANTIC_TEXT_KIND_ROLE = 0x5F01
 SEMANTIC_TEXT_ID_ROLE = 0x5F02
@@ -48,6 +51,14 @@ def _label_side_for_x(x: float) -> str:
 def _center_text_item(item: QGraphicsTextItem, center_x: float, top_y: float) -> None:
     rect = item.boundingRect()
     item.setPos(center_x - rect.width() * 0.5, top_y)
+
+
+def _set_text_item_contents(item: QGraphicsTextItem, text: str) -> None:
+    raw = str(text or "")
+    if Qt.mightBeRichText(raw):
+        item.setHtml(raw)
+    else:
+        item.setPlainText(raw)
 
 
 def _connector_points(source: EnergyDiagramItem, target: EnergyDiagramItem) -> tuple[QPointF, QPointF]:
@@ -145,7 +156,8 @@ def build_items_from_semantic_diagram(diagram: SemanticDiagram) -> list[BaseItem
                 lane_title = str(lane.title or "").strip()
                 if not lane_title:
                     continue
-                lane_item = QGraphicsTextItem(lane_title)
+                lane_item = QGraphicsTextItem()
+                _set_text_item_contents(lane_item, lane_title)
                 lane_item.setFont(lane_font)
                 lane_item.setDefaultTextColor(QColor("#4A4A4A"))
                 lane_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
@@ -163,7 +175,8 @@ def build_items_from_semantic_diagram(diagram: SemanticDiagram) -> list[BaseItem
                     title_items.append(lane_item)
 
         if str(diagram.title or "").strip():
-            title_item = QGraphicsTextItem(str(diagram.title))
+            title_item = QGraphicsTextItem()
+            _set_text_item_contents(title_item, str(diagram.title))
             title_item.setFont(font)
             title_item.setDefaultTextColor(QColor("#202020"))
             title_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
@@ -176,4 +189,28 @@ def build_items_from_semantic_diagram(diagram: SemanticDiagram) -> list[BaseItem
             _center_text_item(title_item, center_x, title_top)
             title_items.append(title_item)
 
-    return [*connector_items, *items, *title_items]
+    summary_items: list[BaseItem] = []
+    summary_lines = [
+        str(line).strip()
+        for line in list(diagram.metadata.get("summary_lines", []) or [])
+        if str(line).strip()
+    ]
+    if summary_lines and bool(diagram.metadata.get("show_summary", True)):
+        center_candidates = [float(lane.x) for lane in diagram.lanes] or [0.0]
+        center_x = (min(center_candidates) + max(center_candidates)) * 0.5
+        content_bottom = max(
+            (_level_display_rect(item).bottom() for item in level_items.values()),
+            default=0.0,
+        )
+        summary_item = QGraphicsTextItem()
+        _set_text_item_contents(summary_item, "\n".join(summary_lines))
+        summary_font = QFont("Arial")
+        summary_font.setPointSizeF(float(SUMMARY_FONT_SIZE))
+        summary_item.setFont(summary_font)
+        summary_item.setDefaultTextColor(QColor(SUMMARY_COLOR))
+        summary_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+        summary_item.setData(SEMANTIC_TEXT_KIND_ROLE, "diagram_summary")
+        _center_text_item(summary_item, center_x, content_bottom + SUMMARY_GAP)
+        summary_items.append(summary_item)
+
+    return [*connector_items, *items, *title_items, *summary_items]

@@ -12,6 +12,7 @@ from chemuson.gui.diagram_layout import (
     build_items_from_semantic_diagram,
 )
 from chemuson.gui.diagram_models import SemanticDiagram
+from chemuson.gui.energy_diagrams import refresh_semantic_diagram_metadata
 from chemuson.gui.items import BaseItem, EnergyDiagramItem, SemanticConnectorItem
 
 
@@ -227,6 +228,7 @@ class CompositeDiagramItem(BaseItem):
             level.occupancies = [
                 occupancy_map.get(value, 0) for value in item.occupancies()
             ]
+        refresh_semantic_diagram_metadata(self.semantic_diagram)
 
     def _clear_children(self) -> None:
         for item in list(self._children):
@@ -241,15 +243,25 @@ class CompositeDiagramItem(BaseItem):
         self._children.clear()
         self._level_items.clear()
 
-    def _rebuild_children_from_semantic(self) -> None:
+    def rebuild_from_semantic_diagram(self, diagram: SemanticDiagram) -> None:
+        """Reconstruye el item desde un nuevo modelo preservando su presentación."""
         rect = self.display_rect()
         rotation = self.rotation()
+        z_value = self.zValue()
+        opacity = self.opacity()
+        selected = self.isSelected()
+        self.semantic_diagram = SemanticDiagram.from_json_dict(diagram.to_json_dict())
+        refresh_semantic_diagram_metadata(self.semantic_diagram)
         self.prepareGeometryChange()
         self._clear_children()
         self._build_children()
         self.set_display_rect(rect)
         self.setRotation(rotation)
+        self.setZValue(z_value)
+        self.setOpacity(opacity)
         self.setTransformOriginPoint(self.boundingRect().center())
+        if selected:
+            self.setSelected(True)
         self.update()
 
     def set_diagram_title(self, text: str) -> bool:
@@ -258,7 +270,7 @@ class CompositeDiagramItem(BaseItem):
             return False
         self._sync_semantic_from_children()
         self.semantic_diagram.title = normalized
-        self._rebuild_children_from_semantic()
+        self.rebuild_from_semantic_diagram(self.semantic_diagram)
         return True
 
     def set_lane_title(self, lane_id: str, text: str) -> bool:
@@ -271,7 +283,7 @@ class CompositeDiagramItem(BaseItem):
                 return False
             self._sync_semantic_from_children()
             lane.title = normalized
-            self._rebuild_children_from_semantic()
+            self.rebuild_from_semantic_diagram(self.semantic_diagram)
             return True
         return False
 
@@ -345,6 +357,7 @@ class CompositeDiagramItem(BaseItem):
             "height": rect.height(),
             "rotation": self.rotation(),
             "z": self.zValue(),
+            "opacity": self.opacity(),
         }
 
     @classmethod
@@ -360,4 +373,9 @@ class CompositeDiagramItem(BaseItem):
         )
         item.setRotation(float(payload.get("rotation", 0.0)))
         item.setZValue(float(payload.get("z", 44.0)))
+        raw_opacity = payload.get("opacity", 1.0)
+        try:
+            item.setOpacity(1.0 if raw_opacity is None else float(raw_opacity))
+        except Exception:
+            item.setOpacity(1.0)
         return item

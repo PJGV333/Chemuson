@@ -32,9 +32,10 @@ from PyQt6.QtWidgets import (
     QHeaderView,
     QSizePolicy,
     QSpinBox,
+    QTextEdit,
 )
-from PyQt6.QtCore import Qt, QSize, QSettings, QEvent, QTimer, QPointF
-from PyQt6.QtGui import QAction, QActionGroup, QKeySequence, QIcon, QPainter, QPixmap, QPen, QColor
+from PyQt6.QtCore import Qt, QSize, QSettings, QEvent, QTimer, QPointF, QEventLoop
+from PyQt6.QtGui import QAction, QActionGroup, QKeySequence, QIcon, QPainter, QPixmap, QPen, QColor, QBrush, QFont, QTextCharFormat, QTextCursor, QShortcut
 from PyQt6.QtPrintSupport import QPrinter
 from typing import Callable, Optional
 from dataclasses import replace
@@ -42,6 +43,7 @@ from datetime import datetime
 import json
 import math
 import os
+import re
 import sys
 
 from chemuson.gui.canvas import (
@@ -52,10 +54,14 @@ from chemuson.gui.canvas import (
 from chemuson.gui.periodic_table import PeriodicTableDialog
 from chemuson.gui.energy_diagrams import (
     ENERGY_DIAGRAM_MENU_ORDER,
+    build_atomic_species_diagram,
     build_atomic_subshell_diagram,
+    build_diatomic_mo_diagram,
+    build_ligand_field_diagram,
     energy_diagram_display_name,
     energy_diagram_tool_id,
 )
+from chemuson.gui.composite_diagram_item import CompositeDiagramItem
 from chemuson.gui.orbitals import ORBITAL_MENU_ORDER, orbital_display_name, orbital_tool_id
 from chemuson.gui.toolbar import ChemusonToolbar, SymbolPaletteToolbar
 from chemuson.gui.styles import MAIN_STYLESHEET, TOOL_PALETTE_STYLESHEET
@@ -63,7 +69,7 @@ from chemuson.gui.icons import draw_generic_icon
 from chemuson.gui.docks import PlantillasDock, InspectorDock, AppearanceDock
 from chemuson.gui.dialogs import PreferencesDialog, QuickStartDialog, StyleDialog
 from chemuson.gui.text_toolbar import TextFormatToolbar
-from chemuson.gui.commands import ChangeAtomCommand
+from chemuson.gui.commands import ChangeAtomCommand, EditSemanticDiagramCommand
 from chemuson.gui.template_library import TemplateLibrary, DEFAULT_CATEGORY_USER
 from chemuson.gui.templates import (
     build_linear_chain_template,
@@ -315,6 +321,9 @@ class ChemusonWindow(QMainWindow):
         # === TEXT FORMAT TOOLBAR ===
         self.text_toolbar = TextFormatToolbar()
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self.text_toolbar)
+        self._external_text_editor: QTextEdit | None = None
+        self._external_text_cursor_state: tuple[int, int] | None = None
+        self._external_text_selected_range: tuple[int, int] | None = None
         # Initially hide it, or show it only when text tool is active?
         # User requested it to be available. We can leave it visible or toggle it.
         # For now, visible is fine.
@@ -341,6 +350,9 @@ class ChemusonWindow(QMainWindow):
         self.symbols_toolbar.atomic_diagram_requested.connect(self._open_atomic_diagram_dialog)
         self.symbols_toolbar.diatomic_mo_diagram_requested.connect(self._open_diatomic_mo_diagram_dialog)
         self.symbols_toolbar.ligand_field_diagram_requested.connect(self._open_ligand_field_diagram_dialog)
+        self.symbols_toolbar.electronic_diagram_preset_requested.connect(
+            self._insert_semantic_preset
+        )
 
         # Sync defaults selected during toolbar init
         self._apply_toolbar_defaults_to_canvas(self.canvas)
@@ -394,9 +406,11 @@ class ChemusonWindow(QMainWindow):
         
         self.action_copy = QAction("Copiar", self)
         self.action_copy.setShortcut(QKeySequence.StandardKey.Copy)
-        
+
         self.action_paste = QAction("Pegar", self)
         self.action_paste.setShortcut(QKeySequence.StandardKey.Paste)
+
+        self.action_edit_electronic_diagram = QAction("Edit Electronic Diagram...", self)
         
         # --- View Actions ---
         self.action_show_carbons = QAction("Mostrar carbonos", self)
@@ -752,8 +766,9 @@ class ChemusonWindow(QMainWindow):
         self.action_copy_inchi = QAction("InChI", self)
         self.action_copy_inchi.triggered.connect(lambda: self._on_copy_as("inchi"))
         copy_as_menu.addAction(self.action_copy_inchi)
-        
+
         edit_menu.addAction(self.action_paste)
+        edit_menu.addAction(self.action_edit_electronic_diagram)
         edit_menu.addSeparator()
 
         rotate_menu = edit_menu.addMenu("Rotar")
@@ -1188,6 +1203,7 @@ class ChemusonWindow(QMainWindow):
         self.action_undo.setEnabled(self.canvas.undo_stack.canUndo())
         self.action_redo.setEnabled(self.canvas.undo_stack.canRedo())
         self._sync_clipboard_actions()
+        self._sync_semantic_diagram_actions()
         self._sync_view_actions_from_canvas()
         self._sync_numbering_actions()
         self._sync_fragment_pivot_actions()
@@ -1262,6 +1278,17 @@ class ChemusonWindow(QMainWindow):
         property_name: str,
     ) -> None:
         """Propaga cambios de formato de texto al canvas activo."""
+        if self._apply_text_format_to_external_editor(
+            family,
+            size,
+            bold,
+            italic,
+            underline,
+            sub,
+            sup,
+            property_name,
+        ):
+            return
         self.canvas.update_text_format(
             family,
             size,
@@ -1275,14 +1302,20 @@ class ChemusonWindow(QMainWindow):
 
     def _on_text_color_changed(self, color: QColor) -> None:
         """Propaga cambio de color de texto al canvas activo."""
+        if self._apply_text_color_to_external_editor(color):
+            return
         self.canvas.update_text_color(color)
 
     def _on_text_alignment_changed(self, alignment: Qt.AlignmentFlag) -> None:
         """Propaga cambio de alineación al canvas activo."""
+        if self._apply_text_alignment_to_external_editor(alignment):
+            return
         self.canvas.update_text_alignment(alignment)
 
     def _on_opacity_changed(self, value: int) -> None:
         """Propaga cambio de opacidad al canvas activo."""
+        if getattr(self, "_external_text_editor", None) is not None:
+            return
         self.canvas.apply_opacity_percent(float(value))
 
     def _on_tool_changed(self, tool_id: str) -> None:
@@ -1314,16 +1347,331 @@ class ChemusonWindow(QMainWindow):
         """Devuelve el centro visible actual del canvas activo."""
         return self.canvas.mapToScene(self.canvas.viewport().rect().center())
 
-    def _open_atomic_diagram_dialog(self) -> None:
-        """Solicita parámetros y crea un diagrama atómico semántico."""
+    def _set_external_text_editor(self, editor: QTextEdit | None) -> None:
+        """Registra un editor de texto enriquecido temporal para el toolbar superior."""
+        previous = getattr(self, "_external_text_editor", None)
+        if previous is editor:
+            if editor is not None:
+                self._sync_text_toolbar_from_external_editor()
+            return
+        if previous is not None:
+            for signal, slot in (
+                (previous.cursorPositionChanged, self._sync_text_toolbar_from_external_editor),
+                (previous.textChanged, self._sync_text_toolbar_from_external_editor),
+                (previous.cursorPositionChanged, self._remember_external_text_cursor),
+                (previous.textChanged, self._remember_external_text_cursor),
+                (previous.copyAvailable, self._on_external_text_copy_available),
+            ):
+                try:
+                    signal.disconnect(slot)
+                except (TypeError, RuntimeError):
+                    pass
+        self._external_text_editor = editor
+        self._external_text_cursor_state = None
+        self._external_text_selected_range = None
+        self.text_toolbar.opacity_spin.setEnabled(editor is None)
+        if editor is not None:
+            editor.cursorPositionChanged.connect(self._sync_text_toolbar_from_external_editor)
+            editor.textChanged.connect(self._sync_text_toolbar_from_external_editor)
+            editor.cursorPositionChanged.connect(self._remember_external_text_cursor)
+            editor.textChanged.connect(self._remember_external_text_cursor)
+            editor.copyAvailable.connect(self._on_external_text_copy_available)
+            self._remember_external_text_cursor()
+            self._sync_text_toolbar_from_external_editor()
+            return
+        self.text_toolbar.set_opacity_percent(self.canvas.current_opacity_percent())
+        self.canvas.sync_text_selection_state()
+
+    def _on_external_text_copy_available(self, _available: bool) -> None:
+        self._remember_external_text_cursor()
+
+    def _remember_external_text_cursor(self) -> None:
+        """Guarda anchor/posición del editor temporal para no perder selección al cambiar foco."""
+        editor = getattr(self, "_external_text_editor", None)
+        if editor is None:
+            self._external_text_cursor_state = None
+            self._external_text_selected_range = None
+            return
+        cursor = editor.textCursor()
+        anchor = int(cursor.anchor())
+        position = int(cursor.position())
+        self._external_text_cursor_state = (anchor, position)
+        if cursor.hasSelection():
+            self._external_text_selected_range = (anchor, position)
+        elif editor.hasFocus():
+            self._external_text_selected_range = None
+
+    def _external_text_cursor_for_formatting(self, editor: QTextEdit) -> QTextCursor:
+        """Recupera el cursor actual o la última selección activa del editor temporal."""
+        cursor = editor.textCursor()
+        if cursor.hasSelection():
+            return cursor
+        stored = getattr(self, "_external_text_selected_range", None)
+        if not stored:
+            stored = getattr(self, "_external_text_cursor_state", None)
+        if not stored:
+            return cursor
+        anchor, position = stored
+        if anchor == position:
+            return cursor
+        text_len = len(editor.toPlainText())
+        anchor = max(0, min(int(anchor), text_len))
+        position = max(0, min(int(position), text_len))
+        restored = editor.textCursor()
+        restored.setPosition(anchor)
+        restored.setPosition(position, QTextCursor.MoveMode.KeepAnchor)
+        return restored
+
+    def _sync_text_toolbar_from_external_editor(self) -> None:
+        """Sincroniza el toolbar desde un QTextEdit temporal."""
+        editor = getattr(self, "_external_text_editor", None)
+        if editor is None:
+            return
+        cursor = self._external_text_cursor_for_formatting(editor)
+        fmt = cursor.charFormat()
+        font = QFont(editor.currentFont())
+        families = fmt.fontFamilies()
+        if families:
+            font.setFamily(families[0])
+        point_size = float(fmt.fontPointSize() or 0.0)
+        if point_size <= 0.0:
+            point_size = float(font.pointSizeF() or font.pointSize() or 12.0)
+        font.setPointSizeF(point_size)
+        weight = int(fmt.fontWeight() or font.weight())
+        font.setWeight(weight)
+        font.setItalic(bool(fmt.fontItalic()))
+        font.setUnderline(bool(fmt.fontUnderline()))
+        color = fmt.foreground().color()
+        if not color.isValid():
+            color = QColor(Qt.GlobalColor.black)
+        self.text_toolbar.set_state(
+            font,
+            {
+                "color": color,
+                "sub": fmt.verticalAlignment() == QTextCharFormat.VerticalAlignment.AlignSubScript,
+                "sup": fmt.verticalAlignment() == QTextCharFormat.VerticalAlignment.AlignSuperScript,
+            },
+        )
+
+    def _apply_text_format_to_external_editor(
+        self,
+        family: str,
+        size: int,
+        bold: bool,
+        italic: bool,
+        underline: bool,
+        sub: bool,
+        sup: bool,
+        property_name: str,
+    ) -> bool:
+        """Aplica cambios del toolbar a un editor temporal si existe."""
+        editor = getattr(self, "_external_text_editor", None)
+        if editor is None:
+            return False
+        editor.activateWindow()
+        editor.raise_()
+        editor.setFocus()
+        cursor = self._external_text_cursor_for_formatting(editor)
+        fmt = QTextCharFormat()
+        if property_name in ("all", "family"):
+            fmt.setFontFamilies([family])
+        if property_name in ("all", "size"):
+            fmt.setFontPointSize(float(size))
+        if property_name in ("all", "bold"):
+            fmt.setFontWeight(QFont.Weight.Bold if bold else QFont.Weight.Normal)
+        if property_name in ("all", "italic"):
+            fmt.setFontItalic(bool(italic))
+        if property_name in ("all", "underline"):
+            fmt.setFontUnderline(bool(underline))
+        if property_name in ("all", "sub", "sup"):
+            if sub:
+                fmt.setVerticalAlignment(QTextCharFormat.VerticalAlignment.AlignSubScript)
+            elif sup:
+                fmt.setVerticalAlignment(QTextCharFormat.VerticalAlignment.AlignSuperScript)
+            else:
+                fmt.setVerticalAlignment(QTextCharFormat.VerticalAlignment.AlignNormal)
+        if cursor.hasSelection():
+            cursor.mergeCharFormat(fmt)
+            editor.setTextCursor(cursor)
+        editor.mergeCurrentCharFormat(fmt)
+        self._remember_external_text_cursor()
+        self._sync_text_toolbar_from_external_editor()
+        return True
+
+    def _apply_text_color_to_external_editor(self, color: QColor) -> bool:
+        editor = getattr(self, "_external_text_editor", None)
+        if editor is None:
+            return False
+        editor.activateWindow()
+        editor.raise_()
+        editor.setFocus()
+        fmt = QTextCharFormat()
+        fmt.setForeground(QBrush(color))
+        cursor = self._external_text_cursor_for_formatting(editor)
+        if cursor.hasSelection():
+            cursor.mergeCharFormat(fmt)
+            editor.setTextCursor(cursor)
+        editor.mergeCurrentCharFormat(fmt)
+        self._remember_external_text_cursor()
+        self._sync_text_toolbar_from_external_editor()
+        return True
+
+    def _apply_text_alignment_to_external_editor(self, alignment: Qt.AlignmentFlag) -> bool:
+        editor = getattr(self, "_external_text_editor", None)
+        if editor is None:
+            return False
+        editor.activateWindow()
+        editor.raise_()
+        editor.setFocus()
+        editor.setAlignment(alignment)
+        self._remember_external_text_cursor()
+        self._sync_text_toolbar_from_external_editor()
+        return True
+
+    def _rich_text_editor_value(self, editor: QTextEdit) -> str:
+        """Devuelve texto plano cuando no hay formato, u HTML si sí lo hay."""
+        html_value = str(editor.toHtml() or "")
+        plain_value = str(editor.toPlainText() or "")
+        rich_markers = (
+            "<span style=",
+            "vertical-align:",
+            "font-weight:700",
+            "font-weight:600",
+            "font-style:italic",
+            "text-decoration:",
+            "text-align:center",
+            "text-align:right",
+            "text-align:justify",
+            "<ul",
+            "<ol",
+        )
+        if not any(marker in html_value for marker in rich_markers):
+            return plain_value
+        html_value = html_value.replace("<!--StartFragment-->", "").replace("<!--EndFragment-->", "")
+        html_value = re.sub(r"\s*font-family:'[^']*';", " ", html_value)
+        html_value = re.sub(r"\s*font-size:[0-9.]+pt;", " ", html_value)
+        html_value = re.sub(r"\s*font-weight:400;", " ", html_value)
+        html_value = re.sub(r"\s*font-style:normal;", " ", html_value)
+        html_value = re.sub(r"\s{2,}", " ", html_value)
+        return html_value
+
+    def _open_rich_text_value_dialog(
+        self,
+        *,
+        title: str,
+        label: str,
+        initial_text: str = "",
+    ) -> tuple[str, bool]:
+        """Abre un editor enriquecido no modal conectado al toolbar de texto."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle(title)
+        dialog.setModal(False)
+        dialog.setWindowModality(Qt.WindowModality.NonModal)
+        dialog.resize(420, 240)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel(label, dialog))
+        editor = QTextEdit(dialog)
+        editor.setAcceptRichText(True)
+        editor.setMinimumHeight(96)
+        editor.setFont(QFont("Arial", 10))
+        if Qt.mightBeRichText(str(initial_text or "")):
+            editor.setHtml(str(initial_text or ""))
+        else:
+            editor.setPlainText(str(initial_text or ""))
+        layout.addWidget(editor)
+        shortcuts = (
+            (QKeySequence.StandardKey.Bold, self.text_toolbar.action_bold.trigger),
+            (QKeySequence.StandardKey.Italic, self.text_toolbar.action_italic.trigger),
+            (QKeySequence.StandardKey.Underline, self.text_toolbar.action_underline.trigger),
+            (QKeySequence("Ctrl+="), self.text_toolbar.action_sub.trigger),
+            (QKeySequence("Ctrl+Shift+="), self.text_toolbar.action_sup.trigger),
+            (QKeySequence("Ctrl++"), self.text_toolbar.action_sup.trigger),
+        )
+        for sequence, handler in shortcuts:
+            shortcut = QShortcut(sequence, dialog)
+            shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            shortcut.activated.connect(handler)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
+            parent=dialog,
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+
+        loop = QEventLoop(dialog)
+        dialog.finished.connect(loop.quit)
+        self._set_external_text_editor(editor)
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
+        editor.setFocus()
+        loop.exec()
+        value = self._rich_text_editor_value(editor)
+        accepted = dialog.result() == QDialog.DialogCode.Accepted
+        self._set_external_text_editor(None)
+        dialog.deleteLater()
+        return value, accepted
+
+    def _semantic_diagram_builder_spec(
+        self,
+        item: CompositeDiagramItem | None,
+    ) -> tuple[str, dict]:
+        if item is None:
+            return "", {}
+        builder = dict(item.semantic_diagram.metadata.get("builder", {}) or {})
+        return str(builder.get("name", "") or ""), dict(builder.get("params", {}) or {})
+
+    def _semantic_diagram_item_payload(self, item: CompositeDiagramItem) -> dict:
+        payload = item.to_json()
+        opacity_getter = getattr(self.canvas, "item_raw_opacity", None)
+        if callable(opacity_getter):
+            payload["opacity"] = opacity_getter(item)
+        return payload
+
+    def _apply_semantic_diagram_result(
+        self,
+        diagram,
+        *,
+        existing_item: CompositeDiagramItem | None = None,
+    ) -> None:
+        if existing_item is None:
+            self.canvas.insert_semantic_diagram(diagram, self._visible_canvas_center_scene_pos())
+            return
+        before_payload = self._semantic_diagram_item_payload(existing_item)
+        after_payload = dict(before_payload)
+        after_payload["semantic_diagram"] = diagram.to_json_dict()
+        if before_payload.get("semantic_diagram") == after_payload.get("semantic_diagram"):
+            return
+        self.canvas.undo_stack.push(
+            EditSemanticDiagramCommand(
+                self.canvas,
+                existing_item,
+                before_payload,
+                after_payload,
+            )
+        )
+
+    def _insert_semantic_preset(self, preset_name: str) -> None:
+        self.canvas.insert_semantic_preset(
+            preset_name,
+            self._visible_canvas_center_scene_pos(),
+        )
+
+    def _open_atomic_diagram_dialog(
+        self,
+        existing_item: CompositeDiagramItem | None = None,
+    ) -> None:
+        """Solicita parámetros y crea o edita un diagrama atómico semántico."""
+        _builder_name, builder_params = self._semantic_diagram_builder_spec(existing_item)
         dialog = QDialog(self)
         dialog.setWindowTitle("Atomic diagram")
         layout = QFormLayout(dialog)
         electron_count = QSpinBox(dialog)
         electron_count.setRange(0, 118)
-        electron_count.setValue(8)
+        electron_count.setValue(int(builder_params.get("electron_count", 8) or 8))
         expanded_subshells = QCheckBox("Expanded subshells", dialog)
-        expanded_subshells.setChecked(True)
+        expanded_subshells.setChecked(bool(builder_params.get("expanded_subshells", True)))
         layout.addRow("Electron count:", electron_count)
         layout.addRow("", expanded_subshells)
         buttons = QDialogButtonBox(
@@ -1337,26 +1685,76 @@ class ChemusonWindow(QMainWindow):
             return
         diagram = build_atomic_subshell_diagram(
             electron_count.value(),
+            title=builder_params.get("title"),
             expanded_subshells=expanded_subshells.isChecked(),
+            max_n=int(builder_params.get("max_n", 7) or 7),
         )
-        self.canvas.insert_semantic_diagram(diagram, self._visible_canvas_center_scene_pos())
+        self._apply_semantic_diagram_result(diagram, existing_item=existing_item)
 
-    def _open_diatomic_mo_diagram_dialog(self) -> None:
-        """Solicita parámetros y crea un diagrama MO diatómico."""
+    def _open_atomic_species_diagram_dialog(
+        self,
+        existing_item: CompositeDiagramItem | None = None,
+    ) -> None:
+        """Solicita parámetros y crea o edita una especie atómica predefinida."""
+        _builder_name, builder_params = self._semantic_diagram_builder_spec(existing_item)
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Atomic species diagram")
+        layout = QFormLayout(dialog)
+        symbol = QLineEdit(str(builder_params.get("symbol", "O") or "O"), dialog)
+        charge = QSpinBox(dialog)
+        charge.setRange(-6, 6)
+        charge.setValue(int(builder_params.get("charge", 0) or 0))
+        expanded_subshells = QCheckBox("Expanded subshells", dialog)
+        expanded_subshells.setChecked(bool(builder_params.get("expanded_subshells", True)))
+        use_known_exceptions = QCheckBox("Use known exceptions", dialog)
+        use_known_exceptions.setChecked(bool(builder_params.get("use_known_exceptions", True)))
+        layout.addRow("Symbol:", symbol)
+        layout.addRow("Charge:", charge)
+        layout.addRow("", expanded_subshells)
+        layout.addRow("", use_known_exceptions)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
+            parent=dialog,
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addRow(buttons)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        try:
+            diagram = build_atomic_species_diagram(
+                symbol=symbol.text().strip(),
+                charge=charge.value(),
+                expanded_subshells=expanded_subshells.isChecked(),
+                title=builder_params.get("title"),
+                use_known_exceptions=use_known_exceptions.isChecked(),
+            )
+        except ValueError as exc:
+            QMessageBox.information(self, "Atomic species diagram", str(exc))
+            return
+        self._apply_semantic_diagram_result(diagram, existing_item=existing_item)
+
+    def _open_diatomic_mo_diagram_dialog(
+        self,
+        existing_item: CompositeDiagramItem | None = None,
+    ) -> None:
+        """Solicita parámetros y crea o edita un diagrama MO diatómico."""
+        _builder_name, builder_params = self._semantic_diagram_builder_spec(existing_item)
         dialog = QDialog(self)
         dialog.setWindowTitle("Diatomic MO diagram")
         layout = QFormLayout(dialog)
-        left_label = QLineEdit("A", dialog)
-        right_label = QLineEdit("B", dialog)
+        left_label = QLineEdit(str(builder_params.get("left_label", "A") or "A"), dialog)
+        right_label = QLineEdit(str(builder_params.get("right_label", "B") or "B"), dialog)
         total_electrons = QSpinBox(dialog)
         total_electrons.setRange(0, 20)
-        total_electrons.setValue(10)
+        total_electrons.setValue(int(builder_params.get("total_electrons", 10) or 10))
         ordering = QComboBox(dialog)
         ordering.addItem("light_2p", "light_2p")
         ordering.addItem("heavy_2p", "heavy_2p")
-        ordering.setCurrentIndex(1)
+        ordering_value = str(builder_params.get("ordering", "heavy_2p") or "heavy_2p")
+        ordering.setCurrentIndex(0 if ordering_value == "light_2p" else 1)
         include_core_1s = QCheckBox("Include core 1s", dialog)
-        include_core_1s.setChecked(False)
+        include_core_1s.setChecked(bool(builder_params.get("include_core_1s", False)))
         layout.addRow("Left label:", left_label)
         layout.addRow("Right label:", right_label)
         layout.addRow("Total electrons:", total_electrons)
@@ -1371,30 +1769,41 @@ class ChemusonWindow(QMainWindow):
         layout.addRow(buttons)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
-        self.canvas.insert_mo_diatomic_diagram(
-            left_label.text().strip() or "A",
-            right_label.text().strip() or "B",
-            total_electrons.value(),
-            ordering.currentData(),
-            include_core_1s.isChecked(),
-            scene_pos=self._visible_canvas_center_scene_pos(),
+        diagram = build_diatomic_mo_diagram(
+            left_label=left_label.text().strip() or "A",
+            right_label=right_label.text().strip() or "B",
+            total_electrons=total_electrons.value(),
+            ordering=ordering.currentData(),
+            include_core_1s=include_core_1s.isChecked(),
+            title=builder_params.get("title"),
         )
+        self._apply_semantic_diagram_result(diagram, existing_item=existing_item)
 
-    def _open_ligand_field_diagram_dialog(self) -> None:
-        """Solicita parámetros y crea un diagrama de campo ligando."""
+    def _open_ligand_field_diagram_dialog(
+        self,
+        existing_item: CompositeDiagramItem | None = None,
+    ) -> None:
+        """Solicita parámetros y crea o edita un diagrama de campo ligando."""
+        _builder_name, builder_params = self._semantic_diagram_builder_spec(existing_item)
         dialog = QDialog(self)
         dialog.setWindowTitle("Ligand field diagram")
         layout = QFormLayout(dialog)
         d_electrons = QSpinBox(dialog)
         d_electrons.setRange(0, 10)
-        d_electrons.setValue(6)
+        d_electrons.setValue(int(builder_params.get("d_electrons", 6) or 6))
         geometry = QComboBox(dialog)
         geometry.addItem("octahedral", "octahedral")
         geometry.addItem("tetrahedral", "tetrahedral")
         geometry.addItem("square_planar", "square_planar")
+        geometry_value = str(builder_params.get("geometry", "octahedral") or "octahedral")
+        geometry.setCurrentIndex(
+            max(0, geometry.findData(geometry_value))
+        )
         spin_mode = QComboBox(dialog)
         spin_mode.addItem("high", "high")
         spin_mode.addItem("low", "low")
+        spin_value = str(builder_params.get("spin_mode", "high") or "high")
+        spin_mode.setCurrentIndex(0 if spin_value == "high" else 1)
         layout.addRow("d electron count:", d_electrons)
         layout.addRow("Geometry:", geometry)
         layout.addRow("Spin mode:", spin_mode)
@@ -1407,11 +1816,42 @@ class ChemusonWindow(QMainWindow):
         layout.addRow(buttons)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
-        self.canvas.insert_ligand_field_diagram(
-            d_electrons.value(),
-            geometry.currentData(),
-            spin_mode.currentData(),
-            scene_pos=self._visible_canvas_center_scene_pos(),
+        diagram = build_ligand_field_diagram(
+            d_electrons=d_electrons.value(),
+            geometry=geometry.currentData(),
+            spin_mode=spin_mode.currentData(),
+            title=builder_params.get("title"),
+        )
+        self._apply_semantic_diagram_result(diagram, existing_item=existing_item)
+
+    def _edit_selected_semantic_diagram(self) -> None:
+        item = self.canvas.selected_semantic_diagram_item()
+        if item is None:
+            return
+        builder_name, _builder_params = self._semantic_diagram_builder_spec(item)
+        if not builder_name:
+            QMessageBox.information(
+                self,
+                "Edit Electronic Diagram",
+                "This diagram can be edited only at label/occupancy level because its original builder parameters are not available.",
+            )
+            return
+        if builder_name == "build_atomic_subshell_diagram":
+            self._open_atomic_diagram_dialog(existing_item=item)
+            return
+        if builder_name == "build_atomic_species_diagram":
+            self._open_atomic_species_diagram_dialog(existing_item=item)
+            return
+        if builder_name == "build_diatomic_mo_diagram":
+            self._open_diatomic_mo_diagram_dialog(existing_item=item)
+            return
+        if builder_name == "build_ligand_field_diagram":
+            self._open_ligand_field_diagram_dialog(existing_item=item)
+            return
+        QMessageBox.information(
+            self,
+            "Edit Electronic Diagram",
+            "This electronic diagram builder is not available for full reconstruction.",
         )
 
     def _connect_undo_redo(self) -> None:
@@ -1420,12 +1860,14 @@ class ChemusonWindow(QMainWindow):
         self.action_redo.triggered.connect(self._on_redo)
         self.action_copy.triggered.connect(self._on_copy)
         self.action_paste.triggered.connect(self._on_paste)
+        self.action_edit_electronic_diagram.triggered.connect(self._edit_selected_semantic_diagram)
         self.action_undo.setEnabled(False)
         self.action_redo.setEnabled(False)
         self.action_copy.setEnabled(False)
         self.action_paste.setEnabled(
             bool(getattr(self.canvas, "can_paste_from_clipboard", lambda: False)())
         )
+        self.action_edit_electronic_diagram.setEnabled(False)
         try:
             QApplication.clipboard().dataChanged.connect(self._sync_clipboard_actions)
         except Exception:
@@ -4609,6 +5051,9 @@ class ChemusonWindow(QMainWindow):
         self._update_total_charge_indicator()
         self._sync_fragment_pivot_actions()
         self._sync_clipboard_actions()
+        self._sync_semantic_diagram_actions()
+        if getattr(self, "_external_text_editor", None) is not None:
+            return
         self.text_toolbar.set_opacity_percent(self.canvas.current_opacity_percent())
         
         # Sync Text Toolbar if a single text item is selected
@@ -4632,6 +5077,18 @@ class ChemusonWindow(QMainWindow):
             return
         self.action_copy.setEnabled(bool(canvas.has_copyable_selection()))
         self.action_paste.setEnabled(bool(canvas.can_paste_from_clipboard()))
+
+    def _sync_semantic_diagram_actions(self) -> None:
+        """Sincroniza la edición completa de diagramas semánticos con la selección."""
+        if not hasattr(self, "action_edit_electronic_diagram"):
+            return
+        canvas = getattr(self, "canvas", None)
+        if canvas is None:
+            self.action_edit_electronic_diagram.setEnabled(False)
+            return
+        self.action_edit_electronic_diagram.setEnabled(
+            canvas.selected_semantic_diagram_item() is not None
+        )
 
     def _update_total_charge_indicator(self) -> None:
         """Actualiza el indicador de carga total en la barra de estado."""

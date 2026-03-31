@@ -15,7 +15,10 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "s
 
 from chemuson.gui.canvas import ChemusonCanvas
 from chemuson.gui.composite_diagram_item import CompositeDiagramItem
-from chemuson.gui.diagram_layout import build_items_from_semantic_diagram
+from chemuson.gui.diagram_layout import (
+    SEMANTIC_TEXT_KIND_ROLE,
+    build_items_from_semantic_diagram,
+)
 from chemuson.gui.diagram_models import (
     DiagramConnector,
     DiagramLane,
@@ -158,9 +161,14 @@ def test_semantic_layout_keeps_titles_above_content_and_compacts_single_levels()
     assert texts
 
     content_top = min(item.display_rect().top() for item in levels)
+    header_texts = [
+        item
+        for item in texts
+        if str(item.data(SEMANTIC_TEXT_KIND_ROLE) or "") != "diagram_summary"
+    ]
     assert all(
         item.pos().y() + item.boundingRect().height() <= content_top
-        for item in texts
+        for item in header_texts
     )
 
     widths = {
@@ -184,6 +192,21 @@ def test_semantic_diagram_labels_are_editable_and_persisted() -> None:
     assert payload["lanes"][0]["title"] == "Subniveles s"
     level_payload = next(level for level in payload["levels"] if level["id"] == "2p")
     assert level_payload["label"] == "2p valencia"
+
+
+def test_semantic_layout_renders_rich_text_titles() -> None:
+    diagram = build_atomic_subshell_diagram(8)
+    diagram.title = "O<sub>2</sub> Diagram"
+
+    items = build_items_from_semantic_diagram(diagram)
+    title_item = next(
+        item
+        for item in items
+        if isinstance(item, QGraphicsTextItem)
+        and str(item.data(SEMANTIC_TEXT_KIND_ROLE) or "") == "diagram_title"
+    )
+
+    assert "sub" in title_item.toHtml().lower()
 
 
 def test_semantic_diagram_copy_exports_png_for_external_apps() -> None:

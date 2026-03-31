@@ -41,6 +41,11 @@ from chemuson.gui.energy_diagrams import (
     energy_diagram_kind_from_tool_id,
     energy_diagram_tool_id,
 )
+from chemuson.gui.diagram_presets import (
+    list_atomic_presets,
+    list_ligand_field_presets,
+    list_molecular_orbital_presets,
+)
 from chemuson.gui.orbitals import (
     DEFAULT_ORBITAL_KIND,
     ORBITAL_MENU_ORDER,
@@ -760,6 +765,7 @@ class SymbolPaletteToolbar(QToolBar):
     atomic_diagram_requested = pyqtSignal()
     diatomic_mo_diagram_requested = pyqtSignal()
     ligand_field_diagram_requested = pyqtSignal()
+    electronic_diagram_preset_requested = pyqtSignal(str)
 
     def __init__(self, action_group: QActionGroup, parent=None) -> None:
         """Inicializa la paleta de símbolos químicos.
@@ -1124,6 +1130,34 @@ class SymbolPaletteToolbar(QToolBar):
         ligand_action = QAction("Ligand field diagram...", self)
         ligand_action.triggered.connect(self.ligand_field_diagram_requested.emit)
         electronic_menu.addAction(ligand_action)
+        presets_menu = menu.addMenu("Electronic Diagram Presets")
+        atomic_presets_menu = presets_menu.addMenu("Atomic Presets")
+        for preset in list_atomic_presets():
+            action = QAction(preset.display_name, self)
+            action.triggered.connect(
+                lambda _checked=False, preset_name=preset.name: self.electronic_diagram_preset_requested.emit(
+                    preset_name
+                )
+            )
+            atomic_presets_menu.addAction(action)
+        mo_presets_menu = presets_menu.addMenu("Diatomic MO Presets")
+        for preset in list_molecular_orbital_presets():
+            action = QAction(preset.display_name, self)
+            action.triggered.connect(
+                lambda _checked=False, preset_name=preset.name: self.electronic_diagram_preset_requested.emit(
+                    preset_name
+                )
+            )
+            mo_presets_menu.addAction(action)
+        ligand_presets_menu = presets_menu.addMenu("Ligand Field Presets")
+        for preset in list_ligand_field_presets():
+            action = QAction(preset.display_name, self)
+            action.triggered.connect(
+                lambda _checked=False, preset_name=preset.name: self.electronic_diagram_preset_requested.emit(
+                    preset_name
+                )
+            )
+            ligand_presets_menu.addAction(action)
 
     def _select_energy_diagram_tool(self, tool_id: str) -> None:
         """Actualiza el preset activo de diagrama de energia."""

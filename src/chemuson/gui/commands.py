@@ -13,6 +13,7 @@ from PyQt6.QtCore import QPointF, QRectF
 from PyQt6.QtGui import QFont, QUndoCommand
 
 from chemuson.core.model import BondStyle, BondStereo, MolGraph, bond_is_structural
+from chemuson.gui.diagram_models import SemanticDiagram
 from chemuson.gui.geom import angle_deg, angle_distance_deg, endpoint_from_angle_len
 
 _IMPLICIT_ELEMENTS = {"C"}
@@ -2148,6 +2149,65 @@ class AddCompositeDiagramItemCommand(QUndoCommand):
     def undo(self) -> None:
         if self._item is not None:
             self._view.remove_semantic_diagram_item(self._item)
+
+
+class EditSemanticDiagramCommand(QUndoCommand):
+    """Comando para reconstruir un diagrama semántico existente."""
+
+    def __init__(
+        self,
+        view,
+        item,
+        before_payload: dict,
+        after_payload: dict,
+        text: str = "Edit semantic diagram",
+    ) -> None:
+        super().__init__(text)
+        self._view = view
+        self._item = item
+        self._before_payload = dict(before_payload or {})
+        self._after_payload = dict(after_payload or {})
+
+    def _apply_payload(self, payload: dict) -> None:
+        if self._item is None or self._item.scene() is not self._view.scene:
+            return
+        diagram_payload = dict(payload.get("semantic_diagram", {}) or {})
+        self._item.rebuild_from_semantic_diagram(
+            SemanticDiagram.from_json_dict(diagram_payload)
+        )
+        if {"x", "y", "width", "height"} <= set(payload):
+            self._item.set_display_rect(
+                QRectF(
+                    float(payload.get("x", 0.0)),
+                    float(payload.get("y", 0.0)),
+                    float(payload.get("width", 1.0)),
+                    float(payload.get("height", 1.0)),
+                )
+            )
+        if "rotation" in payload:
+            self._item.setRotation(float(payload.get("rotation", 0.0)))
+        if "z" in payload:
+            self._item.setZValue(float(payload.get("z", self._item.zValue())))
+        if "opacity" in payload:
+            setter = getattr(self._view, "set_graphics_item_opacity", None)
+            if callable(setter):
+                setter(self._item, payload.get("opacity"))
+            else:
+                raw = payload.get("opacity")
+                self._item.setOpacity(1.0 if raw is None else float(raw))
+        self._item.setSelected(True)
+        sync_selection = getattr(self._view, "_sync_selection_from_scene", None)
+        if callable(sync_selection):
+            sync_selection()
+        update_overlay = getattr(self._view, "_update_selection_overlay", None)
+        if callable(update_overlay):
+            update_overlay()
+
+    def redo(self) -> None:
+        self._apply_payload(self._after_payload)
+
+    def undo(self) -> None:
+        self._apply_payload(self._before_payload)
 
 
 class AddOrbitalItemCommand(QUndoCommand):
