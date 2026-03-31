@@ -80,9 +80,19 @@ from chemuson.gui.items import (
     PreviewChainLabelItem,
     WavyAnchorItem,
     TextAnnotationItem,
+    EnergyDiagramItem,
     OrbitalAnnotationItem,
     ImageAnnotationItem,
     ABBREVIATION_LABELS,
+)
+from chemuson.gui.energy_diagrams import (
+    DEFAULT_ENERGY_DIAGRAM_KIND,
+    default_energy_label,
+    default_energy_label_side,
+    energy_diagram_default_size,
+    energy_diagram_display_name,
+    energy_diagram_kind_from_tool_id,
+    normalize_energy_occupancies,
 )
 from chemuson.gui.style import CHEMDOODLE_LIKE, DrawingStyle
 from chemuson.gui.numbering import NumberedStructure, compute_atom_numbers, compute_structure_numbers
@@ -120,6 +130,7 @@ from chemuson.gui.commands import (
     AddBracketCommand,
     AddTextItemCommand,
     AddImageItemCommand,
+    AddEnergyDiagramItemCommand,
     AddOrbitalItemCommand,
     AddWavyAnchorCommand,
     ChangeAtomCommand,
@@ -143,11 +154,13 @@ from chemuson.gui.commands import (
     MoveArrowItemsCommand,
     MoveBracketItemsCommand,
     TransformImageItemsCommand,
+    TransformEnergyDiagramItemsCommand,
     TransformOrbitalItemsCommand,
     ScaleTextItemsCommand,
     FormatTextItemsCommand,
     ScaleArrowItemsCommand,
     ScaleBracketItemsCommand,
+    ConfigureEnergyDiagramItemsCommand,
 )
 from chemuson.gui.dialogs import (
     AtomLabelDialog,
@@ -444,6 +457,7 @@ class ChemusonCanvas(QGraphicsView):
         self._bracket_drag_start: Optional[QPointF] = None
         self._bracket_preview: Optional[QGraphicsRectItem] = None
         self.bracket_items: list[BracketItem] = []
+        self.energy_diagram_items: list[EnergyDiagramItem] = []
         self.orbital_items: list[OrbitalAnnotationItem] = []
         self.image_items: list[ImageAnnotationItem] = []
         
@@ -465,6 +479,7 @@ class ChemusonCanvas(QGraphicsView):
         self._drag_start_text_positions: Dict[TextAnnotationItem, Tuple[QPointF, float]] = {}
         self._drag_start_arrow_positions: Dict[ArrowItem, Tuple[QPointF, QPointF]] = {}
         self._drag_start_bracket_rects: Dict[BracketItem, QRectF] = {}
+        self._drag_start_energy_diagram_snapshots: Dict[EnergyDiagramItem, Tuple[QPointF, float, float, float]] = {}
         self._drag_start_orbital_snapshots: Dict[OrbitalAnnotationItem, Tuple[QPointF, QPointF]] = {}
         self._drag_start_image_snapshots: Dict[ImageAnnotationItem, Tuple[QPointF, float, float, float]] = {}
         self._drag_start_selection_bbox: Optional[QRectF] = None
@@ -502,6 +517,7 @@ class ChemusonCanvas(QGraphicsView):
         self._rotation_start_angle: Optional[float] = None
         self._rotation_start_positions: Dict[int, Tuple[float, float]] = {}
         self._rotation_start_arrow_positions: Dict[ArrowItem, Tuple[QPointF, QPointF]] = {}
+        self._rotation_start_energy_diagram_snapshots: Dict[EnergyDiagramItem, Tuple[QPointF, float, float, float]] = {}
         self._rotation_start_orbital_snapshots: Dict[OrbitalAnnotationItem, Tuple[QPointF, QPointF]] = {}
         self._rotation_start_image_snapshots: Dict[ImageAnnotationItem, Tuple[QPointF, float, float, float]] = {}
         self._is_rotating_3d = False
@@ -527,6 +543,7 @@ class ChemusonCanvas(QGraphicsView):
         self._scale_start_arrow_strokes: Dict[ArrowItem, Optional[float]] = {}
         self._scale_start_bracket_rects: Dict[BracketItem, QRectF] = {}
         self._scale_start_bracket_styles: Dict[BracketItem, Tuple[float, Optional[float]]] = {}
+        self._scale_start_energy_diagram_snapshots: Dict[EnergyDiagramItem, Tuple[QPointF, float, float, float]] = {}
         self._scale_start_orbital_snapshots: Dict[OrbitalAnnotationItem, Tuple[QPointF, QPointF]] = {}
         self._scale_start_image_snapshots: Dict[ImageAnnotationItem, Tuple[QPointF, float, float, float]] = {}
         self._scale_start_atom_label_scales: Dict[int, Optional[float]] = {}
@@ -1308,6 +1325,11 @@ class ChemusonCanvas(QGraphicsView):
             if orbital_kind:
                 self.state.active_orbital_kind = orbital_kind
             tool_id = "tool_orbital"
+        elif tool_id.startswith("tool_energy_diagram_"):
+            diagram_kind = energy_diagram_kind_from_tool_id(tool_id)
+            if diagram_kind:
+                self.state.active_energy_diagram_kind = diagram_kind
+            tool_id = "tool_energy_diagram"
 
         self.current_tool = tool_id
         self.state.active_tool = tool_id
@@ -1551,6 +1573,25 @@ class ChemusonCanvas(QGraphicsView):
         factor = offset / (length * 0.65)
         return max(ArrowItem.CURVE_FACTOR_MIN, min(ArrowItem.CURVE_FACTOR_MAX, factor))
 
+    def _constrain_annotation_endpoint(
+        self,
+        start: QPointF,
+        end: QPointF,
+        modifiers: Qt.KeyboardModifiers,
+    ) -> QPointF:
+        """Restringe segmentos simples a incrementos de 45° cuando se usa Shift."""
+        if self.current_tool not in {"tool_arrow_line", "tool_arrow_line_dashed"}:
+            return QPointF(end)
+        if not (modifiers & Qt.KeyboardModifier.ShiftModifier):
+            return QPointF(end)
+        dx = end.x() - start.x()
+        dy = end.y() - start.y()
+        length = math.hypot(dx, dy)
+        if length <= 1e-6:
+            return QPointF(end)
+        snapped_angle = snap_angle_deg(angle_deg(start, end), 45.0)
+        return endpoint_from_angle_len(start, snapped_angle, length)
+
     def center_on_paper(self) -> None:
         """Método auxiliar para center on paper.
 
@@ -1641,7 +1682,7 @@ class ChemusonCanvas(QGraphicsView):
         if event.button() == Qt.MouseButton.RightButton:
             if isinstance(
                 clicked_item,
-                (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, OrbitalAnnotationItem, ImageAnnotationItem),
+                (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, EnergyDiagramItem, OrbitalAnnotationItem, ImageAnnotationItem),
             ):
                 if not (event.modifiers() & (Qt.KeyboardModifier.ShiftModifier | Qt.KeyboardModifier.ControlModifier)):
                     self.scene.clearSelection()
@@ -1755,7 +1796,7 @@ class ChemusonCanvas(QGraphicsView):
                     & Qt.TextInteractionFlag.TextEditorInteraction
                 ):
                     return
-                if isinstance(clicked_item, (AtomItem, TextAnnotationItem, ArrowItem, BracketItem, OrbitalAnnotationItem, ImageAnnotationItem)):
+                if isinstance(clicked_item, (AtomItem, TextAnnotationItem, ArrowItem, BracketItem, EnergyDiagramItem, OrbitalAnnotationItem, ImageAnnotationItem)):
                     self._begin_drag(scene_pos)
                     self._accept_input_event(event)
             return
@@ -1763,6 +1804,8 @@ class ChemusonCanvas(QGraphicsView):
         clicked_atom_id, clicked_bond_id = self._pick_hover_target(scene_pos)
 
         arrow_tools = {
+            "tool_arrow_line": "line",
+            "tool_arrow_line_dashed": "line_dashed",
             "tool_arrow_forward": "forward",
             "tool_arrow_forward_open": "forward_open",
             "tool_arrow_forward_dashed": "forward_dashed",
@@ -1782,6 +1825,11 @@ class ChemusonCanvas(QGraphicsView):
             arrow_kind = arrow_tools[self.current_tool]
             curved_tools = {"tool_arrow_curved", "tool_arrow_curved_fishhook"}
             is_curved_tool = self.current_tool in curved_tools
+            constrained_pos = (
+                self._constrain_annotation_endpoint(self._arrow_start_pos, scene_pos, event.modifiers())
+                if self._arrow_start_pos is not None
+                else scene_pos
+            )
             if self._arrow_start_pos is None:
                 self._arrow_start_pos = scene_pos
                 self._arrow_end_pos = None
@@ -1820,14 +1868,14 @@ class ChemusonCanvas(QGraphicsView):
                 self._arrow_curve_factor = ArrowItem.CURVE_FACTOR_DEFAULT
                 self._preview_arrow_item.hide_preview()
                 return
-            if (scene_pos - self._arrow_start_pos).manhattanLength() < 2.0:
+            if (constrained_pos - self._arrow_start_pos).manhattanLength() < 2.0:
                 self._arrow_start_pos = None
                 self._arrow_end_pos = None
                 self._arrow_curve_adjust_mode = False
                 self._arrow_curve_factor = ArrowItem.CURVE_FACTOR_DEFAULT
                 self._preview_arrow_item.hide_preview()
                 return
-            cmd = AddArrowCommand(self, self._arrow_start_pos, scene_pos, arrow_kind)
+            cmd = AddArrowCommand(self, self._arrow_start_pos, constrained_pos, arrow_kind)
             self.undo_stack.push(cmd)
             self._arrow_start_pos = None
             self._arrow_end_pos = None
@@ -1907,6 +1955,10 @@ class ChemusonCanvas(QGraphicsView):
                 symbol_spec.get("anchor", True),
                 symbol_spec.get("rotate", False),
             )
+            return
+
+        if self.current_tool == "tool_energy_diagram":
+            self._insert_energy_diagram_item(scene_pos)
             return
 
         if self.current_tool == "tool_orbital":
@@ -2087,6 +2139,8 @@ class ChemusonCanvas(QGraphicsView):
             return
 
         arrow_tools = {
+            "tool_arrow_line": "line",
+            "tool_arrow_line_dashed": "line_dashed",
             "tool_arrow_forward": "forward",
             "tool_arrow_forward_open": "forward_open",
             "tool_arrow_forward_dashed": "forward_dashed",
@@ -2106,6 +2160,11 @@ class ChemusonCanvas(QGraphicsView):
             arrow_kind = arrow_tools[self.current_tool]
             curved_tools = {"tool_arrow_curved", "tool_arrow_curved_fishhook"}
             is_curved_tool = self.current_tool in curved_tools
+            constrained_pos = self._constrain_annotation_endpoint(
+                self._arrow_start_pos,
+                scene_pos,
+                event.modifiers(),
+            )
             if is_curved_tool and self._arrow_end_pos is not None and self._arrow_curve_adjust_mode:
                 curve_factor = self._curve_factor_from_pointer(
                     self._arrow_start_pos,
@@ -2122,7 +2181,7 @@ class ChemusonCanvas(QGraphicsView):
                     curve_factor=self._arrow_curve_factor,
                 )
             else:
-                preview_end = self._arrow_end_pos if (is_curved_tool and self._arrow_end_pos is not None) else scene_pos
+                preview_end = self._arrow_end_pos if (is_curved_tool and self._arrow_end_pos is not None) else constrained_pos
                 preview_curve = self._arrow_curve_factor if is_curved_tool else None
                 self._preview_arrow_item.update_preview(
                     self._arrow_start_pos,
@@ -2176,6 +2235,18 @@ class ChemusonCanvas(QGraphicsView):
                 if hasattr(self, "_drag_start_bracket_rects"):
                     for item, rect in self._drag_start_bracket_rects.items():
                         item.set_rect(rect.translated(delta))
+
+                if hasattr(self, "_drag_start_energy_diagram_snapshots"):
+                    for item, (pos, width, height, rotation) in self._drag_start_energy_diagram_snapshots.items():
+                        item.set_display_rect(
+                            QRectF(
+                                pos.x() + delta.x(),
+                                pos.y() + delta.y(),
+                                width,
+                                height,
+                            )
+                        )
+                        item.setRotation(rotation)
 
                 if hasattr(self, "_drag_start_orbital_snapshots"):
                     for item, (anchor0, anchor1) in self._drag_start_orbital_snapshots.items():
@@ -2272,6 +2343,7 @@ class ChemusonCanvas(QGraphicsView):
             text_before = dict(getattr(self, "_drag_start_text_positions", {}))
             arrow_before = dict(getattr(self, "_drag_start_arrow_positions", {}))
             bracket_before = dict(getattr(self, "_drag_start_bracket_rects", {}))
+            energy_before = dict(getattr(self, "_drag_start_energy_diagram_snapshots", {}))
             orbital_before = dict(getattr(self, "_drag_start_orbital_snapshots", {}))
             image_before = dict(getattr(self, "_drag_start_image_snapshots", {}))
             atom_after = (
@@ -2307,6 +2379,14 @@ class ChemusonCanvas(QGraphicsView):
                 if had_moved and bracket_before
                 else {}
             )
+            energy_after = (
+                {
+                    item: self._energy_diagram_transform_snapshot(item)
+                    for item in energy_before.keys()
+                }
+                if had_moved and energy_before
+                else {}
+            )
             orbital_after = (
                 {
                     item: self._orbital_transform_snapshot(item)
@@ -2331,6 +2411,7 @@ class ChemusonCanvas(QGraphicsView):
             self._drag_start_text_positions = {}
             self._drag_start_arrow_positions = {}
             self._drag_start_bracket_rects = {}
+            self._drag_start_energy_diagram_snapshots = {}
             self._drag_start_orbital_snapshots = {}
             self._drag_start_image_snapshots = {}
             self._drag_start_selection_bbox = None
@@ -2347,9 +2428,20 @@ class ChemusonCanvas(QGraphicsView):
                 move_text = bool(text_before and text_after)
                 move_arrows = bool(arrow_before and arrow_after)
                 move_brackets = bool(bracket_before and bracket_after)
+                move_energy_diagrams = bool(energy_before and energy_after)
                 move_orbitals = bool(orbital_before and orbital_after)
                 move_images = bool(image_before and image_after)
-                move_count = sum([move_atoms, move_text, move_arrows, move_brackets, move_orbitals, move_images])
+                move_count = sum(
+                    [
+                        move_atoms,
+                        move_text,
+                        move_arrows,
+                        move_brackets,
+                        move_energy_diagrams,
+                        move_orbitals,
+                        move_images,
+                    ]
+                )
 
                 if move_count > 1:
                     self.undo_stack.beginMacro("Move selection")
@@ -2376,6 +2468,16 @@ class ChemusonCanvas(QGraphicsView):
                 if move_brackets:
                     self.undo_stack.push(MoveBracketItemsCommand(self, bracket_before, bracket_after))
 
+                if move_energy_diagrams:
+                    self.undo_stack.push(
+                        TransformEnergyDiagramItemsCommand(
+                            self,
+                            energy_before,
+                            energy_after,
+                            "Move energy diagrams",
+                        )
+                    )
+
                 if move_orbitals:
                     self.undo_stack.push(
                         TransformOrbitalItemsCommand(self, orbital_before, orbital_after, "Move orbitals")
@@ -2401,6 +2503,7 @@ class ChemusonCanvas(QGraphicsView):
         arrow_items: Iterable = (),
         bracket_items: Iterable = (),
         text_items: Iterable = (),
+        energy_diagram_items: Iterable = (),
         orbital_items: Iterable = (),
         wavy_items: Iterable = (),
         image_items: Iterable = (),
@@ -2443,6 +2546,7 @@ class ChemusonCanvas(QGraphicsView):
             arrow_items=arrow_items,
             bracket_items=bracket_items,
             text_items=extra_text_items,
+            energy_diagram_items=energy_diagram_items,
             orbital_items=orbital_items,
             wavy_items=extra_wavy_items,
             image_items=image_items,
@@ -2465,7 +2569,7 @@ class ChemusonCanvas(QGraphicsView):
         for item in self.scene.items(scene_pos):
             if isinstance(item, AtomItem) and self._is_disposable_orphan_atom(item.atom_id):
                 continue
-            if isinstance(item, (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, OrbitalAnnotationItem, ImageAnnotationItem, WavyAnchorItem)):
+            if isinstance(item, (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, EnergyDiagramItem, OrbitalAnnotationItem, ImageAnnotationItem, WavyAnchorItem)):
                 return item
             # If we clicked a label/text child of an atom, return the atom.
             if isinstance(item, QGraphicsTextItem):
@@ -2481,7 +2585,7 @@ class ChemusonCanvas(QGraphicsView):
         item = self._get_item_at(scene_pos)
         if isinstance(
             item,
-            (TextAnnotationItem, OrbitalAnnotationItem, ImageAnnotationItem, ArrowItem, BracketItem, WavyAnchorItem),
+            (TextAnnotationItem, EnergyDiagramItem, OrbitalAnnotationItem, ImageAnnotationItem, ArrowItem, BracketItem, WavyAnchorItem),
         ):
             return item
 
@@ -2507,7 +2611,7 @@ class ChemusonCanvas(QGraphicsView):
         """
         best_item: Optional[QGraphicsItem] = None
         best_z = float("-inf")
-        for item in [*self._selected_orbital_items(), *self._selected_image_items()]:
+        for item in [*self._selected_energy_diagram_items(), *self._selected_orbital_items(), *self._selected_image_items()]:
             if item.scene() is not self.scene:
                 continue
             try:
@@ -2528,7 +2632,11 @@ class ChemusonCanvas(QGraphicsView):
 
     def _maybe_begin_selected_annotation_transform(self, scene_pos: QPointF, event) -> bool:
         """Permite transformar una anotación seleccionada incluso fuera de tool_select."""
-        if not self._selected_orbital_items() and not self._selected_image_items():
+        if (
+            not self._selected_energy_diagram_items()
+            and not self._selected_orbital_items()
+            and not self._selected_image_items()
+        ):
             return False
 
         handle_hit = self._selection_handle_hit_kind(scene_pos)
@@ -2566,6 +2674,7 @@ class ChemusonCanvas(QGraphicsView):
             "text_items": list(self._selected_text_items()),
             "arrow_items": list(self._selected_arrow_items()),
             "bracket_items": list(self._selected_bracket_items()),
+            "energy_diagram_items": list(self._selected_energy_diagram_items()),
             "orbital_items": list(self._selected_orbital_items()),
             "image_items": list(self._selected_image_items()),
             "wavy_items": [
@@ -2586,7 +2695,7 @@ class ChemusonCanvas(QGraphicsView):
                 item = self.bond_items.get(bond_id)
                 if item is not None and item.scene() is self.scene:
                     item.setSelected(True)
-            for key in ("text_items", "arrow_items", "bracket_items", "orbital_items", "image_items", "wavy_items"):
+            for key in ("text_items", "arrow_items", "bracket_items", "energy_diagram_items", "orbital_items", "image_items", "wavy_items"):
                 for item in snapshot.get(key, ()):
                     try:
                         if item is not None and item.scene() is self.scene:
@@ -3545,6 +3654,9 @@ class ChemusonCanvas(QGraphicsView):
             # Let the text editor handle Delete/Backspace while editing text.
             super().keyPressEvent(event)
             return
+        if isinstance(focus_item, EnergyDiagramItem) and focus_item.is_editing():
+            super().keyPressEvent(event)
+            return
         if event.key() == Qt.Key.Key_Space and not self._space_panning:
             self._space_panning = True
             self.setCursor(Qt.CursorShape.OpenHandCursor)
@@ -3563,6 +3675,9 @@ class ChemusonCanvas(QGraphicsView):
             has_selected_orbitals = any(
                 isinstance(item, OrbitalAnnotationItem) for item in self.scene.selectedItems()
             )
+            has_selected_energy_diagrams = any(
+                isinstance(item, EnergyDiagramItem) for item in self.scene.selectedItems()
+            )
             has_selected_images = any(
                 isinstance(item, ImageAnnotationItem) for item in self.scene.selectedItems()
             )
@@ -3572,6 +3687,7 @@ class ChemusonCanvas(QGraphicsView):
                 or has_selected_arrows
                 or has_selected_brackets
                 or has_selected_text
+                or has_selected_energy_diagrams
                 or has_selected_orbitals
                 or has_selected_images
             ):
@@ -3721,9 +3837,10 @@ class ChemusonCanvas(QGraphicsView):
         selected_text_items = self._selected_text_items()
         selected_arrows = self._selected_arrow_items()
         selected_brackets = self._selected_bracket_items()
+        selected_energy_diagrams = self._selected_energy_diagram_items()
         selected_orbitals = self._selected_orbital_items()
         selected_images = self._selected_image_items()
-        if not selected_atom_ids and not selected_text_items and not selected_arrows and not selected_brackets and not selected_orbitals and not selected_images:
+        if not selected_atom_ids and not selected_text_items and not selected_arrows and not selected_brackets and not selected_energy_diagrams and not selected_orbitals and not selected_images:
             return False
 
         step = 1.0
@@ -3774,6 +3891,16 @@ class ChemusonCanvas(QGraphicsView):
             after = {item: rect.translated(dx, dy) for item, rect in before.items()}
             self.undo_stack.push(MoveBracketItemsCommand(self, before, after))
 
+        if selected_energy_diagrams:
+            before = {item: self._energy_diagram_transform_snapshot(item) for item in selected_energy_diagrams}
+            after = {
+                item: (QPointF(pos.x() + dx, pos.y() + dy), width, height, rotation)
+                for item, (pos, width, height, rotation) in before.items()
+            }
+            self.undo_stack.push(
+                TransformEnergyDiagramItemsCommand(self, before, after, "Move energy diagrams")
+            )
+
         if selected_orbitals:
             before = {item: self._orbital_transform_snapshot(item) for item in selected_orbitals}
             after = {
@@ -3806,7 +3933,7 @@ class ChemusonCanvas(QGraphicsView):
         for item in self.scene.items():
             if isinstance(
                 item,
-                (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, OrbitalAnnotationItem, ImageAnnotationItem, WavyAnchorItem),
+                (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, EnergyDiagramItem, OrbitalAnnotationItem, ImageAnnotationItem, WavyAnchorItem),
             ) and item.isVisible():
                 item.setSelected(True)
         self._sync_selection_from_scene()
@@ -4119,6 +4246,7 @@ class ChemusonCanvas(QGraphicsView):
             "annotations": {
                 "arrows": [],
                 "brackets": [],
+                "energy_diagrams": [],
                 "orbitals": [],
                 "images": [],
                 "text_items": [],
@@ -4180,6 +4308,23 @@ class ChemusonCanvas(QGraphicsView):
                     "mime_type": item.mime_type(),
                     "data_b64": base64.b64encode(item.data_bytes()).decode("ascii"),
                     "source_name": item.source_name(),
+                    "opacity": self.item_raw_opacity(item),
+                })
+            elif isinstance(item, EnergyDiagramItem):
+                rect = item.display_rect()
+                data["annotations"]["energy_diagrams"].append({
+                    "x": rect.x(),
+                    "y": rect.y(),
+                    "width": rect.width(),
+                    "height": rect.height(),
+                    "rotation": item.rotation(),
+                    "z": item.zValue(),
+                    "kind": item.kind(),
+                    "slot_count": item.slot_count(),
+                    "label": item.label(),
+                    "label_side": item.label_side(),
+                    "occupancies": list(item.occupancies()),
+                    "style_payload": item.style_payload(),
                     "opacity": self.item_raw_opacity(item),
                 })
             elif isinstance(item, OrbitalAnnotationItem):
@@ -4335,6 +4480,30 @@ class ChemusonCanvas(QGraphicsView):
             self.set_graphics_item_opacity(item, img_d.get("opacity"))
             self.readd_image_item(item)
 
+        for energy_d in annotations.get("energy_diagrams", []):
+            item = EnergyDiagramItem(
+                energy_d.get("kind", DEFAULT_ENERGY_DIAGRAM_KIND),
+                label=energy_d.get("label"),
+                label_side=energy_d.get("label_side"),
+                occupancies=energy_d.get("occupancies"),
+                slot_count=energy_d.get("slot_count"),
+                style_payload=energy_d.get("style_payload"),
+                width=float(energy_d.get("width", 1.0)),
+                height=float(energy_d.get("height", 1.0)),
+            )
+            item.set_display_rect(
+                QRectF(
+                    float(energy_d.get("x", 0.0)),
+                    float(energy_d.get("y", 0.0)),
+                    float(energy_d.get("width", 1.0)),
+                    float(energy_d.get("height", 1.0)),
+                )
+            )
+            item.setRotation(float(energy_d.get("rotation", 0.0)))
+            item.setZValue(float(energy_d.get("z", 44.0)))
+            self.set_graphics_item_opacity(item, energy_d.get("opacity"))
+            self.readd_energy_diagram_item(item)
+
         for orbital_d in annotations.get("orbitals", []):
             try:
                 anchor0_d = orbital_d.get("anchor0", {})
@@ -4454,6 +4623,7 @@ class ChemusonCanvas(QGraphicsView):
         self.aromatic_circles.clear()
         self.arrow_items.clear()
         self.bracket_items.clear()
+        self.energy_diagram_items.clear()
         self.orbital_items.clear()
         self.image_items.clear()
         self._electron_dots.clear()
@@ -4646,6 +4816,14 @@ class ChemusonCanvas(QGraphicsView):
         if item not in self.image_items:
             self.image_items.append(item)
 
+    def add_energy_diagram_item(self, item: EnergyDiagramItem) -> None:
+        """Añade un diagrama de energia persistente al lienzo."""
+        self.ensure_graphics_item_opacity(item)
+        if item.scene() is not self.scene:
+            self.scene.addItem(item)
+        if item not in self.energy_diagram_items:
+            self.energy_diagram_items.append(item)
+
     def add_orbital_item(self, item: OrbitalAnnotationItem) -> None:
         """Añade un orbital vectorial persistente al lienzo."""
         self.ensure_graphics_item_opacity(item)
@@ -4693,6 +4871,13 @@ class ChemusonCanvas(QGraphicsView):
         """Elimina una imagen anotada del lienzo."""
         if item in self.image_items:
             self.image_items.remove(item)
+        if item.scene() is self.scene:
+            self.scene.removeItem(item)
+
+    def remove_energy_diagram_item(self, item: EnergyDiagramItem) -> None:
+        """Elimina un diagrama de energia persistente."""
+        if item in self.energy_diagram_items:
+            self.energy_diagram_items.remove(item)
         if item.scene() is self.scene:
             self.scene.removeItem(item)
 
@@ -4747,6 +4932,14 @@ class ChemusonCanvas(QGraphicsView):
         if item not in self.image_items:
             self.image_items.append(item)
 
+    def readd_energy_diagram_item(self, item: EnergyDiagramItem) -> None:
+        """Reintroduce un diagrama de energia persistente en el lienzo."""
+        self.ensure_graphics_item_opacity(item)
+        if item.scene() is not self.scene:
+            self.scene.addItem(item)
+        if item not in self.energy_diagram_items:
+            self.energy_diagram_items.append(item)
+
     def readd_orbital_item(self, item: OrbitalAnnotationItem) -> None:
         """Reintroduce un orbital persistente en el lienzo."""
         self.ensure_graphics_item_opacity(item)
@@ -4791,6 +4984,9 @@ class ChemusonCanvas(QGraphicsView):
         selected_text_items = [
             item for item in self.scene.selectedItems() if isinstance(item, TextAnnotationItem)
         ]
+        selected_energy_diagrams = [
+            item for item in self.scene.selectedItems() if isinstance(item, EnergyDiagramItem)
+        ]
         selected_orbitals = [
             item for item in self.scene.selectedItems() if isinstance(item, OrbitalAnnotationItem)
         ]
@@ -4806,6 +5002,7 @@ class ChemusonCanvas(QGraphicsView):
             and not selected_arrows
             and not selected_brackets
             and not selected_text_items
+            and not selected_energy_diagrams
             and not selected_orbitals
             and not selected_wavy
             and not selected_images
@@ -4817,6 +5014,7 @@ class ChemusonCanvas(QGraphicsView):
             arrow_items=selected_arrows,
             bracket_items=selected_brackets,
             text_items=selected_text_items,
+            energy_diagram_items=selected_energy_diagrams,
             orbital_items=selected_orbitals,
             wavy_items=selected_wavy,
             image_items=selected_images,
@@ -4957,6 +5155,7 @@ class ChemusonCanvas(QGraphicsView):
         arrows = self._selected_arrow_items()
         brackets = self._selected_bracket_items()
         texts = self._selected_text_items()
+        energy_diagrams = self._selected_energy_diagram_items()
         orbitals = self._selected_orbital_items()
         images = self._selected_image_items()
         wavy_items = [
@@ -4969,6 +5168,7 @@ class ChemusonCanvas(QGraphicsView):
             and not arrows
             and not brackets
             and not texts
+            and not energy_diagrams
             and not orbitals
             and not images
             and not wavy_items
@@ -5080,6 +5280,27 @@ class ChemusonCanvas(QGraphicsView):
                 }
             )
 
+        energy_diagrams_payload = []
+        for item in energy_diagrams:
+            rect = item.display_rect()
+            energy_diagrams_payload.append(
+                {
+                    "x": rect.x() - left,
+                    "y": rect.y() - top,
+                    "width": rect.width(),
+                    "height": rect.height(),
+                    "rotation": item.rotation(),
+                    "z": item.zValue(),
+                    "kind": item.kind(),
+                    "slot_count": item.slot_count(),
+                    "label": item.label(),
+                    "label_side": item.label_side(),
+                    "occupancies": list(item.occupancies()),
+                    "style_payload": item.style_payload(),
+                    "opacity": self.effective_item_opacity(item),
+                }
+            )
+
         orbitals_payload = []
         for item in orbitals:
             anchor0 = item.anchor0()
@@ -5136,6 +5357,7 @@ class ChemusonCanvas(QGraphicsView):
             "arrows": arrows_payload,
             "brackets": brackets_payload,
             "texts": texts_payload,
+            "energy_diagrams": energy_diagrams_payload,
             "orbitals": orbitals_payload,
             "images": images_payload,
             "wavy_items": wavy_payload,
@@ -5158,6 +5380,7 @@ class ChemusonCanvas(QGraphicsView):
         arrows = payload.get("arrows", [])
         brackets = payload.get("brackets", [])
         texts = payload.get("texts", [])
+        energy_diagrams = payload.get("energy_diagrams", [])
         orbitals = payload.get("orbitals", [])
         images = payload.get("images", [])
         wavy_items = payload.get("wavy_items", [])
@@ -5167,6 +5390,7 @@ class ChemusonCanvas(QGraphicsView):
             and not arrows
             and not brackets
             and not texts
+            and not energy_diagrams
             and not orbitals
             and not images
             and not wavy_items
@@ -5199,7 +5423,17 @@ class ChemusonCanvas(QGraphicsView):
                 ring_map[ring_id] = self.allocate_ring_id()
             return ring_map[ring_id]
 
-        has_undo_items = bool(atoms or bonds or arrows or brackets or texts or orbitals or images or wavy_items)
+        has_undo_items = bool(
+            atoms
+            or bonds
+            or arrows
+            or brackets
+            or texts
+            or energy_diagrams
+            or orbitals
+            or images
+            or wavy_items
+        )
         self.begin_validation_batch()
         if has_undo_items:
             self.undo_stack.beginMacro("Paste selection")
@@ -5391,6 +5625,38 @@ class ChemusonCanvas(QGraphicsView):
                 else:
                     self.scene.addItem(text_item)
                 inserted_items.append(text_item)
+
+            for energy_d in energy_diagrams:
+                item = EnergyDiagramItem(
+                    energy_d.get("kind", DEFAULT_ENERGY_DIAGRAM_KIND),
+                    label=energy_d.get("label"),
+                    label_side=energy_d.get("label_side"),
+                    occupancies=normalize_energy_occupancies(
+                        energy_d.get("occupancies", ()),
+                        kind=str(energy_d.get("kind", DEFAULT_ENERGY_DIAGRAM_KIND)),
+                        box_count=energy_d.get("slot_count"),
+                    ),
+                    slot_count=energy_d.get("slot_count"),
+                    style_payload=energy_d.get("style_payload"),
+                    width=float(energy_d.get("width", 1.0)),
+                    height=float(energy_d.get("height", 1.0)),
+                )
+                item.set_display_rect(
+                    QRectF(
+                        float(energy_d.get("x", 0.0)) + dx,
+                        float(energy_d.get("y", 0.0)) + dy,
+                        float(energy_d.get("width", 1.0)),
+                        float(energy_d.get("height", 1.0)),
+                    )
+                )
+                item.setRotation(float(energy_d.get("rotation", 0.0)))
+                item.setZValue(float(energy_d.get("z", 44.0)))
+                self.set_graphics_item_opacity(item, energy_d.get("opacity"))
+                if has_undo_items:
+                    self.undo_stack.push(AddEnergyDiagramItemCommand(self, item))
+                else:
+                    self.readd_energy_diagram_item(item)
+                inserted_items.append(item)
 
             for orbital_d in orbitals:
                 anchor0_vals = orbital_d.get("anchor0", [0.0, 0.0])
@@ -5811,7 +6077,7 @@ class ChemusonCanvas(QGraphicsView):
                     continue
                 extend(item.sceneBoundingRect())
             for item in self.scene.selectedItems():
-                if isinstance(item, (ArrowItem, BracketItem, TextAnnotationItem, OrbitalAnnotationItem, ImageAnnotationItem, WavyAnchorItem)):
+                if isinstance(item, (ArrowItem, BracketItem, TextAnnotationItem, EnergyDiagramItem, OrbitalAnnotationItem, ImageAnnotationItem, WavyAnchorItem)):
                     extend(item.sceneBoundingRect())
         else:
             for atom_id in self.atom_items.keys():
@@ -6620,6 +6886,38 @@ class ChemusonCanvas(QGraphicsView):
             QPointF(scene_pos.x(), scene_pos.y() - extent),
         )
         self.undo_stack.push(AddOrbitalItemCommand(self, item))
+        self._select_inserted_items(items=[item])
+        self._refresh_scene_after_image_insert()
+        return item
+
+    def _insert_energy_diagram_item(
+        self,
+        scene_pos: QPointF,
+        kind: str | None = None,
+    ) -> Optional[EnergyDiagramItem]:
+        """Inserta un diagrama de energia persistente centrado en `scene_pos`."""
+        diagram_kind = kind or getattr(
+            self.state,
+            "active_energy_diagram_kind",
+            DEFAULT_ENERGY_DIAGRAM_KIND,
+        )
+        size = energy_diagram_default_size(diagram_kind, self.state.bond_length)
+        item = EnergyDiagramItem(
+            diagram_kind,
+            label=default_energy_label(diagram_kind),
+            label_side=default_energy_label_side(diagram_kind),
+            width=float(size.width()),
+            height=float(size.height()),
+        )
+        item.set_display_rect(
+            QRectF(
+                float(scene_pos.x()) - float(size.width()) * 0.5,
+                float(scene_pos.y()) - float(size.height()) * 0.5,
+                float(size.width()),
+                float(size.height()),
+            )
+        )
+        self.undo_stack.push(AddEnergyDiagramItemCommand(self, item))
         self._select_inserted_items(items=[item])
         self._refresh_scene_after_image_insert()
         return item
@@ -10150,6 +10448,20 @@ class ChemusonCanvas(QGraphicsView):
             if bond_id in self.model.bonds:
                 bond = self.model.get_bond(bond_id)
                 details = {"type": "bond", "id": bond.id, "order": bond.order, "style": bond.style, "aromatic": bond.is_aromatic}
+        elif (
+            len(self._selected_energy_diagram_items()) == 1
+            and not selected_atoms
+            and not selected_bonds
+            and not selected_text_items
+        ):
+            item = self._selected_energy_diagram_items()[0]
+            details = {
+                "type": "energy_diagram",
+                "kind": energy_diagram_display_name(item.kind()),
+                "label": item.label(),
+                "boxes": item.box_count(),
+                "occupancies": ", ".join(item.occupancies()),
+            }
         elif len(selected_text_items) == 1 and not selected_atoms and not selected_bonds:
             item = selected_text_items[0]
             cursor = item.textCursor()
@@ -10266,7 +10578,7 @@ class ChemusonCanvas(QGraphicsView):
                 for item in self.scene.items(path)
                 if isinstance(
                     item,
-                    (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, OrbitalAnnotationItem, ImageAnnotationItem),
+                    (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, EnergyDiagramItem, OrbitalAnnotationItem, ImageAnnotationItem),
                 )
             ]
             items = [
@@ -10281,7 +10593,7 @@ class ChemusonCanvas(QGraphicsView):
                 for item in self.scene.items(rect)
                 if isinstance(
                     item,
-                    (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, OrbitalAnnotationItem, ImageAnnotationItem),
+                    (AtomItem, BondItem, ArrowItem, BracketItem, TextAnnotationItem, EnergyDiagramItem, OrbitalAnnotationItem, ImageAnnotationItem),
                 )
             ]
             items = [
@@ -10809,11 +11121,17 @@ class ChemusonCanvas(QGraphicsView):
             self.state.selected_atoms
             or self.state.selected_bonds
             or self._selected_text_items()
-            or any(isinstance(item, (ArrowItem, BracketItem, OrbitalAnnotationItem, ImageAnnotationItem)) for item in self.scene.selectedItems())
+            or any(isinstance(item, (ArrowItem, BracketItem, EnergyDiagramItem, OrbitalAnnotationItem, ImageAnnotationItem)) for item in self.scene.selectedItems())
         )
         has_bond_selection = bool(self.state.selected_bonds)
         has_stroke_selection = bool(
             has_bond_selection or self._selected_arrow_items() or self._selected_bracket_items()
+        )
+        selected_line_arrow_items = self._selected_line_arrow_items()
+        line_arrow_target = (
+            clicked_item
+            if self._is_uniform_line_arrow(clicked_item)
+            else selected_line_arrow_items[0] if len(selected_line_arrow_items) == 1 else None
         )
         coordination_bond_ids: list[int] = []
         if isinstance(clicked_item, BondItem):
@@ -10860,6 +11178,22 @@ class ChemusonCanvas(QGraphicsView):
             bool(getattr(self.model.get_atom(atom_id), "sphere_color", None))
             for atom_id in styled_coordination_ids
         )
+        selected_energy_diagram_items = self._selected_energy_diagram_items()
+        selected_row_energy_diagram_items = [
+            item for item in selected_energy_diagram_items if item.family() == "row"
+        ]
+        energy_diagram_target = self._single_energy_diagram_target(clicked_item)
+        energy_fill_all_visible = bool(selected_energy_diagram_items) and all(
+            bool(item.effective_style().get("fill_visible", True))
+            for item in selected_energy_diagram_items
+        )
+        energy_box_outline_all_visible = bool(selected_energy_diagram_items) and all(
+            bool(item.effective_style().get("box_stroke_visible", True))
+            for item in selected_energy_diagram_items
+        )
+        energy_has_custom_style = any(
+            bool(item.style_payload()) for item in selected_energy_diagram_items
+        )
         selected_orbital_items = self._selected_orbital_items()
         orbital_target = self._single_orbital_target(clicked_item)
         charge_atom_ids: list[int] = []
@@ -10883,6 +11217,8 @@ class ChemusonCanvas(QGraphicsView):
         act_thicker = None
         act_thinner = None
         act_reset_thickness = None
+        act_line_equalize = None
+        act_line_set_length = None
         act_color = None
         act_reset_color = None
         branch_action_handlers: dict = {}
@@ -10892,6 +11228,16 @@ class ChemusonCanvas(QGraphicsView):
             act_thicker = thickness_menu.addAction("Incrementar grosor")
             act_thinner = thickness_menu.addAction("Disminuir grosor")
             act_reset_thickness = thickness_menu.addAction("Restablecer grosor")
+        if selected_line_arrow_items:
+            line_menu = menu.addMenu("Longitud de lineas")
+            if len(selected_line_arrow_items) >= 2:
+                equalize_label = (
+                    "Igualar a la linea activa"
+                    if line_arrow_target is not None
+                    else "Igualar longitudes"
+                )
+                act_line_equalize = line_menu.addAction(equalize_label)
+            act_line_set_length = line_menu.addAction("Establecer longitud...")
         branch_bond_id = None
         if isinstance(clicked_item, BondItem):
             branch_bond_id = clicked_item.bond_id
@@ -10966,6 +11312,19 @@ class ChemusonCanvas(QGraphicsView):
         act_coord_sphere_toggle_transparent = None
         act_coord_sphere_radius = None
         act_arrange_coordination = None
+        act_energy_label = None
+        act_energy_box_count = None
+        act_energy_occupancies = None
+        act_energy_label_left = None
+        act_energy_label_right = None
+        act_energy_stroke_color = None
+        act_energy_fill_color = None
+        act_energy_label_color = None
+        act_energy_arrow_up_color = None
+        act_energy_arrow_down_color = None
+        act_energy_fill_toggle = None
+        act_energy_box_outline_toggle = None
+        act_energy_reset_style = None
         act_orbital_color = None
         act_orbital_reset_color = None
         act_orbital_opacity = None
@@ -11042,6 +11401,37 @@ class ChemusonCanvas(QGraphicsView):
             )
             act_arrange_coordination = menu.addAction("Distribuir ligandos alrededor")
             act_arrange_coordination.setEnabled(can_arrange)
+        if selected_energy_diagram_items:
+            menu.addSeparator()
+            energy_menu = menu.addMenu("Diagrama de energia")
+            if energy_diagram_target is not None and energy_diagram_target.supports_free_label():
+                act_energy_label = energy_menu.addAction("Etiqueta...")
+                side_menu = energy_menu.addMenu("Posición de etiqueta")
+                act_energy_label_left = side_menu.addAction("Izquierda")
+                act_energy_label_right = side_menu.addAction("Derecha")
+                energy_menu.addSeparator()
+            if selected_row_energy_diagram_items:
+                act_energy_box_count = energy_menu.addAction("Numero de cajas...")
+            if energy_diagram_target is not None:
+                act_energy_occupancies = energy_menu.addAction("Ocupación electrónica...")
+                energy_menu.addSeparator()
+            energy_style_menu = energy_menu.addMenu("Estilo")
+            act_energy_stroke_color = energy_style_menu.addAction("Color de contorno...")
+            act_energy_fill_color = energy_style_menu.addAction("Color de relleno...")
+            act_energy_label_color = energy_style_menu.addAction("Color de etiqueta...")
+            act_energy_arrow_up_color = energy_style_menu.addAction("Color de flecha ↑...")
+            act_energy_arrow_down_color = energy_style_menu.addAction("Color de flecha ↓...")
+            fill_text = "Quitar fondo" if energy_fill_all_visible else "Mostrar fondo"
+            act_energy_fill_toggle = energy_style_menu.addAction(fill_text)
+            outline_text = (
+                "Quitar contorno de cajas"
+                if energy_box_outline_all_visible
+                else "Mostrar contorno de cajas"
+            )
+            act_energy_box_outline_toggle = energy_style_menu.addAction(outline_text)
+            energy_style_menu.addSeparator()
+            act_energy_reset_style = energy_style_menu.addAction("Restablecer estilo")
+            act_energy_reset_style.setEnabled(energy_has_custom_style)
         if selected_orbital_items:
             menu.addSeparator()
             orbital_menu = menu.addMenu("Orbital")
@@ -11091,6 +11481,12 @@ class ChemusonCanvas(QGraphicsView):
         if act_reset_thickness is not None and action == act_reset_thickness:
             self._reset_selected_bond_stroke()
             return
+        if act_line_equalize is not None and action == act_line_equalize:
+            self._equalize_selected_line_arrow_lengths(reference_item=line_arrow_target)
+            return
+        if act_line_set_length is not None and action == act_line_set_length:
+            self._prompt_selected_line_arrow_length(reference_item=line_arrow_target)
+            return
         if act_color is not None and action == act_color:
             self._prompt_bond_color()
             return
@@ -11105,6 +11501,47 @@ class ChemusonCanvas(QGraphicsView):
             return
         if act_orbital_opacity is not None and action == act_orbital_opacity:
             self._prompt_selected_orbital_opacity()
+            return
+        if energy_diagram_target is not None and act_energy_label is not None and action == act_energy_label:
+            self._prompt_energy_diagram_label(energy_diagram_target)
+            return
+        if act_energy_box_count is not None and action == act_energy_box_count:
+            self._prompt_selected_energy_diagram_box_count()
+            return
+        if energy_diagram_target is not None and act_energy_occupancies is not None and action == act_energy_occupancies:
+            self._prompt_energy_diagram_occupancies(energy_diagram_target)
+            return
+        if act_energy_label_left is not None and action == act_energy_label_left:
+            self._set_selected_energy_diagram_label_side("left")
+            return
+        if act_energy_label_right is not None and action == act_energy_label_right:
+            self._set_selected_energy_diagram_label_side("right")
+            return
+        if act_energy_stroke_color is not None and action == act_energy_stroke_color:
+            self._prompt_selected_energy_diagram_color("stroke_color", "Color de contorno")
+            return
+        if act_energy_fill_color is not None and action == act_energy_fill_color:
+            self._prompt_selected_energy_diagram_color("fill_color", "Color de relleno")
+            return
+        if act_energy_label_color is not None and action == act_energy_label_color:
+            self._prompt_selected_energy_diagram_color("label_color", "Color de etiqueta")
+            return
+        if act_energy_arrow_up_color is not None and action == act_energy_arrow_up_color:
+            self._prompt_selected_energy_diagram_color("arrow_up_color", "Color de flecha ↑")
+            return
+        if act_energy_arrow_down_color is not None and action == act_energy_arrow_down_color:
+            self._prompt_selected_energy_diagram_color("arrow_down_color", "Color de flecha ↓")
+            return
+        if act_energy_fill_toggle is not None and action == act_energy_fill_toggle:
+            self._set_selected_energy_diagram_fill_visible(not energy_fill_all_visible)
+            return
+        if act_energy_box_outline_toggle is not None and action == act_energy_box_outline_toggle:
+            self._set_selected_energy_diagram_box_stroke_visible(
+                not energy_box_outline_all_visible
+            )
+            return
+        if act_energy_reset_style is not None and action == act_energy_reset_style:
+            self._reset_selected_energy_diagram_style()
             return
         if orbital_target is not None and act_orbital_lobe_color is not None and action == act_orbital_lobe_color:
             self._prompt_orbital_part_color(orbital_target)
@@ -11885,6 +12322,195 @@ class ChemusonCanvas(QGraphicsView):
         payload.pop(part_name, None)
         self._push_orbital_style_change({item: payload}, text="Reset orbital lobe style")
 
+    def _single_energy_diagram_target(
+        self,
+        clicked_item: Optional[QGraphicsItem] = None,
+    ) -> Optional[EnergyDiagramItem]:
+        """Devuelve un diagrama único para acciones de edición puntual."""
+        if isinstance(clicked_item, EnergyDiagramItem):
+            return clicked_item
+        selected = self._selected_energy_diagram_items()
+        return selected[0] if len(selected) == 1 else None
+
+    def _push_energy_diagram_config_change(
+        self,
+        updates: dict[EnergyDiagramItem, dict[str, object]],
+        *,
+        text: str,
+    ) -> bool:
+        """Empaqueta cambios de configuración de diagramas en undo/redo."""
+        before: dict[EnergyDiagramItem, dict[str, object]] = {}
+        after: dict[EnergyDiagramItem, dict[str, object]] = {}
+        for item, payload in updates.items():
+            if item.scene() is not self.scene:
+                continue
+            current = item.config_payload()
+            if current == payload:
+                continue
+            before[item] = current
+            after[item] = payload
+        if not after:
+            return False
+        self.undo_stack.push(ConfigureEnergyDiagramItemsCommand(self, before, after, text))
+        return True
+
+    def _prompt_energy_diagram_label(self, item: EnergyDiagramItem) -> None:
+        """Solicita una nueva etiqueta para un diagrama."""
+        if not item.supports_free_label():
+            return
+        value, ok = QInputDialog.getText(
+            self,
+            "Etiqueta de diagrama",
+            "Etiqueta:",
+            text=item.label(),
+        )
+        if not ok:
+            return
+        payload = item.config_payload()
+        payload["label"] = str(value or "")
+        self._push_energy_diagram_config_change(
+            {item: payload},
+            text="Change energy diagram label",
+        )
+
+    def _prompt_energy_diagram_occupancies(self, item: EnergyDiagramItem) -> None:
+        """Edita la ocupación electrónica caja por caja."""
+        value, ok = QInputDialog.getText(
+            self,
+            "Ocupación electrónica",
+            "Ocupaciones separadas por comas (empty, up, down, pair, upup, downdown):",
+            text=", ".join(item.occupancies()),
+        )
+        if not ok:
+            return
+        payload = item.config_payload()
+        payload["occupancies"] = list(
+            normalize_energy_occupancies(
+                value,
+                kind=item.kind(),
+                box_count=item.slot_count(),
+            )
+        )
+        self._push_energy_diagram_config_change(
+            {item: payload},
+            text="Change energy diagram occupancies",
+        )
+
+    def _prompt_selected_energy_diagram_box_count(self) -> None:
+        """Solicita un nuevo numero de cajas para filas de orbitales."""
+        items = [item for item in self._selected_energy_diagram_items() if item.family() == "row"]
+        if not items:
+            return
+        current = int(items[0].slot_count())
+        value, ok = QInputDialog.getInt(
+            self,
+            "Numero de cajas",
+            "Numero de cajas:",
+            current,
+            1,
+            20,
+        )
+        if not ok:
+            return
+        updates: dict[EnergyDiagramItem, dict[str, object]] = {}
+        for item in items:
+            payload = item.config_payload()
+            payload["slot_count"] = int(value)
+            updates[item] = payload
+        self._push_energy_diagram_config_change(
+            updates,
+            text="Change energy diagram box count",
+        )
+
+    def _set_selected_energy_diagram_label_side(self, side: str) -> None:
+        """Aplica la posición de etiqueta a los diagramas seleccionados."""
+        items = self._selected_energy_diagram_items()
+        if not items:
+            return
+        updates: dict[EnergyDiagramItem, dict[str, object]] = {}
+        for item in items:
+            if not item.supports_free_label():
+                continue
+            payload = item.config_payload()
+            payload["label_side"] = side
+            updates[item] = payload
+        self._push_energy_diagram_config_change(
+            updates,
+            text="Change energy diagram label side",
+        )
+
+    def _prompt_selected_energy_diagram_color(self, key: str, title: str) -> None:
+        """Solicita un color para un canal visual de diagramas seleccionados."""
+        items = self._selected_energy_diagram_items()
+        if not items:
+            return
+        initial = QColor("#222222")
+        for item in items:
+            candidate = QColor(str(item.effective_style().get(key, "")))
+            if candidate.isValid():
+                initial = candidate
+                break
+        color = QColorDialog.getColor(initial, self, title)
+        if not color.isValid():
+            return
+        updates: dict[EnergyDiagramItem, dict[str, object]] = {}
+        for item in items:
+            payload = item.config_payload()
+            style_payload = dict(payload.get("style_payload", {}) or {})
+            style_payload[key] = color.name(QColor.NameFormat.HexRgb)
+            payload["style_payload"] = style_payload
+            updates[item] = payload
+        self._push_energy_diagram_config_change(updates, text=f"Change {key}")
+
+    def _set_selected_energy_diagram_fill_visible(self, visible: bool) -> None:
+        """Muestra u oculta el fondo de los diagramas seleccionados."""
+        items = self._selected_energy_diagram_items()
+        if not items:
+            return
+        updates: dict[EnergyDiagramItem, dict[str, object]] = {}
+        for item in items:
+            payload = item.config_payload()
+            style_payload = dict(payload.get("style_payload", {}) or {})
+            style_payload["fill_visible"] = bool(visible)
+            payload["style_payload"] = style_payload
+            updates[item] = payload
+        self._push_energy_diagram_config_change(
+            updates,
+            text="Toggle energy diagram fill",
+        )
+
+    def _set_selected_energy_diagram_box_stroke_visible(self, visible: bool) -> None:
+        """Muestra u oculta el contorno de cajas/niveles editables."""
+        items = self._selected_energy_diagram_items()
+        if not items:
+            return
+        updates: dict[EnergyDiagramItem, dict[str, object]] = {}
+        for item in items:
+            payload = item.config_payload()
+            style_payload = dict(payload.get("style_payload", {}) or {})
+            style_payload["box_stroke_visible"] = bool(visible)
+            payload["style_payload"] = style_payload
+            updates[item] = payload
+        self._push_energy_diagram_config_change(
+            updates,
+            text="Toggle energy diagram box outline",
+        )
+
+    def _reset_selected_energy_diagram_style(self) -> None:
+        """Elimina overrides de color/fondo de los diagramas seleccionados."""
+        items = self._selected_energy_diagram_items()
+        if not items:
+            return
+        updates: dict[EnergyDiagramItem, dict[str, object]] = {}
+        for item in items:
+            payload = item.config_payload()
+            payload["style_payload"] = {}
+            updates[item] = payload
+        self._push_energy_diagram_config_change(
+            updates,
+            text="Reset energy diagram style",
+        )
+
     def _adjust_selected_bond_stroke(self, delta: float) -> None:
         """Método auxiliar para  adjust selected bond stroke.
 
@@ -11950,6 +12576,101 @@ class ChemusonCanvas(QGraphicsView):
             self.undo_stack.push(ChangeBracketStrokeCommand(self, item, None))
         self.undo_stack.endMacro()
 
+    @staticmethod
+    def _arrow_length(item: ArrowItem) -> float:
+        """Devuelve la longitud geométrica de una anotación lineal."""
+        start = item.start_point()
+        end = item.end_point()
+        return math.hypot(end.x() - start.x(), end.y() - start.y())
+
+    @staticmethod
+    def _centered_arrow_segment(
+        start: QPointF,
+        end: QPointF,
+        target_length: float,
+    ) -> tuple[QPointF, QPointF]:
+        """Reconstruye un segmento con la longitud dada preservando centro y ángulo."""
+        dx = end.x() - start.x()
+        dy = end.y() - start.y()
+        length = math.hypot(dx, dy)
+        if length <= 1e-6:
+            ux, uy = 1.0, 0.0
+        else:
+            ux, uy = dx / length, dy / length
+        center = QPointF((start.x() + end.x()) * 0.5, (start.y() + end.y()) * 0.5)
+        half = max(0.5, float(target_length)) * 0.5
+        return (
+            QPointF(center.x() - ux * half, center.y() - uy * half),
+            QPointF(center.x() + ux * half, center.y() + uy * half),
+        )
+
+    def _set_line_arrow_length(
+        self,
+        target_length: float,
+        *,
+        items: Optional[list[ArrowItem]] = None,
+        text: str = "Set line length",
+    ) -> bool:
+        """Aplica una longitud uniforme a líneas rectas seleccionadas."""
+        target = max(0.5, float(target_length))
+        line_items = [
+            item
+            for item in (self._selected_line_arrow_items() if items is None else items)
+            if self._is_uniform_line_arrow(item) and item.scene() is self.scene
+        ]
+        before: dict[ArrowItem, tuple[QPointF, QPointF]] = {}
+        after: dict[ArrowItem, tuple[QPointF, QPointF]] = {}
+        for item in line_items:
+            start = item.start_point()
+            end = item.end_point()
+            new_start, new_end = self._centered_arrow_segment(start, end, target)
+            if self._point_equal(start, new_start) and self._point_equal(end, new_end):
+                continue
+            before[item] = (start, end)
+            after[item] = (new_start, new_end)
+        if not after:
+            return False
+        self.undo_stack.push(MoveArrowItemsCommand(self, before, after, text=text))
+        return True
+
+    def _equalize_selected_line_arrow_lengths(
+        self,
+        reference_item: Optional[ArrowItem] = None,
+    ) -> bool:
+        """Iguala todas las líneas rectas seleccionadas a una longitud común."""
+        items = self._selected_line_arrow_items()
+        if len(items) < 2:
+            return False
+        reference = reference_item if self._is_uniform_line_arrow(reference_item) and reference_item in items else items[0]
+        return self._set_line_arrow_length(
+            self._arrow_length(reference),
+            items=items,
+            text="Equalize line lengths",
+        )
+
+    def _prompt_selected_line_arrow_length(
+        self,
+        reference_item: Optional[ArrowItem] = None,
+    ) -> None:
+        """Solicita una longitud y la aplica a las líneas rectas seleccionadas."""
+        items = self._selected_line_arrow_items()
+        if not items:
+            return
+        reference = reference_item if self._is_uniform_line_arrow(reference_item) and reference_item in items else items[0]
+        current = self._arrow_length(reference)
+        value, ok = QInputDialog.getDouble(
+            self,
+            "Longitud de líneas",
+            "Longitud uniforme:",
+            current,
+            0.5,
+            5000.0,
+            1,
+        )
+        if not ok:
+            return
+        self._set_line_arrow_length(float(value), items=items, text="Set line length")
+
     def _selected_text_items_for_opacity(self) -> list[TextAnnotationItem]:
         """Devuelve textos manuales seleccionados o en edición para opacidad."""
         items = [
@@ -11983,6 +12704,7 @@ class ChemusonCanvas(QGraphicsView):
                 "text_items": self._selected_text_items_for_opacity(),
                 "arrow_items": self._selected_arrow_items(),
                 "bracket_items": self._selected_bracket_items(),
+                "energy_diagram_items": self._selected_energy_diagram_items(),
                 "orbital_items": self._selected_orbital_items(),
                 "image_items": self._selected_image_items(),
                 "wavy_items": self._selected_wavy_items(),
@@ -11998,6 +12720,9 @@ class ChemusonCanvas(QGraphicsView):
             ],
             "arrow_items": [item for item in self.arrow_items if item.scene() is self.scene],
             "bracket_items": [item for item in self.bracket_items if item.scene() is self.scene],
+            "energy_diagram_items": [
+                item for item in self.energy_diagram_items if item.scene() is self.scene
+            ],
             "orbital_items": [item for item in self.orbital_items if item.scene() is self.scene],
             "image_items": [item for item in self.image_items if item.scene() is self.scene],
             "wavy_items": [item for item in self._wavy_anchors if item.scene() is self.scene],
@@ -12017,6 +12742,7 @@ class ChemusonCanvas(QGraphicsView):
                 "text_items",
                 "arrow_items",
                 "bracket_items",
+                "energy_diagram_items",
                 "orbital_items",
                 "image_items",
                 "wavy_items",
@@ -12032,7 +12758,7 @@ class ChemusonCanvas(QGraphicsView):
         values: list[float] = []
         values.extend(self.effective_atom_opacity(atom_id) for atom_id in snapshot["atom_ids"])
         values.extend(self.effective_bond_opacity(bond_id) for bond_id in snapshot["bond_ids"])
-        for key in ("text_items", "arrow_items", "bracket_items", "orbital_items", "image_items", "wavy_items"):
+        for key in ("text_items", "arrow_items", "bracket_items", "energy_diagram_items", "orbital_items", "image_items", "wavy_items"):
             values.extend(self.effective_item_opacity(item) for item in snapshot[key])
         if not values:
             return int(round(self.canvas_default_opacity() * 100.0))
@@ -12074,7 +12800,7 @@ class ChemusonCanvas(QGraphicsView):
                 bond_values[bond_id] = None
 
         item_values: dict[object, Optional[float]] = {}
-        for key in ("text_items", "arrow_items", "bracket_items", "orbital_items", "image_items", "wavy_items"):
+        for key in ("text_items", "arrow_items", "bracket_items", "energy_diagram_items", "orbital_items", "image_items", "wavy_items"):
             for item in targets[key]:
                 current_raw = self.item_raw_opacity(item)
                 current_effective = self.effective_item_opacity(item)
@@ -12245,7 +12971,7 @@ class ChemusonCanvas(QGraphicsView):
             extend(item.sceneBoundingRect())
         for item in self.scene.selectedItems():
             # Include TextAnnotationItem
-            if isinstance(item, (ArrowItem, BracketItem, TextAnnotationItem, OrbitalAnnotationItem, ImageAnnotationItem, WavyAnchorItem)):
+            if isinstance(item, (ArrowItem, BracketItem, TextAnnotationItem, EnergyDiagramItem, OrbitalAnnotationItem, ImageAnnotationItem, WavyAnchorItem)):
                 extend(item.sceneBoundingRect())
         return rect
 
@@ -13559,6 +14285,7 @@ class ChemusonCanvas(QGraphicsView):
             not self._selected_atom_ids_for_transform()
             and not self._selected_text_items()
             and not self._selected_arrow_items()
+            and not self._selected_energy_diagram_items()
             and not self._selected_orbital_items()
             and not self._selected_image_items()
         ):
@@ -13588,6 +14315,10 @@ class ChemusonCanvas(QGraphicsView):
         self._rotation_start_arrow_positions = {
             item: (item.start_point(), item.end_point())
             for item in self._selected_arrow_items()
+        }
+        self._rotation_start_energy_diagram_snapshots = {
+            item: self._energy_diagram_transform_snapshot(item)
+            for item in self._selected_energy_diagram_items()
         }
         self._rotation_start_orbital_snapshots = {
             item: self._orbital_transform_snapshot(item)
@@ -13664,6 +14395,18 @@ class ChemusonCanvas(QGraphicsView):
             for item in arrow_before
         )
 
+        energy_before = dict(self._rotation_start_energy_diagram_snapshots)
+        energy_after = {item: self._energy_diagram_transform_snapshot(item) for item in energy_before}
+        moved_energy_diagrams = any(
+            not (
+                self._point_equal(energy_before[item][0], energy_after[item][0])
+                and abs(energy_before[item][1] - energy_after[item][1]) <= 0.05
+                and abs(energy_before[item][2] - energy_after[item][2]) <= 0.05
+                and abs(energy_before[item][3] - energy_after[item][3]) <= 0.05
+            )
+            for item in energy_before
+        )
+
         orbital_before = dict(self._rotation_start_orbital_snapshots)
         orbital_after = {item: self._orbital_transform_snapshot(item) for item in orbital_before}
         moved_orbitals = any(
@@ -13691,6 +14434,7 @@ class ChemusonCanvas(QGraphicsView):
                 bool(moved_atoms),
                 bool(moved_text),
                 bool(moved_arrows),
+                bool(moved_energy_diagrams),
                 bool(moved_orbitals),
                 bool(moved_images),
             ]
@@ -13714,6 +14458,16 @@ class ChemusonCanvas(QGraphicsView):
 
         if moved_arrows:
             self.undo_stack.push(MoveArrowItemsCommand(self, arrow_before, arrow_after))
+
+        if moved_energy_diagrams:
+            self.undo_stack.push(
+                TransformEnergyDiagramItemsCommand(
+                    self,
+                    energy_before,
+                    energy_after,
+                    "Rotate energy diagrams",
+                )
+            )
 
         if moved_orbitals:
             self.undo_stack.push(
@@ -13744,6 +14498,7 @@ class ChemusonCanvas(QGraphicsView):
         self._rotation_start_positions = {}
         self._rotation_start_text_transforms = {}
         self._rotation_start_arrow_positions = {}
+        self._rotation_start_energy_diagram_snapshots = {}
         self._rotation_start_orbital_snapshots = {}
         self._rotation_start_image_snapshots = {}
         self._release_interaction_mouse()
@@ -13799,6 +14554,7 @@ class ChemusonCanvas(QGraphicsView):
             and not self._selected_atom_ids_for_transform()
             and not self._selected_arrow_items()
             and not self._selected_bracket_items()
+            and not self._selected_energy_diagram_items()
             and not self._selected_orbital_items()
             and not self._selected_image_items()
         )
@@ -13842,6 +14598,11 @@ class ChemusonCanvas(QGraphicsView):
         rect = item.display_rect()
         return QPointF(rect.topLeft()), float(rect.width()), float(rect.height()), float(item.rotation())
 
+    def _energy_diagram_transform_snapshot(self, item: EnergyDiagramItem) -> tuple[QPointF, float, float, float]:
+        """Captura posición, tamaño y rotación de un diagrama de energia."""
+        rect = item.display_rect()
+        return QPointF(rect.topLeft()), float(rect.width()), float(rect.height()), float(item.rotation())
+
     def _orbital_transform_snapshot(self, item: OrbitalAnnotationItem) -> tuple[QPointF, QPointF]:
         """Captura anchors de un orbital persistente."""
         return item.anchor0(), item.anchor1()
@@ -13861,6 +14622,7 @@ class ChemusonCanvas(QGraphicsView):
         text_items: Optional[list[TextAnnotationItem]] = None,
         arrow_items: Optional[list[ArrowItem]] = None,
         bracket_items: Optional[list[BracketItem]] = None,
+        energy_diagram_items: Optional[list[EnergyDiagramItem]] = None,
         orbital_items: Optional[list[OrbitalAnnotationItem]] = None,
         image_items: Optional[list[ImageAnnotationItem]] = None,
     ) -> dict:
@@ -13873,6 +14635,8 @@ class ChemusonCanvas(QGraphicsView):
             arrow_items = self._selected_arrow_items()
         if bracket_items is None:
             bracket_items = self._selected_bracket_items()
+        if energy_diagram_items is None:
+            energy_diagram_items = self._selected_energy_diagram_items()
         if orbital_items is None:
             orbital_items = self._selected_orbital_items()
         if image_items is None:
@@ -13930,6 +14694,10 @@ class ChemusonCanvas(QGraphicsView):
                     float(item.stroke_px() if item.stroke_px() is not None else self.drawing_style.stroke_px),
                 )
                 for item in bracket_items
+            },
+            "energy_diagram_snapshots": {
+                item: self._energy_diagram_transform_snapshot(item)
+                for item in energy_diagram_items
             },
             "orbital_snapshots": {
                 item: self._orbital_transform_snapshot(item)
@@ -14030,6 +14798,18 @@ class ChemusonCanvas(QGraphicsView):
             item.set_rect(QRectF(top_left, bottom_right).normalized(), padding=max(0.0, padding * scale))
             if include_style:
                 item.set_stroke_px(self._normalize_custom_stroke(float(effective_stroke) * scale))
+
+        for item, (pos, width, height, rotation) in state.get("energy_diagram_snapshots", {}).items():
+            top_left = self._scale_point_from_anchor(anchor, pos, scale)
+            item.set_display_rect(
+                QRectF(
+                    top_left.x(),
+                    top_left.y(),
+                    max(1.0, float(width) * scale),
+                    max(1.0, float(height) * scale),
+                )
+            )
+            item.setRotation(rotation)
 
         for item, (anchor0, anchor1) in state.get("orbital_snapshots", {}).items():
             item.set_anchors(
@@ -14164,6 +14944,20 @@ class ChemusonCanvas(QGraphicsView):
         if changed_brackets:
             command_count += 1
 
+        energy_before = dict(state.get("energy_diagram_snapshots", {}))
+        energy_after = {item: self._energy_diagram_transform_snapshot(item) for item in energy_before}
+        changed_energy_diagrams = any(
+            not (
+                self._point_equal(energy_before[item][0], energy_after[item][0])
+                and abs(energy_before[item][1] - energy_after[item][1]) <= 0.05
+                and abs(energy_before[item][2] - energy_after[item][2]) <= 0.05
+                and abs(energy_before[item][3] - energy_after[item][3]) <= 0.05
+            )
+            for item in energy_before
+        )
+        if changed_energy_diagrams:
+            command_count += 1
+
         orbital_before = dict(state.get("orbital_snapshots", {}))
         orbital_after = {item: self._orbital_transform_snapshot(item) for item in orbital_before}
         changed_orbitals = any(
@@ -14260,6 +15054,16 @@ class ChemusonCanvas(QGraphicsView):
         if changed_brackets:
             self.undo_stack.push(ScaleBracketItemsCommand(self, bracket_before, bracket_after))
 
+        if changed_energy_diagrams:
+            self.undo_stack.push(
+                TransformEnergyDiagramItemsCommand(
+                    self,
+                    energy_before,
+                    energy_after,
+                    "Scale energy diagrams",
+                )
+            )
+
         if changed_orbitals:
             self.undo_stack.push(
                 TransformOrbitalItemsCommand(self, orbital_before, orbital_after, "Scale orbitals")
@@ -14281,6 +15085,7 @@ class ChemusonCanvas(QGraphicsView):
             and not self._selected_text_items()
             and not self._selected_arrow_items()
             and not self._selected_bracket_items()
+            and not self._selected_energy_diagram_items()
             and not self._selected_orbital_items()
             and not self._selected_image_items()
         ):
@@ -14327,6 +15132,7 @@ class ChemusonCanvas(QGraphicsView):
             item: (snapshot[1], snapshot[2], snapshot[3])
             for item, snapshot in state["bracket_snapshots"].items()
         }
+        self._scale_start_energy_diagram_snapshots = dict(state["energy_diagram_snapshots"])
         self._scale_start_orbital_snapshots = dict(state["orbital_snapshots"])
         self._scale_start_image_snapshots = dict(state["image_snapshots"])
         self._scale_has_moved = False
@@ -14378,6 +15184,7 @@ class ChemusonCanvas(QGraphicsView):
                     )
                     for item, rect in self._scale_start_bracket_rects.items()
                 },
+                "energy_diagram_snapshots": dict(self._scale_start_energy_diagram_snapshots),
                 "orbital_snapshots": dict(self._scale_start_orbital_snapshots),
                 "image_snapshots": dict(self._scale_start_image_snapshots),
             },
@@ -14428,6 +15235,7 @@ class ChemusonCanvas(QGraphicsView):
                         )
                         for item, rect in self._scale_start_bracket_rects.items()
                     },
+                    "energy_diagram_snapshots": dict(self._scale_start_energy_diagram_snapshots),
                     "orbital_snapshots": dict(self._scale_start_orbital_snapshots),
                     "image_snapshots": dict(self._scale_start_image_snapshots),
                 },
@@ -14447,6 +15255,7 @@ class ChemusonCanvas(QGraphicsView):
         self._scale_start_arrow_strokes = {}
         self._scale_start_bracket_rects = {}
         self._scale_start_bracket_styles = {}
+        self._scale_start_energy_diagram_snapshots = {}
         self._scale_start_orbital_snapshots = {}
         self._scale_start_image_snapshots = {}
         self._scale_start_atom_label_scales = {}
@@ -14480,6 +15289,15 @@ class ChemusonCanvas(QGraphicsView):
         """
         return [item for item in self.scene.selectedItems() if isinstance(item, ArrowItem)]
 
+    @staticmethod
+    def _is_uniform_line_arrow(item: object) -> bool:
+        """Indica si un ArrowItem es una línea recta homogeneizable."""
+        return isinstance(item, ArrowItem) and item.kind() in {"line", "line_dashed"}
+
+    def _selected_line_arrow_items(self) -> list[ArrowItem]:
+        """Devuelve solo las líneas rectas seleccionadas."""
+        return [item for item in self._selected_arrow_items() if self._is_uniform_line_arrow(item)]
+
     def _selected_bracket_items(self) -> list[BracketItem]:
         """Método auxiliar para  selected bracket items.
 
@@ -14490,6 +15308,10 @@ class ChemusonCanvas(QGraphicsView):
             Puede modificar el estado interno o la escena.
         """
         return [item for item in self.scene.selectedItems() if isinstance(item, BracketItem)]
+
+    def _selected_energy_diagram_items(self) -> list[EnergyDiagramItem]:
+        """Devuelve diagramas de energia seleccionados."""
+        return [item for item in self.scene.selectedItems() if isinstance(item, EnergyDiagramItem)]
 
     def _selected_orbital_items(self) -> list[OrbitalAnnotationItem]:
         """Devuelve los orbitales persistentes actualmente seleccionados."""
@@ -14517,6 +15339,7 @@ class ChemusonCanvas(QGraphicsView):
         text_items: Iterable[TextAnnotationItem] = (),
         arrow_items: Iterable[ArrowItem] = (),
         bracket_items: Iterable[BracketItem] = (),
+        energy_diagram_items: Iterable[EnergyDiagramItem] = (),
         orbital_items: Iterable[OrbitalAnnotationItem] = (),
         image_items: Iterable[ImageAnnotationItem] = (),
     ) -> Optional[QRectF]:
@@ -14560,6 +15383,9 @@ class ChemusonCanvas(QGraphicsView):
             if item.scene() is self.scene:
                 extend(item.sceneBoundingRect())
         for item in bracket_items:
+            if item.scene() is self.scene:
+                extend(item.sceneBoundingRect())
+        for item in energy_diagram_items:
             if item.scene() is self.scene:
                 extend(item.sceneBoundingRect())
         for item in orbital_items:
@@ -14613,6 +15439,7 @@ class ChemusonCanvas(QGraphicsView):
             text_items = self._all_scalable_text_items()
             arrow_items = list(self.arrow_items)
             bracket_items = list(self.bracket_items)
+            energy_diagram_items = list(self.energy_diagram_items)
             orbital_items = list(self.orbital_items)
             image_items = list(self.image_items)
             state = self._capture_scale_state(
@@ -14620,6 +15447,7 @@ class ChemusonCanvas(QGraphicsView):
                 text_items=text_items,
                 arrow_items=arrow_items,
                 bracket_items=bracket_items,
+                energy_diagram_items=energy_diagram_items,
                 orbital_items=orbital_items,
                 image_items=image_items,
             )
@@ -14630,6 +15458,7 @@ class ChemusonCanvas(QGraphicsView):
                 text_items=text_items,
                 arrow_items=arrow_items,
                 bracket_items=bracket_items,
+                energy_diagram_items=energy_diagram_items,
                 orbital_items=orbital_items,
                 image_items=image_items,
             )
@@ -14673,10 +15502,18 @@ class ChemusonCanvas(QGraphicsView):
         selected_atom_ids = self._selected_atom_ids_for_transform()
         selected_text_items = self._selected_text_items()
         selected_arrow_items = self._selected_arrow_items()
+        selected_energy_diagram_items = self._selected_energy_diagram_items()
         selected_orbital_items = self._selected_orbital_items()
         selected_image_items = self._selected_image_items()
         
-        if not selected_atom_ids and not selected_text_items and not selected_arrow_items and not selected_orbital_items and not selected_image_items:
+        if (
+            not selected_atom_ids
+            and not selected_text_items
+            and not selected_arrow_items
+            and not selected_energy_diagram_items
+            and not selected_orbital_items
+            and not selected_image_items
+        ):
             return
 
         cx, cy = 0.0, 0.0
@@ -14849,6 +15686,49 @@ class ChemusonCanvas(QGraphicsView):
                 }
                 if before:
                     self.undo_stack.push(MoveArrowItemsCommand(self, before, after))
+
+        if selected_energy_diagram_items:
+            if use_start_positions:
+                for item in selected_energy_diagram_items:
+                    if item in self._rotation_start_energy_diagram_snapshots:
+                        start_pos, width, height, start_rotation = self._rotation_start_energy_diagram_snapshots[item]
+                    else:
+                        start_pos, width, height, start_rotation = self._energy_diagram_transform_snapshot(item)
+                    start_center = QPointF(start_pos.x() + width / 2.0, start_pos.y() + height / 2.0)
+                    rotated_center = rotate_point(start_center)
+                    item.set_display_rect(
+                        QRectF(
+                            rotated_center.x() - width / 2.0,
+                            rotated_center.y() - height / 2.0,
+                            width,
+                            height,
+                        )
+                    )
+                    item.setRotation(start_rotation + degrees)
+            else:
+                before = {
+                    item: self._energy_diagram_transform_snapshot(item)
+                    for item in selected_energy_diagram_items
+                }
+                after = {}
+                for item, (pos, width, height, rotation) in before.items():
+                    center_point = QPointF(pos.x() + width / 2.0, pos.y() + height / 2.0)
+                    rotated_center = rotate_point(center_point)
+                    after[item] = (
+                        QPointF(rotated_center.x() - width / 2.0, rotated_center.y() - height / 2.0),
+                        width,
+                        height,
+                        rotation + degrees,
+                    )
+                if before:
+                    self.undo_stack.push(
+                        TransformEnergyDiagramItemsCommand(
+                            self,
+                            before,
+                            after,
+                            "Rotate energy diagrams",
+                        )
+                    )
 
         if selected_orbital_items:
             if use_start_positions:
@@ -17918,6 +18798,7 @@ class ChemusonCanvas(QGraphicsView):
             and not self._selected_text_items()
             and not self._selected_arrow_items()
             and not self._selected_bracket_items()
+            and not self._selected_energy_diagram_items()
             and not self._selected_orbital_items()
             and not self._selected_image_items()
         ):
@@ -17948,6 +18829,10 @@ class ChemusonCanvas(QGraphicsView):
         self._drag_start_bracket_rects = {}
         for item in self._selected_bracket_items():
             self._drag_start_bracket_rects[item] = item.base_rect()
+
+        self._drag_start_energy_diagram_snapshots = {}
+        for item in self._selected_energy_diagram_items():
+            self._drag_start_energy_diagram_snapshots[item] = self._energy_diagram_transform_snapshot(item)
 
         self._drag_start_orbital_snapshots = {}
         for item in self._selected_orbital_items():

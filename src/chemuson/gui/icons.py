@@ -232,6 +232,174 @@ def draw_electron_icon(count: int = 1, spread: float = 6.0) -> QIcon:
     return QIcon(pixmap)
 
 
+def draw_energy_diagram_icon(
+    box_count: int,
+    *,
+    label_text: str = "",
+    label_side: str = "left",
+    fill_color: str = "#FFFFFF",
+    stroke_visible: bool = True,
+) -> QIcon:
+    """Dibuja un icono simple de cajas de configuracion electronica."""
+    box_count = max(1, int(box_count))
+    pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
+    pixmap.fill(Qt.GlobalColor.transparent)
+
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+
+    margin_x = 4.0
+    margin_y = 7.0
+    label_gap = 4.0
+    label_width = 0.0
+    label_text = str(label_text or "").strip()
+    if label_text:
+        label_width = 10.0 if label_side in {"left", "right"} else 0.0
+
+    boxes_left = margin_x + (label_width + label_gap if label_text and label_side == "left" else 0.0)
+    boxes_right = ICON_SIZE - margin_x - (label_width + label_gap if label_text and label_side == "right" else 0.0)
+    box_height = ICON_SIZE - margin_y * 2.0
+    gap = 1.5
+    available_width = max(8.0, boxes_right - boxes_left)
+    box_width = (available_width - gap * (box_count - 1)) / box_count
+
+    stroke = QPen(QColor("#222222"), 1.2)
+    fill = QBrush(QColor(fill_color))
+
+    if label_text:
+        font = QFont("Arial", 8, QFont.Weight.Bold)
+        painter.setFont(font)
+        painter.setPen(QColor("#3050F8"))
+        label_rect = QRectF(
+            margin_x if label_side == "left" else ICON_SIZE - margin_x - label_width,
+            0.0,
+            label_width,
+            ICON_SIZE,
+        )
+        painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, label_text)
+
+    painter.setPen(stroke if stroke_visible else QPen(Qt.PenStyle.NoPen))
+    painter.setBrush(fill)
+    for index in range(box_count):
+        left = boxes_left + index * (box_width + gap)
+        rect = QRectF(left, margin_y, box_width, box_height)
+        painter.drawRect(rect)
+
+    arrow_index = min(box_count - 1, box_count // 2)
+    arrow_rect = QRectF(
+        boxes_left + arrow_index * (box_width + gap),
+        margin_y,
+        box_width,
+        box_height,
+    )
+    center_x = arrow_rect.center().x()
+    tail_bottom = arrow_rect.bottom() - 2.0
+    tail_top = arrow_rect.top() + 5.0
+
+    painter.setPen(QPen(QColor("#111111"), 1.6))
+    painter.drawLine(
+        QPointF(center_x, tail_bottom),
+        QPointF(center_x, tail_top),
+    )
+    painter.drawLine(
+        QPointF(center_x, tail_top),
+        QPointF(center_x - 2.8, tail_top + 3.6),
+    )
+    painter.drawLine(
+        QPointF(center_x, tail_top),
+        QPointF(center_x + 2.8, tail_top + 3.6),
+    )
+
+    painter.end()
+    return QIcon(pixmap)
+
+
+def draw_energy_levels_icon() -> QIcon:
+    """Dibuja un icono abreviado de escalera de niveles de energia."""
+    pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
+    pixmap.fill(Qt.GlobalColor.transparent)
+
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+    axis_pen = QPen(QColor("#333333"), 1.3)
+    connector_pen = QPen(QColor("#C75A2C"), 1.4)
+    painter.setPen(axis_pen)
+    painter.drawLine(QPointF(4.5, 26.5), QPointF(4.5, 5.0))
+    painter.drawLine(QPointF(4.5, 5.0), QPointF(2.6, 8.2))
+    painter.drawLine(QPointF(4.5, 5.0), QPointF(6.4, 8.2))
+
+    groups = [
+        (10.0, 24.0, 1, QColor("#C9EFF8")),
+        (14.0, 18.0, 3, QColor("#E6F6AE")),
+        (19.0, 12.0, 5, QColor("#F7E6A8")),
+    ]
+    prev_out = None
+    for left, y, count, color in groups:
+        gap = 1.0
+        width = 3.1
+        rects = []
+        for idx in range(count):
+            rect = QRectF(left + idx * (width + gap), y - 4.2, width, 8.4)
+            rects.append(rect)
+            painter.setPen(QPen(QColor("#222222"), 0.9))
+            painter.setBrush(QBrush(color))
+            painter.drawRect(rect)
+        current_in = QPointF(rects[0].left() - 1.3, y)
+        current_out = QPointF(rects[-1].right() + 1.3, y)
+        if prev_out is not None:
+            mid_x = (prev_out.x() + current_in.x()) * 0.5
+            painter.setPen(connector_pen)
+            painter.drawLine(prev_out, QPointF(mid_x, prev_out.y()))
+            painter.drawLine(QPointF(mid_x, prev_out.y()), QPointF(mid_x, current_in.y()))
+            painter.drawLine(QPointF(mid_x, current_in.y()), current_in)
+        prev_out = current_out
+
+    painter.end()
+    return QIcon(pixmap)
+
+
+def draw_molecular_orbital_icon() -> QIcon:
+    """Dibuja un icono esquemático de orbital molecular."""
+    pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
+    pixmap.fill(Qt.GlobalColor.transparent)
+
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+    solid_pen = QPen(QColor("#222222"), 1.3)
+    dashed_pen = QPen(QColor("#777777"), 1.0, Qt.PenStyle.DashLine)
+
+    left_top = QPointF(6.0, 10.0)
+    left_bottom = QPointF(6.0, 22.0)
+    right_top = QPointF(26.0, 10.0)
+    right_bottom = QPointF(26.0, 22.0)
+    center_low = QPointF(16.0, 23.0)
+    center_mid = QPointF(16.0, 16.0)
+    center_high = QPointF(16.0, 9.0)
+
+    painter.setPen(solid_pen)
+    painter.drawLine(QPointF(2.0, left_top.y()), QPointF(9.0, left_top.y()))
+    painter.drawLine(QPointF(2.0, left_bottom.y()), QPointF(9.0, left_bottom.y()))
+    painter.drawLine(QPointF(23.0, right_top.y()), QPointF(30.0, right_top.y()))
+    painter.drawLine(QPointF(23.0, right_bottom.y()), QPointF(30.0, right_bottom.y()))
+    painter.drawLine(QPointF(13.3, center_low.y()), QPointF(18.7, center_low.y()))
+    painter.drawLine(QPointF(12.0, center_mid.y()), QPointF(20.0, center_mid.y()))
+    painter.drawLine(QPointF(13.3, center_high.y()), QPointF(18.7, center_high.y()))
+
+    painter.setPen(dashed_pen)
+    for source in (left_top, left_bottom):
+        for target in (center_low, center_mid, center_high):
+            painter.drawLine(source, target)
+    for source in (right_top, right_bottom):
+        for target in (center_low, center_mid, center_high):
+            painter.drawLine(source, target)
+
+    painter.end()
+    return QIcon(pixmap)
+
+
 def draw_radical_charge_icon(sign: str) -> QIcon:
     """Dibuja un radical (punto) con un pequeño signo de carga."""
     pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
@@ -563,13 +731,16 @@ def draw_arrow_icon(kind: str = "forward") -> QIcon:
         "retro_dashed",
         "both_dashed",
         "equilibrium_dashed",
+        "line_dashed",
     }
     curved_kinds = {"curved", "curved_fishhook"}
+    line_kinds = {"line", "line_dashed"}
 
     is_open = kind in open_head_kinds
     is_dashed = kind in dashed_kinds
     is_curved = kind in curved_kinds
     is_fishhook = kind == "curved_fishhook"
+    is_line = kind in line_kinds
 
     pen_width = 2.0
 
@@ -603,7 +774,9 @@ def draw_arrow_icon(kind: str = "forward") -> QIcon:
 
     head_style = "half" if is_fishhook else ("open" if is_open else "filled")
 
-    if kind in {"forward", "forward_open", "forward_dashed"}:
+    if is_line:
+        painter.drawLine(QPointF(start_x, y), QPointF(end_x, y))
+    elif kind in {"forward", "forward_open", "forward_dashed"}:
         painter.drawLine(QPointF(start_x, y), QPointF(end_x - head_len, y))
         draw_head(end_x, y, 1, head_style)
     elif kind in {"retro", "retro_open", "retro_dashed"}:

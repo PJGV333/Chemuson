@@ -20,13 +20,26 @@ from chemuson.gui.icons import (
     draw_arrow_icon,
     draw_bond_icon,
     draw_coordination_sphere_icon,
+    draw_energy_diagram_icon,
+    draw_energy_levels_icon,
     draw_generic_icon,
     draw_glyph_icon,
+    draw_molecular_orbital_icon,
     draw_ring_icon,
     draw_charge_icon,
     draw_electron_icon,
     draw_radical_charge_icon,
     draw_wavy_anchor_icon,
+)
+from chemuson.gui.energy_diagrams import (
+    DEFAULT_ENERGY_DIAGRAM_KIND,
+    ENERGY_DIAGRAM_MENU_ORDER,
+    ENERGY_DIAGRAM_PRESETS,
+    energy_diagram_default_style_payload,
+    energy_diagram_display_name,
+    energy_diagram_family,
+    energy_diagram_kind_from_tool_id,
+    energy_diagram_tool_id,
 )
 from chemuson.gui.orbitals import (
     DEFAULT_ORBITAL_KIND,
@@ -91,6 +104,11 @@ class ChemusonToolbar(QToolBar):
         }
         
         self._arrow_meta = {
+            "tool_arrow_line": (draw_arrow_icon("line"), "Linea"),
+            "tool_arrow_line_dashed": (
+                draw_arrow_icon("line_dashed"),
+                "Linea discontinua",
+            ),
             "tool_arrow_forward": (draw_arrow_icon("forward"), "Flecha directa"),
             "tool_arrow_forward_open": (draw_arrow_icon("forward_open"), "Flecha directa abierta"),
             "tool_arrow_forward_dashed": (
@@ -598,6 +616,8 @@ class ChemusonToolbar(QToolBar):
         entries = []
         # Defined order for arrow tools
         tool_order = [
+            "tool_arrow_line",
+            "tool_arrow_line_dashed",
             "tool_arrow_forward",
             "tool_arrow_forward_open",
             "tool_arrow_forward_dashed",
@@ -769,6 +789,11 @@ class SymbolPaletteToolbar(QToolBar):
             "tool_brackets_round": (draw_glyph_icon("()"), "Parentesis ()"),
         }
         self._arrow_meta = {
+            "tool_arrow_line": (draw_arrow_icon("line"), "Linea"),
+            "tool_arrow_line_dashed": (
+                draw_arrow_icon("line_dashed"),
+                "Linea discontinua",
+            ),
             "tool_arrow_forward": (draw_arrow_icon("forward"), "Flecha directa"),
             "tool_arrow_forward_open": (draw_arrow_icon("forward_open"), "Flecha directa abierta"),
             "tool_arrow_forward_dashed": (
@@ -806,6 +831,30 @@ class SymbolPaletteToolbar(QToolBar):
         self._current_bracket_tool_id = "tool_brackets_square"
         self._current_arrow_tool_id = "tool_arrow_forward"
         self._current_symbol_tool_id = "tool_charge_plus"
+        self._energy_diagram_meta = {
+            energy_diagram_tool_id(kind): (
+                (
+                    draw_energy_levels_icon()
+                    if energy_diagram_family(kind) == "levels"
+                    else draw_molecular_orbital_icon()
+                    if energy_diagram_family(kind) == "mo"
+                    else draw_energy_diagram_icon(
+                        ENERGY_DIAGRAM_PRESETS[kind].slot_count,
+                        label_text=ENERGY_DIAGRAM_PRESETS[kind].label,
+                        label_side=ENERGY_DIAGRAM_PRESETS[kind].label_side,
+                        fill_color=str(
+                            energy_diagram_default_style_payload(kind).get("fill_color", "#FFFFFF")
+                        ),
+                        stroke_visible=bool(
+                            energy_diagram_default_style_payload(kind).get("box_stroke_visible", True)
+                        ),
+                    )
+                ),
+                energy_diagram_display_name(kind),
+            )
+            for kind in ENERGY_DIAGRAM_MENU_ORDER
+        }
+        self._current_energy_diagram_tool_id = energy_diagram_tool_id(DEFAULT_ENERGY_DIAGRAM_KIND)
         self._orbital_meta = {
             orbital_tool_id(kind): (draw_orbital_icon(kind), orbital_display_name(kind))
             for kind in ORBITAL_SPECS
@@ -844,6 +893,17 @@ class SymbolPaletteToolbar(QToolBar):
             trigger_callback=self._emit_current_symbol_tool,
         )
         self._build_symbol_palette(self.symbol_button.menu())
+
+        self.addSeparator()
+
+        energy_icon, energy_tip = self._energy_diagram_meta[self._current_energy_diagram_tool_id]
+        self.energy_diagram_button, self.energy_diagram_action = self._add_palette_button(
+            energy_icon,
+            energy_tip,
+            "tool_energy_diagrams",
+            trigger_callback=self._emit_current_energy_diagram_tool,
+        )
+        self._build_energy_diagram_palette(self.energy_diagram_button.menu())
 
         self.addSeparator()
 
@@ -969,6 +1029,10 @@ class SymbolPaletteToolbar(QToolBar):
         """Emite la herramienta de orbital actualmente activa."""
         self.tool_changed.emit(self._current_orbital_tool_id)
 
+    def _emit_current_energy_diagram_tool(self, checked: bool = False) -> None:
+        """Emite la herramienta de diagrama de energia actualmente activa."""
+        self.tool_changed.emit(self._current_energy_diagram_tool_id)
+
     def _select_symbol_tool(self, tool_id: str) -> None:
         """Actualiza el símbolo activo y emite el cambio."""
         icon, tooltip = self._symbol_meta()[tool_id]
@@ -1032,6 +1096,36 @@ class SymbolPaletteToolbar(QToolBar):
         self.orbital_action.setChecked(True)
         self.tool_changed.emit(tool_id)
 
+    def _build_energy_diagram_palette(self, menu: QMenu) -> None:
+        """Construye la paleta de diagramas de energia."""
+        entries = []
+        for kind in ENERGY_DIAGRAM_MENU_ORDER:
+            tool_id = energy_diagram_tool_id(kind)
+            icon, tooltip = self._energy_diagram_meta[tool_id]
+            entries.append(
+                self._make_palette_entry(
+                    icon,
+                    tooltip,
+                    lambda tid=tool_id: self._select_energy_diagram_tool(tid),
+                )
+            )
+        self._populate_grid_menu(menu, entries, columns=2)
+
+    def _select_energy_diagram_tool(self, tool_id: str) -> None:
+        """Actualiza el preset activo de diagrama de energia."""
+        icon, tooltip = self._energy_diagram_meta[tool_id]
+        self._current_energy_diagram_tool_id = tool_id
+        self.energy_diagram_action.setIcon(icon)
+        self.energy_diagram_action.setToolTip(tooltip)
+        self.energy_diagram_button.setToolTip(tooltip)
+        self.energy_diagram_action.setChecked(True)
+        self.tool_changed.emit(tool_id)
+
+    def current_energy_diagram_kind(self) -> str:
+        """Devuelve el preset activo de diagrama de energia."""
+        kind = energy_diagram_kind_from_tool_id(self._current_energy_diagram_tool_id)
+        return kind or DEFAULT_ENERGY_DIAGRAM_KIND
+
     def current_orbital_kind(self) -> str:
         """Devuelve el kind de orbital seleccionado en la paleta."""
         kind = orbital_kind_from_tool_id(self._current_orbital_tool_id)
@@ -1083,6 +1177,8 @@ class SymbolPaletteToolbar(QToolBar):
         """Construye la paleta de flechas de anotación."""
         entries = []
         tool_order = [
+            "tool_arrow_line",
+            "tool_arrow_line_dashed",
             "tool_arrow_forward",
             "tool_arrow_forward_open",
             "tool_arrow_forward_dashed",

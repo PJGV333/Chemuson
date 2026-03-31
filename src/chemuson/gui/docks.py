@@ -199,7 +199,12 @@ class InspectorDock(QDockWidget):
 
     def update_selection(self, num_atoms: int, num_bonds: int, num_text: int, details: dict):
         """Actualiza el inspector con información de selección."""
-        if num_atoms == 0 and num_bonds == 0 and num_text == 0:
+        if (
+            num_atoms == 0
+            and num_bonds == 0
+            and num_text == 0
+            and details.get("type") != "energy_diagram"
+        ):
             self.info_label.setText("Nada seleccionado")
             self.info_label.setVisible(True)
             self.prop_table.setVisible(False)
@@ -210,7 +215,15 @@ class InspectorDock(QDockWidget):
         self.prop_table.setRowCount(0)
         
         data = []
-        if num_atoms == 1 and num_bonds == 0 and num_text == 0:
+        if details.get("type") == "energy_diagram":
+            data = [
+                ("Tipo", "Diagrama de energía"),
+                ("Preset", str(details.get("kind", "?"))),
+                ("Etiqueta", str(details.get("label", ""))),
+                ("Cajas", str(details.get("boxes", "?"))),
+                ("Ocupación", str(details.get("occupancies", ""))),
+            ]
+        elif num_atoms == 1 and num_bonds == 0 and num_text == 0:
             data = [
                 ("Tipo", "Átomo"),
                 ("Elemento", details.get("element", "?")),

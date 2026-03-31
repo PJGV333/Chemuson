@@ -1436,9 +1436,9 @@ class MoveTextItemsCommand(QUndoCommand):
 class MoveArrowItemsCommand(QUndoCommand):
     """Comando para mover elementos de flecha."""
 
-    def __init__(self, view, before: dict, after: dict):
+    def __init__(self, view, before: dict, after: dict, text: str = "Move arrows"):
         """Inicializa el comando de movimiento de flechas."""
-        super().__init__("Move arrows")
+        super().__init__(text)
         self._view = view
         self._before = before  # {item: (start, end)}
         self._after = after    # {item: (start, end)}
@@ -1505,6 +1505,32 @@ class TransformImageItemsCommand(QUndoCommand):
         self._view._update_selection_overlay()
 
 
+class TransformEnergyDiagramItemsCommand(QUndoCommand):
+    """Comando para mover/escalar diagramas de energia."""
+
+    def __init__(self, view, before: dict, after: dict, text: str = "Transform energy diagrams") -> None:
+        super().__init__(text)
+        self._view = view
+        self._before = before
+        self._after = after
+
+    @staticmethod
+    def _apply_snapshot(item, snapshot) -> None:
+        pos, width, height, rotation = snapshot
+        item.set_display_rect(QRectF(float(pos.x()), float(pos.y()), float(width), float(height)))
+        item.setRotation(float(rotation))
+
+    def redo(self) -> None:
+        for item, snapshot in self._after.items():
+            self._apply_snapshot(item, snapshot)
+        self._view._update_selection_overlay()
+
+    def undo(self) -> None:
+        for item, snapshot in self._before.items():
+            self._apply_snapshot(item, snapshot)
+        self._view._update_selection_overlay()
+
+
 class TransformOrbitalItemsCommand(QUndoCommand):
     """Comando para mover/escalar/rotar orbitales por anchors."""
 
@@ -1542,6 +1568,30 @@ class StyleOrbitalItemsCommand(QUndoCommand):
     @staticmethod
     def _apply_snapshot(item, snapshot) -> None:
         item.set_part_styles(snapshot)
+
+    def redo(self) -> None:
+        for item, snapshot in self._after.items():
+            self._apply_snapshot(item, snapshot)
+        self._view._update_selection_overlay()
+
+    def undo(self) -> None:
+        for item, snapshot in self._before.items():
+            self._apply_snapshot(item, snapshot)
+        self._view._update_selection_overlay()
+
+
+class ConfigureEnergyDiagramItemsCommand(QUndoCommand):
+    """Comando para cambiar configuracion visual/logica de diagramas de energia."""
+
+    def __init__(self, view, before: dict, after: dict, text: str = "Configure energy diagrams") -> None:
+        super().__init__(text)
+        self._view = view
+        self._before = before
+        self._after = after
+
+    @staticmethod
+    def _apply_snapshot(item, snapshot) -> None:
+        item.apply_config_payload(snapshot)
 
     def redo(self) -> None:
         for item, snapshot in self._after.items():
@@ -1696,6 +1746,7 @@ class DeleteSelectionCommand(QUndoCommand):
         wavy_items: Iterable = (),
         image_items: Iterable = (),
         orbital_items: Iterable = (),
+        energy_diagram_items: Iterable = (),
     ) -> None:
         """Inicializa el comando de borrado de selección."""
         super().__init__("Delete selection")
@@ -1709,6 +1760,7 @@ class DeleteSelectionCommand(QUndoCommand):
         self._wavy_items = list(wavy_items)
         self._image_items = list(image_items)
         self._orbital_items = list(orbital_items)
+        self._energy_diagram_items = list(energy_diagram_items)
         self._removed_atoms = []
         self._removed_bonds = []
         self._removed_arrows = []
@@ -1717,6 +1769,7 @@ class DeleteSelectionCommand(QUndoCommand):
         self._removed_wavy = []
         self._removed_images = []
         self._removed_orbitals = []
+        self._removed_energy_diagrams = []
 
     def _refresh_view_after_structure_change(self) -> None:
         """Sincroniza overlays derivados tras borrar/restaurar estructura."""
@@ -1793,6 +1846,18 @@ class DeleteSelectionCommand(QUndoCommand):
                 )
             for item in self._orbital_items:
                 self._removed_orbitals.append((item, item.anchor0(), item.anchor1()))
+            for item in self._energy_diagram_items:
+                rect = item.display_rect()
+                self._removed_energy_diagrams.append(
+                    (
+                        item,
+                        QPointF(rect.topLeft()),
+                        float(rect.width()),
+                        float(rect.height()),
+                        float(item.rotation()),
+                        item.config_payload(),
+                    )
+                )
 
         for bond in list(self._removed_bonds):
             if bond.id in self._model.bonds:
@@ -1814,6 +1879,8 @@ class DeleteSelectionCommand(QUndoCommand):
             self._view.remove_image_item(item)
         for item, _anchor0, _anchor1 in self._removed_orbitals:
             self._view.remove_orbital_item(item)
+        for item, _pos, _width, _height, _rotation, _payload in self._removed_energy_diagrams:
+            self._view.remove_energy_diagram_item(item)
         self._refresh_view_after_structure_change()
 
     def undo(self) -> None:
@@ -1877,6 +1944,11 @@ class DeleteSelectionCommand(QUndoCommand):
         for item, anchor0, anchor1 in self._removed_orbitals:
             item.set_anchors(anchor0, anchor1)
             self._view.readd_orbital_item(item)
+        for item, pos, width, height, rotation, payload in self._removed_energy_diagrams:
+            item.apply_config_payload(payload)
+            item.set_display_rect(QRectF(pos.x(), pos.y(), width, height))
+            item.setRotation(rotation)
+            self._view.readd_energy_diagram_item(item)
         self._refresh_view_after_structure_change()
 
 
@@ -2024,6 +2096,23 @@ class AddImageItemCommand(QUndoCommand):
     def undo(self) -> None:
         if self._item is not None:
             self._view.remove_image_item(self._item)
+
+
+class AddEnergyDiagramItemCommand(QUndoCommand):
+    """Comando para añadir un diagrama de energia persistente."""
+
+    def __init__(self, view, item) -> None:
+        super().__init__("Add energy diagram")
+        self._view = view
+        self._item = item
+
+    def redo(self) -> None:
+        if self._item is not None:
+            self._view.readd_energy_diagram_item(self._item)
+
+    def undo(self) -> None:
+        if self._item is not None:
+            self._view.remove_energy_diagram_item(self._item)
 
 
 class AddOrbitalItemCommand(QUndoCommand):

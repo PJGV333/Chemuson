@@ -26,6 +26,18 @@ except Exception:  # Optional Qt module at runtime
 
 
 from chemuson.core.model import Atom, Bond, BondStyle
+from chemuson.gui.energy_diagrams import (
+    DEFAULT_ENERGY_DIAGRAM_KIND,
+    default_energy_label,
+    default_energy_label_side,
+    energy_diagram_default_size,
+    energy_diagram_default_style_payload,
+    energy_diagram_family,
+    energy_diagram_preset,
+    energy_diagram_supports_free_label,
+    normalize_energy_label_side,
+    normalize_energy_occupancies,
+)
 from chemuson.gui.orbitals import OrbitalRenderer, orbital_renderer
 from chemuson.gui.style import DrawingStyle, CHEMDOODLE_LIKE
 from chemuson.gui.wedge_geometry import compute_wedge_points
@@ -2818,6 +2830,7 @@ class ArrowItem(QGraphicsPathItem):
         ny = ux
 
         curved_kinds = {"curved", "curved_fishhook"}
+        line_kinds = {"line", "line_dashed"}
         if curve_factor is not None:
             self._curve_factor = self._clamp_curve_factor(float(curve_factor))
         elif self._kind in curved_kinds and abs(self._curve_factor) <= 1e-9:
@@ -2835,14 +2848,16 @@ class ArrowItem(QGraphicsPathItem):
             "retro_dashed",
             "both_dashed",
             "equilibrium_dashed",
+            "line_dashed",
         }
 
+        is_line = self._kind in line_kinds
         is_open = self._kind in open_head_kinds
         is_dashed = self._kind in dashed_kinds
         is_curved = self._kind in curved_kinds
         is_fishhook = self._kind == "curved_fishhook"
         is_preview = hasattr(self, "_preview_pen")
-        use_manual_dashes = is_dashed and not is_preview
+        use_manual_dashes = is_dashed and not is_preview and not is_line
 
         self._apply_kind_style(is_open or is_fishhook, is_dashed)
 
@@ -2961,7 +2976,10 @@ class ArrowItem(QGraphicsPathItem):
         path = QPainterPath()
         head_style = "half" if is_fishhook else ("open" if is_open else "filled")
 
-        if self._kind in {"both", "both_open", "both_dashed"}:
+        if is_line:
+            path.moveTo(start)
+            path.lineTo(end)
+        elif self._kind in {"both", "both_open", "both_dashed"}:
             start_base = QPointF(start.x() + ux * head_len, start.y() + uy * head_len)
             end_base = QPointF(end.x() - ux * head_len, end.y() - uy * head_len)
             if use_manual_dashes:
@@ -3164,10 +3182,15 @@ class ArrowItem(QGraphicsPathItem):
             pen.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
         else:
             pen.setJoinStyle(self._style.join_style)
-        # Dashed stems are built manually in geometry so heads remain solid.
-        pen.setStyle(Qt.PenStyle.SolidLine)
+        if self._kind == "line_dashed":
+            pen.setStyle(Qt.PenStyle.DashLine)
+        else:
+            # Dashed stems are built manually in geometry so heads remain solid.
+            pen.setStyle(Qt.PenStyle.SolidLine)
         self.setPen(pen)
-        if self._kind == "curved_fishhook":
+        if self._kind in {"line", "line_dashed"}:
+            self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        elif self._kind == "curved_fishhook":
             self.setBrush(QBrush(QColor(self._style.bond_color)))
         elif open_head:
             self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
@@ -4327,6 +4350,995 @@ class OrbitalAnnotationItem(QGraphicsItem):
             stroke_shaded_lobes=self._stroke_shaded_lobes,
             part_styles=self._part_styles,
         )
+
+
+class EnergyDiagramItem(QGraphicsItem):
+    """Elemento persistente para diagramas de configuracion electronica."""
+
+    _DEFAULT_STYLE = {
+        "stroke_color": "#222222",
+        "fill_color": "#FFFFFF",
+        "label_color": "#3050F8",
+        "arrow_up_color": "#111111",
+        "arrow_down_color": "#D94A4A",
+        "connector_color": "#C75A2C",
+        "fill_visible": True,
+        "box_stroke_visible": True,
+    }
+    _LEVEL_GROUPS = (
+        ("1s", 1, "s"),
+        ("2s", 1, "s"),
+        ("2p", 3, "p"),
+        ("3s", 1, "s"),
+        ("3p", 3, "p"),
+        ("4s", 1, "s"),
+        ("3d", 5, "d"),
+        ("4p", 3, "p"),
+        ("5s", 1, "s"),
+        ("4d", 5, "d"),
+        ("5p", 3, "p"),
+        ("6s", 1, "s"),
+        ("4f", 7, "f"),
+        ("5d", 5, "d"),
+        ("6p", 3, "p"),
+        ("7s", 1, "s"),
+        ("5f", 7, "f"),
+        ("6d", 5, "d"),
+    )
+    _LEVEL_FILL_COLORS = {
+        "s": "#C9EFF8",
+        "p": "#E7F6AE",
+        "d": "#F6E4A8",
+        "f": "#F4D5EA",
+    }
+    _MO_ATOMIC_GROUPS = (
+        ("2p", 3, 0.26),
+        ("2s", 1, 0.72),
+    )
+    _MO_CENTER_GROUPS = (
+        ("sigma* 2p", 1, 0.10),
+        ("pi* 2p", 2, 0.24),
+        ("pi 2p", 2, 0.56),
+        ("sigma 2p", 1, 0.70),
+        ("sigma* 2s", 1, 0.50),
+        ("sigma 2s", 1, 0.84),
+    )
+
+    def __init__(
+        self,
+        kind: str = DEFAULT_ENERGY_DIAGRAM_KIND,
+        *,
+        label: str | None = None,
+        label_side: str | None = None,
+        occupancies: Optional[list[str] | tuple[str, ...]] = None,
+        slot_count: int | None = None,
+        style_payload: Optional[dict[str, object]] = None,
+        width: float | None = None,
+        height: float | None = None,
+    ) -> None:
+        super().__init__()
+        self._kind = energy_diagram_preset(kind).kind
+        default_size = energy_diagram_default_size(self._kind, 40.0)
+        self._display_size = QSizeF(
+            max(1.0, float(width) if width is not None else float(default_size.width())),
+            max(1.0, float(height) if height is not None else float(default_size.height())),
+        )
+        self._label = str(default_energy_label(self._kind) if label is None else label)
+        self._label_side = normalize_energy_label_side(
+            default_energy_label_side(self._kind) if label_side is None else label_side
+        )
+        self._slot_count_override = self._normalize_slot_count(slot_count, kind=self._kind)
+        self._occupancies = normalize_energy_occupancies(
+            occupancies or (),
+            kind=self._kind,
+            box_count=self.slot_count(),
+        )
+        self._style_payload = self._normalize_style_payload(style_payload or {})
+        self._editing = False
+        self._edit_index = 0
+
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsFocusable)
+        self.setZValue(44)
+        self.setTransformOriginPoint(self.boundingRect().center())
+
+    def kind(self) -> str:
+        return self._kind
+
+    def family(self) -> str:
+        return energy_diagram_family(self._kind)
+
+    def supports_free_label(self) -> bool:
+        return energy_diagram_supports_free_label(self._kind)
+
+    @staticmethod
+    def _default_slot_count(kind: str) -> int:
+        return int(energy_diagram_preset(kind).slot_count)
+
+    @classmethod
+    def _normalize_slot_count(cls, value: object, *, kind: str) -> int | None:
+        if energy_diagram_family(kind) != "row":
+            return None
+        default_count = cls._default_slot_count(kind)
+        if value is None:
+            return None
+        try:
+            normalized = max(1, min(20, int(value)))
+        except Exception:
+            return None
+        return None if normalized == default_count else normalized
+
+    def slot_count(self) -> int:
+        return int(self._slot_count_override or self._default_slot_count(self._kind))
+
+    def box_count(self) -> int:
+        return self.slot_count()
+
+    def label(self) -> str:
+        return self._label
+
+    def set_label(self, text: str) -> None:
+        if not self.supports_free_label():
+            return
+        normalized = str(text or "")
+        if normalized == self._label:
+            return
+        self._label = normalized
+        self.update()
+
+    def label_side(self) -> str:
+        return self._label_side
+
+    def set_label_side(self, side: str) -> None:
+        if not self.supports_free_label():
+            return
+        normalized = normalize_energy_label_side(side, default=self._label_side)
+        if normalized == self._label_side:
+            return
+        self._label_side = normalized
+        self.update()
+
+    def occupancies(self) -> tuple[str, ...]:
+        return tuple(self._occupancies)
+
+    def set_occupancies(self, values: list[str] | tuple[str, ...] | str) -> None:
+        normalized = normalize_energy_occupancies(
+            values,
+            kind=self._kind,
+            box_count=self.slot_count(),
+        )
+        if normalized == self._occupancies:
+            return
+        self._occupancies = normalized
+        self.update()
+
+    def set_slot_count(self, value: int | None) -> None:
+        normalized = self._normalize_slot_count(value, kind=self._kind)
+        if normalized == self._slot_count_override:
+            return
+        self._slot_count_override = normalized
+        self._occupancies = normalize_energy_occupancies(
+            self._occupancies,
+            kind=self._kind,
+            box_count=self.slot_count(),
+        )
+        self._clamp_edit_index()
+        self.update()
+
+    def style_payload(self) -> dict[str, object]:
+        return dict(self._style_payload)
+
+    def effective_style(self) -> dict[str, object]:
+        payload = dict(self._DEFAULT_STYLE)
+        payload.update(energy_diagram_default_style_payload(self._kind))
+        payload.update(self._style_payload)
+        return payload
+
+    def set_style_payload(self, payload: Optional[dict[str, object]]) -> None:
+        normalized = self._normalize_style_payload(payload or {})
+        if normalized == self._style_payload:
+            return
+        self._style_payload = normalized
+        self.update()
+
+    @classmethod
+    def _normalize_style_payload(cls, payload: dict[str, object]) -> dict[str, object]:
+        normalized: dict[str, object] = {}
+        for key in (
+            "stroke_color",
+            "fill_color",
+            "label_color",
+            "arrow_up_color",
+            "arrow_down_color",
+            "connector_color",
+        ):
+            raw = payload.get(key)
+            if raw is None or raw == "":
+                continue
+            color = QColor(str(raw))
+            if color.isValid():
+                normalized[key] = color.name(QColor.NameFormat.HexRgb)
+        if "fill_visible" in payload:
+            normalized["fill_visible"] = bool(payload.get("fill_visible"))
+        if "box_stroke_visible" in payload:
+            normalized["box_stroke_visible"] = bool(payload.get("box_stroke_visible"))
+        return normalized
+
+    def display_rect(self) -> QRectF:
+        return QRectF(self.pos().x(), self.pos().y(), self._display_size.width(), self._display_size.height())
+
+    def set_display_rect(self, rect: QRectF) -> None:
+        normalized = QRectF(rect).normalized()
+        self.prepareGeometryChange()
+        self.setPos(normalized.topLeft())
+        self._display_size = QSizeF(max(1.0, normalized.width()), max(1.0, normalized.height()))
+        self.setTransformOriginPoint(self.boundingRect().center())
+        self.update()
+
+    def config_payload(self) -> dict[str, object]:
+        return {
+            "kind": self._kind,
+            "label": self._label,
+            "label_side": self._label_side,
+            "slot_count": self.slot_count(),
+            "occupancies": list(self._occupancies),
+            "style_payload": self.style_payload(),
+        }
+
+    def apply_config_payload(self, payload: dict[str, object]) -> None:
+        kind = energy_diagram_preset(str(payload.get("kind", self._kind))).kind
+        if kind != self._kind:
+            self._kind = kind
+        self._label = str(payload.get("label", default_energy_label(self._kind)) or "")
+        self._label_side = normalize_energy_label_side(
+            payload.get("label_side", default_energy_label_side(self._kind))
+        )
+        self._slot_count_override = self._normalize_slot_count(
+            payload.get("slot_count"),
+            kind=self._kind,
+        )
+        self._occupancies = normalize_energy_occupancies(
+            payload.get("occupancies", ()),
+            kind=self._kind,
+            box_count=self.slot_count(),
+        )
+        self._style_payload = self._normalize_style_payload(
+            dict(payload.get("style_payload", {}) or {})
+        )
+        self._edit_index = max(0, min(self._edit_index, max(0, self.slot_count() - 1)))
+        self.update()
+
+    def boundingRect(self) -> QRectF:
+        return QRectF(0.0, 0.0, self._display_size.width(), self._display_size.height())
+
+    def shape(self) -> QPainterPath:
+        path = QPainterPath()
+        path.addRect(self.boundingRect())
+        return path
+
+    def _label_font(self) -> QFont:
+        font = QFont("Arial")
+        font.setBold(True)
+        font.setPixelSize(max(9, int(round(self._display_size.height() * 0.38))))
+        return font
+
+    def _small_label_font(self) -> QFont:
+        font = QFont("Arial")
+        font.setBold(False)
+        font.setPixelSize(max(8, int(round(self._display_size.height() * 0.12))))
+        return font
+
+    def _row_layout_metrics(self) -> dict[str, object]:
+        rect = self.boundingRect()
+        count = self.slot_count()
+        font = self._label_font()
+        metrics = QFontMetrics(font)
+        label_text = self._label.strip() if self.supports_free_label() else ""
+        label_width = float(metrics.horizontalAdvance(label_text) + 6) if label_text else 0.0
+        margin_x = max(4.0, rect.width() * 0.05)
+        margin_y = max(4.0, rect.height() * 0.18)
+        gap = max(2.0, rect.height() * 0.10)
+        side_gap = max(4.0, rect.height() * 0.18) if label_width > 0.0 else 0.0
+        boxes_left = margin_x + (label_width + side_gap if label_text and self._label_side == "left" else 0.0)
+        boxes_right = rect.width() - margin_x - (
+            label_width + side_gap if label_text and self._label_side == "right" else 0.0
+        )
+        box_height = max(8.0, rect.height() - margin_y * 2.0)
+        available_box_width = max(8.0, boxes_right - boxes_left - gap * max(0, count - 1))
+        box_width = max(6.0, available_box_width / max(1, count))
+        boxes_total_width = box_width * count + gap * max(0, count - 1)
+        box_y = rect.center().y() - box_height * 0.5
+        box_start_x = boxes_left + max(0.0, (boxes_right - boxes_left - boxes_total_width) * 0.5)
+
+        boxes: list[QRectF] = []
+        for index in range(count):
+            box_x = box_start_x + index * (box_width + gap)
+            boxes.append(QRectF(box_x, box_y, box_width, box_height))
+
+        if label_text:
+            label_rect = QRectF(
+                margin_x if self._label_side == "left" else rect.width() - margin_x - label_width,
+                0.0,
+                label_width,
+                rect.height(),
+            )
+        else:
+            label_rect = QRectF()
+
+        return {
+            "slot_regions": boxes,
+            "font": font,
+            "label_rect": label_rect,
+            "label_text": label_text,
+        }
+
+    def _levels_layout_metrics(self) -> dict[str, object]:
+        rect = self.boundingRect()
+        axis_x = rect.left() + rect.width() * 0.07
+        top_margin = rect.height() * 0.06
+        bottom_margin = rect.height() * 0.08
+        slot_height = max(10.0, rect.height() * 0.032)
+        slot_gap = max(1.5, rect.width() * 0.006)
+        slot_width = max(6.0, (rect.width() * 0.16) / 7.0)
+        columns = {
+            "s": rect.left() + rect.width() * 0.22,
+            "p": rect.left() + rect.width() * 0.43,
+            "d": rect.left() + rect.width() * 0.66,
+            "f": rect.left() + rect.width() * 0.86,
+        }
+        small_font = self._small_label_font()
+        small_metrics = QFontMetrics(small_font)
+        slot_regions: list[QRectF] = []
+        groups: list[dict[str, object]] = []
+        level_count = len(self._LEVEL_GROUPS)
+        usable_height = max(1.0, rect.height() - top_margin - bottom_margin)
+
+        for index, (label, count, family_key) in enumerate(self._LEVEL_GROUPS):
+            if level_count == 1:
+                center_y = rect.center().y()
+            else:
+                center_y = rect.bottom() - bottom_margin - usable_height * (index / float(level_count - 1))
+            total_width = count * slot_width + max(0, count - 1) * slot_gap
+            start_x = columns[family_key] - total_width * 0.5
+            slots = [
+                QRectF(start_x + slot_index * (slot_width + slot_gap), center_y - slot_height * 0.5, slot_width, slot_height)
+                for slot_index in range(count)
+            ]
+            slot_regions.extend(slots)
+            label_width = float(small_metrics.horizontalAdvance(label) + 6)
+            group_rect = QRectF(slots[0])
+            for slot in slots[1:]:
+                group_rect = group_rect.united(slot)
+            groups.append(
+                {
+                    "label": label,
+                    "family": family_key,
+                    "slot_regions": slots,
+                    "group_rect": group_rect,
+                    "label_rect": QRectF(
+                        group_rect.left() - 2.0,
+                        group_rect.bottom() + max(3.0, rect.height() * 0.008),
+                        max(label_width, group_rect.width() + 4.0),
+                        small_metrics.height() + 3.0,
+                    ),
+                    "custom_fill": "fill_color" in self._style_payload,
+                }
+            )
+
+        connectors: list[tuple[QPointF, QPointF, QPointF, QPointF]] = []
+        connector_pad = max(3.0, rect.width() * 0.01)
+        for previous, current in zip(groups, groups[1:]):
+            previous_rect = QRectF(previous["group_rect"])
+            current_rect = QRectF(current["group_rect"])
+            start = QPointF(previous_rect.right() + connector_pad, previous_rect.center().y())
+            end = QPointF(current_rect.left() - connector_pad, current_rect.center().y())
+            mid_x = (start.x() + end.x()) * 0.5
+            connectors.append((start, QPointF(mid_x, start.y()), QPointF(mid_x, end.y()), end))
+
+        return {
+            "axis_x": axis_x,
+            "groups": groups,
+            "slot_regions": slot_regions,
+            "connectors": connectors,
+            "small_font": small_font,
+        }
+
+    def _build_slot_group(
+        self,
+        *,
+        center_x: float,
+        center_y: float,
+        slot_count: int,
+        slot_width: float,
+        slot_height: float,
+        slot_gap: float,
+        label: str,
+        label_position: str,
+        font_metrics: QFontMetrics,
+    ) -> dict[str, object]:
+        total_width = slot_count * slot_width + max(0, slot_count - 1) * slot_gap
+        start_x = center_x - total_width * 0.5
+        slot_regions = [
+            QRectF(
+                start_x + slot_index * (slot_width + slot_gap),
+                center_y - slot_height * 0.5,
+                slot_width,
+                slot_height,
+            )
+            for slot_index in range(slot_count)
+        ]
+        group_rect = QRectF(slot_regions[0])
+        for slot in slot_regions[1:]:
+            group_rect = group_rect.united(slot)
+        label_width = float(font_metrics.horizontalAdvance(label) + 6)
+        label_height = font_metrics.height() + 2.0
+        if label_position == "left":
+            label_rect = QRectF(
+                group_rect.left() - label_width - 6.0,
+                group_rect.center().y() - label_height * 0.5,
+                label_width,
+                label_height,
+            )
+        elif label_position == "right":
+            label_rect = QRectF(
+                group_rect.right() + 6.0,
+                group_rect.center().y() - label_height * 0.5,
+                label_width,
+                label_height,
+            )
+        else:
+            label_rect = QRectF(
+                group_rect.left() - 2.0,
+                group_rect.bottom() + 4.0,
+                max(label_width, group_rect.width() + 4.0),
+                label_height,
+            )
+        return {
+            "label": label,
+            "slot_regions": slot_regions,
+            "group_rect": group_rect,
+            "label_rect": label_rect,
+        }
+
+    def _mo_layout_metrics(self) -> dict[str, object]:
+        rect = self.boundingRect()
+        small_font = self._small_label_font()
+        metrics = QFontMetrics(small_font)
+        slot_height = max(12.0, rect.height() * 0.075)
+        slot_gap = max(2.0, rect.width() * 0.01)
+        side_slot_width = max(12.0, rect.width() * 0.038)
+        center_slot_width = max(14.0, rect.width() * 0.048)
+        left_x = rect.left() + rect.width() * 0.17
+        right_x = rect.right() - rect.width() * 0.17
+        center_x = rect.center().x()
+        left_groups: list[dict[str, object]] = []
+        right_groups: list[dict[str, object]] = []
+        center_groups: list[dict[str, object]] = []
+        slot_regions: list[QRectF] = []
+
+        for label, count, y_fraction in self._MO_ATOMIC_GROUPS:
+            center_y = rect.top() + rect.height() * y_fraction
+            left_group = self._build_slot_group(
+                center_x=left_x,
+                center_y=center_y,
+                slot_count=count,
+                slot_width=side_slot_width,
+                slot_height=slot_height,
+                slot_gap=slot_gap,
+                label=label,
+                label_position="left",
+                font_metrics=metrics,
+            )
+            right_group = self._build_slot_group(
+                center_x=right_x,
+                center_y=center_y,
+                slot_count=count,
+                slot_width=side_slot_width,
+                slot_height=slot_height,
+                slot_gap=slot_gap,
+                label=label,
+                label_position="right",
+                font_metrics=metrics,
+            )
+            left_groups.append(left_group)
+            right_groups.append(right_group)
+            slot_regions.extend(left_group["slot_regions"])
+            slot_regions.extend(right_group["slot_regions"])
+
+        for label, count, y_fraction in self._MO_CENTER_GROUPS:
+            center_y = rect.top() + rect.height() * y_fraction
+            group = self._build_slot_group(
+                center_x=center_x,
+                center_y=center_y,
+                slot_count=count,
+                slot_width=center_slot_width,
+                slot_height=slot_height,
+                slot_gap=slot_gap,
+                label=label,
+                label_position="below",
+                font_metrics=metrics,
+            )
+            center_groups.append(group)
+            slot_regions.extend(group["slot_regions"])
+
+        center_by_label = {group["label"]: group for group in center_groups}
+        left_by_label = {group["label"]: group for group in left_groups}
+        right_by_label = {group["label"]: group for group in right_groups}
+
+        connectors: list[tuple[QPointF, QPointF, QPointF]] = []
+        lower_targets = (
+            center_by_label["sigma 2s"],
+            center_by_label["sigma* 2s"],
+        )
+        upper_targets = (
+            center_by_label["sigma 2p"],
+            center_by_label["pi 2p"],
+            center_by_label["pi* 2p"],
+            center_by_label["sigma* 2p"],
+        )
+        for source_group in (left_by_label["2s"], right_by_label["2s"]):
+            source_anchor = QPointF(
+                QRectF(source_group["group_rect"]).right()
+                if source_group in left_groups
+                else QRectF(source_group["group_rect"]).left(),
+                QRectF(source_group["group_rect"]).center().y(),
+            )
+            for target_group in lower_targets:
+                target_rect = QRectF(target_group["group_rect"])
+                target_anchor = QPointF(
+                    target_rect.left() - 2.0 if source_group in left_groups else target_rect.right() + 2.0,
+                    target_rect.center().y(),
+                )
+                connectors.append(
+                    (
+                        source_anchor,
+                        QPointF((source_anchor.x() + target_anchor.x()) * 0.5, source_anchor.y()),
+                        target_anchor,
+                    )
+                )
+        for source_group in (left_by_label["2p"], right_by_label["2p"]):
+            source_anchor = QPointF(
+                QRectF(source_group["group_rect"]).right()
+                if source_group in left_groups
+                else QRectF(source_group["group_rect"]).left(),
+                QRectF(source_group["group_rect"]).center().y(),
+            )
+            for target_group in upper_targets:
+                target_rect = QRectF(target_group["group_rect"])
+                target_anchor = QPointF(
+                    target_rect.left() - 2.0 if source_group in left_groups else target_rect.right() + 2.0,
+                    target_rect.center().y(),
+                )
+                connectors.append(
+                    (
+                        source_anchor,
+                        QPointF((source_anchor.x() + target_anchor.x()) * 0.5, source_anchor.y()),
+                        target_anchor,
+                    )
+                )
+
+        header_font = QFont("Arial")
+        header_font.setBold(True)
+        header_font.setPixelSize(max(8, int(round(rect.height() * 0.08))))
+        header_metrics = QFontMetrics(header_font)
+        header_y = rect.top() + 2.0
+        return {
+            "left_groups": left_groups,
+            "right_groups": right_groups,
+            "center_groups": center_groups,
+            "slot_regions": slot_regions,
+            "connectors": connectors,
+            "small_font": small_font,
+            "header_font": header_font,
+            "left_header_rect": QRectF(
+                rect.left() + 4.0,
+                header_y,
+                rect.width() * 0.22,
+                header_metrics.height() + 2.0,
+            ),
+            "center_header_rect": QRectF(
+                rect.center().x() - rect.width() * 0.17,
+                header_y,
+                rect.width() * 0.34,
+                header_metrics.height() + 2.0,
+            ),
+            "right_header_rect": QRectF(
+                rect.right() - rect.width() * 0.22 - 4.0,
+                header_y,
+                rect.width() * 0.22,
+                header_metrics.height() + 2.0,
+            ),
+        }
+
+    def _slot_regions(self) -> list[QRectF]:
+        family = self.family()
+        if family == "levels":
+            return list(self._levels_layout_metrics()["slot_regions"])
+        if family == "mo":
+            return list(self._mo_layout_metrics()["slot_regions"])
+        return list(self._row_layout_metrics()["slot_regions"])
+
+    def _clamp_edit_index(self) -> None:
+        self._edit_index = max(0, min(self._edit_index, max(0, self.slot_count() - 1)))
+
+    def is_editing(self) -> bool:
+        return bool(self._editing)
+
+    def _editor_view(self):
+        scene = self.scene()
+        if scene is None:
+            return None
+        for view in scene.views():
+            if hasattr(view, "_push_energy_diagram_config_change"):
+                return view
+        return None
+
+    def begin_direct_edit(self, slot_index: int = 0) -> None:
+        self._editing = True
+        self._edit_index = int(slot_index)
+        self._clamp_edit_index()
+        self.setFocus(Qt.FocusReason.MouseFocusReason)
+        self.update()
+
+    def end_direct_edit(self) -> None:
+        if not self._editing:
+            return
+        self._editing = False
+        self.clearFocus()
+        self.update()
+
+    def _slot_index_at(self, point: QPointF) -> int | None:
+        for index, slot in enumerate(self._slot_regions()):
+            if slot.adjusted(-2.0, -2.0, 2.0, 2.0).contains(point):
+                return index
+        return None
+
+    def _update_current_slot_occupancy(self, target: str) -> bool:
+        if not self._occupancies:
+            return False
+        self._clamp_edit_index()
+        occupancies = list(self._occupancies)
+        current = occupancies[self._edit_index]
+        if target == "up":
+            transitions = {
+                "empty": "up",
+                "up": "upup",
+                "down": "pair",
+                "pair": "upup",
+                "upup": "upup",
+                "downdown": "pair",
+            }
+            new_value = transitions.get(current, "up")
+        elif target == "down":
+            transitions = {
+                "empty": "down",
+                "down": "downdown",
+                "up": "pair",
+                "pair": "downdown",
+                "upup": "pair",
+                "downdown": "downdown",
+            }
+            new_value = transitions.get(current, "down")
+        else:
+            new_value = "empty"
+        if new_value == current:
+            return False
+        occupancies[self._edit_index] = new_value
+        payload = self.config_payload()
+        payload["occupancies"] = occupancies
+        view = self._editor_view()
+        if view is not None:
+            changed = view._push_energy_diagram_config_change(
+                {self: payload},
+                text="Edit energy diagram occupancy",
+            )
+            if changed:
+                self.setFocus(Qt.FocusReason.OtherFocusReason)
+            return bool(changed)
+        self.apply_config_payload(payload)
+        return True
+
+    @staticmethod
+    def _draw_up_arrow(painter: QPainter, box: QRectF, color: QColor, *, offset: float = 0.5) -> None:
+        shaft_x = box.left() + box.width() * offset
+        bottom_y = box.bottom() - box.height() * 0.12
+        head_y = box.top() + box.height() * 0.22
+        head_dx = max(2.0, box.width() * 0.12)
+        head_dy = max(2.0, box.height() * 0.15)
+        painter.setPen(
+            QPen(
+                color,
+                max(1.1, box.height() * 0.065),
+                Qt.PenStyle.SolidLine,
+                Qt.PenCapStyle.RoundCap,
+            )
+        )
+        painter.drawLine(QPointF(shaft_x, bottom_y), QPointF(shaft_x, head_y))
+        painter.drawLine(QPointF(shaft_x, head_y), QPointF(shaft_x - head_dx, head_y + head_dy))
+        painter.drawLine(QPointF(shaft_x, head_y), QPointF(shaft_x + head_dx, head_y + head_dy))
+
+    @staticmethod
+    def _draw_down_arrow(painter: QPainter, box: QRectF, color: QColor, *, offset: float = 0.5) -> None:
+        shaft_x = box.left() + box.width() * offset
+        top_y = box.top() + box.height() * 0.12
+        head_y = box.bottom() - box.height() * 0.22
+        head_dx = max(2.0, box.width() * 0.12)
+        head_dy = max(2.0, box.height() * 0.15)
+        painter.setPen(
+            QPen(
+                color,
+                max(1.1, box.height() * 0.065),
+                Qt.PenStyle.SolidLine,
+                Qt.PenCapStyle.RoundCap,
+            )
+        )
+        painter.drawLine(QPointF(shaft_x, top_y), QPointF(shaft_x, head_y))
+        painter.drawLine(QPointF(shaft_x, head_y), QPointF(shaft_x - head_dx, head_y - head_dy))
+        painter.drawLine(QPointF(shaft_x, head_y), QPointF(shaft_x + head_dx, head_y - head_dy))
+
+    def _draw_slot_occupancies(
+        self,
+        painter: QPainter,
+        slot_regions: list[QRectF],
+        up_color: QColor,
+        down_color: QColor,
+    ) -> None:
+        occupancies = list(self._occupancies)
+        if len(occupancies) < len(slot_regions):
+            occupancies.extend(["empty"] * (len(slot_regions) - len(occupancies)))
+        for slot, occupancy in zip(slot_regions, occupancies):
+            if occupancy == "up":
+                self._draw_up_arrow(painter, slot, up_color, offset=0.5)
+            elif occupancy == "down":
+                self._draw_down_arrow(painter, slot, down_color, offset=0.5)
+            elif occupancy == "pair":
+                self._draw_up_arrow(painter, slot, up_color, offset=0.36)
+                self._draw_down_arrow(painter, slot, down_color, offset=0.64)
+            elif occupancy == "upup":
+                self._draw_up_arrow(painter, slot, up_color, offset=0.36)
+                self._draw_up_arrow(painter, slot, up_color, offset=0.64)
+            elif occupancy == "downdown":
+                self._draw_down_arrow(painter, slot, down_color, offset=0.36)
+                self._draw_down_arrow(painter, slot, down_color, offset=0.64)
+
+    def _draw_edit_cursor(self, painter: QPainter, slot_regions: list[QRectF]) -> None:
+        if not self._editing or not self.hasFocus() or not slot_regions:
+            return
+        self._clamp_edit_index()
+        slot = slot_regions[self._edit_index]
+        painter.setPen(QPen(QColor("#2C66D6"), max(1.0, slot.height() * 0.04), Qt.PenStyle.DashLine))
+        painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        painter.drawRect(slot.adjusted(1.0, 1.0, -1.0, -1.0))
+        painter.setPen(QPen(QColor("#2C66D6"), max(1.0, slot.height() * 0.05)))
+        painter.drawLine(
+            QPointF(slot.center().x(), slot.top() + 2.0),
+            QPointF(slot.center().x(), slot.bottom() - 2.0),
+        )
+
+    def _paint_row(self, painter: QPainter, style: dict[str, object]) -> None:
+        metrics = self._row_layout_metrics()
+        stroke_color = QColor(str(style["stroke_color"]))
+        fill_color = QColor(str(style["fill_color"]))
+        label_color = QColor(str(style["label_color"]))
+        up_color = QColor(str(style["arrow_up_color"]))
+        down_color = QColor(str(style["arrow_down_color"]))
+        fill_visible = bool(style.get("fill_visible", True))
+        box_stroke_visible = bool(style.get("box_stroke_visible", True))
+
+        painter.setFont(metrics["font"])
+        label_text = str(metrics["label_text"])
+        label_rect = QRectF(metrics["label_rect"])
+        if label_text:
+            painter.setPen(label_color)
+            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, label_text)
+
+        slot_regions = list(metrics["slot_regions"])
+        pen_width = max(1.0, self.boundingRect().height() * 0.05)
+        pen = QPen(stroke_color, pen_width) if box_stroke_visible else QPen(Qt.PenStyle.NoPen)
+        brush = QBrush(fill_color if fill_visible else Qt.GlobalColor.transparent)
+        painter.setPen(pen)
+        painter.setBrush(brush)
+        for slot in slot_regions:
+            painter.drawRect(slot)
+
+        self._draw_slot_occupancies(painter, slot_regions, up_color, down_color)
+        self._draw_edit_cursor(painter, slot_regions)
+
+    def _paint_levels(self, painter: QPainter, style: dict[str, object]) -> None:
+        stroke_color = QColor(str(style["stroke_color"]))
+        fill_color = QColor(str(style["fill_color"]))
+        label_color = QColor(str(style["label_color"]))
+        up_color = QColor(str(style["arrow_up_color"]))
+        down_color = QColor(str(style["arrow_down_color"]))
+        connector_color = QColor(str(style.get("connector_color", stroke_color.name())))
+        fill_visible = bool(style.get("fill_visible", True))
+        box_stroke_visible = bool(style.get("box_stroke_visible", True))
+        metrics = self._levels_layout_metrics()
+        painter.setFont(metrics["small_font"])
+
+        painter.setPen(QPen(stroke_color, max(1.0, self.boundingRect().width() * 0.0038)))
+        axis_top = QPointF(metrics["axis_x"], self.boundingRect().top() + self.boundingRect().height() * 0.05)
+        axis_bottom = QPointF(metrics["axis_x"], self.boundingRect().bottom() - self.boundingRect().height() * 0.04)
+        painter.drawLine(axis_bottom, axis_top)
+        painter.drawLine(axis_top, QPointF(axis_top.x() - 3.0, axis_top.y() + 6.0))
+        painter.drawLine(axis_top, QPointF(axis_top.x() + 3.0, axis_top.y() + 6.0))
+        painter.setPen(label_color)
+        painter.drawText(
+            QRectF(axis_top.x() - 10.0, axis_top.y() - 14.0, 20.0, 12.0),
+            Qt.AlignmentFlag.AlignCenter,
+            "E",
+        )
+
+        painter.setPen(QPen(connector_color, max(1.0, self.boundingRect().width() * 0.0032)))
+        for start, mid0, mid1, end in metrics["connectors"]:
+            painter.drawLine(start, mid0)
+            painter.drawLine(mid0, mid1)
+            painter.drawLine(mid1, end)
+
+        slot_regions: list[QRectF] = []
+        for group in metrics["groups"]:
+            group_slots = list(group["slot_regions"])
+            slot_regions.extend(group_slots)
+            current_fill = fill_color
+            if not bool(group.get("custom_fill", False)) and fill_visible:
+                current_fill = QColor(self._LEVEL_FILL_COLORS.get(str(group["family"]), "#FFFFFF"))
+            painter.setPen(
+                QPen(stroke_color, max(0.8, self.boundingRect().width() * 0.0028))
+                if box_stroke_visible
+                else QPen(Qt.PenStyle.NoPen)
+            )
+            painter.setBrush(QBrush(current_fill if fill_visible else Qt.GlobalColor.transparent))
+            for slot in group_slots:
+                painter.drawRect(slot)
+            painter.setPen(label_color)
+            painter.drawText(QRectF(group["label_rect"]), Qt.AlignmentFlag.AlignCenter, str(group["label"]))
+
+        self._draw_slot_occupancies(painter, slot_regions, up_color, down_color)
+        self._draw_edit_cursor(painter, slot_regions)
+
+    def _paint_mo_group(
+        self,
+        painter: QPainter,
+        group: dict[str, object],
+        *,
+        stroke_color: QColor,
+        fill_color: QColor,
+        fill_visible: bool,
+        box_stroke_visible: bool,
+    ) -> None:
+        slot_regions = list(group["slot_regions"])
+        if box_stroke_visible:
+            painter.setPen(QPen(stroke_color, max(0.8, self.boundingRect().width() * 0.0028)))
+            painter.setBrush(QBrush(fill_color if fill_visible else Qt.GlobalColor.transparent))
+            for slot in slot_regions:
+                painter.drawRect(slot)
+        else:
+            painter.setPen(QPen(stroke_color, max(1.0, self.boundingRect().width() * 0.0031)))
+            painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+            first = slot_regions[0]
+            last = slot_regions[-1]
+            baseline_y = first.center().y()
+            painter.drawLine(
+                QPointF(first.left(), baseline_y),
+                QPointF(last.right(), baseline_y),
+            )
+
+    def _paint_mo(self, painter: QPainter, style: dict[str, object]) -> None:
+        stroke_color = QColor(str(style["stroke_color"]))
+        fill_color = QColor(str(style["fill_color"]))
+        label_color = QColor(str(style["label_color"]))
+        up_color = QColor(str(style["arrow_up_color"]))
+        down_color = QColor(str(style["arrow_down_color"]))
+        connector_color = QColor(str(style.get("connector_color", stroke_color.name())))
+        fill_visible = bool(style.get("fill_visible", True))
+        box_stroke_visible = bool(style.get("box_stroke_visible", True))
+        metrics = self._mo_layout_metrics()
+
+        painter.setFont(metrics["header_font"])
+        painter.setPen(label_color)
+        painter.drawText(QRectF(metrics["left_header_rect"]), Qt.AlignmentFlag.AlignCenter, "Atomicos")
+        painter.drawText(QRectF(metrics["center_header_rect"]), Qt.AlignmentFlag.AlignCenter, "Moleculares")
+        painter.drawText(QRectF(metrics["right_header_rect"]), Qt.AlignmentFlag.AlignCenter, "Atomicos")
+
+        painter.setPen(
+            QPen(
+                connector_color,
+                max(1.0, self.boundingRect().width() * 0.0025),
+                Qt.PenStyle.DashLine,
+            )
+        )
+        for start, bend, end in metrics["connectors"]:
+            painter.drawLine(start, bend)
+            painter.drawLine(bend, end)
+
+        painter.setFont(metrics["small_font"])
+        slot_regions: list[QRectF] = []
+        for group in [*metrics["left_groups"], *metrics["center_groups"], *metrics["right_groups"]]:
+            self._paint_mo_group(
+                painter,
+                group,
+                stroke_color=stroke_color,
+                fill_color=fill_color,
+                fill_visible=fill_visible,
+                box_stroke_visible=box_stroke_visible,
+            )
+            painter.setPen(label_color)
+            painter.drawText(QRectF(group["label_rect"]), Qt.AlignmentFlag.AlignCenter, str(group["label"]))
+            slot_regions.extend(group["slot_regions"])
+
+        self._draw_slot_occupancies(painter, slot_regions, up_color, down_color)
+        self._draw_edit_cursor(painter, slot_regions)
+
+    def mouseDoubleClickEvent(self, event) -> None:
+        slot_index = self._slot_index_at(event.pos())
+        self.begin_direct_edit(0 if slot_index is None else slot_index)
+        event.accept()
+
+    def mousePressEvent(self, event) -> None:
+        if self._editing:
+            slot_index = self._slot_index_at(event.pos())
+            if slot_index is not None:
+                self._edit_index = slot_index
+                self.update()
+        super().mousePressEvent(event)
+
+    def focusInEvent(self, event) -> None:
+        super().focusInEvent(event)
+        self.update()
+
+    def focusOutEvent(self, event) -> None:
+        self._editing = False
+        super().focusOutEvent(event)
+        self.update()
+
+    def keyPressEvent(self, event) -> None:
+        if not self._editing:
+            super().keyPressEvent(event)
+            return
+        key = event.key()
+        if key == Qt.Key.Key_Left:
+            self._edit_index = max(0, self._edit_index - 1)
+            self.update()
+            event.accept()
+            return
+        if key == Qt.Key.Key_Right:
+            self._edit_index = min(max(0, self.slot_count() - 1), self._edit_index + 1)
+            self.update()
+            event.accept()
+            return
+        if key == Qt.Key.Key_Up:
+            self._update_current_slot_occupancy("up")
+            event.accept()
+            return
+        if key == Qt.Key.Key_Down:
+            self._update_current_slot_occupancy("down")
+            event.accept()
+            return
+        if key in (Qt.Key.Key_Backspace, Qt.Key.Key_Delete, Qt.Key.Key_0, Qt.Key.Key_Space):
+            self._update_current_slot_occupancy("empty")
+            event.accept()
+            return
+        if key in (Qt.Key.Key_Escape, Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self._editing = False
+            self.clearFocus()
+            self.update()
+            event.accept()
+            return
+        event.accept()
+
+    def paint(self, painter, option, widget=None) -> None:
+        option.state &= ~QStyle.StateFlag.State_Selected
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+
+        style = self.effective_style()
+        if self.family() == "levels":
+            self._paint_levels(painter, style)
+            return
+        if self.family() == "mo":
+            self._paint_mo(painter, style)
+            return
+        self._paint_row(painter, style)
 
 
 class ImageAnnotationItem(QGraphicsItem):

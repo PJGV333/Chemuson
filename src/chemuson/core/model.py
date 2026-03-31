@@ -353,6 +353,7 @@ class ChemState:
     """Estado químico y de visualización activo en la interfaz."""
     active_tool: str = "tool_select"
     active_orbital_kind: str = "p_shaded"
+    active_energy_diagram_kind: str = "sublevel_s"
     active_bond_order: int = 1
     active_bond_style: BondStyle = BondStyle.PLAIN
     active_bond_stereo: BondStereo = BondStereo.NONE
