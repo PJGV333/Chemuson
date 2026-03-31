@@ -56,6 +56,7 @@ def test_inserted_energy_diagram_is_persistent_and_undoable() -> None:
         assert len(canvas.energy_diagram_items) == 1
         assert item.kind() == "sublevel_p"
         assert item.effective_style()["fill_color"] == "#FFFFFF"
+        assert item.effective_style()["box_base_visible"] is False
         assert item.display_rect().center().x() == pytest.approx(center.x())
         assert item.display_rect().center().y() == pytest.approx(center.y())
 
@@ -70,6 +71,7 @@ def test_inserted_energy_diagram_is_persistent_and_undoable() -> None:
                 "arrow_up_color": "#111111",
                 "arrow_down_color": "#cc0000",
                 "fill_visible": False,
+                "box_base_visible": True,
             }
         )
         canvas.set_graphics_item_opacity(item, 0.42)
@@ -91,6 +93,7 @@ def test_inserted_energy_diagram_is_persistent_and_undoable() -> None:
             "arrow_up_color": "#111111",
             "arrow_down_color": "#cc0000",
             "fill_visible": False,
+            "box_base_visible": True,
         }
         assert restored.effective_item_opacity(restored_item) == pytest.approx(0.42)
 
@@ -119,6 +122,7 @@ def test_custom_energy_row_and_legacy_presets_are_supported() -> None:
         assert custom.kind() == "custom_level"
         assert custom.box_count() == 1
         assert custom.effective_style()["fill_color"] == "#FFFFFF"
+        assert custom.effective_style()["box_base_visible"] is False
         assert "custom_level" in ENERGY_DIAGRAM_MENU_ORDER
         assert "levels_aufbau" not in ENERGY_DIAGRAM_MENU_ORDER
         assert "mo_2s_2p" not in ENERGY_DIAGRAM_MENU_ORDER
@@ -173,6 +177,7 @@ def test_energy_diagram_copy_payload_roundtrip() -> None:
                 "arrow_up_color": "#000000",
                 "arrow_down_color": "#d62828",
                 "fill_visible": False,
+                "box_base_visible": True,
             }
         )
         item.setRotation(18.0)
@@ -206,6 +211,7 @@ def test_energy_diagram_copy_payload_roundtrip() -> None:
             "arrow_up_color": "#000000",
             "arrow_down_color": "#d62828",
             "fill_visible": False,
+            "box_base_visible": True,
         }
         assert pasted.rotation() == pytest.approx(18.0)
         assert target.effective_item_opacity(pasted) == pytest.approx(0.65)
@@ -265,5 +271,30 @@ def test_energy_diagram_direct_keyboard_editing_uses_arrow_keys() -> None:
         QTest.keyClick(canvas.viewport(), Qt.Key.Key_Escape)
         QApplication.processEvents()
         assert item.is_editing() is False
+    finally:
+        canvas.close()
+
+
+def test_box_base_mode_switches_off_outline_immediately() -> None:
+    canvas = ChemusonCanvas()
+    try:
+        item = canvas._insert_energy_diagram_item(QPointF(180.0, 140.0), kind="sublevel_d")
+
+        assert item is not None
+        item.setSelected(True)
+        canvas._sync_selection_from_scene()
+
+        assert item.effective_style()["box_stroke_visible"] is True
+        assert item.effective_style()["box_base_visible"] is False
+
+        canvas._set_selected_energy_diagram_box_base_visible(True)
+
+        assert item.effective_style()["box_stroke_visible"] is False
+        assert item.effective_style()["box_base_visible"] is True
+
+        canvas._set_selected_energy_diagram_box_stroke_visible(True)
+
+        assert item.effective_style()["box_stroke_visible"] is True
+        assert item.effective_style()["box_base_visible"] is False
     finally:
         canvas.close()

@@ -148,16 +148,19 @@ def energy_diagram_default_style_payload(kind: str) -> dict[str, object]:
         return {
             "connector_color": "#C75A2C",
             "box_stroke_visible": True,
+            "box_base_visible": False,
             "fill_visible": True,
         }
     if kind == "mo_2s_2p":
         return {
             "connector_color": "#7A7A7A",
             "box_stroke_visible": False,
+            "box_base_visible": False,
             "fill_visible": False,
         }
     return {
         "box_stroke_visible": True,
+        "box_base_visible": False,
         "fill_visible": True,
     }
 

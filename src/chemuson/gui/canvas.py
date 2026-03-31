@@ -11191,6 +11191,10 @@ class ChemusonCanvas(QGraphicsView):
             bool(item.effective_style().get("box_stroke_visible", True))
             for item in selected_energy_diagram_items
         )
+        energy_box_base_all_visible = bool(selected_energy_diagram_items) and all(
+            bool(item.effective_style().get("box_base_visible", False))
+            for item in selected_energy_diagram_items
+        )
         energy_has_custom_style = any(
             bool(item.style_payload()) for item in selected_energy_diagram_items
         )
@@ -11324,6 +11328,7 @@ class ChemusonCanvas(QGraphicsView):
         act_energy_arrow_down_color = None
         act_energy_fill_toggle = None
         act_energy_box_outline_toggle = None
+        act_energy_box_base_toggle = None
         act_energy_reset_style = None
         act_orbital_color = None
         act_orbital_reset_color = None
@@ -11429,6 +11434,12 @@ class ChemusonCanvas(QGraphicsView):
                 else "Mostrar contorno de cajas"
             )
             act_energy_box_outline_toggle = energy_style_menu.addAction(outline_text)
+            base_text = (
+                "Quitar base de cajas"
+                if energy_box_base_all_visible
+                else "Mostrar base de cajas"
+            )
+            act_energy_box_base_toggle = energy_style_menu.addAction(base_text)
             energy_style_menu.addSeparator()
             act_energy_reset_style = energy_style_menu.addAction("Restablecer estilo")
             act_energy_reset_style.setEnabled(energy_has_custom_style)
@@ -11538,6 +11549,11 @@ class ChemusonCanvas(QGraphicsView):
         if act_energy_box_outline_toggle is not None and action == act_energy_box_outline_toggle:
             self._set_selected_energy_diagram_box_stroke_visible(
                 not energy_box_outline_all_visible
+            )
+            return
+        if act_energy_box_base_toggle is not None and action == act_energy_box_base_toggle:
+            self._set_selected_energy_diagram_box_base_visible(
+                not energy_box_base_all_visible
             )
             return
         if act_energy_reset_style is not None and action == act_energy_reset_style:
@@ -12489,11 +12505,32 @@ class ChemusonCanvas(QGraphicsView):
             payload = item.config_payload()
             style_payload = dict(payload.get("style_payload", {}) or {})
             style_payload["box_stroke_visible"] = bool(visible)
+            if visible:
+                style_payload["box_base_visible"] = False
             payload["style_payload"] = style_payload
             updates[item] = payload
         self._push_energy_diagram_config_change(
             updates,
             text="Toggle energy diagram box outline",
+        )
+
+    def _set_selected_energy_diagram_box_base_visible(self, visible: bool) -> None:
+        """Muestra u oculta la base horizontal de las cajas."""
+        items = self._selected_energy_diagram_items()
+        if not items:
+            return
+        updates: dict[EnergyDiagramItem, dict[str, object]] = {}
+        for item in items:
+            payload = item.config_payload()
+            style_payload = dict(payload.get("style_payload", {}) or {})
+            style_payload["box_base_visible"] = bool(visible)
+            if visible:
+                style_payload["box_stroke_visible"] = False
+            payload["style_payload"] = style_payload
+            updates[item] = payload
+        self._push_energy_diagram_config_change(
+            updates,
+            text="Toggle energy diagram box base",
         )
 
     def _reset_selected_energy_diagram_style(self) -> None:

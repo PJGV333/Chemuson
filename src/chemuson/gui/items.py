@@ -4364,6 +4364,7 @@ class EnergyDiagramItem(QGraphicsItem):
         "connector_color": "#C75A2C",
         "fill_visible": True,
         "box_stroke_visible": True,
+        "box_base_visible": False,
     }
     _LEVEL_GROUPS = (
         ("1s", 1, "s"),
@@ -4562,6 +4563,8 @@ class EnergyDiagramItem(QGraphicsItem):
             normalized["fill_visible"] = bool(payload.get("fill_visible"))
         if "box_stroke_visible" in payload:
             normalized["box_stroke_visible"] = bool(payload.get("box_stroke_visible"))
+        if "box_base_visible" in payload:
+            normalized["box_base_visible"] = bool(payload.get("box_base_visible"))
         return normalized
 
     def display_rect(self) -> QRectF:
@@ -5115,6 +5118,24 @@ class EnergyDiagramItem(QGraphicsItem):
             QPointF(slot.center().x(), slot.bottom() - 2.0),
         )
 
+    @staticmethod
+    def _draw_slot_bases(
+        painter: QPainter,
+        slot_regions: list[QRectF],
+        color: QColor,
+        pen_width: float,
+    ) -> None:
+        if not slot_regions:
+            return
+        painter.setPen(QPen(color, pen_width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        for slot in slot_regions:
+            inset = max(1.5, slot.width() * 0.08)
+            baseline_y = slot.bottom() - max(1.0, pen_width * 0.55)
+            painter.drawLine(
+                QPointF(slot.left() + inset, baseline_y),
+                QPointF(slot.right() - inset, baseline_y),
+            )
+
     def _paint_row(self, painter: QPainter, style: dict[str, object]) -> None:
         metrics = self._row_layout_metrics()
         stroke_color = QColor(str(style["stroke_color"]))
@@ -5124,6 +5145,7 @@ class EnergyDiagramItem(QGraphicsItem):
         down_color = QColor(str(style["arrow_down_color"]))
         fill_visible = bool(style.get("fill_visible", True))
         box_stroke_visible = bool(style.get("box_stroke_visible", True))
+        box_base_visible = bool(style.get("box_base_visible", False))
 
         painter.setFont(metrics["font"])
         label_text = str(metrics["label_text"])
@@ -5140,6 +5162,8 @@ class EnergyDiagramItem(QGraphicsItem):
         painter.setBrush(brush)
         for slot in slot_regions:
             painter.drawRect(slot)
+        if box_base_visible and not box_stroke_visible:
+            self._draw_slot_bases(painter, slot_regions, stroke_color, pen_width)
 
         self._draw_slot_occupancies(painter, slot_regions, up_color, down_color)
         self._draw_edit_cursor(painter, slot_regions)
@@ -5153,6 +5177,7 @@ class EnergyDiagramItem(QGraphicsItem):
         connector_color = QColor(str(style.get("connector_color", stroke_color.name())))
         fill_visible = bool(style.get("fill_visible", True))
         box_stroke_visible = bool(style.get("box_stroke_visible", True))
+        box_base_visible = bool(style.get("box_base_visible", False))
         metrics = self._levels_layout_metrics()
         painter.setFont(metrics["small_font"])
 
@@ -5190,6 +5215,13 @@ class EnergyDiagramItem(QGraphicsItem):
             painter.setBrush(QBrush(current_fill if fill_visible else Qt.GlobalColor.transparent))
             for slot in group_slots:
                 painter.drawRect(slot)
+            if box_base_visible and not box_stroke_visible:
+                self._draw_slot_bases(
+                    painter,
+                    group_slots,
+                    stroke_color,
+                    max(0.8, self.boundingRect().width() * 0.0028),
+                )
             painter.setPen(label_color)
             painter.drawText(QRectF(group["label_rect"]), Qt.AlignmentFlag.AlignCenter, str(group["label"]))
 
@@ -5205,6 +5237,7 @@ class EnergyDiagramItem(QGraphicsItem):
         fill_color: QColor,
         fill_visible: bool,
         box_stroke_visible: bool,
+        box_base_visible: bool,
     ) -> None:
         slot_regions = list(group["slot_regions"])
         if box_stroke_visible:
@@ -5212,6 +5245,13 @@ class EnergyDiagramItem(QGraphicsItem):
             painter.setBrush(QBrush(fill_color if fill_visible else Qt.GlobalColor.transparent))
             for slot in slot_regions:
                 painter.drawRect(slot)
+        elif box_base_visible:
+            self._draw_slot_bases(
+                painter,
+                slot_regions,
+                stroke_color,
+                max(0.8, self.boundingRect().width() * 0.0028),
+            )
         else:
             painter.setPen(QPen(stroke_color, max(1.0, self.boundingRect().width() * 0.0031)))
             painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
@@ -5232,6 +5272,7 @@ class EnergyDiagramItem(QGraphicsItem):
         connector_color = QColor(str(style.get("connector_color", stroke_color.name())))
         fill_visible = bool(style.get("fill_visible", True))
         box_stroke_visible = bool(style.get("box_stroke_visible", True))
+        box_base_visible = bool(style.get("box_base_visible", False))
         metrics = self._mo_layout_metrics()
 
         painter.setFont(metrics["header_font"])
@@ -5261,6 +5302,7 @@ class EnergyDiagramItem(QGraphicsItem):
                 fill_color=fill_color,
                 fill_visible=fill_visible,
                 box_stroke_visible=box_stroke_visible,
+                box_base_visible=box_base_visible,
             )
             painter.setPen(label_color)
             painter.drawText(QRectF(group["label_rect"]), Qt.AlignmentFlag.AlignCenter, str(group["label"]))
