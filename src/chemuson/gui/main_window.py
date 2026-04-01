@@ -64,7 +64,13 @@ from chemuson.gui.energy_diagrams import (
 from chemuson.gui.composite_diagram_item import CompositeDiagramItem
 from chemuson.gui.orbitals import ORBITAL_MENU_ORDER, orbital_display_name, orbital_tool_id
 from chemuson.gui.toolbar import ChemusonToolbar, SymbolPaletteToolbar
-from chemuson.gui.styles import MAIN_STYLESHEET, TOOL_PALETTE_STYLESHEET
+from chemuson.gui.theme_manager import (
+    apply_theme,
+    load_theme_preference,
+    resolve_effective_theme,
+    save_theme_preference,
+)
+from chemuson.gui.icon_provider import apply_main_action_icons
 from chemuson.gui.icons import draw_generic_icon
 from chemuson.gui.docks import PlantillasDock, InspectorDock, AppearanceDock
 from chemuson.gui.dialogs import PreferencesDialog, QuickStartDialog, StyleDialog
@@ -206,9 +212,6 @@ class ChemusonWindow(QMainWindow):
         self.setWindowTitle(f"Chemuson {self._app_version} - Editor Molecular Libre")
         self.resize(1200, 900)
         
-        # Apply main stylesheet
-        self.setStyleSheet(MAIN_STYLESHEET)
-
         # === CORE COMPONENTS ===
         self._create_actions()
         self._current_file_path: Optional[str] = None
@@ -286,12 +289,10 @@ class ChemusonWindow(QMainWindow):
 
         # === LEFT TOOLBAR (Drawing tools) ===
         self.toolbar = ChemusonToolbar()
-        self.toolbar.setStyleSheet(TOOL_PALETTE_STYLESHEET)
         self.addToolBar(Qt.ToolBarArea.LeftToolBarArea, self.toolbar)
 
         # === RIGHT SYMBOLS TOOLBAR ===
         self.symbols_toolbar = SymbolPaletteToolbar(action_group=self.toolbar.action_group)
-        self.symbols_toolbar.setStyleSheet(TOOL_PALETTE_STYLESHEET)
         self.addToolBar(Qt.ToolBarArea.RightToolBarArea, self.symbols_toolbar)
         self.symbols_toolbar.set_text_menu(
             [
@@ -930,13 +931,7 @@ class ChemusonWindow(QMainWindow):
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self.main_toolbar)
         
         # Set icons for actions with fallbacks where possible
-        self.action_new.setIcon(QIcon.fromTheme("document-new", QIcon()))
-        self.action_open.setIcon(QIcon.fromTheme("document-open", QIcon()))
-        self.action_save.setIcon(QIcon.fromTheme("document-save", QIcon()))
-        self.action_undo.setIcon(QIcon.fromTheme("edit-undo", QIcon()))
-        self.action_redo.setIcon(QIcon.fromTheme("edit-redo", QIcon()))
-        self.action_copy.setIcon(QIcon.fromTheme("edit-copy", QIcon()))
-        self.action_paste.setIcon(QIcon.fromTheme("edit-paste", QIcon()))
+        self._refresh_theme_icons()
         
         from chemuson.gui.icons import draw_generic_icon
         self.action_zoom_in.setIcon(draw_generic_icon("zoom_in"))
@@ -948,8 +943,6 @@ class ChemusonWindow(QMainWindow):
         self.action_branch_rotate_minus.setIcon(draw_generic_icon("rotate_left"))
         self.action_branch_rotate_plus.setIcon(draw_generic_icon("rotate_right"))
         self.action_branch_invert.setIcon(draw_generic_icon("flip_horizontal"))
-        self.action_branch_auto_arrange.setIcon(QIcon.fromTheme("edit-clear", QIcon()))
-        self.action_clean_2d.setIcon(QIcon.fromTheme("edit-clear", QIcon()))
         from chemuson.gui.icons import draw_atom_icon
         self.action_draw_smiles.setIcon(draw_atom_icon("SMI"))
         
@@ -3411,6 +3404,7 @@ class ChemusonWindow(QMainWindow):
         dialog = PreferencesDialog(
             self.canvas.state,
             self.canvas.drawing_style,
+            theme_mode=load_theme_preference(self._settings),
             update_settings=self._update_settings_payload(),
             naming_settings=self._naming_settings_payload(),
             parent=self,
@@ -3466,6 +3460,10 @@ class ChemusonWindow(QMainWindow):
 
         if bond_caps:
             self.appearance_dock.set_bond_caps(bond_caps)
+        theme_mode = prefs.get("theme_mode")
+        if theme_mode:
+            save_theme_preference(self._settings, str(theme_mode))
+            self._apply_theme_mode(str(theme_mode))
 
         update_enabled = self._setting_bool(prefs.get("update_enabled", self._update_settings.enabled), self._update_settings.enabled)
         update_channel_raw = str(prefs.get("update_channel", self._update_settings.channel.value) or self._update_settings.channel.value).strip().lower()
@@ -3502,6 +3500,21 @@ class ChemusonWindow(QMainWindow):
         self._name_rdkit_isolated_default = bool(rdkit_isolated)
         self._save_naming_preferences()
         self._update_iupac_name_indicator()
+
+    def _apply_theme_mode(self, mode: str) -> None:
+        """Aplica el modo de tema y refresca iconos visibles."""
+        app = QApplication.instance()
+        if app is None:
+            return
+        effective = apply_theme(app, mode)
+        self._refresh_theme_icons(theme=effective)
+
+    def _refresh_theme_icons(self, theme: str | None = None) -> None:
+        """Recarga iconos de acciones principales según tema actual."""
+        resolved = str(theme or "").strip().lower()
+        if not resolved:
+            resolved = resolve_effective_theme(load_theme_preference(self._settings))
+        apply_main_action_icons(self, theme=resolved)
 
     def _apply_appearance_settings(self, prefs: dict) -> None:
         """Aplica appearance settings.
@@ -5192,6 +5205,9 @@ def run_app() -> None:
         app = QApplication(sys.argv)
         app.setApplicationName("Chemuson")
         app.setApplicationVersion(get_app_version())
+        settings = QSettings("Chemuson", "Chemuson")
+        mode = load_theme_preference(settings)
+        apply_theme(app, mode)
         window = ChemusonWindow()
         ChemusonWindow.check_autosaves(window)
         window.show()
