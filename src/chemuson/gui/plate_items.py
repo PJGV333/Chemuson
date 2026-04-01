@@ -1,9 +1,9 @@
 """
 Placas TLC y geles de electroforesis para Chemuson.
 
-Manchas y bandas son items de nivel de escena (no hijos de la placa)
-para que Qt entregue eventos del mouse correctamente.
-"""
+4: Manchas y bandas son hijos de sus respectivos carriles.
+5: Su posición se gestiona de forma relativa al carril.
+6: """
 from __future__ import annotations
 
 import math
@@ -484,6 +484,12 @@ class TLCPlateItem(QGraphicsObject):
         self._scale_labels: list[QGraphicsTextItem] = []
         self._scale_title: Optional[QGraphicsTextItem] = None
 
+        # Layout constants for the Y axis
+        self.AXIS_TICK_X0 = -8.0   # Start of tick (further from plate)
+        self.AXIS_TICK_X1 = -2.0   # End of tick (near the plate)
+        self.AXIS_LABEL_GAP = 2.0  # Gap between tick start and number
+        self.AXIS_TITLE_GAP = 8.0  # Gap between numbers and axis title
+
         self._setup_plate()
         self._build_scale()
 
@@ -539,7 +545,8 @@ class TLCPlateItem(QGraphicsObject):
         for i in range(n_ticks + 1):
             frac = i / n_ticks
             y_local = run_top_y + frac * run_height
-            line = QGraphicsLineItem(plate_left - 14, y_local, plate_left - 2, y_local)
+            # Ticks closer to plate
+            line = QGraphicsLineItem(plate_left + self.AXIS_TICK_X0, y_local, plate_left + self.AXIS_TICK_X1, y_local)
             line.setPen(pen)
             line.setParentItem(self)
             self._scale_lines.append(line)
@@ -551,7 +558,8 @@ class TLCPlateItem(QGraphicsObject):
             label.setDefaultTextColor(QColor(30, 41, 59))
             lbl_w = label.boundingRect().width()
             lbl_h = label.boundingRect().height()
-            label.setPos(plate_left - 16 - lbl_w, y_local - lbl_h / 2)
+            # Labels closer to ticks
+            label.setPos(plate_left + self.AXIS_TICK_X0 - self.AXIS_LABEL_GAP - lbl_w, y_local - lbl_h / 2)
             label.setParentItem(self)
             self._scale_labels.append(label)
 
@@ -564,8 +572,8 @@ class TLCPlateItem(QGraphicsObject):
         title_lbl_h = title_label.boundingRect().height()
         mid_y = run_top_y + run_height / 2
         max_label_w = max((t.boundingRect().width() for t in self._scale_labels), default=0)
-        # Position closer to ticks (reduced padding from 20 to 12)
-        center_x = plate_left - 16 - max_label_w - title_lbl_h - 12
+        # Position much closer to ticks/numbers
+        center_x = plate_left + self.AXIS_TICK_X0 - self.AXIS_LABEL_GAP - max_label_w - self.AXIS_TITLE_GAP - title_lbl_h / 2
         center_y = mid_y
         title_label.setPos(center_x - title_lbl_w / 2, center_y - title_lbl_h / 2)
         title_label.setTransformOriginPoint(title_lbl_w / 2, title_lbl_h / 2)
@@ -1234,6 +1242,12 @@ class GelElectrophoresisItem(QGraphicsObject):
         self._scale_labels: list[QGraphicsTextItem] = []
         self._scale_title: Optional[QGraphicsTextItem] = None
 
+        # Layout constants for the Y axis
+        self.AXIS_TICK_X0 = -8.0   # Start of tick (further from plate)
+        self.AXIS_TICK_X1 = -2.0   # End of tick (near the plate)
+        self.AXIS_LABEL_GAP = 2.0  # Gap between tick start and number
+        self.AXIS_TITLE_GAP = 8.0  # Gap between numbers and axis title
+
         self._setup_gel()
 
     def _setup_gel(self):
@@ -1297,7 +1311,8 @@ class GelElectrophoresisItem(QGraphicsObject):
         for val in tick_values:
             y_local = gel_position_for_value(val, run_top_y, run_height,
                                               self.scale_unit, self.mass_min_kda, self.mass_max_kda)
-            line = QGraphicsLineItem(gel_left - 14, y_local, gel_left - 2, y_local)
+            # Ticks closer to plate
+            line = QGraphicsLineItem(gel_left + self.AXIS_TICK_X0, y_local, gel_left + self.AXIS_TICK_X1, y_local)
             line.setPen(pen)
             line.setParentItem(self)
             self._scale_lines.append(line)
@@ -1313,7 +1328,8 @@ class GelElectrophoresisItem(QGraphicsObject):
             label.setDefaultTextColor(QColor(30, 41, 59))
             lbl_w = label.boundingRect().width()
             lbl_h = label.boundingRect().height()
-            label.setPos(gel_left - 16 - lbl_w, y_local - lbl_h / 2)
+            # Labels closer to ticks
+            label.setPos(gel_left + self.AXIS_TICK_X0 - self.AXIS_LABEL_GAP - lbl_w, y_local - lbl_h / 2)
             label.setParentItem(self)
             self._scale_labels.append(label)
 
@@ -1327,8 +1343,8 @@ class GelElectrophoresisItem(QGraphicsObject):
         title_lbl_h = title_label.boundingRect().height()
         mid_y = run_top_y + run_height / 2
         max_label_w = max((t.boundingRect().width() for t in self._scale_labels), default=0)
-        # Position closer to ticks (reduced padding from 20 to 12)
-        center_x = gel_left - 16 - max_label_w - title_lbl_h - 12
+        # Position much closer to ticks/numbers
+        center_x = gel_left + self.AXIS_TICK_X0 - self.AXIS_LABEL_GAP - max_label_w - self.AXIS_TITLE_GAP - title_lbl_h / 2
         center_y = mid_y
         title_label.setPos(center_x - title_lbl_w / 2, center_y - title_lbl_h / 2)
         title_label.setTransformOriginPoint(title_lbl_w / 2, title_lbl_h / 2)

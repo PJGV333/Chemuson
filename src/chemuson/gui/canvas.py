@@ -4854,20 +4854,11 @@ class ChemusonCanvas(QGraphicsView):
         for plate_d in annotations.get("plates", []):
             item = PlateItem.from_json(plate_d)
             if item:
-                # 1. Add plate to scene first so its scenePos and children's scenePos are valid
+                # 1. Add plate to scene. This automatically brings in all child items (lanes, labels, etc.)
+                # and ensures the relative coordinate system is ready.
                 self.readd_plate_item(item)
-                # 2. Load data which adds spots to scene but at relative positions
+                # 2. load_dict handles creating and positioning child spots/bands at their saved relative coordinates.
                 item.load_dict(plate_d, scene=self.scene)
-                # 3. Adjust spots to absolute scene coordinates now that scenePos works for clamping
-                for lane in item.lane_items:
-                    if hasattr(lane, "rf_labels"):
-                        for spot, _ in lane.rf_labels:
-                            spot.lane_ref = lane # Ensure ref is set before setPos
-                            spot.setPos(spot.pos() + item.pos())
-                    elif hasattr(lane, "bands"):
-                        for band, _ in lane.bands:
-                            band.lane_ref = lane
-                            band.setPos(band.pos() + item.pos())
 
         # Full refresh to update atom visibility and circles
         self.refresh_atom_visibility()
@@ -5243,31 +5234,11 @@ class ChemusonCanvas(QGraphicsView):
     def remove_plate_item(self, item: TLCPlateItem | GelElectrophoresisItem) -> None:
         """Elimina una placa de analisis del lienzo.
 
-        Spots/bands are standalone scene items and must be removed
-        explicitly.  Labels are children of lanes (children of the
-        plate) and are removed implicitly when the plate is removed
-        from the scene — do NOT call removeItem on them or they get
-        detached from their parent hierarchy, breaking redo.
+        Removing the plate removes all its children (lanes, spots, bands, labels)
+        from the scene automatically. We don't need to do it manually.
         """
         if item in self.plate_items:
             self.plate_items.remove(item)
-        # Remove standalone scene-level items (spots / bands).
-        for lane in item.lane_items:
-            if hasattr(lane, "rf_labels"):
-                for spot, _lbl in list(lane.rf_labels):
-                    try:
-                        if spot.scene() is self.scene:
-                            self.scene.removeItem(spot)
-                    except RuntimeError:
-                        pass
-            elif hasattr(lane, "bands"):
-                for band, _lbl in list(lane.bands):
-                    try:
-                        if band.scene() is self.scene:
-                            self.scene.removeItem(band)
-                    except RuntimeError:
-                        pass
-        # Remove the plate (takes children: lanes, labels, scale items).
         try:
             if item.scene() is self.scene:
                 self.scene.removeItem(item)
@@ -5326,27 +5297,12 @@ class ChemusonCanvas(QGraphicsView):
             self.orbital_items.append(item)
 
     def readd_plate_item(self, item) -> None:
-        """Reintroduce una placa en el lienzo.
-
-        Re-adds the plate (which brings back child items: lanes,
-        labels, scale decorations) AND standalone scene-level items
-        (spots / bands) that were removed by :meth:`remove_plate_item`.
-        """
+        """Reintroduce una placa en el lienzo."""
         self.ensure_graphics_item_opacity(item)
         if item.scene() is not self.scene:
             self.scene.addItem(item)
         if item not in self.plate_items:
             self.plate_items.append(item)
-        # Re-add standalone scene-level items (spots / bands).
-        for lane in item.lane_items:
-            if hasattr(lane, "rf_labels"):
-                for spot, _lbl in lane.rf_labels:
-                    if spot.scene() is not self.scene:
-                        self.scene.addItem(spot)
-            elif hasattr(lane, "bands"):
-                for band, _lbl in lane.bands:
-                    if band.scene() is not self.scene:
-                        self.scene.addItem(band)
 
     def readd_wavy_anchor_item(self, item: WavyAnchorItem) -> None:
         """Método auxiliar para readd wavy anchor item.
