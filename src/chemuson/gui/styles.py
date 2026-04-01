@@ -35,6 +35,12 @@ class ThemeTokens:
     scrollbar_bg: str
     scrollbar_handle: str
     scrollbar_handle_hover: str
+    side_toolbar_bg: str
+    side_button_bg: str
+    side_button_border: str
+    side_button_hover: str
+    side_button_checked_bg: str
+    side_button_checked_border: str
 
 
 LIGHT_TOKENS = ThemeTokens(
@@ -61,6 +67,12 @@ LIGHT_TOKENS = ThemeTokens(
     scrollbar_bg="#E8EEF5",
     scrollbar_handle="#B3C0D1",
     scrollbar_handle_hover="#8D9AAF",
+    side_toolbar_bg="#EAF0F7",
+    side_button_bg="#FFFFFF",
+    side_button_border="#BFCDE0",
+    side_button_hover="#E4F3FF",
+    side_button_checked_bg="#CFE9FF",
+    side_button_checked_border="#0B84B8",
 )
 
 
@@ -88,6 +100,12 @@ DARK_TOKENS = ThemeTokens(
     scrollbar_bg="#1B2638",
     scrollbar_handle="#41546C",
     scrollbar_handle_hover="#576F8C",
+    side_toolbar_bg="#18263A",
+    side_button_bg="#31465F",
+    side_button_border="#5F7896",
+    side_button_hover="#3D5572",
+    side_button_checked_bg="#476487",
+    side_button_checked_border="#79BDF0",
 )
 
 
@@ -120,6 +138,38 @@ QToolButton {{ background: transparent; border: 1px solid transparent; border-ra
 QToolButton:hover {{ background-color: {tokens.surface_alt}; border-color: {tokens.border_strong}; }}
 QToolButton:checked {{ background-color: {tokens.selection}; border-color: {tokens.accent}; }}
 QToolButton:pressed {{ background-color: {tokens.surface_alt}; border-color: {tokens.border_strong}; }}
+QToolBar#left_tool_palette, QToolBar#right_tool_palette {{
+    background: {tokens.side_toolbar_bg};
+    border-right: 1px solid {tokens.border};
+    border-left: 1px solid {tokens.border};
+    padding: 8px 6px;
+}}
+QToolBar#left_tool_palette QToolButton, QToolBar#right_tool_palette QToolButton {{
+    background: {tokens.side_button_bg};
+    border: 1px solid {tokens.side_button_border};
+    border-radius: 8px;
+    color: {tokens.text};
+    padding: 8px;
+    min-width: 32px;
+    min-height: 32px;
+}}
+QToolBar#left_tool_palette QToolButton:hover, QToolBar#right_tool_palette QToolButton:hover {{
+    background: {tokens.side_button_hover};
+    border-color: {tokens.accent};
+}}
+QToolBar#left_tool_palette QToolButton:pressed, QToolBar#right_tool_palette QToolButton:pressed {{
+    background: {tokens.surface_alt};
+    border-color: {tokens.side_button_checked_border};
+}}
+QToolBar#left_tool_palette QToolButton:checked, QToolBar#right_tool_palette QToolButton:checked {{
+    background: {tokens.side_button_checked_bg};
+    border: 2px solid {tokens.side_button_checked_border};
+}}
+QToolBar#left_tool_palette QToolButton:disabled, QToolBar#right_tool_palette QToolButton:disabled {{
+    background: {tokens.panel};
+    border-color: {tokens.border};
+    color: {tokens.text_muted};
+}}
 QStatusBar {{ background: {tokens.status_bg}; color: {tokens.status_text}; border: none; padding: 4px 10px; }}
 QStatusBar QLabel {{ color: {tokens.status_text}; }}
 QTabWidget::pane {{ border: 1px solid {tokens.border}; background: {tokens.surface}; border-radius: 8px; }}
@@ -156,9 +206,9 @@ def build_tool_palette_stylesheet(tokens: ThemeTokens) -> str:
     """Construye QSS específico para paletas laterales."""
     return f"""
 QToolBar {{ background: {tokens.panel}; border: none; border-right: 1px solid {tokens.border}; spacing: 6px; padding: 8px 6px; }}
-QToolButton {{ background: {tokens.surface}; border: 1px solid {tokens.border}; border-radius: 8px; padding: 8px; min-width: 32px; min-height: 32px; }}
-QToolButton:hover {{ background: {tokens.surface_alt}; border-color: {tokens.accent}; }}
-QToolButton:checked {{ background: {tokens.selection}; border: 2px solid {tokens.accent}; }}
+QToolButton {{ background: {tokens.side_button_bg}; border: 1px solid {tokens.side_button_border}; border-radius: 8px; padding: 8px; min-width: 32px; min-height: 32px; }}
+QToolButton:hover {{ background: {tokens.side_button_hover}; border-color: {tokens.accent}; }}
+QToolButton:checked {{ background: {tokens.side_button_checked_bg}; border: 2px solid {tokens.side_button_checked_border}; }}
 #palette_grid QToolButton {{ min-width: 30px; min-height: 30px; padding: 5px; }}
 """
 

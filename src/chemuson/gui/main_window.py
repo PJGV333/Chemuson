@@ -289,10 +289,12 @@ class ChemusonWindow(QMainWindow):
 
         # === LEFT TOOLBAR (Drawing tools) ===
         self.toolbar = ChemusonToolbar()
+        self.toolbar.setObjectName("left_tool_palette")
         self.addToolBar(Qt.ToolBarArea.LeftToolBarArea, self.toolbar)
 
         # === RIGHT SYMBOLS TOOLBAR ===
         self.symbols_toolbar = SymbolPaletteToolbar(action_group=self.toolbar.action_group)
+        self.symbols_toolbar.setObjectName("right_tool_palette")
         self.addToolBar(Qt.ToolBarArea.RightToolBarArea, self.symbols_toolbar)
         self.symbols_toolbar.set_text_menu(
             [
