@@ -6,6 +6,7 @@ para que Qt entregue eventos del mouse correctamente.
 """
 from __future__ import annotations
 
+import math
 from typing import Optional
 
 from PyQt6.QtWidgets import (
@@ -30,6 +31,94 @@ from PyQt6.QtGui import (
     QAction,
 )
 from PyQt6.QtCore import Qt, QRectF, QPointF, pyqtSignal
+
+
+# =============================================================================
+# Gel scale conversion helpers (single source of truth)
+# =============================================================================
+
+def gel_normalized_migration(y: float, run_top_y: float, run_height: float) -> float:
+    """Return t in [0,1]: 0=top (wells), 1=bottom (farthest migration)."""
+    if run_height <= 0:
+        return 0.0
+    return max(0.0, min(1.0, (y - run_top_y) / run_height))
+
+
+def gel_value_at_position(y: float, run_top_y: float, run_height: float,
+                           scale_unit: str, mass_min_kda: float, mass_max_kda: float) -> float:
+    """Convert a pixel Y position to the displayed value depending on scale mode.
+
+    - Distance:       t  (0.00 top, 1.00 bottom)
+    - log(Mass/kDa):  log10(mass_max) - t * (log10(mass_max) - log10(mass_min))
+    - Mass(kDa):      10 ** (log10(mass_max) - t * (log10(mass_max) - log10(mass_min)))
+    """
+    t = gel_normalized_migration(y, run_top_y, run_height)
+    log_min = math.log10(mass_min_kda) if mass_min_kda > 0 else 0.0
+    log_max = math.log10(mass_max_kda) if mass_max_kda > 0 else 0.0
+
+    if scale_unit == "Mass(kDa)":
+        log_val = log_max - t * (log_max - log_min)
+        return 10.0 ** log_val
+    elif scale_unit == "log(Mass/kDa)":
+        return log_max - t * (log_max - log_min)
+    else:
+        return t
+
+
+def gel_position_for_value(value: float, run_top_y: float, run_height: float,
+                            scale_unit: str, mass_min_kda: float, mass_max_kda: float) -> float:
+    """Convert a displayed value to a pixel Y position (inverse of gel_value_at_position)."""
+    log_min = math.log10(mass_min_kda) if mass_min_kda > 0 else 0.0
+    log_max = math.log10(mass_max_kda) if mass_max_kda > 0 else 0.0
+
+    if scale_unit == "Mass(kDa)":
+        if value <= 0:
+            return run_top_y + run_height
+        log_val = math.log10(value)
+        t = (log_max - log_val) / (log_max - log_min) if (log_max - log_min) != 0 else 0.0
+    elif scale_unit == "log(Mass/kDa)":
+        t = (log_max - value) / (log_max - log_min) if (log_max - log_min) != 0 else 0.0
+    else:
+        t = value
+
+    t = max(0.0, min(1.0, t))
+    return run_top_y + t * run_height
+
+
+def gel_scale_ticks(scale_unit: str, mass_min_kda: float, mass_max_kda: float,
+                    n_preferred: int = 7) -> list[float]:
+    """Return nice tick values for the Y axis depending on scale mode.
+
+    - Distance:       [0.00, 0.20, 0.40, 0.60, 0.80, 1.00]
+    - log(Mass/kDa):  integer and half-integer log values within range
+    - Mass(kDa):      decade + sub-decade values (1, 2, 5 pattern) within range
+    """
+    if scale_unit == "Distance":
+        n = n_preferred - 1
+        return [round(i / n, 2) for i in range(n + 1)]
+    elif scale_unit == "log(Mass/kDa)":
+        log_min = math.log10(mass_min_kda) if mass_min_kda > 0 else 0.0
+        log_max = math.log10(mass_max_kda) if mass_max_kda > 0 else 0.0
+        ticks = []
+        step = 0.5
+        v = math.ceil(log_max / step) * step
+        while v >= log_min - 0.001:
+            ticks.append(round(v, 2))
+            v -= step
+        return ticks
+    else:
+        log_min = math.log10(mass_min_kda) if mass_min_kda > 0 else 0.0
+        log_max = math.log10(mass_max_kda) if mass_max_kda > 0 else 0.0
+        sub_decade_multipliers = [1.0, 2.0, 5.0]
+        ticks = []
+        lo_exp = int(math.floor(log_min))
+        hi_exp = int(math.ceil(log_max))
+        for exp in range(hi_exp, lo_exp - 1, -1):
+            for m in sub_decade_multipliers:
+                val = m * (10.0 ** exp)
+                if mass_min_kda - 0.001 <= val <= mass_max_kda + 0.001:
+                    ticks.append(val)
+        return ticks
 
 
 # =============================================================================
@@ -815,22 +904,23 @@ class GelLaneItem(QGraphicsObject):
     def update_labels(self):
         gel = self.parentItem()
         show_labels = getattr(gel, "show_labels", True)
-        scale_unit = getattr(gel, "scale_unit", "cm")
-        scale_min = getattr(gel, "scale_min", 0.0)
-        scale_max = getattr(gel, "scale_max", 10.0)
-        total_px = self.lane_height - 22.0
+        scale_unit = getattr(gel, "scale_unit", "Distance")
+        mass_min_kda = getattr(gel, "mass_min_kda", 10.0)
+        mass_max_kda = getattr(gel, "mass_max_kda", 250.0)
+        run_top_y = self._well_y
+        run_height = self.lane_height - self._well_y
 
         for band, label in self.bands:
             if not show_labels or not getattr(band, "_show_label", False):
                 label.setVisible(False)
                 continue
             label.setVisible(True)
-            dist_px = (band.y() - self.scenePos().y()) - self._well_y
-            frac = dist_px / total_px if total_px > 0 else 0.0
-            val = scale_min + frac * (scale_max - scale_min)
-            if scale_unit == "cm":
-                label.setPlainText(f"{val:.1f} cm")
-            elif scale_unit == "log(masa)":
+            band_y_local = (band.y() - self.scenePos().y())
+            val = gel_value_at_position(band_y_local, run_top_y, run_height,
+                                         scale_unit, mass_min_kda, mass_max_kda)
+            if scale_unit == "Distance":
+                label.setPlainText(f"{val:.2f}")
+            elif scale_unit == "log(Mass/kDa)":
                 label.setPlainText(f"{val:.2f}")
             else:
                 label.setPlainText(f"{val:.0f}")
@@ -891,13 +981,16 @@ class GelElectrophoresisItem(QGraphicsObject):
         self.gel_height = height
         self.show_labels = True
         self.show_scale = True
-        self.scale_unit = "cm"
+        self.scale_unit = "Distance"
         self.scale_min = 0.0
-        self.scale_max = 10.0
+        self.scale_max = 1.0
+        self.mass_min_kda = 10.0
+        self.mass_max_kda = 250.0
         self.lane_items: list[GelLaneItem] = []
         self._last_gel_pos = QPointF(0, 0)
         self._scale_lines: list[QGraphicsLineItem] = []
         self._scale_labels: list[QGraphicsTextItem] = []
+        self._scale_title: Optional[QGraphicsTextItem] = None
 
         self._setup_gel()
 
@@ -941,8 +1034,11 @@ class GelElectrophoresisItem(QGraphicsObject):
         for label in self._scale_labels:
             if label.scene():
                 label.scene().removeItem(label)
+        if self._scale_title is not None and self._scale_title.scene():
+            self._scale_title.scene().removeItem(self._scale_title)
         self._scale_lines.clear()
         self._scale_labels.clear()
+        self._scale_title = None
 
         if not self.show_scale:
             return
@@ -950,23 +1046,23 @@ class GelElectrophoresisItem(QGraphicsObject):
         pen = QPen(QColor(100, 116, 139), 1, Qt.PenStyle.DashLine)
         font = QFont("Arial", 8)
         gel_left = 0
-        gel_top = 22.0
-        gel_bottom = self.gel_height
-        total_px = gel_bottom - gel_top
+        run_top_y = 22.0
+        run_bottom_y = self.gel_height
+        run_height = run_bottom_y - run_top_y
 
-        n_ticks = 6
-        for i in range(n_ticks + 1):
-            frac = i / n_ticks
-            y_local = gel_top + frac * total_px
+        tick_values = gel_scale_ticks(self.scale_unit, self.mass_min_kda, self.mass_max_kda)
+
+        for val in tick_values:
+            y_local = gel_position_for_value(val, run_top_y, run_height,
+                                              self.scale_unit, self.mass_min_kda, self.mass_max_kda)
             line = QGraphicsLineItem(gel_left - 14, y_local, gel_left - 2, y_local)
             line.setPen(pen)
             line.setParentItem(self)
             self._scale_lines.append(line)
 
-            val = self.scale_min + frac * (self.scale_max - self.scale_min)
-            if self.scale_unit == "cm":
-                text = f"{val:.1f}"
-            elif self.scale_unit == "log(masa)":
+            if self.scale_unit == "Distance":
+                text = f"{val:.2f}"
+            elif self.scale_unit == "log(Mass/kDa)":
                 text = f"{val:.2f}"
             else:
                 text = f"{val:.0f}"
@@ -978,6 +1074,24 @@ class GelElectrophoresisItem(QGraphicsObject):
             label.setPos(gel_left - 16 - lbl_w, y_local - lbl_h / 2)
             label.setParentItem(self)
             self._scale_labels.append(label)
+
+        title_font = QFont("Arial", 8)
+        title_font.setBold(True)
+        title_text = self.scale_unit
+        title_label = QGraphicsTextItem(title_text)
+        title_label.setFont(title_font)
+        title_label.setDefaultTextColor(QColor(30, 41, 59))
+        title_lbl_w = title_label.boundingRect().width()
+        title_lbl_h = title_label.boundingRect().height()
+        mid_y = run_top_y + run_height / 2
+        max_label_w = max((t.boundingRect().width() for t in self._scale_labels), default=0)
+        center_x = gel_left - 16 - max_label_w - title_lbl_h / 2 - 10
+        center_y = mid_y
+        title_label.setPos(center_x - title_lbl_w / 2, center_y - title_lbl_h / 2)
+        title_label.setTransformOriginPoint(title_lbl_w / 2, title_lbl_h / 2)
+        title_label.setRotation(-90)
+        title_label.setParentItem(self)
+        self._scale_title = title_label
 
     def _well_y(self):
         return 22.0
@@ -1084,7 +1198,7 @@ class GelElectrophoresisItem(QGraphicsObject):
             add_band_menu.addAction(act)
 
         scale_unit_menu = menu.addMenu("Unidad de escala")
-        for unit in ["cm", "log(masa)", "masa"]:
+        for unit in ["Distance", "Mass(kDa)", "log(Mass/kDa)"]:
             act = QAction(unit, menu)
             act.setCheckable(True)
             act.setChecked(self.scale_unit == unit)
@@ -1110,21 +1224,56 @@ class GelElectrophoresisItem(QGraphicsObject):
 
     def _set_scale_range(self):
         from PyQt6.QtWidgets import QInputDialog
-        mn, ok1 = QInputDialog.getDouble(
-            None, "Escala minima", f"Valor minimo ({self.scale_unit}):",
-            self.scale_min, -1000.0, 1000.0, 2,
-        )
-        if not ok1:
-            return
-        mx, ok2 = QInputDialog.getDouble(
-            None, "Escala maxima", f"Valor maximo ({self.scale_unit}):",
-            self.scale_max, mn, 10000.0, 2,
-        )
-        if not ok2:
-            return
-        self.scale_min = mn
-        self.scale_max = mx
+        if self.scale_unit == "Distance":
+            mn, ok1 = QInputDialog.getDouble(
+                None, "Escala minima", "Valor minimo (0.0 para Distance):",
+                self.scale_min, 0.0, 1.0, 2,
+            )
+            if not ok1:
+                return
+            mx, ok2 = QInputDialog.getDouble(
+                None, "Escala maxima", "Valor maximo (1.0 para Distance):",
+                self.scale_max, mn, 1.0, 2,
+            )
+            if not ok2:
+                return
+            self.scale_min = mn
+            self.scale_max = mx
+        elif self.scale_unit == "Mass(kDa)":
+            mn, ok1 = QInputDialog.getDouble(
+                None, "Masa minima (kDa)", "Masa minima en kDa (banda mas pequena):",
+                self.mass_min_kda, 0.1, 1000000.0, 2,
+            )
+            if not ok1:
+                return
+            mx, ok2 = QInputDialog.getDouble(
+                None, "Masa maxima (kDa)", "Masa maxima en kDa (banda mas grande):",
+                self.mass_max_kda, mn, 10000000.0, 2,
+            )
+            if not ok2:
+                return
+            self.mass_min_kda = mn
+            self.mass_max_kda = mx
+        else:
+            mn, ok1 = QInputDialog.getDouble(
+                None, "log(Min) (kDa)", "log10(masa minima en kDa):",
+                math.log10(self.mass_min_kda) if self.mass_min_kda > 0 else 0.0,
+                -2.0, 10.0, 2,
+            )
+            if not ok1:
+                return
+            mx, ok2 = QInputDialog.getDouble(
+                None, "log(Max) (kDa)", "log10(masa maxima en kDa):",
+                math.log10(self.mass_max_kda) if self.mass_max_kda > 0 else 0.0,
+                mn, 10.0, 2,
+            )
+            if not ok2:
+                return
+            self.mass_min_kda = 10.0 ** mn
+            self.mass_max_kda = 10.0 ** mx
         self._build_scale()
+        for lane in self.lane_items:
+            lane.update_labels()
 
     def _toggle_labels(self):
         self.show_labels = not self.show_labels
@@ -1150,6 +1299,8 @@ class GelElectrophoresisItem(QGraphicsObject):
             "scale_unit": self.scale_unit,
             "scale_min": self.scale_min,
             "scale_max": self.scale_max,
+            "mass_min_kda": self.mass_min_kda,
+            "mass_max_kda": self.mass_max_kda,
             "lanes_data": lanes_data,
         }
 
@@ -1157,9 +1308,11 @@ class GelElectrophoresisItem(QGraphicsObject):
         self.setPos(data.get("pos", (0, 0))[0], data.get("pos", (0, 0))[1])
         self.show_labels = data.get("show_labels", True)
         self.show_scale = data.get("show_scale", True)
-        self.scale_unit = data.get("scale_unit", "cm")
+        self.scale_unit = data.get("scale_unit", "Distance")
         self.scale_min = data.get("scale_min", 0.0)
-        self.scale_max = data.get("scale_max", 10.0)
+        self.scale_max = data.get("scale_max", 1.0)
+        self.mass_min_kda = data.get("mass_min_kda", 10.0)
+        self.mass_max_kda = data.get("mass_max_kda", 250.0)
         self.num_lanes = data.get("lanes", 5)
         self.gel_width = data.get("width", 280.0)
         self.gel_height = data.get("height", 320.0)

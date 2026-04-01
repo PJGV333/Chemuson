@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 import sys
 
@@ -20,6 +21,10 @@ from chemuson.gui.plate_items import (
     GelLaneItem,
     GelBandItem,
     PlateItem,
+    gel_normalized_migration,
+    gel_value_at_position,
+    gel_position_for_value,
+    gel_scale_ticks,
 )
 from chemuson.gui.canvas import ChemusonCanvas
 from chemuson.gui.commands import (
@@ -171,6 +176,14 @@ class TestGelElectrophoresisItem:
         assert gel.gel_width == 400.0
         assert gel.gel_height == 350.0
 
+    def test_gel_default_scale_is_distance(self):
+        gel = GelElectrophoresisItem(lanes=3)
+        assert gel.scale_unit == "Distance"
+        assert gel.scale_min == 0.0
+        assert gel.scale_max == 1.0
+        assert gel.mass_min_kda == 10.0
+        assert gel.mass_max_kda == 250.0
+
     def test_gel_lanes_have_bands(self):
         gel = GelElectrophoresisItem(lanes=3)
         scene = QGraphicsScene()
@@ -193,7 +206,7 @@ class TestGelElectrophoresisItem:
         band.setY(lane.scenePos().y() + lane.well_y() + 80)
         lane.update_labels()
         text = label.toPlainText()
-        assert "cm" in text
+        assert "cm" not in text
 
     def test_gel_band_clamped_within_lane(self):
         gel = GelElectrophoresisItem(lanes=1)
@@ -242,15 +255,116 @@ class TestGelElectrophoresisItem:
         data = gel.to_dict()
         assert data["type"] == "GelElectrophoresisItem"
         assert data["lanes"] == 4
+        assert data["mass_min_kda"] == 10.0
+        assert data["mass_max_kda"] == 250.0
 
         gel2 = GelElectrophoresisItem.from_json(data)
         assert gel2.num_lanes == 4
         assert gel2.show_labels is False
         assert gel2.pos().x() == pytest.approx(50.0)
+        assert gel2.mass_min_kda == 10.0
+        assert gel2.mass_max_kda == 250.0
 
     def test_gel_to_json_alias(self):
         gel = GelElectrophoresisItem(lanes=3)
         assert gel.to_json() == gel.to_dict()
+
+
+class TestGelScaleConversions:
+    def test_normalized_migration_top(self):
+        t = gel_normalized_migration(22.0, 22.0, 200.0)
+        assert t == 0.0
+
+    def test_normalized_migration_bottom(self):
+        t = gel_normalized_migration(222.0, 22.0, 200.0)
+        assert t == 1.0
+
+    def test_normalized_migration_mid(self):
+        t = gel_normalized_migration(122.0, 22.0, 200.0)
+        assert t == pytest.approx(0.5)
+
+    def test_normalized_migration_clamped_above(self):
+        t = gel_normalized_migration(300.0, 22.0, 200.0)
+        assert t == 1.0
+
+    def test_normalized_migration_clamped_below(self):
+        t = gel_normalized_migration(0.0, 22.0, 200.0)
+        assert t == 0.0
+
+    def test_distance_value_at_top(self):
+        val = gel_value_at_position(22.0, 22.0, 200.0, "Distance", 10.0, 250.0)
+        assert val == pytest.approx(0.0)
+
+    def test_distance_value_at_bottom(self):
+        val = gel_value_at_position(222.0, 22.0, 200.0, "Distance", 10.0, 250.0)
+        assert val == pytest.approx(1.0)
+
+    def test_log_mass_value_at_top(self):
+        val = gel_value_at_position(22.0, 22.0, 200.0, "log(Mass/kDa)", 10.0, 250.0)
+        assert val == pytest.approx(math.log10(250.0), abs=0.01)
+
+    def test_log_mass_value_at_bottom(self):
+        val = gel_value_at_position(222.0, 22.0, 200.0, "log(Mass/kDa)", 10.0, 250.0)
+        assert val == pytest.approx(math.log10(10.0), abs=0.01)
+
+    def test_mass_value_at_top(self):
+        val = gel_value_at_position(22.0, 22.0, 200.0, "Mass(kDa)", 10.0, 250.0)
+        assert val == pytest.approx(250.0, rel=0.01)
+
+    def test_mass_value_at_bottom(self):
+        val = gel_value_at_position(222.0, 22.0, 200.0, "Mass(kDa)", 10.0, 250.0)
+        assert val == pytest.approx(10.0, rel=0.01)
+
+    def test_mass_roundtrip(self):
+        run_top = 22.0
+        run_h = 200.0
+        mass_min = 10.0
+        mass_max = 250.0
+        for mass in [10.0, 25.0, 50.0, 100.0, 250.0]:
+            y = gel_position_for_value(mass, run_top, run_h, "Mass(kDa)", mass_min, mass_max)
+            recovered = gel_value_at_position(y, run_top, run_h, "Mass(kDa)", mass_min, mass_max)
+            assert recovered == pytest.approx(mass, rel=0.01)
+
+    def test_log_roundtrip(self):
+        run_top = 22.0
+        run_h = 200.0
+        mass_min = 10.0
+        mass_max = 250.0
+        for log_val in [1.0, 1.5, 2.0, 2.397]:
+            y = gel_position_for_value(log_val, run_top, run_h, "log(Mass/kDa)", mass_min, mass_max)
+            recovered = gel_value_at_position(y, run_top, run_h, "log(Mass/kDa)", mass_min, mass_max)
+            assert recovered == pytest.approx(log_val, abs=0.01)
+
+    def test_distance_roundtrip(self):
+        run_top = 22.0
+        run_h = 200.0
+        for d in [0.0, 0.25, 0.5, 0.75, 1.0]:
+            y = gel_position_for_value(d, run_top, run_h, "Distance", 10.0, 250.0)
+            recovered = gel_value_at_position(y, run_top, run_h, "Distance", 10.0, 250.0)
+            assert recovered == pytest.approx(d, abs=0.01)
+
+    def test_scale_ticks_distance(self):
+        ticks = gel_scale_ticks("Distance", 10.0, 250.0)
+        assert ticks[0] == 0.0
+        assert ticks[-1] == 1.0
+
+    def test_scale_ticks_mass_descending(self):
+        ticks = gel_scale_ticks("Mass(kDa)", 10.0, 250.0)
+        assert ticks[0] > ticks[-1]
+        assert ticks[0] == 100.0
+        assert ticks[-1] == 50.0
+        assert len(ticks) >= 5
+
+    def test_scale_ticks_log_descending(self):
+        ticks = gel_scale_ticks("log(Mass/kDa)", 10.0, 250.0)
+        assert ticks[0] > ticks[-1]
+
+    def test_mass_higher_mass_is_higher_on_gel(self):
+        run_top = 22.0
+        run_h = 200.0
+        y_high = gel_position_for_value(250.0, run_top, run_h, "Mass(kDa)", 10.0, 250.0)
+        y_low = gel_position_for_value(10.0, run_top, run_h, "Mass(kDa)", 10.0, 250.0)
+        assert y_high < y_low
 
 
 # =============================================================================
