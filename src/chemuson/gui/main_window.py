@@ -70,7 +70,7 @@ from chemuson.gui.theme_manager import (
     resolve_effective_theme,
     save_theme_preference,
 )
-from chemuson.gui.icon_provider import apply_main_action_icons
+from chemuson.gui.icon_provider import apply_main_action_icons, retint_icon
 from chemuson.gui.icons import draw_generic_icon
 from chemuson.gui.docks import PlantillasDock, InspectorDock, AppearanceDock
 from chemuson.gui.dialogs import PreferencesDialog, QuickStartDialog, StyleDialog
@@ -3517,6 +3517,29 @@ class ChemusonWindow(QMainWindow):
         if not resolved:
             resolved = resolve_effective_theme(load_theme_preference(self._settings))
         apply_main_action_icons(self, theme=resolved)
+        self._refresh_side_toolbar_icons(theme=resolved)
+
+    def _refresh_side_toolbar_icons(self, theme: str) -> None:
+        """Ajusta contraste de iconos laterales por tema activo."""
+        is_dark = str(theme).strip().lower() == "dark"
+        toolbars = [getattr(self, "toolbar", None), getattr(self, "symbols_toolbar", None)]
+        for toolbar in toolbars:
+            if toolbar is None:
+                continue
+            if not hasattr(toolbar, "_original_icons"):
+                toolbar._original_icons = {}
+            icon_size = max(24, int(toolbar.iconSize().width()))
+            for action in toolbar.actions():
+                if action.isSeparator():
+                    continue
+                original = toolbar._original_icons.get(action)
+                if original is None:
+                    original = action.icon()
+                    toolbar._original_icons[action] = original
+                if is_dark:
+                    action.setIcon(retint_icon(original, "#F3F8FF", icon_size))
+                else:
+                    action.setIcon(original)
 
     def _apply_appearance_settings(self, prefs: dict) -> None:
         """Aplica appearance settings.

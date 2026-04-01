@@ -28,13 +28,13 @@ def _alpha_bounding_rect(pixmap: QPixmap) -> QRect:
 
 
 def _tint_icon(icon: QIcon, color: str, size: int = 24) -> QIcon:
-    request = max(40, size * 2)
+    request = max(48, size * 3)
     base = icon.pixmap(request, request)
     if base.isNull():
         return icon
     alpha_rect = _alpha_bounding_rect(base)
     glyph = base.copy(alpha_rect)
-    target_px = int(size * 0.88)
+    target_px = int(size * 0.96)
     scaled = glyph.scaled(
         target_px,
         target_px,
@@ -51,6 +51,11 @@ def _tint_icon(icon: QIcon, color: str, size: int = 24) -> QIcon:
     painter.fillRect(canvas.rect(), QColor(color))
     painter.end()
     return QIcon(canvas)
+
+
+def retint_icon(icon: QIcon, color: str, size: int) -> QIcon:
+    """Retinta un icono existente respetando el tamaño objetivo."""
+    return _tint_icon(icon, color, size=size)
 
 
 def themed_icon(theme_name: str, fallback_shape: str, *, is_dark: bool, size: int = 24) -> QIcon:
