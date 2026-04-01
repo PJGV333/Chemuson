@@ -188,8 +188,9 @@ class TestGelElectrophoresisItem:
         gel.add_bands_to_lanes(scene=scene)
         lane = gel.lane_items[0]
         band, label = lane.bands[0]
+        band._show_label = True
 
-        band.setY(lane.scenePos().y() + lane.well_y() - 80)
+        band.setY(lane.scenePos().y() + lane.well_y() + 80)
         lane.update_labels()
         text = label.toPlainText()
         assert "cm" in text
@@ -202,8 +203,8 @@ class TestGelElectrophoresisItem:
         lane = gel.lane_items[0]
         band, _ = lane.bands[0]
 
-        band.setY(lane.scenePos().y() + lane.well_y() - 50)
-        assert band.y() >= lane.scenePos().y() + lane.lane_height - 5
+        band.setY(lane.scenePos().y() + lane.well_y() + 500)
+        assert band.y() <= lane.scenePos().y() + lane.lane_height - 5
 
     def test_gel_band_color_and_opacity(self):
         band = GelBandItem()

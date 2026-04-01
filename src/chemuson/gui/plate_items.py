@@ -294,7 +294,8 @@ class TLCLaneItem(QGraphicsObject):
             rf = dist_spot / dist_total if dist_total != 0 else 0.0
             rf = max(0.0, min(1.0, rf))
             label.setPlainText(f"{rf:.2f}")
-            label.setPos(spot.spot_width / 2 + 1, spot.y() - self.scenePos().y() - label.boundingRect().height() / 2)
+            lbl_w = label.boundingRect().width()
+            label.setPos(-lbl_w / 2, spot.y() - self.scenePos().y() - label.boundingRect().height() - 2)
 
     def boundingRect(self) -> QRectF:
         return QRectF(-self.lane_width / 2, 0, self.lane_width, self.lane_height)
@@ -599,6 +600,7 @@ class GelBandItem(QGraphicsObject):
         self.band_height = 7.0
         self._color = QColor(40, 40, 50, 180)
         self.lane_ref: Optional[GelLaneItem] = None
+        self._show_label = False
 
         self._setup_visual()
 
@@ -661,8 +663,8 @@ class GelBandItem(QGraphicsObject):
             new_pos = QPointF(value)
             new_pos.setX(self.lane_ref.scenePos().x())
             y = new_pos.y()
-            min_y = self.lane_ref.scenePos().y() + self.lane_ref.lane_height - 5
-            max_y = self.lane_ref.scenePos().y() + self.lane_ref.well_y()
+            min_y = self.lane_ref.scenePos().y() + self.lane_ref.well_y()
+            max_y = self.lane_ref.scenePos().y() + self.lane_ref.lane_height - 5
             y = max(min_y, min(max_y, y))
             new_pos.setY(y)
             return new_pos
@@ -691,11 +693,49 @@ class GelBandItem(QGraphicsObject):
             act.triggered.connect(lambda checked, ww=w: self.set_size(ww, self.band_height))
             size_menu.addAction(act)
 
+        show_label_action = QAction("Mostrar etiqueta" if not self._show_label else "Ocultar etiqueta", menu)
+        show_label_action.triggered.connect(self._toggle_label)
+        menu.addAction(show_label_action)
+
+        set_dist_action = QAction("Set distancia...", menu)
+        set_dist_action.triggered.connect(self._set_distance)
+        menu.addAction(set_dist_action)
+
         delete_action = QAction("Eliminar banda", menu)
         delete_action.triggered.connect(self._delete_self)
         menu.addAction(delete_action)
 
         menu.exec(event.screenPos())
+
+    def _toggle_label(self):
+        self._show_label = not self._show_label
+        if self.lane_ref is not None:
+            self.lane_ref.update_labels()
+
+    def _set_distance(self):
+        from PyQt6.QtWidgets import QInputDialog
+        if self.lane_ref is None:
+            return
+        gel = self.lane_ref.parentItem()
+        if gel is None:
+            return
+        dist = self.lane_ref._well_y - (self.y() - self.lane_ref.scenePos().y())
+        current_cm = dist * 0.05
+        dist_val, ok = QInputDialog.getDouble(
+            None, "Set distancia", "Distancia migrada (cm):",
+            current_cm, 0.0, 50.0, 2,
+        )
+        if not ok:
+            return
+        target_dist = dist_val / 0.05
+        target_y = self.lane_ref.scenePos().y() + self.lane_ref._well_y - target_dist
+        min_y = self.lane_ref.scenePos().y() + self.lane_ref.lane_height - 5
+        max_y = self.lane_ref.scenePos().y() + self.lane_ref.well_y()
+        target_y = max(min_y, min(max_y, target_y))
+        self.setY(target_y)
+        self._show_label = True
+        if self.lane_ref is not None:
+            self.lane_ref.update_labels()
 
     def _change_color(self):
         from PyQt6.QtWidgets import QColorDialog
@@ -731,7 +771,7 @@ class GelBandItem(QGraphicsObject):
 class GelLaneItem(QGraphicsObject):
     """Carril individual en un gel de electroforesis.
 
-    Los pozos estan en la parte inferior; las bandas migran hacia arriba.
+    Los pozos estan en la parte superior; las bandas migran hacia abajo.
     """
 
     def __init__(self, parent=None, index=0, width=40.0, height=250.0):
@@ -739,7 +779,7 @@ class GelLaneItem(QGraphicsObject):
         self.index = index
         self.lane_width = width
         self.lane_height = height
-        self._well_y = height - 22.0
+        self._well_y = 22.0
         self.bands: list[tuple[GelBandItem, QGraphicsTextItem]] = []
 
     def well_y(self) -> float:
@@ -749,7 +789,7 @@ class GelLaneItem(QGraphicsObject):
         band = GelBandItem(width=self.lane_width * 0.75)
         band.lane_ref = self
         cx = self.scenePos().x()
-        y = self.scenePos().y() + self._well_y - dist
+        y = self.scenePos().y() + self._well_y + dist
         band.setPos(cx, y)
         if scene is not None:
             scene.addItem(band)
@@ -775,15 +815,27 @@ class GelLaneItem(QGraphicsObject):
     def update_labels(self):
         gel = self.parentItem()
         show_labels = getattr(gel, "show_labels", True)
+        scale_unit = getattr(gel, "scale_unit", "cm")
+        scale_min = getattr(gel, "scale_min", 0.0)
+        scale_max = getattr(gel, "scale_max", 10.0)
+        total_px = self.lane_height - 22.0
 
         for band, label in self.bands:
-            if not show_labels:
+            if not show_labels or not getattr(band, "_show_label", False):
                 label.setVisible(False)
                 continue
             label.setVisible(True)
-            dist = self._well_y - (band.y() - self.scenePos().y())
-            label.setPlainText(f"{dist * 0.05:.1f} cm")
-            label.setPos(self.lane_width / 2 + 2, band.y() - self.scenePos().y() - label.boundingRect().height() / 2)
+            dist_px = (band.y() - self.scenePos().y()) - self._well_y
+            frac = dist_px / total_px if total_px > 0 else 0.0
+            val = scale_min + frac * (scale_max - scale_min)
+            if scale_unit == "cm":
+                label.setPlainText(f"{val:.1f} cm")
+            elif scale_unit == "log(masa)":
+                label.setPlainText(f"{val:.2f}")
+            else:
+                label.setPlainText(f"{val:.0f}")
+            lbl_w = label.boundingRect().width()
+            label.setPos(-lbl_w / 2, band.y() - self.scenePos().y() - label.boundingRect().height() - 2)
 
     def boundingRect(self) -> QRectF:
         return QRectF(-self.lane_width / 2, 0, self.lane_width, self.lane_height)
@@ -824,7 +876,7 @@ class GelLaneItem(QGraphicsObject):
 class GelElectrophoresisItem(QGraphicsObject):
     """Gel de electroforesis con pozos y bandas.
 
-    Los pozos estan en la parte inferior; las bandas migran hacia arriba.
+    Los pozos estan en la parte superior; las bandas migran hacia abajo.
     """
 
     def __init__(self, lanes: int = 5, width: float = 280.0, height: float = 320.0, parent=None):
@@ -838,41 +890,97 @@ class GelElectrophoresisItem(QGraphicsObject):
         self.gel_width = max(width, lanes * 44.0)
         self.gel_height = height
         self.show_labels = True
+        self.show_scale = True
+        self.scale_unit = "cm"
+        self.scale_min = 0.0
+        self.scale_max = 10.0
         self.lane_items: list[GelLaneItem] = []
         self._last_gel_pos = QPointF(0, 0)
+        self._scale_lines: list[QGraphicsLineItem] = []
+        self._scale_labels: list[QGraphicsTextItem] = []
 
         self._setup_gel()
 
     def _setup_gel(self):
         self.outline = QGraphicsRectItem(0, 0, self.gel_width, self.gel_height, self)
         self.outline.setPen(QPen(QColor(71, 85, 105), 1.5))
-        self.outline.setBrush(QBrush(QColor(241, 245, 249, 210)))
+        self.outline.setBrush(QBrush(QColor(255, 255, 255, 255)))
 
         lane_w = self.gel_width / self.num_lanes
         well_height = 14.0
         well_width = lane_w * 0.65
 
         path = QPainterPath()
-        path.moveTo(0, self.gel_height)
+        path.moveTo(0, 0)
         for i in range(self.num_lanes):
             cx = lane_w * i + lane_w / 2
-            path.lineTo(cx - well_width / 2, self.gel_height)
-            path.lineTo(cx - well_width / 2, self.gel_height - well_height)
-            path.lineTo(cx + well_width / 2, self.gel_height - well_height)
-            path.lineTo(cx + well_width / 2, self.gel_height)
-        path.lineTo(self.gel_width, self.gel_height)
+            path.lineTo(cx - well_width / 2, 0)
+            path.lineTo(cx - well_width / 2, well_height)
+            path.lineTo(cx + well_width / 2, well_height)
+            path.lineTo(cx + well_width / 2, 0)
         path.lineTo(self.gel_width, 0)
-        path.lineTo(0, 0)
+        path.lineTo(self.gel_width, self.gel_height)
+        path.lineTo(0, self.gel_height)
         path.closeSubpath()
 
         self.wells_path = QGraphicsPathItem(path, self)
         self.wells_path.setPen(QPen(QColor(71, 85, 105), 1.5))
-        self.wells_path.setBrush(QBrush(QColor(241, 245, 249, 210)))
+        self.wells_path.setBrush(QBrush(QColor(255, 255, 255, 255)))
 
         for i in range(self.num_lanes):
             lane = GelLaneItem(self, index=i, width=lane_w, height=self.gel_height)
             lane.setPos(lane_w * i + lane_w / 2, 0)
             self.lane_items.append(lane)
+
+        self._build_scale()
+
+    def _build_scale(self):
+        for line in self._scale_lines:
+            if line.scene():
+                line.scene().removeItem(line)
+        for label in self._scale_labels:
+            if label.scene():
+                label.scene().removeItem(label)
+        self._scale_lines.clear()
+        self._scale_labels.clear()
+
+        if not self.show_scale:
+            return
+
+        pen = QPen(QColor(100, 116, 139), 1, Qt.PenStyle.DashLine)
+        font = QFont("Arial", 8)
+        gel_left = 0
+        gel_top = 22.0
+        gel_bottom = self.gel_height
+        total_px = gel_bottom - gel_top
+
+        n_ticks = 6
+        for i in range(n_ticks + 1):
+            frac = i / n_ticks
+            y_local = gel_top + frac * total_px
+            line = QGraphicsLineItem(gel_left - 14, y_local, gel_left - 2, y_local)
+            line.setPen(pen)
+            line.setParentItem(self)
+            self._scale_lines.append(line)
+
+            val = self.scale_min + frac * (self.scale_max - self.scale_min)
+            if self.scale_unit == "cm":
+                text = f"{val:.1f}"
+            elif self.scale_unit == "log(masa)":
+                text = f"{val:.2f}"
+            else:
+                text = f"{val:.0f}"
+            label = QGraphicsTextItem(text)
+            label.setFont(font)
+            label.setDefaultTextColor(QColor(30, 41, 59))
+            lbl_w = label.boundingRect().width()
+            lbl_h = label.boundingRect().height()
+            label.setPos(gel_left - 16 - lbl_w, y_local - lbl_h / 2)
+            label.setParentItem(self)
+            self._scale_labels.append(label)
+
+    def _well_y(self):
+        return 22.0
 
     def add_bands_to_lanes(self, scene=None, dist_values=None):
         for i, lane in enumerate(self.lane_items):
@@ -923,16 +1031,16 @@ class GelElectrophoresisItem(QGraphicsObject):
         well_width = lane_w * 0.65
 
         path = QPainterPath()
-        path.moveTo(0, self.gel_height)
+        path.moveTo(0, 0)
         for i in range(self.num_lanes):
             cx = lane_w * i + lane_w / 2
-            path.lineTo(cx - well_width / 2, self.gel_height)
-            path.lineTo(cx - well_width / 2, self.gel_height - well_height)
-            path.lineTo(cx + well_width / 2, self.gel_height - well_height)
-            path.lineTo(cx + well_width / 2, self.gel_height)
-        path.lineTo(self.gel_width, self.gel_height)
+            path.lineTo(cx - well_width / 2, 0)
+            path.lineTo(cx - well_width / 2, well_height)
+            path.lineTo(cx + well_width / 2, well_height)
+            path.lineTo(cx + well_width / 2, 0)
         path.lineTo(self.gel_width, 0)
-        path.lineTo(0, 0)
+        path.lineTo(self.gel_width, self.gel_height)
+        path.lineTo(0, self.gel_height)
         path.closeSubpath()
 
         self.outline.setRect(0, 0, self.gel_width, self.gel_height)
@@ -946,6 +1054,7 @@ class GelElectrophoresisItem(QGraphicsObject):
             else:
                 lane.add_band(dist=0.0, scene=scene)
             self.lane_items.append(lane)
+        self._build_scale()
 
     def contextMenuEvent(self, event: QGraphicsSceneMouseEvent):
         menu = QMenu()
@@ -960,16 +1069,71 @@ class GelElectrophoresisItem(QGraphicsObject):
         label_action.triggered.connect(self._toggle_labels)
         menu.addAction(label_action)
 
+        scale_action = QAction("Mostrar escala" if not self.show_scale else "Ocultar escala", menu)
+        scale_action.triggered.connect(self._toggle_scale)
+        menu.addAction(scale_action)
+
         add_lane_action = QAction("Anadir carril", menu)
         add_lane_action.triggered.connect(lambda: self.set_num_lanes(self.num_lanes + 1, scene=self.scene()))
         menu.addAction(add_lane_action)
 
+        add_band_menu = menu.addMenu("Add band")
+        for i, lane in enumerate(self.lane_items):
+            act = QAction(f"Carril {i + 1}", menu)
+            act.triggered.connect(lambda checked, ln=lane: self._add_band_to_lane(ln))
+            add_band_menu.addAction(act)
+
+        scale_unit_menu = menu.addMenu("Unidad de escala")
+        for unit in ["cm", "log(masa)", "masa"]:
+            act = QAction(unit, menu)
+            act.setCheckable(True)
+            act.setChecked(self.scale_unit == unit)
+            act.triggered.connect(lambda checked, u=unit: self._set_scale_unit(u))
+            scale_unit_menu.addAction(act)
+
+        range_action = QAction("Configurar rango de escala...", menu)
+        range_action.triggered.connect(self._set_scale_range)
+        menu.addAction(range_action)
+
         menu.exec(event.screenPos())
+
+    def _add_band_to_lane(self, lane):
+        if self.scene() is None:
+            return
+        lane.add_band(dist=0.0, scene=self.scene())
+
+    def _set_scale_unit(self, unit):
+        self.scale_unit = unit
+        self._build_scale()
+        for lane in self.lane_items:
+            lane.update_labels()
+
+    def _set_scale_range(self):
+        from PyQt6.QtWidgets import QInputDialog
+        mn, ok1 = QInputDialog.getDouble(
+            None, "Escala minima", f"Valor minimo ({self.scale_unit}):",
+            self.scale_min, -1000.0, 1000.0, 2,
+        )
+        if not ok1:
+            return
+        mx, ok2 = QInputDialog.getDouble(
+            None, "Escala maxima", f"Valor maximo ({self.scale_unit}):",
+            self.scale_max, mn, 10000.0, 2,
+        )
+        if not ok2:
+            return
+        self.scale_min = mn
+        self.scale_max = mx
+        self._build_scale()
 
     def _toggle_labels(self):
         self.show_labels = not self.show_labels
         for lane in self.lane_items:
             lane.update_labels()
+
+    def _toggle_scale(self):
+        self.show_scale = not self.show_scale
+        self._build_scale()
 
     def to_dict(self) -> dict:
         lanes_data = []
@@ -982,12 +1146,20 @@ class GelElectrophoresisItem(QGraphicsObject):
             "width": self.gel_width,
             "height": self.gel_height,
             "show_labels": self.show_labels,
+            "show_scale": self.show_scale,
+            "scale_unit": self.scale_unit,
+            "scale_min": self.scale_min,
+            "scale_max": self.scale_max,
             "lanes_data": lanes_data,
         }
 
     def load_dict(self, data: dict, scene=None):
         self.setPos(data.get("pos", (0, 0))[0], data.get("pos", (0, 0))[1])
         self.show_labels = data.get("show_labels", True)
+        self.show_scale = data.get("show_scale", True)
+        self.scale_unit = data.get("scale_unit", "cm")
+        self.scale_min = data.get("scale_min", 0.0)
+        self.scale_max = data.get("scale_max", 10.0)
         self.num_lanes = data.get("lanes", 5)
         self.gel_width = data.get("width", 280.0)
         self.gel_height = data.get("height", 320.0)
@@ -1001,21 +1173,30 @@ class GelElectrophoresisItem(QGraphicsObject):
                 self.scene().removeItem(lane)
         self.lane_items.clear()
 
+        for line in self._scale_lines:
+            if line.scene():
+                line.scene().removeItem(line)
+        for label in self._scale_labels:
+            if label.scene():
+                label.scene().removeItem(label)
+        self._scale_lines.clear()
+        self._scale_labels.clear()
+
         lane_w = self.gel_width / self.num_lanes
         well_height = 14.0
         well_width = lane_w * 0.65
 
         path = QPainterPath()
-        path.moveTo(0, self.gel_height)
+        path.moveTo(0, 0)
         for i in range(self.num_lanes):
             cx = lane_w * i + lane_w / 2
-            path.lineTo(cx - well_width / 2, self.gel_height)
-            path.lineTo(cx - well_width / 2, self.gel_height - well_height)
-            path.lineTo(cx + well_width / 2, self.gel_height - well_height)
-            path.lineTo(cx + well_width / 2, self.gel_height)
-        path.lineTo(self.gel_width, self.gel_height)
+            path.lineTo(cx - well_width / 2, 0)
+            path.lineTo(cx - well_width / 2, well_height)
+            path.lineTo(cx + well_width / 2, well_height)
+            path.lineTo(cx + well_width / 2, 0)
         path.lineTo(self.gel_width, 0)
-        path.lineTo(0, 0)
+        path.lineTo(self.gel_width, self.gel_height)
+        path.lineTo(0, self.gel_height)
         path.closeSubpath()
 
         self.outline.setRect(0, 0, self.gel_width, self.gel_height)
@@ -1030,6 +1211,7 @@ class GelElectrophoresisItem(QGraphicsObject):
             else:
                 lane.add_band(dist=0.0, scene=scene)
             self.lane_items.append(lane)
+        self._build_scale()
 
     def to_json(self) -> dict:
         return self.to_dict()

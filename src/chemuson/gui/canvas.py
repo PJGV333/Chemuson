@@ -7377,6 +7377,7 @@ class ChemusonCanvas(QGraphicsView):
         lanes = dialog.lanes()
         item = TLCPlateItem(lanes=lanes)
         item.setPos(scene_pos)
+        self.scene.addItem(item)
         cmd = AddPlateItemCommand(self, item)
         self.undo_stack.push(cmd)
         item.add_spots_to_lanes(scene=self.scene)
@@ -7394,24 +7395,10 @@ class ChemusonCanvas(QGraphicsView):
         lanes = dialog.lanes()
         item = GelElectrophoresisItem(lanes=lanes)
         item.setPos(scene_pos)
+        self.scene.addItem(item)
         cmd = AddPlateItemCommand(self, item)
         self.undo_stack.push(cmd)
         item.add_bands_to_lanes(scene=self.scene)
-        self.set_current_tool("tool_select")
-        self.scene.clearSelection()
-        item.setSelected(True)
-        self._sync_selection_from_scene()
-
-    def _insert_gel_electrophoresis_item(self, scene_pos: QPointF) -> None:
-        """Abre el diálogo e inserta un gel de electroforesis."""
-        dialog = GelInsertDialog(self.window())
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
-
-        lanes = dialog.lanes()
-        item = GelElectrophoresisItem(lanes=lanes)
-        item.setPos(scene_pos)
-        self.undo_stack.push(AddPlateItemCommand(self, item))
         self.set_current_tool("tool_select")
         self.scene.clearSelection()
         item.setSelected(True)
