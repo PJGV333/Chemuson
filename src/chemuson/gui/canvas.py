@@ -186,7 +186,7 @@ from chemuson.gui.dialogs import (
 )
 from chemuson.chemname.molview import MolView
 from chemuson.chemname.rings import find_rings_simple, ring_bonds
-from chemuson.gui.plate_items import TLCPlateItem, GelElectrophoresisItem, PlateItem
+from chemuson.gui.plate_items import TLCPlateItem, GelElectrophoresisItem, TLCSpotItem, GelBandItem, PlateItem
 from chemuson.chemio.rdkit_io import (
     molgraph_to_molfile,
     molgraph_to_smiles,
@@ -1703,6 +1703,21 @@ class ChemusonCanvas(QGraphicsView):
             return
 
         if event.button() == Qt.MouseButton.RightButton:
+            if isinstance(clicked_item, (TLCSpotItem, GelBandItem)):
+                super().mousePressEvent(event)
+                return
+            if isinstance(
+                clicked_item,
+                (
+                    TLCPlateItem,
+                    GelElectrophoresisItem,
+                ),
+            ):
+                if not (event.modifiers() & (Qt.KeyboardModifier.ShiftModifier | Qt.KeyboardModifier.ControlModifier)):
+                    self.scene.clearSelection()
+                clicked_item.setSelected(True)
+                self._sync_selection_from_scene()
+                return
             if isinstance(
                 clicked_item,
                 (
@@ -1829,6 +1844,9 @@ class ChemusonCanvas(QGraphicsView):
                     & Qt.TextInteractionFlag.TextEditorInteraction
                 ):
                     return
+                if isinstance(clicked_item, (TLCSpotItem, GelBandItem)):
+                    super().mousePressEvent(event)
+                    return
                 if isinstance(
                     clicked_item,
                     (
@@ -1840,6 +1858,8 @@ class ChemusonCanvas(QGraphicsView):
                         CompositeDiagramItem,
                         OrbitalAnnotationItem,
                         ImageAnnotationItem,
+                        TLCPlateItem,
+                        GelElectrophoresisItem,
                     ),
                 ):
                     self._begin_drag(scene_pos)
@@ -2694,6 +2714,8 @@ class ChemusonCanvas(QGraphicsView):
                     OrbitalAnnotationItem,
                     ImageAnnotationItem,
                     WavyAnchorItem,
+                    TLCSpotItem,
+                    GelBandItem,
                 ),
             ):
                 return item
@@ -3890,6 +3912,14 @@ class ChemusonCanvas(QGraphicsView):
             has_selected_images = any(
                 isinstance(item, ImageAnnotationItem) for item in self.scene.selectedItems()
             )
+            has_selected_plates = any(
+                isinstance(item, (TLCPlateItem, GelElectrophoresisItem))
+                for item in self.scene.selectedItems()
+            )
+            has_selected_spots_bands = any(
+                isinstance(item, (TLCSpotItem, GelBandItem))
+                for item in self.scene.selectedItems()
+            )
             if (
                 self.state.selected_atoms
                 or self.state.selected_bonds
@@ -3900,6 +3930,8 @@ class ChemusonCanvas(QGraphicsView):
                 or has_selected_semantic_diagrams
                 or has_selected_orbitals
                 or has_selected_images
+                or has_selected_plates
+                or has_selected_spots_bands
             ):
                 self.delete_selection()
                 return
@@ -5176,11 +5208,34 @@ class ChemusonCanvas(QGraphicsView):
             self._wavy_anchors.discard(item)
 
     def remove_plate_item(self, item: TLCPlateItem | GelElectrophoresisItem) -> None:
-        """Elimina una placa de análisis del lienzo."""
+        """Elimina una placa de analisis del lienzo."""
         if item in self.plate_items:
             self.plate_items.remove(item)
-        if item.scene() is self.scene:
+        for lane in item.lane_items:
+            if hasattr(lane, "rf_labels"):
+                for spot, lbl in list(lane.rf_labels):
+                    try:
+                        self.scene.removeItem(spot)
+                    except RuntimeError:
+                        pass
+                    try:
+                        self.scene.removeItem(lbl)
+                    except RuntimeError:
+                        pass
+            elif hasattr(lane, "bands"):
+                for band, lbl in list(lane.bands):
+                    try:
+                        self.scene.removeItem(band)
+                    except RuntimeError:
+                        pass
+                    try:
+                        self.scene.removeItem(lbl)
+                    except RuntimeError:
+                        pass
+        try:
             self.scene.removeItem(item)
+        except RuntimeError:
+            pass
 
     def readd_text_item(self, item: TextAnnotationItem) -> None:
         """Método auxiliar para readd text item.
@@ -5300,6 +5355,39 @@ class ChemusonCanvas(QGraphicsView):
             item for item in self.scene.selectedItems() if isinstance(item, ImageAnnotationItem)
         ]
         selected_plates = self._selected_plate_items()
+        selected_spots_bands = [
+            item for item in self.scene.selectedItems() if isinstance(item, (TLCSpotItem, GelBandItem))
+        ]
+        plates_from_spots = set()
+        for sb in selected_spots_bands:
+            lr = getattr(sb, "lane_ref", None)
+            if lr is not None:
+                parent_plate = lr.parentItem()
+                if isinstance(parent_plate, (TLCPlateItem, GelElectrophoresisItem)):
+                    plates_from_spots.add(parent_plate)
+        all_plates = list(set(selected_plates) | plates_from_spots)
+        for plate in all_plates:
+            for lane in plate.lane_items:
+                if hasattr(lane, "rf_labels"):
+                    for spot, lbl in list(lane.rf_labels):
+                        try:
+                            self.scene.removeItem(spot)
+                        except RuntimeError:
+                            pass
+                        try:
+                            self.scene.removeItem(lbl)
+                        except RuntimeError:
+                            pass
+                elif hasattr(lane, "bands"):
+                    for band, lbl in list(lane.bands):
+                        try:
+                            self.scene.removeItem(band)
+                        except RuntimeError:
+                            pass
+                        try:
+                            self.scene.removeItem(lbl)
+                        except RuntimeError:
+                            pass
         if (
             not self.state.selected_atoms
             and not self.state.selected_bonds
@@ -5311,7 +5399,7 @@ class ChemusonCanvas(QGraphicsView):
             and not selected_orbitals
             and not selected_wavy
             and not selected_images
-            and not selected_plates
+            and not all_plates
         ):
             return
         self._delete_selection(
@@ -5325,7 +5413,7 @@ class ChemusonCanvas(QGraphicsView):
             orbital_items=selected_orbitals,
             wavy_items=selected_wavy,
             image_items=selected_images,
-            plate_items=selected_plates,
+            plate_items=all_plates,
         )
 
     def _delete_hovered(self) -> bool:
@@ -7281,7 +7369,7 @@ class ChemusonCanvas(QGraphicsView):
         return item
 
     def _insert_tlc_plate_item(self, scene_pos: QPointF) -> None:
-        """Abre el diálogo e inserta una placa TLC."""
+        """Abre el dialogo e inserta una placa TLC."""
         dialog = TLCInsertDialog(self.window())
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -7289,7 +7377,26 @@ class ChemusonCanvas(QGraphicsView):
         lanes = dialog.lanes()
         item = TLCPlateItem(lanes=lanes)
         item.setPos(scene_pos)
-        self.undo_stack.push(AddPlateItemCommand(self, item))
+        cmd = AddPlateItemCommand(self, item)
+        self.undo_stack.push(cmd)
+        item.add_spots_to_lanes(scene=self.scene)
+        self.set_current_tool("tool_select")
+        self.scene.clearSelection()
+        item.setSelected(True)
+        self._sync_selection_from_scene()
+
+    def _insert_gel_electrophoresis_item(self, scene_pos: QPointF) -> None:
+        """Abre el dialogo e inserta un gel de electroforesis."""
+        dialog = GelInsertDialog(self.window())
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        lanes = dialog.lanes()
+        item = GelElectrophoresisItem(lanes=lanes)
+        item.setPos(scene_pos)
+        cmd = AddPlateItemCommand(self, item)
+        self.undo_stack.push(cmd)
+        item.add_bands_to_lanes(scene=self.scene)
         self.set_current_tool("tool_select")
         self.scene.clearSelection()
         item.setSelected(True)
