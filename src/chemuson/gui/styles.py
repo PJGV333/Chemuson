@@ -100,12 +100,12 @@ DARK_TOKENS = ThemeTokens(
     scrollbar_bg="#1B2638",
     scrollbar_handle="#41546C",
     scrollbar_handle_hover="#576F8C",
-    side_toolbar_bg="#18263A",
-    side_button_bg="#31465F",
-    side_button_border="#5F7896",
-    side_button_hover="#3D5572",
-    side_button_checked_bg="#476487",
-    side_button_checked_border="#79BDF0",
+    side_toolbar_bg="#EAF0F7",
+    side_button_bg="#FFFFFF",
+    side_button_border="#BFCDE0",
+    side_button_hover="#E4F3FF",
+    side_button_checked_bg="#CFE9FF",
+    side_button_checked_border="#0B84B8",
 )
 
 

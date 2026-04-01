@@ -28,13 +28,13 @@ def _alpha_bounding_rect(pixmap: QPixmap) -> QRect:
 
 
 def _tint_icon(icon: QIcon, color: str, size: int = 24) -> QIcon:
-    request = max(48, size * 3)
+    request = max(64, size * 4)
     base = icon.pixmap(request, request)
     if base.isNull():
         return icon
     alpha_rect = _alpha_bounding_rect(base)
     glyph = base.copy(alpha_rect)
-    target_px = int(size * 0.96)
+    target_px = int(size * 0.98)
     scaled = glyph.scaled(
         target_px,
         target_px,

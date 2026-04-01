@@ -928,25 +928,12 @@ class ChemusonWindow(QMainWindow):
         self.main_toolbar = QToolBar("Principal")
         self.main_toolbar.setMovable(False)
         self.main_toolbar.setFloatable(False)
-        self.main_toolbar.setIconSize(QSize(24, 24))
+        self.main_toolbar.setIconSize(QSize(26, 26))
         self.main_toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self.main_toolbar)
         
         # Set icons for actions with fallbacks where possible
         self._refresh_theme_icons()
-        
-        from chemuson.gui.icons import draw_generic_icon
-        self.action_zoom_in.setIcon(draw_generic_icon("zoom_in"))
-        self.action_zoom_out.setIcon(draw_generic_icon("zoom_out"))
-        self.action_rotate_left.setIcon(draw_generic_icon("rotate_left"))
-        self.action_rotate_right.setIcon(draw_generic_icon("rotate_right"))
-        self.action_flip_horizontal.setIcon(draw_generic_icon("flip_horizontal"))
-        self.action_flip_vertical.setIcon(draw_generic_icon("flip_vertical"))
-        self.action_branch_rotate_minus.setIcon(draw_generic_icon("rotate_left"))
-        self.action_branch_rotate_plus.setIcon(draw_generic_icon("rotate_right"))
-        self.action_branch_invert.setIcon(draw_generic_icon("flip_horizontal"))
-        from chemuson.gui.icons import draw_atom_icon
-        self.action_draw_smiles.setIcon(draw_atom_icon("SMI"))
         
         # File actions
         self.main_toolbar.addAction(self.action_new)
@@ -3517,29 +3504,19 @@ class ChemusonWindow(QMainWindow):
         if not resolved:
             resolved = resolve_effective_theme(load_theme_preference(self._settings))
         apply_main_action_icons(self, theme=resolved)
-        self._refresh_side_toolbar_icons(theme=resolved)
-
-    def _refresh_side_toolbar_icons(self, theme: str) -> None:
-        """Ajusta contraste de iconos laterales por tema activo."""
-        is_dark = str(theme).strip().lower() == "dark"
-        toolbars = [getattr(self, "toolbar", None), getattr(self, "symbols_toolbar", None)]
-        for toolbar in toolbars:
-            if toolbar is None:
-                continue
-            if not hasattr(toolbar, "_original_icons"):
-                toolbar._original_icons = {}
-            icon_size = max(24, int(toolbar.iconSize().width()))
-            for action in toolbar.actions():
-                if action.isSeparator():
-                    continue
-                original = toolbar._original_icons.get(action)
-                if original is None:
-                    original = action.icon()
-                    toolbar._original_icons[action] = original
-                if is_dark:
-                    action.setIcon(retint_icon(original, "#F3F8FF", icon_size))
-                else:
-                    action.setIcon(original)
+        icon_size = max(24, int(getattr(self.main_toolbar, "iconSize", lambda: QSize(24, 24))().width()))
+        icon_color = "#F3F8FF" if resolved == "dark" else "#1E293B"
+        self.action_zoom_in.setIcon(retint_icon(draw_generic_icon("zoom_in"), icon_color, icon_size))
+        self.action_zoom_out.setIcon(retint_icon(draw_generic_icon("zoom_out"), icon_color, icon_size))
+        self.action_rotate_left.setIcon(retint_icon(draw_generic_icon("rotate_left"), icon_color, icon_size))
+        self.action_rotate_right.setIcon(retint_icon(draw_generic_icon("rotate_right"), icon_color, icon_size))
+        self.action_flip_horizontal.setIcon(retint_icon(draw_generic_icon("flip_horizontal"), icon_color, icon_size))
+        self.action_flip_vertical.setIcon(retint_icon(draw_generic_icon("flip_vertical"), icon_color, icon_size))
+        self.action_branch_rotate_minus.setIcon(retint_icon(draw_generic_icon("rotate_left"), icon_color, icon_size))
+        self.action_branch_rotate_plus.setIcon(retint_icon(draw_generic_icon("rotate_right"), icon_color, icon_size))
+        self.action_branch_invert.setIcon(retint_icon(draw_generic_icon("flip_horizontal"), icon_color, icon_size))
+        from chemuson.gui.icons import draw_atom_icon
+        self.action_draw_smiles.setIcon(retint_icon(draw_atom_icon("SMI"), icon_color, icon_size))
 
     def _apply_appearance_settings(self, prefs: dict) -> None:
         """Aplica appearance settings.
