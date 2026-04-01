@@ -167,6 +167,7 @@ class PreferencesDialog(QDialog):
         self,
         current_state: ChemState,
         current_style: DrawingStyle,
+        theme_mode: str = "auto",
         update_settings: dict | None = None,
         naming_settings: dict | None = None,
         parent=None,
@@ -189,6 +190,7 @@ class PreferencesDialog(QDialog):
         self.setWindowTitle("Preferencias")
         self.setMinimumWidth(420)
         self._current_style = current_style
+        self._theme_mode = str(theme_mode or "auto").strip().lower()
 
         tabs = QTabWidget(self)
         tabs.addTab(self._build_general_tab(current_state), "General")
@@ -265,6 +267,15 @@ class PreferencesDialog(QDialog):
         if index >= 0:
             self.bond_cap_combo.setCurrentIndex(index)
         form.addRow("Bordes de enlace", self.bond_cap_combo)
+
+        self.theme_mode_combo = QComboBox()
+        self.theme_mode_combo.addItem("Automático", "auto")
+        self.theme_mode_combo.addItem("Claro", "light")
+        self.theme_mode_combo.addItem("Oscuro", "dark")
+        idx_theme = self.theme_mode_combo.findData(self._theme_mode)
+        if idx_theme >= 0:
+            self.theme_mode_combo.setCurrentIndex(idx_theme)
+        form.addRow("Tema de la aplicación", self.theme_mode_combo)
 
         layout.addLayout(form)
         layout.addStretch()
@@ -352,6 +363,7 @@ class PreferencesDialog(QDialog):
             "show_hydrogens": self.hydrogens_checkbox.isChecked(),
             "aromatic_circles": self.aromatic_checkbox.isChecked(),
             "bond_caps": self.bond_cap_combo.currentData(),
+            "theme_mode": str(self.theme_mode_combo.currentData() or "auto"),
             "update_enabled": self.update_enabled_checkbox.isChecked(),
             "update_channel": str(self.update_channel_combo.currentData() or "stable"),
             "update_mode": str(self.update_mode_combo.currentData() or "notify"),
@@ -925,4 +937,3 @@ class GelInsertDialog(QDialog):
 
     def lanes(self) -> int:
         return self.lanes_spin.value()
-

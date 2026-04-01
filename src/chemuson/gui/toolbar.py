@@ -56,7 +56,6 @@ from chemuson.gui.orbitals import (
     orbital_kind_from_tool_id,
     orbital_tool_id,
 )
-from chemuson.gui.styles import TOOL_PALETTE_STYLESHEET
 
 
 class ChemusonToolbar(QToolBar):
@@ -83,7 +82,6 @@ class ChemusonToolbar(QToolBar):
         self.setFloatable(False)
         self.setIconSize(QSize(28, 28))
 
-        self.setStyleSheet(TOOL_PALETTE_STYLESHEET)
 
         self.action_group = QActionGroup(self)
         self.action_group.setExclusive(True)
@@ -783,7 +781,6 @@ class SymbolPaletteToolbar(QToolBar):
         self.setMovable(False)
         self.setFloatable(False)
         self.setIconSize(QSize(28, 28))
-        self.setStyleSheet(TOOL_PALETTE_STYLESHEET)
 
         self._action_group = action_group
         self._bracket_meta = {
