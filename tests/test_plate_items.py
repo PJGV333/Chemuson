@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import sys
+import tempfile
 
 import pytest
 from PyQt6.QtCore import QPointF
@@ -507,3 +509,536 @@ class TestSpotBandCommands:
 
         cmd.undo()
         assert plate.show_labels is True
+
+
+# =============================================================================
+# Comprehensive Integration Tests (Clipboard, Copy/Paste, Undo/Redo, Rf, Bounding)
+# =============================================================================
+
+class TestTLCClipboardAndCopyPaste:
+    def test_tlc_serialization_preserves_spots_and_labels(self):
+        plate = TLCPlateItem(lanes=3, width=200.0, height=250.0)
+        plate.setPos(100.0, 200.0)
+        scene = QGraphicsScene()
+        scene.addItem(plate)
+        plate.add_spots_to_lanes(scene=scene, rf_values=[0.3, 0.5, 0.7])
+
+        data = plate.to_dict()
+        assert data["type"] == "TLCPlateItem"
+        assert len(data["lanes_data"]) == 3
+        for lane_data in data["lanes_data"]:
+            assert len(lane_data["spots"]) >= 1
+
+        plate2 = TLCPlateItem.from_json(data)
+        assert plate2.num_lanes == 3
+        assert plate2.pos().x() == pytest.approx(100.0)
+        assert plate2.pos().y() == pytest.approx(200.0)
+
+    def test_tlc_has_rf_scale_title(self):
+        plate = TLCPlateItem(lanes=3)
+        assert plate._scale_title is not None
+        assert plate._scale_title.toPlainText() == "Rf"
+
+    def test_tlc_scale_labels_show_rf_values(self):
+        plate = TLCPlateItem(lanes=2)
+        scene = QGraphicsScene()
+        scene.addItem(plate)
+        plate.add_spots_to_lanes(scene=scene, rf_values=[0.45, 0.75])
+        lane = plate.lane_items[0]
+        spot, label = lane.rf_labels[0]
+        spot._show_rf_label = True
+        lane.update_rf_labels()
+        text = label.toPlainText()
+        assert "0.45" in text or "0.55" in text
+
+    def test_tlc_bounding_rect_includes_scale(self):
+        plate = TLCPlateItem(lanes=3)
+        rect = plate.boundingRect()
+        assert rect.width() > plate.plate_width
+        assert rect.isValid()
+
+    def test_tlc_copy_to_clipboard_produces_png(self):
+        canvas = ChemusonCanvas()
+        try:
+            plate = TLCPlateItem(lanes=3)
+            canvas.add_plate_item(plate)
+            plate.setSelected(True)
+            canvas.copy_to_clipboard()
+
+            clipboard = QApplication.clipboard()
+            mime = clipboard.mimeData()
+            assert mime.hasFormat("image/png")
+            assert mime.hasFormat("application/x-chemuson-selection")
+        finally:
+            canvas.close()
+
+    def test_tlc_internal_copy_paste(self):
+        canvas = ChemusonCanvas()
+        try:
+            plate = TLCPlateItem(lanes=3)
+            plate.setPos(100.0, 100.0)
+            canvas.add_plate_item(plate)
+            plate.add_spots_to_lanes(scene=canvas.scene, rf_values=[0.3, 0.5, 0.7])
+            plate.setSelected(True)
+
+            canvas.copy_to_clipboard()
+            canvas.paste_from_clipboard()
+
+            assert len(canvas.plate_items) == 2
+            pasted = [p for p in canvas.plate_items if p is not plate][0]
+            assert pasted.num_lanes == 3
+            total_spots = sum(len(lane.rf_labels) for lane in pasted.lane_items)
+            assert total_spots == 3
+        finally:
+            canvas.close()
+
+    def test_tlc_cut_removes_from_scene(self):
+        canvas = ChemusonCanvas()
+        try:
+            plate = TLCPlateItem(lanes=3)
+            canvas.add_plate_item(plate)
+            plate.setSelected(True)
+
+            canvas.cut_to_clipboard()
+            assert plate not in canvas.plate_items
+        finally:
+            canvas.close()
+
+    def test_tlc_duplicate_creates_copy(self):
+        canvas = ChemusonCanvas()
+        try:
+            plate = TLCPlateItem(lanes=3)
+            plate.setPos(100.0, 100.0)
+            canvas.add_plate_item(plate)
+            plate.setSelected(True)
+
+            canvas.duplicate_selection()
+            assert len(canvas.plate_items) == 2
+        finally:
+            canvas.close()
+
+
+class TestGelClipboardAndCopyPaste:
+    def test_gel_serialization_preserves_axis_mode_and_mw(self):
+        gel = GelElectrophoresisItem(lanes=4, width=300.0, height=350.0)
+        gel.setPos(50.0, 100.0)
+        gel.scale_unit = "Mass(kDa)"
+        gel.mass_min_kda = 10.0
+        gel.mass_max_kda = 1000.0
+
+        data = gel.to_dict()
+        assert data["scale_unit"] == "Mass(kDa)"
+        assert data["mass_min_kda"] == 10.0
+        assert data["mass_max_kda"] == 1000.0
+
+        gel2 = GelElectrophoresisItem.from_json(data)
+        assert gel2.scale_unit == "Mass(kDa)"
+        assert gel2.mass_min_kda == 10.0
+        assert gel2.mass_max_kda == 1000.0
+
+    def test_gel_copy_to_clipboard_produces_png(self):
+        canvas = ChemusonCanvas()
+        try:
+            gel = GelElectrophoresisItem(lanes=5)
+            canvas.add_plate_item(gel)
+            gel.setSelected(True)
+            canvas.copy_to_clipboard()
+
+            clipboard = QApplication.clipboard()
+            mime = clipboard.mimeData()
+            assert mime.hasFormat("image/png")
+            assert mime.hasFormat("application/x-chemuson-selection")
+        finally:
+            canvas.close()
+
+    def test_gel_internal_copy_paste(self):
+        canvas = ChemusonCanvas()
+        try:
+            gel = GelElectrophoresisItem(lanes=5)
+            gel.scale_unit = "log(Mass/kDa)"
+            gel.mass_min_kda = 10.0
+            gel.mass_max_kda = 10000.0
+            canvas.add_plate_item(gel)
+            gel.add_bands_to_lanes(scene=canvas.scene)
+            gel.setSelected(True)
+
+            canvas.copy_to_clipboard()
+            canvas.paste_from_clipboard()
+
+            assert len(canvas.plate_items) == 2
+            pasted = [p for p in canvas.plate_items if p is not gel][0]
+            assert pasted.num_lanes == 5
+            assert pasted.scale_unit == "log(Mass/kDa)"
+            assert pasted.mass_min_kda == 10.0
+            assert pasted.mass_max_kda == 10000.0
+            total_bands = sum(len(lane.bands) for lane in pasted.lane_items)
+            assert total_bands == 5
+        finally:
+            canvas.close()
+
+    def test_gel_bounding_rect_includes_scale(self):
+        gel = GelElectrophoresisItem(lanes=5)
+        rect = gel.boundingRect()
+        assert rect.width() > gel.gel_width
+        assert rect.isValid()
+
+
+class TestUndoRedoComprehensive:
+    def test_delete_plate_undo_redo(self):
+        canvas = ChemusonCanvas()
+        try:
+            plate = TLCPlateItem(lanes=3)
+            canvas.add_plate_item(plate)
+            plate.setSelected(True)
+            canvas.delete_selection()
+            assert plate not in canvas.plate_items
+
+            canvas.undo_stack.undo()
+            assert plate in canvas.plate_items
+
+            canvas.undo_stack.redo()
+            assert plate not in canvas.plate_items
+        finally:
+            canvas.close()
+
+    def test_move_spot_undo_redo(self):
+        plate = TLCPlateItem(lanes=1)
+        scene = QGraphicsScene()
+        scene.addItem(plate)
+        plate.add_spots_to_lanes(scene=scene)
+        lane = plate.lane_items[0]
+        spot, _ = lane.rf_labels[0]
+        before_y = spot.y()
+
+        new_y = before_y + 15.0
+        min_y = lane.scenePos().y() + lane.solvent_front_y()
+        max_y = lane.scenePos().y() + lane.baseline_y()
+        new_y = max(min_y, min(max_y, new_y))
+
+        spot.setY(new_y)
+        cmd = MoveSpotBandCommand(spot, before_y, new_y)
+        cmd.redo()
+        assert spot.y() == pytest.approx(new_y)
+
+        cmd.undo()
+        assert spot.y() == pytest.approx(before_y)
+
+    def test_gel_band_move_undo_redo(self):
+        gel = GelElectrophoresisItem(lanes=1)
+        scene = QGraphicsScene()
+        scene.addItem(gel)
+        gel.add_bands_to_lanes(scene=scene)
+        lane = gel.lane_items[0]
+        band, _ = lane.bands[0]
+        before_y = band.y()
+
+        band.setY(before_y + 40.0)
+        cmd = MoveSpotBandCommand(band, before_y, band.y())
+        cmd.redo()
+        assert band.y() == pytest.approx(before_y + 40.0)
+
+        cmd.undo()
+        assert band.y() == pytest.approx(before_y)
+
+    def test_paste_plate_is_undoable(self):
+        canvas = ChemusonCanvas()
+        try:
+            plate = TLCPlateItem(lanes=3)
+            canvas.add_plate_item(plate)
+            plate.setSelected(True)
+            canvas.copy_to_clipboard()
+            canvas.paste_from_clipboard()
+
+            assert len(canvas.plate_items) == 2
+            canvas.undo_stack.undo()
+            assert len(canvas.plate_items) == 1
+        finally:
+            canvas.close()
+
+
+class TestGelScaleConsistency:
+    def test_gel_axis_and_band_labels_consistent(self):
+        gel = GelElectrophoresisItem(lanes=1)
+        gel.scale_unit = "Mass(kDa)"
+        gel.mass_min_kda = 10.0
+        gel.mass_max_kda = 250.0
+        scene = QGraphicsScene()
+        scene.addItem(gel)
+        gel.add_bands_to_lanes(scene=scene)
+        lane = gel.lane_items[0]
+        band, label = lane.bands[0]
+        band._show_label = True
+
+        band_y_local = (band.y() - lane.scenePos().y())
+        run_top = lane.well_y()
+        run_h = lane.lane_height - lane.well_y()
+        expected = gel_value_at_position(band_y_local, run_top, run_h,
+                                          "Mass(kDa)", 10.0, 250.0)
+        lane.update_labels()
+        actual = float(label.toPlainText())
+        assert actual == pytest.approx(expected, rel=0.01)
+
+    def test_gel_distance_extremes(self):
+        run_top = 22.0
+        run_h = 200.0
+        top_val = gel_value_at_position(run_top, run_top, run_h, "Distance", 10.0, 250.0)
+        bottom_val = gel_value_at_position(run_top + run_h, run_top, run_h, "Distance", 10.0, 250.0)
+        assert top_val == pytest.approx(0.0)
+        assert bottom_val == pytest.approx(1.0)
+
+    def test_gel_mass_extremes(self):
+        run_top = 22.0
+        run_h = 200.0
+        top_val = gel_value_at_position(run_top, run_top, run_h, "Mass(kDa)", 10.0, 250.0)
+        bottom_val = gel_value_at_position(run_top + run_h, run_top, run_h, "Mass(kDa)", 10.0, 250.0)
+        assert top_val == pytest.approx(250.0, rel=0.01)
+        assert bottom_val == pytest.approx(10.0, rel=0.01)
+
+    def test_gel_log_mass_extremes(self):
+        run_top = 22.0
+        run_h = 200.0
+        top_val = gel_value_at_position(run_top, run_top, run_h, "log(Mass/kDa)", 10.0, 250.0)
+        bottom_val = gel_value_at_position(run_top + run_h, run_top, run_h, "log(Mass/kDa)", 10.0, 250.0)
+        assert top_val == pytest.approx(math.log10(250.0), abs=0.01)
+        assert bottom_val == pytest.approx(math.log10(10.0), abs=0.01)
+
+
+class TestSaveLoadRoundtrip:
+    def test_tlc_save_load_preserves_spots_and_labels(self):
+        canvas = ChemusonCanvas()
+        try:
+            plate = TLCPlateItem(lanes=3)
+            plate.setPos(100.0, 100.0)
+            canvas.add_plate_item(plate)
+            plate.add_spots_to_lanes(scene=canvas.scene, rf_values=[0.3, 0.5, 0.7])
+            for lane in plate.lane_items:
+                for spot, _ in lane.rf_labels:
+                    spot._show_rf_label = True
+                    lane.update_rf_labels()
+
+            data = canvas.get_persistence_data()
+            assert len(data["annotations"]["plates"]) == 1
+            plate_data = data["annotations"]["plates"][0]
+            assert plate_data["type"] == "TLCPlateItem"
+            assert plate_data["pos"] == (100.0, 100.0)
+            assert len(plate_data["lanes_data"]) == 3
+            for lane in plate_data["lanes_data"]:
+                assert len(lane["spots"]) == 1
+                assert lane["spots"][0]["show_rf_label"] is True
+
+            canvas2 = ChemusonCanvas()
+            canvas2.load_persistence_data(data)
+            assert len(canvas2.plate_items) == 1
+            loaded = canvas2.plate_items[0]
+            assert loaded.num_lanes == 3
+            assert loaded.pos().x() == pytest.approx(100.0)
+            assert loaded.pos().y() == pytest.approx(100.0)
+            total_spots = sum(len(lane.rf_labels) for lane in loaded.lane_items)
+            assert total_spots == 3
+            for lane in loaded.lane_items:
+                for spot, _ in lane.rf_labels:
+                    assert spot._show_rf_label is True
+            canvas2.close()
+        finally:
+            canvas.close()
+
+    def test_gel_save_load_preserves_config_and_bands(self):
+        canvas = ChemusonCanvas()
+        try:
+            gel = GelElectrophoresisItem(lanes=3)
+            gel.setPos(300.0, 100.0)
+            gel.scale_unit = "Mass(kDa)"
+            gel.mass_min_kda = 10.0
+            gel.mass_max_kda = 250.0
+            canvas.add_plate_item(gel)
+            gel.add_bands_to_lanes(scene=canvas.scene)
+            for lane in gel.lane_items:
+                for band, _ in lane.bands:
+                    band._show_label = True
+                    lane.update_labels()
+
+            data = canvas.get_persistence_data()
+            assert len(data["annotations"]["plates"]) == 1
+            gel_data = data["annotations"]["plates"][0]
+            assert gel_data["type"] == "GelElectrophoresisItem"
+            assert gel_data["scale_unit"] == "Mass(kDa)"
+            assert gel_data["mass_min_kda"] == 10.0
+            assert gel_data["mass_max_kda"] == 250.0
+            assert len(gel_data["lanes_data"]) == 3
+            for lane in gel_data["lanes_data"]:
+                assert len(lane["bands"]) == 1
+                assert lane["bands"][0]["show_label"] is True
+
+            canvas2 = ChemusonCanvas()
+            canvas2.load_persistence_data(data)
+            assert len(canvas2.plate_items) == 1
+            loaded = canvas2.plate_items[0]
+            assert loaded.num_lanes == 3
+            assert loaded.pos().x() == pytest.approx(300.0)
+            assert loaded.pos().y() == pytest.approx(100.0)
+            assert loaded.scale_unit == "Mass(kDa)"
+            assert loaded.mass_min_kda == 10.0
+            assert loaded.mass_max_kda == 250.0
+            total_bands = sum(len(lane.bands) for lane in loaded.lane_items)
+            assert total_bands == 3
+            for lane in loaded.lane_items:
+                for band, _ in lane.bands:
+                    assert band._show_label is True
+            canvas2.close()
+        finally:
+            canvas.close()
+
+    def test_file_roundtrip_json(self):
+        canvas = ChemusonCanvas()
+        try:
+            plate = TLCPlateItem(lanes=2)
+            plate.setPos(50.0, 50.0)
+            canvas.add_plate_item(plate)
+            plate.add_spots_to_lanes(scene=canvas.scene, rf_values=[0.25, 0.75])
+
+            gel = GelElectrophoresisItem(lanes=4)
+            gel.setPos(250.0, 50.0)
+            gel.scale_unit = "log(Mass/kDa)"
+            gel.mass_min_kda = 10.0
+            gel.mass_max_kda = 10000.0
+            canvas.add_plate_item(gel)
+            gel.add_bands_to_lanes(scene=canvas.scene)
+
+            data = canvas.get_persistence_data()
+            tmpfile = tempfile.mktemp(suffix=".json")
+            try:
+                with open(tmpfile, "w") as f:
+                    json.dump(data, f)
+                with open(tmpfile) as f:
+                    loaded = json.load(f)
+
+                canvas2 = ChemusonCanvas()
+                canvas2.load_persistence_data(loaded)
+                assert len(canvas2.plate_items) == 2
+                types = {type(p).__name__ for p in canvas2.plate_items}
+                assert "TLCPlateItem" in types
+                assert "GelElectrophoresisItem" in types
+                canvas2.close()
+            finally:
+                if os.path.exists(tmpfile):
+                    os.unlink(tmpfile)
+        finally:
+            canvas.close()
+
+
+# =============================================================================
+# Undo/Redo Spots/Bands Survival (regression tests for remove/readd fix)
+# =============================================================================
+
+class TestRemoveReaddSpotsSurvival:
+    """Verify spots/bands are correctly removed on undo and re-added on redo."""
+
+    def test_tlc_spots_removed_on_undo(self):
+        canvas = ChemusonCanvas()
+        try:
+            plate = TLCPlateItem(lanes=2)
+            canvas.add_plate_item(plate)
+            plate.add_spots_to_lanes(scene=canvas.scene, rf_values=[0.5])
+            spots = [
+                spot for lane in plate.lane_items for spot, _ in lane.rf_labels
+            ]
+            assert all(s.scene() is canvas.scene for s in spots)
+
+            cmd = AddPlateItemCommand(canvas, plate)
+            cmd.undo()
+            assert plate not in canvas.plate_items
+            assert plate.scene() is not canvas.scene
+            # Spots must also have been removed from the scene.
+            for spot in spots:
+                assert spot.scene() is not canvas.scene
+
+            cmd.redo()
+            assert plate in canvas.plate_items
+            assert plate.scene() is canvas.scene
+            # Spots must be back in the scene.
+            for spot in spots:
+                assert spot.scene() is canvas.scene
+        finally:
+            canvas.close()
+
+    def test_gel_bands_removed_on_undo(self):
+        canvas = ChemusonCanvas()
+        try:
+            gel = GelElectrophoresisItem(lanes=3)
+            canvas.add_plate_item(gel)
+            gel.add_bands_to_lanes(scene=canvas.scene)
+            bands = [
+                band for lane in gel.lane_items for band, _ in lane.bands
+            ]
+            assert all(b.scene() is canvas.scene for b in bands)
+
+            cmd = AddPlateItemCommand(canvas, gel)
+            cmd.undo()
+            for band in bands:
+                assert band.scene() is not canvas.scene
+
+            cmd.redo()
+            for band in bands:
+                assert band.scene() is canvas.scene
+        finally:
+            canvas.close()
+
+    def test_labels_survive_remove_readd(self):
+        """Labels (children of lanes) must not be detached from hierarchy."""
+        canvas = ChemusonCanvas()
+        try:
+            plate = TLCPlateItem(lanes=2)
+            canvas.add_plate_item(plate)
+            plate.add_spots_to_lanes(scene=canvas.scene, rf_values=[0.5])
+            labels = [
+                lbl for lane in plate.lane_items for _, lbl in lane.rf_labels
+            ]
+            # Before: labels are children of their respective lanes.
+            parents_before = [lbl.parentItem() for lbl in labels]
+            assert all(p is not None for p in parents_before)
+
+            cmd = AddPlateItemCommand(canvas, plate)
+            cmd.undo()
+            cmd.redo()
+
+            # After: labels must still have the same parent items.
+            parents_after = [lbl.parentItem() for lbl in labels]
+            assert parents_before == parents_after
+        finally:
+            canvas.close()
+
+
+# =============================================================================
+# Render Bounds Plates (regression test for full-scene export fix)
+# =============================================================================
+
+class TestRenderBoundsPlates:
+    def test_full_scene_bounds_include_plates(self):
+        canvas = ChemusonCanvas()
+        try:
+            plate = TLCPlateItem(lanes=2)
+            plate.setPos(500.0, 500.0)
+            canvas.add_plate_item(plate)
+            plate.add_spots_to_lanes(scene=canvas.scene, rf_values=[0.5])
+
+            bounds = canvas._render_scene_bounds(selected_only=False)
+            assert bounds is not None
+            assert bounds.contains(plate.sceneBoundingRect())
+        finally:
+            canvas.close()
+
+    def test_selected_bounds_include_plates(self):
+        canvas = ChemusonCanvas()
+        try:
+            plate = TLCPlateItem(lanes=2)
+            plate.setPos(500.0, 500.0)
+            canvas.add_plate_item(plate)
+            plate.add_spots_to_lanes(scene=canvas.scene, rf_values=[0.5])
+            plate.setSelected(True)
+
+            bounds = canvas._render_scene_bounds(selected_only=True)
+            assert bounds is not None
+            assert bounds.contains(plate.sceneBoundingRect())
+        finally:
+            canvas.close()
+

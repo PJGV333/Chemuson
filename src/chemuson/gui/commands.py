@@ -1977,7 +1977,16 @@ class DeleteSelectionCommand(QUndoCommand):
             item.setRotation(float(payload.get("rotation", 0.0)))
             self._view.readd_semantic_diagram_item(item)
         for item, data in self._removed_plates:
-            item.load_dict(data)
+            item.load_dict(data, scene=self._view.scene)
+            for lane in item.lane_items:
+                if hasattr(lane, "rf_labels"):
+                    for spot, _ in lane.rf_labels:
+                        spot.setPos(spot.pos() + item.pos())
+                        spot.lane_ref = lane
+                elif hasattr(lane, "bands"):
+                    for band, _ in lane.bands:
+                        band.setPos(band.pos() + item.pos())
+                        band.lane_ref = lane
             self._view.readd_plate_item(item)
         self._refresh_view_after_structure_change()
 
@@ -2182,6 +2191,28 @@ class MovePlateItemsCommand(QUndoCommand):
             if item.scene() is self._view.scene:
                 item.setPos(pos)
                 item.setRotation(rot)
+
+
+class TransformPlateItemsCommand(QUndoCommand):
+    """Comando para escalar y rotar placas."""
+
+    def __init__(self, view, before: dict, after: dict, text="Transform plates") -> None:
+        super().__init__(text)
+        self._view = view
+        self._before = before
+        self._after = after
+
+    def redo(self) -> None:
+        for item, snapshot in self._after.items():
+            if item.scene() is self._view.scene:
+                item.set_display_rect(snapshot[0])
+                item.setRotation(snapshot[1])
+
+    def undo(self) -> None:
+        for item, snapshot in self._before.items():
+            if item.scene() is self._view.scene:
+                item.set_display_rect(snapshot[0])
+                item.setRotation(snapshot[1])
 
 
 class AddSpotBandCommand(QUndoCommand):

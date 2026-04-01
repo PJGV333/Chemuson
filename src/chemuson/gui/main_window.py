@@ -407,8 +407,17 @@ class ChemusonWindow(QMainWindow):
         self.action_copy = QAction("Copiar", self)
         self.action_copy.setShortcut(QKeySequence.StandardKey.Copy)
 
+        self.action_cut = QAction("Cortar", self)
+        self.action_cut.setShortcut(QKeySequence.StandardKey.Cut)
+
         self.action_paste = QAction("Pegar", self)
         self.action_paste.setShortcut(QKeySequence.StandardKey.Paste)
+
+        self.action_duplicate = QAction("Duplicar", self)
+        self.action_duplicate.setShortcut(QKeySequence("Ctrl+D"))
+
+        self.action_delete = QAction("Eliminar", self)
+        self.action_delete.setShortcut(QKeySequence.StandardKey.Delete)
 
         self.action_edit_electronic_diagram = QAction("Edit Electronic Diagram...", self)
         
@@ -753,6 +762,10 @@ class ChemusonWindow(QMainWindow):
         edit_menu.addAction(self.action_redo)
         edit_menu.addSeparator()
         edit_menu.addAction(self.action_copy)
+        edit_menu.addAction(self.action_cut)
+        edit_menu.addAction(self.action_paste)
+        edit_menu.addAction(self.action_duplicate)
+        edit_menu.addAction(self.action_delete)
         
         copy_as_menu = edit_menu.addMenu("Copiar como")
         self.action_copy_smiles = QAction("SMILES", self)
@@ -1262,9 +1275,21 @@ class ChemusonWindow(QMainWindow):
         """Copia desde la pestaña activa."""
         self.canvas.copy_to_clipboard()
 
+    def _on_cut(self) -> None:
+        """Corta desde la pestaña activa."""
+        self.canvas.cut_to_clipboard()
+
     def _on_paste(self) -> None:
         """Pega en la pestaña activa."""
         self.canvas.paste_from_clipboard()
+
+    def _on_duplicate(self) -> None:
+        """Duplica la seleccion en la pestaña activa."""
+        self.canvas.duplicate_selection()
+
+    def _on_delete(self) -> None:
+        """Elimina la seleccion en la pestaña activa."""
+        self.canvas.delete_selection()
 
     def _on_text_format_changed(
         self,
@@ -1934,14 +1959,20 @@ class ChemusonWindow(QMainWindow):
         self.action_undo.triggered.connect(self._on_undo)
         self.action_redo.triggered.connect(self._on_redo)
         self.action_copy.triggered.connect(self._on_copy)
+        self.action_cut.triggered.connect(self._on_cut)
         self.action_paste.triggered.connect(self._on_paste)
+        self.action_duplicate.triggered.connect(self._on_duplicate)
+        self.action_delete.triggered.connect(self._on_delete)
         self.action_edit_electronic_diagram.triggered.connect(self._edit_selected_semantic_diagram)
         self.action_undo.setEnabled(False)
         self.action_redo.setEnabled(False)
         self.action_copy.setEnabled(False)
+        self.action_cut.setEnabled(False)
         self.action_paste.setEnabled(
             bool(getattr(self.canvas, "can_paste_from_clipboard", lambda: False)())
         )
+        self.action_duplicate.setEnabled(False)
+        self.action_delete.setEnabled(False)
         self.action_edit_electronic_diagram.setEnabled(False)
         try:
             QApplication.clipboard().dataChanged.connect(self._sync_clipboard_actions)
@@ -5127,7 +5158,10 @@ class ChemusonWindow(QMainWindow):
             self.action_paste.setEnabled(False)
             return
         self.action_copy.setEnabled(bool(canvas.has_copyable_selection()))
+        self.action_cut.setEnabled(bool(canvas.has_copyable_selection()))
         self.action_paste.setEnabled(bool(canvas.can_paste_from_clipboard()))
+        self.action_duplicate.setEnabled(bool(canvas.has_copyable_selection()))
+        self.action_delete.setEnabled(bool(canvas.has_copyable_selection()))
 
     def _sync_semantic_diagram_actions(self) -> None:
         """Sincroniza la edición completa de diagramas semánticos con la selección."""

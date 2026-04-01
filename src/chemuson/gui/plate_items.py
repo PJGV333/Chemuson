@@ -142,6 +142,11 @@ class TLCSpotItem(QGraphicsObject):
         self._color = QColor(80, 130, 190, 160)
         self.lane_ref: Optional[TLCLaneItem] = None
         self._show_rf_label = False
+        
+        if parent is not None:
+            self.setParentItem(parent)
+            if hasattr(parent, "lane_width"): # It's a lane
+                self.lane_ref = parent
 
         self._setup_visual()
 
@@ -212,12 +217,13 @@ class TLCSpotItem(QGraphicsObject):
             )
 
     def itemChange(self, change, value):
-        if change == QGraphicsItem.GraphicsItemChange.ItemPositionChange and self.lane_ref is not None:
+        if change == QGraphicsItem.GraphicsItemChange.ItemPositionChange and self.scene() and self.lane_ref is not None:
+            # Clamping in LOCAL coordinates of the Lane
             new_pos = QPointF(value)
-            new_pos.setX(self.lane_ref.scenePos().x())
+            new_pos.setX(0) # Constrain to lane center (local X=0)
             y = new_pos.y()
-            min_y = self.lane_ref.scenePos().y() + self.lane_ref.solvent_front_y()
-            max_y = self.lane_ref.scenePos().y() + self.lane_ref.baseline_y()
+            min_y = self.lane_ref.solvent_front_y()
+            max_y = self.lane_ref.baseline_y()
             y = max(min_y, min(max_y, y))
             new_pos.setY(y)
             return new_pos
@@ -225,6 +231,10 @@ class TLCSpotItem(QGraphicsObject):
             self.moved.emit()
             if self.lane_ref is not None:
                 self.lane_ref.update_rf_labels()
+                # Notify plate to update its bounding rect to include the new spot pos
+                plate = self.lane_ref.parentItem()
+                if plate:
+                    plate.prepareGeometryChange()
         return super().itemChange(change, value)
 
     def contextMenuEvent(self, event: QGraphicsSceneMouseEvent):
@@ -298,6 +308,33 @@ class TLCSpotItem(QGraphicsObject):
         if self.lane_ref is not None:
             self.lane_ref.remove_spot(self)
 
+    # -- Drag undo tracking --------------------------------------------------
+
+    def _get_canvas(self):
+        """Devuelve el ChemusonCanvas si está disponible."""
+        if self.scene() is None:
+            return None
+        views = self.scene().views()
+        if views and hasattr(views[0], "undo_stack"):
+            return views[0]
+        return None
+
+    def mousePressEvent(self, event):
+        self._drag_start_y = self.y()
+        super().mousePressEvent(event)
+        event.accept() # Ensure immediate drag readiness
+
+    def mouseReleaseEvent(self, event):
+        super().mouseReleaseEvent(event)
+        if hasattr(self, "_drag_start_y"):
+            if abs(self.y() - self._drag_start_y) > 0.5:
+                canvas = self._get_canvas()
+                if canvas is not None:
+                    from chemuson.gui.commands import MoveSpotBandCommand
+                    cmd = MoveSpotBandCommand(self, self._drag_start_y, self.y())
+                    canvas.undo_stack.push(cmd)
+            del self._drag_start_y
+
     def to_dict(self) -> dict:
         return {
             "x": self.x(),
@@ -305,6 +342,7 @@ class TLCSpotItem(QGraphicsObject):
             "color": self._color.name(QColor.NameFormat.HexArgb),
             "width": self.spot_width,
             "height": self.spot_height,
+            "show_rf_label": self._show_rf_label,
         }
 
     def load_dict(self, data: dict):
@@ -313,6 +351,8 @@ class TLCSpotItem(QGraphicsObject):
             self.set_color(QColor(data["color"]))
         if "width" in data and "height" in data:
             self.set_size(data["width"], data["height"])
+        if "show_rf_label" in data:
+            self._show_rf_label = bool(data["show_rf_label"])
 
 
 # =============================================================================
@@ -343,13 +383,11 @@ class TLCLaneItem(QGraphicsObject):
         return self._solvent_front_y
 
     def add_spot(self, rf: float = 0.5, scene=None) -> TLCSpotItem:
-        spot = TLCSpotItem()
+        spot = TLCSpotItem(self)
         spot.lane_ref = self
-        cx = self.scenePos().x()
-        y = self.scenePos().y() + self._baseline_y - rf * (self._baseline_y - self._solvent_front_y)
-        spot.setPos(cx, y)
-        if scene is not None:
-            scene.addItem(spot)
+        y_local = self._baseline_y - rf * (self._baseline_y - self._solvent_front_y)
+        spot.setPos(0, y_local)
+        # No need to addItem(spot) if parented to self (Lane) and self is in scene
 
         label = QGraphicsTextItem("", self)
         font = QFont("Arial", 8)
@@ -379,12 +417,12 @@ class TLCLaneItem(QGraphicsObject):
                 label.setVisible(False)
                 continue
             label.setVisible(True)
-            dist_spot = self._baseline_y - (spot.y() - self.scenePos().y())
+            dist_spot = self._baseline_y - spot.y()
             rf = dist_spot / dist_total if dist_total != 0 else 0.0
             rf = max(0.0, min(1.0, rf))
             label.setPlainText(f"{rf:.2f}")
             lbl_w = label.boundingRect().width()
-            label.setPos(-lbl_w / 2, spot.y() - self.scenePos().y() - label.boundingRect().height() - 2)
+            label.setPos(-lbl_w / 2, spot.y() - label.boundingRect().height() - 2)
 
     def boundingRect(self) -> QRectF:
         return QRectF(-self.lane_width / 2, 0, self.lane_width, self.lane_height)
@@ -409,11 +447,10 @@ class TLCLaneItem(QGraphicsObject):
         self.rf_labels.clear()
 
         for sdata in data.get("spots", []):
-            spot = TLCSpotItem()
+            spot = TLCSpotItem(self)
             spot.lane_ref = self
             spot.load_dict(sdata)
-            if scene is not None:
-                scene.addItem(spot)
+            # parenting handles scene adding if self is already in scene
             lbl = QGraphicsTextItem("", self)
             lbl.setFont(QFont("Arial", 8))
             lbl.setDefaultTextColor(QColor(30, 41, 59))
@@ -443,8 +480,12 @@ class TLCPlateItem(QGraphicsObject):
         self.show_labels = True
         self.lane_items: list[TLCLaneItem] = []
         self._last_plate_pos = QPointF(0, 0)
+        self._scale_lines: list[QGraphicsLineItem] = []
+        self._scale_labels: list[QGraphicsTextItem] = []
+        self._scale_title: Optional[QGraphicsTextItem] = None
 
         self._setup_plate()
+        self._build_scale()
 
     def _setup_plate(self):
         self.outline = QGraphicsRectItem(0, 0, self.plate_width, self.plate_height, self)
@@ -469,13 +510,120 @@ class TLCPlateItem(QGraphicsObject):
             lane.set_boundaries(self.baseline_y, self.solvent_front_y)
             self.lane_items.append(lane)
 
+    def _build_scale(self):
+        for line in self._scale_lines:
+            if line.scene():
+                line.scene().removeItem(line)
+        for label in self._scale_labels:
+            if label.scene():
+                label.scene().removeItem(label)
+        if self._scale_title is not None and self._scale_title.scene():
+            self._scale_title.scene().removeItem(self._scale_title)
+        self._scale_lines.clear()
+        self._scale_labels.clear()
+        self._scale_title = None
+
+        if not self.show_labels:
+            return
+
+        pen = QPen(QColor(100, 116, 139), 1, Qt.PenStyle.DashLine)
+        font = QFont("Arial", 8)
+        plate_left = 0
+        run_top_y = self.solvent_front_y
+        run_bottom_y = self.baseline_y
+        run_height = run_bottom_y - run_top_y
+        if run_height <= 0:
+            return
+
+        n_ticks = 5
+        for i in range(n_ticks + 1):
+            frac = i / n_ticks
+            y_local = run_top_y + frac * run_height
+            line = QGraphicsLineItem(plate_left - 14, y_local, plate_left - 2, y_local)
+            line.setPen(pen)
+            line.setParentItem(self)
+            self._scale_lines.append(line)
+
+            rf_val = 1.0 - frac
+            text = f"{rf_val:.2f}"
+            label = QGraphicsTextItem(text)
+            label.setFont(font)
+            label.setDefaultTextColor(QColor(30, 41, 59))
+            lbl_w = label.boundingRect().width()
+            lbl_h = label.boundingRect().height()
+            label.setPos(plate_left - 16 - lbl_w, y_local - lbl_h / 2)
+            label.setParentItem(self)
+            self._scale_labels.append(label)
+
+        title_font = QFont("Arial", 8)
+        title_font.setBold(True)
+        title_label = QGraphicsTextItem("Rf")
+        title_label.setFont(title_font)
+        title_label.setDefaultTextColor(QColor(30, 41, 59))
+        title_lbl_w = title_label.boundingRect().width()
+        title_lbl_h = title_label.boundingRect().height()
+        mid_y = run_top_y + run_height / 2
+        max_label_w = max((t.boundingRect().width() for t in self._scale_labels), default=0)
+        # Position closer to ticks (reduced padding from 20 to 12)
+        center_x = plate_left - 16 - max_label_w - title_lbl_h - 12
+        center_y = mid_y
+        title_label.setPos(center_x - title_lbl_w / 2, center_y - title_lbl_h / 2)
+        title_label.setTransformOriginPoint(title_lbl_w / 2, title_lbl_h / 2)
+        title_label.setRotation(-90)
+        title_label.setParentItem(self)
+        self._scale_title = title_label
+
     def add_spots_to_lanes(self, scene=None, rf_values=None):
         for i, lane in enumerate(self.lane_items):
             rf = rf_values[i] if rf_values and i < len(rf_values) else 0.0
             lane.add_spot(rf=rf, scene=scene)
 
+    def _plate_visual_rect(self) -> QRectF:
+        """Return a static bounding rect for reliable selection and rendering."""
+        # Static rect encompassing frame plus typical scale/label area
+        # This prevents ghosting during movement.
+        return QRectF(-60, -40, self.plate_width + 80, self.plate_height + 80)
+
     def boundingRect(self) -> QRectF:
-        return QRectF(0, 0, self.plate_width, self.plate_height)
+        return self._plate_visual_rect()
+
+    def set_display_rect(self, rect: QRectF) -> None:
+        """Resize the plate using a rect from the selection handles."""
+        normalized = QRectF(rect).normalized()
+        self.prepareGeometryChange()
+        self.setPos(normalized.topLeft())
+        self.plate_width = max(40.0, normalized.width())
+        self.plate_height = max(40.0, normalized.height())
+        self.baseline_y = self.plate_height * 0.85
+        self.solvent_front_y = self.plate_height * 0.15
+        self._last_plate_pos = self.pos()
+        self._refresh_visuals()
+        self.update()
+
+    def _refresh_visuals(self) -> None:
+        """Actualiza todos los sub-componentes visuales tras un cambio de dimensiones."""
+        self.outline.setRect(0, 0, self.plate_width, self.plate_height)
+        self.baseline_line.setLine(8, self.baseline_y, self.plate_width - 8, self.baseline_y)
+        self.solvent_line.setLine(8, self.solvent_front_y, self.plate_width - 8, self.solvent_front_y)
+        
+        # Scale labels/lines...
+        self._build_scale()
+        
+        # Lane positions...
+        lane_w = self.plate_width / (self.num_lanes or 1)
+        for i, lane in enumerate(self.lane_items):
+            lane.prepareGeometryChange()
+            lane.lane_width = lane_w # Access directly since Lane doesn't have set_display_rect
+            lane.lane_height = self.plate_height
+            lane.setPos(lane_w * i + lane_w / 2, 0)
+            lane.set_boundaries(self.baseline_y, self.solvent_front_y)
+            # Lane internal labels will update themselves via moved signals if we trigger them
+            # or we can call lane.update_rf_labels() manually if needed.
+            lane.update_rf_labels()
+
+    def display_rect(self) -> QRectF:
+        """Devuelve el rectangulo base en coordenadas de escena (usado por handles de transformacion)."""
+        return QRectF(self.pos().x(), self.pos().y(), self.plate_width, self.plate_height)
 
     def shape(self) -> QPainterPath:
         path = QPainterPath()
@@ -489,13 +637,8 @@ class TLCPlateItem(QGraphicsObject):
             painter.drawRect(self.boundingRect().adjusted(-3, -3, 3, 3))
 
     def itemChange(self, change, value):
-        if change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged:
-            new_pos = QPointF(value)
-            delta = new_pos - self._last_plate_pos
-            for lane in self.lane_items:
-                for spot, _ in lane.rf_labels:
-                    spot.setPos(spot.pos() + delta)
-            self._last_plate_pos = new_pos
+        if change == QGraphicsItem.GraphicsItemChange.ItemPositionChange and self.scene():
+            self._last_plate_pos = value
         return super().itemChange(change, value)
 
     def set_num_lanes(self, new_count: int, scene=None):
@@ -531,6 +674,28 @@ class TLCPlateItem(QGraphicsObject):
     def contextMenuEvent(self, event: QGraphicsSceneMouseEvent):
         menu = QMenu()
 
+        copy_action = QAction("Copiar", menu)
+        copy_action.triggered.connect(self._copy_to_clipboard)
+        menu.addAction(copy_action)
+
+        cut_action = QAction("Cortar", menu)
+        cut_action.triggered.connect(self._cut_to_clipboard)
+        menu.addAction(cut_action)
+
+        paste_action = QAction("Pegar", menu)
+        paste_action.triggered.connect(self._paste_from_clipboard)
+        menu.addAction(paste_action)
+
+        dup_action = QAction("Duplicar", menu)
+        dup_action.triggered.connect(self._duplicate)
+        menu.addAction(dup_action)
+
+        delete_action = QAction("Eliminar", menu)
+        delete_action.triggered.connect(self._delete_self)
+        menu.addAction(delete_action)
+
+        menu.addSeparator()
+
         lanes_menu = menu.addMenu("Numero de carriles")
         for n in range(1, 13):
             act = QAction(str(n), menu)
@@ -556,6 +721,45 @@ class TLCPlateItem(QGraphicsObject):
         menu.addAction(add_line_action)
 
         menu.exec(event.screenPos())
+
+    def _get_canvas(self):
+        if self.scene() is None:
+            return None
+        views = self.scene().views()
+        if views:
+            view = views[0]
+            if hasattr(view, "copy_to_clipboard"):
+                return view
+        return None
+
+    def _copy_to_clipboard(self):
+        canvas = self._get_canvas()
+        if canvas is not None:
+            self.setSelected(True)
+            canvas.copy_to_clipboard()
+
+    def _cut_to_clipboard(self):
+        canvas = self._get_canvas()
+        if canvas is not None:
+            self.setSelected(True)
+            canvas.cut_to_clipboard()
+
+    def _paste_from_clipboard(self):
+        canvas = self._get_canvas()
+        if canvas is not None:
+            canvas.paste_from_clipboard()
+
+    def _duplicate(self):
+        canvas = self._get_canvas()
+        if canvas is not None:
+            self.setSelected(True)
+            canvas.duplicate_selection()
+
+    def _delete_self(self):
+        canvas = self._get_canvas()
+        if canvas is not None:
+            self.setSelected(True)
+            canvas.delete_selection()
 
     def _add_spot_to_lane(self, lane):
         if self.scene() is None:
@@ -654,6 +858,7 @@ class TLCPlateItem(QGraphicsObject):
             else:
                 lane.add_spot(rf=0.0, scene=scene)
             self.lane_items.append(lane)
+        self._last_plate_pos = self.pos()
 
     def to_json(self) -> dict:
         return self.to_dict()
@@ -690,6 +895,11 @@ class GelBandItem(QGraphicsObject):
         self._color = QColor(40, 40, 50, 180)
         self.lane_ref: Optional[GelLaneItem] = None
         self._show_label = False
+        
+        if parent is not None:
+            self.setParentItem(parent)
+            if hasattr(parent, "lane_width"):
+                self.lane_ref = parent
 
         self._setup_visual()
 
@@ -748,19 +958,25 @@ class GelBandItem(QGraphicsObject):
             )
 
     def itemChange(self, change, value):
-        if change == QGraphicsItem.GraphicsItemChange.ItemPositionChange and self.lane_ref is not None:
+        if change == QGraphicsItem.GraphicsItemChange.ItemPositionChange and self.scene() and self.lane_ref is not None:
+            # Clamping in LOCAL coordinates of the Gel Lane
             new_pos = QPointF(value)
-            new_pos.setX(self.lane_ref.scenePos().x())
+            new_pos.setX(0) # Center of lane
             y = new_pos.y()
-            min_y = self.lane_ref.scenePos().y() + self.lane_ref.well_y()
-            max_y = self.lane_ref.scenePos().y() + self.lane_ref.lane_height - 5
+            min_y = self.lane_ref.well_y()
+            max_y = self.lane_ref.lane_height - 5
             y = max(min_y, min(max_y, y))
             new_pos.setY(y)
             return new_pos
         elif change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged:
             self.moved.emit()
             if self.lane_ref is not None:
+                # Force lane to update labels (Distance, Mass, etc)
                 self.lane_ref.update_labels()
+                # Notify gel to update its bounding rect
+                gel = self.lane_ref.parentItem()
+                if gel:
+                    gel.prepareGeometryChange()
         return super().itemChange(change, value)
 
     def contextMenuEvent(self, event: QGraphicsSceneMouseEvent):
@@ -836,6 +1052,33 @@ class GelBandItem(QGraphicsObject):
         if self.lane_ref is not None:
             self.lane_ref.remove_band(self)
 
+    # -- Drag undo tracking --------------------------------------------------
+
+    def _get_canvas(self):
+        """Devuelve el ChemusonCanvas si está disponible."""
+        if self.scene() is None:
+            return None
+        views = self.scene().views()
+        if views and hasattr(views[0], "undo_stack"):
+            return views[0]
+        return None
+
+    def mousePressEvent(self, event):
+        self._drag_start_y = self.y()
+        super().mousePressEvent(event)
+        event.accept() # Enable immediate drag start
+
+    def mouseReleaseEvent(self, event):
+        super().mouseReleaseEvent(event)
+        if hasattr(self, "_drag_start_y"):
+            if abs(self.y() - self._drag_start_y) > 0.5:
+                canvas = self._get_canvas()
+                if canvas is not None:
+                    from chemuson.gui.commands import MoveSpotBandCommand
+                    cmd = MoveSpotBandCommand(self, self._drag_start_y, self.y())
+                    canvas.undo_stack.push(cmd)
+            del self._drag_start_y
+
     def to_dict(self) -> dict:
         return {
             "x": self.x(),
@@ -843,6 +1086,7 @@ class GelBandItem(QGraphicsObject):
             "color": self._color.name(QColor.NameFormat.HexArgb),
             "width": self.band_width,
             "height": self.band_height,
+            "show_label": self._show_label,
         }
 
     def load_dict(self, data: dict):
@@ -851,6 +1095,8 @@ class GelBandItem(QGraphicsObject):
             self.set_color(QColor(data["color"]))
         if "width" in data and "height" in data:
             self.set_size(data["width"], data["height"])
+        if "show_label" in data:
+            self._show_label = bool(data["show_label"])
 
 
 # =============================================================================
@@ -875,13 +1121,10 @@ class GelLaneItem(QGraphicsObject):
         return self._well_y
 
     def add_band(self, dist: float = 0.0, scene=None) -> GelBandItem:
-        band = GelBandItem(width=self.lane_width * 0.75)
+        band = GelBandItem(self, width=self.lane_width * 0.75)
         band.lane_ref = self
-        cx = self.scenePos().x()
-        y = self.scenePos().y() + self._well_y + dist
-        band.setPos(cx, y)
-        if scene is not None:
-            scene.addItem(band)
+        band.setPos(0, self._well_y + dist)
+        # Parenting to self (Lane) handles scene adding automatically if self is already in scene
 
         label = QGraphicsTextItem("", self)
         font = QFont("Arial", 8)
@@ -915,7 +1158,7 @@ class GelLaneItem(QGraphicsObject):
                 label.setVisible(False)
                 continue
             label.setVisible(True)
-            band_y_local = (band.y() - self.scenePos().y())
+            band_y_local = band.y()
             val = gel_value_at_position(band_y_local, run_top_y, run_height,
                                          scale_unit, mass_min_kda, mass_max_kda)
             if scale_unit == "Distance":
@@ -925,7 +1168,7 @@ class GelLaneItem(QGraphicsObject):
             else:
                 label.setPlainText(f"{val:.0f}")
             lbl_w = label.boundingRect().width()
-            label.setPos(-lbl_w / 2, band.y() - self.scenePos().y() - label.boundingRect().height() - 2)
+            label.setPos(-lbl_w / 2, band.y() - label.boundingRect().height() - 2)
 
     def boundingRect(self) -> QRectF:
         return QRectF(-self.lane_width / 2, 0, self.lane_width, self.lane_height)
@@ -947,11 +1190,10 @@ class GelLaneItem(QGraphicsObject):
         self.bands.clear()
 
         for bdata in data.get("bands", []):
-            band = GelBandItem(width=self.lane_width * 0.75)
+            band = GelBandItem(self, width=self.lane_width * 0.75)
             band.lane_ref = self
             band.load_dict(bdata)
-            if scene is not None:
-                scene.addItem(band)
+            # parenting handles scene adding if self is already in scene
             lbl = QGraphicsTextItem("", self)
             lbl.setFont(QFont("Arial", 8))
             lbl.setDefaultTextColor(QColor(30, 41, 59))
@@ -1085,7 +1327,8 @@ class GelElectrophoresisItem(QGraphicsObject):
         title_lbl_h = title_label.boundingRect().height()
         mid_y = run_top_y + run_height / 2
         max_label_w = max((t.boundingRect().width() for t in self._scale_labels), default=0)
-        center_x = gel_left - 16 - max_label_w - title_lbl_h / 2 - 10
+        # Position closer to ticks (reduced padding from 20 to 12)
+        center_x = gel_left - 16 - max_label_w - title_lbl_h - 12
         center_y = mid_y
         title_label.setPos(center_x - title_lbl_w / 2, center_y - title_lbl_h / 2)
         title_label.setTransformOriginPoint(title_lbl_w / 2, title_lbl_h / 2)
@@ -1101,8 +1344,59 @@ class GelElectrophoresisItem(QGraphicsObject):
             dist = dist_values[i] if dist_values and i < len(dist_values) else 0.0
             lane.add_band(dist=dist, scene=scene)
 
+    def _gel_visual_rect(self) -> QRectF:
+        """Return a static bounding rect for reliable selection and rendering."""
+        return QRectF(-80, -40, self.gel_width + 120, self.gel_height + 80)
+
     def boundingRect(self) -> QRectF:
-        return QRectF(0, 0, self.gel_width, self.gel_height)
+        return self._gel_visual_rect()
+
+    def set_display_rect(self, rect: QRectF) -> None:
+        """Resize the gel using handles."""
+        normalized = QRectF(rect).normalized()
+        self.prepareGeometryChange()
+        self.setPos(normalized.topLeft())
+        self.gel_width = max(40.0, normalized.width())
+        self.gel_height = max(40.0, normalized.height())
+        self._last_plate_pos = self.pos()
+        self._refresh_visuals()
+        self.update()
+
+    def _refresh_visuals(self) -> None:
+        """Sincroniza todos los componentes visuales tras cambio de tamaño."""
+        # This mirrors the logic in load_dict but without re-creating lanes
+        lane_w = self.gel_width / self.num_lanes
+        well_height = 14.0
+        well_width = lane_w * 0.65
+        
+        path = QPainterPath()
+        path.moveTo(0, 0)
+        for i in range(self.num_lanes):
+            cx = lane_w * i + lane_w / 2
+            path.lineTo(cx - well_width / 2, 0)
+            path.lineTo(cx - well_width / 2, well_height)
+            path.lineTo(cx + well_width / 2, well_height)
+            path.lineTo(cx + well_width / 2, 0)
+        path.lineTo(self.gel_width, 0)
+        path.lineTo(self.gel_width, self.gel_height)
+        path.lineTo(0, self.gel_height)
+        path.closeSubpath()
+        
+        self.outline.setRect(0, 0, self.gel_width, self.gel_height)
+        self.wells_path.setPath(path)
+        
+        for i, lane in enumerate(self.lane_items):
+            lane.prepareGeometryChange()
+            lane.lane_width = lane_w
+            lane.lane_height = self.gel_height
+            lane.setPos(lane_w * i + lane_w / 2, 0)
+            lane.update_labels()
+            
+        self._build_scale()
+
+    def display_rect(self) -> QRectF:
+        """Devuelve el rectangulo base en coordenadas de escena."""
+        return QRectF(self.pos().x(), self.pos().y(), self.gel_width, self.gel_height)
 
     def shape(self) -> QPainterPath:
         path = QPainterPath()
@@ -1116,13 +1410,8 @@ class GelElectrophoresisItem(QGraphicsObject):
             painter.drawRect(self.boundingRect().adjusted(-3, -3, 3, 3))
 
     def itemChange(self, change, value):
-        if change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged:
-            new_pos = QPointF(value)
-            delta = new_pos - self._last_gel_pos
-            for lane in self.lane_items:
-                for band, _ in lane.bands:
-                    band.setPos(band.pos() + delta)
-            self._last_gel_pos = new_pos
+        if change == QGraphicsItem.GraphicsItemChange.ItemPositionChange and self.scene():
+            self._last_gel_pos = value
         return super().itemChange(change, value)
 
     def set_num_lanes(self, new_count: int, scene=None):
@@ -1173,6 +1462,28 @@ class GelElectrophoresisItem(QGraphicsObject):
     def contextMenuEvent(self, event: QGraphicsSceneMouseEvent):
         menu = QMenu()
 
+        copy_action = QAction("Copiar", menu)
+        copy_action.triggered.connect(self._copy_to_clipboard)
+        menu.addAction(copy_action)
+
+        cut_action = QAction("Cortar", menu)
+        cut_action.triggered.connect(self._cut_to_clipboard)
+        menu.addAction(cut_action)
+
+        paste_action = QAction("Pegar", menu)
+        paste_action.triggered.connect(self._paste_from_clipboard)
+        menu.addAction(paste_action)
+
+        dup_action = QAction("Duplicar", menu)
+        dup_action.triggered.connect(self._duplicate)
+        menu.addAction(dup_action)
+
+        delete_action = QAction("Eliminar", menu)
+        delete_action.triggered.connect(self._delete_self)
+        menu.addAction(delete_action)
+
+        menu.addSeparator()
+
         lanes_menu = menu.addMenu("Numero de carriles")
         for n in range(1, 21):
             act = QAction(str(n), menu)
@@ -1210,6 +1521,45 @@ class GelElectrophoresisItem(QGraphicsObject):
         menu.addAction(range_action)
 
         menu.exec(event.screenPos())
+
+    def _get_canvas(self):
+        if self.scene() is None:
+            return None
+        views = self.scene().views()
+        if views:
+            view = views[0]
+            if hasattr(view, "copy_to_clipboard"):
+                return view
+        return None
+
+    def _copy_to_clipboard(self):
+        canvas = self._get_canvas()
+        if canvas is not None:
+            self.setSelected(True)
+            canvas.copy_to_clipboard()
+
+    def _cut_to_clipboard(self):
+        canvas = self._get_canvas()
+        if canvas is not None:
+            self.setSelected(True)
+            canvas.cut_to_clipboard()
+
+    def _paste_from_clipboard(self):
+        canvas = self._get_canvas()
+        if canvas is not None:
+            canvas.paste_from_clipboard()
+
+    def _duplicate(self):
+        canvas = self._get_canvas()
+        if canvas is not None:
+            self.setSelected(True)
+            canvas.duplicate_selection()
+
+    def _delete_self(self):
+        canvas = self._get_canvas()
+        if canvas is not None:
+            self.setSelected(True)
+            canvas.delete_selection()
 
     def _add_band_to_lane(self, lane):
         if self.scene() is None:
@@ -1365,6 +1715,7 @@ class GelElectrophoresisItem(QGraphicsObject):
                 lane.add_band(dist=0.0, scene=scene)
             self.lane_items.append(lane)
         self._build_scale()
+        self._last_plate_pos = self.pos()
 
     def to_json(self) -> dict:
         return self.to_dict()

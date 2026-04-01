@@ -1717,6 +1717,11 @@ class ChemusonCanvas(QGraphicsView):
                     self.scene.clearSelection()
                 clicked_item.setSelected(True)
                 self._sync_selection_from_scene()
+                self._show_context_menu(
+                    scene_pos,
+                    event.globalPosition().toPoint(),
+                    clicked_item=clicked_item,
+                )
                 return
             if isinstance(
                 clicked_item,
@@ -1832,6 +1837,9 @@ class ChemusonCanvas(QGraphicsView):
                     self.scene.clearSelection()
                     clicked_item.setSelected(True)
             self._sync_selection_from_scene()
+            if isinstance(clicked_item, (TLCSpotItem, GelBandItem)):
+                super().mousePressEvent(event)
+                return
             if precise_mode:
                 self._prompt_precise_3d_rotation(
                     clicked_atom_id=clicked_atom_id,
@@ -2786,6 +2794,7 @@ class ChemusonCanvas(QGraphicsView):
             *self._selected_semantic_diagram_items(),
             *self._selected_orbital_items(),
             *self._selected_image_items(),
+            *self._selected_plate_items(),
         ]:
             if item.scene() is not self.scene:
                 continue
@@ -2812,6 +2821,7 @@ class ChemusonCanvas(QGraphicsView):
             and not self._selected_semantic_diagram_items()
             and not self._selected_orbital_items()
             and not self._selected_image_items()
+            and not self._selected_plate_items()
         ):
             return False
 
@@ -3890,6 +3900,16 @@ class ChemusonCanvas(QGraphicsView):
             self.setCursor(Qt.CursorShape.OpenHandCursor)
             event.accept()
             return
+        modifiers = event.modifiers()
+        ctrl = modifiers == Qt.KeyboardModifier.ControlModifier
+        if ctrl and event.key() == Qt.Key.Key_X:
+            self.cut_to_clipboard()
+            event.accept()
+            return
+        if ctrl and event.key() == Qt.Key.Key_D:
+            self.duplicate_selection()
+            event.accept()
+            return
         if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
             has_selected_arrows = any(
                 isinstance(item, ArrowItem) for item in self.scene.selectedItems()
@@ -4834,7 +4854,20 @@ class ChemusonCanvas(QGraphicsView):
         for plate_d in annotations.get("plates", []):
             item = PlateItem.from_json(plate_d)
             if item:
+                # 1. Add plate to scene first so its scenePos and children's scenePos are valid
                 self.readd_plate_item(item)
+                # 2. Load data which adds spots to scene but at relative positions
+                item.load_dict(plate_d, scene=self.scene)
+                # 3. Adjust spots to absolute scene coordinates now that scenePos works for clamping
+                for lane in item.lane_items:
+                    if hasattr(lane, "rf_labels"):
+                        for spot, _ in lane.rf_labels:
+                            spot.lane_ref = lane # Ensure ref is set before setPos
+                            spot.setPos(spot.pos() + item.pos())
+                    elif hasattr(lane, "bands"):
+                        for band, _ in lane.bands:
+                            band.lane_ref = lane
+                            band.setPos(band.pos() + item.pos())
 
         # Full refresh to update atom visibility and circles
         self.refresh_atom_visibility()
@@ -5208,32 +5241,36 @@ class ChemusonCanvas(QGraphicsView):
             self._wavy_anchors.discard(item)
 
     def remove_plate_item(self, item: TLCPlateItem | GelElectrophoresisItem) -> None:
-        """Elimina una placa de analisis del lienzo."""
+        """Elimina una placa de analisis del lienzo.
+
+        Spots/bands are standalone scene items and must be removed
+        explicitly.  Labels are children of lanes (children of the
+        plate) and are removed implicitly when the plate is removed
+        from the scene — do NOT call removeItem on them or they get
+        detached from their parent hierarchy, breaking redo.
+        """
         if item in self.plate_items:
             self.plate_items.remove(item)
+        # Remove standalone scene-level items (spots / bands).
         for lane in item.lane_items:
             if hasattr(lane, "rf_labels"):
-                for spot, lbl in list(lane.rf_labels):
+                for spot, _lbl in list(lane.rf_labels):
                     try:
-                        self.scene.removeItem(spot)
-                    except RuntimeError:
-                        pass
-                    try:
-                        self.scene.removeItem(lbl)
+                        if spot.scene() is self.scene:
+                            self.scene.removeItem(spot)
                     except RuntimeError:
                         pass
             elif hasattr(lane, "bands"):
-                for band, lbl in list(lane.bands):
+                for band, _lbl in list(lane.bands):
                     try:
-                        self.scene.removeItem(band)
+                        if band.scene() is self.scene:
+                            self.scene.removeItem(band)
                     except RuntimeError:
                         pass
-                    try:
-                        self.scene.removeItem(lbl)
-                    except RuntimeError:
-                        pass
+        # Remove the plate (takes children: lanes, labels, scale items).
         try:
-            self.scene.removeItem(item)
+            if item.scene() is self.scene:
+                self.scene.removeItem(item)
         except RuntimeError:
             pass
 
@@ -5288,20 +5325,28 @@ class ChemusonCanvas(QGraphicsView):
         if item not in self.orbital_items:
             self.orbital_items.append(item)
 
-    def remove_plate_item(self, item) -> None:
-        """Elimina una placa (TLC o Gel) del lienzo."""
-        if item in self.plate_items:
-            self.plate_items.remove(item)
-        if item.scene() is self.scene:
-            self.scene.removeItem(item)
-
     def readd_plate_item(self, item) -> None:
-        """Reintroduce una placa en el lienzo."""
+        """Reintroduce una placa en el lienzo.
+
+        Re-adds the plate (which brings back child items: lanes,
+        labels, scale decorations) AND standalone scene-level items
+        (spots / bands) that were removed by :meth:`remove_plate_item`.
+        """
         self.ensure_graphics_item_opacity(item)
         if item.scene() is not self.scene:
             self.scene.addItem(item)
         if item not in self.plate_items:
             self.plate_items.append(item)
+        # Re-add standalone scene-level items (spots / bands).
+        for lane in item.lane_items:
+            if hasattr(lane, "rf_labels"):
+                for spot, _lbl in lane.rf_labels:
+                    if spot.scene() is not self.scene:
+                        self.scene.addItem(spot)
+            elif hasattr(lane, "bands"):
+                for band, _lbl in lane.bands:
+                    if band.scene() is not self.scene:
+                        self.scene.addItem(band)
 
     def readd_wavy_anchor_item(self, item: WavyAnchorItem) -> None:
         """Método auxiliar para readd wavy anchor item.
@@ -5558,6 +5603,7 @@ class ChemusonCanvas(QGraphicsView):
         wavy_items = [
             item for item in self.scene.selectedItems() if isinstance(item, WavyAnchorItem)
         ]
+        plates = self._selected_plate_items()
 
         if (
             not atom_ids
@@ -5570,6 +5616,7 @@ class ChemusonCanvas(QGraphicsView):
             and not orbitals
             and not images
             and not wavy_items
+            and not plates
         ):
             return None
 
@@ -5758,6 +5805,12 @@ class ChemusonCanvas(QGraphicsView):
                 }
             )
 
+        plates_payload = []
+        for plate in plates:
+            plate_data = plate.to_dict()
+            plate_data["pos"] = (plate.pos().x() - left, plate.pos().y() - top)
+            plates_payload.append(plate_data)
+
         return {
             "atoms": atoms_payload,
             "bonds": bonds_payload,
@@ -5769,6 +5822,7 @@ class ChemusonCanvas(QGraphicsView):
             "orbitals": orbitals_payload,
             "images": images_payload,
             "wavy_items": wavy_payload,
+            "plates": plates_payload,
         }
 
     def _paste_selection_payload(self, payload: dict) -> None:
@@ -5793,6 +5847,7 @@ class ChemusonCanvas(QGraphicsView):
         orbitals = payload.get("orbitals", [])
         images = payload.get("images", [])
         wavy_items = payload.get("wavy_items", [])
+        plates = payload.get("plates", [])
         if (
             not atoms
             and not bonds
@@ -5804,6 +5859,7 @@ class ChemusonCanvas(QGraphicsView):
             and not orbitals
             and not images
             and not wavy_items
+            and not plates
         ):
             return
 
@@ -5844,6 +5900,7 @@ class ChemusonCanvas(QGraphicsView):
             or orbitals
             or images
             or wavy_items
+            or plates
         )
         self.begin_validation_batch()
         if has_undo_items:
@@ -6173,6 +6230,34 @@ class ChemusonCanvas(QGraphicsView):
                 else:
                     self.readd_wavy_anchor_item(item)
                 inserted_items.append(item)
+
+            for plate_d in plates:
+                plate = PlateItem.from_json(plate_d)
+                if plate is None:
+                    continue
+                plate.load_dict(plate_d, scene=self.scene)
+                orig_pos = plate_d.get("pos", (0, 0))
+                paste_dx = dx if (dx != 0 or dy != 0) else 30.0
+                paste_dy = dy if (dx != 0 or dy != 0) else 30.0
+                plate.setPos(
+                    float(orig_pos[0]) + paste_dx,
+                    float(orig_pos[1]) + paste_dy,
+                )
+                self.scene.addItem(plate)
+                if plate not in self.plate_items:
+                    self.plate_items.append(plate)
+                for lane in plate.lane_items:
+                    if hasattr(lane, "rf_labels"):
+                        for spot, _ in lane.rf_labels:
+                            spot.setPos(spot.pos() + plate.pos())
+                            spot.lane_ref = lane
+                    elif hasattr(lane, "bands"):
+                        for band, _ in lane.bands:
+                            band.setPos(band.pos() + plate.pos())
+                            band.lane_ref = lane
+                if has_undo_items:
+                    self.undo_stack.push(AddPlateItemCommand(self, plate))
+                inserted_items.append(plate)
         finally:
             if has_undo_items:
                 self.undo_stack.endMacro()
@@ -6401,6 +6486,27 @@ class ChemusonCanvas(QGraphicsView):
         if mime.hasFormat("image/png") or mime.hasImage() or mime.hasFormat("image/svg+xml"):
             self._insert_images_from_clipboard(mime)
 
+    def cut_to_clipboard(self) -> None:
+        """Copy selected items to clipboard and delete them."""
+        self.copy_to_clipboard()
+        self.delete_selection()
+
+    def duplicate_selection(self) -> None:
+        """Duplicate selected items by copying to clipboard and pasting with offset."""
+        if not self.has_copyable_selection():
+            return
+        self.copy_to_clipboard()
+        clipboard = QApplication.clipboard()
+        mime = clipboard.mimeData()
+        if mime is None:
+            return
+        if mime.hasFormat("application/x-chemuson-selection"):
+            try:
+                payload = json.loads(bytes(mime.data("application/x-chemuson-selection")).decode("utf-8"))
+                self._paste_selection_payload(payload)
+            except Exception:
+                pass
+
     def _paste_text_items(self, payload: dict) -> None:
         """Método auxiliar para  paste text items.
 
@@ -6549,6 +6655,8 @@ class ChemusonCanvas(QGraphicsView):
                         OrbitalAnnotationItem,
                         ImageAnnotationItem,
                         WavyAnchorItem,
+                        TLCPlateItem,
+                        GelElectrophoresisItem,
                     ),
                 ):
                     extend(item.sceneBoundingRect())
@@ -6595,6 +6703,21 @@ class ChemusonCanvas(QGraphicsView):
                     continue
                 if item.isVisible():
                     extend(item.sceneBoundingRect())
+            for item in self.plate_items:
+                if item.scene() is not self.scene:
+                    continue
+                if item.isVisible():
+                    extend(item.sceneBoundingRect())
+                    # Spots/bands are standalone scene items — include them.
+                    for lane in item.lane_items:
+                        if hasattr(lane, "rf_labels"):
+                            for spot, _ in lane.rf_labels:
+                                if spot.scene() is self.scene and spot.isVisible():
+                                    extend(spot.sceneBoundingRect())
+                        elif hasattr(lane, "bands"):
+                            for band, _ in lane.bands:
+                                if band.scene() is self.scene and band.isVisible():
+                                    extend(band.sceneBoundingRect())
             for item in self.scene.items():
                 if (
                     isinstance(item, TextAnnotationItem)
@@ -6742,9 +6865,31 @@ class ChemusonCanvas(QGraphicsView):
             item = self.bond_items.get(bond_id)
             if item is not None:
                 selected.add(item)
+        def should_keep_visible(item):
+            # 1. Direct selection or parent of selection (for recursive children visibility)
+            if item in selected:
+                return True
+            
+            # 2. Standalone logical associates (spots/bands)
+            if isinstance(item, (TLCSpotItem, GelBandItem)):
+                if item.lane_ref is not None:
+                    plat = item.lane_ref.parentItem()
+                    if plat in selected:
+                        return True
+            
+            # 3. Descendants of any item in selected (Recursive check)
+            p = item.parentItem()
+            while p is not None:
+                if p in selected:
+                    return True
+                p = p.parentItem()
+            
+            return False
+
         for item in self.scene.items():
-            parent = item.parentItem()
-            if item in selected or (parent is not None and parent in selected):
+            if item.zValue() >= 45: # Do not hide selection handles/overlay itself
+                continue
+            if should_keep_visible(item):
                 continue
             if item.isVisible():
                 hidden.append(item)
@@ -11738,6 +11883,8 @@ class ChemusonCanvas(QGraphicsView):
                         CompositeDiagramItem,
                         OrbitalAnnotationItem,
                         ImageAnnotationItem,
+                        TLCPlateItem,
+                        GelElectrophoresisItem,
                     ),
                 )
                 for item in self.scene.selectedItems()
@@ -15582,6 +15729,7 @@ class ChemusonCanvas(QGraphicsView):
         semantic_diagram_items: Optional[list[CompositeDiagramItem]] = None,
         orbital_items: Optional[list[OrbitalAnnotationItem]] = None,
         image_items: Optional[list[ImageAnnotationItem]] = None,
+        plate_items: Optional[list[TLCPlateItem | GelElectrophoresisItem]] = None,
     ) -> dict:
         """Captura el estado base usado por el motor de escalado."""
         if atom_ids is None:
@@ -15600,6 +15748,8 @@ class ChemusonCanvas(QGraphicsView):
             orbital_items = self._selected_orbital_items()
         if image_items is None:
             image_items = self._selected_image_items()
+        if plate_items is None:
+            plate_items = self._selected_plate_items()
 
         atom_label_scales: Dict[int, Optional[float]] = {}
         atom_sphere_radii: Dict[int, Tuple[Optional[float], float]] = {}
@@ -15669,6 +15819,10 @@ class ChemusonCanvas(QGraphicsView):
             "image_snapshots": {
                 item: self._image_transform_snapshot(item)
                 for item in image_items
+            },
+            "plate_snapshots": {
+                item: (item.display_rect(), item.rotation())
+                for item in plate_items
             },
         }
 
@@ -15801,6 +15955,12 @@ class ChemusonCanvas(QGraphicsView):
                     max(1.0, float(width) * scale),
                     max(1.0, float(height) * scale),
                 )
+            )
+            item.setRotation(rotation)
+
+        for item, (rect0, rotation) in state.get("plate_snapshots", {}).items():
+            item.set_display_rect(
+                self._scale_rect_from_anchor(anchor, rect0, scale)
             )
             item.setRotation(rotation)
 
@@ -15975,6 +16135,21 @@ class ChemusonCanvas(QGraphicsView):
         )
         if changed_images:
             command_count += 1
+            
+        plate_before = dict(state.get("plate_snapshots", {}))
+        plate_after = {
+            item: (item.display_rect(), item.rotation())
+            for item in plate_before
+        }
+        changed_plates = any(
+            not (
+                self._rect_equal(plate_before[item][0], plate_after[item][0])
+                and abs(plate_before[item][1] - plate_after[item][1]) <= 0.05
+            )
+            for item in plate_before
+        )
+        if changed_plates:
+            command_count += 1
 
         if command_count <= 0:
             return False
@@ -16075,6 +16250,11 @@ class ChemusonCanvas(QGraphicsView):
             self.undo_stack.push(
                 TransformImageItemsCommand(self, image_before, image_after, "Scale images")
             )
+            
+        if changed_plates:
+            self.undo_stack.push(
+                TransformPlateItemsCommand(self, plate_before, plate_after, "Scale plates")
+            )
 
         if command_count > 1:
             self.undo_stack.endMacro()
@@ -16091,6 +16271,7 @@ class ChemusonCanvas(QGraphicsView):
             and not self._selected_semantic_diagram_items()
             and not self._selected_orbital_items()
             and not self._selected_image_items()
+            and not self._selected_plate_items()
         ):
             return
         bbox = self._selected_items_bbox()
