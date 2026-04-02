@@ -47,8 +47,6 @@ import re
 import sys
 
 from chemuson.gui.canvas import (
-    BRANCH_ROTATION_STEP_DEG,
-    FRAGMENT_ROTATION_STEP_DEG,
     ChemusonCanvas,
 )
 from chemuson.gui.periodic_table import PeriodicTableDialog
@@ -73,6 +71,12 @@ from chemuson.gui.commands import ChangeAtomCommand, EditSemanticDiagramCommand
 from chemuson.gui.template_library import TemplateLibrary, DEFAULT_CATEGORY_USER
 from chemuson.gui.templates import (
     build_linear_chain_template,
+)
+from chemuson.gui.actions import (
+    create_edit_actions,
+    create_file_actions,
+    create_project_actions,
+    create_update_actions,
 )
 from chemuson.chemio.rdkit_io import molfile_to_molgraph, molgraph_to_molfile
 from chemuson.chemio.persistence import PersistenceManager
@@ -375,138 +379,9 @@ class ChemusonWindow(QMainWindow):
 
     def _create_actions(self) -> None:
         """Initialize all QActions for menus and toolbars."""
-        # --- File Actions ---
-        self.action_new = QAction("Nuevo", self)
-        self.action_new.setShortcut(QKeySequence.StandardKey.New)
-        self.action_new.triggered.connect(self._on_file_new)
-        
-        self.action_open = QAction("Abrir...", self)
-        self.action_open.setShortcut(QKeySequence.StandardKey.Open)
-        self.action_open.triggered.connect(self._on_file_open)
-        
-        self.action_save = QAction("Guardar", self)
-        self.action_save.setShortcuts(
-            [QKeySequence.StandardKey.Save, QKeySequence("Ctrl+G")]
-        )
-        self.action_save.triggered.connect(self._on_file_save)
-
-        self.action_recovery_center = QAction("Centro de recuperación...", self)
-        self.action_recovery_center.triggered.connect(self._on_open_recovery_center)
-        
-        self.action_quit = QAction("Salir", self)
-        self.action_quit.setShortcut(QKeySequence.StandardKey.Quit)
-        self.action_quit.triggered.connect(self.close)
-        
-        # --- Edit Actions ---
-        self.action_undo = QAction("Deshacer", self)
-        self.action_undo.setShortcut(QKeySequence.StandardKey.Undo)
-        
-        self.action_redo = QAction("Rehacer", self)
-        self.action_redo.setShortcut(QKeySequence.StandardKey.Redo)
-        
-        self.action_copy = QAction("Copiar", self)
-        self.action_copy.setShortcut(QKeySequence.StandardKey.Copy)
-
-        self.action_cut = QAction("Cortar", self)
-        self.action_cut.setShortcut(QKeySequence.StandardKey.Cut)
-
-        self.action_paste = QAction("Pegar", self)
-        self.action_paste.setShortcut(QKeySequence.StandardKey.Paste)
-
-        self.action_duplicate = QAction("Duplicar", self)
-        self.action_duplicate.setShortcut(QKeySequence("Ctrl+D"))
-
-        self.action_delete = QAction("Eliminar", self)
-        self.action_delete.setShortcut(QKeySequence.StandardKey.Delete)
-
-        self.action_edit_electronic_diagram = QAction("Edit Electronic Diagram...", self)
-        
-        # --- View Actions ---
-        self.action_show_carbons = QAction("Mostrar carbonos", self)
-        self.action_show_carbons.setCheckable(True)
-        self.action_show_carbons.setChecked(False)
-        self.action_show_carbons.triggered.connect(self._on_toggle_carbons)
-        
-        self.action_show_hydrogens = QAction("Mostrar hidrógenos", self)
-        self.action_show_hydrogens.setCheckable(True)
-        self.action_show_hydrogens.setChecked(False)
-        self.action_show_hydrogens.triggered.connect(self._on_toggle_hydrogens)
-        
-        self.action_aromatic_circles = QAction("Aromáticos como círculos", self)
-        self.action_aromatic_circles.setCheckable(True)
-        self.action_aromatic_circles.setChecked(False)
-        self.action_aromatic_circles.triggered.connect(self._on_toggle_aromatic_circles)
-        
-        self.action_zoom_in = QAction("Zoom +", self)
-        self.action_zoom_in.setShortcut(QKeySequence.StandardKey.ZoomIn)
-        self.action_zoom_in.triggered.connect(self._on_zoom_in)
-        
-        self.action_zoom_out = QAction("Zoom -", self)
-        self.action_zoom_out.setShortcut(QKeySequence.StandardKey.ZoomOut)
-        self.action_zoom_out.triggered.connect(self._on_zoom_out)
-        
-        self.action_zoom_reset = QAction("Zoom 100%", self)
-        self.action_zoom_reset.setShortcut("Ctrl+0")
-        self.action_zoom_reset.triggered.connect(self._on_zoom_reset)
-        
-        self.action_show_main_toolbar_aux = QAction(
-            "Mostrar copiar/pegar/zoom en barra superior",
-            self,
-        )
-        self.action_show_main_toolbar_aux.setCheckable(True)
-        self.action_show_main_toolbar_aux.setChecked(False)
-        self.action_show_main_toolbar_aux.toggled.connect(self._on_toggle_main_toolbar_aux)
-
-        self.action_rules = QAction("Reglas", self)
-        self.action_rules.setCheckable(True)
-        self.action_rules.setChecked(False)
-        self.action_rules.triggered.connect(self._on_toggle_rules)
-
-        self.action_crosshair = QAction("Cuadrícula", self)
-        self.action_crosshair.setCheckable(True)
-        self.action_crosshair.setChecked(False)
-        self.action_crosshair.triggered.connect(self._on_toggle_crosshair)
-
-        self.action_numbering_enabled = QAction("Mostrar numeración", self)
-        self.action_numbering_enabled.setCheckable(True)
-        self.action_numbering_enabled.setChecked(False)
-        self.action_numbering_enabled.triggered.connect(self._on_toggle_numbering)
-
-        self.action_numbering_mode_atoms = QAction("Numerar átomos", self)
-        self.action_numbering_mode_atoms.setCheckable(True)
-        self.action_numbering_mode_atoms.triggered.connect(
-            lambda checked=False: self._on_set_numbering_mode("atoms")
-        )
-        self.action_numbering_mode_structures = QAction("Numerar estructuras", self)
-        self.action_numbering_mode_structures.setCheckable(True)
-        self.action_numbering_mode_structures.triggered.connect(
-            lambda checked=False: self._on_set_numbering_mode("structures")
-        )
-        self.action_numbering_mode_both = QAction("Numerar ambos", self)
-        self.action_numbering_mode_both.setCheckable(True)
-        self.action_numbering_mode_both.triggered.connect(
-            lambda checked=False: self._on_set_numbering_mode("both")
-        )
-        self._numbering_mode_group = QActionGroup(self)
-        self._numbering_mode_group.setExclusive(True)
-        self._numbering_mode_group.addAction(self.action_numbering_mode_atoms)
-        self._numbering_mode_group.addAction(self.action_numbering_mode_structures)
-        self._numbering_mode_group.addAction(self.action_numbering_mode_both)
-        self.action_numbering_mode_atoms.setChecked(True)
-
-        self.action_numbering_recalculate = QAction("Recalcular numeración", self)
-        self.action_numbering_recalculate.triggered.connect(self._on_recalculate_numbering)
-
-        self.action_numbering_export = QAction("Incluir numeración en exportación", self)
-        self.action_numbering_export.setCheckable(True)
-        self.action_numbering_export.setChecked(True)
-        self.action_numbering_export.triggered.connect(self._on_toggle_numbering_export)
-
-        self.action_clean_2d = QAction("Limpiar 2D", self)
-        self.action_clean_2d.triggered.connect(self._on_clean_2d)
-        self.action_clean_2d_full = QAction("Limpiar 2D (1 paso)", self)
-        self.action_clean_2d_full.setShortcut(QKeySequence("Ctrl+K"))
-        self.action_clean_2d_full.triggered.connect(self._on_clean_2d_full)
+        create_file_actions(self)
+        create_edit_actions(self)
+        create_project_actions(self)
 
         self.action_template_linear_chain = QAction("Cadena lineal", self)
         self.action_template_linear_chain.triggered.connect(self._on_insert_linear_chain)
@@ -577,70 +452,6 @@ class ChemusonWindow(QMainWindow):
         self.action_analysis_elemental.triggered.connect(lambda: self.canvas.run_analysis("elemental"))
         self.action_analysis_all = QAction("Todo", self)
         self.action_analysis_all.triggered.connect(lambda: self.canvas.run_analysis("all"))
-
-        # --- Rotation Actions ---
-        self.action_rotate_left = QAction("Girar 90° a la izquierda", self)
-        self.action_rotate_left.triggered.connect(lambda: self._on_rotate_selection(-90.0))
-
-        self.action_rotate_right = QAction("Girar 90° a la derecha", self)
-        self.action_rotate_right.triggered.connect(lambda: self._on_rotate_selection(90.0))
-
-        self.action_flip_horizontal = QAction("Giro 180° horizontal", self)
-        self.action_flip_horizontal.triggered.connect(self._on_flip_horizontal)
-
-        self.action_flip_vertical = QAction("Giro 180° vertical", self)
-        self.action_flip_vertical.triggered.connect(self._on_flip_vertical)
-
-        self.action_branch_rotate_minus = QAction(
-            f"Girar rama -{int(BRANCH_ROTATION_STEP_DEG)}°",
-            self,
-        )
-        self.action_branch_rotate_minus.setShortcut(QKeySequence("Ctrl+Alt+Left"))
-        self.action_branch_rotate_minus.triggered.connect(
-            lambda: self._on_rotate_branch(-BRANCH_ROTATION_STEP_DEG)
-        )
-
-        self.action_branch_rotate_plus = QAction(
-            f"Girar rama +{int(BRANCH_ROTATION_STEP_DEG)}°",
-            self,
-        )
-        self.action_branch_rotate_plus.setShortcut(QKeySequence("Ctrl+Alt+Right"))
-        self.action_branch_rotate_plus.triggered.connect(
-            lambda: self._on_rotate_branch(BRANCH_ROTATION_STEP_DEG)
-        )
-
-        self.action_branch_invert = QAction("Invertir rama (180°)", self)
-        self.action_branch_invert.setShortcut(QKeySequence("Ctrl+Alt+I"))
-        self.action_branch_invert.triggered.connect(self._on_invert_branch)
-
-        self.action_branch_auto_arrange = QAction("Autoacomodar rama", self)
-        self.action_branch_auto_arrange.setShortcut(QKeySequence("Ctrl+Alt+A"))
-        self.action_branch_auto_arrange.triggered.connect(self._on_auto_arrange_branch)
-
-        self.action_fragment_pivot_set = QAction("Definir átomo pivote desde selección", self)
-        self.action_fragment_pivot_set.triggered.connect(self._on_set_fragment_pivot)
-
-        self.action_fragment_pivot_clear = QAction("Limpiar átomo pivote", self)
-        self.action_fragment_pivot_clear.triggered.connect(self._on_clear_fragment_pivot)
-
-        self.action_fragment_rotate_minus = QAction(
-            f"Girar fragmento -{int(FRAGMENT_ROTATION_STEP_DEG)}°",
-            self,
-        )
-        self.action_fragment_rotate_minus.triggered.connect(
-            lambda: self._on_rotate_fragment(-FRAGMENT_ROTATION_STEP_DEG)
-        )
-
-        self.action_fragment_rotate_plus = QAction(
-            f"Girar fragmento +{int(FRAGMENT_ROTATION_STEP_DEG)}°",
-            self,
-        )
-        self.action_fragment_rotate_plus.triggered.connect(
-            lambda: self._on_rotate_fragment(FRAGMENT_ROTATION_STEP_DEG)
-        )
-
-        self.action_fragment_invert = QAction("Invertir fragmento (180°)", self)
-        self.action_fragment_invert.triggered.connect(self._on_invert_fragment)
 
         self.action_scale_selection = QAction("Redimensionar selección...", self)
         self.action_scale_selection.setShortcut(QKeySequence("Ctrl+Alt+S"))
@@ -723,8 +534,7 @@ class ChemusonWindow(QMainWindow):
         self._label_color_group.addAction(self.action_label_color_black)
 
         # --- Help / Updates ---
-        self.action_check_updates_now = QAction("Buscar actualizaciones...", self)
-        self.action_check_updates_now.triggered.connect(self._on_check_updates_now)
+        create_update_actions(self)
 
     def _create_menu_bar(self) -> None:
         """Create the main menu bar with all menus."""
