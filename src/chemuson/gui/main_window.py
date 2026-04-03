@@ -78,6 +78,12 @@ from chemuson.gui.actions import (
     create_project_actions,
     create_update_actions,
 )
+from chemuson.gui.controllers import (
+    Clean2DController,
+    ExportController,
+    RecoveryController,
+    TextFormatController,
+)
 from chemuson.chemio.rdkit_io import molfile_to_molgraph, molgraph_to_molfile
 from chemuson.chemio.persistence import PersistenceManager
 from chemuson.core.model import MolGraph
@@ -328,6 +334,10 @@ class ChemusonWindow(QMainWindow):
         self._external_text_editor: QTextEdit | None = None
         self._external_text_cursor_state: tuple[int, int] | None = None
         self._external_text_selected_range: tuple[int, int] | None = None
+        self._export_controller = ExportController()
+        self._clean2d_controller = Clean2DController()
+        self._text_format_controller = TextFormatController()
+        self._recovery_controller = RecoveryController()
         # Initially hide it, or show it only when text tool is active?
         # User requested it to be available. We can leave it visible or toggle it.
         # For now, visible is fine.
@@ -1113,18 +1123,8 @@ class ChemusonWindow(QMainWindow):
         property_name: str,
     ) -> None:
         """Propaga cambios de formato de texto al canvas activo."""
-        if self._apply_text_format_to_external_editor(
-            family,
-            size,
-            bold,
-            italic,
-            underline,
-            sub,
-            sup,
-            property_name,
-        ):
-            return
-        self.canvas.update_text_format(
+        self._text_format_controller.on_text_format_changed(
+            self,
             family,
             size,
             bold,
@@ -1137,15 +1137,11 @@ class ChemusonWindow(QMainWindow):
 
     def _on_text_color_changed(self, color: QColor) -> None:
         """Propaga cambio de color de texto al canvas activo."""
-        if self._apply_text_color_to_external_editor(color):
-            return
-        self.canvas.update_text_color(color)
+        self._text_format_controller.on_text_color_changed(self, color)
 
     def _on_text_alignment_changed(self, alignment: Qt.AlignmentFlag) -> None:
         """Propaga cambio de alineación al canvas activo."""
-        if self._apply_text_alignment_to_external_editor(alignment):
-            return
-        self.canvas.update_text_alignment(alignment)
+        self._text_format_controller.on_text_alignment_changed(self, alignment)
 
     def _on_opacity_changed(self, value: int) -> None:
         """Propaga cambio de opacidad al canvas activo."""
@@ -1184,121 +1180,22 @@ class ChemusonWindow(QMainWindow):
 
     def _set_external_text_editor(self, editor: QTextEdit | None) -> None:
         """Registra un editor de texto enriquecido temporal para el toolbar superior."""
-        previous = getattr(self, "_external_text_editor", None)
-        if previous is editor:
-            if editor is not None:
-                self._sync_text_toolbar_from_external_editor()
-            return
-        if previous is not None:
-            for signal, slot in (
-                (previous.cursorPositionChanged, self._sync_text_toolbar_from_external_editor),
-                (previous.textChanged, self._sync_text_toolbar_from_external_editor),
-                (previous.cursorPositionChanged, self._remember_external_text_cursor),
-                (previous.textChanged, self._remember_external_text_cursor),
-                (previous.copyAvailable, self._on_external_text_copy_available),
-            ):
-                try:
-                    signal.disconnect(slot)
-                except (TypeError, RuntimeError):
-                    pass
-        self._external_text_editor = editor
-        self._external_text_cursor_state = None
-        self._external_text_selected_range = None
-        self.text_toolbar.opacity_spin.setEnabled(editor is None)
-        if editor is not None:
-            editor.cursorPositionChanged.connect(self._sync_text_toolbar_from_external_editor)
-            editor.textChanged.connect(self._sync_text_toolbar_from_external_editor)
-            editor.cursorPositionChanged.connect(self._remember_external_text_cursor)
-            editor.textChanged.connect(self._remember_external_text_cursor)
-            editor.copyAvailable.connect(self._on_external_text_copy_available)
-            self._remember_external_text_cursor()
-            self._sync_text_toolbar_from_external_editor()
-            return
-        self.text_toolbar.set_opacity_percent(self.canvas.current_opacity_percent())
-        self.canvas.sync_text_selection_state()
+        self._text_format_controller.set_external_text_editor(self, editor)
 
     def _on_external_text_copy_available(self, _available: bool) -> None:
-        self._remember_external_text_cursor()
+        self._text_format_controller.on_external_text_copy_available(self, _available)
 
     def _remember_external_text_cursor(self) -> None:
         """Guarda anchor/posición del editor temporal para no perder selección al cambiar foco."""
-        editor = getattr(self, "_external_text_editor", None)
-        if editor is None:
-            self._external_text_cursor_state = None
-            self._external_text_selected_range = None
-            return
-        cursor = editor.textCursor()
-        anchor = int(cursor.anchor())
-        position = int(cursor.position())
-        self._external_text_cursor_state = (anchor, position)
-        if cursor.hasSelection():
-            self._external_text_selected_range = (anchor, position)
-        elif editor.hasFocus():
-            self._external_text_selected_range = None
+        self._text_format_controller.remember_external_text_cursor(self)
 
     def _external_text_cursor_for_formatting(self, editor: QTextEdit) -> QTextCursor:
         """Obtiene el cursor adecuado para formatear, priorizando selección."""
-        cursor = editor.textCursor()
-        
-        # Si el editor ya tiene selección física, la usamos pero la normalizamos a 'adelante'
-        if cursor.hasSelection():
-            start = cursor.selectionStart()
-            end = cursor.selectionEnd()
-            cursor.setPosition(start)
-            cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
-            return cursor
-            
-        # Si no tiene selección (ej. foco perdido), intentamos restaurar desde estado guardado
-        stored = getattr(self, "_external_text_cursor_state", None)
-        if stored:
-            anchor, position = stored
-            text_len = editor.document().characterCount() - 1
-            if text_len < 0:
-                text_len = 0
-            anchor = max(0, min(int(anchor), text_len))
-            position = max(0, min(int(position), text_len))
-            cursor.setPosition(anchor)
-            cursor.setPosition(position, QTextCursor.MoveMode.KeepAnchor)
-            
-            # Normalizamos también la selección restaurada
-            if cursor.hasSelection():
-                start = cursor.selectionStart()
-                end = cursor.selectionEnd()
-                cursor.setPosition(start)
-                cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
-                
-        return cursor
+        return self._text_format_controller.external_text_cursor_for_formatting(self, editor)
 
     def _sync_text_toolbar_from_external_editor(self) -> None:
         """Sincroniza el toolbar desde un QTextEdit temporal."""
-        editor = getattr(self, "_external_text_editor", None)
-        if editor is None:
-            return
-        cursor = self._external_text_cursor_for_formatting(editor)
-        fmt = cursor.charFormat()
-        font = QFont(editor.currentFont())
-        families = fmt.fontFamilies()
-        if families:
-            font.setFamily(families[0])
-        point_size = float(fmt.fontPointSize() or 0.0)
-        if point_size <= 0.0:
-            point_size = float(font.pointSizeF() or font.pointSize() or 12.0)
-        font.setPointSizeF(point_size)
-        weight = int(fmt.fontWeight() or font.weight())
-        font.setWeight(weight)
-        font.setItalic(bool(fmt.fontItalic()))
-        font.setUnderline(bool(fmt.fontUnderline()))
-        color = fmt.foreground().color()
-        if not color.isValid():
-            color = QColor(Qt.GlobalColor.black)
-        self.text_toolbar.set_state(
-            font,
-            {
-                "color": color,
-                "sub": fmt.verticalAlignment() == QTextCharFormat.VerticalAlignment.AlignSubScript,
-                "sup": fmt.verticalAlignment() == QTextCharFormat.VerticalAlignment.AlignSuperScript,
-            },
-        )
+        self._text_format_controller.sync_text_toolbar_from_external_editor(self)
 
     def _apply_text_format_to_external_editor(
         self,
@@ -1312,77 +1209,15 @@ class ChemusonWindow(QMainWindow):
         property_name: str,
     ) -> bool:
         """Aplica cambios del toolbar a un editor temporal si existe."""
-        editor = getattr(self, "_external_text_editor", None)
-        if editor is None:
-            return False
-        
-        # Don't steal focus yet, but ensure we have focus for formatting to work on selection
-        cursor = self._external_text_cursor_for_formatting(editor)
-        fmt = QTextCharFormat()
-        
-        if property_name in ("all", "family"):
-            fmt.setFontFamilies([family])
-        if property_name in ("all", "size"):
-            fmt.setFontPointSize(float(size))
-        if property_name in ("all", "bold"):
-            fmt.setFontWeight(QFont.Weight.Bold if bold else QFont.Weight.Normal)
-        if property_name in ("all", "italic"):
-            fmt.setFontItalic(bool(italic))
-        if property_name in ("all", "underline"):
-            fmt.setFontUnderline(bool(underline))
-        if property_name in ("all", "sub", "sup"):
-            if sub:
-                fmt.setVerticalAlignment(QTextCharFormat.VerticalAlignment.AlignSubScript)
-            elif sup:
-                fmt.setVerticalAlignment(QTextCharFormat.VerticalAlignment.AlignSuperScript)
-            else:
-                fmt.setVerticalAlignment(QTextCharFormat.VerticalAlignment.AlignNormal)
-        
-        if cursor.hasSelection():
-            cursor.mergeCharFormat(fmt)
-            editor.setTextCursor(cursor)
-        else:
-            editor.mergeCurrentCharFormat(fmt)
-            
-        # Refocus only if needed
-        if not editor.hasFocus():
-            editor.activateWindow()
-            editor.raise_()
-            editor.setFocus()
-            
-        self._remember_external_text_cursor()
-        self._sync_text_toolbar_from_external_editor()
-        return True
+        return self._text_format_controller.apply_text_format_to_external_editor(
+            self, family, size, bold, italic, underline, sub, sup, property_name
+        )
 
     def _apply_text_color_to_external_editor(self, color: QColor) -> bool:
-        editor = getattr(self, "_external_text_editor", None)
-        if editor is None:
-            return False
-        editor.activateWindow()
-        editor.raise_()
-        editor.setFocus()
-        fmt = QTextCharFormat()
-        fmt.setForeground(QBrush(color))
-        cursor = self._external_text_cursor_for_formatting(editor)
-        if cursor.hasSelection():
-            cursor.mergeCharFormat(fmt)
-            editor.setTextCursor(cursor)
-        editor.mergeCurrentCharFormat(fmt)
-        self._remember_external_text_cursor()
-        self._sync_text_toolbar_from_external_editor()
-        return True
+        return self._text_format_controller.apply_text_color_to_external_editor(self, color)
 
     def _apply_text_alignment_to_external_editor(self, alignment: Qt.AlignmentFlag) -> bool:
-        editor = getattr(self, "_external_text_editor", None)
-        if editor is None:
-            return False
-        editor.activateWindow()
-        editor.raise_()
-        editor.setFocus()
-        editor.setAlignment(alignment)
-        self._remember_external_text_cursor()
-        self._sync_text_toolbar_from_external_editor()
-        return True
+        return self._text_format_controller.apply_text_alignment_to_external_editor(self, alignment)
 
     def _rich_text_editor_value(self, editor: QTextEdit) -> str:
         """Devuelve texto plano cuando no hay formato, u HTML si sí lo hay."""
@@ -2648,59 +2483,17 @@ class ChemusonWindow(QMainWindow):
     @staticmethod
     def _read_autosave_metadata(filepath: str) -> Optional[dict]:
         """Lee metadatos mínimos de un autosave para la tabla de recuperación."""
-        try:
-            with open(filepath, "r", encoding="utf-8") as f:
-                payload = json.load(f)
-        except Exception:
-            return None
-        if payload.get("application") != "Chemuson":
-            return None
-        metadata = payload.get("autosave_metadata")
-        if not isinstance(metadata, dict):
-            metadata = {}
-        raw_path = metadata.get("original_path")
-        raw_timestamp = metadata.get("timestamp")
-        return {
-            "autosave_path": filepath,
-            "original_path": str(raw_path) if raw_path else None,
-            "timestamp": str(raw_timestamp) if raw_timestamp else "Desconocida",
-        }
+        return RecoveryController.read_autosave_metadata(filepath)
 
     @staticmethod
     def _list_autosave_entries(directory: str) -> list[dict]:
         """Lista autosaves válidos de un directorio ordenados por fecha desc."""
-        if not os.path.isdir(directory):
-            return []
-        entries: list[dict] = []
-        for name in sorted(os.listdir(directory)):
-            if not name.endswith(".json"):
-                continue
-            filepath = os.path.join(directory, name)
-            if not os.path.isfile(filepath):
-                continue
-            metadata = ChemusonWindow._read_autosave_metadata(filepath)
-            if metadata is None:
-                continue
-            metadata["filename"] = name
-            entries.append(metadata)
-        entries.sort(key=lambda entry: os.path.getmtime(entry["autosave_path"]), reverse=True)
-        return entries
+        return RecoveryController.list_autosave_entries(directory)
 
     @staticmethod
     def _archive_autosave(path: str, autosave_dir: str) -> str:
         """Mueve un autosave a la carpeta `old` y devuelve su nueva ruta."""
-        old_dir = os.path.join(autosave_dir, "old")
-        os.makedirs(old_dir, exist_ok=True)
-        basename = os.path.basename(path)
-        target = os.path.join(old_dir, basename)
-        if os.path.exists(target):
-            root, ext = os.path.splitext(basename)
-            target = os.path.join(
-                old_dir,
-                f"{root}_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}{ext}",
-            )
-        os.replace(path, target)
-        return target
+        return RecoveryController.archive_autosave(path, autosave_dir)
 
     def _open_autosave_document(
         self,
@@ -2708,254 +2501,20 @@ class ChemusonWindow(QMainWindow):
         original_path: Optional[str] = None,
     ) -> bool:
         """Abre un autosave como pestaña nueva."""
-        canvas = self._create_document_tab(make_current=True)
-        self._apply_toolbar_defaults_to_canvas(canvas)
-        try:
-            PersistenceManager.load_from_file(autosave_path, canvas)
-            canvas.undo_stack.setClean()
-            self._set_canvas_file_path(canvas, original_path)
-            self.tabs.setCurrentWidget(canvas)
-            self._set_active_canvas(canvas)
-            self._update_total_charge_indicator()
-            return True
-        except Exception as exc:
-            index = self.tabs.indexOf(canvas)
-            if index >= 0:
-                self.tabs.removeTab(index)
-            autosave_manager = self._canvas_autosave_managers.pop(canvas, None)
-            if autosave_manager is not None:
-                autosave_manager.stop()
-            self._canvas_file_paths.pop(canvas, None)
-            self._canvas_tab_titles.pop(canvas, None)
-            canvas.deleteLater()
-            if self.tabs.count() == 0:
-                replacement = self._create_document_tab(make_current=True)
-                self._apply_toolbar_defaults_to_canvas(replacement)
-                self._set_active_canvas(replacement)
-            QMessageBox.warning(
-                self,
-                "Error al abrir autosave",
-                f"No se pudo abrir el autosave:\n{exc}",
-            )
-            return False
+        return self._recovery_controller.open_autosave_document(self, autosave_path, original_path)
 
     def _on_open_recovery_center(self) -> None:
         """Abre manualmente el centro de recuperación y archivos recientes."""
-        self._show_recovery_center(show_only_if_pending=False)
+        self._recovery_controller.on_open_recovery_center(self)
 
     def _show_recovery_center(self, show_only_if_pending: bool = False) -> None:
         """Muestra diálogo con pendientes, recientes y recuperados."""
-        autosave_dir = AutosaveManager.default_autosave_dir()
-        pending_entries = self._list_autosave_entries(autosave_dir)
-        recovered_entries = self._list_autosave_entries(os.path.join(autosave_dir, "old"))
-        recent_entries = [p for p in self._recent_files if os.path.exists(p)]
-        if recent_entries != self._recent_files:
-            self._recent_files = recent_entries
-            self._save_recent_files()
-            self._update_recent_menu()
-
-        if show_only_if_pending and not pending_entries:
-            return
-
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Centro de recuperación")
-        dialog.resize(980, 560)
-        layout = QVBoxLayout(dialog)
-        layout.addWidget(
-            QLabel(
-                "Gestiona autosaves pendientes, sesiones recuperadas "
-                "y tus archivos recientes."
-            )
-        )
-
-        tabs = QTabWidget(dialog)
-        layout.addWidget(tabs)
-
-        def _setup_table(table: QTableWidget, action_column: int, action_width: int) -> None:
-            """Configura tabla con filas legibles y columna de acciones estable."""
-            table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-            table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-            table.verticalHeader().setVisible(False)
-            table.verticalHeader().setDefaultSectionSize(48)
-            table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-            if table.columnCount() > 2:
-                table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-            table.horizontalHeader().setSectionResizeMode(action_column, QHeaderView.ResizeMode.Fixed)
-            table.setColumnWidth(action_column, action_width)
-
-        def _set_actions_cell(
-            table: QTableWidget,
-            row: int,
-            buttons: list[tuple[str, Callable]],
-        ) -> None:
-            """Inserta botones de acción en una celda respetando márgenes."""
-            action_widget = QWidget(table)
-            action_layout = QHBoxLayout(action_widget)
-            action_layout.setContentsMargins(8, 6, 8, 6)
-            action_layout.setSpacing(8)
-            button_widgets: list[QPushButton] = []
-            for text, callback in buttons:
-                button = QPushButton(text, action_widget)
-                # Garantiza legibilidad incluso con escalado alto del sistema.
-                button.setMinimumHeight(38)
-                button.setMinimumWidth(136)
-                button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-                button.clicked.connect(callback)
-                action_layout.addWidget(button)
-                button_widgets.append(button)
-            table.setCellWidget(row, table.columnCount() - 1, action_widget)
-            margins = action_layout.contentsMargins()
-            required_width = margins.left() + margins.right()
-            if button_widgets:
-                required_width += action_layout.spacing() * (len(button_widgets) - 1)
-            for button in button_widgets:
-                required_width += max(button.minimumSizeHint().width(), button.sizeHint().width())
-            action_column = table.columnCount() - 1
-            if required_width > table.columnWidth(action_column):
-                table.setColumnWidth(action_column, required_width)
-            required_height = margins.top() + margins.bottom()
-            required_height += max(button.minimumSizeHint().height() for button in button_widgets)
-            table.setRowHeight(
-                row,
-                max(
-                    table.rowHeight(row),
-                    required_height + 2,
-                ),
-            )
-
-        pending_tab = QWidget()
-        pending_layout = QVBoxLayout(pending_tab)
-        if not pending_entries:
-            pending_layout.addWidget(QLabel("No hay autosaves pendientes."))
-        else:
-            pending_table = QTableWidget(len(pending_entries), 3, pending_tab)
-            pending_table.setHorizontalHeaderLabels(["Archivo original", "Timestamp", "Acciones"])
-            _setup_table(pending_table, action_column=2, action_width=360)
-
-            def _mark_pending_done(row: int, status: str) -> None:
-                pending_table.setCellWidget(row, 2, QLabel(status))
-                for col in (0, 1):
-                    item = pending_table.item(row, col)
-                    if item is not None:
-                        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
-
-            for row, entry in enumerate(pending_entries):
-                original_path_value = entry.get("original_path")
-                original_path = original_path_value or "Sin nombre"
-                timestamp = entry.get("timestamp") or "Desconocida"
-                autosave_path = entry["autosave_path"]
-
-                pending_table.setItem(row, 0, QTableWidgetItem(original_path))
-                pending_table.setItem(row, 1, QTableWidgetItem(timestamp))
-
-                def _recover_handler(
-                    _checked: bool = False,
-                    r: int = row,
-                    p: str = autosave_path,
-                    original: Optional[str] = original_path_value,
-                ) -> None:
-                    if not self._open_autosave_document(p, original_path=original):
-                        return
-                    try:
-                        self._archive_autosave(p, autosave_dir)
-                        _mark_pending_done(r, "Recuperado")
-                        self.statusBar().showMessage("Autosave recuperado")
-                    except Exception as exc:
-                        QMessageBox.warning(
-                            self,
-                            "Error al mover autosave",
-                            f"No se pudo archivar el autosave:\n{exc}",
-                        )
-
-                def _discard_handler(
-                    _checked: bool = False,
-                    r: int = row,
-                    p: str = autosave_path,
-                ) -> None:
-                    try:
-                        self._archive_autosave(p, autosave_dir)
-                        _mark_pending_done(r, "Descartado")
-                    except Exception as exc:
-                        QMessageBox.warning(
-                            self,
-                            "Error al descartar",
-                            f"No se pudo mover el autosave:\n{exc}",
-                        )
-
-                _set_actions_cell(
-                    pending_table,
-                    row,
-                    [
-                        ("Recuperar", _recover_handler),
-                        ("Descartar", _discard_handler),
-                    ],
-                )
-
-            pending_layout.addWidget(pending_table)
-        tabs.addTab(pending_tab, f"Pendientes ({len(pending_entries)})")
-
-        recent_tab = QWidget()
-        recent_layout = QVBoxLayout(recent_tab)
-        if not recent_entries:
-            recent_layout.addWidget(QLabel("No hay archivos recientes disponibles."))
-        else:
-            recent_table = QTableWidget(len(recent_entries), 2, recent_tab)
-            recent_table.setHorizontalHeaderLabels(["Archivo reciente", "Acciones"])
-            _setup_table(recent_table, action_column=1, action_width=170)
-            for row, filepath in enumerate(recent_entries):
-                recent_table.setItem(row, 0, QTableWidgetItem(filepath))
-
-                def _open_recent_handler(
-                    _checked: bool = False,
-                    p: str = filepath,
-                ) -> None:
-                    if not os.path.exists(p):
-                        QMessageBox.warning(self, "Archivo no encontrado", "El archivo no existe.")
-                        self._update_recent_menu()
-                        return
-                    self._open_file_path(p)
-
-                _set_actions_cell(recent_table, row, [("Abrir", _open_recent_handler)])
-            recent_layout.addWidget(recent_table)
-        tabs.addTab(recent_tab, f"Recientes ({len(recent_entries)})")
-
-        recovered_tab = QWidget()
-        recovered_layout = QVBoxLayout(recovered_tab)
-        if not recovered_entries:
-            recovered_layout.addWidget(QLabel("No hay autosaves recuperados/archivados."))
-        else:
-            recovered_table = QTableWidget(len(recovered_entries), 3, recovered_tab)
-            recovered_table.setHorizontalHeaderLabels(["Archivo original", "Timestamp", "Acciones"])
-            _setup_table(recovered_table, action_column=2, action_width=170)
-            for row, entry in enumerate(recovered_entries):
-                original_path_value = entry.get("original_path")
-                original_path = original_path_value or "Sin nombre"
-                timestamp = entry.get("timestamp") or "Desconocida"
-                autosave_path = entry["autosave_path"]
-                recovered_table.setItem(row, 0, QTableWidgetItem(original_path))
-                recovered_table.setItem(row, 1, QTableWidgetItem(timestamp))
-
-                def _open_recovered_handler(
-                    _checked: bool = False,
-                    p: str = autosave_path,
-                    original: Optional[str] = original_path_value,
-                ) -> None:
-                    self._open_autosave_document(p, original_path=original)
-
-                _set_actions_cell(recovered_table, row, [("Abrir", _open_recovered_handler)])
-            recovered_layout.addWidget(recovered_table)
-        tabs.addTab(recovered_tab, f"Recuperados ({len(recovered_entries)})")
-
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        buttons.rejected.connect(dialog.reject)
-        buttons.accepted.connect(dialog.accept)
-        layout.addWidget(buttons)
-        dialog.exec()
+        self._recovery_controller.show_recovery_center(self, show_only_if_pending=show_only_if_pending)
 
     @staticmethod
     def check_autosaves(window: "ChemusonWindow") -> None:
         """Busca autosaves pendientes y abre el centro de recuperación al iniciar."""
-        window._show_recovery_center(show_only_if_pending=True)
+        window._recovery_controller.check_autosaves(window)
 
     def _open_file_path(self, filepath: str) -> None:
         """Método auxiliar para  open file path.
@@ -3034,65 +2593,7 @@ class ChemusonWindow(QMainWindow):
     
     def _on_export(self, format: str) -> None:
         """Export the canvas in the specified format."""
-        if format == "png":
-            image = self.canvas._render_scene_image()
-            if image:
-                filepath, _ = QFileDialog.getSaveFileName(self, "Exportar PNG", "", "Imagen PNG (*.png)")
-                if filepath:
-                    image.save(filepath, "PNG")
-                    self.statusBar().showMessage(f"Exportado: {filepath}")
-        elif format == "svg":
-            svg_data = self.canvas._render_scene_svg()
-            filepath, _ = QFileDialog.getSaveFileName(self, "Exportar SVG", "", "Imagen SVG (*.svg)")
-            if filepath:
-                if svg_data:
-                    with open(filepath, "w") as f:
-                        f.write(svg_data.decode("utf-8", errors="replace"))
-                else:
-                    from chemuson.chemio.rdkit_io import molgraph_to_svg
-                    svg_text = molgraph_to_svg(self.canvas.graph)
-                    with open(filepath, "w") as f:
-                        f.write(svg_text)
-                    if self.canvas.state.numbering_enabled and self.canvas.state.numbering_include_in_export:
-                        QMessageBox.information(
-                            self,
-                            "SVG sin numeración",
-                            "Este entorno no permite render SVG desde la escena.\n"
-                            "Se exportó SVG químico base sin overlay de numeración.",
-                        )
-                self.statusBar().showMessage(f"Exportado: {filepath}")
-        elif format == "pdf":
-            filepath, _ = QFileDialog.getSaveFileName(self, "Exportar PDF", "", "Documento PDF (*.pdf)")
-            if filepath:
-                try:
-                    printer = QPrinter(QPrinter.PrinterMode.HighResolution)
-                    printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
-                    printer.setOutputFileName(filepath)
-
-                    bounds = self.canvas._render_scene_bounds(selected_only=False)
-                    if bounds is None:
-                        QMessageBox.warning(self, "Error", "No hay contenido para exportar.")
-                        return
-
-                    def render_pdf() -> bool:
-                        painter = QPainter(printer)
-                        if not painter.isActive():
-                            return False
-                        self.canvas.scene.render(
-                            painter,
-                            printer.pageRect(QPrinter.Unit.Point),
-                            bounds,
-                        )
-                        painter.end()
-                        return True
-
-                    ok = self.canvas._with_hidden_render_items(render_pdf)
-                    if not ok:
-                        QMessageBox.warning(self, "Error", "No se pudo exportar PDF.")
-                        return
-                    self.statusBar().showMessage(f"Exportado: {filepath}")
-                except Exception as e:
-                    QMessageBox.warning(self, "Error", f"No se pudo exportar PDF:\n{e}")
+        self._export_controller.export(self, format)
 
     def _confirm_discard_changes(self, canvas: Optional[ChemusonCanvas] = None) -> bool:
         """Método auxiliar para  confirm discard changes.
@@ -4141,14 +3642,7 @@ class ChemusonWindow(QMainWindow):
         return True
 
     def _on_clean_2d(self) -> None:
-        """Maneja clean 2d.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la interfaz.
-        """
+        """Maneja clean 2d."""
         self._run_clean_2d(step_ratio=0.35, fallback_iterations=30, status_suffix="(paso)")
 
     def _on_clean_2d_full(self) -> None:
@@ -4164,117 +3658,7 @@ class ChemusonWindow(QMainWindow):
 
     def _run_clean_2d(self, step_ratio: float, fallback_iterations: int, status_suffix: str) -> None:
         """Clean 2D coordinates using RDKit or fallback."""
-        atom_ids, bonds = self.canvas._selected_structure_ids()
-        target_ids = atom_ids if atom_ids else set(self.canvas.model.atoms.keys())
-        if not target_ids:
-            return
-        scale_bonds = bonds if atom_ids else list(self.canvas.model.bonds.values())
-
-        if self._is_acyclic_structure(target_ids, scale_bonds):
-            # Para cadenas acíclicas, el layout geométrico interno mantiene mejor
-            # ángulos ideales (sp3/sp2/sp) que la depicción RDKit con H explícitos.
-            self.canvas.clean_2d_fallback(target_ids, iterations=max(40, fallback_iterations))
-            msg = "Selección 2D limpiada" if atom_ids else "Estructura 2D limpiada"
-            self.statusBar().showMessage(f"{msg} {status_suffix} (acíclico)")
-            return
-
-        try:
-            from chemuson.chemio.rdkit_io import molgraph_to_rdkit_with_map
-            from rdkit import Chem
-            from rdkit.Chem import AllChem
-
-            graph = self.canvas._build_selection_graph(atom_ids, bonds) if atom_ids else self.canvas.graph
-            mol, id_map = molgraph_to_rdkit_with_map(graph)
-            for aid, rd_idx in id_map.items():
-                try:
-                    mol.GetAtomWithIdx(rd_idx).SetIntProp("_chemuson_id", int(aid))
-                except Exception:
-                    continue
-
-            before = {
-                aid: (self.canvas.model.get_atom(aid).x, self.canvas.model.get_atom(aid).y)
-                for aid in target_ids
-            }
-            before_cx, before_cy = self._coords_center(before)
-            before_avg_len = self._average_bond_length(before, scale_bonds)
-
-            raw_after = {}
-            used_no_h_layout = False
-            try:
-                mol_no_h = Chem.RemoveHs(Chem.Mol(mol), sanitize=True)
-                if 0 < mol_no_h.GetNumAtoms() < mol.GetNumAtoms():
-                    AllChem.Compute2DCoords(mol_no_h)
-                    conf_no_h = mol_no_h.GetConformer()
-                    for atom in mol_no_h.GetAtoms():
-                        if not atom.HasProp("_chemuson_id"):
-                            continue
-                        aid = int(atom.GetIntProp("_chemuson_id"))
-                        if aid not in target_ids:
-                            continue
-                        pos = conf_no_h.GetAtomPosition(atom.GetIdx())
-                        raw_after[aid] = (pos.x, pos.y)
-                    if raw_after:
-                        atom_elements = {
-                            aid: self.canvas.model.get_atom(aid).element for aid in target_ids
-                        }
-                        raw_after = self._project_missing_hydrogen_coords(
-                            before=before,
-                            after=raw_after,
-                            bonds=scale_bonds,
-                            atom_elements=atom_elements,
-                        )
-                        used_no_h_layout = True
-            except Exception:
-                used_no_h_layout = False
-
-            if not used_no_h_layout:
-                AllChem.Compute2DCoords(mol)
-                conf = mol.GetConformer()
-                for aid, rd_idx in id_map.items():
-                    if aid not in target_ids:
-                        continue
-                    pos = conf.GetAtomPosition(rd_idx)
-                    raw_after[aid] = (pos.x, pos.y)
-
-            target_bond_len = before_avg_len if before_avg_len > 1e-6 else float(self.canvas.state.bond_length)
-            raw_after = self._rescale_coords_to_bond_length(raw_after, scale_bonds, target_bond_len)
-            raw_after = self._align_coords_to_reference(before, raw_after)
-            after_cx, after_cy = self._coords_center(raw_after)
-            after = {}
-            for aid, (x, y) in raw_after.items():
-                x = x - after_cx + before_cx
-                y = y - after_cy + before_cy
-                if step_ratio < 1.0:
-                    bx, by = before[aid]
-                    x = bx + (x - bx) * step_ratio
-                    y = by + (y - by) * step_ratio
-                after[aid] = (x, y)
-            # La interpolación lineal entre dos orientaciones del mismo esqueleto
-            # puede reducir temporalmente el tamaño percibido (especialmente anillos).
-            # Re-normalizamos la longitud media para mantener escala visual.
-            after = self._rescale_coords_to_bond_length(after, scale_bonds, target_bond_len)
-            final_cx, final_cy = self._coords_center(after)
-            if abs(final_cx - before_cx) > 1e-9 or abs(final_cy - before_cy) > 1e-9:
-                after = {
-                    aid: (x - final_cx + before_cx, y - final_cy + before_cy)
-                    for aid, (x, y) in after.items()
-                }
-
-            from chemuson.gui.commands import MoveAtomsCommand
-            cmd = MoveAtomsCommand(self.canvas.model, self.canvas, before, after)
-            self.canvas.undo_stack.push(cmd)
-            self.canvas._update_selection_overlay()
-            msg = "Selección 2D limpiada" if atom_ids else "Estructura 2D limpiada"
-            self.statusBar().showMessage(f"{msg} {status_suffix}".strip())
-            return
-        except Exception as e:
-            message = str(e)
-            if "No module named" in message and "rdkit" in message:
-                self.canvas.clean_2d_fallback(target_ids, iterations=fallback_iterations)
-                msg = "Selección 2D limpiada" if atom_ids else "Estructura 2D limpiada"
-                self.statusBar().showMessage(f"{msg} {status_suffix} (básico)")
-                return
-            self.statusBar().showMessage(f"Error: {e}")
+        self._clean2d_controller.run_clean_2d(self, step_ratio, fallback_iterations, status_suffix)
 
     def _insert_template(self, label: str, graph) -> None:
         """Método auxiliar para  insert template.
