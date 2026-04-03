@@ -6,7 +6,7 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.core.model import Bond
-from chemuson.gui.main_window import ChemusonWindow
+from chemuson.gui.controllers.clean2d_controller import Clean2DController
 
 
 def test_is_acyclic_structure_detects_chain() -> None:
@@ -16,7 +16,7 @@ def test_is_acyclic_structure_detects_chain() -> None:
         Bond(id=2, a1_id=2, a2_id=3, order=1),
         Bond(id=3, a1_id=3, a2_id=4, order=1),
     ]
-    assert ChemusonWindow._is_acyclic_structure(atom_ids, bonds)
+    assert Clean2DController._is_acyclic_structure(atom_ids, bonds)
 
 
 def test_is_acyclic_structure_detects_cycle() -> None:
@@ -26,5 +26,4 @@ def test_is_acyclic_structure_detects_cycle() -> None:
         Bond(id=2, a1_id=2, a2_id=3, order=1),
         Bond(id=3, a1_id=3, a2_id=1, order=1),
     ]
-    assert not ChemusonWindow._is_acyclic_structure(atom_ids, bonds)
-
+    assert not Clean2DController._is_acyclic_structure(atom_ids, bonds)
