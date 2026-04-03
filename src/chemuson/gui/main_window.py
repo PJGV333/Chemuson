@@ -80,6 +80,7 @@ from chemuson.gui.actions import (
 )
 from chemuson.gui.controllers import (
     Clean2DController,
+    DocumentController,
     ExportController,
     RecoveryController,
     TemplateController,
@@ -232,6 +233,7 @@ class ChemusonWindow(QMainWindow):
         self._numbering_default_include_export = True
         self._current_tool_id = "tool_select"
         self._settings = QSettings("Chemuson", "Chemuson")
+        self._document_controller = DocumentController()
         self._update_settings = self._load_update_preferences()
         self._name_advanced_default, self._name_rdkit_isolated_default = self._load_naming_preferences()
         self._windows_install_context = detect_windows_install_context()
@@ -875,16 +877,7 @@ class ChemusonWindow(QMainWindow):
 
     def _set_canvas_file_path(self, canvas: ChemusonCanvas, filepath: Optional[str]) -> None:
         """Asigna ruta de archivo a una pestaña y actualiza su título."""
-        clean_path = os.path.abspath(filepath) if filepath else None
-        self._canvas_file_paths[canvas] = clean_path
-        autosave_manager = self._canvas_autosave_managers.get(canvas)
-        if autosave_manager is not None:
-            autosave_manager.set_original_path(clean_path)
-        if clean_path:
-            self._canvas_tab_titles[canvas] = os.path.basename(clean_path)
-        if canvas is self.canvas:
-            self._current_file_path = clean_path
-        self._update_tab_title(canvas)
+        self._document_controller.set_canvas_file_path(self, canvas, filepath)
 
     def _on_canvas_clean_state_changed(
         self,
@@ -925,20 +918,7 @@ class ChemusonWindow(QMainWindow):
 
     def _update_tab_title(self, canvas: ChemusonCanvas) -> None:
         """Actualiza título y tooltip de la pestaña asociada al canvas."""
-        if not self._tabs_alive():
-            return
-        try:
-            index = self.tabs.indexOf(canvas)
-            if index < 0:
-                return
-            base_title = self._canvas_tab_titles.get(canvas, "Sin título")
-            dirty_suffix = " *" if not canvas.undo_stack.isClean() else ""
-            self.tabs.setTabText(index, f"{base_title}{dirty_suffix}")
-            path = self._canvas_file_paths.get(canvas)
-            self.tabs.setTabToolTip(index, path or "Documento sin guardar")
-        except RuntimeError:
-            # Durante cierre, Qt puede destruir tabs/canvas antes de drenar señales.
-            return
+        self._document_controller.update_tab_title(self, canvas)
 
     def _on_tab_changed(self, index: int) -> None:
         """Activa el canvas correspondiente al cambiar de pestaña."""
@@ -1627,31 +1607,12 @@ class ChemusonWindow(QMainWindow):
             pass
 
     def _load_recent_files(self) -> list[str]:
-        """Método auxiliar para  load recent files.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la interfaz.
-        """
-        value = self._settings.value("recent_files", [])
-        if isinstance(value, str):
-            return [value]
-        if isinstance(value, list):
-            return [str(p) for p in value if p]
-        return []
+        """Método auxiliar para  load recent files."""
+        return self._document_controller.load_recent_files(self)
 
     def _save_recent_files(self) -> None:
-        """Método auxiliar para  save recent files.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la interfaz.
-        """
-        self._settings.setValue("recent_files", self._recent_files)
+        """Método auxiliar para  save recent files."""
+        self._document_controller.save_recent_files(self)
 
     def _load_update_preferences(self) -> UpdateSettings:
         """Carga preferencias de actualización persistidas en QSettings."""
@@ -2385,25 +2346,8 @@ class ChemusonWindow(QMainWindow):
                 )
 
     def _add_recent_file(self, filepath: str) -> None:
-        """Método auxiliar para  add recent file.
-
-        Args:
-            filepath: Descripción del parámetro.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la interfaz.
-        """
-        if not filepath:
-            return
-        path = os.path.abspath(filepath)
-        self._recent_files = [p for p in self._recent_files if p != path]
-        self._recent_files.insert(0, path)
-        self._recent_files = self._recent_files[:10]
-        self._save_recent_files()
-        self._update_recent_menu()
+        """Método auxiliar para  add recent file."""
+        self._document_controller.add_recent_file(self, filepath)
 
     def _update_recent_menu(self) -> None:
         """Método auxiliar para  update recent menu.
@@ -2598,47 +2542,8 @@ class ChemusonWindow(QMainWindow):
         self._export_controller.export(self, format)
 
     def _confirm_discard_changes(self, canvas: Optional[ChemusonCanvas] = None) -> bool:
-        """Método auxiliar para  confirm discard changes.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la interfaz.
-        """
-        target = canvas or self.canvas
-        if target.undo_stack.isClean():
-            return True
-        index = self.tabs.indexOf(target)
-        title = self._canvas_tab_titles.get(target, "Documento")
-        if index >= 0:
-            title = self.tabs.tabText(index).replace(" *", "")
-        reply = QMessageBox.question(
-            self,
-            "Cambios sin guardar",
-            f"'{title}' tiene cambios sin guardar. ¿Deseas guardar antes de cerrar?",
-            QMessageBox.StandardButton.Save
-            | QMessageBox.StandardButton.Discard
-            | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Save,
-        )
-        if reply == QMessageBox.StandardButton.Save:
-            previous_index = self.tabs.currentIndex()
-            if index >= 0 and previous_index != index:
-                self.tabs.setCurrentIndex(index)
-                self._set_active_canvas(target)
-            self._on_file_save()
-            saved = target.undo_stack.isClean()
-            if (
-                previous_index >= 0
-                and previous_index < self.tabs.count()
-                and self.tabs.currentIndex() != previous_index
-            ):
-                self.tabs.setCurrentIndex(previous_index)
-            return saved
-        if reply == QMessageBox.StandardButton.Discard:
-            return True
-        return False
+        """Método auxiliar para  confirm discard changes."""
+        return self._document_controller.confirm_discard_changes(self, canvas)
 
     def closeEvent(self, event) -> None:
         """Método auxiliar para closeEvent.
