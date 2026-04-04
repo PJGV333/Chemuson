@@ -114,6 +114,19 @@ class TextFormatController:
             cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
             return cursor
 
+        stored_selected_range = getattr(window, "_external_text_selected_range", None)
+        if stored_selected_range:
+            anchor, position = stored_selected_range
+            text_len = editor.document().characterCount() - 1
+            if text_len < 0:
+                text_len = 0
+            anchor = max(0, min(int(anchor), text_len))
+            position = max(0, min(int(position), text_len))
+            cursor.setPosition(anchor)
+            cursor.setPosition(position, QTextCursor.MoveMode.KeepAnchor)
+            if cursor.hasSelection():
+                return cursor
+
         stored = getattr(window, "_external_text_cursor_state", None)
         if stored:
             anchor, position = stored

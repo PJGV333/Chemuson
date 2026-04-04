@@ -91,15 +91,10 @@ class RecoveryController:
             window._update_total_charge_indicator()
             return True
         except Exception as exc:
-            index = window.tabs.indexOf(canvas)
-            if index >= 0:
-                window.tabs.removeTab(index)
-            autosave_manager = window._canvas_autosave_managers.pop(canvas, None)
-            if autosave_manager is not None:
-                autosave_manager.stop()
-            window._canvas_file_paths.pop(canvas, None)
-            window._canvas_tab_titles.pop(canvas, None)
-            canvas.deleteLater()
+            if hasattr(window, "_before_canvas_discard"):
+                window._before_canvas_discard(canvas)
+            if hasattr(window, "_tab_manager"):
+                window._tab_manager.discard_canvas(canvas)
             if window.tabs.count() == 0:
                 replacement = window._create_document_tab(make_current=True)
                 window._apply_toolbar_defaults_to_canvas(replacement)

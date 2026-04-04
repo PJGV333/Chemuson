@@ -81,15 +81,18 @@ from chemuson.gui.actions import (
 from chemuson.gui.controllers import (
     Clean2DController,
     DocumentController,
+    DocumentDiscardContext,
     ExportController,
+    RecentFilesContext,
     RecoveryController,
     TemplateController,
+    TemplateControllerContext,
     TextFormatController,
 )
+from chemuson.gui.tab_manager import CanvasTabManager
 from chemuson.chemio.rdkit_io import molfile_to_molgraph, molgraph_to_molfile
 from chemuson.chemio.persistence import PersistenceManager
 from chemuson.core.model import MolGraph
-from chemuson.utils.autosave import AutosaveManager
 from chemuson.utils import crash_reporter
 from chemuson.version import get_app_version
 from chemuson.update import (
@@ -224,10 +227,6 @@ class ChemusonWindow(QMainWindow):
         # === CORE COMPONENTS ===
         self._create_actions()
         self._current_file_path: Optional[str] = None
-        self._canvas_file_paths: dict[ChemusonCanvas, Optional[str]] = {}
-        self._canvas_tab_titles: dict[ChemusonCanvas, str] = {}
-        self._canvas_autosave_managers: dict[ChemusonCanvas, AutosaveManager] = {}
-        self._untitled_counter = 1
         self._active_canvas_connected: Optional[ChemusonCanvas] = None
         self._numbering_default_mode = "atoms"
         self._numbering_default_include_export = True
@@ -266,6 +265,10 @@ class ChemusonWindow(QMainWindow):
         self.tabs.setTabsClosable(True)
         self.tabs.setMovable(True)
         self.setCentralWidget(self.tabs)
+        self._tab_manager = CanvasTabManager(self.tabs, autosave_parent=self)
+        self._canvas_file_paths = self._tab_manager.file_paths
+        self._canvas_tab_titles = self._tab_manager.tab_titles
+        self._canvas_autosave_managers = self._tab_manager.autosave_managers
         self.canvas = self._create_document_tab(make_current=True)
         self.tabs.currentChanged.connect(self._on_tab_changed)
         self.tabs.tabCloseRequested.connect(self._on_tab_close_requested)
@@ -840,29 +843,14 @@ class ChemusonWindow(QMainWindow):
 
     def _create_document_tab(self, make_current: bool = False) -> ChemusonCanvas:
         """Crea una nueva pestaña con su propio canvas independiente."""
-        canvas = ChemusonCanvas()
-        tab_title = (
-            "Sin título"
-            if self._untitled_counter == 1
-            else f"Sin título {self._untitled_counter}"
+        return self._tab_manager.create_document_tab(
+            make_current=make_current,
+            prepare_canvas=lambda canvas: (
+                self._apply_default_numbering_to_canvas(canvas),
+                self._apply_default_naming_to_canvas(canvas),
+            ),
+            clean_state_changed=self._on_canvas_clean_state_changed,
         )
-        self._untitled_counter += 1
-        self._canvas_file_paths[canvas] = None
-        self._canvas_tab_titles[canvas] = tab_title
-        self._apply_default_numbering_to_canvas(canvas)
-        self._apply_default_naming_to_canvas(canvas)
-        index = self.tabs.addTab(canvas, tab_title)
-        self.tabs.setTabToolTip(index, "Documento sin guardar")
-        autosave_manager = AutosaveManager(self, canvas, canvas.undo_stack)
-        autosave_manager.start()
-        self._canvas_autosave_managers[canvas] = autosave_manager
-        canvas.undo_stack.cleanChanged.connect(
-            lambda clean, c=canvas: self._on_canvas_clean_state_changed(c, bool(clean))
-        )
-        self._update_tab_title(canvas)
-        if make_current:
-            self.tabs.setCurrentIndex(index)
-        return canvas
 
     def _apply_default_numbering_to_canvas(self, canvas: ChemusonCanvas) -> None:
         """Aplica preferencias globales de numeración a un nuevo documento."""
@@ -877,7 +865,9 @@ class ChemusonWindow(QMainWindow):
 
     def _set_canvas_file_path(self, canvas: ChemusonCanvas, filepath: Optional[str]) -> None:
         """Asigna ruta de archivo a una pestaña y actualiza su título."""
-        self._document_controller.set_canvas_file_path(self, canvas, filepath)
+        clean_path = self._tab_manager.set_canvas_file_path(canvas, filepath)
+        if canvas is self.canvas:
+            self._current_file_path = clean_path
 
     def _on_canvas_clean_state_changed(
         self,
@@ -885,40 +875,19 @@ class ChemusonWindow(QMainWindow):
         clean: Optional[bool] = None,
     ) -> None:
         """Actualiza el título de pestaña cuando cambia estado clean/dirty."""
-        if not self._tabs_alive():
-            return
-        autosave_manager = self._canvas_autosave_managers.get(canvas)
-        if autosave_manager is not None:
-            is_clean = canvas.undo_stack.isClean() if clean is None else bool(clean)
-            if is_clean:
-                autosave_manager.cancel_debounce()
-            else:
-                autosave_manager.restart_debounce()
-        self._update_tab_title(canvas)
+        self._tab_manager.on_canvas_clean_state_changed(canvas, clean)
 
     def _tabs_alive(self) -> bool:
         """Indica si el widget de pestañas sigue disponible."""
-        tabs = getattr(self, "tabs", None)
-        if tabs is None:
-            return False
-        try:
-            tabs.count()
-        except RuntimeError:
-            return False
-        return True
+        return self._tab_manager.tabs_alive()
 
     def _canvas_from_tab_index(self, index: int) -> Optional[ChemusonCanvas]:
         """Obtiene el canvas asociado al índice de pestaña."""
-        if not self._tabs_alive():
-            return None
-        if index < 0:
-            return None
-        widget = self.tabs.widget(index)
-        return widget if isinstance(widget, ChemusonCanvas) else None
+        return self._tab_manager.canvas_from_tab_index(index)
 
     def _update_tab_title(self, canvas: ChemusonCanvas) -> None:
         """Actualiza título y tooltip de la pestaña asociada al canvas."""
-        self._document_controller.update_tab_title(self, canvas)
+        self._tab_manager.update_tab_title(canvas)
 
     def _on_tab_changed(self, index: int) -> None:
         """Activa el canvas correspondiente al cambiar de pestaña."""
@@ -936,34 +905,23 @@ class ChemusonWindow(QMainWindow):
 
     def _close_canvas_tab(self, canvas: ChemusonCanvas) -> bool:
         """Cierra una pestaña si no hay cambios pendientes o el usuario confirma."""
-        if not self._confirm_discard_changes(canvas):
-            return False
-        index = self.tabs.indexOf(canvas)
-        if index < 0:
-            return False
-        was_active = canvas is self.canvas
-        self.tabs.removeTab(index)
-        autosave_manager = self._canvas_autosave_managers.pop(canvas, None)
-        if autosave_manager is not None:
-            autosave_manager.stop()
-        self._canvas_file_paths.pop(canvas, None)
-        self._canvas_tab_titles.pop(canvas, None)
+        had_single_tab = self.tabs.count() == 1
+        closed = self._tab_manager.close_canvas_tab(
+            canvas,
+            confirm_discard=self._confirm_discard_changes,
+            before_discard=self._before_canvas_discard,
+            create_replacement=lambda: self._create_document_tab(make_current=True),
+            activate_canvas=self._set_active_canvas,
+        )
+        if closed and had_single_tab and self.tabs.count() == 1:
+            self.statusBar().showMessage("Se creó un documento nuevo.")
+        return closed
+
+    def _before_canvas_discard(self, canvas: ChemusonCanvas) -> None:
+        """Desconecta el canvas activo antes de retirarlo del tab widget."""
         if self._active_canvas_connected is canvas:
             self._disconnect_canvas_signals(canvas)
             self._active_canvas_connected = None
-        canvas.deleteLater()
-
-        if self.tabs.count() == 0:
-            created = self._create_document_tab(make_current=True)
-            self._set_active_canvas(created)
-            self.statusBar().showMessage("Se creó un documento nuevo.")
-            return True
-
-        if was_active:
-            current = self._canvas_from_tab_index(self.tabs.currentIndex())
-            if current is not None:
-                self._set_active_canvas(current)
-        return True
 
     def _connect_canvas_signals(self, canvas: ChemusonCanvas) -> None:
         """Conecta señales del canvas activo a la UI principal."""
@@ -1010,7 +968,7 @@ class ChemusonWindow(QMainWindow):
         if self._active_canvas_connected is not None and self._active_canvas_connected is not canvas:
             self._disconnect_canvas_signals(self._active_canvas_connected)
         self.canvas = canvas
-        self._current_file_path = self._canvas_file_paths.get(canvas)
+        self._current_file_path = self._tab_manager.file_path_for(canvas)
         if self._active_canvas_connected is not canvas:
             self._connect_canvas_signals(canvas)
             self._active_canvas_connected = canvas
@@ -1608,11 +1566,11 @@ class ChemusonWindow(QMainWindow):
 
     def _load_recent_files(self) -> list[str]:
         """Método auxiliar para  load recent files."""
-        return self._document_controller.load_recent_files(self)
+        return self._document_controller.load_recent_files(self._settings)
 
     def _save_recent_files(self) -> None:
         """Método auxiliar para  save recent files."""
-        self._document_controller.save_recent_files(self)
+        self._document_controller.save_recent_files(self._recent_files_context())
 
     def _load_update_preferences(self) -> UpdateSettings:
         """Carga preferencias de actualización persistidas en QSettings."""
@@ -2347,7 +2305,7 @@ class ChemusonWindow(QMainWindow):
 
     def _add_recent_file(self, filepath: str) -> None:
         """Método auxiliar para  add recent file."""
-        self._document_controller.add_recent_file(self, filepath)
+        self._document_controller.add_recent_file(self._recent_files_context(), filepath)
 
     def _update_recent_menu(self) -> None:
         """Método auxiliar para  update recent menu.
@@ -2488,15 +2446,8 @@ class ChemusonWindow(QMainWindow):
             self._update_total_charge_indicator()
             self.statusBar().showMessage(f"Abierto: {filepath}")
         except Exception as e:
-            index = self.tabs.indexOf(canvas)
-            if index >= 0:
-                self.tabs.removeTab(index)
-            autosave_manager = self._canvas_autosave_managers.pop(canvas, None)
-            if autosave_manager is not None:
-                autosave_manager.stop()
-            self._canvas_file_paths.pop(canvas, None)
-            self._canvas_tab_titles.pop(canvas, None)
-            canvas.deleteLater()
+            self._before_canvas_discard(canvas)
+            self._tab_manager.discard_canvas(canvas)
             if self.tabs.count() == 0:
                 replacement = self._create_document_tab(make_current=True)
                 self._apply_toolbar_defaults_to_canvas(replacement)
@@ -2505,7 +2456,7 @@ class ChemusonWindow(QMainWindow):
     
     def _on_file_save(self) -> None:
         """Save the current work in .cmsn format."""
-        filepath = self._canvas_file_paths.get(self.canvas)
+        filepath = self._tab_manager.file_path_for(self.canvas)
         selected_filter = ""
         if not filepath:
             filepath, selected_filter = QFileDialog.getSaveFileName(
@@ -2516,7 +2467,7 @@ class ChemusonWindow(QMainWindow):
             )
         if filepath:
             try:
-                autosave_manager = self._canvas_autosave_managers.get(self.canvas)
+                autosave_manager = self._tab_manager.autosave_manager_for(self.canvas)
                 if filepath.lower().endswith(".mol") or filepath.lower().endswith(".sdf") or "MOL" in selected_filter:
                     # Export as .mol if explicitly requested
                     from chemuson.chemio.rdkit_io import molgraph_to_molfile
@@ -2543,7 +2494,29 @@ class ChemusonWindow(QMainWindow):
 
     def _confirm_discard_changes(self, canvas: Optional[ChemusonCanvas] = None) -> bool:
         """Método auxiliar para  confirm discard changes."""
-        return self._document_controller.confirm_discard_changes(self, canvas)
+        return self._document_controller.confirm_discard_changes(
+            self._document_discard_context(),
+            canvas,
+        )
+
+    def _recent_files_context(self) -> RecentFilesContext:
+        """Construye el contexto mínimo requerido por DocumentController para recientes."""
+        return RecentFilesContext(
+            settings=self._settings,
+            recent_files=self._recent_files,
+            persist_recent_files=self._save_recent_files,
+            refresh_recent_menu=self._update_recent_menu,
+        )
+
+    def _document_discard_context(self) -> DocumentDiscardContext:
+        """Construye el contexto mínimo requerido para confirmar descarte."""
+        return DocumentDiscardContext(
+            parent=self,
+            canvas=self.canvas,
+            tab_manager=self._tab_manager,
+            save_canvas=self._on_file_save,
+            activate_canvas=self._set_active_canvas,
+        )
 
     def closeEvent(self, event) -> None:
         """Método auxiliar para closeEvent.
@@ -3763,7 +3736,11 @@ class ChemusonWindow(QMainWindow):
 
     def _start_template_insert_by_id(self, template_id: str, *, place_now: bool = False) -> None:
         """Carga plantilla desde biblioteca e inicia inserción."""
-        self._template_controller.start_template_insert_by_id(self, template_id, place_now=place_now)
+        self._template_controller.start_template_insert_by_id(
+            self._template_controller_context(),
+            template_id,
+            place_now=place_now,
+        )
 
     def _on_template_selected_from_gallery(self, payload: dict) -> None:
         """Maneja selección de plantilla desde el dock lateral."""
@@ -3774,39 +3751,57 @@ class ChemusonWindow(QMainWindow):
 
     def _prompt_template_destination(self) -> Optional[tuple[str, str]]:
         """Solicita nombre y categoría para guardar plantilla."""
-        return self._template_controller.prompt_template_destination(self)
+        return self._template_controller.prompt_template_destination(
+            self._template_controller_context()
+        )
 
     def _on_save_template(self) -> None:
         """Guarda selección (o molécula completa) como plantilla reusable."""
-        self._template_controller.on_save_template(self)
+        self._template_controller.on_save_template(self._template_controller_context())
 
     def _on_new_template_category(self) -> None:
         """Crea categoría personalizada de plantillas."""
-        self._template_controller.on_new_template_category(self)
+        self._template_controller.on_new_template_category(self._template_controller_context())
 
     def _on_rename_template_category(self, old_name: str) -> None:
         """Renombra una categoría existente."""
-        self._template_controller.on_rename_template_category(self, old_name)
+        self._template_controller.on_rename_template_category(
+            self._template_controller_context(),
+            old_name,
+        )
 
     def _on_delete_template_category(self, name: str) -> None:
         """Elimina una categoría y conserva sus plantillas en categoría de respaldo."""
-        self._template_controller.on_delete_template_category(self, name)
+        self._template_controller.on_delete_template_category(
+            self._template_controller_context(),
+            name,
+        )
 
     def _on_rename_template(self, template_id: str) -> None:
         """Renombra plantilla individual."""
-        self._template_controller.on_rename_template(self, template_id)
+        self._template_controller.on_rename_template(
+            self._template_controller_context(),
+            template_id,
+        )
 
     def _on_delete_template(self, template_id: str) -> None:
         """Elimina plantilla de la biblioteca."""
-        self._template_controller.on_delete_template(self, template_id)
+        self._template_controller.on_delete_template(
+            self._template_controller_context(),
+            template_id,
+        )
 
     def _on_import_template_library(self) -> None:
         """Importa bibliotecas de plantillas desde JSON."""
-        self._template_controller.on_import_template_library(self)
+        self._template_controller.on_import_template_library(
+            self._template_controller_context()
+        )
 
     def _on_export_template_library(self) -> None:
         """Exporta biblioteca de plantillas a JSON."""
-        self._template_controller.on_export_template_library(self)
+        self._template_controller.on_export_template_library(
+            self._template_controller_context()
+        )
 
     def _insert_template_from_file(self, filepath: str) -> None:
         """Método auxiliar para  insert template from file.
@@ -3831,15 +3826,28 @@ class ChemusonWindow(QMainWindow):
 
     def _on_insert_linear_chain(self) -> None:
         """Maneja insert linear chain."""
-        self._template_controller.on_insert_linear_chain(self)
+        self._template_controller.on_insert_linear_chain(
+            self._template_controller_context()
+        )
 
     def _on_import_smiles(self) -> None:
         """Import a molecule from a SMILES string."""
-        self._template_controller.on_import_smiles(self)
+        self._template_controller.on_import_smiles(self._template_controller_context())
 
     def _on_export_smiles(self) -> None:
         """Export the current molecule as SMILES."""
-        self._template_controller.on_export_smiles(self)
+        self._template_controller.on_export_smiles(self._template_controller_context())
+
+    def _template_controller_context(self) -> TemplateControllerContext:
+        """Construye el contexto mínimo requerido por TemplateController."""
+        return TemplateControllerContext(
+            parent=self,
+            canvas=self.canvas,
+            template_library=self.template_library,
+            show_status=self.statusBar().showMessage,
+            refresh_template_views=self._refresh_template_views,
+            insert_template=self._insert_template,
+        )
 
     # -------------------------------------------------------------------------
     # Help Menu Handlers
