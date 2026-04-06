@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from ._shared import *
+from PyQt6.QtCore import QRectF
+from PyQt6.QtGui import QUndoCommand
+
+from chemuson.gui.diagram_models import SemanticDiagram
 
 class AddEnergyDiagramItemCommand(QUndoCommand):
     """Comando para añadir un diagrama de energia persistente."""

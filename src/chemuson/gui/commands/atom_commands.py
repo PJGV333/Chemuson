@@ -1,6 +1,22 @@
 from __future__ import annotations
 
-from ._shared import *
+from typing import Optional
+
+from PyQt6.QtGui import QUndoCommand
+
+from chemuson.core.model import MolGraph
+
+from ._shared import (
+    _ANCHOR_UNSET,
+    _LABEL_SCALE_UNSET,
+    _SPHERE_STYLE_UNSET,
+    _atom_degree,
+    _default_is_explicit,
+    _readd_hydrogen_specs,
+    _remove_hydrogen_specs,
+    _resolve_atom_label_spec,
+    _validate_view_structure,
+)
 
 class AddAtomCommand(QUndoCommand):
     """Comando para añadir un átomo al modelo y a la vista."""

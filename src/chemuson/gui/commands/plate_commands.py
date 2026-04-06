@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from ._shared import *
+from PyQt6.QtGui import QColor, QFont, QUndoCommand
+from PyQt6.QtWidgets import QGraphicsTextItem
 
 class AddPlateItemCommand(QUndoCommand):
     """Comando para añadir placas de cromatografía y electroforesis."""
@@ -99,10 +100,18 @@ class AddSpotBandCommand(QUndoCommand):
             if scene:
                 scene.removeItem(self._item)
             if hasattr(self._lane, "rf_labels"):
-                self._lane.rf_labels = [(s, l) for s, l in self._lane.rf_labels if s is not self._item]
+                self._lane.rf_labels = [
+                    (spot, label_item)
+                    for spot, label_item in self._lane.rf_labels
+                    if spot is not self._item
+                ]
                 self._lane.update_rf_labels()
             elif hasattr(self._lane, "bands"):
-                self._lane.bands = [(b, l) for b, l in self._lane.bands if b is not self._item]
+                self._lane.bands = [
+                    (band, label_item)
+                    for band, label_item in self._lane.bands
+                    if band is not self._item
+                ]
                 self._lane.update_labels()
 
 class RemoveSpotBandCommand(QUndoCommand):
@@ -124,10 +133,18 @@ class RemoveSpotBandCommand(QUndoCommand):
             if self._label and self._label.scene():
                 self._label.scene().removeItem(self._label)
             if hasattr(self._lane, "rf_labels"):
-                self._lane.rf_labels = [(s, l) for s, l in self._lane.rf_labels if s is not self._item]
+                self._lane.rf_labels = [
+                    (spot, label_item)
+                    for spot, label_item in self._lane.rf_labels
+                    if spot is not self._item
+                ]
                 self._lane.update_rf_labels()
             elif hasattr(self._lane, "bands"):
-                self._lane.bands = [(b, l) for b, l in self._lane.bands if b is not self._item]
+                self._lane.bands = [
+                    (band, label_item)
+                    for band, label_item in self._lane.bands
+                    if band is not self._item
+                ]
                 self._lane.update_labels()
 
     def undo(self) -> None:

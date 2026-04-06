@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ._shared import *
+from PyQt6.QtGui import QFont, QUndoCommand
 
 class MoveTextItemsCommand(QUndoCommand):
     """Comando para mover elementos de texto en el lienzo."""

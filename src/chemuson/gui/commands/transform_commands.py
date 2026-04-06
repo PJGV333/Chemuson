@@ -1,6 +1,18 @@
 from __future__ import annotations
 
-from ._shared import *
+from typing import Dict, Iterable, Optional, Tuple
+
+from PyQt6.QtCore import QPointF, QRectF
+from PyQt6.QtGui import QUndoCommand
+
+from chemuson.core.model import MolGraph
+
+from ._shared import (
+    _atom_degree,
+    _is_hidden_carbon_placeholder,
+    _validate_view_structure,
+    replace,
+)
 
 class ChangeCanvasOpacityCommand(QUndoCommand):
     """Comando para ajustar opacidad local o global de elementos del canvas."""

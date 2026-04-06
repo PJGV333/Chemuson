@@ -7,14 +7,10 @@ para integrarlas con la pila de undo/redo de Qt.
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Dict, Iterable, List, Optional, Tuple
 
-from PyQt6.QtCore import QPointF, QRectF
-from PyQt6.QtGui import QFont, QUndoCommand, QColor
-from PyQt6.QtWidgets import QGraphicsTextItem
+from PyQt6.QtCore import QPointF
 
-from chemuson.core.model import BondStyle, BondStereo, MolGraph, bond_is_structural
-from chemuson.gui.diagram_models import SemanticDiagram
+from chemuson.core.model import BondStyle, MolGraph, bond_is_structural
 from chemuson.gui.geom import angle_deg, angle_distance_deg, endpoint_from_angle_len
 
 _IMPLICIT_ELEMENTS = {"C"}
@@ -204,4 +200,3 @@ def _collect_attached_hydrogens(
 
 
 __all__ = [name for name in globals() if not name.startswith("__")]
-

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from ._shared import *
+from typing import Optional
+
+from PyQt6.QtCore import QPointF, QRectF
+from PyQt6.QtGui import QUndoCommand
 
 class ChangeArrowStrokeCommand(QUndoCommand):
     """Comando para cambiar el grosor de una flecha seleccionada."""

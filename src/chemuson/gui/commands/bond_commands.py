@@ -1,6 +1,23 @@
 from __future__ import annotations
 
-from ._shared import *
+from typing import Optional, List, Tuple
+
+from PyQt6.QtGui import QUndoCommand
+
+from chemuson.core.model import BondStereo, BondStyle, MolGraph
+
+from ._shared import (
+    _BOND_LENGTH_UNSET,
+    _BOND_STROKE_UNSET,
+    _DONOR_UNSET,
+    _FLEX_CURVE_UNSET,
+    _atom_degree,
+    _default_is_explicit,
+    _remove_hydrogen_specs,
+    _resolve_atom_label_spec,
+    _validate_view_structure,
+    replace,
+)
 
 class AddBondCommand(QUndoCommand):
     """Comando para añadir un enlace (y opcionalmente un átomo nuevo)."""
