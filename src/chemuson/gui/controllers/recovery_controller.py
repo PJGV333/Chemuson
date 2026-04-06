@@ -5,7 +5,6 @@ import json
 import os
 from typing import Callable, Optional
 
-from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QDialog,

@@ -8,42 +8,28 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QDialog,
     QDialogButtonBox,
-    QHBoxLayout,
     QFontDialog,
     QInputDialog,
     QMainWindow,
-    QMenu,
-    QMenuBar,
     QFileDialog,
     QMessageBox,
     QToolBar,
-    QWidget,
     QFormLayout,
     QDoubleSpinBox,
     QComboBox,
-    QAbstractItemView,
     QTabWidget,
-    QTableWidget,
-    QTableWidgetItem,
-    QPushButton,
     QVBoxLayout,
     QLabel,
     QLineEdit,
-    QHeaderView,
-    QSizePolicy,
     QSpinBox,
     QTextEdit,
 )
-from PyQt6.QtCore import Qt, QSize, QSettings, QEvent, QTimer, QPointF, QEventLoop
-from PyQt6.QtGui import QAction, QActionGroup, QKeySequence, QIcon, QPainter, QPixmap, QPen, QColor, QBrush, QFont, QTextCharFormat, QTextCursor, QShortcut
-from PyQt6.QtPrintSupport import QPrinter
-from typing import Callable, Optional
+from PyQt6.QtCore import Qt, QSize, QSettings, QEvent, QTimer, QPointF
+from PyQt6.QtGui import QAction, QActionGroup, QKeySequence, QIcon, QPainter, QPixmap, QPen, QColor, QTextCursor
+from typing import Optional
 from dataclasses import replace
-from datetime import datetime
-import json
 import math
 import os
-import re
 import sys
 
 from chemuson.gui.canvas import (
@@ -63,15 +49,11 @@ from chemuson.gui.composite_diagram_item import CompositeDiagramItem
 from chemuson.gui.orbitals import ORBITAL_MENU_ORDER, orbital_display_name, orbital_tool_id
 from chemuson.gui.toolbar import ChemusonToolbar, SymbolPaletteToolbar
 from chemuson.gui.styles import MAIN_STYLESHEET, TOOL_PALETTE_STYLESHEET
-from chemuson.gui.icons import draw_generic_icon
 from chemuson.gui.docks import PlantillasDock, InspectorDock, AppearanceDock
 from chemuson.gui.dialogs import PreferencesDialog, QuickStartDialog, StyleDialog
 from chemuson.gui.text_toolbar import TextFormatToolbar
 from chemuson.gui.commands import ChangeAtomCommand, EditSemanticDiagramCommand
 from chemuson.gui.template_library import TemplateLibrary, DEFAULT_CATEGORY_USER
-from chemuson.gui.templates import (
-    build_linear_chain_template,
-)
 from chemuson.gui.actions import (
     create_edit_actions,
     create_file_actions,
@@ -83,123 +65,37 @@ from chemuson.gui.controllers import (
     DocumentController,
     DocumentDiscardContext,
     ExportController,
+    FileController,
+    FileWorkflowContext,
     RecentFilesContext,
     RecoveryController,
     TemplateController,
     TemplateControllerContext,
     TextFormatController,
+    UpdateController,
+    UpdateControllerContext,
+)
+from chemuson.gui.controllers.update_controller import (
+    FLATPAK_APP_ID as FLATPAK_APP_ID,
+    format_no_update_message as format_no_update_message,
+    format_update_disabled_message as format_update_disabled_message,
+)
+from chemuson.gui.rich_text_dialog_service import (
+    open_rich_text_value_dialog,
+    rich_text_editor_value,
 )
 from chemuson.gui.tab_manager import CanvasTabManager
-from chemuson.chemio.rdkit_io import molfile_to_molgraph, molgraph_to_molfile
-from chemuson.chemio.persistence import PersistenceManager
-from chemuson.core.model import MolGraph
+from chemuson.chemio.rdkit_io import molfile_to_molgraph
+from chemuson.update import UpdateSettings
 from chemuson.utils import crash_reporter
 from chemuson.version import get_app_version
-from chemuson.update import (
-    AutoUpdateCore,
-    GitHubReleasesProvider,
-    PortableUpdateContext,
-    UpdateChannel,
-    UpdateMode,
-    UpdateSettings,
-    UpdateTelemetryLogger,
-    choose_windows_asset_flavor,
-    detect_portable_update_context,
-    detect_windows_install_context,
-    is_portable_target_writable,
-    is_windows_installer_asset,
-    launch_portable_update_script,
-    launch_inno_installer,
-    mark_checked,
-    should_check_now,
-    write_portable_update_script,
-)
 
-
-FLATPAK_APP_ID = "io.github.PJGV333.Chemuson"
-
-
-def _channel_display_name(channel: str) -> str:
-    """Devuelve un nombre legible para el canal de updates."""
-    value = str(channel or "").strip().lower()
-    if value == "stable":
-        return "estable"
-    if value == "beta":
-        return "beta"
-    return value or "desconocido"
-
-
-def _update_source_display_name(source: str) -> str:
-    """Devuelve un nombre legible para el origen del feed de updates."""
-    value = str(source or "").strip().lower()
-    if value == "cache":
-        return "caché local"
-    if value == "remote":
-        return "GitHub"
-    if value == "error":
-        return "error"
-    return ""
-
-
-def format_no_update_message(
-    current_version: str,
-    channel: str,
-    reason: str = "",
-    latest_version: str = "",
-    source: str = "",
-) -> str:
-    """Construye mensaje explicativo cuando no hay update elegible."""
-    lines = [
-        "No hay una version publicada mas nueva para tu canal actual.",
-        "",
-        f"Version instalada: {str(current_version or '').strip() or 'desconocida'}",
-        f"Canal: {_channel_display_name(channel)}",
-    ]
-    latest = str(latest_version or "").strip()
-    if latest:
-        lines.append(f"Ultima version consultada: {latest}")
-    source_name = _update_source_display_name(source)
-    if source_name:
-        lines.append(f"Origen de datos: {source_name}")
-    lines.extend(
-        [
-            "",
-            "Este verificador compara releases publicadas; no distribuye commits sueltos.",
-        ]
-    )
-    if str(source or "").strip().lower() == "cache":
-        lines.extend(
-            [
-                "",
-                "Aviso: el resultado proviene de la caché local. Si acabas de publicar una release, "
-                "vuelve a intentarlo cuando GitHub esté accesible.",
-            ]
-        )
-    detail = str(reason or "").strip()
-    if detail:
-        lines.extend(["", f"Detalle: {detail}"])
-    return "\n".join(lines)
-
-
-def is_running_in_flatpak() -> bool:
-    """Detecta si Chemuson corre dentro de un sandbox Flatpak."""
-    flatpak_id = str(os.getenv("FLATPAK_ID", "") or "").strip()
-    if flatpak_id:
-        return True
-    return os.path.exists("/.flatpak-info")
-
-
-def format_update_disabled_message(flatpak: bool = False, app_id: str = FLATPAK_APP_ID) -> str:
-    """Construye mensaje cuando el chequeo interno de updates está deshabilitado."""
-    if flatpak:
-        return (
-            "Esta edicion Flatpak no usa auto-update real dentro de Chemuson.\n"
-            "Se actualiza con Flatpak, no desde la propia app.\n\n"
-            f"Usa:\nflatpak update {app_id}\n\n"
-            "Si instalaste desde un bundle local sin un remote configurado, "
-            "instala el bundle mas reciente manualmente."
-        )
-    return "El chequeo de actualizaciones está deshabilitado por entorno."
+__all__ = [
+    "ChemusonWindow",
+    "FLATPAK_APP_ID",
+    "format_no_update_message",
+    "format_update_disabled_message",
+]
 
 
 class ChemusonWindow(QMainWindow):
@@ -233,28 +129,10 @@ class ChemusonWindow(QMainWindow):
         self._current_tool_id = "tool_select"
         self._settings = QSettings("Chemuson", "Chemuson")
         self._document_controller = DocumentController()
-        self._update_settings = self._load_update_preferences()
+        self._file_controller = FileController()
+        self._update_controller = UpdateController(self._settings, self._app_version)
+        self._update_settings = self._update_controller.settings
         self._name_advanced_default, self._name_rdkit_isolated_default = self._load_naming_preferences()
-        self._windows_install_context = detect_windows_install_context()
-        self._portable_update_context = detect_portable_update_context(
-            windows_context=self._windows_install_context
-        )
-        self._pending_windows_installer_path = ""
-        self._pending_windows_installer_version = ""
-        self._pending_windows_download = None
-        self._pending_portable_target_path = ""
-        self._pending_portable_version = ""
-        self._pending_portable_download = None
-        self._pending_portable_relaunch = False
-        self._pending_portable_context = PortableUpdateContext(
-            is_portable=False,
-            is_windows=False,
-            is_appimage=False,
-            target_path="",
-            executable_path="",
-            display_name="",
-        )
-        self._update_telemetry = UpdateTelemetryLogger()
         self._recent_files = self._load_recent_files()
         self.template_library = TemplateLibrary()
         self._template_icon_cache: dict[str, QIcon] = {}
@@ -1160,31 +1038,8 @@ class ChemusonWindow(QMainWindow):
         return self._text_format_controller.apply_text_alignment_to_external_editor(self, alignment)
 
     def _rich_text_editor_value(self, editor: QTextEdit) -> str:
-        """Devuelve texto plano cuando no hay formato, u HTML si sí lo hay."""
-        html_value = str(editor.toHtml() or "")
-        plain_value = str(editor.toPlainText() or "")
-        rich_markers = (
-            "<span style=",
-            "vertical-align:",
-            "font-weight:700",
-            "font-weight:600",
-            "font-style:italic",
-            "text-decoration:",
-            "text-align:center",
-            "text-align:right",
-            "text-align:justify",
-            "<ul",
-            "<ol",
-        )
-        if not any(marker in html_value for marker in rich_markers):
-            return plain_value
-        html_value = html_value.replace("<!--StartFragment-->", "").replace("<!--EndFragment-->", "")
-        html_value = re.sub(r"\s*font-family:'[^']*';", " ", html_value)
-        html_value = re.sub(r"\s*font-size:[0-9.]+pt;", " ", html_value)
-        html_value = re.sub(r"\s*font-weight:400;", " ", html_value)
-        html_value = re.sub(r"\s*font-style:normal;", " ", html_value)
-        html_value = re.sub(r"\s{2,}", " ", html_value)
-        return html_value
+        """Compatibilidad para el flujo de diálogo enriquecido."""
+        return rich_text_editor_value(editor)
 
     def _open_rich_text_value_dialog(
         self,
@@ -1194,109 +1049,14 @@ class ChemusonWindow(QMainWindow):
         initial_text: str = "",
     ) -> tuple[str, bool]:
         """Abre un editor enriquecido no modal conectado al toolbar de texto."""
-        dialog = QDialog(self)
-        dialog.setWindowTitle(title)
-        dialog.setModal(False)
-        dialog.setWindowModality(Qt.WindowModality.NonModal)
-        dialog.resize(420, 240)
-        layout = QVBoxLayout(dialog)
-        layout.addWidget(QLabel(label, dialog))
-        editor = QTextEdit(dialog)
-        editor.setAcceptRichText(True)
-        editor.setMinimumHeight(96)
-        editor.setFont(QFont("Arial", 10))
-        if Qt.mightBeRichText(str(initial_text or "")):
-            editor.setHtml(str(initial_text or ""))
-        else:
-            editor.setPlainText(str(initial_text or ""))
-        layout.addWidget(editor)
-        def handle_format(prop_name: str) -> None:
-            """Maneja el formato directamente sobre el editor activo."""
-            editor.setFocus()
-            cursor = editor.textCursor()
-            fmt = QTextCharFormat()
-            
-            # Si hay selección, intentamos detectar si todo el bloque ya tiene el formato
-            # para actuar como toggle, de lo contrario usamos el estado del cursor.
-            current_fmt = editor.currentCharFormat()
-            
-            if prop_name == "bold":
-                is_bold = current_fmt.fontWeight() != QFont.Weight.Bold
-                fmt.setFontWeight(QFont.Weight.Bold if is_bold else QFont.Weight.Normal)
-            elif prop_name == "italic":
-                fmt.setFontItalic(not current_fmt.fontItalic())
-            elif prop_name == "underline":
-                fmt.setFontUnderline(not current_fmt.fontUnderline())
-            elif prop_name == "sub":
-                current_align = current_fmt.verticalAlignment()
-                if current_align == QTextCharFormat.VerticalAlignment.AlignSubScript:
-                    fmt.setVerticalAlignment(QTextCharFormat.VerticalAlignment.AlignNormal)
-                else:
-                    fmt.setVerticalAlignment(QTextCharFormat.VerticalAlignment.AlignSubScript)
-            elif prop_name == "sup":
-                current_align = current_fmt.verticalAlignment()
-                if current_align == QTextCharFormat.VerticalAlignment.AlignSuperScript:
-                    fmt.setVerticalAlignment(QTextCharFormat.VerticalAlignment.AlignNormal)
-                else:
-                    fmt.setVerticalAlignment(QTextCharFormat.VerticalAlignment.AlignSuperScript)
-            
-            if cursor.hasSelection():
-                # Normalizamos el cursor para asegurar que mergeCharFormat funcione correctamente
-                start = cursor.selectionStart()
-                end = cursor.selectionEnd()
-                cursor.setPosition(start)
-                cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
-                
-                cursor.mergeCharFormat(fmt)
-                editor.setTextCursor(cursor)
-            else:
-                editor.mergeCurrentCharFormat(fmt)
-            self._sync_text_toolbar_from_external_editor()
-
-        shortcuts = (
-            (QKeySequence.StandardKey.Bold, lambda: handle_format("bold")),
-            (QKeySequence.StandardKey.Italic, lambda: handle_format("italic")),
-            (QKeySequence.StandardKey.Underline, lambda: handle_format("underline")),
-            # Subscript shortcuts
-            (QKeySequence("Ctrl+="), lambda: handle_format("sub")),
-            (QKeySequence("Ctrl+,"), lambda: handle_format("sub")),
-            (QKeySequence("Ctrl+Shift+B"), lambda: handle_format("sub")),
-            # Superscript shortcuts
-            (QKeySequence("Ctrl+Shift+="), lambda: handle_format("sup")),
-            (QKeySequence("Ctrl++"), lambda: handle_format("sup")),
-            (QKeySequence("Ctrl+."), lambda: handle_format("sup")),
-            (QKeySequence("Ctrl+Shift+P"), lambda: handle_format("sup")),
-            # Symbols
-            (QKeySequence("Alt+-"), lambda: editor.insertPlainText("—")),
-            (QKeySequence("Alt+Shift+-"), lambda: editor.insertPlainText("—")),
+        return open_rich_text_value_dialog(
+            self,
+            title=title,
+            label=label,
+            initial_text=initial_text,
+            set_external_text_editor=self._set_external_text_editor,
+            sync_text_toolbar=self._sync_text_toolbar_from_external_editor,
         )
-        for sequence, handler in shortcuts:
-            shortcut = QShortcut(sequence, dialog)
-            shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
-            shortcut.activated.connect(handler)
-
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
-            parent=dialog,
-        )
-        buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
-        layout.addWidget(buttons)
-
-        loop = QEventLoop(dialog)
-        dialog.finished.connect(loop.quit)
-        self._set_external_text_editor(editor)
-        dialog.show()
-        dialog.raise_()
-        dialog.activateWindow()
-        editor.setFocus()
-        loop.exec()
-        
-        value = self._rich_text_editor_value(editor)
-        accepted = dialog.result() == QDialog.DialogCode.Accepted
-        self._set_external_text_editor(None)
-        dialog.deleteLater()
-        return value, accepted
 
     def _semantic_diagram_builder_spec(
         self,
@@ -1573,72 +1333,16 @@ class ChemusonWindow(QMainWindow):
         self._document_controller.save_recent_files(self._recent_files_context())
 
     def _load_update_preferences(self) -> UpdateSettings:
-        """Carga preferencias de actualización persistidas en QSettings."""
-        enabled = self._setting_bool(self._settings.value("update/enabled", False), False)
-        raw_channel = str(self._settings.value("update/channel", "stable") or "stable").strip().lower()
-        raw_mode = str(self._settings.value("update/mode", "notify") or "notify").strip().lower()
-        try:
-            interval_hours = int(self._settings.value("update/check_interval_hours", 24) or 24)
-        except Exception:
-            interval_hours = 24
-        require_sha256 = self._setting_bool(self._settings.value("update/require_sha256", True), True)
-        require_signature = self._setting_bool(
-            self._settings.value("update/require_signature", False),
-            False,
-        )
-        highest_seen_version = str(
-            self._settings.value("update/highest_seen_version", "") or ""
-        ).strip()
-        channel = UpdateChannel.STABLE
-        mode = UpdateMode.NOTIFY
-        try:
-            channel = UpdateChannel(raw_channel)
-        except Exception:
-            channel = UpdateChannel.STABLE
-        try:
-            mode = UpdateMode(raw_mode)
-        except Exception:
-            mode = UpdateMode.NOTIFY
-        last_check_iso = str(self._settings.value("update/last_check_iso", "") or "").strip()
-        return UpdateSettings(
-            enabled=bool(enabled),
-            channel=channel,
-            mode=mode,
-            check_interval_hours=max(1, interval_hours),
-            last_check_iso=last_check_iso,
-            highest_seen_version=highest_seen_version,
-            require_sha256=bool(require_sha256),
-            require_signature=bool(require_signature),
-        )
+        """Compatibilidad con el estado centralizado en UpdateController."""
+        return self._update_controller.settings
 
     def _save_update_preferences(self) -> None:
         """Persiste preferencias de actualización en QSettings."""
-        self._settings.setValue("update/enabled", bool(self._update_settings.enabled))
-        self._settings.setValue("update/channel", str(self._update_settings.channel.value))
-        self._settings.setValue("update/mode", str(self._update_settings.mode.value))
-        self._settings.setValue(
-            "update/check_interval_hours",
-            int(max(1, self._update_settings.check_interval_hours)),
-        )
-        self._settings.setValue("update/last_check_iso", str(self._update_settings.last_check_iso or ""))
-        self._settings.setValue(
-            "update/highest_seen_version",
-            str(self._update_settings.highest_seen_version or ""),
-        )
-        self._settings.setValue("update/require_sha256", bool(self._update_settings.require_sha256))
-        self._settings.setValue(
-            "update/require_signature",
-            bool(self._update_settings.require_signature),
-        )
+        self._update_controller.save_preferences()
 
     def _update_settings_payload(self) -> dict:
         """Devuelve preferencias de update para precargar en diálogo."""
-        return {
-            "enabled": bool(self._update_settings.enabled),
-            "channel": str(self._update_settings.channel.value),
-            "mode": str(self._update_settings.mode.value),
-            "check_interval_hours": int(max(1, self._update_settings.check_interval_hours)),
-        }
+        return self._update_controller.settings_payload()
 
     @staticmethod
     def _setting_bool(value, default: bool) -> bool:
@@ -1750,558 +1454,39 @@ class ChemusonWindow(QMainWindow):
         """Lanza chequeo manual de actualizaciones desde el menú Ayuda."""
         self._check_for_updates(force=True, interactive=True)
 
-    def _preferred_update_asset_flavor(self) -> str | None:
-        """Devuelve preferencia de asset según contexto de ejecución."""
-        self._windows_install_context = detect_windows_install_context()
-        self._portable_update_context = detect_portable_update_context(
-            windows_context=self._windows_install_context
+    def _update_controller_context(self) -> UpdateControllerContext:
+        """Dependencias mínimas que UpdateController necesita desde la ventana."""
+        return UpdateControllerContext(
+            parent=self,
+            show_status=lambda message, timeout=0: self.statusBar().showMessage(message, timeout),
+            close_window=self.close,
         )
-        flavor = choose_windows_asset_flavor(self._windows_install_context)
-        return flavor or None
-
-    def _current_portable_update_context(self) -> PortableUpdateContext:
-        """Recalcula contexto de auto-update para AppImage/binario portable."""
-        self._windows_install_context = detect_windows_install_context()
-        self._portable_update_context = detect_portable_update_context(
-            windows_context=self._windows_install_context
-        )
-        return self._portable_update_context
-
-    def _log_update_event(self, event: str, **fields) -> None:
-        """Registra telemetría local mínima de update (sin datos sensibles)."""
-        try:
-            self._update_telemetry.log_event(event, **fields)
-        except Exception:
-            return
 
     def _check_for_updates(self, force: bool, interactive: bool) -> None:
-        """Ejecuta chequeo de updates aplicando política y canal."""
-        self._log_update_event(
-            "check_start",
-            force=bool(force),
-            interactive=bool(interactive),
-            channel=self._update_settings.channel.value,
-            mode=self._update_settings.mode.value,
+        """Ejecuta chequeo de updates delegando en UpdateController."""
+        self._update_controller.check_for_updates(
+            self._update_controller_context(),
+            force=force,
+            interactive=interactive,
         )
-        if os.getenv("CHEMUSON_DISABLE_UPDATE_CHECK", "").strip().lower() in {"1", "true", "yes"}:
-            flatpak_runtime = is_running_in_flatpak()
-            self._log_update_event(
-                "check_skipped",
-                reason_code="disabled_flatpak" if flatpak_runtime else "disabled_env",
-                channel=self._update_settings.channel.value,
-                mode=self._update_settings.mode.value,
-            )
-            if interactive:
-                QMessageBox.information(
-                    self,
-                    "Actualizaciones",
-                    format_update_disabled_message(flatpak=flatpak_runtime),
-                )
-            return
-        if not force and not should_check_now(self._update_settings):
-            self._log_update_event(
-                "check_skipped",
-                reason_code="interval_not_elapsed",
-                channel=self._update_settings.channel.value,
-                mode=self._update_settings.mode.value,
-            )
-            return
-        mark_checked(self._update_settings)
-        self._save_update_preferences()
-        provider = None
-        try:
-            manual_check = bool(force and interactive)
-            provider = GitHubReleasesProvider(
-                "PJGV333",
-                "Chemuson",
-                timeout=8.0 if manual_check else 4.0,
-                allow_cached_fallback=not manual_check,
-            )
-            updater = AutoUpdateCore(provider, self._update_settings)
-            result = updater.check_for_updates(
-                get_app_version(),
-                preferred_asset_flavor=self._preferred_update_asset_flavor(),
-            )
-        except Exception as exc:
-            self._log_update_event(
-                "check_error",
-                error_type=exc.__class__.__name__,
-                channel=self._update_settings.channel.value,
-                mode=self._update_settings.mode.value,
-            )
-            if self._update_settings.mode == UpdateMode.NOTIFY or interactive:
-                self.statusBar().showMessage(f"No se pudo comprobar actualización: {exc}", 10000)
-                QMessageBox.warning(
-                    self,
-                    "Actualizaciones",
-                    f"No se pudo comprobar actualización:\n{exc}",
-                )
-            return
-        source = ""
-        if provider is not None:
-            source = str(getattr(provider, "last_fetch_source", "") or "")
-        if source == "cache":
-            self.statusBar().showMessage(
-                "GitHub no disponible: se usó caché local de actualizaciones.",
-                12000,
-            )
-        self._log_update_event(
-            "check_result",
-            available=bool(getattr(result, "available", False)),
-            current_version=str(getattr(result, "current_version", "") or ""),
-            latest_version=str(getattr(result, "latest_version", "") or ""),
-            source=source or "unknown",
-            channel=self._update_settings.channel.value,
-            mode=self._update_settings.mode.value,
-        )
-        # Persiste metadatos de seguridad (p. ej. highest_seen_version anti-downgrade).
-        self._save_update_preferences()
-        self._handle_update_check_result(result, interactive=interactive, source=source)
 
-    def _download_update_candidate(self, candidate):
-        """Descarga y verifica un candidato de update; devuelve `DownloadedUpdate`."""
-        version = str(getattr(candidate.release, "version", "latest") or "latest")
-        self._log_update_event(
-            "download_start",
-            latest_version=version,
-            channel=self._update_settings.channel.value,
-            mode=self._update_settings.mode.value,
-        )
-        provider = GitHubReleasesProvider("PJGV333", "Chemuson", timeout=12.0)
-        updater = AutoUpdateCore(provider, self._update_settings)
-        download_dir = os.path.join(os.path.expanduser("~"), ".chemuson", "updates", version)
-        try:
-            downloaded = updater.download_candidate(candidate, download_dir)
-            verification = updater.verify_download(downloaded)
-            if not verification.ok:
-                reason = verification.reason or "Falló verificación del paquete descargado."
-                self._log_update_event(
-                    "download_failed",
-                    latest_version=version,
-                    reason_code="verification_failed",
-                )
-                raise RuntimeError(reason)
-            self._log_update_event("download_ok", latest_version=version)
-            return downloaded
-        except Exception as exc:
-            self._log_update_event(
-                "download_failed",
-                latest_version=version,
-                error_type=exc.__class__.__name__,
-            )
-            raise
 
-    def _queue_windows_installer_update(self, candidate, show_errors: bool = True) -> bool:
-        """Descarga instalador Windows y lo deja en cola para aplicar al salir."""
-        candidate_version = str(getattr(candidate.release, "version", "") or "")
-        if (
-            self._pending_windows_installer_path
-            and self._pending_windows_installer_version == candidate_version
-            and os.path.exists(self._pending_windows_installer_path)
-            and self._pending_windows_download is not None
-        ):
-            self._log_update_event(
-                "queue_reused",
-                latest_version=candidate_version,
-                context="windows_installer",
-            )
-            return True
-        try:
-            downloaded = self._download_update_candidate(candidate)
-        except Exception as exc:
-            self._log_update_event(
-                "queue_failed",
-                latest_version=candidate_version,
-                context="windows_installer",
-                error_type=exc.__class__.__name__,
-            )
-            if show_errors:
-                QMessageBox.warning(
-                    self,
-                    "Actualización",
-                    f"No se pudo preparar el instalador de actualización:\n{exc}",
-                )
-            else:
-                self.statusBar().showMessage(
-                    f"No se pudo preparar la instalación silenciosa de actualización: {exc}",
-                    12000,
-                )
-            return False
-        self._pending_windows_download = downloaded
-        self._pending_windows_installer_path = str(getattr(downloaded, "artifact_path", "") or "")
-        self._pending_windows_installer_version = candidate_version
-        self._log_update_event(
-            "queue_ok",
-            latest_version=candidate_version,
-            context="windows_installer",
-        )
-        return True
 
-    def _queue_portable_binary_update(
-        self,
-        candidate,
-        context: PortableUpdateContext,
-        show_errors: bool = True,
-    ) -> bool:
-        """Descarga un binario portable y lo deja listo para reemplazo al salir."""
-        candidate_version = str(getattr(candidate.release, "version", "") or "")
-        target_path = str(getattr(context, "target_path", "") or "").strip()
-        if (
-            self._pending_portable_target_path
-            and self._pending_portable_target_path == target_path
-            and self._pending_portable_version == candidate_version
-            and self._pending_portable_download is not None
-            and os.path.exists(str(getattr(self._pending_portable_download, "artifact_path", "") or ""))
-        ):
-            self._log_update_event(
-                "queue_reused",
-                latest_version=candidate_version,
-                context="portable_binary",
-            )
-            return True
-        try:
-            if not context.can_self_update:
-                raise RuntimeError("No se pudo determinar la ruta del ejecutable actual.")
-            if not is_portable_target_writable(target_path):
-                raise PermissionError(
-                    "Chemuson no tiene permisos para reemplazar el ejecutable actual."
-                )
-            downloaded = self._download_update_candidate(candidate)
-        except Exception as exc:
-            self._log_update_event(
-                "queue_failed",
-                latest_version=candidate_version,
-                context="portable_binary",
-                error_type=exc.__class__.__name__,
-            )
-            if show_errors:
-                QMessageBox.warning(
-                    self,
-                    "Actualización",
-                    f"No se pudo preparar la actualización portable:\n{exc}",
-                )
-            else:
-                self.statusBar().showMessage(
-                    f"No se pudo preparar el auto-update real: {exc}",
-                    12000,
-                )
-            return False
-        self._pending_portable_download = downloaded
-        self._pending_portable_target_path = target_path
-        self._pending_portable_version = candidate_version
-        self._pending_portable_relaunch = False
-        self._pending_portable_context = context
-        self._log_update_event(
-            "queue_ok",
-            latest_version=candidate_version,
-            context="portable_binary",
-            target_kind="appimage" if context.is_appimage else "portable",
-        )
-        return True
 
-    def _offer_windows_installer_update(self, result, interactive: bool) -> None:
-        """Gestiona oferta/cola de update para instalaciones Windows."""
-        candidate = getattr(result, "candidate", None)
-        if candidate is None:
-            return
-        version = str(getattr(result, "latest_version", "") or "")
-        if self._update_settings.mode == UpdateMode.SILENT and not interactive:
-            if self._queue_windows_installer_update(candidate, show_errors=False):
-                self.statusBar().showMessage(
-                    f"Instalación silenciosa {version} lista para aplicarse al cerrar Chemuson.",
-                    20000,
-                )
-            return
 
-        reply = QMessageBox.question(
-            self,
-            "Actualización disponible",
-            (
-                f"Hay una nueva versión disponible ({version}).\n\n"
-                "Esta edición no usa auto-update real.\n"
-                "Chemuson descargará el instalador oficial y lo ejecutará en silencio al cerrar.\n\n"
-                "¿Quieres prepararlo ahora?"
-            ),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.Yes,
-        )
-        if reply != QMessageBox.StandardButton.Yes:
-            return
-        if not self._queue_windows_installer_update(candidate):
-            return
-        self.statusBar().showMessage(
-            f"Instalador {version} preparado. Se ejecutará en silencio al cerrar Chemuson.",
-            20000,
-        )
-        if interactive:
-            close_now = QMessageBox.question(
-                self,
-                "Aplicar actualización",
-                "El instalador de actualización está listo.\n"
-                "¿Deseas cerrar Chemuson ahora para ejecutar la instalación silenciosa?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if close_now == QMessageBox.StandardButton.Yes:
-                self.close()
 
-    def _offer_portable_binary_update(
-        self,
-        result,
-        interactive: bool,
-        context: PortableUpdateContext,
-    ) -> None:
-        """Gestiona oferta/cola de update para AppImage o binario portable."""
-        candidate = getattr(result, "candidate", None)
-        if candidate is None:
-            return
-        version = str(getattr(result, "latest_version", "") or "")
-        target_label = "AppImage" if context.is_appimage else "ejecutable portable"
-        if self._update_settings.mode == UpdateMode.SILENT and not interactive:
-            if self._queue_portable_binary_update(candidate, context, show_errors=False):
-                self.statusBar().showMessage(
-                    f"Auto-update real {version} listo: Chemuson reemplazará el {target_label} al cerrar.",
-                    20000,
-                )
-            return
-
-        reply = QMessageBox.question(
-            self,
-            "Actualización disponible",
-            (
-                f"Hay una nueva versión disponible ({version}).\n\n"
-                "Esto es auto-update real.\n"
-                f"Chemuson descargará la actualización y reemplazará el {target_label} actual al cerrar.\n\n"
-                "¿Quieres prepararla ahora?"
-            ),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.Yes,
-        )
-        if reply != QMessageBox.StandardButton.Yes:
-            return
-        if not self._queue_portable_binary_update(candidate, context):
-            return
-        self.statusBar().showMessage(
-            f"Auto-update real {version} preparado. Se aplicará al cerrar Chemuson.",
-            20000,
-        )
-        if interactive:
-            close_now = QMessageBox.question(
-                self,
-                "Aplicar actualización",
-                "El auto-update real está listo.\n"
-                "¿Deseas cerrar Chemuson ahora para completar el reemplazo?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if close_now == QMessageBox.StandardButton.Yes:
-                self._pending_portable_relaunch = True
-                if not self.close():
-                    self._pending_portable_relaunch = False
-
-    def _handle_update_check_result(self, result, interactive: bool = False, source: str = "") -> None:
-        """Notifica updates y habilita flujo de instalador en Windows instalado."""
-        if not getattr(result, "available", False):
-            if interactive:
-                QMessageBox.information(
-                    self,
-                    "Actualizaciones",
-                    format_no_update_message(
-                        str(getattr(result, "current_version", "") or self._app_version),
-                        str(getattr(result, "channel", "") or self._update_settings.channel.value),
-                        str(getattr(result, "reason", "") or ""),
-                        str(getattr(result, "latest_version", "") or ""),
-                        source,
-                    ),
-                )
-            return
-        candidate = getattr(result, "candidate", None)
-        artifact_name = ""
-        if candidate is not None and getattr(candidate, "artifact", None) is not None:
-            artifact_name = str(candidate.artifact.name)
-
-        # En instalaciones Windows se prioriza setup y se aplica al cierre.
-        if (
-            self._windows_install_context.is_windows
-            and self._windows_install_context.installed
-            and artifact_name
-            and is_windows_installer_asset(artifact_name)
-        ):
-            self._offer_windows_installer_update(result, interactive=interactive)
-            return
-
-        portable_context = self._current_portable_update_context()
-        if candidate is not None and portable_context.can_self_update:
-            self._offer_portable_binary_update(
-                result,
-                interactive=interactive,
-                context=portable_context,
-            )
-            return
-
-        message = (
-            f"Actualización disponible: {result.latest_version}"
-            + (f" ({artifact_name})" if artifact_name else "")
-        )
-        self.statusBar().showMessage(message, 15000)
-        if self._update_settings.mode == UpdateMode.NOTIFY or interactive:
-            release_url = ""
-            if candidate is not None and getattr(candidate, "release", None) is not None:
-                release_url = str(candidate.release.html_url or "")
-            source_line = f"\n\nOrigen de datos: {'caché local' if source == 'cache' else 'GitHub'}"
-            extra = f"\n\nRelease: {release_url}" if release_url else ""
-            QMessageBox.information(
-                self,
-                "Actualización disponible",
-                f"Hay una nueva versión disponible ({result.latest_version}).{extra}{source_line}",
-            )
 
     def _apply_pending_windows_update_on_exit(self) -> bool:
-        """Ejecuta instalador pendiente antes de salir cuando corresponde."""
-        installer_path = str(self._pending_windows_installer_path or "").strip()
-        if not installer_path:
-            return True
-        clear_pending = False
-        try:
-            downloaded = self._pending_windows_download
-            if downloaded is None:
-                raise RuntimeError("No hay metadata de verificación del instalador pendiente.")
-            provider = GitHubReleasesProvider("PJGV333", "Chemuson", timeout=6.0)
-            updater = AutoUpdateCore(provider, self._update_settings)
-            verify_result = updater.verify_download(downloaded)
-            if not verify_result.ok:
-                raise RuntimeError(
-                    f"No se ejecutará artefacto no verificado: {verify_result.reason}"
-                )
-            launch_inno_installer(installer_path, silent=True)
-            self._log_update_event(
-                "apply_queued",
-                latest_version=self._pending_windows_installer_version or "",
-                context="windows_installer",
-                result="launched",
-            )
-            clear_pending = True
-            return True
-        except Exception as exc:
-            self._log_update_event(
-                "apply_failed",
-                latest_version=self._pending_windows_installer_version or "",
-                context="windows_installer",
-                error_type=exc.__class__.__name__,
-            )
-            reply = QMessageBox.question(
-                self,
-                "Actualización pendiente",
-                (
-                    "No se pudo lanzar el instalador de actualización pendiente.\n"
-                    f"Error: {exc}\n\n"
-                    "¿Deseas salir de todas formas sin aplicar la actualización?"
-                ),
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if reply == QMessageBox.StandardButton.Yes:
-                clear_pending = True
-                return True
-            return False
-        finally:
-            if clear_pending:
-                self._pending_windows_download = None
-                self._pending_windows_installer_path = ""
-                self._pending_windows_installer_version = ""
+        """Aplica instalador pendiente usando UpdateController."""
+        return self._update_controller.apply_pending_windows_update_on_exit(
+            self._update_controller_context()
+        )
 
     def _apply_pending_portable_update_on_exit(self) -> bool:
-        """Lanza helper para reemplazar AppImage/binario portable al cerrar."""
-        target_path = str(self._pending_portable_target_path or "").strip()
-        if not target_path:
-            return True
-        clear_pending = False
-        try:
-            downloaded = self._pending_portable_download
-            if downloaded is None:
-                raise RuntimeError("No hay metadata de verificación del binario pendiente.")
-            provider = GitHubReleasesProvider("PJGV333", "Chemuson", timeout=6.0)
-            updater = AutoUpdateCore(provider, self._update_settings)
-            verify_result = updater.verify_download(downloaded)
-            if not verify_result.ok:
-                raise RuntimeError(
-                    f"No se reemplazará binario no verificado: {verify_result.reason}"
-                )
-            version = str(self._pending_portable_version or "latest").strip() or "latest"
-            script_dir = os.path.dirname(str(getattr(downloaded, "artifact_path", "") or ""))
-            rollback_dir = os.path.join(os.path.expanduser("~"), ".chemuson", "rollback")
-            os.makedirs(rollback_dir, exist_ok=True)
-            backup_name = (
-                f"{os.path.basename(target_path)}."
-                f"{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.bak"
-            )
-            backup_path = os.path.join(rollback_dir, backup_name)
-            log_path = os.path.join(script_dir, "portable-update.log")
-            script_name = (
-                "apply-portable-update.cmd"
-                if self._pending_portable_context.is_windows
-                else "apply-portable-update.sh"
-            )
-            script_path = os.path.join(script_dir, script_name)
-            write_portable_update_script(
-                script_path,
-                source_path=str(getattr(downloaded, "artifact_path", "") or ""),
-                target_path=target_path,
-                backup_path=backup_path,
-                log_path=log_path,
-                pid=os.getpid(),
-                relaunch=bool(self._pending_portable_relaunch),
-                platform_name="windows" if self._pending_portable_context.is_windows else "linux",
-            )
-            launch_portable_update_script(
-                script_path,
-                platform_name="windows" if self._pending_portable_context.is_windows else "linux",
-            )
-            self._log_update_event(
-                "apply_queued",
-                latest_version=version,
-                context="portable_binary",
-                result="helper_launched",
-                target_kind="appimage" if self._pending_portable_context.is_appimage else "portable",
-            )
-            clear_pending = True
-            return True
-        except Exception as exc:
-            self._log_update_event(
-                "apply_failed",
-                latest_version=self._pending_portable_version or "",
-                context="portable_binary",
-                error_type=exc.__class__.__name__,
-            )
-            reply = QMessageBox.question(
-                self,
-                "Actualización pendiente",
-                (
-                    "No se pudo preparar el reemplazo del ejecutable pendiente.\n"
-                    f"Error: {exc}\n\n"
-                    "¿Deseas salir de todas formas sin aplicar la actualización?"
-                ),
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if reply == QMessageBox.StandardButton.Yes:
-                clear_pending = True
-                return True
-            return False
-        finally:
-            if clear_pending:
-                self._pending_portable_download = None
-                self._pending_portable_target_path = ""
-                self._pending_portable_version = ""
-                self._pending_portable_relaunch = False
-                self._pending_portable_context = PortableUpdateContext(
-                    is_portable=False,
-                    is_windows=False,
-                    is_appimage=False,
-                    target_path="",
-                    executable_path="",
-                    display_name="",
-                )
+        """Aplica reemplazo portable pendiente usando UpdateController."""
+        return self._update_controller.apply_pending_portable_update_on_exit(
+            self._update_controller_context()
+        )
 
     def _add_recent_file(self, filepath: str) -> None:
         """Método auxiliar para  add recent file."""
@@ -2332,22 +1517,8 @@ class ChemusonWindow(QMainWindow):
             self.recent_menu.addAction(action)
 
     def _open_recent_file(self, filepath: str) -> None:
-        """Método auxiliar para  open recent file.
-
-        Args:
-            filepath: Descripción del parámetro.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la interfaz.
-        """
-        if not filepath or not os.path.exists(filepath):
-            QMessageBox.warning(self, "Archivo no encontrado", "El archivo no existe.")
-            self._update_recent_menu()
-            return
-        self._open_file_path(filepath)
+        """Abre una entrada reciente usando el workflow desacoplado."""
+        self._file_controller.open_recent_file(self._file_workflow_context(), filepath)
     
     # -------------------------------------------------------------------------
     # File Menu Handlers
@@ -2373,16 +1544,7 @@ class ChemusonWindow(QMainWindow):
 
     def _load_file_into_canvas(self, filepath: str, canvas: ChemusonCanvas) -> None:
         """Carga un archivo químico dentro de un canvas específico."""
-        if filepath.lower().endswith(".cmsn"):
-            canvas.clear_canvas()
-            PersistenceManager.load_from_file(filepath, canvas)
-            return
-
-        with open(filepath, "r", encoding="utf-8") as f:
-            molfile = f.read()
-        graph = molfile_to_molgraph(molfile)
-        canvas.clear_canvas()
-        canvas._insert_molgraph(graph)
+        self._file_controller.load_file_into_canvas(filepath, canvas)
 
     @staticmethod
     def _read_autosave_metadata(filepath: str) -> Optional[dict]:
@@ -2421,72 +1583,12 @@ class ChemusonWindow(QMainWindow):
         window._recovery_controller.check_autosaves(window)
 
     def _open_file_path(self, filepath: str) -> None:
-        """Método auxiliar para  open file path.
+        """Abre un archivo físico usando el workflow desacoplado."""
+        self._file_controller.open_file_path(self._file_workflow_context(), filepath)
 
-        Args:
-            filepath: Descripción del parámetro.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la interfaz.
-        """
-        if not filepath:
-            return
-        canvas = self._create_document_tab(make_current=True)
-        self._apply_toolbar_defaults_to_canvas(canvas)
-        try:
-            self._load_file_into_canvas(filepath, canvas)
-            canvas.undo_stack.setClean()
-            self._set_canvas_file_path(canvas, filepath)
-            self.tabs.setCurrentWidget(canvas)
-            self._set_active_canvas(canvas)
-            self._add_recent_file(filepath)
-            self._update_total_charge_indicator()
-            self.statusBar().showMessage(f"Abierto: {filepath}")
-        except Exception as e:
-            self._before_canvas_discard(canvas)
-            self._tab_manager.discard_canvas(canvas)
-            if self.tabs.count() == 0:
-                replacement = self._create_document_tab(make_current=True)
-                self._apply_toolbar_defaults_to_canvas(replacement)
-                self._set_active_canvas(replacement)
-            QMessageBox.critical(self, "Error", f"No se pudo abrir el archivo:\n{e}")
-    
     def _on_file_save(self) -> None:
-        """Save the current work in .cmsn format."""
-        filepath = self._tab_manager.file_path_for(self.canvas)
-        selected_filter = ""
-        if not filepath:
-            filepath, selected_filter = QFileDialog.getSaveFileName(
-                self,
-                "Guardar archivo",
-                "",
-                "Archivo de Chemuson (*.cmsn);;Archivo MOL (*.mol);;Todos los archivos (*.*)"
-            )
-        if filepath:
-            try:
-                autosave_manager = self._tab_manager.autosave_manager_for(self.canvas)
-                if filepath.lower().endswith(".mol") or filepath.lower().endswith(".sdf") or "MOL" in selected_filter:
-                    # Export as .mol if explicitly requested
-                    from chemuson.chemio.rdkit_io import molgraph_to_molfile
-                    molfile = molgraph_to_molfile(self.canvas.graph)
-                    with open(filepath, "w") as f:
-                        f.write(molfile)
-                else:
-                    # Save as .cmsn (native)
-                    if not filepath.lower().endswith(".cmsn"):
-                        filepath += ".cmsn"
-                    PersistenceManager.save_to_file(filepath, self.canvas)
-                self._set_canvas_file_path(self.canvas, filepath)
-                self.canvas.undo_stack.setClean()
-                if autosave_manager is not None:
-                    autosave_manager.cleanup_after_save()
-                self._add_recent_file(filepath)
-                self.statusBar().showMessage(f"Guardado: {filepath}")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"No se pudo guardar:\n{e}")
+        """Guarda el documento activo usando el workflow desacoplado."""
+        self._file_controller.save_file(self._file_workflow_context())
     
     def _on_export(self, format: str) -> None:
         """Export the canvas in the specified format."""
@@ -2497,6 +1599,23 @@ class ChemusonWindow(QMainWindow):
         return self._document_controller.confirm_discard_changes(
             self._document_discard_context(),
             canvas,
+        )
+
+    def _file_workflow_context(self) -> FileWorkflowContext:
+        """Construye el contrato mínimo requerido por FileController."""
+        return FileWorkflowContext(
+            parent=self,
+            canvas=self.canvas,
+            tabs=self.tabs,
+            tab_manager=self._tab_manager,
+            create_document_tab=self._create_document_tab,
+            apply_toolbar_defaults=self._apply_toolbar_defaults_to_canvas,
+            set_active_canvas=self._set_active_canvas,
+            before_canvas_discard=self._before_canvas_discard,
+            add_recent_file=self._add_recent_file,
+            refresh_recent_menu=self._update_recent_menu,
+            update_total_charge_indicator=self._update_total_charge_indicator,
+            show_status=lambda message: self.statusBar().showMessage(message),
         )
 
     def _recent_files_context(self) -> RecentFilesContext:
@@ -2567,35 +1686,8 @@ class ChemusonWindow(QMainWindow):
     # Edit Menu Handlers
     # -------------------------------------------------------------------------
     def _on_copy_as(self, format: str) -> None:
-        """Copy molecule in specified format to clipboard."""
-        try:
-            from PyQt6.QtWidgets import QApplication
-            clipboard = QApplication.clipboard()
-            graph, _bbox = self.canvas._analysis_graph_and_bbox()
-            target_graph = graph if graph is not None else self.canvas.graph
-            
-            if format == "smiles":
-                from chemuson.chemio.rdkit_io import molgraph_to_smiles
-                text = molgraph_to_smiles(target_graph) if target_graph.atoms else ""
-            elif format == "molfile":
-                from chemuson.chemio.rdkit_io import molgraph_to_molfile
-                text = molgraph_to_molfile(target_graph) if target_graph.atoms else ""
-            elif format == "inchi":
-                # InChI requires additional RDKit import
-                from chemuson.chemio.rdkit_io import molgraph_to_rdkit
-                from rdkit.Chem.inchi import MolToInchi
-                if target_graph.atoms:
-                    mol = molgraph_to_rdkit(target_graph)
-                    text = MolToInchi(mol)
-                else:
-                    text = ""
-            else:
-                text = ""
-            
-            clipboard.setText(text)
-            self.statusBar().showMessage(f"Copiado como {format.upper()}")
-        except Exception as e:
-            self.statusBar().showMessage(f"Error: {e}")
+        """Copia la estructura en el formato solicitado usando FileController."""
+        self._file_controller.copy_as(self._file_workflow_context(), format)
     
     def _on_preferences(self) -> None:
         """Open preferences dialog."""
@@ -2658,26 +1750,8 @@ class ChemusonWindow(QMainWindow):
         if bond_caps:
             self.appearance_dock.set_bond_caps(bond_caps)
 
-        update_enabled = self._setting_bool(prefs.get("update_enabled", self._update_settings.enabled), self._update_settings.enabled)
-        update_channel_raw = str(prefs.get("update_channel", self._update_settings.channel.value) or self._update_settings.channel.value).strip().lower()
-        update_mode_raw = str(prefs.get("update_mode", self._update_settings.mode.value) or self._update_settings.mode.value).strip().lower()
-        try:
-            update_interval = int(prefs.get("update_check_interval_hours", self._update_settings.check_interval_hours))
-        except Exception:
-            update_interval = self._update_settings.check_interval_hours
-        try:
-            channel = UpdateChannel(update_channel_raw)
-        except Exception:
-            channel = UpdateChannel.STABLE
-        try:
-            mode = UpdateMode(update_mode_raw)
-        except Exception:
-            mode = UpdateMode.NOTIFY
-        self._update_settings.enabled = bool(update_enabled)
-        self._update_settings.channel = channel
-        self._update_settings.mode = mode
-        self._update_settings.check_interval_hours = max(1, int(update_interval))
-        self._save_update_preferences()
+        self._update_controller.apply_preferences(prefs)
+        self._update_settings = self._update_controller.settings
 
         advanced_enabled = self._setting_bool(
             prefs.get("name_advanced_enabled", self.canvas.name_advanced_enabled),
