@@ -4,6 +4,8 @@ import os
 from dataclasses import dataclass
 from typing import Callable, Optional
 
+from chemuson.gui.tab_manager import CanvasTabManager
+
 
 @dataclass(slots=True)
 class RecentFilesContext:
@@ -13,6 +15,14 @@ class RecentFilesContext:
     recent_files: list[str]
     persist_recent_files: Callable[[], None]
     refresh_recent_menu: Callable[[], None]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.recent_files, list):
+            raise TypeError("RecentFilesContext.recent_files must be a list[str]")
+        if not callable(self.persist_recent_files):
+            raise TypeError("RecentFilesContext.persist_recent_files must be callable")
+        if not callable(self.refresh_recent_menu):
+            raise TypeError("RecentFilesContext.refresh_recent_menu must be callable")
 
 
 @dataclass(slots=True)
@@ -25,27 +35,41 @@ class DocumentDiscardContext:
     save_canvas: Callable[[], None]
     activate_canvas: Callable[[object], None]
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.tab_manager, CanvasTabManager):
+            raise TypeError("DocumentDiscardContext.tab_manager must be a CanvasTabManager")
+        if not callable(self.save_canvas):
+            raise TypeError("DocumentDiscardContext.save_canvas must be callable")
+        if not callable(self.activate_canvas):
+            raise TypeError("DocumentDiscardContext.activate_canvas must be callable")
+
 
 @dataclass(slots=True)
 class DocumentTabsContext:
-    """Compatibilidad temporal para mapear canvas a pestañas y rutas."""
+    """Contrato explícito para mapear canvas a pestañas y rutas."""
 
-    tab_manager: object
+    tab_manager: CanvasTabManager
     current_canvas: object | None = None
     current_file_path_setter: Callable[[Optional[str]], None] | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.tab_manager, CanvasTabManager):
+            raise TypeError("DocumentTabsContext.tab_manager must be a CanvasTabManager")
+        if (
+            self.current_file_path_setter is not None
+            and not callable(self.current_file_path_setter)
+        ):
+            raise TypeError(
+                "DocumentTabsContext.current_file_path_setter must be callable or None"
+            )
 
 
 class DocumentController:
     """Operaciones de documento separadas de ChemusonWindow para test no-GUI."""
 
-    @staticmethod
-    def _settings_from(target) -> object:
-        return getattr(target, "_settings", target)
-
     @classmethod
-    def load_recent_files(cls, target) -> list[str]:
-        settings = cls._settings_from(target)
-        value = settings.value("recent_files", [])
+    def load_recent_files(cls, context: RecentFilesContext) -> list[str]:
+        value = context.settings.value("recent_files", [])
         if isinstance(value, str):
             return [value]
         if isinstance(value, list):
@@ -57,34 +81,15 @@ class DocumentController:
         context.settings.setValue("recent_files", context.recent_files)
 
     @staticmethod
-    def set_canvas_file_path(target, canvas, filepath: Optional[str]) -> None:
+    def set_canvas_file_path(context: DocumentTabsContext, canvas, filepath: Optional[str]) -> None:
         clean_path = os.path.abspath(filepath) if filepath else None
-        if isinstance(target, DocumentTabsContext):
-            target.tab_manager.set_canvas_file_path(canvas, clean_path)
-            if canvas is target.current_canvas and target.current_file_path_setter is not None:
-                target.current_file_path_setter(clean_path)
-            return
-
-        manager = getattr(target, "_tab_manager", None)
-        if manager is None:
-            raise TypeError("DocumentController.set_canvas_file_path requiere DocumentTabsContext")
-        manager.set_canvas_file_path(canvas, clean_path)
-        if canvas is getattr(target, "canvas", None):
-            target._current_file_path = clean_path
-        updater = getattr(target, "_update_tab_title", None)
-        if callable(updater):
-            updater(canvas)
+        context.tab_manager.set_canvas_file_path(canvas, clean_path)
+        if canvas is context.current_canvas and context.current_file_path_setter is not None:
+            context.current_file_path_setter(clean_path)
 
     @staticmethod
-    def update_tab_title(target, canvas) -> None:
-        if isinstance(target, DocumentTabsContext):
-            target.tab_manager.update_tab_title(canvas)
-            return
-
-        manager = getattr(target, "_tab_manager", None)
-        if manager is None:
-            raise TypeError("DocumentController.update_tab_title requiere DocumentTabsContext")
-        manager.update_tab_title(canvas)
+    def update_tab_title(context: DocumentTabsContext, canvas) -> None:
+        context.tab_manager.update_tab_title(canvas)
 
     @classmethod
     def add_recent_file(cls, context: RecentFilesContext, filepath: str) -> None:
@@ -101,16 +106,17 @@ class DocumentController:
     def confirm_discard_changes(
         cls,
         context: DocumentDiscardContext,
-        canvas=None,
+        canvas,
     ) -> bool:
         from PyQt6.QtWidgets import QMessageBox
 
-        target_canvas = canvas or context.canvas
-        if target_canvas.undo_stack.isClean():
+        if canvas is None:
+            raise TypeError("confirm_discard_changes requires an explicit canvas")
+        if canvas.undo_stack.isClean():
             return True
         tabs = context.tab_manager.tabs
-        index = tabs.indexOf(target_canvas)
-        title = context.tab_manager.tab_titles.get(target_canvas, "Documento")
+        index = tabs.indexOf(canvas)
+        title = context.tab_manager.tab_titles.get(canvas, "Documento")
         if index >= 0:
             title = tabs.tabText(index).replace(" *", "")
         reply = QMessageBox.question(
@@ -126,9 +132,9 @@ class DocumentController:
             previous_index = tabs.currentIndex()
             if index >= 0 and previous_index != index:
                 tabs.setCurrentIndex(index)
-                context.activate_canvas(target_canvas)
+                context.activate_canvas(canvas)
             context.save_canvas()
-            saved = target_canvas.undo_stack.isClean()
+            saved = canvas.undo_stack.isClean()
             if (
                 previous_index >= 0
                 and previous_index < tabs.count()

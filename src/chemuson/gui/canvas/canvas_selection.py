@@ -1,7 +1,27 @@
 from __future__ import annotations
 
-from ._shared import (
-    ANGLE_OCCUPIED_TOLERANCE_DEG,
+import base64
+import json
+import math
+from typing import Dict, Iterable, Optional, Tuple
+
+from PyQt6.QtCore import QBuffer, QMimeData, QPoint, QPointF, QRectF, Qt
+from PyQt6.QtGui import QBrush, QColor, QFont, QPainterPath, QPen, QTextCharFormat
+from PyQt6.QtWidgets import (
+    QApplication,
+    QDialog,
+    QGraphicsEllipseItem,
+    QGraphicsItem,
+    QGraphicsPathItem,
+    QGraphicsRectItem,
+)
+
+from chemuson.chemio.rdkit_io import (
+    molfile_to_molgraph,
+    smiles_to_molgraph,
+)
+from chemuson.core.model import Bond, BondStereo, BondStyle, MolGraph, normalize_opacity
+from chemuson.gui.commands import (
     AddArrowCommand,
     AddAtomCommand,
     AddBondCommand,
@@ -13,104 +33,82 @@ from ._shared import (
     AddPlateItemCommand,
     AddTextItemCommand,
     AddWavyAnchorCommand,
-    ArrowItem,
-    AtomItem,
-    BRANCH_ROTATION_NOOP_TOLERANCE_DEG,
-    Bond,
-    BondItem,
-    BondStereo,
-    BondStyle,
-    BracketItem,
-    CLIPBOARD_LARGE_SELECTION_ATOM_THRESHOLD,
-    CLIPBOARD_LARGE_SELECTION_BOND_THRESHOLD,
-    CLIPBOARD_LARGE_SELECTION_RENDER_SCALE,
-    CLIPBOARD_RENDER_SCALE,
     ChangeAtomLabelScaleCommand,
     ChangeBondLengthCommand,
     ChangeBondStrokeCommand,
     ChangeCanvasOpacityCommand,
     ChangeCoordinationSphereStyleCommand,
-    CompositeDiagramItem,
-    DEFAULT_ENERGY_DIAGRAM_KIND,
-    DEFAULT_ORBITAL_KIND,
     DeleteSelectionCommand,
-    Dict,
-    DrawingStyle,
-    ELECTRON_ANCHOR_ROLE,
-    EnergyDiagramItem,
-    GelBandItem,
-    GelElectrophoresisItem,
-    ImageAnnotationItem,
-    Iterable,
-    MIN_ATOM_DIST_SCALE,
-    MIN_BOND_DIST_SCALE,
-    MolGraph,
     MoveArrowItemsCommand,
     MoveAtomsCommand,
     MoveTextItemsCommand,
-    NUMBERING_TEXT_ROLE,
-    Optional,
+    ScaleArrowItemsCommand,
+    ScaleBracketItemsCommand,
+    ScaleTextItemsCommand,
+    TransformPlateItemsCommand,
+    TransformEnergyDiagramItemsCommand,
+    TransformImageItemsCommand,
+    TransformOrbitalItemsCommand,
+)
+from chemuson.gui.composite_diagram_item import CompositeDiagramItem
+from chemuson.gui.dialogs import SelectionScaleDialog, TrackballRotationDialog
+from chemuson.gui.energy_diagrams import (
+    DEFAULT_ENERGY_DIAGRAM_KIND,
+    energy_diagram_display_name,
+    normalize_energy_occupancies,
+)
+from chemuson.gui.geom import (
+    angle_deg,
+    angle_distance_deg,
+    candidate_directions_deg,
+    filter_occupied_angles_deg,
+    project_3d_rotation,
+    segment_min_distance,
+    segments_intersect,
+)
+from chemuson.gui.items import (
+    ArrowItem,
+    AtomItem,
+    BondItem,
+    BracketItem,
+    EnergyDiagramItem,
+    ImageAnnotationItem,
     OrbitalAnnotationItem,
+    TextAnnotationItem,
+    WavyAnchorItem,
+)
+from chemuson.gui.orbitals import DEFAULT_ORBITAL_KIND
+from chemuson.gui.plate_items import (
+    GelBandItem,
+    GelElectrophoresisItem,
     PlateItem,
-    QApplication,
-    QBrush,
-    QBuffer,
-    QColor,
-    QDialog,
-    QFont,
-    QGraphicsEllipseItem,
-    QGraphicsItem,
-    QGraphicsPathItem,
-    QGraphicsRectItem,
-    QMimeData,
-    QPainterPath,
-    QPen,
-    QPoint,
-    QPointF,
-    QRectF,
-    QTextCharFormat,
-    Qt,
+    TLCPlateItem,
+    TLCSpotItem,
+)
+from chemuson.gui.style import DrawingStyle
+
+from .canvas_constants import (
+    ANGLE_OCCUPIED_TOLERANCE_DEG,
+    BRANCH_ROTATION_NOOP_TOLERANCE_DEG,
+    CLIPBOARD_LARGE_SELECTION_ATOM_THRESHOLD,
+    CLIPBOARD_LARGE_SELECTION_BOND_THRESHOLD,
+    CLIPBOARD_LARGE_SELECTION_RENDER_SCALE,
+    CLIPBOARD_RENDER_SCALE,
+    ELECTRON_ANCHOR_ROLE,
+    MIN_ATOM_DIST_SCALE,
+    MIN_BOND_DIST_SCALE,
+    NUMBERING_TEXT_ROLE,
     SELECTION_HANDLE_RADIUS_PX,
     SELECTION_MOVE_OFFSET_PX,
     SELECTION_ROTATE_OFFSET_PX,
     SP3_OCCUPIED_TOLERANCE_DEG,
-    ScaleArrowItemsCommand,
-    ScaleBracketItemsCommand,
-    ScaleTextItemsCommand,
-    SelectionScaleDialog,
-    TLCPlateItem,
-    TLCSpotItem,
     TRACKBALL_MAX_TILT_DEG,
     TRACKBALL_REFERENCE_MATCH_TOLERANCE_PX,
     TRACKBALL_ROTATION_DEG_PER_PIXEL,
-    TextAnnotationItem,
-    TrackballRotationDialog,
-    TransformEnergyDiagramItemsCommand,
-    TransformImageItemsCommand,
-    TransformOrbitalItemsCommand,
-    Tuple,
     WAVY_ANCHOR_ANGLE_ROLE,
     WAVY_ANCHOR_BOND_ROLE,
     WAVY_ANCHOR_LENGTH_ROLE,
     WAVY_ANCHOR_ROLE,
-    WavyAnchorItem,
-    angle_deg,
-    angle_distance_deg,
-    base64,
-    candidate_directions_deg,
-    energy_diagram_display_name,
-    filter_occupied_angles_deg,
-    json,
-    math,
-    molfile_to_molgraph,
-    molgraph_to_molfile,
-    molgraph_to_smiles,
-    normalize_energy_occupancies,
-    normalize_opacity,
-    project_3d_rotation,
-    segment_min_distance,
-    segments_intersect,
-    smiles_to_molgraph,
 )
 
 class CanvasSelectionMixin:
@@ -1241,8 +1239,10 @@ class CanvasSelectionMixin:
         smiles = ""
         if graph is not None and graph.atoms and not large_structure_selection:
             try:
-                molfile = molgraph_to_molfile(graph)
-                smiles = molgraph_to_smiles(graph)
+                from chemuson.gui import canvas as canvas_api
+
+                molfile = canvas_api.molgraph_to_molfile(graph)
+                smiles = canvas_api.molgraph_to_smiles(graph)
                 mime.setData("chemical/x-mdl-molfile", molfile.encode("utf-8"))
             except Exception:
                 pass

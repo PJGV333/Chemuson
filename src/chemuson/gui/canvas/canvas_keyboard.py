@@ -1,34 +1,33 @@
 from __future__ import annotations
 
-from ._shared import (
-    ArrowItem,
-    AtomItem,
-    Bond,
-    BondItem,
-    BracketItem,
+from PyQt6.QtCore import QPointF, Qt
+from PyQt6.QtGui import QWheelEvent
+
+from chemuson.core.model import Bond
+from chemuson.gui.commands import (
     ChangeAtomCommand,
     ChangeDoubleBondOrientationCommand,
-    CompositeDiagramItem,
-    EnergyDiagramItem,
-    GelBandItem,
-    GelElectrophoresisItem,
-    ImageAnnotationItem,
     MoveArrowItemsCommand,
     MoveAtomsCommand,
     MoveBracketItemsCommand,
     MoveTextItemsCommand,
-    OrbitalAnnotationItem,
-    QPointF,
-    QWheelEvent,
-    Qt,
-    TLCPlateItem,
-    TLCSpotItem,
-    TextAnnotationItem,
     TransformEnergyDiagramItemsCommand,
     TransformImageItemsCommand,
     TransformOrbitalItemsCommand,
+)
+from chemuson.gui.composite_diagram_item import CompositeDiagramItem
+from chemuson.gui.items import (
+    ArrowItem,
+    AtomItem,
+    BondItem,
+    BracketItem,
+    EnergyDiagramItem,
+    ImageAnnotationItem,
+    OrbitalAnnotationItem,
+    TextAnnotationItem,
     WavyAnchorItem,
 )
+from chemuson.gui.plate_items import GelBandItem, GelElectrophoresisItem, TLCPlateItem, TLCSpotItem
 
 class CanvasKeyboardMixin:
     @staticmethod

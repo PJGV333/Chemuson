@@ -13,6 +13,7 @@ from .recovery_controller import RecoveryController
 from .text_format_controller import TextFormatController
 from .template_controller import TemplateController, TemplateControllerContext
 from .update_controller import UpdateController, UpdateControllerContext
+from .view_controller import ViewController
 
 __all__ = [
     "Clean2DController",
@@ -29,4 +30,5 @@ __all__ = [
     "TemplateControllerContext",
     "UpdateController",
     "UpdateControllerContext",
+    "ViewController",
 ]

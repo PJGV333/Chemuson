@@ -5,29 +5,17 @@ Compone menús, barras de herramientas, docks y el lienzo central.
 """
 from PyQt6.QtWidgets import (
     QApplication,
-    QCheckBox,
     QDialog,
-    QDialogButtonBox,
-    QFontDialog,
-    QInputDialog,
     QMainWindow,
     QFileDialog,
     QMessageBox,
-    QToolBar,
-    QFormLayout,
-    QDoubleSpinBox,
-    QComboBox,
     QTabWidget,
-    QVBoxLayout,
     QLabel,
-    QLineEdit,
-    QSpinBox,
     QTextEdit,
 )
-from PyQt6.QtCore import Qt, QSize, QSettings, QEvent, QTimer, QPointF
-from PyQt6.QtGui import QAction, QActionGroup, QKeySequence, QIcon, QPainter, QPixmap, QPen, QColor, QTextCursor
+from PyQt6.QtCore import Qt, QSettings, QEvent, QTimer, QPointF
+from PyQt6.QtGui import QAction, QColor, QTextCursor
 from typing import Optional
-from dataclasses import replace
 import math
 import os
 import sys
@@ -36,24 +24,21 @@ from chemuson.gui.canvas import (
     ChemusonCanvas,
 )
 from chemuson.gui.periodic_table import PeriodicTableDialog
-from chemuson.gui.energy_diagrams import (
-    ENERGY_DIAGRAM_MENU_ORDER,
-    build_atomic_species_diagram,
-    build_atomic_subshell_diagram,
-    build_diatomic_mo_diagram,
-    build_ligand_field_diagram,
-    energy_diagram_display_name,
-    energy_diagram_tool_id,
-)
-from chemuson.gui.composite_diagram_item import CompositeDiagramItem
-from chemuson.gui.orbitals import ORBITAL_MENU_ORDER, orbital_display_name, orbital_tool_id
 from chemuson.gui.toolbar import ChemusonToolbar, SymbolPaletteToolbar
 from chemuson.gui.styles import MAIN_STYLESHEET, TOOL_PALETTE_STYLESHEET
 from chemuson.gui.docks import PlantillasDock, InspectorDock, AppearanceDock
 from chemuson.gui.dialogs import PreferencesDialog, QuickStartDialog, StyleDialog
 from chemuson.gui.text_toolbar import TextFormatToolbar
-from chemuson.gui.commands import ChangeAtomCommand, EditSemanticDiagramCommand
 from chemuson.gui.template_library import TemplateLibrary, DEFAULT_CATEGORY_USER
+from chemuson.gui.template_browser_service import (
+    TemplateBrowserContext,
+    TemplateBrowserService,
+)
+from chemuson.gui.main_window_ui_builder import MainWindowUiBuilder
+from chemuson.gui.semantic_diagram_workflow import (
+    SemanticDiagramWorkflow,
+    SemanticDiagramWorkflowContext,
+)
 from chemuson.gui.actions import (
     create_edit_actions,
     create_file_actions,
@@ -64,6 +49,7 @@ from chemuson.gui.controllers import (
     Clean2DController,
     DocumentController,
     DocumentDiscardContext,
+    DocumentTabsContext,
     ExportController,
     FileController,
     FileWorkflowContext,
@@ -74,6 +60,7 @@ from chemuson.gui.controllers import (
     TextFormatController,
     UpdateController,
     UpdateControllerContext,
+    ViewController,
 )
 from chemuson.gui.controllers.update_controller import (
     FLATPAK_APP_ID as FLATPAK_APP_ID,
@@ -85,7 +72,6 @@ from chemuson.gui.rich_text_dialog_service import (
     rich_text_editor_value,
 )
 from chemuson.gui.tab_manager import CanvasTabManager
-from chemuson.chemio.rdkit_io import molfile_to_molgraph
 from chemuson.update import UpdateSettings
 from chemuson.utils import crash_reporter
 from chemuson.version import get_app_version
@@ -113,6 +99,7 @@ class ChemusonWindow(QMainWindow):
             Puede modificar el estado interno o la interfaz.
         """
         super().__init__()
+        self._ui_builder = MainWindowUiBuilder()
         self._app_version = get_app_version()
         self.setWindowTitle(f"Chemuson {self._app_version} - Editor Molecular Libre")
         self.resize(1200, 900)
@@ -135,7 +122,15 @@ class ChemusonWindow(QMainWindow):
         self._name_advanced_default, self._name_rdkit_isolated_default = self._load_naming_preferences()
         self._recent_files = self._load_recent_files()
         self.template_library = TemplateLibrary()
-        self._template_icon_cache: dict[str, QIcon] = {}
+        self._template_icon_cache: dict[str, object] = {}
+        self._template_browser = TemplateBrowserService()
+        self._semantic_diagram_workflow = SemanticDiagramWorkflow()
+        self._view_controller = ViewController()
+        self._export_controller = ExportController()
+        self._clean2d_controller = Clean2DController()
+        self._text_format_controller = TextFormatController()
+        self._recovery_controller = RecoveryController()
+        self._template_controller = TemplateController()
         
         # === CENTRAL TABS/CANVAS ===
         self.tabs = QTabWidget(self)
@@ -209,8 +204,8 @@ class ChemusonWindow(QMainWindow):
         self._create_menu_bar()
         self._create_main_toolbar()
         self._sync_label_menu_state()
-        self._migrate_legacy_templates()
-        self._refresh_template_views()
+        self._template_browser.migrate_legacy_templates(self._template_browser_context())
+        self._template_browser.refresh_template_views(self._template_browser_context())
         
         # === TEXT FORMAT TOOLBAR ===
         self.text_toolbar = TextFormatToolbar()
@@ -218,11 +213,6 @@ class ChemusonWindow(QMainWindow):
         self._external_text_editor: QTextEdit | None = None
         self._external_text_cursor_state: tuple[int, int] | None = None
         self._external_text_selected_range: tuple[int, int] | None = None
-        self._export_controller = ExportController()
-        self._clean2d_controller = Clean2DController()
-        self._text_format_controller = TextFormatController()
-        self._recovery_controller = RecoveryController()
-        self._template_controller = TemplateController()
         # Initially hide it, or show it only when text tool is active?
         # User requested it to be available. We can leave it visible or toggle it.
         # For now, visible is fine.
@@ -273,447 +263,27 @@ class ChemusonWindow(QMainWindow):
         QTimer.singleShot(1200, self._maybe_check_updates_startup)
 
     def _create_actions(self) -> None:
-        """Initialize all QActions for menus and toolbars."""
+        """Inicializa acciones y grupos de UI de alto nivel."""
         create_file_actions(self)
         create_edit_actions(self)
         create_project_actions(self)
-
-        self.action_template_linear_chain = QAction("Cadena lineal", self)
-        self.action_template_linear_chain.triggered.connect(self._on_insert_linear_chain)
-        self.action_template_new_category = QAction("Nueva categoría...", self)
-        self.action_template_new_category.triggered.connect(self._on_new_template_category)
-        self.action_template_import_library = QAction("Importar biblioteca...", self)
-        self.action_template_import_library.triggered.connect(self._on_import_template_library)
-        self.action_template_export_library = QAction("Exportar biblioteca...", self)
-        self.action_template_export_library.triggered.connect(self._on_export_template_library)
-
-        # --- Canvas Size Actions ---
-        self.action_canvas_size_letter_portrait = QAction("Carta (vertical)", self)
-        self.action_canvas_size_letter_portrait.triggered.connect(
-            lambda: self._set_canvas_size(816, 1056)
-        )
-        self.action_canvas_size_letter_landscape = QAction("Carta (horizontal)", self)
-        self.action_canvas_size_letter_landscape.triggered.connect(
-            lambda: self._set_canvas_size(1056, 816)
-        )
-
-        self.action_canvas_size_a4_portrait = QAction("A4 (vertical)", self)
-        self.action_canvas_size_a4_portrait.triggered.connect(
-            lambda: self._set_canvas_size(794, 1123)
-        )
-        self.action_canvas_size_a4_landscape = QAction("A4 (horizontal)", self)
-        self.action_canvas_size_a4_landscape.triggered.connect(
-            lambda: self._set_canvas_size(1123, 794)
-        )
-
-        self.action_canvas_size_a3_portrait = QAction("A3 (vertical)", self)
-        self.action_canvas_size_a3_portrait.triggered.connect(
-            lambda: self._set_canvas_size(1123, 1587)
-        )
-        self.action_canvas_size_a3_landscape = QAction("A3 (horizontal)", self)
-        self.action_canvas_size_a3_landscape.triggered.connect(
-            lambda: self._set_canvas_size(1587, 1123)
-        )
-
-        self.action_canvas_size_custom = QAction("Personalizado...", self)
-        self.action_canvas_size_custom.triggered.connect(self._on_canvas_custom_size)
-
-
-
-        self.action_style = QAction("Dimensiones del dibujo...", self)
-        self.action_style.triggered.connect(self._on_style_dialog)
-
-        self.action_import_smiles = QAction("Importar SMILES...", self)
-        self.action_import_smiles.triggered.connect(self._on_import_smiles)
-
-        self.action_export_smiles = QAction("Exportar SMILES...", self)
-        self.action_export_smiles.triggered.connect(self._on_export_smiles)
-
-        self.action_draw_smiles = QAction("Dibujar desde SMILES...", self)
-        self.action_draw_smiles.triggered.connect(self._on_import_smiles)
-
-        # --- Analysis Actions ---
-        self.action_analysis_name = QAction("Nombre (SMILES)", self)
-        self.action_analysis_name.triggered.connect(lambda: self.canvas.run_analysis("name"))
-        self.action_analysis_formula = QAction("Fórmula química", self)
-        self.action_analysis_formula.triggered.connect(lambda: self.canvas.run_analysis("formula"))
-        self.action_analysis_exact = QAction("Masa exacta", self)
-        self.action_analysis_exact.triggered.connect(lambda: self.canvas.run_analysis("exact"))
-        self.action_analysis_weight = QAction("Peso molecular", self)
-        self.action_analysis_weight.triggered.connect(lambda: self.canvas.run_analysis("weight"))
-        self.action_analysis_mz = QAction("m/z", self)
-        self.action_analysis_mz.triggered.connect(lambda: self.canvas.run_analysis("mz"))
-        self.action_analysis_elemental = QAction("Análisis elemental", self)
-        self.action_analysis_elemental.triggered.connect(lambda: self.canvas.run_analysis("elemental"))
-        self.action_analysis_all = QAction("Todo", self)
-        self.action_analysis_all.triggered.connect(lambda: self.canvas.run_analysis("all"))
-
-        self.action_scale_selection = QAction("Redimensionar selección...", self)
-        self.action_scale_selection.setShortcut(QKeySequence("Ctrl+Alt+S"))
-        self.action_scale_selection.triggered.connect(
-            lambda checked=False: self.canvas.open_selection_scale_dialog()
-        )
-
-        # --- Bond Thickness Actions ---
-        self.action_bond_thickness_up = QAction("Aumentar grosor de enlace/flecha/corchete", self)
-        self.action_bond_thickness_up.setShortcut(QKeySequence("Ctrl+Shift+Up"))
-        self.action_bond_thickness_up.triggered.connect(self._on_bond_thickness_up)
-
-        self.action_bond_thickness_down = QAction("Reducir grosor de enlace/flecha/corchete", self)
-        self.action_bond_thickness_down.setShortcut(QKeySequence("Ctrl+Shift+Down"))
-        self.action_bond_thickness_down.triggered.connect(self._on_bond_thickness_down)
-
-        self.action_bond_thickness_reset = QAction("Restablecer grosor de enlace/flecha/corchete", self)
-        self.action_bond_thickness_reset.setShortcut(QKeySequence("Ctrl+Shift+0"))
-        self.action_bond_thickness_reset.triggered.connect(self._on_bond_thickness_reset)
-
-        # --- Text Actions ---
-        self.action_label_font = QAction("Fuente de etiquetas...", self)
-        self.action_label_font.triggered.connect(self._on_label_font)
-
-        self.action_label_size_set = QAction("Tamaño...", self)
-        self.action_label_size_set.triggered.connect(self._on_label_font_size_dialog)
-
-        self.action_label_bold = QAction("Negrita", self)
-        self.action_label_bold.setCheckable(True)
-        self.action_label_bold.triggered.connect(self._on_label_bold)
-
-        self.action_label_italic = QAction("Cursiva", self)
-        self.action_label_italic.setCheckable(True)
-        self.action_label_italic.triggered.connect(self._on_label_italic)
-
-        self.action_label_underline = QAction("Subrayado", self)
-        self.action_label_underline.setCheckable(True)
-        self.action_label_underline.triggered.connect(self._on_label_underline)
-
-        self.action_label_subscript = QAction("Subíndice...", self)
-        self.action_label_subscript.triggered.connect(self._on_label_subscript)
-
-        self.action_label_superscript = QAction("Superíndice...", self)
-        self.action_label_superscript.triggered.connect(self._on_label_superscript)
-
-        self.action_label_size_up = QAction("Aumentar tamaño", self)
-        self.action_label_size_up.triggered.connect(lambda: self._on_label_font_size(1.0))
-
-        self.action_label_size_down = QAction("Reducir tamaño", self)
-        self.action_label_size_down.triggered.connect(lambda: self._on_label_font_size(-1.0))
-
-        self.action_text_align_left = QAction("Alinear a la izquierda", self)
-        self.action_text_align_left.triggered.connect(
-            lambda: self.canvas.update_text_alignment(Qt.AlignmentFlag.AlignLeft)
-        )
-        self.action_text_align_center = QAction("Centrar", self)
-        self.action_text_align_center.triggered.connect(
-            lambda: self.canvas.update_text_alignment(Qt.AlignmentFlag.AlignHCenter)
-        )
-        self.action_text_align_justify = QAction("Justificar", self)
-        self.action_text_align_justify.triggered.connect(
-            lambda: self.canvas.update_text_alignment(Qt.AlignmentFlag.AlignJustify)
-        )
-
-        self.action_label_color_element = QAction("Por elemento", self)
-        self.action_label_color_element.setCheckable(True)
-        self.action_label_color_element.triggered.connect(
-            lambda checked=False: self._on_label_color_mode(True)
-        )
-
-        self.action_label_color_black = QAction("Negro", self)
-        self.action_label_color_black.setCheckable(True)
-        self.action_label_color_black.triggered.connect(
-            lambda checked=False: self._on_label_color_mode(False)
-        )
-
-        self._label_color_group = QActionGroup(self)
-        self._label_color_group.setExclusive(True)
-        self._label_color_group.addAction(self.action_label_color_element)
-        self._label_color_group.addAction(self.action_label_color_black)
-
-        # --- Help / Updates ---
+        self._ui_builder.create_local_actions(self)
         create_update_actions(self)
 
     def _create_menu_bar(self) -> None:
-        """Create the main menu bar with all menus."""
-        menubar = self.menuBar()
-        
-        # === Archivo (File) ===
-        file_menu = menubar.addMenu("Archivo")
-        file_menu.addAction(self.action_new)
-        file_menu.addAction(self.action_open)
-        file_menu.addAction(self.action_save)
-        self.recent_menu = file_menu.addMenu("Archivos recientes")
-        self._update_recent_menu()
-        file_menu.addAction(self.action_recovery_center)
-        file_menu.addSeparator()
-        
-        export_menu = file_menu.addMenu("Exportar como")
-        self.action_export_png = QAction("PNG...", self)
-        self.action_export_png.triggered.connect(lambda: self._on_export("png"))
-        export_menu.addAction(self.action_export_png)
-        
-        self.action_export_svg = QAction("SVG...", self)
-        self.action_export_svg.triggered.connect(lambda: self._on_export("svg"))
-        export_menu.addAction(self.action_export_svg)
-        
-        self.action_export_pdf = QAction("PDF...", self)
-        self.action_export_pdf.triggered.connect(lambda: self._on_export("pdf"))
-        export_menu.addAction(self.action_export_pdf)
-        
-        file_menu.addSeparator()
-        file_menu.addAction(self.action_quit)
-        
-        # === Editar (Edit) ===
-        edit_menu = menubar.addMenu("Editar")
-        edit_menu.addAction(self.action_undo)
-        edit_menu.addAction(self.action_redo)
-        edit_menu.addSeparator()
-        edit_menu.addAction(self.action_copy)
-        edit_menu.addAction(self.action_cut)
-        edit_menu.addAction(self.action_paste)
-        edit_menu.addAction(self.action_duplicate)
-        edit_menu.addAction(self.action_delete)
-        
-        copy_as_menu = edit_menu.addMenu("Copiar como")
-        self.action_copy_smiles = QAction("SMILES", self)
-        self.action_copy_smiles.triggered.connect(lambda: self._on_copy_as("smiles"))
-        copy_as_menu.addAction(self.action_copy_smiles)
-        
-        self.action_copy_molfile = QAction("Molfile", self)
-        self.action_copy_molfile.triggered.connect(lambda: self._on_copy_as("molfile"))
-        copy_as_menu.addAction(self.action_copy_molfile)
-        
-        self.action_copy_inchi = QAction("InChI", self)
-        self.action_copy_inchi.triggered.connect(lambda: self._on_copy_as("inchi"))
-        copy_as_menu.addAction(self.action_copy_inchi)
-
-        edit_menu.addAction(self.action_paste)
-        edit_menu.addAction(self.action_edit_electronic_diagram)
-        edit_menu.addSeparator()
-
-        rotate_menu = edit_menu.addMenu("Rotar")
-        rotate_menu.addAction(self.action_rotate_left)
-        rotate_menu.addAction(self.action_rotate_right)
-        rotate_menu.addSeparator()
-        rotate_menu.addAction(self.action_flip_horizontal)
-        rotate_menu.addAction(self.action_flip_vertical)
-        rotate_menu.addSeparator()
-        rotate_menu.addAction(self.action_branch_rotate_minus)
-        rotate_menu.addAction(self.action_branch_rotate_plus)
-        rotate_menu.addAction(self.action_branch_invert)
-        rotate_menu.addAction(self.action_branch_auto_arrange)
-        rotate_menu.addSeparator()
-        self.fragment_rotate_menu = rotate_menu.addMenu("Fragmento con pivote")
-        self.fragment_rotate_menu.addAction(self.action_fragment_pivot_set)
-        self.fragment_rotate_menu.addAction(self.action_fragment_pivot_clear)
-        self.fragment_rotate_menu.addSeparator()
-        self.fragment_rotate_menu.addAction(self.action_fragment_rotate_minus)
-        self.fragment_rotate_menu.addAction(self.action_fragment_rotate_plus)
-        self.fragment_rotate_menu.addAction(self.action_fragment_invert)
-
-        edit_menu.addAction(self.action_scale_selection)
-
-        edit_menu.addSeparator()
-        bond_thickness_menu = edit_menu.addMenu("Grosor de enlace/flecha/corchete")
-        bond_thickness_menu.addAction(self.action_bond_thickness_up)
-        bond_thickness_menu.addAction(self.action_bond_thickness_down)
-        bond_thickness_menu.addAction(self.action_bond_thickness_reset)
-
-        edit_menu.addSeparator()
-
-        self.action_preferences = QAction("Preferencias...", self)
-        self.action_preferences.triggered.connect(self._on_preferences)
-        edit_menu.addAction(self.action_preferences)
-
-        # === Ver (View) ===
-        view_menu = menubar.addMenu("Ver")
-        view_menu.addAction(self.action_show_carbons)
-        view_menu.addAction(self.action_show_hydrogens)
-        view_menu.addSeparator()
-        view_menu.addAction(self.action_aromatic_circles)
-        view_menu.addSeparator()
-        view_menu.addAction(self.action_style)
-        view_menu.addSeparator()
-        view_menu.addAction(self.action_zoom_in)
-        view_menu.addAction(self.action_zoom_out)
-        view_menu.addAction(self.action_zoom_reset)
-        view_menu.addSeparator()
-        view_menu.addAction(self.action_show_main_toolbar_aux)
-        view_menu.addSeparator()
-        view_menu.addAction(self.action_rules)
-        view_menu.addAction(self.action_crosshair)
-        view_menu.addSeparator()
-        numbering_menu = view_menu.addMenu("Numeración")
-        numbering_menu.addAction(self.action_numbering_enabled)
-        numbering_menu.addSeparator()
-        numbering_menu.addAction(self.action_numbering_mode_atoms)
-        numbering_menu.addAction(self.action_numbering_mode_structures)
-        numbering_menu.addAction(self.action_numbering_mode_both)
-        numbering_menu.addSeparator()
-        numbering_menu.addAction(self.action_numbering_recalculate)
-        numbering_menu.addAction(self.action_numbering_export)
-        view_menu.addSeparator()
-        canvas_size_menu = view_menu.addMenu("Tamaño de lienzo")
-        canvas_size_menu.addAction(self.action_canvas_size_letter_portrait)
-        canvas_size_menu.addAction(self.action_canvas_size_letter_landscape)
-        canvas_size_menu.addSeparator()
-        canvas_size_menu.addAction(self.action_canvas_size_a4_portrait)
-        canvas_size_menu.addAction(self.action_canvas_size_a4_landscape)
-        canvas_size_menu.addSeparator()
-        canvas_size_menu.addAction(self.action_canvas_size_a3_portrait)
-        canvas_size_menu.addAction(self.action_canvas_size_a3_landscape)
-        canvas_size_menu.addSeparator()
-        canvas_size_menu.addAction(self.action_canvas_size_custom)
-        view_menu.addSeparator()
-        
-        # Docks visibility
-        view_menu.addAction(self.symbols_toolbar.toggleViewAction())
-        view_menu.addAction(self.templates_dock.toggleViewAction())
-        view_menu.addAction(self.inspector_dock.toggleViewAction())
-        view_menu.addAction(self.appearance_dock.toggleViewAction())
-        
-        # === Estructura (Structure) ===
-        structure_menu = menubar.addMenu("Estructura")
-        structure_menu.addAction(self.action_clean_2d)
-        structure_menu.addAction(self.action_clean_2d_full)
-        structure_menu.addSeparator()
-        structure_menu.addSeparator()
-        
-        # Dynamic Templates Menu
-        self.templates_menu = structure_menu.addMenu("Plantillas")
-        
-        # Save Template Action
-        self.action_save_template = QAction("Guardar selección como plantilla...", self)
-        self.action_save_template.triggered.connect(self._on_save_template)
-        self._refresh_templates_menu()
-        structure_menu.addAction(self.action_save_template)
-        structure_menu.addAction(self.action_template_import_library)
-        structure_menu.addAction(self.action_template_export_library)
-        
-        structure_menu.addSeparator()
-        structure_menu.addAction(self.action_import_smiles)
-        structure_menu.addAction(self.action_export_smiles)
-        structure_menu.addSeparator()
-        analysis_menu = structure_menu.addMenu("Análisis")
-        analysis_menu.addAction(self.action_analysis_name)
-        analysis_menu.addAction(self.action_analysis_formula)
-        analysis_menu.addAction(self.action_analysis_exact)
-        analysis_menu.addAction(self.action_analysis_weight)
-        analysis_menu.addAction(self.action_analysis_mz)
-        analysis_menu.addAction(self.action_analysis_elemental)
-        analysis_menu.addSeparator()
-        analysis_menu.addAction(self.action_analysis_all)
-
-        # === Reacción (Reaction) ===
-        reaction_menu = menubar.addMenu("Reacción")
-        placeholder_reaction = QAction("Próximamente", self)
-        placeholder_reaction.setEnabled(False)
-        reaction_menu.addAction(placeholder_reaction)
-        
-        # === Ayuda (Help) ===
-        help_menu = menubar.addMenu("Ayuda")
-        
-        self.action_quick_start = QAction("Guía rápida...", self)
-        self.action_quick_start.triggered.connect(self._on_quick_start)
-        help_menu.addAction(self.action_quick_start)
-        help_menu.addAction(self.action_check_updates_now)
-        
-        help_menu.addSeparator()
-        
-        self.action_about = QAction("Acerca de Chemuson...", self)
-        self.action_about.triggered.connect(self._on_about)
-        help_menu.addAction(self.action_about)
+        """Construye menús principales delegando el wiring repetitivo."""
+        self._ui_builder.build_menu_bar(self)
     
     # -------------------------------------------------------------------------
     # Main Toolbar
     # -------------------------------------------------------------------------
     def _create_main_toolbar(self) -> None:
-        """Create the main horizontal toolbar with common actions."""
-        self.main_toolbar = QToolBar("Principal")
-        self.main_toolbar.setMovable(False)
-        self.main_toolbar.setFloatable(False)
-        self.main_toolbar.setIconSize(QSize(24, 24))
-        self.main_toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self.main_toolbar)
-        
-        # Set icons for actions with fallbacks where possible
-        self.action_new.setIcon(QIcon.fromTheme("document-new", QIcon()))
-        self.action_open.setIcon(QIcon.fromTheme("document-open", QIcon()))
-        self.action_save.setIcon(QIcon.fromTheme("document-save", QIcon()))
-        self.action_undo.setIcon(QIcon.fromTheme("edit-undo", QIcon()))
-        self.action_redo.setIcon(QIcon.fromTheme("edit-redo", QIcon()))
-        self.action_copy.setIcon(QIcon.fromTheme("edit-copy", QIcon()))
-        self.action_paste.setIcon(QIcon.fromTheme("edit-paste", QIcon()))
-        
-        from chemuson.gui.icons import draw_generic_icon
-        self.action_zoom_in.setIcon(draw_generic_icon("zoom_in"))
-        self.action_zoom_out.setIcon(draw_generic_icon("zoom_out"))
-        self.action_rotate_left.setIcon(draw_generic_icon("rotate_left"))
-        self.action_rotate_right.setIcon(draw_generic_icon("rotate_right"))
-        self.action_flip_horizontal.setIcon(draw_generic_icon("flip_horizontal"))
-        self.action_flip_vertical.setIcon(draw_generic_icon("flip_vertical"))
-        self.action_branch_rotate_minus.setIcon(draw_generic_icon("rotate_left"))
-        self.action_branch_rotate_plus.setIcon(draw_generic_icon("rotate_right"))
-        self.action_branch_invert.setIcon(draw_generic_icon("flip_horizontal"))
-        self.action_branch_auto_arrange.setIcon(QIcon.fromTheme("edit-clear", QIcon()))
-        self.action_clean_2d.setIcon(QIcon.fromTheme("edit-clear", QIcon()))
-        from chemuson.gui.icons import draw_atom_icon
-        self.action_draw_smiles.setIcon(draw_atom_icon("SMI"))
-        
-        # File actions
-        self.main_toolbar.addAction(self.action_new)
-        self.main_toolbar.addAction(self.action_open)
-        self.main_toolbar.addAction(self.action_save)
-        self.main_toolbar.addSeparator()
-        
-        # Edit actions
-        self.main_toolbar.addAction(self.action_undo)
-        self.main_toolbar.addAction(self.action_redo)
-        self.main_toolbar.addSeparator()
-
-        # Rotate actions
-        self.main_toolbar.addAction(self.action_rotate_left)
-        self.main_toolbar.addAction(self.action_rotate_right)
-        self.main_toolbar.addAction(self.action_flip_horizontal)
-        self.main_toolbar.addAction(self.action_flip_vertical)
-        self.main_toolbar.addSeparator()
-        
-        # Structure actions
-        self.main_toolbar.addAction(self.action_clean_2d)
-        self.main_toolbar.addSeparator()
-        self.main_toolbar.addAction(self.action_draw_smiles)
-
-        # Optional top-toolbar actions (copy/paste/zoom +/-).
-        self._main_toolbar_aux_separator_1 = QAction(self)
-        self._main_toolbar_aux_separator_1.setSeparator(True)
-        self._main_toolbar_aux_separator_2 = QAction(self)
-        self._main_toolbar_aux_separator_2.setSeparator(True)
-        self._set_main_toolbar_aux_visible(self.action_show_main_toolbar_aux.isChecked())
+        """Construye la barra superior principal."""
+        self._ui_builder.build_main_toolbar(self)
 
     def _set_main_toolbar_aux_visible(self, visible: bool) -> None:
         """Muestra/oculta copiar, pegar y zoom +/- en la barra superior."""
-        if not hasattr(self, "main_toolbar"):
-            return
-        aux_actions = (
-            self.action_copy,
-            self.action_paste,
-            self._main_toolbar_aux_separator_1,
-            self.action_zoom_in,
-            self.action_zoom_out,
-            self._main_toolbar_aux_separator_2,
-        )
-        current = self.main_toolbar.actions()
-        if visible:
-            anchor = self.action_rotate_left if self.action_rotate_left in current else None
-            for action in aux_actions:
-                if action in self.main_toolbar.actions():
-                    continue
-                if anchor is not None:
-                    self.main_toolbar.insertAction(anchor, action)
-                else:
-                    self.main_toolbar.addAction(action)
-        else:
-            for action in aux_actions:
-                if action in self.main_toolbar.actions():
-                    self.main_toolbar.removeAction(action)
+        self._ui_builder.set_main_toolbar_aux_visible(self, bool(visible))
 
     def _on_toggle_main_toolbar_aux(self, checked: bool) -> None:
         """Actualiza visibilidad de atajos auxiliares en barra superior."""
@@ -732,9 +302,7 @@ class ChemusonWindow(QMainWindow):
 
     def _apply_default_numbering_to_canvas(self, canvas: ChemusonCanvas) -> None:
         """Aplica preferencias globales de numeración a un nuevo documento."""
-        canvas.set_numbering_mode(self._numbering_default_mode)
-        canvas.set_numbering_enabled(False)
-        canvas.set_numbering_include_in_export(self._numbering_default_include_export)
+        self._view_controller.apply_default_numbering_to_canvas(self, canvas)
 
     def _apply_default_naming_to_canvas(self, canvas: ChemusonCanvas) -> None:
         """Aplica preferencias globales de nomenclatura al documento."""
@@ -743,9 +311,11 @@ class ChemusonWindow(QMainWindow):
 
     def _set_canvas_file_path(self, canvas: ChemusonCanvas, filepath: Optional[str]) -> None:
         """Asigna ruta de archivo a una pestaña y actualiza su título."""
-        clean_path = self._tab_manager.set_canvas_file_path(canvas, filepath)
-        if canvas is self.canvas:
-            self._current_file_path = clean_path
+        self._document_controller.set_canvas_file_path(
+            self._document_tabs_context(),
+            canvas,
+            filepath,
+        )
 
     def _on_canvas_clean_state_changed(
         self,
@@ -765,7 +335,7 @@ class ChemusonWindow(QMainWindow):
 
     def _update_tab_title(self, canvas: ChemusonCanvas) -> None:
         """Actualiza título y tooltip de la pestaña asociada al canvas."""
-        self._tab_manager.update_tab_title(canvas)
+        self._document_controller.update_tab_title(self._document_tabs_context(), canvas)
 
     def _on_tab_changed(self, index: int) -> None:
         """Activa el canvas correspondiente al cambiar de pestaña."""
@@ -1058,245 +628,51 @@ class ChemusonWindow(QMainWindow):
             sync_text_toolbar=self._sync_text_toolbar_from_external_editor,
         )
 
-    def _semantic_diagram_builder_spec(
-        self,
-        item: CompositeDiagramItem | None,
-    ) -> tuple[str, dict]:
-        if item is None:
-            return "", {}
-        builder = dict(item.semantic_diagram.metadata.get("builder", {}) or {})
-        return str(builder.get("name", "") or ""), dict(builder.get("params", {}) or {})
-
-    def _semantic_diagram_item_payload(self, item: CompositeDiagramItem) -> dict:
-        payload = item.to_json()
-        opacity_getter = getattr(self.canvas, "item_raw_opacity", None)
-        if callable(opacity_getter):
-            payload["opacity"] = opacity_getter(item)
-        return payload
-
-    def _apply_semantic_diagram_result(
-        self,
-        diagram,
-        *,
-        existing_item: CompositeDiagramItem | None = None,
-    ) -> None:
-        if existing_item is None:
-            self.canvas.insert_semantic_diagram(diagram, self._visible_canvas_center_scene_pos())
-            return
-        before_payload = self._semantic_diagram_item_payload(existing_item)
-        after_payload = dict(before_payload)
-        after_payload["semantic_diagram"] = diagram.to_json_dict()
-        if before_payload.get("semantic_diagram") == after_payload.get("semantic_diagram"):
-            return
-        self.canvas.undo_stack.push(
-            EditSemanticDiagramCommand(
-                self.canvas,
-                existing_item,
-                before_payload,
-                after_payload,
-            )
-        )
-
     def _insert_semantic_preset(self, preset_name: str) -> None:
-        self.canvas.insert_semantic_preset(
+        self._semantic_diagram_workflow.insert_preset(
+            self._semantic_diagram_workflow_context(),
             preset_name,
-            self._visible_canvas_center_scene_pos(),
         )
 
     def _open_atomic_diagram_dialog(
         self,
-        existing_item: CompositeDiagramItem | None = None,
+        existing_item=None,
     ) -> None:
-        """Solicita parámetros y crea o edita un diagrama atómico semántico."""
-        _builder_name, builder_params = self._semantic_diagram_builder_spec(existing_item)
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Atomic diagram")
-        layout = QFormLayout(dialog)
-        electron_count = QSpinBox(dialog)
-        electron_count.setRange(0, 118)
-        electron_count.setValue(int(builder_params.get("electron_count", 8) or 8))
-        expanded_subshells = QCheckBox("Expanded subshells", dialog)
-        expanded_subshells.setChecked(bool(builder_params.get("expanded_subshells", True)))
-        layout.addRow("Electron count:", electron_count)
-        layout.addRow("", expanded_subshells)
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
-            parent=dialog,
+        self._semantic_diagram_workflow.open_atomic_diagram_dialog(
+            self._semantic_diagram_workflow_context(),
+            existing_item=existing_item,
         )
-        buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
-        layout.addRow(buttons)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
-        diagram = build_atomic_subshell_diagram(
-            electron_count.value(),
-            title=builder_params.get("title"),
-            expanded_subshells=expanded_subshells.isChecked(),
-            max_n=int(builder_params.get("max_n", 7) or 7),
-        )
-        self._apply_semantic_diagram_result(diagram, existing_item=existing_item)
 
     def _open_atomic_species_diagram_dialog(
         self,
-        existing_item: CompositeDiagramItem | None = None,
+        existing_item=None,
     ) -> None:
-        """Solicita parámetros y crea o edita una especie atómica predefinida."""
-        _builder_name, builder_params = self._semantic_diagram_builder_spec(existing_item)
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Atomic species diagram")
-        layout = QFormLayout(dialog)
-        symbol = QLineEdit(str(builder_params.get("symbol", "O") or "O"), dialog)
-        charge = QSpinBox(dialog)
-        charge.setRange(-6, 6)
-        charge.setValue(int(builder_params.get("charge", 0) or 0))
-        expanded_subshells = QCheckBox("Expanded subshells", dialog)
-        expanded_subshells.setChecked(bool(builder_params.get("expanded_subshells", True)))
-        use_known_exceptions = QCheckBox("Use known exceptions", dialog)
-        use_known_exceptions.setChecked(bool(builder_params.get("use_known_exceptions", True)))
-        layout.addRow("Symbol:", symbol)
-        layout.addRow("Charge:", charge)
-        layout.addRow("", expanded_subshells)
-        layout.addRow("", use_known_exceptions)
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
-            parent=dialog,
+        self._semantic_diagram_workflow.open_atomic_species_diagram_dialog(
+            self._semantic_diagram_workflow_context(),
+            existing_item=existing_item,
         )
-        buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
-        layout.addRow(buttons)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
-        try:
-            diagram = build_atomic_species_diagram(
-                symbol=symbol.text().strip(),
-                charge=charge.value(),
-                expanded_subshells=expanded_subshells.isChecked(),
-                title=builder_params.get("title"),
-                use_known_exceptions=use_known_exceptions.isChecked(),
-            )
-        except ValueError as exc:
-            QMessageBox.information(self, "Atomic species diagram", str(exc))
-            return
-        self._apply_semantic_diagram_result(diagram, existing_item=existing_item)
 
     def _open_diatomic_mo_diagram_dialog(
         self,
-        existing_item: CompositeDiagramItem | None = None,
+        existing_item=None,
     ) -> None:
-        """Solicita parámetros y crea o edita un diagrama MO diatómico."""
-        _builder_name, builder_params = self._semantic_diagram_builder_spec(existing_item)
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Diatomic MO diagram")
-        layout = QFormLayout(dialog)
-        left_label = QLineEdit(str(builder_params.get("left_label", "A") or "A"), dialog)
-        right_label = QLineEdit(str(builder_params.get("right_label", "B") or "B"), dialog)
-        total_electrons = QSpinBox(dialog)
-        total_electrons.setRange(0, 20)
-        total_electrons.setValue(int(builder_params.get("total_electrons", 10) or 10))
-        ordering = QComboBox(dialog)
-        ordering.addItem("light_2p", "light_2p")
-        ordering.addItem("heavy_2p", "heavy_2p")
-        ordering_value = str(builder_params.get("ordering", "heavy_2p") or "heavy_2p")
-        ordering.setCurrentIndex(0 if ordering_value == "light_2p" else 1)
-        include_core_1s = QCheckBox("Include core 1s", dialog)
-        include_core_1s.setChecked(bool(builder_params.get("include_core_1s", False)))
-        layout.addRow("Left label:", left_label)
-        layout.addRow("Right label:", right_label)
-        layout.addRow("Total electrons:", total_electrons)
-        layout.addRow("Ordering:", ordering)
-        layout.addRow("", include_core_1s)
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
-            parent=dialog,
+        self._semantic_diagram_workflow.open_diatomic_mo_diagram_dialog(
+            self._semantic_diagram_workflow_context(),
+            existing_item=existing_item,
         )
-        buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
-        layout.addRow(buttons)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
-        diagram = build_diatomic_mo_diagram(
-            left_label=left_label.text().strip() or "A",
-            right_label=right_label.text().strip() or "B",
-            total_electrons=total_electrons.value(),
-            ordering=ordering.currentData(),
-            include_core_1s=include_core_1s.isChecked(),
-            title=builder_params.get("title"),
-        )
-        self._apply_semantic_diagram_result(diagram, existing_item=existing_item)
 
     def _open_ligand_field_diagram_dialog(
         self,
-        existing_item: CompositeDiagramItem | None = None,
+        existing_item=None,
     ) -> None:
-        """Solicita parámetros y crea o edita un diagrama de campo ligando."""
-        _builder_name, builder_params = self._semantic_diagram_builder_spec(existing_item)
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Ligand field diagram")
-        layout = QFormLayout(dialog)
-        d_electrons = QSpinBox(dialog)
-        d_electrons.setRange(0, 10)
-        d_electrons.setValue(int(builder_params.get("d_electrons", 6) or 6))
-        geometry = QComboBox(dialog)
-        geometry.addItem("octahedral", "octahedral")
-        geometry.addItem("tetrahedral", "tetrahedral")
-        geometry.addItem("square_planar", "square_planar")
-        geometry_value = str(builder_params.get("geometry", "octahedral") or "octahedral")
-        geometry.setCurrentIndex(
-            max(0, geometry.findData(geometry_value))
+        self._semantic_diagram_workflow.open_ligand_field_diagram_dialog(
+            self._semantic_diagram_workflow_context(),
+            existing_item=existing_item,
         )
-        spin_mode = QComboBox(dialog)
-        spin_mode.addItem("high", "high")
-        spin_mode.addItem("low", "low")
-        spin_value = str(builder_params.get("spin_mode", "high") or "high")
-        spin_mode.setCurrentIndex(0 if spin_value == "high" else 1)
-        layout.addRow("d electron count:", d_electrons)
-        layout.addRow("Geometry:", geometry)
-        layout.addRow("Spin mode:", spin_mode)
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
-            parent=dialog,
-        )
-        buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
-        layout.addRow(buttons)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
-        diagram = build_ligand_field_diagram(
-            d_electrons=d_electrons.value(),
-            geometry=geometry.currentData(),
-            spin_mode=spin_mode.currentData(),
-            title=builder_params.get("title"),
-        )
-        self._apply_semantic_diagram_result(diagram, existing_item=existing_item)
 
     def _edit_selected_semantic_diagram(self) -> None:
-        item = self.canvas.selected_semantic_diagram_item()
-        if item is None:
-            return
-        builder_name, _builder_params = self._semantic_diagram_builder_spec(item)
-        if not builder_name:
-            QMessageBox.information(
-                self,
-                "Edit Electronic Diagram",
-                "This diagram can be edited only at label/occupancy level because its original builder parameters are not available.",
-            )
-            return
-        if builder_name == "build_atomic_subshell_diagram":
-            self._open_atomic_diagram_dialog(existing_item=item)
-            return
-        if builder_name == "build_atomic_species_diagram":
-            self._open_atomic_species_diagram_dialog(existing_item=item)
-            return
-        if builder_name == "build_diatomic_mo_diagram":
-            self._open_diatomic_mo_diagram_dialog(existing_item=item)
-            return
-        if builder_name == "build_ligand_field_diagram":
-            self._open_ligand_field_diagram_dialog(existing_item=item)
-            return
-        QMessageBox.information(
-            self,
-            "Edit Electronic Diagram",
-            "This electronic diagram builder is not available for full reconstruction.",
+        self._semantic_diagram_workflow.edit_selected_semantic_diagram(
+            self._semantic_diagram_workflow_context()
         )
 
     def _connect_undo_redo(self) -> None:
@@ -1326,7 +702,7 @@ class ChemusonWindow(QMainWindow):
 
     def _load_recent_files(self) -> list[str]:
         """Método auxiliar para  load recent files."""
-        return self._document_controller.load_recent_files(self._settings)
+        return self._document_controller.load_recent_files(self._recent_files_context([]))
 
     def _save_recent_files(self) -> None:
         """Método auxiliar para  save recent files."""
@@ -1364,16 +740,7 @@ class ChemusonWindow(QMainWindow):
 
     def _load_numbering_preferences(self) -> None:
         """Carga preferencias globales de numeración del usuario."""
-        mode = str(self._settings.value("numbering/mode", "atoms") or "atoms").strip().lower()
-        if mode not in {"atoms", "structures", "both"}:
-            mode = "atoms"
-        include_export = self._setting_bool(
-            self._settings.value("numbering/include_export", True),
-            True,
-        )
-        self._numbering_default_mode = mode
-        self._numbering_default_include_export = bool(include_export)
-        self._apply_default_numbering_to_canvas(self.canvas)
+        self._view_controller.load_numbering_preferences(self)
 
     def _load_naming_preferences(self) -> tuple[bool, bool]:
         """Carga preferencias globales de nomenclatura avanzada."""
@@ -1401,50 +768,11 @@ class ChemusonWindow(QMainWindow):
 
     def _save_numbering_preferences(self) -> None:
         """Guarda preferencias globales de numeración del usuario."""
-        # Se guarda modo/exports, pero no el estado "mostrar numeración" para
-        # evitar que inicie activa en futuras aperturas.
-        self._settings.remove("numbering/enabled")
-        self._numbering_default_mode = str(self.canvas.state.numbering_mode)
-        self._numbering_default_include_export = bool(self.canvas.state.numbering_include_in_export)
-        self._settings.setValue("numbering/mode", str(self._numbering_default_mode))
-        self._settings.setValue(
-            "numbering/include_export",
-            bool(self._numbering_default_include_export),
-        )
+        self._view_controller.save_numbering_preferences(self)
 
     def _sync_numbering_actions(self) -> None:
         """Sincroniza acciones de menú de numeración con el estado del canvas."""
-        mode = str(self.canvas.state.numbering_mode or "").strip().lower()
-        if mode not in {"atoms", "structures", "both"}:
-            mode = "atoms"
-        self.canvas.state.numbering_mode = mode
-        state_to_action = {
-            "atoms": self.action_numbering_mode_atoms,
-            "structures": self.action_numbering_mode_structures,
-            "both": self.action_numbering_mode_both,
-        }
-
-        actions = [
-            self.action_numbering_enabled,
-            self.action_numbering_mode_atoms,
-            self.action_numbering_mode_structures,
-            self.action_numbering_mode_both,
-            self.action_numbering_export,
-        ]
-        previous_blocks = []
-        for action in actions:
-            previous_blocks.append((action, action.blockSignals(True)))
-        try:
-            self.action_numbering_enabled.setChecked(bool(self.canvas.state.numbering_enabled))
-            for key, action in state_to_action.items():
-                action.setChecked(key == mode)
-            self.action_numbering_export.setChecked(
-                bool(self.canvas.state.numbering_include_in_export)
-            )
-            self.action_numbering_recalculate.setEnabled(bool(self.canvas.state.numbering_enabled))
-        finally:
-            for action, was_blocked in previous_blocks:
-                action.blockSignals(was_blocked)
+        self._view_controller.sync_numbering_actions(self)
 
     def _maybe_check_updates_startup(self) -> None:
         """Chequea updates en inicio respetando política y frecuencia."""
@@ -1594,8 +922,8 @@ class ChemusonWindow(QMainWindow):
         """Export the canvas in the specified format."""
         self._export_controller.export(self, format)
 
-    def _confirm_discard_changes(self, canvas: Optional[ChemusonCanvas] = None) -> bool:
-        """Método auxiliar para  confirm discard changes."""
+    def _confirm_discard_changes(self, canvas: ChemusonCanvas) -> bool:
+        """Confirma descarte del canvas especificado."""
         return self._document_controller.confirm_discard_changes(
             self._document_discard_context(),
             canvas,
@@ -1618,14 +946,28 @@ class ChemusonWindow(QMainWindow):
             show_status=lambda message: self.statusBar().showMessage(message),
         )
 
-    def _recent_files_context(self) -> RecentFilesContext:
+    def _recent_files_context(
+        self,
+        recent_files: Optional[list[str]] = None,
+    ) -> RecentFilesContext:
         """Construye el contexto mínimo requerido por DocumentController para recientes."""
         return RecentFilesContext(
             settings=self._settings,
-            recent_files=self._recent_files,
+            recent_files=self._recent_files if recent_files is None else recent_files,
             persist_recent_files=self._save_recent_files,
             refresh_recent_menu=self._update_recent_menu,
         )
+
+    def _document_tabs_context(self) -> DocumentTabsContext:
+        """Contrato explícito para operaciones de pestañas/rutas."""
+        return DocumentTabsContext(
+            tab_manager=self._tab_manager,
+            current_canvas=self.canvas,
+            current_file_path_setter=self._set_current_file_path,
+        )
+
+    def _set_current_file_path(self, filepath: Optional[str]) -> None:
+        self._current_file_path = filepath
 
     def _document_discard_context(self) -> DocumentDiscardContext:
         """Construye el contexto mínimo requerido para confirmar descarte."""
@@ -1769,142 +1111,51 @@ class ChemusonWindow(QMainWindow):
         self._update_iupac_name_indicator()
 
     def _apply_appearance_settings(self, prefs: dict) -> None:
-        """Aplica appearance settings.
-
-        Args:
-            prefs: Descripción del parámetro.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la interfaz.
-        """
-        bond_caps = prefs.get("bond_caps")
-        if bond_caps:
-            self._apply_bond_caps(bond_caps)
+        """Aplica preferencias visuales del documento."""
+        self._view_controller.apply_appearance_settings(self, prefs)
 
     def _apply_bond_caps(self, bond_caps: str) -> None:
-        """Aplica bond caps.
-
-        Args:
-            bond_caps: Descripción del parámetro.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la interfaz.
-        """
-        if bond_caps == "round":
-            cap_style = Qt.PenCapStyle.RoundCap
-            join_style = Qt.PenJoinStyle.RoundJoin
-        else:
-            cap_style = Qt.PenCapStyle.FlatCap
-            join_style = Qt.PenJoinStyle.MiterJoin
-        if (
-            self.canvas.drawing_style.cap_style != cap_style
-            or self.canvas.drawing_style.join_style != join_style
-        ):
-            style = replace(
-                self.canvas.drawing_style,
-                cap_style=cap_style,
-                join_style=join_style,
-            )
-            self.canvas.apply_drawing_style(style)
+        """Compatibilidad para aplicar estilo de terminación de enlace."""
+        self._view_controller.apply_bond_caps(self, bond_caps)
     
     # -------------------------------------------------------------------------
     # View Menu Handlers
     # -------------------------------------------------------------------------
     def _on_toggle_numbering(self, checked: bool) -> None:
-        """Activa/desactiva numeración de átomos/estructuras."""
-        self.canvas.set_numbering_enabled(checked)
-        self._sync_numbering_actions()
-        self._save_numbering_preferences()
-        self.statusBar().showMessage(
-            "Numeración: visible" if checked else "Numeración: oculta"
-        )
+        self._view_controller.on_toggle_numbering(self, checked)
 
     def _on_set_numbering_mode(self, mode: str) -> None:
-        """Cambia el modo de numeración mostrado en el lienzo."""
-        self.canvas.set_numbering_mode(mode)
-        self._sync_numbering_actions()
-        self._save_numbering_preferences()
-        labels = {
-            "atoms": "átomos",
-            "structures": "estructuras",
-            "both": "átomos y estructuras",
-        }
-        active_mode = self.canvas.state.numbering_mode
-        self.statusBar().showMessage(f"Numeración: {labels.get(active_mode, active_mode)}")
+        self._view_controller.on_set_numbering_mode(self, mode)
 
     def _on_recalculate_numbering(self) -> None:
-        """Recalcula explícitamente la numeración visual."""
-        self.canvas.recompute_numbering(force_reset=True)
-        self.statusBar().showMessage("Numeración recalculada")
+        self._view_controller.on_recalculate_numbering(self)
 
     def _on_toggle_numbering_export(self, checked: bool) -> None:
-        """Define si la numeración se incluye al exportar."""
-        self.canvas.set_numbering_include_in_export(checked)
-        self._sync_numbering_actions()
-        self._save_numbering_preferences()
-        self.statusBar().showMessage(
-            "Exportación: numeración incluida"
-            if checked
-            else "Exportación: numeración excluida"
-        )
+        self._view_controller.on_toggle_numbering_export(self, checked)
 
     def _on_toggle_carbons(self, checked: bool) -> None:
-        """Toggle visibility of implicit carbons."""
-        self.canvas.state.show_implicit_carbons = checked
-        self.canvas.refresh_atom_visibility()
-        self.statusBar().showMessage(
-            "Carbonos: visibles" if checked else "Carbonos: ocultos"
-        )
+        self._view_controller.on_toggle_carbons(self, checked)
     
     def _on_toggle_hydrogens(self, checked: bool) -> None:
-        """Toggle visibility of implicit hydrogens."""
-        self.canvas.state.show_implicit_hydrogens = checked
-        self.canvas.refresh_atom_visibility()
-        self.statusBar().showMessage(
-            "Hidrógenos: visibles" if checked else "Hidrógenos: ocultos"
-        )
+        self._view_controller.on_toggle_hydrogens(self, checked)
     
     def _on_toggle_aromatic_circles(self, checked: bool) -> None:
-        """Toggle aromatic circle display mode."""
-        self.canvas.state.use_aromatic_circles = checked
-        self.canvas.refresh_aromatic_circles()
-        self.statusBar().showMessage(
-            "Aromáticos: círculos" if checked else "Aromáticos: Kekulé"
-        )
+        self._view_controller.on_toggle_aromatic_circles(self, checked)
 
     def _on_toggle_rules(self, checked: bool) -> None:
-        """Toggle rulers on the canvas."""
-        self.canvas.set_show_rulers(checked)
-        self.statusBar().showMessage(
-            "Reglas: visibles" if checked else "Reglas: ocultas"
-        )
+        self._view_controller.on_toggle_rules(self, checked)
 
     def _on_toggle_crosshair(self, checked: bool) -> None:
-        """Toggle grid display on the canvas."""
-        self.canvas.set_show_grid(checked)
-        self.statusBar().showMessage(
-            "Cuadrícula: visible" if checked else "Cuadrícula: oculta"
-        )
+        self._view_controller.on_toggle_crosshair(self, checked)
     
     def _on_zoom_in(self) -> None:
-        """Zoom in the canvas."""
-        self.canvas.zoom_in()
+        self._view_controller.on_zoom_in(self)
     
     def _on_zoom_out(self) -> None:
-        """Zoom out the canvas."""
-        self.canvas.zoom_out()
+        self._view_controller.on_zoom_out(self)
     
     def _on_zoom_reset(self) -> None:
-        """Reset zoom to 100% and center view on paper."""
-        self.canvas.resetTransform()
-        self.canvas.center_on_paper()
-        self.statusBar().showMessage("Zoom: 100%")
+        self._view_controller.on_zoom_reset(self)
 
     def _on_rotate_selection(self, angle_deg: float) -> None:
         """Maneja rotate selection.
@@ -2065,341 +1316,40 @@ class ChemusonWindow(QMainWindow):
     # Text Menu Handlers
     # -------------------------------------------------------------------------
     def _sync_label_menu_state(self) -> None:
-        """Sincroniza label menu state.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la interfaz.
-        """
-        self.action_label_bold.setChecked(self.canvas.state.label_font_bold)
-        self.action_label_italic.setChecked(self.canvas.state.label_font_italic)
-        self.action_label_underline.setChecked(self.canvas.state.label_font_underline)
-        self.action_label_color_element.setChecked(self.canvas.state.use_element_colors)
-        self.action_label_color_black.setChecked(not self.canvas.state.use_element_colors)
+        self._text_format_controller.sync_label_menu_state(self)
 
     def _on_label_font(self) -> None:
-        """Maneja label font.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la interfaz.
-        """
-        font, ok = QFontDialog.getFont(
-            self.canvas.label_font(),
-            self,
-            "Fuente de etiquetas",
-        )
-        if ok:
-            self.canvas.apply_label_font(font)
-            self._sync_label_menu_state()
+        self._text_format_controller.on_label_font(self)
 
     def _on_label_font_size_dialog(self) -> None:
-        """Maneja label font size dialog.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la interfaz.
-        """
-        size, ok = QInputDialog.getDouble(
-            self,
-            "Tamaño de etiquetas",
-            "Tamaño (pt):",
-            float(self.canvas.current_label_size_value()),
-            6.0,
-            72.0,
-            1,
-        )
-        if not ok:
-            return
-        self.canvas.apply_label_font_size(float(size))
-        self._sync_label_menu_state()
+        self._text_format_controller.on_label_font_size_dialog(self)
 
     def _on_label_bold(self, checked: bool) -> None:
-        """Maneja label bold."""
-        if self._apply_text_format_to_external_editor(
-            "", 0, checked, False, False, False, False, "bold"
-        ):
-            return
-        font = self.canvas.label_font()
-        font.setBold(checked)
-        self.canvas.apply_label_font(font)
-        self._sync_label_menu_state()
+        self._text_format_controller.on_label_bold(self, checked)
 
     def _on_label_italic(self, checked: bool) -> None:
-        """Maneja label italic."""
-        if self._apply_text_format_to_external_editor(
-            "", 0, False, checked, False, False, False, "italic"
-        ):
-            return
-        font = self.canvas.label_font()
-        font.setItalic(checked)
-        self.canvas.apply_label_font(font)
-        self._sync_label_menu_state()
+        self._text_format_controller.on_label_italic(self, checked)
 
     def _on_label_underline(self, checked: bool) -> None:
-        """Maneja label underline."""
-        if self._apply_text_format_to_external_editor(
-            "", 0, False, False, checked, False, False, "underline"
-        ):
-            return
-        font = self.canvas.label_font()
-        font.setUnderline(checked)
-        self.canvas.apply_label_font(font)
-        self._sync_label_menu_state()
+        self._text_format_controller.on_label_underline(self, checked)
 
     def _on_label_font_size(self, delta: float) -> None:
-        """Maneja label font size.
-
-        Args:
-            delta: Descripción del parámetro.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la interfaz.
-        """
-        self.canvas.adjust_label_font_size(delta)
+        self._text_format_controller.on_label_font_size(self, delta)
 
     def _set_canvas_size(self, width: int, height: int) -> None:
-        """Método auxiliar para  set canvas size.
-
-        Args:
-            width: Descripción del parámetro.
-            height: Descripción del parámetro.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la interfaz.
-        """
-        self.canvas.set_paper_size(width, height)
-        self.statusBar().showMessage(f"Lienzo: {width} x {height} px")
+        self._view_controller.set_canvas_size(self, width, height)
 
     def _on_canvas_custom_size(self) -> None:
-        """Maneja canvas custom size.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la interfaz.
-        """
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Tamaño de lienzo")
-
-        px_per_in = 96.0
-        px_per_cm = px_per_in / 2.54
-
-        width_spin = QDoubleSpinBox()
-        height_spin = QDoubleSpinBox()
-        width_spin.setDecimals(2)
-        height_spin.setDecimals(2)
-
-        unit_combo = QComboBox()
-        unit_combo.addItems(["cm", "px", "in"])
-        unit_combo.setCurrentText("cm")
-
-        def apply_unit_settings(unit: str) -> None:
-            """Método auxiliar para apply unit settings.
-
-            Args:
-                unit: Descripción del parámetro.
-
-            Returns:
-                Resultado de la operación o None.
-
-            Side Effects:
-                Puede modificar el estado interno o la interfaz.
-            """
-            if unit == "px":
-                width_spin.setRange(200.0, 20000.0)
-                height_spin.setRange(200.0, 20000.0)
-                width_spin.setDecimals(0)
-                height_spin.setDecimals(0)
-            elif unit == "in":
-                width_spin.setRange(1.0, 200.0)
-                height_spin.setRange(1.0, 200.0)
-                width_spin.setDecimals(2)
-                height_spin.setDecimals(2)
-            else:
-                width_spin.setRange(1.0, 500.0)
-                height_spin.setRange(1.0, 500.0)
-                width_spin.setDecimals(2)
-                height_spin.setDecimals(2)
-
-        apply_unit_settings("cm")
-        width_spin.setValue(self.canvas.paper_width / px_per_cm)
-        height_spin.setValue(self.canvas.paper_height / px_per_cm)
-
-        def on_unit_changed(text: str) -> None:
-            """Método auxiliar para on unit changed.
-
-            Args:
-                text: Descripción del parámetro.
-
-            Returns:
-                Resultado de la operación o None.
-
-            Side Effects:
-                Puede modificar el estado interno o la interfaz.
-            """
-            old_unit = "cm"
-            if unit_combo.property("last_unit"):
-                old_unit = unit_combo.property("last_unit")
-            unit_combo.setProperty("last_unit", text)
-
-            def to_px(value: float, unit: str) -> float:
-                """Método auxiliar para to px.
-
-                Args:
-                    value: Descripción del parámetro.
-                    unit: Descripción del parámetro.
-
-                Returns:
-                    Resultado de la operación o None.
-
-                Side Effects:
-                    Puede modificar el estado interno o la interfaz.
-                """
-                if unit == "px":
-                    return value
-                if unit == "in":
-                    return value * px_per_in
-                return value * px_per_cm
-
-            def from_px(value: float, unit: str) -> float:
-                """Método auxiliar para from px.
-
-                Args:
-                    value: Descripción del parámetro.
-                    unit: Descripción del parámetro.
-
-                Returns:
-                    Resultado de la operación o None.
-
-                Side Effects:
-                    Puede modificar el estado interno o la interfaz.
-                """
-                if unit == "px":
-                    return value
-                if unit == "in":
-                    return value / px_per_in
-                return value / px_per_cm
-
-            current_px_w = to_px(width_spin.value(), old_unit)
-            current_px_h = to_px(height_spin.value(), old_unit)
-            apply_unit_settings(text)
-            width_spin.setValue(from_px(current_px_w, text))
-            height_spin.setValue(from_px(current_px_h, text))
-
-        unit_combo.setProperty("last_unit", "cm")
-        unit_combo.currentTextChanged.connect(on_unit_changed)
-
-        form = QFormLayout()
-        form.addRow("Unidad:", unit_combo)
-        form.addRow("Ancho:", width_spin)
-        form.addRow("Alto:", height_spin)
-
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
-
-        layout = QVBoxLayout(dialog)
-        layout.addLayout(form)
-        layout.addWidget(buttons)
-
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
-
-        unit = unit_combo.currentText()
-        if unit == "px":
-            width_px = int(width_spin.value())
-            height_px = int(height_spin.value())
-        elif unit == "in":
-            width_px = int(round(width_spin.value() * px_per_in))
-            height_px = int(round(height_spin.value() * px_per_in))
-        else:
-            width_px = int(round(width_spin.value() * px_per_cm))
-            height_px = int(round(height_spin.value() * px_per_cm))
-
-        self._set_canvas_size(width_px, height_px)
-
-    def _apply_label_script(self, marker: str, title: str) -> None:
-        """Aplica label script.
-
-        Args:
-            marker: Descripción del parámetro.
-            title: Descripción del parámetro.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la interfaz.
-        """
-        if self.canvas.state.selected_bonds or len(self.canvas.state.selected_atoms) != 1:
-            self.statusBar().showMessage("Selecciona un átomo para aplicar el formato.")
-            return
-        value, ok = QInputDialog.getText(self, title, "Texto:")
-        if not ok:
-            return
-        cleaned = value.strip()
-        if not cleaned:
-            return
-        atom_id = next(iter(self.canvas.state.selected_atoms))
-        atom = self.canvas.model.get_atom(atom_id)
-        label = atom.element
-        charge = ""
-        if label and label[-1] in "+-":
-            charge = label[-1]
-            label = label[:-1]
-        new_label = f"{label}{marker}{cleaned}{charge}"
-        cmd = ChangeAtomCommand(self.canvas.model, self.canvas, atom_id, new_label)
-        self.canvas.undo_stack.push(cmd)
+        self._view_controller.open_canvas_custom_size_dialog(self)
 
     def _on_label_subscript(self) -> None:
-        """Maneja label subscript."""
-        if self._apply_text_format_to_external_editor(
-            "", 0, False, False, False, True, False, "sub"
-        ):
-            return
-        self.canvas.update_text_format(sub=True, property_name="sub")
+        self._text_format_controller.on_label_subscript(self)
 
     def _on_label_superscript(self) -> None:
-        """Maneja label superscript."""
-        if self._apply_text_format_to_external_editor(
-            "", 0, False, False, False, False, True, "sup"
-        ):
-            return
-        self.canvas.update_text_format(sup=True, property_name="sup")
+        self._text_format_controller.on_label_superscript(self)
 
     def _on_label_color_mode(self, use_element_colors: bool) -> None:
-        """Maneja label color mode.
-
-        Args:
-            use_element_colors: Descripción del parámetro.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la interfaz.
-        """
-        self.canvas.set_use_element_colors(use_element_colors)
-        self._sync_label_menu_state()
-        self.statusBar().showMessage(
-            "Etiquetas: por elemento" if use_element_colors else "Etiquetas: negro"
-        )
+        self._text_format_controller.on_label_color_mode(self, use_element_colors)
     
     # -------------------------------------------------------------------------
     # Structure Menu Handlers
@@ -2632,181 +1582,13 @@ class ChemusonWindow(QMainWindow):
             f"Plantilla '{label}' lista. Haz clic para colocar; clic sobre átomo para conectar."
         )
 
-    def _get_templates_dir(self) -> str:
-        """Ruta legada para plantillas en disco (`src/templates`)."""
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        templates_dir = os.path.join(base_dir, "templates")
-        if not os.path.exists(templates_dir):
-            os.makedirs(templates_dir)
-        return templates_dir
-
-    def _migrate_legacy_templates(self) -> None:
-        """Importa plantillas `.mol` legadas a la nueva biblioteca JSON."""
-        try:
-            templates_dir = self._get_templates_dir()
-            files = [
-                path
-                for path in sorted(os.listdir(templates_dir))
-                if path.lower().endswith(".mol")
-            ]
-            if not files:
-                return
-            existing = {
-                (
-                    str(tpl.get("name", "")).strip().lower(),
-                    str(tpl.get("molblock", "")).strip(),
-                )
-                for tpl in self.template_library.list_templates()
-            }
-            changed = False
-            for filename in files:
-                filepath = os.path.join(templates_dir, filename)
-                try:
-                    with open(filepath, "r", encoding="utf-8") as fh:
-                        molblock = fh.read().strip()
-                except Exception:
-                    continue
-                if not molblock:
-                    continue
-                name = os.path.splitext(filename)[0].replace("_", " ").strip() or "Plantilla"
-                signature = (name.lower(), molblock)
-                if signature in existing:
-                    continue
-                self.template_library.add_template(
-                    name=name,
-                    category=DEFAULT_CATEGORY_USER,
-                    molblock=molblock,
-                )
-                existing.add(signature)
-                changed = True
-            if changed:
-                self.statusBar().showMessage("Plantillas legadas importadas a la biblioteca.")
-        except Exception:
-            # Migración best-effort: no bloquear inicio por fallos en archivos legados.
-            return
-
-    def _template_preview_icon(self, template_id: str) -> QIcon:
-        """Genera miniatura de una plantilla para la galería lateral."""
-        cache = self._template_icon_cache.get(template_id)
-        if cache is not None:
-            return cache
-        icon = QIcon()
-        try:
-            graph = self.template_library.graph_from_template(template_id)
-            if not graph.atoms:
-                self._template_icon_cache[template_id] = icon
-                return icon
-            pixmap = QPixmap(88, 56)
-            pixmap.fill(Qt.GlobalColor.transparent)
-            painter = QPainter(pixmap)
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-
-            xs = [atom.x for atom in graph.atoms.values()]
-            ys = [atom.y for atom in graph.atoms.values()]
-            min_x, max_x = min(xs), max(xs)
-            min_y, max_y = min(ys), max(ys)
-            width = max(1.0, max_x - min_x)
-            height = max(1.0, max_y - min_y)
-            margin = 8.0
-            scale = min(
-                (pixmap.width() - 2.0 * margin) / width,
-                (pixmap.height() - 2.0 * margin) / height,
-            )
-
-            def map_point(x: float, y: float) -> tuple[float, float]:
-                sx = margin + (x - min_x) * scale
-                sy = margin + (max_y - y) * scale
-                return sx, sy
-
-            bond_pen = QPen(QColor("#222222"))
-            bond_pen.setWidth(2)
-            bond_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-            painter.setPen(bond_pen)
-            for bond in graph.bonds.values():
-                a1 = graph.get_atom(bond.a1_id)
-                a2 = graph.get_atom(bond.a2_id)
-                x1, y1 = map_point(a1.x, a1.y)
-                x2, y2 = map_point(a2.x, a2.y)
-                painter.drawLine(int(round(x1)), int(round(y1)), int(round(x2)), int(round(y2)))
-
-            color_map = {
-                "N": QColor("#2A56D1"),
-                "O": QColor("#D11E1E"),
-                "S": QColor("#D48400"),
-                "P": QColor("#E66A00"),
-                "Cl": QColor("#18B81F"),
-                "Br": QColor("#A04300"),
-                "I": QColor("#5E2A88"),
-            }
-            font = painter.font()
-            font.setPointSize(8)
-            painter.setFont(font)
-            for atom in graph.atoms.values():
-                if atom.element == "C":
-                    continue
-                x, y = map_point(atom.x, atom.y)
-                painter.setPen(color_map.get(atom.element, QColor("#1A1A1A")))
-                painter.drawText(int(round(x)) - 6, int(round(y)) + 4, atom.element)
-            painter.end()
-            icon = QIcon(pixmap)
-        except Exception:
-            icon = QIcon()
-        self._template_icon_cache[template_id] = icon
-        return icon
-
     def _refresh_template_views(self) -> None:
         """Sincroniza menú y dock con la biblioteca de plantillas."""
-        self._template_icon_cache.clear()
-        grouped = self.template_library.grouped_templates()
-        grouped_with_icons: list[dict] = []
-        for group in grouped:
-            templates = []
-            for template in group.get("templates", []):
-                entry = dict(template)
-                template_id = str(entry.get("id", "")).strip()
-                if template_id:
-                    entry["icon"] = self._template_preview_icon(template_id)
-                templates.append(entry)
-            grouped_with_icons.append({"name": group.get("name", ""), "templates": templates})
-        self.templates_dock.set_templates(grouped_with_icons)
-        self._refresh_templates_menu()
+        self._template_browser.refresh_template_views(self._template_browser_context())
 
     def _refresh_templates_menu(self) -> None:
         """Construye menú dinámico de plantillas por categoría."""
-        self.templates_menu.clear()
-        grouped = self.template_library.grouped_templates()
-        total_templates = 0
-        for group in grouped:
-            category = str(group.get("name", "")).strip()
-            if not category:
-                continue
-            submenu = self.templates_menu.addMenu(category)
-            templates = list(group.get("templates", []))
-            if not templates:
-                empty = QAction("(Vacío)", self)
-                empty.setEnabled(False)
-                submenu.addAction(empty)
-                continue
-            for template in templates:
-                template_id = str(template.get("id", "")).strip()
-                label = str(template.get("name", "")).strip() or "Plantilla"
-                if not template_id:
-                    continue
-                action = QAction(label, self)
-                action.triggered.connect(
-                    lambda checked=False, tid=template_id: self._start_template_insert_by_id(tid)
-                )
-                submenu.addAction(action)
-                total_templates += 1
-        if total_templates == 0:
-            empty = QAction("(Sin plantillas)", self)
-            empty.setEnabled(False)
-            self.templates_menu.addAction(empty)
-        self.templates_menu.addSeparator()
-        self.templates_menu.addAction(self.action_save_template)
-        self.templates_menu.addAction(self.action_template_new_category)
-        self.templates_menu.addAction(self.action_template_import_library)
-        self.templates_menu.addAction(self.action_template_export_library)
+        self._template_browser.refresh_templates_menu(self._template_browser_context())
 
     def _start_template_insert_by_id(self, template_id: str, *, place_now: bool = False) -> None:
         """Carga plantilla desde biblioteca e inicia inserción."""
@@ -2878,25 +1660,11 @@ class ChemusonWindow(QMainWindow):
         )
 
     def _insert_template_from_file(self, filepath: str) -> None:
-        """Método auxiliar para  insert template from file.
-
-        Args:
-            filepath: Descripción del parámetro.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la interfaz.
-        """
-        try:
-            with open(filepath, "r", encoding="utf-8") as f:
-                molblock = f.read()
-            graph = molfile_to_molgraph(molblock)
-            name = os.path.splitext(os.path.basename(filepath))[0]
-            self._insert_template(name, graph)
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Error al cargar plantilla:\n{e}")
+        """Carga e inserta una plantilla legada en formato MOL."""
+        self._template_browser.insert_template_from_file(
+            self._template_browser_context(),
+            filepath,
+        )
 
     def _on_insert_linear_chain(self) -> None:
         """Maneja insert linear chain."""
@@ -2921,6 +1689,32 @@ class ChemusonWindow(QMainWindow):
             show_status=self.statusBar().showMessage,
             refresh_template_views=self._refresh_template_views,
             insert_template=self._insert_template,
+        )
+
+    def _template_browser_context(self) -> TemplateBrowserContext:
+        """Dependencias de presentación/migración de plantillas."""
+        return TemplateBrowserContext(
+            parent=self,
+            template_library=self.template_library,
+            templates_menu=self.templates_menu,
+            templates_dock=self.templates_dock,
+            action_save_template=self.action_save_template,
+            action_template_new_category=self.action_template_new_category,
+            action_template_import_library=self.action_template_import_library,
+            action_template_export_library=self.action_template_export_library,
+            preview_cache=self._template_icon_cache,
+            show_status=self.statusBar().showMessage,
+            start_template_insert_by_id=self._start_template_insert_by_id,
+            insert_template=self._insert_template,
+            default_category_user=DEFAULT_CATEGORY_USER,
+        )
+
+    def _semantic_diagram_workflow_context(self) -> SemanticDiagramWorkflowContext:
+        """Dependencias mínimas para editar/insertar diagramas semánticos."""
+        return SemanticDiagramWorkflowContext(
+            parent=self,
+            canvas=self.canvas,
+            visible_center=self._visible_canvas_center_scene_pos,
         )
 
     # -------------------------------------------------------------------------
@@ -3006,89 +1800,8 @@ class ChemusonWindow(QMainWindow):
         dialog.exec()
     
     def _update_status(self, tool_id: str) -> None:
-        """Update status bar with current tool."""
-        ring_label = f"Anillo {self.canvas.state.active_ring_size}"
-        energy_diagram_label = energy_diagram_display_name(
-            self.canvas.state.active_energy_diagram_kind
-        )
-        orbital_label = orbital_display_name(self.canvas.state.active_orbital_kind)
-        if self.canvas.state.active_ring_template:
-            template_name = {
-                "haworth": "Haworth",
-                "chair": "Silla",
-            }.get(self.canvas.state.active_ring_template, "Anillo")
-            anomeric = self.canvas.state.active_ring_anomeric
-            suffix = ""
-            if anomeric == "alpha":
-                suffix = " α"
-            elif anomeric == "beta":
-                suffix = " β"
-            ring_label = f"{template_name}{suffix}".strip()
-        tool_names = {
-            "tool_none": "Ninguna",
-            "tool_select": "Seleccionar",
-            "tool_select_lasso": "Seleccion (lazo)",
-            "tool_bond": "Enlace",
-            "tool_coordination_bond": "Enlace coordinativo",
-            "tool_rotate_3d_precise": "Rotación 3D precisa",
-            "tool_ring": ring_label,
-            "tool_atom": f"Elemento {self.canvas.state.default_element}",
-            "tool_energy_diagram": energy_diagram_label,
-            "tool_orbital": orbital_label,
-            "tool_coordination_center": "Centro de coordinación (esfera)",
-            "tool_chain": "Cadena",
-            "tool_arrow_line": "Linea",
-            "tool_arrow_line_dashed": "Linea discontinua",
-            "tool_arrow_forward": "Flecha directa",
-            "tool_arrow_forward_open": "Flecha directa abierta",
-            "tool_arrow_forward_dashed": "Flecha directa discontinua",
-            "tool_arrow_retro": "Flecha retro",
-            "tool_arrow_retro_open": "Flecha retro abierta",
-            "tool_arrow_retro_dashed": "Flecha retro discontinua",
-            "tool_arrow_both": "Flecha doble",
-            "tool_arrow_both_open": "Flecha doble abierta",
-            "tool_arrow_both_dashed": "Flecha doble discontinua",
-            "tool_arrow_equilibrium": "Equilibrio",
-            "tool_arrow_equilibrium_dashed": "Equilibrio discontinuo",
-            "tool_arrow_retrosynthetic": "Flecha retrosintesis",
-            "tool_arrow_curved": "Flecha curva",
-            "tool_arrow_curved_fishhook": "Flecha curva (1 e-)",
-            "tool_brackets_round": "Parentesis",
-            "tool_brackets_square": "Corchetes",
-            "tool_brackets_square_left": "Corchete izquierdo",
-            "tool_brackets_square_right": "Corchete derecho",
-            "tool_brackets_corner": "Esquinas",
-            "tool_brackets_curly": "Llaves",
-            "tool_brackets_curly_left": "Llave izquierda",
-            "tool_brackets_curly_right": "Llave derecha",
-            "tool_brackets_frame": "Marco",
-            "tool_brackets_frame_rounded": "Marco redondeado",
-            "tool_charge_plus": "Carga positiva",
-            "tool_charge_minus": "Carga negativa",
-            "tool_charge": "Carga alterna",
-            "tool_symbol_plus": "Signo más",
-            "tool_symbol_minus": "Signo menos",
-            "tool_symbol_radical": "Electrón desapareado",
-            "tool_symbol_lone_pair": "Par solitario",
-            "tool_symbol_wavy_anchor": "Ancla ondulada",
-            "tool_symbol_radical_cation": "Radical catión",
-            "tool_symbol_radical_anion": "Radical anión",
-            "tool_symbol_partial_plus": "Carga parcial (+)",
-            "tool_symbol_partial_minus": "Carga parcial (-)",
-        }
-        tool_names.update(
-            {
-                energy_diagram_tool_id(kind): energy_diagram_display_name(kind)
-                for kind in ENERGY_DIAGRAM_MENU_ORDER
-            }
-        )
-        tool_names.update(
-            {
-                orbital_tool_id(kind): orbital_display_name(kind)
-                for kind in ORBITAL_MENU_ORDER
-            }
-        )
-        name = tool_names.get(tool_id, tool_id)
+        """Actualiza la barra de estado con la herramienta activa."""
+        name = self._ui_builder.tool_status_label(self, tool_id)
         self.statusBar().showMessage(f"Herramienta: {name}")
 
     def _on_selection_changed(self, num_atoms: int, num_bonds: int, num_text: int, details: dict):
@@ -3140,13 +1853,7 @@ class ChemusonWindow(QMainWindow):
         )
 
     def _update_total_charge_indicator(self) -> None:
-        """Actualiza el indicador de carga total en la barra de estado."""
-        charge = int(self.canvas.model.total_formal_charge())
-        if charge > 0:
-            charge_text = f"+{charge}"
-        else:
-            charge_text = str(charge)
-        self._total_charge_label.setText(f"Carga total: {charge_text}")
+        self._view_controller.update_total_charge_indicator(self)
 
 
 def run_app() -> None:

@@ -1,56 +1,48 @@
 from __future__ import annotations
 
-from ._shared import (
-    AROMATIC_CIRCLE_ATOMS_ROLE,
-    AddImageItemCommand,
+import math
+import os
+from typing import Iterable, Optional
+
+from PyQt6.QtCore import QBuffer, QMimeData, QPointF, QRect, QRectF, QSize, Qt
+from PyQt6.QtGui import QColor, QImage, QPainter, QPixmap
+from PyQt6.QtWidgets import QGraphicsItem
+
+try:
+    from PyQt6.QtSvg import QSvgGenerator
+except Exception:  # Optional Qt module at runtime
+    QSvgGenerator = None
+
+from chemuson.chemname.molview import MolView
+from chemuson.chemname.rings import find_rings_simple, ring_bonds
+from chemuson.core.model import Bond, BondStyle, normalize_opacity, normalize_optional_opacity
+from chemuson.gui.commands import AddImageItemCommand
+from chemuson.gui.composite_diagram_item import CompositeDiagramItem
+from chemuson.gui.items import (
     AromaticCircleItem,
     ArrowItem,
     AtomItem,
-    Bond,
     BondItem,
-    BondStyle,
     BracketItem,
-    CompositeDiagramItem,
-    DrawingStyle,
     EnergyDiagramItem,
-    GelBandItem,
-    GelElectrophoresisItem,
+    ImageAnnotationItem,
+    OrbitalAnnotationItem,
+    TextAnnotationItem,
+    WavyAnchorItem,
+)
+from chemuson.gui.plate_items import GelBandItem, GelElectrophoresisItem, TLCPlateItem, TLCSpotItem
+from chemuson.gui.style import DrawingStyle
+
+from .canvas_constants import (
+    AROMATIC_CIRCLE_ATOMS_ROLE,
     ITEM_OPACITY_ROLE,
     ITEM_OPACITY_UNSET,
-    ImageAnnotationItem,
-    Iterable,
-    MolView,
     NUMBERING_TEXT_ROLE,
-    Optional,
-    OrbitalAnnotationItem,
     PAPER_MARGIN,
     PASTE_IMAGE_MAX_PAPER_FRACTION,
     PASTE_IMAGE_OFFSET_PX,
-    QBuffer,
-    QColor,
-    QGraphicsItem,
-    QImage,
-    QMimeData,
-    QPainter,
-    QPixmap,
-    QPointF,
-    QRect,
-    QRectF,
-    QSize,
-    Qt,
     SUPPORTED_IMAGE_FILE_MIME_TYPES,
-    TLCPlateItem,
-    TLCSpotItem,
     TRACKBALL_REFERENCE_MATCH_TOLERANCE_PX,
-    TextAnnotationItem,
-    WavyAnchorItem,
-    angle_deg,
-    find_rings_simple,
-    math,
-    normalize_opacity,
-    normalize_optional_opacity,
-    os,
-    ring_bonds,
 )
 
 class CanvasRenderMixin:

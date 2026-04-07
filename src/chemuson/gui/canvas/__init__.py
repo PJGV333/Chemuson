@@ -1,15 +1,25 @@
-"""API publica compatible para el paquete canvas de Chemuson."""
+"""API publica estable del paquete canvas."""
 from __future__ import annotations
 
-from . import _shared as _shared_module
+from PyQt6.QtWidgets import QInputDialog
+
+from chemuson.chemio.rdkit_io import molgraph_to_molfile, molgraph_to_smiles
+
+from .canvas_constants import (
+    AROMATIC_CIRCLE_ATOMS_ROLE,
+    BRANCH_ROTATION_NOOP_TOLERANCE_DEG,
+    BRANCH_ROTATION_STEP_DEG,
+    FRAGMENT_ROTATION_STEP_DEG,
+)
 from .canvas_view import ChemusonCanvas
 
-_SHARED_EXPORTS = tuple(
-    name
-    for name in dir(_shared_module)
-    if not name.startswith("_")
-)
-
-globals().update({name: getattr(_shared_module, name) for name in _SHARED_EXPORTS})
-
-__all__ = [*_SHARED_EXPORTS, "ChemusonCanvas"]
+__all__ = [
+    "AROMATIC_CIRCLE_ATOMS_ROLE",
+    "BRANCH_ROTATION_NOOP_TOLERANCE_DEG",
+    "BRANCH_ROTATION_STEP_DEG",
+    "ChemusonCanvas",
+    "FRAGMENT_ROTATION_STEP_DEG",
+    "molgraph_to_molfile",
+    "molgraph_to_smiles",
+    "QInputDialog",
+]

@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-from ._shared import (
-    ArrowItem,
-    AtomItem,
-    BRANCH_ROTATION_STEP_DEG,
-    BondItem,
-    BondStereo,
-    BondStyle,
-    BracketItem,
+import math
+from typing import Dict, Iterable, Optional, Tuple
+
+from PyQt6.QtCore import QPointF
+from PyQt6.QtGui import QColor
+from PyQt6.QtWidgets import QColorDialog, QGraphicsItem, QInputDialog, QMenu
+
+from chemuson.core.model import BondStereo, BondStyle
+from chemuson.gui.commands import (
     ChangeArrowStrokeCommand,
     ChangeBondColorCommand,
     ChangeBondCommand,
@@ -16,28 +17,23 @@ from ._shared import (
     ChangeChargeCommand,
     ChangeCoordinationSphereStyleCommand,
     ChangeNoImplicitCommand,
-    CompositeDiagramItem,
-    Dict,
-    ELEMENT_SYMBOLS,
-    EnergyDiagramItem,
-    GelElectrophoresisItem,
-    ImageAnnotationItem,
-    Iterable,
     MoveAtomsCommand,
-    Optional,
-    OrbitalAnnotationItem,
-    QColor,
-    QColorDialog,
-    QGraphicsItem,
-    QInputDialog,
-    QMenu,
-    QPointF,
     SetCoordinationCenterCommand,
-    TLCPlateItem,
-    Tuple,
-    angle_deg,
-    math,
 )
+from chemuson.gui.composite_diagram_item import CompositeDiagramItem
+from chemuson.gui.items import (
+    ArrowItem,
+    AtomItem,
+    BondItem,
+    BracketItem,
+    EnergyDiagramItem,
+    ImageAnnotationItem,
+    OrbitalAnnotationItem,
+)
+from chemuson.gui.plate_items import GelElectrophoresisItem, TLCPlateItem
+
+from .canvas_chem_data import ELEMENT_SYMBOLS
+from .canvas_constants import BRANCH_ROTATION_STEP_DEG
 
 class CanvasContextMenuMixin:
     def _show_context_menu(

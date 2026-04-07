@@ -1,13 +1,20 @@
 from __future__ import annotations
 
-from ._shared import (
-    ANALYSIS_DIST_KEEP,
-    ANALYSIS_MARGIN_PX,
-    ANALYSIS_MAX_PEAKS,
-    ANALYSIS_MIN_PEAK_PERCENT,
-    ANGLE_OCCUPIED_TOLERANCE_DEG,
-    ATOMIC_WEIGHTS,
-    ATOM_HIT_RADIUS,
+import base64
+import itertools
+import math
+from typing import Dict, Iterable, List, Optional, Tuple
+
+from PyQt6.QtCore import QPointF, QRectF, Qt
+from PyQt6.QtGui import QBrush, QColor, QFont, QFontMetrics, QPen
+from PyQt6.QtWidgets import QDialog, QGraphicsRectItem, QInputDialog
+
+from chemuson.chemio.rdkit_io import kekulize_display_orders, molgraph_to_smiles
+from chemuson.chemname import NameOptions, iupac_name
+from chemuson.chemname.molview import MolView
+from chemuson.chemname.rings import find_rings_simple, ring_bonds
+from chemuson.core.model import Bond, BondStereo, BondStyle, MolGraph, normalize_opacity
+from chemuson.gui.commands import (
     AddAtomCommand,
     AddBondCommand,
     AddCompositeDiagramItemCommand,
@@ -15,92 +22,73 @@ from ._shared import (
     AddOrbitalItemCommand,
     AddPlateItemCommand,
     AddTextItemCommand,
+    MoveArrowItemsCommand,
+)
+from chemuson.gui.composite_diagram_item import CompositeDiagramItem
+from chemuson.gui.diagram_models import SemanticDiagram
+from chemuson.gui.diagram_presets import build_semantic_diagram_from_preset
+from chemuson.gui.dialogs import GelInsertDialog, TLCInsertDialog
+from chemuson.gui.energy_diagrams import (
+    DEFAULT_ENERGY_DIAGRAM_KIND,
+    build_atomic_subshell_diagram,
+    build_diatomic_mo_diagram,
+    build_ligand_field_diagram,
+    default_energy_label,
+    default_energy_label_side,
+    energy_diagram_default_size,
+)
+from chemuson.gui.geom import (
+    SP3_BOND_ANGLE_DEG,
+    angle_deg,
+    angle_distance_deg,
+    candidate_directions_deg,
+    endpoint_from_angle_len,
+    filter_occupied_angles_deg,
+    segment_min_distance,
+    segments_intersect,
+)
+from chemuson.gui.items import (
     ArrowItem,
     AtomItem,
     BaseItem,
-    Bond,
     BondItem,
-    BondStereo,
-    BondStyle,
     BracketItem,
-    CompositeDiagramItem,
-    DEFAULT_BOND_LENGTH,
-    DEFAULT_ENERGY_DIAGRAM_KIND,
-    DEFAULT_ORBITAL_KIND,
-    DEFAULT_PAPER_HEIGHT,
-    DEFAULT_PAPER_WIDTH,
-    Dict,
     EnergyDiagramItem,
-    GelElectrophoresisItem,
-    GelInsertDialog,
+    ImageAnnotationItem,
+    OrbitalAnnotationItem,
+    PreviewArrowItem,
+    TextAnnotationItem,
+    WavyAnchorItem,
+)
+from chemuson.gui.orbitals import DEFAULT_ORBITAL_KIND, orbital_canvas_extent
+from chemuson.gui.plate_items import GelElectrophoresisItem, PlateItem, TLCPlateItem
+from chemuson.gui.templates import build_chair_template, build_haworth_template
+
+from .canvas_chem_data import (
+    ANALYSIS_DIST_KEEP,
+    ANALYSIS_MARGIN_PX,
+    ANALYSIS_MAX_PEAKS,
+    ANALYSIS_MIN_PEAK_PERCENT,
+    ATOMIC_WEIGHTS,
     IMPLICIT_H_ELEMENTS,
     ISOTOPE_ABUNDANCES,
-    ImageAnnotationItem,
-    Iterable,
-    List,
+    MONOISOTOPIC_MASSES,
+)
+from .canvas_constants import (
+    ANGLE_OCCUPIED_TOLERANCE_DEG,
+    ATOM_HIT_RADIUS,
+    DEFAULT_BOND_LENGTH,
+    DEFAULT_PAPER_HEIGHT,
+    DEFAULT_PAPER_WIDTH,
     MIN_ATOM_DIST_SCALE,
     MIN_BOND_DIST_SCALE,
-    MONOISOTOPIC_MASSES,
-    MolGraph,
-    MolView,
-    MoveArrowItemsCommand,
-    MoveAtomsCommand,
     NUMBERING_TEXT_ROLE,
-    NameOptions,
-    Optional,
-    OrbitalAnnotationItem,
     PAPER_MARGIN,
-    PlateItem,
-    PreviewArrowItem,
-    QBrush,
-    QColor,
-    QDialog,
-    QFont,
-    QFontMetrics,
-    QGraphicsRectItem,
-    QInputDialog,
-    QPen,
-    QPointF,
-    QRectF,
-    Qt,
-    SP3_BOND_ANGLE_DEG,
     SP3_OCCUPIED_TOLERANCE_DEG,
-    SemanticDiagram,
-    TLCInsertDialog,
-    TLCPlateItem,
-    TextAnnotationItem,
-    Tuple,
     WAVY_ANCHOR_ANGLE_ROLE,
     WAVY_ANCHOR_BOND_ROLE,
     WAVY_ANCHOR_LENGTH_ROLE,
     WAVY_ANCHOR_ROLE,
-    WavyAnchorItem,
-    angle_deg,
-    angle_distance_deg,
-    base64,
-    build_atomic_subshell_diagram,
-    build_chair_template,
-    build_diatomic_mo_diagram,
-    build_haworth_template,
-    build_ligand_field_diagram,
-    build_semantic_diagram_from_preset,
-    candidate_directions_deg,
-    default_energy_label,
-    default_energy_label_side,
-    endpoint_from_angle_len,
-    energy_diagram_default_size,
-    filter_occupied_angles_deg,
-    find_rings_simple,
-    itertools,
-    iupac_name,
-    kekulize_display_orders,
-    math,
-    molgraph_to_smiles,
-    normalize_opacity,
-    orbital_canvas_extent,
-    ring_bonds,
-    segment_min_distance,
-    segments_intersect,
 )
 
 class CanvasStructureMixin:

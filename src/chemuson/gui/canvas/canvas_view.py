@@ -1,44 +1,12 @@
 """Clase pública del canvas compuesta por mixins de responsabilidad."""
 from __future__ import annotations
 
-from ._shared import (
-    AromaticCircleItem,
-    ArrowItem,
-    AtomItem,
-    BondItem,
-    BracketItem,
-    CHEMDOODLE_LIKE,
-    ChemState,
-    CompositeDiagramItem,
-    DEFAULT_PAPER_HEIGHT,
-    DEFAULT_PAPER_WIDTH,
-    Dict,
-    DrawingStyle,
-    EnergyDiagramItem,
-    GRID_MAJOR_STEP_PX,
-    GRID_MINOR_STEP_PX,
-    HoverAtomIndicatorItem,
-    HoverBondIndicatorItem,
-    ImageAnnotationItem,
-    List,
-    MolGraph,
-    NUMBERING_AUTO_TEXT_ROLE,
-    NUMBERING_KEY_ROLE,
-    NUMBERING_KIND_ROLE,
-    NUMBERING_TEXT_ROLE,
-    NumberedStructure,
-    OptimizeZoneItem,
-    Optional,
-    OrbitalAnnotationItem,
-    PAPER_ITEM_ROLE,
-    PreviewArrowItem,
-    PreviewBondItem,
-    PreviewChainItem,
-    PreviewChainLabelItem,
-    PreviewRingItem,
-    QBrush,
-    QColor,
-    QFont,
+import math
+from typing import Dict, List, Optional, Tuple
+
+from PyQt6.QtCore import QPoint, QPointF, QRectF, QTimer, Qt, pyqtSignal
+from PyQt6.QtGui import QBrush, QColor, QFont, QPainter, QPainterPath, QPen, QUndoStack
+from PyQt6.QtWidgets import (
     QGraphicsDropShadowEffect,
     QGraphicsEllipseItem,
     QGraphicsItem,
@@ -48,25 +16,46 @@ from ._shared import (
     QGraphicsScene,
     QGraphicsTextItem,
     QGraphicsView,
-    QPainter,
-    QPainterPath,
-    QPen,
-    QPoint,
-    QPointF,
-    QRectF,
-    QTimer,
-    QUndoStack,
-    Qt,
+)
+
+from chemuson.core.model import ChemState, MolGraph
+from chemuson.gui.composite_diagram_item import CompositeDiagramItem
+from chemuson.gui.items import (
+    AromaticCircleItem,
+    ArrowItem,
+    AtomItem,
+    BondItem,
+    BracketItem,
+    EnergyDiagramItem,
+    HoverAtomIndicatorItem,
+    HoverBondIndicatorItem,
+    ImageAnnotationItem,
+    OptimizeZoneItem,
+    OrbitalAnnotationItem,
+    PreviewArrowItem,
+    PreviewBondItem,
+    PreviewChainItem,
+    PreviewChainLabelItem,
+    PreviewRingItem,
+    TextAnnotationItem,
+    WavyAnchorItem,
+)
+from chemuson.gui.numbering import NumberedStructure, compute_atom_numbers, compute_structure_numbers
+from chemuson.gui.style import CHEMDOODLE_LIKE, DrawingStyle
+
+from .canvas_constants import (
+    DEFAULT_PAPER_HEIGHT,
+    DEFAULT_PAPER_WIDTH,
+    GRID_MAJOR_STEP_PX,
+    GRID_MINOR_STEP_PX,
+    NUMBERING_AUTO_TEXT_ROLE,
+    NUMBERING_KEY_ROLE,
+    NUMBERING_KIND_ROLE,
+    NUMBERING_TEXT_ROLE,
+    PAPER_ITEM_ROLE,
     RULER_MAJOR_STEP_PX,
     RULER_MINOR_STEP_PX,
     RULER_THICKNESS_PX,
-    TextAnnotationItem,
-    Tuple,
-    WavyAnchorItem,
-    compute_atom_numbers,
-    compute_structure_numbers,
-    math,
-    pyqtSignal,
 )
 from .canvas_input import CanvasInputMixin
 from .canvas_selection import CanvasSelectionMixin

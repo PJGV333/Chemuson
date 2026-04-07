@@ -43,10 +43,11 @@ Se endurecio el contrato explicito:
 - `DocumentTabsContext` se agrego para la parte de pestañas/rutas.
 - Se eliminaron los fallbacks legacy basados en diccionarios internos para `set_canvas_file_path` y `update_tab_title`.
 
-Compatibilidad temporal que queda:
+Estado actual:
 
-- `set_canvas_file_path(...)` y `update_tab_title(...)` aun aceptan un target legacy solo si expone `_tab_manager`.
-- `main_window.py` ya no depende de fallbacks genericos del controlador para recientes/descartes.
+- `set_canvas_file_path(...)`, `update_tab_title(...)` y `confirm_discard_changes(...)` trabajan solo con contextos explicitos.
+- `DocumentTabsContext` y `DocumentDiscardContext` validan que `tab_manager` sea un `CanvasTabManager`.
+- Ya no queda compatibilidad silenciosa basada en `_tab_manager`, `_current_file_path`, `canvas` u otros atributos implicitos.
 
 ### Template library
 
@@ -161,4 +162,4 @@ Chequeos adicionales:
 
 - No se partio `canvas_tools_bonding.py` en esta fase para no convertir la deuda en microarchivos artificiales sin una frontera clara todavia.
 - No se intento una reduccion cosmetica adicional de `main_window.py`; solo se movieron workflows con independencia real.
-- No se eliminaron todas las rutas legacy del ecosistema de tabs/documentos: se mantuvo compatibilidad minima en `DocumentController` para targets que aun exponen `_tab_manager`.
+- La frontera legacy de `DocumentController` ya se cerro por completo; el pendiente restante esta en otros controladores/window-like que aun pueden operar contra `window` como interfaz amplia.

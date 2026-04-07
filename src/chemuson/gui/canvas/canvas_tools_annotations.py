@@ -1,23 +1,21 @@
 from __future__ import annotations
 
-from ._shared import (
+from copy import deepcopy
+from typing import Optional
+
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor, QTextDocument
+from PyQt6.QtWidgets import QColorDialog, QGraphicsItem, QInputDialog
+
+from chemuson.gui.commands import (
     ChangeCanvasOpacityCommand,
-    CompositeDiagramItem,
     ConfigureEnergyDiagramItemsCommand,
     EditSemanticDiagramCommand,
-    EnergyDiagramItem,
-    Optional,
-    OrbitalAnnotationItem,
-    QColor,
-    QColorDialog,
-    QGraphicsItem,
-    QInputDialog,
-    QTextDocument,
-    Qt,
     StyleOrbitalItemsCommand,
-    deepcopy,
-    normalize_energy_occupancies,
 )
+from chemuson.gui.composite_diagram_item import CompositeDiagramItem
+from chemuson.gui.energy_diagrams import normalize_energy_occupancies
+from chemuson.gui.items import EnergyDiagramItem, OrbitalAnnotationItem
 
 class CanvasToolsAnnotationsMixin:
     @staticmethod

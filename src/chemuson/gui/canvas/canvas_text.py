@@ -1,59 +1,53 @@
 from __future__ import annotations
 
-from ._shared import (
-    ABBREVIATION_LABELS,
+import math
+from typing import Iterable, Optional
+
+from PyQt6.QtCore import QPointF, Qt
+from PyQt6.QtGui import QBrush, QColor, QFont, QPen, QTextCharFormat, QTextCursor, QTextOption
+from PyQt6.QtWidgets import QGraphicsLineItem, QGraphicsTextItem, QInputDialog
+
+from chemuson.core.model import SIMPLE_HYDROGEN_GROUP_LABELS, BondStyle, bond_is_structural
+from chemuson.gui.commands import (
     AddTextItemCommand,
     AddWavyAnchorCommand,
+    ChangeAtomLabelScaleCommand,
+    FormatTextItemsCommand,
+)
+from chemuson.gui.dialogs import AtomLabelDialog
+from chemuson.gui.geom import angle_deg, angle_distance_deg, endpoint_from_angle_len, snap_angle_deg
+from chemuson.gui.items import (
+    ABBREVIATION_LABELS,
     ArrowItem,
     AtomItem,
-    AtomLabelDialog,
-    BondStyle,
+    TextAnnotationItem,
+    WavyAnchorItem,
+)
+
+from .canvas_chem_data import (
     CANONICAL_SIMPLE_HYDROGEN_GROUP_LABELS,
-    ChangeAtomLabelScaleCommand,
+    ELECTRON_SLOT_ANGLES,
+    ELEMENT_SYMBOLS,
+    FUNCTIONAL_GROUP_ALIASES,
+    FUNCTIONAL_GROUP_LABELS,
+    HETERO_ELECTRON_ATOMS,
+    IMPLICIT_H_ELEMENTS,
+)
+from .canvas_constants import (
     ELECTRON_ANCHOR_ROLE,
     ELECTRON_DOT_ROLE,
     ELECTRON_SCALE_ROLE,
     ELECTRON_SIDE_ROLE,
-    ELECTRON_SLOT_ANGLES,
     ELECTRON_SLOT_ROLE,
     ELECTRON_SLOT_TOLERANCE_DEG,
-    ELEMENT_SYMBOLS,
-    FUNCTIONAL_GROUP_ALIASES,
-    FUNCTIONAL_GROUP_LABELS,
-    FormatTextItemsCommand,
-    HETERO_ELECTRON_ATOMS,
-    IMPLICIT_H_ELEMENTS,
     IMPLICIT_H_OVERLAY_ANCHOR_ROLE,
     IMPLICIT_H_OVERLAY_ANGLE_ROLE,
-    Iterable,
     LABEL_OFFSET_MIN_PX,
     LABEL_OFFSET_SCALE,
-    Optional,
-    QBrush,
-    QColor,
-    QFont,
-    QGraphicsLineItem,
-    QGraphicsTextItem,
-    QInputDialog,
-    QPen,
-    QPointF,
-    QTextCharFormat,
-    QTextCursor,
-    QTextOption,
-    Qt,
-    SIMPLE_HYDROGEN_GROUP_LABELS,
-    TextAnnotationItem,
     WAVY_ANCHOR_ANGLE_ROLE,
     WAVY_ANCHOR_BOND_ROLE,
     WAVY_ANCHOR_LENGTH_ROLE,
     WAVY_ANCHOR_ROLE,
-    WavyAnchorItem,
-    angle_deg,
-    angle_distance_deg,
-    bond_is_structural,
-    endpoint_from_angle_len,
-    math,
-    snap_angle_deg,
 )
 
 class CanvasTextMixin:

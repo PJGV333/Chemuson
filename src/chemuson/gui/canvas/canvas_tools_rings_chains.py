@@ -1,24 +1,21 @@
 from __future__ import annotations
 
-from ._shared import (
-    AddChainCommand,
-    AddRingCommand,
-    BondStereo,
-    BondStyle,
-    CHAIN_MAX_BONDS,
-    List,
-    OPTIMIZE_ZONE_SCALE,
-    Optional,
-    QPointF,
-    Qt,
-    Tuple,
+import math
+from typing import List, Optional, Tuple
+
+from PyQt6.QtCore import QPointF, Qt
+
+from chemuson.core.model import BondStereo, BondStyle
+from chemuson.gui.commands import AddChainCommand, AddRingCommand
+from chemuson.gui.geom import (
     angle_deg,
     bond_side,
     choose_optimal_direction,
     endpoint_from_angle_len,
-    math,
     snap_angle_deg,
 )
+
+from .canvas_constants import CHAIN_MAX_BONDS, OPTIMIZE_ZONE_SCALE
 
 class CanvasToolsRingsChainsMixin:
     def _begin_place_ring(self, anchor_type: str, anchor_id: Optional[int], scene_pos: QPointF) -> None:

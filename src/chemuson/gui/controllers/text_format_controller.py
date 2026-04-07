@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QBrush, QColor, QFont, QTextCharFormat, QTextCursor
-from PyQt6.QtWidgets import QTextEdit
+from PyQt6.QtWidgets import QFontDialog, QInputDialog, QTextEdit
 
 
 class TextFormatController:
@@ -256,3 +256,130 @@ class TextFormatController:
         self.remember_external_text_cursor(window)
         self.sync_text_toolbar_from_external_editor(window)
         return True
+
+    def sync_label_menu_state(self, window) -> None:
+        window.action_label_bold.setChecked(window.canvas.state.label_font_bold)
+        window.action_label_italic.setChecked(window.canvas.state.label_font_italic)
+        window.action_label_underline.setChecked(window.canvas.state.label_font_underline)
+        window.action_label_color_element.setChecked(window.canvas.state.use_element_colors)
+        window.action_label_color_black.setChecked(not window.canvas.state.use_element_colors)
+
+    def on_label_font(self, window) -> None:
+        font, ok = QFontDialog.getFont(
+            window.canvas.label_font(),
+            window,
+            "Fuente de etiquetas",
+        )
+        if not ok:
+            return
+        window.canvas.apply_label_font(font)
+        self.sync_label_menu_state(window)
+
+    def on_label_font_size_dialog(self, window) -> None:
+        size, ok = QInputDialog.getDouble(
+            window,
+            "Tamaño de etiquetas",
+            "Tamaño (pt):",
+            float(window.canvas.current_label_size_value()),
+            6.0,
+            72.0,
+            1,
+        )
+        if not ok:
+            return
+        window.canvas.apply_label_font_size(float(size))
+        self.sync_label_menu_state(window)
+
+    def on_label_bold(self, window, checked: bool) -> None:
+        if self.apply_text_format_to_external_editor(
+            window,
+            "",
+            0,
+            checked,
+            False,
+            False,
+            False,
+            False,
+            "bold",
+        ):
+            return
+        font = window.canvas.label_font()
+        font.setBold(checked)
+        window.canvas.apply_label_font(font)
+        self.sync_label_menu_state(window)
+
+    def on_label_italic(self, window, checked: bool) -> None:
+        if self.apply_text_format_to_external_editor(
+            window,
+            "",
+            0,
+            False,
+            checked,
+            False,
+            False,
+            False,
+            "italic",
+        ):
+            return
+        font = window.canvas.label_font()
+        font.setItalic(checked)
+        window.canvas.apply_label_font(font)
+        self.sync_label_menu_state(window)
+
+    def on_label_underline(self, window, checked: bool) -> None:
+        if self.apply_text_format_to_external_editor(
+            window,
+            "",
+            0,
+            False,
+            False,
+            checked,
+            False,
+            False,
+            "underline",
+        ):
+            return
+        font = window.canvas.label_font()
+        font.setUnderline(checked)
+        window.canvas.apply_label_font(font)
+        self.sync_label_menu_state(window)
+
+    def on_label_font_size(self, window, delta: float) -> None:
+        window.canvas.adjust_label_font_size(delta)
+
+    def on_label_subscript(self, window) -> None:
+        if self.apply_text_format_to_external_editor(
+            window,
+            "",
+            0,
+            False,
+            False,
+            False,
+            True,
+            False,
+            "sub",
+        ):
+            return
+        window.canvas.update_text_format(sub=True, property_name="sub")
+
+    def on_label_superscript(self, window) -> None:
+        if self.apply_text_format_to_external_editor(
+            window,
+            "",
+            0,
+            False,
+            False,
+            False,
+            False,
+            True,
+            "sup",
+        ):
+            return
+        window.canvas.update_text_format(sup=True, property_name="sup")
+
+    def on_label_color_mode(self, window, use_element_colors: bool) -> None:
+        window.canvas.set_use_element_colors(use_element_colors)
+        self.sync_label_menu_state(window)
+        window.statusBar().showMessage(
+            "Etiquetas: por elemento" if use_element_colors else "Etiquetas: negro"
+        )

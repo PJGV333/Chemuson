@@ -1,51 +1,47 @@
 from __future__ import annotations
 
-from ._shared import (
-    ATOM_HIT_RADIUS,
+from typing import Optional
+
+from PyQt6.QtCore import QPointF, QRectF, Qt
+from PyQt6.QtWidgets import QGraphicsItem, QGraphicsTextItem, QGraphicsView, QInputDialog
+
+from chemuson.core.model import BondStereo, BondStyle
+from chemuson.gui.commands import (
     AddArrowCommand,
     AddAtomCommand,
     AddBracketCommand,
-    ArrowItem,
-    AtomItem,
-    BondItem,
-    BondStereo,
-    BondStyle,
-    BracketItem,
     ChangeAtomCommand,
     ChangeBondLengthCommand,
     ChangeChargeCommand,
-    CompositeDiagramItem,
-    EnergyDiagramItem,
-    GelBandItem,
-    GelElectrophoresisItem,
-    ImageAnnotationItem,
     MoveArrowItemsCommand,
     MoveAtomsCommand,
     MoveBracketItemsCommand,
     MovePlateItemsCommand,
     MoveTextItemsCommand,
-    Optional,
-    OrbitalAnnotationItem,
-    QGraphicsItem,
-    QGraphicsTextItem,
-    QGraphicsView,
-    QInputDialog,
-    QPointF,
-    QRectF,
-    Qt,
-    SYMBOL_TEXT_TOOLS,
     SetCoordinationCenterCommand,
-    TLCPlateItem,
-    TLCSpotItem,
-    TextAnnotationItem,
     TransformEnergyDiagramItemsCommand,
     TransformImageItemsCommand,
     TransformOrbitalItemsCommand,
-    WavyAnchorItem,
-    closest_atom,
-    energy_diagram_kind_from_tool_id,
-    orbital_kind_from_tool_id,
 )
+from chemuson.gui.composite_diagram_item import CompositeDiagramItem
+from chemuson.gui.energy_diagrams import energy_diagram_kind_from_tool_id
+from chemuson.gui.geom import closest_atom
+from chemuson.gui.items import (
+    ArrowItem,
+    AtomItem,
+    BondItem,
+    BracketItem,
+    EnergyDiagramItem,
+    ImageAnnotationItem,
+    OrbitalAnnotationItem,
+    TextAnnotationItem,
+    WavyAnchorItem,
+)
+from chemuson.gui.orbitals import orbital_kind_from_tool_id
+from chemuson.gui.plate_items import GelBandItem, GelElectrophoresisItem, TLCPlateItem, TLCSpotItem
+
+from .canvas_chem_data import SYMBOL_TEXT_TOOLS
+from .canvas_constants import ATOM_HIT_RADIUS
 
 class CanvasSelectionInputMixin:
     def set_current_tool(self, tool_id: str) -> None:
