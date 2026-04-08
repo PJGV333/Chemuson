@@ -6,63 +6,93 @@ menús, barras de herramientas y docks.
 """
 
 # ============================================================================
-# Paleta moderna de colores
+# Paletas de Colores (Modo Claro y Oscuro)
 # ============================================================================
 
-# Colores principales
-PRIMARY_DARK = "#1E293B"        # Deep slate for headers
-PRIMARY_MEDIUM = "#334155"      # Slightly lighter slate
-ACCENT_PRIMARY = "#0891B2"      # Refined cyan accent
-ACCENT_HOVER = "#06B6D4"        # Lighter cyan for hover
-ACCENT_PRESSED = "#0E7490"      # Darker cyan for pressed
+# Colores Modo Claro
+LIGHT_COLORS = {
+    "primary_dark": "#1E293B",
+    "primary_medium": "#334155",
+    "accent_primary": "#0891B2",
+    "accent_hover": "#06B6D4",
+    "accent_pressed": "#0E7490",
+    "bg_main": "#F8FAFC",
+    "bg_elevated": "#FFFFFF",
+    "bg_toolbar": "#F1F5F9",
+    "bg_dock": "#F8FAFC",
+    "border_light": "#E2E8F0",
+    "border_medium": "#CBD5E1",
+    "border_dark": "#94A3B8",
+    "text_primary": "#0F172A",
+    "text_secondary": "#475569",
+    "text_muted": "#64748B",
+    "text_inverse": "#F8FAFC",
+    "palette_bg": "#F1F5F9",
+    "palette_border": "#E2E8F0",
+    "palette_button_bg": "#FFFFFF",
+    "palette_button_border": "#CBD5E1",
+    "palette_button_hover": "#ECFEFF",
+    "palette_selected_bg": "#CFFAFE",
+    "palette_selected_border": "#0891B2",
+}
 
-# Colores de fondo
-BG_MAIN = "#F8FAFC"             # Clean light background
-BG_ELEVATED = "#FFFFFF"         # White for elevated surfaces
-BG_TOOLBAR = "#F1F5F9"          # Soft light gray for toolbars
-BG_DOCK = "#F8FAFC"             # Almost white for dock panels
-
-# Colores de bordes y separadores
-BORDER_LIGHT = "#E2E8F0"        # Subtle border
-BORDER_MEDIUM = "#CBD5E1"       # Medium border
-BORDER_DARK = "#94A3B8"         # Darker border
-
-# Colores de texto
-TEXT_PRIMARY = "#0F172A"        # Deep slate for primary text
-TEXT_SECONDARY = "#475569"      # Slate for secondary text
-TEXT_MUTED = "#64748B"          # Muted text
-TEXT_INVERSE = "#F8FAFC"        # Light text on dark backgrounds
-
-# Paleta específica de herramientas
-PALETTE_BG = "#F1F5F9"
-PALETTE_BORDER = "#E2E8F0"
-PALETTE_BUTTON_BG = "#FFFFFF"
-PALETTE_BUTTON_BORDER = "#CBD5E1"
-PALETTE_BUTTON_HOVER = "#ECFEFF"
-PALETTE_SELECTED_BG = "#CFFAFE"
-PALETTE_SELECTED_BORDER = "#0891B2"
-
-# Sombra para efecto de profundidad (Qt no soporta box-shadow estándar)
-SHADOW_COLOR = "rgba(0, 0, 0, 0.08)"
+# Colores Modo Oscuro
+DARK_COLORS = {
+    "primary_dark": "#0F172A",
+    "primary_medium": "#1E293B",
+    "accent_primary": "#22D3EE",
+    "accent_hover": "#67E8F9",
+    "accent_pressed": "#06B6D4",
+    "bg_main": "#0F172A",
+    "bg_elevated": "#1E293B",
+    "bg_toolbar": "#1E293B",
+    "bg_dock": "#1E293B",
+    "border_light": "#334155",
+    "border_medium": "#475569",
+    "border_dark": "#64748B",
+    "text_primary": "#F1F5F9",
+    "text_secondary": "#CBD5E1",
+    "text_muted": "#94A3B8",
+    "text_inverse": "#0F172A",
+    "palette_bg": "#1E293B",
+    "palette_border": "#334155",
+    "palette_button_bg": "#334155",
+    "palette_button_border": "#475569",
+    "palette_button_hover": "#0F172A",
+    "palette_selected_bg": "#164E63",
+    "palette_selected_border": "#22D3EE",
+}
 
 # ============================================================================
-# Hoja de estilos principal
+# Generación de Hojas de Estilo Dinámicas
 # ============================================================================
 
-MAIN_STYLESHEET = f"""
+DEFAULT_THEME = "light"
+
+
+def _get_theme_colors(theme_name: str = DEFAULT_THEME) -> dict[str, str]:
+    """Devuelve la paleta asociada al tema solicitado."""
+    return DARK_COLORS if theme_name == "dark" else LIGHT_COLORS
+
+
+def get_main_stylesheet(theme_name: str = DEFAULT_THEME) -> str:
+    """Genera la hoja de estilo principal según el tema."""
+    colors = _get_theme_colors(theme_name)
+    
+    return f"""
 /* =========================================== */
 /* Main Window                                 */
 /* =========================================== */
 QMainWindow {{
-    background-color: {BG_MAIN};
+    background-color: {colors['bg_main']};
 }}
 
 /* =========================================== */
 /* Menu Bar - Modern Dark Header               */
 /* =========================================== */
 QMenuBar {{
-    background-color: {PRIMARY_DARK};
-    color: {TEXT_INVERSE};
+    background-color: {colors['primary_dark']};
+    color: {colors['text_inverse']};
     border: none;
     padding: 4px 10px;
     spacing: 4px;
@@ -79,20 +109,20 @@ QMenuBar::item {{
 }}
 
 QMenuBar::item:selected {{
-    background-color: {ACCENT_PRIMARY};
-    color: {TEXT_INVERSE};
+    background-color: {colors['accent_primary']};
+    color: {colors['text_inverse']};
 }}
 
 QMenuBar::item:pressed {{
-    background-color: {ACCENT_PRESSED};
+    background-color: {colors['accent_pressed']};
 }}
 
 /* =========================================== */
 /* Dropdown Menus                              */
 /* =========================================== */
 QMenu {{
-    background-color: {BG_ELEVATED};
-    border: 1px solid {BORDER_MEDIUM};
+    background-color: {colors['bg_elevated']};
+    border: 1px solid {colors['border_medium']};
     border-radius: 10px;
     padding: 8px 4px;
     margin: 4px;
@@ -102,21 +132,21 @@ QMenu::item {{
     padding: 8px 28px 8px 14px;
     border-radius: 6px;
     margin: 2px 4px;
-    color: {TEXT_PRIMARY};
+    color: {colors['text_primary']};
 }}
 
 QMenu::item:selected {{
-    background-color: {ACCENT_PRIMARY};
-    color: {TEXT_INVERSE};
+    background-color: {colors['accent_primary']};
+    color: {colors['text_inverse']};
 }}
 
 QMenu::item:disabled {{
-    color: {TEXT_MUTED};
+    color: {colors['text_muted']};
 }}
 
 QMenu::separator {{
     height: 1px;
-    background-color: {BORDER_LIGHT};
+    background-color: {colors['border_light']};
     margin: 6px 14px;
 }}
 
@@ -134,16 +164,16 @@ QMenu::indicator {{
 /* Toolbars                                    */
 /* =========================================== */
 QToolBar {{
-    background-color: {BG_TOOLBAR};
+    background-color: {colors['bg_toolbar']};
     border: none;
-    border-bottom: 1px solid {BORDER_LIGHT};
+    border-bottom: 1px solid {colors['border_light']};
     spacing: 6px;
     padding: 8px 10px;
 }}
 
 QToolBar::separator {{
     width: 1px;
-    background-color: {BORDER_MEDIUM};
+    background-color: {colors['border_medium']};
     margin: 8px 10px;
 }}
 
@@ -155,22 +185,22 @@ QToolButton {{
     border: 1px solid transparent;
     border-radius: 8px;
     padding: 8px;
-    color: {TEXT_PRIMARY};
+    color: {colors['text_primary']};
 }}
 
 QToolButton:hover {{
-    background-color: {PALETTE_BUTTON_HOVER};
-    border: 1px solid {BORDER_MEDIUM};
+    background-color: {colors['palette_button_hover']};
+    border: 1px solid {colors['border_medium']};
 }}
 
 QToolButton:pressed {{
-    background-color: {BORDER_LIGHT};
-    border: 1px solid {BORDER_DARK};
+    background-color: {colors['border_light']};
+    border: 1px solid {colors['border_dark']};
 }}
 
 QToolButton:checked {{
-    background-color: {PALETTE_SELECTED_BG};
-    border: 1px solid {ACCENT_PRIMARY};
+    background-color: {colors['palette_selected_bg']};
+    border: 1px solid {colors['palette_selected_border']};
 }}
 
 QToolButton::menu-indicator {{
@@ -188,14 +218,14 @@ QDockWidget {{
     titlebar-close-icon: none;
     titlebar-normal-icon: none;
     font-weight: 600;
-    color: {TEXT_PRIMARY};
+    color: {colors['text_primary']};
 }}
 
 QDockWidget::title {{
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-        stop:0 {BG_TOOLBAR}, stop:1 {BG_ELEVATED});
+    background: qlineargradient(x1:0, y1:0, x2:0, y2=1,
+        stop:0 {colors['bg_toolbar']}, stop:1 {colors['bg_elevated']});
     padding: 12px 14px;
-    border-bottom: 1px solid {BORDER_LIGHT};
+    border-bottom: 1px solid {colors['border_light']};
     text-align: left;
     font-size: 13px;
 }}
@@ -210,7 +240,7 @@ QDockWidget::float-button {{
 
 QDockWidget::close-button:hover,
 QDockWidget::float-button:hover {{
-    background-color: {PALETTE_BUTTON_HOVER};
+    background-color: {colors['palette_button_hover']};
     border-radius: 6px;
 }}
 
@@ -218,8 +248,8 @@ QDockWidget::float-button:hover {{
 /* Status Bar                                  */
 /* =========================================== */
 QStatusBar {{
-    background-color: {PRIMARY_DARK};
-    color: {TEXT_INVERSE};
+    background-color: {colors['primary_dark']};
+    color: {colors['text_inverse']};
     border-top: none;
     padding: 6px 14px;
     font-size: 12px;
@@ -231,7 +261,7 @@ QStatusBar::item {{
 }}
 
 QStatusBar QLabel {{
-    color: {TEXT_INVERSE};
+    color: {colors['text_inverse']};
     padding: 0 4px;
 }}
 
@@ -239,25 +269,25 @@ QStatusBar QLabel {{
 /* Scrollbars                                  */
 /* =========================================== */
 QScrollBar:vertical {{
-    background-color: {BG_TOOLBAR};
+    background-color: {colors['bg_toolbar']};
     width: 10px;
     border-radius: 5px;
     margin: 2px;
 }}
 
 QScrollBar::handle:vertical {{
-    background-color: {BORDER_MEDIUM};
+    background-color: {colors['border_medium']};
     min-height: 30px;
     border-radius: 4px;
     margin: 2px;
 }}
 
 QScrollBar::handle:vertical:hover {{
-    background-color: {TEXT_MUTED};
+    background-color: {colors['text_muted']};
 }}
 
 QScrollBar::handle:vertical:pressed {{
-    background-color: {TEXT_SECONDARY};
+    background-color: {colors['text_secondary']};
 }}
 
 QScrollBar::add-line:vertical,
@@ -272,25 +302,25 @@ QScrollBar::sub-page:vertical {{
 }}
 
 QScrollBar:horizontal {{
-    background-color: {BG_TOOLBAR};
+    background-color: {colors['bg_toolbar']};
     height: 10px;
     border-radius: 5px;
     margin: 2px;
 }}
 
 QScrollBar::handle:horizontal {{
-    background-color: {BORDER_MEDIUM};
+    background-color: {colors['border_medium']};
     min-width: 30px;
     border-radius: 4px;
     margin: 2px;
 }}
 
 QScrollBar::handle:horizontal:hover {{
-    background-color: {TEXT_MUTED};
+    background-color: {colors['text_muted']};
 }}
 
 QScrollBar::handle:horizontal:pressed {{
-    background-color: {TEXT_SECONDARY};
+    background-color: {colors['text_secondary']};
 }}
 
 QScrollBar::add-line:horizontal,
@@ -304,109 +334,37 @@ QScrollBar::sub-page:horizontal {{
     background: transparent;
 }}
 
-QScrollBar::handle:vertical {{
-    background-color: {BORDER_MEDIUM};
-    min-height: 30px;
-    border-radius: 5px;
-    margin: 2px;
-}}
-
-QScrollBar::handle:vertical:hover {{
-    background-color: {TEXT_MUTED};
-}}
-
-QScrollBar::handle:vertical:pressed {{
-    background-color: {TEXT_SECONDARY};
-}}
-
-QScrollBar::add-line:vertical,
-QScrollBar::sub-line:vertical {{
-    height: 14px;
-    background-color: {BG_TOOLBAR};
-    border: 1px solid {BORDER_LIGHT};
-    border-radius: 4px;
-    subcontrol-origin: margin;
-}}
-
-QScrollBar::sub-line:vertical {{
-    subcontrol-position: top;
-}}
-
-QScrollBar::add-line:vertical {{
-    subcontrol-position: bottom;
-}}
-
-QScrollBar::add-page:vertical,
-QScrollBar::sub-page:vertical {{
-    background: transparent;
-}}
-
-QScrollBar:horizontal {{
-    background-color: {BG_TOOLBAR};
-    height: 12px;
-    border-radius: 6px;
-    margin: 2px;
-}}
-
-QScrollBar::handle:horizontal {{
-    background-color: {BORDER_MEDIUM};
-    min-width: 30px;
-    border-radius: 5px;
-    margin: 2px;
-}}
-
-QScrollBar::handle:horizontal:hover {{
-    background-color: {TEXT_MUTED};
-}}
-
-QScrollBar::add-line:horizontal,
-QScrollBar::sub-line:horizontal {{
-    width: 14px;
-    background-color: {BG_TOOLBAR};
-    border: 1px solid {BORDER_LIGHT};
-    border-radius: 4px;
-    subcontrol-origin: margin;
-}}
-
-QScrollBar::sub-line:horizontal {{
-    subcontrol-position: left;
-}}
-
-QScrollBar::add-line:horizontal {{
-    subcontrol-position: right;
-}}
-
 /* =========================================== */
 /* Tables (Inspector Dock)                     */
 /* =========================================== */
 QTableWidget {{
-    background-color: {BG_ELEVATED};
-    alternate-background-color: {BG_DOCK};
-    border: 1px solid {BORDER_LIGHT};
+    background-color: {colors['bg_elevated']};
+    alternate-background-color: {colors['bg_dock']};
+    border: 1px solid {colors['border_light']};
     border-radius: 8px;
-    gridline-color: {BORDER_LIGHT};
+    gridline-color: {colors['border_light']};
 }}
 
 QTableWidget::item {{
     padding: 6px 10px;
-    color: {TEXT_PRIMARY};
+    color: {colors['text_primary']};
 }}
 
 QTableWidget::item:selected {{
-    background-color: {PALETTE_SELECTED_BG};
-    color: {TEXT_PRIMARY};
+    background-color: {colors['palette_selected_bg']};
+    color: {colors['text_primary']};
 }}
 
 QTableWidget::item:hover {{
-    background-color: {PALETTE_BUTTON_HOVER};
+    background-color: {colors['palette_button_hover']};
 }}
 
 QHeaderView::section {{
-    background-color: {BG_TOOLBAR};
-    color: {TEXT_SECONDARY};
+    background-color: {colors['bg_toolbar']};
+    color: {colors['text_secondary']};
     padding: 8px 10px;
     border: none;
-    border-bottom: 2px solid {BORDER_MEDIUM};
+    border-bottom: 2px solid {colors['border_medium']};
     font-weight: 600;
     font-size: 12px;
 }}
@@ -415,8 +373,8 @@ QHeaderView::section {{
 /* Tree Widgets (Templates Dock)               */
 /* =========================================== */
 QTreeWidget {{
-    background-color: {BG_ELEVATED};
-    border: 1px solid {BORDER_LIGHT};
+    background-color: {colors['bg_elevated']};
+    border: 1px solid {colors['border_light']};
     border-radius: 8px;
 }}
 
@@ -427,13 +385,13 @@ QTreeWidget::item {{
 }}
 
 QTreeWidget::item:hover {{
-    background-color: {PALETTE_BUTTON_HOVER};
+    background-color: {colors['palette_button_hover']};
 }}
 
 QTreeWidget::item:selected {{
-    background-color: {PALETTE_SELECTED_BG};
-    color: {TEXT_PRIMARY};
-    border: 1px solid {PALETTE_SELECTED_BORDER};
+    background-color: {colors['palette_selected_bg']};
+    color: {colors['text_primary']};
+    border: 1px solid {colors['palette_selected_border']};
 }}
 
 QTreeWidget::branch:has-children:!has-siblings:closed,
@@ -450,26 +408,26 @@ QTreeWidget::branch:open:has-children:has-siblings {{
 /* Labels                                      */
 /* =========================================== */
 QLabel {{
-    color: {TEXT_PRIMARY};
+    color: {colors['text_primary']};
 }}
 
 /* =========================================== */
 /* Dialogs                                     */
 /* =========================================== */
 QDialog {{
-    background-color: {BG_ELEVATED};
+    background-color: {colors['bg_elevated']};
 }}
 
 QDialog QLabel {{
-    color: {TEXT_PRIMARY};
+    color: {colors['text_primary']};
 }}
 
 /* =========================================== */
 /* Push Buttons                                */
 /* =========================================== */
 QPushButton {{
-    background-color: {ACCENT_PRIMARY};
-    color: {TEXT_INVERSE};
+    background-color: {colors['accent_primary']};
+    color: {colors['text_inverse']};
     border: none;
     border-radius: 8px;
     padding: 10px 22px;
@@ -478,70 +436,70 @@ QPushButton {{
 }}
 
 QPushButton:hover {{
-    background-color: {ACCENT_HOVER};
+    background-color: {colors['accent_hover']};
 }}
 
 QPushButton:pressed {{
-    background-color: {ACCENT_PRESSED};
+    background-color: {colors['accent_pressed']};
 }}
 
 QPushButton:disabled {{
-    background-color: {BORDER_MEDIUM};
-    color: {BG_TOOLBAR};
+    background-color: {colors['border_medium']};
+    color: {colors['bg_toolbar']};
 }}
 
 /* Secondary button style */
 QPushButton[flat="true"] {{
     background-color: transparent;
-    color: {ACCENT_PRIMARY};
-    border: 1px solid {ACCENT_PRIMARY};
+    color: {colors['accent_primary']};
+    border: 1px solid {colors['accent_primary']};
 }}
 
 QPushButton[flat="true"]:hover {{
-    background-color: {PALETTE_BUTTON_HOVER};
+    background-color: {colors['palette_button_hover']};
 }}
 
 /* =========================================== */
 /* Line Edits                                  */
 /* =========================================== */
 QLineEdit {{
-    background-color: {BG_ELEVATED};
-    border: 1px solid {BORDER_MEDIUM};
+    background-color: {colors['bg_elevated']};
+    border: 1px solid {colors['border_medium']};
     border-radius: 8px;
     padding: 8px 12px;
-    color: {TEXT_PRIMARY};
-    selection-background-color: {PALETTE_SELECTED_BG};
+    color: {colors['text_primary']};
+    selection-background-color: {colors['palette_selected_bg']};
 }}
 
 QLineEdit:focus {{
-    border: 1px solid {ACCENT_PRIMARY};
-    background-color: {BG_ELEVATED};
+    border: 1px solid {colors['accent_primary']};
+    background-color: {colors['bg_elevated']};
 }}
 
 QLineEdit:disabled {{
-    background-color: {BG_DOCK};
-    color: {TEXT_MUTED};
-    border-color: {BORDER_LIGHT};
+    background-color: {colors['bg_dock']};
+    color: {colors['text_muted']};
+    border-color: {colors['border_light']};
 }}
 
 /* =========================================== */
 /* Combo Boxes                                 */
 /* =========================================== */
 QComboBox {{
-    background-color: {BG_ELEVATED};
-    border: 1px solid {BORDER_MEDIUM};
+    background-color: {colors['bg_elevated']};
+    border: 1px solid {colors['border_medium']};
     border-radius: 8px;
     padding: 8px 12px;
-    color: {TEXT_PRIMARY};
+    color: {colors['text_primary']};
     min-width: 100px;
 }}
 
 QComboBox:hover {{
-    border-color: {ACCENT_PRIMARY};
+    border-color: {colors['accent_primary']};
 }}
 
 QComboBox:focus {{
-    border: 1px solid {ACCENT_PRIMARY};
+    border: 1px solid {colors['accent_primary']};
 }}
 
 QComboBox::drop-down {{
@@ -550,11 +508,11 @@ QComboBox::drop-down {{
 }}
 
 QComboBox QAbstractItemView {{
-    background-color: {BG_ELEVATED};
-    border: 1px solid {BORDER_MEDIUM};
+    background-color: {colors['bg_elevated']};
+    border: 1px solid {colors['border_medium']};
     border-radius: 8px;
-    selection-background-color: {ACCENT_PRIMARY};
-    selection-color: {TEXT_INVERSE};
+    selection-background-color: {colors['accent_primary']};
+    selection-color: {colors['text_inverse']};
     padding: 4px;
 }}
 
@@ -562,76 +520,76 @@ QComboBox QAbstractItemView {{
 /* Spin Boxes                                  */
 /* =========================================== */
 QSpinBox, QDoubleSpinBox {{
-    background-color: {BG_ELEVATED};
-    border: 1px solid {BORDER_MEDIUM};
+    background-color: {colors['bg_elevated']};
+    border: 1px solid {colors['border_medium']};
     border-radius: 8px;
     padding: 8px 12px;
-    color: {TEXT_PRIMARY};
+    color: {colors['text_primary']};
 }}
 
 QSpinBox:focus, QDoubleSpinBox:focus {{
-    border: 1px solid {ACCENT_PRIMARY};
+    border: 1px solid {colors['accent_primary']};
 }}
 
 QSpinBox:disabled, QDoubleSpinBox:disabled {{
-    background-color: {BG_DOCK};
-    color: {TEXT_MUTED};
-    border-color: {BORDER_LIGHT};
+    background-color: {colors['bg_dock']};
+    color: {colors['text_muted']};
+    border-color: {colors['border_light']};
 }}
 
 /* =========================================== */
 /* Checkboxes                                  */
 /* =========================================== */
 QCheckBox {{
-    color: {TEXT_PRIMARY};
+    color: {colors['text_primary']};
     spacing: 10px;
 }}
 
 QCheckBox::indicator {{
     width: 20px;
     height: 20px;
-    border: 2px solid {BORDER_DARK};
+    border: 2px solid {colors['border_dark']};
     border-radius: 5px;
-    background-color: {BG_ELEVATED};
+    background-color: {colors['bg_elevated']};
 }}
 
 QCheckBox::indicator:hover {{
-    border-color: {ACCENT_PRIMARY};
+    border-color: {colors['accent_primary']};
 }}
 
 QCheckBox::indicator:checked {{
-    background-color: {ACCENT_PRIMARY};
-    border-color: {ACCENT_PRIMARY};
+    background-color: {colors['accent_primary']};
+    border-color: {colors['accent_primary']};
 }}
 
 QCheckBox::indicator:disabled {{
-    background-color: {BG_DOCK};
-    border-color: {BORDER_LIGHT};
+    background-color: {colors['bg_dock']};
+    border-color: {colors['border_light']};
 }}
 
 /* =========================================== */
 /* Radio Buttons                               */
 /* =========================================== */
 QRadioButton {{
-    color: {TEXT_PRIMARY};
+    color: {colors['text_primary']};
     spacing: 10px;
 }}
 
 QRadioButton::indicator {{
     width: 20px;
     height: 20px;
-    border: 2px solid {BORDER_DARK};
+    border: 2px solid {colors['border_dark']};
     border-radius: 10px;
-    background-color: {BG_ELEVATED};
+    background-color: {colors['bg_elevated']};
 }}
 
 QRadioButton::indicator:hover {{
-    border-color: {ACCENT_PRIMARY};
+    border-color: {colors['accent_primary']};
 }}
 
 QRadioButton::indicator:checked {{
-    background-color: {ACCENT_PRIMARY};
-    border-color: {ACCENT_PRIMARY};
+    background-color: {colors['accent_primary']};
+    border-color: {colors['accent_primary']};
     border-width: 5px;
 }}
 
@@ -639,16 +597,16 @@ QRadioButton::indicator:checked {{
 /* Tab Widgets                                 */
 /* =========================================== */
 QTabWidget::pane {{
-    border: 1px solid {BORDER_LIGHT};
+    border: 1px solid {colors['border_light']};
     border-radius: 8px;
-    background-color: {BG_ELEVATED};
+    background-color: {colors['bg_elevated']};
 }}
 
 QTabBar::tab {{
-    background-color: {BG_TOOLBAR};
-    color: {TEXT_SECONDARY};
+    background-color: {colors['bg_toolbar']};
+    color: {colors['text_secondary']};
     padding: 10px 18px;
-    border: 1px solid {BORDER_LIGHT};
+    border: 1px solid {colors['border_light']};
     border-bottom: none;
     border-top-left-radius: 8px;
     border-top-right-radius: 8px;
@@ -656,42 +614,42 @@ QTabBar::tab {{
 }}
 
 QTabBar::tab:selected {{
-    background-color: {BG_ELEVATED};
-    color: {TEXT_PRIMARY};
-    border-bottom: 2px solid {ACCENT_PRIMARY};
+    background-color: {colors['bg_elevated']};
+    color: {colors['text_primary']};
+    border-bottom: 2px solid {colors['accent_primary']};
 }}
 
 QTabBar::tab:hover:!selected {{
-    background-color: {PALETTE_BUTTON_HOVER};
-    color: {TEXT_PRIMARY};
+    background-color: {colors['palette_button_hover']};
+    color: {colors['text_primary']};
 }}
 
 /* =========================================== */
 /* Group Boxes                                 */
 /* =========================================== */
 QGroupBox {{
-    border: 1px solid {BORDER_LIGHT};
+    border: 1px solid {colors['border_light']};
     border-radius: 8px;
     margin-top: 12px;
     padding-top: 16px;
     font-weight: 600;
-    color: {TEXT_PRIMARY};
+    color: {colors['text_primary']};
 }}
 
 QGroupBox::title {{
     subcontrol-origin: margin;
     subcontrol-position: top left;
     padding: 0 8px;
-    color: {TEXT_SECONDARY};
+    color: {colors['text_secondary']};
 }}
 
 /* =========================================== */
 /* ToolTip                                     */
 /* =========================================== */
 QToolTip {{
-    background-color: {PRIMARY_DARK};
-    color: {TEXT_INVERSE};
-    border: 1px solid {PRIMARY_MEDIUM};
+    background-color: {colors['primary_dark']};
+    color: {colors['text_inverse']};
+    border: 1px solid {colors['primary_medium']};
     border-radius: 6px;
     padding: 6px 10px;
     font-size: 12px;
@@ -701,8 +659,8 @@ QToolTip {{
 /* Palette Grid Buttons                        */
 /* =========================================== */
 #palette_grid QToolButton {{
-    background-color: {PALETTE_BUTTON_BG};
-    border: 1px solid {PALETTE_BUTTON_BORDER};
+    background-color: {colors['palette_button_bg']};
+    border: 1px solid {colors['palette_button_border']};
     border-radius: 6px;
     padding: 4px;
     min-width: 28px;
@@ -710,39 +668,39 @@ QToolTip {{
 }}
 
 #palette_grid QToolButton:hover {{
-    background-color: {PALETTE_BUTTON_HOVER};
-    border: 1px solid {PALETTE_SELECTED_BORDER};
+    background-color: {colors['palette_button_hover']};
+    border: 1px solid {colors['palette_selected_border']};
 }}
 
 #palette_grid QToolButton:disabled {{
-    color: {TEXT_MUTED};
-    background-color: {BG_DOCK};
-    border: 1px solid {BORDER_LIGHT};
+    color: {colors['text_muted']};
+    background-color: {colors['bg_dock']};
+    border: 1px solid {colors['border_light']};
 }}
 """
 
-# ============================================================================
-# Vertical Tool Palette Stylesheet
-# ============================================================================
-
-TOOL_PALETTE_STYLESHEET = f"""
+def get_tool_palette_stylesheet(theme_name: str = DEFAULT_THEME) -> str:
+    """Genera la hoja de estilo de la barra de herramientas."""
+    colors = _get_theme_colors(theme_name)
+    
+    return f"""
 QToolBar {{
-    background-color: {PALETTE_BG};
+    background-color: {colors['palette_bg']};
     border: none;
-    border-right: 1px solid {BORDER_LIGHT};
+    border-right: 1px solid {colors['border_light']};
     spacing: 6px;
     padding: 10px 8px;
 }}
 
 QToolBar::separator {{
     height: 1px;
-    background-color: {BORDER_MEDIUM};
+    background-color: {colors['border_medium']};
     margin: 10px 8px;
 }}
 
 QToolButton {{
-    background-color: {PALETTE_BUTTON_BG};
-    border: 1px solid {PALETTE_BUTTON_BORDER};
+    background-color: {colors['palette_button_bg']};
+    border: 1px solid {colors['palette_button_border']};
     border-radius: 8px;
     padding: 8px;
     min-width: 32px;
@@ -750,17 +708,17 @@ QToolButton {{
 }}
 
 QToolButton:hover {{
-    background-color: {PALETTE_BUTTON_HOVER};
-    border: 1px solid {ACCENT_PRIMARY};
+    background-color: {colors['palette_button_hover']};
+    border: 1px solid {colors['accent_primary']};
 }}
 
 QToolButton:pressed {{
-    background-color: {BORDER_LIGHT};
+    background-color: {colors['border_light']};
 }}
 
 QToolButton:checked {{
-    background-color: {PALETTE_SELECTED_BG};
-    border: 2px solid {ACCENT_PRIMARY};
+    background-color: {colors['palette_selected_bg']};
+    border: 2px solid {colors['accent_primary']};
 }}
 
 QToolButton[popupMode="1"] {{
@@ -775,8 +733,8 @@ QToolButton::menu-indicator {{
 }}
 
 #palette_grid QToolButton {{
-    background-color: {PALETTE_BUTTON_BG};
-    border: 1px solid {PALETTE_BUTTON_BORDER};
+    background-color: {colors['palette_button_bg']};
+    border: 1px solid {colors['palette_button_border']};
     border-radius: 6px;
     padding: 6px;
     min-width: 30px;
@@ -784,13 +742,18 @@ QToolButton::menu-indicator {{
 }}
 
 #palette_grid QToolButton:hover {{
-    background-color: {PALETTE_BUTTON_HOVER};
-    border: 1px solid {ACCENT_PRIMARY};
+    background-color: {colors['palette_button_hover']};
+    border: 1px solid {colors['accent_primary']};
 }}
 
 #palette_grid QToolButton:disabled {{
-    color: {TEXT_MUTED};
-    background-color: {BG_DOCK};
-    border: 1px solid {BORDER_LIGHT};
+    color: {colors['text_muted']};
+    background-color: {colors['bg_dock']};
+    border: 1px solid {colors['border_light']};
 }}
 """
+
+
+# Compatibilidad retroactiva para módulos que aún importan constantes.
+MAIN_STYLESHEET = get_main_stylesheet(DEFAULT_THEME)
+TOOL_PALETTE_STYLESHEET = get_tool_palette_stylesheet(DEFAULT_THEME)

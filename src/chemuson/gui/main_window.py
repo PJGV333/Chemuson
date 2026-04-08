@@ -25,7 +25,7 @@ from chemuson.gui.canvas import (
 )
 from chemuson.gui.periodic_table import PeriodicTableDialog
 from chemuson.gui.toolbar import ChemusonToolbar, SymbolPaletteToolbar
-from chemuson.gui.styles import MAIN_STYLESHEET, TOOL_PALETTE_STYLESHEET
+from chemuson.gui.styles import get_main_stylesheet, get_tool_palette_stylesheet
 from chemuson.gui.docks import PlantillasDock, InspectorDock, AppearanceDock
 from chemuson.gui.dialogs import PreferencesDialog, QuickStartDialog, StyleDialog
 from chemuson.gui.text_toolbar import TextFormatToolbar
@@ -101,11 +101,9 @@ class ChemusonWindow(QMainWindow):
         super().__init__()
         self._ui_builder = MainWindowUiBuilder()
         self._app_version = get_app_version()
+        self.current_theme = "light"
         self.setWindowTitle(f"Chemuson {self._app_version} - Editor Molecular Libre")
         self.resize(1200, 900)
-        
-        # Apply main stylesheet
-        self.setStyleSheet(MAIN_STYLESHEET)
 
         # === CORE COMPONENTS ===
         self._create_actions()
@@ -175,12 +173,10 @@ class ChemusonWindow(QMainWindow):
 
         # === LEFT TOOLBAR (Drawing tools) ===
         self.toolbar = ChemusonToolbar()
-        self.toolbar.setStyleSheet(TOOL_PALETTE_STYLESHEET)
         self.addToolBar(Qt.ToolBarArea.LeftToolBarArea, self.toolbar)
 
         # === RIGHT SYMBOLS TOOLBAR ===
         self.symbols_toolbar = SymbolPaletteToolbar(action_group=self.toolbar.action_group)
-        self.symbols_toolbar.setStyleSheet(TOOL_PALETTE_STYLESHEET)
         self.addToolBar(Qt.ToolBarArea.RightToolBarArea, self.symbols_toolbar)
         self.symbols_toolbar.set_text_menu(
             [
@@ -259,6 +255,7 @@ class ChemusonWindow(QMainWindow):
         # Update status bar when tool changes
         self.toolbar.tool_changed.connect(self._update_status)
         self._set_active_canvas(self.canvas)
+        self._apply_theme()
         # Chequeo diferido para no bloquear arranque ni UI.
         QTimer.singleShot(1200, self._maybe_check_updates_startup)
 
@@ -270,9 +267,37 @@ class ChemusonWindow(QMainWindow):
         self._ui_builder.create_local_actions(self)
         create_update_actions(self)
 
+    def _apply_theme(self) -> None:
+        """Aplica el tema actual a la ventana y a las barras con estilo propio."""
+        self.setStyleSheet(get_main_stylesheet(self.current_theme))
+        toolbar_stylesheet = get_tool_palette_stylesheet(self.current_theme)
+        for toolbar in (
+            getattr(self, "toolbar", None),
+            getattr(self, "symbols_toolbar", None),
+        ):
+            if toolbar is not None:
+                toolbar.setStyleSheet(toolbar_stylesheet)
+        if hasattr(self, "action_theme"):
+            is_dark = self.current_theme == "dark"
+            self.action_theme.setChecked(is_dark)
+            self.action_theme.setText("Modo oscuro")
+
+    def toggle_theme(self, checked: bool | None = None) -> None:
+        """Cambia entre modo claro y oscuro."""
+        if checked is None:
+            self.current_theme = "dark" if self.current_theme == "light" else "light"
+        else:
+            self.current_theme = "dark" if checked else "light"
+        self._apply_theme()
+
     def _create_menu_bar(self) -> None:
         """Construye menús principales delegando el wiring repetitivo."""
         self._ui_builder.build_menu_bar(self)
+        self.action_theme = QAction("Modo oscuro", self)
+        self.action_theme.setCheckable(True)
+        self.action_theme.triggered.connect(self.toggle_theme)
+        self.view_menu.addAction(self.action_theme)
+        self._apply_theme()
     
     # -------------------------------------------------------------------------
     # Main Toolbar

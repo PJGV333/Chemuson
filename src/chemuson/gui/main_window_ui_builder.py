@@ -64,6 +64,7 @@ class MainWindowUiBuilder:
         edit_menu.addAction(window.action_preferences)
 
         view_menu = menubar.addMenu("Ver")
+        window.view_menu = view_menu
         self._build_view_menu(window, view_menu)
 
         structure_menu = menubar.addMenu("Estructura")
