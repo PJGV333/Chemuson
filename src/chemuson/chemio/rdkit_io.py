@@ -207,10 +207,17 @@ def molgraph_to_rdkit_with_map(molgraph: MolGraph):
             bond_type = Chem.BondType.SINGLE
         begin_idx = id_map[begin_id]
         end_idx = id_map[end_id]
+        if begin_idx == end_idx:
+            continue
+
         rd_bond = rw.GetBondBetweenAtoms(begin_idx, end_idx)
         if rd_bond is None:
-            rw.AddBond(begin_idx, end_idx, bond_type)
-            rd_bond = rw.GetBondBetweenAtoms(begin_idx, end_idx)
+            try:
+                rw.AddBond(begin_idx, end_idx, bond_type)
+                rd_bond = rw.GetBondBetweenAtoms(begin_idx, end_idx)
+            except Exception:
+                # Defensive skip
+                continue
         elif _bond_priority(bond_type) > _bond_priority(rd_bond.GetBondType()):
             rd_bond.SetBondType(bond_type)
         if bond_type == Chem.BondType.AROMATIC:
@@ -659,28 +666,26 @@ def molfile_to_molgraph(molfile: str) -> MolGraph:
         Grafo molecular equivalente.
     """
     normalized = normalize_molblock_header(molfile)
-    fallback_error: Exception | None = None
     try:
         # El parser interno preserva pseudoátomos, isótopos y enlaces tal como
         # vienen en el CTAB, y evita divergencias de sanitización de RDKit.
         return _molfile_to_molgraph_fallback(normalized)
-    except Exception as exc:
-        fallback_error = exc
-    if not _rdkit_available():
+    except Exception as fallback_error:
+        if not _rdkit_available():
+            raise fallback_error
+        try:
+            # Intentamos con RDKit sin sanitización para evitar crashes por aromaticidad.
+            mol = Chem.MolFromMolBlock(normalized, sanitize=False)
+            if mol is not None:
+                try:
+                    # Sanitización defensiva
+                    Chem.SanitizeMol(mol, Chem.SanitizeFlags.SANITIZE_ALL ^ Chem.SanitizeFlags.SANITIZE_KEKULIZE)
+                except Exception:
+                    pass
+                return rdkit_to_molgraph(mol)
+        except Exception:
+            pass
         raise fallback_error
-    try:
-        mol = Chem.MolFromMolBlock(normalized, sanitize=True)
-        if mol is not None:
-            return rdkit_to_molgraph(mol)
-    except Exception:
-        pass
-    try:
-        mol = Chem.MolFromMolBlock(normalized, sanitize=False)
-        if mol is not None:
-            return rdkit_to_molgraph(mol)
-    except Exception:
-        pass
-    raise fallback_error
 
 
 def smiles_to_molgraph(smiles: str) -> MolGraph:

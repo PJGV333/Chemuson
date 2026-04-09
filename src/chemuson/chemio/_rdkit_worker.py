@@ -117,10 +117,17 @@ def _build_mol_from_graph_payload(Chem, request: dict[str, Any]):
         bond_type = _bond_type_from_payload(Chem, bond_data)
         begin_idx = id_map[begin]
         end_idx = id_map[end]
+        if begin_idx == end_idx:
+            continue
+
         rd_bond = rw.GetBondBetweenAtoms(begin_idx, end_idx)
         if rd_bond is None:
-            rw.AddBond(begin_idx, end_idx, bond_type)
-            rd_bond = rw.GetBondBetweenAtoms(begin_idx, end_idx)
+            try:
+                rw.AddBond(begin_idx, end_idx, bond_type)
+                rd_bond = rw.GetBondBetweenAtoms(begin_idx, end_idx)
+            except Exception:
+                # Defensive: avoid crashing worker on RDKit internal bond errors
+                continue
         elif _bond_priority(Chem, bond_type) > _bond_priority(Chem, rd_bond.GetBondType()):
             rd_bond.SetBondType(bond_type)
         if rd_bond is not None:

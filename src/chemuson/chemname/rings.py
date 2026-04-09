@@ -300,7 +300,8 @@ def detect_naphthalene(
         for j in range(i + 1, len(ring_list)):
             r1 = ring_list[i]
             r2 = ring_list[j]
-            if not _ring_aromatic_basic(view, r1) or not _ring_aromatic_basic(view, r2):
+            # Lenient: al menos un anillo debe ser aromático (p. ej. para naftoquinonas)
+            if not _ring_aromatic_basic(view, r1) and not _ring_aromatic_basic(view, r2):
                 continue
             if any(view.element(atom_id) != "C" for atom_id in r1 | r2):
                 continue

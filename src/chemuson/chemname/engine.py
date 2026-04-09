@@ -378,6 +378,12 @@ def _name_cyclic(
         if aromatic_info and aromatic_info.get("kind") is not None:
             return _name_heteroaromatic(view, aromatic_info, opts, ring_ctx)
 
+        # Fallback para dionas de tipo benzoquinona (pueden no ser aromáticas en SMILES)
+        if len(ring_atoms) == 6:
+            dione_name = _name_aromatic_dione(view, ring_atoms, "benzene", opts, ring_ctx)
+            if dione_name:
+                return dione_name
+
         return _name_cycloalkane(view, ring_atoms, opts, ring_ctx)
 
     spiro_bicyclo = _detect_spiro_bicyclo(view, rings)
@@ -396,9 +402,19 @@ def _name_cyclic(
     if tricyclic is not None:
         return _name_tricyclic(view, tricyclic, opts)
 
-    naph = detect_naphthalene(view, rings)
-    if naph is not None:
-        return _name_naphthalene(view, naph, opts)
+    naph_data = detect_naphthalene(view, rings)
+    if naph_data is not None:
+        # Soporte para naftoquinonas
+        union_atoms = naph_data["atoms"]
+        fusion_atoms = set(naph_data["fusion_atoms"])
+        ring_atoms_naph = _perimeter_cycle(view, union_atoms, fusion_atoms)
+        if ring_atoms_naph:
+            dione_name = _name_aromatic_dione(
+                view, ring_atoms_naph, "naphthalene", opts, ring_ctx, fusion_atoms
+            )
+            if dione_name:
+                return dione_name
+        return _name_naphthalene(view, naph_data, opts)
 
     raise ChemNameNotSupported("Multiple rings not supported")
 
