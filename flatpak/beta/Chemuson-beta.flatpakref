@@ -1,0 +1,7 @@
+[Flatpak Ref]
+Title=Chemuson (beta)
+Name=io.github.PJGV333.Chemuson
+Branch=beta
+IsRuntime=false
+Url=https://PJGV333.github.io/Chemuson/flatpak/beta/repo/
+RuntimeRepo=https://dl.flathub.org/repo/flathub.flatpakrepo

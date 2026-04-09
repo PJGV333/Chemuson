@@ -1,1 +1,0 @@
-"""Utilidades compartidas de Chemuson."""
