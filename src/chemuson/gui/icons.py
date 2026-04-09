@@ -23,6 +23,7 @@ import math
 
 # Tamaño estándar de iconos (px)
 ICON_SIZE = 32
+_ICON_THEME = "light"
 
 # Paleta de colores para símbolos atómicos
 ATOM_COLORS = {
@@ -36,6 +37,89 @@ ATOM_COLORS = {
     'Br': '#A62929',  # Bromine - dark red
     'H': '#FFFFFF',   # Hydrogen - white
 }
+
+
+def set_icon_theme(theme_name: str) -> None:
+    """Actualiza el tema activo usado por los iconos monocromos."""
+    global _ICON_THEME
+    _ICON_THEME = "dark" if theme_name == "dark" else "light"
+
+
+def icon_foreground_color() -> str:
+    """Devuelve el color de trazo principal según el tema."""
+    return "#F8FAFC" if _ICON_THEME == "dark" else "#111111"
+
+
+def icon_muted_color() -> str:
+    """Devuelve un color secundario según el tema."""
+    return "#CBD5E1" if _ICON_THEME == "dark" else "#666666"
+
+
+def icon_fill_color() -> str:
+    """Devuelve un relleno neutro para iconos con superficies."""
+    return "#334155" if _ICON_THEME == "dark" else "#F2F2F2"
+
+
+def icon_paper_color() -> str:
+    """Devuelve un relleno claro/oscuro para detalles internos."""
+    return "#1E293B" if _ICON_THEME == "dark" else "#FFFFFF"
+
+
+def _tinted_theme_icon(theme_name: str, size: int = ICON_SIZE) -> QIcon | None:
+    """Carga un icono del sistema, lo recorta, amplía y recolorea."""
+    icon = QIcon.fromTheme(theme_name)
+    if icon.isNull():
+        return None
+
+    source = icon.pixmap(size * 2, size * 2)
+    if source.isNull():
+        return None
+
+    image = source.toImage()
+    min_x = image.width()
+    min_y = image.height()
+    max_x = -1
+    max_y = -1
+    for y in range(image.height()):
+        for x in range(image.width()):
+            if image.pixelColor(x, y).alpha() > 0:
+                min_x = min(min_x, x)
+                min_y = min(min_y, y)
+                max_x = max(max_x, x)
+                max_y = max(max_y, y)
+
+    if max_x >= min_x and max_y >= min_y:
+        source = source.copy(min_x, min_y, max_x - min_x + 1, max_y - min_y + 1)
+
+    # Undo/redo from the system theme usually ship with a lot of internal padding.
+    # Scale them more aggressively so they match the visual weight of our custom icons.
+    inner_size = max(55, int(size * 0.98))
+    source = source.scaled(
+        inner_size,
+        inner_size,
+        Qt.AspectRatioMode.KeepAspectRatio,
+        Qt.TransformationMode.SmoothTransformation,
+    )
+
+    tinted = QPixmap(size, size)
+    tinted.fill(Qt.GlobalColor.transparent)
+
+    painter = QPainter(tinted)
+    offset_x = max(0, (size - source.width()) // 2)
+    offset_y = max(0, (size - source.height()) // 2)
+    stroke_boost_px = 1
+    for dx, dy in (
+        (-stroke_boost_px, 0),
+        (stroke_boost_px, 0),
+        (0, -stroke_boost_px),
+        (0, stroke_boost_px),
+        (0, 0),
+    ):
+        painter.drawPixmap(offset_x + dx, offset_y + dy, source)
+    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+    painter.fillRect(tinted.rect(), QColor(icon_foreground_color()))
+    painter.end()
+    return QIcon(tinted)
 
 
 def _build_wavy_icon_path(
@@ -157,7 +241,7 @@ def draw_coordination_sphere_icon(color: str = "#8D99A6") -> QIcon:
 def draw_glyph_icon(text: str, color: str = None) -> QIcon:
     """Dibuja un icono tipográfico minimalista (letras, corchetes, símbolos)."""
     if color is None:
-        color = "#222222"
+        color = icon_foreground_color()
 
     pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
     pixmap.fill(Qt.GlobalColor.transparent)
@@ -178,6 +262,7 @@ def draw_glyph_icon(text: str, color: str = None) -> QIcon:
 
 def draw_charge_icon(sign: str) -> QIcon:
     """Dibuja un icono de carga circular con signo + o -."""
+    ink = QColor(icon_foreground_color())
     pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
     pixmap.fill(Qt.GlobalColor.transparent)
 
@@ -187,7 +272,7 @@ def draw_charge_icon(sign: str) -> QIcon:
     center = ICON_SIZE / 2
     radius = ICON_SIZE / 2 - 6
 
-    painter.setPen(QPen(QColor("#222222"), 2))
+    painter.setPen(QPen(ink, 2))
     painter.setBrush(Qt.BrushStyle.NoBrush)
     painter.drawEllipse(QPointF(center, center), radius, radius)
 
@@ -216,7 +301,7 @@ def draw_electron_icon(count: int = 1, spread: float = 6.0) -> QIcon:
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
     painter.setPen(QPen(Qt.PenStyle.NoPen))
-    painter.setBrush(QBrush(QColor("#222222")))
+    painter.setBrush(QBrush(QColor(icon_foreground_color())))
 
     center_x = ICON_SIZE / 2
     center_y = ICON_SIZE / 2
@@ -241,6 +326,7 @@ def draw_energy_diagram_icon(
     stroke_visible: bool = True,
 ) -> QIcon:
     """Dibuja un icono simple de cajas de configuracion electronica."""
+    ink = QColor(icon_foreground_color())
     box_count = max(1, int(box_count))
     pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
     pixmap.fill(Qt.GlobalColor.transparent)
@@ -264,13 +350,13 @@ def draw_energy_diagram_icon(
     available_width = max(8.0, boxes_right - boxes_left)
     box_width = (available_width - gap * (box_count - 1)) / box_count
 
-    stroke = QPen(QColor("#222222"), 1.2)
+    stroke = QPen(ink, 1.2)
     fill = QBrush(QColor(fill_color))
 
     if label_text:
         font = QFont("Arial", 8, QFont.Weight.Bold)
         painter.setFont(font)
-        painter.setPen(QColor("#3050F8"))
+        painter.setPen(ink)
         label_rect = QRectF(
             margin_x if label_side == "left" else ICON_SIZE - margin_x - label_width,
             0.0,
@@ -297,7 +383,7 @@ def draw_energy_diagram_icon(
     tail_bottom = arrow_rect.bottom() - 2.0
     tail_top = arrow_rect.top() + 5.0
 
-    painter.setPen(QPen(QColor("#111111"), 1.6))
+    painter.setPen(QPen(ink, 1.6))
     painter.drawLine(
         QPointF(center_x, tail_bottom),
         QPointF(center_x, tail_top),
@@ -317,14 +403,15 @@ def draw_energy_diagram_icon(
 
 def draw_energy_levels_icon() -> QIcon:
     """Dibuja un icono abreviado de escalera de niveles de energia."""
+    ink = QColor(icon_foreground_color())
     pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
     pixmap.fill(Qt.GlobalColor.transparent)
 
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-    axis_pen = QPen(QColor("#333333"), 1.3)
-    connector_pen = QPen(QColor("#C75A2C"), 1.4)
+    axis_pen = QPen(ink, 1.3)
+    connector_pen = QPen(ink, 1.2, Qt.PenStyle.DashLine)
     painter.setPen(axis_pen)
     painter.drawLine(QPointF(4.5, 26.5), QPointF(4.5, 5.0))
     painter.drawLine(QPointF(4.5, 5.0), QPointF(2.6, 8.2))
@@ -343,7 +430,7 @@ def draw_energy_levels_icon() -> QIcon:
         for idx in range(count):
             rect = QRectF(left + idx * (width + gap), y - 4.2, width, 8.4)
             rects.append(rect)
-            painter.setPen(QPen(QColor("#222222"), 0.9))
+            painter.setPen(QPen(ink, 0.9))
             painter.setBrush(QBrush(color))
             painter.drawRect(rect)
         current_in = QPointF(rects[0].left() - 1.3, y)
@@ -362,14 +449,16 @@ def draw_energy_levels_icon() -> QIcon:
 
 def draw_molecular_orbital_icon() -> QIcon:
     """Dibuja un icono esquemático de orbital molecular."""
+    ink = QColor(icon_foreground_color())
+    muted = QColor(icon_muted_color())
     pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
     pixmap.fill(Qt.GlobalColor.transparent)
 
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-    solid_pen = QPen(QColor("#222222"), 1.3)
-    dashed_pen = QPen(QColor("#777777"), 1.0, Qt.PenStyle.DashLine)
+    solid_pen = QPen(ink, 1.3)
+    dashed_pen = QPen(muted, 1.0, Qt.PenStyle.DashLine)
 
     left_top = QPointF(6.0, 10.0)
     left_bottom = QPointF(6.0, 22.0)
@@ -402,6 +491,7 @@ def draw_molecular_orbital_icon() -> QIcon:
 
 def draw_radical_charge_icon(sign: str) -> QIcon:
     """Dibuja un radical (punto) con un pequeño signo de carga."""
+    ink = QColor(icon_foreground_color())
     pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
     pixmap.fill(Qt.GlobalColor.transparent)
 
@@ -410,12 +500,12 @@ def draw_radical_charge_icon(sign: str) -> QIcon:
 
     # Radical dot (left-center)
     painter.setPen(QPen(Qt.PenStyle.NoPen))
-    painter.setBrush(QBrush(QColor("#222222")))
+    painter.setBrush(QBrush(ink))
     dot_pos = QPointF(ICON_SIZE * 0.38, ICON_SIZE * 0.58)
     painter.drawEllipse(dot_pos, 2.2, 2.2)
 
     # Charge sign (top-right)
-    painter.setPen(QPen(QColor("#222222"), 2))
+    painter.setPen(QPen(ink, 2))
     sign_center = QPointF(ICON_SIZE * 0.65, ICON_SIZE * 0.40)
     line_len = 4.0
     painter.drawLine(
@@ -441,6 +531,7 @@ def draw_bond_icon(bond_type: str = 'single') -> QIcon:
     Returns:
         QIcon con la representación del enlace.
     """
+    ink = QColor(icon_foreground_color())
     pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
     pixmap.fill(Qt.GlobalColor.transparent)
     
@@ -452,18 +543,18 @@ def draw_bond_icon(bond_type: str = 'single') -> QIcon:
     x2, y2 = ICON_SIZE - margin, margin
     
     if bond_type == 'single':
-        pen = QPen(QColor('#333333'), 3)
+        pen = QPen(ink, 3)
         painter.setPen(pen)
         painter.drawLine(x1, y1, x2, y2)
 
     elif bond_type == 'bold':
-        pen = QPen(QColor('#333333'), 6)
+        pen = QPen(ink, 6)
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         painter.setPen(pen)
         painter.drawLine(x1, y1, x2, y2)
 
     elif bond_type == 'double':
-        pen = QPen(QColor('#333333'), 2)
+        pen = QPen(ink, 2)
         painter.setPen(pen)
         # Offset lines for double bond
         offset = 3
@@ -475,7 +566,7 @@ def draw_bond_icon(bond_type: str = 'single') -> QIcon:
         painter.drawLine(int(x1 + nx), int(y1 + ny), int(x2 + nx), int(y2 + ny))
         painter.drawLine(int(x1 - nx), int(y1 - ny), int(x2 - nx), int(y2 - ny))
     elif bond_type == 'aromatic':
-        pen = QPen(QColor('#333333'), 2)
+        pen = QPen(ink, 2)
         painter.setPen(pen)
         # One full line plus a shorter inner line
         painter.drawLine(int(x1), int(y1), int(x2), int(y2))
@@ -490,13 +581,13 @@ def draw_bond_icon(bond_type: str = 'single') -> QIcon:
         nx, ny = -dy / length * offset, dx / length * offset
         painter.drawLine(int(sx + nx), int(sy + ny), int(ex + nx), int(ey + ny))
     elif bond_type == 'interaction':
-        pen = QPen(QColor('#333333'), 2, Qt.PenStyle.DotLine)
+        pen = QPen(ink, 2, Qt.PenStyle.DotLine)
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         painter.setPen(pen)
         painter.drawLine(int(x1), int(y1), int(x2), int(y2))
 
     elif bond_type == 'coordination':
-        pen = QPen(QColor('#333333'), 2, Qt.PenStyle.DashLine)
+        pen = QPen(ink, 2, Qt.PenStyle.DashLine)
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         pen.setDashPattern([4, 3])
         painter.setPen(pen)
@@ -523,7 +614,7 @@ def draw_bond_icon(bond_type: str = 'single') -> QIcon:
         )
 
     elif bond_type == 'triple':
-        pen = QPen(QColor('#333333'), 2)
+        pen = QPen(ink, 2)
         painter.setPen(pen)
         offset = 4
         dx, dy = x2 - x1, y2 - y1
@@ -534,8 +625,8 @@ def draw_bond_icon(bond_type: str = 'single') -> QIcon:
         painter.drawLine(int(x1 - nx), int(y1 - ny), int(x2 - nx), int(y2 - ny))
 
     elif bond_type == 'wedge':
-        painter.setPen(QPen(QColor('#333333'), 1))
-        painter.setBrush(QBrush(QColor('#333333')))
+        painter.setPen(QPen(ink, 1))
+        painter.setBrush(QBrush(ink))
         dx, dy = x2 - x1, y2 - y1
         length = math.sqrt(dx * dx + dy * dy)
         nx, ny = -dy / length * 4, dx / length * 4
@@ -547,7 +638,7 @@ def draw_bond_icon(bond_type: str = 'single') -> QIcon:
         painter.drawPolygon(QPolygonF(points))
 
     elif bond_type == 'hashed':
-        pen = QPen(QColor('#333333'), 1.5)
+        pen = QPen(ink, 1.5)
         painter.setPen(pen)
         dx, dy = x2 - x1, y2 - y1
         length = math.sqrt(dx * dx + dy * dy)
@@ -566,13 +657,13 @@ def draw_bond_icon(bond_type: str = 'single') -> QIcon:
             )
 
     elif bond_type == 'wavy':
-        pen = QPen(QColor('#333333'), 1.5)
+        pen = QPen(ink, 1.5)
         painter.setPen(pen)
         path = _build_wavy_icon_path(QPointF(x1, y1), QPointF(x2, y2))
         painter.drawPath(path)
     elif bond_type == 'flex':
         # Curva suave para representar enlaces largos/flexibles.
-        pen = QPen(QColor('#333333'), 2.2)
+        pen = QPen(ink, 2.2)
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         painter.setPen(pen)
@@ -601,7 +692,7 @@ def draw_wavy_anchor_icon() -> QIcon:
 
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    pen = QPen(QColor('#333333'), 2)
+    pen = QPen(QColor(icon_foreground_color()), 2)
     pen.setCapStyle(Qt.PenCapStyle.RoundCap)
     pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
     painter.setPen(pen)
@@ -647,7 +738,7 @@ def draw_ring_icon(size: int = 6, aromatic: bool = True) -> QIcon:
     
     polygon = QPolygonF(points)
     
-    pen = QPen(QColor('#333333'), 2)
+    pen = QPen(QColor(icon_foreground_color()), 2)
     painter.setPen(pen)
     painter.setBrush(Qt.BrushStyle.NoBrush)
     painter.drawPolygon(polygon)
@@ -663,6 +754,7 @@ def draw_ring_icon(size: int = 6, aromatic: bool = True) -> QIcon:
 
 def draw_ring_template_icon(label: str, size: int = 6) -> QIcon:
     """Dibuja un anillo con etiqueta para presets de plantillas."""
+    ink = QColor(icon_foreground_color())
     pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
     pixmap.fill(Qt.GlobalColor.transparent)
 
@@ -683,7 +775,7 @@ def draw_ring_template_icon(label: str, size: int = 6) -> QIcon:
         points.append(QPointF(x, y))
 
     polygon = QPolygonF(points)
-    pen = QPen(QColor("#333333"), 2)
+    pen = QPen(ink, 2)
     painter.setPen(pen)
     painter.setBrush(Qt.BrushStyle.NoBrush)
     painter.drawPolygon(polygon)
@@ -691,7 +783,7 @@ def draw_ring_template_icon(label: str, size: int = 6) -> QIcon:
     # Bold the lowest edge for a Haworth-like hint
     lowest = sorted(points, key=lambda p: p.y(), reverse=True)[:2]
     if len(lowest) == 2:
-        bold_pen = QPen(QColor("#333333"), 3.4)
+        bold_pen = QPen(ink, 3.4)
         bold_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         painter.setPen(bold_pen)
         painter.drawLine(lowest[0], lowest[1])
@@ -700,7 +792,7 @@ def draw_ring_template_icon(label: str, size: int = 6) -> QIcon:
         font_size = 10 if len(label) <= 2 else 9
         font = QFont("Arial", font_size, QFont.Weight.Bold)
         painter.setFont(font)
-        painter.setPen(QColor("#222222"))
+        painter.setPen(ink)
         painter.drawText(
             QRectF(0, 0, ICON_SIZE, ICON_SIZE),
             Qt.AlignmentFlag.AlignCenter,
@@ -713,6 +805,7 @@ def draw_ring_template_icon(label: str, size: int = 6) -> QIcon:
 
 def draw_arrow_icon(kind: str = "forward") -> QIcon:
     """Dibuja iconos de flechas usados en la paleta de anotaciones."""
+    ink = QColor(icon_foreground_color())
     pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
     pixmap.fill(Qt.GlobalColor.transparent)
 
@@ -744,13 +837,13 @@ def draw_arrow_icon(kind: str = "forward") -> QIcon:
 
     pen_width = 2.0
 
-    pen = QPen(QColor("#222222"), pen_width)
+    pen = QPen(ink, pen_width)
     pen.setCapStyle(Qt.PenCapStyle.RoundCap)
     pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
     if is_dashed:
         pen.setStyle(Qt.PenStyle.DashLine)
     painter.setPen(pen)
-    painter.setBrush(QBrush(Qt.BrushStyle.NoBrush if (is_open or is_fishhook) else QColor("#222222")))
+    painter.setBrush(QBrush(Qt.BrushStyle.NoBrush if (is_open or is_fishhook) else ink))
 
     y = ICON_SIZE / 2
     start_x = 6
@@ -831,7 +924,7 @@ def draw_arrow_icon(kind: str = "forward") -> QIcon:
 
         # ── Draw the curved stem ──
         # CRITICAL: set brush to NoBrush so the Bezier area is NOT filled.
-        curve_pen = QPen(QColor("#222222"), 1.5)
+        curve_pen = QPen(ink, 1.5)
         curve_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         painter.setPen(curve_pen)
         painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -852,7 +945,7 @@ def draw_arrow_icon(kind: str = "forward") -> QIcon:
         if kind == "curved":
             # Full filled triangular head
             painter.setPen(QPen(Qt.PenStyle.NoPen))
-            painter.setBrush(QBrush(QColor("#222222")))
+            painter.setBrush(QBrush(ink))
             painter.drawPolygon(QPolygonF([arc_end, left, right]))
         else:
             # Fishhook: filled wedge (stem_base → tip → barb),
@@ -869,7 +962,7 @@ def draw_arrow_icon(kind: str = "forward") -> QIcon:
                 arc_end.y() - tdy * h_len * 0.6,
             )
             painter.setPen(QPen(Qt.PenStyle.NoPen))
-            painter.setBrush(QBrush(QColor("#222222")))
+            painter.setBrush(QBrush(ink))
             painter.drawPolygon(QPolygonF([stem_base, arc_end, barb]))
 
     else:
@@ -890,6 +983,19 @@ def draw_generic_icon(shape: str) -> QIcon:
     Returns:
         QIcon con la forma de la herramienta.
     """
+    if shape == "undo":
+        themed = _tinted_theme_icon("edit-undo")
+        if themed is not None:
+            return themed
+    elif shape == "redo":
+        themed = _tinted_theme_icon("edit-redo")
+        if themed is not None:
+            return themed
+
+    ink = QColor(icon_foreground_color())
+    muted = QColor(icon_muted_color())
+    fill = QColor(icon_fill_color())
+    paper = QColor(icon_paper_color())
     pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
     pixmap.fill(Qt.GlobalColor.transparent)
     
@@ -908,14 +1014,14 @@ def draw_generic_icon(shape: str) -> QIcon:
             QPointF(19, 11),  # Right wing
         ]
         polygon = QPolygonF(arrow_points)
-        painter.setPen(QPen(QColor('#222222'), 1.5))
-        painter.setBrush(QBrush(QColor('#F2F2F2')))
+        painter.setPen(QPen(ink, 1.5))
+        painter.setBrush(QBrush(fill))
         painter.drawPolygon(polygon)
     
     elif shape == 'eraser':
         # Draw eraser rectangle
-        painter.setPen(QPen(QColor('#333333'), 1.5))
-        painter.setBrush(QBrush(QColor('#E0E0E0')))
+        painter.setPen(QPen(ink, 1.5))
+        painter.setBrush(QBrush(fill))
         # Draw angled eraser
         eraser_points = [
             QPointF(8, 26),
@@ -927,7 +1033,7 @@ def draw_generic_icon(shape: str) -> QIcon:
         polygon = QPolygonF(eraser_points)
         painter.drawPolygon(polygon)
         # Eraser tip
-        painter.setBrush(QBrush(QColor('#FFFFFF')))
+        painter.setBrush(QBrush(paper))
         tip_points = [
             QPointF(4, 18),
             QPointF(8, 14),
@@ -938,7 +1044,7 @@ def draw_generic_icon(shape: str) -> QIcon:
     
     elif shape == 'pan':
         # Draw hand/move icon
-        painter.setPen(QPen(QColor('#333333'), 2))
+        painter.setPen(QPen(ink, 2))
         center = ICON_SIZE / 2
         arrow_len = 8
         # Four arrows
@@ -958,7 +1064,7 @@ def draw_generic_icon(shape: str) -> QIcon:
                 painter.drawLine(int(x2), int(y2), int(hx), int(hy))
     
     elif shape in {'rotate_left', 'rotate_right'}:
-        painter.setPen(QPen(QColor('#333333'), 2))
+        painter.setPen(QPen(ink, 2))
         rect = QRectF(6, 6, 20, 20)
         clockwise = shape == 'rotate_right'
         start_angle = 45 if clockwise else 135
@@ -990,7 +1096,7 @@ def draw_generic_icon(shape: str) -> QIcon:
         painter.drawLine(QPointF(end_x, end_y), right)
 
     elif shape == 'flip_horizontal':
-        painter.setPen(QPen(QColor('#333333'), 2))
+        painter.setPen(QPen(ink, 2))
         center = ICON_SIZE / 2
         painter.drawLine(QPointF(center, 6), QPointF(center, ICON_SIZE - 6))
         painter.drawLine(QPointF(6, center), QPointF(center - 2, center))
@@ -1001,20 +1107,21 @@ def draw_generic_icon(shape: str) -> QIcon:
         painter.drawLine(QPointF(ICON_SIZE - 6, center), QPointF(ICON_SIZE - 10, center + 3))
 
     elif shape == 'flip_vertical':
-        painter.setPen(QPen(QColor('#333333'), 2))
+        painter.setPen(QPen(ink, 2.2))
         center = ICON_SIZE / 2
-        painter.drawLine(QPointF(6, center), QPointF(ICON_SIZE - 6, center))
-        painter.drawLine(QPointF(center, 6), QPointF(center, center - 2))
-        painter.drawLine(QPointF(center, ICON_SIZE - 6), QPointF(center, center + 2))
-        painter.drawLine(QPointF(center, 6), QPointF(center - 3, 10))
-        painter.drawLine(QPointF(center, 6), QPointF(center + 3, 10))
-        painter.drawLine(QPointF(center, ICON_SIZE - 6), QPointF(center - 3, ICON_SIZE - 10))
-        painter.drawLine(QPointF(center, ICON_SIZE - 6), QPointF(center + 3, ICON_SIZE - 10))
+        painter.drawLine(QPointF(7, center), QPointF(ICON_SIZE - 7, center))
+        painter.drawLine(QPointF(center, 7), QPointF(center, ICON_SIZE - 7))
+        painter.drawLine(QPointF(center, 7), QPointF(center - 4, 11))
+        painter.drawLine(QPointF(center, 7), QPointF(center + 4, 11))
+        painter.drawLine(QPointF(center, ICON_SIZE - 7), QPointF(center - 4, ICON_SIZE - 11))
+        painter.drawLine(QPointF(center, ICON_SIZE - 7), QPointF(center + 4, ICON_SIZE - 11))
+        painter.setPen(QPen(muted, 1.2))
+        painter.drawEllipse(QPointF(center, center), 1.2, 1.2)
 
     elif shape == 'zoom_in':
         # Draw magnifying glass with plus
-        painter.setPen(QPen(QColor('#333333'), 2))
-        painter.setBrush(QBrush(QColor('#E0E0E0')))
+        painter.setPen(QPen(ink, 2))
+        painter.setBrush(QBrush(fill))
         painter.drawEllipse(4, 4, 18, 18)
         # Handle
         painter.drawLine(19, 19, 27, 27)
@@ -1024,8 +1131,8 @@ def draw_generic_icon(shape: str) -> QIcon:
     
     elif shape == 'zoom_out':
         # Draw magnifying glass with minus
-        painter.setPen(QPen(QColor('#333333'), 2))
-        painter.setBrush(QBrush(QColor('#E0E0E0')))
+        painter.setPen(QPen(ink, 2))
+        painter.setBrush(QBrush(fill))
         painter.drawEllipse(4, 4, 18, 18)
         # Handle
         painter.drawLine(19, 19, 27, 27)
@@ -1033,7 +1140,7 @@ def draw_generic_icon(shape: str) -> QIcon:
         painter.drawLine(10, 13, 16, 13)
 
     elif shape == 'chain':
-        pen = QPen(QColor('#333333'), 2)
+        pen = QPen(ink, 2)
         painter.setPen(pen)
         points = [
             QPointF(6, 24),
@@ -1046,16 +1153,16 @@ def draw_generic_icon(shape: str) -> QIcon:
             painter.drawLine(points[i], points[i + 1])
 
     elif shape == 'lasso':
-        pen = QPen(QColor('#333333'), 1.6, Qt.PenStyle.DashLine)
+        pen = QPen(ink, 1.6, Qt.PenStyle.DashLine)
         painter.setPen(pen)
         path = QPainterPath()
         path.addEllipse(QRectF(6, 8, 14, 10))
         painter.drawPath(path)
-        painter.setPen(QPen(QColor('#333333'), 1.8))
+        painter.setPen(QPen(ink, 1.8))
         painter.drawLine(16, 18, 24, 26)
 
     elif shape == 'corner':
-        pen = QPen(QColor('#333333'), 2)
+        pen = QPen(ink, 2)
         painter.setPen(pen)
         left = 8
         top = 6
@@ -1065,22 +1172,22 @@ def draw_generic_icon(shape: str) -> QIcon:
         painter.drawLine(right, top, right, bottom)
 
     elif shape == 'frame':
-        pen = QPen(QColor('#333333'), 2)
+        pen = QPen(ink, 2)
         painter.setPen(pen)
         painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         painter.drawRect(QRectF(6, 6, ICON_SIZE - 12, ICON_SIZE - 12))
 
     elif shape == 'rounded_frame':
-        pen = QPen(QColor('#333333'), 2)
+        pen = QPen(ink, 2)
         painter.setPen(pen)
         painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         painter.drawRoundedRect(QRectF(6, 6, ICON_SIZE - 12, ICON_SIZE - 12), 4, 4)
 
     elif shape == "tlc":
-        painter.setPen(QPen(QColor("#333333"), 1.5))
-        painter.setBrush(QBrush(QColor("#FFFFFF")))
+        painter.setPen(QPen(ink, 1.5))
+        painter.setBrush(QBrush(paper))
         painter.drawRect(QRectF(8, 4, 16, 24))
-        painter.setPen(QPen(QColor("#777777"), 1, Qt.PenStyle.DashLine))
+        painter.setPen(QPen(muted, 1, Qt.PenStyle.DashLine))
         painter.drawLine(QPointF(9, 24), QPointF(23, 24))
         painter.drawLine(QPointF(9, 8), QPointF(23, 8))
         painter.setPen(Qt.PenStyle.NoPen)
@@ -1090,20 +1197,103 @@ def draw_generic_icon(shape: str) -> QIcon:
         painter.drawEllipse(QPointF(20, 12), 2, 2)
 
     elif shape == "electrophoresis":
-        painter.setPen(QPen(QColor("#333333"), 1.5))
-        painter.setBrush(QBrush(QColor("#F0F0F5")))
+        painter.setPen(QPen(ink, 1.5))
+        painter.setBrush(QBrush(fill))
         painter.drawRect(QRectF(6, 4, 20, 24))
-        painter.setPen(QPen(QColor("#777777"), 1))
+        painter.setPen(QPen(muted, 1))
         for i in range(4):
             x = 8 + i * 4
             painter.drawRect(QRectF(x + 1, 5, 2.5, 3))
-        painter.setBrush(QBrush(QColor("#333333")))
+        painter.setBrush(QBrush(ink))
         painter.drawRect(QRectF(9, 12, 3, 1.5))
         painter.drawRect(QRectF(9, 18, 3, 1.5))
         painter.drawRect(QRectF(13, 15, 3, 1.5))
         painter.drawRect(QRectF(13, 22, 3, 1.5))
         painter.drawRect(QRectF(17, 10, 3, 1.5))
         painter.drawRect(QRectF(21, 14, 3, 1.5))
+
+    elif shape == "document_new":
+        painter.setPen(QPen(ink, 1.7))
+        painter.setBrush(QBrush(paper))
+        painter.drawRoundedRect(QRectF(7, 4, 17, 22), 2, 2)
+        painter.drawLine(QPointF(20, 4), QPointF(25, 9))
+        painter.drawLine(QPointF(20, 4), QPointF(20, 9))
+        painter.drawLine(QPointF(20, 9), QPointF(25, 9))
+        painter.drawLine(QPointF(15.5, 11), QPointF(15.5, 19))
+        painter.drawLine(QPointF(11.5, 15), QPointF(19.5, 15))
+
+    elif shape == "document_open":
+        painter.setPen(QPen(ink, 1.7))
+        painter.setBrush(QBrush(fill))
+        painter.drawRoundedRect(QRectF(5, 10, 22, 14), 2, 2)
+        painter.drawRect(QRectF(8, 6, 8, 5))
+        painter.drawLine(QPointF(16, 17), QPointF(23, 17))
+        painter.drawLine(QPointF(19.5, 13.5), QPointF(23, 17))
+        painter.drawLine(QPointF(19.5, 20.5), QPointF(23, 17))
+
+    elif shape == "document_save":
+        painter.setPen(QPen(ink, 1.7))
+        painter.setBrush(QBrush(fill))
+        painter.drawRoundedRect(QRectF(5, 4, 22, 24), 2, 2)
+        painter.setBrush(QBrush(paper))
+        painter.drawRect(QRectF(8, 6.5, 14, 6))
+        painter.drawRect(QRectF(10, 18, 10, 6))
+        painter.setBrush(QBrush(ink))
+        painter.drawRect(QRectF(20, 7, 3, 5))
+
+    elif shape == "undo":
+        pen = QPen(ink, 2.3)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+        path = QPainterPath()
+        path.moveTo(24, 18)
+        path.cubicTo(22, 11, 16, 9, 11, 12)
+        path.lineTo(8, 14)
+        painter.drawPath(path)
+        painter.drawLine(QPointF(8, 14), QPointF(12, 10))
+        painter.drawLine(QPointF(8, 14), QPointF(13, 16))
+
+    elif shape == "redo":
+        pen = QPen(ink, 2.3)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+        path = QPainterPath()
+        path.moveTo(8, 18)
+        path.cubicTo(10, 11, 16, 9, 21, 12)
+        path.lineTo(24, 14)
+        painter.drawPath(path)
+        painter.drawLine(QPointF(24, 14), QPointF(20, 10))
+        painter.drawLine(QPointF(24, 14), QPointF(19, 16))
+
+    elif shape == "copy":
+        painter.setPen(QPen(ink, 1.6))
+        painter.setBrush(QBrush(fill))
+        painter.drawRoundedRect(QRectF(10, 7, 13, 16), 2, 2)
+        painter.setBrush(QBrush(paper))
+        painter.drawRoundedRect(QRectF(7, 10, 13, 16), 2, 2)
+
+    elif shape == "paste":
+        painter.setPen(QPen(ink, 1.6))
+        painter.setBrush(QBrush(fill))
+        painter.drawRoundedRect(QRectF(8, 7, 16, 19), 2, 2)
+        painter.setBrush(QBrush(paper))
+        painter.drawRoundedRect(QRectF(11, 4, 10, 5), 2, 2)
+        painter.drawLine(QPointF(12, 14), QPointF(20, 14))
+        painter.drawLine(QPointF(12, 18), QPointF(20, 18))
+
+    elif shape == "clean":
+        painter.setPen(QPen(ink, 2))
+        painter.drawLine(QPointF(10, 9), QPointF(22, 21))
+        painter.setBrush(QBrush(fill))
+        painter.drawRoundedRect(QRectF(8, 20, 16, 5), 1.5, 1.5)
+        painter.drawLine(QPointF(9, 20), QPointF(12, 17))
+        painter.drawLine(QPointF(12, 17), QPointF(24, 17))
+        painter.setPen(QPen(muted, 1.4))
+        painter.drawLine(QPointF(13, 7), QPointF(15, 5))
+        painter.drawLine(QPointF(15, 5), QPointF(17, 7))
+        painter.drawLine(QPointF(15, 5), QPointF(15, 9))
 
     painter.end()
     return QIcon(pixmap)

@@ -170,7 +170,11 @@ class ChemusonToolbar(QToolBar):
             draw_bond_icon("single"), "Enlaces", "tool_bond"
         )
         self._build_bond_palette(self.bond_button.menu())
-        self._add_tool_action(draw_generic_icon("chain"), "Cadena", "tool_chain")
+        self.chain_action = self._add_tool_action(
+            draw_generic_icon("chain"),
+            "Cadena",
+            "tool_chain",
+        )
         self.addSeparator()
 
         self.ring_button, self.ring_action = self._add_palette_button(
@@ -189,7 +193,7 @@ class ChemusonToolbar(QToolBar):
             "Centro de coordinación (esfera)",
             "tool_coordination_center",
         )
-        self._add_tool_action(
+        self.rotate_3d_precise_action = self._add_tool_action(
             draw_generic_icon("rotate_right"),
             "Rotación 3D precisa",
             "tool_rotate_3d_precise",
@@ -759,6 +763,69 @@ class ChemusonToolbar(QToolBar):
             action.setChecked(False)
         self.action_group.setExclusive(was_exclusive)
 
+    def refresh_icons(self) -> None:
+        """Regenera iconos y menús de la barra principal de dibujo."""
+        self._selection_meta = {
+            "tool_select": (draw_generic_icon("pointer"), "Seleccionar"),
+            "tool_select_lasso": (draw_generic_icon("lasso"), "Seleccion libre"),
+        }
+        self._current_select_tool_id = (
+            self._current_select_tool_id if self._current_select_tool_id in self._selection_meta else "tool_select"
+        )
+        select_icon, select_tip = self._selection_meta[self._current_select_tool_id]
+        self.select_action.setIcon(select_icon)
+        self.select_action.setToolTip(select_tip)
+        self.select_button.setToolTip(select_tip)
+        self.select_button.menu().clear()
+        self._build_select_palette(self.select_button.menu())
+
+        bond_icon = draw_bond_icon("single")
+        if bool(self._current_bond_spec.get("aromatic")):
+            bond_icon = draw_bond_icon("aromatic")
+        else:
+            style = self._current_bond_spec.get("style")
+            order = int(self._current_bond_spec.get("order", 1))
+            if style == BondStyle.BOLD:
+                bond_icon = draw_bond_icon("bold")
+            elif style == BondStyle.WEDGE:
+                bond_icon = draw_bond_icon("wedge")
+            elif style == BondStyle.HASHED:
+                bond_icon = draw_bond_icon("hashed")
+            elif style == BondStyle.WAVY:
+                bond_icon = draw_bond_icon("wavy")
+            elif style == BondStyle.FLEX:
+                bond_icon = draw_bond_icon("flex")
+            elif style == BondStyle.INTERACTION:
+                bond_icon = draw_bond_icon("interaction")
+            elif style == BondStyle.COORDINATION:
+                bond_icon = draw_bond_icon("coordination")
+            elif order == 3:
+                bond_icon = draw_bond_icon("triple")
+            elif order == 2:
+                bond_icon = draw_bond_icon("double")
+        self.bond_action.setIcon(bond_icon)
+        self.bond_button.menu().clear()
+        self._build_bond_palette(self.bond_button.menu())
+        self.bond_button.setToolTip(self.bond_action.toolTip())
+
+        ring_size = int(self._current_ring_spec.get("size", 6))
+        ring_aromatic = bool(self._current_ring_spec.get("aromatic", False))
+        ring_icon = draw_ring_icon(ring_size, aromatic=ring_aromatic)
+        self.ring_action.setIcon(ring_icon)
+        self.ring_button.menu().clear()
+        self._build_ring_palette(self.ring_button.menu())
+        self.ring_button.setToolTip(self.ring_action.toolTip())
+
+        self._set_element_palette_ui(self._current_element)
+        self.label_button.menu().clear()
+        self._build_label_palette(self.label_button.menu())
+
+        if hasattr(self, "chain_action"):
+            self.chain_action.setIcon(draw_generic_icon("chain"))
+        self.coord_action.setIcon(draw_coordination_sphere_icon())
+        if hasattr(self, "rotate_3d_precise_action"):
+            self.rotate_3d_precise_action.setIcon(draw_generic_icon("rotate_right"))
+
 
 class SymbolPaletteToolbar(QToolBar):
     """
@@ -1327,3 +1394,113 @@ class SymbolPaletteToolbar(QToolBar):
         self.annotation_button.setToolTip(tooltip)
         self.annotation_action.setChecked(True)
         self.tool_changed.emit(tool_id)
+
+    def refresh_icons(self) -> None:
+        """Regenera iconos y menús de la barra de símbolos."""
+        self.text_action.setIcon(draw_glyph_icon("T"))
+
+        self._bracket_meta = {
+            "tool_brackets_square": (draw_glyph_icon("[]"), "Corchetes []"),
+            "tool_brackets_square_left": (draw_glyph_icon("["), "Corchete izquierdo ["),
+            "tool_brackets_square_right": (draw_glyph_icon("]"), "Corchete derecho ]"),
+            "tool_brackets_corner": (draw_generic_icon("corner"), "Esquinas"),
+            "tool_brackets_curly": (draw_glyph_icon("{}"), "Llaves {}"),
+            "tool_brackets_curly_left": (draw_glyph_icon("{"), "Llave izquierda {"),
+            "tool_brackets_curly_right": (draw_glyph_icon("}"), "Llave derecha }"),
+            "tool_brackets_frame": (draw_generic_icon("frame"), "Marco"),
+            "tool_brackets_frame_rounded": (
+                draw_generic_icon("rounded_frame"),
+                "Marco con esquinas redondeadas",
+            ),
+            "tool_brackets_round": (draw_glyph_icon("()"), "Parentesis ()"),
+        }
+        self._arrow_meta = {
+            "tool_arrow_line": (draw_arrow_icon("line"), "Linea"),
+            "tool_arrow_line_dashed": (draw_arrow_icon("line_dashed"), "Linea discontinua"),
+            "tool_arrow_forward": (draw_arrow_icon("forward"), "Flecha directa"),
+            "tool_arrow_forward_open": (draw_arrow_icon("forward_open"), "Flecha directa abierta"),
+            "tool_arrow_forward_dashed": (draw_arrow_icon("forward_dashed"), "Flecha directa discontinua"),
+            "tool_arrow_retro": (draw_arrow_icon("retro"), "Flecha retro"),
+            "tool_arrow_retro_open": (draw_arrow_icon("retro_open"), "Flecha retro abierta"),
+            "tool_arrow_retro_dashed": (draw_arrow_icon("retro_dashed"), "Flecha retro discontinua"),
+            "tool_arrow_both": (draw_arrow_icon("both"), "Flecha doble"),
+            "tool_arrow_both_open": (draw_arrow_icon("both_open"), "Flecha doble abierta"),
+            "tool_arrow_both_dashed": (draw_arrow_icon("both_dashed"), "Flecha doble discontinua"),
+            "tool_arrow_equilibrium": (draw_arrow_icon("equilibrium"), "Equilibrio"),
+            "tool_arrow_equilibrium_dashed": (
+                draw_arrow_icon("equilibrium_dashed"),
+                "Equilibrio discontinuo",
+            ),
+            "tool_arrow_retrosynthetic": (draw_arrow_icon("retrosynthetic"), "Flecha retrosintesis"),
+            "tool_arrow_curved": (draw_arrow_icon("curved"), "Flecha curva"),
+            "tool_arrow_curved_fishhook": (draw_arrow_icon("curved_fishhook"), "Flecha curva (1 e-)"),
+        }
+        self._plate_meta = {
+            "tool_tlc": (draw_generic_icon("tlc"), "Placa TLC"),
+            "tool_electrophoresis": (draw_generic_icon("electrophoresis"), "Gel de Electroforesis"),
+        }
+        self._energy_diagram_meta = {
+            energy_diagram_tool_id(kind): (
+                (
+                    draw_energy_levels_icon()
+                    if energy_diagram_family(kind) == "levels"
+                    else draw_molecular_orbital_icon()
+                    if energy_diagram_family(kind) == "mo"
+                    else draw_energy_diagram_icon(
+                        ENERGY_DIAGRAM_PRESETS[kind].slot_count,
+                        label_text=ENERGY_DIAGRAM_PRESETS[kind].label,
+                        label_side=ENERGY_DIAGRAM_PRESETS[kind].label_side,
+                        fill_color=str(
+                            energy_diagram_default_style_payload(kind).get("fill_color", "#FFFFFF")
+                        ),
+                        stroke_visible=bool(
+                            energy_diagram_default_style_payload(kind).get("box_stroke_visible", True)
+                        ),
+                    )
+                ),
+                energy_diagram_display_name(kind),
+            )
+            for kind in ENERGY_DIAGRAM_MENU_ORDER
+        }
+
+        bracket_icon, bracket_tip = self._bracket_meta[self._current_bracket_tool_id]
+        self.bracket_action.setIcon(bracket_icon)
+        self.bracket_action.setToolTip(bracket_tip)
+        self.bracket_button.setToolTip(bracket_tip)
+        self.bracket_button.menu().clear()
+        self._build_bracket_palette(self.bracket_button.menu())
+
+        arrow_icon, arrow_tip = self._arrow_meta[self._current_arrow_tool_id]
+        self.annotation_action.setIcon(arrow_icon)
+        self.annotation_action.setToolTip(arrow_tip)
+        self.annotation_button.setToolTip(arrow_tip)
+        self.annotation_button.menu().clear()
+        self._build_arrow_palette(self.annotation_button.menu())
+
+        plate_icon, plate_tip = self._plate_meta[self._current_plate_tool_id]
+        self.plate_action.setIcon(plate_icon)
+        self.plate_action.setToolTip(plate_tip)
+        self.plate_button.setToolTip(plate_tip)
+        self.plate_button.menu().clear()
+        self._build_plate_palette(self.plate_button.menu())
+
+        symbol_icon, symbol_tip = self._symbol_meta()[self._current_symbol_tool_id]
+        self.symbol_action.setIcon(symbol_icon)
+        self.symbol_action.setToolTip(symbol_tip)
+        self.symbol_button.setToolTip(symbol_tip)
+        self.symbol_button.menu().clear()
+        self._build_symbol_palette(self.symbol_button.menu())
+
+        energy_icon, energy_tip = self._energy_diagram_meta[self._current_energy_diagram_tool_id]
+        self.energy_diagram_action.setIcon(energy_icon)
+        self.energy_diagram_action.setToolTip(energy_tip)
+        self.energy_diagram_button.setToolTip(energy_tip)
+        self.energy_diagram_button.menu().clear()
+        self._build_energy_diagram_palette(self.energy_diagram_button.menu())
+
+        orbital_icon, orbital_tip = self._orbital_meta[self._current_orbital_tool_id]
+        self.orbital_action.setIcon(orbital_icon)
+        self.orbital_action.setToolTip(orbital_tip)
+        self.orbital_button.setToolTip(orbital_tip)
+        self.orbital_button.menu().clear()
+        self._build_orbital_palette(self.orbital_button.menu())

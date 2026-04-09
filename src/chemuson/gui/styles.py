@@ -53,7 +53,7 @@ DARK_COLORS = {
     "text_primary": "#F1F5F9",
     "text_secondary": "#CBD5E1",
     "text_muted": "#94A3B8",
-    "text_inverse": "#0F172A",
+    "text_inverse": "#F8FAFC",
     "palette_bg": "#1E293B",
     "palette_border": "#334155",
     "palette_button_bg": "#334155",
@@ -103,6 +103,7 @@ QMenuBar {{
 
 QMenuBar::item {{
     background: transparent;
+    color: {colors['text_inverse']};
     padding: 6px 14px;
     border-radius: 6px;
     margin: 2px 2px;
@@ -122,6 +123,7 @@ QMenuBar::item:pressed {{
 /* =========================================== */
 QMenu {{
     background-color: {colors['bg_elevated']};
+    color: {colors['text_primary']};
     border: 1px solid {colors['border_medium']};
     border-radius: 10px;
     padding: 8px 4px;
@@ -165,6 +167,7 @@ QMenu::indicator {{
 /* =========================================== */
 QToolBar {{
     background-color: {colors['bg_toolbar']};
+    color: {colors['text_primary']};
     border: none;
     border-bottom: 1px solid {colors['border_light']};
     spacing: 6px;
@@ -509,11 +512,22 @@ QComboBox::drop-down {{
 
 QComboBox QAbstractItemView {{
     background-color: {colors['bg_elevated']};
+    color: {colors['text_primary']};
     border: 1px solid {colors['border_medium']};
     border-radius: 8px;
     selection-background-color: {colors['accent_primary']};
     selection-color: {colors['text_inverse']};
     padding: 4px;
+}}
+
+QComboBox QAbstractItemView::item {{
+    color: {colors['text_primary']};
+    background-color: {colors['bg_elevated']};
+}}
+
+QComboBox QAbstractItemView::item:selected {{
+    color: {colors['text_inverse']};
+    background-color: {colors['accent_primary']};
 }}
 
 /* =========================================== */

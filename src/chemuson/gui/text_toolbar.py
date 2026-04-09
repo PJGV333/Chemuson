@@ -42,6 +42,7 @@ class TextFormatToolbar(QToolBar):
         self.setIconSize(QSize(16, 16))
         self.setMovable(False)
         self._syncing_state = False
+        self._alignment_buttons: list[tuple[QToolButton, str]] = []
         
         # --- Font Family ---
         self.font_combo = QFontComboBox()
@@ -153,14 +154,12 @@ class TextFormatToolbar(QToolBar):
     ) -> None:
         """Añade un botón de alineación con icono temático o de respaldo."""
         button = QToolButton(self)
-        icon = QIcon.fromTheme(theme_name)
-        if icon.isNull():
-            icon = draw_glyph_icon(fallback_glyph)
-        button.setIcon(icon)
+        button.setIcon(draw_glyph_icon(fallback_glyph))
         button.setToolTip(tooltip)
         button.setAutoRaise(True)
         button.clicked.connect(lambda: self.alignment_changed.emit(alignment))
         self.addWidget(button)
+        self._alignment_buttons.append((button, fallback_glyph))
 
     def _handle_exclusive(self, trigger_action: QAction, other_action: QAction, prop_name: str):
         """Fuerza exclusividad entre subíndice y superíndice."""
@@ -181,6 +180,12 @@ class TextFormatToolbar(QToolBar):
         # Crear un icono simple con el color actual
         pixmap = draw_glyph_icon("■", color=self._current_color.name())
         self.color_btn.setIcon(pixmap)
+
+    def refresh_icons(self) -> None:
+        """Regenera iconos dependientes del tema."""
+        for button, glyph in self._alignment_buttons:
+            button.setIcon(draw_glyph_icon(glyph))
+        self._update_color_icon()
 
     def _emit_change(self, property_name: str = "all"):
         """Emite la señal con el estado actual de formato."""

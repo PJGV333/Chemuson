@@ -26,6 +26,7 @@ from chemuson.gui.canvas import (
 from chemuson.gui.periodic_table import PeriodicTableDialog
 from chemuson.gui.toolbar import ChemusonToolbar, SymbolPaletteToolbar
 from chemuson.gui.styles import get_main_stylesheet, get_tool_palette_stylesheet
+from chemuson.gui.icons import set_icon_theme
 from chemuson.gui.docks import PlantillasDock, InspectorDock, AppearanceDock
 from chemuson.gui.dialogs import PreferencesDialog, QuickStartDialog, StyleDialog
 from chemuson.gui.text_toolbar import TextFormatToolbar
@@ -269,14 +270,18 @@ class ChemusonWindow(QMainWindow):
 
     def _apply_theme(self) -> None:
         """Aplica el tema actual a la ventana y a las barras con estilo propio."""
+        set_icon_theme(self.current_theme)
         self.setStyleSheet(get_main_stylesheet(self.current_theme))
         toolbar_stylesheet = get_tool_palette_stylesheet(self.current_theme)
-        for toolbar in (
-            getattr(self, "toolbar", None),
-            getattr(self, "symbols_toolbar", None),
-        ):
+        for toolbar in (getattr(self, "toolbar", None), getattr(self, "symbols_toolbar", None)):
             if toolbar is not None:
                 toolbar.setStyleSheet(toolbar_stylesheet)
+        if hasattr(self, "_ui_builder"):
+            self._ui_builder.refresh_main_toolbar_icons(self)
+        for widget_name in ("toolbar", "symbols_toolbar", "text_toolbar"):
+            widget = getattr(self, widget_name, None)
+            if widget is not None and hasattr(widget, "refresh_icons"):
+                widget.refresh_icons()
 
     def toggle_theme(self, checked: bool | None = None) -> None:
         """Cambia entre modo claro y oscuro."""

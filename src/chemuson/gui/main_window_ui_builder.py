@@ -93,25 +93,7 @@ class MainWindowUiBuilder:
         window.main_toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         window.addToolBar(Qt.ToolBarArea.TopToolBarArea, window.main_toolbar)
 
-        window.action_new.setIcon(QIcon.fromTheme("document-new", QIcon()))
-        window.action_open.setIcon(QIcon.fromTheme("document-open", QIcon()))
-        window.action_save.setIcon(QIcon.fromTheme("document-save", QIcon()))
-        window.action_undo.setIcon(QIcon.fromTheme("edit-undo", QIcon()))
-        window.action_redo.setIcon(QIcon.fromTheme("edit-redo", QIcon()))
-        window.action_copy.setIcon(QIcon.fromTheme("edit-copy", QIcon()))
-        window.action_paste.setIcon(QIcon.fromTheme("edit-paste", QIcon()))
-        window.action_zoom_in.setIcon(draw_generic_icon("zoom_in"))
-        window.action_zoom_out.setIcon(draw_generic_icon("zoom_out"))
-        window.action_rotate_left.setIcon(draw_generic_icon("rotate_left"))
-        window.action_rotate_right.setIcon(draw_generic_icon("rotate_right"))
-        window.action_flip_horizontal.setIcon(draw_generic_icon("flip_horizontal"))
-        window.action_flip_vertical.setIcon(draw_generic_icon("flip_vertical"))
-        window.action_branch_rotate_minus.setIcon(draw_generic_icon("rotate_left"))
-        window.action_branch_rotate_plus.setIcon(draw_generic_icon("rotate_right"))
-        window.action_branch_invert.setIcon(draw_generic_icon("flip_horizontal"))
-        window.action_branch_auto_arrange.setIcon(QIcon.fromTheme("edit-clear", QIcon()))
-        window.action_clean_2d.setIcon(QIcon.fromTheme("edit-clear", QIcon()))
-        window.action_draw_smiles.setIcon(draw_atom_icon("SMI"))
+        self.refresh_main_toolbar_icons(window)
 
         for action in (
             window.action_new,
@@ -146,6 +128,28 @@ class MainWindowUiBuilder:
             window,
             window.action_show_main_toolbar_aux.isChecked(),
         )
+
+    def refresh_main_toolbar_icons(self, window) -> None:
+        """Regenera iconos de la barra principal según el tema activo."""
+        window.action_new.setIcon(draw_generic_icon("document_new"))
+        window.action_open.setIcon(draw_generic_icon("document_open"))
+        window.action_save.setIcon(draw_generic_icon("document_save"))
+        window.action_undo.setIcon(draw_generic_icon("undo"))
+        window.action_redo.setIcon(draw_generic_icon("redo"))
+        window.action_copy.setIcon(draw_generic_icon("copy"))
+        window.action_paste.setIcon(draw_generic_icon("paste"))
+        window.action_zoom_in.setIcon(draw_generic_icon("zoom_in"))
+        window.action_zoom_out.setIcon(draw_generic_icon("zoom_out"))
+        window.action_rotate_left.setIcon(draw_generic_icon("rotate_left"))
+        window.action_rotate_right.setIcon(draw_generic_icon("rotate_right"))
+        window.action_flip_horizontal.setIcon(draw_generic_icon("flip_horizontal"))
+        window.action_flip_vertical.setIcon(draw_generic_icon("flip_vertical"))
+        window.action_branch_rotate_minus.setIcon(draw_generic_icon("rotate_left"))
+        window.action_branch_rotate_plus.setIcon(draw_generic_icon("rotate_right"))
+        window.action_branch_invert.setIcon(draw_generic_icon("flip_horizontal"))
+        window.action_branch_auto_arrange.setIcon(draw_generic_icon("clean"))
+        window.action_clean_2d.setIcon(draw_generic_icon("clean"))
+        window.action_draw_smiles.setIcon(draw_atom_icon("SMI"))
 
     def set_main_toolbar_aux_visible(self, window, visible: bool) -> None:
         if not hasattr(window, "main_toolbar"):
