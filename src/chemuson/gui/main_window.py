@@ -277,10 +277,6 @@ class ChemusonWindow(QMainWindow):
         ):
             if toolbar is not None:
                 toolbar.setStyleSheet(toolbar_stylesheet)
-        if hasattr(self, "action_theme"):
-            is_dark = self.current_theme == "dark"
-            self.action_theme.setChecked(is_dark)
-            self.action_theme.setText("Modo oscuro")
 
     def toggle_theme(self, checked: bool | None = None) -> None:
         """Cambia entre modo claro y oscuro."""
@@ -293,11 +289,6 @@ class ChemusonWindow(QMainWindow):
     def _create_menu_bar(self) -> None:
         """Construye menús principales delegando el wiring repetitivo."""
         self._ui_builder.build_menu_bar(self)
-        self.action_theme = QAction("Modo oscuro", self)
-        self.action_theme.setCheckable(True)
-        self.action_theme.triggered.connect(self.toggle_theme)
-        self.view_menu.addAction(self.action_theme)
-        self._apply_theme()
     
     # -------------------------------------------------------------------------
     # Main Toolbar
@@ -1061,6 +1052,7 @@ class ChemusonWindow(QMainWindow):
         dialog = PreferencesDialog(
             self.canvas.state,
             self.canvas.drawing_style,
+            current_theme=self.current_theme,
             update_settings=self._update_settings_payload(),
             naming_settings=self._naming_settings_payload(),
             parent=self,
@@ -1103,8 +1095,12 @@ class ChemusonWindow(QMainWindow):
         self.canvas.state.show_implicit_hydrogens = prefs.get("show_hydrogens", False)
         self.canvas.state.use_aromatic_circles = prefs.get("aromatic_circles", False)
         bond_caps = prefs.get("bond_caps")
+        theme = str(prefs.get("theme", self.current_theme))
         if bond_caps:
             self._apply_bond_caps(bond_caps)
+        if theme != self.current_theme:
+            self.current_theme = "dark" if theme == "dark" else "light"
+            self._apply_theme()
 
         self.action_show_carbons.setChecked(self.canvas.state.show_implicit_carbons)
         self.action_show_hydrogens.setChecked(self.canvas.state.show_implicit_hydrogens)
