@@ -110,7 +110,7 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 pip install pyinstaller
 pyinstaller --clean --noconfirm chemuson.spec
-$env:CHEMUSON_VERSION = "0.2.3-beta.2"
+$env:CHEMUSON_VERSION = "0.2.3-beta.3"
 & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "packaging\windows\Chemuson.iss"
 ```
 

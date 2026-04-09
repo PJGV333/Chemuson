@@ -9,11 +9,11 @@ on:
       version:
         description: "Versión SemVer a publicar (ej. 0.2.2 o 0.2.2-beta.1)"
         required: true
-        default: "0.2.3-beta.2"
+        default: "0.2.3-beta.3"
       channel:
         description: "Canal de publicación (beta para testers, stable para usuarios finales)"
         required: true
-        default: "stable"
+        default: "beta"
         type: choice
         options:
           - stable

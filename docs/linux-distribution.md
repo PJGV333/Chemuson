@@ -70,13 +70,13 @@ chmod +x Chemuson-vX.Y.Z-linux-x86_64.AppImage
 ```bash
 pyinstaller --clean --noconfirm chemuson.spec
 bash packaging/linux/build_appimage.sh \
-  "0.2.3-beta.2" \
+  "0.2.3-beta.3" \
   "dist" \
   "dist-appimage" \
   "PJGV333" \
   "Chemuson" \
   "stable" \
-  "v0.2.3-beta.2"
+  "v0.2.3-beta.3"
 ```
 
 ### Build local Flatpak
@@ -85,7 +85,7 @@ Requiere `flatpak` y `flatpak-builder`.
 
 ```bash
 bash packaging/linux/build_flatpak.sh \
-  "0.2.3-beta.2" \
+  "0.2.3-beta.3" \
   "stable" \
   "dist-flatpak" \
   "packaging/flatpak/io.github.PJGV333.Chemuson.yml"
