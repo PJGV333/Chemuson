@@ -9,7 +9,7 @@ on:
       version:
         description: "Versión SemVer a publicar (ej. 0.2.2 o 0.2.2-beta.1)"
         required: true
-        default: "0.2.1"
+        default: "0.2.3-beta.2"
       channel:
         description: "Canal de publicación (beta para testers, stable para usuarios finales)"
         required: true
@@ -190,6 +190,20 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "channel=${CHANNEL}" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve Flatpak remote URLs
+        id: remote
+        run: |
+          OWNER="${GITHUB_REPOSITORY_OWNER}"
+          REPO="${GITHUB_REPOSITORY#*/}"
+          if [ "${REPO}" = "${OWNER}.github.io" ]; then
+            PAGES_BASE="https://${OWNER}.github.io"
+          else
+            PAGES_BASE="https://${OWNER}.github.io/${REPO}"
+          fi
+          echo "pages_base=${PAGES_BASE}" >> "$GITHUB_OUTPUT"
+          echo "repo_url=${PAGES_BASE}/flatpak/${{ steps.vars.outputs.channel }}/repo/" >> "$GITHUB_OUTPUT"
+          echo "icon_url=${PAGES_BASE}/flatpak/icon.svg" >> "$GITHUB_OUTPUT"
+
       - name: Sync app version
         run: |
           python packaging/release/set_version.py --version "${{ steps.vars.outputs.version }}"
@@ -197,9 +211,37 @@ jobs:
       - name: Install Flatpak toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y flatpak flatpak-builder
+          sudo apt-get install -y flatpak flatpak-builder gnupg
+
+      - name: Import Flatpak signing key (optional)
+        id: signing
+        env:
+          FLATPAK_GPG_PRIVATE_KEY_BASE64: ${{ secrets.FLATPAK_GPG_PRIVATE_KEY_BASE64 }}
+          FLATPAK_GPG_KEY_ID: ${{ secrets.FLATPAK_GPG_KEY_ID }}
+        run: |
+          if [ -z "${FLATPAK_GPG_PRIVATE_KEY_BASE64:-}" ] || [ -z "${FLATPAK_GPG_KEY_ID:-}" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          GNUPGHOME="$(mktemp -d)"
+          chmod 700 "${GNUPGHOME}"
+          PRIVATE_KEY_FILE="${RUNNER_TEMP}/flatpak-signing-private.asc"
+          PUBLIC_KEY_FILE="${RUNNER_TEMP}/flatpak-signing-public.gpg"
+          printf '%s' "${FLATPAK_GPG_PRIVATE_KEY_BASE64}" | base64 -d > "${PRIVATE_KEY_FILE}"
+          gpg --batch --homedir "${GNUPGHOME}" --import "${PRIVATE_KEY_FILE}"
+          gpg --batch --homedir "${GNUPGHOME}" --export "${FLATPAK_GPG_KEY_ID}" > "${PUBLIC_KEY_FILE}"
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+          echo "key_id=${FLATPAK_GPG_KEY_ID}" >> "$GITHUB_OUTPUT"
+          echo "gpg_homedir=${GNUPGHOME}" >> "$GITHUB_OUTPUT"
+          echo "public_key_file=${PUBLIC_KEY_FILE}" >> "$GITHUB_OUTPUT"
 
       - name: Build Flatpak bundle
+        env:
+          CHEMUSON_FLATPAK_REPO_URL: ${{ steps.remote.outputs.repo_url }}
+          CHEMUSON_FLATPAK_ICON_URL: ${{ steps.remote.outputs.icon_url }}
+          CHEMUSON_FLATPAK_GPG_KEY_ID: ${{ steps.signing.outputs.key_id }}
+          CHEMUSON_FLATPAK_GPG_HOMEDIR: ${{ steps.signing.outputs.gpg_homedir }}
+          CHEMUSON_FLATPAK_PUBLIC_KEY_FILE: ${{ steps.signing.outputs.public_key_file }}
         run: |
           bash packaging/linux/build_flatpak.sh \
             "${{ steps.vars.outputs.version }}" \
@@ -214,12 +256,29 @@ jobs:
           if compgen -G "dist-flatpak/*.flatpakref" > /dev/null; then
             cp dist-flatpak/*.flatpakref release-assets/
           fi
+          if compgen -G "dist-flatpak/*.flatpakrepo" > /dev/null; then
+            cp dist-flatpak/*.flatpakrepo release-assets/
+          fi
+
+      - name: Prepare Flatpak remote payload
+        run: |
+          mkdir -p flatpak-remote/${{ steps.vars.outputs.channel }}/repo
+          cp -a dist-flatpak/repo/. flatpak-remote/${{ steps.vars.outputs.channel }}/repo/
+          cp dist-flatpak/*.flatpakref flatpak-remote/${{ steps.vars.outputs.channel }}/
+          cp dist-flatpak/*.flatpakrepo flatpak-remote/${{ steps.vars.outputs.channel }}/
+          install -Dm644 packaging/flatpak/io.github.PJGV333.Chemuson.svg flatpak-remote/icon.svg
 
       - name: Upload Flatpak artifacts
         uses: actions/upload-artifact@v4
         with:
           name: flatpak-artifacts
           path: release-assets/*
+
+      - name: Upload Flatpak remote payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: flatpak-remote-${{ steps.vars.outputs.channel }}
+          path: flatpak-remote/*
 
   release:
     needs: [build_windows, build_linux, build_flatpak]
@@ -251,6 +310,7 @@ jobs:
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
+          pattern: "*-artifacts"
           path: release-assets
 
       - name: Flatten artifact folders
@@ -294,3 +354,91 @@ jobs:
           draft: false
           prerelease: ${{ steps.vars.outputs.channel == 'beta' }}
           generate_release_notes: true
+
+  publish_flatpak_remote:
+    needs: [release, build_flatpak]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version/channel
+        id: vars
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+            CHANNEL="${{ inputs.channel }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+            if echo "${VERSION}" | grep -qi "beta"; then
+              CHANNEL="beta"
+            else
+              CHANNEL="stable"
+            fi
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "channel=${CHANNEL}" >> "$GITHUB_OUTPUT"
+
+      - name: Download Flatpak remote payload
+        uses: actions/download-artifact@v4
+        with:
+          name: flatpak-remote-${{ steps.vars.outputs.channel }}
+          path: flatpak-remote
+
+      - name: Publish Flatpak remote to gh-pages
+        run: |
+          set -euo pipefail
+          PUBLISH_DIR="$(mktemp -d)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git ls-remote --exit-code origin gh-pages >/dev/null 2>&1; then
+            git fetch origin gh-pages
+            git worktree add "${PUBLISH_DIR}" origin/gh-pages
+            (
+              cd "${PUBLISH_DIR}"
+              git checkout -B gh-pages
+            )
+          else
+            git worktree add -B gh-pages "${PUBLISH_DIR}" HEAD
+            find "${PUBLISH_DIR}" -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+          fi
+
+          mkdir -p "${PUBLISH_DIR}/flatpak"
+          rm -rf "${PUBLISH_DIR}/flatpak/${{ steps.vars.outputs.channel }}"
+          mkdir -p "${PUBLISH_DIR}/flatpak/${{ steps.vars.outputs.channel }}"
+          cp -a flatpak-remote/${{ steps.vars.outputs.channel }}/. "${PUBLISH_DIR}/flatpak/${{ steps.vars.outputs.channel }}/"
+          cp flatpak-remote/icon.svg "${PUBLISH_DIR}/flatpak/icon.svg"
+          touch "${PUBLISH_DIR}/.nojekyll"
+
+          cat > "${PUBLISH_DIR}/index.html" <<'EOF'
+          <!doctype html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Chemuson Flatpak</title>
+          </head>
+          <body>
+            <h1>Chemuson Flatpak</h1>
+            <p>Official Flatpak channels for Chemuson.</p>
+            <ul>
+              <li><a href="./flatpak/stable/Chemuson-stable.flatpakref">Stable channel</a></li>
+              <li><a href="./flatpak/beta/Chemuson-beta.flatpakref">Beta channel</a></li>
+            </ul>
+          </body>
+          </html>
+          EOF
+
+          (
+            cd "${PUBLISH_DIR}"
+            git add .
+            if git diff --cached --quiet; then
+              echo "No Flatpak remote changes to publish."
+              exit 0
+            fi
+            git commit -m "Publish Flatpak remote for ${{ steps.vars.outputs.channel }} v${{ steps.vars.outputs.version }}"
+            git push origin gh-pages
+          )

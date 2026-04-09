@@ -1,6 +1,6 @@
 # Distribucion Linux dual: Flatpak + AppImage
 
-Fecha: 2026-02-26
+Fecha: 2026-04-09
 
 ## Objetivo
 
@@ -32,11 +32,17 @@ Fecha: 2026-02-26
 
 ### Flatpak (principal instalable)
 
-Instalar desde bundle descargado:
+Instalar desde el canal oficial estable:
 
 ```bash
-flatpak install --user ./Chemuson-vX.Y.Z-linux-x86_64.flatpak
+flatpak install --user https://pjgv333.github.io/Chemuson/flatpak/stable/Chemuson-stable.flatpakref
 flatpak run io.github.PJGV333.Chemuson
+```
+
+Canal beta:
+
+```bash
+flatpak install --user https://pjgv333.github.io/Chemuson/flatpak/beta/Chemuson-beta.flatpakref
 ```
 
 Desinstalar:
@@ -46,8 +52,9 @@ flatpak uninstall io.github.PJGV333.Chemuson
 ```
 
 Nota:
-- En el MVP actual, el update de Flatpak depende del origen remoto configurado.
-- Si solo instalaste desde un bundle local y sin remote persistente, el mecanismo de actualizacion de Flatpak no funcionara. Descarga un nuevo archivo `.flatpak` e instalalo para actualizar.
+- El remoto oficial se publica en GitHub Pages bajo `flatpak/<canal>/repo/`.
+- Si instalas desde `.flatpakref` o desde un bundle generado con `CHEMUSON_FLATPAK_REPO_URL`, `flatpak update` encuentra futuras versiones automaticamente.
+- Si solo instalaste un bundle local sin remote persistente, deberas reinstalar manualmente.
 
 ### AppImage (portable)
 
@@ -63,13 +70,13 @@ chmod +x Chemuson-vX.Y.Z-linux-x86_64.AppImage
 ```bash
 pyinstaller --clean --noconfirm chemuson.spec
 bash packaging/linux/build_appimage.sh \
-  "0.2.1" \
+  "0.2.3-beta.2" \
   "dist" \
   "dist-appimage" \
   "PJGV333" \
   "Chemuson" \
   "stable" \
-  "v0.2.1"
+  "v0.2.3-beta.2"
 ```
 
 ### Build local Flatpak
@@ -78,14 +85,15 @@ Requiere `flatpak` y `flatpak-builder`.
 
 ```bash
 bash packaging/linux/build_flatpak.sh \
-  "0.2.1" \
+  "0.2.3-beta.2" \
   "stable" \
   "dist-flatpak" \
   "packaging/flatpak/io.github.PJGV333.Chemuson.yml"
 ```
 
 Opcional:
-- definir `CHEMUSON_FLATPAK_REPO_URL` para que el script emita un `.flatpakref`.
+- definir `CHEMUSON_FLATPAK_REPO_URL` para que el script enlace el bundle a un remoto oficial y emita `.flatpakrepo` + `.flatpakref`.
+- definir `CHEMUSON_FLATPAK_GPG_KEY_ID`, `CHEMUSON_FLATPAK_GPG_HOMEDIR` y `CHEMUSON_FLATPAK_PUBLIC_KEY_FILE` para firmar el repo y publicar `GPGKey`.
 - exportar `ARCH` si se requiere override de arquitectura (default: `x86_64`).
 
 ## Troubleshooting Flatpak
@@ -104,8 +112,12 @@ Opcional:
 
 - `release.yml`
   - `build_linux`: AppImage + metadata de update.
-  - `build_flatpak`: build de bundle Flatpak.
+  - `build_flatpak`: build de bundle Flatpak + repo OSTree + archivos `.flatpakrepo/.flatpakref`.
+  - `publish_flatpak_remote`: publica el repo oficial por canal en `gh-pages`.
   - `release`: agrega checksums, firma opcional HMAC y publica assets en GitHub Releases.
+- Requisito de plataforma:
+  - habilitar GitHub Pages apuntando a la rama `gh-pages` para exponer el remoto oficial.
+  - opcional pero recomendado: configurar secrets `FLATPAK_GPG_PRIVATE_KEY_BASE64` y `FLATPAK_GPG_KEY_ID` para firmar el remoto oficial.
 
 - `test.yml`
   - `flatpak-smoke`: validacion sintactica del manifiesto Flatpak.

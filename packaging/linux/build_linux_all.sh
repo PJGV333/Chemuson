@@ -5,9 +5,9 @@ set -euo pipefail
 # Uso:
 #   bash packaging/linux/build_linux_all.sh <VERSION> [CHANNEL]
 # Ejemplo:
-#   bash packaging/linux/build_linux_all.sh 0.2.1 stable
+#   bash packaging/linux/build_linux_all.sh 0.2.3-beta.2 stable
 
-VERSION="${1:?missing VERSION (e.g. 0.2.1)}"
+VERSION="${1:?missing VERSION (e.g. 0.2.3-beta.2)}"
 CHANNEL="${2:-stable}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

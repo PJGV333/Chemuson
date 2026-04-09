@@ -23,6 +23,22 @@ def _load_manifest_module():
     return module
 
 
+def _load_flatpak_remote_module():
+    script_path = (
+        Path(__file__).resolve().parent.parent
+        / "packaging"
+        / "release"
+        / "generate_flatpak_remote_files.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "generate_flatpak_remote_files", script_path
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def test_generate_channel_manifest_ignores_sidecars_and_includes_flatpak(tmp_path) -> None:
     module = _load_manifest_module()
     artifacts_dir = tmp_path / "artifacts"
@@ -30,6 +46,14 @@ def test_generate_channel_manifest_ignores_sidecars_and_includes_flatpak(tmp_pat
 
     (artifacts_dir / "Chemuson-v1.2.3-linux-x86_64.flatpak").write_bytes(b"flatpak")
     (artifacts_dir / "Chemuson-v1.2.3-linux-x86_64.AppImage").write_bytes(b"appimage")
+    (artifacts_dir / "Chemuson-stable.flatpakrepo").write_text(
+        "[Flatpak Repo]\nTitle=Chemuson\n",
+        encoding="utf-8",
+    )
+    (artifacts_dir / "Chemuson-stable.flatpakref").write_text(
+        "[Flatpak Ref]\nTitle=Chemuson\n",
+        encoding="utf-8",
+    )
     (artifacts_dir / "Chemuson-v1.2.3-linux-x86_64.AppImage.updateinfo").write_text(
         "gh-releases-zsync|PJGV333|Chemuson|latest|Chemuson.zsync",
         encoding="utf-8",
@@ -56,6 +80,36 @@ def test_generate_channel_manifest_ignores_sidecars_and_includes_flatpak(tmp_pat
     assert all(not key.endswith(".updateinfo") for key in artifacts.keys())
     assert all(not key.endswith(".update.json") for key in artifacts.keys())
     assert all(not key.endswith(".zsync") for key in artifacts.keys())
+
+
+def test_generate_flatpak_remote_files_builds_repo_and_ref_payloads() -> None:
+    module = _load_flatpak_remote_module()
+
+    repo_text = module.build_flatpak_repo_config(
+        title="Chemuson (beta)",
+        repo_url="https://pjgv333.github.io/Chemuson/flatpak/beta/repo",
+        homepage="https://github.com/PJGV333/Chemuson",
+        comment="Canal oficial beta",
+        description="Repositorio oficial beta",
+        icon_url="https://pjgv333.github.io/Chemuson/flatpak/icon.svg",
+        default_branch="beta",
+    )
+    ref_text = module.build_flatpak_ref_config(
+        title="Chemuson (beta)",
+        app_id="io.github.PJGV333.Chemuson",
+        branch="beta",
+        repo_url="https://pjgv333.github.io/Chemuson/flatpak/beta/repo",
+        runtime_repo="https://dl.flathub.org/repo/flathub.flatpakrepo",
+    )
+
+    assert "[Flatpak Repo]" in repo_text
+    assert "Title=Chemuson (beta)" in repo_text
+    assert "Url=https://pjgv333.github.io/Chemuson/flatpak/beta/repo/" in repo_text
+    assert "DefaultBranch=beta" in repo_text
+    assert "[Flatpak Ref]" in ref_text
+    assert "Branch=beta" in ref_text
+    assert "Name=io.github.PJGV333.Chemuson" in ref_text
+    assert "RuntimeRepo=https://dl.flathub.org/repo/flathub.flatpakrepo" in ref_text
 
 
 def test_build_appimage_script_writes_update_metadata(tmp_path) -> None:

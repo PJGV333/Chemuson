@@ -89,7 +89,7 @@ Formatos soportados (estrategia híbrida):
   - Instalador: `Chemuson-vX.Y.Z-windows-x86_64-setup.exe`
 - **Linux**
   - Portable: `Chemuson-vX.Y.Z-linux-x86_64.AppImage`
-  - Instalable recomendado: **Flatpak** (canal oficial en despliegue incremental)
+  - Instalable recomendado: **Flatpak** (canal oficial con remoto actualizable)
 
 Convención de nombres en release:
 
@@ -110,7 +110,7 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 pip install pyinstaller
 pyinstaller --clean --noconfirm chemuson.spec
-$env:CHEMUSON_VERSION = "0.2.1"
+$env:CHEMUSON_VERSION = "0.2.3-beta.2"
 & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "packaging\windows\Chemuson.iss"
 ```
 
@@ -120,11 +120,17 @@ $env:CHEMUSON_VERSION = "0.2.1"
 - Canal portable: **AppImage** (`.AppImage`) sin instalación.
 - Documento técnico y comandos completos: [docs/linux-distribution.md](docs/linux-distribution.md)
 
-Instalación rápida Flatpak (usuario final):
+Instalación rápida Flatpak estable (usuario final):
 
 ```bash
-flatpak install --user ./Chemuson-vX.Y.Z-linux-x86_64.flatpak
+flatpak install --user https://pjgv333.github.io/Chemuson/flatpak/stable/Chemuson-stable.flatpakref
 flatpak run io.github.PJGV333.Chemuson
+```
+
+Canal beta:
+
+```bash
+flatpak install --user https://pjgv333.github.io/Chemuson/flatpak/beta/Chemuson-beta.flatpakref
 ```
 
 Ejecución AppImage:
@@ -144,7 +150,7 @@ chmod +x Chemuson-vX.Y.Z-linux-x86_64.AppImage
   - firma (`.sig`, MVP con HMAC-SHA256; preparado para ampliar a Ed25519).
 - Rollback básico: si falla reemplazo de binario, se restaura backup local.
 - En Windows instalado, el updater prioriza el asset `setup.exe` y lo aplica al cierre de la app.
-- En Flatpak se deshabilita update in-app y se delega a la política de Flatpak/remote.
+- En Flatpak se deshabilita update in-app y se delega al remoto oficial publicado para `flatpak update`.
 - Fallback seguro: si GitHub no responde, se usa caché local reciente de releases (si existe).
 - Telemetría local mínima del updater (sin datos sensibles): `~/.chemuson/update_logs/events.jsonl`.
 

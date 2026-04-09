@@ -9,11 +9,20 @@ OUT_DIR="${3:-dist-flatpak}"
 MANIFEST_PATH="${4:-packaging/flatpak/io.github.PJGV333.Chemuson.yml}"
 APP_ID="${APP_ID:-io.github.PJGV333.Chemuson}"
 ARCH="${ARCH:-x86_64}"
+RUNTIME_REPO="${CHEMUSON_FLATPAK_RUNTIME_REPO:-https://dl.flathub.org/repo/flathub.flatpakrepo}"
+REPO_TITLE="${CHEMUSON_FLATPAK_REPO_TITLE:-Chemuson (${BRANCH})}"
+REPO_COMMENT="${CHEMUSON_FLATPAK_REPO_COMMENT:-Canal oficial Flatpak de Chemuson (${BRANCH}).}"
+REPO_DESCRIPTION="${CHEMUSON_FLATPAK_REPO_DESCRIPTION:-Repositorio oficial Flatpak de Chemuson para el canal ${BRANCH}.}"
+REPO_HOMEPAGE="${CHEMUSON_FLATPAK_HOMEPAGE:-https://github.com/PJGV333/Chemuson}"
+REPO_ICON_URL="${CHEMUSON_FLATPAK_ICON_URL:-}"
+REPO_GPG_KEY_ID="${CHEMUSON_FLATPAK_GPG_KEY_ID:-}"
+REPO_GPG_HOMEDIR="${CHEMUSON_FLATPAK_GPG_HOMEDIR:-}"
+REPO_PUBLIC_KEY_FILE="${CHEMUSON_FLATPAK_PUBLIC_KEY_FILE:-}"
+REPO_CONFIG_BASENAME="${CHEMUSON_FLATPAK_CONFIG_BASENAME:-Chemuson}"
 
 BUILD_DIR="${OUT_DIR}/build-dir"
 REPO_DIR="${OUT_DIR}/repo"
 BUNDLE_PATH="${OUT_DIR}/Chemuson-v${VERSION}-linux-${ARCH}.flatpak"
-FLATPAKREF_PATH="${OUT_DIR}/Chemuson-${BRANCH}.flatpakref"
 
 mkdir -p "$OUT_DIR"
 
@@ -58,20 +67,58 @@ if [[ "${FLATPAK_BUILDER_EXIT}" -ne 0 ]]; then
   exit "${FLATPAK_BUILDER_EXIT}"
 fi
 
-flatpak build-bundle "${REPO_DIR}" "${BUNDLE_PATH}" "${APP_ID}" "${BRANCH}"
+REPO_URL="${CHEMUSON_FLATPAK_REPO_URL:-}"
+UPDATE_REPO_ARGS=(
+  "--title=${REPO_TITLE}"
+  "--comment=${REPO_COMMENT}"
+  "--description=${REPO_DESCRIPTION}"
+  "--homepage=${REPO_HOMEPAGE}"
+  "--default-branch=${BRANCH}"
+)
+if [[ -n "${REPO_ICON_URL}" ]]; then
+  UPDATE_REPO_ARGS+=("--icon=${REPO_ICON_URL}")
+fi
+if [[ -n "${REPO_GPG_KEY_ID}" ]]; then
+  UPDATE_REPO_ARGS+=("--gpg-sign=${REPO_GPG_KEY_ID}")
+fi
+if [[ -n "${REPO_GPG_HOMEDIR}" ]]; then
+  UPDATE_REPO_ARGS+=("--gpg-homedir=${REPO_GPG_HOMEDIR}")
+fi
+flatpak build-update-repo "${UPDATE_REPO_ARGS[@]}" "${REPO_DIR}"
+
+BUNDLE_ARGS=()
+if [[ -n "${REPO_URL}" ]]; then
+  BUNDLE_ARGS+=("--repo-url=${REPO_URL}")
+  BUNDLE_ARGS+=("--runtime-repo=${RUNTIME_REPO}")
+fi
+if [[ -n "${REPO_PUBLIC_KEY_FILE}" ]]; then
+  BUNDLE_ARGS+=("--gpg-keys=${REPO_PUBLIC_KEY_FILE}")
+fi
+flatpak build-bundle "${BUNDLE_ARGS[@]}" "${REPO_DIR}" "${BUNDLE_PATH}" "${APP_ID}" "${BRANCH}"
 rm -f "${BUILD_LOG}"
 
-REPO_URL="${CHEMUSON_FLATPAK_REPO_URL:-}"
 if [[ -n "${REPO_URL}" ]]; then
-  cat > "${FLATPAKREF_PATH}" <<EOF
-[Flatpak Ref]
-Title=Chemuson (${BRANCH})
-Name=${APP_ID}
-Branch=${BRANCH}
-IsRuntime=false
-Url=${REPO_URL}
-RuntimeRepo=https://flathub.org/repo/flathub.flatpakrepo
-EOF
+  REMOTE_FILE_ARGS=(
+    "--repo-url" "${REPO_URL}"
+    "--app-id" "${APP_ID}"
+    "--branch" "${BRANCH}"
+    "--out-dir" "${OUT_DIR}"
+    "--basename" "${REPO_CONFIG_BASENAME}"
+    "--repo-title" "${REPO_TITLE}"
+    "--ref-title" "${REPO_TITLE}"
+    "--homepage" "${REPO_HOMEPAGE}"
+    "--comment" "${REPO_COMMENT}"
+    "--description" "${REPO_DESCRIPTION}"
+    "--default-branch" "${BRANCH}"
+    "--runtime-repo" "${RUNTIME_REPO}"
+  )
+  if [[ -n "${REPO_ICON_URL}" ]]; then
+    REMOTE_FILE_ARGS+=("--icon-url" "${REPO_ICON_URL}")
+  fi
+  if [[ -n "${REPO_PUBLIC_KEY_FILE}" ]]; then
+    REMOTE_FILE_ARGS+=("--gpg-key-file" "${REPO_PUBLIC_KEY_FILE}")
+  fi
+  python packaging/release/generate_flatpak_remote_files.py "${REMOTE_FILE_ARGS[@]}"
 fi
 
 echo "Built ${BUNDLE_PATH}"

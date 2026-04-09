@@ -44,7 +44,11 @@ def build_manifest(channel: str, version: str, base_url: str, artifacts_dir: Pat
             continue
         if path.name.endswith(".zsync") or path.name.endswith(".updateinfo"):
             continue
-        if path.name.endswith(".update.json") or path.name.endswith(".flatpakref"):
+        if (
+            path.name.endswith(".update.json")
+            or path.name.endswith(".flatpakref")
+            or path.name.endswith(".flatpakrepo")
+        ):
             continue
         if path.name in {"checksums.txt", "stable.json", "beta.json"}:
             continue

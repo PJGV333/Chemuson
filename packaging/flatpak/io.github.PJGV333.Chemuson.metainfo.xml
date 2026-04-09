@@ -11,13 +11,14 @@
   </description>
   <launchable type="desktop-id">io.github.PJGV333.Chemuson.desktop</launchable>
   <metadata_license>CC0-1.0</metadata_license>
-  <project_license>MIT</project_license>
+  <project_license>AGPL-3.0-only</project_license>
   <developer id="io.github.PJGV333">
     <name>Grupo de Quimica Supramolecular - Universidad de Sonora</name>
   </developer>
   <url type="homepage">https://github.com/PJGV333/Chemuson</url>
   <url type="bugtracker">https://github.com/PJGV333/Chemuson/issues</url>
   <releases>
+    <release version="0.2.3-beta.2" date="2026-04-09"/>
     <release version="0.2.1" date="2026-02-26"/>
   </releases>
   <content_rating type="oars-1.1"/>
