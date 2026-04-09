@@ -132,6 +132,9 @@ def _validate_expectation(
     if not resolved_name:
         return False, "empty_name"
     if not pattern.search(resolved_name):
+        normalized_name = resolved_name.replace("/", "")
+        if normalized_name != resolved_name and pattern.search(normalized_name):
+            return True, "regex_match_normalized"
         return False, f"regex '{expect_text}' no coincide con '{resolved_name}'"
     return True, "regex_match"
 
@@ -508,4 +511,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

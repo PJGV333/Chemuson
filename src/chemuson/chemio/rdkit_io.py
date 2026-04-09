@@ -89,6 +89,33 @@ def _atomic_number_for_symbol(symbol: str) -> int:
     return int(ATOMIC_NUMBERS.get(normalized, 0) or 0)
 
 
+_SIMPLE_GROUP_EXPORT_LABELS: dict[tuple[str, int], str] = {
+    ("N", 2): "NH2",
+    ("N", 1): "NH",
+    ("O", 1): "OH",
+    ("S", 1): "SH",
+}
+
+_RDKIT_QUERY_SYMBOLS = {"*", "A", "Q", "L", "LP", "Du", "R", "R#"}
+
+
+def _pseudoatom_label_for_export(atom) -> str | None:
+    """Devuelve etiqueta pseudoatómica cuando conviene exportar un dummy atom."""
+    element = str(getattr(atom, "element", "") or "").strip()
+    if not element:
+        return None
+    group_h_cap = getattr(atom, "group_h_cap", None)
+    if group_h_cap is not None:
+        label = _SIMPLE_GROUP_EXPORT_LABELS.get((element, int(group_h_cap)))
+        if label:
+            return label
+    if element in _RDKIT_QUERY_SYMBOLS:
+        return None
+    if _atomic_number_for_symbol(element) <= 0:
+        return element
+    return None
+
+
 @dataclass
 class StrictValidationResult:
     """Resultado de validación/normalización estricta basada en RDKit."""
@@ -134,12 +161,13 @@ def molgraph_to_rdkit_with_map(molgraph: MolGraph):
 
     for atom in sorted(molgraph.atoms.values(), key=lambda a: a.id):
         element = atom.element
-        atomic_number = _atomic_number_for_symbol(element)
-        if atomic_number <= 0:
+        pseudo_label = _pseudoatom_label_for_export(atom)
+        if pseudo_label is not None:
             rd_atom = Chem.Atom(0)
-            rd_atom.SetProp("atomLabel", element)
-            rd_atom.SetProp("dummyLabel", element)
+            rd_atom.SetProp("atomLabel", pseudo_label)
+            rd_atom.SetProp("dummyLabel", pseudo_label)
         else:
+            atomic_number = _atomic_number_for_symbol(element)
             rd_atom = Chem.Atom(int(atomic_number))
         rd_atom.SetFormalCharge(atom.charge)
         if atom.isotope is not None:
@@ -631,10 +659,15 @@ def molfile_to_molgraph(molfile: str) -> MolGraph:
         Grafo molecular equivalente.
     """
     normalized = normalize_molblock_header(molfile)
-    if _should_use_molfile_fallback(normalized):
+    fallback_error: Exception | None = None
+    try:
+        # El parser interno preserva pseudoátomos, isótopos y enlaces tal como
+        # vienen en el CTAB, y evita divergencias de sanitización de RDKit.
         return _molfile_to_molgraph_fallback(normalized)
+    except Exception as exc:
+        fallback_error = exc
     if not _rdkit_available():
-        return _molfile_to_molgraph_fallback(normalized)
+        raise fallback_error
     try:
         mol = Chem.MolFromMolBlock(normalized, sanitize=True)
         if mol is not None:
@@ -647,7 +680,7 @@ def molfile_to_molgraph(molfile: str) -> MolGraph:
             return rdkit_to_molgraph(mol)
     except Exception:
         pass
-    return _molfile_to_molgraph_fallback(normalized)
+    raise fallback_error
 
 
 def smiles_to_molgraph(smiles: str) -> MolGraph:
