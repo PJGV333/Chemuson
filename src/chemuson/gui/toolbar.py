@@ -923,6 +923,12 @@ class SymbolPaletteToolbar(QToolBar):
                     if energy_diagram_family(kind) == "levels"
                     else draw_molecular_orbital_icon()
                     if energy_diagram_family(kind) == "mo"
+                    else draw_glyph_icon(ENERGY_DIAGRAM_PRESETS[kind].label)
+                    if (
+                        energy_diagram_family(kind) == "row"
+                        and kind != "custom_level"
+                        and bool(ENERGY_DIAGRAM_PRESETS[kind].label)
+                    )
                     else draw_energy_diagram_icon(
                         ENERGY_DIAGRAM_PRESETS[kind].slot_count,
                         label_text=ENERGY_DIAGRAM_PRESETS[kind].label,
@@ -1446,6 +1452,12 @@ class SymbolPaletteToolbar(QToolBar):
                     if energy_diagram_family(kind) == "levels"
                     else draw_molecular_orbital_icon()
                     if energy_diagram_family(kind) == "mo"
+                    else draw_glyph_icon(ENERGY_DIAGRAM_PRESETS[kind].label)
+                    if (
+                        energy_diagram_family(kind) == "row"
+                        and kind != "custom_level"
+                        and bool(ENERGY_DIAGRAM_PRESETS[kind].label)
+                    )
                     else draw_energy_diagram_icon(
                         ENERGY_DIAGRAM_PRESETS[kind].slot_count,
                         label_text=ENERGY_DIAGRAM_PRESETS[kind].label,
