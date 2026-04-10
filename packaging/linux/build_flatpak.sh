@@ -42,15 +42,23 @@ fi
 
 BUILD_LOG="$(mktemp "${OUT_DIR}/flatpak-builder.XXXXXX.log")"
 
+BUILDER_ARGS=(
+  --user
+  --force-clean
+  --default-branch="${BRANCH}"
+  --install-deps-from=flathub
+  --repo="${REPO_DIR}"
+)
+if [[ -n "${REPO_GPG_KEY_ID}" ]]; then
+  BUILDER_ARGS+=("--gpg-sign=${REPO_GPG_KEY_ID}")
+fi
+if [[ -n "${REPO_GPG_HOMEDIR}" ]]; then
+  BUILDER_ARGS+=("--gpg-homedir=${REPO_GPG_HOMEDIR}")
+fi
+
 set +e
-flatpak-builder \
-  --user \
-  --force-clean \
-  --default-branch="${BRANCH}" \
-  --install-deps-from=flathub \
-  --repo="${REPO_DIR}" \
-  "${BUILD_DIR}" \
-  "${MANIFEST_PATH}" 2>&1 | tee "${BUILD_LOG}"
+flatpak-builder "${BUILDER_ARGS[@]}" "${BUILD_DIR}" "${MANIFEST_PATH}" \
+  2>&1 | tee "${BUILD_LOG}"
 FLATPAK_BUILDER_EXIT="${PIPESTATUS[0]}"
 set -e
 
