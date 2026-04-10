@@ -1,0 +1,9 @@
+[Flatpak Ref]
+Title=Chemuson (stable)
+Name=io.github.PJGV333.Chemuson
+Branch=stable
+IsRuntime=false
+Url=https://pjgv333.github.io/Chemuson/flatpak/stable/repo/
+RuntimeRepo=https://dl.flathub.org/repo/flathub.flatpakrepo
+SuggestRemoteName=chemuson-stable
+GPGKey=mDMEadfuyhYJKwYBBAHaRw8BAQdAZJka8IxGq4Bm7G2rt/wb+hPFGYoIfH3yI9JHY+qO9a60OUNoZW11c29uIEZsYXRwYWsgU2lnbmluZyA8ZmxhdHBhay1zaWduaW5nQGNoZW11c29uLmxvY2FsPoiWBBMWCgA+FiEEmX1Bg8Y8XTPXErk6Xvk63gvB0iEFAmnX7soCGwMFCQPCZwAFCwkIBwIGFQoJCAsCBBYCAwECHgECF4AACgkQXvk63gvB0iGe7QEAxMy5+Qn2EKhVh8+PfEh7VaymN/e5N5slYAtbtqb+iOkA/R9UT0of6ERXYDJnMqfVFJalbUGP+hyzFYnrk2b7DcIB
