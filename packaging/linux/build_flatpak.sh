@@ -76,6 +76,27 @@ if [[ "${FLATPAK_BUILDER_EXIT}" -ne 0 ]]; then
   exit "${FLATPAK_BUILDER_EXIT}"
 fi
 
+if [[ -n "${REPO_GPG_KEY_ID}" && -n "${REPO_GPG_HOMEDIR}" ]]; then
+  while IFS= read -r ref; do
+    commit="$(ostree rev-parse --repo="${REPO_DIR}" "${ref}")"
+    echo "Signing OSTree ref ${ref} -> ${commit}"
+    ostree gpg-sign \
+      --repo="${REPO_DIR}" \
+      --gpg-homedir="${REPO_GPG_HOMEDIR}" \
+      "${commit}" \
+      "${REPO_GPG_KEY_ID}"
+  done < <(ostree refs --repo="${REPO_DIR}")
+fi
+
+if [[ -n "${REPO_GPG_KEY_ID}" && -n "${REPO_GPG_HOMEDIR}" ]]; then
+  APP_REF="app/${APP_ID}/${ARCH}/${BRANCH}"
+  APP_COMMIT="$(ostree rev-parse --repo="${REPO_DIR}" "${APP_REF}")"
+  ostree show --repo="${REPO_DIR}" "${APP_COMMIT}" | grep -qi "signature" || {
+    echo "ERROR: OSTree commit ${APP_COMMIT} does not appear to be signed." >&2
+    exit 1
+  }
+fi
+
 REPO_URL="${CHEMUSON_FLATPAK_REPO_URL:-}"
 UPDATE_REPO_ARGS=(
   "--title=${REPO_TITLE}"
