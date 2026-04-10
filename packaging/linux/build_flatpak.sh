@@ -19,6 +19,7 @@ REPO_GPG_KEY_ID="${CHEMUSON_FLATPAK_GPG_KEY_ID:-}"
 REPO_GPG_HOMEDIR="${CHEMUSON_FLATPAK_GPG_HOMEDIR:-}"
 REPO_PUBLIC_KEY_FILE="${CHEMUSON_FLATPAK_PUBLIC_KEY_FILE:-}"
 REPO_CONFIG_BASENAME="${CHEMUSON_FLATPAK_CONFIG_BASENAME:-Chemuson}"
+REPO_REMOTE_NAME="${CHEMUSON_FLATPAK_REMOTE_NAME:-chemuson-${BRANCH}}"
 
 BUILD_DIR="${OUT_DIR}/build-dir"
 REPO_DIR="${OUT_DIR}/repo"
@@ -111,6 +112,7 @@ if [[ -n "${REPO_URL}" ]]; then
     "--description" "${REPO_DESCRIPTION}"
     "--default-branch" "${BRANCH}"
     "--runtime-repo" "${RUNTIME_REPO}"
+    "--suggest-remote-name" "${REPO_REMOTE_NAME}"
   )
   if [[ -n "${REPO_ICON_URL}" ]]; then
     REMOTE_FILE_ARGS+=("--icon-url" "${REPO_ICON_URL}")
@@ -119,6 +121,16 @@ if [[ -n "${REPO_URL}" ]]; then
     REMOTE_FILE_ARGS+=("--gpg-key-file" "${REPO_PUBLIC_KEY_FILE}")
   fi
   python packaging/release/generate_flatpak_remote_files.py "${REMOTE_FILE_ARGS[@]}"
+  python packaging/release/validate_flatpak_remote_artifacts.py \
+    --mode build-output \
+    --root "${OUT_DIR}" \
+    --channel "${BRANCH}" \
+    --basename "${REPO_CONFIG_BASENAME}"
+fi
+
+if [[ ! -s "${REPO_DIR}/config" ]] || [[ ! -s "${REPO_DIR}/summary" ]]; then
+  echo "ERROR: Flatpak repo metadata was not generated correctly in ${REPO_DIR}." >&2
+  exit 1
 fi
 
 echo "Built ${BUNDLE_PATH}"

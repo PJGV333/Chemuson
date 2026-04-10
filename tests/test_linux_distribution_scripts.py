@@ -39,6 +39,38 @@ def _load_flatpak_remote_module():
     return module
 
 
+def _load_flatpak_pages_index_module():
+    script_path = (
+        Path(__file__).resolve().parent.parent
+        / "packaging"
+        / "release"
+        / "generate_flatpak_pages_index.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "generate_flatpak_pages_index", script_path
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_flatpak_validate_module():
+    script_path = (
+        Path(__file__).resolve().parent.parent
+        / "packaging"
+        / "release"
+        / "validate_flatpak_remote_artifacts.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "validate_flatpak_remote_artifacts", script_path
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def test_generate_channel_manifest_ignores_sidecars_and_includes_flatpak(tmp_path) -> None:
     module = _load_manifest_module()
     artifacts_dir = tmp_path / "artifacts"
@@ -100,6 +132,8 @@ def test_generate_flatpak_remote_files_builds_repo_and_ref_payloads() -> None:
         branch="beta",
         repo_url="https://pjgv333.github.io/Chemuson/flatpak/beta/repo",
         runtime_repo="https://dl.flathub.org/repo/flathub.flatpakrepo",
+        suggest_remote_name="chemuson-beta",
+        gpg_key="ZmFrZS1rZXk=",
     )
 
     assert "[Flatpak Repo]" in repo_text
@@ -110,6 +144,79 @@ def test_generate_flatpak_remote_files_builds_repo_and_ref_payloads() -> None:
     assert "Branch=beta" in ref_text
     assert "Name=io.github.PJGV333.Chemuson" in ref_text
     assert "RuntimeRepo=https://dl.flathub.org/repo/flathub.flatpakrepo" in ref_text
+    assert "SuggestRemoteName=chemuson-beta" in ref_text
+    assert "GPGKey=ZmFrZS1rZXk=" in ref_text
+
+
+def test_validate_flatpak_remote_artifacts_accepts_build_output_and_pages_payload(
+    tmp_path,
+) -> None:
+    module = _load_flatpak_validate_module()
+
+    build_root = tmp_path / "dist-flatpak"
+    repo_root = build_root / "repo"
+    (repo_root / "objects" / "00").mkdir(parents=True, exist_ok=True)
+    (repo_root / "refs" / "heads").mkdir(parents=True, exist_ok=True)
+    (build_root / "Chemuson-stable.flatpakref").write_text("ref", encoding="utf-8")
+    (build_root / "Chemuson-stable.flatpakrepo").write_text("repo", encoding="utf-8")
+    (repo_root / "config").write_text("config", encoding="utf-8")
+    (repo_root / "summary").write_text("summary", encoding="utf-8")
+    (repo_root / "objects" / "00" / "payload.filez").write_text(
+        "payload",
+        encoding="utf-8",
+    )
+    (repo_root / "refs" / "heads" / "app").write_text("ref", encoding="utf-8")
+
+    module.validate_build_output(root=build_root, basename="Chemuson", channel="stable")
+
+    payload_root = tmp_path / "flatpak-remote"
+    channel_root = payload_root / "stable"
+    repo_payload_root = channel_root / "repo"
+    (repo_payload_root / "objects" / "00").mkdir(parents=True, exist_ok=True)
+    (repo_payload_root / "refs" / "heads").mkdir(parents=True, exist_ok=True)
+    (payload_root / "icon.svg").write_text("<svg />", encoding="utf-8")
+    (channel_root / "Chemuson-stable.flatpakref").write_text("ref", encoding="utf-8")
+    (channel_root / "Chemuson-stable.flatpakrepo").write_text("repo", encoding="utf-8")
+    (repo_payload_root / "config").write_text("config", encoding="utf-8")
+    (repo_payload_root / "summary").write_text("summary", encoding="utf-8")
+    (repo_payload_root / "objects" / "00" / "payload.filez").write_text(
+        "payload",
+        encoding="utf-8",
+    )
+    (repo_payload_root / "refs" / "heads" / "app").write_text(
+        "ref",
+        encoding="utf-8",
+    )
+
+    module.validate_publish_payload(
+        root=payload_root,
+        basename="Chemuson",
+        channel="stable",
+    )
+
+
+def test_generate_flatpak_pages_index_only_links_existing_channels(tmp_path) -> None:
+    module = _load_flatpak_pages_index_module()
+
+    stable_dir = tmp_path / "flatpak" / "stable" / "repo"
+    stable_dir.mkdir(parents=True, exist_ok=True)
+    (tmp_path / "flatpak" / "stable" / "Chemuson-stable.flatpakref").write_text(
+        "ref",
+        encoding="utf-8",
+    )
+    (tmp_path / "flatpak" / "stable" / "Chemuson-stable.flatpakrepo").write_text(
+        "repo",
+        encoding="utf-8",
+    )
+    (stable_dir / "summary").write_text("summary", encoding="utf-8")
+
+    channels = module.collect_channels(root=tmp_path, basename="Chemuson")
+    html = module.build_index_html(channels)
+
+    assert len(channels) == 1
+    assert "./flatpak/stable/Chemuson-stable.flatpakref" in html
+    assert "./flatpak/stable/Chemuson-stable.flatpakrepo" in html
+    assert "./flatpak/beta/Chemuson-beta.flatpakref" not in html
 
 
 def test_build_appimage_script_writes_update_metadata(tmp_path) -> None:

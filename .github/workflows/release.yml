@@ -194,11 +194,12 @@ jobs:
         id: remote
         run: |
           OWNER="${GITHUB_REPOSITORY_OWNER}"
+          OWNER_LOWER="$(printf '%s' "${OWNER}" | tr '[:upper:]' '[:lower:]')"
           REPO="${GITHUB_REPOSITORY#*/}"
           if [ "${REPO}" = "${OWNER}.github.io" ]; then
-            PAGES_BASE="https://${OWNER}.github.io"
+            PAGES_BASE="https://${OWNER_LOWER}.github.io"
           else
-            PAGES_BASE="https://${OWNER}.github.io/${REPO}"
+            PAGES_BASE="https://${OWNER_LOWER}.github.io/${REPO}"
           fi
           echo "pages_base=${PAGES_BASE}" >> "$GITHUB_OUTPUT"
           echo "repo_url=${PAGES_BASE}/flatpak/${{ steps.vars.outputs.channel }}/repo/" >> "$GITHUB_OUTPUT"
@@ -249,24 +250,40 @@ jobs:
             "dist-flatpak" \
             "packaging/flatpak/io.github.PJGV333.Chemuson.yml"
 
+      - name: Validate Flatpak build output
+        run: |
+          python packaging/release/validate_flatpak_remote_artifacts.py \
+            --mode build-output \
+            --root "dist-flatpak" \
+            --channel "${{ steps.vars.outputs.channel }}" \
+            --basename "Chemuson"
+
       - name: Collect Flatpak artifacts
         run: |
           mkdir -p release-assets
           cp dist-flatpak/Chemuson-v${{ steps.vars.outputs.version }}-linux-x86_64.flatpak release-assets/
-          if compgen -G "dist-flatpak/*.flatpakref" > /dev/null; then
-            cp dist-flatpak/*.flatpakref release-assets/
-          fi
-          if compgen -G "dist-flatpak/*.flatpakrepo" > /dev/null; then
-            cp dist-flatpak/*.flatpakrepo release-assets/
-          fi
+          cp "dist-flatpak/Chemuson-${{ steps.vars.outputs.channel }}.flatpakref" release-assets/
+          cp "dist-flatpak/Chemuson-${{ steps.vars.outputs.channel }}.flatpakrepo" release-assets/
 
       - name: Prepare Flatpak remote payload
         run: |
           mkdir -p flatpak-remote/${{ steps.vars.outputs.channel }}/repo
           cp -a dist-flatpak/repo/. flatpak-remote/${{ steps.vars.outputs.channel }}/repo/
-          cp dist-flatpak/*.flatpakref flatpak-remote/${{ steps.vars.outputs.channel }}/
-          cp dist-flatpak/*.flatpakrepo flatpak-remote/${{ steps.vars.outputs.channel }}/
+          cp "dist-flatpak/Chemuson-${{ steps.vars.outputs.channel }}.flatpakref" "flatpak-remote/${{ steps.vars.outputs.channel }}/"
+          cp "dist-flatpak/Chemuson-${{ steps.vars.outputs.channel }}.flatpakrepo" "flatpak-remote/${{ steps.vars.outputs.channel }}/"
           install -Dm644 packaging/flatpak/io.github.PJGV333.Chemuson.svg flatpak-remote/icon.svg
+
+      - name: Validate Flatpak remote payload
+        run: |
+          python packaging/release/validate_flatpak_remote_artifacts.py \
+            --mode publish-payload \
+            --root "flatpak-remote" \
+            --channel "${{ steps.vars.outputs.channel }}" \
+            --basename "Chemuson"
+
+      - name: Archive Flatpak remote payload
+        run: |
+          tar -cf flatpak-remote.tar -C flatpak-remote .
 
       - name: Upload Flatpak artifacts
         uses: actions/upload-artifact@v4
@@ -278,7 +295,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: flatpak-remote-${{ steps.vars.outputs.channel }}
-          path: flatpak-remote/*
+          path: flatpak-remote.tar
 
   release:
     needs: [build_windows, build_linux, build_flatpak]
@@ -381,11 +398,42 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "channel=${CHANNEL}" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve GitHub Pages URL
+        id: pages
+        run: |
+          OWNER="${GITHUB_REPOSITORY_OWNER}"
+          OWNER_LOWER="$(printf '%s' "${OWNER}" | tr '[:upper:]' '[:lower:]')"
+          REPO="${GITHUB_REPOSITORY#*/}"
+          if [ "${REPO}" = "${OWNER}.github.io" ]; then
+            PAGES_BASE="https://${OWNER_LOWER}.github.io"
+          else
+            PAGES_BASE="https://${OWNER_LOWER}.github.io/${REPO}"
+          fi
+          echo "pages_base=${PAGES_BASE}" >> "$GITHUB_OUTPUT"
+
       - name: Download Flatpak remote payload
         uses: actions/download-artifact@v4
         with:
           name: flatpak-remote-${{ steps.vars.outputs.channel }}
-          path: flatpak-remote
+          path: downloaded-flatpak-remote
+
+      - name: Extract Flatpak remote payload
+        run: |
+          mkdir -p flatpak-remote
+          TARBALL="$(find downloaded-flatpak-remote -type f -name 'flatpak-remote.tar' -print -quit)"
+          if [ -z "${TARBALL}" ]; then
+            echo "ERROR: flatpak-remote.tar was not found in downloaded artifact." >&2
+            exit 1
+          fi
+          tar -xf "${TARBALL}" -C flatpak-remote
+
+      - name: Validate downloaded Flatpak remote payload
+        run: |
+          python packaging/release/validate_flatpak_remote_artifacts.py \
+            --mode publish-payload \
+            --root "flatpak-remote" \
+            --channel "${{ steps.vars.outputs.channel }}" \
+            --basename "Chemuson"
 
       - name: Publish Flatpak remote to gh-pages
         run: |
@@ -412,25 +460,9 @@ jobs:
           cp -a flatpak-remote/${{ steps.vars.outputs.channel }}/. "${PUBLISH_DIR}/flatpak/${{ steps.vars.outputs.channel }}/"
           cp flatpak-remote/icon.svg "${PUBLISH_DIR}/flatpak/icon.svg"
           touch "${PUBLISH_DIR}/.nojekyll"
-
-          cat > "${PUBLISH_DIR}/index.html" <<'EOF'
-          <!doctype html>
-          <html lang="en">
-          <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1">
-            <title>Chemuson Flatpak</title>
-          </head>
-          <body>
-            <h1>Chemuson Flatpak</h1>
-            <p>Official Flatpak channels for Chemuson.</p>
-            <ul>
-              <li><a href="./flatpak/stable/Chemuson-stable.flatpakref">Stable channel</a></li>
-              <li><a href="./flatpak/beta/Chemuson-beta.flatpakref">Beta channel</a></li>
-            </ul>
-          </body>
-          </html>
-          EOF
+          python packaging/release/generate_flatpak_pages_index.py \
+            --root "${PUBLISH_DIR}" \
+            --basename "Chemuson"
 
           (
             cd "${PUBLISH_DIR}"
@@ -442,3 +474,29 @@ jobs:
             git commit -m "Publish Flatpak remote for ${{ steps.vars.outputs.channel }} v${{ steps.vars.outputs.version }}"
             git push origin gh-pages
           )
+
+      - name: Verify GitHub Pages publication
+        run: |
+          set -euo pipefail
+          urls=(
+            "${{ steps.pages.outputs.pages_base }}/index.html"
+            "${{ steps.pages.outputs.pages_base }}/flatpak/${{ steps.vars.outputs.channel }}/Chemuson-${{ steps.vars.outputs.channel }}.flatpakref"
+            "${{ steps.pages.outputs.pages_base }}/flatpak/${{ steps.vars.outputs.channel }}/Chemuson-${{ steps.vars.outputs.channel }}.flatpakrepo"
+            "${{ steps.pages.outputs.pages_base }}/flatpak/${{ steps.vars.outputs.channel }}/repo/summary"
+          )
+
+          for url in "${urls[@]}"; do
+            echo "Checking ${url}"
+            ok=0
+            for attempt in $(seq 1 18); do
+              if curl -fsSLI "${url}" >/dev/null; then
+                ok=1
+                break
+              fi
+              sleep 10
+            done
+            if [ "${ok}" -ne 1 ]; then
+              echo "ERROR: ${url} was not reachable after publication." >&2
+              exit 1
+            fi
+          done

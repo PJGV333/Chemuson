@@ -27,7 +27,7 @@ def _required_url(url: str) -> str:
 
 
 def encode_gpg_key(gpg_key_file: str) -> str:
-    """Codifica una clave pública GPG al formato esperado por `.flatpakrepo`."""
+    """Codifica una clave pública GPG al formato esperado por Flatpak."""
     key_path = Path(gpg_key_file).resolve()
     payload = key_path.read_bytes()
     if not payload:
@@ -74,6 +74,8 @@ def build_flatpak_ref_config(
     branch: str,
     repo_url: str,
     runtime_repo: str,
+    suggest_remote_name: str = "",
+    gpg_key: str = "",
 ) -> str:
     """Construye el contenido de un archivo `.flatpakref`."""
     lines = [
@@ -85,6 +87,10 @@ def build_flatpak_ref_config(
         f"Url={normalize_repo_url(repo_url)}",
         f"RuntimeRepo={_required_url(runtime_repo)}",
     ]
+    if suggest_remote_name:
+        lines.append(f"SuggestRemoteName={suggest_remote_name.strip()}")
+    if gpg_key:
+        lines.append(f"GPGKey={gpg_key.strip()}")
     return "\n".join(lines) + "\n"
 
 
@@ -118,9 +124,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Repositorio Flatpak del runtime.",
     )
     parser.add_argument(
+        "--suggest-remote-name",
+        default="",
+        help="Nombre sugerido del remote al instalar desde .flatpakref.",
+    )
+    parser.add_argument(
         "--gpg-key-file",
         default="",
-        help="Ruta opcional de clave pública GPG para incrustar en .flatpakrepo.",
+        help="Ruta opcional de clave pública GPG para incrustar en .flatpakrepo y .flatpakref.",
     )
     return parser
 
@@ -148,6 +159,8 @@ def main() -> None:
         branch=args.branch,
         repo_url=args.repo_url,
         runtime_repo=args.runtime_repo,
+        suggest_remote_name=args.suggest_remote_name,
+        gpg_key=gpg_key,
     )
 
     repo_path = out_dir / f"{args.basename}-{args.branch}.flatpakrepo"

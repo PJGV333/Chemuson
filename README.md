@@ -120,10 +120,20 @@ $env:CHEMUSON_VERSION = "0.2.3-beta.3"
 - Canal portable: **AppImage** (`.AppImage`) sin instalación.
 - Documento técnico y comandos completos: [docs/linux-distribution.md](docs/linux-distribution.md)
 
-Instalación rápida Flatpak estable (usuario final):
+Instalacion rapida Flatpak estable (Arch/CachyOS, usuario final):
 
 ```bash
+sudo pacman -S flatpak
+flatpak --user remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 flatpak install --user https://pjgv333.github.io/Chemuson/flatpak/stable/Chemuson-stable.flatpakref
+flatpak run io.github.PJGV333.Chemuson
+```
+
+Fallback con `.flatpakrepo`:
+
+```bash
+flatpak remote-add --user --if-not-exists --from chemuson-stable https://pjgv333.github.io/Chemuson/flatpak/stable/Chemuson-stable.flatpakrepo
+flatpak install --user chemuson-stable io.github.PJGV333.Chemuson//stable
 flatpak run io.github.PJGV333.Chemuson
 ```
 
@@ -132,6 +142,11 @@ Canal beta:
 ```bash
 flatpak install --user https://pjgv333.github.io/Chemuson/flatpak/beta/Chemuson-beta.flatpakref
 ```
+
+Notas:
+- El indice real de canales publicados vive en `https://pjgv333.github.io/Chemuson/` y solo enlaza canales que ya existen en `gh-pages`.
+- Si `stable` todavia no aparece ahi, el remoto estable aun no ha sido sembrado; usa `beta` temporalmente o publica primero una release estable.
+- La ruta recomendada es `.flatpakref` porque registra el remoto oficial para que `flatpak update` reciba futuras versiones.
 
 Ejecución AppImage:
 
