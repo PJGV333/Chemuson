@@ -24,6 +24,7 @@ REPO_REMOTE_NAME="${CHEMUSON_FLATPAK_REMOTE_NAME:-chemuson-${BRANCH}}"
 BUILD_DIR="${OUT_DIR}/build-dir"
 REPO_DIR="${OUT_DIR}/repo"
 BUNDLE_PATH="${OUT_DIR}/Chemuson-v${VERSION}-linux-${ARCH}.flatpak"
+APP_REF="app/${APP_ID}/${ARCH}/${BRANCH}"
 
 mkdir -p "$OUT_DIR"
 
@@ -41,6 +42,34 @@ if ! flatpak --user remote-add --if-not-exists flathub \
 fi
 
 BUILD_LOG="$(mktemp "${OUT_DIR}/flatpak-builder.XXXXXX.log")"
+
+detached_commitmeta_path() {
+  local commit="$1"
+  printf '%s/objects/%s/%s.commitmeta\n' \
+    "${REPO_DIR}" "${commit:0:2}" "${commit:2}"
+}
+
+sign_unsigned_ostree_refs() {
+  local ref commit commitmeta_path
+  if [[ -z "${REPO_GPG_KEY_ID}" || -z "${REPO_GPG_HOMEDIR}" ]]; then
+    return 0
+  fi
+
+  while IFS= read -r ref; do
+    commit="$(ostree rev-parse --repo="${REPO_DIR}" "${ref}")"
+    commitmeta_path="$(detached_commitmeta_path "${commit}")"
+    if [[ -s "${commitmeta_path}" ]]; then
+      continue
+    fi
+
+    echo "Signing OSTree ref ${ref} -> ${commit}"
+    ostree gpg-sign \
+      --repo="${REPO_DIR}" \
+      --gpg-homedir="${REPO_GPG_HOMEDIR}" \
+      "${commit}" \
+      "${REPO_GPG_KEY_ID}"
+  done < <(ostree refs --repo="${REPO_DIR}")
+}
 
 BUILDER_ARGS=(
   --user
@@ -76,26 +105,7 @@ if [[ "${FLATPAK_BUILDER_EXIT}" -ne 0 ]]; then
   exit "${FLATPAK_BUILDER_EXIT}"
 fi
 
-if [[ -n "${REPO_GPG_KEY_ID}" && -n "${REPO_GPG_HOMEDIR}" ]]; then
-  while IFS= read -r ref; do
-    commit="$(ostree rev-parse --repo="${REPO_DIR}" "${ref}")"
-    echo "Signing OSTree ref ${ref} -> ${commit}"
-    ostree gpg-sign \
-      --repo="${REPO_DIR}" \
-      --gpg-homedir="${REPO_GPG_HOMEDIR}" \
-      "${commit}" \
-      "${REPO_GPG_KEY_ID}"
-  done < <(ostree refs --repo="${REPO_DIR}")
-fi
-
-if [[ -n "${REPO_GPG_KEY_ID}" && -n "${REPO_GPG_HOMEDIR}" ]]; then
-  APP_REF="app/${APP_ID}/${ARCH}/${BRANCH}"
-  APP_COMMIT="$(ostree rev-parse --repo="${REPO_DIR}" "${APP_REF}")"
-  ostree show --repo="${REPO_DIR}" "${APP_COMMIT}" | grep -qi "signature" || {
-    echo "ERROR: OSTree commit ${APP_COMMIT} does not appear to be signed." >&2
-    exit 1
-  }
-fi
+sign_unsigned_ostree_refs
 
 REPO_URL="${CHEMUSON_FLATPAK_REPO_URL:-}"
 UPDATE_REPO_ARGS=(
@@ -115,6 +125,21 @@ if [[ -n "${REPO_GPG_HOMEDIR}" ]]; then
   UPDATE_REPO_ARGS+=("--gpg-homedir=${REPO_GPG_HOMEDIR}")
 fi
 flatpak build-update-repo "${UPDATE_REPO_ARGS[@]}" "${REPO_DIR}"
+
+sign_unsigned_ostree_refs
+
+if [[ -n "${REPO_GPG_KEY_ID}" && -n "${REPO_GPG_HOMEDIR}" ]]; then
+  APP_COMMIT="$(ostree rev-parse --repo="${REPO_DIR}" "${APP_REF}")"
+  APP_COMMITMETA_PATH="$(detached_commitmeta_path "${APP_COMMIT}")"
+  if [[ ! -s "${APP_COMMITMETA_PATH}" ]]; then
+    echo "ERROR: OSTree app commit ${APP_COMMIT} is missing detached signature metadata." >&2
+    exit 1
+  fi
+  if [[ ! -s "${REPO_DIR}/summary.sig" ]]; then
+    echo "ERROR: Flatpak repo summary is missing GPG signature metadata." >&2
+    exit 1
+  fi
+fi
 
 BUNDLE_ARGS=()
 if [[ -n "${REPO_URL}" ]]; then

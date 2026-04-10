@@ -212,7 +212,7 @@ jobs:
       - name: Install Flatpak toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y flatpak flatpak-builder gnupg
+          sudo apt-get install -y flatpak flatpak-builder gnupg ostree
 
       - name: Import Flatpak signing key (optional)
         id: signing
@@ -427,6 +427,11 @@ jobs:
           fi
           tar -xf "${TARBALL}" -C flatpak-remote
 
+      - name: Install OSTree verification tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ostree gnupg
+
       - name: Validate downloaded Flatpak remote payload
         run: |
           python packaging/release/validate_flatpak_remote_artifacts.py \
@@ -478,11 +483,14 @@ jobs:
       - name: Verify GitHub Pages publication
         run: |
           set -euo pipefail
+          APP_REF_URL="${{ steps.pages.outputs.pages_base }}/flatpak/${{ steps.vars.outputs.channel }}/repo/refs/heads/app/io.github.PJGV333.Chemuson/x86_64/${{ steps.vars.outputs.channel }}"
           urls=(
             "${{ steps.pages.outputs.pages_base }}/index.html"
             "${{ steps.pages.outputs.pages_base }}/flatpak/${{ steps.vars.outputs.channel }}/Chemuson-${{ steps.vars.outputs.channel }}.flatpakref"
             "${{ steps.pages.outputs.pages_base }}/flatpak/${{ steps.vars.outputs.channel }}/Chemuson-${{ steps.vars.outputs.channel }}.flatpakrepo"
             "${{ steps.pages.outputs.pages_base }}/flatpak/${{ steps.vars.outputs.channel }}/repo/summary"
+            "${{ steps.pages.outputs.pages_base }}/flatpak/${{ steps.vars.outputs.channel }}/repo/summary.sig"
+            "${APP_REF_URL}"
           )
 
           for url in "${urls[@]}"; do
@@ -500,3 +508,13 @@ jobs:
               exit 1
             fi
           done
+
+          APP_COMMIT="$(curl -fsSL "${APP_REF_URL}" | tr -d '\n')"
+          if ! printf '%s' "${APP_COMMIT}" | grep -Eq '^[0-9a-f]{64}$'; then
+            echo "ERROR: Invalid OSTree commit checksum published for ${APP_REF_URL}: ${APP_COMMIT}" >&2
+            exit 1
+          fi
+
+          COMMITMETA_URL="${{ steps.pages.outputs.pages_base }}/flatpak/${{ steps.vars.outputs.channel }}/repo/objects/${APP_COMMIT:0:2}/${APP_COMMIT:2}.commitmeta"
+          echo "Checking ${COMMITMETA_URL}"
+          curl -fsSLI "${COMMITMETA_URL}" >/dev/null

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import base64
 import importlib.util
 import json
 import os
 import subprocess
 from pathlib import Path
+
+import pytest
 
 
 def _load_manifest_module():
@@ -69,6 +72,41 @@ def _load_flatpak_validate_module():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _write_flatpak_remote_configs(
+    root: Path,
+    *,
+    channel: str,
+    gpg_key: str = "",
+) -> None:
+    repo_lines = [
+        "[Flatpak Repo]",
+        "Title=Chemuson",
+        "Url=https://example.invalid/repo/",
+        f"DefaultBranch={channel}",
+    ]
+    ref_lines = [
+        "[Flatpak Ref]",
+        "Title=Chemuson",
+        "Name=io.github.PJGV333.Chemuson",
+        f"Branch={channel}",
+        "IsRuntime=false",
+        "Url=https://example.invalid/repo/",
+        "RuntimeRepo=https://dl.flathub.org/repo/flathub.flatpakrepo",
+    ]
+    if gpg_key:
+        repo_lines.append(f"GPGKey={gpg_key}")
+        ref_lines.append(f"GPGKey={gpg_key}")
+
+    (root / f"Chemuson-{channel}.flatpakrepo").write_text(
+        "\n".join(repo_lines) + "\n",
+        encoding="utf-8",
+    )
+    (root / f"Chemuson-{channel}.flatpakref").write_text(
+        "\n".join(ref_lines) + "\n",
+        encoding="utf-8",
+    )
 
 
 def test_generate_channel_manifest_ignores_sidecars_and_includes_flatpak(tmp_path) -> None:
@@ -157,8 +195,7 @@ def test_validate_flatpak_remote_artifacts_accepts_build_output_and_pages_payloa
     repo_root = build_root / "repo"
     (repo_root / "objects" / "00").mkdir(parents=True, exist_ok=True)
     (repo_root / "refs" / "heads").mkdir(parents=True, exist_ok=True)
-    (build_root / "Chemuson-stable.flatpakref").write_text("ref", encoding="utf-8")
-    (build_root / "Chemuson-stable.flatpakrepo").write_text("repo", encoding="utf-8")
+    _write_flatpak_remote_configs(build_root, channel="stable")
     (repo_root / "config").write_text("config", encoding="utf-8")
     (repo_root / "summary").write_text("summary", encoding="utf-8")
     (repo_root / "objects" / "00" / "payload.filez").write_text(
@@ -175,8 +212,7 @@ def test_validate_flatpak_remote_artifacts_accepts_build_output_and_pages_payloa
     (repo_payload_root / "objects" / "00").mkdir(parents=True, exist_ok=True)
     (repo_payload_root / "refs" / "heads").mkdir(parents=True, exist_ok=True)
     (payload_root / "icon.svg").write_text("<svg />", encoding="utf-8")
-    (channel_root / "Chemuson-stable.flatpakref").write_text("ref", encoding="utf-8")
-    (channel_root / "Chemuson-stable.flatpakrepo").write_text("repo", encoding="utf-8")
+    _write_flatpak_remote_configs(channel_root, channel="stable")
     (repo_payload_root / "config").write_text("config", encoding="utf-8")
     (repo_payload_root / "summary").write_text("summary", encoding="utf-8")
     (repo_payload_root / "objects" / "00" / "payload.filez").write_text(
@@ -193,6 +229,76 @@ def test_validate_flatpak_remote_artifacts_accepts_build_output_and_pages_payloa
         basename="Chemuson",
         channel="stable",
     )
+
+
+def test_validate_flatpak_remote_artifacts_requires_commitmeta_for_signed_repo(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    module = _load_flatpak_validate_module()
+    gpg_key = base64.b64encode(b"fake-gpg-key").decode("ascii")
+    commit = "a" * 64
+
+    build_root = tmp_path / "dist-flatpak"
+    repo_root = build_root / "repo"
+    ref_path = repo_root / "refs" / "heads" / "app" / "io.github.PJGV333.Chemuson" / "x86_64"
+    (repo_root / "objects" / "aa").mkdir(parents=True, exist_ok=True)
+    ref_path.mkdir(parents=True, exist_ok=True)
+    _write_flatpak_remote_configs(build_root, channel="stable", gpg_key=gpg_key)
+    (repo_root / "config").write_text("config", encoding="utf-8")
+    (repo_root / "summary").write_text("summary", encoding="utf-8")
+    (repo_root / "summary.sig").write_text("sig", encoding="utf-8")
+    (repo_root / "objects" / "aa" / "payload.filez").write_text("payload", encoding="utf-8")
+    (ref_path / "stable").write_text(f"{commit}\n", encoding="utf-8")
+
+    def fake_run(args, check, capture_output, text):
+        assert check is True
+        if args[:2] == ["ostree", "rev-parse"]:
+            return subprocess.CompletedProcess(args, 0, stdout=f"{commit}\n", stderr="")
+        raise AssertionError(f"Unexpected command: {args}")
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+
+    with pytest.raises(FileNotFoundError):
+        module.validate_build_output(root=build_root, basename="Chemuson", channel="stable")
+
+
+def test_validate_flatpak_remote_artifacts_verifies_signed_app_ref(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    module = _load_flatpak_validate_module()
+    gpg_key = base64.b64encode(b"fake-gpg-key").decode("ascii")
+    commit = "b" * 64
+    commands: list[list[str]] = []
+
+    build_root = tmp_path / "dist-flatpak"
+    repo_root = build_root / "repo"
+    ref_path = repo_root / "refs" / "heads" / "app" / "io.github.PJGV333.Chemuson" / "x86_64"
+    commitmeta_path = repo_root / "objects" / "bb" / f"{'b' * 62}.commitmeta"
+    payload_path = repo_root / "objects" / "bb" / "payload.filez"
+    ref_path.mkdir(parents=True, exist_ok=True)
+    commitmeta_path.parent.mkdir(parents=True, exist_ok=True)
+    _write_flatpak_remote_configs(build_root, channel="stable", gpg_key=gpg_key)
+    (repo_root / "config").write_text("config", encoding="utf-8")
+    (repo_root / "summary").write_text("summary", encoding="utf-8")
+    (repo_root / "summary.sig").write_text("sig", encoding="utf-8")
+    payload_path.write_text("payload", encoding="utf-8")
+    commitmeta_path.write_text("signed", encoding="utf-8")
+    (ref_path / "stable").write_text(f"{commit}\n", encoding="utf-8")
+
+    def fake_run(args, check, capture_output, text):
+        assert check is True
+        commands.append(args)
+        if args[:2] == ["ostree", "rev-parse"]:
+            return subprocess.CompletedProcess(args, 0, stdout=f"{commit}\n", stderr="")
+        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+
+    module.validate_build_output(root=build_root, basename="Chemuson", channel="stable")
+
+    assert any(args[:2] == ["ostree", "pull"] for args in commands)
 
 
 def test_generate_flatpak_pages_index_only_links_existing_channels(tmp_path) -> None:
