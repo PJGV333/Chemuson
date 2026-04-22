@@ -1,6 +1,12 @@
 # Chemuson
 
-Chemuson es un editor molecular 2D libre y open source, desarrollado como **proyecto en marcha del Grupo de Química Supramolecular de la Universidad de Sonora**.
+**Chemuson** es un editor molecular 2D libre y de código abierto, orientado a la docencia, la investigación y la comunicación científica en química. El proyecto se desarrolla activamente con el propósito de ofrecer una herramienta accesible, moderna y útil para el dibujo, análisis y exportación de estructuras químicas en entornos académicos y de investigación.
+
+**Autores:** Pedro Jancarlo Gomez Vega*, José Octavio Juárez Sánchez, Ramón Moreno Corral, Felipe Medrano Valenzuela, David Octavio Corona Martínez y Karen L. Ochoa Lara*
+
+**Afiliación:** Grupo de Química Supramolecular, Universidad de Sonora
+
+\* Autores de correspondencia
 
 ## Estado del proyecto
 
