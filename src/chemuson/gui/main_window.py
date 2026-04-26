@@ -23,6 +23,7 @@ import sys
 from chemuson.gui.canvas import (
     ChemusonCanvas,
 )
+from chemuson.gui.elemental_analysis_dialog import ElementalAnalysisDialog
 from chemuson.gui.periodic_table import PeriodicTableDialog
 from chemuson.gui.toolbar import ChemusonToolbar, SymbolPaletteToolbar
 from chemuson.gui.styles import get_main_stylesheet, get_tool_palette_stylesheet
@@ -690,6 +691,25 @@ class ChemusonWindow(QMainWindow):
             self._semantic_diagram_workflow_context(),
             existing_item=existing_item,
         )
+
+    def _open_elemental_analysis_dialog(self) -> None:
+        """Open the interactive elemental analysis tool."""
+        existing = getattr(self, "_elemental_analysis_dialog", None)
+        if existing is not None and existing.isVisible():
+            existing.raise_()
+            existing.activateWindow()
+            return
+        initial_formula = ""
+        try:
+            counts = self.canvas._analysis_atom_counts(self.canvas.model)
+            initial_formula = self.canvas._analysis_formula(counts)
+        except Exception:
+            initial_formula = ""
+        dialog = ElementalAnalysisDialog(initial_formula=initial_formula, parent=self)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        self._elemental_analysis_dialog = dialog
+        dialog.destroyed.connect(lambda *_args: setattr(self, "_elemental_analysis_dialog", None))
+        dialog.show()
 
     def _edit_selected_semantic_diagram(self) -> None:
         self._semantic_diagram_workflow.edit_selected_semantic_diagram(

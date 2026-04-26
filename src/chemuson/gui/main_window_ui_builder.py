@@ -340,10 +340,8 @@ class MainWindowUiBuilder:
         window.action_analysis_weight.triggered.connect(lambda: window.canvas.run_analysis("weight"))
         window.action_analysis_mz = QAction("m/z", window)
         window.action_analysis_mz.triggered.connect(lambda: window.canvas.run_analysis("mz"))
-        window.action_analysis_elemental = QAction("Análisis elemental", window)
-        window.action_analysis_elemental.triggered.connect(
-            lambda: window.canvas.run_analysis("elemental")
-        )
+        window.action_analysis_elemental = QAction("Análisis elemental...", window)
+        window.action_analysis_elemental.triggered.connect(window._open_elemental_analysis_dialog)
         window.action_analysis_all = QAction("Todo", window)
         window.action_analysis_all.triggered.connect(lambda: window.canvas.run_analysis("all"))
 
