@@ -7,7 +7,7 @@ import unittest
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.core.model import MolGraph
-from chemuson.chemio import rdkit_io
+from chemuson.chemio import rdkit_io, rdkit_safe
 from chemuson.chemio.rdkit_io import (
     kekulize_display_orders,
     molfile_to_molgraph,
@@ -45,6 +45,42 @@ class RdkitRoundtripTest(unittest.TestCase):
             rdkit_io._rdkit_available = original
 
         self.assertEqual(smiles, "NC(=O)N")
+
+    def test_smiles_export_uses_isolated_rdkit_worker_when_available(self):
+        graph = MolGraph()
+        a1 = graph.add_atom("C", 0.0, 0.0)
+        a2 = graph.add_atom("C", 1.5, 0.0)
+        graph.add_bond(a1.id, a2.id, order=1)
+
+        original_available = rdkit_io._rdkit_available
+        original_isolated = rdkit_safe.molgraph_to_smiles_isolated
+        rdkit_io._rdkit_available = lambda: True
+        rdkit_safe.molgraph_to_smiles_isolated = lambda _graph: ("worker-smiles", None)
+        try:
+            smiles = rdkit_io.molgraph_to_smiles(graph)
+        finally:
+            rdkit_io._rdkit_available = original_available
+            rdkit_safe.molgraph_to_smiles_isolated = original_isolated
+
+        self.assertEqual(smiles, "worker-smiles")
+
+    def test_smiles_export_falls_back_when_isolated_worker_fails(self):
+        graph = MolGraph()
+        a1 = graph.add_atom("C", 0.0, 0.0)
+        a2 = graph.add_atom("C", 1.5, 0.0)
+        graph.add_bond(a1.id, a2.id, order=1)
+
+        original_available = rdkit_io._rdkit_available
+        original_isolated = rdkit_safe.molgraph_to_smiles_isolated
+        rdkit_io._rdkit_available = lambda: True
+        rdkit_safe.molgraph_to_smiles_isolated = lambda _graph: (None, "timeout")
+        try:
+            smiles = rdkit_io.molgraph_to_smiles(graph)
+        finally:
+            rdkit_io._rdkit_available = original_available
+            rdkit_safe.molgraph_to_smiles_isolated = original_isolated
+
+        self.assertIn(smiles, {"CC", "C-C"})
 
     @unittest.skipIf(not RDKit_AVAILABLE, "RDKit no disponible")
     def test_molgraph_roundtrip_smiles(self):

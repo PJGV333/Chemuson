@@ -2,9 +2,10 @@
 
 import os
 import sys
+import time
 
 import pytest
-from PyQt6.QtWidgets import QApplication, QInputDialog, QTextEdit
+from PyQt6.QtWidgets import QApplication, QInputDialog, QMessageBox, QTextEdit
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
@@ -180,6 +181,52 @@ def test_copy_as_smiles_uses_selected_structure_only(monkeypatch) -> None:
         assert second_a.id not in captured["atom_ids"]
         assert second_b.id not in captured["atom_ids"]
         assert QApplication.clipboard().text() == "selected-smiles"
+    finally:
+        window.close()
+
+
+def test_export_smiles_uses_selected_structure_only(monkeypatch) -> None:
+    window = ChemusonWindow()
+    try:
+        first_a = window.canvas.model.add_atom("C", 10.0, 10.0)
+        first_b = window.canvas.model.add_atom("C", 40.0, 10.0)
+        second_a = window.canvas.model.add_atom("N", 110.0, 10.0)
+        second_b = window.canvas.model.add_atom("N", 140.0, 10.0)
+        window.canvas.model.add_bond(first_a.id, first_b.id, order=1)
+        window.canvas.model.add_bond(second_a.id, second_b.id, order=1)
+        window.canvas._rebuild_items_from_model()
+
+        window.canvas.scene.clearSelection()
+        window.canvas.atom_items[first_a.id].setSelected(True)
+        window.canvas.atom_items[first_b.id].setSelected(True)
+        window.canvas._sync_selection_from_scene()
+
+        captured: dict[str, object] = {}
+
+        def _fake_molgraph_to_smiles(graph: MolGraph) -> str:
+            captured["atom_ids"] = set(graph.atoms.keys())
+            return "selected-smiles"
+
+        def _fake_information(_parent, title: str, text: str) -> None:
+            captured["dialog"] = (title, text)
+
+        monkeypatch.setattr(
+            rdkit_io,
+            "molgraph_to_smiles_isolated_or_error",
+            _fake_molgraph_to_smiles,
+        )
+        monkeypatch.setattr(QMessageBox, "information", _fake_information)
+
+        window._on_export_smiles()
+        deadline = time.monotonic() + 2.0
+        while "dialog" not in captured and time.monotonic() < deadline:
+            QApplication.processEvents()
+            time.sleep(0.01)
+
+        assert captured["atom_ids"] == {first_a.id, first_b.id}
+        assert second_a.id not in captured["atom_ids"]
+        assert second_b.id not in captured["atom_ids"]
+        assert captured["dialog"] == ("SMILES", "selected-smiles")
     finally:
         window.close()
 

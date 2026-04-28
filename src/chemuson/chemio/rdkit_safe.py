@@ -57,6 +57,25 @@ def smiles_to_molgraph_isolated(
         return None, str(exc)
 
 
+def molgraph_to_smiles_isolated(
+    graph,
+    timeout_s: float = 5.0,
+) -> tuple[str | None, str | None]:
+    """Convierte un `MolGraph` a SMILES usando RDKit en un proceso aislado."""
+    request = _graph_request_payload(
+        graph=graph,
+        chain_atom_ids=[],
+        mode="graph_to_smiles",
+    )
+    response = _run_worker(request, timeout_s=timeout_s)
+    if not response.get("ok"):
+        return None, str(response.get("error", "worker_error"))
+    smiles = str(response.get("smiles", "") or "").strip()
+    if not smiles:
+        return None, "empty_smiles"
+    return smiles, None
+
+
 def is_rdkit_worker_available(timeout_s: float = 5.0) -> bool:
     """Smoke-check liviano para saber si el worker RDKit está utilizable."""
     result = run_rdkit_stereo_extract("CC", fmt="smiles", timeout_s=timeout_s)

@@ -320,6 +320,18 @@ def _handle_to_molblock_mode(Chem, request: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True, "molblock": molblock}
 
 
+def _handle_graph_to_smiles_mode(Chem, request: dict[str, Any]) -> dict[str, Any]:
+    """Convierte un payload de grafo Chemuson a SMILES en proceso aislado."""
+    mol, _id_map, error = _build_mol_from_graph_payload(Chem, request)
+    if mol is None:
+        return {"ok": False, "error": error or "invalid_graph"}
+    try:
+        smiles = Chem.MolToSmiles(mol, canonical=True)
+    except Exception as exc:
+        return {"ok": False, "error": "smiles_failed", "detail": str(exc)}
+    return {"ok": True, "smiles": smiles}
+
+
 def main() -> int:
     try:
         request = json.loads(sys.stdin.read() or "{}")
@@ -340,6 +352,10 @@ def main() -> int:
         return 0
     if mode == "to_molblock":
         result = _handle_to_molblock_mode(Chem, request)
+        sys.stdout.write(json.dumps(result))
+        return 0
+    if mode == "graph_to_smiles":
+        result = _handle_graph_to_smiles_mode(Chem, request)
         sys.stdout.write(json.dumps(result))
         return 0
 

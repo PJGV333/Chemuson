@@ -11,10 +11,12 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "s
 
 from chemuson.chemio.rdkit_safe import (
     advanced_stereo_descriptors_for_chain,
+    molgraph_to_smiles_isolated,
     smiles_to_molgraph_isolated,
     run_rdkit_stereo_extract,
     text_to_molblock,
 )
+import chemuson.chemio.rdkit_safe as rdkit_safe
 from chemuson.core.model import MolGraph
 
 
@@ -55,6 +57,31 @@ class RdkitSmokeTest(unittest.TestCase):
         graph, error = smiles_to_molgraph_isolated("CC", timeout_s=5.0)
         self.assertIsNone(error)
         self.assertIsNotNone(graph)
+
+    def test_rdkit_safe_molgraph_to_smiles_payload_uses_chain_atom_ids(self):
+        graph = MolGraph()
+        a1 = graph.add_atom("C", 0.0, 0.0)
+        a2 = graph.add_atom("C", 1.0, 0.0)
+        graph.add_bond(a1.id, a2.id, order=1)
+        captured = {}
+        original_run_worker = rdkit_safe._run_worker
+
+        def _fake_run_worker(request, timeout_s):
+            captured["request"] = request
+            captured["timeout_s"] = timeout_s
+            return {"ok": True, "smiles": "CC"}
+
+        rdkit_safe._run_worker = _fake_run_worker
+        try:
+            smiles, error = molgraph_to_smiles_isolated(graph, timeout_s=1.5)
+        finally:
+            rdkit_safe._run_worker = original_run_worker
+
+        self.assertEqual(smiles, "CC")
+        self.assertIsNone(error)
+        self.assertEqual(captured["request"]["mode"], "graph_to_smiles")
+        self.assertEqual(captured["request"]["chain"], [])
+        self.assertEqual(captured["timeout_s"], 1.5)
 
     def test_rdkit_safe_worker_tolerates_pseudoatoms_and_duplicate_bonds(self):
         graph = MolGraph()

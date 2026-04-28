@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 import base64
+import copy
 import itertools
 import math
 from typing import Dict, Iterable, List, Optional, Tuple
 
-from PyQt6.QtCore import QPointF, QRectF, Qt
+from PyQt6.QtCore import QObject, QPointF, QRectF, QThread, Qt, pyqtSignal, pyqtSlot
 from PyQt6.QtGui import QBrush, QColor, QFont, QFontMetrics, QPen
 from PyQt6.QtWidgets import QDialog, QGraphicsRectItem, QInputDialog
 
-from chemuson.chemio.rdkit_io import kekulize_display_orders, molgraph_to_smiles
+from chemuson.chemio.rdkit_io import (
+    kekulize_display_orders,
+    molgraph_to_smiles_isolated_or_error,
+)
 from chemuson.chemname import NameOptions, iupac_name
 from chemuson.chemname.molview import MolView
 from chemuson.chemname.rings import find_rings_simple, ring_bonds
@@ -90,6 +94,225 @@ from .canvas_constants import (
     WAVY_ANCHOR_LENGTH_ROLE,
     WAVY_ANCHOR_ROLE,
 )
+
+ANALYSIS_IUPAC_ATOM_LIMIT = 45
+ANALYSIS_SMILES_TIMEOUT_S = 8.0
+
+
+class _CanvasAnalysisWorker(QObject):
+    """Worker para análisis químico que puede tardar."""
+
+    finished = pyqtSignal(int, str, str)
+
+    def __init__(self, job_id: int, graph: MolGraph, mode: str, opts: NameOptions) -> None:
+        super().__init__()
+        self._job_id = int(job_id)
+        self._graph = graph
+        self._mode = str(mode)
+        self._opts = opts
+
+    @pyqtSlot()
+    def run(self) -> None:
+        try:
+            text = _analysis_build_text_for_worker(self._graph, self._mode, self._opts)
+            self.finished.emit(self._job_id, text, "")
+        except Exception as exc:
+            self.finished.emit(self._job_id, "", str(exc))
+
+
+def _analysis_implicit_h_for_graph(graph: MolGraph, atom_id: int, element: str) -> int:
+    if element not in IMPLICIT_H_ELEMENTS:
+        return 0
+    try:
+        return int(max(0, graph.implicit_h_count(atom_id)))
+    except Exception:
+        return 0
+
+
+def _analysis_atom_counts_for_worker(graph: MolGraph) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for atom in graph.atoms.values():
+        counts[atom.element] = counts.get(atom.element, 0) + 1
+        assigned_h = (
+            graph.assigned_hydrogen_count(atom.id)
+            if hasattr(graph, "assigned_hydrogen_count")
+            else int(getattr(atom, "explicit_h", 0) or 0)
+        )
+        if assigned_h:
+            counts["H"] = counts.get("H", 0) + int(assigned_h)
+    for atom in graph.atoms.values():
+        if atom.element == "H":
+            continue
+        implicit_h = _analysis_implicit_h_for_graph(graph, atom.id, atom.element)
+        if implicit_h > 0:
+            counts["H"] = counts.get("H", 0) + implicit_h
+    return {element: count for element, count in counts.items() if count > 0}
+
+
+def _analysis_formula_from_counts(counts: dict[str, int]) -> str:
+    if not counts:
+        return ""
+    order: list[str] = []
+    if "C" in counts:
+        order.append("C")
+    if "H" in counts:
+        order.append("H")
+    order.extend(sorted(e for e in counts.keys() if e not in {"C", "H"}))
+    return "".join(
+        element if counts[element] == 1 else f"{element}{counts[element]}"
+        for element in order
+        if counts.get(element, 0) > 0
+    )
+
+
+def _analysis_exact_mass_from_counts(counts: dict[str, int]) -> Optional[float]:
+    total = 0.0
+    for element, count in counts.items():
+        mass = MONOISOTOPIC_MASSES.get(element)
+        if mass is None:
+            return None
+        total += mass * count
+    return total
+
+
+def _analysis_molecular_weight_from_counts(counts: dict[str, int]) -> Optional[float]:
+    total = 0.0
+    for element, count in counts.items():
+        mass = ATOMIC_WEIGHTS.get(element)
+        if mass is None:
+            return None
+        total += mass * count
+    return total
+
+
+def _analysis_convolve_worker(
+    distribution: list[tuple[float, float]],
+    isotopes: list[tuple[float, float]],
+) -> list[tuple[float, float]]:
+    if not distribution:
+        return []
+    new_dist: dict[float, float] = {}
+    for mass, prob in distribution:
+        for iso_mass, iso_prob in isotopes:
+            combined_mass = round(mass + iso_mass, 4)
+            new_dist[combined_mass] = new_dist.get(combined_mass, 0.0) + prob * iso_prob
+    if not new_dist:
+        return []
+    max_prob = max(new_dist.values())
+    min_prob = max_prob * 1e-8
+    pruned = {m: p for m, p in new_dist.items() if p >= min_prob}
+    if len(pruned) > ANALYSIS_DIST_KEEP:
+        items = sorted(pruned.items(), key=lambda item: item[1], reverse=True)[:ANALYSIS_DIST_KEEP]
+        pruned = dict(items)
+    return list(pruned.items())
+
+
+def _analysis_isotope_peaks_for_worker(counts: dict[str, int]) -> Optional[list[tuple[float, float]]]:
+    distribution: list[tuple[float, float]] = [(0.0, 1.0)]
+    for element in sorted(counts.keys()):
+        isotopes = ISOTOPE_ABUNDANCES.get(element)
+        if isotopes is None:
+            return None
+        for _ in range(counts[element]):
+            distribution = _analysis_convolve_worker(distribution, isotopes)
+    if not distribution:
+        return None
+    binned: dict[float, float] = {}
+    for mass, prob in distribution:
+        mass_key = round(mass, 2)
+        binned[mass_key] = binned.get(mass_key, 0.0) + prob
+    max_prob = max(binned.values())
+    if max_prob <= 0:
+        return None
+    peaks = [(mass, (prob / max_prob) * 100.0) for mass, prob in binned.items()]
+    peaks = [peak for peak in peaks if peak[1] >= ANALYSIS_MIN_PEAK_PERCENT]
+    peaks.sort(key=lambda item: item[1], reverse=True)
+    return peaks[:ANALYSIS_MAX_PEAKS]
+
+
+def _analysis_elemental_line_for_worker(
+    counts: dict[str, int],
+    molecular_weight: Optional[float],
+) -> Optional[str]:
+    if molecular_weight is None or molecular_weight <= 0:
+        return None
+    order: list[str] = []
+    if "C" in counts:
+        order.append("C")
+    if "H" in counts:
+        order.append("H")
+    order.extend(sorted(e for e in counts.keys() if e not in {"C", "H"}))
+    parts = []
+    for element in order:
+        weight = ATOMIC_WEIGHTS.get(element)
+        if weight is None:
+            continue
+        percent = (weight * counts[element] / molecular_weight) * 100.0
+        parts.append(f"{element}, {percent:.2f}")
+    if not parts:
+        return None
+    return "Elemental Analysis: " + "; ".join(parts)
+
+
+def _analysis_iupac_for_worker(graph: MolGraph, opts: NameOptions) -> str:
+    if len(graph.atoms) > ANALYSIS_IUPAC_ATOM_LIMIT:
+        return "N/D"
+    try:
+        return iupac_name(graph, opts)
+    except Exception:
+        return "N/D"
+
+
+def _analysis_smiles_for_worker(graph: MolGraph) -> str:
+    try:
+        return molgraph_to_smiles_isolated_or_error(
+            graph,
+            timeout_s=ANALYSIS_SMILES_TIMEOUT_S,
+        )
+    except Exception:
+        return "N/D"
+
+
+def _analysis_build_text_for_worker(graph: MolGraph, mode: str, opts: NameOptions) -> str:
+    counts = _analysis_atom_counts_for_worker(graph)
+    if not counts:
+        return ""
+    formula = _analysis_formula_from_counts(counts)
+    exact_mass = _analysis_exact_mass_from_counts(counts)
+    molecular_weight = _analysis_molecular_weight_from_counts(counts)
+    peaks = _analysis_isotope_peaks_for_worker(counts)
+
+    lines: list[str] = []
+    if mode in {"name", "all", "iupac"}:
+        iupac = _analysis_iupac_for_worker(graph, opts)
+        if mode in {"name", "all"}:
+            lines.append(f"Nombre IUPAC: {iupac}")
+        else:
+            lines.append(iupac)
+    if mode in {"name", "all"}:
+        lines.append(f"SMILES: {_analysis_smiles_for_worker(graph)}")
+    if mode in {"formula", "all"}:
+        lines.append(f"Chemical Formula: {formula}")
+    if mode in {"exact", "all"}:
+        lines.append(
+            f"Exact Mass: {exact_mass:.2f}" if exact_mass is not None else "Exact Mass: N/D"
+        )
+    if mode in {"weight", "all"}:
+        lines.append(
+            f"Molecular Weight: {molecular_weight:.2f}"
+            if molecular_weight is not None
+            else "Molecular Weight: N/D"
+        )
+    if mode in {"mz", "all"}:
+        if peaks:
+            formatted = ", ".join(f"{mass:.2f} ({percent:.1f}%)" for mass, percent in peaks)
+            lines.append(f"m/z: {formatted}")
+        else:
+            lines.append("m/z: N/D")
+    if mode in {"elemental", "all"}:
+        elemental_line = _analysis_elemental_line_for_worker(counts, molecular_weight)
+        lines.append(elemental_line or "Elemental Analysis: N/D")
+    return "\n".join(lines)
 
 class CanvasStructureMixin:
     def get_persistence_data(self) -> dict:
@@ -2891,7 +3114,10 @@ class CanvasStructureMixin:
         if mode in {"name", "all"}:
             smiles = ""
             try:
-                smiles = molgraph_to_smiles(graph)
+                smiles = molgraph_to_smiles_isolated_or_error(
+                    graph,
+                    timeout_s=ANALYSIS_SMILES_TIMEOUT_S,
+                )
             except Exception:
                 smiles = ""
             lines.append(f"SMILES: {smiles or 'N/D'}")
@@ -2933,6 +3159,8 @@ class CanvasStructureMixin:
     def current_iupac_name(self, graph: Optional[MolGraph] = None) -> str:
         """Devuelve nombre IUPAC actual con degradación segura a `N/D`."""
         target = graph or self.model
+        if len(getattr(target, "atoms", {})) > ANALYSIS_IUPAC_ATOM_LIMIT:
+            return "N/D"
         try:
             return iupac_name(target, self.current_name_options())
         except Exception:
@@ -2995,10 +3223,70 @@ class CanvasStructureMixin:
         graph, bbox = self._analysis_graph_and_bbox()
         if graph is None:
             return
+        if mode in {"name", "iupac", "all"}:
+            self._start_analysis_job(graph, bbox, mode, scene_pos)
+            return
         text = self._analysis_build_text(graph, mode)
         if not text:
             return
         self._insert_analysis_text(text, bbox, scene_pos)
+
+    def _start_analysis_job(
+        self,
+        graph: MolGraph,
+        bbox: Optional[QRectF],
+        mode: str,
+        scene_pos: QPointF,
+    ) -> None:
+        """Ejecuta análisis con nombre/SMILES fuera del hilo de UI."""
+        jobs = getattr(self, "_analysis_jobs", None)
+        if jobs is None:
+            jobs = {}
+            self._analysis_jobs = jobs
+            self._next_analysis_job_id = 1
+        if jobs:
+            self._show_status_message("Análisis en curso...")
+            return
+
+        job_id = int(getattr(self, "_next_analysis_job_id", 1))
+        self._next_analysis_job_id = job_id + 1
+        thread = QThread(self)
+        worker = _CanvasAnalysisWorker(
+            job_id,
+            copy.deepcopy(graph),
+            mode,
+            self.current_name_options(),
+        )
+        worker.moveToThread(thread)
+        jobs[job_id] = {
+            "thread": thread,
+            "worker": worker,
+            "bbox": QRectF(bbox) if bbox is not None else None,
+            "scene_pos": QPointF(scene_pos),
+        }
+        thread.started.connect(worker.run)
+        worker.finished.connect(self._on_analysis_job_finished)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        self._show_status_message("Calculando análisis...")
+        thread.start()
+
+    @pyqtSlot(int, str, str)
+    def _on_analysis_job_finished(self, job_id: int, text: str, error: str) -> None:
+        """Inserta el texto de análisis generado en segundo plano."""
+        jobs = getattr(self, "_analysis_jobs", {})
+        job = jobs.pop(int(job_id), None)
+        if job is None:
+            return
+        if error:
+            self._show_status_message(f"No se pudo calcular el análisis: {error}")
+            return
+        if not text:
+            self._show_status_message("El análisis no produjo resultados.")
+            return
+        self._insert_analysis_text(text, job["bbox"], job["scene_pos"])
+        self._show_status_message("Análisis insertado")
 
     def run_analysis(self, mode: str) -> None:
         """Método auxiliar para run analysis.

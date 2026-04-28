@@ -257,7 +257,9 @@ def molgraph_to_rdkit(molgraph: MolGraph):
 def molgraph_to_smiles(molgraph: MolGraph) -> str:
     """Genera SMILES desde un `MolGraph`.
 
-    Usa RDKit si está disponible; si falla, utiliza un escritor interno.
+    Usa RDKit en un worker aislado si está disponible; si falla, utiliza un
+    escritor interno. El worker evita que fallos nativos o bucles de RDKit
+    congelen la interfaz gráfica.
 
     Args:
         molgraph: Grafo molecular de Chemuson.
@@ -269,13 +271,33 @@ def molgraph_to_smiles(molgraph: MolGraph) -> str:
         return _molgraph_to_smiles_fallback(molgraph)
     if _rdkit_available():
         try:
-            mol = molgraph_to_rdkit(molgraph)
-            return Chem.MolToSmiles(mol, canonical=True)
+            from chemuson.chemio.rdkit_safe import molgraph_to_smiles_isolated
+
+            smiles, error = molgraph_to_smiles_isolated(molgraph)
+            if not error and smiles:
+                return smiles
         except Exception:
             # RDKit can reject some hypervalent depictions (e.g., interhalogens, noble gases).
             # Fall back to the internal writer so the editor can still export something useful.
             return _molgraph_to_smiles_fallback(molgraph)
     return _molgraph_to_smiles_fallback(molgraph)
+
+
+def molgraph_to_smiles_isolated_or_error(
+    molgraph: MolGraph,
+    timeout_s: float = 8.0,
+) -> str:
+    """Genera SMILES con RDKit aislado y falla rápido si no hay resultado.
+
+    Esta ruta está pensada para acciones de UI: evita caer al escritor interno,
+    que puede ser costoso en estructuras cíclicas grandes.
+    """
+    from chemuson.chemio.rdkit_safe import molgraph_to_smiles_isolated
+
+    smiles, error = molgraph_to_smiles_isolated(molgraph, timeout_s=timeout_s)
+    if error or not smiles:
+        raise RuntimeError(error or "empty_smiles")
+    return smiles
 
 
 def molgraph_to_molfile(molgraph: MolGraph) -> str:

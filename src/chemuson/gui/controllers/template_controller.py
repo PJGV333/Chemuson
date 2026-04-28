@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
 from typing import Callable, Optional
 
-from PyQt6.QtWidgets import QFileDialog, QInputDialog, QMessageBox, QWidget
+from PyQt6.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
+from PyQt6.QtWidgets import QApplication, QFileDialog, QInputDialog, QMessageBox, QWidget
 
 from chemuson.core.model import MolGraph
 from chemuson.gui.template_library import DEFAULT_CATEGORY_USER, TemplateLibrary
@@ -22,8 +24,44 @@ class TemplateControllerContext:
     insert_template: Callable[[str, MolGraph], None]
 
 
-class TemplateController:
+class _SmilesExportWorker(QObject):
+    """Worker para exportar SMILES sin bloquear la interfaz."""
+
+    finished = pyqtSignal(int, str, str)
+
+    def __init__(self, job_id: int, graph: MolGraph) -> None:
+        super().__init__()
+        self._job_id = int(job_id)
+        self._graph = graph
+
+    @pyqtSlot()
+    def run(self) -> None:
+        try:
+            from chemuson.chemio.rdkit_io import molgraph_to_smiles_isolated_or_error
+
+            smiles = molgraph_to_smiles_isolated_or_error(self._graph)
+            self.finished.emit(self._job_id, smiles, "")
+        except Exception as exc:
+            self.finished.emit(self._job_id, "", str(exc))
+
+
+@dataclass(slots=True)
+class _SmilesExportJob:
+    """Estado mínimo de una exportación SMILES en segundo plano."""
+
+    thread: QThread
+    worker: _SmilesExportWorker
+    parent: QWidget
+    show_status: Callable[[str], None]
+
+
+class TemplateController(QObject):
     """Gestiona operaciones de biblioteca de plantillas y SMILES."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._next_smiles_export_job_id = 1
+        self._smiles_export_jobs: dict[int, _SmilesExportJob] = {}
 
     def start_template_insert_by_id(
         self,
@@ -325,13 +363,67 @@ class TemplateController:
 
     def on_export_smiles(self, context: TemplateControllerContext) -> None:
         try:
-            from chemuson.chemio.rdkit_io import molgraph_to_smiles
-
-            smiles = molgraph_to_smiles(context.canvas.graph)
-            QMessageBox.information(context.parent, "SMILES", smiles)
+            atom_ids, bonds = context.canvas._selected_structure_ids()
+            target_graph = (
+                context.canvas._build_selection_graph(atom_ids, bonds)
+                if atom_ids
+                else context.canvas.graph
+            )
+            if not target_graph.atoms:
+                QMessageBox.warning(context.parent, "Aviso", "No hay estructura para exportar.")
+                return
+            self._start_smiles_export_job(context, target_graph)
         except Exception as exc:
             QMessageBox.critical(
                 context.parent,
                 "Error",
                 f"No se pudo exportar SMILES:\n{exc}",
             )
+
+    def _start_smiles_export_job(
+        self,
+        context: TemplateControllerContext,
+        graph: MolGraph,
+    ) -> None:
+        """Inicia la exportación SMILES fuera del hilo de la UI."""
+        if self._smiles_export_jobs:
+            context.show_status("Exportación SMILES en curso...")
+            return
+
+        job_id = self._next_smiles_export_job_id
+        self._next_smiles_export_job_id += 1
+        thread = QThread(context.parent)
+        worker = _SmilesExportWorker(job_id, copy.deepcopy(graph))
+        worker.moveToThread(thread)
+
+        self._smiles_export_jobs[job_id] = _SmilesExportJob(
+            thread=thread,
+            worker=worker,
+            parent=context.parent,
+            show_status=context.show_status,
+        )
+        thread.started.connect(worker.run)
+        worker.finished.connect(self._on_smiles_export_finished)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        context.show_status("Exportando SMILES...")
+        thread.start()
+
+    @pyqtSlot(int, str, str)
+    def _on_smiles_export_finished(self, job_id: int, smiles: str, error: str) -> None:
+        """Muestra el resultado de una exportación SMILES terminada."""
+        job = self._smiles_export_jobs.pop(int(job_id), None)
+        if job is None:
+            return
+        if error:
+            QMessageBox.critical(
+                job.parent,
+                "Error",
+                f"No se pudo exportar SMILES:\n{error}",
+            )
+            job.show_status("Error al exportar SMILES")
+            return
+        QApplication.clipboard().setText(smiles)
+        QMessageBox.information(job.parent, "SMILES", smiles)
+        job.show_status("SMILES exportado y copiado al portapapeles")
