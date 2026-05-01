@@ -440,6 +440,27 @@ jobs:
             --channel "${{ steps.vars.outputs.channel }}" \
             --basename "Chemuson"
 
+      - name: Validate local Flatpak commit metadata
+        run: |
+          set -euo pipefail
+          CHANNEL="${{ steps.vars.outputs.channel }}"
+          APP_REF_PATH="flatpak-remote/${CHANNEL}/repo/refs/heads/app/io.github.PJGV333.Chemuson/x86_64/${CHANNEL}"
+
+          EXPECTED_COMMIT="$(tr -d '\n' < "${APP_REF_PATH}")"
+          if ! printf '%s' "${EXPECTED_COMMIT}" | grep -Eq '^[0-9a-f]{64}$'; then
+            echo "ERROR: Invalid local OSTree commit checksum in ${APP_REF_PATH}: ${EXPECTED_COMMIT}" >&2
+            exit 1
+          fi
+
+          COMMITMETA_PATH="flatpak-remote/${CHANNEL}/repo/objects/${EXPECTED_COMMIT:0:2}/${EXPECTED_COMMIT:2}.commitmeta"
+          echo "Expected local Flatpak commit SHA: ${EXPECTED_COMMIT}"
+          echo "Expected local commitmeta path: ${COMMITMETA_PATH}"
+
+          if [ ! -f "${COMMITMETA_PATH}" ]; then
+            echo "ERROR: Expected Flatpak commit metadata is missing from the publish payload: ${COMMITMETA_PATH}" >&2
+            exit 1
+          fi
+
       - name: Publish Flatpak remote to gh-pages
         run: |
           set -euo pipefail
@@ -483,38 +504,77 @@ jobs:
       - name: Verify GitHub Pages publication
         run: |
           set -euo pipefail
-          APP_REF_URL="${{ steps.pages.outputs.pages_base }}/flatpak/${{ steps.vars.outputs.channel }}/repo/refs/heads/app/io.github.PJGV333.Chemuson/x86_64/${{ steps.vars.outputs.channel }}"
-          urls=(
-            "${{ steps.pages.outputs.pages_base }}/index.html"
-            "${{ steps.pages.outputs.pages_base }}/flatpak/${{ steps.vars.outputs.channel }}/Chemuson-${{ steps.vars.outputs.channel }}.flatpakref"
-            "${{ steps.pages.outputs.pages_base }}/flatpak/${{ steps.vars.outputs.channel }}/Chemuson-${{ steps.vars.outputs.channel }}.flatpakrepo"
-            "${{ steps.pages.outputs.pages_base }}/flatpak/${{ steps.vars.outputs.channel }}/repo/summary"
-            "${{ steps.pages.outputs.pages_base }}/flatpak/${{ steps.vars.outputs.channel }}/repo/summary.sig"
-            "${APP_REF_URL}"
-          )
+          CHANNEL="${{ steps.vars.outputs.channel }}"
+          PAGES_BASE="${{ steps.pages.outputs.pages_base }}"
+          MAX_ATTEMPTS="${PAGES_VERIFY_ATTEMPTS:-36}"
+          SLEEP_SECONDS="${PAGES_VERIFY_SLEEP_SECONDS:-10}"
 
-          for url in "${urls[@]}"; do
-            echo "Checking ${url}"
-            ok=0
-            for attempt in $(seq 1 18); do
+          check_url() {
+            local url="$1"
+            local description="$2"
+            local attempt
+
+            for attempt in $(seq 1 "${MAX_ATTEMPTS}"); do
+              echo "Checking ${description} (${attempt}/${MAX_ATTEMPTS}) with HEAD: ${url}"
               if curl -fsSLI "${url}" >/dev/null; then
-                ok=1
-                break
+                return 0
               fi
-              sleep 10
-            done
-            if [ "${ok}" -ne 1 ]; then
-              echo "ERROR: ${url} was not reachable after publication." >&2
-              exit 1
-            fi
-          done
 
-          APP_COMMIT="$(curl -fsSL "${APP_REF_URL}" | tr -d '\n')"
-          if ! printf '%s' "${APP_COMMIT}" | grep -Eq '^[0-9a-f]{64}$'; then
-            echo "ERROR: Invalid OSTree commit checksum published for ${APP_REF_URL}: ${APP_COMMIT}" >&2
+              echo "Checking ${description} (${attempt}/${MAX_ATTEMPTS}) with GET: ${url}"
+              if curl -fsSL "${url}" >/dev/null; then
+                return 0
+              fi
+
+              if [ "${attempt}" -lt "${MAX_ATTEMPTS}" ]; then
+                sleep "${SLEEP_SECONDS}"
+              fi
+            done
+
+            echo "ERROR: ${description} was not reachable after ${MAX_ATTEMPTS} attempts: ${url}" >&2
+            return 1
+          }
+
+          EXPECTED_REF_PATH="flatpak-remote/${CHANNEL}/repo/refs/heads/app/io.github.PJGV333.Chemuson/x86_64/${CHANNEL}"
+          EXPECTED_COMMIT="$(tr -d '\n' < "${EXPECTED_REF_PATH}")"
+          if ! printf '%s' "${EXPECTED_COMMIT}" | grep -Eq '^[0-9a-f]{64}$'; then
+            echo "ERROR: Invalid local OSTree commit checksum in ${EXPECTED_REF_PATH}: ${EXPECTED_COMMIT}" >&2
             exit 1
           fi
 
-          COMMITMETA_URL="${{ steps.pages.outputs.pages_base }}/flatpak/${{ steps.vars.outputs.channel }}/repo/objects/${APP_COMMIT:0:2}/${APP_COMMIT:2}.commitmeta"
-          echo "Checking ${COMMITMETA_URL}"
-          curl -fsSLI "${COMMITMETA_URL}" >/dev/null
+          APP_REF_URL="${PAGES_BASE}/flatpak/${CHANNEL}/repo/refs/heads/app/io.github.PJGV333.Chemuson/x86_64/${CHANNEL}"
+          COMMITMETA_URL="${PAGES_BASE}/flatpak/${CHANNEL}/repo/objects/${EXPECTED_COMMIT:0:2}/${EXPECTED_COMMIT:2}.commitmeta"
+          COMMITMETA_PATH="flatpak-remote/${CHANNEL}/repo/objects/${EXPECTED_COMMIT:0:2}/${EXPECTED_COMMIT:2}.commitmeta"
+
+          echo "Expected local Flatpak commit SHA: ${EXPECTED_COMMIT}"
+          echo "Expected local commitmeta path: ${COMMITMETA_PATH}"
+          echo "Expected public commitmeta URL: ${COMMITMETA_URL}"
+
+          check_url "${PAGES_BASE}/index.html" "GitHub Pages index"
+          check_url "${PAGES_BASE}/flatpak/${CHANNEL}/Chemuson-${CHANNEL}.flatpakref" "Flatpak ref"
+          check_url "${PAGES_BASE}/flatpak/${CHANNEL}/Chemuson-${CHANNEL}.flatpakrepo" "Flatpak repo file"
+          check_url "${PAGES_BASE}/flatpak/${CHANNEL}/repo/summary" "OSTree summary"
+          check_url "${PAGES_BASE}/flatpak/${CHANNEL}/repo/summary.sig" "OSTree summary signature"
+          check_url "${APP_REF_URL}" "OSTree app ref"
+
+          for attempt in $(seq 1 "${MAX_ATTEMPTS}"); do
+            APP_COMMIT="$(curl -fsSL "${APP_REF_URL}" | tr -d '\n' || true)"
+            echo "Published Flatpak commit SHA (${attempt}/${MAX_ATTEMPTS}): ${APP_COMMIT:-<unavailable>}"
+
+            if ! printf '%s' "${APP_COMMIT}" | grep -Eq '^[0-9a-f]{64}$'; then
+              echo "Published app ref is not a valid OSTree checksum yet: ${APP_REF_URL}"
+            elif [ "${APP_COMMIT}" = "${EXPECTED_COMMIT}" ]; then
+              check_url "${COMMITMETA_URL}" "OSTree commit metadata"
+              exit 0
+            else
+              echo "Published app ref still points to an older commit; expected ${EXPECTED_COMMIT}"
+            fi
+
+            if [ "${attempt}" -lt "${MAX_ATTEMPTS}" ]; then
+              sleep "${SLEEP_SECONDS}"
+            fi
+          done
+
+          echo "ERROR: GitHub Pages did not publish the expected Flatpak commit after ${MAX_ATTEMPTS} attempts." >&2
+          echo "Expected: ${EXPECTED_COMMIT}" >&2
+          echo "Last published: ${APP_COMMIT:-<unavailable>}" >&2
+          exit 1
