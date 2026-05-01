@@ -82,6 +82,122 @@ class RdkitRoundtripTest(unittest.TestCase):
 
         self.assertIn(smiles, {"CC", "C-C"})
 
+    def test_smiles_export_expands_methoxy_abbreviation_for_fallback(self):
+        graph = MolGraph()
+        a1 = graph.add_atom("C", 0.0, 0.0)
+        a2 = graph.add_atom("OMe", 1.5, 0.0, is_explicit=True)
+        graph.add_bond(a1.id, a2.id, order=1)
+
+        original_available = rdkit_io._rdkit_available
+        rdkit_io._rdkit_available = lambda: False
+        try:
+            smiles = molgraph_to_smiles(graph)
+        finally:
+            rdkit_io._rdkit_available = original_available
+
+        self.assertEqual(smiles, "COC")
+        self.assertNotIn("*", smiles)
+        self.assertNotIn("OMe", smiles)
+        self.assertEqual(len(graph.atoms), 2)
+        self.assertEqual(graph.get_atom(a2.id).element, "OMe")
+
+    def test_isolated_smiles_export_expands_methoxy_before_worker(self):
+        graph = MolGraph()
+        a1 = graph.add_atom("C", 0.0, 0.0)
+        a2 = graph.add_atom("OMe", 1.5, 0.0, is_explicit=True)
+        graph.add_bond(a1.id, a2.id, order=1)
+
+        captured = {}
+        original_isolated = rdkit_safe.molgraph_to_smiles_isolated
+
+        def _fake_isolated(expanded_graph, timeout_s=5.0):
+            captured["elements"] = sorted(atom.element for atom in expanded_graph.atoms.values())
+            captured["bond_count"] = len(expanded_graph.bonds)
+            captured["timeout_s"] = timeout_s
+            return "COC", None
+
+        rdkit_safe.molgraph_to_smiles_isolated = _fake_isolated
+        try:
+            smiles = rdkit_io.molgraph_to_smiles_isolated_or_error(graph, timeout_s=1.5)
+        finally:
+            rdkit_safe.molgraph_to_smiles_isolated = original_isolated
+
+        self.assertEqual(smiles, "COC")
+        self.assertEqual(captured["elements"], ["C", "C", "O"])
+        self.assertEqual(captured["bond_count"], 2)
+        self.assertEqual(captured["timeout_s"], 1.5)
+
+    def test_smiles_export_merges_nearly_duplicate_ring_closure_atoms(self):
+        graph = MolGraph()
+        c1 = graph.add_atom("C", 0.0, 0.0)
+        n = graph.add_atom("N", 40.0, 0.0, is_explicit=True)
+        c2 = graph.add_atom("C", 80.0, 0.0)
+        duplicate_c1 = graph.add_atom("C", 0.5, 0.5)
+        graph.add_bond(c1.id, n.id, order=1)
+        graph.add_bond(n.id, c2.id, order=1)
+        graph.add_bond(c2.id, duplicate_c1.id, order=1)
+
+        original_available = rdkit_io._rdkit_available
+        rdkit_io._rdkit_available = lambda: False
+        try:
+            smiles = molgraph_to_smiles(graph)
+        finally:
+            rdkit_io._rdkit_available = original_available
+
+        self.assertEqual(smiles, "C1NC1")
+        self.assertEqual(len(graph.atoms), 4)
+        self.assertNotEqual(c1.id, duplicate_c1.id)
+
+    def test_isolated_smiles_export_merges_duplicates_before_worker(self):
+        graph = MolGraph()
+        c1 = graph.add_atom("C", 0.0, 0.0)
+        n = graph.add_atom("N", 40.0, 0.0, is_explicit=True)
+        c2 = graph.add_atom("C", 80.0, 0.0)
+        duplicate_c1 = graph.add_atom("C", 0.5, 0.5)
+        graph.add_bond(c1.id, n.id, order=1)
+        graph.add_bond(n.id, c2.id, order=1)
+        graph.add_bond(c2.id, duplicate_c1.id, order=1)
+
+        captured = {}
+        original_isolated = rdkit_safe.molgraph_to_smiles_isolated
+
+        def _fake_isolated(export_graph, timeout_s=5.0):
+            captured["atom_count"] = len(export_graph.atoms)
+            captured["bond_pairs"] = sorted(
+                tuple(sorted((bond.a1_id, bond.a2_id)))
+                for bond in export_graph.bonds.values()
+            )
+            return "C1NC1", None
+
+        rdkit_safe.molgraph_to_smiles_isolated = _fake_isolated
+        try:
+            smiles = rdkit_io.molgraph_to_smiles_isolated_or_error(graph, timeout_s=1.5)
+        finally:
+            rdkit_safe.molgraph_to_smiles_isolated = original_isolated
+
+        self.assertEqual(smiles, "C1NC1")
+        self.assertEqual(captured["atom_count"], 3)
+        self.assertEqual(captured["bond_pairs"], [(1, 2), (1, 3), (2, 3)])
+
+    def test_smiles_export_does_not_merge_different_elements_by_distance(self):
+        graph = MolGraph()
+        c1 = graph.add_atom("C", 0.0, 0.0)
+        n = graph.add_atom("N", 40.0, 0.0, is_explicit=True)
+        c2 = graph.add_atom("C", 80.0, 0.0)
+        oxygen = graph.add_atom("O", 0.5, 0.5, is_explicit=True)
+        graph.add_bond(c1.id, n.id, order=1)
+        graph.add_bond(n.id, c2.id, order=1)
+        graph.add_bond(c2.id, oxygen.id, order=1)
+
+        original_available = rdkit_io._rdkit_available
+        rdkit_io._rdkit_available = lambda: False
+        try:
+            smiles = molgraph_to_smiles(graph)
+        finally:
+            rdkit_io._rdkit_available = original_available
+
+        self.assertEqual(smiles, "CNCO")
+
     @unittest.skipIf(not RDKit_AVAILABLE, "RDKit no disponible")
     def test_molgraph_roundtrip_smiles(self):
         """Verifica molgraph roundtrip smiles.

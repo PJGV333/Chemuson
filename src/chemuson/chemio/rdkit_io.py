@@ -99,6 +99,297 @@ _SIMPLE_GROUP_EXPORT_LABELS: dict[tuple[str, int], str] = {
 _RDKIT_QUERY_SYMBOLS = {"*", "A", "Q", "L", "LP", "Du", "R", "R#"}
 
 
+@dataclass(frozen=True)
+class _ExportAtomSpec:
+    element: str
+    charge: int = 0
+    explicit_h: Optional[int] = None
+    group_h_cap: Optional[int] = None
+    no_implicit: bool = False
+
+
+@dataclass(frozen=True)
+class _ExportBondSpec:
+    a1: int
+    a2: int
+    order: int = 1
+    is_aromatic: bool = False
+
+
+@dataclass(frozen=True)
+class _ExportAbbreviationSpec:
+    atoms: tuple[_ExportAtomSpec, ...]
+    bonds: tuple[_ExportBondSpec, ...]
+    anchor_index: int = 0
+
+
+def _atom_spec(element: str, charge: int = 0) -> _ExportAtomSpec:
+    """Atajo legible para especificaciones de abreviaturas exportables."""
+    return _ExportAtomSpec(element=element, charge=int(charge))
+
+
+_EXPORT_ABBREVIATIONS: dict[str, _ExportAbbreviationSpec] = {
+    "Me": _ExportAbbreviationSpec((_atom_spec("C"),), ()),
+    "CH3": _ExportAbbreviationSpec((_atom_spec("C"),), ()),
+    "Et": _ExportAbbreviationSpec(
+        (_atom_spec("C"), _atom_spec("C")),
+        (_ExportBondSpec(0, 1),),
+    ),
+    "C2H5": _ExportAbbreviationSpec(
+        (_atom_spec("C"), _atom_spec("C")),
+        (_ExportBondSpec(0, 1),),
+    ),
+    "iPr": _ExportAbbreviationSpec(
+        (_atom_spec("C"), _atom_spec("C"), _atom_spec("C")),
+        (_ExportBondSpec(0, 1), _ExportBondSpec(0, 2)),
+    ),
+    "tBu": _ExportAbbreviationSpec(
+        (_atom_spec("C"), _atom_spec("C"), _atom_spec("C"), _atom_spec("C")),
+        (_ExportBondSpec(0, 1), _ExportBondSpec(0, 2), _ExportBondSpec(0, 3)),
+    ),
+    "OMe": _ExportAbbreviationSpec(
+        (_atom_spec("O"), _atom_spec("C")),
+        (_ExportBondSpec(0, 1),),
+    ),
+    "MeO": _ExportAbbreviationSpec(
+        (_atom_spec("O"), _atom_spec("C")),
+        (_ExportBondSpec(0, 1),),
+    ),
+    "OCH3": _ExportAbbreviationSpec(
+        (_atom_spec("O"), _atom_spec("C")),
+        (_ExportBondSpec(0, 1),),
+    ),
+    "CH3O": _ExportAbbreviationSpec(
+        (_atom_spec("O"), _atom_spec("C")),
+        (_ExportBondSpec(0, 1),),
+    ),
+    "OEt": _ExportAbbreviationSpec(
+        (_atom_spec("O"), _atom_spec("C"), _atom_spec("C")),
+        (_ExportBondSpec(0, 1), _ExportBondSpec(1, 2)),
+    ),
+    "EtO": _ExportAbbreviationSpec(
+        (_atom_spec("O"), _atom_spec("C"), _atom_spec("C")),
+        (_ExportBondSpec(0, 1), _ExportBondSpec(1, 2)),
+    ),
+    "Ph": _ExportAbbreviationSpec(
+        (
+            _atom_spec("C"),
+            _atom_spec("C"),
+            _atom_spec("C"),
+            _atom_spec("C"),
+            _atom_spec("C"),
+            _atom_spec("C"),
+        ),
+        (
+            _ExportBondSpec(0, 1, is_aromatic=True),
+            _ExportBondSpec(1, 2, is_aromatic=True),
+            _ExportBondSpec(2, 3, is_aromatic=True),
+            _ExportBondSpec(3, 4, is_aromatic=True),
+            _ExportBondSpec(4, 5, is_aromatic=True),
+            _ExportBondSpec(5, 0, is_aromatic=True),
+        ),
+    ),
+    "CN": _ExportAbbreviationSpec(
+        (_atom_spec("C"), _atom_spec("N")),
+        (_ExportBondSpec(0, 1, order=3),),
+    ),
+    "CHO": _ExportAbbreviationSpec(
+        (_atom_spec("C"), _atom_spec("O")),
+        (_ExportBondSpec(0, 1, order=2),),
+    ),
+    "COOH": _ExportAbbreviationSpec(
+        (_atom_spec("C"), _atom_spec("O"), _atom_spec("O")),
+        (_ExportBondSpec(0, 1, order=2), _ExportBondSpec(0, 2)),
+    ),
+    "CO2H": _ExportAbbreviationSpec(
+        (_atom_spec("C"), _atom_spec("O"), _atom_spec("O")),
+        (_ExportBondSpec(0, 1, order=2), _ExportBondSpec(0, 2)),
+    ),
+    "NO2": _ExportAbbreviationSpec(
+        (_atom_spec("N", charge=1), _atom_spec("O"), _atom_spec("O", charge=-1)),
+        (_ExportBondSpec(0, 1, order=2), _ExportBondSpec(0, 2)),
+    ),
+    "SO3H": _ExportAbbreviationSpec(
+        (_atom_spec("S"), _atom_spec("O"), _atom_spec("O"), _atom_spec("O")),
+        (
+            _ExportBondSpec(0, 1, order=2),
+            _ExportBondSpec(0, 2, order=2),
+            _ExportBondSpec(0, 3),
+        ),
+    ),
+}
+
+
+_EXPORT_ABBREVIATION_ALIASES: dict[str, str] = {
+    label.lower(): label for label in _EXPORT_ABBREVIATIONS
+}
+
+
+def _structural_degree_map(molgraph: MolGraph) -> dict[int, int]:
+    """Cuenta enlaces estructurales por átomo."""
+    degree: dict[int, int] = {int(atom_id): 0 for atom_id in molgraph.atoms}
+    for bond in molgraph.bonds.values():
+        if not bond_is_structural(bond):
+            continue
+        degree[int(bond.a1_id)] = degree.get(int(bond.a1_id), 0) + 1
+        degree[int(bond.a2_id)] = degree.get(int(bond.a2_id), 0) + 1
+    return degree
+
+
+def _median_structural_bond_length(molgraph: MolGraph) -> float:
+    """Estima una longitud de enlace robusta a partir del grafo."""
+    lengths: list[float] = []
+    for bond in molgraph.bonds.values():
+        if not bond_is_structural(bond):
+            continue
+        a1 = molgraph.atoms.get(int(bond.a1_id))
+        a2 = molgraph.atoms.get(int(bond.a2_id))
+        if a1 is None or a2 is None:
+            continue
+        dx = float(a2.x) - float(a1.x)
+        dy = float(a2.y) - float(a1.y)
+        length = (dx * dx + dy * dy) ** 0.5
+        if length > 1e-6:
+            lengths.append(length)
+    if not lengths:
+        return 40.0
+    lengths.sort()
+    mid = len(lengths) // 2
+    if len(lengths) % 2:
+        return float(lengths[mid])
+    return (float(lengths[mid - 1]) + float(lengths[mid])) * 0.5
+
+
+def _atoms_are_export_merge_compatible(a, b) -> bool:
+    """Determina si dos átomos casi superpuestos pueden representar el mismo nodo."""
+    if str(getattr(a, "element", "")) != str(getattr(b, "element", "")):
+        return False
+    if str(getattr(a, "element", "")) == "H":
+        return False
+    if int(getattr(a, "charge", 0) or 0) != int(getattr(b, "charge", 0) or 0):
+        return False
+    if getattr(a, "isotope", None) != getattr(b, "isotope", None):
+        return False
+    if int(getattr(a, "radical_electrons", 0) or 0) != int(
+        getattr(b, "radical_electrons", 0) or 0
+    ):
+        return False
+    if bool(getattr(a, "is_coordination_center", False)) or bool(
+        getattr(b, "is_coordination_center", False)
+    ):
+        return False
+    return True
+
+
+def _atom_export_merge_priority(atom, degree: int) -> tuple[int, int, int, int, int]:
+    """Prioriza qué átomo conservar al colapsar duplicados de exportación."""
+    explicit_h = getattr(atom, "explicit_h", None)
+    return (
+        int(degree),
+        1 if bool(getattr(atom, "is_explicit", False)) else 0,
+        1 if explicit_h is not None else 0,
+        1 if getattr(atom, "group_h_cap", None) is not None else 0,
+        -int(getattr(atom, "id", 0)),
+    )
+
+
+def _find(parent: dict[int, int], atom_id: int) -> int:
+    """Busca la raíz union-find con compresión de caminos."""
+    root = int(atom_id)
+    while parent[root] != root:
+        root = parent[root]
+    while parent[int(atom_id)] != int(atom_id):
+        next_id = parent[int(atom_id)]
+        parent[int(atom_id)] = root
+        atom_id = next_id
+    return root
+
+
+def _merge_near_duplicate_atoms_for_export(molgraph: MolGraph) -> MolGraph:
+    """Colapsa átomos casi superpuestos solo en una copia para SMILES.
+
+    Esto cubre el caso de edicion donde un cierre de anillo se ve conectado
+    porque dos átomos caen sobre el mismo punto, pero internamente son nodos
+    distintos. El umbral es pequeño para no inferir enlaces por proximidad.
+    """
+    if len(molgraph.atoms) < 2:
+        return molgraph
+    median_length = _median_structural_bond_length(molgraph)
+    threshold = min(6.0, max(1.5, median_length * 0.15))
+    threshold_sq = threshold * threshold
+
+    bonded_pairs = {
+        (min(int(bond.a1_id), int(bond.a2_id)), max(int(bond.a1_id), int(bond.a2_id)))
+        for bond in molgraph.bonds.values()
+        if bond_is_structural(bond)
+    }
+    degree = _structural_degree_map(molgraph)
+    parent: dict[int, int] = {int(atom_id): int(atom_id) for atom_id in molgraph.atoms}
+    atoms = sorted(molgraph.atoms.values(), key=lambda item: int(item.id))
+
+    for idx, atom_a in enumerate(atoms):
+        for atom_b in atoms[idx + 1 :]:
+            pair = (
+                min(int(atom_a.id), int(atom_b.id)),
+                max(int(atom_a.id), int(atom_b.id)),
+            )
+            if pair in bonded_pairs:
+                continue
+            if not _atoms_are_export_merge_compatible(atom_a, atom_b):
+                continue
+            dx = float(atom_a.x) - float(atom_b.x)
+            dy = float(atom_a.y) - float(atom_b.y)
+            if dx * dx + dy * dy > threshold_sq:
+                continue
+            root_a = _find(parent, int(atom_a.id))
+            root_b = _find(parent, int(atom_b.id))
+            if root_a == root_b:
+                continue
+            keep = root_a
+            drop = root_b
+            keep_atom = molgraph.atoms[keep]
+            drop_atom = molgraph.atoms[drop]
+            drop_priority = _atom_export_merge_priority(drop_atom, degree.get(drop, 0))
+            keep_priority = _atom_export_merge_priority(keep_atom, degree.get(keep, 0))
+            if drop_priority > keep_priority:
+                keep, drop = drop, keep
+            parent[drop] = keep
+
+    groups: dict[int, list[int]] = {}
+    for atom_id in molgraph.atoms:
+        root = _find(parent, int(atom_id))
+        groups.setdefault(root, []).append(int(atom_id))
+    if all(len(ids) == 1 for ids in groups.values()):
+        return molgraph
+
+    merged = MolGraph()
+    id_map: dict[int, int] = {}
+    for root, _atom_ids in sorted(groups.items()):
+        keep_atom = molgraph.atoms[root]
+        new_id = _copy_atom_for_export(merged, keep_atom, atom_id=int(root))
+        for atom_id in groups[root]:
+            id_map[int(atom_id)] = new_id
+
+    unique_bonds: dict[tuple[int, int], object] = {}
+    for bond in _unique_bonds_for_export(molgraph):
+        a1_id = id_map.get(int(bond.a1_id), int(bond.a1_id))
+        a2_id = id_map.get(int(bond.a2_id), int(bond.a2_id))
+        if a1_id == a2_id:
+            continue
+        pair = (min(a1_id, a2_id), max(a1_id, a2_id))
+        existing = unique_bonds.get(pair)
+        if existing is None or _bond_priority_for_export(bond) > _bond_priority_for_export(existing):
+            unique_bonds[pair] = bond
+
+    for bond in sorted(unique_bonds.values(), key=lambda item: int(getattr(item, "id", 0))):
+        a1_id = id_map.get(int(bond.a1_id), int(bond.a1_id))
+        a2_id = id_map.get(int(bond.a2_id), int(bond.a2_id))
+        if a1_id != a2_id:
+            _copy_bond_for_export(merged, bond, a1_id, a2_id)
+
+    return merged
+
+
 def _pseudoatom_label_for_export(atom) -> str | None:
     """Devuelve etiqueta pseudoatómica cuando conviene exportar un dummy atom."""
     element = str(getattr(atom, "element", "") or "").strip()
@@ -114,6 +405,177 @@ def _pseudoatom_label_for_export(atom) -> str | None:
     if _atomic_number_for_symbol(element) <= 0:
         return element
     return None
+
+
+def _export_abbreviation_for_label(label: str) -> _ExportAbbreviationSpec | None:
+    """Devuelve la expansión química de una abreviatura conocida."""
+    text = str(label or "").strip()
+    if not text:
+        return None
+    canonical = _EXPORT_ABBREVIATION_ALIASES.get(text.lower())
+    if canonical is None:
+        return None
+    return _EXPORT_ABBREVIATIONS.get(canonical)
+
+
+def _copy_atom_for_export(
+    target: MolGraph,
+    source_atom,
+    *,
+    atom_id: int | None = None,
+    atom_spec: _ExportAtomSpec | None = None,
+) -> int:
+    """Copia un átomo al grafo de exportación, opcionalmente reemplazando su elemento."""
+    element = source_atom.element if atom_spec is None else atom_spec.element
+    charge = int(getattr(source_atom, "charge", 0) or 0)
+    explicit_h = getattr(source_atom, "explicit_h", None)
+    group_h_cap = getattr(source_atom, "group_h_cap", None)
+    no_implicit = bool(getattr(source_atom, "no_implicit", False))
+    if atom_spec is not None:
+        charge += int(atom_spec.charge)
+        explicit_h = atom_spec.explicit_h
+        group_h_cap = atom_spec.group_h_cap
+        no_implicit = bool(atom_spec.no_implicit)
+    new_atom = target.add_atom(
+        element,
+        float(getattr(source_atom, "x", 0.0)),
+        float(getattr(source_atom, "y", 0.0)),
+        atom_id=atom_id,
+        charge=charge,
+        isotope=getattr(source_atom, "isotope", None) if atom_spec is None else None,
+        radical_electrons=(
+            int(getattr(source_atom, "radical_electrons", 0) or 0)
+            if atom_spec is None
+            else 0
+        ),
+        oxidation_state=(
+            getattr(source_atom, "oxidation_state", None) if atom_spec is None else None
+        ),
+        stereo_cip=getattr(source_atom, "stereo_cip", None) if atom_spec is None else None,
+        stereo_axial=getattr(source_atom, "stereo_axial", None) if atom_spec is None else None,
+        stereo_helical=getattr(source_atom, "stereo_helical", None) if atom_spec is None else None,
+        stereo_si_re=getattr(source_atom, "stereo_si_re", None) if atom_spec is None else None,
+        explicit_h=explicit_h,
+        group_h_cap=group_h_cap,
+        mapping=getattr(source_atom, "mapping", None) if atom_spec is None else None,
+        is_query=bool(getattr(source_atom, "is_query", False)) if atom_spec is None else False,
+        is_explicit=(
+            bool(getattr(source_atom, "is_explicit", False))
+            if atom_spec is None
+            else element != "C"
+        ),
+        no_implicit=no_implicit,
+        label_scale=getattr(source_atom, "label_scale", None) if atom_spec is None else None,
+        is_coordination_center=(
+            bool(getattr(source_atom, "is_coordination_center", False))
+            if atom_spec is None
+            else False
+        ),
+        sphere_radius=getattr(source_atom, "sphere_radius", None) if atom_spec is None else None,
+        sphere_color=getattr(source_atom, "sphere_color", None) if atom_spec is None else None,
+        sphere_filled=bool(getattr(source_atom, "sphere_filled", True)),
+        sphere_transparent=bool(getattr(source_atom, "sphere_transparent", False)),
+        opacity=getattr(source_atom, "opacity", None) if atom_spec is None else None,
+    )
+    return int(new_atom.id)
+
+
+def _copy_bond_for_export(target: MolGraph, source_bond, a1_id: int, a2_id: int) -> None:
+    """Copia un enlace original al grafo de exportación."""
+    target.add_bond(
+        a1_id,
+        a2_id,
+        order=int(getattr(source_bond, "order", 1) or 1),
+        bond_id=int(getattr(source_bond, "id")),
+        style=getattr(source_bond, "style", BondStyle.PLAIN),
+        stereo=getattr(source_bond, "stereo", BondStereo.NONE),
+        stereo_ez=getattr(source_bond, "stereo_ez", None),
+        stereo_axial=getattr(source_bond, "stereo_axial", None),
+        stereo_endo_exo=getattr(source_bond, "stereo_endo_exo", None),
+        stereo_helical=getattr(source_bond, "stereo_helical", None),
+        is_aromatic=bool(getattr(source_bond, "is_aromatic", False)),
+        display_order=getattr(source_bond, "display_order", None),
+        is_query=bool(getattr(source_bond, "is_query", False)),
+        ring_id=getattr(source_bond, "ring_id", None),
+        length_px=getattr(source_bond, "length_px", None),
+        stroke_px=getattr(source_bond, "stroke_px", None),
+        color=getattr(source_bond, "color", None),
+        donor_atom_id=getattr(source_bond, "donor_atom_id", None),
+        flex_curve_1=getattr(source_bond, "flex_curve_1", None),
+        flex_curve_2=getattr(source_bond, "flex_curve_2", None),
+        pi_offset_sign=getattr(source_bond, "pi_offset_sign", None),
+        opacity=getattr(source_bond, "opacity", None),
+    )
+
+
+def _expand_export_abbreviations(molgraph: MolGraph) -> MolGraph:
+    """Expande abreviaturas comunes a átomos reales para exportar SMILES.
+
+    SMILES no conserva aliases de dibujo como `OMe`: RDKit y ChemDraw los
+    interpretan como átomos dummy (`*`). La expansión mantiene el grafo visible
+    intacto y solo materializa grupos conocidos en una copia para exportación.
+    """
+    expansions: dict[int, _ExportAbbreviationSpec] = {}
+    for atom in molgraph.atoms.values():
+        spec = _export_abbreviation_for_label(getattr(atom, "element", ""))
+        if spec is not None:
+            expansions[int(atom.id)] = spec
+    if not expansions:
+        return molgraph
+
+    expanded = MolGraph()
+    id_map: dict[int, int] = {}
+    pending: list[tuple[int, _ExportAbbreviationSpec, list[int]]] = []
+
+    for atom in sorted(molgraph.atoms.values(), key=lambda item: item.id):
+        spec = expansions.get(int(atom.id))
+        if spec is None:
+            id_map[int(atom.id)] = _copy_atom_for_export(expanded, atom, atom_id=int(atom.id))
+            continue
+        anchor_spec = spec.atoms[int(spec.anchor_index)]
+        anchor_id = _copy_atom_for_export(
+            expanded,
+            atom,
+            atom_id=int(atom.id),
+            atom_spec=anchor_spec,
+        )
+        id_map[int(atom.id)] = anchor_id
+        local_ids: list[int] = [0 for _ in spec.atoms]
+        local_ids[int(spec.anchor_index)] = anchor_id
+        pending.append((int(atom.id), spec, local_ids))
+
+    for original_id, spec, local_ids in pending:
+        source_atom = molgraph.atoms[original_id]
+        for idx, atom_spec in enumerate(spec.atoms):
+            if idx == int(spec.anchor_index):
+                continue
+            local_ids[idx] = _copy_atom_for_export(
+                expanded,
+                source_atom,
+                atom_spec=atom_spec,
+            )
+
+    for bond in _unique_bonds_for_export(molgraph):
+        a1_id = id_map.get(int(bond.a1_id))
+        a2_id = id_map.get(int(bond.a2_id))
+        if a1_id is None or a2_id is None or a1_id == a2_id:
+            continue
+        _copy_bond_for_export(expanded, bond, a1_id, a2_id)
+
+    for _original_id, spec, local_ids in pending:
+        for bond_spec in spec.bonds:
+            a1_id = local_ids[int(bond_spec.a1)]
+            a2_id = local_ids[int(bond_spec.a2)]
+            if a1_id == a2_id:
+                continue
+            expanded.add_bond(
+                a1_id,
+                a2_id,
+                order=int(bond_spec.order),
+                is_aromatic=bool(bond_spec.is_aromatic),
+            )
+
+    return expanded
 
 
 @dataclass
@@ -254,6 +716,12 @@ def molgraph_to_rdkit(molgraph: MolGraph):
     return mol
 
 
+def _prepare_molgraph_for_smiles_export(molgraph: MolGraph) -> MolGraph:
+    """Aplica normalizaciones seguras sobre una copia conceptual para SMILES."""
+    merged = _merge_near_duplicate_atoms_for_export(molgraph)
+    return _expand_export_abbreviations(merged)
+
+
 def molgraph_to_smiles(molgraph: MolGraph) -> str:
     """Genera SMILES desde un `MolGraph`.
 
@@ -267,20 +735,21 @@ def molgraph_to_smiles(molgraph: MolGraph) -> str:
     Returns:
         SMILES canónico o aproximado en el camino de respaldo.
     """
-    if _graph_requires_rdkit_fallback(molgraph):
-        return _molgraph_to_smiles_fallback(molgraph)
+    export_graph = _prepare_molgraph_for_smiles_export(molgraph)
+    if _graph_requires_rdkit_fallback(export_graph):
+        return _molgraph_to_smiles_fallback(export_graph)
     if _rdkit_available():
         try:
             from chemuson.chemio.rdkit_safe import molgraph_to_smiles_isolated
 
-            smiles, error = molgraph_to_smiles_isolated(molgraph)
+            smiles, error = molgraph_to_smiles_isolated(export_graph)
             if not error and smiles:
                 return smiles
         except Exception:
             # RDKit can reject some hypervalent depictions (e.g., interhalogens, noble gases).
             # Fall back to the internal writer so the editor can still export something useful.
-            return _molgraph_to_smiles_fallback(molgraph)
-    return _molgraph_to_smiles_fallback(molgraph)
+            return _molgraph_to_smiles_fallback(export_graph)
+    return _molgraph_to_smiles_fallback(export_graph)
 
 
 def molgraph_to_smiles_isolated_or_error(
@@ -294,7 +763,8 @@ def molgraph_to_smiles_isolated_or_error(
     """
     from chemuson.chemio.rdkit_safe import molgraph_to_smiles_isolated
 
-    smiles, error = molgraph_to_smiles_isolated(molgraph, timeout_s=timeout_s)
+    export_graph = _prepare_molgraph_for_smiles_export(molgraph)
+    smiles, error = molgraph_to_smiles_isolated(export_graph, timeout_s=timeout_s)
     if error or not smiles:
         raise RuntimeError(error or "empty_smiles")
     return smiles
