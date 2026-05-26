@@ -3447,7 +3447,11 @@ class CanvasStructureMixin:
             self._suspend_numbering_refresh = False
         self.recompute_numbering()
 
-    def show_valence_errors(self, errors: Iterable[int]) -> None:
+    def show_valence_errors(
+        self,
+        errors: Iterable[int],
+        issues: Optional[dict[int, object]] = None,
+    ) -> None:
         """Método auxiliar para show valence errors.
 
         Args:
@@ -3462,11 +3466,22 @@ class CanvasStructureMixin:
         error_ids = set(errors)
         for atom_id, item in self.atom_items.items():
             item.set_valence_error(atom_id in error_ids)
+            issue = (issues or {}).get(atom_id)
+            if issue is None:
+                item.set_valence_error_message("")
+                continue
+            message = getattr(issue, "message", "")
+            suggestion = getattr(issue, "suggestion", "")
+            tip = message
+            if suggestion:
+                tip = f"{message}\nSugerencia: {suggestion}"
+            item.set_valence_error_message(tip)
 
     def validate_structure(self) -> list[int]:
         """Valida estructura y aplica resaltado de valencias inválidas."""
-        errors = list(self.model.validate())
-        self.show_valence_errors(errors)
+        issues = self.model.validate_detailed()
+        errors = list(issues.keys())
+        self.show_valence_errors(errors, issues=issues)
         return errors
 
     def _kekulize_aromatic_bonds(self, seed_atoms: Optional[Iterable[int]] = None) -> None:

@@ -320,6 +320,20 @@ class Atom:
         self.charge = int(value)
 
 
+@dataclass(frozen=True)
+class ValidationIssue:
+    """Detalle de validación química para un átomo específico."""
+    atom_id: int
+    element: str
+    code: str
+    message: str
+    suggestion: Optional[str] = None
+    allowed_valences: tuple[int, ...] = field(default_factory=tuple)
+    observed_valence: float = 0.0
+    assigned_h: int = 0
+    implicit_h: int = 0
+
+
 @dataclass
 class Bond:
     """Representa un enlace químico entre dos átomos."""
@@ -1189,6 +1203,15 @@ class MolGraph:
             Actualiza `Atom.implicit_h` y `Atom.has_valence_error`.
         """
         errors: List[int] = []
+        self.validate_detailed()
+        for atom_id, atom in self.atoms.items():
+            if atom.has_valence_error:
+                errors.append(atom_id)
+        return errors
+
+    def validate_detailed(self) -> Dict[int, ValidationIssue]:
+        """Valida valencias y devuelve detalles explicativos por átomo con error."""
+        issues: Dict[int, ValidationIssue] = {}
         for atom_id, atom in self.atoms.items():
             allowed = self._allowed_valences_for_atom(atom)
             if not allowed:
@@ -1210,5 +1233,25 @@ class MolGraph:
             atom.implicit_h = int(max(0, implicit_h))
             atom.has_valence_error = not is_valid
             if atom.has_valence_error:
-                errors.append(atom_id)
-        return errors
+                allowed_display = tuple(sorted(v for v in allowed if v >= 0))
+                allowed_text = ", ".join(str(v) for v in allowed_display) or "N/D"
+                message = (
+                    f"{atom.element} con valencia observada {total_valence:.2f}; "
+                    f"valencias permitidas: {allowed_text}."
+                )
+                suggestion = (
+                    "Revise orden de enlaces, carga formal o protonación para "
+                    "ajustar la valencia."
+                )
+                issues[atom_id] = ValidationIssue(
+                    atom_id=atom_id,
+                    element=atom.element,
+                    code="VALENCE_MISMATCH",
+                    message=message,
+                    suggestion=suggestion,
+                    allowed_valences=allowed_display,
+                    observed_valence=float(total_valence),
+                    assigned_h=int(assigned_h),
+                    implicit_h=int(max(0, implicit_h)),
+                )
+        return issues

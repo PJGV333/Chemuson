@@ -679,6 +679,13 @@ class AtomItem(QGraphicsEllipseItem):
         self._valence_error = has_error
         self._apply_label_style()
 
+    def set_valence_error_message(self, message: str) -> None:
+        """Actualiza tooltip contextual para errores de valencia."""
+        tip = (message or "").strip()
+        self.setToolTip(tip)
+        self.label.setToolTip(tip)
+        self.charge_label.setToolTip(tip)
+
     def set_charge(self, charge: int) -> None:
         """Actualiza carga.
 
