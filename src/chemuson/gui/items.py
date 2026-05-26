@@ -62,7 +62,21 @@ ELEMENT_COLORS = {
 # Colores específicos para etiquetas (H en negro).
 LABEL_ELEMENT_COLORS = {**ELEMENT_COLORS, "H": "#000000"}
 # Etiquetas abreviadas que se muestran como texto directo.
-ABBREVIATION_LABELS = {"Me", "Et", "Pr", "iPr", "tBu", "Bu", "Ph", "R", "TBS", "Si"}
+ABBREVIATION_LABELS = {
+    "Me",
+    "Et",
+    "Pr",
+    "iPr",
+    "tBu",
+    "Bu",
+    "Ph",
+    "Ac",
+    "Boc",
+    "Ts",
+    "R",
+    "TBS",
+    "Si",
+}
 SUPERSCRIPT_DIGITS = str.maketrans({
     "0": "⁰",
     "1": "¹",

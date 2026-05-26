@@ -21,6 +21,9 @@ FUNCTIONAL_GROUP_LABELS = [
     "TBS",
     "Si",
     "Ph",
+    "Ac",
+    "Boc",
+    "Ts",
     "R",
 ]
 

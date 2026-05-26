@@ -330,6 +330,8 @@ class MainWindowUiBuilder:
         window.action_bond_thickness_reset.triggered.connect(window._on_bond_thickness_reset)
 
     def _create_analysis_actions(self, window) -> None:
+        window.action_name_to_structure = QAction("Nombre a estructura...", window)
+        window.action_name_to_structure.triggered.connect(window._on_name_to_structure)
         window.action_analysis_name = QAction("Nombre (SMILES)", window)
         window.action_analysis_name.triggered.connect(lambda: window.canvas.run_analysis("name"))
         window.action_analysis_formula = QAction("Fórmula química", window)
@@ -492,6 +494,7 @@ class MainWindowUiBuilder:
     def _build_structure_menu(self, window, structure_menu: QMenu) -> None:
         structure_menu.addAction(window.action_clean_2d)
         structure_menu.addAction(window.action_clean_2d_full)
+        structure_menu.addAction(window.action_clean_2d_publication)
         structure_menu.addSeparator()
         structure_menu.addAction(window.action_validate_structure)
         structure_menu.addAction(window.action_validation_next)
@@ -505,6 +508,7 @@ class MainWindowUiBuilder:
         structure_menu.addAction(window.action_template_import_library)
         structure_menu.addAction(window.action_template_export_library)
         structure_menu.addSeparator()
+        structure_menu.addAction(window.action_name_to_structure)
         structure_menu.addAction(window.action_import_smiles)
         structure_menu.addAction(window.action_export_smiles)
         structure_menu.addSeparator()

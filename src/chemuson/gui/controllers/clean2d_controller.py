@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from chemuson.clean2d import Clean2DParameters, optimize_clean2d_positions
+
 
 class Clean2DController:
     """Pipeline de clean-2D desacoplado de ChemusonWindow."""
@@ -35,7 +37,55 @@ class Clean2DController:
                     stack.append((neigh, node))
         return True
 
-    def run_clean_2d(self, window: Any, step_ratio: float, fallback_iterations: int, status_suffix: str) -> None:
+    def _polish_with_v2(
+        self,
+        window: Any,
+        atom_ids: set[int],
+        *,
+        mode: str,
+        status_suffix: str,
+    ) -> bool:
+        """Aplica pulido clean2d_v2 como un único comando undoable."""
+        canvas = window.canvas
+        if not atom_ids:
+            return False
+        before = {
+            aid: (canvas.model.get_atom(aid).x, canvas.model.get_atom(aid).y)
+            for aid in atom_ids
+            if aid in canvas.model.atoms
+        }
+        if not before:
+            return False
+        target_len = float(getattr(canvas.state, "bond_length", 42.0) or 42.0)
+        params = (
+            Clean2DParameters.publication(target_len)
+            if mode == "publication"
+            else Clean2DParameters.quick(target_len)
+        )
+        after = optimize_clean2d_positions(canvas.model, atom_ids, params)
+        after = {
+            aid: pos
+            for aid, pos in after.items()
+            if aid in before and _position_delta(before[aid], pos) > 0.01
+        }
+        if not after:
+            return False
+        from chemuson.gui.commands import MoveAtomsCommand
+
+        canvas.undo_stack.push(MoveAtomsCommand(canvas.model, canvas, before, after))
+        canvas._update_selection_overlay()
+        msg = "Selección 2D limpiada" if len(atom_ids) < len(canvas.model.atoms) else "Estructura 2D limpiada"
+        window.statusBar().showMessage(f"{msg} {status_suffix} (clean2d_v2)".strip())
+        return True
+
+    def run_clean_2d(
+        self,
+        window: Any,
+        step_ratio: float,
+        fallback_iterations: int,
+        status_suffix: str,
+        mode: str = "quick",
+    ) -> None:
         canvas = window.canvas
         atom_ids, bonds = canvas._selected_structure_ids()
         target_ids = atom_ids if atom_ids else set(canvas.model.atoms.keys())
@@ -45,6 +95,9 @@ class Clean2DController:
 
         if self._is_acyclic_structure(target_ids, scale_bonds):
             canvas.clean_2d_fallback(target_ids, iterations=max(40, fallback_iterations))
+            if mode in {"quick", "publication"}:
+                self._polish_with_v2(window, target_ids, mode=mode, status_suffix=status_suffix)
+                return
             msg = "Selección 2D limpiada" if atom_ids else "Estructura 2D limpiada"
             window.statusBar().showMessage(f"{msg} {status_suffix} (acíclico)")
             return
@@ -133,6 +186,9 @@ class Clean2DController:
             cmd = MoveAtomsCommand(canvas.model, canvas, before, after)
             canvas.undo_stack.push(cmd)
             canvas._update_selection_overlay()
+            if mode in {"quick", "publication"}:
+                self._polish_with_v2(window, target_ids, mode=mode, status_suffix=status_suffix)
+                return
             msg = "Selección 2D limpiada" if atom_ids else "Estructura 2D limpiada"
             window.statusBar().showMessage(f"{msg} {status_suffix}".strip())
             return
@@ -140,7 +196,19 @@ class Clean2DController:
             message = str(exc)
             if "No module named" in message and "rdkit" in message:
                 canvas.clean_2d_fallback(target_ids, iterations=fallback_iterations)
+                if mode in {"quick", "publication"}:
+                    self._polish_with_v2(window, target_ids, mode=mode, status_suffix=status_suffix)
+                    return
                 msg = "Selección 2D limpiada" if atom_ids else "Estructura 2D limpiada"
                 window.statusBar().showMessage(f"{msg} {status_suffix} (básico)")
                 return
             window.statusBar().showMessage(f"Error: {exc}")
+
+
+def _position_delta(
+    before: tuple[float, float],
+    after: tuple[float, float],
+) -> float:
+    dx = float(after[0]) - float(before[0])
+    dy = float(after[1]) - float(before[1])
+    return (dx * dx + dy * dy) ** 0.5

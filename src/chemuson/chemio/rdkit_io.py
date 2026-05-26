@@ -217,6 +217,55 @@ _EXPORT_ABBREVIATIONS: dict[str, _ExportAbbreviationSpec] = {
             _ExportBondSpec(0, 3),
         ),
     ),
+    "Ac": _ExportAbbreviationSpec(
+        (_atom_spec("C"), _atom_spec("O"), _atom_spec("C")),
+        (_ExportBondSpec(0, 1, order=2), _ExportBondSpec(0, 2)),
+    ),
+    "Boc": _ExportAbbreviationSpec(
+        (
+            _atom_spec("C"),
+            _atom_spec("O"),
+            _atom_spec("O"),
+            _atom_spec("C"),
+            _atom_spec("C"),
+            _atom_spec("C"),
+            _atom_spec("C"),
+        ),
+        (
+            _ExportBondSpec(0, 1, order=2),
+            _ExportBondSpec(0, 2),
+            _ExportBondSpec(2, 3),
+            _ExportBondSpec(3, 4),
+            _ExportBondSpec(3, 5),
+            _ExportBondSpec(3, 6),
+        ),
+    ),
+    "Ts": _ExportAbbreviationSpec(
+        (
+            _atom_spec("S"),
+            _atom_spec("O"),
+            _atom_spec("O"),
+            _atom_spec("C"),
+            _atom_spec("C"),
+            _atom_spec("C"),
+            _atom_spec("C"),
+            _atom_spec("C"),
+            _atom_spec("C"),
+            _atom_spec("C"),
+        ),
+        (
+            _ExportBondSpec(0, 1, order=2),
+            _ExportBondSpec(0, 2, order=2),
+            _ExportBondSpec(0, 3),
+            _ExportBondSpec(3, 4, is_aromatic=True),
+            _ExportBondSpec(4, 5, is_aromatic=True),
+            _ExportBondSpec(5, 6, is_aromatic=True),
+            _ExportBondSpec(6, 7, is_aromatic=True),
+            _ExportBondSpec(7, 8, is_aromatic=True),
+            _ExportBondSpec(8, 3, is_aromatic=True),
+            _ExportBondSpec(6, 9),
+        ),
+    ),
 }
 
 
@@ -576,6 +625,11 @@ def _expand_export_abbreviations(molgraph: MolGraph) -> MolGraph:
             )
 
     return expanded
+
+
+def expand_abbreviations_for_calculation(molgraph: MolGraph) -> MolGraph:
+    """Expande superátomos conocidos en una copia para cálculo/exportación."""
+    return _expand_export_abbreviations(molgraph)
 
 
 @dataclass

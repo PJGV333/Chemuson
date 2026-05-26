@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
     QDialog,
     QMainWindow,
     QFileDialog,
+    QInputDialog,
     QMessageBox,
     QTabWidget,
     QLabel,
@@ -529,7 +530,10 @@ class ChemusonWindow(QMainWindow):
             return []
         graph = canvas.model
         try:
-            counts = canvas._analysis_atom_counts(graph)
+            from chemuson.chemio.rdkit_io import expand_abbreviations_for_calculation
+
+            calculation_graph = expand_abbreviations_for_calculation(graph)
+            counts = canvas._analysis_atom_counts(calculation_graph)
             formula = canvas._analysis_formula(counts)
             exact_mass = canvas._analysis_exact_mass(counts)
             molecular_weight = canvas._analysis_molecular_weight(counts)
@@ -1657,7 +1661,12 @@ class ChemusonWindow(QMainWindow):
 
     def _on_clean_2d(self) -> None:
         """Maneja clean 2d."""
-        self._run_clean_2d(step_ratio=0.35, fallback_iterations=30, status_suffix="(paso)")
+        self._run_clean_2d(
+            step_ratio=0.35,
+            fallback_iterations=30,
+            status_suffix="(rápida)",
+            mode="quick",
+        )
 
     def _on_clean_2d_full(self) -> None:
         """Maneja clean 2d full.
@@ -1668,7 +1677,21 @@ class ChemusonWindow(QMainWindow):
         Side Effects:
             Puede modificar el estado interno o la interfaz.
         """
-        self._run_clean_2d(step_ratio=1.0, fallback_iterations=200, status_suffix="(1 paso)")
+        self._run_clean_2d(
+            step_ratio=1.0,
+            fallback_iterations=200,
+            status_suffix="(1 paso)",
+            mode="quick",
+        )
+
+    def _on_clean_2d_publication(self) -> None:
+        """Ejecuta limpieza 2D con pulido más agresivo para publicación."""
+        self._run_clean_2d(
+            step_ratio=1.0,
+            fallback_iterations=260,
+            status_suffix="(publicación)",
+            mode="publication",
+        )
 
     def _on_validate_structure(self) -> None:
         """Ejecuta validación química detallada sobre el documento activo."""
@@ -1685,9 +1708,21 @@ class ChemusonWindow(QMainWindow):
         """Navega al siguiente/anterior diagnóstico de valencia."""
         self.canvas.navigate_validation_issue(step)
 
-    def _run_clean_2d(self, step_ratio: float, fallback_iterations: int, status_suffix: str) -> None:
+    def _run_clean_2d(
+        self,
+        step_ratio: float,
+        fallback_iterations: int,
+        status_suffix: str,
+        mode: str = "quick",
+    ) -> None:
         """Clean 2D coordinates using RDKit or fallback."""
-        self._clean2d_controller.run_clean_2d(self, step_ratio, fallback_iterations, status_suffix)
+        self._clean2d_controller.run_clean_2d(
+            self,
+            step_ratio,
+            fallback_iterations,
+            status_suffix,
+            mode=mode,
+        )
 
     def _insert_template(self, label: str, graph) -> None:
         """Método auxiliar para  insert template.
@@ -1800,6 +1835,42 @@ class ChemusonWindow(QMainWindow):
     def _on_import_smiles(self) -> None:
         """Import a molecule from a SMILES string."""
         self._template_controller.on_import_smiles(self._template_controller_context())
+
+    def _on_name_to_structure(self) -> None:
+        """Convierte nombre común/sistemático a estructura e inserta el resultado."""
+        name, ok = QInputDialog.getText(
+            self,
+            "Nombre a estructura",
+            "Nombre común o sistemático:",
+        )
+        if not ok or not name.strip():
+            return
+        query = name.strip()
+        try:
+            from chemuson.name2structure import resolve_name_to_structure
+
+            result = resolve_name_to_structure(query, allow_network=True, timeout_s=8.0)
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"No se pudo resolver el nombre:\n{exc}",
+            )
+            return
+        if not result.ok or result.graph is None:
+            QMessageBox.warning(
+                self,
+                "Nombre a estructura",
+                f"No se encontró estructura para '{query}'.\nFuente: {result.source}\nDetalle: {result.message}",
+            )
+            return
+        self.canvas._insert_molgraph(result.graph)
+        provenance = "cache" if result.from_cache else result.source
+        label = result.resolved_name or result.query
+        self.statusBar().showMessage(
+            f"Estructura insertada desde {provenance}: {label} (confianza {result.confidence:.2f})",
+            9000,
+        )
 
     def _on_export_smiles(self) -> None:
         """Export the current molecule as SMILES."""

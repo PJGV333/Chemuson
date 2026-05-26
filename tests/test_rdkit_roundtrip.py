@@ -9,6 +9,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "s
 from chemuson.core.model import MolGraph
 from chemuson.chemio import rdkit_io, rdkit_safe
 from chemuson.chemio.rdkit_io import (
+    expand_abbreviations_for_calculation,
     kekulize_display_orders,
     molfile_to_molgraph,
     molgraph_to_molfile,
@@ -126,6 +127,27 @@ class RdkitRoundtripTest(unittest.TestCase):
         self.assertEqual(captured["elements"], ["C", "C", "O"])
         self.assertEqual(captured["bond_count"], 2)
         self.assertEqual(captured["timeout_s"], 1.5)
+
+    def test_superatom_expansion_supports_publication_abbreviations(self):
+        graph = MolGraph()
+        root = graph.add_atom("N", 0.0, 0.0)
+        ac = graph.add_atom("Ac", 1.5, 0.0, is_explicit=True)
+        boc = graph.add_atom("Boc", 3.0, 0.0, is_explicit=True)
+        ts = graph.add_atom("Ts", 4.5, 0.0, is_explicit=True)
+        graph.add_bond(root.id, ac.id, order=1)
+        graph.add_bond(root.id, boc.id, order=1)
+        graph.add_bond(root.id, ts.id, order=1)
+
+        expanded = expand_abbreviations_for_calculation(graph)
+        elements = [atom.element for atom in expanded.atoms.values()]
+
+        self.assertNotIn("Ac", elements)
+        self.assertNotIn("Boc", elements)
+        self.assertNotIn("Ts", elements)
+        self.assertEqual(elements.count("S"), 1)
+        self.assertGreaterEqual(elements.count("O"), 5)
+        self.assertGreaterEqual(elements.count("C"), 12)
+        self.assertEqual(graph.get_atom(ac.id).element, "Ac")
 
     def test_smiles_export_merges_nearly_duplicate_ring_closure_atoms(self):
         graph = MolGraph()
