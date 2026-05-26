@@ -76,6 +76,25 @@ def molgraph_to_smiles_isolated(
     return smiles, None
 
 
+def molecular_descriptors_isolated(
+    graph,
+    timeout_s: float = 5.0,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Calcula descriptores RDKit en un worker aislado."""
+    request = _graph_request_payload(
+        graph=graph,
+        chain_atom_ids=[],
+        mode="graph_descriptors",
+    )
+    response = _run_worker(request, timeout_s=timeout_s)
+    if not response.get("ok"):
+        return None, str(response.get("error", "worker_error"))
+    descriptors = response.get("descriptors", {})
+    if not isinstance(descriptors, dict):
+        return None, "invalid_descriptors"
+    return descriptors, None
+
+
 def is_rdkit_worker_available(timeout_s: float = 5.0) -> bool:
     """Smoke-check liviano para saber si el worker RDKit está utilizable."""
     result = run_rdkit_stereo_extract("CC", fmt="smiles", timeout_s=timeout_s)

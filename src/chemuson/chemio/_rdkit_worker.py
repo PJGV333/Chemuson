@@ -332,6 +332,38 @@ def _handle_graph_to_smiles_mode(Chem, request: dict[str, Any]) -> dict[str, Any
     return {"ok": True, "smiles": smiles}
 
 
+def _handle_graph_descriptors_mode(Chem, request: dict[str, Any]) -> dict[str, Any]:
+    """Calcula descriptores fisicoquímicos básicos desde payload de grafo."""
+    mol, _id_map, error = _build_mol_from_graph_payload(Chem, request)
+    if mol is None:
+        return {"ok": False, "error": error or "invalid_graph"}
+    try:
+        Chem.SanitizeMol(mol)
+        from rdkit.Chem import Crippen, Descriptors, Lipinski, rdMolDescriptors
+
+        hbd = int(Lipinski.NumHDonors(mol))
+        hba = int(Lipinski.NumHAcceptors(mol))
+        molecular_weight = float(Descriptors.MolWt(mol))
+        descriptors = {
+            "logp": float(Crippen.MolLogP(mol)),
+            "tpsa": float(rdMolDescriptors.CalcTPSA(mol)),
+            "hbd": hbd,
+            "hba": hba,
+            "rotatable_bonds": int(Lipinski.NumRotatableBonds(mol)),
+            "heavy_atoms": int(mol.GetNumHeavyAtoms()),
+            "molecular_weight": molecular_weight,
+            "lipinski_violations": int(
+                (molecular_weight > 500.0)
+                + (float(Crippen.MolLogP(mol)) > 5.0)
+                + (hbd > 5)
+                + (hba > 10)
+            ),
+        }
+    except Exception as exc:
+        return {"ok": False, "error": "descriptors_failed", "detail": str(exc)}
+    return {"ok": True, "descriptors": descriptors}
+
+
 def main() -> int:
     try:
         request = json.loads(sys.stdin.read() or "{}")
@@ -356,6 +388,10 @@ def main() -> int:
         return 0
     if mode == "graph_to_smiles":
         result = _handle_graph_to_smiles_mode(Chem, request)
+        sys.stdout.write(json.dumps(result))
+        return 0
+    if mode == "graph_descriptors":
+        result = _handle_graph_descriptors_mode(Chem, request)
         sys.stdout.write(json.dumps(result))
         return 0
 

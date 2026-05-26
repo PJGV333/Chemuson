@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QTextEdit,
 )
-from PyQt6.QtCore import Qt, QSettings, QEvent, QTimer, QPointF
+from PyQt6.QtCore import QObject, Qt, QSettings, QEvent, QThread, QTimer, QPointF, pyqtSignal, pyqtSlot
 from PyQt6.QtGui import QAction, QColor, QTextCursor
 from typing import Optional
 import math
@@ -90,6 +90,30 @@ __all__ = [
     "format_no_update_message",
     "format_update_disabled_message",
 ]
+
+
+class _DescriptorWorker(QObject):
+    """Worker aislado para descriptores RDKit del dock químico."""
+
+    finished = pyqtSignal(int, dict, str)
+
+    def __init__(self, job_id: int, graph) -> None:
+        super().__init__()
+        self._job_id = int(job_id)
+        self._graph = graph
+
+    @pyqtSlot()
+    def run(self) -> None:
+        try:
+            from chemuson.chemio.rdkit_safe import molecular_descriptors_isolated
+
+            descriptors, error = molecular_descriptors_isolated(self._graph, timeout_s=5.0)
+            if error:
+                self.finished.emit(self._job_id, {}, str(error))
+                return
+            self.finished.emit(self._job_id, dict(descriptors or {}), "")
+        except Exception as exc:
+            self.finished.emit(self._job_id, {}, str(exc))
 
 
 class ChemusonWindow(QMainWindow):
@@ -181,6 +205,9 @@ class ChemusonWindow(QMainWindow):
         self._properties_update_timer.setSingleShot(True)
         self._properties_update_timer.setInterval(120)
         self._properties_update_timer.timeout.connect(self._refresh_chemical_properties_dock)
+        self._descriptor_jobs: dict[int, tuple[QThread, _DescriptorWorker, list[tuple[str, str]]]] = {}
+        self._next_descriptor_job_id = 1
+        self._latest_descriptor_job_id = 0
 
         self.appearance_dock = AppearanceDock(self.canvas.drawing_style, self)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.appearance_dock)
@@ -521,13 +548,18 @@ class ChemusonWindow(QMainWindow):
         dock = getattr(self, "chemical_properties_dock", None)
         if dock is None:
             return
-        dock.update_properties(self._chemical_properties_rows())
+        rows, descriptor_graph = self._chemical_properties_rows()
+        dock.update_properties(rows)
+        if descriptor_graph is not None:
+            pending_rows = rows + [("Descriptores RDKit", "Calculando...")]
+            dock.update_properties(pending_rows)
+            self._start_descriptor_job(descriptor_graph, rows)
 
-    def _chemical_properties_rows(self) -> list[tuple[str, str]]:
+    def _chemical_properties_rows(self) -> tuple[list[tuple[str, str]], object | None]:
         """Calcula propiedades químicas rápidas sin bloquear con RDKit."""
         canvas = getattr(self, "canvas", None)
         if canvas is None or not getattr(canvas.model, "atoms", None):
-            return []
+            return [], None
         graph = canvas.model
         try:
             from chemuson.chemio.rdkit_io import expand_abbreviations_for_calculation
@@ -539,7 +571,7 @@ class ChemusonWindow(QMainWindow):
             molecular_weight = canvas._analysis_molecular_weight(counts)
             issues = graph.validate_detailed()
         except Exception:
-            return [("Estado", "N/D")]
+            return [("Estado", "N/D")], None
 
         rows = [
             ("Fórmula", formula or "N/D"),
@@ -559,7 +591,55 @@ class ChemusonWindow(QMainWindow):
         elemental_line = canvas._analysis_elemental_line(counts, molecular_weight)
         if elemental_line:
             rows.append(("Análisis elemental", elemental_line.replace("Elemental Analysis: ", "")))
-        return rows
+        return rows, calculation_graph
+
+    def _start_descriptor_job(self, graph, base_rows: list[tuple[str, str]]) -> None:
+        """Inicia cálculo asíncrono de descriptores RDKit para el dock."""
+        job_id = int(getattr(self, "_next_descriptor_job_id", 1))
+        self._next_descriptor_job_id = job_id + 1
+        self._latest_descriptor_job_id = job_id
+        thread = QThread(self)
+        worker = _DescriptorWorker(job_id, graph)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(self._on_descriptor_job_finished)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        self._descriptor_jobs[job_id] = (thread, worker, list(base_rows))
+        thread.start()
+
+    def _on_descriptor_job_finished(self, job_id: int, descriptors: dict, error: str) -> None:
+        """Actualiza el dock cuando termina el worker de descriptores."""
+        job = getattr(self, "_descriptor_jobs", {}).pop(int(job_id), None)
+        if job is None or int(job_id) != int(getattr(self, "_latest_descriptor_job_id", 0)):
+            return
+        _thread, _worker, base_rows = job
+        dock = getattr(self, "chemical_properties_dock", None)
+        if dock is None:
+            return
+        rows = list(base_rows)
+        if error:
+            rows.append(("Descriptores RDKit", f"N/D ({error})"))
+            dock.update_properties(rows)
+            return
+        rows.extend(self._descriptor_rows(descriptors))
+        dock.update_properties(rows)
+
+    @staticmethod
+    def _descriptor_rows(descriptors: dict) -> list[tuple[str, str]]:
+        """Formatea descriptores RDKit para el dock."""
+        if not descriptors:
+            return [("Descriptores RDKit", "N/D")]
+        return [
+            ("logP", f"{float(descriptors.get('logp', 0.0)):.2f}"),
+            ("TPSA", f"{float(descriptors.get('tpsa', 0.0)):.2f}"),
+            ("HBD", str(int(descriptors.get("hbd", 0) or 0))),
+            ("HBA", str(int(descriptors.get("hba", 0) or 0))),
+            ("Enlaces rotables", str(int(descriptors.get("rotatable_bonds", 0) or 0))),
+            ("Átomos pesados", str(int(descriptors.get("heavy_atoms", 0) or 0))),
+            ("Alertas Lipinski", str(int(descriptors.get("lipinski_violations", 0) or 0))),
+        ]
 
     def _on_undo(self) -> None:
         """Deshace en la pestaña activa."""
