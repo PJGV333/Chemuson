@@ -12,6 +12,18 @@ def create_structure_actions(window) -> None:
     window.action_clean_2d_full.setShortcut(QKeySequence("Ctrl+K"))
     window.action_clean_2d_full.triggered.connect(window._on_clean_2d_full)
 
+    window.action_validate_structure = QAction("Validar valencias", window)
+    window.action_validate_structure.setShortcut(QKeySequence("Ctrl+Shift+V"))
+    window.action_validate_structure.triggered.connect(window._on_validate_structure)
+
+    window.action_validation_next = QAction("Siguiente error de valencia", window)
+    window.action_validation_next.setShortcut(QKeySequence("F8"))
+    window.action_validation_next.triggered.connect(lambda: window._on_navigate_validation_issue(1))
+
+    window.action_validation_previous = QAction("Error de valencia anterior", window)
+    window.action_validation_previous.setShortcut(QKeySequence("Shift+F8"))
+    window.action_validation_previous.triggered.connect(lambda: window._on_navigate_validation_issue(-1))
+
     window.action_rotate_left = QAction("Girar 90° a la izquierda", window)
     window.action_rotate_left.triggered.connect(lambda: window._on_rotate_selection(-90.0))
 

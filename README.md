@@ -79,6 +79,7 @@ Limitaciones relevantes:
 - No cubre todo Blue Book; se prioriza estabilidad y degradación segura a `N/D` cuando procede.
 - Para estereoquímica vía RDKit se recomienda modo aislado en subproceso (ver [docs/rdkit.md](docs/rdkit.md)).
 - Descripción detallada del motor: [docs/chemname.md](docs/chemname.md).
+- Hoja de ruta industrial y plan de evolución: [docs/roadmap-industrial.md](docs/roadmap-industrial.md).
 
 ## Stack técnico
 

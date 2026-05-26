@@ -327,11 +327,45 @@ class ValidationIssue:
     element: str
     code: str
     message: str
+    severity: str = "error"
+    target_type: str = "atom"
+    hint: Optional[str] = None
     suggestion: Optional[str] = None
     allowed_valences: tuple[int, ...] = field(default_factory=tuple)
     observed_valence: float = 0.0
+    bond_order_sum: float = 0.0
     assigned_h: int = 0
     implicit_h: int = 0
+
+    def __post_init__(self) -> None:
+        resolved_hint = self.hint if self.hint is not None else self.suggestion
+        resolved_suggestion = self.suggestion if self.suggestion is not None else resolved_hint
+        object.__setattr__(self, "hint", resolved_hint)
+        object.__setattr__(self, "suggestion", resolved_suggestion)
+
+    def tooltip_text(self) -> str:
+        """Texto compacto para tooltips y paneles de inspección."""
+        parts = [self.message]
+        if self.hint:
+            parts.append(f"Sugerencia: {self.hint}")
+        return "\n".join(part for part in parts if part)
+
+    def as_dict(self) -> dict[str, object]:
+        """Representación estable para UI, exportes y pruebas."""
+        return {
+            "target_type": self.target_type,
+            "atom_id": self.atom_id,
+            "element": self.element,
+            "code": self.code,
+            "severity": self.severity,
+            "message": self.message,
+            "hint": self.hint or "",
+            "allowed_valences": list(self.allowed_valences),
+            "observed_valence": self.observed_valence,
+            "bond_order_sum": self.bond_order_sum,
+            "assigned_h": self.assigned_h,
+            "implicit_h": self.implicit_h,
+        }
 
 
 @dataclass
@@ -1235,22 +1269,46 @@ class MolGraph:
             if atom.has_valence_error:
                 allowed_display = tuple(sorted(v for v in allowed if v >= 0))
                 allowed_text = ", ".join(str(v) for v in allowed_display) or "N/D"
+                min_allowed = min(allowed_display) if allowed_display else None
+                max_allowed = max(allowed_display) if allowed_display else None
+                preferred_allowed = allowed_display[0] if allowed_display else None
+                if (
+                    preferred_allowed is not None
+                    and total_valence > float(preferred_allowed)
+                ) or (max_allowed is not None and total_valence > float(max_allowed)):
+                    code = "VALENCE_EXCEEDED"
+                    hint = (
+                        "Reduzca el orden de enlace, quite un H explícito/asignado "
+                        "o aumente la carga formal si corresponde."
+                    )
+                elif min_allowed is not None and total_valence < float(min_allowed):
+                    code = "VALENCE_UNDERFILLED"
+                    hint = (
+                        "Revise H implícitos, H explícitos o protonación para "
+                        "alcanzar una valencia permitida."
+                    )
+                else:
+                    code = "VALENCE_MISMATCH"
+                    hint = (
+                        "Revise aromaticidad, orden de enlace, carga formal o "
+                        "protonación para ajustar la valencia."
+                    )
                 message = (
-                    f"{atom.element} con valencia observada {total_valence:.2f}; "
+                    f"{atom.element} con valencia observada {total_valence:.2f} "
+                    f"(enlaces {bond_sum:.2f} + H asignados {assigned_h} + "
+                    f"H implícitos {int(max(0, implicit_h))}); "
                     f"valencias permitidas: {allowed_text}."
-                )
-                suggestion = (
-                    "Revise orden de enlaces, carga formal o protonación para "
-                    "ajustar la valencia."
                 )
                 issues[atom_id] = ValidationIssue(
                     atom_id=atom_id,
                     element=atom.element,
-                    code="VALENCE_MISMATCH",
+                    code=code,
                     message=message,
-                    suggestion=suggestion,
+                    severity="error",
+                    hint=hint,
                     allowed_valences=allowed_display,
                     observed_valence=float(total_valence),
+                    bond_order_sum=float(bond_sum),
                     assigned_h=int(assigned_h),
                     implicit_h=int(max(0, implicit_h)),
                 )

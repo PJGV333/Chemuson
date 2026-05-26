@@ -210,6 +210,9 @@ class ChemusonCanvas(
         self._rotation_3d_drag_start_pitch_deg = 0.0
         self._rotation_3d_drag_start_yaw_deg = 0.0
         self._fragment_pivot_atom_id: Optional[int] = None
+        self._validation_issues: dict[int, object] = {}
+        self._validation_error_order: list[int] = []
+        self._validation_error_index = -1
         self._scale_dragging = False
         self._scale_anchor: Optional[QPointF] = None
         self._scale_start_handle: Optional[QPointF] = None

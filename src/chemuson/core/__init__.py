@@ -19,7 +19,15 @@ from chemuson.core.elemental_analysis import (
     molecular_weight,
     parse_formula,
 )
-from chemuson.core.model import Atom, Bond, BondStyle, BondStereo, ChemState, MolGraph
+from chemuson.core.model import (
+    Atom,
+    Bond,
+    BondStyle,
+    BondStereo,
+    ChemState,
+    MolGraph,
+    ValidationIssue,
+)
 
 __all__ = [
     "Atom",
@@ -28,6 +36,7 @@ __all__ = [
     "BondStereo",
     "ChemState",
     "MolGraph",
+    "ValidationIssue",
     "ATOMIC_WEIGHTS",
     "DEFAULT_TOLERANCE",
     "SOLVENT_LIBRARY",

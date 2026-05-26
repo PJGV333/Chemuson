@@ -486,12 +486,16 @@ class MainWindowUiBuilder:
         view_menu.addAction(window.symbols_toolbar.toggleViewAction())
         view_menu.addAction(window.templates_dock.toggleViewAction())
         view_menu.addAction(window.inspector_dock.toggleViewAction())
+        view_menu.addAction(window.chemical_properties_dock.toggleViewAction())
         view_menu.addAction(window.appearance_dock.toggleViewAction())
 
     def _build_structure_menu(self, window, structure_menu: QMenu) -> None:
         structure_menu.addAction(window.action_clean_2d)
         structure_menu.addAction(window.action_clean_2d_full)
         structure_menu.addSeparator()
+        structure_menu.addAction(window.action_validate_structure)
+        structure_menu.addAction(window.action_validation_next)
+        structure_menu.addAction(window.action_validation_previous)
         structure_menu.addSeparator()
         window.templates_menu = structure_menu.addMenu("Plantillas")
         window.action_save_template = QAction("Guardar selección como plantilla...", window)

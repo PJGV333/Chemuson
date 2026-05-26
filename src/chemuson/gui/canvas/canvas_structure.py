@@ -731,6 +731,9 @@ class CanvasStructureMixin:
         self.bond_anchor_id = None
         self.hovered_atom_id = None
         self.hovered_bond_id = None
+        self._validation_issues = {}
+        self._validation_error_order = []
+        self._validation_error_index = -1
         
         self._create_paper()
         self._create_overlays()
@@ -3470,19 +3473,76 @@ class CanvasStructureMixin:
             if issue is None:
                 item.set_valence_error_message("")
                 continue
-            message = getattr(issue, "message", "")
-            suggestion = getattr(issue, "suggestion", "")
-            tip = message
-            if suggestion:
-                tip = f"{message}\nSugerencia: {suggestion}"
-            item.set_valence_error_message(tip)
+            tooltip_text = getattr(issue, "tooltip_text", None)
+            if callable(tooltip_text):
+                item.set_valence_error_message(tooltip_text())
+            else:
+                message = getattr(issue, "message", "")
+                suggestion = getattr(issue, "suggestion", "")
+                tip = message
+                if suggestion:
+                    tip = f"{message}\nSugerencia: {suggestion}"
+                item.set_valence_error_message(tip)
 
     def validate_structure(self) -> list[int]:
         """Valida estructura y aplica resaltado de valencias inválidas."""
         issues = self.model.validate_detailed()
         errors = list(issues.keys())
+        self._validation_issues = dict(issues)
+        self._validation_error_order = sorted(errors)
+        if not self._validation_error_order:
+            self._validation_error_index = -1
+        elif self._validation_error_index < 0:
+            self._validation_error_index = 0
+        else:
+            self._validation_error_index %= len(self._validation_error_order)
         self.show_valence_errors(errors, issues=issues)
         return errors
+
+    def current_validation_issues(self) -> dict[int, object]:
+        """Devuelve el último diagnóstico detallado de validación."""
+        return dict(getattr(self, "_validation_issues", {}))
+
+    def navigate_validation_issue(self, step: int = 1) -> Optional[object]:
+        """Selecciona y centra el siguiente/anterior error de valencia."""
+        issues = self.model.validate_detailed()
+        errors = sorted(issues.keys())
+        self._validation_issues = dict(issues)
+        self._validation_error_order = errors
+        self.show_valence_errors(errors, issues=issues)
+        if not errors:
+            self._validation_error_index = -1
+            self._show_status_message("Sin errores de valencia.")
+            return None
+
+        current_id = None
+        if 0 <= self._validation_error_index < len(errors):
+            current_id = errors[self._validation_error_index]
+        if current_id not in errors:
+            self._validation_error_index = 0
+        else:
+            self._validation_error_index = (
+                errors.index(current_id) + (1 if step >= 0 else -1)
+            ) % len(errors)
+
+        atom_id = errors[self._validation_error_index]
+        item = self.atom_items.get(atom_id)
+        if item is not None:
+            try:
+                self.scene.clearSelection()
+                item.setSelected(True)
+                self.centerOn(item.scenePos())
+                self._sync_selection_from_scene()
+            except RuntimeError:
+                pass
+
+        issue = issues.get(atom_id)
+        message = getattr(issue, "message", f"Error de valencia en átomo {atom_id}")
+        self._show_status_message(
+            f"Error {self._validation_error_index + 1}/{len(errors)}: {message}",
+            timeout_ms=9000,
+        )
+        return issue
 
     def _kekulize_aromatic_bonds(self, seed_atoms: Optional[Iterable[int]] = None) -> None:
         """Método auxiliar para  kekulize aromatic bonds.

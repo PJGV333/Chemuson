@@ -139,6 +139,30 @@ class MolGraphTest(unittest.TestCase):
             graph.add_bond(n.id, h.id, order=1)
         self.assertIn(n.id, graph.validate())
 
+    def test_validate_detailed_reports_interactive_valence_issue(self):
+        """El diagnóstico detallado expone código, severidad, hint y matemática."""
+        graph = MolGraph()
+        n = graph.add_atom("N", 0.0, 0.0)
+        hs = [graph.add_atom("H", float(k), 1.0) for k in range(4)]
+        for h in hs:
+            graph.add_bond(n.id, h.id, order=1)
+
+        issues = graph.validate_detailed()
+        issue = issues[n.id]
+
+        self.assertEqual(issue.code, "VALENCE_EXCEEDED")
+        self.assertEqual(issue.severity, "error")
+        self.assertEqual(issue.target_type, "atom")
+        self.assertIn("enlaces 4.00", issue.message)
+        self.assertIn("carga formal", issue.hint)
+        self.assertEqual(issue.allowed_valences, (3, 5))
+        self.assertEqual(issue.observed_valence, 4.0)
+        self.assertEqual(issue.bond_order_sum, 4.0)
+        payload = issue.as_dict()
+        self.assertEqual(payload["atom_id"], n.id)
+        self.assertEqual(payload["code"], "VALENCE_EXCEEDED")
+        self.assertIn("Sugerencia:", issue.tooltip_text())
+
     def test_validate_allows_tetramethylammonium_with_positive_charge(self):
         """Verifica que una carga positiva permita valencia tetravalente en N."""
         graph = MolGraph()

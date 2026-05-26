@@ -28,7 +28,12 @@ from chemuson.gui.periodic_table import PeriodicTableDialog
 from chemuson.gui.toolbar import ChemusonToolbar, SymbolPaletteToolbar
 from chemuson.gui.styles import get_main_stylesheet, get_tool_palette_stylesheet
 from chemuson.gui.icons import set_icon_theme
-from chemuson.gui.docks import PlantillasDock, InspectorDock, AppearanceDock
+from chemuson.gui.docks import (
+    AppearanceDock,
+    ChemicalPropertiesDock,
+    InspectorDock,
+    PlantillasDock,
+)
 from chemuson.gui.dialogs import PreferencesDialog, QuickStartDialog, StyleDialog
 from chemuson.gui.text_toolbar import TextFormatToolbar
 from chemuson.gui.template_library import TemplateLibrary, DEFAULT_CATEGORY_USER
@@ -167,6 +172,14 @@ class ChemusonWindow(QMainWindow):
         self.inspector_dock = InspectorDock(self)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.inspector_dock)
         self.inspector_dock.hide()
+
+        self.chemical_properties_dock = ChemicalPropertiesDock(self)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.chemical_properties_dock)
+        self.chemical_properties_dock.hide()
+        self._properties_update_timer = QTimer(self)
+        self._properties_update_timer.setSingleShot(True)
+        self._properties_update_timer.setInterval(120)
+        self._properties_update_timer.timeout.connect(self._refresh_chemical_properties_dock)
 
         self.appearance_dock = AppearanceDock(self.canvas.drawing_style, self)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.appearance_dock)
@@ -460,6 +473,7 @@ class ChemusonWindow(QMainWindow):
             self.appearance_dock.set_bond_caps(cap_mode)
         self._update_total_charge_indicator()
         self._update_iupac_name_indicator()
+        self._schedule_chemical_properties_update()
         self.text_toolbar.set_opacity_percent(self.canvas.current_opacity_percent())
         if clear_tool_selection:
             self._clear_active_tool_selection()
@@ -479,6 +493,7 @@ class ChemusonWindow(QMainWindow):
         """Actualiza widgets dependientes del estado del undo activo."""
         self._update_total_charge_indicator()
         self._update_iupac_name_indicator()
+        self._schedule_chemical_properties_update()
         self._sync_fragment_pivot_actions()
         self._update_tab_title(self.canvas)
         self.text_toolbar.set_opacity_percent(self.canvas.current_opacity_percent())
@@ -492,6 +507,55 @@ class ChemusonWindow(QMainWindow):
         except Exception:
             name = "N/D"
         self._iupac_name_label.setText(f"Nombre IUPAC: {name or 'N/D'}")
+
+    def _schedule_chemical_properties_update(self) -> None:
+        """Programa recálculo ligero del dock de propiedades químicas."""
+        timer = getattr(self, "_properties_update_timer", None)
+        if timer is None:
+            return
+        timer.start()
+
+    def _refresh_chemical_properties_dock(self) -> None:
+        """Refresca propiedades calculadas del documento activo."""
+        dock = getattr(self, "chemical_properties_dock", None)
+        if dock is None:
+            return
+        dock.update_properties(self._chemical_properties_rows())
+
+    def _chemical_properties_rows(self) -> list[tuple[str, str]]:
+        """Calcula propiedades químicas rápidas sin bloquear con RDKit."""
+        canvas = getattr(self, "canvas", None)
+        if canvas is None or not getattr(canvas.model, "atoms", None):
+            return []
+        graph = canvas.model
+        try:
+            counts = canvas._analysis_atom_counts(graph)
+            formula = canvas._analysis_formula(counts)
+            exact_mass = canvas._analysis_exact_mass(counts)
+            molecular_weight = canvas._analysis_molecular_weight(counts)
+            issues = graph.validate_detailed()
+        except Exception:
+            return [("Estado", "N/D")]
+
+        rows = [
+            ("Fórmula", formula or "N/D"),
+            (
+                "Masa exacta",
+                f"{exact_mass:.4f}" if exact_mass is not None else "N/D",
+            ),
+            (
+                "Peso molecular",
+                f"{molecular_weight:.4f}" if molecular_weight is not None else "N/D",
+            ),
+            ("Carga total", str(graph.total_formal_charge())),
+            ("Átomos", str(len(graph.atoms))),
+            ("Enlaces", str(len(graph.bonds))),
+            ("Errores de valencia", str(len(issues))),
+        ]
+        elemental_line = canvas._analysis_elemental_line(counts, molecular_weight)
+        if elemental_line:
+            rows.append(("Análisis elemental", elemental_line.replace("Elemental Analysis: ", "")))
+        return rows
 
     def _on_undo(self) -> None:
         """Deshace en la pestaña activa."""
@@ -1605,6 +1669,21 @@ class ChemusonWindow(QMainWindow):
             Puede modificar el estado interno o la interfaz.
         """
         self._run_clean_2d(step_ratio=1.0, fallback_iterations=200, status_suffix="(1 paso)")
+
+    def _on_validate_structure(self) -> None:
+        """Ejecuta validación química detallada sobre el documento activo."""
+        errors = self.canvas.validate_structure()
+        if errors:
+            self.statusBar().showMessage(
+                f"Validación: {len(errors)} error(es) de valencia. Use F8 para navegar.",
+                9000,
+            )
+        else:
+            self.statusBar().showMessage("Validación: sin errores de valencia.", 7000)
+
+    def _on_navigate_validation_issue(self, step: int) -> None:
+        """Navega al siguiente/anterior diagnóstico de valencia."""
+        self.canvas.navigate_validation_issue(step)
 
     def _run_clean_2d(self, step_ratio: float, fallback_iterations: int, status_suffix: str) -> None:
         """Clean 2D coordinates using RDKit or fallback."""

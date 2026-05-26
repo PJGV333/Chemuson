@@ -261,6 +261,48 @@ class InspectorDock(QDockWidget):
             self.prop_table.setItem(i, 1, QTableWidgetItem(val))
 
 
+class ChemicalPropertiesDock(QDockWidget):
+    """Dock de propiedades químicas calculadas para el documento activo."""
+
+    def __init__(self, parent=None):
+        """Inicializa el dock de inteligencia química básica."""
+        super().__init__("Propiedades químicas", parent)
+        self.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
+
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self.info_label = QLabel("Sin estructura")
+        self.info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.info_label.setStyleSheet("color: #666666; font-style: italic; padding: 10px;")
+        layout.addWidget(self.info_label)
+
+        self.prop_table = QTableWidget(0, 2)
+        self.prop_table.setHorizontalHeaderLabels(["Propiedad", "Valor"])
+        self.prop_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.prop_table.verticalHeader().setVisible(False)
+        self.prop_table.setAlternatingRowColors(True)
+        layout.addWidget(self.prop_table)
+
+        self.setWidget(container)
+
+    def update_properties(self, rows: list[tuple[str, str]]) -> None:
+        """Actualiza la tabla de propiedades calculadas."""
+        self.prop_table.setRowCount(0)
+        if not rows:
+            self.info_label.setVisible(True)
+            self.prop_table.setVisible(False)
+            return
+
+        self.info_label.setVisible(False)
+        self.prop_table.setVisible(True)
+        self.prop_table.setRowCount(len(rows))
+        for row, (key, value) in enumerate(rows):
+            self.prop_table.setItem(row, 0, QTableWidgetItem(str(key)))
+            self.prop_table.setItem(row, 1, QTableWidgetItem(str(value)))
+
+
 class AppearanceDock(QDockWidget):
     """Dock para preferencias de apariencia."""
 
