@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
     QHeaderView,
     QPushButton,
     QMenu,
+    QTabWidget,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from chemuson.gui.style import DrawingStyle
@@ -301,6 +302,117 @@ class ChemicalPropertiesDock(QDockWidget):
         for row, (key, value) in enumerate(rows):
             self.prop_table.setItem(row, 0, QTableWidgetItem(str(key)))
             self.prop_table.setItem(row, 1, QTableWidgetItem(str(value)))
+
+
+class SpectroscopyDock(QDockWidget):
+    """Dock con predicción espectral y selección cruzada de átomos."""
+
+    peak_atom_selected = pyqtSignal(int)
+
+    def __init__(self, parent=None):
+        super().__init__("Espectros", parent)
+        self.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
+
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self.info_label = QLabel("Sin predicción espectral")
+        self.info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.info_label.setStyleSheet("color: #666666; font-style: italic; padding: 10px;")
+        layout.addWidget(self.info_label)
+
+        self.tabs = QTabWidget()
+        self.proton_table = self._make_table(["δ ppm", "Int.", "Entorno", "Átomo"])
+        self.carbon_table = self._make_table(["δ ppm", "Entorno", "Átomo"])
+        self.mass_table = self._make_table(["m/z", "Int. %", "Pico"])
+        self.tabs.addTab(self.proton_table, "¹H NMR")
+        self.tabs.addTab(self.carbon_table, "¹³C NMR")
+        self.tabs.addTab(self.mass_table, "MS")
+        layout.addWidget(self.tabs)
+
+        self.setWidget(container)
+        self.update_prediction(None)
+
+    def update_prediction(self, prediction) -> None:
+        """Carga una predicción espectral en las tablas del dock."""
+        self._fill_proton(getattr(prediction, "proton_nmr", []) if prediction is not None else [])
+        self._fill_carbon(getattr(prediction, "carbon_nmr", []) if prediction is not None else [])
+        self._fill_mass(getattr(prediction, "mass_spectrum", []) if prediction is not None else [])
+        has_rows = any(
+            table.rowCount() > 0
+            for table in (self.proton_table, self.carbon_table, self.mass_table)
+        )
+        self.info_label.setVisible(not has_rows)
+        self.tabs.setVisible(has_rows)
+
+    def _make_table(self, headers: list[str]) -> QTableWidget:
+        table = QTableWidget(0, len(headers))
+        table.setHorizontalHeaderLabels(headers)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        table.verticalHeader().setVisible(False)
+        table.setAlternatingRowColors(True)
+        table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        table.itemSelectionChanged.connect(lambda table=table: self._emit_selected_atom(table))
+        return table
+
+    def _fill_proton(self, peaks) -> None:
+        rows = [
+            (
+                f"{float(peak.shift_ppm):.2f}",
+                f"{int(peak.hydrogens)}H",
+                str(peak.environment),
+                int(peak.atom_id),
+            )
+            for peak in peaks
+        ]
+        self._fill_table(self.proton_table, rows, atom_column=3)
+
+    def _fill_carbon(self, peaks) -> None:
+        rows = [
+            (
+                f"{float(peak.shift_ppm):.1f}",
+                str(peak.environment),
+                int(peak.atom_id),
+            )
+            for peak in peaks
+        ]
+        self._fill_table(self.carbon_table, rows, atom_column=2)
+
+    def _fill_mass(self, peaks) -> None:
+        rows = [
+            (
+                f"{float(peak.mz):.4f}",
+                f"{float(peak.intensity):.1f}",
+                str(peak.label),
+            )
+            for peak in peaks
+        ]
+        self._fill_table(self.mass_table, rows, atom_column=None)
+
+    def _fill_table(self, table: QTableWidget, rows: list[tuple], atom_column: int | None) -> None:
+        table.blockSignals(True)
+        table.setRowCount(len(rows))
+        for row, values in enumerate(rows):
+            atom_id = None
+            if atom_column is not None:
+                atom_id = int(values[atom_column])
+            for col, value in enumerate(values):
+                item = QTableWidgetItem(str(value))
+                if atom_id is not None:
+                    item.setData(Qt.ItemDataRole.UserRole, atom_id)
+                table.setItem(row, col, item)
+        table.blockSignals(False)
+
+    def _emit_selected_atom(self, table: QTableWidget) -> None:
+        selected = table.selectedItems()
+        if not selected:
+            return
+        atom_id = selected[0].data(Qt.ItemDataRole.UserRole)
+        if atom_id is None:
+            return
+        self.peak_atom_selected.emit(int(atom_id))
 
 
 class AppearanceDock(QDockWidget):

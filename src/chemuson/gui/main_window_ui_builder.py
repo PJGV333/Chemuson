@@ -489,6 +489,7 @@ class MainWindowUiBuilder:
         view_menu.addAction(window.templates_dock.toggleViewAction())
         view_menu.addAction(window.inspector_dock.toggleViewAction())
         view_menu.addAction(window.chemical_properties_dock.toggleViewAction())
+        view_menu.addAction(window.spectroscopy_dock.toggleViewAction())
         view_menu.addAction(window.appearance_dock.toggleViewAction())
 
     def _build_structure_menu(self, window, structure_menu: QMenu) -> None:

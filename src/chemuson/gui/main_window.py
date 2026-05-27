@@ -34,6 +34,7 @@ from chemuson.gui.docks import (
     ChemicalPropertiesDock,
     InspectorDock,
     PlantillasDock,
+    SpectroscopyDock,
 )
 from chemuson.gui.dialogs import PreferencesDialog, QuickStartDialog, StyleDialog
 from chemuson.gui.text_toolbar import TextFormatToolbar
@@ -201,6 +202,12 @@ class ChemusonWindow(QMainWindow):
         self.chemical_properties_dock = ChemicalPropertiesDock(self)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.chemical_properties_dock)
         self.chemical_properties_dock.hide()
+
+        self.spectroscopy_dock = SpectroscopyDock(self)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.spectroscopy_dock)
+        self.spectroscopy_dock.hide()
+        self.spectroscopy_dock.peak_atom_selected.connect(self._select_atom_from_spectrum)
+
         self._properties_update_timer = QTimer(self)
         self._properties_update_timer.setSingleShot(True)
         self._properties_update_timer.setInterval(120)
@@ -554,6 +561,35 @@ class ChemusonWindow(QMainWindow):
             pending_rows = rows + [("Descriptores RDKit", "Calculando...")]
             dock.update_properties(pending_rows)
             self._start_descriptor_job(descriptor_graph, rows)
+        self._refresh_spectroscopy_dock(descriptor_graph)
+
+    def _refresh_spectroscopy_dock(self, graph) -> None:
+        """Actualiza la vista dedicada de espectros estimados."""
+        dock = getattr(self, "spectroscopy_dock", None)
+        if dock is None:
+            return
+        if graph is None:
+            dock.update_prediction(None)
+            return
+        try:
+            from chemuson.spectroscopy import predict_spectra
+
+            dock.update_prediction(predict_spectra(graph))
+        except Exception:
+            dock.update_prediction(None)
+
+    def _select_atom_from_spectrum(self, atom_id: int) -> None:
+        """Selecciona en el canvas el átomo asignado al pico espectral."""
+        canvas = getattr(self, "canvas", None)
+        if canvas is None or int(atom_id) not in getattr(canvas.model, "atoms", {}):
+            return
+        item = canvas.atom_items.get(int(atom_id))
+        if item is None:
+            return
+        canvas.scene.clearSelection()
+        item.setSelected(True)
+        canvas._sync_selection_from_scene()
+        canvas.ensureVisible(item)
 
     def _chemical_properties_rows(self) -> tuple[list[tuple[str, str]], object | None]:
         """Calcula propiedades químicas rápidas sin bloquear con RDKit."""
