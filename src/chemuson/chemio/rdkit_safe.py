@@ -95,6 +95,38 @@ def molecular_descriptors_isolated(
     return descriptors, None
 
 
+def conformer_3d_isolated(
+    graph,
+    timeout_s: float = 8.0,
+) -> tuple[dict[int, tuple[float, float, float]] | None, dict[str, Any], str | None]:
+    """Genera conformación 3D RDKit en un worker aislado."""
+    request = _graph_request_payload(
+        graph=graph,
+        chain_atom_ids=[],
+        mode="graph_conformer3d",
+    )
+    response = _run_worker(request, timeout_s=timeout_s)
+    if not response.get("ok"):
+        return None, {}, str(response.get("error", "worker_error"))
+    raw_positions = response.get("positions", {})
+    if not isinstance(raw_positions, dict):
+        return None, {}, "invalid_positions"
+    positions: dict[int, tuple[float, float, float]] = {}
+    try:
+        for atom_id, coords in raw_positions.items():
+            if not isinstance(coords, (list, tuple)) or len(coords) != 3:
+                continue
+            positions[int(atom_id)] = (float(coords[0]), float(coords[1]), float(coords[2]))
+    except Exception as exc:
+        return None, {}, str(exc)
+    if not positions:
+        return None, {}, "empty_positions"
+    metadata = response.get("metadata", {})
+    if not isinstance(metadata, dict):
+        metadata = {}
+    return positions, metadata, None
+
+
 def is_rdkit_worker_available(timeout_s: float = 5.0) -> bool:
     """Smoke-check liviano para saber si el worker RDKit está utilizable."""
     result = run_rdkit_stereo_extract("CC", fmt="smiles", timeout_s=timeout_s)

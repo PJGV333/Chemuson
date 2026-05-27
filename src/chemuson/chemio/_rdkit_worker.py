@@ -364,6 +364,58 @@ def _handle_graph_descriptors_mode(Chem, request: dict[str, Any]) -> dict[str, A
     return {"ok": True, "descriptors": descriptors}
 
 
+def _handle_graph_conformer3d_mode(Chem, request: dict[str, Any]) -> dict[str, Any]:
+    """Genera coordenadas 3D reales con EmbedMolecule + MMFF/UFF."""
+    mol, id_map, error = _build_mol_from_graph_payload(Chem, request)
+    if mol is None:
+        return {"ok": False, "error": error or "invalid_graph"}
+    if mol.GetNumAtoms() == 0:
+        return {"ok": False, "error": "empty_graph"}
+    try:
+        Chem.SanitizeMol(mol)
+        from rdkit.Chem import AllChem
+
+        reverse_map = {rd_idx: atom_id for atom_id, rd_idx in id_map.items()}
+        mol_h = Chem.AddHs(mol, addCoords=True)
+        params = AllChem.ETKDGv3()
+        params.randomSeed = 0xC0FFEE
+        params.useRandomCoords = True
+        embed_code = int(AllChem.EmbedMolecule(mol_h, params))
+        if embed_code != 0:
+            params.useRandomCoords = True
+            embed_code = int(AllChem.EmbedMolecule(mol_h, params))
+        if embed_code != 0:
+            return {"ok": False, "error": "embed_failed", "detail": str(embed_code)}
+
+        method = "uff"
+        energy = None
+        try:
+            if AllChem.MMFFHasAllMoleculeParams(mol_h):
+                props = AllChem.MMFFGetMoleculeProperties(mol_h)
+                ff = AllChem.MMFFGetMoleculeForceField(mol_h, props)
+                method = "mmff"
+            else:
+                ff = AllChem.UFFGetMoleculeForceField(mol_h)
+            if ff is not None:
+                ff.Minimize(maxIts=200)
+                energy = float(ff.CalcEnergy())
+        except Exception:
+            method = "embed-only"
+
+        conf = mol_h.GetConformer()
+        positions: dict[str, list[float]] = {}
+        for rd_idx, atom_id in reverse_map.items():
+            pos = conf.GetAtomPosition(int(rd_idx))
+            positions[str(atom_id)] = [float(pos.x), float(pos.y), float(pos.z)]
+        return {
+            "ok": True,
+            "positions": positions,
+            "metadata": {"source": "rdkit", "method": method, "energy": energy},
+        }
+    except Exception as exc:
+        return {"ok": False, "error": "conformer3d_failed", "detail": str(exc)}
+
+
 def main() -> int:
     try:
         request = json.loads(sys.stdin.read() or "{}")
@@ -392,6 +444,10 @@ def main() -> int:
         return 0
     if mode == "graph_descriptors":
         result = _handle_graph_descriptors_mode(Chem, request)
+        sys.stdout.write(json.dumps(result))
+        return 0
+    if mode == "graph_conformer3d":
+        result = _handle_graph_conformer3d_mode(Chem, request)
         sys.stdout.write(json.dumps(result))
         return 0
 
