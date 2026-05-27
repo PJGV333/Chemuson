@@ -1853,6 +1853,30 @@ class ChemusonWindow(QMainWindow):
         """Navega al siguiente/anterior diagnóstico de valencia."""
         self.canvas.navigate_validation_issue(step)
 
+    def _on_set_polymer_repeat_label(self) -> None:
+        """Asigna etiqueta n/x/etc. a los corchetes seleccionados."""
+        brackets = self.canvas._selected_bracket_items()
+        if not brackets:
+            QMessageBox.information(
+                self,
+                "Repetición de polímero",
+                "Selecciona uno o más corchetes antes de definir la repetición.",
+            )
+            return
+        current = brackets[0].repeat_label() if hasattr(brackets[0], "repeat_label") else "n"
+        label, ok = QInputDialog.getText(
+            self,
+            "Repetición de polímero",
+            "Etiqueta de repetición (por ejemplo n, x, m):",
+            text=current or "n",
+        )
+        if not ok:
+            return
+        from chemuson.gui.commands import ChangeBracketRepeatLabelCommand
+
+        self.canvas.undo_stack.push(ChangeBracketRepeatLabelCommand(self.canvas, brackets, label))
+        self.statusBar().showMessage("Repetición de polímero actualizada.", 5000)
+
     def _run_clean_2d(
         self,
         step_ratio: float,

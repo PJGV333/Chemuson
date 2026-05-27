@@ -51,6 +51,35 @@ class ChangeBracketStrokeCommand(QUndoCommand):
     def undo(self) -> None:
         self._apply(self._old_stroke)
 
+
+class ChangeBracketRepeatLabelCommand(QUndoCommand):
+    """Comando para cambiar la etiqueta de repetición de un corchete."""
+
+    def __init__(self, view, items, new_label: str | None) -> None:
+        super().__init__("Change polymer repeat label")
+        self._view = view
+        self._items = list(items or [])
+        self._new_label = new_label
+        self._old_labels = {
+            item: item.repeat_label() if hasattr(item, "repeat_label") else ""
+            for item in self._items
+        }
+
+    def _apply(self, labels) -> None:
+        for item in self._items:
+            if item is None or not hasattr(item, "set_repeat_label"):
+                continue
+            label = labels[item] if isinstance(labels, dict) else labels
+            item.set_repeat_label(label)
+        if hasattr(self._view, "_update_selection_overlay"):
+            self._view._update_selection_overlay()
+
+    def redo(self) -> None:
+        self._apply(self._new_label)
+
+    def undo(self) -> None:
+        self._apply(self._old_labels)
+
 class AddArrowCommand(QUndoCommand):
     """Comando para añadir una flecha de anotación."""
 
@@ -62,6 +91,7 @@ class AddArrowCommand(QUndoCommand):
         kind: str,
         curve_factor: float | None = None,
         stroke_px: float | None = None,
+        repeat_label: str | None = None,
         opacity: Optional[float] = None,
     ) -> None:
         """Inicializa el comando de flecha."""
@@ -72,6 +102,7 @@ class AddArrowCommand(QUndoCommand):
         self._kind = kind
         self._curve_factor = curve_factor
         self._stroke_px = stroke_px
+        self._repeat_label = repeat_label
         self._opacity = opacity
         self._item = None
 
@@ -116,6 +147,7 @@ class AddBracketCommand(QUndoCommand):
         kind: str,
         padding: float | None = None,
         stroke_px: float | None = None,
+        repeat_label: str | None = None,
         opacity: Optional[float] = None,
     ) -> None:
         """Inicializa el comando de corchetes."""
@@ -125,6 +157,7 @@ class AddBracketCommand(QUndoCommand):
         self._kind = kind
         self._padding = 8.0 if padding is None else float(padding)
         self._stroke_px = stroke_px
+        self._repeat_label = repeat_label
         self._opacity = opacity
         self._item = None
 
@@ -136,6 +169,7 @@ class AddBracketCommand(QUndoCommand):
                 self._kind,
                 padding=self._padding,
                 stroke_px=self._stroke_px,
+                repeat_label=self._repeat_label,
                 opacity=self._opacity,
             )
         else:
@@ -145,6 +179,7 @@ class AddBracketCommand(QUndoCommand):
                 self._kind,
                 padding=self._padding,
                 stroke_px=self._stroke_px,
+                repeat_label=self._repeat_label,
                 opacity=self._opacity,
             )
 

@@ -574,6 +574,7 @@ class CanvasSelectionMixin:
                     "kind": getattr(item, "_kind", "[]"),
                     "padding": getattr(item, "_padding", None),
                     "stroke_px": item.stroke_px(),
+                    "repeat_label": item.repeat_label(),
                     "opacity": self.effective_item_opacity(item),
                 }
             )
@@ -905,6 +906,7 @@ class CanvasSelectionMixin:
                 kind = bracket_d.get("kind", "[]")
                 padding = bracket_d.get("padding")
                 stroke_px = bracket_d.get("stroke_px")
+                repeat_label = bracket_d.get("repeat_label")
                 pair = self._split_bracket_kind(kind)
                 if pair:
                     for side in pair:
@@ -914,6 +916,7 @@ class CanvasSelectionMixin:
                             side,
                             padding=padding,
                             stroke_px=stroke_px,
+                            repeat_label=repeat_label,
                             opacity=bracket_d.get("opacity"),
                         )
                         if has_undo_items:
@@ -929,6 +932,7 @@ class CanvasSelectionMixin:
                         kind,
                         padding=padding,
                         stroke_px=stroke_px,
+                        repeat_label=repeat_label,
                         opacity=bracket_d.get("opacity"),
                     )
                     if has_undo_items:

@@ -379,6 +379,7 @@ class CanvasStructureMixin:
                     },
                     "padding": item._padding,
                     "stroke_px": item.stroke_px(),
+                    "repeat_label": item.repeat_label(),
                     "opacity": self.item_raw_opacity(item),
                 })
             elif isinstance(item, TextAnnotationItem):
@@ -527,6 +528,7 @@ class CanvasStructureMixin:
                 kind=kind,
                 padding=padding,
                 stroke_px=stroke_px,
+                repeat_label=br_d.get("repeat_label"),
                 style=self.drawing_style,
             )
             self.readd_bracket_item(
@@ -535,6 +537,7 @@ class CanvasStructureMixin:
                 kind,
                 padding=padding,
                 stroke_px=stroke_px,
+                repeat_label=br_d.get("repeat_label"),
                 opacity=br_d.get("opacity"),
             )
 

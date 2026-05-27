@@ -32,6 +32,7 @@ from .text_commands import (
 from .annotation_commands import (
     ChangeArrowStrokeCommand,
     ChangeBracketStrokeCommand,
+    ChangeBracketRepeatLabelCommand,
     AddArrowCommand,
     AddBracketCommand,
     AddImageItemCommand,
@@ -93,6 +94,7 @@ __all__ = [
     "AddTextItemCommand",
     "ChangeArrowStrokeCommand",
     "ChangeBracketStrokeCommand",
+    "ChangeBracketRepeatLabelCommand",
     "AddArrowCommand",
     "AddBracketCommand",
     "AddImageItemCommand",

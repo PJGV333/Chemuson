@@ -3311,6 +3311,7 @@ class BracketItem(QGraphicsPathItem):
         kind: str = "[]",
         padding: float = 8.0,
         stroke_px: float | None = None,
+        repeat_label: str | None = None,
         style: DrawingStyle = CHEMDOODLE_LIKE,
     ) -> None:
         """Inicializa la instancia y configura el elemento gráfico.
@@ -3335,6 +3336,7 @@ class BracketItem(QGraphicsPathItem):
         self._kind = kind
         self._style = style
         self._stroke_px = self._normalize_stroke(stroke_px)
+        self._repeat_label = self._normalize_repeat_label(repeat_label)
         pen = QPen(QColor(self._style.bond_color), self._effective_stroke_px())
         pen.setCapStyle(self._style.cap_style)
         pen.setJoinStyle(self._style.join_style)
@@ -3361,6 +3363,14 @@ class BracketItem(QGraphicsPathItem):
         painter.setPen(self.pen())
         painter.setBrush(self.brush())
         painter.drawPath(self.path())
+        if self._repeat_label:
+            font = QFont("Arial", 9)
+            painter.setFont(font)
+            painter.drawText(
+                QRectF(self._rect.right() + 2.0, self._rect.bottom() - 16.0, 42.0, 18.0),
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                self._repeat_label,
+            )
 
     def base_rect(self) -> QRectF:
         """Devuelve el rectángulo base.
@@ -3391,6 +3401,26 @@ class BracketItem(QGraphicsPathItem):
     def stroke_px(self) -> float | None:
         """Devuelve el grosor personalizado o `None` si hereda."""
         return self._stroke_px
+
+    @staticmethod
+    def _normalize_repeat_label(label: str | None) -> str:
+        text = str(label or "").strip()
+        if not text:
+            return ""
+        allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+-"
+        return "".join(ch for ch in text if ch in allowed)[:12]
+
+    def repeat_label(self) -> str:
+        """Devuelve el subíndice/superíndice de repetición polimérica."""
+        return self._repeat_label
+
+    def set_repeat_label(self, label: str | None) -> None:
+        """Actualiza la etiqueta de repetición visible del corchete."""
+        normalized = self._normalize_repeat_label(label)
+        if normalized == self._repeat_label:
+            return
+        self._repeat_label = normalized
+        self.update()
 
     def set_stroke_px(self, stroke_px: float | None) -> None:
         """Actualiza el grosor personalizado del corchete."""

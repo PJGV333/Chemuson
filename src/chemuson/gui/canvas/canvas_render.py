@@ -1099,6 +1099,7 @@ class CanvasRenderMixin:
         *,
         padding: float = 8.0,
         stroke_px: float | None = None,
+        repeat_label: str | None = None,
         opacity: Optional[float] | object = ITEM_OPACITY_UNSET,
     ) -> BracketItem:
         """Añade bracket item.
@@ -1118,6 +1119,7 @@ class CanvasRenderMixin:
             kind=kind,
             padding=padding,
             stroke_px=stroke_px,
+            repeat_label=repeat_label,
             style=self.drawing_style,
         )
         self.ensure_graphics_item_opacity(item, opacity)
@@ -1132,6 +1134,7 @@ class CanvasRenderMixin:
         kind: str,
         padding: Optional[float] = None,
         stroke_px: float | None = None,
+        repeat_label: str | None = None,
         opacity: Optional[float] | object = ITEM_OPACITY_UNSET,
     ) -> None:
         """Método auxiliar para readd bracket item.
@@ -1151,6 +1154,7 @@ class CanvasRenderMixin:
         item.set_rect(rect, padding=padding)
         item._kind = kind
         item.set_stroke_px(stroke_px)
+        item.set_repeat_label(repeat_label)
         self.ensure_graphics_item_opacity(item, opacity)
         if item.scene() is not self.scene:
             self.scene.addItem(item)
