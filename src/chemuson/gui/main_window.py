@@ -591,7 +591,36 @@ class ChemusonWindow(QMainWindow):
         elemental_line = canvas._analysis_elemental_line(counts, molecular_weight)
         if elemental_line:
             rows.append(("Análisis elemental", elemental_line.replace("Elemental Analysis: ", "")))
+        try:
+            from chemuson.spectroscopy import predict_spectra
+
+            spectra = predict_spectra(calculation_graph)
+            rows.extend(self._spectral_prediction_rows(spectra))
+        except Exception:
+            pass
         return rows, calculation_graph
+
+    @staticmethod
+    def _spectral_prediction_rows(spectra) -> list[tuple[str, str]]:
+        """Formatea predicción espectral heurística para el dock químico."""
+        rows: list[tuple[str, str]] = []
+        proton = getattr(spectra, "proton_nmr", []) or []
+        carbon = getattr(spectra, "carbon_nmr", []) or []
+        mass = getattr(spectra, "mass_spectrum", []) or []
+        if proton:
+            preview = ", ".join(
+                f"{peak.shift_ppm:.2f} ({peak.hydrogens}H)"
+                for peak in proton[:4]
+            )
+            if len(proton) > 4:
+                preview += f", +{len(proton) - 4}"
+            rows.append(("^1H NMR est.", preview))
+        if carbon:
+            shifts = [float(peak.shift_ppm) for peak in carbon]
+            rows.append(("^13C NMR est.", f"{len(carbon)} señales; {min(shifts):.1f}-{max(shifts):.1f} ppm"))
+        if mass:
+            rows.append(("MS est.", ", ".join(f"{peak.label} {peak.mz:.4f}" for peak in mass[:2])))
+        return rows
 
     def _start_descriptor_job(self, graph, base_rows: list[tuple[str, str]]) -> None:
         """Inicia cálculo asíncrono de descriptores RDKit para el dock."""
