@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Optional
 
 from PyQt6.QtCore import QPointF, QRectF, Qt
@@ -41,7 +42,7 @@ from chemuson.gui.orbitals import orbital_kind_from_tool_id
 from chemuson.gui.plate_items import GelBandItem, GelElectrophoresisItem, TLCPlateItem, TLCSpotItem
 
 from .canvas_chem_data import SYMBOL_TEXT_TOOLS
-from .canvas_constants import ATOM_HIT_RADIUS
+from .canvas_constants import ATOM_HIT_RADIUS, ELECTRON_ANCHOR_ROLE, ELECTRON_SLOT_ROLE
 
 class CanvasSelectionInputMixin:
     def set_current_tool(self, tool_id: str) -> None:
@@ -184,6 +185,129 @@ class CanvasSelectionInputMixin:
         """
         self.state.default_element = element
         self.set_current_tool("tool_atom")
+
+    def _arrow_snap_radius_px(self) -> float:
+        """Radio de snapping para flechas de mecanismo."""
+        bond_length = float(getattr(self.state, "bond_length", 40.0) or 40.0)
+        return max(ATOM_HIT_RADIUS, min(26.0, bond_length * 0.45))
+
+    @staticmethod
+    def _point_distance_px(left: QPointF, right: QPointF) -> float:
+        """Distancia euclidiana entre dos puntos de escena."""
+        return math.hypot(left.x() - right.x(), left.y() - right.y())
+
+    def _nearest_arrow_bond_snap(
+        self,
+        scene_pos: QPointF,
+        radius: float,
+    ) -> tuple[Optional[QPointF], float]:
+        """Devuelve el punto más cercano sobre un enlace para snapping."""
+        best_point: Optional[QPointF] = None
+        best_dist = float("inf")
+        for bond in self.model.bonds.values():
+            atom1 = self.model.atoms.get(bond.a1_id)
+            atom2 = self.model.atoms.get(bond.a2_id)
+            if atom1 is None or atom2 is None:
+                continue
+            x1, y1 = float(atom1.x), float(atom1.y)
+            x2, y2 = float(atom2.x), float(atom2.y)
+            dx = x2 - x1
+            dy = y2 - y1
+            length_sq = dx * dx + dy * dy
+            if length_sq <= 1e-9:
+                continue
+            t = ((scene_pos.x() - x1) * dx + (scene_pos.y() - y1) * dy) / length_sq
+            t = max(0.0, min(1.0, t))
+            point = QPointF(x1 + dx * t, y1 + dy * t)
+            dist = self._point_distance_px(scene_pos, point)
+            if dist <= radius and dist < best_dist:
+                best_point = point
+                best_dist = dist
+        return best_point, best_dist
+
+    def _electron_snap_centers(self) -> list[QPointF]:
+        """Agrupa puntos de electrones para obtener centros de radical/par solitario."""
+        grouped: dict[tuple[object, object, object], list[QPointF]] = {}
+        for item in list(getattr(self, "_electron_dots", set())):
+            if item is None:
+                continue
+            try:
+                if item.scene() is not self.scene:
+                    continue
+                anchor_id = item.data(ELECTRON_ANCHOR_ROLE)
+                slot_idx = item.data(ELECTRON_SLOT_ROLE)
+                if anchor_id is not None and slot_idx is not None:
+                    key = ("slot", int(anchor_id), int(slot_idx))
+                else:
+                    key = ("item", id(item), None)
+                grouped.setdefault(key, []).append(item.sceneBoundingRect().center())
+            except RuntimeError:
+                continue
+
+        centers: list[QPointF] = []
+        for points in grouped.values():
+            if not points:
+                continue
+            count = float(len(points))
+            centers.append(
+                QPointF(
+                    sum(point.x() for point in points) / count,
+                    sum(point.y() for point in points) / count,
+                )
+            )
+        return centers
+
+    def _nearest_arrow_electron_snap(
+        self,
+        scene_pos: QPointF,
+        radius: float,
+    ) -> tuple[Optional[QPointF], float]:
+        """Devuelve el centro de radical/par solitario más cercano para snapping."""
+        best_point: Optional[QPointF] = None
+        best_dist = float("inf")
+        for center in self._electron_snap_centers():
+            dist = self._point_distance_px(scene_pos, center)
+            if dist <= radius and dist < best_dist:
+                best_point = center
+                best_dist = dist
+        return best_point, best_dist
+
+    def _snap_arrow_endpoint(self, scene_pos: QPointF, modifiers: Qt.KeyboardModifiers) -> QPointF:
+        """Ajusta extremos de flechas a átomos, enlaces o pares/radicales cercanos.
+
+        Mantener Alt desactiva el snapping para permitir colocación libre.
+        """
+        if modifiers & Qt.KeyboardModifier.AltModifier:
+            return QPointF(scene_pos)
+
+        snap_radius = self._arrow_snap_radius_px()
+        best_point = QPointF(scene_pos)
+        best_dist = float("inf")
+
+        def consider(point: QPointF, dist: float) -> None:
+            nonlocal best_point, best_dist
+            if dist < best_dist:
+                best_point = QPointF(point)
+                best_dist = dist
+
+        for atom in self.model.atoms.values():
+            point = QPointF(float(atom.x), float(atom.y))
+            dist = self._point_distance_px(scene_pos, point)
+            if dist <= snap_radius:
+                consider(point, dist)
+
+        electron_point, electron_dist = self._nearest_arrow_electron_snap(
+            scene_pos,
+            max(10.0, snap_radius * 0.80),
+        )
+        if electron_point is not None:
+            consider(electron_point, electron_dist)
+
+        bond_point, bond_dist = self._nearest_arrow_bond_snap(scene_pos, max(8.0, snap_radius * 0.65))
+        if bond_point is not None:
+            consider(bond_point, bond_dist)
+
+        return best_point
 
     def mousePressEvent(self, event) -> None:
         """Método auxiliar para mousePressEvent.
@@ -429,27 +553,28 @@ class CanvasSelectionInputMixin:
             arrow_kind = arrow_tools[self.current_tool]
             curved_tools = {"tool_arrow_curved", "tool_arrow_curved_fishhook"}
             is_curved_tool = self.current_tool in curved_tools
+            snapped_scene_pos = self._snap_arrow_endpoint(scene_pos, event.modifiers())
             constrained_pos = (
-                self._constrain_annotation_endpoint(self._arrow_start_pos, scene_pos, event.modifiers())
+                self._constrain_annotation_endpoint(self._arrow_start_pos, snapped_scene_pos, event.modifiers())
                 if self._arrow_start_pos is not None
-                else scene_pos
+                else snapped_scene_pos
             )
             if self._arrow_start_pos is None:
-                self._arrow_start_pos = scene_pos
+                self._arrow_start_pos = snapped_scene_pos
                 self._arrow_end_pos = None
                 self._arrow_curve_adjust_mode = False
                 self._arrow_curve_factor = ArrowItem.CURVE_FACTOR_DEFAULT
                 return
             if is_curved_tool:
                 if self._arrow_end_pos is None:
-                    if (scene_pos - self._arrow_start_pos).manhattanLength() < 2.0:
+                    if (snapped_scene_pos - self._arrow_start_pos).manhattanLength() < 2.0:
                         self._arrow_start_pos = None
                         self._arrow_end_pos = None
                         self._arrow_curve_adjust_mode = False
                         self._arrow_curve_factor = ArrowItem.CURVE_FACTOR_DEFAULT
                         self._preview_arrow_item.hide_preview()
                         return
-                    self._arrow_end_pos = scene_pos
+                    self._arrow_end_pos = snapped_scene_pos
                     self._arrow_curve_adjust_mode = True
                     self._preview_arrow_item.update_preview(
                         self._arrow_start_pos,
@@ -772,9 +897,10 @@ class CanvasSelectionInputMixin:
             arrow_kind = arrow_tools[self.current_tool]
             curved_tools = {"tool_arrow_curved", "tool_arrow_curved_fishhook"}
             is_curved_tool = self.current_tool in curved_tools
+            snapped_scene_pos = self._snap_arrow_endpoint(scene_pos, event.modifiers())
             constrained_pos = self._constrain_annotation_endpoint(
                 self._arrow_start_pos,
-                scene_pos,
+                snapped_scene_pos,
                 event.modifiers(),
             )
             if is_curved_tool and self._arrow_end_pos is not None and self._arrow_curve_adjust_mode:
