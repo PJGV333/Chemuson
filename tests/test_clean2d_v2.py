@@ -6,6 +6,8 @@ import math
 import os
 import sys
 
+import pytest
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.clean2d import Clean2DParameters, optimize_clean2d_positions
@@ -68,6 +70,60 @@ def test_clean2d_v2_keeps_centroid_stable() -> None:
     assert math.isclose(before_center[1], after_center[1], abs_tol=1e-6)
 
 
+def test_clean2d_v2_preserves_existing_good_bond_angles() -> None:
+    graph = MolGraph()
+    center = graph.add_atom("C", 0.0, 0.0)
+    left = graph.add_atom("C", -36.37, -21.0)
+    right = graph.add_atom("C", 36.37, -21.0)
+    up = graph.add_atom("C", 0.0, 42.0)
+    graph.add_bond(center.id, left.id, order=1)
+    graph.add_bond(center.id, right.id, order=1)
+    graph.add_bond(center.id, up.id, order=1)
+
+    before_angles = sorted(
+        _angle_between(
+            (graph.get_atom(center.id).x, graph.get_atom(center.id).y),
+            (graph.get_atom(a.id).x, graph.get_atom(a.id).y),
+            (graph.get_atom(b.id).x, graph.get_atom(b.id).y),
+        )
+        for a, b in ((left, right), (left, up), (right, up))
+    )
+    after = optimize_clean2d_positions(
+        graph,
+        params=Clean2DParameters.quick(target_bond_length=42.0),
+    )
+    after_angles = sorted(
+        _angle_between(after[center.id], after[a.id], after[b.id])
+        for a, b in ((left, right), (left, up), (right, up))
+    )
+
+    assert after_angles == pytest.approx(before_angles, abs=1.0)
+
+
+def test_clean2d_v2_does_not_create_large_local_deformations_on_chain() -> None:
+    graph = MolGraph()
+    atoms = [
+        graph.add_atom("C", 0.0, 0.0),
+        graph.add_atom("C", 42.0, 0.0),
+        graph.add_atom("C", 63.0, 36.37),
+        graph.add_atom("C", 105.0, 36.37),
+        graph.add_atom("O", 126.0, 72.74),
+    ]
+    for left, right in zip(atoms, atoms[1:]):
+        graph.add_bond(left.id, right.id, order=1)
+
+    after = optimize_clean2d_positions(
+        graph,
+        params=Clean2DParameters.publication(target_bond_length=42.0),
+    )
+
+    max_move = max(
+        _distance((atom.x, atom.y), after[atom.id])
+        for atom in atoms
+    )
+    assert max_move < 8.0
+
+
 def _distance(a: tuple[float, float], b: tuple[float, float]) -> float:
     return math.hypot(a[0] - b[0], a[1] - b[1])
 
@@ -77,3 +133,14 @@ def _center(points: list[tuple[float, float]]) -> tuple[float, float]:
         sum(x for x, _y in points) / len(points),
         sum(y for _x, y in points) / len(points),
     )
+
+
+def _angle_between(
+    center: tuple[float, float],
+    left: tuple[float, float],
+    right: tuple[float, float],
+) -> float:
+    a1 = math.atan2(left[1] - center[1], left[0] - center[0])
+    a2 = math.atan2(right[1] - center[1], right[0] - center[0])
+    diff = abs((math.degrees(a2 - a1) + 180.0) % 360.0 - 180.0)
+    return diff

@@ -22,6 +22,7 @@ class Clean2DParameters:
     label_bond_weight: float = 0.10
     damping: float = 0.82
     max_step: float = 10.0
+    max_component_scale: float = 3.0
 
     @classmethod
     def quick(cls, target_bond_length: float | None = None) -> "Clean2DParameters":
@@ -39,6 +40,7 @@ class Clean2DParameters:
             label_bond_weight=0.18,
             damping=0.78,
             max_step=7.0,
+            max_component_scale=4.0,
         )
 
 
@@ -75,28 +77,18 @@ def optimize_clean2d_positions(
     target_len = max(8.0, target_len)
     center_before = _center(positions)
 
-    velocities = {atom_id: (0.0, 0.0) for atom_id in selected}
-    for _ in range(max(1, int(params.iterations))):
-        forces = {atom_id: (0.0, 0.0) for atom_id in selected}
-        _add_length_forces(forces, positions, bonds, target_len, params.length_weight)
-        _add_angle_forces(forces, positions, graph, selected, bonds, params.angle_weight)
-        _add_atom_collision_forces(forces, positions, target_len, params.collision_weight)
-        _add_label_bond_forces(forces, positions, graph, selected, bonds, target_len, params.label_bond_weight)
-
-        next_positions: dict[int, tuple[float, float]] = {}
-        for atom_id, (x, y) in positions.items():
-            fx, fy = forces[atom_id]
-            vx, vy = velocities[atom_id]
-            vx = (vx + fx) * params.damping
-            vy = (vy + fy) * params.damping
-            step = math.hypot(vx, vy)
-            if step > params.max_step:
-                scale = params.max_step / step
-                vx *= scale
-                vy *= scale
-            velocities[atom_id] = (vx, vy)
-            next_positions[atom_id] = (x + vx, y + vy)
-        positions = next_positions
+    positions = _normalize_component_lengths(
+        positions,
+        bonds,
+        target_len,
+        max_component_scale=max(1.0, float(params.max_component_scale)),
+    )
+    for _ in range(max(1, min(int(params.iterations), 8))):
+        before_step = dict(positions)
+        _resolve_nonbonded_atom_collisions(positions, bonds, target_len, params.collision_weight, params.max_step)
+        _resolve_label_bond_collisions(positions, graph, selected, bonds, target_len, params.label_bond_weight, params.max_step)
+        if _max_position_delta(before_step, positions) < 0.01:
+            break
 
     center_after = _center(positions)
     shift_x = center_before[0] - center_after[0]
@@ -105,6 +97,117 @@ def optimize_clean2d_positions(
         atom_id: (x + shift_x, y + shift_y)
         for atom_id, (x, y) in positions.items()
     }
+
+
+def _normalize_component_lengths(
+    positions: dict[int, tuple[float, float]],
+    bonds: list[Bond],
+    target_len: float,
+    *,
+    max_component_scale: float,
+) -> dict[int, tuple[float, float]]:
+    """Escala cada componente de forma uniforme, preservando ángulos relativos."""
+    adjacency: dict[int, list[int]] = {atom_id: [] for atom_id in positions}
+    for bond in bonds:
+        adjacency.setdefault(bond.a1_id, []).append(bond.a2_id)
+        adjacency.setdefault(bond.a2_id, []).append(bond.a1_id)
+
+    out = dict(positions)
+    visited: set[int] = set()
+    for start in sorted(positions):
+        if start in visited:
+            continue
+        stack = [start]
+        component: set[int] = set()
+        while stack:
+            atom_id = stack.pop()
+            if atom_id in component:
+                continue
+            component.add(atom_id)
+            visited.add(atom_id)
+            stack.extend(adjacency.get(atom_id, []))
+        comp_bonds = [bond for bond in bonds if bond.a1_id in component and bond.a2_id in component]
+        if not comp_bonds:
+            continue
+        current = _average_bond_length(out, comp_bonds)
+        if current <= 1e-6:
+            continue
+        scale = target_len / current
+        scale = max(1.0 / max_component_scale, min(max_component_scale, scale))
+        if abs(scale - 1.0) <= 1e-6:
+            continue
+        cx, cy = _center({atom_id: out[atom_id] for atom_id in component})
+        for atom_id in component:
+            x, y = out[atom_id]
+            out[atom_id] = (cx + (x - cx) * scale, cy + (y - cy) * scale)
+    return out
+
+
+def _resolve_nonbonded_atom_collisions(
+    positions: dict[int, tuple[float, float]],
+    bonds: list[Bond],
+    target_len: float,
+    weight: float,
+    max_step: float,
+) -> None:
+    bonded = {tuple(sorted((bond.a1_id, bond.a2_id))) for bond in bonds}
+    ids = sorted(positions)
+    threshold = target_len * 0.55
+    for idx, a_id in enumerate(ids):
+        ax, ay = positions[a_id]
+        for b_id in ids[idx + 1 :]:
+            if tuple(sorted((a_id, b_id))) in bonded:
+                continue
+            bx, by = positions[b_id]
+            dx = bx - ax
+            dy = by - ay
+            dist = math.hypot(dx, dy)
+            if dist >= threshold:
+                continue
+            if dist <= 1e-6:
+                dx, dy, dist = _deterministic_unit_vector(a_id, b_id)
+            push = min(max_step, (threshold - dist) * max(0.0, weight))
+            fx = dx / dist * push * 0.5
+            fy = dy / dist * push * 0.5
+            positions[a_id] = (ax - fx, ay - fy)
+            positions[b_id] = (bx + fx, by + fy)
+
+
+def _resolve_label_bond_collisions(
+    positions: dict[int, tuple[float, float]],
+    graph: MolGraph,
+    selected: set[int],
+    bonds: list[Bond],
+    target_len: float,
+    weight: float,
+    max_step: float,
+) -> None:
+    threshold = target_len * 0.32
+    for atom_id in sorted(selected):
+        atom = graph.atoms.get(atom_id)
+        if atom is None or atom.element == "C":
+            continue
+        ax, ay = positions[atom_id]
+        for bond in bonds:
+            if atom_id in {bond.a1_id, bond.a2_id}:
+                continue
+            x1, y1 = positions[bond.a1_id]
+            x2, y2 = positions[bond.a2_id]
+            dist, px, py = _point_segment_distance(ax, ay, x1, y1, x2, y2)
+            if dist >= threshold:
+                continue
+            dx = ax - px
+            dy = ay - py
+            norm = math.hypot(dx, dy)
+            if norm <= 1e-6:
+                sx = x2 - x1
+                sy = y2 - y1
+                norm = math.hypot(sx, sy) or 1.0
+                dx = -sy / norm
+                dy = sx / norm
+                norm = 1.0
+            push = min(max_step, (threshold - dist) * max(0.0, weight))
+            positions[atom_id] = (ax + dx / norm * push, ay + dy / norm * push)
 
 
 def _add_length_forces(
@@ -282,6 +385,23 @@ def _point_segment_distance(
     closest_x = x1 + t * dx
     closest_y = y1 + t * dy
     return math.hypot(px - closest_x, py - closest_y), closest_x, closest_y
+
+
+def _deterministic_unit_vector(a_id: int, b_id: int) -> tuple[float, float, float]:
+    seed = ((int(a_id) * 1103515245) ^ (int(b_id) * 12345)) & 0xFFFF
+    angle = (float(seed) / 65535.0) * math.tau
+    return math.cos(angle), math.sin(angle), 1.0
+
+
+def _max_position_delta(
+    before: dict[int, tuple[float, float]],
+    after: dict[int, tuple[float, float]],
+) -> float:
+    max_delta = 0.0
+    for atom_id, (x0, y0) in before.items():
+        x1, y1 = after.get(atom_id, (x0, y0))
+        max_delta = max(max_delta, math.hypot(x1 - x0, y1 - y0))
+    return max_delta
 
 
 def _average_bond_length(positions: dict[int, tuple[float, float]], bonds: list[Bond]) -> float:

@@ -93,15 +93,6 @@ class Clean2DController:
             return
         scale_bonds = bonds if atom_ids else list(canvas.model.bonds.values())
 
-        if self._is_acyclic_structure(target_ids, scale_bonds):
-            canvas.clean_2d_fallback(target_ids, iterations=max(40, fallback_iterations))
-            if mode in {"quick", "publication"}:
-                self._polish_with_v2(window, target_ids, mode=mode, status_suffix=status_suffix)
-                return
-            msg = "Selección 2D limpiada" if atom_ids else "Estructura 2D limpiada"
-            window.statusBar().showMessage(f"{msg} {status_suffix} (acíclico)")
-            return
-
         try:
             from chemuson.chemio.rdkit_io import molgraph_to_rdkit_with_map
             from rdkit import Chem
