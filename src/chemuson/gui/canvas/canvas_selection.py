@@ -21,6 +21,7 @@ from chemuson.chemio.rdkit_io import (
     smiles_to_molgraph,
 )
 from chemuson.core.model import Bond, BondStereo, BondStyle, MolGraph, normalize_opacity
+from chemuson.geometry3d import Rotation3D, conformer_3d_for_graph, project_conformer_to_2d
 from chemuson.gui.commands import (
     AddArrowCommand,
     AddAtomCommand,
@@ -2283,6 +2284,7 @@ class CanvasSelectionMixin:
         """Limpia la referencia pseudo-3D cuando deja de representar la geometría actual."""
         self._rotation_3d_ref_atom_ids = tuple()
         self._rotation_3d_ref_positions = {}
+        self._rotation_3d_real_positions = {}
         self._rotation_3d_pitch_deg = 0.0
         self._rotation_3d_yaw_deg = 0.0
 
@@ -3022,8 +3024,29 @@ class CanvasSelectionMixin:
         if reset_reference:
             self._rotation_3d_ref_atom_ids = atom_ids
             self._rotation_3d_ref_positions = dict(before_positions)
+            self._rotation_3d_real_positions = self._load_real_3d_trackball_reference(atom_ids)
             self._rotation_3d_pitch_deg = 0.0
             self._rotation_3d_yaw_deg = 0.0
+
+    def _load_real_3d_trackball_reference(
+        self,
+        atom_ids: tuple[int, ...],
+    ) -> Dict[int, Tuple[float, float, float]]:
+        """Obtiene conformación 3D real para trackball; falla silenciosamente."""
+        if len(atom_ids) < 2:
+            return {}
+        try:
+            result = conformer_3d_for_graph(self.model, timeout_s=3.0)
+        except Exception:
+            return {}
+        if not result.ok:
+            return {}
+        positions = {
+            atom_id: result.atom_positions[atom_id]
+            for atom_id in atom_ids
+            if atom_id in result.atom_positions
+        }
+        return positions if len(positions) == len(atom_ids) else {}
 
     def _project_trackball_reference(
         self,
@@ -3031,9 +3054,29 @@ class CanvasSelectionMixin:
         pitch_deg: float,
         yaw_deg: float,
     ) -> Dict[int, Tuple[float, float]]:
-        """Proyecta la referencia 2D con ángulos pseudo-3D absolutos."""
+        """Proyecta la referencia con conformación 3D real o fallback pseudo-3D."""
         if not atom_ids:
             return {}
+        if self._rotation_3d_real_positions and all(
+            atom_id in self._rotation_3d_real_positions for atom_id in atom_ids
+        ):
+            points_2d = [self._rotation_3d_ref_positions[atom_id] for atom_id in atom_ids]
+            count = len(points_2d)
+            center = (
+                sum(x for x, _ in points_2d) / count,
+                sum(y for _, y in points_2d) / count,
+            )
+            projected = project_conformer_to_2d(
+                {atom_id: self._rotation_3d_real_positions[atom_id] for atom_id in atom_ids},
+                rotation=Rotation3D(
+                    pitch=math.radians(pitch_deg),
+                    yaw=math.radians(yaw_deg),
+                ),
+                center=center,
+                scale=self._trackball_projection_scale(atom_ids),
+            )
+            return {atom.atom_id: (atom.x, atom.y) for atom in projected}
+
         points = [self._rotation_3d_ref_positions[atom_id] for atom_id in atom_ids]
         count = len(points)
         cx = sum(x for x, _ in points) / count
@@ -3045,6 +3088,23 @@ class CanvasSelectionMixin:
             math.radians(yaw_deg),
         )
         return {atom_id: point for atom_id, point in zip(atom_ids, rotated)}
+
+    def _trackball_projection_scale(self, atom_ids: tuple[int, ...]) -> float:
+        """Escala coordenadas Å a píxeles usando la longitud de enlace actual."""
+        bond_lengths: list[float] = []
+        for bond in self.model.bonds.values():
+            if bond.a1_id not in atom_ids or bond.a2_id not in atom_ids:
+                continue
+            if bond.a1_id not in self._rotation_3d_ref_positions or bond.a2_id not in self._rotation_3d_ref_positions:
+                continue
+            x1, y1 = self._rotation_3d_ref_positions[bond.a1_id]
+            x2, y2 = self._rotation_3d_ref_positions[bond.a2_id]
+            length = math.hypot(x2 - x1, y2 - y1)
+            if length > 1e-6:
+                bond_lengths.append(length)
+        if bond_lengths:
+            return sum(bond_lengths) / len(bond_lengths)
+        return float(getattr(self.state, "bond_length", 42.0) or 42.0)
 
     def _begin_3d_rotation_drag(
         self,
@@ -3087,8 +3147,6 @@ class CanvasSelectionMixin:
 
         pitch_deg = self._rotation_3d_drag_start_pitch_deg + dy * TRACKBALL_ROTATION_DEG_PER_PIXEL
         yaw_deg = self._rotation_3d_drag_start_yaw_deg + dx * TRACKBALL_ROTATION_DEG_PER_PIXEL
-        pitch_deg = max(-TRACKBALL_MAX_TILT_DEG, min(TRACKBALL_MAX_TILT_DEG, pitch_deg))
-        yaw_deg = max(-TRACKBALL_MAX_TILT_DEG, min(TRACKBALL_MAX_TILT_DEG, yaw_deg))
 
         projected = self._project_trackball_reference(atom_ids, pitch_deg, yaw_deg)
         changed = False

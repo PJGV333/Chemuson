@@ -123,3 +123,28 @@ def test_rotation_drag_pushes_undo_and_redo_for_selected_fragment() -> None:
         (120.0, 120.0),
         abs=0.3,
     )
+
+
+def test_alt_trackball_drag_uses_real_3d_reference_without_60_degree_clamp(monkeypatch) -> None:
+    canvas = ChemusonCanvas()
+
+    atom_a = canvas.model.add_atom("C", 100.0, 100.0)
+    atom_b = canvas.model.add_atom("C", 140.0, 100.0)
+    bond = canvas.model.add_bond(atom_a.id, atom_b.id, order=1)
+    canvas._rebuild_items_from_model()
+    canvas.bond_items[bond.id].setSelected(True)
+    canvas._sync_selection_from_scene()
+
+    def fake_real_3d_reference(atom_ids):
+        return {
+            atom_ids[0]: (-0.7, 0.0, -0.6),
+            atom_ids[1]: (0.7, 0.0, 0.6),
+        }
+
+    monkeypatch.setattr(canvas, "_load_real_3d_trackball_reference", fake_real_3d_reference)
+
+    assert canvas._begin_3d_rotation_drag(QPointF(0.0, 0.0))
+    canvas._update_3d_rotation_drag(QPointF(0.0, 100.0))
+
+    assert canvas._rotation_3d_pitch_deg > 60.0
+    assert canvas._rotation_3d_real_positions

@@ -205,6 +205,7 @@ class ChemusonCanvas(
         self._rotation_3d_has_moved = False
         self._rotation_3d_ref_atom_ids: tuple[int, ...] = tuple()
         self._rotation_3d_ref_positions: Dict[int, Tuple[float, float]] = {}
+        self._rotation_3d_real_positions: Dict[int, Tuple[float, float, float]] = {}
         self._rotation_3d_pitch_deg = 0.0
         self._rotation_3d_yaw_deg = 0.0
         self._rotation_3d_drag_start_pitch_deg = 0.0
