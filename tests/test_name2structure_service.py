@@ -71,3 +71,20 @@ def test_static_connector_reports_not_found_without_rdkit_call(monkeypatch) -> N
 
     assert not result.ok
     assert result.message == "not_found"
+
+
+def test_static_connector_uses_internal_fallback_when_rdkit_worker_fails(monkeypatch) -> None:
+    import chemuson.chemio.rdkit_safe as rdkit_safe
+
+    def fail_worker(_smiles: str, timeout_s: float):
+        return None, "rdkit_unavailable"
+
+    monkeypatch.setattr(rdkit_safe, "smiles_to_molgraph_isolated", fail_worker)
+
+    result = resolve_name_to_structure("ethanol", allow_network=False)
+
+    assert result.ok
+    assert result.source == "offline-common"
+    assert result.smiles == "CCO"
+    assert result.graph is not None
+    assert [atom.element for atom in result.graph.atoms.values()] == ["C", "C", "O"]

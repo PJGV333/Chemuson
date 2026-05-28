@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QInputDialog,
     QMessageBox,
+    QProgressDialog,
     QTabWidget,
     QLabel,
     QTextEdit,
@@ -116,6 +117,27 @@ class _DescriptorWorker(QObject):
             self.finished.emit(self._job_id, dict(descriptors or {}), "")
         except Exception as exc:
             self.finished.emit(self._job_id, {}, str(exc))
+
+
+class _NameToStructureWorker(QObject):
+    """Worker para resolver Name->Structure sin bloquear la UI."""
+
+    finished = pyqtSignal(int, object, str)
+
+    def __init__(self, job_id: int, query: str) -> None:
+        super().__init__()
+        self._job_id = int(job_id)
+        self._query = str(query or "").strip()
+
+    @pyqtSlot()
+    def run(self) -> None:
+        try:
+            from chemuson.name2structure import resolve_name_to_structure
+
+            result = resolve_name_to_structure(self._query, allow_network=True, timeout_s=8.0)
+            self.finished.emit(self._job_id, result, "")
+        except Exception as exc:
+            self.finished.emit(self._job_id, None, str(exc))
 
 
 class ChemusonWindow(QMainWindow):
@@ -2066,7 +2088,7 @@ class ChemusonWindow(QMainWindow):
         name, ok = QInputDialog.getText(
             self,
             "Nombre a estructura",
-            "Nombre común o sistemático:",
+            "Nombre común o sistemático (recomendado en inglés):",
         )
         if not ok or not name.strip():
             return
@@ -2131,7 +2153,11 @@ class ChemusonWindow(QMainWindow):
         if not self._confirm_name_to_structure_result(result):
             self.statusBar().showMessage("Inserción Name→Structure cancelada.", 5000)
             return
-        self.canvas._insert_molgraph(result.graph)
+        self.canvas._insert_molgraph(result.graph, select_inserted=True)
+        try:
+            self.canvas.ensureVisible(self.canvas.scene.selectedItems()[0])
+        except Exception:
+            pass
         self.canvas._last_name_to_structure = self._name_to_structure_metadata(result)
         provenance = "cache" if result.from_cache else result.source
         label = result.resolved_name or result.query

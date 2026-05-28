@@ -62,6 +62,7 @@ class MassPeak:
     mz: float
     intensity: float
     label: str
+    confidence: float = 0.70
 
 
 @dataclass(frozen=True)
@@ -70,6 +71,7 @@ class SpectralPrediction:
     carbon_nmr: list[CarbonNmrPeak] = field(default_factory=list)
     mass_spectrum: list[MassPeak] = field(default_factory=list)
     source: str = "heuristic-v1"
+    confidence: float = 0.45
     message: str = ""
 
 
@@ -106,7 +108,8 @@ def predict_spectra(graph: MolGraph, *, predictor: str = "heuristic-v1") -> Spec
     proton = _predict_proton_nmr(working)
     carbon = _predict_carbon_nmr(working)
     mass = _predict_mass_spectrum(working)
-    return SpectralPrediction(proton, carbon, mass)
+    confidence = _prediction_confidence(proton, carbon, mass)
+    return SpectralPrediction(proton, carbon, mass, confidence=confidence)
 
 
 def _predict_proton_nmr(graph: MolGraph) -> list[ProtonNmrPeak]:
@@ -117,12 +120,12 @@ def _predict_proton_nmr(graph: MolGraph) -> list[ProtonNmrPeak]:
             continue
         element = str(atom.element)
         if element == "C":
-            shift, env = _carbon_bound_proton_shift(graph, atom_id)
+            shift, env, confidence = _carbon_bound_proton_shift(graph, atom_id, hydrogens)
         elif element in {"O", "N", "S"}:
-            shift, env = (2.5, f"{element}-H intercambiable")
+            shift, env, confidence = _hetero_bound_proton_shift(graph, atom_id, element)
         else:
             continue
-        peaks.append(ProtonNmrPeak(atom_id, round(shift, 2), hydrogens, env))
+        peaks.append(ProtonNmrPeak(atom_id, round(shift, 2), hydrogens, env, confidence))
     return peaks
 
 
@@ -131,8 +134,8 @@ def _predict_carbon_nmr(graph: MolGraph) -> list[CarbonNmrPeak]:
     for atom_id, atom in sorted(graph.atoms.items()):
         if str(atom.element) != "C":
             continue
-        shift, env = _carbon_shift(graph, atom_id)
-        peaks.append(CarbonNmrPeak(atom_id, round(shift, 1), env))
+        shift, env, confidence = _carbon_shift(graph, atom_id)
+        peaks.append(CarbonNmrPeak(atom_id, round(shift, 1), env, confidence))
     return peaks
 
 
@@ -151,33 +154,52 @@ def _predict_mass_spectrum(graph: MolGraph) -> list[MassPeak]:
     ]
 
 
-def _carbon_bound_proton_shift(graph: MolGraph, atom_id: int) -> tuple[float, str]:
+def _carbon_bound_proton_shift(graph: MolGraph, atom_id: int, hydrogens: int) -> tuple[float, str, float]:
     atom = graph.atoms[atom_id]
     if bool(getattr(atom, "is_aromatic", False)) or _has_aromatic_bond(graph, atom_id):
-        return 7.2, "aromático"
+        return 7.2, "aromático", 0.58
     if _has_bond_order(graph, atom_id, 2):
         if _has_hetero_neighbor(graph, atom_id, {"O"}):
-            return 9.8, "aldehídico"
-        return 5.4, "vinílico"
+            return 9.8, "aldehídico", 0.56
+        return 5.4, "vinílico", 0.50
     if _has_hetero_neighbor(graph, atom_id, _ELECTRONEGATIVE):
-        return 3.5, "alquilo unido a heteroátomo"
+        return 3.5, "alquilo unido a heteroátomo", 0.55
     if _near_carbonyl(graph, atom_id):
-        return 2.2, "alfa carbonilo"
-    return 1.2, "alquilo"
+        return 2.2, "alfa carbonilo", 0.53
+    if hydrogens == 3:
+        return 0.9, "metilo alifático", 0.48
+    if hydrogens == 2:
+        return 1.3, "metileno alifático", 0.48
+    return 1.5, "metino alifático", 0.46
 
 
-def _carbon_shift(graph: MolGraph, atom_id: int) -> tuple[float, str]:
+def _hetero_bound_proton_shift(graph: MolGraph, atom_id: int, element: str) -> tuple[float, str, float]:
+    if element == "O":
+        if _near_carbonyl_hetero(graph, atom_id):
+            return 10.5, "ácido carboxílico O-H", 0.45
+        return 2.5, "alcohol/fenol O-H intercambiable", 0.42
+    if element == "N":
+        return 3.0, "N-H intercambiable", 0.40
+    return 2.2, f"{element}-H intercambiable", 0.38
+
+
+def _carbon_shift(graph: MolGraph, atom_id: int) -> tuple[float, str, float]:
     if _has_bond_order(graph, atom_id, 2) and _has_hetero_neighbor(graph, atom_id, {"O", "N", "S"}):
-        return 175.0, "carbonilo"
+        return 175.0, "carbonilo", 0.58
     if bool(getattr(graph.atoms[atom_id], "is_aromatic", False)) or _has_aromatic_bond(graph, atom_id):
-        return 128.0, "aromático"
+        return 128.0, "aromático", 0.58
     if _has_bond_order(graph, atom_id, 2):
-        return 115.0, "alqueno"
+        return 115.0, "alqueno", 0.50
     if _has_hetero_neighbor(graph, atom_id, _ELECTRONEGATIVE):
-        return 62.0, "C unido a heteroátomo"
+        return 62.0, "C unido a heteroátomo", 0.55
     if _near_carbonyl(graph, atom_id):
-        return 32.0, "alfa carbonilo"
-    return 25.0, "alifático"
+        return 32.0, "alfa carbonilo", 0.52
+    hydrogens = _estimated_hydrogen_count(graph, atom_id)
+    if hydrogens == 3:
+        return 15.0, "metilo alifático", 0.48
+    if hydrogens == 2:
+        return 28.0, "metileno alifático", 0.48
+    return 35.0, "metino/cuaternario alifático", 0.44
 
 
 def _estimated_hydrogen_count(graph: MolGraph, atom_id: int) -> int:
@@ -255,3 +277,25 @@ def _near_carbonyl(graph: MolGraph, atom_id: int) -> bool:
         if _has_bond_order(graph, neigh_id, 2) and _has_hetero_neighbor(graph, neigh_id, {"O", "N", "S"}):
             return True
     return False
+
+
+def _near_carbonyl_hetero(graph: MolGraph, atom_id: int) -> bool:
+    for neigh_id in _neighbor_ids(graph, atom_id):
+        if str(graph.atoms.get(neigh_id).element) != "C":
+            continue
+        if _has_bond_order(graph, neigh_id, 2) and _has_hetero_neighbor(graph, neigh_id, {"O"}):
+            return True
+    return False
+
+
+def _prediction_confidence(
+    proton: list[ProtonNmrPeak],
+    carbon: list[CarbonNmrPeak],
+    mass: list[MassPeak],
+) -> float:
+    values = [peak.confidence for peak in proton]
+    values.extend(peak.confidence for peak in carbon)
+    values.extend(peak.confidence for peak in mass)
+    if not values:
+        return 0.0
+    return round(sum(values) / len(values), 2)

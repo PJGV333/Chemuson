@@ -43,7 +43,13 @@ def test_name_to_structure_result_confirms_and_inserts(monkeypatch) -> None:
     try:
         monkeypatch.setattr(window, "_schedule_chemical_properties_update", lambda: None)
         inserted = {}
-        monkeypatch.setattr(window.canvas, "_insert_molgraph", lambda graph: inserted.setdefault("graph", graph))
+        monkeypatch.setattr(
+            window.canvas,
+            "_insert_molgraph",
+            lambda graph, select_inserted=False: inserted.update(
+                {"graph": graph, "select_inserted": select_inserted}
+            ),
+        )
         prompts: list[str] = []
 
         def _fake_question(_parent, _title, text, *_args):
@@ -55,6 +61,7 @@ def test_name_to_structure_result_confirms_and_inserts(monkeypatch) -> None:
         window._on_name_to_structure_result(1, _result(), "")
 
         assert inserted["graph"].atoms
+        assert inserted["select_inserted"] is True
         assert prompts
         assert "Fuente: offline-common" in prompts[0]
         assert "Confianza: 0.72" in prompts[0]

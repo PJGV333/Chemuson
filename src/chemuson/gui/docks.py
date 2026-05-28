@@ -5,6 +5,7 @@ Paneles laterales para plantillas, inspección de propiedades y apariencia.
 """
 from PyQt6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QDockWidget,
     QWidget,
     QVBoxLayout,
@@ -324,19 +325,35 @@ class SpectroscopyDock(QDockWidget):
         layout.addWidget(self.info_label)
 
         self.tabs = QTabWidget()
-        self.proton_table = self._make_table(["δ ppm", "Int.", "Entorno", "Átomo"])
-        self.carbon_table = self._make_table(["δ ppm", "Entorno", "Átomo"])
-        self.mass_table = self._make_table(["m/z", "Int. %", "Pico"])
+        self.proton_table = self._make_table(["δ ppm", "Int.", "Entorno", "Conf.", "Átomo"])
+        self.carbon_table = self._make_table(["δ ppm", "Entorno", "Conf.", "Átomo"])
+        self.mass_table = self._make_table(["m/z", "Int. %", "Pico", "Conf."])
         self.tabs.addTab(self.proton_table, "¹H NMR")
         self.tabs.addTab(self.carbon_table, "¹³C NMR")
         self.tabs.addTab(self.mass_table, "MS")
         layout.addWidget(self.tabs)
+
+        controls = QHBoxLayout()
+        controls.setContentsMargins(6, 4, 6, 6)
+        self.btn_copy_table = QPushButton("Copiar tabla")
+        self.btn_copy_table.clicked.connect(self.copy_current_table_tsv)
+        controls.addStretch()
+        controls.addWidget(self.btn_copy_table)
+        layout.addLayout(controls)
 
         self.setWidget(container)
         self.update_prediction(None)
 
     def update_prediction(self, prediction) -> None:
         """Carga una predicción espectral en las tablas del dock."""
+        if prediction is not None:
+            source = str(getattr(prediction, "source", "heuristic-v1"))
+            confidence = float(getattr(prediction, "confidence", 0.0) or 0.0)
+            self.info_label.setText(
+                f"Predicción estimada ({source}); confianza global {confidence:.2f}. No sustituye datos experimentales."
+            )
+        else:
+            self.info_label.setText("Sin predicción espectral")
         self._fill_proton(getattr(prediction, "proton_nmr", []) if prediction is not None else [])
         self._fill_carbon(getattr(prediction, "carbon_nmr", []) if prediction is not None else [])
         self._fill_mass(getattr(prediction, "mass_spectrum", []) if prediction is not None else [])
@@ -344,8 +361,9 @@ class SpectroscopyDock(QDockWidget):
             table.rowCount() > 0
             for table in (self.proton_table, self.carbon_table, self.mass_table)
         )
-        self.info_label.setVisible(not has_rows)
+        self.info_label.setVisible(True)
         self.tabs.setVisible(has_rows)
+        self.btn_copy_table.setVisible(has_rows)
 
     def _make_table(self, headers: list[str]) -> QTableWidget:
         table = QTableWidget(0, len(headers))
@@ -364,22 +382,24 @@ class SpectroscopyDock(QDockWidget):
                 f"{float(peak.shift_ppm):.2f}",
                 f"{int(peak.hydrogens)}H",
                 str(peak.environment),
+                f"{float(getattr(peak, 'confidence', 0.0)):.2f}",
                 int(peak.atom_id),
             )
             for peak in peaks
         ]
-        self._fill_table(self.proton_table, rows, atom_column=3)
+        self._fill_table(self.proton_table, rows, atom_column=4)
 
     def _fill_carbon(self, peaks) -> None:
         rows = [
             (
                 f"{float(peak.shift_ppm):.1f}",
                 str(peak.environment),
+                f"{float(getattr(peak, 'confidence', 0.0)):.2f}",
                 int(peak.atom_id),
             )
             for peak in peaks
         ]
-        self._fill_table(self.carbon_table, rows, atom_column=2)
+        self._fill_table(self.carbon_table, rows, atom_column=3)
 
     def _fill_mass(self, peaks) -> None:
         rows = [
@@ -387,10 +407,28 @@ class SpectroscopyDock(QDockWidget):
                 f"{float(peak.mz):.4f}",
                 f"{float(peak.intensity):.1f}",
                 str(peak.label),
+                f"{float(getattr(peak, 'confidence', 0.0)):.2f}",
             )
             for peak in peaks
         ]
         self._fill_table(self.mass_table, rows, atom_column=None)
+
+    def copy_current_table_tsv(self) -> str:
+        """Copia la tabla espectral activa como TSV y devuelve el texto."""
+        table = self.tabs.currentWidget()
+        if not isinstance(table, QTableWidget):
+            return ""
+        headers = [table.horizontalHeaderItem(col).text() for col in range(table.columnCount())]
+        lines = ["\t".join(headers)]
+        for row in range(table.rowCount()):
+            values = []
+            for col in range(table.columnCount()):
+                item = table.item(row, col)
+                values.append(item.text() if item is not None else "")
+            lines.append("\t".join(values))
+        text = "\n".join(lines)
+        QApplication.clipboard().setText(text)
+        return text
 
     def _fill_table(self, table: QTableWidget, rows: list[tuple], atom_column: int | None) -> None:
         table.blockSignals(True)

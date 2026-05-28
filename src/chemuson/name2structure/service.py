@@ -226,5 +226,99 @@ def _smiles_to_graph(smiles: str, timeout_s: float) -> tuple[MolGraph | None, st
 
     graph, error = smiles_to_molgraph_isolated(smiles, timeout_s=timeout_s)
     if graph is None:
+        fallback = _fallback_common_smiles_to_graph(smiles)
+        if fallback is not None:
+            return fallback, ""
         return None, str(error or "conversion_failed")
     return graph, ""
+
+
+def _fallback_common_smiles_to_graph(smiles: str) -> MolGraph | None:
+    """Construye grafos para el subconjunto offline sin depender de RDKit."""
+    key = str(smiles or "").strip()
+    builders = {
+        "O": _graph_water,
+        "C": lambda: _graph_chain(["C"]),
+        "CC": lambda: _graph_chain(["C", "C"]),
+        "CCO": lambda: _graph_chain(["C", "C", "O"]),
+        "CO": lambda: _graph_chain(["C", "O"]),
+        "CC(=O)C": _graph_acetone,
+        "c1ccccc1": lambda: _graph_benzene(),
+        "Cc1ccccc1": _graph_toluene,
+        "Oc1ccccc1": _graph_phenol,
+        "CC(=O)O": _graph_acetic_acid,
+    }
+    builder = builders.get(key)
+    if builder is None:
+        return None
+    return builder()
+
+
+def _graph_chain(elements: list[str]) -> MolGraph:
+    graph = MolGraph()
+    atoms = [graph.add_atom(element, float(idx) * 42.0, 0.0, is_explicit=element != "C") for idx, element in enumerate(elements)]
+    for left, right in zip(atoms, atoms[1:]):
+        graph.add_bond(left.id, right.id, order=1)
+    return graph
+
+
+def _graph_water() -> MolGraph:
+    graph = MolGraph()
+    graph.add_atom("O", 0.0, 0.0, is_explicit=True)
+    return graph
+
+
+def _graph_acetone() -> MolGraph:
+    graph = MolGraph()
+    c1 = graph.add_atom("C", 0.0, 0.0)
+    c2 = graph.add_atom("C", 42.0, 0.0)
+    o = graph.add_atom("O", 42.0, -42.0, is_explicit=True)
+    c3 = graph.add_atom("C", 84.0, 0.0)
+    graph.add_bond(c1.id, c2.id, order=1)
+    graph.add_bond(c2.id, o.id, order=2)
+    graph.add_bond(c2.id, c3.id, order=1)
+    return graph
+
+
+def _graph_acetic_acid() -> MolGraph:
+    graph = MolGraph()
+    c1 = graph.add_atom("C", 0.0, 0.0)
+    c2 = graph.add_atom("C", 42.0, 0.0)
+    o1 = graph.add_atom("O", 42.0, -42.0, is_explicit=True)
+    o2 = graph.add_atom("O", 84.0, 0.0, is_explicit=True, explicit_h=1)
+    graph.add_bond(c1.id, c2.id, order=1)
+    graph.add_bond(c2.id, o1.id, order=2)
+    graph.add_bond(c2.id, o2.id, order=1)
+    return graph
+
+
+def _graph_benzene() -> MolGraph:
+    graph = MolGraph()
+    import math
+
+    radius = 42.0
+    atoms = []
+    for idx in range(6):
+        angle = math.radians(60.0 * idx - 30.0)
+        atom = graph.add_atom("C", math.cos(angle) * radius, math.sin(angle) * radius)
+        atom.is_aromatic = True
+        atoms.append(atom)
+    for idx in range(6):
+        graph.add_bond(atoms[idx].id, atoms[(idx + 1) % 6].id, order=1, is_aromatic=True)
+    return graph
+
+
+def _graph_toluene() -> MolGraph:
+    graph = _graph_benzene()
+    anchor = graph.get_atom(1)
+    methyl = graph.add_atom("C", anchor.x + 42.0, anchor.y - 42.0)
+    graph.add_bond(anchor.id, methyl.id, order=1)
+    return graph
+
+
+def _graph_phenol() -> MolGraph:
+    graph = _graph_benzene()
+    anchor = graph.get_atom(1)
+    oxygen = graph.add_atom("O", anchor.x + 42.0, anchor.y - 42.0, is_explicit=True, explicit_h=1)
+    graph.add_bond(anchor.id, oxygen.id, order=1)
+    return graph

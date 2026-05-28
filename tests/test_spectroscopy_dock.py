@@ -36,9 +36,27 @@ def test_spectroscopy_dock_populates_peak_tables_and_emits_atom() -> None:
 
     assert dock.tabs.isVisible() or dock.proton_table.rowCount() == 1
     assert dock.proton_table.item(0, 0).text() == "1.23"
+    assert dock.proton_table.item(0, 3).text() == "0.45"
     assert dock.carbon_table.item(0, 1).text() == "alifático"
     assert dock.mass_table.item(0, 2).text() == "M+"
     assert selected == [7]
+
+
+def test_spectroscopy_dock_copies_active_table_tsv() -> None:
+    dock = SpectroscopyDock()
+    dock.update_prediction(
+        SpectralPrediction(
+            proton_nmr=[ProtonNmrPeak(3, 2.50, 1, "alcohol/fenol O-H intercambiable", 0.42)],
+            source="heuristic-v1",
+            confidence=0.42,
+        )
+    )
+
+    text = dock.copy_current_table_tsv()
+
+    assert "δ ppm\tInt.\tEntorno\tConf.\tÁtomo" in text
+    assert "2.50\t1H\talcohol/fenol O-H intercambiable\t0.42\t3" in text
+    assert QApplication.clipboard().text() == text
 
 
 def test_spectrum_peak_selection_selects_canvas_atom() -> None:

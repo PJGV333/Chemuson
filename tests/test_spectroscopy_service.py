@@ -22,9 +22,11 @@ def test_predict_spectra_returns_nmr_and_mass_for_ethanol() -> None:
     prediction = predict_spectra(graph)
 
     assert prediction.source == "heuristic-v1"
+    assert prediction.confidence > 0.0
     assert len(prediction.carbon_nmr) == 2
     assert any(peak.environment == "C unido a heteroátomo" for peak in prediction.carbon_nmr)
     assert any(peak.environment == "alquilo unido a heteroátomo" for peak in prediction.proton_nmr)
+    assert all(0.0 < peak.confidence <= 1.0 for peak in prediction.proton_nmr)
     assert prediction.mass_spectrum[0].label == "M+"
     assert prediction.mass_spectrum[0].mz > 45.0
 
@@ -59,3 +61,31 @@ def test_predict_spectra_uses_registered_plugin() -> None:
     assert prediction.source == "dummy"
     assert prediction.message == "1"
     assert missing.message == "predictor_not_found:missing"
+
+
+def test_predict_spectra_distinguishes_aliphatic_carbon_environments() -> None:
+    graph = MolGraph()
+    c1 = graph.add_atom("C", 0.0, 0.0)
+    c2 = graph.add_atom("C", 40.0, 0.0)
+    c3 = graph.add_atom("C", 80.0, 0.0)
+    graph.add_bond(c1.id, c2.id, order=1)
+    graph.add_bond(c2.id, c3.id, order=1)
+
+    prediction = predict_spectra(graph)
+    environments = {peak.environment for peak in prediction.carbon_nmr}
+
+    assert "metilo alifático" in environments
+    assert "metileno alifático" in environments
+
+
+def test_predict_spectra_labels_carboxylic_acid_oh() -> None:
+    graph = MolGraph()
+    c = graph.add_atom("C", 0.0, 0.0)
+    o_double = graph.add_atom("O", 40.0, -40.0, is_explicit=True)
+    o_h = graph.add_atom("O", 40.0, 40.0, is_explicit=True, explicit_h=1)
+    graph.add_bond(c.id, o_double.id, order=2)
+    graph.add_bond(c.id, o_h.id, order=1)
+
+    prediction = predict_spectra(graph)
+
+    assert any(peak.environment == "ácido carboxílico O-H" for peak in prediction.proton_nmr)
