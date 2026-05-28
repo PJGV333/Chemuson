@@ -5,6 +5,9 @@ import sys
 import time
 
 import pytest
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QKeySequence
+from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QInputDialog, QMessageBox, QTextEdit
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
@@ -304,4 +307,28 @@ def test_external_rich_text_editor_preserves_selection_for_toolbar_action() -> N
         assert window.text_toolbar.action_sup.shortcuts()
     finally:
         window._set_external_text_editor(None)
+        window.close()
+
+
+def test_ctrl_k_shortcut_triggers_full_clean_2d_action() -> None:
+    window = ChemusonWindow()
+    try:
+        triggered: list[bool] = []
+        window.action_clean_2d_full.triggered.connect(
+            lambda _checked=False: triggered.append(True)
+        )
+        window.show()
+        QApplication.processEvents()
+        window.canvas.setFocus()
+
+        QTest.keyClick(
+            window.canvas.viewport(),
+            Qt.Key.Key_K,
+            Qt.KeyboardModifier.ControlModifier,
+        )
+        QApplication.processEvents()
+
+        assert window.action_clean_2d_full.shortcut() == QKeySequence("Ctrl+K")
+        assert triggered
+    finally:
         window.close()

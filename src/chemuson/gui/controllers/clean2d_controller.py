@@ -185,11 +185,15 @@ class Clean2DController:
             return
         except Exception as exc:
             message = str(exc)
+            if mode in {"quick", "publication"}:
+                canvas.clean_2d_fallback(target_ids, iterations=fallback_iterations)
+                if self._polish_with_v2(window, target_ids, mode=mode, status_suffix=status_suffix):
+                    return
+                msg = "Selección 2D limpiada" if atom_ids else "Estructura 2D limpiada"
+                window.statusBar().showMessage(f"{msg} {status_suffix} (básico)")
+                return
             if "No module named" in message and "rdkit" in message:
                 canvas.clean_2d_fallback(target_ids, iterations=fallback_iterations)
-                if mode in {"quick", "publication"}:
-                    self._polish_with_v2(window, target_ids, mode=mode, status_suffix=status_suffix)
-                    return
                 msg = "Selección 2D limpiada" if atom_ids else "Estructura 2D limpiada"
                 window.statusBar().showMessage(f"{msg} {status_suffix} (básico)")
                 return

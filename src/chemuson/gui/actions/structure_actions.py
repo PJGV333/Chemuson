@@ -1,5 +1,6 @@
 """Acciones de estructura/transformación molecular."""
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction, QKeySequence
 
 from chemuson.gui.canvas import BRANCH_ROTATION_STEP_DEG, FRAGMENT_ROTATION_STEP_DEG
@@ -10,10 +11,14 @@ def create_structure_actions(window) -> None:
     window.action_clean_2d.triggered.connect(window._on_clean_2d)
     window.action_clean_2d_full = QAction("Limpiar 2D (1 paso)", window)
     window.action_clean_2d_full.setShortcut(QKeySequence("Ctrl+K"))
+    window.action_clean_2d_full.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
     window.action_clean_2d_full.triggered.connect(window._on_clean_2d_full)
+    window.addAction(window.action_clean_2d_full)
     window.action_clean_2d_publication = QAction("Limpiar 2D para publicación", window)
     window.action_clean_2d_publication.setShortcut(QKeySequence("Ctrl+Shift+K"))
+    window.action_clean_2d_publication.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
     window.action_clean_2d_publication.triggered.connect(window._on_clean_2d_publication)
+    window.addAction(window.action_clean_2d_publication)
 
     window.action_validate_structure = QAction("Validar valencias", window)
     window.action_validate_structure.setShortcut(QKeySequence("Ctrl+Shift+V"))

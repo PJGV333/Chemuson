@@ -124,6 +124,35 @@ def test_clean2d_v2_does_not_create_large_local_deformations_on_chain() -> None:
     assert max_move < 8.0
 
 
+def test_clean2d_v2_equalizes_distorted_acyclic_chain_lengths_and_angles() -> None:
+    graph = MolGraph()
+    atoms = [
+        graph.add_atom("C", 0.0, 0.0),
+        graph.add_atom("C", 80.0, 0.0),
+        graph.add_atom("C", 120.0, 0.0),
+        graph.add_atom("C", 200.0, 0.0),
+    ]
+    for left, right in zip(atoms, atoms[1:]):
+        graph.add_bond(left.id, right.id, order=1)
+
+    after = optimize_clean2d_positions(
+        graph,
+        params=Clean2DParameters.publication(target_bond_length=40.0),
+    )
+
+    lengths = [
+        _distance(after[left.id], after[right.id])
+        for left, right in zip(atoms, atoms[1:])
+    ]
+    assert lengths == pytest.approx([40.0, 40.0, 40.0], abs=1.0)
+
+    internal_angles = [
+        _angle_between(after[atoms[1].id], after[atoms[0].id], after[atoms[2].id]),
+        _angle_between(after[atoms[2].id], after[atoms[1].id], after[atoms[3].id]),
+    ]
+    assert max(internal_angles) < 145.0
+
+
 def _distance(a: tuple[float, float], b: tuple[float, float]) -> float:
     return math.hypot(a[0] - b[0], a[1] - b[1])
 
