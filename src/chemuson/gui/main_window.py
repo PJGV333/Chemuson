@@ -224,6 +224,9 @@ class ChemusonWindow(QMainWindow):
         self._descriptor_jobs: dict[int, tuple[QThread, _DescriptorWorker, list[tuple[str, str]]]] = {}
         self._next_descriptor_job_id = 1
         self._latest_descriptor_job_id = 0
+        self._name2structure_jobs: dict[int, tuple[QThread, _NameToStructureWorker, QProgressDialog | None]] = {}
+        self._cancelled_name2structure_jobs: set[int] = set()
+        self._next_name2structure_job_id = 1
 
         self.appearance_dock = AppearanceDock(self.canvas.drawing_style, self)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.appearance_dock)
@@ -2059,7 +2062,7 @@ class ChemusonWindow(QMainWindow):
         self._template_controller.on_import_smiles(self._template_controller_context())
 
     def _on_name_to_structure(self) -> None:
-        """Convierte nombre común/sistemático a estructura e inserta el resultado."""
+        """Convierte nombre común/sistemático a estructura en worker."""
         name, ok = QInputDialog.getText(
             self,
             "Nombre a estructura",
@@ -2067,32 +2070,108 @@ class ChemusonWindow(QMainWindow):
         )
         if not ok or not name.strip():
             return
-        query = name.strip()
-        try:
-            from chemuson.name2structure import resolve_name_to_structure
+        self._start_name_to_structure_job(name.strip())
 
-            result = resolve_name_to_structure(query, allow_network=True, timeout_s=8.0)
-        except Exception as exc:
+    def _start_name_to_structure_job(self, query: str) -> int:
+        """Inicia resolución Name->Structure no bloqueante."""
+        job_id = int(getattr(self, "_next_name2structure_job_id", 1))
+        self._next_name2structure_job_id = job_id + 1
+        thread = QThread(self)
+        worker = _NameToStructureWorker(job_id, query)
+        worker.moveToThread(thread)
+        progress = QProgressDialog(f"Resolviendo '{query}'...", "Cancelar", 0, 0, self)
+        progress.setWindowTitle("Nombre a estructura")
+        progress.setWindowModality(Qt.WindowModality.NonModal)
+        progress.canceled.connect(lambda job_id=job_id: self._cancel_name_to_structure_job(job_id))
+        progress.canceled.connect(thread.requestInterruption)
+        thread.started.connect(worker.run)
+        worker.finished.connect(self._on_name_to_structure_result)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        self._name2structure_jobs[job_id] = (thread, worker, progress)
+        progress.show()
+        thread.start()
+        self.statusBar().showMessage(f"Buscando estructura para '{query}'...", 5000)
+        return job_id
+
+    def _cancel_name_to_structure_job(self, job_id: int) -> None:
+        """Marca una consulta Name->Structure como cancelada por el usuario."""
+        self._cancelled_name2structure_jobs.add(int(job_id))
+
+    def _on_name_to_structure_result(self, job_id: int, result: object, error: str) -> None:
+        """Procesa resultado de Name->Structure y confirma inserción."""
+        job = getattr(self, "_name2structure_jobs", {}).pop(int(job_id), None)
+        if job is not None:
+            _thread, _worker, progress = job
+            if progress is not None:
+                progress.close()
+                progress.deleteLater()
+        if int(job_id) in getattr(self, "_cancelled_name2structure_jobs", set()):
+            self._cancelled_name2structure_jobs.discard(int(job_id))
+            self.statusBar().showMessage("Búsqueda Name→Structure cancelada.", 5000)
+            return
+        if error:
             QMessageBox.critical(
                 self,
                 "Error",
-                f"No se pudo resolver el nombre:\n{exc}",
+                f"No se pudo resolver el nombre:\n{error}",
             )
+            return
+        if result is None:
+            QMessageBox.warning(self, "Nombre a estructura", "No se recibió resultado del conector.")
             return
         if not result.ok or result.graph is None:
             QMessageBox.warning(
                 self,
                 "Nombre a estructura",
-                f"No se encontró estructura para '{query}'.\nFuente: {result.source}\nDetalle: {result.message}",
+                f"No se encontró estructura para '{result.query}'.\nFuente: {result.source}\nDetalle: {result.message}",
             )
             return
+        if not self._confirm_name_to_structure_result(result):
+            self.statusBar().showMessage("Inserción Name→Structure cancelada.", 5000)
+            return
         self.canvas._insert_molgraph(result.graph)
+        self.canvas._last_name_to_structure = self._name_to_structure_metadata(result)
         provenance = "cache" if result.from_cache else result.source
         label = result.resolved_name or result.query
         self.statusBar().showMessage(
             f"Estructura insertada desde {provenance}: {label} (confianza {result.confidence:.2f})",
             9000,
         )
+
+    def _confirm_name_to_structure_result(self, result: object) -> bool:
+        """Muestra procedencia/confianza antes de insertar la estructura."""
+        provenance = "cache" if getattr(result, "from_cache", False) else getattr(result, "source", "")
+        resolved = getattr(result, "resolved_name", "") or getattr(result, "query", "")
+        text = (
+            f"Consulta: {getattr(result, 'query', '')}\n"
+            f"Nombre resuelto: {resolved}\n"
+            f"Fuente: {provenance}\n"
+            f"Confianza: {float(getattr(result, 'confidence', 0.0)):.2f}\n"
+            f"SMILES: {getattr(result, 'smiles', '') or 'N/D'}\n\n"
+            "¿Insertar esta estructura?"
+        )
+        choice = QMessageBox.question(
+            self,
+            "Confirmar Nombre a estructura",
+            text,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        return choice == QMessageBox.StandardButton.Yes
+
+    @staticmethod
+    def _name_to_structure_metadata(result: object) -> dict[str, object]:
+        """Metadata trazable de la última inserción Name->Structure."""
+        return {
+            "query": getattr(result, "query", ""),
+            "resolved_name": getattr(result, "resolved_name", ""),
+            "source": getattr(result, "source", ""),
+            "from_cache": bool(getattr(result, "from_cache", False)),
+            "confidence": float(getattr(result, "confidence", 0.0) or 0.0),
+            "smiles": getattr(result, "smiles", ""),
+        }
 
     def _on_export_smiles(self) -> None:
         """Export the current molecule as SMILES."""
