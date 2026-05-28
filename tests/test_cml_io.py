@@ -5,13 +5,14 @@ from __future__ import annotations
 import os
 import sys
 
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QFileDialog
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.chemio.cml_io import cml_to_molgraph, molgraph_to_cml
 from chemuson.core.model import BondStyle, MolGraph
 from chemuson.gui.canvas import ChemusonCanvas
+from chemuson.gui.controllers.export_controller import ExportController
 from chemuson.gui.controllers.file_controller import FileController
 
 
@@ -90,3 +91,38 @@ def test_cml_import_accepts_minimal_external_cml_without_namespace() -> None:
 
     assert len(graph.atoms) == 2
     assert graph.find_bond_between(1, 2).order == 3
+
+
+def test_export_controller_writes_cml_with_extension(tmp_path, monkeypatch) -> None:
+    QApplication.instance() or QApplication([])
+    canvas = ChemusonCanvas()
+    canvas.model = _sample_graph()
+    canvas._rebuild_items_from_model()
+    target = tmp_path / "exported"
+    messages: list[str] = []
+
+    class _StatusBar:
+        def showMessage(self, message: str) -> None:
+            messages.append(message)
+
+    class _Window:
+        def __init__(self) -> None:
+            self.canvas = canvas
+
+        def statusBar(self) -> _StatusBar:
+            return _StatusBar()
+
+    monkeypatch.setattr(
+        QFileDialog,
+        "getSaveFileName",
+        lambda *args, **kwargs: (str(target), "Chemical Markup Language (*.cml)"),
+    )
+
+    ExportController().export(_Window(), "cml")
+
+    exported_path = target.with_suffix(".cml")
+    assert exported_path.exists()
+    restored = cml_to_molgraph(exported_path.read_text(encoding="utf-8"))
+    assert len(restored.atoms) == 3
+    assert len(restored.bonds) == 2
+    assert messages[-1].startswith("Exportado:")
