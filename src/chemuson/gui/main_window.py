@@ -35,6 +35,7 @@ from chemuson.gui.docks import (
     InspectorDock,
     PlantillasDock,
     SpectroscopyDock,
+    ValidationDock,
 )
 from chemuson.gui.dialogs import PreferencesDialog, QuickStartDialog, StyleDialog
 from chemuson.gui.text_toolbar import TextFormatToolbar
@@ -198,6 +199,14 @@ class ChemusonWindow(QMainWindow):
         self.inspector_dock = InspectorDock(self)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.inspector_dock)
         self.inspector_dock.hide()
+
+        self.validation_dock = ValidationDock(self)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.validation_dock)
+        self.validation_dock.hide()
+        self.validation_dock.issue_selected.connect(self._select_validation_issue_from_dock)
+        self.validation_dock.refresh_requested.connect(self._on_validate_structure)
+        self.validation_dock.next_requested.connect(lambda: self._on_navigate_validation_issue(1))
+        self.validation_dock.previous_requested.connect(lambda: self._on_navigate_validation_issue(-1))
 
         self.chemical_properties_dock = ChemicalPropertiesDock(self)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.chemical_properties_dock)
@@ -577,6 +586,40 @@ class ChemusonWindow(QMainWindow):
             dock.update_prediction(predict_spectra(graph))
         except Exception:
             dock.update_prediction(None)
+
+    def _refresh_validation_dock(self, issues: dict[int, object] | None = None) -> None:
+        """Sincroniza el dock de validación con el documento activo."""
+        dock = getattr(self, "validation_dock", None)
+        if dock is None:
+            return
+        if issues is None:
+            try:
+                issues = self.canvas.current_validation_issues()
+            except Exception:
+                issues = {}
+        dock.set_issues(dict(issues or {}))
+
+    def _select_validation_issue_from_dock(self, atom_id: int) -> None:
+        """Selecciona en el canvas el átomo elegido desde el dock de validación."""
+        issues = self.canvas.current_validation_issues()
+        issue = issues.get(int(atom_id))
+        self._select_validation_atom(int(atom_id), issue)
+
+    def _select_validation_atom(self, atom_id: int, issue: object | None = None) -> None:
+        """Selecciona y centra un átomo con diagnóstico de validación."""
+        canvas = getattr(self, "canvas", None)
+        if canvas is None or int(atom_id) not in getattr(canvas.model, "atoms", {}):
+            return
+        item = canvas.atom_items.get(int(atom_id))
+        if item is None:
+            return
+        canvas.scene.clearSelection()
+        item.setSelected(True)
+        canvas.centerOn(item.scenePos())
+        canvas._sync_selection_from_scene()
+        if issue is not None:
+            message = getattr(issue, "message", f"Error de valencia en átomo {atom_id}")
+            self.statusBar().showMessage(str(message), 9000)
 
     def _select_atom_from_spectrum(self, atom_id: int) -> None:
         """Selecciona en el canvas el átomo asignado al pico espectral."""
@@ -1841,6 +1884,10 @@ class ChemusonWindow(QMainWindow):
     def _on_validate_structure(self) -> None:
         """Ejecuta validación química detallada sobre el documento activo."""
         errors = self.canvas.validate_structure()
+        issues = self.canvas.current_validation_issues()
+        self._refresh_validation_dock(issues)
+        if hasattr(self, "validation_dock"):
+            self.validation_dock.show()
         if errors:
             self.statusBar().showMessage(
                 f"Validación: {len(errors)} error(es) de valencia. Use F8 para navegar.",
@@ -1851,7 +1898,13 @@ class ChemusonWindow(QMainWindow):
 
     def _on_navigate_validation_issue(self, step: int) -> None:
         """Navega al siguiente/anterior diagnóstico de valencia."""
-        self.canvas.navigate_validation_issue(step)
+        issue = self.canvas.navigate_validation_issue(step)
+        issues = self.canvas.current_validation_issues()
+        self._refresh_validation_dock(issues)
+        atom_id = getattr(issue, "atom_id", None)
+        if atom_id is not None and hasattr(self, "validation_dock"):
+            self.validation_dock.select_atom(int(atom_id))
+            self.validation_dock.show()
 
     def _on_set_polymer_repeat_label(self) -> None:
         """Asigna etiqueta n/x/etc. a los corchetes seleccionados."""

@@ -4,6 +4,7 @@ Docks de Chemuson.
 Paneles laterales para plantillas, inspección de propiedades y apariencia.
 """
 from PyQt6.QtWidgets import (
+    QAbstractItemView,
     QDockWidget,
     QWidget,
     QVBoxLayout,
@@ -413,6 +414,111 @@ class SpectroscopyDock(QDockWidget):
         if atom_id is None:
             return
         self.peak_atom_selected.emit(int(atom_id))
+
+
+class ValidationDock(QDockWidget):
+    """Dock de diagnóstico interactivo de valencias."""
+
+    issue_selected = pyqtSignal(int)
+    refresh_requested = pyqtSignal()
+    next_requested = pyqtSignal()
+    previous_requested = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__("Validación", parent)
+        self.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
+
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self.info_label = QLabel("Sin validación ejecutada")
+        self.info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.info_label.setStyleSheet("color: #666666; font-style: italic; padding: 10px;")
+        layout.addWidget(self.info_label)
+
+        self.issue_table = QTableWidget(0, 5)
+        self.issue_table.setHorizontalHeaderLabels(["Átomo", "Sev.", "Código", "Mensaje", "Sugerencia"])
+        self.issue_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.issue_table.verticalHeader().setVisible(False)
+        self.issue_table.setAlternatingRowColors(True)
+        self.issue_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.issue_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.issue_table.itemSelectionChanged.connect(self._emit_selected_issue)
+        layout.addWidget(self.issue_table)
+
+        controls = QHBoxLayout()
+        controls.setContentsMargins(6, 4, 6, 6)
+        self.btn_refresh = QPushButton("Validar")
+        self.btn_previous = QPushButton("Anterior")
+        self.btn_next = QPushButton("Siguiente")
+        self.btn_refresh.clicked.connect(self.refresh_requested.emit)
+        self.btn_previous.clicked.connect(self.previous_requested.emit)
+        self.btn_next.clicked.connect(self.next_requested.emit)
+        controls.addWidget(self.btn_refresh)
+        controls.addWidget(self.btn_previous)
+        controls.addWidget(self.btn_next)
+        layout.addLayout(controls)
+
+        self.setWidget(container)
+        self.set_issues({})
+
+    def set_issues(self, issues: dict[int, object]) -> None:
+        """Carga diagnósticos de validación en la tabla."""
+        rows = []
+        for atom_id, issue in sorted((issues or {}).items()):
+            rows.append(
+                (
+                    int(atom_id),
+                    str(getattr(issue, "severity", "error")),
+                    str(getattr(issue, "code", "")),
+                    str(getattr(issue, "message", "")),
+                    str(getattr(issue, "hint", "") or getattr(issue, "suggestion", "") or ""),
+                )
+            )
+
+        self.issue_table.blockSignals(True)
+        self.issue_table.setRowCount(len(rows))
+        for row, values in enumerate(rows):
+            atom_id = int(values[0])
+            for col, value in enumerate(values):
+                item = QTableWidgetItem(str(value))
+                item.setData(Qt.ItemDataRole.UserRole, atom_id)
+                self.issue_table.setItem(row, col, item)
+        self.issue_table.blockSignals(False)
+
+        if rows:
+            self.info_label.setText(f"{len(rows)} error(es) de valencia")
+            self.info_label.setVisible(True)
+            self.issue_table.setVisible(True)
+        else:
+            self.info_label.setText("Sin errores de valencia")
+            self.info_label.setVisible(True)
+            self.issue_table.setVisible(False)
+
+    def select_atom(self, atom_id: int) -> None:
+        """Selecciona visualmente el diagnóstico asociado a un átomo."""
+        target = int(atom_id)
+        self.issue_table.blockSignals(True)
+        try:
+            self.issue_table.clearSelection()
+            for row in range(self.issue_table.rowCount()):
+                item = self.issue_table.item(row, 0)
+                if item is not None and int(item.data(Qt.ItemDataRole.UserRole)) == target:
+                    self.issue_table.selectRow(row)
+                    self.issue_table.scrollToItem(item)
+                    break
+        finally:
+            self.issue_table.blockSignals(False)
+
+    def _emit_selected_issue(self) -> None:
+        selected = self.issue_table.selectedItems()
+        if not selected:
+            return
+        atom_id = selected[0].data(Qt.ItemDataRole.UserRole)
+        if atom_id is None:
+            return
+        self.issue_selected.emit(int(atom_id))
 
 
 class AppearanceDock(QDockWidget):
