@@ -8,14 +8,10 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "s
 
 from chemuson.core.model import MolGraph
 from chemuson.chemname import iupac_name
+from chemuson.chemio import rdkit_io
+from chemuson.chemio.rdkit_io import smiles_to_molgraph
 
-try:
-    from chemuson.chemio.rdkit_io import smiles_to_molgraph
-    from rdkit import Chem  # noqa: F401
-
-    RDKit_AVAILABLE = True
-except Exception:
-    RDKit_AVAILABLE = False
+RDKit_AVAILABLE = rdkit_io._rdkit_available()
 
 
 def build_linear_chain(graph: MolGraph, length: int) -> list[int]:

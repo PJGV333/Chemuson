@@ -28,3 +28,16 @@ chemuson = ["assets/**/*", "**/*.png", "**/*.svg", "**/*.json", "**/*.ui", "**/*
 
 [tool.setuptools.dynamic]
 version = {attr = "chemuson._version.__version__"}
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = [
+  ".git",
+  ".venv",
+  ".venv_packaging",
+  "build",
+  "dist",
+  "dist-appimage",
+  "dist-flatpak",
+  "packaging",
+]

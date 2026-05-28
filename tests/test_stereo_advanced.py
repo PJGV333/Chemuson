@@ -12,13 +12,10 @@ from chemuson.chemname.molview import MolView
 from chemuson.chemname.render import render_name
 from chemuson.chemname.stereo_advanced import extract_advanced_stereo
 
-try:
-    from chemuson.chemio.rdkit_io import smiles_to_molgraph
-    from rdkit import Chem  # noqa: F401
+from chemuson.chemio import rdkit_io
+from chemuson.chemio.rdkit_io import smiles_to_molgraph
 
-    RDKIT_AVAILABLE = True
-except Exception:
-    RDKIT_AVAILABLE = False
+RDKIT_AVAILABLE = rdkit_io._rdkit_available()
 
 
 def _build_linear_chain(graph: MolGraph, length: int) -> list[int]:
@@ -137,4 +134,3 @@ class StereoAdvancedTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

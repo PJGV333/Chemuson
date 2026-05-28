@@ -6,30 +6,68 @@ SMILES, MOL y SVG. Incluye rutas de respaldo para exportar sin RDKit.
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
 from typing import Dict, Iterable, Optional, Tuple
 
 from chemuson.core.model import ATOMIC_NUMBERS, BondStyle, BondStereo, MolGraph, bond_is_structural
 
-try:
-    from rdkit import Chem
-    from rdkit.Chem import AllChem
-    from rdkit.Chem.Draw import rdMolDraw2D
+Chem = None
+AllChem = None
+rdMolDraw2D = None
+rdMolStandardize = None
+_RDKIT_IMPORT_ATTEMPTED = False
+
+
+def _direct_rdkit_enabled() -> bool:
+    """Indica si se permite importar RDKit en el proceso principal."""
+    return str(os.environ.get("CHEMUSON_ENABLE_DIRECT_RDKIT", "")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _load_rdkit_modules() -> bool:
+    """Carga RDKit de forma perezosa solo cuando se habilita explícitamente.
+
+    RDKit puede abortar el proceso si sus extensiones nativas no coinciden con
+    el intérprete activo. La ruta normal de Chemuson usa workers aislados; esta
+    carga directa queda reservada para entornos controlados.
+    """
+    global Chem, AllChem, rdMolDraw2D, rdMolStandardize, _RDKIT_IMPORT_ATTEMPTED
+    if Chem is not None and AllChem is not None and rdMolDraw2D is not None:
+        return True
+    if _RDKIT_IMPORT_ATTEMPTED or not _direct_rdkit_enabled():
+        return False
+    _RDKIT_IMPORT_ATTEMPTED = True
     try:
-        from rdkit.Chem.MolStandardize import rdMolStandardize
+        from rdkit import Chem as _Chem
+        from rdkit.Chem import AllChem as _AllChem
+        from rdkit.Chem.Draw import rdMolDraw2D as _rdMolDraw2D
+
+        try:
+            from rdkit.Chem.MolStandardize import rdMolStandardize as _rdMolStandardize
+        except Exception:  # pragma: no cover - optional dependency at runtime
+            _rdMolStandardize = None
     except Exception:  # pragma: no cover - optional dependency at runtime
+        Chem = None
+        AllChem = None
+        rdMolDraw2D = None
         rdMolStandardize = None
-except Exception:  # pragma: no cover - optional dependency at runtime
-    Chem = None
-    AllChem = None
-    rdMolDraw2D = None
-    rdMolStandardize = None
+        return False
+    Chem = _Chem
+    AllChem = _AllChem
+    rdMolDraw2D = _rdMolDraw2D
+    rdMolStandardize = _rdMolStandardize
+    return True
 
 
 def _rdkit_available() -> bool:
     """Indica si RDKit está disponible en tiempo de ejecución."""
-    return Chem is not None and AllChem is not None and rdMolDraw2D is not None
+    return _load_rdkit_modules()
 
 
 def _bond_priority_for_export(bond) -> int:
@@ -1412,7 +1450,7 @@ def kekulize_display_orders(
     Returns:
         Diccionario de `bond_id -> display_order` o `None` si falla.
     """
-    if Chem is None:
+    if not _rdkit_available():
         return None
     # Con pseudoátomos (p. ej. OH/CH2OH) evitamos la ruta RDKit para no
     # disparar errores nativos de tabla periódica.

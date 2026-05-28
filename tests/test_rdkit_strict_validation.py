@@ -7,14 +7,10 @@ import unittest
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.core.model import BondStyle, MolGraph
+from chemuson.chemio import rdkit_io
 from chemuson.chemio.rdkit_io import molgraph_to_rdkit_with_map, strict_validate_and_normalize
 
-try:
-    from rdkit import Chem
-
-    RDKit_AVAILABLE = True
-except Exception:
-    RDKit_AVAILABLE = False
+RDKit_AVAILABLE = rdkit_io._rdkit_available()
 
 
 class StrictRdkitValidationTest(unittest.TestCase):
@@ -54,6 +50,8 @@ class StrictRdkitValidationTest(unittest.TestCase):
     @unittest.skipIf(not RDKit_AVAILABLE, "RDKit no disponible")
     def test_coordination_bond_is_exported_as_dative(self):
         """Los enlaces de coordinación se exportan a RDKit como dativos."""
+        from rdkit import Chem
+
         graph = MolGraph()
         donor = graph.add_atom("N", 0.0, 0.0)
         metal = graph.add_atom("Pd", 1.5, 0.0, is_coordination_center=True)

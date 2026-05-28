@@ -18,11 +18,7 @@ from chemuson.chemio.rdkit_io import (
     smiles_to_molgraph,
 )
 
-try:
-    from rdkit import Chem  # noqa: F401
-    RDKit_AVAILABLE = True
-except Exception:
-    RDKit_AVAILABLE = False
+RDKit_AVAILABLE = rdkit_io._rdkit_available()
 
 
 class RdkitRoundtripTest(unittest.TestCase):
@@ -241,6 +237,8 @@ class RdkitRoundtripTest(unittest.TestCase):
 
     @unittest.skipIf(not RDKit_AVAILABLE, "RDKit no disponible")
     def test_smiles_import_regression_for_naphthyl_urea(self):
+        from rdkit import Chem
+
         smiles = "O=C(NCCCl)Nc1cccc2ccccc12"
         expected = Chem.MolToSmiles(Chem.MolFromSmiles(smiles), canonical=True)
 
