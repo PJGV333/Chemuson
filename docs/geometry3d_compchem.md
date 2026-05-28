@@ -10,6 +10,9 @@ ChemUSON mantiene Python/PyQt6 como aplicación principal. El canvas 2D, herrami
 - `OptimizationFrame`: frame intermedio para una UI o visor futuro.
 - `OptimizationResult`: resultado final con energía, convergencia y mensaje.
 - `ForceField`: `UFF`, `MMFF94`, `MMFF94s`, `GAFF`, `Ghemical`.
+- `SceneMolecule3D`: escena desacoplada para render 3D, con átomos/enlaces listos para visor y soporte de átomos generados.
+
+`MolGraph` sigue siendo el modelo 2D principal y editable. Los hidrógenos o átomos generados por RDKit/Open Babel pueden existir en `SceneMolecule3D` sin mutar el documento.
 
 `chemuson.geometry3d.service` conserva la API existente:
 - `conformer_3d_for_graph`
@@ -29,7 +32,15 @@ Soporta:
 - optimización vía `graph_optimize3d`;
 - force fields `UFF`, `MMFF94`, `MMFF94s`.
 
-La respuesta incluye posiciones, energía, convergencia y método.
+La optimización acepta un `CoordinateSet3D` inicial. Si se envían coordenadas, el worker crea un conformer RDKit con esas posiciones antes de minimizar; si no se envían, usa ETKDG como fallback.
+
+`steps_per_update` ejecuta la minimización en bloques y devuelve frames con:
+- `step`
+- `energy`
+- `converged`
+- `positions`
+
+Esto prepara una optimización interactiva estilo Avogadro sin bloquear la UI. La UI debe consumir `rdkit_backend.optimize_iter(...)` desde un worker/hilo, no desde el hilo principal.
 
 ### Open Babel
 
@@ -42,7 +53,21 @@ Soporta de forma declarativa:
 - `MMFF94s`
 - `UFF`
 
+Open Babel usa MOL como formato principal para preservar conectividad, orden de enlace, carga y coordenadas. XYZ queda como fallback si MOL falla. El backend valida que el número de átomos de salida coincida con el input e incluye `stdout`/`stderr` en metadata cuando están disponibles.
+
 Si no está instalado, devuelve `OptimizationResult` con `ok == False` y un mensaje claro. No rompe la app ni la suite.
+
+## Caché
+
+`chemuson.geometry3d.cache.cache_key_for_3d(graph, settings, backend)` combina:
+- hash químico base (`chemical_graph_hash`);
+- backend;
+- force field;
+- `max_iters`;
+- `steps_per_update`;
+- semilla.
+
+Esto evita mezclar resultados de UFF/MMFF/Open Babel o corridas con distinta configuración.
 
 ## Exportación
 

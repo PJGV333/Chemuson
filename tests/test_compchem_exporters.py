@@ -41,12 +41,12 @@ def test_export_orca_input() -> None:
 def test_export_gaussian_input() -> None:
     graph, coords = _water()
 
-    text = export_gaussian_input(graph, coords, memory_mb=4000, cores=2, calculation="freq")
+    text = export_gaussian_input(graph, coords, charge=1, multiplicity=2, memory_mb=4000, cores=2, calculation="freq")
 
     assert "%mem=4000MB" in text
     assert "%nprocshared=2" in text
     assert "# B3LYP/6-31G(d) freq" in text
-    assert "0 1" in text
+    assert "1 2" in text
 
 
 def test_export_nwchem_input() -> None:

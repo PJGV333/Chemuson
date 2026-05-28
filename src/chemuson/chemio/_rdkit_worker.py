@@ -425,18 +425,23 @@ def _handle_graph_optimize3d_mode(Chem, request: dict[str, Any]) -> dict[str, An
         return {"ok": False, "error": "empty_graph"}
     requested = str(request.get("forcefield", "MMFF94") or "MMFF94").upper()
     max_iters = max(1, int(request.get("max_iters", 200) or 200))
+    steps_per_update = max(1, int(request.get("steps_per_update", max_iters) or max_iters))
+    seed = int(request.get("seed", 0xC0FFEE) or 0xC0FFEE)
     try:
         Chem.SanitizeMol(mol)
         from rdkit.Chem import AllChem
 
         reverse_map = {rd_idx: atom_id for atom_id, rd_idx in id_map.items()}
+        initial_coordinates = request.get("coordinates", {})
+        used_initial_coordinates = _apply_initial_coordinates(Chem, mol, id_map, initial_coordinates)
         mol_h = Chem.AddHs(mol, addCoords=True)
-        params = AllChem.ETKDGv3()
-        params.randomSeed = 0xC0FFEE
-        params.useRandomCoords = True
-        embed_code = int(AllChem.EmbedMolecule(mol_h, params))
-        if embed_code != 0:
-            return {"ok": False, "error": "embed_failed", "detail": str(embed_code)}
+        if not used_initial_coordinates:
+            params = AllChem.ETKDGv3()
+            params.randomSeed = seed
+            params.useRandomCoords = True
+            embed_code = int(AllChem.EmbedMolecule(mol_h, params))
+            if embed_code != 0:
+                return {"ok": False, "error": "embed_failed", "detail": str(embed_code)}
 
         method = requested
         ff = None
@@ -454,7 +459,24 @@ def _handle_graph_optimize3d_mode(Chem, request: dict[str, Any]) -> dict[str, An
             return {"ok": False, "error": "unsupported_forcefield", "detail": requested}
         if ff is None:
             return {"ok": False, "error": "forcefield_unavailable"}
-        converged_code = int(ff.Minimize(maxIts=max_iters))
+        frames: list[dict[str, Any]] = []
+        converged_code = 1
+        completed = 0
+        while completed < max_iters:
+            block = min(steps_per_update, max_iters - completed)
+            converged_code = int(ff.Minimize(maxIts=block))
+            completed += block
+            energy = float(ff.CalcEnergy())
+            frames.append(
+                {
+                    "step": completed,
+                    "energy": energy,
+                    "converged": converged_code == 0,
+                    "positions": _positions_for_original_atoms(mol_h, reverse_map),
+                }
+            )
+            if converged_code == 0:
+                break
         energy = float(ff.CalcEnergy())
         conf = mol_h.GetConformer()
         positions: dict[str, list[float]] = {}
@@ -470,10 +492,43 @@ def _handle_graph_optimize3d_mode(Chem, request: dict[str, Any]) -> dict[str, An
                 "energy": energy,
                 "converged": converged_code == 0,
                 "max_iters": max_iters,
+                "steps_per_update": steps_per_update,
+                "seed": seed,
+                "used_initial_coordinates": used_initial_coordinates,
             },
+            "frames": frames,
         }
     except Exception as exc:
         return {"ok": False, "error": "optimize3d_failed", "detail": str(exc)}
+
+
+def _apply_initial_coordinates(Chem, mol, id_map: dict[int, int], coordinates: Any) -> bool:
+    if not isinstance(coordinates, dict) or not coordinates:
+        return False
+    conf = Chem.Conformer(mol.GetNumAtoms())
+    assigned = 0
+    from rdkit.Geometry import Point3D
+
+    for atom_id, rd_idx in id_map.items():
+        coords = coordinates.get(str(atom_id), coordinates.get(atom_id))
+        if not isinstance(coords, (list, tuple)) or len(coords) != 3:
+            return False
+        conf.SetAtomPosition(int(rd_idx), Point3D(float(coords[0]), float(coords[1]), float(coords[2])))
+        assigned += 1
+    if assigned != mol.GetNumAtoms():
+        return False
+    mol.RemoveAllConformers()
+    mol.AddConformer(conf, assignId=True)
+    return True
+
+
+def _positions_for_original_atoms(mol_h, reverse_map: dict[int, int]) -> dict[str, list[float]]:
+    conf = mol_h.GetConformer()
+    positions: dict[str, list[float]] = {}
+    for rd_idx, atom_id in reverse_map.items():
+        pos = conf.GetAtomPosition(int(rd_idx))
+        positions[str(atom_id)] = [float(pos.x), float(pos.y), float(pos.z)]
+    return positions
 
 
 def main() -> int:

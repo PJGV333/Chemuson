@@ -124,15 +124,20 @@ def conformer_3d_isolated(
     metadata = response.get("metadata", {})
     if not isinstance(metadata, dict):
         metadata = {}
+    frames = response.get("frames", [])
+    if isinstance(frames, list):
+        metadata["frames"] = frames
     return positions, metadata, None
 
 
 def optimize_3d_isolated(
     graph,
     *,
+    coordinates: dict[int, tuple[float, float, float]] | None = None,
     forcefield: str = "MMFF94",
     max_iters: int = 200,
     steps_per_update: int = 25,
+    seed: int = 0xC0FFEE,
     timeout_s: float = 20.0,
 ) -> tuple[dict[int, tuple[float, float, float]] | None, dict[str, Any], str | None]:
     """Optimiza conformación 3D RDKit en un proceso aislado."""
@@ -146,6 +151,8 @@ def optimize_3d_isolated(
             "forcefield": str(forcefield or "MMFF94"),
             "max_iters": int(max_iters or 200),
             "steps_per_update": int(steps_per_update or 25),
+            "seed": int(seed),
+            "coordinates": _coordinates_payload(coordinates or {}),
         }
     )
     response = _run_worker(request, timeout_s=timeout_s)
@@ -167,7 +174,19 @@ def optimize_3d_isolated(
     metadata = response.get("metadata", {})
     if not isinstance(metadata, dict):
         metadata = {}
+    frames = response.get("frames", [])
+    if isinstance(frames, list):
+        metadata["frames"] = frames
     return positions, metadata, None
+
+
+def _coordinates_payload(coordinates: dict[int, tuple[float, float, float]]) -> dict[str, list[float]]:
+    payload: dict[str, list[float]] = {}
+    for atom_id, coords in coordinates.items():
+        if not isinstance(coords, (list, tuple)) or len(coords) != 3:
+            continue
+        payload[str(int(atom_id))] = [float(coords[0]), float(coords[1]), float(coords[2])]
+    return payload
 
 
 def is_rdkit_worker_available(timeout_s: float = 5.0) -> bool:
