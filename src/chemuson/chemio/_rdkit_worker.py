@@ -523,7 +523,11 @@ def _apply_initial_coordinates(Chem, mol, id_map: dict[int, int], coordinates: A
 
 
 def _handle_graph_clean2d_mode(Chem, request: dict[str, Any]) -> dict[str, Any]:
-    """Genera coordenadas 2D optimizadas con Compute2DCoords."""
+    """Genera coordenadas 2D optimizadas con Compute2DCoords.
+
+    Preserva _chemuson_id como propiedad RDKit para que RemoveHs no
+    pierda el mapeo a los IDs del grafo original.
+    """
     mol, id_map, error = _build_mol_from_graph_payload(Chem, request)
     if mol is None:
         return {"ok": False, "error": error or "invalid_graph"}
@@ -533,28 +537,30 @@ def _handle_graph_clean2d_mode(Chem, request: dict[str, Any]) -> dict[str, Any]:
         from rdkit.Chem import AllChem
 
         Chem.SanitizeMol(mol)
+
+        # Asignar _chemuson_id a cada átomo RDKit para preservar el mapeo
+        # incluso después de RemoveHs.
+        for atom_id, rd_idx in id_map.items():
+            mol.GetAtomWithIdx(rd_idx).SetIntProp("_chemuson_id", int(atom_id))
+
         reverse_map = {rd_idx: atom_id for atom_id, rd_idx in id_map.items()}
+
+        positions: dict[str, list[float]] = {}
 
         mol_no_h = Chem.RemoveHs(Chem.Mol(mol), sanitize=True)
         if 0 < mol_no_h.GetNumAtoms() < mol.GetNumAtoms():
             AllChem.Compute2DCoords(mol_no_h)
             conf_no_h = mol_no_h.GetConformer()
-            positions: dict[str, list[float]] = {}
-            for rd_idx in range(mol_no_h.GetNumAtoms()):
-                atom = mol_no_h.GetAtomWithIdx(rd_idx)
-                chemuson_id = None
-                for aid, ridx in id_map.items():
-                    if ridx == rd_idx:
-                        chemuson_id = aid
-                        break
-                if chemuson_id is None:
+            for atom in mol_no_h.GetAtoms():
+                if not atom.HasProp("_chemuson_id"):
                     continue
+                chemuson_id = int(atom.GetIntProp("_chemuson_id"))
+                rd_idx = atom.GetIdx()
                 pos = conf_no_h.GetAtomPosition(int(rd_idx))
                 positions[str(chemuson_id)] = [float(pos.x), float(pos.y), 0.0]
         else:
             AllChem.Compute2DCoords(mol)
             conf = mol.GetConformer()
-            positions = {}
             for rd_idx, atom_id in reverse_map.items():
                 pos = conf.GetAtomPosition(int(rd_idx))
                 positions[str(atom_id)] = [float(pos.x), float(pos.y), 0.0]

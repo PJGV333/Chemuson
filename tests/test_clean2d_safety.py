@@ -399,3 +399,150 @@ def test_double_bond_target_length() -> None:
     if 2 in changed:
         dist = math.hypot(changed[2][0] - positions[1][0], changed[2][1] - positions[1][1])
         assert dist < 50.0
+
+
+# ─── Clean2DAttempt flow control ─────────────────────────────────────────
+
+
+def test_clean2d_attempt_unavailable_does_not_stop_flow() -> None:
+    """Unavailable no debe interpretarse como 'aplicado'."""
+    from chemuson.gui.controllers.clean2d_controller import Clean2DAttempt
+
+    a = Clean2DAttempt(unavailable=True, message="error")
+    assert not a.applied
+    assert not a.rejected
+    assert a.unavailable
+
+
+def test_clean2d_attempt_rejected_does_not_stop_flow() -> None:
+    """Rejected no debe interpretarse como 'aplicado'."""
+    from chemuson.gui.controllers.clean2d_controller import Clean2DAttempt
+
+    a = Clean2DAttempt(rejected=True, message="malo")
+    assert not a.applied
+    assert a.rejected
+    assert not a.unavailable
+
+
+# ─── _apply_clean2d_candidate helper tests ────────────────────────────────
+
+
+def test_apply_candidate_already_clean_returns_no_change() -> None:
+    """Si candidato = before, no debe aplicar movimiento."""
+    from unittest.mock import MagicMock
+    from chemuson.gui.controllers.clean2d_controller import Clean2DController, _position_delta
+
+    ctrl = Clean2DController()
+    window = MagicMock()
+    window.canvas.model.atoms = {}
+    window.canvas.state.bond_length = 42.0
+    window.canvas.undo_stack = MagicMock()
+    window.canvas._update_selection_overlay = MagicMock()
+
+    target_ids = {1, 2}
+    bonds = [_fake_bond(1, 2)]
+    before = {1: (0.0, 0.0), 2: (42.0, 0.0)}
+    candidate = {1: (0.0, 0.0), 2: (42.0, 0.0)}
+
+    attempt = ctrl._apply_clean2d_candidate(
+        window, target_ids, bonds, before, candidate,
+        42.0, "quick", "test_label", False,
+    )
+    assert not attempt.applied
+    assert not attempt.rejected
+    assert "ya estaba limpia" in attempt.message
+    window.canvas.undo_stack.push.assert_not_called()
+
+
+def test_apply_candidate_rejected_on_bad_geometry() -> None:
+    """Un candidato que deforma debe ser rechazado."""
+    from unittest.mock import MagicMock
+    from chemuson.gui.controllers.clean2d_controller import Clean2DController
+
+    ctrl = Clean2DController()
+    window = MagicMock()
+    window.canvas.model.atoms = {}
+    window.canvas.state.bond_length = 42.0
+    window.canvas.undo_stack = MagicMock()
+    window.canvas._update_selection_overlay = MagicMock()
+
+    target_ids = {1, 2}
+    bonds = [_fake_bond(1, 2)]
+    before = {1: (0.0, 0.0), 2: (42.0, 0.0)}
+    candidate = {1: (0.0, 0.0), 2: (999.0, 0.0)}  # absurdo
+
+    attempt = ctrl._apply_clean2d_candidate(
+        window, target_ids, bonds, before, candidate,
+        42.0, "quick", "test_label", False,
+    )
+    assert not attempt.applied
+    assert attempt.rejected
+    window.canvas.undo_stack.push.assert_not_called()
+
+
+# ─── Bridge test: run_clean_2d never silent ────────────────────────────────
+
+
+def test_run_clean_2d_never_silent_on_no_target() -> None:
+    """Sin target debe mostrar 'Nada que limpiar'."""
+    from unittest.mock import MagicMock
+    from chemuson.gui.controllers.clean2d_controller import Clean2DController
+
+    ctrl = Clean2DController()
+    window = MagicMock()
+    window.canvas._selected_structure_ids.return_value = (set(), [])
+    window.canvas.model.atoms = {}
+    window.canvas.model.bonds = {}
+
+    ctrl.run_clean_2d(window, 1.0, 200, "(test)")
+    status_calls = [args[0][0] for args in window.statusBar().showMessage.call_args_list]
+    assert any("Nada que limpiar" in str(msg) for msg in status_calls)
+
+
+def test_run_clean_2d_shows_message_when_isolated_unavailable() -> None:
+    """Cuando RDKit aislado no está disponible, debe intentar fallback."""
+    from unittest.mock import MagicMock, patch
+    from chemuson.gui.controllers.clean2d_controller import Clean2DController
+
+    ctrl = Clean2DController()
+    window = MagicMock()
+    window.canvas._selected_structure_ids.return_value = ({1, 2}, [_fake_bond(1, 2)])
+    # Atom objects with real coordinates
+    a1 = MagicMock(x=0.0, y=0.0)
+    a2 = MagicMock(x=42.0, y=0.0)
+    window.canvas.model.get_atom = MagicMock(side_effect=lambda aid: {1: a1, 2: a2}.get(aid))
+    window.canvas.model.atoms = {1: a1, 2: a2}
+    window.canvas.model.bonds = {}
+    window.canvas.state.bond_length = 42.0
+    window.canvas.undo_stack = MagicMock()
+    window.canvas._update_selection_overlay = MagicMock()
+    window.canvas._build_selection_graph = MagicMock()
+    window.canvas.clean_2d_fallback = MagicMock()
+    window.canvas.graph = MagicMock()
+    window._rescale_coords_to_bond_length = MagicMock(return_value={1: (0.0, 0.0), 2: (42.0, 0.0)})
+    window._align_coords_to_reference = MagicMock(return_value={1: (0.0, 0.0), 2: (42.0, 0.0)})
+    window._coords_center = MagicMock(return_value=(21.0, 0.0))
+    window._average_bond_length = MagicMock(return_value=42.0)
+    window._project_missing_hydrogen_coords = MagicMock()
+
+    with (
+        patch.object(ctrl, "_try_isolated_rdkit2d") as mock_isolated,
+        patch.object(ctrl, "_try_direct_rdkit") as mock_direct,
+        patch.object(ctrl, "_polish_with_v2") as mock_polish,
+    ):
+        mock_isolated.return_value = _make_attempt(unavailable=True, message="no rdkit")
+        mock_direct.return_value = _make_attempt(unavailable=True, message="no direct")
+        mock_polish.return_value = _make_attempt(unavailable=True, message="no polish")
+
+        ctrl.run_clean_2d(window, 1.0, 200, "(test)")
+        window.canvas.clean_2d_fallback.assert_called_once()
+        status_calls = window.statusBar().showMessage.call_args_list
+        assert len(status_calls) > 0
+
+
+def _make_attempt(*, applied=False, rejected=False, unavailable=False, message="", report=None):
+    from chemuson.gui.controllers.clean2d_controller import Clean2DAttempt
+    return Clean2DAttempt(
+        applied=applied, rejected=rejected, unavailable=unavailable,
+        message=message, report=report,
+    )

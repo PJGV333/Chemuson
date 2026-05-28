@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import Any
 
 from chemuson.clean2d import (
@@ -11,6 +12,16 @@ from chemuson.clean2d import (
     length_only_polish,
     optimize_clean2d_positions,
 )
+
+
+@dataclass(frozen=True)
+class Clean2DAttempt:
+    """Resultado explícito de un intento de limpieza 2D."""
+    applied: bool = False
+    rejected: bool = False
+    unavailable: bool = False
+    message: str = ""
+    report: Clean2DQualityReport | None = None
 
 
 class Clean2DController:
@@ -45,6 +56,74 @@ class Clean2DController:
                     stack.append((neigh, node))
         return True
 
+    def _apply_clean2d_candidate(
+        self,
+        window: Any,
+        target_ids: set[int],
+        bonds: list,
+        before: dict[int, tuple[float, float]],
+        candidate: dict[int, tuple[float, float]],
+        target_len: float,
+        mode: str,
+        label: str,
+        cyclic: bool,
+    ) -> Clean2DAttempt:
+        """Helper único que completa, alínea, evalúa safety y aplica un candidato.
+
+        Returns:
+            Clean2DAttempt con applied/rejected según corresponda.
+        """
+        canvas = window.canvas
+
+        after: dict[int, tuple[float, float]] = {}
+        for aid in target_ids:
+            if aid in candidate:
+                after[aid] = candidate[aid]
+            elif aid in before:
+                after[aid] = before[aid]
+
+        if not after:
+            return Clean2DAttempt(unavailable=True, message="sin_coordenadas_candidato")
+
+        before_cx, before_cy = _coords_center(before)
+        after_cx, after_cy = _coords_center(after)
+        shift_x = before_cx - after_cx
+        shift_y = before_cy - after_cy
+        if abs(shift_x) > 1e-6 or abs(shift_y) > 1e-6:
+            after = {
+                aid: (x + shift_x, y + shift_y)
+                for aid, (x, y) in after.items()
+            }
+
+        changed: dict[int, tuple[float, float]] = {}
+        for aid in target_ids:
+            if aid not in before or aid not in after:
+                continue
+            d = _position_delta(before[aid], after[aid])
+            if d > 0.5:
+                changed[aid] = after[aid]
+
+        if not changed:
+            return Clean2DAttempt(message="Estructura 2D ya estaba limpia")
+
+        report = evaluate_clean2d_layout(
+            target_ids, bonds, before,
+            {aid: changed.get(aid, before[aid]) for aid in target_ids},
+            target_len, is_cyclic=cyclic,
+        )
+        if not is_clean2d_candidate_safe(report, mode):
+            return Clean2DAttempt(
+                rejected=True,
+                message="Limpieza 2D omitida: el candidato deformaba la estructura",
+                report=report,
+            )
+
+        from chemuson.gui.commands import MoveAtomsCommand
+
+        canvas.undo_stack.push(MoveAtomsCommand(canvas.model, canvas, before, changed))
+        canvas._update_selection_overlay()
+        return Clean2DAttempt(applied=True, message=label)
+
     def _polish_with_v2(
         self,
         window: Any,
@@ -52,103 +131,46 @@ class Clean2DController:
         *,
         mode: str,
         status_suffix: str,
-    ) -> bool:
-        """Aplica pulido clean2d_v2 como un único comando undoable.
-
-        Para moléculas con ciclos NO aplica clean2d_v2, solo un
-        reescalado ligero de longitudes de enlace si es necesario.
-        """
+    ) -> Clean2DAttempt:
+        """Aplica pulido clean2d_v2 como un único comando undoable."""
         canvas = window.canvas
         if not atom_ids:
-            return False
+            return Clean2DAttempt(unavailable=True, message="sin_seleccion")
         before = {
             aid: (canvas.model.get_atom(aid).x, canvas.model.get_atom(aid).y)
             for aid in atom_ids
             if aid in canvas.model.atoms
         }
         if not before:
-            return False
+            return Clean2DAttempt(unavailable=True, message="sin_coordenadas")
 
         bonds = _get_bonds_from_model(canvas.model, atom_ids)
         target_len = float(getattr(canvas.state, "bond_length", 42.0) or 42.0)
         cyclic = has_cycles(atom_ids, bonds)
 
         if cyclic:
-            # Para estructuras cíclicas: solo reescalado ligero + safety gate
             after = length_only_polish(
                 before, bonds, target_len,
-                max_iterations=6,
-                damping=0.4,
+                max_iterations=6, damping=0.4,
                 max_displacement_per_atom=target_len * 1.5,
             )
-            after = {
-                aid: pos
-                for aid, pos in after.items()
-                if aid in before and _position_delta(before[aid], pos) > 0.5
-            }
-            if not after:
-                return False
-
-            report = evaluate_clean2d_layout(
-                atom_ids, bonds, before,
-                {aid: after.get(aid, before[aid]) for aid in atom_ids},
-                target_len, is_cyclic=True,
+            label = f"{status_suffix} (ajuste)".strip()
+            return self._apply_clean2d_candidate(
+                window, atom_ids, bonds, before, after,
+                target_len, mode, label, cyclic=True,
             )
-            if not is_clean2d_candidate_safe(report, mode):
-                window.statusBar().showMessage(
-                    "Limpieza 2D omitida: el candidato deformaba la estructura"
-                )
-                return False
 
-            from chemuson.gui.commands import MoveAtomsCommand
-
-            canvas.undo_stack.push(MoveAtomsCommand(canvas.model, canvas, before, after))
-            canvas._update_selection_overlay()
-            msg = (
-                "Selección 2D limpiada"
-                if len(atom_ids) < len(canvas.model.atoms)
-                else "Estructura 2D limpiada"
-            )
-            window.statusBar().showMessage(f"{msg} {status_suffix} (ajuste)".strip())
-            return True
-
-        # Para estructuras acíclicas: clean2d_v2 completo + safety gate
         params = (
             Clean2DParameters.publication(target_len)
             if mode == "publication"
             else Clean2DParameters.quick(target_len)
         )
         after_v2 = optimize_clean2d_positions(canvas.model, atom_ids, params)
-        after = {
-            aid: pos
-            for aid, pos in after_v2.items()
-            if aid in before and _position_delta(before[aid], pos) > 0.01
-        }
-        if not after:
-            return False
-
-        report = evaluate_clean2d_layout(
-            atom_ids, bonds, before,
-            {aid: after.get(aid, before[aid]) for aid in atom_ids},
-            target_len, is_cyclic=False,
+        label = f"{status_suffix} (clean2d_v2)".strip()
+        return self._apply_clean2d_candidate(
+            window, atom_ids, bonds, before, after_v2,
+            target_len, mode, label, cyclic=False,
         )
-        if not is_clean2d_candidate_safe(report, mode):
-            window.statusBar().showMessage(
-                "Limpieza 2D omitida: el candidato deformaba la estructura"
-            )
-            return False
-
-        from chemuson.gui.commands import MoveAtomsCommand
-
-        canvas.undo_stack.push(MoveAtomsCommand(canvas.model, canvas, before, after))
-        canvas._update_selection_overlay()
-        msg = (
-            "Selección 2D limpiada"
-            if len(atom_ids) < len(canvas.model.atoms)
-            else "Estructura 2D pulida"
-        )
-        window.statusBar().showMessage(f"{msg} {status_suffix} (clean2d_v2)".strip())
-        return True
 
     def run_clean_2d(
         self,
@@ -162,40 +184,76 @@ class Clean2DController:
         atom_ids, bonds = canvas._selected_structure_ids()
         target_ids = atom_ids if atom_ids else set(canvas.model.atoms.keys())
         if not target_ids:
+            window.statusBar().showMessage("Nada que limpiar")
             return
         scale_bonds = bonds if atom_ids else list(canvas.model.bonds.values())
         cyclic = has_cycles(target_ids, scale_bonds)
 
-        # Usar worker RDKit aislado (preferido sobre importación directa)
-        attempted_isolated = False
+        # 1) RDKit aislado es el backend preferido para quick/publication
         if mode in {"quick", "publication"}:
-            result = self._try_isolated_rdkit2d(window, target_ids, scale_bonds, cyclic)
-            if result is not None:
-                return result
-
-        # Fallback a importación directa de RDKit (solo si habilitado)
-        try:
-            self._run_direct_rdkit(
-                window, atom_ids, target_ids, scale_bonds,
-                step_ratio, mode, status_suffix, cyclic,
+            attempt = self._try_isolated_rdkit2d(
+                window, target_ids, scale_bonds, cyclic, mode,
             )
-            return
-        except Exception as exc:
-            message = str(exc)
-            if "No module named" in message and "rdkit" in message:
-                pass
-            # Intentar polish seguro si falló RDKit
-            if cyclic:
+            if attempt.applied:
+                window.statusBar().showMessage(attempt.message)
+                return
+            if attempt.rejected:
+                window.statusBar().showMessage(attempt.message)
+                if cyclic:
+                    self._safe_length_polish_only(
+                        window, target_ids, scale_bonds, status_suffix
+                    )
+                    return
+                if self._polish_with_v2(
+                    window, target_ids, mode=mode, status_suffix=status_suffix
+                ).applied:
+                    return
                 self._safe_length_polish_only(
                     window, target_ids, scale_bonds, status_suffix
                 )
                 return
-            canvas.clean_2d_fallback(target_ids, iterations=fallback_iterations)
-            if self._polish_with_v2(window, target_ids, mode=mode, status_suffix=status_suffix):
+            if attempt.message:
+                # unavailable con mensaje — mostrar para debug, pero continuar
+                pass
+
+        # 2) Fallback a importación directa de RDKit
+        if mode in {"quick", "publication"}:
+            direct_attempt = self._try_direct_rdkit(
+                window, atom_ids, target_ids, scale_bonds,
+                step_ratio, mode, status_suffix, cyclic,
+            )
+            if direct_attempt.applied:
+                window.statusBar().showMessage(direct_attempt.message)
                 return
-            msg = "Selección 2D limpiada" if atom_ids else "Estructura 2D limpiada"
-            window.statusBar().showMessage(f"{msg} {status_suffix} (básico)")
+            if direct_attempt.rejected:
+                window.statusBar().showMessage(direct_attempt.message)
+                if cyclic:
+                    self._safe_length_polish_only(
+                        window, target_ids, scale_bonds, status_suffix
+                    )
+                    return
+                if self._polish_with_v2(
+                    window, target_ids, mode=mode, status_suffix=status_suffix
+                ).applied:
+                    return
+                self._safe_length_polish_only(
+                    window, target_ids, scale_bonds, status_suffix
+                )
+                return
+
+        # 3) Fallback interno del canvas (force-layout básico)
+        canvas.clean_2d_fallback(target_ids, iterations=fallback_iterations)
+        polish = self._polish_with_v2(
+            window, target_ids, mode=mode, status_suffix=status_suffix
+        )
+        if polish.applied:
+            window.statusBar().showMessage(polish.message)
             return
+        if polish.rejected:
+            window.statusBar().showMessage(polish.message)
+            return
+        msg = "Selección 2D limpiada" if atom_ids else "Estructura 2D limpiada"
+        window.statusBar().showMessage(f"{msg} {status_suffix} (básico)")
 
     def _try_isolated_rdkit2d(
         self,
@@ -203,8 +261,9 @@ class Clean2DController:
         target_ids: set[int],
         scale_bonds: list,
         cyclic: bool,
-    ) -> None | bool:
-        """Intenta usar RDKit en worker aislado para Clean2D. Retorna True/None."""
+        mode: str,
+    ) -> Clean2DAttempt:
+        """Intenta RDKit en worker aislado. Retorna Clean2DAttempt explícito."""
         canvas = window.canvas
         try:
             from chemuson.chemio.rdkit_safe import clean2d_isolated
@@ -214,7 +273,10 @@ class Clean2DController:
             ) if target_ids != set(canvas.model.atoms.keys()) else canvas.graph
             positions_2d, error = clean2d_isolated(graph, timeout_s=8.0)
             if error or not positions_2d:
-                return None
+                return Clean2DAttempt(
+                    unavailable=True,
+                    message=f"RDKit aislado no disponible: {error or 'sin_coordenadas'}",
+                )
 
             before = {
                 aid: (canvas.model.get_atom(aid).x, canvas.model.get_atom(aid).y)
@@ -226,86 +288,21 @@ class Clean2DController:
                 positions_2d, scale_bonds, target_bond_len
             )
             after = window._align_coords_to_reference(before, after)
-            before_cx, before_cy = window._coords_center(before)
-            after_cx, after_cy = window._coords_center(after)
-            final = {}
-            for aid, (x, y) in after.items():
-                adjusted_x = x - after_cx + before_cx
-                adjusted_y = y - after_cy + before_cy
-                final[aid] = (adjusted_x, adjusted_y)
 
-            report = evaluate_clean2d_layout(
-                target_ids, scale_bonds, before, final,
-                target_bond_len, is_cyclic=cyclic,
+            label = "Estructura 2D limpiada (RDKit aislado)"
+            if len(target_ids) < len(canvas.model.atoms):
+                label = "Selección 2D limpiada (RDKit aislado)"
+            return self._apply_clean2d_candidate(
+                window, target_ids, scale_bonds, before, after,
+                target_bond_len, mode, label, cyclic,
             )
-            if not is_clean2d_candidate_safe(report):
-                window.statusBar().showMessage(
-                    "Limpieza 2D omitida: el candidato deformaba la estructura"
-                )
-                return False
-
-            from chemuson.gui.commands import MoveAtomsCommand
-
-            cmd = MoveAtomsCommand(canvas.model, canvas, before, final)
-            canvas.undo_stack.push(cmd)
-            canvas._update_selection_overlay()
-            msg = "Selección 2D limpiada" if len(target_ids) < len(canvas.model.atoms) else "Estructura 2D limpiada"
-            window.statusBar().showMessage(f"{msg} (RDKit aislado)")
-            return True
-        except Exception:
-            return None
-
-    def _safe_length_polish_only(
-        self,
-        window: Any,
-        target_ids: set[int],
-        scale_bonds: list,
-        status_suffix: str,
-    ) -> None:
-        """Aplica solo ajuste de longitudes de enlace sin deformar topología."""
-        canvas = window.canvas
-        before = {
-            aid: (canvas.model.get_atom(aid).x, canvas.model.get_atom(aid).y)
-            for aid in target_ids
-            if aid in canvas.model.atoms
-        }
-        target_len = float(getattr(canvas.state, "bond_length", 42.0) or 42.0)
-        after = length_only_polish(
-            before, scale_bonds, target_len,
-            max_iterations=8, damping=0.4,
-            max_displacement_per_atom=target_len * 1.5,
-        )
-        after = {
-            aid: pos
-            for aid, pos in after.items()
-            if aid in before and _position_delta(before[aid], pos) > 0.5
-        }
-        if not after:
-            window.statusBar().showMessage(
-                "Estructura 2D ya estaba limpia"
+        except Exception as exc:
+            return Clean2DAttempt(
+                unavailable=True,
+                message=f"RDKit aislado no disponible: {exc}",
             )
-            return
 
-        report = evaluate_clean2d_layout(
-            target_ids, scale_bonds, before,
-            {aid: after.get(aid, before[aid]) for aid in target_ids},
-            target_len, is_cyclic=True,
-        )
-        if not is_clean2d_candidate_safe(report):
-            window.statusBar().showMessage(
-                "Limpieza 2D omitida: el candidato deformaba la estructura"
-            )
-            return
-
-        from chemuson.gui.commands import MoveAtomsCommand
-
-        canvas.undo_stack.push(MoveAtomsCommand(canvas.model, canvas, before, after))
-        canvas._update_selection_overlay()
-        window.statusBar().showMessage(
-            "Estructura 2D ajustada con fallback seguro"
-        )
-
-    def _run_direct_rdkit(
+    def _try_direct_rdkit(
         self,
         window: Any,
         atom_ids: set[int],
@@ -315,118 +312,141 @@ class Clean2DController:
         mode: str,
         status_suffix: str,
         cyclic: bool,
-    ) -> None:
-        """Ruta de RDKit directo (importación directa, solo si habilitado)."""
-        from chemuson.chemio.rdkit_io import molgraph_to_rdkit_with_map
-        from rdkit import Chem
-        from rdkit.Chem import AllChem
-        from chemuson.gui.commands import MoveAtomsCommand
+    ) -> Clean2DAttempt:
+        """Ruta de RDKit directo en el proceso principal.
 
+        Returns Clean2DAttempt — nunca levanta excepción por flujo de
+        control; los errores de importación se reportan como unavailable.
+        """
         canvas = window.canvas
-        graph = canvas._build_selection_graph(atom_ids, scale_bonds) if atom_ids else canvas.graph
+        try:
+            from chemuson.chemio.rdkit_io import molgraph_to_rdkit_with_map
+            from rdkit import Chem
+            from rdkit.Chem import AllChem
+        except Exception as exc:
+            return Clean2DAttempt(
+                unavailable=True,
+                message=f"RDKit directo no disponible: {exc}",
+            )
 
-        mol, id_map = molgraph_to_rdkit_with_map(graph)
-        for aid, rd_idx in id_map.items():
+        try:
+            graph = canvas._build_selection_graph(atom_ids, scale_bonds) if atom_ids else canvas.graph
+
+            mol, id_map = molgraph_to_rdkit_with_map(graph)
+            for aid, rd_idx in id_map.items():
+                try:
+                    mol.GetAtomWithIdx(rd_idx).SetIntProp("_chemuson_id", int(aid))
+                except Exception:
+                    continue
+
+            before = {
+                aid: (canvas.model.get_atom(aid).x, canvas.model.get_atom(aid).y)
+                for aid in target_ids
+            }
+            before_avg_len = window._average_bond_length(before, scale_bonds)
+
+            raw_after: dict[int, tuple[float, float]] = {}
+            used_no_h_layout = False
             try:
-                mol.GetAtomWithIdx(rd_idx).SetIntProp("_chemuson_id", int(aid))
+                mol_no_h = Chem.RemoveHs(Chem.Mol(mol), sanitize=True)
+                if 0 < mol_no_h.GetNumAtoms() < mol.GetNumAtoms():
+                    AllChem.Compute2DCoords(mol_no_h)
+                    conf_no_h = mol_no_h.GetConformer()
+                    for atom in mol_no_h.GetAtoms():
+                        if not atom.HasProp("_chemuson_id"):
+                            continue
+                        aid = int(atom.GetIntProp("_chemuson_id"))
+                        if aid not in target_ids:
+                            continue
+                        pos = conf_no_h.GetAtomPosition(atom.GetIdx())
+                        raw_after[aid] = (pos.x, pos.y)
+                    if raw_after:
+                        atom_elements = {
+                            aid: canvas.model.get_atom(aid).element for aid in target_ids
+                        }
+                        raw_after = window._project_missing_hydrogen_coords(
+                            before=before,
+                            after=raw_after,
+                            bonds=scale_bonds,
+                            atom_elements=atom_elements,
+                        )
+                        used_no_h_layout = True
             except Exception:
-                continue
+                used_no_h_layout = False
 
+            if not used_no_h_layout:
+                AllChem.Compute2DCoords(mol)
+                conf = mol.GetConformer()
+                for aid, rd_idx in id_map.items():
+                    if aid not in target_ids:
+                        continue
+                    pos = conf.GetAtomPosition(rd_idx)
+                    raw_after[aid] = (pos.x, pos.y)
+
+            target_bond_len = before_avg_len if before_avg_len > 1e-6 else float(canvas.state.bond_length)
+            raw_after = window._rescale_coords_to_bond_length(raw_after, scale_bonds, target_bond_len)
+            raw_after = window._align_coords_to_reference(before, raw_after)
+            after_cx, after_cy = _coords_center(raw_after)
+            before_cx, before_cy = _coords_center(before)
+            after = {}
+            for aid, (x, y) in raw_after.items():
+                x = x - after_cx + before_cx
+                y = y - after_cy + before_cy
+                if step_ratio < 1.0:
+                    bx, by = before[aid]
+                    x = bx + (x - bx) * step_ratio
+                    y = by + (y - by) * step_ratio
+                after[aid] = (x, y)
+
+            after = window._rescale_coords_to_bond_length(after, scale_bonds, target_bond_len)
+            final_cx, final_cy = _coords_center(after)
+            if abs(final_cx - before_cx) > 1e-9 or abs(final_cy - before_cy) > 1e-9:
+                after = {
+                    aid: (x - final_cx + before_cx, y - final_cy + before_cy)
+                    for aid, (x, y) in after.items()
+                }
+
+            label = f"Estructura 2D limpiada {status_suffix}".strip()
+            if len(target_ids) < len(canvas.model.atoms):
+                label = f"Selección 2D limpiada {status_suffix}".strip()
+            return self._apply_clean2d_candidate(
+                window, target_ids, scale_bonds, before, after,
+                target_bond_len, mode, label, cyclic,
+            )
+        except Exception as exc:
+            return Clean2DAttempt(
+                unavailable=True,
+                message=f"RDKit directo falló: {exc}",
+            )
+
+    def _safe_length_polish_only(
+        self,
+        window: Any,
+        target_ids: set[int],
+        scale_bonds: list,
+        status_suffix: str,
+    ) -> Clean2DAttempt:
+        """Aplica solo ajuste de longitudes de enlace sin deformar topología."""
+        canvas = window.canvas
         before = {
             aid: (canvas.model.get_atom(aid).x, canvas.model.get_atom(aid).y)
             for aid in target_ids
+            if aid in canvas.model.atoms
         }
-        before_cx, before_cy = window._coords_center(before)
-        before_avg_len = window._average_bond_length(before, scale_bonds)
+        if not before:
+            return Clean2DAttempt(unavailable=True, message="sin_coordenadas")
 
-        raw_after = {}
-        used_no_h_layout = False
-        try:
-            mol_no_h = Chem.RemoveHs(Chem.Mol(mol), sanitize=True)
-            if 0 < mol_no_h.GetNumAtoms() < mol.GetNumAtoms():
-                AllChem.Compute2DCoords(mol_no_h)
-                conf_no_h = mol_no_h.GetConformer()
-                for atom in mol_no_h.GetAtoms():
-                    if not atom.HasProp("_chemuson_id"):
-                        continue
-                    aid = int(atom.GetIntProp("_chemuson_id"))
-                    if aid not in target_ids:
-                        continue
-                    pos = conf_no_h.GetAtomPosition(atom.GetIdx())
-                    raw_after[aid] = (pos.x, pos.y)
-                if raw_after:
-                    atom_elements = {
-                        aid: canvas.model.get_atom(aid).element for aid in target_ids
-                    }
-                    raw_after = window._project_missing_hydrogen_coords(
-                        before=before,
-                        after=raw_after,
-                        bonds=scale_bonds,
-                        atom_elements=atom_elements,
-                    )
-                    used_no_h_layout = True
-        except Exception:
-            used_no_h_layout = False
-
-        if not used_no_h_layout:
-            AllChem.Compute2DCoords(mol)
-            conf = mol.GetConformer()
-            for aid, rd_idx in id_map.items():
-                if aid not in target_ids:
-                    continue
-                pos = conf.GetAtomPosition(rd_idx)
-                raw_after[aid] = (pos.x, pos.y)
-
-        target_bond_len = before_avg_len if before_avg_len > 1e-6 else float(canvas.state.bond_length)
-        raw_after = window._rescale_coords_to_bond_length(raw_after, scale_bonds, target_bond_len)
-        raw_after = window._align_coords_to_reference(before, raw_after)
-        after_cx, after_cy = window._coords_center(raw_after)
-        after = {}
-        for aid, (x, y) in raw_after.items():
-            x = x - after_cx + before_cx
-            y = y - after_cy + before_cy
-            if step_ratio < 1.0:
-                bx, by = before[aid]
-                x = bx + (x - bx) * step_ratio
-                y = by + (y - by) * step_ratio
-            after[aid] = (x, y)
-
-        after = window._rescale_coords_to_bond_length(after, scale_bonds, target_bond_len)
-        final_cx, final_cy = window._coords_center(after)
-        if abs(final_cx - before_cx) > 1e-9 or abs(final_cy - before_cy) > 1e-9:
-            after = {
-                aid: (x - final_cx + before_cx, y - final_cy + before_cy)
-                for aid, (x, y) in after.items()
-            }
-
-        # Safety gate para RDKit directo
-        report = evaluate_clean2d_layout(
-            target_ids, bonds, before, after,
-            target_bond_len, is_cyclic=cyclic,
+        target_len = float(getattr(canvas.state, "bond_length", 42.0) or 42.0)
+        after = length_only_polish(
+            before, scale_bonds, target_len,
+            max_iterations=8, damping=0.4,
+            max_displacement_per_atom=target_len * 1.5,
         )
-        if not is_clean2d_candidate_safe(report, mode):
-            if cyclic:
-                self._safe_length_polish_only(
-                    window, target_ids, scale_bonds, status_suffix
-                )
-                return
-            canvas.clean_2d_fallback(target_ids, iterations=fallback_iterations)
-            if self._polish_with_v2(window, target_ids, mode=mode, status_suffix=status_suffix):
-                return
-            window.statusBar().showMessage(
-                "Limpieza 2D omitida: el candidato deformaba la estructura"
-            )
-            return
-
-        cmd = MoveAtomsCommand(canvas.model, canvas, before, after)
-        canvas.undo_stack.push(cmd)
-        canvas._update_selection_overlay()
-        if mode in {"quick", "publication"} and not cyclic:
-            self._polish_with_v2(window, target_ids, mode=mode, status_suffix=status_suffix)
-            return
-        msg = "Selección 2D limpiada" if atom_ids else "Estructura 2D limpiada"
-        window.statusBar().showMessage(f"{msg} {status_suffix}".strip())
-        return
+        label = "Estructura 2D ajustada con fallback seguro"
+        return self._apply_clean2d_candidate(
+            window, target_ids, scale_bonds, before, after,
+            target_len, "quick", label, cyclic=True,
+        )
 
 
 def _get_bonds_from_model(model, atom_ids: set[int]) -> list:
@@ -444,3 +464,12 @@ def _position_delta(
     dx = float(after[0]) - float(before[0])
     dy = float(after[1]) - float(before[1])
     return (dx * dx + dy * dy) ** 0.5
+
+
+def _coords_center(coords: dict[int, tuple[float, float]]) -> tuple[float, float]:
+    if not coords:
+        return 0.0, 0.0
+    return (
+        sum(x for x, _y in coords.values()) / len(coords),
+        sum(y for _x, y in coords.values()) / len(coords),
+    )
