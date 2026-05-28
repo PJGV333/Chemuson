@@ -30,6 +30,9 @@ def create_structure_actions(window) -> None:
     window.action_set_polymer_repeat = QAction("Definir repetición de polímero...", window)
     window.action_set_polymer_repeat.triggered.connect(window._on_set_polymer_repeat_label)
 
+    window.action_set_r_group_substituents = QAction("Definir sustituyentes R...", window)
+    window.action_set_r_group_substituents.triggered.connect(window._on_set_r_group_substituents)
+
     window.action_rotate_left = QAction("Girar 90° a la izquierda", window)
     window.action_rotate_left.triggered.connect(lambda: window._on_rotate_selection(-90.0))
 

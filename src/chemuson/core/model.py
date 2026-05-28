@@ -12,7 +12,7 @@ import math
 from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional, Set
+from typing import Dict, Iterable, List, Optional, Set
 
 # Marcadores internos para distinguir "no se especificó" de "se desea borrar".
 _STROKE_UNSET = object()
@@ -303,6 +303,7 @@ class Atom:
     implicit_h: int = 0
     has_valence_error: bool = False
     label_scale: Optional[float] = None
+    r_group_substituents: tuple[str, ...] = field(default_factory=tuple)
     is_coordination_center: bool = False
     sphere_radius: Optional[float] = None
     sphere_color: Optional[str] = None
@@ -478,6 +479,7 @@ class MolGraph:
         sphere_filled: bool = True,
         sphere_transparent: bool = False,
         label_scale: Optional[float] = None,
+        r_group_substituents: Optional[Iterable[str]] = None,
         opacity: Optional[float] = None,
     ) -> Atom:
         """Crea y registra un átomo en el grafo.
@@ -566,6 +568,11 @@ class MolGraph:
             is_explicit=is_explicit,
             no_implicit=resolved_no_implicit,
             label_scale=(None if label_scale is None else float(label_scale)),
+            r_group_substituents=tuple(
+                str(item).strip()
+                for item in (r_group_substituents or ())
+                if str(item).strip()
+            ),
             is_coordination_center=is_coordination_center,
             sphere_radius=resolved_sphere_radius,
             sphere_color=resolved_sphere_color,

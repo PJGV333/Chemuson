@@ -80,6 +80,34 @@ class ChangeBracketRepeatLabelCommand(QUndoCommand):
     def undo(self) -> None:
         self._apply(self._old_labels)
 
+
+class ChangeRGroupSubstituentsCommand(QUndoCommand):
+    """Comando para editar sustituyentes permitidos en átomos R/Rn."""
+
+    def __init__(self, graph, atom_ids, new_values) -> None:
+        super().__init__("Change R-group substituents")
+        self._graph = graph
+        self._atom_ids = [int(atom_id) for atom_id in (atom_ids or [])]
+        self._new_values = tuple(new_values or ())
+        self._old_values = {
+            atom_id: tuple(getattr(graph.atoms[atom_id], "r_group_substituents", ()) or ())
+            for atom_id in self._atom_ids
+            if atom_id in graph.atoms
+        }
+
+    def _apply(self, values) -> None:
+        for atom_id in self._atom_ids:
+            atom = self._graph.atoms.get(atom_id)
+            if atom is None:
+                continue
+            atom.r_group_substituents = tuple(values.get(atom_id, ()) if isinstance(values, dict) else values)
+
+    def redo(self) -> None:
+        self._apply(self._new_values)
+
+    def undo(self) -> None:
+        self._apply(self._old_values)
+
 class AddArrowCommand(QUndoCommand):
     """Comando para añadir una flecha de anotación."""
 

@@ -1955,6 +1955,37 @@ class ChemusonWindow(QMainWindow):
         self.canvas.undo_stack.push(ChangeBracketRepeatLabelCommand(self.canvas, brackets, label))
         self.statusBar().showMessage("Repetición de polímero actualizada.", 5000)
 
+    def _on_set_r_group_substituents(self) -> None:
+        """Asigna una lista semántica de sustituyentes a átomos R/Rn."""
+        from chemuson.markush import sanitize_r_group_substituents
+        from chemuson.gui.commands import ChangeRGroupSubstituentsCommand
+
+        atom_ids = [
+            atom_id
+            for atom_id in sorted(getattr(self.canvas.state, "selected_atoms", set()))
+            if atom_id in self.canvas.model.atoms
+            and str(self.canvas.model.atoms[atom_id].element).startswith("R")
+        ]
+        if not atom_ids:
+            QMessageBox.information(
+                self,
+                "Sustituyentes R",
+                "Selecciona uno o más átomos R/R1/R2 antes de definir sustituyentes.",
+            )
+            return
+        current = ", ".join(getattr(self.canvas.model.atoms[atom_ids[0]], "r_group_substituents", ()) or ())
+        text, ok = QInputDialog.getText(
+            self,
+            "Sustituyentes R",
+            "Sustituyentes permitidos separados por coma (ej. Me, Et, Ph):",
+            text=current,
+        )
+        if not ok:
+            return
+        values = sanitize_r_group_substituents(text)
+        self.canvas.undo_stack.push(ChangeRGroupSubstituentsCommand(self.canvas.model, atom_ids, values))
+        self.statusBar().showMessage("Sustituyentes R actualizados.", 5000)
+
     def _run_clean_2d(
         self,
         step_ratio: float,

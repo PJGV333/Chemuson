@@ -503,6 +503,7 @@ class MainWindowUiBuilder:
         structure_menu.addAction(window.action_validation_previous)
         structure_menu.addSeparator()
         structure_menu.addAction(window.action_set_polymer_repeat)
+        structure_menu.addAction(window.action_set_r_group_substituents)
         structure_menu.addSeparator()
         window.templates_menu = structure_menu.addMenu("Plantillas")
         window.action_save_template = QAction("Guardar selección como plantilla...", window)
