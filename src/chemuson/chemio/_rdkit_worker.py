@@ -522,6 +522,52 @@ def _apply_initial_coordinates(Chem, mol, id_map: dict[int, int], coordinates: A
     return True
 
 
+def _handle_graph_clean2d_mode(Chem, request: dict[str, Any]) -> dict[str, Any]:
+    """Genera coordenadas 2D optimizadas con Compute2DCoords."""
+    mol, id_map, error = _build_mol_from_graph_payload(Chem, request)
+    if mol is None:
+        return {"ok": False, "error": error or "invalid_graph"}
+    if mol.GetNumAtoms() == 0:
+        return {"ok": False, "error": "empty_graph"}
+    try:
+        from rdkit.Chem import AllChem
+
+        Chem.SanitizeMol(mol)
+        reverse_map = {rd_idx: atom_id for atom_id, rd_idx in id_map.items()}
+
+        mol_no_h = Chem.RemoveHs(Chem.Mol(mol), sanitize=True)
+        if 0 < mol_no_h.GetNumAtoms() < mol.GetNumAtoms():
+            AllChem.Compute2DCoords(mol_no_h)
+            conf_no_h = mol_no_h.GetConformer()
+            positions: dict[str, list[float]] = {}
+            for rd_idx in range(mol_no_h.GetNumAtoms()):
+                atom = mol_no_h.GetAtomWithIdx(rd_idx)
+                chemuson_id = None
+                for aid, ridx in id_map.items():
+                    if ridx == rd_idx:
+                        chemuson_id = aid
+                        break
+                if chemuson_id is None:
+                    continue
+                pos = conf_no_h.GetAtomPosition(int(rd_idx))
+                positions[str(chemuson_id)] = [float(pos.x), float(pos.y), 0.0]
+        else:
+            AllChem.Compute2DCoords(mol)
+            conf = mol.GetConformer()
+            positions = {}
+            for rd_idx, atom_id in reverse_map.items():
+                pos = conf.GetAtomPosition(int(rd_idx))
+                positions[str(atom_id)] = [float(pos.x), float(pos.y), 0.0]
+
+        return {
+            "ok": True,
+            "positions": positions,
+            "metadata": {"source": "rdkit", "method": "compute2dcoords"},
+        }
+    except Exception as exc:
+        return {"ok": False, "error": "clean2d_failed", "detail": str(exc)}
+
+
 def _positions_for_original_atoms(mol_h, reverse_map: dict[int, int]) -> dict[str, list[float]]:
     conf = mol_h.GetConformer()
     positions: dict[str, list[float]] = {}
@@ -567,6 +613,10 @@ def main() -> int:
         return 0
     if mode == "graph_optimize3d":
         result = _handle_graph_optimize3d_mode(Chem, request)
+        sys.stdout.write(json.dumps(result))
+        return 0
+    if mode == "graph_clean2d":
+        result = _handle_graph_clean2d_mode(Chem, request)
         sys.stdout.write(json.dumps(result))
         return 0
 

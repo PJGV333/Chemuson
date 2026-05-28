@@ -1842,36 +1842,6 @@ class ChemusonWindow(QMainWindow):
             projected.setdefault(atom_id, coord)
         return projected
 
-    @staticmethod
-    def _is_acyclic_structure(atom_ids: set[int], bonds) -> bool:
-        """Indica si el subgrafo seleccionado no contiene ciclos."""
-        if not atom_ids:
-            return True
-        adjacency: dict[int, list[int]] = {}
-        for bond in bonds:
-            if bond.a1_id not in atom_ids or bond.a2_id not in atom_ids:
-                continue
-            adjacency.setdefault(bond.a1_id, []).append(bond.a2_id)
-            adjacency.setdefault(bond.a2_id, []).append(bond.a1_id)
-
-        visited: set[int] = set()
-        for start in atom_ids:
-            if start in visited:
-                continue
-            stack: list[tuple[int, int]] = [(start, -1)]
-            while stack:
-                node, parent = stack.pop()
-                if node in visited:
-                    continue
-                visited.add(node)
-                for neigh in adjacency.get(node, []):
-                    if neigh == parent:
-                        continue
-                    if neigh in visited:
-                        return False
-                    stack.append((neigh, node))
-        return True
-
     def _on_clean_2d(self) -> None:
         """Maneja clean 2d."""
         self._run_clean_2d(

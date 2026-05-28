@@ -180,6 +180,46 @@ def optimize_3d_isolated(
     return positions, metadata, None
 
 
+def clean2d_isolated(
+    graph,
+    timeout_s: float = 8.0,
+) -> tuple[dict[int, tuple[float, float]] | None, str | None]:
+    """Genera coordenadas 2D limpias usando RDKit en un worker aislado.
+
+    Construye el Mol desde el grafo, llama Compute2DCoords y devuelve
+    posiciones 2D mapeadas por atom_id del grafo original.
+
+    Args:
+        graph: MolGraph de Chemuson.
+        timeout_s: Timeout en segundos.
+
+    Returns:
+        Tupla (posiciones, error) donde posiciones mapea atom_id -> (x, y).
+    """
+    request = _graph_request_payload(
+        graph=graph,
+        chain_atom_ids=[],
+        mode="graph_clean2d",
+    )
+    response = _run_worker(request, timeout_s=timeout_s)
+    if not response.get("ok"):
+        return None, str(response.get("error", "worker_error"))
+    raw_positions = response.get("positions", {})
+    if not isinstance(raw_positions, dict):
+        return None, "invalid_positions"
+    positions: dict[int, tuple[float, float]] = {}
+    try:
+        for atom_id, coords in raw_positions.items():
+            if not isinstance(coords, (list, tuple)) or len(coords) < 2:
+                continue
+            positions[int(atom_id)] = (float(coords[0]), float(coords[1]))
+    except Exception as exc:
+        return None, str(exc)
+    if not positions:
+        return None, "empty_positions"
+    return positions, None
+
+
 def _coordinates_payload(coordinates: dict[int, tuple[float, float, float]]) -> dict[str, list[float]]:
     payload: dict[str, list[float]] = {}
     for atom_id, coords in coordinates.items():
