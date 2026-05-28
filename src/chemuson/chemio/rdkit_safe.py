@@ -127,6 +127,49 @@ def conformer_3d_isolated(
     return positions, metadata, None
 
 
+def optimize_3d_isolated(
+    graph,
+    *,
+    forcefield: str = "MMFF94",
+    max_iters: int = 200,
+    steps_per_update: int = 25,
+    timeout_s: float = 20.0,
+) -> tuple[dict[int, tuple[float, float, float]] | None, dict[str, Any], str | None]:
+    """Optimiza conformación 3D RDKit en un proceso aislado."""
+    request = _graph_request_payload(
+        graph=graph,
+        chain_atom_ids=[],
+        mode="graph_optimize3d",
+    )
+    request.update(
+        {
+            "forcefield": str(forcefield or "MMFF94"),
+            "max_iters": int(max_iters or 200),
+            "steps_per_update": int(steps_per_update or 25),
+        }
+    )
+    response = _run_worker(request, timeout_s=timeout_s)
+    if not response.get("ok"):
+        return None, {}, str(response.get("error", "worker_error"))
+    raw_positions = response.get("positions", {})
+    if not isinstance(raw_positions, dict):
+        return None, {}, "invalid_positions"
+    positions: dict[int, tuple[float, float, float]] = {}
+    try:
+        for atom_id, coords in raw_positions.items():
+            if not isinstance(coords, (list, tuple)) or len(coords) != 3:
+                continue
+            positions[int(atom_id)] = (float(coords[0]), float(coords[1]), float(coords[2]))
+    except Exception as exc:
+        return None, {}, str(exc)
+    if not positions:
+        return None, {}, "empty_positions"
+    metadata = response.get("metadata", {})
+    if not isinstance(metadata, dict):
+        metadata = {}
+    return positions, metadata, None
+
+
 def is_rdkit_worker_available(timeout_s: float = 5.0) -> bool:
     """Smoke-check liviano para saber si el worker RDKit está utilizable."""
     result = run_rdkit_stereo_extract("CC", fmt="smiles", timeout_s=timeout_s)

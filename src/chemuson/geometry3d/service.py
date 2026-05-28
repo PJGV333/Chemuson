@@ -6,9 +6,11 @@ from dataclasses import dataclass
 from concurrent.futures import Future, ThreadPoolExecutor
 import hashlib
 import math
-from typing import Iterable
+from typing import Iterable, Mapping
 
 from chemuson.core.model import MolGraph, bond_affects_valence
+from chemuson.geometry3d.model import CoordinateSet3D, OptimizationSettings
+from chemuson.geometry3d.rdkit_backend import generate_conformer
 
 
 @dataclass(frozen=True)
@@ -22,6 +24,19 @@ class Conformer3DResult:
     energy: float | None = None
     message: str = ""
     from_cache: bool = False
+
+    @property
+    def coordinate_set(self) -> CoordinateSet3D | None:
+        """Vista moderna del resultado como ``CoordinateSet3D``."""
+        if not self.atom_positions:
+            return None
+        return CoordinateSet3D(
+            positions=dict(self.atom_positions),
+            source=self.source,
+            method=self.method,
+            energy=self.energy,
+            metadata={"cache_key": self.cache_key, "from_cache": self.from_cache, "message": self.message},
+        )
 
     @property
     def ok(self) -> bool:
@@ -67,8 +82,9 @@ def conformer_3d_for_graph(
     *,
     timeout_s: float = 8.0,
     force: bool = False,
+    settings: OptimizationSettings | None = None,
 ) -> Conformer3DResult:
-    """Genera coordenadas 3D reales mediante RDKit con cache por hash químico."""
+    """Genera coordenadas 3D reales mediante backend RDKit aislado con cache."""
     cache_key = chemical_graph_hash(graph)
     if not force:
         cached = _CONFORMER_CACHE.get(cache_key)
@@ -83,22 +99,18 @@ def conformer_3d_for_graph(
                 from_cache=True,
             )
 
-    try:
-        from chemuson.chemio.rdkit_safe import conformer_3d_isolated
-
-        positions, metadata, error = conformer_3d_isolated(graph, timeout_s=timeout_s)
-    except Exception as exc:
-        return Conformer3DResult({}, "rdkit", cache_key, message=str(exc))
-
-    if error or not positions:
-        return Conformer3DResult({}, "rdkit", cache_key, message=str(error or "empty_conformer"))
+    settings = settings or OptimizationSettings(timeout_s=timeout_s)
+    opt_result = generate_conformer(graph, settings)
+    if not opt_result.ok or opt_result.coordinates is None:
+        return Conformer3DResult({}, "rdkit", cache_key, method=opt_result.method or "rdkit", message=opt_result.message)
 
     result = Conformer3DResult(
-        atom_positions=dict(positions),
-        source=str(metadata.get("source", "rdkit")),
+        atom_positions=opt_result.coordinates.normalized_positions(),
+        source=opt_result.coordinates.source,
         cache_key=cache_key,
-        method=str(metadata.get("method", "rdkit")),
-        energy=_float_or_none(metadata.get("energy")),
+        method=opt_result.coordinates.method,
+        energy=opt_result.coordinates.energy,
+        message=opt_result.message,
     )
     _store_cache(cache_key, result)
     return result
@@ -109,6 +121,7 @@ def conformer_3d_for_graph_async(
     *,
     timeout_s: float = 8.0,
     force: bool = False,
+    settings: OptimizationSettings | None = None,
 ) -> Future[Conformer3DResult]:
     """Programa generación 3D fuera del hilo de UI y devuelve un ``Future``."""
     return _EXECUTOR.submit(
@@ -116,11 +129,12 @@ def conformer_3d_for_graph_async(
         graph,
         timeout_s=timeout_s,
         force=force,
+        settings=settings,
     )
 
 
 def project_conformer_to_2d(
-    atom_positions: dict[int, tuple[float, float, float]],
+    atom_positions: CoordinateSet3D | Mapping[int, tuple[float, float, float]],
     *,
     rotation: Rotation3D | None = None,
     center: tuple[float, float] = (0.0, 0.0),
@@ -130,12 +144,13 @@ def project_conformer_to_2d(
 ) -> list[ProjectedAtom3D]:
     """Proyecta una conformación 3D a 2D con opacidad/ancho dependientes de Z."""
     rotation = rotation or Rotation3D()
-    if not atom_positions:
+    positions = atom_positions.normalized_positions() if isinstance(atom_positions, CoordinateSet3D) else dict(atom_positions)
+    if not positions:
         return []
 
-    centroid = _centroid3(atom_positions.values())
+    centroid = _centroid3(positions.values())
     rotated: list[tuple[int, float, float, float]] = []
-    for atom_id, point in sorted(atom_positions.items()):
+    for atom_id, point in sorted(positions.items()):
         x, y, z = _rotate_point3(
             point[0] - centroid[0],
             point[1] - centroid[1],

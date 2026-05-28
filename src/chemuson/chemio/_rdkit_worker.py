@@ -416,6 +416,66 @@ def _handle_graph_conformer3d_mode(Chem, request: dict[str, Any]) -> dict[str, A
         return {"ok": False, "error": "conformer3d_failed", "detail": str(exc)}
 
 
+def _handle_graph_optimize3d_mode(Chem, request: dict[str, Any]) -> dict[str, Any]:
+    """Optimiza coordenadas 3D con UFF/MMFF94/MMFF94s."""
+    mol, id_map, error = _build_mol_from_graph_payload(Chem, request)
+    if mol is None:
+        return {"ok": False, "error": error or "invalid_graph"}
+    if mol.GetNumAtoms() == 0:
+        return {"ok": False, "error": "empty_graph"}
+    requested = str(request.get("forcefield", "MMFF94") or "MMFF94").upper()
+    max_iters = max(1, int(request.get("max_iters", 200) or 200))
+    try:
+        Chem.SanitizeMol(mol)
+        from rdkit.Chem import AllChem
+
+        reverse_map = {rd_idx: atom_id for atom_id, rd_idx in id_map.items()}
+        mol_h = Chem.AddHs(mol, addCoords=True)
+        params = AllChem.ETKDGv3()
+        params.randomSeed = 0xC0FFEE
+        params.useRandomCoords = True
+        embed_code = int(AllChem.EmbedMolecule(mol_h, params))
+        if embed_code != 0:
+            return {"ok": False, "error": "embed_failed", "detail": str(embed_code)}
+
+        method = requested
+        ff = None
+        if requested in {"MMFF94", "MMFF94S"}:
+            variant = "MMFF94s" if requested == "MMFF94S" else "MMFF94"
+            if not AllChem.MMFFHasAllMoleculeParams(mol_h):
+                return {"ok": False, "error": "missing_mmff_parameters"}
+            props = AllChem.MMFFGetMoleculeProperties(mol_h, mmffVariant=variant)
+            ff = AllChem.MMFFGetMoleculeForceField(mol_h, props)
+            method = variant
+        elif requested == "UFF":
+            ff = AllChem.UFFGetMoleculeForceField(mol_h)
+            method = "UFF"
+        else:
+            return {"ok": False, "error": "unsupported_forcefield", "detail": requested}
+        if ff is None:
+            return {"ok": False, "error": "forcefield_unavailable"}
+        converged_code = int(ff.Minimize(maxIts=max_iters))
+        energy = float(ff.CalcEnergy())
+        conf = mol_h.GetConformer()
+        positions: dict[str, list[float]] = {}
+        for rd_idx, atom_id in reverse_map.items():
+            pos = conf.GetAtomPosition(int(rd_idx))
+            positions[str(atom_id)] = [float(pos.x), float(pos.y), float(pos.z)]
+        return {
+            "ok": True,
+            "positions": positions,
+            "metadata": {
+                "source": "rdkit",
+                "method": method,
+                "energy": energy,
+                "converged": converged_code == 0,
+                "max_iters": max_iters,
+            },
+        }
+    except Exception as exc:
+        return {"ok": False, "error": "optimize3d_failed", "detail": str(exc)}
+
+
 def main() -> int:
     try:
         request = json.loads(sys.stdin.read() or "{}")
@@ -448,6 +508,10 @@ def main() -> int:
         return 0
     if mode == "graph_conformer3d":
         result = _handle_graph_conformer3d_mode(Chem, request)
+        sys.stdout.write(json.dumps(result))
+        return 0
+    if mode == "graph_optimize3d":
+        result = _handle_graph_optimize3d_mode(Chem, request)
         sys.stdout.write(json.dumps(result))
         return 0
 
