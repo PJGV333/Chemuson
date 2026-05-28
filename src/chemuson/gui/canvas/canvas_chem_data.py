@@ -1,31 +1,16 @@
 """Datos químicos estables usados por los mixins del canvas."""
 
 from chemuson.core.model import SIMPLE_HYDROGEN_GROUP_LABELS as CORE_SIMPLE_HYDROGEN_GROUP_LABELS
+from chemuson.chemio.rdkit_io import SUPPORTED_ABBREVIATION_LABELS
 
-FUNCTIONAL_GROUP_LABELS = [
+FUNCTIONAL_GROUP_LABELS = list(dict.fromkeys([
     "NH2",
-    "NO2",
     "OH",
-    "COOH",
-    "CO2H",
-    "CHO",
-    "CN",
-    "SO3H",
     "SH",
-    "OMe",
-    "OEt",
-    "Me",
-    "Et",
-    "iPr",
-    "tBu",
-    "TBS",
     "Si",
-    "Ph",
-    "Ac",
-    "Boc",
-    "Ts",
+    *SUPPORTED_ABBREVIATION_LABELS,
     "R",
-]
+]))
 
 FUNCTIONAL_GROUP_ALIASES = {label.lower(): label for label in FUNCTIONAL_GROUP_LABELS}
 

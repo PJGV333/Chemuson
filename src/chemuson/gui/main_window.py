@@ -651,7 +651,7 @@ class ChemusonWindow(QMainWindow):
             formula = canvas._analysis_formula(counts)
             exact_mass = canvas._analysis_exact_mass(counts)
             molecular_weight = canvas._analysis_molecular_weight(counts)
-            issues = graph.validate_detailed()
+            issues = calculation_graph.validate_detailed()
         except Exception:
             return [("Estado", "N/D")], None
 

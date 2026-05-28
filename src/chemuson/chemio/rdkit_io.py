@@ -304,12 +304,46 @@ _EXPORT_ABBREVIATIONS: dict[str, _ExportAbbreviationSpec] = {
             _ExportBondSpec(6, 9),
         ),
     ),
+    "TBS": _ExportAbbreviationSpec(
+        (
+            _atom_spec("Si"),
+            _atom_spec("C"),
+            _atom_spec("C"),
+            _atom_spec("C"),
+            _atom_spec("C"),
+            _atom_spec("C"),
+            _atom_spec("C"),
+        ),
+        (
+            _ExportBondSpec(0, 1),
+            _ExportBondSpec(0, 2),
+            _ExportBondSpec(0, 3),
+            _ExportBondSpec(3, 4),
+            _ExportBondSpec(3, 5),
+            _ExportBondSpec(3, 6),
+        ),
+    ),
 }
 
 
 _EXPORT_ABBREVIATION_ALIASES: dict[str, str] = {
     label.lower(): label for label in _EXPORT_ABBREVIATIONS
 }
+
+SUPPORTED_ABBREVIATION_LABELS: tuple[str, ...] = tuple(_EXPORT_ABBREVIATIONS.keys())
+
+
+def is_supported_abbreviation_label(label: str) -> bool:
+    """Indica si una etiqueta colapsada tiene expansión química conocida."""
+    return _export_abbreviation_for_label(label) is not None
+
+
+def abbreviation_expansion_elements(label: str) -> tuple[str, ...]:
+    """Devuelve los elementos de la expansión, o tupla vacía si no está soportada."""
+    spec = _export_abbreviation_for_label(label)
+    if spec is None:
+        return ()
+    return tuple(atom.element for atom in spec.atoms)
 
 
 def _structural_degree_map(molgraph: MolGraph) -> dict[int, int]:

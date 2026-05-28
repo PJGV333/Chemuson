@@ -11,6 +11,7 @@ from PyQt6.QtGui import QBrush, QColor, QFont, QFontMetrics, QPen
 from PyQt6.QtWidgets import QDialog, QGraphicsRectItem, QInputDialog
 
 from chemuson.chemio.rdkit_io import (
+    expand_abbreviations_for_calculation,
     kekulize_display_orders,
     molgraph_to_smiles_isolated_or_error,
 )
@@ -274,6 +275,10 @@ def _analysis_smiles_for_worker(graph: MolGraph) -> str:
 
 
 def _analysis_build_text_for_worker(graph: MolGraph, mode: str, opts: NameOptions) -> str:
+    try:
+        graph = expand_abbreviations_for_calculation(graph)
+    except Exception:
+        pass
     counts = _analysis_atom_counts_for_worker(graph)
     if not counts:
         return ""
@@ -3102,6 +3107,10 @@ class CanvasStructureMixin:
         Side Effects:
             Puede modificar el estado interno o la escena.
         """
+        try:
+            graph = expand_abbreviations_for_calculation(graph)
+        except Exception:
+            pass
         counts = self._analysis_atom_counts(graph)
         if not counts:
             return ""
@@ -3489,7 +3498,15 @@ class CanvasStructureMixin:
 
     def validate_structure(self) -> list[int]:
         """Valida estructura y aplica resaltado de valencias inválidas."""
-        issues = self.model.validate_detailed()
+        try:
+            expanded = expand_abbreviations_for_calculation(self.model)
+            issues = {
+                atom_id: issue
+                for atom_id, issue in expanded.validate_detailed().items()
+                if atom_id in self.model.atoms
+            }
+        except Exception:
+            issues = self.model.validate_detailed()
         errors = list(issues.keys())
         self._validation_issues = dict(issues)
         self._validation_error_order = sorted(errors)
@@ -3508,7 +3525,15 @@ class CanvasStructureMixin:
 
     def navigate_validation_issue(self, step: int = 1) -> Optional[object]:
         """Selecciona y centra el siguiente/anterior error de valencia."""
-        issues = self.model.validate_detailed()
+        try:
+            expanded = expand_abbreviations_for_calculation(self.model)
+            issues = {
+                atom_id: issue
+                for atom_id, issue in expanded.validate_detailed().items()
+                if atom_id in self.model.atoms
+            }
+        except Exception:
+            issues = self.model.validate_detailed()
         errors = sorted(issues.keys())
         self._validation_issues = dict(issues)
         self._validation_error_order = errors
