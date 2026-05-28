@@ -6,6 +6,7 @@ from typing import Callable
 
 from PyQt6.QtWidgets import QApplication, QFileDialog, QMessageBox, QWidget
 
+from chemuson.chemio.cml_io import cml_to_molgraph, molgraph_to_cml
 from chemuson.chemio.persistence import PersistenceManager
 from chemuson.chemio.rdkit_io import (
     molfile_to_molgraph,
@@ -43,8 +44,12 @@ class FileController:
             return
 
         with open(filepath, "r", encoding="utf-8") as fh:
-            molfile = fh.read()
-        graph = molfile_to_molgraph(molfile)
+            text = fh.read()
+        graph = (
+            cml_to_molgraph(text)
+            if filepath.lower().endswith(".cml")
+            else molfile_to_molgraph(text)
+        )
         canvas.clear_canvas()
         canvas._insert_molgraph(graph)
 
@@ -89,13 +94,19 @@ class FileController:
                 context.parent,
                 "Guardar archivo",
                 "",
-                "Archivo de Chemuson (*.cmsn);;Archivo MOL (*.mol);;Todos los archivos (*.*)",
+                "Archivo de Chemuson (*.cmsn);;Archivo MOL (*.mol);;Archivo CML (*.cml);;Todos los archivos (*.*)",
             )
         if not filepath:
             return
         try:
             autosave_manager = context.tab_manager.autosave_manager_for(context.canvas)
-            if filepath.lower().endswith(".mol") or filepath.lower().endswith(".sdf") or "MOL" in selected_filter:
+            if filepath.lower().endswith(".cml") or "CML" in selected_filter:
+                target_path = filepath if filepath.lower().endswith(".cml") else filepath + ".cml"
+                with open(target_path, "w", encoding="utf-8") as fh:
+                    fh.write(molgraph_to_cml(context.canvas.graph))
+                if not filepath.lower().endswith(".cml"):
+                    filepath = target_path
+            elif filepath.lower().endswith(".mol") or filepath.lower().endswith(".sdf") or "MOL" in selected_filter:
                 molfile = molgraph_to_molfile(context.canvas.graph)
                 with open(filepath, "w", encoding="utf-8") as fh:
                     fh.write(molfile)
@@ -125,6 +136,8 @@ class FileController:
                 text = rdkit_io.molgraph_to_smiles(target_graph) if target_graph.atoms else ""
             elif format_name == "molfile":
                 text = molgraph_to_molfile(target_graph) if target_graph.atoms else ""
+            elif format_name == "cml":
+                text = molgraph_to_cml(target_graph) if target_graph.atoms else ""
             elif format_name == "inchi":
                 if target_graph.atoms:
                     from rdkit.Chem.inchi import MolToInchi

@@ -406,6 +406,9 @@ class MainWindowUiBuilder:
         window.action_export_pdf = QAction("PDF...", window)
         window.action_export_pdf.triggered.connect(lambda: window._on_export("pdf"))
         file_menu.addAction(window.action_export_pdf)
+        window.action_export_cml = QAction("CML...", window)
+        window.action_export_cml.triggered.connect(lambda: window._on_export("cml"))
+        file_menu.addAction(window.action_export_cml)
 
     def _add_copy_as_menu(self, window, edit_menu: QMenu) -> None:
         copy_as_menu = edit_menu.addMenu("Copiar como")
@@ -415,6 +418,9 @@ class MainWindowUiBuilder:
         window.action_copy_molfile = QAction("Molfile", window)
         window.action_copy_molfile.triggered.connect(lambda: window._on_copy_as("molfile"))
         copy_as_menu.addAction(window.action_copy_molfile)
+        window.action_copy_cml = QAction("CML", window)
+        window.action_copy_cml.triggered.connect(lambda: window._on_copy_as("cml"))
+        copy_as_menu.addAction(window.action_copy_cml)
         window.action_copy_inchi = QAction("InChI", window)
         window.action_copy_inchi.triggered.connect(lambda: window._on_copy_as("inchi"))
         copy_as_menu.addAction(window.action_copy_inchi)

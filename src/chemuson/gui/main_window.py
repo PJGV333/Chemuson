@@ -1182,12 +1182,12 @@ class ChemusonWindow(QMainWindow):
         self.statusBar().showMessage("Nuevo documento creado")
     
     def _on_file_open(self) -> None:
-        """Open a molecule file (.cmsn or .mol)."""
+        """Open a molecule file (.cmsn, .mol/.sdf or .cml)."""
         filepaths, _selected_filter = QFileDialog.getOpenFileNames(
             self,
             "Abrir archivo(s)",
             "",
-            "Archivos de Chemuson (*.cmsn);;Archivos MOL (*.mol *.sdf);;Todos los archivos (*.*)"
+            "Archivos de Chemuson (*.cmsn);;Archivos MOL (*.mol *.sdf);;Archivos CML (*.cml);;Todos los archivos (*.*)"
         )
         for filepath in filepaths:
             self._open_file_path(filepath)

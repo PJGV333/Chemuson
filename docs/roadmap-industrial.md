@@ -282,6 +282,10 @@ Esta ruta parte del estado observado en mayo de 2026: `clean2d_v2` ya existe, es
 
 ### Bloque H: interoperabilidad industrial
 
+**Estado mayo 2026**
+- Primer corte implementado con CML import/export/copy y matriz de compatibilidad en `docs/interoperability.md`.
+- Quedan pendientes CDXML/MRV/PDB y metadatos avanzados de publicación.
+
 **Objetivo**
 - Ampliar import/export sin perder información química ni visual esencial.
 

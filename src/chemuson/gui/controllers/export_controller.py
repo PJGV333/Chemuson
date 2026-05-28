@@ -10,6 +10,21 @@ class ExportController:
 
     def export(self, window, format_name: str) -> None:
         canvas = window.canvas
+        if format_name == "cml":
+            from chemuson.chemio.cml_io import molgraph_to_cml
+
+            filepath, _ = QFileDialog.getSaveFileName(window, "Exportar CML", "", "Chemical Markup Language (*.cml)")
+            if not filepath:
+                return
+            if not filepath.lower().endswith(".cml"):
+                filepath += ".cml"
+            graph, _bbox = canvas._analysis_graph_and_bbox()
+            target_graph = graph if graph is not None else canvas.graph
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(molgraph_to_cml(target_graph))
+            window.statusBar().showMessage(f"Exportado: {filepath}")
+            return
+
         if format_name == "png":
             image = canvas._render_scene_image()
             if image:
