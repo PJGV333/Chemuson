@@ -13,6 +13,7 @@ from chemuson.clean2d import (
     length_only_polish,
     optimize_clean2d_positions,
 )
+from chemuson.geometry3d import Rotation3D, conformer_3d_for_graph, project_conformer_to_2d
 
 
 @dataclass(frozen=True)
@@ -120,6 +121,17 @@ class Clean2DController:
                         continue
 
                 if not is_bad:
+                    alternative = self._try_alternative_conformer_pose(
+                        window,
+                        target_ids,
+                        bonds,
+                        before,
+                        target_len,
+                        mode,
+                        cyclic,
+                    )
+                    if alternative.applied:
+                        return alternative
                     return Clean2DAttempt(message="Estructura 2D ya estaba limpia")
 
         report = evaluate_clean2d_layout(
@@ -142,6 +154,89 @@ class Clean2DController:
         canvas.undo_stack.push(MoveAtomsCommand(canvas.model, canvas, before, changed))
         canvas._update_selection_overlay()
         return Clean2DAttempt(applied=True, message=label)
+
+    def _try_alternative_conformer_pose(
+        self,
+        window: Any,
+        target_ids: set[int],
+        bonds: list,
+        before: dict[int, tuple[float, float]],
+        target_len: float,
+        mode: str,
+        cyclic: bool,
+    ) -> Clean2DAttempt:
+        """Propone una geometría 2D alternativa basada en conformero 3D."""
+        canvas = window.canvas
+        if len(target_ids) < 3 or not bonds:
+            return Clean2DAttempt(unavailable=True, message="sin_pose_alternativa")
+
+        try:
+            graph = (
+                canvas._build_selection_graph(target_ids, bonds)
+                if target_ids != set(canvas.model.atoms.keys())
+                else canvas.graph
+            )
+            conf3d = conformer_3d_for_graph(graph, timeout_s=3.5)
+            if not conf3d.ok:
+                return Clean2DAttempt(unavailable=True, message="sin_conformero_3d")
+        except Exception:
+            return Clean2DAttempt(unavailable=True, message="sin_conformero_3d")
+
+        center = _coords_center(before)
+        rotations = (
+            Rotation3D(pitch=math.radians(24.0), yaw=math.radians(32.0)),
+            Rotation3D(pitch=math.radians(-18.0), yaw=math.radians(57.0)),
+            Rotation3D(pitch=math.radians(36.0), yaw=math.radians(-41.0)),
+        )
+
+        for rotation in rotations:
+            projected = project_conformer_to_2d(
+                conf3d.atom_positions,
+                rotation=rotation,
+                center=center,
+                scale=max(1.0, target_len),
+            )
+            after = {
+                atom.atom_id: (float(atom.x), float(atom.y))
+                for atom in projected
+                if atom.atom_id in target_ids
+            }
+            if len(after) != len(target_ids):
+                continue
+
+            after = window._rescale_coords_to_bond_length(after, bonds, target_len)
+            after = window._align_coords_to_reference(before, after)
+            changed = {
+                aid: after[aid]
+                for aid in target_ids
+                if aid in before and _position_delta(before[aid], after[aid]) > 0.9
+            }
+            if not changed:
+                continue
+
+            report = evaluate_clean2d_layout(
+                target_ids,
+                bonds,
+                before,
+                {aid: changed.get(aid, before[aid]) for aid in target_ids},
+                target_len,
+                is_cyclic=cyclic,
+            )
+            if not is_clean2d_candidate_safe(report, mode):
+                continue
+            if report.mean_displacement < target_len * 0.20:
+                continue
+
+            from chemuson.gui.commands import MoveAtomsCommand
+
+            canvas.undo_stack.push(MoveAtomsCommand(canvas.model, canvas, before, changed))
+            canvas._update_selection_overlay()
+            label = "Estructura 2D alternativa propuesta"
+            if len(target_ids) < len(canvas.model.atoms):
+                label = "Selección 2D alternativa propuesta"
+            return Clean2DAttempt(applied=True, message=label, report=report)
+
+        return Clean2DAttempt(unavailable=True, message="sin_pose_alternativa")
 
     def _polish_with_v2(
         self,
