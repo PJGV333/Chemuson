@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import math
 from typing import Any
 
 from chemuson.clean2d import (
@@ -104,12 +105,30 @@ class Clean2DController:
                 changed[aid] = after[aid]
 
         if not changed:
-            return Clean2DAttempt(message="Estructura 2D ya estaba limpia")
+            if mode in {"quick", "publication"}:
+                is_bad = False
+                for b in bonds:
+                    try:
+                        x1, y1 = before[b.a1_id]
+                        x2, y2 = before[b.a2_id]
+                        curr_len = math.hypot(x2 - x1, y2 - y1)
+                        target = float(getattr(window.canvas.state, "bond_length", 42.0))
+                        if curr_len < target * 0.8 or curr_len > target * 1.2:
+                            is_bad = True
+                            break
+                    except Exception:
+                        continue
+
+                if not is_bad:
+                    return Clean2DAttempt(message="Estructura 2D ya estaba limpia")
 
         report = evaluate_clean2d_layout(
-            target_ids, bonds, before,
+            target_ids,
+            bonds,
+            before,
             {aid: changed.get(aid, before[aid]) for aid in target_ids},
-            target_len, is_cyclic=cyclic,
+            target_len,
+            is_cyclic=cyclic,
         )
         if not is_clean2d_candidate_safe(report, mode):
             return Clean2DAttempt(
