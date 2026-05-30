@@ -13,6 +13,7 @@ from chemuson.clean2d import (
     length_only_polish,
     optimize_clean2d_positions,
 )
+from chemuson.core.model import bond_affects_valence
 from chemuson.geometry3d import Rotation3D, conformer_3d_for_graph, project_conformer_to_2d
 
 
@@ -133,6 +134,14 @@ class Clean2DController:
                     if alternative.applied:
                         return alternative
                     return Clean2DAttempt(message="Estructura 2D ya estaba limpia")
+                return Clean2DAttempt(
+                    unavailable=True,
+                    message="candidato_clean2d_sin_movimiento",
+                )
+            return Clean2DAttempt(
+                unavailable=True,
+                message="candidato_clean2d_sin_movimiento",
+            )
 
         report = evaluate_clean2d_layout(
             target_ids,
@@ -170,6 +179,7 @@ class Clean2DController:
         if len(target_ids) < 3 or not bonds:
             return Clean2DAttempt(unavailable=True, message="sin_pose_alternativa")
 
+        conf3d_positions: dict[int, tuple[float, float, float]] | None = None
         try:
             graph = (
                 canvas._build_selection_graph(target_ids, bonds)
@@ -177,10 +187,10 @@ class Clean2DController:
                 else canvas.graph
             )
             conf3d = conformer_3d_for_graph(graph, timeout_s=3.5)
-            if not conf3d.ok:
-                return Clean2DAttempt(unavailable=True, message="sin_conformero_3d")
+            if conf3d.ok:
+                conf3d_positions = conf3d.atom_positions
         except Exception:
-            return Clean2DAttempt(unavailable=True, message="sin_conformero_3d")
+            conf3d_positions = None
 
         center = _coords_center(before)
         rotations = (
@@ -189,23 +199,85 @@ class Clean2DController:
             Rotation3D(pitch=math.radians(36.0), yaw=math.radians(-41.0)),
         )
 
-        for rotation in rotations:
-            projected = project_conformer_to_2d(
-                conf3d.atom_positions,
-                rotation=rotation,
-                center=center,
-                scale=max(1.0, target_len),
-            )
-            after = {
-                atom.atom_id: (float(atom.x), float(atom.y))
-                for atom in projected
-                if atom.atom_id in target_ids
-            }
-            if len(after) != len(target_ids):
-                continue
+        if conf3d_positions:
+            for rotation in rotations:
+                projected = project_conformer_to_2d(
+                    conf3d_positions,
+                    rotation=rotation,
+                    center=center,
+                    scale=max(1.0, target_len),
+                )
+                after = {
+                    atom.atom_id: (float(atom.x), float(atom.y))
+                    for atom in projected
+                    if atom.atom_id in target_ids
+                }
+                if len(after) != len(target_ids):
+                    continue
 
-            after = window._rescale_coords_to_bond_length(after, bonds, target_len)
-            after = window._align_coords_to_reference(before, after)
+                after = window._rescale_coords_to_bond_length(after, bonds, target_len)
+                after = window._align_coords_to_reference(before, after)
+                changed = {
+                    aid: after[aid]
+                    for aid in target_ids
+                    if aid in before and _position_delta(before[aid], after[aid]) > 0.9
+                }
+                if not changed:
+                    continue
+
+                report = evaluate_clean2d_layout(
+                    target_ids,
+                    bonds,
+                    before,
+                    {aid: changed.get(aid, before[aid]) for aid in target_ids},
+                    target_len,
+                    is_cyclic=cyclic,
+                )
+                if not is_clean2d_candidate_safe(report, mode):
+                    continue
+                if report.mean_displacement < target_len * 0.20:
+                    continue
+
+                from chemuson.gui.commands import MoveAtomsCommand
+
+                canvas.undo_stack.push(MoveAtomsCommand(canvas.model, canvas, before, changed))
+                canvas._update_selection_overlay()
+                label = "Estructura 2D alternativa propuesta"
+                if len(target_ids) < len(canvas.model.atoms):
+                    label = "Selección 2D alternativa propuesta"
+                return Clean2DAttempt(applied=True, message=label, report=report)
+
+        return self._try_rotatable_reflection_pose(
+            window,
+            target_ids,
+            bonds,
+            before,
+            target_len,
+            mode,
+            cyclic,
+        )
+
+    def _try_rotatable_reflection_pose(
+        self,
+        window: Any,
+        target_ids: set[int],
+        bonds: list,
+        before: dict[int, tuple[float, float]],
+        target_len: float,
+        mode: str,
+        cyclic: bool,
+    ) -> Clean2DAttempt:
+        """Genera un conformero 2D reflejando un lado de un enlace rotatable."""
+        canvas = window.canvas
+        if len(target_ids) < 3 or not bonds:
+            return Clean2DAttempt(unavailable=True, message="sin_pose_alternativa")
+
+        for bond, side in _rotatable_reflection_sides(target_ids, bonds):
+            candidate = _reflect_side_across_bond(before, bond, side)
+            if not candidate:
+                continue
+            after = dict(before)
+            after.update(candidate)
             changed = {
                 aid: after[aid]
                 for aid in target_ids
@@ -222,9 +294,10 @@ class Clean2DController:
                 target_len,
                 is_cyclic=cyclic,
             )
-            if not is_clean2d_candidate_safe(report, mode):
+            safety_mode = "conformer" if mode in {"quick", "publication"} else mode
+            if not is_clean2d_candidate_safe(report, safety_mode):
                 continue
-            if report.mean_displacement < target_len * 0.20:
+            if report.mean_displacement < target_len * 0.05:
                 continue
 
             from chemuson.gui.commands import MoveAtomsCommand
@@ -318,9 +391,11 @@ class Clean2DController:
                         window, target_ids, scale_bonds, status_suffix
                     )
                     return
-                if self._polish_with_v2(
+                polish = self._polish_with_v2(
                     window, target_ids, mode=mode, status_suffix=status_suffix
-                ).applied:
+                )
+                if polish.applied:
+                    window.statusBar().showMessage(polish.message)
                     return
                 self._safe_length_polish_only(
                     window, target_ids, scale_bonds, status_suffix
@@ -346,9 +421,11 @@ class Clean2DController:
                         window, target_ids, scale_bonds, status_suffix
                     )
                     return
-                if self._polish_with_v2(
+                polish = self._polish_with_v2(
                     window, target_ids, mode=mode, status_suffix=status_suffix
-                ).applied:
+                )
+                if polish.applied:
+                    window.statusBar().showMessage(polish.message)
                     return
                 self._safe_length_polish_only(
                     window, target_ids, scale_bonds, status_suffix
@@ -587,3 +664,184 @@ def _coords_center(coords: dict[int, tuple[float, float]]) -> tuple[float, float
         sum(x for x, _y in coords.values()) / len(coords),
         sum(y for _x, y in coords.values()) / len(coords),
     )
+
+
+def _rotatable_reflection_sides(
+    atom_ids: set[int],
+    bonds: list,
+) -> list[tuple[Any, set[int]]]:
+    """Devuelve lados candidatos para reflejar alrededor de enlaces rotatables."""
+    adjacency = _adjacency_for_clean_bonds(atom_ids, bonds)
+    ring_core = _cycle_core_atoms(atom_ids, adjacency)
+    candidates: list[tuple[tuple[int, int, int, int], Any, set[int]]] = []
+
+    for bond in bonds:
+        if not _is_rotatable_clean2d_bond(bond, atom_ids):
+            continue
+        left = _component_without_edge(
+            int(bond.a1_id),
+            int(bond.a2_id),
+            adjacency,
+            atom_ids,
+        )
+        right = _component_without_edge(
+            int(bond.a2_id),
+            int(bond.a1_id),
+            adjacency,
+            atom_ids,
+        )
+        if not left or not right or left & right:
+            continue
+
+        side = _preferred_reflection_side(left, right, ring_core)
+        if not side:
+            continue
+        ring_count = len(side & ring_core)
+        other_count = len((right if side is left else left) & ring_core)
+        side_size = len(side)
+        balance = min(len(left), len(right))
+        score = (
+            0 if ring_count == 0 and other_count > 0 else 1,
+            0 if side_size >= 2 else 1,
+            -balance,
+            side_size,
+        )
+        candidates.append((score, bond, side))
+
+    candidates.sort(key=lambda item: item[0])
+    return [(bond, side) for _score, bond, side in candidates]
+
+
+def _is_rotatable_clean2d_bond(bond: Any, atom_ids: set[int]) -> bool:
+    try:
+        a1 = int(getattr(bond, "a1_id", -1))
+        a2 = int(getattr(bond, "a2_id", -1))
+    except Exception:
+        return False
+    if a1 not in atom_ids or a2 not in atom_ids:
+        return False
+    try:
+        if not bond_affects_valence(bond):
+            return False
+    except Exception:
+        return False
+    if bool(getattr(bond, "is_aromatic", False)):
+        return False
+    try:
+        order = int(getattr(bond, "order", 1) or 1)
+    except Exception:
+        order = 1
+    return order == 1
+
+
+def _preferred_reflection_side(
+    left: set[int],
+    right: set[int],
+    ring_core: set[int],
+) -> set[int]:
+    left_ring = len(left & ring_core)
+    right_ring = len(right & ring_core)
+    if left_ring != right_ring:
+        return left if left_ring < right_ring else right
+    if len(left) != len(right):
+        return left if len(left) < len(right) else right
+    return left if min(left) <= min(right) else right
+
+
+def _adjacency_for_clean_bonds(atom_ids: set[int], bonds: list) -> dict[int, set[int]]:
+    adjacency: dict[int, set[int]] = {int(atom_id): set() for atom_id in atom_ids}
+    for bond in bonds:
+        try:
+            a1 = int(bond.a1_id)
+            a2 = int(bond.a2_id)
+        except Exception:
+            continue
+        if a1 not in atom_ids or a2 not in atom_ids:
+            continue
+        try:
+            if not bond_affects_valence(bond):
+                continue
+        except Exception:
+            continue
+        adjacency.setdefault(a1, set()).add(a2)
+        adjacency.setdefault(a2, set()).add(a1)
+    return adjacency
+
+
+def _component_without_edge(
+    start: int,
+    blocked_neighbor: int,
+    adjacency: dict[int, set[int]],
+    atom_ids: set[int],
+) -> set[int]:
+    if start not in atom_ids:
+        return set()
+    visited: set[int] = set()
+    stack = [start]
+    while stack:
+        node = stack.pop()
+        if node in visited:
+            continue
+        visited.add(node)
+        for neigh in adjacency.get(node, set()):
+            if {node, neigh} == {start, blocked_neighbor}:
+                continue
+            if neigh in atom_ids and neigh not in visited:
+                stack.append(neigh)
+    return visited
+
+
+def _cycle_core_atoms(
+    atom_ids: set[int],
+    adjacency: dict[int, set[int]],
+) -> set[int]:
+    core = {int(atom_id) for atom_id in atom_ids}
+    degrees = {
+        atom_id: len([neigh for neigh in adjacency.get(atom_id, set()) if neigh in core])
+        for atom_id in core
+    }
+    queue = [atom_id for atom_id, degree in degrees.items() if degree <= 1]
+    while queue:
+        atom_id = queue.pop()
+        if atom_id not in core:
+            continue
+        core.remove(atom_id)
+        for neigh in adjacency.get(atom_id, set()):
+            if neigh not in core:
+                continue
+            degrees[neigh] = degrees.get(neigh, 0) - 1
+            if degrees[neigh] <= 1:
+                queue.append(neigh)
+    return core
+
+
+def _reflect_side_across_bond(
+    before: dict[int, tuple[float, float]],
+    bond: Any,
+    side: set[int],
+) -> dict[int, tuple[float, float]]:
+    a1 = int(getattr(bond, "a1_id", -1))
+    a2 = int(getattr(bond, "a2_id", -1))
+    if a1 not in before or a2 not in before:
+        return {}
+
+    x1, y1 = before[a1]
+    x2, y2 = before[a2]
+    dx = x2 - x1
+    dy = y2 - y1
+    denom = dx * dx + dy * dy
+    if denom <= 1e-9:
+        return {}
+
+    reflected: dict[int, tuple[float, float]] = {}
+    for atom_id in side:
+        if atom_id not in before:
+            continue
+        px, py = before[atom_id]
+        rel_x = px - x1
+        rel_y = py - y1
+        projection = (rel_x * dx + rel_y * dy) / denom
+        foot_x = x1 + projection * dx
+        foot_y = y1 + projection * dy
+        reflected[atom_id] = (2.0 * foot_x - px, 2.0 * foot_y - py)
+    return reflected

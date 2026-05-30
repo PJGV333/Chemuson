@@ -203,7 +203,10 @@ def is_clean2d_candidate_safe(report: Clean2DQualityReport, mode: str = "quick")
         return False
 
     max_disp = report.max_displacement
-    disp_limit = t * 4.0 if mode == "publication" else t * 3.0
+    if mode == "conformer":
+        disp_limit = t * 8.0
+    else:
+        disp_limit = t * 4.0 if mode == "publication" else t * 3.0
     if max_disp > disp_limit:
         report.passed = False
         report.rejection_reason = f"desplazamiento_maximo_excesivo:{max_disp:.1f}>{disp_limit:.1f}"

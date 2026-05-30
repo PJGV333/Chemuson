@@ -480,6 +480,109 @@ def test_apply_candidate_rejected_on_bad_geometry() -> None:
     window.canvas.undo_stack.push.assert_not_called()
 
 
+def test_apply_candidate_without_motion_does_not_apply_empty_command() -> None:
+    """Un candidato idéntico pero con longitudes malas debe dejar seguir el fallback."""
+    from unittest.mock import MagicMock
+    from chemuson.gui.controllers.clean2d_controller import Clean2DController
+
+    ctrl = Clean2DController()
+    window = MagicMock()
+    window.canvas.model.atoms = {}
+    window.canvas.state.bond_length = 42.0
+    window.canvas.undo_stack = MagicMock()
+    window.canvas._update_selection_overlay = MagicMock()
+
+    target_ids = {1, 2}
+    bonds = [_fake_bond(1, 2)]
+    before = {1: (0.0, 0.0), 2: (64.0, 0.0)}
+    candidate = dict(before)
+
+    attempt = ctrl._apply_clean2d_candidate(
+        window, target_ids, bonds, before, candidate,
+        42.0, "quick", "test_label", False,
+    )
+
+    assert not attempt.applied
+    assert attempt.unavailable
+    window.canvas.undo_stack.push.assert_not_called()
+
+
+def test_rotatable_reflection_pose_proposes_alternative_for_clean_chain() -> None:
+    """Una cadena ya limpia puede recibir un conformero 2D alternativo seguro."""
+    from unittest.mock import MagicMock
+    from chemuson.gui.controllers.clean2d_controller import Clean2DController
+
+    ctrl = Clean2DController()
+    window = MagicMock()
+    window.canvas.model.atoms = {1: object(), 2: object(), 3: object(), 4: object()}
+    window.canvas.undo_stack = MagicMock()
+    window.canvas._update_selection_overlay = MagicMock()
+
+    target_ids = {1, 2, 3, 4}
+    bonds = [_fake_bond(1, 2), _fake_bond(2, 3), _fake_bond(3, 4)]
+    before = {
+        1: (0.0, 0.0),
+        2: (42.0, 0.0),
+        3: (56.0, 39.6),
+        4: (98.0, 39.6),
+    }
+
+    attempt = ctrl._try_rotatable_reflection_pose(
+        window,
+        target_ids,
+        bonds,
+        before,
+        42.0,
+        "quick",
+        False,
+    )
+
+    assert attempt.applied
+    window.canvas.undo_stack.push.assert_called_once()
+    command = window.canvas.undo_stack.push.call_args.args[0]
+    moved = getattr(command, "_after", {})
+    assert moved
+    assert max(
+        math.hypot(moved[aid][0] - before[aid][0], moved[aid][1] - before[aid][1])
+        for aid in moved
+    ) > 1.0
+
+
+def test_apply_candidate_already_clean_uses_rotatable_conformer_fallback() -> None:
+    """Si RDKit no aporta cambio, clean2d debe proponer una pose alternativa."""
+    from unittest.mock import MagicMock, patch
+    from chemuson.gui.controllers.clean2d_controller import Clean2DController
+
+    ctrl = Clean2DController()
+    window = MagicMock()
+    window.canvas.model.atoms = {1: object(), 2: object(), 3: object(), 4: object()}
+    window.canvas.state.bond_length = 42.0
+    window.canvas.graph = MagicMock()
+    window.canvas.undo_stack = MagicMock()
+    window.canvas._update_selection_overlay = MagicMock()
+
+    target_ids = {1, 2, 3, 4}
+    bonds = [_fake_bond(1, 2), _fake_bond(2, 3), _fake_bond(3, 4)]
+    before = {
+        1: (0.0, 0.0),
+        2: (42.0, 0.0),
+        3: (56.0, 39.6),
+        4: (98.0, 39.6),
+    }
+
+    with patch(
+        "chemuson.gui.controllers.clean2d_controller.conformer_3d_for_graph",
+        side_effect=RuntimeError("rdkit unavailable"),
+    ):
+        attempt = ctrl._apply_clean2d_candidate(
+            window, target_ids, bonds, before, dict(before),
+            42.0, "quick", "test_label", False,
+        )
+
+    assert attempt.applied
+    window.canvas.undo_stack.push.assert_called_once()
+
+
 # ─── Bridge test: run_clean_2d never silent ────────────────────────────────
 
 
