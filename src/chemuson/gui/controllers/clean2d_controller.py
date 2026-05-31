@@ -12,6 +12,7 @@ from chemuson.clean2d import (
     is_clean2d_candidate_safe,
     length_only_polish,
     optimize_clean2d_positions,
+    structure_preserving_geometry_polish,
 )
 from chemuson.core.model import bond_affects_valence
 from chemuson.geometry3d import Rotation3D, conformer_3d_for_graph, project_conformer_to_2d
@@ -107,7 +108,7 @@ class Clean2DController:
                 changed[aid] = after[aid]
 
         if not changed:
-            if mode in {"quick", "publication"}:
+            if mode in {"quick", "publication", "conformer"}:
                 is_bad = False
                 for b in bonds:
                     try:
@@ -178,6 +179,16 @@ class Clean2DController:
         canvas = window.canvas
         if len(target_ids) < 3 or not bonds:
             return Clean2DAttempt(unavailable=True, message="sin_pose_alternativa")
+        if cyclic:
+            return self._try_rotatable_reflection_pose(
+                window,
+                target_ids,
+                bonds,
+                before,
+                target_len,
+                mode,
+                cyclic,
+            )
 
         conf3d_positions: dict[int, tuple[float, float, float]] | None = None
         try:
@@ -294,8 +305,15 @@ class Clean2DController:
                 target_len,
                 is_cyclic=cyclic,
             )
-            safety_mode = "conformer" if mode in {"quick", "publication"} else mode
+            if cyclic:
+                safety_mode = "publication" if mode == "publication" else "quick"
+            else:
+                safety_mode = "conformer" if mode in {"quick", "publication"} else mode
             if not is_clean2d_candidate_safe(report, safety_mode):
+                continue
+            if cyclic and report.max_displacement > target_len * 2.5:
+                continue
+            if cyclic and report.mean_displacement > target_len * 1.0:
                 continue
             if report.mean_displacement < target_len * 0.05:
                 continue
@@ -336,15 +354,14 @@ class Clean2DController:
         cyclic = has_cycles(atom_ids, bonds)
 
         if cyclic:
-            after = length_only_polish(
+            after = structure_preserving_geometry_polish(
                 before, bonds, target_len,
-                max_iterations=6, damping=0.4,
-                max_displacement_per_atom=target_len * 1.5,
+                max_displacement_per_atom=target_len * 8.0,
             )
             label = f"{status_suffix} (ajuste)".strip()
             return self._apply_clean2d_candidate(
                 window, atom_ids, bonds, before, after,
-                target_len, mode, label, cyclic=True,
+                target_len, "conformer", label, cyclic=True,
             )
 
         params = (
@@ -376,6 +393,17 @@ class Clean2DController:
         scale_bonds = bonds if atom_ids else list(canvas.model.bonds.values())
         cyclic = has_cycles(target_ids, scale_bonds)
 
+        if cyclic:
+            length_attempt = self._safe_length_polish_only(
+                window, target_ids, scale_bonds, status_suffix
+            )
+            window.statusBar().showMessage(
+                length_attempt.message
+                if length_attempt.message
+                else "Limpieza 2D omitida: sin ajuste cíclico seguro"
+            )
+            return
+
         # 1) RDKit aislado es el backend preferido para quick/publication
         if mode in {"quick", "publication"}:
             attempt = self._try_isolated_rdkit2d(
@@ -386,21 +414,18 @@ class Clean2DController:
                 return
             if attempt.rejected:
                 window.statusBar().showMessage(attempt.message)
-                if cyclic:
-                    self._safe_length_polish_only(
-                        window, target_ids, scale_bonds, status_suffix
-                    )
-                    return
                 polish = self._polish_with_v2(
                     window, target_ids, mode=mode, status_suffix=status_suffix
                 )
                 if polish.applied:
                     window.statusBar().showMessage(polish.message)
                     return
-                self._safe_length_polish_only(
+                length_attempt = self._safe_length_polish_only(
                     window, target_ids, scale_bonds, status_suffix
                 )
-                return
+                if length_attempt.applied:
+                    window.statusBar().showMessage(length_attempt.message)
+                    return
             if attempt.message:
                 # unavailable con mensaje — mostrar para debug, pero continuar
                 pass
@@ -416,21 +441,18 @@ class Clean2DController:
                 return
             if direct_attempt.rejected:
                 window.statusBar().showMessage(direct_attempt.message)
-                if cyclic:
-                    self._safe_length_polish_only(
-                        window, target_ids, scale_bonds, status_suffix
-                    )
-                    return
                 polish = self._polish_with_v2(
                     window, target_ids, mode=mode, status_suffix=status_suffix
                 )
                 if polish.applied:
                     window.statusBar().showMessage(polish.message)
                     return
-                self._safe_length_polish_only(
+                length_attempt = self._safe_length_polish_only(
                     window, target_ids, scale_bonds, status_suffix
                 )
-                return
+                if length_attempt.applied:
+                    window.statusBar().showMessage(length_attempt.message)
+                    return
 
         # 3) Fallback interno del canvas (force-layout básico)
         canvas.clean_2d_fallback(target_ids, iterations=fallback_iterations)
@@ -628,15 +650,24 @@ class Clean2DController:
             return Clean2DAttempt(unavailable=True, message="sin_coordenadas")
 
         target_len = float(getattr(canvas.state, "bond_length", 42.0) or 42.0)
-        after = length_only_polish(
-            before, scale_bonds, target_len,
-            max_iterations=8, damping=0.4,
-            max_displacement_per_atom=target_len * 1.5,
-        )
+        cyclic = has_cycles(target_ids, scale_bonds)
+        if cyclic:
+            after = structure_preserving_geometry_polish(
+                before, scale_bonds, target_len,
+                max_displacement_per_atom=target_len * 8.0,
+            )
+            mode = "conformer"
+        else:
+            after = length_only_polish(
+                before, scale_bonds, target_len,
+                max_iterations=36, damping=0.6,
+                max_displacement_per_atom=target_len * 5.0,
+            )
+            mode = "quick"
         label = "Estructura 2D ajustada con fallback seguro"
         return self._apply_clean2d_candidate(
             window, target_ids, scale_bonds, before, after,
-            target_len, "quick", label, cyclic=True,
+            target_len, mode, label, cyclic=cyclic,
         )
 
 

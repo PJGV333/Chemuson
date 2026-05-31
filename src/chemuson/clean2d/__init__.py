@@ -12,7 +12,11 @@ from .safety import (
     max_atom_displacement,
     bond_length_stats,
 )
-from .length_only import length_only_polish
+from .length_only import (
+    length_only_polish,
+    structure_preserving_geometry_polish,
+    structure_preserving_length_polish,
+)
 
 __all__ = [
     "Clean2DParameters",
@@ -27,4 +31,6 @@ __all__ = [
     "max_atom_displacement",
     "bond_length_stats",
     "length_only_polish",
+    "structure_preserving_geometry_polish",
+    "structure_preserving_length_polish",
 ]

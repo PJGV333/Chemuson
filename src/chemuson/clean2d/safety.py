@@ -222,7 +222,7 @@ def is_clean2d_candidate_safe(report: Clean2DQualityReport, mode: str = "quick")
         report.rejection_reason = f"nuevos_cruces_enlaces:{report.new_crossings}"
         return False
 
-    if report.is_cyclic and report.ring_degeneracy_after < 0.05 * t * t:
+    if report.is_cyclic and report.ring_degeneracy_after < 0.05:
         report.passed = False
         report.rejection_reason = "anillo_colapsado"
         return False

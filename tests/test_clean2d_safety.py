@@ -21,7 +21,11 @@ from chemuson.clean2d.safety import (
     min_nonbonded_distance,
     ring_degeneracy_score,
 )
-from chemuson.clean2d.length_only import length_only_polish
+from chemuson.clean2d.length_only import (
+    length_only_polish,
+    structure_preserving_geometry_polish,
+    structure_preserving_length_polish,
+)
 from chemuson.core.model import Bond
 
 
@@ -315,6 +319,104 @@ def test_complex_molecule_not_collapsed_by_length_polish() -> None:
     assert full_report.new_crossings == 0
 
 
+def test_structure_preserving_length_polish_moves_only_distorted_branch() -> None:
+    """Normaliza una rama larga sin arrastrar el anillo ni la cadena principal."""
+    positions = {
+        1: (0.0, 0.0),
+        2: (36.0, -21.0),
+        3: (72.0, 0.0),
+        4: (72.0, 42.0),
+        5: (36.0, 63.0),
+        6: (0.0, 42.0),
+        7: (114.0, 0.0),
+        8: (156.0, 0.0),
+        9: (198.0, 0.0),
+        10: (198.0, 190.0),
+    }
+    bonds = [
+        _fake_bond(1, 2), _fake_bond(2, 3), _fake_bond(3, 4),
+        _fake_bond(4, 5), _fake_bond(5, 6), _fake_bond(6, 1),
+        _fake_bond(3, 7), _fake_bond(7, 8), _fake_bond(8, 9),
+        _fake_bond(9, 10),
+    ]
+
+    changed = structure_preserving_length_polish(
+        positions,
+        bonds,
+        42.0,
+        max_iterations=4,
+    )
+    after = {aid: changed.get(aid, positions[aid]) for aid in positions}
+
+    assert math.dist(after[9], after[10]) == pytest.approx(42.0, rel=0.02)
+    for atom_id in range(1, 10):
+        assert after[atom_id] == pytest.approx(positions[atom_id], abs=1e-6)
+
+
+def test_structure_preserving_geometry_polish_rebuilds_cyclic_linker_with_double_bond() -> None:
+    """Corrige una cadena con doble enlace sin deformar los anillos terminales."""
+    positions = {
+        1: (0.0, 0.0),
+        2: (36.0, -21.0),
+        3: (72.0, 0.0),
+        4: (72.0, 42.0),
+        5: (36.0, 63.0),
+        6: (0.0, 42.0),
+        7: (104.0, 6.0),
+        8: (122.0, -42.0),
+        9: (140.0, 10.0),
+        10: (168.0, -32.0),
+        11: (193.0, 8.0),
+        12: (214.0, -6.0),
+        13: (244.0, 0.0),
+        14: (284.0, 0.0),
+        15: (264.0, 35.0),
+    }
+    bonds = [
+        _fake_bond(1, 2), _fake_bond(2, 3), _fake_bond(3, 4),
+        _fake_bond(4, 5), _fake_bond(5, 6), _fake_bond(6, 1),
+        _fake_bond(3, 7), _fake_bond(7, 8),
+        _fake_bond(8, 9, order=2), _fake_bond(9, 10),
+        _fake_bond(10, 11), _fake_bond(11, 12), _fake_bond(12, 13),
+        _fake_bond(13, 14), _fake_bond(14, 15), _fake_bond(15, 13),
+    ]
+
+    changed = structure_preserving_geometry_polish(
+        positions,
+        bonds,
+        42.0,
+    )
+    after = {aid: changed.get(aid, positions[aid]) for aid in positions}
+
+    expected_lengths = {
+        (3, 7): 42.0,
+        (7, 8): 42.0,
+        (8, 9): 42.0 * 0.96,
+        (9, 10): 42.0,
+        (10, 11): 42.0,
+        (11, 12): 42.0,
+        (12, 13): 42.0,
+    }
+    for (a_id, b_id), expected in expected_lengths.items():
+        assert math.dist(after[a_id], after[b_id]) == pytest.approx(expected, abs=1.0)
+
+    assert _angle_between(after[8], after[7], after[9]) == pytest.approx(120.0, abs=8.0)
+    assert _angle_between(after[9], after[8], after[10]) == pytest.approx(120.0, abs=8.0)
+    for center_id, left_id, right_id in (
+        (7, 3, 8), (10, 9, 11), (11, 10, 12), (12, 11, 13),
+    ):
+        angle = _angle_between(after[center_id], after[left_id], after[right_id])
+        assert 95.0 <= angle <= 135.0
+
+    for atom_id in range(1, 7):
+        assert after[atom_id] == pytest.approx(positions[atom_id], abs=1e-6)
+    for a_id, b_id in ((13, 14), (14, 15), (15, 13)):
+        assert math.dist(after[a_id], after[b_id]) == pytest.approx(
+            math.dist(positions[a_id], positions[b_id]),
+            abs=1e-6,
+        )
+
+
 # ─── clean2d_v2 no se aplica a cíclicos (prueba conceptual) ──────────────
 
 
@@ -583,6 +685,142 @@ def test_apply_candidate_already_clean_uses_rotatable_conformer_fallback() -> No
     window.canvas.undo_stack.push.assert_called_once()
 
 
+def test_alternative_pose_for_cyclic_structure_skips_3d_projection() -> None:
+    """En ciclos, la alternativa debe preservar geometría con reflexión local."""
+    from unittest.mock import MagicMock, patch
+    from chemuson.gui.controllers.clean2d_controller import Clean2DController
+
+    ctrl = Clean2DController()
+    window = MagicMock()
+    window.canvas.model.atoms = {
+        aid: object()
+        for aid in range(1, 7)
+    }
+    window.canvas.undo_stack = MagicMock()
+    window.canvas._update_selection_overlay = MagicMock()
+
+    target_ids = {1, 2, 3, 4, 5, 6}
+    bonds = [
+        _fake_bond(1, 2), _fake_bond(2, 3), _fake_bond(3, 1),
+        _fake_bond(3, 4), _fake_bond(4, 5), _fake_bond(5, 6),
+    ]
+    before = {
+        1: (0.0, 0.0),
+        2: (40.0, 0.0),
+        3: (20.0, 34.6),
+        4: (60.0, 34.6),
+        5: (80.0, 69.2),
+        6: (120.0, 69.2),
+    }
+
+    with patch(
+        "chemuson.gui.controllers.clean2d_controller.conformer_3d_for_graph",
+    ) as mock_conformer:
+        attempt = ctrl._try_alternative_conformer_pose(
+            window,
+            target_ids,
+            bonds,
+            before,
+            40.0,
+            "quick",
+            True,
+        )
+
+    assert attempt.applied
+    mock_conformer.assert_not_called()
+
+
+def test_apply_candidate_conformer_mode_can_propose_cyclic_alternative() -> None:
+    """Una estructura cíclica ya limpia aún puede proponer conformero local."""
+    from unittest.mock import MagicMock, patch
+    from chemuson.gui.controllers.clean2d_controller import Clean2DController
+
+    ctrl = Clean2DController()
+    window = MagicMock()
+    window.canvas.model.atoms = {aid: object() for aid in range(1, 7)}
+    window.canvas.state.bond_length = 40.0
+    window.canvas.undo_stack = MagicMock()
+    window.canvas._update_selection_overlay = MagicMock()
+
+    target_ids = {1, 2, 3, 4, 5, 6}
+    bonds = [
+        _fake_bond(1, 2), _fake_bond(2, 3), _fake_bond(3, 1),
+        _fake_bond(3, 4), _fake_bond(4, 5), _fake_bond(5, 6),
+    ]
+    before = {
+        1: (0.0, 0.0),
+        2: (40.0, 0.0),
+        3: (20.0, 34.6),
+        4: (60.0, 34.6),
+        5: (80.0, 69.2),
+        6: (120.0, 69.2),
+    }
+
+    with patch(
+        "chemuson.gui.controllers.clean2d_controller.conformer_3d_for_graph",
+    ) as mock_conformer:
+        attempt = ctrl._apply_clean2d_candidate(
+            window,
+            target_ids,
+            bonds,
+            before,
+            dict(before),
+            40.0,
+            "conformer",
+            "test_label",
+            True,
+        )
+
+    assert attempt.applied
+    mock_conformer.assert_not_called()
+    window.canvas.undo_stack.push.assert_called_once()
+
+
+def test_cyclic_rotatable_reflection_keeps_multiring_structure_recognizable() -> None:
+    """No debe aceptar una reflexión que mueva media molécula cíclica."""
+    from unittest.mock import MagicMock
+    from chemuson.gui.controllers.clean2d_controller import Clean2DController
+
+    ctrl = Clean2DController()
+    window = MagicMock()
+    coords = {
+        1: (0.0, 0.0), 2: (36.0, -21.0), 3: (72.0, 0.0),
+        4: (72.0, 42.0), 5: (36.0, 63.0), 6: (0.0, 42.0),
+        7: (112.0, 18.0), 8: (152.0, -5.0), 9: (192.0, 20.0),
+        10: (232.0, -2.0), 11: (272.0, 20.0), 12: (312.0, 0.0),
+        13: (352.0, 23.0), 14: (392.0, 0.0), 15: (432.0, 23.0),
+        16: (472.0, 5.0), 17: (510.0, 25.0), 18: (510.0, 65.0),
+        19: (550.0, 45.0), 20: (392.0, -42.0), 21: (312.0, -42.0),
+        22: (232.0, -42.0),
+    }
+    edges = [
+        (1, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 1),
+        (3, 7), (7, 8), (8, 9), (9, 10), (10, 11), (11, 12),
+        (12, 13), (13, 14), (14, 15), (15, 16),
+        (16, 17), (17, 18), (18, 19), (19, 17),
+        (14, 20), (12, 21), (10, 22),
+    ]
+    bonds = [_fake_bond(a_id, b_id) for a_id, b_id in edges]
+    window.canvas.model.atoms = {atom_id: object() for atom_id in coords}
+    window.canvas.undo_stack = MagicMock()
+    window.canvas._update_selection_overlay = MagicMock()
+
+    attempt = ctrl._try_rotatable_reflection_pose(
+        window,
+        set(coords),
+        bonds,
+        coords,
+        40.0,
+        "quick",
+        True,
+    )
+
+    assert attempt.applied
+    assert attempt.report is not None
+    assert attempt.report.max_displacement <= 100.0
+    assert attempt.report.mean_displacement <= 40.0
+
+
 # ─── Bridge test: run_clean_2d never silent ────────────────────────────────
 
 
@@ -643,9 +881,219 @@ def test_run_clean_2d_shows_message_when_isolated_unavailable() -> None:
         assert len(status_calls) > 0
 
 
+def test_run_clean_2d_cyclic_unavailable_polish_does_not_use_global_fallback() -> None:
+    """Un ajuste cíclico no disponible no debe disparar re-layout global."""
+    from unittest.mock import MagicMock, patch
+    from chemuson.gui.controllers.clean2d_controller import Clean2DController
+
+    ctrl = Clean2DController()
+    window = MagicMock()
+    cyclic_bonds = [_fake_bond(1, 2), _fake_bond(2, 3), _fake_bond(3, 1)]
+    window.canvas._selected_structure_ids.return_value = ({1, 2, 3}, cyclic_bonds)
+    window.canvas.model.atoms = {1: object(), 2: object(), 3: object()}
+    window.canvas.model.bonds = {bond.id: bond for bond in cyclic_bonds}
+    window.canvas.clean_2d_fallback = MagicMock()
+
+    with (
+        patch.object(ctrl, "_try_isolated_rdkit2d") as mock_isolated,
+        patch.object(ctrl, "_try_direct_rdkit") as mock_direct,
+        patch.object(ctrl, "_safe_length_polish_only") as mock_length,
+        patch.object(ctrl, "_polish_with_v2") as mock_polish,
+    ):
+        mock_isolated.return_value = _make_attempt(
+            rejected=True,
+            message="rechazado",
+        )
+        mock_direct.return_value = _make_attempt(unavailable=True, message="sin direct")
+        mock_length.return_value = _make_attempt(unavailable=True, message="sin ajuste")
+        mock_polish.return_value = _make_attempt(unavailable=True, message="sin polish")
+
+        ctrl.run_clean_2d(window, 1.0, 200, "(test)")
+
+    mock_length.assert_called_once_with(window, {1, 2, 3}, cyclic_bonds, "(test)")
+    mock_isolated.assert_not_called()
+    mock_direct.assert_not_called()
+    mock_polish.assert_not_called()
+    window.canvas.clean_2d_fallback.assert_not_called()
+
+
+def test_run_clean_2d_cyclic_uses_local_polish_before_rdkit() -> None:
+    """Las estructuras cíclicas no deben entrar a re-layout global/RDKit."""
+    from unittest.mock import MagicMock, patch
+    from chemuson.gui.controllers.clean2d_controller import Clean2DController
+
+    ctrl = Clean2DController()
+    window = MagicMock()
+    cyclic_bonds = [_fake_bond(1, 2), _fake_bond(2, 3), _fake_bond(3, 1)]
+    window.canvas._selected_structure_ids.return_value = ({1, 2, 3}, cyclic_bonds)
+    window.canvas.model.atoms = {1: object(), 2: object(), 3: object()}
+    window.canvas.model.bonds = {bond.id: bond for bond in cyclic_bonds}
+    window.canvas.clean_2d_fallback = MagicMock()
+
+    with (
+        patch.object(ctrl, "_safe_length_polish_only") as mock_length,
+        patch.object(ctrl, "_try_isolated_rdkit2d") as mock_isolated,
+        patch.object(ctrl, "_try_direct_rdkit") as mock_direct,
+    ):
+        mock_length.return_value = _make_attempt(
+            applied=True,
+            message="Estructura 2D ajustada con fallback seguro",
+        )
+
+        ctrl.run_clean_2d(window, 1.0, 200, "(test)")
+
+    mock_length.assert_called_once_with(window, {1, 2, 3}, cyclic_bonds, "(test)")
+    mock_isolated.assert_not_called()
+    mock_direct.assert_not_called()
+    window.canvas.clean_2d_fallback.assert_not_called()
+
+
+def test_run_clean_2d_cyclic_rejection_safe_polish_moves_distorted_branch() -> None:
+    """El ajuste seguro debe corregir una rama larga sin re-layout global."""
+    from unittest.mock import MagicMock, patch
+    from PyQt6.QtWidgets import QApplication
+    from chemuson.gui.canvas import ChemusonCanvas
+    from chemuson.gui.controllers.clean2d_controller import Clean2DController
+
+    QApplication.instance() or QApplication([])
+    canvas = ChemusonCanvas()
+    coords = {
+        1: (0.0, 0.0),
+        2: (36.0, -21.0),
+        3: (72.0, 0.0),
+        4: (72.0, 42.0),
+        5: (36.0, 63.0),
+        6: (0.0, 42.0),
+        7: (114.0, 0.0),
+        8: (156.0, 0.0),
+        9: (198.0, 0.0),
+        10: (240.0, 0.0),
+        11: (282.0, 0.0),
+        12: (324.0, 0.0),
+        13: (198.0, 190.0),
+    }
+    for atom_id, (x, y) in coords.items():
+        canvas.model.add_atom("C", x, y, atom_id=atom_id)
+    for a_id, b_id in (
+        (1, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 1),
+        (3, 7), (7, 8), (8, 9), (9, 10), (10, 11), (11, 12),
+        (9, 13),
+    ):
+        canvas.model.add_bond(a_id, b_id, order=1)
+    canvas._sync_scene_with_model()
+    canvas.state.selected_atoms = set(coords)
+    canvas.clean_2d_fallback = MagicMock(wraps=canvas.clean_2d_fallback)
+
+    window = MagicMock()
+    window.canvas = canvas
+    ctrl = Clean2DController()
+
+    before_a = canvas.model.get_atom(9)
+    before_b = canvas.model.get_atom(13)
+    before_len = math.hypot(before_b.x - before_a.x, before_b.y - before_a.y)
+
+    with (
+        patch.object(ctrl, "_try_isolated_rdkit2d") as mock_isolated,
+        patch.object(ctrl, "_try_direct_rdkit") as mock_direct,
+        patch.object(ctrl, "_polish_with_v2") as mock_polish,
+    ):
+        mock_isolated.return_value = _make_attempt(rejected=True, message="rechazado")
+        mock_direct.return_value = _make_attempt(unavailable=True, message="sin direct")
+        mock_polish.return_value = _make_attempt(unavailable=True, message="sin polish")
+
+        ctrl.run_clean_2d(window, 1.0, 200, "(test)")
+
+    after_a = canvas.model.get_atom(9)
+    after_b = canvas.model.get_atom(13)
+    after_len = math.hypot(after_b.x - after_a.x, after_b.y - after_a.y)
+
+    assert before_len > float(canvas.state.bond_length) * 3.0
+    assert after_len == pytest.approx(float(canvas.state.bond_length), rel=0.15)
+    mock_isolated.assert_not_called()
+    mock_direct.assert_not_called()
+    mock_polish.assert_not_called()
+    canvas.clean_2d_fallback.assert_not_called()
+
+
+def test_run_clean_2d_cyclic_geometry_polish_repairs_double_bond_linker() -> None:
+    """El flujo real debe corregir cadena deformada con C=C sin RDKit global."""
+    from unittest.mock import MagicMock, patch
+    from PyQt6.QtWidgets import QApplication
+    from chemuson.gui.canvas import ChemusonCanvas
+    from chemuson.gui.controllers.clean2d_controller import Clean2DController
+
+    QApplication.instance() or QApplication([])
+    canvas = ChemusonCanvas()
+    coords = {
+        1: (0.0, 0.0),
+        2: (36.0, -21.0),
+        3: (72.0, 0.0),
+        4: (72.0, 42.0),
+        5: (36.0, 63.0),
+        6: (0.0, 42.0),
+        7: (104.0, 6.0),
+        8: (122.0, -42.0),
+        9: (140.0, 10.0),
+        10: (168.0, -32.0),
+        11: (193.0, 8.0),
+        12: (214.0, -6.0),
+        13: (244.0, 0.0),
+        14: (284.0, 0.0),
+        15: (264.0, 35.0),
+    }
+    for atom_id, (x, y) in coords.items():
+        canvas.model.add_atom("C", x, y, atom_id=atom_id)
+    for a_id, b_id, order in (
+        (1, 2, 1), (2, 3, 1), (3, 4, 1),
+        (4, 5, 1), (5, 6, 1), (6, 1, 1),
+        (3, 7, 1), (7, 8, 1), (8, 9, 2),
+        (9, 10, 1), (10, 11, 1), (11, 12, 1), (12, 13, 1),
+        (13, 14, 1), (14, 15, 1), (15, 13, 1),
+    ):
+        canvas.model.add_bond(a_id, b_id, order=order)
+    canvas._sync_scene_with_model()
+    canvas.state.selected_atoms = set(coords)
+    canvas.clean_2d_fallback = MagicMock(wraps=canvas.clean_2d_fallback)
+
+    window = MagicMock()
+    window.canvas = canvas
+    ctrl = Clean2DController()
+
+    with (
+        patch.object(ctrl, "_try_isolated_rdkit2d") as mock_isolated,
+        patch.object(ctrl, "_try_direct_rdkit") as mock_direct,
+    ):
+        ctrl.run_clean_2d(window, 1.0, 200, "(test)")
+
+    after = {
+        atom_id: (canvas.model.get_atom(atom_id).x, canvas.model.get_atom(atom_id).y)
+        for atom_id in coords
+    }
+
+    assert math.dist(after[8], after[9]) == pytest.approx(
+        float(canvas.state.bond_length) * 0.96,
+        abs=1.0,
+    )
+    assert _angle_between(after[8], after[7], after[9]) == pytest.approx(120.0, abs=8.0)
+    assert _angle_between(after[9], after[8], after[10]) == pytest.approx(120.0, abs=8.0)
+    mock_isolated.assert_not_called()
+    mock_direct.assert_not_called()
+    canvas.clean_2d_fallback.assert_not_called()
+
+
 def _make_attempt(*, applied=False, rejected=False, unavailable=False, message="", report=None):
     from chemuson.gui.controllers.clean2d_controller import Clean2DAttempt
     return Clean2DAttempt(
         applied=applied, rejected=rejected, unavailable=unavailable,
         message=message, report=report,
     )
+
+
+def _angle_between(
+    center: tuple[float, float],
+    left: tuple[float, float],
+    right: tuple[float, float],
+) -> float:
+    a1 = math.atan2(left[1] - center[1], left[0] - center[0])
+    a2 = math.atan2(right[1] - center[1], right[0] - center[0])
+    return abs((math.degrees(a2 - a1) + 180.0) % 360.0 - 180.0)
