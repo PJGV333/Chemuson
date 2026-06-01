@@ -536,7 +536,7 @@ def _handle_graph_clean2d_mode(Chem, request: dict[str, Any]) -> dict[str, Any]:
     try:
         from rdkit.Chem import AllChem
 
-        Chem.SanitizeMol(mol)
+        depict_method = _prepare_mol_for_2d_depiction(Chem, mol)
 
         # Asignar _chemuson_id a cada átomo RDKit para preservar el mapeo
         # incluso después de RemoveHs.
@@ -547,7 +547,7 @@ def _handle_graph_clean2d_mode(Chem, request: dict[str, Any]) -> dict[str, Any]:
 
         positions: dict[str, list[float]] = {}
 
-        mol_no_h = Chem.RemoveHs(Chem.Mol(mol), sanitize=True)
+        mol_no_h = Chem.RemoveHs(Chem.Mol(mol), sanitize=False)
         if 0 < mol_no_h.GetNumAtoms() < mol.GetNumAtoms():
             AllChem.Compute2DCoords(mol_no_h)
             conf_no_h = mol_no_h.GetConformer()
@@ -568,10 +568,41 @@ def _handle_graph_clean2d_mode(Chem, request: dict[str, Any]) -> dict[str, Any]:
         return {
             "ok": True,
             "positions": positions,
-            "metadata": {"source": "rdkit", "method": "compute2dcoords"},
+            "metadata": {"source": "rdkit", "method": f"compute2dcoords:{depict_method}"},
         }
     except Exception as exc:
         return {"ok": False, "error": "clean2d_failed", "detail": str(exc)}
+
+
+def _prepare_mol_for_2d_depiction(Chem, mol) -> str:
+    """Best-effort RDKit preparation for mixed aromatic drawings.
+
+    Compute2DCoords can work with molecules that are not fully sanitized, but
+    property caches and aromatic flags still need to be in a consistent enough
+    state.  We try strict sanitization first, then controlled partial paths.
+    """
+    try:
+        Chem.SanitizeMol(mol)
+        return "sanitize"
+    except Exception:
+        pass
+    try:
+        mol.UpdatePropertyCache(strict=False)
+    except Exception:
+        pass
+    try:
+        sanitize_ops = Chem.SanitizeFlags.SANITIZE_ALL
+        if hasattr(Chem.SanitizeFlags, "SANITIZE_KEKULIZE"):
+            sanitize_ops = sanitize_ops ^ Chem.SanitizeFlags.SANITIZE_KEKULIZE
+        Chem.SanitizeMol(mol, sanitizeOps=sanitize_ops)
+        return "sanitize_without_kekulize"
+    except Exception:
+        pass
+    try:
+        Chem.SetAromaticity(mol)
+        return "set_aromaticity_only"
+    except Exception:
+        return "unsanitized"
 
 
 def _positions_for_original_atoms(mol_h, reverse_map: dict[int, int]) -> dict[str, list[float]]:

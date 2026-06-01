@@ -440,6 +440,10 @@ class CanvasSelectionMixin:
                 bond_id=bond.id,
                 style=bond.style,
                 stereo=bond.stereo,
+                stereo_ez=getattr(bond, "stereo_ez", None),
+                stereo_axial=getattr(bond, "stereo_axial", None),
+                stereo_endo_exo=getattr(bond, "stereo_endo_exo", None),
+                stereo_helical=getattr(bond, "stereo_helical", None),
                 is_aromatic=bond.is_aromatic,
                 display_order=bond.display_order,
                 is_query=bond.is_query,
@@ -448,6 +452,9 @@ class CanvasSelectionMixin:
                 stroke_px=bond.stroke_px,
                 color=bond.color,
                 donor_atom_id=getattr(bond, "donor_atom_id", None),
+                flex_curve_1=getattr(bond, "flex_curve_1", None),
+                flex_curve_2=getattr(bond, "flex_curve_2", None),
+                pi_offset_sign=getattr(bond, "pi_offset_sign", None),
                 opacity=self.effective_bond_opacity(bond),
             )
         return graph

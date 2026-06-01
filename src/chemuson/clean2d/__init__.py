@@ -17,6 +17,19 @@ from .length_only import (
     structure_preserving_geometry_polish,
     structure_preserving_length_polish,
 )
+from .engine import (
+    Clean2DMode,
+    Clean2DCandidate,
+    Clean2DResult,
+    Clean2DInvariantError,
+    Clean2DGraphSnapshot,
+    assert_clean2d_invariants,
+    capture_clean2d_snapshot,
+    clean2d_geometry_hash,
+    generate_clean2d_candidates,
+    rank_clean2d_candidates,
+    run_clean2d_engine,
+)
 
 __all__ = [
     "Clean2DParameters",
@@ -33,4 +46,15 @@ __all__ = [
     "length_only_polish",
     "structure_preserving_geometry_polish",
     "structure_preserving_length_polish",
+    "Clean2DMode",
+    "Clean2DCandidate",
+    "Clean2DResult",
+    "Clean2DInvariantError",
+    "Clean2DGraphSnapshot",
+    "assert_clean2d_invariants",
+    "capture_clean2d_snapshot",
+    "clean2d_geometry_hash",
+    "generate_clean2d_candidates",
+    "rank_clean2d_candidates",
+    "run_clean2d_engine",
 ]

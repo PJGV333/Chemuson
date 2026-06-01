@@ -227,14 +227,24 @@ def is_clean2d_candidate_safe(report: Clean2DQualityReport, mode: str = "quick")
         report.rejection_reason = "anillo_colapsado"
         return False
 
-    if report.bounding_box_ratio > 5.0 or report.bounding_box_ratio < 0.2:
+    before_length_far = (
+        report.mean_bond_length_before < t * 0.5
+        or report.mean_bond_length_before > t * 1.8
+    )
+    after_length_reasonable = t * 0.45 <= report.mean_bond_length_after <= t * 1.8
+    if (
+        report.bounding_box_ratio > 5.0
+        or report.bounding_box_ratio < 0.2
+    ) and not (before_length_far and after_length_reasonable):
         report.passed = False
         report.rejection_reason = f"cambio_caja_absurdo:{report.bounding_box_ratio:.2f}"
         return False
 
     if report.mean_displacement > t * 0.01 and report.mean_bond_length_before > 1e-6:
         bl_ratio = report.mean_bond_length_after / report.mean_bond_length_before
-        if bl_ratio > 2.0 or bl_ratio < 0.5:
+        before_target_error = abs(report.mean_bond_length_before - t) / t
+        after_target_error = abs(report.mean_bond_length_after - t) / t
+        if (bl_ratio > 2.0 or bl_ratio < 0.5) and after_target_error >= before_target_error:
             report.passed = False
             report.rejection_reason = (
                 f"cambio_longitud_enlace_demasiado_abrupto:{bl_ratio:.2f}"

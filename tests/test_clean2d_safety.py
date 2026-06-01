@@ -841,110 +841,140 @@ def test_run_clean_2d_never_silent_on_no_target() -> None:
 
 
 def test_run_clean_2d_shows_message_when_isolated_unavailable() -> None:
-    """Cuando RDKit aislado no está disponible, debe intentar fallback."""
+    """El controlador aplica el candidato elegido por el motor unificado."""
     from unittest.mock import MagicMock, patch
+    from chemuson.clean2d import Clean2DCandidate, Clean2DMode, Clean2DResult
+    from chemuson.core.model import MolGraph
     from chemuson.gui.controllers.clean2d_controller import Clean2DController
 
     ctrl = Clean2DController()
+    graph = MolGraph()
+    a1 = graph.add_atom("C", 0.0, 0.0, atom_id=1)
+    a2 = graph.add_atom("C", 120.0, 0.0, atom_id=2)
+    bond = graph.add_bond(a1.id, a2.id, order=1)
     window = MagicMock()
-    window.canvas._selected_structure_ids.return_value = ({1, 2}, [_fake_bond(1, 2)])
-    # Atom objects with real coordinates
-    a1 = MagicMock(x=0.0, y=0.0)
-    a2 = MagicMock(x=42.0, y=0.0)
-    window.canvas.model.get_atom = MagicMock(side_effect=lambda aid: {1: a1, 2: a2}.get(aid))
-    window.canvas.model.atoms = {1: a1, 2: a2}
-    window.canvas.model.bonds = {}
+    window.canvas._selected_structure_ids.return_value = ({1, 2}, [bond])
+    window.canvas.model = graph
     window.canvas.state.bond_length = 42.0
     window.canvas.undo_stack = MagicMock()
     window.canvas._update_selection_overlay = MagicMock()
-    window.canvas._build_selection_graph = MagicMock()
+    window.canvas._build_selection_graph = MagicMock(return_value=graph)
     window.canvas.clean_2d_fallback = MagicMock()
-    window.canvas.graph = MagicMock()
-    window._rescale_coords_to_bond_length = MagicMock(return_value={1: (0.0, 0.0), 2: (42.0, 0.0)})
-    window._align_coords_to_reference = MagicMock(return_value={1: (0.0, 0.0), 2: (42.0, 0.0)})
-    window._coords_center = MagicMock(return_value=(21.0, 0.0))
-    window._average_bond_length = MagicMock(return_value=42.0)
-    window._project_missing_hydrogen_coords = MagicMock()
 
-    with (
-        patch.object(ctrl, "_try_isolated_rdkit2d") as mock_isolated,
-        patch.object(ctrl, "_try_direct_rdkit") as mock_direct,
-        patch.object(ctrl, "_polish_with_v2") as mock_polish,
-    ):
-        mock_isolated.return_value = _make_attempt(unavailable=True, message="no rdkit")
-        mock_direct.return_value = _make_attempt(unavailable=True, message="no direct")
-        mock_polish.return_value = _make_attempt(unavailable=True, message="no polish")
+    candidate = Clean2DCandidate(
+        source="internal_templates",
+        coords={1: (0.0, 0.0), 2: (42.0, 0.0)},
+        message="Estructura 2D limpiada (motor interno)",
+    )
+    result = Clean2DResult(
+        mode=Clean2DMode.QUICK,
+        atom_ids={1, 2},
+        before_coords={1: (0.0, 0.0), 2: (120.0, 0.0)},
+        candidates=(candidate,),
+        selected=candidate,
+    )
 
+    with patch("chemuson.gui.controllers.clean2d_controller.run_clean2d_engine", return_value=result) as mock_engine:
         ctrl.run_clean_2d(window, 1.0, 200, "(test)")
-        window.canvas.clean_2d_fallback.assert_called_once()
-        status_calls = window.statusBar().showMessage.call_args_list
-        assert len(status_calls) > 0
+
+    mock_engine.assert_called_once()
+    window.canvas.undo_stack.push.assert_called_once()
+    window.canvas.clean_2d_fallback.assert_not_called()
+    status_calls = window.statusBar().showMessage.call_args_list
+    assert any("motor interno" in str(args[0][0]) for args in status_calls)
 
 
-def test_run_clean_2d_cyclic_unavailable_polish_does_not_use_global_fallback() -> None:
-    """Un ajuste cíclico no disponible no debe disparar re-layout global."""
+def test_run_clean_2d_cyclic_uses_engine_instead_of_length_early_return() -> None:
+    """Los ciclos pasan por el motor unificado; no hay early return length-only."""
     from unittest.mock import MagicMock, patch
+    from chemuson.clean2d import Clean2DCandidate, Clean2DMode, Clean2DResult
+    from chemuson.core.model import MolGraph
     from chemuson.gui.controllers.clean2d_controller import Clean2DController
 
     ctrl = Clean2DController()
+    graph = MolGraph()
+    for atom_id, coord in enumerate([(0.0, 0.0), (42.0, 0.0), (21.0, 36.0)], 1):
+        graph.add_atom("C", coord[0], coord[1], atom_id=atom_id)
+    cyclic_bonds = [
+        graph.add_bond(1, 2, order=1),
+        graph.add_bond(2, 3, order=1),
+        graph.add_bond(3, 1, order=1),
+    ]
     window = MagicMock()
-    cyclic_bonds = [_fake_bond(1, 2), _fake_bond(2, 3), _fake_bond(3, 1)]
     window.canvas._selected_structure_ids.return_value = ({1, 2, 3}, cyclic_bonds)
-    window.canvas.model.atoms = {1: object(), 2: object(), 3: object()}
-    window.canvas.model.bonds = {bond.id: bond for bond in cyclic_bonds}
+    window.canvas.model = graph
+    window.canvas.state.bond_length = 42.0
+    window.canvas.undo_stack = MagicMock()
+    window.canvas._update_selection_overlay = MagicMock()
+    window.canvas._build_selection_graph = MagicMock(return_value=graph)
     window.canvas.clean_2d_fallback = MagicMock()
 
-    with (
-        patch.object(ctrl, "_try_isolated_rdkit2d") as mock_isolated,
-        patch.object(ctrl, "_try_direct_rdkit") as mock_direct,
-        patch.object(ctrl, "_safe_length_polish_only") as mock_length,
-        patch.object(ctrl, "_polish_with_v2") as mock_polish,
-    ):
-        mock_isolated.return_value = _make_attempt(
-            rejected=True,
-            message="rechazado",
-        )
-        mock_direct.return_value = _make_attempt(unavailable=True, message="sin direct")
-        mock_length.return_value = _make_attempt(unavailable=True, message="sin ajuste")
-        mock_polish.return_value = _make_attempt(unavailable=True, message="sin polish")
+    candidate = Clean2DCandidate(
+        source="current",
+        coords={1: (0.0, 0.0), 2: (42.0, 0.0), 3: (21.0, 36.0)},
+        message="Estructura 2D ya estaba limpia",
+    )
+    result = Clean2DResult(
+        mode=Clean2DMode.QUICK,
+        atom_ids={1, 2, 3},
+        before_coords=dict(candidate.coords),
+        candidates=(candidate,),
+        selected=candidate,
+    )
 
+    with (
+        patch("chemuson.gui.controllers.clean2d_controller.run_clean2d_engine", return_value=result) as mock_engine,
+        patch.object(ctrl, "_safe_length_polish_only") as mock_length,
+    ):
         ctrl.run_clean_2d(window, 1.0, 200, "(test)")
 
-    mock_length.assert_called_once_with(window, {1, 2, 3}, cyclic_bonds, "(test)")
-    mock_isolated.assert_not_called()
-    mock_direct.assert_not_called()
-    mock_polish.assert_not_called()
+    mock_engine.assert_called_once()
+    mock_length.assert_not_called()
     window.canvas.clean_2d_fallback.assert_not_called()
 
 
-def test_run_clean_2d_cyclic_uses_local_polish_before_rdkit() -> None:
-    """Las estructuras cíclicas no deben entrar a re-layout global/RDKit."""
+def test_run_clean_2d_cyclic_engine_candidate_can_move_atoms() -> None:
+    """Un candidato cíclico validado se aplica con un solo MoveAtomsCommand."""
     from unittest.mock import MagicMock, patch
+    from chemuson.clean2d import Clean2DCandidate, Clean2DMode, Clean2DResult
+    from chemuson.core.model import MolGraph
     from chemuson.gui.controllers.clean2d_controller import Clean2DController
 
     ctrl = Clean2DController()
+    graph = MolGraph()
+    for atom_id, coord in enumerate([(0.0, 0.0), (4.0, 0.0), (2.0, 1.0)], 1):
+        graph.add_atom("C", coord[0], coord[1], atom_id=atom_id)
+    cyclic_bonds = [
+        graph.add_bond(1, 2, order=1),
+        graph.add_bond(2, 3, order=1),
+        graph.add_bond(3, 1, order=1),
+    ]
     window = MagicMock()
-    cyclic_bonds = [_fake_bond(1, 2), _fake_bond(2, 3), _fake_bond(3, 1)]
     window.canvas._selected_structure_ids.return_value = ({1, 2, 3}, cyclic_bonds)
-    window.canvas.model.atoms = {1: object(), 2: object(), 3: object()}
-    window.canvas.model.bonds = {bond.id: bond for bond in cyclic_bonds}
+    window.canvas.model = graph
+    window.canvas.state.bond_length = 42.0
+    window.canvas.undo_stack = MagicMock()
+    window.canvas._update_selection_overlay = MagicMock()
+    window.canvas._build_selection_graph = MagicMock(return_value=graph)
     window.canvas.clean_2d_fallback = MagicMock()
 
-    with (
-        patch.object(ctrl, "_safe_length_polish_only") as mock_length,
-        patch.object(ctrl, "_try_isolated_rdkit2d") as mock_isolated,
-        patch.object(ctrl, "_try_direct_rdkit") as mock_direct,
-    ):
-        mock_length.return_value = _make_attempt(
-            applied=True,
-            message="Estructura 2D ajustada con fallback seguro",
-        )
+    candidate = Clean2DCandidate(
+        source="internal_templates",
+        coords={1: (0.0, 24.0), 2: (36.0, -12.0), 3: (-36.0, -12.0)},
+        message="Estructura 2D limpiada (motor interno)",
+    )
+    result = Clean2DResult(
+        mode=Clean2DMode.PUBLICATION,
+        atom_ids={1, 2, 3},
+        before_coords={1: (0.0, 0.0), 2: (4.0, 0.0), 3: (2.0, 1.0)},
+        candidates=(candidate,),
+        selected=candidate,
+    )
 
+    with patch("chemuson.gui.controllers.clean2d_controller.run_clean2d_engine", return_value=result):
         ctrl.run_clean_2d(window, 1.0, 200, "(test)")
 
-    mock_length.assert_called_once_with(window, {1, 2, 3}, cyclic_bonds, "(test)")
-    mock_isolated.assert_not_called()
-    mock_direct.assert_not_called()
+    window.canvas.undo_stack.push.assert_called_once()
     window.canvas.clean_2d_fallback.assert_not_called()
 
 

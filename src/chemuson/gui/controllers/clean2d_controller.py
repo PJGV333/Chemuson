@@ -7,11 +7,13 @@ from typing import Any
 from chemuson.clean2d import (
     Clean2DParameters,
     Clean2DQualityReport,
+    clean2d_geometry_hash,
     evaluate_clean2d_layout,
     has_cycles,
     is_clean2d_candidate_safe,
     length_only_polish,
     optimize_clean2d_positions,
+    run_clean2d_engine,
     structure_preserving_geometry_polish,
 )
 from chemuson.core.model import bond_affects_valence
@@ -30,6 +32,9 @@ class Clean2DAttempt:
 
 class Clean2DController:
     """Pipeline de clean-2D desacoplado de ChemusonWindow."""
+
+    def __init__(self) -> None:
+        self._recent_geometry_hashes: dict[str, list[str]] = {}
 
     @staticmethod
     def _is_acyclic_structure(atom_ids: set[int], bonds) -> bool:
@@ -391,82 +396,102 @@ class Clean2DController:
             window.statusBar().showMessage("Nada que limpiar")
             return
         scale_bonds = bonds if atom_ids else list(canvas.model.bonds.values())
-        cyclic = has_cycles(target_ids, scale_bonds)
-
-        if cyclic:
-            length_attempt = self._safe_length_polish_only(
-                window, target_ids, scale_bonds, status_suffix
-            )
-            window.statusBar().showMessage(
-                length_attempt.message
-                if length_attempt.message
-                else "Limpieza 2D omitida: sin ajuste cíclico seguro"
-            )
-            return
-
-        # 1) RDKit aislado es el backend preferido para quick/publication
-        if mode in {"quick", "publication"}:
-            attempt = self._try_isolated_rdkit2d(
-                window, target_ids, scale_bonds, cyclic, mode,
-            )
-            if attempt.applied:
-                window.statusBar().showMessage(attempt.message)
-                return
-            if attempt.rejected:
-                window.statusBar().showMessage(attempt.message)
-                polish = self._polish_with_v2(
-                    window, target_ids, mode=mode, status_suffix=status_suffix
-                )
-                if polish.applied:
-                    window.statusBar().showMessage(polish.message)
-                    return
-                length_attempt = self._safe_length_polish_only(
-                    window, target_ids, scale_bonds, status_suffix
-                )
-                if length_attempt.applied:
-                    window.statusBar().showMessage(length_attempt.message)
-                    return
-            if attempt.message:
-                # unavailable con mensaje — mostrar para debug, pero continuar
-                pass
-
-        # 2) Fallback a importación directa de RDKit
-        if mode in {"quick", "publication"}:
-            direct_attempt = self._try_direct_rdkit(
-                window, atom_ids, target_ids, scale_bonds,
-                step_ratio, mode, status_suffix, cyclic,
-            )
-            if direct_attempt.applied:
-                window.statusBar().showMessage(direct_attempt.message)
-                return
-            if direct_attempt.rejected:
-                window.statusBar().showMessage(direct_attempt.message)
-                polish = self._polish_with_v2(
-                    window, target_ids, mode=mode, status_suffix=status_suffix
-                )
-                if polish.applied:
-                    window.statusBar().showMessage(polish.message)
-                    return
-                length_attempt = self._safe_length_polish_only(
-                    window, target_ids, scale_bonds, status_suffix
-                )
-                if length_attempt.applied:
-                    window.statusBar().showMessage(length_attempt.message)
-                    return
-
-        # 3) Fallback interno del canvas (force-layout básico)
-        canvas.clean_2d_fallback(target_ids, iterations=fallback_iterations)
-        polish = self._polish_with_v2(
-            window, target_ids, mode=mode, status_suffix=status_suffix
+        graph = (
+            canvas._build_selection_graph(target_ids, scale_bonds)
+            if atom_ids
+            else canvas.graph
         )
-        if polish.applied:
-            window.statusBar().showMessage(polish.message)
+        target_bond_len = float(getattr(canvas.state, "bond_length", 42.0) or 42.0)
+        before = {
+            aid: (canvas.model.get_atom(aid).x, canvas.model.get_atom(aid).y)
+            for aid in target_ids
+            if aid in canvas.model.atoms
+        }
+        history_key = self._history_key(graph, target_ids)
+        avoid_hashes = set(self._recent_geometry_hashes.get(history_key, []))
+        result = run_clean2d_engine(
+            graph,
+            target_ids,
+            mode=mode,
+            target_bond_length=target_bond_len,
+            avoid_hashes=avoid_hashes,
+        )
+        candidate = result.selected
+        if candidate is None:
+            window.statusBar().showMessage(result.message or "Limpieza 2D omitida: sin candidato seguro")
             return
-        if polish.rejected:
-            window.statusBar().showMessage(polish.message)
+
+        after = {
+            aid: candidate.coords[aid]
+            for aid in target_ids
+            if aid in candidate.coords and aid in before
+        }
+        changed = {
+            aid: coord
+            for aid, coord in after.items()
+            if _position_delta(before[aid], coord) > 0.5
+        }
+
+        if not changed:
+            message = self._selection_status_message(candidate.message, bool(atom_ids))
+            window.statusBar().showMessage(message or "Estructura 2D ya estaba limpia")
+            self._remember_geometry_hashes(graph, target_ids, before, after)
             return
-        msg = "Selección 2D limpiada" if atom_ids else "Estructura 2D limpiada"
-        window.statusBar().showMessage(f"{msg} {status_suffix} (básico)")
+
+        from chemuson.gui.commands import MoveAtomsCommand
+
+        canvas.undo_stack.push(MoveAtomsCommand(canvas.model, canvas, before, changed))
+        canvas._update_selection_overlay()
+        self._remember_geometry_hashes(graph, target_ids, before, after)
+        window.statusBar().showMessage(
+            self._selection_status_message(candidate.message, bool(atom_ids))
+            or "Estructura 2D limpiada"
+        )
+
+    def _history_key(self, graph: Any, atom_ids: set[int]) -> str:
+        bonds = _get_bonds_from_model(graph, atom_ids) if hasattr(graph, "bonds") else []
+        atom_part = tuple(
+            (atom_id, getattr(graph.atoms[atom_id], "element", ""))
+            for atom_id in sorted(atom_ids)
+            if atom_id in getattr(graph, "atoms", {})
+        )
+        bond_part = tuple(
+            (
+                min(int(bond.a1_id), int(bond.a2_id)),
+                max(int(bond.a1_id), int(bond.a2_id)),
+                int(getattr(bond, "order", 1) or 1),
+                bool(getattr(bond, "is_aromatic", False)),
+            )
+            for bond in sorted(bonds, key=lambda item: item.id)
+        )
+        return repr((atom_part, bond_part))
+
+    def _remember_geometry_hashes(
+        self,
+        graph: Any,
+        atom_ids: set[int],
+        before: dict[int, tuple[float, float]],
+        after: dict[int, tuple[float, float]],
+    ) -> None:
+        key = self._history_key(graph, atom_ids)
+        hashes = self._recent_geometry_hashes.setdefault(key, [])
+        for coords in (before, after):
+            try:
+                value = clean2d_geometry_hash(graph, coords, atom_ids)
+            except Exception:
+                continue
+            if value in hashes:
+                hashes.remove(value)
+            hashes.append(value)
+        del hashes[:-8]
+
+    @staticmethod
+    def _selection_status_message(message: str, is_selection: bool) -> str:
+        if not message:
+            return ""
+        if not is_selection:
+            return message
+        return message.replace("Estructura 2D", "Selección 2D", 1)
 
     def _try_isolated_rdkit2d(
         self,

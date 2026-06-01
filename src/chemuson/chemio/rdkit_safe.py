@@ -215,9 +215,55 @@ def clean2d_isolated(
             positions[int(atom_id)] = (float(coords[0]), float(coords[1]))
     except Exception as exc:
         return None, str(exc)
+    positions = _project_missing_clean2d_hydrogens(graph, positions)
     if not positions:
         return None, "empty_positions"
     return positions, None
+
+
+def _project_missing_clean2d_hydrogens(
+    graph,
+    positions: dict[int, tuple[float, float]],
+) -> dict[int, tuple[float, float]]:
+    """Completa H explícitos omitidos por RemoveHs conservando vectores locales."""
+    projected = dict(positions)
+    atoms = getattr(graph, "atoms", {}) or {}
+    bonds = getattr(graph, "bonds", {}) or {}
+    if not atoms or not bonds:
+        return projected
+
+    adjacency: dict[int, list[int]] = {}
+    for bond in bonds.values():
+        try:
+            a1 = int(bond.a1_id)
+            a2 = int(bond.a2_id)
+        except Exception:
+            continue
+        adjacency.setdefault(a1, []).append(a2)
+        adjacency.setdefault(a2, []).append(a1)
+
+    for atom_id, atom in atoms.items():
+        try:
+            aid = int(atom_id)
+        except Exception:
+            continue
+        if getattr(atom, "element", None) != "H" or aid in projected:
+            continue
+        candidates: list[tuple[float, float]] = []
+        for anchor_id in adjacency.get(aid, []):
+            anchor = atoms.get(anchor_id)
+            if anchor is None or anchor_id not in projected:
+                continue
+            dx = float(getattr(atom, "x", 0.0)) - float(getattr(anchor, "x", 0.0))
+            dy = float(getattr(atom, "y", 0.0)) - float(getattr(anchor, "y", 0.0))
+            ax, ay = projected[anchor_id]
+            candidates.append((ax + dx, ay + dy))
+        if candidates:
+            projected[aid] = (
+                sum(x for x, _y in candidates) / len(candidates),
+                sum(y for _x, y in candidates) / len(candidates),
+            )
+    return projected
 
 
 def _coordinates_payload(coordinates: dict[int, tuple[float, float, float]]) -> dict[str, list[float]]:
