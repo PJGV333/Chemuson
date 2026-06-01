@@ -407,8 +407,13 @@ class Clean2DController:
             for aid in target_ids
             if aid in canvas.model.atoms
         }
-        history_key = self._history_key(graph, target_ids)
-        avoid_hashes = set(self._recent_geometry_hashes.get(history_key, []))
+        alternative_mode = self._is_alternative_mode(mode)
+        history_key = self._history_key(graph, target_ids) if alternative_mode else ""
+        avoid_hashes = (
+            set(self._recent_geometry_hashes.get(history_key, []))
+            if alternative_mode
+            else set()
+        )
         result = run_clean2d_engine(
             graph,
             target_ids,
@@ -435,18 +440,24 @@ class Clean2DController:
         if not changed:
             message = self._selection_status_message(candidate.message, bool(atom_ids))
             window.statusBar().showMessage(message or "Estructura 2D ya estaba limpia")
-            self._remember_geometry_hashes(graph, target_ids, before, after)
+            if alternative_mode:
+                self._remember_geometry_hashes(graph, target_ids, before, after)
             return
 
         from chemuson.gui.commands import MoveAtomsCommand
 
         canvas.undo_stack.push(MoveAtomsCommand(canvas.model, canvas, before, changed))
         canvas._update_selection_overlay()
-        self._remember_geometry_hashes(graph, target_ids, before, after)
+        if alternative_mode:
+            self._remember_geometry_hashes(graph, target_ids, before, after)
         window.statusBar().showMessage(
             self._selection_status_message(candidate.message, bool(atom_ids))
             or "Estructura 2D limpiada"
         )
+
+    @staticmethod
+    def _is_alternative_mode(mode: str) -> bool:
+        return str(mode or "").strip().lower() in {"propose", "conformer", "alternative"}
 
     def _history_key(self, graph: Any, atom_ids: set[int]) -> str:
         bonds = _get_bonds_from_model(graph, atom_ids) if hasattr(graph, "bonds") else []

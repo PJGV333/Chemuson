@@ -8,7 +8,14 @@ import pytest
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
-from chemuson.clean2d import generate_clean2d_candidates, ring_degeneracy_score, run_clean2d_engine
+from chemuson.clean2d import (
+    Clean2DCandidate,
+    clean2d_geometry_hash,
+    generate_clean2d_candidates,
+    rank_clean2d_candidates,
+    ring_degeneracy_score,
+    run_clean2d_engine,
+)
 from chemuson.chemio.rdkit_safe import _project_missing_clean2d_hydrogens
 from chemuson.core.model import MolGraph
 
@@ -126,3 +133,62 @@ def test_rdkit_safe_projection_completes_explicit_hydrogens() -> None:
 
     assert projected[h1.id] == pytest.approx((11.0, 20.0), rel=1e-9)
     assert projected[h2.id] == pytest.approx((10.0, 21.0), rel=1e-9)
+
+
+def test_avoid_hashes_only_blocks_clean_propose_alternatives() -> None:
+    graph = MolGraph()
+    a1 = graph.add_atom("C", 0.0, 0.0)
+    a2 = graph.add_atom("C", 100.0, 0.0)
+    graph.add_bond(a1.id, a2.id, order=1)
+    repaired = {a1.id: (0.0, 0.0), a2.id: (40.0, 0.0)}
+    repaired_hash = clean2d_geometry_hash(graph, repaired)
+    candidate = Clean2DCandidate(
+        source="internal_templates",
+        coords=repaired,
+        message="repair",
+    )
+    before_bad = {a1.id: (0.0, 0.0), a2.id: (100.0, 0.0)}
+
+    quick = rank_clean2d_candidates(
+        graph,
+        [candidate],
+        before_bad,
+        {a1.id, a2.id},
+        mode="quick",
+        target_bond_length=40.0,
+        avoid_hashes={repaired_hash},
+    )
+    publication = rank_clean2d_candidates(
+        graph,
+        [candidate],
+        before_bad,
+        {a1.id, a2.id},
+        mode="publication",
+        target_bond_length=40.0,
+        avoid_hashes={repaired_hash},
+    )
+    propose_bad = rank_clean2d_candidates(
+        graph,
+        [candidate],
+        before_bad,
+        {a1.id, a2.id},
+        mode="propose",
+        target_bond_length=40.0,
+        avoid_hashes={repaired_hash},
+    )
+    before_clean = dict(repaired)
+    propose_clean = rank_clean2d_candidates(
+        graph,
+        [candidate],
+        before_clean,
+        {a1.id, a2.id},
+        mode="propose",
+        target_bond_length=40.0,
+        avoid_hashes={repaired_hash},
+    )
+
+    assert quick.ok
+    assert publication.ok
+    assert propose_bad.ok
+    assert propose_clean.selected is None
+    assert any(item.rejection_reason == "geometria_repetida" for item in propose_clean.rejected)

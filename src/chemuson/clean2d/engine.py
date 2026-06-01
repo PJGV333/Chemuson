@@ -230,7 +230,12 @@ def rank_clean2d_candidates(
         if mode == Clean2DMode.PROPOSE and candidate.source == "current":
             safe = False
             report.rejection_reason = "propose_requiere_geometria_alternativa"
-        if geometry_hash in avoid_hashes and candidate.source != "current":
+        if (
+            mode == Clean2DMode.PROPOSE
+            and not baseline_bad
+            and geometry_hash in avoid_hashes
+            and candidate.source != "current"
+        ):
             safe = False
             report.rejection_reason = "geometria_repetida"
         if not safe:
@@ -1083,7 +1088,7 @@ def _safety_mode_for_candidate(
     if mode == Clean2DMode.PUBLICATION:
         return "publication"
     if baseline_bad and candidate.source != "current":
-        return "publication"
+        return "conformer"
     return "quick"
 
 

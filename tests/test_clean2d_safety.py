@@ -978,6 +978,48 @@ def test_run_clean_2d_cyclic_engine_candidate_can_move_atoms() -> None:
     window.canvas.clean_2d_fallback.assert_not_called()
 
 
+def test_run_clean_2d_quick_does_not_pass_history_as_avoid_hashes() -> None:
+    """Ctrl+K/quick debe limpiar, no usar la memoria anti-repetición."""
+    from unittest.mock import MagicMock, patch
+    from chemuson.clean2d import Clean2DCandidate, Clean2DMode, Clean2DResult
+    from chemuson.core.model import MolGraph
+    from chemuson.gui.controllers.clean2d_controller import Clean2DController
+
+    ctrl = Clean2DController()
+    graph = MolGraph()
+    a1 = graph.add_atom("C", 0.0, 0.0, atom_id=1)
+    a2 = graph.add_atom("C", 120.0, 0.0, atom_id=2)
+    bond = graph.add_bond(a1.id, a2.id, order=1)
+    ctrl._recent_geometry_hashes[ctrl._history_key(graph, {1, 2})] = ["previous-clean-hash"]
+
+    window = MagicMock()
+    window.canvas._selected_structure_ids.return_value = ({1, 2}, [bond])
+    window.canvas.model = graph
+    window.canvas.state.bond_length = 42.0
+    window.canvas.undo_stack = MagicMock()
+    window.canvas._update_selection_overlay = MagicMock()
+    window.canvas._build_selection_graph = MagicMock(return_value=graph)
+
+    candidate = Clean2DCandidate(
+        source="internal_templates",
+        coords={1: (0.0, 0.0), 2: (42.0, 0.0)},
+        message="Estructura 2D limpiada (motor interno)",
+    )
+    result = Clean2DResult(
+        mode=Clean2DMode.QUICK,
+        atom_ids={1, 2},
+        before_coords={1: (0.0, 0.0), 2: (120.0, 0.0)},
+        candidates=(candidate,),
+        selected=candidate,
+    )
+
+    with patch("chemuson.gui.controllers.clean2d_controller.run_clean2d_engine", return_value=result) as mock_engine:
+        ctrl.run_clean_2d(window, 1.0, 200, "(test)", mode="quick")
+
+    assert mock_engine.call_args.kwargs["mode"] == "quick"
+    assert mock_engine.call_args.kwargs["avoid_hashes"] == set()
+
+
 def test_run_clean_2d_cyclic_rejection_safe_polish_moves_distorted_branch() -> None:
     """El ajuste seguro debe corregir una rama larga sin re-layout global."""
     from unittest.mock import MagicMock, patch

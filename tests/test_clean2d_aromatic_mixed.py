@@ -8,7 +8,14 @@ import pytest
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
-from chemuson.clean2d import count_new_bond_crossings, ring_degeneracy_score, run_clean2d_engine
+from chemuson.clean2d import (
+    assert_clean2d_invariants,
+    clean2d_geometry_hash,
+    count_new_bond_crossings,
+    capture_clean2d_snapshot,
+    ring_degeneracy_score,
+    run_clean2d_engine,
+)
 from chemuson.core.model import MolGraph
 
 
@@ -89,6 +96,65 @@ def _min_nonbonded_distance(
                 continue
             best = min(best, math.hypot(coords[a_id][0] - coords[b_id][0], coords[a_id][1] - coords[b_id][1]))
     return best
+
+
+def _apply_coords(graph: MolGraph, coords: dict[int, tuple[float, float]]) -> None:
+    for atom_id, (x, y) in coords.items():
+        graph.atoms[atom_id].x = float(x)
+        graph.atoms[atom_id].y = float(y)
+
+
+def _mixed_chain_phenyl_cyclopropane() -> tuple[MolGraph, set[int], set[int]]:
+    graph = MolGraph()
+    phenyl: list[int] = []
+    radius = 40.0
+    for idx in range(6):
+        angle = math.radians(60.0 * idx + 30.0)
+        phenyl.append(graph.add_atom("C", radius * math.cos(angle), radius * math.sin(angle)).id)
+    for idx in range(6):
+        graph.add_bond(phenyl[idx], phenyl[(idx + 1) % 6], order=1, is_aromatic=True)
+
+    chain_coords = [
+        (90.0, 20.0),
+        (130.0, 20.0),
+        (150.0, 54.6),
+        (190.0, 54.6),
+    ]
+    chain = [graph.add_atom("C", x, y).id for x, y in chain_coords]
+    graph.add_bond(phenyl[0], chain[0], order=1)
+    for left, right in zip(chain, chain[1:]):
+        graph.add_bond(left, right, order=1)
+    branch = graph.add_atom("C", 130.0, -20.0)
+    graph.add_bond(chain[1], branch.id, order=1)
+
+    cyclopropane = [
+        graph.add_atom("C", 230.0, 54.6).id,
+        graph.add_atom("C", 270.0, 54.6).id,
+        graph.add_atom("C", 250.0, 89.2).id,
+    ]
+    graph.add_bond(chain[-1], cyclopropane[0], order=1)
+    graph.add_bond(cyclopropane[0], cyclopropane[1], order=1)
+    graph.add_bond(cyclopropane[1], cyclopropane[2], order=1)
+    graph.add_bond(cyclopropane[2], cyclopropane[0], order=1)
+    return graph, set(phenyl), set(cyclopropane)
+
+
+def _distort_mixed_graph(graph: MolGraph) -> dict[int, tuple[float, float]]:
+    before = {atom_id: (atom.x, atom.y) for atom_id, atom in graph.atoms.items()}
+    shifts = {
+        7: (50.0, -20.0),
+        8: (80.0, 30.0),
+        9: (100.0, -40.0),
+        10: (130.0, 60.0),
+        11: (70.0, -50.0),
+        12: (150.0, 20.0),
+        13: (170.0, 60.0),
+        14: (140.0, 80.0),
+    }
+    for atom_id, coord in shifts.items():
+        graph.atoms[atom_id].x += coord[0]
+        graph.atoms[atom_id].y += coord[1]
+    return before
 
 
 def test_benzene_substituent_preserves_aromaticity_and_points_outward() -> None:
@@ -197,3 +263,42 @@ def test_cyclohexane_aliphatic_ring_is_not_treated_as_aromatic() -> None:
     assert result.selected is not None
     assert not any(bond.is_aromatic for bond in graph.bonds.values())
     assert ring_degeneracy_score(result.selected.coords, set(ids)) > 0.18
+
+
+def test_quick_recleans_mixed_structure_even_if_clean_hash_was_seen_before() -> None:
+    graph, phenyl, cyclopropane = _mixed_chain_phenyl_cyclopropane()
+    first = run_clean2d_engine(graph, mode="quick", target_bond_length=40.0)
+    assert first.ok
+    assert first.selected is not None
+    clean_coords = dict(first.selected.coords)
+    clean_hash = clean2d_geometry_hash(graph, clean_coords)
+    _apply_coords(graph, clean_coords)
+
+    clean_snapshot = capture_clean2d_snapshot(graph)
+    clean_before = {atom_id: (atom.x, atom.y) for atom_id, atom in graph.atoms.items()}
+    _distort_mixed_graph(graph)
+    distorted = {atom_id: (atom.x, atom.y) for atom_id, atom in graph.atoms.items()}
+
+    second = run_clean2d_engine(
+        graph,
+        mode="quick",
+        target_bond_length=40.0,
+        avoid_hashes={clean_hash},
+    )
+
+    assert second.ok
+    assert second.selected is not None
+    assert second.selected.source != "current"
+    assert not any(item.rejection_reason == "geometria_repetida" for item in second.rejected)
+
+    lengths = []
+    for bond in graph.bonds.values():
+        a = second.selected.coords[bond.a1_id]
+        b = second.selected.coords[bond.a2_id]
+        lengths.append(math.hypot(b[0] - a[0], b[1] - a[1]))
+    assert min(lengths) >= 40.0 * 0.75
+    assert max(lengths) <= 40.0 * 1.30
+    assert count_new_bond_crossings(distorted, second.selected.coords, list(graph.bonds.values())) == 0
+    assert ring_degeneracy_score(second.selected.coords, phenyl) > 0.18
+    assert ring_degeneracy_score(second.selected.coords, cyclopropane) > 0.05
+    assert_clean2d_invariants(clean_snapshot, graph, clean_before, second.selected.coords)
