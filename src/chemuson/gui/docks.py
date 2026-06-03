@@ -3,10 +3,14 @@ Docks de Chemuson.
 
 Paneles laterales para plantillas, inspección de propiedades y apariencia.
 """
+import json
+from pathlib import Path
+
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QDockWidget,
+    QFileDialog,
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
@@ -288,22 +292,44 @@ class ChemicalPropertiesDock(QDockWidget):
         self.prop_table.setAlternatingRowColors(True)
         layout.addWidget(self.prop_table)
 
+        controls = QHBoxLayout()
+        controls.setContentsMargins(6, 4, 6, 6)
+        self.btn_copy_properties = QPushButton("Copiar propiedades")
+        self.btn_copy_properties.clicked.connect(self.copy_properties_tsv)
+        controls.addStretch()
+        controls.addWidget(self.btn_copy_properties)
+        layout.addLayout(controls)
+
         self.setWidget(container)
+        self._rows: list[tuple[str, str]] = []
 
     def update_properties(self, rows: list[tuple[str, str]]) -> None:
         """Actualiza la tabla de propiedades calculadas."""
+        self._rows = [(str(key), str(value)) for key, value in (rows or [])]
         self.prop_table.setRowCount(0)
-        if not rows:
+        if not self._rows:
             self.info_label.setVisible(True)
             self.prop_table.setVisible(False)
+            self.btn_copy_properties.setVisible(False)
             return
 
         self.info_label.setVisible(False)
         self.prop_table.setVisible(True)
-        self.prop_table.setRowCount(len(rows))
-        for row, (key, value) in enumerate(rows):
+        self.btn_copy_properties.setVisible(True)
+        self.prop_table.setRowCount(len(self._rows))
+        for row, (key, value) in enumerate(self._rows):
             self.prop_table.setItem(row, 0, QTableWidgetItem(str(key)))
             self.prop_table.setItem(row, 1, QTableWidgetItem(str(value)))
+
+    def copy_properties_tsv(self) -> str:
+        """Copia las propiedades visibles como TSV y devuelve el texto."""
+        if not self._rows:
+            return ""
+        lines = ["Propiedad\tValor"]
+        lines.extend(f"{key}\t{value}" for key, value in self._rows)
+        text = "\n".join(lines)
+        QApplication.clipboard().setText(text)
+        return text
 
 
 class SpectroscopyDock(QDockWidget):
@@ -337,8 +363,11 @@ class SpectroscopyDock(QDockWidget):
         controls.setContentsMargins(6, 4, 6, 6)
         self.btn_copy_table = QPushButton("Copiar tabla")
         self.btn_copy_table.clicked.connect(self.copy_current_table_tsv)
+        self.btn_export_table = QPushButton("Exportar tabla...")
+        self.btn_export_table.clicked.connect(self.export_current_table_tsv)
         controls.addStretch()
         controls.addWidget(self.btn_copy_table)
+        controls.addWidget(self.btn_export_table)
         layout.addLayout(controls)
 
         self.setWidget(container)
@@ -364,6 +393,7 @@ class SpectroscopyDock(QDockWidget):
         self.info_label.setVisible(True)
         self.tabs.setVisible(has_rows)
         self.btn_copy_table.setVisible(has_rows)
+        self.btn_export_table.setVisible(has_rows)
 
     def _make_table(self, headers: list[str]) -> QTableWidget:
         table = QTableWidget(0, len(headers))
@@ -415,6 +445,13 @@ class SpectroscopyDock(QDockWidget):
 
     def copy_current_table_tsv(self) -> str:
         """Copia la tabla espectral activa como TSV y devuelve el texto."""
+        text = self.current_table_tsv()
+        if text:
+            QApplication.clipboard().setText(text)
+        return text
+
+    def current_table_tsv(self) -> str:
+        """Devuelve la tabla espectral activa como TSV."""
         table = self.tabs.currentWidget()
         if not isinstance(table, QTableWidget):
             return ""
@@ -426,9 +463,24 @@ class SpectroscopyDock(QDockWidget):
                 item = table.item(row, col)
                 values.append(item.text() if item is not None else "")
             lines.append("\t".join(values))
-        text = "\n".join(lines)
-        QApplication.clipboard().setText(text)
-        return text
+        return "\n".join(lines)
+
+    def export_current_table_tsv(self, path: str | None = None) -> str:
+        """Exporta la tabla espectral activa como TSV y devuelve la ruta."""
+        text = self.current_table_tsv()
+        if not text:
+            return ""
+        if path is None:
+            path, _ = QFileDialog.getSaveFileName(
+                self,
+                "Exportar tabla espectral",
+                "",
+                "Tabla TSV (*.tsv);;Texto (*.txt)",
+            )
+        if not path:
+            return ""
+        Path(path).write_text(text + "\n", encoding="utf-8")
+        return str(path)
 
     def _fill_table(self, table: QTableWidget, rows: list[tuple], atom_column: int | None) -> None:
         table.blockSignals(True)
@@ -454,10 +506,145 @@ class SpectroscopyDock(QDockWidget):
         self.peak_atom_selected.emit(int(atom_id))
 
 
+class CompChemDock(QDockWidget):
+    """Dock MVP para generación 3D y química computacional."""
+
+    generate_requested = pyqtSignal()
+    optimize_requested = pyqtSignal()
+    project_requested = pyqtSignal()
+    reset_requested = pyqtSignal()
+    export_xyz_requested = pyqtSignal()
+    export_input_requested = pyqtSignal(str)
+
+    def __init__(self, parent=None):
+        super().__init__("3D / CompChem", parent)
+        self.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
+
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(6, 6, 6, 6)
+
+        form = QFormLayout()
+        self.backend_combo = QComboBox()
+        self.backend_combo.addItem("RDKit aislado", "rdkit")
+        self.backend_combo.addItem("Open Babel", "openbabel")
+        self.forcefield_combo = QComboBox()
+        for label, value in (("UFF", "UFF"), ("MMFF94", "MMFF94"), ("MMFF94s", "MMFF94s")):
+            self.forcefield_combo.addItem(label, value)
+        form.addRow("Backend", self.backend_combo)
+        form.addRow("Campo de fuerza", self.forcefield_combo)
+        layout.addLayout(form)
+
+        self.status_label = QLabel("Sin conformero 3D")
+        self.status_label.setWordWrap(True)
+        self.status_label.setStyleSheet("color: #555555; padding: 4px;")
+        layout.addWidget(self.status_label)
+
+        self.frame_table = QTableWidget(0, 4)
+        self.frame_table.setHorizontalHeaderLabels(["Paso", "Energía", "Conv.", "Mensaje"])
+        self.frame_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.frame_table.verticalHeader().setVisible(False)
+        self.frame_table.setAlternatingRowColors(True)
+        layout.addWidget(self.frame_table)
+
+        row1 = QHBoxLayout()
+        self.btn_generate = QPushButton("Generar conformero 3D")
+        self.btn_optimize = QPushButton("Optimizar")
+        self.btn_reset = QPushButton("Reset/regenerar")
+        self.btn_generate.clicked.connect(self.generate_requested.emit)
+        self.btn_optimize.clicked.connect(self.optimize_requested.emit)
+        self.btn_reset.clicked.connect(self.reset_requested.emit)
+        row1.addWidget(self.btn_generate)
+        row1.addWidget(self.btn_optimize)
+        row1.addWidget(self.btn_reset)
+        layout.addLayout(row1)
+
+        row2 = QHBoxLayout()
+        self.btn_project = QPushButton("Proyectar a 2D")
+        self.btn_export_xyz = QPushButton("Exportar XYZ")
+        self.btn_export_input = QPushButton("Exportar input")
+        export_menu = QMenu(self.btn_export_input)
+        for label, value in (("ORCA", "orca"), ("Gaussian", "gaussian"), ("NWChem", "nwchem")):
+            action = export_menu.addAction(label)
+            action.triggered.connect(lambda _checked=False, value=value: self.export_input_requested.emit(value))
+        self.btn_export_input.setMenu(export_menu)
+        self.btn_project.clicked.connect(self.project_requested.emit)
+        self.btn_export_xyz.clicked.connect(self.export_xyz_requested.emit)
+        row2.addWidget(self.btn_project)
+        row2.addWidget(self.btn_export_xyz)
+        row2.addWidget(self.btn_export_input)
+        layout.addLayout(row2)
+
+        self.setWidget(container)
+        self.set_busy(False)
+        self.set_has_coordinates(False)
+
+    def selected_backend(self) -> str:
+        return str(self.backend_combo.currentData() or "rdkit")
+
+    def selected_forcefield(self) -> str:
+        return str(self.forcefield_combo.currentData() or "UFF")
+
+    def set_busy(self, busy: bool) -> None:
+        for widget in (
+            self.backend_combo,
+            self.forcefield_combo,
+            self.btn_generate,
+            self.btn_optimize,
+            self.btn_reset,
+            self.btn_project,
+            self.btn_export_xyz,
+            self.btn_export_input,
+        ):
+            widget.setEnabled(not busy)
+
+    def set_has_coordinates(self, has_coordinates: bool) -> None:
+        self.btn_project.setEnabled(bool(has_coordinates))
+        self.btn_export_xyz.setEnabled(bool(has_coordinates))
+        self.btn_export_input.setEnabled(bool(has_coordinates))
+
+    def set_status(self, text: str) -> None:
+        self.status_label.setText(str(text or ""))
+
+    def clear_frames(self) -> None:
+        self.frame_table.setRowCount(0)
+
+    def add_frame(self, frame) -> None:
+        row = self.frame_table.rowCount()
+        self.frame_table.insertRow(row)
+        energy = getattr(frame, "energy", None)
+        values = [
+            str(getattr(frame, "step", row + 1)),
+            "N/D" if energy is None else f"{float(energy):.6f}",
+            "sí" if bool(getattr(frame, "converged", False)) else "no",
+            str(getattr(frame, "message", "") or ""),
+        ]
+        for col, value in enumerate(values):
+            self.frame_table.setItem(row, col, QTableWidgetItem(value))
+
+    def set_result_summary(self, result, *, backend: str, cache_state: str = "miss") -> None:
+        energy = getattr(result, "energy", None)
+        converged = bool(getattr(result, "converged", False))
+        method = str(getattr(result, "method", "") or "")
+        message = str(getattr(result, "message", "") or "")
+        parts = [
+            f"Backend: {backend}",
+            f"Método/campo: {method or self.selected_forcefield()}",
+            f"Convergencia: {'sí' if converged else 'no'}",
+            f"Cache: {cache_state}",
+        ]
+        if energy is not None:
+            parts.append(f"Energía: {float(energy):.6f}")
+        if message:
+            parts.append(f"Mensaje: {message}")
+        self.set_status(" | ".join(parts))
+
+
 class ValidationDock(QDockWidget):
     """Dock de diagnóstico interactivo de valencias."""
 
     issue_selected = pyqtSignal(int)
+    correction_requested = pyqtSignal(int, str)
     refresh_requested = pyqtSignal()
     next_requested = pyqtSignal()
     previous_requested = pyqtSignal()
@@ -475,8 +662,10 @@ class ValidationDock(QDockWidget):
         self.info_label.setStyleSheet("color: #666666; font-style: italic; padding: 10px;")
         layout.addWidget(self.info_label)
 
-        self.issue_table = QTableWidget(0, 5)
-        self.issue_table.setHorizontalHeaderLabels(["Átomo", "Sev.", "Código", "Mensaje", "Sugerencia"])
+        self.issue_table = QTableWidget(0, 6)
+        self.issue_table.setHorizontalHeaderLabels(
+            ["Afectado", "Sev.", "Código", "Valencia", "Mensaje", "Sugerencia"]
+        )
         self.issue_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.issue_table.verticalHeader().setVisible(False)
         self.issue_table.setAlternatingRowColors(True)
@@ -490,26 +679,49 @@ class ValidationDock(QDockWidget):
         self.btn_refresh = QPushButton("Validar")
         self.btn_previous = QPushButton("Anterior")
         self.btn_next = QPushButton("Siguiente")
+        self.btn_copy_report = QPushButton("Copiar reporte")
+        self.btn_export_report = QPushButton("Exportar reporte...")
+        self.action_combo = QComboBox()
+        self.btn_apply_correction = QPushButton("Aplicar corrección")
         self.btn_refresh.clicked.connect(self.refresh_requested.emit)
         self.btn_previous.clicked.connect(self.previous_requested.emit)
         self.btn_next.clicked.connect(self.next_requested.emit)
+        self.btn_copy_report.clicked.connect(self.copy_report_tsv)
+        self.btn_export_report.clicked.connect(self.export_report)
+        self.btn_apply_correction.clicked.connect(self._emit_correction_requested)
         controls.addWidget(self.btn_refresh)
         controls.addWidget(self.btn_previous)
         controls.addWidget(self.btn_next)
+        controls.addWidget(self.btn_copy_report)
+        controls.addWidget(self.btn_export_report)
+        controls.addWidget(self.action_combo)
+        controls.addWidget(self.btn_apply_correction)
         layout.addLayout(controls)
 
         self.setWidget(container)
+        self._issues: dict[int, object] = {}
         self.set_issues({})
 
     def set_issues(self, issues: dict[int, object]) -> None:
         """Carga diagnósticos de validación en la tabla."""
+        self._issues = dict(issues or {})
         rows = []
-        for atom_id, issue in sorted((issues or {}).items()):
+        for atom_id, issue in sorted(self._issues.items()):
+            element = str(getattr(issue, "element", "") or "")
+            affected = f"Átomo {int(atom_id)}" + (f" ({element})" if element else "")
+            valence_calc = (
+                f"{float(getattr(issue, 'observed_valence', 0.0) or 0.0):.2f} = "
+                f"enlaces {float(getattr(issue, 'bond_order_sum', 0.0) or 0.0):.2f} + "
+                f"H asignados {int(getattr(issue, 'assigned_h', 0) or 0)} + "
+                f"H implícitos {int(getattr(issue, 'implicit_h', 0) or 0)}"
+            )
             rows.append(
                 (
                     int(atom_id),
+                    affected,
                     str(getattr(issue, "severity", "error")),
                     str(getattr(issue, "code", "")),
+                    valence_calc,
                     str(getattr(issue, "message", "")),
                     str(getattr(issue, "hint", "") or getattr(issue, "suggestion", "") or ""),
                 )
@@ -519,7 +731,7 @@ class ValidationDock(QDockWidget):
         self.issue_table.setRowCount(len(rows))
         for row, values in enumerate(rows):
             atom_id = int(values[0])
-            for col, value in enumerate(values):
+            for col, value in enumerate(values[1:]):
                 item = QTableWidgetItem(str(value))
                 item.setData(Qt.ItemDataRole.UserRole, atom_id)
                 self.issue_table.setItem(row, col, item)
@@ -529,10 +741,15 @@ class ValidationDock(QDockWidget):
             self.info_label.setText(f"{len(rows)} error(es) de valencia")
             self.info_label.setVisible(True)
             self.issue_table.setVisible(True)
+            self.btn_copy_report.setVisible(True)
+            self.btn_export_report.setVisible(True)
         else:
             self.info_label.setText("Sin errores de valencia")
             self.info_label.setVisible(True)
             self.issue_table.setVisible(False)
+            self.btn_copy_report.setVisible(False)
+            self.btn_export_report.setVisible(False)
+        self._update_action_controls()
 
     def select_atom(self, atom_id: int) -> None:
         """Selecciona visualmente el diagnóstico asociado a un átomo."""
@@ -548,15 +765,129 @@ class ValidationDock(QDockWidget):
                     break
         finally:
             self.issue_table.blockSignals(False)
+        self._update_action_controls(target)
 
     def _emit_selected_issue(self) -> None:
         selected = self.issue_table.selectedItems()
         if not selected:
+            self._update_action_controls()
             return
         atom_id = selected[0].data(Qt.ItemDataRole.UserRole)
         if atom_id is None:
+            self._update_action_controls()
             return
+        self._update_action_controls(int(atom_id))
         self.issue_selected.emit(int(atom_id))
+
+    def _selected_atom_id(self) -> int | None:
+        selected = self.issue_table.selectedItems()
+        if not selected:
+            return None
+        atom_id = selected[0].data(Qt.ItemDataRole.UserRole)
+        return None if atom_id is None else int(atom_id)
+
+    def _issue_actions(self, atom_id: int) -> tuple[dict[str, str], ...]:
+        issue = self._issues.get(int(atom_id))
+        if issue is None:
+            return ()
+        suggested = getattr(issue, "suggested_actions", None)
+        if callable(suggested):
+            return tuple(suggested())
+        actions = getattr(issue, "correction_actions", ()) or ()
+        return tuple(action.as_dict() for action in actions if hasattr(action, "as_dict"))
+
+    def _update_action_controls(self, atom_id: int | None = None) -> None:
+        if atom_id is None:
+            atom_id = self._selected_atom_id()
+        self.action_combo.blockSignals(True)
+        self.action_combo.clear()
+        if atom_id is not None:
+            for action in self._issue_actions(int(atom_id)):
+                self.action_combo.addItem(str(action.get("label", action.get("id", ""))), str(action.get("id", "")))
+        self.action_combo.blockSignals(False)
+        enabled = self.action_combo.count() > 0 and atom_id is not None
+        self.action_combo.setVisible(enabled)
+        self.btn_apply_correction.setVisible(enabled)
+        self.btn_apply_correction.setEnabled(enabled)
+
+    def _emit_correction_requested(self) -> None:
+        atom_id = self._selected_atom_id()
+        action_id = self.action_combo.currentData()
+        if atom_id is None or not action_id:
+            return
+        self.correction_requested.emit(int(atom_id), str(action_id))
+
+    def report_rows(self) -> list[dict[str, object]]:
+        """Devuelve el reporte de validación en formato tabular estructurado."""
+        rows: list[dict[str, object]] = []
+        for atom_id, issue in sorted(self._issues.items()):
+            actions = self._issue_actions(int(atom_id))
+            rows.append(
+                {
+                    "target_type": str(getattr(issue, "target_type", "atom") or "atom"),
+                    "atom_id": int(atom_id),
+                    "element": str(getattr(issue, "element", "") or ""),
+                    "severity": str(getattr(issue, "severity", "error") or "error"),
+                    "code": str(getattr(issue, "code", "") or ""),
+                    "observed_valence": float(getattr(issue, "observed_valence", 0.0) or 0.0),
+                    "bond_order_sum": float(getattr(issue, "bond_order_sum", 0.0) or 0.0),
+                    "assigned_h": int(getattr(issue, "assigned_h", 0) or 0),
+                    "implicit_h": int(getattr(issue, "implicit_h", 0) or 0),
+                    "message": str(getattr(issue, "message", "") or ""),
+                    "suggestion": str(getattr(issue, "hint", "") or getattr(issue, "suggestion", "") or ""),
+                    "actions": ", ".join(str(action.get("label", "")) for action in actions),
+                }
+            )
+        return rows
+
+    def report_tsv(self) -> str:
+        """Devuelve el reporte actual como TSV."""
+        rows = self.report_rows()
+        headers = [
+            "target_type",
+            "atom_id",
+            "element",
+            "severity",
+            "code",
+            "observed_valence",
+            "bond_order_sum",
+            "assigned_h",
+            "implicit_h",
+            "message",
+            "suggestion",
+            "actions",
+        ]
+        lines = ["\t".join(headers)]
+        for row in rows:
+            lines.append("\t".join(str(row.get(header, "")) for header in headers))
+        return "\n".join(lines)
+
+    def copy_report_tsv(self) -> str:
+        """Copia el reporte de validación como TSV."""
+        text = self.report_tsv()
+        QApplication.clipboard().setText(text)
+        return text
+
+    def export_report(self, path: str | None = None) -> str:
+        """Exporta el reporte como TSV o JSON según extensión."""
+        if path is None:
+            path, _ = QFileDialog.getSaveFileName(
+                self,
+                "Exportar reporte de validación",
+                "",
+                "TSV (*.tsv);;JSON (*.json)",
+            )
+        if not path:
+            return ""
+        target = Path(path)
+        if target.suffix.lower() == ".json":
+            target.write_text(
+                json.dumps(self.report_rows(), ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+        else:
+            target.write_text(self.report_tsv() + "\n", encoding="utf-8")
+        return str(target)
 
 
 class AppearanceDock(QDockWidget):

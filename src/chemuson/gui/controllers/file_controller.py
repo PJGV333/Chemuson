@@ -131,19 +131,27 @@ class FileController:
             target_graph = graph if graph is not None else context.canvas.graph
 
             if format_name == "smiles":
-                from chemuson.chemio import rdkit_io
+                if target_graph.atoms:
+                    from chemuson.chemio.rdkit_safe import molgraph_to_smiles_isolated
 
-                text = rdkit_io.molgraph_to_smiles(target_graph) if target_graph.atoms else ""
+                    text, error = molgraph_to_smiles_isolated(target_graph, timeout_s=5.0)
+                    if error:
+                        raise RuntimeError(error)
+                    text = text or ""
+                else:
+                    text = ""
             elif format_name == "molfile":
                 text = molgraph_to_molfile(target_graph) if target_graph.atoms else ""
             elif format_name == "cml":
                 text = molgraph_to_cml(target_graph) if target_graph.atoms else ""
             elif format_name == "inchi":
                 if target_graph.atoms:
-                    from rdkit.Chem.inchi import MolToInchi
-                    from chemuson.chemio import rdkit_io
+                    from chemuson.chemio.rdkit_safe import molgraph_to_inchi_isolated
 
-                    text = MolToInchi(rdkit_io.molgraph_to_rdkit(target_graph))
+                    text, error = molgraph_to_inchi_isolated(target_graph, timeout_s=5.0)
+                    if error:
+                        raise RuntimeError(error)
+                    text = text or ""
                 else:
                     text = ""
             else:

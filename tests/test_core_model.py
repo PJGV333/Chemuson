@@ -161,6 +161,8 @@ class MolGraphTest(unittest.TestCase):
         payload = issue.as_dict()
         self.assertEqual(payload["atom_id"], n.id)
         self.assertEqual(payload["code"], "VALENCE_EXCEEDED")
+        self.assertNotIn("correction_actions", payload)
+        self.assertTrue(issue.suggested_actions())
         self.assertIn("Sugerencia:", issue.tooltip_text())
 
     def test_validate_allows_tetramethylammonium_with_positive_charge(self):

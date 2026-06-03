@@ -89,3 +89,29 @@ def test_predict_spectra_labels_carboxylic_acid_oh() -> None:
     prediction = predict_spectra(graph)
 
     assert any(peak.environment == "ácido carboxílico O-H" for peak in prediction.proton_nmr)
+
+
+def test_predict_spectra_labels_simple_carbonyl() -> None:
+    graph = MolGraph()
+    c = graph.add_atom("C", 0.0, 0.0)
+    o = graph.add_atom("O", 40.0, 0.0)
+    methyl = graph.add_atom("C", -40.0, 0.0)
+    graph.add_bond(c.id, o.id, order=2)
+    graph.add_bond(c.id, methyl.id, order=1)
+
+    prediction = predict_spectra(graph)
+
+    assert any("carbonilo" in peak.environment for peak in prediction.carbon_nmr)
+
+
+def test_predict_spectra_labels_simple_aromatic_ring() -> None:
+    graph = MolGraph()
+    atoms = []
+    for idx in range(6):
+        atoms.append(graph.add_atom("C", float(idx), 0.0))
+    for idx in range(6):
+        graph.add_bond(atoms[idx].id, atoms[(idx + 1) % 6].id, order=1, is_aromatic=True)
+
+    prediction = predict_spectra(graph)
+
+    assert any(peak.environment == "aromático" for peak in prediction.carbon_nmr)

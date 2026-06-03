@@ -26,6 +26,7 @@ from chemuson.core.model import (
     BondStereo,
     ChemState,
     MolGraph,
+    ValidationCorrectionAction,
     ValidationIssue,
 )
 
@@ -36,6 +37,7 @@ __all__ = [
     "BondStereo",
     "ChemState",
     "MolGraph",
+    "ValidationCorrectionAction",
     "ValidationIssue",
     "ATOMIC_WEIGHTS",
     "DEFAULT_TOLERANCE",

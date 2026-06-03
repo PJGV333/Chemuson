@@ -15,6 +15,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "s
 from chemuson.core.model import MolGraph
 from chemuson.chemio.persistence import PersistenceManager
 from chemuson.chemio import rdkit_io
+from chemuson.chemio import rdkit_safe
 from chemuson.gui.canvas import ChemusonCanvas
 from chemuson.gui.main_window import ChemusonWindow
 
@@ -172,11 +173,11 @@ def test_copy_as_smiles_uses_selected_structure_only(monkeypatch) -> None:
 
         captured: dict[str, set[int]] = {}
 
-        def _fake_molgraph_to_smiles(graph: MolGraph) -> str:
+        def _fake_molgraph_to_smiles(graph: MolGraph, timeout_s: float = 5.0) -> tuple[str, None]:
             captured["atom_ids"] = set(graph.atoms.keys())
-            return "selected-smiles"
+            return "selected-smiles", None
 
-        monkeypatch.setattr(rdkit_io, "molgraph_to_smiles", _fake_molgraph_to_smiles)
+        monkeypatch.setattr(rdkit_safe, "molgraph_to_smiles_isolated", _fake_molgraph_to_smiles)
 
         window._on_copy_as("smiles")
 

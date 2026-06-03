@@ -13,6 +13,8 @@
 > **Proyecto en construcción.**
 >
 > Chemuson está en desarrollo activo. Las funciones, formatos y resultados pueden cambiar mientras el proyecto madura.
+>
+> Estado de junio de 2026: la rama de trabajo usa SemVer de aplicación `0.3.0-dev` en `src/chemuson/_version.py` como fuente canónica. Esto prepara Workbench v0.3; no implica release publicada ni tag.
 
 ## ¿Qué hace Chemuson?
 
@@ -28,9 +30,14 @@ Capacidades actuales (resumen):
 - Autosave automático con backups rotativos por documento y recuperación de sesiones al iniciar.
 - Exportación gráfica: `PNG`, `SVG`, `PDF`.
 - Herramientas de análisis integradas: nombre, fórmula, masa exacta, peso molecular, `m/z` y análisis elemental.
+- Dock de propiedades químicas con fórmula, masas, análisis elemental, issues de valencia y descriptores RDKit aislados (`logP`, TPSA, HBD/HBA, enlaces rotables y alertas Lipinski) sin bloquear la UI.
+- Validación química interactiva con reporte exportable, navegación de issues y correcciones undoables cuando la acción es determinista.
+- Dock **3D / CompChem** para generar conformeros, optimizar con RDKit aislado u Open Babel opcional, proyectar a 2D con confirmación/undo y exportar XYZ/inputs ORCA, Gaussian y NWChem.
+- Dock de espectros MVP para predicciones heurísticas de ^1H NMR, ^13C NMR y MS con fuente, confianza, copia/exportación de tablas y selección pico↔átomo.
 - Motor de nomenclatura **IUPAC-lite** para un subconjunto de estructuras orgánicas.
 - Campo de estado en UI: **Nombre IUPAC** del documento activo (degradación a `N/D` sin crash).
 - Preferencias de nomenclatura: `Nombre avanzado (fase 4/6)` y `Usar RDKit aislado`.
+- Conversión Nombre→Estructura con fuentes offline/PubChem, caché y ejecución en worker.
 - Biblioteca de plantillas (incluye base predefinida + categorías de usuario importables/exportables).
 
 ## Autosave y recuperación
@@ -47,14 +54,17 @@ Rutas locales de trabajo:
 ## Fortalezas
 
 - Arquitectura modular (núcleo químico, GUI, nomenclatura, IO y persistencia separados).
-- Integración con RDKit y rutas de respaldo internas cuando RDKit no cubre ciertos casos.
-- Cobertura de pruebas amplia para una base en evolución (49 pruebas en `tests/`).
+- Integración con RDKit mediante workers/subprocesos para tareas pesadas o propensas a fallos nativos, además de rutas de respaldo internas.
+- Cobertura de pruebas amplia para una base en evolución (800+ pruebas y skips controlados para backends opcionales).
 - Orientado a uso docente y de laboratorio con enfoque práctico de dibujo y análisis rápido.
 
 ## Debilidades y límites actuales
 
 - El motor de nombres es **IUPAC-lite**: no cubre toda la nomenclatura IUPAC ni todos los sistemas cíclicos/fusionados.
 - Algunas rutas de cálculo/exportación usan subconjuntos de elementos o aproximaciones, según el caso.
+- Las predicciones espectrales son heurísticas/estimadas y no sustituyen datos experimentales.
+- La generación/optimización 3D depende de RDKit aislado; Open Babel solo se usa si el ejecutable `obabel` está disponible.
+- No hay soporte CDXML, MRV ni PDB todavía.
 - Al ser un proyecto en construcción, puede haber cambios de comportamiento entre versiones.
 - No sustituye herramientas de validación química regulatoria o flujos de producción validados.
 
@@ -83,7 +93,7 @@ Limitaciones relevantes:
 ## Stack técnico
 
 - **GUI**: PyQt6
-- **Química**: RDKit
+- **Química**: RDKit aislado para tareas de cálculo/conversión, Open Babel opcional para optimización 3D, motores internos para validación, Clean2D y heurísticas.
 - **Lenguaje**: Python 3.10+
 
 ## Distribución por plataforma
@@ -116,7 +126,7 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 pip install pyinstaller
 pyinstaller --clean --noconfirm chemuson.spec
-$env:CHEMUSON_VERSION = "0.2.3-beta.3"
+$env:CHEMUSON_VERSION = "<version>"
 & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "packaging\windows\Chemuson.iss"
 ```
 
@@ -165,6 +175,7 @@ chmod +x Chemuson-vX.Y.Z-linux-x86_64.AppImage
 
 - Se añadió núcleo de update en `src/chemuson/update/`.
 - Fuente de versión única: `src/chemuson/_version.py`.
+- Política de versión: SemVer de app. Las ramas de desarrollo pueden usar sufijo prerelease/dev como `0.3.0-dev`; releases futuras deben sincronizar CI, empaquetado y updater con esa fuente canónica antes de publicar.
 - Canales soportados: `stable` y `beta`.
 - Verificación de integridad:
   - hash SHA-256 (`.sha256`),

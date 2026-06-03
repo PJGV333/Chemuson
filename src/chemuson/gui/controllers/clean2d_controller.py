@@ -562,111 +562,11 @@ class Clean2DController:
         status_suffix: str,
         cyclic: bool,
     ) -> Clean2DAttempt:
-        """Ruta de RDKit directo en el proceso principal.
-
-        Returns Clean2DAttempt — nunca levanta excepción por flujo de
-        control; los errores de importación se reportan como unavailable.
-        """
-        canvas = window.canvas
-        try:
-            from chemuson.chemio.rdkit_io import molgraph_to_rdkit_with_map
-            from rdkit import Chem
-            from rdkit.Chem import AllChem
-        except Exception as exc:
-            return Clean2DAttempt(
-                unavailable=True,
-                message=f"RDKit directo no disponible: {exc}",
-            )
-
-        try:
-            graph = canvas._build_selection_graph(atom_ids, scale_bonds) if atom_ids else canvas.graph
-
-            mol, id_map = molgraph_to_rdkit_with_map(graph)
-            for aid, rd_idx in id_map.items():
-                try:
-                    mol.GetAtomWithIdx(rd_idx).SetIntProp("_chemuson_id", int(aid))
-                except Exception:
-                    continue
-
-            before = {
-                aid: (canvas.model.get_atom(aid).x, canvas.model.get_atom(aid).y)
-                for aid in target_ids
-            }
-            before_avg_len = window._average_bond_length(before, scale_bonds)
-
-            raw_after: dict[int, tuple[float, float]] = {}
-            used_no_h_layout = False
-            try:
-                mol_no_h = Chem.RemoveHs(Chem.Mol(mol), sanitize=True)
-                if 0 < mol_no_h.GetNumAtoms() < mol.GetNumAtoms():
-                    AllChem.Compute2DCoords(mol_no_h)
-                    conf_no_h = mol_no_h.GetConformer()
-                    for atom in mol_no_h.GetAtoms():
-                        if not atom.HasProp("_chemuson_id"):
-                            continue
-                        aid = int(atom.GetIntProp("_chemuson_id"))
-                        if aid not in target_ids:
-                            continue
-                        pos = conf_no_h.GetAtomPosition(atom.GetIdx())
-                        raw_after[aid] = (pos.x, pos.y)
-                    if raw_after:
-                        atom_elements = {
-                            aid: canvas.model.get_atom(aid).element for aid in target_ids
-                        }
-                        raw_after = window._project_missing_hydrogen_coords(
-                            before=before,
-                            after=raw_after,
-                            bonds=scale_bonds,
-                            atom_elements=atom_elements,
-                        )
-                        used_no_h_layout = True
-            except Exception:
-                used_no_h_layout = False
-
-            if not used_no_h_layout:
-                AllChem.Compute2DCoords(mol)
-                conf = mol.GetConformer()
-                for aid, rd_idx in id_map.items():
-                    if aid not in target_ids:
-                        continue
-                    pos = conf.GetAtomPosition(rd_idx)
-                    raw_after[aid] = (pos.x, pos.y)
-
-            target_bond_len = before_avg_len if before_avg_len > 1e-6 else float(canvas.state.bond_length)
-            raw_after = window._rescale_coords_to_bond_length(raw_after, scale_bonds, target_bond_len)
-            raw_after = window._align_coords_to_reference(before, raw_after)
-            after_cx, after_cy = _coords_center(raw_after)
-            before_cx, before_cy = _coords_center(before)
-            after = {}
-            for aid, (x, y) in raw_after.items():
-                x = x - after_cx + before_cx
-                y = y - after_cy + before_cy
-                if step_ratio < 1.0:
-                    bx, by = before[aid]
-                    x = bx + (x - bx) * step_ratio
-                    y = by + (y - by) * step_ratio
-                after[aid] = (x, y)
-
-            after = window._rescale_coords_to_bond_length(after, scale_bonds, target_bond_len)
-            final_cx, final_cy = _coords_center(after)
-            if abs(final_cx - before_cx) > 1e-9 or abs(final_cy - before_cy) > 1e-9:
-                after = {
-                    aid: (x - final_cx + before_cx, y - final_cy + before_cy)
-                    for aid, (x, y) in after.items()
-                }
-
-            label = f"Estructura 2D limpiada {status_suffix}".strip()
-            if len(target_ids) < len(canvas.model.atoms):
-                label = f"Selección 2D limpiada {status_suffix}".strip()
-            return self._apply_clean2d_candidate(
-                window, target_ids, scale_bonds, before, after,
-                target_bond_len, mode, label, cyclic,
-            )
-        except Exception as exc:
-            return Clean2DAttempt(
-                unavailable=True,
-                message=f"RDKit directo falló: {exc}",
-            )
+        """Ruta legacy deshabilitada: RDKit se usa solo vía worker aislado."""
+        return Clean2DAttempt(
+            unavailable=True,
+            message="RDKit directo deshabilitado; use RDKit aislado",
+        )
 
     def _safe_length_polish_only(
         self,

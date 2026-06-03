@@ -16,7 +16,7 @@ from chemuson.clean2d import (
     ring_degeneracy_score,
     run_clean2d_engine,
 )
-from chemuson.core.model import MolGraph
+from chemuson.core.model import BondStyle, MolGraph
 
 
 def _scrambled_benzene(substituent: str | None = None) -> tuple[MolGraph, list[int], int | None]:
@@ -302,3 +302,35 @@ def test_quick_recleans_mixed_structure_even_if_clean_hash_was_seen_before() -> 
     assert ring_degeneracy_score(second.selected.coords, phenyl) > 0.18
     assert ring_degeneracy_score(second.selected.coords, cyclopropane) > 0.05
     assert_clean2d_invariants(clean_snapshot, graph, clean_before, second.selected.coords)
+
+
+def test_propose_mode_preserves_wedge_hash_metadata_without_bad_geometry() -> None:
+    graph = MolGraph()
+    center = graph.add_atom("C", 0.0, 0.0)
+    left = graph.add_atom("C", -40.0, 0.0)
+    right = graph.add_atom("C", 40.0, 0.0)
+    up = graph.add_atom("Cl", 0.0, -40.0)
+    down = graph.add_atom("Br", 0.0, 40.0)
+    graph.add_bond(center.id, left.id, order=1)
+    graph.add_bond(center.id, right.id, order=1)
+    wedge = graph.add_bond(center.id, up.id, order=1, style=BondStyle.WEDGE)
+    hashed = graph.add_bond(center.id, down.id, order=1, style=BondStyle.HASHED)
+    before = {atom_id: (atom.x, atom.y) for atom_id, atom in graph.atoms.items()}
+    snapshot = capture_clean2d_snapshot(graph)
+
+    result = run_clean2d_engine(graph, mode="propose", target_bond_length=40.0)
+
+    assert result.ok
+    assert result.selected is not None
+    coords = result.selected.coords
+    assert all(math.isfinite(value) for xy in coords.values() for value in xy)
+    assert graph.get_bond(wedge.id).style == BondStyle.WEDGE
+    assert graph.get_bond(hashed.id).style == BondStyle.HASHED
+    lengths = [
+        math.hypot(coords[bond.a2_id][0] - coords[bond.a1_id][0], coords[bond.a2_id][1] - coords[bond.a1_id][1])
+        for bond in graph.bonds.values()
+    ]
+    assert min(lengths) >= 40.0 * 0.7
+    assert max(lengths) <= 40.0 * 1.4
+    assert count_new_bond_crossings(before, coords, list(graph.bonds.values())) == 0
+    assert_clean2d_invariants(snapshot, graph, before, coords)

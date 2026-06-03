@@ -9,6 +9,8 @@ Esta matriz describe el soporte actual de intercambio químico. Los formatos mar
 | Molfile `.mol` | Sí | Sí | Base | Conserva conectividad, coordenadas 2D y parte de atributos químicos. Algunas extensiones visuales degradan. |
 | SDF `.sdf` | Sí | Sí | Base/parcial | Se trata como Molfile para estructura principal; propiedades SDF avanzadas no se modelan todavía. |
 | CML `.cml` | Sí | Sí | Inicial semántico | Disponible en abrir, guardar, exportar y copiar. Conserva átomos, enlaces, coordenadas 2D, carga, isótopos, radicales y extensiones Chemuson básicas. |
+| XYZ `.xyz` | No | Sí | 3D/compchem | Exporta el `CoordinateSet3D` activo del dock 3D. No conserva conectividad ni semántica 2D. |
+| ORCA/Gaussian/NWChem input | No | Sí | CompChem MVP | Exporta geometría 3D activa, carga y parámetros básicos. No intenta validar el método/base para cada paquete. |
 | SVG | No químico | Sí | Publicación | Exporta visual; no es round-trip químico. |
 | PDF | No químico | Sí | Publicación | Exporta visual; no es round-trip químico. |
 | PNG | No químico | Sí | Publicación | Raster visual; no conserva semántica química. |
@@ -30,3 +32,10 @@ Limitaciones actuales:
 - No exporta todavía flechas, textos, corchetes ni objetos gráficos como CML semántico.
 - No intenta interpretar toda la especificación CML ni diccionarios externos.
 - CDXML/MRV siguen pendientes para compatibilidad con suites comerciales.
+
+## Limitaciones explícitas de junio 2026
+
+- CDXML, MRV y PDB siguen sin soporte.
+- Los espectros son heurísticos/estimados y no forman parte de un formato experimental validado.
+- IUPAC-lite es parcial; ante estructuras fuera de alcance degrada a `N/D`.
+- Las exportaciones compchem dependen de que exista un conformero 3D activo; Open Babel es opcional y requiere `obabel` en `PATH`.

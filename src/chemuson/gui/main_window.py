@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import QObject, Qt, QSettings, QEvent, QThread, QTimer, QPointF, pyqtSignal, pyqtSlot
 from PyQt6.QtGui import QAction, QColor, QTextCursor
 from typing import Optional
+import copy
 import math
 import os
 import sys
@@ -33,6 +34,7 @@ from chemuson.gui.icons import set_icon_theme
 from chemuson.gui.docks import (
     AppearanceDock,
     ChemicalPropertiesDock,
+    CompChemDock,
     InspectorDock,
     PlantillasDock,
     SpectroscopyDock,
@@ -58,6 +60,8 @@ from chemuson.gui.actions import (
 )
 from chemuson.gui.controllers import (
     Clean2DController,
+    CompChem3DController,
+    CompChemJobSpec,
     DocumentController,
     DocumentDiscardContext,
     DocumentTabsContext,
@@ -71,8 +75,12 @@ from chemuson.gui.controllers import (
     TextFormatController,
     UpdateController,
     UpdateControllerContext,
+    ValidationController,
     ViewController,
 )
+from chemuson.geometry3d import CoordinateSet3D, ForceField, OptimizationSettings, project_conformer_to_2d
+from chemuson.geometry3d.export_xyz import molgraph_to_xyz
+from chemuson.compchem.exporters import export_gaussian_input, export_nwchem_input, export_orca_input
 from chemuson.gui.controllers.update_controller import (
     FLATPAK_APP_ID as FLATPAK_APP_ID,
     format_no_update_message as format_no_update_message,
@@ -182,9 +190,17 @@ class ChemusonWindow(QMainWindow):
         self._view_controller = ViewController()
         self._export_controller = ExportController()
         self._clean2d_controller = Clean2DController()
+        self._validation_controller = ValidationController()
+        self._compchem3d_controller = CompChem3DController(self)
         self._text_format_controller = TextFormatController()
         self._recovery_controller = RecoveryController()
         self._template_controller = TemplateController()
+        self._compchem_coordset: CoordinateSet3D | None = None
+        self._latest_compchem_job_id = 0
+        self._compchem_job_backends: dict[int, str] = {}
+        self._compchem_job_operations: dict[int, str] = {}
+        self._compchem3d_controller.frame_ready.connect(self._on_compchem_frame_ready)
+        self._compchem3d_controller.job_finished.connect(self._on_compchem_job_finished)
         
         # === CENTRAL TABS/CANVAS ===
         self.tabs = QTabWidget(self)
@@ -226,6 +242,7 @@ class ChemusonWindow(QMainWindow):
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.validation_dock)
         self.validation_dock.hide()
         self.validation_dock.issue_selected.connect(self._select_validation_issue_from_dock)
+        self.validation_dock.correction_requested.connect(self._on_validation_correction_requested)
         self.validation_dock.refresh_requested.connect(self._on_validate_structure)
         self.validation_dock.next_requested.connect(lambda: self._on_navigate_validation_issue(1))
         self.validation_dock.previous_requested.connect(lambda: self._on_navigate_validation_issue(-1))
@@ -238,6 +255,16 @@ class ChemusonWindow(QMainWindow):
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.spectroscopy_dock)
         self.spectroscopy_dock.hide()
         self.spectroscopy_dock.peak_atom_selected.connect(self._select_atom_from_spectrum)
+
+        self.compchem_dock = CompChemDock(self)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.compchem_dock)
+        self.compchem_dock.hide()
+        self.compchem_dock.generate_requested.connect(self._on_compchem_generate)
+        self.compchem_dock.optimize_requested.connect(self._on_compchem_optimize)
+        self.compchem_dock.project_requested.connect(self._on_compchem_project_to_2d)
+        self.compchem_dock.reset_requested.connect(self._on_compchem_reset)
+        self.compchem_dock.export_xyz_requested.connect(self._on_compchem_export_xyz)
+        self.compchem_dock.export_input_requested.connect(self._on_compchem_export_input)
 
         self._properties_update_timer = QTimer(self)
         self._properties_update_timer.setSingleShot(True)
@@ -543,6 +570,7 @@ class ChemusonWindow(QMainWindow):
         self._update_total_charge_indicator()
         self._update_iupac_name_indicator()
         self._schedule_chemical_properties_update()
+        self._reset_compchem_state("Sin conformero 3D")
         self.text_toolbar.set_opacity_percent(self.canvas.current_opacity_percent())
         if clear_tool_selection:
             self._clear_active_tool_selection()
@@ -592,7 +620,7 @@ class ChemusonWindow(QMainWindow):
         rows, descriptor_graph = self._chemical_properties_rows()
         dock.update_properties(rows)
         if descriptor_graph is not None:
-            pending_rows = rows + [("Descriptores RDKit", "Calculando...")]
+            pending_rows = rows + [("Descriptores RDKit", "calculando...")]
             dock.update_properties(pending_rows)
             self._start_descriptor_job(descriptor_graph, rows)
         self._refresh_spectroscopy_dock(descriptor_graph)
@@ -622,6 +650,14 @@ class ChemusonWindow(QMainWindow):
                 issues = self.canvas.current_validation_issues()
             except Exception:
                 issues = {}
+        issues = {
+            atom_id: self._validation_controller.with_available_actions(self.canvas, issue)
+            for atom_id, issue in dict(issues or {}).items()
+        }
+        try:
+            self.canvas._validation_issues = dict(issues)
+        except Exception:
+            pass
         dock.set_issues(dict(issues or {}))
 
     def _select_validation_issue_from_dock(self, atom_id: int) -> None:
@@ -645,6 +681,16 @@ class ChemusonWindow(QMainWindow):
         if issue is not None:
             message = getattr(issue, "message", f"Error de valencia en átomo {atom_id}")
             self.statusBar().showMessage(str(message), 9000)
+
+    def _on_validation_correction_requested(self, atom_id: int, action_id: str) -> None:
+        """Aplica una corrección segura de validación y refresca UI."""
+        result = self._validation_controller.apply_correction(self.canvas, int(atom_id), str(action_id))
+        if result.applied:
+            self._refresh_validation_dock()
+            self.statusBar().showMessage(result.message or "Corrección aplicada.", 7000)
+            self._schedule_chemical_properties_update()
+            return
+        self.statusBar().showMessage(result.message or "No se aplicó corrección.", 7000)
 
     def _select_atom_from_spectrum(self, atom_id: int) -> None:
         """Selecciona en el canvas el átomo asignado al pico espectral."""
@@ -690,7 +736,7 @@ class ChemusonWindow(QMainWindow):
             ("Carga total", str(graph.total_formal_charge())),
             ("Átomos", str(len(graph.atoms))),
             ("Enlaces", str(len(graph.bonds))),
-            ("Errores de valencia", str(len(issues))),
+            ("Issues de valencia", str(len(issues))),
         ]
         elemental_line = canvas._analysis_elemental_line(counts, molecular_weight)
         if elemental_line:
@@ -753,7 +799,7 @@ class ChemusonWindow(QMainWindow):
             return
         rows = list(base_rows)
         if error:
-            rows.append(("Descriptores RDKit", f"N/D ({error})"))
+            rows.append(("Descriptores RDKit", f"RDKit no disponible; resultado parcial ({error})"))
             dock.update_properties(rows)
             return
         rows.extend(self._descriptor_rows(descriptors))
@@ -773,6 +819,178 @@ class ChemusonWindow(QMainWindow):
             ("Átomos pesados", str(int(descriptors.get("heavy_atoms", 0) or 0))),
             ("Alertas Lipinski", str(int(descriptors.get("lipinski_violations", 0) or 0))),
         ]
+
+    def _reset_compchem_state(self, message: str = "Sin conformero 3D") -> None:
+        """Descarta coordenadas 3D asociadas al documento activo."""
+        self._compchem_coordset = None
+        dock = getattr(self, "compchem_dock", None)
+        if dock is not None:
+            dock.clear_frames()
+            dock.set_status(message)
+            dock.set_busy(False)
+            dock.set_has_coordinates(False)
+
+    def _compchem_settings(self) -> OptimizationSettings:
+        dock = self.compchem_dock
+        try:
+            forcefield = ForceField(dock.selected_forcefield())
+        except Exception:
+            forcefield = ForceField.UFF
+        return OptimizationSettings(
+            forcefield=forcefield,
+            max_iters=200,
+            steps_per_update=25,
+            timeout_s=20.0,
+        )
+
+    def _start_compchem_job(self, operation: str, *, backend: str | None = None, force: bool = False) -> None:
+        canvas = getattr(self, "canvas", None)
+        dock = getattr(self, "compchem_dock", None)
+        if canvas is None or dock is None:
+            return
+        if not getattr(canvas.model, "atoms", None):
+            dock.set_status("No hay estructura para calcular.")
+            dock.set_has_coordinates(False)
+            return
+        selected_backend = backend or dock.selected_backend()
+        settings = self._compchem_settings()
+        graph_copy = copy.deepcopy(canvas.model)
+        coordset = self._compchem_coordset
+        spec = CompChemJobSpec(operation=operation, backend=selected_backend, settings=settings, force=force)
+        dock.clear_frames()
+        dock.set_busy(True)
+        dock.set_status(
+            f"{'Generando conformero' if operation == 'generate' else 'Optimizando'} "
+            f"({selected_backend}, {settings.forcefield.value})..."
+        )
+        job_id = self._compchem3d_controller.start_job(graph_copy, spec, coordset)
+        self._latest_compchem_job_id = job_id
+        self._compchem_job_backends[job_id] = selected_backend
+        self._compchem_job_operations[job_id] = operation
+
+    def _on_compchem_generate(self) -> None:
+        self._start_compchem_job("generate", backend="rdkit", force=False)
+
+    def _on_compchem_optimize(self) -> None:
+        self._start_compchem_job("optimize")
+
+    def _on_compchem_reset(self) -> None:
+        self._reset_compchem_state("Regenerando conformero 3D...")
+        self._start_compchem_job("generate", backend="rdkit", force=True)
+
+    def _on_compchem_frame_ready(self, job_id: int, frame: object) -> None:
+        if int(job_id) != int(getattr(self, "_latest_compchem_job_id", 0)):
+            return
+        dock = getattr(self, "compchem_dock", None)
+        if dock is not None:
+            dock.add_frame(frame)
+
+    def _on_compchem_job_finished(self, job_id: int, result: object) -> None:
+        backend = self._compchem_job_backends.pop(int(job_id), "rdkit")
+        self._compchem_job_operations.pop(int(job_id), None)
+        if int(job_id) != int(getattr(self, "_latest_compchem_job_id", 0)):
+            return
+        dock = getattr(self, "compchem_dock", None)
+        if dock is None:
+            return
+        dock.set_busy(False)
+        coordinates = getattr(result, "coordinates", None)
+        if coordinates is None:
+            self._compchem_coordset = None
+            message = str(getattr(result, "message", "") or "Backend no disponible o sin coordenadas.")
+            dock.set_status(f"3D no disponible: {message}")
+            dock.set_has_coordinates(False)
+            return
+        self._compchem_coordset = coordinates
+        cache_state = str((getattr(result, "metadata", {}) or {}).get("cache_state", "miss"))
+        dock.set_result_summary(result, backend=backend, cache_state=cache_state)
+        dock.set_has_coordinates(True)
+
+    def _on_compchem_project_to_2d(self) -> None:
+        coordset = self._compchem_coordset
+        canvas = getattr(self, "canvas", None)
+        if coordset is None or canvas is None:
+            self.statusBar().showMessage("No hay conformero 3D para proyectar.", 5000)
+            return
+        answer = QMessageBox.question(
+            self,
+            "Proyectar conformero a 2D",
+            "Aplicar la proyección 2D del conformero actual al documento?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        before = {
+            atom_id: (atom.x, atom.y)
+            for atom_id, atom in canvas.model.atoms.items()
+            if atom_id in coordset.normalized_positions()
+        }
+        if not before:
+            self.statusBar().showMessage("El conformero no coincide con los átomos del documento.", 6000)
+            return
+        target_len = float(getattr(canvas.state, "bond_length", 42.0) or 42.0)
+        center = self._coords_center(before)
+        projected = project_conformer_to_2d(coordset, center=center, scale=max(1.0, target_len))
+        after = {
+            atom.atom_id: (float(atom.x), float(atom.y))
+            for atom in projected
+            if atom.atom_id in before
+        }
+        bonds = list(canvas.model.bonds.values())
+        after = self._rescale_coords_to_bond_length(after, bonds, target_len)
+        after = self._align_coords_to_reference(before, after)
+        changed = {
+            atom_id: coords
+            for atom_id, coords in after.items()
+            if atom_id in before and math.hypot(coords[0] - before[atom_id][0], coords[1] - before[atom_id][1]) > 0.5
+        }
+        if not changed:
+            self.statusBar().showMessage("La proyección no cambió coordenadas 2D.", 5000)
+            return
+        from chemuson.gui.commands import MoveAtomsCommand
+
+        canvas.undo_stack.push(MoveAtomsCommand(canvas.model, canvas, before, changed))
+        canvas._update_selection_overlay()
+        self.statusBar().showMessage("Proyección 3D aplicada a 2D.", 7000)
+
+    def _on_compchem_export_xyz(self) -> None:
+        coordset = self._compchem_coordset
+        if coordset is None:
+            self.statusBar().showMessage("No hay coordenadas 3D para exportar.", 5000)
+            return
+        filepath, _ = QFileDialog.getSaveFileName(self, "Exportar XYZ", "", "XYZ (*.xyz)")
+        if not filepath:
+            return
+        with open(filepath, "w", encoding="utf-8") as handle:
+            handle.write(molgraph_to_xyz(self.canvas.model, coordset))
+        self.statusBar().showMessage(f"Exportado XYZ: {filepath}", 7000)
+
+    def _on_compchem_export_input(self, program: str) -> None:
+        coordset = self._compchem_coordset
+        if coordset is None:
+            self.statusBar().showMessage("No hay coordenadas 3D para exportar.", 5000)
+            return
+        program_key = str(program or "").lower()
+        suffix = {"orca": "inp", "gaussian": "gjf", "nwchem": "nw"}.get(program_key, "inp")
+        filepath, _ = QFileDialog.getSaveFileName(
+            self,
+            f"Exportar input {program_key.upper()}",
+            "",
+            f"Input (*.{suffix});;Texto (*.txt)",
+        )
+        if not filepath:
+            return
+        charge = self.canvas.model.total_formal_charge()
+        if program_key == "gaussian":
+            text = export_gaussian_input(self.canvas.model, coordset, charge=charge)
+        elif program_key == "nwchem":
+            text = export_nwchem_input(self.canvas.model, coordset, charge=charge)
+        else:
+            text = export_orca_input(self.canvas.model, coordset, charge=charge)
+        with open(filepath, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        self.statusBar().showMessage(f"Exportado input {program_key.upper()}: {filepath}", 7000)
 
     def _on_undo(self) -> None:
         """Deshace en la pestaña activa."""
@@ -1878,8 +2096,14 @@ class ChemusonWindow(QMainWindow):
 
     def _on_validate_structure(self) -> None:
         """Ejecuta validación química detallada sobre el documento activo."""
-        errors = self.canvas.validate_structure()
-        issues = self.canvas.current_validation_issues()
+        issues = self._validation_controller.issues_for_canvas(self.canvas)
+        errors = sorted(issues)
+        try:
+            self.canvas._validation_issues = dict(issues)
+            self.canvas._validation_error_order = list(errors)
+            self.canvas.show_valence_errors(errors, issues=issues)
+        except Exception:
+            pass
         self._refresh_validation_dock(issues)
         if hasattr(self, "validation_dock"):
             self.validation_dock.show()

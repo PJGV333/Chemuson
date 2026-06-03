@@ -41,13 +41,13 @@ pyinstaller --clean --noconfirm chemuson.spec
 Generar instalador:
 
 ```powershell
-$env:CHEMUSON_VERSION = "0.2.3-beta.3"
+$env:CHEMUSON_VERSION = "<version>"
 & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "packaging\windows\Chemuson.iss"
 ```
 
 Salida esperada:
 - `dist\Chemuson.exe` (portable)
-- `dist-installer\Chemuson-v0.2.3-beta.3-windows-x86_64-setup.exe` (instalador)
+- `dist-installer\Chemuson-v<version>-windows-x86_64-setup.exe` (instalador)
 
 ## Firma Authenticode (pipeline preparada)
 

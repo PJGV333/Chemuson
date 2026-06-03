@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import math
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Dict, Iterable, List, Optional, Set
 
@@ -322,6 +322,22 @@ class Atom:
 
 
 @dataclass(frozen=True)
+class ValidationCorrectionAction:
+    """Acción sugerida de corrección expuesta como dato para la UI."""
+
+    action_id: str
+    label: str
+    description: str = ""
+
+    def as_dict(self) -> dict[str, str]:
+        return {
+            "id": self.action_id,
+            "label": self.label,
+            "description": self.description,
+        }
+
+
+@dataclass(frozen=True)
 class ValidationIssue:
     """Detalle de validación química para un átomo específico."""
     atom_id: int
@@ -337,6 +353,7 @@ class ValidationIssue:
     bond_order_sum: float = 0.0
     assigned_h: int = 0
     implicit_h: int = 0
+    correction_actions: tuple[ValidationCorrectionAction, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         resolved_hint = self.hint if self.hint is not None else self.suggestion
@@ -350,6 +367,17 @@ class ValidationIssue:
         if self.hint:
             parts.append(f"Sugerencia: {self.hint}")
         return "\n".join(part for part in parts if part)
+
+    def suggested_actions(self) -> tuple[dict[str, str], ...]:
+        """Acciones sugeridas en formato de datos, fuera de `as_dict()`."""
+        return tuple(action.as_dict() for action in self.correction_actions)
+
+    def with_correction_actions(
+        self,
+        actions: Iterable[ValidationCorrectionAction],
+    ) -> "ValidationIssue":
+        """Devuelve una copia con acciones calculadas por un controlador."""
+        return replace(self, correction_actions=tuple(actions))
 
     def as_dict(self) -> dict[str, object]:
         """Representación estable para UI, exportes y pruebas."""
@@ -1306,6 +1334,30 @@ class MolGraph:
                     f"H implícitos {int(max(0, implicit_h))}); "
                     f"valencias permitidas: {allowed_text}."
                 )
+                actions: list[ValidationCorrectionAction] = []
+                if code == "VALENCE_EXCEEDED":
+                    actions.extend(
+                        [
+                            ValidationCorrectionAction(
+                                "reduce_selected_bond",
+                                "Reducir enlace seleccionado",
+                                "Reduce en 1 el orden del enlace seleccionado si mejora la valencia.",
+                            ),
+                            ValidationCorrectionAction(
+                                "adjust_charge",
+                                "Ajustar carga formal",
+                                "Prueba +1/-1 y aplica solo una opción inequívoca.",
+                            ),
+                        ]
+                    )
+                if assigned_h > 0:
+                    actions.append(
+                        ValidationCorrectionAction(
+                            "clear_assigned_h",
+                            "Limpiar H asignados",
+                            "Quita H asociados a la etiqueta si mejora la validación.",
+                        )
+                    )
                 issues[atom_id] = ValidationIssue(
                     atom_id=atom_id,
                     element=atom.element,
@@ -1318,5 +1370,6 @@ class MolGraph:
                     bond_order_sum=float(bond_sum),
                     assigned_h=int(assigned_h),
                     implicit_h=int(max(0, implicit_h)),
+                    correction_actions=tuple(actions),
                 )
         return issues

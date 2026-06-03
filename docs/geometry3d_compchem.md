@@ -80,6 +80,32 @@ Esto evita mezclar resultados de UFF/MMFF/Open Babel o corridas con distinta con
 
 Los exportadores aceptan molécula, coordenadas 3D, carga, multiplicidad, método, base, memoria, núcleos y tipo de cálculo.
 
+## Dock 3D / CompChem
+
+Workbench v0.3 añade el dock **3D / CompChem** a la UI principal.
+
+Flujo de usuario:
+- **Generar conformero 3D** usa RDKit aislado en `QThread` y conserva el resultado como `CoordinateSet3D` separado del `MolGraph` 2D.
+- **Optimizar** usa el backend elegido: RDKit aislado para `UFF`, `MMFF94` y `MMFF94s`; Open Babel solo si `obabel` está disponible.
+- El dock muestra backend, force field/método, energía si existe, convergencia, cache hit/miss y mensajes de fallback/error.
+- Si RDKit devuelve `OptimizationFrame`, el dock agrega filas de progreso con paso, energía, convergencia y mensaje.
+- **Proyectar a 2D** pide confirmación antes de tocar el documento. Si el usuario acepta, la proyección se aplica al `MolGraph` con `MoveAtomsCommand`, por lo que es undoable.
+- **Exportar XYZ** escribe las coordenadas 3D actuales.
+- **Exportar input** genera archivos ORCA, Gaussian o NWChem usando los exportadores existentes.
+- **Reset/regenerar** descarta el conformero del dock y fuerza una nueva generación.
+
+Garantías de arquitectura:
+- generación y optimización 3D no mutan `MolGraph`;
+- las coordenadas 3D se descartan al cambiar de documento/pestaña;
+- la UI no debe llamar RDKit/Open Babel desde el hilo principal;
+- si un backend falla, el dock muestra el mensaje y la app sigue operativa.
+
+Limitaciones actuales:
+- no hay visor 3D interactivo completo todavía;
+- no hay import/export PDB;
+- Open Babel depende del ejecutable externo `obabel`;
+- la proyección 3D->2D es una herramienta de coordenadas, no un motor de Clean2D.
+
 ## Visor Rust/wgpu Futuro
 
 La frontera recomendada para Rust es `CoordinateSet3D` más metadatos de render:

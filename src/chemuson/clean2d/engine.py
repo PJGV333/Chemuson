@@ -497,53 +497,12 @@ def _candidate_from_rdkit_direct(
     bonds: list[Bond],
     target: float,
 ) -> Clean2DCandidate | None:
-    try:
-        from chemuson.chemio.rdkit_io import molgraph_to_rdkit_with_map
-        from rdkit import Chem
-        from rdkit.Chem import AllChem
-
-        mol, id_map = molgraph_to_rdkit_with_map(graph)
-        _prepare_rdkit_mol_for_depiction(Chem, mol)
-        for atom_id, rd_idx in id_map.items():
-            mol.GetAtomWithIdx(rd_idx).SetIntProp("_chemuson_id", int(atom_id))
-        raw: dict[int, tuple[float, float]] = {}
-        try:
-            mol_no_h = Chem.RemoveHs(Chem.Mol(mol), sanitize=False)
-            if 0 < mol_no_h.GetNumAtoms() < mol.GetNumAtoms():
-                AllChem.Compute2DCoords(mol_no_h)
-                conf = mol_no_h.GetConformer()
-                for atom in mol_no_h.GetAtoms():
-                    if not atom.HasProp("_chemuson_id"):
-                        continue
-                    atom_id = int(atom.GetIntProp("_chemuson_id"))
-                    if atom_id not in atom_ids:
-                        continue
-                    pos = conf.GetAtomPosition(atom.GetIdx())
-                    raw[atom_id] = (float(pos.x), float(pos.y))
-        except Exception:
-            raw = {}
-        if not raw:
-            AllChem.Compute2DCoords(mol)
-            conf = mol.GetConformer()
-            for atom_id, rd_idx in id_map.items():
-                if atom_id not in atom_ids:
-                    continue
-                pos = conf.GetAtomPosition(rd_idx)
-                raw[int(atom_id)] = (float(pos.x), float(pos.y))
-        raw = _project_missing_explicit_hydrogens(graph, atom_ids, before, raw, bonds)
-        coords = _normalized_candidate_coords(before, raw, bonds, target, align=True)
-        return Clean2DCandidate(
-            source="rdkit_direct",
-            coords=coords,
-            message="Estructura 2D limpiada (RDKit directo)",
-        )
-    except Exception as exc:
-        return Clean2DCandidate(
-            source="rdkit_direct",
-            coords={},
-            rejected=True,
-            rejection_reason=f"rdkit_directo_no_disponible:{exc}",
-        )
+    return Clean2DCandidate(
+        source="rdkit_direct",
+        coords={},
+        rejected=True,
+        rejection_reason="rdkit_directo_deshabilitado:usar_rdkit_aislado",
+    )
 
 
 def _candidate_from_internal_templates(

@@ -165,9 +165,15 @@ Evolucionar ChemUSON desde un editor 2D académico robusto hacia una plataforma 
 
 ## 8) Ruta de cierre basada en el estado actual
 
-Esta ruta parte del estado observado en mayo de 2026: `clean2d_v2` ya existe, está integrado y fue validado funcionalmente en uso manual, por lo que no se prioriza como siguiente bloque salvo regresiones puntuales. La prioridad pasa a cerrar MVPs ya iniciados y convertirlos en capacidades robustas.
+Esta ruta parte del estado observado en junio de 2026. `clean2d_v2` y el motor unificado `chemuson.clean2d.engine` ya existen, el worker RDKit aislado es parte de la arquitectura, Name->Structure ya funciona con fuentes offline/PubChem/cache, CML inicial está integrado y Workbench v0.3 concentra el cierre práctico en validación corregible, UI 3D/compchem y estabilidad.
 
 ### Bloque A: estabilización técnica antes de ampliar superficie
+
+**Estado junio 2026: hecho/parcial**
+
+Hecho: `pytest` excluye artefactos `build/`, `dist/`, `dist-appimage/`, `dist-flatpak/` y `packaging/`; la suite completa pasa con skips controlados para backends opcionales; existe smoke test del worker RDKit aislado sin importar RDKit en el proceso principal.
+
+Pendiente: mantener la matriz de Python/RDKit documentada por plataforma y vigilar empaquetados nuevos.
 
 **Objetivo**
 - Asegurar que la suite completa pueda ejecutarse sin fallos nativos ni contaminación de rutas de build.
@@ -184,6 +190,12 @@ Esta ruta parte del estado observado en mayo de 2026: `clean2d_v2` ya existe, es
 
 ### Bloque B: validación química interactiva completa
 
+**Estado junio 2026: hecho/parcial**
+
+Hecho: `ValidationIssue` expone matemática de valencia y acciones sugeridas como datos; `ValidationDock` muestra reporte exportable TSV/JSON; click/F8/Shift+F8 sincronizan selección; `ValidationController` aplica correcciones undoables solo cuando son deterministas.
+
+Pendiente: ampliar códigos más allá de valencia y añadir correcciones químicas más sofisticadas con criterios de seguridad.
+
 **Objetivo**
 - Convertir `ValidationIssue` en una herramienta de corrección, no solo resaltado.
 
@@ -199,6 +211,12 @@ Esta ruta parte del estado observado en mayo de 2026: `clean2d_v2` ya existe, es
 - Hay pruebas unitarias del modelo y pruebas GUI mínimas del flujo de navegación.
 
 ### Bloque C: Name->Structure profesionalizado
+
+**Estado junio 2026: parcial**
+
+Hecho: resolución offline + PubChem, cache y QThread para no bloquear UI.
+
+Pendiente: conector OPSIN opcional, mayor trazabilidad persistida en documento y pantalla de revisión más rica antes de insertar.
 
 **Objetivo**
 - Pasar de resolución básica a un flujo trazable offline/online.
@@ -217,6 +235,12 @@ Esta ruta parte del estado observado en mayo de 2026: `clean2d_v2` ya existe, es
 
 ### Bloque D: superátomos y abreviaturas robustas
 
+**Estado junio 2026: parcial**
+
+Hecho: abreviaturas principales se expanden para cálculo/exportación y se cubren en pruebas.
+
+Pendiente: modelo formal colapsado/expandido editable, límites documentados por abreviatura y round-trip semántico más amplio.
+
 **Objetivo**
 - Hacer que grupos como `Me`, `Et`, `Ph`, `Boc`, `Ts`, `Ac` sean objetos químicos coherentes en dibujo, cálculo, validación y exportación.
 
@@ -232,6 +256,12 @@ Esta ruta parte del estado observado en mayo de 2026: `clean2d_v2` ya existe, es
 - Tests cubren abreviaturas principales y casos no soportados.
 
 ### Bloque E: 3D real como modo de interacción sólido
+
+**Estado junio 2026: parcial**
+
+Hecho: `geometry3d` define `CoordinateSet3D`, backends RDKit/Open Babel, cache, frames, export XYZ y exportadores ORCA/Gaussian/NWChem; el dock **3D / CompChem** ejecuta generación/optimización en QThread, muestra estado/cache/fallback, proyecta a 2D con confirmación y undo, y exporta coordenadas/inputs.
+
+Pendiente: visor 3D interactivo real, trackball integrado y mediciones 3D. La frontera Rust/wgpu queda documentada para un futuro visor, no como migración inmediata.
 
 **Objetivo**
 - Completar el salto de pseudo-3D a conformaciones 3D reales sin perder legibilidad 2D.
@@ -250,6 +280,12 @@ Esta ruta parte del estado observado en mayo de 2026: `clean2d_v2` ya existe, es
 
 ### Bloque F: espectros MVP útil y extensible
 
+**Estado junio 2026: parcial**
+
+Hecho: dock de espectros muestra predicción estimada, fuente, confianza global/por pico, copia/exportación y selección pico↔átomo para ^1H/^13C; hay tests para alcano, alcohol, carbonilo y aromático simple.
+
+Pendiente: reglas heurísticas más completas, equivalencias químicas más finas y API de predictores externos documentada.
+
 **Objetivo**
 - Convertir la predicción heurística actual en una herramienta claramente marcada, navegable y extensible.
 
@@ -265,6 +301,12 @@ Esta ruta parte del estado observado en mayo de 2026: `clean2d_v2` ya existe, es
 - Tests cubren familias simples: alcano, alcohol, carbonilo, aromático.
 
 ### Bloque G: polímeros y Markush semánticos
+
+**Estado junio 2026: parcial**
+
+Hecho: soporte inicial de polímeros/Markush/R-groups y persistencia básica en `.cmsn`.
+
+Pendiente: panel semántico de edición, validación de listas de sustituyentes y exportación semántica cuando el formato lo soporte.
 
 **Objetivo**
 - Pasar de anotaciones detectables a entidades semánticas exportables.
@@ -282,9 +324,11 @@ Esta ruta parte del estado observado en mayo de 2026: `clean2d_v2` ya existe, es
 
 ### Bloque H: interoperabilidad industrial
 
-**Estado mayo 2026**
-- Primer corte implementado con CML import/export/copy y matriz de compatibilidad en `docs/interoperability.md`.
-- Quedan pendientes CDXML/MRV/PDB y metadatos avanzados de publicación.
+**Estado junio 2026: parcial**
+
+Hecho: `.cmsn`, SMILES, Molfile/SDF base, CML inicial, PNG/SVG/PDF y exportación compchem XYZ/ORCA/Gaussian/NWChem.
+
+Pendiente: CDXML/MRV/PDB, metadatos avanzados de publicación y round-trip industrial completo.
 
 **Objetivo**
 - Ampliar import/export sin perder información química ni visual esencial.
@@ -302,15 +346,13 @@ Esta ruta parte del estado observado en mayo de 2026: `clean2d_v2` ya existe, es
 
 ### Orden recomendado inmediato
 
-1. Bloque A: estabilización de pruebas/RDKit.
-2. Bloque B: panel de validación interactiva.
-3. Bloque C: Name->Structure asíncrono y trazable.
-4. Bloque D: superátomos coherentes en cálculo/exportación.
-5. Bloque E: 3D real completo en UI.
-6. Bloque F: espectros mejorados.
-7. Bloque G: polímeros/Markush semánticos.
-8. Bloque H: formatos industriales.
+1. Workbench v0.3: validación corregible + 3D/compchem UI + estabilidad.
+2. Name->Structure trazable con OPSIN opcional y revisión antes de insertar.
+3. Superátomos/abreviaturas como entidades editables.
+4. Espectros heurísticos mejorados y API de predictores.
+5. Polímeros/Markush semánticos.
+6. Interoperabilidad industrial CDXML/MRV/PDB por fases.
 
 ### Siguiente implementación sugerida
 
-El siguiente bloque práctico debe ser **Bloque A**, porque desbloquea verificación confiable antes de tocar más funcionalidad. Después, el mayor valor de usuario está en **Bloque B**, ya que aprovecha `ValidationIssue` ya implementado y lo convierte en una herramienta visible de diagnóstico/corrección.
+El siguiente bloque práctico es **Workbench v0.3: validación corregible + 3D/compchem UI + estabilidad**. La prioridad ya no es reescribir Clean2D ni migrar a Rust, sino cerrar los MVPs iniciados, mantener `pytest -q` como puerta de salud y preparar una futura línea 0.3.x sin publicar release/tag todavía.

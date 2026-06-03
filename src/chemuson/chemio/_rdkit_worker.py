@@ -332,6 +332,20 @@ def _handle_graph_to_smiles_mode(Chem, request: dict[str, Any]) -> dict[str, Any
     return {"ok": True, "smiles": smiles}
 
 
+def _handle_graph_to_inchi_mode(Chem, request: dict[str, Any]) -> dict[str, Any]:
+    """Convierte un payload de grafo Chemuson a InChI en proceso aislado."""
+    mol, _id_map, error = _build_mol_from_graph_payload(Chem, request)
+    if mol is None:
+        return {"ok": False, "error": error or "invalid_graph"}
+    try:
+        from rdkit.Chem.inchi import MolToInchi
+
+        inchi = MolToInchi(mol)
+    except Exception as exc:
+        return {"ok": False, "error": "inchi_failed", "detail": str(exc)}
+    return {"ok": True, "inchi": inchi}
+
+
 def _handle_graph_descriptors_mode(Chem, request: dict[str, Any]) -> dict[str, Any]:
     """Calcula descriptores fisicoquímicos básicos desde payload de grafo."""
     mol, _id_map, error = _build_mol_from_graph_payload(Chem, request)
@@ -638,6 +652,10 @@ def main() -> int:
         return 0
     if mode == "graph_to_smiles":
         result = _handle_graph_to_smiles_mode(Chem, request)
+        sys.stdout.write(json.dumps(result))
+        return 0
+    if mode == "graph_to_inchi":
+        result = _handle_graph_to_inchi_mode(Chem, request)
         sys.stdout.write(json.dumps(result))
         return 0
     if mode == "graph_descriptors":

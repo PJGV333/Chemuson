@@ -40,6 +40,29 @@ class RdkitSmokeTest(unittest.TestCase):
             self.skipTest("Worker RDKit no disponible en este entorno")
         self.assertTrue(result.get("ok"))
 
+    def test_rdkit_worker_probe_does_not_import_rdkit_in_parent(self):
+        env = os.environ.copy()
+        src_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
+        env["PYTHONPATH"] = src_path + os.pathsep + env.get("PYTHONPATH", "")
+        script = (
+            "import sys\n"
+            "from chemuson.chemio.rdkit_safe import is_rdkit_worker_available\n"
+            "before = any(name == 'rdkit' or name.startswith('rdkit.') for name in sys.modules)\n"
+            "is_rdkit_worker_available(timeout_s=5.0)\n"
+            "after = any(name == 'rdkit' or name.startswith('rdkit.') for name in sys.modules)\n"
+            "print(f'{before} {after}')\n"
+            "raise SystemExit(0 if (not before and not after) else 1)\n"
+        )
+        proc = subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn("False False", proc.stdout)
+
     def test_rdkit_safe_advanced_worker_graceful(self):
         graph = MolGraph()
         a1 = graph.add_atom("C", 0.0, 0.0, stereo_axial="R_a")

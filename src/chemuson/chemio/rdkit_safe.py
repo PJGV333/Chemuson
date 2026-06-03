@@ -76,6 +76,25 @@ def molgraph_to_smiles_isolated(
     return smiles, None
 
 
+def molgraph_to_inchi_isolated(
+    graph,
+    timeout_s: float = 5.0,
+) -> tuple[str | None, str | None]:
+    """Convierte un `MolGraph` a InChI usando RDKit en un proceso aislado."""
+    request = _graph_request_payload(
+        graph=graph,
+        chain_atom_ids=[],
+        mode="graph_to_inchi",
+    )
+    response = _run_worker(request, timeout_s=timeout_s)
+    if not response.get("ok"):
+        return None, str(response.get("error", "worker_error"))
+    inchi = str(response.get("inchi", "") or "").strip()
+    if not inchi:
+        return None, "empty_inchi"
+    return inchi, None
+
+
 def molecular_descriptors_isolated(
     graph,
     timeout_s: float = 5.0,
