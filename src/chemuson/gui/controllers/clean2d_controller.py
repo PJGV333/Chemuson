@@ -10,6 +10,7 @@ from chemuson.clean2d import (
     Clean2DQualityReport,
     Clean2DResult,
     assert_clean2d_invariants,
+    classify_clean2d_layout_quality,
     clean2d_geometry_hash,
     evaluate_clean2d_layout,
     has_cycles,
@@ -410,6 +411,12 @@ class Clean2DController:
             for aid in target_ids
             if aid in canvas.model.atoms
         }
+        initial_quality = classify_clean2d_layout_quality(
+            graph,
+            target_ids,
+            coords=before,
+            target_bond_length=target_bond_len,
+        )
         alternative_mode = self._is_alternative_mode(mode)
         avoid_hashes = self._avoid_hashes_for_proposal(graph, target_ids, before) if alternative_mode else set()
         result = run_clean2d_engine(
@@ -438,7 +445,11 @@ class Clean2DController:
             )
             return
 
-        if self._smart_propose_enabled(mode) and self._result_can_try_proposal(result, attempt):
+        if (
+            initial_quality.quality_class == "good"
+            and self._smart_propose_enabled(mode)
+            and self._result_can_try_proposal(result, attempt)
+        ):
             propose_attempt = self._run_propose_pass(
                 window,
                 graph,

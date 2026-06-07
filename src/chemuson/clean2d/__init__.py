@@ -31,6 +31,7 @@ from .engine import (
     generate_clean2d_candidates,
     rank_clean2d_candidates,
     run_clean2d_engine,
+    summarize_clean2d_candidates,
 )
 
 __all__ = [
@@ -61,4 +62,5 @@ __all__ = [
     "generate_clean2d_candidates",
     "rank_clean2d_candidates",
     "run_clean2d_engine",
+    "summarize_clean2d_candidates",
 ]

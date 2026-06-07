@@ -205,6 +205,7 @@ def rank_clean2d_candidates(
         coords=before_coords,
         target_bond_length=target,
     )
+    baseline_needs_work = quality.quality_class != "good"
     baseline_bad = quality.quality_class == "needs_rebuild"
     avoid_hashes = set(avoid_hashes or set())
 
@@ -274,6 +275,26 @@ def rank_clean2d_candidates(
             target,
             is_cyclic=cyclic,
         )
+        candidate_quality = classify_clean2d_layout_quality(
+            graph,
+            selected,
+            coords=after,
+            target_bond_length=target,
+        )
+        candidate_metadata = {
+            **candidate.metadata,
+            "quality_class": candidate_quality.quality_class,
+            "quality_reason": candidate_quality.reason,
+            "length_rms_error": candidate_quality.length_rms_error,
+            "length_max_error": candidate_quality.length_max_error,
+            "angle_rms_deviation": candidate_quality.angle_rms_deviation,
+            "angle_max_deviation": candidate_quality.angle_max_deviation,
+            "severe_angle_count": candidate_quality.severe_angle_count,
+            "crossings": candidate_quality.crossings,
+            "min_nonbonded_distance": candidate_quality.min_nonbonded_distance,
+            "min_ring_degeneracy": candidate_quality.min_ring_degeneracy,
+            "visual_score": candidate_quality.visual_score,
+        }
         safety_mode = _safety_mode_for_candidate(mode, candidate, baseline_bad)
         safe = is_clean2d_candidate_safe(report, safety_mode)
         if mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION} and candidate.source == "current":
@@ -283,6 +304,17 @@ def rank_clean2d_candidates(
             elif quality.quality_class == "needs_polish":
                 safe = False
                 report.rejection_reason = "geometria_actual_requiere_optimizacion"
+        if mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION} and candidate_quality.quality_class == "needs_rebuild":
+            safe = False
+            report.rejection_reason = "candidato_no_canonicaliza_geometria"
+        if (
+            mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION}
+            and baseline_needs_work
+            and candidate_quality.quality_class == "needs_polish"
+            and not _candidate_substantially_improves_layout(quality, candidate_quality)
+        ):
+            safe = False
+            report.rejection_reason = "candidato_no_mejora_suficiente"
         if mode == Clean2DMode.PROPOSE and candidate.source == "current":
             safe = False
             report.rejection_reason = "propose_requiere_geometria_alternativa"
@@ -303,13 +335,23 @@ def rank_clean2d_candidates(
                     rejection_reason=report.rejection_reason or "candidato_rechazado",
                     report=report,
                     geometry_hash=geometry_hash,
+                    metadata=candidate_metadata,
                 )
             )
             continue
 
         novelty = _mean_displacement(before_coords, after, selected)
         score = _visual_quality_score(graph, selected, bonds, before_coords, after, target, mode)
-        if mode == Clean2DMode.QUICK and candidate.source != "current" and not baseline_bad:
+        if mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION} and baseline_needs_work:
+            score += _quality_rank(candidate_quality.quality_class) * target * 10000.0
+            score += candidate_quality.visual_score
+            score += candidate_quality.length_rms_error * target * 120.0
+            score += candidate_quality.angle_rms_deviation * 12.0
+            score += candidate_quality.crossings * target * 1000.0
+            if candidate_quality.min_nonbonded_distance < math.inf:
+                score -= min(candidate_quality.min_nonbonded_distance, target * 2.0) * 0.05
+            score += novelty * 0.02
+        elif mode == Clean2DMode.QUICK and candidate.source != "current":
             score += novelty * 12.0
         elif mode == Clean2DMode.QUICK:
             score += novelty * 0.20
@@ -323,19 +365,38 @@ def rank_clean2d_candidates(
 
         if candidate.source == "current" and quality.quality_class == "good":
             score = min(score, baseline_score * 0.25)
+        message = candidate.message
+        if (
+            mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION}
+            and baseline_needs_work
+            and candidate_quality.quality_class == "needs_polish"
+        ):
+            message = "Estructura 2D parcialmente optimizada; requiere otra pasada"
+        elif (
+            mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION}
+            and baseline_needs_work
+            and candidate_quality.quality_class == "good"
+            and candidate.source != "current"
+        ):
+            message = "Estructura 2D optimizada"
 
         accepted.append(
             _replace_candidate(
                 candidate,
                 coords=after,
+                message=message,
                 score=score,
                 novelty=novelty,
                 report=report,
                 geometry_hash=geometry_hash,
+                metadata=candidate_metadata,
             )
         )
 
-    accepted.sort(key=lambda item: (item.score, _source_priority(item.source), item.source))
+    if mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION} and baseline_needs_work:
+        accepted.sort(key=lambda item: _canonicalization_sort_key(item))
+    else:
+        accepted.sort(key=lambda item: (item.score, _source_priority(item.source), item.source))
     selected_candidate = accepted[0] if accepted else None
     message = selected_candidate.message if selected_candidate is not None else ""
     reason = ""
@@ -450,6 +511,92 @@ def _replace_quality(report: Clean2DLayoutQualityReport, **updates: Any) -> Clea
     }
     data.update(updates)
     return Clean2DLayoutQualityReport(**data)
+
+
+def summarize_clean2d_candidates(result: Clean2DResult) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for candidate in (*result.candidates, *result.rejected):
+        metadata = candidate.metadata
+        rows.append(
+            {
+                "source": candidate.source,
+                "rejected": candidate.rejected,
+                "reason": candidate.rejection_reason,
+                "score": candidate.score,
+                "novelty": candidate.novelty,
+                "quality_class": metadata.get("quality_class", ""),
+                "quality_reason": metadata.get("quality_reason", ""),
+                "length_rms_error": metadata.get("length_rms_error", 0.0),
+                "length_max_error": metadata.get("length_max_error", 0.0),
+                "angle_rms_deviation": metadata.get("angle_rms_deviation", 0.0),
+                "angle_max_deviation": metadata.get("angle_max_deviation", 0.0),
+                "severe_angle_count": metadata.get("severe_angle_count", 0),
+                "crossings": metadata.get("crossings", 0),
+                "min_nonbonded_distance": metadata.get("min_nonbonded_distance", math.inf),
+                "min_ring_degeneracy": metadata.get("min_ring_degeneracy", math.inf),
+            }
+        )
+    return rows
+
+
+def _quality_rank(quality_class: str) -> int:
+    return {
+        "good": 0,
+        "needs_polish": 1,
+        "needs_rebuild": 2,
+    }.get(str(quality_class or ""), 9)
+
+
+def _candidate_substantially_improves_layout(
+    before: Clean2DLayoutQualityReport,
+    after: Clean2DLayoutQualityReport,
+) -> bool:
+    if after.quality_class == "good":
+        return True
+    if after.quality_class == "needs_rebuild":
+        return False
+    no_new_crossings = after.crossings <= before.crossings
+    no_new_collision = (
+        after.min_nonbonded_distance >= before.min_nonbonded_distance - 1e-6
+        or before.min_nonbonded_distance == math.inf
+    )
+    no_ring_worse = (
+        after.min_ring_degeneracy >= before.min_ring_degeneracy - 1e-6
+        or before.min_ring_degeneracy == math.inf
+    )
+    if not (no_new_crossings and no_new_collision and no_ring_worse):
+        return False
+    if before.visual_score > 1e-6 and after.visual_score < before.visual_score * 0.75:
+        return True
+    length_better = (
+        after.length_rms_error < before.length_rms_error * 0.85
+        or after.length_rms_error + 0.01 < before.length_rms_error
+    )
+    angle_better = (
+        after.angle_rms_deviation < before.angle_rms_deviation * 0.85
+        or after.angle_rms_deviation + 2.0 < before.angle_rms_deviation
+    )
+    return length_better and angle_better
+
+
+def _canonicalization_sort_key(candidate: Clean2DCandidate) -> tuple[float, ...]:
+    metadata = candidate.metadata
+    quality_class = str(metadata.get("quality_class", ""))
+    min_nonbonded = float(metadata.get("min_nonbonded_distance", math.inf))
+    min_ring = float(metadata.get("min_ring_degeneracy", math.inf))
+    return (
+        float(_quality_rank(quality_class)),
+        float(metadata.get("visual_score", candidate.score) or candidate.score),
+        float(metadata.get("length_rms_error", 0.0) or 0.0),
+        float(metadata.get("angle_rms_deviation", 0.0) or 0.0),
+        float(metadata.get("crossings", 0) or 0),
+        float(metadata.get("length_max_error", 0.0) or 0.0),
+        float(metadata.get("angle_max_deviation", 0.0) or 0.0),
+        float(metadata.get("severe_angle_count", 0) or 0),
+        -min(min_nonbonded, 1_000_000.0),
+        -min(min_ring, 1_000_000.0),
+        float(_source_priority(candidate.source)),
+    )
 
 
 def capture_clean2d_snapshot(
@@ -846,12 +993,17 @@ def _internal_template_layout(
 ) -> dict[int, tuple[float, float]]:
     adjacency = _adjacency_for_bonds(atom_ids, bonds)
     rings = _cycle_basis_ordered(atom_ids, bonds, max_size=8)
+    rings.sort(key=lambda ring: (-len(ring), min(ring), tuple(ring)))
     out = dict(before)
     placed: set[int] = set()
     ring_centers: dict[int, tuple[float, float]] = {}
+    pending_rings: list[list[int]] = []
 
     for ring_idx, ring in enumerate(rings):
         if not (3 <= len(ring) <= 8):
+            continue
+        if placed and not (set(ring) & placed):
+            pending_rings.append(ring)
             continue
         coords = _place_ring_template(ring, before, out, placed, ring_centers, target)
         if not coords:
@@ -862,6 +1014,16 @@ def _internal_template_layout(
         ring_centers[ring_idx] = _center({atom_id: out[atom_id] for atom_id in ring})
 
     if placed:
+        _layout_branches_from_placed_core(graph, atom_ids, bonds, adjacency, out, placed, target)
+        for ring in pending_rings:
+            if not (set(ring) & placed):
+                continue
+            coords = _place_ring_template(ring, before, out, placed, ring_centers, target)
+            if not coords:
+                continue
+            for atom_id, coord in coords.items():
+                out[atom_id] = coord
+                placed.add(atom_id)
         _layout_branches_from_placed_core(graph, atom_ids, bonds, adjacency, out, placed, target)
 
     remaining = atom_ids - placed

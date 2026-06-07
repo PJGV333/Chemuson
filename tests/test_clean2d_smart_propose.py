@@ -12,13 +12,16 @@ from PyQt6.QtWidgets import QApplication
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.clean2d import (
+    Clean2DCandidate,
     assert_clean2d_invariants,
     capture_clean2d_snapshot,
     classify_clean2d_layout_quality,
     clean2d_geometry_hash,
     count_new_bond_crossings,
+    rank_clean2d_candidates,
     ring_degeneracy_score,
     run_clean2d_engine,
+    summarize_clean2d_candidates,
 )
 from chemuson.core.model import BondStyle, MolGraph
 from chemuson.gui.canvas import ChemusonCanvas
@@ -208,7 +211,7 @@ def test_smart_clean_first_press_canonicalizes_raw_mixed_structure() -> None:
         assert after_quality.quality_class == "good"
         assert after_quality.visual_score < before_quality.visual_score
         assert max(_lengths(canvas.model, after)) < max(_lengths(canvas.model, before))
-        assert "limpiada" in _last_status(window)
+        assert "optimizada" in _last_status(window) or "limpiada" in _last_status(window)
         assert "alternativa propuesta" not in _last_status(window)
         assert canvas.undo_stack.count() == 1
     finally:
@@ -253,7 +256,7 @@ def test_smart_clean_repairs_distorted_structure_before_proposing() -> None:
         assert max(after_lengths) <= 40.0 * 1.45
         assert ring_degeneracy_score(after, phenyl) > 0.18
         assert ring_degeneracy_score(after, cyclopropane) > 0.05
-        assert "limpiada" in _last_status(window)
+        assert "optimizada" in _last_status(window) or "limpiada" in _last_status(window)
         assert "alternativa propuesta" not in _last_status(window)
     finally:
         canvas.close()
@@ -364,6 +367,72 @@ def test_propose_rejects_suboptimal_base_instead_of_dragging_bad_geometry() -> N
         target_bond_length=40.0,
     )
     assert canonical_quality.visual_score < quality.visual_score
+
+
+def test_candidate_exit_gate_rejects_motion_without_canonicalization() -> None:
+    graph = MolGraph()
+    _populate_clean_mixed_structure(graph)
+    _nudge_to_suboptimal_geometry(graph)
+    before = _coords(graph)
+    assert classify_clean2d_layout_quality(graph, target_bond_length=40.0).quality_class == "needs_polish"
+    moved_same_shape = {
+        atom_id: (x + 12.0, y - 8.0)
+        for atom_id, (x, y) in before.items()
+    }
+    moving_candidate = Clean2DCandidate(
+        source="rdkit_isolated",
+        coords=moved_same_shape,
+        message="bad motion",
+    )
+
+    result = rank_clean2d_candidates(
+        graph,
+        [moving_candidate],
+        before,
+        set(graph.atoms),
+        mode="quick",
+        target_bond_length=40.0,
+    )
+    summary = summarize_clean2d_candidates(result)
+
+    assert result.selected is None
+    assert any(row["source"] == "rdkit_isolated" and row["reason"] == "candidato_no_mejora_suficiente" for row in summary)
+    assert all("quality_class" in row and "angle_rms_deviation" in row for row in summary)
+
+
+def test_best_candidate_chosen_by_final_quality_not_source_priority() -> None:
+    graph = MolGraph()
+    _populate_clean_mixed_structure(graph)
+    good_graph = MolGraph()
+    _populate_clean_mixed_structure(good_graph)
+    _nudge_to_suboptimal_geometry(graph)
+    before = _coords(graph)
+    good_coords = _coords(good_graph)
+    assert classify_clean2d_layout_quality(graph, target_bond_length=40.0).quality_class == "needs_polish"
+
+    high_priority_bad = Clean2DCandidate(
+        source="rdkit_isolated",
+        coords={atom_id: (x + 6.0, y + 6.0) for atom_id, (x, y) in before.items()},
+        message="high priority but still bad",
+    )
+    low_priority_good = Clean2DCandidate(
+        source="safe_fallback",
+        coords=good_coords,
+        message="low priority good",
+    )
+
+    result = rank_clean2d_candidates(
+        graph,
+        [high_priority_bad, low_priority_good],
+        before,
+        set(graph.atoms),
+        mode="quick",
+        target_bond_length=40.0,
+    )
+
+    assert result.selected is not None
+    assert result.selected.source == "safe_fallback"
+    assert result.selected.metadata["quality_class"] == "good"
 
 
 def test_smart_clean_reports_clear_noop_when_no_safe_alternative_exists() -> None:
