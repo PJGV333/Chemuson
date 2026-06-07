@@ -84,6 +84,8 @@ class Clean2DLayoutQualityReport:
     crossings: int = 0
     min_nonbonded_distance: float = math.inf
     min_ring_degeneracy: float = math.inf
+    exocyclic_ring_angle_min: float = math.inf
+    bad_exocyclic_ring_count: int = 0
     visual_score: float = 0.0
 
 
@@ -293,6 +295,8 @@ def rank_clean2d_candidates(
             "crossings": candidate_quality.crossings,
             "min_nonbonded_distance": candidate_quality.min_nonbonded_distance,
             "min_ring_degeneracy": candidate_quality.min_ring_degeneracy,
+            "exocyclic_ring_angle_min": candidate_quality.exocyclic_ring_angle_min,
+            "bad_exocyclic_ring_count": candidate_quality.bad_exocyclic_ring_count,
             "visual_score": candidate_quality.visual_score,
         }
         safety_mode = _safety_mode_for_candidate(mode, candidate, baseline_bad)
@@ -348,6 +352,9 @@ def rank_clean2d_candidates(
             score += candidate_quality.length_rms_error * target * 120.0
             score += candidate_quality.angle_rms_deviation * 12.0
             score += candidate_quality.crossings * target * 1000.0
+            score += candidate_quality.bad_exocyclic_ring_count * target * 500.0
+            if candidate_quality.exocyclic_ring_angle_min < math.inf:
+                score += max(0.0, 125.0 - candidate_quality.exocyclic_ring_angle_min) * target * 2.0
             if candidate_quality.min_nonbonded_distance < math.inf:
                 score -= min(candidate_quality.min_nonbonded_distance, target * 2.0) * 0.05
             score += novelty * 0.02
@@ -363,8 +370,6 @@ def rank_clean2d_candidates(
             if novelty < target * 0.05:
                 score += target * 80.0
 
-        if candidate.source == "current" and quality.quality_class == "good":
-            score = min(score, baseline_score * 0.25)
         message = candidate.message
         if (
             mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION}
@@ -395,6 +400,17 @@ def rank_clean2d_candidates(
 
     if mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION} and baseline_needs_work:
         accepted.sort(key=lambda item: _canonicalization_sort_key(item))
+    elif mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION}:
+        accepted = _rank_good_baseline_candidates_for_canonicalization(accepted, target)
+    elif mode == Clean2DMode.PROPOSE:
+        accepted.sort(
+            key=lambda item: (
+                round(item.score, 9),
+                _propose_source_priority(item.source),
+                item.score,
+                item.source,
+            )
+        )
     else:
         accepted.sort(key=lambda item: (item.score, _source_priority(item.source), item.source))
     selected_candidate = accepted[0] if accepted else None
@@ -456,6 +472,7 @@ def classify_clean2d_layout_quality(
         for ring in _cycle_basis_ordered(selected, bonds, max_size=8)
     ]
     min_ring = min(ring_scores) if ring_scores else math.inf
+    exocyclic_stats = _exocyclic_ring_orientation_stats(selected, bonds, before)
     visual_score = _visual_quality_score(graph, selected, bonds, before, before, target, Clean2DMode.QUICK)
 
     base_report = Clean2DLayoutQualityReport(
@@ -469,6 +486,8 @@ def classify_clean2d_layout_quality(
         crossings=crossings,
         min_nonbonded_distance=nonbonded,
         min_ring_degeneracy=min_ring,
+        exocyclic_ring_angle_min=exocyclic_stats["min_center_angle"],
+        bad_exocyclic_ring_count=int(exocyclic_stats["bad_count"]),
         visual_score=visual_score,
     )
 
@@ -482,6 +501,12 @@ def classify_clean2d_layout_quality(
         return _replace_quality(base_report, quality_class="needs_rebuild", reason="colisiones_no_enlazadas")
     if min_ring != math.inf and min_ring < 0.12:
         return _replace_quality(base_report, quality_class="needs_rebuild", reason="anillo_degenerado")
+    if exocyclic_stats["bad_count"] > 0 and (crossings > 0 or nonbonded < target * 0.35):
+        return _replace_quality(
+            base_report,
+            quality_class="needs_rebuild",
+            reason="orientacion_anillo_exociclico_con_colision",
+        )
 
     if length_max > 0.14 or length_rms > 0.055:
         return _replace_quality(base_report, quality_class="needs_polish", reason="longitudes_suboptimas")
@@ -491,6 +516,12 @@ def classify_clean2d_layout_quality(
         return _replace_quality(base_report, quality_class="needs_polish", reason="distancias_no_enlazadas_estrechas")
     if min_ring != math.inf and min_ring < 0.25:
         return _replace_quality(base_report, quality_class="needs_polish", reason="anillo_suboptimo")
+    if exocyclic_stats["bad_count"] > 0:
+        return _replace_quality(
+            base_report,
+            quality_class="needs_polish",
+            reason="orientacion_anillo_exociclico_suboptima",
+        )
     return base_report
 
 
@@ -507,6 +538,8 @@ def _replace_quality(report: Clean2DLayoutQualityReport, **updates: Any) -> Clea
         "crossings": report.crossings,
         "min_nonbonded_distance": report.min_nonbonded_distance,
         "min_ring_degeneracy": report.min_ring_degeneracy,
+        "exocyclic_ring_angle_min": report.exocyclic_ring_angle_min,
+        "bad_exocyclic_ring_count": report.bad_exocyclic_ring_count,
         "visual_score": report.visual_score,
     }
     data.update(updates)
@@ -534,6 +567,10 @@ def summarize_clean2d_candidates(result: Clean2DResult) -> list[dict[str, Any]]:
                 "crossings": metadata.get("crossings", 0),
                 "min_nonbonded_distance": metadata.get("min_nonbonded_distance", math.inf),
                 "min_ring_degeneracy": metadata.get("min_ring_degeneracy", math.inf),
+                "exocyclic_ring_angle_min": metadata.get("exocyclic_ring_angle_min", math.inf),
+                "bad_exocyclic_ring_count": metadata.get("bad_exocyclic_ring_count", 0),
+                "visual_score": metadata.get("visual_score", 0.0),
+                "geometry_hash": candidate.geometry_hash,
             }
         )
     return rows
@@ -579,6 +616,155 @@ def _candidate_substantially_improves_layout(
     return length_better and angle_better
 
 
+def _rank_good_baseline_candidates_for_canonicalization(
+    accepted: list[Clean2DCandidate],
+    target: float,
+) -> list[Clean2DCandidate]:
+    if not accepted:
+        return []
+    current = next((candidate for candidate in accepted if candidate.source == "current"), None)
+    if current is None:
+        return sorted(accepted, key=lambda item: (item.score, _source_priority(item.source), item.source))
+    if not _current_has_material_canonical_defect(current.metadata, target):
+        current = _replace_candidate(
+            current,
+            metadata={**current.metadata, "current_canonical_enough": True},
+        )
+        remainder = [candidate for candidate in accepted if candidate.source != "current"]
+        return [current] + sorted(remainder, key=lambda item: (item.score, _source_priority(item.source), item.source))
+
+    improvements = [
+        _with_canonical_delta(current, candidate, target)
+        for candidate in accepted
+        if candidate.source != "current"
+    ]
+    improvements = [
+        candidate
+        for candidate in improvements
+        if bool(candidate.metadata.get("canonical_improvement_over_current", False))
+    ]
+    if improvements:
+        improvements.sort(key=lambda item: _canonicalization_sort_key(item))
+        chosen = _replace_candidate(improvements[0], message="Estructura 2D optimizada")
+        remainder = [
+            candidate
+            for candidate in accepted
+            if candidate.geometry_hash != chosen.geometry_hash or candidate.source != chosen.source
+        ]
+        return [chosen] + sorted(remainder, key=lambda item: (item.score, _source_priority(item.source), item.source))
+
+    current = _replace_candidate(
+        current,
+        metadata={**current.metadata, "current_canonical_enough": True},
+    )
+    remainder = [candidate for candidate in accepted if candidate.source != "current"]
+    return [current] + sorted(remainder, key=lambda item: (item.score, _source_priority(item.source), item.source))
+
+
+def _current_has_material_canonical_defect(metadata: dict[str, Any], target: float) -> bool:
+    visual_score = float(metadata.get("visual_score", 0.0) or 0.0)
+    if visual_score > target * 20.0:
+        return True
+    if float(metadata.get("bad_exocyclic_ring_count", 0) or 0) > 0:
+        return True
+    if float(metadata.get("crossings", 0) or 0) > 0:
+        return True
+    if float(metadata.get("severe_angle_count", 0) or 0) > 0:
+        return True
+    min_nonbonded = float(metadata.get("min_nonbonded_distance", math.inf) or math.inf)
+    if min_nonbonded < target * 0.50:
+        return True
+    min_ring = float(metadata.get("min_ring_degeneracy", math.inf) or math.inf)
+    return min_ring < 0.25
+
+
+def _with_canonical_delta(
+    current: Clean2DCandidate,
+    candidate: Clean2DCandidate,
+    target: float,
+) -> Clean2DCandidate:
+    delta = canonicalization_delta(current, candidate, target)
+    return _replace_candidate(candidate, metadata={**candidate.metadata, **delta})
+
+
+def canonicalization_delta(
+    current: Clean2DCandidate,
+    candidate: Clean2DCandidate,
+    target: float,
+) -> dict[str, Any]:
+    current_meta = current.metadata
+    candidate_meta = candidate.metadata
+    novelty = float(candidate.novelty or 0.0)
+    current_visual = float(current_meta.get("visual_score", current.score) or current.score or 0.0)
+    candidate_visual = float(candidate_meta.get("visual_score", candidate.score) or candidate.score or math.inf)
+    current_quality = str(current_meta.get("quality_class", ""))
+    candidate_quality = str(candidate_meta.get("quality_class", ""))
+    geometry_equivalent = (
+        bool(current.geometry_hash)
+        and bool(candidate.geometry_hash)
+        and current.geometry_hash == candidate.geometry_hash
+    ) or novelty < target * 0.05
+    metric_better = _candidate_improves_important_metric(current_meta, candidate_meta, target)
+    visual_margin = max(0.5, target * 0.02)
+    visual_better = candidate_visual + visual_margin < current_visual
+    visual_close_for_dirty_layout = (
+        current_visual > target * 20.0
+        and candidate_visual <= max(current_visual, 1e-6) * 1.05
+    )
+    canonical_improvement = (
+        current_quality == "good"
+        and candidate_quality == "good"
+        and not geometry_equivalent
+        and (visual_better or visual_close_for_dirty_layout or metric_better)
+    )
+    return {
+        "current_canonical_enough": False,
+        "canonical_improvement_over_current": canonical_improvement,
+        "canonical_geometry_equivalent": geometry_equivalent,
+        "canonical_visual_delta": current_visual - candidate_visual,
+        "canonical_metric_better": metric_better,
+    }
+
+
+def _candidate_improves_important_metric(
+    current_meta: dict[str, Any],
+    candidate_meta: dict[str, Any],
+    target: float,
+) -> bool:
+    if float(candidate_meta.get("crossings", 0) or 0) < float(current_meta.get("crossings", 0) or 0):
+        return True
+    if float(candidate_meta.get("bad_exocyclic_ring_count", 0) or 0) < float(
+        current_meta.get("bad_exocyclic_ring_count", 0) or 0
+    ):
+        return True
+    if float(candidate_meta.get("severe_angle_count", 0) or 0) < float(current_meta.get("severe_angle_count", 0) or 0):
+        return True
+
+    current_angle = float(current_meta.get("angle_rms_deviation", 0.0) or 0.0)
+    candidate_angle = float(candidate_meta.get("angle_rms_deviation", 0.0) or 0.0)
+    if current_angle > 3.0 and (candidate_angle < current_angle * 0.85 or candidate_angle + 2.0 < current_angle):
+        return True
+
+    current_length = float(current_meta.get("length_rms_error", 0.0) or 0.0)
+    candidate_length = float(candidate_meta.get("length_rms_error", 0.0) or 0.0)
+    if current_length > 0.055 and (candidate_length < current_length * 0.85 or candidate_length + 0.01 < current_length):
+        return True
+
+    current_ring = float(current_meta.get("min_ring_degeneracy", math.inf) or math.inf)
+    candidate_ring = float(candidate_meta.get("min_ring_degeneracy", math.inf) or math.inf)
+    if current_ring < 0.35 and candidate_ring > current_ring + 0.05:
+        return True
+
+    current_exocyclic = float(current_meta.get("exocyclic_ring_angle_min", math.inf) or math.inf)
+    candidate_exocyclic = float(candidate_meta.get("exocyclic_ring_angle_min", math.inf) or math.inf)
+    if current_exocyclic < 125.0 and candidate_exocyclic > current_exocyclic + 15.0:
+        return True
+
+    current_nonbonded = float(current_meta.get("min_nonbonded_distance", math.inf) or math.inf)
+    candidate_nonbonded = float(candidate_meta.get("min_nonbonded_distance", math.inf) or math.inf)
+    return current_nonbonded < target * 0.50 and candidate_nonbonded > current_nonbonded + target * 0.10
+
+
 def _canonicalization_sort_key(candidate: Clean2DCandidate) -> tuple[float, ...]:
     metadata = candidate.metadata
     quality_class = str(metadata.get("quality_class", ""))
@@ -593,6 +779,8 @@ def _canonicalization_sort_key(candidate: Clean2DCandidate) -> tuple[float, ...]
         float(metadata.get("length_max_error", 0.0) or 0.0),
         float(metadata.get("angle_max_deviation", 0.0) or 0.0),
         float(metadata.get("severe_angle_count", 0) or 0),
+        float(metadata.get("bad_exocyclic_ring_count", 0) or 0),
+        -float(metadata.get("exocyclic_ring_angle_min", math.inf) or math.inf),
         -min(min_nonbonded, 1_000_000.0),
         -min(min_ring, 1_000_000.0),
         float(_source_priority(candidate.source)),
@@ -815,7 +1003,7 @@ def _candidate_from_internal_templates(
     coords = _internal_template_layout(graph, atom_ids, before, bonds, target)
     if not coords:
         return None
-    coords = _normalized_candidate_coords(before, coords, bonds, target, align=False)
+    coords = _normalized_candidate_coords(before, coords, bonds, target, align=True)
     return Clean2DCandidate(
         source="internal_templates",
         coords=coords,
@@ -1005,7 +1193,7 @@ def _internal_template_layout(
         if placed and not (set(ring) & placed):
             pending_rings.append(ring)
             continue
-        coords = _place_ring_template(ring, before, out, placed, ring_centers, target)
+        coords = _place_ring_template(ring, before, out, placed, ring_centers, target, adjacency, bonds)
         if not coords:
             continue
         for atom_id, coord in coords.items():
@@ -1014,11 +1202,21 @@ def _internal_template_layout(
         ring_centers[ring_idx] = _center({atom_id: out[atom_id] for atom_id in ring})
 
     if placed:
-        _layout_branches_from_placed_core(graph, atom_ids, bonds, adjacency, out, placed, target)
+        deferred_rings = [set(ring) for ring in pending_rings]
+        _layout_branches_from_placed_core(
+            graph,
+            atom_ids,
+            bonds,
+            adjacency,
+            out,
+            placed,
+            target,
+            deferred_rings=deferred_rings,
+        )
         for ring in pending_rings:
             if not (set(ring) & placed):
                 continue
-            coords = _place_ring_template(ring, before, out, placed, ring_centers, target)
+            coords = _place_ring_template(ring, before, out, placed, ring_centers, target, adjacency, bonds)
             if not coords:
                 continue
             for atom_id, coord in coords.items():
@@ -1052,9 +1250,12 @@ def _place_ring_template(
     placed: set[int],
     ring_centers: dict[int, tuple[float, float]],
     target: float,
+    adjacency: dict[int, set[int]],
+    bonds: list[Bond],
 ) -> dict[int, tuple[float, float]]:
     shared_edges: list[tuple[int, int, int]] = []
     n = len(ring)
+    ring_set = set(ring)
     for idx, atom_id in enumerate(ring):
         nxt = ring[(idx + 1) % n]
         if atom_id in placed and nxt in placed:
@@ -1068,6 +1269,36 @@ def _place_ring_template(
             (coords, alt),
             key=lambda item: _ring_overlap_score(item, placed, current, shared={a1, a2}),
         )
+
+    shared_atoms = ring_set & placed
+    if 3 <= n <= 6 and len(shared_atoms) == 1:
+        anchor = next(iter(shared_atoms))
+        external_neighbors = sorted(
+            neigh
+            for neigh in adjacency.get(anchor, set())
+            if neigh in placed and neigh in current and neigh not in ring_set
+        )
+        if external_neighbors:
+            external = external_neighbors[0]
+            candidates = [
+                _place_ring_from_single_anchor(ring, anchor, external, current, target, sign=sign)
+                for sign in (1, -1)
+            ]
+            candidates = [coords for coords in candidates if coords]
+            if candidates:
+                return min(
+                    candidates,
+                    key=lambda item: _single_anchor_ring_orientation_score(
+                        item,
+                        ring,
+                        anchor,
+                        external,
+                        current,
+                        placed,
+                        bonds,
+                        target,
+                    ),
+                )
 
     center = _center({atom_id: before[atom_id] for atom_id in ring if atom_id in before})
     if center == (0.0, 0.0) and not any(atom_id in before for atom_id in ring):
@@ -1133,6 +1364,133 @@ def _regular_ring_from_edge(
     return coords
 
 
+def _place_ring_from_single_anchor(
+    ring: list[int],
+    anchor_atom_id: int,
+    external_neighbor_id: int,
+    current: dict[int, tuple[float, float]],
+    target: float,
+    *,
+    sign: int,
+) -> dict[int, tuple[float, float]]:
+    if anchor_atom_id not in current or external_neighbor_id not in current:
+        return {}
+    n = len(ring)
+    if n < 3:
+        return {}
+    anchor = current[anchor_atom_id]
+    external = current[external_neighbor_id]
+    vx = external[0] - anchor[0]
+    vy = external[1] - anchor[1]
+    norm = math.hypot(vx, vy)
+    if norm <= 1e-9:
+        return {}
+    ux = vx / norm
+    uy = vy / norm
+    radius = target / (2.0 * math.sin(math.pi / n))
+    center = (anchor[0] - ux * radius, anchor[1] - uy * radius)
+    anchor_angle = math.atan2(anchor[1] - center[1], anchor[0] - center[0])
+    if anchor_atom_id not in ring:
+        return {}
+    start_idx = ring.index(anchor_atom_id)
+    ordered = ring[start_idx:] + ring[:start_idx]
+    coords: dict[int, tuple[float, float]] = {}
+    for idx, atom_id in enumerate(ordered):
+        angle = anchor_angle + float(sign) * 2.0 * math.pi * idx / n
+        coords[atom_id] = (
+            center[0] + radius * math.cos(angle),
+            center[1] + radius * math.sin(angle),
+        )
+    coords[anchor_atom_id] = anchor
+    return coords
+
+
+def _single_anchor_ring_orientation_score(
+    coords: dict[int, tuple[float, float]],
+    ring: list[int],
+    anchor: int,
+    external_neighbor: int,
+    current: dict[int, tuple[float, float]],
+    placed: set[int],
+    bonds: list[Bond],
+    target: float,
+) -> tuple[float, ...]:
+    if anchor not in coords or external_neighbor not in current:
+        return (float("inf"),)
+    ring_center = _center({atom_id: coords[atom_id] for atom_id in ring if atom_id in coords})
+    anchor_pt = coords[anchor]
+    external_pt = current[external_neighbor]
+    center_angle = _angle_between(anchor_pt, external_pt, ring_center)
+    ring_neighbors = _ring_neighbors_for_anchor(ring, anchor)
+    edge_angles = [
+        _angle_between(anchor_pt, external_pt, coords[neigh])
+        for neigh in ring_neighbors
+        if neigh in coords
+    ]
+    min_edge_angle = min(edge_angles) if edge_angles else 0.0
+    orientation_penalty = max(0.0, 115.0 - center_angle) * 1000.0
+    edge_penalty = max(0.0, 85.0 - min_edge_angle) * 1000.0
+    collisions = 0
+    min_dist = float("inf")
+    ring_set = set(ring)
+    for atom_id, coord in coords.items():
+        if atom_id == anchor:
+            continue
+        for placed_id in placed:
+            if placed_id == anchor or placed_id in ring_set or placed_id not in current:
+                continue
+            dist = _distance(coord, current[placed_id])
+            min_dist = min(min_dist, dist)
+            if dist < target * 0.55:
+                collisions += 1
+    crossings = _single_anchor_ring_crossings(coords, ring, current, placed, bonds)
+    overlap = _ring_overlap_score(coords, placed, current, shared={anchor})
+    return (
+        orientation_penalty,
+        edge_penalty,
+        float(collisions),
+        float(crossings),
+        -center_angle,
+        -min_edge_angle,
+        -min(min_dist, target * 3.0),
+        float(overlap[0]),
+        float(overlap[1]),
+    )
+
+
+def _ring_neighbors_for_anchor(ring: list[int], anchor: int) -> list[int]:
+    if anchor not in ring:
+        return []
+    idx = ring.index(anchor)
+    return [ring[(idx - 1) % len(ring)], ring[(idx + 1) % len(ring)]]
+
+
+def _single_anchor_ring_crossings(
+    coords: dict[int, tuple[float, float]],
+    ring: list[int],
+    current: dict[int, tuple[float, float]],
+    placed: set[int],
+    bonds: list[Bond],
+) -> int:
+    crossings = 0
+    ring_edges = [
+        (ring[idx], ring[(idx + 1) % len(ring)])
+        for idx in range(len(ring))
+        if ring[idx] in coords and ring[(idx + 1) % len(ring)] in coords
+    ]
+    for a1, a2 in ring_edges:
+        for bond in bonds:
+            if bond.a1_id not in placed or bond.a2_id not in placed:
+                continue
+            if bond.a1_id not in current or bond.a2_id not in current:
+                continue
+            if {a1, a2} & {bond.a1_id, bond.a2_id}:
+                continue
+            if _segments_intersect(coords[a1], coords[a2], current[bond.a1_id], current[bond.a2_id]):
+                crossings += 1
+    return crossings
+
+
 def _ring_overlap_score(
     coords: dict[int, tuple[float, float]],
     placed: set[int],
@@ -1163,13 +1521,22 @@ def _layout_branches_from_placed_core(
     out: dict[int, tuple[float, float]],
     placed: set[int],
     target: float,
+    *,
+    deferred_rings: list[set[int]] | None = None,
 ) -> None:
+    deferred_rings = deferred_rings or []
     ring_center_by_atom = _ring_center_by_atom(placed, adjacency, out)
     queue = sorted(placed)
     parent: dict[int, int | None] = {atom_id: None for atom_id in placed}
     while queue:
         anchor = queue.pop(0)
-        unplaced = sorted(neigh for neigh in adjacency.get(anchor, set()) if neigh in atom_ids and neigh not in placed)
+        unplaced = sorted(
+            neigh
+            for neigh in adjacency.get(anchor, set())
+            if neigh in atom_ids
+            and neigh not in placed
+            and not _defer_pending_ring_edge(anchor, neigh, deferred_rings)
+        )
         if not unplaced:
             continue
         base_angles: list[float] = []
@@ -1195,6 +1562,13 @@ def _layout_branches_from_placed_core(
             parent[neigh] = anchor
             queue.append(neigh)
             base_angles.append(angle)
+
+
+def _defer_pending_ring_edge(anchor: int, neighbor: int, deferred_rings: list[set[int]]) -> bool:
+    for ring in deferred_rings:
+        if anchor in ring and neighbor in ring:
+            return True
+    return False
 
 
 def _layout_tree_component(
@@ -1442,6 +1816,12 @@ def _visual_quality_score(
         degeneracy = ring_degeneracy_score(coords, set(ring))
         if degeneracy < 0.35:
             score += (0.35 - degeneracy) * target * 120.0
+    exocyclic_stats = _exocyclic_ring_orientation_stats(atom_ids, bonds, coords)
+    score += exocyclic_stats["bad_count"] * target * 500.0
+    if exocyclic_stats["min_center_angle"] < math.inf:
+        score += max(0.0, 125.0 - exocyclic_stats["min_center_angle"]) * target * 2.0
+    if exocyclic_stats["min_edge_angle"] < math.inf:
+        score += max(0.0, 90.0 - exocyclic_stats["min_edge_angle"]) * target * 2.0
     bbox_ratio = _bbox_ratio(before, coords, atom_ids)
     if bbox_ratio > 2.5:
         score += (bbox_ratio - 2.5) * target * 5.0
@@ -1520,6 +1900,57 @@ def _strict_angle_deviation_stats(
         "max": max(deviations),
         "penalty": penalty,
         "severe_count": float(severe_count),
+    }
+
+
+def _exocyclic_ring_orientation_stats(
+    atom_ids: set[int],
+    bonds: list[Bond],
+    coords: dict[int, tuple[float, float]],
+) -> dict[str, float]:
+    adjacency = _adjacency_for_bonds(atom_ids, bonds)
+    min_center_angle = math.inf
+    min_edge_angle = math.inf
+    bad_count = 0
+    for ring in _cycle_basis_ordered(atom_ids, bonds, max_size=6):
+        ring_set = set(ring)
+        anchors = [
+            atom_id
+            for atom_id in ring
+            if any(neigh not in ring_set for neigh in adjacency.get(atom_id, set()))
+        ]
+        if len(anchors) != 1:
+            continue
+        anchor = anchors[0]
+        if anchor not in coords:
+            continue
+        external_neighbors = [
+            neigh
+            for neigh in sorted(adjacency.get(anchor, set()) - ring_set)
+            if neigh in coords
+        ]
+        if not external_neighbors:
+            continue
+        external = external_neighbors[0]
+        ring_coords = {atom_id: coords[atom_id] for atom_id in ring if atom_id in coords}
+        if len(ring_coords) != len(ring):
+            continue
+        ring_center = _center(ring_coords)
+        center_angle = _angle_between(coords[anchor], coords[external], ring_center)
+        edge_angles = [
+            _angle_between(coords[anchor], coords[external], coords[neigh])
+            for neigh in _ring_neighbors_for_anchor(ring, anchor)
+            if neigh in coords
+        ]
+        edge_angle = min(edge_angles) if edge_angles else math.inf
+        min_center_angle = min(min_center_angle, center_angle)
+        min_edge_angle = min(min_edge_angle, edge_angle)
+        if center_angle < 110.0 or edge_angle < 85.0:
+            bad_count += 1
+    return {
+        "min_center_angle": min_center_angle,
+        "min_edge_angle": min_edge_angle,
+        "bad_count": float(bad_count),
     }
 
 
@@ -1615,6 +2046,12 @@ def _source_priority(source: str) -> int:
         "propose_mirror": 4,
     }
     return priorities.get(source, 99)
+
+
+def _propose_source_priority(source: str) -> int:
+    if source.startswith("propose_"):
+        return 0
+    return _source_priority(source) + 10
 
 
 def _normalize_atom_ids(graph: MolGraph, atom_ids: Iterable[int] | None) -> set[int]:

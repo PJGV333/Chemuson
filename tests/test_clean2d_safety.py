@@ -913,6 +913,7 @@ def test_run_clean_2d_cyclic_current_tries_smart_propose_instead_of_length_early
         source="current",
         coords={1: (0.0, 0.0), 2: (42.0, 0.0), 3: (21.0, 36.0)},
         message="Estructura 2D ya estaba limpia",
+        metadata={"current_canonical_enough": True},
     )
     result = Clean2DResult(
         mode=Clean2DMode.QUICK,

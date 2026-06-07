@@ -643,11 +643,8 @@ class Clean2DController:
             not attempt.applied
             and not attempt.rejected
             and candidate is not None
-            and (
-                candidate.source == "current"
-                or attempt.message in {"Estructura 2D ya estaba limpia", "candidato_clean2d_sin_movimiento"}
-                or not attempt.message
-            )
+            and candidate.source == "current"
+            and bool(candidate.metadata.get("current_canonical_enough", False))
         )
 
     def _avoid_hashes_for_proposal(

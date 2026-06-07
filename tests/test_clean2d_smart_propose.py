@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict
 import math
 import os
+from pathlib import Path
 import sys
 from unittest.mock import MagicMock
 
@@ -23,6 +24,7 @@ from chemuson.clean2d import (
     run_clean2d_engine,
     summarize_clean2d_candidates,
 )
+from chemuson.chemio.persistence import PersistenceManager
 from chemuson.core.model import BondStyle, MolGraph
 from chemuson.gui.canvas import ChemusonCanvas
 from chemuson.gui.controllers.clean2d_controller import Clean2DController
@@ -131,6 +133,16 @@ def _canvas_with_raw_mixed_structure() -> tuple[ChemusonCanvas, set[int], set[in
     return canvas, phenyl, cyclopropane
 
 
+def _canvas_from_fixture(filename: str) -> ChemusonCanvas:
+    _ensure_app()
+    canvas = ChemusonCanvas()
+    fixture = Path(__file__).parent / "fixtures" / filename
+    PersistenceManager.load_from_file(str(fixture), canvas)
+    canvas.state.bond_length = 40.0
+    canvas.state.selected_atoms = set(canvas.model.atoms)
+    return canvas
+
+
 def _window_for_canvas(canvas: ChemusonCanvas) -> MagicMock:
     window = MagicMock()
     window.canvas = canvas
@@ -155,6 +167,35 @@ def _lengths(graph: MolGraph, coords: dict[int, tuple[float, float]]) -> list[fl
         )
         for bond in graph.bonds.values()
     ]
+
+
+def _mean_displacement(
+    before: dict[int, tuple[float, float]],
+    after: dict[int, tuple[float, float]],
+) -> float:
+    common = set(before) & set(after)
+    if not common:
+        return 0.0
+    return sum(math.dist(before[atom_id], after[atom_id]) for atom_id in common) / len(common)
+
+
+def _candidate_debug_rows(result) -> list[dict]:
+    keys = (
+        "source",
+        "rejected",
+        "reason",
+        "score",
+        "quality_class",
+        "quality_reason",
+        "visual_score",
+        "length_rms_error",
+        "angle_rms_deviation",
+        "exocyclic_ring_angle_min",
+        "bad_exocyclic_ring_count",
+        "geometry_hash",
+        "novelty",
+    )
+    return [{key: row.get(key) for key in keys} for row in summarize_clean2d_candidates(result)]
 
 
 def _chemical_signature(graph: MolGraph) -> tuple[tuple[tuple[int, dict], ...], tuple[tuple[int, dict], ...]]:
@@ -233,6 +274,51 @@ def test_smart_clean_second_press_proposes_after_canonicalization() -> None:
         assert clean2d_geometry_hash(canvas.graph, _coords(canvas.model)) != canonical_hash
         assert "alternativa propuesta" in _last_status(window)
         assert canvas.undo_stack.count() == 2
+    finally:
+        canvas.close()
+
+
+def test_ctrl_k_on_real_crude_chemuson_file_canonicalizes_first() -> None:
+    canvas = _canvas_from_fixture("test_clean2d_crude_chemuson.cmsn")
+    try:
+        window = _window_for_canvas(canvas)
+        controller = Clean2DController()
+        atom_ids = set(canvas.model.atoms)
+        before = _coords(canvas.model)
+        before_snapshot = capture_clean2d_snapshot(canvas.model)
+        before_signature = _chemical_signature(canvas.model)
+
+        engine_result = run_clean2d_engine(
+            canvas.graph,
+            atom_ids,
+            mode="quick",
+            target_bond_length=40.0,
+        )
+        debug_rows = _candidate_debug_rows(engine_result)
+        assert engine_result.selected is not None, debug_rows
+        assert engine_result.selected.source != "current", debug_rows
+
+        controller.run_clean_2d(window, 1.0, 200, "(test)", mode="quick")
+
+        after = _coords(canvas.model)
+        after_quality = classify_clean2d_layout_quality(
+            canvas.graph,
+            atom_ids,
+            target_bond_length=40.0,
+        )
+        status = _last_status(window)
+        assert "optimizada" in status or "limpiada" in status
+        assert "alternativa propuesta" not in status
+        assert after_quality.quality_class == "good"
+        assert _mean_displacement(before, after) >= 40.0 * 0.05
+        assert_clean2d_invariants(before_snapshot, canvas.model, before, after)
+        assert _chemical_signature(canvas.model) == before_signature
+        assert canvas.undo_stack.count() == 1
+
+        canvas.undo_stack.undo()
+        assert _coords(canvas.model) == pytest.approx(before)
+        canvas.undo_stack.redo()
+        assert _coords(canvas.model) == pytest.approx(after)
     finally:
         canvas.close()
 
