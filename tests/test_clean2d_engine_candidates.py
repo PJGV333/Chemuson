@@ -189,6 +189,7 @@ def test_avoid_hashes_only_blocks_clean_propose_alternatives() -> None:
 
     assert quick.ok
     assert publication.ok
-    assert propose_bad.ok
+    assert not propose_bad.ok
+    assert propose_bad.message == "La estructura debe optimizarse antes de proponer conformeros 2D"
     assert propose_clean.selected is None
     assert any(item.rejection_reason == "geometria_repetida" for item in propose_clean.rejected)

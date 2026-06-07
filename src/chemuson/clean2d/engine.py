@@ -72,6 +72,22 @@ class Clean2DResult:
 
 
 @dataclass(frozen=True)
+class Clean2DLayoutQualityReport:
+    quality_class: str
+    reason: str = ""
+    length_rms_error: float = 0.0
+    length_max_error: float = 0.0
+    angle_rms_deviation: float = 0.0
+    angle_max_deviation: float = 0.0
+    angle_penalty: float = 0.0
+    severe_angle_count: int = 0
+    crossings: int = 0
+    min_nonbonded_distance: float = math.inf
+    min_ring_degeneracy: float = math.inf
+    visual_score: float = 0.0
+
+
+@dataclass(frozen=True)
 class Clean2DGraphSnapshot:
     atom_ids: frozenset[int]
     bond_ids: frozenset[int]
@@ -183,8 +199,44 @@ def rank_clean2d_candidates(
     target = max(8.0, float(target_bond_length or 42.0))
     cyclic = has_cycles(selected, bonds)
     baseline_score = _visual_quality_score(graph, selected, bonds, before_coords, before_coords, target, mode)
-    baseline_bad = _layout_needs_rebuild(selected, bonds, before_coords, target)
+    quality = classify_clean2d_layout_quality(
+        graph,
+        selected,
+        coords=before_coords,
+        target_bond_length=target,
+    )
+    baseline_bad = quality.quality_class == "needs_rebuild"
     avoid_hashes = set(avoid_hashes or set())
+
+    if mode == Clean2DMode.PROPOSE and quality.quality_class != "good":
+        rejected = []
+        reason = "geometria_base_requiere_optimizacion"
+        for candidate in candidates:
+            after = _complete_coords(candidate.coords, before_coords, selected) if candidate.coords else {}
+            rejected.append(
+                _replace_candidate(
+                    candidate,
+                    coords=after,
+                    rejected=True,
+                    rejection_reason=reason,
+                    geometry_hash=(
+                        clean2d_geometry_hash(graph, after, selected)
+                        if after
+                        else candidate.geometry_hash
+                    ),
+                    metadata={**candidate.metadata, "quality_class": quality.quality_class},
+                )
+            )
+        return Clean2DResult(
+            mode=mode,
+            atom_ids=selected,
+            before_coords=before_coords,
+            candidates=(),
+            selected=None,
+            rejected=tuple(rejected),
+            message="La estructura debe optimizarse antes de proponer conformeros 2D",
+            reason=reason,
+        )
 
     accepted: list[Clean2DCandidate] = []
     rejected: list[Clean2DCandidate] = []
@@ -224,9 +276,13 @@ def rank_clean2d_candidates(
         )
         safety_mode = _safety_mode_for_candidate(mode, candidate, baseline_bad)
         safe = is_clean2d_candidate_safe(report, safety_mode)
-        if mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION} and candidate.source == "current" and baseline_bad:
-            safe = False
-            report.rejection_reason = "geometria_actual_necesita_reconstruccion"
+        if mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION} and candidate.source == "current":
+            if quality.quality_class == "needs_rebuild":
+                safe = False
+                report.rejection_reason = "geometria_actual_necesita_reconstruccion"
+            elif quality.quality_class == "needs_polish":
+                safe = False
+                report.rejection_reason = "geometria_actual_requiere_optimizacion"
         if mode == Clean2DMode.PROPOSE and candidate.source == "current":
             safe = False
             report.rejection_reason = "propose_requiere_geometria_alternativa"
@@ -265,7 +321,7 @@ def rank_clean2d_candidates(
             if novelty < target * 0.05:
                 score += target * 80.0
 
-        if candidate.source == "current" and not baseline_bad:
+        if candidate.source == "current" and quality.quality_class == "good":
             score = min(score, baseline_score * 0.25)
 
         accepted.append(
@@ -296,7 +352,104 @@ def rank_clean2d_candidates(
         rejected=tuple(rejected),
         message=message,
         reason=reason,
+)
+
+
+def classify_clean2d_layout_quality(
+    graph: MolGraph,
+    atom_ids: Iterable[int] | None = None,
+    *,
+    coords: dict[int, tuple[float, float]] | None = None,
+    target_bond_length: float = 42.0,
+) -> Clean2DLayoutQualityReport:
+    selected = _normalize_atom_ids(graph, atom_ids)
+    target = max(8.0, float(target_bond_length or 42.0))
+    before = _coords_for_atoms(graph, selected) if coords is None else _complete_coords(coords, _coords_for_atoms(graph, selected), selected)
+    if not selected:
+        return Clean2DLayoutQualityReport("good", reason="sin_atomos")
+    missing = selected - set(before)
+    if missing:
+        return Clean2DLayoutQualityReport("needs_rebuild", reason="faltan_coordenadas")
+    if any(not (math.isfinite(x) and math.isfinite(y)) for x, y in before.values()):
+        return Clean2DLayoutQualityReport("needs_rebuild", reason="coordenadas_no_finitas")
+
+    bonds = _selected_structural_bonds(graph, selected)
+    if not bonds:
+        return Clean2DLayoutQualityReport("good", reason="sin_enlaces")
+
+    length_errors = []
+    for bond in bonds:
+        if bond.a1_id not in before or bond.a2_id not in before:
+            return Clean2DLayoutQualityReport("needs_rebuild", reason="faltan_coordenadas_enlace")
+        observed = _distance(before[bond.a1_id], before[bond.a2_id])
+        desired = _target_length_for_bond(bond, target)
+        length_errors.append(abs(observed - desired) / max(target, 1e-6))
+    length_rms = math.sqrt(sum(err * err for err in length_errors) / len(length_errors))
+    length_max = max(length_errors)
+
+    angle_stats = _strict_angle_deviation_stats(graph, selected, bonds, before)
+    crossings = _count_crossings(before, bonds)
+    nonbonded = min_nonbonded_distance(before, bonds, selected)
+    ring_scores = [
+        ring_degeneracy_score(before, set(ring))
+        for ring in _cycle_basis_ordered(selected, bonds, max_size=8)
+    ]
+    min_ring = min(ring_scores) if ring_scores else math.inf
+    visual_score = _visual_quality_score(graph, selected, bonds, before, before, target, Clean2DMode.QUICK)
+
+    base_report = Clean2DLayoutQualityReport(
+        "good",
+        length_rms_error=length_rms,
+        length_max_error=length_max,
+        angle_rms_deviation=angle_stats["rms"],
+        angle_max_deviation=angle_stats["max"],
+        angle_penalty=angle_stats["penalty"],
+        severe_angle_count=int(angle_stats["severe_count"]),
+        crossings=crossings,
+        min_nonbonded_distance=nonbonded,
+        min_ring_degeneracy=min_ring,
+        visual_score=visual_score,
     )
+
+    if _layout_needs_rebuild(selected, bonds, before, target):
+        return _replace_quality(base_report, quality_class="needs_rebuild", reason="fallos_geometricos_graves")
+    if length_max > 0.42 or length_rms > 0.22:
+        return _replace_quality(base_report, quality_class="needs_rebuild", reason="longitudes_fuera_de_rango")
+    if crossings > 0:
+        return _replace_quality(base_report, quality_class="needs_rebuild", reason="cruces_enlaces")
+    if nonbonded < target * 0.35:
+        return _replace_quality(base_report, quality_class="needs_rebuild", reason="colisiones_no_enlazadas")
+    if min_ring != math.inf and min_ring < 0.12:
+        return _replace_quality(base_report, quality_class="needs_rebuild", reason="anillo_degenerado")
+
+    if length_max > 0.14 or length_rms > 0.055:
+        return _replace_quality(base_report, quality_class="needs_polish", reason="longitudes_suboptimas")
+    if angle_stats["max"] > 34.0 or angle_stats["rms"] > 18.0 or angle_stats["severe_count"] > 0:
+        return _replace_quality(base_report, quality_class="needs_polish", reason="angulos_suboptimos")
+    if nonbonded < target * 0.50:
+        return _replace_quality(base_report, quality_class="needs_polish", reason="distancias_no_enlazadas_estrechas")
+    if min_ring != math.inf and min_ring < 0.25:
+        return _replace_quality(base_report, quality_class="needs_polish", reason="anillo_suboptimo")
+    return base_report
+
+
+def _replace_quality(report: Clean2DLayoutQualityReport, **updates: Any) -> Clean2DLayoutQualityReport:
+    data = {
+        "quality_class": report.quality_class,
+        "reason": report.reason,
+        "length_rms_error": report.length_rms_error,
+        "length_max_error": report.length_max_error,
+        "angle_rms_deviation": report.angle_rms_deviation,
+        "angle_max_deviation": report.angle_max_deviation,
+        "angle_penalty": report.angle_penalty,
+        "severe_angle_count": report.severe_angle_count,
+        "crossings": report.crossings,
+        "min_nonbonded_distance": report.min_nonbonded_distance,
+        "min_ring_degeneracy": report.min_ring_degeneracy,
+        "visual_score": report.visual_score,
+    }
+    data.update(updates)
+    return Clean2DLayoutQualityReport(**data)
 
 
 def capture_clean2d_snapshot(
@@ -1069,9 +1222,14 @@ def _layout_needs_rebuild(
     if _count_crossings(coords, bonds) > 0:
         return True
     adjacency = _adjacency_for_bonds(atom_ids, bonds)
+    small_ring_centers = _small_ring_atoms(atom_ids, bonds)
     for center, neighbors_set in adjacency.items():
+        if center in small_ring_centers:
+            continue
         neighbors = [neigh for neigh in neighbors_set if neigh in coords]
         if len(neighbors) < 2 or center not in coords:
+            continue
+        if len(neighbors) >= 4:
             continue
         center_bonds = [bond for bond in bonds if center in {bond.a1_id, bond.a2_id}]
         has_multiple = any(
@@ -1157,6 +1315,89 @@ def _angle_quality_penalty(
                     diff = min(diff, abs(angle - 120.0))
                 penalty += (diff / 30.0) ** 2 * 8.0
     return penalty
+
+
+def _strict_angle_deviation_stats(
+    graph: MolGraph,
+    atom_ids: set[int],
+    bonds: list[Bond],
+    coords: dict[int, tuple[float, float]],
+) -> dict[str, float]:
+    adjacency = _adjacency_for_bonds(atom_ids, bonds)
+    small_ring_triples = _small_ring_angle_triples(atom_ids, bonds)
+    small_ring_centers = _small_ring_atoms(atom_ids, bonds)
+    deviations: list[float] = []
+    penalty = 0.0
+    severe_count = 0
+    for center in sorted(atom_ids):
+        if center in small_ring_centers:
+            continue
+        neighbors = [neigh for neigh in adjacency.get(center, set()) if neigh in coords]
+        if len(neighbors) < 2 or center not in coords:
+            continue
+        if len(neighbors) >= 4:
+            continue
+        geometry = _atom_geometry(graph, center, bonds)
+        preferred = _preferred_angle_for_center(graph, center, neighbors, bonds, geometry)
+        for idx, left in enumerate(neighbors):
+            for right in neighbors[idx + 1 :]:
+                if frozenset((left, center, right)) in small_ring_triples:
+                    continue
+                angle = _angle_between(coords[center], coords[left], coords[right])
+                diff = min(abs(angle - preferred), abs(angle - (360.0 - preferred)))
+                if geometry == "sp3":
+                    diff = min(diff, abs(angle - 120.0))
+                deviations.append(diff)
+                penalty += (diff / 30.0) ** 2 * 8.0
+                if diff > 34.0:
+                    severe_count += 1
+    if not deviations:
+        return {"rms": 0.0, "max": 0.0, "penalty": 0.0, "severe_count": 0.0}
+    return {
+        "rms": math.sqrt(sum(diff * diff for diff in deviations) / len(deviations)),
+        "max": max(deviations),
+        "penalty": penalty,
+        "severe_count": float(severe_count),
+    }
+
+
+def _preferred_angle_for_center(
+    graph: MolGraph,
+    center: int,
+    neighbors: list[int],
+    bonds: list[Bond],
+    geometry: str,
+) -> float:
+    preferred = 180.0 if geometry == "sp" else 120.0
+    if geometry == "sp3":
+        preferred = 109.5
+    if len(neighbors) == 2 and any(
+        _bond_between(bonds, center, neigh)
+        and bool(getattr(_bond_between(bonds, center, neigh), "is_aromatic", False))
+        for neigh in neighbors
+    ):
+        preferred = 120.0
+    return preferred
+
+
+def _small_ring_angle_triples(atom_ids: set[int], bonds: list[Bond]) -> set[frozenset[int]]:
+    triples: set[frozenset[int]] = set()
+    adjacency = _adjacency_for_bonds(atom_ids, bonds)
+    for ring in _cycle_basis_ordered(atom_ids, bonds, max_size=4):
+        ring_set = set(ring)
+        for center in ring:
+            ring_neighbors = sorted(adjacency.get(center, set()) & ring_set)
+            for idx, left in enumerate(ring_neighbors):
+                for right in ring_neighbors[idx + 1 :]:
+                    triples.add(frozenset((left, center, right)))
+    return triples
+
+
+def _small_ring_atoms(atom_ids: set[int], bonds: list[Bond]) -> set[int]:
+    atoms: set[int] = set()
+    for ring in _cycle_basis_ordered(atom_ids, bonds, max_size=4):
+        atoms.update(ring)
+    return atoms
 
 
 def _deduplicate_candidates(

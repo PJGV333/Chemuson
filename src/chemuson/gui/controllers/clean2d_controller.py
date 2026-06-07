@@ -460,11 +460,15 @@ class Clean2DController:
             return
 
         if alternative_mode:
+            alternative_message = attempt.message or self._no_safe_alternative_message()
+            if (
+                (attempt.unavailable or attempt.rejected)
+                and "optimizarse" not in alternative_message
+            ):
+                alternative_message = self._no_safe_alternative_message()
             window.statusBar().showMessage(
                 self._selection_status_message(
-                    self._no_safe_alternative_message()
-                    if attempt.unavailable or attempt.rejected
-                    else attempt.message or self._no_safe_alternative_message(),
+                    alternative_message,
                     bool(atom_ids),
                 )
             )

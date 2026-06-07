@@ -14,6 +14,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "s
 from chemuson.clean2d import (
     assert_clean2d_invariants,
     capture_clean2d_snapshot,
+    classify_clean2d_layout_quality,
     clean2d_geometry_hash,
     count_new_bond_crossings,
     ring_degeneracy_score,
@@ -73,10 +74,54 @@ def _populate_clean_mixed_structure(graph: MolGraph) -> tuple[set[int], set[int]
     return set(phenyl), set(cyclopropane)
 
 
+def _populate_raw_mixed_structure(graph: MolGraph) -> tuple[set[int], set[int]]:
+    phenyl: list[int] = []
+    radius = 40.0
+    for idx in range(6):
+        angle = math.radians(60.0 * idx + 30.0)
+        phenyl.append(graph.add_atom("C", radius * math.cos(angle), radius * math.sin(angle)).id)
+    for idx in range(6):
+        graph.add_bond(phenyl[idx], phenyl[(idx + 1) % 6], order=1, is_aromatic=True)
+
+    chain = [
+        graph.add_atom("C", 90.0, 20.0).id,
+        graph.add_atom("C", 130.0, 20.0).id,
+        graph.add_atom("C", 150.0, 54.6).id,
+        graph.add_atom("C", 190.0, 54.6).id,
+    ]
+    graph.add_bond(phenyl[0], chain[0], order=1)
+    graph.add_bond(chain[0], chain[1], order=1)
+    graph.add_bond(chain[1], chain[2], order=2)
+    graph.add_bond(chain[2], chain[3], order=1)
+    branch = graph.add_atom("C", 130.0, -20.0)
+    graph.add_bond(chain[1], branch.id, order=1)
+
+    cyclopropane = [
+        graph.add_atom("C", 230.0, 54.6).id,
+        graph.add_atom("C", 270.0, 54.6).id,
+        graph.add_atom("C", 250.0, 89.2).id,
+    ]
+    graph.add_bond(chain[3], cyclopropane[0], order=1)
+    graph.add_bond(cyclopropane[0], cyclopropane[1], order=1)
+    graph.add_bond(cyclopropane[1], cyclopropane[2], order=1)
+    graph.add_bond(cyclopropane[2], cyclopropane[0], order=1)
+    return set(phenyl), set(cyclopropane)
+
+
 def _canvas_with_clean_mixed_structure() -> tuple[ChemusonCanvas, set[int], set[int]]:
     _ensure_app()
     canvas = ChemusonCanvas()
     phenyl, cyclopropane = _populate_clean_mixed_structure(canvas.model)
+    canvas.state.bond_length = 40.0
+    canvas._sync_scene_with_model()
+    canvas.state.selected_atoms = set(canvas.model.atoms)
+    return canvas, phenyl, cyclopropane
+
+
+def _canvas_with_raw_mixed_structure() -> tuple[ChemusonCanvas, set[int], set[int]]:
+    _ensure_app()
+    canvas = ChemusonCanvas()
+    phenyl, cyclopropane = _populate_raw_mixed_structure(canvas.model)
     canvas.state.bond_length = 40.0
     canvas._sync_scene_with_model()
     canvas.state.selected_atoms = set(canvas.model.atoms)
@@ -137,24 +182,54 @@ def _distort_mixed_structure(graph: MolGraph) -> None:
         atom.y += dy
 
 
-def test_smart_clean_proposes_alternative_for_initially_clean_mixed_structure() -> None:
-    canvas, _phenyl, _cyclopropane = _canvas_with_clean_mixed_structure()
+def _nudge_to_suboptimal_geometry(graph: MolGraph) -> None:
+    graph.atoms[8].x += 8.0
+    graph.atoms[8].y += 5.0
+    graph.atoms[9].x += 12.0
+
+
+def test_smart_clean_first_press_canonicalizes_raw_mixed_structure() -> None:
+    canvas, _phenyl, _cyclopropane = _canvas_with_raw_mixed_structure()
     try:
         window = _window_for_canvas(canvas)
         controller = Clean2DController()
         before = _coords(canvas.model)
-        before_hash = clean2d_geometry_hash(canvas.graph, before)
+        before_quality = classify_clean2d_layout_quality(canvas.graph, target_bond_length=40.0)
 
         quick = run_clean2d_engine(canvas.graph, set(canvas.model.atoms), mode="quick", target_bond_length=40.0)
         assert quick.selected is not None
-        assert quick.selected.source == "current"
+        assert quick.selected.source != "current"
+        assert before_quality.quality_class == "needs_rebuild"
 
         controller.run_clean_2d(window, 1.0, 200, "(test)", mode="quick")
 
         after = _coords(canvas.model)
-        assert clean2d_geometry_hash(canvas.graph, after) != before_hash
-        assert "alternativa propuesta" in _last_status(window)
+        after_quality = classify_clean2d_layout_quality(canvas.graph, target_bond_length=40.0)
+        assert after_quality.quality_class == "good"
+        assert after_quality.visual_score < before_quality.visual_score
+        assert max(_lengths(canvas.model, after)) < max(_lengths(canvas.model, before))
+        assert "limpiada" in _last_status(window)
+        assert "alternativa propuesta" not in _last_status(window)
         assert canvas.undo_stack.count() == 1
+    finally:
+        canvas.close()
+
+
+def test_smart_clean_second_press_proposes_after_canonicalization() -> None:
+    canvas, _phenyl, _cyclopropane = _canvas_with_raw_mixed_structure()
+    try:
+        window = _window_for_canvas(canvas)
+        controller = Clean2DController()
+
+        controller.run_clean_2d(window, 1.0, 200, "(test)", mode="quick")
+        canonical_hash = clean2d_geometry_hash(canvas.graph, _coords(canvas.model))
+        assert classify_clean2d_layout_quality(canvas.graph, target_bond_length=40.0).quality_class == "good"
+
+        controller.run_clean_2d(window, 1.0, 200, "(test)", mode="quick")
+
+        assert clean2d_geometry_hash(canvas.graph, _coords(canvas.model)) != canonical_hash
+        assert "alternativa propuesta" in _last_status(window)
+        assert canvas.undo_stack.count() == 2
     finally:
         canvas.close()
 
@@ -204,7 +279,7 @@ def test_successive_smart_cleans_avoid_immediate_geometry_repeat() -> None:
 
 
 def test_smart_clean_preserves_chemical_invariants_and_metadata() -> None:
-    canvas, _phenyl, _cyclopropane = _canvas_with_clean_mixed_structure()
+    canvas, _phenyl, _cyclopropane = _canvas_with_raw_mixed_structure()
     try:
         window = _window_for_canvas(canvas)
         controller = Clean2DController()
@@ -244,22 +319,51 @@ def test_smart_clean_alternative_has_safe_geometry() -> None:
 
 
 def test_smart_clean_application_is_undoable_and_redoable() -> None:
-    canvas, _phenyl, _cyclopropane = _canvas_with_clean_mixed_structure()
+    canvas, _phenyl, _cyclopropane = _canvas_with_raw_mixed_structure()
     try:
         window = _window_for_canvas(canvas)
         controller = Clean2DController()
         before = _coords(canvas.model)
 
         controller.run_clean_2d(window, 1.0, 200, "(test)", mode="quick")
-        after = _coords(canvas.model)
+        optimized = _coords(canvas.model)
+        controller.run_clean_2d(window, 1.0, 200, "(test)", mode="quick")
+        proposed = _coords(canvas.model)
 
-        assert after != before
+        assert optimized != before
+        assert proposed != optimized
+        canvas.undo_stack.undo()
+        assert _coords(canvas.model) == pytest.approx(optimized)
         canvas.undo_stack.undo()
         assert _coords(canvas.model) == pytest.approx(before)
         canvas.undo_stack.redo()
-        assert _coords(canvas.model) == pytest.approx(after)
+        assert _coords(canvas.model) == pytest.approx(optimized)
+        canvas.undo_stack.redo()
+        assert _coords(canvas.model) == pytest.approx(proposed)
     finally:
         canvas.close()
+
+
+def test_propose_rejects_suboptimal_base_instead_of_dragging_bad_geometry() -> None:
+    graph = MolGraph()
+    _populate_clean_mixed_structure(graph)
+    _nudge_to_suboptimal_geometry(graph)
+    quality = classify_clean2d_layout_quality(graph, target_bond_length=40.0)
+    assert quality.quality_class == "needs_polish"
+
+    propose = run_clean2d_engine(graph, mode="propose", target_bond_length=40.0)
+    quick = run_clean2d_engine(graph, mode="quick", target_bond_length=40.0)
+
+    assert not propose.ok
+    assert propose.message == "La estructura debe optimizarse antes de proponer conformeros 2D"
+    assert quick.ok
+    assert quick.selected is not None
+    canonical_quality = classify_clean2d_layout_quality(
+        graph,
+        coords=quick.selected.coords,
+        target_bond_length=40.0,
+    )
+    assert canonical_quality.visual_score < quality.visual_score
 
 
 def test_smart_clean_reports_clear_noop_when_no_safe_alternative_exists() -> None:
