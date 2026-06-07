@@ -884,8 +884,8 @@ def test_run_clean_2d_shows_message_when_isolated_unavailable() -> None:
     assert any("motor interno" in str(args[0][0]) for args in status_calls)
 
 
-def test_run_clean_2d_cyclic_uses_engine_instead_of_length_early_return() -> None:
-    """Los ciclos pasan por el motor unificado; no hay early return length-only."""
+def test_run_clean_2d_cyclic_current_tries_smart_propose_instead_of_length_early_return() -> None:
+    """Un current limpio pasa por Smart Clean2D; no hay early return length-only."""
     from unittest.mock import MagicMock, patch
     from chemuson.clean2d import Clean2DCandidate, Clean2DMode, Clean2DResult
     from chemuson.core.model import MolGraph
@@ -928,7 +928,11 @@ def test_run_clean_2d_cyclic_uses_engine_instead_of_length_early_return() -> Non
     ):
         ctrl.run_clean_2d(window, 1.0, 200, "(test)")
 
-    mock_engine.assert_called_once()
+    assert mock_engine.call_count == 2
+    assert mock_engine.call_args_list[0].kwargs["mode"] == "quick"
+    assert mock_engine.call_args_list[0].kwargs["avoid_hashes"] == set()
+    assert mock_engine.call_args_list[1].kwargs["mode"] == "propose"
+    assert mock_engine.call_args_list[1].kwargs["avoid_hashes"]
     mock_length.assert_not_called()
     window.canvas.clean_2d_fallback.assert_not_called()
 

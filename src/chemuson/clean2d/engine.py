@@ -224,7 +224,7 @@ def rank_clean2d_candidates(
         )
         safety_mode = _safety_mode_for_candidate(mode, candidate, baseline_bad)
         safe = is_clean2d_candidate_safe(report, safety_mode)
-        if mode == Clean2DMode.QUICK and candidate.source == "current" and baseline_bad:
+        if mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION} and candidate.source == "current" and baseline_bad:
             safe = False
             report.rejection_reason = "geometria_actual_necesita_reconstruccion"
         if mode == Clean2DMode.PROPOSE and candidate.source == "current":
@@ -1057,7 +1057,7 @@ def _layout_needs_rebuild(
     coords: dict[int, tuple[float, float]],
     target: float,
 ) -> bool:
-    if not atom_ids:
+    if not atom_ids or not bonds:
         return False
     stats = _bond_stats(coords, bonds)
     if stats["mean"] <= 1e-6:

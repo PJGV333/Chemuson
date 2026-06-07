@@ -333,3 +333,27 @@ def test_ctrl_k_shortcut_triggers_full_clean_2d_action() -> None:
         assert triggered
     finally:
         window.close()
+
+
+def test_ctrl_alt_k_shortcut_triggers_clean_2d_propose_action() -> None:
+    window = ChemusonWindow()
+    try:
+        triggered: list[bool] = []
+        window.action_clean_2d_propose.triggered.connect(
+            lambda _checked=False: triggered.append(True)
+        )
+        window.show()
+        QApplication.processEvents()
+        window.canvas.setFocus()
+
+        QTest.keyClick(
+            window.canvas.viewport(),
+            Qt.Key.Key_K,
+            Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.AltModifier,
+        )
+        QApplication.processEvents()
+
+        assert window.action_clean_2d_propose.shortcut() == QKeySequence("Ctrl+Alt+K")
+        assert triggered
+    finally:
+        window.close()

@@ -158,6 +158,10 @@ def evaluate_clean2d_layout(
             report.bond_length_ratio = (
                 report.mean_bond_length_after / report.mean_bond_length_before
             )
+    else:
+        report.mean_bond_length_before = report.target_bond_length
+        report.mean_bond_length_after = report.target_bond_length
+        report.bond_length_ratio = 1.0
 
     report.max_displacement = max_atom_displacement(before, after, intersection)
     displacements = [

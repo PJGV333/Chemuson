@@ -2094,6 +2094,15 @@ class ChemusonWindow(QMainWindow):
             mode="publication",
         )
 
+    def _on_clean_2d_propose(self) -> None:
+        """Propone una geometría 2D alternativa sin cambiar la química."""
+        self._run_clean_2d(
+            step_ratio=1.0,
+            fallback_iterations=200,
+            status_suffix="(alternativa)",
+            mode="propose",
+        )
+
     def _on_validate_structure(self) -> None:
         """Ejecuta validación química detallada sobre el documento activo."""
         issues = self._validation_controller.issues_for_canvas(self.canvas)

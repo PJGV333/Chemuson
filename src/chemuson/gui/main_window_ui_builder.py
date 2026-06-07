@@ -504,6 +504,7 @@ class MainWindowUiBuilder:
         structure_menu.addAction(window.action_clean_2d)
         structure_menu.addAction(window.action_clean_2d_full)
         structure_menu.addAction(window.action_clean_2d_publication)
+        structure_menu.addAction(window.action_clean_2d_propose)
         structure_menu.addSeparator()
         structure_menu.addAction(window.action_validate_structure)
         structure_menu.addAction(window.action_validation_next)

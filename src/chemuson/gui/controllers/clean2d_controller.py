@@ -5,8 +5,11 @@ import math
 from typing import Any
 
 from chemuson.clean2d import (
+    Clean2DCandidate,
     Clean2DParameters,
     Clean2DQualityReport,
+    Clean2DResult,
+    assert_clean2d_invariants,
     clean2d_geometry_hash,
     evaluate_clean2d_layout,
     has_cycles,
@@ -408,12 +411,7 @@ class Clean2DController:
             if aid in canvas.model.atoms
         }
         alternative_mode = self._is_alternative_mode(mode)
-        history_key = self._history_key(graph, target_ids) if alternative_mode else ""
-        avoid_hashes = (
-            set(self._recent_geometry_hashes.get(history_key, []))
-            if alternative_mode
-            else set()
-        )
+        avoid_hashes = self._avoid_hashes_for_proposal(graph, target_ids, before) if alternative_mode else set()
         result = run_clean2d_engine(
             graph,
             target_ids,
@@ -421,15 +419,115 @@ class Clean2DController:
             target_bond_length=target_bond_len,
             avoid_hashes=avoid_hashes,
         )
-        candidate = result.selected
-        if candidate is None:
-            window.statusBar().showMessage(result.message or "Limpieza 2D omitida: sin candidato seguro")
+        attempt = self._apply_engine_result(
+            window,
+            graph,
+            target_ids,
+            scale_bonds,
+            before,
+            result,
+            target_bond_len,
+            require_alternative=alternative_mode,
+            remember_hashes=alternative_mode,
+        )
+
+        if attempt.applied:
+            window.statusBar().showMessage(
+                self._selection_status_message(attempt.message, bool(atom_ids))
+                or "Estructura 2D limpiada"
+            )
             return
 
+        if self._smart_propose_enabled(mode) and self._result_can_try_proposal(result, attempt):
+            propose_attempt = self._run_propose_pass(
+                window,
+                graph,
+                target_ids,
+                scale_bonds,
+                before,
+                target_bond_len,
+                remember_hashes=True,
+            )
+            if propose_attempt.applied:
+                window.statusBar().showMessage(
+                    self._selection_status_message(propose_attempt.message, bool(atom_ids))
+                    or "Estructura 2D alternativa propuesta"
+                )
+                return
+            window.statusBar().showMessage(
+                self._selection_status_message(self._no_safe_alternative_message(), bool(atom_ids))
+            )
+            return
+
+        if alternative_mode:
+            window.statusBar().showMessage(
+                self._selection_status_message(
+                    self._no_safe_alternative_message()
+                    if attempt.unavailable or attempt.rejected
+                    else attempt.message or self._no_safe_alternative_message(),
+                    bool(atom_ids),
+                )
+            )
+            return
+
+        message = attempt.message or result.message or "Limpieza 2D omitida: sin candidato seguro"
+        window.statusBar().showMessage(self._selection_status_message(message, bool(atom_ids)))
+
+    def _apply_engine_result(
+        self,
+        window: Any,
+        graph: Any,
+        target_ids: set[int],
+        bonds: list,
+        before: dict[int, tuple[float, float]],
+        result: Clean2DResult,
+        target_bond_len: float,
+        *,
+        require_alternative: bool = False,
+        remember_hashes: bool = False,
+    ) -> Clean2DAttempt:
+        candidate = result.selected
+        if candidate is None:
+            return Clean2DAttempt(
+                unavailable=True,
+                message=result.message or "Limpieza 2D omitida: sin candidato seguro",
+            )
+        return self._apply_engine_candidate(
+            window,
+            graph,
+            target_ids,
+            bonds,
+            before,
+            candidate,
+            target_bond_len,
+            require_alternative=require_alternative,
+            remember_hashes=remember_hashes,
+        )
+
+    def _apply_engine_candidate(
+        self,
+        window: Any,
+        graph: Any,
+        target_ids: set[int],
+        bonds: list,
+        before: dict[int, tuple[float, float]],
+        candidate: Clean2DCandidate,
+        target_bond_len: float,
+        *,
+        require_alternative: bool = False,
+        remember_hashes: bool = False,
+    ) -> Clean2DAttempt:
+        if require_alternative and candidate.source == "current":
+            return Clean2DAttempt(unavailable=True, message="sin_pose_alternativa")
+
         after = {
-            aid: candidate.coords[aid]
+            aid: (
+                (float(candidate.coords[aid][0]), float(candidate.coords[aid][1]))
+                if aid in candidate.coords
+                else before[aid]
+            )
             for aid in target_ids
-            if aid in candidate.coords and aid in before
+            if aid in before
         }
         changed = {
             aid: coord
@@ -438,26 +536,122 @@ class Clean2DController:
         }
 
         if not changed:
-            message = self._selection_status_message(candidate.message, bool(atom_ids))
-            window.statusBar().showMessage(message or "Estructura 2D ya estaba limpia")
-            if alternative_mode:
-                self._remember_geometry_hashes(graph, target_ids, before, after)
-            return
+            message = (
+                "sin_pose_alternativa"
+                if require_alternative
+                else candidate.message or "Estructura 2D ya estaba limpia"
+            )
+            return Clean2DAttempt(unavailable=require_alternative, message=message)
+
+        report = candidate.report
+        if require_alternative:
+            try:
+                assert_clean2d_invariants(graph, graph, before, after, atom_ids=target_ids)
+            except Exception as exc:
+                return Clean2DAttempt(
+                    rejected=True,
+                    message=f"Limpieza 2D omitida: {exc}",
+                    report=report,
+                )
+
+            report = evaluate_clean2d_layout(
+                target_ids,
+                bonds,
+                before,
+                after,
+                target_bond_len,
+                is_cyclic=has_cycles(target_ids, bonds),
+            )
+            if not is_clean2d_candidate_safe(report, "conformer"):
+                return Clean2DAttempt(
+                    rejected=True,
+                    message="Limpieza 2D omitida: el candidato deformaba la estructura",
+                    report=report,
+                )
+            if report.mean_displacement < target_bond_len * 0.05:
+                return Clean2DAttempt(
+                    unavailable=True,
+                    message="sin_pose_alternativa",
+                    report=report,
+                )
 
         from chemuson.gui.commands import MoveAtomsCommand
 
-        canvas.undo_stack.push(MoveAtomsCommand(canvas.model, canvas, before, changed))
-        canvas._update_selection_overlay()
-        if alternative_mode:
+        window.canvas.undo_stack.push(MoveAtomsCommand(window.canvas.model, window.canvas, before, changed))
+        window.canvas._update_selection_overlay()
+        if remember_hashes:
             self._remember_geometry_hashes(graph, target_ids, before, after)
-        window.statusBar().showMessage(
-            self._selection_status_message(candidate.message, bool(atom_ids))
-            or "Estructura 2D limpiada"
+        return Clean2DAttempt(applied=True, message=candidate.message or "Estructura 2D limpiada", report=report)
+
+    def _run_propose_pass(
+        self,
+        window: Any,
+        graph: Any,
+        target_ids: set[int],
+        bonds: list,
+        before: dict[int, tuple[float, float]],
+        target_bond_len: float,
+        *,
+        remember_hashes: bool,
+    ) -> Clean2DAttempt:
+        result = run_clean2d_engine(
+            graph,
+            target_ids,
+            mode="propose",
+            target_bond_length=target_bond_len,
+            avoid_hashes=self._avoid_hashes_for_proposal(graph, target_ids, before),
+        )
+        return self._apply_engine_result(
+            window,
+            graph,
+            target_ids,
+            bonds,
+            before,
+            result,
+            target_bond_len,
+            require_alternative=True,
+            remember_hashes=remember_hashes,
         )
 
     @staticmethod
     def _is_alternative_mode(mode: str) -> bool:
         return str(mode or "").strip().lower() in {"propose", "conformer", "alternative"}
+
+    @staticmethod
+    def _smart_propose_enabled(mode: str) -> bool:
+        return str(mode or "").strip().lower() in {"quick", "publication", "publish"}
+
+    @staticmethod
+    def _result_can_try_proposal(result: Clean2DResult, attempt: Clean2DAttempt) -> bool:
+        candidate = result.selected
+        return (
+            not attempt.applied
+            and not attempt.rejected
+            and candidate is not None
+            and (
+                candidate.source == "current"
+                or attempt.message in {"Estructura 2D ya estaba limpia", "candidato_clean2d_sin_movimiento"}
+                or not attempt.message
+            )
+        )
+
+    def _avoid_hashes_for_proposal(
+        self,
+        graph: Any,
+        atom_ids: set[int],
+        before: dict[int, tuple[float, float]],
+    ) -> set[str]:
+        history_key = self._history_key(graph, atom_ids)
+        avoid_hashes = set(self._recent_geometry_hashes.get(history_key, []))
+        try:
+            avoid_hashes.add(clean2d_geometry_hash(graph, before, atom_ids))
+        except Exception:
+            pass
+        return avoid_hashes
+
+    @staticmethod
+    def _no_safe_alternative_message() -> str:
+        return "Estructura 2D ya estaba limpia; no se encontró alternativa segura"
 
     def _history_key(self, graph: Any, atom_ids: set[int]) -> str:
         bonds = _get_bonds_from_model(graph, atom_ids) if hasattr(graph, "bonds") else []

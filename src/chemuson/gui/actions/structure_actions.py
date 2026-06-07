@@ -19,6 +19,11 @@ def create_structure_actions(window) -> None:
     window.action_clean_2d_publication.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
     window.action_clean_2d_publication.triggered.connect(window._on_clean_2d_publication)
     window.addAction(window.action_clean_2d_publication)
+    window.action_clean_2d_propose = QAction("Proponer conformero 2D", window)
+    window.action_clean_2d_propose.setShortcut(QKeySequence("Ctrl+Alt+K"))
+    window.action_clean_2d_propose.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+    window.action_clean_2d_propose.triggered.connect(window._on_clean_2d_propose)
+    window.addAction(window.action_clean_2d_propose)
 
     window.action_validate_structure = QAction("Validar valencias", window)
     window.action_validate_structure.setShortcut(QKeySequence("Ctrl+Shift+V"))
