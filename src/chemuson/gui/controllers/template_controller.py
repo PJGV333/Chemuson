@@ -360,6 +360,7 @@ class TemplateController(QObject):
                 "Error",
                 f"No se pudo importar SMILES:\n{exc}",
             )
+            context.show_status("Error al importar SMILES")
 
     def on_export_smiles(self, context: TemplateControllerContext) -> None:
         try:

@@ -14,6 +14,7 @@ import hashlib
 import math
 from typing import Any, Iterable
 
+from chemuson.clean2d.complex_policy import Clean2DComplexityProfile, classify_clean2d_complexity
 from chemuson.clean2d.length_only import (
     length_only_polish,
     structure_preserving_geometry_polish,
@@ -129,6 +130,15 @@ def run_clean2d_engine(
     )
     has_block_layout_problem = has_intramolecular_block_layout_problem(layer_model.block_graph, quality)
     has_hierarchical_blocks = has_hierarchical_block_layout_signals(layer_model.block_graph)
+    profile = classify_clean2d_complexity(
+        graph,
+        selected,
+        target_bond_length=target,
+        quality_report=quality,
+        layer_model=layer_model,
+    )
+    if mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION} and profile.preserve_only:
+        return _run_complex_preserve_clean2d_engine(graph, selected, before, mode, target, profile)
     if (
         mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION}
         and not has_interaction_constraints
@@ -253,6 +263,237 @@ def _run_local_graph_clean2d_engine(
         message=local_result.report.message,
         reason=local_result.report.reason or "no_safe_local_repair",
     )
+
+
+def _run_complex_preserve_clean2d_engine(
+    graph: MolGraph,
+    selected: set[int],
+    before: dict[int, tuple[float, float]],
+    mode: Clean2DMode,
+    target: float,
+    profile: Clean2DComplexityProfile,
+) -> Clean2DResult:
+    bonds = _selected_structural_bonds(graph, selected)
+    cyclic = has_cycles(selected, bonds)
+    metadata = _complex_profile_metadata(profile)
+    current_quality = classify_clean2d_layout_quality(
+        graph,
+        selected,
+        coords=before,
+        target_bond_length=target,
+    )
+    current_report = evaluate_clean2d_layout(selected, bonds, before, before, target, is_cyclic=cyclic)
+    current = Clean2DCandidate(
+        source="current",
+        coords=before,
+        message="Estructura 2D compleja preservada; no se redibujó globalmente",
+        score=_visual_quality_score(graph, selected, bonds, before, before, target, mode),
+        novelty=0.0,
+        report=current_report,
+        geometry_hash=clean2d_geometry_hash(graph, before, selected) if before else "",
+        metadata={
+            **metadata,
+            "quality_class": current_quality.quality_class,
+            "quality_reason": current_quality.reason,
+            "length_rms_error": current_quality.length_rms_error,
+            "length_max_error": current_quality.length_max_error,
+            "angle_rms_deviation": current_quality.angle_rms_deviation,
+            "angle_max_deviation": current_quality.angle_max_deviation,
+            "severe_angle_count": current_quality.severe_angle_count,
+            "crossings": current_quality.crossings,
+            "min_nonbonded_distance": current_quality.min_nonbonded_distance,
+            "min_ring_degeneracy": current_quality.min_ring_degeneracy,
+            "visual_score": current_quality.visual_score,
+        },
+    )
+    if current_quality.quality_class == "good":
+        return Clean2DResult(
+            mode=mode,
+            atom_ids=selected,
+            before_coords=before,
+            candidates=(current,),
+            selected=current,
+            message=current.message,
+        )
+
+    repair = _complex_preserve_repair_candidate(
+        graph,
+        selected,
+        before,
+        bonds,
+        mode,
+        target,
+        profile,
+        cyclic=cyclic,
+    )
+    candidates: list[Clean2DCandidate] = [current]
+    rejected: list[Clean2DCandidate] = []
+    if repair is not None and repair.rejected:
+        rejected.append(repair)
+    elif repair is not None:
+        candidates.append(repair)
+        return Clean2DResult(
+            mode=mode,
+            atom_ids=selected,
+            before_coords=before,
+            candidates=tuple(candidates),
+            selected=repair,
+            message=repair.message,
+        )
+
+    if current_quality.quality_class == "needs_polish":
+        return Clean2DResult(
+            mode=mode,
+            atom_ids=selected,
+            before_coords=before,
+            candidates=tuple(candidates),
+            selected=current,
+            rejected=tuple(rejected),
+            message=current.message,
+        )
+
+    message = "Limpieza 2D compleja omitida: se preservó la proyección por seguridad"
+    return Clean2DResult(
+        mode=mode,
+        atom_ids=selected,
+        before_coords=before,
+        candidates=tuple(candidates),
+        selected=None,
+        rejected=tuple(rejected),
+        message=message,
+        reason="complex_preserve_unsafe",
+    )
+
+
+def _complex_preserve_repair_candidate(
+    graph: MolGraph,
+    selected: set[int],
+    before: dict[int, tuple[float, float]],
+    bonds: list[Bond],
+    mode: Clean2DMode,
+    target: float,
+    profile: Clean2DComplexityProfile,
+    *,
+    cyclic: bool,
+) -> Clean2DCandidate | None:
+    metadata = _complex_profile_metadata(profile)
+    max_displacement = target * 0.35
+    try:
+        if cyclic:
+            changed = structure_preserving_geometry_polish(
+                before,
+                bonds,
+                target,
+                max_displacement_per_atom=max_displacement,
+            )
+        else:
+            changed = structure_preserving_length_polish(
+                before,
+                bonds,
+                target,
+                max_iterations=4,
+                max_displacement_per_atom=max_displacement,
+            )
+    except Exception as exc:
+        return Clean2DCandidate(
+            source="complex_preserve",
+            coords=before,
+            message="Estructura 2D compleja preservada; reparación omitida",
+            rejected=True,
+            rejection_reason=f"complex_preserve_fallo:{exc}",
+            geometry_hash=clean2d_geometry_hash(graph, before, selected) if before else "",
+            metadata=metadata,
+        )
+    if not changed:
+        return None
+
+    after = dict(before)
+    after.update(changed)
+    geometry_hash = clean2d_geometry_hash(graph, after, selected) if after else ""
+    try:
+        assert_clean2d_invariants(graph, graph, before, after, atom_ids=selected)
+    except Clean2DInvariantError as exc:
+        return Clean2DCandidate(
+            source="complex_preserve",
+            coords=after,
+            message="Estructura 2D compleja preservada; reparación omitida",
+            rejected=True,
+            rejection_reason=str(exc),
+            geometry_hash=geometry_hash,
+            metadata=metadata,
+        )
+
+    report = evaluate_clean2d_layout(selected, bonds, before, after, target, is_cyclic=cyclic)
+    candidate_quality = classify_clean2d_layout_quality(
+        graph,
+        selected,
+        coords=after,
+        target_bond_length=target,
+    )
+    candidate_metadata = {
+        **metadata,
+        "quality_class": candidate_quality.quality_class,
+        "quality_reason": candidate_quality.reason,
+        "length_rms_error": candidate_quality.length_rms_error,
+        "length_max_error": candidate_quality.length_max_error,
+        "angle_rms_deviation": candidate_quality.angle_rms_deviation,
+        "angle_max_deviation": candidate_quality.angle_max_deviation,
+        "severe_angle_count": candidate_quality.severe_angle_count,
+        "crossings": candidate_quality.crossings,
+        "min_nonbonded_distance": candidate_quality.min_nonbonded_distance,
+        "min_ring_degeneracy": candidate_quality.min_ring_degeneracy,
+        "visual_score": candidate_quality.visual_score,
+    }
+    rejection_reason = _complex_preserve_rejection_reason(graph, selected, before, after, report, mode, target)
+    candidate = Clean2DCandidate(
+        source="complex_preserve",
+        coords=after,
+        message="Estructura 2D compleja pulida conservando la proyección",
+        score=_visual_quality_score(graph, selected, bonds, before, after, target, mode),
+        novelty=_mean_displacement(before, after, selected),
+        report=report,
+        geometry_hash=geometry_hash,
+        metadata=candidate_metadata,
+    )
+    if rejection_reason:
+        return _replace_candidate(candidate, rejected=True, rejection_reason=rejection_reason)
+    return candidate
+
+
+def _complex_preserve_rejection_reason(
+    graph: MolGraph,
+    selected: set[int],
+    before: dict[int, tuple[float, float]],
+    after: dict[int, tuple[float, float]],
+    report: Clean2DQualityReport,
+    mode: Clean2DMode,
+    target: float,
+) -> str:
+    safety_mode = "publication" if mode == Clean2DMode.PUBLICATION else "quick"
+    if not is_clean2d_candidate_safe(report, safety_mode):
+        return report.rejection_reason or "complex_preserve_inseguro"
+    if stereo_layout_signature(graph, before, selected) != stereo_layout_signature(graph, after, selected):
+        return "cambio_firma_estereoquimica"
+    if report.new_crossings > 0:
+        return f"nuevos_cruces_enlaces:{report.new_crossings}"
+    if report.is_cyclic and report.ring_degeneracy_after + 1e-9 < report.ring_degeneracy_before:
+        return "empeora_degeneracion_anillos"
+    if report.max_displacement > target * 0.35:
+        return f"desplazamiento_maximo_preserve_excesivo:{report.max_displacement:.1f}"
+    if report.mean_displacement > target * 0.18:
+        return f"desplazamiento_medio_preserve_excesivo:{report.mean_displacement:.1f}"
+    return ""
+
+
+def _complex_profile_metadata(profile: Clean2DComplexityProfile) -> dict[str, Any]:
+    return {
+        "complex_preserve_only": True,
+        "complex_profile_reason": profile.reason,
+        "complex_block_counts": dict(profile.block_counts),
+        "complex_atom_count": profile.atom_count,
+        "complex_ring_count": profile.ring_count,
+        "complex_stereo_center_count": profile.stereo_center_count,
+    }
 
 
 def generate_clean2d_candidates(

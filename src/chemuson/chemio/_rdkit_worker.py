@@ -314,10 +314,109 @@ def _handle_to_molblock_mode(Chem, request: dict[str, Any]) -> dict[str, Any]:
     if mol is None:
         return {"ok": False, "error": "invalid_input"}
     try:
+        if fmt != "molblock" and mol.GetNumConformers() == 0:
+            from rdkit.Chem import AllChem
+
+            AllChem.Compute2DCoords(mol)
         molblock = Chem.MolToMolBlock(mol)
     except Exception as exc:
         return {"ok": False, "error": "molblock_failed", "detail": str(exc)}
     return {"ok": True, "molblock": molblock}
+
+
+def _handle_smiles_depict_candidates_mode(Chem, request: dict[str, Any]) -> dict[str, Any]:
+    smiles = str(request.get("smiles", "") or "").strip()
+    target = float(request.get("target_bond_length", 40.0) or 40.0)
+    if not smiles:
+        return {"ok": False, "error": "empty_input"}
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        return {"ok": False, "error": "invalid_input"}
+
+    candidates: list[dict[str, Any]] = []
+    candidates.append(_depict_with_coordgen(Chem, mol))
+    candidates.append(_depict_with_compute2d(Chem, mol))
+    return {
+        "ok": True,
+        "candidates": candidates,
+        "diagnostics": {
+            "atom_count": int(mol.GetNumAtoms()),
+            "bond_count": int(mol.GetNumBonds()),
+            "target_bond_length": target,
+        },
+    }
+
+
+def _depict_with_coordgen(Chem, mol) -> dict[str, Any]:
+    source = "rdcoordgen"
+    try:
+        from rdkit.Chem import rdCoordGen
+
+        candidate = Chem.Mol(mol)
+        candidate.RemoveAllConformers()
+        try:
+            rdCoordGen.AddCoords(candidate)
+        except AttributeError:
+            rdCoordGen.AddCoords(candidate, clearConfs=True)
+        if candidate.GetNumConformers() == 0:
+            return {"source": source, "ok": False, "error": "no_conformer", "metadata": {"depictor": source}}
+        return {
+            "source": source,
+            "ok": True,
+            "molblock": Chem.MolToMolBlock(candidate),
+            "metadata": {"depictor": source},
+        }
+    except Exception as exc:
+        return {"source": source, "ok": False, "error": "rdcoordgen_failed", "metadata": {"detail": str(exc)}}
+
+
+def _depict_with_compute2d(Chem, mol) -> dict[str, Any]:
+    source = "rddepictor_compute2d"
+    try:
+        from rdkit.Chem import AllChem
+
+        candidate = Chem.Mol(mol)
+        candidate.RemoveAllConformers()
+        AllChem.Compute2DCoords(candidate)
+        if candidate.GetNumConformers() == 0:
+            return {"source": source, "ok": False, "error": "no_conformer", "metadata": {"depictor": source}}
+        return {
+            "source": source,
+            "ok": True,
+            "molblock": Chem.MolToMolBlock(candidate),
+            "metadata": {"depictor": source},
+        }
+    except Exception as exc:
+        return {"source": source, "ok": False, "error": "compute2d_failed", "metadata": {"detail": str(exc)}}
+
+
+def _handle_diagnostics_mode() -> dict[str, Any]:
+    """Diagnóstico aislado de disponibilidad RDKit en el worker."""
+    try:
+        from rdkit import Chem
+
+        try:
+            import rdkit
+
+            rdkit_version = str(getattr(rdkit, "__version__", ""))
+        except Exception:
+            rdkit_version = ""
+        payload = {
+            "ok": True,
+            "rdkit_version": rdkit_version,
+            "python_executable": sys.executable,
+            "sys_path_head": [str(item) for item in sys.path[:6]],
+            "worker_file": __file__,
+        }
+        return payload
+    except Exception as exc:
+        return {
+            "ok": False,
+            "error": "rdkit_unavailable",
+            "detail": str(exc),
+            "python_executable": sys.executable,
+            "worker_file": __file__,
+        }
 
 
 def _handle_graph_to_smiles_mode(Chem, request: dict[str, Any]) -> dict[str, Any]:
@@ -636,18 +735,26 @@ def main() -> int:
     if not isinstance(request, dict):
         return _fail("invalid_request")
 
+    mode = str(request.get("mode", "graph") or "graph")
+    if mode == "diagnostics":
+        sys.stdout.write(json.dumps(_handle_diagnostics_mode()))
+        return 0
+
     try:
         from rdkit import Chem
     except Exception as exc:  # pragma: no cover - entorno sin rdkit
-        return _fail("rdkit_unavailable", detail=str(exc))
+        return _fail("rdkit_unavailable", detail=str(exc), python_executable=sys.executable, worker_file=__file__)
 
-    mode = str(request.get("mode", "graph") or "graph")
     if mode == "text":
         result = _handle_text_mode(Chem, request)
         sys.stdout.write(json.dumps(result))
         return 0
     if mode == "to_molblock":
         result = _handle_to_molblock_mode(Chem, request)
+        sys.stdout.write(json.dumps(result))
+        return 0
+    if mode == "smiles_depict_candidates":
+        result = _handle_smiles_depict_candidates_mode(Chem, request)
         sys.stdout.write(json.dumps(result))
         return 0
     if mode == "graph_to_smiles":

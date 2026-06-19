@@ -8,9 +8,12 @@ from __future__ import annotations
 
 import os
 import re
+import sys
+import math
 from dataclasses import dataclass
 from typing import Dict, Iterable, Optional, Tuple
 
+from chemuson.chemio.depiction_candidates import DepictionCandidate, score_imported_depiction
 from chemuson.core.model import ATOMIC_NUMBERS, BondStyle, BondStereo, MolGraph, bond_is_structural
 
 Chem = None
@@ -1306,8 +1309,101 @@ def molfile_to_molgraph(molfile: str) -> MolGraph:
         raise fallback_error
 
 
+def smiles_to_depiction_candidates(
+    smiles: str,
+    *,
+    target_bond_length: float = 40.0,
+    timeout_s: float = 15.0,
+) -> list[DepictionCandidate]:
+    """Devuelve candidatos de depiction SMILES ordenados por calidad."""
+    clean_smiles = str(smiles or "").strip()
+    if not clean_smiles:
+        raise ValueError("SMILES vacío")
+    from chemuson.chemio.rdkit_safe import smiles_depict_candidates_isolated
+
+    raw_candidates, error = smiles_depict_candidates_isolated(
+        clean_smiles,
+        target_bond_length=target_bond_length,
+        timeout_s=timeout_s,
+    )
+    candidates: list[DepictionCandidate] = []
+    for raw in raw_candidates:
+        source = str(raw.get("source", "rdkit_candidate") or "rdkit_candidate")
+        metadata = dict(raw.get("metadata", {}) if isinstance(raw.get("metadata"), dict) else {})
+        if not raw.get("ok"):
+            candidates.append(
+                DepictionCandidate(
+                    source=source,
+                    graph=MolGraph(),
+                    score=math.inf,
+                    rejected=True,
+                    rejection_reason=str(raw.get("error", "candidate_failed") or "candidate_failed"),
+                    metadata=metadata,
+                )
+            )
+            continue
+        molblock = str(raw.get("molblock", "") or "")
+        if not molblock.strip():
+            candidates.append(
+                DepictionCandidate(source=source, graph=MolGraph(), score=math.inf, rejected=True, rejection_reason="empty_molblock", metadata=metadata)
+            )
+            continue
+        try:
+            graph = molfile_to_molgraph(molblock)
+            _scale_to_default(graph, target_bond_length)
+            score, score_metadata = score_imported_depiction(graph, target_bond_length=target_bond_length)
+            candidates.append(
+                DepictionCandidate(
+                    source=source,
+                    graph=graph,
+                    score=score,
+                    metadata={**metadata, **score_metadata, "worker_error": error or ""},
+                )
+            )
+        except Exception as exc:
+            candidates.append(
+                DepictionCandidate(source=source, graph=MolGraph(), score=math.inf, rejected=True, rejection_reason=str(exc), metadata=metadata)
+            )
+    candidates.sort(key=lambda item: (item.rejected, item.score, item.source))
+    if not candidates and error:
+        raise RuntimeError(_rdkit_worker_unavailable_message(str(error)))
+    return candidates
+
+
+def smiles_to_molgraph_best_depiction(
+    smiles: str,
+    *,
+    target_bond_length: float = 40.0,
+    timeout_s: float = 15.0,
+) -> MolGraph:
+    """Importa SMILES usando el mejor candidato de depiction aislado disponible."""
+    clean_smiles = str(smiles or "").strip()
+    if not clean_smiles:
+        raise ValueError("SMILES vacío")
+    candidate_error = ""
+    try:
+        candidates = smiles_to_depiction_candidates(
+            clean_smiles,
+            target_bond_length=target_bond_length,
+            timeout_s=timeout_s,
+        )
+        for candidate in sorted(candidates, key=lambda item: (item.rejected, item.score, item.source)):
+            if not candidate.rejected and candidate.graph.atoms:
+                return candidate.graph
+        rejected = [candidate.rejection_reason for candidate in candidates if candidate.rejected and candidate.rejection_reason]
+        candidate_error = "; ".join(rejected) or "no_usable_depiction_candidates"
+    except Exception as exc:
+        candidate_error = str(exc)
+
+    try:
+        return smiles_to_molgraph_isolated_or_error(clean_smiles, timeout_s=min(timeout_s, 8.0))
+    except Exception as exc:
+        fallback_error = str(exc)
+    raise RuntimeError(_rdkit_worker_unavailable_message(candidate_error or fallback_error, direct_error=fallback_error))
+
+
 def smiles_to_molgraph(smiles: str) -> MolGraph:
-    """Importa un SMILES a `MolGraph` usando RDKit.
+    """Importa un SMILES a `MolGraph` usando primero el worker RDKit aislado.
 
     Args:
         smiles: Cadena SMILES.
@@ -1315,9 +1411,68 @@ def smiles_to_molgraph(smiles: str) -> MolGraph:
     Returns:
         Grafo molecular equivalente.
     """
-    _require_rdkit()
-    mol = Chem.MolFromSmiles(smiles)
-    return rdkit_to_molgraph(mol)
+    clean_smiles = str(smiles or "").strip()
+    if not clean_smiles:
+        raise ValueError("SMILES vacío")
+
+    try:
+        return smiles_to_molgraph_best_depiction(clean_smiles, target_bond_length=40.0, timeout_s=15.0)
+    except Exception as best_error:
+        best_error_text = str(best_error)
+
+    worker_error = ""
+    try:
+        graph, error = _smiles_to_molgraph_isolated_result(clean_smiles, timeout_s=8.0)
+        if graph is not None and not error:
+            return graph
+        worker_error = str(error or "worker_error")
+    except Exception as exc:
+        worker_error = str(exc)
+
+    direct_error = ""
+    if _rdkit_available():
+        try:
+            mol = Chem.MolFromSmiles(clean_smiles)
+            if mol is None:
+                raise ValueError("SMILES inválido")
+            return rdkit_to_molgraph(mol)
+        except Exception as exc:
+            direct_error = str(exc)
+
+    combined_error = best_error_text or worker_error
+    if worker_error and worker_error not in combined_error:
+        combined_error = f"{combined_error}; {worker_error}"
+    raise RuntimeError(_rdkit_worker_unavailable_message(combined_error, direct_error=direct_error))
+
+
+def smiles_to_molgraph_isolated_or_error(smiles: str, timeout_s: float = 8.0) -> MolGraph:
+    """Importa SMILES con el worker RDKit aislado o lanza diagnóstico claro."""
+    clean_smiles = str(smiles or "").strip()
+    if not clean_smiles:
+        raise ValueError("SMILES vacío")
+
+    graph, error = _smiles_to_molgraph_isolated_result(clean_smiles, timeout_s=timeout_s)
+    if graph is not None and not error:
+        return graph
+    raise RuntimeError(_rdkit_worker_unavailable_message(str(error or "worker_error")))
+
+
+def _smiles_to_molgraph_isolated_result(smiles: str, timeout_s: float) -> tuple[MolGraph | None, str | None]:
+    from chemuson.chemio.rdkit_safe import smiles_to_molgraph_isolated
+
+    return smiles_to_molgraph_isolated(smiles, timeout_s=timeout_s)
+
+
+def _rdkit_worker_unavailable_message(worker_error: str, *, direct_error: str = "") -> str:
+    parts = [
+        "RDKit worker no disponible",
+        f"worker_error: {worker_error or 'desconocido'}",
+        f"sys.executable: {sys.executable}",
+        "Verifica que RDKit esté instalado en el mismo intérprete que ejecuta Chemuson.",
+    ]
+    if direct_error:
+        parts.insert(2, f"direct_error: {direct_error}")
+    return "\n".join(parts)
 
 
 def rdkit_to_molgraph(mol) -> MolGraph:

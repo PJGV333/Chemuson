@@ -37,6 +37,37 @@ def text_to_molblock(
     return _run_worker(request, timeout_s=timeout_s)
 
 
+def rdkit_worker_diagnostics(timeout_s: float = 5.0) -> dict[str, Any]:
+    """Devuelve diagnóstico del worker RDKit sin importar RDKit en el proceso padre."""
+    return _run_worker({"mode": "diagnostics"}, timeout_s=timeout_s)
+
+
+def smiles_depict_candidates_isolated(
+    smiles: str,
+    *,
+    target_bond_length: float = 40.0,
+    timeout_s: float = 15.0,
+) -> tuple[list[dict[str, object]], str | None]:
+    """Genera candidatos de depiction SMILES mediante worker RDKit aislado."""
+    request = {
+        "mode": "smiles_depict_candidates",
+        "smiles": str(smiles or ""),
+        "target_bond_length": float(target_bond_length or 40.0),
+    }
+    response = _run_worker(request, timeout_s=timeout_s)
+    if not response.get("ok"):
+        diagnostics = {
+            key: response.get(key)
+            for key in ("error", "detail", "python_executable", "worker_path", "worker_file", "returncode", "stderr", "stdout")
+            if response.get(key) not in {None, ""}
+        }
+        return [], "; ".join(f"{key}={value}" for key, value in diagnostics.items()) or "worker_error"
+    candidates = response.get("candidates", [])
+    if not isinstance(candidates, list):
+        return [], "invalid_candidates"
+    return [candidate for candidate in candidates if isinstance(candidate, dict)], None
+
+
 def smiles_to_molgraph_isolated(
     smiles: str,
     timeout_s: float = 8.0,
@@ -389,6 +420,10 @@ def _run_worker(request: dict[str, Any], timeout_s: float) -> dict[str, Any]:
     """Ejecuta worker RDKit y devuelve JSON robusto, incluso ante crash."""
     worker = _worker_path()
     cmd = [sys.executable, str(worker)]
+    base = {
+        "python_executable": sys.executable,
+        "worker_path": str(worker),
+    }
     try:
         proc = subprocess.run(
             cmd,
@@ -399,22 +434,23 @@ def _run_worker(request: dict[str, Any], timeout_s: float) -> dict[str, Any]:
             check=False,
         )
     except subprocess.TimeoutExpired:
-        return {"ok": False, "error": "timeout"}
+        return {"ok": False, "error": "timeout", **base}
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        return {"ok": False, "error": str(exc), **base}
 
     if proc.returncode != 0:
-        if proc.returncode < 0:
-            return {
-                "ok": False,
-                "error": f"worker_exit_signal:{-proc.returncode}",
-                "stderr": (proc.stderr or "").strip(),
-            }
-        return {
+        payload = {
             "ok": False,
-            "error": f"worker_exit_code:{proc.returncode}",
+            "returncode": int(proc.returncode),
             "stderr": (proc.stderr or "").strip(),
+            "stdout": (proc.stdout or "").strip(),
+            **base,
         }
+        if proc.returncode < 0:
+            payload["error"] = f"worker_exit_signal:{-proc.returncode}"
+            return payload
+        payload["error"] = f"worker_exit_code:{proc.returncode}"
+        return payload
     try:
         data = json.loads(proc.stdout or "{}")
     except Exception:
@@ -423,7 +459,10 @@ def _run_worker(request: dict[str, Any], timeout_s: float) -> dict[str, Any]:
             "error": "invalid_worker_json",
             "stdout": (proc.stdout or "").strip(),
             "stderr": (proc.stderr or "").strip(),
+            **base,
         }
     if not isinstance(data, dict):
-        return {"ok": False, "error": "invalid_worker_payload"}
+        return {"ok": False, "error": "invalid_worker_payload", **base}
+    data.setdefault("python_executable", sys.executable)
+    data.setdefault("worker_path", str(worker))
     return data
