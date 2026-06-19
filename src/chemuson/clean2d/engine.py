@@ -23,6 +23,7 @@ from chemuson.clean2d.local_graph_cleaner import (
     LocalClean2DMode,
     is_complex_clean2d_graph,
     local_graph_clean2d,
+    stereo_layout_signature,
 )
 from chemuson.clean2d.safety import (
     Clean2DQualityReport,
@@ -33,7 +34,7 @@ from chemuson.clean2d.safety import (
     ring_degeneracy_score,
 )
 from chemuson.clean2d.v2 import Clean2DParameters, optimize_clean2d_positions
-from chemuson.core.layers import LayoutConstraintKind, build_multilayer_chemical_graph
+from chemuson.core.layers import BlockEdgeKind, BlockKind, LayoutConstraint, LayoutConstraintKind, build_multilayer_chemical_graph
 from chemuson.core.model import Bond, MolGraph, bond_affects_valence
 
 
@@ -120,9 +121,19 @@ def run_clean2d_engine(
     target = max(8.0, float(target_bond_length or 42.0))
     layer_model = build_multilayer_chemical_graph(graph, selected)
     has_interaction_constraints = _interaction_constraint_count(layer_model.layout_constraint_graph.constraints) > 0
+    quality = classify_clean2d_layout_quality(
+        graph,
+        selected,
+        coords=before,
+        target_bond_length=target,
+    )
+    has_block_layout_problem = has_intramolecular_block_layout_problem(layer_model.block_graph, quality)
+    has_hierarchical_blocks = has_hierarchical_block_layout_signals(layer_model.block_graph)
     if (
         mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION}
         and not has_interaction_constraints
+        and not has_block_layout_problem
+        and not has_hierarchical_blocks
         and is_complex_clean2d_graph(graph, selected)
     ):
         return _run_local_graph_clean2d_engine(graph, selected, before, mode, target)
@@ -264,7 +275,12 @@ def generate_clean2d_candidates(
     target = max(8.0, float(target_bond_length or 42.0))
     layer_model = build_multilayer_chemical_graph(graph, selected)
     baseline_constraint_error = _interaction_constraint_error(layer_model.layout_constraint_graph.constraints, before)
+    block_layout_candidate = _candidate_from_block_layout_signals(graph, selected, before, bonds, target)
+    block_candidate = _candidate_from_block_constraints(graph, selected, before, bonds, target)
+    motif_candidate = _candidate_from_motif_constraints(graph, selected, before, bonds, target)
     candidates: list[Clean2DCandidate] = []
+    if block_layout_candidate is not None:
+        candidates.append(block_layout_candidate)
 
     current = _normalized_candidate_coords(before, before, bonds, target)
     candidates.append(
@@ -280,9 +296,6 @@ def generate_clean2d_candidates(
             },
         )
     )
-
-    block_candidate = _candidate_from_block_constraints(graph, selected, before, bonds, target)
-    motif_candidate = _candidate_from_motif_constraints(graph, selected, before, bonds, target)
 
     if mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION}:
         candidates.extend(
@@ -303,6 +316,7 @@ def generate_clean2d_candidates(
         candidates.extend(
             candidate
             for candidate in (
+                block_layout_candidate,
                 block_candidate,
                 motif_candidate,
                 _candidate_from_rdkit_isolated(graph, selected, before, bonds, target, rdkit_timeout_s),
@@ -435,6 +449,8 @@ def rank_clean2d_candidates(
             )
         safety_mode = _safety_mode_for_candidate(mode, candidate, baseline_bad)
         safe = is_clean2d_candidate_safe(report, safety_mode)
+        if candidate.source == "block_layout" and baseline_bad and not candidate.metadata.get("block_layout_rejected"):
+            safe = True
         if mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION} and candidate.source == "current":
             if quality.quality_class == "needs_rebuild":
                 safe = False
@@ -442,7 +458,11 @@ def rank_clean2d_candidates(
             elif quality.quality_class == "needs_polish":
                 safe = False
                 report.rejection_reason = "geometria_actual_requiere_optimizacion"
-        if mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION} and candidate_quality.quality_class == "needs_rebuild":
+        if (
+            mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION}
+            and candidate.source != "block_layout"
+            and candidate_quality.quality_class == "needs_rebuild"
+        ):
             safe = False
             report.rejection_reason = "candidato_no_canonicaliza_geometria"
         if (
@@ -657,6 +677,96 @@ def classify_clean2d_layout_quality(
             reason="orientacion_anillo_exociclico_suboptima",
         )
     return base_report
+
+
+def has_intramolecular_block_layout_problem(
+    block_graph: object,
+    quality_report: Clean2DLayoutQualityReport | None,
+) -> bool:
+    if has_hierarchical_block_layout_signals(block_graph):
+        return True
+    blocks = tuple(getattr(block_graph, "blocks", ()) or ())
+    if not blocks:
+        return False
+    counts: dict[BlockKind, int] = {}
+    for block in blocks:
+        kind = getattr(block, "kind", None)
+        if isinstance(kind, BlockKind):
+            counts[kind] = counts.get(kind, 0) + 1
+    structural_trigger = any(
+        counts.get(kind, 0) > 0
+        for kind in (
+            BlockKind.MACROCYCLE,
+            BlockKind.CYCLOPHANE,
+            BlockKind.FUSED_SYSTEM,
+            BlockKind.INTRAMOLECULAR_BRIDGE,
+            BlockKind.INTERNAL_CAVITY,
+        )
+    )
+    if structural_trigger:
+        return True
+    if counts.get(BlockKind.AROMATIC_RING, 0) >= 3:
+        return True
+    if counts.get(BlockKind.STEREO_CENTER, 0) > 0 and counts.get(BlockKind.AROMATIC_RING, 0) > 0:
+        return True
+    if quality_report is None:
+        return False
+    return quality_report.quality_class != "good" and (
+        counts.get(BlockKind.AROMATIC_RING, 0) >= 2
+        or counts.get(BlockKind.LINKER, 0) > 0
+        or counts.get(BlockKind.TERMINAL_SUBSTITUENT, 0) > 0
+    )
+
+
+def has_hierarchical_block_layout_signals(block_graph: object) -> bool:
+    blocks = tuple(getattr(block_graph, "blocks", ()) or ())
+    if not blocks:
+        return False
+    counts: dict[BlockKind, int] = {}
+    block_by_id = {}
+    for block in blocks:
+        block_id = int(getattr(block, "id", 0) or 0)
+        if block_id:
+            block_by_id[block_id] = block
+        kind = getattr(block, "kind", None)
+        if isinstance(kind, BlockKind):
+            counts[kind] = counts.get(kind, 0) + 1
+    if any(
+        counts.get(kind, 0) > 0
+        for kind in (
+            BlockKind.MACROCYCLE,
+            BlockKind.CYCLOPHANE,
+            BlockKind.INTERNAL_CAVITY,
+            BlockKind.INTRAMOLECULAR_BRIDGE,
+            BlockKind.FUSED_SYSTEM,
+        )
+    ):
+        return True
+    if counts.get(BlockKind.AROMATIC_RING, 0) >= 3:
+        return True
+    if counts.get(BlockKind.STEREO_CENTER, 0) >= 2:
+        return True
+
+    rigid = {
+        BlockKind.AROMATIC_RING,
+        BlockKind.FUSED_SYSTEM,
+        BlockKind.MACROCYCLE,
+        BlockKind.CYCLOPHANE,
+    }
+    linker_edges = 0
+    for edge in getattr(block_graph, "edges", ()) or ():
+        if getattr(edge, "kind", None) != BlockEdgeKind.LINKER:
+            continue
+        block_ids = tuple(getattr(edge, "block_ids", ()) or ())
+        if len(block_ids) != 2:
+            continue
+        left = block_by_id.get(int(block_ids[0]))
+        right = block_by_id.get(int(block_ids[1]))
+        if left is None or right is None:
+            continue
+        if getattr(left, "kind", None) in rigid or getattr(right, "kind", None) in rigid:
+            linker_edges += 1
+    return linker_edges >= 2
 
 
 def _replace_quality(report: Clean2DLayoutQualityReport, **updates: Any) -> Clean2DLayoutQualityReport:
@@ -1210,13 +1320,16 @@ def _candidate_from_block_constraints(
 ) -> Clean2DCandidate | None:
     layer_model = build_multilayer_chemical_graph(graph, atom_ids)
     block_graph = layer_model.block_graph
-    constraints = tuple(
+    explicit_constraints = tuple(
         constraint
         for constraint in layer_model.layout_constraint_graph.constraints
         if constraint.kind == LayoutConstraintKind.INTERACTION_DISTANCE
         and len(constraint.atom_ids) == 2
     )
-    if not constraints or not block_graph.blocks:
+    block_constraints = _internal_block_layout_constraints(block_graph, before, target)
+    constraints = tuple((*explicit_constraints, *block_constraints))
+    quality = classify_clean2d_layout_quality(graph, atom_ids, coords=before, target_bond_length=target)
+    if not block_graph.blocks or not has_intramolecular_block_layout_problem(block_graph, quality):
         return None
 
     components = _covalent_components(atom_ids, bonds)
@@ -1226,42 +1339,50 @@ def _candidate_from_block_constraints(
         for atom_id in component
     }
     coords = dict(before)
-    before_error = _interaction_constraint_error(constraints, coords)
-    if before_error <= target * 0.04:
-        return None
+    before_error = _block_constraint_error(block_graph, constraints, coords, bonds, target)
 
     adjacency = _adjacency_for_bonds(atom_ids, bonds)
     operations: list[dict[str, object]] = []
     for _ in range(3):
         improved = False
-        for constraint in constraints:
-            a_id, b_id = constraint.atom_ids
-            if a_id not in coords or b_id not in coords:
+        for edge in getattr(block_graph, "edges", ()) or ():
+            if getattr(edge, "kind", None) not in {BlockEdgeKind.LINKER, BlockEdgeKind.ATTACHMENT, BlockEdgeKind.BRIDGE}:
                 continue
-            if atom_component.get(a_id) != atom_component.get(b_id):
+            atom_pair = tuple(getattr(edge, "atom_ids", ()) or ())
+            if len(atom_pair) != 2:
                 continue
-            if _block_ids_for_atom(block_graph, a_id).isdisjoint(_block_ids_for_atom(block_graph, b_id)):
-                trial = _best_internal_block_transform(
-                    coords,
-                    atom_ids,
-                    adjacency,
-                    constraints,
-                    a_id,
-                    b_id,
-                    float(constraint.target_distance or target * 1.35),
-                )
-                if trial is None:
-                    continue
-                trial_coords, operation = trial
-                if _interaction_constraint_error(constraints, trial_coords) + 0.5 < _interaction_constraint_error(constraints, coords):
-                    coords = trial_coords
-                    operations.append(operation)
-                    improved = True
+            left, right = atom_pair
+            if left not in coords or right not in coords or atom_component.get(left) != atom_component.get(right):
+                continue
+            trial = _best_block_edge_transform(
+                block_graph,
+                coords,
+                atom_ids,
+                adjacency,
+                constraints,
+                bonds,
+                target,
+                left,
+                right,
+            )
+            if trial is None:
+                continue
+            trial_coords, operation = trial
+            if _block_constraint_error(block_graph, constraints, trial_coords, bonds, target) + 0.5 < _block_constraint_error(
+                block_graph,
+                constraints,
+                coords,
+                bonds,
+                target,
+            ):
+                coords = trial_coords
+                operations.append(operation)
+                improved = True
         if not improved:
             break
 
-    after_error = _interaction_constraint_error(constraints, coords)
-    if after_error >= before_error * 0.80 or _mean_displacement(before, coords, atom_ids) < 0.25:
+    after_error = _block_constraint_error(block_graph, constraints, coords, bonds, target)
+    if after_error >= before_error * 0.98 or _mean_displacement(before, coords, atom_ids) < 0.25:
         return None
     block_counts: dict[str, int] = {}
     for block in block_graph.blocks:
@@ -1274,14 +1395,94 @@ def _candidate_from_block_constraints(
             "multilayer_clean2d": True,
             "block_first": True,
             "block_constraint_count": len(constraints),
+            "internal_block_constraint_count": len(block_constraints),
             "block_operation_count": len(operations),
             "block_kinds": block_counts,
             "block_operations": tuple(operations),
-            "interaction_constraint_count": len(constraints),
-            "interaction_constraint_error": after_error,
-            "interaction_constraint_error_before": before_error,
+            "interaction_constraint_count": len(explicit_constraints),
+            "interaction_constraint_error": _interaction_constraint_error(explicit_constraints, coords),
+            "interaction_constraint_error_before": _interaction_constraint_error(explicit_constraints, before),
+            "block_constraint_error": after_error,
+            "block_constraint_error_before": before_error,
         },
     )
+
+
+def _candidate_from_block_layout_signals(
+    graph: MolGraph,
+    atom_ids: set[int],
+    before: dict[int, tuple[float, float]],
+    bonds: list[Bond],
+    target: float,
+) -> Clean2DCandidate | None:
+    layer_model = build_multilayer_chemical_graph(graph, atom_ids)
+    if not has_hierarchical_block_layout_signals(layer_model.block_graph):
+        return None
+    candidate = _candidate_from_block_constraints(graph, atom_ids, before, bonds, target)
+    if candidate is None:
+        block_constraints = _internal_block_layout_constraints(layer_model.block_graph, before, target)
+        before_error = _block_constraint_error(layer_model.block_graph, block_constraints, before, bonds, target)
+        after = _normalized_candidate_coords(before, before, bonds, target)
+        candidate_metadata = {
+            "multilayer_clean2d": True,
+            "block_first": True,
+            "block_layout_fallback": "rigid_global_normalization",
+            "block_constraint_count": len(block_constraints),
+            "internal_block_constraint_count": len(block_constraints),
+            "block_operation_count": 0,
+            "interaction_constraint_count": 0,
+            "interaction_constraint_error": 0.0,
+            "interaction_constraint_error_before": 0.0,
+            "block_constraint_error": _block_constraint_error(layer_model.block_graph, block_constraints, after, bonds, target),
+            "block_constraint_error_before": before_error,
+        }
+    else:
+        after = _complete_coords(candidate.coords, before, atom_ids)
+        candidate_metadata = candidate.metadata
+    rejection = _reject_block_layout_regression(graph, atom_ids, bonds, before, after, target)
+    if rejection:
+        return Clean2DCandidate(
+            source="block_layout",
+            coords=after,
+            rejected=True,
+            rejection_reason=rejection,
+            metadata={**candidate_metadata, "block_layout_rejected": rejection},
+        )
+    return Clean2DCandidate(
+        source="block_layout",
+        coords=after,
+        message="Layout 2D jerarquico por BlockGraph",
+        metadata={
+            **candidate_metadata,
+            "block_layout": True,
+            "hierarchical_block_signals": True,
+        },
+    )
+
+
+def _reject_block_layout_regression(
+    graph: MolGraph,
+    atom_ids: set[int],
+    bonds: list[Bond],
+    before: dict[int, tuple[float, float]],
+    after: dict[int, tuple[float, float]],
+    target: float,
+) -> str:
+    before_crossings = _count_crossings(before, bonds)
+    after_crossings = _count_crossings(after, bonds)
+    if after_crossings > before_crossings:
+        return "block_layout_aumenta_cruces"
+    before_nonbonded = min_nonbonded_distance(before, bonds, atom_ids)
+    after_nonbonded = min_nonbonded_distance(after, bonds, atom_ids)
+    if before_nonbonded < math.inf and after_nonbonded + 1e-6 < min(before_nonbonded, target * 0.35):
+        return "block_layout_empeora_colisiones"
+    if stereo_layout_signature(graph, before, atom_ids) != stereo_layout_signature(graph, after, atom_ids):
+        return "block_layout_cambia_firma_estereo"
+    before_quality = classify_clean2d_layout_quality(graph, atom_ids, coords=before, target_bond_length=target)
+    after_quality = classify_clean2d_layout_quality(graph, atom_ids, coords=after, target_bond_length=target)
+    if after_quality.min_ring_degeneracy + 1e-6 < before_quality.min_ring_degeneracy:
+        return "block_layout_colapsa_anillos"
+    return ""
 
 
 def _candidate_from_rdkit_isolated(
@@ -2377,14 +2578,15 @@ def _replace_candidate(candidate: Clean2DCandidate, **updates: Any) -> Clean2DCa
 def _source_priority(source: str) -> int:
     priorities = {
         "current": 0,
-        "rdkit_isolated": 1,
-        "rdkit_direct": 2,
-        "internal_templates": 3,
-        "clean2d_v2": 4,
-        "block_constraints": 5,
-        "motif_constraints": 6,
-        "safe_fallback": 7,
-        "local_graph": 8,
+        "block_layout": 1,
+        "block_constraints": 2,
+        "rdkit_isolated": 3,
+        "rdkit_direct": 4,
+        "internal_templates": 5,
+        "clean2d_v2": 6,
+        "motif_constraints": 7,
+        "safe_fallback": 8,
+        "local_graph": 9,
         "propose_reflection": 1,
         "propose_rotation": 2,
         "propose_3d_projection": 3,
@@ -2472,6 +2674,220 @@ def _interaction_constraint_error(
     return total / weight_total
 
 
+def _internal_block_layout_constraints(
+    block_graph: object,
+    coords: dict[int, tuple[float, float]],
+    target: float,
+) -> tuple[LayoutConstraint, ...]:
+    constraints: list[LayoutConstraint] = []
+    blocks = tuple(getattr(block_graph, "blocks", ()) or ())
+    aromatic = [block for block in blocks if getattr(block, "kind", None) == BlockKind.AROMATIC_RING]
+    macro_like = [
+        block
+        for block in blocks
+        if getattr(block, "kind", None) in {BlockKind.MACROCYCLE, BlockKind.CYCLOPHANE}
+    ]
+    cavities = [block for block in blocks if getattr(block, "kind", None) == BlockKind.INTERNAL_CAVITY]
+    substituents = [block for block in blocks if getattr(block, "kind", None) == BlockKind.TERMINAL_SUBSTITUENT]
+    stereo = [block for block in blocks if getattr(block, "kind", None) == BlockKind.STEREO_CENTER]
+
+    for block in blocks:
+        if getattr(block, "kind", None) in {
+            BlockKind.AROMATIC_RING,
+            BlockKind.FUSED_SYSTEM,
+            BlockKind.MACROCYCLE,
+            BlockKind.CYCLOPHANE,
+        }:
+            constraints.append(
+                LayoutConstraint(
+                    id=len(constraints) + 1,
+                    kind=LayoutConstraintKind.MOTIF_RIGID,
+                    atom_ids=tuple(sorted(getattr(block, "atom_ids", ()) or ())),
+                    weight=4.0,
+                    source=f"block_rigid:{getattr(block, 'id', 0)}",
+                )
+            )
+
+    for idx, left in enumerate(aromatic):
+        for right in aromatic[idx + 1 :]:
+            atom_pair = _nearest_atoms_between_blocks(left, right, coords)
+            if atom_pair is None:
+                continue
+            constraints.append(
+                LayoutConstraint(
+                    id=len(constraints) + 1,
+                    kind=LayoutConstraintKind.INTERACTION_DISTANCE,
+                    atom_ids=atom_pair,
+                    target_distance=target * 1.55,
+                    weight=0.7,
+                    source="block_ring_centroid_separation",
+                    metadata={"internal_block_constraint": "ring_centroid_separation"},
+                )
+            )
+
+    for block in macro_like:
+        atoms = tuple(sorted(getattr(block, "atom_ids", ()) or ()))
+        if len(atoms) < 6:
+            continue
+        constraints.append(
+            LayoutConstraint(
+                id=len(constraints) + 1,
+                kind=LayoutConstraintKind.MOTIF_CONTAINMENT,
+                atom_ids=atoms,
+                target_distance=target * min(4.0, max(2.0, len(atoms) / math.pi / 2.0)),
+                weight=2.2,
+                source=f"block_open_macrocycle:{getattr(block, 'id', 0)}",
+                metadata={"internal_block_constraint": "open_macrocycle"},
+            )
+        )
+
+    for block in cavities:
+        atoms = tuple(sorted(getattr(block, "atom_ids", ()) or ()))
+        if len(atoms) < 4:
+            continue
+        constraints.append(
+            LayoutConstraint(
+                id=len(constraints) + 1,
+                kind=LayoutConstraintKind.MOTIF_CONTAINMENT,
+                atom_ids=atoms,
+                target_distance=target * 1.8,
+                weight=2.0,
+                source=f"block_cavity:{getattr(block, 'id', 0)}",
+                metadata={"internal_block_constraint": "avoid_cavity_collapse"},
+            )
+        )
+
+    for block in substituents:
+        atoms = tuple(sorted(getattr(block, "atom_ids", ()) or ()))
+        anchors = tuple(getattr(block, "anchor_atom_ids", ()) or ())
+        external = tuple(atom_id for atom_id in atoms if atom_id not in anchors)
+        if anchors and external:
+            constraints.append(
+                LayoutConstraint(
+                    id=len(constraints) + 1,
+                    kind=LayoutConstraintKind.STEREO_ORIENTATION,
+                    atom_ids=(anchors[0], external[-1]),
+                    target_angle_deg=120.0,
+                    weight=1.0,
+                    source=f"block_substituent_outward:{getattr(block, 'id', 0)}",
+                    metadata={"internal_block_constraint": "substituent_outward"},
+                )
+            )
+
+    for block in stereo:
+        atoms = tuple(sorted(getattr(block, "atom_ids", ()) or ()))
+        if atoms:
+            constraints.append(
+                LayoutConstraint(
+                    id=len(constraints) + 1,
+                    kind=LayoutConstraintKind.STEREO_ORIENTATION,
+                    atom_ids=(atoms[0],),
+                    weight=3.0,
+                    source=f"block_stereo:{getattr(block, 'id', 0)}",
+                    metadata={"internal_block_constraint": "preserve_stereo_orientation"},
+                )
+            )
+
+    return tuple(constraints)
+
+
+def _block_constraint_error(
+    block_graph: object,
+    constraints: Iterable[object],
+    coords: dict[int, tuple[float, float]],
+    bonds: list[Bond],
+    target: float,
+) -> float:
+    total = _interaction_constraint_error(constraints, coords)
+    for constraint in constraints:
+        kind = getattr(constraint, "kind", None)
+        atom_ids = tuple(getattr(constraint, "atom_ids", ()) or ())
+        weight = max(0.1, float(getattr(constraint, "weight", 1.0) or 1.0))
+        if kind == LayoutConstraintKind.MOTIF_RIGID:
+            total += _rigid_block_error(atom_ids, coords, target) * weight
+        elif kind == LayoutConstraintKind.MOTIF_CONTAINMENT:
+            desired = float(getattr(constraint, "target_distance", None) or target * 1.5)
+            total += max(0.0, desired - _block_radius(atom_ids, coords)) * weight
+        elif kind == LayoutConstraintKind.STEREO_ORIENTATION:
+            meta = getattr(constraint, "metadata", {}) or {}
+            label = str(meta.get("internal_block_constraint", ""))
+            if label == "substituent_outward" and len(atom_ids) == 2:
+                total += _substituent_inward_error(block_graph, atom_ids, coords, target) * weight
+    total += _linker_crossing_error(block_graph, coords, bonds, target)
+    return total
+
+
+def _nearest_atoms_between_blocks(left: object, right: object, coords: dict[int, tuple[float, float]]) -> tuple[int, int] | None:
+    best: tuple[float, int, int] | None = None
+    for a_id in getattr(left, "atom_ids", ()) or ():
+        if a_id not in coords:
+            continue
+        for b_id in getattr(right, "atom_ids", ()) or ():
+            if b_id not in coords:
+                continue
+            dist = _distance(coords[a_id], coords[b_id])
+            if best is None or dist < best[0]:
+                best = (dist, int(a_id), int(b_id))
+    if best is None:
+        return None
+    return (best[1], best[2])
+
+
+def _rigid_block_error(atom_ids: tuple[int, ...], coords: dict[int, tuple[float, float]], target: float) -> float:
+    if len(atom_ids) < 3:
+        return 0.0
+    radius = _block_radius(atom_ids, coords)
+    return max(0.0, target * 0.45 - radius)
+
+
+def _block_radius(atom_ids: tuple[int, ...], coords: dict[int, tuple[float, float]]) -> float:
+    present = {atom_id: coords[atom_id] for atom_id in atom_ids if atom_id in coords}
+    if not present:
+        return 0.0
+    center = _center(present)
+    return min((_distance(center, coord) for coord in present.values()), default=0.0)
+
+
+def _substituent_inward_error(
+    block_graph: object,
+    atom_ids: tuple[int, ...],
+    coords: dict[int, tuple[float, float]],
+    target: float,
+) -> float:
+    if len(atom_ids) != 2 or atom_ids[0] not in coords or atom_ids[1] not in coords:
+        return 0.0
+    anchor, external = atom_ids
+    parent_blocks = [
+        block
+        for block in getattr(block_graph, "blocks", ()) or ()
+        if anchor in getattr(block, "atom_ids", frozenset())
+        and getattr(block, "kind", None) in {BlockKind.AROMATIC_RING, BlockKind.FUSED_SYSTEM, BlockKind.MACROCYCLE}
+    ]
+    if not parent_blocks:
+        return 0.0
+    parent_center = _center({atom_id: coords[atom_id] for atom_id in parent_blocks[0].atom_ids if atom_id in coords})
+    before = _distance(parent_center, coords[anchor])
+    after = _distance(parent_center, coords[external])
+    return max(0.0, before + target * 0.2 - after)
+
+
+def _linker_crossing_error(
+    block_graph: object,
+    coords: dict[int, tuple[float, float]],
+    bonds: list[Bond],
+    target: float,
+) -> float:
+    linker_atoms = set()
+    for block in getattr(block_graph, "blocks", ()) or ():
+        if getattr(block, "kind", None) in {BlockKind.LINKER, BlockKind.INTRAMOLECULAR_BRIDGE}:
+            linker_atoms.update(getattr(block, "atom_ids", ()) or ())
+    if not linker_atoms:
+        return 0.0
+    linker_bonds = [bond for bond in bonds if bond.a1_id in linker_atoms or bond.a2_id in linker_atoms]
+    crossings = _count_crossings(coords, linker_bonds)
+    return crossings * target * 0.6
+
+
 def _block_ids_for_atom(block_graph: object, atom_id: int) -> set[int]:
     mapping = getattr(block_graph, "atom_to_block_ids", {}) or {}
     return {int(block_id) for block_id in mapping.get(atom_id, ())}
@@ -2530,6 +2946,59 @@ def _best_internal_block_transform(
                 "anchor_atom_id": left,
                 "moved_atom_count": len(side),
             }
+    if best_coords is None or best_operation is None:
+        return None
+    return best_coords, best_operation
+
+
+def _best_block_edge_transform(
+    block_graph: object,
+    coords: dict[int, tuple[float, float]],
+    atom_ids: set[int],
+    adjacency: dict[int, set[int]],
+    constraints: tuple[object, ...],
+    bonds: list[Bond],
+    target: float,
+    left: int,
+    right: int,
+) -> tuple[dict[int, tuple[float, float]], dict[str, object]] | None:
+    if left not in coords or right not in coords:
+        return None
+    side = _component_without_edge(right, left, adjacency, atom_ids)
+    if not side or left in side or len(side) >= len(atom_ids):
+        return None
+    current_error = _block_constraint_error(block_graph, constraints, coords, bonds, target)
+    best_coords: dict[int, tuple[float, float]] | None = None
+    best_operation: dict[str, object] | None = None
+    best_error = current_error
+    anchor = coords[left]
+    pivot = coords[right]
+
+    for angle in (-150.0, -120.0, -90.0, -60.0, 60.0, 90.0, 120.0, 150.0, 180.0):
+        trial = _rotate_atom_subset(coords, side, pivot, math.radians(angle))
+        error = _block_constraint_error(block_graph, constraints, trial, bonds, target)
+        if error + 0.5 < best_error:
+            best_error = error
+            best_coords = trial
+            best_operation = {
+                "operation": "rotate_block_edge",
+                "angle_deg": angle,
+                "anchor_atom_id": left,
+                "pivot_atom_id": right,
+                "moved_atom_count": len(side),
+            }
+
+    trial = _reflect_atom_subset(coords, side, anchor, pivot)
+    error = _block_constraint_error(block_graph, constraints, trial, bonds, target)
+    if error + 0.5 < best_error:
+        best_coords = trial
+        best_operation = {
+            "operation": "reflect_block_edge",
+            "anchor_atom_id": left,
+            "pivot_atom_id": right,
+            "moved_atom_count": len(side),
+        }
+
     if best_coords is None or best_operation is None:
         return None
     return best_coords, best_operation
