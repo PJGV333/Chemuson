@@ -281,12 +281,14 @@ def generate_clean2d_candidates(
         )
     )
 
+    block_candidate = _candidate_from_block_constraints(graph, selected, before, bonds, target)
     motif_candidate = _candidate_from_motif_constraints(graph, selected, before, bonds, target)
 
     if mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION}:
         candidates.extend(
             candidate
             for candidate in (
+                block_candidate,
                 motif_candidate,
                 _candidate_from_rdkit_isolated(graph, selected, before, bonds, target, rdkit_timeout_s),
                 _candidate_from_rdkit_direct(graph, selected, before, bonds, target),
@@ -301,6 +303,7 @@ def generate_clean2d_candidates(
         candidates.extend(
             candidate
             for candidate in (
+                block_candidate,
                 motif_candidate,
                 _candidate_from_rdkit_isolated(graph, selected, before, bonds, target, rdkit_timeout_s),
                 _candidate_from_internal_templates(graph, selected, before, bonds, target),
@@ -1194,6 +1197,89 @@ def _candidate_from_motif_constraints(
             "interaction_constraint_error": after_error,
             "interaction_constraint_error_before": before_error,
             "moved_motif_blocks": len(moved_components),
+        },
+    )
+
+
+def _candidate_from_block_constraints(
+    graph: MolGraph,
+    atom_ids: set[int],
+    before: dict[int, tuple[float, float]],
+    bonds: list[Bond],
+    target: float,
+) -> Clean2DCandidate | None:
+    layer_model = build_multilayer_chemical_graph(graph, atom_ids)
+    block_graph = layer_model.block_graph
+    constraints = tuple(
+        constraint
+        for constraint in layer_model.layout_constraint_graph.constraints
+        if constraint.kind == LayoutConstraintKind.INTERACTION_DISTANCE
+        and len(constraint.atom_ids) == 2
+    )
+    if not constraints or not block_graph.blocks:
+        return None
+
+    components = _covalent_components(atom_ids, bonds)
+    atom_component = {
+        atom_id: idx
+        for idx, component in enumerate(components)
+        for atom_id in component
+    }
+    coords = dict(before)
+    before_error = _interaction_constraint_error(constraints, coords)
+    if before_error <= target * 0.04:
+        return None
+
+    adjacency = _adjacency_for_bonds(atom_ids, bonds)
+    operations: list[dict[str, object]] = []
+    for _ in range(3):
+        improved = False
+        for constraint in constraints:
+            a_id, b_id = constraint.atom_ids
+            if a_id not in coords or b_id not in coords:
+                continue
+            if atom_component.get(a_id) != atom_component.get(b_id):
+                continue
+            if _block_ids_for_atom(block_graph, a_id).isdisjoint(_block_ids_for_atom(block_graph, b_id)):
+                trial = _best_internal_block_transform(
+                    coords,
+                    atom_ids,
+                    adjacency,
+                    constraints,
+                    a_id,
+                    b_id,
+                    float(constraint.target_distance or target * 1.35),
+                )
+                if trial is None:
+                    continue
+                trial_coords, operation = trial
+                if _interaction_constraint_error(constraints, trial_coords) + 0.5 < _interaction_constraint_error(constraints, coords):
+                    coords = trial_coords
+                    operations.append(operation)
+                    improved = True
+        if not improved:
+            break
+
+    after_error = _interaction_constraint_error(constraints, coords)
+    if after_error >= before_error * 0.80 or _mean_displacement(before, coords, atom_ids) < 0.25:
+        return None
+    block_counts: dict[str, int] = {}
+    for block in block_graph.blocks:
+        block_counts[block.kind.value] = block_counts.get(block.kind.value, 0) + 1
+    return Clean2DCandidate(
+        source="block_constraints",
+        coords=coords,
+        message="Layout 2D ajustado por bloques intramoleculares",
+        metadata={
+            "multilayer_clean2d": True,
+            "block_first": True,
+            "block_constraint_count": len(constraints),
+            "block_operation_count": len(operations),
+            "block_kinds": block_counts,
+            "block_operations": tuple(operations),
+            "interaction_constraint_count": len(constraints),
+            "interaction_constraint_error": after_error,
+            "interaction_constraint_error_before": before_error,
         },
     )
 
@@ -2295,9 +2381,10 @@ def _source_priority(source: str) -> int:
         "rdkit_direct": 2,
         "internal_templates": 3,
         "clean2d_v2": 4,
-        "motif_constraints": 5,
-        "safe_fallback": 6,
-        "local_graph": 7,
+        "block_constraints": 5,
+        "motif_constraints": 6,
+        "safe_fallback": 7,
+        "local_graph": 8,
         "propose_reflection": 1,
         "propose_rotation": 2,
         "propose_3d_projection": 3,
@@ -2383,6 +2470,139 @@ def _interaction_constraint_error(
     if weight_total <= 0.0:
         return 0.0
     return total / weight_total
+
+
+def _block_ids_for_atom(block_graph: object, atom_id: int) -> set[int]:
+    mapping = getattr(block_graph, "atom_to_block_ids", {}) or {}
+    return {int(block_id) for block_id in mapping.get(atom_id, ())}
+
+
+def _best_internal_block_transform(
+    coords: dict[int, tuple[float, float]],
+    atom_ids: set[int],
+    adjacency: dict[int, set[int]],
+    constraints: tuple[object, ...],
+    a_id: int,
+    b_id: int,
+    target_distance: float,
+) -> tuple[dict[int, tuple[float, float]], dict[str, object]] | None:
+    path = _shortest_path(adjacency, a_id, b_id, atom_ids)
+    if path is None or len(path) < 4:
+        return None
+    current_error = _interaction_constraint_error(constraints, coords)
+    current_distance_error = abs(_distance(coords[a_id], coords[b_id]) - target_distance)
+    best_coords: dict[int, tuple[float, float]] | None = None
+    best_operation: dict[str, object] | None = None
+    best_error = current_error + current_distance_error * 0.2
+    for left, right in zip(path[:-1], path[1:]):
+        side = _component_without_edge(right, left, adjacency, atom_ids)
+        if b_id not in side or a_id in side or len(side) >= len(atom_ids) - 1:
+            continue
+        pivot = coords.get(right)
+        anchor = coords.get(left)
+        if pivot is None or anchor is None:
+            continue
+        for angle in (-120.0, -90.0, -60.0, 60.0, 90.0, 120.0, 180.0):
+            trial = _rotate_atom_subset(coords, side, pivot, math.radians(angle))
+            error = _interaction_constraint_error(constraints, trial)
+            distance_error = abs(_distance(trial[a_id], trial[b_id]) - target_distance)
+            ranked_error = error + distance_error * 0.2
+            if ranked_error + 0.5 < best_error:
+                best_error = ranked_error
+                best_coords = trial
+                best_operation = {
+                    "operation": "rotate",
+                    "angle_deg": angle,
+                    "pivot_atom_id": right,
+                    "anchor_atom_id": left,
+                    "moved_atom_count": len(side),
+                }
+        trial = _reflect_atom_subset(coords, side, anchor, pivot)
+        error = _interaction_constraint_error(constraints, trial)
+        distance_error = abs(_distance(trial[a_id], trial[b_id]) - target_distance)
+        ranked_error = error + distance_error * 0.2
+        if ranked_error + 0.5 < best_error:
+            best_error = ranked_error
+            best_coords = trial
+            best_operation = {
+                "operation": "reflect",
+                "pivot_atom_id": right,
+                "anchor_atom_id": left,
+                "moved_atom_count": len(side),
+            }
+    if best_coords is None or best_operation is None:
+        return None
+    return best_coords, best_operation
+
+
+def _shortest_path(
+    adjacency: dict[int, set[int]],
+    start: int,
+    end: int,
+    allowed: set[int],
+) -> list[int] | None:
+    queue: list[tuple[int, list[int]]] = [(start, [start])]
+    seen: set[int] = set()
+    while queue:
+        atom_id, path = queue.pop(0)
+        if atom_id == end:
+            return path
+        if atom_id in seen:
+            continue
+        seen.add(atom_id)
+        for neighbor in sorted(adjacency.get(atom_id, set())):
+            if neighbor in allowed and neighbor not in path:
+                queue.append((neighbor, path + [neighbor]))
+    return None
+
+
+def _rotate_atom_subset(
+    coords: dict[int, tuple[float, float]],
+    atom_ids: set[int],
+    pivot: tuple[float, float],
+    angle_rad: float,
+) -> dict[int, tuple[float, float]]:
+    out = dict(coords)
+    cos_a = math.cos(angle_rad)
+    sin_a = math.sin(angle_rad)
+    px, py = pivot
+    for atom_id in atom_ids:
+        if atom_id not in out:
+            continue
+        x, y = out[atom_id]
+        dx = x - px
+        dy = y - py
+        out[atom_id] = (px + dx * cos_a - dy * sin_a, py + dx * sin_a + dy * cos_a)
+    return out
+
+
+def _reflect_atom_subset(
+    coords: dict[int, tuple[float, float]],
+    atom_ids: set[int],
+    anchor: tuple[float, float],
+    pivot: tuple[float, float],
+) -> dict[int, tuple[float, float]]:
+    out = dict(coords)
+    ax, ay = anchor
+    px, py = pivot
+    ux = px - ax
+    uy = py - ay
+    norm = math.hypot(ux, uy)
+    if norm <= 1e-6:
+        return out
+    ux /= norm
+    uy /= norm
+    for atom_id in atom_ids:
+        if atom_id not in out:
+            continue
+        x, y = out[atom_id]
+        dx = x - ax
+        dy = y - ay
+        parallel = dx * ux + dy * uy
+        proj_x = ax + parallel * ux
+        proj_y = ay + parallel * uy
+        out[atom_id] = (2.0 * proj_x - x, 2.0 * proj_y - y)
+    return out
 
 
 def _coords_for_atoms(graph: MolGraph, atom_ids: set[int]) -> dict[int, tuple[float, float]]:

@@ -30,6 +30,11 @@ from chemuson.core.model import (
     ValidationIssue,
 )
 from chemuson.core.layers import (
+    BlockEdge,
+    BlockEdgeKind,
+    BlockGraph,
+    BlockKind,
+    BlockNode,
     InteractionEdge,
     InteractionGraph,
     InteractionKind,
@@ -52,6 +57,11 @@ __all__ = [
     "MolGraph",
     "ValidationCorrectionAction",
     "ValidationIssue",
+    "BlockEdge",
+    "BlockEdgeKind",
+    "BlockGraph",
+    "BlockKind",
+    "BlockNode",
     "InteractionEdge",
     "InteractionGraph",
     "InteractionKind",

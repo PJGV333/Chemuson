@@ -53,6 +53,25 @@ class LayoutConstraintKind(str, Enum):
     MOTIF_CONTAINMENT = "motif_containment"
 
 
+class BlockKind(str, Enum):
+    AROMATIC_RING = "aromatic_ring"
+    FUSED_SYSTEM = "fused_system"
+    MACROCYCLE = "macrocycle"
+    CYCLOPHANE = "cyclophane"
+    LINKER = "linker"
+    TERMINAL_SUBSTITUENT = "terminal_substituent"
+    STEREO_CENTER = "stereo_center"
+    INTRAMOLECULAR_BRIDGE = "intramolecular_bridge"
+    INTERNAL_CAVITY = "internal_cavity"
+
+
+class BlockEdgeKind(str, Enum):
+    ATTACHMENT = "attachment"
+    LINKER = "linker"
+    BRIDGE = "bridge"
+    CONTAINS = "contains"
+
+
 @dataclass(frozen=True)
 class InteractionEdge:
     id: int
@@ -215,6 +234,238 @@ class MotifGraph:
 
 
 @dataclass(frozen=True)
+class BlockNode:
+    id: int
+    kind: BlockKind
+    atom_ids: frozenset[int]
+    label: str = ""
+    anchor_atom_ids: tuple[int, ...] = ()
+    motif_ids: tuple[int, ...] = ()
+    centroid: tuple[float, float] | None = None
+    metadata: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class BlockEdge:
+    id: int
+    block_ids: tuple[int, int]
+    kind: BlockEdgeKind
+    atom_ids: tuple[int, ...] = ()
+    weight: float = 1.0
+    metadata: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class BlockGraph:
+    atom_ids: frozenset[int]
+    blocks: tuple[BlockNode, ...] = ()
+    edges: tuple[BlockEdge, ...] = ()
+    atom_to_block_ids: dict[int, tuple[int, ...]] = field(default_factory=dict)
+
+    @classmethod
+    def from_motif_graph(
+        cls,
+        graph: MolGraph,
+        motif_graph: MotifGraph,
+        interaction_graph: InteractionGraph | None = None,
+    ) -> "BlockGraph":
+        selected = motif_graph.atom_ids
+        covalent_bonds = _covalent_bonds(graph, selected)
+        adjacency = _adjacency(selected, covalent_bonds)
+        rings = [motif for motif in motif_graph.motifs if motif.kind == MotifKind.RING]
+        blocks: list[BlockNode] = []
+
+        fused_groups = _fused_ring_groups(rings)
+        fused_ring_ids = {motif_id for group in fused_groups for motif_id in group if len(group) > 1}
+        for group in fused_groups:
+            if len(group) <= 1:
+                continue
+            motifs = [motif for motif in rings if motif.id in group]
+            atoms = frozenset().union(*(motif.atom_ids for motif in motifs))
+            blocks.append(
+                _block(
+                    BlockKind.FUSED_SYSTEM,
+                    graph,
+                    atoms,
+                    "fused_system",
+                    motif_ids=tuple(sorted(group)),
+                    metadata={"ring_count": len(group)},
+                )
+            )
+            if not any(bool(motif.metadata.get("aromatic", False)) for motif in motifs):
+                shared_atoms = frozenset.intersection(*(motif.atom_ids for motif in motifs))
+                if len(shared_atoms) >= 2:
+                    anchors = tuple(
+                        sorted(
+                            atom_id
+                            for atom_id in shared_atoms
+                            if len(adjacency.get(atom_id, set()) - shared_atoms) >= 2
+                        )
+                    )
+                    blocks.append(
+                        _block(
+                            BlockKind.INTRAMOLECULAR_BRIDGE,
+                            graph,
+                            shared_atoms,
+                            "intramolecular_bridge",
+                            anchor_atom_ids=anchors,
+                            motif_ids=tuple(sorted(group)),
+                            metadata={"source": "fused_cycle_intersection"},
+                        )
+                    )
+
+        for motif in rings:
+            size = int(motif.metadata.get("size", len(motif.atom_ids)) or len(motif.atom_ids))
+            aromatic = bool(motif.metadata.get("aromatic", False))
+            if aromatic:
+                blocks.append(
+                    _block(
+                        BlockKind.AROMATIC_RING,
+                        graph,
+                        motif.atom_ids,
+                        "aromatic_ring",
+                        motif_ids=(motif.id,),
+                        metadata={"fused": motif.id in fused_ring_ids, "size": size},
+                    )
+                )
+            if size >= 12:
+                kind = BlockKind.CYCLOPHANE if _ring_has_aromatic_bridge(motif.atom_ids, rings) else BlockKind.MACROCYCLE
+                blocks.append(
+                    _block(kind, graph, motif.atom_ids, kind.value, motif_ids=(motif.id,), metadata={"size": size})
+                )
+
+        for component in _components(selected, covalent_bonds):
+            core = _cycle_core_atoms(component, adjacency)
+            aromatic_rings_in_core = sum(
+                1
+                for ring in rings
+                if bool(ring.metadata.get("aromatic", False)) and len(ring.atom_ids & core) >= 3
+            )
+            already_macro = any(
+                block.kind in {BlockKind.MACROCYCLE, BlockKind.CYCLOPHANE}
+                and len(block.atom_ids & core) >= 12
+                for block in blocks
+            )
+            if len(core) >= 12 and aromatic_rings_in_core == 0 and not already_macro:
+                blocks.append(
+                    _block(
+                        BlockKind.MACROCYCLE,
+                        graph,
+                        core,
+                        "macrocycle",
+                        metadata={"size": len(core), "source": "cycle_core"},
+                    )
+                )
+
+        rigid_atoms = frozenset(
+            atom_id
+            for block in blocks
+            if block.kind in {BlockKind.AROMATIC_RING, BlockKind.FUSED_SYSTEM, BlockKind.MACROCYCLE, BlockKind.CYCLOPHANE}
+            for atom_id in block.atom_ids
+        )
+        rigid_block_atoms = [
+            block.atom_ids
+            for block in blocks
+            if block.kind in {BlockKind.AROMATIC_RING, BlockKind.FUSED_SYSTEM, BlockKind.MACROCYCLE, BlockKind.CYCLOPHANE}
+        ]
+
+        for path, endpoints in _linker_paths_between_blocks(selected, adjacency, rigid_block_atoms):
+            blocks.append(
+                _block(
+                    BlockKind.LINKER,
+                    graph,
+                    path,
+                    "linker",
+                    anchor_atom_ids=endpoints,
+                    metadata={"length": len(path)},
+                )
+            )
+
+        for atoms, anchors in _terminal_substituents(selected, adjacency, rigid_atoms):
+            blocks.append(
+                _block(
+                    BlockKind.TERMINAL_SUBSTITUENT,
+                    graph,
+                    atoms,
+                    "terminal_substituent",
+                    anchor_atom_ids=anchors,
+                )
+            )
+
+        for atom_id in sorted(selected):
+            atom = graph.atoms.get(atom_id)
+            if atom is None:
+                continue
+            stereo_bonds = [
+                bond.id
+                for bond in covalent_bonds
+                if atom_id in {bond.a1_id, bond.a2_id} and bond.stereo != BondStereo.NONE
+            ]
+            if atom.stereo_cip or stereo_bonds:
+                blocks.append(
+                    _block(
+                        BlockKind.STEREO_CENTER,
+                        graph,
+                        {atom_id},
+                        "stereo_center",
+                        anchor_atom_ids=(atom_id,),
+                        metadata={"stereo_cip": atom.stereo_cip, "stereo_bond_ids": tuple(stereo_bonds)},
+                    )
+                )
+
+        for atoms, anchors in _intramolecular_bridges(selected, adjacency, rigid_block_atoms):
+            blocks.append(
+                _block(
+                    BlockKind.INTRAMOLECULAR_BRIDGE,
+                    graph,
+                    atoms,
+                    "intramolecular_bridge",
+                    anchor_atom_ids=anchors,
+                )
+            )
+
+        for motif in motif_graph.motifs:
+            if motif.kind == MotifKind.CAVITY:
+                blocks.append(_block(BlockKind.INTERNAL_CAVITY, graph, motif.atom_ids, motif.label, motif_ids=(motif.id,)))
+        for block in tuple(blocks):
+            if block.kind in {BlockKind.MACROCYCLE, BlockKind.CYCLOPHANE}:
+                blocks.append(
+                    _block(
+                        BlockKind.INTERNAL_CAVITY,
+                        graph,
+                        block.atom_ids,
+                        "macrocycle_cavity",
+                        metadata={"source_block_kind": block.kind.value},
+                    )
+                )
+
+        fixed_blocks: list[BlockNode] = []
+        atom_to_blocks: dict[int, list[int]] = {atom_id: [] for atom_id in selected}
+        for idx, block in enumerate(blocks, start=1):
+            fixed = BlockNode(
+                id=idx,
+                kind=block.kind,
+                atom_ids=block.atom_ids,
+                label=block.label,
+                anchor_atom_ids=block.anchor_atom_ids,
+                motif_ids=block.motif_ids,
+                centroid=block.centroid,
+                metadata=block.metadata,
+            )
+            fixed_blocks.append(fixed)
+            for atom_id in fixed.atom_ids:
+                atom_to_blocks.setdefault(atom_id, []).append(fixed.id)
+
+        edges = _block_edges(fixed_blocks, covalent_bonds, interaction_graph)
+        return cls(
+            atom_ids=selected,
+            blocks=tuple(fixed_blocks),
+            edges=tuple(edges),
+            atom_to_block_ids={atom_id: tuple(ids) for atom_id, ids in atom_to_blocks.items()},
+        )
+
+
+@dataclass(frozen=True)
 class LayoutConstraint:
     id: int
     kind: LayoutConstraintKind
@@ -324,6 +575,7 @@ class MultilayerChemicalGraph:
     atom_ids: frozenset[int]
     interaction_graph: InteractionGraph
     motif_graph: MotifGraph
+    block_graph: BlockGraph
     layout_constraint_graph: LayoutConstraintGraph
 
 
@@ -334,12 +586,14 @@ def build_multilayer_chemical_graph(
     selected = frozenset(_normalize_atom_ids(graph, atom_ids))
     interactions = InteractionGraph.from_molgraph(graph, selected)
     motifs = MotifGraph.from_molgraph(graph, selected, interactions)
+    blocks = BlockGraph.from_motif_graph(graph, motifs, interactions)
     constraints = LayoutConstraintGraph.from_layers(graph, selected, interactions, motifs)
     return MultilayerChemicalGraph(
         mol_graph=graph,
         atom_ids=selected,
         interaction_graph=interactions,
         motif_graph=motifs,
+        block_graph=blocks,
         layout_constraint_graph=constraints,
     )
 
@@ -407,10 +661,7 @@ def _preferred_interaction_distance(kind: InteractionKind) -> float:
 
 def _components(atom_ids: Iterable[int], bonds: Iterable[Bond]) -> list[frozenset[int]]:
     selected = set(atom_ids)
-    adjacency = {atom_id: set() for atom_id in selected}
-    for bond in bonds:
-        adjacency.setdefault(bond.a1_id, set()).add(bond.a2_id)
-        adjacency.setdefault(bond.a2_id, set()).add(bond.a1_id)
+    adjacency = _adjacency(selected, bonds)
     components: list[frozenset[int]] = []
     seen: set[int] = set()
     for atom_id in sorted(selected):
@@ -427,6 +678,16 @@ def _components(atom_ids: Iterable[int], bonds: Iterable[Bond]) -> list[frozense
         seen.update(component)
         components.append(frozenset(component))
     return components
+
+
+def _adjacency(atom_ids: Iterable[int], bonds: Iterable[Bond]) -> dict[int, set[int]]:
+    selected = set(atom_ids)
+    adjacency = {atom_id: set() for atom_id in selected}
+    for bond in bonds:
+        if bond.a1_id in selected and bond.a2_id in selected:
+            adjacency.setdefault(bond.a1_id, set()).add(bond.a2_id)
+            adjacency.setdefault(bond.a2_id, set()).add(bond.a1_id)
+    return adjacency
 
 
 def _neighbors(atom_id: int, bonds: Iterable[Bond]) -> set[int]:
@@ -502,6 +763,243 @@ def _motif(
         centroid=centroid,
         metadata=dict(metadata or {}),
     )
+
+
+def _block(
+    kind: BlockKind,
+    graph: MolGraph,
+    atom_ids: Iterable[int],
+    label: str,
+    *,
+    anchor_atom_ids: tuple[int, ...] = (),
+    motif_ids: tuple[int, ...] = (),
+    metadata: dict[str, object] | None = None,
+) -> BlockNode:
+    atoms = frozenset(atom_ids)
+    return BlockNode(
+        id=0,
+        kind=kind,
+        atom_ids=atoms,
+        label=label,
+        anchor_atom_ids=anchor_atom_ids,
+        motif_ids=motif_ids,
+        centroid=_centroid(graph, atoms),
+        metadata=dict(metadata or {}),
+    )
+
+
+def _fused_ring_groups(rings: list[MotifNode]) -> list[set[int]]:
+    ring_by_id = {ring.id: ring for ring in rings}
+    adjacency = {ring.id: set() for ring in rings}
+    for idx, left in enumerate(rings):
+        for right in rings[idx + 1 :]:
+            if len(left.atom_ids & right.atom_ids) >= 2:
+                adjacency[left.id].add(right.id)
+                adjacency[right.id].add(left.id)
+    groups: list[set[int]] = []
+    seen: set[int] = set()
+    for ring_id in sorted(ring_by_id):
+        if ring_id in seen:
+            continue
+        stack = [ring_id]
+        group: set[int] = set()
+        while stack:
+            current = stack.pop()
+            if current in group:
+                continue
+            group.add(current)
+            stack.extend(sorted(adjacency.get(current, set()) - group))
+        seen.update(group)
+        groups.append(group)
+    return groups
+
+
+def _ring_has_aromatic_bridge(atom_ids: frozenset[int], rings: list[MotifNode]) -> bool:
+    return any(
+        bool(ring.metadata.get("aromatic", False)) and len(atom_ids & ring.atom_ids) >= 2
+        for ring in rings
+    )
+
+
+def _cycle_core_atoms(atom_ids: Iterable[int], adjacency: dict[int, set[int]]) -> frozenset[int]:
+    core = set(atom_ids)
+    degrees = {atom_id: len(adjacency.get(atom_id, set()) & core) for atom_id in core}
+    queue = [atom_id for atom_id, degree in degrees.items() if degree <= 1]
+    while queue:
+        atom_id = queue.pop()
+        if atom_id not in core:
+            continue
+        core.remove(atom_id)
+        for neighbor in adjacency.get(atom_id, set()):
+            if neighbor not in core:
+                continue
+            degrees[neighbor] = degrees.get(neighbor, 0) - 1
+            if degrees[neighbor] <= 1:
+                queue.append(neighbor)
+    return frozenset(core)
+
+
+def _linker_paths_between_blocks(
+    atom_ids: Iterable[int],
+    adjacency: dict[int, set[int]],
+    block_atoms: list[frozenset[int]],
+) -> list[tuple[frozenset[int], tuple[int, ...]]]:
+    selected = set(atom_ids)
+    atom_to_blocks: dict[int, set[int]] = {atom_id: set() for atom_id in selected}
+    for idx, atoms in enumerate(block_atoms):
+        for atom_id in atoms:
+            atom_to_blocks.setdefault(atom_id, set()).add(idx)
+    block_union = set().union(*block_atoms) if block_atoms else set()
+    paths: list[tuple[frozenset[int], tuple[int, ...]]] = []
+    seen: set[tuple[int, ...]] = set()
+    for start in sorted(block_union):
+        for neighbor in sorted(adjacency.get(start, set()) - block_union):
+            path = [start, neighbor]
+            previous = start
+            current = neighbor
+            while True:
+                next_block_neighbors = sorted(adjacency.get(current, set()) & block_union - {start})
+                free_neighbors = sorted((adjacency.get(current, set()) - block_union) - {previous})
+                if next_block_neighbors:
+                    end = next_block_neighbors[0]
+                    if atom_to_blocks.get(start, set()).isdisjoint(atom_to_blocks.get(end, set())):
+                        full_path = tuple(path + [end])
+                        key = tuple(sorted(full_path))
+                        if key not in seen:
+                            seen.add(key)
+                            paths.append((frozenset(full_path), (start, end)))
+                    break
+                if len(free_neighbors) != 1:
+                    break
+                previous, current = current, free_neighbors[0]
+                if current in path:
+                    break
+                path.append(current)
+    return paths
+
+
+def _terminal_substituents(
+    atom_ids: Iterable[int],
+    adjacency: dict[int, set[int]],
+    rigid_atoms: frozenset[int],
+) -> list[tuple[frozenset[int], tuple[int, ...]]]:
+    free_atoms = set(atom_ids) - set(rigid_atoms)
+    out: list[tuple[frozenset[int], tuple[int, ...]]] = []
+    seen: set[int] = set()
+    for atom_id in sorted(free_atoms):
+        if atom_id in seen:
+            continue
+        stack = [atom_id]
+        component: set[int] = set()
+        anchors: set[int] = set()
+        while stack:
+            current = stack.pop()
+            if current in component or current not in free_atoms:
+                continue
+            component.add(current)
+            for neighbor in adjacency.get(current, set()):
+                if neighbor in rigid_atoms:
+                    anchors.add(neighbor)
+                elif neighbor not in component:
+                    stack.append(neighbor)
+        seen.update(component)
+        if component and len(anchors) == 1:
+            out.append((frozenset(component | anchors), tuple(sorted(anchors))))
+    return out
+
+
+def _intramolecular_bridges(
+    atom_ids: Iterable[int],
+    adjacency: dict[int, set[int]],
+    block_atoms: list[frozenset[int]],
+) -> list[tuple[frozenset[int], tuple[int, ...]]]:
+    selected = set(atom_ids)
+    block_union = set().union(*block_atoms) if block_atoms else set()
+    out: list[tuple[frozenset[int], tuple[int, ...]]] = []
+    seen: set[tuple[int, ...]] = set()
+    for block in block_atoms:
+        for start in sorted(block):
+            for neighbor in sorted((adjacency.get(start, set()) - block) & selected):
+                if neighbor in block_union:
+                    continue
+                path = [start, neighbor]
+                previous = start
+                current = neighbor
+                while True:
+                    block_neighbors = sorted((adjacency.get(current, set()) & block) - {start})
+                    if block_neighbors:
+                        end = block_neighbors[0]
+                        key = tuple(sorted(path + [end]))
+                        if key not in seen:
+                            seen.add(key)
+                            out.append((frozenset(path + [end]), (start, end)))
+                        break
+                    next_free = sorted((adjacency.get(current, set()) - block_union) - {previous})
+                    if len(next_free) != 1:
+                        break
+                    previous, current = current, next_free[0]
+                    if current in path:
+                        break
+                    path.append(current)
+    return out
+
+
+def _block_edges(
+    blocks: list[BlockNode],
+    bonds: list[Bond],
+    interaction_graph: InteractionGraph | None,
+) -> list[BlockEdge]:
+    atom_to_blocks: dict[int, set[int]] = {}
+    for block in blocks:
+        for atom_id in block.atom_ids:
+            atom_to_blocks.setdefault(atom_id, set()).add(block.id)
+    edges: list[BlockEdge] = []
+    seen: set[tuple[int, int, str, tuple[int, ...]]] = set()
+    for bond in bonds:
+        for left in atom_to_blocks.get(bond.a1_id, set()):
+            for right in atom_to_blocks.get(bond.a2_id, set()):
+                if left == right:
+                    continue
+                left_block = blocks[left - 1]
+                right_block = blocks[right - 1]
+                kind = BlockEdgeKind.LINKER if BlockKind.LINKER in {left_block.kind, right_block.kind} else BlockEdgeKind.ATTACHMENT
+                if BlockKind.INTRAMOLECULAR_BRIDGE in {left_block.kind, right_block.kind}:
+                    kind = BlockEdgeKind.BRIDGE
+                key = (min(left, right), max(left, right), kind.value, tuple(sorted((bond.a1_id, bond.a2_id))))
+                if key in seen:
+                    continue
+                seen.add(key)
+                edges.append(
+                    BlockEdge(
+                        id=len(edges) + 1,
+                        block_ids=(min(left, right), max(left, right)),
+                        kind=kind,
+                        atom_ids=(bond.a1_id, bond.a2_id),
+                    )
+                )
+    if interaction_graph is not None:
+        for edge in interaction_graph.edges:
+            left_ids = atom_to_blocks.get(edge.atom_ids[0], set())
+            right_ids = atom_to_blocks.get(edge.atom_ids[1], set())
+            for left in left_ids:
+                for right in right_ids:
+                    if left == right:
+                        continue
+                    key = (min(left, right), max(left, right), BlockEdgeKind.BRIDGE.value, edge.atom_ids)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    edges.append(
+                        BlockEdge(
+                            id=len(edges) + 1,
+                            block_ids=(min(left, right), max(left, right)),
+                            kind=BlockEdgeKind.BRIDGE,
+                            atom_ids=edge.atom_ids,
+                            weight=edge.strength,
+                            metadata={"interaction_kind": edge.kind.value},
+                        )
+                    )
+    return edges
 
 
 def _centroid(graph: MolGraph, atom_ids: Iterable[int]) -> tuple[float, float] | None:
