@@ -11,16 +11,19 @@ from chemuson.clean2d import (
     Clean2DResult,
     assert_clean2d_invariants,
     classify_clean2d_layout_quality,
+    count_new_bond_crossings,
     clean2d_geometry_hash,
     evaluate_clean2d_layout,
     has_cycles,
     is_clean2d_candidate_safe,
     length_only_polish,
+    ring_degeneracy_score,
     optimize_clean2d_positions,
     run_clean2d_engine,
+    stereo_layout_signature,
     structure_preserving_geometry_polish,
 )
-from chemuson.core.model import bond_affects_valence
+from chemuson.core.model import Bond, bond_affects_valence
 from chemuson.geometry3d import Rotation3D, conformer_3d_for_graph, project_conformer_to_2d
 
 
@@ -32,6 +35,20 @@ class Clean2DAttempt:
     unavailable: bool = False
     message: str = ""
     report: Clean2DQualityReport | None = None
+    details: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class CanvasBondIntegrityValidation:
+    accepted: bool
+    reason: str = ""
+    bond_integrity_regressions: tuple[int, ...] = ()
+    selected_bond_count: int = 0
+    real_bond_count: int = 0
+    boundary_bond_count: int = 0
+    missing_selection_bond_ids: tuple[int, ...] = ()
+    candidate_source: str = ""
+    diagnostics: dict[str, Any] = field(default_factory=dict)
 
 
 class Clean2DController:
@@ -39,6 +56,149 @@ class Clean2DController:
 
     def __init__(self) -> None:
         self._recent_geometry_hashes: dict[str, list[str]] = {}
+
+    @staticmethod
+    def _structural_bonds_for_clean2d(canvas: Any, target_ids: set[int], include_boundary: bool = False) -> list[Bond]:
+        if hasattr(canvas, "_structural_bonds_for_clean2d"):
+            return list(canvas._structural_bonds_for_clean2d(target_ids, include_boundary=include_boundary))
+        bonds: list[Bond] = []
+        for bond in canvas.model.bonds.values():
+            if not bond_affects_valence(bond):
+                continue
+            a1_in = bond.a1_id in target_ids
+            a2_in = bond.a2_id in target_ids
+            if a1_in and a2_in:
+                bonds.append(bond)
+            elif include_boundary and (a1_in or a2_in):
+                bonds.append(bond)
+        return bonds
+
+    @staticmethod
+    def _full_model_coords(canvas: Any) -> dict[int, tuple[float, float]]:
+        return {
+            atom_id: (float(atom.x), float(atom.y))
+            for atom_id, atom in canvas.model.atoms.items()
+        }
+
+    def validate_canvas_bond_integrity_before_apply(
+        self,
+        canvas: Any,
+        target_ids: set[int],
+        before_coords: dict[int, tuple[float, float]],
+        after_coords: dict[int, tuple[float, float]],
+        target_bond_length: float,
+        mode: str,
+        *,
+        candidate_source: str = "",
+    ) -> CanvasBondIntegrityValidation:
+        selected_bonds = self._structural_bonds_for_clean2d(canvas, target_ids, include_boundary=False)
+        real_bonds = [bond for bond in canvas.model.bonds.values() if bond_affects_valence(bond)]
+        boundary_bonds = [
+            bond
+            for bond in real_bonds
+            if (bond.a1_id in target_ids) ^ (bond.a2_id in target_ids)
+        ]
+        real_bond_ids = {int(bond.id) for bond in real_bonds}
+        selected_bond_ids = {int(bond.id) for bond in selected_bonds}
+        missing_selection_bond_ids = tuple(sorted(real_bond_ids - selected_bond_ids))
+
+        before_full = self._full_model_coords(canvas)
+        after_full = {
+            atom_id: after_coords.get(atom_id, before_full[atom_id])
+            for atom_id in before_full
+        }
+
+        before_signature = stereo_layout_signature(canvas.model, before_full, before_full.keys())
+        after_signature = stereo_layout_signature(canvas.model, after_full, before_full.keys())
+        if before_signature != after_signature:
+            return CanvasBondIntegrityValidation(
+                accepted=False,
+                reason="cambia_estereoquimica",
+                selected_bond_count=len(selected_bonds),
+                real_bond_count=len(real_bonds),
+                boundary_bond_count=max(0, len(real_bonds) - len(selected_bonds)),
+                missing_selection_bond_ids=missing_selection_bond_ids,
+                candidate_source=candidate_source,
+                diagnostics={
+                    "selected_atom_count": len(target_ids),
+                    "selected_bond_count": len(selected_bonds),
+                    "real_bond_count": len(real_bonds),
+                    "missing_selection_bond_ids": list(missing_selection_bond_ids),
+                    "candidate_source": candidate_source,
+                },
+            )
+
+        target = max(8.0, float(target_bond_length or 42.0))
+        strict = str(mode or "quick").strip().lower() == "quick"
+        min_ratio = 0.65 if strict else 0.60
+        max_ratio = 1.35 if strict else 1.55
+        regressions: list[int] = []
+        for bond in boundary_bonds:
+            if bond.a1_id not in before_full or bond.a2_id not in before_full:
+                continue
+            after_len = math.hypot(
+                after_full[bond.a2_id][0] - after_full[bond.a1_id][0],
+                after_full[bond.a2_id][1] - after_full[bond.a1_id][1],
+            )
+            desired = target * 0.97 if bond.order == 2 or bond.is_aromatic else target * 0.92 if bond.order >= 3 else target
+            after_ratio = after_len / max(desired, 1e-9)
+            if not (min_ratio <= after_ratio <= max_ratio):
+                regressions.append(int(bond.id))
+
+        before_crossings = count_new_bond_crossings(before_full, before_full, real_bonds)
+        after_crossings = count_new_bond_crossings(before_full, after_full, real_bonds)
+        if after_crossings > before_crossings:
+            regressions.append(-1)
+
+        before_quality = classify_clean2d_layout_quality(canvas.model, coords=before_full, target_bond_length=target)
+        after_quality = classify_clean2d_layout_quality(canvas.model, coords=after_full, target_bond_length=target)
+        if before_quality.min_ring_degeneracy < math.inf and after_quality.min_ring_degeneracy + 0.03 < before_quality.min_ring_degeneracy:
+            regressions.append(-2)
+
+        if regressions:
+            return CanvasBondIntegrityValidation(
+                accepted=False,
+                reason="reparacion_rechazada_por_integridad_de_enlaces",
+                bond_integrity_regressions=tuple(sorted(set(regressions))),
+                selected_bond_count=len(selected_bonds),
+                real_bond_count=len(real_bonds),
+                boundary_bond_count=len(boundary_bonds),
+                missing_selection_bond_ids=missing_selection_bond_ids,
+                candidate_source=candidate_source,
+                diagnostics={
+                    "selected_atom_count": len(target_ids),
+                    "selected_bond_count": len(selected_bonds),
+                    "real_bond_count": len(real_bonds),
+                    "missing_selection_bond_ids": list(missing_selection_bond_ids),
+                    "bond_integrity_regressions": sorted(set(regressions)),
+                    "candidate_source": candidate_source,
+                    "quality_before": before_quality.quality_class,
+                    "quality_after": after_quality.quality_class,
+                    "crossings_before": before_crossings,
+                    "crossings_after": after_crossings,
+                },
+            )
+
+        return CanvasBondIntegrityValidation(
+            accepted=True,
+            selected_bond_count=len(selected_bonds),
+            real_bond_count=len(real_bonds),
+            boundary_bond_count=len(boundary_bonds),
+            missing_selection_bond_ids=missing_selection_bond_ids,
+            candidate_source=candidate_source,
+            diagnostics={
+                "selected_atom_count": len(target_ids),
+                "selected_bond_count": len(selected_bonds),
+                "real_bond_count": len(real_bonds),
+                "missing_selection_bond_ids": list(missing_selection_bond_ids),
+                "bond_integrity_regressions": [],
+                "candidate_source": candidate_source,
+                "quality_before": before_quality.quality_class,
+                "quality_after": after_quality.quality_class,
+                "crossings_before": before_crossings,
+                "crossings_after": after_crossings,
+            },
+        )
 
     @staticmethod
     def _is_acyclic_structure(atom_ids: set[int], bonds) -> bool:
@@ -168,11 +328,28 @@ class Clean2DController:
                 report=report,
             )
 
+        integrity = self.validate_canvas_bond_integrity_before_apply(
+            canvas,
+            target_ids,
+            before,
+            after,
+            target_len,
+            mode,
+            candidate_source=label or "clean2d_candidate",
+        )
+        if not integrity.accepted:
+            return Clean2DAttempt(
+                rejected=True,
+                message="Limpieza 2D omitida: reparación rechazada por integridad de enlaces",
+                report=report,
+                details=integrity.diagnostics,
+            )
+
         from chemuson.gui.commands import MoveAtomsCommand
 
         canvas.undo_stack.push(MoveAtomsCommand(canvas.model, canvas, before, changed))
         canvas._update_selection_overlay()
-        return Clean2DAttempt(applied=True, message=label)
+        return Clean2DAttempt(applied=True, message=label, details=integrity.diagnostics)
 
     def _try_alternative_conformer_pose(
         self,
@@ -394,12 +571,16 @@ class Clean2DController:
         mode: str = "quick",
     ) -> None:
         canvas = window.canvas
-        atom_ids, bonds = canvas._selected_structure_ids()
+        atom_ids, _selected_bonds = canvas._selected_structure_ids()
         target_ids = atom_ids if atom_ids else set(canvas.model.atoms.keys())
         if not target_ids:
             window.statusBar().showMessage("Nada que limpiar")
             return
-        scale_bonds = bonds if atom_ids else list(canvas.model.bonds.values())
+        scale_bonds = (
+            self._structural_bonds_for_clean2d(canvas, target_ids, include_boundary=False)
+            if atom_ids
+            else list(canvas.model.bonds.values())
+        )
         graph = (
             canvas._build_selection_graph(target_ids, scale_bonds)
             if atom_ids
@@ -434,6 +615,7 @@ class Clean2DController:
             before,
             result,
             target_bond_len,
+            mode=mode,
             require_alternative=alternative_mode,
             remember_hashes=alternative_mode,
         )
@@ -498,6 +680,7 @@ class Clean2DController:
         result: Clean2DResult,
         target_bond_len: float,
         *,
+        mode: str = "quick",
         require_alternative: bool = False,
         remember_hashes: bool = False,
     ) -> Clean2DAttempt:
@@ -515,6 +698,7 @@ class Clean2DController:
             before,
             candidate,
             target_bond_len,
+            mode=mode,
             require_alternative=require_alternative,
             remember_hashes=remember_hashes,
         )
@@ -529,6 +713,7 @@ class Clean2DController:
         candidate: Clean2DCandidate,
         target_bond_len: float,
         *,
+        mode: str = "quick",
         require_alternative: bool = False,
         remember_hashes: bool = False,
     ) -> Clean2DAttempt:
@@ -590,13 +775,35 @@ class Clean2DController:
                     report=report,
                 )
 
+        integrity = self.validate_canvas_bond_integrity_before_apply(
+            window.canvas,
+            target_ids,
+            before,
+            after,
+            target_bond_len,
+            mode,
+            candidate_source=candidate.source,
+        )
+        if not integrity.accepted:
+            return Clean2DAttempt(
+                rejected=True,
+                message="Limpieza 2D omitida: reparación rechazada por integridad de enlaces",
+                report=report,
+                details=integrity.diagnostics,
+            )
+
         from chemuson.gui.commands import MoveAtomsCommand
 
         window.canvas.undo_stack.push(MoveAtomsCommand(window.canvas.model, window.canvas, before, changed))
         window.canvas._update_selection_overlay()
         if remember_hashes:
             self._remember_geometry_hashes(graph, target_ids, before, after)
-        return Clean2DAttempt(applied=True, message=candidate.message or "Estructura 2D limpiada", report=report)
+        return Clean2DAttempt(
+            applied=True,
+            message=candidate.message or "Estructura 2D limpiada",
+            report=report,
+            details=integrity.diagnostics,
+        )
 
     def _run_propose_pass(
         self,
@@ -624,6 +831,7 @@ class Clean2DController:
             before,
             result,
             target_bond_len,
+            mode="propose",
             require_alternative=True,
             remember_hashes=remember_hashes,
         )

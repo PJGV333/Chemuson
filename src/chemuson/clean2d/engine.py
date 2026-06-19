@@ -19,6 +19,11 @@ from chemuson.clean2d.length_only import (
     structure_preserving_geometry_polish,
     structure_preserving_length_polish,
 )
+from chemuson.clean2d.local_graph_cleaner import (
+    LocalClean2DMode,
+    is_complex_clean2d_graph,
+    local_graph_clean2d,
+)
 from chemuson.clean2d.safety import (
     Clean2DQualityReport,
     evaluate_clean2d_layout,
@@ -108,8 +113,13 @@ def run_clean2d_engine(
     seed: int | None = None,
     rdkit_timeout_s: float = 8.0,
 ) -> Clean2DResult:
+    mode = _coerce_mode(mode)
     selected = _normalize_atom_ids(graph, atom_ids)
     before = _coords_for_atoms(graph, selected)
+    target = max(8.0, float(target_bond_length or 42.0))
+    if mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION} and is_complex_clean2d_graph(graph, selected):
+        return _run_local_graph_clean2d_engine(graph, selected, before, mode, target)
+
     candidates = generate_clean2d_candidates(
         graph,
         selected,
@@ -127,6 +137,103 @@ def run_clean2d_engine(
         mode=mode,
         target_bond_length=target_bond_length,
         avoid_hashes=avoid_hashes,
+    )
+
+
+def _run_local_graph_clean2d_engine(
+    graph: MolGraph,
+    selected: set[int],
+    before: dict[int, tuple[float, float]],
+    mode: Clean2DMode,
+    target: float,
+) -> Clean2DResult:
+    local_mode = (
+        LocalClean2DMode.PUBLICATION
+        if mode == Clean2DMode.PUBLICATION
+        else LocalClean2DMode.QUICK
+    )
+    local_result = local_graph_clean2d(
+        graph,
+        selected,
+        target_bond_length=target,
+        mode=local_mode,
+    )
+    bonds = _selected_structural_bonds(graph, selected)
+    metadata = {
+        "local_graph_clean2d": True,
+        **local_result.report.as_dict(),
+    }
+
+    if local_result.ok:
+        after = _complete_coords(local_result.coords, before, selected)
+        report = evaluate_clean2d_layout(
+            selected,
+            bonds,
+            before,
+            after,
+            target,
+            is_cyclic=has_cycles(selected, bonds),
+        )
+        quality = classify_clean2d_layout_quality(
+            graph,
+            selected,
+            coords=after,
+            target_bond_length=target,
+        )
+        metadata.update(
+            {
+                "quality_class": quality.quality_class,
+                "quality_reason": quality.reason,
+                "length_rms_error": quality.length_rms_error,
+                "length_max_error": quality.length_max_error,
+                "angle_rms_deviation": quality.angle_rms_deviation,
+                "angle_max_deviation": quality.angle_max_deviation,
+                "severe_angle_count": quality.severe_angle_count,
+                "crossings": quality.crossings,
+                "min_nonbonded_distance": quality.min_nonbonded_distance,
+                "min_ring_degeneracy": quality.min_ring_degeneracy,
+                "exocyclic_ring_angle_min": quality.exocyclic_ring_angle_min,
+                "bad_exocyclic_ring_count": quality.bad_exocyclic_ring_count,
+                "visual_score": quality.visual_score,
+            }
+        )
+        candidate = Clean2DCandidate(
+            source="local_graph",
+            coords=after,
+            message=local_result.report.message or "Estructura 2D limpiada localmente",
+            score=_visual_quality_score(graph, selected, bonds, before, after, target, mode),
+            novelty=_mean_displacement(before, after, selected),
+            report=report,
+            geometry_hash=clean2d_geometry_hash(graph, after, selected),
+            metadata=metadata,
+        )
+        return Clean2DResult(
+            mode=mode,
+            atom_ids=selected,
+            before_coords=before,
+            candidates=(candidate,),
+            selected=candidate,
+            message=candidate.message,
+        )
+
+    rejected = Clean2DCandidate(
+        source="local_graph",
+        coords=before,
+        message=local_result.report.message,
+        rejected=True,
+        rejection_reason=local_result.report.reason or "no_safe_local_repair",
+        geometry_hash=clean2d_geometry_hash(graph, before, selected) if before else "",
+        metadata=metadata,
+    )
+    return Clean2DResult(
+        mode=mode,
+        atom_ids=selected,
+        before_coords=before,
+        candidates=(),
+        selected=None,
+        rejected=(rejected,),
+        message=local_result.report.message,
+        reason=local_result.report.reason or "no_safe_local_repair",
     )
 
 
@@ -2040,6 +2147,7 @@ def _source_priority(source: str) -> int:
         "internal_templates": 3,
         "clean2d_v2": 4,
         "safe_fallback": 5,
+        "local_graph": 6,
         "propose_reflection": 1,
         "propose_rotation": 2,
         "propose_3d_projection": 3,

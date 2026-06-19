@@ -20,7 +20,7 @@ from chemuson.chemio.rdkit_io import (
     molfile_to_molgraph,
     smiles_to_molgraph,
 )
-from chemuson.core.model import Bond, BondStereo, BondStyle, MolGraph, normalize_opacity
+from chemuson.core.model import Bond, BondStereo, BondStyle, MolGraph, bond_affects_valence, normalize_opacity
 from chemuson.geometry3d import Rotation3D, conformer_3d_for_graph, project_conformer_to_2d
 from chemuson.gui.commands import (
     AddArrowCommand,
@@ -364,6 +364,20 @@ class CanvasSelectionMixin:
             if bond.a1_id in atom_ids and bond.a2_id in atom_ids:
                 bonds.append(bond)
         return atom_ids, self._unique_bonds_for_copy(bonds)
+
+    def _structural_bonds_for_clean2d(self, atom_ids: set[int], include_boundary: bool = False) -> list[Bond]:
+        """Devuelve enlaces estructurales autoritativos del modelo para Clean2D."""
+        bonds: list[Bond] = []
+        for bond in self.model.bonds.values():
+            if not bond_affects_valence(bond):
+                continue
+            a1_in = bond.a1_id in atom_ids
+            a2_in = bond.a2_id in atom_ids
+            if a1_in and a2_in:
+                bonds.append(bond)
+            elif include_boundary and (a1_in or a2_in):
+                bonds.append(bond)
+        return self._unique_bonds_for_copy(bonds)
 
     @staticmethod
     def _bond_copy_priority(bond: Bond) -> int:
