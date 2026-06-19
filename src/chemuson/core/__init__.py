@@ -29,6 +29,19 @@ from chemuson.core.model import (
     ValidationCorrectionAction,
     ValidationIssue,
 )
+from chemuson.core.layers import (
+    InteractionEdge,
+    InteractionGraph,
+    InteractionKind,
+    LayoutConstraint,
+    LayoutConstraintGraph,
+    LayoutConstraintKind,
+    MotifGraph,
+    MotifKind,
+    MotifNode,
+    MultilayerChemicalGraph,
+    build_multilayer_chemical_graph,
+)
 
 __all__ = [
     "Atom",
@@ -39,6 +52,17 @@ __all__ = [
     "MolGraph",
     "ValidationCorrectionAction",
     "ValidationIssue",
+    "InteractionEdge",
+    "InteractionGraph",
+    "InteractionKind",
+    "LayoutConstraint",
+    "LayoutConstraintGraph",
+    "LayoutConstraintKind",
+    "MotifGraph",
+    "MotifKind",
+    "MotifNode",
+    "MultilayerChemicalGraph",
+    "build_multilayer_chemical_graph",
     "ATOMIC_WEIGHTS",
     "DEFAULT_TOLERANCE",
     "SOLVENT_LIBRARY",

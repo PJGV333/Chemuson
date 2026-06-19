@@ -21,6 +21,7 @@ _DONOR_UNSET = object()
 _FLEX_CURVE_UNSET = object()
 _PI_OFFSET_UNSET = object()
 _OPACITY_UNSET = object()
+_INTERACTION_KIND_UNSET = object()
 
 
 class BondStyle(str, Enum):
@@ -423,6 +424,7 @@ class Bond:
     # Orientación manual de la línea pi en dobles enlaces: None (auto), +1 o -1.
     pi_offset_sign: Optional[int] = None
     opacity: Optional[float] = None
+    interaction_kind: Optional[str] = None
 
 
 @dataclass
@@ -654,6 +656,7 @@ class MolGraph:
         flex_curve_2: Optional[float] = None,
         pi_offset_sign: Optional[int] = None,
         opacity: Optional[float] = None,
+        interaction_kind: Optional[str] = None,
     ) -> Bond:
         """Crea y registra un enlace entre dos átomos.
 
@@ -680,6 +683,8 @@ class MolGraph:
             flex_curve_2: Curvatura normalizada del segundo control (estilo FLEX).
             pi_offset_sign: Orientación manual de línea pi (+1/-1) o `None`.
             opacity: Opacidad local del enlace o `None` para heredar del canvas.
+            interaction_kind: Semántica opcional para enlaces de interacción
+                (`hydrogen_bond`, `pi_pi`, etc.).
 
         Returns:
             El enlace creado.
@@ -708,6 +713,9 @@ class MolGraph:
         manual_pi: Optional[int] = None
         if pi_offset_sign in {-1, 1}:
             manual_pi = int(pi_offset_sign)
+        resolved_interaction_kind = None
+        if style in {BondStyle.INTERACTION, BondStyle.COORDINATION} and interaction_kind:
+            resolved_interaction_kind = str(interaction_kind).strip().lower() or None
 
         bond = Bond(
             id=bond_id,
@@ -732,6 +740,7 @@ class MolGraph:
             flex_curve_2=curve_2,
             pi_offset_sign=manual_pi,
             opacity=normalize_optional_opacity(opacity),
+            interaction_kind=resolved_interaction_kind,
         )
         self.bonds[bond_id] = bond
         return bond
@@ -919,6 +928,7 @@ class MolGraph:
         flex_curve_2: Optional[float] | object = _FLEX_CURVE_UNSET,
         pi_offset_sign: Optional[int] | object = _PI_OFFSET_UNSET,
         opacity: Optional[float] | object = _OPACITY_UNSET,
+        interaction_kind: Optional[str] | object = _INTERACTION_KIND_UNSET,
     ) -> Bond:
         """Actualiza propiedades de un enlace existente.
 
@@ -940,6 +950,7 @@ class MolGraph:
             flex_curve_2: Curvatura normalizada de control 2; `None` limpia.
             pi_offset_sign: Orientación manual de línea pi (+1/-1), `None` limpia.
             opacity: Opacidad local del enlace; `None` hereda del canvas.
+            interaction_kind: Semántica opcional para interacciones; `None` limpia.
 
         Returns:
             El enlace actualizado.
@@ -983,6 +994,8 @@ class MolGraph:
                 bond.pi_offset_sign = None
         if opacity is not _OPACITY_UNSET:
             bond.opacity = normalize_optional_opacity(opacity)
+        if interaction_kind is not _INTERACTION_KIND_UNSET:
+            bond.interaction_kind = None if interaction_kind is None else str(interaction_kind).strip().lower()
         if bond.style != BondStyle.COORDINATION:
             bond.donor_atom_id = None
         elif bond.donor_atom_id not in {bond.a1_id, bond.a2_id}:
@@ -990,6 +1003,8 @@ class MolGraph:
         if bond.style != BondStyle.FLEX:
             bond.flex_curve_1 = None
             bond.flex_curve_2 = None
+        if bond.style not in {BondStyle.INTERACTION, BondStyle.COORDINATION}:
+            bond.interaction_kind = None
         return bond
 
     def update_bond_length(self, bond_id: int, length_px: Optional[float]) -> None:

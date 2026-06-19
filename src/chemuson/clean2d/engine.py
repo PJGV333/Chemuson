@@ -33,6 +33,7 @@ from chemuson.clean2d.safety import (
     ring_degeneracy_score,
 )
 from chemuson.clean2d.v2 import Clean2DParameters, optimize_clean2d_positions
+from chemuson.core.layers import LayoutConstraintKind, build_multilayer_chemical_graph
 from chemuson.core.model import Bond, MolGraph, bond_affects_valence
 
 
@@ -117,7 +118,13 @@ def run_clean2d_engine(
     selected = _normalize_atom_ids(graph, atom_ids)
     before = _coords_for_atoms(graph, selected)
     target = max(8.0, float(target_bond_length or 42.0))
-    if mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION} and is_complex_clean2d_graph(graph, selected):
+    layer_model = build_multilayer_chemical_graph(graph, selected)
+    has_interaction_constraints = _interaction_constraint_count(layer_model.layout_constraint_graph.constraints) > 0
+    if (
+        mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION}
+        and not has_interaction_constraints
+        and is_complex_clean2d_graph(graph, selected)
+    ):
         return _run_local_graph_clean2d_engine(graph, selected, before, mode, target)
 
     candidates = generate_clean2d_candidates(
@@ -255,6 +262,8 @@ def generate_clean2d_candidates(
     before = _coords_for_atoms(graph, selected)
     bonds = _selected_structural_bonds(graph, selected)
     target = max(8.0, float(target_bond_length or 42.0))
+    layer_model = build_multilayer_chemical_graph(graph, selected)
+    baseline_constraint_error = _interaction_constraint_error(layer_model.layout_constraint_graph.constraints, before)
     candidates: list[Clean2DCandidate] = []
 
     current = _normalized_candidate_coords(before, before, bonds, target)
@@ -263,13 +272,22 @@ def generate_clean2d_candidates(
             source="current",
             coords=current,
             message="Estructura 2D ya estaba limpia",
+            metadata={
+                "interaction_constraint_error": baseline_constraint_error,
+                "interaction_constraint_count": _interaction_constraint_count(
+                    layer_model.layout_constraint_graph.constraints
+                ),
+            },
         )
     )
+
+    motif_candidate = _candidate_from_motif_constraints(graph, selected, before, bonds, target)
 
     if mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION}:
         candidates.extend(
             candidate
             for candidate in (
+                motif_candidate,
                 _candidate_from_rdkit_isolated(graph, selected, before, bonds, target, rdkit_timeout_s),
                 _candidate_from_rdkit_direct(graph, selected, before, bonds, target),
                 _candidate_from_internal_templates(graph, selected, before, bonds, target),
@@ -283,6 +301,7 @@ def generate_clean2d_candidates(
         candidates.extend(
             candidate
             for candidate in (
+                motif_candidate,
                 _candidate_from_rdkit_isolated(graph, selected, before, bonds, target, rdkit_timeout_s),
                 _candidate_from_internal_templates(graph, selected, before, bonds, target),
             )
@@ -406,6 +425,11 @@ def rank_clean2d_candidates(
             "bad_exocyclic_ring_count": candidate_quality.bad_exocyclic_ring_count,
             "visual_score": candidate_quality.visual_score,
         }
+        if candidate_metadata.get("interaction_constraint_count"):
+            candidate_metadata["interaction_constraint_error"] = _interaction_constraint_error(
+                build_multilayer_chemical_graph(graph, selected).layout_constraint_graph.constraints,
+                after,
+            )
         safety_mode = _safety_mode_for_candidate(mode, candidate, baseline_bad)
         safe = is_clean2d_candidate_safe(report, safety_mode)
         if mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION} and candidate.source == "current":
@@ -778,6 +802,8 @@ def _current_has_material_canonical_defect(metadata: dict[str, Any], target: flo
         return True
     if float(metadata.get("severe_angle_count", 0) or 0) > 0:
         return True
+    if float(metadata.get("interaction_constraint_error", 0.0) or 0.0) > target * 0.25:
+        return True
     min_nonbonded = float(metadata.get("min_nonbonded_distance", math.inf) or math.inf)
     if min_nonbonded < target * 0.50:
         return True
@@ -867,6 +893,11 @@ def _candidate_improves_important_metric(
     if current_exocyclic < 125.0 and candidate_exocyclic > current_exocyclic + 15.0:
         return True
 
+    current_interaction = float(current_meta.get("interaction_constraint_error", 0.0) or 0.0)
+    candidate_interaction = float(candidate_meta.get("interaction_constraint_error", 0.0) or 0.0)
+    if current_interaction > target * 0.20 and candidate_interaction < current_interaction * 0.55:
+        return True
+
     current_nonbonded = float(current_meta.get("min_nonbonded_distance", math.inf) or math.inf)
     candidate_nonbonded = float(candidate_meta.get("min_nonbonded_distance", math.inf) or math.inf)
     return current_nonbonded < target * 0.50 and candidate_nonbonded > current_nonbonded + target * 0.10
@@ -951,6 +982,7 @@ def capture_clean2d_snapshot(
                     getattr(bond, "ring_id", None),
                     getattr(bond, "donor_atom_id", None),
                     getattr(bond, "pi_offset_sign", None),
+                    getattr(bond, "interaction_kind", None),
                 ),
             )
         )
@@ -1047,6 +1079,123 @@ def clean2d_geometry_hash(
         )
     ).encode("utf-8")
     return hashlib.sha1(payload).hexdigest()
+
+
+def _candidate_from_motif_constraints(
+    graph: MolGraph,
+    atom_ids: set[int],
+    before: dict[int, tuple[float, float]],
+    bonds: list[Bond],
+    target: float,
+) -> Clean2DCandidate | None:
+    """Translate rigid covalent components to satisfy semantic interactions.
+
+    This is intentionally not an atom-level planar optimizer: each covalent
+    component is treated as a block and only whole-block translations are
+    applied before normal candidate ranking expands the result to atom coords.
+    """
+    layer_model = build_multilayer_chemical_graph(graph, atom_ids)
+    constraints = tuple(
+        constraint
+        for constraint in layer_model.layout_constraint_graph.constraints
+        if constraint.kind == LayoutConstraintKind.INTERACTION_DISTANCE
+        and len(constraint.atom_ids) == 2
+    )
+    if not constraints:
+        return None
+
+    components = _covalent_components(atom_ids, bonds)
+    atom_to_component = {
+        atom_id: idx
+        for idx, component in enumerate(components)
+        for atom_id in component
+    }
+    if len(components) < 2:
+        return None
+
+    coords = dict(before)
+    before_error = _interaction_constraint_error(constraints, coords)
+    moved_components: set[int] = set()
+
+    for _ in range(5):
+        offsets = {idx: (0.0, 0.0, 0.0) for idx in range(len(components))}
+        for constraint in constraints:
+            a_id, b_id = constraint.atom_ids
+            comp_a = atom_to_component.get(a_id)
+            comp_b = atom_to_component.get(b_id)
+            if comp_a is None or comp_b is None or comp_a == comp_b:
+                continue
+            if a_id not in coords or b_id not in coords:
+                continue
+            ax, ay = coords[a_id]
+            bx, by = coords[b_id]
+            dx = bx - ax
+            dy = by - ay
+            dist = math.hypot(dx, dy)
+            if dist <= 1e-6:
+                ux, uy = 1.0, 0.0
+                dist = 1.0
+            else:
+                ux, uy = dx / dist, dy / dist
+            desired = float(constraint.target_distance or target * 1.35)
+            delta = dist - desired
+            if abs(delta) < target * 0.04:
+                continue
+            step = max(-target * 0.75, min(target * 0.75, delta * 0.55))
+            weight = max(0.1, float(constraint.weight or 1.0))
+            move_a, move_b = _interaction_component_move_weights(
+                graph,
+                components[comp_a],
+                components[comp_b],
+                a_id,
+                b_id,
+            )
+            if move_a:
+                ox, oy, ow = offsets[comp_a]
+                offsets[comp_a] = (
+                    ox + ux * step * move_a * weight,
+                    oy + uy * step * move_a * weight,
+                    ow + weight,
+                )
+            if move_b:
+                ox, oy, ow = offsets[comp_b]
+                offsets[comp_b] = (
+                    ox - ux * step * move_b * weight,
+                    oy - uy * step * move_b * weight,
+                    ow + weight,
+                )
+
+        changed = False
+        for comp_idx, (ox, oy, weight) in offsets.items():
+            if weight <= 0.0:
+                continue
+            offset = (ox / weight, oy / weight)
+            if math.hypot(*offset) < 0.05:
+                continue
+            moved_components.add(comp_idx)
+            changed = True
+            for atom_id in components[comp_idx]:
+                x, y = coords[atom_id]
+                coords[atom_id] = (x + offset[0], y + offset[1])
+        if not changed:
+            break
+
+    after_error = _interaction_constraint_error(constraints, coords)
+    if after_error >= before_error * 0.80 or _mean_displacement(before, coords, atom_ids) < 0.25:
+        return None
+    return Clean2DCandidate(
+        source="motif_constraints",
+        coords=coords,
+        message="Layout 2D ajustado por motivos e interacciones",
+        metadata={
+            "multilayer_clean2d": True,
+            "motif_first": True,
+            "interaction_constraint_count": len(constraints),
+            "interaction_constraint_error": after_error,
+            "interaction_constraint_error_before": before_error,
+            "moved_motif_blocks": len(moved_components),
+        },
+    )
 
 
 def _candidate_from_rdkit_isolated(
@@ -2146,8 +2295,9 @@ def _source_priority(source: str) -> int:
         "rdkit_direct": 2,
         "internal_templates": 3,
         "clean2d_v2": 4,
-        "safe_fallback": 5,
-        "local_graph": 6,
+        "motif_constraints": 5,
+        "safe_fallback": 6,
+        "local_graph": 7,
         "propose_reflection": 1,
         "propose_rotation": 2,
         "propose_3d_projection": 3,
@@ -2166,6 +2316,73 @@ def _normalize_atom_ids(graph: MolGraph, atom_ids: Iterable[int] | None) -> set[
     if atom_ids is None:
         return set(graph.atoms.keys())
     return {int(atom_id) for atom_id in atom_ids if int(atom_id) in graph.atoms}
+
+
+def _covalent_components(atom_ids: set[int], bonds: list[Bond]) -> list[frozenset[int]]:
+    adjacency = _adjacency_for_bonds(atom_ids, bonds)
+    seen: set[int] = set()
+    components: list[frozenset[int]] = []
+    for atom_id in sorted(atom_ids):
+        if atom_id in seen:
+            continue
+        component = _component_from(atom_id, adjacency, atom_ids)
+        seen.update(component)
+        components.append(frozenset(component))
+    return components
+
+
+def _interaction_component_move_weights(
+    graph: MolGraph,
+    comp_a: frozenset[int],
+    comp_b: frozenset[int],
+    a_id: int,
+    b_id: int,
+) -> tuple[float, float]:
+    a_center = bool(getattr(graph.atoms.get(a_id), "is_coordination_center", False))
+    b_center = bool(getattr(graph.atoms.get(b_id), "is_coordination_center", False))
+    if a_center and not b_center:
+        return (0.0, 1.0)
+    if b_center and not a_center:
+        return (1.0, 0.0)
+    if len(comp_a) > len(comp_b):
+        return (0.0, 1.0)
+    if len(comp_b) > len(comp_a):
+        return (1.0, 0.0)
+    return (0.5, 0.5)
+
+
+def _interaction_constraint_count(constraints: Iterable[object]) -> int:
+    return sum(
+        1
+        for constraint in constraints
+        if getattr(constraint, "kind", None) == LayoutConstraintKind.INTERACTION_DISTANCE
+        and len(getattr(constraint, "atom_ids", ())) == 2
+    )
+
+
+def _interaction_constraint_error(
+    constraints: Iterable[object],
+    coords: dict[int, tuple[float, float]],
+) -> float:
+    total = 0.0
+    weight_total = 0.0
+    for constraint in constraints:
+        if getattr(constraint, "kind", None) != LayoutConstraintKind.INTERACTION_DISTANCE:
+            continue
+        atom_pair = tuple(getattr(constraint, "atom_ids", ()))
+        if len(atom_pair) != 2 or atom_pair[0] not in coords or atom_pair[1] not in coords:
+            continue
+        target = getattr(constraint, "target_distance", None)
+        if target is None:
+            continue
+        ax, ay = coords[atom_pair[0]]
+        bx, by = coords[atom_pair[1]]
+        weight = max(0.1, float(getattr(constraint, "weight", 1.0) or 1.0))
+        total += abs(math.hypot(bx - ax, by - ay) - float(target)) * weight
+        weight_total += weight
+    if weight_total <= 0.0:
+        return 0.0
+    return total / weight_total
 
 
 def _coords_for_atoms(graph: MolGraph, atom_ids: set[int]) -> dict[int, tuple[float, float]]:
