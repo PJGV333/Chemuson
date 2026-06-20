@@ -560,37 +560,87 @@ def generate_clean2d_candidates(
 
     if mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION}:
         candidates.extend(
-            candidate
-            for candidate in (
+            _quick_backend_candidates(
+                graph,
+                selected,
+                before,
+                bonds,
+                target,
+                mode,
+                rdkit_timeout_s,
                 block_candidate,
                 motif_candidate,
-                _candidate_from_scaffold_depiction(graph, selected, before, bonds, target),
-                _candidate_from_block_unwrap(graph, selected, before, bonds, target),
-                _candidate_from_rdkit_isolated(graph, selected, before, bonds, target, rdkit_timeout_s),
-                _candidate_from_rdkit_direct(graph, selected, before, bonds, target),
-                _candidate_from_internal_templates(graph, selected, before, bonds, target),
-                _candidate_from_v2(graph, selected, before, bonds, target, mode),
-                _candidate_from_structure_preserving_fallback(selected, before, bonds, target),
             )
-            if candidate is not None
         )
     else:
         candidates.extend(_propose_candidates(graph, selected, before, bonds, target, seed=seed))
         candidates.extend(
-            candidate
-            for candidate in (
+            _propose_backend_candidates(
+                graph,
+                selected,
+                before,
+                bonds,
+                target,
+                rdkit_timeout_s,
                 block_layout_candidate,
                 block_candidate,
                 motif_candidate,
-                _candidate_from_scaffold_depiction(graph, selected, before, bonds, target),
-                _candidate_from_block_unwrap(graph, selected, before, bonds, target),
-                _candidate_from_rdkit_isolated(graph, selected, before, bonds, target, rdkit_timeout_s),
-                _candidate_from_internal_templates(graph, selected, before, bonds, target),
             )
-            if candidate is not None
         )
 
     return _deduplicate_candidates(graph, selected, candidates, avoid_hashes=avoid_hashes)
+
+
+def _quick_backend_candidates(
+    graph: MolGraph,
+    atom_ids: set[int],
+    before: dict[int, tuple[float, float]],
+    bonds: list[Bond],
+    target: float,
+    mode: Clean2DMode,
+    rdkit_timeout_s: float,
+    block_candidate: Clean2DCandidate | None,
+    motif_candidate: Clean2DCandidate | None,
+) -> list[Clean2DCandidate]:
+    """Backends used by normal Clean2D, in ranking order before dedupe."""
+    return _present_candidates(
+        block_candidate,
+        motif_candidate,
+        _candidate_from_scaffold_depiction(graph, atom_ids, before, bonds, target),
+        _candidate_from_block_unwrap(graph, atom_ids, before, bonds, target),
+        _candidate_from_rdkit_isolated(graph, atom_ids, before, bonds, target, rdkit_timeout_s),
+        _candidate_from_rdkit_direct(graph, atom_ids, before, bonds, target),
+        _candidate_from_internal_templates(graph, atom_ids, before, bonds, target),
+        _candidate_from_v2(graph, atom_ids, before, bonds, target, mode),
+        _candidate_from_structure_preserving_fallback(atom_ids, before, bonds, target),
+    )
+
+
+def _propose_backend_candidates(
+    graph: MolGraph,
+    atom_ids: set[int],
+    before: dict[int, tuple[float, float]],
+    bonds: list[Bond],
+    target: float,
+    rdkit_timeout_s: float,
+    block_layout_candidate: Clean2DCandidate | None,
+    block_candidate: Clean2DCandidate | None,
+    motif_candidate: Clean2DCandidate | None,
+) -> list[Clean2DCandidate]:
+    """Fallback backends for proposal mode after stochastic/local variants."""
+    return _present_candidates(
+        block_layout_candidate,
+        block_candidate,
+        motif_candidate,
+        _candidate_from_scaffold_depiction(graph, atom_ids, before, bonds, target),
+        _candidate_from_block_unwrap(graph, atom_ids, before, bonds, target),
+        _candidate_from_rdkit_isolated(graph, atom_ids, before, bonds, target, rdkit_timeout_s),
+        _candidate_from_internal_templates(graph, atom_ids, before, bonds, target),
+    )
+
+
+def _present_candidates(*candidates: Clean2DCandidate | None) -> list[Clean2DCandidate]:
+    return [candidate for candidate in candidates if candidate is not None]
 
 
 def rank_clean2d_candidates(

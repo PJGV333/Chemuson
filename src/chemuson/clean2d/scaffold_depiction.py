@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-import copy
 import math
 from typing import Iterable
 
 from chemuson.chemio.depiction_candidates import block_donut_score, score_imported_depiction
 from chemuson.clean2d.block_unwrap import block_unwrap_layout
+from chemuson.clean2d.geometry import finite_coords, graph_atom_coords, graph_with_coords, normalize_atom_ids
 from chemuson.clean2d.local_graph_cleaner import stereo_layout_signature
 from chemuson.core.layers import BlockKind, build_multilayer_chemical_graph
-from chemuson.core.model import MolGraph, bond_affects_valence
+from chemuson.core.model import MolGraph
 
 
 @dataclass(frozen=True)
@@ -43,14 +43,14 @@ def scaffold_depiction_candidates(
     *,
     target_bond_length: float = 40.0,
 ) -> list[ScaffoldLayoutCandidate]:
-    selected = _normalize_atom_ids(graph, atom_ids)
+    selected = normalize_atom_ids(graph, atom_ids)
     if not selected:
         return []
     if not _is_complex_enough(graph, selected, target_bond_length):
         return [ScaffoldLayoutCandidate("not_complex", {}, math.inf, 0.0, True, "not_complex")]
-    base_coords = {atom_id: (graph.atoms[atom_id].x, graph.atoms[atom_id].y) for atom_id in selected}
-    base_score, _ = score_imported_depiction(_graph_with_coords(graph, base_coords), target_bond_length=target_bond_length)
-    base_donut, _ = block_donut_score(_graph_with_coords(graph, base_coords), target_bond_length=target_bond_length)
+    base_coords = graph_atom_coords(graph, selected)
+    base_score, _ = score_imported_depiction(graph_with_coords(graph, base_coords), target_bond_length=target_bond_length)
+    base_donut, _ = block_donut_score(graph_with_coords(graph, base_coords), target_bond_length=target_bond_length)
 
     raw: list[tuple[str, dict[int, tuple[float, float]] | None, dict[str, object]]] = []
     unwrap_coords, unwrap_report = block_unwrap_layout(graph, selected, target_bond_length=target_bond_length)
@@ -70,8 +70,9 @@ def scaffold_depiction_candidates(
             candidates.append(ScaffoldLayoutCandidate(strategy, {}, math.inf, base_donut, True, "strategy_unavailable", metadata))
             continue
         rejection = _rejection_reason(graph, selected, base_coords, coords, target_bond_length, base_score, base_donut)
-        score, score_meta = score_imported_depiction(_graph_with_coords(graph, coords), target_bond_length=target_bond_length)
-        donut, donut_meta = block_donut_score(_graph_with_coords(graph, coords), target_bond_length=target_bond_length)
+        candidate_graph = graph_with_coords(graph, coords)
+        score, score_meta = score_imported_depiction(candidate_graph, target_bond_length=target_bond_length)
+        donut, donut_meta = block_donut_score(candidate_graph, target_bond_length=target_bond_length)
         candidates.append(
             ScaffoldLayoutCandidate(
                 strategy=strategy,
@@ -93,10 +94,10 @@ def scaffold_depiction_layout(
     *,
     target_bond_length: float = 40.0,
 ) -> tuple[dict[int, tuple[float, float]] | None, ScaffoldDepictionReport]:
-    selected = _normalize_atom_ids(graph, atom_ids)
-    before = {atom_id: (graph.atoms[atom_id].x, graph.atoms[atom_id].y) for atom_id in selected}
-    score_before, _ = score_imported_depiction(_graph_with_coords(graph, before), target_bond_length=target_bond_length) if before else (0.0, {})
-    donut_before, _ = block_donut_score(_graph_with_coords(graph, before), target_bond_length=target_bond_length) if before else (0.0, {})
+    selected = normalize_atom_ids(graph, atom_ids)
+    before = graph_atom_coords(graph, selected)
+    score_before, _ = score_imported_depiction(graph_with_coords(graph, before), target_bond_length=target_bond_length) if before else (0.0, {})
+    donut_before, _ = block_donut_score(graph_with_coords(graph, before), target_bond_length=target_bond_length) if before else (0.0, {})
     candidates = scaffold_depiction_candidates(graph, selected, target_bond_length=target_bond_length)
     accepted = [candidate for candidate in candidates if not candidate.rejected and candidate.coords]
     if not accepted:
@@ -128,10 +129,11 @@ def _is_complex_enough(graph: MolGraph, selected: set[int], target: float) -> bo
 def _rejection_reason(graph: MolGraph, selected: set[int], before: dict[int, tuple[float, float]], after: dict[int, tuple[float, float]], target: float, score_before: float, donut_before: float) -> str:
     if set(after) != selected:
         return "missing_coordinates"
-    if any(not (math.isfinite(x) and math.isfinite(y)) for x, y in after.values()):
+    if not finite_coords(after):
         return "non_finite_coordinates"
-    score_after, _ = score_imported_depiction(_graph_with_coords(graph, after), target_bond_length=target)
-    donut_after, _ = block_donut_score(_graph_with_coords(graph, after), target_bond_length=target)
+    after_graph = graph_with_coords(graph, after)
+    score_after, _ = score_imported_depiction(after_graph, target_bond_length=target)
+    donut_after, _ = block_donut_score(after_graph, target_bond_length=target)
     if not (score_after < score_before or donut_after < donut_before * 0.90):
         return "score_not_improved"
     try:
@@ -154,21 +156,6 @@ def _affine_variant(coords: dict[int, tuple[float, float]], *, x_scale: float, y
         dx, dy = x - cx, y - cy
         out[atom_id] = (cx + dx * x_scale + dy * shear, cy + dy * y_scale)
     return out
-
-
-def _graph_with_coords(graph: MolGraph, coords: dict[int, tuple[float, float]]) -> MolGraph:
-    out = copy.deepcopy(graph)
-    for atom_id, (x, y) in coords.items():
-        if atom_id in out.atoms:
-            out.atoms[atom_id].x = float(x)
-            out.atoms[atom_id].y = float(y)
-    return out
-
-
-def _normalize_atom_ids(graph: MolGraph, atom_ids: Iterable[int] | None) -> set[int]:
-    if atom_ids is None:
-        return set(graph.atoms)
-    return {int(atom_id) for atom_id in atom_ids if int(atom_id) in graph.atoms}
 
 
 def _candidate_metadata(candidate: ScaffoldLayoutCandidate) -> dict[str, object]:

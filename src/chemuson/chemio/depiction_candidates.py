@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import math
 
+from chemuson.clean2d.geometry import count_crossings, cycle_basis, segments_intersect
 from chemuson.clean2d.safety import has_cycles, min_nonbonded_distance, ring_degeneracy_score
 from chemuson.core.layers import BlockKind, build_multilayer_chemical_graph
 from chemuson.core.model import MolGraph, bond_affects_valence
@@ -57,7 +58,7 @@ def score_imported_depiction(
         score += abs(mean_len - target) / target * 40.0
         score += min(5000.0, (std_len / max(mean_len, 1e-6)) * 250.0)
 
-    crossings = _count_crossings(coords, bonds)
+    crossings = count_crossings(coords, bonds)
     metadata["bond_crossings"] = crossings
     score += crossings * 2500.0
 
@@ -68,7 +69,7 @@ def score_imported_depiction(
     elif nonbonded < target * 0.45:
         score += (target * 0.45 - nonbonded) / target * 500.0
 
-    rings = _cycle_basis(atom_ids, bonds, max_size=18)
+    rings = cycle_basis(atom_ids, bonds, max_size=18)
     ring_scores = [ring_degeneracy_score(coords, set(ring)) for ring in rings]
     min_ring = min(ring_scores) if ring_scores else math.inf
     metadata.update({"ring_count": len(rings), "min_ring_degeneracy": min_ring})
@@ -303,64 +304,13 @@ def _polygon_area(points: list[tuple[float, float]]) -> float:
 
 
 def _count_crossings(coords: dict[int, tuple[float, float]], bonds) -> int:
-    crossings = 0
-    for i, b1 in enumerate(bonds):
-        if b1.a1_id not in coords or b1.a2_id not in coords:
-            continue
-        for b2 in bonds[i + 1:]:
-            if {b1.a1_id, b1.a2_id} & {b2.a1_id, b2.a2_id}:
-                continue
-            if b2.a1_id not in coords or b2.a2_id not in coords:
-                continue
-            if _segments_intersect(coords[b1.a1_id], coords[b1.a2_id], coords[b2.a1_id], coords[b2.a2_id]):
-                crossings += 1
-    return crossings
+    return count_crossings(coords, list(bonds))
 
 
 def _segments_intersect(p1, p2, p3, p4) -> bool:
-    def orient(a, b, c):
-        return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
-    o1 = orient(p1, p2, p3)
-    o2 = orient(p1, p2, p4)
-    o3 = orient(p3, p4, p1)
-    o4 = orient(p3, p4, p2)
-    if abs(o1) < 1e-9 or abs(o2) < 1e-9 or abs(o3) < 1e-9 or abs(o4) < 1e-9:
-        return False
-    return (o1 > 0) != (o2 > 0) and (o3 > 0) != (o4 > 0)
+    return segments_intersect(p1, p2, p3, p4)
 
 
 def _cycle_basis(atom_ids: set[int], bonds, *, max_size: int) -> list[list[int]]:
-    adjacency: dict[int, set[int]] = {atom_id: set() for atom_id in atom_ids}
-    for bond in bonds:
-        adjacency.setdefault(bond.a1_id, set()).add(bond.a2_id)
-        adjacency.setdefault(bond.a2_id, set()).add(bond.a1_id)
-    rings: list[list[int]] = []
-    seen: set[tuple[int, ...]] = set()
-    for bond in sorted(bonds, key=lambda item: item.id):
-        path = _shortest_path_without_edge(adjacency, bond.a1_id, bond.a2_id)
-        if path is None or not (3 <= len(path) <= max_size):
-            continue
-        key = tuple(sorted(path))
-        if key in seen:
-            continue
-        seen.add(key)
-        rings.append(path)
-    return rings
+    return cycle_basis(atom_ids, list(bonds), max_size=max_size)
 
-
-def _shortest_path_without_edge(adjacency: dict[int, set[int]], start: int, end: int) -> list[int] | None:
-    blocked = {start, end}
-    queue: list[tuple[int, list[int]]] = [(start, [start])]
-    seen: set[int] = set()
-    while queue:
-        atom_id, path = queue.pop(0)
-        if atom_id == end and len(path) >= 3:
-            return path
-        if atom_id in seen:
-            continue
-        seen.add(atom_id)
-        for neighbor in sorted(adjacency.get(atom_id, set())):
-            if {atom_id, neighbor} == blocked or neighbor in path:
-                continue
-            queue.append((neighbor, path + [neighbor]))
-    return None

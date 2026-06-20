@@ -158,25 +158,12 @@ def conformer_3d_isolated(
     response = _run_worker(request, timeout_s=timeout_s)
     if not response.get("ok"):
         return None, {}, str(response.get("error", "worker_error"))
-    raw_positions = response.get("positions", {})
-    if not isinstance(raw_positions, dict):
-        return None, {}, "invalid_positions"
-    positions: dict[int, tuple[float, float, float]] = {}
-    try:
-        for atom_id, coords in raw_positions.items():
-            if not isinstance(coords, (list, tuple)) or len(coords) != 3:
-                continue
-            positions[int(atom_id)] = (float(coords[0]), float(coords[1]), float(coords[2]))
-    except Exception as exc:
-        return None, {}, str(exc)
+    positions, error = _positions3d_from_response(response)
+    if error:
+        return None, {}, error
     if not positions:
         return None, {}, "empty_positions"
-    metadata = response.get("metadata", {})
-    if not isinstance(metadata, dict):
-        metadata = {}
-    frames = response.get("frames", [])
-    if isinstance(frames, list):
-        metadata["frames"] = frames
+    metadata = _metadata_with_frames(response)
     return positions, metadata, None
 
 
@@ -208,25 +195,12 @@ def optimize_3d_isolated(
     response = _run_worker(request, timeout_s=timeout_s)
     if not response.get("ok"):
         return None, {}, str(response.get("error", "worker_error"))
-    raw_positions = response.get("positions", {})
-    if not isinstance(raw_positions, dict):
-        return None, {}, "invalid_positions"
-    positions: dict[int, tuple[float, float, float]] = {}
-    try:
-        for atom_id, coords in raw_positions.items():
-            if not isinstance(coords, (list, tuple)) or len(coords) != 3:
-                continue
-            positions[int(atom_id)] = (float(coords[0]), float(coords[1]), float(coords[2]))
-    except Exception as exc:
-        return None, {}, str(exc)
+    positions, error = _positions3d_from_response(response)
+    if error:
+        return None, {}, error
     if not positions:
         return None, {}, "empty_positions"
-    metadata = response.get("metadata", {})
-    if not isinstance(metadata, dict):
-        metadata = {}
-    frames = response.get("frames", [])
-    if isinstance(frames, list):
-        metadata["frames"] = frames
+    metadata = _metadata_with_frames(response)
     return positions, metadata, None
 
 
@@ -254,9 +228,19 @@ def clean2d_isolated(
     response = _run_worker(request, timeout_s=timeout_s)
     if not response.get("ok"):
         return None, str(response.get("error", "worker_error"))
+    positions, error = _positions2d_from_response(response)
+    if error:
+        return None, error
+    positions = _project_missing_clean2d_hydrogens(graph, positions)
+    if not positions:
+        return None, "empty_positions"
+    return positions, None
+
+
+def _positions2d_from_response(response: dict[str, Any]) -> tuple[dict[int, tuple[float, float]], str | None]:
     raw_positions = response.get("positions", {})
     if not isinstance(raw_positions, dict):
-        return None, "invalid_positions"
+        return {}, "invalid_positions"
     positions: dict[int, tuple[float, float]] = {}
     try:
         for atom_id, coords in raw_positions.items():
@@ -264,11 +248,35 @@ def clean2d_isolated(
                 continue
             positions[int(atom_id)] = (float(coords[0]), float(coords[1]))
     except Exception as exc:
-        return None, str(exc)
-    positions = _project_missing_clean2d_hydrogens(graph, positions)
-    if not positions:
-        return None, "empty_positions"
+        return {}, str(exc)
     return positions, None
+
+
+def _positions3d_from_response(response: dict[str, Any]) -> tuple[dict[int, tuple[float, float, float]], str | None]:
+    raw_positions = response.get("positions", {})
+    if not isinstance(raw_positions, dict):
+        return {}, "invalid_positions"
+    positions: dict[int, tuple[float, float, float]] = {}
+    try:
+        for atom_id, coords in raw_positions.items():
+            if not isinstance(coords, (list, tuple)) or len(coords) != 3:
+                continue
+            positions[int(atom_id)] = (float(coords[0]), float(coords[1]), float(coords[2]))
+    except Exception as exc:
+        return {}, str(exc)
+    return positions, None
+
+
+def _metadata_with_frames(response: dict[str, Any]) -> dict[str, Any]:
+    metadata = response.get("metadata", {})
+    if not isinstance(metadata, dict):
+        metadata = {}
+    else:
+        metadata = dict(metadata)
+    frames = response.get("frames", [])
+    if isinstance(frames, list):
+        metadata["frames"] = frames
+    return metadata
 
 
 def _project_missing_clean2d_hydrogens(

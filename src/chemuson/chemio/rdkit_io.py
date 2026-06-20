@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from typing import Dict, Iterable, Optional, Tuple
 
 from chemuson.chemio.depiction_candidates import DepictionCandidate, score_imported_depiction
+from chemuson.clean2d.geometry import apply_coords_in_place
 from chemuson.core.model import ATOMIC_NUMBERS, BondStyle, BondStereo, MolGraph, bond_is_structural
 
 Chem = None
@@ -1348,22 +1349,11 @@ def smiles_to_depiction_candidates(
         source = str(raw.get("source", "rdkit_candidate") or "rdkit_candidate")
         metadata = dict(raw.get("metadata", {}) if isinstance(raw.get("metadata"), dict) else {})
         if not raw.get("ok"):
-            candidates.append(
-                DepictionCandidate(
-                    source=source,
-                    graph=MolGraph(),
-                    score=math.inf,
-                    rejected=True,
-                    rejection_reason=str(raw.get("error", "candidate_failed") or "candidate_failed"),
-                    metadata=metadata,
-                )
-            )
+            candidates.append(_rejected_depiction_candidate(source, str(raw.get("error", "candidate_failed") or "candidate_failed"), metadata))
             continue
         molblock = str(raw.get("molblock", "") or "")
         if not molblock.strip():
-            candidates.append(
-                DepictionCandidate(source=source, graph=MolGraph(), score=math.inf, rejected=True, rejection_reason="empty_molblock", metadata=metadata)
-            )
+            candidates.append(_rejected_depiction_candidate(source, "empty_molblock", metadata))
             continue
         try:
             graph = molfile_to_molgraph(molblock)
@@ -1382,13 +1372,22 @@ def smiles_to_depiction_candidates(
                 candidates.append(unwrap)
             candidates.extend(_scaffold_depiction_candidates(graph, source, score, target_bond_length))
         except Exception as exc:
-            candidates.append(
-                DepictionCandidate(source=source, graph=MolGraph(), score=math.inf, rejected=True, rejection_reason=str(exc), metadata=metadata)
-            )
+            candidates.append(_rejected_depiction_candidate(source, str(exc), metadata))
     candidates.sort(key=lambda item: (item.rejected, item.score, item.source))
     if not candidates and error:
         raise RuntimeError(_rdkit_worker_unavailable_message(str(error)))
     return candidates
+
+
+def _rejected_depiction_candidate(source: str, reason: str, metadata: dict[str, object]) -> DepictionCandidate:
+    return DepictionCandidate(
+        source=source,
+        graph=MolGraph(),
+        score=math.inf,
+        rejected=True,
+        rejection_reason=reason,
+        metadata=metadata,
+    )
 
 
 def _scaffold_depiction_candidates(
@@ -1408,10 +1407,7 @@ def _scaffold_depiction_candidates(
         if candidate.rejected or not candidate.coords:
             continue
         scaffold_graph = copy.deepcopy(graph)
-        for atom_id, (x, y) in candidate.coords.items():
-            if atom_id in scaffold_graph.atoms:
-                scaffold_graph.atoms[atom_id].x = float(x)
-                scaffold_graph.atoms[atom_id].y = float(y)
+        apply_coords_in_place(scaffold_graph, candidate.coords)
         score, metadata = score_imported_depiction(scaffold_graph, target_bond_length=target_bond_length)
         out.append(
             DepictionCandidate(
@@ -1448,10 +1444,7 @@ def _block_unwrap_depiction_candidate(
     if coords is None or not report.ok:
         return None
     unwrapped = copy.deepcopy(graph)
-    for atom_id, (x, y) in coords.items():
-        if atom_id in unwrapped.atoms:
-            unwrapped.atoms[atom_id].x = float(x)
-            unwrapped.atoms[atom_id].y = float(y)
+    apply_coords_in_place(unwrapped, coords)
     unwrap_score, unwrap_metadata = score_imported_depiction(unwrapped, target_bond_length=target_bond_length)
     report_metadata = dict(report.__dict__)
     report_metadata.pop("metadata", None)

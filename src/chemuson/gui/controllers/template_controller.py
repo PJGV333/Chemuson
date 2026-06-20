@@ -349,13 +349,7 @@ class TemplateController(QObject):
         if not ok or not smiles.strip():
             return
         try:
-            from chemuson.chemio import rdkit_io
-
-            try:
-                graph, report = rdkit_io.smiles_to_molgraph_best_depiction_with_report(smiles.strip())
-            except Exception:
-                graph = rdkit_io.smiles_to_molgraph(smiles.strip())
-                report = {"selected_source": "smiles_to_molgraph"}
+            graph, report = self._import_smiles_graph(smiles.strip())
             context.canvas._insert_molgraph(graph)
             source = str(report.get("selected_source", "") or "")
             context.show_status(f"SMILES insertado (depiction: {source})" if source else "SMILES insertado")
@@ -366,6 +360,16 @@ class TemplateController(QObject):
                 f"No se pudo importar SMILES:\n{exc}",
             )
             context.show_status("Error al importar SMILES")
+
+    def _import_smiles_graph(self, smiles: str) -> tuple[MolGraph, dict[str, object]]:
+        """Importa SMILES vía ChemIO manteniendo el fallback histórico de la UI."""
+        from chemuson.chemio import rdkit_io
+
+        try:
+            return rdkit_io.smiles_to_molgraph_best_depiction_with_report(smiles)
+        except Exception:
+            graph = rdkit_io.smiles_to_molgraph(smiles)
+            return graph, {"selected_source": "smiles_to_molgraph"}
 
     def on_export_smiles(self, context: TemplateControllerContext) -> None:
         try:
