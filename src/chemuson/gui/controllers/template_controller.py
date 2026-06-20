@@ -349,11 +349,16 @@ class TemplateController(QObject):
         if not ok or not smiles.strip():
             return
         try:
-            from chemuson.chemio.rdkit_io import smiles_to_molgraph
+            from chemuson.chemio import rdkit_io
 
-            graph = smiles_to_molgraph(smiles.strip())
+            try:
+                graph, report = rdkit_io.smiles_to_molgraph_best_depiction_with_report(smiles.strip())
+            except Exception:
+                graph = rdkit_io.smiles_to_molgraph(smiles.strip())
+                report = {"selected_source": "smiles_to_molgraph"}
             context.canvas._insert_molgraph(graph)
-            context.show_status("SMILES insertado")
+            source = str(report.get("selected_source", "") or "")
+            context.show_status(f"SMILES insertado (depiction: {source})" if source else "SMILES insertado")
         except Exception as exc:
             QMessageBox.critical(
                 context.parent,

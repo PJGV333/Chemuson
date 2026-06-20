@@ -307,6 +307,16 @@ def _run_complex_preserve_clean2d_engine(
         },
     )
     unwrap = _candidate_from_block_unwrap(graph, selected, before, bonds, target)
+    scaffold = _candidate_from_scaffold_depiction(graph, selected, before, bonds, target)
+    if scaffold is not None and not scaffold.rejected:
+        return Clean2DResult(
+            mode=mode,
+            atom_ids=selected,
+            before_coords=before,
+            candidates=(current, scaffold),
+            selected=scaffold,
+            message=scaffold.message,
+        )
     if unwrap is not None and not unwrap.rejected:
         return Clean2DResult(
             mode=mode,
@@ -554,6 +564,7 @@ def generate_clean2d_candidates(
             for candidate in (
                 block_candidate,
                 motif_candidate,
+                _candidate_from_scaffold_depiction(graph, selected, before, bonds, target),
                 _candidate_from_block_unwrap(graph, selected, before, bonds, target),
                 _candidate_from_rdkit_isolated(graph, selected, before, bonds, target, rdkit_timeout_s),
                 _candidate_from_rdkit_direct(graph, selected, before, bonds, target),
@@ -571,6 +582,7 @@ def generate_clean2d_candidates(
                 block_layout_candidate,
                 block_candidate,
                 motif_candidate,
+                _candidate_from_scaffold_depiction(graph, selected, before, bonds, target),
                 _candidate_from_block_unwrap(graph, selected, before, bonds, target),
                 _candidate_from_rdkit_isolated(graph, selected, before, bonds, target, rdkit_timeout_s),
                 _candidate_from_internal_templates(graph, selected, before, bonds, target),
@@ -1913,6 +1925,43 @@ def _candidate_from_block_unwrap(
     )
 
 
+def _candidate_from_scaffold_depiction(
+    graph: MolGraph,
+    atom_ids: set[int],
+    before: dict[int, tuple[float, float]],
+    bonds: list[Bond],
+    target: float,
+) -> Clean2DCandidate | None:
+    try:
+        from chemuson.clean2d.scaffold_depiction import scaffold_depiction_layout
+
+        coords, report = scaffold_depiction_layout(graph, atom_ids, target_bond_length=target)
+    except Exception as exc:
+        return Clean2DCandidate(
+            source="scaffold_depiction",
+            coords={},
+            rejected=True,
+            rejection_reason=f"scaffold_depiction_fallo:{exc}",
+        )
+    if coords is None or not report.ok:
+        return None
+    after = _complete_coords(coords, before, atom_ids)
+    return Clean2DCandidate(
+        source="scaffold_depiction",
+        coords=after,
+        message="Estructura 2D compleja redibujada por scaffold",
+        metadata={
+            "scaffold_depiction": True,
+            "scaffold_strategy": report.selected_strategy,
+            "scaffold_score_before": report.score_before,
+            "scaffold_score_after": report.score_after,
+            "scaffold_donut_score_before": report.donut_score_before,
+            "scaffold_donut_score_after": report.donut_score_after,
+            "scaffold_metadata": dict(report.metadata),
+        },
+    )
+
+
 def _block_unwrap_metadata(report: Any) -> dict[str, Any]:
     data = dict(report.__dict__)
     nested = data.pop("metadata", {})
@@ -2872,14 +2921,15 @@ def _source_priority(source: str) -> int:
         "current": 0,
         "block_layout": 1,
         "block_constraints": 2,
-        "block_unwrap": 3,
-        "rdkit_isolated": 4,
-        "rdkit_direct": 5,
-        "internal_templates": 6,
-        "clean2d_v2": 7,
-        "motif_constraints": 8,
-        "safe_fallback": 9,
-        "local_graph": 10,
+        "scaffold_depiction": 3,
+        "block_unwrap": 4,
+        "rdkit_isolated": 5,
+        "rdkit_direct": 6,
+        "internal_templates": 7,
+        "clean2d_v2": 8,
+        "motif_constraints": 9,
+        "safe_fallback": 10,
+        "local_graph": 11,
         "propose_reflection": 1,
         "propose_rotation": 2,
         "propose_3d_projection": 3,

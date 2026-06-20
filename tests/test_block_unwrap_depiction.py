@@ -84,7 +84,9 @@ def test_clean2d_uses_block_unwrap_for_donut_complex() -> None:
 
     sources = {candidate.source for candidate in (*result.candidates, *result.rejected)}
     assert before_donut > 0.0
-    assert "block_unwrap" in sources or (result.selected is not None and result.selected.source == "block_unwrap")
+    assert sources & {"block_unwrap", "scaffold_depiction"} or (
+        result.selected is not None and result.selected.source in {"block_unwrap", "scaffold_depiction"}
+    )
 
 
 def test_existing_simple_clean2d_still_works() -> None:

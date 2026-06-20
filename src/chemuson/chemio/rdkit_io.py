@@ -11,6 +11,9 @@ import re
 import sys
 import math
 import copy
+import json
+import tempfile
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Dict, Iterable, Optional, Tuple
 
@@ -1012,15 +1015,27 @@ def _parse_atom_line(line: str) -> tuple[float, float, str]:
     return x, y, symbol
 
 
-def _parse_bond_line(line: str) -> tuple[int, int, int]:
+def _parse_bond_line(line: str) -> tuple[int, int, int, int]:
     """Parsea índices de átomos y tipo de enlace desde una línea MOL."""
     try:
-        return int(line[0:3]), int(line[3:6]), int(line[6:9])
+        stereo = int(line[9:12]) if len(line) >= 12 and line[9:12].strip() else 0
+        return int(line[0:3]), int(line[3:6]), int(line[6:9]), stereo
     except Exception:
         tokens = line.split()
         if len(tokens) < 3:
             raise ValueError(f"Línea de enlace inválida: {line!r}")
-        return int(tokens[0]), int(tokens[1]), int(tokens[2])
+        stereo = int(tokens[3]) if len(tokens) >= 4 else 0
+        return int(tokens[0]), int(tokens[1]), int(tokens[2]), stereo
+
+
+def _style_and_stereo_from_mol_stereo(stereo_code: int) -> tuple[BondStyle, BondStereo]:
+    if int(stereo_code or 0) == 1:
+        return BondStyle.WEDGE, BondStereo.UP
+    if int(stereo_code or 0) == 6:
+        return BondStyle.HASHED, BondStereo.DOWN
+    if int(stereo_code or 0) == 4:
+        return BondStyle.WAVY, BondStereo.EITHER
+    return BondStyle.PLAIN, BondStereo.NONE
 
 
 def _fallback_bond_order_and_aromatic(bond_type: int) -> tuple[int, bool]:
@@ -1099,7 +1114,7 @@ def _should_use_molfile_fallback(molfile: str) -> bool:
             idx += 1
             continue
         try:
-            a1_idx, a2_idx, _bond_type = _parse_bond_line(line)
+            a1_idx, a2_idx, _bond_type, _stereo_code = _parse_bond_line(line)
         except Exception:
             idx += 1
             continue
@@ -1148,9 +1163,9 @@ def _molfile_to_molgraph_fallback(molfile: str) -> MolGraph:
         atom = graph.add_atom(symbol, x, y, is_explicit=(symbol != "C"))
         atom_ids.append(atom.id)
 
-    unique_bonds: dict[tuple[int, int], tuple[int, bool]] = {}
+    unique_bonds: dict[tuple[int, int], tuple[int, bool, int]] = {}
     for offset in range(bond_count):
-        a1_idx, a2_idx, bond_type = _parse_bond_line(lines[bond_start + offset])
+        a1_idx, a2_idx, bond_type, stereo_code = _parse_bond_line(lines[bond_start + offset])
         if not (1 <= a1_idx <= len(atom_ids) and 1 <= a2_idx <= len(atom_ids)):
             continue
         if a1_idx == a2_idx:
@@ -1161,15 +1176,16 @@ def _molfile_to_molgraph_fallback(molfile: str) -> MolGraph:
         if previous is None or _fallback_bond_rank(order, aromatic) > _fallback_bond_rank(
             previous[0], previous[1]
         ):
-            unique_bonds[pair] = (order, aromatic)
+            unique_bonds[pair] = (order, aromatic, stereo_code)
 
-    for (a1_idx, a2_idx), (order, aromatic) in sorted(unique_bonds.items()):
+    for (a1_idx, a2_idx), (order, aromatic, stereo_code) in sorted(unique_bonds.items()):
+        style, stereo = _style_and_stereo_from_mol_stereo(stereo_code)
         graph.add_bond(
             atom_ids[a1_idx - 1],
             atom_ids[a2_idx - 1],
             order=order,
-            style=BondStyle.PLAIN,
-            stereo=BondStereo.NONE,
+            style=style,
+            stereo=stereo,
             is_aromatic=aromatic,
         )
 
@@ -1364,6 +1380,7 @@ def smiles_to_depiction_candidates(
             unwrap = _block_unwrap_depiction_candidate(graph, source, score, target_bond_length)
             if unwrap is not None:
                 candidates.append(unwrap)
+            candidates.extend(_scaffold_depiction_candidates(graph, source, score, target_bond_length))
         except Exception as exc:
             candidates.append(
                 DepictionCandidate(source=source, graph=MolGraph(), score=math.inf, rejected=True, rejection_reason=str(exc), metadata=metadata)
@@ -1372,6 +1389,48 @@ def smiles_to_depiction_candidates(
     if not candidates and error:
         raise RuntimeError(_rdkit_worker_unavailable_message(str(error)))
     return candidates
+
+
+def _scaffold_depiction_candidates(
+    graph: MolGraph,
+    parent_source: str,
+    parent_score: float,
+    target_bond_length: float,
+) -> list[DepictionCandidate]:
+    try:
+        from chemuson.clean2d.scaffold_depiction import scaffold_depiction_candidates
+
+        scaffold_candidates = scaffold_depiction_candidates(graph, target_bond_length=target_bond_length)
+    except Exception:
+        return []
+    out: list[DepictionCandidate] = []
+    for candidate in scaffold_candidates:
+        if candidate.rejected or not candidate.coords:
+            continue
+        scaffold_graph = copy.deepcopy(graph)
+        for atom_id, (x, y) in candidate.coords.items():
+            if atom_id in scaffold_graph.atoms:
+                scaffold_graph.atoms[atom_id].x = float(x)
+                scaffold_graph.atoms[atom_id].y = float(y)
+        score, metadata = score_imported_depiction(scaffold_graph, target_bond_length=target_bond_length)
+        out.append(
+            DepictionCandidate(
+                source=f"chemuson_scaffold:{candidate.strategy}:{parent_source}",
+                graph=scaffold_graph,
+                score=score,
+                metadata={
+                    **metadata,
+                    "parent_source": parent_source,
+                    "parent_score": parent_score,
+                    "strategy": candidate.strategy,
+                    "scaffold_score": candidate.score,
+                    "scaffold_donut_score": candidate.donut_score,
+                    "stereo_wedge_count": _visual_wedge_count(scaffold_graph),
+                    "scaffold_metadata": dict(candidate.metadata),
+                },
+            )
+        )
+    return out
 
 
 def _block_unwrap_depiction_candidate(
@@ -1420,6 +1479,21 @@ def smiles_to_molgraph_best_depiction(
     timeout_s: float = 15.0,
 ) -> MolGraph:
     """Importa SMILES usando el mejor candidato de depiction aislado disponible."""
+    graph, _report = smiles_to_molgraph_best_depiction_with_report(
+        smiles,
+        target_bond_length=target_bond_length,
+        timeout_s=timeout_s,
+    )
+    return graph
+
+
+def smiles_to_molgraph_best_depiction_with_report(
+    smiles: str,
+    *,
+    target_bond_length: float = 40.0,
+    timeout_s: float = 15.0,
+) -> tuple[MolGraph, dict[str, object]]:
+    """Importa SMILES y devuelve también ranking/metadata de depiction."""
     clean_smiles = str(smiles or "").strip()
     if not clean_smiles:
         raise ValueError("SMILES vacío")
@@ -1434,22 +1508,51 @@ def smiles_to_molgraph_best_depiction(
         _debug_depiction_candidates(ranked)
         for candidate in ranked:
             if not candidate.rejected and candidate.graph.atoms:
-                return candidate.graph
+                return candidate.graph, {
+                    "selected_source": candidate.source,
+                    "selected_score": candidate.score,
+                    "selected_metadata": dict(candidate.metadata),
+                    "candidates": [_depiction_candidate_row(item) for item in ranked],
+                }
         rejected = [candidate.rejection_reason for candidate in candidates if candidate.rejected and candidate.rejection_reason]
         candidate_error = "; ".join(rejected) or "no_usable_depiction_candidates"
     except Exception as exc:
         candidate_error = str(exc)
 
     try:
-        return smiles_to_molgraph_isolated_or_error(clean_smiles, timeout_s=min(timeout_s, 8.0))
+        graph = smiles_to_molgraph_isolated_or_error(clean_smiles, timeout_s=min(timeout_s, 8.0))
+        return graph, {"selected_source": "isolated_to_molblock_fallback", "error": candidate_error}
     except Exception as exc:
         fallback_error = str(exc)
     raise RuntimeError(_rdkit_worker_unavailable_message(candidate_error or fallback_error, direct_error=fallback_error))
 
 
+def _depiction_candidate_row(candidate: DepictionCandidate) -> dict[str, object]:
+    return {
+        "source": candidate.source,
+        "score": candidate.score,
+        "donut_score": candidate.metadata.get("donut_score", candidate.metadata.get("donut_score_after", "")),
+        "rejected": candidate.rejected,
+        "rejection_reason": candidate.rejection_reason,
+        "atom_count": len(candidate.graph.atoms),
+        "bond_count": len(candidate.graph.bonds),
+        "wedge_count": _visual_wedge_count(candidate.graph),
+        "metadata": dict(candidate.metadata),
+    }
+
+
+def _visual_wedge_count(graph: MolGraph) -> int:
+    return sum(
+        1
+        for bond in graph.bonds.values()
+        if getattr(bond.style, "value", str(bond.style)) in {"wedge", "hashed"}
+    )
+
+
 def _debug_depiction_candidates(candidates: list[DepictionCandidate]) -> None:
     if str(os.environ.get("CHEMUSON_DEBUG_DEPICTION", "")).strip().lower() not in {"1", "true", "yes", "on"}:
         return
+    rows = [_depiction_candidate_row(candidate) for candidate in candidates]
     for idx, candidate in enumerate(candidates, start=1):
         status = "rejected" if candidate.rejected else "ok"
         donut = candidate.metadata.get("donut_score", candidate.metadata.get("donut_score_after", ""))
@@ -1457,6 +1560,20 @@ def _debug_depiction_candidates(candidates: list[DepictionCandidate]) -> None:
             f"[chemuson depiction] #{idx} source={candidate.source} status={status} "
             f"score={candidate.score:.3f} donut={donut} reason={candidate.rejection_reason}\n"
         )
+    try:
+        folder = Path(tempfile.gettempdir()) / "chemuson_depiction_debug"
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "ranking.json").write_text(json.dumps(rows, indent=2, default=str), encoding="utf-8")
+        for idx, candidate in enumerate(candidates, start=1):
+            try:
+                (folder / f"candidate_{idx:02d}_{candidate.source.replace(':', '_')}.mol").write_text(
+                    molgraph_to_molfile(candidate.graph),
+                    encoding="utf-8",
+                )
+            except Exception:
+                pass
+    except Exception:
+        pass
 
 
 def smiles_to_molgraph(smiles: str) -> MolGraph:
@@ -1605,12 +1722,26 @@ def rdkit_to_molgraph(mol) -> MolGraph:
         elif bond_type == Chem.BondType.DATIVE:
             style = BondStyle.COORDINATION
             donor_atom_id = idx_map[bond.GetBeginAtomIdx()]
+        bond_stereo = BondStereo.NONE
+        try:
+            bond_dir = bond.GetBondDir()
+            if bond_dir == Chem.BondDir.BEGINWEDGE:
+                style = BondStyle.WEDGE
+                bond_stereo = BondStereo.UP
+            elif bond_dir == Chem.BondDir.BEGINDASH:
+                style = BondStyle.HASHED
+                bond_stereo = BondStereo.DOWN
+            elif str(bond_dir).upper().endswith("UNKNOWN") or str(bond_dir).upper().endswith("EITHERDOUBLE"):
+                style = BondStyle.WAVY
+                bond_stereo = BondStereo.EITHER
+        except Exception:
+            pass
         new_bond = graph.add_bond(
             idx_map[bond.GetBeginAtomIdx()],
             idx_map[bond.GetEndAtomIdx()],
             order,
             style=style,
-            stereo=BondStereo.NONE,
+            stereo=bond_stereo,
             is_aromatic=bond.GetIsAromatic(),
             donor_atom_id=donor_atom_id,
         )

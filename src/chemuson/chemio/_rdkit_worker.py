@@ -318,10 +318,12 @@ def _handle_to_molblock_mode(Chem, request: dict[str, Any]) -> dict[str, Any]:
             from rdkit.Chem import AllChem
 
             AllChem.Compute2DCoords(mol)
+        if fmt != "molblock":
+            _assign_visual_stereo(Chem, mol)
         molblock = Chem.MolToMolBlock(mol)
     except Exception as exc:
         return {"ok": False, "error": "molblock_failed", "detail": str(exc)}
-    return {"ok": True, "molblock": molblock}
+    return {"ok": True, "molblock": molblock, "metadata": _visual_stereo_metadata(Chem, mol)}
 
 
 def _handle_smiles_depict_candidates_mode(Chem, request: dict[str, Any]) -> dict[str, Any]:
@@ -360,11 +362,12 @@ def _depict_with_coordgen(Chem, mol) -> dict[str, Any]:
             rdCoordGen.AddCoords(candidate, clearConfs=True)
         if candidate.GetNumConformers() == 0:
             return {"source": source, "ok": False, "error": "no_conformer", "metadata": {"depictor": source}}
+        _assign_visual_stereo(Chem, candidate)
         return {
             "source": source,
             "ok": True,
             "molblock": Chem.MolToMolBlock(candidate),
-            "metadata": {"depictor": source},
+            "metadata": {"depictor": source, **_visual_stereo_metadata(Chem, candidate)},
         }
     except Exception as exc:
         return {"source": source, "ok": False, "error": "rdcoordgen_failed", "metadata": {"detail": str(exc)}}
@@ -380,14 +383,51 @@ def _depict_with_compute2d(Chem, mol) -> dict[str, Any]:
         AllChem.Compute2DCoords(candidate)
         if candidate.GetNumConformers() == 0:
             return {"source": source, "ok": False, "error": "no_conformer", "metadata": {"depictor": source}}
+        _assign_visual_stereo(Chem, candidate)
         return {
             "source": source,
             "ok": True,
             "molblock": Chem.MolToMolBlock(candidate),
-            "metadata": {"depictor": source},
+            "metadata": {"depictor": source, **_visual_stereo_metadata(Chem, candidate)},
         }
     except Exception as exc:
         return {"source": source, "ok": False, "error": "compute2d_failed", "metadata": {"detail": str(exc)}}
+
+
+def _assign_visual_stereo(Chem, mol) -> None:
+    try:
+        Chem.AssignStereochemistry(mol, cleanIt=True, force=True)
+    except Exception:
+        pass
+    try:
+        if mol.GetNumConformers() > 0:
+            Chem.WedgeMolBonds(mol, mol.GetConformer())
+    except Exception:
+        pass
+
+
+def _visual_stereo_metadata(Chem, mol) -> dict[str, Any]:
+    try:
+        centers = Chem.FindMolChiralCenters(mol, includeUnassigned=False, useLegacyImplementation=False)
+    except Exception:
+        centers = []
+    wedge_dirs = set()
+    try:
+        wedge_dirs = {Chem.BondDir.BEGINWEDGE, Chem.BondDir.BEGINDASH}
+    except Exception:
+        pass
+    wedge_count = 0
+    for bond in mol.GetBonds():
+        try:
+            if bond.GetBondDir() in wedge_dirs:
+                wedge_count += 1
+        except Exception:
+            pass
+    return {
+        "chiral_center_count": len(centers),
+        "wedge_bond_count": wedge_count,
+        "has_wedged_bonds": wedge_count > 0,
+    }
 
 
 def _handle_diagnostics_mode() -> dict[str, Any]:
