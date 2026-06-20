@@ -91,6 +91,79 @@ def score_imported_depiction(
     block_score, block_metadata = _score_blocks(graph, target, coords, width, height, aspect, len(atom_ids))
     metadata.update(block_metadata)
     score += block_score
+    donut_score, donut_metadata = block_donut_score(graph, target_bond_length=target)
+    metadata.update(donut_metadata)
+    metadata["donut_score"] = donut_score
+    if int(metadata.get("block_count", 0) or 0) >= 4 or len(atom_ids) >= 35:
+        score += donut_score * 900.0
+    return score, metadata
+
+
+def block_donut_score(graph: MolGraph, target_bond_length: float = 40.0) -> tuple[float, dict[str, object]]:
+    """Scores square, radially uniform, block-rich cavity layouts."""
+    target = max(8.0, float(target_bond_length or 40.0))
+    coords = {atom_id: (float(atom.x), float(atom.y)) for atom_id, atom in graph.atoms.items()}
+    if len(coords) < 4:
+        return 0.0, {"donut_reason": "too_few_atoms"}
+    try:
+        layers = build_multilayer_chemical_graph(graph)
+    except Exception as exc:
+        return 0.0, {"donut_error": str(exc)}
+    rigid_kinds = {BlockKind.AROMATIC_RING, BlockKind.FUSED_SYSTEM, BlockKind.MACROCYCLE, BlockKind.CYCLOPHANE}
+    rigid_centroids: list[tuple[float, float]] = []
+    counts: dict[str, int] = {}
+    for block in layers.block_graph.blocks:
+        counts[block.kind.value] = counts.get(block.kind.value, 0) + 1
+        if block.kind in rigid_kinds:
+            centroid = _centroid_for_atoms(coords, block.atom_ids)
+            if centroid is not None:
+                rigid_centroids.append(centroid)
+    ring_count = sum(1 for motif in layers.motif_graph.motifs if getattr(motif, "kind", None).value == "ring")
+    block_richness = (
+        counts.get(BlockKind.AROMATIC_RING.value, 0)
+        + counts.get(BlockKind.FUSED_SYSTEM.value, 0)
+        + counts.get(BlockKind.MACROCYCLE.value, 0)
+        + counts.get(BlockKind.CYCLOPHANE.value, 0)
+        + counts.get(BlockKind.LINKER.value, 0)
+    )
+    metadata: dict[str, object] = {
+        "donut_block_counts": counts,
+        "donut_rigid_centroid_count": len(rigid_centroids),
+        "donut_ring_count": ring_count,
+        "donut_block_richness": block_richness,
+    }
+    if len(rigid_centroids) < 4 and not (len(coords) >= 35 and ring_count >= 4):
+        return 0.0, metadata
+    bbox = _bbox(coords)
+    width, height = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    if width <= 1e-6 or height <= 1e-6:
+        return 8.0, {**metadata, "donut_reason": "collapsed_bbox"}
+    ratio = width / height
+    square_factor = max(0.0, 1.0 - abs(math.log(max(ratio, 1e-6))) / math.log(1.55)) if 0.65 <= ratio <= 1.55 else 0.0
+    cx = sum(x for x, _y in coords.values()) / len(coords)
+    cy = sum(y for _x, y in coords.values()) / len(coords)
+    nearest_atom = min(_distance((cx, cy), point) for point in coords.values())
+    centroid_points = rigid_centroids or list(coords.values())
+    nearest_rigid = min(_distance((cx, cy), point) for point in centroid_points)
+    radial_uniformity = _radial_uniformity(centroid_points) if len(centroid_points) >= 3 else 1.0
+    radial_factor = max(0.0, 1.0 - radial_uniformity / 0.38)
+    hole_factor = min(2.0, max(nearest_atom, nearest_rigid) / max(target, 1e-6))
+    area_ratio = _occupied_area_ratio(coords, width, height)
+    sparse_factor = max(0.0, 0.70 - area_ratio)
+    richness_factor = min(2.0, max(block_richness, ring_count) / 5.0)
+    score = (square_factor * 2.0 + radial_factor * 2.0 + hole_factor * 1.4 + sparse_factor * 1.6) * richness_factor
+    metadata.update(
+        {
+            "donut_bbox_width": width,
+            "donut_bbox_height": height,
+            "donut_bbox_ratio": ratio,
+            "donut_square_factor": square_factor,
+            "donut_radial_uniformity": radial_uniformity,
+            "donut_nearest_atom_to_center": nearest_atom,
+            "donut_nearest_rigid_to_center": nearest_rigid,
+            "donut_occupied_area_ratio": area_ratio,
+        }
+    )
     return score, metadata
 
 

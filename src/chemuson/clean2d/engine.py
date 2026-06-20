@@ -306,6 +306,16 @@ def _run_complex_preserve_clean2d_engine(
             "visual_score": current_quality.visual_score,
         },
     )
+    unwrap = _candidate_from_block_unwrap(graph, selected, before, bonds, target)
+    if unwrap is not None and not unwrap.rejected:
+        return Clean2DResult(
+            mode=mode,
+            atom_ids=selected,
+            before_coords=before,
+            candidates=(current, unwrap),
+            selected=unwrap,
+            message=unwrap.message,
+        )
     if current_quality.quality_class == "good":
         return Clean2DResult(
             mode=mode,
@@ -544,6 +554,7 @@ def generate_clean2d_candidates(
             for candidate in (
                 block_candidate,
                 motif_candidate,
+                _candidate_from_block_unwrap(graph, selected, before, bonds, target),
                 _candidate_from_rdkit_isolated(graph, selected, before, bonds, target, rdkit_timeout_s),
                 _candidate_from_rdkit_direct(graph, selected, before, bonds, target),
                 _candidate_from_internal_templates(graph, selected, before, bonds, target),
@@ -560,6 +571,7 @@ def generate_clean2d_candidates(
                 block_layout_candidate,
                 block_candidate,
                 motif_candidate,
+                _candidate_from_block_unwrap(graph, selected, before, bonds, target),
                 _candidate_from_rdkit_isolated(graph, selected, before, bonds, target, rdkit_timeout_s),
                 _candidate_from_internal_templates(graph, selected, before, bonds, target),
             )
@@ -1872,6 +1884,45 @@ def _candidate_from_structure_preserving_fallback(
         )
 
 
+def _candidate_from_block_unwrap(
+    graph: MolGraph,
+    atom_ids: set[int],
+    before: dict[int, tuple[float, float]],
+    bonds: list[Bond],
+    target: float,
+) -> Clean2DCandidate | None:
+    try:
+        from chemuson.clean2d.block_unwrap import block_unwrap_layout
+
+        coords, report = block_unwrap_layout(graph, atom_ids, target_bond_length=target)
+    except Exception as exc:
+        return Clean2DCandidate(
+            source="block_unwrap",
+            coords={},
+            rejected=True,
+            rejection_reason=f"block_unwrap_fallo:{exc}",
+        )
+    if coords is None or not report.ok:
+        return None
+    after = _complete_coords(coords, before, atom_ids)
+    return Clean2DCandidate(
+        source="block_unwrap",
+        coords=after,
+        message="Estructura 2D compleja desplegada por bloques",
+        metadata=_block_unwrap_metadata(report),
+    )
+
+
+def _block_unwrap_metadata(report: Any) -> dict[str, Any]:
+    data = dict(report.__dict__)
+    nested = data.pop("metadata", {})
+    data.update({f"block_unwrap_{key}": value for key, value in data.items()})
+    data["block_unwrap"] = True
+    if isinstance(nested, dict):
+        data["block_unwrap_metadata"] = dict(nested)
+    return data
+
+
 def _propose_candidates(
     graph: MolGraph,
     atom_ids: set[int],
@@ -2821,13 +2872,14 @@ def _source_priority(source: str) -> int:
         "current": 0,
         "block_layout": 1,
         "block_constraints": 2,
-        "rdkit_isolated": 3,
-        "rdkit_direct": 4,
-        "internal_templates": 5,
-        "clean2d_v2": 6,
-        "motif_constraints": 7,
-        "safe_fallback": 8,
-        "local_graph": 9,
+        "block_unwrap": 3,
+        "rdkit_isolated": 4,
+        "rdkit_direct": 5,
+        "internal_templates": 6,
+        "clean2d_v2": 7,
+        "motif_constraints": 8,
+        "safe_fallback": 9,
+        "local_graph": 10,
         "propose_reflection": 1,
         "propose_rotation": 2,
         "propose_3d_projection": 3,

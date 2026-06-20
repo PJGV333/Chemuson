@@ -10,6 +10,7 @@ import os
 import re
 import sys
 import math
+import copy
 from dataclasses import dataclass
 from typing import Dict, Iterable, Optional, Tuple
 
@@ -1360,6 +1361,9 @@ def smiles_to_depiction_candidates(
                     metadata={**metadata, **score_metadata, "worker_error": error or ""},
                 )
             )
+            unwrap = _block_unwrap_depiction_candidate(graph, source, score, target_bond_length)
+            if unwrap is not None:
+                candidates.append(unwrap)
         except Exception as exc:
             candidates.append(
                 DepictionCandidate(source=source, graph=MolGraph(), score=math.inf, rejected=True, rejection_reason=str(exc), metadata=metadata)
@@ -1368,6 +1372,45 @@ def smiles_to_depiction_candidates(
     if not candidates and error:
         raise RuntimeError(_rdkit_worker_unavailable_message(str(error)))
     return candidates
+
+
+def _block_unwrap_depiction_candidate(
+    graph: MolGraph,
+    parent_source: str,
+    parent_score: float,
+    target_bond_length: float,
+) -> DepictionCandidate | None:
+    try:
+        from chemuson.clean2d.block_unwrap import block_unwrap_layout
+
+        coords, report = block_unwrap_layout(graph, target_bond_length=target_bond_length)
+    except Exception:
+        return None
+    if coords is None or not report.ok:
+        return None
+    unwrapped = copy.deepcopy(graph)
+    for atom_id, (x, y) in coords.items():
+        if atom_id in unwrapped.atoms:
+            unwrapped.atoms[atom_id].x = float(x)
+            unwrapped.atoms[atom_id].y = float(y)
+    unwrap_score, unwrap_metadata = score_imported_depiction(unwrapped, target_bond_length=target_bond_length)
+    report_metadata = dict(report.__dict__)
+    report_metadata.pop("metadata", None)
+    return DepictionCandidate(
+        source=f"chemuson_block_unwrap:{parent_source}",
+        graph=unwrapped,
+        score=unwrap_score,
+        metadata={
+            **unwrap_metadata,
+            "unwrap_report": report_metadata,
+            "unwrap_report_metadata": dict(report.metadata),
+            "parent_source": parent_source,
+            "parent_score": parent_score,
+            "unwrap_score": unwrap_score,
+            "donut_score_before": report.donut_score_before,
+            "donut_score_after": report.donut_score_after,
+        },
+    )
 
 
 def smiles_to_molgraph_best_depiction(
@@ -1387,7 +1430,9 @@ def smiles_to_molgraph_best_depiction(
             target_bond_length=target_bond_length,
             timeout_s=timeout_s,
         )
-        for candidate in sorted(candidates, key=lambda item: (item.rejected, item.score, item.source)):
+        ranked = sorted(candidates, key=lambda item: (item.rejected, item.score, item.source))
+        _debug_depiction_candidates(ranked)
+        for candidate in ranked:
             if not candidate.rejected and candidate.graph.atoms:
                 return candidate.graph
         rejected = [candidate.rejection_reason for candidate in candidates if candidate.rejected and candidate.rejection_reason]
@@ -1400,6 +1445,18 @@ def smiles_to_molgraph_best_depiction(
     except Exception as exc:
         fallback_error = str(exc)
     raise RuntimeError(_rdkit_worker_unavailable_message(candidate_error or fallback_error, direct_error=fallback_error))
+
+
+def _debug_depiction_candidates(candidates: list[DepictionCandidate]) -> None:
+    if str(os.environ.get("CHEMUSON_DEBUG_DEPICTION", "")).strip().lower() not in {"1", "true", "yes", "on"}:
+        return
+    for idx, candidate in enumerate(candidates, start=1):
+        status = "rejected" if candidate.rejected else "ok"
+        donut = candidate.metadata.get("donut_score", candidate.metadata.get("donut_score_after", ""))
+        sys.stderr.write(
+            f"[chemuson depiction] #{idx} source={candidate.source} status={status} "
+            f"score={candidate.score:.3f} donut={donut} reason={candidate.rejection_reason}\n"
+        )
 
 
 def smiles_to_molgraph(smiles: str) -> MolGraph:
