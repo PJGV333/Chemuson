@@ -1,9 +1,7 @@
 """Pruebas de versión única para app y CLI."""
 
-import os
 import sys
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson import __version__
 from chemuson.__main__ import main

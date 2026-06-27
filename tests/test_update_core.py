@@ -2,13 +2,8 @@
 
 import hashlib
 import hmac
-import os
 import shutil
-import sys
 
-import pytest
-
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.update.core import AutoUpdateCore, VerificationResult
 from chemuson.update.types import (

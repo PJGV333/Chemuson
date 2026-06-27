@@ -48,7 +48,6 @@ from chemuson.gui.diagram_presets import (
 )
 from chemuson.gui.orbitals import (
     DEFAULT_ORBITAL_KIND,
-    ORBITAL_MENU_ORDER,
     ORBITAL_PALETTE_MODEL,
     ORBITAL_SPECS,
     draw_orbital_icon,

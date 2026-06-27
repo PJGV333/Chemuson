@@ -1,9 +1,6 @@
 """Estrategia de selección de backend para Limpiar 2D."""
 
-import os
-import sys
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.core.model import Bond
 from chemuson.gui.controllers.clean2d_controller import Clean2DController

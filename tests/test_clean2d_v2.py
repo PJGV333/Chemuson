@@ -3,12 +3,9 @@
 from __future__ import annotations
 
 import math
-import os
-import sys
 
 import pytest
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.clean2d import Clean2DParameters, optimize_clean2d_positions
 from chemuson.core.model import MolGraph

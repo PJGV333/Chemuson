@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-import sys
 
 import pytest
 from PyQt6.QtCore import QBuffer, QMimeData, QPointF, QRectF, QUrl
@@ -12,7 +10,6 @@ from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.chemio.persistence import PersistenceManager
 from chemuson.gui.commands import AddAtomCommand

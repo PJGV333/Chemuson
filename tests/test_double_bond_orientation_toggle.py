@@ -1,12 +1,10 @@
 """Pruebas para inversión manual de orientación en dobles enlaces."""
 
 import os
-import sys
 
 import pytest
 from PyQt6.QtWidgets import QApplication
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.chemio.persistence import PersistenceManager
 from chemuson.core.model import BondStyle

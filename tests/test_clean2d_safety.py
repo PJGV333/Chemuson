@@ -3,15 +3,11 @@
 from __future__ import annotations
 
 import math
-import os
-import sys
 
 import pytest
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.clean2d.safety import (
-    Clean2DQualityReport,
     bond_length_stats,
     count_new_bond_crossings,
     evaluate_clean2d_layout,
@@ -532,7 +528,7 @@ def test_clean2d_attempt_rejected_does_not_stop_flow() -> None:
 def test_apply_candidate_already_clean_returns_no_change() -> None:
     """Si candidato = before, no debe aplicar movimiento."""
     from unittest.mock import MagicMock
-    from chemuson.gui.controllers.clean2d_controller import Clean2DController, _position_delta
+    from chemuson.gui.controllers.clean2d_controller import Clean2DController
 
     ctrl = Clean2DController()
     window = MagicMock()

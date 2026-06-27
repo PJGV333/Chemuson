@@ -421,7 +421,7 @@ def bond_length_stats(
     if not lengths:
         return {"mean": 0.0, "min": 0.0, "max": 0.0, "std": 0.0}
     mean = sum(lengths) / len(lengths)
-    variance = sum((l - mean) ** 2 for l in lengths) / len(lengths)
+    variance = sum((length - mean) ** 2 for length in lengths) / len(lengths)
     return {
         "mean": mean,
         "min": min(lengths),

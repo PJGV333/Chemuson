@@ -242,13 +242,7 @@ Opcional (modo editable):
 
 ## Ejecución
 
-Desde el entorno virtual:
-
-```bash
-./chemuson/bin/python src/main.py
-```
-
-Si instalaste en modo editable:
+Desde el entorno virtual, con el paquete instalado en modo editable:
 
 ```bash
 ./chemuson/bin/chemuson

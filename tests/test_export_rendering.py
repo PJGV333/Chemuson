@@ -1,14 +1,11 @@
 """Regresiones para la ruta de exportación completa."""
 
-import os
-import sys
 
 import pytest
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QBrush, QPen
 from PyQt6.QtWidgets import QApplication, QGraphicsDropShadowEffect, QGraphicsRectItem
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.gui.canvas import ChemusonCanvas
 

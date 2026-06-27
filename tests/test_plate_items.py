@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import math
 import os
-import sys
 import tempfile
 
 import pytest
@@ -13,14 +12,11 @@ from PyQt6.QtCore import QPointF
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QApplication, QGraphicsScene
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.gui.plate_items import (
     TLCPlateItem,
-    TLCLaneItem,
     TLCSpotItem,
     GelElectrophoresisItem,
-    GelLaneItem,
     GelBandItem,
     PlateItem,
     gel_normalized_migration,
@@ -1041,4 +1037,3 @@ class TestRenderBoundsPlates:
             assert bounds.contains(plate.sceneBoundingRect())
         finally:
             canvas.close()
-

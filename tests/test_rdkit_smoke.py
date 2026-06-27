@@ -7,7 +7,6 @@ import subprocess
 import sys
 import unittest
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.chemio.rdkit_safe import (
     advanced_stereo_descriptors_for_chain,

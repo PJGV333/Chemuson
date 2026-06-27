@@ -1,10 +1,7 @@
 """Pruebas de política de chequeo de updates."""
 
-import os
-import sys
 from datetime import datetime, timedelta, timezone
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.update.policy import (
     can_offer_update,

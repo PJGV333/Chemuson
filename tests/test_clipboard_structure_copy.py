@@ -1,13 +1,10 @@
 """Regresiones para copiado de estructuras al portapapeles."""
 
-import os
-import sys
 
 import pytest
 from PyQt6.QtGui import QImage
 from PyQt6.QtWidgets import QApplication
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 import chemuson.gui.canvas as canvas_module
 from chemuson.gui.canvas import ChemusonCanvas

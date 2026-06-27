@@ -1,14 +1,11 @@
 """Regresiones para selección rectangular ceñida."""
 
-import os
-import sys
 
 import pytest
 from PyQt6.QtCore import QPoint, QPointF, Qt
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.core.model import BondStereo, BondStyle
 from chemuson.gui import canvas as canvas_module

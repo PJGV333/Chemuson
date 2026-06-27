@@ -1,10 +1,7 @@
 """Pruebas de telemetría local de actualización."""
 
 import json
-import os
-import sys
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.update.telemetry import UpdateTelemetryLogger
 

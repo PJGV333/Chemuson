@@ -8,7 +8,7 @@ from chemuson.chemcalc.valence import implicit_h_count
 
 from .errors import ChemNameNotSupported
 from .molview import MolView
-from .rings import RingContext, _ring_aromatic_basic, find_rings_simple, ring_type_basic
+from .rings import RingContext, _ring_aromatic_basic, find_rings_simple
 
 # Mapeo de halógenos a prefijos de sustituyentes.
 HALO_MAP: Dict[str, str] = {

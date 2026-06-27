@@ -2,14 +2,12 @@
 
 import json
 import os
-import sys
 import time
 
 import pytest
 from PyQt6.QtGui import QUndoCommand
 from PyQt6.QtWidgets import QApplication
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.gui.canvas import ChemusonCanvas
 from chemuson.utils.autosave import AutosaveManager

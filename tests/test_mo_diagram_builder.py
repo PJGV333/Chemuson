@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-import os
-import sys
 
 import pytest
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.gui.energy_diagrams import build_diatomic_mo_diagram
 

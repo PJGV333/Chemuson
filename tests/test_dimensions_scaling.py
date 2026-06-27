@@ -3,15 +3,12 @@
 from __future__ import annotations
 
 import math
-import os
-import sys
 from dataclasses import replace
 
 import pytest
 from PyQt6.QtCore import QPointF, QRectF
 from PyQt6.QtWidgets import QApplication
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.chemio.persistence import PersistenceManager
 from chemuson.gui.canvas import ChemusonCanvas

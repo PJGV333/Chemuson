@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-import os
-import sys
 
 import pytest
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.core.model import MolGraph
 from chemuson.gui.main_window import ChemusonWindow

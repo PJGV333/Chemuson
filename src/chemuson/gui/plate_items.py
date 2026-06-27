@@ -25,7 +25,6 @@ from PyQt6.QtGui import (
     QPen,
     QBrush,
     QFont,
-    QPainter,
     QPainterPath,
     QRadialGradient,
     QAction,

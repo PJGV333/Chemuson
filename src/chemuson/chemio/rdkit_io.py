@@ -19,7 +19,7 @@ from typing import Dict, Iterable, Optional, Tuple
 
 from chemuson.chemio.depiction_candidates import DepictionCandidate, score_imported_depiction
 from chemuson.clean2d.geometry import apply_coords_in_place
-from chemuson.core.model import ATOMIC_NUMBERS, BondStyle, BondStereo, MolGraph, bond_is_structural
+from chemuson.core.model import ATOMIC_NUMBERS, Bond, BondStyle, BondStereo, MolGraph, bond_is_structural
 
 Chem = None
 AllChem = None

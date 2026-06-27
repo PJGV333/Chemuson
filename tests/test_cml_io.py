@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-import os
-import sys
 
 from PyQt6.QtWidgets import QApplication, QFileDialog
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.chemio.cml_io import cml_to_molgraph, molgraph_to_cml
 from chemuson.core.model import BondStyle, MolGraph

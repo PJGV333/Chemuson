@@ -56,8 +56,6 @@ A diferencia de los editores moleculares convencionales que se limitan a represe
 5. **Ejecutar la aplicación:**
    ```bash
    chemuson
-   # O directamente mediante el script de inicio:
-   python src/main.py
    ```
 
 > [!TIP]

@@ -1,11 +1,8 @@
 """Pruebas de utilidades SemVer para el módulo de update."""
 
-import os
-import sys
 
 import pytest
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.update.semver import (
     channel_accepts_version,

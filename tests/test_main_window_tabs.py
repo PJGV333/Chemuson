@@ -1,7 +1,6 @@
 """Pruebas básicas de documentos por pestañas en la ventana principal."""
 
 import os
-import sys
 import time
 
 import pytest
@@ -10,7 +9,6 @@ from PyQt6.QtGui import QKeySequence
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QInputDialog, QMessageBox, QTextEdit
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.core.model import MolGraph
 from chemuson.chemio.persistence import PersistenceManager

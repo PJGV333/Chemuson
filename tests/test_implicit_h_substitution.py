@@ -1,12 +1,9 @@
 """Regresiones para sustituciÃ³n de hidrÃ³genos implÃ­citos dibujados."""
 
-import os
-import sys
 
 import pytest
 from PyQt6.QtWidgets import QApplication
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.core.model import BondStereo, BondStyle
 from chemuson.gui.canvas import ChemusonCanvas

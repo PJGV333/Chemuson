@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-import os
-import sys
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.gui.dialogs import format_update_behavior_summary
-from chemuson.gui.main_window import (
+from chemuson.gui.controllers.update_controller import (
     FLATPAK_APP_ID,
     format_no_update_message,
     format_update_disabled_message,

@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import os
 from typing import Any, Dict, TYPE_CHECKING
-from chemuson.core.model import MolGraph, Atom, Bond, BondStyle, BondStereo
+from chemuson.core.model import MolGraph, BondStyle, BondStereo
 
 if TYPE_CHECKING:
     from chemuson.gui.canvas import ChemusonCanvas

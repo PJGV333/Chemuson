@@ -1,9 +1,6 @@
 """Smoke tests para distribución y updater en Windows."""
 
-import os
-import sys
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.update.core import AutoUpdateCore
 from chemuson.update.provider import GitHubReleasesProvider

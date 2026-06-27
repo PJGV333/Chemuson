@@ -10,11 +10,9 @@ from PyQt6.QtWidgets import (
     QFontComboBox,
     QSpinBox,
     QToolButton,
-    QWidget,
-    QHBoxLayout,
     QColorDialog,
 )
-from PyQt6.QtGui import QAction, QIcon, QFont, QColor, QKeySequence
+from PyQt6.QtGui import QAction, QFont, QColor, QKeySequence
 from PyQt6.QtCore import pyqtSignal, Qt, QSize
 from chemuson.gui.icons import draw_glyph_icon
 

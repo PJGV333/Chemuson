@@ -1,11 +1,8 @@
 """Regresiones para proyección de H cuando la depicción 2D usa esqueleto sin H."""
 
-import os
-import sys
 
 import pytest
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.core.model import Bond
 from chemuson.gui.main_window import ChemusonWindow

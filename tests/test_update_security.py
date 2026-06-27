@@ -1,10 +1,7 @@
 """Pruebas de endurecimiento de descargas del updater."""
 
-import os
-import sys
 from io import BytesIO
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 import chemuson.update.security as security
 

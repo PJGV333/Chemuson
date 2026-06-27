@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import os
-import sys
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.compchem.exporters import export_gaussian_input, export_nwchem_input, export_orca_input
 from chemuson.core.model import MolGraph

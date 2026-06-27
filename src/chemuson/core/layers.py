@@ -11,7 +11,6 @@ to the covalent graph.
 from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
-import math
 from typing import Iterable
 
 from chemuson.core.model import (

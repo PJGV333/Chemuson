@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-import os
-import sys
 from unittest.mock import MagicMock, patch
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.clean2d import Clean2DCandidate, Clean2DMode, Clean2DResult
 from chemuson.core.model import MolGraph

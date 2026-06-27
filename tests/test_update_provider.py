@@ -1,11 +1,8 @@
 """Pruebas del proveedor GitHub Releases para update."""
 
 import json
-import os
-import sys
 from datetime import datetime, timedelta, timezone
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.update.provider import GitHubReleasesProvider
 from chemuson.update.types import UpdateChannel

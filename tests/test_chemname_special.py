@@ -1,11 +1,8 @@
 """Pruebas de plantillas especiales (fase A: carbohidratos y esteroides)."""
 
-import os
-import sys
 import unittest
 from pathlib import Path
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.core.model import MolGraph
 from chemuson.chemio.rdkit_io import molfile_to_molgraph

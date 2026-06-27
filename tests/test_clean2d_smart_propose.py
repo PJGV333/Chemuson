@@ -2,15 +2,12 @@ from __future__ import annotations
 
 from dataclasses import asdict
 import math
-import os
 from pathlib import Path
-import sys
 from unittest.mock import MagicMock
 
 import pytest
 from PyQt6.QtWidgets import QApplication
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.clean2d import (
     Clean2DCandidate,

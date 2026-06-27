@@ -1,12 +1,9 @@
 """Regresiones para enlaces de interacción intermolecular."""
 
-import os
-import sys
 
 import pytest
 from PyQt6.QtWidgets import QApplication
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.core.model import BondStyle
 from chemuson.gui.canvas import ChemusonCanvas

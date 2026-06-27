@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import QApplication
 from chemuson.gui.orbitals import ORBITAL_PALETTE_MODEL, render_orbital_palette_image
 
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 _DEFAULT_BASELINE = _REPO_ROOT / "assets" / "baseline" / "orbitals_palette.png"
 _FOCAL_KINDS = {
     "sp3_shaded",

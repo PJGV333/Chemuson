@@ -1,12 +1,9 @@
 """Regresiones para rutas costosas de canvas que deben permanecer incrementales."""
 
-import os
-import sys
 
 import pytest
 from PyQt6.QtWidgets import QApplication
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.gui.canvas import ChemusonCanvas
 from chemuson.gui.commands import AddAtomCommand, MoveAtomsCommand

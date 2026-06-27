@@ -4,7 +4,6 @@ Biblioteca de iconos vectoriales de Chemuson.
 Genera iconos programáticamente con QPainter para mantener consistencia
 visual en la barra de herramientas y paletas.
 """
-from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import (
     QIcon,
     QPixmap,
@@ -17,7 +16,7 @@ from PyQt6.QtGui import (
     QPainterPath,
     QRadialGradient,
 )
-from PyQt6.QtCore import Qt, QSize, QPointF, QRectF
+from PyQt6.QtCore import Qt, QPointF, QRectF
 import math
 
 

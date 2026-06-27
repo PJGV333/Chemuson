@@ -81,11 +81,6 @@ from chemuson.gui.controllers import (
 from chemuson.geometry3d import CoordinateSet3D, ForceField, OptimizationSettings, project_conformer_to_2d
 from chemuson.geometry3d.export_xyz import molgraph_to_xyz
 from chemuson.compchem.exporters import export_gaussian_input, export_nwchem_input, export_orca_input
-from chemuson.gui.controllers.update_controller import (
-    FLATPAK_APP_ID as FLATPAK_APP_ID,
-    format_no_update_message as format_no_update_message,
-    format_update_disabled_message as format_update_disabled_message,
-)
 from chemuson.gui.rich_text_dialog_service import (
     open_rich_text_value_dialog,
     rich_text_editor_value,
@@ -97,9 +92,6 @@ from chemuson.version import get_app_version
 
 __all__ = [
     "ChemusonWindow",
-    "FLATPAK_APP_ID",
-    "format_no_update_message",
-    "format_update_disabled_message",
 ]
 
 

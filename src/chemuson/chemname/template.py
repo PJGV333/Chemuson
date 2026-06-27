@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import json
-from typing import Dict, Iterable, List
+from typing import Dict, List
 
 from .errors import ChemNameNotSupported
 

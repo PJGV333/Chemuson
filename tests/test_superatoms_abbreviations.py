@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-import os
-import sys
 
 from PyQt6.QtWidgets import QApplication
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.chemio.rdkit_io import (
     SUPPORTED_ABBREVIATION_LABELS,

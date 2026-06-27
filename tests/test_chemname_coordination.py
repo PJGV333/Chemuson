@@ -1,10 +1,7 @@
 """Pruebas de nomenclatura de coordinación (MVP experimental)."""
 
-import os
-import sys
 import unittest
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.core.model import BondStyle, MolGraph
 from chemuson.chemname import NameOptions, iupac_name

@@ -1,14 +1,11 @@
 """Regresiones de geometría para clean_2d_fallback en cadenas alifáticas."""
 
 import math
-import os
-import sys
 
 import pytest
 from PyQt6.QtCore import QPointF
 from PyQt6.QtWidgets import QApplication
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.gui.canvas import ChemusonCanvas
 from chemuson.gui.geom import angle_deg, angle_distance_deg

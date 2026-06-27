@@ -1,13 +1,10 @@
 """Pruebas para biblioteca de plantillas de usuario."""
 
 import json
-import os
-import sys
 from pathlib import Path
 
 import pytest
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 import chemuson.gui.template_library as template_library
 from chemuson.chemio.rdkit_io import molgraph_to_molfile

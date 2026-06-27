@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Dict, Iterable, List
 
-from .errors import ChemNameNotSupported
 from .molview import MolView
 from .rings import find_rings_simple, _ring_aromatic_basic
 from .template import TemplateBond, TemplateMol

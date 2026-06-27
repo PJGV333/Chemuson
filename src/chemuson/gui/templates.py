@@ -3,7 +3,6 @@ Constructores de plantillas para proyecciones de carbohidratos.
 """
 from __future__ import annotations
 
-import math
 from typing import List, Tuple
 
 from chemuson.core.model import BondStyle, MolGraph

@@ -2,12 +2,9 @@ from __future__ import annotations
 
 import copy
 import math
-import os
-import sys
 
 import pytest
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.chemio.depiction_candidates import block_donut_score, score_imported_depiction
 from chemuson.chemio.rdkit_io import smiles_to_depiction_candidates

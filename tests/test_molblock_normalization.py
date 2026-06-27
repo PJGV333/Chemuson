@@ -1,9 +1,6 @@
 """Pruebas unitarias para normalización de cabecera MOL."""
 
-import os
-import sys
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.chemio.rdkit_io import (
     _should_use_molfile_fallback,

@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import os
-import sys
 
 import pytest
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.chemio.rdkit_io import smiles_to_molgraph_best_depiction
 from chemuson.core.model import BondStyle

@@ -17,7 +17,6 @@ from chemuson.clean2d import (
     has_cycles,
     is_clean2d_candidate_safe,
     length_only_polish,
-    ring_degeneracy_score,
     optimize_clean2d_positions,
     run_clean2d_engine,
     stereo_layout_signature,

@@ -1,12 +1,10 @@
 """Pruebas UI para el campo de nombre IUPAC y preferencias relacionadas."""
 
 import os
-import sys
 
 import pytest
 from PyQt6.QtWidgets import QApplication, QLabel
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.core.model import ChemState, MolGraph
 from chemuson.gui.canvas import ChemusonCanvas

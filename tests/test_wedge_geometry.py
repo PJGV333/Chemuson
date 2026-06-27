@@ -1,14 +1,11 @@
 """Pruebas unitarias para test_wedge_geometry."""
 
-import os
-import sys
 import math
 
 import pytest
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.core.model import Atom, Bond, BondStyle, BondStereo
 from chemuson.gui.canvas import ChemusonCanvas

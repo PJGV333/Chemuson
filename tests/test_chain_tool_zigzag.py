@@ -1,13 +1,10 @@
 """Regresiones para la herramienta de cadena zig-zag."""
 
-import os
-import sys
 
 import pytest
 from PyQt6.QtCore import QPointF, Qt
 from PyQt6.QtWidgets import QApplication
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.core.model import BondStyle, BondStereo
 from chemuson.gui.canvas import ChemusonCanvas

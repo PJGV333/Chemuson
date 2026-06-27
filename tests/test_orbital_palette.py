@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-import sys
 from pathlib import Path
 
 import pytest
@@ -11,7 +9,6 @@ from PyQt6.QtCore import QPointF
 from PyQt6.QtGui import QImage
 from PyQt6.QtWidgets import QApplication
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.gui.canvas import ChemusonCanvas
 from chemuson.gui.main_window import ChemusonWindow

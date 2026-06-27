@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import os
-import sys
 import unittest
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.chemio.rdkit_safe import molecular_descriptors_isolated
 from chemuson.core.model import MolGraph

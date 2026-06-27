@@ -31,7 +31,7 @@ version = {attr = "chemuson._version.__version__"}
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = [".", "src"]
 norecursedirs = [
   ".git",
   ".venv",

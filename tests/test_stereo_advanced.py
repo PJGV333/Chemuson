@@ -1,10 +1,7 @@
 """Pruebas de estereoquímica avanzada (fase B, best-effort)."""
 
-import os
-import sys
 import unittest
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.core.model import MolGraph
 from chemuson.chemname import NameOptions, iupac_name

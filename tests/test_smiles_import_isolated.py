@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 import math
-import os
 import sys
 
 import pytest
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.chemio import rdkit_io, rdkit_safe
 from chemuson.chemio.rdkit_safe import rdkit_worker_diagnostics, smiles_to_molgraph_isolated

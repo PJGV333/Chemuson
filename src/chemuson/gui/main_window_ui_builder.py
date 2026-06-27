@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import QSize, Qt
-from PyQt6.QtGui import QAction, QActionGroup, QIcon
+from PyQt6.QtGui import QAction, QActionGroup
 from PyQt6.QtWidgets import QMenu, QToolBar
 
 from chemuson.gui.energy_diagrams import ENERGY_DIAGRAM_MENU_ORDER, energy_diagram_display_name

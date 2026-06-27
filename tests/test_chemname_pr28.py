@@ -1,10 +1,7 @@
 """Pruebas unitarias PR28: cargas/isótopos/radicales + grupos + heterociclos."""
 
-import os
-import sys
 import unittest
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.core.model import MolGraph
 from chemuson.chemio.rdkit_io import molfile_to_molgraph, molgraph_to_molfile

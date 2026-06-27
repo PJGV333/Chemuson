@@ -433,8 +433,6 @@ def _visual_stereo_metadata(Chem, mol) -> dict[str, Any]:
 def _handle_diagnostics_mode() -> dict[str, Any]:
     """Diagnóstico aislado de disponibilidad RDKit en el worker."""
     try:
-        from rdkit import Chem
-
         try:
             import rdkit
 

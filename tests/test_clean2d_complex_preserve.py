@@ -2,10 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 import math
-import os
-import sys
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.clean2d import (
     assert_clean2d_invariants,

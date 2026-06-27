@@ -1,12 +1,9 @@
 """Regresiones de escala para Limpiar 2D con coordenadas de RDKit."""
 
-import os
-import sys
 import math
 
 import pytest
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from chemuson.core.model import Bond
 from chemuson.gui.main_window import ChemusonWindow
