@@ -1,5 +1,3 @@
-schema: spec-driven
-
 # Project context (optional)
 # This is shown to AI when creating artifacts.
 # Add your tech stack, conventions, style guides, domain knowledge, etc.
@@ -18,3 +16,38 @@ schema: spec-driven
 #       - Always include a "Non-goals" section
 #     tasks:
 #       - Break tasks into chunks of max 2 hours
+
+schema: spec-driven
+
+context: |
+  Proyecto: Chemuson.
+  Tipo: aplicación de escritorio científica/química.
+  Stack principal: Python, PySide6/Qt.
+  Objetivo: editor molecular/químico para dibujo, documentos, plantillas, exportación y herramientas educativas.
+  Prioridad: estabilidad, claridad arquitectónica y desarrollo incremental guiado por especificaciones.
+  Evitar refactors globales sin justificación explícita.
+  Mantener compatibilidad con flujos existentes: documentos, canvas, selección, plantillas, exportación y recuperación.
+
+rules:
+  proposal:
+    - Explicar por qué el cambio es necesario.
+    - Declarar explícitamente alcance y fuera de alcance.
+    - No mezclar varias capacidades grandes en un solo cambio.
+    - Identificar módulos probables afectados.
+
+  specs:
+    - Usar requisitos claros con SHALL.
+    - Incluir escenarios en formato GIVEN / WHEN / THEN.
+    - Separar capacidades por dominio: documentos, canvas, plantillas, exportación, bonding, selección, apariencia.
+    - No inventar comportamiento no solicitado.
+
+  design:
+    - Identificar archivos o módulos afectados.
+    - Describir riesgos de regresión.
+    - Preferir cambios pequeños y testeables.
+    - Indicar pruebas necesarias.
+
+  tasks:
+    - Dividir en pasos verificables.
+    - Incluir actualización o creación de tests.
+    - No marcar tareas como completas sin validación.
