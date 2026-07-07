@@ -19,3 +19,4 @@ dist-flatpak/
 checksums.txt
 *.sig
 /dist-installer
+opencode.json.save
