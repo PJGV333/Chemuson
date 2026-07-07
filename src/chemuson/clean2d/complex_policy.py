@@ -32,8 +32,25 @@ class Clean2DComplexityProfile:
     has_hierarchical_blocks: bool
     has_block_layout_problem: bool
     preserve_only: bool
+    preserve_only_required: bool
+    local_repair_allowed: bool
+    global_redraw_allowed: bool
+    internal_route_allowed: bool
     reason: str
     block_counts: dict[str, int]
+
+    @property
+    def policy_evidence(self) -> dict[str, object]:
+        return {
+            "preserve_only_required": self.preserve_only_required,
+            "local_repair_allowed": self.local_repair_allowed,
+            "global_redraw_allowed": self.global_redraw_allowed,
+            "internal_route_allowed": self.internal_route_allowed,
+            "reason": self.reason,
+            "has_hierarchical_blocks": self.has_hierarchical_blocks,
+            "has_block_layout_problem": self.has_block_layout_problem,
+            "block_counts": dict(self.block_counts),
+        }
 
 
 def classify_clean2d_complexity(
@@ -88,6 +105,17 @@ def classify_clean2d_complexity(
         has_hierarchical_blocks=has_hierarchical_blocks,
         has_block_layout_problem=has_block_layout_problem,
     )
+    high_risk_for_redraw = bool(
+        preserve_only
+        or has_hierarchical_blocks
+        or macrocycle_count
+        or cyclophane_count
+        or intramolecular_bridge_count
+        or internal_cavity_count
+    )
+    global_redraw_allowed = not high_risk_for_redraw
+    local_repair_allowed = False
+    internal_route_allowed = high_risk_for_redraw
 
     return Clean2DComplexityProfile(
         atom_count=atom_count,
@@ -106,6 +134,10 @@ def classify_clean2d_complexity(
         has_hierarchical_blocks=has_hierarchical_blocks,
         has_block_layout_problem=has_block_layout_problem,
         preserve_only=preserve_only,
+        preserve_only_required=preserve_only,
+        local_repair_allowed=local_repair_allowed,
+        global_redraw_allowed=global_redraw_allowed,
+        internal_route_allowed=internal_route_allowed,
         reason=reason,
         block_counts=block_counts,
     )

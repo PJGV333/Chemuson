@@ -7,6 +7,7 @@ import pytest
 
 
 from chemuson.clean2d import (
+    classify_clean2d_complexity,
     local_graph_clean2d,
     ring_degeneracy_score,
     run_clean2d_engine,
@@ -228,11 +229,17 @@ def test_complex_reasonable_structure_reports_no_safe_local_defects() -> None:
 
 def test_complex_engine_does_not_call_global_redraw_candidates() -> None:
     graph = _clean_complex_graph()
+    profile = classify_clean2d_complexity(graph)
+
+    assert profile.global_redraw_allowed is False
+    assert profile.local_repair_allowed is False
 
     with patch("chemuson.clean2d.engine._candidate_from_rdkit_isolated") as rdkit_candidate:
         rdkit_candidate.side_effect = AssertionError("global redraw must not run for complex quick clean")
         result = run_clean2d_engine(graph, mode="quick", target_bond_length=TARGET)
 
     rdkit_candidate.assert_not_called()
-    assert not result.ok
-    assert "no se detectaron defectos locales seguros" in result.message
+    assert result.selected is not None
+    assert result.selected.source == "current"
+    assert result.selected.metadata["complex_policy"]["global_redraw_allowed"] is False
+    assert "no se redibujó" in result.message

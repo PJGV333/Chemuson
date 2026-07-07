@@ -270,6 +270,7 @@ def run_clean2d_engine(
     if (
         mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION}
         and not has_interaction_constraints
+        and profile.local_repair_allowed
         and not has_block_layout_problem
         and not has_hierarchical_blocks
         and is_complex_clean2d_graph(graph, selected)
@@ -548,6 +549,21 @@ def _run_complex_preserve_clean2d_engine(
             message=current.message,
         )
 
+    if (
+        profile.preserve_only_required
+        and not profile.global_redraw_allowed
+        and profile.reason != "fused_aromatic_systems"
+    ):
+        return Clean2DResult(
+            mode=mode,
+            atom_ids=selected,
+            before_coords=before,
+            candidates=tuple(candidates),
+            selected=current,
+            rejected=tuple(rejected),
+            message=current.message,
+        )
+
     message = "Limpieza 2D compleja omitida: se preservó la proyección por seguridad"
     return Clean2DResult(
         mode=mode,
@@ -685,6 +701,7 @@ def _complex_profile_metadata(profile: Clean2DComplexityProfile) -> dict[str, An
     return {
         "complex_preserve_only": True,
         "complex_profile_reason": profile.reason,
+        "complex_policy": profile.policy_evidence,
         "complex_block_counts": dict(profile.block_counts),
         "complex_atom_count": profile.atom_count,
         "complex_ring_count": profile.ring_count,

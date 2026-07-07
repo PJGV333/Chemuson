@@ -6,6 +6,7 @@ import math
 from chemuson.clean2d import (
     assert_clean2d_invariants,
     capture_clean2d_snapshot,
+    classify_clean2d_complexity,
     classify_clean2d_layout_quality,
     generate_clean2d_candidates,
     has_hierarchical_block_layout_signals,
@@ -151,11 +152,17 @@ def test_tetrandrine_like_hierarchical_blocks_do_not_select_local_graph() -> Non
 
     assert has_hierarchical_block_layout_signals(layers.block_graph)
     assert not any(bond.style in {BondStyle.INTERACTION, BondStyle.COORDINATION} for bond in graph.bonds.values())
+    profile = classify_clean2d_complexity(graph, layer_model=layers)
+    assert profile.has_hierarchical_blocks
+    assert profile.global_redraw_allowed is False
+    assert profile.local_repair_allowed is False
 
     result = run_clean2d_engine(graph, mode="publication", target_bond_length=40.0)
 
     assert result.selected is not None
-    assert result.selected.source in {"block_layout", "block_constraints"}
+    assert result.selected.source != "local_graph"
+    assert result.selected.metadata["complex_policy"]["global_redraw_allowed"] is False
+    assert result.selected.metadata["complex_policy"]["local_repair_allowed"] is False
     after = result.selected.coords
     assert clean2d_engine._count_crossings(after, bonds) <= before_crossings
     quality = classify_clean2d_layout_quality(graph, coords=after, target_bond_length=40.0)
