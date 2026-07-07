@@ -61,6 +61,17 @@ from .quality_reporting import (
     normalize_clean2d_reporting_score,
     validate_clean2d_quality_diagnostic,
 )
+from .debug_snapshots import (
+    CLEAN2D_DEBUG_SNAPSHOT_ENV,
+    CLEAN2D_DEBUG_SNAPSHOT_SCHEMA,
+    CLEAN2D_DEBUG_SNAPSHOT_VERSION,
+    build_clean2d_debug_snapshot,
+    clean2d_debug_snapshot_enabled,
+    read_clean2d_debug_snapshot,
+    run_clean2d_with_debug_snapshot,
+    validate_clean2d_debug_snapshot,
+    write_clean2d_debug_snapshot,
+)
 
 __all__ = [
     "Clean2DParameters",
@@ -116,4 +127,13 @@ __all__ = [
     "clean2d_safety_quality_diagnostic",
     "normalize_clean2d_reporting_score",
     "validate_clean2d_quality_diagnostic",
+    "CLEAN2D_DEBUG_SNAPSHOT_ENV",
+    "CLEAN2D_DEBUG_SNAPSHOT_SCHEMA",
+    "CLEAN2D_DEBUG_SNAPSHOT_VERSION",
+    "build_clean2d_debug_snapshot",
+    "clean2d_debug_snapshot_enabled",
+    "read_clean2d_debug_snapshot",
+    "run_clean2d_with_debug_snapshot",
+    "validate_clean2d_debug_snapshot",
+    "write_clean2d_debug_snapshot",
 ]

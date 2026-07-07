@@ -8,7 +8,7 @@ visual quality, and the GUI applies the chosen coordinates as one undoable
 command.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 import hashlib
 import math
@@ -93,6 +93,7 @@ class Clean2DResult:
     rejected: tuple[Clean2DCandidate, ...] = ()
     message: str = ""
     reason: str = ""
+    debug_snapshot: dict[str, Any] | None = None
 
     @property
     def ok(self) -> bool:
@@ -228,8 +229,13 @@ def run_clean2d_engine(
     avoid_hashes: set[str] | None = None,
     seed: int | None = None,
     rdkit_timeout_s: float = 8.0,
+    debug_snapshot: bool | None = None,
+    debug_snapshot_path: str | None = None,
+    debug_initial_selection: dict[str, Iterable[int]] | None = None,
+    debug_snapshot_metadata: dict[str, Any] | None = None,
 ) -> Clean2DResult:
     mode = _coerce_mode(mode)
+    target_whole_structure = atom_ids is None
     selected = _normalize_atom_ids(graph, atom_ids)
     before = _coords_for_atoms(graph, selected)
     target = max(8.0, float(target_bond_length or 42.0))
@@ -251,7 +257,16 @@ def run_clean2d_engine(
         layer_model=layer_model,
     )
     if mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION} and profile.preserve_only:
-        return _run_complex_preserve_clean2d_engine(graph, selected, before, mode, target, profile)
+        result = _run_complex_preserve_clean2d_engine(graph, selected, before, mode, target, profile)
+        return _with_debug_snapshot(
+            graph,
+            result,
+            target_whole_structure=target_whole_structure,
+            debug_snapshot=debug_snapshot,
+            debug_snapshot_path=debug_snapshot_path,
+            debug_initial_selection=debug_initial_selection,
+            debug_snapshot_metadata=debug_snapshot_metadata,
+        )
     if (
         mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION}
         and not has_interaction_constraints
@@ -259,7 +274,16 @@ def run_clean2d_engine(
         and not has_hierarchical_blocks
         and is_complex_clean2d_graph(graph, selected)
     ):
-        return _run_local_graph_clean2d_engine(graph, selected, before, mode, target)
+        result = _run_local_graph_clean2d_engine(graph, selected, before, mode, target)
+        return _with_debug_snapshot(
+            graph,
+            result,
+            target_whole_structure=target_whole_structure,
+            debug_snapshot=debug_snapshot,
+            debug_snapshot_path=debug_snapshot_path,
+            debug_initial_selection=debug_initial_selection,
+            debug_snapshot_metadata=debug_snapshot_metadata,
+        )
 
     candidates = generate_clean2d_candidates(
         graph,
@@ -270,7 +294,7 @@ def run_clean2d_engine(
         seed=seed,
         rdkit_timeout_s=rdkit_timeout_s,
     )
-    return rank_clean2d_candidates(
+    result = rank_clean2d_candidates(
         graph,
         candidates,
         before,
@@ -279,6 +303,45 @@ def run_clean2d_engine(
         target_bond_length=target_bond_length,
         avoid_hashes=avoid_hashes,
     )
+    return _with_debug_snapshot(
+        graph,
+        result,
+        target_whole_structure=target_whole_structure,
+        debug_snapshot=debug_snapshot,
+        debug_snapshot_path=debug_snapshot_path,
+        debug_initial_selection=debug_initial_selection,
+        debug_snapshot_metadata=debug_snapshot_metadata,
+    )
+
+
+def _with_debug_snapshot(
+    graph: MolGraph,
+    result: Clean2DResult,
+    *,
+    target_whole_structure: bool,
+    debug_snapshot: bool | None,
+    debug_snapshot_path: str | None,
+    debug_initial_selection: dict[str, Iterable[int]] | None,
+    debug_snapshot_metadata: dict[str, Any] | None,
+) -> Clean2DResult:
+    from chemuson.clean2d.debug_snapshots import (
+        build_clean2d_debug_snapshot,
+        clean2d_debug_snapshot_enabled,
+        write_clean2d_debug_snapshot,
+    )
+
+    if not clean2d_debug_snapshot_enabled(debug_snapshot):
+        return result
+    snapshot = build_clean2d_debug_snapshot(
+        graph,
+        result,
+        target_whole_structure=target_whole_structure,
+        initial_selection=debug_initial_selection,
+        metadata=debug_snapshot_metadata,
+    )
+    if debug_snapshot_path:
+        write_clean2d_debug_snapshot(debug_snapshot_path, snapshot)
+    return replace(result, debug_snapshot=snapshot)
 
 
 def _run_local_graph_clean2d_engine(
