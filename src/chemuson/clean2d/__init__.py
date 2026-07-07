@@ -51,6 +51,16 @@ from .engine import (
     STABLE_CLEAN2D_REJECTION_REASONS,
     summarize_clean2d_candidates,
 )
+from .quality_reporting import (
+    Clean2DQualityContractError,
+    Clean2DQualityDiagnostic,
+    clean2d_candidate_quality_diagnostic,
+    clean2d_quality_diagnostic,
+    clean2d_result_quality_diagnostic,
+    clean2d_safety_quality_diagnostic,
+    normalize_clean2d_reporting_score,
+    validate_clean2d_quality_diagnostic,
+)
 
 __all__ = [
     "Clean2DParameters",
@@ -98,4 +108,12 @@ __all__ = [
     "stable_clean2d_rejection_reason",
     "STABLE_CLEAN2D_REJECTION_REASONS",
     "summarize_clean2d_candidates",
+    "Clean2DQualityContractError",
+    "Clean2DQualityDiagnostic",
+    "clean2d_candidate_quality_diagnostic",
+    "clean2d_quality_diagnostic",
+    "clean2d_result_quality_diagnostic",
+    "clean2d_safety_quality_diagnostic",
+    "normalize_clean2d_reporting_score",
+    "validate_clean2d_quality_diagnostic",
 ]

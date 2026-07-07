@@ -26,6 +26,7 @@ from chemuson.clean2d.local_graph_cleaner import (
     local_graph_clean2d,
     stereo_layout_signature,
 )
+from chemuson.clean2d.quality_reporting import clean2d_candidate_quality_diagnostic
 from chemuson.clean2d.safety import (
     Clean2DQualityReport,
     evaluate_clean2d_layout,
@@ -1242,6 +1243,7 @@ def summarize_clean2d_candidates(result: Clean2DResult) -> list[dict[str, Any]]:
                 "bad_exocyclic_ring_count": metadata.get("bad_exocyclic_ring_count", 0),
                 "visual_score": metadata.get("visual_score", 0.0),
                 "geometry_hash": candidate.geometry_hash,
+                "quality_diagnostic": clean2d_candidate_quality_diagnostic(candidate),
             }
         )
     return rows

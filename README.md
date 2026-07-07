@@ -96,6 +96,10 @@ Limitaciones relevantes:
 - **Química**: RDKit aislado para tareas de cálculo/conversión, Open Babel opcional para optimización 3D, motores internos para validación, Clean2D y heurísticas.
 - **Lenguaje**: Python 3.10+
 
+### Clean2D Quality Reporting
+
+Clean2D exposes lightweight reporting helpers in `chemuson.clean2d.quality_reporting` for stable diagnostics in tests and controller/reporting surfaces. The normalized `score` in this contract is reporting-only; it must not change Clean2D layout algorithms, candidate ranking, candidate selection, geometry, RDKit/CoordGen behavior, MolGraph, or canvas behavior.
+
 ## Distribución por plataforma
 
 Formatos soportados (estrategia híbrida):
