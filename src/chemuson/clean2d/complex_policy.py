@@ -225,24 +225,34 @@ def _block_kind_counts(block_graph: object) -> dict[BlockKind, int]:
 
 
 def _preserve_reason(**values: object) -> tuple[bool, str]:
+    atom_count = int(values["atom_count"])
+    ring_count = int(values["ring_count"])
+    aromatic_ring_count = int(values["aromatic_ring_count"])
+    stereo_center_count = int(values["stereo_center_count"])
+    complex_enough_for_global_preserve = (
+        atom_count >= 25
+        or ring_count >= 3
+        or aromatic_ring_count >= 2
+        or stereo_center_count >= 2
+    )
     checks = (
-        (int(values["macrocycle_count"]) > 0, "macrocycle"),
-        (int(values["cyclophane_count"]) > 0, "cyclophane"),
-        (int(values["intramolecular_bridge_count"]) > 0, "intramolecular_bridge"),
-        (int(values["internal_cavity_count"]) > 0, "internal_cavity"),
+        (int(values["macrocycle_count"]) > 0 and complex_enough_for_global_preserve, "macrocycle"),
+        (int(values["cyclophane_count"]) > 0 and complex_enough_for_global_preserve, "cyclophane"),
+        (int(values["intramolecular_bridge_count"]) > 0 and complex_enough_for_global_preserve, "intramolecular_bridge"),
+        (int(values["internal_cavity_count"]) > 0 and complex_enough_for_global_preserve, "internal_cavity"),
         (
-            int(values["fused_system_count"]) > 0 and int(values["aromatic_ring_count"]) >= 2,
+            int(values["fused_system_count"]) > 0 and aromatic_ring_count >= 2,
             "fused_aromatic_systems",
         ),
-        (int(values["aromatic_ring_count"]) >= 3, "many_aromatic_rings"),
-        (int(values["stereo_center_count"]) >= 2, "multiple_stereo_centers"),
+        (aromatic_ring_count >= 3, "many_aromatic_rings"),
+        (stereo_center_count >= 2, "multiple_stereo_centers"),
         (
-            int(values["atom_count"]) >= 45 and int(values["ring_count"]) >= 3,
+            atom_count >= 45 and ring_count >= 3,
             "large_polycyclic_structure",
         ),
-        (bool(values["has_hierarchical_blocks"]), "hierarchical_blocks"),
+        (bool(values["has_hierarchical_blocks"]) and complex_enough_for_global_preserve, "hierarchical_blocks"),
         (
-            bool(values["has_block_layout_problem"]) and int(values["atom_count"]) >= 25,
+            bool(values["has_block_layout_problem"]) and atom_count >= 25,
             "block_layout_problem",
         ),
     )
