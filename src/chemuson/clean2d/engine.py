@@ -62,6 +62,25 @@ class Clean2DCandidate:
     geometry_hash: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    @property
+    def outcome_state(self) -> str:
+        """Stable Clean2D contract state for this candidate."""
+        if self.rejected:
+            return "rejected"
+        if bool(self.metadata.get("complex_preserve_only")):
+            return "preserve-only"
+        if self.source == "current" and self.novelty < 0.5:
+            return "no-op"
+        return "applied"
+
+    @property
+    def stable_rejection_reason(self) -> str:
+        """Stable rejection reason for tests/diagnostics."""
+        explicit = self.metadata.get("stable_rejection_reason")
+        if explicit:
+            return str(explicit)
+        return stable_clean2d_rejection_reason(self.rejection_reason)
+
 
 @dataclass(frozen=True)
 class Clean2DResult:
@@ -77,6 +96,29 @@ class Clean2DResult:
     @property
     def ok(self) -> bool:
         return self.selected is not None and not self.selected.rejected
+
+    @property
+    def result_state(self) -> str:
+        """Stable Clean2D operation state for observable reporting."""
+        if self.selected is not None and not self.selected.rejected:
+            return self.selected.outcome_state
+        return "failed-controlled"
+
+    @property
+    def stable_reason(self) -> str:
+        """Stable operation reason when no candidate is applied."""
+        if self.selected is not None and not self.selected.rejected:
+            return ""
+        if self.reason:
+            return stable_clean2d_rejection_reason(self.reason)
+        if self.rejected:
+            return self.rejected[0].stable_rejection_reason
+        return "backend-failure"
+
+    @property
+    def candidate_sources(self) -> tuple[str, ...]:
+        """Candidate source labels exposed for diagnostics."""
+        return tuple(candidate.source for candidate in (*self.candidates, *self.rejected))
 
 
 @dataclass(frozen=True)
@@ -104,6 +146,76 @@ class Clean2DGraphSnapshot:
     atom_data: tuple[tuple[int, tuple[Any, ...]], ...]
     bond_data: tuple[tuple[int, tuple[Any, ...]], ...]
     components: tuple[tuple[int, ...], ...]
+
+
+STABLE_CLEAN2D_REJECTION_REASONS: frozenset[str] = frozenset(
+    {
+        "invalid-coordinates",
+        "invariant-violation",
+        "stereo-risk",
+        "boundary-bond-risk",
+        "new-crossing-risk",
+        "collision-risk",
+        "collapsed-ring-risk",
+        "excessive-displacement",
+        "worse-quality",
+        "backend-failure",
+    }
+)
+
+
+def stable_clean2d_rejection_reason(reason: str | None) -> str:
+    """Map implementation-specific Clean2D reasons to the stable contract vocabulary."""
+    text = str(reason or "").strip()
+    if not text:
+        return "backend-failure"
+    if text in STABLE_CLEAN2D_REJECTION_REASONS:
+        return text
+    normalized = text.lower().replace("_", "-")
+    if "coordenada" in normalized or "coord" in normalized or "nan" in normalized:
+        return "invalid-coordinates"
+    if normalized.startswith("cambio-") or "metadatos" in normalized or "componentes" in normalized:
+        return "invariant-violation"
+    if "estereo" in normalized or "stereo" in normalized:
+        return "stereo-risk"
+    if "integridad" in normalized or "boundary" in normalized or "enlaces-limite" in normalized:
+        return "boundary-bond-risk"
+    if "cruce" in normalized or "crossing" in normalized:
+        return "new-crossing-risk"
+    if "colision" in normalized or "collision" in normalized:
+        return "collision-risk"
+    if "anillo-colapsado" in normalized or "collapsed-ring" in normalized or "ring-degener" in normalized:
+        return "collapsed-ring-risk"
+    if (
+        "desplazamiento" in normalized
+        or "displacement" in normalized
+        or "caja-absurdo" in normalized
+        or "longitud-enlace-fuera-de-rango" in normalized
+        or "cambio-longitud-enlace" in normalized
+    ):
+        return "excessive-displacement"
+    if (
+        "no-mejora" in normalized
+        or "no-canonicaliza" in normalized
+        or "requiere-optimizacion" in normalized
+        or "necesita-reconstruccion" in normalized
+        or "repetida" in normalized
+        or "worse" in normalized
+        or "quality" in normalized
+    ):
+        return "worse-quality"
+    if (
+        "fallo" in normalized
+        or "no-disponible" in normalized
+        or "deshabilitado" in normalized
+        or "backend" in normalized
+        or "rdkit" in normalized
+        or "coordgen" in normalized
+        or "sin-candidatos" in normalized
+        or "sin-pose" in normalized
+    ):
+        return "backend-failure"
+    return "backend-failure"
 
 
 def run_clean2d_engine(
@@ -2963,6 +3075,13 @@ def _replace_candidate(candidate: Clean2DCandidate, **updates: Any) -> Clean2DCa
         "metadata": candidate.metadata,
     }
     data.update(updates)
+    if data.get("rejected"):
+        metadata = dict(data.get("metadata") or {})
+        metadata.setdefault(
+            "stable_rejection_reason",
+            stable_clean2d_rejection_reason(str(data.get("rejection_reason") or "")),
+        )
+        data["metadata"] = metadata
     return Clean2DCandidate(**data)
 
 

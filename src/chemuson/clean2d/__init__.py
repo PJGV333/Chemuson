@@ -47,6 +47,8 @@ from .engine import (
     has_intramolecular_block_layout_problem,
     rank_clean2d_candidates,
     run_clean2d_engine,
+    stable_clean2d_rejection_reason,
+    STABLE_CLEAN2D_REJECTION_REASONS,
     summarize_clean2d_candidates,
 )
 
@@ -93,5 +95,7 @@ __all__ = [
     "has_intramolecular_block_layout_problem",
     "rank_clean2d_candidates",
     "run_clean2d_engine",
+    "stable_clean2d_rejection_reason",
+    "STABLE_CLEAN2D_REJECTION_REASONS",
     "summarize_clean2d_candidates",
 ]

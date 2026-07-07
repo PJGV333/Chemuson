@@ -19,6 +19,7 @@ from chemuson.clean2d import (
     length_only_polish,
     optimize_clean2d_positions,
     run_clean2d_engine,
+    stable_clean2d_rejection_reason,
     stereo_layout_signature,
     structure_preserving_geometry_polish,
 )
@@ -35,6 +36,31 @@ class Clean2DAttempt:
     message: str = ""
     report: Clean2DQualityReport | None = None
     details: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def result_state(self) -> str:
+        """Stable Clean2D contract state for controller-level diagnostics."""
+        if self.applied:
+            if bool(self.details.get("complex_preserve_only")):
+                return "preserve-only"
+            return "applied"
+        if self.rejected:
+            return "rejected"
+        if self.unavailable:
+            return "failed-controlled"
+        return "no-op"
+
+    @property
+    def stable_reason(self) -> str:
+        """Stable rejection/failure reason while preserving backend-specific details."""
+        explicit = self.details.get("stable_rejection_reason")
+        if explicit:
+            return str(explicit)
+        if self.report is not None and self.report.rejection_reason:
+            return stable_clean2d_rejection_reason(self.report.rejection_reason)
+        if self.rejected or self.unavailable:
+            return stable_clean2d_rejection_reason(self.message)
+        return ""
 
 
 @dataclass(frozen=True)
@@ -124,6 +150,7 @@ class Clean2DController:
                     "real_bond_count": len(real_bonds),
                     "missing_selection_bond_ids": list(missing_selection_bond_ids),
                     "candidate_source": candidate_source,
+                    "stable_rejection_reason": "stereo-risk",
                 },
             )
 
@@ -171,6 +198,7 @@ class Clean2DController:
                     "missing_selection_bond_ids": list(missing_selection_bond_ids),
                     "bond_integrity_regressions": sorted(set(regressions)),
                     "candidate_source": candidate_source,
+                    "stable_rejection_reason": "boundary-bond-risk",
                     "quality_before": before_quality.quality_class,
                     "quality_after": after_quality.quality_class,
                     "crossings_before": before_crossings,

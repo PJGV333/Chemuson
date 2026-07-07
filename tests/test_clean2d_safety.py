@@ -510,6 +510,7 @@ def test_clean2d_attempt_unavailable_does_not_stop_flow() -> None:
     assert not a.applied
     assert not a.rejected
     assert a.unavailable
+    assert a.result_state == "failed-controlled"
 
 
 def test_clean2d_attempt_rejected_does_not_stop_flow() -> None:
@@ -520,6 +521,7 @@ def test_clean2d_attempt_rejected_does_not_stop_flow() -> None:
     assert not a.applied
     assert a.rejected
     assert not a.unavailable
+    assert a.result_state == "rejected"
 
 
 # ─── _apply_clean2d_candidate helper tests ────────────────────────────────
@@ -548,6 +550,7 @@ def test_apply_candidate_already_clean_returns_no_change() -> None:
     )
     assert not attempt.applied
     assert not attempt.rejected
+    assert attempt.result_state == "no-op"
     assert "ya estaba limpia" in attempt.message
     window.canvas.undo_stack.push.assert_not_called()
 
@@ -575,6 +578,8 @@ def test_apply_candidate_rejected_on_bad_geometry() -> None:
     )
     assert not attempt.applied
     assert attempt.rejected
+    assert attempt.result_state == "rejected"
+    assert attempt.stable_reason == "excessive-displacement"
     window.canvas.undo_stack.push.assert_not_called()
 
 
@@ -602,6 +607,7 @@ def test_apply_candidate_without_motion_does_not_apply_empty_command() -> None:
 
     assert not attempt.applied
     assert attempt.unavailable
+    assert attempt.result_state == "failed-controlled"
     window.canvas.undo_stack.push.assert_not_called()
 
 
@@ -636,6 +642,7 @@ def test_rotatable_reflection_pose_proposes_alternative_for_clean_chain() -> Non
     )
 
     assert attempt.applied
+    assert attempt.result_state == "applied"
     window.canvas.undo_stack.push.assert_called_once()
     command = window.canvas.undo_stack.push.call_args.args[0]
     moved = getattr(command, "_after", {})

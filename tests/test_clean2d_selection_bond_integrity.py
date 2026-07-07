@@ -77,6 +77,7 @@ def test_validate_canvas_bond_integrity_rejects_boundary_bond_break() -> None:
 
     assert not validation.accepted
     assert validation.reason == "reparacion_rechazada_por_integridad_de_enlaces"
+    assert validation.diagnostics["stable_rejection_reason"] == "boundary-bond-risk"
     assert validation.bond_integrity_regressions
     assert validation.real_bond_count == 2
 
@@ -102,14 +103,20 @@ def test_run_clean_2d_rejects_candidate_that_breaks_boundary_bond() -> None:
         message=candidate.message,
     )
 
-    with patch("chemuson.gui.controllers.clean2d_controller.run_clean2d_engine", return_value=result):
-        controller.run_clean_2d(window, 1.0, 200, "(test)")
+    attempt = controller._apply_engine_result(
+        window,
+        graph,
+        {1, 2},
+        [graph.get_bond(bond_ids[0])],
+        {1: (0.0, 0.0), 2: (40.0, 0.0)},
+        result,
+        40.0,
+        mode="quick",
+    )
 
     window.canvas.undo_stack.push.assert_not_called()
-    assert any(
-        "integridad de enlaces" in str(args[0][0])
-        for args in window.statusBar.return_value.showMessage.call_args_list
-    )
+    assert attempt.result_state == "rejected"
+    assert attempt.stable_reason == "boundary-bond-risk"
 
 
 def test_run_clean_2d_allows_safe_boundary_candidate() -> None:
