@@ -103,10 +103,7 @@ def compare_baseline_reports(
             continue
         fields = []
         for field in OBSERVABLE_DIFF_FIELDS:
-            probe_left = dict(left_record)
-            probe_right = dict(right_record)
-            probe_left[field] = right_record.get(field)
-            if not baseline_records_equivalent(probe_left, right_record):
+            if not _observable_field_equivalent(field, left_record.get(field), right_record.get(field)):
                 fields.append(
                     {
                         "field": field,
@@ -124,6 +121,31 @@ def compare_baseline_reports(
     }
     json.dumps(diff, allow_nan=False, sort_keys=True)
     return diff
+
+
+def _observable_field_equivalent(field: str, left_value: Any, right_value: Any) -> bool:
+    if field != "metrics":
+        return left_value == right_value
+    left_probe = _metric_probe_record(left_value)
+    right_probe = _metric_probe_record(right_value)
+    return baseline_records_equivalent(left_probe, right_probe)
+
+
+def _metric_probe_record(metrics: Any) -> dict[str, Any]:
+    return {
+        "case_name": "probe",
+        "family": "probe",
+        "tags": [],
+        "mode": "quick",
+        "target": "whole",
+        "result_state": "probe",
+        "stable_reason": None,
+        "selected_source": None,
+        "candidate_sources": [],
+        "metrics": metrics,
+        "snapshot": None,
+        "policy_evidence": None,
+    }
 
 
 def _summary(records: tuple[Mapping[str, Any], ...]) -> dict[str, Any]:

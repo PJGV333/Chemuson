@@ -14,6 +14,21 @@ from tests.clean2d_regression.reports import (
 )
 
 
+def _report_pair_with_single_record_change(field: str, value) -> tuple[dict, dict]:
+    left = canonicalize_baseline_report(build_baseline_report())
+    right = canonicalize_baseline_report(left)
+    right["records"][0][field] = value
+    return left, right
+
+
+def _changed_fields(left: dict, right: dict) -> set[str]:
+    diff = compare_baseline_reports(left, right)
+    assert diff["equivalent"] is False
+    assert diff["observational_only"] is True
+    assert len(diff["changed_cases"]) == 1
+    return {field["field"] for field in diff["changed_cases"][0]["fields"]}
+
+
 def test_baseline_report_is_json_serializable() -> None:
     report = build_baseline_report(metadata={"run": "unit"})
     data = canonicalize_baseline_report(report)
@@ -89,6 +104,54 @@ def test_report_diff_detects_observable_field_changes() -> None:
         "snapshot",
         "policy_evidence",
     } <= changed_fields
+
+
+def test_report_diff_detects_only_result_state_change() -> None:
+    left = canonicalize_baseline_report(build_baseline_report())
+    current = left["records"][0]["result_state"]
+    replacement = "failed-controlled" if current != "failed-controlled" else "applied"
+    right = canonicalize_baseline_report(left)
+    right["records"][0]["result_state"] = replacement
+
+    assert _changed_fields(left, right) == {"result_state"}
+
+
+def test_report_diff_detects_only_stable_reason_change() -> None:
+    left, right = _report_pair_with_single_record_change("stable_reason", "backend-failure")
+
+    assert _changed_fields(left, right) == {"stable_reason"}
+
+
+def test_report_diff_detects_only_selected_source_change() -> None:
+    left, right = _report_pair_with_single_record_change("selected_source", "artificial-source")
+
+    assert _changed_fields(left, right) == {"selected_source"}
+
+
+def test_report_diff_detects_only_candidate_sources_change() -> None:
+    left, right = _report_pair_with_single_record_change("candidate_sources", ["artificial-source"])
+
+    assert _changed_fields(left, right) == {"candidate_sources"}
+
+
+def test_report_diff_detects_only_metric_change_outside_tolerance() -> None:
+    left = canonicalize_baseline_report(build_baseline_report())
+    right = canonicalize_baseline_report(left)
+    right["records"][0]["metrics"]["before"]["length_rms_error"] += metric_tolerance("length_rms_error") * 100.0
+
+    assert _changed_fields(left, right) == {"metrics"}
+
+
+def test_report_diff_detects_only_snapshot_change() -> None:
+    left, right = _report_pair_with_single_record_change("snapshot", {"changed": True})
+
+    assert _changed_fields(left, right) == {"snapshot"}
+
+
+def test_report_diff_detects_only_policy_evidence_change() -> None:
+    left, right = _report_pair_with_single_record_change("policy_evidence", {"changed": True})
+
+    assert _changed_fields(left, right) == {"policy_evidence"}
 
 
 def test_report_diff_ignores_metric_changes_within_tolerance() -> None:
