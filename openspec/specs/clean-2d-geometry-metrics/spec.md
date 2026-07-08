@@ -1,7 +1,7 @@
 # clean-2d-geometry-metrics Specification
 
 ## Purpose
-TBD - created by archiving change define-clean2d-geometry-metric-contracts. Update Purpose after archive.
+This specification defines stable diagnostic geometry metric semantics for the Clean 2D regression corpus, including metric names, types, units, polarity, optionality, JSON-stable serialization, and comparison tolerances. These metrics remain diagnostic-only until a future OpenSpec change explicitly promotes selected metrics into regression gates.
 ## Requirements
 ### Requirement: Stable Metric Names
 The system SHALL define stable Clean 2D geometry metric names.
@@ -66,4 +66,3 @@ The system SHALL preserve the existing Clean 2D result-state contract independen
 - **GIVEN** metric contract helpers validate a corpus metric record
 - **WHEN** the Clean 2D result state is inspected
 - **THEN** the state remains the one returned by the existing Clean 2D engine contract and is not recomputed from diagnostic metric values.
-

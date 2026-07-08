@@ -1,7 +1,7 @@
 # clean-2d-regression-corpus Specification
 
 ## Purpose
-TBD - created by archiving change create-clean2d-regression-corpus. Update Purpose after archive.
+This specification defines the test-only Clean 2D regression corpus used to capture representative molecular cases, controlled execution outcomes, chemical identity invariants, diagnostic metrics, and JSON-serializable debug snapshots without changing production layout behaviour.
 ## Requirements
 ### Requirement: Stable Named Regression Cases
 The corpus SHALL provide stable named regression cases.
@@ -138,4 +138,3 @@ The expanded corpus SHALL remain observational and SHALL NOT impose new aestheti
 - **GIVEN** an expanded corpus case emits diagnostic metrics
 - **WHEN** regression tests evaluate the case
 - **THEN** metrics are captured for diagnostics but do not fail the test solely because current geometry is visually imperfect.
-
