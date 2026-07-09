@@ -826,7 +826,6 @@ def _propose_backend_candidates(
         block_layout_candidate,
         block_candidate,
         motif_candidate,
-        _candidate_from_simple_aromatic_template(graph, atom_ids, before, bonds, target),
         _candidate_from_scaffold_depiction(graph, atom_ids, before, bonds, target),
         _candidate_from_block_unwrap(graph, atom_ids, before, bonds, target),
         _candidate_from_rdkit_isolated(graph, atom_ids, before, bonds, target, rdkit_timeout_s),

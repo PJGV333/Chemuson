@@ -3,9 +3,11 @@ from __future__ import annotations
 import pytest
 
 from chemuson.clean2d import (
+    Clean2DMode,
     assert_clean2d_invariants,
     capture_clean2d_snapshot,
     classify_clean2d_layout_quality,
+    generate_clean2d_candidates,
     run_clean2d_engine,
 )
 from tests.clean2d_regression.assertions import execute_case
@@ -68,3 +70,12 @@ def test_simple_aromatic_candidate_does_not_route_complex_policy_guards() -> Non
         snapshot = execute_case(case)
         assert "simple_aromatic_template" not in snapshot["result"]["candidate_sources"]
         assert snapshot["result"]["state"] in case.expected_states
+
+
+def test_simple_aromatic_template_is_not_a_propose_candidate() -> None:
+    case = _case("aromatic_benzene_regular")
+    graph = case.builder()
+
+    candidates = generate_clean2d_candidates(graph, mode=Clean2DMode.PROPOSE, target_bond_length=40.0)
+
+    assert "simple_aromatic_template" not in {candidate.source for candidate in candidates}

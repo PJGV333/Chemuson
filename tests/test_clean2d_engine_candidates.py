@@ -67,7 +67,7 @@ def test_generate_candidates_attempts_rdkit_for_cyclic_graphs() -> None:
     sources = {candidate.source for candidate in candidates}
 
     assert "rdkit_isolated" in sources
-    assert "internal_templates" in sources
+    assert "simple_aromatic_template" in sources
 
 
 def test_engine_rebuilds_distorted_ring_with_internal_candidate() -> None:
