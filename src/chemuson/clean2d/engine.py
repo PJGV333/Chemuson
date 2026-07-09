@@ -799,6 +799,7 @@ def _quick_backend_candidates(
     return _present_candidates(
         block_candidate,
         motif_candidate,
+        _candidate_from_simple_aromatic_template(graph, atom_ids, before, bonds, target),
         _candidate_from_scaffold_depiction(graph, atom_ids, before, bonds, target),
         _candidate_from_block_unwrap(graph, atom_ids, before, bonds, target),
         _candidate_from_rdkit_isolated(graph, atom_ids, before, bonds, target, rdkit_timeout_s),
@@ -825,6 +826,7 @@ def _propose_backend_candidates(
         block_layout_candidate,
         block_candidate,
         motif_candidate,
+        _candidate_from_simple_aromatic_template(graph, atom_ids, before, bonds, target),
         _candidate_from_scaffold_depiction(graph, atom_ids, before, bonds, target),
         _candidate_from_block_unwrap(graph, atom_ids, before, bonds, target),
         _candidate_from_rdkit_isolated(graph, atom_ids, before, bonds, target, rdkit_timeout_s),
@@ -2063,6 +2065,32 @@ def _candidate_from_internal_templates(
     )
 
 
+def _candidate_from_simple_aromatic_template(
+    graph: MolGraph,
+    atom_ids: set[int],
+    before: dict[int, tuple[float, float]],
+    bonds: list[Bond],
+    target: float,
+) -> Clean2DCandidate | None:
+    ring = _simple_isolated_aromatic_ring(graph, atom_ids, bonds)
+    if ring is None:
+        return None
+    if any(atom_id not in before for atom_id in ring):
+        return None
+    reference = {atom_id: before[atom_id] for atom_id in ring}
+    center = _center(reference)
+    aromatic_target = _average_target_bond_length(bonds, target)
+    coords = _regular_ring_at_center(list(ring), center, aromatic_target)
+    coords = _align_to_reference(reference, coords)
+    coords = _translate_to_center(coords, center)
+    return Clean2DCandidate(
+        source="simple_aromatic_template",
+        coords=coords,
+        message="Anillo aromatico simple regularizado",
+        metadata={"simple_aromatic_template": True},
+    )
+
+
 def _candidate_from_v2(
     graph: MolGraph,
     atom_ids: set[int],
@@ -3136,7 +3164,7 @@ def _deduplicate_candidates(
             deduped.append(candidate)
             continue
         geometry_hash = clean2d_geometry_hash(graph, candidate.coords, atom_ids)
-        if geometry_hash in seen and candidate.source != "current":
+        if geometry_hash in seen and candidate.source not in {"current", "simple_aromatic_template"}:
             continue
         seen.add(geometry_hash)
         deduped.append(_replace_candidate(candidate, geometry_hash=geometry_hash))
@@ -3176,11 +3204,12 @@ def _source_priority(source: str) -> int:
         "block_unwrap": 4,
         "rdkit_isolated": 5,
         "rdkit_direct": 6,
-        "internal_templates": 7,
-        "clean2d_v2": 8,
-        "motif_constraints": 9,
-        "safe_fallback": 10,
-        "local_graph": 11,
+        "simple_aromatic_template": 7,
+        "internal_templates": 8,
+        "clean2d_v2": 9,
+        "motif_constraints": 10,
+        "safe_fallback": 11,
+        "local_graph": 12,
         "propose_reflection": 1,
         "propose_rotation": 2,
         "propose_3d_projection": 3,
@@ -3199,6 +3228,49 @@ def _normalize_atom_ids(graph: MolGraph, atom_ids: Iterable[int] | None) -> set[
     if atom_ids is None:
         return set(graph.atoms.keys())
     return {int(atom_id) for atom_id in atom_ids if int(atom_id) in graph.atoms}
+
+
+def _simple_isolated_aromatic_ring(
+    graph: MolGraph,
+    atom_ids: set[int],
+    bonds: list[Bond],
+) -> tuple[int, ...] | None:
+    if len(atom_ids) not in {5, 6}:
+        return None
+    rings = _cycle_basis_ordered(atom_ids, bonds, max_size=6)
+    if len(rings) != 1:
+        return None
+    ring = tuple(rings[0])
+    if set(ring) != atom_ids:
+        return None
+    ring_edges = {frozenset((ring[idx], ring[(idx + 1) % len(ring)])) for idx in range(len(ring))}
+    if len(bonds) != len(ring_edges):
+        return None
+    hetero_atoms = 0
+    for atom_id in ring:
+        atom = graph.atoms.get(atom_id)
+        if atom is None:
+            return None
+        if int(getattr(atom, "charge", 0) or 0) != 0:
+            return None
+        if str(getattr(atom, "element", "C")) != "C":
+            hetero_atoms += 1
+    if hetero_atoms > 1:
+        return None
+    for bond in bonds:
+        if frozenset((bond.a1_id, bond.a2_id)) not in ring_edges:
+            return None
+        if not bool(getattr(bond, "is_aromatic", False)):
+            return None
+    if _has_explicit_stereo(graph, atom_ids, bonds):
+        return None
+    return ring
+
+
+def _average_target_bond_length(bonds: list[Bond], target: float) -> float:
+    if not bonds:
+        return target
+    return sum(_target_length_for_bond(bond, target) for bond in bonds) / len(bonds)
 
 
 def _covalent_components(atom_ids: set[int], bonds: list[Bond]) -> list[frozenset[int]]:
