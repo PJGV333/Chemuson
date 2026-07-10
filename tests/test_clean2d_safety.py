@@ -110,6 +110,22 @@ def test_evaluate_rejects_bond_length_out_of_range() -> None:
     assert "rango" in report.rejection_reason
 
 
+def test_individual_bond_range_reports_extremes_despite_a_correct_average() -> None:
+    atom_ids = {1, 2, 3}
+    bonds = [_fake_bond(1, 2), _fake_bond(2, 3)]
+    before = {1: (0.0, 0.0), 2: (42.0, 0.0), 3: (84.0, 0.0)}
+    after = {1: (0.0, 0.0), 2: (20.0, 0.0), 3: (104.0, 0.0)}
+
+    report = evaluate_clean2d_layout(atom_ids, bonds, before, after, 42.0)
+
+    assert report.min_bond_length_ratio == pytest.approx(20.0 / 42.0)
+    assert report.max_bond_length_ratio == pytest.approx(84.0 / 42.0)
+    assert report.short_bond_ids == [bonds[0].id]
+    assert report.long_bond_ids == [bonds[1].id]
+    assert not is_clean2d_candidate_safe(report, require_individual_bond_range=True)
+    assert report.rejection_reason == "enlace_estructural_demasiado_corto"
+
+
 def test_evaluate_rejects_nonbonded_collision() -> None:
     atom_ids = {1, 2, 3}
     bonds = [_fake_bond(1, 2)]

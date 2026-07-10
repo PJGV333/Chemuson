@@ -1539,10 +1539,12 @@ def _stereo_centers(graph: MolGraph, atom_ids: set[int], bonds: list[Bond]) -> s
     for bond in bonds:
         style = normalize_bond_style(getattr(bond, "style", BondStyle.PLAIN))
         stereo = getattr(getattr(bond, "stereo", None), "value", getattr(bond, "stereo", None))
-        has_stereo = style in {BondStyle.WEDGE, BondStyle.HASHED} or (stereo and str(stereo) not in {"none", "BondStereo.NONE"})
+        has_stereo = style in {BondStyle.WEDGE, BondStyle.HASHED} or (
+            stereo and str(stereo) not in {"none", "BondStereo.NONE"}
+        )
         has_stereo = has_stereo or any(
             getattr(bond, attr, None)
-            for attr in ("stereo_ez", "stereo_axial", "stereo_endo_exo", "stereo_helical")
+            for attr in ("stereo_axial", "stereo_endo_exo", "stereo_helical")
         )
         if has_stereo:
             centers.update({int(bond.a1_id), int(bond.a2_id)})

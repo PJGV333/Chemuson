@@ -15,6 +15,10 @@ class Clean2DQualityReport:
     mean_bond_length_before: float = 0.0
     mean_bond_length_after: float = 0.0
     bond_length_ratio: float = 1.0
+    min_bond_length_ratio: float = 1.0
+    max_bond_length_ratio: float = 1.0
+    short_bond_ids: list[int] = field(default_factory=list)
+    long_bond_ids: list[int] = field(default_factory=list)
     max_displacement: float = 0.0
     min_nonbonded_before: float = 0.0
     min_nonbonded_after: float = 0.0
@@ -154,6 +158,15 @@ def evaluate_clean2d_layout(
     if filtered_bonds:
         report.mean_bond_length_before = _mean_bond_length(before, filtered_bonds)
         report.mean_bond_length_after = _mean_bond_length(after, filtered_bonds)
+        bond_ratios = _bond_length_ratios(after, filtered_bonds, report.target_bond_length)
+        report.min_bond_length_ratio = min(bond_ratios.values())
+        report.max_bond_length_ratio = max(bond_ratios.values())
+        report.short_bond_ids = sorted(
+            bond_id for bond_id, ratio in bond_ratios.items() if ratio < 0.70
+        )
+        report.long_bond_ids = sorted(
+            bond_id for bond_id, ratio in bond_ratios.items() if ratio > 1.45
+        )
         if report.mean_bond_length_before > 1e-6:
             report.bond_length_ratio = (
                 report.mean_bond_length_after / report.mean_bond_length_before
@@ -193,13 +206,26 @@ def evaluate_clean2d_layout(
     return report
 
 
-def is_clean2d_candidate_safe(report: Clean2DQualityReport, mode: str = "quick") -> bool:
+def is_clean2d_candidate_safe(
+    report: Clean2DQualityReport,
+    mode: str = "quick",
+    *,
+    require_individual_bond_range: bool = False,
+) -> bool:
     if report.missing_coords or report.nan_coords:
         report.passed = False
         report.rejection_reason = report.rejection_reason or "coordenadas_invalidas"
         return False
 
     t = max(1.0, report.target_bond_length)
+
+    if require_individual_bond_range and (report.short_bond_ids or report.long_bond_ids):
+        report.passed = False
+        if report.short_bond_ids:
+            report.rejection_reason = "enlace_estructural_demasiado_corto"
+        else:
+            report.rejection_reason = "enlace_estructural_demasiado_largo"
+        return False
 
     if report.mean_bond_length_after < t * 0.3 or report.mean_bond_length_after > t * 3.0:
         report.passed = False
@@ -444,6 +470,37 @@ def _mean_bond_length(
                 positions[a2][1] - positions[a1][1],
             ))
     return sum(lengths) / len(lengths) if lengths else 0.0
+
+
+def _bond_length_ratios(
+    positions: dict[int, tuple[float, float]],
+    bonds: list[Any],
+    target_len: float,
+) -> dict[int, float]:
+    ratios: dict[int, float] = {}
+    for index, bond in enumerate(bonds):
+        a1 = _bond_a1(bond)
+        a2 = _bond_a2(bond)
+        if a1 not in positions or a2 not in positions:
+            continue
+        length = math.hypot(
+            positions[a2][0] - positions[a1][0],
+            positions[a2][1] - positions[a1][1],
+        )
+        ratios[int(getattr(bond, "id", index))] = length / _desired_bond_length(bond, target_len)
+    return ratios
+
+
+def _desired_bond_length(bond: Any, target_len: float) -> float:
+    aromatic = bool(getattr(bond, "is_aromatic", False))
+    if aromatic:
+        return target_len * 0.98
+    order = int(getattr(bond, "order", 1) or 1)
+    if order >= 3:
+        return target_len * 0.92
+    if order == 2:
+        return target_len * 0.96
+    return target_len
 
 
 def _compute_bounding_box_ratio(

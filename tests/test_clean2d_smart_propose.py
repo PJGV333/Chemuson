@@ -16,6 +16,7 @@ from chemuson.clean2d import (
     classify_clean2d_layout_quality,
     clean2d_geometry_hash,
     count_new_bond_crossings,
+    evaluate_clean2d_layout,
     rank_clean2d_candidates,
     ring_degeneracy_score,
     run_clean2d_engine,
@@ -329,7 +330,6 @@ def test_smart_clean_repairs_distorted_structure_before_proposing() -> None:
         controller = Clean2DController()
         distorted = _coords(canvas.model)
         before_lengths = _lengths(canvas.model, distorted)
-
         controller.run_clean_2d(window, 1.0, 200, "(test)", mode="quick")
 
         after = _coords(canvas.model)
@@ -516,6 +516,49 @@ def test_best_candidate_chosen_by_final_quality_not_source_priority() -> None:
     assert result.selected is not None
     assert result.selected.source == "safe_fallback"
     assert result.selected.metadata["quality_class"] == "good"
+
+
+def test_block_layout_with_a_short_bond_is_rejected_for_distorted_quick_repair() -> None:
+    graph = MolGraph()
+    _populate_clean_mixed_structure(graph)
+    fallback_coords = _coords(graph)
+    _distort_mixed_structure(graph)
+    graph.atoms[7].x = graph.atoms[1].x
+    graph.atoms[7].y = graph.atoms[1].y
+    before = _coords(graph)
+    assert classify_clean2d_layout_quality(graph, target_bond_length=40.0).quality_class == "needs_rebuild"
+    unsafe_coords = dict(fallback_coords)
+    unsafe_coords[7] = (fallback_coords[1][0] + 10.0, fallback_coords[1][1])
+    unsafe_report = evaluate_clean2d_layout(set(graph.atoms), list(graph.bonds.values()), before, unsafe_coords, 40.0)
+    assert unsafe_report.short_bond_ids
+
+    result = rank_clean2d_candidates(
+        graph,
+        [
+            Clean2DCandidate("block_layout", unsafe_coords, "unsafe block layout"),
+            Clean2DCandidate("safe_fallback", fallback_coords, "safe fallback"),
+        ],
+        before,
+        set(graph.atoms),
+        mode="quick",
+        target_bond_length=40.0,
+    )
+    summary = summarize_clean2d_candidates(result)
+
+    assert result.selected is not None
+    assert result.selected.source == "safe_fallback"
+    assert any(
+        row["source"] == "block_layout"
+        and row["reason"] == "enlace_estructural_demasiado_corto"
+        for row in summary
+    ), [(row["source"], row["reason"]) for row in summary]
+    assert_clean2d_invariants(
+        graph,
+        graph,
+        before,
+        result.selected.coords,
+        atom_ids=set(graph.atoms),
+    )
 
 
 def test_smart_clean_reports_clear_noop_when_no_safe_alternative_exists() -> None:

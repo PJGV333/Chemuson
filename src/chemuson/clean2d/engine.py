@@ -958,9 +958,16 @@ def rank_clean2d_candidates(
                 after,
             )
         safety_mode = _safety_mode_for_candidate(mode, candidate, baseline_bad)
-        safe = is_clean2d_candidate_safe(report, safety_mode)
-        if candidate.source == "block_layout" and baseline_bad and not candidate.metadata.get("block_layout_rejected"):
-            safe = True
+        safe = is_clean2d_candidate_safe(
+            report,
+            safety_mode,
+            require_individual_bond_range=(
+                mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION} and baseline_bad
+            ),
+        )
+        if safe and stereo_layout_signature(graph, before_coords, selected) != stereo_layout_signature(graph, after, selected):
+            safe = False
+            report.rejection_reason = "cambio_firma_estereoquimica"
         if mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION} and candidate.source == "current":
             if quality.quality_class == "needs_rebuild":
                 safe = False
@@ -969,13 +976,16 @@ def rank_clean2d_candidates(
                 safe = False
                 report.rejection_reason = "geometria_actual_requiere_optimizacion"
         if (
+            safe
+            and
             mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION}
-            and candidate.source != "block_layout"
             and candidate_quality.quality_class == "needs_rebuild"
         ):
             safe = False
             report.rejection_reason = "candidato_no_canonicaliza_geometria"
         if (
+            safe
+            and
             mode in {Clean2DMode.QUICK, Clean2DMode.PUBLICATION}
             and baseline_needs_work
             and candidate_quality.quality_class == "needs_polish"
