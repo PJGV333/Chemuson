@@ -483,6 +483,18 @@ def _run_complex_preserve_clean2d_engine(
             "visual_score": current_quality.visual_score,
         },
     )
+    fused_template = _candidate_from_fused_aromatic_template(
+        graph, selected, before, bonds, target, mode
+    )
+    if fused_template is not None and not fused_template.rejected:
+        return Clean2DResult(
+            mode=mode,
+            atom_ids=selected,
+            before_coords=before,
+            candidates=(current, fused_template),
+            selected=fused_template,
+            message=fused_template.message,
+        )
     unwrap = _candidate_from_block_unwrap(graph, selected, before, bonds, target)
     scaffold = _candidate_from_scaffold_depiction(graph, selected, before, bonds, target)
     if scaffold is not None and not scaffold.rejected:
@@ -575,6 +587,112 @@ def _run_complex_preserve_clean2d_engine(
         message=message,
         reason="complex_preserve_unsafe",
     )
+
+
+def _candidate_from_fused_aromatic_template(
+    graph: MolGraph,
+    atom_ids: set[int],
+    before: dict[int, tuple[float, float]],
+    bonds: list[Bond],
+    target: float,
+    mode: Clean2DMode,
+) -> Clean2DCandidate | None:
+    rings = _simple_fused_bicyclic_aromatic_system(graph, atom_ids, bonds)
+    if rings is None:
+        return None
+    coords = _fused_aromatic_template_coords(rings, target)
+    coords = _translate_to_center(_align_to_reference(before, coords), _center(before))
+    report = evaluate_clean2d_layout(atom_ids, bonds, before, coords, target, is_cyclic=True)
+    quality = classify_clean2d_layout_quality(graph, atom_ids, coords=coords, target_bond_length=target)
+    safe = is_clean2d_candidate_safe(
+        report,
+        "publication" if mode == Clean2DMode.PUBLICATION else "quick",
+        require_individual_bond_range=True,
+    )
+    if stereo_layout_signature(graph, before, atom_ids) != stereo_layout_signature(graph, coords, atom_ids):
+        safe = False
+        report.rejection_reason = "cambio_firma_estereoquimica"
+    if quality.quality_class == "needs_rebuild":
+        safe = False
+        report.rejection_reason = "candidato_no_canonicaliza_geometria"
+    if any(ring_degeneracy_score(coords, set(ring)) <= 0.18 for ring in rings):
+        safe = False
+        report.rejection_reason = "anillo_fusionado_degenerado"
+    candidate = Clean2DCandidate(
+        source="fused_aromatic_template",
+        coords=coords,
+        message="Sistema aromatico fusionado reparado con plantilla",
+        report=report,
+        score=_visual_quality_score(graph, atom_ids, bonds, before, coords, target, mode),
+        novelty=_mean_displacement(before, coords, atom_ids),
+        geometry_hash=clean2d_geometry_hash(graph, coords, atom_ids),
+        metadata={"fused_aromatic_template": True, "quality_class": quality.quality_class},
+    )
+    return _replace_candidate(candidate, rejected=True, rejection_reason=report.rejection_reason) if not safe else candidate
+
+
+def _simple_fused_bicyclic_aromatic_system(
+    graph: MolGraph, atom_ids: set[int], bonds: list[Bond]
+) -> tuple[list[int], list[int]] | None:
+    if atom_ids != set(graph.atoms) or len(atom_ids) != 10 or len(bonds) != 11 or len(graph.bonds) != 11:
+        return None
+    if any(atom.charge for atom_id, atom in graph.atoms.items() if atom_id in atom_ids):
+        return None
+    if any(
+        getattr(atom, attribute, None)
+        for atom_id, atom in graph.atoms.items()
+        if atom_id in atom_ids
+        for attribute in ("stereo_cip", "stereo_axial", "stereo_helical", "stereo_si_re")
+    ):
+        return None
+    def explicit_stereo(value: Any) -> bool:
+        return value is not None and str(getattr(value, "value", value)) not in {"", "none", "NONE", "BondStereo.NONE"}
+
+    if any(
+        explicit_stereo(getattr(bond, attribute, None))
+        for bond in bonds
+        for attribute in ("stereo", "stereo_ez", "stereo_axial", "stereo_endo_exo", "stereo_helical")
+    ):
+        return None
+    if any(not bond.is_aromatic for bond in bonds):
+        return None
+    if any(len(_adjacency_for_bonds(atom_ids, bonds).get(atom_id, set())) not in {2, 3} for atom_id in atom_ids):
+        return None
+    rings = _cycle_basis_ordered(atom_ids, bonds, max_size=6)
+    if len(rings) != 2 or any(len(ring) != 6 for ring in rings):
+        return None
+    shared = set(rings[0]) & set(rings[1])
+    if len(shared) != 2 or _bond_between(bonds, *sorted(shared)) is None:
+        return None
+    return rings[0], rings[1]
+
+
+def _fused_aromatic_template_coords(rings: tuple[list[int], list[int]], target: float) -> dict[int, tuple[float, float]]:
+    shared = set(rings[0]) & set(rings[1])
+    a, b = sorted(shared)
+    side = target * 0.98
+    height = math.sqrt(3.0) * side / 2.0
+    coords = {a: (-side / 2.0, 0.0), b: (side / 2.0, 0.0)}
+    for ring, direction in zip(rings, (1.0, -1.0)):
+        path = _ring_path_away_from_shared_edge(ring, a, b)
+        if path is None:
+            return {}
+        points = [(-side, direction * height), (-side / 2.0, direction * 2.0 * height), (side / 2.0, direction * 2.0 * height), (side, direction * height)]
+        coords.update(dict(zip(path[1:-1], points)))
+    return coords
+
+
+def _ring_path_away_from_shared_edge(ring: list[int], a: int, b: int) -> list[int] | None:
+    index_a = ring.index(a)
+    for step in (1, -1):
+        path = [a]
+        index = index_a
+        for _ in range(5):
+            index = (index + step) % len(ring)
+            path.append(ring[index])
+        if path[-1] == b:
+            return path
+    return None
 
 
 def _complex_preserve_repair_candidate(
