@@ -37,7 +37,7 @@ from chemuson.clean2d.safety import (
 )
 from chemuson.clean2d.v2 import Clean2DParameters, optimize_clean2d_positions
 from chemuson.core.layers import BlockEdgeKind, BlockKind, LayoutConstraint, LayoutConstraintKind, build_multilayer_chemical_graph
-from chemuson.core.model import Bond, MolGraph, bond_affects_valence
+from chemuson.core.model import Bond, BondStyle, MolGraph, bond_affects_valence, normalize_bond_style
 
 
 class Clean2DMode(str, Enum):
@@ -602,6 +602,15 @@ def _candidate_from_fused_aromatic_template(
         return None
     coords = _fused_aromatic_template_coords(rings, target)
     coords = _translate_to_center(_align_to_reference(before, coords), _center(before))
+    try:
+        assert_clean2d_invariants(graph, graph, before, coords, atom_ids=atom_ids)
+    except Clean2DInvariantError as exc:
+        return Clean2DCandidate(
+            source="fused_aromatic_template",
+            coords=coords,
+            rejected=True,
+            rejection_reason=str(exc),
+        )
     report = evaluate_clean2d_layout(atom_ids, bonds, before, coords, target, is_cyclic=True)
     quality = classify_clean2d_layout_quality(graph, atom_ids, coords=coords, target_bond_length=target)
     safe = is_clean2d_candidate_safe(
@@ -655,6 +664,12 @@ def _simple_fused_bicyclic_aromatic_system(
     ):
         return None
     if any(not bond.is_aromatic for bond in bonds):
+        return None
+    if any(
+        normalize_bond_style(getattr(bond, "style", BondStyle.PLAIN))
+        in {BondStyle.WEDGE, BondStyle.HASHED}
+        for bond in bonds
+    ):
         return None
     if any(len(_adjacency_for_bonds(atom_ids, bonds).get(atom_id, set())) not in {2, 3} for atom_id in atom_ids):
         return None

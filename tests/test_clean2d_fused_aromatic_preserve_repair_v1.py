@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import math
-
 from chemuson.clean2d import (
     assert_clean2d_invariants,
     capture_clean2d_snapshot,
@@ -10,7 +8,7 @@ from chemuson.clean2d import (
     ring_degeneracy_score,
     run_clean2d_engine,
 )
-from chemuson.core.model import MolGraph
+from chemuson.core.model import BondStyle, MolGraph
 
 
 def _collapsed_naphthalene() -> tuple[MolGraph, set[int], tuple[set[int], set[int]]]:
@@ -37,7 +35,7 @@ def test_simple_fused_aromatic_template_repairs_collapsed_naphthalene() -> None:
     assert report.max_bond_length_ratio <= 1.45
     assert count_new_bond_crossings(before, result.selected.coords, list(graph.bonds.values())) == 0
     assert report.min_nonbonded_after > 10.0
-    assert_clean2d_invariants(graph, graph, before, result.selected.coords, atom_ids=atoms)
+    assert_clean2d_invariants(snapshot, graph, before, result.selected.coords, atom_ids=atoms)
 
 
 def test_fused_template_is_deterministic_and_excludes_substituents() -> None:
@@ -51,3 +49,34 @@ def test_fused_template_is_deterministic_and_excludes_substituents() -> None:
     graph.add_bond(1, 11, order=1)
     excluded = run_clean2d_engine(graph, mode="publication", target_bond_length=40.0)
     assert all(candidate.source != "fused_aromatic_template" for candidate in (*excluded.candidates, *excluded.rejected))
+
+
+def _assert_template_excluded(graph: MolGraph) -> None:
+    result = run_clean2d_engine(graph, mode="publication", target_bond_length=40.0)
+    assert all(candidate.source != "fused_aromatic_template" for candidate in (*result.candidates, *result.rejected))
+
+
+def test_fused_template_excludes_wedge_or_hashed_bonds() -> None:
+    graph, _atoms, _rings = _collapsed_naphthalene()
+    graph.bonds[1].style = BondStyle.WEDGE
+    _assert_template_excluded(graph)
+
+
+def test_fused_template_excludes_non_aromatic_bonds() -> None:
+    graph, _atoms, _rings = _collapsed_naphthalene()
+    graph.bonds[1].is_aromatic = False
+    _assert_template_excluded(graph)
+
+
+def test_fused_template_excludes_larger_fused_topology() -> None:
+    graph, _atoms, _rings = _collapsed_naphthalene()
+    graph.add_atom("C", 25.0, 6.0)
+    graph.add_bond(6, 11, order=1, is_aromatic=True)
+    graph.add_bond(11, 1, order=1, is_aromatic=True)
+    _assert_template_excluded(graph)
+
+
+def test_fused_template_excludes_formal_charge() -> None:
+    graph, _atoms, _rings = _collapsed_naphthalene()
+    graph.atoms[1].charge = 1
+    _assert_template_excluded(graph)
