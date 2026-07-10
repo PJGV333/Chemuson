@@ -934,6 +934,7 @@ def _quick_backend_candidates(
         motif_candidate,
         _candidate_from_simple_aromatic_template(graph, atom_ids, before, bonds, target),
         _candidate_from_monosubstituted_aromatic_template(graph, atom_ids, before, bonds, target),
+        _candidate_from_para_disubstituted_aromatic_template(graph, atom_ids, before, bonds, target),
         _candidate_from_scaffold_depiction(graph, atom_ids, before, bonds, target),
         _candidate_from_block_unwrap(graph, atom_ids, before, bonds, target),
         _candidate_from_rdkit_isolated(graph, atom_ids, before, bonds, target, rdkit_timeout_s),
@@ -2277,6 +2278,45 @@ def _candidate_from_monosubstituted_aromatic_template(
     )
 
 
+def _candidate_from_para_disubstituted_aromatic_template(
+    graph: MolGraph,
+    atom_ids: set[int],
+    before: dict[int, tuple[float, float]],
+    bonds: list[Bond],
+    target: float,
+) -> Clean2DCandidate | None:
+    match = _simple_para_disubstituted_aromatic_system(graph, atom_ids, bonds)
+    if match is None:
+        return None
+    ring, substituents = match
+    reference = {atom_id: before[atom_id] for atom_id in ring}
+    center = _center(reference)
+    ring_bonds = [bond for bond in bonds if bond.a1_id in ring and bond.a2_id in ring]
+    coords = _translate_to_center(
+        _align_to_reference(
+            reference,
+            _regular_ring_at_center(list(ring), center, _average_target_bond_length(ring_bonds, target)),
+        ),
+        center,
+    )
+    ring_center = _center({atom_id: coords[atom_id] for atom_id in ring})
+    for anchor_id, substituent_id in substituents:
+        ax, ay = coords[anchor_id]
+        dx, dy = ax - ring_center[0], ay - ring_center[1]
+        norm = math.hypot(dx, dy)
+        if norm <= 1e-9:
+            return None
+        bond = _bond_between(bonds, anchor_id, substituent_id)
+        length = _target_length_for_bond(bond, target)
+        coords[substituent_id] = (ax + dx / norm * length, ay + dy / norm * length)
+    return Clean2DCandidate(
+        source="para_disubstituted_aromatic_template",
+        coords=coords,
+        message="Anillo aromatico para-disustituido regularizado",
+        metadata={"para_disubstituted_aromatic_template": True},
+    )
+
+
 def _candidate_from_v2(
     graph: MolGraph,
     atom_ids: set[int],
@@ -3354,6 +3394,7 @@ def _deduplicate_candidates(
             "current",
             "simple_aromatic_template",
             "monosubstituted_aromatic_template",
+            "para_disubstituted_aromatic_template",
         }:
             continue
         seen.add(geometry_hash)
@@ -3395,6 +3436,7 @@ def _source_priority(source: str) -> int:
         "rdkit_isolated": 5,
         "rdkit_direct": 6,
         "simple_aromatic_template": 7,
+        "para_disubstituted_aromatic_template": 8,
         "monosubstituted_aromatic_template": 8,
         "internal_templates": 9,
         "clean2d_v2": 10,
@@ -3455,6 +3497,12 @@ def _simple_isolated_aromatic_ring(
             return None
     if _has_explicit_stereo(graph, atom_ids, bonds):
         return None
+    if any(
+        normalize_bond_style(getattr(bond, "style", BondStyle.PLAIN))
+        in {BondStyle.WEDGE, BondStyle.HASHED}
+        for bond in bonds
+    ):
+        return None
     return ring
 
 
@@ -3512,6 +3560,55 @@ def _simple_monosubstituted_aromatic_match(
     if len(bonds) != len(ring_bonds) + 1:
         return None
     return ring, anchor_id, substituent_id
+
+
+def _simple_para_disubstituted_aromatic_system(
+    graph: MolGraph,
+    atom_ids: set[int],
+    bonds: list[Bond],
+) -> tuple[tuple[int, ...], tuple[tuple[int, int], tuple[int, int]]] | None:
+    if atom_ids != set(graph.atoms) or len(atom_ids) != 8 or len(bonds) != 8 or len(graph.bonds) != 8:
+        return None
+    if _has_explicit_stereo(graph, atom_ids, bonds):
+        return None
+    if any(
+        normalize_bond_style(getattr(bond, "style", BondStyle.PLAIN))
+        in {BondStyle.WEDGE, BondStyle.HASHED}
+        for bond in bonds
+    ):
+        return None
+    if any(int(getattr(graph.atoms[atom_id], "charge", 0) or 0) != 0 for atom_id in atom_ids):
+        return None
+    if any(not bond_affects_valence(bond) for bond in graph.bonds.values()):
+        return None
+    rings = _cycle_basis_ordered(atom_ids, bonds, max_size=6)
+    if len(rings) != 1 or len(rings[0]) != 6:
+        return None
+    ring = tuple(rings[0])
+    ring_set = set(ring)
+    if any(str(getattr(graph.atoms[atom_id], "element", "")) != "C" for atom_id in ring):
+        return None
+    ring_edges = {frozenset((ring[index], ring[(index + 1) % 6])) for index in range(6)}
+    ring_bonds = [bond for bond in bonds if bond.a1_id in ring_set and bond.a2_id in ring_set]
+    if len(ring_bonds) != 6 or any(not bond.is_aromatic or frozenset((bond.a1_id, bond.a2_id)) not in ring_edges for bond in ring_bonds):
+        return None
+    external = sorted(atom_ids - ring_set)
+    if len(external) != 2 or any(str(getattr(graph.atoms[atom_id], "element", "")) not in {"C", "N", "O", "F", "Cl", "Br", "I"} for atom_id in external):
+        return None
+    pairs: list[tuple[int, int]] = []
+    for substituent_id in external:
+        incident = [bond for bond in bonds if substituent_id in {bond.a1_id, bond.a2_id}]
+        if len(incident) != 1:
+            return None
+        bond = incident[0]
+        anchor_id = bond.a2_id if bond.a1_id == substituent_id else bond.a1_id
+        if anchor_id not in ring_set or bond.is_aromatic or int(getattr(bond, "order", 1) or 1) != 1:
+            return None
+        pairs.append((anchor_id, substituent_id))
+    anchor_indices = sorted(ring.index(anchor_id) for anchor_id, _substituent_id in pairs)
+    if (anchor_indices[1] - anchor_indices[0]) != 3:
+        return None
+    return ring, tuple(sorted(pairs))
 
 
 def _average_target_bond_length(bonds: list[Bond], target: float) -> float:
