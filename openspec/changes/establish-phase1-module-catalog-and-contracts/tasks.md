@@ -2,7 +2,7 @@
 
 ## Fase 0: Baseline y Preparación
 
-- [ ] **0.1 Capturar baseline del repositorio**
+- [x] **0.1 Capturar baseline del repositorio**
     - **Descripción**: Ejecutar los comandos de baseline y guardar resultados en `baseline.md` dentro del directorio del cambio OpenSpec.
     - **Archivos**: `openspec/changes/establish-phase1-module-catalog-and-contracts/baseline.md`
     - **Comandos**:
@@ -15,66 +15,66 @@
 
 ## Fase 1: Catálogo de Módulos
 
-- [ ] **1.1 Crear directorio `architecture/`**
+- [x] **1.1 Crear directorio `architecture/`**
     - **Descripción**: Crear el directorio que contendrá el catálogo.
     - **Archivos**: `architecture/`
     - **Aceptación**: El directorio existe.
 
-- [ ] **1.2 Escribir el esqueleto de `modules.yml` con los 19 módulos (M00-M18)**
-    - **Descripción**: Crear el archivo YAML con las entradas para M00-M18 según la tabla del design.md. Cada entrada con `id`, `name`, `title`, `responsibility`, `paths`, `status`, `risk_level`, `current_dependencies`, `target_dependencies` inicializados.
+- [x] **1.2 Escribir el esqueleto de `modules.yml` con los 19 módulos (M00-M18)**
+    - **Descripción**: Crear el archivo YAML con las entradas para M00-M18 según la tabla del design.md. Cada entrada con `id`, `name`, `title`, `responsibility`, `paths`, `status`, `risk_level`, `current_dependencies`, `target_dependencies` inicializados. YAML parseable.
     - **Archivos**: `architecture/modules.yml`
-    - **Aceptación**: El archivo contiene exactamente 19 entradas. Cada ID es único. Los paths existen en el repositorio.
+    - **Aceptación**: El archivo contiene exactamente 19 entradas. Cada ID es único. Los paths existen en el repositorio. El YAML se parsea con `yaml.safe_load`.
 
-- [ ] **1.3 Completar `public_api` para cada módulo**
-    - **Descripción**: Leer el `__init__.py` de cada paquete y listar los símbolos en `__all__`. Para paquetes sin `__all__` (chemio, compchem, gui, utils), dejar el campo vacío y anotar en `notes`.
+- [x] **1.3 Completar `public_api` para cada módulo**
+    - **Descripción**: Leer el `__init__.py` de cada paquete y listar los símbolos en `__all__`. Para paquetes sin `__all__` (chemio, compchem, gui, utils, gui.dialogs, gui.items), dejar el campo vacío y anotar en `notes`.
     - **Archivos**: `architecture/modules.yml`
-    - **Referencia**: `src/chemuson/core/__init__.py`, `src/chemuson/clean2d/__init__.py`, `src/chemuson/chemcalc/__init__.py`, `src/chemuson/chemname/__init__.py`, `src/chemuson/geometry3d/__init__.py`, `src/chemuson/spectroscopy/__init__.py`, `src/chemuson/update/__init__.py`, `src/chemuson/name2structure/__init__.py`, `src/chemuson/markush/__init__.py`, `src/chemuson/gui/canvas/__init__.py`, etc.
+    - **Referencia**: `src/chemuson/core/__init__.py`, `src/chemuson/clean2d/__init__.py`, `src/chemuson/chemcalc/__init__.py`, `src/chemuson/chemname/__init__.py`, `src/chemuson/geometry3d/__init__.py`, `src/chemuson/spectroscopy/__init__.py`, `src/chemuson/update/__init__.py`, `src/chemuson/name2structure/__init__.py`, `src/chemuson/markush/__init__.py`, `src/chemuson/gui/canvas/__init__.py`, `src/chemuson/gui/controllers/__init__.py`, `src/chemuson/gui/commands/__init__.py`.
     - **Aceptación**: Los símbolos declarados coinciden con `__all__` real.
 
-- [ ] **1.4 Mapear dependencias actuales por análisis visual de imports**
+- [x] **1.4 Mapear dependencias actuales por análisis visual de imports**
     - **Descripción**: Para cada módulo, identificar qué otros módulos chemuson importa (lectura de statements `from chemuson.*`). Distinguir imports runtime de `TYPE_CHECKING`. Completar `current_dependencies`.
     - **Archivos**: `architecture/modules.yml`
     - **Referencia**: `docs/architecture.md` (tabla de dependencias observadas) como guía inicial; verificar contra código.
     - **Aceptación**: Las dependencias coinciden con los imports reales del código.
 
-- [ ] **1.5 Definir dependencias objetivo y prohibidas**
+- [x] **1.5 Definir dependencias objetivo y prohibidas**
     - **Descripción**: Para cada módulo, definir `target_dependencies` (arquitectura ideal) y `forbidden_dependencies` basado en las reglas de `docs/architecture.md`.
     - **Archivos**: `architecture/modules.yml`
     - **Reglas**: `core` no importa ningún otro paquete chemuson. `clean2d` solo importa `core` y `chemio`. `chemname` importa `core`, `chemcalc`, `chemio`, `utils`. La GUI puede importar todo. `update` es independiente. `utils` no importa dominio químico pesado.
     - **Aceptación**: Las reglas son consistentes con `docs/architecture.md`.
 
-- [ ] **1.6 Registrar excepciones temporales**
+- [x] **1.6 Registrar excepciones temporales**
     - **Descripción**: Para cada dependencia en `current_dependencies` que viola `forbidden_dependencies` o no está en `target_dependencies`, crear una entrada en `temporary_exceptions` con todos los campos obligatorios (source_id, target_id, file, import_path, reason, debt_ref, elimination_condition, type_checking_only).
     - **Archivos**: `architecture/modules.yml`
-    - **Casos conocidos**: `chemio/persistence.py` → `gui.canvas` (TYPE_CHECKING). `utils/autosave.py` → `gui.canvas` (TYPE_CHECKING). `chemcalc` → `chemname` (circular). `chemio` ↔ `clean2d` (circular).
+    - **Casos conocidos**: `chemio/persistence.py` → `gui.canvas` (TYPE_CHECKING). `utils/autosave.py` → `gui.canvas` (TYPE_CHECKING). `utils/autosave.py` → `chemio.persistence` (runtime). `clean2d/engine.py` → `chemio.rdkit_safe` (lazy). `geometry3d/rdkit_backend.py` → `chemio.rdkit_safe` (lazy). `spectroscopy/service.py` → `chemio.rdkit_io` (lazy). `name2structure/service.py` → `chemio.rdkit_safe` (lazy).
     - **Aceptación**: Cada excepción tiene los 8 campos obligatorios. No existen comodines.
 
-- [ ] **1.7 Registrar dependencias circulares conocidas**
-    - **Descripción**: Documentar los 3 ciclos conocidos (chemio↔clean2d, chemcalc↔chemname, TYPE_CHECKING gui) en `circular_dependencies`.
+- [x] **1.7 Registrar dependencias circulares conocidas**
+    - **Descripción**: Documentar los ciclos conocidos (`chemio`↔`clean2d`, `chemcalc`↔`chemname`) en `circular_dependencies`.
     - **Archivos**: `architecture/modules.yml`
     - **Aceptación**: Cada ciclo tiene `modules`, `edges`, `severity`, `resolution_plan`.
 
-- [ ] **1.8 Completar campos restantes del catálogo**
+- [x] **1.8 Completar campos restantes del catálogo**
     - **Descripción**: Llenar `entry_points`, `tests`, `internal_api`, `notes` para cada módulo.
     - **Archivos**: `architecture/modules.yml`
     - **Aceptación**: Ningún campo obligatorio está vacío.
 
 ## Fase 2: Documentación por Módulo
 
-- [ ] **2.1 Crear directorio `docs/modules/`**
+- [x] **2.1 Crear directorio `docs/modules/`**
     - **Descripción**: Crear estructura de directorios para documentación detallada.
     - **Archivos**: `docs/modules/`
     - **Aceptación**: El directorio existe.
 
-- [ ] **2.2 Crear `docs/modules/README.md`**
+- [x] **2.2 Crear `docs/modules/README.md`**
     - **Descripción**: Índice que lista los módulos M00-M18 con título y referencia a documento individual.
     - **Archivos**: `docs/modules/README.md`
-    - **Aceptación**: Cada módulo tiene una entrada con link al documento individual.
+    - **Aceptación**: Cada módulo tiene una entrada con link al documento individual. Los módulos sin documentación existente se marcan como "pendiente" sin enlace roto. Fuente estructurada identificada como `architecture/modules.yml`. Los módulos sin documentación existente se marcan como "pendiente" sin enlace roto.
 
-- [ ] **2.3 Documentar el Canvas (M09)**
-    - **Descripción**: Crear `docs/modules/M09-canvas.md` con: composición de mixins (MRO completo), inventario de archivos (~20), estado compartido, flujo de eventos mouse/teclado, selección e hit testing, undo/redo con QUndoStack, sincronización modelo-escena, clipboard, texto/edición, render/export, serialización, dependencias internas, zonas de riesgo, extracciones futuras seguras vs. peligrosas.
+- [x] **2.3 Documentar el Canvas (M09)**
+    - **Descripción**: Crear `docs/modules/M09-canvas.md` con: composición de mixins (MRO completo), inventario de archivos (20 archivos verificados), estado compartido, flujo de eventos mouse/teclado, selección e hit testing, undo/redo con QUndoStack, sincronización modelo-escena, clipboard, texto/edición, render/export, serialización, dependencias internas, zonas de riesgo, extracciones futuras seguras vs. peligrosas.
     - **Archivos**: `docs/modules/M09-canvas.md`
-    - **Referencia**: Leer los 20 archivos de `src/chemuson/gui/canvas/`. La clase `ChemusonCanvas` en `canvas_view.py` extiende `QGraphicsView` vía 5 mixins. `CanvasInputMixin` agrega 6 sub-mixins. `CanvasToolsBondingMixin` agrega 5 sub-mixins de bonding.
+    - **Referencia**: Leer los 20 archivos de `src/chemuson/gui/canvas/`. La clase `ChemusonCanvas` en `canvas_view.py` extiende `QGraphicsView` vía 5 mixins. `CanvasInputMixin` agrega 6 sub-mixins. `CanvasToolsBondingMixin` en `canvas_tools_bonding.py` agrega 5 sub-mixins de bonding.
     - **Aceptación**: El documento cubre los 14 temas requeridos. No copia código ni explica cada método individual.
 
 - [ ] **2.4 Documentar módulos críticos brevemente**
