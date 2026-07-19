@@ -1,0 +1,1264 @@
+modules:
+- circular_dependencies: []
+  current_dependencies: []
+  entry_points:
+  - build_multilayer_chemical_graph
+  forbidden_dependencies:
+  - M01
+  - M02
+  - M03
+  - M04
+  - M05
+  - M06
+  - M07
+  - M08
+  - M09
+  - M10
+  - M11
+  - M12
+  - M13
+  - M14
+  - M15
+  - M16
+  - M17
+  id: M00
+  internal_api:
+  - bond_affects_valence
+  - bond_style_is_structural
+  - normalize_bond_style
+  - normalize_opacity
+  - normalize_optional_opacity
+  - SIMPLE_HYDROGEN_GROUP_LABELS
+  - VALENCE_MAP
+  - ATOMIC_NUMBERS
+  name: core
+  notes: Submódulos internos (layers.py, molecule.py, elemental_analysis.py) importan
+    entre sí pero no exportan.
+  paths:
+  - src/chemuson/core/
+  public_api:
+  - Atom
+  - Bond
+  - BondStyle
+  - BondStereo
+  - ChemState
+  - MolGraph
+  - ValidationCorrectionAction
+  - ValidationIssue
+  - BlockEdge
+  - BlockEdgeKind
+  - BlockGraph
+  - BlockKind
+  - BlockNode
+  - InteractionEdge
+  - InteractionGraph
+  - InteractionKind
+  - LayoutConstraint
+  - LayoutConstraintGraph
+  - LayoutConstraintKind
+  - MotifGraph
+  - MotifKind
+  - MotifNode
+  - MultilayerChemicalGraph
+  - build_multilayer_chemical_graph
+  - ATOMIC_WEIGHTS
+  - DEFAULT_TOLERANCE
+  - SOLVENT_LIBRARY
+  - ComparisonEntry
+  - FormulaError
+  - SolvateCandidate
+  - SolventEntry
+  - compare_found_calculated
+  - elemental_percentages
+  - find_solvate_candidates
+  - format_formula
+  - format_publication_line
+  - molecular_weight
+  - parse_formula
+  responsibility: Modelo molecular independiente de UI, estado químico, validación
+    básica, análisis elemental y grafo químico multicapa.
+  risk_level: low
+  status: stable
+  target_dependencies: []
+  temporary_exceptions: []
+  tests:
+  - tests/test_core_model.py
+  title: Modelo molecular fundamental
+- circular_dependencies:
+  - edges:
+    - file: src/chemuson/chemio/depiction_candidates.py
+      import_path: from chemuson.clean2d.geometry import count_crossings, cycle_basis,
+        segments_intersect
+      source: M01
+      target: M02
+    - file: src/chemuson/chemio/depiction_candidates.py
+      import_path: from chemuson.clean2d.safety import has_cycles, min_nonbonded_distance,
+        ring_degeneracy_score
+      source: M01
+      target: M02
+    - file: src/chemuson/chemio/rdkit_io.py
+      import_path: from chemuson.clean2d.geometry import apply_coords_in_place
+      source: M01
+      target: M02
+    - file: src/chemuson/clean2d/block_unwrap.py
+      import_path: from chemuson.chemio.depiction_candidates import block_donut_score,
+        score_imported_depiction
+      source: M02
+      target: M01
+    - file: src/chemuson/clean2d/scaffold_depiction.py
+      import_path: from chemuson.chemio.depiction_candidates import block_donut_score,
+        score_imported_depiction
+      source: M02
+      target: M01
+    modules:
+    - M01
+    - M02
+    resolution_plan: Mover depiction_candidates.py a clean2d o a un paquete compartido
+      en fase futura.
+    severity: high
+  current_dependencies:
+  - M00
+  - M02
+  entry_points: []
+  forbidden_dependencies:
+  - M08
+  - M09
+  - M10
+  - M11
+  - M12
+  - M13
+  id: M01
+  internal_api:
+  - rdkit_io
+  - rdkit_safe
+  - persistence
+  - cml_io
+  - depiction_candidates
+  - _rdkit_worker
+  name: chemio
+  notes: 'API pública no declarada en __init__.py (solo docstring). Los módulos rdkit_io,
+    rdkit_safe, persistence,
+
+    cml_io, depiction_candidates son usados por otros paquetes. _rdkit_worker.py es
+    invocado por subprocess
+
+    desde rdkit_safe.py y no aparece en imports normales.
+
+    '
+  paths:
+  - src/chemuson/chemio/
+  public_api: []
+  responsibility: 'Import/export químico y persistencia: SMILES, Molfile, CML, CMSN,
+    candidatos de depiction y acceso seguro a RDKit.'
+  risk_level: medium
+  status: evolving
+  target_dependencies:
+  - M00
+  - M02
+  temporary_exceptions:
+  - debt_ref: establish-phase1-module-catalog-and-contracts
+    elimination_condition: Extraer interfaz de canvas a un módulo tipo-only o eliminar
+      la dependencia tipando con Protocol.
+    file: src/chemuson/chemio/persistence.py
+    import_path: from chemuson.gui.canvas import ChemusonCanvas
+    reason: Import guardado bajo TYPE_CHECKING para tipado de retorno en PersistenceManager.save_to_dict().
+    source_id: M01
+    target_id: M09
+    type_checking_only: true
+  tests:
+  - tests/test_rdkit_roundtrip.py
+  - tests/test_cml_io.py
+  - tests/test_smiles_depiction_candidates.py
+  - tests/test_smiles_import_isolated.py
+  - tests/test_smiles_stereo_import.py
+  - tests/test_scaffold_depiction.py
+  - tests/test_rdkit_smoke.py
+  - tests/test_rdkit_descriptors.py
+  - tests/test_rdkit_strict_validation.py
+  - tests/test_coordination_persistence.py
+  title: Import/export químico y persistencia
+- circular_dependencies:
+  - edges:
+    - file: src/chemuson/chemio/depiction_candidates.py
+      import_path: from chemuson.clean2d.geometry import count_crossings, cycle_basis,
+        segments_intersect
+      source: M01
+      target: M02
+    - file: src/chemuson/clean2d/block_unwrap.py
+      import_path: from chemuson.chemio.depiction_candidates import block_donut_score,
+        score_imported_depiction
+      source: M02
+      target: M01
+    - file: src/chemuson/clean2d/scaffold_depiction.py
+      import_path: from chemuson.chemio.depiction_candidates import block_donut_score,
+        score_imported_depiction
+      source: M02
+      target: M01
+    modules:
+    - M01
+    - M02
+    resolution_plan: Mover depiction_candidates.py a clean2d o a un paquete compartido
+      en fase futura.
+    severity: high
+  current_dependencies:
+  - M00
+  - M01
+  entry_points:
+  - run_clean2d_engine
+  - generate_clean2d_candidates
+  - rank_clean2d_candidates
+  - evaluate_clean2d_layout
+  forbidden_dependencies:
+  - M08
+  - M09
+  - M10
+  - M11
+  - M12
+  - M13
+  id: M02
+  internal_api:
+  - engine
+  - safety
+  - geometry
+  - block_unwrap
+  - scaffold_depiction
+  - complex_policy
+  - local_graph_cleaner
+  - length_only
+  - v2
+  - debug_snapshots
+  name: clean2d
+  notes: 'Engine importa rdkit_safe de forma lazy dentro de funciones (no es dependencia
+    runtime en import global).
+
+    6 tests conocidos fallan en baseline: test_clean2d_aromatic_mixed, test_clean2d_multilayer_constraints,
+
+    test_clean2d_safety, test_clean2d_smart_propose, test_clean2d_terminal_rings,
+    test_clean2d_tetrandrine_like_local.
+
+    '
+  paths:
+  - src/chemuson/clean2d/
+  public_api:
+  - Clean2DParameters
+  - optimize_clean2d_positions
+  - Clean2DQualityReport
+  - evaluate_clean2d_layout
+  - is_clean2d_candidate_safe
+  - has_cycles
+  - count_new_bond_crossings
+  - min_nonbonded_distance
+  - ring_degeneracy_score
+  - max_atom_displacement
+  - bond_length_stats
+  - length_only_polish
+  - structure_preserving_geometry_polish
+  - structure_preserving_length_polish
+  - Clean2DComplexityProfile
+  - classify_clean2d_complexity
+  - LocalClean2DMode
+  - LocalClean2DReport
+  - LocalClean2DResult
+  - LocalDefect
+  - LocalRepair
+  - RepairValidation
+  - is_complex_clean2d_graph
+  - local_graph_clean2d
+  - stereo_layout_signature
+  - validate_local_repair
+  - Clean2DMode
+  - Clean2DCandidate
+  - Clean2DResult
+  - Clean2DInvariantError
+  - Clean2DGraphSnapshot
+  - Clean2DLayoutQualityReport
+  - assert_clean2d_invariants
+  - canonicalization_delta
+  - capture_clean2d_snapshot
+  - classify_clean2d_layout_quality
+  - clean2d_geometry_hash
+  - generate_clean2d_candidates
+  - has_hierarchical_block_layout_signals
+  - has_intramolecular_block_layout_problem
+  - rank_clean2d_candidates
+  - run_clean2d_engine
+  - stable_clean2d_rejection_reason
+  - STABLE_CLEAN2D_REJECTION_REASONS
+  - summarize_clean2d_candidates
+  - Clean2DQualityContractError
+  - Clean2DQualityDiagnostic
+  - clean2d_candidate_quality_diagnostic
+  - clean2d_quality_diagnostic
+  - clean2d_result_quality_diagnostic
+  - clean2d_safety_quality_diagnostic
+  - normalize_clean2d_reporting_score
+  - validate_clean2d_quality_diagnostic
+  - CLEAN2D_DEBUG_SNAPSHOT_ENV
+  - CLEAN2D_DEBUG_SNAPSHOT_SCHEMA
+  - CLEAN2D_DEBUG_SNAPSHOT_VERSION
+  - build_clean2d_debug_snapshot
+  - clean2d_debug_snapshot_enabled
+  - read_clean2d_debug_snapshot
+  - run_clean2d_with_debug_snapshot
+  - validate_clean2d_debug_snapshot
+  - write_clean2d_debug_snapshot
+  responsibility: 'Limpieza/depiction 2D desacoplada de la GUI: candidatos, ranking,
+    invariantes, seguridad geométrica, reparación local y políticas de moléculas complejas.'
+  risk_level: high
+  status: evolving
+  target_dependencies:
+  - M00
+  - M01
+  temporary_exceptions:
+  - debt_ref: establish-phase1-module-catalog-and-contracts
+    elimination_condition: 'Mantener como dependencia aceptada: clean2d necesita RDKit
+      aislado para scoring.'
+    file: src/chemuson/clean2d/engine.py
+    import_path: from chemuson.chemio.rdkit_safe import clean2d_isolated
+    reason: Dependencia lazy dentro de función para aislamiento de RDKit en workers.
+    source_id: M02
+    target_id: M01
+    type_checking_only: false
+  - debt_ref: establish-phase1-module-catalog-and-contracts
+    elimination_condition: Mantener como dependencia aceptada.
+    file: src/chemuson/clean2d/engine.py
+    import_path: from chemuson.chemio.rdkit_safe import conformer_3d_isolated
+    reason: Dependencia lazy dentro de función para generación 3D.
+    source_id: M02
+    target_id: M01
+    type_checking_only: false
+  tests:
+  - tests/test_clean2d_simple_aromatic_layout_v1.py
+  - tests/test_clean2d_smart_propose.py
+  - tests/test_clean2d_terminal_rings.py
+  - tests/test_clean2d_tetrandrine_like_local.py
+  - tests/test_clean2d_v2.py
+  - tests/test_clean_2d_fallback_chain_geometry.py
+  - tests/test_clean_2d_h_projection.py
+  - tests/test_clean_2d_no_bond_crossings.py
+  - tests/test_clean_2d_scaling.py
+  - tests/test_clean_2d_strategy.py
+  - tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py
+  title: Limpieza/depiction 2D
+- circular_dependencies:
+  - edges:
+    - file: src/chemuson/chemcalc/formula.py
+      import_path: from chemuson.chemname.molview import MolView
+      source: M03
+      target: M04
+    - file: src/chemuson/chemcalc/valence.py
+      import_path: from chemuson.chemname.molview import MolView
+      source: M03
+      target: M04
+    - file: src/chemuson/chemname/engine.py
+      import_path: from chemuson.chemcalc.valence import implicit_h_count
+      source: M04
+      target: M03
+    - file: src/chemuson/chemname/coordination.py
+      import_path: from chemuson.chemcalc.valence import implicit_h_count
+      source: M04
+      target: M03
+    - file: src/chemuson/chemname/functional_groups.py
+      import_path: from chemuson.chemcalc.valence import implicit_h_count
+      source: M04
+      target: M03
+    - file: src/chemuson/chemname/rings.py
+      import_path: from chemuson.chemcalc.valence import implicit_h_count
+      source: M04
+      target: M03
+    - file: src/chemuson/chemname/ring_naming.py
+      import_path: from chemuson.chemcalc.valence import implicit_h_count
+      source: M04
+      target: M03
+    - file: src/chemuson/chemname/special.py
+      import_path: from chemuson.chemcalc.valence import implicit_h_count
+      source: M04
+      target: M03
+    - file: src/chemuson/chemname/substituents.py
+      import_path: from chemuson.chemcalc.valence import implicit_h_count
+      source: M04
+      target: M03
+    modules:
+    - M03
+    - M04
+    resolution_plan: Extraer MolView a core/model.py o mover implicit_h_count a core
+      en fase futura.
+    severity: medium
+  current_dependencies:
+  - M04
+  entry_points: []
+  forbidden_dependencies:
+  - M02
+  - M08
+  - M09
+  - M10
+  - M11
+  - M12
+  - M13
+  id: M03
+  internal_api:
+  - formula
+  - mass
+  - valence
+  name: chemcalc
+  notes: MolView de chemname es importado por chemcalc.formula y chemcalc.valence
+    (dependencia runtime, no TYPE_CHECKING).
+  paths:
+  - src/chemuson/chemcalc/
+  public_api:
+  - molecular_formula
+  - format_formula
+  - molecular_weight
+  - implicit_h_count
+  - TYPICAL_VALENCE
+  responsibility: Fórmula, masa molecular, valencias típicas e hidrógenos implícitos
+    auxiliares.
+  risk_level: low
+  status: stable
+  target_dependencies:
+  - M00
+  temporary_exceptions: []
+  tests:
+  - tests/test_elemental_analysis.py
+  title: Cálculos químicos auxiliares
+- circular_dependencies:
+  - edges:
+    - file: src/chemuson/chemname/engine.py
+      import_path: from chemuson.chemcalc.valence import implicit_h_count
+      source: M04
+      target: M03
+    - file: src/chemuson/chemcalc/formula.py
+      import_path: from chemuson.chemname.molview import MolView
+      source: M03
+      target: M04
+    modules:
+    - M03
+    - M04
+    resolution_plan: Extraer MolView a core/model.py o mover implicit_h_count a core
+      en fase futura.
+    severity: medium
+  current_dependencies:
+  - M00
+  - M03
+  - M01
+  - M15
+  entry_points:
+  - iupac_name
+  forbidden_dependencies:
+  - M02
+  - M08
+  - M09
+  - M10
+  - M11
+  - M12
+  - M13
+  id: M04
+  internal_api:
+  - engine
+  - molview
+  - parent_chain
+  - rings
+  - ring_naming
+  - template
+  - template_match
+  - functional_groups
+  - substituents
+  - stereo
+  - stereo_advanced
+  - coordination
+  - special
+  name: chemname
+  notes: 'Importa chemio de forma lazy (TYPE_CHECKING en stereo_advanced.py, runtime
+    dentro de funciones en engine.py).
+
+    Importa utils.resources de forma global. chemcalc depende de chemname.molview
+    en runtime.
+
+    '
+  paths:
+  - src/chemuson/chemname/
+  public_api:
+  - iupac_name
+  - NameOptions
+  responsibility: 'IUPAC-lite y nomenclatura semisistemática: selección de cadenas/anillos,
+    plantillas, grupos funcionales, estereoquímica y coordinación.'
+  risk_level: medium
+  status: evolving
+  target_dependencies:
+  - M00
+  - M03
+  temporary_exceptions: []
+  tests:
+  - tests/test_iupac_ui.py
+  title: Nomenclatura IUPAC-lite
+- circular_dependencies: []
+  current_dependencies:
+  - M00
+  - M01
+  entry_points:
+  - conformer_3d_for_graph
+  - project_conformer_to_2d
+  forbidden_dependencies:
+  - M08
+  - M09
+  - M10
+  - M11
+  - M12
+  - M13
+  id: M05
+  internal_api:
+  - service
+  - model
+  - coordinates
+  - rdkit_backend
+  - obabel_backend
+  - cache
+  - export_xyz
+  name: geometry3d
+  notes: 'Backends rdkit_backend y obabel_backend son opcionales. rdkit_backend importa
+    rdkit_safe de forma lazy.
+
+    obabel_backend depende de obabel externo (no siempre disponible).
+
+    '
+  paths:
+  - src/chemuson/geometry3d/
+  public_api:
+  - Conformer3DResult
+  - CoordinateSet3D
+  - cache_key_for_3d
+  - DepthCue
+  - ForceField
+  - OptimizationFrame
+  - OptimizationResult
+  - OptimizationSettings
+  - SceneAtom3D
+  - SceneBond3D
+  - SceneMolecule3D
+  - ProjectedAtom3D
+  - Rotation3D
+  - conformer_3d_for_graph
+  - conformer_3d_for_graph_async
+  - project_conformer_to_2d
+  - scene_molecule_from_graph
+  responsibility: Modelos y servicios 3D, generación/proyección de conformeros, cache
+    y export XYZ.
+  risk_level: medium
+  status: stable
+  target_dependencies:
+  - M00
+  - M01
+  temporary_exceptions:
+  - debt_ref: establish-phase1-module-catalog-and-contracts
+    elimination_condition: 'Mantener como dependencia aceptada: backend opcional.'
+    file: src/chemuson/geometry3d/rdkit_backend.py
+    import_path: from chemuson.chemio.rdkit_safe import conformer_3d_isolated
+    reason: Dependencia lazy dentro de función para backend opcional de RDKit.
+    source_id: M05
+    target_id: M01
+    type_checking_only: false
+  - debt_ref: establish-phase1-module-catalog-and-contracts
+    elimination_condition: Mantener como dependencia aceptada.
+    file: src/chemuson/geometry3d/rdkit_backend.py
+    import_path: from chemuson.chemio.rdkit_safe import optimize_3d_isolated
+    reason: Dependencia lazy dentro de función para backend opcional de RDKit.
+    source_id: M05
+    target_id: M01
+    type_checking_only: false
+  tests:
+  - tests/test_geometry3d_service.py
+  title: Servicios 3D
+- circular_dependencies: []
+  current_dependencies:
+  - M00
+  - M05
+  entry_points: []
+  forbidden_dependencies:
+  - M08
+  - M09
+  - M10
+  - M11
+  - M12
+  - M13
+  id: M06
+  internal_api:
+  - exporters.common
+  - exporters.gaussian
+  - exporters.orca
+  - exporters.nwchem
+  name: compchem
+  paths:
+  - src/chemuson/compchem/exporters/
+  public_api:
+  - export_gaussian_input
+  - export_nwchem_input
+  - export_orca_input
+  responsibility: Exportadores de química computacional y especificaciones de entrada
+    para Gaussian/ORCA/NWChem.
+  risk_level: low
+  status: stable
+  target_dependencies:
+  - M00
+  - M05
+  temporary_exceptions: []
+  tests:
+  - tests/test_compchem_exporters.py
+  title: Exportación química computacional
+- circular_dependencies: []
+  current_dependencies:
+  - M00
+  - M01
+  entry_points:
+  - predict_spectra
+  - register_predictor
+  forbidden_dependencies:
+  - M08
+  - M09
+  - M10
+  - M11
+  - M12
+  - M13
+  id: M07
+  internal_api:
+  - service
+  name: spectroscopy
+  notes: MVP de predicción espectral. Importa rdkit_io de forma lazy dentro de funciones.
+  paths:
+  - src/chemuson/spectroscopy/
+  public_api:
+  - CarbonNmrPeak
+  - MassPeak
+  - ProtonNmrPeak
+  - SpectralPrediction
+  - SpectrumPredictor
+  - predict_spectra
+  - register_predictor
+  responsibility: Predicción MVP de NMR/masa y registro de predictores espectrales.
+  risk_level: medium
+  status: evolving
+  target_dependencies:
+  - M00
+  - M01
+  temporary_exceptions:
+  - debt_ref: establish-phase1-module-catalog-and-contracts
+    elimination_condition: Mantener como dependencia aceptada.
+    file: src/chemuson/spectroscopy/service.py
+    import_path: from chemuson.chemio.rdkit_io import expand_abbreviations_for_calculation
+    reason: Dependencia lazy dentro de función para expansión de superátomos en cálculo.
+    source_id: M07
+    target_id: M01
+    type_checking_only: false
+  tests:
+  - tests/test_spectroscopy_service.py
+  title: Predicción espectral
+- circular_dependencies: []
+  current_dependencies:
+  - M00
+  - M01
+  - M02
+  - M03
+  - M04
+  - M05
+  - M06
+  - M07
+  - M14
+  - M15
+  - M16
+  entry_points:
+  - ChemusonWindow
+  - ChemusonCanvas
+  forbidden_dependencies: []
+  id: M08
+  internal_api:
+  - main_window
+  - canvas
+  - controllers
+  - commands
+  - dialogs
+  - items
+  - elemental_analysis_dialog
+  - numbering
+  - tab_manager
+  - templates
+  - template_browser_service
+  - template_builtins
+  - template_chem_adapter
+  - template_conversion
+  - template_library
+  - toolbar
+  - style
+  - actions
+  name: gui
+  notes: 'GUI importa todos los subsistemas de dominio para orquestación. No implementa
+    lógica química pesada.
+
+    items.py es un módulo individual (no paquete): src/chemuson/gui/items.py (5704
+    líneas).
+
+    '
+  paths:
+  - src/chemuson/gui/
+  public_api:
+  - ChemusonCanvas
+  - ChemusonWindow
+  responsibility: 'UI PyQt6: ventana principal, canvas/editor 2D, acciones, docks,
+    controllers, comandos undo/redo, rendering y herramientas visuales.'
+  risk_level: high
+  status: evolving
+  target_dependencies:
+  - M00
+  - M01
+  - M02
+  - M03
+  - M04
+  - M05
+  - M06
+  - M07
+  - M14
+  - M15
+  - M16
+  temporary_exceptions: []
+  tests:
+  - tests/test_main_window_tabs.py
+  - tests/test_drag_move_undo.py
+  - tests/test_dimensions_scaling.py
+  - tests/test_document_controller.py
+  - tests/test_compchem3d_dock.py
+  - tests/test_spectroscopy_dock.py
+  - tests/test_validation_dock.py
+  - tests/test_iupac_ui.py
+  - tests/test_name2structure_ui.py
+  - tests/test_template_controller.py
+  - tests/test_template_dock.py
+  - tests/test_template_browser_service.py
+  - tests/test_update_ui_text.py
+  - tests/test_text_tool_interaction.py
+  - tests/test_label_font_selection.py
+  - tests/test_clipboard_structure_copy.py
+  - tests/test_paste_selection_behavior.py
+  - tests/test_selection_tightness.py
+  - tests/test_fragment_pivot_rotation.py
+  - tests/test_fragment_pivot_rotation_ui.py
+  - tests/test_double_bond_orientation_toggle.py
+  - tests/test_double_bond_vertex_rendering.py
+  - tests/test_export_rendering.py
+  - tests/test_wedge_geometry.py
+  - tests/test_sp3_bond_placement.py
+  - tests/test_diagram_presets.py
+  - tests/test_energy_diagrams.py
+  - tests/test_orbital_palette.py
+  - tests/test_plate_items.py
+  - tests/test_semantic_diagram_editing.py
+  - tests/test_semantic_diagram_models.py
+  - tests/test_functional_group_hydrogen_adjustment.py
+  - tests/test_interaction_bond_semantics.py
+  - tests/test_numbering.py
+  - tests/test_linux_distribution_scripts.py
+  - tests/test_release_version_script.py
+  title: Orquestación de interfaz PyQt6
+- circular_dependencies: []
+  current_dependencies:
+  - M00
+  - M01
+  - M03
+  - M04
+  - M05
+  entry_points:
+  - ChemusonCanvas
+  - molgraph_to_molfile
+  - molgraph_to_smiles
+  forbidden_dependencies: []
+  id: M09
+  internal_api:
+  - canvas_view
+  - canvas_constants
+  - canvas_selection
+  - canvas_text
+  - canvas_render
+  - canvas_structure
+  - canvas_input
+  - canvas_commands
+  - canvas_items
+  - canvas_annotations
+  - canvas_bond_drag
+  - canvas_bond_geometry
+  - canvas_bond_hit_testing
+  - canvas_bond_model_ops
+  - canvas_bond_state
+  - canvas_chem_data
+  - canvas_context_menu
+  - canvas_keyboard
+  - canvas_tools_annotations
+  - canvas_tools_bonding
+  - canvas_tools_rings_chains
+  - canvas_selection_input
+  - canvas_selection_item
+  name: gui.canvas
+  notes: 'ChemusonCanvas extiende QGraphicsView con 5 mixins (CanvasInputMixin, CanvasSelectionMixin,
+
+    CanvasTextMixin, CanvasRenderMixin, CanvasStructureMixin). CanvasInputMixin agrega
+    6 sub-mixins.
+
+    CanvasToolsBondingMixin (canvas_tools_bonding.py) agrega 5 sub-mixins de bonding.
+    20 archivos en canvas/.
+
+    '
+  paths:
+  - src/chemuson/gui/canvas/
+  public_api:
+  - AROMATIC_CIRCLE_ATOMS_ROLE
+  - BRANCH_ROTATION_NOOP_TOLERANCE_DEG
+  - BRANCH_ROTATION_STEP_DEG
+  - ChemusonCanvas
+  - FRAGMENT_ROTATION_STEP_DEG
+  - molgraph_to_molfile
+  - molgraph_to_smiles
+  - QInputDialog
+  responsibility: Canvas de edición molecular interactivo basado en QGraphicsView
+    con arquitectura de mixins.
+  risk_level: high
+  status: evolving
+  target_dependencies:
+  - M00
+  - M01
+  - M03
+  - M04
+  - M05
+  temporary_exceptions: []
+  tests: []
+  title: Canvas de edición molecular
+- circular_dependencies: []
+  current_dependencies:
+  - M01
+  - M02
+  - M03
+  - M04
+  - M05
+  - M06
+  - M07
+  - M14
+  - M16
+  - M18
+  entry_points: []
+  forbidden_dependencies: []
+  id: M10
+  internal_api: []
+  name: gui.controllers
+  paths:
+  - src/chemuson/gui/controllers/
+  public_api:
+  - Clean2DController
+  - CompChem3DController
+  - CompChem3DWorker
+  - CompChemJobSpec
+  - DocumentController
+  - DocumentDiscardContext
+  - DocumentTabsContext
+  - ExportController
+  - FileController
+  - FileWorkflowContext
+  - RecentFilesContext
+  - RecoveryController
+  - TextFormatController
+  - TemplateController
+  - TemplateControllerContext
+  - UpdateController
+  - UpdateControllerContext
+  - ValidationController
+  - ValidationFixResult
+  - ViewController
+  responsibility: 'Controllers de la GUI: orquestación de canvas, documentos, exportación,
+    actualización y validación.'
+  risk_level: medium
+  status: evolving
+  target_dependencies:
+  - M01
+  - M02
+  - M03
+  - M04
+  - M05
+  - M06
+  - M07
+  - M14
+  - M16
+  - M18
+  temporary_exceptions: []
+  tests: []
+  title: Controllers de la GUI
+- circular_dependencies: []
+  current_dependencies:
+  - M01
+  - M02
+  - M03
+  - M04
+  - M05
+  - M06
+  - M07
+  - M14
+  - M16
+  - M18
+  entry_points: []
+  forbidden_dependencies: []
+  id: M11
+  internal_api: []
+  name: gui.commands
+  paths:
+  - src/chemuson/gui/commands/
+  public_api:
+  - AddAtomCommand
+  - ChangeAtomCommand
+  - ChangeChargeCommand
+  - ChangeNoImplicitCommand
+  - ChangeAtomLabelScaleCommand
+  - SetCoordinationCenterCommand
+  - ChangeCoordinationSphereStyleCommand
+  - AddBondCommand
+  - ChangeBondCommand
+  - ChangeBondLengthCommand
+  - ChangeBondStrokeCommand
+  - ChangeBondColorCommand
+  - ChangeDoubleBondOrientationCommand
+  - AddRingCommand
+  - AddChainCommand
+  - MoveTextItemsCommand
+  - ScaleTextItemsCommand
+  - FormatTextItemsCommand
+  - AddTextItemCommand
+  - ChangeArrowStrokeCommand
+  - ChangeBracketStrokeCommand
+  - ChangeBracketRepeatLabelCommand
+  - ChangeRGroupSubstituentsCommand
+  - AddArrowCommand
+  - AddBracketCommand
+  - AddImageItemCommand
+  - AddWavyAnchorCommand
+  - AddEnergyDiagramItemCommand
+  - TransformEnergyDiagramItemsCommand
+  - ConfigureEnergyDiagramItemsCommand
+  - AddCompositeDiagramItemCommand
+  - EditSemanticDiagramCommand
+  - AddOrbitalItemCommand
+  - TransformOrbitalItemsCommand
+  - StyleOrbitalItemsCommand
+  - AddPlateItemCommand
+  - MovePlateItemsCommand
+  - TransformPlateItemsCommand
+  - AddSpotBandCommand
+  - RemoveSpotBandCommand
+  - MoveSpotBandCommand
+  - ChangeSpotBandPropertyCommand
+  - ChangePlateLabelsCommand
+  - ChangeCanvasOpacityCommand
+  - MoveAtomsCommand
+  - MoveArrowItemsCommand
+  - MoveBracketItemsCommand
+  - TransformImageItemsCommand
+  - ScaleArrowItemsCommand
+  - ScaleBracketItemsCommand
+  - DeleteSelectionCommand
+  responsibility: 'Comandos undo/redo para el canvas: operaciones atómicas sobre átomos,
+    enlaces, texto y diagramas.'
+  risk_level: medium
+  status: evolving
+  target_dependencies:
+  - M01
+  - M02
+  - M03
+  - M04
+  - M05
+  - M06
+  - M07
+  - M14
+  - M16
+  - M18
+  temporary_exceptions: []
+  tests: []
+  title: Comandos undo/redo
+- circular_dependencies: []
+  current_dependencies:
+  - M00
+  - M14
+  entry_points: []
+  forbidden_dependencies: []
+  id: M12
+  internal_api:
+  - preferences_dialog
+  - style_dialog
+  - selection_scale_dialog
+  - atom_label_dialog
+  - quick_start_dialog
+  - tlc_insert_dialog
+  - gel_insert_dialog
+  - trackball_rotation_dialog
+  name: gui.dialogs
+  notes: Sin __all__ en __init__.py. Los diálogos usan ChemState de core y DrawingStyle
+    de gui.style.
+  paths:
+  - src/chemuson/gui/dialogs/
+  public_api: []
+  responsibility: 'Diálogos de la GUI: preferencias, estilos, selección, inserción
+    de placas/gels, guía rápida.'
+  risk_level: low
+  status: evolving
+  target_dependencies:
+  - M00
+  - M14
+  temporary_exceptions: []
+  tests: []
+  title: Diálogos de la GUI
+- circular_dependencies: []
+  current_dependencies:
+  - M00
+  entry_points: []
+  forbidden_dependencies:
+  - M08
+  - M09
+  - M10
+  - M11
+  - M12
+  - M13
+  id: M13
+  internal_api:
+  - items
+  name: gui.items
+  notes: 'Módulo individual (no paquete): src/chemuson/gui/items.py (5704 líneas).'
+  paths:
+  - src/chemuson/gui/items.py
+  public_api: []
+  responsibility: 'Items gráficos (átomos, enlaces, etc.) para la escena de Qt: subclases
+    de QGraphicsItem.'
+  risk_level: medium
+  status: evolving
+  target_dependencies:
+  - M00
+  temporary_exceptions: []
+  tests: []
+  title: Items gráficos (átomos, enlaces, etc.)
+- circular_dependencies: []
+  current_dependencies: []
+  entry_points: []
+  forbidden_dependencies:
+  - M08
+  - M09
+  - M10
+  - M11
+  - M12
+  - M13
+  id: M14
+  internal_api:
+  - core
+  - provider
+  - security
+  - policy
+  - portable
+  - windows
+  - rollback
+  - telemetry
+  - types
+  name: update
+  paths:
+  - src/chemuson/update/
+  public_api:
+  - AutoUpdateCore
+  - VerificationResult
+  - GitHubReleasesProvider
+  - detect_platform_tag
+  - RollbackManager
+  - SignatureVerifier
+  - UpdateTelemetryLogger
+  - parse_semver
+  - compare_versions
+  - is_newer_version
+  - is_prerelease
+  - channel_accepts_version
+  - should_check_now
+  - mark_checked
+  - can_offer_update
+  - is_downgrade_suspected
+  - APPIMAGE_ENV_VAR
+  - PortableUpdateContext
+  - detect_portable_update_context
+  - is_portable_target_writable
+  - build_portable_update_launcher_command
+  - write_portable_update_script
+  - launch_portable_update_script
+  - DownloadedUpdate
+  - ReleaseAsset
+  - ReleaseInfo
+  - UpdateCandidate
+  - UpdateChannel
+  - UpdateCheckResult
+  - UpdateMode
+  - UpdateSettings
+  - coerce_update_channel
+  - coerce_update_mode
+  - INSTALL_MARKER_FILENAME
+  - WindowsInstallContext
+  - detect_windows_install_context
+  - choose_windows_asset_flavor
+  - is_windows_installer_asset
+  - build_inno_installer_command
+  - launch_inno_installer
+  responsibility: 'Subsistema de auto-actualización: política, proveedor, seguridad,
+    rollback, portable y telemetría.'
+  risk_level: low
+  status: stable
+  target_dependencies: []
+  temporary_exceptions: []
+  tests:
+  - tests/test_update_core.py
+  - tests/test_update_policy.py
+  - tests/test_update_portable.py
+  - tests/test_update_provider.py
+  - tests/test_update_security.py
+  - tests/test_update_semver.py
+  - tests/test_update_telemetry.py
+  - tests/test_update_ui_text.py
+  - tests/test_update_windows.py
+  title: Subsistema de auto-actualización
+- circular_dependencies: []
+  current_dependencies:
+  - M01
+  - M08
+  entry_points: []
+  forbidden_dependencies:
+  - M08
+  - M09
+  - M10
+  - M11
+  - M12
+  - M13
+  id: M15
+  internal_api:
+  - resources
+  - autosave
+  - crash_reporter
+  name: utils
+  notes: 'Sin __all__ en __init__.py. autosave.py depende de chemio.persistence (runtime)
+    y gui.canvas (TYPE_CHECKING).
+
+    crash_reporter.py es independiente.
+
+    '
+  paths:
+  - src/chemuson/utils/
+  public_api: []
+  responsibility: Recursos empaquetados, autosave y crash reporting compartido.
+  risk_level: low
+  status: stable
+  target_dependencies: []
+  temporary_exceptions:
+  - debt_ref: establish-phase1-module-catalog-and-contracts
+    elimination_condition: Eliminar dependencia tipando con Protocol o eliminar el
+      uso de ChemusonCanvas en autosave.
+    file: src/chemuson/utils/autosave.py
+    import_path: from chemuson.gui.canvas import ChemusonCanvas
+    reason: Import guardado bajo TYPE_CHECKING para tipado de retorno en AutosaveManager.
+    source_id: M15
+    target_id: M08
+    type_checking_only: true
+  - debt_ref: establish-phase1-module-catalog-and-contracts
+    elimination_condition: 'Mantener como excepción aceptada: autosave necesita persistencia.'
+    file: src/chemuson/utils/autosave.py
+    import_path: from chemuson.chemio.persistence import PersistenceManager
+    reason: AutosaveManager usa PersistenceManager para serializar el canvas.
+    source_id: M15
+    target_id: M01
+    type_checking_only: false
+  tests: []
+  title: Utilidades compartidas
+- circular_dependencies: []
+  current_dependencies:
+  - M00
+  - M01
+  entry_points:
+  - resolve_name_to_structure
+  forbidden_dependencies:
+  - M08
+  - M09
+  - M10
+  - M11
+  - M12
+  - M13
+  id: M16
+  internal_api:
+  - service
+  name: name2structure
+  paths:
+  - src/chemuson/name2structure/
+  public_api:
+  - NameToStructureResult
+  - PubChemNameConnector
+  - StaticNameConnector
+  - resolve_name_to_structure
+  responsibility: Resolver nombres químicos a estructuras con conectores estáticos/PubChem
+    y fallback seguro.
+  risk_level: medium
+  status: stable
+  target_dependencies:
+  - M00
+  - M01
+  temporary_exceptions:
+  - debt_ref: establish-phase1-module-catalog-and-contracts
+    elimination_condition: Mantener como dependencia aceptada.
+    file: src/chemuson/name2structure/service.py
+    import_path: from chemuson.chemio.rdkit_safe import smiles_to_molgraph_isolated
+    reason: Dependencia lazy dentro de función para fallback seguro de RDKit.
+    source_id: M16
+    target_id: M01
+    type_checking_only: false
+  tests:
+  - tests/test_name2structure_service.py
+  - tests/test_name2structure_ui.py
+  title: Resolución nombre a estructura
+- circular_dependencies: []
+  current_dependencies: []
+  entry_points: []
+  forbidden_dependencies: []
+  id: M17
+  internal_api:
+  - service
+  name: markush
+  paths:
+  - src/chemuson/markush/
+  public_api:
+  - MarkushSummary
+  - PolymerRepeat
+  - RGroupAtom
+  - sanitize_r_group_substituents
+  - set_r_group_substituents
+  - summarize_markush
+  responsibility: 'Estructuras Markush y polímeros: R-groups, grupos repetitivos,
+    resumen y sanitización.'
+  risk_level: low
+  status: stable
+  target_dependencies: []
+  temporary_exceptions: []
+  tests:
+  - tests/test_markush_polymer.py
+  title: Estructuras Markush y polímeros
+- circular_dependencies: []
+  current_dependencies: []
+  entry_points:
+  - __version__
+  - chemuson
+  forbidden_dependencies: []
+  id: M18
+  internal_api: []
+  name: version
+  paths:
+  - src/chemuson/_version.py
+  - src/chemuson/version.py
+  public_api:
+  - __version__
+  - get_app_version
+  responsibility: 'Gestión de versión: fuente única de __version__, entry point CLI
+    y metadata de packaging.'
+  risk_level: low
+  status: stable
+  target_dependencies: []
+  temporary_exceptions: []
+  tests:
+  - tests/test_version_metadata.py
+  - tests/test_release_version_script.py
+  title: Gestión de versión
