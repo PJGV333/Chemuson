@@ -21,6 +21,8 @@ modules:
   - M15
   - M16
   - M17
+  - M18
+  - M19
   id: M00
   internal_api:
   - bond_affects_valence
@@ -202,15 +204,6 @@ modules:
     elimination_condition: Mover depiction_candidates.py a clean2d o a un paquete
       compartido en fase futura.
     type_checking_only: false
-  - source_id: M01
-    target_id: M09
-    file: src/chemuson/chemio/persistence.py
-    import_path: from chemuson.gui.canvas import ChemusonCanvas
-    reason: Import guardado bajo TYPE_CHECKING para tipado de retorno en PersistenceManager.save_to_dict().
-    debt_ref: establish-phase1-module-catalog-and-contracts
-    elimination_condition: Extraer interfaz de canvas a un módulo tipo-only o eliminar
-      la dependencia tipando con Protocol.
-    type_checking_only: true
   tests:
   - tests/test_rdkit_roundtrip.py
   - tests/test_cml_io.py
@@ -252,8 +245,9 @@ modules:
   - v2
   - debug_snapshots
   name: clean2d
-  notes: Engine importa rdkit_safe de forma lazy dentro de funciones (no es dependencia
-    runtime en import global). 0 tests conocidos fallan en baseline.
+  notes: Engine importa rdkit_safe de forma lazy dentro de funciones (dependencia
+    runtime diferida, no se ejecuta durante la importación inicial del módulo). 0
+    tests conocidos fallan en baseline.
   paths:
   - src/chemuson/clean2d/
   public_api:
@@ -492,70 +486,7 @@ modules:
   - M01
   - M03
   - M15
-  temporary_exceptions:
-  - source_id: M04
-    target_id: M03
-    file: src/chemuson/chemname/engine.py
-    import_path: from chemuson.chemcalc.valence import implicit_h_count
-    reason: M03 <-> M04 circularity (debt)
-    debt_ref: establish-phase1-module-catalog-and-contracts
-    elimination_condition: Extraer MolView a core/model.py o mover implicit_h_count
-      a core en fase futura.
-    type_checking_only: false
-  - source_id: M04
-    target_id: M03
-    file: src/chemuson/chemname/coordination.py
-    import_path: from chemuson.chemcalc.valence import implicit_h_count
-    reason: M03 <-> M04 circularity (debt)
-    debt_ref: establish-phase1-module-catalog-and-contracts
-    elimination_condition: Extraer MolView a core/model.py o mover implicit_h_count
-      a core en fase futura.
-    type_checking_only: false
-  - source_id: M04
-    target_id: M03
-    file: src/chemuson/chemname/functional_groups.py
-    import_path: from chemuson.chemcalc.valence import implicit_h_count
-    reason: M03 <-> M04 circularity (debt)
-    debt_ref: establish-phase1-module-catalog-and-contracts
-    elimination_condition: Extraer MolView a core/model.py o mover implicit_h_count
-      a core en fase futura.
-    type_checking_only: false
-  - source_id: M04
-    target_id: M03
-    file: src/chemuson/chemname/rings.py
-    import_path: from chemuson.chemcalc.valence import implicit_h_count
-    reason: M03 <-> M04 circularity (debt)
-    debt_ref: establish-phase1-module-catalog-and-contracts
-    elimination_condition: Extraer MolView a core/model.py o mover implicit_h_count
-      a core en fase futura.
-    type_checking_only: false
-  - source_id: M04
-    target_id: M03
-    file: src/chemuson/chemname/ring_naming.py
-    import_path: from chemuson.chemcalc.valence import implicit_h_count
-    reason: M03 <-> M04 circularity (debt)
-    debt_ref: establish-phase1-module-catalog-and-contracts
-    elimination_condition: Extraer MolView a core/model.py o mover implicit_h_count
-      a core en fase futura.
-    type_checking_only: false
-  - source_id: M04
-    target_id: M03
-    file: src/chemuson/chemname/special.py
-    import_path: from chemuson.chemcalc.valence import implicit_h_count
-    reason: M03 <-> M04 circularity (debt)
-    debt_ref: establish-phase1-module-catalog-and-contracts
-    elimination_condition: Extraer MolView a core/model.py o mover implicit_h_count
-      a core en fase futura.
-    type_checking_only: false
-  - source_id: M04
-    target_id: M03
-    file: src/chemuson/chemname/substituents.py
-    import_path: from chemuson.chemcalc.valence import implicit_h_count
-    reason: M03 <-> M04 circularity (debt)
-    debt_ref: establish-phase1-module-catalog-and-contracts
-    elimination_condition: Extraer MolView a core/model.py o mover implicit_h_count
-      a core en fase futura.
-    type_checking_only: false
+  temporary_exceptions: []
   tests:
   - tests/test_iupac_ui.py
   title: Nomenclatura IUPAC-lite
@@ -699,12 +630,11 @@ modules:
   current_dependencies:
   - M00
   - M01
-  - M03
+  - M02
   - M04
   - M05
   - M06
   - M07
-  - M08
   - M09
   - M10
   - M11
@@ -715,9 +645,7 @@ modules:
   - M16
   - M17
   - M18
-  entry_points:
-  - ChemusonWindow
-  - ChemusonCanvas
+  entry_points: []
   forbidden_dependencies: []
   id: M08
   internal_api:
@@ -778,9 +706,7 @@ modules:
   - src/chemuson/gui/toolbar.py
   - src/chemuson/gui/wedge_geometry.py
   - src/chemuson/gui/actions/
-  public_api:
-  - ChemusonCanvas
-  - ChemusonWindow
+  public_api: []
   responsibility: 'UI PyQt6: ventana principal, canvas/editor 2D, acciones, docks,
     controllers, comandos undo/redo, rendering y herramientas visuales.'
   risk_level: high
@@ -788,6 +714,8 @@ modules:
   target_dependencies:
   - M00
   - M01
+  - M02
+  - M04
   - M05
   - M06
   - M07
@@ -844,7 +772,6 @@ modules:
   current_dependencies:
   - M00
   - M01
-  - M03
   - M04
   - M05
   - M08
@@ -894,8 +821,14 @@ modules:
   paths:
   - src/chemuson/gui/canvas/
   public_api:
+  - AROMATIC_CIRCLE_ATOMS_ROLE
+  - BRANCH_ROTATION_NOOP_TOLERANCE_DEG
+  - BRANCH_ROTATION_STEP_DEG
+  - ChemusonCanvas
+  - FRAGMENT_ROTATION_STEP_DEG
   - molgraph_to_molfile
   - molgraph_to_smiles
+  - QInputDialog
   responsibility: Canvas de edición molecular interactivo basado en QGraphicsView
     con arquitectura de mixins.
   risk_level: high
@@ -903,6 +836,7 @@ modules:
   target_dependencies:
   - M00
   - M01
+  - M03
   - M04
   - M05
   - M08
@@ -965,12 +899,18 @@ modules:
   - M00
   - M01
   - M02
+  - M03
+  - M04
   - M05
+  - M06
+  - M07
   - M08
   - M09
   - M11
   - M14
   - M15
+  - M16
+  - M18
   temporary_exceptions: []
   tests: []
   title: Controllers de la GUI
@@ -1053,7 +993,17 @@ modules:
   status: evolving
   target_dependencies:
   - M00
+  - M01
+  - M02
+  - M03
+  - M04
+  - M05
+  - M06
+  - M07
   - M08
+  - M14
+  - M16
+  - M18
   temporary_exceptions: []
   tests: []
   title: Comandos undo/redo
@@ -1087,6 +1037,7 @@ modules:
   target_dependencies:
   - M00
   - M08
+  - M14
   temporary_exceptions: []
   tests: []
   title: Diálogos de la GUI
@@ -1224,26 +1175,9 @@ modules:
   responsibility: Recursos empaquetados, autosave y crash reporting compartido.
   risk_level: low
   status: stable
-  target_dependencies: []
-  temporary_exceptions:
-  - source_id: M15
-    target_id: M01
-    file: src/chemuson/utils/autosave.py
-    import_path: from chemuson.chemio.persistence import PersistenceManager
-    reason: utils no debe depender de chemio en la arquitectura objetivo.
-    debt_ref: establish-phase1-module-catalog-and-contracts
-    elimination_condition: AutosaveManager usa PersistenceManager para serializar
-      el canvas.
-    type_checking_only: false
-  - source_id: M15
-    target_id: M09
-    file: src/chemuson/utils/autosave.py
-    import_path: from chemuson.gui.canvas import ChemusonCanvas
-    reason: Import guardado bajo TYPE_CHECKING para tipado de retorno en AutosaveManager.
-    debt_ref: establish-phase1-module-catalog-and-contracts
-    elimination_condition: Eliminar dependencia tipando con Protocol o eliminar el
-      uso de ChemusonCanvas en autosave.
-    type_checking_only: true
+  target_dependencies:
+  - M01
+  temporary_exceptions: []
   tests: []
   title: Utilidades compartidas
 - circular_dependencies: []
@@ -1312,8 +1246,7 @@ modules:
   title: Estructuras Markush y polímeros
 - circular_dependencies: []
   current_dependencies: []
-  entry_points:
-  - __version__
+  entry_points: []
   forbidden_dependencies: []
   id: M18
   internal_api: []
@@ -1325,8 +1258,7 @@ modules:
   public_api:
   - __version__
   - get_app_version
-  responsibility: 'Gestión de versión: fuente única de __version__, entry point CLI
-    y metadata de packaging.'
+  responsibility: 'Gestión de versión: fuente única de __version__, metadata de packaging.'
   risk_level: low
   status: stable
   target_dependencies: []
