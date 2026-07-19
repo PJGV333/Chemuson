@@ -1,11 +1,15 @@
-# M04: chemname
+# M04 - ChemName
 
-**Responsabilidad**: Motor de nomenclatura IUPAC-lite. Resuelve nombres químicos para un subconjunto de estructuras (hidrocarburos, aromáticos sencillos, heterociclos comunes) a partir de la topología del grafo.
+## Responsabilidad
+`chemname` implementa el sistema de nomenclatura IUPAC-lite de Chemuson. Proporciona una solución semisistemática para la identificación de estructuras, incluyendo la selección de cadenas principales, la identificación de anillos, el manejo de grupos funcionales, la determinación de la estereoquímica y la gestión de la coordinación.
 
-**APIs Principales**:
-- `chemuson.chemname.engine`: Función principal `iupac_name`.
-- `chemuson.chemname.options`: Configuración de la nomenclatura (`NameOptions`).
+## APIs Principales
+- **Nomenclatura**: `iupac_name`.
+- **Configuración**: `NameOptions`.
 
-**Riesgos**:
-- **Ciclo con `chemcalc`**: Existe una circularidad con `chemcalc` (debido a que la nomenclatura requiere el recuento de hidrógenos implícitos de `valence.py`).
-- **Alcance limitado**: Actualmente solo cubre un subconjunto de la química orgánica (IUPAC-lite); no es un motor de nomenclatura completo.
+## Riesgos Conocidos
+La cobertura de este módulo es parcial y está diseñada para ser un soporte ágil. Cualquier modificación en la lógica de selección de cadenas o en la identificación de grupos funcionales debe ser validada con extremo cuidado para no romper la cobertura histórica de los tests de regresión.
+
+## Dependencias
+- Runtime: `core` (M00), `chemcalc` (M03), `chemio` (M01, lazy), `utils` (M15).
+- Ciclo conocido: `chemcalc` ↔ `chemname` vía `chemcalc` que importa `MolView` de `chemname`, y `chemname` que importa `implicit_h_count` de `chemcalc`.
