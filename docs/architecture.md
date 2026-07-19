@@ -2,7 +2,12 @@
 
 Este documento describe los límites actuales del código para que futuras limpiezas y refactors mantengan Chemuson entendible sin cambiar comportamiento químico o de UI por accidente.
 
-## Entry points
+## 1. Fuentes de Verdad
+
+- **Catálogo de Módulos**: La fuente de verdad estructurada para la topología de módulos, APIs, rutas y dependencias es `architecture/modules.yml`. Para detalles individuales de cada módulo, consulte el directorio `docs/modules/`.
+- **Reglas de Arquitectura**: Este documento (`docs/architecture.md`).
+
+## 2. Entry points
 
 | Entrada | Ubicación | Responsabilidad |
 | --- | --- | --- |

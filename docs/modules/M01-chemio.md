@@ -1,18 +1,13 @@
-# M01 - Chemio
+# M01: chemio
 
-## Responsabilidad
-El módulo `chemio` gestiona la entrada, salida y persistencia de datos químicos. Se encarga de la conversión entre formatos estándar (SMILES, Molfile, CML) y el formato interno de Chemuson (`.cmsn`). Además, actúa como la capa de abstracción segura para interactuar con RDKit mediante trabajadores (workers) que evitan problemas de estabilidad en el proceso principal.
+**Responsabilidad**: Importación/exportación de datos químicos y persistencia del estado del editor. Maneja la traducción entre el modelo interno de ChemUSON y formatos estándar (SMILES, MOL, SVG) mediante RDKit u otros motores.
 
-## APIs Principales
-- **I/O**: `rdkit_io`, `cml_io`.
-- **Persistencia**: `persistence` (gestión de archivos `.cmsn`).
-- **Depiction**: `depiction_candidates` (generación de candidatos para limpieza 2D).
-- **Seguridad**: `rdkit_safe` (acceso controlado a RDKit).
+**APIs Principales**:
+- `chemuson.chemio.rdkit_io`: Conversión de grafos a formatos externos.
+- `chemuson.chemio.persistence.PersistenceManager`: Serialización y carga del estado `.cmsn`.
+- `chemuson.chemio.depiction_candidates`: Generación de candidatos para visualización.
 
-## Riesgos Conocidos
-Depende críticamente de la correcta implementación de los workers para RDKit. Cualquier error en la serialización de la persistencia o en la conversión de formatos puede provocar la pérdida de datos del usuario o la corrupción del estado del editor.
-
-## Dependencias
-- Runtime: `core` (M00), `clean2d` (M02).
-- TYPE_CHECKING: `gui.canvas` (M09) — solo para tipado en `persistence.py`.
-- subprocess: `_rdkit_worker.py` es invocado por `subprocess` desde `rdkit_safe.py`, no aparece en imports normales.
+**Riesgos**:
+- **Dependencia de RDKit**: Dependencia externa crítica que se maneja de forma perezosa (lazy) para evitar problemas de compatibilidad en el proceso principal.
+- **Ciclo con `clean2d`**: Existe una circularidad conocida con `clean2d` (debido a `depiction_candidates.py`) que debe ser resuelta.
+- **Complejidad de persistencia**: La restauración completa del lienzo requiere una sincronización perfecta entre el modelo y la vista (mixins de la GUI).
