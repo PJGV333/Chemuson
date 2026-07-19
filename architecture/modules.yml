@@ -1,36 +1,5 @@
 modules:
-- circular_dependencies:
-    edges:
-    - file: src/chemuson/chemio/depiction_candidates.py
-      import_path: from chemuson.clean2d.geometry import count_crossings, cycle_basis,
-        segments_intersect
-      source: M01
-      target: M02
-    - file: src/chemuson/chemio/depiction_candidates.py
-      import_path: from chemuson.clean2d.safety import has_cycles, min_nonbonded_distance,
-        ring_degeneracy_score
-      source: M01
-      target: M02
-    - file: src/chemuson/chemio/rdkit_io.py
-      import_path: from chemuson.clean2d.geometry import apply_coords_in_place
-      source: M01
-      target: M02
-    - file: src/chemuson/clean2d/block_unwrap.py
-      import_path: from chemuson.chemio/depiction_candidates import block_donut_score,
-        score_imported_depiction
-      source: M02
-      target: M01
-    - file: src/chemuson/clean2d/scaffold_depiction.py
-      import_path: from chemuson.chemio/depiction_candidates import block_donut_score,
-        score_imported_depiction
-      source: M02
-      target: M01
-    modules:
-    - M01
-    - M02
-    resolution_plan: Mover depiction_candidates.py a clean2d o a un paquete compartido
-      en fase futura.
-    severity: high
+- circular_dependencies: []
   current_dependencies: []
   entry_points:
   - build_multilayer_chemical_graph
@@ -254,29 +223,7 @@ modules:
   - tests/test_rdkit_strict_validation.py
   - tests/test_coordination_persistence.py
   title: Import/export químico y persistencia
-- circular_dependencies:
-  - edges:
-    - file: src/chemuson/chemio/depiction_candidates.py
-      import_path: from chemuson.clean2d.geometry import count_crossings, cycle_basis,
-        segments_intersect
-      source: M01
-      target: M02
-    - file: src/chemuson/clean2d/block_unwrap.py
-      import_path: from chemuson.chemio.depiction_candidates import block_donut_score,
-        score_imported_depiction
-      source: M02
-      target: M01
-    - file: src/chemuson/clean2d/scaffold_depiction.py
-      import_path: from chemuson.chemio.depiction_candidates import block_donut_score,
-        score_imported_depiction
-      source: M02
-      target: M01
-    modules:
-    - M01
-    - M02
-    resolution_plan: Mover depiction_candidates.py a clean2d o a un paquete compartido
-      en fase futura.
-    severity: high
+- circular_dependencies: []
   current_dependencies:
   - M00
   - M01
@@ -492,22 +439,7 @@ modules:
   tests:
   - tests/test_elemental_analysis.py
   title: Cálculos químicos auxiliares
-- circular_dependencies:
-  - edges:
-    - file: src/chemuson/chemname/engine.py
-      import_path: from chemuson.chemcalc.valence import implicit_h_count
-      source: M04
-      target: M03
-    - file: src/chemuson/chemcalc/formula.py
-      import_path: from chemuson.chemname.molview import MolView
-      source: M03
-      target: M04
-    modules:
-    - M03
-    - M04
-    resolution_plan: Extraer MolView a core/model.py o mover implicit_h_count a core
-      en fase futura.
-    severity: medium
+- circular_dependencies: []
   current_dependencies:
   - M00
   - M03
@@ -845,6 +777,7 @@ modules:
   - src/chemuson/gui/text_toolbar.py
   - src/chemuson/gui/toolbar.py
   - src/chemuson/gui/wedge_geometry.py
+  - src/chemuson/gui/actions/
   public_api:
   - ChemusonCanvas
   - ChemusonWindow
@@ -852,16 +785,12 @@ modules:
     controllers, comandos undo/redo, rendering y herramientas visuales.'
   risk_level: high
   status: evolving
-  target_dependencies: &id001
+  target_dependencies:
   - M00
   - M01
-  - M02
-  - M03
-  - M04
   - M05
   - M06
   - M07
-  - M08
   - M09
   - M10
   - M11
@@ -872,7 +801,6 @@ modules:
   - M16
   - M17
   - M18
-  - M19
   temporary_exceptions: []
   tests:
   - tests/test_main_window_tabs.py
@@ -972,7 +900,15 @@ modules:
     con arquitectura de mixins.
   risk_level: high
   status: evolving
-  target_dependencies: *id001
+  target_dependencies:
+  - M00
+  - M01
+  - M04
+  - M05
+  - M08
+  - M11
+  - M12
+  - M13
   temporary_exceptions: []
   tests: []
   title: Canvas de edición molecular
@@ -1025,7 +961,16 @@ modules:
     actualización y validación.'
   risk_level: medium
   status: evolving
-  target_dependencies: *id001
+  target_dependencies:
+  - M00
+  - M01
+  - M02
+  - M05
+  - M08
+  - M09
+  - M11
+  - M14
+  - M15
   temporary_exceptions: []
   tests: []
   title: Controllers de la GUI
@@ -1106,7 +1051,9 @@ modules:
     enlaces, texto y diagramas.'
   risk_level: medium
   status: evolving
-  target_dependencies: *id001
+  target_dependencies:
+  - M00
+  - M08
   temporary_exceptions: []
   tests: []
   title: Comandos undo/redo
@@ -1137,7 +1084,9 @@ modules:
     de placas/gels, guía rápida.'
   risk_level: low
   status: evolving
-  target_dependencies: *id001
+  target_dependencies:
+  - M00
+  - M08
   temporary_exceptions: []
   tests: []
   title: Diálogos de la GUI
@@ -1158,7 +1107,9 @@ modules:
     de QGraphicsItem.'
   risk_level: medium
   status: evolving
-  target_dependencies: *id001
+  target_dependencies:
+  - M00
+  - M08
   temporary_exceptions: []
   tests: []
   title: Items gráficos (átomos, enlaces, etc.)
@@ -1247,7 +1198,6 @@ modules:
 - circular_dependencies: []
   current_dependencies:
   - M01
-  - M08
   entry_points: []
   forbidden_dependencies:
   - M08
@@ -1274,14 +1224,12 @@ modules:
   responsibility: Recursos empaquetados, autosave y crash reporting compartido.
   risk_level: low
   status: stable
-  target_dependencies:
-  - M00
-  - M01
+  target_dependencies: []
   temporary_exceptions:
   - source_id: M15
     target_id: M01
     file: src/chemuson/utils/autosave.py
-    import_path: from chemio.persistence import PersistenceManager
+    import_path: from chemuson.chemio.persistence import PersistenceManager
     reason: utils no debe depender de chemio en la arquitectura objetivo.
     debt_ref: establish-phase1-module-catalog-and-contracts
     elimination_condition: AutosaveManager usa PersistenceManager para serializar
@@ -1335,7 +1283,8 @@ modules:
   - tests/test_name2structure_ui.py
   title: Resolución nombre a estructura
 - circular_dependencies: []
-  current_dependencies: []
+  current_dependencies:
+  - M00
   entry_points: []
   forbidden_dependencies: []
   id: M17
@@ -1355,7 +1304,8 @@ modules:
     resumen y sanitización.'
   risk_level: low
   status: stable
-  target_dependencies: *id001
+  target_dependencies:
+  - M00
   temporary_exceptions: []
   tests:
   - tests/test_markush_polymer.py
