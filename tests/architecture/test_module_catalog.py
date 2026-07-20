@@ -282,16 +282,18 @@ class TestModuleDependencies:
             )
 
     def test_no_self_dependency(self, modules):
+        """Identify explicitly which dependency list contains self-references."""
         for m in modules:
-            for dep_list, list_name in [
-                (m["current_dependencies"], "current_dependencies"),
-                (m["target_dependencies"], "target_dependencies"),
-            ]:
-                if m["id"] in dep_list:
-                    assert False, (
-                        f"Module '{m['id']}' depends on itself in "
-                        f"{list_name}"
-                    )
+            if m["id"] in m["current_dependencies"]:
+                assert False, (
+                    f"Module '{m['id']}' has self-dependency in "
+                    f"current_dependencies"
+                )
+            if m["id"] in m["target_dependencies"]:
+                assert False, (
+                    f"Module '{m['id']}' has self-dependency in "
+                    f"target_dependencies"
+                )
 
     def test_target_and_forbidden_no_overlap(self, modules):
         for m in modules:
@@ -473,6 +475,16 @@ class TestCircularDependencies:
                     assert edge["target"] in EXPECTED_IDS, (
                         f"Cycle edge in module '{m['id']}', "
                         f"invalid target ID '{edge['target']}'"
+                    )
+
+    def test_cycle_modules_are_valid_ids(self, modules):
+        """Each module ID in a cycle must belong to EXPECTED_IDS."""
+        for m in modules:
+            for cycle in m["circular_dependencies"]:
+                for mod_id in cycle["modules"]:
+                    assert mod_id in EXPECTED_IDS, (
+                        f"Cycle in module '{m['id']}', cycle module '{mod_id}' "
+                        f"is not in catalog"
                     )
 
     def test_cycle_edge_ids_in_cycle_modules(self, modules):
