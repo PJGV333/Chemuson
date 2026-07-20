@@ -6,20 +6,34 @@ El `ChemusonCanvas` es el componente central de la interfaz de usuario. Es un li
 
 ## Composición de Mixins (MRO)
 
-La clase `ChemusonCanvas` hereda de los siguientes componentes, en orden de prioridad:
+La clase `ChemusonCanvas` hereda de los siguientes componentes, en orden de base directa:
 
-1. **`QGraphicsView`** (Base de Qt)
-2. **`CanvasInputMixin`**: Gestiona la entrada de usuario (mouse/teclado).
-    - `CanvasSelectionInputMixin`
-    - `CanvasKeyboardMixin`
-    - `CanvasContextMenuMixin`
-    - `CanvasToolsAnnotationsMixin`
-    - `CanvasToolsBondingMixin`
-    - `CanvasToolsRingsChainsMixin`
-3. **`CanvasSelectionMixin`**: Controla la lógica de selección de átomos, enlaces y otros elementos.
-4. **`CanvasTextMixin`**: Gestiona la edición y visualización de texto y anotaciones.
-5. **`CanvasRenderMixin`**: Controla el proceso de renderizado visual y exportación.
-6. **`CanvasStructureMixin`**: Sincroniza el estado visual con el modelo químico (`MolGraph`).
+```python
+class ChemusonCanvas(
+    CanvasInputMixin,
+    CanvasSelectionMixin,
+    CanvasTextMixin,
+    CanvasRenderMixin,
+    CanvasStructureMixin,
+    QGraphicsView,
+):
+```
+
+**Bases directas:**
+1. **`CanvasInputMixin`**: Gestiona la entrada de usuario (mouse/teclado).
+   - `CanvasSelectionInputMixin`
+   - `CanvasKeyboardMixin`
+   - `CanvasContextMenuMixin`
+   - `CanvasToolsAnnotationsMixin`
+   - `CanvasToolsBondingMixin`
+   - `CanvasToolsRingsChainsMixin`
+2. **`CanvasSelectionMixin`**: Controla la lógica de selección de átomos, enlaces y otros elementos.
+3. **`CanvasTextMixin`**: Gestiona la edición y visualización de texto y anotaciones.
+4. **`CanvasRenderMixin`**: Controla el proceso de renderizado visual y exportación.
+5. **`CanvasStructureMixin`**: Sincroniza el estado visual con el modelo químico (`MolGraph`).
+6. **`QGraphicsView`** (Base de Qt).
+
+**`CanvasToolsBondingMixin`** agrega 5 sub-mixins: `CanvasBondStateMixin`, `CanvasBondModelOpsMixin`, `CanvasBondDragMixin`, `CanvasBondHitTestingMixin`, `CanvasBondGeometryMixin`.
 
 ## Inventario de Archivos Relacionados
 
@@ -65,7 +79,7 @@ El canvas mantiene un estado interno que coordina la interacción entre la vista
 ## Capacidades de Interacción
 
 - **Selección e Hit Testing**: Soporta selección por átomo, enlace, grupo o área. El hit testing considera la geometría de los átomos y la topología de los enlaces.
-- **Undo/Redo**: Todos los cambios en la estructura o el estilo son encapsulados en comandos de `QUndoCommand` y gestionados por el `QUndoStack` de la ventana principal.
+- **Undo/Redo**: Todos los cambios en la estructura o el estilo son encapsulados en comandos de `QUndoCommand` y gestionados por el `QUndoStack` que cada `ChemusonCanvas` crea y posee como `self.undo_stack`.
 - **Clipboard**: Permite copiar y pegar estructuras (vía SMILES/Molfile) y elementos gráficos (anotaciones, imágenes).
 - **Texto y Edición**: Soporte para etiquetas de texto con edición rica y control de formato.
 - **Render y Export**: Capacidad de exportar la vista actual en formatos PNG, SVG y PDF.

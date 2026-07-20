@@ -72,10 +72,10 @@
     - **Aceptación**: Cada módulo tiene una entrada con link al documento individual. Los módulos sin documentación existente se marcan como "pendiente" sin enlace roto. Fuente estructurada identificada como `architecture/modules.yml`. Los módulos sin documentación existente se marcan como "pendiente" sin enlace roto.
 
 - [x] **2.3 Documentar el Canvas (M09)**
-    - **Descripción**: Crear `docs/modules/M09-canvas.md` con: composición de mixins (MRO completo), inventario de archivos (20 archivos verificados), estado compartido, flujo de eventos mouse/teclado, selección e hit testing, undo/redo con QUndoStack, sincronización modelo-escena, clipboard, texto/edición, render/export, serialización, dependencias internas, zonas de riesgo, extracciones futuras seguras vs. peligrosas.
+    - **Descripción**: Crear `docs/modules/M09-canvas.md` con: composición de mixins (MRO completo, bases directas y submixins), inventario de archivos (20 archivos verificados), estado compartido, flujo de eventos mouse/teclado, selección e hit testing, undo/redo con QUndoStack (propiedad de cada instancia), sincronización modelo-escena, clipboard, texto/edición, render/export, serialización, dependencias internas, zonas de riesgo, extracciones futuras seguras vs. peligrosas.
     - **Archivos**: `docs/modules/M09-canvas.md`
-    - **Referencia**: Leer los 20 archivos de `src/chemuson/gui/canvas/`. La clase `ChemusonCanvas` en `canvas_view.py` extiende `QGraphicsView` vía 5 mixins. `CanvasInputMixin` agrega 6 sub-mixins. `CanvasToolsBondingMixin` en `canvas_tools_bonding.py` agrega 5 sub-mixins de bonding.
-    - **Aceptación**: El documento cubre los 14 temas requeridos. No copia código ni explica cada método individual.
+    - **Referencia**: Leer los 20 archivos de `src/chemuson/gui/canvas/`. La clase `ChemusonCanvas` en `canvas_view.py` hereda en orden directo: CanvasInputMixin, CanvasSelectionMixin, CanvasTextMixin, CanvasRenderMixin, CanvasStructureMixin, QGraphicsView. `CanvasInputMixin` agrega 6 sub-mixins. `CanvasToolsBondingMixin` en `canvas_tools_bonding.py` agrega 5 sub-mixins de bonding. Cada `ChemusonCanvas` crea y posee su propio `self.undo_stack = QUndoStack(self)`.
+    - **Aceptación**: El documento cubre los 14 temas requeridos. No copia código ni explica cada método individual. MRO exacto, conteo real de archivos, y propiedad del QUndoStack documentados correctamente.
 
 - [ ] **2.4 Documentar módulos críticos brevemente**
     - **Descripción**: Para M00 (core), M01 (chemio), M02 (clean2d), M04 (chemname), escribir 1 párrafo de contexto en `docs/modules/M##-nombre.md`. No requiere la profundidad del canvas.
