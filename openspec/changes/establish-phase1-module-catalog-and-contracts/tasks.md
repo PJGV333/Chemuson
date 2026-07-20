@@ -11,7 +11,7 @@
         - `pytest --collect-only -q`
         - `pytest -q`
         - `ruff check src tests tools packaging --select F401,F811,F821,E722,E741`
-    - **Aceptación**: Todos los comandos se ejecutan. Se registra la salida exacta. Se permite que los 6 tests Clean2D conocidos fallen (`test_clean2d_aromatic_mixed`, `test_clean2d_multilayer_constraints`, `test_clean2d_safety`, `test_clean2d_smart_propose`, `test_clean2d_terminal_rings`, `test_clean2d_tetrandrine_like_local`).
+    - **Aceptación**: Todos los comandos se ejecutan. Se registra la salida exacta sin asumir fallos permitidos.
 
 ## Fase 1: Catálogo de Módulos
 
@@ -20,22 +20,22 @@
     - **Archivos**: `architecture/`
     - **Aceptación**: El directorio existe.
 
-- [x] **1.2 Escribir el esqueleto de `modules.yml` con los 19 módulos (M00-M18)**
-    - **Descripción**: Crear el archivo YAML con las entradas para M00-M18 según la tabla del design.md. Cada entrada con `id`, `name`, `title`, `responsibility`, `paths`, `status`, `risk_level`, `current_dependencies`, `target_dependencies` inicializados. YAML parseable.
+- [x] **1.2 Escribir el esqueleto de `modules.yml` con los 20 módulos (M00-M19)**
+    - **Descripción**: Crear el archivo YAML con las entradas para M00-M19 según la tabla del design.md. Cada entrada con `id`, `name`, `title`, `responsibility`, `paths`, `status`, `risk_level`, `current_dependencies`, `target_dependencies` inicializados. YAML parseable.
     - **Archivos**: `architecture/modules.yml`
-    - **Aceptación**: El archivo contiene exactamente 19 entradas. Cada ID es único. Los paths existen en el repositorio. El YAML se parsea con `yaml.safe_load`.
+    - **Aceptación**: El archivo contiene exactamente 20 entradas. Cada ID es único. Los paths existen en el repositorio. El YAML se parsea con `yaml.safe_load`.
 
 - [x] **1.3 Completar `public_api` para cada módulo**
-    - **Descripción**: Leer el `__init__.py` de cada paquete y listar los símbolos en `__all__`. Para paquetes sin `__all__` (chemio, compchem, gui, utils, gui.dialogs, gui.items), dejar el campo vacío y anotar en `notes`.
+    - **Descripción**: `public_api` contiene contratos deliberadamente públicos: símbolos listados en `__all__`; reexportaciones deliberadas desde `__init__.py`; funciones asociadas a `[project.scripts]`; para un módulo de archivo único, una función deliberadamente catalogada, como `M19.main`. Un símbolo importado directamente desde un módulo interno por otro paquete NO se convierte automáticamente en API pública. La validación será mediante AST, sin importar módulos.
     - **Archivos**: `architecture/modules.yml`
     - **Referencia**: `src/chemuson/core/__init__.py`, `src/chemuson/clean2d/__init__.py`, `src/chemuson/chemcalc/__init__.py`, `src/chemuson/chemname/__init__.py`, `src/chemuson/geometry3d/__init__.py`, `src/chemuson/spectroscopy/__init__.py`, `src/chemuson/update/__init__.py`, `src/chemuson/name2structure/__init__.py`, `src/chemuson/markush/__init__.py`, `src/chemuson/gui/canvas/__init__.py`, `src/chemuson/gui/controllers/__init__.py`, `src/chemuson/gui/commands/__init__.py`.
-    - **Aceptación**: Los símbolos declarados coinciden con `__all__` real.
+    - **Aceptación**: Los símbolos declarados coinciden con la definición de API pública.
 
 - [x] **1.4 Mapear dependencias actuales por análisis visual de imports**
-    - **Descripción**: Para cada módulo, identificar qué otros módulos chemuson importa (lectura de statements `from chemuson.*`). Distinguir imports runtime de `TYPE_CHECKING`. Completar `current_dependencies`.
+    - **Descripción**: Para cada módulo, identificar qué otros módulos chemuson importa (lectura de statements `from chemuson.*`). Los imports dentro de funciones o lazy siguen siendo runtime. Los imports bajo `TYPE_CHECKING` no entran en `current_dependencies`. Completar `current_dependencies`.
     - **Archivos**: `architecture/modules.yml`
     - **Referencia**: `docs/architecture.md` (tabla de dependencias observadas) como guía inicial; verificar contra código.
-    - **Aceptación**: Las dependencias coinciden con los imports reales del código.
+    - **Aceptación**: Las dependencias coinciden con los imports reales del código, excluyendo TYPE_CHECKING.
 
 - [x] **1.5 Definir dependencias objetivo y prohibidas**
     - **Descripción**: Para cada módulo, definir `target_dependencies` (arquitectura ideal) y `forbidden_dependencies` basado en las reglas de `docs/architecture.md`.
@@ -44,9 +44,9 @@
     - **Aceptación**: Las reglas son consistentes con `docs/architecture.md`.
 
 - [x] **1.6 Registrar excepciones temporales**
-    - **Descripción**: Para cada dependencia en `current_dependencies` que viola `forbidden_dependencies` o no está en `target_dependencies`, crear una entrada en `temporary_exceptions` con todos los campos obligatorios (source_id, target_id, file, import_path, reason, debt_ref, elimination_condition, type_checking_only).
+    - **Descripción**: Para cada dependencia en `current_dependencies` que viola `forbidden_dependencies` o no está en `target_dependencies`, crear una entrada en `temporary_exceptions` con todos los campos obligatorios (source_id, target_id, file, import_path, reason, debt_ref, elimination_condition, type_checking_only). Una excepción runtime representa una dependencia actual no permitida o prohibida; un cruce bajo TYPE_CHECKING puede documentarse como excepción con `type_checking_only: true`.
     - **Archivos**: `architecture/modules.yml`
-    - **Casos conocidos**: `chemio/persistence.py` → `gui.canvas` (TYPE_CHECKING). `utils/autosave.py` → `gui.canvas` (TYPE_CHECKING). `utils/autosave.py` → `chemio.persistence` (runtime). `clean2d/engine.py` → `chemio.rdkit_safe` (lazy). `geometry3d/rdkit_backend.py` → `chemio.rdkit_safe` (lazy). `spectroscopy/service.py` → `chemio.rdkit_io` (lazy). `name2structure/service.py` → `chemio.rdkit_safe` (lazy).
+    - **Casos conocidos actuales relevantes**: M01 → M02 runtime; M03 → M04 runtime; M15 → M01 runtime; M01 → M09 TYPE_CHECKING; M15 → M09 TYPE_CHECKING. No se fija un número mágico de excepciones.
     - **Aceptación**: Cada excepción tiene los 8 campos obligatorios. No existen comodines.
 
 - [x] **1.7 Registrar dependencias circulares conocidas**
@@ -67,7 +67,7 @@
     - **Aceptación**: El directorio existe.
 
 - [x] **2.2 Crear `docs/modules/README.md`**
-    - **Descripción**: Índice que lista los módulos M00-M18 con título y referencia a documento individual.
+    - **Descripción**: Índice que lista los módulos M00-M19 con título y referencia a documento individual.
     - **Archivos**: `docs/modules/README.md`
     - **Aceptación**: Cada módulo tiene una entrada con link al documento individual. Los módulos sin documentación existente se marcan como "pendiente" sin enlace roto. Fuente estructurada identificada como `architecture/modules.yml`. Los módulos sin documentación existente se marcan como "pendiente" sin enlace roto.
 
@@ -102,7 +102,7 @@
     - **Aceptación**: El directorio y el init existen.
 
 - [ ] **4.2 Implementar `test_module_catalog.py`**
-    - **Descripción**: Tests que validan: YAML parseable, todos los IDs M00-M18 presentes y únicos, cada path existe en disco, campos obligatorios no vacíos, `status` es valor válido, `risk_level` es valor válido.
+    - **Descripción**: Tests que validan: YAML parseable, todos los IDs M00-M19 presentes y únicos, cada path existe en disco, campos obligatorios no vacíos, `status` es valor válido, `risk_level` es valor válido. Futuras pruebas deben validar rutas exclusivas, self-dependencies y M19.
     - **Archivos**: `tests/architecture/test_module_catalog.py`
     - **Aceptación**: Los tests pasan contra el `modules.yml` creado.
 

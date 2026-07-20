@@ -27,7 +27,7 @@ Each module entry SHALL have a unique `id` field matching the pattern `M\d\d`. T
 
 ### Requirement: Mandatory Fields Present
 
-Each module entry SHALL contain: `id`, `name`, `title`, `responsibility`, `paths`, `status`, `risk_level`, `current_dependencies`, `target_dependencies`. The `paths` list SHALL reference directories or files that exist on disk relative to the repository root.
+Each module entry SHALL contain: `id`, `name`, `title`, `responsibility`, `paths`, `status`, `risk_level`, `current_dependencies`, `target_dependencies`. The `paths` list SHALL reference directories or files that exist on disk relative to the repository root. Each Python file in `src/chemuson/` SHALL belong to at most one module. Declared paths SHALL NOT overlap. No module SHALL depend on itself.
 
 #### Scenario: Path existence
 - **GIVEN** a module entry with `paths: ["src/chemuson/core/"]`
@@ -41,11 +41,11 @@ Each module entry SHALL contain: `id`, `name`, `title`, `responsibility`, `paths
 
 ### Requirement: Dependency Fields Distinct and Consistent
 
-- `current_dependencies` SHALL list module IDs actually imported at runtime (verified by AST analysis).
-- `target_dependencies` SHALL list module IDs permitted in the target architecture.
-- `forbidden_dependencies` SHALL list module IDs that must never be imported.
+- `current_dependencies` SHALL list real runtime imports; imports within functions or lazy are still runtime; imports under `TYPE_CHECKING` do NOT enter `current_dependencies`.
+- `target_dependencies` SHALL list target architecture.
+- `forbidden_dependencies` SHALL list forbidden dependencies.
 - A module ID SHALL NOT appear in both `target_dependencies` and `forbidden_dependencies` of the same module.
-- Dependencies guarded by `TYPE_CHECKING` SHALL NOT appear in `current_dependencies`; they SHALL be recorded in `temporary_exceptions` with `type_checking_only: true`.
+- A runtime exception represents an actual not permitted or forbidden dependency; a crossing under `TYPE_CHECKING` MAY be recorded as exception with `type_checking_only: true`.
 
 #### Scenario: No contradictory dependency rules
 - **GIVEN** module M02 has `target_dependencies: [M00]` and `forbidden_dependencies: [M08]`
@@ -54,7 +54,7 @@ Each module entry SHALL contain: `id`, `name`, `title`, `responsibility`, `paths
 
 ### Requirement: Public API Accuracy
 
-When `public_api` is populated, each symbol SHALL exist in the module's `__init__.py` (declarable via `__all__` or direct assignment). Validation SHALL use AST analysis, not runtime import.
+`public_api` SHALL contain deliberately public contracts: symbols listed in `__all__`; deliberate re-exports from `__init__.py`; functions associated with `[project.scripts]`; for a single-file module, a deliberately cataloged function like `M19.main`. A symbol imported directly from an internal module by another package does NOT automatically become public API. Validation SHALL use AST analysis, not runtime import.
 
 #### Scenario: Public API symbol exists
 - **GIVEN** module M00 declares `public_api` containing `MolGraph`

@@ -26,8 +26,9 @@ Esta fase es **estrictamente documental y de validación**. No se moverá ni ren
   - Paquetes de dominio: `core`, `chemio`, `clean2d`, `chemcalc`, `chemname`, `geometry3d`, `compchem`, `spectroscopy`, `name2structure`, `markush`.
   - Subsistema GUI (desglosado): `gui` (orquestación general), `gui/canvas`, `gui/controllers`, `gui/commands`, `gui/dialogs`, `gui/items`.
   - Utilidades: `update`, `utils`.
-  - Módulos raíz: `version`/`_version`.
+  - Módulos raíz: `version`/`_version`, `__main__` (bootstrap).
   - El directorio `templates/` está vacío y NO se cataloga como módulo funcional.
+  - El catálogo contiene exactamente 20 módulos: M00-M19.
 - **Definición de contratos**: Mapeo de paths, APIs públicas/internas y reglas de dependencia (actual vs. objetivo).
 - **Mapeo del Canvas**: Documentación detallada de `src/chemuson/gui/canvas/` para preparar futuras extracciones.
 - **Protocolo de agentes**: `AGENTS.md` raíz para guiar agentes IA en el mantenimiento de integridad arquitectónica.

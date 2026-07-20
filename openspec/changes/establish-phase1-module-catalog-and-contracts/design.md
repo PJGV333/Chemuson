@@ -44,6 +44,10 @@ Cada entrada del catálogo es un documento YAML dentro de una lista `modules`. L
 - `legacy`: módulo con deuda técnica reconocida, candidato a refactor futuro.
 - `empty`: directorio existe pero sin código funcional (p. ej. `templates/`). No se asigna ID.
 
+### Regla de Propiedad de Rutas
+
+Cada archivo Python de `src/chemuson/` pertenece como máximo a un módulo. Las rutas declaradas no pueden superponerse. Toda ruta debe existir. Ningún módulo puede depender de sí mismo. Estas reglas se verifican en los tests de catálogo.
+
 ### Esquema de `temporary_exceptions`
 
 Cada excepción es un objeto con campos obligatorios:
@@ -77,11 +81,10 @@ Cada dependencia circular conocida se registra como:
 
 ### Dependencias: distinción de claves
 
-- **`current_dependencies`**: lo que el código importa actualmente en runtime. Se determina por análisis AST.
-- **`target_dependencies`**: lo que el módulo debería importar en la arquitectura ideal. Definido por decisión arquitectónica.
-- **`forbidden_dependencies`**: módulos que nunca deben importarse (p. ej. `core` nunca importa `gui`).
-- **`temporary_exceptions`**: violaciones documentadas de `forbidden_dependencies` o dependencias en `current_dependencies` que no están en `target_dependencies`.
-- Una dependencia guardada por `TYPE_CHECKING` NO cuenta como dependencia runtime. Se marca con `type_checking_only: true`.
+- **`current_dependencies`**: imports runtime reales; imports dentro de funciones o lazy siguen siendo runtime; imports bajo `TYPE_CHECKING` no entran en current_dependencies.
+- **`target_dependencies`**: arquitectura objetivo.
+- **`forbidden_dependencies`**: dependencias prohibidas.
+- **`temporary_exceptions`**: una excepción runtime representa una dependencia actual no permitida o prohibida; un cruce bajo TYPE_CHECKING puede documentarse como excepción con `type_checking_only: true`.
 
 ## 2. Identificadores Estables (M00-M23)
 
@@ -110,8 +113,9 @@ Los IDs se asignan a los siguientes módulos basados en el código actual:
 | M16 | name2structure | Resolución nombre → estructura |
 | M17 | markush | Estructuras Markush y polímeros |
 | M18 | version | Gestión de versión |
+| M19 | bootstrap | Arranque y composición de la aplicación |
 
-Los IDs M19-M23 quedan reservados para módulos futuros.
+Los IDs M20-M23 quedan reservados para módulos futuros.
 
 ### Reglas de estabilidad de IDs
 
@@ -136,23 +140,16 @@ No se implementará generación automática de documentación durante esta fase.
 
 ### Definición
 
-"API pública" significa específicamente:
+`public_api` contiene contratos deliberadamente públicos:
 
-- Símbolos listados en `__all__` del `__init__.py` del paquete.
-- Entry points instalados vía `[project.scripts]` en `pyproject.toml`.
-- Clases o funciones importadas directamente por otros paquetes del sistema (detectable por AST).
+- Símbolos listados en `__all__`;
+- Reexportaciones deliberadas desde `__init__.py`;
+- Funciones asociadas a `[project.scripts]`;
+- Para un módulo de archivo único, una función deliberadamente catalogada, como `M19.main`.
 
-NO es API pública:
+Un símbolo importado directamente desde un módulo interno por otro paquete NO se convierte automáticamente en API pública.
 
-- Símbolos en `__init__.py` sin `__all__` definido (el paquete no declara API).
-- Funciones/clases internas con prefijo `_`.
-- Módulos usados exclusivamente por tests.
-- Workers invocados por `subprocess` (como `_rdkit_worker.py`).
-- Compatibilidad histórica accidental sin uso documentado.
-
-### Validación
-
-Los tests verificarán que los símbolos declarados en `public_api` existen en los archivos especificados, usando análisis AST sin importar los módulos.
+La validación futura será mediante AST, sin importar los módulos.
 
 ## 5. Dependencias Circulares Conocidas
 
@@ -181,6 +178,8 @@ Plan de resolución: extraer `MolView` a `core/model.py` o mover `implicit_h_cou
 - `utils/autosave.py`: `from chemuson.gui.canvas import ChemusonCanvas` bajo `TYPE_CHECKING`.
 
 Estas NO son dependencias runtime. Se marcan como `type_checking_only: true`.
+
+## 7. Protocolo de Agentes (`AGENTS.md`)
 
 ## 6. Protocolo de Agentes (`AGENTS.md`)
 
@@ -268,7 +267,7 @@ La propuesta exige registrar resultados reales de:
 
 El baseline se guarda en `openspec/changes/establish-phase1-module-catalog-and-contracts/baseline.md`.
 
-Se permite que los 6 tests Clean2D conocidos fallen. El baseline debe reflejar el estado real del repositorio en el momento de captura.
+El baseline debe reflejar el estado real del repositorio en el momento de captura, sin asumir fallos permitidos.
 
 ## 10. Criterios Negativos
 

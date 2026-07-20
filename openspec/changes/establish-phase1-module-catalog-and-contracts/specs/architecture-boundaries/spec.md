@@ -2,6 +2,20 @@
 
 ## ADDED Requirements
 
+### Requirement: Path Ownership and Exclusivity
+
+Each Python file in `src/chemuson/` SHALL belong to at most one module. Declared paths SHALL NOT overlap. All declared paths MUST exist. No module SHALL depend on itself. These rules are verified by the module catalog tests.
+
+#### Scenario: Path exclusivity verified
+- **GIVEN** two module entries with paths `["src/chemuson/core/"]` and `["src/chemuson/chemio/"]`
+- **WHEN** the catalog is validated for path overlap
+- **THEN** no file belongs to more than one module
+
+#### Scenario: Self-dependency prohibited
+- **GIVEN** a module entry with id `M00` and paths `["src/chemuson/core/"]`
+- **WHEN** dependencies are checked against paths
+- **THEN** M00 does not depend on itself
+
 ### Requirement: Forbidden Imports Detected by Static Analysis
 
 The boundary test suite SHALL analyze all `.py` files in `src/chemuson/` using Python's `ast` module. Any import statement that crosses a `forbidden_dependencies` boundary SHALL produce a test failure with file path, line number, import expression, and violated rule.
@@ -13,7 +27,7 @@ The boundary test suite SHALL analyze all `.py` files in `src/chemuson/` using P
 
 ### Requirement: TYPE_CHECKING Imports Excluded from Runtime Dependencies
 
-Imports wrapped in `if TYPE_CHECKING:` blocks SHALL NOT be treated as runtime dependencies. The AST analysis SHALL detect the `TYPE_CHECKING` guard and skip those imports when checking boundary rules.
+Imports wrapped in `if TYPE_CHECKING:` blocks SHALL NOT be treated as runtime dependencies. A runtime exception represents an actual not permitted or forbidden dependency; a crossing under `TYPE_CHECKING` MAY be recorded as exception with `type_checking_only: true`. The AST analysis SHALL detect the `TYPE_CHECKING` guard and skip those imports when checking boundary rules.
 
 #### Scenario: TYPE_CHECKING import allowed
 - **GIVEN** `src/chemuson/chemio/persistence.py` imports `chemuson.gui.canvas` under `TYPE_CHECKING`
