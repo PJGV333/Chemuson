@@ -4,36 +4,13 @@
 
 El `ChemusonCanvas` es el componente central de la interfaz de usuario. Es un lienzo interactivo basado en `QGraphicsView` que permite la visualización, edición y manipulación directa de estructuras moleculares 2D. Su diseño se basa en una arquitectura de mixins para separar responsabilidades de entrada, selección, renderizado y estructura.
 
-## Composición de Mixins (MRO)
+## Composición de Mixins
 
-La clase `ChemusonCanvas` hereda de los siguientes componentes, en orden de base directa:
+La clase `ChemusonCanvas` se construye mediante composición de submixins. Sus bases directas en orden de declaración son:
 
-```python
-class ChemusonCanvas(
-    CanvasInputMixin,
-    CanvasSelectionMixin,
-    CanvasTextMixin,
-    CanvasRenderMixin,
-    CanvasStructureMixin,
-    QGraphicsView,
-):
-```
+`CanvasInputMixin` → `CanvasSelectionMixin` → `CanvasTextMixin` → `CanvasRenderMixin` → `CanvasStructureMixin` → `QGraphicsView`.
 
-**Bases directas:**
-1. **`CanvasInputMixin`**: Gestiona la entrada de usuario (mouse/teclado).
-   - `CanvasSelectionInputMixin`
-   - `CanvasKeyboardMixin`
-   - `CanvasContextMenuMixin`
-   - `CanvasToolsAnnotationsMixin`
-   - `CanvasToolsBondingMixin`
-   - `CanvasToolsRingsChainsMixin`
-2. **`CanvasSelectionMixin`**: Controla la lógica de selección de átomos, enlaces y otros elementos.
-3. **`CanvasTextMixin`**: Gestiona la edición y visualización de texto y anotaciones.
-4. **`CanvasRenderMixin`**: Controla el proceso de renderizado visual y exportación.
-5. **`CanvasStructureMixin`**: Sincroniza el estado visual con el modelo químico (`MolGraph`).
-6. **`QGraphicsView`** (Base de Qt).
-
-**`CanvasToolsBondingMixin`** agrega 5 sub-mixins: `CanvasBondStateMixin`, `CanvasBondModelOpsMixin`, `CanvasBondDragMixin`, `CanvasBondHitTestingMixin`, `CanvasBondGeometryMixin`.
+**`CanvasInputMixin`** agrupa 6 sub-mixins para la entrada de usuario. **`CanvasToolsBondingMixin`** (incluido como parte de `CanvasInputMixin`) agrega 5 sub-mixins de bonding. El inventario verifica 20 archivos en el directorio `canvas/`. Cada instancia de `ChemusonCanvas` crea y posee su propio `self.undo_stack = QUndoStack(self)`.
 
 ## Inventario de Archivos Relacionados
 
