@@ -204,6 +204,15 @@ modules:
     elimination_condition: Mover depiction_candidates.py a clean2d o a un paquete
       compartido en fase futura.
     type_checking_only: false
+  - source_id: M01
+    target_id: M09
+    file: src/chemuson/chemio/persistence.py
+    import_path: from chemuson.gui.canvas import ChemusonCanvas
+    reason: Import bajo TYPE_CHECKING para tipar la persistencia del canvas.
+    debt_ref: establish-phase1-module-catalog-and-contracts
+    elimination_condition: Sustituir ChemusonCanvas por un Protocol de
+      persistencia independiente de GUI.
+    type_checking_only: true
   tests:
   - tests/test_rdkit_roundtrip.py
   - tests/test_cml_io.py
@@ -1175,9 +1184,25 @@ modules:
   responsibility: Recursos empaquetados, autosave y crash reporting compartido.
   risk_level: low
   status: stable
-  target_dependencies:
-  - M01
-  temporary_exceptions: []
+  target_dependencies: []
+  temporary_exceptions:
+  - source_id: M15
+    target_id: M01
+    file: src/chemuson/utils/autosave.py
+    import_path: from chemuson.chemio.persistence import PersistenceManager
+    reason: utils no debe depender de chemio en la arquitectura objetivo.
+    debt_ref: establish-phase1-module-catalog-and-contracts
+    elimination_condition: Extraer la persistencia de autosave detrás de un
+      protocolo o servicio que no haga depender utils de chemio.
+    type_checking_only: false
+  - source_id: M15
+    target_id: M09
+    file: src/chemuson/utils/autosave.py
+    import_path: from chemuson.gui.canvas import ChemusonCanvas
+    reason: Import bajo TYPE_CHECKING para tipar AutosaveManager.
+    debt_ref: establish-phase1-module-catalog-and-contracts
+    elimination_condition: Sustituir ChemusonCanvas por un Protocol de tipado.
+    type_checking_only: true
   tests: []
   title: Utilidades compartidas
 - circular_dependencies: []
