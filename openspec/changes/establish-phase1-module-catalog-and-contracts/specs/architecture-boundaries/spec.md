@@ -27,7 +27,7 @@ The boundary test suite SHALL analyze all `.py` files in `src/chemuson/` using P
 
 ### Requirement: TYPE_CHECKING Imports Excluded from Runtime Dependencies
 
-Imports wrapped in `if TYPE_CHECKING:` blocks SHALL NOT be treated as runtime dependencies. A runtime exception represents an actual not permitted or forbidden dependency; a crossing under `TYPE_CHECKING` MAY be recorded as exception with `type_checking_only: true`. The AST analysis SHALL detect the `TYPE_CHECKING` guard and skip those imports when checking boundary rules.
+Imports wrapped in `if TYPE_CHECKING:` blocks SHALL NOT be treated as runtime dependencies. A runtime exception represents a current runtime dependency that is either absent from `target_dependencies` or present in `forbidden_dependencies`. A TYPE_CHECKING-only crossing may be documented with `type_checking_only: true`, but it must not appear in `current_dependencies`. The AST analysis SHALL detect the `TYPE_CHECKING` guard and skip those imports when checking boundary rules.
 
 #### Scenario: TYPE_CHECKING import allowed
 - **GIVEN** `src/chemuson/chemio/persistence.py` imports `chemuson.gui.canvas` under `TYPE_CHECKING`

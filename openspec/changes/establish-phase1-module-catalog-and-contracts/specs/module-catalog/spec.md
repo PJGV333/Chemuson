@@ -42,10 +42,9 @@ Each module entry SHALL contain: `id`, `name`, `title`, `responsibility`, `paths
 ### Requirement: Dependency Fields Distinct and Consistent
 
 - `current_dependencies` SHALL list real runtime imports; imports within functions or lazy are still runtime; imports under `TYPE_CHECKING` do NOT enter `current_dependencies`.
-- `target_dependencies` SHALL list target architecture.
-- `forbidden_dependencies` SHALL list forbidden dependencies.
-- A module ID SHALL NOT appear in both `target_dependencies` and `forbidden_dependencies` of the same module.
-- A runtime exception represents an actual not permitted or forbidden dependency; a crossing under `TYPE_CHECKING` MAY be recorded as exception with `type_checking_only: true`.
+- `target_dependencies` SHALL list dependencies permitted by the target architecture.
+- `forbidden_dependencies` SHALL list dependencies that must never be imported.
+- A runtime exception represents a current runtime dependency that is either absent from `target_dependencies` or present in `forbidden_dependencies`. A TYPE_CHECKING-only crossing may be documented with `type_checking_only: true`, but it must not appear in `current_dependencies`.
 
 #### Scenario: No contradictory dependency rules
 - **GIVEN** module M02 has `target_dependencies: [M00]` and `forbidden_dependencies: [M08]`

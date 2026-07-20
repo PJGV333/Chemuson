@@ -179,8 +179,6 @@ Plan de resolución: extraer `MolView` a `core/model.py` o mover `implicit_h_cou
 
 Estas NO son dependencias runtime. Se marcan como `type_checking_only: true`.
 
-## 7. Protocolo de Agentes (`AGENTS.md`)
-
 ## 6. Protocolo de Agentes (`AGENTS.md`)
 
 El `AGENTS.md` raíz establece reglas vinculantes para cualquier agente IA que trabaje en el repositorio:
