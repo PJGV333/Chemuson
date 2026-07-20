@@ -96,12 +96,12 @@
 
 ## Fase 4: Tests de Límites Arquitectónicos
 
-- [ ] **4.1 Crear directorio `tests/architecture/`**
+- [x] **4.1 Crear directorio `tests/architecture/`**
     - **Descripción**: Crear estructura para tests arquitectónicos.
     - **Archivos**: `tests/architecture/__init__.py`
     - **Aceptación**: El directorio y el init existen.
 
-- [ ] **4.2 Implementar `test_module_catalog.py`**
+- [x] **4.2 Implementar `test_module_catalog.py`**
     - **Descripción**: Tests que validan: YAML parseable, todos los IDs M00-M19 presentes y únicos, cada path existe en disco, campos obligatorios no vacíos, `status` es valor válido, `risk_level` es valor válido. Futuras pruebas deben validar rutas exclusivas, self-dependencies y M19.
     - **Archivos**: `tests/architecture/test_module_catalog.py`
     - **Aceptación**: Los tests pasan contra el `modules.yml` creado.
