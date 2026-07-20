@@ -13,9 +13,9 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 CATALOG_PATH = REPO_ROOT / "architecture" / "modules.yml"
-MODULES_DIR = REPO_ROOT / "src" / "chemuson"
 
 MODULE_ID_PATTERN = re.compile(r"^M\d\d$")
+EXPECTED_IDS = {f"M{i:02d}" for i in range(20)}
 VALID_STATUSES = {"stable", "evolving", "legacy"}
 VALID_RISK_LEVELS = {"low", "medium", "high"}
 VALID_SEVERITIES = {"low", "medium", "high"}
@@ -36,11 +36,6 @@ REQUIRED_FIELDS = [
     "tests",
     "public_api",
     "internal_api",
-]
-EXPECTED_IDS = {f"M{i:02d}" for i in range(20)}
-EXPECTED_CYCLES = [
-    {"modules": {"M01", "M02"}, "severity": "high"},
-    {"modules": {"M03", "M04"}, "severity": "medium"},
 ]
 REQUIRED_EXCEPTION_FIELDS = {
     "source_id",
@@ -123,12 +118,6 @@ class TestModuleIds:
 
 class TestMandatoryFields:
     """Validate that every module has all required fields with correct types."""
-
-    def _get_module_by_id(self, modules, module_id):
-        for m in modules:
-            if m["id"] == module_id:
-                return m
-        return None
 
     def test_all_required_fields_present(self, modules):
         for m in modules:
@@ -250,22 +239,25 @@ class TestModuleDependencies:
     def test_current_dependencies_valid_ids(self, modules):
         for m in modules:
             for dep_id in m["current_dependencies"]:
-                assert MODULE_ID_PATTERN.match(dep_id), (
-                    f"Module '{m['id']}', 'current_dependencies' contains invalid ID '{dep_id}'"
+                assert dep_id in EXPECTED_IDS, (
+                    f"Module '{m['id']}', 'current_dependencies' contains "
+                    f"uncatalogued ID '{dep_id}'"
                 )
 
     def test_target_dependencies_valid_ids(self, modules):
         for m in modules:
             for dep_id in m["target_dependencies"]:
-                assert MODULE_ID_PATTERN.match(dep_id), (
-                    f"Module '{m['id']}', 'target_dependencies' contains invalid ID '{dep_id}'"
+                assert dep_id in EXPECTED_IDS, (
+                    f"Module '{m['id']}', 'target_dependencies' contains "
+                    f"uncatalogued ID '{dep_id}'"
                 )
 
     def test_forbidden_dependencies_valid_ids(self, modules):
         for m in modules:
             for dep_id in m["forbidden_dependencies"]:
-                assert MODULE_ID_PATTERN.match(dep_id), (
-                    f"Module '{m['id']}', 'forbidden_dependencies' contains invalid ID '{dep_id}'"
+                assert dep_id in EXPECTED_IDS, (
+                    f"Module '{m['id']}', 'forbidden_dependencies' contains "
+                    f"uncatalogued ID '{dep_id}'"
                 )
 
     def test_no_duplicate_ids_in_current_dependencies(self, modules):
@@ -291,14 +283,14 @@ class TestModuleDependencies:
 
     def test_no_self_dependency(self, modules):
         for m in modules:
-            for dep_list in [
-                m["current_dependencies"],
-                m["target_dependencies"],
+            for dep_list, list_name in [
+                (m["current_dependencies"], "current_dependencies"),
+                (m["target_dependencies"], "target_dependencies"),
             ]:
                 if m["id"] in dep_list:
                     assert False, (
                         f"Module '{m['id']}' depends on itself in "
-                        f"{dep_list.__class__.__name__}"
+                        f"{list_name}"
                     )
 
     def test_target_and_forbidden_no_overlap(self, modules):
@@ -315,11 +307,14 @@ class TestModuleDependencies:
         for m in modules:
             if m["id"] == "M19":
                 continue
-            for dep_list in [m["current_dependencies"], m["target_dependencies"]]:
+            for dep_list, list_name in [
+                (m["current_dependencies"], "current_dependencies"),
+                (m["target_dependencies"], "target_dependencies"),
+            ]:
                 if "M19" in dep_list:
                     assert False, (
                         f"Module '{m['id']}' references M19 in "
-                        f"{dep_list.__class__.__name__}"
+                        f"{list_name}"
                     )
 
 
@@ -329,12 +324,6 @@ class TestModuleDependencies:
 
 class TestTemporaryExceptions:
     """Validate the structure of temporary_exceptions entries."""
-
-    def _get_module_by_id(self, modules, module_id):
-        for m in modules:
-            if m["id"] == module_id:
-                return m
-        return None
 
     def test_exception_has_required_fields(self, modules):
         for m in modules:
@@ -347,15 +336,17 @@ class TestTemporaryExceptions:
     def test_exception_source_id_is_valid(self, modules):
         for m in modules:
             for exc in m["temporary_exceptions"]:
-                assert MODULE_ID_PATTERN.match(exc["source_id"]), (
-                    f"Module '{m['id']}', exception source_id '{exc['source_id']}' invalid"
+                assert exc["source_id"] in EXPECTED_IDS, (
+                    f"Module '{m['id']}', exception source_id '{exc['source_id']}' "
+                    f"is not in catalog"
                 )
 
     def test_exception_target_id_is_valid(self, modules):
         for m in modules:
             for exc in m["temporary_exceptions"]:
-                assert MODULE_ID_PATTERN.match(exc["target_id"]), (
-                    f"Module '{m['id']}', exception target_id '{exc['target_id']}' invalid"
+                assert exc["target_id"] in EXPECTED_IDS, (
+                    f"Module '{m['id']}', exception target_id '{exc['target_id']}' "
+                    f"is not in catalog"
                 )
 
     def test_exception_source_id_matches_module(self, modules):
@@ -418,12 +409,6 @@ class TestTemporaryExceptions:
 class TestCircularDependencies:
     """Validate the structure of circular_dependencies entries."""
 
-    def _get_module_by_id(self, modules, module_id):
-        for m in modules:
-            if m["id"] == module_id:
-                return m
-        return None
-
     def test_cycles_only_in_m01_and_m03(self, modules):
         """Only M01 and M03 should have circular dependencies declared."""
         for m in modules:
@@ -481,11 +466,28 @@ class TestCircularDependencies:
         for m in modules:
             for cycle in m["circular_dependencies"]:
                 for edge in cycle["edges"]:
-                    assert MODULE_ID_PATTERN.match(edge["source"]), (
-                        f"Cycle edge in module '{m['id']}', invalid source ID '{edge['source']}'"
+                    assert edge["source"] in EXPECTED_IDS, (
+                        f"Cycle edge in module '{m['id']}', "
+                        f"invalid source ID '{edge['source']}'"
                     )
-                    assert MODULE_ID_PATTERN.match(edge["target"]), (
-                        f"Cycle edge in module '{m['id']}', invalid target ID '{edge['target']}'"
+                    assert edge["target"] in EXPECTED_IDS, (
+                        f"Cycle edge in module '{m['id']}', "
+                        f"invalid target ID '{edge['target']}'"
+                    )
+
+    def test_cycle_edge_ids_in_cycle_modules(self, modules):
+        """Each edge source/target must be in the cycle's module set."""
+        for m in modules:
+            for cycle in m["circular_dependencies"]:
+                module_set = cycle["modules"]
+                for edge in cycle["edges"]:
+                    assert edge["source"] in module_set, (
+                        f"Cycle in module '{m['id']}', edge source '{edge['source']}' "
+                        f"not in cycle modules {module_set}"
+                    )
+                    assert edge["target"] in module_set, (
+                        f"Cycle in module '{m['id']}', edge target '{edge['target']}' "
+                        f"not in cycle modules {module_set}"
                     )
 
     def test_cycle_edge_paths_exist(self, modules):
@@ -494,7 +496,8 @@ class TestCircularDependencies:
                 for edge in cycle["edges"]:
                     resolved = (REPO_ROOT / edge["file"]).resolve()
                     assert resolved.exists(), (
-                        f"Cycle edge in module '{m['id']}', path '{edge['file']}' does not exist"
+                        f"Cycle edge in module '{m['id']}', path '{edge['file']}' "
+                        f"does not exist"
                     )
 
     def test_cycle_appears_once(self, modules):
