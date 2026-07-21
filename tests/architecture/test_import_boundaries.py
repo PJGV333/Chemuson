@@ -2,7 +2,7 @@ import ast
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 
 import pytest
 import yaml
@@ -208,13 +208,10 @@ class ImportBoundaryAnalyzer:
                     target_id, tc_only = resolved
                     if target_id != m_id:
                         node = imp_data["node"]
-                        try:
-                            stmt = ast.get_source_segment(source, node)
-                            if stmt is None:
-                                stmt = ast.unparse(node)
-                            stmt = re.sub(r"\s+", " ", stmt).strip()
-                        except Exception:
+                        stmt = ast.get_source_segment(source, node)
+                        if stmt is None:
                             stmt = ast.unparse(node)
+                        stmt = re.sub(r"\s+", " ", stmt).strip()
 
                         all_observed.append(ObservedImport(
                             source_id=m_id,
@@ -333,7 +330,7 @@ class TestImportBoundaries:
         assert len(canvas_tc_a) > 0
         assert canvas_tc_a[0].type_checking_only is True
 
-    def test_type_checking_else_block_is_runtime(self):
+    def test_type_checking_else_block_is_runtime(self, analyzer):
         synthetic_source = (
             "if TYPE_CHECKING:\n"
             "    from chemuson.gui.canvas import ChemusonCanvas\n"
@@ -355,11 +352,6 @@ class TestImportBoundaries:
         assert "ChemusonCanvas" in tc_imports[0]["names"][0], (
             f"Expected ChemusonCanvas in TYPE_CHECKING import, got {tc_imports[0]['names']}"
         )
-        assert "chemuson.gui.canvas" in (
-            tc_imports[0].get("module", "") or tc_imports[0].get("name", "")
-        ), (
-            f"Expected chemuson.gui.canvas in TYPE_CHECKING import, got {tc_imports[0]}"
-        )
 
         assert len(rt_imports) == 1, (
             f"Expected exactly 1 runtime import in else block, found {len(rt_imports)}"
@@ -367,10 +359,35 @@ class TestImportBoundaries:
         assert "MolGraph" in rt_imports[0]["names"][0], (
             f"Expected MolGraph in runtime import, got {rt_imports[0]['names']}"
         )
-        assert "chemuson.core" in (
-            rt_imports[0].get("module", "") or rt_imports[0].get("name", "")
-        ), (
-            f"Expected chemuson.core in runtime import, got {rt_imports[0]}"
+
+        # Resolver los imports a través del analyzer para verificar mapeo y booleanos
+        imp_data_tc = tc_imports[0]
+        imp_data_rt = rt_imports[0]
+
+        # Para el import de TYPE_CHECKING, debe resolverse a M09 (gui.canvas)
+        resolved_tc = analyzer._resolve_import(imp_data_tc, Path("/tmp/fake.py"))
+        assert resolved_tc is not None, (
+            f"Failed to resolve TYPE_CHECKING import {imp_data_tc}"
+        )
+        target_id_tc, tc_only_flag = resolved_tc
+        assert target_id_tc == "M09", (
+            f"Expected M09 for TYPE_CHECKING import, got {target_id_tc}"
+        )
+        assert tc_only_flag is True, (
+            f"Expected type_checking_only=True for TYPE_CHECKING import, got {tc_only_flag}"
+        )
+
+        # Para el import del else, debe resolverse a M00 (core)
+        resolved_rt = analyzer._resolve_import(imp_data_rt, Path("/tmp/fake.py"))
+        assert resolved_rt is not None, (
+            f"Failed to resolve runtime import {imp_data_rt}"
+        )
+        target_id_rt, tc_only_flag_rt = resolved_rt
+        assert target_id_rt == "M00", (
+            f"Expected M00 for runtime import, got {target_id_rt}"
+        )
+        assert tc_only_flag_rt is False, (
+            f"Expected type_checking_only=False for runtime import, got {tc_only_flag_rt}"
         )
 
     def test_runtime_dependencies_match_catalog(self, analyzer):
