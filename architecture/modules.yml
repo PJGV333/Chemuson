@@ -856,18 +856,11 @@ modules:
   - M00
   - M01
   - M02
-  - M03
-  - M04
   - M05
-  - M06
-  - M07
-  - M08
   - M09
   - M11
   - M14
   - M15
-  - M16
-  - M18
   entry_points: []
   forbidden_dependencies: []
   id: M10
