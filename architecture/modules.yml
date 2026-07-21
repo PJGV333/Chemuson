@@ -639,8 +639,6 @@ modules:
   current_dependencies:
   - M00
   - M01
-  - M02
-  - M04
   - M05
   - M06
   - M07
@@ -723,8 +721,6 @@ modules:
   target_dependencies:
   - M00
   - M01
-  - M02
-  - M04
   - M05
   - M06
   - M07
