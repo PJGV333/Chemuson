@@ -716,7 +716,7 @@ class TestImportBoundaries:
                     f"  - source_id={exc['source_id']}, target_id={exc['target_id']}, "
                     f"file={exc['file']}, import_path={exc['import_path']}, "
                     f"type_checking_only={exc['type_checking_only']} | "
-                    f"Este excepción no corresponde a ningún import TYPE_CHECKING observado."
+                    f"Esta excepción no corresponde a ningún import TYPE_CHECKING observado."
                 )
             assert False, "\n".join(msg_lines)
 
@@ -751,6 +751,7 @@ class TestImportBoundaries:
         assert len(violations) == 1
         assert violations[0]["not_in_target"] is True
         assert violations[0]["is_forbidden"] is False
+        assert len(obsolete) == 0
 
     def test_synthetic_forbidden_dependency(self, analyzer):
         """Case 3: Dependency in forbidden_dependencies -> violation."""
@@ -765,6 +766,7 @@ class TestImportBoundaries:
         violations, obsolete = check_runtime_policy(analyzer, test_catalog, observed)
         assert len(violations) == 1
         assert violations[0]["is_forbidden"] is True
+        assert len(obsolete) == 0
 
     def test_synthetic_both_forbidden_and_missing(self, analyzer):
         """Case 4: Dependency both forbidden and missing from target -> violation with both flags."""
@@ -780,6 +782,7 @@ class TestImportBoundaries:
         assert len(violations) == 1
         assert violations[0]["is_forbidden"] is True
         assert violations[0]["not_in_target"] is True
+        assert len(obsolete) == 0
 
     def test_synthetic_exact_exception_allows(self, analyzer):
         """Case 5: Exact exception allows violation -> no violation, exception not obsolete."""
@@ -1031,7 +1034,6 @@ class TestImportBoundaries:
         """Case 13e: Real path differences should still fail to match."""
         repo_file = Path("tests/architecture/test_import_boundaries.py").resolve()
         assert analyzer.repo_root in repo_file.parents or analyzer.repo_root == repo_file
-        rel_path = str(repo_file.relative_to(analyzer.repo_root))
 
         # Use a different file path
         different_path = "tests/architecture/test_module_catalog.py"
