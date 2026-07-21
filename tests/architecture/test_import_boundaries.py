@@ -240,9 +240,6 @@ def _normalize_policy_path(repo_root: Path, value: str | Path) -> str:
     - Does not use resolve() for synthetic files.
     - Does not depend on current working directory.
     """
-    # Convert to Path if string
-    p = Path(value) if isinstance(value, str) else value
-
     # First, normalize backslashes to forward slashes in the string representation
     # We need to do this carefully because Path may interpret \ as part of the name on POSIX
     # So we replace in the string before creating Path, but after ensuring it's a string
@@ -267,6 +264,61 @@ def _normalize_policy_path(repo_root: Path, value: str | Path) -> str:
 def _normalize_import_path(value: str) -> str:
     """Normalize import statement by collapsing whitespace and stripping."""
     return re.sub(r"\s+", " ", value).strip()
+
+
+# ---------------------------------------------------------------------------
+# TYPE_CHECKING Exception Validation Helper
+# ---------------------------------------------------------------------------
+
+def check_type_checking_exceptions(
+    analyzer: ImportBoundaryAnalyzer,
+    catalog: list,
+    observed_imports: list,
+) -> list[dict]:
+    """
+    Check documented TYPE_CHECKING exceptions against observed TYPE_CHECKING imports.
+    Returns a list of exceptions that are documented but do not correspond exactly
+    to any observed TYPE_CHECKING import.
+
+    Identity uses: source_id, target_id, normalized file, normalized import_path, True.
+    Only imports with type_checking_only=True can satisfy a TYPE_CHECKING exception.
+    An observed TYPE_CHECKING import without a documented exception is allowed.
+    """
+    modules_by_id = {m["id"]: m for m in catalog}
+
+    # Build set of documented TYPE_CHECKING exception keys and mapping
+    exception_keys = set()
+    exceptions_by_key = {}
+
+    for m in catalog:
+        for exc in m.get("temporary_exceptions", []):
+            if exc.get("type_checking_only") is True:
+                source_id = exc["source_id"]
+                file_posix = _normalize_policy_path(analyzer.repo_root, exc["file"])
+                import_path_norm = _normalize_import_path(exc["import_path"])
+                key = (source_id, exc["target_id"], file_posix, import_path_norm, True)
+                exception_keys.add(key)
+                exceptions_by_key[key] = exc
+
+    # Build set of observed TYPE_CHECKING import keys
+    observed_keys = set()
+    for imp in observed_imports:
+        if imp.type_checking_only:
+            source_id = imp.source_id
+            target_id = imp.target_id
+            file_posix = _normalize_policy_path(analyzer.repo_root, imp.file)
+            import_path_norm = _normalize_import_path(imp.statement)
+            key = (source_id, target_id, file_posix, import_path_norm, True)
+            observed_keys.add(key)
+
+    # Find documented exceptions that have no matching observed import
+    obsolete_exceptions = []
+    for key in exception_keys:
+        if key not in observed_keys:
+            exc = exceptions_by_key[key]
+            obsolete_exceptions.append(exc)
+
+    return obsolete_exceptions
 
 
 # ---------------------------------------------------------------------------
@@ -589,6 +641,22 @@ class TestImportBoundaries:
                 f"file={exc['file']}, import_path={exc['import_path']}, type_checking_only=False | "
                 f"This exception does not correspond to any observed runtime violation"
             )
+
+    def test_type_checking_exceptions_documented_are_valid(self, analyzer):
+        """
+        Validate that all TYPE_CHECKING exceptions in the real catalog correspond
+        to actual observed TYPE_CHECKING imports. No obsolete TYPE_CHECKING exceptions.
+        """
+        all_observed = analyzer.analyze_all()
+        obsolete = check_type_checking_exceptions(
+            analyzer,
+            analyzer.modules_cfg,
+            all_observed,
+        )
+        assert len(obsolete) == 0, (
+            f"Found {len(obsolete)} obsolete TYPE_CHECKING exceptions. "
+            "Each documented TYPE_CHECKING exception must match an observed import."
+        )
 
 
     # Synthetic tests that directly call check_runtime_policy
@@ -923,3 +991,190 @@ class TestImportBoundaries:
         # Should fail to match because paths are different
         assert len(violations) == 1
         assert len(obsolete) == 1
+
+    def test_synthetic_type_checking_exception_exact_match(self, analyzer):
+        """Case 1: Excepción TYPE_CHECKING exacta -> no obsoleta."""
+        test_catalog = [
+            {"id": "M99", "target_dependencies": [], "forbidden_dependencies": ["M02"],
+             "temporary_exceptions": [{"source_id": "M99", "target_id": "M02",
+                                      "file": "/tmp/test.py",
+                                      "import_path": "from chemuson.clean2d import layout",
+                                      "type_checking_only": True, "reason": "test", "debt_ref": "test",
+                                      "elimination_condition": "fix it"}]},
+            {"id": "M00", "target_dependencies": [], "forbidden_dependencies": [], "temporary_exceptions": []},
+        ]
+        observed = [
+            ObservedImport(source_id="M99", target_id="M02", file=Path("/tmp/test.py"), line=3,
+                           statement="from chemuson.clean2d import layout", type_checking_only=True)
+        ]
+        obsolete = check_type_checking_exceptions(analyzer, test_catalog, observed)
+        assert len(obsolete) == 0
+
+    def test_synthetic_type_checking_wrong_source_id(self, analyzer):
+        """Case 2: source_id incorrecto -> obsoleta."""
+        test_catalog = [
+            {"id": "M99", "target_dependencies": [], "forbidden_dependencies": ["M02"],
+             "temporary_exceptions": [{"source_id": "M98", "target_id": "M02",
+                                      "file": "/tmp/test.py",
+                                      "import_path": "from chemuson.clean2d import layout",
+                                      "type_checking_only": True, "reason": "test", "debt_ref": "test",
+                                      "elimination_condition": "fix it"}]},
+            {"id": "M00", "target_dependencies": [], "forbidden_dependencies": [], "temporary_exceptions": []},
+        ]
+        observed = [
+            ObservedImport(source_id="M99", target_id="M02", file=Path("/tmp/test.py"), line=3,
+                           statement="from chemuson.clean2d import layout", type_checking_only=True)
+        ]
+        obsolete = check_type_checking_exceptions(analyzer, test_catalog, observed)
+        assert len(obsolete) == 1
+        assert obsolete[0]["source_id"] == "M98"
+
+    def test_synthetic_type_checking_wrong_target_id(self, analyzer):
+        """Case 3: target_id incorrecto -> obsoleta."""
+        test_catalog = [
+            {"id": "M99", "target_dependencies": [], "forbidden_dependencies": ["M02"],
+             "temporary_exceptions": [{"source_id": "M99", "target_id": "M03",
+                                      "file": "/tmp/test.py",
+                                      "import_path": "from chemuson.clean2d import layout",
+                                      "type_checking_only": True, "reason": "test", "debt_ref": "test",
+                                      "elimination_condition": "fix it"}]},
+            {"id": "M00", "target_dependencies": [], "forbidden_dependencies": [], "temporary_exceptions": []},
+        ]
+        observed = [
+            ObservedImport(source_id="M99", target_id="M02", file=Path("/tmp/test.py"), line=3,
+                           statement="from chemuson.clean2d import layout", type_checking_only=True)
+        ]
+        obsolete = check_type_checking_exceptions(analyzer, test_catalog, observed)
+        assert len(obsolete) == 1
+
+    def test_synthetic_type_checking_wrong_file(self, analyzer):
+        """Case 4: archivo incorrecto -> obsoleta."""
+        test_catalog = [
+            {"id": "M99", "target_dependencies": [], "forbidden_dependencies": ["M02"],
+             "temporary_exceptions": [{"source_id": "M99", "target_id": "M02",
+                                      "file": "/tmp/wrong.py",
+                                      "import_path": "from chemuson.clean2d import layout",
+                                      "type_checking_only": True, "reason": "test", "debt_ref": "test",
+                                      "elimination_condition": "fix it"}]},
+            {"id": "M00", "target_dependencies": [], "forbidden_dependencies": [], "temporary_exceptions": []},
+        ]
+        observed = [
+            ObservedImport(source_id="M99", target_id="M02", file=Path("/tmp/test.py"), line=3,
+                           statement="from chemuson.clean2d import layout", type_checking_only=True)
+        ]
+        obsolete = check_type_checking_exceptions(analyzer, test_catalog, observed)
+        assert len(obsolete) == 1
+
+    def test_synthetic_type_checking_wrong_import_path(self, analyzer):
+        """Case 5: import_path incorrecto -> obsoleta."""
+        test_catalog = [
+            {"id": "M99", "target_dependencies": [], "forbidden_dependencies": ["M02"],
+             "temporary_exceptions": [{"source_id": "M99", "target_id": "M02",
+                                      "file": "/tmp/test.py",
+                                      "import_path": "from chemuson.clean2d import wrong",
+                                      "type_checking_only": True, "reason": "test", "debt_ref": "test",
+                                      "elimination_condition": "fix it"}]},
+            {"id": "M00", "target_dependencies": [], "forbidden_dependencies": [], "temporary_exceptions": []},
+        ]
+        observed = [
+            ObservedImport(source_id="M99", target_id="M02", file=Path("/tmp/test.py"), line=3,
+                           statement="from chemuson.clean2d import layout", type_checking_only=True)
+        ]
+        obsolete = check_type_checking_exceptions(analyzer, test_catalog, observed)
+        assert len(obsolete) == 1
+
+    def test_synthetic_type_checking_exception_vs_runtime_import(self, analyzer):
+        """Case 6: Excepción TYPE_CHECKING frente a import runtime -> obsoleta."""
+        test_catalog = [
+            {"id": "M99", "target_dependencies": [], "forbidden_dependencies": ["M02"],
+             "temporary_exceptions": [{"source_id": "M99", "target_id": "M02",
+                                      "file": "/tmp/test.py",
+                                      "import_path": "from chemuson.clean2d import layout",
+                                      "type_checking_only": True, "reason": "test", "debt_ref": "test",
+                                      "elimination_condition": "fix it"}]},
+            {"id": "M00", "target_dependencies": [], "forbidden_dependencies": [], "temporary_exceptions": []},
+        ]
+        observed = [
+            ObservedImport(source_id="M99", target_id="M02", file=Path("/tmp/test.py"), line=3,
+                           statement="from chemuson.clean2d import layout", type_checking_only=False)
+        ]
+        obsolete = check_type_checking_exceptions(analyzer, test_catalog, observed)
+        assert len(obsolete) == 1
+
+    def test_synthetic_type_checking_runtime_exception_ignored(self, analyzer):
+        """Case 7: Excepción runtime frente a import TYPE_CHECKING -> se ignora en esta función."""
+        test_catalog = [
+            {"id": "M99", "target_dependencies": [], "forbidden_dependencies": ["M02"],
+             "temporary_exceptions": [{"source_id": "M99", "target_id": "M02",
+                                      "file": "/tmp/test.py",
+                                      "import_path": "from chemuson.clean2d import layout",
+                                      "type_checking_only": False, "reason": "test", "debt_ref": "test",
+                                      "elimination_condition": "fix it"}]},
+            {"id": "M00", "target_dependencies": [], "forbidden_dependencies": [], "temporary_exceptions": []},
+        ]
+        observed = [
+            ObservedImport(source_id="M99", target_id="M02", file=Path("/tmp/test.py"), line=3,
+                           statement="from chemuson.clean2d import layout", type_checking_only=True)
+        ]
+        obsolete = check_type_checking_exceptions(analyzer, test_catalog, observed)
+        assert len(obsolete) == 0
+
+    def test_synthetic_type_checking_import_without_exception_allowed(self, analyzer):
+        """Case 8: Import TYPE_CHECKING sin excepción documentada -> no produce error."""
+        test_catalog = [
+            {"id": "M99", "target_dependencies": [], "forbidden_dependencies": ["M02"],
+             "temporary_exceptions": []},
+            {"id": "M00", "target_dependencies": [], "forbidden_dependencies": [], "temporary_exceptions": []},
+        ]
+        observed = [
+            ObservedImport(source_id="M99", target_id="M02", file=Path("/tmp/test.py"), line=3,
+                           statement="from chemuson.clean2d import layout", type_checking_only=True)
+        ]
+        obsolete = check_type_checking_exceptions(analyzer, test_catalog, observed)
+        assert len(obsolete) == 0
+
+    def test_synthetic_type_checking_normalization(self, analyzer):
+        """Case 9: Normalización - ruta relativa vs absoluta, backslashes, whitespace."""
+        repo_file = Path("tests/architecture/test_import_boundaries.py").resolve()
+        assert analyzer.repo_root in repo_file.parents or analyzer.repo_root == repo_file
+        rel_path = str(repo_file.relative_to(analyzer.repo_root))
+
+        # Import with extra whitespace and backslashes in path string
+        import_with_extra_ws = "from  chemuson.clean2d  import\tlayout\n"
+        backslash_path = rel_path.replace("/", "\\")
+
+        test_catalog = [
+            {"id": "M99", "target_dependencies": [], "forbidden_dependencies": ["M02"],
+             "temporary_exceptions": [{"source_id": "M99", "target_id": "M02",
+                                      "file": backslash_path,
+                                      "import_path": "from chemuson.clean2d import layout",
+                                      "type_checking_only": True, "reason": "test", "debt_ref": "test",
+                                      "elimination_condition": "fix it"}]},
+            {"id": "M00", "target_dependencies": [], "forbidden_dependencies": [], "temporary_exceptions": []},
+        ]
+        observed = [
+            ObservedImport(source_id="M99", target_id="M02", file=repo_file, line=3,
+                           statement=import_with_extra_ws, type_checking_only=True)
+        ]
+        obsolete = check_type_checking_exceptions(analyzer, test_catalog, observed)
+        assert len(obsolete) == 0
+
+    def test_synthetic_type_checking_two_imports_one_tc_one_rt(self, analyzer):
+        """Case 10: Dos imports observados, uno runtime y otro TYPE_CHECKING -> solo TC satisface."""
+        test_catalog = [
+            {"id": "M99", "target_dependencies": [], "forbidden_dependencies": ["M02"],
+             "temporary_exceptions": [{"source_id": "M99", "target_id": "M02",
+                                      "file": "/tmp/test.py",
+                                      "import_path": "from chemuson.clean2d import layout",
+                                      "type_checking_only": True, "reason": "test", "debt_ref": "test",
+                                      "elimination_condition": "fix it"}]},
+            {"id": "M00", "target_dependencies": [], "forbidden_dependencies": [], "temporary_exceptions": []},
+        ]
+        observed = [
+            ObservedImport(source_id="M99", target_id="M02", file=Path("/tmp/test.py"), line=3,
+                           statement="from chemuson.clean2d import layout", type_checking_only=False),
+            ObservedImport(source_id="M99", target_id="M02", file=Path("/tmp/test.py"), line=3,
+                           statement="from chemuson.clean2d import layout", type_checking_only=True)
+        ]
+        obsolete = check_type_checking_exceptions(analyzer, test_catalog, observed)
+        assert len(obsolete) == 0
