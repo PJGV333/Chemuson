@@ -116,7 +116,7 @@
     - **Archivos**: `tests/architecture/test_public_api_exists.py`
     - **Aceptación**: Los tests pasan contra las APIs declaradas.
 
-- [ ] **4.5 Implementar `test_no_tools_in_src.py`**
+- [x] **4.5 Implementar `test_no_tools_in_src.py`**
     - **Descripción**: Verificar que ningún archivo en `src/chemuson/` importa `tools` o `chemuson.tools`.
     - **Archivos**: `tests/architecture/test_no_tools_in_src.py`
     - **Aceptación**: El test pasa.
