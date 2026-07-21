@@ -106,7 +106,7 @@
     - **Archivos**: `tests/architecture/test_module_catalog.py`
     - **Aceptación**: Los tests pasan contra el `modules.yml` creado.
 
-- [ ] **4.3 Implementar `test_import_boundaries.py`**
+- [x] **4.3 Implementar `test_import_boundaries.py`**
     - **Descripción**: Test que analiza todos los archivos `.py` de `src/chemuson/` con `ast`, extrae imports `from chemuson.*`, verifica contra `forbidden_dependencies` del catálogo, aplica `temporary_exceptions` como whitelist, distingue `TYPE_CHECKING`. Mensajes de fallo con archivo, línea, import, regla violada.
     - **Archivos**: `tests/architecture/test_import_boundaries.py`
     - **Aceptación**: Los tests pasan con las excepciones registradas. Fallo inmediato ante violación no documentada.

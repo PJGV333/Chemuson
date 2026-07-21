@@ -284,8 +284,6 @@ def check_type_checking_exceptions(
     Only imports with type_checking_only=True can satisfy a TYPE_CHECKING exception.
     An observed TYPE_CHECKING import without a documented exception is allowed.
     """
-    modules_by_id = {m["id"]: m for m in catalog}
-
     # Build set of documented TYPE_CHECKING exception keys and mapping
     exception_keys = set()
     exceptions_by_key = {}
@@ -565,6 +563,64 @@ class TestImportBoundaries:
             f"Expected type_checking_only=False for runtime import, got {tc_only_flag_rt}"
         )
 
+    def test_typing_type_checking_import_classification(self, analyzer):
+        """Sintético para verificar typing.TYPE_CHECKING y else."""
+        synthetic_source = (
+            "if typing.TYPE_CHECKING:\n"
+            "    from chemuson.gui.canvas import ChemusonCanvas\n"
+            "else:\n"
+            "    from chemuson.core import MolGraph\n"
+        )
+        synthetic_tree = ast.parse(synthetic_source)
+        synthetic_visitor = ImportVisitor(
+            synthetic_source, Path("/tmp/fake.py"), "chemuson.fake"
+        )
+        synthetic_visitor.visit(synthetic_tree)
+
+        tc_imports = [imp for imp in synthetic_visitor.imports if imp["type_checking_only"]]
+        rt_imports = [imp for imp in synthetic_visitor.imports if not imp["type_checking_only"]]
+
+        assert len(tc_imports) == 1, (
+            f"Expected exactly 1 TYPE_CHECKING import, found {len(tc_imports)}"
+        )
+        assert "ChemusonCanvas" in tc_imports[0]["names"][0], (
+            f"Expected ChemusonCanvas in TYPE_CHECKING import, got {tc_imports[0]['names']}"
+        )
+
+        assert len(rt_imports) == 1, (
+            f"Expected exactly 1 runtime import in else block, found {len(rt_imports)}"
+        )
+        assert "MolGraph" in rt_imports[0]["names"][0], (
+            f"Expected MolGraph in runtime import, got {rt_imports[0]['names']}"
+        )
+
+        imp_data_tc = tc_imports[0]
+        imp_data_rt = rt_imports[0]
+
+        resolved_tc = analyzer._resolve_import(imp_data_tc, Path("/tmp/fake.py"))
+        assert resolved_tc is not None, (
+            f"Failed to resolve TYPE_CHECKING import {imp_data_tc}"
+        )
+        target_id_tc, tc_only_flag = resolved_tc
+        assert target_id_tc == "M09", (
+            f"Expected M09 for typing.TYPE_CHECKING import, got {target_id_tc}"
+        )
+        assert tc_only_flag is True, (
+            f"Expected type_checking_only=True for typing.TYPE_CHECKING import, got {tc_only_flag}"
+        )
+
+        resolved_rt = analyzer._resolve_import(imp_data_rt, Path("/tmp/fake.py"))
+        assert resolved_rt is not None, (
+            f"Failed to resolve runtime import {imp_data_rt}"
+        )
+        target_id_rt, tc_only_flag_rt = resolved_rt
+        assert target_id_rt == "M00", (
+            f"Expected M00 for runtime import, got {target_id_rt}"
+        )
+        assert tc_only_flag_rt is False, (
+            f"Expected type_checking_only=False for runtime import, got {tc_only_flag_rt}"
+        )
+
     def test_runtime_dependencies_match_catalog(self, analyzer):
         all_observed = analyzer.analyze_all()
 
@@ -653,10 +709,16 @@ class TestImportBoundaries:
             analyzer.modules_cfg,
             all_observed,
         )
-        assert len(obsolete) == 0, (
-            f"Found {len(obsolete)} obsolete TYPE_CHECKING exceptions. "
-            "Each documented TYPE_CHECKING exception must match an observed import."
-        )
+        if obsolete:
+            msg_lines = [f"Found {len(obsolete)} obsolete TYPE_CHECKING exceptions. Each documented TYPE_CHECKING exception must match an observed import."]
+            for exc in obsolete:
+                msg_lines.append(
+                    f"  - source_id={exc['source_id']}, target_id={exc['target_id']}, "
+                    f"file={exc['file']}, import_path={exc['import_path']}, "
+                    f"type_checking_only={exc['type_checking_only']} | "
+                    f"Este excepción no corresponde a ningún import TYPE_CHECKING observado."
+                )
+            assert False, "\n".join(msg_lines)
 
 
     # Synthetic tests that directly call check_runtime_policy
