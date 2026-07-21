@@ -112,9 +112,9 @@
     - **Aceptación**: Los tests pasan con las excepciones registradas. Fallo inmediato ante violación no documentada.
 
 - [x] **4.4 Implementar `test_public_api_exists.py`**
-     - **Descripción**: Para cada módulo con `public_api` no vacío, verificar con AST que los símbolos existen en el archivo del `__init__.py` correspondiente. No importar los módulos.
-     - **Archivos**: `tests/architecture/test_public_api_exists.py`
-     - **Aceptación**: Los tests pasan contra las APIs declaradas.
+    - **Descripción**: Para cada módulo con `public_api` no vacío, verificar con AST que los símbolos existen en el archivo del `__init__.py` correspondiente. No importar los módulos.
+    - **Archivos**: `tests/architecture/test_public_api_exists.py`
+    - **Aceptación**: Los tests pasan contra las APIs declaradas.
 
 - [ ] **4.5 Implementar `test_no_tools_in_src.py`**
     - **Descripción**: Verificar que ningún archivo en `src/chemuson/` importa `tools` o `chemuson.tools`.
