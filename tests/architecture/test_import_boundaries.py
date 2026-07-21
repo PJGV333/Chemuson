@@ -2,7 +2,7 @@ import ast
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Tuple
 
 import pytest
 import yaml
@@ -27,23 +27,33 @@ class ImportVisitor(ast.NodeVisitor):
         self.in_type_checking = False
         self.context_stack: List[bool] = []
 
-    def visit_If(self, node: ast.If):
-        is_tc = False
-        if isinstance(node.test, ast.Name) and node.test.id == "TYPE_CHECKING":
-            is_tc = True
-        elif isinstance(node.test, ast.Attribute):
-            if (isinstance(node.test.value, ast.Name) and node.test.value.id == "typing" and
-                    node.test.attr == "TYPE_CHECKING"):
-                is_tc = True
+    def _is_type_checking_test(self, test_node: ast.expr) -> bool:
+        if isinstance(test_node, ast.Name) and test_node.id == "TYPE_CHECKING":
+            return True
+        if (isinstance(test_node, ast.Attribute) and
+                isinstance(test_node.value, ast.Name) and
+                test_node.value.id == "typing" and
+                test_node.attr == "TYPE_CHECKING"):
+            return True
+        return False
 
-        self.context_stack.append(self.in_type_checking)
+    def _visit_body(self, body: list[ast.stmt]) -> None:
+        for stmt in body:
+            self.visit(stmt)
+
+    def visit_If(self, node: ast.If):
+        is_tc = self._is_type_checking_test(node.test)
+        prev_tc = self.in_type_checking
+        self.context_stack.append(prev_tc)
+
         if is_tc:
             self.in_type_checking = True
-
-        for stmt in node.body:
-            self.visit(stmt)
-        for stmt in node.orelse:
-            self.visit(stmt)
+            self._visit_body(node.body)
+            self.in_type_checking = prev_tc
+            self._visit_body(node.orelse)
+        else:
+            self._visit_body(node.body)
+            self._visit_body(node.orelse)
 
         self.in_type_checking = self.context_stack.pop()
 
@@ -122,20 +132,21 @@ class ImportBoundaryAnalyzer:
 
     def _get_module_name(self, fp: Path) -> str:
         src_chemuson = self.repo_root / "src" / "chemuson"
-        try:
-            rel_path = fp.relative_to(src_chemuson)
-            parts = list(rel_path.parts)
-            if parts[-1] == "__init__.py":
-                parts.pop()
-            elif parts[-1].endswith(".py"):
-                parts[-1] = parts[-1][:-3]
-            if not parts or parts == ["__init__"]:
-                return "chemuson"
-            return "chemuson." + ".".join(parts)
-        except ValueError:
-            return ""
+        if not (fp.resolve().is_relative_to(src_chemuson.resolve())):
+            raise ValueError(
+                f"Path {fp} is not under {src_chemuson}"
+            )
+        rel_path = fp.relative_to(src_chemuson)
+        parts = list(rel_path.parts)
+        if parts[-1] == "__init__.py":
+            parts.pop()
+        elif parts[-1].endswith(".py"):
+            parts[-1] = parts[-1][:-3]
+        if not parts or parts == ["__init__"]:
+            return "chemuson"
+        return "chemuson." + ".".join(parts)
 
-    def _resolve_import(self, imp_data: Dict[str, Any], fp: Path) -> Optional[tuple]:
+    def _resolve_import(self, imp_data: Dict[str, Any], fp: Path) -> Optional[tuple[str, bool]]:
         target_mod_name = ""
         if imp_data["type"] == "absolute":
             target_mod_name = imp_data["name"]
@@ -171,7 +182,7 @@ class ImportBoundaryAnalyzer:
                     best_match_id = m_id
 
         if best_match_id:
-            return (self._get_module_name(fp), best_match_id, imp_data["type_checking_only"])
+            return (best_match_id, imp_data["type_checking_only"])
         return None
 
     def analyze_all(self) -> List[ObservedImport]:
@@ -192,19 +203,19 @@ class ImportBoundaryAnalyzer:
             for imp_data in visitor.imports:
                 resolved = self._resolve_import(imp_data, fp)
                 if resolved:
-                    source_id, target_id, tc_only = resolved
+                    target_id, tc_only = resolved
                     if target_id != m_id:
+                        node = imp_data["node"]
                         try:
-                            node = imp_data["node"]
                             stmt = ast.get_source_segment(source, node)
                             if stmt is None:
                                 stmt = ast.unparse(node)
                             stmt = re.sub(r"\s+", " ", stmt).strip()
-                        except:
-                            stmt = "unknown"
+                        except Exception:
+                            stmt = ast.unparse(node)
 
                         all_observed.append(ObservedImport(
-                            source_id=source_id,
+                            source_id=m_id,
                             target_id=target_id,
                             file=fp,
                             line=imp_data["lineno"],
@@ -232,26 +243,67 @@ class TestImportBoundaries:
 
     def test_relative_import_resolution_examples(self, analyzer):
         src_chemuson = analyzer.repo_root / "src" / "chemuson"
+
+        cases = []
+
+        # 1) chemcalc/formula.py: from .valence import implicit_h_count
         formula_file = src_chemuson / "chemcalc" / "formula.py"
+        with open(formula_file, "r", encoding="utf-8") as f:
+            formula_src = f.read()
+        formula_tree = ast.parse(formula_src)
+        for node in ast.walk(formula_tree):
+            if isinstance(node, ast.ImportFrom) and node.level == 1 and node.module == "valence":
+                cases.append((formula_file, formula_src, node))
+                break
 
-        imp_data = {
-            "type": "from",
-            "module": "valence",
-            "level": 1,
-            "names": ["implicit_h_count"],
-            "lineno": 10,
-            "node": ast.parse("from .valence import implicit_h_count").body[0],
-            "type_checking_only": False
-        }
+        # 2) chemname/coordination.py: from .molview import MolView
+        coord_file = src_chemuson / "chemname" / "coordination.py"
+        with open(coord_file, "r", encoding="utf-8") as f:
+            coord_src = f.read()
+        coord_tree = ast.parse(coord_src)
+        for node in ast.walk(coord_tree):
+            if isinstance(node, ast.ImportFrom) and node.level == 1 and node.module == "molview":
+                cases.append((coord_file, coord_src, node))
+                break
 
-        resolved = analyzer._resolve_import(imp_data, formula_file)
-        assert resolved is not None
-        source_id, target_id, tc_only = resolved
-        assert source_id == "chemuson.chemcalc.formula"
-        assert target_id == "M03"
-        assert tc_only is False
+        # 3) gui/canvas/canvas_view.py: from .canvas_constants import (...)
+        canvas_view_file = src_chemuson / "gui" / "canvas" / "canvas_view.py"
+        with open(canvas_view_file, "r", encoding="utf-8") as f:
+            canvas_view_src = f.read()
+        cv_tree = ast.parse(canvas_view_src)
+        for node in ast.walk(cv_tree):
+            if isinstance(node, ast.ImportFrom) and node.level == 1 and node.module == "canvas_constants":
+                cases.append((canvas_view_file, canvas_view_src, node))
+                break
+
+        assert len(cases) >= 3, f"Expected at least 3 real relative imports; found {len(cases)}"
+
+        for fp, source_text, imp_node in cases:
+            m_id = analyzer.file_to_module[fp]
+            imp_data = {
+                "type": "from",
+                "module": imp_node.module,
+                "level": imp_node.level,
+                "names": [a.name for a in imp_node.names],
+                "lineno": imp_node.lineno,
+                "node": imp_node,
+                "type_checking_only": False
+            }
+            resolved = analyzer._resolve_import(imp_data, fp)
+            assert resolved is not None, (
+                f"Could not resolve relative import in {fp} at line {imp_node.lineno}"
+            )
+            target_id, tc_only = resolved
+            assert m_id in {"M00", "M01", "M02", "M03", "M04", "M05", "M06", "M07", "M08",
+                            "M09", "M10", "M11", "M12", "M13", "M14", "M15", "M16", "M17",
+                            "M18", "M19"}, f"source_id not in catalog: {m_id}"
+            assert target_id in {"M00", "M01", "M02", "M03", "M04", "M05", "M06", "M07", "M08",
+                                 "M09", "M10", "M11", "M12", "M13", "M14", "M15", "M16", "M17",
+                                 "M18", "M19"}, f"target_id not in catalog: {target_id}"
+            assert tc_only is False
 
     def test_type_checking_imports_are_classified_separately(self, analyzer):
+        # 1) Real-world check: ChemusonCanvas in persistence.py is TYPE_CHECKING
         src_chemuson = analyzer.repo_root / "src" / "chemuson"
         persistence_file = src_chemuson / "chemio" / "persistence.py"
         autosave_file = src_chemuson / "utils" / "autosave.py"
@@ -267,6 +319,30 @@ class TestImportBoundaries:
         canvas_tc_a = [i for i in a_imports if i.target_id == "M09" and "ChemusonCanvas" in i.statement]
         assert len(canvas_tc_a) > 0
         assert canvas_tc_a[0].type_checking_only is True
+
+        # 2) Synthetic if TYPE_CHECKING / else block: first import is TC, else import is runtime
+        synthetic_source = (
+            "if TYPE_CHECKING:\n"
+            "    from chemuson.gui.canvas import ChemusonCanvas\n"
+            "else:\n"
+            "    from chemuson.core import MolGraph\n"
+        )
+        synthetic_tree = ast.parse(synthetic_source)
+        synthetic_visitor = ImportVisitor(synthetic_source, Path("/tmp/fake.py"), "chemuson.fake")
+        synthetic_visitor.visit(synthetic_tree)
+
+        tc_imports = [imp for imp in synthetic_visitor.imports if imp["type_checking_only"]]
+        rt_imports = [imp for imp in synthetic_visitor.imports if not imp["type_checking_only"]]
+
+        assert len(tc_imports) == 1
+        assert "ChemusonCanvas" in tc_imports[0]["names"][0] or "chemuson.gui.canvas" in (
+            tc_imports[0].get("module", "") or tc_imports[0].get("name", "")
+        )
+
+        assert len(rt_imports) == 1
+        assert "MolGraph" in rt_imports[0]["names"][0] or "chemuson.core" in (
+            rt_imports[0].get("module", "") or rt_imports[0].get("name", "")
+        )
 
     def test_runtime_dependencies_match_catalog(self, analyzer):
         all_observed = analyzer.analyze_all()
@@ -294,12 +370,20 @@ class TestImportBoundaries:
 
     def test_observed_imports_have_valid_metadata(self, analyzer):
         all_observed = analyzer.analyze_all()
+        expected_ids = {f"M{i:02d}" for i in range(20)}
         for imp in all_observed:
-            assert imp.source_id != ""
-            assert imp.target_id != ""
-            assert imp.file.exists()
-            assert imp.line > 0
-            assert len(imp.statement) > 0
-            assert imp.source_id != imp.target_id
-            assert imp.source_id.startswith("chemuson")
-            assert re.match(r"^M\d\d$", imp.target_id)
+            assert imp.source_id in expected_ids, (
+                f"source_id '{imp.source_id}' not in catalog IDs"
+            )
+            assert imp.target_id in expected_ids, (
+                f"target_id '{imp.target_id}' not in catalog IDs"
+            )
+            assert imp.source_id != imp.target_id, (
+                f"source_id equals target_id in {imp.file}:{imp.line}"
+            )
+            assert imp.file.exists(), f"File does not exist: {imp.file}"
+            assert imp.line > 0, f"Line must be positive: {imp.line}"
+            assert len(imp.statement) > 0, f"Statement is empty in {imp.file}:{imp.line}"
+            assert re.match(r"^M\d\d$", imp.target_id), (
+                f"target_id '{imp.target_id}' does not match ^M\\d\\d$"
+            )
