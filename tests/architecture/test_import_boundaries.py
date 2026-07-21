@@ -225,6 +225,51 @@ class ImportBoundaryAnalyzer:
 
 
 # ---------------------------------------------------------------------------
+# Helper functions for path and import normalization
+# ---------------------------------------------------------------------------
+
+def _normalize_policy_path(repo_root: Path, value: str | Path) -> str:
+    """
+    Normalize a path for policy matching.
+    - Accepts str or Path.
+    - Converts all backslashes to forward slashes first.
+    - If the path is absolute and under repo_root, returns the relative POSIX path.
+    - If the path is absolute but outside repo_root, returns the normalized absolute POSIX path.
+    - If the path is relative, returns the normalized relative POSIX path.
+    - Does not require the file to exist.
+    - Does not use resolve() for synthetic files.
+    - Does not depend on current working directory.
+    """
+    # Convert to Path if string
+    p = Path(value) if isinstance(value, str) else value
+
+    # First, normalize backslashes to forward slashes in the string representation
+    # We need to do this carefully because Path may interpret \ as part of the name on POSIX
+    # So we replace in the string before creating Path, but after ensuring it's a string
+    if isinstance(value, str):
+        value_str = value.replace("\\", "/")
+    else:
+        value_str = str(value).replace("\\", "/")
+
+    # Recreate Path from the normalized string
+    p = Path(value_str)
+
+    # Check if it's an absolute path under repo_root
+    try:
+        rel = p.relative_to(repo_root)
+        return str(rel).replace("\\", "/")
+    except ValueError:
+        # Not under repo_root, return as normalized absolute or relative path
+        # Use as_posix() to ensure forward slashes
+        return p.as_posix()
+
+
+def _normalize_import_path(value: str) -> str:
+    """Normalize import statement by collapsing whitespace and stripping."""
+    return re.sub(r"\s+", " ", value).strip()
+
+
+# ---------------------------------------------------------------------------
 # Policy Enforcement Helper
 # ---------------------------------------------------------------------------
 
@@ -246,14 +291,9 @@ def check_runtime_policy(analyzer: ImportBoundaryAnalyzer, catalog: list, observ
             if exc.get("type_checking_only") is False:
                 # Use the source_id from the exception itself, not the module id
                 source_id = exc["source_id"]
-                # Normalize file to POSIX relative path
-                try:
-                    file_rel = Path(exc["file"]).relative_to(analyzer.repo_root)
-                    file_posix = str(file_rel).replace("\\", "/")
-                except ValueError:
-                    # If file not under repo root, use absolute as is but normalized
-                    file_posix = str(Path(exc["file"]).as_posix())
-                import_path_norm = re.sub(r"\s+", " ", exc["import_path"]).strip()
+                # Normalize file to POSIX relative path using helper
+                file_posix = _normalize_policy_path(analyzer.repo_root, exc["file"])
+                import_path_norm = _normalize_import_path(exc["import_path"])
                 key = (source_id, exc["target_id"], file_posix, import_path_norm, False)
                 exception_keys.add(key)
                 exceptions_by_key[key] = exc
@@ -271,14 +311,9 @@ def check_runtime_policy(analyzer: ImportBoundaryAnalyzer, catalog: list, observ
         if not m_config:
             continue
 
-        # Normalize observed file to POSIX relative path
-        try:
-            file_rel = imp.file.relative_to(analyzer.repo_root)
-            file_posix = str(file_rel).replace("\\", "/")
-        except ValueError:
-            file_posix = str(imp.file.as_posix())
-
-        import_path_norm = re.sub(r"\s+", " ", imp.statement).strip()
+        # Normalize observed file to POSIX relative path using helper
+        file_posix = _normalize_policy_path(analyzer.repo_root, imp.file)
+        import_path_norm = _normalize_import_path(imp.statement)
 
         target_deps = set(m_config.get("target_dependencies", []))
         forbidden_deps = set(m_config.get("forbidden_dependencies", []))
@@ -761,11 +796,9 @@ class TestImportBoundaries:
         assert len(violations) == 0
         assert len(obsolete) == 1
 
-    def test_synthetic_normalization(self, analyzer):
-        """Case 13: Normalization - relative path from catalog matches absolute path observed under repo_root."""
-        # Use a file that exists under repo_root to test normalization
+    def test_synthetic_relative_vs_absolute_path(self, analyzer):
+        """Case 13a: Relative path from catalog matches absolute path observed under repo_root."""
         repo_file = Path("tests/architecture/test_import_boundaries.py").resolve()
-        # Ensure the path is under repo_root
         assert analyzer.repo_root in repo_file.parents or analyzer.repo_root == repo_file
         rel_path = str(repo_file.relative_to(analyzer.repo_root))
         test_catalog = [
@@ -784,3 +817,109 @@ class TestImportBoundaries:
         violations, obsolete = check_runtime_policy(analyzer, test_catalog, observed)
         assert len(violations) == 0
         assert len(obsolete) == 0
+
+    def test_synthetic_backslash_vs_forward_slash(self, analyzer):
+        """Case 13b: Backslash in path string should normalize to forward slash."""
+        # Simulate a path with backslashes (as might come from Windows or raw strings)
+        # The file itself is under repo_root
+        repo_file = Path("tests/architecture/test_import_boundaries.py").resolve()
+        assert analyzer.repo_root in repo_file.parents or analyzer.repo_root == repo_file
+
+        # Construct a string with backslashes
+        backslash_path = str(repo_file.relative_to(analyzer.repo_root)).replace("/", "\\")
+        # This should be something like "tests\\architecture\\test_import_boundaries.py"
+
+        test_catalog = [
+            {"id": "M99", "target_dependencies": [], "forbidden_dependencies": ["M02"],
+             "temporary_exceptions": [{"source_id": "M99", "target_id": "M02",
+                                      "file": backslash_path,
+                                      "import_path": "from chemuson.clean2d import layout",
+                                      "type_checking_only": False, "reason": "test", "debt_ref": "test",
+                                      "elimination_condition": "fix it"}]},
+            {"id": "M00", "target_dependencies": [], "forbidden_dependencies": [], "temporary_exceptions": []},
+        ]
+        observed = [
+            ObservedImport(source_id="M99", target_id="M02", file=repo_file, line=3,
+                           statement="from chemuson.clean2d import layout", type_checking_only=False)
+        ]
+        violations, obsolete = check_runtime_policy(analyzer, test_catalog, observed)
+        assert len(violations) == 0
+        assert len(obsolete) == 0
+
+    def test_synthetic_whitespace_equivalence(self, analyzer):
+        """Case 13c: Whitespace variations in import_path should match."""
+        repo_file = Path("tests/architecture/test_import_boundaries.py").resolve()
+        assert analyzer.repo_root in repo_file.parents or analyzer.repo_root == repo_file
+        rel_path = str(repo_file.relative_to(analyzer.repo_root))
+
+        # Import statement with extra whitespace, tabs, newlines
+        import_with_extra_ws = "from  chemuson.clean2d  import\tlayout\n"
+
+        test_catalog = [
+            {"id": "M99", "target_dependencies": [], "forbidden_dependencies": ["M02"],
+             "temporary_exceptions": [{"source_id": "M99", "target_id": "M02",
+                                      "file": rel_path,
+                                      "import_path": "from chemuson.clean2d import layout",
+                                      "type_checking_only": False, "reason": "test", "debt_ref": "test",
+                                      "elimination_condition": "fix it"}]},
+            {"id": "M00", "target_dependencies": [], "forbidden_dependencies": [], "temporary_exceptions": []},
+        ]
+        observed = [
+            ObservedImport(source_id="M99", target_id="M02", file=repo_file, line=3,
+                           statement=import_with_extra_ws, type_checking_only=False)
+        ]
+        violations, obsolete = check_runtime_policy(analyzer, test_catalog, observed)
+        assert len(violations) == 0
+        assert len(obsolete) == 0
+
+    def test_synthetic_external_path_stability(self, analyzer):
+        """Case 13d: External paths should normalize stably without becoming relative to repo."""
+        # Use an external absolute path (not under repo_root)
+        external_path = Path("/some/external/path/file.py")
+
+        # Normalized form should be the same regardless of how it's represented
+        test_catalog = [
+            {"id": "M99", "target_dependencies": [], "forbidden_dependencies": [],
+             "temporary_exceptions": [{"source_id": "M99", "target_id": "M02",
+                                      "file": str(external_path),
+                                      "import_path": "from chemuson.clean2d import layout",
+                                      "type_checking_only": False, "reason": "test", "debt_ref": "test",
+                                      "elimination_condition": "fix it"}]},
+            {"id": "M00", "target_dependencies": [], "forbidden_dependencies": [], "temporary_exceptions": []},
+        ]
+        # Observe the same external path but as a Path object
+        observed = [
+            ObservedImport(source_id="M99", target_id="M02", file=external_path, line=3,
+                           statement="from chemuson.clean2d import layout", type_checking_only=False)
+        ]
+        violations, obsolete = check_runtime_policy(analyzer, test_catalog, observed)
+        # Should match because both normalize to same POSIX string
+        assert len(violations) == 0
+        assert len(obsolete) == 0
+
+    def test_synthetic_real_difference_fails(self, analyzer):
+        """Case 13e: Real path differences should still fail to match."""
+        repo_file = Path("tests/architecture/test_import_boundaries.py").resolve()
+        assert analyzer.repo_root in repo_file.parents or analyzer.repo_root == repo_file
+        rel_path = str(repo_file.relative_to(analyzer.repo_root))
+
+        # Use a different file path
+        different_path = "tests/architecture/test_module_catalog.py"
+
+        test_catalog = [
+            {"id": "M99", "target_dependencies": [], "forbidden_dependencies": ["M02"],
+             "temporary_exceptions": [{"source_id": "M99", "target_id": "M02",
+                                      "file": different_path,
+                                      "import_path": "from chemuson.clean2d import layout",
+                                      "type_checking_only": False, "reason": "test", "debt_ref": "test",
+                                      "elimination_condition": "fix it"}]},
+            {"id": "M00", "target_dependencies": [], "forbidden_dependencies": [], "temporary_exceptions": []},
+        ]
+        observed = [
+            ObservedImport(source_id="M99", target_id="M02", file=repo_file, line=3,
+                           statement="from chemuson.clean2d import layout", type_checking_only=False)
+        ]
+        violations, obsolete = check_runtime_policy(analyzer, test_catalog, observed)
+        # Should fail to match because paths are different
+        assert len(violations) == 1
+        assert len(obsolete) == 1
