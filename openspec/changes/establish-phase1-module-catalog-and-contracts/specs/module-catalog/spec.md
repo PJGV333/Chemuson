@@ -13,12 +13,12 @@ The module catalog SHALL exist at `architecture/modules.yml` and SHALL be parsea
 
 ### Requirement: Module Identification with Stable IDs
 
-Each module entry SHALL have a unique `id` field matching the pattern `M\d\d`. The catalog SHALL contain exactly 19 modules (M00-M18). IDs SHALL be persistent: once assigned, an ID is never reused even if a module is removed.
+Each module entry SHALL have a unique `id` field matching the pattern `M\d\d`. The catalog SHALL contain exactly 20 modules (M00-M19). IDs SHALL be persistent: once assigned, an ID is never reused even if a module is removed.
 
 #### Scenario: ID uniqueness
-- **GIVEN** the catalog contains 19 module entries
+- **GIVEN** the catalog contains 20 module entries
 - **WHEN** a test extracts all `id` values
-- **THEN** all 19 IDs are distinct
+- **THEN** all 20 IDs are distinct
 
 #### Scenario: ID format
 - **GIVEN** a module entry with id `M05`

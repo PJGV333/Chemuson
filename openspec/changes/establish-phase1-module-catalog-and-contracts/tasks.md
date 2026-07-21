@@ -89,7 +89,7 @@
 
 ## Fase 3: Contrato de Agentes
 
-- [ ] **3.1 Crear `AGENTS.md` raíz**
+- [x] **3.1 Crear `AGENTS.md` raíz**
     - **Descripción**: Escribir el protocolo de agentes con: OpenSpec como fuente del alcance, baseline obligatorio, tests focalizados y completos, prohibición de refactor oportunista, prohibición de ocultar fallos, informe de desviaciones, lista de archivos modificados, `AGENT_REPORT.md` para trabajo autónomo, ramas/worktrees separados, un solo agente escritor por rama, criterios de parada, protección especial de GUI/Clean2D/ChemName/persistencia.
     - **Archivos**: `AGENTS.md`
     - **Aceptación**: Todas las reglas del design.md §6 están presentes.
