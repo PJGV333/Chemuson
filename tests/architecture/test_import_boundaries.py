@@ -242,9 +242,10 @@ def check_runtime_policy(analyzer: ImportBoundaryAnalyzer, catalog: list, observ
     exceptions_by_key = {}
 
     for m in catalog:
-        source_id = m["id"]
         for exc in m.get("temporary_exceptions", []):
             if exc.get("type_checking_only") is False:
+                # Use the source_id from the exception itself, not the module id
+                source_id = exc["source_id"]
                 # Normalize file to POSIX relative path
                 try:
                     file_rel = Path(exc["file"]).relative_to(analyzer.repo_root)
@@ -554,450 +555,232 @@ class TestImportBoundaries:
                 f"This exception does not correspond to any observed runtime violation"
             )
 
-    def test_policy_enforcement_synthetic_cases(self, analyzer):
-        """
-        Synthetic tests for policy enforcement:
-        1. Allowed dependency (in target_dependencies, not forbidden)
-        2. Dependency not in target_dependencies
-        3. Dependency in forbidden_dependencies
-        4. Exception exact match allows violation
-        5. Exception with wrong file does NOT allow
-        6. Exception with wrong import_path does NOT allow
-        7. type_checking_only=True exception does NOT allow runtime import
-        8. Runtime exception without observed violation is obsolete
-        """
-        modules_by_id = {m["id"]: m for m in analyzer.modules_cfg}
 
-        # Build a temporary catalog with controlled rules for testing
+    # Synthetic tests that directly call check_runtime_policy
+
+    def test_synthetic_allowed_dependency(self, analyzer):
+        """Case 1: Dependency in target_dependencies and not forbidden -> no violations."""
         test_catalog = [
-            {
-                "id": "M99",
-                "name": "test_module",
-                "target_dependencies": ["M00"],
-                "forbidden_dependencies": [],
-                "temporary_exceptions": []
-            },
-            {
-                "id": "M00",
-                "name": "core",
-                "target_dependencies": [],
-                "forbidden_dependencies": [],
-                "temporary_exceptions": []
-            }
+            {"id": "M99", "target_dependencies": ["M00"], "forbidden_dependencies": [], "temporary_exceptions": []},
+            {"id": "M00", "target_dependencies": [], "forbidden_dependencies": [], "temporary_exceptions": []},
         ]
-
-        # Test 1: Allowed dependency (no violation)
-        observed_allowed = [
-            ObservedImport(
-                source_id="M99",
-                target_id="M00",
-                file=Path("/tmp/test.py"),
-                line=1,
-                statement="from chemuson.core import MolGraph",
-                type_checking_only=False
-            )
+        observed = [
+            ObservedImport(source_id="M99", target_id="M00", file=Path("/tmp/test.py"), line=1,
+                           statement="from chemuson.core import MolGraph", type_checking_only=False)
         ]
-        # This should pass without assertion because M00 is in target_dependencies
+        violations, obsolete = check_runtime_policy(analyzer, test_catalog, observed)
+        assert len(violations) == 0
+        assert len(obsolete) == 0
 
-        # We'll actually call enforce_runtime_policy logic here but with synthetic data.
-        # Instead of duplicating, we test by manipulating analyzer state minimally.
-        # Better: create a separate function to call. But the spec says don't introduce new architecture.
-        # So we inline the check.
-
-        # Build exception keys for this synthetic catalog
-        exception_keys = set()
-        for m in test_catalog:
-            source_id = m["id"]
-            for exc in m.get("temporary_exceptions", []):
-                if exc.get("type_checking_only") is False:
-                    try:
-                        file_rel = Path(exc["file"]).relative_to(analyzer.repo_root)
-                        file_posix = str(file_rel).replace("\\", "/")
-                    except ValueError:
-                        file_posix = str(Path(exc["file"]).as_posix())
-                    import_path_norm = re.sub(r"\s+", " ", exc["import_path"]).strip()
-                    key = (source_id, exc["target_id"], file_posix, import_path_norm, False)
-                    exception_keys.add(key)
-
-        # Simulate enforcement for allowed case
-        violations = []
-        for imp in observed_allowed:
-            m_config = modules_by_id.get(imp.source_id) or next((m for m in test_catalog if m["id"] == imp.source_id), None)
-            if not m_config:
-                continue
-            target_deps = set(m_config.get("target_dependencies", []))
-            forbidden_deps = set(m_config.get("forbidden_dependencies", []))
-            is_forbidden = imp.target_id in forbidden_deps
-            not_in_target = imp.target_id not in target_deps
-            if is_forbidden or not_in_target:
-                # Normalize file path similarly to check_runtime_policy
-                try:
-                    file_rel = imp.file.relative_to(analyzer.repo_root)
-                    file_posix = str(file_rel).replace("\\", "/")
-                except ValueError:
-                    file_posix = str(imp.file.as_posix())
-                import_path_norm = re.sub(r"\s+", " ", imp.statement).strip()
-                exc_key = (imp.source_id, imp.target_id, file_posix, import_path_norm, False)
-                if exc_key not in exception_keys:
-                    violations.append({
-                        "file": imp.file,
-                        "line": imp.line,
-                        "source_id": imp.source_id,
-                        "target_id": imp.target_id,
-                        "statement": imp.statement,
-                        "is_forbidden": is_forbidden,
-                        "not_in_target": not_in_target,
-                    })
-        assert len(violations) == 0, "Allowed import should not produce violation"
-
-        # Test 2: Dependency not in target_dependencies -> violation
-        observed_not_in_target = [
-            ObservedImport(
-                source_id="M99",
-                target_id="M01",
-                file=Path("/tmp/test.py"),
-                line=2,
-                statement="from chemuson.chemio import something",
-                type_checking_only=False
-            )
+    def test_synthetic_missing_target_dependency(self, analyzer):
+        """Case 2: Dependency not in target_dependencies -> violation."""
+        test_catalog = [
+            {"id": "M99", "target_dependencies": [], "forbidden_dependencies": [], "temporary_exceptions": []},
+            {"id": "M00", "target_dependencies": [], "forbidden_dependencies": [], "temporary_exceptions": []},
         ]
-        violations = []
-        for imp in observed_not_in_target:
-            m_config = next((m for m in test_catalog if m["id"] == imp.source_id), None)
-            if not m_config:
-                continue
-            target_deps = set(m_config.get("target_dependencies", []))
-            forbidden_deps = set(m_config.get("forbidden_dependencies", []))
-            is_forbidden = imp.target_id in forbidden_deps
-            not_in_target = imp.target_id not in target_deps
-            if is_forbidden or not_in_target:
-                try:
-                    file_rel = imp.file.relative_to(analyzer.repo_root)
-                    file_posix = str(file_rel).replace("\\", "/")
-                except ValueError:
-                    file_posix = str(imp.file.as_posix())
-                import_path_norm = re.sub(r"\s+", " ", imp.statement).strip()
-                exc_key = (imp.source_id, imp.target_id, file_posix, import_path_norm, False)
-                if exc_key not in exception_keys:
-                    violations.append({
-                        "file": imp.file,
-                        "line": imp.line,
-                        "source_id": imp.source_id,
-                        "target_id": imp.target_id,
-                        "statement": imp.statement,
-                        "is_forbidden": is_forbidden,
-                        "not_in_target": not_in_target,
-                    })
-        assert len(violations) == 1, "Should report violation for missing target dependency"
+        observed = [
+            ObservedImport(source_id="M99", target_id="M01", file=Path("/tmp/test.py"), line=2,
+                           statement="from chemuson.chemio import something", type_checking_only=False)
+        ]
+        violations, obsolete = check_runtime_policy(analyzer, test_catalog, observed)
+        assert len(violations) == 1
         assert violations[0]["not_in_target"] is True
         assert violations[0]["is_forbidden"] is False
 
-        # Test 3: Dependency in forbidden_dependencies -> violation
-        # Update test_catalog to forbid M02
-        test_catalog[0]["forbidden_dependencies"] = ["M02"]
-        observed_forbidden = [
-            ObservedImport(
-                source_id="M99",
-                target_id="M02",
-                file=Path("/tmp/test.py"),
-                line=3,
-                statement="from chemuson.clean2d import layout",
-                type_checking_only=False
-            )
+    def test_synthetic_forbidden_dependency(self, analyzer):
+        """Case 3: Dependency in forbidden_dependencies -> violation."""
+        test_catalog = [
+            {"id": "M99", "target_dependencies": [], "forbidden_dependencies": ["M02"], "temporary_exceptions": []},
+            {"id": "M00", "target_dependencies": [], "forbidden_dependencies": [], "temporary_exceptions": []},
         ]
-        violations = []
-        for imp in observed_forbidden:
-            m_config = next((m for m in test_catalog if m["id"] == imp.source_id), None)
-            if not m_config:
-                continue
-            target_deps = set(m_config.get("target_dependencies", []))
-            forbidden_deps = set(m_config.get("forbidden_dependencies", []))
-            is_forbidden = imp.target_id in forbidden_deps
-            not_in_target = imp.target_id not in target_deps
-            if is_forbidden or not_in_target:
-                try:
-                    file_rel = imp.file.relative_to(analyzer.repo_root)
-                    file_posix = str(file_rel).replace("\\", "/")
-                except ValueError:
-                    file_posix = str(imp.file.as_posix())
-                import_path_norm = re.sub(r"\s+", " ", imp.statement).strip()
-                exc_key = (imp.source_id, imp.target_id, file_posix, import_path_norm, False)
-                if exc_key not in exception_keys:
-                    violations.append({
-                        "file": imp.file,
-                        "line": imp.line,
-                        "source_id": imp.source_id,
-                        "target_id": imp.target_id,
-                        "statement": imp.statement,
-                        "is_forbidden": is_forbidden,
-                        "not_in_target": not_in_target,
-                    })
-        assert len(violations) == 1, "Should report violation for forbidden dependency"
+        observed = [
+            ObservedImport(source_id="M99", target_id="M02", file=Path("/tmp/test.py"), line=3,
+                           statement="from chemuson.clean2d import layout", type_checking_only=False)
+        ]
+        violations, obsolete = check_runtime_policy(analyzer, test_catalog, observed)
+        assert len(violations) == 1
         assert violations[0]["is_forbidden"] is True
 
-        # Test 4: Exact exception allows violation
-        test_catalog[0]["temporary_exceptions"] = [
-            {
-                "source_id": "M99",
-                "target_id": "M02",
-                "file": "/tmp/test.py",
-                "import_path": "from chemuson.clean2d import layout",
-                "type_checking_only": False,
-                "reason": "test exception",
-                "debt_ref": "test",
-                "elimination_condition": "fix it"
-            }
+    def test_synthetic_both_forbidden_and_missing(self, analyzer):
+        """Case 4: Dependency both forbidden and missing from target -> violation with both flags."""
+        test_catalog = [
+            {"id": "M99", "target_dependencies": [], "forbidden_dependencies": ["M02"], "temporary_exceptions": []},
+            {"id": "M00", "target_dependencies": [], "forbidden_dependencies": [], "temporary_exceptions": []},
         ]
-        # Rebuild exception keys
-        exception_keys = set()
-        for m in test_catalog:
-            source_id = m["id"]
-            for exc in m.get("temporary_exceptions", []):
-                if exc.get("type_checking_only") is False:
-                    try:
-                        file_rel = Path(exc["file"]).relative_to(analyzer.repo_root)
-                        file_posix = str(file_rel).replace("\\", "/")
-                    except ValueError:
-                        file_posix = str(Path(exc["file"]).as_posix())
-                    import_path_norm = re.sub(r"\s+", " ", exc["import_path"]).strip()
-                    key = (source_id, exc["target_id"], file_posix, import_path_norm, False)
-                    exception_keys.add(key)
-        observed_with_exception = [
-            ObservedImport(
-                source_id="M99",
-                target_id="M02",
-                file=Path("/tmp/test.py"),
-                line=3,
-                statement="from chemuson.clean2d import layout",
-                type_checking_only=False
-            )
+        observed = [
+            ObservedImport(source_id="M99", target_id="M02", file=Path("/tmp/test.py"), line=3,
+                           statement="from chemuson.clean2d import layout", type_checking_only=False)
         ]
-        violations = []
-        for imp in observed_with_exception:
-            m_config = next((m for m in test_catalog if m["id"] == imp.source_id), None)
-            if not m_config:
-                continue
-            target_deps = set(m_config.get("target_dependencies", []))
-            forbidden_deps = set(m_config.get("forbidden_dependencies", []))
-            is_forbidden = imp.target_id in forbidden_deps
-            not_in_target = imp.target_id not in target_deps
-            if is_forbidden or not_in_target:
-                try:
-                    file_rel = imp.file.relative_to(analyzer.repo_root)
-                    file_posix = str(file_rel).replace("\\", "/")
-                except ValueError:
-                    file_posix = str(imp.file.as_posix())
-                import_path_norm = re.sub(r"\s+", " ", imp.statement).strip()
-                exc_key = (imp.source_id, imp.target_id, file_posix, import_path_norm, False)
-                if exc_key not in exception_keys:
-                    violations.append({
-                        "file": imp.file,
-                        "line": imp.line,
-                        "source_id": imp.source_id,
-                        "target_id": imp.target_id,
-                        "statement": imp.statement,
-                        "is_forbidden": is_forbidden,
-                        "not_in_target": not_in_target,
-                    })
-        assert len(violations) == 0, "Exact exception should allow violation"
+        violations, obsolete = check_runtime_policy(analyzer, test_catalog, observed)
+        assert len(violations) == 1
+        assert violations[0]["is_forbidden"] is True
+        assert violations[0]["not_in_target"] is True
 
-        # Test 5: Exception with wrong file does NOT allow
-        test_catalog[0]["temporary_exceptions"] = [
-            {
-                "source_id": "M99",
-                "target_id": "M02",
-                "file": "/tmp/wrong_file.py",
-                "import_path": "from chemuson.clean2d import layout",
-                "type_checking_only": False,
-                "reason": "test exception",
-                "debt_ref": "test",
-                "elimination_condition": "fix it"
-            }
+    def test_synthetic_exact_exception_allows(self, analyzer):
+        """Case 5: Exact exception allows violation -> no violation, exception not obsolete."""
+        test_catalog = [
+            {"id": "M99", "target_dependencies": [], "forbidden_dependencies": ["M02"],
+             "temporary_exceptions": [{"source_id": "M99", "target_id": "M02", "file": "/tmp/test.py",
+                                      "import_path": "from chemuson.clean2d import layout",
+                                      "type_checking_only": False, "reason": "test", "debt_ref": "test",
+                                      "elimination_condition": "fix it"}]},
+            {"id": "M00", "target_dependencies": [], "forbidden_dependencies": [], "temporary_exceptions": []},
         ]
-        exception_keys = set()
-        for m in test_catalog:
-            source_id = m["id"]
-            for exc in m.get("temporary_exceptions", []):
-                if exc.get("type_checking_only") is False:
-                    try:
-                        file_rel = Path(exc["file"]).relative_to(analyzer.repo_root)
-                        file_posix = str(file_rel).replace("\\", "/")
-                    except ValueError:
-                        file_posix = str(Path(exc["file"]).as_posix())
-                    import_path_norm = re.sub(r"\s+", " ", exc["import_path"]).strip()
-                    key = (source_id, exc["target_id"], file_posix, import_path_norm, False)
-                    exception_keys.add(key)
-        violations = []
-        for imp in observed_with_exception:
-            m_config = next((m for m in test_catalog if m["id"] == imp.source_id), None)
-            if not m_config:
-                continue
-            target_deps = set(m_config.get("target_dependencies", []))
-            forbidden_deps = set(m_config.get("forbidden_dependencies", []))
-            is_forbidden = imp.target_id in forbidden_deps
-            not_in_target = imp.target_id not in target_deps
-            if is_forbidden or not_in_target:
-                try:
-                    file_rel = imp.file.relative_to(analyzer.repo_root)
-                    file_posix = str(file_rel).replace("\\", "/")
-                except ValueError:
-                    file_posix = str(imp.file.as_posix())
-                import_path_norm = re.sub(r"\s+", " ", imp.statement).strip()
-                exc_key = (imp.source_id, imp.target_id, file_posix, import_path_norm, False)
-                if exc_key not in exception_keys:
-                    violations.append({
-                        "file": imp.file,
-                        "line": imp.line,
-                        "source_id": imp.source_id,
-                        "target_id": imp.target_id,
-                        "statement": imp.statement,
-                        "is_forbidden": is_forbidden,
-                        "not_in_target": not_in_target,
-                    })
-        assert len(violations) == 1, "Wrong file should not allow violation"
+        observed = [
+            ObservedImport(source_id="M99", target_id="M02", file=Path("/tmp/test.py"), line=3,
+                           statement="from chemuson.clean2d import layout", type_checking_only=False)
+        ]
+        violations, obsolete = check_runtime_policy(analyzer, test_catalog, observed)
+        assert len(violations) == 0
+        assert len(obsolete) == 0
 
-        # Test 6: Exception with wrong import_path does NOT allow
-        test_catalog[0]["temporary_exceptions"] = [
-            {
-                "source_id": "M99",
-                "target_id": "M02",
-                "file": "/tmp/test.py",
-                "import_path": "from chemuson.clean2d import something_else",
-                "type_checking_only": False,
-                "reason": "test exception",
-                "debt_ref": "test",
-                "elimination_condition": "fix it"
-            }
+    def test_synthetic_wrong_source_id_exception(self, analyzer):
+        """Case 6: Exception with wrong source_id -> violation, exception obsolete."""
+        test_catalog = [
+            {"id": "M99", "target_dependencies": [], "forbidden_dependencies": ["M02"],
+             "temporary_exceptions": [{"source_id": "M98", "target_id": "M02", "file": "/tmp/test.py",
+                                      "import_path": "from chemuson.clean2d import layout",
+                                      "type_checking_only": False, "reason": "test", "debt_ref": "test",
+                                      "elimination_condition": "fix it"}]},
+            {"id": "M00", "target_dependencies": [], "forbidden_dependencies": [], "temporary_exceptions": []},
         ]
-        exception_keys = set()
-        for m in test_catalog:
-            source_id = m["id"]
-            for exc in m.get("temporary_exceptions", []):
-                if exc.get("type_checking_only") is False:
-                    try:
-                        file_rel = Path(exc["file"]).relative_to(analyzer.repo_root)
-                        file_posix = str(file_rel).replace("\\", "/")
-                    except ValueError:
-                        file_posix = str(Path(exc["file"]).as_posix())
-                    import_path_norm = re.sub(r"\s+", " ", exc["import_path"]).strip()
-                    key = (source_id, exc["target_id"], file_posix, import_path_norm, False)
-                    exception_keys.add(key)
-        violations = []
-        for imp in observed_with_exception:
-            m_config = next((m for m in test_catalog if m["id"] == imp.source_id), None)
-            if not m_config:
-                continue
-            target_deps = set(m_config.get("target_dependencies", []))
-            forbidden_deps = set(m_config.get("forbidden_dependencies", []))
-            is_forbidden = imp.target_id in forbidden_deps
-            not_in_target = imp.target_id not in target_deps
-            if is_forbidden or not_in_target:
-                try:
-                    file_rel = imp.file.relative_to(analyzer.repo_root)
-                    file_posix = str(file_rel).replace("\\", "/")
-                except ValueError:
-                    file_posix = str(imp.file.as_posix())
-                import_path_norm = re.sub(r"\s+", " ", imp.statement).strip()
-                exc_key = (imp.source_id, imp.target_id, file_posix, import_path_norm, False)
-                if exc_key not in exception_keys:
-                    violations.append({
-                        "file": imp.file,
-                        "line": imp.line,
-                        "source_id": imp.source_id,
-                        "target_id": imp.target_id,
-                        "statement": imp.statement,
-                        "is_forbidden": is_forbidden,
-                        "not_in_target": not_in_target,
-                    })
-        assert len(violations) == 1, "Wrong import_path should not allow violation"
+        observed = [
+            ObservedImport(source_id="M99", target_id="M02", file=Path("/tmp/test.py"), line=3,
+                           statement="from chemuson.clean2d import layout", type_checking_only=False)
+        ]
+        violations, obsolete = check_runtime_policy(analyzer, test_catalog, observed)
+        assert len(violations) == 1
+        assert len(obsolete) == 1
+        assert obsolete[0]["source_id"] == "M98"
 
-        # Test 7: type_checking_only=True exception does NOT allow runtime import
-        test_catalog[0]["temporary_exceptions"] = [
-            {
-                "source_id": "M99",
-                "target_id": "M02",
-                "file": "/tmp/test.py",
-                "import_path": "from chemuson.clean2d import layout",
-                "type_checking_only": True,
-                "reason": "test exception",
-                "debt_ref": "test",
-                "elimination_condition": "fix it"
-            }
+    def test_synthetic_wrong_target_id_exception(self, analyzer):
+        """Case 7: Exception with wrong target_id -> violation, exception obsolete."""
+        test_catalog = [
+            {"id": "M99", "target_dependencies": [], "forbidden_dependencies": ["M02"],
+             "temporary_exceptions": [{"source_id": "M99", "target_id": "M03", "file": "/tmp/test.py",
+                                      "import_path": "from chemuson.clean2d import layout",
+                                      "type_checking_only": False, "reason": "test", "debt_ref": "test",
+                                      "elimination_condition": "fix it"}]},
+            {"id": "M00", "target_dependencies": [], "forbidden_dependencies": [], "temporary_exceptions": []},
         ]
-        exception_keys = set()
-        for m in test_catalog:
-            source_id = m["id"]
-            for exc in m.get("temporary_exceptions", []):
-                if exc.get("type_checking_only") is False:
-                    try:
-                        file_rel = Path(exc["file"]).relative_to(analyzer.repo_root)
-                        file_posix = str(file_rel).replace("\\", "/")
-                    except ValueError:
-                        file_posix = str(Path(exc["file"]).as_posix())
-                    import_path_norm = re.sub(r"\s+", " ", exc["import_path"]).strip()
-                    key = (source_id, exc["target_id"], file_posix, import_path_norm, False)
-                    exception_keys.add(key)
-        # Note: we are NOT adding the True exception to exception_keys because it's type_checking_only=True
-        violations = []
-        for imp in observed_with_exception:
-            m_config = next((m for m in test_catalog if m["id"] == imp.source_id), None)
-            if not m_config:
-                continue
-            target_deps = set(m_config.get("target_dependencies", []))
-            forbidden_deps = set(m_config.get("forbidden_dependencies", []))
-            is_forbidden = imp.target_id in forbidden_deps
-            not_in_target = imp.target_id not in target_deps
-            if is_forbidden or not_in_target:
-                try:
-                    file_rel = imp.file.relative_to(analyzer.repo_root)
-                    file_posix = str(file_rel).replace("\\", "/")
-                except ValueError:
-                    file_posix = str(imp.file.as_posix())
-                import_path_norm = re.sub(r"\s+", " ", imp.statement).strip()
-                exc_key = (imp.source_id, imp.target_id, file_posix, import_path_norm, False)
-                if exc_key not in exception_keys:
-                    violations.append({
-                        "file": imp.file,
-                        "line": imp.line,
-                        "source_id": imp.source_id,
-                        "target_id": imp.target_id,
-                        "statement": imp.statement,
-                        "is_forbidden": is_forbidden,
-                        "not_in_target": not_in_target,
-                    })
-        assert len(violations) == 1, "type_checking_only=True exception should not allow runtime import"
+        observed = [
+            ObservedImport(source_id="M99", target_id="M02", file=Path("/tmp/test.py"), line=3,
+                           statement="from chemuson.clean2d import layout", type_checking_only=False)
+        ]
+        violations, obsolete = check_runtime_policy(analyzer, test_catalog, observed)
+        assert len(violations) == 1
+        assert len(obsolete) == 1
 
-        # Test 8: Runtime exception without observed violation is obsolete
-        test_catalog[0]["temporary_exceptions"] = [
-            {
-                "source_id": "M99",
-                "target_id": "M02",
-                "file": "/tmp/test.py",
-                "import_path": "from chemuson.clean2d import layout",
-                "type_checking_only": False,
-                "reason": "test exception",
-                "debt_ref": "test",
-                "elimination_condition": "fix it"
-            }
+    def test_synthetic_wrong_file_exception(self, analyzer):
+        """Case 8: Exception with wrong file -> violation, exception obsolete."""
+        test_catalog = [
+            {"id": "M99", "target_dependencies": [], "forbidden_dependencies": ["M02"],
+             "temporary_exceptions": [{"source_id": "M99", "target_id": "M02", "file": "/tmp/wrong.py",
+                                      "import_path": "from chemuson.clean2d import layout",
+                                      "type_checking_only": False, "reason": "test", "debt_ref": "test",
+                                      "elimination_condition": "fix it"}]},
+            {"id": "M00", "target_dependencies": [], "forbidden_dependencies": [], "temporary_exceptions": []},
         ]
-        # No observed import that matches this exception
-        # We need to simulate the obsolete check
-        matched_exceptions = set()  # Empty because no matching observed import
-        exception_keys = set()
-        for m in test_catalog:
-            source_id = m["id"]
-            for exc in m.get("temporary_exceptions", []):
-                if exc.get("type_checking_only") is False:
-                    try:
-                        file_rel = Path(exc["file"]).relative_to(analyzer.repo_root)
-                        file_posix = str(file_rel).replace("\\", "/")
-                    except ValueError:
-                        file_posix = str(Path(exc["file"]).as_posix())
-                    import_path_norm = re.sub(r"\s+", " ", exc["import_path"]).strip()
-                    key = (source_id, exc["target_id"], file_posix, import_path_norm, False)
-                    exception_keys.add(key)
-        obsolete = set()
-        for key in exception_keys:
-            if key not in matched_exceptions:
-                obsolete.add(key)
-        assert len(obsolete) == 1, "Exception without observed violation should be detected as obsolete"
+        observed = [
+            ObservedImport(source_id="M99", target_id="M02", file=Path("/tmp/test.py"), line=3,
+                           statement="from chemuson.clean2d import layout", type_checking_only=False)
+        ]
+        violations, obsolete = check_runtime_policy(analyzer, test_catalog, observed)
+        assert len(violations) == 1
+        assert len(obsolete) == 1
+
+    def test_synthetic_wrong_import_path_exception(self, analyzer):
+        """Case 9: Exception with wrong import_path -> violation, exception obsolete."""
+        test_catalog = [
+            {"id": "M99", "target_dependencies": [], "forbidden_dependencies": ["M02"],
+             "temporary_exceptions": [{"source_id": "M99", "target_id": "M02", "file": "/tmp/test.py",
+                                      "import_path": "from chemuson.clean2d import wrong",
+                                      "type_checking_only": False, "reason": "test", "debt_ref": "test",
+                                      "elimination_condition": "fix it"}]},
+            {"id": "M00", "target_dependencies": [], "forbidden_dependencies": [], "temporary_exceptions": []},
+        ]
+        observed = [
+            ObservedImport(source_id="M99", target_id="M02", file=Path("/tmp/test.py"), line=3,
+                           statement="from chemuson.clean2d import layout", type_checking_only=False)
+        ]
+        violations, obsolete = check_runtime_policy(analyzer, test_catalog, observed)
+        assert len(violations) == 1
+        assert len(obsolete) == 1
+
+    def test_synthetic_type_checking_exception_on_runtime_import(self, analyzer):
+        """Case 10: type_checking_only=True exception does not allow runtime import."""
+        test_catalog = [
+            {"id": "M99", "target_dependencies": [], "forbidden_dependencies": ["M02"],
+             "temporary_exceptions": [{"source_id": "M99", "target_id": "M02", "file": "/tmp/test.py",
+                                      "import_path": "from chemuson.clean2d import layout",
+                                      "type_checking_only": True, "reason": "test", "debt_ref": "test",
+                                      "elimination_condition": "fix it"}]},
+            {"id": "M00", "target_dependencies": [], "forbidden_dependencies": [], "temporary_exceptions": []},
+        ]
+        observed = [
+            ObservedImport(source_id="M99", target_id="M02", file=Path("/tmp/test.py"), line=3,
+                           statement="from chemuson.clean2d import layout", type_checking_only=False)
+        ]
+        violations, obsolete = check_runtime_policy(analyzer, test_catalog, observed)
+        assert len(violations) == 1
+        assert len(obsolete) == 0
+
+    def test_synthetic_exception_without_observed_import(self, analyzer):
+        """Case 11: Runtime exception with no observed import -> obsolete."""
+        test_catalog = [
+            {"id": "M99", "target_dependencies": ["M00"], "forbidden_dependencies": [],
+             "temporary_exceptions": [{"source_id": "M99", "target_id": "M02", "file": "/tmp/test.py",
+                                      "import_path": "from chemuson.clean2d import layout",
+                                      "type_checking_only": False, "reason": "test", "debt_ref": "test",
+                                      "elimination_condition": "fix it"}]},
+            {"id": "M00", "target_dependencies": [], "forbidden_dependencies": [], "temporary_exceptions": []},
+        ]
+        observed = [
+            ObservedImport(source_id="M99", target_id="M00", file=Path("/tmp/test.py"), line=1,
+                           statement="from chemuson.core import MolGraph", type_checking_only=False)
+        ]
+        violations, obsolete = check_runtime_policy(analyzer, test_catalog, observed)
+        assert len(violations) == 0
+        assert len(obsolete) == 1
+
+    def test_synthetic_exception_on_allowed_import_is_obsolete(self, analyzer):
+        """Case 12: Exception that corresponds to an already allowed import -> obsolete."""
+        test_catalog = [
+            {"id": "M99", "target_dependencies": ["M00"], "forbidden_dependencies": [],
+             "temporary_exceptions": [{"source_id": "M99", "target_id": "M00", "file": "/tmp/test.py",
+                                      "import_path": "from chemuson.core import MolGraph",
+                                      "type_checking_only": False, "reason": "test", "debt_ref": "test",
+                                      "elimination_condition": "fix it"}]},
+            {"id": "M00", "target_dependencies": [], "forbidden_dependencies": [], "temporary_exceptions": []},
+        ]
+        observed = [
+            ObservedImport(source_id="M99", target_id="M00", file=Path("/tmp/test.py"), line=1,
+                           statement="from chemuson.core import MolGraph", type_checking_only=False)
+        ]
+        violations, obsolete = check_runtime_policy(analyzer, test_catalog, observed)
+        assert len(violations) == 0
+        assert len(obsolete) == 1
+
+    def test_synthetic_normalization(self, analyzer):
+        """Case 13: Normalization - relative path from catalog matches absolute path observed under repo_root."""
+        # Use a file that exists under repo_root to test normalization
+        repo_file = Path("tests/architecture/test_import_boundaries.py").resolve()
+        # Ensure the path is under repo_root
+        assert analyzer.repo_root in repo_file.parents or analyzer.repo_root == repo_file
+        rel_path = str(repo_file.relative_to(analyzer.repo_root))
+        test_catalog = [
+            {"id": "M99", "target_dependencies": [], "forbidden_dependencies": ["M02"],
+             "temporary_exceptions": [{"source_id": "M99", "target_id": "M02",
+                                      "file": rel_path,
+                                      "import_path": "from chemuson.clean2d import layout",
+                                      "type_checking_only": False, "reason": "test", "debt_ref": "test",
+                                      "elimination_condition": "fix it"}]},
+            {"id": "M00", "target_dependencies": [], "forbidden_dependencies": [], "temporary_exceptions": []},
+        ]
+        observed = [
+            ObservedImport(source_id="M99", target_id="M02", file=repo_file, line=3,
+                           statement="from chemuson.clean2d import layout", type_checking_only=False)
+        ]
+        violations, obsolete = check_runtime_policy(analyzer, test_catalog, observed)
+        assert len(violations) == 0
+        assert len(obsolete) == 0
