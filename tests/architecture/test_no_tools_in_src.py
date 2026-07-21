@@ -162,7 +162,7 @@ def scan_file_for_tools_imports(
     Escanea un archivo para detectar imports prohibidos de `tools` o `chemuson.tools`.
 
     Devuelve:
-    - lista de violaciones encontradas
+    - lista de violaciones encontradas (deduplicadas)
     - lista de errores de parsing (si hay)
     """
     violations: list[ToolsImportViolation] = []
@@ -214,6 +214,10 @@ def scan_file_for_tools_imports(
         })
         return violations, parse_errors, 0
 
+    # Usar un conjunto para deduplicación estructural
+    seen: set[tuple[str, int, int, str, str, str, str]] = set()
+    unique_violations: list[ToolsImportViolation] = []
+
     # Recorrer todos los nodos del AST para encontrar imports en cualquier profundidad
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -223,14 +227,18 @@ def scan_file_for_tools_imports(
                     if statement is None:
                         statement = ast.unparse(node)
                     statement = re.sub(r"\s+", " ", statement).strip()
-                    violations.append(ToolsImportViolation(
+                    v = ToolsImportViolation(
                         relative_file=str(file_path.relative_to(src_root.parent)),
                         line=node.lineno,
                         col=node.col_offset,
                         statement=statement,
                         forbidden_module=alias.name,
                         node_type="import",
-                    ))
+                    )
+                    key = (v.relative_file, v.line, v.col, v.statement, v.forbidden_module, v.node_type, v.rule)
+                    if key not in seen:
+                        seen.add(key)
+                        unique_violations.append(v)
 
         elif isinstance(node, ast.ImportFrom):
             # Resolver el módulo base con la semántica correcta de level - 1
@@ -242,35 +250,45 @@ def scan_file_for_tools_imports(
                 if statement is None:
                     statement = ast.unparse(node)
                 statement = re.sub(r"\s+", " ", statement).strip()
-                violations.append(ToolsImportViolation(
+                v = ToolsImportViolation(
                     relative_file=str(file_path.relative_to(src_root.parent)),
                     line=node.lineno,
                     col=node.col_offset,
                     statement=statement,
                     forbidden_module=resolved_base,
                     node_type="from",
-                ))
+                )
+                key = (v.relative_file, v.line, v.col, v.statement, v.forbidden_module, v.node_type, v.rule)
+                if key not in seen:
+                    seen.add(key)
+                    unique_violations.append(v)
                 # No continuar con alias evaluation si el base ya es prohibido
                 continue
 
             # Para imports con module=None (e.g., from . import tools)
             if node.module is None and node.level > 0:
-                # resolved_base ya es el paquete después de aplicar level - 1
+                # Si el resolved_base es None, el import es inválido y no debe producir violación
+                if resolved_base is None:
+                    continue
                 for alias in node.names:
-                    candidate = f"{resolved_base}.{alias.name}" if resolved_base else alias.name
+                    candidate = f"{resolved_base}.{alias.name}"
                     if is_forbidden_tools_module(candidate):
                         statement = ast.get_source_segment(source, node)
                         if statement is None:
                             statement = ast.unparse(node)
                         statement = re.sub(r"\s+", " ", statement).strip()
-                        violations.append(ToolsImportViolation(
+                        v = ToolsImportViolation(
                             relative_file=str(file_path.relative_to(src_root.parent)),
                             line=node.lineno,
                             col=node.col_offset,
                             statement=statement,
                             forbidden_module=candidate,
                             node_type="from",
-                        ))
+                        )
+                        key = (v.relative_file, v.line, v.col, v.statement, v.forbidden_module, v.node_type, v.rule)
+                        if key not in seen:
+                            seen.add(key)
+                            unique_violations.append(v)
 
             # Para imports absolutos (level == 0) con module, evaluar aliases como submódulos
             elif node.level == 0 and node.module:
@@ -281,16 +299,20 @@ def scan_file_for_tools_imports(
                         if statement is None:
                             statement = ast.unparse(node)
                         statement = re.sub(r"\s+", " ", statement).strip()
-                        violations.append(ToolsImportViolation(
+                        v = ToolsImportViolation(
                             relative_file=str(file_path.relative_to(src_root.parent)),
                             line=node.lineno,
                             col=node.col_offset,
                             statement=statement,
                             forbidden_module=candidate,
                             node_type="from",
-                        ))
+                        )
+                        key = (v.relative_file, v.line, v.col, v.statement, v.forbidden_module, v.node_type, v.rule)
+                        if key not in seen:
+                            seen.add(key)
+                            unique_violations.append(v)
 
-    return violations, parse_errors, 1
+    return unique_violations, parse_errors, 1
 
 
 def scan_src_for_tools_imports(src_root: Path) -> tuple[list[ToolsImportViolation], list[dict], int]:
@@ -308,8 +330,6 @@ def scan_src_for_tools_imports(src_root: Path) -> tuple[list[ToolsImportViolatio
 
     # Ordenar archivos para garantizar determinismo
     for file_path in sorted(src_root.rglob("*.py")):
-        if file_path.name == "__pycache__":
-            continue
         files_analyzed += 1
         violations, parse_errors, _ = scan_file_for_tools_imports(file_path, src_root)
         all_violations.extend(violations)
@@ -332,7 +352,7 @@ class TestNoToolsImports:
 
     def test_found_files_to_analyze(self):
         """Debe encontrar al menos un archivo .py para analizar."""
-        file_count = sum(1 for _ in SRC_ROOT.rglob("*.py") if _.name != "__pycache__")
+        file_count = len(list(SRC_ROOT.rglob("*.py")))
         assert file_count > 0, f"No se encontraron archivos .py bajo {SRC_ROOT}"
 
     def test_no_tools_imports_in_production(self):
@@ -360,7 +380,10 @@ class TestNoToolsImports:
             for v in violations:
                 msg_lines.append(
                     f"  - {v.relative_file}:{v.line}:{v.col} | "
-                    f"{v.node_type} | {v.forbidden_module} | {v.statement}"
+                    f"node={v.node_type} | "
+                    f"module={v.forbidden_module} | "
+                    f"statement={v.statement} | "
+                    f"rule={v.rule}"
                 )
             assert False, "\n".join(msg_lines)
 
@@ -483,6 +506,11 @@ class TestResolveImportFromBase:
         # from ...tools import helper -> level=3, but package only has 2 parts
         # Should return None
         assert resolve_import_from_base("chemuson.gui", 3, "tools") is None
+
+    def test_invalid_level_none_module_raises_none(self):
+        # Paquete chemuson con nivel 2 y module=None (from .. import tools)
+        # Debe devolver None porque intenta subir por encima del paquete raíz
+        assert resolve_import_from_base("chemuson", 2, None) is None
 
 
 
@@ -838,6 +866,37 @@ class TestScanFileRealFlow:
         # However, the code might still try to evaluate the statement, but resolved_base will be None.
         assert len(parse_errors) == 0
 
+    def test_invalid_level_root_normal_file(self, tmp_path: Path):
+        """
+        Archivo normal en raíz: from ..tools import helper y from .. import tools.
+        Ambos son relativos inválidos porque intentan subir por encima de chemuson.
+        Resultado: cero violaciones; cero errores de parsing.
+        """
+        src_root = tmp_path / "src" / "chemuson"
+        src_root.mkdir(parents=True)
+        file = src_root / "example.py"
+        file.write_text("from ..tools import helper\nfrom .. import tools\n")
+
+        violations, parse_errors, _ = scan_file_for_tools_imports(file, src_root)
+
+        assert len(violations) == 0
+        assert len(parse_errors) == 0
+
+    def test_invalid_level_root_init_file(self, tmp_path: Path):
+        """
+        __init__.py en raíz: from ..tools import helper y from .. import tools.
+        Resultado: cero violaciones; cero errores de parsing.
+        """
+        src_root = tmp_path / "src" / "chemuson"
+        src_root.mkdir(parents=True)
+        file = src_root / "__init__.py"
+        file.write_text("from ..tools import helper\nfrom .. import tools\n")
+
+        violations, parse_errors, _ = scan_file_for_tools_imports(file, src_root)
+
+        assert len(violations) == 0
+        assert len(parse_errors) == 0
+
     # -----------------------------------------------------------------------
     # Tests obligatorios para deduplicación de violaciones
     # -----------------------------------------------------------------------
@@ -909,5 +968,59 @@ class TestScanFileRealFlow:
         # Check order: tools should come before chemuson.tools lexicographically
         assert violations[0].forbidden_module == "tools"
         assert violations[1].forbidden_module == "chemuson.tools"
+        assert len(parse_errors) == 0
+
+    def test_deduplication_repeated_alias_from_chemuson(self, tmp_path: Path):
+        """
+        Alias repetido desde chemuson.
+        from chemuson import tools, tools as repo_tools
+        Debe producir exactamente una violación; forbidden_module == "chemuson.tools".
+        """
+        src_root = tmp_path / "src" / "chemuson"
+        src_root.mkdir(parents=True)
+        file = src_root / "test.py"
+        file.write_text("from chemuson import tools, tools as repo_tools\n")
+
+        violations, parse_errors, _ = scan_file_for_tools_imports(file, src_root)
+
+        assert len(violations) == 1
+        assert violations[0].forbidden_module == "chemuson.tools"
+        assert len(parse_errors) == 0
+
+    def test_deduplication_repeated_alias_relative(self, tmp_path: Path):
+        """
+        Alias repetido en import relativo.
+        from . import tools, tools as repo_tools
+        Debe producir exactamente una violación; forbidden_module == "chemuson.tools".
+        """
+        src_root = tmp_path / "src" / "chemuson"
+        src_root.mkdir(parents=True)
+        file = src_root / "__init__.py"
+        file.write_text("from . import tools, tools as repo_tools\n")
+
+        violations, parse_errors, _ = scan_file_for_tools_imports(file, src_root)
+
+        assert len(violations) == 1
+        assert violations[0].forbidden_module == "chemuson.tools"
+        assert len(parse_errors) == 0
+
+    def test_deduplication_different_statements(self, tmp_path: Path):
+        """
+        Statements diferentes.
+        import tools
+        import tools
+        Deben conservarse dos violaciones, porque son statements distintos en líneas distintas.
+        """
+        src_root = tmp_path / "src" / "chemuson"
+        src_root.mkdir(parents=True)
+        file = src_root / "test.py"
+        file.write_text("import tools\nimport tools\n")
+
+        violations, parse_errors, _ = scan_file_for_tools_imports(file, src_root)
+
+        assert len(violations) == 2
+        assert violations[0].line == 1
+        assert violations[1].line == 2
+        assert all(v.forbidden_module == "tools" for v in violations)
         assert len(parse_errors) == 0
 
