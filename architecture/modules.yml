@@ -1000,7 +1000,6 @@ modules:
   current_dependencies:
   - M00
   - M08
-  - M14
   entry_points: []
   forbidden_dependencies: []
   id: M12
@@ -1033,6 +1032,7 @@ modules:
 - circular_dependencies: []
   current_dependencies:
   - M00
+  - M08
   entry_points: []
   forbidden_dependencies: []
   id: M13
