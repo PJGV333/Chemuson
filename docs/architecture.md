@@ -134,10 +134,10 @@ La GUI se importa de forma diferida desde `main()` para que `chemuson --version`
 | --- | --- |
 | Responsabilidad | Recursos empaquetados, autosave y crash reporting compartido. |
 | Archivos principales | `resources.py`, `autosave.py`, `crash_reporter.py`. |
-| Puede importar | Paquetes de bajo nivel; imports GUI solo si el módulo es explícitamente de integración con canvas/autosave. |
-| No debería importar | Dominio químico pesado por defecto, RDKit directo, `tools`. |
+| Puede importar | Biblioteca estándar y dependencias externas ya permitidas; autosave recibe persistencia y timers desde composición GUI. |
+| No debería importar | Paquetes ChemUSON, PyQt6, dominio químico pesado, RDKit directo ni `tools`. |
 | API pública | Actualmente no reexporta API en `__init__`; usar módulos específicos. |
-| Internos/privados | Helpers de rutas, serialización de crash/autosave. |
+| Internos/privados | Helpers de rutas, serialización de crash/autosave y contratos estructurales mínimos de autosave. |
 
 ### `chemuson.name2structure`
 
@@ -164,7 +164,7 @@ La GUI se importa de forma diferida desde `main()` para que `chemuson --version`
 | `spectroscopy` | `core`, `chemio`. |
 | `gui` | Orquesta casi todos los subsistemas. |
 | `update` | Ninguno. |
-| `utils` | `chemio`, `gui` en autosave/crash integration. |
+| `utils` | Ninguno. Autosave recibe serialización y temporizadores inyectados desde `gui.tab_manager`. |
 | `name2structure` | `core`, `chemio`. |
 
 Estas dependencias describen el estado actual, no siempre el ideal. Las reglas siguientes definen el objetivo de mantenibilidad.
@@ -181,5 +181,13 @@ Estas dependencias describen el estado actual, no siempre el ideal. Las reglas s
 | Tests no deben usar `sys.path.append` manual. | `pyproject.toml` ya declara `pythonpath = [".", "src"]`. |
 | `tools` no debe ser importado por `src` salvo justificación explícita. | Mantiene herramientas dev fuera del producto. |
 | `chemio` no debería depender de `gui` en runtime. | La persistencia/conversión debe poder usarse sin PyQt. |
+| `utils` debe permanecer sin dependencias ChemUSON. | Autosave se prueba y reutiliza mediante contratos estructurales sin cargar GUI ni persistencia. |
 | `update` debe permanecer desacoplado de la GUI. | Permite testear política/proveedor/seguridad sin interfaz. |
 | Los tests PR/regression pueden existir, pero deben migrar gradualmente a nombres semánticos o acceptance data. | Reduce deuda organizacional sin perder casos químicos. |
+
+## Deuda temporal
+
+El catálogo conserva ocho excepciones temporales revisadas: seis de M01 y dos
+de M03. M15 no tiene dependencias ChemUSON ni excepciones; la persistencia de
+autosave se inyecta desde la composición GUI y el canvas se representa por un
+contrato estructural opaco.
