@@ -309,6 +309,10 @@ class TestModuleDependencies:
         assert chemcalc["current_dependencies"] == ["M00"]
         assert chemcalc["temporary_exceptions"] == []
 
+    def test_m00_registers_molecular_view_coverage(self, modules):
+        core = next(module for module in modules if module["id"] == "M00")
+        assert "tests/test_molecular_view.py" in core["tests"]
+
     def test_m00_to_m18_no_m19_dependency(self, modules):
         """Modules M00-M18 must not reference M19 in current or target dependencies."""
         for m in modules:

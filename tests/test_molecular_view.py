@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
+from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
 from chemuson.chemcalc import implicit_h_count, molecular_formula
 from chemuson.chemname.errors import ChemNameNotSupported
-from chemuson.chemname.molview import MolView
-from chemuson.core import MolecularViewNotSupported
+from chemuson.chemname.molview import MolView as HistoricalMolView
+from chemuson.core import MolView as CoreMolView, MolecularViewNotSupported
 from chemuson.core.model import MolGraph
 
 
@@ -38,7 +42,7 @@ def test_molgraph_queries_and_formula_do_not_mutate_graph() -> None:
     atoms_before = dict(graph.atoms)
     bonds_before = dict(graph.bonds)
 
-    view = MolView(graph)
+    view = CoreMolView(graph)
 
     assert view.atoms() == [carbon.id, oxygen.id]
     assert view.neighbors(carbon.id) == [oxygen.id]
@@ -60,7 +64,7 @@ def test_mapping_atoms_and_tuple_bonds_are_supported() -> None:
         [(1, 2, 1)],
     )
 
-    view = MolView(graph)
+    view = CoreMolView(graph)
 
     assert view.atoms() == [1, 2]
     assert view.element(2) == "N"
@@ -74,7 +78,7 @@ def test_iterable_atoms_and_metadata_are_supported() -> None:
     first = _Atom(1, "C", explicit_h=2)
     second = _Atom(2, "O", charge=-1)
     graph = _Graph([first, second], [(1, 2, 1)])
-    view = MolView(graph)
+    view = CoreMolView(graph)
 
     assert view.atoms() == [1, 2]
     assert view.formal_charge(2) == -1
@@ -96,8 +100,8 @@ def test_nodes_edges_and_neighbor_only_graphs_are_supported() -> None:
         def neighbors(atom_id: int) -> list[int]:
             return [2] if atom_id == 1 else [1]
 
-    edge_view = MolView(NodeGraph())
-    neighbor_view = MolView(NeighborGraph())
+    edge_view = CoreMolView(NodeGraph())
+    neighbor_view = CoreMolView(NeighborGraph())
 
     assert edge_view.bond_order_between(1, 2) == 2
     assert edge_view.bond_is_aromatic(1, 2) is True
@@ -114,7 +118,11 @@ def test_acyclicity_and_structural_bonds_are_preserved() -> None:
     graph.add_bond(second.id, third.id)
     graph.add_bond(third.id, first.id)
 
-    assert MolView(graph).is_acyclic() is False
+    assert CoreMolView(graph).is_acyclic() is False
+
+
+def test_historical_molview_is_the_core_object() -> None:
+    assert HistoricalMolView is CoreMolView
 
 
 def test_historical_errors_are_chemname_not_supported() -> None:
@@ -126,10 +134,38 @@ def test_historical_errors_are_chemname_not_supported() -> None:
         bonds = ()
 
     with pytest.raises(ChemNameNotSupported, match="Cannot read atoms from graph"):
-        MolView(EmptyGraph()).atoms()
+        HistoricalMolView(EmptyGraph()).atoms()
     with pytest.raises(ChemNameNotSupported, match="Cannot resolve atom element"):
-        MolView(MissingElementGraph()).element(1)
+        HistoricalMolView(MissingElementGraph()).element(1)
 
 
 def test_historical_error_is_the_neutral_core_error() -> None:
     assert ChemNameNotSupported is MolecularViewNotSupported
+
+
+def test_core_molview_import_is_isolated_in_a_fresh_subprocess() -> None:
+    repo_root = Path(__file__).resolve().parent.parent
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys; "
+                "import chemuson.core.molview; "
+                "blocked = ('chemuson.chemname', 'chemuson.chemcalc', "
+                "'chemuson.chemio', 'chemuson.gui', 'PyQt6', 'rdkit'); "
+                "unexpected = sorted(name for name in sys.modules "
+                "if any(name == module or name.startswith(module + '.') "
+                "for module in blocked)); "
+                "print('unexpected modules:', unexpected); "
+                "raise SystemExit(bool(unexpected))"
+            ),
+        ],
+        cwd=repo_root,
+        env={**os.environ, "PYTHONPATH": str(repo_root / "src")},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr

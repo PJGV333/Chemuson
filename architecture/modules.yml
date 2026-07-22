@@ -87,6 +87,7 @@ modules:
   temporary_exceptions: []
   tests:
   - tests/test_core_model.py
+  - tests/test_molecular_view.py
   title: Modelo molecular fundamental
 - circular_dependencies:
   - edges:
