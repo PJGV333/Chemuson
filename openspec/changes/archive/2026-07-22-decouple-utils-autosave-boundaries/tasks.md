@@ -77,6 +77,6 @@
 - [x] **9.3 Validate OpenSpec globally and prepare archive**
   - Archivos: artefactos del cambio y specs canónicos.
   - Aceptación: validación strict local y global, ocho excepciones y M15 limpio antes de archive.
-- [ ] **9.4 Archive decouple-utils-autosave-boundaries**
+- [x] **9.4 Archive decouple-utils-autosave-boundaries**
   - Archivos: cambio archivado y spec canónico actualizado por OpenSpec.
   - Aceptación: archive único posterior a todas las validaciones y sin cambios activos relacionados.
