@@ -4,10 +4,10 @@ import os
 import time
 
 import pytest
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QObject, Qt
 from PyQt6.QtGui import QKeySequence
 from PyQt6.QtTest import QTest
-from PyQt6.QtWidgets import QApplication, QInputDialog, QMessageBox, QTextEdit
+from PyQt6.QtWidgets import QApplication, QInputDialog, QMessageBox, QTabWidget, QTextEdit
 
 
 from chemuson.core.model import MolGraph
@@ -16,6 +16,8 @@ from chemuson.chemio import rdkit_io
 from chemuson.chemio import rdkit_safe
 from chemuson.gui.canvas import ChemusonCanvas
 from chemuson.gui.main_window import ChemusonWindow
+from chemuson.gui.tab_manager import CanvasTabManager, _QtAutosaveManager
+from chemuson.utils.autosave import AutosaveManager, AutosaveSerializer, AutosaveUndoStack
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -41,17 +43,70 @@ def test_new_creates_independent_tab() -> None:
     assert window.tabs.indexOf(first_canvas) >= 0
 
 
-def test_tab_manager_injects_concrete_autosave_collaborators() -> None:
+class FakeAutosaveController:
+    def __init__(self) -> None:
+        self.start_calls = 0
+        self.stop_calls = 0
+        self.original_paths: list[str | None] = []
+        self.restart_calls = 0
+        self.cancel_calls = 0
+        self.cleanup_calls = 0
+
+    def start(self) -> None:
+        self.start_calls += 1
+
+    def stop(self) -> None:
+        self.stop_calls += 1
+
+    def set_original_path(self, filepath: str | None) -> None:
+        self.original_paths.append(filepath)
+
+    def restart_debounce(self) -> None:
+        self.restart_calls += 1
+
+    def cancel_debounce(self) -> None:
+        self.cancel_calls += 1
+
+    def cleanup_after_save(self) -> None:
+        self.cleanup_calls += 1
+
+
+def test_tab_manager_injects_typed_autosave_collaborators() -> None:
+    captured: list[tuple[QObject, ChemusonCanvas, AutosaveUndoStack, AutosaveSerializer[ChemusonCanvas]]] = []
+    controller = FakeAutosaveController()
+
+    def factory(
+        parent: QObject,
+        document: ChemusonCanvas,
+        undo_stack: AutosaveUndoStack,
+        serializer: AutosaveSerializer[ChemusonCanvas],
+    ) -> FakeAutosaveController:
+        captured.append((parent, document, undo_stack, serializer))
+        return controller
+
+    tabs = QTabWidget()
+    parent = QObject()
+    manager = CanvasTabManager(tabs, autosave_parent=parent, autosave_factory=factory)
+    canvas = manager.create_document_tab()
+
+    assert captured == [(parent, canvas, canvas.undo_stack, PersistenceManager.save_to_dict)]
+    assert controller.start_calls == 1
+    assert manager.autosave_managers[canvas] is controller
+    assert manager.autosave_manager_for(canvas) is controller
+
+
+def test_qt_autosave_adapter_owns_preserves_concrete_timer_configuration() -> None:
     window = ChemusonWindow()
     try:
         manager = window._tab_manager.autosave_manager_for(window.canvas)
 
-        assert manager is not None
-        assert manager._manager._serializer.__qualname__ == PersistenceManager.save_to_dict.__qualname__
-        assert manager._manager._periodic_timer.parent() is manager
-        assert manager._manager._periodic_timer.interval() == manager.AUTOSAVE_INTERVAL_MS
-        assert manager._manager._debounce_timer.isSingleShot()
-        assert manager._manager._debounce_timer.interval() == manager.DEBOUNCE_INTERVAL_MS
+        assert isinstance(manager, _QtAutosaveManager)
+        assert isinstance(manager.core, AutosaveManager)
+        assert manager.core._periodic_timer.parent() is manager
+        assert manager.core._periodic_timer.interval() == AutosaveManager.AUTOSAVE_INTERVAL_MS
+        assert manager.core._debounce_timer.isSingleShot()
+        assert manager.core._debounce_timer.interval() == AutosaveManager.DEBOUNCE_INTERVAL_MS
+        assert "__getattr__" not in _QtAutosaveManager.__dict__
     finally:
         window.close()
 
