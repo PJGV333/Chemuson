@@ -433,8 +433,8 @@ class TestCircularDependencies:
         all_cycles = []
         for m in modules:
             all_cycles.extend(m["circular_dependencies"])
-        assert len(all_cycles) == 1, (
-            f"Expected exactly 1 cycle, got {len(all_cycles)}"
+        assert len(all_cycles) == 0, (
+            f"Expected no cycles, got {len(all_cycles)}"
         )
 
     def test_cycles_match_expected(self, modules):
@@ -444,7 +444,7 @@ class TestCircularDependencies:
             all_cycles.extend(m["circular_dependencies"])
 
         cycle_modules = [frozenset(c["modules"]) for c in all_cycles]
-        expected = {frozenset({"M01", "M02"})}
+        expected = set()
         assert set(cycle_modules) == expected, (
             f"Cycles mismatch: {cycle_modules}"
         )

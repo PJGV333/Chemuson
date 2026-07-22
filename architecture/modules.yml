@@ -89,41 +89,9 @@ modules:
   - tests/test_core_model.py
   - tests/test_molecular_view.py
   title: Modelo molecular fundamental
-- circular_dependencies:
-  - edges:
-    - file: src/chemuson/chemio/depiction_candidates.py
-      import_path: from chemuson.clean2d.geometry import count_crossings, cycle_basis,
-        segments_intersect
-      source: M01
-      target: M02
-    - file: src/chemuson/chemio/depiction_candidates.py
-      import_path: from chemuson.clean2d.safety import has_cycles, min_nonbonded_distance,
-        ring_degeneracy_score
-      source: M01
-      target: M02
-    - file: src/chemuson/chemio/rdkit_io.py
-      import_path: from chemuson.clean2d.geometry import apply_coords_in_place
-      source: M01
-      target: M02
-    - file: src/chemuson/clean2d/block_unwrap.py
-      import_path: from chemuson.chemio.depiction_candidates import block_donut_score,
-        score_imported_depiction
-      source: M02
-      target: M01
-    - file: src/chemuson/clean2d/scaffold_depiction.py
-      import_path: from chemuson.chemio.depiction_candidates import block_donut_score,
-        score_imported_depiction
-      source: M02
-      target: M01
-    modules:
-    - M01
-    - M02
-    resolution_plan: Mover depiction_candidates.py a clean2d o a un paquete compartido
-      en fase futura.
-    severity: high
+- circular_dependencies: []
   current_dependencies:
   - M00
-  - M02
   entry_points: []
   forbidden_dependencies:
   - M08
@@ -138,91 +106,34 @@ modules:
   - rdkit_safe
   - persistence
   - cml_io
-  - depiction_candidates
   - _rdkit_worker
   name: chemio
-  notes: 'API pública no declarada en __init__.py (solo docstring). Los módulos rdkit_io,
-    rdkit_safe, persistence,
-
-    cml_io, depiction_candidates son usados por otros paquetes. _rdkit_worker.py es
-    invocado por subprocess
-
-    desde rdkit_safe.py y no aparece en imports normales.
-
-    '
+  notes: ChemIO gestiona formatos, parsing, persistencia y workers RDKit; no contiene
+    scoring, ranking ni layout Clean2D. Conserva una deuda TYPE_CHECKING hacia M09
+    en persistence.py.
   paths:
   - src/chemuson/chemio/
   public_api: []
-  responsibility: 'Import/export químico y persistencia: SMILES, Molfile, CML, CMSN,
-    candidatos de depiction y acceso seguro a RDKit.'
+  responsibility: 'Import/export químico y persistencia: SMILES, Molfile, CML, CMSN
+    y acceso seguro a RDKit.'
   risk_level: medium
   status: evolving
   target_dependencies:
   - M00
   temporary_exceptions:
   - source_id: M01
-    target_id: M02
-    file: src/chemuson/chemio/depiction_candidates.py
-    import_path: from chemuson.clean2d.geometry import count_crossings, cycle_basis,
-      segments_intersect
-    reason: M01 <-> M02 circularity (debt)
-    debt_ref: establish-phase1-module-catalog-and-contracts
-    elimination_condition: Mover depiction_candidates.py a clean2d o a un paquete
-      compartido en fase futura.
-    type_checking_only: false
-  - source_id: M01
-    target_id: M02
-    file: src/chemuson/chemio/depiction_candidates.py
-    import_path: from chemuson.clean2d.safety import has_cycles, min_nonbonded_distance,
-      ring_degeneracy_score
-    reason: M01 <-> M02 circularity (debt)
-    debt_ref: establish-phase1-module-catalog-and-contracts
-    elimination_condition: Mover depiction_candidates.py a clean2d o a un paquete
-      compartido en fase futura.
-    type_checking_only: false
-  - source_id: M01
-    target_id: M02
-    file: src/chemuson/chemio/rdkit_io.py
-    import_path: from chemuson.clean2d.geometry import apply_coords_in_place
-    reason: M01 <-> M02 circularity (debt)
-    debt_ref: establish-phase1-module-catalog-and-contracts
-    elimination_condition: Mover depiction_candidates.py a clean2d o a un paquete
-      compartido en fase futura.
-    type_checking_only: false
-  - source_id: M01
-    target_id: M02
-    file: src/chemuson/chemio/rdkit_io.py
-    import_path: from chemuson.clean2d.scaffold_depiction import scaffold_depiction_candidates
-    reason: M01 <-> M02 circularity (debt)
-    debt_ref: establish-phase1-module-catalog-and-contracts
-    elimination_condition: Mover depiction_candidates.py a clean2d o a un paquete
-      compartido en fase futura.
-    type_checking_only: false
-  - source_id: M01
-    target_id: M02
-    file: src/chemuson/chemio/rdkit_io.py
-    import_path: from chemuson.clean2d.block_unwrap import block_unwrap_layout
-    reason: M01 <-> M02 circularity (debt)
-    debt_ref: establish-phase1-module-catalog-and-contracts
-    elimination_condition: Mover depiction_candidates.py a clean2d o a un paquete
-      compartido en fase futura.
-    type_checking_only: false
-  - source_id: M01
     target_id: M09
     file: src/chemuson/chemio/persistence.py
     import_path: from chemuson.gui.canvas import ChemusonCanvas
     reason: Import bajo TYPE_CHECKING para tipar la persistencia del canvas.
     debt_ref: establish-phase1-module-catalog-and-contracts
-    elimination_condition: Sustituir ChemusonCanvas por un Protocol de
-      persistencia independiente de GUI.
+    elimination_condition: Sustituir ChemusonCanvas por un Protocol de persistencia
+      independiente de GUI.
     type_checking_only: true
   tests:
   - tests/test_rdkit_roundtrip.py
   - tests/test_cml_io.py
-  - tests/test_smiles_depiction_candidates.py
   - tests/test_smiles_import_isolated.py
-  - tests/test_smiles_stereo_import.py
-  - tests/test_scaffold_depiction.py
   - tests/test_rdkit_smoke.py
   - tests/test_rdkit_descriptors.py
   - tests/test_rdkit_strict_validation.py
@@ -246,6 +157,8 @@ modules:
   - M13
   id: M02
   internal_api:
+  - depiction_quality
+  - imported_depiction
   - engine
   - safety
   - geometry
@@ -257,9 +170,8 @@ modules:
   - v2
   - debug_snapshots
   name: clean2d
-  notes: Engine importa rdkit_safe de forma lazy dentro de funciones (dependencia
-    runtime diferida, no se ejecuta durante la importación inicial del módulo). 0
-    tests conocidos fallan en baseline.
+  notes: Clean2D es owner de scoring, ranking y orquestación de imported depiction;
+    consume parsing y workers de ChemIO en dirección M02 a M01, sin ciclo.
   paths:
   - src/chemuson/clean2d/
   public_api:
@@ -325,6 +237,10 @@ modules:
   - run_clean2d_with_debug_snapshot
   - validate_clean2d_debug_snapshot
   - write_clean2d_debug_snapshot
+  - DepictionCandidate
+  - smiles_to_depiction_candidates
+  - smiles_to_molgraph_best_depiction
+  - smiles_to_molgraph_best_depiction_with_report
   responsibility: 'Limpieza/depiction 2D desacoplada de la GUI: candidatos, ranking,
     invariantes, seguridad geométrica, reparación local y políticas de moléculas complejas.'
   risk_level: high
@@ -345,6 +261,10 @@ modules:
   - tests/test_clean_2d_scaling.py
   - tests/test_clean_2d_strategy.py
   - tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py
+  - tests/test_smiles_depiction_candidates.py
+  - tests/test_block_unwrap_depiction.py
+  - tests/test_scaffold_depiction.py
+  - tests/test_smiles_stereo_import.py
   title: Limpieza/depiction 2D
 - circular_dependencies: []
   current_dependencies:
@@ -418,8 +338,8 @@ modules:
   notes: 'Importa chemio de forma lazy (TYPE_CHECKING en stereo_advanced.py, runtime
     dentro de funciones en engine.py).
 
-    Importa utils.resources de forma global. MolView pertenece a core; el path
-    chemname.molview se conserva como compatibilidad histórica.
+    Importa utils.resources de forma global. MolView pertenece a core; el path chemname.molview
+    se conserva como compatibilidad histórica.
 
     '
   paths:
@@ -1092,9 +1012,9 @@ modules:
   - autosave
   - crash_reporter
   name: utils
-  notes: 'Sin __all__ en __init__.py. autosave.py recibe serialización y timers
-    mediante colaboradores inyectados desde la composición GUI. crash_reporter.py
-    usa PyQt6 para notificación visual. M15 no depende de otros módulos ChemUSON.'
+  notes: Sin __all__ en __init__.py. autosave.py recibe serialización y timers mediante
+    colaboradores inyectados desde la composición GUI. crash_reporter.py usa PyQt6
+    para notificación visual. M15 no depende de otros módulos ChemUSON.
   paths:
   - src/chemuson/utils/
   public_api: []
