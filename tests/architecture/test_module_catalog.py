@@ -304,6 +304,11 @@ class TestModuleDependencies:
                 f"Module '{m['id']}', target and forbidden dependencies overlap: {overlap}"
             )
 
+    def test_m03_depends_only_on_m00_without_exceptions(self, modules):
+        chemcalc = next(module for module in modules if module["id"] == "M03")
+        assert chemcalc["current_dependencies"] == ["M00"]
+        assert chemcalc["temporary_exceptions"] == []
+
     def test_m00_to_m18_no_m19_dependency(self, modules):
         """Modules M00-M18 must not reference M19 in current or target dependencies."""
         for m in modules:
@@ -411,31 +416,31 @@ class TestTemporaryExceptions:
 class TestCircularDependencies:
     """Validate the structure of circular_dependencies entries."""
 
-    def test_cycles_only_in_m01_and_m03(self, modules):
-        """Only M01 and M03 should have circular dependencies declared."""
+    def test_cycles_only_in_m01(self, modules):
+        """Only M01 should have circular dependencies declared."""
         for m in modules:
-            if m["id"] not in ("M01", "M03"):
+            if m["id"] != "M01":
                 assert len(m["circular_dependencies"]) == 0, (
                     f"Module '{m['id']}' should not have circular_dependencies"
                 )
 
-    def test_exactly_two_cycles(self, modules):
-        """There should be exactly two circular dependency entries."""
+    def test_exactly_one_cycle(self, modules):
+        """There should be exactly one circular dependency entry."""
         all_cycles = []
         for m in modules:
             all_cycles.extend(m["circular_dependencies"])
-        assert len(all_cycles) == 2, (
-            f"Expected exactly 2 cycles, got {len(all_cycles)}"
+        assert len(all_cycles) == 1, (
+            f"Expected exactly 1 cycle, got {len(all_cycles)}"
         )
 
     def test_cycles_match_expected(self, modules):
-        """Verify the two expected cycles: M01↔M02 and M03↔M04."""
+        """Verify the expected M01↔M02 cycle."""
         all_cycles = []
         for m in modules:
             all_cycles.extend(m["circular_dependencies"])
 
         cycle_modules = [frozenset(c["modules"]) for c in all_cycles]
-        expected = {frozenset({"M01", "M02"}), frozenset({"M03", "M04"})}
+        expected = {frozenset({"M01", "M02"})}
         assert set(cycle_modules) == expected, (
             f"Cycles mismatch: {cycle_modules}"
         )
