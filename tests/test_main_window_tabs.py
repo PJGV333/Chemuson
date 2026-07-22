@@ -41,6 +41,21 @@ def test_new_creates_independent_tab() -> None:
     assert window.tabs.indexOf(first_canvas) >= 0
 
 
+def test_tab_manager_injects_concrete_autosave_collaborators() -> None:
+    window = ChemusonWindow()
+    try:
+        manager = window._tab_manager.autosave_manager_for(window.canvas)
+
+        assert manager is not None
+        assert manager._manager._serializer.__qualname__ == PersistenceManager.save_to_dict.__qualname__
+        assert manager._manager._periodic_timer.parent() is manager
+        assert manager._manager._periodic_timer.interval() == manager.AUTOSAVE_INTERVAL_MS
+        assert manager._manager._debounce_timer.isSingleShot()
+        assert manager._manager._debounce_timer.interval() == manager.DEBOUNCE_INTERVAL_MS
+    finally:
+        window.close()
+
+
 def test_tab_state_is_independent() -> None:
     window = ChemusonWindow()
     first = window.canvas
