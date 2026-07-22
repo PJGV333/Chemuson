@@ -6,8 +6,8 @@ import math
 import pytest
 
 
-from chemuson.chemio.depiction_candidates import block_donut_score, score_imported_depiction
-from chemuson.chemio.rdkit_io import smiles_to_depiction_candidates
+from chemuson.clean2d import smiles_to_depiction_candidates
+from chemuson.clean2d.depiction_quality import block_donut_score, score_imported_depiction
 from chemuson.clean2d.block_unwrap import block_unwrap_layout
 from chemuson.clean2d.engine import run_clean2d_engine
 from chemuson.core.model import MolGraph

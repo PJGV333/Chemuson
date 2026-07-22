@@ -6,8 +6,8 @@ import math
 import pytest
 
 
-from chemuson.chemio.depiction_candidates import block_donut_score, score_imported_depiction
-from chemuson.chemio.rdkit_io import smiles_to_depiction_candidates, smiles_to_molgraph_best_depiction_with_report
+from chemuson.clean2d import smiles_to_depiction_candidates, smiles_to_molgraph_best_depiction_with_report
+from chemuson.clean2d.depiction_quality import block_donut_score, score_imported_depiction
 from chemuson.clean2d.scaffold_depiction import scaffold_depiction_candidates, scaffold_depiction_layout
 from chemuson.core.model import MolGraph
 

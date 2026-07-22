@@ -5,8 +5,10 @@ import math
 import pytest
 
 
-from chemuson.chemio import rdkit_io, rdkit_safe
-from chemuson.chemio.depiction_candidates import DepictionCandidate, score_imported_depiction
+from chemuson.chemio import rdkit_safe
+from chemuson.clean2d import imported_depiction
+from chemuson.clean2d.depiction_quality import score_imported_depiction
+from chemuson.clean2d.imported_depiction import DepictionCandidate
 from chemuson.core.model import MolGraph
 
 
@@ -35,7 +37,7 @@ def test_smiles_depiction_candidates_uses_worker_payload(monkeypatch) -> None:
             ],
         }
 
-    def fake_parser(molblock: str) -> MolGraph:
+    def fake_parser(molblock: str, **_kwargs) -> MolGraph:
         return _simple_graph(0.0 if molblock == "mol-a" else 100.0)
 
     def fake_score(graph: MolGraph, *, target_bond_length: float = 40.0):
@@ -43,10 +45,10 @@ def test_smiles_depiction_candidates_uses_worker_payload(monkeypatch) -> None:
         return (20.0 if first_x == 0.0 else 5.0), {"first_x": first_x}
 
     monkeypatch.setattr(rdkit_safe, "_run_worker", fake_worker)
-    monkeypatch.setattr(rdkit_io, "molfile_to_molgraph", fake_parser)
-    monkeypatch.setattr(rdkit_io, "score_imported_depiction", fake_score)
+    monkeypatch.setattr(imported_depiction, "molfile_to_molgraph", fake_parser)
+    monkeypatch.setattr(imported_depiction, "score_imported_depiction", fake_score)
 
-    candidates = rdkit_io.smiles_to_depiction_candidates("CC", timeout_s=3.0)
+    candidates = imported_depiction.smiles_to_depiction_candidates("CC", timeout_s=3.0)
 
     assert captured["request"]["mode"] == "smiles_depict_candidates"
     assert captured["request"]["smiles"] == "CC"
@@ -58,7 +60,7 @@ def test_smiles_to_molgraph_best_depiction_prefers_lower_score(monkeypatch) -> N
     best = _simple_graph(200.0)
     worse = _simple_graph(0.0)
     monkeypatch.setattr(
-        rdkit_io,
+        imported_depiction,
         "smiles_to_depiction_candidates",
         lambda *_args, **_kwargs: (
             DepictionCandidate("worse", worse, 10.0),
@@ -66,7 +68,7 @@ def test_smiles_to_molgraph_best_depiction_prefers_lower_score(monkeypatch) -> N
         ),
     )
 
-    graph = rdkit_io.smiles_to_molgraph_best_depiction("CC")
+    graph = imported_depiction.smiles_to_molgraph_best_depiction("CC")
 
     assert graph is best
 
@@ -74,7 +76,7 @@ def test_smiles_to_molgraph_best_depiction_prefers_lower_score(monkeypatch) -> N
 def test_depiction_candidate_contract_and_sorting_preserve_rejected_last(monkeypatch) -> None:
     accepted = _simple_graph(0.0)
     monkeypatch.setattr(
-        rdkit_io,
+        imported_depiction,
         "smiles_to_depiction_candidates",
         lambda *_args, **_kwargs: (
             DepictionCandidate("zeta", accepted, 2.0, metadata={"origin": "worker"}),
@@ -83,7 +85,7 @@ def test_depiction_candidate_contract_and_sorting_preserve_rejected_last(monkeyp
         ),
     )
 
-    graph, report = rdkit_io.smiles_to_molgraph_best_depiction_with_report("CC")
+    graph, report = imported_depiction.smiles_to_molgraph_best_depiction_with_report("CC")
 
     assert graph is not accepted
     assert report["selected_source"] == "beta"
@@ -99,22 +101,22 @@ def test_depiction_candidate_contract_and_sorting_preserve_rejected_last(monkeyp
 
 def test_empty_smiles_and_worker_error_keep_existing_errors(monkeypatch) -> None:
     with pytest.raises(ValueError, match="SMILES vacío"):
-        rdkit_io.smiles_to_depiction_candidates("  ")
+        imported_depiction.smiles_to_depiction_candidates("  ")
 
-    monkeypatch.setattr(rdkit_safe, "smiles_depict_candidates_isolated", lambda *_args, **_kwargs: ([], "worker_down"))
+    monkeypatch.setattr(imported_depiction, "smiles_depict_candidates_isolated", lambda *_args, **_kwargs: ([], "worker_down"))
     with pytest.raises(RuntimeError, match="RDKit worker no disponible"):
-        rdkit_io.smiles_to_depiction_candidates("CC")
+        imported_depiction.smiles_to_depiction_candidates("CC")
 
 
 def test_molblock_parse_rejection_preserves_source_and_metadata(monkeypatch) -> None:
     monkeypatch.setattr(
-        rdkit_safe,
+        imported_depiction,
         "smiles_depict_candidates_isolated",
         lambda *_args, **_kwargs: ([{"source": "broken", "ok": True, "molblock": "bad", "metadata": {"raw": 1}}], None),
     )
-    monkeypatch.setattr(rdkit_io, "molfile_to_molgraph", lambda _molblock: (_ for _ in ()).throw(ValueError("invalid_molblock")))
+    monkeypatch.setattr(imported_depiction, "molfile_to_molgraph", lambda _molblock, **_kwargs: (_ for _ in ()).throw(ValueError("invalid_molblock")))
 
-    candidates = rdkit_io.smiles_to_depiction_candidates("CC")
+    candidates = imported_depiction.smiles_to_depiction_candidates("CC")
 
     assert len(candidates) == 1
     assert candidates[0].source == "broken"
@@ -125,7 +127,7 @@ def test_molblock_parse_rejection_preserves_source_and_metadata(monkeypatch) -> 
 
 def test_vancomycin_smiles_import_produces_non_degenerate_graph() -> None:
     try:
-        graph = rdkit_io.smiles_to_molgraph_best_depiction(VANCOMYCIN_SMILES, timeout_s=20.0)
+        graph = imported_depiction.smiles_to_molgraph_best_depiction(VANCOMYCIN_SMILES, timeout_s=20.0)
     except RuntimeError as exc:
         pytest.skip(f"Worker RDKit no disponible en este entorno: {exc}")
 
@@ -145,7 +147,7 @@ def test_vancomycin_smiles_import_produces_non_degenerate_graph() -> None:
 
 def test_vancomycin_depiction_prefers_coordgen_when_available() -> None:
     try:
-        candidates = rdkit_io.smiles_to_depiction_candidates(VANCOMYCIN_SMILES, timeout_s=20.0)
+        candidates = imported_depiction.smiles_to_depiction_candidates(VANCOMYCIN_SMILES, timeout_s=20.0)
     except RuntimeError as exc:
         pytest.skip(f"Worker RDKit no disponible en este entorno: {exc}")
     coordgen = [candidate for candidate in candidates if candidate.source == "rdcoordgen" and not candidate.rejected]
@@ -161,7 +163,7 @@ def test_vancomycin_depiction_prefers_coordgen_when_available() -> None:
 
 def test_compute2d_worker_still_handles_simple_smiles() -> None:
     try:
-        graph = rdkit_io.smiles_to_molgraph_best_depiction("CCO", timeout_s=10.0)
+        graph = imported_depiction.smiles_to_molgraph_best_depiction("CCO", timeout_s=10.0)
     except RuntimeError as exc:
         pytest.skip(f"Worker RDKit no disponible en este entorno: {exc}")
     assert len(graph.atoms) >= 3

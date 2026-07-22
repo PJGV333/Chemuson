@@ -362,13 +362,14 @@ class TemplateController(QObject):
             context.show_status("Error al importar SMILES")
 
     def _import_smiles_graph(self, smiles: str) -> tuple[MolGraph, dict[str, object]]:
-        """Importa SMILES vía ChemIO manteniendo el fallback histórico de la UI."""
-        from chemuson.chemio import rdkit_io
+        """Importa SMILES con selección de depiction de Clean2D."""
+        from chemuson.clean2d import smiles_to_molgraph_best_depiction_with_report
+        from chemuson.chemio.rdkit_io import smiles_to_molgraph
 
         try:
-            return rdkit_io.smiles_to_molgraph_best_depiction_with_report(smiles)
+            return smiles_to_molgraph_best_depiction_with_report(smiles)
         except Exception:
-            graph = rdkit_io.smiles_to_molgraph(smiles)
+            graph = smiles_to_molgraph(smiles)
             return graph, {"selected_source": "smiles_to_molgraph"}
 
     def on_export_smiles(self, context: TemplateControllerContext) -> None:

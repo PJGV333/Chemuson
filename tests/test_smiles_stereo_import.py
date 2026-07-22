@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 
 
-from chemuson.chemio.rdkit_io import smiles_to_molgraph_best_depiction
+from chemuson.clean2d import smiles_to_molgraph_best_depiction
 from chemuson.core.model import BondStyle
 
 

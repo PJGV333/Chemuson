@@ -72,6 +72,12 @@ from .debug_snapshots import (
     validate_clean2d_debug_snapshot,
     write_clean2d_debug_snapshot,
 )
+from .imported_depiction import (
+    DepictionCandidate,
+    smiles_to_depiction_candidates,
+    smiles_to_molgraph_best_depiction,
+    smiles_to_molgraph_best_depiction_with_report,
+)
 
 __all__ = [
     "Clean2DParameters",
@@ -136,4 +142,8 @@ __all__ = [
     "run_clean2d_with_debug_snapshot",
     "validate_clean2d_debug_snapshot",
     "write_clean2d_debug_snapshot",
+    "DepictionCandidate",
+    "smiles_to_depiction_candidates",
+    "smiles_to_molgraph_best_depiction",
+    "smiles_to_molgraph_best_depiction_with_report",
 ]
