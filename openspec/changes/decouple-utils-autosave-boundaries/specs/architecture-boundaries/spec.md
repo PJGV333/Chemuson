@@ -55,3 +55,45 @@ Importing `chemuson.utils.autosave` SHALL not load `chemuson.gui`,
 - **GIVEN** a fresh Python subprocess
 - **WHEN** it imports `chemuson.utils.autosave`
 - **THEN** none of those modules are present in `sys.modules`
+
+#### Scenario: RDKit remains absent after isolated import
+- **GIVEN** a fresh Python subprocess
+- **WHEN** it imports `chemuson.utils.autosave`
+- **THEN** no module named `rdkit` or prefixed with `rdkit.` is present in `sys.modules`
+
+### Requirement: Type-Safe Autosave Composition
+
+`AutosaveManager` SHALL be generic over its document type and its serializer
+SHALL accept that same type. The Qt adapter SHALL implement the controller
+contract explicitly, without `__getattr__`, and SHALL not claim to be the core
+manager. The autosave factory SHALL return `AutosaveController`; it SHALL not
+use `Callable[..., ...]`, and the adapter SHALL not use `object` as a stand-in
+for its concrete document type.
+
+#### Scenario: Canvas manager creates a typed controller
+- **GIVEN** `CanvasTabManager` and its autosave factory
+- **WHEN** it creates a document tab
+- **THEN** it stores an `AutosaveController` and supplies a serializer accepting the same canvas type
+
+### Requirement: Autosave Lifecycle Compatibility
+
+Autosave SHALL preserve idempotent `start`, periodic timer startup, dirty-only
+initial debounce, stopping of both timers, restart and cancellation of debounce,
+forced cleanup snapshots, and the dirty/clean policy executed by timer
+callbacks.
+
+#### Scenario: Lifecycle transitions preserve timer policy
+- **GIVEN** an autosave manager with observable timers and clean state
+- **WHEN** it starts, stops, restarts debounce, cancels debounce and cleans up after save
+- **THEN** each timer action and snapshot policy matches the existing dirty/clean behavior
+
+### Requirement: Canonical Specification Purposes
+
+Canonical specifications SHALL use concrete Purpose text that describes their
+actual scope. Archived historical copies remain immutable; this documentation
+maintenance requirement does not add a runtime architectural rule.
+
+#### Scenario: Canonical specs are reviewed after archive
+- **GIVEN** the canonical specifications produced by Fase 1
+- **WHEN** their Purpose sections are inspected
+- **THEN** none retains an archive-created placeholder

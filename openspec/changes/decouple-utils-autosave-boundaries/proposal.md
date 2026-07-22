@@ -24,3 +24,13 @@ autosave sea reutilizable e impiden reducir el baseline de excepciones.
   undo/redo o frecuencia de autosave.
 - Eliminar las otras ocho excepciones ni resolver los ciclos M01<->M02 o
   M03<->M04.
+
+## Corrective review scope
+
+La revisión posterior a la implementación encontró cuatro `Purpose`
+provisionales heredados del archive de Fase 1, documentación demasiado amplia
+sobre PyQt6 en `utils`, aislamiento de RDKit sin cobertura, un adaptador Qt
+dinámico e incorrectamente tipado y cobertura incompleta del ciclo de vida de
+autosave. El desacoplamiento principal sigue siendo válido: esta revisión no
+restaura deuda ni cambia comportamiento. Endurece el contrato, los tipos, las
+pruebas y la documentación antes del archive.

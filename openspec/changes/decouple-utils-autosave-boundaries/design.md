@@ -80,3 +80,52 @@ existente en el mismo call site. Se descarta un puerto de persistencia de clase
 por añadir una abstracción mayor para una sola operación, y se descartan imports
 lazy por preservar la deuda. El rollback es revertir los commits de esta fase,
 sin migración de datos porque el formato no cambia.
+
+## Corrective design
+
+### Núcleo genérico
+
+`AutosaveManager` usa `DocumentT = TypeVar("DocumentT")` y
+`Generic[DocumentT]`. `AutosaveSerializer` conserva el mismo tipo mediante
+`Callable[[DocumentT], dict[str, object]]`; no se mantiene un Protocol vacío
+para representar documentos arbitrarios. `AutosaveUndoStack`, `AutosaveTimer`
+y `AutosaveTimerFactory` conservan sus contratos mínimos actuales.
+
+### Contrato del controlador
+
+`CanvasTabManager` almacena un `AutosaveController` pequeño con únicamente los
+métodos usados por sus call sites: `start`, `stop`, `set_original_path`,
+`restart_debounce`, `cancel_debounce` y `cleanup_after_save`. No contiene
+métodos privados ni pretende representar toda la implementación del core.
+
+### Adaptador Qt
+
+`_QtAutosaveManager` hereda de `QObject`, contiene un
+`AutosaveManager[ChemusonCanvas]` y delega explícitamente los métodos del
+controlador. No hereda del core ni usa `__getattr__`. Una propiedad de solo
+lectura `core` permite introspección dirigida en pruebas sin exponer estado
+mutable. El adaptador conserva el ownership de los `QTimer`, su parent, los
+intervalos, `singleShot` y los callbacks.
+
+### Factory tipado
+
+`gui.tab_manager` declara `AutosaveFactory` con parent `QObject`,
+`ChemusonCanvas`, `AutosaveUndoStack` y `AutosaveSerializer[ChemusonCanvas]`;
+devuelve `AutosaveController`. El registro es
+`dict[ChemusonCanvas, AutosaveController]` y `autosave_manager_for()` devuelve
+`Optional[AutosaveController]`. No se usa `Callable[..., ...]` ni `object`
+como sustituto del documento real.
+
+### Documentación
+
+La documentación distingue dependencias entre módulos ChemUSON de dependencias
+externas. `autosave.py` se aísla de PyQt6, GUI, ChemIO y RDKit;
+`crash_reporter.py` conserva PyQt6 para notificación visual, que no es una
+dependencia entre módulos ChemUSON. `utils` no importa otros módulos ChemUSON.
+
+### Compatibilidad
+
+El constructor del composition root, timers, rutas, hashes, filenames, payload,
+metadata, cleanup, debounce, rotación y propagación de errores mantienen su
+comportamiento. La revisión añade pruebas directas de estas garantías, incluidas
+las transiciones start/stop y la ejecución de callbacks de temporizador.
