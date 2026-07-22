@@ -47,4 +47,4 @@
 
 ## 11. Archive
 
-- [ ] 11.1 Archive `eliminate-chemio-clean2d-cycle` only after review approval. Files: OpenSpec archive. Acceptance: intentionally pending for this phase.
+- [x] 11.1 Archive `eliminate-chemio-clean2d-cycle` only after review approval. Files: OpenSpec archive. Acceptance: intentionally pending for this phase.
