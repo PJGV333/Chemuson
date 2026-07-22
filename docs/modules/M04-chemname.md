@@ -12,4 +12,6 @@ La cobertura de este módulo es parcial y está diseñada para ser un soporte á
 
 ## Dependencias
 - Runtime: `core` (M00), `chemcalc` (M03), `chemio` (M01, lazy), `utils` (M15).
-- Ciclo conocido: `chemcalc` ↔ `chemname` vía `chemcalc` que importa `MolView` de `chemname`, y `chemname` que importa `implicit_h_count` de `chemcalc`.
+- `MolView` pertenece a `core`; `chemname.molview` conserva su import histórico
+  como capa de compatibilidad. ChemName mantiene su dependencia de
+  `implicit_h_count` en `chemcalc`, sin ciclo inverso.

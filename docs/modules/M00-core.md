@@ -7,6 +7,8 @@ El módulo `core` es el corazón de Chemuson. Proporciona el modelo molecular fu
 - **Modelado**: `Atom`, `Bond`, `BondStyle`, `BondStereo`, `ChemState`, `MolGraph`.
 - **Grafos Multicapa**: `BlockGraph`, `InteractionGraph`, `MotifGraph`, `build_multilayer_chemical_graph`.
 - **Análisis Elemental**: `elemental_percentages`, `parse_formula`, `molecular_weight`, `find_solvate_candidates`.
+- **Vista molecular compartida**: `MolView` y `MolecularViewNotSupported` para
+  consultar grafos moleculares heterogéneos sin depender de subsistemas superiores.
 
 ## Riesgos Conocidos
 Al ser la base sobre la que se construyen todos los demás paquetes, cualquier cambio en la definición de un átomo, enlace o en la estructura del grafo tiene un impacto sistémico. Se requiere una cobertura de tests extremadamente rigurosa para evitar regresiones en la integridad del modelo químico.
