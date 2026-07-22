@@ -128,19 +128,19 @@
 
 ## Fase 5: Validación Final
 
-- [ ] **5.1 Ejecutar tests arquitectónicos focalizados**
+- [x] **5.1 Ejecutar tests arquitectónicos focalizados**
     - **Descripción**: Ejecutar `pytest tests/architecture/ -v`.
     - **Aceptación**: Todos los tests pasan.
 
-- [ ] **5.2 Ejecutar suite completa de tests**
+- [x] **5.2 Ejecutar suite completa de tests**
     - **Descripción**: Ejecutar `pytest -q` para verificar que los tests nuevos no rompen la suite existente.
     - **Aceptación**: Los resultados coinciden con el baseline (mismos tests passing/failing/skipping). No hay fallos nuevos.
 
-- [ ] **5.3 Validar OpenSpec**
+- [x] **5.3 Validar OpenSpec**
     - **Descripción**: Ejecutar `openspec validate establish-phase1-module-catalog-and-contracts --strict`.
     - **Aceptación**: Validación exitosa.
 
-- [ ] **5.4 Verificar baseline final**
+- [x] **5.4 Verificar baseline final**
     - **Descripción**: Re-ejecutar los comandos de baseline y comparar con `baseline.md`.
     - **Comandos**: mismos de 0.1.
     - **Aceptación**: Los resultados son idénticos al baseline inicial. No hay cambios involuntarios.
