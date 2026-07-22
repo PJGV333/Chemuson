@@ -40,10 +40,10 @@
 
 ## 10. Corrective Review
 
-- [ ] 10.1 Apply target bond length after every Molfile parser path. Files: `src/chemuson/chemio/rdkit_io.py`, `tests/test_molblock_normalization.py`. Acceptance: internal and simulated direct-RDKit parsers apply the requested target scale exactly once and preserve the original fallback error when both parsers fail.
-- [ ] 10.2 Restore eliminated M01/M02 exception regression coverage. Files: `tests/architecture/test_exceptions_no_growth.py`. Acceptance: all five historical identities fail collectively, individually, after normalization, and when replacing the active persistence exception without changing the total count.
-- [ ] 10.3 Harden M01/M02 catalog and import-boundary regressions. Files: `tests/architecture/test_module_catalog.py`, `tests/architecture/test_import_boundaries.py`, `tests/test_smiles_depiction_candidates.py`. Acceptance: targeted ownership, dependency direction, empty-cycle, analyzer, and public reexport-identity checks pass.
-- [ ] 10.4 Run corrective focused and full validation. Files: all corrective-review files. Acceptance: compile, focused, architecture, depiction, structural, full-suite, Ruff, and strict OpenSpec validations pass with only the historical global Ruff F401.
+- [x] 10.1 Apply target bond length after every Molfile parser path. Files: `src/chemuson/chemio/rdkit_io.py`, `tests/test_molblock_normalization.py`. Acceptance: internal and simulated direct-RDKit parsers apply the requested target scale exactly once and preserve the original fallback error when both parsers fail.
+- [x] 10.2 Restore eliminated M01/M02 exception regression coverage. Files: `tests/architecture/test_exceptions_no_growth.py`. Acceptance: all five historical identities fail collectively, individually, after normalization, and when replacing the active persistence exception without changing the total count.
+- [x] 10.3 Harden M01/M02 catalog and import-boundary regressions. Files: `tests/architecture/test_module_catalog.py`, `tests/architecture/test_import_boundaries.py`, `tests/test_smiles_depiction_candidates.py`. Acceptance: targeted ownership, dependency direction, empty-cycle, analyzer, and public reexport-identity checks pass.
+- [x] 10.4 Run corrective focused and full validation. Files: all corrective-review files. Acceptance: compile, focused, architecture, depiction, structural, full-suite, Ruff, and strict OpenSpec validations pass with only the historical global Ruff F401.
 
 ## 11. Archive
 
