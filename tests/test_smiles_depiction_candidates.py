@@ -71,6 +71,58 @@ def test_smiles_to_molgraph_best_depiction_prefers_lower_score(monkeypatch) -> N
     assert graph is best
 
 
+def test_depiction_candidate_contract_and_sorting_preserve_rejected_last(monkeypatch) -> None:
+    accepted = _simple_graph(0.0)
+    monkeypatch.setattr(
+        rdkit_io,
+        "smiles_to_depiction_candidates",
+        lambda *_args, **_kwargs: (
+            DepictionCandidate("zeta", accepted, 2.0, metadata={"origin": "worker"}),
+            DepictionCandidate("alpha", MolGraph(), math.inf, True, "empty_molblock"),
+            DepictionCandidate("beta", _simple_graph(100.0), 1.0),
+        ),
+    )
+
+    graph, report = rdkit_io.smiles_to_molgraph_best_depiction_with_report("CC")
+
+    assert graph is not accepted
+    assert report["selected_source"] == "beta"
+    assert [row["source"] for row in report["candidates"]] == ["beta", "zeta", "alpha"]
+    candidate = DepictionCandidate("worker", accepted, 1.5, metadata={"origin": "worker"})
+    assert candidate.source == "worker"
+    assert candidate.graph is accepted
+    assert candidate.score == 1.5
+    assert not candidate.rejected
+    assert candidate.rejection_reason == ""
+    assert candidate.metadata == {"origin": "worker"}
+
+
+def test_empty_smiles_and_worker_error_keep_existing_errors(monkeypatch) -> None:
+    with pytest.raises(ValueError, match="SMILES vacío"):
+        rdkit_io.smiles_to_depiction_candidates("  ")
+
+    monkeypatch.setattr(rdkit_safe, "smiles_depict_candidates_isolated", lambda *_args, **_kwargs: ([], "worker_down"))
+    with pytest.raises(RuntimeError, match="RDKit worker no disponible"):
+        rdkit_io.smiles_to_depiction_candidates("CC")
+
+
+def test_molblock_parse_rejection_preserves_source_and_metadata(monkeypatch) -> None:
+    monkeypatch.setattr(
+        rdkit_safe,
+        "smiles_depict_candidates_isolated",
+        lambda *_args, **_kwargs: ([{"source": "broken", "ok": True, "molblock": "bad", "metadata": {"raw": 1}}], None),
+    )
+    monkeypatch.setattr(rdkit_io, "molfile_to_molgraph", lambda _molblock: (_ for _ in ()).throw(ValueError("invalid_molblock")))
+
+    candidates = rdkit_io.smiles_to_depiction_candidates("CC")
+
+    assert len(candidates) == 1
+    assert candidates[0].source == "broken"
+    assert candidates[0].rejected
+    assert candidates[0].rejection_reason == "invalid_molblock"
+    assert candidates[0].metadata == {"raw": 1}
+
+
 def test_vancomycin_smiles_import_produces_non_degenerate_graph() -> None:
     try:
         graph = rdkit_io.smiles_to_molgraph_best_depiction(VANCOMYCIN_SMILES, timeout_s=20.0)
