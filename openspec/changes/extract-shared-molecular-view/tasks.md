@@ -23,6 +23,6 @@
 ## 4. Validation And Closure
 
 - [x] 4.1 Run focused tests, architecture tests, full suite, and Ruff.
-- [ ] 4.2 Validate the OpenSpec change, complete the checklist, commit the
+- [x] 4.2 Validate the OpenSpec change, complete the checklist, commit the
   scoped work, and archive the validated change.
-- [ ] 4.3 Archive the validated change after pre-archive verification.
+- [x] 4.3 Archive the validated change after pre-archive verification.
