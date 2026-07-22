@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Dict
 
-from chemuson.chemname.molview import MolView
+from chemuson.core import MolView
 
 # Valencias típicas usadas para inferir H implícitos en cálculos sencillos.
 TYPICAL_VALENCE: Dict[str, int] = {

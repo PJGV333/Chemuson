@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Dict
 
-from chemuson.chemname.molview import MolView
+from chemuson.core import MolView
 from .valence import implicit_h_count
 
 
