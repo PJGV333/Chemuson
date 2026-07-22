@@ -8,7 +8,18 @@ from PyQt6.QtWidgets import QTabWidget
 
 from chemuson.gui.canvas import ChemusonCanvas
 from chemuson.chemio.persistence import PersistenceManager
-from chemuson.utils.autosave import AutosaveManager
+from chemuson.utils.autosave import (
+    AutosaveController,
+    AutosaveManager,
+    AutosaveSerializer,
+    AutosaveUndoStack,
+)
+
+
+AutosaveFactory = Callable[
+    [QObject, ChemusonCanvas, AutosaveUndoStack, AutosaveSerializer[ChemusonCanvas]],
+    AutosaveController,
+]
 
 
 class _QtAutosaveManager(QObject):
@@ -17,9 +28,9 @@ class _QtAutosaveManager(QObject):
     def __init__(
         self,
         parent: QObject,
-        document: object,
-        undo_stack: object,
-        serializer: Callable[[object], dict[str, object]],
+        document: ChemusonCanvas,
+        undo_stack: AutosaveUndoStack,
+        serializer: AutosaveSerializer[ChemusonCanvas],
         *,
         backup_limit: int = AutosaveManager.MAX_BACKUPS,
     ) -> None:
@@ -36,7 +47,7 @@ class _QtAutosaveManager(QObject):
             timer.timeout.connect(callback)
             return timer
 
-        self._manager = AutosaveManager(
+        self._core = AutosaveManager[ChemusonCanvas](
             document,
             undo_stack,
             serializer,
@@ -44,8 +55,28 @@ class _QtAutosaveManager(QObject):
             backup_limit=backup_limit,
         )
 
-    def __getattr__(self, name: str):
-        return getattr(self._manager, name)
+    @property
+    def core(self) -> AutosaveManager[ChemusonCanvas]:
+        """Return the dependency-free core for focused composition tests."""
+        return self._core
+
+    def start(self) -> None:
+        self._core.start()
+
+    def stop(self) -> None:
+        self._core.stop()
+
+    def set_original_path(self, filepath: Optional[str]) -> None:
+        self._core.set_original_path(filepath)
+
+    def restart_debounce(self) -> None:
+        self._core.restart_debounce()
+
+    def cancel_debounce(self) -> None:
+        self._core.cancel_debounce()
+
+    def cleanup_after_save(self) -> None:
+        self._core.cleanup_after_save()
 
 
 class CanvasTabManager:
@@ -57,7 +88,7 @@ class CanvasTabManager:
         *,
         autosave_parent: QObject,
         canvas_factory: Callable[[], ChemusonCanvas] = ChemusonCanvas,
-        autosave_factory: Callable[..., AutosaveManager] = _QtAutosaveManager,
+        autosave_factory: AutosaveFactory = _QtAutosaveManager,
     ) -> None:
         self.tabs = tabs
         self._autosave_parent = autosave_parent
@@ -65,7 +96,7 @@ class CanvasTabManager:
         self._autosave_factory = autosave_factory
         self.file_paths: dict[ChemusonCanvas, Optional[str]] = {}
         self.tab_titles: dict[ChemusonCanvas, str] = {}
-        self.autosave_managers: dict[ChemusonCanvas, AutosaveManager] = {}
+        self.autosave_managers: dict[ChemusonCanvas, AutosaveController] = {}
         self._untitled_counter = 1
 
     def tabs_alive(self) -> bool:
@@ -102,7 +133,7 @@ class CanvasTabManager:
         """Ruta asociada a un canvas, si existe."""
         return self.file_paths.get(canvas)
 
-    def autosave_manager_for(self, canvas: ChemusonCanvas) -> Optional[AutosaveManager]:
+    def autosave_manager_for(self, canvas: ChemusonCanvas) -> Optional[AutosaveController]:
         """Autosave manager asociado a un canvas, si existe."""
         return self.autosave_managers.get(canvas)
 

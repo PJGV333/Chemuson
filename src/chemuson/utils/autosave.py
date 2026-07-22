@@ -7,11 +7,7 @@ import json
 import os
 import uuid
 from datetime import datetime, timezone
-from typing import Callable, Optional, Protocol
-
-
-class AutosaveDocument(Protocol):
-    """Opaque document accepted by an injected autosave serializer."""
+from typing import Callable, Generic, Optional, Protocol, TypeVar
 
 
 class AutosaveUndoStack(Protocol):
@@ -28,11 +24,29 @@ class AutosaveTimer(Protocol):
     def stop(self) -> None: ...
 
 
-AutosaveSerializer = Callable[[AutosaveDocument], dict[str, object]]
+DocumentT = TypeVar("DocumentT")
+
+AutosaveSerializer = Callable[[DocumentT], dict[str, object]]
 AutosaveTimerFactory = Callable[[int, bool, Callable[[], None]], AutosaveTimer]
 
 
-class AutosaveManager:
+class AutosaveController(Protocol):
+    """Public autosave lifecycle used by the canvas tab manager."""
+
+    def start(self) -> None: ...
+
+    def stop(self) -> None: ...
+
+    def set_original_path(self, filepath: Optional[str]) -> None: ...
+
+    def restart_debounce(self) -> None: ...
+
+    def cancel_debounce(self) -> None: ...
+
+    def cleanup_after_save(self) -> None: ...
+
+
+class AutosaveManager(Generic[DocumentT]):
     """Encapsula la lógica de autosave de un documento."""
 
     AUTOSAVE_INTERVAL_MS = 2 * 60 * 1000
@@ -41,9 +55,9 @@ class AutosaveManager:
 
     def __init__(
         self,
-        document: AutosaveDocument,
+        document: DocumentT,
         undo_stack: AutosaveUndoStack,
-        serializer: AutosaveSerializer,
+        serializer: AutosaveSerializer[DocumentT],
         timer_factory: AutosaveTimerFactory,
         *,
         backup_limit: int = MAX_BACKUPS,
