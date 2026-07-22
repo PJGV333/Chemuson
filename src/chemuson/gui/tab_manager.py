@@ -3,11 +3,49 @@ from __future__ import annotations
 import os
 from typing import Callable, Iterable, Optional
 
-from PyQt6.QtCore import QObject
+from PyQt6.QtCore import QObject, QTimer
 from PyQt6.QtWidgets import QTabWidget
 
 from chemuson.gui.canvas import ChemusonCanvas
+from chemuson.chemio.persistence import PersistenceManager
 from chemuson.utils.autosave import AutosaveManager
+
+
+class _QtAutosaveManager(QObject):
+    """Restore Qt ownership around the dependency-free autosave core."""
+
+    def __init__(
+        self,
+        parent: QObject,
+        document: object,
+        undo_stack: object,
+        serializer: Callable[[object], dict[str, object]],
+        *,
+        backup_limit: int = AutosaveManager.MAX_BACKUPS,
+    ) -> None:
+        super().__init__(parent)
+
+        def create_timer(
+            interval_ms: int,
+            single_shot: bool,
+            callback: Callable[[], None],
+        ) -> QTimer:
+            timer = QTimer(self)
+            timer.setInterval(interval_ms)
+            timer.setSingleShot(single_shot)
+            timer.timeout.connect(callback)
+            return timer
+
+        self._manager = AutosaveManager(
+            document,
+            undo_stack,
+            serializer,
+            create_timer,
+            backup_limit=backup_limit,
+        )
+
+    def __getattr__(self, name: str):
+        return getattr(self._manager, name)
 
 
 class CanvasTabManager:
@@ -19,7 +57,7 @@ class CanvasTabManager:
         *,
         autosave_parent: QObject,
         canvas_factory: Callable[[], ChemusonCanvas] = ChemusonCanvas,
-        autosave_factory: type[AutosaveManager] = AutosaveManager,
+        autosave_factory: Callable[..., AutosaveManager] = _QtAutosaveManager,
     ) -> None:
         self.tabs = tabs
         self._autosave_parent = autosave_parent
@@ -89,7 +127,12 @@ class CanvasTabManager:
             prepare_canvas(canvas)
         index = self.tabs.addTab(canvas, tab_title)
         self.tabs.setTabToolTip(index, "Documento sin guardar")
-        autosave_manager = self._autosave_factory(self._autosave_parent, canvas, canvas.undo_stack)
+        autosave_manager = self._autosave_factory(
+            self._autosave_parent,
+            canvas,
+            canvas.undo_stack,
+            PersistenceManager.save_to_dict,
+        )
         autosave_manager.start()
         self.autosave_managers[canvas] = autosave_manager
         callback = clean_state_changed or self.on_canvas_clean_state_changed

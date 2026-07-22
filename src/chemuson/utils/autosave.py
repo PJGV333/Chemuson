@@ -7,18 +7,32 @@ import json
 import os
 import uuid
 from datetime import datetime, timezone
-from typing import Optional, TYPE_CHECKING
-
-from PyQt6.QtCore import QObject, QTimer
-
-from chemuson.chemio.persistence import PersistenceManager
-
-if TYPE_CHECKING:
-    from PyQt6.QtGui import QUndoStack
-    from chemuson.gui.canvas import ChemusonCanvas
+from typing import Callable, Optional, Protocol
 
 
-class AutosaveManager(QObject):
+class AutosaveDocument(Protocol):
+    """Opaque document accepted by an injected autosave serializer."""
+
+
+class AutosaveUndoStack(Protocol):
+    """Minimal undo state needed to decide whether a snapshot is due."""
+
+    def isClean(self) -> bool: ...
+
+
+class AutosaveTimer(Protocol):
+    """Minimal timer lifecycle owned by the composition root."""
+
+    def start(self) -> None: ...
+
+    def stop(self) -> None: ...
+
+
+AutosaveSerializer = Callable[[AutosaveDocument], dict[str, object]]
+AutosaveTimerFactory = Callable[[int, bool, Callable[[], None]], AutosaveTimer]
+
+
+class AutosaveManager:
     """Encapsula la lógica de autosave de un documento."""
 
     AUTOSAVE_INTERVAL_MS = 2 * 60 * 1000
@@ -27,15 +41,16 @@ class AutosaveManager(QObject):
 
     def __init__(
         self,
-        main_window: QObject,
-        canvas: "ChemusonCanvas",
-        undo_stack: "QUndoStack",
+        document: AutosaveDocument,
+        undo_stack: AutosaveUndoStack,
+        serializer: AutosaveSerializer,
+        timer_factory: AutosaveTimerFactory,
         *,
         backup_limit: int = MAX_BACKUPS,
     ) -> None:
-        super().__init__(main_window)
-        self._canvas = canvas
+        self._document = document
         self._undo_stack = undo_stack
+        self._serializer = serializer
         self._backup_limit = max(1, int(backup_limit))
         self.autosave_dir = self.default_autosave_dir()
         os.makedirs(self.autosave_dir, exist_ok=True)
@@ -46,14 +61,16 @@ class AutosaveManager(QObject):
         self._original_path: Optional[str] = None
         self._running = False
 
-        self._periodic_timer = QTimer(self)
-        self._periodic_timer.setInterval(self.AUTOSAVE_INTERVAL_MS)
-        self._periodic_timer.timeout.connect(self._maybe_autosave)
-
-        self._debounce_timer = QTimer(self)
-        self._debounce_timer.setInterval(self.DEBOUNCE_INTERVAL_MS)
-        self._debounce_timer.setSingleShot(True)
-        self._debounce_timer.timeout.connect(self._maybe_autosave)
+        self._periodic_timer = timer_factory(
+            self.AUTOSAVE_INTERVAL_MS,
+            False,
+            self._maybe_autosave,
+        )
+        self._debounce_timer = timer_factory(
+            self.DEBOUNCE_INTERVAL_MS,
+            True,
+            self._maybe_autosave,
+        )
 
     @classmethod
     def default_base_dir(cls) -> str:
@@ -165,7 +182,7 @@ class AutosaveManager(QObject):
             return None
 
         os.makedirs(self.autosave_dir, exist_ok=True)
-        payload = PersistenceManager.save_to_dict(self._canvas)
+        payload = self._serializer(self._document)
         now = datetime.now(timezone.utc)
         payload["autosave_metadata"] = {
             "original_path": self._original_path,
