@@ -1,8 +1,9 @@
 """Excepciones específicas del motor de nomenclatura."""
 
+from chemuson.core.molview import MolecularViewNotSupported
 
-class ChemNameNotSupported(Exception):
-    """Se lanza cuando la molécula está fuera del alcance soportado."""
+
+ChemNameNotSupported = MolecularViewNotSupported
 
 
 class ChemNameInternalError(Exception):

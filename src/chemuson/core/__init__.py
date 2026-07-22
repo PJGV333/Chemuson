@@ -29,6 +29,7 @@ from chemuson.core.model import (
     ValidationCorrectionAction,
     ValidationIssue,
 )
+from chemuson.core.molview import MolView, MolecularViewNotSupported
 from chemuson.core.layers import (
     BlockEdge,
     BlockEdgeKind,
@@ -57,6 +58,8 @@ __all__ = [
     "MolGraph",
     "ValidationCorrectionAction",
     "ValidationIssue",
+    "MolView",
+    "MolecularViewNotSupported",
     "BlockEdge",
     "BlockEdgeKind",
     "BlockGraph",
