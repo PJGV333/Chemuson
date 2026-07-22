@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 import math
 from typing import Iterable
 
-from chemuson.chemio.depiction_candidates import block_donut_score, score_imported_depiction
+from chemuson.clean2d.depiction_quality import block_donut_score, score_imported_depiction
 from chemuson.clean2d.geometry import (
     adjacency_from_bonds,
     centroid,
@@ -398,4 +398,3 @@ def _nearest_point(point: tuple[float, float], points: list[tuple[float, float]]
     if not points:
         return None
     return min(points, key=lambda other: math.hypot(other[0] - point[0], other[1] - point[1]))
-

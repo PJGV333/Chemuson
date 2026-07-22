@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 import math
 from typing import Iterable
 
-from chemuson.chemio.depiction_candidates import block_donut_score, score_imported_depiction
+from chemuson.clean2d.depiction_quality import block_donut_score, score_imported_depiction
 from chemuson.clean2d.block_unwrap import block_unwrap_layout
 from chemuson.clean2d.geometry import finite_coords, graph_atom_coords, graph_with_coords, normalize_atom_ids
 from chemuson.clean2d.local_graph_cleaner import stereo_layout_signature
