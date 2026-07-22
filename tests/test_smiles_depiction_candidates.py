@@ -6,6 +6,7 @@ import pytest
 
 
 from chemuson.chemio import rdkit_safe
+import chemuson.clean2d as clean2d
 from chemuson.clean2d import imported_depiction
 from chemuson.clean2d.depiction_quality import score_imported_depiction
 from chemuson.clean2d.imported_depiction import DepictionCandidate
@@ -21,6 +22,13 @@ def _simple_graph(offset: float) -> MolGraph:
     a2 = graph.add_atom("C", offset + 40.0, 0.0)
     graph.add_bond(a1.id, a2.id, order=1)
     return graph
+
+
+def test_clean2d_public_depiction_api_reexports_owned_objects() -> None:
+    assert clean2d.DepictionCandidate is imported_depiction.DepictionCandidate
+    assert clean2d.smiles_to_depiction_candidates is imported_depiction.smiles_to_depiction_candidates
+    assert clean2d.smiles_to_molgraph_best_depiction is imported_depiction.smiles_to_molgraph_best_depiction
+    assert clean2d.smiles_to_molgraph_best_depiction_with_report is imported_depiction.smiles_to_molgraph_best_depiction_with_report
 
 
 def test_smiles_depiction_candidates_uses_worker_payload(monkeypatch) -> None:

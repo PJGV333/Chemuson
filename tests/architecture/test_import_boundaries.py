@@ -505,6 +505,111 @@ class TestImportBoundaries:
             if imported.target_id in {"M01", "M09"}
         ]
 
+    def test_real_chemio_clean2d_dependency_is_one_way(self, analyzer):
+        observed = analyzer.analyze_all()
+        m01_to_m02 = [
+            imported
+            for imported in observed
+            if imported.source_id == "M01" and imported.target_id == "M02"
+        ]
+        m02_to_m01 = [
+            imported
+            for imported in observed
+            if imported.source_id == "M02" and imported.target_id == "M01"
+        ]
+        diagnostics = [
+            (str(imported.file), imported.line, imported.statement, imported.type_checking_only)
+            for imported in m01_to_m02
+        ]
+
+        assert not m01_to_m02, diagnostics
+        assert m02_to_m01, [
+            (str(imported.file), imported.line, imported.statement)
+            for imported in observed
+            if imported.source_id == "M02"
+        ]
+
+    def test_analyzer_observes_m01_m02_imports_in_all_scopes(self, tmp_path):
+        source_root = tmp_path / "src" / "chemuson"
+        chemio = source_root / "chemio"
+        clean2d = source_root / "clean2d"
+        chemio.mkdir(parents=True)
+        clean2d.mkdir(parents=True)
+        sample = chemio / "sample.py"
+        sample.write_text(
+            "from chemuson.clean2d import module_level\n"
+            "\n"
+            "def import_in_function():\n"
+            "    import chemuson.clean2d.imported_depiction\n"
+            "\n"
+            "if TYPE_CHECKING:\n"
+            "    from chemuson.clean2d import type_only\n",
+            encoding="utf-8",
+        )
+        (clean2d / "__init__.py").write_text(
+            "from chemuson.chemio.sample import value\n",
+            encoding="utf-8",
+        )
+        catalog_path = tmp_path / "architecture" / "modules.yml"
+        catalog_path.parent.mkdir()
+        catalog_path.write_text(
+            "modules:\n"
+            "- id: M00\n"
+            "  paths: []\n"
+            "  target_dependencies: []\n"
+            "  forbidden_dependencies: []\n"
+            "  temporary_exceptions: []\n"
+            "- id: M01\n"
+            "  paths: [src/chemuson/chemio]\n"
+            "  target_dependencies: [M00]\n"
+            "  forbidden_dependencies: []\n"
+            "  temporary_exceptions: []\n"
+            "- id: M02\n"
+            "  paths: [src/chemuson/clean2d]\n"
+            "  target_dependencies: [M00, M01]\n"
+            "  forbidden_dependencies: []\n"
+            "  temporary_exceptions: []\n",
+            encoding="utf-8",
+        )
+        synthetic = ImportBoundaryAnalyzer(tmp_path, catalog_path)
+        observed = synthetic.analyze_all()
+        m01_to_m02 = [
+            imported
+            for imported in observed
+            if imported.source_id == "M01" and imported.target_id == "M02"
+        ]
+
+        assert len(m01_to_m02) == 3
+        assert sum(not imported.type_checking_only for imported in m01_to_m02) == 2
+        assert sum(imported.type_checking_only for imported in m01_to_m02) == 1
+        assert [(imported.line, imported.statement) for imported in m01_to_m02] == [
+            (1, "from chemuson.clean2d import module_level"),
+            (4, "import chemuson.clean2d.imported_depiction"),
+            (7, "from chemuson.clean2d import type_only"),
+        ]
+
+        violations, obsolete = check_runtime_policy(synthetic, synthetic.modules_cfg, observed)
+        assert len(violations) == 2
+        assert not obsolete
+        assert {violation["line"] for violation in violations} == {1, 4}
+        assert all(violation["source_id"] == "M01" for violation in violations)
+        assert all(violation["target_id"] == "M02" for violation in violations)
+        assert all(violation["not_in_target"] for violation in violations)
+
+        m02_to_m01 = [
+            imported
+            for imported in observed
+            if imported.source_id == "M02" and imported.target_id == "M01"
+        ]
+        assert len(m02_to_m01) == 1
+        accepted_violations, accepted_obsolete = check_runtime_policy(
+            synthetic,
+            synthetic.modules_cfg,
+            m02_to_m01,
+        )
+        assert not accepted_violations
+        assert not accepted_obsolete
+
     def test_type_checking_else_block_is_runtime(self, analyzer):
         synthetic_source = (
             "if TYPE_CHECKING:\n"

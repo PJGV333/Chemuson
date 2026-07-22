@@ -216,6 +216,49 @@ def test_real_catalog_matches_frozen_exception_baseline() -> None:
     assert not audit.unexpected_identities and not audit.duplicate_identities and not audit.modules_with_growth and len(audit.current_identities) == 1 and audit.current_counts_by_module == (("M01", 1),) and runtime == 0 and type_checking == 1, "\n".join(problems)
 
 
+def test_eliminated_m01_m02_exceptions_cannot_reappear() -> None:
+    audit = audit_exception_growth(
+        _modules_for(*FROZEN_EXCEPTION_BASELINE_ROWS, *ELIMINATED_M01_M02_EXCEPTIONS)
+    )
+
+    assert audit.unexpected_identities == tuple(sorted(ELIMINATED_M01_M02_EXCEPTIONS))
+    assert audit.modules_with_growth == (("M01", 6, 1),)
+    assert set(audit.unexpected_identities) == set(ELIMINATED_M01_M02_EXCEPTIONS)
+
+
+@pytest.mark.parametrize("eliminated", ELIMINATED_M01_M02_EXCEPTIONS)
+def test_single_eliminated_m01_m02_exception_is_rejected(eliminated: ExceptionIdentity) -> None:
+    audit = audit_exception_growth(_modules_for(*FROZEN_EXCEPTION_BASELINE_ROWS, eliminated))
+
+    assert audit.unexpected_identities == (eliminated,)
+    assert audit.modules_with_growth == (("M01", 2, 1),)
+
+
+def test_replacing_persistence_exception_with_m01_m02_debt_is_rejected() -> None:
+    eliminated = ELIMINATED_M01_M02_EXCEPTIONS[0]
+    audit = audit_exception_growth(_modules_for(eliminated))
+
+    assert audit.unexpected_identities == (eliminated,)
+    assert audit.removed_baseline_identities == FROZEN_EXCEPTION_BASELINE_ROWS
+    assert len(audit.current_identities) == len(FROZEN_EXCEPTION_BASELINE_ROWS)
+    assert not audit.modules_with_growth
+
+
+def test_normalized_eliminated_m01_m02_identity_is_still_rejected() -> None:
+    eliminated = ELIMINATED_M01_M02_EXCEPTIONS[0]
+    normalized_variant = _identity(
+        eliminated.source_id,
+        eliminated.target_id,
+        eliminated.file.replace("/", "\\"),
+        "from chemuson.clean2d.geometry import count_crossings,\n  cycle_basis, segments_intersect",
+        eliminated.type_checking_only,
+    )
+    audit = audit_exception_growth(_modules_for(*FROZEN_EXCEPTION_BASELINE_ROWS, normalized_variant))
+
+    assert audit.unexpected_identities == (eliminated,)
+    assert audit.modules_with_growth == (("M01", 2, 1),)
+
+
 def test_eliminated_m15_exceptions_cannot_reappear() -> None:
     audit = audit_exception_growth(_modules_for(*FROZEN_EXCEPTION_BASELINE_ROWS, *ELIMINATED_M15_EXCEPTIONS))
 

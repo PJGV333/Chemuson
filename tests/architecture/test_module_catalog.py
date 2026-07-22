@@ -309,6 +309,46 @@ class TestModuleDependencies:
         assert chemcalc["current_dependencies"] == ["M00"]
         assert chemcalc["temporary_exceptions"] == []
 
+    def test_m01_m02_dependency_direction_and_ownership(self, modules):
+        m01 = next(module for module in modules if module["id"] == "M01")
+        m02 = next(module for module in modules if module["id"] == "M02")
+
+        assert m01["current_dependencies"] == ["M00"]
+        assert m01["target_dependencies"] == ["M00"]
+        assert "M02" not in m01["current_dependencies"]
+        assert "M02" not in m01["target_dependencies"]
+        assert m01["circular_dependencies"] == []
+        assert len(m01["temporary_exceptions"]) == 1
+        exception = m01["temporary_exceptions"][0]
+        assert exception["source_id"] == "M01"
+        assert exception["target_id"] == "M09"
+        assert exception["type_checking_only"] is True
+        assert exception["file"] == "src/chemuson/chemio/persistence.py"
+        assert "depiction_candidates" not in m01["internal_api"]
+        assert "depiction_quality" not in m01["internal_api"]
+        assert "imported_depiction" not in m01["internal_api"]
+
+        assert set(m02["current_dependencies"]) == {"M00", "M01"}
+        assert set(m02["target_dependencies"]) == {"M00", "M01"}
+        assert m02["circular_dependencies"] == []
+        assert m02["temporary_exceptions"] == []
+        assert "depiction_quality" in m02["internal_api"]
+        assert "imported_depiction" in m02["internal_api"]
+        for symbol in (
+            "DepictionCandidate",
+            "smiles_to_depiction_candidates",
+            "smiles_to_molgraph_best_depiction",
+            "smiles_to_molgraph_best_depiction_with_report",
+        ):
+            assert symbol in m02["public_api"]
+        for test_path in (
+            "tests/test_smiles_depiction_candidates.py",
+            "tests/test_block_unwrap_depiction.py",
+            "tests/test_scaffold_depiction.py",
+            "tests/test_smiles_stereo_import.py",
+        ):
+            assert test_path in m02["tests"]
+
     def test_m00_registers_molecular_view_coverage(self, modules):
         core = next(module for module in modules if module["id"] == "M00")
         assert "tests/test_molecular_view.py" in core["tests"]
@@ -420,34 +460,10 @@ class TestTemporaryExceptions:
 class TestCircularDependencies:
     """Validate the structure of circular_dependencies entries."""
 
-    def test_cycles_only_in_m01(self, modules):
-        """Only M01 should have circular dependencies declared."""
-        for m in modules:
-            if m["id"] != "M01":
-                assert len(m["circular_dependencies"]) == 0, (
-                    f"Module '{m['id']}' should not have circular_dependencies"
-                )
-
-    def test_exactly_one_cycle(self, modules):
-        """There should be exactly one circular dependency entry."""
-        all_cycles = []
-        for m in modules:
-            all_cycles.extend(m["circular_dependencies"])
-        assert len(all_cycles) == 0, (
-            f"Expected no cycles, got {len(all_cycles)}"
-        )
-
-    def test_cycles_match_expected(self, modules):
-        """Verify the expected M01↔M02 cycle."""
-        all_cycles = []
-        for m in modules:
-            all_cycles.extend(m["circular_dependencies"])
-
-        cycle_modules = [frozenset(c["modules"]) for c in all_cycles]
-        expected = set()
-        assert set(cycle_modules) == expected, (
-            f"Cycles mismatch: {cycle_modules}"
-        )
+    def test_no_circular_dependencies_declared(self, modules):
+        """The final catalog declares no circular dependencies."""
+        all_cycles = [cycle for module in modules for cycle in module["circular_dependencies"]]
+        assert all_cycles == []
 
     def test_cycle_severity_valid(self, modules):
         for m in modules:
