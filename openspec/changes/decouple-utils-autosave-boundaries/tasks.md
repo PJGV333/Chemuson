@@ -50,31 +50,31 @@
 
 ## 8. Corrective Review
 
-- [ ] **8.1 Replace canonical specification Purpose placeholders**
+- [x] **8.1 Replace canonical specification Purpose placeholders**
   - Archivos: los cuatro specs canónicos de Fase 1 afectados.
   - Aceptación: cada Purpose describe su alcance real y no queda el placeholder heredado.
-- [ ] **8.2 Make autosave core and Qt composition type-safe**
+- [x] **8.2 Make autosave core and Qt composition type-safe**
   - Archivos: `src/chemuson/utils/autosave.py`, `src/chemuson/gui/tab_manager.py`.
   - Aceptación: core genérico, controller explícito, factory y registro tipados, sin proxy dinámico.
-- [ ] **8.3 Complete RDKit import-isolation enforcement**
+- [x] **8.3 Complete RDKit import-isolation enforcement**
   - Archivos: `tests/test_autosave_manager.py`.
   - Aceptación: AST y subprocess bloquean RDKit y sus submódulos además de GUI, ChemIO y PyQt6.
-- [ ] **8.4 Complete autosave lifecycle compatibility tests**
+- [x] **8.4 Complete autosave lifecycle compatibility tests**
   - Archivos: `tests/test_autosave_manager.py`, `tests/test_main_window_tabs.py`.
   - Aceptación: start/stop, debounce, callbacks, cleanup, hashes, nombres, metadata y composición quedan cubiertos.
-- [ ] **8.5 Correct utils/PyQt6 architecture documentation**
+- [x] **8.5 Correct utils/PyQt6 architecture documentation**
   - Archivos: `docs/architecture.md`, `architecture/modules.yml`.
   - Aceptación: diferencia dependencias ChemUSON de PyQt6 externo y documenta autosave y crash reporter correctamente.
 
 ## 9. Corrective Validation
 
-- [ ] **9.1 Run focused autosave and architecture suites**
+- [x] **9.1 Run focused autosave and architecture suites**
   - Archivos: pruebas focalizadas y arquitectura.
   - Aceptación: compileall, suites focalizadas, arquitectura y comprobaciones estructurales terminan con código 0.
-- [ ] **9.2 Run full pytest and Ruff baseline**
+- [x] **9.2 Run full pytest and Ruff baseline**
   - Archivos: `src`, `tests`, `tools`, `packaging`.
   - Aceptación: colección y suite completas pasan; Ruff conserva únicamente el F401 histórico permitido.
-- [ ] **9.3 Validate OpenSpec globally and prepare archive**
+- [x] **9.3 Validate OpenSpec globally and prepare archive**
   - Archivos: artefactos del cambio y specs canónicos.
   - Aceptación: validación strict local y global, ocho excepciones y M15 limpio antes de archive.
 - [ ] **9.4 Archive decouple-utils-autosave-boundaries**
