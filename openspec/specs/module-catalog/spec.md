@@ -66,12 +66,14 @@ Each module entry SHALL contain: `id`, `name`, `title`, `responsibility`, `paths
 
 ### Requirement: Circular Dependencies Documented
 
-Known circular dependencies SHALL be registered in `circular_dependencies` with `modules`, `edges`, `severity`, and `resolution_plan`. The current codebase has two high/medium severity cycles (chemio↔clean2d, chemcalc↔chemname) that MUST be documented.
+Known circular dependencies SHALL be registered in `circular_dependencies` with
+`modules`, `edges`, `severity`, and `resolution_plan`. The current codebase has
+one high severity chemio-to-clean2d cycle. The resolved ChemCalc-to-ChemName
+cycle SHALL NOT be registered.
 
-#### Scenario: Circular dependency registered
-- **GIVEN** the catalog's `circular_dependencies` section
-- **WHEN** a test checks for the chemio↔clean2d cycle
-- **THEN** an entry exists with both module IDs and resolution plan
+#### Scenario: Resolved ChemCalc-to-ChemName cycle is absent
+- **WHEN** the catalog is inspected after ChemCalc uses the Core molecular view
+- **THEN** no circular dependency entry contains both M03 and M04
 
 ### Requirement: Empty Directories Not Cataloged
 
