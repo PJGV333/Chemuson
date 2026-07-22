@@ -1136,8 +1136,7 @@ modules:
   - tests/test_update_windows.py
   title: Subsistema de auto-actualización
 - circular_dependencies: []
-  current_dependencies:
-  - M01
+  current_dependencies: []
   entry_points: []
   forbidden_dependencies:
   - M08
@@ -1152,12 +1151,9 @@ modules:
   - autosave
   - crash_reporter
   name: utils
-  notes: 'Sin __all__ en __init__.py. autosave.py depende de chemio.persistence (runtime)
-    y gui.canvas (TYPE_CHECKING).
-
-    crash_reporter.py es independiente.
-
-    '
+  notes: 'Sin __all__ en __init__.py. autosave.py recibe serialización y timers
+    mediante colaboradores inyectados desde la composición GUI. crash_reporter.py
+    es independiente.'
   paths:
   - src/chemuson/utils/
   public_api: []
@@ -1165,24 +1161,7 @@ modules:
   risk_level: low
   status: stable
   target_dependencies: []
-  temporary_exceptions:
-  - source_id: M15
-    target_id: M01
-    file: src/chemuson/utils/autosave.py
-    import_path: from chemuson.chemio.persistence import PersistenceManager
-    reason: utils no debe depender de chemio en la arquitectura objetivo.
-    debt_ref: establish-phase1-module-catalog-and-contracts
-    elimination_condition: Extraer la persistencia de autosave detrás de un
-      protocolo o servicio que no haga depender utils de chemio.
-    type_checking_only: false
-  - source_id: M15
-    target_id: M09
-    file: src/chemuson/utils/autosave.py
-    import_path: from chemuson.gui.canvas import ChemusonCanvas
-    reason: Import bajo TYPE_CHECKING para tipar AutosaveManager.
-    debt_ref: establish-phase1-module-catalog-and-contracts
-    elimination_condition: Sustituir ChemusonCanvas por un Protocol de tipado.
-    type_checking_only: true
+  temporary_exceptions: []
   tests: []
   title: Utilidades compartidas
 - circular_dependencies: []

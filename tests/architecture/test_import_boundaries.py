@@ -499,9 +499,11 @@ class TestImportBoundaries:
         assert canvas_tc[0].type_checking_only is True
 
         a_imports = [i for i in all_imports if i.file == autosave_file]
-        canvas_tc_a = [i for i in a_imports if i.target_id == "M09" and "ChemusonCanvas" in i.statement]
-        assert len(canvas_tc_a) > 0
-        assert canvas_tc_a[0].type_checking_only is True
+        assert not [
+            imported
+            for imported in a_imports
+            if imported.target_id in {"M01", "M09"}
+        ]
 
     def test_type_checking_else_block_is_runtime(self, analyzer):
         synthetic_source = (

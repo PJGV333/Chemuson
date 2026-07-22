@@ -94,10 +94,12 @@ FROZEN_EXCEPTION_BASELINE_ROWS: tuple[ExceptionIdentity, ...] = (
     _identity("M01", "M09", "src/chemuson/chemio/persistence.py", "from chemuson.gui.canvas import ChemusonCanvas", True),
     _identity("M03", "M04", "src/chemuson/chemcalc/formula.py", "from chemuson.chemname.molview import MolView", False),
     _identity("M03", "M04", "src/chemuson/chemcalc/valence.py", "from chemuson.chemname.molview import MolView", False),
+)
+FROZEN_EXCEPTION_BASELINE = frozenset(FROZEN_EXCEPTION_BASELINE_ROWS)
+ELIMINATED_M15_EXCEPTIONS = (
     _identity("M15", "M01", "src/chemuson/utils/autosave.py", "from chemuson.chemio.persistence import PersistenceManager", False),
     _identity("M15", "M09", "src/chemuson/utils/autosave.py", "from chemuson.gui.canvas import ChemusonCanvas", True),
 )
-FROZEN_EXCEPTION_BASELINE = frozenset(FROZEN_EXCEPTION_BASELINE_ROWS)
 
 
 def _counts_by_source(rows: tuple[ExceptionIdentity, ...]) -> tuple[tuple[str, int], ...]:
@@ -173,12 +175,12 @@ def _changed(identity: ExceptionIdentity, field: str, value: object) -> Exceptio
 
 
 def test_frozen_baseline_is_complete_and_exact() -> None:
-    assert len(FROZEN_EXCEPTION_BASELINE_ROWS) == 10
-    assert len(FROZEN_EXCEPTION_BASELINE) == 10
+    assert len(FROZEN_EXCEPTION_BASELINE_ROWS) == 8
+    assert len(FROZEN_EXCEPTION_BASELINE) == 8
     assert _duplicates(FROZEN_EXCEPTION_BASELINE_ROWS) == ()
-    assert _counts_by_source(FROZEN_EXCEPTION_BASELINE_ROWS) == (("M01", 6), ("M03", 2), ("M15", 2))
-    assert sum(not row.type_checking_only for row in FROZEN_EXCEPTION_BASELINE_ROWS) == 8
-    assert sum(row.type_checking_only for row in FROZEN_EXCEPTION_BASELINE_ROWS) == 2
+    assert _counts_by_source(FROZEN_EXCEPTION_BASELINE_ROWS) == (("M01", 6), ("M03", 2))
+    assert sum(not row.type_checking_only for row in FROZEN_EXCEPTION_BASELINE_ROWS) == 7
+    assert sum(row.type_checking_only for row in FROZEN_EXCEPTION_BASELINE_ROWS) == 1
     for row in FROZEN_EXCEPTION_BASELINE_ROWS:
         assert row.file == normalize_exception_path(row.file)
         assert row.import_path == normalize_exception_import(row.import_path)
@@ -207,7 +209,14 @@ def test_real_catalog_matches_frozen_exception_baseline() -> None:
             f"removed baseline identities: {audit.removed_baseline_identities}",
         ]
     )
-    assert not audit.unexpected_identities and not audit.duplicate_identities and not audit.modules_with_growth and len(audit.current_identities) == 10 and audit.current_counts_by_module == (("M01", 6), ("M03", 2), ("M15", 2)) and runtime == 8 and type_checking == 2, "\n".join(problems)
+    assert not audit.unexpected_identities and not audit.duplicate_identities and not audit.modules_with_growth and len(audit.current_identities) == 8 and audit.current_counts_by_module == (("M01", 6), ("M03", 2)) and runtime == 7 and type_checking == 1, "\n".join(problems)
+
+
+def test_eliminated_m15_exceptions_cannot_reappear() -> None:
+    audit = audit_exception_growth(_modules_for(*FROZEN_EXCEPTION_BASELINE_ROWS, *ELIMINATED_M15_EXCEPTIONS))
+
+    assert audit.unexpected_identities == ELIMINATED_M15_EXCEPTIONS
+    assert audit.modules_with_growth == (("M15", 2, 0),)
 
 
 def test_equal_empty_and_reduced_catalogs_are_no_growth() -> None:
@@ -215,7 +224,7 @@ def test_equal_empty_and_reduced_catalogs_are_no_growth() -> None:
     empty = audit_exception_growth([])
     reduced = audit_exception_growth(_modules_for(*FROZEN_EXCEPTION_BASELINE_ROWS[:-3]))
     assert not equal.unexpected_identities and not equal.duplicate_identities and not equal.modules_with_growth and not equal.removed_baseline_identities
-    assert not empty.unexpected_identities and len(empty.removed_baseline_identities) == 10
+    assert not empty.unexpected_identities and len(empty.removed_baseline_identities) == 8
     assert not reduced.unexpected_identities and len(reduced.removed_baseline_identities) == 3 and not reduced.modules_with_growth
 
 
