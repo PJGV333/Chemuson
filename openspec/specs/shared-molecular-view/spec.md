@@ -1,7 +1,9 @@
 # shared-molecular-view Specification
 
 ## Purpose
-TBD - created by archiving change extract-shared-molecular-view. Update Purpose after archive.
+Define the Core-owned read-only molecular graph adapter, its supported
+heterogeneous graph representations, isolation from higher-level subsystems,
+and compatibility guarantees for the historical ChemName import and exception.
 ## Requirements
 ### Requirement: Core owns the molecular graph view
 Core SHALL provide `MolView` and `MolecularViewNotSupported` as a read-only
@@ -23,4 +25,3 @@ ChemName, ChemCalc or GUI modules.
 - **WHEN** the historical ChemName `MolView` cannot read a graph
 - **THEN** the established message is raised and is catchable as
   `ChemNameNotSupported`
-
