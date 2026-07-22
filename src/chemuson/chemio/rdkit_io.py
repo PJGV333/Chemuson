@@ -9,11 +9,6 @@ from __future__ import annotations
 import os
 import re
 import sys
-import math
-import copy
-import json
-import tempfile
-from pathlib import Path
 from dataclasses import dataclass
 from typing import Dict, Iterable, Optional, Tuple
 
@@ -1374,7 +1369,7 @@ def smiles_to_molgraph_isolated_or_error(smiles: str, timeout_s: float = 8.0) ->
     graph, error = _smiles_to_molgraph_isolated_result(clean_smiles, timeout_s=timeout_s)
     if graph is not None and not error:
         return graph
-    raise RuntimeError(_rdkit_worker_unavailable_message(str(error or "worker_error")))
+    raise RuntimeError(rdkit_worker_unavailable_message(str(error or "worker_error")))
 
 
 def _smiles_to_molgraph_isolated_result(smiles: str, timeout_s: float) -> tuple[MolGraph | None, str | None]:
