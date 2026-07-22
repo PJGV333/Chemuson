@@ -1,7 +1,9 @@
 # canvas-architecture-documentation Specification
 
 ## Purpose
-TBD - created by archiving change establish-phase1-module-catalog-and-contracts. Update Purpose after archive.
+Define the required documentation for the ChemUSON canvas composition, shared
+state, event flow, selection, rendering, text editing, undo/redo integration
+and file responsibilities.
 ## Requirements
 ### Requirement: Canvas Mixin Hierarchy Documented
 
@@ -181,4 +183,3 @@ The canvas documentation SHALL be located at `docs/modules/M09-canvas.md`. It SH
 - **GIVEN** the completed canvas documentation
 - **WHEN** the reviewer checks for code dumps
 - **THEN** the document describes relationships, not method-by-method walkthroughs
-

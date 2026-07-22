@@ -1,7 +1,9 @@
 # module-catalog Specification
 
 ## Purpose
-TBD - created by archiving change establish-phase1-module-catalog-and-contracts. Update Purpose after archive.
+Define `architecture/modules.yml` as the authoritative inventory of ChemUSON
+module ownership, responsibilities, APIs, dependencies, risk, tests and
+temporary exceptions.
 ## Requirements
 ### Requirement: Module Catalog File Exists and is Valid YAML
 
@@ -79,4 +81,3 @@ Directories that exist but contain no functional code (e.g., `templates/` with 0
 - **GIVEN** `src/chemuson/templates/` exists with no Python files
 - **WHEN** the catalog is inspected for module entries
 - **THEN** no entry maps to `templates`
-

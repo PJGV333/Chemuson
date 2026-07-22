@@ -1,7 +1,9 @@
 # agent-development-contract Specification
 
 ## Purpose
-TBD - created by archiving change establish-phase1-module-catalog-and-contracts. Update Purpose after archive.
+Define the mandatory workflow, isolation, baseline verification, reporting,
+scope-control and stop criteria that human and automated agents must follow
+when modifying ChemUSON.
 ## Requirements
 ### Requirement: OpenSpec Workflow Mandatory
 
@@ -110,4 +112,3 @@ The file `AGENTS.md` SHALL exist at the repository root and contain all rules de
 - **GIVEN** a new agent accesses the repository
 - **WHEN** the agent looks for behavioral guidelines
 - **THEN** `AGENTS.md` exists at root with complete rules
-

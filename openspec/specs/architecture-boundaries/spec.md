@@ -1,7 +1,8 @@
 # architecture-boundaries Specification
 
 ## Purpose
-TBD - created by archiving change establish-phase1-module-catalog-and-contracts. Update Purpose after archive.
+Define enforceable module ownership, dependency, exception, public-surface and
+tool-isolation rules for Python code under `src/chemuson`.
 ## Requirements
 ### Requirement: Path Ownership and Exclusivity
 
@@ -79,4 +80,3 @@ Every `temporary_exception` entry SHALL be validated for completeness: all 8 man
 - **GIVEN** an exception entry missing `elimination_condition`
 - **WHEN** the catalog validation test runs
 - **THEN** the test fails identifying the incomplete entry
-
