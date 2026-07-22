@@ -19,6 +19,11 @@ target bond length, worker timeouts, stereo metadata, and fallback errors.
 - **WHEN** worker candidates, scaffold candidates, or block-unwrap candidates are available
 - **THEN** their accepted and rejected ordering and report metadata match the pre-migration behavior
 
+#### Scenario: Molfile parsing applies a requested target scale
+- **GIVEN** a Molfile parsed by either the internal parser or the optional direct RDKit path
+- **WHEN** a non-default target bond length is requested
+- **THEN** the returned MolGraph uses the requested bond-length scale
+
 ### Requirement: Imported Depiction API Is Deliberate
 
 Clean2D SHALL reexport `DepictionCandidate`,

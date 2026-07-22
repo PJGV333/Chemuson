@@ -38,6 +38,13 @@
 
 - [x] 9.1 Run compile, focused tests, architecture tests, structural AST inventory, full suite, Ruff, type-checker discovery, and strict OpenSpec validation. Files: all changed files. Acceptance: all required commands complete successfully except the one historical global Ruff F401.
 
-## 10. Archive
+## 10. Corrective Review
 
-- [ ] 10.1 Archive `eliminate-chemio-clean2d-cycle` only after review approval. Files: OpenSpec archive. Acceptance: intentionally pending for this phase.
+- [ ] 10.1 Apply target bond length after every Molfile parser path. Files: `src/chemuson/chemio/rdkit_io.py`, `tests/test_molblock_normalization.py`. Acceptance: internal and simulated direct-RDKit parsers apply the requested target scale exactly once and preserve the original fallback error when both parsers fail.
+- [ ] 10.2 Restore eliminated M01/M02 exception regression coverage. Files: `tests/architecture/test_exceptions_no_growth.py`. Acceptance: all five historical identities fail collectively, individually, after normalization, and when replacing the active persistence exception without changing the total count.
+- [ ] 10.3 Harden M01/M02 catalog and import-boundary regressions. Files: `tests/architecture/test_module_catalog.py`, `tests/architecture/test_import_boundaries.py`, `tests/test_smiles_depiction_candidates.py`. Acceptance: targeted ownership, dependency direction, empty-cycle, analyzer, and public reexport-identity checks pass.
+- [ ] 10.4 Run corrective focused and full validation. Files: all corrective-review files. Acceptance: compile, focused, architecture, depiction, structural, full-suite, Ruff, and strict OpenSpec validations pass with only the historical global Ruff F401.
+
+## 11. Archive
+
+- [ ] 11.1 Archive `eliminate-chemio-clean2d-cycle` only after review approval. Files: OpenSpec archive. Acceptance: intentionally pending for this phase.

@@ -85,6 +85,21 @@ metadata merges, source formatting, debug output, fallback error composition,
 and worker timeout arguments remain unchanged. Imports are redirected to
 deliberate M01 services or local M02 modules only.
 
+## Corrective Review
+
+A post-migration review found that Molfile scaling was only partially
+centralized: the internal parser scaled its graph, while the direct RDKit
+parser returned an unscaled graph. The correct result requires applying
+`target_bond_length` once in `molfile_to_molgraph` after either parser has
+constructed the graph.
+
+The final baseline commit restored the complete exception-test infrastructure,
+but omitted focused tests for the five eliminated M01-to-M02 identities.
+
+The catalog and global enforcement pass, but targeted regressions are needed
+to protect the prohibited M01-to-M02 direction, the permitted M02-to-M01
+direction, an empty cycle inventory, and ownership of the new M02 modules.
+
 ## Risks / Trade-offs
 
 - Import-path monkeypatches can silently target an obsolete module -> migrate
