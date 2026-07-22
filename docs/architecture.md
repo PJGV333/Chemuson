@@ -33,11 +33,11 @@ La GUI se importa de forma diferida desde `main()` para que `chemuson --version`
 
 | Aspecto | Detalle |
 | --- | --- |
-| Responsabilidad | Import/export químico y persistencia: SMILES, Molfile, CML, CMSN, candidatos de depiction y acceso seguro a RDKit. |
-| Archivos principales | `rdkit_io.py`, `rdkit_safe.py`, `_rdkit_worker.py`, `persistence.py`, `cml_io.py`, `depiction_candidates.py`. |
-| Puede importar | `chemuson.core`, `chemuson.clean2d` para scoring/depiction, workers/subprocess propios. |
+| Responsabilidad | Import/export químico y persistencia: SMILES, Molfile, CML, CMSN y acceso seguro a RDKit. |
+| Archivos principales | `rdkit_io.py`, `rdkit_safe.py`, `_rdkit_worker.py`, `persistence.py`, `cml_io.py`. |
+| Puede importar | `chemuson.core`, workers/subprocess propios. |
 | No debería importar | Widgets Qt en runtime de lógica química; `chemuson.gui` salvo typing o compatibilidad muy justificada; `tools`. |
-| API pública | `rdkit_io.py`, `rdkit_safe.py`, `persistence.py`, `cml_io.py`, `depiction_candidates.py`. |
+| API pública | `rdkit_io.py`, `rdkit_safe.py`, `persistence.py`, `cml_io.py`. |
 | Internos/privados | `_rdkit_worker.py` es privado aunque vivo: lo invocan workers/subprocess y no debe borrarse por no tener imports tradicionales. |
 
 ### `chemuson.clean2d`
@@ -155,7 +155,7 @@ La GUI se importa de forma diferida desde `main()` para que `chemuson --version`
 | Paquete | Importa actualmente paquetes Chemuson |
 | --- | --- |
 | `core` | Ninguno. |
-| `chemio` | `core`, `clean2d`, `gui` en puntos puntuales. Revisar dependencias GUI en futuras fases. |
+| `chemio` | `core`, `gui` sólo para typing de persistencia. |
 | `clean2d` | `core`, `chemio`. |
 | `chemcalc` | `chemname` en estado actual. Revisar si puede invertirse o aislarse. |
 | `chemname` | `core`, `chemcalc`, `chemio`, `utils`. |
