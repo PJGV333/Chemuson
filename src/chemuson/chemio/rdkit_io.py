@@ -17,8 +17,6 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import Dict, Iterable, Optional, Tuple
 
-from chemuson.chemio.depiction_candidates import DepictionCandidate, score_imported_depiction
-from chemuson.clean2d.geometry import apply_coords_in_place
 from chemuson.core.model import ATOMIC_NUMBERS, Bond, BondStyle, BondStereo, MolGraph, bond_is_structural
 
 Chem = None
@@ -1295,7 +1293,7 @@ def normalize_molblock_header(molfile: str) -> str:
     return "\n".join(lines)
 
 
-def molfile_to_molgraph(molfile: str) -> MolGraph:
+def molfile_to_molgraph(molfile: str, *, target_bond_length: float = 40.0) -> MolGraph:
     """Importa un bloque MOL (V2000) a `MolGraph`.
 
     Args:
@@ -1308,7 +1306,9 @@ def molfile_to_molgraph(molfile: str) -> MolGraph:
     try:
         # El parser interno preserva pseudoátomos, isótopos y enlaces tal como
         # vienen en el CTAB, y evita divergencias de sanitización de RDKit.
-        return _molfile_to_molgraph_fallback(normalized)
+        graph = _molfile_to_molgraph_fallback(normalized)
+        _scale_to_default(graph, target_bond_length)
+        return graph
     except Exception as fallback_error:
         if not _rdkit_available():
             raise fallback_error
@@ -1327,248 +1327,6 @@ def molfile_to_molgraph(molfile: str) -> MolGraph:
         raise fallback_error
 
 
-def smiles_to_depiction_candidates(
-    smiles: str,
-    *,
-    target_bond_length: float = 40.0,
-    timeout_s: float = 15.0,
-) -> list[DepictionCandidate]:
-    """Devuelve candidatos de depiction SMILES ordenados por calidad."""
-    clean_smiles = str(smiles or "").strip()
-    if not clean_smiles:
-        raise ValueError("SMILES vacío")
-    from chemuson.chemio.rdkit_safe import smiles_depict_candidates_isolated
-
-    raw_candidates, error = smiles_depict_candidates_isolated(
-        clean_smiles,
-        target_bond_length=target_bond_length,
-        timeout_s=timeout_s,
-    )
-    candidates: list[DepictionCandidate] = []
-    for raw in raw_candidates:
-        source = str(raw.get("source", "rdkit_candidate") or "rdkit_candidate")
-        metadata = dict(raw.get("metadata", {}) if isinstance(raw.get("metadata"), dict) else {})
-        if not raw.get("ok"):
-            candidates.append(_rejected_depiction_candidate(source, str(raw.get("error", "candidate_failed") or "candidate_failed"), metadata))
-            continue
-        molblock = str(raw.get("molblock", "") or "")
-        if not molblock.strip():
-            candidates.append(_rejected_depiction_candidate(source, "empty_molblock", metadata))
-            continue
-        try:
-            graph = molfile_to_molgraph(molblock)
-            _scale_to_default(graph, target_bond_length)
-            score, score_metadata = score_imported_depiction(graph, target_bond_length=target_bond_length)
-            candidates.append(
-                DepictionCandidate(
-                    source=source,
-                    graph=graph,
-                    score=score,
-                    metadata={**metadata, **score_metadata, "worker_error": error or ""},
-                )
-            )
-            unwrap = _block_unwrap_depiction_candidate(graph, source, score, target_bond_length)
-            if unwrap is not None:
-                candidates.append(unwrap)
-            candidates.extend(_scaffold_depiction_candidates(graph, source, score, target_bond_length))
-        except Exception as exc:
-            candidates.append(_rejected_depiction_candidate(source, str(exc), metadata))
-    candidates.sort(key=lambda item: (item.rejected, item.score, item.source))
-    if not candidates and error:
-        raise RuntimeError(_rdkit_worker_unavailable_message(str(error)))
-    return candidates
-
-
-def _rejected_depiction_candidate(source: str, reason: str, metadata: dict[str, object]) -> DepictionCandidate:
-    return DepictionCandidate(
-        source=source,
-        graph=MolGraph(),
-        score=math.inf,
-        rejected=True,
-        rejection_reason=reason,
-        metadata=metadata,
-    )
-
-
-def _scaffold_depiction_candidates(
-    graph: MolGraph,
-    parent_source: str,
-    parent_score: float,
-    target_bond_length: float,
-) -> list[DepictionCandidate]:
-    try:
-        from chemuson.clean2d.scaffold_depiction import scaffold_depiction_candidates
-
-        scaffold_candidates = scaffold_depiction_candidates(graph, target_bond_length=target_bond_length)
-    except Exception:
-        return []
-    out: list[DepictionCandidate] = []
-    for candidate in scaffold_candidates:
-        if candidate.rejected or not candidate.coords:
-            continue
-        scaffold_graph = copy.deepcopy(graph)
-        apply_coords_in_place(scaffold_graph, candidate.coords)
-        score, metadata = score_imported_depiction(scaffold_graph, target_bond_length=target_bond_length)
-        out.append(
-            DepictionCandidate(
-                source=f"chemuson_scaffold:{candidate.strategy}:{parent_source}",
-                graph=scaffold_graph,
-                score=score,
-                metadata={
-                    **metadata,
-                    "parent_source": parent_source,
-                    "parent_score": parent_score,
-                    "strategy": candidate.strategy,
-                    "scaffold_score": candidate.score,
-                    "scaffold_donut_score": candidate.donut_score,
-                    "stereo_wedge_count": _visual_wedge_count(scaffold_graph),
-                    "scaffold_metadata": dict(candidate.metadata),
-                },
-            )
-        )
-    return out
-
-
-def _block_unwrap_depiction_candidate(
-    graph: MolGraph,
-    parent_source: str,
-    parent_score: float,
-    target_bond_length: float,
-) -> DepictionCandidate | None:
-    try:
-        from chemuson.clean2d.block_unwrap import block_unwrap_layout
-
-        coords, report = block_unwrap_layout(graph, target_bond_length=target_bond_length)
-    except Exception:
-        return None
-    if coords is None or not report.ok:
-        return None
-    unwrapped = copy.deepcopy(graph)
-    apply_coords_in_place(unwrapped, coords)
-    unwrap_score, unwrap_metadata = score_imported_depiction(unwrapped, target_bond_length=target_bond_length)
-    report_metadata = dict(report.__dict__)
-    report_metadata.pop("metadata", None)
-    return DepictionCandidate(
-        source=f"chemuson_block_unwrap:{parent_source}",
-        graph=unwrapped,
-        score=unwrap_score,
-        metadata={
-            **unwrap_metadata,
-            "unwrap_report": report_metadata,
-            "unwrap_report_metadata": dict(report.metadata),
-            "parent_source": parent_source,
-            "parent_score": parent_score,
-            "unwrap_score": unwrap_score,
-            "donut_score_before": report.donut_score_before,
-            "donut_score_after": report.donut_score_after,
-        },
-    )
-
-
-def smiles_to_molgraph_best_depiction(
-    smiles: str,
-    *,
-    target_bond_length: float = 40.0,
-    timeout_s: float = 15.0,
-) -> MolGraph:
-    """Importa SMILES usando el mejor candidato de depiction aislado disponible."""
-    graph, _report = smiles_to_molgraph_best_depiction_with_report(
-        smiles,
-        target_bond_length=target_bond_length,
-        timeout_s=timeout_s,
-    )
-    return graph
-
-
-def smiles_to_molgraph_best_depiction_with_report(
-    smiles: str,
-    *,
-    target_bond_length: float = 40.0,
-    timeout_s: float = 15.0,
-) -> tuple[MolGraph, dict[str, object]]:
-    """Importa SMILES y devuelve también ranking/metadata de depiction."""
-    clean_smiles = str(smiles or "").strip()
-    if not clean_smiles:
-        raise ValueError("SMILES vacío")
-    candidate_error = ""
-    try:
-        candidates = smiles_to_depiction_candidates(
-            clean_smiles,
-            target_bond_length=target_bond_length,
-            timeout_s=timeout_s,
-        )
-        ranked = sorted(candidates, key=lambda item: (item.rejected, item.score, item.source))
-        _debug_depiction_candidates(ranked)
-        for candidate in ranked:
-            if not candidate.rejected and candidate.graph.atoms:
-                return candidate.graph, {
-                    "selected_source": candidate.source,
-                    "selected_score": candidate.score,
-                    "selected_metadata": dict(candidate.metadata),
-                    "candidates": [_depiction_candidate_row(item) for item in ranked],
-                }
-        rejected = [candidate.rejection_reason for candidate in candidates if candidate.rejected and candidate.rejection_reason]
-        candidate_error = "; ".join(rejected) or "no_usable_depiction_candidates"
-    except Exception as exc:
-        candidate_error = str(exc)
-
-    try:
-        graph = smiles_to_molgraph_isolated_or_error(clean_smiles, timeout_s=min(timeout_s, 8.0))
-        return graph, {"selected_source": "isolated_to_molblock_fallback", "error": candidate_error}
-    except Exception as exc:
-        fallback_error = str(exc)
-    raise RuntimeError(_rdkit_worker_unavailable_message(candidate_error or fallback_error, direct_error=fallback_error))
-
-
-def _depiction_candidate_row(candidate: DepictionCandidate) -> dict[str, object]:
-    return {
-        "source": candidate.source,
-        "score": candidate.score,
-        "donut_score": candidate.metadata.get("donut_score", candidate.metadata.get("donut_score_after", "")),
-        "rejected": candidate.rejected,
-        "rejection_reason": candidate.rejection_reason,
-        "atom_count": len(candidate.graph.atoms),
-        "bond_count": len(candidate.graph.bonds),
-        "wedge_count": _visual_wedge_count(candidate.graph),
-        "metadata": dict(candidate.metadata),
-    }
-
-
-def _visual_wedge_count(graph: MolGraph) -> int:
-    return sum(
-        1
-        for bond in graph.bonds.values()
-        if getattr(bond.style, "value", str(bond.style)) in {"wedge", "hashed"}
-    )
-
-
-def _debug_depiction_candidates(candidates: list[DepictionCandidate]) -> None:
-    if str(os.environ.get("CHEMUSON_DEBUG_DEPICTION", "")).strip().lower() not in {"1", "true", "yes", "on"}:
-        return
-    rows = [_depiction_candidate_row(candidate) for candidate in candidates]
-    for idx, candidate in enumerate(candidates, start=1):
-        status = "rejected" if candidate.rejected else "ok"
-        donut = candidate.metadata.get("donut_score", candidate.metadata.get("donut_score_after", ""))
-        sys.stderr.write(
-            f"[chemuson depiction] #{idx} source={candidate.source} status={status} "
-            f"score={candidate.score:.3f} donut={donut} reason={candidate.rejection_reason}\n"
-        )
-    try:
-        folder = Path(tempfile.gettempdir()) / "chemuson_depiction_debug"
-        folder.mkdir(parents=True, exist_ok=True)
-        (folder / "ranking.json").write_text(json.dumps(rows, indent=2, default=str), encoding="utf-8")
-        for idx, candidate in enumerate(candidates, start=1):
-            try:
-                (folder / f"candidate_{idx:02d}_{candidate.source.replace(':', '_')}.mol").write_text(
-                    molgraph_to_molfile(candidate.graph),
-                    encoding="utf-8",
-                )
-            except Exception:
-                pass
-    except Exception:
-        pass
-
-
 def smiles_to_molgraph(smiles: str) -> MolGraph:
     """Importa un SMILES a `MolGraph` usando primero el worker RDKit aislado.
 
@@ -1581,11 +1339,6 @@ def smiles_to_molgraph(smiles: str) -> MolGraph:
     clean_smiles = str(smiles or "").strip()
     if not clean_smiles:
         raise ValueError("SMILES vacío")
-
-    try:
-        return smiles_to_molgraph_best_depiction(clean_smiles, target_bond_length=40.0, timeout_s=15.0)
-    except Exception as best_error:
-        best_error_text = str(best_error)
 
     worker_error = ""
     try:
@@ -1606,10 +1359,10 @@ def smiles_to_molgraph(smiles: str) -> MolGraph:
         except Exception as exc:
             direct_error = str(exc)
 
-    combined_error = best_error_text or worker_error
+    combined_error = worker_error
     if worker_error and worker_error not in combined_error:
         combined_error = f"{combined_error}; {worker_error}"
-    raise RuntimeError(_rdkit_worker_unavailable_message(combined_error, direct_error=direct_error))
+    raise RuntimeError(rdkit_worker_unavailable_message(combined_error, direct_error=direct_error))
 
 
 def smiles_to_molgraph_isolated_or_error(smiles: str, timeout_s: float = 8.0) -> MolGraph:
@@ -1630,7 +1383,7 @@ def _smiles_to_molgraph_isolated_result(smiles: str, timeout_s: float) -> tuple[
     return smiles_to_molgraph_isolated(smiles, timeout_s=timeout_s)
 
 
-def _rdkit_worker_unavailable_message(worker_error: str, *, direct_error: str = "") -> str:
+def rdkit_worker_unavailable_message(worker_error: str, *, direct_error: str = "") -> str:
     parts = [
         "RDKit worker no disponible",
         f"worker_error: {worker_error or 'desconocido'}",
