@@ -1265,7 +1265,6 @@ def _molfile_to_molgraph_fallback(molfile: str) -> MolGraph:
             atom.element = label
             atom.is_explicit = label != "C"
 
-    _scale_to_default(graph)
     return graph
 
 
@@ -1302,24 +1301,24 @@ def molfile_to_molgraph(molfile: str, *, target_bond_length: float = 40.0) -> Mo
         # El parser interno preserva pseudoátomos, isótopos y enlaces tal como
         # vienen en el CTAB, y evita divergencias de sanitización de RDKit.
         graph = _molfile_to_molgraph_fallback(normalized)
-        _scale_to_default(graph, target_bond_length)
-        return graph
     except Exception as fallback_error:
         if not _rdkit_available():
             raise fallback_error
         try:
             # Intentamos con RDKit sin sanitización para evitar crashes por aromaticidad.
             mol = Chem.MolFromMolBlock(normalized, sanitize=False)
-            if mol is not None:
-                try:
-                    # Sanitización defensiva
-                    Chem.SanitizeMol(mol, Chem.SanitizeFlags.SANITIZE_ALL ^ Chem.SanitizeFlags.SANITIZE_KEKULIZE)
-                except Exception:
-                    pass
-                return rdkit_to_molgraph(mol)
+            if mol is None:
+                raise ValueError("Mol inválido")
+            try:
+                # Sanitización defensiva
+                Chem.SanitizeMol(mol, Chem.SanitizeFlags.SANITIZE_ALL ^ Chem.SanitizeFlags.SANITIZE_KEKULIZE)
+            except Exception:
+                pass
+            graph = rdkit_to_molgraph(mol)
         except Exception:
-            pass
-        raise fallback_error
+            raise fallback_error
+    _scale_to_default(graph, target_bond_length)
+    return graph
 
 
 def smiles_to_molgraph(smiles: str) -> MolGraph:
