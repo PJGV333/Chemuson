@@ -1153,7 +1153,7 @@ modules:
   name: utils
   notes: 'Sin __all__ en __init__.py. autosave.py recibe serialización y timers
     mediante colaboradores inyectados desde la composición GUI. crash_reporter.py
-    es independiente.'
+    usa PyQt6 para notificación visual. M15 no depende de otros módulos ChemUSON.'
   paths:
   - src/chemuson/utils/
   public_api: []
