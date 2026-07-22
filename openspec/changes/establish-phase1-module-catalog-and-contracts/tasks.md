@@ -121,7 +121,7 @@
     - **Archivos**: `tests/architecture/test_no_tools_in_src.py`
     - **Aceptación**: El test pasa.
 
-- [ ] **4.6 Implementar `test_exceptions_no_growth.py`**
+- [x] **4.6 Implementar `test_exceptions_no_growth.py`**
     - **Descripción**: Verificar que la lista de `temporary_exceptions` en el YAML no crezca accidentalmente. El test lee el YAML y cuenta excepciones por módulo; si aparece una excepción no en la lista baseline, falla.
     - **Archivos**: `tests/architecture/test_exceptions_no_growth.py`
     - **Aceptación**: El test pasa con las excepciones actuales. Bloquea adiciones futuras sin cambio explícito.
