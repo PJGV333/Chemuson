@@ -4,11 +4,11 @@
 
 ## 1. Reconocimiento
 
-- [ ] 1.1 Inventariar consumidores de `run_app`, imports de startup, entry points de packaging y dependencias directas M08/M19; aceptación: no existe consumidor de compatibilidad que obligue a conservar `gui.main_window.run_app`.
+- [x] 1.1 Inventariar consumidores de `run_app`, imports de startup, entry points de packaging y dependencias directas M08/M19; aceptación: no existe consumidor de compatibilidad que obligue a conservar `gui.main_window.run_app`.
 
 ## 2. Caracterización
 
-- [ ] 2.1 Añadir pruebas no Qt del CLI y orden de lifecycle; aceptación: `--version`/ayuda no cargan GUI y fakes registran la secuencia histórica de arranque, recuperación, event loop, errores y exit code.
+- [x] 2.1 Añadir pruebas no Qt del CLI y orden de lifecycle; aceptación: `--version`/ayuda no cargan GUI y fakes registran la secuencia histórica de arranque, recuperación, event loop, errores y exit code.
 
 ## 3. Paquete de composición
 
