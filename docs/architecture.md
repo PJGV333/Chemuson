@@ -193,7 +193,7 @@ compatibilidad estructural.
 
 ## Deuda temporal
 
-El catálogo conserva ocho excepciones temporales revisadas: seis de M01 y dos
-de M03. M15 no tiene dependencias ChemUSON ni excepciones; la persistencia de
-autosave se inyecta desde la composición GUI y el canvas se representa por un
-contrato estructural opaco.
+El catálogo mantiene un baseline vacío: no existen `temporary_exceptions` ni
+dependencias circulares activas. Cualquier nueva desviación deberá justificarse
+en un OpenSpec, registrarse explícitamente en `architecture/modules.yml` y
+quedar acompañada por una condición verificable de eliminación.
