@@ -30,3 +30,13 @@ documentos, templates, validación o edición del canvas.
 
 La extracción es estructural: constructores, parentage Qt, conexiones,
 visibilidad inicial y orden de arranque visual se conservan.
+
+## Workers de segundo plano
+
+`src/chemuson/gui/background_workers.py` contiene únicamente los workers Qt
+privados para descriptores RDKit y Name→Structure. Sus imports de backend son
+diferidos y el módulo no importa la ventana.
+
+`ChemusonWindow` conserva el lifecycle de `QThread`, los registros de jobs,
+cancelación, diálogos de progreso y callbacks que actualizan la interfaz. Los
+workers no forman parte de la API pública de M08.

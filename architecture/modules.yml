@@ -527,6 +527,7 @@ modules:
   - style
   - actions
   - shell
+  - background_workers
   name: gui
   notes: 'GUI importa todos los subsistemas de dominio para orquestación. No implementa
     lógica química pesada. items.py es un módulo individual (no paquete): src/chemuson/gui/items.py
@@ -567,6 +568,7 @@ modules:
   - src/chemuson/gui/wedge_geometry.py
   - src/chemuson/gui/actions/
   - src/chemuson/gui/shell/
+  - src/chemuson/gui/background_workers.py
   public_api:
   - ChemusonWindow
   responsibility: 'UI PyQt6: ventana principal, canvas/editor 2D, acciones, docks,
@@ -598,6 +600,7 @@ modules:
   - tests/test_compchem3d_dock.py
   - tests/test_spectroscopy_dock.py
   - tests/test_validation_dock.py
+  - tests/architecture/test_main_window_background_workers.py
   - tests/test_iupac_ui.py
   - tests/test_name2structure_ui.py
   - tests/test_template_controller.py
