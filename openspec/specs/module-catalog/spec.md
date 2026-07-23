@@ -129,3 +129,31 @@ an empty list, and all circular-dependency lists SHALL be empty.
 #### Scenario: Full catalog is inspected
 - **WHEN** all module entries are accumulated
 - **THEN** no temporary exception or cycle is present
+
+### Requirement: M19 Catalogs the Composition Root
+
+M19 SHALL own `src/chemuson/__main__.py` and `src/chemuson/app/`. Its current
+and target dependencies SHALL be M08, M15 and M18, matching its direct imports.
+Its public API SHALL continue to contain `main`, associated with the installed
+entry point.
+
+#### Scenario: M19 inventory is inspected
+- **GIVEN** the module catalog after establishing the composition root
+- **WHEN** M19 paths, dependencies and public API are audited
+- **THEN** both bootstrap paths exist, dependencies are exactly M08/M15/M18, and `main` resolves statically
+
+#### Scenario: Bootstrap paths have exclusive ownership
+- **GIVEN** all catalog paths
+- **WHEN** `src/chemuson/__main__.py` and files below `src/chemuson/app/` are resolved
+- **THEN** they belong to M19 and no other module
+
+### Requirement: M08 Catalogs the Internal Application Shell
+
+M08 SHALL own `src/chemuson/gui/shell/` as an internal implementation path and
+SHALL retain `ChemusonWindow` as its public API. The extraction SHALL NOT add a
+module dependency, temporary exception or cycle.
+
+#### Scenario: M08 inventory is inspected
+- **GIVEN** the module catalog after shell extraction
+- **WHEN** paths, APIs and dependencies are audited
+- **THEN** the shell has exclusive M08 ownership, `ChemusonWindow` remains public, and dependency sets are unchanged

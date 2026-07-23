@@ -526,6 +526,7 @@ modules:
   - toolbar
   - style
   - actions
+  - shell
   name: gui
   notes: 'GUI importa todos los subsistemas de dominio para orquestación. No implementa
     lógica química pesada. items.py es un módulo individual (no paquete): src/chemuson/gui/items.py
@@ -565,7 +566,9 @@ modules:
   - src/chemuson/gui/toolbar.py
   - src/chemuson/gui/wedge_geometry.py
   - src/chemuson/gui/actions/
-  public_api: []
+  - src/chemuson/gui/shell/
+  public_api:
+  - ChemusonWindow
   responsibility: 'UI PyQt6: ventana principal, canvas/editor 2D, acciones, docks,
     controllers, comandos undo/redo, rendering y herramientas visuales.'
   risk_level: high
@@ -624,6 +627,7 @@ modules:
   - tests/test_numbering.py
   - tests/test_linux_distribution_scripts.py
   - tests/test_release_version_script.py
+  - tests/architecture/test_application_shell.py
   title: Orquestación de interfaz PyQt6
 - circular_dependencies: []
   current_dependencies:
