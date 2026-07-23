@@ -15,6 +15,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
+BOOTSTRAP = ROOT / "src" / "chemuson" / "app" / "bootstrap.py"
 MAIN_WINDOW = ROOT / "src" / "chemuson" / "gui" / "main_window.py"
 
 
@@ -50,6 +51,7 @@ forbidden = sorted(
     for name in sys.modules
     if name == "PyQt6"
     or name.startswith("PyQt6.")
+    or name == "chemuson.app.bootstrap"
     or name == "chemuson.gui"
     or name.startswith("chemuson.gui.")
 )
@@ -74,6 +76,7 @@ forbidden = sorted(
     for name in sys.modules
     if name == "PyQt6"
     or name.startswith("PyQt6.")
+    or name == "chemuson.app.bootstrap"
     or name == "chemuson.gui"
     or name.startswith("chemuson.gui.")
 )
@@ -92,11 +95,11 @@ import sys
 from types import ModuleType
 
 calls = []
-gui = ModuleType("chemuson.gui")
-main_window = ModuleType("chemuson.gui.main_window")
-main_window.run_app = lambda: calls.append("run_app")
-sys.modules["chemuson.gui"] = gui
-sys.modules["chemuson.gui.main_window"] = main_window
+app = ModuleType("chemuson.app")
+bootstrap = ModuleType("chemuson.app.bootstrap")
+bootstrap.run_app = lambda: calls.append("run_app")
+sys.modules["chemuson.app"] = app
+sys.modules["chemuson.app.bootstrap"] = bootstrap
 
 from chemuson.__main__ import main
 
@@ -110,8 +113,8 @@ if calls != ["run_app"]:
     assert result.returncode == 0, result.stderr
 
 
-def _load_historical_run_app(namespace: dict[str, Any]) -> Any:
-    tree = ast.parse(MAIN_WINDOW.read_text(encoding="utf-8"))
+def _load_run_app(namespace: dict[str, Any]) -> Any:
+    tree = ast.parse(BOOTSTRAP.read_text(encoding="utf-8"))
     function = next(
         node
         for node in tree.body
@@ -119,7 +122,7 @@ def _load_historical_run_app(namespace: dict[str, Any]) -> Any:
     )
     module = ast.Module(body=[function], type_ignores=[])
     ast.fix_missing_locations(module)
-    exec(compile(module, MAIN_WINDOW, "exec"), namespace)
+    exec(compile(module, BOOTSTRAP, "exec"), namespace)
     return namespace["run_app"]
 
 
@@ -128,7 +131,7 @@ class _ExitObserved(Exception):
         self.code = code
 
 
-def test_historical_startup_success_order() -> None:
+def test_startup_success_order() -> None:
     events: list[Any] = []
 
     class FakeApplication:
@@ -176,7 +179,7 @@ def test_historical_startup_success_order() -> None:
             exit=lambda code: (_ for _ in ()).throw(_ExitObserved(code)),
         ),
     }
-    run_app = _load_historical_run_app(namespace)
+    run_app = _load_run_app(namespace)
 
     with pytest.raises(_ExitObserved) as observed:
         run_app()
@@ -195,7 +198,7 @@ def test_historical_startup_success_order() -> None:
 
 
 @pytest.mark.parametrize("application_exists", [False, True])
-def test_historical_startup_failure_reporting(application_exists: bool) -> None:
+def test_startup_failure_reporting(application_exists: bool) -> None:
     events: list[Any] = []
     stderr: list[str] = []
     application = object() if application_exists else None
@@ -226,7 +229,7 @@ def test_historical_startup_failure_reporting(application_exists: bool) -> None:
             exit=lambda code: events.append(("exit", code)),
         ),
     }
-    run_app = _load_historical_run_app(namespace)
+    run_app = _load_run_app(namespace)
 
     run_app()
 
@@ -244,3 +247,16 @@ def test_historical_startup_failure_reporting(application_exists: bool) -> None:
             "No se pudo iniciar la aplicación.\n"
             "Se guardó un reporte en: /tmp/chemuson-crash.log\n"
         )
+
+
+def test_bootstrap_ownership_and_lightweight_package() -> None:
+    main_window_tree = ast.parse(MAIN_WINDOW.read_text(encoding="utf-8"))
+    assert not any(
+        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == "run_app"
+        for node in main_window_tree.body
+    )
+
+    package = ROOT / "src" / "chemuson" / "app" / "__init__.py"
+    package_tree = ast.parse(package.read_text(encoding="utf-8"))
+    assert not any(isinstance(node, (ast.Import, ast.ImportFrom)) for node in package_tree.body)

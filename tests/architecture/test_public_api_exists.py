@@ -705,7 +705,7 @@ class TestPublicApiExists:
         assert result["missing_symbols"] == []
 
     def test_m19_bootstrap_module(self, modules):
-        """M19 tiene surface única en __main__.py."""
+        """M19 expone main desde __main__.py y posee app como paquete interno."""
         m19 = next((m for m in modules if m["id"] == "M19"), None)
         assert m19 is not None
         assert m19["public_api"] == ["main"]
@@ -713,8 +713,10 @@ class TestPublicApiExists:
         result = audit_module_public_api(REPO_ROOT, m19)
 
         assert result["module_id"] == "M19"
-        assert len(result["surface_files"]) == 1
-        assert result["surface_files"][0].name == "__main__.py"
+        assert {path.relative_to(REPO_ROOT).as_posix() for path in result["surface_files"]} == {
+            "src/chemuson/__main__.py",
+            "src/chemuson/app/__init__.py",
+        }
         assert len(result["path_errors"]) == 0
         assert len(result["parse_errors"]) == 0
         assert "main" not in result["missing_symbols"]

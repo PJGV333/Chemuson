@@ -1107,6 +1107,7 @@ modules:
   current_dependencies:
   - M18
   - M08
+  - M15
   entry_points:
   - chemuson
   - python -m chemuson
@@ -1116,6 +1117,7 @@ modules:
   name: bootstrap
   paths:
   - src/chemuson/__main__.py
+  - src/chemuson/app/
   public_api:
   - main
   responsibility: Punto de entrada CLI, parsing inicial y arranque diferido de la
@@ -1125,6 +1127,8 @@ modules:
   target_dependencies:
   - M18
   - M08
+  - M15
   temporary_exceptions: []
-  tests: []
+  tests:
+  - tests/test_application_startup_non_qt.py
   title: Arranque y composición de la aplicación
