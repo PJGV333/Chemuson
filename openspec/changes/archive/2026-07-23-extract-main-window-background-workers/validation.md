@@ -9,6 +9,8 @@ Fecha: 2026-07-23
 - `openspec validate extract-main-window-background-workers --strict`: válido.
 - `openspec validate --all --strict`: **21/21 válidos**.
 - `git diff --check`: correcto.
+- Prueba manual en Qt real: Chemuson inicia y funciona correctamente desde la
+  rama publicada; aprobación explícita del usuario recibida el 2026-07-23.
 - Pytest y Ruff no están instalados en la imagen actual; la limitación ya está
   registrada en `baseline.md`.
 
@@ -26,5 +28,5 @@ Fecha: 2026-07-23
 ## Alcance revisado
 
 No se modificaron handlers, UI visible, canvas, items, química, persistencia,
-formatos, renderizado ni estilos. El cambio requiere una prueba manual en Qt
-real antes de archivarse o fusionarse.
+formatos, renderizado ni estilos. La prueba manual en Qt real fue satisfactoria
+y autoriza el archivado.
