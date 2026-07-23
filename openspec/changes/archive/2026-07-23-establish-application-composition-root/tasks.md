@@ -38,4 +38,4 @@
 ## 8. Revisión y archivo
 
 - [x] 8.1 Revisar diff y alcance antes de archivar; aceptación: no hay cambios en menús, canvas, items, controllers, serialización, renderizado ni lógica química.
-- [ ] 8.2 Archivar sólo después de aprobación explícita; aceptación: specs se fusionan y OpenSpec global vuelve a validar estrictamente.
+- [x] 8.2 Archivar sólo después de aprobación explícita; aceptación: specs se fusionan y OpenSpec global vuelve a validar estrictamente.

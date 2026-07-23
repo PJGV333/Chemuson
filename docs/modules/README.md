@@ -12,7 +12,7 @@ Este índice lista los módulos que componen la arquitectura de Chemuson, con en
 | M05 | geometry3d | Servicios 3D | *pendiente* |
 | M06 | compchem | Exportación química computacional | *pendiente* |
 | M07 | spectroscopy | Predicción espectral | *pendiente* |
-| M08 | gui | Orquestación de interfaz PyQt6 | *pendiente* |
+| M08 | gui | Orquestación de interfaz PyQt6 | [M08-gui.md](M08-gui.md) |
 | M09 | gui.canvas | Canvas de edición molecular | [M09-canvas.md](M09-canvas.md) |
 | M10 | gui.controllers | Controllers de la GUI | *pendiente* |
 | M11 | gui.commands | Comandos undo/redo | *pendiente* |

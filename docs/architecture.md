@@ -115,11 +115,11 @@ capa terminal: ningún módulo M00–M18 puede depender del bootstrap.
 | Aspecto | Detalle |
 | --- | --- |
 | Responsabilidad | UI PyQt6: ventana principal, canvas/editor 2D, acciones, docks, controllers, comandos undo/redo, rendering y herramientas visuales. |
-| Archivos principales | `main_window.py`, `canvas/`, `controllers/`, `items.py`, `docks.py`, `toolbar.py`, `actions/`, `commands/`, `dialogs/`. |
+| Archivos principales | `main_window.py`, `shell/`, `canvas/`, `controllers/`, `items.py`, `docks.py`, `toolbar.py`, `actions/`, `commands/`, `dialogs/`. |
 | Puede importar | Servicios de dominio (`core`, `chemio`, `clean2d`, `chemname`, `geometry3d`, `compchem`, `spectroscopy`, `update`, `name2structure`) para orquestar UI. |
 | No debería importar | `tools`; no debería implementar lógica química pesada que pueda vivir en paquetes de dominio. |
 | API pública | `chemuson.gui.main_window.ChemusonWindow`, `chemuson.gui.canvas.ChemusonCanvas` y constantes reexportadas en `canvas/__init__.py`. |
-| Internos/privados | Mixins de `canvas/`, controllers concretos, builders, comandos y widgets auxiliares. `CanvasStructureMixin.rebuild_persistence_view()` es el hook público que satisface estructuralmente el contrato de persistencia y delega en la reconstrucción visual existente. |
+| Internos/privados | `shell/` ensambla regiones y wiring de `ChemusonWindow` sin poseer handlers; también son internos los mixins de `canvas/`, controllers concretos, builders, comandos y widgets auxiliares. `CanvasStructureMixin.rebuild_persistence_view()` es el hook público que satisface estructuralmente el contrato de persistencia y delega en la reconstrucción visual existente. |
 
 ### `chemuson.update`
 

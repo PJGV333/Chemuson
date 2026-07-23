@@ -27,3 +27,10 @@ entry point no cargan PyQt6, GUI ni `chemuson.app.bootstrap`.
 El cambio no modifica menús, canvas, items, controllers, serialización,
 renderizado ni lógica química. La aplicación gráfica real no puede abrirse en
 esta imagen hasta que esté disponible la biblioteca de sistema `libEGL.so.1`.
+
+## Validación manual
+
+El 2026-07-23, después de fusionar el cambio en `main`, el usuario ejecutó
+Chemuson en su entorno de escritorio y confirmó mediante prueba directa que la
+aplicación inicia normalmente. Esta comprobación aprueba explícitamente el
+archivo del cambio.
