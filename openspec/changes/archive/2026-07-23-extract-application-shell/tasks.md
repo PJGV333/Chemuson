@@ -28,4 +28,4 @@
 
 ## 6. Revisión y archivo
 
-- [ ] 6.1 Archivar sólo después de prueba manual y aprobación explícita.
+- [x] 6.1 Archivar sólo después de prueba manual y aprobación explícita.

@@ -33,3 +33,12 @@ Fecha: 2026-07-23
 No se modificaron handlers, canvas, items, controllers, química, persistencia,
 formatos, renderizado ni estilos. La comprobación visual y funcional completa
 debe realizarse en un entorno con Qt/EGL antes de archivar el cambio.
+
+## Validación manual
+
+El 2026-07-23 el usuario probó la rama
+`architecture/phase7-extract-application-shell` en su entorno Qt real y
+confirmó que Chemuson inicia y funciona correctamente. La prueba cubrió la
+composición visible de menús, toolbars, pestaña inicial, docks, canvas, barra
+de estado y cierre normal de la ventana. Con esta aprobación explícita se
+cumple la tarea 6.1 y el cambio puede archivarse.
