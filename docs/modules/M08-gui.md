@@ -40,3 +40,14 @@ diferidos y el módulo no importa la ventana.
 `ChemusonWindow` conserva el lifecycle de `QThread`, los registros de jobs,
 cancelación, diálogos de progreso y callbacks que actualizan la interfaz. Los
 workers no forman parte de la API pública de M08.
+
+## Geometría de integración Clean2D
+
+`src/chemuson/gui/clean2d_geometry.py` posee las transformaciones puras usadas
+para centrar, reescalar, alinear y completar coordenadas al integrar resultados
+Clean2D o proyecciones 3D. El módulo no importa Qt, canvas, ventana ni backends
+de dominio.
+
+`ChemusonWindow` conserva aliases estáticos privados para no cambiar todavía
+los puntos de llamada de controllers y pruebas. Estas funciones no forman
+parte de la API pública de M08.
