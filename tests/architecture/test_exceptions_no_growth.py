@@ -120,7 +120,7 @@ def _duplicates(rows: tuple[ExceptionIdentity, ...]) -> tuple[tuple[ExceptionIde
 
 def audit_exception_growth(
     modules: list[dict],
-    baseline_rows: tuple[ExceptionIdentity, ...] = LEGACY_TEST_BASELINE_ROWS,
+    baseline_rows: tuple[ExceptionIdentity, ...] = FROZEN_EXCEPTION_BASELINE_ROWS,
 ) -> ExceptionGrowthAudit:
     current_rows = tuple(
         exception_identity_from_mapping(exc)
@@ -198,7 +198,7 @@ def test_frozen_baseline_is_complete_and_exact() -> None:
 
 def test_real_catalog_matches_frozen_exception_baseline() -> None:
     modules = yaml.safe_load(CATALOG_PATH.read_text(encoding="utf-8"))["modules"]
-    audit = audit_exception_growth(modules, FROZEN_EXCEPTION_BASELINE_ROWS)
+    audit = audit_exception_growth(modules)
     runtime = sum(not row.type_checking_only for row in audit.current_identities)
     type_checking = sum(row.type_checking_only for row in audit.current_identities)
     problems: list[str] = []
@@ -222,7 +222,7 @@ def test_real_catalog_matches_frozen_exception_baseline() -> None:
 
 def test_eliminated_m01_m02_exceptions_cannot_reappear() -> None:
     audit = audit_exception_growth(
-        _modules_for(*LEGACY_TEST_BASELINE_ROWS, *ELIMINATED_M01_M02_EXCEPTIONS)
+        _modules_for(*LEGACY_TEST_BASELINE_ROWS, *ELIMINATED_M01_M02_EXCEPTIONS), LEGACY_TEST_BASELINE_ROWS
     )
 
     assert audit.unexpected_identities == tuple(sorted(ELIMINATED_M01_M02_EXCEPTIONS))
@@ -232,7 +232,7 @@ def test_eliminated_m01_m02_exceptions_cannot_reappear() -> None:
 
 @pytest.mark.parametrize("eliminated", ELIMINATED_M01_M02_EXCEPTIONS)
 def test_single_eliminated_m01_m02_exception_is_rejected(eliminated: ExceptionIdentity) -> None:
-    audit = audit_exception_growth(_modules_for(*LEGACY_TEST_BASELINE_ROWS, eliminated))
+    audit = audit_exception_growth(_modules_for(*LEGACY_TEST_BASELINE_ROWS, eliminated), LEGACY_TEST_BASELINE_ROWS)
 
     assert audit.unexpected_identities == (eliminated,)
     assert audit.modules_with_growth == (("M01", 2, 1),)
@@ -240,7 +240,7 @@ def test_single_eliminated_m01_m02_exception_is_rejected(eliminated: ExceptionId
 
 def test_replacing_persistence_exception_with_m01_m02_debt_is_rejected() -> None:
     eliminated = ELIMINATED_M01_M02_EXCEPTIONS[0]
-    audit = audit_exception_growth(_modules_for(eliminated))
+    audit = audit_exception_growth(_modules_for(eliminated), LEGACY_TEST_BASELINE_ROWS)
 
     assert audit.unexpected_identities == (eliminated,)
     assert audit.removed_baseline_identities == LEGACY_TEST_BASELINE_ROWS
@@ -257,30 +257,30 @@ def test_normalized_eliminated_m01_m02_identity_is_still_rejected() -> None:
         "from chemuson.clean2d.geometry import count_crossings,\n  cycle_basis, segments_intersect",
         eliminated.type_checking_only,
     )
-    audit = audit_exception_growth(_modules_for(*LEGACY_TEST_BASELINE_ROWS, normalized_variant))
+    audit = audit_exception_growth(_modules_for(*LEGACY_TEST_BASELINE_ROWS, normalized_variant), LEGACY_TEST_BASELINE_ROWS)
 
     assert audit.unexpected_identities == (eliminated,)
     assert audit.modules_with_growth == (("M01", 2, 1),)
 
 
 def test_eliminated_m15_exceptions_cannot_reappear() -> None:
-    audit = audit_exception_growth(_modules_for(*LEGACY_TEST_BASELINE_ROWS, *ELIMINATED_M15_EXCEPTIONS))
+    audit = audit_exception_growth(_modules_for(*LEGACY_TEST_BASELINE_ROWS, *ELIMINATED_M15_EXCEPTIONS), LEGACY_TEST_BASELINE_ROWS)
 
     assert audit.unexpected_identities == ELIMINATED_M15_EXCEPTIONS
     assert audit.modules_with_growth == (("M15", 2, 0),)
 
 
 def test_eliminated_m03_exceptions_cannot_reappear() -> None:
-    audit = audit_exception_growth(_modules_for(*LEGACY_TEST_BASELINE_ROWS, *ELIMINATED_M03_EXCEPTIONS))
+    audit = audit_exception_growth(_modules_for(*LEGACY_TEST_BASELINE_ROWS, *ELIMINATED_M03_EXCEPTIONS), LEGACY_TEST_BASELINE_ROWS)
 
     assert audit.unexpected_identities == ELIMINATED_M03_EXCEPTIONS
     assert audit.modules_with_growth == (("M03", 2, 0),)
 
 
 def test_equal_empty_and_reduced_catalogs_are_no_growth() -> None:
-    equal = audit_exception_growth(_modules_for(*LEGACY_TEST_BASELINE_ROWS))
-    empty = audit_exception_growth([])
-    reduced = audit_exception_growth(_modules_for(*LEGACY_TEST_BASELINE_ROWS[:-1]))
+    equal = audit_exception_growth(_modules_for(*LEGACY_TEST_BASELINE_ROWS), LEGACY_TEST_BASELINE_ROWS)
+    empty = audit_exception_growth([], LEGACY_TEST_BASELINE_ROWS)
+    reduced = audit_exception_growth(_modules_for(*LEGACY_TEST_BASELINE_ROWS[:-1]), LEGACY_TEST_BASELINE_ROWS)
     assert not equal.unexpected_identities and not equal.duplicate_identities and not equal.modules_with_growth and not equal.removed_baseline_identities
     assert not empty.unexpected_identities and len(empty.removed_baseline_identities) == 1
     assert not reduced.unexpected_identities and len(reduced.removed_baseline_identities) == 1 and not reduced.modules_with_growth
@@ -289,8 +289,8 @@ def test_equal_empty_and_reduced_catalogs_are_no_growth() -> None:
 def test_new_identities_and_replacement_are_detected() -> None:
     new_m01 = _identity("M01", "M02", "src/new.py", "from chemuson.clean2d import new", False)
     new_m02 = _identity("M02", "M01", "src/new.py", "from chemuson.chemio import new", False)
-    audit = audit_exception_growth(_modules_for(*LEGACY_TEST_BASELINE_ROWS, new_m01, new_m02))
-    replacement = audit_exception_growth(_modules_for(*LEGACY_TEST_BASELINE_ROWS[1:], new_m01))
+    audit = audit_exception_growth(_modules_for(*LEGACY_TEST_BASELINE_ROWS, new_m01, new_m02), LEGACY_TEST_BASELINE_ROWS)
+    replacement = audit_exception_growth(_modules_for(*LEGACY_TEST_BASELINE_ROWS[1:], new_m01), LEGACY_TEST_BASELINE_ROWS)
     assert audit.unexpected_identities == (new_m01, new_m02)
     assert audit.modules_with_growth == (("M01", 2, 1), ("M02", 1, 0))
     assert replacement.unexpected_identities == (new_m01,)
@@ -311,7 +311,7 @@ def test_new_identities_and_replacement_are_detected() -> None:
 def test_each_identity_field_change_is_unexpected(field: str, value: object) -> None:
     original = LEGACY_TEST_BASELINE_ROWS[0]
     changed = _changed(original, field, value)
-    audit = audit_exception_growth(_modules_for(*LEGACY_TEST_BASELINE_ROWS[1:], changed))
+    audit = audit_exception_growth(_modules_for(*LEGACY_TEST_BASELINE_ROWS[1:], changed), LEGACY_TEST_BASELINE_ROWS)
     assert audit.unexpected_identities == (changed,), field
     assert audit.removed_baseline_identities == (original,)
 
@@ -326,7 +326,7 @@ def test_each_identity_field_change_is_unexpected(field: str, value: object) -> 
     ],
 )
 def test_metadata_changes_do_not_change_identity(metadata: dict[int, dict[str, object]]) -> None:
-    audit = audit_exception_growth(_modules_for(*LEGACY_TEST_BASELINE_ROWS, metadata=metadata))
+    audit = audit_exception_growth(_modules_for(*LEGACY_TEST_BASELINE_ROWS, metadata=metadata), LEGACY_TEST_BASELINE_ROWS)
     assert not audit.unexpected_identities and not audit.duplicate_identities
 
 
@@ -341,7 +341,7 @@ def test_metadata_changes_do_not_change_identity(metadata: dict[int, dict[str, o
 )
 def test_normalized_identity_forms_match_baseline(field: str, value: str) -> None:
     changed = _changed(LEGACY_TEST_BASELINE_ROWS[0], field, value)
-    audit = audit_exception_growth(_modules_for(*LEGACY_TEST_BASELINE_ROWS[1:], changed))
+    audit = audit_exception_growth(_modules_for(*LEGACY_TEST_BASELINE_ROWS[1:], changed), LEGACY_TEST_BASELINE_ROWS)
     assert not audit.unexpected_identities and not audit.duplicate_identities
 
 
@@ -354,7 +354,7 @@ def test_normalized_identity_forms_match_baseline(field: str, value: str) -> Non
     ],
 )
 def test_duplicates_after_normalization_are_detected(duplicate: ExceptionIdentity) -> None:
-    audit = audit_exception_growth(_modules_for(*LEGACY_TEST_BASELINE_ROWS, duplicate))
+    audit = audit_exception_growth(_modules_for(*LEGACY_TEST_BASELINE_ROWS, duplicate), LEGACY_TEST_BASELINE_ROWS)
     assert audit.duplicate_identities == ((LEGACY_TEST_BASELINE_ROWS[0], 2),)
     assert audit.modules_with_growth == (("M01", 2, 1),)
 
@@ -365,8 +365,8 @@ def test_multiple_growth_order_baseline_duplicates_and_metadata_duplicates() -> 
         _identity("M02", "M01", "src/one.py", "from chemuson.chemio import one", False),
         _identity("M04", "M03", "src/three.py", "from chemuson.chemcalc import three", False),
     )
-    audit = audit_exception_growth(_modules_for(*LEGACY_TEST_BASELINE_ROWS, *reversed(new_rows)))
-    duplicate_metadata = audit_exception_growth(_modules_for(LEGACY_TEST_BASELINE_ROWS[0], LEGACY_TEST_BASELINE_ROWS[0], metadata={1: {"reason": "different"}}))
+    audit = audit_exception_growth(_modules_for(*LEGACY_TEST_BASELINE_ROWS, *reversed(new_rows)), LEGACY_TEST_BASELINE_ROWS)
+    duplicate_metadata = audit_exception_growth(_modules_for(LEGACY_TEST_BASELINE_ROWS[0], LEGACY_TEST_BASELINE_ROWS[0], metadata={1: {"reason": "different"}}), LEGACY_TEST_BASELINE_ROWS)
     duplicate_baseline = audit_exception_growth([], (LEGACY_TEST_BASELINE_ROWS[0], LEGACY_TEST_BASELINE_ROWS[0]))
     assert audit.unexpected_identities == tuple(sorted(new_rows))
     assert audit.modules_with_growth == (("M02", 2, 0), ("M04", 1, 0))
@@ -377,8 +377,8 @@ def test_multiple_growth_order_baseline_duplicates_and_metadata_duplicates() -> 
 def test_order_and_simultaneous_removal_addition_are_deterministic() -> None:
     added = _identity("M02", "M01", "src/new.py", "from chemuson.chemio import new", False)
     rows = LEGACY_TEST_BASELINE_ROWS[1:] + (added,)
-    forward = audit_exception_growth(_modules_for(*rows))
-    reverse = audit_exception_growth(_modules_for(*reversed(rows)))
+    forward = audit_exception_growth(_modules_for(*rows), LEGACY_TEST_BASELINE_ROWS)
+    reverse = audit_exception_growth(_modules_for(*reversed(rows)), LEGACY_TEST_BASELINE_ROWS)
     assert forward == reverse
     assert forward.unexpected_identities == (added,)
     assert forward.removed_baseline_identities == (LEGACY_TEST_BASELINE_ROWS[0],)
