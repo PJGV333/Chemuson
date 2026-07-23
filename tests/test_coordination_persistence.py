@@ -21,7 +21,7 @@ class _FakeCanvas:
     def load_persistence_data(self, data):
         self._loaded_canvas_data = data
 
-    def _rebuild_items_from_model(self):
+    def rebuild_persistence_view(self):
         self._rebuilt = True
 
 

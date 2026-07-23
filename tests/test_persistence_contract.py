@@ -27,7 +27,7 @@ class FakePersistenceDocument:
     def load_persistence_data(self, data: dict[str, object]) -> None:
         self.loaded_canvas_data = data
 
-    def _rebuild_items_from_model(self) -> None:
+    def rebuild_persistence_view(self) -> None:
         self.rebuild_count += 1
         self.rebuild_snapshot = (
             len(self.model.atoms),

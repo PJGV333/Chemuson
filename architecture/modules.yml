@@ -109,8 +109,8 @@ modules:
   - _rdkit_worker
   name: chemio
   notes: ChemIO gestiona formatos, parsing, persistencia y workers RDKit; no contiene
-    scoring, ranking ni layout Clean2D. Conserva una deuda TYPE_CHECKING hacia M09
-    en persistence.py.
+    scoring, ranking ni layout Clean2D. La persistencia recibe un documento mediante
+    un Protocol estructural local y no depende de M09.
   paths:
   - src/chemuson/chemio/
   public_api: []
@@ -120,16 +120,7 @@ modules:
   status: evolving
   target_dependencies:
   - M00
-  temporary_exceptions:
-  - source_id: M01
-    target_id: M09
-    file: src/chemuson/chemio/persistence.py
-    import_path: from chemuson.gui.canvas import ChemusonCanvas
-    reason: Import bajo TYPE_CHECKING para tipar la persistencia del canvas.
-    debt_ref: establish-phase1-module-catalog-and-contracts
-    elimination_condition: Sustituir ChemusonCanvas por un Protocol de persistencia
-      independiente de GUI.
-    type_checking_only: true
+  temporary_exceptions: []
   tests:
   - tests/test_rdkit_roundtrip.py
   - tests/test_cml_io.py

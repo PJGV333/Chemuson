@@ -62,6 +62,19 @@ El canvas mantiene un estado interno que coordina la interacción entre la vista
 - **Render y Export**: Capacidad de exportar la vista actual en formatos PNG, SVG y PDF.
 - **Serialización**: El estado completo del canvas se guarda en archivos `.cmsn`.
 
+## Contrato de Persistencia
+
+`ChemusonCanvas` satisface estructuralmente el Protocol
+`chemuson.chemio.persistence.PersistenceDocument`; no existe herencia nominal ni
+un import inverso desde ChemIO. `CanvasStructureMixin` expone
+`rebuild_persistence_view()`, que delega una sola vez en
+`_rebuild_items_from_model()` después de que persistencia restaura el modelo y
+el payload visual.
+
+La aplicación continúa inyectando objetos GUI concretos en runtime desde sus
+controllers. Esa composición no constituye una dependencia M01→M09: el módulo
+M01 sólo conoce el contrato estructural que posee.
+
 ## Dependencias Internas
 
 El canvas importa los siguientes módulos de fuera de `canvas/`:

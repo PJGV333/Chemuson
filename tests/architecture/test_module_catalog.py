@@ -318,12 +318,7 @@ class TestModuleDependencies:
         assert "M02" not in m01["current_dependencies"]
         assert "M02" not in m01["target_dependencies"]
         assert m01["circular_dependencies"] == []
-        assert len(m01["temporary_exceptions"]) == 1
-        exception = m01["temporary_exceptions"][0]
-        assert exception["source_id"] == "M01"
-        assert exception["target_id"] == "M09"
-        assert exception["type_checking_only"] is True
-        assert exception["file"] == "src/chemuson/chemio/persistence.py"
+        assert m01["temporary_exceptions"] == []
         assert "depiction_candidates" not in m01["internal_api"]
         assert "depiction_quality" not in m01["internal_api"]
         assert "imported_depiction" not in m01["internal_api"]

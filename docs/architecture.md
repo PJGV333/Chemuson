@@ -36,9 +36,9 @@ La GUI se importa de forma diferida desde `main()` para que `chemuson --version`
 | Responsabilidad | Import/export químico y persistencia: SMILES, Molfile, CML, CMSN y acceso seguro a RDKit. |
 | Archivos principales | `rdkit_io.py`, `rdkit_safe.py`, `_rdkit_worker.py`, `persistence.py`, `cml_io.py`. |
 | Puede importar | `chemuson.core`, workers/subprocess propios. |
-| No debería importar | Widgets Qt en runtime de lógica química; `chemuson.gui` salvo typing o compatibilidad muy justificada; `tools`. |
+| No debería importar | `chemuson.gui`, PyQt6 o `tools`, incluso bajo `TYPE_CHECKING`; la persistencia usa un contrato estructural local. |
 | API pública | `rdkit_io.py`, `rdkit_safe.py`, `persistence.py`, `cml_io.py`. |
-| Internos/privados | `_rdkit_worker.py` es privado aunque vivo: lo invocan workers/subprocess y no debe borrarse por no tener imports tradicionales. |
+| Internos/privados | `_rdkit_worker.py` es privado aunque vivo: lo invocan workers/subprocess y no debe borrarse por no tener imports tradicionales. `PersistenceDocument` es el Protocol interno que desacopla CMSN de cualquier clase GUI concreta. |
 
 ### `chemuson.clean2d`
 
@@ -115,7 +115,7 @@ La GUI se importa de forma diferida desde `main()` para que `chemuson --version`
 | Puede importar | Servicios de dominio (`core`, `chemio`, `clean2d`, `chemname`, `geometry3d`, `compchem`, `spectroscopy`, `update`, `name2structure`) para orquestar UI. |
 | No debería importar | `tools`; no debería implementar lógica química pesada que pueda vivir en paquetes de dominio. |
 | API pública | `chemuson.gui.main_window.ChemusonWindow`, `chemuson.gui.canvas.ChemusonCanvas` y constantes reexportadas en `canvas/__init__.py`. |
-| Internos/privados | Mixins de `canvas/`, controllers concretos, builders, comandos y widgets auxiliares. |
+| Internos/privados | Mixins de `canvas/`, controllers concretos, builders, comandos y widgets auxiliares. `CanvasStructureMixin.rebuild_persistence_view()` es el hook público que satisface estructuralmente el contrato de persistencia y delega en la reconstrucción visual existente. |
 
 ### `chemuson.update`
 
@@ -155,7 +155,7 @@ La GUI se importa de forma diferida desde `main()` para que `chemuson --version`
 | Paquete | Importa actualmente paquetes Chemuson |
 | --- | --- |
 | `core` | Ninguno. |
-| `chemio` | `core`, `gui` sólo para typing de persistencia. |
+| `chemio` | `core`. La persistencia recibe en runtime un objeto que satisface `PersistenceDocument`, sin importar GUI. |
 | `clean2d` | `core`, `chemio`. |
 | `chemcalc` | `chemname` en estado actual. Revisar si puede invertirse o aislarse. |
 | `chemname` | `core`, `chemcalc`, `chemio`, `utils`. |
@@ -168,6 +168,12 @@ La GUI se importa de forma diferida desde `main()` para que `chemuson --version`
 | `name2structure` | `core`, `chemio`. |
 
 Estas dependencias describen el estado actual, no siempre el ideal. Las reglas siguientes definen el objetivo de mantenibilidad.
+
+El catálogo mantiene actualmente cero `temporary_exceptions` y cero dependencias
+circulares. La inyección runtime de un `ChemusonCanvas` en `PersistenceManager`
+no crea una dependencia de módulo M01→M09: ChemIO sólo conoce el Protocol
+estructural `PersistenceDocument`, mientras M09 implementa sus operaciones por
+compatibilidad estructural.
 
 ## Reglas de arquitectura para mantener Chemuson entendible
 

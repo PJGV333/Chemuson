@@ -486,7 +486,7 @@ class TestImportBoundaries:
                 f"Expected type_checking_only=False for {case['description']}"
             )
 
-    def test_type_checking_imports_are_classified_separately(self, analyzer):
+    def test_chemio_and_autosave_have_no_gui_persistence_imports(self, analyzer):
         src_chemuson = analyzer.repo_root / "src" / "chemuson"
         persistence_file = src_chemuson / "chemio" / "persistence.py"
         autosave_file = src_chemuson / "utils" / "autosave.py"
@@ -494,9 +494,11 @@ class TestImportBoundaries:
         all_imports = analyzer.analyze_all()
 
         p_imports = [i for i in all_imports if i.file == persistence_file]
-        canvas_tc = [i for i in p_imports if i.target_id == "M09" and "ChemusonCanvas" in i.statement]
-        assert len(canvas_tc) > 0
-        assert canvas_tc[0].type_checking_only is True
+        assert not [
+            imported
+            for imported in p_imports
+            if imported.target_id == "M09"
+        ]
 
         a_imports = [i for i in all_imports if i.file == autosave_file]
         assert not [
