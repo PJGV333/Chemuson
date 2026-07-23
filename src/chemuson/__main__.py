@@ -26,7 +26,7 @@ def main() -> None:
         print(get_app_version())
         return
 
-    from chemuson.gui.main_window import run_app
+    from chemuson.app.bootstrap import run_app
 
     run_app()
 

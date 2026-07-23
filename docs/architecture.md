@@ -12,9 +12,13 @@ Este documento describe los límites actuales del código para que futuras limpi
 | Entrada | Ubicación | Responsabilidad |
 | --- | --- | --- |
 | `chemuson.__main__:main` | `src/chemuson/__main__.py` | Parser CLI mínimo, `--version` y arranque diferido de la GUI. |
+| Composition root gráfico | `src/chemuson/app/bootstrap.py` | Construcción de `QApplication`, crash reporter, ventana y ciclo de vida. |
 | Script de consola `chemuson` | `pyproject.toml`, `[project.scripts]` | Entry point oficial instalado por packaging: `chemuson = "chemuson.__main__:main"`. |
 
-La GUI se importa de forma diferida desde `main()` para que `chemuson --version` no cargue PyQt6 ni subsistemas pesados.
+El composition root se importa de forma diferida desde `main()` para que
+importar el entry point, solicitar ayuda o ejecutar `chemuson --version` no
+cargue PyQt6 ni subsistemas pesados. `chemuson.app` pertenece a M19 y es una
+capa terminal: ningún módulo M00–M18 puede depender del bootstrap.
 
 ## Paquetes principales
 
@@ -193,7 +197,7 @@ compatibilidad estructural.
 
 ## Deuda temporal
 
-El catálogo conserva ocho excepciones temporales revisadas: seis de M01 y dos
-de M03. M15 no tiene dependencias ChemUSON ni excepciones; la persistencia de
-autosave se inyecta desde la composición GUI y el canvas se representa por un
-contrato estructural opaco.
+El catálogo mantiene un baseline vacío: no existen `temporary_exceptions` ni
+dependencias circulares activas. Cualquier nueva desviación deberá justificarse
+en un OpenSpec, registrarse explícitamente en `architecture/modules.yml` y
+quedar acompañada por una condición verificable de eliminación.
