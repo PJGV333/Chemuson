@@ -674,6 +674,10 @@ class CanvasStructureMixin:
         self.refresh_aromatic_circles()
         self.refresh_numbering_opacity()
 
+    def rebuild_persistence_view(self) -> None:
+        """Rebuild visual canvas items after persistence restores the model."""
+        self._rebuild_items_from_model()
+
     def clear_canvas(self) -> None:
         """Método auxiliar para clear canvas.
 

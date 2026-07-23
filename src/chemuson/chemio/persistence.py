@@ -7,11 +7,20 @@ de la interfaz para reconstruir el lienzo al abrir un archivo.
 from __future__ import annotations
 import json
 import os
-from typing import Any, Dict, TYPE_CHECKING
+from typing import Any, Dict, Protocol
 from chemuson.core.model import MolGraph, BondStyle, BondStereo
 
-if TYPE_CHECKING:
-    from chemuson.gui.canvas import ChemusonCanvas
+
+class PersistenceDocument(Protocol):
+    """Structural document surface required to serialize and restore CMSN files."""
+
+    model: MolGraph
+
+    def get_persistence_data(self) -> Dict[str, Any]: ...
+
+    def load_persistence_data(self, data: Dict[str, Any]) -> None: ...
+
+    def rebuild_persistence_view(self) -> None: ...
 
 class PersistenceManager:
     """Gestiona el guardado y carga de archivos `.cmsn` de Chemuson."""
@@ -73,11 +82,11 @@ class PersistenceManager:
         return a1_id
 
     @staticmethod
-    def save_to_dict(canvas: 'ChemusonCanvas') -> Dict[str, Any]:
+    def save_to_dict(document: PersistenceDocument) -> Dict[str, Any]:
         """Serializa el estado del canvas y su modelo en un diccionario.
 
         Args:
-            canvas: Instancia activa del lienzo de Chemuson.
+            document: Documento activo de Chemuson.
 
         Returns:
             Diccionario serializable con información de modelo y GUI.
@@ -85,7 +94,7 @@ class PersistenceManager:
         Side Effects:
             No tiene efectos laterales; solo lee el estado del canvas.
         """
-        graph = canvas.model
+        graph = document.model
         
         # 1. Serializar MolGraph (átomos y enlaces)
         atoms_data = []
@@ -149,7 +158,7 @@ class PersistenceManager:
             })
             
         # 2. Serializar elementos del canvas (flechas, brackets, texto)
-        canvas_data = canvas.get_persistence_data()
+        canvas_data = document.get_persistence_data()
         
         # 3. Combinar todo en un único documento
         return {
@@ -165,12 +174,12 @@ class PersistenceManager:
         }
 
     @staticmethod
-    def load_from_dict(data: Dict[str, Any], canvas: 'ChemusonCanvas') -> None:
+    def load_from_dict(data: Dict[str, Any], document: PersistenceDocument) -> None:
         """Restaura el estado del canvas y el modelo desde un diccionario.
 
         Args:
             data: Diccionario de estado (resultado de `save_to_dict`).
-            canvas: Instancia de lienzo donde se cargará la información.
+            document: Documento donde se cargará la información.
 
         Raises:
             ValueError: Si el archivo no corresponde a Chemuson.
@@ -182,11 +191,11 @@ class PersistenceManager:
             raise ValueError("Not a valid Chemuson file")
             
         # 1. Restaurar MolGraph
-        canvas.model.clear()
+        document.model.clear()
         model_data = data.get("model", {})
         
         for atom_d in model_data.get("atoms", []):
-            canvas.model.add_atom(
+            document.model.add_atom(
                 element=atom_d["element"],
                 x=atom_d["x"],
                 y=atom_d["y"],
@@ -223,14 +232,14 @@ class PersistenceManager:
             donor = bond_d.get("donor_atom_id")
             if style == BondStyle.COORDINATION:
                 donor = PersistenceManager._infer_coordination_donor(
-                    canvas.model,
+                    document.model,
                     a1_id,
                     a2_id,
                     preferred=donor,
                 )
             else:
                 donor = None
-            canvas.model.add_bond(
+            document.model.add_bond(
                 a1_id=a1_id,
                 a2_id=a2_id,
                 order=bond_d.get("order", 1),
@@ -255,43 +264,43 @@ class PersistenceManager:
                 opacity=bond_d.get("opacity"),
             )
             
-        canvas.model._next_atom_id = model_data.get("_next_atom_id", canvas.model._next_atom_id)
-        canvas.model._next_bond_id = model_data.get("_next_bond_id", canvas.model._next_bond_id)
+        document.model._next_atom_id = model_data.get("_next_atom_id", document.model._next_atom_id)
+        document.model._next_bond_id = model_data.get("_next_bond_id", document.model._next_bond_id)
         
         # 2. Restaurar elementos del canvas y preferencias visuales
-        canvas.load_persistence_data(data.get("canvas", {}))
+        document.load_persistence_data(data.get("canvas", {}))
         
         # 3. Reconstrucción visual de moléculas en el lienzo
-        canvas._rebuild_items_from_model()
+        document.rebuild_persistence_view()
 
     @staticmethod
-    def save_to_file(filepath: str, canvas: 'ChemusonCanvas') -> None:
+    def save_to_file(filepath: str, document: PersistenceDocument) -> None:
         """Guarda el estado del canvas en un archivo `.cmsn`.
 
         Args:
             filepath: Ruta de destino.
-            canvas: Instancia del lienzo a serializar.
+            document: Documento a serializar.
 
         Side Effects:
             Escribe en disco el archivo indicado.
         """
-        data = PersistenceManager.save_to_dict(canvas)
+        data = PersistenceManager.save_to_dict(document)
         temp_path = f"{filepath}.tmp"
         with open(temp_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2)
         os.replace(temp_path, filepath)
 
     @staticmethod
-    def load_from_file(filepath: str, canvas: 'ChemusonCanvas') -> None:
+    def load_from_file(filepath: str, document: PersistenceDocument) -> None:
         """Carga un archivo `.cmsn` y restaura el lienzo.
 
         Args:
             filepath: Ruta del archivo de entrada.
-            canvas: Instancia del lienzo donde se cargará el estado.
+            document: Documento donde se cargará el estado.
 
         Side Effects:
             Lee desde disco y modifica el canvas.
         """
         with open(filepath, 'r', encoding='utf-8') as f:
             data = json.load(f)
-        PersistenceManager.load_from_dict(data, canvas)
+        PersistenceManager.load_from_dict(data, document)
