@@ -36,3 +36,10 @@ Fecha: 2026-07-23
 No se modificaron algoritmos, thresholds, controllers, canvas, renderizado,
 química, persistencia, formatos, acciones ni estilos. El cambio requiere una
 prueba manual en Qt real antes de archivarse o fusionarse.
+
+## Prueba manual
+
+- El usuario ejecutó Chemuson desde la rama publicada en un entorno Qt real.
+- Confirmó el 23 de julio de 2026 que la aplicación inicia y funciona
+  correctamente.
+- Autorizó la integración en `main`, realizada antes de este cierre formal.

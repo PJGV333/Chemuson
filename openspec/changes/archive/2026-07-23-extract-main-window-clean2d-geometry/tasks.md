@@ -25,4 +25,4 @@
 
 ## 5. Revisión y archivo
 
-- [ ] 5.1 Publicar para prueba manual; archivar sólo después de aprobación explícita.
+- [x] 5.1 Publicar para prueba manual; archivar sólo después de aprobación explícita.
