@@ -111,6 +111,15 @@ from .canvas_constants import (
     WAVY_ANCHOR_LENGTH_ROLE,
     WAVY_ANCHOR_ROLE,
 )
+from .selection_geometry import (
+    normalize_custom_stroke,
+    normalize_label_scale,
+    optional_float_equal,
+    point_equal,
+    rotate_scene_point,
+    scale_point_from_anchor,
+    signed_angle_delta_deg,
+)
 
 class CanvasSelectionMixin:
     def _delete_selection(
@@ -2363,23 +2372,8 @@ class CanvasSelectionMixin:
                     stack.append(bond.a1_id)
         return visited
 
-    @staticmethod
-    def _signed_angle_delta_deg(start_deg: float, end_deg: float) -> float:
-        """Devuelve el delta angular firmado mínimo `end - start`."""
-        return (float(end_deg) - float(start_deg) + 180.0) % 360.0 - 180.0
-
-    @staticmethod
-    def _rotate_scene_point(point: QPointF, center: QPointF, delta_deg: float) -> QPointF:
-        """Rota un punto del lienzo alrededor de un centro."""
-        rad = math.radians(float(delta_deg))
-        dx = point.x() - center.x()
-        dy = point.y() - center.y()
-        cos_t = math.cos(rad)
-        sin_t = math.sin(rad)
-        return QPointF(
-            center.x() + dx * cos_t - dy * sin_t,
-            center.y() + dx * sin_t + dy * cos_t,
-        )
+    _signed_angle_delta_deg = staticmethod(signed_angle_delta_deg)
+    _rotate_scene_point = staticmethod(rotate_scene_point)
 
     def _selected_single_bond_id(self) -> Optional[int]:
         """Devuelve el único enlace seleccionado si existe."""
@@ -3645,37 +3639,17 @@ class CanvasSelectionMixin:
         self._release_interaction_mouse()
         self._update_selection_overlay()
 
-    @staticmethod
-    def _optional_float_equal(a: Optional[float], b: Optional[float], tol: float = 0.05) -> bool:
-        """Compara dos flotantes opcionales con tolerancia visual."""
-        if a is None and b is None:
-            return True
-        if a is None or b is None:
-            return False
-        return abs(float(a) - float(b)) <= tol
-
-    @staticmethod
-    def _point_equal(a: QPointF, b: QPointF, tol: float = 1e-4) -> bool:
-        """Compara dos puntos con tolerancia."""
-        return abs(a.x() - b.x()) <= tol and abs(a.y() - b.y()) <= tol
-
-    @staticmethod
-    def _scale_point_from_anchor(anchor: QPointF, point: QPointF, scale: float) -> QPointF:
-        """Escala un punto alrededor de un ancla."""
-        return QPointF(
-            anchor.x() + (point.x() - anchor.x()) * scale,
-            anchor.y() + (point.y() - anchor.y()) * scale,
-        )
-
-    def _normalize_label_scale(self, value: float) -> Optional[float]:
-        """Normaliza una escala local de etiqueta para herencia/global."""
-        scale = max(0.2, float(value))
-        return None if abs(scale - 1.0) < 0.02 else scale
+    _optional_float_equal = staticmethod(optional_float_equal)
+    _point_equal = staticmethod(point_equal)
+    _scale_point_from_anchor = staticmethod(scale_point_from_anchor)
+    _normalize_label_scale = staticmethod(normalize_label_scale)
 
     def _normalize_custom_stroke(self, value: float) -> Optional[float]:
         """Convierte un grosor efectivo en override local o herencia."""
-        stroke = max(0.6, float(value))
-        return None if abs(stroke - float(self.drawing_style.stroke_px)) < 0.05 else stroke
+        return normalize_custom_stroke(
+            value,
+            float(self.drawing_style.stroke_px),
+        )
 
     @staticmethod
     def _text_effective_width(item: TextAnnotationItem) -> float:

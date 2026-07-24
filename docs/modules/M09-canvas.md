@@ -10,22 +10,21 @@ La clase `ChemusonCanvas` se construye mediante composición de submixins. Sus b
 
 `CanvasInputMixin` → `CanvasSelectionMixin` → `CanvasTextMixin` → `CanvasRenderMixin` → `CanvasStructureMixin` → `QGraphicsView`.
 
-**`CanvasInputMixin`** agrupa 6 sub-mixins para la entrada de usuario. **`CanvasToolsBondingMixin`** (incluido como parte de `CanvasInputMixin`) agrega 5 sub-mixins de bonding. El inventario verifica 20 archivos en el directorio `canvas/`. Cada instancia de `ChemusonCanvas` crea y posee su propio `self.undo_stack = QUndoStack(self)`.
+**`CanvasInputMixin`** agrupa 6 sub-mixins para la entrada de usuario. **`CanvasToolsBondingMixin`** (incluido como parte de `CanvasInputMixin`) agrega 5 sub-mixins de bonding. El inventario verifica 21 archivos Python en el directorio `canvas/`. Cada instancia de `ChemusonCanvas` crea y posee su propio `self.undo_stack = QUndoStack(self)`.
 
 ## Inventario de Archivos Relacionados
 
-El canvas y su lógica de soporte se distribuyen en 20 archivos:
+El paquete del canvas contiene 21 archivos Python: `__init__.py` y los
+siguientes 20 módulos:
 
 - `src/chemuson/gui/canvas/canvas_view.py`: Clase principal `ChemusonCanvas` (1035 líneas).
 - `src/chemuson/gui/canvas/canvas_constants.py`: Constantes de interacción y roles.
-- `src/chemuson/gui/canvas/canvas_selection.py`: Lógica de selección y hit testing (5154 líneas).
+- `src/chemuson/gui/canvas/canvas_selection.py`: Lógica de selección y hit testing (5128 líneas).
+- `src/chemuson/gui/canvas/selection_geometry.py`: Geometría de valores y normalizaciones puras usadas por selección.
 - `src/chemuson/gui/canvas/canvas_text.py`: Gestión de etiquetas de texto.
 - `src/chemuson/gui/canvas/canvas_render.py`: Lógica de dibujo y exportación.
-- `src/chemuson/gui/canvas/canvas_structure.py`: Sincronización modelo-escena (3875 líneas).
+- `src/chemuson/gui/canvas/canvas_structure.py`: Sincronización modelo-escena (3879 líneas).
 - `src/chemuson/gui/canvas/canvas_input.py`: Manejo de eventos de entrada.
-- `src/chemuson/gui/canvas/canvas_commands.py`: Implementación de comandos de edición.
-- `src/chemuson/gui/canvas/canvas_items.py`: Implementación de los elementos gráficos.
-- `src/chemuson/gui/canvas/canvas_annotations.py`: Manejo de anotaciones y formas.
 - `src/chemuson/gui/canvas/canvas_tools_bonding.py`: Sub-mixin para enlaces.
 - `src/chemuson/gui/canvas/canvas_bond_drag.py`: Sub-mixin de drag para enlaces.
 - `src/chemuson/gui/canvas/canvas_bond_geometry.py`: Geometría de enlaces.
@@ -38,7 +37,6 @@ El canvas y su lógica de soporte se distribuyen en 20 archivos:
 - `src/chemuson/gui/canvas/canvas_tools_annotations.py`: Sub-mixin para anotaciones.
 - `src/chemuson/gui/canvas/canvas_tools_rings_chains.py`: Sub-mixin para anillos/cadenas.
 - `src/chemuson/gui/canvas/canvas_selection_input.py`: Sub-mixin de entrada para selección.
-- `src/chemuson/gui/canvas/canvas_selection_item.py`: Lógica de interacción con items seleccionados.
 
 ## Estado Compartido y Flujo de Datos
 
@@ -93,7 +91,7 @@ El canvas importa los siguientes módulos de fuera de `canvas/`:
 - **Complejidad de Mixins**: El orden del MRO es crítico; un cambio en la jerarquía de herencia puede romper la propagación de eventos.
 - **Interacción con el Modelo**: La sincronización entre la vista gráfica y el modelo químico es una zona de alta sensibilidad a regresiones.
 - **Rendimiento de la Escena**: La gestión de miles de elementos gráficos y su actualización puede afectar la fluidez de la UI.
-- **Archivos grandes**: `canvas_selection.py` (5154 líneas), `canvas_structure.py` (3875 líneas), `items.py` (5704 líneas).
+- **Archivos grandes**: `canvas_selection.py` (5128 líneas), `canvas_structure.py` (3879 líneas), `items.py` (5704 líneas).
 
 ## Extracciones Futuras
 
