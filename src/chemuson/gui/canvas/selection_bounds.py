@@ -9,7 +9,6 @@ renderizado, comandos, diálogos o controladores.
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from typing import Any
 
 from PyQt6.QtCore import QRectF, Qt
 
@@ -34,15 +33,11 @@ def resolve_selected_atom_ids(
 
     Returns:
         Conjunto estable de IDs de átomos.
-
-    Raises:
-        RuntimeError: Si ``model.bonds`` no es accesible.
     """
     result: set[int] = set(selected_atom_ids)
-    bonds = model.bonds
     for bond_id in selected_bond_ids:
-        bond = bonds.get(bond_id)
-        if bond is not None:
+        if bond_id in model.bonds:
+            bond = model.get_bond(bond_id)
             result.add(bond.a1_id)
             result.add(bond.a2_id)
     return result
@@ -51,12 +46,12 @@ def resolve_selected_atom_ids(
 def selection_bounds(
     *,
     scene: object,
-    atom_items: Mapping[int, Any],
-    bond_items: Mapping[int, Any],
-    implicit_h_overlays: Mapping[int, Iterable[tuple[Any, Any]]],
+    atom_items: Mapping[int, object],
+    bond_items: Mapping[int, object],
+    implicit_h_overlays: Mapping[int, Iterable[tuple[object, object]]],
     atom_ids: Iterable[int] = (),
     bond_ids: Iterable[int] = (),
-    graphic_items: Iterable[Any] = (),
+    graphic_items: Iterable[object] = (),
 ) -> QRectF | None:
     """Calcular el bounding box visual de una selección.
 
@@ -92,67 +87,34 @@ def selection_bounds(
         item = atom_items.get(atom_id)
         if item is None:
             return
-        try:
-            if item.scene() is not scene:
-                return
-        except (AttributeError, RuntimeError):
+        if item.scene() is not scene:
             return
 
         # Cuerpo del átomo: solo si tiene pen o brush visibles
-        try:
-            pen_style = item.pen().style()
-            brush_style = item.brush().style()
-        except (AttributeError, RuntimeError):
-            return
+        pen_style = item.pen().style()
+        brush_style = item.brush().style()
 
         if pen_style != Qt.PenStyle.NoPen or brush_style != Qt.BrushStyle.NoBrush:
-            try:
-                _extend(item.sceneBoundingRect())
-            except (AttributeError, RuntimeError):
-                pass
+            _extend(item.sceneBoundingRect())
 
         # Etiqueta visible
-        try:
-            label = item.label
-            if label is not None and label.isVisible():
-                try:
-                    _extend(label.sceneBoundingRect())
-                except (AttributeError, RuntimeError):
-                    pass
-        except (AttributeError, RuntimeError):
-            pass
+        label = item.label
+        if label is not None and label.isVisible():
+            _extend(label.sceneBoundingRect())
 
         # Etiqueta de carga visible
-        try:
-            charge_label = item.charge_label
-            if charge_label is not None and charge_label.isVisible():
-                try:
-                    _extend(charge_label.sceneBoundingRect())
-                except (AttributeError, RuntimeError):
-                    pass
-        except (AttributeError, RuntimeError):
-            pass
+        charge_label = item.charge_label
+        if charge_label is not None and charge_label.isVisible():
+            _extend(charge_label.sceneBoundingRect())
 
         # Hidrógenos implícitos
         overlays = implicit_h_overlays.get(atom_id)
         if overlays:
             for line_item, text_item in overlays:
-                try:
-                    if line_item.scene() is scene and line_item.isVisible():
-                        try:
-                            _extend(line_item.sceneBoundingRect())
-                        except (AttributeError, RuntimeError):
-                            pass
-                except (AttributeError, RuntimeError):
-                    pass
-                try:
-                    if text_item.scene() is scene and text_item.isVisible():
-                        try:
-                            _extend(text_item.sceneBoundingRect())
-                        except (AttributeError, RuntimeError):
-                            pass
-                except (AttributeError, RuntimeError):
-                    pass
+                if line_item.scene() is scene and line_item.isVisible():
+                    _extend(line_item.sceneBoundingRect())
+                if text_item.scene() is scene and text_item.isVisible():
+                    _extend(text_item.sceneBoundingRect())
 
     # Átomos
     for atom_id in atom_ids:
@@ -162,20 +124,11 @@ def selection_bounds(
     for bond_id in bond_ids:
         bond_item = bond_items.get(bond_id)
         if bond_item is not None:
-            try:
-                _extend(bond_item.sceneBoundingRect())
-            except (AttributeError, RuntimeError):
-                pass
+            _extend(bond_item.sceneBoundingRect())
 
     # Graphic items adicionales
     for item in graphic_items:
-        try:
-            if item.scene() is scene:
-                try:
-                    _extend(item.sceneBoundingRect())
-                except (AttributeError, RuntimeError):
-                    pass
-        except (AttributeError, RuntimeError):
-            pass
+        if item.scene() is scene:
+            _extend(item.sceneBoundingRect())
 
     return rect

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from PyQt6.QtCore import QRectF, Qt
 
 import pytest
@@ -18,10 +20,13 @@ from chemuson.gui.canvas.selection_bounds import (
 
 
 class _ModelStub:
-    """Stub para model.bonds con soporte de get()."""
+    """Stub para model.bonds con soporte de 'in' y get_bond()."""
 
     def __init__(self) -> None:
         self.bonds: dict[int, _BondStub] = {}
+
+    def get_bond(self, bond_id: int) -> _BondStub:
+        return self.bonds[bond_id]
 
 
 class _BondStub:
@@ -504,3 +509,274 @@ def test_selection_bounds_null_rect_ignored() -> None:
         graphic_items=[item],
     )
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Regresiones: resolve_selected_atom_ids con solo enlaces
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_selected_atom_ids_bond_only_includes_end_atoms() -> None:
+    """Seleccionar solo un enlace debe incluir sus dos átomos extremos."""
+    model = _ModelStub()
+    model.bonds[10] = _BondStub(100, 200)
+    result = resolve_selected_atom_ids(
+        selected_atom_ids=[],
+        selected_bond_ids=[10],
+        model=model,
+    )
+    assert result == {100, 200}
+
+
+def test_resolve_selected_atom_ids_mixed_bond_and_atoms() -> None:
+    """Selección mixta de átomos y enlaces debe unir ambos."""
+    model = _ModelStub()
+    model.bonds[10] = _BondStub(100, 200)
+    model.bonds[20] = _BondStub(300, 400)
+    result = resolve_selected_atom_ids(
+        selected_atom_ids=[1, 2],
+        selected_bond_ids=[10, 20],
+        model=model,
+    )
+    assert result == {1, 2, 100, 200, 300, 400}
+
+
+def test_resolve_selected_atom_ids_bond_nonexistent_ignored() -> None:
+    """Enlaces inexistentes en la selección no deben afectar el resultado."""
+    model = _ModelStub()
+    model.bonds[10] = _BondStub(100, 200)
+    result = resolve_selected_atom_ids(
+        selected_atom_ids=[],
+        selected_bond_ids=[10, 999, 888],
+        model=model,
+    )
+    assert result == {100, 200}
+
+
+# ---------------------------------------------------------------------------
+# Regresiones: selección_bounds numérica
+# ---------------------------------------------------------------------------
+
+
+def test_selection_bounds_numerical_union_precision() -> None:
+    """La unión de rects debe producir valores numéricos exactos."""
+    scene = _SceneStub()
+    item1 = _ItemStub(scene=scene, rect=QRectF(0.0, 0.0, 10.5, 20.5))
+    item2 = _ItemStub(scene=scene, rect=QRectF(10.5, 0.0, 15.3, 10.0))
+    result = selection_bounds(
+        scene=scene,
+        atom_items={1: item1, 2: item2},
+        bond_items={},
+        implicit_h_overlays={},
+        atom_ids=[1, 2],
+        bond_ids=[],
+        graphic_items=[],
+    )
+    assert result is not None
+    assert result.x() == pytest.approx(0.0, abs=1e-9)
+    assert result.y() == pytest.approx(0.0, abs=1e-9)
+    assert result.width() == pytest.approx(25.8, abs=1e-9)
+    assert result.height() == pytest.approx(20.5, abs=1e-9)
+
+
+def test_selection_bounds_bond_item_only() -> None:
+    """Solo bond items debe devolver el bbox del enlace."""
+    scene = _SceneStub()
+    bond_item = _ItemStub(scene=scene, rect=QRectF(50.0, 60.0, 25.0, 15.0))
+    result = selection_bounds(
+        scene=scene,
+        atom_items={},
+        bond_items={1: bond_item},
+        implicit_h_overlays={},
+        atom_ids=[],
+        bond_ids=[1],
+        graphic_items=[],
+    )
+    assert result is not None
+    assert result.x() == pytest.approx(50.0)
+    assert result.y() == pytest.approx(60.0)
+    assert result.width() == pytest.approx(25.0)
+    assert result.height() == pytest.approx(15.0)
+
+
+def test_selection_bounds_graphic_items_only() -> None:
+    """Solo graphic items debe devolver el bbox unido."""
+    scene = _SceneStub()
+    g1 = _ItemStub(scene=scene, rect=QRectF(0, 0, 10, 10))
+    g2 = _ItemStub(scene=scene, rect=QRectF(10, 10, 20, 20))
+    result = selection_bounds(
+        scene=scene,
+        atom_items={},
+        bond_items={},
+        implicit_h_overlays={},
+        atom_ids=[],
+        bond_ids=[],
+        graphic_items=[g1, g2],
+    )
+    assert result is not None
+    assert result.x() == pytest.approx(0.0)
+    assert result.y() == pytest.approx(0.0)
+    assert result.width() == pytest.approx(30.0)
+    assert result.height() == pytest.approx(30.0)
+
+
+# ---------------------------------------------------------------------------
+# Regresiones: wrappers de CanvasSelectionMixin
+# ---------------------------------------------------------------------------
+
+
+class _MockState:
+    """Estado mock para CanvasSelectionMixin."""
+    def __init__(self) -> None:
+        self.selected_atoms: list[int] = []
+        self.selected_bonds: list[int] = []
+
+
+class _MockCanvasSelection:
+    """Mixin mock para probar delegación de wrappers."""
+
+    def __init__(self) -> None:
+        self.state = _MockState()
+        self.model = _ModelStub()
+        self.scene = _SceneStub()
+        self.atom_items: dict[int, object] = {}
+        self.bond_items: dict[int, object] = {}
+        self._implicit_h_overlays: dict[int, list] = {}
+
+    def _selected_atom_ids_for_transform(self) -> set[int]:
+        return resolve_selected_atom_ids(
+            selected_atom_ids=self.state.selected_atoms,
+            selected_bond_ids=self.state.selected_bonds,
+            model=self.model,
+        )
+
+    def _selected_items_bbox(self) -> QRectF | None:
+        atom_ids = self._selected_atom_ids_for_transform()
+        return selection_bounds(
+            scene=self.scene,
+            atom_items=self.atom_items,
+            bond_items=self.bond_items,
+            implicit_h_overlays=self._implicit_h_overlays,
+            atom_ids=atom_ids,
+            bond_ids=self.state.selected_bonds,
+            graphic_items=[],
+        )
+
+    def _targets_bbox(
+        self,
+        *,
+        atom_ids: Iterable[int] = (),
+        bond_ids: Iterable[int] = (),
+        text_items: Iterable[object] = (),
+        arrow_items: Iterable[object] = (),
+        bracket_items: Iterable[object] = (),
+        energy_diagram_items: Iterable[object] = (),
+        semantic_diagram_items: Iterable[object] = (),
+        orbital_items: Iterable[object] = (),
+        image_items: Iterable[object] = (),
+    ) -> QRectF | None:
+        graphic_items: list = []
+        for group in (text_items, arrow_items, bracket_items,
+                      energy_diagram_items, semantic_diagram_items,
+                      orbital_items, image_items):
+            graphic_items.extend(group)
+        return selection_bounds(
+            scene=self.scene,
+            atom_items=self.atom_items,
+            bond_items=self.bond_items,
+            implicit_h_overlays=self._implicit_h_overlays,
+            atom_ids=atom_ids,
+            bond_ids=bond_ids,
+            graphic_items=graphic_items,
+        )
+
+
+def test_wrapper_selected_atom_ids_bond_only_includes_end_atoms() -> None:
+    """Seleccionar solo un enlace en el wrapper debe incluir sus dos átomos extremos."""
+    mixin = _MockCanvasSelection()
+    mixin.model.bonds[10] = _BondStub(100, 200)
+    mixin.state.selected_atoms = []
+    mixin.state.selected_bonds = [10]
+    result = mixin._selected_atom_ids_for_transform()
+    assert result == {100, 200}
+
+
+def test_wrapper_selected_items_bbox_includes_selected_annotations() -> None:
+    """_selected_items_bbox del wrapper debe incluir items gráficos seleccionados."""
+    mixin = _MockCanvasSelection()
+    mixin.atom_items = {}
+    mixin.bond_items = {}
+    mixin.state.selected_atoms = []
+    mixin.state.selected_bonds = []
+    # Simular que la selección incluye annotation como graphic_item
+    bbox = mixin._selected_items_bbox()
+    # Debe devolver None si no hay átomos/enlaces seleccionados
+    assert bbox is None
+
+    # Con un átomo seleccionado, el bbox debe calcularse correctamente
+    atom_item = _ItemStub(scene=mixin.scene, rect=QRectF(0, 0, 10, 10))
+    mixin.atom_items = {1: atom_item}
+    mixin.state.selected_atoms = [1]
+    bbox = mixin._selected_items_bbox()
+    assert bbox is not None
+    assert bbox.x() == pytest.approx(0.0)
+
+
+def test_wrapper_targets_bbox_preserves_all_groups() -> None:
+    """_targets_bbox del wrapper debe conservar todos los grupos explícitos."""
+    mixin = _MockCanvasSelection()
+    scene = mixin.scene
+    text_item = _ItemStub(scene=scene, rect=QRectF(0, 0, 10, 10))
+    arrow_item = _ItemStub(scene=scene, rect=QRectF(10, 0, 20, 5))
+    bracket_item = _ItemStub(scene=scene, rect=QRectF(30, 0, 15, 10))
+    energy_item = _ItemStub(scene=scene, rect=QRectF(45, 0, 25, 15))
+    semantic_item = _ItemStub(scene=scene, rect=QRectF(70, 0, 10, 10))
+    orbital_item = _ItemStub(scene=scene, rect=QRectF(80, 0, 15, 10))
+    image_item = _ItemStub(scene=scene, rect=QRectF(95, 0, 20, 20))
+
+    result = mixin._targets_bbox(
+        atom_ids=[],
+        bond_ids=[],
+        text_items=[text_item],
+        arrow_items=[arrow_item],
+        bracket_items=[bracket_item],
+        energy_diagram_items=[energy_item],
+        semantic_diagram_items=[semantic_item],
+        orbital_items=[orbital_item],
+        image_items=[image_item],
+    )
+    assert result is not None
+    assert result.x() == pytest.approx(0.0)
+    assert result.width() == pytest.approx(115.0)
+
+
+def test_wrapper_results_match_selection_bounds_direct() -> None:
+    """Los resultados del wrapper deben coincidir con llamada directa a selection_bounds."""
+    scene = _SceneStub()
+    atom_item = _ItemStub(scene=scene, rect=QRectF(5, 5, 20, 20))
+    bond_item = _ItemStub(scene=scene, rect=QRectF(25, 5, 10, 10))
+
+    direct_result = selection_bounds(
+        scene=scene,
+        atom_items={1: atom_item},
+        bond_items={1: bond_item},
+        implicit_h_overlays={},
+        atom_ids=[1],
+        bond_ids=[1],
+        graphic_items=[],
+    )
+
+    mixin = _MockCanvasSelection()
+    mixin.scene = scene
+    mixin.atom_items = {1: atom_item}
+    mixin.bond_items = {1: bond_item}
+    mixin.state.selected_atoms = [1]
+    mixin.state.selected_bonds = [1]
+    wrapper_result = mixin._selected_items_bbox()
+
+    assert direct_result is not None
+    assert wrapper_result is not None
+    assert direct_result.x() == pytest.approx(wrapper_result.x())
+    assert direct_result.y() == pytest.approx(wrapper_result.y())
+    assert direct_result.width() == pytest.approx(wrapper_result.width())
+    assert direct_result.height() == pytest.approx(wrapper_result.height())

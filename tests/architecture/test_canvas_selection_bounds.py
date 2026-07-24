@@ -41,23 +41,33 @@ def test_selection_bounds_contains_functions() -> None:
 
 
 def test_selection_bounds_no_forbidden_imports() -> None:
-    imports: set[str] = set()
+    """Prohíbe imports por prefijo: QtGui, QtWidgets, commands, dialogs,
+    controllers, items (gui.), modelos de chemio, y otros."""
+    imports: list[str] = []
     for node in _tree(BOUNDS).body:
         if isinstance(node, ast.Import):
-            imports.update(alias.name for alias in node.names)
+            imports.extend(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom):
             module = node.module or ""
-            imports.add(module)
+            imports.append(module)
 
-    forbidden = {
+    forbidden_prefixes = (
         "PyQt6.QtGui",
         "PyQt6.QtWidgets",
         "chemuson.gui.commands",
         "chemuson.gui.dialogs",
         "chemuson.gui.controllers",
-    }
-    assert imports.isdisjoint(forbidden), (
-        f"selection_bounds importa módulos prohibidos: {imports & forbidden}"
+        "chemuson.gui.items",
+        "chemuson.gui.canvas",
+        "chemuson.core.model",
+        "chemuson.chemio",
+    )
+    violated = [
+        imp for imp in imports
+        if any(imp == fp or imp.startswith(fp + ".") or imp.startswith(fp + "/") for fp in forbidden_prefixes)
+    ]
+    assert violated == [], (
+        f"selection_bounds importa módulos prohibidos por prefijo: {violated}"
     )
 
 
@@ -104,12 +114,157 @@ def test_selection_mixin_no_duplicated_extend_logic() -> None:
         for node in cls.body
         if isinstance(node, ast.FunctionDef)
     }
-    # Las funciones extend y extend_atom_bounds internas son definidas dentro de
-    # _selected_items_bbox y _targets_bbox como funciones anidadas, no como
-    # miembros de nivel de clase. Este test verifica que no haya funciones
-    # de nivel de clase llamadas "extend" o "extend_atom_bounds".
     assert "extend" not in func_names, "extend no debe ser método de nivel de clase"
     assert "extend_atom_bounds" not in func_names
+
+
+def test_selected_items_bbox_no_nested_extend_functions() -> None:
+    """_selected_items_bbox no debe contener funciones anidadas extend/_extend
+    ni extend_atom_bounds/_extend_atom_bounds. Debe delegar a selection_bounds."""
+    cls = _selection_class()
+    method = None
+    for node in cls.body:
+        if isinstance(node, ast.FunctionDef) and node.name == "_selected_items_bbox":
+            method = node
+            break
+    assert method is not None, "_selected_items_bbox no existe"
+
+    # Buscar funciones anidadas dentro del cuerpo
+    nested_funcs: list[str] = []
+    for node in ast.walk(method):
+        if isinstance(node, ast.FunctionDef) and node is not method:
+            nested_funcs.append(node.name)
+
+    forbidden_nested = [n for n in nested_funcs if n in (
+        "extend", "_extend", "extend_atom_bounds", "_extend_atom_bounds"
+    )]
+    assert forbidden_nested == [], (
+        f"_selected_items_bbox contiene funciones anidadas prohibidas: {forbidden_nested}"
+    )
+
+
+def test_targets_bbox_no_nested_extend_functions() -> None:
+    """_targets_bbox no debe contener funciones anidadas extend/_extend
+    ni extend_atom_bounds/_extend_atom_bounds. Debe delegar a selection_bounds."""
+    cls = _selection_class()
+    method = None
+    for node in cls.body:
+        if isinstance(node, ast.FunctionDef) and node.name == "_targets_bbox":
+            method = node
+            break
+    assert method is not None, "_targets_bbox no existe"
+
+    nested_funcs: list[str] = []
+    for node in ast.walk(method):
+        if isinstance(node, ast.FunctionDef) and node is not method:
+            nested_funcs.append(node.name)
+
+    forbidden_nested = [n for n in nested_funcs if n in (
+        "extend", "_extend", "extend_atom_bounds", "_extend_atom_bounds"
+    )]
+    assert forbidden_nested == [], (
+        f"_targets_bbox contiene funciones anidadas prohibidas: {forbidden_nested}"
+    )
+
+
+def test_selected_atom_ids_for_transform_calls_resolve() -> None:
+    """_selected_atom_ids_for_transform debe llamar a resolve_selected_atom_ids."""
+    cls = _selection_class()
+    method = None
+    for node in cls.body:
+        if isinstance(node, ast.FunctionDef) and node.name == "_selected_atom_ids_for_transform":
+            method = node
+            break
+    assert method is not None, "_selected_atom_ids_for_transform no existe"
+
+    # Buscar llamadas a resolve_selected_atom_ids
+    found = False
+    for node in ast.walk(method):
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Attribute):
+                if node.func.attr == "resolve_selected_atom_ids":
+                    found = True
+            elif isinstance(node.func, ast.Name):
+                if node.func.id == "resolve_selected_atom_ids":
+                    found = True
+    assert found, "_selected_atom_ids_for_transform no llama a resolve_selected_atom_ids"
+
+
+def test_selected_items_bbox_calls_selection_bounds() -> None:
+    """_selected_items_bbox debe llamar a selection_bounds."""
+    cls = _selection_class()
+    method = None
+    for node in cls.body:
+        if isinstance(node, ast.FunctionDef) and node.name == "_selected_items_bbox":
+            method = node
+            break
+    assert method is not None, "_selected_items_bbox no existe"
+
+    found = False
+    for node in ast.walk(method):
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Attribute):
+                if node.func.attr == "selection_bounds":
+                    found = True
+            elif isinstance(node.func, ast.Name):
+                if node.func.id == "selection_bounds":
+                    found = True
+    assert found, "_selected_items_bbox no llama a selection_bounds"
+
+
+def test_targets_bbox_calls_selection_bounds() -> None:
+    """_targets_bbox debe llamar a selection_bounds."""
+    cls = _selection_class()
+    method = None
+    for node in cls.body:
+        if isinstance(node, ast.FunctionDef) and node.name == "_targets_bbox":
+            method = node
+            break
+    assert method is not None, "_targets_bbox no existe"
+
+    found = False
+    for node in ast.walk(method):
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Attribute):
+                if node.func.attr == "selection_bounds":
+                    found = True
+            elif isinstance(node.func, ast.Name):
+                if node.func.id == "selection_bounds":
+                    found = True
+    assert found, "_targets_bbox no llama a selection_bounds"
+
+
+def test_selection_bounds_no_try_except_attribute_error() -> None:
+    """selection_bounds.py no debe contener try/except AttributeError o
+    try/except RuntimeError que oculten errores."""
+    tree = _tree(BOUNDS)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Try):
+            for handler in node.handlers:
+                if handler.type is not None:
+                    exc_names = []
+                    if isinstance(handler.type, ast.Name):
+                        exc_names.append(handler.type.id)
+                    elif isinstance(handler.type, ast.Tuple):
+                        for elt in handler.type.elts:
+                            if isinstance(elt, ast.Name):
+                                exc_names.append(elt.id)
+                    for exc in exc_names:
+                        assert exc not in (
+                            "AttributeError", "RuntimeError"
+                        ), f"try/except {exc} encontrado en selection_bounds.py"
+
+
+def test_selection_bounds_no_any_typing() -> None:
+    """selection_bounds.py no debe importar typing.Any."""
+    tree = _tree(BOUNDS)
+    for node in tree.body:
+        if isinstance(node, ast.ImportFrom):
+            if node.module == "typing":
+                names = {alias.name for alias in node.names}
+                assert "Any" not in names, (
+                    "selection_bounds.py importa typing.Any"
+                )
 
 
 def test_catalog_records_new_module() -> None:
@@ -134,7 +289,6 @@ def test_catalog_no_new_exceptions() -> None:
     catalog = yaml.safe_load(CATALOG.read_text(encoding="utf-8"))
     m09 = next(m for m in catalog["modules"] if m["id"] == "M09")
 
-    # Verificar que no haya excepciones ni ciclos no previstos
     assert m09["temporary_exceptions"] == []
 
 
@@ -144,7 +298,6 @@ def test_canvas_selection_delegates_to_selection_bounds() -> None:
     import_found = False
     for node in tree.body:
         if isinstance(node, ast.ImportFrom):
-            # Relativo (.selection_bounds) o absoluto (selection_bounds)
             module = node.module or ""
             if "selection_bounds" in module:
                 import_found = True
@@ -153,3 +306,30 @@ def test_canvas_selection_delegates_to_selection_bounds() -> None:
                 assert "selection_bounds" in names, "Falta selection_bounds"
                 break
     assert import_found, "canvas_selection.py no importa desde selection_bounds"
+
+
+def test_resolve_selected_atom_ids_uses_model_bonds_in_get_bond() -> None:
+    """resolve_selected_atom_ids debe usar el patrón
+    'if bond_id in model.bonds: bond = model.get_bond(bond_id)'."""
+    tree = _tree(BOUNDS)
+    func = None
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name == "resolve_selected_atom_ids":
+            func = node
+            break
+    assert func is not None, "resolve_selected_atom_ids no existe"
+
+    # Verificar que hay un 'if' con 'in' y luego 'get_bond'
+    has_in_check = False
+    has_get_bond = False
+    for node in ast.walk(func):
+        if isinstance(node, ast.Compare):
+            for op in node.ops:
+                if isinstance(op, ast.In):
+                    has_in_check = True
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Attribute) and node.func.attr == "get_bond":
+                has_get_bond = True
+
+    assert has_in_check, "resolve_selected_atom_ids no verifica 'in model.bonds'"
+    assert has_get_bond, "resolve_selected_atom_ids no llama a 'model.get_bond()'"
