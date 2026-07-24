@@ -2,16 +2,26 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
-
 from PyQt6.QtCore import QRectF, Qt
 
 import pytest
+from unittest.mock import MagicMock
 
 from chemuson.gui.canvas.selection_bounds import (
     resolve_selected_atom_ids,
     selection_bounds,
 )
+from chemuson.gui.canvas.canvas_selection import CanvasSelectionMixin
+from chemuson.gui.composite_diagram_item import CompositeDiagramItem
+from chemuson.gui.items import (
+    ArrowItem,
+    BracketItem,
+    EnergyDiagramItem,
+    ImageAnnotationItem,
+    OrbitalAnnotationItem,
+    TextAnnotationItem,
+)
+
 
 
 # ---------------------------------------------------------------------------
@@ -621,80 +631,25 @@ def test_selection_bounds_graphic_items_only() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Regresiones: wrappers de CanvasSelectionMixin
+# Regresiones: wrappers reales de CanvasSelectionMixin
 # ---------------------------------------------------------------------------
 
 
-class _MockState:
-    """Estado mock para CanvasSelectionMixin."""
-    def __init__(self) -> None:
-        self.selected_atoms: list[int] = []
-        self.selected_bonds: list[int] = []
-
-
-class _MockCanvasSelection:
-    """Mixin mock para probar delegación de wrappers."""
-
-    def __init__(self) -> None:
-        self.state = _MockState()
-        self.model = _ModelStub()
-        self.scene = _SceneStub()
-        self.atom_items: dict[int, object] = {}
-        self.bond_items: dict[int, object] = {}
-        self._implicit_h_overlays: dict[int, list] = {}
-
-    def _selected_atom_ids_for_transform(self) -> set[int]:
-        return resolve_selected_atom_ids(
-            selected_atom_ids=self.state.selected_atoms,
-            selected_bond_ids=self.state.selected_bonds,
-            model=self.model,
-        )
-
-    def _selected_items_bbox(self) -> QRectF | None:
-        atom_ids = self._selected_atom_ids_for_transform()
-        return selection_bounds(
-            scene=self.scene,
-            atom_items=self.atom_items,
-            bond_items=self.bond_items,
-            implicit_h_overlays=self._implicit_h_overlays,
-            atom_ids=atom_ids,
-            bond_ids=self.state.selected_bonds,
-            graphic_items=[],
-        )
-
-    def _targets_bbox(
-        self,
-        *,
-        atom_ids: Iterable[int] = (),
-        bond_ids: Iterable[int] = (),
-        text_items: Iterable[object] = (),
-        arrow_items: Iterable[object] = (),
-        bracket_items: Iterable[object] = (),
-        energy_diagram_items: Iterable[object] = (),
-        semantic_diagram_items: Iterable[object] = (),
-        orbital_items: Iterable[object] = (),
-        image_items: Iterable[object] = (),
-    ) -> QRectF | None:
-        graphic_items: list = []
-        for group in (text_items, arrow_items, bracket_items,
-                      energy_diagram_items, semantic_diagram_items,
-                      orbital_items, image_items):
-            graphic_items.extend(group)
-        return selection_bounds(
-            scene=self.scene,
-            atom_items=self.atom_items,
-            bond_items=self.bond_items,
-            implicit_h_overlays=self._implicit_h_overlays,
-            atom_ids=atom_ids,
-            bond_ids=bond_ids,
-            graphic_items=graphic_items,
-        )
+def _make_mock_graphic_item(item_class: type, scene_obj: object, rect: QRectF) -> MagicMock:
+    """Crear un MagicMock que pase isinstance(item_class) con un rect dado."""
+    item = MagicMock()
+    item.__class__ = item_class
+    item.scene.return_value = scene_obj
+    item.sceneBoundingRect.return_value = rect
+    return item
 
 
 def test_wrapper_selected_atom_ids_bond_only_includes_end_atoms() -> None:
-    """Seleccionar solo un enlace en el wrapper debe incluir sus dos átomos extremos."""
-    mixin = _MockCanvasSelection()
+    """Seleccionar solo un enlace en el wrapper real debe incluir sus dos átomos extremos."""
+    mixin = CanvasSelectionMixin()
+    mixin.model = _ModelStub()
     mixin.model.bonds[10] = _BondStub(100, 200)
+    mixin.state = MagicMock()
     mixin.state.selected_atoms = []
     mixin.state.selected_bonds = [10]
     result = mixin._selected_atom_ids_for_transform()
@@ -702,37 +657,55 @@ def test_wrapper_selected_atom_ids_bond_only_includes_end_atoms() -> None:
 
 
 def test_wrapper_selected_items_bbox_includes_selected_annotations() -> None:
-    """_selected_items_bbox del wrapper debe incluir items gráficos seleccionados."""
-    mixin = _MockCanvasSelection()
+    """_selected_items_bbox del wrapper real incluye TextAnnotationItem seleccionado."""
+    mixin = CanvasSelectionMixin()
+    mixin.model = _ModelStub()
+    mixin.scene = MagicMock()
     mixin.atom_items = {}
     mixin.bond_items = {}
+    mixin._implicit_h_overlays = {}
+    mixin.state = MagicMock()
     mixin.state.selected_atoms = []
     mixin.state.selected_bonds = []
-    # Simular que la selección incluye annotation como graphic_item
-    bbox = mixin._selected_items_bbox()
-    # Debe devolver None si no hay átomos/enlaces seleccionados
-    assert bbox is None
 
-    # Con un átomo seleccionado, el bbox debe calcularse correctamente
+    # Crear una anotación que pase isinstance(TextAnnotationItem)
+    # y que devuelva el mismo objeto mixin.scene desde .scene() para el check "is"
+    annotation = _make_mock_graphic_item(TextAnnotationItem, mixin.scene, QRectF(100, 100, 30, 15))
+    mixin.scene.selectedItems.return_value = [annotation]
+
+    bbox = mixin._selected_items_bbox()
+    assert bbox is not None
+    assert bbox.x() == pytest.approx(100.0)
+    assert bbox.width() == pytest.approx(30.0)
+
+    # También debe incluir un átomo seleccionado además de la anotación
     atom_item = _ItemStub(scene=mixin.scene, rect=QRectF(0, 0, 10, 10))
     mixin.atom_items = {1: atom_item}
     mixin.state.selected_atoms = [1]
+    mixin.state.selected_bonds = []
+    mixin.scene.selectedItems.return_value = [annotation]
+
     bbox = mixin._selected_items_bbox()
     assert bbox is not None
     assert bbox.x() == pytest.approx(0.0)
+    assert bbox.width() == pytest.approx(130.0)
 
 
 def test_wrapper_targets_bbox_preserves_all_groups() -> None:
-    """_targets_bbox del wrapper debe conservar todos los grupos explícitos."""
-    mixin = _MockCanvasSelection()
-    scene = mixin.scene
-    text_item = _ItemStub(scene=scene, rect=QRectF(0, 0, 10, 10))
-    arrow_item = _ItemStub(scene=scene, rect=QRectF(10, 0, 20, 5))
-    bracket_item = _ItemStub(scene=scene, rect=QRectF(30, 0, 15, 10))
-    energy_item = _ItemStub(scene=scene, rect=QRectF(45, 0, 25, 15))
-    semantic_item = _ItemStub(scene=scene, rect=QRectF(70, 0, 10, 10))
-    orbital_item = _ItemStub(scene=scene, rect=QRectF(80, 0, 15, 10))
-    image_item = _ItemStub(scene=scene, rect=QRectF(95, 0, 20, 20))
+    """_targets_bbox del wrapper real conserva todos los grupos explícitos."""
+    mixin = CanvasSelectionMixin()
+    mixin.scene = MagicMock()
+    mixin.atom_items = {}
+    mixin.bond_items = {}
+    mixin._implicit_h_overlays = {}
+
+    text_item = _make_mock_graphic_item(TextAnnotationItem, mixin.scene, QRectF(0, 0, 10, 10))
+    arrow_item = _make_mock_graphic_item(ArrowItem, mixin.scene, QRectF(10, 0, 20, 5))
+    bracket_item = _make_mock_graphic_item(BracketItem, mixin.scene, QRectF(30, 0, 15, 10))
+    energy_item = _make_mock_graphic_item(EnergyDiagramItem, mixin.scene, QRectF(45, 0, 25, 15))
+    semantic_item = _make_mock_graphic_item(CompositeDiagramItem, mixin.scene, QRectF(70, 0, 10, 10))
+    orbital_item = _make_mock_graphic_item(OrbitalAnnotationItem, mixin.scene, QRectF(80, 0, 15, 10))
+    image_item = _make_mock_graphic_item(ImageAnnotationItem, mixin.scene, QRectF(95, 0, 20, 20))
 
     result = mixin._targets_bbox(
         atom_ids=[],
@@ -751,8 +724,8 @@ def test_wrapper_targets_bbox_preserves_all_groups() -> None:
 
 
 def test_wrapper_results_match_selection_bounds_direct() -> None:
-    """Los resultados del wrapper deben coincidir con llamada directa a selection_bounds."""
-    scene = _SceneStub()
+    """Los resultados del wrapper real deben coincidir con llamada directa a selection_bounds."""
+    scene = MagicMock()
     atom_item = _ItemStub(scene=scene, rect=QRectF(5, 5, 20, 20))
     bond_item = _ItemStub(scene=scene, rect=QRectF(25, 5, 10, 10))
 
@@ -766,10 +739,13 @@ def test_wrapper_results_match_selection_bounds_direct() -> None:
         graphic_items=[],
     )
 
-    mixin = _MockCanvasSelection()
+    mixin = CanvasSelectionMixin()
+    mixin.model = _ModelStub()
     mixin.scene = scene
     mixin.atom_items = {1: atom_item}
     mixin.bond_items = {1: bond_item}
+    mixin._implicit_h_overlays = {}
+    mixin.state = MagicMock()
     mixin.state.selected_atoms = [1]
     mixin.state.selected_bonds = [1]
     wrapper_result = mixin._selected_items_bbox()

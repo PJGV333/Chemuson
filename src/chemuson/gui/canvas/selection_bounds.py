@@ -73,7 +73,7 @@ def selection_bounds(
     rect: QRectF | None = None
 
     def _extend(candidate: QRectF) -> None:
-        """Amiar ``rect`` con ``candidate`` si es válido y no nulo."""
+        """Ampliar ``rect`` con ``candidate`` si es válido y no nulo."""
         nonlocal rect
         if not candidate.isValid() or candidate.isNull():
             return
