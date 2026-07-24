@@ -120,6 +120,10 @@ from .selection_geometry import (
     scale_point_from_anchor,
     signed_angle_delta_deg,
 )
+from .selection_bounds import (
+    resolve_selected_atom_ids,
+    selection_bounds,
+)
 
 class CanvasSelectionMixin:
     def _delete_selection(
@@ -1974,71 +1978,29 @@ class CanvasSelectionMixin:
             self._selection_scale_handle = None
 
     def _selected_items_bbox(self) -> Optional[QRectF]:
-        """Método auxiliar para  selected items bbox.
+        """Método auxiliar para selected items bbox.
 
         Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la escena.
+            QRectF con el bounding box unido, o None si no hay límites válidos.
         """
-        rect: Optional[QRectF] = None
+        atom_ids = self._selected_atom_ids_for_transform()
 
-        def extend(candidate: QRectF) -> None:
-            """Método auxiliar para extend.
+        # Import localmente para evitar circularidades.
+        from chemuson.gui.composite_diagram_item import CompositeDiagramItem
+        from chemuson.gui.items import (
+            ArrowItem,
+            BracketItem,
+            EnergyDiagramItem,
+            ImageAnnotationItem,
+            OrbitalAnnotationItem,
+            TextAnnotationItem,
+            WavyAnchorItem,
+        )
+        from chemuson.gui.plate_items import GelElectrophoresisItem, TLCPlateItem
 
-            Args:
-                candidate: Descripción del parámetro.
-
-            Returns:
-                Resultado de la operación o None.
-
-            Side Effects:
-                Puede modificar el estado interno o la escena.
-            """
-            nonlocal rect
-            if not candidate.isValid() or candidate.isNull():
-                return
-            rect = candidate if rect is None else rect.united(candidate)
-
-        def extend_atom_bounds(atom_id: int) -> None:
-            """Método auxiliar para extend atom bounds.
-
-            Args:
-                atom_id: Descripción del parámetro.
-
-            Returns:
-                Resultado de la operación o None.
-
-            Side Effects:
-                Puede modificar el estado interno o la escena.
-            """
-            item = self.atom_items.get(atom_id)
-            if item is None or item.scene() is not self.scene:
-                return
-            if item.pen().style() != Qt.PenStyle.NoPen or item.brush().style() != Qt.BrushStyle.NoBrush:
-                extend(item.sceneBoundingRect())
-            if item.label.isVisible():
-                extend(item.label.sceneBoundingRect())
-            if item.charge_label.isVisible():
-                extend(item.charge_label.sceneBoundingRect())
-            overlays = self._implicit_h_overlays.get(atom_id)
-            if overlays:
-                for line_item, text_item in overlays:
-                    if line_item.scene() is self.scene and line_item.isVisible():
-                        extend(line_item.sceneBoundingRect())
-                    if text_item.scene() is self.scene and text_item.isVisible():
-                        extend(text_item.sceneBoundingRect())
-
-        for atom_id in self._selected_atom_ids_for_transform():
-            extend_atom_bounds(atom_id)
-        for bond_id in self.state.selected_bonds:
-            item = self.bond_items.get(bond_id)
-            if item is None:
-                continue
-            extend(item.sceneBoundingRect())
-        for item in self.scene.selectedItems():
-            # Include TextAnnotationItem
+        graphic_items = [
+            item
+            for item in self.scene.selectedItems()
             if isinstance(
                 item,
                 (
@@ -2053,26 +2015,29 @@ class CanvasSelectionMixin:
                     TLCPlateItem,
                     GelElectrophoresisItem,
                 ),
-            ):
-                extend(item.sceneBoundingRect())
-        return rect
+            )
+        ]
+        return selection_bounds(
+            scene=self.scene,
+            atom_items=self.atom_items,
+            bond_items=self.bond_items,
+            implicit_h_overlays=self._implicit_h_overlays,
+            atom_ids=atom_ids,
+            bond_ids=self.state.selected_bonds,
+            graphic_items=graphic_items,
+        )
 
     def _selected_atom_ids_for_transform(self) -> set[int]:
-        """Método auxiliar para  selected atom ids for transform.
+        """Método auxiliar para selected atom ids for transform.
 
         Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la escena.
+            Conjunto estable de IDs de átomos.
         """
-        atom_ids = set(self.state.selected_atoms)
-        for bond_id in self.state.selected_bonds:
-            if bond_id in self.model.bonds:
-                bond = self.model.get_bond(bond_id)
-                atom_ids.add(bond.a1_id)
-                atom_ids.add(bond.a2_id)
-        return atom_ids
+        return resolve_selected_atom_ids(
+            selected_atom_ids=self.state.selected_atoms,
+            selected_bond_ids=self.state.selected_bonds,
+            model=self.model,
+        )
 
     def _apply_selection_overlay_bbox(self, bbox: Optional[QRectF]) -> None:
         """Aplica el overlay de selección usando un bbox ya calculado."""
@@ -4559,61 +4524,24 @@ class CanvasSelectionMixin:
         orbital_items: Iterable[OrbitalAnnotationItem] = (),
         image_items: Iterable[ImageAnnotationItem] = (),
     ) -> Optional[QRectF]:
-        """Calcula un bounding box para un conjunto explícito de elementos."""
-        rect: Optional[QRectF] = None
+        """Calcula un bounding box para un conjunto explícito de elementos.
 
-        def extend(candidate: QRectF) -> None:
-            nonlocal rect
-            if not candidate.isValid() or candidate.isNull():
-                return
-            rect = candidate if rect is None else rect.united(candidate)
-
-        def extend_atom_bounds(atom_id: int) -> None:
-            item = self.atom_items.get(atom_id)
-            if item is None or item.scene() is not self.scene:
-                return
-            if item.pen().style() != Qt.PenStyle.NoPen or item.brush().style() != Qt.BrushStyle.NoBrush:
-                extend(item.sceneBoundingRect())
-            if item.label.isVisible():
-                extend(item.label.sceneBoundingRect())
-            if item.charge_label.isVisible():
-                extend(item.charge_label.sceneBoundingRect())
-            overlays = self._implicit_h_overlays.get(atom_id)
-            if overlays:
-                for line_item, text_item in overlays:
-                    if line_item.scene() is self.scene and line_item.isVisible():
-                        extend(line_item.sceneBoundingRect())
-                    if text_item.scene() is self.scene and text_item.isVisible():
-                        extend(text_item.sceneBoundingRect())
-
-        for atom_id in atom_ids:
-            extend_atom_bounds(atom_id)
-        for bond_id in bond_ids:
-            item = self.bond_items.get(bond_id)
-            if item is not None:
-                extend(item.sceneBoundingRect())
-        for item in text_items:
-            if item.scene() is self.scene:
-                extend(item.sceneBoundingRect())
-        for item in arrow_items:
-            if item.scene() is self.scene:
-                extend(item.sceneBoundingRect())
-        for item in bracket_items:
-            if item.scene() is self.scene:
-                extend(item.sceneBoundingRect())
-        for item in energy_diagram_items:
-            if item.scene() is self.scene:
-                extend(item.sceneBoundingRect())
-        for item in semantic_diagram_items:
-            if item.scene() is self.scene:
-                extend(item.sceneBoundingRect())
-        for item in orbital_items:
-            if item.scene() is self.scene:
-                extend(item.sceneBoundingRect())
-        for item in image_items:
-            if item.scene() is self.scene:
-                extend(item.sceneBoundingRect())
-        return rect
+        Delega en ``selection_bounds`` tras concatenar los grupos de items.
+        """
+        graphic_items: list = []
+        for group in (text_items, arrow_items, bracket_items,
+                      energy_diagram_items, semantic_diagram_items,
+                      orbital_items, image_items):
+            graphic_items.extend(group)
+        return selection_bounds(
+            scene=self.scene,
+            atom_items=self.atom_items,
+            bond_items=self.bond_items,
+            implicit_h_overlays=self._implicit_h_overlays,
+            atom_ids=atom_ids,
+            bond_ids=bond_ids,
+            graphic_items=graphic_items,
+        )
 
     def scale_current_selection(self, scale: float, *, include_style: bool = True) -> bool:
         """Escala la selección actual alrededor de su centro visual."""

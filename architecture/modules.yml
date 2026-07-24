@@ -677,6 +677,7 @@ modules:
   - canvas_selection_input
   - canvas_selection_item
   - selection_geometry
+  - selection_bounds
   name: gui.canvas
   notes: 'ChemusonCanvas extiende QGraphicsView con 5 mixins (CanvasInputMixin, CanvasSelectionMixin,
 
@@ -684,7 +685,7 @@ modules:
     6 sub-mixins.
 
     CanvasToolsBondingMixin (canvas_tools_bonding.py) agrega 5 sub-mixins de bonding.
-    21 archivos Python en canvas/.
+    22 archivos Python en canvas/.
 
     '
   paths:
@@ -716,6 +717,8 @@ modules:
   tests:
   - tests/architecture/test_canvas_selection_geometry.py
   - tests/test_canvas_selection_geometry.py
+  - tests/test_canvas_selection_bounds.py
+  - tests/architecture/test_canvas_selection_bounds.py
   title: Canvas de edición molecular
 - circular_dependencies: []
   current_dependencies:
