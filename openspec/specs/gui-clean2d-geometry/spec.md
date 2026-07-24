@@ -45,4 +45,3 @@ domain backends.
 - **GIVEN** the AST of `gui/clean2d_geometry.py`
 - **WHEN** its imports are enumerated
 - **THEN** only Python standard-library imports are present
-
