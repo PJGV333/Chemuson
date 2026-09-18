@@ -10,18 +10,19 @@ La clase `ChemusonCanvas` se construye mediante composición de submixins. Sus b
 
 `CanvasInputMixin` → `CanvasSelectionMixin` → `CanvasTextMixin` → `CanvasRenderMixin` → `CanvasStructureMixin` → `QGraphicsView`.
 
-**`CanvasInputMixin`** agrupa 6 sub-mixins para la entrada de usuario. **`CanvasToolsBondingMixin`** (incluido como parte de `CanvasInputMixin`) agrega 5 sub-mixins de bonding. El inventario verifica 21 archivos Python en el directorio `canvas/`. Cada instancia de `ChemusonCanvas` crea y posee su propio `self.undo_stack = QUndoStack(self)`.
+**`CanvasInputMixin`** agrupa 6 sub-mixins para la entrada de usuario. **`CanvasToolsBondingMixin`** (incluido como parte de `CanvasInputMixin`) agrega 5 sub-mixins de bonding. El inventario verifica 23 archivos Python en el directorio `canvas/`. Cada instancia de `ChemusonCanvas` crea y posee su propio `self.undo_stack = QUndoStack(self)`.
 
 ## Inventario de Archivos Relacionados
 
-El paquete del canvas contiene 21 archivos Python: `__init__.py` y los
-siguientes 20 módulos:
+El paquete del canvas contiene 23 archivos Python: `__init__.py` y los
+siguientes 22 módulos:
 
 - `src/chemuson/gui/canvas/canvas_view.py`: Clase principal `ChemusonCanvas` (1035 líneas).
 - `src/chemuson/gui/canvas/canvas_constants.py`: Constantes de interacción y roles.
 - `src/chemuson/gui/canvas/canvas_selection.py`: Lógica de selección y hit testing (5128 líneas).
 - `src/chemuson/gui/canvas/selection_geometry.py`: Geometría de valores y normalizaciones puras usadas por selección.
 - `src/chemuson/gui/canvas/selection_bounds.py`: Consultas puras de IDs y límites visuales de selección.
+- `src/chemuson/gui/canvas/selection_hit_testing.py`: Política consultiva de resolución de items, clicks y anotaciones seleccionadas.
 - `src/chemuson/gui/canvas/canvas_text.py`: Gestión de etiquetas de texto.
 - `src/chemuson/gui/canvas/canvas_render.py`: Lógica de dibujo y exportación.
 - `src/chemuson/gui/canvas/canvas_structure.py`: Sincronización modelo-escena (3879 líneas).

@@ -678,6 +678,7 @@ modules:
   - canvas_selection_item
   - selection_geometry
   - selection_bounds
+  - selection_hit_testing
   name: gui.canvas
   notes: 'ChemusonCanvas extiende QGraphicsView con 5 mixins (CanvasInputMixin, CanvasSelectionMixin,
 
@@ -719,6 +720,8 @@ modules:
   - tests/test_canvas_selection_geometry.py
   - tests/test_canvas_selection_bounds.py
   - tests/architecture/test_canvas_selection_bounds.py
+  - tests/test_canvas_selection_hit_testing.py
+  - tests/architecture/test_canvas_selection_hit_testing.py
   title: Canvas de edición molecular
 - circular_dependencies: []
   current_dependencies:
