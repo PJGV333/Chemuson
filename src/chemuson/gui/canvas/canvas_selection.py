@@ -5,7 +5,7 @@ import json
 import math
 from typing import Dict, Iterable, Optional, Tuple
 
-from PyQt6.QtCore import QBuffer, QMimeData, QPoint, QPointF, QRectF, Qt
+from PyQt6.QtCore import QBuffer, QMimeData, QPointF, QRectF, Qt
 from PyQt6.QtGui import QBrush, QColor, QFont, QPainterPath, QPen, QTextCharFormat
 from PyQt6.QtWidgets import (
     QApplication,
@@ -123,6 +123,14 @@ from .selection_geometry import (
 from .selection_bounds import (
     resolve_selected_atom_ids,
     selection_bounds,
+)
+from .selection_overlay import (
+    handle_item_distance_sq,
+    handle_item_hit_radius,
+    offset_scene_point,
+    padded_selection_bbox,
+    selection_handle_hit_kind,
+    selection_handle_scene_positions,
 )
 
 class CanvasSelectionMixin:
@@ -2057,29 +2065,25 @@ class CanvasSelectionMixin:
                     setattr(self, attr, None)
             return
         self._ensure_selection_overlay()
-        padded = QRectF(bbox)
-        pad = max(2.0, float(self.drawing_style.stroke_px))
-        padded.adjust(-pad, -pad, pad, pad)
+        padded = padded_selection_bbox(bbox, self.drawing_style.stroke_px)
 
         def offset_in_scene(base: QPointF, dx_view: float, dy_view: float) -> QPointF:
-            """Método auxiliar para offset in scene.
+            """Apply a view-space offset using the current canvas transform."""
+            return offset_scene_point(
+                base,
+                dx_view,
+                dy_view,
+                map_from_scene=self.mapFromScene,
+                map_to_scene=self.mapToScene,
+            )
 
-            Args:
-                base: Descripción del parámetro.
-                dx_view: Descripción del parámetro.
-                dy_view: Descripción del parámetro.
-
-            Returns:
-                Resultado de la operación o None.
-
-            Side Effects:
-                Puede modificar el estado interno o la escena.
-            """
-            view_pt = self.mapFromScene(base)
-            view_x = float(view_pt.x()) + dx_view
-            view_y = float(view_pt.y()) + dy_view
-            view_pt = QPoint(int(round(view_x)), int(round(view_y)))
-            return self.mapToScene(view_pt)
+        handle_positions = selection_handle_scene_positions(
+            padded,
+            offset_in_scene=offset_in_scene,
+            rotate_offset=SELECTION_ROTATE_OFFSET_PX,
+            move_offset=SELECTION_MOVE_OFFSET_PX,
+            handle_radius=SELECTION_HANDLE_RADIUS_PX,
+        )
 
         if self._selection_box is not None:
             try:
@@ -2088,30 +2092,20 @@ class CanvasSelectionMixin:
             except RuntimeError:
                 self._selection_box = None
         if self._selection_handle is not None:
-            top_center = QPointF(padded.center().x(), padded.top())
-            handle_pos = offset_in_scene(top_center, 0.0, -SELECTION_ROTATE_OFFSET_PX)
             try:
-                self._selection_handle.setPos(handle_pos)
+                self._selection_handle.setPos(handle_positions["rotate"])
                 self._selection_handle.setVisible(True)
             except RuntimeError:
                 self._selection_handle = None
-
         if self._selection_move_handle is not None:
-            top_center = QPointF(padded.center().x(), padded.top())
-            handle_pos = offset_in_scene(top_center, 0.0, SELECTION_MOVE_OFFSET_PX)
             try:
-                self._selection_move_handle.setPos(handle_pos)
+                self._selection_move_handle.setPos(handle_positions["move"])
                 self._selection_move_handle.setVisible(True)
             except RuntimeError:
                 self._selection_move_handle = None
-
         if self._selection_scale_handle is not None:
-            corner = QPointF(padded.right(), padded.bottom())
-            handle_pos = offset_in_scene(
-                corner, -SELECTION_HANDLE_RADIUS_PX, -SELECTION_HANDLE_RADIUS_PX
-            )
             try:
-                self._selection_scale_handle.setPos(handle_pos)
+                self._selection_scale_handle.setPos(handle_positions["scale"])
                 self._selection_scale_handle.setVisible(True)
             except RuntimeError:
                 self._selection_scale_handle = None
@@ -2223,56 +2217,32 @@ class CanvasSelectionMixin:
 
     def _handle_item_distance_sq(self, handle: QGraphicsItem, scene_pos: QPointF) -> Optional[float]:
         """Calcula distancia cuadrática en pantalla entre el puntero y un handle."""
-        view_pos = self.mapFromScene(scene_pos)
-        try:
-            center_scene = handle.mapToScene(handle.boundingRect().center())
-        except RuntimeError:
-            return None
-        center_view = self.mapFromScene(center_scene)
-        dx = float(view_pos.x() - center_view.x())
-        dy = float(view_pos.y() - center_view.y())
-        return dx * dx + dy * dy
+        return handle_item_distance_sq(
+            handle,
+            scene_pos,
+            map_from_scene=self.mapFromScene,
+        )
 
     def _handle_item_hit_radius(self, handle: QGraphicsItem) -> float:
         """Devuelve el radio de click efectivo de un handle en píxeles de vista."""
-        try:
-            handle_rect_scene = handle.mapToScene(handle.boundingRect()).boundingRect()
-            top_left_view = self.mapFromScene(handle_rect_scene.topLeft())
-            bottom_right_view = self.mapFromScene(handle_rect_scene.bottomRight())
-            visual_radius = max(
-                abs(bottom_right_view.x() - top_left_view.x()),
-                abs(bottom_right_view.y() - top_left_view.y()),
-            ) * 0.75
-        except Exception:
-            visual_radius = 0.0
-        return max(float(visual_radius), SELECTION_HANDLE_RADIUS_PX * 3.0, 18.0)
+        return handle_item_hit_radius(
+            handle,
+            map_from_scene=self.mapFromScene,
+            selection_handle_radius=SELECTION_HANDLE_RADIUS_PX,
+        )
 
     def _selection_handle_hit_kind(self, scene_pos: QPointF) -> Optional[str]:
         """Resuelve qué handle de selección está más cerca del puntero."""
-        candidates: list[tuple[float, str]] = []
-        handles = [
-            ("scale", self._selection_scale_handle),
-            ("rotate", self._selection_handle),
-            ("move", self._selection_move_handle),
-        ]
-        for kind, handle in handles:
-            if handle is None:
-                continue
-            try:
-                if not handle.isVisible():
-                    continue
-            except RuntimeError:
-                continue
-            distance_sq = self._handle_item_distance_sq(handle, scene_pos)
-            if distance_sq is None:
-                continue
-            radius = self._handle_item_hit_radius(handle)
-            if distance_sq <= (radius * radius):
-                candidates.append((distance_sq, kind))
-        if not candidates:
-            return None
-        candidates.sort(key=lambda item: item[0])
-        return candidates[0][1]
+        return selection_handle_hit_kind(
+            scene_pos,
+            (
+                ("scale", self._selection_scale_handle),
+                ("rotate", self._selection_handle),
+                ("move", self._selection_move_handle),
+            ),
+            distance_sq=self._handle_item_distance_sq,
+            hit_radius=self._handle_item_hit_radius,
+        )
 
     def _trackball_atom_ids(self) -> tuple[int, ...]:
         """Devuelve IDs objetivo para trackball (solo selección activa)."""
