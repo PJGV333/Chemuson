@@ -132,6 +132,19 @@ from .selection_overlay import (
     selection_handle_hit_kind,
     selection_handle_scene_positions,
 )
+from .selection_clipboard import (
+    MIME_MDL_MOLFILE,
+    MIME_PNG,
+    MIME_SELECTION,
+    MIME_SVG,
+    MIME_TEXT_ITEMS,
+    bond_copy_priority,
+    decode_selection_payload,
+    encode_selection_payload,
+    is_large_clipboard_structure,
+    mime_has_pasteable_format,
+    unique_bonds_for_copy,
+)
 
 class CanvasSelectionMixin:
     def _delete_selection(
@@ -403,29 +416,20 @@ class CanvasSelectionMixin:
     @staticmethod
     def _bond_copy_priority(bond: Bond) -> int:
         """Prioriza la representación más informativa si hay enlaces duplicados."""
-        style_bonus = 5 if bond.style == BondStyle.COORDINATION else 0
-        aromatic_bonus = 50 if bond.is_aromatic else 0
-        display_bonus = int(bond.display_order or 0)
-        return int(bond.order or 1) * 10 + style_bonus + aromatic_bonus + display_bonus
+        return bond_copy_priority(bond)
 
     def _unique_bonds_for_copy(self, bonds: Iterable[Bond]) -> list[Bond]:
         """Elimina pares duplicados al copiar/exportar selección."""
-        unique: dict[tuple[int, int], Bond] = {}
-        for bond in sorted(bonds, key=lambda item: item.id):
-            pair = (min(int(bond.a1_id), int(bond.a2_id)), max(int(bond.a1_id), int(bond.a2_id)))
-            existing = unique.get(pair)
-            if existing is None or self._bond_copy_priority(bond) > self._bond_copy_priority(existing):
-                unique[pair] = bond
-        return list(unique.values())
+        return unique_bonds_for_copy(bonds)
 
     @staticmethod
     def _is_large_clipboard_structure(graph: Optional[MolGraph]) -> bool:
         """Determina si una selección es suficientemente grande para exportación ligera."""
-        if graph is None:
-            return False
-        return (
-            len(graph.atoms) >= CLIPBOARD_LARGE_SELECTION_ATOM_THRESHOLD
-            or len(graph.bonds) >= CLIPBOARD_LARGE_SELECTION_BOND_THRESHOLD
+        return is_large_clipboard_structure(
+            len(graph.atoms) if graph is not None else None,
+            len(graph.bonds) if graph is not None else None,
+            atom_threshold=CLIPBOARD_LARGE_SELECTION_ATOM_THRESHOLD,
+            bond_threshold=CLIPBOARD_LARGE_SELECTION_BOND_THRESHOLD,
         )
 
     def _build_selection_graph(self, atom_ids: set[int], bonds: list[Bond]) -> MolGraph:
@@ -1080,7 +1084,7 @@ class CanvasSelectionMixin:
 
             for idx, img_d in enumerate(images):
                 raw_b64 = img_d.get("data_b64")
-                mime_type = img_d.get("mime_type", "image/png")
+                mime_type = img_d.get("mime_type", MIME_PNG)
                 if not raw_b64:
                     continue
                 try:
@@ -1224,18 +1228,7 @@ class CanvasSelectionMixin:
     def can_paste_from_clipboard(self) -> bool:
         """Indica si el portapapeles contiene un formato pegable por Chemuson."""
         mime = QApplication.clipboard().mimeData()
-        if mime is None:
-            return False
-        return bool(
-            mime.hasFormat("application/x-chemuson-selection")
-            or mime.hasFormat("application/x-chemuson-text-items")
-            or mime.hasFormat("chemical/x-mdl-molfile")
-            or mime.hasUrls()
-            or mime.hasText()
-            or mime.hasFormat("image/png")
-            or mime.hasImage()
-            or mime.hasFormat("image/svg+xml")
-        )
+        return mime is not None and mime_has_pasteable_format(mime)
 
     def selected_semantic_diagram_item(self) -> CompositeDiagramItem | None:
         """Devuelve el diagrama semántico seleccionado si la selección es única."""
@@ -1269,8 +1262,8 @@ class CanvasSelectionMixin:
         mime = QMimeData()
         if selected_payload is not None:
             mime.setData(
-                "application/x-chemuson-selection",
-                json.dumps(selected_payload).encode("utf-8"),
+                MIME_SELECTION,
+                encode_selection_payload(selected_payload),
             )
         if has_structure_selection:
             graph = self._build_selection_graph(atom_ids, bonds)
@@ -1290,7 +1283,7 @@ class CanvasSelectionMixin:
 
                 molfile = canvas_api.molgraph_to_molfile(graph)
                 smiles = canvas_api.molgraph_to_smiles(graph)
-                mime.setData("chemical/x-mdl-molfile", molfile.encode("utf-8"))
+                mime.setData(MIME_MDL_MOLFILE, molfile.encode("utf-8"))
             except Exception:
                 pass
         if only_text_selection:
@@ -1310,7 +1303,7 @@ class CanvasSelectionMixin:
                 ]
             }
             mime.setData(
-                "application/x-chemuson-text-items",
+                MIME_TEXT_ITEMS,
                 json.dumps(data).encode("utf-8"),
             )
 
@@ -1328,7 +1321,7 @@ class CanvasSelectionMixin:
             buffer = QBuffer()
             buffer.open(QBuffer.OpenModeFlag.WriteOnly)
             image.save(buffer, "PNG")
-            mime.setData("image/png", buffer.data())
+            mime.setData(MIME_PNG, buffer.data())
             mime.setImageData(image)
             try:
                 png_b64 = base64.b64encode(bytes(buffer.data())).decode("ascii")
@@ -1341,7 +1334,7 @@ class CanvasSelectionMixin:
         if not large_structure_selection:
             svg_data = self._render_scene_svg(selected_only=has_selection)
             if svg_data:
-                mime.setData("image/svg+xml", svg_data)
+                mime.setData(MIME_SVG, svg_data)
 
         QApplication.clipboard().setMimeData(mime)
 
@@ -1359,24 +1352,26 @@ class CanvasSelectionMixin:
         if mime is None:
             return
 
-        if mime.hasFormat("application/x-chemuson-selection"):
+        if mime.hasFormat(MIME_SELECTION):
             try:
-                payload = json.loads(bytes(mime.data("application/x-chemuson-selection")).decode("utf-8"))
+                payload = decode_selection_payload(bytes(mime.data(MIME_SELECTION)))
+                if payload is None:
+                    raise ValueError("invalid selection payload")
                 self._paste_selection_payload(payload)
                 return
             except Exception:
                 pass
 
-        if mime.hasFormat("application/x-chemuson-text-items"):
+        if mime.hasFormat(MIME_TEXT_ITEMS):
             try:
-                payload = json.loads(bytes(mime.data("application/x-chemuson-text-items")).decode("utf-8"))
+                payload = json.loads(bytes(mime.data(MIME_TEXT_ITEMS)).decode("utf-8"))
                 self._paste_text_items(payload)
                 return
             except Exception:
                 pass
 
-        if mime.hasFormat("chemical/x-mdl-molfile"):
-            molfile = bytes(mime.data("chemical/x-mdl-molfile")).decode("utf-8", errors="ignore")
+        if mime.hasFormat(MIME_MDL_MOLFILE):
+            molfile = bytes(mime.data(MIME_MDL_MOLFILE)).decode("utf-8", errors="ignore")
             try:
                 graph = molfile_to_molgraph(molfile)
                 self._insert_molgraph(graph, select_inserted=True)
@@ -1398,7 +1393,7 @@ class CanvasSelectionMixin:
                 except Exception:
                     pass
 
-        if mime.hasFormat("image/png") or mime.hasImage() or mime.hasFormat("image/svg+xml"):
+        if mime.hasFormat(MIME_PNG) or mime.hasImage() or mime.hasFormat(MIME_SVG):
             self._insert_images_from_clipboard(mime)
 
     def cut_to_clipboard(self) -> None:
@@ -1415,9 +1410,11 @@ class CanvasSelectionMixin:
         mime = clipboard.mimeData()
         if mime is None:
             return
-        if mime.hasFormat("application/x-chemuson-selection"):
+        if mime.hasFormat(MIME_SELECTION):
             try:
-                payload = json.loads(bytes(mime.data("application/x-chemuson-selection")).decode("utf-8"))
+                payload = decode_selection_payload(bytes(mime.data(MIME_SELECTION)))
+                if payload is None:
+                    raise ValueError("invalid selection payload")
                 self._paste_selection_payload(payload)
             except Exception:
                 pass
