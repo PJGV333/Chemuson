@@ -21,6 +21,7 @@ siguientes 20 módulos:
 - `src/chemuson/gui/canvas/canvas_constants.py`: Constantes de interacción y roles.
 - `src/chemuson/gui/canvas/canvas_selection.py`: Lógica de selección y hit testing (5128 líneas).
 - `src/chemuson/gui/canvas/selection_geometry.py`: Geometría de valores y normalizaciones puras usadas por selección.
+- `src/chemuson/gui/canvas/selection_bounds.py`: Consultas puras de IDs y límites visuales de selección.
 - `src/chemuson/gui/canvas/canvas_text.py`: Gestión de etiquetas de texto.
 - `src/chemuson/gui/canvas/canvas_render.py`: Lógica de dibujo y exportación.
 - `src/chemuson/gui/canvas/canvas_structure.py`: Sincronización modelo-escena (3879 líneas).
