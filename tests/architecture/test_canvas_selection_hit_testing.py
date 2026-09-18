@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 INPUT = ROOT / "src/chemuson/gui/canvas/canvas_selection_input.py"
-HIT = ROOT / "src/chemuson/gui/canvas/selection_hit_testing.py"
+HIT = ROOT / "src/chemuson/gui/editor2d/selection_hit_testing.py"
 CATALOG = ROOT / "architecture/modules.yml"
 
 
@@ -104,13 +104,13 @@ def test_mouse_press_event_remains_in_input_mixin() -> None:
     )
 
 
-def test_catalog_records_hit_testing_under_m09_without_debt() -> None:
+def test_catalog_records_hit_testing_under_m20_without_debt() -> None:
     import yaml
 
     catalog = yaml.safe_load(CATALOG.read_text(encoding="utf-8"))
-    m09 = next(module for module in catalog["modules"] if module["id"] == "M09")
-    assert "selection_hit_testing" in m09["internal_api"]
-    assert "tests/test_canvas_selection_hit_testing.py" in m09["tests"]
-    assert "tests/architecture/test_canvas_selection_hit_testing.py" in m09["tests"]
-    assert m09["temporary_exceptions"] == []
-    assert m09["circular_dependencies"] == []
+    m20 = next(module for module in catalog["modules"] if module["id"] == "M20")
+    assert "selection_hit_testing" in m20["internal_api"]
+    assert "tests/test_canvas_selection_hit_testing.py" in m20["tests"]
+    assert "tests/architecture/test_canvas_selection_hit_testing.py" in m20["tests"]
+    assert m20["temporary_exceptions"] == []
+    assert m20["circular_dependencies"] == []

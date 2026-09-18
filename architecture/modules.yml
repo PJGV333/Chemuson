@@ -646,6 +646,7 @@ modules:
   - M11
   - M12
   - M13
+  - M20
   entry_points:
   - ChemusonCanvas
   - molgraph_to_molfile
@@ -676,11 +677,6 @@ modules:
   - canvas_tools_rings_chains
   - canvas_selection_input
   - canvas_selection_item
-  - selection_geometry
-  - selection_bounds
-  - selection_hit_testing
-  - selection_overlay
-  - selection_clipboard
   name: gui.canvas
   notes: 'ChemusonCanvas extiende QGraphicsView con 5 mixins (CanvasInputMixin, CanvasSelectionMixin,
 
@@ -688,7 +684,7 @@ modules:
     6 sub-mixins.
 
     CanvasToolsBondingMixin (canvas_tools_bonding.py) agrega 5 sub-mixins de bonding.
-    22 archivos Python en canvas/.
+    25 archivos Python en canvas/; los helpers editor2d se consumen mediante M20.
 
     '
   paths:
@@ -716,18 +712,12 @@ modules:
   - M11
   - M12
   - M13
+  - M20
   temporary_exceptions: []
   tests:
-  - tests/architecture/test_canvas_selection_geometry.py
-  - tests/test_canvas_selection_geometry.py
-  - tests/test_canvas_selection_bounds.py
-  - tests/architecture/test_canvas_selection_bounds.py
-  - tests/test_canvas_selection_hit_testing.py
-  - tests/architecture/test_canvas_selection_hit_testing.py
-  - tests/test_canvas_selection_overlay.py
-  - tests/architecture/test_canvas_selection_overlay.py
-  - tests/test_canvas_selection_clipboard_policy.py
-  - tests/architecture/test_canvas_selection_clipboard.py
+  - tests/test_clipboard_structure_copy.py
+  - tests/test_paste_selection_behavior.py
+  - tests/test_selection_tightness.py
   title: Canvas de edición molecular
 - circular_dependencies: []
   current_dependencies:
@@ -1158,3 +1148,39 @@ modules:
   tests:
   - tests/test_application_startup_non_qt.py
   title: Arranque y composición de la aplicación
+- circular_dependencies: []
+  current_dependencies: []
+  entry_points: []
+  forbidden_dependencies: []
+  id: M20
+  internal_api:
+  - selection_geometry
+  - selection_bounds
+  - selection_hit_testing
+  - selection_overlay
+  - selection_clipboard
+  name: gui.editor2d
+  notes: Helpers deterministas de política y geometría del editor 2D. Las rutas
+    antiguas bajo gui.canvas son shims de compatibilidad sin implementaciones.
+  paths:
+  - src/chemuson/gui/editor2d/
+  public_api: []
+  responsibility: Geometría, hit testing, overlays y política de clipboard consultivas
+    compartidas por el canvas editor 2D.
+  risk_level: low
+  status: evolving
+  target_dependencies: []
+  temporary_exceptions: []
+  tests:
+  - tests/test_canvas_selection_geometry.py
+  - tests/architecture/test_canvas_selection_geometry.py
+  - tests/test_canvas_selection_bounds.py
+  - tests/architecture/test_canvas_selection_bounds.py
+  - tests/test_canvas_selection_hit_testing.py
+  - tests/architecture/test_canvas_selection_hit_testing.py
+  - tests/test_canvas_selection_overlay.py
+  - tests/architecture/test_canvas_selection_overlay.py
+  - tests/test_canvas_selection_clipboard_policy.py
+  - tests/architecture/test_canvas_selection_clipboard.py
+  - tests/architecture/test_editor2d_selection_ownership.py
+  title: Políticas del editor 2D

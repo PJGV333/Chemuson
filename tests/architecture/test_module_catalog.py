@@ -15,7 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 CATALOG_PATH = REPO_ROOT / "architecture" / "modules.yml"
 
 MODULE_ID_PATTERN = re.compile(r"^M\d\d$")
-EXPECTED_IDS = {f"M{i:02d}" for i in range(20)}
+EXPECTED_IDS = {f"M{i:02d}" for i in range(21)}
 VALID_STATUSES = {"stable", "evolving", "legacy"}
 VALID_RISK_LEVELS = {"low", "medium", "high"}
 VALID_SEVERITIES = {"low", "medium", "high"}
@@ -92,12 +92,12 @@ class TestCatalogLoad:
 # ---------------------------------------------------------------------------
 
 class TestModuleIds:
-    """Validate module identification: exactly 20 modules, M00-M19, unique, correct format."""
+    """Validate module identification: exactly 21 modules, M00-M20, unique, correct format."""
 
-    def test_exactly_20_modules(self, modules):
-        assert len(modules) == 20, f"Expected 20 modules, got {len(modules)}"
+    def test_exactly_21_modules(self, modules):
+        assert len(modules) == 21, f"Expected 21 modules, got {len(modules)}"
 
-    def test_ids_are_m00_to_m19(self, modules):
+    def test_ids_are_m00_to_m20(self, modules):
         ids = {m["id"] for m in modules}
         assert ids == EXPECTED_IDS, f"IDs mismatch: {ids}"
 

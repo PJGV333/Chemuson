@@ -9,7 +9,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 SELECTION = ROOT / "src" / "chemuson" / "gui" / "canvas" / "canvas_selection.py"
-CLIPBOARD = ROOT / "src" / "chemuson" / "gui" / "canvas" / "selection_clipboard.py"
+CLIPBOARD = ROOT / "src" / "chemuson" / "gui" / "editor2d" / "selection_clipboard.py"
 CATALOG = ROOT / "architecture" / "modules.yml"
 
 
@@ -60,9 +60,9 @@ def test_clipboard_codec_calls_and_mime_wrappers_are_present() -> None:
 
 def test_catalog_records_clipboard_policy_module_and_tests() -> None:
     catalog = yaml.safe_load(CATALOG.read_text(encoding="utf-8"))
-    m09 = next(module for module in catalog["modules"] if module["id"] == "M09")
-    assert "selection_clipboard" in m09["internal_api"]
-    assert "tests/test_canvas_selection_clipboard_policy.py" in m09["tests"]
-    assert "tests/architecture/test_canvas_selection_clipboard.py" in m09["tests"]
-    assert m09["temporary_exceptions"] == []
-    assert m09["circular_dependencies"] == []
+    m20 = next(module for module in catalog["modules"] if module["id"] == "M20")
+    assert "selection_clipboard" in m20["internal_api"]
+    assert "tests/test_canvas_selection_clipboard_policy.py" in m20["tests"]
+    assert "tests/architecture/test_canvas_selection_clipboard.py" in m20["tests"]
+    assert m20["temporary_exceptions"] == []
+    assert m20["circular_dependencies"] == []

@@ -43,7 +43,7 @@ from chemuson.gui.plate_items import GelBandItem, GelElectrophoresisItem, TLCPla
 
 from .canvas_chem_data import SYMBOL_TEXT_TOOLS
 from .canvas_constants import ATOM_HIT_RADIUS, ELECTRON_ANCHOR_ROLE, ELECTRON_SLOT_ROLE
-from .selection_hit_testing import (
+from chemuson.gui.editor2d.selection_hit_testing import (
     get_item_at,
     resolve_click_item,
     selected_annotation_item_at,

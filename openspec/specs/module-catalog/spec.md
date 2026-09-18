@@ -16,12 +16,12 @@ The module catalog SHALL exist at `architecture/modules.yml` and SHALL be parsea
 
 ### Requirement: Module Identification with Stable IDs
 
-Each module entry SHALL have a unique `id` field matching the pattern `M\d\d`. The catalog SHALL contain exactly 20 modules (M00-M19). IDs SHALL be persistent: once assigned, an ID is never reused even if a module is removed.
+Each module entry SHALL have a unique `id` field matching the pattern `M\d\d`. The catalog SHALL contain exactly 21 modules (M00-M20). IDs SHALL be persistent: once assigned, an ID is never reused even if a module is removed.
 
 #### Scenario: ID uniqueness
-- **GIVEN** the catalog contains 20 module entries
+- **GIVEN** the catalog contains 21 module entries
 - **WHEN** a test extracts all `id` values
-- **THEN** all 20 IDs are distinct
+- **THEN** all 21 IDs are distinct
 
 #### Scenario: ID format
 - **GIVEN** a module entry with id `M05`
@@ -180,13 +180,16 @@ temporary exception, cycle or public API.
 - **WHEN** paths, tests and APIs are audited
 - **THEN** the geometry module and test are owned by M08 and dependency sets remain unchanged
 
-### Requirement: M09 Catalogs Selection Geometry
+### Requirement: M20 Catalogs Canonical Editor2D Selection Helpers
 
-M09 SHALL inventory `gui/canvas/selection_geometry.py` as internal
-implementation and its architectural and numeric tests as M09 coverage without
-adding a dependency, temporary exception, cycle or public API.
+M20 SHALL own the canonical implementations of `selection_geometry`,
+`selection_bounds`, `selection_hit_testing`, `selection_overlay` and
+`selection_clipboard` under `gui/editor2d/`. The historical `gui/canvas`
+paths SHALL remain import-only compatibility shims. M09 SHALL depend on M20
+without adding temporary exceptions or circular dependencies.
 
-#### Scenario: M09 inventory is inspected
-- **GIVEN** the module catalog after extraction
-- **WHEN** paths, tests, APIs and dependencies are audited
-- **THEN** selection geometry and its tests belong to M09 while dependency sets remain unchanged
+#### Scenario: M20 inventory is inspected
+- **GIVEN** the module catalog after moving the selection helpers
+- **WHEN** canonical paths, shims, tests and dependencies are audited
+- **THEN** the five helpers and their tests belong exclusively to M20, M20 has
+  no ChemUSON dependencies, and M09 lists M20 as current and target dependency

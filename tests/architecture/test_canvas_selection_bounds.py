@@ -10,7 +10,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 SELECTION = ROOT / "src" / "chemuson" / "gui" / "canvas" / "canvas_selection.py"
-BOUNDS = ROOT / "src" / "chemuson" / "gui" / "canvas" / "selection_bounds.py"
+BOUNDS = ROOT / "src" / "chemuson" / "gui" / "editor2d" / "selection_bounds.py"
 CATALOG = ROOT / "architecture" / "modules.yml"
 
 
@@ -270,26 +270,26 @@ def test_selection_bounds_no_any_typing() -> None:
 def test_catalog_records_new_module() -> None:
     """El catálogo debe registrar selection_bounds."""
     catalog = yaml.safe_load(CATALOG.read_text(encoding="utf-8"))
-    m09 = next(m for m in catalog["modules"] if m["id"] == "M09")
+    m20 = next(m for m in catalog["modules"] if m["id"] == "M20")
 
-    assert "selection_bounds" in m09["internal_api"]
+    assert "selection_bounds" in m20["internal_api"]
 
 
 def test_catalog_records_new_tests() -> None:
     """El catálogo debe registrar los archivos de prueba."""
     catalog = yaml.safe_load(CATALOG.read_text(encoding="utf-8"))
-    m09 = next(m for m in catalog["modules"] if m["id"] == "M09")
+    m20 = next(m for m in catalog["modules"] if m["id"] == "M20")
 
-    assert "tests/test_canvas_selection_bounds.py" in m09["tests"]
-    assert "tests/architecture/test_canvas_selection_bounds.py" in m09["tests"]
+    assert "tests/test_canvas_selection_bounds.py" in m20["tests"]
+    assert "tests/architecture/test_canvas_selection_bounds.py" in m20["tests"]
 
 
 def test_catalog_no_new_exceptions() -> None:
     """No se deben añadir excepciones temporales ni ciclos."""
     catalog = yaml.safe_load(CATALOG.read_text(encoding="utf-8"))
-    m09 = next(m for m in catalog["modules"] if m["id"] == "M09")
+    m20 = next(m for m in catalog["modules"] if m["id"] == "M20")
 
-    assert m09["temporary_exceptions"] == []
+    assert m20["temporary_exceptions"] == []
 
 
 def test_canvas_selection_delegates_to_selection_bounds() -> None:
