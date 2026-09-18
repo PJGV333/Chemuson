@@ -9,7 +9,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 SELECTION = ROOT / "src" / "chemuson" / "gui" / "canvas" / "canvas_selection.py"
-CLIPBOARD = ROOT / "src" / "chemuson" / "gui" / "editor2d" / "selection_clipboard.py"
+CLIPBOARD = ROOT / "src" / "chemuson" / "gui" / "editor2d" / "selection" / "selection_clipboard.py"
 CATALOG = ROOT / "architecture" / "modules.yml"
 
 

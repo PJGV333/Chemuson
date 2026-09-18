@@ -166,7 +166,7 @@ capa terminal: ningún módulo M00–M18 puede depender del bootstrap.
 | `geometry3d` | `core`, `chemio`. |
 | `compchem` | `core`, `geometry3d`. |
 | `spectroscopy` | `core`, `chemio`. |
-| `chemuson.gui` | Orquesta casi todos los subsistemas; `chemuson.gui.editor2d` contiene políticas deterministas sin dependencias ChemUSON. |
+| `chemuson.gui` | Orquesta casi todos los subsistemas; `chemuson.gui.editor2d.selection` contiene las políticas deterministas de selección sin dependencias ChemUSON. `gui.editor2d` queda disponible para módulos hermanos futuros. |
 | `update` | Ninguno. |
 | `utils` | Ninguno entre módulos ChemUSON. `autosave.py` recibe serialización y temporizadores inyectados desde `gui.tab_manager`; `crash_reporter.py` conserva PyQt6 como dependencia externa para notificación visual. |
 | `name2structure` | `core`, `chemio`. |

@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 INPUT = ROOT / "src/chemuson/gui/canvas/canvas_selection_input.py"
-HIT = ROOT / "src/chemuson/gui/editor2d/selection_hit_testing.py"
+HIT = ROOT / "src/chemuson/gui/editor2d/selection/selection_hit_testing.py"
 CATALOG = ROOT / "architecture/modules.yml"
 
 

@@ -28,7 +28,7 @@ def _module(module_id: str) -> dict:
 
 def test_m20_canonical_helpers_exist() -> None:
     for helper in HELPERS:
-        path = ROOT / "src" / "chemuson" / "gui" / "editor2d" / f"{helper}.py"
+        path = ROOT / "src" / "chemuson" / "gui" / "editor2d" / "selection" / f"{helper}.py"
         assert path.exists(), f"Missing canonical helper: {path}"
 
 
@@ -44,15 +44,19 @@ def test_legacy_modules_are_import_only_shims() -> None:
         assert not definitions, f"Legacy helper owns definitions: {path}"
         imports = [node for node in tree.body if isinstance(node, ast.ImportFrom)]
         assert any(
-            node.module == f"chemuson.gui.editor2d.{helper}" for node in imports
+            node.module == f"chemuson.gui.editor2d.selection.{helper}" for node in imports
         ), f"Legacy helper does not re-export M20: {path}"
 
 
 def test_m20_catalog_owns_helpers_and_tests() -> None:
     m20 = _module("M20")
     m09 = _module("M09")
-    assert m20["paths"] == ["src/chemuson/gui/editor2d/"]
+    assert m20["name"] == "gui.editor2d.selection"
+    assert m20["paths"] == ["src/chemuson/gui/editor2d/selection/"]
     assert set(m20["internal_api"]) == set(HELPERS)
+    assert "src/chemuson/gui/editor2d/" not in m20["paths"]
+    assert "src/chemuson/gui/editor2d/selection/" in m20["paths"]
+    assert "src/chemuson/gui/editor2d/drawing/" not in m20["paths"]
     assert "src/chemuson/gui/editor2d/" not in m09["paths"]
     assert all(helper not in m09["internal_api"] for helper in HELPERS)
     assert "M20" in m09["current_dependencies"]
@@ -68,13 +72,13 @@ def test_m20_catalog_owns_helpers_and_tests() -> None:
 def test_canvas_selection_imports_canonical_editor2d_helpers() -> None:
     expected = {
         "canvas_selection.py": {
-            "chemuson.gui.editor2d.selection_geometry",
-            "chemuson.gui.editor2d.selection_bounds",
-            "chemuson.gui.editor2d.selection_overlay",
-            "chemuson.gui.editor2d.selection_clipboard",
+            "chemuson.gui.editor2d.selection.selection_geometry",
+            "chemuson.gui.editor2d.selection.selection_bounds",
+            "chemuson.gui.editor2d.selection.selection_overlay",
+            "chemuson.gui.editor2d.selection.selection_clipboard",
         },
         "canvas_selection_input.py": {
-            "chemuson.gui.editor2d.selection_hit_testing",
+            "chemuson.gui.editor2d.selection.selection_hit_testing",
         },
     }
     for filename, modules in expected.items():
@@ -93,6 +97,28 @@ def test_canvas_selection_imports_canonical_editor2d_helpers() -> None:
 
 def test_all_five_helpers_have_unique_canonical_owner() -> None:
     catalog_text = CATALOG.read_text(encoding="utf-8")
-    assert catalog_text.count("src/chemuson/gui/editor2d/") == 1
+    assert catalog_text.count("src/chemuson/gui/editor2d/selection/") == 1
     m20 = _module("M20")
     assert set(m20["internal_api"]) == set(HELPERS)
+
+
+def test_m08_owns_only_editor2d_namespace_init() -> None:
+    m08 = _module("M08")
+    m20 = _module("M20")
+    assert "src/chemuson/gui/editor2d/__init__.py" in m08["paths"]
+    assert "src/chemuson/gui/editor2d/__init__.py" not in m20["paths"]
+
+
+def test_catalog_preserves_ids_and_future_slots() -> None:
+    ids = {module["id"] for module in _catalog()}
+    assert {f"M{i:02d}" for i in range(20)} <= ids
+    assert not ids.intersection({"M21", "M22", "M23"})
+
+
+def test_dependency_direction_is_m09_to_m20_only() -> None:
+    m09 = _module("M09")
+    m20 = _module("M20")
+    assert "M20" in m09["current_dependencies"]
+    assert "M20" in m09["target_dependencies"]
+    assert "M09" not in m20["current_dependencies"]
+    assert "M09" not in m20["target_dependencies"]

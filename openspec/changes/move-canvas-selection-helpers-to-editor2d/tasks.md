@@ -9,7 +9,7 @@
 
 ## Migration
 
-- [x] Create M20 `gui/editor2d/` and move the five implementations.
+- [x] Create M20 `gui/editor2d/selection/` and move the five implementations.
 - [x] Replace old modules with compatibility shims.
 - [x] Update M09 imports to canonical M20 paths.
 

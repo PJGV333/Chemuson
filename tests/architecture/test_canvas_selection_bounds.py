@@ -10,7 +10,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 SELECTION = ROOT / "src" / "chemuson" / "gui" / "canvas" / "canvas_selection.py"
-BOUNDS = ROOT / "src" / "chemuson" / "gui" / "editor2d" / "selection_bounds.py"
+BOUNDS = ROOT / "src" / "chemuson" / "gui" / "editor2d" / "selection" / "selection_bounds.py"
 CATALOG = ROOT / "architecture" / "modules.yml"
 
 

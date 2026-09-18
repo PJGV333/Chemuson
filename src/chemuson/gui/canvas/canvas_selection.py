@@ -111,7 +111,7 @@ from .canvas_constants import (
     WAVY_ANCHOR_LENGTH_ROLE,
     WAVY_ANCHOR_ROLE,
 )
-from chemuson.gui.editor2d.selection_geometry import (
+from chemuson.gui.editor2d.selection.selection_geometry import (
     normalize_custom_stroke,
     normalize_label_scale,
     optional_float_equal,
@@ -120,11 +120,11 @@ from chemuson.gui.editor2d.selection_geometry import (
     scale_point_from_anchor,
     signed_angle_delta_deg,
 )
-from chemuson.gui.editor2d.selection_bounds import (
+from chemuson.gui.editor2d.selection.selection_bounds import (
     resolve_selected_atom_ids,
     selection_bounds,
 )
-from chemuson.gui.editor2d.selection_overlay import (
+from chemuson.gui.editor2d.selection.selection_overlay import (
     handle_item_distance_sq,
     handle_item_hit_radius,
     offset_scene_point,
@@ -132,7 +132,7 @@ from chemuson.gui.editor2d.selection_overlay import (
     selection_handle_hit_kind,
     selection_handle_scene_positions,
 )
-from chemuson.gui.editor2d.selection_clipboard import (
+from chemuson.gui.editor2d.selection.selection_clipboard import (
     MIME_MDL_MOLFILE,
     MIME_PNG,
     MIME_SELECTION,

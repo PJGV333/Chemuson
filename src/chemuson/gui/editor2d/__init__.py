@@ -1,3 +1,1 @@
-"""Deterministic 2D editor policies shared by canvas mixins."""
-
-__all__ = []
+"""Editor 2D namespace package."""

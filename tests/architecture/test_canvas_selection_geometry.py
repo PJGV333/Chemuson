@@ -10,7 +10,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 SELECTION = ROOT / "src" / "chemuson" / "gui" / "canvas" / "canvas_selection.py"
-GEOMETRY = ROOT / "src" / "chemuson" / "gui" / "editor2d" / "selection_geometry.py"
+GEOMETRY = ROOT / "src" / "chemuson" / "gui" / "editor2d" / "selection" / "selection_geometry.py"
 CATALOG = ROOT / "architecture" / "modules.yml"
 
 ALIASES = {
@@ -104,7 +104,7 @@ def test_selection_geometry_is_internal_to_m20() -> None:
     catalog = yaml.safe_load(CATALOG.read_text(encoding="utf-8"))
     m20 = next(module for module in catalog["modules"] if module["id"] == "M20")
 
-    assert "src/chemuson/gui/editor2d/" in m20["paths"]
+    assert "src/chemuson/gui/editor2d/selection/" in m20["paths"]
     assert "selection_geometry" in m20["internal_api"]
     assert "tests/architecture/test_canvas_selection_geometry.py" in m20["tests"]
     assert "tests/test_canvas_selection_geometry.py" in m20["tests"]

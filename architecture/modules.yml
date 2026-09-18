@@ -529,12 +529,14 @@ modules:
   - shell
   - background_workers
   - clean2d_geometry
+  - editor2d
   name: gui
   notes: 'GUI importa todos los subsistemas de dominio para orquestación. No implementa
     lógica química pesada. items.py es un módulo individual (no paquete): src/chemuson/gui/items.py
     (5704 líneas).'
   paths:
   - src/chemuson/gui/__init__.py
+  - src/chemuson/gui/editor2d/__init__.py
   - src/chemuson/gui/composite_diagram_item.py
   - src/chemuson/gui/diagram_layout.py
   - src/chemuson/gui/diagram_models.py
@@ -1159,14 +1161,14 @@ modules:
   - selection_hit_testing
   - selection_overlay
   - selection_clipboard
-  name: gui.editor2d
-  notes: Helpers deterministas de política y geometría del editor 2D. Las rutas
-    antiguas bajo gui.canvas son shims de compatibilidad sin implementaciones.
+  name: gui.editor2d.selection
+  notes: Helpers deterministas de selección del editor 2D. Las rutas antiguas
+    bajo gui.canvas son shims de compatibilidad sin implementaciones.
   paths:
-  - src/chemuson/gui/editor2d/
+  - src/chemuson/gui/editor2d/selection/
   public_api: []
   responsibility: Geometría, hit testing, overlays y política de clipboard consultivas
-    compartidas por el canvas editor 2D.
+    de la selección del editor 2D.
   risk_level: low
   status: evolving
   target_dependencies: []
@@ -1183,4 +1185,4 @@ modules:
   - tests/test_canvas_selection_clipboard_policy.py
   - tests/architecture/test_canvas_selection_clipboard.py
   - tests/architecture/test_editor2d_selection_ownership.py
-  title: Políticas del editor 2D
+  title: Selección del editor 2D
