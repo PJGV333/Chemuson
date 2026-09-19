@@ -73,6 +73,12 @@ from chemuson.gui.clean2d_geometry import (
     rescale_coords_to_bond_length,
 )
 from chemuson.gui.shell import assemble_application_shell
+from chemuson.platform.settings import (
+    NamingPreferences,
+    load_naming_preferences,
+    save_naming_preferences,
+    setting_bool,
+)
 from chemuson.update import UpdateSettings
 from chemuson.version import get_app_version
 
@@ -975,21 +981,8 @@ class ChemusonWindow(QMainWindow):
 
     @staticmethod
     def _setting_bool(value, default: bool) -> bool:
-        """Normaliza valores de QSettings a booleano."""
-        if value is None:
-            return bool(default)
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, str):
-            lowered = value.strip().lower()
-            if lowered in {"1", "true", "yes", "on", "si", "sí"}:
-                return True
-            if lowered in {"0", "false", "no", "off"}:
-                return False
-        try:
-            return bool(int(value))
-        except Exception:
-            return bool(value)
+        """Compatibilidad para normalizar valores de preferencias."""
+        return setting_bool(value, default)
 
     def _load_numbering_preferences(self) -> None:
         """Carga preferencias globales de numeración del usuario."""
@@ -997,20 +990,18 @@ class ChemusonWindow(QMainWindow):
 
     def _load_naming_preferences(self) -> tuple[bool, bool]:
         """Carga preferencias globales de nomenclatura avanzada."""
-        advanced = self._setting_bool(
-            self._settings.value("naming/advanced_enabled", True),
-            True,
-        )
-        isolated = self._setting_bool(
-            self._settings.value("naming/rdkit_isolated", True),
-            True,
-        )
-        return bool(advanced), bool(isolated)
+        preferences = load_naming_preferences(self._settings)
+        return preferences.advanced_enabled, preferences.rdkit_isolated
 
     def _save_naming_preferences(self) -> None:
         """Persiste preferencias globales de nomenclatura avanzada."""
-        self._settings.setValue("naming/advanced_enabled", bool(self._name_advanced_default))
-        self._settings.setValue("naming/rdkit_isolated", bool(self._name_rdkit_isolated_default))
+        save_naming_preferences(
+            self._settings,
+            NamingPreferences(
+                advanced_enabled=bool(self._name_advanced_default),
+                rdkit_isolated=bool(self._name_rdkit_isolated_default),
+            ),
+        )
 
     def _naming_settings_payload(self) -> dict:
         """Payload para precargar preferencias de nomenclatura en diálogo."""

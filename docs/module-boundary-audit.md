@@ -17,6 +17,12 @@ módulos ya cohesivos se conservan sin extracción estructural:
 | M19 | `bootstrap` | `src/chemuson/__main__.py`, `src/chemuson/app/` | M18, M08, M15 / M18, M08, M15 | 0 | 0 | audited / no structural change required |
 | M20 | `gui.editor2d.selection` | `src/chemuson/gui/editor2d/selection/` | ninguno / ninguno | 0 | 0 | audited / no structural change required |
 
+## Post-audit note
+
+The subsequent M21 settings boundary moved the canonical resource helper out of
+M15. Consequently M04 (`chemname`) and the M15 compatibility shim now depend on
+M21; this is an explicit platform dependency, not a domain ownership transfer.
+
 ## Audit decisions
 
 - M05: audited / no structural change required

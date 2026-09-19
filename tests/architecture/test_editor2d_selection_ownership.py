@@ -112,7 +112,7 @@ def test_m08_owns_only_editor2d_namespace_init() -> None:
 def test_catalog_preserves_ids_and_future_slots() -> None:
     ids = {module["id"] for module in _catalog()}
     assert {f"M{i:02d}" for i in range(20)} <= ids
-    assert not ids.intersection({"M21", "M22", "M23"})
+    assert not ids.intersection({"M22", "M23"})
 
 
 def test_dependency_direction_is_m09_to_m20_only() -> None:

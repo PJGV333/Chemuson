@@ -299,7 +299,7 @@ modules:
   - M00
   - M03
   - M01
-  - M15
+  - M21
   entry_points:
   - iupac_name
   forbidden_dependencies:
@@ -329,7 +329,7 @@ modules:
   notes: 'Importa chemio de forma lazy (TYPE_CHECKING en stereo_advanced.py, runtime
     dentro de funciones en engine.py).
 
-    Importa utils.resources de forma global. MolView pertenece a core; el path chemname.molview
+    Importa platform.resources de forma global. MolView pertenece a core; el path chemname.molview
     se conserva como compatibilidad histórica.
 
     '
@@ -346,7 +346,7 @@ modules:
   - M00
   - M01
   - M03
-  - M15
+  - M21
   temporary_exceptions: []
   tests:
   - tests/test_iupac_ui.py
@@ -504,6 +504,7 @@ modules:
   - M16
   - M17
   - M18
+  - M21
   entry_points: []
   forbidden_dependencies: []
   id: M08
@@ -595,6 +596,7 @@ modules:
   - M16
   - M17
   - M18
+  - M21
   temporary_exceptions: []
   tests:
   - tests/test_main_window_tabs.py
@@ -732,6 +734,7 @@ modules:
   - M11
   - M14
   - M15
+  - M21
   entry_points: []
   forbidden_dependencies: []
   id: M10
@@ -780,6 +783,7 @@ modules:
   - M15
   - M16
   - M18
+  - M21
   temporary_exceptions: []
   tests: []
   title: Controllers de la GUI
@@ -1006,7 +1010,8 @@ modules:
   - tests/test_update_windows.py
   title: Subsistema de auto-actualización
 - circular_dependencies: []
-  current_dependencies: []
+  current_dependencies:
+  - M21
   entry_points: []
   forbidden_dependencies:
   - M08
@@ -1017,20 +1022,22 @@ modules:
   - M13
   id: M15
   internal_api:
-  - resources
+  - resources_compat
   - autosave
   - crash_reporter
   name: utils
   notes: Sin __all__ en __init__.py. autosave.py recibe serialización y timers mediante
     colaboradores inyectados desde la composición GUI. crash_reporter.py usa PyQt6
-    para notificación visual. M15 no depende de otros módulos ChemUSON.
+    para notificación visual. El helper canónico de recursos pertenece a M21;
+    `utils.resources` se conserva como shim histórico.
   paths:
   - src/chemuson/utils/
   public_api: []
-  responsibility: Recursos empaquetados, autosave y crash reporting compartido.
+  responsibility: Autosave y crash reporting compartido.
   risk_level: low
   status: stable
-  target_dependencies: []
+  target_dependencies:
+  - M21
   temporary_exceptions: []
   tests: []
   title: Utilidades compartidas
@@ -1186,3 +1193,58 @@ modules:
   - tests/architecture/test_canvas_selection_clipboard.py
   - tests/architecture/test_editor2d_selection_ownership.py
   title: Selección del editor 2D
+- circular_dependencies: []
+  current_dependencies: []
+  entry_points:
+  - application_settings
+  forbidden_dependencies:
+  - M00
+  - M01
+  - M02
+  - M03
+  - M04
+  - M05
+  - M06
+  - M07
+  - M08
+  - M09
+  - M10
+  - M11
+  - M12
+  - M13
+  - M14
+  - M15
+  - M16
+  - M17
+  - M18
+  - M19
+  - M20
+  id: M21
+  internal_api:
+  - settings
+  - resources
+  name: platform.settings
+  notes: Política de configuración de aplicación y resolución de recursos
+    empaquetados. No importa módulos ChemUSON ni QtWidgets; `utils.resources`
+    permanece como shim histórico.
+  paths:
+  - src/chemuson/platform/
+  public_api:
+  - NamingPreferences
+  - NumberingPreferences
+  - application_settings
+  - load_naming_preferences
+  - load_numbering_preferences
+  - save_naming_preferences
+  - save_numbering_preferences
+  - setting_bool
+  responsibility: Configuración persistente de aplicación y resolución de recursos
+    empaquetados sin dependencia de GUI.
+  risk_level: medium
+  status: evolving
+  target_dependencies: []
+  temporary_exceptions: []
+  tests:
+  - tests/test_platform_settings.py
+  - tests/architecture/test_platform_settings_boundary.py
+  title: Configuración y recursos de plataforma

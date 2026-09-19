@@ -5,8 +5,9 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Callable
 
-from PyQt6.QtCore import QSettings
 from PyQt6.QtWidgets import QMessageBox, QWidget
+
+from chemuson.platform.settings import SettingsStore
 
 from chemuson.update import (
     AutoUpdateCore,
@@ -152,7 +153,7 @@ class UpdatePendingState:
 class UpdateController:
     """Gestiona chequeo, cola y aplicación diferida de actualizaciones."""
 
-    def __init__(self, settings: QSettings, app_version: str) -> None:
+    def __init__(self, settings: SettingsStore, app_version: str) -> None:
         self._settings_store = settings
         self._app_version = app_version
         self._settings = self._load_preferences()

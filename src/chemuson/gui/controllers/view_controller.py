@@ -12,6 +12,11 @@ from PyQt6.QtWidgets import (
     QFormLayout,
     QVBoxLayout,
 )
+from chemuson.platform.settings import (
+    NumberingPreferences,
+    load_numbering_preferences,
+    save_numbering_preferences,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,27 +37,22 @@ class ViewController:
     A3_LANDSCAPE = CanvasSizePreset("A3 (horizontal)", 1587, 1123)
 
     def load_numbering_preferences(self, window) -> None:
-        mode = str(window._settings.value("numbering/mode", "atoms") or "atoms").strip().lower()
-        if mode not in {"atoms", "structures", "both"}:
-            mode = "atoms"
-        include_export = window._setting_bool(
-            window._settings.value("numbering/include_export", True),
-            True,
-        )
-        window._numbering_default_mode = mode
-        window._numbering_default_include_export = bool(include_export)
+        preferences = load_numbering_preferences(window._settings)
+        window._numbering_default_mode = preferences.mode
+        window._numbering_default_include_export = preferences.include_export
         self.apply_default_numbering_to_canvas(window, window.canvas)
 
     def save_numbering_preferences(self, window) -> None:
-        window._settings.remove("numbering/enabled")
         window._numbering_default_mode = str(window.canvas.state.numbering_mode)
         window._numbering_default_include_export = bool(
             window.canvas.state.numbering_include_in_export
         )
-        window._settings.setValue("numbering/mode", str(window._numbering_default_mode))
-        window._settings.setValue(
-            "numbering/include_export",
-            bool(window._numbering_default_include_export),
+        save_numbering_preferences(
+            window._settings,
+            NumberingPreferences(
+                mode=window._numbering_default_mode,
+                include_export=window._numbering_default_include_export,
+            ),
         )
 
     def sync_numbering_actions(self, window) -> None:

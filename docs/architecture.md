@@ -143,6 +143,16 @@ capa terminal: ningún módulo M00–M18 puede depender del bootstrap.
 | API pública | Actualmente no reexporta API en `__init__`; usar módulos específicos. |
 | Internos/privados | Helpers de rutas, serialización de crash/autosave y contratos estructurales mínimos de autosave. |
 
+### `chemuson.platform.settings`
+
+| Aspecto | Detalle |
+| --- | --- |
+| Responsabilidad | Configuración persistente de aplicación y resolución de recursos empaquetados. |
+| Puede importar | `PyQt6.QtCore.QSettings` e `importlib.resources`; no módulos ChemUSON. |
+| No debería importar | `chemuson.gui`, `QtWidgets`, controllers, canvas ni dominio químico. |
+| API pública | `application_settings`, preferencias de naming/numbering y coerción `setting_bool`. |
+| Compatibilidad | `chemuson.utils.resources` reexporta el helper canónico de M21. |
+
 ### `chemuson.name2structure`
 
 | Aspecto | Detalle |
@@ -168,7 +178,8 @@ capa terminal: ningún módulo M00–M18 puede depender del bootstrap.
 | `spectroscopy` | `core`, `chemio`. |
 | `chemuson.gui` | Orquesta casi todos los subsistemas; `chemuson.gui.editor2d.selection` contiene las políticas deterministas de selección sin dependencias ChemUSON. `gui.editor2d` queda disponible para módulos hermanos futuros. |
 | `update` | Ninguno. |
-| `utils` | Ninguno entre módulos ChemUSON. `autosave.py` recibe serialización y temporizadores inyectados desde `gui.tab_manager`; `crash_reporter.py` conserva PyQt6 como dependencia externa para notificación visual. |
+| `utils` | `platform.settings` para el helper canónico de recursos. |
+| `platform.settings` | Ningún módulo ChemUSON; sólo QtCore/importlib.resources externos. |
 | `name2structure` | `core`, `chemio`. |
 
 Estas dependencias describen el estado actual, no siempre el ideal. Las reglas siguientes definen el objetivo de mantenibilidad.
