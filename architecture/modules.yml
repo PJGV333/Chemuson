@@ -500,11 +500,11 @@ modules:
   - M12
   - M13
   - M14
-  - M15
   - M16
   - M17
   - M18
   - M21
+  - M22
   entry_points: []
   forbidden_dependencies: []
   id: M08
@@ -592,11 +592,11 @@ modules:
   - M12
   - M13
   - M14
-  - M15
   - M16
   - M17
   - M18
   - M21
+  - M22
   temporary_exceptions: []
   tests:
   - tests/test_main_window_tabs.py
@@ -733,8 +733,8 @@ modules:
   - M09
   - M11
   - M14
-  - M15
   - M21
+  - M22
   entry_points: []
   forbidden_dependencies: []
   id: M10
@@ -780,10 +780,10 @@ modules:
   - M09
   - M11
   - M14
-  - M15
   - M16
   - M18
   - M21
+  - M22
   temporary_exceptions: []
   tests: []
   title: Controllers de la GUI
@@ -1012,6 +1012,7 @@ modules:
 - circular_dependencies: []
   current_dependencies:
   - M21
+  - M22
   entry_points: []
   forbidden_dependencies:
   - M08
@@ -1038,6 +1039,7 @@ modules:
   status: stable
   target_dependencies:
   - M21
+  - M22
   temporary_exceptions: []
   tests: []
   title: Utilidades compartidas
@@ -1132,7 +1134,7 @@ modules:
   current_dependencies:
   - M18
   - M08
-  - M15
+  - M22
   entry_points:
   - chemuson
   - python -m chemuson
@@ -1152,7 +1154,7 @@ modules:
   target_dependencies:
   - M18
   - M08
-  - M15
+  - M22
   temporary_exceptions: []
   tests:
   - tests/test_application_startup_non_qt.py
@@ -1248,3 +1250,37 @@ modules:
   - tests/test_platform_settings.py
   - tests/architecture/test_platform_settings_boundary.py
   title: Configuración y recursos de plataforma
+- circular_dependencies: []
+  current_dependencies: []
+  entry_points: []
+  forbidden_dependencies:
+  - M08
+  - M09
+  - M10
+  - M11
+  - M12
+  - M13
+  - M19
+  id: M22
+  internal_api:
+  - autosave
+  - crash_reporter
+  name: resilience
+  notes: Servicios de autosave, recuperación y crash logging. Las rutas históricas
+    bajo utils son shims de compatibilidad.
+  paths:
+  - src/chemuson/resilience/
+  public_api:
+  - AutosaveManager
+  - install
+  - write_crash_log
+  responsibility: Persistencia de recuperación, autosave rotativo, logging de crashes
+    y aislamiento de fallos de runtime.
+  risk_level: medium
+  status: evolving
+  target_dependencies: []
+  temporary_exceptions: []
+  tests:
+  - tests/test_autosave_manager.py
+  - tests/architecture/test_resilience_boundary.py
+  title: Resiliencia y recuperación de runtime

@@ -153,6 +153,16 @@ capa terminal: ningún módulo M00–M18 puede depender del bootstrap.
 | API pública | `application_settings`, preferencias de naming/numbering y coerción `setting_bool`. |
 | Compatibilidad | `chemuson.utils.resources` reexporta el helper canónico de M21. |
 
+### `chemuson.resilience`
+
+| Aspecto | Detalle |
+| --- | --- |
+| Responsabilidad | Autosave rotativo, recuperación y crash logging. |
+| Puede importar | Librería estándar y Qt externo para notificación; no `chemuson.gui`. |
+| No debería importar | Canvas, widgets propios, controllers, bootstrap ni `PersistenceManager`. |
+| API pública | `AutosaveManager`, `install`, `write_crash_log`. |
+| Compatibilidad | `utils.autosave` y `utils.crash_reporter` son shims de importación. |
+
 ### `chemuson.name2structure`
 
 | Aspecto | Detalle |
@@ -172,14 +182,15 @@ capa terminal: ningún módulo M00–M18 puede depender del bootstrap.
 | `chemio` | `core`. La persistencia recibe en runtime un objeto que satisface `PersistenceDocument`, sin importar GUI. |
 | `clean2d` | `core`, `chemio`. |
 | `chemcalc` | `chemname` en estado actual. Revisar si puede invertirse o aislarse. |
-| `chemname` | `core`, `chemcalc`, `chemio`, `utils`. |
+| `chemname` | `core`, `chemcalc`, `chemio`, `platform.settings`. |
 | `geometry3d` | `core`, `chemio`. |
 | `compchem` | `core`, `geometry3d`. |
 | `spectroscopy` | `core`, `chemio`. |
 | `chemuson.gui` | Orquesta casi todos los subsistemas; `chemuson.gui.editor2d.selection` contiene las políticas deterministas de selección sin dependencias ChemUSON. `gui.editor2d` queda disponible para módulos hermanos futuros. |
 | `update` | Ninguno. |
-| `utils` | `platform.settings` para el helper canónico de recursos. |
+| `utils` | `platform.settings` y `resilience` para shims históricos; autosave/crash canónicos pertenecen a M22. |
 | `platform.settings` | Ningún módulo ChemUSON; sólo QtCore/importlib.resources externos. |
+| `resilience` | Ningún módulo ChemUSON; sólo librería estándar y Qt externo. |
 | `name2structure` | `core`, `chemio`. |
 
 Estas dependencias describen el estado actual, no siempre el ideal. Las reglas siguientes definen el objetivo de mantenibilidad.

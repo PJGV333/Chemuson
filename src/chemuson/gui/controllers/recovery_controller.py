@@ -23,7 +23,7 @@ from PyQt6.QtWidgets import (
 )
 
 from chemuson.chemio.persistence import PersistenceManager
-from chemuson.utils.autosave import AutosaveManager
+from chemuson.resilience.autosave import AutosaveManager
 
 
 class RecoveryController:
