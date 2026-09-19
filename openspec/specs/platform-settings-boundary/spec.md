@@ -3,7 +3,11 @@
 ## Purpose
 TBD - created by archiving change establish-platform-settings-boundary. Update Purpose after archive.
 ## Requirements
-### Requirement: Platform Settings Is GUI-Independent
+### Requirement: Platform Files Are Explicitly Cataloged
+
+M21 SHALL own the explicit files `src/chemuson/platform/__init__.py`,
+`settings.py` and `resources.py`, with no broad package-path wildcard in the
+catalog.
 
 M21 SHALL own application settings and packaged-resource resolution without
 importing `chemuson.gui`, `QtWidgets`, a main window, a canvas or a controller.

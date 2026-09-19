@@ -45,7 +45,7 @@ following audited boundaries:
 
 - Phase A: M05/M06/M07/M14/M16/M17/M18/M19/M20 audited; cohesive modules kept intact.
 - Phase B: M21 `platform.settings` owns application preferences and packaged resources.
-- Phase C: M22 `resilience` owns autosave and crash logging; historical utils shims remain.
+- M22 `resilience` owns canonical autosave, recovery filesystem policy and crash logging; historical utils paths remain import-only shims.
 - Phase D: M14 update subsystem audited; M23 remains reserved.
 - Phase E: M19 composition root audited; M24 remains reserved.
 - Phase F: operational resilience ownership documented across M22, M08/M10, M14 and M19.
@@ -63,3 +63,16 @@ Final branch validation:
 
 All phase OpenSpecs are archived and the worktree is clean after the final
 operational-resilience audit commit.
+
+## Final boundary reconciliation
+
+- M15 is documented and tested as compatibility shims only.
+- M19 current and target dependencies are explicitly M08/M18/M22.
+- M20 owns only `gui/editor2d/selection/`; M09 owns legacy canvas shims.
+- M21 lists `platform/__init__.py`, `settings.py` and `resources.py` explicitly.
+- M22 now owns GUI-free recovery filesystem policy in `resilience/recovery.py`.
+- Final focused recovery/platform tests: `20 passed`.
+- Final architecture suite: `268 passed`.
+- Final full regression suite: `1496 passed, 55 skipped`.
+- Compileall and scoped Ruff passed; global OpenSpec validation is `35 passed, 0 failed`.
+- Qt offscreen smoke exited with `qt_recovery_smoke_exit=0`.

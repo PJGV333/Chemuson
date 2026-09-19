@@ -5,7 +5,7 @@ Fecha: 2026-09-19
 ## Ownership explícito
 
 - **M22 — resilience:** crash logging, excepthook, autosave rotativo,
-  recuperación de snapshots y aislamiento de fallos de runtime.
+  recuperación de snapshots y política filesystem de lectura/archivo.
 - **M08/M10 — GUI y controllers:** containment de tareas Qt, workers,
   diálogos de recuperación y coordinación de lifecycle. No se mueve al núcleo
   de M22 porque requiere widgets, tabs o controllers.

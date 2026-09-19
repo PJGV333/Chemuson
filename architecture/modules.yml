@@ -1027,14 +1027,14 @@ modules:
   - autosave
   - crash_reporter
   name: utils
-  notes: Sin __all__ en __init__.py. autosave.py recibe serialización y timers mediante
-    colaboradores inyectados desde la composición GUI. crash_reporter.py usa PyQt6
-    para notificación visual. El helper canónico de recursos pertenece a M21;
-    `utils.resources` se conserva como shim histórico.
+  notes: Sin __all__ en __init__.py. Los módulos históricos de utils son sólo
+    shims de compatibilidad hacia M21 y M22; ninguna implementación canónica de
+    settings, recursos, autosave, recuperación o crash reporting pertenece a M15.
   paths:
   - src/chemuson/utils/
   public_api: []
-  responsibility: Autosave y crash reporting compartido.
+  responsibility: Shims históricos de compatibilidad para servicios canónicos de
+    plataforma y resiliencia.
   risk_level: low
   status: stable
   target_dependencies:
@@ -1230,7 +1230,9 @@ modules:
     empaquetados. No importa módulos ChemUSON ni QtWidgets; `utils.resources`
     permanece como shim histórico.
   paths:
-  - src/chemuson/platform/
+  - src/chemuson/platform/__init__.py
+  - src/chemuson/platform/settings.py
+  - src/chemuson/platform/resources.py
   public_api:
   - NamingPreferences
   - NumberingPreferences
@@ -1264,6 +1266,7 @@ modules:
   id: M22
   internal_api:
   - autosave
+  - recovery
   - crash_reporter
   name: resilience
   notes: Servicios de autosave, recuperación y crash logging. Las rutas históricas
@@ -1272,7 +1275,10 @@ modules:
   - src/chemuson/resilience/
   public_api:
   - AutosaveManager
+  - archive_autosave
   - install
+  - list_autosave_entries
+  - read_autosave_metadata
   - write_crash_log
   responsibility: Persistencia de recuperación, autosave rotativo, logging de crashes
     y aislamiento de fallos de runtime.
@@ -1282,5 +1288,7 @@ modules:
   temporary_exceptions: []
   tests:
   - tests/test_autosave_manager.py
+  - tests/test_recovery_policy.py
   - tests/architecture/test_resilience_boundary.py
+  - tests/architecture/test_recovery_boundary.py
   title: Resiliencia y recuperación de runtime

@@ -44,12 +44,25 @@ def test_platform_resources_is_canonical_and_legacy_helper_is_a_shim() -> None:
     assert "def open_resource_path" not in legacy
 
 
+def test_platform_catalog_lists_explicit_files() -> None:
+    platform = _module("M21")
+    assert set(platform["paths"]) == {
+        "src/chemuson/platform/__init__.py",
+        "src/chemuson/platform/settings.py",
+        "src/chemuson/platform/resources.py",
+    }
+
+
 def test_platform_catalog_and_dependency_direction_are_explicit() -> None:
     platform = _module("M21")
     gui = _module("M08")
     utils = _module("M15")
     assert platform["name"] == "platform.settings"
-    assert platform["paths"] == ["src/chemuson/platform/"]
+    assert platform["paths"] == [
+        "src/chemuson/platform/__init__.py",
+        "src/chemuson/platform/settings.py",
+        "src/chemuson/platform/resources.py",
+    ]
     assert platform["current_dependencies"] == []
     assert platform["target_dependencies"] == []
     assert platform["temporary_exceptions"] == []

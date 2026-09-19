@@ -21,3 +21,5 @@ def test_bootstrap_catalog_ownership_is_unchanged() -> None:
     catalog = yaml.safe_load((ROOT / "architecture" / "modules.yml").read_text())
     bootstrap = next(module for module in catalog["modules"] if module["id"] == "M19")
     assert bootstrap["paths"] == ["src/chemuson/__main__.py", "src/chemuson/app/"]
+    assert set(bootstrap["current_dependencies"]) == {"M08", "M18", "M22"}
+    assert set(bootstrap["target_dependencies"]) == {"M08", "M18", "M22"}

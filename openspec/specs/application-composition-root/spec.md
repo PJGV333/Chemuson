@@ -1,13 +1,15 @@
 # application-composition-root Specification
 
 ## Purpose
-TBD - created by archiving change establish-application-composition-root. Update Purpose after archive.
+This specification SHALL define the ownership and behavior of the M19
+application composition root, including lightweight CLI startup and preserved
+failure handling.
 ## Requirements
 ### Requirement: M19 Owns Application Composition
 
-M19 SHALL own the creation and lifecycle of the desktop application in
-`src/chemuson/app/`. M08 SHALL own `ChemusonWindow` and SHALL NOT own the
-application bootstrap function.
+The M19 composition root SHALL own the creation and lifecycle of the desktop
+application in `src/chemuson/app/`. M08 SHALL own `ChemusonWindow` and SHALL NOT
+own the application bootstrap function.
 
 #### Scenario: Bootstrap ownership is inspected
 - **GIVEN** the module catalog and Python sources
@@ -16,8 +18,8 @@ application bootstrap function.
 
 ### Requirement: CLI Remains Lightweight
 
-Importing `chemuson.__main__`, requesting `--version`, or requesting CLI help
-SHALL NOT import PyQt6, `chemuson.gui`, or the graphical bootstrap module.
+Importing `chemuson.__main__`, requesting `--version`, or requesting CLI help SHALL NOT
+load PyQt6, `chemuson.gui`, or the graphical bootstrap module.
 
 #### Scenario: Version is requested without Qt
 - **GIVEN** a fresh Python process where graphical imports are observable
