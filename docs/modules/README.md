@@ -24,6 +24,9 @@ Este índice lista los módulos que componen la arquitectura de Chemuson, con en
 | M17 | markush | Estructuras Markush y polímeros | *pendiente* |
 | M18 | version | Gestión de versión | *pendiente* |
 | M19 | bootstrap | Arranque y composición de la aplicación | [M19-bootstrap.md](M19-bootstrap.md) |
+| M20 | gui.editor2d.selection | Selección del editor 2D | [M20-editor2d-selection.md](M20-editor2d-selection.md) |
+| M21 | platform.settings | Configuración y recursos de plataforma | [M21-platform-settings.md](M21-platform-settings.md) |
+| M22 | resilience | Resiliencia y recuperación de runtime | [M22-resilience.md](M22-resilience.md) |
 
 ## Fuente estructurada
 

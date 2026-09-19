@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from PyQt6.QtCore import QSettings, QTimer, Qt
+from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtWidgets import QLabel, QTabWidget, QTextEdit
 
 from chemuson.gui.actions import (
@@ -43,6 +43,7 @@ from chemuson.gui.template_browser_service import TemplateBrowserService
 from chemuson.gui.template_library import TemplateLibrary
 from chemuson.gui.text_toolbar import TextFormatToolbar
 from chemuson.gui.toolbar import ChemusonToolbar, SymbolPaletteToolbar
+from chemuson.platform.settings import application_settings
 from chemuson.version import get_app_version
 
 
@@ -65,7 +66,7 @@ def assemble_application_shell(self) -> None:
     self._numbering_default_mode = "atoms"
     self._numbering_default_include_export = True
     self._current_tool_id = "tool_select"
-    self._settings = QSettings("Chemuson", "Chemuson")
+    self._settings = application_settings()
     self._document_controller = DocumentController()
     self._file_controller = FileController()
     self._update_controller = UpdateController(self._settings, self._app_version)

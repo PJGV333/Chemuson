@@ -136,12 +136,32 @@ capa terminal: ningún módulo M00–M18 puede depender del bootstrap.
 
 | Aspecto | Detalle |
 | --- | --- |
-| Responsabilidad | Recursos empaquetados, autosave y crash reporting compartido. |
+| Responsabilidad | Compatibilidad histórica mediante shims hacia M21 y M22; no posee implementaciones canónicas. |
 | Archivos principales | `resources.py`, `autosave.py`, `crash_reporter.py`. |
-| Puede importar | Biblioteca estándar y dependencias externas ya permitidas. `autosave.py` recibe persistencia y timers desde `gui.tab_manager`; `crash_reporter.py` usa PyQt6 para notificación visual. |
-| No debería importar | Otros paquetes ChemUSON, dominio químico pesado, RDKit directo ni `tools`. `autosave.py` no importa PyQt6, GUI ni ChemIO. |
-| API pública | Actualmente no reexporta API en `__init__`; usar módulos específicos. |
-| Internos/privados | Helpers de rutas, serialización de crash/autosave y contratos estructurales mínimos de autosave. |
+| Puede importar | Sólo los módulos canónicos M21/M22 que reexporta como compatibilidad. |
+| No debería importar | Dominio químico pesado, `tools` ni implementar lógica propia de settings, recursos, autosave, recuperación o crash reporting. |
+| API pública | Los módulos históricos conservan sus nombres de importación; `utils.__init__` no reexporta API. |
+| Internos/privados | No hay política canónica en M15; cualquier cambio funcional debe hacerse en M21 o M22. |
+
+### `chemuson.platform.settings`
+
+| Aspecto | Detalle |
+| --- | --- |
+| Responsabilidad | Configuración persistente de aplicación y resolución de recursos empaquetados. |
+| Puede importar | `PyQt6.QtCore.QSettings` e `importlib.resources`; no módulos ChemUSON. |
+| No debería importar | `chemuson.gui`, `QtWidgets`, controllers, canvas ni dominio químico. |
+| API pública | `application_settings`, preferencias de naming/numbering y coerción `setting_bool`. |
+| Compatibilidad | `chemuson.utils.resources` reexporta el helper canónico de M21. |
+
+### `chemuson.resilience`
+
+| Aspecto | Detalle |
+| --- | --- |
+| Responsabilidad | Autosave rotativo, recuperación y crash logging. |
+| Puede importar | Librería estándar y Qt externo para notificación; no `chemuson.gui`. |
+| No debería importar | Canvas, widgets propios, controllers, bootstrap ni `PersistenceManager`. |
+| API pública | `AutosaveManager`, `install`, `write_crash_log`. |
+| Compatibilidad | `utils.autosave` y `utils.crash_reporter` son shims de importación. |
 
 ### `chemuson.name2structure`
 
@@ -162,13 +182,15 @@ capa terminal: ningún módulo M00–M18 puede depender del bootstrap.
 | `chemio` | `core`. La persistencia recibe en runtime un objeto que satisface `PersistenceDocument`, sin importar GUI. |
 | `clean2d` | `core`, `chemio`. |
 | `chemcalc` | `chemname` en estado actual. Revisar si puede invertirse o aislarse. |
-| `chemname` | `core`, `chemcalc`, `chemio`, `utils`. |
+| `chemname` | `core`, `chemcalc`, `chemio`, `platform.settings`. |
 | `geometry3d` | `core`, `chemio`. |
 | `compchem` | `core`, `geometry3d`. |
 | `spectroscopy` | `core`, `chemio`. |
-| `gui` | Orquesta casi todos los subsistemas. |
+| `chemuson.gui` | Orquesta casi todos los subsistemas; `chemuson.gui.editor2d.selection` contiene las políticas deterministas de selección sin dependencias ChemUSON. `gui.editor2d` queda disponible para módulos hermanos futuros. |
 | `update` | Ninguno. |
-| `utils` | Ninguno entre módulos ChemUSON. `autosave.py` recibe serialización y temporizadores inyectados desde `gui.tab_manager`; `crash_reporter.py` conserva PyQt6 como dependencia externa para notificación visual. |
+| `chemuson.utils` | Sólo shims históricos hacia `platform.settings` y `resilience`; no posee implementaciones canónicas. |
+| `platform.settings` | Ningún módulo ChemUSON; sólo QtCore/importlib.resources externos. |
+| `resilience` | Ningún módulo ChemUSON; sólo librería estándar y Qt externo. |
 | `name2structure` | `core`, `chemio`. |
 
 Estas dependencias describen el estado actual, no siempre el ideal. Las reglas siguientes definen el objetivo de mantenibilidad.

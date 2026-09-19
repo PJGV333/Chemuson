@@ -7,7 +7,7 @@ import sys
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
 from chemuson.gui.main_window import ChemusonWindow
-from chemuson.utils import crash_reporter
+from chemuson.resilience import crash_reporter
 from chemuson.version import get_app_version
 
 

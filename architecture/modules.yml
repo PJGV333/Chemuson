@@ -299,7 +299,7 @@ modules:
   - M00
   - M03
   - M01
-  - M15
+  - M21
   entry_points:
   - iupac_name
   forbidden_dependencies:
@@ -329,7 +329,7 @@ modules:
   notes: 'Importa chemio de forma lazy (TYPE_CHECKING en stereo_advanced.py, runtime
     dentro de funciones en engine.py).
 
-    Importa utils.resources de forma global. MolView pertenece a core; el path chemname.molview
+    Importa platform.resources de forma global. MolView pertenece a core; el path chemname.molview
     se conserva como compatibilidad histórica.
 
     '
@@ -346,7 +346,7 @@ modules:
   - M00
   - M01
   - M03
-  - M15
+  - M21
   temporary_exceptions: []
   tests:
   - tests/test_iupac_ui.py
@@ -500,10 +500,11 @@ modules:
   - M12
   - M13
   - M14
-  - M15
   - M16
   - M17
   - M18
+  - M21
+  - M22
   entry_points: []
   forbidden_dependencies: []
   id: M08
@@ -529,12 +530,14 @@ modules:
   - shell
   - background_workers
   - clean2d_geometry
+  - editor2d
   name: gui
   notes: 'GUI importa todos los subsistemas de dominio para orquestación. No implementa
     lógica química pesada. items.py es un módulo individual (no paquete): src/chemuson/gui/items.py
     (5704 líneas).'
   paths:
   - src/chemuson/gui/__init__.py
+  - src/chemuson/gui/editor2d/__init__.py
   - src/chemuson/gui/composite_diagram_item.py
   - src/chemuson/gui/diagram_layout.py
   - src/chemuson/gui/diagram_models.py
@@ -589,10 +592,11 @@ modules:
   - M12
   - M13
   - M14
-  - M15
   - M16
   - M17
   - M18
+  - M21
+  - M22
   temporary_exceptions: []
   tests:
   - tests/test_main_window_tabs.py
@@ -646,6 +650,7 @@ modules:
   - M11
   - M12
   - M13
+  - M20
   entry_points:
   - ChemusonCanvas
   - molgraph_to_molfile
@@ -676,8 +681,6 @@ modules:
   - canvas_tools_rings_chains
   - canvas_selection_input
   - canvas_selection_item
-  - selection_geometry
-  - selection_bounds
   name: gui.canvas
   notes: 'ChemusonCanvas extiende QGraphicsView con 5 mixins (CanvasInputMixin, CanvasSelectionMixin,
 
@@ -685,7 +688,7 @@ modules:
     6 sub-mixins.
 
     CanvasToolsBondingMixin (canvas_tools_bonding.py) agrega 5 sub-mixins de bonding.
-    22 archivos Python en canvas/.
+    25 archivos Python en canvas/; los helpers editor2d se consumen mediante M20.
 
     '
   paths:
@@ -713,12 +716,12 @@ modules:
   - M11
   - M12
   - M13
+  - M20
   temporary_exceptions: []
   tests:
-  - tests/architecture/test_canvas_selection_geometry.py
-  - tests/test_canvas_selection_geometry.py
-  - tests/test_canvas_selection_bounds.py
-  - tests/architecture/test_canvas_selection_bounds.py
+  - tests/test_clipboard_structure_copy.py
+  - tests/test_paste_selection_behavior.py
+  - tests/test_selection_tightness.py
   title: Canvas de edición molecular
 - circular_dependencies: []
   current_dependencies:
@@ -730,7 +733,8 @@ modules:
   - M09
   - M11
   - M14
-  - M15
+  - M21
+  - M22
   entry_points: []
   forbidden_dependencies: []
   id: M10
@@ -776,9 +780,10 @@ modules:
   - M09
   - M11
   - M14
-  - M15
   - M16
   - M18
+  - M21
+  - M22
   temporary_exceptions: []
   tests: []
   title: Controllers de la GUI
@@ -1005,7 +1010,9 @@ modules:
   - tests/test_update_windows.py
   title: Subsistema de auto-actualización
 - circular_dependencies: []
-  current_dependencies: []
+  current_dependencies:
+  - M21
+  - M22
   entry_points: []
   forbidden_dependencies:
   - M08
@@ -1016,20 +1023,23 @@ modules:
   - M13
   id: M15
   internal_api:
-  - resources
+  - resources_compat
   - autosave
   - crash_reporter
   name: utils
-  notes: Sin __all__ en __init__.py. autosave.py recibe serialización y timers mediante
-    colaboradores inyectados desde la composición GUI. crash_reporter.py usa PyQt6
-    para notificación visual. M15 no depende de otros módulos ChemUSON.
+  notes: Sin __all__ en __init__.py. Los módulos históricos de utils son sólo
+    shims de compatibilidad hacia M21 y M22; ninguna implementación canónica de
+    settings, recursos, autosave, recuperación o crash reporting pertenece a M15.
   paths:
   - src/chemuson/utils/
   public_api: []
-  responsibility: Recursos empaquetados, autosave y crash reporting compartido.
+  responsibility: Shims históricos de compatibilidad para servicios canónicos de
+    plataforma y resiliencia.
   risk_level: low
   status: stable
-  target_dependencies: []
+  target_dependencies:
+  - M21
+  - M22
   temporary_exceptions: []
   tests: []
   title: Utilidades compartidas
@@ -1124,7 +1134,7 @@ modules:
   current_dependencies:
   - M18
   - M08
-  - M15
+  - M22
   entry_points:
   - chemuson
   - python -m chemuson
@@ -1144,8 +1154,141 @@ modules:
   target_dependencies:
   - M18
   - M08
-  - M15
+  - M22
   temporary_exceptions: []
   tests:
   - tests/test_application_startup_non_qt.py
   title: Arranque y composición de la aplicación
+- circular_dependencies: []
+  current_dependencies: []
+  entry_points: []
+  forbidden_dependencies: []
+  id: M20
+  internal_api:
+  - selection_geometry
+  - selection_bounds
+  - selection_hit_testing
+  - selection_overlay
+  - selection_clipboard
+  name: gui.editor2d.selection
+  notes: Helpers deterministas de selección del editor 2D. Las rutas antiguas
+    bajo gui.canvas son shims de compatibilidad sin implementaciones.
+  paths:
+  - src/chemuson/gui/editor2d/selection/
+  public_api: []
+  responsibility: Geometría, hit testing, overlays y política de clipboard consultivas
+    de la selección del editor 2D.
+  risk_level: low
+  status: evolving
+  target_dependencies: []
+  temporary_exceptions: []
+  tests:
+  - tests/test_canvas_selection_geometry.py
+  - tests/architecture/test_canvas_selection_geometry.py
+  - tests/test_canvas_selection_bounds.py
+  - tests/architecture/test_canvas_selection_bounds.py
+  - tests/test_canvas_selection_hit_testing.py
+  - tests/architecture/test_canvas_selection_hit_testing.py
+  - tests/test_canvas_selection_overlay.py
+  - tests/architecture/test_canvas_selection_overlay.py
+  - tests/test_canvas_selection_clipboard_policy.py
+  - tests/architecture/test_canvas_selection_clipboard.py
+  - tests/architecture/test_editor2d_selection_ownership.py
+  title: Selección del editor 2D
+- circular_dependencies: []
+  current_dependencies: []
+  entry_points:
+  - application_settings
+  forbidden_dependencies:
+  - M00
+  - M01
+  - M02
+  - M03
+  - M04
+  - M05
+  - M06
+  - M07
+  - M08
+  - M09
+  - M10
+  - M11
+  - M12
+  - M13
+  - M14
+  - M15
+  - M16
+  - M17
+  - M18
+  - M19
+  - M20
+  id: M21
+  internal_api:
+  - settings
+  - resources
+  name: platform.settings
+  notes: Política de configuración de aplicación y resolución de recursos
+    empaquetados. No importa módulos ChemUSON ni QtWidgets; `utils.resources`
+    permanece como shim histórico.
+  paths:
+  - src/chemuson/platform/__init__.py
+  - src/chemuson/platform/settings.py
+  - src/chemuson/platform/resources.py
+  public_api:
+  - NamingPreferences
+  - NumberingPreferences
+  - application_settings
+  - load_naming_preferences
+  - load_numbering_preferences
+  - save_naming_preferences
+  - save_numbering_preferences
+  - setting_bool
+  responsibility: Configuración persistente de aplicación y resolución de recursos
+    empaquetados sin dependencia de GUI.
+  risk_level: medium
+  status: evolving
+  target_dependencies: []
+  temporary_exceptions: []
+  tests:
+  - tests/test_platform_settings.py
+  - tests/architecture/test_platform_settings_boundary.py
+  title: Configuración y recursos de plataforma
+- circular_dependencies: []
+  current_dependencies: []
+  entry_points: []
+  forbidden_dependencies:
+  - M08
+  - M09
+  - M10
+  - M11
+  - M12
+  - M13
+  - M19
+  id: M22
+  internal_api:
+  - autosave
+  - recovery
+  - crash_reporter
+  name: resilience
+  notes: Servicios de autosave, recuperación y crash logging. Las rutas históricas
+    bajo utils son shims de compatibilidad.
+  paths:
+  - src/chemuson/resilience/
+  public_api:
+  - AutosaveManager
+  - archive_autosave
+  - install
+  - list_autosave_entries
+  - read_autosave_metadata
+  - write_crash_log
+  responsibility: Persistencia de recuperación, autosave rotativo, logging de crashes
+    y aislamiento de fallos de runtime.
+  risk_level: medium
+  status: evolving
+  target_dependencies: []
+  temporary_exceptions: []
+  tests:
+  - tests/test_autosave_manager.py
+  - tests/test_recovery_policy.py
+  - tests/architecture/test_resilience_boundary.py
+  - tests/architecture/test_recovery_boundary.py
+  title: Resiliencia y recuperación de runtime

@@ -16,12 +16,12 @@ The module catalog SHALL exist at `architecture/modules.yml` and SHALL be parsea
 
 ### Requirement: Module Identification with Stable IDs
 
-Each module entry SHALL have a unique `id` field matching the pattern `M\d\d`. The catalog SHALL contain exactly 20 modules (M00-M19). IDs SHALL be persistent: once assigned, an ID is never reused even if a module is removed.
+Each module entry SHALL have a unique `id` field matching the pattern `M\d\d`. The catalog SHALL contain exactly 23 modules (M00-M22). IDs SHALL be persistent: once assigned, an ID is never reused even if the module is removed.
 
 #### Scenario: ID uniqueness
-- **GIVEN** the catalog contains 20 module entries
+- **GIVEN** the catalog contains 23 module entries
 - **WHEN** a test extracts all `id` values
-- **THEN** all 20 IDs are distinct
+- **THEN** all 23 IDs are distinct
 
 #### Scenario: ID format
 - **GIVEN** a module entry with id `M05`
@@ -133,14 +133,14 @@ an empty list, and all circular-dependency lists SHALL be empty.
 ### Requirement: M19 Catalogs the Composition Root
 
 M19 SHALL own `src/chemuson/__main__.py` and `src/chemuson/app/`. Its current
-and target dependencies SHALL be M08, M15 and M18, matching its direct imports.
-Its public API SHALL continue to contain `main`, associated with the installed
-entry point.
+and target dependencies SHALL be exactly M08, M18 and M22, matching its direct
+imports and crash-hook installation. Its public API SHALL continue to contain
+`main`, associated with the installed entry point.
 
 #### Scenario: M19 inventory is inspected
 - **GIVEN** the module catalog after establishing the composition root
 - **WHEN** M19 paths, dependencies and public API are audited
-- **THEN** both bootstrap paths exist, dependencies are exactly M08/M15/M18, and `main` resolves statically
+- **THEN** both bootstrap paths exist, dependencies are exactly M08/M18/M22, and `main` resolves statically
 
 #### Scenario: Bootstrap paths have exclusive ownership
 - **GIVEN** all catalog paths
@@ -179,3 +179,81 @@ temporary exception, cycle or public API.
 - **GIVEN** the module catalog after extraction
 - **WHEN** paths, tests and APIs are audited
 - **THEN** the geometry module and test are owned by M08 and dependency sets remain unchanged
+
+### Requirement: M20 Catalogs Canonical Editor2D Selection Helpers
+
+M20 SHALL own the canonical implementations of `selection_geometry`,
+`selection_bounds`, `selection_hit_testing`, `selection_overlay` and
+`selection_clipboard` under `src/chemuson/gui/editor2d/selection/`. The
+historical `src/chemuson/gui/canvas/` paths SHALL remain import-only
+compatibility shims owned by M09. The parent `gui/editor2d/__init__.py` SHALL
+remain a logic-free namespace outside M20. M09 SHALL depend on M20.
+
+#### Scenario: M20 inventory is inspected
+- **GIVEN** the module catalog after moving the selection helpers
+- **WHEN** canonical paths, shims, tests and dependencies are audited
+- **THEN** the five helpers and their tests belong exclusively to M20 under
+  `gui/editor2d/selection/`, the legacy canvas paths are import-only shims under
+  M09, M20 has no ChemUSON dependencies, and M09 lists M20 as current and target dependency
+
+### Requirement: M09 Catalogs Selection Hit Testing
+
+M09 SHALL inventory the historical `gui/canvas/selection_hit_testing.py`,
+`selection_overlay.py` and `selection_clipboard.py` paths only as import-only
+compatibility shims. Their canonical implementations and policy tests belong to
+M20; M09 retains the interactive canvas and paste coordination.
+
+#### Scenario: Hit-testing ownership is inspected
+- **GIVEN** the M09 catalog and source tree
+- **WHEN** selection hit-testing ownership and tests are enumerated
+- **THEN** the historical path is recorded only as an M09 compatibility shim,
+  the canonical query module and tests belong to M20, and M09 retains its
+  dependency on M20
+
+### Requirement: M09 Catalogs Selection Overlay Geometry
+
+M09 SHALL inventory the historical `gui/canvas/selection_overlay.py` path only
+as an import-only compatibility shim. The canonical overlay implementation and
+its tests belong to M20 without adding dependencies, exceptions or cycles.
+
+#### Scenario: Overlay ownership is inspected
+- **GIVEN** the M09 catalog and source tree
+- **WHEN** overlay geometry ownership is enumerated
+- **THEN** the historical overlay path is an M09 shim while the canonical module
+  and tests belong to M20 and the interactive canvas remains M09-owned
+
+### Requirement: M09 Catalogs Selection Clipboard Policy
+
+M09 SHALL inventory the historical `gui/canvas/selection_clipboard.py` path
+only as an import-only compatibility shim. The canonical clipboard policy and
+its tests belong to M20 without changing interactive canvas ownership.
+
+#### Scenario: Clipboard ownership is inspected
+- **GIVEN** the M09 catalog and source tree
+- **WHEN** clipboard policy ownership is enumerated
+- **THEN** the historical clipboard path is an M09 shim while the canonical
+  policy and tests belong to M20 and paste coordination remains in the canvas mixins
+
+### Requirement: M21 Owns Explicit Platform Files
+
+M21 SHALL own `src/chemuson/platform/__init__.py`, `settings.py` and
+`resources.py` explicitly. It SHALL have no ChemUSON dependencies and SHALL NOT
+import GUI widgets or controllers.
+
+#### Scenario: Platform ownership is inspected
+- **WHEN** M21 paths and imports are audited
+- **THEN** the three platform files are listed explicitly and no GUI dependency
+  is present
+
+### Requirement: M22 Owns Recovery Filesystem Policy
+
+M22 SHALL own the canonical `resilience/recovery.py` implementation alongside
+`autosave.py` and `crash_reporter.py`. It SHALL provide
+`read_autosave_metadata`, `list_autosave_entries` and `archive_autosave` without
+importing `chemuson.gui` or `PersistenceManager`.
+
+#### Scenario: Recovery ownership is inspected
+- **WHEN** M22 source, controller consumers and catalog entries are audited
+- **THEN** the three filesystem-policy functions have one canonical M22 owner,
+  RecoveryController keeps UI/document orchestration, and M22 has no ChemUSON
+  module dependencies

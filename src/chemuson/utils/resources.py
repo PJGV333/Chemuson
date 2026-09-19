@@ -1,9 +1,5 @@
-"""Helpers para resolver recursos empaquetados."""
+"""Compatibility shim for the historical resource helper path."""
 
-from importlib.resources import as_file, files
+from chemuson.platform.resources import open_resource_path
 
-
-def open_resource_path(*parts: str, package: str = "chemuson"):
-    """Retorna un context manager con path real a un recurso empacado."""
-    target = files(package).joinpath(*parts)
-    return as_file(target)
+__all__ = ["open_resource_path"]

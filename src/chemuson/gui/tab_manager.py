@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import QTabWidget
 
 from chemuson.gui.canvas import ChemusonCanvas
 from chemuson.chemio.persistence import PersistenceManager
-from chemuson.utils.autosave import (
+from chemuson.resilience.autosave import (
     AutosaveController,
     AutosaveManager,
     AutosaveSerializer,

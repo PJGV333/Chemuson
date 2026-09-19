@@ -13,7 +13,7 @@ from pathlib import Path
 from .errors import ChemNameInternalError, ChemNameNotSupported
 from chemuson.chemcalc.valence import implicit_h_count
 from chemuson.chemio.rdkit_io import molgraph_to_rdkit_with_map
-from chemuson.utils.resources import open_resource_path
+from chemuson.platform.resources import open_resource_path
 
 from .coordination import detect_coordination_name
 from .functional_groups import detect_sulfonic_attachment

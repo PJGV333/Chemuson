@@ -43,6 +43,12 @@ from chemuson.gui.plate_items import GelBandItem, GelElectrophoresisItem, TLCPla
 
 from .canvas_chem_data import SYMBOL_TEXT_TOOLS
 from .canvas_constants import ATOM_HIT_RADIUS, ELECTRON_ANCHOR_ROLE, ELECTRON_SLOT_ROLE
+from chemuson.gui.editor2d.selection.selection_hit_testing import (
+    get_item_at,
+    resolve_click_item,
+    selected_annotation_item_at,
+    semantic_diagram_parent,
+)
 
 class CanvasSelectionInputMixin:
     def set_current_tool(self, tool_id: str) -> None:
@@ -1287,69 +1293,41 @@ class CanvasSelectionInputMixin:
         super().mouseReleaseEvent(event)
 
     def _get_item_at(self, scene_pos: QPointF):
-        """Método auxiliar para  get item at.
-
-        Args:
-            scene_pos: Descripción del parámetro.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la escena.
-        """
-        for item in self.scene.items(scene_pos):
-            semantic_parent = self._semantic_diagram_parent(item)
-            if semantic_parent is not None:
-                return semantic_parent
-            if isinstance(item, AtomItem) and self._is_disposable_orphan_atom(item.atom_id):
-                continue
-            if isinstance(
-                item,
-                (
-                    AtomItem,
-                    BondItem,
-                    ArrowItem,
-                    BracketItem,
-                    TextAnnotationItem,
-                    EnergyDiagramItem,
-                    CompositeDiagramItem,
-                    OrbitalAnnotationItem,
-                    ImageAnnotationItem,
-                    WavyAnchorItem,
-                    TLCSpotItem,
-                    GelBandItem,
-                ),
-            ):
-                return item
-            # If we clicked a label/text child of an atom, return the atom.
-            if isinstance(item, QGraphicsTextItem):
-                parent = item.parentItem()
-                if isinstance(parent, AtomItem):
-                    if self._is_disposable_orphan_atom(parent.atom_id):
-                        continue
-                    return parent
-                semantic_parent = self._semantic_diagram_parent(parent)
-                if semantic_parent is not None:
-                    return semantic_parent
-        return None
+        """Resolve the selectable item at a scene point."""
+        return get_item_at(
+            scene=self.scene,
+            scene_pos=scene_pos,
+            composite_type=CompositeDiagramItem,
+            atom_type=AtomItem,
+            text_type=QGraphicsTextItem,
+            selectable_types=(
+                AtomItem,
+                BondItem,
+                ArrowItem,
+                BracketItem,
+                TextAnnotationItem,
+                EnergyDiagramItem,
+                CompositeDiagramItem,
+                OrbitalAnnotationItem,
+                ImageAnnotationItem,
+                WavyAnchorItem,
+                TLCSpotItem,
+                GelBandItem,
+            ),
+            is_disposable_orphan_atom=self._is_disposable_orphan_atom,
+        )
 
     @staticmethod
     def _semantic_diagram_parent(item: Optional[QGraphicsItem]) -> Optional[CompositeDiagramItem]:
         """Promueve hijos internos de un diagrama semántico a su item raíz."""
-        current = item
-        while current is not None:
-            if isinstance(current, CompositeDiagramItem):
-                return current
-            current = current.parentItem()
-        return None
+        return semantic_diagram_parent(item, composite_type=CompositeDiagramItem)
 
     def _resolve_click_item(self, scene_pos: QPointF):
-        """Resuelve el objetivo de clic priorizando el pick geométrico de átomos."""
-        item = self._get_item_at(scene_pos)
-        if isinstance(
-            item,
-            (
+        """Resuelve el objetivo de clic delegando en la política consultiva."""
+        return resolve_click_item(
+            scene_item=self._get_item_at(scene_pos),
+            scene_pos=scene_pos,
+            annotation_types=(
                 TextAnnotationItem,
                 EnergyDiagramItem,
                 CompositeDiagramItem,
@@ -1359,55 +1337,24 @@ class CanvasSelectionInputMixin:
                 BracketItem,
                 WavyAnchorItem,
             ),
-        ):
-            return item
-
-        atom_id, bond_id = self._pick_hover_target(scene_pos)
-        if atom_id is not None:
-            atom_item = self.atom_items.get(atom_id)
-            if atom_item is not None:
-                return atom_item
-
-        if item is not None:
-            return item
-
-        if bond_id is not None:
-            return self.bond_items.get(bond_id)
-        return None
+            pick_hover_target=self._pick_hover_target,
+            atom_items=self.atom_items,
+            bond_items=self.bond_items,
+        )
 
     def _selected_annotation_item_at(self, scene_pos: QPointF) -> Optional[QGraphicsItem]:
-        """Prioriza un orbital/imagen ya seleccionado si el puntero cae sobre él.
-
-        Esto evita que objetos químicos superpuestos secuestren el gesto de
-        mover/redimensionar/rotar cuando la intención del usuario es seguir
-        manipulando una anotación activa.
-        """
-        best_item: Optional[QGraphicsItem] = None
-        best_z = float("-inf")
-        for item in [
-            *self._selected_energy_diagram_items(),
-            *self._selected_semantic_diagram_items(),
-            *self._selected_orbital_items(),
-            *self._selected_image_items(),
-            *self._selected_plate_items(),
-        ]:
-            if item.scene() is not self.scene:
-                continue
-            try:
-                if not item.isVisible():
-                    continue
-                if not item.sceneBoundingRect().contains(scene_pos):
-                    continue
-                local_pos = item.mapFromScene(scene_pos)
-                if not item.contains(local_pos):
-                    continue
-                z_value = float(item.zValue())
-            except RuntimeError:
-                continue
-            if best_item is None or z_value >= best_z:
-                best_item = item
-                best_z = z_value
-        return best_item
+        """Prioriza una anotación seleccionada bajo el puntero."""
+        return selected_annotation_item_at(
+            scene=self.scene,
+            scene_pos=scene_pos,
+            items=[
+                *self._selected_energy_diagram_items(),
+                *self._selected_semantic_diagram_items(),
+                *self._selected_orbital_items(),
+                *self._selected_image_items(),
+                *self._selected_plate_items(),
+            ],
+        )
 
     def _maybe_begin_selected_annotation_transform(self, scene_pos: QPointF, event) -> bool:
         """Permite transformar una anotación seleccionada incluso fuera de tool_select."""

@@ -5,7 +5,7 @@ import json
 import math
 from typing import Dict, Iterable, Optional, Tuple
 
-from PyQt6.QtCore import QBuffer, QMimeData, QPoint, QPointF, QRectF, Qt
+from PyQt6.QtCore import QBuffer, QMimeData, QPointF, QRectF, Qt
 from PyQt6.QtGui import QBrush, QColor, QFont, QPainterPath, QPen, QTextCharFormat
 from PyQt6.QtWidgets import (
     QApplication,
@@ -111,7 +111,7 @@ from .canvas_constants import (
     WAVY_ANCHOR_LENGTH_ROLE,
     WAVY_ANCHOR_ROLE,
 )
-from .selection_geometry import (
+from chemuson.gui.editor2d.selection.selection_geometry import (
     normalize_custom_stroke,
     normalize_label_scale,
     optional_float_equal,
@@ -120,9 +120,30 @@ from .selection_geometry import (
     scale_point_from_anchor,
     signed_angle_delta_deg,
 )
-from .selection_bounds import (
+from chemuson.gui.editor2d.selection.selection_bounds import (
     resolve_selected_atom_ids,
     selection_bounds,
+)
+from chemuson.gui.editor2d.selection.selection_overlay import (
+    handle_item_distance_sq,
+    handle_item_hit_radius,
+    offset_scene_point,
+    padded_selection_bbox,
+    selection_handle_hit_kind,
+    selection_handle_scene_positions,
+)
+from chemuson.gui.editor2d.selection.selection_clipboard import (
+    MIME_MDL_MOLFILE,
+    MIME_PNG,
+    MIME_SELECTION,
+    MIME_SVG,
+    MIME_TEXT_ITEMS,
+    bond_copy_priority,
+    decode_selection_payload,
+    encode_selection_payload,
+    is_large_clipboard_structure,
+    mime_has_pasteable_format,
+    unique_bonds_for_copy,
 )
 
 class CanvasSelectionMixin:
@@ -395,29 +416,20 @@ class CanvasSelectionMixin:
     @staticmethod
     def _bond_copy_priority(bond: Bond) -> int:
         """Prioriza la representación más informativa si hay enlaces duplicados."""
-        style_bonus = 5 if bond.style == BondStyle.COORDINATION else 0
-        aromatic_bonus = 50 if bond.is_aromatic else 0
-        display_bonus = int(bond.display_order or 0)
-        return int(bond.order or 1) * 10 + style_bonus + aromatic_bonus + display_bonus
+        return bond_copy_priority(bond)
 
     def _unique_bonds_for_copy(self, bonds: Iterable[Bond]) -> list[Bond]:
         """Elimina pares duplicados al copiar/exportar selección."""
-        unique: dict[tuple[int, int], Bond] = {}
-        for bond in sorted(bonds, key=lambda item: item.id):
-            pair = (min(int(bond.a1_id), int(bond.a2_id)), max(int(bond.a1_id), int(bond.a2_id)))
-            existing = unique.get(pair)
-            if existing is None or self._bond_copy_priority(bond) > self._bond_copy_priority(existing):
-                unique[pair] = bond
-        return list(unique.values())
+        return unique_bonds_for_copy(bonds)
 
     @staticmethod
     def _is_large_clipboard_structure(graph: Optional[MolGraph]) -> bool:
         """Determina si una selección es suficientemente grande para exportación ligera."""
-        if graph is None:
-            return False
-        return (
-            len(graph.atoms) >= CLIPBOARD_LARGE_SELECTION_ATOM_THRESHOLD
-            or len(graph.bonds) >= CLIPBOARD_LARGE_SELECTION_BOND_THRESHOLD
+        return is_large_clipboard_structure(
+            len(graph.atoms) if graph is not None else None,
+            len(graph.bonds) if graph is not None else None,
+            atom_threshold=CLIPBOARD_LARGE_SELECTION_ATOM_THRESHOLD,
+            bond_threshold=CLIPBOARD_LARGE_SELECTION_BOND_THRESHOLD,
         )
 
     def _build_selection_graph(self, atom_ids: set[int], bonds: list[Bond]) -> MolGraph:
@@ -1072,7 +1084,7 @@ class CanvasSelectionMixin:
 
             for idx, img_d in enumerate(images):
                 raw_b64 = img_d.get("data_b64")
-                mime_type = img_d.get("mime_type", "image/png")
+                mime_type = img_d.get("mime_type", MIME_PNG)
                 if not raw_b64:
                     continue
                 try:
@@ -1216,18 +1228,7 @@ class CanvasSelectionMixin:
     def can_paste_from_clipboard(self) -> bool:
         """Indica si el portapapeles contiene un formato pegable por Chemuson."""
         mime = QApplication.clipboard().mimeData()
-        if mime is None:
-            return False
-        return bool(
-            mime.hasFormat("application/x-chemuson-selection")
-            or mime.hasFormat("application/x-chemuson-text-items")
-            or mime.hasFormat("chemical/x-mdl-molfile")
-            or mime.hasUrls()
-            or mime.hasText()
-            or mime.hasFormat("image/png")
-            or mime.hasImage()
-            or mime.hasFormat("image/svg+xml")
-        )
+        return mime is not None and mime_has_pasteable_format(mime)
 
     def selected_semantic_diagram_item(self) -> CompositeDiagramItem | None:
         """Devuelve el diagrama semántico seleccionado si la selección es única."""
@@ -1261,8 +1262,8 @@ class CanvasSelectionMixin:
         mime = QMimeData()
         if selected_payload is not None:
             mime.setData(
-                "application/x-chemuson-selection",
-                json.dumps(selected_payload).encode("utf-8"),
+                MIME_SELECTION,
+                encode_selection_payload(selected_payload),
             )
         if has_structure_selection:
             graph = self._build_selection_graph(atom_ids, bonds)
@@ -1282,7 +1283,7 @@ class CanvasSelectionMixin:
 
                 molfile = canvas_api.molgraph_to_molfile(graph)
                 smiles = canvas_api.molgraph_to_smiles(graph)
-                mime.setData("chemical/x-mdl-molfile", molfile.encode("utf-8"))
+                mime.setData(MIME_MDL_MOLFILE, molfile.encode("utf-8"))
             except Exception:
                 pass
         if only_text_selection:
@@ -1302,7 +1303,7 @@ class CanvasSelectionMixin:
                 ]
             }
             mime.setData(
-                "application/x-chemuson-text-items",
+                MIME_TEXT_ITEMS,
                 json.dumps(data).encode("utf-8"),
             )
 
@@ -1320,7 +1321,7 @@ class CanvasSelectionMixin:
             buffer = QBuffer()
             buffer.open(QBuffer.OpenModeFlag.WriteOnly)
             image.save(buffer, "PNG")
-            mime.setData("image/png", buffer.data())
+            mime.setData(MIME_PNG, buffer.data())
             mime.setImageData(image)
             try:
                 png_b64 = base64.b64encode(bytes(buffer.data())).decode("ascii")
@@ -1333,7 +1334,7 @@ class CanvasSelectionMixin:
         if not large_structure_selection:
             svg_data = self._render_scene_svg(selected_only=has_selection)
             if svg_data:
-                mime.setData("image/svg+xml", svg_data)
+                mime.setData(MIME_SVG, svg_data)
 
         QApplication.clipboard().setMimeData(mime)
 
@@ -1351,24 +1352,26 @@ class CanvasSelectionMixin:
         if mime is None:
             return
 
-        if mime.hasFormat("application/x-chemuson-selection"):
+        if mime.hasFormat(MIME_SELECTION):
             try:
-                payload = json.loads(bytes(mime.data("application/x-chemuson-selection")).decode("utf-8"))
+                payload = decode_selection_payload(bytes(mime.data(MIME_SELECTION)))
+                if payload is None:
+                    raise ValueError("invalid selection payload")
                 self._paste_selection_payload(payload)
                 return
             except Exception:
                 pass
 
-        if mime.hasFormat("application/x-chemuson-text-items"):
+        if mime.hasFormat(MIME_TEXT_ITEMS):
             try:
-                payload = json.loads(bytes(mime.data("application/x-chemuson-text-items")).decode("utf-8"))
+                payload = json.loads(bytes(mime.data(MIME_TEXT_ITEMS)).decode("utf-8"))
                 self._paste_text_items(payload)
                 return
             except Exception:
                 pass
 
-        if mime.hasFormat("chemical/x-mdl-molfile"):
-            molfile = bytes(mime.data("chemical/x-mdl-molfile")).decode("utf-8", errors="ignore")
+        if mime.hasFormat(MIME_MDL_MOLFILE):
+            molfile = bytes(mime.data(MIME_MDL_MOLFILE)).decode("utf-8", errors="ignore")
             try:
                 graph = molfile_to_molgraph(molfile)
                 self._insert_molgraph(graph, select_inserted=True)
@@ -1390,7 +1393,7 @@ class CanvasSelectionMixin:
                 except Exception:
                     pass
 
-        if mime.hasFormat("image/png") or mime.hasImage() or mime.hasFormat("image/svg+xml"):
+        if mime.hasFormat(MIME_PNG) or mime.hasImage() or mime.hasFormat(MIME_SVG):
             self._insert_images_from_clipboard(mime)
 
     def cut_to_clipboard(self) -> None:
@@ -1407,9 +1410,11 @@ class CanvasSelectionMixin:
         mime = clipboard.mimeData()
         if mime is None:
             return
-        if mime.hasFormat("application/x-chemuson-selection"):
+        if mime.hasFormat(MIME_SELECTION):
             try:
-                payload = json.loads(bytes(mime.data("application/x-chemuson-selection")).decode("utf-8"))
+                payload = decode_selection_payload(bytes(mime.data(MIME_SELECTION)))
+                if payload is None:
+                    raise ValueError("invalid selection payload")
                 self._paste_selection_payload(payload)
             except Exception:
                 pass
@@ -2057,29 +2062,25 @@ class CanvasSelectionMixin:
                     setattr(self, attr, None)
             return
         self._ensure_selection_overlay()
-        padded = QRectF(bbox)
-        pad = max(2.0, float(self.drawing_style.stroke_px))
-        padded.adjust(-pad, -pad, pad, pad)
+        padded = padded_selection_bbox(bbox, self.drawing_style.stroke_px)
 
         def offset_in_scene(base: QPointF, dx_view: float, dy_view: float) -> QPointF:
-            """Método auxiliar para offset in scene.
+            """Apply a view-space offset using the current canvas transform."""
+            return offset_scene_point(
+                base,
+                dx_view,
+                dy_view,
+                map_from_scene=self.mapFromScene,
+                map_to_scene=self.mapToScene,
+            )
 
-            Args:
-                base: Descripción del parámetro.
-                dx_view: Descripción del parámetro.
-                dy_view: Descripción del parámetro.
-
-            Returns:
-                Resultado de la operación o None.
-
-            Side Effects:
-                Puede modificar el estado interno o la escena.
-            """
-            view_pt = self.mapFromScene(base)
-            view_x = float(view_pt.x()) + dx_view
-            view_y = float(view_pt.y()) + dy_view
-            view_pt = QPoint(int(round(view_x)), int(round(view_y)))
-            return self.mapToScene(view_pt)
+        handle_positions = selection_handle_scene_positions(
+            padded,
+            offset_in_scene=offset_in_scene,
+            rotate_offset=SELECTION_ROTATE_OFFSET_PX,
+            move_offset=SELECTION_MOVE_OFFSET_PX,
+            handle_radius=SELECTION_HANDLE_RADIUS_PX,
+        )
 
         if self._selection_box is not None:
             try:
@@ -2088,30 +2089,20 @@ class CanvasSelectionMixin:
             except RuntimeError:
                 self._selection_box = None
         if self._selection_handle is not None:
-            top_center = QPointF(padded.center().x(), padded.top())
-            handle_pos = offset_in_scene(top_center, 0.0, -SELECTION_ROTATE_OFFSET_PX)
             try:
-                self._selection_handle.setPos(handle_pos)
+                self._selection_handle.setPos(handle_positions["rotate"])
                 self._selection_handle.setVisible(True)
             except RuntimeError:
                 self._selection_handle = None
-
         if self._selection_move_handle is not None:
-            top_center = QPointF(padded.center().x(), padded.top())
-            handle_pos = offset_in_scene(top_center, 0.0, SELECTION_MOVE_OFFSET_PX)
             try:
-                self._selection_move_handle.setPos(handle_pos)
+                self._selection_move_handle.setPos(handle_positions["move"])
                 self._selection_move_handle.setVisible(True)
             except RuntimeError:
                 self._selection_move_handle = None
-
         if self._selection_scale_handle is not None:
-            corner = QPointF(padded.right(), padded.bottom())
-            handle_pos = offset_in_scene(
-                corner, -SELECTION_HANDLE_RADIUS_PX, -SELECTION_HANDLE_RADIUS_PX
-            )
             try:
-                self._selection_scale_handle.setPos(handle_pos)
+                self._selection_scale_handle.setPos(handle_positions["scale"])
                 self._selection_scale_handle.setVisible(True)
             except RuntimeError:
                 self._selection_scale_handle = None
@@ -2223,56 +2214,32 @@ class CanvasSelectionMixin:
 
     def _handle_item_distance_sq(self, handle: QGraphicsItem, scene_pos: QPointF) -> Optional[float]:
         """Calcula distancia cuadrática en pantalla entre el puntero y un handle."""
-        view_pos = self.mapFromScene(scene_pos)
-        try:
-            center_scene = handle.mapToScene(handle.boundingRect().center())
-        except RuntimeError:
-            return None
-        center_view = self.mapFromScene(center_scene)
-        dx = float(view_pos.x() - center_view.x())
-        dy = float(view_pos.y() - center_view.y())
-        return dx * dx + dy * dy
+        return handle_item_distance_sq(
+            handle,
+            scene_pos,
+            map_from_scene=self.mapFromScene,
+        )
 
     def _handle_item_hit_radius(self, handle: QGraphicsItem) -> float:
         """Devuelve el radio de click efectivo de un handle en píxeles de vista."""
-        try:
-            handle_rect_scene = handle.mapToScene(handle.boundingRect()).boundingRect()
-            top_left_view = self.mapFromScene(handle_rect_scene.topLeft())
-            bottom_right_view = self.mapFromScene(handle_rect_scene.bottomRight())
-            visual_radius = max(
-                abs(bottom_right_view.x() - top_left_view.x()),
-                abs(bottom_right_view.y() - top_left_view.y()),
-            ) * 0.75
-        except Exception:
-            visual_radius = 0.0
-        return max(float(visual_radius), SELECTION_HANDLE_RADIUS_PX * 3.0, 18.0)
+        return handle_item_hit_radius(
+            handle,
+            map_from_scene=self.mapFromScene,
+            selection_handle_radius=SELECTION_HANDLE_RADIUS_PX,
+        )
 
     def _selection_handle_hit_kind(self, scene_pos: QPointF) -> Optional[str]:
         """Resuelve qué handle de selección está más cerca del puntero."""
-        candidates: list[tuple[float, str]] = []
-        handles = [
-            ("scale", self._selection_scale_handle),
-            ("rotate", self._selection_handle),
-            ("move", self._selection_move_handle),
-        ]
-        for kind, handle in handles:
-            if handle is None:
-                continue
-            try:
-                if not handle.isVisible():
-                    continue
-            except RuntimeError:
-                continue
-            distance_sq = self._handle_item_distance_sq(handle, scene_pos)
-            if distance_sq is None:
-                continue
-            radius = self._handle_item_hit_radius(handle)
-            if distance_sq <= (radius * radius):
-                candidates.append((distance_sq, kind))
-        if not candidates:
-            return None
-        candidates.sort(key=lambda item: item[0])
-        return candidates[0][1]
+        return selection_handle_hit_kind(
+            scene_pos,
+            (
+                ("scale", self._selection_scale_handle),
+                ("rotate", self._selection_handle),
+                ("move", self._selection_move_handle),
+            ),
+            distance_sq=self._handle_item_distance_sq,
+            hit_radius=self._handle_item_hit_radius,
+        )
 
     def _trackball_atom_ids(self) -> tuple[int, ...]:
         """Devuelve IDs objetivo para trackball (solo selección activa)."""

@@ -8,7 +8,7 @@ from typing import Any
 
 from chemuson.chemcalc.valence import implicit_h_count
 from chemuson.chemio.rdkit_io import molgraph_to_rdkit_with_map
-from chemuson.utils.resources import open_resource_path
+from chemuson.platform.resources import open_resource_path
 
 from .locants import Sub
 from .molview import MolView

@@ -10,17 +10,17 @@ La clase `ChemusonCanvas` se construye mediante composición de submixins. Sus b
 
 `CanvasInputMixin` → `CanvasSelectionMixin` → `CanvasTextMixin` → `CanvasRenderMixin` → `CanvasStructureMixin` → `QGraphicsView`.
 
-**`CanvasInputMixin`** agrupa 6 sub-mixins para la entrada de usuario. **`CanvasToolsBondingMixin`** (incluido como parte de `CanvasInputMixin`) agrega 5 sub-mixins de bonding. El inventario verifica 21 archivos Python en el directorio `canvas/`. Cada instancia de `ChemusonCanvas` crea y posee su propio `self.undo_stack = QUndoStack(self)`.
+**`CanvasInputMixin`** agrupa 6 sub-mixins para la entrada de usuario. **`CanvasToolsBondingMixin`** (incluido como parte de `CanvasInputMixin`) agrega 5 sub-mixins de bonding. El inventario verifica 25 archivos Python en el directorio `canvas/`. Cada instancia de `ChemusonCanvas` crea y posee su propio `self.undo_stack = QUndoStack(self)`.
 
 ## Inventario de Archivos Relacionados
 
-El paquete del canvas contiene 21 archivos Python: `__init__.py` y los
-siguientes 20 módulos:
+El paquete del canvas contiene 25 archivos Python: `__init__.py` y los
+siguientes 24 módulos:
 
 - `src/chemuson/gui/canvas/canvas_view.py`: Clase principal `ChemusonCanvas` (1035 líneas).
 - `src/chemuson/gui/canvas/canvas_constants.py`: Constantes de interacción y roles.
 - `src/chemuson/gui/canvas/canvas_selection.py`: Lógica de selección y hit testing (5128 líneas).
-- `src/chemuson/gui/canvas/selection_geometry.py`: Geometría de valores y normalizaciones puras usadas por selección.
+- `src/chemuson/gui/canvas/selection_geometry.py`, `selection_bounds.py`, `selection_hit_testing.py`, `selection_overlay.py` y `selection_clipboard.py`: Shims de compatibilidad hacia M20 (`gui.editor2d.selection`); no poseen implementaciones.
 - `src/chemuson/gui/canvas/canvas_text.py`: Gestión de etiquetas de texto.
 - `src/chemuson/gui/canvas/canvas_render.py`: Lógica de dibujo y exportación.
 - `src/chemuson/gui/canvas/canvas_structure.py`: Sincronización modelo-escena (3879 líneas).
