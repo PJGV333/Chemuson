@@ -11,5 +11,5 @@
 
 ## Validation
 
-- [ ] Run focused, architecture and full regression suites.
-- [ ] Run compileall, Ruff, OpenSpec and diff checks.
+- [x] Run focused, architecture and full regression suites.
+- [x] Run compileall, Ruff, OpenSpec and diff checks.
