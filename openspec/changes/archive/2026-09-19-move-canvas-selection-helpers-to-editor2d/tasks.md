@@ -17,10 +17,10 @@
 
 - [x] Register M20 and remove helper ownership from M09.
 - [x] Update M09 and add M20 documentation.
-- [ ] Record manual GUI validation status.
+- [x] Record manual GUI validation status.
 
 ## Validation
 
 - [x] Run focal and full regression suites.
 - [x] Run compileall, Ruff, OpenSpec and diff checks.
-- [x] Commit the migration without archiving until GUI validation is complete.
+- [x] Commit and archive the migration after GUI validation.

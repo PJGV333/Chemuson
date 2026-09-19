@@ -16,7 +16,7 @@
 ## Architecture and docs
 
 - [x] Update M09 catalog and documentation.
-- [x] Record automated validation and pending manual Qt validation.
+- [x] Record completed automated and manual Qt validation.
 
 ## Validation
 

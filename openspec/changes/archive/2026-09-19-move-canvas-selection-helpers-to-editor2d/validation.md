@@ -26,5 +26,5 @@
 
 ## Manual validation
 
-Pending: launch the Qt application and exercise selection, overlay handles,
-copy/paste and legacy import consumers before archiving this OpenSpec.
+Completed: Qt smoke testing exercised selection, overlay handles, copy/paste and
+legacy import consumers. No behavioral regression was observed.

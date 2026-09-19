@@ -193,3 +193,38 @@ without adding temporary exceptions or circular dependencies.
 - **WHEN** canonical paths, shims, tests and dependencies are audited
 - **THEN** the five helpers and their tests belong exclusively to M20, M20 has
   no ChemUSON dependencies, and M09 lists M20 as current and target dependency
+
+### Requirement: M09 Catalogs Selection Hit Testing
+
+M09 SHALL inventory `gui/canvas/selection_hit_testing.py` and its functional and
+architectural tests as internal consultative selection coverage without adding
+dependencies, temporary exceptions or circular dependencies.
+
+#### Scenario: Hit-testing ownership is inspected
+- **GIVEN** the M09 catalog and source tree
+- **WHEN** selection hit-testing ownership and tests are enumerated
+- **THEN** the new query module and tests belong to M09 and the existing M09
+  dependency sets remain unchanged
+
+### Requirement: M09 Catalogs Selection Overlay Geometry
+
+M09 SHALL inventory `gui/canvas/selection_overlay.py` and its tests as internal
+selection coverage without adding dependencies, exceptions or cycles.
+
+#### Scenario: Overlay ownership is inspected
+- **GIVEN** the M09 catalog and source tree
+- **WHEN** overlay geometry ownership is enumerated
+- **THEN** the new module and tests belong to M09 while the interactive canvas
+  remains M09-owned
+
+### Requirement: M09 Catalogs Selection Clipboard Policy
+
+M09 SHALL inventory `gui/canvas/selection_clipboard.py` and its tests as
+internal clipboard policy coverage without changing its interactive canvas
+ownership or adding dependencies, exceptions or cycles.
+
+#### Scenario: Clipboard ownership is inspected
+- **GIVEN** the M09 catalog and source tree
+- **WHEN** clipboard policy ownership is enumerated
+- **THEN** the new module and tests belong to M09 while paste coordination
+  remains in the existing canvas mixins
