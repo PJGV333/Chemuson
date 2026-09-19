@@ -37,3 +37,29 @@ complete.
   SHALL or MUST keyword. No exception or catalog workaround was added.
 
 Neither deviation is caused by the selection ownership or extraction work.
+
+## Remaining module-boundary wave
+
+The descendant branch `architecture/remaining-module-boundaries` completed the
+following audited boundaries:
+
+- Phase A: M05/M06/M07/M14/M16/M17/M18/M19/M20 audited; cohesive modules kept intact.
+- Phase B: M21 `platform.settings` owns application preferences and packaged resources.
+- Phase C: M22 `resilience` owns autosave and crash logging; historical utils shims remain.
+- Phase D: M14 update subsystem audited; M23 remains reserved.
+- Phase E: M19 composition root audited; M24 remains reserved.
+- Phase F: operational resilience ownership documented across M22, M08/M10, M14 and M19.
+
+Final branch validation:
+
+- Architecture suite: `266 passed`.
+- Full regression suite: `1492 passed, 55 skipped`.
+- Compileall: passed.
+- Scoped Ruff for changed implementation/tests: passed.
+- Final Qt offscreen smoke: `qt_resilience_smoke_exit=0`.
+- Full OpenSpec validation: `33 passed, 1 failed`, the same pre-existing
+  `application-composition-root` requirement issue.
+- Full required Ruff selection: the same pre-existing Clean2D `math` F401.
+
+All phase OpenSpecs are archived and the worktree is clean after the final
+operational-resilience audit commit.
