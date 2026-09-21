@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 from chemuson.clean2d import Clean2DMode
 from chemuson.core.model import BondStereo, BondStyle, MolGraph
-
 
 Target = tuple[int, ...] | None
 
@@ -22,6 +21,7 @@ class Clean2DRegressionCase:
     tags: tuple[str, ...] = ("baseline",)
     known_delicate: bool = False
     known_failure: bool = False
+    size_class: str = "simple"
     notes: str = ""
 
     @property
@@ -315,6 +315,7 @@ REGRESSION_CASES: tuple[Clean2DRegressionCase, ...] = (
         name="fused_aromatic_current_baseline",
         family="fused-ring",
         builder=_fused_ring_graph,
+        size_class="medium",
         expected_states=frozenset({"applied", "no-op", "preserve-only", "failed-controlled"}),
         tags=("known_delicate", "complex_policy_guard"),
         known_delicate=True,
@@ -347,6 +348,7 @@ REGRESSION_CASES: tuple[Clean2DRegressionCase, ...] = (
         "fused_aromatic_anthracene_like",
         "fused-ring",
         _anthracene_like_graph,
+        size_class="large",
         expected_states=frozenset({"applied", "no-op", "preserve-only", "failed-controlled"}),
         tags=("known_delicate", "complex_policy_guard"),
         known_delicate=True,
@@ -424,6 +426,7 @@ REGRESSION_CASES: tuple[Clean2DRegressionCase, ...] = (
         "selection_boundary_biphenyl_linker",
         "selection-boundary",
         _biphenyl_like_graph,
+        size_class="medium",
         target=(1, 10),
         expected_states=frozenset({"applied", "no-op", "preserve-only", "failed-controlled"}),
         tags=("known_delicate", "selection_boundary", "complex_policy_guard"),
@@ -433,6 +436,7 @@ REGRESSION_CASES: tuple[Clean2DRegressionCase, ...] = (
         "multiblock_biphenyl_like",
         "multi-block",
         _biphenyl_like_graph,
+        size_class="medium",
         expected_states=frozenset({"applied", "no-op", "preserve-only", "failed-controlled"}),
         tags=("known_delicate", "complex_policy_guard"),
         known_delicate=True,
@@ -441,6 +445,7 @@ REGRESSION_CASES: tuple[Clean2DRegressionCase, ...] = (
         "multiblock_diphenyl_ether_like",
         "multi-block",
         _diphenyl_ether_like_graph,
+        size_class="medium",
         expected_states=frozenset({"applied", "no-op", "preserve-only", "failed-controlled"}),
         tags=("known_delicate", "complex_policy_guard"),
         known_delicate=True,
@@ -449,6 +454,7 @@ REGRESSION_CASES: tuple[Clean2DRegressionCase, ...] = (
         "multiblock_triphenyl_like",
         "multi-block",
         _triphenyl_like_graph,
+        size_class="large",
         expected_states=frozenset({"applied", "no-op", "preserve-only", "failed-controlled"}),
         tags=("known_delicate", "complex_policy_guard"),
         known_delicate=True,
@@ -457,6 +463,7 @@ REGRESSION_CASES: tuple[Clean2DRegressionCase, ...] = (
         "macrocycle_twelve_member_baseline",
         "macrocycle",
         _macrocycle_like_graph,
+        size_class="complex-scale",
         expected_states=frozenset({"applied", "no-op", "preserve-only", "failed-controlled"}),
         tags=("known_delicate", "complex_policy_guard"),
         known_delicate=True,

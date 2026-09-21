@@ -15,9 +15,11 @@ from chemuson.clean2d import (
 from chemuson.core.model import MolGraph
 
 from .cases import Clean2DRegressionCase
+from .metadata import validate_case_taxonomy
 
 
 def assert_case_metadata(case: Clean2DRegressionCase) -> None:
+    validate_case_taxonomy(case)
     assert case.name.strip(), "regression case name is required"
     assert case.family.strip(), f"{case.name}: family is required"
     assert case.mode, f"{case.name}: Clean 2D mode is required"
@@ -90,6 +92,7 @@ def execute_case(case: Clean2DRegressionCase) -> dict[str, Any]:
         "case": {
             "name": case.name,
             "family": case.family,
+            "size_class": case.size_class,
             "mode": case.mode.value,
             "target": case.target_label,
             "target_atom_ids": None if case.target is None else list(case.target),

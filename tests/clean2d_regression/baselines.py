@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import json
 import math
-from dataclasses import dataclass
-from typing import Any, Mapping
+import time
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from typing import Any
 
 from .assertions import execute_case
 from .cases import Clean2DRegressionCase
+from .metadata import derive_topology_metadata
 from .metrics import metric_values_equal, validate_before_after_metric_record
-
 
 SNAPSHOT_EXCLUDED_KEYS = frozenset({"path", "timestamp", "created_at", "absolute_path"})
 SNAPSHOT_FLOAT_PRECISION = 9
@@ -18,6 +20,7 @@ SNAPSHOT_FLOAT_PRECISION = 9
 class Clean2DBaselineRecord:
     case_name: str
     family: str
+    size_class: str
     tags: tuple[str, ...]
     mode: str
     target: str
@@ -28,11 +31,15 @@ class Clean2DBaselineRecord:
     metrics: dict[str, Any]
     snapshot: dict[str, Any] | None
     policy_evidence: dict[str, Any] | None = None
+    topology: dict[str, Any] = field(default_factory=dict)
+    runtime_ms: float = 0.0
+    metric_vector: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "case_name": self.case_name,
             "family": self.family,
+            "size_class": self.size_class,
             "tags": list(self.tags),
             "mode": self.mode,
             "target": self.target,
@@ -43,31 +50,85 @@ class Clean2DBaselineRecord:
             "metrics": self.metrics,
             "snapshot": self.snapshot,
             "policy_evidence": self.policy_evidence,
+            "topology": self.topology,
+            "runtime_ms": self.runtime_ms,
+            "metric_vector": self.metric_vector,
         }
 
 
 def build_baseline_record(case: Clean2DRegressionCase) -> Clean2DBaselineRecord:
+    started = time.perf_counter()
     execution = execute_case(case)
+    runtime_ms = round((time.perf_counter() - started) * 1000.0, 3)
     snapshot = execution["engine_debug_snapshot"]
     candidates = snapshot.get("candidates", ()) if isinstance(snapshot, Mapping) else ()
     selected_source = _selected_source(candidates)
+    candidate_sources = tuple(str(source) for source in execution["result"]["candidate_sources"])
+    metrics = validate_before_after_metric_record(execution["metrics"])
+    result_state = str(execution["result"]["state"])
+    stable_reason = execution["result"].get("reason")
+    metric_vector = _metric_vector(
+        metrics["before"],
+        candidate_sources=candidate_sources,
+        result_state=result_state,
+        stable_reason=stable_reason,
+        runtime_ms=runtime_ms,
+    )
 
     record = Clean2DBaselineRecord(
         case_name=str(execution["case"]["name"]),
         family=str(execution["case"]["family"]),
+        size_class=str(execution["case"]["size_class"]),
         tags=tuple(str(tag) for tag in execution["case"]["tags"]),
         mode=str(execution["case"]["mode"]),
         target=str(execution["case"]["target"]),
-        result_state=str(execution["result"]["state"]),
-        stable_reason=execution["result"].get("reason"),
+        result_state=result_state,
+        stable_reason=stable_reason,
         selected_source=selected_source,
-        candidate_sources=tuple(str(source) for source in execution["result"]["candidate_sources"]),
-        metrics=validate_before_after_metric_record(execution["metrics"]),
+        candidate_sources=candidate_sources,
+        metrics=metrics,
         snapshot=canonicalize_snapshot(snapshot),
         policy_evidence=_policy_evidence(candidates),
+        topology=derive_topology_metadata(case.builder()),
+        runtime_ms=runtime_ms,
+        metric_vector=metric_vector,
     )
     json.dumps(record.as_dict(), allow_nan=False, sort_keys=True)
     return record
+
+
+def _metric_vector(
+    before_metrics: Mapping[str, Any],
+    *,
+    candidate_sources: tuple[str, ...],
+    result_state: str,
+    stable_reason: Any,
+    runtime_ms: float,
+) -> dict[str, Any]:
+    """Build the Campaign 1 vector from existing diagnostics only."""
+
+    return {
+        "bond_length_error": before_metrics.get("length_rms_error"),
+        "bond_length_variance": None,
+        "bond_angle_penalty": before_metrics.get("angle_rms_deviation"),
+        "atom_collision_count": None,
+        "label_collision_count": None,
+        "bond_crossing_count": before_metrics.get("crossings"),
+        "ring_distortion": None,
+        "ring_degeneracy": before_metrics.get("min_ring_degeneracy"),
+        "rigid_block_distortion": None,
+        "branch_separation": None,
+        "connector_congestion": None,
+        "compactness": None,
+        "whitespace_balance": None,
+        "global_extent": None,
+        "symmetry_preservation": None,
+        "runtime_ms": runtime_ms,
+        "candidate_count": len(candidate_sources),
+        "candidate_sources": list(candidate_sources),
+        "result_state": result_state,
+        "stable_reason": None if stable_reason is None else str(stable_reason),
+    }
 
 
 def canonicalize_baseline_record(record: Clean2DBaselineRecord | Mapping[str, Any]) -> dict[str, Any]:
@@ -142,6 +203,8 @@ def _canonicalize(value: Any, *, exclude_keys: frozenset[str] = frozenset()) -> 
 
 
 def _equivalent(left: Any, right: Any, *, metric_path: tuple[str, ...]) -> bool:
+    if _is_ephemeral_path(metric_path):
+        return True
     if isinstance(left, Mapping) and isinstance(right, Mapping):
         if set(left) != set(right):
             return False
@@ -161,3 +224,7 @@ def _equivalent(left: Any, right: Any, *, metric_path: tuple[str, ...]) -> bool:
 
 def _inside_metrics(path: tuple[str, ...]) -> bool:
     return len(path) >= 3 and path[-3] == "metrics" and path[-2] in {"before", "after"}
+
+
+def _is_ephemeral_path(path: tuple[str, ...]) -> bool:
+    return bool(path) and path[-1] == "runtime_ms"

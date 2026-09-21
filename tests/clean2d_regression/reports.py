@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any
 
 from .baselines import (
     Clean2DBaselineRecord,
@@ -12,10 +13,10 @@ from .baselines import (
 )
 from .cases import Clean2DRegressionCase, get_regression_cases
 
-
 CLEAN2D_BASELINE_REPORT_SCHEMA = "chemuson.clean2d.baseline-report"
 CLEAN2D_BASELINE_REPORT_VERSION = 1
 OBSERVABLE_DIFF_FIELDS = (
+    "size_class",
     "result_state",
     "stable_reason",
     "selected_source",
@@ -23,6 +24,8 @@ OBSERVABLE_DIFF_FIELDS = (
     "metrics",
     "snapshot",
     "policy_evidence",
+    "topology",
+    "metric_vector",
 )
 
 
@@ -125,6 +128,8 @@ def compare_baseline_reports(
 
 def _observable_field_equivalent(field: str, left_value: Any, right_value: Any) -> bool:
     if field != "metrics":
+        if field == "metric_vector":
+            return _evidence_equivalent(left_value, right_value)
         return left_value == right_value
     left_probe = _metric_probe_record(left_value)
     right_probe = _metric_probe_record(right_value)
@@ -148,19 +153,32 @@ def _metric_probe_record(metrics: Any) -> dict[str, Any]:
     }
 
 
+def _evidence_equivalent(left: Any, right: Any) -> bool:
+    if isinstance(left, Mapping) and isinstance(right, Mapping):
+        keys = (set(left) | set(right)) - {"runtime_ms"}
+        return all(_evidence_equivalent(left.get(key), right.get(key)) for key in keys)
+    if isinstance(left, list) and isinstance(right, list):
+        return len(left) == len(right) and all(_evidence_equivalent(a, b) for a, b in zip(left, right))
+    return left == right
+
+
 def _summary(records: tuple[Mapping[str, Any], ...]) -> dict[str, Any]:
     states: dict[str, int] = {}
     tags: dict[str, int] = {}
     families: dict[str, int] = {}
+    size_classes: dict[str, int] = {}
     for record in records:
         states[str(record["result_state"])] = states.get(str(record["result_state"]), 0) + 1
         families[str(record["family"])] = families.get(str(record["family"]), 0) + 1
+        size_class = str(record.get("size_class", "unknown"))
+        size_classes[size_class] = size_classes.get(size_class, 0) + 1
         for tag in record.get("tags", ()):
             tags[str(tag)] = tags.get(str(tag), 0) + 1
     return {
         "case_count": len(records),
         "result_states": dict(sorted(states.items())),
         "families": dict(sorted(families.items())),
+        "size_classes": dict(sorted(size_classes.items())),
         "tags": dict(sorted(tags.items())),
     }
 
