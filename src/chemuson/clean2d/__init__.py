@@ -17,7 +17,12 @@ from .length_only import (
     structure_preserving_geometry_polish,
     structure_preserving_length_polish,
 )
-from .complex_policy import Clean2DComplexityProfile, classify_clean2d_complexity
+from .complex_policy import (
+    Clean2DComplexityProfile,
+    classify_clean2d_complexity,
+    describe_clean2d_topology,
+    plan_clean2d_block_assembly,
+)
 from .local_graph_cleaner import (
     LocalClean2DMode,
     LocalClean2DReport,
@@ -96,6 +101,8 @@ __all__ = [
     "structure_preserving_length_polish",
     "Clean2DComplexityProfile",
     "classify_clean2d_complexity",
+    "describe_clean2d_topology",
+    "plan_clean2d_block_assembly",
     "LocalClean2DMode",
     "LocalClean2DReport",
     "LocalClean2DResult",

@@ -8,13 +8,18 @@ visual quality, and the GUI applies the chosen coordinates as one undoable
 command.
 """
 
-from dataclasses import dataclass, field, replace
-from enum import Enum
 import hashlib
 import math
-from typing import Any, Iterable
+from collections.abc import Iterable
+from dataclasses import dataclass, field, replace
+from enum import Enum
+from typing import Any, cast
 
-from chemuson.clean2d.complex_policy import Clean2DComplexityProfile, classify_clean2d_complexity
+from chemuson.clean2d.complex_policy import (
+    Clean2DComplexityProfile,
+    classify_clean2d_complexity,
+    plan_clean2d_block_assembly,
+)
 from chemuson.clean2d.length_only import (
     length_only_polish,
     structure_preserving_geometry_polish,
@@ -1975,6 +1980,7 @@ def _candidate_from_block_constraints(
 ) -> Clean2DCandidate | None:
     layer_model = build_multilayer_chemical_graph(graph, atom_ids)
     block_graph = layer_model.block_graph
+    assembly_plan = plan_clean2d_block_assembly(graph, atom_ids)
     explicit_constraints = tuple(
         constraint
         for constraint in layer_model.layout_constraint_graph.constraints
@@ -2000,7 +2006,12 @@ def _candidate_from_block_constraints(
     operations: list[dict[str, object]] = []
     for _ in range(3):
         improved = False
-        for edge in getattr(block_graph, "edges", ()) or ():
+        edge_by_id = {int(edge.id): edge for edge in getattr(block_graph, "edges", ()) or ()}
+        ordered_edge_ids = cast(list[int], assembly_plan["ordered_connector_ids"]) or sorted(edge_by_id)
+        for edge_id in ordered_edge_ids:
+            edge = edge_by_id.get(int(edge_id))
+            if edge is None:
+                continue
             if getattr(edge, "kind", None) not in {BlockEdgeKind.LINKER, BlockEdgeKind.ATTACHMENT, BlockEdgeKind.BRIDGE}:
                 continue
             atom_pair = tuple(getattr(edge, "atom_ids", ()) or ())
@@ -2054,6 +2065,7 @@ def _candidate_from_block_constraints(
             "block_operation_count": len(operations),
             "block_kinds": block_counts,
             "block_operations": tuple(operations),
+            "global_assembly_plan": assembly_plan,
             "interaction_constraint_count": len(explicit_constraints),
             "interaction_constraint_error": _interaction_constraint_error(explicit_constraints, coords),
             "interaction_constraint_error_before": _interaction_constraint_error(explicit_constraints, before),
@@ -2090,6 +2102,7 @@ def _candidate_from_block_layout_signals(
             "interaction_constraint_error_before": 0.0,
             "block_constraint_error": _block_constraint_error(layer_model.block_graph, block_constraints, after, bonds, target),
             "block_constraint_error_before": before_error,
+            "global_assembly_plan": plan_clean2d_block_assembly(graph, atom_ids),
         }
     else:
         after = _complete_coords(candidate.coords, before, atom_ids)

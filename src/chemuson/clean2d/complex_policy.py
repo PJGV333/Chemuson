@@ -166,6 +166,87 @@ def describe_clean2d_topology(layer_model: MultilayerChemicalGraph) -> dict[str,
     }
 
 
+def plan_clean2d_block_assembly(
+    graph: MolGraph,
+    atom_ids: Iterable[int] | None = None,
+) -> dict[str, object]:
+    """Return a deterministic block traversal plan for medium assembly."""
+    topology = describe_clean2d_topology(build_multilayer_chemical_graph(graph, atom_ids))
+    block_records = cast(list[dict[str, object]], topology["blocks"])
+    blocks = {int(cast(int, block["id"])): block for block in block_records}
+    rigid_ids = {int(block_id) for block_id in cast(list[int], topology["rigid_block_ids"])}
+    semi_rigid_ids = {int(block_id) for block_id in cast(list[int], topology["semi_rigid_block_ids"])}
+    structural_ids = rigid_ids | semi_rigid_ids
+    requires_global_assembly = len(structural_ids) >= 2 and bool(topology["block_adjacency"])
+    if not requires_global_assembly:
+        return {
+            "version": 1,
+            "requires_global_assembly": False,
+            "anchor_block_id": None,
+            "ordered_block_ids": [],
+            "ordered_connector_ids": [],
+            "flexible_connector_ids": [],
+            "flexible_connector_count": 0,
+        }
+
+    anchor_block_id = min(
+        structural_ids,
+        key=lambda block_id: (-len(cast(list[int], blocks[block_id]["atom_ids"])), block_id),
+    )
+    connector_records = {
+        int(cast(int, connector["id"])): connector
+        for connector in cast(list[dict[str, object]], topology["connectors"])
+    }
+    adjacency: dict[int, list[tuple[int, int, str]]] = {block_id: [] for block_id in blocks}
+    block_adjacency = cast(list[dict[str, object]], topology["block_adjacency"])
+    for relation in block_adjacency:
+        relation_block_ids = tuple(int(block_id) for block_id in cast(list[int], relation["block_ids"]))
+        for connector_id in cast(list[int], relation["connector_ids"]):
+            connector = connector_records[int(connector_id)]
+            kind = str(connector["kind"])
+            left, right = relation_block_ids
+            adjacency[left].append((right, int(connector_id), kind))
+            adjacency[right].append((left, int(connector_id), kind))
+
+    priority = {"attachment": 0, "bridge": 1, "linker": 2, "contains": 3}
+    visited = {anchor_block_id}
+    queue = [anchor_block_id]
+    ordered_block_ids: list[int] = []
+    ordered_connector_ids: list[int] = []
+    while queue:
+        block_id = queue.pop(0)
+        ordered_block_ids.append(block_id)
+        for neighbor, connector_id, kind in sorted(
+            adjacency.get(block_id, ()),
+            key=lambda item: (priority.get(item[2], 4), item[1], item[0]),
+        ):
+            if connector_id not in ordered_connector_ids:
+                ordered_connector_ids.append(connector_id)
+            if neighbor not in visited:
+                visited.add(neighbor)
+                queue.append(neighbor)
+
+    for block_id in sorted(blocks):
+        if block_id not in visited:
+            ordered_block_ids.append(block_id)
+    for connector_id in sorted(connector_records):
+        if connector_id not in ordered_connector_ids:
+            ordered_connector_ids.append(connector_id)
+    flexible_connector_ids = sorted(
+        int(cast(int, connector["id"]))
+        for connector in cast(list[dict[str, object]], topology["flexible_connectors"])
+    )
+    return {
+        "version": 1,
+        "requires_global_assembly": True,
+        "anchor_block_id": anchor_block_id,
+        "ordered_block_ids": ordered_block_ids,
+        "ordered_connector_ids": ordered_connector_ids,
+        "flexible_connector_ids": flexible_connector_ids,
+        "flexible_connector_count": len(flexible_connector_ids),
+    }
+
+
 def _connected_components(atom_ids: set[int], bonds: Iterable[tuple[int, int]]) -> list[tuple[int, ...]]:
     adjacency = {atom_id: set() for atom_id in atom_ids}
     for left, right in bonds:
