@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from chemuson.core.layers import (
     BlockKind,
@@ -59,6 +60,11 @@ def describe_clean2d_topology(layer_model: MultilayerChemicalGraph) -> dict[str,
 
     selected = set(layer_model.atom_ids)
     graph = layer_model.mol_graph
+    bonds = [
+        bond
+        for bond in graph.bonds.values()
+        if bond.a1_id in selected and bond.a2_id in selected and bond_affects_valence(bond)
+    ]
     components = _connected_components(
         selected,
         (
@@ -84,7 +90,7 @@ def describe_clean2d_topology(layer_model: MultilayerChemicalGraph) -> dict[str,
             "kind": edge.kind.value,
             "block_ids": list(edge.block_ids),
             "atom_ids": list(edge.atom_ids),
-            "weight": edge.weight,
+            "weight": _stable_json_value(edge.weight),
             "metadata": _stable_json_value(edge.metadata),
         }
         for edge in sorted(layer_model.block_graph.edges, key=lambda item: item.id)
@@ -94,6 +100,34 @@ def describe_clean2d_topology(layer_model: MultilayerChemicalGraph) -> dict[str,
         kind = str(block["kind"])
         block_kind_counts[kind] = block_kind_counts.get(kind, 0) + 1
     block_kind_counts = dict(sorted(block_kind_counts.items()))
+    rigid_block_kinds = {BlockKind.AROMATIC_RING, BlockKind.FUSED_SYSTEM}
+    semi_rigid_block_kinds = {BlockKind.MACROCYCLE, BlockKind.CYCLOPHANE, BlockKind.INTRAMOLECULAR_BRIDGE}
+    rigid_block_ids = sorted(block["id"] for block in blocks if block["kind"] in {kind.value for kind in rigid_block_kinds})
+    semi_rigid_block_ids = sorted(
+        block["id"] for block in blocks if block["kind"] in {kind.value for kind in semi_rigid_block_kinds}
+    )
+    ring_motifs = [motif for motif in layer_model.motif_graph.motifs if motif.kind.value == "ring"]
+    ring_systems = _ring_systems(ring_motifs, layer_model.block_graph.blocks, bonds)
+    block_adjacency = _block_adjacency(connectors)
+    articulation_atom_ids, articulation_bond_ids = _articulation_structure(selected, bonds)
+    degree = _bond_adjacency(selected, bonds)
+    attachment_atom_ids = sorted({atom_id for edge in connectors for atom_id in edge["atom_ids"]})
+    flexible_connectors = [
+        {
+            "id": edge["id"],
+            "block_ids": list(edge["block_ids"]),
+            "attachment_atom_ids": list(edge["atom_ids"]),
+            "rotatable_bond_ids": _rotatable_bond_ids(graph, edge, layer_model.block_graph.blocks),
+        }
+        for edge in connectors
+        if edge["kind"] == "linker"
+    ]
+    fused_systems = [system for system in ring_systems if system["kind"] == "fused"]
+    spiro_systems = [system for system in ring_systems if system["kind"] == "spiro"]
+    bridged_systems = [system for system in ring_systems if system["kind"] == "bridged"]
+    macrocycle_blocks = sorted(
+        block["id"] for block in blocks if block["kind"] == BlockKind.MACROCYCLE.value
+    )
     ring_count = sum(
         1
         for motif in layer_model.motif_graph.motifs
@@ -116,6 +150,19 @@ def describe_clean2d_topology(layer_model: MultilayerChemicalGraph) -> dict[str,
         "blocks": blocks,
         "connector_count": len(connectors),
         "connectors": connectors,
+        "ring_systems": ring_systems,
+        "rigid_block_ids": rigid_block_ids,
+        "semi_rigid_block_ids": semi_rigid_block_ids,
+        "block_adjacency": block_adjacency,
+        "flexible_connectors": flexible_connectors,
+        "attachment_atom_ids": attachment_atom_ids,
+        "articulation_atom_ids": articulation_atom_ids,
+        "articulation_bond_ids": articulation_bond_ids,
+        "branch_point_atom_ids": sorted(atom_id for atom_id, neighbors in degree.items() if len(neighbors) > 2),
+        "fused_systems": fused_systems,
+        "spiro_systems": spiro_systems,
+        "bridged_systems": bridged_systems,
+        "macrocycle_blocks": macrocycle_blocks,
     }
 
 
@@ -142,7 +189,9 @@ def _connected_components(atom_ids: set[int], bonds: Iterable[tuple[int, int]]) 
 
 
 def _stable_json_value(value: Any) -> object:
-    if value is None or isinstance(value, (bool, int, float, str)):
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if value is None or isinstance(value, (bool, int, str)):
         return value
     if isinstance(value, Mapping):
         return {str(key): _stable_json_value(value[key]) for key in sorted(value, key=str)}
@@ -154,6 +203,170 @@ def _stable_json_value(value: Any) -> object:
     if hasattr(value, "value") and isinstance(value.value, (bool, int, float, str)):
         return value.value
     return type(value).__name__
+
+
+def _bond_adjacency(atom_ids: set[int], bonds: Iterable[Any]) -> dict[int, set[int]]:
+    adjacency = {atom_id: set() for atom_id in atom_ids}
+    for bond in bonds:
+        adjacency.setdefault(bond.a1_id, set()).add(bond.a2_id)
+        adjacency.setdefault(bond.a2_id, set()).add(bond.a1_id)
+    return adjacency
+
+
+def _articulation_structure(atom_ids: set[int], bonds: Iterable[Any]) -> tuple[list[int], list[int]]:
+    adjacency: dict[int, list[tuple[int, int]]] = {atom_id: [] for atom_id in atom_ids}
+    for bond in bonds:
+        adjacency.setdefault(bond.a1_id, []).append((bond.a2_id, bond.id))
+        adjacency.setdefault(bond.a2_id, []).append((bond.a1_id, bond.id))
+    discovery: dict[int, int] = {}
+    low: dict[int, int] = {}
+    articulation_atoms: set[int] = set()
+    articulation_bonds: set[int] = set()
+    clock = 0
+
+    def visit(atom_id: int, parent_bond_id: int | None) -> None:
+        nonlocal clock
+        clock += 1
+        discovery[atom_id] = low[atom_id] = clock
+        child_count = 0
+        for neighbor, bond_id in sorted(adjacency.get(atom_id, []), key=lambda item: (item[0], item[1])):
+            if bond_id == parent_bond_id:
+                continue
+            if neighbor not in discovery:
+                child_count += 1
+                visit(neighbor, bond_id)
+                low[atom_id] = min(low[atom_id], low[neighbor])
+                if parent_bond_id is not None and low[neighbor] >= discovery[atom_id]:
+                    articulation_atoms.add(atom_id)
+                if low[neighbor] > discovery[atom_id]:
+                    articulation_bonds.add(bond_id)
+            else:
+                low[atom_id] = min(low[atom_id], discovery[neighbor])
+        if parent_bond_id is None and child_count > 1:
+            articulation_atoms.add(atom_id)
+
+    for atom_id in sorted(atom_ids):
+        if atom_id not in discovery:
+            visit(atom_id, None)
+    return sorted(articulation_atoms), sorted(articulation_bonds)
+
+
+def _ring_systems(ring_motifs: list[Any], blocks: Iterable[Any], bonds: Iterable[Any]) -> list[dict[str, object]]:
+    ring_by_id = {motif.id: motif for motif in ring_motifs}
+    ring_ids = sorted(ring_by_id)
+    adjacency = {ring_id: set() for ring_id in ring_ids}
+    for index, left_id in enumerate(ring_ids):
+        for right_id in ring_ids[index + 1 :]:
+            if ring_by_id[left_id].atom_ids & ring_by_id[right_id].atom_ids:
+                adjacency[left_id].add(right_id)
+                adjacency[right_id].add(left_id)
+    components: list[tuple[int, ...]] = []
+    unseen = set(ring_ids)
+    while unseen:
+        start = min(unseen)
+        stack = [start]
+        component: set[int] = set()
+        while stack:
+            ring_id = stack.pop()
+            if ring_id in component:
+                continue
+            component.add(ring_id)
+            unseen.discard(ring_id)
+            stack.extend(sorted(adjacency[ring_id] - component, reverse=True))
+        components.append(tuple(sorted(component)))
+    bond_pairs = {frozenset((bond.a1_id, bond.a2_id)) for bond in bonds}
+    block_list = list(blocks)
+    systems: list[dict[str, object]] = []
+    for system_id, component_ids in enumerate(sorted(components), start=1):
+        motifs = [ring_by_id[ring_id] for ring_id in component_ids]
+        atom_ids = frozenset().union(*(motif.atom_ids for motif in motifs))
+        shared_atoms: set[int] = set()
+        spiro_atoms: set[int] = set()
+        has_fused_overlap = False
+        has_bridge_overlap = False
+        bridgeheads: set[int] = set()
+        for index, left in enumerate(motifs):
+            for right in motifs[index + 1 :]:
+                overlap = left.atom_ids & right.atom_ids
+                if len(overlap) == 1:
+                    spiro_atoms.update(overlap)
+                if len(overlap) >= 2:
+                    shared_atoms.update(overlap)
+                    if len(overlap) == 2 and any(frozenset(pair) in bond_pairs for pair in _pairs(sorted(overlap))):
+                        has_fused_overlap = True
+                    else:
+                        has_bridge_overlap = True
+                        bridgeheads.update(overlap)
+        system_bond_adjacency = _bond_adjacency(set(atom_ids), bonds)
+        bridgeheads.update(atom_id for atom_id, neighbors in system_bond_adjacency.items() if len(neighbors) >= 3)
+        bridge_blocks = [
+            block
+            for block in block_list
+            if block.kind == BlockKind.INTRAMOLECULAR_BRIDGE and block.atom_ids & atom_ids
+        ]
+        if bridge_blocks:
+            bridgeheads.update(atom_id for block in bridge_blocks for atom_id in block.atom_ids & atom_ids)
+        block_ids = sorted(block.id for block in block_list if block.atom_ids & atom_ids)
+        if has_bridge_overlap or (bridge_blocks and not has_fused_overlap):
+            kind = "bridged"
+        elif has_fused_overlap:
+            kind = "fused"
+        elif spiro_atoms:
+            kind = "spiro"
+        elif len(component_ids) == 1:
+            kind = "monocycle"
+        else:
+            kind = "ring_system"
+        systems.append(
+            {
+                "id": system_id,
+                "kind": kind,
+                "ring_ids": list(component_ids),
+                "atom_ids": sorted(atom_ids),
+                "shared_atom_ids": sorted(shared_atoms | spiro_atoms),
+                "bridgehead_atom_ids": sorted(bridgeheads) if kind == "bridged" else [],
+                "block_ids": block_ids,
+            }
+        )
+    return systems
+
+
+def _pairs(values: list[int]) -> Iterable[tuple[int, int]]:
+    for index, left in enumerate(values):
+        for right in values[index + 1 :]:
+            yield left, right
+
+
+def _block_adjacency(connectors: list[dict[str, object]]) -> list[dict[str, object]]:
+    grouped: dict[tuple[int, int], dict[str, Any]] = {}
+    for connector in connectors:
+        block_id_values = cast(list[int], connector["block_ids"])
+        if len(block_id_values) != 2:
+            continue
+        block_ids = (block_id_values[0], block_id_values[1])
+        item = grouped.setdefault(block_ids, {"block_ids": list(block_ids), "connector_ids": [], "kinds": []})
+        item["connector_ids"].append(cast(int, connector["id"]))
+        item["kinds"].append(cast(str, connector["kind"]))
+    return [
+        {**item, "connector_ids": sorted(item["connector_ids"]), "kinds": sorted(set(item["kinds"]))}
+        for _, item in sorted(grouped.items())
+    ]
+
+
+def _rotatable_bond_ids(graph: MolGraph, connector: dict[str, object], blocks: Iterable[Any]) -> list[int]:
+    block_ids = set(connector["block_ids"])
+    linker_atoms = set().union(*(block.atom_ids for block in blocks if block.id in block_ids and block.kind == BlockKind.LINKER))
+    if not linker_atoms:
+        return []
+    return sorted(
+        bond.id
+        for bond in graph.bonds.values()
+        if bond.a1_id in linker_atoms
+        and bond.a2_id in linker_atoms
+        and bond.order == 1
+        and not bond.is_aromatic
+        and bond.stereo.value == "none"
+    )
 
 
 def classify_clean2d_complexity(

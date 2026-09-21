@@ -25,5 +25,5 @@
 
 ## Promotion
 
-- [ ] Commit exactly the Campaign 1 scope as `Build Clean2D benchmark and observability foundation`.
-- [ ] Continue to Campaign 2 only after Campaign 1 gates pass and its commit is verified.
+- [x] Commit exactly the Campaign 1 scope as `Build Clean2D benchmark and observability foundation`.
+- [x] Continue to Campaign 2 only after Campaign 1 gates pass and its commit is verified.

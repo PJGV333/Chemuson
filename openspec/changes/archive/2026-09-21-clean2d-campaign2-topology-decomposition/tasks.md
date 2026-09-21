@@ -24,5 +24,5 @@
 
 ## Promotion
 
-- [ ] Commit exactly the Campaign 2 scope as `Build deterministic Clean2D topology decomposition evidence`.
-- [ ] Archive this OpenSpec only after all gates pass and the commit is verified.
+- [x] Commit exactly the Campaign 2 scope as `Build deterministic Clean2D topology decomposition evidence`.
+- [x] Archive this OpenSpec only after all gates pass and the commit is verified.
