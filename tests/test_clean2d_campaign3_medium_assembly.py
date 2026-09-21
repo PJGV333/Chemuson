@@ -5,12 +5,25 @@ from typing import cast
 
 import pytest
 
-from chemuson.clean2d import generate_clean2d_candidates, plan_clean2d_block_assembly
+from chemuson.clean2d import (
+    generate_clean2d_candidates,
+    plan_clean2d_block_assembly,
+    run_clean2d_engine,
+)
 from tests.clean2d_regression.assertions import execute_case
 from tests.clean2d_regression.cases import get_regression_cases
 
 
 _CASES = {case.name: case for case in get_regression_cases()}
+_GLOBAL_ASSEMBLY_CASES = (
+    "multiblock_biphenyl_like",
+    "multiblock_diphenyl_ether_like",
+    "multiblock_triphenyl_like",
+    "multiblock_fused_plus_sidechain",
+    "multiblock_ring_chain_ring",
+    "multiblock_branched",
+    "multiblock_aromatic_aliphatic_branch",
+)
 
 
 @pytest.mark.parametrize(
@@ -50,6 +63,29 @@ def test_medium_block_candidate_records_global_assembly_plan() -> None:
     assert plan["requires_global_assembly"] is True
     assert plan["ordered_connector_ids"]
     json.dumps(plan, allow_nan=False, sort_keys=True)
+
+
+def test_global_assembly_evidence_covers_medium_and_large_families() -> None:
+    accepted = []
+    for case_name in _GLOBAL_ASSEMBLY_CASES:
+        result = run_clean2d_engine(_CASES[case_name].builder(), mode="quick", target_bond_length=40.0)
+        assert result.result_state != "preserve-only", case_name
+        candidates = (*result.candidates, *result.rejected)
+        candidate = next(item for item in candidates if item.source == "global_block_placement")
+        before = cast(dict[str, object], candidate.metadata["assembly_candidate_before"])
+        after = cast(dict[str, object], candidate.metadata["assembly_candidate_after"])
+        assert cast(int, after["crossings"]) <= cast(int, before["crossings"])
+        if not candidate.rejected:
+            assert cast(float, after["visual_score"]) < cast(float, before["visual_score"])
+        json.dumps(candidate.metadata, allow_nan=False, sort_keys=True)
+        if not candidate.rejected:
+            accepted.append(case_name)
+
+    assert len(accepted) >= 3
+    for case_name in ("multiblock_triphenyl_like", "multiblock_branched"):
+        result = run_clean2d_engine(_CASES[case_name].builder(), mode="quick", target_bond_length=40.0)
+        assert result.selected is not None
+        assert result.selected.source == "global_block_placement"
 
 
 @pytest.mark.parametrize(

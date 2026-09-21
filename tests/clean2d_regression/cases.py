@@ -259,6 +259,41 @@ def _triphenyl_like_graph() -> MolGraph:
     return graph
 
 
+def _fused_plus_sidechain_graph() -> MolGraph:
+    graph = _anthracene_like_graph()
+    graph.add_atom("C", -42.0, 24.0, atom_id=15)
+    graph.add_atom("C", -84.0, 24.0, atom_id=16)
+    graph.add_bond(1, 15, bond_id=18)
+    graph.add_bond(15, 16, bond_id=19)
+    return graph
+
+
+def _ring_chain_ring_graph() -> MolGraph:
+    graph = _biphenyl_like_graph()
+    graph.remove_bond(13)
+    graph.add_atom("C", 59.0, 20.0, atom_id=13)
+    graph.add_atom("C", 95.0, 20.0, atom_id=14)
+    graph.add_atom("C", 131.0, 20.0, atom_id=15)
+    graph.add_bond(1, 13, bond_id=13)
+    graph.add_bond(13, 14, bond_id=14)
+    graph.add_bond(14, 15, bond_id=15)
+    graph.add_bond(15, 10, bond_id=16)
+    return graph
+
+
+def _branched_multiblock_graph() -> MolGraph:
+    return _triphenyl_like_graph()
+
+
+def _aromatic_plus_aliphatic_branch_graph() -> MolGraph:
+    graph = _biphenyl_like_graph()
+    graph.add_atom("C", -42.0, -24.0, atom_id=13)
+    graph.add_atom("O", -84.0, -24.0, atom_id=14)
+    graph.add_bond(4, 13, bond_id=14)
+    graph.add_bond(13, 14, bond_id=15)
+    return graph
+
+
 def _macrocycle_like_graph() -> MolGraph:
     graph = MolGraph()
     radius = 82.0
@@ -467,6 +502,36 @@ REGRESSION_CASES: tuple[Clean2DRegressionCase, ...] = (
         expected_states=frozenset({"applied", "no-op", "preserve-only", "failed-controlled"}),
         tags=("known_delicate", "complex_policy_guard"),
         known_delicate=True,
+    ),
+    Clean2DRegressionCase(
+        "multiblock_fused_plus_sidechain",
+        "multi-block",
+        _fused_plus_sidechain_graph,
+        size_class="large",
+        expected_states=frozenset({"applied", "no-op", "preserve-only", "failed-controlled"}),
+        tags=("baseline", "complex_policy_guard"),
+        known_delicate=True,
+    ),
+    Clean2DRegressionCase(
+        "multiblock_ring_chain_ring",
+        "multi-block",
+        _ring_chain_ring_graph,
+        size_class="medium",
+        tags=("baseline", "complex_policy_guard"),
+    ),
+    Clean2DRegressionCase(
+        "multiblock_branched",
+        "multi-block",
+        _branched_multiblock_graph,
+        size_class="medium",
+        tags=("baseline", "complex_policy_guard"),
+    ),
+    Clean2DRegressionCase(
+        "multiblock_aromatic_aliphatic_branch",
+        "multi-block",
+        _aromatic_plus_aliphatic_branch_graph,
+        size_class="medium",
+        tags=("baseline", "complex_policy_guard"),
     ),
 )
 

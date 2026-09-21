@@ -157,7 +157,12 @@ def test_quick_clean_complex_never_uses_global_redraw_sources() -> None:
     sources = {candidate.source for candidate in (*result.candidates, *result.rejected)}
 
     assert not sources & {"rdkit_isolated", "rdkit_direct", "internal_templates", "v2", "clean2d_v2", "local_graph"}
-    assert sources <= {"current", "complex_preserve"}
+    assert sources <= {"current", "complex_preserve", "global_block_placement"}
+    global_candidates = [
+        candidate for candidate in (*result.candidates, *result.rejected) if candidate.source == "global_block_placement"
+    ]
+    assert global_candidates
+    assert all(candidate.rejected for candidate in global_candidates)
 
 
 def test_complex_preserve_does_not_change_stereo_signature() -> None:

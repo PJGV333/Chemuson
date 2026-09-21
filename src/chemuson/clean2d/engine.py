@@ -18,6 +18,7 @@ from typing import Any, cast
 from chemuson.clean2d.complex_policy import (
     Clean2DComplexityProfile,
     classify_clean2d_complexity,
+    describe_clean2d_topology,
     plan_clean2d_block_assembly,
 )
 from chemuson.clean2d.length_only import (
@@ -500,6 +501,19 @@ def _run_complex_preserve_clean2d_engine(
             selected=fused_template,
             message=fused_template.message,
         )
+    assembly_candidate = _candidate_from_global_block_placement(
+        graph, selected, before, bonds, target, mode
+    )
+    assembly_rejected = () if assembly_candidate is None or not assembly_candidate.rejected else (assembly_candidate,)
+    if assembly_candidate is not None and not assembly_candidate.rejected:
+        return Clean2DResult(
+            mode=mode,
+            atom_ids=selected,
+            before_coords=before,
+            candidates=(current, assembly_candidate),
+            selected=assembly_candidate,
+            message=assembly_candidate.message,
+        )
     unwrap = _candidate_from_block_unwrap(graph, selected, before, bonds, target)
     scaffold = _candidate_from_scaffold_depiction(graph, selected, before, bonds, target)
     if scaffold is not None and not scaffold.rejected:
@@ -509,6 +523,7 @@ def _run_complex_preserve_clean2d_engine(
             before_coords=before,
             candidates=(current, scaffold),
             selected=scaffold,
+            rejected=assembly_rejected,
             message=scaffold.message,
         )
     if unwrap is not None and not unwrap.rejected:
@@ -518,6 +533,7 @@ def _run_complex_preserve_clean2d_engine(
             before_coords=before,
             candidates=(current, unwrap),
             selected=unwrap,
+            rejected=assembly_rejected,
             message=unwrap.message,
         )
     if current_quality.quality_class == "good":
@@ -527,6 +543,7 @@ def _run_complex_preserve_clean2d_engine(
             before_coords=before,
             candidates=(current,),
             selected=current,
+            rejected=assembly_rejected,
             message=current.message,
         )
 
@@ -541,7 +558,7 @@ def _run_complex_preserve_clean2d_engine(
         cyclic=cyclic,
     )
     candidates: list[Clean2DCandidate] = [current]
-    rejected: list[Clean2DCandidate] = []
+    rejected: list[Clean2DCandidate] = list(assembly_rejected)
     if repair is not None and repair.rejected:
         rejected.append(repair)
     elif repair is not None:
@@ -869,10 +886,15 @@ def generate_clean2d_candidates(
     baseline_constraint_error = _interaction_constraint_error(layer_model.layout_constraint_graph.constraints, before)
     block_layout_candidate = _candidate_from_block_layout_signals(graph, selected, before, bonds, target)
     block_candidate = _candidate_from_block_constraints(graph, selected, before, bonds, target)
+    global_assembly_candidate = _candidate_from_global_block_placement(
+        graph, selected, before, bonds, target, mode
+    )
     motif_candidate = _candidate_from_motif_constraints(graph, selected, before, bonds, target)
     candidates: list[Clean2DCandidate] = []
     if block_layout_candidate is not None:
         candidates.append(block_layout_candidate)
+    if global_assembly_candidate is not None:
+        candidates.append(global_assembly_candidate)
 
     current = _normalized_candidate_coords(before, before, bonds, target)
     candidates.append(
@@ -1968,6 +1990,264 @@ def _candidate_from_motif_constraints(
             "interaction_constraint_error_before": before_error,
             "moved_motif_blocks": len(moved_components),
         },
+    )
+
+
+def _candidate_from_global_block_placement(
+    graph: MolGraph,
+    atom_ids: set[int],
+    before: dict[int, tuple[float, float]],
+    bonds: list[Bond],
+    target: float,
+    mode: Clean2DMode,
+) -> Clean2DCandidate | None:
+    """Place connected blocks hierarchically before local polishing."""
+    layer_model = build_multilayer_chemical_graph(graph, atom_ids)
+    topology = describe_clean2d_topology(layer_model)
+    plan = plan_clean2d_block_assembly(graph, atom_ids)
+    if not bool(plan["requires_global_assembly"]):
+        return None
+
+    block_records = cast(list[dict[str, object]], topology["blocks"])
+    blocks = {int(cast(int, block["id"])): block for block in block_records}
+    connector_records = {
+        int(cast(int, connector["id"])): connector
+        for connector in cast(list[dict[str, object]], topology["connectors"])
+    }
+    adjacency: dict[int, list[tuple[int, int]]] = {block_id: [] for block_id in blocks}
+    pair_connectors: dict[tuple[int, int], list[int]] = {}
+    for relation in cast(list[dict[str, object]], topology["block_adjacency"]):
+        left, right = tuple(int(value) for value in cast(list[int], relation["block_ids"]))
+        pair = (min(left, right), max(left, right))
+        pair_connectors.setdefault(pair, []).extend(cast(list[int], relation["connector_ids"]))
+        for connector_id in cast(list[int], relation["connector_ids"]):
+            adjacency[left].append((right, connector_id))
+            adjacency[right].append((left, connector_id))
+
+    root_id = int(cast(int, plan["anchor_block_id"]))
+    connector_order = {
+        int(connector_id): index
+        for index, connector_id in enumerate(cast(list[int], plan["ordered_connector_ids"]))
+    }
+    parent_by_child: dict[int, int] = {}
+    children_by_parent: dict[int, list[int]] = {block_id: [] for block_id in blocks}
+    visited = {root_id}
+    queue = [root_id]
+    while queue:
+        parent_id = queue.pop(0)
+        for child_id, connector_id in sorted(
+            adjacency.get(parent_id, ()),
+            key=lambda item: (connector_order.get(item[1], len(connector_order)), item[1], item[0]),
+        ):
+            if child_id in visited:
+                continue
+            visited.add(child_id)
+            parent_by_child[child_id] = parent_id
+            children_by_parent[parent_id].append(child_id)
+            queue.append(child_id)
+
+    ordered_block_ids = cast(list[int], plan["ordered_block_ids"])
+    coords = dict(before)
+    placed_atoms = set(cast(list[int], blocks[root_id]["atom_ids"]))
+    reserved_structural_atoms = {
+        atom_id
+        for block in blocks.values()
+        if str(block["kind"]) not in {"linker", "terminal_substituent"}
+        for atom_id in cast(list[int], block["atom_ids"])
+    }
+    outward_angle_by_block: dict[int, float] = {}
+    placements: list[dict[str, object]] = []
+
+    for child_id in ordered_block_ids:
+        if child_id == root_id or child_id not in parent_by_child:
+            continue
+        parent_id = parent_by_child[child_id]
+        parent_block_atoms = set(cast(list[int], blocks[parent_id]["atom_ids"]))
+        child_block_atoms = set(cast(list[int], blocks[child_id]["atom_ids"]))
+        pair = (min(parent_id, child_id), max(parent_id, child_id))
+        connector_ids = pair_connectors.get(pair, ())
+        parent_kind = str(blocks[parent_id]["kind"])
+        child_kind = str(blocks[child_id]["kind"])
+
+        def connector_atom_ids(candidate_id: int) -> list[int]:
+            return cast(list[int], connector_records[candidate_id]["atom_ids"])
+
+        connector_id = max(
+            connector_ids,
+            key=lambda candidate_id: (
+                int(
+                    any(
+                        atom_id in parent_block_atoms - child_block_atoms
+                        and parent_kind in {"linker", "terminal_substituent"}
+                        for atom_id in connector_atom_ids(candidate_id)
+                    )
+                    or any(
+                        atom_id in child_block_atoms - parent_block_atoms
+                        and child_kind in {"linker", "terminal_substituent"}
+                        for atom_id in connector_atom_ids(candidate_id)
+                    )
+                ),
+                sum(
+                    atom_id in child_block_atoms - parent_block_atoms
+                    for atom_id in connector_atom_ids(candidate_id)
+                ),
+                sum(
+                    atom_id in parent_block_atoms - child_block_atoms
+                    for atom_id in connector_atom_ids(candidate_id)
+                ),
+                -connector_order.get(candidate_id, len(connector_order)),
+            ),
+        )
+        connector = connector_records[connector_id]
+        connector_atoms = cast(list[int], connector["atom_ids"])
+        parent_candidates = [
+            atom_id
+            for atom_id in connector_atoms
+            if atom_id in parent_block_atoms and atom_id in placed_atoms
+        ]
+        child_candidates = [
+            atom_id
+            for atom_id in connector_atoms
+            if atom_id in child_block_atoms and atom_id not in placed_atoms
+        ]
+        if not child_candidates:
+            child_candidates = [atom_id for atom_id in connector_atoms if atom_id in child_block_atoms]
+        if not parent_candidates or not child_candidates:
+            continue
+        parent_attachment = parent_candidates[0]
+        child_attachment = child_candidates[0]
+        movable = child_block_atoms - placed_atoms
+        if str(blocks[child_id]["kind"]) == "linker":
+            movable -= reserved_structural_atoms
+        if not movable:
+            placed_atoms.update(child_block_atoms & placed_atoms)
+            continue
+
+        parent_coords = [coords[atom_id] for atom_id in parent_block_atoms & placed_atoms if atom_id in coords]
+        if not parent_coords or parent_attachment not in coords:
+            continue
+        px, py = coords[parent_attachment]
+        if parent_id in outward_angle_by_block:
+            base_angle = outward_angle_by_block[parent_id]
+        else:
+            parent_centroid = _centroid_xy(parent_coords)
+            base_dx, base_dy = px - parent_centroid[0], py - parent_centroid[1]
+            base_angle = math.atan2(base_dy, base_dx) if math.hypot(base_dx, base_dy) > 1e-9 else 0.0
+        siblings = children_by_parent[parent_id]
+        sibling_index = siblings.index(child_id)
+        sector_offset = math.radians(55.0) * (sibling_index - (len(siblings) - 1) / 2.0)
+        desired_angle = base_angle + sector_offset
+        desired_attachment = (
+            px + math.cos(desired_angle) * target,
+            py + math.sin(desired_angle) * target,
+        )
+
+        if child_attachment not in coords:
+            continue
+        child_coords = [coords[atom_id] for atom_id in movable if atom_id in coords]
+        child_centroid = _centroid_xy(child_coords)
+        cx, cy = coords[child_attachment]
+        child_dx, child_dy = child_centroid[0] - cx, child_centroid[1] - cy
+        current_angle = math.atan2(child_dy, child_dx) if math.hypot(child_dx, child_dy) > 1e-9 else 0.0
+        rotation = desired_angle - current_angle
+        sin_rotation, cos_rotation = math.sin(rotation), math.cos(rotation)
+        for atom_id in movable:
+            ax, ay = coords[atom_id]
+            local_x, local_y = ax - cx, ay - cy
+            coords[atom_id] = (
+                cx + local_x * cos_rotation - local_y * sin_rotation,
+                cy + local_x * sin_rotation + local_y * cos_rotation,
+            )
+        moved_anchor = coords[child_attachment]
+        shift_x = desired_attachment[0] - moved_anchor[0]
+        shift_y = desired_attachment[1] - moved_anchor[1]
+        for atom_id in movable:
+            ax, ay = coords[atom_id]
+            coords[atom_id] = (ax + shift_x, ay + shift_y)
+        placed_atoms.update(movable)
+        outward_angle_by_block[child_id] = desired_angle
+        placements.append(
+            {
+                "block_id": child_id,
+                "parent_block_id": parent_id,
+                "connector_id": connector_id,
+                "parent_attachment_atom_id": parent_attachment,
+                "child_attachment_atom_id": child_attachment,
+                "sector_angle_deg": math.degrees(desired_angle),
+                "target_attachment": desired_attachment,
+                "moved_atom_count": len(movable),
+            }
+        )
+
+    if any(not (math.isfinite(x) and math.isfinite(y)) for x, y in coords.values()):
+        return None
+    before_quality = classify_clean2d_layout_quality(graph, atom_ids, coords=before, target_bond_length=target)
+    after_quality = classify_clean2d_layout_quality(graph, atom_ids, coords=coords, target_bond_length=target)
+    report = evaluate_clean2d_layout(atom_ids, bonds, before, coords, target, is_cyclic=has_cycles(atom_ids, bonds))
+    rejection = ""
+    try:
+        assert_clean2d_invariants(graph, graph, before, coords, atom_ids=atom_ids)
+    except Clean2DInvariantError:
+        rejection = "invariant-violation"
+    if not rejection:
+        rejection = _reject_block_layout_regression(graph, atom_ids, bonds, before, coords, target)
+    if not rejection and not is_clean2d_candidate_safe(report, mode=mode.value):
+        global_rebuild_is_safe = (
+            report.rejection_reason.startswith("desplazamiento_maximo_excesivo")
+            and _quality_rank(after_quality.quality_class) <= _quality_rank("needs_polish")
+            and after_quality.crossings <= before_quality.crossings
+            and after_quality.min_nonbonded_distance >= before_quality.min_nonbonded_distance - 1e-6
+            and after_quality.min_ring_degeneracy >= before_quality.min_ring_degeneracy - 1e-6
+        )
+        if not global_rebuild_is_safe:
+            rejection = report.rejection_reason or "assembly-unsafe"
+    improves = (
+        _quality_rank(after_quality.quality_class) < _quality_rank(before_quality.quality_class)
+        or after_quality.visual_score + 1e-9 < before_quality.visual_score
+        or after_quality.crossings < before_quality.crossings
+    )
+    if not rejection and not improves:
+        rejection = "assembly-no-improvement"
+    metadata = {
+        "assembly_candidate": True,
+        "global_assembly_plan": plan,
+        "assembly_block_placements": placements,
+        "assembly_candidate_before": _quality_metrics(before_quality),
+        "assembly_candidate_after": _quality_metrics(after_quality),
+        "assembly_candidate_accepted": not rejection,
+        "assembly_candidate_rejection_reason": rejection or None,
+    }
+    return Clean2DCandidate(
+        source="global_block_placement",
+        coords=coords,
+        message="Colocación global topology-aware de bloques",
+        score=_visual_quality_score(graph, atom_ids, bonds, before, coords, target, mode),
+        novelty=_mean_displacement(before, coords, atom_ids),
+        report=report,
+        rejected=bool(rejection),
+        rejection_reason=rejection,
+        geometry_hash=clean2d_geometry_hash(graph, coords, atom_ids),
+        metadata=metadata,
+    )
+
+
+def _quality_metrics(quality: Clean2DLayoutQualityReport) -> dict[str, object]:
+    return {
+        "quality_class": quality.quality_class,
+        "crossings": quality.crossings,
+        "collision_proxy": quality.min_nonbonded_distance,
+        "angle_rms_deviation": quality.angle_rms_deviation,
+        "angle_max_deviation": quality.angle_max_deviation,
+        "length_rms_error": quality.length_rms_error,
+        "length_max_error": quality.length_max_error,
+        "visual_score": quality.visual_score,
+    }
+
+
+def _centroid_xy(points: list[tuple[float, float]]) -> tuple[float, float]:
+    return (
+        sum(point[0] for point in points) / len(points),
+        sum(point[1] for point in points) / len(points),
     )
 
 

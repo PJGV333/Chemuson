@@ -1,0 +1,439 @@
+{
+  "accepted_global_candidate_count": 3,
+  "comparison_commit": "0b1647b",
+  "comparison_scope": "working tree after Campaign 3 archive; no runtime_ms field",
+  "fixture_count": 7,
+  "global_candidate_fixture_count": 7,
+  "reference_commit": "043fe96",
+  "rows": [
+    {
+      "baseline": {
+        "global_candidate_present": false,
+        "global_candidate_rejected": null,
+        "result_state": "applied",
+        "selected_source": "rdkit_isolated"
+      },
+      "candidate_after": {
+        "angle_max_deviation": 2.842170943040401e-14,
+        "angle_rms_deviation": 1.0658141036401503e-14,
+        "collision_proxy": 71.02112361825881,
+        "crossings": 0,
+        "length_max_error": 0.08000000000000043,
+        "length_rms_error": 0.0768615138264419,
+        "quality_class": "needs_polish",
+        "visual_score": 9.216000000000015
+      },
+      "candidate_before": {
+        "angle_max_deviation": 72.8643187898198,
+        "angle_rms_deviation": 30.681797119489723,
+        "collision_proxy": 45.25386608210715,
+        "crossings": 0,
+        "length_max_error": 0.5435171677408727,
+        "length_rms_error": 0.16920877219237415,
+        "quality_class": "needs_rebuild",
+        "visual_score": 45036.8404294707
+      },
+      "case": "multiblock_biphenyl_like",
+      "current": {
+        "global_candidate_present": true,
+        "global_candidate_rejected": false,
+        "global_rejection_reason": "",
+        "result_state": "applied",
+        "selected_source": "rdkit_isolated"
+      },
+      "global_assembly_plan": {
+        "anchor_block_id": 1,
+        "flexible_connector_count": 0,
+        "flexible_connector_ids": [],
+        "ordered_block_ids": [
+          1,
+          2
+        ],
+        "ordered_connector_ids": [
+          1
+        ],
+        "requires_global_assembly": true,
+        "version": 1
+      }
+    },
+    {
+      "baseline": {
+        "global_candidate_present": false,
+        "global_candidate_rejected": null,
+        "result_state": "applied",
+        "selected_source": "rdkit_isolated"
+      },
+      "candidate_after": {
+        "angle_max_deviation": 60.0,
+        "angle_rms_deviation": 14.552137502179978,
+        "collision_proxy": 71.02112361825881,
+        "crossings": 0,
+        "length_max_error": 0.08000000000000043,
+        "length_rms_error": 0.07406560798180419,
+        "quality_class": "needs_rebuild",
+        "visual_score": 41.216000000000015
+      },
+      "candidate_before": {
+        "angle_max_deviation": 91.10672986219595,
+        "angle_rms_deviation": 25.729083485773224,
+        "collision_proxy": 22.649019820829377,
+        "crossings": 0,
+        "length_max_error": 0.4337745044792656,
+        "length_rms_error": 0.14494073412467293,
+        "quality_class": "needs_rebuild",
+        "visual_score": 27912.40330977828
+      },
+      "case": "multiblock_diphenyl_ether_like",
+      "current": {
+        "global_candidate_present": true,
+        "global_candidate_rejected": true,
+        "global_rejection_reason": "candidato_no_canonicaliza_geometria",
+        "result_state": "applied",
+        "selected_source": "rdkit_isolated"
+      },
+      "global_assembly_plan": {
+        "anchor_block_id": 1,
+        "flexible_connector_count": 6,
+        "flexible_connector_ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "ordered_block_ids": [
+          1,
+          3,
+          2
+        ],
+        "ordered_connector_ids": [
+          1,
+          2,
+          5,
+          3,
+          4,
+          6
+        ],
+        "requires_global_assembly": true,
+        "version": 1
+      }
+    },
+    {
+      "baseline": {
+        "global_candidate_present": false,
+        "global_candidate_rejected": null,
+        "result_state": "preserve-only",
+        "selected_source": "current"
+      },
+      "candidate_after": {
+        "angle_max_deviation": 27.5,
+        "angle_rms_deviation": 10.78638743260011,
+        "collision_proxy": 59.24998853626496,
+        "crossings": 0,
+        "length_max_error": 0.08000000000000078,
+        "length_rms_error": 0.07589466384404121,
+        "quality_class": "needs_polish",
+        "visual_score": 40.712888888888855
+      },
+      "candidate_before": {
+        "angle_max_deviation": 91.35238354319114,
+        "angle_rms_deviation": 31.740444114399274,
+        "collision_proxy": 45.25386608210715,
+        "crossings": 1,
+        "length_max_error": 2.0766255865802066,
+        "length_rms_error": 0.48595188745742346,
+        "quality_class": "needs_rebuild",
+        "visual_score": 28057.883402605734
+      },
+      "case": "multiblock_triphenyl_like",
+      "current": {
+        "global_candidate_present": true,
+        "global_candidate_rejected": false,
+        "global_rejection_reason": "",
+        "result_state": "applied",
+        "selected_source": "global_block_placement"
+      },
+      "global_assembly_plan": {
+        "anchor_block_id": 1,
+        "flexible_connector_count": 0,
+        "flexible_connector_ids": [],
+        "ordered_block_ids": [
+          1,
+          2,
+          3
+        ],
+        "ordered_connector_ids": [
+          1,
+          2
+        ],
+        "requires_global_assembly": true,
+        "version": 1
+      }
+    },
+    {
+      "baseline": {
+        "global_candidate_present": false,
+        "global_candidate_rejected": null,
+        "result_state": "failed-controlled",
+        "selected_source": null
+      },
+      "candidate_after": {
+        "angle_max_deviation": 60.0,
+        "angle_rms_deviation": 18.223469473238342,
+        "collision_proxy": 49.09080911000839,
+        "crossings": 0,
+        "length_max_error": 0.11166538263919694,
+        "length_rms_error": 0.09936741366137068,
+        "quality_class": "needs_rebuild",
+        "visual_score": 95.12644031292872
+      },
+      "candidate_before": {
+        "angle_max_deviation": 60.0,
+        "angle_rms_deviation": 15.362650371331908,
+        "collision_proxy": 59.39696961966999,
+        "crossings": 0,
+        "length_max_error": 0.11166538263919694,
+        "length_rms_error": 0.10006383855638783,
+        "quality_class": "needs_rebuild",
+        "visual_score": 74.07448182175867
+      },
+      "case": "multiblock_fused_plus_sidechain",
+      "current": {
+        "global_candidate_present": true,
+        "global_candidate_rejected": true,
+        "global_rejection_reason": "assembly-no-improvement",
+        "result_state": "failed-controlled",
+        "selected_source": null
+      },
+      "global_assembly_plan": {
+        "anchor_block_id": 1,
+        "flexible_connector_count": 0,
+        "flexible_connector_ids": [],
+        "ordered_block_ids": [
+          1,
+          2,
+          5,
+          3,
+          4
+        ],
+        "ordered_connector_ids": [
+          1,
+          2,
+          4,
+          5,
+          7,
+          8,
+          10,
+          11,
+          13,
+          14,
+          15,
+          17,
+          18,
+          20,
+          21,
+          23,
+          24,
+          26,
+          27,
+          29,
+          30,
+          32,
+          33,
+          35,
+          36,
+          37,
+          38,
+          39,
+          41,
+          3,
+          6,
+          9,
+          12,
+          16,
+          19,
+          31,
+          42,
+          22,
+          25,
+          28,
+          34,
+          40
+        ],
+        "requires_global_assembly": true,
+        "version": 1
+      }
+    },
+    {
+      "baseline": {
+        "global_candidate_present": false,
+        "global_candidate_rejected": null,
+        "result_state": "applied",
+        "selected_source": "internal_templates"
+      },
+      "candidate_after": {
+        "angle_max_deviation": 60.0,
+        "angle_rms_deviation": 23.84158242717079,
+        "collision_proxy": 71.02112361825881,
+        "crossings": 0,
+        "length_max_error": 0.1,
+        "length_rms_error": 0.0777817459305203,
+        "quality_class": "needs_rebuild",
+        "visual_score": 107.61600000000001
+      },
+      "candidate_before": {
+        "angle_max_deviation": 69.7933438794806,
+        "angle_rms_deviation": 33.4654261508762,
+        "collision_proxy": 13.410403420049098,
+        "crossings": 1,
+        "length_max_error": 0.6044274175178131,
+        "length_rms_error": 0.20160183899574885,
+        "quality_class": "needs_rebuild",
+        "visual_score": 35281.91958847933
+      },
+      "case": "multiblock_ring_chain_ring",
+      "current": {
+        "global_candidate_present": true,
+        "global_candidate_rejected": true,
+        "global_rejection_reason": "desplazamiento_maximo_excesivo:146.2>120.0",
+        "result_state": "applied",
+        "selected_source": "internal_templates"
+      },
+      "global_assembly_plan": {
+        "anchor_block_id": 1,
+        "flexible_connector_count": 6,
+        "flexible_connector_ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "ordered_block_ids": [
+          1,
+          3,
+          2
+        ],
+        "ordered_connector_ids": [
+          1,
+          2,
+          5,
+          3,
+          4,
+          6
+        ],
+        "requires_global_assembly": true,
+        "version": 1
+      }
+    },
+    {
+      "baseline": {
+        "global_candidate_present": false,
+        "global_candidate_rejected": null,
+        "result_state": "preserve-only",
+        "selected_source": "current"
+      },
+      "candidate_after": {
+        "angle_max_deviation": 27.5,
+        "angle_rms_deviation": 10.78638743260011,
+        "collision_proxy": 59.24998853626496,
+        "crossings": 0,
+        "length_max_error": 0.08000000000000078,
+        "length_rms_error": 0.07589466384404121,
+        "quality_class": "needs_polish",
+        "visual_score": 40.712888888888855
+      },
+      "candidate_before": {
+        "angle_max_deviation": 91.35238354319114,
+        "angle_rms_deviation": 31.740444114399274,
+        "collision_proxy": 45.25386608210715,
+        "crossings": 1,
+        "length_max_error": 2.0766255865802066,
+        "length_rms_error": 0.48595188745742346,
+        "quality_class": "needs_rebuild",
+        "visual_score": 28057.883402605734
+      },
+      "case": "multiblock_branched",
+      "current": {
+        "global_candidate_present": true,
+        "global_candidate_rejected": false,
+        "global_rejection_reason": "",
+        "result_state": "applied",
+        "selected_source": "global_block_placement"
+      },
+      "global_assembly_plan": {
+        "anchor_block_id": 1,
+        "flexible_connector_count": 0,
+        "flexible_connector_ids": [],
+        "ordered_block_ids": [
+          1,
+          2,
+          3
+        ],
+        "ordered_connector_ids": [
+          1,
+          2
+        ],
+        "requires_global_assembly": true,
+        "version": 1
+      }
+    },
+    {
+      "baseline": {
+        "global_candidate_present": false,
+        "global_candidate_rejected": null,
+        "result_state": "applied",
+        "selected_source": "rdkit_isolated"
+      },
+      "candidate_after": {
+        "angle_max_deviation": 60.0,
+        "angle_rms_deviation": 18.673087868007148,
+        "collision_proxy": 59.24998853626496,
+        "crossings": 0,
+        "length_max_error": 0.0800000000000006,
+        "length_rms_error": 0.07270946751741947,
+        "quality_class": "needs_rebuild",
+        "visual_score": 68.4048888888889
+      },
+      "candidate_before": {
+        "angle_max_deviation": 72.8643187898198,
+        "angle_rms_deviation": 29.09995897395507,
+        "collision_proxy": 45.25386608210715,
+        "crossings": 0,
+        "length_max_error": 0.8405823577664229,
+        "length_rms_error": 0.2684883128204055,
+        "quality_class": "needs_rebuild",
+        "visual_score": 25131.062156530847
+      },
+      "case": "multiblock_aromatic_aliphatic_branch",
+      "current": {
+        "global_candidate_present": true,
+        "global_candidate_rejected": true,
+        "global_rejection_reason": "candidato_no_canonicaliza_geometria",
+        "result_state": "applied",
+        "selected_source": "rdkit_isolated"
+      },
+      "global_assembly_plan": {
+        "anchor_block_id": 1,
+        "flexible_connector_count": 0,
+        "flexible_connector_ids": [],
+        "ordered_block_ids": [
+          1,
+          3,
+          2
+        ],
+        "ordered_connector_ids": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "requires_global_assembly": true,
+        "version": 1
+      }
+    }
+  ],
+  "schema_version": 1
+}

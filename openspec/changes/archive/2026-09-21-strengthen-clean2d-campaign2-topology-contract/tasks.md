@@ -23,6 +23,6 @@
 
 ## Promotion
 
-- [ ] Commit as `Strengthen Clean2D topology decomposition contract`.
-- [ ] Archive this OpenSpec and commit as `Archive strengthened Clean2D topology contract`.
-- [ ] Continue to Campaign 3 only after the two commits and clean worktree are verified.
+- [x] Commit as `Strengthen Clean2D topology decomposition contract`.
+- [x] Archive this OpenSpec and commit as `Archive strengthened Clean2D topology contract`.
+- [x] Continue to Campaign 3 only after the two commits and clean worktree are verified.
