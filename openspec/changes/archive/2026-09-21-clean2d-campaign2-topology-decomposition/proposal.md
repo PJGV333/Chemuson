@@ -1,5 +1,17 @@
 # Proposal: Clean2D Campaign 2 — Topology and Decomposition
 
+## Why
+
+Campaign 1 established reproducible evidence, but the existing multilayer
+decomposition was not exposed as a stable, auditable summary for medium and
+large structures.
+
+## What Changes
+
+Add an observational JSON-safe summary over the existing multilayer and block
+graph objects, with deterministic block, connector, component, and topology
+metadata. Geometry and candidate selection remain unchanged.
+
 ## TARGET FAMILY
 
 Medium and large structures whose multilayer model contains rings, fused systems,
