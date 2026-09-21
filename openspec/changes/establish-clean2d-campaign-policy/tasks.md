@@ -19,7 +19,7 @@
 ## 3. Roadmap and contract guard
 
 - [x] Add `docs/clean2d/CAMPAIGN.md` with the required human roadmap sections.
-- [x] Add `tests/architecture/test_clean2d_campaign_policy.py` for structural, scope, and normative policy checks.
+- [x] Add `tests/architecture/test_clean2d_campaign_policy.py` for structural and normative policy checks; verify production scope by diff review rather than Git-history state.
 - [x] Keep the change documentary/contractual; do not modify production Clean2D or existing specifications.
 
 ## 4. Validation
@@ -31,6 +31,6 @@
 
 ## 5. Commit and publication
 
-- [ ] Create one commit named `Establish Clean2D campaign policy`.
-- [ ] Publish the branch if the configured Git remote permits it.
+- [x] Create one commit named `Establish Clean2D campaign policy`.
+- [x] Publish the branch if the configured Git remote permits it.
 - [ ] Do not archive or merge this OpenSpec.

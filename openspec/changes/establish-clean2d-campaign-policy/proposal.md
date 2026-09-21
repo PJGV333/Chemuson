@@ -27,6 +27,8 @@ This is a documentation and contract change. It adds no production Clean2D algor
 - No changes to existing Clean2D, regression, baseline, snapshot, or geometry-metric contracts.
 - No OpenSpec archive or merge.
 
+The “no production changes” assertion for this phase is performed through the reviewed diff and commit scope. It is not encoded as a persistent test against `HEAD`, `origin/main`, or a merge base, because this OpenSpec remains active while later campaigns add their own changes.
+
 ## Compatibility
 
 The policy reuses the existing vocabulary and contracts from `clean-2d`, `clean-2d-quality-reporting`, `clean-2d-complex-policy`, `clean-2d-debug-snapshots`, `clean-2d-regression-corpus`, `clean-2d-baseline-reports`, `clean-2d-baseline-diff-review`, `clean-2d-geometry-metrics`, and deterministic-baseline changes. Existing diagnostic scores and geometry metrics remain observational unless a later change explicitly promotes them.

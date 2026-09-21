@@ -50,7 +50,7 @@ The policy extends existing quality diagnostics, snapshots, baseline reports, an
 
 ## Scope guard
 
-The only intended new paths are the active OpenSpec, `docs/clean2d/CAMPAIGN.md`, the contract test, and its baseline record. No production module, architecture catalog, GUI, core, chemio, or existing Clean2D spec is modified because this policy does not add a dependency or alter current behavior.
+The only intended new paths are the active OpenSpec, `docs/clean2d/CAMPAIGN.md`, the contract test, and its baseline record. No production module, architecture catalog, GUI, core, chemio, or existing Clean2D spec is modified because this policy does not add a dependency or alter current behavior. During this phase, that scope claim is verified by manual diff review; no persistent test compares against `HEAD`, `origin/main`, or a merge base.
 
 ## Validation
 

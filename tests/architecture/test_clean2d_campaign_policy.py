@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).parents[2]
@@ -77,22 +76,3 @@ def test_policy_declares_metric_vector_and_corpus_taxonomy() -> None:
         assert metric in policy
     for tag in ("macrocycle", "multiblock", "stereo-sensitive", "selection-boundary"):
         assert f"`{tag}`" in policy
-
-
-def test_change_does_not_modify_production_clean2d_or_architecture_catalog() -> None:
-    result = subprocess.run(
-        ["git", "status", "--porcelain", "--untracked-files=all"],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    changed = [line[3:] for line in result.stdout.splitlines() if len(line) >= 4]
-    forbidden_prefixes = (
-        "src/chemuson/clean2d/",
-        "src/chemuson/gui/",
-        "src/chemuson/core/",
-        "src/chemuson/chemio/",
-        "architecture/",
-    )
-    assert not [path for path in changed if path.startswith(forbidden_prefixes)]

@@ -9,9 +9,13 @@ Esta campaña es un roadmap y una política de evidencia. No implementa algoritm
 La regla maestra es:
 
 - **simple:** una representación simple que ya es correcta no debe empeorar;
-- **medium:** las estructuras medianas deben mostrar mejora sostenida y medible;
+- **medium:** las estructuras medianas deben mostrar mejora sostenida y medible a nivel de la familia objetivo y de la campaña;
 - **large:** la degradación debe ser controlada, explicable y no destructiva;
-- **complex-scale:** la química debe preservarse siempre y debe usarse la mejor representación segura disponible.
+- **complex-scale:** la química debe preservarse siempre y debe usarse el mejor candidato seguro entre los candidatos realmente evaluados bajo la estrategia declarada, el espacio de búsqueda y el presupuesto de recursos.
+
+“Mejora sostenida y medible” en `medium` significa mejora reproducible de la familia objetivo y de la campaña; no exige que cada estructura medium mejore en cada cambio. Un caso individual ya bueno puede quedar `unchanged`/`no-op` si no regresa, la familia objetivo muestra mejora agregada o distributiva demostrable y cualquier regresión individual queda visible en el review. Campaign 1 decidirá qué resúmenes son apropiados; esta política no fija todavía un agregado estadístico obligatorio.
+
+“Mejor candidato seguro” no afirma un óptimo matemático ni global: sólo identifica el mejor candidato seguro entre los candidatos efectivamente evaluados bajo los límites declarados.
 
 Si no existe una mejora segura, **preserve-only/no-op** es preferible a un redraw destructivo.
 
@@ -84,7 +88,7 @@ Cada campaña tendrá su propio OpenSpec con `TARGET FAMILY`, `NON-TARGET FAMILI
 
 **Objetivo:** mejorar estructuras de aproximadamente 20–60 átomos del grafo con múltiples anillos o cadenas.
 
-El global placement precede al local polish. La evidencia debe mostrar mejora sostenida del corpus medium sin regresión de los casos simples.
+El global placement precede al local polish. La evidencia debe mostrar mejora sostenida y reproducible de la familia medium objetivo y de la campaña, sin regresión de los casos simples. Un caso medium individual ya correcto puede permanecer unchanged/no-op si su resultado no regresa y la evidencia agregada o distributiva de la familia queda documentada; cualquier regresión individual debe ser visible en el review.
 
 **Exit criterion:** mejora reproducible en la familia medium y Gate B satisfecha.
 

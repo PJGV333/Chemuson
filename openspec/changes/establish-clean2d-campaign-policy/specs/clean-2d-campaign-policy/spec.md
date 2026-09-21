@@ -23,7 +23,9 @@ The campaign policy SHALL govern future Clean2D work as a sequence of independen
 
 ### Requirement: Quality posture is monotonic by complexity
 
-The master policy SHALL apply the following normative posture: a correctly represented simple structure SHALL NOT regress; medium structures SHALL show sustained measurable improvement; large structures SHALL degrade only in a controlled and explainable manner; complex-scale structures SHALL preserve chemistry and use the best safe representation found. When no safe improvement exists, preserve-only or no-op SHALL be preferred to destructive layout.
+The master policy SHALL apply the following normative posture: a correctly represented simple structure SHALL NOT regress; medium structures SHALL show sustained measurable improvement; large structures SHALL degrade only in a controlled and explainable manner; complex-scale structures SHALL preserve chemistry and use the best safe candidate among the candidates actually evaluated under the declared strategy, search space, and resource budget. This does not claim a mathematical or global optimum. When no safe improvement exists, preserve-only or no-op SHALL be preferred to destructive layout.
+
+For medium structures, “sustained measurable improvement” means reproducible improvement at the target family and campaign level. It does not require every medium structure to improve in every change. An individual medium case that is already good MAY remain unchanged or no-op when it does not regress, the target family shows demonstrable aggregate or distributional improvement, and any individual regression remains visible in review. Campaign 1 SHALL determine which summaries are appropriate; this master policy does not mandate a particular statistical aggregate.
 
 #### Scenario: Simple non-regression
 - **GIVEN** a simple corpus case is currently correct
@@ -33,7 +35,9 @@ The master policy SHALL apply the following normative posture: a correctly repre
 #### Scenario: Medium improvement
 - **GIVEN** a target case is medium by size and topology classification
 - **WHEN** a campaign claims improvement
-- **THEN** the improvement SHALL be reproducible and measurable on the declared corpus family
+- **THEN** the improvement SHALL be reproducible and measurable at the declared target-family and campaign level
+- **AND** an already-good individual medium case MAY remain unchanged or no-op without violating this requirement when it does not regress
+- **AND** any individual regression SHALL remain visible in review
 - **AND** it SHALL not be asserted solely by visual impression.
 
 #### Scenario: Large controlled degradation
