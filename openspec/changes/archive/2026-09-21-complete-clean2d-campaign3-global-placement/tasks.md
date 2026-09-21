@@ -19,6 +19,6 @@
 
 - [x] Verify no simple-case regression and exactly the four allowed global failures.
 - [x] Run focused Campaign 2/3 tests, architecture tests, compileall, Ruff, full pytest, and diff checks.
-- [ ] Validate this OpenSpec strictly and commit `Complete Clean2D Campaign 3 global block placement`.
-- [ ] Archive the OpenSpec and commit `Archive completed Clean2D Campaign 3 placement`.
+- [x] Validate this OpenSpec strictly and commit `Complete Clean2D Campaign 3 global block placement`.
+- [x] Archive the OpenSpec and commit `Archive completed Clean2D Campaign 3 placement`.
 - [ ] Only after successful promotion may Campaign 4 begin.
