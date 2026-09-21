@@ -17,5 +17,5 @@
 
 - [x] Run focused tests, architecture tests, compileall, Ruff, git diff check, and full pytest.
 - [x] Validate this OpenSpec strictly and record any unrelated baseline deviations.
-- [ ] Commit implementation as `Build Clean2D Campaign 3 medium assembly`.
-- [ ] Archive this OpenSpec and commit the archive.
+- [x] Commit implementation as `Build Clean2D Campaign 3 medium assembly`.
+- [x] Archive this OpenSpec and commit the archive.
