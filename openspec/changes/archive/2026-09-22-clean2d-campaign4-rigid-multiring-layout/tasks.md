@@ -28,5 +28,5 @@
 - [x] Run focused Campaign 2/3/4 tests, architecture, full suite, compileall, Ruff, diff checks, and strict OpenSpec validation.
 - [x] Confirm all promotion gates and record known limitations.
 - [x] Commit `Improve Clean2D rigid and multiring layout`.
-- [ ] Archive this OpenSpec, repair canonical Purpose if needed, validate it, and commit `Archive Clean2D Campaign 4 rigid multiring layout`.
-- [ ] Do not start Campaign 5.
+- [x] Archive this OpenSpec, repair canonical Purpose if needed, validate it, and commit `Archive Clean2D Campaign 4 rigid multiring layout`.
+- [x] Do not start Campaign 5.
