@@ -1,10 +1,10 @@
 # Proposal: Tighten Campaign 3 global placement safety
 
-## Problem
+## Why
 
 Campaign 3 added `global_block_placement`, but its displacement exception can bypass the local safety helper without an explicit finite global budget, and the complex-preserve path can return global placement before comparing it with safe scaffold or unwrap alternatives.
 
-## Scope
+## What Changes
 
 - Add an explicit topology- and target-dependent finite displacement budget for global placement.
 - Evaluate all global-placement hard gates explicitly after candidate construction.

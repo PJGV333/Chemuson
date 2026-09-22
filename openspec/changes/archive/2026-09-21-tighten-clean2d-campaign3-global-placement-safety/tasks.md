@@ -17,5 +17,5 @@
 - [x] Update only the new corrective evidence with safety and competition fields.
 - [x] Run the required focused tests, architecture, full suite, compileall, Ruff, and diff checks.
 - [x] Validate this OpenSpec strictly and commit `Tighten Clean2D Campaign 3 global placement safety`.
-- [ ] Archive the OpenSpec, repair canonical Purpose if needed, validate it, and commit `Archive Clean2D Campaign 3 safety closure`.
-- [ ] Do not start Campaign 4 until this safety closure is promoted and archived.
+- [x] Archive the OpenSpec, repair canonical Purpose if needed, validate it, and commit `Archive Clean2D Campaign 3 safety closure`.
+- [x] Do not start Campaign 4 until this safety closure is promoted and archived.
