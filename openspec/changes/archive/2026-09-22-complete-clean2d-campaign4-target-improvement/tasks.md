@@ -23,5 +23,5 @@
 - [x] Confirm at least one target is selected because the new geometry is better, not because of priority bias.
 - [x] Run architecture, compileall, Ruff, diff check, strict OpenSpec, and full suite.
 - [x] Commit `Complete Clean2D Campaign 4 target improvement` only if gates A-F pass.
-- [ ] Archive only after genuine promotion; otherwise leave this OpenSpec active.
+- [x] Archive only after genuine promotion; otherwise leave this OpenSpec active.
 - [x] Do not start Campaign 5.
