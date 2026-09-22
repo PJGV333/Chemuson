@@ -5,7 +5,9 @@ from typing import cast
 
 import pytest
 
+import chemuson.clean2d.engine as clean2d_engine
 from chemuson.clean2d import (
+    Clean2DCandidate,
     generate_clean2d_candidates,
     plan_clean2d_block_assembly,
     run_clean2d_engine,
@@ -86,6 +88,64 @@ def test_global_assembly_evidence_covers_medium_and_large_families() -> None:
         result = run_clean2d_engine(_CASES[case_name].builder(), mode="quick", target_bond_length=40.0)
         assert result.selected is not None
         assert result.selected.source == "global_block_placement"
+
+
+def test_global_placement_rejects_displacement_above_explicit_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        clean2d_engine,
+        "_global_assembly_displacement_budget",
+        lambda graph, atom_ids, target: 1.0,
+        raising=False,
+    )
+    result = run_clean2d_engine(_CASES["multiblock_triphenyl_like"].builder(), mode="quick", target_bond_length=40.0)
+    candidate = next(item for item in (*result.candidates, *result.rejected) if item.source == "global_block_placement")
+
+    assert candidate.rejected
+    assert candidate.rejection_reason.startswith("global_assembly_displacement_budget_exceeded")
+    assert candidate.metadata["max_displacement"] > candidate.metadata["displacement_budget"]
+
+
+def test_global_placement_within_budget_is_accepted_and_records_all_gates() -> None:
+    result = run_clean2d_engine(_CASES["multiblock_triphenyl_like"].builder(), mode="quick", target_bond_length=40.0)
+    candidate = next(item for item in (*result.candidates, *result.rejected) if item.source == "global_block_placement")
+    checks = cast(dict[str, bool], candidate.metadata["hard_gate_checks"])
+
+    assert not candidate.rejected
+    assert candidate.metadata["max_displacement"] <= candidate.metadata["displacement_budget"]
+    assert set(checks) == {
+        "finite_coordinates",
+        "selection_invariants",
+        "stereo_signature",
+        "no_new_crossings",
+        "collision_safety",
+        "ring_degeneracy",
+        "bounding_box_sanity",
+        "bond_length_sanity",
+        "displacement_budget",
+    }
+    assert all(checks.values())
+
+
+def test_complex_preserve_compares_safe_candidates_deterministically() -> None:
+    graph = _CASES["multiblock_triphenyl_like"].builder()
+    atom_ids = set(graph.atoms)
+    before = {atom_id: (atom.x, atom.y) for atom_id, atom in graph.atoms.items()}
+    candidates = (
+        Clean2DCandidate(source="global_block_placement", coords=before, score=100.0),
+        Clean2DCandidate(source="scaffold_depiction", coords=before, score=10.0),
+    )
+
+    selected = clean2d_engine._select_best_complex_preserve_candidate(
+        graph,
+        atom_ids,
+        before,
+        clean2d_engine._selected_structural_bonds(graph, atom_ids),
+        40.0,
+        candidates,
+    )
+
+    assert selected is not None
+    assert selected.source == "scaffold_depiction"
 
 
 @pytest.mark.parametrize(

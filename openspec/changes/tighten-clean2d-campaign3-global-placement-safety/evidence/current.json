@@ -1,0 +1,166 @@
+{
+  "fixtures": [
+    {
+      "assembly_candidate_accepted": true,
+      "bounding_box_ratio": 1.1125010767824501,
+      "case": "multiblock_biphenyl_like",
+      "competing_safe_sources": ["global_block_placement", "rdkit_isolated", "safe_fallback"],
+      "displacement_budget": 320.0,
+      "global_rejected": false,
+      "hard_gate_checks": {
+        "bond_length_sanity": true,
+        "bounding_box_sanity": true,
+        "collision_safety": true,
+        "displacement_budget": true,
+        "finite_coordinates": true,
+        "no_new_crossings": true,
+        "ring_degeneracy": true,
+        "selection_invariants": true,
+        "stereo_signature": true
+      },
+      "max_displacement": 62.90176932052219,
+      "rejection_reason": "",
+      "result_state": "applied",
+      "selected_source": "rdkit_isolated"
+    },
+    {
+      "assembly_candidate_accepted": true,
+      "bounding_box_ratio": 1.3023905930937951,
+      "case": "multiblock_diphenyl_ether_like",
+      "competing_safe_sources": ["internal_templates", "rdkit_isolated"],
+      "displacement_budget": 340.0,
+      "global_rejected": true,
+      "hard_gate_checks": {
+        "bond_length_sanity": true,
+        "bounding_box_sanity": true,
+        "collision_safety": true,
+        "displacement_budget": true,
+        "finite_coordinates": true,
+        "no_new_crossings": true,
+        "ring_degeneracy": true,
+        "selection_invariants": true,
+        "stereo_signature": true
+      },
+      "max_displacement": 85.44795358536732,
+      "rejection_reason": "candidato_no_canonicaliza_geometria",
+      "result_state": "applied",
+      "selected_source": "rdkit_isolated"
+    },
+    {
+      "assembly_candidate_accepted": true,
+      "bounding_box_ratio": 1.2568197404995212,
+      "case": "multiblock_triphenyl_like",
+      "competing_safe_sources": ["current", "global_block_placement"],
+      "displacement_budget": 400.0,
+      "global_rejected": false,
+      "hard_gate_checks": {
+        "bond_length_sanity": true,
+        "bounding_box_sanity": true,
+        "collision_safety": true,
+        "displacement_budget": true,
+        "finite_coordinates": true,
+        "no_new_crossings": true,
+        "ring_degeneracy": true,
+        "selection_invariants": true,
+        "stereo_signature": true
+      },
+      "max_displacement": 322.7420298521144,
+      "rejection_reason": "",
+      "result_state": "applied",
+      "selected_source": "global_block_placement"
+    },
+    {
+      "assembly_candidate_accepted": false,
+      "bounding_box_ratio": 0.9835740063779048,
+      "case": "multiblock_fused_plus_sidechain",
+      "competing_safe_sources": ["current"],
+      "displacement_budget": 480.0,
+      "global_rejected": true,
+      "hard_gate_checks": {
+        "bond_length_sanity": true,
+        "bounding_box_sanity": true,
+        "collision_safety": true,
+        "displacement_budget": true,
+        "finite_coordinates": true,
+        "no_new_crossings": true,
+        "ring_degeneracy": true,
+        "selection_invariants": true,
+        "stereo_signature": true
+      },
+      "max_displacement": 23.896810690066253,
+      "rejection_reason": "assembly-no-improvement",
+      "result_state": "failed-controlled",
+      "selected_source": null
+    },
+    {
+      "assembly_candidate_accepted": true,
+      "bounding_box_ratio": 1.6453780543618102,
+      "case": "multiblock_ring_chain_ring",
+      "competing_safe_sources": ["internal_templates", "rdkit_isolated"],
+      "displacement_budget": 340.0,
+      "global_rejected": true,
+      "hard_gate_checks": {
+        "bond_length_sanity": true,
+        "bounding_box_sanity": true,
+        "collision_safety": true,
+        "displacement_budget": true,
+        "finite_coordinates": true,
+        "no_new_crossings": true,
+        "ring_degeneracy": true,
+        "selection_invariants": true,
+        "stereo_signature": true
+      },
+      "max_displacement": 146.23901364144217,
+      "rejection_reason": "candidato_no_canonicaliza_geometria",
+      "result_state": "applied",
+      "selected_source": "internal_templates"
+    },
+    {
+      "assembly_candidate_accepted": true,
+      "bounding_box_ratio": 1.2568197404995212,
+      "case": "multiblock_branched",
+      "competing_safe_sources": ["current", "global_block_placement"],
+      "displacement_budget": 400.0,
+      "global_rejected": false,
+      "hard_gate_checks": {
+        "bond_length_sanity": true,
+        "bounding_box_sanity": true,
+        "collision_safety": true,
+        "displacement_budget": true,
+        "finite_coordinates": true,
+        "no_new_crossings": true,
+        "ring_degeneracy": true,
+        "selection_invariants": true,
+        "stereo_signature": true
+      },
+      "max_displacement": 322.7420298521144,
+      "rejection_reason": "",
+      "result_state": "applied",
+      "selected_source": "global_block_placement"
+    },
+    {
+      "assembly_candidate_accepted": true,
+      "bounding_box_ratio": 1.1645581830505467,
+      "case": "multiblock_aromatic_aliphatic_branch",
+      "competing_safe_sources": ["rdkit_isolated", "safe_fallback"],
+      "displacement_budget": 320.0,
+      "global_rejected": true,
+      "hard_gate_checks": {
+        "bond_length_sanity": true,
+        "bounding_box_sanity": true,
+        "collision_safety": true,
+        "displacement_budget": true,
+        "finite_coordinates": true,
+        "no_new_crossings": true,
+        "ring_degeneracy": true,
+        "selection_invariants": true,
+        "stereo_signature": true
+      },
+      "max_displacement": 116.51808555472641,
+      "rejection_reason": "candidato_no_canonicaliza_geometria",
+      "result_state": "applied",
+      "selected_source": "rdkit_isolated"
+    }
+  ],
+  "schema": "clean2d-campaign3-global-placement-safety/v1"
+}

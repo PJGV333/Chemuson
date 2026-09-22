@@ -504,38 +504,35 @@ def _run_complex_preserve_clean2d_engine(
     assembly_candidate = _candidate_from_global_block_placement(
         graph, selected, before, bonds, target, mode
     )
-    assembly_rejected = () if assembly_candidate is None or not assembly_candidate.rejected else (assembly_candidate,)
-    if assembly_candidate is not None and not assembly_candidate.rejected:
-        return Clean2DResult(
-            mode=mode,
-            atom_ids=selected,
-            before_coords=before,
-            candidates=(current, assembly_candidate),
-            selected=assembly_candidate,
-            message=assembly_candidate.message,
-        )
     unwrap = _candidate_from_block_unwrap(graph, selected, before, bonds, target)
     scaffold = _candidate_from_scaffold_depiction(graph, selected, before, bonds, target)
-    if scaffold is not None and not scaffold.rejected:
+    generated_candidates = tuple(
+        candidate for candidate in (assembly_candidate, scaffold, unwrap) if candidate is not None
+    )
+    safe_candidates = tuple(candidate for candidate in generated_candidates if not candidate.rejected)
+    selected_complex = _select_best_complex_preserve_candidate(
+        graph, selected, before, bonds, target, safe_candidates
+    )
+    if selected_complex is not None:
+        competing_safe_sources = sorted(candidate.source for candidate in safe_candidates)
+        selected_complex = _replace_candidate(
+            selected_complex,
+            metadata={
+                **selected_complex.metadata,
+                "competing_safe_sources": competing_safe_sources,
+                "selected_source": selected_complex.source,
+            },
+        )
         return Clean2DResult(
             mode=mode,
             atom_ids=selected,
             before_coords=before,
-            candidates=(current, scaffold),
-            selected=scaffold,
-            rejected=assembly_rejected,
-            message=scaffold.message,
+            candidates=(current, *safe_candidates),
+            rejected=tuple(candidate for candidate in generated_candidates if candidate.rejected),
+            selected=selected_complex,
+            message=selected_complex.message,
         )
-    if unwrap is not None and not unwrap.rejected:
-        return Clean2DResult(
-            mode=mode,
-            atom_ids=selected,
-            before_coords=before,
-            candidates=(current, unwrap),
-            selected=unwrap,
-            rejected=assembly_rejected,
-            message=unwrap.message,
-        )
+    assembly_rejected = tuple(candidate for candidate in generated_candidates if candidate.rejected)
     if current_quality.quality_class == "good":
         return Clean2DResult(
             mode=mode,
@@ -2179,28 +2176,60 @@ def _candidate_from_global_block_placement(
             }
         )
 
-    if any(not (math.isfinite(x) and math.isfinite(y)) for x, y in coords.values()):
-        return None
+    displacement_budget = _global_assembly_displacement_budget(graph, atom_ids, target)
+    finite_coordinates = all(math.isfinite(x) and math.isfinite(y) for x, y in coords.values())
     before_quality = classify_clean2d_layout_quality(graph, atom_ids, coords=before, target_bond_length=target)
     after_quality = classify_clean2d_layout_quality(graph, atom_ids, coords=coords, target_bond_length=target)
     report = evaluate_clean2d_layout(atom_ids, bonds, before, coords, target, is_cyclic=has_cycles(atom_ids, bonds))
-    rejection = ""
+    selection_invariants = True
     try:
         assert_clean2d_invariants(graph, graph, before, coords, atom_ids=atom_ids)
     except Clean2DInvariantError:
-        rejection = "invariant-violation"
-    if not rejection:
-        rejection = _reject_block_layout_regression(graph, atom_ids, bonds, before, coords, target)
-    if not rejection and not is_clean2d_candidate_safe(report, mode=mode.value):
-        global_rebuild_is_safe = (
-            report.rejection_reason.startswith("desplazamiento_maximo_excesivo")
-            and _quality_rank(after_quality.quality_class) <= _quality_rank("needs_polish")
-            and after_quality.crossings <= before_quality.crossings
-            and after_quality.min_nonbonded_distance >= before_quality.min_nonbonded_distance - 1e-6
-            and after_quality.min_ring_degeneracy >= before_quality.min_ring_degeneracy - 1e-6
-        )
-        if not global_rebuild_is_safe:
-            rejection = report.rejection_reason or "assembly-unsafe"
+        selection_invariants = False
+    stereo_signature = stereo_layout_signature(graph, before, atom_ids) == stereo_layout_signature(graph, coords, atom_ids)
+    before_nonbonded = min_nonbonded_distance(before, bonds, atom_ids)
+    after_nonbonded = min_nonbonded_distance(coords, bonds, atom_ids)
+    collision_safety = before_nonbonded == math.inf or after_nonbonded + 1e-6 >= min(before_nonbonded, target * 0.35)
+    ring_degeneracy = report.ring_degeneracy_after + 1e-6 >= report.ring_degeneracy_before
+    bounding_box_sanity = 0.35 <= report.bounding_box_ratio <= 3.5
+    bond_length_sanity = 0.65 <= report.min_bond_length_ratio and report.max_bond_length_ratio <= 1.35
+    displacement_budget_ok = report.max_displacement <= displacement_budget
+    local_safety = is_clean2d_candidate_safe(report, mode=mode.value)
+    local_safety_non_displacement = local_safety or (
+        report.rejection_reason.startswith("desplazamiento_maximo_excesivo") and displacement_budget_ok
+    )
+    hard_gate_checks = {
+        "finite_coordinates": finite_coordinates,
+        "selection_invariants": selection_invariants,
+        "stereo_signature": stereo_signature,
+        "no_new_crossings": report.new_crossings == 0,
+        "collision_safety": collision_safety,
+        "ring_degeneracy": ring_degeneracy,
+        "bounding_box_sanity": bounding_box_sanity,
+        "bond_length_sanity": bond_length_sanity,
+        "displacement_budget": displacement_budget_ok,
+    }
+    rejection = ""
+    if not finite_coordinates:
+        rejection = "global_assembly_non_finite_coordinates"
+    elif not selection_invariants:
+        rejection = "global_assembly_invariant_violation"
+    elif not stereo_signature:
+        rejection = "global_assembly_stereo_signature_changed"
+    elif not hard_gate_checks["no_new_crossings"]:
+        rejection = f"global_assembly_new_crossings:{report.new_crossings}"
+    elif not collision_safety:
+        rejection = "global_assembly_collision_safety"
+    elif not ring_degeneracy:
+        rejection = "global_assembly_ring_degeneracy"
+    elif not bounding_box_sanity:
+        rejection = f"global_assembly_bounding_box_ratio:{report.bounding_box_ratio:.3f}"
+    elif not bond_length_sanity:
+        rejection = "global_assembly_bond_length_sanity"
+    elif not displacement_budget_ok:
+        rejection = f"global_assembly_displacement_budget_exceeded:{report.max_displacement:.1f}>{displacement_budget:.1f}"
+    elif not local_safety_non_displacement:
+        rejection = report.rejection_reason or "global_assembly_local_safety"
     improves = (
         _quality_rank(after_quality.quality_class) < _quality_rank(before_quality.quality_class)
         or after_quality.visual_score + 1e-9 < before_quality.visual_score
@@ -2214,6 +2243,13 @@ def _candidate_from_global_block_placement(
         "assembly_block_placements": placements,
         "assembly_candidate_before": _quality_metrics(before_quality),
         "assembly_candidate_after": _quality_metrics(after_quality),
+        "hard_gate_checks": hard_gate_checks,
+        "max_displacement": report.max_displacement,
+        "displacement_budget": displacement_budget,
+        "bounding_box_ratio": report.bounding_box_ratio,
+        "bond_length_min_ratio": report.min_bond_length_ratio,
+        "bond_length_max_ratio": report.max_bond_length_ratio,
+        "local_safety_report": local_safety,
         "assembly_candidate_accepted": not rejection,
         "assembly_candidate_rejection_reason": rejection or None,
     }
@@ -2229,6 +2265,38 @@ def _candidate_from_global_block_placement(
         geometry_hash=clean2d_geometry_hash(graph, coords, atom_ids),
         metadata=metadata,
     )
+
+
+def _global_assembly_displacement_budget(graph: MolGraph, atom_ids: set[int], target: float) -> float:
+    topology = describe_clean2d_topology(build_multilayer_chemical_graph(graph, atom_ids))
+    blocks = cast(list[dict[str, object]], topology["blocks"])
+    rigid_count = sum(
+        str(block["kind"]) in {"aromatic_ring", "rigid", "fused_system"} for block in blocks
+    )
+    linker_count = sum(str(block["kind"]) == "linker" for block in blocks)
+    multiplier = min(12.0, 4.0 + 2.0 * rigid_count + 0.5 * linker_count)
+    return max(float(target), float(target) * multiplier)
+
+
+def _select_best_complex_preserve_candidate(
+    graph: MolGraph,
+    atom_ids: set[int],
+    before: dict[int, tuple[float, float]],
+    bonds: list[Bond],
+    target: float,
+    candidates: tuple[Clean2DCandidate, ...],
+) -> Clean2DCandidate | None:
+    safe = tuple(candidate for candidate in candidates if not candidate.rejected)
+    if not safe:
+        return None
+
+    def quality_key(candidate: Clean2DCandidate) -> tuple[int, float, float, float, str]:
+        after = _complete_coords(candidate.coords, before, atom_ids)
+        quality = classify_clean2d_layout_quality(graph, atom_ids, coords=after, target_bond_length=target)
+        visual_score = _visual_quality_score(graph, atom_ids, bonds, before, after, target, Clean2DMode.QUICK)
+        return (_quality_rank(quality.quality_class), quality.visual_score, candidate.score, visual_score, candidate.source)
+
+    return min(safe, key=quality_key)
 
 
 def _quality_metrics(quality: Clean2DLayoutQualityReport) -> dict[str, object]:
