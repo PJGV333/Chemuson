@@ -166,6 +166,197 @@ def describe_clean2d_topology(layer_model: MultilayerChemicalGraph) -> dict[str,
     }
 
 
+def describe_clean2d_rigid_systems(
+    graph: MolGraph,
+    atom_ids: Iterable[int] | None = None,
+) -> dict[str, object]:
+    """Describe rigid ring systems and local attachments deterministically.
+
+    The descriptor is deliberately observational: it derives every member and
+    relationship from the existing multilayer topology and never identifies a
+    molecule by name or fixture.
+    """
+    selected = _normalize_atom_ids(graph, atom_ids)
+    layer_model = build_multilayer_chemical_graph(graph, selected)
+    topology = describe_clean2d_topology(layer_model)
+    selected_bonds = [
+        bond
+        for bond in graph.bonds.values()
+        if bond.a1_id in selected and bond.a2_id in selected and bond_affects_valence(bond)
+    ]
+    adjacency = _bond_adjacency(selected, selected_bonds)
+    motifs = {
+        motif.id: motif
+        for motif in layer_model.motif_graph.motifs
+        if motif.kind.value == "ring"
+    }
+    bond_by_pair = {
+        frozenset((bond.a1_id, bond.a2_id)): bond
+        for bond in selected_bonds
+    }
+    systems: list[dict[str, object]] = []
+    for system in cast(list[dict[str, object]], topology["ring_systems"]):
+        ring_ids = sorted(cast(list[int], system["ring_ids"]))
+        ring_records = [motifs[ring_id] for ring_id in ring_ids if ring_id in motifs]
+        system_atoms = set(cast(list[int], system["atom_ids"]))
+        shared_atoms = set(cast(list[int], system["shared_atom_ids"]))
+        ring_bond_ids: set[int] = set()
+        aromatic_flags: list[bool] = []
+        for ring in ring_records:
+            ring_atoms = set(ring.atom_ids)
+            aromatic_flags.append(bool(ring.metadata.get("aromatic", False)))
+            for pair, bond in bond_by_pair.items():
+                if pair <= ring_atoms:
+                    ring_bond_ids.add(bond.id)
+        shared_bond_ids = sorted(
+            bond.id
+            for bond in selected_bonds
+            if bond.a1_id in shared_atoms and bond.a2_id in shared_atoms
+        )
+        attachment_atom_ids = sorted(
+            atom_id
+            for atom_id in system_atoms
+            if any(neighbor not in system_atoms for neighbor in adjacency.get(atom_id, set()))
+        )
+        external_neighbors = sorted(
+            neighbor
+            for atom_id in attachment_atom_ids
+            for neighbor in adjacency.get(atom_id, set())
+            if neighbor not in system_atoms
+        )
+        centroid = _centroid_for_atoms(graph, system_atoms)
+        principal_orientation = _principal_orientation(graph, system_atoms, centroid)
+        attachment_vectors = []
+        for atom_id in attachment_atom_ids:
+            ax, ay = graph.atoms[atom_id].x, graph.atoms[atom_id].y
+            for neighbor in sorted(adjacency.get(atom_id, set())):
+                if neighbor in system_atoms:
+                    continue
+                nx, ny = graph.atoms[neighbor].x, graph.atoms[neighbor].y
+                dx, dy = nx - ax, ny - ay
+                length = math.hypot(dx, dy)
+                if length <= 1e-9:
+                    vector = (0.0, 0.0)
+                    angle = 0.0
+                else:
+                    vector = (dx / length, dy / length)
+                    angle = math.atan2(dy, dx)
+                attachment_vectors.append(
+                    {
+                        "atom_id": atom_id,
+                        "neighbor_id": neighbor,
+                        "vector": vector,
+                        "angle_deg": math.degrees(angle),
+                        "length": length,
+                    }
+                )
+        attachment_vectors.sort(key=lambda item: (item["atom_id"], item["neighbor_id"]))
+        angles = sorted(float(item["angle_deg"]) for item in attachment_vectors)
+        local_congestion = _rigid_attachment_congestion(angles)
+        relationships = []
+        for left_index, left in enumerate(ring_records):
+            for right in ring_records[left_index + 1 :]:
+                overlap = sorted(set(left.atom_ids) & set(right.atom_ids))
+                shared_pair = frozenset(overlap)
+                if len(overlap) == 1:
+                    relation = "spiro"
+                elif len(overlap) >= 2 and shared_pair in bond_by_pair:
+                    relation = "fused"
+                elif len(overlap) >= 2:
+                    relation = "bridged"
+                else:
+                    relation = "disjoint"
+                relationships.append(
+                    {
+                        "ring_ids": [left.id, right.id],
+                        "shared_atom_ids": overlap,
+                        "shared_bond_ids": [bond_by_pair[shared_pair].id] if shared_pair in bond_by_pair else [],
+                        "relationship": relation,
+                    }
+                )
+        relationships.sort(key=lambda item: tuple(item["ring_ids"]))
+        family = str(system["kind"])
+        if len(ring_ids) >= 3 and family in {"fused", "ring_system"}:
+            family = "polycyclic"
+        systems.append(
+            {
+                "id": int(cast(int, system["id"])),
+                "family": family,
+                "kind": str(system["kind"]),
+                "atom_ids": sorted(system_atoms),
+                "bond_ids": sorted(ring_bond_ids),
+                "ring_ids": ring_ids,
+                "shared_atom_ids": sorted(shared_atoms),
+                "shared_bond_ids": shared_bond_ids,
+                "bridgehead_atom_ids": list(cast(list[int], system["bridgehead_atom_ids"])),
+                "attachment_atom_ids": attachment_atom_ids,
+                "external_neighbor_ids": external_neighbors,
+                "external_substituent_count": len(attachment_vectors),
+                "centroid": centroid,
+                "principal_orientation": principal_orientation,
+                "attachment_vectors": attachment_vectors,
+                "local_congestion": local_congestion,
+                "aromatic": bool(aromatic_flags) and all(aromatic_flags),
+                "ring_aromatic_flags": aromatic_flags,
+                "ring_relationships": relationships,
+            }
+        )
+    systems.sort(key=lambda item: int(item["id"]))
+    return {
+        "version": 1,
+        "atom_ids": sorted(selected),
+        "multiple_rigid_blocks": len(systems) >= 2,
+        "rigid_system_count": len(systems),
+        "systems": _stable_json_value(systems),
+    }
+
+
+def _centroid_for_atoms(graph: MolGraph, atom_ids: set[int]) -> tuple[float, float]:
+    if not atom_ids:
+        return (0.0, 0.0)
+    return (
+        sum(graph.atoms[atom_id].x for atom_id in atom_ids) / len(atom_ids),
+        sum(graph.atoms[atom_id].y for atom_id in atom_ids) / len(atom_ids),
+    )
+
+
+def _principal_orientation(
+    graph: MolGraph,
+    atom_ids: set[int],
+    centroid: tuple[float, float],
+) -> tuple[float, float]:
+    if len(atom_ids) < 2:
+        return (1.0, 0.0)
+    xx = yy = xy = 0.0
+    for atom_id in sorted(atom_ids):
+        dx = graph.atoms[atom_id].x - centroid[0]
+        dy = graph.atoms[atom_id].y - centroid[1]
+        xx += dx * dx
+        yy += dy * dy
+        xy += dx * dy
+    angle = 0.5 * math.atan2(2.0 * xy, xx - yy) if xx or yy else 0.0
+    vector = (math.cos(angle), math.sin(angle))
+    if vector[0] < -1e-12 or (abs(vector[0]) <= 1e-12 and vector[1] < 0.0):
+        vector = (-vector[0], -vector[1])
+    return vector
+
+
+def _rigid_attachment_congestion(angles: list[float]) -> dict[str, object]:
+    if len(angles) < 2:
+        return {"attachment_count": len(angles), "minimum_angle_deg": None, "crowded_pair_count": 0}
+    gaps = []
+    for index, angle in enumerate(angles):
+        next_angle = angles[(index + 1) % len(angles)]
+        gap = (next_angle - angle) % 360.0
+        gaps.append(gap)
+    minimum = min(gaps)
+    return {
+        "attachment_count": len(angles),
+        "minimum_angle_deg": minimum,
+        "crowded_pair_count": sum(1 for gap in gaps if gap < 45.0),
+    }
+
+
 def plan_clean2d_block_assembly(
     graph: MolGraph,
     atom_ids: Iterable[int] | None = None,

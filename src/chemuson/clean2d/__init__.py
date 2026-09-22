@@ -20,6 +20,7 @@ from .length_only import (
 from .complex_policy import (
     Clean2DComplexityProfile,
     classify_clean2d_complexity,
+    describe_clean2d_rigid_systems,
     describe_clean2d_topology,
     plan_clean2d_block_assembly,
 )
@@ -101,6 +102,7 @@ __all__ = [
     "structure_preserving_length_polish",
     "Clean2DComplexityProfile",
     "classify_clean2d_complexity",
+    "describe_clean2d_rigid_systems",
     "describe_clean2d_topology",
     "plan_clean2d_block_assembly",
     "LocalClean2DMode",

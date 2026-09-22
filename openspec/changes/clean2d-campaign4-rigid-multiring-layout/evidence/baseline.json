@@ -1,0 +1,948 @@
+{
+  "cases": [
+    {
+      "baseline": {
+        "candidate_sources": [
+          "simple_aromatic_template"
+        ],
+        "rejected_sources": [
+          "current",
+          "rdkit_direct"
+        ],
+        "result_state": "applied",
+        "selected_metadata": {
+          "angle_max_deviation": 2.842170943040401e-14,
+          "angle_rms_deviation": 1.2972676148241318e-14,
+          "bad_exocyclic_ring_count": 0,
+          "crossings": 0,
+          "exocyclic_ring_angle_min": null,
+          "length_max_error": 7.105427357601002e-16,
+          "length_rms_error": 3.625973214694716e-16,
+          "min_nonbonded_distance": 67.20357133367244,
+          "min_ring_degeneracy": 0.9068996821171087,
+          "quality_class": "good",
+          "quality_reason": "",
+          "severe_angle_count": 0,
+          "simple_aromatic_template": true,
+          "visual_score": 1.0363879270370272e-28
+        },
+        "selected_rejection_reason": "",
+        "selected_source": "simple_aromatic_template"
+      },
+      "case": "regular_benzene_control",
+      "family": "monocycle",
+      "tags": [
+        "control",
+        "aromatic"
+      ],
+      "topology": {
+        "block_kind_counts": {
+          "aromatic_ring": 1
+        },
+        "rigid_block_ids": [
+          1
+        ],
+        "ring_count": 1,
+        "ring_systems": [
+          {
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "block_ids": [
+              1
+            ],
+            "bridgehead_atom_ids": [],
+            "id": 1,
+            "kind": "monocycle",
+            "ring_ids": [
+              2
+            ],
+            "shared_atom_ids": []
+          }
+        ]
+      }
+    },
+    {
+      "baseline": {
+        "candidate_sources": [
+          "current"
+        ],
+        "rejected_sources": [
+          "rdkit_direct"
+        ],
+        "result_state": "applied",
+        "selected_metadata": {
+          "angle_max_deviation": 0.0,
+          "angle_rms_deviation": 0.0,
+          "bad_exocyclic_ring_count": 0,
+          "crossings": 0,
+          "current_canonical_enough": true,
+          "exocyclic_ring_angle_min": null,
+          "interaction_constraint_count": 0,
+          "interaction_constraint_error": 0.0,
+          "length_max_error": 1.7763568394002506e-16,
+          "length_rms_error": 1.0255800994045675e-16,
+          "min_nonbonded_distance": 69.28203230275508,
+          "min_ring_degeneracy": 0.9068996821171087,
+          "quality_class": "good",
+          "quality_reason": "",
+          "severe_angle_count": 0,
+          "visual_score": 7.573064690121714e-30
+        },
+        "selected_rejection_reason": "",
+        "selected_source": "current"
+      },
+      "case": "simple_monocycle_control",
+      "family": "monocycle",
+      "tags": [
+        "control"
+      ],
+      "topology": {
+        "block_kind_counts": {},
+        "rigid_block_ids": [],
+        "ring_count": 1,
+        "ring_systems": [
+          {
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "block_ids": [],
+            "bridgehead_atom_ids": [],
+            "id": 1,
+            "kind": "monocycle",
+            "ring_ids": [
+              2
+            ],
+            "shared_atom_ids": []
+          }
+        ]
+      }
+    },
+    {
+      "baseline": {
+        "candidate_sources": [
+          "current",
+          "fused_aromatic_template"
+        ],
+        "rejected_sources": [],
+        "result_state": "applied",
+        "selected_metadata": {
+          "fused_aromatic_template": true,
+          "quality_class": "good"
+        },
+        "selected_rejection_reason": "",
+        "selected_source": "fused_aromatic_template"
+      },
+      "case": "fused_aromatic_bicyclic",
+      "family": "fused",
+      "tags": [
+        "fused",
+        "aromatic"
+      ],
+      "topology": {
+        "block_kind_counts": {
+          "aromatic_ring": 2,
+          "fused_system": 1
+        },
+        "rigid_block_ids": [
+          1,
+          2,
+          3
+        ],
+        "ring_count": 2,
+        "ring_systems": [
+          {
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10
+            ],
+            "block_ids": [
+              1,
+              2,
+              3
+            ],
+            "bridgehead_atom_ids": [],
+            "id": 1,
+            "kind": "fused",
+            "ring_ids": [
+              2,
+              5
+            ],
+            "shared_atom_ids": [
+              3,
+              4
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "baseline": {
+        "candidate_sources": [
+          "block_layout"
+        ],
+        "rejected_sources": [
+          "current",
+          "rdkit_direct"
+        ],
+        "result_state": "applied",
+        "selected_metadata": {
+          "angle_max_deviation": 3.690067525979771,
+          "angle_rms_deviation": 3.4572298007673328,
+          "bad_exocyclic_ring_count": 0,
+          "block_constraint_count": 1,
+          "block_constraint_error": 0.0,
+          "block_constraint_error_before": 0.0,
+          "block_first": true,
+          "block_layout": true,
+          "block_layout_fallback": "rigid_global_normalization",
+          "block_operation_count": 0,
+          "crossings": 0,
+          "exocyclic_ring_angle_min": null,
+          "global_assembly_plan": {
+            "anchor_block_id": 1,
+            "flexible_connector_count": 0,
+            "flexible_connector_ids": [],
+            "ordered_block_ids": [
+              1,
+              2
+            ],
+            "ordered_connector_ids": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "requires_global_assembly": true,
+            "version": 1
+          },
+          "hierarchical_block_signals": true,
+          "interaction_constraint_count": 0,
+          "interaction_constraint_error": 0.0,
+          "interaction_constraint_error_before": 0.0,
+          "internal_block_constraint_count": 1,
+          "length_max_error": 0.021462011994584883,
+          "length_rms_error": 0.013142744560056123,
+          "min_nonbonded_distance": 67.09974774894276,
+          "min_ring_degeneracy": 0.39539842009513054,
+          "multilayer_clean2d": true,
+          "quality_class": "good",
+          "quality_reason": "",
+          "severe_angle_count": 0,
+          "visual_score": 1.71542038327261
+        },
+        "selected_rejection_reason": "",
+        "selected_source": "block_layout"
+      },
+      "case": "fused_non_aromatic_bicyclic",
+      "family": "fused",
+      "tags": [
+        "fused"
+      ],
+      "topology": {
+        "block_kind_counts": {
+          "fused_system": 1,
+          "intramolecular_bridge": 1
+        },
+        "rigid_block_ids": [
+          1
+        ],
+        "ring_count": 2,
+        "ring_systems": [
+          {
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10
+            ],
+            "block_ids": [
+              1,
+              2
+            ],
+            "bridgehead_atom_ids": [],
+            "id": 1,
+            "kind": "fused",
+            "ring_ids": [
+              2,
+              5
+            ],
+            "shared_atom_ids": [
+              3,
+              4
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "baseline": {
+        "candidate_sources": [
+          "rdkit_isolated"
+        ],
+        "rejected_sources": [
+          "current",
+          "rdkit_direct",
+          "internal_templates",
+          "clean2d_v2"
+        ],
+        "result_state": "applied",
+        "selected_metadata": {
+          "angle_max_deviation": 5.684341886080802e-14,
+          "angle_rms_deviation": 2.6963201038669063e-14,
+          "bad_exocyclic_ring_count": 2,
+          "crossings": 0,
+          "exocyclic_ring_angle_min": 119.99999879258172,
+          "length_max_error": 8.881784197001252e-16,
+          "length_rms_error": 3.697781635498623e-16,
+          "min_nonbonded_distance": 39.99999926999517,
+          "min_ring_degeneracy": 0.9068996821171091,
+          "quality_class": "needs_polish",
+          "quality_reason": "orientacion_anillo_exociclico_suboptima",
+          "severe_angle_count": 0,
+          "visual_score": 42907.5601906111
+        },
+        "selected_rejection_reason": "",
+        "selected_source": "rdkit_isolated"
+      },
+      "case": "spiro_bicyclic",
+      "family": "spiro",
+      "tags": [
+        "spiro"
+      ],
+      "topology": {
+        "block_kind_counts": {},
+        "rigid_block_ids": [],
+        "ring_count": 2,
+        "ring_systems": [
+          {
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11
+            ],
+            "block_ids": [],
+            "bridgehead_atom_ids": [],
+            "id": 1,
+            "kind": "spiro",
+            "ring_ids": [
+              2,
+              5
+            ],
+            "shared_atom_ids": [
+              1
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "baseline": {
+        "candidate_sources": [],
+        "rejected_sources": [
+          "block_layout",
+          "current",
+          "rdkit_isolated",
+          "rdkit_direct",
+          "internal_templates",
+          "clean2d_v2"
+        ],
+        "result_state": "failed-controlled",
+        "selected_metadata": {},
+        "selected_rejection_reason": null,
+        "selected_source": null
+      },
+      "case": "bridged_bicyclic",
+      "family": "bridged",
+      "tags": [
+        "bridged"
+      ],
+      "topology": {
+        "block_kind_counts": {
+          "fused_system": 1,
+          "intramolecular_bridge": 1
+        },
+        "rigid_block_ids": [
+          1
+        ],
+        "ring_count": 2,
+        "ring_systems": [
+          {
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "block_ids": [
+              1,
+              2
+            ],
+            "bridgehead_atom_ids": [
+              1,
+              4,
+              5
+            ],
+            "id": 1,
+            "kind": "bridged",
+            "ring_ids": [
+              2,
+              5
+            ],
+            "shared_atom_ids": [
+              1,
+              4,
+              5
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "baseline": {
+        "candidate_sources": [
+          "current",
+          "fused_aromatic_template"
+        ],
+        "rejected_sources": [],
+        "result_state": "applied",
+        "selected_metadata": {
+          "fused_aromatic_template": true,
+          "quality_class": "good"
+        },
+        "selected_rejection_reason": "",
+        "selected_source": "fused_aromatic_template"
+      },
+      "case": "larger_polycyclic",
+      "family": "polycyclic",
+      "tags": [
+        "polycyclic",
+        "fused"
+      ],
+      "topology": {
+        "block_kind_counts": {
+          "aromatic_ring": 2,
+          "fused_system": 1
+        },
+        "rigid_block_ids": [
+          1,
+          2,
+          3
+        ],
+        "ring_count": 2,
+        "ring_systems": [
+          {
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10
+            ],
+            "block_ids": [
+              1,
+              2,
+              3
+            ],
+            "bridgehead_atom_ids": [],
+            "id": 1,
+            "kind": "fused",
+            "ring_ids": [
+              2,
+              5
+            ],
+            "shared_atom_ids": [
+              3,
+              4
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "baseline": {
+        "candidate_sources": [
+          "current",
+          "complex_preserve"
+        ],
+        "rejected_sources": [],
+        "result_state": "preserve-only",
+        "selected_metadata": {
+          "angle_max_deviation": 12.349875780069851,
+          "angle_rms_deviation": 6.189451216430104,
+          "complex_atom_count": 11,
+          "complex_block_counts": {
+            "aromatic_ring": 2,
+            "fused_system": 1,
+            "linker": 1,
+            "terminal_substituent": 1
+          },
+          "complex_policy": {
+            "block_counts": {
+              "aromatic_ring": 2,
+              "fused_system": 1,
+              "linker": 1,
+              "terminal_substituent": 1
+            },
+            "global_redraw_allowed": false,
+            "has_block_layout_problem": true,
+            "has_hierarchical_blocks": true,
+            "internal_route_allowed": true,
+            "local_repair_allowed": false,
+            "preserve_only_required": true,
+            "reason": "fused_aromatic_systems"
+          },
+          "complex_preserve_only": true,
+          "complex_profile_reason": "fused_aromatic_systems",
+          "complex_ring_count": 2,
+          "complex_stereo_center_count": 0,
+          "crossings": 0,
+          "length_max_error": 0.11166538263919694,
+          "length_rms_error": 0.09956290366717338,
+          "min_nonbonded_distance": 70.26007028509144,
+          "min_ring_degeneracy": 0.39539842009513043,
+          "quality_class": "needs_polish",
+          "quality_reason": "longitudes_suboptimas",
+          "severe_angle_count": 0,
+          "visual_score": 19.722826055151845
+        },
+        "selected_rejection_reason": "",
+        "selected_source": "complex_preserve"
+      },
+      "case": "fused_one_substituent",
+      "family": "fused-substitution",
+      "tags": [
+        "fused",
+        "congested"
+      ],
+      "topology": {
+        "block_kind_counts": {
+          "aromatic_ring": 2,
+          "fused_system": 1,
+          "terminal_substituent": 1
+        },
+        "rigid_block_ids": [
+          1,
+          2,
+          3
+        ],
+        "ring_count": 2,
+        "ring_systems": [
+          {
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10
+            ],
+            "block_ids": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "bridgehead_atom_ids": [],
+            "id": 1,
+            "kind": "fused",
+            "ring_ids": [
+              2,
+              5
+            ],
+            "shared_atom_ids": [
+              3,
+              4
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "baseline": {
+        "candidate_sources": [
+          "current",
+          "complex_preserve"
+        ],
+        "rejected_sources": [],
+        "result_state": "preserve-only",
+        "selected_metadata": {
+          "angle_max_deviation": 43.73979529168804,
+          "angle_rms_deviation": 15.14760576614009,
+          "complex_atom_count": 12,
+          "complex_block_counts": {
+            "aromatic_ring": 2,
+            "fused_system": 1,
+            "linker": 2,
+            "terminal_substituent": 2
+          },
+          "complex_policy": {
+            "block_counts": {
+              "aromatic_ring": 2,
+              "fused_system": 1,
+              "linker": 2,
+              "terminal_substituent": 2
+            },
+            "global_redraw_allowed": false,
+            "has_block_layout_problem": true,
+            "has_hierarchical_blocks": true,
+            "internal_route_allowed": true,
+            "local_repair_allowed": false,
+            "preserve_only_required": true,
+            "reason": "fused_aromatic_systems"
+          },
+          "complex_preserve_only": true,
+          "complex_profile_reason": "fused_aromatic_systems",
+          "complex_ring_count": 2,
+          "complex_stereo_center_count": 0,
+          "crossings": 0,
+          "length_max_error": 0.11166538263919694,
+          "length_rms_error": 0.09565694371018928,
+          "min_nonbonded_distance": 50.65527316953686,
+          "min_ring_degeneracy": 0.39539842009513043,
+          "quality_class": "needs_polish",
+          "quality_reason": "longitudes_suboptimas",
+          "severe_angle_count": 2,
+          "visual_score": 50.98638504418401
+        },
+        "selected_rejection_reason": "",
+        "selected_source": "complex_preserve"
+      },
+      "case": "fused_multiple_substituents",
+      "family": "fused-substitution",
+      "tags": [
+        "fused",
+        "congested"
+      ],
+      "topology": {
+        "block_kind_counts": {
+          "aromatic_ring": 2,
+          "fused_system": 1,
+          "terminal_substituent": 2
+        },
+        "rigid_block_ids": [
+          1,
+          2,
+          3
+        ],
+        "ring_count": 2,
+        "ring_systems": [
+          {
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10
+            ],
+            "block_ids": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "bridgehead_atom_ids": [],
+            "id": 1,
+            "kind": "fused",
+            "ring_ids": [
+              2,
+              5
+            ],
+            "shared_atom_ids": [
+              3,
+              4
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "baseline": {
+        "candidate_sources": [
+          "rdkit_isolated"
+        ],
+        "rejected_sources": [
+          "current",
+          "rdkit_direct",
+          "internal_templates",
+          "clean2d_v2",
+          "safe_fallback"
+        ],
+        "result_state": "applied",
+        "selected_metadata": {
+          "angle_max_deviation": 1.1368683772161603e-13,
+          "angle_rms_deviation": 5.684341886080802e-14,
+          "bad_exocyclic_ring_count": 1,
+          "crossings": 0,
+          "exocyclic_ring_angle_min": 119.99999879258178,
+          "length_max_error": 1.0658141036401502e-15,
+          "length_rms_error": 4.852263795430181e-16,
+          "min_nonbonded_distance": 39.99999926999519,
+          "min_ring_degeneracy": 0.9068996821171089,
+          "quality_class": "needs_polish",
+          "quality_reason": "orientacion_anillo_exociclico_suboptima",
+          "severe_angle_count": 0,
+          "visual_score": 22907.56019061109
+        },
+        "selected_rejection_reason": "",
+        "selected_source": "rdkit_isolated"
+      },
+      "case": "spiro_substituent",
+      "family": "spiro-substitution",
+      "tags": [
+        "spiro",
+        "congested"
+      ],
+      "topology": {
+        "block_kind_counts": {},
+        "rigid_block_ids": [],
+        "ring_count": 2,
+        "ring_systems": [
+          {
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11
+            ],
+            "block_ids": [],
+            "bridgehead_atom_ids": [],
+            "id": 1,
+            "kind": "spiro",
+            "ring_ids": [
+              2,
+              5
+            ],
+            "shared_atom_ids": [
+              1
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "baseline": {
+        "candidate_sources": [
+          "internal_templates",
+          "rdkit_isolated"
+        ],
+        "rejected_sources": [
+          "block_layout",
+          "global_block_placement",
+          "current",
+          "rdkit_direct",
+          "clean2d_v2",
+          "safe_fallback"
+        ],
+        "result_state": "applied",
+        "selected_metadata": {
+          "angle_max_deviation": 1.1368683772161603e-13,
+          "angle_rms_deviation": 4.418334286568786e-14,
+          "bad_exocyclic_ring_count": 0,
+          "crossings": 0,
+          "exocyclic_ring_angle_min": 179.99999999999994,
+          "length_max_error": 0.03000000000000149,
+          "length_rms_error": 0.026832815729997617,
+          "min_nonbonded_distance": 40.000000000000014,
+          "min_ring_degeneracy": 0.9068996821171084,
+          "quality_class": "good",
+          "quality_reason": "",
+          "severe_angle_count": 0,
+          "visual_score": 1.2960000000000136
+        },
+        "selected_rejection_reason": "",
+        "selected_source": "internal_templates"
+      },
+      "case": "two_rigid_blocks_linker",
+      "family": "multiple-rigid-blocks",
+      "tags": [
+        "multiblock"
+      ],
+      "topology": {
+        "block_kind_counts": {
+          "aromatic_ring": 2,
+          "linker": 1
+        },
+        "rigid_block_ids": [
+          1,
+          2
+        ],
+        "ring_count": 2,
+        "ring_systems": [
+          {
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "block_ids": [
+              1,
+              3
+            ],
+            "bridgehead_atom_ids": [],
+            "id": 1,
+            "kind": "monocycle",
+            "ring_ids": [
+              2
+            ],
+            "shared_atom_ids": []
+          },
+          {
+            "atom_ids": [
+              7,
+              8,
+              9,
+              10,
+              11,
+              12
+            ],
+            "block_ids": [
+              2,
+              3
+            ],
+            "bridgehead_atom_ids": [],
+            "id": 2,
+            "kind": "monocycle",
+            "ring_ids": [
+              5
+            ],
+            "shared_atom_ids": []
+          }
+        ]
+      }
+    },
+    {
+      "baseline": {
+        "candidate_sources": [
+          "rdkit_isolated",
+          "safe_fallback"
+        ],
+        "rejected_sources": [
+          "current",
+          "rdkit_direct",
+          "clean2d_v2"
+        ],
+        "result_state": "applied",
+        "selected_metadata": {
+          "angle_max_deviation": 5.684341886080802e-14,
+          "angle_rms_deviation": 2.721171505744275e-14,
+          "bad_exocyclic_ring_count": 0,
+          "crossings": 0,
+          "exocyclic_ring_angle_min": null,
+          "length_max_error": 0.030000000000000603,
+          "length_rms_error": 0.024494897427831695,
+          "min_nonbonded_distance": 69.28203230275504,
+          "min_ring_degeneracy": 0.9068996821171087,
+          "quality_class": "good",
+          "quality_reason": "",
+          "severe_angle_count": 0,
+          "visual_score": 0.6479999999999954
+        },
+        "selected_rejection_reason": "",
+        "selected_source": "rdkit_isolated"
+      },
+      "case": "congested_ring_attachments",
+      "family": "congested",
+      "tags": [
+        "congested"
+      ],
+      "topology": {
+        "block_kind_counts": {
+          "aromatic_ring": 1,
+          "terminal_substituent": 3
+        },
+        "rigid_block_ids": [
+          1
+        ],
+        "ring_count": 1,
+        "ring_systems": [
+          {
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "block_ids": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "bridgehead_atom_ids": [],
+            "id": 1,
+            "kind": "monocycle",
+            "ring_ids": [
+              2
+            ],
+            "shared_atom_ids": []
+          }
+        ]
+      }
+    }
+  ],
+  "commit": "346b229",
+  "schema": "clean2d-campaign4-rigid-multiring-layout/baseline-v1"
+}

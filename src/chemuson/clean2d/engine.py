@@ -18,6 +18,7 @@ from typing import Any, cast
 from chemuson.clean2d.complex_policy import (
     Clean2DComplexityProfile,
     classify_clean2d_complexity,
+    describe_clean2d_rigid_systems,
     describe_clean2d_topology,
     plan_clean2d_block_assembly,
 )
@@ -886,12 +887,17 @@ def generate_clean2d_candidates(
     global_assembly_candidate = _candidate_from_global_block_placement(
         graph, selected, before, bonds, target, mode
     )
+    rigid_multiring_candidate = _candidate_from_rigid_multiring_layout(
+        graph, selected, before, bonds, target, mode
+    )
     motif_candidate = _candidate_from_motif_constraints(graph, selected, before, bonds, target)
     candidates: list[Clean2DCandidate] = []
     if block_layout_candidate is not None:
         candidates.append(block_layout_candidate)
     if global_assembly_candidate is not None:
         candidates.append(global_assembly_candidate)
+    if rigid_multiring_candidate is not None:
+        candidates.append(rigid_multiring_candidate)
 
     current = _normalized_candidate_coords(before, before, bonds, target)
     candidates.append(
@@ -2264,6 +2270,215 @@ def _candidate_from_global_block_placement(
         rejection_reason=rejection,
         geometry_hash=clean2d_geometry_hash(graph, coords, atom_ids),
         metadata=metadata,
+    )
+
+
+def _candidate_from_rigid_multiring_layout(
+    graph: MolGraph,
+    atom_ids: set[int],
+    before: dict[int, tuple[float, float]],
+    bonds: list[Bond],
+    target: float,
+    mode: Clean2DMode,
+) -> Clean2DCandidate | None:
+    """Orient rigid-system attachments without taking ownership of blocks."""
+    descriptor = describe_clean2d_rigid_systems(graph, atom_ids)
+    systems = cast(list[dict[str, object]], descriptor["systems"])
+    active_systems = [
+        system
+        for system in systems
+        if str(system["family"]) != "monocycle"
+        or int(cast(int, system["external_substituent_count"])) >= 2
+        or len(systems) >= 2
+    ]
+    if not active_systems:
+        return None
+
+    coords = dict(before)
+    fused_template_applied = False
+    cycles = _cycle_basis_ordered(atom_ids, bonds, max_size=18)
+    for system in active_systems:
+        if str(system["family"]) not in {"fused", "polycyclic"}:
+            continue
+        if cast(list[int], system["external_neighbor_ids"]):
+            continue
+        system_atoms = set(cast(list[int], system["atom_ids"]))
+        ring_pair = next(
+            (
+                (left, right)
+                for index, left in enumerate(cycles)
+                for right in cycles[index + 1 :]
+                if set(left) | set(right) == system_atoms
+                and len(set(left) & set(right)) == 2
+                and _bond_between(bonds, *sorted(set(left) & set(right))) is not None
+            ),
+            None,
+        )
+        if ring_pair is None or not system_atoms:
+            continue
+        internal_bonds = [
+            bond
+            for bond in bonds
+            if bond.a1_id in system_atoms and bond.a2_id in system_atoms
+        ]
+        lengths = [_distance(before[bond.a1_id], before[bond.a2_id]) for bond in internal_bonds]
+        desired = target * (0.98 if bool(system["aromatic"]) else 1.0)
+        mean_length = sum(lengths) / len(lengths) if lengths else desired
+        if mean_length > 1e-9 and math.isfinite(mean_length):
+            scale = desired / mean_length
+            center = tuple(float(value) for value in cast(tuple[float, float], system["centroid"]))
+            for atom_id in system_atoms:
+                x, y = before[atom_id]
+                coords[atom_id] = (
+                    center[0] + (x - center[0]) * scale,
+                    center[1] + (y - center[1]) * scale,
+                )
+            fused_template_applied = True
+    all_system_atoms = {
+        atom_id
+        for system in active_systems
+        for atom_id in cast(list[int], system["atom_ids"])
+    }
+    attachment_atoms = sorted(
+        {
+            atom_id
+            for system in active_systems
+            for atom_id in (
+                cast(list[int], system["attachment_atom_ids"])
+                + cast(list[int], system["shared_atom_ids"])
+                + cast(list[int], system["bridgehead_atom_ids"])
+            )
+        }
+    )
+    affected_atom_ids = set(all_system_atoms)
+    bridged_present = False
+    for system in active_systems:
+        family = str(system["family"])
+        if family == "bridged":
+            bridged_present = True
+            continue
+        centroid = tuple(float(value) for value in cast(tuple[float, float], system["centroid"]))
+        for vector in cast(list[dict[str, object]], system["attachment_vectors"]):
+            attachment_id = int(cast(int, vector["atom_id"]))
+            neighbor_id = int(cast(int, vector["neighbor_id"]))
+            if neighbor_id in all_system_atoms or neighbor_id not in coords:
+                continue
+            neighbor_degree = sum(
+                bond.a1_id == neighbor_id or bond.a2_id == neighbor_id
+                for bond in bonds
+            )
+            if neighbor_degree > 1 or attachment_id not in coords:
+                continue
+            ax, ay = coords[attachment_id]
+            dx, dy = ax - centroid[0], ay - centroid[1]
+            radial_length = math.hypot(dx, dy)
+            if radial_length <= 1e-9:
+                continue
+            current_length = _distance(coords[attachment_id], coords[neighbor_id])
+            if current_length <= 1e-9:
+                current_length = target
+            coords[neighbor_id] = (
+                ax + dx / radial_length * current_length,
+                ay + dy / radial_length * current_length,
+            )
+            affected_atom_ids.add(neighbor_id)
+
+    cyclic = has_cycles(atom_ids, bonds)
+    before_report = evaluate_clean2d_layout(atom_ids, bonds, before, before, target, is_cyclic=cyclic)
+    after_report = evaluate_clean2d_layout(atom_ids, bonds, before, coords, target, is_cyclic=cyclic)
+    before_quality = classify_clean2d_layout_quality(graph, atom_ids, coords=before, target_bond_length=target)
+    after_quality = classify_clean2d_layout_quality(graph, atom_ids, coords=coords, target_bond_length=target)
+    try:
+        assert_clean2d_invariants(graph, graph, before, coords, atom_ids=atom_ids)
+        invariant_gate = True
+    except Clean2DInvariantError:
+        invariant_gate = False
+    before_rings = _cycle_basis_ordered(atom_ids, bonds, max_size=18)
+    before_ring_score = min(
+        (ring_degeneracy_score(before, set(ring)) for ring in before_rings),
+        default=math.inf,
+    )
+    after_ring_score = min(
+        (ring_degeneracy_score(coords, set(ring)) for ring in before_rings),
+        default=math.inf,
+    )
+    max_displacement = max(
+        (_distance(before[atom_id], coords[atom_id]) for atom_id in atom_ids),
+        default=0.0,
+    )
+    displacement_budget = _global_assembly_displacement_budget(graph, atom_ids, target)
+    spans_before = _coordinate_spans(before, atom_ids)
+    spans_after = _coordinate_spans(coords, atom_ids)
+    hard_gate_checks = {
+        "finite_coordinates": all(math.isfinite(value) for point in coords.values() for value in point),
+        "selection_invariants": invariant_gate and set(coords) == set(atom_ids),
+        "stereo_signature": stereo_layout_signature(graph, before, atom_ids)
+        == stereo_layout_signature(graph, coords, atom_ids),
+        "no_new_crossings": after_report.new_crossings == 0,
+        "collision_safety": math.isinf(after_report.min_nonbonded_after)
+        or after_report.min_nonbonded_after >= target * 0.25,
+        "ring_degeneracy": after_ring_score + 1e-9 >= before_ring_score,
+        "bond_length_sanity": after_quality.length_max_error <= max(before_quality.length_max_error + 0.15, 0.45),
+        "bounding_box_sanity": all(after <= max(before * 2.0 + target, target) for before, after in zip(spans_before, spans_after)),
+        "displacement_budget": max_displacement <= displacement_budget + 1e-9,
+    }
+    if bridged_present:
+        hard_gate_checks["bridged_reconstruction"] = False
+    hard_gates_passed = all(hard_gate_checks.values())
+    rejection = "" if hard_gates_passed else "rigid_multiring_hard_gate_failed"
+    if bridged_present:
+        rejection = "bridged_reconstruction_unsafe"
+    plan = plan_clean2d_block_assembly(graph, atom_ids)
+    metadata = {
+        "strategy": "rigid_multiring_layout",
+        "layout_mode": "fused_template" if fused_template_applied else "attachment_orientation",
+        "rigid_system_count": len(active_systems),
+        "rigid_system_types": sorted({str(system["family"]) for system in active_systems}),
+        "affected_atom_ids": sorted(affected_atom_ids),
+        "attachment_atoms": attachment_atoms or sorted(affected_atom_ids)[:1],
+        "attachment_vectors": [
+            vector
+            for system in active_systems
+            for vector in cast(list[dict[str, object]], system["attachment_vectors"])
+        ],
+        "rigid_systems": active_systems,
+        "assembly_plan": plan,
+        "hard_gate_checks": sorted(hard_gate_checks),
+        "hard_gates_passed": hard_gates_passed,
+        "accepted_by_engine": hard_gates_passed,
+        "fallback": "preserve-only" if bridged_present else None,
+        "metrics_before": {
+            "quality_class": before_quality.quality_class,
+            "ring_degeneracy": before_ring_score,
+            "bond_length_error": before_quality.length_max_error,
+        },
+        "metrics_after": {
+            "quality_class": after_quality.quality_class,
+            "ring_degeneracy": after_ring_score,
+            "bond_length_error": after_quality.length_max_error,
+        },
+    }
+    return Clean2DCandidate(
+        source="rigid_multiring_layout",
+        coords=coords,
+        message="Orientación local de sistema rígido y attachments",
+        score=_visual_quality_score(graph, atom_ids, bonds, before, coords, target, mode),
+        novelty=_mean_displacement(before, coords, atom_ids),
+        report=after_report,
+        rejected=bool(rejection),
+        rejection_reason=rejection,
+        geometry_hash=clean2d_geometry_hash(graph, coords, atom_ids),
+        metadata=metadata,
+    )
+
+
+def _coordinate_spans(coords: dict[int, tuple[float, float]], atom_ids: set[int]) -> tuple[float, float]:
+    points = [coords[atom_id] for atom_id in atom_ids if atom_id in coords]
+    if not points:
+        return (0.0, 0.0)
+    return (
+        max(point[0] for point in points) - min(point[0] for point in points),
+        max(point[1] for point in points) - min(point[1] for point in points),
     )
 
 
@@ -3756,6 +3971,7 @@ def _deduplicate_candidates(
             "simple_aromatic_template",
             "monosubstituted_aromatic_template",
             "para_disubstituted_aromatic_template",
+            "rigid_multiring_layout",
         }:
             continue
         seen.add(geometry_hash)
