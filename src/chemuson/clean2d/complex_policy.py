@@ -286,6 +286,7 @@ def describe_clean2d_rigid_systems(
                 "atom_ids": sorted(system_atoms),
                 "bond_ids": sorted(ring_bond_ids),
                 "ring_ids": ring_ids,
+                "ring_count": len(ring_ids),
                 "shared_atom_ids": sorted(shared_atoms),
                 "shared_bond_ids": shared_bond_ids,
                 "bridgehead_atom_ids": list(cast(list[int], system["bridgehead_atom_ids"])),

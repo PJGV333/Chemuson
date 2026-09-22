@@ -20,6 +20,7 @@ _EXPECTED_FAMILIES = {
     "spiro_bicyclic": "spiro",
     "bridged_bicyclic": "bridged",
     "larger_polycyclic": "fused",
+    "three_fused_ring_polycyclic": "polycyclic",
     "fused_one_substituent": "fused",
     "fused_multiple_substituents": "fused",
     "spiro_substituent": "spiro",

@@ -50,6 +50,26 @@ def _fused_bicyclic(*, aromatic: bool) -> MolGraph:
     return graph
 
 
+def _three_fused_ring_polycyclic() -> MolGraph:
+    graph = MolGraph()
+    coords = {
+        1: (0.0, 24.0), 2: (36.0, 0.0), 3: (72.0, 24.0), 4: (72.0, 66.0),
+        5: (36.0, 90.0), 6: (0.0, 66.0), 7: (108.0, 0.0), 8: (144.0, 24.0),
+        9: (144.0, 66.0), 10: (108.0, 90.0), 11: (180.0, 0.0), 12: (216.0, 24.0),
+        13: (216.0, 66.0), 14: (180.0, 90.0),
+    }
+    for atom_id, (x, y) in coords.items():
+        graph.add_atom("C", x, y, atom_id=atom_id)
+    bonds = (
+        (1, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 1),
+        (3, 7), (7, 8), (8, 9), (9, 10), (10, 4),
+        (9, 11), (11, 12), (12, 13), (13, 14), (14, 10),
+    )
+    for bond_id, (left, right) in enumerate(bonds, start=1):
+        graph.add_bond(left, right, bond_id=bond_id, is_aromatic=True)
+    return graph
+
+
 def _spiro_bicyclic_graph() -> MolGraph:
     graph = MolGraph()
     graph.add_atom("C", 0.0, 0.0, atom_id=1)
@@ -143,6 +163,7 @@ CAMPAIGN4_CASES: tuple[Campaign4Case, ...] = (
     Campaign4Case("spiro_bicyclic", "spiro", _spiro_bicyclic_graph, ("spiro",)),
     Campaign4Case("bridged_bicyclic", "bridged", _bridged_bicyclic_graph, ("bridged",)),
     Campaign4Case("larger_polycyclic", "polycyclic", _polycyclic_graph, ("polycyclic", "fused")),
+    Campaign4Case("three_fused_ring_polycyclic", "polycyclic", _three_fused_ring_polycyclic, ("polycyclic", "fused")),
     Campaign4Case("fused_one_substituent", "fused-substitution", _fused_one_substituent, ("fused", "congested")),
     Campaign4Case("fused_multiple_substituents", "fused-substitution", _fused_multiple_substituents, ("fused", "congested")),
     Campaign4Case("spiro_substituent", "spiro-substitution", _spiro_substituent, ("spiro", "congested")),

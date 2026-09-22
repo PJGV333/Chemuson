@@ -1,0 +1,2531 @@
+{
+  "baseline_commit": "9a60968",
+  "current_commit": "HEAD",
+  "historical_reference": "346b229",
+  "cases": [
+    {
+      "candidate": {
+        "accepted_by_engine": false,
+        "delta": {
+          "angle_error": 0.0,
+          "bond_length_error": 0.0,
+          "crossings": 0,
+          "exocyclic_attachment_angle": null,
+          "min_nonbonded_distance": 0.0,
+          "ring_degeneracy": 0.0,
+          "visual_score": 0.0
+        },
+        "emitted": false,
+        "hard_gate_checks": {},
+        "hard_gates_passed": false,
+        "metrics_after": {
+          "angle_error": 0.0,
+          "bond_length_error": 0.08000000000000007,
+          "crossings": 0,
+          "exocyclic_attachment_angle": null,
+          "min_nonbonded_distance": 72.74613391789285,
+          "quality_class": "needs_polish",
+          "ring_degeneracy": 0.9068996821171088,
+          "visual_score": 4.608000000000005
+        },
+        "metrics_before": {
+          "angle_error": 0.0,
+          "bond_length_error": 0.08000000000000007,
+          "crossings": 0,
+          "exocyclic_attachment_angle": null,
+          "min_nonbonded_distance": 72.74613391789285,
+          "quality_class": "needs_polish",
+          "ring_degeneracy": 0.9068996821171088,
+          "visual_score": 4.608000000000005
+        },
+        "rejection_reason": "",
+        "rigid_system_types": [],
+        "selected": false,
+        "source": null,
+        "strategy": null
+      },
+      "case": "regular_benzene_control",
+      "family": "monocycle",
+      "result": {
+        "accepted_sources": [
+          "simple_aromatic_template"
+        ],
+        "rejected_sources": [
+          "current",
+          "rdkit_direct"
+        ],
+        "result_state": "applied",
+        "selected": false,
+        "selected_source": "simple_aromatic_template"
+      },
+      "topology": {
+        "multiple_rigid_blocks": false,
+        "rigid_system_count": 1,
+        "rigid_systems": [
+          {
+            "aromatic": true,
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "attachment_atom_ids": [],
+            "attachment_vectors": [],
+            "bond_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "bridgehead_atom_ids": [],
+            "centroid": [
+              0.0,
+              -1.1842378929335002e-15
+            ],
+            "external_neighbor_ids": [],
+            "external_substituent_count": 0,
+            "family": "monocycle",
+            "id": 1,
+            "kind": "monocycle",
+            "local_congestion": {
+              "attachment_count": 0,
+              "crowded_pair_count": 0,
+              "minimum_angle_deg": null
+            },
+            "principal_orientation": [
+              0.7071067811865476,
+              0.7071067811865475
+            ],
+            "ring_aromatic_flags": [
+              true
+            ],
+            "ring_count": 1,
+            "ring_ids": [
+              2
+            ],
+            "ring_relationships": [],
+            "shared_atom_ids": [],
+            "shared_bond_ids": []
+          }
+        ],
+        "ring_count": 1,
+        "ring_systems": [
+          {
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "block_ids": [
+              1
+            ],
+            "bridgehead_atom_ids": [],
+            "id": 1,
+            "kind": "monocycle",
+            "ring_ids": [
+              2
+            ],
+            "shared_atom_ids": []
+          }
+        ]
+      }
+    },
+    {
+      "candidate": {
+        "accepted_by_engine": false,
+        "delta": {
+          "angle_error": 0.0,
+          "bond_length_error": 0.0,
+          "crossings": 0,
+          "exocyclic_attachment_angle": null,
+          "min_nonbonded_distance": 0.0,
+          "ring_degeneracy": 0.0,
+          "visual_score": 0.0
+        },
+        "emitted": false,
+        "hard_gate_checks": {},
+        "hard_gates_passed": false,
+        "metrics_after": {
+          "angle_error": 0.0,
+          "bond_length_error": 0.05,
+          "crossings": 0,
+          "exocyclic_attachment_angle": null,
+          "min_nonbonded_distance": 72.74613391789285,
+          "quality_class": "good",
+          "ring_degeneracy": 0.9068996821171088,
+          "visual_score": 1.799999999999998
+        },
+        "metrics_before": {
+          "angle_error": 0.0,
+          "bond_length_error": 0.05,
+          "crossings": 0,
+          "exocyclic_attachment_angle": null,
+          "min_nonbonded_distance": 72.74613391789285,
+          "quality_class": "good",
+          "ring_degeneracy": 0.9068996821171088,
+          "visual_score": 1.799999999999998
+        },
+        "rejection_reason": "",
+        "rigid_system_types": [],
+        "selected": false,
+        "source": null,
+        "strategy": null
+      },
+      "case": "simple_monocycle_control",
+      "family": "monocycle",
+      "result": {
+        "accepted_sources": [
+          "current"
+        ],
+        "rejected_sources": [
+          "rdkit_direct"
+        ],
+        "result_state": "applied",
+        "selected": false,
+        "selected_source": "current"
+      },
+      "topology": {
+        "multiple_rigid_blocks": false,
+        "rigid_system_count": 1,
+        "rigid_systems": [
+          {
+            "aromatic": false,
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "attachment_atom_ids": [],
+            "attachment_vectors": [],
+            "bond_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "bridgehead_atom_ids": [],
+            "centroid": [
+              0.0,
+              -1.1842378929335002e-15
+            ],
+            "external_neighbor_ids": [],
+            "external_substituent_count": 0,
+            "family": "monocycle",
+            "id": 1,
+            "kind": "monocycle",
+            "local_congestion": {
+              "attachment_count": 0,
+              "crowded_pair_count": 0,
+              "minimum_angle_deg": null
+            },
+            "principal_orientation": [
+              0.7071067811865476,
+              0.7071067811865475
+            ],
+            "ring_aromatic_flags": [
+              false
+            ],
+            "ring_count": 1,
+            "ring_ids": [
+              2
+            ],
+            "ring_relationships": [],
+            "shared_atom_ids": [],
+            "shared_bond_ids": []
+          }
+        ],
+        "ring_count": 1,
+        "ring_systems": [
+          {
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "block_ids": [],
+            "bridgehead_atom_ids": [],
+            "id": 1,
+            "kind": "monocycle",
+            "ring_ids": [
+              2
+            ],
+            "shared_atom_ids": []
+          }
+        ]
+      }
+    },
+    {
+      "candidate": {
+        "accepted_by_engine": false,
+        "delta": {
+          "angle_error": 2.1316282072803006e-14,
+          "bond_length_error": -0.09377809323118705,
+          "crossings": 0,
+          "exocyclic_attachment_angle": null,
+          "min_nonbonded_distance": -6.242247206036097,
+          "ring_degeneracy": 0.0,
+          "visual_score": -13.923414516355836
+        },
+        "emitted": true,
+        "hard_gate_checks": {
+          "bond_length_sanity": true,
+          "bounding_box_sanity": true,
+          "collision_safety": true,
+          "displacement_budget": true,
+          "finite_coordinates": true,
+          "no_new_crossings": true,
+          "ring_degeneracy": true,
+          "selection_invariants": true,
+          "stereo_signature": true
+        },
+        "hard_gates_passed": true,
+        "metrics_after": {
+          "angle_error": 5.57885771130165,
+          "bond_length_error": 0.017887289408009897,
+          "crossings": 0,
+          "exocyclic_attachment_angle": null,
+          "min_nonbonded_distance": 65.7577527939639,
+          "quality_class": "good",
+          "ring_degeneracy": 0.39539842009513043,
+          "visual_score": 4.224142608237836
+        },
+        "metrics_before": {
+          "angle_error": 5.578857711301628,
+          "bond_length_error": 0.11166538263919694,
+          "crossings": 0,
+          "exocyclic_attachment_angle": null,
+          "min_nonbonded_distance": 72.0,
+          "quality_class": "needs_polish",
+          "ring_degeneracy": 0.39539842009513043,
+          "visual_score": 18.14755712459367
+        },
+        "rejection_reason": "",
+        "rigid_system_types": [
+          "fused"
+        ],
+        "selected": false,
+        "source": "rigid_multiring_layout",
+        "strategy": "rigid_multiring_layout"
+      },
+      "case": "fused_aromatic_bicyclic",
+      "family": "fused",
+      "result": {
+        "accepted_sources": [
+          "current",
+          "fused_aromatic_template"
+        ],
+        "rejected_sources": [],
+        "result_state": "applied",
+        "selected": false,
+        "selected_source": "fused_aromatic_template"
+      },
+      "topology": {
+        "multiple_rigid_blocks": false,
+        "rigid_system_count": 1,
+        "rigid_systems": [
+          {
+            "aromatic": true,
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10
+            ],
+            "attachment_atom_ids": [],
+            "attachment_vectors": [],
+            "bond_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11
+            ],
+            "bridgehead_atom_ids": [],
+            "centroid": [
+              72.0,
+              45.0
+            ],
+            "external_neighbor_ids": [],
+            "external_substituent_count": 0,
+            "family": "fused",
+            "id": 1,
+            "kind": "fused",
+            "local_congestion": {
+              "attachment_count": 0,
+              "crowded_pair_count": 0,
+              "minimum_angle_deg": null
+            },
+            "principal_orientation": [
+              1.0,
+              0.0
+            ],
+            "ring_aromatic_flags": [
+              true,
+              true
+            ],
+            "ring_count": 2,
+            "ring_ids": [
+              2,
+              5
+            ],
+            "ring_relationships": [
+              {
+                "relationship": "fused",
+                "ring_ids": [
+                  2,
+                  5
+                ],
+                "shared_atom_ids": [
+                  3,
+                  4
+                ],
+                "shared_bond_ids": [
+                  3
+                ]
+              }
+            ],
+            "shared_atom_ids": [
+              3,
+              4
+            ],
+            "shared_bond_ids": [
+              3
+            ]
+          }
+        ],
+        "ring_count": 2,
+        "ring_systems": [
+          {
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10
+            ],
+            "block_ids": [
+              1,
+              2,
+              3
+            ],
+            "bridgehead_atom_ids": [],
+            "id": 1,
+            "kind": "fused",
+            "ring_ids": [
+              2,
+              5
+            ],
+            "shared_atom_ids": [
+              3,
+              4
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "candidate": {
+        "accepted_by_engine": true,
+        "delta": {
+          "angle_error": -8.881784197001252e-16,
+          "bond_length_error": -0.06020337064461199,
+          "crossings": 0,
+          "exocyclic_attachment_angle": null,
+          "min_nonbonded_distance": -4.900252251057239,
+          "ring_degeneracy": 2.220446049250313e-16,
+          "visual_score": -7.074459443108614
+        },
+        "emitted": true,
+        "hard_gate_checks": {
+          "bond_length_sanity": true,
+          "bounding_box_sanity": true,
+          "collision_safety": true,
+          "displacement_budget": true,
+          "finite_coordinates": true,
+          "no_new_crossings": true,
+          "ring_degeneracy": true,
+          "selection_invariants": true,
+          "stereo_signature": true
+        },
+        "hard_gates_passed": true,
+        "metrics_after": {
+          "angle_error": 3.457229800767335,
+          "bond_length_error": 0.021462011994584883,
+          "crossings": 0,
+          "exocyclic_attachment_angle": null,
+          "min_nonbonded_distance": 67.09974774894276,
+          "quality_class": "good",
+          "ring_degeneracy": 0.39539842009513065,
+          "visual_score": 1.7154203832726116
+        },
+        "metrics_before": {
+          "angle_error": 3.457229800767336,
+          "bond_length_error": 0.08166538263919687,
+          "crossings": 0,
+          "exocyclic_attachment_angle": null,
+          "min_nonbonded_distance": 72.0,
+          "quality_class": "needs_polish",
+          "ring_degeneracy": 0.39539842009513043,
+          "visual_score": 8.789879826381226
+        },
+        "rejection_reason": "",
+        "rigid_system_types": [
+          "fused"
+        ],
+        "selected": false,
+        "source": "rigid_multiring_layout",
+        "strategy": "rigid_multiring_layout"
+      },
+      "case": "fused_non_aromatic_bicyclic",
+      "family": "fused",
+      "result": {
+        "accepted_sources": [
+          "block_layout",
+          "rigid_multiring_layout"
+        ],
+        "rejected_sources": [
+          "current",
+          "rdkit_direct"
+        ],
+        "result_state": "applied",
+        "selected": false,
+        "selected_source": "block_layout"
+      },
+      "topology": {
+        "multiple_rigid_blocks": false,
+        "rigid_system_count": 1,
+        "rigid_systems": [
+          {
+            "aromatic": false,
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10
+            ],
+            "attachment_atom_ids": [],
+            "attachment_vectors": [],
+            "bond_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11
+            ],
+            "bridgehead_atom_ids": [],
+            "centroid": [
+              72.0,
+              45.0
+            ],
+            "external_neighbor_ids": [],
+            "external_substituent_count": 0,
+            "family": "fused",
+            "id": 1,
+            "kind": "fused",
+            "local_congestion": {
+              "attachment_count": 0,
+              "crowded_pair_count": 0,
+              "minimum_angle_deg": null
+            },
+            "principal_orientation": [
+              1.0,
+              0.0
+            ],
+            "ring_aromatic_flags": [
+              false,
+              false
+            ],
+            "ring_count": 2,
+            "ring_ids": [
+              2,
+              5
+            ],
+            "ring_relationships": [
+              {
+                "relationship": "fused",
+                "ring_ids": [
+                  2,
+                  5
+                ],
+                "shared_atom_ids": [
+                  3,
+                  4
+                ],
+                "shared_bond_ids": [
+                  3
+                ]
+              }
+            ],
+            "shared_atom_ids": [
+              3,
+              4
+            ],
+            "shared_bond_ids": [
+              3
+            ]
+          }
+        ],
+        "ring_count": 2,
+        "ring_systems": [
+          {
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10
+            ],
+            "block_ids": [
+              1,
+              2
+            ],
+            "bridgehead_atom_ids": [],
+            "id": 1,
+            "kind": "fused",
+            "ring_ids": [
+              2,
+              5
+            ],
+            "shared_atom_ids": [
+              3,
+              4
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "candidate": {
+        "accepted_by_engine": true,
+        "delta": {
+          "angle_error": -35.12050683005583,
+          "bond_length_error": -0.23434902981419317,
+          "crossings": -10,
+          "exocyclic_attachment_angle": 101.63353933657018,
+          "min_nonbonded_distance": 14.042572472504446,
+          "ring_degeneracy": 0.37479045613026907,
+          "visual_score": -9875.725835989477
+        },
+        "emitted": true,
+        "hard_gate_checks": {
+          "bond_length_sanity": true,
+          "bounding_box_sanity": true,
+          "collision_safety": true,
+          "displacement_budget": true,
+          "finite_coordinates": true,
+          "no_new_crossings": true,
+          "ring_degeneracy": true,
+          "selection_invariants": true,
+          "stereo_signature": true
+        },
+        "hard_gates_passed": true,
+        "metrics_after": {
+          "angle_error": 1.852868764786606e-14,
+          "bond_length_error": 5.329070518200751e-16,
+          "crossings": 0,
+          "exocyclic_attachment_angle": 120.0,
+          "min_nonbonded_distance": 39.99999999999999,
+          "quality_class": "needs_polish",
+          "ring_degeneracy": 0.9068996821171087,
+          "visual_score": 42907.56
+        },
+        "metrics_before": {
+          "angle_error": 35.12050683005585,
+          "bond_length_error": 0.2343490298141937,
+          "crossings": 10,
+          "exocyclic_attachment_angle": 18.36646066342982,
+          "min_nonbonded_distance": 25.957427527495547,
+          "quality_class": "needs_rebuild",
+          "ring_degeneracy": 0.5321092259868396,
+          "visual_score": 52783.285835989474
+        },
+        "rejection_reason": "",
+        "rigid_system_types": [
+          "spiro"
+        ],
+        "selected": true,
+        "source": "rigid_multiring_layout",
+        "strategy": "rigid_multiring_layout"
+      },
+      "case": "spiro_bicyclic",
+      "family": "spiro",
+      "result": {
+        "accepted_sources": [
+          "rdkit_isolated",
+          "rigid_multiring_layout"
+        ],
+        "rejected_sources": [
+          "clean2d_v2",
+          "current",
+          "internal_templates",
+          "rdkit_direct"
+        ],
+        "result_state": "applied",
+        "selected": true,
+        "selected_source": "rigid_multiring_layout"
+      },
+      "topology": {
+        "multiple_rigid_blocks": false,
+        "rigid_system_count": 1,
+        "rigid_systems": [
+          {
+            "aromatic": false,
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11
+            ],
+            "attachment_atom_ids": [],
+            "attachment_vectors": [],
+            "bond_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12
+            ],
+            "bridgehead_atom_ids": [],
+            "centroid": [
+              3.875687649600546e-15,
+              4.844609562000683e-15
+            ],
+            "external_neighbor_ids": [],
+            "external_substituent_count": 0,
+            "family": "spiro",
+            "id": 1,
+            "kind": "spiro",
+            "local_congestion": {
+              "attachment_count": 0,
+              "crowded_pair_count": 0,
+              "minimum_angle_deg": null
+            },
+            "principal_orientation": [
+              0.1508642137237493,
+              -0.9885544947131215
+            ],
+            "ring_aromatic_flags": [
+              false,
+              false
+            ],
+            "ring_count": 2,
+            "ring_ids": [
+              2,
+              5
+            ],
+            "ring_relationships": [
+              {
+                "relationship": "spiro",
+                "ring_ids": [
+                  2,
+                  5
+                ],
+                "shared_atom_ids": [
+                  1
+                ],
+                "shared_bond_ids": []
+              }
+            ],
+            "shared_atom_ids": [
+              1
+            ],
+            "shared_bond_ids": []
+          }
+        ],
+        "ring_count": 2,
+        "ring_systems": [
+          {
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11
+            ],
+            "block_ids": [],
+            "bridgehead_atom_ids": [],
+            "id": 1,
+            "kind": "spiro",
+            "ring_ids": [
+              2,
+              5
+            ],
+            "shared_atom_ids": [
+              1
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "candidate": {
+        "accepted_by_engine": false,
+        "delta": {
+          "angle_error": 0.0,
+          "bond_length_error": 0.0,
+          "crossings": 0,
+          "exocyclic_attachment_angle": null,
+          "min_nonbonded_distance": 0.0,
+          "ring_degeneracy": 0.0,
+          "visual_score": 0.0
+        },
+        "emitted": true,
+        "hard_gate_checks": {
+          "bond_length_sanity": true,
+          "bounding_box_sanity": true,
+          "bridged_reconstruction": false,
+          "collision_safety": true,
+          "displacement_budget": true,
+          "finite_coordinates": true,
+          "no_new_crossings": true,
+          "ring_degeneracy": true,
+          "selection_invariants": true,
+          "stereo_signature": true
+        },
+        "hard_gates_passed": false,
+        "metrics_after": {
+          "angle_error": 5.5376777919743745,
+          "bond_length_error": 0.4849242404917497,
+          "crossings": 0,
+          "exocyclic_attachment_angle": null,
+          "min_nonbonded_distance": 39.84971769034255,
+          "quality_class": "needs_rebuild",
+          "ring_degeneracy": 0.18697534455981868,
+          "visual_score": 1033.3029054390931
+        },
+        "metrics_before": {
+          "angle_error": 5.5376777919743745,
+          "bond_length_error": 0.4849242404917497,
+          "crossings": 0,
+          "exocyclic_attachment_angle": null,
+          "min_nonbonded_distance": 39.84971769034255,
+          "quality_class": "needs_rebuild",
+          "ring_degeneracy": 0.18697534455981868,
+          "visual_score": 1033.3029054390931
+        },
+        "rejection_reason": "bridged_reconstruction_unsafe",
+        "rigid_system_types": [
+          "bridged"
+        ],
+        "selected": false,
+        "source": "rigid_multiring_layout",
+        "strategy": "rigid_multiring_layout"
+      },
+      "case": "bridged_bicyclic",
+      "family": "bridged",
+      "result": {
+        "accepted_sources": [],
+        "rejected_sources": [
+          "block_layout",
+          "clean2d_v2",
+          "current",
+          "internal_templates",
+          "rdkit_direct",
+          "rdkit_isolated",
+          "rigid_multiring_layout"
+        ],
+        "result_state": "failed-controlled",
+        "selected": false,
+        "selected_source": null
+      },
+      "topology": {
+        "multiple_rigid_blocks": false,
+        "rigid_system_count": 1,
+        "rigid_systems": [
+          {
+            "aromatic": false,
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "attachment_atom_ids": [],
+            "attachment_vectors": [],
+            "bond_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7
+            ],
+            "bridgehead_atom_ids": [
+              1,
+              4,
+              5
+            ],
+            "centroid": [
+              0.0,
+              7.666666666666667
+            ],
+            "external_neighbor_ids": [],
+            "external_substituent_count": 0,
+            "family": "bridged",
+            "id": 1,
+            "kind": "bridged",
+            "local_congestion": {
+              "attachment_count": 0,
+              "crowded_pair_count": 0,
+              "minimum_angle_deg": null
+            },
+            "principal_orientation": [
+              6.123233995736766e-17,
+              1.0
+            ],
+            "ring_aromatic_flags": [
+              false,
+              false
+            ],
+            "ring_count": 2,
+            "ring_ids": [
+              2,
+              5
+            ],
+            "ring_relationships": [
+              {
+                "relationship": "bridged",
+                "ring_ids": [
+                  2,
+                  5
+                ],
+                "shared_atom_ids": [
+                  1,
+                  4,
+                  5
+                ],
+                "shared_bond_ids": []
+              }
+            ],
+            "shared_atom_ids": [
+              1,
+              4,
+              5
+            ],
+            "shared_bond_ids": [
+              4,
+              5
+            ]
+          }
+        ],
+        "ring_count": 2,
+        "ring_systems": [
+          {
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "block_ids": [
+              1,
+              2
+            ],
+            "bridgehead_atom_ids": [
+              1,
+              4,
+              5
+            ],
+            "id": 1,
+            "kind": "bridged",
+            "ring_ids": [
+              2,
+              5
+            ],
+            "shared_atom_ids": [
+              1,
+              4,
+              5
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "candidate": {
+        "accepted_by_engine": false,
+        "delta": {
+          "angle_error": 2.1316282072803006e-14,
+          "bond_length_error": -0.09377809323118705,
+          "crossings": 0,
+          "exocyclic_attachment_angle": null,
+          "min_nonbonded_distance": -6.242247206036097,
+          "ring_degeneracy": 0.0,
+          "visual_score": -13.923414516355836
+        },
+        "emitted": true,
+        "hard_gate_checks": {
+          "bond_length_sanity": true,
+          "bounding_box_sanity": true,
+          "collision_safety": true,
+          "displacement_budget": true,
+          "finite_coordinates": true,
+          "no_new_crossings": true,
+          "ring_degeneracy": true,
+          "selection_invariants": true,
+          "stereo_signature": true
+        },
+        "hard_gates_passed": true,
+        "metrics_after": {
+          "angle_error": 5.57885771130165,
+          "bond_length_error": 0.017887289408009897,
+          "crossings": 0,
+          "exocyclic_attachment_angle": null,
+          "min_nonbonded_distance": 65.7577527939639,
+          "quality_class": "good",
+          "ring_degeneracy": 0.39539842009513043,
+          "visual_score": 4.224142608237836
+        },
+        "metrics_before": {
+          "angle_error": 5.578857711301628,
+          "bond_length_error": 0.11166538263919694,
+          "crossings": 0,
+          "exocyclic_attachment_angle": null,
+          "min_nonbonded_distance": 72.0,
+          "quality_class": "needs_polish",
+          "ring_degeneracy": 0.39539842009513043,
+          "visual_score": 18.14755712459367
+        },
+        "rejection_reason": "",
+        "rigid_system_types": [
+          "fused"
+        ],
+        "selected": false,
+        "source": "rigid_multiring_layout",
+        "strategy": "rigid_multiring_layout"
+      },
+      "case": "larger_polycyclic",
+      "family": "polycyclic",
+      "result": {
+        "accepted_sources": [
+          "current",
+          "fused_aromatic_template"
+        ],
+        "rejected_sources": [],
+        "result_state": "applied",
+        "selected": false,
+        "selected_source": "fused_aromatic_template"
+      },
+      "topology": {
+        "multiple_rigid_blocks": false,
+        "rigid_system_count": 1,
+        "rigid_systems": [
+          {
+            "aromatic": true,
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10
+            ],
+            "attachment_atom_ids": [],
+            "attachment_vectors": [],
+            "bond_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11
+            ],
+            "bridgehead_atom_ids": [],
+            "centroid": [
+              72.0,
+              45.0
+            ],
+            "external_neighbor_ids": [],
+            "external_substituent_count": 0,
+            "family": "fused",
+            "id": 1,
+            "kind": "fused",
+            "local_congestion": {
+              "attachment_count": 0,
+              "crowded_pair_count": 0,
+              "minimum_angle_deg": null
+            },
+            "principal_orientation": [
+              1.0,
+              0.0
+            ],
+            "ring_aromatic_flags": [
+              true,
+              true
+            ],
+            "ring_count": 2,
+            "ring_ids": [
+              2,
+              5
+            ],
+            "ring_relationships": [
+              {
+                "relationship": "fused",
+                "ring_ids": [
+                  2,
+                  5
+                ],
+                "shared_atom_ids": [
+                  3,
+                  4
+                ],
+                "shared_bond_ids": [
+                  3
+                ]
+              }
+            ],
+            "shared_atom_ids": [
+              3,
+              4
+            ],
+            "shared_bond_ids": [
+              3
+            ]
+          }
+        ],
+        "ring_count": 2,
+        "ring_systems": [
+          {
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10
+            ],
+            "block_ids": [
+              1,
+              2,
+              3
+            ],
+            "bridgehead_atom_ids": [],
+            "id": 1,
+            "kind": "fused",
+            "ring_ids": [
+              2,
+              5
+            ],
+            "shared_atom_ids": [
+              3,
+              4
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "candidate": {
+        "accepted_by_engine": false,
+        "delta": {
+          "angle_error": 0.0,
+          "bond_length_error": 0.0,
+          "crossings": 0,
+          "exocyclic_attachment_angle": null,
+          "min_nonbonded_distance": 0.0,
+          "ring_degeneracy": 0.0,
+          "visual_score": 0.0
+        },
+        "emitted": true,
+        "hard_gate_checks": {
+          "bond_length_sanity": true,
+          "bounding_box_sanity": true,
+          "collision_safety": true,
+          "displacement_budget": true,
+          "finite_coordinates": true,
+          "no_new_crossings": true,
+          "ring_degeneracy": true,
+          "selection_invariants": true,
+          "stereo_signature": true
+        },
+        "hard_gates_passed": true,
+        "metrics_after": {
+          "angle_error": 30.092844897065845,
+          "bond_length_error": 0.9094946129212502,
+          "crossings": 0,
+          "exocyclic_attachment_angle": null,
+          "min_nonbonded_distance": 43.266615305567875,
+          "quality_class": "needs_rebuild",
+          "ring_degeneracy": 0.39539842009513043,
+          "visual_score": 377.0557091765492
+        },
+        "metrics_before": {
+          "angle_error": 30.092844897065845,
+          "bond_length_error": 0.9094946129212502,
+          "crossings": 0,
+          "exocyclic_attachment_angle": null,
+          "min_nonbonded_distance": 43.266615305567875,
+          "quality_class": "needs_rebuild",
+          "ring_degeneracy": 0.39539842009513043,
+          "visual_score": 377.0557091765492
+        },
+        "rejection_reason": "rigid_multiring_no_improvement",
+        "rigid_system_types": [
+          "polycyclic"
+        ],
+        "selected": false,
+        "source": "rigid_multiring_layout",
+        "strategy": "rigid_multiring_layout"
+      },
+      "case": "three_fused_ring_polycyclic",
+      "family": "polycyclic",
+      "result": {
+        "accepted_sources": [
+          "current"
+        ],
+        "rejected_sources": [
+          "global_block_placement"
+        ],
+        "result_state": "failed-controlled",
+        "selected": false,
+        "selected_source": null
+      },
+      "topology": {
+        "multiple_rigid_blocks": false,
+        "rigid_system_count": 1,
+        "rigid_systems": [
+          {
+            "aromatic": true,
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14
+            ],
+            "attachment_atom_ids": [],
+            "attachment_vectors": [],
+            "bond_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16
+            ],
+            "bridgehead_atom_ids": [],
+            "centroid": [
+              108.0,
+              45.0
+            ],
+            "external_neighbor_ids": [],
+            "external_substituent_count": 0,
+            "family": "polycyclic",
+            "id": 1,
+            "kind": "fused",
+            "local_congestion": {
+              "attachment_count": 0,
+              "crowded_pair_count": 0,
+              "minimum_angle_deg": null
+            },
+            "principal_orientation": [
+              1.0,
+              0.0
+            ],
+            "ring_aromatic_flags": [
+              true,
+              true,
+              true
+            ],
+            "ring_count": 3,
+            "ring_ids": [
+              2,
+              5,
+              8
+            ],
+            "ring_relationships": [
+              {
+                "relationship": "fused",
+                "ring_ids": [
+                  2,
+                  5
+                ],
+                "shared_atom_ids": [
+                  3,
+                  4
+                ],
+                "shared_bond_ids": [
+                  3
+                ]
+              },
+              {
+                "relationship": "disjoint",
+                "ring_ids": [
+                  2,
+                  8
+                ],
+                "shared_atom_ids": [],
+                "shared_bond_ids": []
+              },
+              {
+                "relationship": "fused",
+                "ring_ids": [
+                  5,
+                  8
+                ],
+                "shared_atom_ids": [
+                  9,
+                  10
+                ],
+                "shared_bond_ids": [
+                  10
+                ]
+              }
+            ],
+            "shared_atom_ids": [
+              3,
+              4,
+              9,
+              10
+            ],
+            "shared_bond_ids": [
+              3,
+              10,
+              11
+            ]
+          }
+        ],
+        "ring_count": 3,
+        "ring_systems": [
+          {
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14
+            ],
+            "block_ids": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "bridgehead_atom_ids": [],
+            "id": 1,
+            "kind": "fused",
+            "ring_ids": [
+              2,
+              5,
+              8
+            ],
+            "shared_atom_ids": [
+              3,
+              4,
+              9,
+              10
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "candidate": {
+        "accepted_by_engine": false,
+        "delta": {
+          "angle_error": 9.309547099844547,
+          "bond_length_error": 0.0,
+          "crossings": 0,
+          "exocyclic_attachment_angle": null,
+          "min_nonbonded_distance": -14.370548362555361,
+          "ring_degeneracy": 0.0,
+          "visual_score": 26.570324875431318
+        },
+        "emitted": true,
+        "hard_gate_checks": {
+          "bond_length_sanity": true,
+          "bounding_box_sanity": true,
+          "collision_safety": true,
+          "displacement_budget": true,
+          "finite_coordinates": true,
+          "no_new_crossings": true,
+          "ring_degeneracy": true,
+          "selection_invariants": true,
+          "stereo_signature": true
+        },
+        "hard_gates_passed": true,
+        "metrics_after": {
+          "angle_error": 14.688698658024263,
+          "bond_length_error": 0.11166538263919694,
+          "crossings": 0,
+          "exocyclic_attachment_angle": null,
+          "min_nonbonded_distance": 57.62945163744464,
+          "quality_class": "needs_polish",
+          "ring_degeneracy": 0.39539842009513043,
+          "visual_score": 45.2599548595146
+        },
+        "metrics_before": {
+          "angle_error": 5.379151558179715,
+          "bond_length_error": 0.11166538263919694,
+          "crossings": 0,
+          "exocyclic_attachment_angle": null,
+          "min_nonbonded_distance": 72.0,
+          "quality_class": "needs_polish",
+          "ring_degeneracy": 0.39539842009513043,
+          "visual_score": 18.689629984083282
+        },
+        "rejection_reason": "rigid_multiring_quality_regression",
+        "rigid_system_types": [
+          "fused"
+        ],
+        "selected": false,
+        "source": "rigid_multiring_layout",
+        "strategy": "rigid_multiring_layout"
+      },
+      "case": "fused_one_substituent",
+      "family": "fused-substitution",
+      "result": {
+        "accepted_sources": [
+          "complex_preserve",
+          "current"
+        ],
+        "rejected_sources": [],
+        "result_state": "preserve-only",
+        "selected": false,
+        "selected_source": "complex_preserve"
+      },
+      "topology": {
+        "multiple_rigid_blocks": false,
+        "rigid_system_count": 1,
+        "rigid_systems": [
+          {
+            "aromatic": true,
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10
+            ],
+            "attachment_atom_ids": [
+              5
+            ],
+            "attachment_vectors": [
+              {
+                "angle_deg": 90.0,
+                "atom_id": 5,
+                "length": 42.0,
+                "neighbor_id": 11,
+                "vector": [
+                  0.0,
+                  1.0
+                ]
+              }
+            ],
+            "bond_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11
+            ],
+            "bridgehead_atom_ids": [],
+            "centroid": [
+              72.0,
+              45.0
+            ],
+            "external_neighbor_ids": [
+              11
+            ],
+            "external_substituent_count": 1,
+            "family": "fused",
+            "id": 1,
+            "kind": "fused",
+            "local_congestion": {
+              "attachment_count": 1,
+              "crowded_pair_count": 0,
+              "minimum_angle_deg": null
+            },
+            "principal_orientation": [
+              1.0,
+              0.0
+            ],
+            "ring_aromatic_flags": [
+              true,
+              true
+            ],
+            "ring_count": 2,
+            "ring_ids": [
+              2,
+              5
+            ],
+            "ring_relationships": [
+              {
+                "relationship": "fused",
+                "ring_ids": [
+                  2,
+                  5
+                ],
+                "shared_atom_ids": [
+                  3,
+                  4
+                ],
+                "shared_bond_ids": [
+                  3
+                ]
+              }
+            ],
+            "shared_atom_ids": [
+              3,
+              4
+            ],
+            "shared_bond_ids": [
+              3
+            ]
+          }
+        ],
+        "ring_count": 2,
+        "ring_systems": [
+          {
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10
+            ],
+            "block_ids": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "bridgehead_atom_ids": [],
+            "id": 1,
+            "kind": "fused",
+            "ring_ids": [
+              2,
+              5
+            ],
+            "shared_atom_ids": [
+              3,
+              4
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "candidate": {
+        "accepted_by_engine": false,
+        "delta": {
+          "angle_error": 3.732829135791224,
+          "bond_length_error": 0.0,
+          "crossings": 0,
+          "exocyclic_attachment_angle": null,
+          "min_nonbonded_distance": 2.3121848936873164,
+          "ring_degeneracy": 0.0,
+          "visual_score": 14.993137817963188
+        },
+        "emitted": true,
+        "hard_gate_checks": {
+          "bond_length_sanity": true,
+          "bounding_box_sanity": true,
+          "collision_safety": true,
+          "displacement_budget": true,
+          "finite_coordinates": true,
+          "no_new_crossings": true,
+          "ring_degeneracy": true,
+          "selection_invariants": true,
+          "stereo_signature": true
+        },
+        "hard_gates_passed": true,
+        "metrics_after": {
+          "angle_error": 14.418169276379949,
+          "bond_length_error": 0.11166538263919694,
+          "crossings": 0,
+          "exocyclic_attachment_angle": null,
+          "min_nonbonded_distance": 57.62945163744464,
+          "quality_class": "needs_polish",
+          "ring_degeneracy": 0.39539842009513043,
+          "visual_score": 49.0357682179354
+        },
+        "metrics_before": {
+          "angle_error": 10.685340140588725,
+          "bond_length_error": 0.11166538263919694,
+          "crossings": 0,
+          "exocyclic_attachment_angle": null,
+          "min_nonbonded_distance": 55.31726674375732,
+          "quality_class": "needs_polish",
+          "ring_degeneracy": 0.39539842009513043,
+          "visual_score": 34.04263039997221
+        },
+        "rejection_reason": "rigid_multiring_quality_regression",
+        "rigid_system_types": [
+          "fused"
+        ],
+        "selected": false,
+        "source": "rigid_multiring_layout",
+        "strategy": "rigid_multiring_layout"
+      },
+      "case": "fused_multiple_substituents",
+      "family": "fused-substitution",
+      "result": {
+        "accepted_sources": [
+          "complex_preserve",
+          "current"
+        ],
+        "rejected_sources": [],
+        "result_state": "preserve-only",
+        "selected": false,
+        "selected_source": "complex_preserve"
+      },
+      "topology": {
+        "multiple_rigid_blocks": false,
+        "rigid_system_count": 1,
+        "rigid_systems": [
+          {
+            "aromatic": true,
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10
+            ],
+            "attachment_atom_ids": [
+              5,
+              8
+            ],
+            "attachment_vectors": [
+              {
+                "angle_deg": 90.0,
+                "atom_id": 5,
+                "length": 42.0,
+                "neighbor_id": 11,
+                "vector": [
+                  0.0,
+                  1.0
+                ]
+              },
+              {
+                "angle_deg": 0.0,
+                "atom_id": 8,
+                "length": 36.0,
+                "neighbor_id": 12,
+                "vector": [
+                  1.0,
+                  0.0
+                ]
+              }
+            ],
+            "bond_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11
+            ],
+            "bridgehead_atom_ids": [],
+            "centroid": [
+              72.0,
+              45.0
+            ],
+            "external_neighbor_ids": [
+              11,
+              12
+            ],
+            "external_substituent_count": 2,
+            "family": "fused",
+            "id": 1,
+            "kind": "fused",
+            "local_congestion": {
+              "attachment_count": 2,
+              "crowded_pair_count": 0,
+              "minimum_angle_deg": 90.0
+            },
+            "principal_orientation": [
+              1.0,
+              0.0
+            ],
+            "ring_aromatic_flags": [
+              true,
+              true
+            ],
+            "ring_count": 2,
+            "ring_ids": [
+              2,
+              5
+            ],
+            "ring_relationships": [
+              {
+                "relationship": "fused",
+                "ring_ids": [
+                  2,
+                  5
+                ],
+                "shared_atom_ids": [
+                  3,
+                  4
+                ],
+                "shared_bond_ids": [
+                  3
+                ]
+              }
+            ],
+            "shared_atom_ids": [
+              3,
+              4
+            ],
+            "shared_bond_ids": [
+              3
+            ]
+          }
+        ],
+        "ring_count": 2,
+        "ring_systems": [
+          {
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10
+            ],
+            "block_ids": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "bridgehead_atom_ids": [],
+            "id": 1,
+            "kind": "fused",
+            "ring_ids": [
+              2,
+              5
+            ],
+            "shared_atom_ids": [
+              3,
+              4
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "candidate": {
+        "accepted_by_engine": false,
+        "delta": {
+          "angle_error": -22.90480753141137,
+          "bond_length_error": 1.278124088550151,
+          "crossings": -10,
+          "exocyclic_attachment_angle": 101.63353933657018,
+          "min_nonbonded_distance": 14.042572472504446,
+          "ring_degeneracy": 0.37479045613026907,
+          "visual_score": -29599.089802966908
+        },
+        "emitted": true,
+        "hard_gate_checks": {
+          "bond_length_sanity": false,
+          "bounding_box_sanity": false,
+          "collision_safety": true,
+          "displacement_budget": false,
+          "finite_coordinates": true,
+          "no_new_crossings": true,
+          "ring_degeneracy": true,
+          "selection_invariants": true,
+          "stereo_signature": true
+        },
+        "hard_gates_passed": false,
+        "metrics_after": {
+          "angle_error": 10.328964130056796,
+          "bond_length_error": 1.5124731183643447,
+          "crossings": 0,
+          "exocyclic_attachment_angle": 120.0,
+          "min_nonbonded_distance": 39.99999999999999,
+          "quality_class": "needs_rebuild",
+          "ring_degeneracy": 0.9068996821171087,
+          "visual_score": 23193.44899205297
+        },
+        "metrics_before": {
+          "angle_error": 33.23377166146817,
+          "bond_length_error": 0.2343490298141937,
+          "crossings": 10,
+          "exocyclic_attachment_angle": 18.36646066342982,
+          "min_nonbonded_distance": 25.957427527495547,
+          "quality_class": "needs_rebuild",
+          "ring_degeneracy": 0.5321092259868396,
+          "visual_score": 52792.53879501988
+        },
+        "rejection_reason": "rigid_multiring_hard_gate_failed",
+        "rigid_system_types": [
+          "spiro"
+        ],
+        "selected": false,
+        "source": "rigid_multiring_layout",
+        "strategy": "rigid_multiring_layout"
+      },
+      "case": "spiro_substituent",
+      "family": "spiro-substitution",
+      "result": {
+        "accepted_sources": [
+          "rdkit_isolated"
+        ],
+        "rejected_sources": [
+          "clean2d_v2",
+          "current",
+          "internal_templates",
+          "rdkit_direct",
+          "rigid_multiring_layout",
+          "safe_fallback"
+        ],
+        "result_state": "applied",
+        "selected": false,
+        "selected_source": "rdkit_isolated"
+      },
+      "topology": {
+        "multiple_rigid_blocks": false,
+        "rigid_system_count": 1,
+        "rigid_systems": [
+          {
+            "aromatic": false,
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11
+            ],
+            "attachment_atom_ids": [
+              3
+            ],
+            "attachment_vectors": [
+              {
+                "angle_deg": 78.49927472455876,
+                "atom_id": 3,
+                "length": 43.79715206748342,
+                "neighbor_id": 12,
+                "vector": [
+                  0.19938033872364636,
+                  0.9799221808544004
+                ]
+              }
+            ],
+            "bond_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12
+            ],
+            "bridgehead_atom_ids": [],
+            "centroid": [
+              3.875687649600546e-15,
+              4.844609562000683e-15
+            ],
+            "external_neighbor_ids": [
+              12
+            ],
+            "external_substituent_count": 1,
+            "family": "spiro",
+            "id": 1,
+            "kind": "spiro",
+            "local_congestion": {
+              "attachment_count": 1,
+              "crowded_pair_count": 0,
+              "minimum_angle_deg": null
+            },
+            "principal_orientation": [
+              0.1508642137237493,
+              -0.9885544947131215
+            ],
+            "ring_aromatic_flags": [
+              false,
+              false
+            ],
+            "ring_count": 2,
+            "ring_ids": [
+              2,
+              5
+            ],
+            "ring_relationships": [
+              {
+                "relationship": "spiro",
+                "ring_ids": [
+                  2,
+                  5
+                ],
+                "shared_atom_ids": [
+                  1
+                ],
+                "shared_bond_ids": []
+              }
+            ],
+            "shared_atom_ids": [
+              1
+            ],
+            "shared_bond_ids": []
+          }
+        ],
+        "ring_count": 2,
+        "ring_systems": [
+          {
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11
+            ],
+            "block_ids": [],
+            "bridgehead_atom_ids": [],
+            "id": 1,
+            "kind": "spiro",
+            "ring_ids": [
+              2,
+              5
+            ],
+            "shared_atom_ids": [
+              1
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "candidate": {
+        "accepted_by_engine": false,
+        "delta": {
+          "angle_error": 0.0,
+          "bond_length_error": 0.0,
+          "crossings": 0,
+          "exocyclic_attachment_angle": 0.0,
+          "min_nonbonded_distance": 0.0,
+          "ring_degeneracy": 0.0,
+          "visual_score": 0.0
+        },
+        "emitted": true,
+        "hard_gate_checks": {
+          "bond_length_sanity": true,
+          "bounding_box_sanity": true,
+          "collision_safety": true,
+          "displacement_budget": true,
+          "finite_coordinates": true,
+          "no_new_crossings": true,
+          "ring_degeneracy": true,
+          "selection_invariants": true,
+          "stereo_signature": true
+        },
+        "hard_gates_passed": true,
+        "metrics_after": {
+          "angle_error": 40.25048138366055,
+          "bond_length_error": 2.1312936623702354,
+          "crossings": 3,
+          "exocyclic_attachment_angle": 45.0,
+          "min_nonbonded_distance": 21.740799788611742,
+          "quality_class": "needs_rebuild",
+          "ring_degeneracy": 0.9068996821171088,
+          "visual_score": 60815.902460140576
+        },
+        "metrics_before": {
+          "angle_error": 40.25048138366055,
+          "bond_length_error": 2.1312936623702354,
+          "crossings": 3,
+          "exocyclic_attachment_angle": 45.0,
+          "min_nonbonded_distance": 21.740799788611742,
+          "quality_class": "needs_rebuild",
+          "ring_degeneracy": 0.9068996821171088,
+          "visual_score": 60815.902460140576
+        },
+        "rejection_reason": "rigid_multiring_no_improvement",
+        "rigid_system_types": [
+          "monocycle"
+        ],
+        "selected": false,
+        "source": "rigid_multiring_layout",
+        "strategy": "rigid_multiring_layout"
+      },
+      "case": "two_rigid_blocks_linker",
+      "family": "multiple-rigid-blocks",
+      "result": {
+        "accepted_sources": [
+          "internal_templates",
+          "rdkit_isolated"
+        ],
+        "rejected_sources": [
+          "block_layout",
+          "clean2d_v2",
+          "current",
+          "global_block_placement",
+          "rdkit_direct",
+          "rigid_multiring_layout",
+          "safe_fallback"
+        ],
+        "result_state": "applied",
+        "selected": false,
+        "selected_source": "internal_templates"
+      },
+      "topology": {
+        "multiple_rigid_blocks": true,
+        "rigid_system_count": 2,
+        "rigid_systems": [
+          {
+            "aromatic": true,
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "attachment_atom_ids": [
+              1
+            ],
+            "attachment_vectors": [
+              {
+                "angle_deg": 19.59228189105153,
+                "atom_id": 1,
+                "length": 125.25174649480941,
+                "neighbor_id": 13,
+                "vector": [
+                  0.9421026317177148,
+                  0.33532466552664425
+                ]
+              }
+            ],
+            "bond_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "bridgehead_atom_ids": [],
+            "centroid": [
+              0.0,
+              -1.1842378929335002e-15
+            ],
+            "external_neighbor_ids": [
+              13
+            ],
+            "external_substituent_count": 1,
+            "family": "monocycle",
+            "id": 1,
+            "kind": "monocycle",
+            "local_congestion": {
+              "attachment_count": 1,
+              "crowded_pair_count": 0,
+              "minimum_angle_deg": null
+            },
+            "principal_orientation": [
+              0.7071067811865476,
+              0.7071067811865475
+            ],
+            "ring_aromatic_flags": [
+              true
+            ],
+            "ring_count": 1,
+            "ring_ids": [
+              2
+            ],
+            "ring_relationships": [],
+            "shared_atom_ids": [],
+            "shared_bond_ids": []
+          },
+          {
+            "aromatic": true,
+            "atom_ids": [
+              7,
+              8,
+              9,
+              10,
+              11,
+              12
+            ],
+            "attachment_atom_ids": [
+              7
+            ],
+            "attachment_vectors": [
+              {
+                "angle_deg": 45.0,
+                "atom_id": 7,
+                "length": 59.39696961966999,
+                "neighbor_id": 14,
+                "vector": [
+                  0.7071067811865476,
+                  0.7071067811865476
+                ]
+              }
+            ],
+            "bond_ids": [
+              7,
+              8,
+              9,
+              10,
+              11,
+              12
+            ],
+            "bridgehead_atom_ids": [],
+            "centroid": [
+              118.0,
+              -1.1842378929335002e-15
+            ],
+            "external_neighbor_ids": [
+              14
+            ],
+            "external_substituent_count": 1,
+            "family": "monocycle",
+            "id": 2,
+            "kind": "monocycle",
+            "local_congestion": {
+              "attachment_count": 1,
+              "crowded_pair_count": 0,
+              "minimum_angle_deg": null
+            },
+            "principal_orientation": [
+              0.7071067811865476,
+              0.7071067811865475
+            ],
+            "ring_aromatic_flags": [
+              true
+            ],
+            "ring_count": 1,
+            "ring_ids": [
+              5
+            ],
+            "ring_relationships": [],
+            "shared_atom_ids": [],
+            "shared_bond_ids": []
+          }
+        ],
+        "ring_count": 2,
+        "ring_systems": [
+          {
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "block_ids": [
+              1,
+              3
+            ],
+            "bridgehead_atom_ids": [],
+            "id": 1,
+            "kind": "monocycle",
+            "ring_ids": [
+              2
+            ],
+            "shared_atom_ids": []
+          },
+          {
+            "atom_ids": [
+              7,
+              8,
+              9,
+              10,
+              11,
+              12
+            ],
+            "block_ids": [
+              2,
+              3
+            ],
+            "bridgehead_atom_ids": [],
+            "id": 2,
+            "kind": "monocycle",
+            "ring_ids": [
+              5
+            ],
+            "shared_atom_ids": []
+          }
+        ]
+      }
+    },
+    {
+      "candidate": {
+        "accepted_by_engine": false,
+        "delta": {
+          "angle_error": -43.11462344355363,
+          "bond_length_error": 0.0,
+          "crossings": 0,
+          "exocyclic_attachment_angle": null,
+          "min_nonbonded_distance": 37.577665193399554,
+          "ring_degeneracy": 0.0,
+          "visual_score": -482.9232119195694
+        },
+        "emitted": true,
+        "hard_gate_checks": {
+          "bond_length_sanity": true,
+          "bounding_box_sanity": true,
+          "collision_safety": true,
+          "displacement_budget": true,
+          "finite_coordinates": true,
+          "no_new_crossings": true,
+          "ring_degeneracy": true,
+          "selection_invariants": true,
+          "stereo_signature": true
+        },
+        "hard_gates_passed": true,
+        "metrics_after": {
+          "angle_error": 0.0,
+          "bond_length_error": 0.734643664753764,
+          "crossings": 0,
+          "exocyclic_attachment_angle": null,
+          "min_nonbonded_distance": 48.19191860324899,
+          "quality_class": "needs_rebuild",
+          "ring_degeneracy": 0.9068996821171088,
+          "visual_score": 127.588805580395
+        },
+        "metrics_before": {
+          "angle_error": 43.11462344355363,
+          "bond_length_error": 0.734643664753764,
+          "crossings": 0,
+          "exocyclic_attachment_angle": null,
+          "min_nonbonded_distance": 10.614253409849436,
+          "quality_class": "needs_rebuild",
+          "ring_degeneracy": 0.9068996821171088,
+          "visual_score": 610.5120174999644
+        },
+        "rejection_reason": "enlace_estructural_demasiado_corto",
+        "rigid_system_types": [
+          "monocycle"
+        ],
+        "selected": false,
+        "source": "rigid_multiring_layout",
+        "strategy": "rigid_multiring_layout"
+      },
+      "case": "congested_ring_attachments",
+      "family": "congested",
+      "result": {
+        "accepted_sources": [
+          "rdkit_isolated",
+          "safe_fallback"
+        ],
+        "rejected_sources": [
+          "clean2d_v2",
+          "current",
+          "rdkit_direct",
+          "rigid_multiring_layout"
+        ],
+        "result_state": "applied",
+        "selected": false,
+        "selected_source": "rdkit_isolated"
+      },
+      "topology": {
+        "multiple_rigid_blocks": false,
+        "rigid_system_count": 1,
+        "rigid_systems": [
+          {
+            "aromatic": true,
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "attachment_atom_ids": [
+              1,
+              2,
+              3
+            ],
+            "attachment_vectors": [
+              {
+                "angle_deg": 164.05460409907712,
+                "atom_id": 1,
+                "length": 43.68065933568311,
+                "neighbor_id": 7,
+                "vector": [
+                  -0.9615239476408232,
+                  0.27472112789737807
+                ]
+              },
+              {
+                "angle_deg": -57.98576830030672,
+                "atom_id": 2,
+                "length": 10.614253409849441,
+                "neighbor_id": 8,
+                "vector": [
+                  0.5301298945653674,
+                  -0.8479164433410361
+                ]
+              },
+              {
+                "angle_deg": 122.54292390406174,
+                "atom_id": 3,
+                "length": 67.61656601750786,
+                "neighbor_id": 9,
+                "vector": [
+                  -0.537931295557488,
+                  0.8429886839453081
+                ]
+              }
+            ],
+            "bond_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "bridgehead_atom_ids": [],
+            "centroid": [
+              0.0,
+              -1.1842378929335002e-15
+            ],
+            "external_neighbor_ids": [
+              7,
+              8,
+              9
+            ],
+            "external_substituent_count": 3,
+            "family": "monocycle",
+            "id": 1,
+            "kind": "monocycle",
+            "local_congestion": {
+              "attachment_count": 3,
+              "crowded_pair_count": 1,
+              "minimum_angle_deg": 41.51168019501539
+            },
+            "principal_orientation": [
+              0.7071067811865476,
+              0.7071067811865475
+            ],
+            "ring_aromatic_flags": [
+              true
+            ],
+            "ring_count": 1,
+            "ring_ids": [
+              2
+            ],
+            "ring_relationships": [],
+            "shared_atom_ids": [],
+            "shared_bond_ids": []
+          }
+        ],
+        "ring_count": 1,
+        "ring_systems": [
+          {
+            "atom_ids": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "block_ids": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "bridgehead_atom_ids": [],
+            "id": 1,
+            "kind": "monocycle",
+            "ring_ids": [
+              2
+            ],
+            "shared_atom_ids": []
+          }
+        ]
+      }
+    }
+  ],
+  "historical_reference": "346b229",
+  "protected_campaign3_cases": [
+    {
+      "case": "multiblock_biphenyl_like",
+      "result_state": "applied",
+      "selected_source": "rdkit_isolated"
+    },
+    {
+      "case": "multiblock_triphenyl_like",
+      "result_state": "applied",
+      "selected_source": "global_block_placement"
+    },
+    {
+      "case": "multiblock_branched",
+      "result_state": "applied",
+      "selected_source": "global_block_placement"
+    },
+    {
+      "case": "acyclic_butane_stretched",
+      "result_state": "applied",
+      "selected_source": "clean2d_v2"
+    },
+    {
+      "case": "aromatic_benzene_regular",
+      "result_state": "applied",
+      "selected_source": "simple_aromatic_template"
+    }
+  ],
+  "schema": "complete-clean2d-campaign4-target-improvement/evidence-v1"
+}

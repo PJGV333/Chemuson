@@ -1252,6 +1252,29 @@ def rank_clean2d_candidates(
     else:
         accepted.sort(key=lambda item: (item.score, _source_priority(item.source), item.source))
     selected_candidate = accepted[0] if accepted else None
+    accepted_with_states = [
+        _replace_candidate(
+            candidate,
+            metadata={
+                **candidate.metadata,
+                "accepted_by_engine": True,
+                "selected": candidate is selected_candidate,
+            },
+        )
+        for candidate in accepted
+    ]
+    rejected_with_states = [
+        _replace_candidate(
+            candidate,
+            metadata={
+                **candidate.metadata,
+                "accepted_by_engine": False,
+                "selected": False,
+            },
+        )
+        for candidate in rejected
+    ]
+    selected_candidate = accepted_with_states[0] if accepted_with_states else None
     message = selected_candidate.message if selected_candidate is not None else ""
     reason = ""
     if selected_candidate is None:
@@ -1262,9 +1285,9 @@ def rank_clean2d_candidates(
         mode=mode,
         atom_ids=selected,
         before_coords=before_coords,
-        candidates=tuple(accepted),
+        candidates=tuple(accepted_with_states),
         selected=selected_candidate,
-        rejected=tuple(rejected),
+        rejected=tuple(rejected_with_states),
         message=message,
         reason=reason,
 )
@@ -2298,6 +2321,42 @@ def _candidate_from_rigid_multiring_layout(
     fused_template_applied = False
     cycles = _cycle_basis_ordered(atom_ids, bonds, max_size=18)
     for system in active_systems:
+        if str(system["family"]) != "spiro":
+            continue
+        system_atoms = set(cast(list[int], system["atom_ids"]))
+        shared_atoms = set(cast(list[int], system["shared_atom_ids"]))
+        if len(shared_atoms) != 1:
+            continue
+        center = min(shared_atoms)
+        ring_paths = sorted(
+            (
+                tuple(cycle)
+                for cycle in cycles
+                if center in cycle and set(cycle) <= system_atoms and len(cycle) >= 3
+            ),
+            key=lambda cycle: tuple(sorted(cycle)),
+        )
+        if len(ring_paths) != 2:
+            continue
+        principal = tuple(float(value) for value in cast(tuple[float, float], system["principal_orientation"]))
+        base_angle = math.atan2(principal[1], principal[0])
+        cx, cy = before[center]
+        for ring_index, path in enumerate(ring_paths):
+            center_index = path.index(center)
+            ordered = path[center_index:] + path[:center_index]
+            side = target
+            direction = base_angle + ring_index * math.pi
+            for position, atom_id in enumerate(ordered):
+                if position == 0:
+                    coords[atom_id] = (cx, cy)
+                    continue
+                angle = direction + (position - 1) * math.pi / 6.0
+                distance = side * (2.0 * math.sin(position * math.pi / 6.0))
+                coords[atom_id] = (
+                    cx + math.cos(angle) * distance,
+                    cy + math.sin(angle) * distance,
+                )
+    for system in active_systems:
         if str(system["family"]) not in {"fused", "polycyclic"}:
             continue
         if cast(list[int], system["external_neighbor_ids"]):
@@ -2428,6 +2487,17 @@ def _candidate_from_rigid_multiring_layout(
     rejection = "" if hard_gates_passed else "rigid_multiring_hard_gate_failed"
     if bridged_present:
         rejection = "bridged_reconstruction_unsafe"
+    improves = (
+        after_quality.quality_class != before_quality.quality_class
+        and _quality_rank(after_quality.quality_class) < _quality_rank(before_quality.quality_class)
+    ) or (
+        after_quality.visual_score + 1e-9 < before_quality.visual_score
+        or after_quality.crossings < before_quality.crossings
+    )
+    if not rejection and after_quality.visual_score > before_quality.visual_score + 1e-9:
+        rejection = "rigid_multiring_quality_regression"
+    elif not rejection and not improves:
+        rejection = "rigid_multiring_no_improvement"
     plan = plan_clean2d_block_assembly(graph, atom_ids)
     metadata = {
         "strategy": "rigid_multiring_layout",
@@ -2443,19 +2513,24 @@ def _candidate_from_rigid_multiring_layout(
         ],
         "rigid_systems": active_systems,
         "assembly_plan": plan,
-        "hard_gate_checks": sorted(hard_gate_checks),
+        "hard_gate_checks": hard_gate_checks,
         "hard_gates_passed": hard_gates_passed,
-        "accepted_by_engine": hard_gates_passed,
         "fallback": "preserve-only" if bridged_present else None,
         "metrics_before": {
             "quality_class": before_quality.quality_class,
             "ring_degeneracy": before_ring_score,
             "bond_length_error": before_quality.length_max_error,
+            "crossings": before_quality.crossings,
+            "visual_score": before_quality.visual_score,
+            "min_nonbonded_distance": before_quality.min_nonbonded_distance,
         },
         "metrics_after": {
             "quality_class": after_quality.quality_class,
             "ring_degeneracy": after_ring_score,
             "bond_length_error": after_quality.length_max_error,
+            "crossings": after_quality.crossings,
+            "visual_score": after_quality.visual_score,
+            "min_nonbonded_distance": after_quality.min_nonbonded_distance,
         },
     }
     return Clean2DCandidate(
