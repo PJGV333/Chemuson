@@ -143,9 +143,113 @@ class RailButton(QToolButton):
 FlyoutItem = tuple[str, str, str]  # (id, label, visual: clave SVG o "glyph:<texto>")
 
 
+def _wrap_text(text: str, fm, width: int) -> str:
+    """Word-wrap greedy por espacios + ruptura de palabra larga.
+
+    El `wordWrap` de QLabel no rompe palabras más anchas que el ancho
+    disponible (se desbordan y se recortan); esto replica lo que haría el
+    navegador en `.flyout-item .lbl`.
+    """
+    lines: list[str] = []
+    cur: list[str] = []
+    cur_w = 0
+
+    def flush() -> None:
+        nonlocal cur, cur_w
+        if cur:
+            lines.append(" ".join(cur))
+        cur, cur_w = [], 0
+
+    for word in text.split(" "):
+        ww = fm.horizontalAdvance(word)
+        if ww > width:
+            flush()  # palabra larga: romperla por caracteres
+            piece = ""
+            for ch in word:
+                if fm.horizontalAdvance(piece + ch) <= width:
+                    piece += ch
+                else:
+                    lines.append(piece)
+                    piece = ch
+            if piece:
+                lines.append(piece)
+            continue
+        trial_w = cur_w + (fm.horizontalAdvance(" ") if cur else 0) + ww
+        if trial_w <= width:
+            cur.append(word)
+            cur_w = trial_w
+        else:
+            flush()
+            cur = [word]
+            cur_w = ww
+    flush()
+    return "\n".join(lines)
+
+
+class FlyoutCell(QFrame):
+    """Celda de flyout: icono 22 px + etiqueta con word-wrap (1-3 líneas).
+
+    Equivalente HTML: `.flyout-item` (flex column, `svg 22px`, `.lbl` 10.5 px
+    con `text-align: center` y *sin* `white-space: nowrap` → el texto se
+    envuelve). QToolButton no envuelve el texto (elide), por esto es un QFrame
+    custom con QLabel word-wrap.
+    """
+    clicked = pyqtSignal()
+
+    def __init__(self, icons: IconProvider, theme_getter: ThemeGetter,
+                 label: str, visual: str, col_w: int, parent=None):
+        super().__init__(parent)
+        self.icons, self._tg = icons, theme_getter
+        self._visual = visual
+        self.setProperty("cls", "flyItem")
+        self.setToolTip(label)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFixedWidth(col_w)
+        # altura mínima de una línea: sin ella, cuando QGridLayout recalcula
+        # mal tras un repopulate, las filas se colapsan a 0 px
+        self.setMinimumHeight(56)
+        v = QVBoxLayout(self)
+        v.setContentsMargins(2, 8, 2, 7)  # HTML: padding 8px 2px 7px
+        v.setSpacing(5)                   # HTML: gap 5px
+        self.ic = QLabel()
+        self.ic.setFixedSize(22, 22)      # HTML: svg 22x22
+        self.ic.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl = QLabel(label)
+        self.lbl.setObjectName("flyLbl")
+        self.lbl.setWordWrap(True)
+        self.lbl.setAlignment(
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
+        v.addWidget(self.ic, 0, Qt.AlignmentFlag.AlignHCenter)
+        v.addWidget(self.lbl)
+        # envoltura manual (10 px, como el QSS #flyLbl): el QLabel solo
+        # rompe por espacios; las palabras largas se recortarían
+        from PyQt6.QtGui import QFontMetrics
+        f10 = self.lbl.font(); f10.setPixelSize(10)
+        self.lbl.setText(_wrap_text(label, QFontMetrics(f10), col_w - 6))
+
+    def click(self) -> None:
+        """API de QToolButton para el smoke test."""
+        self.clicked.emit()
+
+    def mousePressEvent(self, e) -> None:  # noqa: N802
+        if e.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(e)
+
+    def set_active(self, on: bool) -> None:
+        self.setProperty("active", on)
+        st = self.style(); st.unpolish(self); st.polish(self)
+        t = self._tg()
+        color = t["accentStrong"] if on else t["text2"]
+        self.ic.setPixmap(self.icons.pixmap(self._visual, color, 22))
+        self.update()
+
+
 class Flyout(QFrame):
     """Flyout de paleta: cabecera + cuadrícula de opciones + pie opcional.
 
+    Ancho fijo 244 px (HTML: `.flyout { width: 244px; padding: 11px }`);
+    la cuadrícula divide ese ancho en N columnas como el `grid repeat(N, 1fr)`.
     Se muestra con `show_near(...)`; se cierra con Esc, al elegir una opción o
     al hacer clic fuera (event filter global que instala el app).
     """
@@ -155,6 +259,7 @@ class Flyout(QFrame):
         self.icons, self._tg = icons, theme_getter
         self.setObjectName("flyout")
         self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setFixedWidth(METRICS["flyoutW"])
         self._items: list[QToolButton] = []
         self._ids: list[str] = []
         self._visuals: list[str] = []
@@ -169,7 +274,8 @@ class Flyout(QFrame):
 
         head = QHBoxLayout(); head.setSpacing(8)
         self.title = QLabel(); self.title.setObjectName("flyoutTitle")
-        head.addWidget(self.title); head.addStretch(1); head.addWidget(Kbd("Esc"))
+        self._kbd = Kbd("Esc")
+        head.addWidget(self.title); head.addStretch(1); head.addWidget(self._kbd)
         lay.addLayout(head)
 
         self.grid = QGridLayout(); self.grid.setSpacing(6)
@@ -191,30 +297,49 @@ class Flyout(QFrame):
         shadow(self, theme_getter)
 
     # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    def _replace_grid(self) -> QGridLayout:
+        """Recrea la cuadrícula en cada populate.
+
+        Reutilizar un QGridLayout tras vaciarlo (takeAt × N) deja
+        `totalSize()` obsoleto (0) en Qt 6.11; con el flyout *visible*,
+        `adjustSize()` usa ese sizeHint y colapsa el flyout (filas a 0 px).
+        Un grid nuevo parte de estado limpio y su sizeHint se calcula bien
+        (comportamiento igual al primer populate, que siempre funciona).
+        """
+        outer = self.layout()
+        idx = 0
+        for i in range(outer.count()):
+            if outer.itemAt(i).layout() is self.grid:
+                idx = i
+                break
+        outer.takeAt(idx)  # quita el QLayoutItem del layout padre
+        old = self.grid
+        self.grid = QGridLayout()
+        self.grid.setSpacing(6)
+        outer.insertLayout(idx, self.grid)
+        old.deleteLater()
+        return self.grid
+
     def populate(self, title: str, cols: int, items: Sequence[FlyoutItem],
                  foot: tuple[str, str] | None = None,
                  active_id: str | None = None) -> None:
         self.title.setText(title.upper())
         self._active_id = active_id
         for it in self._items:
-            it.deleteLater()
+            it.hide()          # fuera de render de inmediato (evita solapamiento
+            it.deleteLater()   # mientras el deferred delete se procesa)
         self._items = []
-        while self.grid.count():
-            self.grid.takeAt(0)  # suelta los QToolButton (ya deleteLater)
+        self._replace_grid()
+        # HTML: width 244 + padding 11 → contenido 222; grid repeat(N, 1fr),
+        # gap 6 → ancho de columna = (222 - (N-1)*6) / N
+        content_w = METRICS["flyoutW"] - 22
+        col_w = (content_w - (cols - 1) * self.grid.spacing()) // cols
         for i, (iid, label, visual) in enumerate(items):
-            btn = QToolButton(self)
-            btn.setProperty("cls", "flyItem")
-            btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
-            btn.setIconSize(QSize(22, 22))
-            btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setFixedSize(47, 47)
-            btn.setToolTip(label)
-            btn.setText(label)
-            f = btn.font(); f.setPixelSize(10); f.setWeight(500)
-            btn.setFont(f)
-            btn.clicked.connect(lambda _=False, id=iid, lb=label: self._pick(id, lb))
-            self.grid.addWidget(btn, i // cols, i % cols)
-            self._items.append(btn)
+            cell = FlyoutCell(self.icons, self._tg, label, visual, col_w, self)
+            cell.clicked.connect(lambda _=False, id=iid, lb=label: self._pick(id, lb))
+            self.grid.addWidget(cell, i // cols, i % cols)
+            self._items.append(cell)
             self._ids.append(iid)
             self._visuals.append(visual)
         self._foot_action = None
@@ -224,8 +349,32 @@ class Flyout(QFrame):
             self.foot_txt.setText(foot[1] if len(foot) > 1 else "")
         else:
             self.foot_box.hide(); self.foot_sep.hide()
-        self.adjustSize()
+        self._set_content_height(len(items), cols, foot is not None)
         self._restyle_items()
+
+    def _set_content_height(self, n_items: int, cols: int, has_foot: bool) -> None:
+        """Altura explícita, calculada de los sizeHints de las celdas.
+
+        Con el flyout *visible y con parent*, el sizeHint del layout
+        (QVBoxLayout/QGridLayout) queda inválido (QSize()) hasta que el
+        event loop procesa un layout pass; `adjustSize()` usaba ese valor y
+        colapsaba el flyout a 41 px. Los sizeHints de las celdas (QFrame +
+        QVBoxLayout simples) son siempre válidos, así que la altura se
+        calcula directamente — sizing por contenido, igual que el HTML.
+        """
+        rows = (n_items + cols - 1) // cols
+        grid_h = 0
+        for r in range(rows):
+            row = self._items[r * cols:(r + 1) * cols]
+            grid_h += max(c.sizeHint().height() for c in row) + (6 if r else 0)
+        head_h = max(self.title.sizeHint().height(), self._kbd.sizeHint().height())
+        h = 11 + head_h + 9 + grid_h  # margins 11 + spacing 9 (QVBoxLayout)
+        if has_foot:
+            foot_h = max(self.foot_txt.sizeHint().height(),
+                         self.foot_btn.sizeHint().height())
+            h += 9 + 1 + foot_h  # spacing + separador 1 px + contenido
+        h += 11
+        self.setFixedHeight(h)
 
     def _pick(self, iid: str, label: str) -> None:
         self._active_id = iid
@@ -253,14 +402,8 @@ class Flyout(QFrame):
         self.move(x, y)
 
     def _restyle_items(self) -> None:
-        for b, iid, visual in zip(self._items, self._ids, self._visuals):
-            on = iid == self._active_id
-            b.setProperty("active", on)
-            st = b.style(); st.unpolish(b); st.polish(b)
-            f = b.font(); f.setWeight(600 if on else 500); b.setFont(f)
-            color = self._tg()["accentStrong"] if on else self._tg()["text2"]
-            b.setIcon(self.icons.icon(visual, color, 22))
-            b.update()
+        for c, iid in zip(self._items, self._ids):
+            c.set_active(iid == self._active_id)
 
     def set_active(self, iid: str | None) -> None:
         self._active_id = iid
@@ -282,18 +425,23 @@ class Flyout(QFrame):
 # panel derecho
 # ---------------------------------------------------------------------------
 class _SideTabStrip(QFrame):
-    """Strip interior: dibuja la sublínea de acento del tab activo."""
+    """Strip interior: fondo opaco surface + sublínea de acento del tab activo.
+
+    El fondo se pinta a mano (sin cadena de transparencia): una cadena de
+    `WA_TranslucentBackground` + viewport transparente no se compone en todas
+    las plataformas (offscreen la pinta con #000000/#ffffff sin definir).
+    """
 
     def __init__(self, row: "SideTabRow"):
         super().__init__()
         self._row = row
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
     def paintEvent(self, e) -> None:  # noqa: N802
         super().paintEvent(e)
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         t = self._row._tg()
+        p.fillRect(self.rect(), QColor(t["surface"]))
         if 0 <= self._row._active < len(self._row._buttons):
             b = self._row._buttons[self._row._active]
             r = b.geometry()
@@ -370,7 +518,19 @@ class SideTabRow(QFrame):
     def set_active(self, i: int) -> None:
         self._select(i)
 
+    def _update_tab_widths(self) -> None:
+        """Recalcula el ancho de cada tab con la fuente *actual*.
+
+        Los tabs se crean antes de aplicar la fuente del tema; sin esto el
+        minimumWidth queda corto y QToolButton elide la etiqueta («Ins...tor»).
+        """
+        from PyQt6.QtGui import QFontMetrics
+        for b in self._buttons:
+            fm = QFontMetrics(b.font())
+            b.setMinimumWidth(fm.horizontalAdvance(b.text()) + 20)
+
     def refresh_theme(self) -> None:
+        self._update_tab_widths()
         for b in self._buttons:
             st = b.style(); st.unpolish(b); st.polish(b)
         self.update()

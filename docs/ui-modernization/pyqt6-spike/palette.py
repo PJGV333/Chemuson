@@ -116,7 +116,19 @@ class CommandPalette(QWidget):
         self._rebuild()
         self.show()
         self.raise_()
+        self._position_card()
         self.input.setFocus()
+
+    def _position_card(self) -> None:
+        """Centra la tarjeta como el mockup: width min(600, 92vw), margin 11vh auto 0."""
+        pr = self.parent().rect()
+        pw, ph = pr.width(), pr.height()
+        cw = min(600, max(320, int(pw * 0.92)))
+        self.card.setFixedWidth(cw)
+        h = max(self.card.sizeHint().height(), 120)
+        x = (pw - cw) // 2
+        y = int(ph * 0.11)
+        self.card.setGeometry(x, y, cw, h)
 
     def close_overlay(self) -> None:
         self._visible = False

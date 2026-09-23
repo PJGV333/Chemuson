@@ -100,6 +100,7 @@ METRICS = {
     "railBtn": 42,
     "railIcon": 21,
     "sideW": 324,
+    "flyoutW": 244,
     "radiusSurface": 10,
     "radiusBtn": 9,
     "radiusRail": 11,
@@ -214,16 +215,18 @@ QFrame#flyout, QFrame#paletteCard {
 }
 QFrame#flyout { border-radius: 13px; }
 #flyoutTitle { color: @@text3@@; font-size: 10px; font-weight: 700; }
-QToolButton[cls="flyItem"] {
+/* celdas = QFrame custom (FlyoutCell): QToolButton no envuelve el texto */
+QFrame[cls="flyItem"] {
   background: transparent; border: 1px solid transparent;
-  border-radius: 9px; padding: 7px 2px 6px;
-  color: @@text2@@; font-size: 10px;
+  border-radius: 9px;
 }
-QToolButton[cls="flyItem"]:hover { background: @@surface2@@; color: @@text1@@; }
-QToolButton[cls="flyItem"][active="true"] {
+#flyLbl { color: @@text2@@; font-size: 10px; font-weight: 500; background: transparent; }
+QFrame[cls="flyItem"]:hover { background: @@surface2@@; }
+QFrame[cls="flyItem"]:hover #flyLbl { color: @@text1@@; }
+QFrame[cls="flyItem"][active="true"] {
   background: @@accentSoft@@; border: 1px solid @@accentBorder@@;
-  color: @@accentStrong@@; font-weight: 600;
 }
+QFrame[cls="flyItem"][active="true"] #flyLbl { color: @@accentStrong@@; font-weight: 600; }
 #flyoutFootTxt { color: @@text3@@; font-size: 10px; }
 QToolButton[cls="flyFoot"] {
   background: transparent; border: none;
@@ -268,6 +271,8 @@ QToolButton[cls="sideTab"] {
 QToolButton[cls="sideTab"]:hover { color: @@text1@@; }
 QToolButton[cls="sideTab"][active="true"] { color: @@text1@@; font-weight: 600; }
 #sideTabSep { background: @@border@@; }
+QScrollArea#sideTabsScroll { border: none; background: transparent; }
+QScrollArea#sideTabsScroll > QWidget { background: @@surface@@; }
 #sideBody { background: @@surface@@; }
 QScrollArea#sideScroll { border: none; background: transparent; }
 QScrollArea#sideScroll > QWidget > QWidget { background: transparent; }
