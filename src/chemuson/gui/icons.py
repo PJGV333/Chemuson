@@ -92,6 +92,7 @@ GENERIC_ICON_MAP: dict[str, str] = {
     "pointer": "pointer",
     "eraser": "eraser",
     "pan": "pan",
+    "sliders": "sliders",
     "rotate_left": "rotate-left",
     "rotate_right": "rotate-right",
     "flip_horizontal": "flip-horizontal",

@@ -15,11 +15,30 @@ class MainWindowUiBuilder:
     """Construcción declarativa de menús y barras principales."""
 
     def create_local_actions(self, window) -> None:
+        self._create_shell_actions(window)
         self._create_template_actions(window)
         self._create_canvas_size_actions(window)
         self._create_misc_actions(window)
         self._create_analysis_actions(window)
         self._create_text_actions(window)
+
+    def _create_shell_actions(self, window) -> None:
+        """Acciones del shell superior (app bar) y preferencias.
+
+        Fase 3: ``action_preferences`` se crea aquí (antes se creaba en
+        ``build_menu_bar``) para que exista cuando se monta la app bar; es el
+        mismo objeto con la misma conexión y el mismo item de menú.
+        ``action_theme_toggle`` es la única QAction nueva de la Fase 3 y se
+        conecta al handler existente ``ChemusonWindow.toggle_theme`` (sin
+        duplicar lógica ni atajos).
+        """
+        window.action_preferences = QAction("Preferencias...", window)
+        window.action_preferences.triggered.connect(window._on_preferences)
+        window.action_theme_toggle = QAction(
+            "Cambiar tema claro/oscuro", window
+        )
+        window.action_theme_toggle.setCheckable(True)
+        window.action_theme_toggle.toggled.connect(window.toggle_theme)
 
     def build_menu_bar(self, window) -> None:
         menubar = window.menuBar()
@@ -59,8 +78,6 @@ class MainWindowUiBuilder:
         bond_thickness_menu.addAction(window.action_bond_thickness_down)
         bond_thickness_menu.addAction(window.action_bond_thickness_reset)
         edit_menu.addSeparator()
-        window.action_preferences = QAction("Preferencias...", window)
-        window.action_preferences.triggered.connect(window._on_preferences)
         edit_menu.addAction(window.action_preferences)
 
         view_menu = menubar.addMenu("Ver")
@@ -150,6 +167,9 @@ class MainWindowUiBuilder:
         window.action_branch_auto_arrange.setIcon(draw_generic_icon("clean"))
         window.action_clean_2d.setIcon(draw_generic_icon("clean"))
         window.action_draw_smiles.setIcon(draw_atom_icon("SMI"))
+        # Fase 3: la app bar muestra la Preferencias (sliders) vía el mismo
+        # QAction (``setDefaultAction`` hereda su icono).
+        window.action_preferences.setIcon(draw_generic_icon("sliders"))
 
     def set_main_toolbar_aux_visible(self, window, visible: bool) -> None:
         if not hasattr(window, "main_toolbar"):

@@ -112,6 +112,13 @@ class ChemusonWindow(QMainWindow):
                 toolbar.setStyleSheet(toolbar_stylesheet)
         if hasattr(self, "_ui_builder"):
             self._ui_builder.refresh_main_toolbar_icons(self)
+        if hasattr(self, "action_theme_toggle"):
+            self.action_theme_toggle.blockSignals(True)
+            self.action_theme_toggle.setChecked(resolved_theme == "dark")
+            self.action_theme_toggle.blockSignals(False)
+        app_bar = getattr(self, "app_bar", None)
+        if app_bar is not None:
+            app_bar.refresh_icons(resolved_theme)
         for widget_name in ("toolbar", "symbols_toolbar", "text_toolbar"):
             widget = getattr(self, widget_name, None)
             if widget is not None and hasattr(widget, "refresh_icons"):
@@ -206,6 +213,70 @@ class ChemusonWindow(QMainWindow):
         if canvas is None:
             return
         self._set_active_canvas(canvas, clear_tool_selection=True)
+        app_bar = getattr(self, "app_bar", None)
+        if app_bar is not None:
+            app_bar.select(index)
+
+    # -------------------------------------------------------------------------
+    # App bar / pestañas de documento (Fase 3)
+    # -------------------------------------------------------------------------
+    def _on_document_tabs_changed(self, _tab_manager) -> None:
+        """Observer de ``CanvasTabManager``: resync completo del espejo."""
+        self._sync_app_bar_tabs()
+
+    def _on_document_tab_updated(self, _tab_manager, canvas) -> None:
+        """Callback ``on_tab_updated`` de ``CanvasTabManager``.
+
+        ``update_tab_title`` (contrato histórico de título + ``" *"``) acaba
+        de ejecutarse; pasa el mismo estado real al espejo de la pestaña.
+        """
+        self._sync_app_bar_tab_text(self.tabs.indexOf(canvas))
+
+    def _on_document_tab_activated(self, index: int) -> None:
+        """Clic en una pestaña del espejo: activa la pestaña real existente."""
+        if 0 <= index < self.tabs.count() and index != self.tabs.currentIndex():
+            self.tabs.setCurrentIndex(index)
+
+    def _on_document_tab_moved(self, from_index: int, to_index: int) -> None:
+        """Reordenamiento por drag en el espejo: mueve la pestaña real."""
+        if 0 <= from_index < self.tabs.count():
+            self.tabs.tabBar().moveTab(from_index, to_index)
+
+    def _sync_app_bar_tabs(self) -> None:
+        """Resincroniza el espejo completo con el estado real de pestañas.
+
+        Se invoca tras cada cambio estructural (observer de
+        ``CanvasTabManager``). Títulos desde ``tab_manager.tab_titles`` y
+        suciedad desde ``undo_stack.isClean()``: el mismo estado que usa
+        ``CanvasTabManager.update_tab_title`` (no se inventa un segundo
+        estado).
+        """
+        app_bar = getattr(self, "app_bar", None)
+        if app_bar is None or not self._tabs_alive():
+            return
+        titles: list[str] = []
+        dirty: list[bool] = []
+        for index in range(self.tabs.count()):
+            canvas = self._canvas_from_tab_index(index)
+            if canvas is None:
+                continue
+            titles.append(self._tab_manager.tab_titles.get(canvas, "Sin título"))
+            dirty.append(not canvas.undo_stack.isClean())
+        app_bar.sync_tabs(titles, dirty, self.tabs.currentIndex())
+
+    def _sync_app_bar_tab_text(self, index: int) -> None:
+        """Actualiza título/suciedad de una pestaña del espejo (estado real)."""
+        app_bar = getattr(self, "app_bar", None)
+        if app_bar is None or not self._tabs_alive() or index < 0:
+            return
+        canvas = self._canvas_from_tab_index(index)
+        if canvas is None:
+            return
+        app_bar.set_tab(
+            index,
+            self._tab_manager.tab_titles.get(canvas, "Sin título"),
+            not canvas.undo_stack.isClean(),
+        )
 
     def _on_tab_close_requested(self, index: int) -> None:
         """Maneja cierre por botón X de una pestaña."""

@@ -736,6 +736,167 @@ QToolTip {{
     background-color: {c('surface2')};
     border: 1px solid {c('border')};
 }}
+
+/* =========================================================== */
+/* App Bar y pestañas de documento (Fase 3, lenguaje del spike) */
+/* =========================================================== */
+QFrame#app_bar {{
+    background-color: {c('surface')};
+    border: none;
+    border-bottom: 1px solid {c('border')};
+}}
+
+QFrame#app_bar QLabel {{
+    background: transparent;
+}}
+
+#appBrandName {{
+    color: {c('text1')};
+    font-size: 14px;
+    font-weight: 700;
+}}
+
+#appVersionPill {{
+    color: {c('text3')};
+    font-size: 10px;
+    font-weight: 600;
+    border: 1px solid {c('border')};
+    border-radius: 5px;
+    padding: 1px 5px;
+    background: transparent;
+}}
+
+/* Pestañas de documento (espejo del QTabWidget) */
+QTabBar#docTabs {{
+    background: transparent;
+}}
+
+QTabBar#docTabs::tab {{
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-bottom: 1px solid transparent;
+    border-radius: 8px;
+    padding: 5px 8px 5px 10px;
+    margin-right: 2px;
+    color: {c('text2')};
+    font-size: {_FONT_SMALL}px;
+    font-weight: 400;
+    min-width: 86px;
+    max-width: 190px;
+}}
+
+QTabBar#docTabs::tab:hover {{
+    background-color: {c('surface2')};
+    color: {c('text1')};
+}}
+
+QTabBar#docTabs::tab:selected {{
+    background-color: {c('surface3')};
+    color: {c('text1')};
+    font-weight: 600;
+    border: 1px solid transparent;
+    border-bottom: 2px solid {c('accent')};
+}}
+
+QTabBar#docTabs::tab:selected:hover {{
+    background-color: {c('surface3')};
+}}
+
+QTabBar#docTabs::left-scrollbar,
+QTabBar#docTabs::right-scrollbar {{
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    border: 1px solid {c('border')};
+    border-radius: 7px;
+    background-color: {c('surface2')};
+}}
+
+QTabBar#docTabs::left-scrollbar:hover,
+QTabBar#docTabs::right-scrollbar:hover {{
+    border: 1px solid {c('borderStrong')};
+}}
+
+#tabNewBtn {{
+    background-color: transparent;
+    border: 1px dashed {c('borderStrong')};
+    border-radius: 8px;
+    color: {c('text2')};
+}}
+
+#tabNewBtn:hover {{
+    color: {c('accentStrong')};
+    border: 1px dashed {c('accentBorder')};
+    background-color: {c('accentSoft')};
+}}
+
+QToolButton[tabClose="true"] {{
+    background-color: transparent;
+    border: none;
+    border-radius: 5px;
+}}
+
+QToolButton[tabClose="true"]:hover {{
+    background-color: {c('border')};
+}}
+
+#dirtyDot {{
+    background-color: {c('accent')};
+    border-radius: 4px;
+}}
+
+/* Píldora de búsqueda (placeholder de la command palette, Fase 6) */
+#searchPill {{
+    background-color: {c('surface2')};
+    border: 1px solid {c('border')};
+    border-radius: 9px;
+}}
+
+#searchPill:hover {{
+    border: 1px solid {c('borderStrong')};
+}}
+
+#searchPillTxt {{
+    color: {c('text3')};
+    font-size: {_FONT_SMALL}px;
+    background: transparent;
+}}
+
+#searchPill:hover #searchPillTxt {{
+    color: {c('text2')};
+}}
+
+#kbdK {{
+    color: {c('text2')};
+    font-size: 10px;
+    font-weight: 700;
+    background-color: {c('surface')};
+    border: 1px solid {c('borderStrong')};
+    border-bottom: 2px solid {c('borderStrong')};
+    border-radius: 5px;
+    padding: 1px 5px;
+}}
+
+/* Botones de la app bar (32 px) */
+QToolButton[appBarBtn="true"] {{
+    background-color: transparent;
+    border: none;
+    border-radius: 9px;
+}}
+
+QToolButton[appBarBtn="true"]:hover {{
+    background-color: {c('surface2')};
+}}
+
+QToolButton[appBarBtn="true"]:pressed {{
+    background-color: {c('surface3')};
+}}
+
+QFrame#abarSep {{
+    background-color: {c('border')};
+    max-width: 1px;
+    min-width: 1px;
+}}
 """
 
 
