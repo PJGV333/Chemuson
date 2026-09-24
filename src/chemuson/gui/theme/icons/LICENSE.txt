@@ -1,0 +1,23 @@
+# Licencia y atribución del set de iconos SVG de ChemUSON
+
+Set **propio** de ChemUSON: archivos SVG originales creados para este
+proyecto en la Fase 2 de la modernización de la UI (ver
+`openspec/changes/2026-09-24-modernize-ui-svg-icons/`).
+
+- **Formato**: rejilla 24×24 (`viewBox="0 0 24 24"`), trazo
+  `currentColor` de 1.75 px, `stroke-linecap`/`stroke-linejoin` redondeados.
+  El tinte lo aplica `chemuson.gui.theme.icon_provider.IconProvider`
+  (sustitución de `currentColor` + `QSvgRenderer`), por lo que todos los
+  archivos son monocromos y theme-aware.
+- **Origen de las geometrías**: set escrito a mano para ChemUSON. Parte de
+  las geometrías procede del spike PyQt6 aprobado de este mismo proyecto
+  (`docs/ui-modernization/pyqt6-spike/icons/`, commit `59e977d`), que también
+  es obra propia del proyecto. El lenguaje visual (trazo uniforme, rejilla
+  24 px) es el mismo que usan sets de código abierto como Lucide (ISC) y
+  Tabler (MIT); **no se han copiado archivos ni datos de esos sets**, ni de
+  ningún otro tercero.
+- **Sin dependencias externas**: no se descarga ni empaqueta ninguna
+  biblioteca de iconos; no hay assets rasterizados (PNG) en esta carpeta.
+
+Licencia de los archivos de esta carpeta: misma licencia del repositorio
+ChemUSON (ver `LICENSE` en la raíz del proyecto).
