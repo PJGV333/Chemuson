@@ -532,6 +532,8 @@ modules:
   - clean2d_geometry
   - editor2d
   - theme
+  - app_bar
+  - document_tabs
   name: gui
   notes: 'GUI importa todos los subsistemas de dominio para orquestación. No implementa
     lógica química pesada. items.py es un módulo individual (no paquete): src/chemuson/gui/items.py
@@ -540,14 +542,21 @@ modules:
     compatibilidad. Desde la fase 2, gui/icons.py es una fachada 1:1 sobre el
     IconProvider (SVG estáticos en gui/theme/icons/ + SVG dinámico en
     gui/theme/icon_svg.py): misma API pública, tint theme-aware, HiDPI y caché; el
-    pixel-loop de tint y QIcon.fromTheme quedaron eliminados.'
+    pixel-loop de tint y QIcon.fromTheme quedaron eliminados. Desde la fase 3, el
+    shell superior es la app bar (gui/app_bar.py) con DocumentTabBar (gui/document_tabs.py)
+    como espejo de solo-lectura del QTabWidget de documentos (fuente de verdad:
+    CanvasTabManager + QUndoStack); se reutilizan las QAction reales (undo/redo/
+    preferencias + action_theme_toggle sobre toggle_theme) y la toolbar superior
+    clásica queda oculta (no eliminada).'
   paths:
   - src/chemuson/gui/__init__.py
+  - src/chemuson/gui/app_bar.py
   - src/chemuson/gui/editor2d/__init__.py
   - src/chemuson/gui/composite_diagram_item.py
   - src/chemuson/gui/diagram_layout.py
   - src/chemuson/gui/diagram_models.py
   - src/chemuson/gui/diagram_presets.py
+  - src/chemuson/gui/document_tabs.py
   - src/chemuson/gui/docks.py
   - src/chemuson/gui/elemental_analysis_dialog.py
   - src/chemuson/gui/energy_diagrams.py
@@ -648,6 +657,7 @@ modules:
   - tests/architecture/test_application_shell.py
   - tests/test_ui_theme_foundation.py
   - tests/test_ui_svg_icons.py
+  - tests/test_ui_app_bar_tabs.py
   title: Orquestación de interfaz PyQt6
 - circular_dependencies: []
   current_dependencies:

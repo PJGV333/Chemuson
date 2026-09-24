@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Optional
 
 from PyQt6.QtCore import QTimer, Qt
-from PyQt6.QtWidgets import QLabel, QTabWidget, QTextEdit
+from PyQt6.QtWidgets import QLabel, QTabWidget, QTextEdit, QWidget, QVBoxLayout
 
 from chemuson.gui.actions import (
     create_edit_actions,
@@ -13,6 +13,7 @@ from chemuson.gui.actions import (
     create_project_actions,
     create_update_actions,
 )
+from chemuson.gui.app_bar import AppBar
 from chemuson.gui.canvas import ChemusonCanvas
 from chemuson.gui.controllers import (
     Clean2DController,
@@ -100,8 +101,41 @@ def assemble_application_shell(self) -> None:
     self.tabs.setDocumentMode(True)
     self.tabs.setTabsClosable(True)
     self.tabs.setMovable(True)
-    self.setCentralWidget(self.tabs)
-    self._tab_manager = CanvasTabManager(self.tabs, autosave_parent=self)
+    self._tab_manager = CanvasTabManager(
+        self.tabs,
+        autosave_parent=self,
+        on_change=self._on_document_tabs_changed,
+        on_tab_updated=self._on_document_tab_updated,
+    )
+
+    # === APP BAR (Fase 3) ===
+    # Shell superior (marca, pestañas de documento, búsqueda placeholder,
+    # undo/redo, tema y ajustes). Reemplaza visualmente la franja superior
+    # clásica; la `main_toolbar` histórica se oculta abajo (no se elimina).
+    self.app_bar = AppBar(
+        parent=self,
+        version=self._app_version,
+        undo_action=self.action_undo,
+        redo_action=self.action_redo,
+        preferences_action=self.action_preferences,
+        theme_action=self.action_theme_toggle,
+    )
+    central = QWidget(self)
+    central_layout = QVBoxLayout(central)
+    central_layout.setContentsMargins(0, 0, 0, 0)
+    central_layout.setSpacing(0)
+    central_layout.addWidget(self.app_bar)
+    central_layout.addWidget(self.tabs)
+    self.setCentralWidget(central)
+    # La tab bar nativa del QTabWidget se sustituye visualmente por la
+    # DocumentTabBar (espejo); el QTabWidget sigue siendo la fuente de
+    # verdad de documentos (páginas, currentIndex, señales).
+    self.tabs.tabBar().hide()
+    self.app_bar.tabActivated.connect(self._on_document_tab_activated)
+    self.app_bar.closeRequested.connect(self._on_tab_close_requested)
+    self.app_bar.newDocumentRequested.connect(self.action_new.trigger)
+    self.app_bar.tabMoved.connect(self._on_document_tab_moved)
+
     self._canvas_file_paths = self._tab_manager.file_paths
     self._canvas_tab_titles = self._tab_manager.tab_titles
     self._canvas_autosave_managers = self._tab_manager.autosave_managers
@@ -219,6 +253,9 @@ def assemble_application_shell(self) -> None:
     # === MENU AND TOOLBARS ===
     self._create_menu_bar()
     self._create_main_toolbar()
+    # Fase 3: la toolbar superior clásica deja de mostrarse; sus QAction
+    # siguen accesibles por menú, atajos y app bar (objetos conservados).
+    self.main_toolbar.setVisible(False)
     self._sync_label_menu_state()
     self._template_browser.migrate_legacy_templates(self._template_browser_context())
     self._template_browser.refresh_template_views(self._template_browser_context())

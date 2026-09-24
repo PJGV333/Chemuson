@@ -80,7 +80,14 @@ class _QtAutosaveManager(QObject):
 
 
 class CanvasTabManager:
-    """Gestiona pestañas de documento, metadatos y autosave asociados."""
+    """Gestiona pestañas de documento, metadatos y autosave asociados.
+
+    ``on_change`` (opcional; Fase 3) se invoca tras cada cambio
+    estructural (``create_document_tab``/``discard_canvas``) para que un
+    espejo de pestañas (la ``DocumentTabBar`` de la app bar) pueda
+    resincronizarse. Por defecto ``None``: comportamiento idéntico al
+    histórico para todos los callers existentes.
+    """
 
     def __init__(
         self,
@@ -89,11 +96,15 @@ class CanvasTabManager:
         autosave_parent: QObject,
         canvas_factory: Callable[[], ChemusonCanvas] = ChemusonCanvas,
         autosave_factory: AutosaveFactory = _QtAutosaveManager,
+        on_change: Optional[Callable[["CanvasTabManager"], None]] = None,
+        on_tab_updated: Optional[Callable[["CanvasTabManager", ChemusonCanvas], None]] = None,
     ) -> None:
         self.tabs = tabs
         self._autosave_parent = autosave_parent
         self._canvas_factory = canvas_factory
         self._autosave_factory = autosave_factory
+        self._on_change = on_change
+        self._on_tab_updated = on_tab_updated
         self.file_paths: dict[ChemusonCanvas, Optional[str]] = {}
         self.tab_titles: dict[ChemusonCanvas, str] = {}
         self.autosave_managers: dict[ChemusonCanvas, AutosaveController] = {}
@@ -173,7 +184,13 @@ class CanvasTabManager:
         self.update_tab_title(canvas)
         if make_current:
             self.tabs.setCurrentIndex(index)
+        self._notify_change()
         return canvas
+
+    def _notify_change(self) -> None:
+        """Avisa al observer opcional de un cambio estructural de pestañas."""
+        if self._on_change is not None:
+            self._on_change(self)
 
     def on_canvas_clean_state_changed(
         self,
@@ -207,7 +224,11 @@ class CanvasTabManager:
         return clean_path
 
     def update_tab_title(self, canvas: ChemusonCanvas) -> None:
-        """Actualiza título y tooltip del canvas dentro del tab widget."""
+        """Actualiza título y tooltip del canvas dentro del tab widget.
+
+        Tras actualizar, invoca ``on_tab_updated`` (opcional; Fase 3) para
+        que el espejo de la app bar se actualice con el mismo estado real.
+        """
         if not self.tabs_alive():
             return
         try:
@@ -221,6 +242,8 @@ class CanvasTabManager:
             self.tabs.setTabToolTip(index, path or "Documento sin guardar")
         except RuntimeError:
             return
+        if self._on_tab_updated is not None:
+            self._on_tab_updated(self, canvas)
 
     def discard_canvas(self, canvas: ChemusonCanvas) -> bool:
         """Elimina una pestaña y limpia su estado asociado sin pedir confirmación."""
@@ -234,6 +257,7 @@ class CanvasTabManager:
         self.file_paths.pop(canvas, None)
         self.tab_titles.pop(canvas, None)
         canvas.deleteLater()
+        self._notify_change()
         return True
 
     def close_canvas_tab(

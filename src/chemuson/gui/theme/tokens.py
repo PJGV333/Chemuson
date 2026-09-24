@@ -148,6 +148,8 @@ METRICS: dict[str, int] = {
     "fontBase": 13,
     "fontSmall": 12,
     "fontTiny": 11,
+    # Fase 3 (shell superior)
+    "appbarH": 54,
 }
 
 
