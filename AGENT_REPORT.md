@@ -76,3 +76,58 @@ operational-resilience audit commit.
 - Final full regression suite: `1496 passed, 55 skipped`.
 - Compileall and scoped Ruff passed; global OpenSpec validation is `35 passed, 0 failed`.
 - Qt offscreen smoke exited with `qt_recovery_smoke_exit=0`.
+
+## UI modernization — Fase 1: theme foundation (2026-09-24, branch ui/modernization)
+
+OpenSpec: `2026-09-24-modernize-ui-theme-foundation` (validado `--strict`).
+Implementación de la Fase 0+1 de `docs/ui-modernization/PLAN.md` sobre la
+referencia visual aprobada del spike PyQt6 (commit `59e977d`).
+
+### Decisiones y desviaciones registradas
+
+- **Tokens: el spike es la referencia, no la tabla textual de PLAN.md §2.2**
+  (diferencias de valores y de vocabulario; registrado en el proposal §6 y
+  design D1). Único ajuste sobre el spike: los rellenos suaves del tema
+  oscuro pasaron de `rgba(r,g,b,a)` a hex `#AARRGGBB` (color idéntico)
+  porque `QColor` no parsea `rgba()` (mantiene "todo token es color válido";
+  QSS acepta ambos formatos).
+- **`styles.py` como fachada**: PLAN.md Fase 1 hablaba de "función única";
+  en producción existen 2 generadores + 2 constantes con callers reales
+  (`main_window.py`, `toolbar.py`); la fachada conserva los 4 nombres y las
+  paletas legadas como alias de tokens (deprecation documentada).
+- **Persistencia del tema**: antes no existía (`assembly.py` hardcodeaba
+  `"light"`). Se añade `ui/theme` vía M21 (`UiPreferences` + load/save);
+  `"system"` queda aceptado/normalizado por la API y persistible, pero sin
+  opción visible en Preferencias (viene con la fase de ajustes).
+- **IconProvider**: implementado como infraestructura (Fase 2 migra
+  `icons.py`); `icons.py` intacto según instrucción.
+- **Sin nuevas dependencias**: solo PyQt6 (QtSvg ya disponible).
+
+### Entorno de tests (quirk)
+
+- Worktree sin `.venv`; el venv del checkout principal tiene el stack
+  runtime pero no pytest/ruff. Validación con entorno efímero:
+  `uv run --no-project --offline --python <venv principal>/bin/python --with
+  pytest --with ruff --with PyQt6 --with numpy --with Pillow --with rdkit
+  --with certifi --with PyYAML` (todo resuelto desde la caché de uv; sin
+  instalaciones nuevas). Con `HOME` aislada es necesario fijar también
+  `UV_CACHE_DIR` (uv usa `$HOME/.cache/uv`).
+- Baseline (ver `openspec/changes/2026-09-24-modernize-ui-theme-foundation/baseline.md`):
+  1583 passed / 20 skipped / 4 failed preexistentes (candidate generation +
+  stereo import) y 1 ruff F401 preexistente en un test de Clean2D (fuera de
+  alcance; no corregido por política de no refactors oportunistas).
+
+### Verificación
+
+- `openspec validate 2026-09-24-modernize-ui-theme-foundation --strict`: OK.
+- Tests de la fundación: `tests/test_ui_theme_foundation.py` (tokens,
+  resolución light/dark/system, aplicación sin excepciones, QSS/QPalette,
+  fachada `styles.py`, ventana real, IconProvider caché/HiDPI) +
+  `tests/test_platform_settings.py` (round-trip `ui/theme`).
+- Smoke Qt offscreen de la ventana real con ambos temas:
+  `SMOKE: OK` (capturas en `docs/ui-modernization/foundation-shots/`).
+- Ámbito del diff restringido a: `gui/theme/` (nuevo), `styles.py`,
+  `main_window.py`, `shell/assembly.py`, `platform/`, `architecture/modules.yml`,
+  tests y OpenSpec/docs. Intactos: `clean2d/`, `chemname/`,
+  `chemio/persistence.py`, `gui/canvas/`, `gui/icons.py`, `gui/toolbar.py`,
+  `gui/docks.py`, `gui/style.py`, `gui/dialogs/`.

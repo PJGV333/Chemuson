@@ -26,7 +26,8 @@ from chemuson.gui.canvas import (
 )
 from chemuson.gui.elemental_analysis_dialog import ElementalAnalysisDialog
 from chemuson.gui.periodic_table import PeriodicTableDialog
-from chemuson.gui.styles import get_main_stylesheet, get_tool_palette_stylesheet
+from chemuson.gui.styles import get_tool_palette_stylesheet
+from chemuson.gui.theme import apply_theme, resolve_theme_name
 from chemuson.gui.icons import set_icon_theme
 from chemuson.gui.dialogs import PreferencesDialog, QuickStartDialog, StyleDialog
 from chemuson.gui.template_library import DEFAULT_CATEGORY_USER
@@ -75,8 +76,11 @@ from chemuson.gui.clean2d_geometry import (
 from chemuson.gui.shell import assemble_application_shell
 from chemuson.platform.settings import (
     NamingPreferences,
+    UiPreferences,
     load_naming_preferences,
+    load_ui_preferences,
     save_naming_preferences,
+    save_ui_preferences,
     setting_bool,
 )
 from chemuson.update import UpdateSettings
@@ -99,9 +103,10 @@ class ChemusonWindow(QMainWindow):
 
     def _apply_theme(self) -> None:
         """Aplica el tema actual a la ventana y a las barras con estilo propio."""
-        set_icon_theme(self.current_theme)
-        self.setStyleSheet(get_main_stylesheet(self.current_theme))
-        toolbar_stylesheet = get_tool_palette_stylesheet(self.current_theme)
+        resolved_theme = resolve_theme_name(self.current_theme)
+        apply_theme(self, resolved_theme)
+        set_icon_theme(resolved_theme)
+        toolbar_stylesheet = get_tool_palette_stylesheet(resolved_theme)
         for toolbar in (getattr(self, "toolbar", None), getattr(self, "symbols_toolbar", None)):
             if toolbar is not None:
                 toolbar.setStyleSheet(toolbar_stylesheet)
@@ -119,6 +124,14 @@ class ChemusonWindow(QMainWindow):
         else:
             self.current_theme = "dark" if checked else "light"
         self._apply_theme()
+
+    def _load_theme_preferences(self) -> None:
+        """Carga el tema persistido (M21, clave ``ui/theme``).
+
+        Sustituye el valor por defecto asignado durante el ensamblaje;
+        valores ausentes o inválidos resuelven a ``light`` (M21).
+        """
+        self.current_theme = load_ui_preferences(self._settings).theme
 
     def _create_menu_bar(self) -> None:
         """Construye menús principales delegando el wiring repetitivo."""
@@ -1323,12 +1336,15 @@ class ChemusonWindow(QMainWindow):
         self.canvas.state.show_implicit_hydrogens = prefs.get("show_hydrogens", False)
         self.canvas.state.use_aromatic_circles = prefs.get("aromatic_circles", False)
         bond_caps = prefs.get("bond_caps")
-        theme = str(prefs.get("theme", self.current_theme))
+        theme = str(prefs.get("theme", self.current_theme)).strip().lower()
+        if theme not in ("light", "dark", "system"):
+            theme = "light"
         if bond_caps:
             self._apply_bond_caps(bond_caps)
         if theme != self.current_theme:
-            self.current_theme = "dark" if theme == "dark" else "light"
+            self.current_theme = theme
             self._apply_theme()
+            save_ui_preferences(self._settings, UiPreferences(theme=theme))
 
         self.action_show_carbons.setChecked(self.canvas.state.show_implicit_carbons)
         self.action_show_hydrogens.setChecked(self.canvas.state.show_implicit_hydrogens)
