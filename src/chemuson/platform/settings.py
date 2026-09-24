@@ -30,6 +30,22 @@ class NumberingPreferences:
     include_export: bool = True
 
 
+@dataclass(frozen=True, slots=True)
+class UiPreferences:
+    """Preferencias de interfaz (tema) persistidas.
+
+    ``theme`` admite ``"light"``, ``"dark"`` o ``"system"`` (valor lógico
+    preparado para la opción "seguir sistema"; el resolve a light/dark lo
+    hace la capa de temas, no este módulo).
+    """
+
+    theme: str = "light"
+
+
+#: Valores válidos para ``ui/theme`` (incluye el valor lógico ``system``).
+UI_THEME_CHOICES: tuple[str, ...] = ("light", "dark", "system")
+
+
 def application_settings() -> QSettings:
     """Create the application's persistent settings store."""
     return QSettings("Chemuson", "Chemuson")
@@ -81,3 +97,23 @@ def save_numbering_preferences(settings: SettingsStore, preferences: NumberingPr
     settings.remove("numbering/enabled")
     settings.setValue("numbering/mode", str(preferences.mode))
     settings.setValue("numbering/include_export", bool(preferences.include_export))
+
+
+def load_ui_preferences(settings: SettingsStore) -> UiPreferences:
+    """Read and normalize persistent UI preferences (theme).
+
+    Valores ausentes o inválidos resuelven a ``"light"`` (comportamiento
+    histórico de la aplicación).
+    """
+    raw = str(settings.value("ui/theme", "light") or "light").strip().lower()
+    if raw not in UI_THEME_CHOICES:
+        raw = "light"
+    return UiPreferences(theme=raw)
+
+
+def save_ui_preferences(settings: SettingsStore, preferences: UiPreferences) -> None:
+    """Persist UI preferences under the ``ui/*`` keys."""
+    theme = str(preferences.theme).strip().lower()
+    if theme not in UI_THEME_CHOICES:
+        theme = "light"
+    settings.setValue("ui/theme", theme)

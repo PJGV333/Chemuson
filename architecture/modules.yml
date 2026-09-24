@@ -531,10 +531,13 @@ modules:
   - background_workers
   - clean2d_geometry
   - editor2d
+  - theme
   name: gui
   notes: 'GUI importa todos los subsistemas de dominio para orquestación. No implementa
     lógica química pesada. items.py es un módulo individual (no paquete): src/chemuson/gui/items.py
-    (5704 líneas).'
+    (5704 líneas). El subpaquete gui/theme centraliza design tokens, QSS/QPalette y la
+    aplicación de temas (fase 1 modernización UI); styles.py queda como fachada de
+    compatibilidad y icon_provider prepara la migración de iconos (fase 2).'
   paths:
   - src/chemuson/gui/__init__.py
   - src/chemuson/gui/editor2d/__init__.py
@@ -574,6 +577,7 @@ modules:
   - src/chemuson/gui/shell/
   - src/chemuson/gui/background_workers.py
   - src/chemuson/gui/clean2d_geometry.py
+  - src/chemuson/gui/theme/
   public_api:
   - ChemusonWindow
   responsibility: 'UI PyQt6: ventana principal, canvas/editor 2D, acciones, docks,
@@ -639,6 +643,7 @@ modules:
   - tests/test_linux_distribution_scripts.py
   - tests/test_release_version_script.py
   - tests/architecture/test_application_shell.py
+  - tests/test_ui_theme_foundation.py
   title: Orquestación de interfaz PyQt6
 - circular_dependencies: []
   current_dependencies:
@@ -1236,11 +1241,15 @@ modules:
   public_api:
   - NamingPreferences
   - NumberingPreferences
+  - UI_THEME_CHOICES
+  - UiPreferences
   - application_settings
   - load_naming_preferences
   - load_numbering_preferences
+  - load_ui_preferences
   - save_naming_preferences
   - save_numbering_preferences
+  - save_ui_preferences
   - setting_bool
   responsibility: Configuración persistente de aplicación y resolución de recursos
     empaquetados sin dependencia de GUI.

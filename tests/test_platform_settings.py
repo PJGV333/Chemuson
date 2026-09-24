@@ -5,10 +5,14 @@ from dataclasses import dataclass
 from chemuson.platform.settings import (
     NamingPreferences,
     NumberingPreferences,
+    UI_THEME_CHOICES,
+    UiPreferences,
     load_naming_preferences,
     load_numbering_preferences,
+    load_ui_preferences,
     save_naming_preferences,
     save_numbering_preferences,
+    save_ui_preferences,
     setting_bool,
 )
 
@@ -52,3 +56,25 @@ def test_numbering_preferences_normalize_and_save() -> None:
     assert settings.values["numbering/mode"] == "both"
     assert settings.values["numbering/include_export"] is True
     assert "numbering/enabled" not in settings.values
+
+
+def test_ui_preferences_roundtrip_and_normalize() -> None:
+    assert set(UI_THEME_CHOICES) == {"light", "dark", "system"}
+
+    assert load_ui_preferences(FakeSettings({"ui/theme": "dark"})) == UiPreferences(theme="dark")
+    assert load_ui_preferences(FakeSettings({"ui/theme": "system"})) == UiPreferences(theme="system")
+
+    # Valores inválidos o ausentes resuelven a light (comportamiento histórico).
+    assert load_ui_preferences(FakeSettings({"ui/theme": "neon"})) == UiPreferences(theme="light")
+    assert load_ui_preferences(FakeSettings({})) == UiPreferences(theme="light")
+
+    settings = FakeSettings({})
+    save_ui_preferences(settings, UiPreferences(theme="system"))
+    assert settings.values["ui/theme"] == "system"
+
+    save_ui_preferences(settings, UiPreferences(theme="invalid"))
+    assert settings.values["ui/theme"] == "light"
+
+    # El valor persistido se relee normalizado.
+    settings = FakeSettings({"ui/theme": "DARK"})
+    assert load_ui_preferences(settings).theme == "dark"

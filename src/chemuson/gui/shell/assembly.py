@@ -67,6 +67,7 @@ def assemble_application_shell(self) -> None:
     self._numbering_default_include_export = True
     self._current_tool_id = "tool_select"
     self._settings = application_settings()
+    self._load_theme_preferences()
     self._document_controller = DocumentController()
     self._file_controller = FileController()
     self._update_controller = UpdateController(self._settings, self._app_version)
