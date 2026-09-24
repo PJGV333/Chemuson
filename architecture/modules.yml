@@ -537,7 +537,10 @@ modules:
     lógica química pesada. items.py es un módulo individual (no paquete): src/chemuson/gui/items.py
     (5704 líneas). El subpaquete gui/theme centraliza design tokens, QSS/QPalette y la
     aplicación de temas (fase 1 modernización UI); styles.py queda como fachada de
-    compatibilidad y icon_provider prepara la migración de iconos (fase 2).'
+    compatibilidad. Desde la fase 2, gui/icons.py es una fachada 1:1 sobre el
+    IconProvider (SVG estáticos en gui/theme/icons/ + SVG dinámico en
+    gui/theme/icon_svg.py): misma API pública, tint theme-aware, HiDPI y caché; el
+    pixel-loop de tint y QIcon.fromTheme quedaron eliminados.'
   paths:
   - src/chemuson/gui/__init__.py
   - src/chemuson/gui/editor2d/__init__.py
@@ -644,6 +647,7 @@ modules:
   - tests/test_release_version_script.py
   - tests/architecture/test_application_shell.py
   - tests/test_ui_theme_foundation.py
+  - tests/test_ui_svg_icons.py
   title: Orquestación de interfaz PyQt6
 - circular_dependencies: []
   current_dependencies:
