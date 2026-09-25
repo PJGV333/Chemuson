@@ -4,7 +4,8 @@
 SVG del ``IconProvider``): marca (``flask`` + nombre + versión),
 ``DocumentTabBar`` (espejo del ``QTabWidget`` de documentos), botón ``+``,
 píldora de búsqueda **placeholder** de la futura command palette (Fase 6;
-no registra atajo: Ctrl+K pertenece hoy a ``action_clean_2d_full``) y
+no registra atajo: Ctrl+K pertenece hoy a ``action_clean_2d_full``; el hint
+visual ``Ctrl K`` queda oculto hasta que la Fase 6 implemente la paleta) y
 botones undo/redo/tema/ajustes que **sostienen las QAction existentes** de
 la ventana (``setDefaultAction`` → icono, tooltip con atajo y estado
 habilitado reales; sin duplicar handlers ni shortcuts).
@@ -60,9 +61,13 @@ class SearchPill(QFrame):
     """Píldora de búsqueda de la app bar.
 
     **Placeholder de la Fase 6** (command palette): visual según el mockup
-    (icono + "Buscar o ejecutar…" + kbd "Ctrl K") pero sin atajo ni lógica
-    en esta fase; al pulsarla emite :signal:`activated` para que la Fase 6
-    conecte la paleta sin cambiar este widget.
+    (icono + "Buscar o ejecutar…") pero sin atajo ni lógica en esta fase;
+    al pulsarla emite :signal:`activated` para que la Fase 6 conecte la
+    paleta sin cambiar este widget.
+
+    El badge ``Ctrl K`` queda **oculto** (``self.kbd``) hasta la Fase 6:
+    hoy Ctrl+K pertenece a ``action_clean_2d_full`` y no se cambia ese
+    atajo; el hint regresa junto con la command palette.
     """
 
     activated = pyqtSignal()
@@ -86,11 +91,13 @@ class SearchPill(QFrame):
         self.icon_label = QLabel(self)
         self.text_label = QLabel("Buscar o ejecutar…", self)
         self.text_label.setObjectName("searchPillTxt")
+        # El badge Ctrl K se mantiene construido (lo reactiva la Fase 6)
+        # pero oculto: Ctrl+K sigue siendo el de Clean2D full.
         self.kbd = KbdHint("Ctrl K", self)
+        self.kbd.hide()
         layout.addWidget(self.icon_label)
         layout.addWidget(self.text_label)
         layout.addStretch(1)
-        layout.addWidget(self.kbd)
 
     def mousePressEvent(self, event) -> None:  # noqa: N802
         if event.button() == Qt.MouseButton.LeftButton:

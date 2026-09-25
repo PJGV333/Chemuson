@@ -108,10 +108,28 @@ def assemble_application_shell(self) -> None:
         on_tab_updated=self._on_document_tab_updated,
     )
 
+    # === TEXT FORMAT TOOLBAR ===
+    # Se crea aquí (antes del layout central) porque la Fase 3 la integra
+    # visualmente en el layout central, debajo de la app bar: jerarquía
+    # QMenuBar -> AppBar -> TextFormatToolbar -> Canvas. No es una toolbar de
+    # área de QMainWindow: las acciones/señales son las mismas que antes
+    # (``TextFormatToolbar`` inalterado; solo cambia su contenedor).
+    self.text_toolbar = TextFormatToolbar()
+    self._external_text_editor: QTextEdit | None = None
+    self._external_text_cursor_state: tuple[int, int] | None = None
+    self._external_text_selected_range: tuple[int, int] | None = None
+    self.text_toolbar.format_changed.connect(self._on_text_format_changed)
+    self.text_toolbar.color_changed.connect(self._on_text_color_changed)
+    self.text_toolbar.alignment_changed.connect(self._on_text_alignment_changed)
+    self.text_toolbar.opacity_changed.connect(self._on_opacity_changed)
+
     # === APP BAR (Fase 3) ===
     # Shell superior (marca, pestañas de documento, búsqueda placeholder,
     # undo/redo, tema y ajustes). Reemplaza visualmente la franja superior
     # clásica; la `main_toolbar` histórica se oculta abajo (no se elimina).
+    # Orden vertical (polish Fase 3): QMenuBar (histórica) -> AppBar ->
+    # TextFormatToolbar -> Canvas. La barra de texto conserva todas sus
+    # acciones y señales; solo deja de ser toolbar de área superior.
     self.app_bar = AppBar(
         parent=self,
         version=self._app_version,
@@ -125,6 +143,7 @@ def assemble_application_shell(self) -> None:
     central_layout.setContentsMargins(0, 0, 0, 0)
     central_layout.setSpacing(0)
     central_layout.addWidget(self.app_bar)
+    central_layout.addWidget(self.text_toolbar)
     central_layout.addWidget(self.tabs)
     self.setCentralWidget(central)
     # La tab bar nativa del QTabWidget se sustituye visualmente por la
@@ -259,17 +278,6 @@ def assemble_application_shell(self) -> None:
     self._sync_label_menu_state()
     self._template_browser.migrate_legacy_templates(self._template_browser_context())
     self._template_browser.refresh_template_views(self._template_browser_context())
-
-    # === TEXT FORMAT TOOLBAR ===
-    self.text_toolbar = TextFormatToolbar()
-    self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self.text_toolbar)
-    self._external_text_editor: QTextEdit | None = None
-    self._external_text_cursor_state: tuple[int, int] | None = None
-    self._external_text_selected_range: tuple[int, int] | None = None
-    self.text_toolbar.format_changed.connect(self._on_text_format_changed)
-    self.text_toolbar.color_changed.connect(self._on_text_color_changed)
-    self.text_toolbar.alignment_changed.connect(self._on_text_alignment_changed)
-    self.text_toolbar.opacity_changed.connect(self._on_opacity_changed)
 
     # === SIGNAL CONNECTIONS ===
     self._connect_undo_redo()

@@ -173,7 +173,18 @@ class TestAppBarUnit:
         from PyQt6.QtGui import QShortcut
 
         assert bar.findChildren(QShortcut) == []
+        # Placeholder visible, sin badge Ctrl K (hoy es el de Clean2D;
+        # el hint regresa con la command palette de la Fase 6).
+        assert bar.search_pill.text_label.text() == "Buscar o ejecutar…"
         assert "Ctrl K" in bar.search_pill.kbd.text()
+        assert not bar.search_pill.kbd.isVisibleTo(bar.search_pill)
+        layout = bar.search_pill.layout()
+        layout_widgets = [
+            layout.itemAt(i).widget()
+            for i in range(layout.count())
+            if layout.itemAt(i) is not None
+        ]
+        assert bar.search_pill.kbd not in layout_widgets
 
     def test_theme_refresh_recolors_icons(self) -> None:
         app = _FakeActions()
@@ -270,11 +281,51 @@ class TestRealWindow:
         menu_titles = [a.text() for a in win.menuBar().actions()]
         for title in ("Archivo", "Editar", "Ver", "Estructura", "Reacción", "Ayuda"):
             assert any(title in m for m in menu_titles), title
-        # Wrapper central [app_bar, tabs]
+        # Wrapper central [app_bar, text_toolbar, tabs]
         central = win.centralWidget()
         assert central is not win.tabs
         assert win.app_bar.parent() is central
         assert win.tabs.parent() is central
+        assert win.text_toolbar.parent() is central
+
+    def test_vertical_hierarchy_appbar_above_text_toolbar(self) -> None:
+        """Polish Fase 3: QMenuBar -> AppBar -> TextFormatToolbar -> Canvas.
+
+        La ``TextFormatToolbar`` ya no es toolbar de área superior de
+        ``QMainWindow``; vive en el layout central, debajo de la app bar y
+        sobre las pestañas, conservando sus acciones y señales.
+        """
+        win = _make_action_window()
+        central = win.centralWidget()
+        layout = central.layout()
+        assert layout is not None
+        widgets = [
+            layout.itemAt(i).widget()
+            for i in range(layout.count())
+            if layout.itemAt(i) is not None and layout.itemAt(i).widget() is not None
+        ]
+        # Orden vertical exacto dentro del wrapper central.
+        assert win.app_bar in widgets
+        assert win.text_toolbar in widgets
+        assert win.tabs in widgets
+        assert widgets.index(win.app_bar) < widgets.index(win.text_toolbar)
+        assert widgets.index(win.text_toolbar) < widgets.index(win.tabs)
+        # No es una toolbar de área de QMainWindow (no compite por la franja
+        # superior con la app bar): su padre es el wrapper central, no la
+        # ventana.
+        from PyQt6.QtWidgets import QToolBar
+
+        direct_toolbars = [
+            tb for tb in win.findChildren(QToolBar) if tb.parentWidget() is win
+        ]
+        assert win.text_toolbar not in direct_toolbars
+        assert win.toolbar in direct_toolbars  # la izquierda sigue montada
+        # El handler real sigue en la ventana y la señal sigue viva.
+        assert callable(win._on_text_format_changed)
+        fired: list[bool] = []
+        win.text_toolbar.format_changed.connect(lambda *args: fired.append(True))
+        win.text_toolbar.format_changed.emit("Arial", 12, True, False, False, False, False, "bold")
+        assert fired == [True]
 
     def test_initial_single_tab_clean(self) -> None:
         win = _make_action_window()

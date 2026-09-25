@@ -101,7 +101,7 @@ capture("dark", (1440, 900), "appbar-phase", with_history=True)
 capture("light", (980, 600), "appbar-phase-narrow")
 
 # Limpia todo antes de cerrar (evita el diálogo de cambios sin guardar)
-y restaura el tema original persistido.
+# y restaura el tema original persistido.
 for canvas in list(win._tab_manager.iter_canvases()):
     canvas.undo_stack.setClean()
 win.current_theme = _original_theme
