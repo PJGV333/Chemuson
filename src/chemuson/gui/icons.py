@@ -171,6 +171,12 @@ def set_icon_theme(theme_name: str) -> None:
     """Actualiza el tema activo usado por los iconos monocromos."""
     global _ICON_THEME
     _ICON_THEME = "dark" if theme_name == "dark" else "light"
+    # La fachada conserva un provider global; sincroniza el raster cacheado
+    # al DPR del monitor actual si Qt ya dispone de pantalla primaria.
+    if _provider is not None:
+        _provider.set_device_pixel_ratio(
+            _provider.application_device_pixel_ratio()
+        )
 
 
 def _active_theme() -> str:

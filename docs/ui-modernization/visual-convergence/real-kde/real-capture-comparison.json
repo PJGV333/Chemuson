@@ -1,0 +1,250 @@
+{
+  "light": {
+    "real_size": [
+      1620,
+      957
+    ],
+    "regions": {
+      "appbar_logo": {
+        "real": {
+          "ink": 502,
+          "bbox": [
+            24,
+            21,
+            147,
+            44
+          ],
+          "region_wh": [
+            180,
+            54
+          ]
+        },
+        "gold": {
+          "ink": 355,
+          "bbox": [
+            11,
+            16,
+            114,
+            35
+          ],
+          "region_wh": [
+            180,
+            54
+          ]
+        },
+        "mean_abs_rgb_diff": 23.582030178326473
+      },
+      "rail_first6": {
+        "real": {
+          "ink": 262,
+          "bbox": [
+            26,
+            44,
+            44,
+            354
+          ],
+          "region_wh": [
+            58,
+            366
+          ]
+        },
+        "gold": {
+          "ink": 252,
+          "bbox": [
+            21,
+            24,
+            37,
+            365
+          ],
+          "region_wh": [
+            58,
+            366
+          ]
+        },
+        "mean_abs_rgb_diff": 7.1920576596947425
+      },
+      "rail_last_icons": {
+        "real": {
+          "ink": 217,
+          "bbox": [
+            27,
+            2,
+            43,
+            263
+          ],
+          "region_wh": [
+            58,
+            286
+          ]
+        },
+        "gold": {
+          "ink": 135,
+          "bbox": [
+            22,
+            17,
+            36,
+            125
+          ],
+          "region_wh": [
+            58,
+            286
+          ]
+        },
+        "mean_abs_rgb_diff": 5.73056828229242
+      },
+      "appbar_controls": {
+        "real": {
+          "ink": 85,
+          "bbox": [
+            107,
+            26,
+            172,
+            39
+          ],
+          "region_wh": [
+            200,
+            54
+          ]
+        },
+        "gold": {
+          "ink": 42,
+          "bbox": [
+            125,
+            21,
+            177,
+            29
+          ],
+          "region_wh": [
+            200,
+            54
+          ]
+        },
+        "mean_abs_rgb_diff": 4.6923765432098765
+      }
+    }
+  },
+  "dark": {
+    "real_size": [
+      1620,
+      957
+    ],
+    "regions": {
+      "appbar_logo": {
+        "real": {
+          "ink": 9185,
+          "bbox": [
+            0,
+            0,
+            179,
+            53
+          ],
+          "region_wh": [
+            180,
+            54
+          ]
+        },
+        "gold": {
+          "ink": 9327,
+          "bbox": [
+            0,
+            0,
+            179,
+            53
+          ],
+          "region_wh": [
+            180,
+            54
+          ]
+        },
+        "mean_abs_rgb_diff": 22.46570644718793
+      },
+      "rail_first6": {
+        "real": {
+          "ink": 20960,
+          "bbox": [
+            0,
+            0,
+            57,
+            365
+          ],
+          "region_wh": [
+            58,
+            366
+          ]
+        },
+        "gold": {
+          "ink": 20927,
+          "bbox": [
+            0,
+            0,
+            57,
+            365
+          ],
+          "region_wh": [
+            58,
+            366
+          ]
+        },
+        "mean_abs_rgb_diff": 10.696752716537906
+      },
+      "rail_last_icons": {
+        "real": {
+          "ink": 16371,
+          "bbox": [
+            0,
+            0,
+            57,
+            285
+          ],
+          "region_wh": [
+            58,
+            286
+          ]
+        },
+        "gold": {
+          "ink": 16433,
+          "bbox": [
+            0,
+            0,
+            57,
+            285
+          ],
+          "region_wh": [
+            58,
+            286
+          ]
+        },
+        "mean_abs_rgb_diff": 6.233642793987622
+      },
+      "appbar_controls": {
+        "real": {
+          "ink": 10689,
+          "bbox": [
+            0,
+            0,
+            199,
+            53
+          ],
+          "region_wh": [
+            200,
+            54
+          ]
+        },
+        "gold": {
+          "ink": 10716,
+          "bbox": [
+            0,
+            0,
+            199,
+            53
+          ],
+          "region_wh": [
+            200,
+            54
+          ]
+        },
+        "mean_abs_rgb_diff": 5.897253086419753
+      }
+    }
+  }
+}

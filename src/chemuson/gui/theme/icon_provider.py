@@ -31,7 +31,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt6.QtCore import QByteArray, Qt
+from PyQt6.QtCore import QByteArray, QRectF, Qt
 from PyQt6.QtGui import QGuiApplication, QIcon, QPainter, QPixmap
 from PyQt6.QtSvg import QSvgRenderer
 
@@ -53,12 +53,16 @@ def _render_svg(data: bytes, size: int, dpr: float) -> QPixmap:
     renderer = QSvgRenderer(QByteArray(data))
     px = max(1, int(round(size * dpr)))
     pixmap = QPixmap(px, px)
-    pixmap.setDevicePixelRatio(dpr)
     pixmap.fill(Qt.GlobalColor.transparent)
     if renderer.isValid():
+        # Mantener DPR=1 durante el pintado y dibujar explícitamente en
+        # coordenadas físicas evita el escalado/clipping del backend HiDPI.
         painter = QPainter(pixmap)
-        renderer.render(painter)
+        renderer.render(painter, QRectF(0.0, 0.0, float(px), float(px)))
         painter.end()
+    # Etiquetar el backing sólo después del render; su tamaño lógico queda
+    # como px / dpr (21×21 a DPR 2 -> 42×42 físicos).
+    pixmap.setDevicePixelRatio(dpr)
     return pixmap
 
 
@@ -77,14 +81,19 @@ class IconProvider:
         dpr: float | None = None,
         icons_dir: Path | str | None = None,
     ) -> None:
-        if dpr is None:
-            app = QGuiApplication.instance()
-            dpr = app.devicePixelRatio() if app is not None else 1.0
-        self._dpr = float(dpr)
+        self._dpr = float(dpr) if dpr is not None else self.application_device_pixel_ratio()
         self._icons_dir = Path(icons_dir) if icons_dir is not None else DEFAULT_ICONS_DIR
-        self._icon_cache: dict[tuple[str, str, int], QIcon] = {}
-        self._pixmap_cache: dict[tuple[str, str, int], QPixmap] = {}
+        self._icon_cache: dict[tuple[str, str, int, float], QIcon] = {}
+        self._pixmap_cache: dict[tuple[str, str, int, float], QPixmap] = {}
         self._svg_cache: dict[str, bytes] = {}
+
+    @staticmethod
+    def application_device_pixel_ratio() -> float:
+        app = QGuiApplication.instance()
+        if app is None:
+            return 1.0
+        screen = app.primaryScreen()
+        return float(screen.devicePixelRatio()) if screen is not None else 1.0
 
     # ------------------------------------------------------------------
     # Propiedades
@@ -133,11 +142,10 @@ class IconProvider:
     def icon(self, name: str, color: str, size: int = 20) -> QIcon:
         """``QIcon`` teñido para ``name`` (o vacío si no existe).
 
-        Caché por ``(name, color, size)``: la misma clave devuelve la misma
-        instancia, de modo que cambiar de tema (cambiar ``color``) produce
-        iconos distintos cacheados por tema.
+        Caché por ``(name, color, size, dpr)``: un cambio de DPR no reutiliza
+        un backing store renderizado para otra pantalla.
         """
-        key = (name, color, size)
+        key = (name, color, size, self._dpr)
         cached = self._icon_cache.get(key)
         if cached is not None:
             return cached
@@ -145,12 +153,27 @@ class IconProvider:
         self._icon_cache[key] = icon
         return icon
 
+    def set_device_pixel_ratio(self, dpr: float) -> None:
+        """Actualiza el DPR objetivo e invalida sólo representaciones Qt.
+
+        SVG ya cargados permanecen en caché; QIcon/QPixmap se vuelven a
+        rasterizar para el nuevo monitor/DPR.
+        """
+        resolved = float(dpr)
+        if resolved <= 0:
+            raise ValueError("dpr must be positive")
+        if resolved == self._dpr:
+            return
+        self._dpr = resolved
+        self._icon_cache.clear()
+        self._pixmap_cache.clear()
+
     def pixmap(self, name: str, color: str, size: int = 20) -> QPixmap:
         """``QPixmap`` suelto teñido (para ``QLabel``/``paintEvent``).
 
         Vacío (``isNull()``) si el icono no existe.
         """
-        key = (name, color, size)
+        key = (name, color, size, self._dpr)
         cached = self._pixmap_cache.get(key)
         if cached is not None:
             return cached
@@ -188,7 +211,7 @@ class IconProvider:
         name = self._dynamic_name(key, params)
         if name is None:
             return QIcon()
-        cache_key = (name, color, size)
+        cache_key = (name, color, size, self._dpr)
         cached = self._icon_cache.get(cache_key)
         if cached is not None:
             return cached
@@ -203,7 +226,7 @@ class IconProvider:
         name = self._dynamic_name(key, params)
         if name is None:
             return QPixmap()
-        cache_key = (name, color, size)
+        cache_key = (name, color, size, self._dpr)
         cached = self._pixmap_cache.get(cache_key)
         if cached is not None:
             return cached
