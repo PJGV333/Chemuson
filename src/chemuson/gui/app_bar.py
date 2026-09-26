@@ -131,6 +131,8 @@ class AppBar(QFrame):
     tabMoved = pyqtSignal(int, int)
     #: Píldora de búsqueda pulsada (placeholder; lo conectará la Fase 6).
     searchActivated = pyqtSignal()
+    #: Botón hamburguesa: la ventana abre el ``QMenuBar`` (oculto) como popup.
+    menuRequested = pyqtSignal()
 
     def __init__(
         self,
@@ -152,6 +154,18 @@ class AppBar(QFrame):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 0, 12, 0)
         layout.setSpacing(12)
+
+        # --- Menú (hamburguesa) ----------------------------------------
+        # El ``QMenuBar`` histórico queda oculto; este botón es el acceso
+        # visible (clic o tecla Alt → ``QMenuBar.popup``). Las ``QMenu``,
+        # ``QAction`` y atajos siguen siendo las originales.
+        self.menu_button = QToolButton(self)
+        self.menu_button.setProperty("appBarBtn", "true")
+        self.menu_button.setFixedSize(_BAR_BUTTON_SIZE, _BAR_BUTTON_SIZE)
+        self.menu_button.setIconSize(QSize(_BAR_ICON_SIZE, _BAR_ICON_SIZE))
+        self.menu_button.setToolTip("Menú (Alt)")
+        self.menu_button.clicked.connect(self.menuRequested)
+        layout.addWidget(self.menu_button)
 
         # --- Marca -------------------------------------------------------
         self.brand_label = QLabel(self)
@@ -226,6 +240,9 @@ class AppBar(QFrame):
         self._tint = icon_tint
         self.brand_label.setPixmap(
             self._icons.pixmap("flask", accent, _BRAND_ICON_SIZE)
+        )
+        self.menu_button.setIcon(
+            self._icons.icon("menu", icon_tint, _BAR_ICON_SIZE)
         )
         self.theme_button.setIcon(
             self._icons.icon("sun" if resolved == "dark" else "moon", icon_tint, _BAR_ICON_SIZE)

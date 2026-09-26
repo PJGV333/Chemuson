@@ -1,0 +1,92 @@
+[
+  {
+    "name": "appbar_h",
+    "expected": 54,
+    "actual": 54,
+    "ok": true
+  },
+  {
+    "name": "rail_w",
+    "expected": 58,
+    "actual": 58,
+    "ok": true
+  },
+  {
+    "name": "rail_btn_w",
+    "expected": 42,
+    "actual": 42,
+    "ok": true
+  },
+  {
+    "name": "status_h",
+    "expected": 34,
+    "actual": 34,
+    "ok": true
+  },
+  {
+    "name": "menubar_visible",
+    "expected": false,
+    "actual": false,
+    "ok": true
+  },
+  {
+    "name": "text_toolbar_visible",
+    "expected": false,
+    "actual": false,
+    "ok": true
+  },
+  {
+    "name": "n_rail_buttons",
+    "expected": 15,
+    "actual": 15,
+    "ok": true
+  },
+  {
+    "name": "hamburger_icon",
+    "expected": true,
+    "actual": true,
+    "ok": true
+  },
+  {
+    "name": "min_size",
+    "expected": [
+      900,
+      560
+    ],
+    "actual": [
+      900,
+      560
+    ],
+    "ok": true
+  },
+  {
+    "name": "rail_is_qtoolbar",
+    "expected": false,
+    "actual": false,
+    "ok": true
+  },
+  {
+    "name": "visible_qtoolbars",
+    "expected": [],
+    "actual": [],
+    "ok": true
+  },
+  {
+    "name": "fits_980x600",
+    "expected": [
+      true,
+      true
+    ],
+    "actual": [
+      true,
+      true
+    ],
+    "ok": true
+  },
+  {
+    "name": "rail_btn_42_at_980x600",
+    "expected": 42,
+    "actual": 42,
+    "ok": true
+  }
+]

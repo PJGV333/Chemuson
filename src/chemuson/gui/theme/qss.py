@@ -29,6 +29,8 @@ _FONT_SMALL = METRICS["fontSmall"]
 _FONT_TINY = METRICS["fontTiny"]
 _RAIL_W = METRICS.get("railW", 58)
 _FLYOUT_W = METRICS.get("flyoutW", 244)
+_STATUS_H = METRICS.get("statusH", 34)
+_RAIL_BTN = METRICS.get("railBtn", 42)
 
 
 def get_main_stylesheet(theme_name: str) -> str:
@@ -237,9 +239,10 @@ QStatusBar {{
     background-color: {c('surface')};
     color: {c('text2')};
     border-top: 1px solid {c('border')};
-    padding: 6px 14px;
+    padding: 0px 14px;
     font-size: {_FONT_SMALL}px;
-    min-height: 28px;
+    /* ``statusH`` (34) menos el borde superior de 1px. */
+    min-height: {_STATUS_H - 1}px;
 }}
 
 QStatusBar::item {{
@@ -904,25 +907,51 @@ QFrame#abarSep {{
 /* Fase 4: rail de herramientas unificado + flyouts (mockup)  */
 /* =========================================================== */
 
-/* Rail vertical (58 px) */
+/* Rail vertical (58 px) — QWidget del layout central, sin QToolBar */
 #toolRail {{
     background-color: {c('surface')};
     border: none;
     border-right: 1px solid {c('border')};
 }}
 
+/* Scroll compacto/invisible del rail (solo cuando no caben los botones). */
+/* El viewport del QScrollArea pinta su propio fondo por defecto (gris
+   claro) y tapa el fondo del ``#toolRail``; se estiliza el viewport
+   (hijo directo) para que siga el token ``surface`` (claro/oscuro). */
+#railScroll {{
+    /* El QScrollArea pinta su propio fondo; el viewport por defecto lo
+       tapa con el gris de la plataforma. */
+    background-color: {c('surface')};
+    border: none;
+}}
+
+#railScroll > QWidget > QWidget {{
+    /* El widget de contenido (nieto) queda transparente para que se vea
+       el fondo ``surface`` del propio scroll (patrón clásico de Qt; el
+       selector hijo ``> QWidget`` no estiliza el viewport). */
+    background-color: transparent;
+    border: none;
+}}
+
+#railScroll QScrollBar:vertical {{
+    width: 0px;
+    background: transparent;
+}}
+
 #railSep {{
     background-color: {c('border')};
 }}
 
-/* Botón del rail (44 px) */
+/* Botón del rail (42 px, métrica del spike) */
 QToolButton#railBtn {{
     background-color: transparent;
     border: 1px solid transparent;
     border-radius: 9px;
     padding: 0px;
-    min-width: 44px;
-    min-height: 44px;
+    /* min-width/height de QSS no incluye el borde: ``railBtn`` (42) - 2px
+    de borde = 40, total = 42 px (métrica ``railBtn`` del spike). */
+    min-width: {_RAIL_BTN - 2}px;
+    min-height: {_RAIL_BTN - 2}px;
     color: {c('text2')};
 }}
 

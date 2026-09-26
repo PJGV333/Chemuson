@@ -131,3 +131,48 @@ referencia visual aprobada del spike PyQt6 (commit `59e977d`).
   tests y OpenSpec/docs. Intactos: `clean2d/`, `chemname/`,
   `chemio/persistence.py`, `gui/canvas/`, `gui/icons.py`, `gui/toolbar.py`,
   `gui/docks.py`, `gui/style.py`, `gui/dialogs/`.
+
+## Convergencia visual con el spike PyQt6 aprobado (2026-09-25, branch ui/modernization)
+
+### Alcance
+Rescate visual: la UI de producción se alinea con el spike aprobado
+(`docs/ui-modernization/pyqt6-spike/`, contrato visual) sin tocar la lógica
+funcional. No se inicia Fase 5/6. No se modificaron `clean2d/`, `chemname/`,
+`chemio/` ni `gui/canvas/`.
+
+### Decisiones
+1. **Shell**: `QMenuBar` oculta (6 `QMenu` re-padreados a un `QMenu`
+   agregador; acceso por hamburguesa + tecla Alt, un único camino de popup);
+   `QToolBar` clásicas ocultas (no eliminadas); rail = `QWidget` de 58 px en
+   el layout central (ya no `QToolBar`); barra de estado 34 px sin grip;
+   text toolbar oculta por defecto y contextual (herramientas de texto /
+   selección de texto).
+2. **Rail simplificado**: 15 botones de 42 px (icono 21 px) en 6 grupos;
+   `Clean2D`/`Validar`/`Numerar` salen del rail (sus `QAction` siguen vivos:
+   menús, atajos, flyouts de contexto). Sin badges kbd (el atajo queda en el
+   tooltip y sigue funcionando vía `ToolShortcutDispatcher`). Scroll compacto
+   invisible para 980×600 (botones 42 px, sin micro-iconos).
+3. **Semántica de clic del flyout**: 1er clic activa la categoría; 2º clic en
+   la categoría activa (o clic derecho) abre el flyout.
+4. **QSS**: QScrollArea del rail — Qt no estiliza el viewport con
+   `#railScroll > QWidget`; se usa el patrón clásico "fondo del scroll +
+   nieto transparente". `min-height: 33px` en `QStatusBar` (33 + 1 px de
+   borde = 34 px totales; 34 directamente colisionaba max/min con el borde).
+   Botones del rail `min-width/height: 40px` (40 + 2 px de borde = 42 px).
+5. **Iconos**: botones del rail **centrados** horizontalmente (el spike usa
+   `AlignHCenter`; producción los dejaba alineados a la izquierda → los
+   iconos aparecían 8 px desplazados a la izquierda: el "bug de iconos"
+   visible). Separadores de 26×1 px centrados.
+
+### Verificación
+- Chequeos numéricos (1440×900 y 980×600): **13/13 OK**
+  (`docs/ui-modernization/visual-convergence/captures/checks.json`).
+- Matriz de aceptación visual: **11/11 SÍ**
+  (`docs/ui-modernization/visual-convergence/README.md`).
+- Comparación de píxeles prod vs spike (franja shell, ambos temas): app bar,
+  rail y estado coinciden dentro del ruido de iconos.
+- Tests: suite UI dirigida 320+ pasada; suite completa: solo los **4 fallos
+  de baseline preexistentes** (stereo CIP ×3, dedup de candidatos Clean2D ×1).
+- Residuos documentados: lienzo real vs demo del spike (esperado), sin panel
+  derecho falso (por instrucción), iconos de orbitales reutilizados (OpenSpec
+  Fase 4).
