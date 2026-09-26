@@ -3,9 +3,12 @@
 OpenSpec: ``2026-09-25-modernize-ui-tool-rail-flyouts``.
 
 Cubre (contra la ventana real, offscreen):
-- Paridad 1:1: los 18 botones del rail y las celdas de flyout equivalentes a
-  los ``QMenu``/paletas históricas (2/11/11/10/16/10/12/2/8/23) + pies de
-  flyout (anillo/átomo: acción de texto; energía: 2 submenús de preset);
+- Paridad 1:1: los 15 botones de categoría del rail y las celdas de flyout
+  equivalentes a los ``QMenu``/paletas históricas (2/11/11/10/16/10/12/2/8/23)
+  + pies de flyout (anillo/átomo: acción de texto; energía: 2 submenús de
+  preset). Clean2D/Validar/Numerar no son botones permanentes del rail
+  (convergencia visual con el spike): sus ``QAction`` permanecen accesibles
+  por menús y atajos (Ctrl+K).
 - Delegación sin lógica propia: el clic en botones/celdas dispara los
   ``QAction``/callbacks originales (canvas + señales de los toolbars); el rail
   no crea ``QAction`` propios;
@@ -64,9 +67,6 @@ EXPECTED_RAIL_KEYS = (
     "plates",
     "energy",
     "orbitals",
-    "clean2d",
-    "validate",
-    "numbering",
 )
 
 EXPECTED_FLYOUT_CELL_COUNTS = {
@@ -406,11 +406,200 @@ def test_historical_toolbars_are_hidden_but_still_own_actions():
 def test_rail_and_flyout_metrics_match_mockup():
     assert METRICS["railW"] == 58
     assert METRICS["flyoutW"] == 244
+    # Métricas del spike aprobado (tokens espejo del spike).
+    assert METRICS["railBtn"] == 42
+    assert METRICS["railIcon"] == 21
+    assert METRICS["statusH"] == 34
+    assert METRICS["appbarH"] == 54
     _, _, _, rail = _make_unit_rail()
     assert rail.width() == 58
     flyout = rail.open_flyout("bond")
     assert flyout.width() == 244
     flyout.close_with(None)
+
+
+# ---------------------------------------------------------------------------
+# 6b. Convergencia visual con el spike aprobado
+# ---------------------------------------------------------------------------
+
+
+def test_shell_has_no_visible_menubar_or_toolbars():
+    """La QMenuBar y las toolbars clásicas no se muestran; la QMenuBar
+    sigue existiendo (menús/acciones/atajos intactos) y se abre como popup
+    (hamburguesa o Alt)."""
+    from PyQt6.QtWidgets import QToolBar
+
+    from chemuson.gui.main_window import ChemusonWindow
+
+    win = ChemusonWindow()
+    win.show()
+    QApplication.processEvents()
+    assert win.menuBar() is not None
+    assert win.menuBar().isVisible() is False
+    # Los 6 menús superiores siguen en el menubar oculto.
+    assert len([a for a in win.menuBar().actions() if a.menu() is not None]) == 6
+    visible = [t.objectName() for t in win.findChildren(QToolBar) if t.isVisible()]
+    assert visible == []
+    win.close()
+
+
+def test_rail_is_bare_widget_in_central_layout():
+    """El rail es un ``QWidget`` de 58 px dentro del layout central (no un
+    contenedor ``QToolBar``)."""
+    from PyQt6.QtWidgets import QToolBar
+
+    from chemuson.gui.main_window import ChemusonWindow
+
+    win = ChemusonWindow()
+    win.show()
+    QApplication.processEvents()
+    rail = win.tool_rail
+    assert not isinstance(rail, QToolBar)
+    # No está emparentado a ningún QToolBar.
+    parent = rail.parentWidget()
+    assert parent is None or not isinstance(parent, QToolBar)
+    win.close()
+
+
+def test_second_click_on_active_category_opens_flyout():
+    """Clic izquierdo: primer clic activa; un segundo clic sobre la misma
+    categoría activa abre su flyout."""
+    from chemuson.gui.main_window import ChemusonWindow
+
+    win = ChemusonWindow()
+    win.show()
+    QApplication.processEvents()
+    rail = win.tool_rail
+    win.toolbar.tool_changed.emit("tool_select")
+    QApplication.processEvents()
+    # Primer clic: activa.
+    rail._buttons["bond"].clicked.emit()
+    QApplication.processEvents()
+    assert win.canvas.state.active_tool == "tool_bond"
+    # Segundo clic sobre la categoría activa: flyout.
+    rail._buttons["bond"].clicked.emit()
+    QApplication.processEvents()
+    assert rail._flyouts["bond"].isVisible()
+    rail._flyouts["bond"].close_with(None)
+    # Una categoría inactiva con menú no abre flyout al activarse.
+    rail._buttons["atom"].clicked.emit()
+    QApplication.processEvents()
+    assert win.canvas.state.active_tool == "tool_atom"
+    assert not rail._flyouts["atom"].isVisible()
+    win.close()
+
+
+def test_text_toolbar_hidden_by_default_and_contextual():
+    """La toolbar de texto está oculta por defecto y aparece solo con la
+    herramienta de texto (sus acciones/señales no cambian)."""
+    from chemuson.gui.main_window import ChemusonWindow
+
+    win = ChemusonWindow()
+    win.show()
+    QApplication.processEvents()
+    assert win.text_toolbar.isVisible() is False
+    win.toolbar.tool_changed.emit("tool_text")
+    QApplication.processEvents()
+    assert win.text_toolbar.isVisible() is True
+    win.toolbar.tool_changed.emit("tool_select")
+    QApplication.processEvents()
+    assert win.text_toolbar.isVisible() is False
+    win.close()
+
+
+def test_shell_metrics_match_spike():
+    """Alturas del shell: appbar 54 px, rail 58 px, status 34 px; la
+    hamburguesa existe con icono y tamaño mínimo 900×560."""
+    from chemuson.gui.main_window import ChemusonWindow
+
+    win = ChemusonWindow()
+    win.resize(1440, 900)
+    win.show()
+    QApplication.processEvents()
+    assert win.app_bar.height() == 54
+    assert win.tool_rail.width() == 58
+    assert win.statusBar().height() == 34
+    assert win.app_bar.menu_button is not None
+    assert not win.app_bar.menu_button.icon().isNull()
+    assert (win.minimumWidth(), win.minimumHeight()) == (900, 560)
+    win.close()
+
+
+def test_window_fits_980x600():
+    """El shell completo cabe en 980×600 (el rail se desplaza compacto
+    con scroll invisible; sin micro-iconos)."""
+    from chemuson.gui.main_window import ChemusonWindow
+
+    win = ChemusonWindow()
+    win.resize(980, 600)
+    win.show()
+    QApplication.processEvents()
+    assert win.width() <= 980
+    assert win.height() <= 600
+    # Los botones conservan el tamaño del spike (42 px) aunque el rail
+    # precise scroll.
+    assert win.tool_rail._buttons["select"].width() == 42
+    win.close()
+
+
+def test_clean2d_validate_numbering_remain_accessible_without_rail_buttons():
+    """Las tres acciones salen del rail permanente pero siguen vivas:
+    ``QAction`` existentes, menús que las contienen y atajo Ctrl+K."""
+    from chemuson.gui.main_window import ChemusonWindow
+
+    win = ChemusonWindow()
+    win.show()
+    QApplication.processEvents()
+    def in_some_menu(action) -> bool:
+        for top in win.menuBar().actions():
+            top_menu = top.menu()
+            if top_menu is None:
+                continue
+            for sub in top_menu.actions():
+                holder = sub.menu() if sub.menu() is not None else top_menu
+                if action in holder.actions():
+                    return True
+        return False
+
+    for attr in ("action_clean_2d_full", "action_validate_structure",
+                 "action_numbering_recalculate"):
+        action = getattr(win, attr)
+        assert action is not None
+        # Cada una vive en algún QMenu (menús intactos del menubar oculto).
+        assert in_some_menu(action), attr
+    assert win.action_clean_2d_full.shortcut().toString() == "Ctrl+K"
+    win.close()
+
+
+def test_alt_opens_menu_popup_and_hamburger_exists():
+    """Alt (sin modificadores) y la hamburgensa de la app bar no rompen el
+    shell (el popup de la QMenuBar se ancla bajo la hamburgensa)."""
+    from chemuson.gui.main_window import ChemusonWindow
+
+    win = ChemusonWindow()
+    win.show()
+    QApplication.processEvents()
+    _press_key(win, int(Qt.Key.Key_Alt))
+    win.app_bar.menu_button.clicked.emit()
+    QApplication.processEvents()
+    # El menubar oculto sigue siendo la fuente de los 6 menús.
+    assert len([a for a in win.menuBar().actions() if a.menu() is not None]) == 6
+    win.close()
+
+
+def test_no_kbd_badges_in_rail():
+    """Los badges kbd visibles se eliminan del rail normal; el atajo se
+    documenta en el tooltip y sigue funcional."""
+    from chemuson.gui.main_window import ChemusonWindow
+
+    win = ChemusonWindow()
+    win.show()
+    QApplication.processEvents()
+    for key, button in win.tool_rail._buttons.items():
+        assert button._kbd is None, key
+    # El tooltip conserva la pista de atajo (p. ej. "Enlaces (B)").
+    assert "(B)" in win.tool_rail._buttons["bond"].toolTip()
+    win.close()
 
 
 def test_rail_and_flyout_qss_use_tokens_in_main_stylesheet_only():
@@ -510,16 +699,18 @@ def test_shortcut_dispatcher_class_exists():
     assert ToolShortcutDispatcher is not None
 
 
-def test_ctrl_k_still_triggers_clean_2d_full_and_menubar_visible():
+def test_ctrl_k_still_triggers_clean_2d_full_and_menubar_hidden():
     """El dispatcher no roba combinaciones con modificadores: Ctrl+K sigue
-    perteneciendo a ``action_clean_2d_full`` (Fase 3) y la QMenuBar se
-    mantiene visible (el rail no la reemplaza)."""
+    perteneciendo a ``action_clean_2d_full`` (Fase 3). La QMenuBar queda
+    oculta (convergencia con el spike) pero viva: sus QMenu/QAction/
+    atajos son los originales y se abren por popup (hamburguesa/Alt)."""
     from chemuson.gui.main_window import ChemusonWindow
 
     win = ChemusonWindow()
     win.show()
     QApplication.processEvents()
-    assert win.menuBar().isVisible()
+    assert win.menuBar() is not None
+    assert win.menuBar().isVisible() is False
 
     saw_clean_2d = []
     win.action_clean_2d_full.triggered.connect(lambda: saw_clean_2d.append(True))

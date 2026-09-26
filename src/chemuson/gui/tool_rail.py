@@ -44,6 +44,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QMenu,
     QPlainTextEdit,
+    QScrollArea,
     QSizePolicy,
     QToolButton,
     QTextEdit,
@@ -63,8 +64,8 @@ __all__ = [
 
 #: Ancho fijo del rail (px) — ``METRICS["railW"]`` (ver ``theme/tokens.py``).
 RAIL_WIDTH = 58
-#: Tamaño del botón del rail (px).
-_RAIL_BTN_SIZE = 44
+#: Tamaño del botón del rail (px) — métrica del spike aprobado (42 px).
+_RAIL_BTN_SIZE = 42
 
 
 @dataclass
@@ -202,9 +203,29 @@ class ToolRail(QWidget):
         self._current_group: str | None = None
         self._last_theme: str | None = None
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(7, 8, 7, 8)
-        layout.setSpacing(4)
+        # El contenido vive en un ``QScrollArea`` compacto (sin marco y sin
+        # scrollbar visible): a 1440×900 todos los botones caben sin
+        # scroll; en ventanas pequeñas (980×600) el rail se desplaza con la
+        # rueda manteniendo botones de 42 px e iconos de 21 px (sin
+        # micro-iconos).
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        scroll = QScrollArea(self)
+        scroll.setObjectName("railScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        outer.addWidget(scroll)
+        self._scroll = scroll
+
+        inner = QWidget(scroll)
+        scroll.setWidget(inner)
+        layout = QVBoxLayout(inner)
+        layout.setContentsMargins(0, 10, 0, 10)
+        layout.setSpacing(3)
+        self._content_layout = layout
 
         t, s = toolbar, symbols_toolbar
         w = window
@@ -396,46 +417,20 @@ class ToolRail(QWidget):
                 flyout_title="Orbitales",
             ),
         ]
-        if w is not None:
-            specs += [
-                _RailSpec(
-                    key="clean2d",
-                    label="Limpiar 2D",
-                    tooltip="Limpiar 2D (Clean 2D, 1 paso)",
-                    kbd=None,
-                    trigger=_trigger(getattr(w, "action_clean_2d_full", None)),
-                    group="clean2d",
-                    icon_action=getattr(w, "action_clean_2d_full", None),
-                ),
-                _RailSpec(
-                    key="validate",
-                    label="Validar",
-                    tooltip="Validar valencias",
-                    kbd=None,
-                    trigger=_trigger(getattr(w, "action_validate_structure", None)),
-                    group="validate",
-                    icon_action=getattr(w, "action_validate_structure", None),
-                ),
-                _RailSpec(
-                    key="numbering",
-                    label="Numerar",
-                    tooltip="Recalcular numeración de átomos",
-                    kbd=None,
-                    trigger=_trigger(getattr(w, "action_numbering_recalculate", None)),
-                    group="numbering",
-                    icon_action=getattr(w, "action_numbering_recalculate", None),
-                ),
-            ]
+        # Clean2D / Validar / Numerar no son botones permanentes del rail
+        # (convergencia visual con el spike): sus ``QAction`` siguen
+        # disponibles en menús, atajos (Ctrl+K) y flyouts de contexto.
         self._specs = specs
 
-        separators_after = {"lasso", "rotate3d", "brackets", "plates", "orbitals"}
+        separators_after = {"lasso", "rotate3d", "symbols", "plates"}
         for spec in self._specs:
             if spec.key in separators_after:
                 layout.addSpacing(2)
-                sep = QFrame(self)
+                sep = QFrame(inner)
                 sep.setObjectName("railSep")
                 sep.setFixedHeight(1)
-                layout.addWidget(sep)
+                sep.setFixedWidth(26)
+                layout.addWidget(sep, 0, Qt.AlignmentFlag.AlignHCenter)
                 layout.addSpacing(2)
             self._add_button(spec)
         layout.addStretch(1)
@@ -446,19 +441,35 @@ class ToolRail(QWidget):
     # ------------------------------------------------------------------
     def _add_button(self, spec: _RailSpec) -> ToolRailButton:
         button = ToolRailButton(self)
-        button.set_kbd(spec.kbd)
+        # Sin badges kbd visibles: el atajo se mantiene en el tooltip
+        # (p. ej. "Enlaces (B)") y sigue funcional vía
+        # ``ToolShortcutDispatcher``.
         button.setToolTip(spec.tooltip)
         if spec.icon_action is not None:
             button.setIcon(spec.icon_action.icon())
-        button.clicked.connect(lambda checked=False, tr=spec.trigger: tr())
+        button.clicked.connect(lambda checked=False, s=spec: self._on_button_clicked(s))
         if spec.menu is not None:
             button.set_open_flyout(lambda k=spec.key: self.open_flyout(k))
         self._buttons[spec.key] = button
-        self._layout().addWidget(button)
+        # Centrado horizontal (métrica del spike: botones de 42 px centrados
+        # en el rail de 58 px).
+        self._layout().addWidget(button, 0, Qt.AlignmentFlag.AlignHCenter)
         return button
 
+    def _on_button_clicked(self, spec: _RailSpec) -> None:
+        """Clic izquierdo: primer clic activa la herramienta actual de la
+        categoría; un segundo clic sobre la misma categoría *activa* abre
+        su flyout. El clic derecho abre el flyout directamente
+        (``ToolRailButton.mousePressEvent``).
+        """
+        if spec.group == self._current_group and spec.menu is not None:
+            self.open_flyout(spec.key)
+            return
+        spec.trigger()
+
     def _layout(self) -> QVBoxLayout:
-        return self.layout()  # type: ignore[return-value]
+        """Layout de contenido del rail (dentro del scroll compacto)."""
+        return self._content_layout
 
     @staticmethod
     def _introspect_menu(

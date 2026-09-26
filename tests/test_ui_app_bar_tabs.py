@@ -276,26 +276,36 @@ class TestRealWindow:
         assert win.app_bar.minimumHeight() == 54
         assert win.tabs.tabBar().isHidden()
         assert not win.main_toolbar.isVisible()
-        assert win.menuBar().isVisible()
-        # Los 6 menús históricos siguen presentes.
+        # Convergencia con el spike: la QMenuBar clásica queda oculta
+        # (no eliminada): los 6 menús superiores siguen en ella y también
+        # en el menú agregado de la app bar.
+        assert win.menuBar() is not None
+        assert win.menuBar().isVisible() is False
         menu_titles = [a.text() for a in win.menuBar().actions()]
         for title in ("Archivo", "Editar", "Ver", "Estructura", "Reacción", "Ayuda"):
             assert any(title in m for m in menu_titles), title
-        # Wrapper central [app_bar, text_toolbar, tabs]
+        # Wrapper central [app_bar, text_toolbar, body(rail, tabs)]
         central = win.centralWidget()
         assert central is not win.tabs
         assert win.app_bar.parent() is central
         assert win.tabs.parent() is central
         assert win.text_toolbar.parent() is central
+        assert win.tool_rail.parent() is central
 
     def test_vertical_hierarchy_appbar_above_text_toolbar(self) -> None:
-        """Polish Fase 3: QMenuBar -> AppBar -> TextFormatToolbar -> Canvas.
+        """Convergencia con el spike: AppBar -> TextFormatToolbar (oculta
+        por defecto) -> [rail | canvas].
 
         La ``TextFormatToolbar`` ya no es toolbar de área superior de
         ``QMainWindow``; vive en el layout central, debajo de la app bar y
-        sobre las pestañas, conservando sus acciones y señales.
+        sobre la franja canvas, conservando sus acciones y señales. La
+        ``QMenuBar`` clásica queda oculta (menús intactos, accesibles por
+        la hamburguesa/Alt).
         """
         win = _make_action_window()
+        assert win.menuBar().isVisible() is False
+        # La toolbar de texto es contextual: oculta por defecto.
+        assert win.text_toolbar.isVisible() is False
         central = win.centralWidget()
         layout = central.layout()
         assert layout is not None
@@ -304,12 +314,22 @@ class TestRealWindow:
             for i in range(layout.count())
             if layout.itemAt(i) is not None and layout.itemAt(i).widget() is not None
         ]
-        # Orden vertical exacto dentro del wrapper central.
+        # Orden vertical exacto dentro del wrapper central:
+        # app_bar → text_toolbar (oculta) → banda body (rail + canvas).
         assert win.app_bar in widgets
         assert win.text_toolbar in widgets
-        assert win.tabs in widgets
         assert widgets.index(win.app_bar) < widgets.index(win.text_toolbar)
-        assert widgets.index(win.text_toolbar) < widgets.index(win.tabs)
+        body_item = layout.itemAt(2)
+        assert body_item is not None and body_item.layout() is not None
+        body = body_item.layout()
+        body_widgets = [
+            body.itemAt(i).widget()
+            for i in range(body.count())
+            if body.itemAt(i) is not None and body.itemAt(i).widget() is not None
+        ]
+        assert win.tool_rail in body_widgets
+        assert win.tabs in body_widgets
+        assert body_widgets.index(win.tool_rail) < body_widgets.index(win.tabs)
         # No es una toolbar de área de QMainWindow (no compite por la franja
         # superior con la app bar): su padre es el wrapper central, no la
         # ventana.

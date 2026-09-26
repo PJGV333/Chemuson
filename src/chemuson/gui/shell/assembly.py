@@ -6,13 +6,15 @@ from typing import Optional
 
 from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtWidgets import (
+    QHBoxLayout,
     QLabel,
     QTabWidget,
     QTextEdit,
-    QToolBar,
     QWidget,
     QVBoxLayout,
 )
+
+from chemuson.gui.theme import METRICS
 
 from chemuson.gui.actions import (
     create_edit_actions,
@@ -151,8 +153,20 @@ def assemble_application_shell(self) -> None:
     central_layout.setContentsMargins(0, 0, 0, 0)
     central_layout.setSpacing(0)
     central_layout.addWidget(self.app_bar)
+    # Convergencia con el spike aprobado: la toolbar de texto se oculta
+    # por defecto y aparece solo en contexto de texto (herramienta
+    # ``tool_text`` o selección de texto; ver
+    # ``_sync_text_toolbar_visibility``).
+    self.text_toolbar.setVisible(False)
     central_layout.addWidget(self.text_toolbar)
-    central_layout.addWidget(self.tabs)
+    # Franja horizontal: rail (58 px) + canvas (el rail se añade en la
+    # sección TOOL RAIL; la referencia se guarda para ese fin).
+    _body_layout = QHBoxLayout()
+    _body_layout.setContentsMargins(0, 0, 0, 0)
+    _body_layout.setSpacing(0)
+    central_layout.addLayout(_body_layout)
+    self._central_body_layout = _body_layout
+    _body_layout.addWidget(self.tabs)
     self.setCentralWidget(central)
     # La tab bar nativa del QTabWidget se sustituye visualmente por la
     # DocumentTabBar (espejo); el QTabWidget sigue siendo la fuente de
@@ -284,12 +298,9 @@ def assemble_application_shell(self) -> None:
     # se ocultan (no se eliminan) y siguen siendo la fuente de verdad del
     # estado. Ver OpenSpec 2026-09-25-modernize-ui-tool-rail-flyouts.
     self.tool_rail = ToolRail(self.toolbar, self.symbols_toolbar, window=self)
-    rail_wrapper = QToolBar("tool-rail")
-    rail_wrapper.setObjectName("railWrapper")
-    rail_wrapper.setMovable(False)
-    rail_wrapper.setFloatable(False)
-    rail_wrapper.addWidget(self.tool_rail)
-    self.addToolBar(Qt.ToolBarArea.LeftToolBarArea, rail_wrapper)
+    # Convergencia con el spike aprobado: el rail es un ``QWidget`` fijo
+    # de 58 px dentro del layout central (no un contenedor ``QToolBar``).
+    self._central_body_layout.insertWidget(0, self.tool_rail)
     self.toolbar.setVisible(False)
     self.symbols_toolbar.setVisible(False)
     # Estado activo derivado (highlight del rail; sin duplicar señales).
@@ -303,6 +314,12 @@ def assemble_application_shell(self) -> None:
 
     # === MENU AND TOOLBARS ===
     self._create_menu_bar()
+    # Convergencia con el spike aprobado: el ``QMenuBar`` clásico queda
+    # oculto (no eliminado): las ``QMenu``, ``QAction``, atajos y handlers
+    # son los originales; el acceso visible es la hamburguesa de la app
+    # bar (y la tecla Alt) que abren el menubar como popup.
+    self.menuBar().setVisible(False)
+    self.app_bar.menuRequested.connect(self._open_main_menu_popup)
     self._create_main_toolbar()
     # Fase 3: la toolbar superior clásica deja de mostrarse; sus QAction
     # siguen accesibles por menú, atajos y app bar (objetos conservados).
@@ -334,7 +351,13 @@ def assemble_application_shell(self) -> None:
     )
     self._apply_toolbar_defaults_to_canvas(self.canvas)
 
-    # === STATUS BAR ===
+    # === STATUS BAR (34 px, equivalente visual del spike) ===
+    # Se conserva el ``QStatusBar`` original (API ``showMessage`` y widgets
+    # permanentes intactos); solo se re-estiliza a la altura/métrica del
+    # spike y se oculta el size-grip clásico.
+    _status_bar = self.statusBar()
+    _status_bar.setSizeGripEnabled(False)
+    _status_bar.setFixedHeight(METRICS["statusH"])
     self._total_charge_label = QLabel()
     self._iupac_name_label = QLabel("Nombre IUPAC: N/D")
     self._iupac_name_label.setToolTip("Nombre IUPAC-lite del documento activo")
@@ -346,4 +369,10 @@ def assemble_application_shell(self) -> None:
     self.toolbar.tool_changed.connect(self._update_status)
     self._set_active_canvas(self.canvas)
     self._apply_theme()
+    # Convergencia con el spike: tamaño mínimo (900×560) y el rail se
+    # desplaza compactamente si la ventana es pequeña (980×600).
+    self.setMinimumSize(900, 560)
+    self._text_selection_active = False
+    self._sync_text_toolbar_visibility()
+    self.installEventFilter(self)
     QTimer.singleShot(1200, self._maybe_check_updates_startup)

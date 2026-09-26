@@ -152,8 +152,11 @@ METRICS: dict[str, int] = {
     "appbarH": 54,
     # Fase 4 (rail de herramientas + flyouts)
     "railW": 58,
-    "railBtn": 44,
+    "railBtn": 42,
+    "railIcon": 21,
     "flyoutW": 244,
+    # Fase 4.1 (convergencia visual con el spike aprobado)
+    "statusH": 34,
 }
 
 

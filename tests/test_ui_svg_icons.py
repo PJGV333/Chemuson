@@ -143,8 +143,9 @@ def _all_inventory_icons() -> dict[str, QIcon]:
 class TestSvgInventory:
     def test_all_static_files_parse_with_valid_viewbox(self) -> None:
         files = sorted(DEFAULT_ICONS_DIR.glob("i-*.svg"))
-        # 55 SVG de la Fase 2 + 8 de la app bar de la Fase 3.
-        assert len(files) == 63, f"se esperan 63 SVG, hay {len(files)}"
+        # 55 SVG de la Fase 2 + 8 de la app bar de la Fase 3 + 1
+        # hamburguesa (convergencia visual con el spike).
+        assert len(files) == 64, f"se esperan 64 SVG, hay {len(files)}"
         for path in files:
             root = ET.fromstring(path.read_text())
             # Con ``xmlns`` el tag lleva namespace: ``{http://...}svg``.

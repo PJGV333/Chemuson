@@ -10,12 +10,13 @@ from PyQt6.QtWidgets import (
     QMainWindow,
     QFileDialog,
     QInputDialog,
+    QMenu,
     QMessageBox,
     QProgressDialog,
     QTextEdit,
 )
-from PyQt6.QtCore import Qt, QEvent, QThread, QPointF
-from PyQt6.QtGui import QAction, QColor, QTextCursor
+from PyQt6.QtCore import Qt, QEvent, QPointF, QPoint, QThread
+from PyQt6.QtGui import QAction, QColor, QCursor, QTextCursor
 from typing import Optional
 import copy
 import math
@@ -148,6 +149,53 @@ class ChemusonWindow(QMainWindow):
     def _create_menu_bar(self) -> None:
         """Construye menús principales delegando el wiring repetitivo."""
         self._ui_builder.build_menu_bar(self)
+        # Convergencia visual con el spike aprobado: el ``QMenuBar``
+        # clásico queda oculto. Los 6 ``QMenu`` superiores (originales,
+        # con sus ``QAction``/atajos/callbacks intactos) se agregan en un
+        # único ``QMenu`` discreto colgado de la hamburguesa de la app
+        # bar; el ``QMenuBar`` solo conserva sus ``QAction`` de tope.
+        self._menu_aggregator = QMenu("Menú", self)
+        for top in self.menuBar().actions():
+            top_menu = top.menu()
+            if top_menu is not None:
+                self._menu_aggregator.addMenu(top_menu)
+        # La hamburguesa de la app bar abre ``_menu_aggregator`` vía la
+        # señal ``menuRequested`` (una sola vía; sin ``setMenu`` para no
+        # abrir dos popups simultáneos).
+
+    def _open_main_menu_popup(self) -> None:
+        """Abre el menú agregado (los 6 menús originales) como popup.
+
+        Anclado bajo la hamburguesa de la app bar (clic o tecla Alt).
+        Navegación entre menús con las flechas, como en la barra clásica.
+        """
+        menu = getattr(self, "_menu_aggregator", None)
+        if menu is None:
+            return
+        app_bar = getattr(self, "app_bar", None)
+        if app_bar is not None:
+            pos = app_bar.menu_button.mapToGlobal(
+                QPoint(0, app_bar.menu_button.height())
+            )
+        else:
+            pos = QCursor.pos()
+        menu.popup(pos)
+
+    def eventFilter(self, obj, event) -> bool:  # noqa: N802
+        """Tecla Alt (sin modificadores) abre el menús popup.
+
+        El ``QMenuBar`` queda oculto visualmente; Alt sigue siendo la forma
+        estándar de alcanzar los menús (mismo comportamiento que cuando la
+        barra era visible, sin recrear una barra clásica).
+        """
+        if (
+            event.type() == QEvent.Type.KeyPress
+            and event.key() == Qt.Key.Key_Alt
+            and event.modifiers() == Qt.KeyboardModifier.NoModifier
+        ):
+            self._open_main_menu_popup()
+            return True
+        return super().eventFilter(obj, event)
     
     # -------------------------------------------------------------------------
     # Main Toolbar
@@ -873,6 +921,27 @@ class ChemusonWindow(QMainWindow):
         """Actualiza herramienta activa en el documento de la pestaña actual."""
         self._current_tool_id = tool_id
         self.canvas.set_current_tool(tool_id)
+        self._sync_text_toolbar_visibility()
+
+    def _sync_text_toolbar_visibility(self) -> None:
+        """La toolbar de texto solo se muestra en contexto de texto.
+
+        Convergencia visual con el spike aprobado: oculta por defecto; se
+        muestra con la herramienta ``tool_text`` activa o con un elemento
+        de texto seleccionado. Sus acciones/señales no cambian.
+        """
+        if not hasattr(self, "text_toolbar"):
+            return
+        show = bool(
+            str(getattr(self, "_current_tool_id", "")).startswith("tool_text")
+            or bool(getattr(self, "_text_selection_active", False))
+        )
+        self.text_toolbar.setVisible(show)
+
+    def _set_text_selection_state(self, active: bool) -> None:
+        """Registra si hay un elemento de texto seleccionado (contexto)."""
+        self._text_selection_active = bool(active)
+        self._sync_text_toolbar_visibility()
 
     def _apply_toolbar_defaults_to_canvas(self, canvas: ChemusonCanvas) -> None:
         """Aplica selección actual de paletas al canvas indicado."""
@@ -2209,6 +2278,9 @@ class ChemusonWindow(QMainWindow):
 
     def _on_selection_changed(self, num_atoms: int, num_bonds: int, num_text: int, details: dict):
         """Handle selection change to update UI components."""
+        self._set_text_selection_state(
+            num_text == 1 and details.get("type") == "text"
+        )
         self.inspector_dock.update_selection(num_atoms, num_bonds, num_text, details)
         self._update_total_charge_indicator()
         self._sync_fragment_pivot_actions()
