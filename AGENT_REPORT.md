@@ -176,3 +176,30 @@ funcional. No se inicia Fase 5/6. No se modificaron `clean2d/`, `chemname/`,
 - Residuos documentados: lienzo real vs demo del spike (esperado), sin panel
   derecho falso (por instrucción), iconos de orbitales reutilizados (OpenSpec
   Fase 4).
+
+---
+
+# RESULTADO FINAL (2026-09-26)
+
+## Estado: COMPLETADO y publicado
+
+| Commit | Hash | Contenido |
+|---|---|---|
+| 1 | `36724d8` | `Fix tool shortcuts while editing canvas content` — predicado `_tool_shortcuts_suppressed()` (modal / entrada estándar / texto del canvas / `EnergyDiagramItem.is_editing()`) + parámetro `suppress_predicate` en `ToolShortcutDispatcher` + tests (frase completa "VALOR BENCENO CARBONO ENERGIA TIPOS GEOMETRICOS", 11 letras, restauración B/R/C). |
+| 2 | `3506dfe` | `Reconnect advanced tool rail palettes` — fix `QMouseEvent.globalPosition().toPoint()` (crash `globalPos`) en `flyout.py` + 7 tests end-to-end (flyout fuera-clic, orbitales, energía, símbolos, corchetes, wiring de submenús/presets, ciclo light→dark→light). |
+| 3 | `5db05db` | `Improve dark theme contrast` — 12 tokens oscuros a los valores aprobados (bg `#243249`, surface `#29384F`, …, canvasBg `#1B263A`, icon `#DCE5F0`, iconHover `#FFFFFF`); alfas de `accentSoft`/`accentBorder` originales conservados; light inalterado; 3 aserciones de test actualizadas. |
+
+## Decisión de diseño aplicada (no se violó regla alguna)
+- El `RuntimeError` de construcción provenía **solo** de la versión intermedia de Luna (stash `stash@{0}`, preservado). En `f7ac97a` la introspección usa `w.click` (sin cadena de propiedades, sin `RuntimeError`): `ChemusonWindow()` se construye sin excepción (test `test_window_builds_without_exception`).
+- No se introdujo la cadena `chemusonStableCallback`/`chemusonToolId`: las celdas de `SymbolPaletteToolbar` ya traen callbacks reales (`_select_symbol_tool`, `_select_orbital_tool`, `_select_energy_diagram_tool`, `_select_bracket_tool`, `_select_arrow_tool`, `_select_plate_tool`); el flyout los reutiliza 1:1 (`trigger=w.click`).
+- Submenús de energía: se verifica el wiring (receptores de las señales `atomic_diagram_requested` / `electronic_diagram_preset_requested`) **sin disparar** los diálogos modales (bloquearían el entorno offscreen).
+
+## Baseline / verificación final
+- `python -m compileall src tests tools packaging`: OK.
+- `ruff check src tests tools packaging --select F401,F811,F821,E722,E741`: 1 error (F401 preexistente en `tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py`, presente en `f7ac97a`; fuera del alcance — no refactor oportuno).
+- `pytest --collect-only -q`: 1785 tests (3 nuevos vs. baseline 1782… ver nota: 50→57 en `test_ui_tool_rail.py`, +1 en `test_text_tool_interaction.py` → +7).
+- Suite completa (una vez, offscreen): **4 failed, 1761 passed, 20 skipped** — los 4 fallos son los históricos de RDKit (estereo/candidatos: `test_clean2d_engine_candidates`, 3×`test_smiles_stereo_import`), preexistentes y sin relación con la UI.
+- `git push origin ui/modernization`: OK, `f7ac97a..5db05db` (sin force).
+
+## VALIDACIÓN MANUAL DEL USUARIO: PENDIENTE
+El agente detiene aquí (criterio de parada: la aceptación visual/funcional es del usuario). No se inicia Fase 5.
