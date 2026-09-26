@@ -5,7 +5,14 @@ from __future__ import annotations
 from typing import Optional
 
 from PyQt6.QtCore import QTimer, Qt
-from PyQt6.QtWidgets import QLabel, QTabWidget, QTextEdit, QWidget, QVBoxLayout
+from PyQt6.QtWidgets import (
+    QLabel,
+    QTabWidget,
+    QTextEdit,
+    QToolBar,
+    QWidget,
+    QVBoxLayout,
+)
 
 from chemuson.gui.actions import (
     create_edit_actions,
@@ -43,6 +50,7 @@ from chemuson.gui.tab_manager import CanvasTabManager
 from chemuson.gui.template_browser_service import TemplateBrowserService
 from chemuson.gui.template_library import TemplateLibrary
 from chemuson.gui.text_toolbar import TextFormatToolbar
+from chemuson.gui.tool_rail import ToolRail, ToolShortcutDispatcher
 from chemuson.gui.toolbar import ChemusonToolbar, SymbolPaletteToolbar
 from chemuson.platform.settings import application_settings
 from chemuson.version import get_app_version
@@ -267,6 +275,30 @@ def assemble_application_shell(self) -> None:
             self.action_label_size_down,
         ],
         [self.action_label_color_element, self.action_label_color_black],
+    )
+
+    # === TOOL RAIL + FLYOUTS (Fase 4) ===
+    # Superficie visual que reemplaza las dos toolbars históricas visibles.
+    # Delegación 1:1: cada interacción dispara las mismas QAction/QActionGroup
+    # ``tool_id``/señales/callbacks de los toolbars originales; los toolbars
+    # se ocultan (no se eliminan) y siguen siendo la fuente de verdad del
+    # estado. Ver OpenSpec 2026-09-25-modernize-ui-tool-rail-flyouts.
+    self.tool_rail = ToolRail(self.toolbar, self.symbols_toolbar, window=self)
+    rail_wrapper = QToolBar("tool-rail")
+    rail_wrapper.setObjectName("railWrapper")
+    rail_wrapper.setMovable(False)
+    rail_wrapper.setFloatable(False)
+    rail_wrapper.addWidget(self.tool_rail)
+    self.addToolBar(Qt.ToolBarArea.LeftToolBarArea, rail_wrapper)
+    self.toolbar.setVisible(False)
+    self.symbols_toolbar.setVisible(False)
+    # Estado activo derivado (highlight del rail; sin duplicar señales).
+    self.toolbar.tool_changed.connect(self.tool_rail.set_active_tool)
+    self.symbols_toolbar.tool_changed.connect(self.tool_rail.set_active_tool)
+    self.tool_rail.set_active_tool(self._current_tool_id)
+    # Atajos de letra simple contextuales (sin QShortcut).
+    self._tool_shortcut_dispatcher = ToolShortcutDispatcher(
+        self, self.tool_rail.shortcut_map(), parent=self
     )
 
     # === MENU AND TOOLBARS ===

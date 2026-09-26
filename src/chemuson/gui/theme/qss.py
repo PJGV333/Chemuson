@@ -27,6 +27,8 @@ _RADIUS_CHIP = METRICS["radiusChip"]
 _FONT_BASE = METRICS["fontBase"]
 _FONT_SMALL = METRICS["fontSmall"]
 _FONT_TINY = METRICS["fontTiny"]
+_RAIL_W = METRICS.get("railW", 58)
+_FLYOUT_W = METRICS.get("flyoutW", 244)
 
 
 def get_main_stylesheet(theme_name: str) -> str:
@@ -897,6 +899,155 @@ QFrame#abarSep {{
     max-width: 1px;
     min-width: 1px;
 }}
+
+/* =========================================================== */
+/* Fase 4: rail de herramientas unificado + flyouts (mockup)  */
+/* =========================================================== */
+
+/* Rail vertical (58 px) */
+#toolRail {{
+    background-color: {c('surface')};
+    border: none;
+    border-right: 1px solid {c('border')};
+}}
+
+#railSep {{
+    background-color: {c('border')};
+}}
+
+/* Botón del rail (44 px) */
+QToolButton#railBtn {{
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    padding: 0px;
+    min-width: 44px;
+    min-height: 44px;
+    color: {c('text2')};
+}}
+
+QToolButton#railBtn:hover {{
+    background-color: {c('surface2')};
+    border: 1px solid {c('borderStrong')};
+    color: {c('text1')};
+}}
+
+QToolButton#railBtn:pressed {{
+    background-color: {c('surface3')};
+}}
+
+QToolButton#railBtn[active="true"] {{
+    background-color: {c('accentSoft')};
+    border: 1px solid {c('accentBorder')};
+    color: {c('accentStrong')};
+}}
+
+QToolButton#railBtn:disabled {{
+    color: {c('text3')};
+    background-color: transparent;
+}}
+
+/* Pista de tecla (esquina del botón) */
+#railKbd {{
+    color: {c('text2')};
+    font-size: 9px;
+    font-weight: 700;
+    background-color: {c('surface')};
+    border: 1px solid {c('borderStrong')};
+    border-bottom: 2px solid {c('borderStrong')};
+    border-radius: 4px;
+    padding: 0px 3px;
+}}
+
+QToolButton#railBtn[active="true"] #railKbd {{
+    color: {c('accentStrong')};
+    border: 1px solid {c('accentBorder')};
+    border-bottom: 2px solid {c('accentBorder')};
+}}
+
+/* Flyout (244 px) */
+#flyout {{
+    background-color: {c('surface')};
+    border: 1px solid {c('border')};
+    border-radius: 9px;
+}}
+
+#flyoutTitle {{
+    color: {c('text2')};
+    font-size: 10px;
+    font-weight: 700;
+}}
+
+#flyKbd {{
+    color: {c('text2')};
+    font-size: 9px;
+    font-weight: 700;
+    background-color: {c('surface')};
+    border: 1px solid {c('borderStrong')};
+    border-bottom: 2px solid {c('borderStrong')};
+    border-radius: 4px;
+    padding: 0px 4px;
+}}
+
+/* Celdas del flyout */
+QFrame[cls="flyItem"] {{
+    background-color: {c('surface2')};
+    border: 1px solid {c('border')};
+    border-radius: 6px;
+}}
+
+QFrame[cls="flyItem"]:hover {{
+    background-color: {c('surface3')};
+    border: 1px solid {c('accentBorder')};
+}}
+
+QFrame[cls="flyItem"][active="true"] {{
+    background-color: {c('accentSoft')};
+    border: 1px solid {c('accentBorder')};
+}}
+
+QFrame[cls="flyItem"]:disabled {{
+    background-color: {c('surface2')};
+    border: 1px solid {c('border')};
+}}
+
+QFrame[cls="flyItem"] QLabel {{
+    background: transparent;
+}}
+
+#flyLbl {{
+    color: {c('text1')};
+    font-size: 10px;
+}}
+
+/* Pie del flyout */
+#flyoutSep {{
+    background-color: {c('border')};
+}}
+
+#flyFootTxt {{
+    color: {c('text3')};
+    font-size: 11px;
+}}
+
+QToolButton[cls="flyFoot"] {{
+    background-color: {c('surface2')};
+    border: 1px solid {c('border')};
+    border-radius: 6px;
+    padding: 4px 8px;
+    color: {c('text2')};
+    font-size: 11px;
+}}
+
+QToolButton[cls="flyFoot"]:hover {{
+    background-color: {c('surface3')};
+    border: 1px solid {c('accentBorder')};
+    color: {c('text1')};
+}}
+
+QToolButton[cls="flyFoot"]:pressed {{
+    background-color: {c('accentSoft')};
+}}
 """
 
 
@@ -976,4 +1127,5 @@ QToolButton:disabled {{
     background-color: {c('surface2')};
     border: 1px solid {c('border')};
 }}
+
 """
