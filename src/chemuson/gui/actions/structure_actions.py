@@ -55,25 +55,40 @@ def create_structure_actions(window) -> None:
     window.action_flip_vertical = QAction("Giro 180° vertical", window)
     window.action_flip_vertical.triggered.connect(window._on_flip_vertical)
 
+    # Los QActions de rama viven en el menú ``Editar -> Rotar`` (menú barra
+    # oculta en la UI moderna). Solo asociados al QMenu, su shortcut map no
+    # está activo cuando el foco está en el lienzo: el shortcut caía en el
+    # nudge de flechas del canvas (o en el vacío). Se registran en la
+    # ventana con ``window.addAction`` + ``WindowShortcut`` (mismo patrón que
+    # Clean2D) sin duplicar acciones ni conexiones ``triggered``: la misma
+    # QAction sigue sirviendo también al menú ``Rotar``.
     window.action_branch_rotate_minus = QAction(f"Girar rama -{int(BRANCH_ROTATION_STEP_DEG)}°", window)
     window.action_branch_rotate_minus.setShortcut(QKeySequence("Ctrl+Alt+Left"))
+    window.action_branch_rotate_minus.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
     window.action_branch_rotate_minus.triggered.connect(
         lambda: window._on_rotate_branch(-BRANCH_ROTATION_STEP_DEG)
     )
+    window.addAction(window.action_branch_rotate_minus)
 
     window.action_branch_rotate_plus = QAction(f"Girar rama +{int(BRANCH_ROTATION_STEP_DEG)}°", window)
     window.action_branch_rotate_plus.setShortcut(QKeySequence("Ctrl+Alt+Right"))
+    window.action_branch_rotate_plus.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
     window.action_branch_rotate_plus.triggered.connect(
         lambda: window._on_rotate_branch(BRANCH_ROTATION_STEP_DEG)
     )
+    window.addAction(window.action_branch_rotate_plus)
 
     window.action_branch_invert = QAction("Invertir rama (180°)", window)
     window.action_branch_invert.setShortcut(QKeySequence("Ctrl+Alt+I"))
+    window.action_branch_invert.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
     window.action_branch_invert.triggered.connect(window._on_invert_branch)
+    window.addAction(window.action_branch_invert)
 
     window.action_branch_auto_arrange = QAction("Autoacomodar rama", window)
     window.action_branch_auto_arrange.setShortcut(QKeySequence("Ctrl+Alt+A"))
+    window.action_branch_auto_arrange.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
     window.action_branch_auto_arrange.triggered.connect(window._on_auto_arrange_branch)
+    window.addAction(window.action_branch_auto_arrange)
 
     window.action_fragment_pivot_set = QAction("Definir átomo pivote desde selección", window)
     window.action_fragment_pivot_set.triggered.connect(window._on_set_fragment_pivot)

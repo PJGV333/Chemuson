@@ -221,3 +221,40 @@ El agente detiene aquí (criterio de parada: la aceptación visual/funcional es 
   reparación queda **diferida** a una campaña/tarea separada (no bloquea Fase 5).
 - **Clean2D fuera de alcance de la campaña de UI**: `src/chemuson/clean2d/`
   no se abre ni modifica; existe una campaña independiente activa para Clean2D.
+
+## Fix branch rotation window shortcuts (2026-09-27)
+
+- **Corrección de la observación anterior**: la validación manual del usuario
+  confirmó que las acciones del menú `Editar -> Rotar` SÍ funcionan (el mismo
+  QAction rota la rama); el defecto era **solo del shortcut**: inactivo con
+  el menú cerrado (barra de menús oculta en la UI moderna: el shortcut map
+  de los QMenus no está activo con foco en el lienzo; el evento caía en el
+  nudge de 1 px del canvas o en el vacío). Los handlers nunca estaban rotos.
+- **Arreglo** (`src/chemuson/gui/actions/structure_actions.py`): a las cuatro
+  QActions históricas (`action_branch_rotate_minus`, `action_branch_rotate_plus`,
+  `action_branch_invert`, `action_branch_auto_arrange`) se aplicó el patrón de
+  las acciones de Clean2D: `setShortcutContext(Qt.ShortcutContext.WindowShortcut)`
+  + `window.addAction(action)`. Sin QActions nuevos y sin duplicar conexiones
+  `triggered`; el mismo QAction sigue viviendo en el menú `Rotar`.
+- **Diagnóstico demostrado, no asumido**: experimento offscreen (menú oculto:
+  el shortcut solo-asociado-al-menú no dispara con foco en un hijo; con
+  `window.addAction` sí) + tests E2E con `ChemusonWindow` real que fallan en el
+  código pre-fix y pasan post-fix.
+- **Tests** (`tests/test_branch_rotation_shortcuts.py`, 7 tests): wiring en la
+  ventana (`win.actions()`, sin duplicados, menú Rotar intacto), E2E de
+  `Ctrl+Alt+Right`/`Left` (rotación real >5 px, no el nudge de 1 px; undo/redo;
+  1 step por pulsación = sin doble ejecución), E2E de `Ctrl+Alt+I` (inversión
+  180° con coordenadas exactas) y `Ctrl+Alt+A` (autoarrange con obstáculo,
+  120°→240°), ruta de menú intacta y semántica de foco en editor de texto no
+  modal (la política de supresión existente cubre las letras de herramienta;
+  Ctrl+Alt+* sigue activo, igual que `Ctrl+K` de Clean2D).
+- **Validación**: tests dirigidos (shortcuts, reorientación de ramas, atajos de
+  ventana, supresión de shortcuts en texto): 135 passed. `compileall` OK. Ruff
+  scoped: solo el F401 preexistente conocido. `git diff --check` OK. Suite
+  completa (una vez): **4 failed, 1775 passed, 20 skipped** — los 4 fallos son
+  los históricos de RDKit (sin relación con el cambio).
+- **Documentación**: `docs/ui-modernization/KNOWN_ISSUES.md` actualizado —
+  el issue está marcado **RESUELTO** con referencia al commit
+  `Fix branch rotation window shortcuts` (rama `ui/modernization`).
+- **Clean2D**: sin cambios; sigue fuera del alcance de la campaña de UI.
+- **No se inicia Fase 5** (el agente se detiene tras este commit).
