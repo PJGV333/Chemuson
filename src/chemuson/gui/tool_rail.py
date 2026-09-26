@@ -230,14 +230,6 @@ class ToolRail(QWidget):
         t, s = toolbar, symbols_toolbar
         w = window
 
-        def _lasso_trigger() -> None:
-            # Reutiliza el callback del toolbar original (icono re-leído en el
-            # momento de la llamada: ``refresh_icons`` regenera el meta).
-            icon, tip = t._selection_meta.get(
-                "tool_select_lasso", (None, "Seleccion libre")
-            )
-            t._select_selection_palette("tool_select_lasso", icon, tip)
-
         def _trigger(action: QAction | None) -> Callable[[], None]:
             if action is None:
                 return lambda: None
@@ -255,15 +247,6 @@ class ToolRail(QWidget):
                 columns=2,
                 icon_action=t.select_action,
                 flyout_title="Selección",
-            ),
-            _RailSpec(
-                key="lasso",
-                label="Seleccion libre",
-                tooltip="Seleccion por lazo (A)",
-                kbd="A",
-                trigger=_lasso_trigger,
-                group="select",
-                flyout_title="",
             ),
             _RailSpec(
                 key="bond",
@@ -322,15 +305,6 @@ class ToolRail(QWidget):
                 trigger=_trigger(t.coord_action),
                 group="coord",
                 icon_action=t.coord_action,
-            ),
-            _RailSpec(
-                key="rotate3d",
-                label="Rotación 3D",
-                tooltip="Rotación 3D precisa",
-                kbd=None,
-                trigger=_trigger(t.rotate_3d_precise_action),
-                group="rotate3d",
-                icon_action=t.rotate_3d_precise_action,
             ),
             _RailSpec(
                 key="text",
@@ -422,7 +396,7 @@ class ToolRail(QWidget):
         # disponibles en menús, atajos (Ctrl+K) y flyouts de contexto.
         self._specs = specs
 
-        separators_after = {"lasso", "rotate3d", "symbols", "plates"}
+        separators_after = {"symbols", "plates"}
         for spec in self._specs:
             if spec.key in separators_after:
                 layout.addSpacing(2)
@@ -726,7 +700,7 @@ def _short_menu_label(title: str) -> str:
 def _group_for_tool(tool_id: str) -> str | None:
     """Resuelve el grupo del rail para un ``tool_id`` (señal o normalizado)."""
     tool_id = str(tool_id or "tool_none")
-    if tool_id in {"tool_select", "tool_select_lasso"}:
+    if tool_id in {"tool_select", "tool_select_lasso", "tool_rotate_3d_precise"}:
         return "select"
     if tool_id == "tool_bond" or tool_id.startswith("bond_"):
         return "bond"
@@ -738,8 +712,6 @@ def _group_for_tool(tool_id: str) -> str | None:
         return "chain"
     if tool_id == "tool_coordination_center" or tool_id.startswith("coord_"):
         return "coord"
-    if tool_id == "tool_rotate_3d_precise":
-        return "rotate3d"
     if tool_id == "tool_text":
         return "text"
     if tool_id == "tool_arrow" or tool_id.startswith("tool_arrow_"):

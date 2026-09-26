@@ -63,13 +63,11 @@ from chemuson.gui.toolbar import ChemusonToolbar, SymbolPaletteToolbar
 
 EXPECTED_RAIL_KEYS = (
     "select",
-    "lasso",
     "bond",
     "chain",
     "ring",
     "atom",
     "coord",
-    "rotate3d",
     "text",
     "arrows",
     "brackets",
@@ -80,7 +78,7 @@ EXPECTED_RAIL_KEYS = (
 )
 
 EXPECTED_FLYOUT_CELL_COUNTS = {
-    "select": 2,  # pointer + lazo
+    "select": 3,  # pointer + lazo + rotación 3D precisa
     "bond": 11,  # 3 + 8 tipos de enlace
     "ring": 11,  # benceno + anillos 3..12
     "atom": 10,  # C, N, O, S, P, F, Cl, Br, I, H
@@ -758,7 +756,7 @@ def test_button_widget_api():
         ("atom_c", "atom"),
         ("tool_chain", "chain"),
         ("coord_5", "coord"),
-        ("tool_rotate_3d_precise", "rotate3d"),
+        ("tool_rotate_3d_precise", "select"),
         ("tool_text", "text"),
         ("tool_arrow_up", "arrows"),
         ("tool_brackets_round", "brackets"),
@@ -1067,6 +1065,131 @@ def test_theme_refresh_cycle_preserves_flyout_callbacks():
         QApplication.processEvents()
         assert win.canvas.current_tool == "tool_orbital"
         assert win.canvas.state.active_orbital_kind == "dz2_shaded"
+    finally:
+        win.canvas.undo_stack.clear()
+        win.canvas.undo_stack.setClean()
+        win.close()
+
+
+# ---------------------------------------------------------------------------
+# Selección: lazo y rotación 3D dentro del flyout (sin botones permanentes)
+# ---------------------------------------------------------------------------
+
+
+def test_select_flyout_contains_the_three_selection_variants():
+    """D: el flyout Selección expone las tres variantes (normal, lazo y
+    rotación 3D precisa); lasso/rotate3d no son botones permanentes."""
+    from chemuson.gui.main_window import ChemusonWindow
+
+    win = ChemusonWindow()
+    win.show()
+    QApplication.processEvents()
+    rail = win.tool_rail
+    assert "lasso" not in rail._buttons
+    assert "rotate3d" not in rail._buttons
+    assert "select" in rail._buttons
+    flyout = rail.open_flyout("select")
+    assert flyout is not None
+    tooltips = [cell.toolTip() for cell in flyout._cells]
+    assert "Seleccionar" in tooltips
+    assert "Seleccion libre" in tooltips
+    assert "Rotación 3D precisa" in tooltips
+    flyout.close_with(None)
+    win.close()
+
+
+def test_flyout_lasso_cell_activates_lasso_tool():
+    """E: la selección por lazo desde el flyout activa tool_select_lasso
+    (callback histórico reutilizado, sin nueva implementación)."""
+    from chemuson.gui.main_window import ChemusonWindow
+
+    win = ChemusonWindow()
+    win.show()
+    QApplication.processEvents()
+    _reset_tool(win)
+    try:
+        flyout = win.tool_rail.open_flyout("select")
+        cell = _flyout_cell_by_tooltip(flyout, "Seleccion libre")
+        assert cell is not None
+        QTest.mouseClick(cell, Qt.MouseButton.LeftButton)
+        QApplication.processEvents()
+        assert win.canvas.state.active_tool == "tool_select_lasso"
+    finally:
+        win.canvas.undo_stack.clear()
+        win.canvas.undo_stack.setClean()
+        win.close()
+
+
+def test_flyout_rotate3d_cell_activates_rotate_tool():
+    """G: la rotación 3D precisa desde el flyout activa tool_rotate_3d_precise
+    (QAction histórica reutilizada)."""
+    from chemuson.gui.main_window import ChemusonWindow
+
+    win = ChemusonWindow()
+    win.show()
+    QApplication.processEvents()
+    _reset_tool(win)
+    try:
+        flyout = win.tool_rail.open_flyout("select")
+        cell = _flyout_cell_by_tooltip(flyout, "Rotación 3D precisa")
+        assert cell is not None
+        QTest.mouseClick(cell, Qt.MouseButton.LeftButton)
+        QApplication.processEvents()
+        assert win.canvas.state.active_tool == "tool_rotate_3d_precise"
+    finally:
+        win.canvas.undo_stack.clear()
+        win.canvas.undo_stack.setClean()
+        win.close()
+
+
+@pytest.mark.parametrize(
+    "tool_id",
+    ["tool_select", "tool_select_lasso", "tool_rotate_3d_precise"],
+)
+def test_selection_variants_keep_select_button_active(tool_id):
+    """H: cualquiera de las tres variantes resalta el botón Select del rail
+    (mismo grupo) sin activar ningún otro botón."""
+    from chemuson.gui.main_window import ChemusonWindow
+
+    win = ChemusonWindow()
+    win.show()
+    QApplication.processEvents()
+    rail = win.tool_rail
+    rail.set_active_tool(tool_id)
+    assert rail._current_group == "select"
+    assert rail._buttons["select"].property("active") is True
+    for key, button in rail._buttons.items():
+        if key != "select":
+            assert not button.property("active"), key
+    win.close()
+
+
+def test_theme_refresh_cycle_preserves_select_flyout():
+    """J: light → dark → light no rompe el flyout Selección: las tres
+    variantes siguen presentes y los callbacks siguen funcionando."""
+    from chemuson.gui.main_window import ChemusonWindow
+    from chemuson.gui.theme import apply_theme
+
+    win = ChemusonWindow()
+    win.show()
+    QApplication.processEvents()
+    _reset_tool(win)
+    try:
+        apply_theme(win, "dark")
+        QApplication.processEvents()
+        apply_theme(win, "light")
+        QApplication.processEvents()
+
+        flyout = win.tool_rail.open_flyout("select")
+        assert flyout is not None
+        tooltips = [cell.toolTip() for cell in flyout._cells]
+        assert "Seleccion libre" in tooltips
+        assert "Rotación 3D precisa" in tooltips
+        cell = _flyout_cell_by_tooltip(flyout, "Seleccion libre")
+        assert cell is not None
+        QTest.mouseClick(cell, Qt.MouseButton.LeftButton)
+        QApplication.processEvents()
+        assert win.canvas.state.active_tool == "tool_select_lasso"
     finally:
         win.canvas.undo_stack.clear()
         win.canvas.undo_stack.setClean()
