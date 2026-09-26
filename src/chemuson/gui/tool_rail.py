@@ -35,8 +35,8 @@ from typing import Callable
 from PyQt6.QtCore import QObject, QEvent, QSize, Qt
 from PyQt6.QtGui import QAction, QCursor, QMouseEvent
 from PyQt6.QtWidgets import (
-    QApplication,
     QAbstractSpinBox,
+    QApplication,
     QComboBox,
     QFrame,
     QGridLayout,
@@ -784,10 +784,24 @@ class ToolShortcutDispatcher(QObject):
         window: QWidget,
         mappings: dict[int, Callable[[], None]],
         parent: QObject | None = None,
+        suppress_predicate: Callable[[], bool] | None = None,
     ) -> None:
+        """Crea el dispatcher.
+
+        Args:
+            window: Ventana sobre la que se filtran los eventos.
+            mappings: Tecla (int) → callback de herramienta.
+            parent: Parent QObject opcional.
+            suppress_predicate: Devuelve ``True`` cuando el atajo NO debe
+                consumirse (p. ej. edición de texto en el canvas). El
+                dispatcher simplemente deja de consumir el evento: no
+                termina la edición ni cambia de herramienta; la tecla sigue
+                su curso normal hacia el receptor con foco.
+        """
         super().__init__(parent)
         self._window = window
         self._mappings = mappings
+        self._suppress_predicate = suppress_predicate
         app = QApplication.instance()
         if app is not None:
             app.installEventFilter(self)
@@ -827,6 +841,8 @@ class ToolShortcutDispatcher(QObject):
         ):
             return False
         if self._top_level_of(obj) is not self._window:
+            return False
+        if self._suppress_predicate is not None and self._suppress_predicate():
             return False
         callback()
         event.accept()

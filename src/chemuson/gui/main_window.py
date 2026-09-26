@@ -5,13 +5,17 @@ Compone menús, barras de herramientas, docks y el lienzo central.
 """
 
 from PyQt6.QtWidgets import (
+    QAbstractSpinBox,
     QApplication,
+    QComboBox,
     QDialog,
-    QMainWindow,
     QFileDialog,
     QInputDialog,
+    QLineEdit,
+    QMainWindow,
     QMenu,
     QMessageBox,
+    QPlainTextEdit,
     QProgressDialog,
     QTextEdit,
 )
@@ -25,6 +29,7 @@ import os
 from chemuson.gui.canvas import (
     ChemusonCanvas,
 )
+from chemuson.gui.items import EnergyDiagramItem
 from chemuson.gui.elemental_analysis_dialog import ElementalAnalysisDialog
 from chemuson.gui.periodic_table import PeriodicTableDialog
 from chemuson.gui.styles import get_tool_palette_stylesheet
@@ -916,6 +921,52 @@ class ChemusonWindow(QMainWindow):
         if getattr(self, "_external_text_editor", None) is not None:
             return
         self.canvas.apply_opacity_percent(float(value))
+
+    def _tool_shortcuts_suppressed(self) -> bool:
+        """Indica si los atajos de letra simple deben ceder al receptor real.
+
+        Devuelve ``True`` (el dispatcher NO debe consumir la tecla) cuando:
+
+        - existe un diálogo modal activo;
+        - el foco está en un widget de entrada convencional
+          (``QLineEdit``/``QTextEdit``/``QPlainTextEdit``/``QComboBox``/
+          ``QAbstractSpinBox``);
+        - el canvas tiene un elemento de texto en edición gráfica
+          (``canvas._active_text_edit_item()`` no es ``None``);
+        - un :class:`EnergyDiagramItem` está en modo de edición directa.
+
+        El dispatcher simplemente deja de consumir el evento: NO termina la
+        edición, NO cambia ``current_tool`` ni el grupo activo del rail. La
+        tecla sigue su curso normal hacia el widget/elemento con foco.
+        Nunca lanza: ante cualquier error se resuelve hacia ``True`` (es
+        más seguro no robar teclas a un posible editor que cambiar de
+        herramienta).
+        """
+        try:
+            app = QApplication.instance()
+            if app is not None and app.activeModalWidget() is not None:
+                return True
+            focus = app.focusWidget() if app is not None else None
+            if focus is not None and isinstance(
+                focus,
+                (
+                    QLineEdit,
+                    QTextEdit,
+                    QPlainTextEdit,
+                    QComboBox,
+                    QAbstractSpinBox,
+                ),
+            ):
+                return True
+            canvas = self.canvas
+            if canvas._active_text_edit_item() is not None:
+                return True
+            focus_item = canvas.scene.focusItem()
+            if isinstance(focus_item, EnergyDiagramItem) and focus_item.is_editing():
+                return True
+            return False
+        except Exception:  # pragma: no cover - defensa de última línea
+            return True
 
     def _on_tool_changed(self, tool_id: str) -> None:
         """Actualiza herramienta activa en el documento de la pestaña actual."""

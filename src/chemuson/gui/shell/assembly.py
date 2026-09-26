@@ -309,7 +309,10 @@ def assemble_application_shell(self) -> None:
     self.tool_rail.set_active_tool(self._current_tool_id)
     # Atajos de letra simple contextuales (sin QShortcut).
     self._tool_shortcut_dispatcher = ToolShortcutDispatcher(
-        self, self.tool_rail.shortcut_map(), parent=self
+        self,
+        self.tool_rail.shortcut_map(),
+        parent=self,
+        suppress_predicate=self._tool_shortcuts_suppressed,
     )
 
     # === MENU AND TOOLBARS ===
