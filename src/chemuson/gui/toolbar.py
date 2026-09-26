@@ -197,6 +197,11 @@ class ChemusonToolbar(QToolBar):
             "Rotación 3D precisa",
             "tool_rotate_3d_precise",
         )
+        # La rotación 3D precisa es una variante especializada de selección:
+        # se expone dentro del flyout de Selección reutilizando su QAction
+        # histórica (no ocupa un botón permanente del rail).
+        self.select_button.menu().clear()
+        self._build_select_palette(self.select_button.menu())
         default_bond_spec = {
             "order": 1,
             "style": BondStyle.PLAIN,
@@ -368,7 +373,12 @@ class ChemusonToolbar(QToolBar):
         menu.addAction(action)
 
     def _build_select_palette(self, menu: QMenu) -> None:
-        """Construye la paleta de herramientas de selección."""
+        """Construye la paleta de herramientas de selección.
+
+        Incluye las variantes históricas (selección normal y lazo) más la
+        rotación 3D precisa, reutilizando su ``QAction`` histórica cuando ya
+        existe (se crea después de este método en ``__init__``).
+        """
         entries = []
         for tool_id, (icon, tooltip) in self._selection_meta.items():
             entries.append(
@@ -378,6 +388,15 @@ class ChemusonToolbar(QToolBar):
                     lambda tid=tool_id, ic=icon, tip=tooltip: self._select_selection_palette(
                         tid, ic, tip
                     ),
+                )
+            )
+        rotate_action = getattr(self, "rotate_3d_precise_action", None)
+        if rotate_action is not None:
+            entries.append(
+                self._make_palette_entry(
+                    rotate_action.icon(),
+                    rotate_action.toolTip(),
+                    rotate_action.trigger,
                 )
             )
         self._populate_grid_menu(menu, entries, columns=2)
