@@ -11,8 +11,8 @@ ni la Fase 5.
 ## Branch rotation shortcuts were inactive with the menu closed
 
 Estado:
-**RESUELTO** — commit `Fix branch rotation window shortcuts`
-(rama `ui/modernization`; `git log --oneline | grep 'Fix branch rotation'`)
+**RESUELTO** — commit `68c0051` (`Fix branch rotation window shortcuts`,
+rama `ui/modernization`)
 
 Afectaba (originalmente confirmado por validación manual):
 
