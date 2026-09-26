@@ -203,3 +203,21 @@ funcional. No se inicia Fase 5/6. No se modificaron `clean2d/`, `chemname/`,
 
 ## VALIDACIÓN MANUAL DEL USUARIO: PENDIENTE
 El agente detiene aquí (criterio de parada: la aceptación visual/funcional es del usuario). No se inicia Fase 5.
+
+## Modernización UI — Fases 3–4 aprobadas; issue conocido documentado (2026-09-27)
+
+- **Fases 3–4 aprobadas manualmente**: rail unificado, flyouts (selección,
+  enlaces, anillos, átomos, flechas, corchetes, símbolos, placas, energía,
+  orbitales), atajos, tema oscuro y simplificación de selección (lasso/rotación
+  3D dentro del flyout Selección) quedaron validados por el usuario.
+- **Issue conocido registrado**: las acciones "Girar rama -60°/+60°"
+  (`Editar -> Rotar`; `action_branch_rotate_minus`/`action_branch_rotate_plus`,
+  shortcuts `Ctrl+Alt+Left`/`Ctrl+Alt+Right`) no producen rotación visible ni
+  por menú ni por shortcut. Documentado en
+  `docs/ui-modernization/KNOWN_ISSUES.md` (estado: CONFIRMADO POR VALIDACIÓN
+  MANUAL).
+- **No se considera regresión introducida por la modernización**: es un
+  problema funcional preexistente o independiente del rediseño visual; la
+  reparación queda **diferida** a una campaña/tarea separada (no bloquea Fase 5).
+- **Clean2D fuera de alcance de la campaña de UI**: `src/chemuson/clean2d/`
+  no se abre ni modifica; existe una campaña independiente activa para Clean2D.
