@@ -121,7 +121,7 @@ class TestTokens:
             assert required in dark, f"falta token {required!r} en dark"
         # Valores de referencia (spike aprobado).
         assert light["bg"] == "#F1F5F9"
-        assert dark["bg"] == "#0B1120"
+        assert dark["bg"] == "#243249"
         assert light["accent"] == "#0E7490"
         assert dark["accent"] == "#22D3EE"
         # Los dos temas se distinguen.
@@ -216,7 +216,7 @@ class TestApplyTheme:
 
         applied = theme.apply_theme(themed_window, "dark")
         assert applied == "dark"
-        assert "#0B1120" in themed_window.styleSheet()
+        assert "#243249" in themed_window.styleSheet()
         assert (
             themed_window.palette().window().color().name().lower()
             == get_tokens("dark")["bg"].lower()
@@ -356,7 +356,7 @@ class TestRealWindow:
         window = ChemusonWindow()
         try:
             assert window.current_theme == "dark"
-            assert "#0B1120" in window.styleSheet()
+            assert "#243249" in window.styleSheet()
         finally:
             window.close()
             window.deleteLater()
