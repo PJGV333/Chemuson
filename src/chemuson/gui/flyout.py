@@ -378,7 +378,9 @@ class Flyout(QFrame):
         if event.type() == QEvent.Type.MouseButtonPress:
             me = event  # QMouseEvent
             if me.button() == Qt.MouseButton.LeftButton:
-                pos = self.mapFromGlobal(me.globalPos().toPoint())
+                # PyQt6: ``globalPos()`` fue removido de QMouseEvent; la
+                # posición global se obtiene con ``globalPosition().toPoint()``.
+                pos = self.mapFromGlobal(me.globalPosition().toPoint())
                 if not self.rect().contains(pos):
                     self.close_with(None)
                     return True

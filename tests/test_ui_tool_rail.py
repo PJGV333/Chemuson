@@ -23,8 +23,8 @@ Cubre (contra la ventana real, offscreen):
 from __future__ import annotations
 
 import pytest
-from PyQt6.QtCore import QCoreApplication, QPointF, Qt
-from PyQt6.QtGui import QKeyEvent, QShortcut
+from PyQt6.QtCore import QCoreApplication, QEvent, QPointF, Qt
+from PyQt6.QtGui import QKeyEvent, QMouseEvent, QShortcut
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import (
     QApplication,
@@ -33,9 +33,17 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from chemuson.gui.energy_diagrams import ENERGY_DIAGRAM_MENU_ORDER
+from chemuson.gui.energy_diagrams import (
+    ENERGY_DIAGRAM_MENU_ORDER,
+    energy_diagram_display_name,
+    energy_diagram_tool_id,
+)
 from chemuson.gui.items import EnergyDiagramItem, TextAnnotationItem
-from chemuson.gui.orbitals import ORBITAL_MENU_ORDER
+from chemuson.gui.orbitals import (
+    ORBITAL_MENU_ORDER,
+    orbital_display_name,
+    orbital_tool_id,
+)
 from chemuson.gui.theme import METRICS
 from chemuson.gui.theme.qss import (
     get_main_stylesheet,
@@ -796,3 +804,270 @@ def test_ctrl_k_still_triggers_clean_2d_full_and_menubar_hidden():
     assert win.canvas.state.active_tool == "tool_select"
     assert win.tool_rail._current_group == "select"
     win.close()
+
+
+# ---------------------------------------------------------------------------
+# Reconexion de las paletas avanzadas del rail (orbitales, energía,
+# símbolos, corchetes) + regresión del crash de flyout (globalPos)
+# ---------------------------------------------------------------------------
+
+
+def _flyout_cell_by_tooltip(flyout, tooltip: str):
+    for cell in flyout._cells:
+        if cell.toolTip() == tooltip:
+            return cell
+    return None
+
+
+def test_flyout_outside_click_does_not_raise_and_closes():
+    """Regresión de crash_20260926_080241/080409: PyQt6 removió
+    ``QMouseEvent.globalPos()``; el filtro de cierre por clic fuera debe
+    usar ``globalPosition().toPoint()`` y cerrar el flyout sin lanzar."""
+    from chemuson.gui.main_window import ChemusonWindow
+
+    win = ChemusonWindow()
+    win.show()
+    QApplication.processEvents()
+    flyout = win.tool_rail.open_flyout("orbitals")
+    assert flyout is not None
+    assert flyout.isVisible()
+    # Clic fuera (esquina inferior derecha, siempre fuera del flyout por el
+    # clamp de 8 px) enviado a la ventana: el filtro debe ejecutar sin
+    # AttributeError y cerrar el flyout.
+    ev = QMouseEvent(
+        QEvent.Type.MouseButtonPress,
+        QPointF(win.width() - 2.0, win.height() - 2.0),
+        QPointF(win.width() - 2.0, win.height() - 2.0),
+        Qt.MouseButton.LeftButton,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    QApplication.sendEvent(win, ev)
+    QApplication.processEvents()
+    assert flyout.isVisible() is False
+    win.canvas.undo_stack.clear()
+    win.canvas.undo_stack.setClean()
+    win.close()
+
+
+def test_orbital_end_to_end_from_rail_flyout():
+    """Rail → flyout → clic en celda → herramienta orbital activa → clic en
+    canvas crea el orbital, con undo/redo."""
+    from chemuson.gui.main_window import ChemusonWindow
+
+    win = ChemusonWindow()
+    win.show()
+    QApplication.processEvents()
+    try:
+        flyout = win.tool_rail.open_flyout("orbitals")
+        assert flyout is not None
+        assert flyout.isVisible()
+        kind = "sigma_bonding_solid"
+        cell = _flyout_cell_by_tooltip(flyout, orbital_display_name(kind))
+        assert cell is not None, "El flyout debe exponer la celda sigma_bonding_solid"
+        QTest.mouseClick(cell, Qt.MouseButton.LeftButton)
+        QApplication.processEvents()
+        assert win._current_tool_id == orbital_tool_id(kind)
+        assert win.canvas.current_tool == "tool_orbital"
+        assert win.canvas.state.active_orbital_kind == kind
+        assert win.symbols_toolbar.orbital_action.isChecked() is True
+        # El flyout se cierra tras la selección.
+        assert flyout.isVisible() is False
+        # El clic de canvas crea el item con el kind elegido.
+        before = len(win.canvas.orbital_items)
+        win.canvas._insert_orbital_item(QPointF(150.0, 150.0))
+        assert len(win.canvas.orbital_items) == before + 1
+        assert win.canvas.orbital_items[-1].kind() == kind
+        win.canvas.undo_stack.undo()
+        assert len(win.canvas.orbital_items) == before
+        win.canvas.undo_stack.redo()
+        assert len(win.canvas.orbital_items) == before + 1
+    finally:
+        win.canvas.undo_stack.clear()
+        win.canvas.undo_stack.setClean()
+        win.close()
+
+
+def test_energy_diagram_end_to_end_from_rail_flyout():
+    """Rail → flyout → clic en celda → herramienta de diagrama activa → clic
+    en canvas crea el diagrama, con undo/redo."""
+    from chemuson.gui.main_window import ChemusonWindow
+
+    win = ChemusonWindow()
+    win.show()
+    QApplication.processEvents()
+    try:
+        flyout = win.tool_rail.open_flyout("energy")
+        assert flyout is not None
+        assert flyout.isVisible()
+        kind = "hybrid_sp2"
+        cell = _flyout_cell_by_tooltip(flyout, energy_diagram_display_name(kind))
+        assert cell is not None, "El flyout debe exponer la celda hybrid_sp2"
+        QTest.mouseClick(cell, Qt.MouseButton.LeftButton)
+        QApplication.processEvents()
+        assert win._current_tool_id == energy_diagram_tool_id(kind)
+        assert win.canvas.current_tool == "tool_energy_diagram"
+        assert win.canvas.state.active_energy_diagram_kind == kind
+        assert win.symbols_toolbar.energy_diagram_action.isChecked() is True
+        assert flyout.isVisible() is False
+        before = len(
+            [item for item in win.canvas.scene.items() if isinstance(item, EnergyDiagramItem)]
+        )
+        win.canvas._insert_energy_diagram_item(QPointF(150.0, 150.0))
+        after = len(
+            [item for item in win.canvas.scene.items() if isinstance(item, EnergyDiagramItem)]
+        )
+        assert after == before + 1
+        win.canvas.undo_stack.undo()
+        assert (
+            len([item for item in win.canvas.scene.items() if isinstance(item, EnergyDiagramItem)])
+            == before
+        )
+        win.canvas.undo_stack.redo()
+        assert (
+            len([item for item in win.canvas.scene.items() if isinstance(item, EnergyDiagramItem)])
+            == after
+        )
+    finally:
+        win.canvas.undo_stack.clear()
+        win.canvas.undo_stack.setClean()
+        win.close()
+
+
+def test_symbol_cell_click_selects_symbol_tool():
+    """El clic en una celda de símbolos del flyout selecciona el símbolo
+    original (delegación 1:1, sin crash)."""
+    from chemuson.gui.main_window import ChemusonWindow
+
+    win = ChemusonWindow()
+    win.show()
+    QApplication.processEvents()
+    try:
+        flyout = win.tool_rail.open_flyout("symbols")
+        assert flyout is not None
+        cell = _flyout_cell_by_tooltip(flyout, "Carga positiva")
+        assert cell is not None
+        QTest.mouseClick(cell, Qt.MouseButton.LeftButton)
+        QApplication.processEvents()
+        assert win._current_tool_id == "tool_charge_plus"
+        assert win.canvas.current_tool == "tool_charge_plus"
+        assert win.symbols_toolbar.symbol_action.isChecked() is True
+        assert win.tool_rail._current_group == "symbols"
+    finally:
+        win.canvas.undo_stack.clear()
+        win.canvas.undo_stack.setClean()
+        win.close()
+
+
+def test_bracket_cell_click_selects_bracket_tool():
+    """Los 10 corchetes históricos están en el flyout y el clic selecciona
+    la herramienta de corchetes original (sin RuntimeError de callback)."""
+    from chemuson.gui.main_window import ChemusonWindow
+
+    win = ChemusonWindow()
+    win.show()
+    QApplication.processEvents()
+    try:
+        flyout = win.tool_rail.open_flyout("brackets")
+        assert flyout is not None
+        assert len(flyout._cells) == 10
+        QTest.mouseClick(flyout._cells[0], Qt.MouseButton.LeftButton)  # tool_brackets_square (orden histórico)
+        QApplication.processEvents()
+        assert win.canvas.current_tool == "tool_brackets"
+        assert win.canvas.state.active_bracket_type == "[]"
+        assert win.symbols_toolbar.bracket_action.isChecked() is True
+    finally:
+        win.canvas.undo_stack.clear()
+        win.canvas.undo_stack.setClean()
+        win.close()
+
+
+def test_energy_submenus_and_presets_connected():
+    """Los submenús de energía (diagramas electrónicos y presets) conservan
+    su wiring original: la acción del botón emite ``tool_changed``; las
+    QActions de los submenús están conectadas a las señales de solicitud y
+    esas señales tienen el handler de la ventana (sin disparar los diálogos
+    modales: se verifica la conexión, no la ejecución). El flyout de energía
+    expone los dos submenús como botones de pie."""
+    from chemuson.gui.main_window import ChemusonWindow
+
+    win = ChemusonWindow()
+    win.show()
+    QApplication.processEvents()
+    try:
+        # Botón (acción) a nivel de toolbar: emite la herramienta actual.
+        win.symbols_toolbar.energy_diagram_action.trigger()
+        QApplication.processEvents()
+        assert win.canvas.current_tool == "tool_energy_diagram"
+
+        # Submenús vivos dentro del menú de energía.
+        menu = win.symbols_toolbar.energy_diagram_button.menu()
+        submenus = [action.menu() for action in menu.actions() if action.menu() is not None]
+        assert len(submenus) == 2, "Faltan los submenús de energía"
+        electronic_menu, presets_menu = submenus
+
+        # Wiring a nivel de toolbar: la QAction emite la señal de solicitud.
+        atomic_action = electronic_menu.actions()[0]
+        assert atomic_action.receivers(atomic_action.triggered) > 0
+        toolbar = win.symbols_toolbar
+        assert toolbar.receivers(toolbar.atomic_diagram_requested) >= 1
+        assert toolbar.receivers(toolbar.diatomic_mo_diagram_requested) >= 1
+        assert toolbar.receivers(toolbar.ligand_field_diagram_requested) >= 1
+
+        # Wiring a nivel de ventana: el handler existe (señal con receptores).
+        assert win.symbols_toolbar.receivers(win.symbols_toolbar.atomic_diagram_requested) >= 1
+        assert (
+            win.symbols_toolbar.receivers(
+                win.symbols_toolbar.electronic_diagram_preset_requested
+            )
+            >= 1
+        )
+
+        # Presets: tres submenús, cada QAction conectada.
+        preset_submenus = [
+            action.menu() for action in presets_menu.actions() if action.menu() is not None
+        ]
+        assert len(preset_submenus) == 3, "Faltan los submenús de presets"
+        for preset_menu in preset_submenus:
+            assert len(preset_menu.actions()) > 0
+            for action in preset_menu.actions():
+                assert action.receivers(action.triggered) > 0
+
+        # El flyout de energía expone los dos submenús como botones de pie.
+        flyout = win.tool_rail.open_flyout("energy")
+        assert flyout is not None
+        assert len(flyout._foot_buttons) == 2
+    finally:
+        win.canvas.undo_stack.clear()
+        win.canvas.undo_stack.setClean()
+        win.close()
+
+
+def test_theme_refresh_cycle_preserves_flyout_callbacks():
+    """light → dark → light no destruye los callbacks del flyout: tras el
+    ciclo, el clic en una celda sigue seleccionando la herramienta
+    original."""
+    from chemuson.gui.main_window import ChemusonWindow
+    from chemuson.gui.theme import apply_theme
+
+    win = ChemusonWindow()
+    win.show()
+    QApplication.processEvents()
+    try:
+        apply_theme(win, "dark")
+        QApplication.processEvents()
+        apply_theme(win, "light")
+        QApplication.processEvents()
+
+        flyout = win.tool_rail.open_flyout("orbitals")
+        assert flyout is not None
+        cell = _flyout_cell_by_tooltip(flyout, orbital_display_name("dz2_shaded"))
+        assert cell is not None
+        QTest.mouseClick(cell, Qt.MouseButton.LeftButton)
+        QApplication.processEvents()
+        assert win.canvas.current_tool == "tool_orbital"
+        assert win.canvas.state.active_orbital_kind == "dz2_shaded"
+    finally:
+        win.canvas.undo_stack.clear()
+        win.canvas.undo_stack.setClean()
+        win.close()
