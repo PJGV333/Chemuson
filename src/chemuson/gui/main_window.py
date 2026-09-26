@@ -123,6 +123,11 @@ class ChemusonWindow(QMainWindow):
             widget = getattr(self, widget_name, None)
             if widget is not None and hasattr(widget, "refresh_icons"):
                 widget.refresh_icons()
+        # Fase 4: el rail re-lee iconos de los toolbars (ya regenerados)
+        # y reconstruye los flyouts (menús reconstruidos por los toolbars).
+        tool_rail = getattr(self, "tool_rail", None)
+        if tool_rail is not None:
+            tool_rail.refresh_icons(resolved_theme)
 
     def toggle_theme(self, checked: bool | None = None) -> None:
         """Cambia entre modo claro y oscuro."""
@@ -388,6 +393,9 @@ class ChemusonWindow(QMainWindow):
         self.toolbar.clear_tool_selection()
         self.canvas.set_current_tool(self._current_tool_id)
         self._update_status(self._current_tool_id)
+        tool_rail = getattr(self, "tool_rail", None)
+        if tool_rail is not None:
+            tool_rail.clear_active()
 
     def _on_active_undo_index_changed(self, _index: int) -> None:
         """Actualiza widgets dependientes del estado del undo activo."""

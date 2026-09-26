@@ -150,6 +150,10 @@ METRICS: dict[str, int] = {
     "fontTiny": 11,
     # Fase 3 (shell superior)
     "appbarH": 54,
+    # Fase 4 (rail de herramientas + flyouts)
+    "railW": 58,
+    "railBtn": 44,
+    "flyoutW": 244,
 }
 
 

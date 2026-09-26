@@ -534,6 +534,8 @@ modules:
   - theme
   - app_bar
   - document_tabs
+  - tool_rail
+  - flyout
   name: gui
   notes: 'GUI importa todos los subsistemas de dominio para orquestación. No implementa
     lógica química pesada. items.py es un módulo individual (no paquete): src/chemuson/gui/items.py
@@ -547,7 +549,14 @@ modules:
     como espejo de solo-lectura del QTabWidget de documentos (fuente de verdad:
     CanvasTabManager + QUndoStack); se reutilizan las QAction reales (undo/redo/
     preferencias + action_theme_toggle sobre toggle_theme) y la toolbar superior
-    clásica queda oculta (no eliminada).'
+    clásica queda oculta (no eliminada). Desde la fase 4, el rail de
+    herramientas unificado (gui/tool_rail.py) con flyouts reutilizables
+    (gui/flyout.py) reemplaza visualmente las toolbars de dibujo/símbolos
+    históricas (ocultas, no eliminadas): superficie de delegación 1:1 sobre
+    sus QAction/QActionGroup/tool_id/señales/callbacks (los flyouts se
+    construyen leyendo los QMenu originales de los toolbars) y atajos de
+    letra simple contextuales V/A/L/B/R/C/T/N/G/E/O vía event filter (sin
+    QShortcut). Ver OpenSpec 2026-09-25-modernize-ui-tool-rail-flyouts.'
   paths:
   - src/chemuson/gui/__init__.py
   - src/chemuson/gui/app_bar.py
@@ -584,6 +593,8 @@ modules:
   - src/chemuson/gui/template_store.py
   - src/chemuson/gui/text_toolbar.py
   - src/chemuson/gui/toolbar.py
+  - src/chemuson/gui/tool_rail.py
+  - src/chemuson/gui/flyout.py
   - src/chemuson/gui/wedge_geometry.py
   - src/chemuson/gui/actions/
   - src/chemuson/gui/shell/
@@ -658,6 +669,7 @@ modules:
   - tests/test_ui_theme_foundation.py
   - tests/test_ui_svg_icons.py
   - tests/test_ui_app_bar_tabs.py
+  - tests/test_ui_tool_rail.py
   title: Orquestación de interfaz PyQt6
 - circular_dependencies: []
   current_dependencies:
