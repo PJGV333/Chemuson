@@ -4,7 +4,7 @@ from __future__ import annotations
 
 
 import pytest
-from PyQt6.QtCore import QPoint, QPointF, Qt
+from PyQt6.QtCore import QCoreApplication, QPoint, QPointF, Qt
 from PyQt6.QtGui import QFont, QKeySequence
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication
@@ -314,3 +314,55 @@ def test_justify_alignment_preserves_text_box_width_and_updates_blocks() -> None
         assert item.document().defaultTextOption().alignment() == Qt.AlignmentFlag.AlignJustify
     finally:
         canvas.close()
+
+
+def test_tool_letters_are_inserted_during_graphical_text_editing():
+    """Escribir "VALOR BENCENO CARBONO ENERGIA TIPOS GEOMETRICOS" (que
+    contiene repetidamente las letras V A L B R C T N G E O de atajo) NO
+    debe cambiar accidentalmente de herramienta ni de grupo del rail; cada
+    letra llega al item de texto. Al terminar la edición los atajos vuelven
+    a funcionar (B, R, C).
+    """
+    from PyQt6.QtGui import QKeyEvent
+
+    win = ChemusonWindow()
+    win.show()
+    QApplication.processEvents()
+    win.toolbar.tool_changed.emit("tool_text")
+    item = TextAnnotationItem("", 100.0, 100.0)
+    win.canvas.add_text_item(item)
+    item.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
+    item.setFocus()
+    win.canvas.remember_text_edit_item(item)
+    text = "VALOR BENCENO CARBONO ENERGIA TIPOS GEOMETRICOS"
+    expected = ""
+    for character in text:
+        QTest.keyClick(win.canvas.viewport(), character.upper() if character.isalpha() else Qt.Key.Key_Space)
+        QApplication.processEvents()
+        expected += character
+        assert item.toPlainText() == expected
+        assert item.textInteractionFlags() == Qt.TextInteractionFlag.TextEditorInteraction
+        assert win.canvas.current_tool == "tool_text"
+        assert win.tool_rail._current_group == "text"
+    assert item.toPlainText() == text
+
+    # Al terminar la edición los atajos vuelven a funcionar.
+    win.toolbar.tool_changed.emit("tool_select")
+    assert item.textInteractionFlags() == Qt.TextInteractionFlag.NoTextInteraction
+
+    def press(key: Qt.Key) -> None:
+        QCoreApplication.sendEvent(
+            win,
+            QKeyEvent(QKeyEvent.Type.KeyPress, key, Qt.KeyboardModifier.NoModifier),
+        )
+        QApplication.processEvents()
+
+    press(Qt.Key.Key_B)
+    assert win.canvas.current_tool == "tool_bond"
+    press(Qt.Key.Key_R)
+    assert win.canvas.current_tool == "tool_ring"
+    press(Qt.Key.Key_C)
+    assert win.canvas.current_tool == "tool_atom"
+    win.canvas.undo_stack.clear()
+    win.canvas.undo_stack.setClean()
+    win.close()

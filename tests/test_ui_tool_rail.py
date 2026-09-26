@@ -23,8 +23,9 @@ Cubre (contra la ventana real, offscreen):
 from __future__ import annotations
 
 import pytest
-from PyQt6.QtCore import QCoreApplication, Qt
+from PyQt6.QtCore import QCoreApplication, QPointF, Qt
 from PyQt6.QtGui import QKeyEvent, QShortcut
+from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import (
     QApplication,
     QLineEdit,
@@ -33,6 +34,7 @@ from PyQt6.QtWidgets import (
 )
 
 from chemuson.gui.energy_diagrams import ENERGY_DIAGRAM_MENU_ORDER
+from chemuson.gui.items import EnergyDiagramItem, TextAnnotationItem
 from chemuson.gui.orbitals import ORBITAL_MENU_ORDER
 from chemuson.gui.theme import METRICS
 from chemuson.gui.theme.qss import (
@@ -361,6 +363,77 @@ def test_shortcut_suppressed_with_text_input_focus():
     _press_key(line, int(Qt.Key.Key_R))
     assert win.canvas.state.active_tool == "tool_select"
     win.close()
+
+
+def test_window_builds_without_exception():
+    """ChemusonWindow debe poder construirse en todo momento (regresión).
+
+    La ausencia de metadata perfecta en una celda de paleta NO debe ser
+    una excepción fatal: los flyouts se reconstruyen con callback estable o
+    con el callback histórico como fallback.
+    """
+    from chemuson.gui.main_window import ChemusonWindow
+
+    win = ChemusonWindow()
+    win.close()
+
+
+def test_dispatcher_suppresses_keys_during_graphical_text_and_energy_edit():
+    """Las letras de atajo NO deben cambiar de herramienta mientras se
+    edita contenido del canvas; el evento sigue su curso normal hacia el
+    receptor con foco (el texto llega al item; la edición sigue activa).
+    """
+    from chemuson.gui.main_window import ChemusonWindow
+
+    # --- Texto: las letras llegan al item sin cambiar herramienta/rail ---
+    win = ChemusonWindow()
+    win.show()
+    QApplication.processEvents()
+    win.toolbar.tool_changed.emit("tool_text")
+    item = TextAnnotationItem("", 100.0, 100.0)
+    win.canvas.add_text_item(item)
+    item.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
+    item.setFocus()
+    win.canvas.remember_text_edit_item(item)
+    QApplication.processEvents()
+    expected = ""
+    for character in ("V", "A", "L"):
+        QTest.keyClick(win.canvas.viewport(), character)
+        QApplication.processEvents()
+        expected += character
+        assert item.toPlainText() == expected
+        assert item.textInteractionFlags() == Qt.TextInteractionFlag.TextEditorInteraction
+        assert win.canvas.current_tool == "tool_text"
+        assert win.tool_rail._current_group == "text"
+    # Al terminar la edición los atajos vuelven a funcionar.
+    win.toolbar.tool_changed.emit("tool_select")
+    QApplication.processEvents()
+    assert item.textInteractionFlags() == Qt.TextInteractionFlag.NoTextInteraction
+    _press_key(win, int(Qt.Key.Key_B))
+    assert win.canvas.current_tool == "tool_bond"
+    win.canvas.undo_stack.clear()
+    win.canvas.undo_stack.setClean()
+    win.close()
+
+    # --- Energía: edición directa no roba las letras ni cambia herramienta ---
+    win2 = ChemusonWindow()
+    win2.show()
+    QApplication.processEvents()
+    win2.canvas.state.active_energy_diagram_kind = "sublevel_p"
+    energy_item = win2.canvas._insert_energy_diagram_item(QPointF(120.0, 120.0))
+    energy_item.begin_direct_edit()
+    QApplication.processEvents()
+    assert isinstance(energy_item, EnergyDiagramItem)
+    assert energy_item.is_editing()
+    _press_key(win2, int(Qt.Key.Key_C))
+    assert win2.canvas.current_tool != "tool_atom"
+    assert energy_item.is_editing()
+    energy_item.end_direct_edit()
+    _press_key(win2, int(Qt.Key.Key_C))
+    assert win2.canvas.current_tool == "tool_atom"
+    win2.canvas.undo_stack.clear()
+    win2.canvas.undo_stack.setClean()
+    win2.close()
 
 
 def test_dispatcher_suppresses_keys_outside_the_window():
