@@ -30,6 +30,7 @@ _FONT_TINY = METRICS["fontTiny"]
 _RAIL_W = METRICS.get("railW", 58)
 _FLYOUT_W = METRICS.get("flyoutW", 244)
 _STATUS_H = METRICS.get("statusH", 34)
+_SIDE_TAB_FONT = METRICS["sideTabFont"]
 _RAIL_BTN = METRICS.get("railBtn", 42)
 
 
@@ -233,6 +234,74 @@ QDockWidget::float-button:hover {{
 }}
 
 /* =========================================================== */
+/* SidePanel (Fase 5: surface sobre docks existentes)           */
+/* =========================================================== */
+QFrame#sidePanel {{
+    background-color: {c('surface')};
+    border-left: 1px solid {c('border')};
+}}
+
+QFrame#sideTabRow {{
+    background-color: {c('surface')};
+    border-bottom: 1px solid {c('border')};
+}}
+
+QScrollArea#sideTabsScroll,
+QWidget#sideTabsStrip,
+QStackedWidget#sideBody {{
+    background-color: {c('surface')};
+    border: none;
+}}
+
+QToolButton[sideTab="true"] {{
+    background-color: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 0 1px;
+    color: {c('text2')};
+    font-size: {_SIDE_TAB_FONT}px;
+    font-weight: 500;
+}}
+
+QToolButton[sideTab="true"]:hover {{
+    background-color: {c('surface2')};
+    color: {c('text1')};
+}}
+
+QToolButton[sideTab="true"][active="true"] {{
+    color: {c('accent')};
+    border-bottom-color: {c('accent')};
+    font-weight: 600;
+}}
+
+QToolButton#sidePanelOverflow {{
+    min-width: 36px;
+    max-width: 36px;
+    padding: 0;
+    font-size: 18px;
+}}
+
+QDockWidget[sidePanelPage="true"] {{
+    background-color: {c('surface')};
+    border: none;
+    margin: 0;
+    padding: 0;
+}}
+
+QDockWidget[sidePanelPage="true"] QPushButton,
+QDockWidget[sidePanelPage="true"] QComboBox {{
+    min-width: 0px;
+    padding: 4px 8px;
+}}
+
+QDockWidget[sidePanelPage="true"]::title {{
+    min-height: 0px;
+    max-height: 0px;
+    padding: 0;
+    border: none;
+}}
+
+/* =========================================================== */
 /* Status Bar (dirección del spike: superficie + borde)        */
 /* =========================================================== */
 QStatusBar {{
@@ -252,6 +321,21 @@ QStatusBar::item {{
 QStatusBar QLabel {{
     color: {c('text2')};
     padding: 0 4px;
+}}
+
+QStatusBar#statusBar QLabel#statusIupacLabel {{
+    color: {c('text2')};
+    padding: 0 10px 0 12px;
+    border-left: 1px solid {c('border')};
+}}
+
+QStatusBar#statusBar QLabel#statusChargeLabel {{
+    color: {c('text1')};
+    background-color: {c('surface2')};
+    padding: 3px 8px;
+    border: 1px solid {c('border')};
+    border-radius: {_RADIUS_CHIP}px;
+    font-weight: 600;
 }}
 
 /* =========================================================== */

@@ -512,13 +512,33 @@ class MainWindowUiBuilder:
                 canvas_size_menu.addAction(action)
         view_menu.addSeparator()
         view_menu.addAction(window.symbols_toolbar.toggleViewAction())
-        view_menu.addAction(window.templates_dock.toggleViewAction())
-        view_menu.addAction(window.inspector_dock.toggleViewAction())
-        view_menu.addAction(window.validation_dock.toggleViewAction())
-        view_menu.addAction(window.chemical_properties_dock.toggleViewAction())
-        view_menu.addAction(window.spectroscopy_dock.toggleViewAction())
-        view_menu.addAction(window.compchem_dock.toggleViewAction())
-        view_menu.addAction(window.appearance_dock.toggleViewAction())
+        view_menu.addSeparator()
+
+        window.action_toggle_side_panel = view_menu.addAction("Panel lateral")
+        window.action_toggle_side_panel.setCheckable(True)
+        window.action_toggle_side_panel.setChecked(not window.side_panel.isHidden())
+        window.action_toggle_side_panel.toggled.connect(
+            window.side_panel.set_panel_visible
+        )
+        window.side_panel.panelVisibilityChanged.connect(
+            window.action_toggle_side_panel.setChecked
+        )
+
+        window.side_panel_actions = {}
+        for page_key, label in (
+            ("inspector", "Inspector"),
+            ("validation", "Validación"),
+            ("properties", "Propiedades químicas"),
+            ("templates", "Plantillas"),
+            ("appearance", "Apariencia"),
+            ("spectroscopy", "Espectroscopía"),
+            ("compchem", "CompChem"),
+        ):
+            action = view_menu.addAction(label)
+            action.triggered.connect(
+                lambda _checked=False, key=page_key: window.side_panel.show_page(key)
+            )
+            window.side_panel_actions[page_key] = action
 
     def _build_structure_menu(self, window, structure_menu: QMenu) -> None:
         structure_menu.addAction(window.action_clean_2d)

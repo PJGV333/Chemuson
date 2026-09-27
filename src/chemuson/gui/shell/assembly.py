@@ -48,6 +48,7 @@ from chemuson.gui.docks import (
 )
 from chemuson.gui.main_window_ui_builder import MainWindowUiBuilder
 from chemuson.gui.semantic_diagram_workflow import SemanticDiagramWorkflow
+from chemuson.gui.side_panel import SidePanel
 from chemuson.gui.tab_manager import CanvasTabManager
 from chemuson.gui.template_browser_service import TemplateBrowserService
 from chemuson.gui.template_library import TemplateLibrary
@@ -191,8 +192,6 @@ def assemble_application_shell(self) -> None:
 
     # === DOCK WIDGETS ===
     self.templates_dock = PlantillasDock(self)
-    self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.templates_dock)
-    self.templates_dock.hide()
     self.templates_dock.template_selected.connect(
         self._on_template_selected_from_gallery
     )
@@ -209,12 +208,8 @@ def assemble_application_shell(self) -> None:
     self.templates_dock.delete_template_requested.connect(self._on_delete_template)
 
     self.inspector_dock = InspectorDock(self)
-    self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.inspector_dock)
-    self.inspector_dock.hide()
 
     self.validation_dock = ValidationDock(self)
-    self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.validation_dock)
-    self.validation_dock.hide()
     self.validation_dock.issue_selected.connect(self._select_validation_issue_from_dock)
     self.validation_dock.correction_requested.connect(
         self._on_validation_correction_requested
@@ -228,19 +223,11 @@ def assemble_application_shell(self) -> None:
     )
 
     self.chemical_properties_dock = ChemicalPropertiesDock(self)
-    self.addDockWidget(
-        Qt.DockWidgetArea.RightDockWidgetArea, self.chemical_properties_dock
-    )
-    self.chemical_properties_dock.hide()
 
     self.spectroscopy_dock = SpectroscopyDock(self)
-    self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.spectroscopy_dock)
-    self.spectroscopy_dock.hide()
     self.spectroscopy_dock.peak_atom_selected.connect(self._select_atom_from_spectrum)
 
     self.compchem_dock = CompChemDock(self)
-    self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.compchem_dock)
-    self.compchem_dock.hide()
     self.compchem_dock.generate_requested.connect(self._on_compchem_generate)
     self.compchem_dock.optimize_requested.connect(self._on_compchem_optimize)
     self.compchem_dock.project_requested.connect(self._on_compchem_project_to_2d)
@@ -262,9 +249,21 @@ def assemble_application_shell(self) -> None:
     self._next_name2structure_job_id = 1
 
     self.appearance_dock = AppearanceDock(self.canvas.drawing_style, self)
-    self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.appearance_dock)
-    self.appearance_dock.hide()
     self.appearance_dock.appearance_changed.connect(self._apply_appearance_settings)
+
+    self.side_panel = SidePanel(
+        {
+            "inspector": self.inspector_dock,
+            "validation": self.validation_dock,
+            "properties": self.chemical_properties_dock,
+            "templates": self.templates_dock,
+            "appearance": self.appearance_dock,
+            "spectroscopy": self.spectroscopy_dock,
+            "compchem": self.compchem_dock,
+        },
+        settings=self._settings,
+    )
+    self._central_body_layout.addWidget(self.side_panel)
 
     # === LEFT TOOLBAR (Drawing tools) ===
     self.toolbar = ChemusonToolbar()
@@ -359,12 +358,15 @@ def assemble_application_shell(self) -> None:
     # permanentes intactos); solo se re-estiliza a la altura/métrica del
     # spike y se oculta el size-grip clásico.
     _status_bar = self.statusBar()
+    _status_bar.setObjectName("statusBar")
     _status_bar.setSizeGripEnabled(False)
     _status_bar.setFixedHeight(METRICS["statusH"])
     self._total_charge_label = QLabel()
+    self._total_charge_label.setObjectName("statusChargeLabel")
     self._iupac_name_label = QLabel("Nombre IUPAC: N/D")
+    self._iupac_name_label.setObjectName("statusIupacLabel")
     self._iupac_name_label.setToolTip("Nombre IUPAC-lite del documento activo")
-    self.statusBar().addPermanentWidget(self._iupac_name_label, 1)
+    self.statusBar().addPermanentWidget(self._iupac_name_label)
     self.statusBar().addPermanentWidget(self._total_charge_label)
     self._update_total_charge_indicator()
     self._update_iupac_name_indicator()

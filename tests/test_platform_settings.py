@@ -7,11 +7,14 @@ from chemuson.platform.settings import (
     NumberingPreferences,
     UI_THEME_CHOICES,
     UiPreferences,
+    SidePanelPreferences,
     load_naming_preferences,
     load_numbering_preferences,
+    load_side_panel_preferences,
     load_ui_preferences,
     save_naming_preferences,
     save_numbering_preferences,
+    save_side_panel_preferences,
     save_ui_preferences,
     setting_bool,
 )
@@ -78,3 +81,48 @@ def test_ui_preferences_roundtrip_and_normalize() -> None:
     # El valor persistido se relee normalizado.
     settings = FakeSettings({"ui/theme": "DARK"})
     assert load_ui_preferences(settings).theme == "dark"
+
+
+def test_side_panel_preferences_default_and_roundtrip() -> None:
+    assert load_side_panel_preferences(FakeSettings({})) == SidePanelPreferences(
+        active_tab="inspector",
+        visible=True,
+    )
+
+    settings = FakeSettings(
+        {
+            "ui/side_panel/active_tab": "compchem",
+            "ui/side_panel/visible": "0",
+        }
+    )
+    assert load_side_panel_preferences(settings) == SidePanelPreferences(
+        active_tab="compchem",
+        visible=False,
+    )
+
+    save_side_panel_preferences(
+        settings,
+        SidePanelPreferences(active_tab="appearance", visible=True),
+    )
+    assert settings.values["ui/side_panel/active_tab"] == "appearance"
+    assert settings.values["ui/side_panel/visible"] is True
+
+
+def test_side_panel_preferences_invalid_values_use_safe_defaults() -> None:
+    settings = FakeSettings(
+        {
+            "ui/side_panel/active_tab": "unknown",
+            "ui/side_panel/visible": "",
+        }
+    )
+    assert load_side_panel_preferences(settings) == SidePanelPreferences(
+        active_tab="inspector",
+        visible=True,
+    )
+
+    save_side_panel_preferences(
+        settings,
+        SidePanelPreferences(active_tab="unknown", visible=False),
+    )
+    assert settings.values["ui/side_panel/active_tab"] == "inspector"
+    assert settings.values["ui/side_panel/visible"] is False

@@ -42,6 +42,26 @@ class UiPreferences:
     theme: str = "light"
 
 
+@dataclass(frozen=True, slots=True)
+class SidePanelPreferences:
+    """Persisted page and visibility for the modern right-side panel."""
+
+    active_tab: str = "inspector"
+    visible: bool = True
+
+
+#: Stable page keys accepted by ``ui/side_panel/active_tab``.
+SIDE_PANEL_TAB_KEYS: tuple[str, ...] = (
+    "inspector",
+    "validation",
+    "properties",
+    "templates",
+    "appearance",
+    "spectroscopy",
+    "compchem",
+)
+
+
 #: Valores válidos para ``ui/theme`` (incluye el valor lógico ``system``).
 UI_THEME_CHOICES: tuple[str, ...] = ("light", "dark", "system")
 
@@ -117,3 +137,41 @@ def save_ui_preferences(settings: SettingsStore, preferences: UiPreferences) -> 
     if theme not in UI_THEME_CHOICES:
         theme = "light"
     settings.setValue("ui/theme", theme)
+
+
+def _side_panel_visible(value: object) -> bool:
+    """Normalize side-panel visibility, defaulting unknown values to visible."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int) and value in (0, 1):
+        return bool(value)
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "true", "yes", "on", "si", "sí"}:
+            return True
+        if lowered in {"0", "false", "no", "off"}:
+            return False
+    return True
+
+
+def load_side_panel_preferences(settings: SettingsStore) -> SidePanelPreferences:
+    """Read and normalize the right-side panel's persistent state."""
+    active_tab = str(
+        settings.value("ui/side_panel/active_tab", "inspector") or "inspector"
+    ).strip().lower()
+    if active_tab not in SIDE_PANEL_TAB_KEYS:
+        active_tab = "inspector"
+    visible = _side_panel_visible(settings.value("ui/side_panel/visible", True))
+    return SidePanelPreferences(active_tab=active_tab, visible=visible)
+
+
+def save_side_panel_preferences(
+    settings: SettingsStore,
+    preferences: SidePanelPreferences,
+) -> None:
+    """Persist the active page and visibility under ``ui/side_panel/*``."""
+    active_tab = str(preferences.active_tab or "inspector").strip().lower()
+    if active_tab not in SIDE_PANEL_TAB_KEYS:
+        active_tab = "inspector"
+    settings.setValue("ui/side_panel/active_tab", active_tab)
+    settings.setValue("ui/side_panel/visible", bool(preferences.visible))
