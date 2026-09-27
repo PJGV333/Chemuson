@@ -41,4 +41,4 @@
 - [x] 6.2 Ejecutar tests dirigidos, suite existente de docks, smoke Qt offscreen, compileall, Ruff scoped y `git diff --check`.
 - [x] 6.3 Ejecutar suite completa y comparar con baseline (baseline: 1799 collected, 1744 passed, 55 skipped; final: 1811 collected, 1756 passed, 55 skipped, 0 failed; Ruff F401 preexistente).
 - [x] 6.4 Revalidar OpenSpec strict, revisar alcance/diff y comprobar cero cambios en subsistemas protegidos.
-- [ ] 6.5 Crear el commit solicitado, hacer push sin force a `origin ui/modernization` y verificar la referencia remota.
+- [x] 6.5 Crear el commit solicitado, hacer push sin force a `origin ui/modernization` y verificar la referencia remota.
