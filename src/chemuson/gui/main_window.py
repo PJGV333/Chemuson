@@ -1880,8 +1880,8 @@ class ChemusonWindow(QMainWindow):
         except Exception:
             pass
         self._refresh_validation_dock(issues)
-        if hasattr(self, "validation_dock"):
-            self.validation_dock.show()
+        if hasattr(self, "side_panel"):
+            self.side_panel.show_page("validation")
         if errors:
             self.statusBar().showMessage(
                 f"Validación: {len(errors)} error(es) de valencia. Use F8 para navegar.",
@@ -1898,7 +1898,8 @@ class ChemusonWindow(QMainWindow):
         atom_id = getattr(issue, "atom_id", None)
         if atom_id is not None and hasattr(self, "validation_dock"):
             self.validation_dock.select_atom(int(atom_id))
-            self.validation_dock.show()
+            if hasattr(self, "side_panel"):
+                self.side_panel.show_page("validation")
 
     def _on_set_polymer_repeat_label(self) -> None:
         """Asigna etiqueta n/x/etc. a los corchetes seleccionados."""

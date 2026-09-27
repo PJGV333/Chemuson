@@ -536,6 +536,7 @@ modules:
   - document_tabs
   - tool_rail
   - flyout
+  - side_panel
   name: gui
   notes: 'GUI importa todos los subsistemas de dominio para orquestación. No implementa
     lógica química pesada. items.py es un módulo individual (no paquete): src/chemuson/gui/items.py
@@ -556,7 +557,12 @@ modules:
     sus QAction/QActionGroup/tool_id/señales/callbacks (los flyouts se
     construyen leyendo los QMenu originales de los toolbars) y atajos de
     letra simple contextuales V/A/L/B/R/C/T/N/G/E/O vía event filter (sin
-    QShortcut). Ver OpenSpec 2026-09-25-modernize-ui-tool-rail-flyouts.'
+    QShortcut). Ver OpenSpec 2026-09-25-modernize-ui-tool-rail-flyouts. Desde la fase 5,
+    gui/side_panel.py (SidePanel) contiene las siete instancias QDockWidget existentes
+    en un QStackedWidget, sin duplicar contenido ni registrarlas para docking clásico;
+    el menú Ver y la visibilidad se delegan en su API pública. Las preferencias
+    active_tab/visible usan M21; QStatusBar conserva showMessage e indicadores
+    IUPAC/carga.'
   paths:
   - src/chemuson/gui/__init__.py
   - src/chemuson/gui/app_bar.py
@@ -567,6 +573,7 @@ modules:
   - src/chemuson/gui/diagram_presets.py
   - src/chemuson/gui/document_tabs.py
   - src/chemuson/gui/docks.py
+  - src/chemuson/gui/side_panel.py
   - src/chemuson/gui/elemental_analysis_dialog.py
   - src/chemuson/gui/energy_diagrams.py
   - src/chemuson/gui/geom.py
