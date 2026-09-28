@@ -156,9 +156,12 @@ METRICS: dict[str, int] = {
     "railIcon": 21,
     "flyoutW": 244,
     # Fase 5 (panel lateral + status bar)
-    "sideW": 324,
+    "sideW": 340,
     "sideTabH": 40,
     "sideTabFont": 10,
+    "sideTabPadX": 3,
+    "sideTabGap": 3,
+    "sideOverflowW": 32,
     # Fase 4.1 (convergencia visual con el spike aprobado)
     "statusH": 34,
 }

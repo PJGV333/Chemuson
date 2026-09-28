@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import pytest
-from PyQt6.QtCore import QSettings, QStandardPaths, Qt
+from PyQt6.QtCore import QSettings, QStandardPaths, QPoint, Qt
+from PyQt6.QtGui import QFontMetrics
 from PyQt6.QtWidgets import QApplication, QDockWidget, QLabel, QMenu
 
 from chemuson.gui.main_window import ChemusonWindow
@@ -71,7 +72,7 @@ def test_side_panel_hosts_the_original_docks_without_duplicate_pages(window) -> 
     docks = _dock_pages(window)
 
     assert isinstance(panel, SidePanel)
-    assert panel.width() == 324
+    assert 336 <= panel.width() <= 340
     assert panel.stack.count() == len(docks) == 7
     assert len(window.findChildren(QDockWidget)) == 7
 
@@ -229,17 +230,43 @@ def test_status_bar_keeps_existing_indicators_and_show_message(window) -> None:
     assert window.findChild(QLabel, "statusFormulaLabel") is None
 
 
-def test_primary_tabs_fit_completely_beside_overflow_control(window) -> None:
+def test_primary_tabs_have_complete_labels_padding_and_separation(window) -> None:
     window.show()
-    scroll_area = window.side_panel.tab_row.scroll_area
-    horizontal_scroll = scroll_area.horizontalScrollBar()
+    panel = window.side_panel
+    row = panel.tab_row
+    viewport = row.scroll_area.viewport()
+    minimum_padding_x = 3
+    minimum_gap = 3
 
     for size in ((1440, 900), (980, 600)):
         window.resize(*size)
         QApplication.processEvents()
-        assert horizontal_scroll.maximum() == 0, (
-            "the five primary side-panel tabs must fit without clipped labels "
-            f"at {size}; horizontal overflow is {horizontal_scroll.maximum()} px"
+        previous_right = None
+        for key, button in row.main_tab_buttons.items():
+            position = button.mapTo(viewport, QPoint(0, 0))
+            text_width = QFontMetrics(button.font()).horizontalAdvance(button.text())
+            right = position.x() + button.width()
+
+            assert button.isVisible(), f"primary tab {key} must remain visible at {size}"
+            assert button.font().pixelSize() >= 10, "tab text must not be reduced further"
+            assert button.width() >= text_width + 2 * minimum_padding_x, (
+                f"primary tab {key} needs at least {minimum_padding_x}px lateral "
+                f"padding around its {text_width}px label"
+            )
+            assert position.x() >= 0 and right <= viewport.width(), (
+                f"primary tab {key} is clipped at {size}: "
+                f"x={position.x()}, width={button.width()}, viewport={viewport.width()}"
+            )
+            if previous_right is not None:
+                gap = position.x() - previous_right
+                assert gap >= minimum_gap, (
+                    f"primary tab {key} needs a visible {minimum_gap}px gap; got {gap}px"
+                )
+            previous_right = right
+
+        assert 336 <= panel.width() <= 340, (
+            f"SidePanel width must stay within 336–340px for readable tabs; "
+            f"got {panel.width()}px"
         )
 
 
@@ -250,13 +277,13 @@ def test_side_panel_remains_usable_in_dark_theme_at_compact_window_size(window) 
     window.toggle_theme(True)
     QApplication.processEvents()
 
-    assert window.side_panel.width() == 324
+    assert 336 <= window.side_panel.width() <= 340
     assert 300 <= window.side_panel.width() <= 340
     assert window.tabs.width() > 0
     assert window.side_panel.active_page_key == active_page
 
     window.toggle_theme(False)
     QApplication.processEvents()
-    assert window.side_panel.width() == 324
+    assert 336 <= window.side_panel.width() <= 340
     assert window.statusBar().height() == 34
     assert window.side_panel.active_page_key == active_page

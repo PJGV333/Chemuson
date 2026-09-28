@@ -3,8 +3,9 @@
 ## Contexto y auditoría previa
 
 Ver `baseline.md` para el estado Git, entorno y salidas de validación previas.
-El spike aprobado define `SideTabRow + QStackedWidget`, ancho `sideW=324` y
-una fila de tabs desplazable; los cinco labels principales de esta fase son
+El spike aprobado define el patrón `SideTabRow + QStackedWidget` y se partió
+de `sideW=324`; el polish previo a la aceptación visual fija ahora el ancho
+final en 340 px (rango aprobado 300–340 px). Los cinco labels principales son
 Inspector, Validación, Propiedades, Plantillas y Apariencia. El contenido de
 demo del spike no se migra.
 
@@ -25,11 +26,16 @@ ninguna fuente de datos nueva.
 
 `SidePanel` (`gui/side_panel.py`) se monta como hermano del `QTabWidget` de
 documentos en `_central_body_layout`, después del ToolRail. El ancho objetivo
-es `METRICS["sideW"] = 324` px, dentro del rango 300–340 px. La fila superior
-reutiliza el patrón del spike: tabs checkables en una tira con scroll
-horizontal sin scrollbar visible, más un botón `…` fijo. El menú `…` contiene
+es `METRICS["sideW"] = 340` px, dentro del rango aprobado de 300–340 px. La fila
+superior presenta los cinco tabs principales con 3 px de padding lateral y 3 px
+de separación entre tabs, más el botón `…` fijo. El menú `…` contiene
 Espectroscopía y CompChem. Seleccionar una página de overflow mantiene `…`
 visualmente activo y selecciona el widget correspondiente en el mismo stack.
+
+La tira conserva su área de scroll como mecanismo interno, pero la aceptación
+visual no depende de que `horizontalScrollBar().maximum()` sea cero: comprueba
+labels completos, padding, separación visible y que ninguna tab se recorte en
+las dimensiones solicitadas.
 
 El stack inicial es Inspector. `SidePanel.show_page(key)` es la única ruta
 pública para navegación: valida la clave, sincroniza tab/stack, hace visible el
@@ -117,10 +123,25 @@ específico de docks embebidos reduce padding y mínimo horizontal de botones y
 combo. Esto no cambia handlers, datos ni señales y evita controles fuera del
 límite visible del SidePanel.
 
+### D8 — Pulido estrictamente visual previo a aceptación
+
+A solicitud del usuario y después de aprobarse el comportamiento funcional de
+Fase 5, la presentación de `SideTabRow` se ajusta sin cambiar navegación,
+settings, docks ni handlers. `sideW=340` permanece en el límite permitido de
+300–340 px; cada tab recibe padding horizontal de 3 px y la tira usa 3 px de
+gap. La fuente conserva 10 px. El tab activo mantiene color de acento y
+underline; la jerarquía no depende de ensanchar su texto con negrita. Los tests
+comprueban texto íntegro, padding, separación, visibilidad y contención, no
+`horizontalScrollBar().maximum() == 0` como objetivo aislado.
+
+La verificación visual solicitada captura ambos temas en 1440×900 y 980×600.
+
 ## Verificación visual
 
-Las capturas offscreen cubren light/dark 1440×900 en Inspector, light
-Validación, dark Propiedades, overflow abierto, Apariencia y 980×600. Se
-adjunta un script reproducible bajo la carpeta de capturas. Sirven para
-inspección de regresiones visuales; la aceptación final exige prueba manual
-por el usuario en KDE/Wayland real y no se declara por el agente.
+El script reproducible genera seis capturas 1440×900 (Inspector light/dark,
+Validación light, Propiedades dark, overflow abierto y Apariencia) y capturas
+Inspector light/dark a 980×600. La inspección offscreen confirma los cinco
+labels completos y separados con underline/acento activo en ambos temas/tamaños;
+Espectroscopía y CompChem siguen en el menú `…`. Las imágenes son evidencia
+reproducible, no aprobación final: la comprobación manual del usuario en
+KDE/Wayland real sigue pendiente.

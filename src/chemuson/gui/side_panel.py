@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from PyQt6.QtCore import QPoint, Qt, pyqtSignal
-from PyQt6.QtGui import QAction, QFontMetrics
+from PyQt6.QtGui import QAction, QFont, QFontMetrics
 from PyQt6.QtWidgets import (
     QDockWidget,
     QFrame,
@@ -84,7 +84,7 @@ class SideTabRow(QFrame):
         self._strip.setFixedHeight(40)
         strip_layout = QHBoxLayout(self._strip)
         strip_layout.setContentsMargins(2, 0, 2, 0)
-        strip_layout.setSpacing(0)
+        strip_layout.setSpacing(METRICS["sideTabGap"])
 
         for key in self.MAIN_PAGE_KEYS:
             button = QToolButton(self._strip)
@@ -98,9 +98,12 @@ class SideTabRow(QFrame):
             button.setFixedHeight(40)
             tab_font = button.font()
             tab_font.setPixelSize(METRICS["sideTabFont"])
+            tab_font.setWeight(QFont.Weight.Medium)
             button.setFont(tab_font)
-            tab_text_width = QFontMetrics(button.font()).horizontalAdvance(button.text())
-            button.setFixedWidth(tab_text_width + 4)
+            tab_text_width = QFontMetrics(tab_font).horizontalAdvance(button.text())
+            button.setFixedWidth(
+                tab_text_width + 2 * METRICS["sideTabPadX"] + 2
+            )
             button.clicked.connect(
                 lambda _checked=False, page=key: self.pageRequested.emit(page)
             )
@@ -121,7 +124,9 @@ class SideTabRow(QFrame):
         self.overflow_button.setCheckable(True)
         self.overflow_button.setAutoRaise(True)
         self.overflow_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.overflow_button.setFixedSize(36, 40)
+        self.overflow_button.setFixedSize(
+            METRICS["sideOverflowW"], METRICS["sideTabH"]
+        )
         self.overflow_button.clicked.connect(self.overflowRequested)
         layout.addWidget(self.overflow_button)
 

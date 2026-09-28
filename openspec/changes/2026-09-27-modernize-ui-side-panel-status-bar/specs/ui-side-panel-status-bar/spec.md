@@ -11,7 +11,7 @@ estado pulida sin ampliar los contratos de datos actuales.
 ### Requirement: Una única superficie lateral reutiliza los docks funcionales existentes
 
 La aplicación SHALL exponer `SidePanel` en
-`src/chemuson/gui/side_panel.py`, de ancho objetivo 324 px (rango aceptable
+`src/chemuson/gui/side_panel.py`, de ancho objetivo 340 px (rango aceptable
 300–340 px), integrado al lado del lienzo y sin chrome de docking clásico.
 `SidePanel` SHALL presentar Inspector, Validación, Propiedades, Plantillas y
 Apariencia como tabs principales, con Inspector activo por defecto. SHALL
@@ -27,12 +27,28 @@ ninguna página SHALL mostrarse como QDockWidget clásico flotante o acoplado.
 #### Scenario: La ventana monta cinco tabs y reutiliza siete instancias
 - **GIVEN** un `ChemusonWindow` creado en Qt offscreen sin preferencias del panel
 - **WHEN** se inspecciona `window.side_panel`
-- **THEN** el panel existe y su ancho objetivo es 324 px
+- **THEN** el panel existe con ancho dentro del rango de 336–340 px
 - **AND** Inspector es la página inicial
 - **AND** los cinco tabs principales aparecen en el orden especificado
 - **AND** las páginas del stack son exactamente las instancias de los siete atributos dock históricos
 - **AND** el widget de contenido de cada dock sigue siendo el mismo objeto
 - **AND** no se crea ni registra un dock funcional duplicado.
+
+### Requirement: Los cinco tabs principales permanecen legibles y sin clipping
+
+`SideTabRow` SHALL mantener visibles los cinco labels principales completos con
+fuente de al menos 10 px, padding horizontal real de al menos 3 px por tab y
+separación de al menos 3 px entre tabs. SHALL conservar el acento/underline del
+tab activo y mantener Espectroscopía y CompChem dentro de `…`. La aceptación
+visual SHALL basarse en texto íntegro, separación y contención en la fila; no
+SHALL exigir `horizontalScrollBar().maximum() == 0` como objetivo independiente.
+
+#### Scenario: Tabs legibles en temas y tamaños solicitados
+- **GIVEN** SidePanel visible con ancho entre 336 y 340 px
+- **WHEN** la ventana se captura a 1440×900 y 980×600 en temas light y dark
+- **THEN** los cinco labels principales están completos, visibles, separados y sin clipping
+- **AND** cada tab conserva padding horizontal y el activo conserva el acento/underline
+- **AND** Espectroscopía y CompChem siguen accesibles desde `…`.
 
 #### Scenario: La página activa viene del overflow
 - **GIVEN** SidePanel visible
@@ -113,7 +129,7 @@ visual SHALL NOT reemplazar esas APIs por implementaciones paralelas.
 
 El layout de presentación de Validación SHALL conservar las mismas instancias
 históricas de botones y combo, señales y handlers, y SHALL mantener todos los
-controles dentro de los límites visibles del panel lateral de 324 px incluso
+controles dentro de los límites visibles del panel lateral de hasta 340 px incluso
 cuando se muestran navegación, exportación y corrección. El QSS compacto SHALL
 aplicarse solo a widgets de docks embebidos.
 
