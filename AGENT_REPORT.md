@@ -266,7 +266,7 @@ El agente detiene aquí (criterio de parada: la aceptación visual/funcional es 
 - OpenSpec: `openspec/changes/2026-09-27-modernize-ui-side-panel-status-bar/`; `openspec validate 2026-09-27-modernize-ui-side-panel-status-bar --strict` válido.
 - Se montaron las siete instancias existentes de `QDockWidget` como páginas de un único `SidePanel` (cinco tabs principales y dos páginas en overflow). Se conservaron sus widgets, modelos, señales y handlers; ya no se registran como docks clásicos de la ventana.
 - `show_page(key)` centraliza navegación desde Ver, overflow y el flujo de Validación. La visibilidad y la página activa se guardan en settings existentes mediante `SidePanelPreferences`.
-- Validación recibió únicamente una adaptación de presentación (controles en filas compactas) para caber en el panel de 324 px; no se cambiaron señales, reglas, selección ni acciones. Un test geométrico confirma que navegación, reporte y correcciones caben.
+- Validación recibió únicamente una adaptación de presentación (controles en filas compactas) para caber en la implementación inicial de 324 px; el polish visual posterior deja la superficie en 340 px sin cambiar señales, reglas, selección ni acciones. Un test geométrico confirma que navegación, reporte y correcciones caben.
 - La barra conserva `QStatusBar`, `showMessage()`, IUPAC y carga; los labels reciben jerarquía QSS y alto de 34 px. No se añadieron fórmula, autosave, cursor ni datos sintéticos.
 - Se registró `side_panel.py` en M08 de `architecture/modules.yml`; no se añadieron dependencias ni cambios a Clean2D, ChemName o persistencia `.cmsn`.
 
@@ -275,7 +275,7 @@ El agente detiene aquí (criterio de parada: la aceptación visual/funcional es 
 - OpenSpec: `proposal.md`, `design.md`, `tasks.md`, `baseline.md` y `specs/ui-side-panel-status-bar/spec.md` dentro del directorio indicado arriba.
 - Producción: `src/chemuson/gui/side_panel.py`, `src/chemuson/gui/docks.py`, `src/chemuson/gui/main_window.py`, `src/chemuson/gui/main_window_ui_builder.py`, `src/chemuson/gui/shell/assembly.py`, `src/chemuson/gui/theme/{qss.py,tokens.py}` y `src/chemuson/platform/{__init__.py,settings.py}`.
 - Tests y arquitectura: `tests/test_side_panel.py`, `tests/test_platform_settings.py`, `architecture/modules.yml`.
-- Evidencia: `docs/ui-modernization/side-panel-phase-shots/make_shots.py` y siete PNG.
+- Evidencia: `docs/ui-modernization/side-panel-phase-shots/make_shots.py` y ocho PNG.
 
 ### Validación y desviaciones
 
@@ -284,7 +284,7 @@ El agente detiene aquí (criterio de parada: la aceptación visual/funcional es 
 - Ruff scoped a todos los archivos tocados → `All checks passed!`. Ruff global acotado a F401/F811/F821/E722/E741 conserva un único F401 preexistente: `math` sin uso en `tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py:3`; no se alteró ese test fuera de alcance. `git diff --check` → exit 0.
 - El primer full run encontró un fallo de aislamiento en el test de settings: Qt ya había cacheado NativeFormat antes de cambiar `XDG_CONFIG_HOME`. El fixture ahora fija/restaura `QSettings.setPath`; los 16 tests dirigidos y la suite completa final pasan.
 - Ejecuciones aisladas de algunos tests de docks pueden terminar con abort de Qt al cerrar un worker (`exit 134`), reproducido también en worktree limpio del baseline. La suite completa actual sí terminó correctamente e incluye esos tests; no se modificó gestión de workers.
-- Las capturas se regeneraron con `QT_QPA_PLATFORM=offscreen`; el harness usa salida inmediata tras guardar para evitar el fallo de teardown offscreen. Hay seis imágenes de 1440×900 y una de 980×600; se inspeccionaron visualmente y son evidencia reproducible, no aprobación visual.
+- Las capturas se regeneraron con `QT_QPA_PLATFORM=offscreen`; el harness usa salida inmediata tras guardar para evitar el fallo de teardown offscreen. `make_shots.py` terminó con `SHOTS: OK`: seis imágenes de 1440×900 y dos de 980×600, inspeccionadas visualmente. Son evidencia reproducible, no aprobación manual en KDE/Wayland.
 
 Capturas verificadas:
 - `side-panel-light-1440x900-inspector.png`
@@ -293,4 +293,14 @@ Capturas verificadas:
 - `side-panel-dark-properties.png`
 - `side-panel-overflow-open.png`
 - `side-panel-appearance.png`
-- `side-panel-980x600.png`
+- `side-panel-light-980x600.png`
+- `side-panel-dark-980x600.png`
+
+## Polish visual de SideTabRow previo a la aceptación (2026-09-28)
+
+- Se llevó `sideW` a 340 px (dentro de 300–340 px); se añadieron 3 px de padding horizontal por tab y 3 px de separación. La fuente sigue en 10 px; el activo conserva color de acento y underline. Inspector/Validación/Propiedades/Plantillas/Apariencia permanecen visibles; Espectroscopía y CompChem siguen en `…`.
+- El test que forzaba `horizontalScrollBar().maximum() == 0` ahora verifica texto completo, padding, gaps, visibilidad y ausencia de clipping a 1440×900 y 980×600. No se tocó navegación, persistencia, APIs, docks, señales ni handlers; tampoco se inició Fase 6.
+- Scope de este polish: `side_panel.py`, `theme/tokens.py`, `theme/qss.py`, `tests/test_side_panel.py`, harness/capturas y documentación OpenSpec/`AGENT_REPORT.md`. Sin dependencias ni cambios al catálogo de arquitectura.
+- Verificación: suite completa `1811 collected`, `1756 passed, 55 skipped, 0 failed` (786.60 s); tras ordenar únicamente los imports del test, `pytest -q tests/test_side_panel.py tests/test_platform_settings.py` volvió a pasar (`16 passed`); compileall exit 0; Ruff scoped `All checks passed!`; `git diff --check` exit 0; OpenSpec strict válido. Ruff global mantiene el F401 preexistente en el test de Clean2D, fuera de alcance.
+- La inspección offscreen confirma labels completos, distinguidos y sin clipping en los cuatro pares tema/tamaño; el menú de overflow muestra Espectroscopía y CompChem.
+- El usuario aprobó las capturas visuales y autorizó el commit/push de este polish. No se abrió Fase 6.

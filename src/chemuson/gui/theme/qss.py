@@ -31,6 +31,8 @@ _RAIL_W = METRICS.get("railW", 58)
 _FLYOUT_W = METRICS.get("flyoutW", 244)
 _STATUS_H = METRICS.get("statusH", 34)
 _SIDE_TAB_FONT = METRICS["sideTabFont"]
+_SIDE_TAB_PAD_X = METRICS["sideTabPadX"]
+_SIDE_OVERFLOW_W = METRICS["sideOverflowW"]
 _RAIL_BTN = METRICS.get("railBtn", 42)
 
 
@@ -257,7 +259,7 @@ QToolButton[sideTab="true"] {{
     background-color: transparent;
     border: none;
     border-bottom: 2px solid transparent;
-    padding: 0 1px;
+    padding: 0 {_SIDE_TAB_PAD_X}px;
     color: {c('text2')};
     font-size: {_SIDE_TAB_FONT}px;
     font-weight: 500;
@@ -271,12 +273,11 @@ QToolButton[sideTab="true"]:hover {{
 QToolButton[sideTab="true"][active="true"] {{
     color: {c('accent')};
     border-bottom-color: {c('accent')};
-    font-weight: 600;
 }}
 
 QToolButton#sidePanelOverflow {{
-    min-width: 36px;
-    max-width: 36px;
+    min-width: {_SIDE_OVERFLOW_W}px;
+    max-width: {_SIDE_OVERFLOW_W}px;
     padding: 0;
     font-size: 18px;
 }}

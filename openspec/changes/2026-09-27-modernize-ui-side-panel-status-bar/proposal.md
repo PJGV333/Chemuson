@@ -4,8 +4,9 @@
 
 Tras las fases 3 y 4, la región derecha sigue formada por siete `QDockWidget`
 clásicos independientes. La fase 5 debe integrarlos en una única superficie
-lateral de aproximadamente 324 px, coherente con el spike PyQt6 aprobado, sin
-reescribir ni duplicar el contenido funcional que ya implementan esos docks.
+lateral de 340 px (ajustable dentro de 336–340 px y del rango permitido
+300–340 px), coherente con el spike PyQt6 aprobado, sin reescribir ni duplicar
+el contenido funcional que ya implementan esos docks.
 También debe sustituir las acciones históricas de visibilidad del menú **Ver**
 por navegación explícita a páginas del mismo panel, persistir su estado y pulir
 la composición de la barra de estado moderna ya existente.
@@ -28,6 +29,9 @@ la composición de la barra de estado moderna ya existente.
 - Tokens/QSS: métricas y estilo de tabs, overflow, páginas embebidas y labels
   semánticas de la barra de estado, usando los tokens light/dark existentes.
   Se conservan `QStatusBar`, `showMessage()`, el indicador IUPAC y la carga.
+- Polish visual de `SideTabRow`: `sideW=340`, padding lateral de 3 px y gap de
+  3 px entre tabs, conservando fuente de 10 px y underline/acento activo; no
+  cambia API, persistencia, docks ni comportamiento funcional.
 - Tests de contrato de Fase 5, registro en `architecture/modules.yml` y
   capturas reproducibles bajo `docs/ui-modernization/side-panel-phase-shots/`.
 

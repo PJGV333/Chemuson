@@ -5,8 +5,8 @@ Usage (from the repository root):
     QT_QPA_PLATFORM=offscreen PYTHONPATH=src \
         python docs/ui-modernization/side-panel-phase-shots/make_shots.py
 
-The script captures the real ChemusonWindow in light/dark themes at 1440x900,
-with Validation, Properties, Appearance, the overflow menu, and at 980x600.
+The script captures the real ChemusonWindow in light/dark themes at 1440x900
+and 980x600, with Validation, Properties, Appearance, and the overflow menu.
 Configuration is isolated under TMPDIR; user preferences are not changed.
 These offscreen captures are evidence, not visual approval.
 """
@@ -103,7 +103,12 @@ try:
     )
     capture("side-panel-appearance.png", page="appearance")
     capture(
-        "side-panel-980x600.png",
+        "side-panel-light-980x600.png",
+        size=(980, 600),
+    )
+    capture(
+        "side-panel-dark-980x600.png",
+        theme="dark",
         size=(980, 600),
     )
 finally:

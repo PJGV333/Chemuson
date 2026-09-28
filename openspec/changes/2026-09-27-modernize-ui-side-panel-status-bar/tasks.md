@@ -14,12 +14,12 @@
 
 ## 3. SidePanel y montaje
 
-- [x] 3.1 Implementar `SidePanel` con `SideTabRow + QStackedWidget`, cinco tabs principales, menú overflow y ancho objetivo de 324 px.
+- [x] 3.1 Implementar `SidePanel` con `SideTabRow + QStackedWidget`, cinco tabs principales, menú overflow y ancho objetivo de 340 px.
 - [x] 3.2 Insertar como páginas las siete instancias históricas QDockWidget, quitando el registro/docking clásico y su title chrome sin cambiar sus contenidos.
 - [x] 3.3 Montar el panel al lado del lienzo y restaurar defaults/preferencias sin estado duplicado.
 - [x] 3.4 Asegurar que `show_page(key)` es la ruta única para menú Ver, overflow y navegación interna a Validación.
 - [x] 3.5 Mantener el contrato existente de preferencias del AppBar y alcanzar Apariencia desde su menú hamburguesa → Ver.
-- [x] 3.6 Adaptar solo el layout visual de los controles de Validación al ancho de 324 px, conservando los mismos widgets, señales y handlers.
+- [x] 3.6 Adaptar solo el layout visual de los controles de Validación al ancho de 340 px, conservando los mismos widgets, señales y handlers.
 
 ## 4. Menú y barra de estado
 
@@ -42,3 +42,10 @@
 - [x] 6.3 Ejecutar suite completa y comparar con baseline (baseline: 1799 collected, 1744 passed, 55 skipped; final: 1811 collected, 1756 passed, 55 skipped, 0 failed; Ruff F401 preexistente).
 - [x] 6.4 Revalidar OpenSpec strict, revisar alcance/diff y comprobar cero cambios en subsistemas protegidos.
 - [x] 6.5 Crear el commit solicitado, hacer push sin force a `origin ui/modernization` y verificar la referencia remota.
+
+## 7. Polish visual de SideTabRow antes de aceptación visual (2026-09-28)
+
+- [x] 7.1 Reemplazar el requisito de scrollbar sin overflow por checks de labels completos, padding lateral, separación y ausencia de clipping.
+- [x] 7.2 Llevar `sideW` a 340 px, añadir padding/gap visibles y conservar fuente de 10 px y acento/underline activo, sin tocar API, persistencia, docks ni comportamiento.
+- [x] 7.3 Regenerar e inspeccionar capturas light/dark a 1440×900 y 980×600.
+- [x] 7.4 Ejecutar tests dirigidos y suite completa, compileall, Ruff scoped, `git diff --check` y OpenSpec strict; revisar que el diff sea solo visual y documental.
