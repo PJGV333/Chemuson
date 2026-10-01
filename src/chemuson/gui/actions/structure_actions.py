@@ -10,10 +10,14 @@ def create_structure_actions(window) -> None:
     window.action_clean_2d = QAction("Limpiar 2D", window)
     window.action_clean_2d.triggered.connect(window._on_clean_2d)
     window.action_clean_2d_full = QAction("Limpiar 2D (1 paso)", window)
-    window.action_clean_2d_full.setShortcut(QKeySequence("Ctrl+K"))
-    window.action_clean_2d_full.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+    # Fase 6 (migración deliberada de atajo): ``Ctrl+K`` pasa a ser el shortcut
+    # global de la paleta de comandos (``action_command_palette``). Esta acción
+    # conserva su ``QAction``, su handler (``_on_clean_2d_full``) y su item de
+    # menú *Estructura → Limpiar 2D (1 paso)*, pero deja de poseer ``Ctrl+K``
+    # (y no se le asigna otro atajo en esta fase). Sigue alcanzable por menú y
+    # desde la paleta de comandos. Ver OpenSpec
+    # ``2026-10-01-modernize-ui-command-palette`` (design D4).
     window.action_clean_2d_full.triggered.connect(window._on_clean_2d_full)
-    window.addAction(window.action_clean_2d_full)
     window.action_clean_2d_publication = QAction("Limpiar 2D para publicación", window)
     window.action_clean_2d_publication.setShortcut(QKeySequence("Ctrl+Shift+K"))
     window.action_clean_2d_publication.setShortcutContext(Qt.ShortcutContext.WindowShortcut)

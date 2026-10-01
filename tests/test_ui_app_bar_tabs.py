@@ -11,7 +11,8 @@ Cubre:
   (misma ``action_new``), suciedad desde el estado real (``QUndoStack``),
   cierre/cambio/reordenamiento por el flujo existente, estado enabled de
   undo/redo, tema light→dark→light, resize 1440×900 / 980×600 y ausencia de
-  atajo en la píldora de búsqueda (Ctrl+K sigue siendo "Clean 2D full").
+  atajo propio en la píldora de búsqueda (Fase 6: la píldora y Ctrl+K comparten
+  el camino de apertura de la paleta de comandos).
 """
 
 from __future__ import annotations
@@ -159,7 +160,7 @@ class TestAppBarUnit:
         assert bar.preferences_button.defaultAction() is app.prefs
         assert bar.theme_button.defaultAction() is app.theme
 
-    def test_search_pill_is_placeholder_without_shortcut(self) -> None:
+    def test_search_pill_is_entry_to_command_palette(self) -> None:
         app = _FakeActions()
         bar = AppBar(
             version="0.4",
@@ -168,23 +169,21 @@ class TestAppBarUnit:
             preferences_action=app.prefs,
             theme_action=app.theme,
         )
-        # La píldora no registra QShortcut/atajo alguno (Ctrl+K es de
-        # ``action_clean_2d_full``; la command palette es la Fase 6).
+        # La píldora no registra QShortcut/atajo alguno: abre la command
+        # palette por la misma ``QAction`` de apertura (Ctrl+K) que la ventana
+        # conecta a ``searchActivated`` (un único camino de apertura).
         from PyQt6.QtGui import QShortcut
 
         assert bar.findChildren(QShortcut) == []
-        # Placeholder visible, sin badge Ctrl K (hoy es el de Clean2D;
-        # el hint regresa con la command palette de la Fase 6).
+        # Entrada real (Fase 6): badge ``Ctrl K`` visible y el tooltip deja de
+        # decir "(próximamente)". La píldora no es un editor permanente.
         assert bar.search_pill.text_label.text() == "Buscar o ejecutar…"
         assert "Ctrl K" in bar.search_pill.kbd.text()
-        assert not bar.search_pill.kbd.isVisibleTo(bar.search_pill)
-        layout = bar.search_pill.layout()
-        layout_widgets = [
-            layout.itemAt(i).widget()
-            for i in range(layout.count())
-            if layout.itemAt(i) is not None
-        ]
-        assert bar.search_pill.kbd not in layout_widgets
+        assert bar.search_pill.kbd.isVisibleTo(bar.search_pill)
+        assert "(próximamente)" not in bar.search_pill.toolTip()
+        from PyQt6.QtWidgets import QLineEdit
+
+        assert bar.search_pill.findChildren(QLineEdit) == []
 
     def test_theme_refresh_recolors_icons(self) -> None:
         app = _FakeActions()
@@ -443,13 +442,17 @@ class TestRealWindow:
         assert bar.undo_button.isEnabled()
         win.canvas.undo_stack.setClean()
 
-    def test_search_pill_has_no_shortcut_and_ctrl_k_unchanged(self) -> None:
+    def test_search_pill_has_no_shortcut_and_ctrl_k_migrated(self) -> None:
         win = _make_action_window()
         from PyQt6.QtGui import QShortcut
 
+        # La píldora no registra QShortcut propio: comparte el camino de
+        # apertura (``action_command_palette``) con Ctrl+K (Fase 6).
         assert win.app_bar.findChildren(QShortcut) == []
-        # Ctrl+K sigue siendo "Clean 2D full" (la píldora no lo reclama).
-        assert win.action_clean_2d_full.shortcut().toString() == "Ctrl+K"
+        # Ctrl+K es ahora el atajo global de la paleta de comandos; ya NO
+        # pertenece a ``action_clean_2d_full`` (migración deliberada).
+        assert win.action_command_palette.shortcut().toString() == "Ctrl+K"
+        assert win.action_clean_2d_full.shortcut().toString() != "Ctrl+K"
 
     def test_theme_cycle_light_dark_light(self) -> None:
         win = _make_action_window()

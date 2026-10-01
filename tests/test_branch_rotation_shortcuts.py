@@ -10,9 +10,9 @@ no se activaban con el menú cerrado; el evento caía en el nudge de flechas
 del canvas (traslación de 1 px, imperceptible) o en el vacío.
 
 El arreglo registra la misma QAction en la ventana
-(``Qt.ShortcutContext.WindowShortcut`` + ``window.addAction``), el mismo
-patrón que usan las acciones de Clean2D (``Ctrl+K``), sin duplicar acciones
-ni conexiones ``triggered``.
+(``Qt.ShortcutContext.WindowShortcut`` + ``window.addAction``), sin duplicar
+acciones ni conexiones ``triggered`` (mismo patrón de atajo de ventana que las
+acciones de la barra superior y la paleta de comandos).
 """
 
 from __future__ import annotations
@@ -240,8 +240,8 @@ def test_shortcut_with_non_modal_text_editor_focus_keeps_window_policy():
     herramienta (que además escribirían en el editor); las combinaciones
     Ctrl+Alt+* no escriben nada y siguen activas por semántica estándar de
     ``WindowShortcut`` (un hijo con foco cuenta como foco de la ventana —
-    mismo comportamiento que el ``Ctrl+K`` de Clean2D). El shortcut debe
-    activarse aunque el foco esté en el editor, enviando la tecla al
+    mismo comportamiento que el ``Ctrl+K`` de la paleta de comandos). El shortcut
+    debe activarse aunque el foco esté en el editor, enviando la tecla al
     widget con foco (como haría un pulsado real)."""
     with _window() as win:
         atom_ids = _add_chain_with_pivot_bond(win)

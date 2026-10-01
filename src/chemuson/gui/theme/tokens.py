@@ -164,6 +164,8 @@ METRICS: dict[str, int] = {
     "sideOverflowW": 32,
     # Fase 4.1 (convergencia visual con el spike aprobado)
     "statusH": 34,
+    # Fase 6 (paleta de comandos Ctrl+K)
+    "paletteW": 560,
 }
 
 

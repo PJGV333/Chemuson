@@ -967,6 +967,115 @@ QToolButton[tabClose="true"]:hover {{
     padding: 1px 5px;
 }}
 
+/* Paleta de comandos (Ctrl+K, Fase 6): overlay hijo centrado sobre la ventana.
+   Solo tokens del sistema; sin colores hardcodeados fuera de tokens. */
+QFrame#commandPalette {{
+    background-color: {c('bg')};
+}}
+
+#paletteCard {{
+    background-color: {c('surface')};
+    border: 1px solid {c('borderStrong')};
+    border-radius: 12px;
+}}
+
+#paletteInputRow {{
+    background-color: {c('surface')};
+    border-bottom: 1px solid {c('border')};
+}}
+
+#paletteInput {{
+    background: transparent;
+    color: {c('text1')};
+    font-size: {_FONT_BASE}px;
+    border: none;
+    outline: none;
+    padding: 0;
+}}
+
+#paletteInputRow QLabel {{
+    color: {c('text3')};
+    background: transparent;
+}}
+
+#paletteScroll {{
+    background-color: {c('surface')};
+    border: none;
+}}
+
+#paletteScroll > QWidget > QWidget {{
+    background-color: {c('surface')};
+}}
+
+#paletteSection {{
+    color: {c('text3')};
+    font-size: {_FONT_TINY}px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    background: transparent;
+    padding: 4px 2px 2px 2px;
+}}
+
+QFrame#paletteList {{
+    background-color: {c('surface')};
+}}
+
+QFrame[cls="paletteItem"] {{
+    background-color: transparent;
+    border-radius: 8px;
+}}
+
+QFrame[cls="paletteItem"]:disabled {{
+    color: {c('text3')};
+}}
+
+QFrame[cls="paletteItem"][selected="true"] {{
+    background-color: {c('accentSoft')};
+    border: 1px solid {c('accentBorder')};
+}}
+
+QFrame[cls="paletteItem"]:hover {{
+    background-color: {c('surface2')};
+}}
+
+QFrame[cls="paletteItem"][selected="true"]:hover {{
+    background-color: {c('accentSoft')};
+}}
+
+#paletteTitle {{
+    color: {c('text1')};
+    font-size: {_FONT_BASE}px;
+    background: transparent;
+}}
+
+QFrame[cls="paletteItem"][selected="true"] #paletteTitle {{
+    color: {c('accent')};
+    font-weight: 600;
+}}
+
+#paletteSectionCell {{
+    color: {c('text3')};
+    font-size: {_FONT_SMALL}px;
+    background: transparent;
+}}
+
+#paletteKbd {{
+    color: {c('text2')};
+    font-size: {_FONT_TINY}px;
+    font-weight: 700;
+    background-color: {c('surface2')};
+    border: 1px solid {c('border')};
+    border-radius: 5px;
+    padding: 1px 5px;
+    background-repeat: no-repeat;
+}}
+
+#paletteEmpty {{
+    color: {c('text3')};
+    font-size: {_FONT_SMALL}px;
+    background: transparent;
+}}
+
 /* Botones de la app bar (32 px) */
 QToolButton[appBarBtn="true"] {{
     background-color: transparent;

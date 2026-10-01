@@ -1003,7 +1003,7 @@ def test_run_clean_2d_cyclic_engine_candidate_can_move_atoms() -> None:
 
 
 def test_run_clean_2d_quick_does_not_pass_history_as_avoid_hashes() -> None:
-    """Ctrl+K/quick debe limpiar, no usar la memoria anti-repetición."""
+    """Clean2D quick debe limpiar, no usar la memoria anti-repetición."""
     from unittest.mock import MagicMock, patch
     from chemuson.clean2d import Clean2DCandidate, Clean2DMode, Clean2DResult
     from chemuson.core.model import MolGraph

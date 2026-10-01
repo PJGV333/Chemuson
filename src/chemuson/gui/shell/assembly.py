@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Optional
 
 from PyQt6.QtCore import QTimer, Qt
+from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -14,6 +15,8 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from chemuson.gui.command_palette import CommandPalette
+from chemuson.gui.command_registry import build_command_registry
 from chemuson.gui.theme import METRICS
 
 from chemuson.gui.actions import (
@@ -329,6 +332,25 @@ def assemble_application_shell(self) -> None:
     self._sync_label_menu_state()
     self._template_browser.migrate_legacy_templates(self._template_browser_context())
     self._template_browser.refresh_template_views(self._template_browser_context())
+
+    # === PALETA DE COMANDOS (Fase 6) ===
+    # Una única ``CommandPalette`` (overlay centrado sobre la ventana) y una
+    # única ``QAction`` de apertura ``action_command_palette`` (Ctrl+K,
+    # WindowShortcut) que comparten el MISMO camino: Ctrl+K y el clic en la
+    # píldora de búsqueda abren la misma paleta. El registro se construye una
+    # sola vez a partir de las ``QAction`` existentes (la fuente de verdad).
+    # Ver OpenSpec 2026-10-01-modernize-ui-command-palette.
+    self._command_registry = build_command_registry(self)
+    self.command_palette = CommandPalette(self._command_registry, parent=self)
+    self.action_command_palette = QAction("Buscar o ejecutar…", self)
+    self.action_command_palette.setShortcut(QKeySequence("Ctrl+K"))
+    self.action_command_palette.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+    self.action_command_palette.triggered.connect(self._open_command_palette)
+    self.addAction(self.action_command_palette)
+    # La píldora de búsqueda abre el MISMO camino (la misma QAction), sin
+    # un QShortcut paralelo ni un segundo camino de apertura.
+    self.app_bar.searchActivated.connect(self.action_command_palette.trigger)
+    self.command_palette.commandExecuted.connect(self._on_command_palette_executed)
 
     # === SIGNAL CONNECTIONS ===
     self._connect_undo_redo()

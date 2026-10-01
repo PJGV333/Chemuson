@@ -3,9 +3,9 @@
 ``AppBar`` es el shell superior nativo (QtWidgets + QSS de tokens + iconos
 SVG del ``IconProvider``): marca (``flask`` + nombre + versión),
 ``DocumentTabBar`` (espejo del ``QTabWidget`` de documentos), botón ``+``,
-píldora de búsqueda **placeholder** de la futura command palette (Fase 6;
-no registra atajo: Ctrl+K pertenece hoy a ``action_clean_2d_full``; el hint
-visual ``Ctrl K`` queda oculto hasta que la Fase 6 implemente la paleta) y
+píldora de búsqueda (``SearchPill``) que abre la ``CommandPalette`` (Fase 6;
+el badge ``Ctrl K`` se muestra y su clic comparten el mismo camino de apertura
+que el atajo global ``Ctrl+K``, ``action_command_palette``) y
 botones undo/redo/tema/ajustes que **sostienen las QAction existentes** de
 la ventana (``setDefaultAction`` → icono, tooltip con atajo y estado
 habilitado reales; sin duplicar handlers ni shortcuts).
@@ -58,16 +58,14 @@ class KbdHint(QLabel):
 
 
 class SearchPill(QFrame):
-    """Píldora de búsqueda de la app bar.
+    """Píldora de búsqueda de la app bar: entrada a la paleta de comandos.
 
-    **Placeholder de la Fase 6** (command palette): visual según el mockup
-    (icono + "Buscar o ejecutar…") pero sin atajo ni lógica en esta fase;
-    al pulsarla emite :signal:`activated` para que la Fase 6 conecte la
-    paleta sin cambiar este widget.
-
-    El badge ``Ctrl K`` queda **oculto** (``self.kbd``) hasta la Fase 6:
-    hoy Ctrl+K pertenece a ``action_clean_2d_full`` y no se cambia ese
-    atajo; el hint regresa junto con la command palette.
+    **Fase 6**: la píldora es la entrada visible a la ``CommandPalette`` (Ctrl+K).
+    Al pulsarla emite :signal:`activated` que la ventana conecta a la misma
+    ``QAction`` de apertura que el atajo global ``Ctrl+K`` (un único camino).
+    El badge ``Ctrl K`` vuelve a mostrarse (``self.kbd``) y el tooltip deja de
+    indicar "(próximamente)". La píldora **no** es un editor permanente: el
+    campo editable pertenece a ``CommandPalette``.
     """
 
     activated = pyqtSignal()
@@ -76,7 +74,7 @@ class SearchPill(QFrame):
         super().__init__(parent)
         self.setObjectName("searchPill")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setToolTip("Buscar o ejecutar… (próximamente)")
+        self.setToolTip("Buscar o ejecutar… (Ctrl+K)")
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         # Ancho fijo (250 px, igual que el spike aprobado): la compresión
         # bajo 980 px la asumen las pestañas (elisión), no la píldora.
@@ -91,13 +89,13 @@ class SearchPill(QFrame):
         self.icon_label = QLabel(self)
         self.text_label = QLabel("Buscar o ejecutar…", self)
         self.text_label.setObjectName("searchPillTxt")
-        # El badge Ctrl K se mantiene construido (lo reactiva la Fase 6)
-        # pero oculto: Ctrl+K sigue siendo el de Clean2D full.
+        # El badge Ctrl K se muestra (Fase 6): la píldora y Ctrl+K abren la
+        # misma paleta de comandos.
         self.kbd = KbdHint("Ctrl K", self)
-        self.kbd.hide()
         layout.addWidget(self.icon_label)
         layout.addWidget(self.text_label)
         layout.addStretch(1)
+        layout.addWidget(self.kbd)
 
     def mousePressEvent(self, event) -> None:  # noqa: N802
         if event.button() == Qt.MouseButton.LeftButton:
@@ -129,7 +127,8 @@ class AppBar(QFrame):
     #: Reordenamiento por drag en el espejo (la ventana mueve en el
     #: ``QTabWidget`` vía ``moveTab``).
     tabMoved = pyqtSignal(int, int)
-    #: Píldora de búsqueda pulsada (placeholder; lo conectará la Fase 6).
+    #: Píldora de búsqueda pulsada (Fase 6: la ventana la conecta a la misma
+    #: ``QAction`` de apertura que Ctrl+K).
     searchActivated = pyqtSignal()
     #: Botón hamburguesa: la ventana abre el ``QMenuBar`` (oculto) como popup.
     menuRequested = pyqtSignal()

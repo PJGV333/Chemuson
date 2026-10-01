@@ -566,6 +566,8 @@ modules:
   paths:
   - src/chemuson/gui/__init__.py
   - src/chemuson/gui/app_bar.py
+  - src/chemuson/gui/command_palette.py
+  - src/chemuson/gui/command_registry.py
   - src/chemuson/gui/editor2d/__init__.py
   - src/chemuson/gui/composite_diagram_item.py
   - src/chemuson/gui/diagram_layout.py
@@ -677,6 +679,7 @@ modules:
   - tests/test_ui_svg_icons.py
   - tests/test_ui_app_bar_tabs.py
   - tests/test_ui_tool_rail.py
+  - tests/test_command_palette.py
   title: Orquestación de interfaz PyQt6
 - circular_dependencies: []
   current_dependencies:
