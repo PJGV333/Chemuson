@@ -134,6 +134,11 @@ class ChemusonWindow(QMainWindow):
         tool_rail = getattr(self, "tool_rail", None)
         if tool_rail is not None:
             tool_rail.refresh_icons(resolved_theme)
+        # Fase 6: la paleta de comandos re-tinta iconos y filas (su QSS viene
+        # del stylesheet de la ventana aplicado por ``apply_theme``).
+        command_palette = getattr(self, "command_palette", None)
+        if command_palette is not None:
+            command_palette.refresh_theme(resolved_theme)
 
     def toggle_theme(self, checked: bool | None = None) -> None:
         """Cambia entre modo claro y oscuro."""
@@ -299,6 +304,51 @@ class ChemusonWindow(QMainWindow):
         """Reordenamiento por drag en el espejo: mueve la pestaña real."""
         if 0 <= from_index < self.tabs.count():
             self.tabs.tabBar().moveTab(from_index, to_index)
+
+    # -------------------------------------------------------------------------
+    # Paleta de comandos (Fase 6)
+    # -------------------------------------------------------------------------
+    def _open_command_palette(self) -> None:
+        """Abre la paleta de comandos (camino único: Ctrl+K y la píldora)."""
+        palette = getattr(self, "command_palette", None)
+        if palette is None:
+            return
+        # La píldora y Ctrl+K comparten esta misma acción de apertura; si el
+        # usuario pulsa Ctrl+K con la paleta ya abierta, se cierra (toggle).
+        if palette.is_open():
+            palette.close_overlay()
+            return
+        self._refresh_command_registry_templates()
+        self.command_palette.open()
+
+    def _on_command_palette_executed(self, action) -> None:
+        """Callback tras ejecutar un comando desde la paleta.
+
+        No hace nada funcional por sí mismo (la ``QAction`` ya se disparó por
+        delegación a ``trigger``); se expone para tests y para refrescar
+        entradas que dependen del estado (p. ej. plantillas tras añadir una).
+        """
+        if action is None:
+            return
+        self._refresh_command_registry_templates()
+
+    def _refresh_command_registry_templates(self) -> None:
+        """Resincroniza las entradas de plantilla del registro con el menú.
+
+        El menú dinámico ``templates_menu`` es la fuente de verdad de las
+        plantillas (``TemplateBrowserService``); al cambiar la biblioteca, las
+        ``QAction`` del menú se regeneran, por lo que se reconstruye el registro
+        una sola vez más (deduplicación por identidad evita duplicados).
+        """
+        registry = getattr(self, "_command_registry", None)
+        palette = getattr(self, "command_palette", None)
+        if registry is None or palette is None:
+            return
+        from chemuson.gui.command_registry import build_command_registry
+
+        fresh = build_command_registry(self)
+        registry._entries = fresh._entries
+        registry._by_action = fresh._by_action
 
     def _sync_app_bar_tabs(self) -> None:
         """Resincroniza el espejo completo con el estado real de pestañas.
