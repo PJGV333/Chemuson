@@ -379,12 +379,10 @@ def test_external_rich_text_editor_preserves_selection_for_toolbar_action() -> N
         window.close()
 
 
-def test_ctrl_k_shortcut_opens_command_palette_not_clean_2d() -> None:
-    """Fase 6: ``Ctrl+K`` migra a la paleta de comandos.
-
-    Antes abría ``action_clean_2d_full``; ahora abre la ``CommandPalette``
-    (migración deliberada de atajo). La acción de Clean2D quick sigue viva por
-    menú y por la paleta, pero ya no posee ``Ctrl+K``.
+def test_ctrl_k_shortcut_triggers_clean_2d_full() -> None:
+    """Corrección de UX (post-Fase 6): ``Ctrl+K`` vuelve a ejecutar
+    ``action_clean_2d_full`` (limpia 2D, 1 paso) y ya no abre la paleta de
+    comandos, que pasa a abrirse con ``Ctrl+P``.
     """
     window = ChemusonWindow()
     try:
@@ -403,11 +401,21 @@ def test_ctrl_k_shortcut_opens_command_palette_not_clean_2d() -> None:
         )
         QApplication.processEvents()
 
-        # Ctrl+K ya NO pertenece a action_clean_2d_full (migración Fase 6).
-        assert window.action_clean_2d_full.shortcut() != QKeySequence("Ctrl+K")
-        # Ctrl+K sí abre la paleta de comandos y NO disparó Clean2D quick.
+        # Ctrl+K vuelve a pertenecer a action_clean_2d_full.
+        assert window.action_clean_2d_full.shortcut() == QKeySequence("Ctrl+K")
+        # Ctrl+K dispara Clean2D quick y NO abre la paleta de comandos.
+        assert triggered
+        assert not window.command_palette.is_open()
+
+        # Y Ctrl+P sí abre la paleta (la acción que la posee es la correcta).
+        assert window.action_command_palette.shortcut() == QKeySequence("Ctrl+P")
+        QTest.keyClick(
+            window.canvas.viewport(),
+            Qt.Key.Key_P,
+            Qt.KeyboardModifier.ControlModifier,
+        )
+        QApplication.processEvents()
         assert window.command_palette.is_open()
-        assert triggered == []
         window.command_palette.close_overlay()
         QApplication.processEvents()
     finally:

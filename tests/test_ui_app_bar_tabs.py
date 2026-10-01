@@ -11,8 +11,8 @@ Cubre:
   (misma ``action_new``), suciedad desde el estado real (``QUndoStack``),
   cierre/cambio/reordenamiento por el flujo existente, estado enabled de
   undo/redo, tema light→dark→light, resize 1440×900 / 980×600 y ausencia de
-  atajo propio en la píldora de búsqueda (Fase 6: la píldora y Ctrl+K comparten
-  el camino de apertura de la paleta de comandos).
+  atajo propio en la píldora de búsqueda (Fase 6: la píldora y Ctrl+P comparten
+  el camino de apertura de la paleta de comandos; Ctrl+K volvió a Clean2D).
 """
 
 from __future__ import annotations
@@ -170,15 +170,15 @@ class TestAppBarUnit:
             theme_action=app.theme,
         )
         # La píldora no registra QShortcut/atajo alguno: abre la command
-        # palette por la misma ``QAction`` de apertura (Ctrl+K) que la ventana
+        # palette por la misma ``QAction`` de apertura (Ctrl+P) que la ventana
         # conecta a ``searchActivated`` (un único camino de apertura).
         from PyQt6.QtGui import QShortcut
 
         assert bar.findChildren(QShortcut) == []
-        # Entrada real (Fase 6): badge ``Ctrl K`` visible y el tooltip deja de
+        # Entrada real (Fase 6): badge ``Ctrl P`` visible y el tooltip deja de
         # decir "(próximamente)". La píldora no es un editor permanente.
         assert bar.search_pill.text_label.text() == "Buscar o ejecutar…"
-        assert "Ctrl K" in bar.search_pill.kbd.text()
+        assert "Ctrl P" in bar.search_pill.kbd.text()
         assert bar.search_pill.kbd.isVisibleTo(bar.search_pill)
         assert "(próximamente)" not in bar.search_pill.toolTip()
         from PyQt6.QtWidgets import QLineEdit
@@ -442,17 +442,17 @@ class TestRealWindow:
         assert bar.undo_button.isEnabled()
         win.canvas.undo_stack.setClean()
 
-    def test_search_pill_has_no_shortcut_and_ctrl_k_migrated(self) -> None:
+    def test_search_pill_has_no_shortcut_and_shortcuts_split(self) -> None:
         win = _make_action_window()
         from PyQt6.QtGui import QShortcut
 
         # La píldora no registra QShortcut propio: comparte el camino de
-        # apertura (``action_command_palette``) con Ctrl+K (Fase 6).
+        # apertura (``action_command_palette``) con Ctrl+P (Fase 6).
         assert win.app_bar.findChildren(QShortcut) == []
-        # Ctrl+K es ahora el atajo global de la paleta de comandos; ya NO
-        # pertenece a ``action_clean_2d_full`` (migración deliberada).
-        assert win.action_command_palette.shortcut().toString() == "Ctrl+K"
-        assert win.action_clean_2d_full.shortcut().toString() != "Ctrl+K"
+        # Ctrl+P es el atajo global de la paleta; Ctrl+K volvió a pertenecer a
+        # ``action_clean_2d_full`` (corrección de UX).
+        assert win.action_command_palette.shortcut().toString() == "Ctrl+P"
+        assert win.action_clean_2d_full.shortcut().toString() == "Ctrl+K"
 
     def test_theme_cycle_light_dark_light(self) -> None:
         win = _make_action_window()

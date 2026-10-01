@@ -335,15 +335,16 @@ def assemble_application_shell(self) -> None:
 
     # === PALETA DE COMANDOS (Fase 6) ===
     # Una única ``CommandPalette`` (overlay centrado sobre la ventana) y una
-    # única ``QAction`` de apertura ``action_command_palette`` (Ctrl+K,
-    # WindowShortcut) que comparten el MISMO camino: Ctrl+K y el clic en la
-    # píldora de búsqueda abren la misma paleta. El registro se construye una
-    # sola vez a partir de las ``QAction`` existentes (la fuente de verdad).
-    # Ver OpenSpec 2026-10-01-modernize-ui-command-palette.
+    # única ``QAction`` de apertura ``action_command_palette`` (``Ctrl+P``,
+    # WindowShortcut) que comparten el MISMO camino: ``Ctrl+P`` y el clic en la
+    # píldora de búsqueda abren la misma paleta. (``Ctrl+K`` vuelve a ser el
+    # atajo histórico de Clean2D quick, ``action_clean_2d_full``.) El registro
+    # se construye una sola vez a partir de las ``QAction`` existentes (la
+    # fuente de verdad). Ver OpenSpec 2026-10-01-modernize-ui-command-palette.
     self._command_registry = build_command_registry(self)
     self.command_palette = CommandPalette(self._command_registry, parent=self)
     self.action_command_palette = QAction("Buscar o ejecutar…", self)
-    self.action_command_palette.setShortcut(QKeySequence("Ctrl+K"))
+    self.action_command_palette.setShortcut(QKeySequence("Ctrl+P"))
     self.action_command_palette.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
     self.action_command_palette.triggered.connect(self._open_command_palette)
     self.addAction(self.action_command_palette)

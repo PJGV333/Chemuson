@@ -2,10 +2,12 @@
 
 ## Purpose
 
-Define la paleta de comandos (Ctrl+K) de la Fase 6 como una superficie de
+Define la paleta de comandos (Ctrl+P) de la Fase 6 como una superficie de
 presentación, filtro y ejecución de las `QAction` existentes de la aplicación,
-sin duplicar lógica química ni handlers, con `Ctrl+K` como atajo global
-migrado deliberadamente desde `action_clean_2d_full`.
+sin duplicar lógica química ni handlers. La paleta se abre con `Ctrl+P` (única
+`QAction` global que lo posee, `action_command_palette`) y con el clic en la
+píldora de búsqueda del AppBar. `Ctrl+K` es el atajo histórico de
+`action_clean_2d_full` (limpia 2D, 1 paso) y NO abre la paleta.
 
 ## ADDED Requirements
 
@@ -71,21 +73,29 @@ exportaciones ya presentes como `QAction`.
 - **THEN** aparecen las entradas PNG, SVG, PDF, CML y SMILES (entre otras)
 - **AND** cada una apunta a su `QAction` de exportación correspondiente.
 
-### Requirement: Ctrl+K abre la paleta y migra deliberadamente desde Clean2D quick
+### Requirement: Ctrl+P abre la paleta; Ctrl+K ejecuta Clean2D quick
 
 La ventana SHALL exponer una única `QAction` de apertura
-(`action_command_palette`) con `QKeySequence("Ctrl+K")`, contexto
+(`action_command_palette`) con `QKeySequence("Ctrl+P")`, contexto
 `WindowShortcut`, registrada mediante `window.addAction(...)`, cuyo `triggered`
-abre la `CommandPalette`. `action_clean_2d_full` SHALL NO poseer el shortcut
-`Ctrl+K` a partir de esta fase (el shortcut se retira conservando la `QAction`,
-su handler y su función). `Ctrl+Shift+K` y `Ctrl+Alt+K` SHALL permanecer
-intactos. No se inventa otro shortcut para `action_clean_2d_full` en esta fase.
+abre la `CommandPalette`. `Ctrl+P` SHALL poseerla **exclusivamente** esa
+`QAction` global (sin conflictos). `action_clean_2d_full` SHALL poseer el
+atajo histórico `QKeySequence("Ctrl+K")` (contexto `WindowShortcut`,
+`window.addAction(...)`), cuyo `triggered` ejecuta *Limpiar 2D (1 paso)*;
+`Ctrl+K` SHALL NO abrir la paleta. `Ctrl+Shift+K` y `Ctrl+Alt+K` SHALL
+permanecer intactos.
 
-#### Scenario: Ctrl+K abre la paleta
+#### Scenario: Ctrl+P abre la paleta
 - **GIVEN** una `ChemusonWindow` visible
-- **WHEN** se pulsa Ctrl+K
+- **WHEN** se pulsa Ctrl+P
 - **THEN** la `CommandPalette` se muestra (foco en el input)
 - **AND** `action_clean_2d_full.triggered` NO se dispara.
+
+#### Scenario: Ctrl+K ejecuta Clean2D quick y no abre la paleta
+- **GIVEN** una `ChemusonWindow` visible
+- **WHEN** se pulsa Ctrl+K
+- **THEN** `action_clean_2d_full.triggered` se dispara exactamente una vez
+- **AND** la `CommandPalette` NO se muestra.
 
 #### Scenario: Clean2D quick sigue accesible por menú y por paleta
 - **GIVEN** la ventana
@@ -93,10 +103,10 @@ intactos. No se inventa otro shortcut para `action_clean_2d_full` en esta fase.
 - **THEN** `action_clean_2d_full.triggered` se dispara
 - **AND** la acción sigue presente en *Estructura → Limpiar 2D (1 paso)*.
 
-#### Scenario: Ctrl+K ya no pertenece a action_clean_2d_full
+#### Scenario: Solo una QAction global posee Ctrl+P
 - **GIVEN** la ventana montada
-- **WHEN** se inspecciona `action_clean_2d_full.shortcut()`
-- **THEN** no es `Ctrl+K`.
+- **WHEN** se enumeran las `QAction` de la ventana con `QKeySequence("Ctrl+P")`
+- **THEN** aparece exactamente una: `action_command_palette`.
 
 #### Scenario: Ctrl+Shift+K y Ctrl+Alt+K conservan su comportamiento
 - **GIVEN** la ventana
@@ -104,26 +114,25 @@ intactos. No se inventa otro shortcut para `action_clean_2d_full` en esta fase.
 - **THEN** `action_clean_2d_publication` y `action_clean_2d_propose` se disparan
   respectivamente.
 
-### Requirement: La píldora del AppBar abre la misma ruta de Ctrl+K
+### Requirement: La píldora del AppBar abre la misma ruta de Ctrl+P
 
 La `SearchPill` del AppBar SHALL convertirse en entrada real a la paleta: su
-clic y Ctrl+K SHALL abrir exactamente la misma instancia/ruta (una misma
-`QAction` de apertura). El badge visual `Ctrl K` SHALL volver a mostrarse y el
-tooltip SHALL dejar de indicar "(próximamente)". La `SearchPill` SHALL NO
-convertirse en un editor permanente; el campo editable pertenece a
-`CommandPalette`.
+clic y Ctrl+P SHALL abrir exactamente la misma instancia/ruta (una misma
+`QAction` de apertura). El badge visual `Ctrl P` SHALL mostrarse y el tooltip
+SHALL dejar de indicar "(próximamente)". La `SearchPill` SHALL NO convertirse
+en un editor permanente; el campo editable pertenece a `CommandPalette`.
 
-#### Scenario: Clic en la píldora abre la misma ruta que Ctrl+K
+#### Scenario: Clic en la píldora abre la misma ruta que Ctrl+P
 - **GIVEN** la ventana
 - **WHEN** se hace clic en `app_bar.search_pill`
 - **THEN** se dispara la misma `QAction` de apertura (`action_command_palette`)
-  que Ctrl+K
+  que Ctrl+P
 - **AND** la paleta se muestra.
 
-#### Scenario: La píldora muestra el hint Ctrl K y no es un editor
+#### Scenario: La píldora muestra el hint Ctrl P y no es un editor
 - **GIVEN** el AppBar montado
 - **WHEN** se inspecciona la `SearchPill`
-- **THEN** el badge `Ctrl K` es visible
+- **THEN** el badge `Ctrl P` es visible
 - **AND** el tooltip no contiene "(próximamente)"
 - **AND** la `SearchPill` no contiene un `QLineEdit`.
 
