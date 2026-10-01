@@ -1,4 +1,4 @@
-# Design: Paleta de comandos Ctrl+K (Fase 6)
+# Design: Paleta de comandos Ctrl+P (Fase 6)
 
 ## Resumen de decisiones
 
@@ -30,24 +30,33 @@ seguido del catálogo ordenado. No se agregan nuevas preferencias: no hay razón
 arquitectónica para persistir una preferencia que solo afecta la ordenación con
 query vacío y cuyo valor es trivialmente recalculable.
 
-### D4 — Migración deliberada de `Ctrl+K` (conflicto real resuelto)
+### D4 — Atajos: `Ctrl+K` para Clean2D quick, `Ctrl+P` para la paleta
 
-- `action_clean_2d_full` **deja** de poseer `Ctrl+K`: se elimina
-  `setShortcut(QKeySequence("Ctrl+K"))` y `window.addAction(...)`. Su `QAction`,
-  su conexión `triggered → _on_clean_2d_full` y su item de menú
-  *Estructura → Limpiar 2D (1 paso)* permanecen intactos. **No** se le asigna
-  otro shortcut en esta fase.
+- `action_clean_2d_full` **conserva** su atajo histórico `Ctrl+K`:
+  `setShortcut(QKeySequence("Ctrl+K"))` + contexto `WindowShortcut` +
+  `window.addAction(action_clean_2d_full)`. Su `QAction`, su conexión
+  `triggered → _on_clean_2d_full` y su item de menú
+  *Estructura → Limpiar 2D (1 paso)* permanecen intactos. No se modifica el
+  handler ni ninguna lógica de Clean2D.
 - Se crea **una única** `QAction` de apertura `action_command_palette` con
-  `QKeySequence("Ctrl+K")`, `Qt.ShortcutContext.WindowShortcut`, y
+  `QKeySequence("Ctrl+P")`, `Qt.ShortcutContext.WindowShortcut`, y
   `window.addAction(action_command_palette)`. Su `triggered` abre la paleta.
+- **Verificación previa de conflicto**: antes de asignar `Ctrl+P` se inspeccionó
+  programáticamente el conjunto completo de `QAction` de la ventana y no
+  existía ninguna `QAction` ni `QShortcut` que poseyera `Ctrl+P`. `Ctrl+P` es
+  por tanto la única `QAction` global que lo posee (sin conflicto).
 - La `SearchPill` del AppBar no registra su propio `QShortcut`; su clic emite
   `activated` que la ventana conecta a `action_command_palette.trigger()`.
-  Así **Ctrl+K y la píldora comparten un mismo camino de apertura** (una misma
+  Así **Ctrl+P y la píldora comparten un mismo camino de apertura** (una misma
   `QAction`), cumpliendo "no implementes dos caminos".
 - `Ctrl+Shift+K` (`action_clean_2d_publication`) y `Ctrl+Alt+K`
   (`action_clean_2d_propose`) no se tocan.
-- Es una migración deliberada de atajo, no una regresión. Se actualizan
-  únicamente los tests/documentación que afirmaban `Ctrl+K → Clean2D quick`.
+- **Nota de la corrección de UX**: la implementación original de la Fase 6
+  migró `Ctrl+K` de `action_clean_2d_full` a `action_command_palette`. Tras la
+  prueba manual (KDE/Wayland) se restauró `Ctrl+K` a Clean2D quick y se asignó
+  `Ctrl+P` a la paleta, preservando todo lo demás (layout, ranking, registro y
+  apariencia). No es una regresión: se actualizan los tests/documentación que
+  habían adoptado el atajo temporal.
 
 ### D5 — Plantillas vía contrato `QAction` existente (menú dinámico)
 

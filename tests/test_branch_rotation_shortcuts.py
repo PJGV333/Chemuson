@@ -240,7 +240,7 @@ def test_shortcut_with_non_modal_text_editor_focus_keeps_window_policy():
     herramienta (que además escribirían en el editor); las combinaciones
     Ctrl+Alt+* no escriben nada y siguen activas por semántica estándar de
     ``WindowShortcut`` (un hijo con foco cuenta como foco de la ventana —
-    mismo comportamiento que el ``Ctrl+K`` de la paleta de comandos). El shortcut
+    mismo comportamiento que el ``Ctrl+P`` de la paleta de comandos). El shortcut
     debe activarse aunque el foco esté en el editor, enviando la tecla al
     widget con foco (como haría un pulsado real)."""
     with _window() as win:

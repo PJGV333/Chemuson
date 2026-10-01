@@ -1,19 +1,20 @@
-# Proposal: Paleta de comandos Ctrl+K (Fase 6)
+# Proposal: Paleta de comandos Ctrl+P (Fase 6)
 
 ## Why
 
 Tras las fases 1–5, la región superior y lateral de la UI está consolidada
 (app bar, pestañas, rail, side panel, barra de estado). Falta la mayor ganancia
 de "práctico" por esfuerzo según `docs/ui-modernization/PLAN.md` §2.4/§Fase 6:
-una **paleta de comandos** (Ctrl+K) que haga buscables todas las acciones de la
+una **paleta de comandos** (Ctrl+P) que haga buscables todas las acciones de la
 aplicación (archivos, edición, vista, estructura, análisis, exportaciones,
 paneles laterales, plantillas, preferencias/tema) desde un único punto, con la
 píldora de búsqueda del AppBar como entrada visible.
 
 La píldora de búsqueda del AppBar es hoy un placeholder deliberado (Fase 3)
-que no registra atajo alguno; su badge `Ctrl K` está oculto porque `Ctrl+K`
-pertenece a `action_clean_2d_full`. Esta fase convierte la píldora en entrada
-real a la paleta y resuelve de forma deliberada ese conflicto de atajo.
+que no registra atajo alguno. Esta fase convierte la píldora en entrada real a
+la paleta. La paleta usa `Ctrl+P` (verificado libre de conflictos en
+producción); `Ctrl+K` se conserva como el atajo histórico de
+`action_clean_2d_full` (limpia 2D, 1 paso).
 
 ## What Changes
 
@@ -26,23 +27,25 @@ real a la paleta y resuelve de forma deliberada ese conflicto de atajo.
   checkable/checked, shortcut mostrado, icono, `triggered` y handlers). No
   genera una segunda `QAction` por comando ni duplica handlers ni lógica
   química.
-- **Migración deliberada de `Ctrl+K`**: `action_clean_2d_full` conserva su
-  `QAction`, su handler y su función, pero **deja de poseer** `Ctrl+K` (se
-  quita el shortcut; la acción sigue accesible desde
-  *Estructura → Limpiar 2D (1 paso)* y desde la paleta). `Ctrl+K` pasa a ser el
-  shortcut global de una única `action_command_palette` (`QKeySequence("Ctrl+K")`,
-  `WindowShortcut`, `window.addAction(...)`), que también es el camino de
-  apertura de la píldora de búsqueda (mismos dos caminos → una misma acción).
-  `Ctrl+Shift+K` (publicación) y `Ctrl+Alt+K` (conformero) quedan intactos.
-  No se inventa otro shortcut para `action_clean_2d_full` en esta fase.
+- **Atajo de la paleta: `Ctrl+P`; `Ctrl+K` se conserva para Clean2D quick**:
+  `action_command_palette` es la única `QAction` global que posee
+  `QKeySequence("Ctrl+P")` (verificado libre de conflictos en producción
+  antes de asignarlo), con `WindowShortcut` y `window.addAction(...)`. La
+  píldora de búsqueda comparte ese mismo camino de apertura. `Ctrl+K` es el
+  atajo histórico de `action_clean_2d_full` (limpia 2D, 1 paso), sin tocar su
+  handler ni su lógica: se conserva `setShortcut("Ctrl+K")` +
+  `window.addAction(...)`. `Ctrl+Shift+K` (publicación) y `Ctrl+Alt+K`
+  (conformero) quedan intactos. (Nota: la implementación original de la Fase 6
+  migró `Ctrl+K` a la paleta; la corrección de UX lo restaura a Clean2D quick
+  y asigna `Ctrl+P` a la paleta.)
 - `shell/assembly.py` / `main_window.py`: construir una única
   `CommandPalette` (registrando las fuentes reales de comandos) y la única
-  `QAction` de apertura `action_command_palette` (Ctrl+K) conectada a la paleta
+  `QAction` de apertura `action_command_palette` (Ctrl+P) conectada a la paleta
   y a `app_bar.search_pill`.
 - `app_bar.py` (mínimo): la `SearchPill` deja de ser placeholder — el badge
-  `Ctrl K` se muestra y el tooltip deja de decir "(próximamente)"; su clic emite
+  `Ctrl P` se muestra y el tooltip deja de decir "(próximamente)"; su clic emite
   `activated` que la ventana conecta al MISMO camino de apertura (la `QAction`
-  de Ctrl+K). La SearchPill no se convierte en editor permanente: el campo
+  de Ctrl+P). La SearchPill no se convierte en editor permanente: el campo
   editable pertenece a `CommandPalette`.
 - **Fuente de plantillas**: se reutiliza el contrato `QAction` ya existente del
   menú dinámico de plantillas (`window.templates_menu`, que
@@ -54,8 +57,11 @@ real a la paleta y resuelve de forma deliberada ese conflicto de atajo.
 - `theme/tokens.py` + `theme/qss.py`: métrica de ancho (`paletteW`) y estilos
   tokenizados del overlay/tarjeta/input/sections/rows/selected (light + dark).
 - `architecture/modules.yml`: registro de `command_palette.py` en M08 (gui).
-- Tests dirigidos en `tests/test_command_palette.py` y ajuste **solo** de los
-  tests/documentación que afirmaban que `Ctrl+K` ejecuta Clean2D quick.
+- Tests dirigidos en `tests/test_command_palette.py` (y ajuste de los tests de
+  AppBar/shortcuts) que demuestran: Ctrl+K ejecuta `action_clean_2d_full` y no
+  abre la paleta; Ctrl+P abre la paleta; la SearchPill abre la misma ruta; solo
+  una `QAction` global posee Ctrl+P; Ctrl+Shift+K/Ctrl+Alt+K intactos; Clean2D
+  quick sigue accesible por menú y por la paleta.
 
 ## No Changes
 

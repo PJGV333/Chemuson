@@ -1,4 +1,4 @@
-"""Tests de la paleta de comandos Ctrl+K (Fase 6).
+"""Tests de la paleta de comandos (Fase 6, corrección de UX: Ctrl+P).
 
 Cubre el contrato de la Fase 6 según OpenSpec
 ``2026-10-01-modernize-ui-command-palette``:
@@ -7,14 +7,16 @@ Cubre el contrato de la Fase 6 según OpenSpec
 - registro con ≥60 comandos únicos y deduplicación por identidad de ``QAction``;
 - las 7 páginas del SidePanel, las exportaciones (PNG/SVG/PDF/CML/SMILES) y
   Clean2D quick buscables;
-- migración deliberada de ``Ctrl+K`` (ya no pertenece a ``action_clean_2d_full``;
-  abre la paleta; ``Ctrl+Shift+K``/``Ctrl+Alt+K`` intactos);
-- SearchPill como entrada real (mismo camino que Ctrl+K, badge ``Ctrl K``);
+- corrección de UX (post-Fase 6): ``Ctrl+K`` vuelve a pertenecer a
+  ``action_clean_2d_full`` (limpia 2D, 1 paso) y ya NO abre la paleta; la
+  paleta de comandos se abre con ``Ctrl+P`` (única ``QAction`` global que lo
+  posee) y con el clic en SearchPill; ``Ctrl+Shift+K``/``Ctrl+Alt+K`` intactos;
+- SearchPill como entrada real (mismo camino que Ctrl+P, badge ``Ctrl P``);
 - filtro substring con prioridad por prefijo y matching por keywords;
 - teclado (↑/↓/Enter/Esc), clic, disabled, checkable, cierre tras ejecutar;
 - presentación dentro de la ventana (980×600) y light→dark→light;
 - los atajos de herramienta no interfieren al escribir;
-- las acciones siguen accesibles por menú y sin conflicto de ``Ctrl+K``;
+- las acciones siguen accesibles por menú y sin conflicto de ``Ctrl+P``;
 - contrato de imports de ``command_palette.py`` (sin dependencia de química).
 
 Los diálogos modales se prueban por wiring/``trigger`` de ``QAction`` segura,
@@ -161,34 +163,43 @@ def test_clean2d_quick_is_searchable_via_its_historical_qaction(win):
 
 
 # ---------------------------------------------------------------------------
-# 7-8. Migración de Ctrl+K
+# 7-8. Restauración de Ctrl+K (Clean2D) + Ctrl+P (paleta)
 # ---------------------------------------------------------------------------
-def test_ctrl_k_no_longer_belongs_to_clean2d_full(win):
-    assert win.action_clean_2d_full.shortcut() != QKeySequence("Ctrl+K")
-    # La acción sigue viva: conserva su texto y sigue presente en el menú
-    # *Estructura → Limpiar 2D (1 paso)* (fuente de verdad intacta).
+def test_ctrl_k_belongs_to_clean2d_full_again(win):
+    # Corrección de UX (post-Fase 6): ``Ctrl+K`` vuelve a ser el atajo histórico
+    # de Clean2D quick, con contexto ``WindowShortcut``. La paleta usa ``Ctrl+P``.
+    assert win.action_clean_2d_full.shortcut() == QKeySequence("Ctrl+K")
+    assert (
+        win.action_clean_2d_full.shortcutContext()
+        == Qt.ShortcutContext.WindowShortcut
+    )
+    # La acción sigue viva: texto y presencia en el registro intactos.
     assert win.action_clean_2d_full.text() == "Limpiar 2D (1 paso)"
     assert win._command_registry.find_by_action(win.action_clean_2d_full) is not None
+    # La paleta de comandos posee Ctrl+P.
+    assert win.action_command_palette.shortcut() == QKeySequence("Ctrl+P")
 
 
-def test_ctrl_k_opens_the_command_palette(win):
+def test_ctrl_k_executes_clean2d_and_does_not_open_palette(win):
+    saw = []
+    win.action_clean_2d_full.triggered.connect(lambda: saw.append(True))
     win.canvas.setFocus()
     win.canvas.viewport().setFocus()
     QTest.keyClick(win.canvas.viewport(), Qt.Key.Key_K, Qt.KeyboardModifier.ControlModifier)
     QApplication.processEvents()
-    assert win.command_palette.is_open()
-    win.command_palette.close_overlay()
-    QApplication.processEvents()
+    # Ctrl+K dispara exactamente action_clean_2d_full (limpiar 2D, 1 paso).
+    assert saw == [True], "Ctrl+K debe disparar action_clean_2d_full"
+    # ...y NO abre la paleta de comandos.
+    assert not win.command_palette.is_open()
 
 
-def test_ctrl_k_does_not_trigger_clean2d_full(win):
-    saw = []
-    win.action_clean_2d_full.triggered.connect(lambda: saw.append(True))
+def test_ctrl_p_opens_the_command_palette(win):
+    win.canvas.setFocus()
     win.canvas.viewport().setFocus()
-    QTest.keyClick(win.canvas.viewport(), Qt.Key.Key_K, Qt.KeyboardModifier.ControlModifier)
+    QTest.keyClick(win.canvas.viewport(), Qt.Key.Key_P, Qt.KeyboardModifier.ControlModifier)
     QApplication.processEvents()
-    assert saw == []
     assert win.command_palette.is_open()
+    # Ctrl+P no disparó Clean2D quick.
     win.command_palette.close_overlay()
     QApplication.processEvents()
 
@@ -209,17 +220,17 @@ def test_ctrl_shift_k_and_ctrl_alt_k_are_intact(win):
     QApplication.processEvents()
     assert pub == [True]
     assert prop == [True]
-    # Ctrl+K (sin modificadores) no se disparó por ninguno de estos.
+    # Ninguno de estos abre la paleta de comandos (ahora en Ctrl+P).
     assert not win.command_palette.is_open()
 
 
 # ---------------------------------------------------------------------------
-# 9-10. SearchPill: misma ruta que Ctrl+K + badge Ctrl K
+# 9-10. SearchPill: misma ruta que Ctrl+P + badge Ctrl P
 # ---------------------------------------------------------------------------
-def test_search_pill_opens_the_same_route_as_ctrl_k(win):
+def test_search_pill_opens_the_same_route_as_ctrl_p(win):
     fired = []
     win.action_command_palette.triggered.connect(lambda: fired.append(True))
-    # El clic en la píldora dispara la MISMA QAction de apertura (Ctrl+K).
+    # El clic en la píldora dispara la MISMA QAction de apertura (Ctrl+P).
     win.app_bar.search_pill.activated.emit()
     QApplication.processEvents()
     assert fired == [True]
@@ -230,12 +241,12 @@ def test_search_pill_opens_the_same_route_as_ctrl_k(win):
     from PyQt6.QtGui import QShortcut
 
     assert win.app_bar.findChildren(QShortcut) == []
-    assert win.action_command_palette.shortcut() == QKeySequence("Ctrl+K")
+    assert win.action_command_palette.shortcut() == QKeySequence("Ctrl+P")
 
 
-def test_search_pill_shows_ctrl_k_hint_and_is_not_an_editor(win):
+def test_search_pill_shows_ctrl_p_hint_and_is_not_an_editor(win):
     pill = win.app_bar.search_pill
-    assert "Ctrl K" in pill.kbd.text()
+    assert "Ctrl P" in pill.kbd.text()
     assert pill.kbd.isVisibleTo(pill)
     assert "(próximamente)" not in pill.toolTip()
     # La SearchPill no es un editor permanente: el campo editable es de la paleta.
@@ -509,20 +520,27 @@ def test_existing_actions_still_accessible_from_menus(win):
 
 
 # ---------------------------------------------------------------------------
-# 25. No existe conflicto de shortcut Ctrl+K
+# 25. Única QAction global posee Ctrl+P; Ctrl+K pertenece a Clean2D quick
 # ---------------------------------------------------------------------------
-def test_no_ctrl_k_shortcut_conflict(win):
-    # Solo action_command_palette posee Ctrl+K (contexto ventana).
+def test_only_one_global_action_owns_ctrl_p(win):
+    # Solo ``action_command_palette`` posee ``Ctrl+P`` (contexto ventana).
     owners = []
     for action in win.actions():
         for seq in action.shortcuts():
-            if seq == QKeySequence("Ctrl+K"):
+            if seq == QKeySequence("Ctrl+P"):
                 owners.append(action)
-    assert any(a is win.action_command_palette for a in owners)
-    assert win.action_clean_2d_full not in owners
-    # Ctrl+K no pertenece a ninguna otra QAction registrada en la ventana.
-    others = [a for a in owners if a is not win.action_command_palette]
-    assert others == []
+    assert owners == [win.action_command_palette], (
+        "Solo action_command_palette debe poseer Ctrl+P (única QAction global)"
+    )
+    # Ctrl+K, por su parte, pertenece a Clean2D quick (y a ninguna otra).
+    ctrl_k_owners = []
+    for action in win.actions():
+        for seq in action.shortcuts():
+            if seq == QKeySequence("Ctrl+K"):
+                ctrl_k_owners.append(action)
+    assert ctrl_k_owners == [win.action_clean_2d_full], (
+        "Solo action_clean_2d_full debe poseer Ctrl+K"
+    )
 
 
 # ---------------------------------------------------------------------------

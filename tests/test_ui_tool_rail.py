@@ -8,7 +8,8 @@ Cubre (contra la ventana real, offscreen):
   + pies de flyout (anillo/átomo: acción de texto; energía: 2 submenús de
   preset). Clean2D/Validar/Numerar no son botones permanentes del rail
   (convergencia visual con el spike): sus ``QAction`` permanecen accesibles
-  por menús y por la paleta de comandos (Fase 6; Ctrl+K migra a la paleta).
+  por menús y por la paleta de comandos (Fase 6; Ctrl+K es Clean2D quick,
+  Ctrl+P la paleta).
 - Delegación sin lógica propia: el clic en botones/celdas dispara los
   ``QAction``/callbacks originales (canvas + señales de los toolbars); el rail
   no crea ``QAction`` propios;
@@ -646,10 +647,10 @@ def test_clean2d_validate_numbering_remain_accessible_without_rail_buttons():
         assert action is not None
         # Cada una vive en algún QMenu (menús intactos del menubar oculto).
         assert in_some_menu(action), attr
-    # Fase 6: ``Ctrl+K`` migra a la paleta de comandos; Clean2D quick sigue
-    # accesible por menú y por la paleta, pero ya no posee el atajo.
-    assert win.action_clean_2d_full.shortcut().toString() != "Ctrl+K"
-    assert win.action_command_palette.shortcut().toString() == "Ctrl+K"
+    # Fase 6 (corrección de UX): ``Ctrl+K`` vuelve a pertenecer a Clean2D
+    # quick; la paleta de comandos usa ``Ctrl+P``.
+    assert win.action_clean_2d_full.shortcut().toString() == "Ctrl+K"
+    assert win.action_command_palette.shortcut().toString() == "Ctrl+P"
     win.close()
 
 
@@ -781,11 +782,11 @@ def test_shortcut_dispatcher_class_exists():
     assert ToolShortcutDispatcher is not None
 
 
-def test_ctrl_k_opens_palette_and_menubar_hidden():
-    """Fase 6: el dispatcher no roba combinaciones con modificadores; Ctrl+K
-    migra a la paleta de comandos (ya no dispara ``action_clean_2d_full``).
-    La QMenuBar queda oculta (convergencia con el spike) pero viva: sus
-    QMenu/QAction/atajos son los originales y se abren por popup
+def test_ctrl_k_triggers_clean2d_and_menubar_hidden():
+    """El dispatcher no roba combinaciones con modificadores: Ctrl+K dispara
+    ``action_clean_2d_full`` (limpia 2D, 1 paso) y NO abre la paleta (ahora en
+    Ctrl+P). La QMenuBar queda oculta (convergencia con el spike) pero viva:
+    sus QMenu/QAction/atajos son los originales y se abren por popup
     (hamburguesa/Alt)."""
     from chemuson.gui.main_window import ChemusonWindow
 
@@ -799,12 +800,10 @@ def test_ctrl_k_opens_palette_and_menubar_hidden():
     win.action_clean_2d_full.triggered.connect(lambda: saw_clean_2d.append(True))
     _reset_tool(win)
     _press_key(win, int(Qt.Key.Key_K), Qt.KeyboardModifier.ControlModifier)
-    # Ctrl+K migra a la paleta de comandos: NO dispara action_clean_2d_full
-    # (migración deliberada de Fase 6) y sí abre la paleta.
-    assert saw_clean_2d == [], "Ctrl+K ya no dispara action_clean_2d_full"
-    assert win.command_palette.is_open()
-    win.command_palette.close_overlay()
-    QApplication.processEvents()
+    # Ctrl+K dispara la acción original de Clean2D quick (no la roba el
+    # dispatcher ni la paleta).
+    assert saw_clean_2d == [True], "Ctrl+K debe disparar action_clean_2d_full"
+    assert not win.command_palette.is_open()
     # Y no activó la herramienta K (no existe) ni cambió el grupo activo.
     assert win.canvas.state.active_tool == "tool_select"
     assert win.tool_rail._current_group == "select"

@@ -4,8 +4,8 @@
 SVG del ``IconProvider``): marca (``flask`` + nombre + versión),
 ``DocumentTabBar`` (espejo del ``QTabWidget`` de documentos), botón ``+``,
 píldora de búsqueda (``SearchPill``) que abre la ``CommandPalette`` (Fase 6;
-el badge ``Ctrl K`` se muestra y su clic comparten el mismo camino de apertura
-que el atajo global ``Ctrl+K``, ``action_command_palette``) y
+el badge ``Ctrl P`` se muestra y su clic comparten el mismo camino de apertura
+que el atajo global ``Ctrl+P``, ``action_command_palette``) y
 botones undo/redo/tema/ajustes que **sostienen las QAction existentes** de
 la ventana (``setDefaultAction`` → icono, tooltip con atajo y estado
 habilitado reales; sin duplicar handlers ni shortcuts).
@@ -60,12 +60,12 @@ class KbdHint(QLabel):
 class SearchPill(QFrame):
     """Píldora de búsqueda de la app bar: entrada a la paleta de comandos.
 
-    **Fase 6**: la píldora es la entrada visible a la ``CommandPalette`` (Ctrl+K).
+    **Fase 6**: la píldora es la entrada visible a la ``CommandPalette`` (Ctrl+P).
     Al pulsarla emite :signal:`activated` que la ventana conecta a la misma
-    ``QAction`` de apertura que el atajo global ``Ctrl+K`` (un único camino).
-    El badge ``Ctrl K`` vuelve a mostrarse (``self.kbd``) y el tooltip deja de
-    indicar "(próximamente)". La píldora **no** es un editor permanente: el
-    campo editable pertenece a ``CommandPalette``.
+    ``QAction`` de apertura que el atajo global ``Ctrl+P`` (un único camino).
+    El badge ``Ctrl P`` se muestra (``self.kbd``) y el tooltip deja de indicar
+    "(próximamente)". La píldora **no** es un editor permanente: el campo
+    editable pertenece a ``CommandPalette``.
     """
 
     activated = pyqtSignal()
@@ -74,7 +74,7 @@ class SearchPill(QFrame):
         super().__init__(parent)
         self.setObjectName("searchPill")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setToolTip("Buscar o ejecutar… (Ctrl+K)")
+        self.setToolTip("Buscar o ejecutar… (Ctrl+P)")
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         # Ancho fijo (250 px, igual que el spike aprobado): la compresión
         # bajo 980 px la asumen las pestañas (elisión), no la píldora.
@@ -89,9 +89,9 @@ class SearchPill(QFrame):
         self.icon_label = QLabel(self)
         self.text_label = QLabel("Buscar o ejecutar…", self)
         self.text_label.setObjectName("searchPillTxt")
-        # El badge Ctrl K se muestra (Fase 6): la píldora y Ctrl+K abren la
-        # misma paleta de comandos.
-        self.kbd = KbdHint("Ctrl K", self)
+        # El badge Ctrl P se muestra (Fase 6): la píldora y Ctrl+P abren la
+        # misma paleta de comandos. (Ctrl+K volvió a ser Clean2D quick.)
+        self.kbd = KbdHint("Ctrl P", self)
         layout.addWidget(self.icon_label)
         layout.addWidget(self.text_label)
         layout.addStretch(1)
