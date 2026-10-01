@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Un recorrido interactivo por ChemUSON: del enlace que se dibuja al grafo molecular, Clean2D y los análisis que lo rodean.">
+  <title>Del trazo al grafo — ChemUSON</title>
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="stylesheet" href="styles.css">
+  <script src="assets/data.js"></script>
+  <script src="assets/modules.js"></script>
+  <script defer src="article.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#contenido">Saltar al artículo</a>
+  <header class="site-header">
+    <a class="wordmark" href="#inicio" aria-label="ChemUSON, volver al inicio"><span class="mark" aria-hidden="true">C<span>·</span></span><span>ChemUSON <small>cuaderno interactivo</small></span></a>
+    <div class="header-actions">
+      <span class="version-tag">0.3.0-dev <span>·</span> rama de desarrollo</span>
+      <button class="icon-button" id="theme-toggle" type="button" aria-label="Cambiar tema" title="Cambiar tema"><span aria-hidden="true">◐</span></button>
+    </div>
+  </header>
+
+  <div class="layout" id="inicio">
+    <nav class="toc" aria-label="Índice del artículo">
+      <p class="toc-label">En este artículo</p>
+      <a href="#pregunta">La pregunta</a>
+      <a href="#representacion">Del gesto al grafo</a>
+      <a href="#clean2d">Clean2D</a>
+      <a href="#analisis">Análisis químico</a>
+      <a href="#persistencia">Guardar e intercambiar</a>
+      <a href="#arquitectura">Arquitectura</a>
+      <a href="#rdkit">Aislamiento de RDKit</a>
+      <a href="#interfaz">Evolución visual</a>
+      <a href="#estado">Estado y límites</a>
+      <a href="#fuentes">Fuentes</a>
+    </nav>
+
+    <main id="contenido" class="article">
+      <section class="hero" aria-labelledby="title">
+        <p class="eyebrow">Un objeto, varias representaciones</p>
+        <h1 id="title">Del trazo<br>al <em>grafo</em></h1>
+        <p class="dek">¿Qué ocurre dentro de ChemUSON cuando alguien dibuja una molécula? El dibujo no es el resultado final: es una manera de construir, inspeccionar y transformar una estructura química.</p>
+        <div class="hero-meta"><span>Artículo técnico interactivo</span><span>Lectura: 10–12 min</span><span>Español</span></div>
+        <figure class="hero-figure breakout">
+          <div id="hero-molecule" class="molecule-stage" role="img" aria-label="Ilustración molecular basada en un fixture real de pruebas; los átomos aparecen progresivamente"></div>
+          <figcaption><span class="fig-number">Figura 01</span> Una estructura del corpus de regresión de Clean2D, reconstruida desde el fixture del repositorio. Los puntos y enlaces representan sus datos; no es una captura de la aplicación ni la identidad química de una molécula conocida. <span class="motion-note">La animación se detiene al terminar y respeta la preferencia de movimiento reducido.</span></figcaption>
+        </figure>
+      </section>
+
+      <section id="pregunta" class="chapter">
+        <p class="section-index">01 <span>·</span> El problema</p>
+        <h2>El dibujo es una interfaz, no la molécula</h2>
+        <p>En un editor químico, un enlace visible debe corresponder a una relación entre átomos; mover un vértice cambia coordenadas, no necesariamente la conectividad. ChemUSON separa esas responsabilidades: un <code>MolGraph</code> guarda átomos, enlaces y estado químico; el canvas de PyQt6 presenta y edita esa información como una escena interactiva.</p>
+        <p>La separación importa porque el mismo modelo puede alimentar tareas distintas: validar valencias, producir una representación 2D más legible, calcular propiedades, intentar una nomenclatura parcial o exportar una estructura. Cada resultado tiene su propio alcance y sus propios límites.</p>
+        <div class="callout"><span class="callout-mark" aria-hidden="true">i</span><p><strong>Idea guía.</strong> ChemUSON intenta mantener estable la identidad química mientras cambia la manera de verla. Una figura más ordenada no demuestra por sí sola que la química esté bien interpretada.</p></div>
+        <p class="source-line">En el código: <a href="../../src/chemuson/core/model.py">modelo MolGraph</a> · <a href="../../docs/modules/M09-canvas.md">contrato del canvas</a>.</p>
+      </section>
+
+      <section id="representacion" class="chapter">
+        <p class="section-index">02 <span>·</span> Representación</p>
+        <h2>Del gesto a una estructura consultable</h2>
+        <p>El canvas es un <code>QGraphicsView</code> con una escena gráfica, y conserva una referencia al modelo. Átomos y enlaces son entidades con identificadores y atributos; las coordenadas son parte de su representación. En vez de mostrar todas las capas de golpe, cambia la vista para seguir el mismo fixture en tres etapas.</p>
+        <figure class="interactive-figure breakout" aria-labelledby="stage-caption">
+          <div class="control-row" role="group" aria-label="Etapas de representación">
+            <button class="seg-button is-active" type="button" data-stage="draw" aria-pressed="true">1 · Coordenadas del fixture</button>
+            <button class="seg-button" type="button" data-stage="graph" aria-pressed="false">2 · Modelo como grafo</button>
+            <button class="seg-button" type="button" data-stage="clean" aria-pressed="false">3 · Candidato Clean2D</button>
+          </div>
+          <div class="stage-reading"><span id="stage-kicker">Representación almacenada</span><p id="stage-description">La geometría de entrada conserva las coordenadas originales del fixture. Explora la figura por átomo o selecciona una etapa.</p></div>
+          <div id="stage-molecule" class="molecule-stage molecule-large" role="img" aria-label="Vista molecular interactiva del fixture"></div>
+          <div class="figure-foot"><span class="live-label"><i></i><span id="stage-status">20 átomos · 21 enlaces</span></span><span>Selecciona un átomo con clic, Enter o Espacio.</span></div>
+          <figcaption id="stage-caption"><span class="fig-number">Figura 02</span> El esquema se genera desde el grafo serializado en <code>tests/fixtures/test_clean2d_crude_chemuson.cmsn</code>. La etapa “grafo” enfatiza nodos y aristas, no añade inferencias químicas nuevas.</figcaption>
+        </figure>
+        <div class="atom-inspector" id="atom-inspector" aria-live="polite" aria-atomic="true">
+          <div class="inspector-label">Inspector de átomo <span id="atom-id">—</span></div>
+          <p id="atom-summary">Elige un vértice para consultar los atributos que el modelo calcula o conserva.</p>
+          <dl class="atom-properties" id="atom-properties"></dl>
+        </div>
+        <details class="technical-note">
+          <summary>¿Qué guarda el modelo para cada átomo?</summary>
+          <p>El modelo de <code>Atom</code> incluye, entre otros campos, elemento, carga, isótopo, radicales, estereoquímica, hidrógenos asignados o implícitos, etiqueta y coordenadas. Los enlaces tienen extremos, orden, estilo y metadatos estereoquímicos. Esta ilustración muestra un subconjunto real del fixture y no todos los campos posibles.</p>
+          <p class="source-line"><a href="../../src/chemuson/core/model.py">Atom, Bond y MolGraph en el código</a> · <a href="../../tests/fixtures/test_clean2d_crude_chemuson.cmsn">fixture usado</a>.</p>
+        </details>
+      </section>
+
+      <section id="clean2d" class="chapter">
+        <p class="section-index">03 <span>·</span> Geometría</p>
+        <h2>Una molécula correcta también puede verse mal</h2>
+        <p><strong>Clean2D</strong> trabaja con coordenadas de depiction. Genera candidatos, evalúa restricciones de seguridad y calidad, y elige entre los candidatos aceptados. No cambia la identidad química para conseguir una imagen más ordenada: los contratos documentan invariantes de átomos, enlaces, cargas, aromaticidad, estereoquímica y metadatos relevantes.</p>
+        <figure class="interactive-figure breakout" aria-labelledby="clean-caption">
+          <div class="slider-heading"><label for="geometry-slider">Arrastra para comparar las coordenadas</label><output id="geometry-output" for="geometry-slider">Entrada</output></div>
+          <input id="geometry-slider" class="geometry-slider" type="range" min="0" max="100" value="0" aria-label="Interpolar entre geometría de entrada y candidata Clean2D">
+          <div class="molecule-stage molecule-large" id="clean-molecule" role="img" aria-label="Comparación interpolada entre coordenadas iniciales y coordenadas del candidato Clean2D"></div>
+          <div class="metrics-grid" aria-live="polite">
+            <div><span>Longitud media de enlace</span><strong><span id="metric-before">40.00</span> <i>→</i> <span id="metric-after">42.00</span></strong><small>objetivo: 42 unidades de lienzo</small></div>
+            <div><span>Distancia no enlazada mínima</span><strong>40.00 <i>→</i> 42.06</strong><small>separación mínima informada</small></div>
+            <div><span>Nuevos cruces</span><strong>0</strong><small>en este resultado</small></div>
+            <div><span>Degeneración del anillo</span><strong>0.605 <i>→</i> 0.605</strong><small>sin cambio en el reporte</small></div>
+          </div>
+          <figcaption id="clean-caption"><span class="fig-number">Figura 03</span> Resultado real de una ejecución de <code>generate_clean2d_candidates</code> + ranking sobre el fixture indicado. Ganó <code>internal_templates</code> con estado <code>applied</code>. Los valores son de esta entrada y esta ejecución; no describen una garantía universal de mejora.</figcaption>
+        </figure>
+        <p>La evaluación también informa el desplazamiento medio (31.9) y máximo (103.4) en unidades de coordenadas. El informe de este caso pasa sus comprobaciones; eso no significa que todos los candidatos sean aceptables ni que exista un óptimo global.</p>
+        <div class="candidate-note"><div><span class="status-dot reject"></span><strong>Un candidato rechazado, no oculto</strong></div><p>En la misma ejecución, el candidato <code>block_layout</code> se rechazó por empeorar colisiones (<code>block_layout_empeora_colisiones</code>). Un score estético no compensa una condición de seguridad incumplida.</p></div>
+        <details class="technical-note">
+          <summary>¿Qué significa “mejor candidato seguro”?</summary>
+          <p>Significa el mejor entre los candidatos que realmente se generaron y superaron los hard gates bajo el modo y presupuesto de recursos usados. No afirma un óptimo matemático o global. Si no hay mejora segura, el comportamiento conservador —preservar o no hacer cambios— es preferible a un redraw destructivo.</p>
+          <p class="source-line"><a href="../../src/chemuson/clean2d/engine.py">generación y ranking de candidatos</a> · <a href="../../src/chemuson/clean2d/safety.py">evaluación de seguridad</a> · <a href="../../docs/clean2d/CAMPAIGN.md">política y contratos de Clean2D</a>.</p>
+        </details>
+      </section>
+
+      <section id="analisis" class="chapter">
+        <p class="section-index">04 <span>·</span> Análisis</p>
+        <h2>Del modelo a resultados con distintos grados de certeza</h2>
+        <p>Sobre el mismo <code>MolGraph</code>, ChemUSON ofrece cálculos y servicios que no deben confundirse entre sí. La validación de valencias es un diagnóstico del modelo; la fórmula y la masa son cálculos; la nomenclatura tiene cobertura parcial; las señales espectrales son heurísticas.</p>
+        <figure class="interactive-figure breakout layer-figure" aria-labelledby="layer-caption">
+          <div class="layer-controls" role="group" aria-label="Capas de información química">
+            <button type="button" class="layer-button is-active" data-layer="structure" aria-pressed="true">Estructura</button>
+            <button type="button" class="layer-button" data-layer="geometry" aria-pressed="false">Geometría</button>
+            <button type="button" class="layer-button" data-layer="validation" aria-pressed="false">Validación</button>
+            <button type="button" class="layer-button" data-layer="properties" aria-pressed="false">Propiedades</button>
+            <button type="button" class="layer-button" data-layer="naming" aria-pressed="false">Nombre</button>
+            <button type="button" class="layer-button" data-layer="spectra" aria-pressed="false">Espectros</button>
+          </div>
+          <div class="layer-panel">
+            <div class="layer-molecule" id="layer-molecule" role="img" aria-label="Molécula con la capa de información seleccionada"></div>
+            <div class="layer-readout" aria-live="polite"><span class="layer-status" id="layer-status">MODELO</span><h3 id="layer-title">Conectividad y atributos</h3><p id="layer-description">20 átomos, 21 enlaces. El grafo conserva la conectividad y los atributos moleculares; esta geometría viene del fixture de regresión.</p><div id="layer-data" class="layer-data"></div></div>
+          </div>
+          <figcaption id="layer-caption"><span class="fig-number">Figura 04</span> Cambia de capa para ver cómo se reutiliza la misma estructura y qué tipo de salida ofrece cada subsistema. Las etiquetas de estado distinguen cálculo, MVP, heurística y ausencia de cobertura.</figcaption>
+        </figure>
+        <div class="status-key" aria-label="Leyenda de estados"><span><i class="key stable"></i>Base estable</span><span><i class="key mvp"></i>MVP</span><span><i class="key heuristic"></i>Heurística</span><span><i class="key evolving"></i>En evolución</span></div>
+        <p>En el fixture, la validación devuelve <strong>0 problemas de valencia</strong>; la fórmula calculada es <strong>C<sub>20</sub>H<sub>30</sub></strong> y la masa promedio informada por el módulo de cálculo es <strong>270.4522 u</strong>. El motor IUPAC-lite devuelve <strong>N/D</strong> para esta estructura. Ese resultado es información útil: el motor prefiere degradar con seguridad cuando no puede nombrar un caso.</p>
+        <p>Las señales que se muestran son <strong>predicciones heurísticas</strong>, no espectros medidos. Para esta ejecución, el predictor <code>heuristic-v1</code> reportó confianza global 0.49; la tabla incluye picos estimados asociados a átomos. No uses estos valores para identificar o validar una muestra.</p>
+        <div class="three-facts">
+          <div><span class="fact-index">A</span><strong>IUPAC-lite</strong><p>Subconjunto orgánico, MVP y cobertura incompleta; puede responder <code>N/D</code>.</p></div>
+          <div><span class="fact-index">B</span><strong>Espectros</strong><p>^1H/^13C NMR y MS básicos por predictor heurístico; estimados y de confianza limitada.</p></div>
+          <div><span class="fact-index">C</span><strong>3D / CompChem</strong><p>Conformación y optimización geométrica con RDKit aislado o Open Babel opcional; exporta entradas para ORCA, Gaussian y NWChem, que se ejecutan fuera de la app.</p></div>
+        </div>
+        <p class="source-line"><a href="../../src/chemuson/core/model.py">validación de valencia</a> · <a href="../../src/chemuson/chemcalc/mass.py">cálculos de masa</a> · <a href="../../docs/chemname.md">alcance de ChemName</a> · <a href="../../src/chemuson/spectroscopy/service.py">predictor espectral</a> · <a href="../../docs/geometry3d_compchem.md">3D y CompChem</a>.</p>
+      </section>
+
+      <section id="persistencia" class="chapter">
+        <p class="section-index">05 <span>·</span> Portabilidad</p>
+        <h2>Guardar no es fotografiar la ventana</h2>
+        <p>Un documento nativo <code>.cmsn</code> conserva tanto el <code>MolGraph</code> —átomos, enlaces y sus atributos— como los datos gráficos del canvas. La capa de persistencia reconstruye la vista al volver a abrirlo. El mismo grafo puede cruzar formatos de intercambio, pero cada formato preserva un subconjunto distinto: no existe una conversión universalmente sin pérdida.</p>
+        <figure class="interactive-figure breakout transport-figure" aria-labelledby="transport-caption">
+          <div class="control-row format-controls" role="group" aria-label="Selecciona un formato para ver qué conserva">
+            <button class="seg-button is-active" type="button" data-format="cmsn" aria-pressed="true">Proyecto · CMSN</button>
+            <button class="seg-button" type="button" data-format="smiles" aria-pressed="false">SMILES</button>
+            <button class="seg-button" type="button" data-format="molfile" aria-pressed="false">Molfile / SDF</button>
+            <button class="seg-button" type="button" data-format="cml" aria-pressed="false">CML</button>
+            <button class="seg-button" type="button" data-format="xyz" aria-pressed="false">XYZ · 3D</button>
+          </div>
+          <div class="transport-diagram" id="transport-diagram" data-format="cmsn" aria-hidden="true">
+            <div class="transport-node is-active" data-transport-node="model"><span class="box-label">ESTADO EN MEMORIA</span><strong>MolGraph</strong><small>átomos · enlaces</small></div>
+            <span class="transport-arrow">→</span>
+            <div class="transport-node" data-transport-node="adapter"><span class="box-label">ADAPTADOR</span><strong id="transport-adapter">ChemIO / persistencia</strong><small>serializa o transforma</small></div>
+            <span class="transport-arrow">→</span>
+            <div class="transport-node" data-transport-node="file"><span class="box-label">DESTINO</span><strong id="transport-file">proyecto .cmsn</strong><small id="transport-scope">grafo + escena del canvas</small></div>
+          </div>
+          <div class="format-readout" aria-live="polite" aria-atomic="true"><span class="format-status" id="format-status">DOCUMENTO NATIVO</span><p id="format-description">El archivo del proyecto serializa modelo y datos del canvas para poder reconstruir la sesión; no es solo una imagen exportada.</p></div>
+          <figcaption id="transport-caption"><span class="fig-number">Figura 05</span> Elige un destino para comparar alcance y pérdida de información. La compatibilidad es parcial en algunos formatos; consulta la matriz de interoperabilidad antes de usarlos como archivo maestro.</figcaption>
+        </figure>
+        <div class="autosave-callout"><span class="autosave-mark" aria-hidden="true">↻</span><div><strong>Recuperación automática, no una sustitución de Guardar</strong><p>Si el documento está modificado, el autosave periódico corre cada 2 minutos; tras editar también hay un debounce de 8 segundos. Conserva hasta 5 respaldos rotativos. Usa <code>$XDG_CONFIG_HOME/chemuson/autosave</code> o, si no existe esa variable, <code>~/.chemuson/autosave</code>. Los documentos limpios no generan snapshots periódicos.</p></div></div>
+        <p>El contrato <code>PersistenceDocument</code> permite que el serializador reciba un documento que expone el modelo y las operaciones de datos/vista, sin que el catálogo declare una dependencia formal de ChemIO M01 hacia Canvas M09. También hay una versión de esquema CMSN (<code>0.1.0</code> en el gestor de persistencia), distinta de la versión de aplicación <code>0.3.0-dev</code>.</p>
+        <p class="source-line"><a href="../../src/chemuson/chemio/persistence.py">serialización .cmsn</a> · <a href="../../src/chemuson/resilience/autosave.py">temporizadores y backups</a> · <a href="../../src/chemuson/resilience/recovery.py">índice de recuperación</a> · <a href="../../docs/interoperability.md">matriz de formatos</a> · <a href="../../src/chemuson/chemio/cml_io.py">CML básico</a>.</p>
+      </section>
+
+      <section id="arquitectura" class="chapter">
+        <p class="section-index">06 <span>·</span> Arquitectura</p>
+        <h2>Veintitrés módulos, no una lista plana</h2>
+        <p>El catálogo versionado en <code>architecture/modules.yml</code> contiene actualmente <strong>23 módulos, M00–M22</strong>. La cifra de 20 módulos M00–M19 que circulaba como contexto ya quedó desactualizada: el catálogo incluye M20, M21 y M22. Selecciona un módulo para ver sus dependencias directas según el catálogo y su responsabilidad.</p>
+        <figure class="interactive-figure breakout architecture-figure" aria-labelledby="architecture-caption">
+          <div class="architecture-layout">
+            <div class="module-map-wrap"><svg id="module-map" viewBox="0 0 900 510" role="group" aria-label="Mapa interactivo de módulos y dependencias directas"></svg></div>
+            <aside class="module-detail" aria-live="polite" aria-atomic="true"><span class="module-kicker" id="module-kicker">M02 · MÓDULO</span><h3 id="module-title">Limpieza/depiction 2D</h3><p id="module-responsibility">Selecciona un módulo del mapa para consultar su responsabilidad y dependencias.</p><div class="module-meta"><span id="module-status" class="status-pill evolving">evolving</span><span id="module-risk" class="risk-pill">riesgo alto</span></div><p class="dep-label">Dependencias directas actuales</p><div id="module-deps" class="dependency-tags"></div><details><summary>API pública del catálogo</summary><ul id="module-api"></ul></details></aside>
+          </div>
+          <div class="map-legend"><span><i class="node-dot selected"></i>Módulo seleccionado</span><span><i class="edge-swatch"></i>Dependencia directa actual</span><span>Sin seleccionar: mapa sin líneas, para reducir ruido.</span></div>
+          <figcaption id="architecture-caption"><span class="fig-number">Figura 06</span> Snapshot de <code>architecture/modules.yml</code>. Solo se iluminan las dependencias directas del módulo activo; una arista representa relación arquitectónica declarada, no una secuencia temporal de ejecución.</figcaption>
+        </figure>
+        <p>La ruta de lectura más corta va de la interfaz a los servicios de dominio: el canvas entrega el grafo al modelo; ChemIO conserva formatos y persistencia; Clean2D produce candidatos de depiction; otros módulos calculan, nombran, predicen o exportan. La GUI orquesta esos servicios, pero no debería absorber su lógica química.</p>
+        <p>El catálogo también separa servicios de plataforma: <code>M14</code> gestiona la política de actualización (proveedor, seguridad y rollback); <code>M21</code> agrupa settings y recursos; <code>M22</code> documenta recuperación, autosave rotativo y aislamiento de fallos. Están en el catálogo actual, no en la lista de propuestas futuras.</p>
+        <details class="technical-note">
+          <summary>Capas del grafo químico multicapa</summary>
+          <p>El núcleo también construye grafos de interacción, motivos, bloques y restricciones de layout. En el fixture de esta figura, una ejecución real reportó 7 motivos, 5 bloques, 37 aristas de bloque, 25 restricciones de layout y 0 aristas de interacción. Son conteos derivados de ese fixture, no una taxonomía completa del compuesto.</p>
+          <p class="source-line"><a href="../../src/chemuson/core/layers.py">constructores de capas</a> · <a href="../../docs/modules/M00-core.md">M00 Core</a>.</p>
+        </details>
+      </section>
+
+      <section id="rdkit" class="chapter">
+        <p class="section-index">07 <span>·</span> Aislamiento</p>
+        <h2>Por qué una biblioteca nativa no vive en la ventana</h2>
+        <p>RDKit aporta conversiones y tareas químicas útiles, pero combina Python con extensiones nativas. Una incompatibilidad binaria o un fallo nativo puede terminar el proceso, no solo lanzar una excepción Python. ChemUSON expone una ruta aislada para ciertas operaciones sensibles: el proceso de UI intercambia una solicitud acotada con un worker y recibe un resultado o una degradación controlada.</p>
+        <figure class="interactive-figure breakout worker-figure" aria-labelledby="worker-caption">
+          <div class="worker-controls" role="group" aria-label="Etapas de una tarea RDKit aislada">
+            <button class="worker-step is-active" type="button" data-worker-step="0" aria-pressed="true">1 <span>UI</span></button><span class="worker-arrow" aria-hidden="true">→</span>
+            <button class="worker-step" type="button" data-worker-step="1" aria-pressed="false">2 <span>Solicitud</span></button><span class="worker-arrow" aria-hidden="true">→</span>
+            <button class="worker-step" type="button" data-worker-step="2" aria-pressed="false">3 <span>Worker</span></button><span class="worker-arrow" aria-hidden="true">→</span>
+            <button class="worker-step" type="button" data-worker-step="3" aria-pressed="false">4 <span>Respuesta</span></button>
+          </div>
+          <div class="worker-diagram" id="worker-diagram" data-step="0">
+            <div class="worker-box ui-box"><span class="box-label">PROCESO PRINCIPAL</span><strong>Interfaz PyQt6</strong><p>Permanece receptiva y conserva el estado del documento.</p></div>
+            <div class="worker-channel"><span>JSON acotado</span><i></i><span>resultado / error / timeout</span></div>
+            <div class="worker-box subprocess-box"><span class="box-label">SUBPROCESO</span><strong>_rdkit_worker</strong><p>Importa RDKit, ejecuta la operación y termina.</p></div>
+          </div>
+          <p class="worker-explainer" id="worker-explainer" aria-live="polite">La ventana coordina una operación; no carga por defecto el backend nativo en su propio proceso.</p>
+          <figcaption id="worker-caption"><span class="fig-number">Figura 07</span> Esquema explicativo del contrato documentado de <code>chemuson.chemio.rdkit_safe</code>; no es una traza de un proceso capturada en vivo. Si el worker falla, termina por señal o excede el timeout, la ruta puede degradar a un fallback sin tumbar la UI.</figcaption>
+        </figure>
+        <p>El aislamiento no significa que todas las funciones usen RDKit ni que cada instalación tenga un backend operativo. El acceso directo está deshabilitado por defecto en la ruta documentada; la disponibilidad depende del entorno. La aplicación conserva alternativas internas para varias operaciones.</p>
+        <p class="source-line"><a href="../../docs/rdkit.md">política RDKit del proyecto</a> · <a href="../../src/chemuson/chemio/rdkit_safe.py">ejecutor aislado</a> · <a href="../../src/chemuson/chemio/_rdkit_worker.py">worker</a>.</p>
+      </section>
+
+      <section id="interfaz" class="chapter">
+        <p class="section-index">08 <span>·</span> Interfaz</p>
+        <h2>Modernizar sin reescribir el editor</h2>
+        <p>La campaña visual decidió permanecer en PyQt6 y reorganizar el acceso a las herramientas. En el estado auditado, la rama ya integra la barra de aplicación, el rail unificado, los paneles laterales en pestañas y una barra de estado refinada. El canvas sigue siendo el editor molecular; la modernización de la superficie no equivale a rehacer su lógica.</p>
+        <figure class="interactive-figure breakout ui-figure" aria-labelledby="ui-caption">
+          <div class="control-row" role="group" aria-label="Capturas reales de la aplicación">
+            <button class="seg-button ui-shot-button is-active" type="button" data-shot="reference" aria-pressed="true">Referencia de Foundation</button>
+            <button class="seg-button ui-shot-button" type="button" data-shot="current" aria-pressed="false">Producción · claro</button>
+            <button class="seg-button ui-shot-button" type="button" data-shot="dark" aria-pressed="false">Producción · oscuro</button>
+          </div>
+          <img id="ui-screenshot" class="ui-screenshot" src="assets/ui/foundation-light.png" alt="Captura real de ChemUSON en la etapa Foundation de la modernización visual; ventana clara con la interfaz previa al panel lateral moderno.">
+          <figcaption id="ui-caption"><span class="fig-number">Figura 08</span> Capturas reales generadas desde la ventana de ChemUSON; no son mockups. La referencia corresponde a <code>foundation-shots</code>; las capturas actuales a <code>visual-convergence/captures</code>. Cambia entre estados con los controles.</figcaption>
+        </figure>
+        <p>El panel lateral reutiliza las siete instancias de docks históricas como páginas en pestañas y un menú de overflow, en vez de duplicar sus herramientas. El plan documenta que la siguiente fase prevista es una paleta de comandos con <kbd>Ctrl</kbd>+<kbd>K</kbd>; en este HEAD sigue siendo trabajo planeado, no una función que este artículo declare terminada.</p>
+        <details class="technical-note">
+          <summary>Qué demuestra esta comparación (y qué no)</summary>
+          <p>Las imágenes evidencian cambios visuales y el estado de composición capturado. No prueban accesibilidad completa, calidad de uso, rendimiento o aprobación visual manual en KDE/Wayland. El OpenSpec de Fase 5 indica explícitamente que la aceptación manual queda pendiente del usuario.</p>
+          <p class="source-line"><a href="../../docs/ui-modernization/PLAN.md">plan de fases</a> · <a href="../../docs/ui-modernization/visual-convergence/README.md">origen de capturas actuales</a> · <a href="../../openspec/changes/2026-09-27-modernize-ui-side-panel-status-bar/tasks.md">checklist de Fase 5</a>.</p>
+        </details>
+      </section>
+
+      <section id="estado" class="chapter">
+        <p class="section-index">09 <span>·</span> Estado, límites y futuro</p>
+        <h2>Una herramienta en desarrollo, con límites visibles</h2>
+        <p>El checkout auditado informa la versión <strong>0.3.0-dev</strong> y el HEAD <code>02c8ea8</code> en <code>ui/modernization</code>. No es una afirmación de que exista una release publicada con esa versión. El propio README describe el proyecto como construcción activa.</p>
+        <div class="state-table" role="table" aria-label="Estado y límites de capacidades">
+          <div class="state-row state-head" role="row"><span role="columnheader">Capacidad</span><span role="columnheader">Estado descrito</span><span role="columnheader">Lectura prudente</span></div>
+          <div class="state-row" role="row"><strong>Modelo, canvas y formatos</strong><span class="status-pill stable">estable / en evolución</span><span>Editor 2D y formatos comunes; cambios posibles en rama de desarrollo.</span></div>
+          <div class="state-row" role="row"><strong>Clean2D</strong><span class="status-pill evolving">en evolución</span><span>Candidatos con hard gates; no promete mejorar todos los casos.</span></div>
+          <div class="state-row" role="row"><strong>ChemName</strong><span class="status-pill mvp">IUPAC-lite · MVP</span><span>Subconjunto; puede devolver N/D. No cubre Blue Book completo.</span></div>
+          <div class="state-row" role="row"><strong>Espectros</strong><span class="status-pill heuristic">heurístico</span><span>Estimaciones; no sustituyen datos experimentales.</span></div>
+          <div class="state-row" role="row"><strong>3D / CompChem</strong><span class="status-pill mvp">MVP · backend opcional</span><span>Optimización geométrica opcional; paquetes QM externos se ejecutan aparte.</span></div>
+          <div class="state-row" role="row"><strong>Nombre → estructura</strong><span class="status-pill mvp">MVP</span><span>Fuentes offline/PubChem y fallback; depende de cobertura.</span></div>
+          <div class="state-row" role="row"><strong>Ctrl+K</strong><span class="status-pill planned">planeado</span><span>Fase 6 del plan; no aparece como entregada en el HEAD auditado.</span></div>
+        </div>
+        <div class="warning-box"><strong>Alcance científico.</strong><p>ChemUSON no se presenta como sustituto validado de software regulatorio, instrumentos experimentales, revisión experta ni paquetes especializados de química computacional. Usa sus resultados como asistencia exploratoria y verifica las decisiones químicas independientemente.</p></div>
+        <h3>Una secuencia posible de trabajo</h3>
+        <ol class="roadmap-list">
+          <li><span>Ahora</span><p>Consolidar UI hasta SidePanel en la rama visual y seguir endureciendo los contratos de Clean2D y de los servicios MVP.</p></li>
+          <li><span>Siguiente en el plan</span><p>Fase 6: paleta de comandos <kbd>Ctrl</kbd>+<kbd>K</kbd>; después polish y QA/release según <code>docs/ui-modernization/PLAN.md</code>.</p></li>
+          <li><span>Más adelante</span><p>Mejorar cobertura y evidencia antes de elevar heurísticas de nomenclatura, espectros o 3D a afirmaciones más fuertes.</p></li>
+        </ol>
+      </section>
+
+      <section class="closing-note">
+        <p class="section-index">Cierre</p>
+        <h2>La química como un hilo de traducciones</h2>
+        <p>El valor de ChemUSON no está en una figura aislada, sino en mantener explícitas las traducciones entre dibujo, grafo, geometría y servicios. La arquitectura hace esa cadena inspeccionable; los estados y límites evitan confundir una estimación con una medición.</p>
+      </section>
+
+      <section class="credits" aria-labelledby="credits-title">
+        <h2 id="credits-title">Proyecto y autoría</h2>
+        <p><strong>ChemUSON</strong> — editor molecular 2D libre y de código abierto.</p>
+        <p>Pedro Jancarlo Gomez Vega*, José Octavio Juárez Sánchez, Alondra Karolina Montaño Preciado, Ramón Moreno Corral, Felipe Medrano Valenzuela, David Octavio Corona Martínez y Karen L. Ochoa Lara*.</p>
+        <p>Grupo de Química Supramolecular, Universidad de Sonora. <span class="small-note">* Autores de correspondencia, según el README del repositorio.</span></p>
+        <p>Licencia del proyecto: <a href="../../LICENSE">GNU Affero General Public License v3.0</a>. <a href="https://github.com/PJGV333/Chemuson">Repositorio público PJGV333/Chemuson</a>.</p>
+      </section>
+
+      <section id="fuentes" class="sources">
+        <p class="section-index">Notas de trazabilidad</p>
+        <h2>Fuentes internas y método</h2>
+        <p>Las afirmaciones técnicas de este artículo se contrastaron con el checkout de la rama <code>ui/modernization</code> en HEAD <code>02c8ea8</code>, observado el 1 de octubre de 2026. Las figuras moleculares usan el fixture de regresión y datos calculados al ejecutar los motores del propio repositorio. Las capturas de interfaz se reutilizan sin alteración desde las carpetas de fase documentadas.</p>
+        <ol class="source-list">
+          <li><a href="../../README.md">README.md</a> — capacidades, versión de desarrollo, autores, afiliación, limitaciones y licencia.</li>
+          <li><a href="../../architecture/modules.yml">architecture/modules.yml</a> — fuente estructurada de 23 módulos y dependencias actuales.</li>
+          <li><a href="../../docs/architecture.md">docs/architecture.md</a> — límites entre paquetes y entry points.</li>
+          <li><a href="../../docs/modules/README.md">docs/modules/</a> y <a href="../../src/chemuson/core/model.py">src/chemuson/core/model.py</a> — modelo y contrato del canvas.</li>
+          <li><a href="../../src/chemuson/clean2d/engine.py">clean2d/engine.py</a>, <a href="../../src/chemuson/clean2d/safety.py">clean2d/safety.py</a>, <a href="../../docs/clean2d/CAMPAIGN.md">docs/clean2d/CAMPAIGN.md</a> — candidatos, gates, métricas y límites de interpretación.</li>
+          <li><a href="../../docs/chemname.md">docs/chemname.md</a>, <a href="../../src/chemuson/spectroscopy/service.py">spectroscopy/service.py</a>, <a href="../../docs/geometry3d_compchem.md">docs/geometry3d_compchem.md</a> — alcance de nomenclatura, heurísticas y exportación 3D/CompChem.</li>
+          <li><a href="../../docs/rdkit.md">docs/rdkit.md</a> y <a href="../../src/chemuson/chemio/rdkit_safe.py">chemio/rdkit_safe.py</a> — aislamiento de RDKit y fallos controlados.</li>
+          <li><a href="../../docs/ui-modernization/PLAN.md">docs/ui-modernization/PLAN.md</a>, <a href="../../openspec/changes/2026-09-27-modernize-ui-side-panel-status-bar/tasks.md">tareas OpenSpec Fase 5</a> y <a href="../../docs/ui-modernization/visual-convergence/README.md">README de capturas</a> — estado y alcance de la modernización.</li>
+          <li><a href="../../docs/geometry3d_compchem.md">docs/geometry3d_compchem.md</a> y <a href="../../docs/interoperability.md">docs/interoperability.md</a> — interoperabilidad, límites y exportadores.</li>
+          <li><a href="../../src/chemuson/chemio/persistence.py">chemio/persistence.py</a>, <a href="../../src/chemuson/resilience/autosave.py">resilience/autosave.py</a> y <a href="../../src/chemuson/resilience/recovery.py">resilience/recovery.py</a> — serialización, frecuencia y recuperación.</li>
+          <li><a href="../../tests/fixtures/test_clean2d_crude_chemuson.cmsn">tests/fixtures/test_clean2d_crude_chemuson.cmsn</a> — fixture real usado en las figuras 01–04.</li>
+          <li><a href="../../tests/test_clean2d_engine_candidates.py">test_clean2d_engine_candidates.py</a> y <a href="../../tests/test_clean2d_invariants.py">test_clean2d_invariants.py</a> — candidatos y restricciones de preservación.</li>
+          <li><a href="../../tests/test_persistence_contract.py">test_persistence_contract.py</a> y <a href="../../tests/test_spectroscopy_service.py">test_spectroscopy_service.py</a> — contratos de persistencia y límites del predictor espectral.</li>
+        </ol>
+        <p class="method-note"><strong>Cómo abrir localmente:</strong> desde la raíz del repositorio, ejecuta <code>python3 -m http.server 8000</code> y visita <code>http://localhost:8000/docs/interactive-article/</code>. Los datos están incluidos como scripts locales; no hay dependencias CDN ni solicitudes a servicios externos.</p>
+      </section>
+
+      <footer class="article-footer"><span>Química, código y representaciones</span><a href="#inicio">Volver arriba ↑</a></footer>
+    </main>
+
+    <aside class="note-rail" aria-label="Contexto de esta edición">
+      <div class="rail-note"><span class="rail-label">Checkout</span><strong>02c8ea8</strong><p>Polish side panel tabs for readability</p><span class="rail-meta">Rama ui/modernization</span></div>
+      <div class="rail-note"><span class="rail-label">Versión canónica</span><strong>0.3.0-dev</strong><p>Leída de <code>src/chemuson/_version.py</code>.</p><span class="rail-meta">Sin afirmar release publicada</span></div>
+      <div class="rail-note molecule-note"><span class="rail-label">Figura reproducible</span><strong>20 <small>C</small> · 21 enlaces</strong><p>Fixture de Clean2D, no una molécula identificada.</p></div>
+      <div class="rail-note"><span class="rail-label">Precaución</span><p>Las cifras Clean2D y las señales espectrales son salidas de una ejecución local sobre el fixture, no benchmarks ni validaciones experimentales.</p></div>
+    </aside>
+  </div>
+</body>
+</html>
