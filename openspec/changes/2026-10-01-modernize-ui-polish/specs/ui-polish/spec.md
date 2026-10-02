@@ -28,21 +28,52 @@ sobre las superficies claras donde se usa (fondo de app `#F1F5F9`, surface
 
 ### Requirement: Estados deshabilitados inequívocos
 
-Los controles deshabilitados del shell SHALL distinguirse visualmente de los habilitados en reposo (opacidad reducida y/o fondo distinto) y el hover SHALL NO hacerlos parecer activos.
-Ejemplo: Deshacer sin operaciones deshacibles aparece atenuado y sin resaltado de hover. El estado habilitado SHALL seguir derivado de la `QAction` (`setEnabled`); no se copia ni se fuerza estado en los widgets. Afecta: botones de app bar, botones del rail, celdas de flyout y de la cuadrícula de paletas.
+Los controles deshabilitados del shell SHALL distinguirse visualmente de los habilitados en reposo **usando únicamente propiedades QSS soportadas** (`color`, `background-color`, `border-color` y propiedades equivalentes ya existentes) y el hover SHALL NO hacerlos parecer activos.
+**Corrección Fase 7 (post-push)**: Qt Style Sheets solo soporta `opacity` para `QToolTip`; no funciona en `QToolButton`, `QPushButton`, `QLineEdit`, `QCheckBox`, etc. Por eso el QSS del shell NO usa `opacity` en widgets normales. Ejemplo: Deshacer sin operaciones deshacibles aparece con `text3` + fondo atenuado y sin resaltado de hover. El estado habilitado SHALL seguir derivado de la `QAction` (`setEnabled`); no se copia ni se fuerza estado en los widgets, y no se introduce `QGraphicsOpacityEffect` ni lógica nueva. Afecta: botones de app bar, botones del rail, celdas de flyout y de la cuadrícula de paletas.
 
 #### Scenario: Deshacer deshabilitado
 - **GIVEN** una ventana sin operaciones deshacibles
 - **WHEN** el ratón pasa sobre el botón de Deshacer de la app bar
-- **THEN** el botón aparece atenuado (opacidad < 1) y sin resaltado de hover
+- **THEN** el botón aparece con color de token `text3` y fondo/borde
+  soportados (sin `opacity` QSS) y sin resaltado de hover
 - **AND** el `QAction` de deshacer sigue siendo la fuente de su estado
   `enabled`.
 
 #### Scenario: Celdas de flyout deshabilitadas
 - **GIVEN** una celda de flyout o de cuadrícula de paleta deshabilitada
 - **WHEN** se pinta la celda
-- **THEN** su etiqueta usa `text3`, el fondo usa `surface2` y la opacidad es
-  < 1.
+- **THEN** su etiqueta usa `text3` y el fondo usa `surface3`/`surface2`
+  (fondo distinto al reposo), sin `opacity` QSS.
+
+#### Scenario: Sin `opacity` en el QSS de widgets
+- **GIVEN** la hoja de estilo principal y la de paletas generadas
+- **WHEN** se auditan las reglas `:disabled`
+- **THEN** ninguna regla de widget usa la propiedad `opacity`
+- **AND** cada selector `:disabled` auditable (`QToolButton`,
+  `QPushButton`, `QPushButton[flat="true"]`, `QLineEdit`, `QSpinBox`,
+  `QCheckBox`, `QRadioButton`, `QToolButton#railBtn`,
+  `QFrame[cls="flyItem"]`, `QFrame[cls="paletteItem"]`) introduce al menos
+  un cambio visual soportado (`color`, `background-color`, `border-color` o
+  equivalentes) respecto al estado normal.
+
+### Requirement: Thumbnails de plantillas visibles en el SidePanel
+
+El árbol de plantillas (`PlantillasDock.tree`) SHALL fijar un tamaño lógico
+razonable de thumbnail mediante `QTreeWidget.setIconSize(QSize(...))` que
+coincida con el tamaño lógico del pixmap de `template_preview_icon`
+(88×56), de modo que la previsualización no se reduzca al `iconSize` por
+defecto (~16 px). El ajuste SHALL ser exclusivamente visual: no modifica
+grafos, molblocks, átomos, enlaces ni geometría química. El tamaño elegido
+SHALL caber en el SidePanel de 340 px sin recortar el icono ni el texto,
+y la altura de fila se ajustará solo si es necesario (QTreeWidget ya
+dimensiona la fila al icono).
+
+#### Scenario: Icono del árbol a tamaño de thumbnail
+- **GIVEN** un `PlantillasDock` con plantillas con previsualización
+- **WHEN** se construye el árbol
+- **THEN** `tree.iconSize()` es `QSize(88, 56)` (tamaño lógico del pixmap)
+- **AND** la fila de una hoja tiene altura suficiente para el icono (sin
+  recorte) y el conjunto cabe en el SidePanel de 340 px.
 
 ### Requirement: Tooltips uniformes `Nombre (Shortcut)`
 
@@ -89,10 +120,16 @@ primera vez** (o tras borrar la preferencia), con exactamente 3 pasos:
 (2) Canvas — "Dibuja, selecciona y edita tus estructuras en el lienzo."
 (3) SidePanel — "Inspector, validación, propiedades, plantillas y apariencia
 están aquí." El overlay SHALL ofrecer `Anterior`, `Siguiente`, `Cerrar` y una
-opción "No mostrar de nuevo". La finalización SHALL persistirse mediante
-`platform.settings` bajo la clave `ui/onboarding/completed`. El overlay SHALL
-ser hijo de la ventana principal (shell) y SHALL NO agregar items a la escena
-ni modificar la lógica del canvas.
+opción "No mostrar de nuevo". **Semántica de persistencia (corrección Fase
+7, post-push)**: la clave `ui/onboarding/completed` se fija en `platform.
+settings` a `True` **solo** cuando el onboarding se considera completado:
+- completar los tres pasos → `True`;
+- cerrar anticipadamente con "No mostrar de nuevo" marcado → `True`;
+- cerrar anticipadamente **sin** marcar → **NO** se fija (el onboarding
+  vuelve a ofrecerse en el siguiente arranque).
+El overlay SHALL ser hijo de la ventana principal (shell) y SHALL NO agregar
+items a la escena ni modificar la lógica del canvas (no tocar canvas ni
+escena).
 
 #### Scenario: Primera ejecución muestra los 3 pasos
 - **GIVEN** una `QSettings` sin `ui/onboarding/completed`
@@ -105,11 +142,25 @@ ni modificar la lógica del canvas.
 - **WHEN** se monta el shell
 - **THEN** el overlay no se muestra.
 
-#### Scenario: "No mostrar de nuevo" persiste
-- **GIVEN** el overlay abierto con la opción marcada
-- **WHEN** el usuario cierra el onboarding
-- **THEN** `ui/onboarding/completed` queda verdadero y el overlay no vuelve a
-  mostrarse.
+#### Scenario: Completar los 3 pasos persiste
+- **GIVEN** el overlay abierto
+- **WHEN** el usuario completa los tres pasos (el último `Siguiente`)
+- **THEN** se emite `finished(True)` y `ui/onboarding/completed` queda
+  verdadero.
+
+#### Scenario: Cerrar con "No volver a mostrar" persiste
+- **GIVEN** el overlay abierto con la opción "No volver a mostrar" marcada
+- **WHEN** el usuario pulsa `Cerrar` (antes de completar)
+- **THEN** se emite `finished(True)` y `ui/onboarding/completed` queda
+  verdadero (el onboarding no vuelve a mostrarse).
+
+#### Scenario: Cerrar sin "No volver a mostrar" NO persiste
+- **GIVEN** el overlay abierto con la opción "No volver a mostrar" sin marcar
+- **WHEN** el usuario pulsa `Cerrar` (antes de completar)
+- **THEN** se emite `finished(False)` y `ui/onboarding/completed` **NO**
+  queda verdadero
+- **AND** al montar el shell de nuevo (siguiente arranque) el overlay se
+  muestra otra vez.
 
 ### Requirement: Registro de plantillas coherente en la paleta
 

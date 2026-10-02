@@ -15,8 +15,11 @@ coordenadas del overlay. La persistencia usa ``platform.settings`` (el mismo
 ``QSettings`` que el resto de la GUI) con la clave
 ``ui/onboarding/completed``.
 
-El overlay emite :signal:`finished` al descartarse (``Cerrar`` o completar el
-último paso); el ensamblado decide la persistencia.
+El overlay emite :signal:`finished(bool)` al cerrarse: ``True`` si se
+completaron los tres pasos o si se cerró anticipadamente con "No volver a
+mostrar" marcado; ``False`` si se cerró anticipadamente sin marcarlo (el
+onboarding debe volver a aparecer en el siguiente arranque). El ensamblado
+decide la persistencia de ``ui/onboarding/completed``.
 """
 from __future__ import annotations
 
@@ -110,6 +113,10 @@ class _Card(QWidget):
     def no_more(self) -> bool:
         return self._no_more.isChecked()
 
+    @no_more.setter
+    def no_more(self, value: bool) -> None:
+        self._no_more.setChecked(value)
+
     def paintEvent(self, event) -> None:  # noqa: N802
         painter = QPainter(self)
         painter.setBrush(QColor(_CARD_BG))
@@ -128,7 +135,7 @@ class OnboardingOverlay(QWidget):
             en una posición desactiva el resalte de ese paso (tarjeta central).
     """
 
-    finished = pyqtSignal()
+    finished = pyqtSignal(bool)
 
     def __init__(
         self,
@@ -173,24 +180,53 @@ class OnboardingOverlay(QWidget):
             self._card.set_step(self._step)
             self._relayout()
         else:
-            self._finish()
+            # Completar los tres pasos cuenta como onboarding completado.
+            self._finish(completed=True)
 
     def _on_close(self) -> None:
-        self._finish()
+        # Cerrar anticipadamente: solo cuenta como completado si el usuario
+        # marcó "No volver a mostrar".
+        self._finish(completed=self._card.no_more)
 
     # ------------------------------------------------------------------
     # API pública de navegación (también usada por tests)
     # ------------------------------------------------------------------
     def advance(self) -> None:
-        """Avanza al paso siguiente; en el último paso completa (``finished``)."""
+        """Avanza al paso siguiente; en el último paso completa (``finished(True)``)."""
         self._on_next()
 
     def go_back(self) -> None:
         """Vuelve al paso anterior (sin efecto en el primero)."""
         self._on_previous()
 
-    def _finish(self) -> None:
-        self.finished.emit()
+    def request_close(self) -> None:
+        """Cierra el onboarding (equivalente a pulsar ``Cerrar``).
+
+        Cuenta como completado solo si el usuario marcó "No volver a
+        mostrar"; en caso contrario emite ``finished(False)`` y el onboarding
+        se ofrece de nuevo en el siguiente arranque.
+        """
+        self._on_close()
+
+    def set_no_more(self, value: bool) -> None:
+        """Marca o desmarca "No volver a mostrar" (equivalente al usuario)."""
+        self._card.no_more = value
+
+    @property
+    def card(self) -> _Card:
+        """La tarjeta del paso (acceso para tests/presentación)."""
+        return self._card
+
+    def _finish(self, completed: bool) -> None:
+        """Cierra el overlay y emite ``finished`` con el resultado.
+
+        Args:
+            completed: ``True`` si el onboarding debe considerarse completado
+                (3 pasos completados o cierre con "No volver a mostrar");
+                ``False`` si se cerró anticipadamente sin marcarlo (debe
+                repetirse en el siguiente arranque).
+        """
+        self.finished.emit(completed)
         self.hide()
 
     # ------------------------------------------------------------------

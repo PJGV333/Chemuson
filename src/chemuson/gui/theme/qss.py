@@ -193,8 +193,8 @@ QToolButton:disabled {{
     color: {c('text3')};
     background-color: transparent;
     border: 1px solid transparent;
-    /* Fase 7: deshabilitado inequívoco (opacidad; :disabled gana sobre :hover) */
-    opacity: 0.55;
+    /* Fase 7: deshabilitado inequívoco con color de token (Qt solo soporta
+       opacidad QSS en QToolTip; :disabled aparece después de :hover y gana). */
 }}
 
 QToolButton::menu-indicator {{
@@ -537,7 +537,6 @@ QPushButton:pressed {{
 QPushButton:disabled {{
     background-color: {c('borderStrong')};
     color: {c('text3')};
-    opacity: 0.55;
 }}
 
 /* Botón secundario (QSS por propiedad, como la versión anterior) */
@@ -555,7 +554,6 @@ QPushButton[flat="true"]:hover {{
 QPushButton[flat="true"]:disabled {{
     color: {c('text3')};
     border: 1px solid {c('border')};
-    opacity: 0.55;
 }}
 
 /* =========================================================== */
@@ -580,7 +578,6 @@ QLineEdit:disabled {{
     background-color: {c('surface2')};
     color: {c('text3')};
     border-color: {c('border')};
-    opacity: 0.6;
 }}
 
 /* =========================================================== */
@@ -648,7 +645,6 @@ QSpinBox:disabled, QDoubleSpinBox:disabled {{
     background-color: {c('surface2')};
     color: {c('text3')};
     border-color: {c('border')};
-    opacity: 0.6;
 }}
 
 /* =========================================================== */
@@ -661,7 +657,6 @@ QCheckBox {{
 
 QCheckBox:disabled {{
     color: {c('text3')};
-    opacity: 0.55;
 }}
 
 QCheckBox::indicator {{
@@ -693,7 +688,6 @@ QRadioButton {{
 
 QRadioButton:disabled {{
     color: {c('text3')};
-    opacity: 0.55;
 }}
 
 QRadioButton::indicator {{
@@ -833,7 +827,6 @@ QToolTip {{
     color: {c('text3')};
     background-color: {c('surface2')};
     border: 1px solid {c('border')};
-    opacity: 0.55;
 }}
 
 /* =========================================================== */
@@ -1037,7 +1030,6 @@ QFrame[cls="paletteItem"] {{
 QFrame[cls="paletteItem"]:disabled {{
     color: {c('text3')};
     background-color: {c('surface2')};
-    opacity: 0.55;
 }}
 
 QFrame[cls="paletteItem"][selected="true"] {{
@@ -1178,9 +1170,10 @@ QToolButton#railBtn[active="true"] {{
 
 QToolButton#railBtn:disabled {{
     color: {c('text3')};
-    background-color: transparent;
-    /* Fase 7: deshabilitado inequívoco; el hover no lo hace parecer activo. */
-    opacity: 0.5;
+    background-color: {c('surface2')};
+    /* Fase 7: deshabilitado inequívoco con tokens soportados; el hover no lo
+       hace parecer activo porque esta regla aparece después de
+       :hover/:pressed/[active] en la hoja y gana. */
 }}
 
 /* Pista de tecla (esquina del botón) */
@@ -1243,10 +1236,11 @@ QFrame[cls="flyItem"][active="true"] {{
 }}
 
 QFrame[cls="flyItem"]:disabled {{
-    background-color: {c('surface2')};
+    background-color: {c('surface3')};
     border: 1px solid {c('border')};
-    /* Fase 7: celda deshabilitada inequívoca (no parece habilitada). */
-    opacity: 0.55;
+    /* Fase 7: celda deshabilitada inequívoca con tokens soportados:
+       fondo surface3 (más marcado que el reposo surface2) + etiqueta text3
+       en la regla siguiente. */
 }}
 
 QFrame[cls="flyItem"]:disabled #flyLbl {{
@@ -1346,9 +1340,8 @@ QToolButton:checked {{
 
 QToolButton:disabled {{
     color: {c('text3')};
-    background-color: {c('surface2')};
+    background-color: {c('surface3')};
     border: 1px solid {c('border')};
-    opacity: 0.55;
 }}
 
 #palette_grid QToolButton {{
@@ -1367,9 +1360,8 @@ QToolButton:disabled {{
 
 #palette_grid QToolButton:disabled {{
     color: {c('text3')};
-    background-color: {c('surface2')};
+    background-color: {c('surface3')};
     border: 1px solid {c('border')};
-    opacity: 0.55;
 }}
 
 """

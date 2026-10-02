@@ -26,8 +26,13 @@ from PyQt6.QtWidgets import (
     QMenu,
     QTabWidget,
 )
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QSize, pyqtSignal
 from chemuson.gui.style import DrawingStyle
+
+#: Tamaño lógico (px) de los thumbnails de plantilla en el árbol de
+#: :class:`PlantillasDock`: coincide con el tamaño lógico del pixmap de
+#: ``template_browser_service.template_preview_icon`` (88×56, DPR-aware).
+_TEMPLATE_THUMB_SIZE = QSize(88, 56)
 
 
 class PlantillasDock(QDockWidget):
@@ -71,6 +76,12 @@ class PlantillasDock(QDockWidget):
         self.tree.customContextMenuRequested.connect(self._show_context_menu)
         self.tree.itemActivated.connect(self._emit_template)
         self.tree.itemDoubleClicked.connect(self._emit_template)
+        # Fase 7: tamaño lógico del thumbnail (88×56 del pixmap
+        # ``template_preview_icon``); sin esto QTreeWidget lo reduce al
+        # iconSize por defecto (~16 px) y la previsualización queda diminuta.
+        # 88 px cabe con margen en el SidePanel de 340 px (margen del ítem
+        # QSS + texto), así que no hace falta ajustar altura/spacing de fila.
+        self.tree.setIconSize(_TEMPLATE_THUMB_SIZE)
         layout.addWidget(self.tree)
         
         self.setWidget(container)
