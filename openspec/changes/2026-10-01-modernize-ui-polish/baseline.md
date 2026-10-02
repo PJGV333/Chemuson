@@ -94,3 +94,31 @@ por la corrección: `test_qss_disabled_states_use_no_opacity`,
 y 3 de onboarding (`..._close_with_no_more_persists`,
 `..._close_without_no_more_not_persisted`, `..._reappears_when_not_completed`);
 neto `+5` tests.
+
+## Baseline de la corrección HiDPI del render de thumbnails (post-push `f0d2a72`)
+
+Estado registrado **antes** de tocar código para el único bug pendiente del
+gate manual: en `template_preview_icon()` el DPR se aplicaba dos veces
+(backing `logical × dpr` + `setDevicePixelRatio(dpr)` antes de pintar +
+`painter.scale(dpr, dpr)` → `dpr²`), lo que sobredimensiona y recorta la
+estructura a 200 % (evidencia `templates_after_200.png`).
+
+Rama `ui/modernization`, HEAD `f0d2a72`, árbol limpio. Logs en
+`/tmp/f7fix2/baseline_*.log`.
+
+- `git status --short`: vacío.
+- `python -m compileall src tests tools packaging`: OK (sin errores).
+- `pytest --collect-only -q`: `1860 tests collected in 0.61s`.
+- `pytest tests/test_ui_polish.py -q`: `22 passed in 5.18s`.
+- `ruff check src tests tools packaging --select F401,F811,F821,E722,E741`:
+  `Found 1 error` — F401 `math` en
+  `tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py:3`
+  (preexistente, fuera de alcance).
+- Suite completa en `f0d2a72` (referencia del commit): `5 failed` (clase
+  RDKit/async preexistente), `1835 passed`, `20 skipped`.
+
+Criterio de parada de esta corrección: mismos 5 fallos preexistentes
+(idénticos), `1835 + 1` passed, 20 skipped, Ruff solo el F401 preexistente,
+`git diff --check` OK y OpenSpec strict válido. Solo se toca el orden del DPR
+en el render del thumbnail; `iconSize` (88×56), grafo, átomos, enlaces,
+molblocks y geometría química permanecen intactos.

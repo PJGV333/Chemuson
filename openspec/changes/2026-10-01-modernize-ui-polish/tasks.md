@@ -39,8 +39,10 @@
 
 - [x] 4.1 `template_preview_icon`: pixmap `88×56` × dpr con
   `setDevicePixelRatio(dpr)`; margen/pen/font escalados; grafo intacto.
-- [ ] 4.2 Smoke offscreen `QT_SCALE_FACTOR=2`: ventana, rail, app bar,
-  side panel; iconos no nulos a dpr 1 y 2.
+- [x] 4.2 Smoke offscreen `QT_SCALE_FACTOR=2`: ventana, rail, app bar,
+  side panel; iconos no nulos a dpr 1 y 2. (Volver a ejecutar tras la
+  corrección 13.1: DPR efectivo 2.0, SMOKE PASS; la evidencia `hidpi_200.png`
+  no se regeneró en el commit de la corrección.)
 
 ## 5. Onboarding (nuevo gui/onboarding.py)
 
@@ -161,3 +163,45 @@ preexistente (`math` en `test_clean2d_para_disubstituted_aromatic_layout_v1.py`)
 - [x] 11.9 Commit `Fix Fase 7 polish edge cases`; push normal a
   `ui/modernization` (sin `--force`); verificar HEAD local/remoto y worktree
   limpio. NO iniciar Fase 8.
+
+## 13. Corrección HiDPI del render de thumbnails (post-push `f0d2a72`, antes del gate manual)
+
+Bug único pendiente del gate manual: `template_preview_icon()` aplicaba el DPR
+dos veces, de modo que a 200 % las estructuras salían sobredimensionadas y
+recortadas (`templates_after_200.png`: benceno, piridina, silla β...).
+
+- [x] 13.1 Reordenar el render según el patrón ya correcto de
+  `gui/theme/icon_provider.py::_render_svg()`: (1) backing físico
+  `logical × dpr`; (2) pixmap con `DPR = 1` durante el pintado; (3) coordenadas
+  lógicas escaladas a píxeles físicos (`painter.scale(dpr, dpr)` se conserva);
+  (4) `painter.end()`; (5) solo entonces `pixmap.setDevicePixelRatio(dpr)`.
+- [x] 13.2 Sin cambios adicionales: `iconSize` sigue en 88×56 lógicos; grafo,
+  átomos, enlaces, molblocks y geometría química intactos; no se añaden
+  imports ni dependencias (el catálogo de módulos no cambia).
+- [x] 13.3 Test nuevo `test_template_preview_relative_bbox_is_dpr_invariant`
+  (no solo `availableSizes()`): benceno y piridina conservan el mismo bounding
+  box relativo de la tinta a DPR 1 y DPR 2 (tolerancia 0.02), no tocan ni son
+  recortadas por los bordes (margen relativo ≥ 0.05 / ≤ 0.95) y DPR 2 aporta
+  más píxeles de tinta (más resolución, mismo tamaño lógico 88×56).
+- [x] 13.4 Evidencia regenerada con `tools/f7_templates_evidence.py`
+  (offscreen, `QT_SCALE_FACTOR=1` y `2`, tema claro, biblioteca actual):
+  `templates_after_100.png` (340×812) y `templates_after_200.png` (680×1624)
+  + montajes comparativos `templates_montage_100.png` /
+  `templates_montage_200.png` (antes vs. después). A 200 % la composición
+  lógica es la misma que a 100 %, solo más resolución: el bounding box relativo
+  por fila coincide entre escalas (p. ej. fila de benceno
+  `rel=(0.512, 0.438, 0.975, 0.963)` en ambas), mientras que antes del arreglo
+  divergía y salía del área (`0.6 … 1.025`).
+- [x] 13.5 `spec.md` (requirement HiDPI: el DPR se aplica una sola vez + nuevo
+  scenario del bounding box relativo) y `design.md` (D4 + nuevo D4.2)
+  actualizados; `baseline.md` con el baseline de esta corrección.
+- [x] 13.6 Validación: `test_ui_polish.py` 23 passed (+1 nuevo); arquitectura
+  (catálogo/imports) en verde; `compileall` OK; Ruff scoped = solo el F401
+  preexistente; `git diff --check` OK; `openspec validate
+  2026-10-01-modernize-ui-polish --strict` válido; suite completa
+  `5 failed, 1836 passed, 20 skipped` (los mismos 5 fallos preexistentes
+  RDKit/async, `1835 + 1` passed). Smoke HiDPI (`tools/f7_hidpi_smoke.py`,
+  `QT_SCALE_FACTOR=2`): DPR efectivo 2.0, rail/app bar/thumbnails no nulos,
+  SMOKE PASS (la evidencia `hidpi_200.png` no se regeneró en este commit).
+- [x] 13.7 Commit `Fix template thumbnail HiDPI scaling`; push normal a
+  `ui/modernization` (sin `--force`). NO iniciar Fase 8.

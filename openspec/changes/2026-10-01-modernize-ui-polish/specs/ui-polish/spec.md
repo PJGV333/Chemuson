@@ -96,6 +96,7 @@ En caso contrario se conserva el texto base (incluidos los atajos contextuales d
 
 Los assets rasterizados de la UI SHALL renderizarse multiplicando por el devicePixelRatio del dispositivo para no aparecer difuminados ni recortados a 125/150/200 % de escala.
 Afecta a thumbnails de plantillas y glifos de la barra de formato de texto. El contenido químico del grafo del thumbnail (átomos, enlaces, posiciones relativas) SHALL NO modificarse: solo cambia la escala de render. El `IconProvider` ya es DPR-aware y se conserva.
+El DPR SHALL aplicarse **una sola vez**: el `QPixmap` se crea con el backing físico `logical × dpr`, se pinta manteniendo `DPR = 1` (coordenadas lógicas escaladas a píxeles físicos) y se etiqueta con `setDevicePixelRatio(dpr)` **solo después** de cerrar el `QPainter`. Este es el patrón de `gui/theme/icon_provider.py::_render_svg()` y es el que sigue `template_preview_icon()`.
 
 #### Scenario: Thumbnail a 200 %
 - **GIVEN** un entorno offscreen con `QT_SCALE_FACTOR=2`
@@ -104,6 +105,16 @@ Afecta a thumbnails de plantillas y glifos de la barra de formato de texto. El c
   con `devicePixelRatio() == 2`
 - **AND** el mismo grafo produce el mismo conjunto de átomos y enlaces
   que a `QT_SCALE_FACTOR=1`.
+
+#### Scenario: El DPR se aplica una sola vez
+- **GIVEN** una estructura conocida (benceno y piridina) renderizada por
+  `template_preview_icon()` con DPR 1 y con DPR 2
+- **WHEN** se mide el bounding box de la tinta dentro del thumbnail
+- **THEN** el bounding box **relativo** es aproximadamente el mismo en ambos
+  casos (misma composición lógica, solo más resolución)
+- **AND** la estructura no toca ni es recortada por los bordes del pixmap
+- **AND** DPR 2 aporta más píxeles de tinta (más resolución), no un tamaño
+  lógico mayor que `88×56`.
 
 #### Scenario: Smoke HiDPI del shell
 - **GIVEN** un entorno offscreen con `QT_SCALE_FACTOR=2`

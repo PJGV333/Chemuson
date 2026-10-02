@@ -115,14 +115,24 @@ class TemplateBrowserService:
             # nítido en pantallas de 125/150/200 %. El grafo químico (átomos,
             # enlaces, posiciones relativas) NO se modifica: solo cambia la
             # escala de render.
+            #
+            # Orden obligatorio (patrón de ``theme.icon_provider._render_svg``):
+            #   1. backing físico ``logical × dpr``;
+            #   2. el pixmap permanece con DPR = 1 durante el pintado;
+            #   3. las coordenadas lógicas se escalan a píxeles físicos;
+            #   4. ``painter.end()``;
+            #   5. solo entonces ``setDevicePixelRatio(dpr)``.
+            # Etiquetar el backing antes de pintar hace que QPainter interprete
+            # las coordenadas como lógicas y aplique el DPR una segunda vez
+            # (``dpr²``): la estructura sale sobredimensionada y recortada por
+            # los bordes (evidencia ``templates_after_200.png``).
             logical_w, logical_h = 88, 56
             dpr = self._device_pixel_ratio()
             pixmap = QPixmap(max(1, int(round(logical_w * dpr))),
                             max(1, int(round(logical_h * dpr))))
-            pixmap.setDevicePixelRatio(dpr)
             pixmap.fill(Qt.GlobalColor.transparent)
             painter = QPainter(pixmap)
-            painter.scale(dpr, dpr)  # dibuja en coordenadas lógicas 88×56
+            painter.scale(dpr, dpr)  # coordenadas lógicas -> píxeles físicos
             painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
             xs = [atom.x for atom in graph.atoms.values()]
@@ -172,6 +182,9 @@ class TemplateBrowserService:
                 painter.setPen(color_map.get(atom.element, QColor("#1A1A1A")))
                 painter.drawText(int(round(x)) - 6, int(round(y)) + 4, atom.element)
             painter.end()
+            # El DPR se asigna después del pintado: el tamaño lógico del
+            # backing queda en 88×56 y su contenido ya está en píxeles físicos.
+            pixmap.setDevicePixelRatio(dpr)
             icon = QIcon(pixmap)
         except Exception:
             icon = QIcon()
