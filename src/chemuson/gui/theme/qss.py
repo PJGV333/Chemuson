@@ -193,6 +193,8 @@ QToolButton:disabled {{
     color: {c('text3')};
     background-color: transparent;
     border: 1px solid transparent;
+    /* Fase 7: deshabilitado inequívoco (opacidad; :disabled gana sobre :hover) */
+    opacity: 0.55;
 }}
 
 QToolButton::menu-indicator {{
@@ -535,6 +537,7 @@ QPushButton:pressed {{
 QPushButton:disabled {{
     background-color: {c('borderStrong')};
     color: {c('text3')};
+    opacity: 0.55;
 }}
 
 /* Botón secundario (QSS por propiedad, como la versión anterior) */
@@ -552,6 +555,7 @@ QPushButton[flat="true"]:hover {{
 QPushButton[flat="true"]:disabled {{
     color: {c('text3')};
     border: 1px solid {c('border')};
+    opacity: 0.55;
 }}
 
 /* =========================================================== */
@@ -576,6 +580,7 @@ QLineEdit:disabled {{
     background-color: {c('surface2')};
     color: {c('text3')};
     border-color: {c('border')};
+    opacity: 0.6;
 }}
 
 /* =========================================================== */
@@ -643,6 +648,7 @@ QSpinBox:disabled, QDoubleSpinBox:disabled {{
     background-color: {c('surface2')};
     color: {c('text3')};
     border-color: {c('border')};
+    opacity: 0.6;
 }}
 
 /* =========================================================== */
@@ -655,6 +661,7 @@ QCheckBox {{
 
 QCheckBox:disabled {{
     color: {c('text3')};
+    opacity: 0.55;
 }}
 
 QCheckBox::indicator {{
@@ -686,6 +693,7 @@ QRadioButton {{
 
 QRadioButton:disabled {{
     color: {c('text3')};
+    opacity: 0.55;
 }}
 
 QRadioButton::indicator {{
@@ -825,6 +833,7 @@ QToolTip {{
     color: {c('text3')};
     background-color: {c('surface2')};
     border: 1px solid {c('border')};
+    opacity: 0.55;
 }}
 
 /* =========================================================== */
@@ -967,7 +976,7 @@ QToolButton[tabClose="true"]:hover {{
     padding: 1px 5px;
 }}
 
-/* Paleta de comandos (Ctrl+K, Fase 6): overlay hijo centrado sobre la ventana.
+/* Paleta de comandos (Ctrl+P, Fase 6): overlay hijo centrado sobre la ventana.
    Solo tokens del sistema; sin colores hardcodeados fuera de tokens. */
 QFrame#commandPalette {{
     background-color: {c('bg')};
@@ -1027,6 +1036,8 @@ QFrame[cls="paletteItem"] {{
 
 QFrame[cls="paletteItem"]:disabled {{
     color: {c('text3')};
+    background-color: {c('surface2')};
+    opacity: 0.55;
 }}
 
 QFrame[cls="paletteItem"][selected="true"] {{
@@ -1168,6 +1179,8 @@ QToolButton#railBtn[active="true"] {{
 QToolButton#railBtn:disabled {{
     color: {c('text3')};
     background-color: transparent;
+    /* Fase 7: deshabilitado inequívoco; el hover no lo hace parecer activo. */
+    opacity: 0.5;
 }}
 
 /* Pista de tecla (esquina del botón) */
@@ -1232,6 +1245,12 @@ QFrame[cls="flyItem"][active="true"] {{
 QFrame[cls="flyItem"]:disabled {{
     background-color: {c('surface2')};
     border: 1px solid {c('border')};
+    /* Fase 7: celda deshabilitada inequívoca (no parece habilitada). */
+    opacity: 0.55;
+}}
+
+QFrame[cls="flyItem"]:disabled #flyLbl {{
+    color: {c('text3')};
 }}
 
 QFrame[cls="flyItem"] QLabel {{
@@ -1329,6 +1348,7 @@ QToolButton:disabled {{
     color: {c('text3')};
     background-color: {c('surface2')};
     border: 1px solid {c('border')};
+    opacity: 0.55;
 }}
 
 #palette_grid QToolButton {{
@@ -1349,6 +1369,7 @@ QToolButton:disabled {{
     color: {c('text3')};
     background-color: {c('surface2')};
     border: 1px solid {c('border')};
+    opacity: 0.55;
 }}
 
 """

@@ -1,4 +1,8 @@
-"""Paleta de comandos (Ctrl+K) de la Fase 6 del plan de modernización.
+"""Paleta de comandos (Ctrl+P) de la Fase 6 del plan de modernización.
+
+`Ctrl+K` es el atajo histórico de Clean2D quick (`action_clean_2d_full`); la
+paleta se abre con `Ctrl+P` (`action_command_palette`) o con el clic en la
+píldora de búsqueda del AppBar (mismo camino).
 
 Responsabilidad: **presentar, filtrar y ejecutar** `QAction` existentes de la
 ventana. La `QAction` es la fuente de verdad: la paleta conserva su identidad,

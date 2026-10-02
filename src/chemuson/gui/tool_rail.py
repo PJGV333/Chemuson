@@ -68,6 +68,22 @@ RAIL_WIDTH = 58
 _RAIL_BTN_SIZE = 42
 
 
+def _tooltip_for_action(base: str, action: QAction | None) -> str:
+    """Tooltip unificado (Fase 7) para un botón que delega a una ``QAction``.
+
+    Si la ``QAction`` subyacente expone un shortcut no vacío
+    (``QAction.shortcut().toString()``), se usa la convención
+    ``Nombre (shortcut)``. En caso contrario se conserva el texto base —
+    incluye los atajos contextuales de una tecla del rail (``V, A, L, ...``)
+    que **no** son ``QAction.shortcut()`` y van ya en el texto base.
+    """
+    if action is not None:
+        shortcut = action.shortcut().toString()
+        if shortcut and "(" not in base:
+            return f"{base} ({shortcut})"
+    return base
+
+
 @dataclass
 class _CellEntry:
     """Celda leída de un ``QMenu`` original (delegación 1:1)."""
@@ -418,7 +434,11 @@ class ToolRail(QWidget):
         # Sin badges kbd visibles: el atajo se mantiene en el tooltip
         # (p. ej. "Enlaces (B)") y sigue funcional vía
         # ``ToolShortcutDispatcher``.
-        button.setToolTip(spec.tooltip)
+        # Fase 7: si la ``QAction`` subyacente expone un shortcut real
+        # (``QAction.shortcut().toString()``), el tooltip lo incluye
+        # (convención ``Nombre (Shortcut)``); si no, se conserva el texto
+        # base (atajos contextuales de una tecla no son ``QAction.shortcut``).
+        button.setToolTip(_tooltip_for_action(spec.tooltip, spec.icon_action))
         if spec.icon_action is not None:
             button.setIcon(spec.icon_action.icon())
         button.clicked.connect(lambda checked=False, s=spec: self._on_button_clicked(s))

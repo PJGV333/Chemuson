@@ -309,12 +309,12 @@ class ChemusonWindow(QMainWindow):
     # Paleta de comandos (Fase 6)
     # -------------------------------------------------------------------------
     def _open_command_palette(self) -> None:
-        """Abre la paleta de comandos (camino único: Ctrl+K y la píldora)."""
+        """Abre la paleta de comandos (camino único: Ctrl+P y la píldora)."""
         palette = getattr(self, "command_palette", None)
         if palette is None:
             return
-        # La píldora y Ctrl+K comparten esta misma acción de apertura; si el
-        # usuario pulsa Ctrl+K con la paleta ya abierta, se cierra (toggle).
+        # La píldora y Ctrl+P comparten esta misma acción de apertura; si el
+        # usuario pulsa Ctrl+P con la paleta ya abierta, se cierra (toggle).
         if palette.is_open():
             palette.close_overlay()
             return
@@ -349,6 +349,34 @@ class ChemusonWindow(QMainWindow):
         fresh = build_command_registry(self)
         registry._entries = fresh._entries
         registry._by_action = fresh._by_action
+
+    def _maybe_show_onboarding(self) -> None:
+        """Muestra el onboarding nativo en la primera ejecución (Fase 7).
+
+        Persiste ``ui/onboarding/completed`` al descartarse (el mismo
+        ``QSettings`` que el resto de la GUI). No se repite: tras una ejecución
+        la clave queda ``True``. El ``QuickStartDialog`` clásico (menú Ayuda)
+        se conserva como fallback. El overlay es un hijo de la ventana y
+        resalta ``tool_rail`` / lienzo / ``side_panel`` sin tocar la escena.
+        """
+        from chemuson.gui.onboarding import OnboardingOverlay
+        from chemuson.platform.settings import application_settings, setting_bool
+
+        settings = application_settings()
+        if setting_bool(settings.value("ui/onboarding/completed", False), False):
+            return
+        overlay = OnboardingOverlay(
+            self,
+            targets=[self.tool_rail, self.canvas, self.side_panel],
+        )
+
+        def _on_finished() -> None:
+            settings.setValue("ui/onboarding/completed", True)
+            settings.sync()
+            overlay.deleteLater()
+
+        overlay.finished.connect(_on_finished)
+        overlay.show()
 
     def _sync_app_bar_tabs(self) -> None:
         """Resincroniza el espejo completo con el estado real de pestañas.
@@ -2041,8 +2069,16 @@ class ChemusonWindow(QMainWindow):
         )
 
     def _refresh_template_views(self) -> None:
-        """Sincroniza menú y dock con la biblioteca de plantillas."""
+        """Sincroniza menú y dock con la biblioteca de plantillas.
+
+        Fase 7: también resincroniza el registro de la paleta de comandos
+        (``_refresh_command_registry_templates``), de modo que la paleta nunca
+        presente plantillas eliminadas ni omita plantillas nuevas aunque esté
+        abierta cuando cambia la biblioteca. El menú (``templates_menu``) sigue
+        siendo la fuente de verdad; no se toca ``TemplateLibrary`` ni química.
+        """
         self._template_browser.refresh_template_views(self._template_browser_context())
+        self._refresh_command_registry_templates()
 
     def _refresh_templates_menu(self) -> None:
         """Construye menú dinámico de plantillas por categoría."""

@@ -25,6 +25,7 @@ suciedad ``accent``, cierre discreto, ``+`` dashed; QSS por tokens en
 from __future__ import annotations
 
 from PyQt6.QtCore import QSize, Qt, pyqtSignal
+from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QHBoxLayout, QFrame, QTabBar, QToolButton, QWidget
 
 from chemuson.gui.theme.icon_provider import IconProvider
@@ -151,6 +152,19 @@ class DocumentTabBar(QFrame):
         self.tab_bar.tabCloseRequested.connect(self.closeRequested)
         self.tab_bar.tabMoved.connect(self.tabMoved)
         self.refresh_icons()
+
+    def set_new_action(self, action: QAction | None) -> None:
+        """Fase 7: tooltip ``Nuevo`` derivado del ``QAction`` real (fuente única).
+
+        Si la acción expone un atajo (``QAction.shortcut().toString()``), el
+        tooltip usa la convención ``Nombre (shortcut)``; en caso contrario
+        se conserva el nombre. No altera el comportamiento del botón.
+        """
+        if action is None:
+            return
+        name = "Nuevo documento"
+        shortcut = action.shortcut().toString()
+        self.new_button.setToolTip(f"{name} ({shortcut})" if shortcut else name)
 
     # ------------------------------------------------------------------
     # Iconos (theme-aware vía IconProvider: el color va en la caché)

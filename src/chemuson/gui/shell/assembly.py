@@ -179,6 +179,7 @@ def assemble_application_shell(self) -> None:
     self.app_bar.tabActivated.connect(self._on_document_tab_activated)
     self.app_bar.closeRequested.connect(self._on_tab_close_requested)
     self.app_bar.newDocumentRequested.connect(self.action_new.trigger)
+    self.app_bar.tab_bar.set_new_action(self.action_new)
     self.app_bar.tabMoved.connect(self._on_document_tab_moved)
 
     self._canvas_file_paths = self._tab_manager.file_paths
@@ -404,3 +405,9 @@ def assemble_application_shell(self) -> None:
     self._sync_text_toolbar_visibility()
     self.installEventFilter(self)
     QTimer.singleShot(1200, self._maybe_check_updates_startup)
+
+    # === ONBOARDING (Fase 7: onboarding nativo de primera ejecución) ===
+    # Solo se muestra si ``ui/onboarding/completed`` no está persistido. El
+    # overlay es un hijo de la ventana y resalta rail/lienzo/panel lateral sin
+    # tocar la escena ni el canvas. La persistencia la decide el ensamblado.
+    self._maybe_show_onboarding()

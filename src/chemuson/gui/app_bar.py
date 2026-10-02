@@ -45,6 +45,22 @@ _SEARCH_ICON_SIZE = 14
 _PILL_WIDTH = 250
 
 
+def _tooltip_from_action(action: QAction) -> str:
+    """Tooltip unificado (Fase 7) para un botón que sostiene una ``QAction``.
+
+    Convención ``Nombre (shortcut)``: si la ``QAction`` expone un shortcut no
+    vacío (``QAction.shortcut().toString()``) se incluye; en caso contrario se
+    muestra solo el nombre. El ``setDefaultAction`` del botón adopta el
+    tooltip de la acción, pero fijar un tooltip explícito (``ownToolTip``)
+    preserva la convención sin duplicar handlers ni atajos.
+    """
+    name = action.text()
+    shortcut = action.shortcut().toString()
+    if shortcut and "(" not in name:
+        return f"{name} ({shortcut})"
+    return name
+
+
 class KbdHint(QLabel):
     """Tecla estilo <kbd> (pista visual; no es un atajo registrado)."""
 
@@ -128,7 +144,7 @@ class AppBar(QFrame):
     #: ``QTabWidget`` vía ``moveTab``).
     tabMoved = pyqtSignal(int, int)
     #: Píldora de búsqueda pulsada (Fase 6: la ventana la conecta a la misma
-    #: ``QAction`` de apertura que Ctrl+K).
+    #: ``QAction`` de apertura que Ctrl+P).
     searchActivated = pyqtSignal()
     #: Botón hamburguesa: la ventana abre el ``QMenuBar`` (oculto) como popup.
     menuRequested = pyqtSignal()
@@ -207,6 +223,15 @@ class AppBar(QFrame):
         self.redo_button.setDefaultAction(redo_action)
         self.theme_button.setDefaultAction(theme_action)
         self.preferences_button.setDefaultAction(preferences_action)
+        # Fase 7: tooltips uniformes ``Nombre (shortcut)``. Se fijan en la
+        # ``QAction`` (fuente de verdad): ``setDefaultAction`` los hereda y
+        # sobreviven a los re-sync de Qt cuando cambia el estado (enabled) de
+        # la acción (un ``setToolTip`` solo en el botón se perdería). La
+        # convención se deriva del atajo real de la acción.
+        undo_action.setToolTip(_tooltip_from_action(undo_action))
+        redo_action.setToolTip(_tooltip_from_action(redo_action))
+        theme_action.setToolTip(_tooltip_from_action(theme_action))
+        preferences_action.setToolTip(_tooltip_from_action(preferences_action))
 
         separator = QFrame(self)
         separator.setObjectName("abarSep")

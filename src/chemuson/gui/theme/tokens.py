@@ -58,7 +58,8 @@ LIGHT_TOKENS: dict[str, object] = {
     "borderStrong": "#CBD5E1",
     "text1": "#0F172A",
     "text2": "#475569",
-    "text3": "#94A3B8",
+    # Fase 7: AA (≥4.5:1) sobre #F1F5F9/#FFFFFF/#F8FAFC (antes #94A3B8 ≈ 2.3:1)
+    "text3": "#5E6E82",
     "accent": "#0E7490",
     "accentStrong": "#155E75",
     "accentHover": "#0891B2",
@@ -164,7 +165,7 @@ METRICS: dict[str, int] = {
     "sideOverflowW": 32,
     # Fase 4.1 (convergencia visual con el spike aprobado)
     "statusH": 34,
-    # Fase 6 (paleta de comandos Ctrl+K)
+    # Fase 6 (paleta de comandos Ctrl+P)
     "paletteW": 560,
 }
 
