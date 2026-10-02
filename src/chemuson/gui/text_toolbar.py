@@ -14,7 +14,8 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import QAction, QFont, QColor, QKeySequence
 from PyQt6.QtCore import pyqtSignal, Qt, QSize
-from chemuson.gui.icons import draw_glyph_icon
+from chemuson.gui.icons import draw_glyph_icon, icon_foreground_color
+from chemuson.gui.theme.icon_provider import IconProvider
 
 class TextFormatToolbar(QToolBar):
     """
@@ -40,6 +41,7 @@ class TextFormatToolbar(QToolBar):
         self.setIconSize(QSize(16, 16))
         self.setMovable(False)
         self._syncing_state = False
+        self._icons = IconProvider()
         self._alignment_buttons: list[tuple[QToolButton, str]] = []
         
         # --- Font Family ---
@@ -82,8 +84,12 @@ class TextFormatToolbar(QToolBar):
         self.addSeparator()
 
         # --- Sub / Sup ---
+        # Fase 7: glifos provisionales (x₂/x²) sustituidos por SVG vía
+        # IconProvider (tinte por tema, HiDPI). El texto queda como fallback.
         self.action_sub = self._add_toggle_action("x₂", "Subíndice", "sub")
+        self.action_sub.setIcon(self._format_icon("subscript"))
         self.action_sup = self._add_toggle_action("x²", "Superíndice", "sup")
+        self.action_sup.setIcon(self._format_icon("superscript"))
         self.action_sub.setShortcut(QKeySequence("Ctrl+="))
         self.action_sub.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
         self.action_sup.setShortcuts([QKeySequence("Ctrl+Shift+="), QKeySequence("Ctrl++")])
@@ -96,9 +102,11 @@ class TextFormatToolbar(QToolBar):
         self.addSeparator()
 
         # --- Alignment ---
-        self._add_align_button("format-justify-left", "Alinear a la izquierda", "≡", Qt.AlignmentFlag.AlignLeft)
-        self._add_align_button("format-justify-center", "Centrar", "≣", Qt.AlignmentFlag.AlignHCenter)
-        self._add_align_button("format-justify-fill", "Justificar", "☰", Qt.AlignmentFlag.AlignJustify)
+        # Fase 7: glifos provisionales (≡/≣/☰) sustituidos por SVG vía
+        # IconProvider. El toolbar usa AlignJustify (no "right").
+        self._add_align_button("align-left", "Alinear a la izquierda", Qt.AlignmentFlag.AlignLeft)
+        self._add_align_button("align-center", "Centrar", Qt.AlignmentFlag.AlignHCenter)
+        self._add_align_button("align-justify", "Justificar", Qt.AlignmentFlag.AlignJustify)
 
         self.addSeparator()
         
@@ -145,19 +153,27 @@ class TextFormatToolbar(QToolBar):
 
     def _add_align_button(
         self,
-        theme_name: str,
+        svg_name: str,
         tooltip: str,
-        fallback_glyph: str,
         alignment: Qt.AlignmentFlag,
     ) -> None:
-        """Añade un botón de alineación con icono temático o de respaldo."""
+        """Añade un botón de alineación con icono SVG (Fase 7, vía IconProvider)."""
         button = QToolButton(self)
-        button.setIcon(draw_glyph_icon(fallback_glyph))
+        button.setIcon(self._format_icon(svg_name))
         button.setToolTip(tooltip)
         button.setAutoRaise(True)
         button.clicked.connect(lambda: self.alignment_changed.emit(alignment))
         self.addWidget(button)
-        self._alignment_buttons.append((button, fallback_glyph))
+        self._alignment_buttons.append((button, svg_name))
+
+    def _format_icon(self, svg_name: str):
+        """Icono SVG estático de formato (Fase 7): tinte por tema + HiDPI.
+
+        Usa el ``IconProvider`` (DPR-aware, caché por ``name/color/size/dpr``)
+        y el color del tema activo (token ``icon``) como tinte.
+        """
+        size = self.iconSize().width() or 16
+        return self._icons.icon(svg_name, icon_foreground_color(), size)
 
     def _handle_exclusive(self, trigger_action: QAction, other_action: QAction, prop_name: str):
         """Fuerza exclusividad entre subíndice y superíndice."""
@@ -181,8 +197,10 @@ class TextFormatToolbar(QToolBar):
 
     def refresh_icons(self) -> None:
         """Regenera iconos dependientes del tema."""
-        for button, glyph in self._alignment_buttons:
-            button.setIcon(draw_glyph_icon(glyph))
+        for button, svg_name in self._alignment_buttons:
+            button.setIcon(self._format_icon(svg_name))
+        self.action_sub.setIcon(self._format_icon("subscript"))
+        self.action_sup.setIcon(self._format_icon("superscript"))
         self._update_color_icon()
 
     def _emit_change(self, property_name: str = "all"):

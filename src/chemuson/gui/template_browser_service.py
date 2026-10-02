@@ -5,7 +5,15 @@ from dataclasses import dataclass
 from typing import Callable
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QAction, QIcon, QPainter, QPen, QPixmap, QColor
+from PyQt6.QtGui import (
+    QAction,
+    QColor,
+    QGuiApplication,
+    QIcon,
+    QPainter,
+    QPen,
+    QPixmap,
+)
 from PyQt6.QtWidgets import QMessageBox, QWidget
 
 
@@ -28,6 +36,21 @@ class TemplateBrowserContext:
 
 class TemplateBrowserService:
     """Presentación y migración de biblioteca de plantillas."""
+
+    @staticmethod
+    def _device_pixel_ratio() -> float:
+        """Ratio de dispositivo de la pantalla primaria (HiDPI, Fase 7).
+
+        Mismo patrón que :meth:`chemuson.gui.theme.icon_provider.
+        IconProvider.application_device_pixel_ratio`: sin aplicación activa
+        devuelve 1.0. El contenido químico del thumbnail no cambia; solo la
+        escala de render se multiplica por este factor.
+        """
+        app = QGuiApplication.instance()
+        if app is None:
+            return 1.0
+        screen = app.primaryScreen()
+        return float(screen.devicePixelRatio()) if screen is not None else 1.0
 
     def migrate_legacy_templates(self, context: TemplateBrowserContext) -> None:
         try:
@@ -86,9 +109,20 @@ class TemplateBrowserService:
             if not graph.atoms:
                 context.preview_cache[template_id] = icon
                 return icon
-            pixmap = QPixmap(88, 56)
+            # Fase 7: HiDPI sin artefactos. El pixmap se renderiza a
+            # ``(88×56) × dpr`` de píxeles físicos y se marca con
+            # ``setDevicePixelRatio`` para que la UI lo pinte a 88×56 lógicos
+            # nítido en pantallas de 125/150/200 %. El grafo químico (átomos,
+            # enlaces, posiciones relativas) NO se modifica: solo cambia la
+            # escala de render.
+            logical_w, logical_h = 88, 56
+            dpr = self._device_pixel_ratio()
+            pixmap = QPixmap(max(1, int(round(logical_w * dpr))),
+                            max(1, int(round(logical_h * dpr))))
+            pixmap.setDevicePixelRatio(dpr)
             pixmap.fill(Qt.GlobalColor.transparent)
             painter = QPainter(pixmap)
+            painter.scale(dpr, dpr)  # dibuja en coordenadas lógicas 88×56
             painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
             xs = [atom.x for atom in graph.atoms.values()]
@@ -99,8 +133,8 @@ class TemplateBrowserService:
             height = max(1.0, max_y - min_y)
             margin = 8.0
             scale = min(
-                (pixmap.width() - 2.0 * margin) / width,
-                (pixmap.height() - 2.0 * margin) / height,
+                (logical_w - 2.0 * margin) / width,
+                (logical_h - 2.0 * margin) / height,
             )
 
             def map_point(x: float, y: float) -> tuple[float, float]:
