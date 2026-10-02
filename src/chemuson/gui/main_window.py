@@ -353,11 +353,15 @@ class ChemusonWindow(QMainWindow):
     def _maybe_show_onboarding(self) -> None:
         """Muestra el onboarding nativo en la primera ejecución (Fase 7).
 
-        Persiste ``ui/onboarding/completed`` al descartarse (el mismo
-        ``QSettings`` que el resto de la GUI). No se repite: tras una ejecución
-        la clave queda ``True``. El ``QuickStartDialog`` clásico (menú Ayuda)
-        se conserva como fallback. El overlay es un hijo de la ventana y
-        resalta ``tool_rail`` / lienzo / ``side_panel`` sin tocar la escena.
+        Persiste ``ui/onboarding/completed`` **solo** cuando el onboarding se
+        considera completado (el mismo ``QSettings`` que el resto de la GUI):
+        - completar los tres pasos → ``True``;
+        - cerrar anticipadamente con "No volver a mostrar" → ``True``;
+        - cerrar anticipadamente sin marcar → NO se persiste: el onboarding
+          se ofrece de nuevo en el siguiente arranque.
+        El ``QuickStartDialog`` clásico (menú Ayuda) se conserva como
+        fallback. El overlay es un hijo de la ventana y resalta
+        ``tool_rail`` / lienzo / ``side_panel`` sin tocar la escena.
         """
         from chemuson.gui.onboarding import OnboardingOverlay
         from chemuson.platform.settings import application_settings, setting_bool
@@ -370,9 +374,10 @@ class ChemusonWindow(QMainWindow):
             targets=[self.tool_rail, self.canvas, self.side_panel],
         )
 
-        def _on_finished() -> None:
-            settings.setValue("ui/onboarding/completed", True)
-            settings.sync()
+        def _on_finished(completed: bool) -> None:
+            if completed:
+                settings.setValue("ui/onboarding/completed", True)
+                settings.sync()
             overlay.deleteLater()
 
         overlay.finished.connect(_on_finished)

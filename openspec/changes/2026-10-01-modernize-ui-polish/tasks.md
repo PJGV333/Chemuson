@@ -104,3 +104,60 @@
   `--force`; verificar HEAD local/remoto y worktree limpio. Hecho:
   commit 22496d9 (polish) + 1238263 (manual); push origin/ui/modernization;
   local == remoto == 1238263b8d14657e29c5d1166c3b7bf3d8270ec5; worktree limpio.
+
+## 11. Correcciones post-push (gate manual Fase 7, tras `ca39a3a`)
+
+Revisión manual posterior al push; tres correcciones puntuales. Baseline
+capturado antes de tocar código: `git status` limpio, compileall OK,
+`pytest --collect-only` 1855 tests, suite completa = los 5 fallos
+preexistentes (RDKit/async) + resto en verde, Ruff = solo el F401
+preexistente (`math` en `test_clean2d_para_disubstituted_aromatic_layout_v1.py`).
+
+- [x] 11.1 **QSS `opacity`**: eliminar todas las reglas `opacity:` añadidas en
+  Fase 7 a widgets normales (`QToolButton`, `QPushButton`, flat, `QLineEdit`,
+  `QSpinBox`/`QDoubleSpinBox`, `QCheckBox`, `QRadioButton`, `#railBtn`,
+  `flyItem`, `paletteItem`, `#palette_grid`) en `theme/qss.py` (hoja principal
+  y `get_tool_palette_stylesheet`). Estados `:disabled` inequívocos solo con
+  propiedades soportadas (`color`/`background-color`/`border-color`). Sin
+  `QGraphicsOpacityEffect` ni lógica nueva. `QToolTip` no se toca (no usa
+  `opacity` aquí).
+- [x] 11.2 **Tests `test_ui_polish.py`**: NO comprobar presencia de `opacity`;
+  comprobar (a) que ninguna regla de widget use `opacity` y (b) que cada
+  selector `:disabled` auditable introduzca un cambio visual soportado
+  respecto al estado normal (helper `_parse_qss_blocks` +
+  `_disabled_visual_change` + `_DISABLED_SELECTOR_PAIRS`).
+- [x] 11.3 **Thumbnails de Plantillas**: `PlantillasDock.tree` fija
+  `setIconSize(QSize(88, 56))` (`_TEMPLATE_THUMB_SIZE`, coincide con el tamaño
+  lógico de `template_preview_icon`). Solo visual; sin tocar grafos/molblocks/
+  átomos/enlaces/geometría. Altura de fila no requiere ajuste (fila hoja
+  58 px ≥ icono 56 px). Cabe en el SidePanel de 340 px. Test
+  `test_templates_tree_sets_thumbnail_icon_size`.
+- [x] 11.4 **Evidencia thumbnails**: capturas antes/después del SidePanel a
+  100 % y 200 % + montajes (offscreen; sin mutar documento ni química) en
+  `evidence/templates_*.png`.
+- [x] 11.5 **Onboarding "No volver a mostrar"**: `OnboardingOverlay.finished`
+  pasa a `pyqtSignal(bool)`; `_finish(completed)`; 3 pasos → `True`, cerrar
+  con la casilla marcada → `True`, cerrar sin marcar → `False`. En
+  `main_window._maybe_show_onboarding` solo se fija
+  `ui/onboarding/completed=True` si `completed`. Sin tocar canvas ni escena.
+- [x] 11.6 **Tests onboarding** (3 casos explícitos):
+  `test_onboarding_persists_completed_on_finish` (3 pasos → persiste),
+  `test_onboarding_close_with_no_more_persists` (cerrar + casilla → persiste),
+  `test_onboarding_close_without_no_more_not_persisted` (cerrar sin casilla →
+  NO persiste) y `test_onboarding_reappears_when_not_completed` (siguiente
+  arranque lo muestra de nuevo).
+- [x] 11.7 **Spec/design/tasks** actualizados: `spec.md` (requirement
+  `Estados deshabilitados` reescrito sin `opacity` + scenario de ausencia de
+  `opacity`/cambio visual soportado; nuevo requirement `Thumbnails de
+  plantillas visibles en el SidePanel`; requirement `Onboarding` con semántica
+  de persistencia de 3 casos y 3 scenarios), `design.md` (D2, D4.1, D5 y
+  Riesgos), este `tasks.md`.
+- [x] 11.8 **Validación**: tests dirigidos (`test_ui_polish.py`) en verde;
+  `architecture` (sin nuevos imports fuera de catálogo: `QSize` ya usado en el
+  dominio Qt), `compileall`, Ruff scoped, `git diff --check`,
+  `openspec validate 2026-10-01-modernize-ui-polish --strict` y suite completa
+  (comparar contra baseline de esta PC: mismos 5 fallos preexistentes, resto
+  en verde; +N tests nuevos).
+- [x] 11.9 Commit `Fix Fase 7 polish edge cases`; push normal a
+  `ui/modernization` (sin `--force`); verificar HEAD local/remoto y worktree
+  limpio. NO iniciar Fase 8.

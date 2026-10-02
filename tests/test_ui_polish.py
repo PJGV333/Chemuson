@@ -3,18 +3,22 @@
 Cubre:
 - Contraste AA del token claro ``text3`` (y ``text1``/``text2``) sobre los
   fondos claros.
-- Estados ``:disabled`` inequívocos en el QSS.
+- Estados ``:disabled`` inequívocos en el QSS usando solo propiedades
+  soportadas (sin ``opacity``, que Qt solo aplica a ``QToolTip``).
 - Tooltips uniformes del rail / app bar / pestañas (convención
   ``Nombre (Shortcut)``).
-- Thumbnails de plantillas HiDPI (DPR-aware).
+- Thumbnails de plantillas HiDPI (DPR-aware) y ``iconSize`` lógico del árbol
+  de PlantillasDock (88×56, sin recorte en el SidePanel de 340 px).
 - Refresco de la ``CommandPalette`` tras mutación de plantillas.
-- Onboarding nativo de primera ejecución (3 pasos, persistencia, no-repetir).
+- Onboarding nativo de primera ejecución (3 pasos, semántica de
+  persistencia de "No volver a mostrar", no-repetir).
 
 No toca química (Clean2D/ChemName), persistencia ``.cmsn`` ni orbital math.
 """
 from __future__ import annotations
 
 import pytest
+import re
 from PyQt6.QtCore import QSettings, QStandardPaths, QSize
 from PyQt6.QtWidgets import QApplication
 
@@ -112,25 +116,113 @@ def test_dark_text3_meets_aa():
 
 
 # ---------------------------------------------------------------------------
-# 2. Estados :disabled inequívocos en el QSS
+# 2. Estados :disabled inequívocos en el QSS (solo propiedades soportadas)
 # ---------------------------------------------------------------------------
-def test_qss_disabled_states_have_opacity():
+# Qt Style Sheets solo soporta ``opacity`` para ``QToolTip``; no funciona en
+# ``QToolButton``, ``QPushButton``, ``QLineEdit``, ``QCheckBox``, etc. Por eso
+# el QSS no usa ``opacity`` en widgets normales: el estado deshabilitado se
+# pinta solo con propiedades soportadas (color, background-color, border-color
+# y equivalentes). Estos tests comprueban (a) que NINGÚN selector disabled usa
+# ``opacity`` y (b) que cada selector disabled introduce un cambio visual
+# soportado respecto al estado normal.
+_SUPPORTED_VISUAL_PROPS = {
+    "color",
+    "background-color",
+    "border-color",
+    "background",
+    "border",
+}
+
+
+def _parse_qss_blocks(qss: str) -> dict[str, dict[str, str]]:
+    """Extrae ``selector -> {prop: valor}`` de una hoja QSS.
+
+    Parser mínimo y determinista: localiza cada regla ``selector { props }``
+    (sin llaves anidadas) con una regex y descompone las propiedades por
+    ``;``. Los selectores múltiples se indexan por cada parte (separada por
+    coma). Los comentarios se eliminan antes.
+    """
+    text = re.sub(r"/\*.*?\*/", "", qss, flags=re.DOTALL)
+    blocks: dict[str, dict[str, str]] = {}
+    for match in re.finditer(r"([^{}]+)\{([^{}]*)\}", text):
+        selector, body = match.group(1).strip(), match.group(2)
+        props: dict[str, str] = {}
+        for line in body.split(";"):
+            if ":" in line:
+                prop, _, value = line.partition(":")
+                prop, value = prop.strip(), value.strip()
+                if prop and value:
+                    props[prop] = value
+        if not props:
+            continue
+        for part in selector.split(","):
+            part = part.strip()
+            if part:
+                blocks[part] = {**blocks.get(part, {}), **props}
+    return blocks
+
+
+def _disabled_visual_change(
+    blocks: dict[str, dict[str, str]], base_sel: str, disabled_sel: str
+) -> list[str]:
+    """Devuelve las props soportadas cuyo valor cambia de normal a disabled."""
+    base = blocks.get(base_sel, {})
+    disabled = blocks.get(disabled_sel, {})
+    changed = []
+    for prop in _SUPPORTED_VISUAL_PROPS:
+        if prop in disabled:
+            base_val = base.get(prop)
+            if base_val is None or base_val != disabled[prop]:
+                changed.append(f"{prop}: {base_val!r} -> {disabled[prop]!r}")
+    return changed
+
+
+# (selector normal, selector :disabled) a auditar. El par ``QToolButton`` usa
+# la regla base del rail de app (el primero en la hoja, sin objeto id).
+_DISABLED_SELECTOR_PAIRS = (
+    ("QToolButton", "QToolButton:disabled"),
+    ("QPushButton", "QPushButton:disabled"),
+    ('QPushButton[flat="true"]', 'QPushButton[flat="true"]:disabled'),
+    ("QLineEdit", "QLineEdit:disabled"),
+    ("QSpinBox", "QSpinBox:disabled"),
+    ("QCheckBox", "QCheckBox:disabled"),
+    ("QRadioButton", "QRadioButton:disabled"),
+    ("QToolButton#railBtn", "QToolButton#railBtn:disabled"),
+    ('QFrame[cls="flyItem"]', 'QFrame[cls="flyItem"]:disabled'),
+    ('QFrame[cls="paletteItem"]', 'QFrame[cls="paletteItem"]:disabled'),
+)
+
+
+def test_qss_disabled_states_use_no_opacity():
+    """Ninguna regla ``:disabled`` de widget usa ``opacity`` (solo soporta Qt
+    la propiedad en ``QToolTip``)."""
+    from chemuson.gui.theme.qss import get_main_stylesheet, get_tool_palette_stylesheet
+
+    for theme in ("light", "dark"):
+        for sheet in (get_main_stylesheet(theme), get_tool_palette_stylesheet(theme)):
+            offenders = [
+                ln.strip() for ln in sheet.splitlines()
+                if re.search(r"^\s*opacity\s*:", ln)
+            ]
+            assert not offenders, (
+                f"QSS del tema {theme} usa ``opacity`` en widgets: {offenders}"
+            )
+
+
+def test_qss_disabled_states_have_supported_visual_change():
+    """Cada selector ``:disabled`` cambia visualmente el estado normal usando
+    solo propiedades soportadas (color / background-color / border-color)."""
     from chemuson.gui.theme.qss import get_main_stylesheet
 
     qss = get_main_stylesheet("light")
-    for fragment in (
-        "QToolButton:disabled",
-        "QPushButton:disabled",
-        "QLineEdit:disabled",
-        "QCheckBox:disabled",
-        "QRadioButton:disabled",
-    ):
-        idx = qss.find(fragment)
-        assert idx != -1, f"falta el estado :disabled para {fragment}"
-        block = qss[idx: idx + 400]
-        assert "opacity" in block, f"sin opacidad en {fragment}"
-        opacity = float(block.split("opacity:")[1].split(";")[0].strip())
-        assert 0.0 < opacity <= 0.75, f"opacidad {opacity} fuera de rango en {fragment}"
+    blocks = _parse_qss_blocks(qss)
+    for base_sel, disabled_sel in _DISABLED_SELECTOR_PAIRS:
+        assert disabled_sel in blocks, f"falta el estado :disabled para {disabled_sel}"
+        changed = _disabled_visual_change(blocks, base_sel, disabled_sel)
+        assert changed, (
+            f"{disabled_sel} no introduce ningún cambio visual soportado "
+            f"respecto a {base_sel}"
+        )
 
 
 def test_qss_disabled_applies_to_rail_and_flyout():
@@ -139,6 +231,28 @@ def test_qss_disabled_applies_to_rail_and_flyout():
     qss = get_main_stylesheet("dark")
     for fragment in ("QToolButton#railBtn:disabled", "QFrame[cls=\"flyItem\"]:disabled"):
         assert fragment in qss, f"falta el estado :disabled para {fragment}"
+
+
+# ---------------------------------------------------------------------------
+# 4b. Thumbnails de plantilla: iconSize lógico del árbol
+# ---------------------------------------------------------------------------
+def test_templates_tree_sets_thumbnail_icon_size(win):
+    """El árbol de PlantillasDock fija un ``iconSize`` lógico razonable (88×56)
+    de modo que los thumbnails DPR-aware no se reduzcan al ~16 px por defecto,
+    y cabe en el SidePanel de 340 px."""
+    from PyQt6.QtCore import QSize
+
+    from chemuson.gui.docks import _TEMPLATE_THUMB_SIZE, PlantillasDock
+
+    assert isinstance(win.templates_dock, PlantillasDock)
+    tree = win.templates_dock.tree
+    assert tree.iconSize() == _TEMPLATE_THUMB_SIZE
+    # El tamaño lógico debe coincidir con el pixmap de
+    # ``template_preview_icon`` (88×56).
+    assert _TEMPLATE_THUMB_SIZE == QSize(88, 56)
+    # Debe caber en el SidePanel (340 px) con margen para el texto del ítem.
+    assert win.side_panel.width() == 340
+    assert _TEMPLATE_THUMB_SIZE.width() < win.side_panel.width()
 
 
 # ---------------------------------------------------------------------------
@@ -328,15 +442,15 @@ def test_onboarding_persists_completed_on_finish(win):
     overlay = _find_onboarding(win)
     assert overlay is not None
     finished = []
-    overlay.finished.connect(lambda: finished.append(True))
+    overlay.finished.connect(lambda completed: finished.append(completed))
 
-    # Completa los 3 pasos (el último ``advance`` cierra).
+    # Completa los 3 pasos (el último ``advance`` cierra con ``True``).
     overlay.advance()
     overlay.advance()
     overlay.advance()
     QApplication.processEvents()
 
-    assert finished, "la señal ``finished`` debe emitirse al completar"
+    assert finished == [True], "completar los 3 pasos debe emitir ``finished(True)``"
     assert overlay.isHidden()
     assert setting_bool(
         application_settings().value("ui/onboarding/completed", False), False
@@ -347,3 +461,81 @@ def test_onboarding_no_more_flag_default_false(win):
     overlay = _find_onboarding(win)
     assert overlay is not None
     assert overlay.no_more is False
+
+
+def test_onboarding_close_with_no_more_persists(win):
+    """Cerrar anticipadamente con "No volver a mostrar" → completado (True)."""
+    from chemuson.platform.settings import application_settings, setting_bool
+
+    overlay = _find_onboarding(win)
+    assert overlay is not None
+    finished = []
+    overlay.finished.connect(lambda completed: finished.append(completed))
+
+    # Marca "No volver a mostrar" y cierra antes de completar los 3 pasos.
+    overlay.set_no_more(True)
+    assert overlay.no_more is True
+    overlay.request_close()
+    QApplication.processEvents()
+
+    assert finished == [True], "cerrar con la casilla marcada debe emitir ``finished(True)``"
+    assert overlay.isHidden()
+    assert setting_bool(
+        application_settings().value("ui/onboarding/completed", False), False
+    ), "con 'No volver a mostrar' debe persistir ``completed`` = True"
+
+
+def test_onboarding_close_without_no_more_not_persisted(win):
+    """Cerrar anticipadamente sin marcar → NO completado (False), no persiste."""
+    from chemuson.platform.settings import application_settings, setting_bool
+
+    overlay = _find_onboarding(win)
+    assert overlay is not None
+    finished = []
+    overlay.finished.connect(lambda completed: finished.append(completed))
+
+    # Cierra en el paso 1 sin marcar "No volver a mostrar".
+    assert overlay.no_more is False
+    overlay.request_close()
+    QApplication.processEvents()
+
+    assert finished == [False], "cerrar sin la casilla debe emitir ``finished(False)``"
+    assert overlay.isHidden()
+    assert not setting_bool(
+        application_settings().value("ui/onboarding/completed", False), False
+    ), "sin 'No volver a mostrar' NO debe persistir ``completed`` (aparece de nuevo)"
+
+
+def test_onboarding_reappears_when_not_completed(_qapp, _isolated_config_home):
+    """Si se cerró sin completar ni marcar, un siguiente arranque lo muestra de nuevo."""
+    from chemuson.platform.settings import application_settings, setting_bool
+
+    settings = application_settings()
+    # Asegura que la clave NO está presente (primer arranque).
+    settings.remove("ui/onboarding/completed")
+
+    # Primer arranque: muestra, se cierra sin completar ni marcar.
+    win1 = ChemusonWindow()
+    win1.resize(1280, 800)
+    win1.show()
+    QApplication.processEvents()
+    overlay1 = _find_onboarding(win1)
+    assert overlay1 is not None, "debe mostrarse en el primer arranque"
+    overlay1.request_close()
+    QApplication.processEvents()
+    win1.close()
+    QApplication.processEvents()
+
+    # La clave sigue ausente: un segundo arranque (nueva ventana) debe
+    # mostrarlo otra vez.
+    assert not setting_bool(
+        application_settings().value("ui/onboarding/completed", False), False
+    )
+    win2 = ChemusonWindow()
+    win2.resize(1280, 800)
+    win2.show()
+    QApplication.processEvents()
+    overlay2 = _find_onboarding(win2)
+    assert overlay2 is not None, "debe volver a aparecer en el siguiente arranque"
+    win2.close()
+    QApplication.processEvents()

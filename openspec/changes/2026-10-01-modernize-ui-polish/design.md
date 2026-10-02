@@ -17,24 +17,41 @@ solo el **light** falla: `text3 = #94A3B8` sobre `#F1F5F9` ≈ 2.3:1. El dark
   de estado vacío sigue usando `text2`/`text3` por tokens, sin cambios
   adicionales.
 
-### D2. Disabled: opacidad + fondo, con `QAction` como fuente de verdad
+### D2. Disabled: color/fondo con tokens soportados, `QAction` como fuente de verdad
 
 El estado habilitado **no se copia**: sigue viniendo de la `QAction`
 (`canUndoChanged` → `action_undo.setEnabled`, ya verificado en
-`main_window.py`). El pulido es exclusivamente presentacional en QSS:
+`main_window.py`). El pulido es exclusivamente presentacional en QSS.
 
-- `QToolButton:disabled` → `opacity: 0.55` (atenúa icono + texto; el hover no
-  lo hace parecer activo porque `:disabled` aparece después de `:hover` en
-  la hoja y gana).
-- `QToolButton#railBtn:disabled` → `opacity: 0.5` + fondo transparente
-  (se conserva tras el bloque `:hover`/`:pressed`/`[active]`).
-- `QFrame[cls="flyItem"]:disabled` → `opacity: 0.55` y regla específica
+**Corrección post-push (gate manual Fase 7)**: Qt Style Sheets solo soporta
+la propiedad `opacity` para `QToolTip`; no funciona en `QToolButton`,
+`QPushButton`, `QLineEdit`, `QCheckBox`, etc. Se eliminan todas las reglas
+`opacity:` añadidas en Fase 7 a widgets normales; no se introduce
+`QGraphicsOpacityEffect` ni lógica nueva. Los estados `:disabled` quedan
+inequívocos con propiedades soportadas:
+
+- `QToolButton:disabled` → `color: text3` + fondo/borde transparentes (el
+  hover ya no lo hace parecer activo porque `:disabled` aparece después de
+  `:hover` en la hoja y gana).
+- `QToolButton#railBtn:disabled` → `color: text3` + fondo `surface2` (antes
+  transparente; con color de fondo el atenuado es inequívoco en light y dark).
+- `QFrame[cls="flyItem"]:disabled` → fondo `surface3` (más marcado que el
+  reposo `surface2`) + `border` + regla específica
   `QFrame[cls="flyItem"]:disabled #flyLbl { color: text3 }` (la etiqueta
   actual hereda `#flyLbl` text1 y parecía habilitada).
-- `QFrame[cls="paletteItem"]:disabled` → fondo `surface2` + `opacity: 0.55`.
-- `QPushButton/flat:disabled`, `QMenu::item:disabled`, spinbox/checkbox ya
-  usan `text3`/`surface2`; se les añade `opacity: 0.55` para inequívocidad
-  sin tocar su color.
+- `QFrame[cls="paletteItem"]:disabled` → fondo `surface2` + `color: text3`.
+- `QPushButton:disabled` → fondo `borderStrong` + `text3` (ya existente).
+- `QPushButton[flat="true"]:disabled` → `text3` + borde `border`.
+- `QLineEdit:disabled` / `QSpinBox, QDoubleSpinBox:disabled` → fondo
+  `surface2` + `text3` + `border-color: border`.
+- `QCheckBox:disabled` / `QRadioButton:disabled` → `color: text3` (el
+  indicador ya tiene `::indicator:disabled` con `surface2`/`border`).
+- `QToolButton:disabled` de `get_tool_palette_stylesheet` y
+  `#palette_grid QToolButton:disabled` → `text3` + fondo `surface3` + borde.
+- Tests (`test_ui_polish.py`): se descarta la comprobación de opacidad;
+  ahora se verifica (a) que **ninguna** regla de widget use `opacity` y (b)
+  que cada selector `:disabled` auditable introduzca al menos un cambio
+  visual soportado respecto al estado normal.
 - No se introduce `QPainter` ni lógica de enabled en widgets: solo QSS.
 
 ### D3. Tooltips: convención `Nombre (Shortcut)` desde `QAction.shortcut()`
@@ -78,6 +95,21 @@ Qt6 escala px lógicos de QSS/fuentes por devicePixelRatio; el riesgo real es
   de alto DPI físico) sí queda nítido. Se documenta como limitación, no
   como defecto del cambio.
 
+### D4.1. `iconSize` del árbol de plantillas (corrección post-push, gate manual Fase 7)
+
+`template_preview_icon()` genera pixmaps lógicos 88×56 DPR-aware, pero
+`PlantillasDock.tree` no fijaba `iconSize`, así que `QTreeWidget` los reducía
+al tamaño de icono por defecto (~16 px) y la previsualización quedaba
+diminuta. Ajuste exclusivamente visual: `PlantillasDock` fija
+`tree.setIconSize(QSize(88, 56))` (constante `_TEMPLATE_THUMB_SIZE`, coincide
+con el tamaño lógico del pixmap). La altura de fila **no** requiere ajuste:
+`QTreeWidget` dimensiona la fila al icono (fila hoja = 58 px ≥ 56 px del
+icono, verificado offscreen a 100 % y 200 %; sin recorte). 88 px de ancho
+cabe en el SidePanel de 340 px con margen para el texto del ítem. No se toca
+grafos, molblocks, átomos, enlaces ni geometría química. Evidencia: capturas
+antes/después del SidePanel (100 % y 200 %) en `evidence/templates_before_*.png` /
+`templates_after_*.png` y montajes `templates_montage_*.png`.
+
 ### D5. Onboarding: overlay de shell, 3 pasos, persistido
 
 - Nuevo `gui/onboarding.py` → `OnboardingOverlay(QWidget)`: hijo de la
@@ -91,7 +123,13 @@ Qt6 escala px lógicos de QSS/fuentes por devicePixelRatio; el riesgo real es
      apariencia están aquí."
 - Inyección en `shell/assembly.py` tras montar el shell: si
   `application_settings().value("ui/onboarding/completed", False)` es falso →
-  mostrar overlay; al cerrar (o con "No mostrar de nuevo") → `setValue(True)`.
+  mostrar overlay. **Semántica de persistencia (corrección post-push, gate
+  manual Fase 7)**: la señal del overlay es `finished(bool)`; el ensamblado
+  fija `ui/onboarding/completed=True` **solo** si llega `True`:
+  completar los 3 pasos → `True`; cerrar con "No volver a mostrar" marcado →
+  `True`; cerrar sin marcar → `False` (NO se persiste; el onboarding se
+  ofrece de nuevo en el siguiente arranque). Antes de la corrección
+  `overlay.no_more` existía pero no participaba en la persistencia.
 - Sin sistema paralelo: reutiliza `platform.settings` (mismo `QSettings` que
   el resto de la GUI). No toca `gui/canvas/` ni la escena: el overlay es un
   hijo de la ventana principal y posiciona el "agujero" sobre geometrías
@@ -156,9 +194,11 @@ correctamente Clean2D) y `tool_rail.py:396` (referencia a atajos de Clean2D).
 
 ## Riesgos y mitigación
 
-- **QSS `opacity` sobre widgets con iconos**: Qt aplica la opacidad al
-  widget completo (icono + texto) → es justo el efecto deseado; se verifica
-  visualmente en light/dark.
+- **QSS `opacity` sobre widgets**: Qt solo soporta `opacity` en `QToolTip`;
+  no funciona en widgets normales. Corrección aplicada (gate manual Fase 7):
+  las reglas `opacity:` añadidas en Fase 7 se eliminan y el estado
+  `:disabled` se pinta solo con propiedades soportadas (color/fondo/borde de
+  tokens); sin `QGraphicsOpacityEffect`.
 - **Overlay sobre el canvas**: el overlay es hijo de la ventana (no de la
   escena); no se agregan items ni se toca hit-testing. El "agujero" solo
   posiciona una región transparente; el canvas sigue recibiendo eventos al

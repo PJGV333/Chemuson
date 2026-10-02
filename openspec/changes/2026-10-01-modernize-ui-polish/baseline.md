@@ -67,3 +67,30 @@ Al finalizar, la suite SHALL coincidir con este baseline **en la misma PC**:
 - `1813 passed + <tests nuevos>` passed, `20 skipped`;
 - Ruff scoped: el único error preexistente (F401 en test de Clean2D) sin
   errores nuevos.
+
+## Baseline de la corrección post-push (tras `ca39a3a`, gate manual Fase 7)
+
+Estado registrado **antes** de tocar código para las 3 correcciones
+(QSS `opacity`, `iconSize` de Plantillas, onboarding "No volver a mostrar").
+Rama `ui/modernization`, HEAD `ca39a3a`, árbol limpio. Logs en
+`/tmp/f7fix/baseline_*.log`.
+
+- `git status --short`: vacío.
+- `python -m compileall src tests tools packaging`: OK (sin errores).
+- `pytest --collect-only -q`: `1855 tests collected`.
+- `pytest -q`: `5 failed, 1830 passed, 20 skipped` (los 5 fallos son la clase
+  RDKit/async preexistente, idénticos a los del baseline original; `1830` =
+  `1813` + `17` tests nuevos de la Fase 7 ya comprometidos en `ca39a3a`).
+- `ruff check src tests tools packaging --select F401,F811,F821,E722,E741`:
+  `Found 1 error` — F401 `math` en
+  `tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py:3` (preexistente).
+
+Criterio de parada de **esta corrección**: misma PC, mismos 5 fallos
+preexistentes (idénticos); `1830 passed + <tests nuevos>` passed, `20
+skipped`; Ruff scoped solo el F401 preexistente. Los tests nuevos añadidos
+por la corrección: `test_qss_disabled_states_use_no_opacity`,
+`test_qss_disabled_states_have_supported_visual_change` (sustituyen a
+`test_qss_disabled_states_have_opacity`), `test_templates_tree_sets_thumbnail_icon_size`
+y 3 de onboarding (`..._close_with_no_more_persists`,
+`..._close_without_no_more_not_persisted`, `..._reappears_when_not_completed`);
+neto `+5` tests.
