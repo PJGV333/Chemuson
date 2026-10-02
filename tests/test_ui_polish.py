@@ -8,7 +8,8 @@ Cubre:
 - Tooltips uniformes del rail / app bar / pestañas (convención
   ``Nombre (Shortcut)``).
 - Thumbnails de plantillas HiDPI (DPR-aware) y ``iconSize`` lógico del árbol
-  de PlantillasDock (88×56, sin recorte en el SidePanel de 340 px).
+  de PlantillasDock (88×56, sin recorte en el SidePanel de 340 px), con el
+  bounding box relativo de la estructura invariante entre DPR 1 y DPR 2.
 - Refresco de la ``CommandPalette`` tras mutación de plantillas.
 - Onboarding nativo de primera ejecución (3 pasos, semántica de
   persistencia de "No volver a mostrar", no-repetir).
@@ -357,6 +358,117 @@ def test_template_preview_device_pixel_ratio_falls_back_to_one():
 
     # Con QApplication activa (offscreen, DPR 1.0) debe devolver 1.0.
     assert TemplateBrowserService._device_pixel_ratio() == pytest.approx(1.0)
+
+
+_BENZENE_MOLBLOCK = (
+    "  Benzene\n"
+    "  ChemUSON\n"
+    "\n"
+    "  6  6  0  0  0  0  0  0  0  0999 V2000\n"
+    "    1.0000    0.0000    0.0000 C   0  0\n"
+    "    0.5000    0.8660    0.0000 C   0  0\n"
+    "   -0.5000    0.8660    0.0000 C   0  0\n"
+    "   -1.0000    0.0000    0.0000 C   0  0\n"
+    "   -0.5000   -0.8660    0.0000 C   0  0\n"
+    "    0.5000   -0.8660    0.0000 C   0  0\n"
+    "  1  2  2  0\n"
+    "  2  3  1  0\n"
+    "  3  4  2  0\n"
+    "  4  5  1  0\n"
+    "  5  6  2  0\n"
+    "  6  1  1  0\n"
+    "M  END\n"
+    "$$$\n"
+)
+
+# Mismo esqueleto que el benceno, con un heteroátomo etiquetado (tinta de texto).
+_PYRIDINE_MOLBLOCK = _BENZENE_MOLBLOCK.replace(" C   0  0", " N   0  0", 1)
+
+
+def _relative_ink_bbox(pixmap) -> tuple[float, float, float, float]:
+    """Bounding box de la tinta (píxeles no transparentes) normalizado a 0..1.
+
+    Se expresa en coordenadas relativas al pixmap, de modo que un DPR mayor no
+    cambia la composición lógica: solo añade resolución.
+    """
+    image = pixmap.toImage()
+    xs: list[int] = []
+    ys: list[int] = []
+    for y in range(image.height()):
+        for x in range(image.width()):
+            if image.pixelColor(x, y).alpha() > 0:
+                xs.append(x)
+                ys.append(y)
+    assert xs, "el thumbnail está vacío (no hay tinta que medir)"
+    return (
+        min(xs) / image.width(),
+        min(ys) / image.height(),
+        (max(xs) + 1) / image.width(),
+        (max(ys) + 1) / image.height(),
+    )
+
+
+def test_template_preview_relative_bbox_is_dpr_invariant(tmp_path, monkeypatch):
+    """La estructura conserva el mismo bounding box relativo a DPR 1 y DPR 2.
+
+    No basta con ``availableSizes()``: el DPR debe aportar solo resolución.
+    Si el DPR se aplica dos veces (pixmap etiquetado antes de pintar +
+    ``painter.scale(dpr, dpr)``), la estructura sale a ``dpr²`` y toca/recorta
+    los bordes del thumbnail. Aquí se mide la tinta real del pixmap.
+    """
+    from types import SimpleNamespace
+
+    from chemuson.gui.template_browser_service import TemplateBrowserService
+    from chemuson.gui.template_library import DEFAULT_CATEGORY_USER, TemplateLibrary
+
+    library = TemplateLibrary(tmp_path / "library.json")
+    for molblock in (_BENZENE_MOLBLOCK, _PYRIDINE_MOLBLOCK):
+        template = library.add_template("Estructura", DEFAULT_CATEGORY_USER, molblock)
+        template_id = template["id"]
+        boxes: dict[float, tuple[float, float, float, float]] = {}
+        ink_pixels: dict[float, int] = {}
+
+        for dpr in (1.0, 2.0):
+            ctx = SimpleNamespace(
+                template_library=library,
+                preview_cache={},
+                show_status=lambda _s: None,
+            )
+            monkeypatch.setattr(
+                TemplateBrowserService,
+                "_device_pixel_ratio",
+                staticmethod(lambda d=dpr: d),
+            )
+            icon = TemplateBrowserService().template_preview_icon(ctx, template_id)
+            physical = icon.availableSizes()[0]
+            # Tamaño físico = lógico (88×56) × dpr.
+            assert physical == QSize(int(round(88 * dpr)), int(round(56 * dpr)))
+            pixmap = icon.pixmap(physical)
+            boxes[dpr] = _relative_ink_bbox(pixmap)
+            image = pixmap.toImage()
+            ink_pixels[dpr] = sum(
+                1
+                for y in range(image.height())
+                for x in range(image.width())
+                if image.pixelColor(x, y).alpha() > 0
+            )
+
+        # Composición lógica idéntica (tolerancia de redondeo/antialiasing).
+        for dpr1, dpr2 in zip(boxes[1.0], boxes[2.0]):
+            assert abs(dpr2 - dpr1) <= 0.02, (
+                f"bounding box relativo cambiado entre DPR 1 y DPR 2: "
+                f"{boxes[1.0]} vs {boxes[2.0]}"
+            )
+        # La tinta no toca los bordes: el margen lógico de 8 px debe seguir
+        # presente a DPR 2 (>= 0.05 del ancho/alto) y el contenido no puede
+        # estar recortado (<= 0.95).
+        left, top, right, bottom = boxes[2.0]
+        assert left >= 0.05 and top >= 0.05, f"la estructura toca el borde inicial: {boxes[2.0]}"
+        assert right <= 0.95 and bottom <= 0.95, f"la estructura está recortada: {boxes[2.0]}"
+        # DPR 2 aporta resolución: la tinta crece ~dpr² (se permite margen).
+        assert ink_pixels[2.0] >= 3.0 * ink_pixels[1.0], (
+            f"DPR 2 no añade resolución: {ink_pixels[1.0]} -> {ink_pixels[2.0]}"
+        )
 
 
 # ---------------------------------------------------------------------------

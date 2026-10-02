@@ -77,9 +77,9 @@ Qt6 escala px lógicos de QSS/fuentes por devicePixelRatio; el riesgo real es
 **rasterizar bitmaps en píxeles físicos**:
 
 - `template_preview_icon` (`template_browser_service.py`): pixmap creado a
-  `88 × dpr × 56 × dpr` con `painter.setDevicePixelRatio(dpr)`; margen, ancho
-  de pen y tamaño de font escalados por `dpr`. El contenido (átomos/enlaces
-  del grafo) **no cambia**: solo escala de render.
+  `88 × dpr × 56 × dpr`; margen, ancho de pen y tamaño de font escalados por
+  `dpr`. El contenido (átomos/enlaces del grafo) **no cambia**: solo escala de
+  render. El DPR se aplica **una sola vez** (ver D4.2).
 - `IconProvider` ya es DPR-aware (verificado: `_render_svg` usa
   `size * dpr`); `draw_glyph_icon` delega en `icon_dynamic` → OK.
 - Tests razonables (no pixel-perfect): offscreen con `QT_SCALE_FACTOR=2`,
@@ -109,6 +109,44 @@ cabe en el SidePanel de 340 px con margen para el texto del ítem. No se toca
 grafos, molblocks, átomos, enlaces ni geometría química. Evidencia: capturas
 antes/después del SidePanel (100 % y 200 %) en `evidence/templates_before_*.png` /
 `templates_after_*.png` y montajes `templates_montage_*.png`.
+
+### D4.2. Orden del DPR en el render del thumbnail (corrección post-push, gate manual Fase 7)
+
+El fallo observado en `templates_after_200.png` (benceno, piridina y otras
+estructuras sobredimensionadas y recortadas por los bordes del thumbnail) se
+debe a que el DPR se aplicaba **dos veces**:
+
+```python
+pixmap = QPixmap(logical * dpr)          # backing físico
+pixmap.setDevicePixelRatio(dpr)          # ← etiquetado ANTES de pintar
+painter = QPainter(pixmap)
+painter.scale(dpr, dpr)                  # ← segunda aplicación del DPR
+```
+
+Con el pixmap ya etiquetado, `QPainter` interpreta las coordenadas como lógicas
+y las multiplica por el DPR, de modo que `painter.scale(dpr, dpr)` produce
+`dpr²`: la estructura sale al doble de tamaño a DPR 2 y toca/recorta los bordes.
+
+Orden obligatorio, igual que el patrón ya correcto de
+`gui/theme/icon_provider.py::_render_svg()`:
+
+1. crear el backing físico `logical × dpr`;
+2. mantener el `QPixmap` con `DPR = 1` durante el pintado;
+3. pintar las coordenadas lógicas escalándolas a píxeles físicos
+   (`painter.scale(dpr, dpr)` se conserva, pero con `DPR = 1`);
+4. `painter.end()`;
+5. solo entonces `pixmap.setDevicePixelRatio(dpr)`.
+
+Alcance exclusivamente visual: NO se cambia `iconSize` (sigue en 88×56 lógicos)
+ni el grafo, átomos, enlaces, molblocks ni la geometría química. A 200 % la
+estructura debe tener la misma composición lógica que a 100 %, solo más
+resolución. Test nuevo: el bounding box relativo de la tinta (benceno y
+piridina) es el mismo a DPR 1 y DPR 2 y la estructura no toca ni es recortada
+por los bordes del thumbnail; además DPR 2 aporta más píxeles de tinta (más
+resolución), no solo un escalado. Evidencia regenerada con
+`tools/f7_templates_evidence.py` (offscreen, `QT_SCALE_FACTOR=1` y `2`):
+`templates_after_100.png`, `templates_after_200.png` y los montajes
+comparativos `templates_montage_100.png` / `templates_montage_200.png`.
 
 ### D5. Onboarding: overlay de shell, 3 pasos, persistido
 
