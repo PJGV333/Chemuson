@@ -99,6 +99,8 @@
   Suite: 5 failed (idénticos a los 5 preexistentes), 1830 passed, 20 skipped
   (+17 nuevos vs. baseline 1813); Ruff: solo el error preexistente
   (F401 `math`); `git diff --check` OK; OpenSpec strict válido.
-- [ ] 10.4 Commit `Polish modern UI and add onboarding` (+
+- [x] 10.4 Commit `Polish modern UI and add onboarding` (+
   `Update modern UI user guide` si el manual va separado); push sin
-  `--force`; verificar HEAD local/remoto y worktree limpio.
+  `--force`; verificar HEAD local/remoto y worktree limpio. Hecho:
+  commit 22496d9 (polish) + 1238263 (manual); push origin/ui/modernization;
+  local == remoto == 1238263b8d14657e29c5d1166c3b7bf3d8270ec5; worktree limpio.
