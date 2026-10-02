@@ -21,9 +21,9 @@
 7. [Menú Estructura](#7-menú-estructura)
 8. [Menú Reacción](#8-menú-reacción)
 9. [Menú Ayuda](#9-menú-ayuda)
-10. [Barra principal](#10-barra-principal)
-11. [Barra izquierda de dibujo](#11-barra-izquierda-de-dibujo)
-12. [Barra derecha de símbolos científicos](#12-barra-derecha-de-símbolos-científicos)
+10. [Barra de aplicación](#10-barra-de-aplicación)
+11. [ToolRail: herramientas de dibujo](#11-toolrail-herramientas-de-dibujo)
+12. [ToolRail: herramientas de anotación y símbolos](#12-toolrail-herramientas-de-anotación-y-símbolos)
 13. [Barra de formato de texto](#13-barra-de-formato-de-texto)
 14. [Selección, transformación y navegación](#14-selección-transformación-y-navegación)
 15. [Dibujo de átomos, enlaces, anillos y cadenas](#15-dibujo-de-átomos-enlaces-anillos-y-cadenas)
@@ -100,23 +100,23 @@ chemuson --version
 
 La ventana principal se divide en estas zonas:
 
-- **Barra de menús:** Archivo, Editar, Ver, Estructura, Reacción y Ayuda.
-- **Barra principal superior:** accesos rápidos a archivo, historial, transformaciones, limpieza 2D y SMILES.
-- **Barra izquierda de dibujo:** selección, enlaces, cadenas, anillos, elementos, centros de coordinación y rotación 3D precisa.
-- **Barra derecha de símbolos:** texto, corchetes, flechas, placas, símbolos químicos, diagramas electrónicos y orbitales.
+- **Barra de aplicación:** menú (hamburguesa/`Alt`), marca y versión, pestañas de documento, píldora **Buscar o ejecutar...** (`Ctrl+P`), Deshacer/Rehacer, tema y preferencias.
+- **Rail de herramientas (izquierda):** selección, enlaces, cadenas, anillos, elementos, centros de coordinación, rotación 3D precisa y herramientas de anotación/símbolos; cada botón abre un *flyout* con sus variantes.
+- **Panel lateral (derecha):** pestañas **Inspector**, **Validación**, **Propiedades**, **Plantillas**, **Apariencia** (y, según el caso, Espectros y 3D/CompChem).
 - **Barra de formato de texto:** fuente, tamaño, estilos, alineación, color y opacidad.
 - **Lienzo:** área de dibujo, selección y manipulación.
-- **Paneles acoplables:** Plantillas, Inspector, Validación, Propiedades químicas, Espectros, 3D / CompChem y Apariencia.
 - **Barra de estado:** informa la herramienta activa y, cuando procede, el nombre químico calculado o `N/D`.
 
-Los paneles se pueden mostrar u ocultar desde **Ver**. La barra de símbolos también dispone de su propia acción de visibilidad.
+El tema (claro u oscuro) se alterna desde el botón de tema de la barra de aplicación. En la primera ejecución, un breve **onboarding** guía por el rail, el lienzo y el panel lateral (puede descartarse con «No volver a mostrar»).
+
+Los paneles laterales se muestran u ocultan desde **Ver** (back-compatibilidad).
 
 ---
 
 ## 3. Flujo básico de trabajo
 
 1. Cree un documento con **Archivo > Nuevo** (`Ctrl+N`).
-2. Elija una herramienta en la barra izquierda o derecha.
+2. Elija una herramienta en el rail (izquierda).
 3. Dibuje en el lienzo mediante clic, arrastre o la secuencia indicada por cada herramienta.
 4. Regrese a **Seleccionar** para mover, escalar, rotar o editar objetos.
 5. Revise la estructura con **Estructura > Validar valencias** (`Ctrl+Shift+V`).
@@ -205,7 +205,7 @@ Los paneles se pueden mostrar u ocultar desde **Ver**. La barra de símbolos tam
 | **Zoom +** | `Ctrl++` estándar | Aumenta la escala del lienzo. |
 | **Zoom -** | `Ctrl+-` estándar | Reduce la escala. |
 | **Zoom 100%** | `Ctrl+0` | Restablece el zoom. |
-| **Mostrar copiar/pegar/zoom en barra superior** | - | Añade o retira esos botones auxiliares de la barra principal. |
+| **Mostrar copiar/pegar/zoom en barra superior** | - | Añade o retira esos botones auxiliares de la barra superior. |
 | **Reglas** | - | Muestra u oculta reglas horizontal y vertical. |
 | **Cuadrícula** | - | Muestra u oculta la cuadrícula del lienzo. |
 
@@ -238,9 +238,8 @@ Presets disponibles:
 
 ### 6.5 Paneles y barras
 
-Desde **Ver** se alterna la visibilidad de:
+El panel lateral (derecha) expone sus vistas como **pestañas**: **Inspector**, **Validación**, **Propiedades**, **Plantillas**, **Apariencia** (y, según el caso, Espectros y 3D/CompChem). Desde **Ver** se puede alternar la visibilidad del panel y de sus vistas (back-compatibilidad con el flujo anterior):
 
-- Barra de simbolismos químicos.
 - Plantillas.
 - Inspector.
 - Validación.
@@ -318,34 +317,35 @@ En esta revisión, el menú contiene únicamente **Próximamente**, deshabilitad
 - **Buscar actualizaciones...:** consulta el canal configurado.
 - **Acerca de Chemuson...:** muestra versión e información del proyecto.
 
----
-
-## 10. Barra principal
-
-Botones visibles de forma predeterminada:
-
-1. **Nuevo**.
-2. **Abrir**.
-3. **Guardar**.
-4. **Deshacer**.
-5. **Rehacer**.
-6. **Girar 90° a la izquierda**.
-7. **Girar 90° a la derecha**.
-8. **Reflejar horizontalmente**.
-9. **Reflejar verticalmente**.
-10. **Limpiar 2D**.
-11. **Dibujar desde SMILES...**.
-
-Al activar **Ver > Mostrar copiar/pegar/zoom en barra superior**, se agregan:
-
-- Copiar.
-- Pegar.
-- Zoom +.
-- Zoom -.
+Ruta rápida: para ejecutar cualquier comando sin recorrer los menús, use la **paleta de comandos** (`Ctrl+P` o la píldora **Buscar o ejecutar...**; ver §10.1).
 
 ---
 
-## 11. Barra izquierda de dibujo
+## 10. Barra de aplicación
+
+La barra superior (``AppBar``) concentra la identidad, los documentos activos y los controles de aplicación:
+
+- **Menú** (hamburguesa, o `Alt`): abre el menú completo (Archivo, Editar, Ver, Estructura, Reacción, Ayuda).
+- **Marca y versión**: nombre de la aplicación y versión.
+- **Pestañas de documento**: las vistas abiertas; el botón `+` crea un documento nuevo (`Ctrl+N`).
+- **Buscar o ejecutar...** (`Ctrl+P`): abre la paleta de comandos (ver §10.1).
+- **Deshacer** (`Ctrl+Z`) y **Rehacer** (`Ctrl+Y`).
+- **Tema**: alterna entre modo claro y oscuro.
+- **Preferencias**: abre la configuración de la aplicación.
+
+Los comandos de archivo (Nuevo, Abrir, Guardar, Exportar) y los de estructura (Girar, Limpiar 2D, SMILES) se acceden desde el menú o desde la paleta de comandos.
+
+### 10.1 Paleta de comandos (`Ctrl+P`)
+
+La paleta se abre con `Ctrl+P` o con la píldora **Buscar o ejecutar...**. Permite buscar y ejecutar cualquier comando del registro, organizado en secciones (Archivo, Editar, Ver, Estructura, Plantillas, etc.). Al escribir, filtra por título y palabras clave; `Enter` ejecuta la entrada seleccionada y `Esc` cierra.
+
+Nota: `Ctrl+K`, `Ctrl+Shift+K` y `Ctrl+Alt+K` son los atajos de **Clean2D** (quick, publication, propose), **no** de la paleta.
+
+---
+
+## 11. ToolRail: herramientas de dibujo
+
+El **rail de herramientas** (izquierda) reúne las herramientas de dibujo. Cada botón expone un *flyout* con sus variantes; seleccione la herramienta y aplíquela en el lienzo.
 
 ### 11.1 Selección
 
@@ -408,7 +408,9 @@ Selecciona una estructura o un punto de referencia y abre el control de rotació
 
 ---
 
-## 12. Barra derecha de símbolos científicos
+## 12. ToolRail: herramientas de anotación y símbolos
+
+En el mismo **rail de herramientas** se accede a las herramientas de anotación y símbolos científicos. Cada botón expone un *flyout* con sus variantes.
 
 ### 12.1 Texto
 
