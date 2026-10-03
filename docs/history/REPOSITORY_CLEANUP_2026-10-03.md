@@ -4,7 +4,7 @@
 
 Rama de trabajo `maintenance/repository-hygiene-closure`, iniciada en `origin/main` `1db4f63b52af79247745b3a8a220fb728348218c`. No se integra a `main`, no se reescribe Git history, no se cambia lógica química ni comportamiento del producto. El `git diff --name-status origin/main...HEAD` del commit de cierre es el manifiesto exacto de archivos; el resumen de grupos está debajo.
 
-**Estado inicial de este reporte:** gates de contenido/tests completados; push de la rama, eliminación de refs redundantes y medición final post-prune se registrarán en la revisión de cierre de este mismo archivo.
+**Cierre:** rama de mantenimiento publicada con push normal; las 23 ramas remotas redundantes y tres ramas locales ancestro de `origin/main` fueron eliminadas después de registrar/verificar sus SHAs. `origin/main` sigue en `1db4f63b52af79247745b3a8a220fb728348218c`; ramas únicas/activas preservadas. No se hizo merge ni force-push.
 
 ## Cambios y evidencia
 
@@ -35,8 +35,8 @@ La referencia global de tema, assets de producción, tests actuales, fixtures, b
 | Smoke HiDPI, `QT_SCALE_FACTOR=2` | PASS, DPR 2.0; preview 176×112 píxeles para 88×56 puntos lógicos. |
 | Preview orbital (`render_orbital_family_preview.py`) | PASS; PNG en directorio temporal. |
 | Fit report orbital opcional | Limitación preexistente observada: `_family_metric_strings` accede `PiBondingParams.ring`, atributo inexistente; termina con `AttributeError` tras escribir salidas parciales **solo** en `/tmp`. El fallo no está relacionado con la nueva ruta de salida; no se repara una herramienta orbital fuera de alcance. Queda `NEEDS_REVIEW`, no se declara smoke PASS. |
-| `git diff --check` | Pasa. |
-| Links Markdown relativos | **Pendiente de escaneo final** después de crear este reporte. |
+| `git diff --check origin/main...HEAD` | Pasa en el cierre; un primer control halló trailing spaces en tres metadatos del baseline OpenSpec, corregidos en commit separado antes del push. |
+| Links Markdown relativos | 350 documentos examinados; 0 enlaces relativos rotos. Se cambiaron tres `file://` locales del manual por paths relativos. |
 
 La primera invocación de smoke Qt sin `PYTHONPATH=src` falló por setup del comando (`ModuleNotFoundError: chemuson`); reintentada con `PYTHONPATH=src` y configuración Qt temporal, pasó a escala 1 y 2. No cambió preferencias del usuario.
 
@@ -44,18 +44,20 @@ No se reconstruyó Flatpak/PyInstaller: no se tocó código/assets incluidos en 
 
 ## Métricas antes/después
 
-Métrica de baseline en `openspec/changes/repository-hygiene-closure-2026-10-03/baseline.md`. La medición final exacta se completará después del commit/push y poda de refs.
+Métrica de baseline en `openspec/changes/repository-hygiene-closure-2026-10-03/baseline.md`. Medición del árbol tras la poda remota/local, antes del último commit de cierre documental:
 
 | Medida | Antes (HEAD `1db4f63`) | Después |
 |---|---:|---:|
-| Árbol de archivos Git lógicos | 22,926,388 bytes / 1244 archivos | **pendiente** |
-| PNG versionados | 222 / 4,597,068 bytes | **pendiente** |
-| `src/sys` en checkout | 11,708,416 bytes | 0 |
-| UI-modernization | 56 PNG; 132 archivos / 2,211,651 bytes | **pendiente** |
-| Evidencia F7 OpenSpec | 27 PNG / 2,195,088 bytes | 7 PNG retenidos / **bytes pendientes** |
-| `tests/archive/orbitals_fit_report` | 124 archivos / 246,667 bytes | 0 |
-| Checkout sin `.git`/venv/cache/build | 25 MiB asignados | **pendiente** |
-| `.git` y pack | 169 MiB; 8.05 MiB sueltos (784); 14,142 objetos en 2 packs / 160.27 MiB | **pendiente** |
+| Árbol de archivos Git lógicos | 22,926,388 bytes / 1244 archivos | 7,922,534 bytes / 983 archivos (−15,003,854 bytes; −261 archivos). |
+| PNG versionados | 222 / 4,597,068 bytes | 34 / 1,610,231 bytes (−188 PNG; −2,986,837 bytes). |
+| `src/sys` en checkout | 11,708,416 bytes | 0; blob histórico conservado. |
+| UI-modernization | 56 PNG; 132 archivos / 2,211,651 bytes | 8 PNG / 529,643 bytes; 18 archivos / 565,021 bytes. |
+| Evidencia F7 OpenSpec | 27 PNG / 2,195,088 bytes | 7 PNG / 821,501 bytes. |
+| `tests/archive/orbitals_fit_report` | 124 archivos / 246,667 bytes | 0. |
+| Checkout sin `.git`/venv/cache/build | 25 MiB asignados | 11 MiB asignados. |
+| `.git` y pack | 169 MiB; 8.05 MiB sueltos (784); 14,142 objetos en 2 packs / 160.27 MiB | ~170 MiB; 8.33 MiB sueltos (844 en la medición post-prune, previa al commit documental final); 14,142 objetos en 2 packs / 160.27 MiB. Sin `git gc`; las refs removidas no compactan objetos. |
+
+Árbol lógico final por área: `src` 3,337,688 bytes/294 archivos; `tests` 1,677,814/250; `docs` 771,502/53; `openspec` 1,771,874/335; `packaging` 50,623/19. No quedan archivos trackeados en `tests/archive`.
 
 No se ejecuta `git gc`/prune de objetos; la eliminación de refs no compacta el almacén local.
 
@@ -65,7 +67,7 @@ Los 6895 blobs `flatpak/beta/repo/objects/*` suman 159,512,305 bytes lógicos y 
 
 ## Auditoría de ramas — estado previo a la poda
 
-Inventario inicial: 32 ramas remotas reales (más `origin/HEAD` simbólico); 23 puntas candidatas fueron revalidadas por SHA y `git merge-base --is-ancestor <ref> origin/main` tras fetch: todas idénticas a la baseline y ancestros. Solo se eliminan después de subir esta rama de mantenimiento normalmente y comprobar las tareas/gates.
+Inventario inicial: 32 ramas remotas reales (más `origin/HEAD` simbólico); 23 puntas candidatas fueron revalidadas por SHA y `git merge-base --is-ancestor <ref> origin/main` tras fetch: todas idénticas a la baseline y ancestros. Tras el push normal de esta rama y el gate, se eliminaron las 23 por nombre explícito. Fetch/prune final deja 10 ramas remotas reales: `main`, esta rama de mantenimiento y las ocho únicas/activas enumeradas abajo; `origin/HEAD` sigue a `origin/main`.
 
 ### Ramas remotas `SAFE_TO_DELETE` (SHA registrados)
 
@@ -95,9 +97,9 @@ Inventario inicial: 32 ramas remotas reales (más `origin/HEAD` simbólico); 23 
 | `fix/ui-openspec-post-integration` | `140a080c336515650bbeea0a4e6ead67a9999b23` |
 | `release/ui-modernization-qa` | `1db4f63b52af79247745b3a8a220fb728348218c` |
 
-### Local `SAFE_TO_DELETE` candidates
+### Ramas locales eliminadas
 
-After the maintenance push, delete local refs only for `fix/ui-openspec-post-integration` (`140a080c336515650bbeea0a4e6ead67a9999b23`), `integration/ui-modernization` (`1db4f63b52af79247745b3a8a220fb728348218c`) and `release/ui-modernization-qa` (`1db4f63b52af79247745b3a8a220fb728348218c`). `main`, current maintenance, article and `ui/modernization` are not candidates.
+Después del push se eliminaron con `git branch -d` solo estas ramas ya integradas: `fix/ui-openspec-post-integration` (`140a080c336515650bbeea0a4e6ead67a9999b23`), `integration/ui-modernization` (`1db4f63b52af79247745b3a8a220fb728348218c`) y `release/ui-modernization-qa` (`1db4f63b52af79247745b3a8a220fb728348218c`). Permanecen `main`, mantenimiento, artículo y `ui/modernization`.
 
 ### Preserve unique/active refs
 
@@ -114,4 +116,8 @@ After the maintenance push, delete local refs only for `fix/ui-openspec-post-int
 
 ## Cierre de ramas y medidas posteriores
 
-**Pendiente:** publicar `maintenance/repository-hygiene-closure` con `git push` normal; borrar exclusivamente las 23 refs remotas y tres locales de las tablas; ejecutar `git fetch --prune`; confirmar SHA de `origin/main` intacto, refs preservadas y worktree limpio. Luego completar números “Después”, link scan y resultado real de la poda en esta sección. Ninguna rama protegida se elimina.
+- Push inicial y final de `maintenance/repository-hygiene-closure`: normal, sin `--force`; la rama sigue la remota. La última punta se registra en el `git rev-parse HEAD` del cierre.
+- `git push origin --delete` retiró exactamente las 23 ramas de la tabla `SAFE_TO_DELETE`; `git fetch --prune` confirmó las refs remotas retiradas.
+- SHAs de `origin/main`, `origin/gh-pages`, las dos Clean2D activas y las otras seis ramas no-ancestro verificados intactos. `origin/main` no cambió.
+- Ramas finales: 10 remotas reales (más `origin/HEAD` simbólico) y 4 locales. `git status --short` limpio al cierre; `git diff --check` pasa.
+- Se conserva el objeto Git histórico hasta una decisión futura de compactación; no se ejecutó ningún rewriter ni `git gc --prune`.
