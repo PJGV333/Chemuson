@@ -76,5 +76,6 @@
 - [x] Suite completa + targeted tests + compileall + ruff scoped +
       `git diff --check` sin regresiones contra la baseline.
 - [x] Revisión del diff: solo archivos del alcance; nada de Clean2D/química.
-- [ ] Commit `Add UI theme foundation and design tokens` en
-      `ui/modernization`; push si el acceso remoto funciona.
+- [x] Commit `Add UI theme foundation and design tokens` en
+      `ui/modernization`; verificado en `origin/ui/modernization` como
+      `f1264fdd5c288a576f5c72481dfa3d696171ea67`.

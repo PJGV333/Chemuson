@@ -1,8 +1,12 @@
 # Plan de Modernización de la UI de Chemuson
 
-**Fecha:** 2026-09-21
-**Estado:** Propuesta (pendiente de aprobación y de OpenSpec por fase)
-**Entregable complementario:** [`mockup-ui.html`](./mockup-ui.html) (maqueta interactiva de la propuesta)
+**Fecha de propuesta:** 2026-09-21<br>
+**Estado:** Completado — Fases 0–8 cerradas; Fase 9 no iniciada.
+**Entregable complementario:** [`mockup-ui.html`](./mockup-ui.html) (maqueta de la propuesta inicial)
+
+> **Cierre QA (2026-10-02):** Fases 1–7 integradas en `main` en `140a080c336515650bbeea0a4e6ead67a9999b23`; validación manual KDE/Wayland aprobada. Fase 8 se ejecuta en `release/ui-modernization-qa`, sin cambios de producto ni de `main`. La suite final queda en el baseline conocido (1760 passed, 55 skipped y un fallo histórico de CompChem async); la arquitectura (269 tests) y UI dirigida (304 tests) pasan. Capturas y detalle: [`after/README.md`](./after/README.md) y [`Fase 8 report`](../../openspec/changes/ui-modernization-final-qa-release-2026-10-02/report.md).
+>
+> El diagnóstico y las fases siguientes conservan la **propuesta inicial** para que sus decisiones y desviaciones sigan auditables. El baseline de Fase 0 no contiene PNG originales, así que no se fabrica un montaje before/after. Clean2D y la química/geometría de plantillas permanecen fuera de esta modernización.
 
 ---
 
@@ -10,8 +14,9 @@
 
 - **Framework actual: PyQt6** (no PySide). La dependencia está en `requirements.txt` y `pyproject.toml`, y todos los imports de la GUI son `from PyQt6...`.
 - La sensación de "viejo" **no viene de PyQt6**: Qt6 es moderno y permite UIs de primera calidad. El problema está en (a) iconos dibujados a mano con `QPainter` (`gui/icons.py`, 1320 líneas) que se ven inconsistentes, (b) una distribución densa de funciones entre menús, 2 barras laterales de iconos con submenús, una barra superior y 7 docks ocultos por defecto, y (c) un sistema de temas QSS que existe pero no está gobernado por tokens de diseño.
-- **Decisión propuesta: NO cambiar de framework.** Se moderniza **dentro de PyQt6 (QtWidgets)** con: un sistema de design tokens, iconografía SVG curada, una barra de aplicación unificada con pestañas de documento, un panel de herramientas unificado (rail + flyouts), paneles laterales organizados en tabs y una paleta de comandos (Ctrl+K).
-- El trabajo se ejecuta en **8 fases**, cada una como un cambio OpenSpec independiente con baseline/verificación, de forma que la app sigue funcional y con la suite verde después de cada fase.
+- **Decisión ejecutada: mantener PyQt6 (QtWidgets).** La UI usa design tokens, SVG, barra de aplicación con pestañas, rail + flyouts, panel lateral y paleta de comandos (`Ctrl+P`). `Ctrl+K` conserva Clean2D de un paso.
+
+- La propuesta inicial planteó **8 fases**, cada una con OpenSpec independiente y gates de regresión. Las baselines reales conservaron fallos preexistentes documentados; el cierre Fase 8 confirma que no hay fallos nuevos.
 
 ---
 
@@ -100,7 +105,7 @@ Principios:
 3. **Un solo panel de herramientas** a la izquierda, agrupado por tarea: *Seleccionar · Dibujar · Anotar · Diagramas · Placas · Acciones*. Cada grupo expone sus opciones como **flyout en cuadrícula** (no como submenús nativos): visible, navegable por teclado y con atajos (`V` seleccionar, `B` enlace, `R` anillo, `C` átomo, `T` texto…).
 4. **Paneles de la derecha en tabs** (docks reorganizables): Inspector, Validación, Propiedades, Plantillas, Apariencia como tabs visibles; Espectroscopía, CompChem y el resto accesibles desde un tab `…`. El Inspector se muestra por defecto (hoy todo está oculto).
 5. **Barra de estado moderna**: izquierda = herramienta activa + atajo + posición del cursor; derecha = fórmula + IUPAC + carga + indicador de autosave.
-6. **Paleta de comandos (Ctrl+K)**: búsqueda sobre todas las acciones (archivos, vista, estructura, análisis, plantillas, docks). Es la mayor ganancia de "práctico" por esfuerzo.
+6. **Paleta de comandos**: la propuesta inicial sugería Ctrl+K; la implementación final usa `Ctrl+P` para conservar `Ctrl+K` como Clean2D de un paso. Busca acciones de archivos, vista, estructura, análisis, plantillas y docks.
 7. **Estado vacío del lienzo**: mensaje de onboarding ("Dibuja con la herramienta Enlace o importa un SMILES") con acciones clicables; desaparece al primer trazo.
 
 ### 2.2 Sistema de design tokens
@@ -147,7 +152,7 @@ Nuevo subpaquete `src/chemuson/gui/theme/` (se registrará en `architecture/modu
 
 > Cada fase = **1 cambio OpenSpec** (`openspec/changes/2026-MM-DD-<slug>`) con `proposal.md`, `design.md`, `tasks.md` y `specs/`. Antes de cada fase: baseline (`git status`, `compileall`, `pytest --collect-only`, `pytest -q`, ruff F401/F811/F821/E722/E741) registrado en `baseline.md`. Al final de cada fase: suite completa + smoke Qt offscreen.
 
-### Fase 0 — Preparación y decisiones de diseño (esfuerzo: S)
+### Fase 0 — Preparación y decisiones de diseño (COMPLETADA · S)
 
 1. Crear el OpenSpec `moderna-ui-foundation` (o uno por fase) y aprobar con el equipo.
 2. Capturar baseline completa y **screenshots de referencia de la UI actual** (claro/oscuro) en `docs/ui-modernization/baseline/` para comparar después.
@@ -157,7 +162,7 @@ Nuevo subpaquete `src/chemuson/gui/theme/` (se registrará en `architecture/modu
 
 **Criterio de aceptación:** OpenSpec validado (`openspec validate --strict`), baseline guardada, set de iconos en el repo, sin cambios de código aún.
 
-### Fase 1 — Design tokens y QSS (esfuerzo: M)
+### Fase 1 — Design tokens y QSS (COMPLETADA · M)
 
 1. `theme/tokens.py`: dict de tokens claro/oscuro (la tabla §2.2).
 2. `theme/qss.py`: generadores de hoja de estilo a partir de tokens (`get_main_stylesheet`, `get_tool_palette_stylesheet`, `get_dialog_stylesheet`); migrar las reglas actuales de `styles.py` (que pasa a ser fachada de compatibilidad) y añadir: pestañas, dock titles, tooltips, estados vacíos.
@@ -167,7 +172,7 @@ Nuevo subpaquete `src/chemuson/gui/theme/` (se registrará en `architecture/modu
 
 **Criterio de aceptación:** la app luce los dos temas sin colores hardcoded fuera de tokens; suite verde; `styles.py` solo re-exporta.
 
-### Fase 2 — Sistema de iconos SVG (esfuerzo: M)
+### Fase 2 — Sistema de iconos SVG (COMPLETADA · M)
 
 1. Inventario de iconos actuales (funciones de `icons.py` × call sites) → mapa 1:1 a nombres SVG.
 2. `theme/icon_provider.py` + carpeta `theme/icons/*.svg` (~60–80 iconos).
@@ -177,7 +182,7 @@ Nuevo subpaquete `src/chemuson/gui/theme/` (se registrará en `architecture/modu
 
 **Criterio de aceptación:** ningún icono `QPainter` manual queda fuera de la fachada; cambio de tema no redibuja (mismo `QIcon` cacheado); suite verde.
 
-### Fase 3 — Barra de aplicación y pestañas de documento (esfuerzo: L)
+### Fase 3 — Barra de aplicación y pestañas de documento (COMPLETADA · L)
 
 1. `gui/document_tabs.py`: `DocumentTabBar(QWidget)` — tabs con icono de documento, título truncado, punto de suciedad (sincronizado con `CanvasTabManager.update_tab_title`), botón cerrar, tab `+` "Nuevo"; drag-reorder preservado.
 2. `gui/app_bar.py`: barra superior compuesta (logo, `DocumentTabBar`, pill de búsqueda, undo/redo, tema, ajustes); reemplaza visualmente la toolbar "Principal" manteniendo las mismas `QAction` (mismos atajos de teclado).
@@ -185,9 +190,9 @@ Nuevo subpaquete `src/chemuson/gui/theme/` (se registrará en `architecture/modu
 4. `main_window_ui_builder.py`: migrar acciones de "toolbar principal" a la app bar; sección auxiliar (copiar/pegar/zoom) se integra siempre visible.
 5. Tests: smoke offscreen — la ventana expone app bar, tabs, acciones; abrir/cerrar/reordenar pestañas; suciedad refleja en el título.
 
-**Criterio de aceptación:** toda acción previa sigue alcanzable (menú o app bar o Ctrl+K), atajos intactos, suite verde + smoke.
+**Criterio de aceptación:** toda acción previa sigue alcanzable (menú o app bar o `Ctrl+P`), atajos intactos, suite y smoke sin regresiones frente a baseline.
 
-### Fase 4 — Panel de herramientas unificado (esfuerzo: L — la fase más visible)
+### Fase 4 — Panel de herramientas unificado (COMPLETADA · L — la fase más visible)
 
 1. `gui/tool_panel.py`: rail vertical (56–64 px) con grupos (Seleccionar, Dibujar, Anotar, Diagramas, Placas, Acciones) y botones con icono SVG; herramienta activa resaltada con `accent-soft` + borde `accent`.
 2. `gui/flyout.py`: flyout reutilizable (cuadrícula 3–4 columnas, ítem = icono + etiqueta, estado activo, búsqueda opcional, atajos) que reemplaza los `QMenu` de paleta de `ChemusonToolbar`/`SymbolPaletteToolbar`.
@@ -198,7 +203,7 @@ Nuevo subpaquete `src/chemuson/gui/theme/` (se registrará en `architecture/modu
 
 **Criterio de aceptación:** paridad 1:1 de herramientas con la UI actual (checklist del inventario §Fase 2), sin `tool_id` huérfano, suite verde.
 
-### Fase 5 — Paneles laterales (tabs) y barra de estado (esfuerzo: M)
+### Fase 5 — Paneles laterales (tabs) y barra de estado (COMPLETADA · M)
 
 1. Contenedor de paneles: `gui/side_panel.py` — `QTabWidget` dockable que aloja los docks existentes **sin reescribir su contenido** (los widgets de `docks.py` se reutilizan tal cual; solo cambia el contenedor y el título/ícono del tab).
 2. Tabs por defecto: Inspector (visible), Validación, Propiedades, Plantillas, Apariencia + `…` (Espectroscopía, CompChem). Persistencia de tab activo y orden en `platform.settings`.
@@ -208,16 +213,16 @@ Nuevo subpaquete `src/chemuson/gui/theme/` (se registrará en `architecture/modu
 
 **Criterio de aceptación:** los 7 docks siguen funcionales; los tests de docks actuales pasan sin modificación; suite verde.
 
-### Fase 6 — Paleta de comandos Ctrl+K (esfuerzo: M)
+### Fase 6 — Paleta de comandos (Ctrl+P final; Ctrl+K reservado a Clean2D; COMPLETADA · M)
 
 1. `gui/command_palette.py`: registro de acciones (`register(action, section, keywords)`) alimentado desde `main_window_ui_builder` + `TemplateBrowserService` + docks.
 2. Filtro: substring por defecto + ranking simple por prefijo; navegación ↑↓, Enter ejecuta, Esc cierra; último resultado usado como atajo rápido.
-3. Integración: pill de búsqueda en la app bar y atajo global `Ctrl+K`.
+3. Integración final: pill de búsqueda en la app bar y atajo global `Ctrl+P`; `Ctrl+K` permanece en Clean2D de un paso.
 4. Tests: registro/filtro/ejecución de acciones; suite verde.
 
 **Criterio de aceptación:** ≥ 60 acciones buscables; todos los docks y las exportaciones alcanzables desde la paleta; smoke.
 
-### Fase 7 — Pulido (esfuerzo: M)
+### Fase 7 — Pulido (COMPLETADA · M)
 
 1. Tooltips uniformes (nombre + atajo) en rail, app bar y flyouts; estado "deshacer" deshabilitado visible.
 2. HiDPI: verificación de iconos y QSS a 125/150/200 % (tests offscreen con `QT_SCALE_FACTOR=2`).
@@ -228,14 +233,16 @@ Nuevo subpaquete `src/chemuson/gui/theme/` (se registrará en `architecture/modu
 
 **Criterio de aceptación:** checklist visual firmado por el equipo; manual actualizado; suite verde.
 
-### Fase 8 — QA final y release (esfuerzo: S)
+### Fase 8 — QA final y cierre de release (COMPLETADA · S)
 
-1. Regresión completa: `pytest -q` (1492 passed/55 skipped como referencia), `ruff` scoped, smoke Qt offscreen, AppImage local manual.
-2. Comparativa de screenshots antes/después (contra la baseline de Fase 0) en `docs/ui-modernization/after/`.
-3. Notas de release 0.4.0-dev: "Nueva interfaz" + guía de atajos.
-4. Archivar los OpenSpecs de las fases 1–7.
+1. QA final: suite `1760 passed, 55 skipped, 1 fallo histórico` de CompChem async, idéntico a la baseline; arquitectura 269 passed, UI dirigida 304 passed y compileall OK. Ruff scoped conserva un F401 preexistente de Clean2D, sin tocar.
+2. Smoke PyQt offscreen: temas claro/oscuro a 1440×900 y 980×600; HiDPI DPR 2 comprobado. Capturas posteriores en `docs/ui-modernization/after/`. No hay PNG de baseline original, por lo que no se crea montaje.
+3. Packaging oficial probado: Flatpak construido y smoke de instalación fuera del checkout; ejecutable PyInstaller empaquetado por el script oficial AppImage, assets inspeccionados y arranque/version probados. El detalle y advertencias están en el reporte de Fase 8.
+4. Manual, borrador de release notes, `KNOWN_ISSUES.md` y este plan actualizados. La fuente sigue `0.3.0-dev`; `0.4.0-dev` queda como recomendación sujeta a aprobación, sin bump/tag/publicación.
+5. Siete OpenSpecs de Fases 1–7 validados en strict y archivados con el CLI oficial; esta especificación de QA permanece activa.
 
-**Criterio de aceptación:** release candidate con la nueva UI, sin regresiones de comportamiento (canvas, Clean2D, nomenclatura, persistencia intactos).
+**Criterio de aceptación:** sin fallos nuevos respecto a baseline; assets y flujos UI comprobados en ambos temas, tamaños compacto/normal e instalación. Clean2D, química/nomenclatura y persistencia no se modificaron.
+
 
 ### Dependencias y orden
 
@@ -245,10 +252,10 @@ F0 (preparación) → F1 (tokens/QSS) → F2 (iconos) ─┐
                        └──────────────────────────┤      │
                                                   └→ F4 (tool panel) ─ F5 (side panel/status)
                                                                             │
-                                                                    F6 (Ctrl+K) → F7 (pulido) → F8 (QA)
+                                                                    F6 (Ctrl+P) → F7 (pulido) → F8 (QA)
 ```
 
-F2 y F3 son independientes entre sí (pueden paralelizarse con dos desarrolladores). F4 depende de F2 (iconos). F5 depende de F1. F6 depende de F3.
+F2 y F3 fueron independientes entre sí. F4 dependió de F2 (iconos), F5 de F1 y F6 de F3. La cadena se completó hasta QA F8; no se inicia F9.
 
 ### Estimación global
 
@@ -290,6 +297,6 @@ F2 y F3 son independientes entre sí (pueden paralelizarse con dos desarrollador
 
 1. La app se ve **moderna y coherente** en claro/oscuro (tokens + iconos SVG uniformes), comparable al mockup.
 2. Toda función de la UI actual sigue disponible **con el mismo o menor número de clics** (checklist de paridad).
-3. Las acciones frecuentes están a ≤ 2 interacciones: herramienta en el rail, paneles en tabs, resto en Ctrl+K.
-4. Suite completa verde + smoke Qt; **cero regresiones** en canvas, Clean2D, nomenclatura y persistencia.
-5. Documentación (manual + atajos) actualizada y screenshots antes/después en `docs/ui-modernization/`.
+3. Las acciones frecuentes están a ≤ 2 interacciones: herramienta en el rail, paneles en tabs, resto en `Ctrl+P`; `Ctrl+K` sigue asignado a Clean2D de un paso.
+4. Suite completa en el mismo estado que la baseline: 1760 passed, 55 skipped y un fallo histórico identificado; arquitectura, UI dirigida y smoke Qt pasan. No se modificó la química.
+5. Manual y atajos actualizados; capturas posteriores en `docs/ui-modernization/after/`. No se inventó comparación visual porque faltan capturas originales de baseline.

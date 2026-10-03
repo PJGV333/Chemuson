@@ -1,10 +1,10 @@
 # KNOWN ISSUES — Modernización de UI (ChemUSON)
 
 Deudas funcionales confirmadas durante la validación manual de la UI
-modernizada (Fases 1–4). Este archivo registra problemas y su estado; los
-resueltos quedan documentados con su commit de referencia; los abiertos se
-reparan en campañas/tareas separadas y NO bloquean la modernización visual
-ni la Fase 5.
+modernizada (Fases 1–7) y observaciones de cierre de Fase 8. Este archivo
+registra el estado y las referencias; los asuntos abiertos se atienden en
+campañas/tareas separadas y no se corrigen como parte del cierre documental
+de la modernización visual.
 
 ---
 
@@ -92,7 +92,31 @@ ninguno para este issue.
 
 ## Escopo: Clean2D queda fuera de la campaña de UI
 
-Clean2D (`src/chemuson/clean2d/`) **NO se tratará en esta campaña de
-modernización de UI**. Existe una campaña independiente activa para Clean2D
-(política de candidados y layout); durante la modernización de UI no se
-abre ni modifica `clean2d/`.
+Clean2D (`src/chemuson/clean2d/`) **NO se trata en esta campaña de
+modernización de UI**. Existe una campaña independiente para Clean2D
+(política de candidatos y layout); durante la modernización de UI no se
+modificó `clean2d/`.
+
+---
+
+## Observaciones de cierre QA (2026-10-02)
+
+- La suite completa conserva el estado de baseline: 1760 passed, 55 skipped y
+  el fallo conocido
+  `tests/test_compchem3d_dock.py::test_compchem_controller_generates_async_with_fake_backend`.
+  Ya figuraba entre los fallos históricos de Fase 7 y en la baseline de Fase 8;
+  no se alteraron su test ni su controller.
+- Ruff scoped conserva un F401 (`import math`) en
+  `tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py`. Es deuda de
+  tests Clean2D fuera de alcance y no se modificó.
+- El smoke `offscreen` imprime el aviso no fatal del plugin Qt
+  `This plugin does not support propagateSizeHints()`. La aplicación y los
+  artefactos instalados arrancan; no se observó excepción Qt funcional.
+- Continúan fuera de alcance los ajustes de química/geometría de plantillas
+  (incluidos Haworth β, Fischer/cadena lineal, silla β y otros casos) y los
+  casos complejos de Clean2D, incluida tetrandrina. No se cambiaron estas
+  plantillas ni algoritmos.
+
+La validación manual KDE/Wayland de la UI integrada fue aprobada. Las pruebas
+UI y arquitectura dirigidas, smokes de ambos temas/tamaños y packaging no
+mostraron una regresión nueva de la modernización.

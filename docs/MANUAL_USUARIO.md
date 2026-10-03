@@ -3,8 +3,8 @@
 **Documento:** manual de usuario de la interfaz gráfica  
 **Aplicación:** ChemUSON  
 **Estado del proyecto:** desarrollo activo (`0.3.0-dev`)  
-**Revisión del manual:** 6 de agosto de 2026  
-**Código auditado:** rama `main`, commit `66d2b43c8b677f8d05477156ba453ec182e6e51a`
+**Revisión del manual:** 2 de octubre de 2026<br>
+**Código auditado:** Release Candidate de la UI, `origin/main` en `140a080c336515650bbeea0a4e6ead67a9999b23` (Fases 1–7).
 
 > ChemUSON es un editor molecular 2D orientado a docencia, investigación y comunicación científica. Este manual describe la interfaz realmente implementada en la revisión indicada. Algunas etiquetas aún aparecen en inglés y el menú **Reacción** contiene por ahora únicamente una entrada deshabilitada, **Próximamente**.
 
@@ -109,7 +109,7 @@ La ventana principal se divide en estas zonas:
 
 El tema (claro u oscuro) se alterna desde el botón de tema de la barra de aplicación. En la primera ejecución, un breve **onboarding** guía por el rail, el lienzo y el panel lateral (puede descartarse con «No volver a mostrar»).
 
-Los paneles laterales se muestran u ocultan desde **Ver** (back-compatibilidad).
+Los paneles laterales se muestran u ocultan desde **Ver** (back-compatibilidad). Capturas de referencia de la interfaz moderna: [`docs/ui-modernization/after/`](ui-modernization/after/README.md).
 
 ---
 

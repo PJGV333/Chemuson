@@ -1,0 +1,265 @@
+# ui-polish Specification
+
+## Purpose
+TBD - created by archiving change 2026-10-01-modernize-ui-polish. Update Purpose after archive.
+## Requirements
+### Requirement: Contraste AA del tema claro
+
+El token `text3` del tema claro SHALL tener contraste mínimo AA (≥ 4.5:1)
+sobre las superficies claras donde se usa (fondo de app `#F1F5F9`, surface
+`#FFFFFF`). El tema oscuro SHALL conservar sus valores actuales (ya cumplen).
+
+#### Scenario: Token light corregido
+- **GIVEN** el tema claro activo
+- **WHEN** se resuelven los tokens de diseño
+- **THEN** `text3` light es `#5E6E82` (≥ 4.5:1 sobre `#F1F5F9`, `#FFFFFF` y
+  `#F8FAFC`)
+- **AND** `text2`, `accent`, bordes y todo el bloque dark permanecen
+  inalterados.
+
+### Requirement: Estados deshabilitados inequívocos
+
+Los controles deshabilitados del shell SHALL distinguirse visualmente de los habilitados en reposo **usando únicamente propiedades QSS soportadas** (`color`, `background-color`, `border-color` y propiedades equivalentes ya existentes) y el hover SHALL NO hacerlos parecer activos.
+**Corrección Fase 7 (post-push)**: Qt Style Sheets solo soporta `opacity` para `QToolTip`; no funciona en `QToolButton`, `QPushButton`, `QLineEdit`, `QCheckBox`, etc. Por eso el QSS del shell NO usa `opacity` en widgets normales. Ejemplo: Deshacer sin operaciones deshacibles aparece con `text3` + fondo atenuado y sin resaltado de hover. El estado habilitado SHALL seguir derivado de la `QAction` (`setEnabled`); no se copia ni se fuerza estado en los widgets, y no se introduce `QGraphicsOpacityEffect` ni lógica nueva. Afecta: botones de app bar, botones del rail, celdas de flyout y de la cuadrícula de paletas.
+
+#### Scenario: Deshacer deshabilitado
+- **GIVEN** una ventana sin operaciones deshacibles
+- **WHEN** el ratón pasa sobre el botón de Deshacer de la app bar
+- **THEN** el botón aparece con color de token `text3` y fondo/borde
+  soportados (sin `opacity` QSS) y sin resaltado de hover
+- **AND** el `QAction` de deshacer sigue siendo la fuente de su estado
+  `enabled`.
+
+#### Scenario: Celdas de flyout deshabilitadas
+- **GIVEN** una celda de flyout o de cuadrícula de paleta deshabilitada
+- **WHEN** se pinta la celda
+- **THEN** su etiqueta usa `text3` y el fondo usa `surface3`/`surface2`
+  (fondo distinto al reposo), sin `opacity` QSS.
+
+#### Scenario: Sin `opacity` en el QSS de widgets
+- **GIVEN** la hoja de estilo principal y la de paletas generadas
+- **WHEN** se auditan las reglas `:disabled`
+- **THEN** ninguna regla de widget usa la propiedad `opacity`
+- **AND** cada selector `:disabled` auditable (`QToolButton`,
+  `QPushButton`, `QPushButton[flat="true"]`, `QLineEdit`, `QSpinBox`,
+  `QCheckBox`, `QRadioButton`, `QToolButton#railBtn`,
+  `QFrame[cls="flyItem"]`, `QFrame[cls="paletteItem"]`) introduce al menos
+  un cambio visual soportado (`color`, `background-color`, `border-color` o
+  equivalentes) respecto al estado normal.
+
+### Requirement: Thumbnails de plantillas visibles en el SidePanel
+
+El árbol de plantillas (`PlantillasDock.tree`) SHALL fijar un tamaño lógico
+razonable de thumbnail mediante `QTreeWidget.setIconSize(QSize(...))` que
+coincida con el tamaño lógico del pixmap de `template_preview_icon`
+(88×56), de modo que la previsualización no se reduzca al `iconSize` por
+defecto (~16 px). El ajuste SHALL ser exclusivamente visual: no modifica
+grafos, molblocks, átomos, enlaces ni geometría química. El tamaño elegido
+SHALL caber en el SidePanel de 340 px sin recortar el icono ni el texto,
+y la altura de fila se ajustará solo si es necesario (QTreeWidget ya
+dimensiona la fila al icono).
+
+#### Scenario: Icono del árbol a tamaño de thumbnail
+- **GIVEN** un `PlantillasDock` con plantillas con previsualización
+- **WHEN** se construye el árbol
+- **THEN** `tree.iconSize()` es `QSize(88, 56)` (tamaño lógico del pixmap)
+- **AND** la fila de una hoja tiene altura suficiente para el icono (sin
+  recorte) y el conjunto cabe en el SidePanel de 340 px.
+
+### Requirement: Tooltips uniformes `Nombre (Shortcut)`
+
+Los tooltips del rail de herramientas, de la app bar y de las acciones relevantes del panel lateral SHALL seguir la convención `Nombre` o `Nombre (Shortcut)`, usando `QAction.shortcut().toString()` cuando la `QAction` subyacente expone un shortcut no vacío.
+En caso contrario se conserva el texto base (incluidos los atajos contextuales de una tecla del rail, que no son `QAction.shortcut()`).
+
+#### Scenario: Tooltip con shortcut de QAction
+- **GIVEN** un botón del rail cuya `QAction` histórica tiene shortcut
+- **WHEN** se setea el tooltip del botón
+- **THEN** el tooltip es `"Nombre (shortcut)"` usando
+  `action.shortcut().toString()`.
+
+#### Scenario: Tooltip de Nuevo referenciado a la acción
+- **GIVEN** la pestaña de acción "Nuevo" de `DocumentTabBar`
+- **WHEN** se setea su tooltip
+- **THEN** el tooltip incluye el shortcut de `action_new` (Ctrl+N) en vez de
+  una cadena hardcodeada desligada de la acción.
+
+### Requirement: HiDPI sin artefactos en assets rasterizados
+
+Los assets rasterizados de la UI SHALL renderizarse multiplicando por el devicePixelRatio del dispositivo para no aparecer difuminados ni recortados a 125/150/200 % de escala.
+Afecta a thumbnails de plantillas y glifos de la barra de formato de texto. El contenido químico del grafo del thumbnail (átomos, enlaces, posiciones relativas) SHALL NO modificarse: solo cambia la escala de render. El `IconProvider` ya es DPR-aware y se conserva.
+El DPR SHALL aplicarse **una sola vez**: el `QPixmap` se crea con el backing físico `logical × dpr`, se pinta manteniendo `DPR = 1` (coordenadas lógicas escaladas a píxeles físicos) y se etiqueta con `setDevicePixelRatio(dpr)` **solo después** de cerrar el `QPainter`. Este es el patrón de `gui/theme/icon_provider.py::_render_svg()` y es el que sigue `template_preview_icon()`.
+
+#### Scenario: Thumbnail a 200 %
+- **GIVEN** un entorno offscreen con `QT_SCALE_FACTOR=2`
+- **WHEN** se genera el thumbnail de una plantilla con átomos
+- **THEN** el `QPixmap` resultante tiene tamaño físico `88×56 × 2` (o mayor)
+  con `devicePixelRatio() == 2`
+- **AND** el mismo grafo produce el mismo conjunto de átomos y enlaces
+  que a `QT_SCALE_FACTOR=1`.
+
+#### Scenario: El DPR se aplica una sola vez
+- **GIVEN** una estructura conocida (benceno y piridina) renderizada por
+  `template_preview_icon()` con DPR 1 y con DPR 2
+- **WHEN** se mide el bounding box de la tinta dentro del thumbnail
+- **THEN** el bounding box **relativo** es aproximadamente el mismo en ambos
+  casos (misma composición lógica, solo más resolución)
+- **AND** la estructura no toca ni es recortada por los bordes del pixmap
+- **AND** DPR 2 aporta más píxeles de tinta (más resolución), no un tamaño
+  lógico mayor que `88×56`.
+
+#### Scenario: Smoke HiDPI del shell
+- **GIVEN** un entorno offscreen con `QT_SCALE_FACTOR=2`
+- **WHEN** se construye la ventana principal
+- **THEN** la app bar, el rail de herramientas y el side panel existen y
+  están visibles
+- **AND** los iconos del rail son `QIcon` no nulos.
+
+### Requirement: Onboarding de primera ejecución
+
+La aplicación SHALL mostrar un overlay de bienvenida nativo Qt **solo la
+primera vez** (o tras borrar la preferencia), con exactamente 3 pasos:
+(1) Tool Rail — "Elige aquí las herramientas de dibujo y anotación."
+(2) Canvas — "Dibuja, selecciona y edita tus estructuras en el lienzo."
+(3) SidePanel — "Inspector, validación, propiedades, plantillas y apariencia
+están aquí." El overlay SHALL ofrecer `Anterior`, `Siguiente`, `Cerrar` y una
+opción "No mostrar de nuevo". **Semántica de persistencia (corrección Fase
+7, post-push)**: la clave `ui/onboarding/completed` se fija en `platform.
+settings` a `True` **solo** cuando el onboarding se considera completado:
+- completar los tres pasos → `True`;
+- cerrar anticipadamente con "No mostrar de nuevo" marcado → `True`;
+- cerrar anticipadamente **sin** marcar → **NO** se fija (el onboarding
+  vuelve a ofrecerse en el siguiente arranque).
+El overlay SHALL ser hijo de la ventana principal (shell) y SHALL NO agregar
+items a la escena ni modificar la lógica del canvas (no tocar canvas ni
+escena).
+
+**Render de la máscara (corrección post-push, gate manual Fase 7)**: el agujero
+SHALL obtenerse restando caminos (`outer - inner`) y rellenar únicamente esa
+diferencia; el overlay SHALL NO limpiar píxeles con `CompositionMode_Clear`
+(produce franjas/bordes negros en KDE/Wayland real). La máscara oscura y el
+agujero transparente se conservan en ToolRail, Canvas y SidePanel, en light y
+dark.
+
+**Tarjeta (corrección post-push, gate manual Fase 7)**: la tarjeta SHALL ser
+theme-aware mediante `objectName` + el sistema QSS de tokens, sin colores
+hardcodeados ni `setStyleSheet` por widget; sus hijos (`QCheckBox`, `QPushButton`)
+SHALL usar el mismo tema. El texto y la casilla "No volver a mostrar" SHALL ser
+completamente visibles, los botones SHALL estar centrados y la tarjeta SHALL
+conservar su tamaño entre pasos (sin clipping ni saltos). La semántica de
+persistencia de `finished(bool)` NO cambia.
+
+#### Scenario: Primera ejecución muestra los 3 pasos
+- **GIVEN** una `QSettings` sin `ui/onboarding/completed`
+- **WHEN** se monta el shell
+- **THEN** el overlay se muestra en el paso 1 (Tool Rail)
+- **AND** `Siguiente` avanza a Canvas y luego a SidePanel.
+
+#### Scenario: No se repite
+- **GIVEN** `ui/onboarding/completed` verdadero
+- **WHEN** se monta el shell
+- **THEN** el overlay no se muestra.
+
+#### Scenario: Completar los 3 pasos persiste
+- **GIVEN** el overlay abierto
+- **WHEN** el usuario completa los tres pasos (el último `Siguiente`)
+- **THEN** se emite `finished(True)` y `ui/onboarding/completed` queda
+  verdadero.
+
+#### Scenario: Cerrar con "No volver a mostrar" persiste
+- **GIVEN** el overlay abierto con la opción "No volver a mostrar" marcada
+- **WHEN** el usuario pulsa `Cerrar` (antes de completar)
+- **THEN** se emite `finished(True)` y `ui/onboarding/completed` queda
+  verdadero (el onboarding no vuelve a mostrarse).
+
+#### Scenario: Cerrar sin "No volver a mostrar" NO persiste
+- **GIVEN** el overlay abierto con la opción "No volver a mostrar" sin marcar
+- **WHEN** el usuario pulsa `Cerrar` (antes de completar)
+- **THEN** se emite `finished(False)` y `ui/onboarding/completed` **NO**
+  queda verdadero
+- **AND** al montar el shell de nuevo (siguiente arranque) el overlay se
+  muestra otra vez.
+
+#### Scenario: La máscara no produce bordes negros
+- **GIVEN** el overlay en cada paso (ToolRail, Canvas, SidePanel), light y dark
+- **WHEN** se construye el camino rellenable de la máscara
+- **THEN** el camino contiene los puntos fuera del agujero y NO contiene el
+  centro del agujero
+- **AND** `paintEvent` no usa `CompositionMode_Clear`
+- **AND** al renderizar, el centro del agujero tiene alpha 0 y la máscara
+  conserva su alpha fuera del agujero.
+
+#### Scenario: Tarjeta theme-aware y estable
+- **GIVEN** la ventana en light y en dark con el overlay abierto
+- **WHEN** se renderiza la tarjeta
+- **THEN** su fondo es el token `surface` del tema activo
+- **AND** el título, el cuerpo y la casilla caben en el ancho útil
+- **AND** la altura de la tarjeta es la misma en los tres pasos.
+
+### Requirement: Activación de plantilla con un solo clic
+
+Un clic simple sobre un item de plantilla (`kind == "template"`) en `PlantillasDock.tree` SHALL emitir exactamente una vez `template_selected` con el mismo payload y el mismo `template_id` que el contrato histórico. Un clic sobre una categoría SHALL emitir cero veces. Un doble clic SHALL NO producir una segunda emisión adicional. La activación por teclado (Enter/Return sobre una plantilla seleccionada) SHALL conservarse. La deduplicación SHALL ser contractual (una sola vía por dispositivo: ratón `itemClicked`, teclado `eventFilter` del árbol), **sin temporizadores**. La ruta funcional de inserción (`start_template_insert_by_id` → `template_controller`) no cambia y no se toca la química de las plantillas.
+
+#### Scenario: Clic simple emite una sola vez
+- **GIVEN** un `PlantillasDock` con una plantilla
+- **WHEN** se hace clic simple sobre el item de la plantilla
+- **THEN** `template_selected` se emite exactamente 1 vez con el payload
+  histórico (`kind`, `id`, `name`, `category`).
+
+#### Scenario: Clic sobre categoría no emite
+- **GIVEN** el árbol con una categoría y una plantilla
+- **WHEN** se hace clic sobre la categoría
+- **THEN** `template_selected` se emite 0 veces.
+
+#### Scenario: Doble clic no duplica la emisión
+- **GIVEN** un item de plantilla
+- **WHEN** se hace clic y luego doble clic sobre el mismo item
+- **THEN** el total de emisiones es 1 (no 2 ni 3).
+
+#### Scenario: Enter conserva la activación por teclado
+- **GIVEN** una plantilla seleccionada en el árbol
+- **WHEN** se pulsa Enter/Return
+- **THEN** `template_selected` se emite exactamente 1 vez.
+
+### Requirement: Registro de plantillas coherente en la paleta
+
+Tras una mutación de la biblioteca de plantillas (crear, importar, eliminar o renombrar) la aplicación SHALL refrescar tanto el menú de plantillas como el registro de la paleta de comandos, de modo que la paleta nunca presente plantillas eliminadas ni omita plantillas nuevas cuando se abre.
+El mecanismo SHALL reutilizar el refresco existente del menú (fuente de verdad) y la reconstrucción del registro; SHALL NO modificar `TemplateLibrary`, la química de plantillas ni el formato de persistencia.
+
+#### Scenario: Plantilla creada y paleta abierta
+- **GIVEN** una ventana con una plantilla recién creada/importada
+- **WHEN** se abre la paleta de comandos
+- **THEN** la nueva plantilla aparece como entrada ejecutable
+- **AND** no aparecen entradas de plantillas eliminadas.
+
+### Requirement: Iconos provisionales de formato de texto sustituidos
+
+La barra de formato de texto SHALL usar iconos SVG del set temático para
+alineación (izquierda/centro/derecha) y sub/superíndice, en lugar de glifos
+tipográficos. Los botones de negrita/cursiva/subrayado (`B`/`I`/`U`)
+conservan su glifo (convención estándar). Los nuevos SVG SHALL integrarse al
+`IconProvider` existente (tint por tema, cache, DPR).
+
+#### Scenario: Botones de alineación con SVG
+- **GIVEN** la barra de formato de texto visible
+- **WHEN** se pintan los botones de alineación y sub/superíndice
+- **THEN** sus iconos provienen de `i-align-left`, `i-align-center`,
+  `i-align-justify`, `i-subscript` y `i-superscript` (SVG del provider),
+  no de glifos tipográficos.
+
+### Requirement: Referencias de atajos actualizadas y manual reflejo de la UI
+
+Los docstrings/comentarios de código activo que documentan la apertura de la paleta de comandos SHALL indicar `Ctrl+P` (la paleta) y `Ctrl+K` únicamente para Clean2D, y el manual SHALL describir la UI moderna con los atajos reales.
+El manual (`docs/MANUAL_USUARIO.md`) SHALL describir la UI moderna (AppBar, pestañas de documento, rail de herramientas + flyouts, side panel con tabs, barra de formato de texto, barra de estado, tema claro/oscuro y onboarding) con los atajos reales: `Ctrl+P` (Command Palette), `Ctrl+K` (Limpiar 2D 1 paso), `Ctrl+Shift+K` (Limpiar 2D para publicación), `Ctrl+Alt+K` (Proponer conformero). El manual SHALL NO inventar atajos que no existan.
+
+#### Scenario: Código activo sin stale Ctrl+K de la paleta
+- **GIVEN** los módulos `command_palette`, `qss`, `tokens`, `main_window` y
+  `app_bar`
+- **WHEN** se leen sus docstrings/comentarios de apertura de la paleta
+- **THEN** citan `Ctrl+P` para la paleta y `Ctrl+K` solo para Clean2D.
+
+#### Scenario: Manual refleja la UI moderna
+- **GIVEN** el manual actualizado
+- **WHEN** se consultan las secciones de interfaz
+- **THEN** describen AppBar/DocumentTabs/ToolRail/SidePanel/CommandPalette con
+  los atajos reales y no describen las barras izquierda/derecha históricas
+  como componentes actuales.
