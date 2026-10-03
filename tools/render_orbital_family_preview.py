@@ -6,6 +6,7 @@ import argparse
 import os
 from pathlib import Path
 import sys
+import tempfile
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -25,8 +26,14 @@ from chemuson.gui.orbitals import (
 )
 
 
-DEFAULT_OUTPUT = ROOT / "tests" / "data" / "orbitals" / "palette_preview.png"
-DEFAULT_TRIPTYCH_DIR = ROOT / "tests" / "data" / "orbitals" / "family_triptychs"
+DEFAULT_OUTPUT_DIR = Path(
+    os.environ.get(
+        "CHEMUSON_ORBITAL_REPORT_DIR",
+        Path(tempfile.gettempdir()) / "chemuson" / "orbital-fit-report",
+    )
+)
+DEFAULT_OUTPUT = DEFAULT_OUTPUT_DIR / "palette_preview.png"
+DEFAULT_TRIPTYCH_DIR = DEFAULT_OUTPUT_DIR / "family_triptychs"
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:

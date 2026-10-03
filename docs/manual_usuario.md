@@ -95,7 +95,7 @@ graph TD
 ```
 
 #### Funcionamiento Técnico y Matemático:
-Cuando el usuario inicia una rotación sobre un conjunto de átomos (o toda la estructura si no hay selección activa) mediante la combinación **Alt + Arrastre del Mouse**, el sistema ejecuta los siguientes pasos en la función `project_3d_rotation` en [geom.py](file:///mnt/HDD_4TB/chemuson/Chemuson/src/chemuson/gui/geom.py):
+Cuando el usuario inicia una rotación sobre un conjunto de átomos (o toda la estructura si no hay selección activa) mediante la combinación **Alt + Arrastre del Mouse**, el sistema ejecuta los siguientes pasos en la función `project_3d_rotation` en [geom.py](../src/chemuson/gui/geom.py):
 1. **Traslación:** Calcula el baricentro o centro geométrico $(C_x, C_y)$ de los átomos seleccionados y traslada todos los puntos al origen 3D $(0, 0, 0)$ asumiendo inicialmente que la profundidad de todos los átomos es $z_0 = 0.0$.
 2. **Rotación Pitch (Eje X):** Se rota el plano vertical aplicando el ángulo $\theta_x$ (Pitch) obtenido a partir del desplazamiento vertical del cursor ($\Delta y$):
    $$y_{\text{new}} = y_0 \cos(\theta_x) - z_0 \sin(\theta_x)$$
@@ -106,7 +106,7 @@ Cuando el usuario inicia una rotación sobre un conjunto de átomos (o toda la e
 4. **Proyección y Retranslación:** Los puntos resultantes $(x_{\text{final}}, y_{\text{final}})$ se proyectan directamente sobre el lienzo y se re-trasladan sumando el centro $(C_x + x_{\text{final}}, C_y + y_{\text{final}})$.
 
 #### Constantes y Restricciones de Control:
-Para evitar la degradación o el "colapso plano" de las estructuras (donde la molécula pierde toda dimensionalidad y se aplana hasta convertirse en una línea), ChemUSON aplica restricciones estrictas definidas en [canvas_constants.py](file:///mnt/HDD_4TB/chemuson/Chemuson/src/chemuson/gui/canvas/canvas_constants.py):
+Para evitar la degradación o el "colapso plano" de las estructuras (donde la molécula pierde toda dimensionalidad y se aplana hasta convertirse en una línea), ChemUSON aplica restricciones estrictas definidas en [canvas_constants.py](../src/chemuson/gui/canvas/canvas_constants.py):
 * **Sensibilidad:** `TRACKBALL_ROTATION_DEG_PER_PIXEL = 1.0` (1 píxel de arrastre equivale a 1 grado de rotación).
 * **Límite de Inclinación:** `TRACKBALL_MAX_TILT_DEG = 60.0`. Restringe el cabeceo y guiñada a un intervalo de $[-60^{\circ}, 60^{\circ}]$. Esto evita que los enlaces se solapen completamente y pierdan la coherencia geométrica en la proyección 2D.
 * **Tolerancia de Coherencia:** `TRACKBALL_REFERENCE_MATCH_TOLERANCE_PX = 1.5`. Si la geometría molecular se modifica externamente (por ejemplo, al mover un átomo individual o aplicar una limpieza automática) en más de 1.5 píxeles, la matriz de referencia de la rotación 3D se reinicia para prevenir distorsiones acumuladas.
@@ -130,7 +130,7 @@ ChemUSON ofrece una amplia biblioteca de estilos de enlaces (`BondStyle`) que de
 8. **Interacción (Interaction):** Líneas punteadas para representar enlaces de hidrógeno o interacciones débiles. **No son estructurales ni aportan a la valencia**.
 
 #### Algoritmo de Cálculo para Cuñas y Recortes (`trim`):
-La visualización de cuñas sólidas y discontinuas calcula la silueta triangular mediante la función `compute_wedge_points` en [wedge_geometry.py](file:///mnt/HDD_4TB/chemuson/Chemuson/src/chemuson/gui/wedge_geometry.py):
+La visualización de cuñas sólidas y discontinuas calcula la silueta triangular mediante la función `compute_wedge_points` en [wedge_geometry.py](../src/chemuson/gui/wedge_geometry.py):
 
 * **Direccionalidad:** El enlace se expande desde la punta (vértice angosto en el átomo de origen $P_0$) hacia la base (ancho máximo en el átomo de destino $P_1$).
 * **Evitación de Colisiones (Trim):** Para evitar que el extremo ancho de la cuña o la punta sólida invadan las etiquetas de texto de los elementos químicos (por ejemplo, al conectar con un Oxígeno `"O"` o Nitrógeno `"N"` explicitados), el algoritmo introduce recortes:

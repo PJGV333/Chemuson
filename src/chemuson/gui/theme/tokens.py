@@ -1,13 +1,10 @@
 """Design tokens de la UI de Chemuson (fuente de verdad visual).
 
-Fase 1 del plan de modernización de la UI (``docs/ui-modernization/PLAN.md``).
-
-Los valores del tema copian la tabla de tokens del spike PyQt6 aprobado
-(``docs/ui-modernization/pyqt6-spike/theme.py``, commit ``59e977d``,
-``SMOKE: OK — 0 fallos``), que a su vez traduce el mockup
-(``docs/ui-modernization/mockup-ui.html``) y la tabla §2.2 de PLAN.md.
-Las métricas (spacing/radios/tipografía) completan lo que el spike dejaba
-en constants sueltas, según la grilla de 8 px de PLAN.md §2.2.
+La paleta y las métricas derivan del diseño PyQt6 aprobado y se mantienen
+alineadas con la especificación ``openspec/specs/ui-theme-foundation/spec.md``.
+La referencia histórica de tokens está en
+``docs/ui-modernization/pyqt6-spike/theme.py``; la memoria de decisiones y
+el cierre de la campaña están en ``docs/history/CAMPAIGNS.md``.
 
 Solo este módulo (y los generadores de ``qss.py``) conocen colores de UI;
 el resto de la UI los consume a través de ``get_tokens``/``theme_color``.
@@ -46,7 +43,7 @@ DEFAULT_THEME_NAME: str = "light"
 SYSTEM_THEME_NAME: str = "system"
 
 # ---------------------------------------------------------------------------
-# Tokens de color (misma tabla que el spike aprobado)
+# Tokens de color (tabla aprobada; referencia normativa en la especificación de tema)
 # ---------------------------------------------------------------------------
 
 LIGHT_TOKENS: dict[str, object] = {

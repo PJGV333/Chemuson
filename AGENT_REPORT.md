@@ -1,306 +1,42 @@
-# AGENT_REPORT
+# AGENT_REPORT — higiene del repositorio (en curso)
 
-## Scope
+## Alcance y punto de partida
 
-Phase 15 closed the selection-helper extraction and narrowed M20 to the five
-canonical helpers under `gui/editor2d/selection/`. The parent
-`gui/editor2d/__init__.py` remains a logic-free namespace owned by M08, and
-M09 retains import-only compatibility shims under `gui/canvas`.
+Rama `maintenance/repository-hygiene-closure`, creada desde `origin/main` en
+`1db4f63b52af79247745b3a8a220fb728348218c`. No se integra a `main`, no se
+reescribe historia y no se cambia comportamiento del producto. El checkpoint
+`afe1245` guarda OpenSpec, baseline, memoria de campañas y política antes de
+retirar artefactos.
 
-## Closure
+El OpenSpec activo es
+`openspec/changes/repository-hygiene-closure-2026-10-03/`. La baseline
+preliminar registra 1816 tests recolectados, 1760 passed/55 skipped/1 fallo
+CompChem ya conocido, 269 tests de arquitectura y un F401 histórico Clean2D.
+Las medidas completas están en `baseline.md` del OpenSpec.
 
-The following OpenSpecs were archived on 2026-09-19 after the reported manual
-Qt smoke test completed:
+## Decisiones y cambios en curso
 
-- `2026-09-19-extract-canvas-selection-hit-testing`
-- `2026-09-19-extract-canvas-selection-overlays-and-handles`
-- `2026-09-19-extract-canvas-selection-clipboard-policy`
-- `2026-09-19-move-canvas-selection-helpers-to-editor2d`
+- `docs/history/CAMPAIGNS.md` consolida campañas de arquitectura, UI y Clean2D,
+  decisiones, resultados, experimentos descartados y ramas únicas protegidas.
+- `docs/history/REPOSITORY_POLICY.md` fija el proceso de baseline, auditoría,
+  retención y ciclo de ramas.
+- Se retiran únicamente outputs sin consumidor verificado: PostScript/PNG de
+  depuración, parches sueltos ya históricos, reporte orbital generado, código
+  de demostración del spike, capturas intermedias y generadores one-shot de UI.
+- Se retienen OpenSpecs/contratos Markdown, evidencia final UI, capturas
+  KDE/Wayland aprobadas, checks JSON, fixtures actuales, Clean2D productivo,
+  la referencia normativa `pyqt6-spike/theme.py` y ramas no-ancestro.
+- Se actualizaron comentarios/docstrings de tema para no enlazar prototipos
+  retirados. No se modifica implementación Clean2D ni código/test químico.
+- No se añadieron reglas `.gitignore`: los outputs retirados no se regeneran
+  por tests/CI ni requieren una regla amplia.
 
-Manual validation exercised selection, overlay handles, copy/paste and legacy
-import consumers. The archived task and validation records mark all work
-complete.
+## Verificación
 
-## Baseline and validation deviations
+**Pendiente al redactar esta actualización:** tests y validadores después de la
+poda, medición final, inventario post-prune y push normal de la rama. No se
+reporta ningún gate como aprobado hasta ejecutarlo. Los fallos de baseline no
+se cambian ni se silencian.
 
-- Baseline pytest collection: 1532 tests collected.
-- Latest complete pytest run passes: 1477 passed, 55 skipped.
-- Compileall passes for `src tests tools packaging`.
-- Targeted checks for the migrated helpers, shims, consumers and architecture
-  tests pass.
-- The repository-wide required Ruff selection reports exactly one pre-existing
-  out-of-scope F401 in
-  `tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py:3` (`math`).
-  It was not modified because this phase does not cover Clean2D tests.
-- `openspec validate --all --strict` retains exactly one pre-existing unrelated
-  failure in `spec/application-composition-root`: its first requirement lacks a
-  SHALL or MUST keyword. No exception or catalog workaround was added.
-
-Neither deviation is caused by the selection ownership or extraction work.
-
-## Remaining module-boundary wave
-
-The descendant branch `architecture/remaining-module-boundaries` completed the
-following audited boundaries:
-
-- Phase A: M05/M06/M07/M14/M16/M17/M18/M19/M20 audited; cohesive modules kept intact.
-- Phase B: M21 `platform.settings` owns application preferences and packaged resources.
-- M22 `resilience` owns canonical autosave, recovery filesystem policy and crash logging; historical utils paths remain import-only shims.
-- Phase D: M14 update subsystem audited; M23 remains reserved.
-- Phase E: M19 composition root audited; M24 remains reserved.
-- Phase F: operational resilience ownership documented across M22, M08/M10, M14 and M19.
-
-Final branch validation:
-
-- Architecture suite: `266 passed`.
-- Full regression suite: `1492 passed, 55 skipped`.
-- Compileall: passed.
-- Scoped Ruff for changed implementation/tests: passed.
-- Final Qt offscreen smoke: `qt_resilience_smoke_exit=0`.
-- Full OpenSpec validation: `33 passed, 1 failed`, the same pre-existing
-  `application-composition-root` requirement issue.
-- Full required Ruff selection: the same pre-existing Clean2D `math` F401.
-
-All phase OpenSpecs are archived and the worktree is clean after the final
-operational-resilience audit commit.
-
-## Final boundary reconciliation
-
-- M15 is documented and tested as compatibility shims only.
-- M19 current and target dependencies are explicitly M08/M18/M22.
-- M20 owns only `gui/editor2d/selection/`; M09 owns legacy canvas shims.
-- M21 lists `platform/__init__.py`, `settings.py` and `resources.py` explicitly.
-- M22 now owns GUI-free recovery filesystem policy in `resilience/recovery.py`.
-- Final focused recovery/platform tests: `20 passed`.
-- Final architecture suite: `268 passed`.
-- Final full regression suite: `1496 passed, 55 skipped`.
-- Compileall and scoped Ruff passed; global OpenSpec validation is `35 passed, 0 failed`.
-- Qt offscreen smoke exited with `qt_recovery_smoke_exit=0`.
-
-## UI modernization — Fase 1: theme foundation (2026-09-24, branch ui/modernization)
-
-OpenSpec: `2026-09-24-modernize-ui-theme-foundation` (validado `--strict`).
-Implementación de la Fase 0+1 de `docs/ui-modernization/PLAN.md` sobre la
-referencia visual aprobada del spike PyQt6 (commit `59e977d`).
-
-### Decisiones y desviaciones registradas
-
-- **Tokens: el spike es la referencia, no la tabla textual de PLAN.md §2.2**
-  (diferencias de valores y de vocabulario; registrado en el proposal §6 y
-  design D1). Único ajuste sobre el spike: los rellenos suaves del tema
-  oscuro pasaron de `rgba(r,g,b,a)` a hex `#AARRGGBB` (color idéntico)
-  porque `QColor` no parsea `rgba()` (mantiene "todo token es color válido";
-  QSS acepta ambos formatos).
-- **`styles.py` como fachada**: PLAN.md Fase 1 hablaba de "función única";
-  en producción existen 2 generadores + 2 constantes con callers reales
-  (`main_window.py`, `toolbar.py`); la fachada conserva los 4 nombres y las
-  paletas legadas como alias de tokens (deprecation documentada).
-- **Persistencia del tema**: antes no existía (`assembly.py` hardcodeaba
-  `"light"`). Se añade `ui/theme` vía M21 (`UiPreferences` + load/save);
-  `"system"` queda aceptado/normalizado por la API y persistible, pero sin
-  opción visible en Preferencias (viene con la fase de ajustes).
-- **IconProvider**: implementado como infraestructura (Fase 2 migra
-  `icons.py`); `icons.py` intacto según instrucción.
-- **Sin nuevas dependencias**: solo PyQt6 (QtSvg ya disponible).
-
-### Entorno de tests (quirk)
-
-- Worktree sin `.venv`; el venv del checkout principal tiene el stack
-  runtime pero no pytest/ruff. Validación con entorno efímero:
-  `uv run --no-project --offline --python <venv principal>/bin/python --with
-  pytest --with ruff --with PyQt6 --with numpy --with Pillow --with rdkit
-  --with certifi --with PyYAML` (todo resuelto desde la caché de uv; sin
-  instalaciones nuevas). Con `HOME` aislada es necesario fijar también
-  `UV_CACHE_DIR` (uv usa `$HOME/.cache/uv`).
-- Baseline (ver `openspec/changes/2026-09-24-modernize-ui-theme-foundation/baseline.md`):
-  1583 passed / 20 skipped / 4 failed preexistentes (candidate generation +
-  stereo import) y 1 ruff F401 preexistente en un test de Clean2D (fuera de
-  alcance; no corregido por política de no refactors oportunistas).
-
-### Verificación
-
-- `openspec validate 2026-09-24-modernize-ui-theme-foundation --strict`: OK.
-- Tests de la fundación: `tests/test_ui_theme_foundation.py` (tokens,
-  resolución light/dark/system, aplicación sin excepciones, QSS/QPalette,
-  fachada `styles.py`, ventana real, IconProvider caché/HiDPI) +
-  `tests/test_platform_settings.py` (round-trip `ui/theme`).
-- Smoke Qt offscreen de la ventana real con ambos temas:
-  `SMOKE: OK` (capturas en `docs/ui-modernization/foundation-shots/`).
-- Ámbito del diff restringido a: `gui/theme/` (nuevo), `styles.py`,
-  `main_window.py`, `shell/assembly.py`, `platform/`, `architecture/modules.yml`,
-  tests y OpenSpec/docs. Intactos: `clean2d/`, `chemname/`,
-  `chemio/persistence.py`, `gui/canvas/`, `gui/icons.py`, `gui/toolbar.py`,
-  `gui/docks.py`, `gui/style.py`, `gui/dialogs/`.
-
-## Convergencia visual con el spike PyQt6 aprobado (2026-09-25, branch ui/modernization)
-
-### Alcance
-Rescate visual: la UI de producción se alinea con el spike aprobado
-(`docs/ui-modernization/pyqt6-spike/`, contrato visual) sin tocar la lógica
-funcional. No se inicia Fase 5/6. No se modificaron `clean2d/`, `chemname/`,
-`chemio/` ni `gui/canvas/`.
-
-### Decisiones
-1. **Shell**: `QMenuBar` oculta (6 `QMenu` re-padreados a un `QMenu`
-   agregador; acceso por hamburguesa + tecla Alt, un único camino de popup);
-   `QToolBar` clásicas ocultas (no eliminadas); rail = `QWidget` de 58 px en
-   el layout central (ya no `QToolBar`); barra de estado 34 px sin grip;
-   text toolbar oculta por defecto y contextual (herramientas de texto /
-   selección de texto).
-2. **Rail simplificado**: 15 botones de 42 px (icono 21 px) en 6 grupos;
-   `Clean2D`/`Validar`/`Numerar` salen del rail (sus `QAction` siguen vivos:
-   menús, atajos, flyouts de contexto). Sin badges kbd (el atajo queda en el
-   tooltip y sigue funcionando vía `ToolShortcutDispatcher`). Scroll compacto
-   invisible para 980×600 (botones 42 px, sin micro-iconos).
-3. **Semántica de clic del flyout**: 1er clic activa la categoría; 2º clic en
-   la categoría activa (o clic derecho) abre el flyout.
-4. **QSS**: QScrollArea del rail — Qt no estiliza el viewport con
-   `#railScroll > QWidget`; se usa el patrón clásico "fondo del scroll +
-   nieto transparente". `min-height: 33px` en `QStatusBar` (33 + 1 px de
-   borde = 34 px totales; 34 directamente colisionaba max/min con el borde).
-   Botones del rail `min-width/height: 40px` (40 + 2 px de borde = 42 px).
-5. **Iconos**: botones del rail **centrados** horizontalmente (el spike usa
-   `AlignHCenter`; producción los dejaba alineados a la izquierda → los
-   iconos aparecían 8 px desplazados a la izquierda: el "bug de iconos"
-   visible). Separadores de 26×1 px centrados.
-
-### Verificación
-- Chequeos numéricos (1440×900 y 980×600): **13/13 OK**
-  (`docs/ui-modernization/visual-convergence/captures/checks.json`).
-- Matriz de aceptación visual: **11/11 SÍ**
-  (`docs/ui-modernization/visual-convergence/README.md`).
-- Comparación de píxeles prod vs spike (franja shell, ambos temas): app bar,
-  rail y estado coinciden dentro del ruido de iconos.
-- Tests: suite UI dirigida 320+ pasada; suite completa: solo los **4 fallos
-  de baseline preexistentes** (stereo CIP ×3, dedup de candidatos Clean2D ×1).
-- Residuos documentados: lienzo real vs demo del spike (esperado), sin panel
-  derecho falso (por instrucción), iconos de orbitales reutilizados (OpenSpec
-  Fase 4).
-
----
-
-# RESULTADO FINAL (2026-09-26)
-
-## Estado: COMPLETADO y publicado
-
-| Commit | Hash | Contenido |
-|---|---|---|
-| 1 | `36724d8` | `Fix tool shortcuts while editing canvas content` — predicado `_tool_shortcuts_suppressed()` (modal / entrada estándar / texto del canvas / `EnergyDiagramItem.is_editing()`) + parámetro `suppress_predicate` en `ToolShortcutDispatcher` + tests (frase completa "VALOR BENCENO CARBONO ENERGIA TIPOS GEOMETRICOS", 11 letras, restauración B/R/C). |
-| 2 | `3506dfe` | `Reconnect advanced tool rail palettes` — fix `QMouseEvent.globalPosition().toPoint()` (crash `globalPos`) en `flyout.py` + 7 tests end-to-end (flyout fuera-clic, orbitales, energía, símbolos, corchetes, wiring de submenús/presets, ciclo light→dark→light). |
-| 3 | `5db05db` | `Improve dark theme contrast` — 12 tokens oscuros a los valores aprobados (bg `#243249`, surface `#29384F`, …, canvasBg `#1B263A`, icon `#DCE5F0`, iconHover `#FFFFFF`); alfas de `accentSoft`/`accentBorder` originales conservados; light inalterado; 3 aserciones de test actualizadas. |
-
-## Decisión de diseño aplicada (no se violó regla alguna)
-- El `RuntimeError` de construcción provenía **solo** de la versión intermedia de Luna (stash `stash@{0}`, preservado). En `f7ac97a` la introspección usa `w.click` (sin cadena de propiedades, sin `RuntimeError`): `ChemusonWindow()` se construye sin excepción (test `test_window_builds_without_exception`).
-- No se introdujo la cadena `chemusonStableCallback`/`chemusonToolId`: las celdas de `SymbolPaletteToolbar` ya traen callbacks reales (`_select_symbol_tool`, `_select_orbital_tool`, `_select_energy_diagram_tool`, `_select_bracket_tool`, `_select_arrow_tool`, `_select_plate_tool`); el flyout los reutiliza 1:1 (`trigger=w.click`).
-- Submenús de energía: se verifica el wiring (receptores de las señales `atomic_diagram_requested` / `electronic_diagram_preset_requested`) **sin disparar** los diálogos modales (bloquearían el entorno offscreen).
-
-## Baseline / verificación final
-- `python -m compileall src tests tools packaging`: OK.
-- `ruff check src tests tools packaging --select F401,F811,F821,E722,E741`: 1 error (F401 preexistente en `tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py`, presente en `f7ac97a`; fuera del alcance — no refactor oportuno).
-- `pytest --collect-only -q`: 1785 tests (3 nuevos vs. baseline 1782… ver nota: 50→57 en `test_ui_tool_rail.py`, +1 en `test_text_tool_interaction.py` → +7).
-- Suite completa (una vez, offscreen): **4 failed, 1761 passed, 20 skipped** — los 4 fallos son los históricos de RDKit (estereo/candidatos: `test_clean2d_engine_candidates`, 3×`test_smiles_stereo_import`), preexistentes y sin relación con la UI.
-- `git push origin ui/modernization`: OK, `f7ac97a..5db05db` (sin force).
-
-## VALIDACIÓN MANUAL DEL USUARIO: PENDIENTE
-El agente detiene aquí (criterio de parada: la aceptación visual/funcional es del usuario). No se inicia Fase 5.
-
-## Modernización UI — Fases 3–4 aprobadas; issue conocido documentado (2026-09-27)
-
-- **Fases 3–4 aprobadas manualmente**: rail unificado, flyouts (selección,
-  enlaces, anillos, átomos, flechas, corchetes, símbolos, placas, energía,
-  orbitales), atajos, tema oscuro y simplificación de selección (lasso/rotación
-  3D dentro del flyout Selección) quedaron validados por el usuario.
-- **Issue conocido registrado**: las acciones "Girar rama -60°/+60°"
-  (`Editar -> Rotar`; `action_branch_rotate_minus`/`action_branch_rotate_plus`,
-  shortcuts `Ctrl+Alt+Left`/`Ctrl+Alt+Right`) no producen rotación visible ni
-  por menú ni por shortcut. Documentado en
-  `docs/ui-modernization/KNOWN_ISSUES.md` (estado: CONFIRMADO POR VALIDACIÓN
-  MANUAL).
-- **No se considera regresión introducida por la modernización**: es un
-  problema funcional preexistente o independiente del rediseño visual; la
-  reparación queda **diferida** a una campaña/tarea separada (no bloquea Fase 5).
-- **Clean2D fuera de alcance de la campaña de UI**: `src/chemuson/clean2d/`
-  no se abre ni modifica; existe una campaña independiente activa para Clean2D.
-
-## Fix branch rotation window shortcuts (2026-09-27)
-
-- **Corrección de la observación anterior**: la validación manual del usuario
-  confirmó que las acciones del menú `Editar -> Rotar` SÍ funcionan (el mismo
-  QAction rota la rama); el defecto era **solo del shortcut**: inactivo con
-  el menú cerrado (barra de menús oculta en la UI moderna: el shortcut map
-  de los QMenus no está activo con foco en el lienzo; el evento caía en el
-  nudge de 1 px del canvas o en el vacío). Los handlers nunca estaban rotos.
-- **Arreglo** (`src/chemuson/gui/actions/structure_actions.py`): a las cuatro
-  QActions históricas (`action_branch_rotate_minus`, `action_branch_rotate_plus`,
-  `action_branch_invert`, `action_branch_auto_arrange`) se aplicó el patrón de
-  las acciones de Clean2D: `setShortcutContext(Qt.ShortcutContext.WindowShortcut)`
-  + `window.addAction(action)`. Sin QActions nuevos y sin duplicar conexiones
-  `triggered`; el mismo QAction sigue viviendo en el menú `Rotar`.
-- **Diagnóstico demostrado, no asumido**: experimento offscreen (menú oculto:
-  el shortcut solo-asociado-al-menú no dispara con foco en un hijo; con
-  `window.addAction` sí) + tests E2E con `ChemusonWindow` real que fallan en el
-  código pre-fix y pasan post-fix.
-- **Tests** (`tests/test_branch_rotation_shortcuts.py`, 7 tests): wiring en la
-  ventana (`win.actions()`, sin duplicados, menú Rotar intacto), E2E de
-  `Ctrl+Alt+Right`/`Left` (rotación real >5 px, no el nudge de 1 px; undo/redo;
-  1 step por pulsación = sin doble ejecución), E2E de `Ctrl+Alt+I` (inversión
-  180° con coordenadas exactas) y `Ctrl+Alt+A` (autoarrange con obstáculo,
-  120°→240°), ruta de menú intacta y semántica de foco en editor de texto no
-  modal (la política de supresión existente cubre las letras de herramienta;
-  Ctrl+Alt+* sigue activo, igual que `Ctrl+K` de Clean2D).
-- **Validación**: tests dirigidos (shortcuts, reorientación de ramas, atajos de
-  ventana, supresión de shortcuts en texto): 135 passed. `compileall` OK. Ruff
-  scoped: solo el F401 preexistente conocido. `git diff --check` OK. Suite
-  completa (una vez): **4 failed, 1775 passed, 20 skipped** — los 4 fallos son
-  los históricos de RDKit (sin relación con el cambio).
-- **Documentación**: `docs/ui-modernization/KNOWN_ISSUES.md` actualizado —
-  el issue está marcado **RESUELTO** con referencia al commit
-  `Fix branch rotation window shortcuts` (rama `ui/modernization`).
-- **Clean2D**: sin cambios; sigue fuera del alcance de la campaña de UI.
-- **Estado histórico de Fase 5**: no iniciada en el commit de referencia; su ejecución posterior se controla mediante OpenSpec `2026-09-27-modernize-ui-side-panel-status-bar` (ver resultado final más abajo).
-
-## Modernización de UI — Fase 5 (2026-09-27)
-
-### Alcance y decisiones
-
-- OpenSpec: `openspec/changes/2026-09-27-modernize-ui-side-panel-status-bar/`; `openspec validate 2026-09-27-modernize-ui-side-panel-status-bar --strict` válido.
-- Se montaron las siete instancias existentes de `QDockWidget` como páginas de un único `SidePanel` (cinco tabs principales y dos páginas en overflow). Se conservaron sus widgets, modelos, señales y handlers; ya no se registran como docks clásicos de la ventana.
-- `show_page(key)` centraliza navegación desde Ver, overflow y el flujo de Validación. La visibilidad y la página activa se guardan en settings existentes mediante `SidePanelPreferences`.
-- Validación recibió únicamente una adaptación de presentación (controles en filas compactas) para caber en la implementación inicial de 324 px; el polish visual posterior deja la superficie en 340 px sin cambiar señales, reglas, selección ni acciones. Un test geométrico confirma que navegación, reporte y correcciones caben.
-- La barra conserva `QStatusBar`, `showMessage()`, IUPAC y carga; los labels reciben jerarquía QSS y alto de 34 px. No se añadieron fórmula, autosave, cursor ni datos sintéticos.
-- Se registró `side_panel.py` en M08 de `architecture/modules.yml`; no se añadieron dependencias ni cambios a Clean2D, ChemName o persistencia `.cmsn`.
-
-### Archivos del cambio
-
-- OpenSpec: `proposal.md`, `design.md`, `tasks.md`, `baseline.md` y `specs/ui-side-panel-status-bar/spec.md` dentro del directorio indicado arriba.
-- Producción: `src/chemuson/gui/side_panel.py`, `src/chemuson/gui/docks.py`, `src/chemuson/gui/main_window.py`, `src/chemuson/gui/main_window_ui_builder.py`, `src/chemuson/gui/shell/assembly.py`, `src/chemuson/gui/theme/{qss.py,tokens.py}` y `src/chemuson/platform/{__init__.py,settings.py}`.
-- Tests y arquitectura: `tests/test_side_panel.py`, `tests/test_platform_settings.py`, `architecture/modules.yml`.
-- Evidencia: `docs/ui-modernization/side-panel-phase-shots/make_shots.py` y ocho PNG.
-
-### Validación y desviaciones
-
-- Baseline capturado antes del cambio: 1799 tests; 1744 passed, 55 skipped, 0 failed. Tras el cambio: 1811 collected; `pytest -q` → 1756 passed, 55 skipped, 0 failed (756.44 s).
-- `pytest -q tests/test_side_panel.py tests/test_platform_settings.py` → 16 passed; `pytest -q tests/architecture` → 276 passed; `python -m compileall src tests tools packaging` → exit 0.
-- Ruff scoped a todos los archivos tocados → `All checks passed!`. Ruff global acotado a F401/F811/F821/E722/E741 conserva un único F401 preexistente: `math` sin uso en `tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py:3`; no se alteró ese test fuera de alcance. `git diff --check` → exit 0.
-- El primer full run encontró un fallo de aislamiento en el test de settings: Qt ya había cacheado NativeFormat antes de cambiar `XDG_CONFIG_HOME`. El fixture ahora fija/restaura `QSettings.setPath`; los 16 tests dirigidos y la suite completa final pasan.
-- Ejecuciones aisladas de algunos tests de docks pueden terminar con abort de Qt al cerrar un worker (`exit 134`), reproducido también en worktree limpio del baseline. La suite completa actual sí terminó correctamente e incluye esos tests; no se modificó gestión de workers.
-- Las capturas se regeneraron con `QT_QPA_PLATFORM=offscreen`; el harness usa salida inmediata tras guardar para evitar el fallo de teardown offscreen. `make_shots.py` terminó con `SHOTS: OK`: seis imágenes de 1440×900 y dos de 980×600, inspeccionadas visualmente. Son evidencia reproducible, no aprobación manual en KDE/Wayland.
-
-Capturas verificadas:
-- `side-panel-light-1440x900-inspector.png`
-- `side-panel-dark-1440x900-inspector.png`
-- `side-panel-light-validation.png`
-- `side-panel-dark-properties.png`
-- `side-panel-overflow-open.png`
-- `side-panel-appearance.png`
-- `side-panel-light-980x600.png`
-- `side-panel-dark-980x600.png`
-
-## Polish visual de SideTabRow previo a la aceptación (2026-09-28)
-
-- Se llevó `sideW` a 340 px (dentro de 300–340 px); se añadieron 3 px de padding horizontal por tab y 3 px de separación. La fuente sigue en 10 px; el activo conserva color de acento y underline. Inspector/Validación/Propiedades/Plantillas/Apariencia permanecen visibles; Espectroscopía y CompChem siguen en `…`.
-- El test que forzaba `horizontalScrollBar().maximum() == 0` ahora verifica texto completo, padding, gaps, visibilidad y ausencia de clipping a 1440×900 y 980×600. No se tocó navegación, persistencia, APIs, docks, señales ni handlers; tampoco se inició Fase 6.
-- Scope de este polish: `side_panel.py`, `theme/tokens.py`, `theme/qss.py`, `tests/test_side_panel.py`, harness/capturas y documentación OpenSpec/`AGENT_REPORT.md`. Sin dependencias ni cambios al catálogo de arquitectura.
-- Verificación: suite completa `1811 collected`, `1756 passed, 55 skipped, 0 failed` (786.60 s); tras ordenar únicamente los imports del test, `pytest -q tests/test_side_panel.py tests/test_platform_settings.py` volvió a pasar (`16 passed`); compileall exit 0; Ruff scoped `All checks passed!`; `git diff --check` exit 0; OpenSpec strict válido. Ruff global mantiene el F401 preexistente en el test de Clean2D, fuera de alcance.
-- La inspección offscreen confirma labels completos, distinguidos y sin clipping en los cuatro pares tema/tamaño; el menú de overflow muestra Espectroscopía y CompChem.
-- El usuario aprobó las capturas visuales y autorizó el commit/push de este polish. No se abrió Fase 6.
+Reporte final y lista exacta de archivos/ramas se completarán en
+`docs/history/REPOSITORY_CLEANUP_2026-10-03.md` al cerrar las verificaciones.

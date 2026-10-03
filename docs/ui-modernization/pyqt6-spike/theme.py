@@ -1,8 +1,9 @@
-"""Design tokens y generador de QSS para el spike de modernización de UI.
+"""Referencia histórica de design tokens PyQt6 aprobados para la UI.
 
-Traducción a Qt de los design tokens del mockup (docs/ui-modernization/mockup-ui.html,
-:root / html[data-theme="dark"]) y de PLAN.md §2.2. NO es una copia literal del CSS:
-es la misma tabla de tokens expresada como QSS generado a partir de constantes.
+Los valores y el generador QSS conservan la tabla de diseño de la propuesta
+que guio la implementación de producción (ver
+``docs/history/CAMPAIGNS.md``). NO es código de producción ni una copia literal
+de CSS: expresa los tokens como QSS generado a partir de constantes.
 
 Uso:
     from theme import Theme

@@ -1,83 +1,34 @@
-# Convergencia visual: producción vs. spike PyQt6 aprobado
+# Convergencia visual: producción PyQt6 y diseño aprobado
 
-**Contrato visual**: [`../pyqt6-spike/`](../pyqt6-spike/) (spike aprobado, mockup de
-referencia). En cualquier conflicto visual, **el spike gana**; la lógica funcional
-histórica (drawing, acciones, atajos, menús, handlers) se conserva detrás de la
-superficie nueva.
+**Fuente de tokens conservada:** [`../pyqt6-spike/theme.py`](../pyqt6-spike/theme.py), referencia normativa del contrato de tema. El demo del spike y las capturas intermedias de comparación se retiraron al cerrar la campaña; su salida numérica `captures/checks.json`, la aprobación real de KDE/Wayland y las imágenes finales sí se conservan.
 
-## Cómo se generó
+## Medidas aceptadas
 
-- Entorno: el `.venv` del repositorio (PyQt6), `QT_QPA_PLATFORM=offscreen`.
-- Script: [`make_captures.py`](make_captures.py) (1440×900 y 980×600, temas
-  claro/oscuro, producción y spike).
-- Salida numérica: [`captures/checks.json`](captures/checks.json).
-- Capturas: [`captures/`](captures/) (ventana completa, 980×600, close-ups de
-  rail y app bar, flyout de enlaces, contact sheets `contact-*.png`).
+Los **13/13 chequeos numéricos** están en [`captures/checks.json`](captures/checks.json):
 
-## Chequeos numéricos (13/13 OK)
+| Chequeo | Valor verificado |
+|---|---:|
+| App bar / rail / botón / estado | 54 / 58 / 42 / 34 px |
+| Menú visible / toolbar de texto por defecto | `false` / `false` |
+| Botones del rail | 15 |
+| Icono hamburguesa | presente |
+| Tamaño mínimo | 900×560 |
+| Rail/QToolBars visibles | no es `QToolBar`; lista visible vacía |
+| Encaje a 980×600 | sí; botón conserva 42 px |
 
-| Chequeo | Esperado | Real |
-|---|---|---|
-| Altura de la app bar | 54 px | 54 px |
-| Ancho del rail | 58 px | 58 px |
-| Botones del rail | 42 px | 42 px |
-| Barra de estado | 34 px | 34 px |
-| `QMenuBar` visible | `False` | `False` |
-| Text toolbar visible por defecto | `False` | `False` |
-| Botones en el rail | 15 | 15 |
-| Icono de hamburguesa | presente | presente |
-| Tamaño mínimo de la ventana | 900×560 | 900×560 |
-| El rail es un `QToolBar` | `False` | `False` |
-| `QToolBar` visibles | `[]` | `[]` |
-| Encaja en 980×600 | sí | sí |
-| Botón 42 px a 980×600 | 42 px | 42 px |
+En la comparación RGB a 1440×900, las medias de shell fueron: app bar claro `(249,250,251)` producción vs `(247,248,250)` referencia; oscuro `(20,29,49)` vs `(21,31,51)`; rail claro `(251,252,253)` vs `(248,250,251)`; oscuro `(18,27,46)` vs `(20,30,49)`; estado claro `(252,253,253)` vs `(249,250,250)`; oscuro `(17,26,45)` vs `(19,29,47)`. Medición de tinta del primer icono: x=23–35 en ambas superficies tras corregir el desplazamiento de 8 px.
 
-## Comparación por regiones (media RGB, 1440×900)
+## Matriz de aceptación
 
-| Región | Prod claro | Spike claro | Prod oscuro | Spike oscuro |
-|---|---|---|---|---|
-| App bar | (249, 250, 251) | (247, 248, 250) | (20, 29, 49) | (21, 31, 51) |
-| Rail | (251, 252, 253) | (248, 250, 251) | (18, 27, 46) | (20, 30, 49) |
-| Estado | (252, 253, 253) | (249, 250, 250) | (17, 26, 45) | (19, 29, 47) |
+Los once criterios se aceptaron: app bar sin menubar visible; menú accesible por hamburguesa/Alt; toolbar de texto contextual; rail `QWidget`; botones/iconos centrados; acciones Clean2D/Validar/Numerar accesibles; flyout por segundo clic/clic derecho; barra de estado funcional; ajuste a 980×600; temas claro/oscuro; acciones, atajos, menús y handlers conservados. La evidencia vigente es el JSON numérico, tests UI archivados, capturas canónicas [`../after/`](../after/README.md) y la inspección KDE/Wayland.
 
-Los iconos del rail se midieron por *ink* de píxeles: primer botón (puntero)
-en **x 23–35** tanto en producción como en el spike (antes del fix de
-centrado, producción estaba en x 13–27: desplazado 8 px a la izquierda).
-El fondo del rail ahora sigue el token `surface` en ambos temas (fix del
-viewport del `QScrollArea`: Qt no estiliza el viewport con `> QWidget`; se
-usa el patrón "nieto transparente + fondo del scroll").
+La aprobación manual no se sustituye por offscreen: se conservan [`real-qt-wayland-light.png`](real-kde/real-qt-wayland-light.png), [`real-qt-wayland-dark.png`](real-kde/real-qt-wayland-dark.png), [`hidpi-icon-sheet.png`](real-kde/hidpi-icon-sheet.png), los diagnósticos de plataforma y `real-capture-comparison.json`.
 
-## Matriz de aceptación visual
+## Residuos explícitos
 
-| # | Criterio | Veredicto | Evidencia |
-|---|---|---|---|
-| 1 | App bar de 54 px, sin `QMenuBar` visible | **SÍ** | `checks.json`, `prod-appbar-light.png` |
-| 2 | Menú accesible (hamburguesa + tecla Alt) | **SÍ** | `test_alt_opens_menu_popup_and_hamburger_exists`, smoke funcional |
-| 3 | Text toolbar oculta por defecto, contextual | **SÍ** | `test_text_toolbar_hidden_by_default_and_contextual` |
-| 4 | Rail = `QWidget` de 58 px (sin `QToolBar` visible) | **SÍ** | `checks.json`, `prod-rail-*.png` |
-| 5 | 15 botones de 42 px, iconos 21 px, **centrados**, sin recortes, sin badges kbd | **SÍ** | comparación de ink (x 23–35), `prod-rail-*.png`, `test_no_kbd_badges_in_rail` |
-| 6 | Clean2D / Validar / Numerar fuera del rail, `QAction` vivos | **SÍ** | `test_clean2d_validate_numbering_remain_accessible_without_rail_buttons` |
-| 7 | 1er clic activa · 2º clic (categoría activa) y clic derecho abren flyout | **SÍ** | `test_second_click_on_active_category_opens_flyout`, `prod-bond-flyout-light.png` |
-| 8 | Barra de estado de 34 px (tool / IUPAC / carga) | **SÍ** | `checks.json`, `prod-full-*.png` |
-| 9 | Encaja en 980×600 sin micro-iconos (scroll compacto invisible) | **SÍ** | `checks.json`, `prod-980x600-light.png`, `contact-980x600.png` |
-| 10 | Temas claro/oscuro equivalentes al spike (franja shell) | **SÍ** | tabla de media RGB, `prod-full-dark.png` vs `spike-full-dark.png` |
-| 11 | Acciones, atajos, menús, handlers intactos (funcional) | **SÍ** | suite UI dirigida (320+ tests), suite completa (solo 4 fallos de baseline preexistentes) |
+- El canvas productivo dibuja la escena real; el prototipo mostraba una demo. No es diferencia de shell.
+- No se creó un panel derecho falso; producción usa SidePanel/widgets reales.
+- Los iconos orbitales `QPainter` quedan documentados por su contrato/OpenSpec; su migración no fue requisito para esta campaña.
+- La comparación homogénea before/after no es posible: no hay PNG original de Fase 0 versionado.
 
-### Residuos documentados (no bloquean la aceptación)
-
-- **Lienzo**: la producción pinta la escena real (molécula + retícula); el
-  spike pinta su demo. La diferencia de píxeles en la región del lienzo es
-  esperada y no es un fallo de la shell.
-- **Panel derecho**: el spike lo simula; por instrucción de esta tarea no se
-  implementa un panel falso — la zona derecha sigue siendo lienzo.
-- **Iconos de orbitales**: residuo SVG documentado en el OpenSpec de la
-  Fase 4 (se reutilizan iconos `QPainter` existentes; migración a SVG
-  diferida).
-
-## Veredicto
-
-**CONVERGENCIA ALCANZADA**: los 13 chequeos numéricos pasan, las regiones de
-shell (app bar, rail, estado) coinciden con el spike en ambos temas dentro
-del ruido de los iconos, y los 11 criterios de la matriz son SÍ. La función
-se preserva íntegramente (ver `AGENT_REPORT.md`, sección "Convergencia
-visual con el spike PyQt6 aprobado").
+La cronología, correcciones Qt y QA final están resumidos en [`docs/history/CAMPAIGNS.md`](../../history/CAMPAIGNS.md) y en el [reporte de Fase 8](../../../openspec/changes/ui-modernization-final-qa-release-2026-10-02/report.md).

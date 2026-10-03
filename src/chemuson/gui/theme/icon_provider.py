@@ -1,10 +1,10 @@
 """IconProvider: SVG → QIcon/QPixmap con tinte, caché y HiDPI.
 
-Fase 1 (infraestructura) del plan de modernización de la UI; la Fase 2
-(``openspec/changes/2026-09-24-modernize-ui-svg-icons``) puebla el set de
-SVG estáticos, añade la API dinámica (``icon_dynamic``/``pixmap_dynamic``)
-y convierte ``gui/icons.py`` en fachada sobre este provider. Modelo del
-provider del spike aprobado (``docs/ui-modernization/pyqt6-spike/icons.py``).
+La infraestructura de la modernización usa SVG estáticos y una API dinámica
+(``icon_dynamic``/``pixmap_dynamic``); los cambios y sus contratos están en
+los OpenSpecs archivados de la Fase 2. El prototipo visual inicial probó el
+concepto, pero su implementación de demostración se retiró al cerrar la
+campaña; la aplicación usa este provider de producción.
 
 Contrato:
 - Iconos estáticos: ``src/chemuson/gui/theme/icons/i-<name>.svg`` (rejilla

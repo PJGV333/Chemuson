@@ -6,6 +6,7 @@ import argparse
 import os
 import statistics
 import sys
+import tempfile
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -35,13 +36,12 @@ from chemuson.gui.orbitals import (
 
 
 REFERENCE_SHEET = ROOT / "tests" / "data" / "orbitals" / "reference_sheet.png"
-OUTPUT_DIR = ROOT / "tests" / "data" / "orbitals" / "fit_report"
-REFERENCE_CROPS_DIR = OUTPUT_DIR / "reference_crops"
-CURRENT_CROPS_DIR = OUTPUT_DIR / "current_crops"
-OVERLAY_DIR = OUTPUT_DIR / "overlay"
-REPORT_PATH = OUTPUT_DIR / "report.txt"
-OVERLAY_SHEET_PATH = OUTPUT_DIR / "overlay_sheet.png"
-PALETTE_PREVIEW_PATH = ROOT / "tests" / "data" / "orbitals" / "palette_preview.png"
+DEFAULT_OUTPUT_DIR = Path(
+    os.environ.get(
+        "CHEMUSON_ORBITAL_REPORT_DIR",
+        Path(tempfile.gettempdir()) / "chemuson" / "orbital-fit-report",
+    )
+)
 
 CANVAS_SIZE = 96
 BG = QColor("#FFFFFF")
@@ -306,16 +306,30 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         default=REFERENCE_SHEET if REFERENCE_SHEET.exists() else None,
         help="Hoja raster opcional para overlay. Si se omite, el reporte no fuerza comparacion externa.",
     )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=DEFAULT_OUTPUT_DIR,
+        help=f"Directorio para las imágenes y el reporte (default: {DEFAULT_OUTPUT_DIR})",
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _build_arg_parser().parse_args(argv)
     _ensure_qapp()
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    REFERENCE_CROPS_DIR.mkdir(parents=True, exist_ok=True)
-    CURRENT_CROPS_DIR.mkdir(parents=True, exist_ok=True)
-    OVERLAY_DIR.mkdir(parents=True, exist_ok=True)
+    output_dir = args.output_dir.expanduser().resolve()
+    reference_crops_dir = output_dir / "reference_crops"
+    current_crops_dir = output_dir / "current_crops"
+    overlay_dir = output_dir / "overlay"
+    report_path = output_dir / "report.txt"
+    overlay_sheet_path = output_dir / "overlay_sheet.png"
+    palette_preview_path = output_dir / "palette_preview.png"
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    reference_crops_dir.mkdir(parents=True, exist_ok=True)
+    current_crops_dir.mkdir(parents=True, exist_ok=True)
+    overlay_dir.mkdir(parents=True, exist_ok=True)
 
     payload = load_orbital_presets_payload(args.config, include_docs=True)
     renderer = build_orbital_renderer(payload)
@@ -334,16 +348,16 @@ def main(argv: list[str] | None = None) -> int:
 
     for kind in ORBITAL_PALETTE_MODEL.entries:
         current = _render_current_crop(renderer, kind)
-        current.save(str(CURRENT_CROPS_DIR / f"{kind}.png"))
+        current.save(str(current_crops_dir / f"{kind}.png"))
         current_crops[kind] = current
 
         if reference_sheet is not None:
             reference = _crop_reference(kind, reference_sheet)
-            reference.save(str(REFERENCE_CROPS_DIR / f"{kind}.png"))
+            reference.save(str(reference_crops_dir / f"{kind}.png"))
             reference_crops[kind] = reference
 
     palette = renderer.render_palette_image(ORBITAL_PALETTE_MODEL)
-    palette.save(str(PALETTE_PREVIEW_PATH))
+    palette.save(str(palette_preview_path))
 
     for kind in ORBITAL_PALETTE_MODEL.entries:
         family = _kind_family(kind)
@@ -355,12 +369,12 @@ def main(argv: list[str] | None = None) -> int:
         if reference_sheet is not None:
             reference_mask = _mask_from_image(reference_crops[kind])
             overlay = _overlay(reference_mask, current_mask)
-            overlay.save(str(OVERLAY_DIR / f"{kind}.png"))
+            overlay.save(str(overlay_dir / f"{kind}.png"))
             overlay_crops[kind] = overlay
             ref_iou = _iou(reference_mask, current_mask)
             reference_ious.append(ref_iou)
         else:
-            current_crops[kind].save(str(OVERLAY_DIR / f"{kind}.png"))
+            current_crops[kind].save(str(overlay_dir / f"{kind}.png"))
             overlay_crops[kind] = current_crops[kind]
 
         bbox = _bbox(current_mask)
@@ -399,7 +413,7 @@ def main(argv: list[str] | None = None) -> int:
         metrics.update(_family_metric_strings(renderer, family))
         report_lines.append(_report_line(kind, metrics))
 
-    _compose_normalized_sheet(overlay_crops, OVERLAY_SHEET_PATH)
+    _compose_normalized_sheet(overlay_crops, overlay_sheet_path)
 
     family_lines = []
     seen_families: list[str] = []
@@ -414,14 +428,14 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     average_ref_iou = statistics.fmean(reference_ious) if reference_ious else 0.0
-    REPORT_PATH.write_text(
+    report_path.write_text(
         "\n".join(
             [
                 f"config={args.config}",
                 f"reference_sheet={args.reference if reference_sheet is not None else 'none'}",
                 "mode=preview_overlay_only",
-                f"palette_preview={PALETTE_PREVIEW_PATH}",
-                f"overlay_sheet={OVERLAY_SHEET_PATH}",
+                f"palette_preview={palette_preview_path}",
+                f"overlay_sheet={overlay_sheet_path}",
                 f"average_ref_iou={average_ref_iou:.4f}",
                 "",
                 "Silhouette Consistency",
@@ -435,9 +449,9 @@ def main(argv: list[str] | None = None) -> int:
         encoding="utf-8",
     )
 
-    print(f"palette_preview={PALETTE_PREVIEW_PATH}")
-    print(f"overlay_sheet={OVERLAY_SHEET_PATH}")
-    print(f"report={REPORT_PATH}")
+    print(f"palette_preview={palette_preview_path}")
+    print(f"overlay_sheet={overlay_sheet_path}")
+    print(f"report={report_path}")
     return 0
 
 

@@ -1,20 +1,20 @@
 # Tasks: Repository hygiene and historical consolidation
 
 ## 1. Baseline and campaign memory
-- [ ] Record baseline measurements, test results, HEAD and status.
-- [ ] Audit Git history, OpenSpec archives, prior reports and all remote branches.
-- [ ] Write `docs/history/CAMPAIGNS.md` with campaign outcomes, decisions, lessons and branch SHAs.
-- [ ] Write `docs/history/REPOSITORY_POLICY.md`.
+- [x] Record baseline measurements, test results, HEAD and status.
+- [x] Audit Git history, OpenSpec archives, prior reports and all remote branches.
+- [x] Write `docs/history/CAMPAIGNS.md` with campaign outcomes, decisions, lessons and branch SHAs.
+- [x] Write `docs/history/REPOSITORY_POLICY.md`.
 
 ## 2. Conservative audits
-- [ ] Audit all remote/local branches; classify each and record safe deletion candidates and unique work.
-- [ ] Audit `src/sys` references and package/test/asset loading; remove only if unused.
-- [ ] Audit code/API candidates with imports/AST and dynamic consumer checks; remove only SAFE_DELETE candidates.
-- [ ] Audit UI/OpenSpec screenshots, `tests/archive`, historical assets and redundant reports; preserve Markdown/canonical specs and useful evidence.
+- [x] Audit all remote/local branches; classify each and record safe deletion candidates and unique work.
+- [x] Audit `src/sys` references and package/test/asset loading; remove only if unused.
+- [x] Audit code/API candidates with imports/AST and dynamic consumer checks; remove only SAFE_DELETE candidates.
+- [x] Audit UI/OpenSpec screenshots, `tests/archive`, historical assets and redundant reports; preserve Markdown/canonical specs and useful evidence.
 
 ## 3. Cleanup and validation
-- [ ] Remove confirmed artifacts/files and add only precise ignore rules.
-- [ ] Run compileall, architecture tests, targeted UI tests, full suite, scoped Ruff, OpenSpec strict, diff check and Qt offscreen smoke; investigate any new failure and stop if regression/asset loss.
+- [x] Remove confirmed artifacts/files and add only precise ignore rules.
+- [x] Run compileall, architecture tests, targeted UI tests, full suite, scoped Ruff, OpenSpec strict, diff check and Qt offscreen smoke; investigate any new failure and stop if regression/asset loss.
 - [ ] Re-measure tree, source/docs/tests/OpenSpec, `.git`, pack size, bytes/files and blob inventory; record future history-rewrite estimate without executing it.
 
 ## 4. Branch lifecycle and closure
