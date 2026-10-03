@@ -122,8 +122,8 @@ sin atajo registrado (Ctrl+K sigue perteneciendo a
 
 ### Requirement: Tema light/dark en app bar y pestañas
 
-La app bar, sus iconos, la `DocumentTabBar` (hover, selected, dirty, close)
-y la píldora SHALL actualizarse al cambiar de tema light → dark → light,
+La app bar, sus iconos, la `DocumentTabBar` y la píldora SHALL actualizarse al
+cambiar de tema light → dark → light, incluyendo hover, selected, dirty y close,
 sin que ningún icono conserve el tinte del tema anterior (caché del
 `IconProvider` con el color en la clave) y sin crecer verticalmente.
 
@@ -156,8 +156,8 @@ funcional.
 
 ### Requirement: Iconos SVG de la app bar válidos
 
-Los 8 SVG nuevos (`plus`, `search`, `moon`, `sun`, `sliders`, `flask`, `x`,
-`doc`) SHALL cumplir el contrato del set de la Fase 2 (XML válido,
+Los iconos `plus`, `search`, `moon`, `sun`, `sliders`, `flask`, `x` y `doc` SHALL
+cumplir el contrato del set de la Fase 2 (8 SVG, XML válido,
 `viewBox="0 0 24 24"`, `currentColor`, sin raster) y estar cubiertos por el
 inventario/paridad de `tests/test_ui_svg_icons.py`.
 

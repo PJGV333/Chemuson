@@ -156,10 +156,10 @@ testeable. No se usa fuzzy-search externo.
 
 ### Requirement: Navegación y ejecución por teclado
 
-Con la paleta abierta: `↑`/`↓` mueven la selección; `Enter` ejecuta la fila
-seleccionada exactamente una vez y cierra la paleta; `Esc` cierra sin ejecutar;
-el clic en una fila ejecuta esa fila. Las `QAction` disabled SHALL no ejecutarse
-y se reflejen visualmente.
+Con la paleta abierta, `↑`/`↓` SHALL mover la selección; `Enter` SHALL
+ejecutar la fila seleccionada exactamente una vez y cerrar la paleta; `Esc`
+SHALL cerrar sin ejecutar; el clic en una fila SHALL ejecutar esa fila. Las
+`QAction` disabled SHALL no ejecutarse y SHALL reflejarse visualmente.
 
 #### Scenario: ↑/↓ cambia la selección
 - **GIVEN** la paleta abierta con ≥ 2 resultados
