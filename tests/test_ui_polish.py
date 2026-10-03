@@ -13,6 +13,11 @@ Cubre:
 - Refresco de la ``CommandPalette`` tras mutación de plantillas.
 - Onboarding nativo de primera ejecución (3 pasos, semántica de
   persistencia de "No volver a mostrar", no-repetir).
+- Render del onboarding: máscara por resta de caminos (``outer - inner``) sin
+  ``CompositionMode_Clear``, tarjeta theme-aware (QSS de tokens) y layout
+  estable entre pasos.
+- Plantillas: activación con un solo clic (una emisión), clic en categoría (0),
+  doble clic sin duplicar, Enter por teclado y payload histórico.
 
 No toca química (Clean2D/ChemName), persistencia ``.cmsn`` ni orbital math.
 """
@@ -25,7 +30,7 @@ from PyQt6.QtWidgets import QApplication
 
 from chemuson.gui.app_bar import _tooltip_from_action
 from chemuson.gui.main_window import ChemusonWindow
-from chemuson.gui.onboarding import OnboardingOverlay
+from chemuson.gui.onboarding import _MASK_COLOR, OnboardingOverlay
 from chemuson.gui.tool_rail import _tooltip_for_action
 
 
@@ -650,4 +655,304 @@ def test_onboarding_reappears_when_not_completed(_qapp, _isolated_config_home):
     overlay2 = _find_onboarding(win2)
     assert overlay2 is not None, "debe volver a aparecer en el siguiente arranque"
     win2.close()
+    QApplication.processEvents()
+
+
+# ---------------------------------------------------------------------------
+# 6. Onboarding: máscara por resta de caminos (sin ``CompositionMode_Clear``)
+# ---------------------------------------------------------------------------
+def _show_onboarding(win: ChemusonWindow) -> OnboardingOverlay:
+    """Monta el overlay sobre la ventana y procesa eventos (para medir)."""
+    overlay = OnboardingOverlay(win, [win.tool_rail, win.canvas, win.side_panel])
+    overlay.show()
+    QApplication.processEvents()
+    return overlay
+
+
+def test_onboarding_mask_is_path_subtraction_and_hole_is_transparent(win):
+    """La máscara se rellena con ``outer - inner``; el agujero no se limpia.
+
+    ``CompositionMode_Clear`` dejaba franjas/bordes negros en KDE/Wayland real
+    (a veces hasta la barra inferior). El contrato es geométrico, no de
+    limpieza de píxeles: el camino rellenable contiene los puntos fuera del
+    agujero y NO contiene su centro, de modo que el agujero queda sin pintar y
+    la ventana se ve a través del overlay.
+    """
+    import inspect
+
+    from PyQt6.QtCore import QPointF
+
+    from chemuson.gui.onboarding import OnboardingOverlay
+
+    paint_source = inspect.getsource(OnboardingOverlay.paintEvent)
+    assert "CompositionMode" not in paint_source, (
+        "la máscara no debe limpiar píxeles con ``CompositionMode_Clear``"
+    )
+    assert "subtracted" in inspect.getsource(OnboardingOverlay._mask_path), (
+        "la máscara debe obtenerse restando caminos (outer - inner)"
+    )
+
+    overlay = _show_onboarding(win)
+    QApplication.processEvents()
+
+    path = overlay._mask_path()
+    center = QPointF(overlay.hole.center())
+    assert path.contains(QPointF(2.0, 2.0)), "fuera del agujero debe rellenarse"
+    assert not path.contains(center), "el agujero debe quedar sin pintar"
+
+    image = overlay.grab().toImage()
+    assert image.pixelColor(int(center.x()), int(center.y())).alpha() == 0, (
+        "el agujero debe ser transparente (la ventana se ve a través)"
+    )
+    assert image.pixelColor(2, 2).alpha() == _MASK_COLOR.alpha(), (
+        "la máscara conserva su color/alfa fuera del agujero"
+    )
+    overlay.close()
+    QApplication.processEvents()
+
+
+def test_onboarding_hole_tracks_each_target_zone(win):
+    """El agujero se posiciona sobre ToolRail, Canvas y SidePanel en cada paso."""
+    overlay = _show_onboarding(win)
+    for step in range(3):
+        overlay._step = step
+        overlay._relayout()
+        QApplication.processEvents()
+        target = overlay._targets[step]
+        hole = overlay.hole
+        assert target is not None and hole.isValid(), f"paso {step + 1}: sin agujero"
+        # El agujero es el rect del objetivo con el margen interior.
+        assert hole.width() == target.width() - 2 * 6
+        assert hole.height() == target.height() - 2 * 6
+    overlay.close()
+    QApplication.processEvents()
+
+
+# ---------------------------------------------------------------------------
+# 7. Onboarding: tarjeta theme-aware (QSS de tokens, sin colores hardcodeados)
+# ---------------------------------------------------------------------------
+def test_onboarding_card_has_no_hardcoded_colors():
+    """La tarjeta se presenta con objectName + QSS de tokens, no con colores fijos."""
+    import inspect
+
+    from chemuson.gui.onboarding import _Card
+
+    card_source = inspect.getsource(_Card)
+    assert "setStyleSheet" not in card_source, "la tarjeta no usa setStyleSheet por widget"
+    assert "QColor" not in card_source, "la tarjeta no define colores propios"
+    assert "paintEvent" not in card_source, (
+        "el fondo de la tarjeta lo resuelve el QSS, no un paintEvent con color fijo"
+    )
+
+    from chemuson.gui.theme.qss import get_main_stylesheet
+    from chemuson.gui.theme.tokens import get_tokens
+
+    for theme in ("light", "dark"):
+        qss = get_main_stylesheet(theme)
+        assert "#onboardCard {" in qss, f"falta la regla de la tarjeta en {theme}"
+        assert f"background-color: {get_tokens(theme)['surface']}" in qss
+
+
+def test_onboarding_card_renders_theme_surface():
+    """En light y dark la tarjeta pinta el ``surface`` del tema activo."""
+    from PyQt6.QtCore import Qt
+
+    from chemuson.gui.theme.tokens import get_tokens
+
+    def _rgb(hex_color: str) -> tuple[int, int, int]:
+        hex_color = hex_color.lstrip("#")
+        return tuple(int(hex_color[i:i + 2], 16) for i in (0, 2, 4))
+
+    expected = {theme: _rgb(str(get_tokens(theme)["surface"])) for theme in ("light", "dark")}
+    for theme, color in expected.items():
+        window = ChemusonWindow()
+        window.toggle_theme(theme == "dark")
+        window.resize(1440, 900)
+        window.show()
+        QApplication.processEvents()
+        overlay = _show_onboarding(window)
+        card = overlay.card
+        assert card.objectName() == "onboardCard"
+        assert card.testAttribute(Qt.WidgetAttribute.WA_StyledBackground), (
+            "el fondo QSS de un QWidget requiere WA_StyledBackground"
+        )
+        image = card.grab().toImage()
+        px = image.pixelColor(12, 12)
+        assert (px.red(), px.green(), px.blue()) == color, (
+            f"tarjeta en {theme}: {px.getRgb()} != surface {color}"
+        )
+        overlay.close()
+        window.close()
+        QApplication.processEvents()
+
+
+def test_onboarding_card_layout_is_stable_and_fits(win):
+    """Sin clipping y sin saltos al cambiar de paso; botones centrados."""
+    from PyQt6.QtCore import QRect, Qt
+    from PyQt6.QtGui import QFontMetrics
+    from PyQt6.QtWidgets import QHBoxLayout
+
+    from chemuson.gui.onboarding import _CARD_PADDING_X, _STEPS
+
+    overlay = _show_onboarding(win)
+    card = overlay.card
+    available = card.width() - 2 * _CARD_PADDING_X
+
+    row = None
+    for i in range(card.layout().count()):
+        item = card.layout().itemAt(i)
+        if isinstance(item, QHBoxLayout):
+            row = item
+            break
+    assert row is not None, "la tarjeta debe tener la fila de botones"
+    assert row.itemAt(0).spacerItem() is not None, "los botones deben estar centrados"
+    assert row.itemAt(row.count() - 1).spacerItem() is not None, (
+        "los botones deben estar centrados"
+    )
+
+    heights = []
+    for step in range(len(_STEPS)):
+        card.set_step(step)
+        card.adjustSize()
+        QApplication.processEvents()
+
+        title, body, _key = _STEPS[step]
+        metrics = QFontMetrics(card.body_label.font())
+        needed = metrics.boundingRect(
+            QRect(0, 0, available, 0),
+            Qt.AlignmentFlag.AlignLeft | Qt.TextFlag.TextWordWrap,
+            body,
+        ).height()
+        assert card.body_label.height() >= needed, f"paso {step + 1}: texto recortado"
+        assert card.title_label.height() >= metrics.height(), "título recortado"
+        assert card.no_more_checkbox.sizeHint().width() <= available, (
+            "'No volver a mostrar' no cabe en la tarjeta"
+        )
+        assert sum(b.sizeHint().width() for b in card.buttons) <= available, (
+            "la fila de botones no cabe en la tarjeta"
+        )
+        heights.append(card.height())
+
+    assert len(set(heights)) == 1, f"la tarjeta cambia de tamaño entre pasos: {heights}"
+    overlay.close()
+    QApplication.processEvents()
+
+
+# ---------------------------------------------------------------------------
+# 8. Plantillas: activación con un solo clic (una vía por dispositivo)
+# ---------------------------------------------------------------------------
+def _template_dock_for_clicks():
+    from chemuson.gui.docks import PlantillasDock
+
+    dock = PlantillasDock()
+    dock.resize(340, 400)
+    dock.show()
+    QApplication.processEvents()
+    dock.set_templates(
+        [
+            {
+                "name": "Aromáticos",
+                "templates": [{"id": "tpl_benzene", "name": "Benceno"}],
+            }
+        ]
+    )
+    return dock
+
+
+def _click_tree(dock, item, double: bool = False) -> None:
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtTest import QTest
+
+    pos = dock.tree.visualItemRect(item).center()
+    if double:
+        QTest.mouseDClick(
+            dock.tree.viewport(), Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier, pos,
+        )
+    else:
+        QTest.mouseClick(
+            dock.tree.viewport(), Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier, pos,
+        )
+    QApplication.processEvents()
+
+
+def test_template_single_click_emits_exactly_once():
+    dock = _template_dock_for_clicks()
+    emitted: list[dict] = []
+    dock.template_selected.connect(emitted.append)
+
+    template = dock.tree.topLevelItem(0).child(0)
+    _click_tree(dock, template)
+
+    assert len(emitted) == 1, f"un clic debe emitir una sola vez: {emitted}"
+    dock.close()
+    QApplication.processEvents()
+
+
+def test_template_category_click_emits_nothing():
+    dock = _template_dock_for_clicks()
+    emitted: list[dict] = []
+    dock.template_selected.connect(emitted.append)
+
+    _click_tree(dock, dock.tree.topLevelItem(0))
+
+    assert emitted == [], "un clic sobre categoría no debe emitir plantilla"
+    dock.close()
+    QApplication.processEvents()
+
+
+def test_template_double_click_does_not_emit_twice():
+    """Un doble clic real = press/release (``clicked``) + ``doubleClicked``.
+
+    Solo el camino del ratón (``itemClicked``) emite, así que el total es 1.
+    """
+    dock = _template_dock_for_clicks()
+    emitted: list[dict] = []
+    dock.template_selected.connect(emitted.append)
+
+    template = dock.tree.topLevelItem(0).child(0)
+    _click_tree(dock, template)          # primer clic
+    _click_tree(dock, template, double=True)  # doble clic sobre el mismo item
+
+    assert len(emitted) == 1, f"doble clic no debe duplicar la emisión: {emitted}"
+    dock.close()
+    QApplication.processEvents()
+
+
+def test_template_enter_key_emits_exactly_once():
+    """El contrato de teclado se conserva: Enter sobre una plantilla seleccionada."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtTest import QTest
+
+    dock = _template_dock_for_clicks()
+    emitted: list[dict] = []
+    dock.template_selected.connect(emitted.append)
+
+    template = dock.tree.topLevelItem(0).child(0)
+    dock.tree.setCurrentItem(template)
+    QTest.keyClick(dock.tree, Qt.Key.Key_Return)
+    QApplication.processEvents()
+
+    assert len(emitted) == 1, f"Enter debe emitir una sola vez: {emitted}"
+    dock.close()
+    QApplication.processEvents()
+
+
+def test_template_click_payload_matches_historical():
+    """El payload y el ``template_id`` son exactamente los históricos."""
+    from PyQt6.QtCore import Qt
+
+    dock = _template_dock_for_clicks()
+    emitted: list[dict] = []
+    dock.template_selected.connect(emitted.append)
+
+    template = dock.tree.topLevelItem(0).child(0)
+    historical = template.data(0, Qt.ItemDataRole.UserRole)
+    _click_tree(dock, template)
+
+    assert emitted == [historical], f"payload cambiado: {emitted} != {historical}"
+    assert emitted[0]["id"] == "tpl_benzene"
+    assert emitted[0]["kind"] == "template"
+    dock.close()
     QApplication.processEvents()

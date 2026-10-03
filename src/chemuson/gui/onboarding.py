@@ -15,6 +15,23 @@ coordenadas del overlay. La persistencia usa ``platform.settings`` (el mismo
 ``QSettings`` que el resto de la GUI) con la clave
 ``ui/onboarding/completed``.
 
+**Render de la máscara (corrección post-push, gate manual Fase 7):** el
+agujero se obtiene restando caminos con :class:`QPainterPath`
+(``outer - inner``) y rellenando solo esa diferencia. Antes se usaba
+``CompositionMode_Clear``, que en KDE/Wayland real dejaba franjas/bordes
+negros alrededor de la zona resaltada (a veces hasta la barra inferior):
+limpiar píxeles del backing store de un widget translúcido no es un contrato
+estable en ese backend. Con la resta de caminos la máscara se rellena y el
+agujero simplemente **no se pinta**, de modo que la ventana bajo el overlay
+se ve sin artefactos en ToolRail, Canvas y SidePanel, en light y dark.
+
+**Presentación de la tarjeta:** la tarjeta es theme-aware. Ya no usa colores
+hardcodeados ni ``setStyleSheet`` por widget: se resuelve con el sistema QSS
+de tokens (``#onboardCard`` y sus hijos en ``theme/qss.py``), de modo que
+light y dark son coherentes y los hijos (``QCheckBox``, ``QPushButton``) no
+heredan un tema distinto al de la tarjeta. La altura del cuerpo se fija al
+máximo de los tres pasos para que la tarjeta no "salte" al cambiar de paso.
+
 El overlay emite :signal:`finished(bool)` al cerrarse: ``True`` si se
 completaron los tres pasos o si se cerró anticipadamente con "No volver a
 mostrar" marcado; ``False`` si se cerró anticipadamente sin marcarlo (el
@@ -23,8 +40,8 @@ decide la persistencia de ``ui/onboarding/completed``.
 """
 from __future__ import annotations
 
-from PyQt6.QtCore import QPoint, QRect, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QPainter
+from PyQt6.QtCore import QPoint, QRect, QRectF, Qt, pyqtSignal
+from PyQt6.QtGui import QColor, QFontMetrics, QPainter, QPainterPath
 from PyQt6.QtWidgets import (
     QCheckBox,
     QHBoxLayout,
@@ -49,20 +66,27 @@ _STEPS: tuple[tuple[str, str, str], ...] = (
 )
 
 #: Color de la máscara (slate-900 ~55 %): oscurece sin tapar el contenido.
+#: Es intencionadamente oscuro en ambos temas (spotlight de onboarding).
 _MASK_COLOR = QColor(15, 23, 42, 140)
 #: Radio del borde del "agujero" que resalta la zona.
 _HOLE_RADIUS = 10
 #: Margen entre el agujero y el borde del widget objetivo.
 _HOLE_MARGIN = 6
-#: Métricas de la tarjeta.
+#: Métricas de la tarjeta. Los colores NO viven aquí: los resuelve el QSS de
+#: tokens (``#onboardCard`` en ``theme/qss.py``) para que light y dark sean
+#: coherentes.
 _CARD_WIDTH = 320
-_CARD_BG = QColor("#F8FAFC")
-_CARD_TITLE = QColor("#0F172A")
-_CARD_BODY = QColor("#475569")
+_CARD_PADDING_X = 18
+_CARD_PADDING_Y = 14
 
 
 class _Card(QWidget):
-    """Tarjeta del paso: título, texto, navegación y ``No volver a mostrar``."""
+    """Tarjeta del paso: título, texto, navegación y ``No volver a mostrar``.
+
+    La presentación es theme-aware vía objectName + QSS de tokens
+    (``#onboardCard`` y sus hijos en ``theme/qss.py``); la tarjeta no pinta
+    colores propios ni hereda un tema distinto al de sus hijos.
+    """
 
     previous = pyqtSignal()
     next = pyqtSignal()
@@ -71,35 +95,52 @@ class _Card(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("onboardCard")
+        # El fondo/borde de la tarjeta viene del QSS de tokens: un QWidget
+        # necesita WA_StyledBackground para que QSS le pinte el fondo.
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setFixedWidth(_CARD_WIDTH)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 14, 18, 14)
+        layout.setContentsMargins(_CARD_PADDING_X, _CARD_PADDING_Y,
+                                  _CARD_PADDING_X, _CARD_PADDING_Y)
         layout.setSpacing(8)
 
         self._title = QLabel(self)
-        self._title.setStyleSheet(f"color: {_CARD_TITLE.name()}; font-weight: 600;")
+        self._title.setObjectName("onboardTitle")
+        self._title.setWordWrap(True)
         layout.addWidget(self._title)
 
         self._body = QLabel(self)
+        self._body.setObjectName("onboardBody")
         self._body.setWordWrap(True)
-        self._body.setStyleSheet(f"color: {_CARD_BODY.name()};")
+        # Altura reservada = la que necesita el texto más largo de los tres
+        # pasos: así la tarjeta no cambia de tamaño al navegar (sin saltos).
+        self._body.setMinimumHeight(self._max_body_height())
         layout.addWidget(self._body)
 
         self._no_more = QCheckBox("No volver a mostrar", self)
+        self._no_more.setObjectName("onboardCheck")
         layout.addWidget(self._no_more)
 
+        # Botones centrados (stretch a ambos lados): con el QSS de la tarjeta
+        # (``min-width: 0``) los tres caben sin clipping.
         buttons = QHBoxLayout()
+        buttons.setContentsMargins(0, 0, 0, 0)
+        buttons.setSpacing(8)
         self._prev = QPushButton("Anterior", self)
-        self._next = QPushButton("Siguiente", self)
+        self._prev.setObjectName("onboardPrev")
         self._close = QPushButton("Cerrar", self)
+        self._close.setObjectName("onboardClose")
+        self._next = QPushButton("Siguiente", self)
+        self._next.setObjectName("onboardNext")
         self._prev.clicked.connect(self.previous.emit)
         self._next.clicked.connect(self.next.emit)
         self._close.clicked.connect(self.close.emit)
+        buttons.addStretch(1)
         buttons.addWidget(self._prev)
         buttons.addWidget(self._close)
-        buttons.addStretch(1)
         buttons.addWidget(self._next)
+        buttons.addStretch(1)
         layout.addLayout(buttons)
 
     def set_step(self, index: int) -> None:
@@ -109,6 +150,19 @@ class _Card(QWidget):
         self._prev.setEnabled(index > 0)
         self._next.setText("Siguiente")
 
+    def _max_body_height(self) -> int:
+        """Altura (px) que necesita el texto más largo de los tres pasos."""
+        metrics = QFontMetrics(self._body.font())
+        available = _CARD_WIDTH - 2 * _CARD_PADDING_X
+        return max(
+            metrics.boundingRect(
+                QRect(0, 0, available, 0),
+                Qt.AlignmentFlag.AlignLeft | Qt.TextFlag.TextWordWrap,
+                body,
+            ).height()
+            for _title, body, _key in _STEPS
+        )
+
     @property
     def no_more(self) -> bool:
         return self._no_more.isChecked()
@@ -117,16 +171,25 @@ class _Card(QWidget):
     def no_more(self, value: bool) -> None:
         self._no_more.setChecked(value)
 
-    def paintEvent(self, event) -> None:  # noqa: N802
-        painter = QPainter(self)
-        painter.setBrush(QColor(_CARD_BG))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawRoundedRect(self.rect().adjusted(1, 1, -1, -1), 10, 10)
-        painter.end()
+    @property
+    def title_label(self) -> QLabel:
+        return self._title
+
+    @property
+    def body_label(self) -> QLabel:
+        return self._body
+
+    @property
+    def no_more_checkbox(self) -> QCheckBox:
+        return self._no_more
+
+    @property
+    def buttons(self) -> tuple[QPushButton, QPushButton, QPushButton]:
+        return (self._prev, self._close, self._next)
 
 
 class OnboardingOverlay(QWidget):
-    """Overlay de onboarding: máscara + agujero sobre la zona + tarjeta.
+    """Overlay de onboarding: máscara + agujero transparente + tarjeta.
 
     Args:
         parent: Ventana principal que contiene el overlay.
@@ -148,6 +211,7 @@ class OnboardingOverlay(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
         self._targets = list(targets) if targets is not None else [None, None, None]
         self._step = 0
+        self._hole = QRect()
         self._card = _Card(self)
         self._card.previous.connect(self._on_previous)
         self._card.next.connect(self._on_next)
@@ -233,10 +297,18 @@ class OnboardingOverlay(QWidget):
     # Geometría (máscara + agujero + tarjeta)
     # ------------------------------------------------------------------
     def _target_rect(self, index: int) -> QRect:
+        """Rect del widget objetivo en coordenadas del overlay.
+
+        El overlay es hermano (no ancestro) de las zonas resaltadas, así que
+        ``mapTo`` no es válido: se mapea globalmente y se trae al overlay, que
+        cubre exactamente la rect de la ventana. Sin esto Qt avisa
+        (``QWidget::mapTo(): parent must be in parent hierarchy``) y el agujero
+        queda mal posicionado.
+        """
         widget = self._targets[index] if index < len(self._targets) else None
         if widget is None or not widget.isVisible():
             return QRect()
-        top_left = widget.mapTo(self, QPoint(0, 0))
+        top_left = self.mapFromGlobal(widget.mapToGlobal(QPoint(0, 0)))
         return QRect(top_left, widget.size())
 
     def _relayout(self) -> None:
@@ -266,15 +338,26 @@ class OnboardingOverlay(QWidget):
         card.raise_()
 
     # ------------------------------------------------------------------
-    # Pintado (máscara + agujero transparente)
+    # Pintado (máscara por resta de caminos; el agujero NO se pinta)
     # ------------------------------------------------------------------
+    def _mask_path(self) -> QPainterPath:
+        """Camino rellenable de la máscara: ``rect completo - agujero``.
+
+        El contrato es geométrico, no de "limpieza de píxeles": se rellena
+        únicamente ``outer - inner`` y el agujero queda sin pintar (visible a
+        través del overlay). Esto evita los artefactos negros que producía
+        ``CompositionMode_Clear`` en KDE/Wayland.
+        """
+        outer = QPainterPath()
+        outer.addRect(QRectF(self.rect()))
+        inner = QPainterPath()
+        inner.addRoundedRect(QRectF(self._hole), _HOLE_RADIUS, _HOLE_RADIUS)
+        return outer.subtracted(inner)
+
     def paintEvent(self, event) -> None:  # noqa: N802
         painter = QPainter(self)
-        painter.fillRect(self.rect(), _MASK_COLOR)
-        # El "agujero" se limpia para dejar ver la ventana bajo la máscara.
-        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
-        painter.drawRoundedRect(self._hole, _HOLE_RADIUS, _HOLE_RADIUS)
-        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.fillPath(self._mask_path(), _MASK_COLOR)
         painter.end()
 
     # ------------------------------------------------------------------
@@ -283,6 +366,11 @@ class OnboardingOverlay(QWidget):
     @property
     def step(self) -> int:
         return self._step
+
+    @property
+    def hole(self) -> QRect:
+        """Rectángulo del agujero actual (en coordenadas del overlay)."""
+        return self._hole
 
     @property
     def no_more(self) -> bool:
