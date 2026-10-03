@@ -15,7 +15,7 @@ Esta política define cómo reducir deuda histórica sin convertir una limpieza 
 - Clasificar cada rama como `SAFE_TO_DELETE`, `PRESERVE_UNIQUE`, `ACTIVE/PROTECTED` o `NEEDS_OWNER_REVIEW`.
 - `SAFE_TO_DELETE` exige que la punta remota sea ancestro de `origin/main`, que su SHA quede registrado y que la campaña confirme que el trabajo está representado en la rama principal. Borrar solo después de los gates y de un push normal de la rama de mantenimiento.
 - Una rama no ancestro no se borra por su nombre, edad, similitud visual o porque parte de su contenido parezca integrado. Revisar commits/árbol; documentar y conservar trabajo único hasta decisión explícita. Proteger ramas de publicación (`gh-pages`) y experimentos químicos activos.
-- No borrar `main`, no integrar la rama de higiene en `main`, no usar force-push, rebase/cherry-pick/merge commit ni reescribir historia durante mantenimiento.
+- No borrar `main`, no usar force-push ni reescribir historia durante una campaña de higiene. La rama de higiene no se integra a `main` automáticamente; la integración final requiere validación, revisión y aprobación explícita. Durante la campaña no se usan rebase, cherry-pick ni merge commit.
 - Eliminar refs no equivale a compactar objetos: no ejecutar `git gc --prune`, BFG, `filter-repo` o `filter-branch` como parte de la limpieza. Una propuesta futura para cambiar historia necesita otro alcance, lista de ramas afectadas, backup, estimación real de pack y decisión del propietario.
 
 ## 3. Auditoría y eliminación de código
