@@ -142,6 +142,21 @@ El overlay SHALL ser hijo de la ventana principal (shell) y SHALL NO agregar
 items a la escena ni modificar la lógica del canvas (no tocar canvas ni
 escena).
 
+**Render de la máscara (corrección post-push, gate manual Fase 7)**: el agujero
+SHALL obtenerse restando caminos (`outer - inner`) y rellenar únicamente esa
+diferencia; el overlay SHALL NO limpiar píxeles con `CompositionMode_Clear`
+(produce franjas/bordes negros en KDE/Wayland real). La máscara oscura y el
+agujero transparente se conservan en ToolRail, Canvas y SidePanel, en light y
+dark.
+
+**Tarjeta (corrección post-push, gate manual Fase 7)**: la tarjeta SHALL ser
+theme-aware mediante `objectName` + el sistema QSS de tokens, sin colores
+hardcodeados ni `setStyleSheet` por widget; sus hijos (`QCheckBox`, `QPushButton`)
+SHALL usar el mismo tema. El texto y la casilla "No volver a mostrar" SHALL ser
+completamente visibles, los botones SHALL estar centrados y la tarjeta SHALL
+conservar su tamaño entre pasos (sin clipping ni saltos). La semántica de
+persistencia de `finished(bool)` NO cambia.
+
 #### Scenario: Primera ejecución muestra los 3 pasos
 - **GIVEN** una `QSettings` sin `ui/onboarding/completed`
 - **WHEN** se monta el shell
@@ -172,6 +187,47 @@ escena).
   queda verdadero
 - **AND** al montar el shell de nuevo (siguiente arranque) el overlay se
   muestra otra vez.
+
+#### Scenario: La máscara no produce bordes negros
+- **GIVEN** el overlay en cada paso (ToolRail, Canvas, SidePanel), light y dark
+- **WHEN** se construye el camino rellenable de la máscara
+- **THEN** el camino contiene los puntos fuera del agujero y NO contiene el
+  centro del agujero
+- **AND** `paintEvent` no usa `CompositionMode_Clear`
+- **AND** al renderizar, el centro del agujero tiene alpha 0 y la máscara
+  conserva su alpha fuera del agujero.
+
+#### Scenario: Tarjeta theme-aware y estable
+- **GIVEN** la ventana en light y en dark con el overlay abierto
+- **WHEN** se renderiza la tarjeta
+- **THEN** su fondo es el token `surface` del tema activo
+- **AND** el título, el cuerpo y la casilla caben en el ancho útil
+- **AND** la altura de la tarjeta es la misma en los tres pasos.
+
+### Requirement: Activación de plantilla con un solo clic
+
+Un clic simple sobre un item de plantilla (`kind == "template"`) en `PlantillasDock.tree` SHALL emitir exactamente una vez `template_selected` con el mismo payload y el mismo `template_id` que el contrato histórico. Un clic sobre una categoría SHALL emitir cero veces. Un doble clic SHALL NO producir una segunda emisión adicional. La activación por teclado (Enter/Return sobre una plantilla seleccionada) SHALL conservarse. La deduplicación SHALL ser contractual (una sola vía por dispositivo: ratón `itemClicked`, teclado `eventFilter` del árbol), **sin temporizadores**. La ruta funcional de inserción (`start_template_insert_by_id` → `template_controller`) no cambia y no se toca la química de las plantillas.
+
+#### Scenario: Clic simple emite una sola vez
+- **GIVEN** un `PlantillasDock` con una plantilla
+- **WHEN** se hace clic simple sobre el item de la plantilla
+- **THEN** `template_selected` se emite exactamente 1 vez con el payload
+  histórico (`kind`, `id`, `name`, `category`).
+
+#### Scenario: Clic sobre categoría no emite
+- **GIVEN** el árbol con una categoría y una plantilla
+- **WHEN** se hace clic sobre la categoría
+- **THEN** `template_selected` se emite 0 veces.
+
+#### Scenario: Doble clic no duplica la emisión
+- **GIVEN** un item de plantilla
+- **WHEN** se hace clic y luego doble clic sobre el mismo item
+- **THEN** el total de emisiones es 1 (no 2 ni 3).
+
+#### Scenario: Enter conserva la activación por teclado
+- **GIVEN** una plantilla seleccionada en el árbol
+- **WHEN** se pulsa Enter/Return
+- **THEN** `template_selected` se emite exactamente 1 vez.
 
 ### Requirement: Registro de plantillas coherente en la paleta
 

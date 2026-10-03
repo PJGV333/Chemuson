@@ -1284,6 +1284,64 @@ QToolButton[cls="flyFoot"]:hover {{
 QToolButton[cls="flyFoot"]:pressed {{
     background-color: {c('accentSoft')};
 }}
+
+/* =========================================================== */
+/* Onboarding (Fase 7): tarjeta theme-aware                    */
+/* =========================================================== */
+/* La tarjeta NO tiene colores hardcodeados en el código: se resuelve aquí,
+ * con objectNames (``onboardCard`` y sus hijos). El overlay pinta solo la
+ * máscara por resta de caminos, así que el fondo de la tarjeta viene del QSS
+ * (``WA_StyledBackground``). El radio del ``border-radius`` coincide con el
+ * de la tarjeta (10 px). */
+#onboardCard {{
+    background-color: {c('surface')};
+    border: 1px solid {c('borderStrong')};
+    border-radius: 10px;
+}}
+
+#onboardCard QLabel {{
+    color: {c('text1')};
+    background: transparent;
+}}
+
+#onboardCard QLabel#onboardTitle {{
+    color: {c('text1')};
+    font-weight: 600;
+}}
+
+#onboardCard QLabel#onboardBody {{
+    color: {c('text2')};
+}}
+
+#onboardCard QCheckBox {{
+    color: {c('text1')};
+    background: transparent;
+    spacing: 8px;
+}}
+
+#onboardCard QCheckBox:disabled {{
+    color: {c('text3')};
+    background: transparent;
+    border-color: {c('border')};
+}}
+
+/* Botones de la tarjeta: la hoja global pone ``min-width: 80px``, que recorta
+ * los tres botones en una tarjeta de 320 px. Aquí se ajustan al ancho real. */
+#onboardCard QPushButton {{
+    background-color: {c('accent')};
+    color: {c('onAccent')};
+    border: none;
+    border-radius: {_RADIUS_BTN}px;
+    padding: 6px 12px;
+    min-width: 0;
+    font-weight: 600;
+}}
+
+#onboardCard QPushButton:disabled {{
+    color: {c('text3')};
+    background-color: {c('surface3')};
+    border: 1px solid {c('border')};
+}}
 """
 
 

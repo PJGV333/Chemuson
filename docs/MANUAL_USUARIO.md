@@ -681,7 +681,9 @@ Botones:
 - **Importar.**
 - **Exportar.**
 
-Doble clic o activación sobre una plantilla inicia su inserción. Menú contextual:
+Un **clic simple** sobre una plantilla inicia su inserción (también `Enter`/`Return`
+sobre la plantilla seleccionada; el doble clic no duplica la inserción). Menú
+contextual:
 
 - Plantilla: Insertar, Renombrar plantilla, Eliminar plantilla.
 - Categoría: Renombrar categoría, Eliminar categoría.
@@ -867,7 +869,7 @@ La tabla de resultados muestra paso, energía, convergencia y mensaje. La energ�
 
 1. Abra **Ver > Plantillas**.
 2. Expanda una categoría.
-3. Active o haga doble clic en una plantilla.
+3. Haga **clic simple** en una plantilla (o `Enter` sobre ella seleccionada).
 4. Mueva la previsualización al lienzo.
 5. Haga clic en espacio vacío o sobre un átomo para insertarla/conectarla.
 6. Pulse `Esc` para cancelar.

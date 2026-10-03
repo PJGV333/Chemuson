@@ -175,6 +175,61 @@ comparativos `templates_montage_100.png` / `templates_montage_200.png`.
 - `QuickStartDialog` legado se conserva (menú Ayuda) — no se elimina
   (fuera de alcance).
 
+### D5.1. Render de la máscara: resta de caminos, no `CompositionMode_Clear` (corrección post-push, gate manual Fase 7)
+
+En KDE/Wayland real el `CompositionMode_Clear` del overlay producía
+franjas/bordes negros alrededor de las zonas resaltadas (ToolRail, Canvas y
+SidePanel), a veces hasta la barra inferior; al desaparecer el overlay los
+bordes desaparecían, así que el defecto era del overlay, no de la UI base.
+Limpiar píxeles del backing store de un widget translúcido no es un contrato
+estable en ese backend.
+
+Contrato adoptado (geométrico, equivalente en Qt y sin limpiar píxeles):
+
+1. `outer` = `QPainterPath` con el rect completo del overlay;
+2. `inner` = `QPainterPath` con el `roundedRect` de la zona objetivo;
+3. se rellena **únicamente** `outer - inner` con el color de máscara;
+4. el agujero no se pinta → queda transparente y la ventana se ve a través.
+
+Se conserva la máscara oscura (`_MASK_COLOR`, intencionadamente igual en light
+y dark) y el agujero transparente. No se toca el canvas ni la escena y no se
+añaden widgets a la escena. El mapeo de la zona usa coordenadas globales
+(`mapToGlobal` → `mapFromGlobal`): el overlay es hermano, no ancestro, de las
+zonas, por lo que `mapTo` no era válido (aviso de Qt y posicionamiento
+incorrecto).
+
+Test (no pixel-perfect frágil): `test_onboarding_mask_is_path_subtraction_and_hole_is_transparent`
+verifica el contrato del camino (`contains` fuera del agujero, `not contains` en
+su centro, `paintEvent` sin `CompositionMode`) y, al renderizar, que el centro
+del agujero tiene alpha 0 y la máscara conserva su alpha fuera. Evidencia:
+`onboarding_light_step{1,2,3}*.png` y `onboarding_dark_step{1,2,3}*.png`
+(offscreen, DPR 1 y DPR 2). Conteo de píxeles casi negros en
+`onboarding_step1.png`: **1668 antes → 0 después**.
+
+### D5.2. Tarjeta del onboarding: theme-aware por QSS de tokens (corrección post-push, gate manual Fase 7)
+
+La tarjeta tenía colores hardcodeados claros (`_CARD_BG`, `_CARD_TITLE`,
+`_CARD_BODY`) y `setStyleSheet` por widget, mientras sus hijos (`QCheckBox`,
+`QPushButton`) heredaban el tema global: en dark la tarjeta quedaba clara con
+texto oscuro y los controles desalineados.
+
+Decisión: presentación por **objectName + QSS de tokens** (`#onboardCard`,
+`#onboardTitle`, `#onboardBody`, `#onboardCheck`, `#onboardCard QPushButton`
+en `theme/qss.py`), sin colores hardcodeados ni `paintEvent` propio en la
+tarjeta (`WA_StyledBackground`). Light y dark resuelven `surface`/`text1`/
+`text2`/`accent` del tema activo.
+
+Layout: la altura del cuerpo se reserva con el máximo de los tres pasos
+(`QFontMetrics`), los botones se centran (stretch a ambos lados) y la regla de
+la tarjeta anula el `min-width: 80px` global, que recortaba los tres botones en
+una tarjeta de 320 px. La semántica de persistencia de `finished(bool)` NO se
+cambia.
+
+Tests: `test_onboarding_card_has_no_hardcoded_colors`,
+`test_onboarding_card_renders_theme_surface` (light `#FFFFFF`, dark `#29384F`)
+y `test_onboarding_card_layout_is_stable_and_fits` (altura estable entre pasos,
+botones y checkbox dentro del ancho útil, fila centrada).
+
 ### D6. Plantillas en CommandPalette: refresh defensivo pequeño
 
 Encadena la actualización existente (no se toca `TemplateLibrary` ni química):
@@ -229,6 +284,43 @@ correctamente Clean2D) y `tool_rail.py:396` (referencia a atajos de Clean2D).
 - §13 (barra de formato de texto) y §18 (paneles) se conservan (siguen
   exactos); §9 (Ayuda) gana una línea de la paleta de comandos como ruta
   rápida. No se renumeran §13–20.
+
+### D10. Plantillas: activación con un solo clic (corrección post-push, gate manual Fase 7)
+
+Antes, la activación dependía de `itemActivated` + `itemDoubleClicked` (doble
+clic). El usuario quiere colocar la plantilla con **un solo clic**.
+
+Una sola vía por dispositivo, sin temporizadores de deduplicación:
+
+- **ratón**: `itemClicked` → `_emit_template` (un clic = una emisión);
+- **teclado**: `Enter`/`Return` sobre el item seleccionado se resuelve en el
+  `eventFilter` del árbol (el contrato de navegación por teclado se conserva)
+  y se consume la tecla para que el árbol no active el item por segunda vez.
+
+`itemActivated` y `itemDoubleClicked` **no** se conectan: un doble clic real
+emite `clicked` (primer release) y luego `doubleClicked`; con una sola vía el
+total es 1 emisión. Un clic sobre categoría no emite (el payload `kind ==
+"category"` se descarta en `_emit_template`). El payload, el `template_id` y la
+ruta funcional (`start_template_insert_by_id` → `template_controller`) son
+exactamente los históricos.
+
+Tests: `test_template_single_click_emits_exactly_once`,
+`test_template_category_click_emits_nothing`,
+`test_template_double_click_does_not_emit_twice`,
+`test_template_enter_key_emits_exactly_once`,
+`test_template_click_payload_matches_historical` (QTest sobre el viewport real).
+Evidencia: `templates_click_simple.png`.
+
+### D11. Backlog separado: limpieza de química/geometría de plantillas
+
+El usuario confirmó que algunas plantillas no son estéticas o pueden no ser
+químicamente correctas (Haworth β, Fischer/cadena lineal, silla β, otras). **No
+se corrige en esta fase**: se registra como backlog separado
+**"Template chemistry/geometry cleanup"** para una campaña posterior, con su
+propio OpenSpec (baseline/regresión de Clean2D y de los molblocks). Esta
+intervención no toca `src/chemuson/clean2d/`, ChemName, `.cmsn`, geometría del
+canvas, hit-testing, grafo molecular ni los molblocks/átomos/enlaces de las
+plantillas.
 
 ## Riesgos y mitigación
 

@@ -205,3 +205,54 @@ recortadas (`templates_after_200.png`: benceno, piridina, silla β...).
   SMOKE PASS (la evidencia `hidpi_200.png` no se regeneró en este commit).
 - [x] 13.7 Commit `Fix template thumbnail HiDPI scaling`; push normal a
   `ui/modernization` (sin `--force`). NO iniciar Fase 8.
+
+## 14. Correcciones post-push del gate manual KDE/Wayland (tras `fd0c342`)
+
+Alcance exclusivamente: render del onboarding, presentación/theme de la tarjeta
+y activación de Plantillas con un solo clic. No se reabrieron otros puntos de
+Fase 7 ni se inició Fase 8.
+
+- [x] 14.1 **Máscara del onboarding**: el agujero se obtiene restando caminos
+  (`outer` = rect completo del overlay, `inner` = `roundedRect` de la zona) y se
+  rellena solo `outer - inner`; se elimina `CompositionMode_Clear` (franjas
+  negras en KDE/Wayland). Se conserva la máscara oscura y el agujero
+  transparente en ToolRail, Canvas y SidePanel, light y dark. El mapeo de la
+  zona pasa a coordenadas globales (`mapToGlobal` → `mapFromGlobal`), porque el
+  overlay es hermano —no ancestro— de las zonas y `mapTo` no era válido.
+- [x] 14.2 **Tarjeta theme-aware**: se eliminan `_CARD_BG`/`_CARD_TITLE`/
+  `_CARD_BODY` y los `setStyleSheet` por widget; la presentación se resuelve con
+  objectName + QSS de tokens (`#onboardCard` y sus hijos en `theme/qss.py`,
+  `WA_StyledBackground`). Botones centrados, `min-width: 0` en la tarjeta (la
+  hoja global recortaba los tres botones), altura del cuerpo reservada con el
+  máximo de los tres pasos (sin saltos) y checkbox completamente visible. La
+  semántica de persistencia de `finished(bool)` no cambia.
+- [x] 14.3 **Plantillas con un solo clic**: `itemClicked` (ratón) + `eventFilter`
+  del árbol para Enter/Return (teclado); se desconectan `itemActivated` y
+  `itemDoubleClicked`. Deduplicación contractual, sin temporizadores. Payload,
+  `template_id` y ruta de inserción idénticos a los históricos.
+- [x] 14.4 **Tests nuevos** (10): contrato del camino de la máscara + alpha del
+  agujero; agujero por zona; tarjeta sin colores hardcodeados; tarjeta renderiza
+  el `surface` del tema (light/dark); layout estable y sin clipping; 5 tests de
+  clic/teclado de Plantillas (1 emisión, categoría 0, doble clic no duplica,
+  Enter 1, payload histórico).
+- [x] 14.5 **Evidencia** (`tools/f7_onboarding_evidence.py`, offscreen, QSettings
+  aislado en un directorio temporal): `onboarding_light_step{1,2,3}.png`,
+  `onboarding_dark_step{1,2,3}.png`, las mismas a DPR 2
+  (`*_dpr2.png`), `onboarding_step1.png` regenerado y
+  `templates_click_simple.png`. Píxeles casi negros en `onboarding_step1.png`:
+  1668 → 0.
+- [x] 14.6 **Backlog registrado** (no se corrige ahora): "Template
+  chemistry/geometry cleanup" (Haworth β, Fischer/cadena lineal, silla β, otras)
+  para una campaña posterior; design.md D11.
+- [x] 14.7 **Validación**: `test_ui_polish.py` + `test_template_dock.py` = 36
+  passed (26 baseline + 10 nuevos); arquitectura (catálogo/imports/no-tools-in-src)
+  en verde; `compileall` OK; Ruff scoped = solo el F401 preexistente;
+  `git diff --check` OK; `openspec validate
+  2026-10-01-modernize-ui-polish --strict` válido; `pytest --collect-only` 1871
+  tests; suite completa `5 failed, 1846 passed, 20 skipped` (los mismos 5 fallos
+  preexistentes RDKit/async; `1836 + 10` passed vs. el baseline de esta PC).
+- [x] 14.8 **Manual** (`docs/MANUAL_USUARIO.md`): §18.1 y §22.1 actualizados a
+  la activación por clic simple (con `Enter`/`Return` como camino de teclado y
+  la nota de que el doble clic no duplica). No se renumeran secciones.
+- [x] 14.9 Commit `Fix onboarding rendering and template click UX`; push normal a
+  `ui/modernization` (sin `--force`). NO iniciar Fase 8.

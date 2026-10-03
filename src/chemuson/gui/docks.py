@@ -26,7 +26,7 @@ from PyQt6.QtWidgets import (
     QMenu,
     QTabWidget,
 )
-from PyQt6.QtCore import Qt, QSize, pyqtSignal
+from PyQt6.QtCore import QEvent, Qt, QSize, pyqtSignal
 from chemuson.gui.style import DrawingStyle
 
 #: Tamaño lógico (px) de los thumbnails de plantilla en el árbol de
@@ -74,8 +74,17 @@ class PlantillasDock(QDockWidget):
         self.tree.setHeaderHidden(True)
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self._show_context_menu)
-        self.tree.itemActivated.connect(self._emit_template)
-        self.tree.itemDoubleClicked.connect(self._emit_template)
+        # UX (gate manual Fase 7): la plantilla se activa con UN solo clic.
+        # Estrategia explícita de una sola vía por dispositivo (sin
+        # temporizadores de deduplicación):
+        #   - ratón: ``itemClicked`` (un clic = una emisión);
+        #   - teclado: Enter/Return en ``eventFilter`` (se conserva la
+        #     navegación por teclado sin duplicar el camino del ratón).
+        # ``itemActivated`` y ``itemDoubleClicked`` NO se conectan: un doble clic
+        # emitiría dos veces (click + activated). El payload y el ``template_id``
+        # son exactamente los históricos.
+        self.tree.itemClicked.connect(self._emit_template)
+        self.tree.installEventFilter(self)
         # Fase 7: tamaño lógico del thumbnail (88×56 del pixmap
         # ``template_preview_icon``); sin esto QTreeWidget lo reduce al
         # iconSize por defecto (~16 px) y la previsualización queda diminuta.
@@ -127,6 +136,22 @@ class PlantillasDock(QDockWidget):
                 group_item.addChild(child)
             self.tree.addTopLevelItem(group_item)
             group_item.setExpanded(True)
+
+    def eventFilter(self, obj, event) -> bool:  # noqa: N802
+        """Enter/Return sobre el item seleccionado: activa la plantilla.
+
+        El camino del ratón es ``itemClicked`` y el del teclado es este filtro,
+        de modo que cada activación produce exactamente una emisión de
+        ``template_selected``. Se consume la tecla para que el árbol no active
+        el item por segunda vez (deduplicación contractual, no temporal).
+        """
+        if obj is self.tree and event.type() == QEvent.Type.KeyPress:
+            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                item = self.tree.currentItem()
+                if item is not None:
+                    self._emit_template(item)
+                return True
+        return super().eventFilter(obj, event)
 
     def _emit_template(self, item: QTreeWidgetItem, _column: int = 0) -> None:
         """Emite la plantilla seleccionada si el item tiene datos."""

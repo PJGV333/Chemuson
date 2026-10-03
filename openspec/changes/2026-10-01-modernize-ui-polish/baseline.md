@@ -122,3 +122,33 @@ Criterio de parada de esta corrección: mismos 5 fallos preexistentes
 `git diff --check` OK y OpenSpec strict válido. Solo se toca el orden del DPR
 en el render del thumbnail; `iconSize` (88×56), grafo, átomos, enlaces,
 molblocks y geometría química permanecen intactos.
+
+## Baseline de la intervención post-push (tras `fd0c342`, gate manual KDE/Wayland)
+
+Estado registrado **antes** de tocar código para los tres puntos de esta
+intervención: (1) render de la máscara del onboarding, (2) presentación
+theme-aware de la tarjeta y (3) activación de Plantillas con un solo clic.
+
+Rama `ui/modernization`, HEAD `fd0c342`, árbol limpio, local == remoto.
+Logs en `/tmp/f7fix3/baseline_*.log`.
+
+- `git status --short`: vacío.
+- `python -m compileall src tests tools packaging`: OK (sin errores).
+- `pytest --collect-only -q`: `1861 tests collected in 0.46s`.
+- `pytest tests/test_ui_polish.py tests/test_template_dock.py -q`:
+  `26 passed in 5.47s`.
+- `ruff check src tests tools packaging --select F401,F811,F821,E722,E741`:
+  `Found 1 error` — F401 `math` en
+  `tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py:3`
+  (preexistente, fuera de alcance).
+
+Defecto visual de partida (evidencia `onboarding_step1.png` antes de la
+corrección): **1668 píxeles casi negros** (franjas/bordes de la máscara con
+`CompositionMode_Clear`); tras la corrección por resta de caminos: **0**.
+
+Criterio de parada de esta intervención: mismos 5 fallos preexistentes
+(idénticos), `1861 + 10` tests (`1871 collected`), `26 + 10 = 36` en los
+archivos dirigidos, Ruff solo el F401 preexistente, `git diff --check` OK y
+OpenSpec strict válido. No se toca química, canvas, escena, hit-testing,
+grafo molecular ni molblocks de las plantillas; la limpieza de
+química/geometría de plantillas queda como backlog separado (design.md D11).
