@@ -1,8 +1,8 @@
 # Baseline — repository hygiene closure
 
-**Date:** 2026-10-03 (local environment)  
-**Branch:** `maintenance/repository-hygiene-closure`  
-**HEAD / origin/main:** `1db4f63b52af79247745b3a8a220fb728348218c`  
+**Date:** 2026-10-03 (local environment)<br>
+**Branch:** `maintenance/repository-hygiene-closure`<br>
+**HEAD / origin/main:** `1db4f63b52af79247745b3a8a220fb728348218c`<br>
 **Initial status:** clean.
 
 ## Test baseline
