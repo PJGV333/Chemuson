@@ -95,6 +95,46 @@ The assistant SHALL expose stable result states `success`, `invalid_request`, `i
 - **WHEN** the result is produced
 - **THEN** its state SHALL be `cancelled` and it SHALL contain no graph
 
+### Requirement: ChemIO parser failures SHALL map to stable assistant outcomes
+
+The Molecular Assistant SHALL map only explicitly recognized ChemIO worker/parser error identifiers to stable `status`/`reason_code` pairs, and SHALL map all other parser/worker failures to `validation_error` with the generic reason `parser_error`.
+
+#### Scenario: ChemIO explicitly rejects a SMILES
+- **GIVEN** `smiles_to_molgraph_isolated` returns the explicit worker code `invalid_input`
+- **WHEN** Molecular Assistant classifies the validation result
+- **THEN** `status` SHALL be `invalid_structure`
+- **AND** `reason_code` SHALL be `invalid_smiles`
+- **AND** `validation_passed` SHALL be `false`
+- **AND** no `MolGraph` SHALL be returned
+
+#### Scenario: Isolated parser worker times out
+- **GIVEN** the ChemIO worker returns the explicit timeout code `timeout`
+- **WHEN** Molecular Assistant classifies the validation result
+- **THEN** `status` SHALL be `validation_error`
+- **AND** `reason_code` SHALL be `parser_timeout`
+- **AND** `validation_passed` SHALL be `null`
+- **AND** no `MolGraph` SHALL be returned
+
+#### Scenario: Known infrastructure failure uses a stable reason
+- **GIVEN** ChemIO reports the recognized infrastructure code `rdkit_unavailable`
+- **WHEN** Molecular Assistant classifies the validation result
+- **THEN** `status` SHALL be `validation_error`
+- **AND** `reason_code` SHALL be `parser_unavailable`
+- **AND** `validation_passed` SHALL be `null`
+
+#### Scenario: Other worker, protocol, parser, or unknown errors use the generic reason
+- **GIVEN** ChemIO reports a recognized worker/protocol failure such as `invalid_worker_json`, a parser failure, or an unrecognized error
+- **WHEN** Molecular Assistant classifies the validation result
+- **THEN** `status` SHALL be `validation_error`
+- **AND** `reason_code` SHALL be `parser_error`
+- **AND** `validation_passed` SHALL be `null`
+
+#### Scenario: Public reason codes are not inferred from diagnostic text
+- **GIVEN** a worker or parser failure includes substrings, `stderr`, `stdout`, detail fields, or arbitrary exception text
+- **WHEN** Molecular Assistant chooses its public failure reason
+- **THEN** it MUST NOT derive `reason_code` by inspecting that diagnostic content
+- **AND** absent an explicitly recognized error identifier, it SHALL use `validation_error` / `parser_error`
+
 ### Requirement: Provider and validation provenance SHALL be observable without unnecessary persistence
 
 Each operation result SHALL expose provider identity, model identity when available, proposed SMILES when extractable, validation outcome, state, and a stable failure reason without requiring persistence of prompt or provider payload.
