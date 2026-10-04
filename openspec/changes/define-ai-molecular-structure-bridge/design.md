@@ -31,7 +31,7 @@ M23 Molecular Assistant ──► protocolo de proveedor
 respuesta JSON estricta {"smiles": "..."}
           │
           ▼
-M01 chemio.smiles_to_molgraph ──► M00 MolGraph
+M01 chemuson.chemio.rdkit_safe.smiles_to_molgraph_isolated ──► M00 MolGraph
           │
           └─ resultado tipado: estado + procedencia + validación
                                       │
@@ -48,7 +48,7 @@ No se permite el flujo `Clean2D → IA`, ni que M23 importe/cargue la GUI o modi
 
 - Solicitud mínima: un texto de usuario (`description`/prompt) no vacío y limitado en tamaño; no se incluye historial, memoria, selección del canvas, documento ni comandos de edición.
 - Protocolo neutral al proveedor: operación única de generación que recibe la solicitud y el contrato/formato esperado, y devuelve contenido de respuesta como texto junto a `provider_id` y `model_id` opcional provenientes del transporte/configuración, nunca inferidos del JSON del modelo.
-- Primer adaptador futuro: HTTP no streaming compatible con `POST /v1/chat/completions`, modelo configurado explícitamente y respuesta de contenido JSON. La interfaz de aplicación no depende de SDK, esquema de error OpenAI ni clases del transporte. No se da por hecho que todos los servidores implementen extensiones no comunes; verificar compatibilidad con un endpoint de referencia en la fase de implementación.
+- Primer adaptador futuro: HTTP no streaming compatible con `POST /v1/chat/completions`, modelo configurado explícitamente y respuesta de contenido JSON. Si el endpoint anuncia soporte para JSON estructurado/constrained output, el adaptador SHOULD solicitarlo. Es una optimización opcional: el contrato provider-neutral no exige `response_format`, JSON mode, grammar ni extensiones de un servidor concreto, y ChemUSON MUST decodificar y validar siempre la respuesta contra su propio esquema estricto. La interfaz de aplicación no depende de SDK, esquema de error OpenAI ni clases del transporte. No se da por hecho que todos los servidores implementen extensiones no comunes; verificar compatibilidad con un endpoint de referencia en la fase de implementación.
 - No hay tool calling, retries de agente, streaming, funciones dinámicas, APIs de modelos ni petición directa desde GUI. Las credenciales, si una futura composición las inyecta, se tratan como secreto opaco, no se incluyen en prompts/logs/resultados; la UI/configuración persistente de claves queda fuera.
 
 ### Representación generada
@@ -80,7 +80,21 @@ Cada resultado lleva `status` de vocabulario estable:
 - `malformed_response`: respuesta vacía/incompleta, JSON/schema inválidos, campos extra o contenido externo;
 - `cancelled`: cancelación explícita antes de tener una estructura validada (si la implementación expone cancelación; nunca se presenta una respuesta parcial).
 
-Además se devuelve `reason_code` estable cuando no hay éxito (por ejemplo `empty_prompt`, `request_too_large`, `timeout`, `network_error`, `http_error`, `invalid_json`, `unexpected_fields`, `missing_smiles`, `empty_smiles`, `response_too_large`, `invalid_smiles`, `parser_timeout`, `parser_unavailable`, `cancelled`), separado del diagnóstico técnico no estable. `cancelled` se emite sólo ante cancelación explícita; Phase 1 no añade un comando interactivo de cancelación. No traducir detalle crudo de excepciones al contrato ni usarlo como código. Éxito incluye `validation_passed=true`; una solicitud rechazada, error de proveedor/respuesta o incapacidad de validar antes de una decisión química usa `null`; rechazo químico usa `false`.
+#### Mapeo determinista de errores del parser aislado
+
+`smiles_to_molgraph_isolated` devuelve un par `(graph, error)`. El error es un código de protocolo conocido en algunos casos, pero la función también puede aplanar excepciones a texto (`_run_worker` captura excepciones de subprocess y el wrapper captura errores de `molfile_to_molgraph`). M23 sólo mapeará códigos de la lista allowlist siguiente, comparados como identificadores completos; nunca derivará códigos públicos de substrings, `.detail`, `.stderr`, `.stdout`, clases ni texto arbitrario de excepciones.
+
+| Salida/código conocido de ChemIO o `_rdkit_worker.py` | Estado Molecular Assistant | `reason_code` público estable |
+| --- | --- | --- |
+| `invalid_input` (respuesta estructurada `ok: false` de `MolFromSmiles`) | `invalid_structure` | `invalid_smiles` |
+| `timeout` (timeout explícito del subprocess) | `validation_error` | `parser_timeout` |
+| `rdkit_unavailable` (código explícito del worker) | `validation_error` | `parser_unavailable` |
+| `empty_input`, `invalid_json`, `invalid_request`, `molblock_failed`, `invalid_worker_json`, `invalid_worker_payload`, `empty_molblock`, `worker_exit_code:<n>`, `worker_exit_signal:<n>`, `worker_error` | `validation_error` | `parser_error` |
+| Error ausente, desconocido, excepción de lanzamiento/subprocess o excepción del parser local entregada como texto | `validation_error` | `parser_error` |
+
+Los detalles técnicos, incluidos los códigos de salida numéricos, pueden conservarse sólo en diagnóstico interno sujeto a la política de privacidad; nunca sustituyen ni alteran `status`/`reason_code`. Si una salida no puede distinguirse con certeza como uno de los códigos explícitos anteriores, se clasifica por la fila genérica. En particular, no se interpreta el texto de una excepción para decidir que un SMILES era inválido.
+
+Los demás resultados usan `reason_code` estables: solicitud `empty_prompt`/`request_too_large`; proveedor `timeout`/`network_error`/`http_error`; respuesta `invalid_json`/`unexpected_fields`/`missing_smiles`/`empty_smiles`/`response_too_large`; cancelación `cancelled`. No exponer detalle crudo. `cancelled` se emite sólo ante cancelación explícita; Phase 1 no añade un comando interactivo de cancelación. Éxito incluye `validation_passed=true`; una solicitud rechazada, error de proveedor/respuesta o incapacidad de validar usa `null`; rechazo químico `invalid_input` usa `false`.
 
 El resultado conserva `provider_id`, `model_id` opcional, el SMILES propuesto (si se pudo extraer), estado/validación y código estable. Un SMILES rechazado se conserva para diagnóstico sólo en el objeto de resultado durante la operación; no se escribe a documentos, historial, archivos de log ni telemetría persistente por defecto. Nunca guardar prompt, texto bruto, credenciales, cabeceras ni cuerpos HTTP.
 
@@ -105,14 +119,14 @@ La prueba de que un fallo no modifica el canvas debe ejecutarse con el primer ad
 ## Riesgos y decisiones pospuestas
 
 - El importador ordinario `smiles_to_molgraph` hace fallback a RDKit en proceso si falla el worker; la frontera IA elige intencionalmente el helper aislado ya existente y falla de forma controlada en esa situación. La equivalencia química se prueba cuando ambas rutas aceptan la entrada; no se introduce otro parser ni se altera el importador ordinario.
-- La compatibilidad real de `response_format`/JSON mode varía entre servidores “OpenAI-compatible”; el contrato valida JSON estrictamente aunque el servidor no garantice modo JSON. La primera implementación probará al menos un endpoint local compatible; llama-server y LM Studio son ejemplos de servidores, no dependencias de producción.
+- La disponibilidad y semántica de JSON constrained output varía entre servidores “OpenAI-compatible”; el adaptador puede solicitarlo cuando se anuncie, pero el contrato no lo exige y el decoder propio sigue siendo obligatorio. La primera implementación probará al menos un endpoint local compatible; llama-server y LM Studio son ejemplos de servidores, no dependencias de producción.
 - La inserción SMILES actual selecciona candidatos M02 antes de ChemIO. El módulo IA no debe llamar esa fachada para validación; futura integración decidirá si representa el grafo aceptado tal cual o invoca Clean2D separadamente como operación gráfica explícita.
 - El Phase 1 no afirma exactitud química semántica, rendimiento de modelos ni mejora de Clean2D.
 
 ## Roadmap no vinculante
 
-1. **Phase 1 / Foundation:** servicio, protocolo, un adaptador compatible OpenAI Chat Completions, salida JSON estricta con SMILES, validación ChemIO, diagnóstico y tests fake/offline.
-2. **Phase 2:** comando/UI mínimo «dibujar molécula a partir de descripción» e inserción segura/undoable.
-3. **Phase 3:** más proveedores/modelos tras contratos y compatibilidad medida.
-4. **Phase 4:** acciones moleculares estructuradas con autorización y validaciones adicionales.
-5. **Phase 5:** campaña separada de evaluación Clean2D (estructura validada → Clean2D → métricas before/after), con su propio OpenSpec, datos y gates. Nunca una dependencia M02→IA.
+1. **Phase 1 — Foundation:** servicio, protocolo, un adaptador compatible OpenAI Chat Completions, salida JSON estricta con SMILES, validación ChemIO, diagnóstico y tests fake/offline.
+2. **Phase 2 — UI/comando mínimo:** descripción de usuario → estructura validada → inserción segura/undoable.
+3. **Phase 3 — evaluación Clean2D, OpenSpec separado:** usar estructuras ya validadas como entrada de una campaña/evaluador, ejecutar Clean2D y comparar métricas before/after. La orquestación de evaluación puede consumir el resultado de M23 y llamar a M02; M02 no importa, invoca ni depende de IA/proveedores.
+4. **Phase 4 — más proveedores/modelos:** ampliar proveedores tras contratos y compatibilidad medida.
+5. **Phase 5 — edición molecular estructurada mediante IA:** acciones como cambios moleculares explícitos con autorización y validaciones adicionales.
