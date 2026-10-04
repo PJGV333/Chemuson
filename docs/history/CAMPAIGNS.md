@@ -44,6 +44,10 @@ El detalle voluminoso de esos reportes quedó consolidado aquí; los contratos y
 
 **Decisiones/no objetivos:** sin cambios a lógica química, Clean2D, ChemName, geometría de plantillas, serialización `.cmsn`, versión o dependencias; sin iniciar Fase 9. Las capturas de `docs/ui-modernization/after/` son la evidencia canónica de estado final; las capturas reales aprobadas KDE/Wayland se conservan aparte. Iteraciones intermedias, generadores de una sola fase y el ejecutable del spike se retiraron tras resumir decisiones y resultados.
 
+### AI Molecular Structure Bridge — Phase 1 Foundation
+
+La fase se cerró y archivó como `2026-10-04-define-ai-molecular-structure-bridge`. M23 ofrece un servicio provider-neutral, salida JSON SMILES estricta, validación ChemIO aislada y un adaptador HTTP OpenAI-compatible explícito; no se añadió UI ni se modificó Clean2D. La suite automática usa providers/transports falsos; los 60 tests moleculares focalizados también pasaron con RDKit en `.venv`. Quedó diferida a Phase 2 la prueba de atomicidad observable del canvas. El baseline completo conserva el fallo histórico de `test_compchem_controller_generates_async_with_fake_backend` y Ruff el F401 de la prueba Clean2D.
+
 ### Clean2D — campañas separadas y no integradas
 
 **No se modificó código Clean2D en la campaña UI ni en esta higiene.** En `main` se conservan las campañas OpenSpec de julio sobre corpus, snapshots, métricas, baseline/diff review, determinismo, preservación compleja y layouts aromáticos/mistos. Sus propuestas y baselines permanecen en los archivos OpenSpec archivados.
