@@ -549,7 +549,6 @@ def test_redirect_handler_does_not_follow_server_selected_destination():
         {"base_url": "https://provider.example", "model": "model", "timeout_s": True},
         {"base_url": "https://provider.example", "model": "model", "timeout_s": float("inf")},
         {"base_url": "https://provider.example", "model": "model", "timeout_s": 10**1000},
-        {"base_url": "https://provider.example", "model": "model", "api_key": "first\\nsecond"},
     ],
 )
 def test_provider_configuration_requires_explicit_safe_endpoint_and_finite_timeout(
@@ -557,3 +556,15 @@ def test_provider_configuration_requires_explicit_safe_endpoint_and_finite_timeo
 ):
     with pytest.raises(ValueError):
         OpenAICompatibleConfig(**config_kwargs)
+
+
+@pytest.mark.parametrize("api_key", ["first\nsecond", "first\rsecond", "first\r\nsecond"])
+def test_api_key_rejects_actual_line_break_characters(api_key):
+    with pytest.raises(ValueError, match="api_key"):
+        OpenAICompatibleConfig("https://provider.example", "model", api_key=api_key)
+
+
+@pytest.mark.parametrize("api_key", ["first\\nsecond", "first\\rsecond"])
+def test_api_key_allows_literal_backslash_sequences(api_key):
+    config = OpenAICompatibleConfig("https://provider.example", "model", api_key=api_key)
+    assert config.api_key == api_key

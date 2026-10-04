@@ -105,8 +105,8 @@ class OpenAICompatibleConfig:
             raise ValueError("timeout_s must be finite and positive")
         if self.api_key is not None and (
             not isinstance(self.api_key, str)
-            or "\\r" in self.api_key
-            or "\\n" in self.api_key
+            or "\r" in self.api_key
+            or "\n" in self.api_key
         ):
             raise ValueError("api_key must be an opaque single-line string")
         if not isinstance(self.supports_json_output, bool):
