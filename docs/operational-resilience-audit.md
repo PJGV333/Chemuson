@@ -17,5 +17,6 @@ Fecha: 2026-09-19
 ## Decisión
 
 La frontera operacional es suficiente con M22 más los owners existentes de GUI,
-controllers, bootstrap y update. No new module is created. M23 y M24 siguen
-reservados para futuras fronteras justificadas.
+controllers, bootstrap y update. No new operational-resilience module is created.
+M23 se asigna posteriormente a `molecular_assistant`, fuera de esta frontera; M24
+sigue reservado para una futura frontera justificada.

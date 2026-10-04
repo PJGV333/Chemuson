@@ -23,6 +23,8 @@ el paquete ni una excepción arquitectónica pendiente.
 
 ## M23
 
-M23 queda reservado para una futura frontera que demuestre una cohesión nueva.
-No se crea un módulo vacío ni se fragmenta M14 sólo para aumentar el catálogo.
-No new module is created.
+M23 quedó reservado en esta auditoría para una futura frontera que demostrara una cohesión nueva. No se crea un módulo vacío ni se fragmenta M14 sólo para aumentar el catálogo. No new module is created.
+
+## Evolución posterior
+
+La campaña `define-ai-molecular-structure-bridge` asigna después M23 a la frontera independiente `molecular_assistant`; M14 conserva íntegramente la propiedad de auto-actualización. M24 continúa reservado.

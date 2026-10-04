@@ -2,7 +2,7 @@
 
 ## Estado y límites
 
-Este diseño describe Phase 1 / Foundation como trabajo futuro. El cambio activo actual sólo fija contratos; no implementa el servicio, transporte, adaptador, UI ni pruebas de runtime. El servicio no pertenece a Clean2D y no es un agente autónomo.
+Phase 1 / Foundation implementa el servicio, el adaptador HTTP compatible con OpenAI y pruebas de runtime deterministas. La UI, el comando de usuario y la integración de canvas siguen fuera del alcance. El servicio no pertenece a Clean2D y no es un agente autónomo.
 
 ## Reconocimiento de ChemUSON
 
@@ -14,11 +14,11 @@ Este diseño describe Phase 1 / Foundation como trabajo futuro. El cambio activo
 - **Servicio existente distinto:** M16 `name2structure` resuelve nombres vía tabla estática y PubChem, valida por `rdkit_safe.smiles_to_molgraph_isolated` y retorna `NameToStructureResult`. No modela instrucciones en lenguaje natural ni proveedores sustituibles; no se convierte en el módulo IA.
 - **Arquitectura:** M02 depende de M00/M01, M01 depende de M00 y ninguno necesita IA. M08/M10 son capas de orquestación de UI; M19 es sólo composition root de arranque, no un service locator ni un lugar para lógica de dominio.
 
-## Módulo y dependencias propuestas
+## Módulo y dependencias
 
-Reservar el siguiente ID disponible, M23, para el módulo de aplicación propuesto `molecular_assistant` en `src/chemuson/molecular_assistant/`. Mantener en ese módulo el caso de uso, protocolo de proveedor, adaptador OpenAI-compatible futuro, parser de respuesta y modelos de resultado: no crear una jerarquía de paquetes/proveedores ni un SDK/plugin framework para un solo proveedor.
+M23 `molecular_assistant` vive en `src/chemuson/molecular_assistant/` y contiene el caso de uso, protocolo de proveedor, adaptador OpenAI-compatible, decoder y modelos de resultado; no crea una jerarquía de proveedores ni un SDK/plugin framework para un solo proveedor.
 
-Dependencias de M23 propuestas: M01 `chemio` para el worker/parser aislado existente, M00 `core` para exponer `MolGraph` y biblioteca estándar para JSON/contratos. M23 no importa M02, M04/ChemName, M08–M13/GUI, M16/name2structure ni M19. Los consumidores GUI futuros dependerán de M23; ni M00, M01 ni M02 dependerán de él. Actualizar el catálogo de módulos, la especificación de límites y tests arquitectónicos sólo en el cambio futuro que cree el paquete, evitando tocar `architecture/modules.yml` durante esta planificación.
+M23 depende únicamente de M00 `core`, M01 `chemio` y la biblioteca estándar. Prohíbe M02, M04/ChemName, M08–M13/GUI, M16/name2structure y M19. M00, M01 y M02 prohíben la dependencia inversa de M23. El catálogo, el contrato de límites y las pruebas arquitectónicas registran estas reglas.
 
 ```text
 futura acción GUI / controller (fuera de Phase 1)
@@ -26,7 +26,7 @@ futura acción GUI / controller (fuera de Phase 1)
                     ▼
 M23 Molecular Assistant ──► protocolo de proveedor
           │                          │
-          │                          └─ futuro adaptador OpenAI Chat Completions
+          │                          └─ adaptador OpenAI Chat Completions
           ▼
 respuesta JSON estricta {"smiles": "..."}
           │
@@ -48,8 +48,8 @@ No se permite el flujo `Clean2D → IA`, ni que M23 importe/cargue la GUI o modi
 
 - Solicitud mínima: un texto de usuario (`description`/prompt) no vacío y limitado en tamaño; no se incluye historial, memoria, selección del canvas, documento ni comandos de edición.
 - Protocolo neutral al proveedor: operación única de generación que recibe la solicitud y el contrato/formato esperado, y devuelve contenido de respuesta como texto junto a `provider_id` y `model_id` opcional provenientes del transporte/configuración, nunca inferidos del JSON del modelo.
-- Primer adaptador futuro: HTTP no streaming compatible con `POST /v1/chat/completions`, modelo configurado explícitamente y respuesta de contenido JSON. Si el endpoint anuncia soporte para JSON estructurado/constrained output, el adaptador SHOULD solicitarlo. Es una optimización opcional: el contrato provider-neutral no exige `response_format`, JSON mode, grammar ni extensiones de un servidor concreto, y ChemUSON MUST decodificar y validar siempre la respuesta contra su propio esquema estricto. La interfaz de aplicación no depende de SDK, esquema de error OpenAI ni clases del transporte. No se da por hecho que todos los servidores implementen extensiones no comunes; verificar compatibilidad con un endpoint de referencia en la fase de implementación.
-- No hay tool calling, retries de agente, streaming, funciones dinámicas, APIs de modelos ni petición directa desde GUI. Las credenciales, si una futura composición las inyecta, se tratan como secreto opaco, no se incluyen en prompts/logs/resultados; la UI/configuración persistente de claves queda fuera.
+- Adaptador inicial: HTTP no streaming compatible con `POST /v1/chat/completions`, con base URL y modelo configurados explícitamente y contenido JSON. La opción `supports_json_output` solicita `response_format: {"type":"json_object"}` sólo cuando el caller declara compatible al endpoint; por defecto no se envía. ChemUSON siempre decodifica y valida la respuesta contra su propio esquema estricto. La interfaz provider-neutral no depende de SDK ni tipos del transporte.
+- No hay tool calling, retries de agente, streaming, funciones dinámicas, APIs de modelos ni petición directa desde GUI. El caller puede inyectar credenciales como secreto opaco; no se incluyen en prompts/logs/resultados. La UI y la configuración persistente de claves quedan fuera.
 
 ### Representación generada
 
@@ -110,22 +110,22 @@ El resultado conserva `provider_id`, `model_id` opcional, el SMILES propuesto (s
 
 Exponer al llamador campos estructurados: `provider_id`, `model_id` cuando esté disponible, `proposed_smiles` si fue extraído, `status`, `validation_passed` y `reason_code`. Mensajes/detalles técnicos son diagnósticos no estables y no deben sustituir códigos. Por defecto no persistir prompts, respuestas JSON completas, datos de usuario, credenciales ni SMILES en logs; el llamador decide si muestra el SMILES de la operación y aplica cualquier consentimiento/política de retención en otra fase.
 
-## Pruebas previstas para Phase 1 y el límite UI
+## Pruebas de Phase 1 y límite UI
 
-Usar fakes deterministas para el proveedor y el transporte; ninguna suite requiere API real, modelo local ni Internet. Probar respuesta válida (y equivalencia química con el parser ChemIO directo), SMILES inválido, JSON malformado, respuesta vacía/truncada, texto extra/fences/campos desconocidos, timeouts/error de red, límites, estados/códigos estables, parsing repetible, importación aislada sin GUI y ausencia de dependencias IA en Clean2D. Ver también el checklist de cobertura en `tasks.md`.
+Los tests usan fakes deterministas para provider y transporte; no requieren API real, modelo local, Internet ni credenciales. Cubren respuesta válida (y equivalencia química con el importador ChemIO ordinario cuando RDKit worker está disponible), SMILES inválido, JSON malformado, respuesta vacía/truncada, texto extra/fences/campos desconocidos, timeouts/error de red, límites, estados/códigos estables, parsing repetible, importación aislada sin GUI y ausencia de dependencias IA en Clean2D. Ver el checklist de cobertura en `tasks.md`.
 
-La prueba de que un fallo no modifica el canvas debe ejecutarse con el primer adaptador gráfico futuro, fuera de Phase 1: fake del provider + snapshot del grafo/selección/undo/dirty-state antes y después del error, verificando que no se llama a inserción. Phase 1 prueba que el servicio carece de acceso/capacidad para hacer esa mutación.
+La suite demuestra que errores no devuelven un grafo y que M23 no conoce canvas/documento. El test de snapshot de grafo/selección/undo/dirty-state se ejecutará con el primer adaptador gráfico futuro, fuera de Phase 1.
 
 ## Riesgos y decisiones pospuestas
 
 - El importador ordinario `smiles_to_molgraph` hace fallback a RDKit en proceso si falla el worker; la frontera IA elige intencionalmente el helper aislado ya existente y falla de forma controlada en esa situación. La equivalencia química se prueba cuando ambas rutas aceptan la entrada; no se introduce otro parser ni se altera el importador ordinario.
-- La disponibilidad y semántica de JSON constrained output varía entre servidores “OpenAI-compatible”; el adaptador puede solicitarlo cuando se anuncie, pero el contrato no lo exige y el decoder propio sigue siendo obligatorio. La primera implementación probará al menos un endpoint local compatible; llama-server y LM Studio son ejemplos de servidores, no dependencias de producción.
+- La disponibilidad y semántica de JSON constrained output varía entre servidores “OpenAI-compatible”; el adaptador lo solicita sólo mediante una opción explícita y el decoder propio sigue siendo obligatorio. La suite es deliberadamente offline; la interoperabilidad con un servidor concreto corresponde a una verificación manual/integración separada.
 - La inserción SMILES actual selecciona candidatos M02 antes de ChemIO. El módulo IA no debe llamar esa fachada para validación; futura integración decidirá si representa el grafo aceptado tal cual o invoca Clean2D separadamente como operación gráfica explícita.
 - El Phase 1 no afirma exactitud química semántica, rendimiento de modelos ni mejora de Clean2D.
 
 ## Roadmap no vinculante
 
-1. **Phase 1 — Foundation:** servicio, protocolo, un adaptador compatible OpenAI Chat Completions, salida JSON estricta con SMILES, validación ChemIO, diagnóstico y tests fake/offline.
+1. **Phase 1 — Foundation (completada):** servicio, protocolo, adaptador compatible OpenAI Chat Completions, salida JSON estricta con SMILES, validación ChemIO, diagnóstico y tests fake/offline.
 2. **Phase 2 — UI/comando mínimo:** descripción de usuario → estructura validada → inserción segura/undoable.
 3. **Phase 3 — evaluación Clean2D, OpenSpec separado:** usar estructuras ya validadas como entrada de una campaña/evaluador, ejecutar Clean2D y comparar métricas before/after. La orquestación de evaluación puede consumir el resultado de M23 y llamar a M02; M02 no importa, invoca ni depende de IA/proveedores.
 4. **Phase 4 — más proveedores/modelos:** ampliar proveedores tras contratos y compatibilidad medida.

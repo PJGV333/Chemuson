@@ -11,4 +11,4 @@ def test_operational_resilience_ownership_is_explicit() -> None:
     text = AUDIT.read_text(encoding="utf-8").lower()
     for term in ("m22", "crash", "autosave", "m08", "m10", "m14", "telemetry"):
         assert term in text
-    assert "no new module" in text
+    assert "no new operational-resilience module" in text

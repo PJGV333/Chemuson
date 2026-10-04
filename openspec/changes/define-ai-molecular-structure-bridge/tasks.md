@@ -1,37 +1,33 @@
-# Tareas — delimitación del AI Molecular Structure Bridge
+# Tareas — AI Molecular Structure Bridge / Phase 1 Foundation
 
-## Entregables de esta campaña de planificación
+## Preparación OpenSpec completada antes de implementar
 
-- [x] Confirmar `origin/main` vigente, baseline, limpieza del árbol y crear rama independiente.
+- [x] Confirmar `origin/main`, baseline documentado, árbol limpio y rama `ai/molecular-assistant-foundation`.
 - [x] Leer políticas de campañas, arquitectura y OpenSpecs de referencia.
-- [x] Inspeccionar parser SMILES/ChemIO, MolGraph, ruta GUI de importación/inserción, Clean2D y resolver M16 name2structure.
-- [x] Definir la arquitectura futura, interfaz de proveedor y contrato mínimo de solicitud/respuesta estructurada.
-- [x] Definir validación ChemIO, estados/códigos estables, observabilidad, privacidad, límites y no-mutation.
-- [x] Definir dependencias/prohibiciones y las pruebas deterministas offline requeridas.
-- [x] Crear y validar este cambio OpenSpec de forma estricta.
-- [x] Confirmar que no se cambió código, tests de producto, Clean2D ni `architecture/modules.yml`.
+- [x] Inspeccionar parser SMILES/ChemIO, MolGraph, flujo GUI de importación/inserción, Clean2D y M16 `name2structure`.
+- [x] Definir contrato, validación ChemIO, estados/códigos, observabilidad, privacidad, límites y no-mutation.
+- [x] Validar los contratos OpenSpec estrictamente antes de implementar.
 
-## Implementación futura Phase 1 — explícitamente NO ejecutada por este cambio
+## Implementación Phase 1
 
-- [ ] Crear el módulo M23 propuesto en `src/chemuson/molecular_assistant/` (confirmar nombre/ruta), registrar ownership/API/dependencias en `architecture/modules.yml` y actualizar el contrato canónico de límites.
-- [ ] Implementar tipos de solicitud, proveedor neutral, salida estructurada estricta `{ "smiles": "..." }` y resultados/razones estables.
-- [ ] Implementar un único adaptador HTTP no streaming OpenAI-compatible Chat Completions, con endpoint/modelo explícitos, límites, timeout y secretos inyectados; no añadir soporte específico de llama.cpp/LM Studio.
-- [ ] Validar mediante la ruta aislada existente `chemuson.chemio.rdkit_safe.smiles_to_molgraph_isolated`, sin fallback directo para datos no confiables; no crear parser ni importar GUI/Clean2D/ChemName.
-- [ ] Añadir tests fake sin Internet/API para: solicitud vacía/excesiva; SMILES válido; SMILES inválido; JSON malformado; respuesta vacía o truncada; texto/fences/campos extra; timeout/cancelación explícita; error HTTP/red; respuesta oversized; códigos/estados estables (incluido `invalid_input` → `invalid_structure`/`invalid_smiles` y error desconocido → `validation_error`/`parser_error`, sin inspeccionar excepciones); parsing determinista; equivalencia del grafo con importación ChemIO directa; distinción entre SMILES inválido y worker/parser no disponible; y ejecución sin credenciales.
-- [ ] Añadir pruebas arquitectónicas de aislamiento de imports (sin GUI/Clean2D/ChemName en M23; sin M23/proveedores en M02) y ausencia de network en tests.
-- [ ] Verificar que los errores producen resultados sin `MolGraph`; probar no-mutación de documento/canvas, selección, undo y dirty state con la integración gráfica correspondiente. La integración/atomicidad visual es gate del cambio futuro de UI, no de esta campaña.
-- [ ] Ejecutar baseline y gates completos de arquitectura, suite, Ruff y OpenSpec en el cambio de implementación, investigar fallos nuevos y documentar fallos históricos.
+- [x] Crear M23 `src/chemuson/molecular_assistant/`, registrar ownership/API/dependencias y fijar contratos de catálogo/límites.
+- [x] Implementar request, provider-neutral protocol, salida JSON estricta `{ "smiles": "..." }` y resultados/códigos estables.
+- [x] Implementar un adaptador HTTP no streaming OpenAI-compatible Chat Completions con endpoint/modelo explícitos, límites, timeout finito y secreto opcional inyectado; sin soporte específico de llama.cpp/LM Studio.
+- [x] Validar el SMILES exclusivamente mediante `chemuson.chemio.rdkit_safe.smiles_to_molgraph_isolated`, sin fallback directo, parser nuevo, GUI, Clean2D ni ChemName.
+- [x] Añadir tests offline/fake para request vacía/excesiva; estructura válida e inválida; JSON vacío/malformado/truncado/extra/fences/campos adicionales; límites; timeout/cancelación; errores HTTP/red; parsing determinista; equivalencia ChemIO cuando RDKit worker está disponible; errores exactos `invalid_input`/`timeout`/`rdkit_unavailable` y fallback genérico sin inspeccionar diagnósticos; y provider sin credenciales/red.
+- [x] Añadir tests arquitectónicos para imports M23, aislamiento de GUI/Clean2D/ChemName, dependencia inversa prohibida desde M00/M01/M02, import aislado y ausencia de contexto documento/canvas en el request.
+- [x] Verificar que todo resultado fallido carece de `MolGraph`; M23 no recibe documento/canvas y no puede efectuar inserción.
+- [ ] Probar snapshot de grafo/selección/undo/dirty-state con integración visual; gate de una campaña UI posterior, fuera de Phase 1.
+- [x] Ejecutar y registrar los gates finales: arquitectura, suite completa, Ruff, OpenSpec estricto, compileall, colección y `git diff --check`; documentar el único fallo histórico y el F401 preexistente.
 
-## Cobertura mínima a conservar
+## Cobertura y fases posteriores
 
-Las pruebas futuras deben incluir expresamente los 12 casos solicitados: (1) fake válido, (2) SMILES inválido, (3) respuesta estructurada malformada, (4) timeout/red, (5) respuesta vacía, (6) texto adicional, (7) decodificación determinista, (8) ningún fallo muta la molécula existente, (9) sin imports GUI innecesarios, (10) Clean2D sin dependencia IA, (11) provider fake sin Internet y (12) construcción química idéntica a la importación SMILES ChemIO equivalente. Los casos (8) y la inserción normal sólo pueden cerrarse al implementar la integración gráfica posterior; su separación evita adelantar un cambio de UI a Phase 1.
+La cobertura Phase 1 conserva los casos fake válido, SMILES inválido, respuesta malformada/vacía/texto extra, timeout/red, decodificación determinista, imports GUI aislados, Clean2D sin dependencia IA, fake sin Internet y equivalencia química con ChemIO cuando el worker está disponible. La no-mutación observable del canvas y la inserción normal se verificarán al implementar Phase 2.
 
-## Fases posteriores — roadmap, no tareas de este cambio
+1. **Phase 1 — Foundation:** completada por esta campaña.
+2. **Phase 2 — UI/comando mínimo:** descripción → estructura validada → inserción normal y undoable.
+3. **Phase 3 — evaluación Clean2D:** OpenSpec separado; la orquestación puede invocar por separado M23/M02, nunca crear M02 → M23.
+4. **Phase 4 — más proveedores/modelos:** sólo tras contratos y compatibilidad medida.
+5. **Phase 5 — edición molecular estructurada:** autorización y validaciones adicionales.
 
-1. Phase 1: Foundation (servicio, proveedor inicial OpenAI-compatible, respuesta SMILES estricta y validación ChemIO).
-2. Phase 2: UI/comando mínimo para descripción → estructura validada.
-3. Phase 3: campaña/OpenSpec separado para usar estructuras validadas como entrada de evaluación Clean2D y comparar métricas before/after. La orquestación invoca por separado AI/M23 y Clean2D/M02; no se crea dependencia M02 → IA.
-4. Phase 4: soporte de más proveedores/modelos.
-5. Phase 5: edición molecular estructurada mediante IA, con autorización y validaciones adicionales.
-
-Permanecen fuera del plan Phase 1 los agentes autónomos, tool calling general, ejecución de código, edición directa del canvas/MolGraph, conversación persistente, memoria, RAG, búsqueda web, nomenclatura completa, mecanismos de reacción, modificación iterativa, optimización con feedback Clean2D, multimodalidad, integración ChemName, Campaign 5–9, rediseño UI, configuración completa de API keys y benchmarking.
+Siguen fuera de Phase 1 los agentes, tool calling, ejecución de código, edición directa del canvas/MolGraph, conversación/memoria/RAG, búsqueda web, nomenclatura completa, reacciones, edición iterativa, feedback Clean2D, multimodalidad, ChemName, Campaign 5–9, rediseño UI, configuración persistente de API keys y benchmarking.

@@ -23,6 +23,7 @@ modules:
   - M17
   - M18
   - M19
+  - M23
   id: M00
   internal_api:
   - bond_affects_valence
@@ -100,6 +101,7 @@ modules:
   - M11
   - M12
   - M13
+  - M23
   id: M01
   internal_api:
   - rdkit_io
@@ -146,6 +148,7 @@ modules:
   - M11
   - M12
   - M13
+  - M23
   id: M02
   internal_api:
   - depiction_quality
@@ -1337,3 +1340,55 @@ modules:
   - tests/architecture/test_resilience_boundary.py
   - tests/architecture/test_recovery_boundary.py
   title: Resiliencia y recuperación de runtime
+- circular_dependencies: []
+  current_dependencies:
+  - M00
+  - M01
+  entry_points: []
+  forbidden_dependencies:
+  - M02
+  - M04
+  - M08
+  - M09
+  - M10
+  - M11
+  - M12
+  - M13
+  - M16
+  - M19
+  id: M23
+  internal_api:
+  - HttpResponse
+  - HttpTransport
+  - _UrllibTransport
+  - limits
+  - models
+  - provider
+  - service
+  name: molecular_assistant
+  notes: El servicio no persiste solicitudes/respuestas ni accede a documentos; sólo publica MolGraph tras validación ChemIO aislada. El adaptador HTTP requiere endpoint y modelo explícitos.
+  paths:
+  - src/chemuson/molecular_assistant/
+  public_api:
+  - MolecularAssistant
+  - MolecularAssistantRequest
+  - MolecularAssistantResult
+  - MolecularAssistantStatus
+  - MolecularStructureProvider
+  - OpenAICompatibleConfig
+  - OpenAICompatibleProvider
+  - ProviderCancelled
+  - ProviderError
+  - ProviderErrorCode
+  - ProviderResponse
+  responsibility: Proponer una estructura molecular desde una descripción y validar estrictamente el SMILES mediante ChemIO aislado.
+  risk_level: medium
+  status: evolving
+  target_dependencies:
+  - M00
+  - M01
+  temporary_exceptions: []
+  tests:
+  - tests/test_molecular_assistant.py
+  - tests/architecture/test_molecular_assistant_boundary.py
+  title: Asistente de estructuras moleculares

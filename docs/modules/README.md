@@ -27,6 +27,7 @@ Este índice lista los módulos que componen la arquitectura de Chemuson, con en
 | M20 | gui.editor2d.selection | Selección del editor 2D | [M20-editor2d-selection.md](M20-editor2d-selection.md) |
 | M21 | platform.settings | Configuración y recursos de plataforma | [M21-platform-settings.md](M21-platform-settings.md) |
 | M22 | resilience | Resiliencia y recuperación de runtime | [M22-resilience.md](M22-resilience.md) |
+| M23 | molecular_assistant | Asistente de estructuras moleculares | [M23-molecular-assistant.md](M23-molecular-assistant.md) |
 
 ## Fuente estructurada
 

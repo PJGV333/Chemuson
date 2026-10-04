@@ -51,7 +51,7 @@ capa terminal: ningún módulo M00–M18 puede depender del bootstrap.
 | Responsabilidad | Limpieza/depiction 2D desacoplada de la GUI: candidatos, ranking, invariantes, seguridad geométrica, reparación local y políticas de moléculas complejas. |
 | Archivos principales | `engine.py`, `safety.py`, `length_only.py`, `local_graph_cleaner.py`, `complex_policy.py`, `block_unwrap.py`, `scaffold_depiction.py`, `geometry.py`, `v2.py`. |
 | Puede importar | `chemuson.core`, `chemuson.chemio` para conversiones/candidatos cuando sea necesario. |
-| No debería importar | PyQt6, `chemuson.gui`, controllers, dialogs, actions. |
+| No debería importar | PyQt6, `chemuson.gui`, `chemuson.molecular_assistant`, controllers, dialogs, actions. |
 | API pública | Reexports en `chemuson.clean2d.__init__`, especialmente `run_clean2d_engine`, `generate_clean2d_candidates`, `rank_clean2d_candidates`, `evaluate_clean2d_layout`. |
 | Internos/privados | Funciones con `_` en `engine.py`/`safety.py`; módulos de estrategia específica cuando no están reexportados. |
 
@@ -109,6 +109,18 @@ capa terminal: ningún módulo M00–M18 puede depender del bootstrap.
 | No debería importar | `chemuson.gui`, PyQt6, controllers. |
 | API pública | `predict_spectra`, `register_predictor`, modelos de picos reexportados en `__init__.py`. |
 | Internos/privados | Predictores concretos y helpers no reexportados en `service.py`. |
+
+### `chemuson.molecular_assistant` (M23)
+
+| Aspecto | Detalle |
+| --- | --- |
+| Responsabilidad | Proponer estructuras desde una descripción, decodificar exactamente `{\"smiles\":\"...\"}` y validar mediante ChemIO aislado antes de devolver un `MolGraph`. |
+| Archivos principales | `models.py`, `provider.py`, `service.py`, `limits.py`. |
+| Puede importar | `chemuson.core`, `chemuson.chemio`, biblioteca estándar. |
+| No debería importar | Clean2D, ChemName, GUI/controllers/canvas, name2structure, bootstrap ni `tools`. |
+| API pública | `MolecularAssistant`, request/result/status, contrato de proveedor, `ProviderResponse` y adaptador `OpenAICompatibleProvider`. |
+| Límites de transporte | Endpoint/modelo explícitos, HTTP no streaming, límite de respuesta, timeout finito, secretos opacos y sin redirects. No hace conexiones hasta invocación explícita. |
+| Internos/privados | Decoder JSON estricto, límites de tamaño, transporte urllib y clasificación ChemIO por identificadores exactos. |
 
 ### `chemuson.gui`
 
@@ -192,6 +204,7 @@ capa terminal: ningún módulo M00–M18 puede depender del bootstrap.
 | `platform.settings` | Ningún módulo ChemUSON; sólo QtCore/importlib.resources externos. |
 | `resilience` | Ningún módulo ChemUSON; sólo librería estándar y Qt externo. |
 | `name2structure` | `core`, `chemio`. |
+| `molecular_assistant` (M23) | `core`, `chemio`; no es dependencia de M02/Clean2D. |
 
 Estas dependencias describen el estado actual, no siempre el ideal. Las reglas siguientes definen el objetivo de mantenibilidad.
 

@@ -15,6 +15,8 @@ def test_update_boundary_audit_records_no_extraction() -> None:
     assert "audited / no structural change required" in text
     assert "M23" in text
     assert "no new module" in text.lower()
+    assert "molecular_assistant" in text
+    assert "M24 continúa reservado" in text
 
 
 def test_update_catalog_remains_m14() -> None:
