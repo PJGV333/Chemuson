@@ -8,6 +8,7 @@ M23 convierte una descripción textual en una propuesta estructurada `{"smiles":
 
 - Depende únicamente de M00 `core`, M01 `chemio` y la biblioteca estándar.
 - No importa Clean2D (M02), ChemName (M04), GUI/controllers/canvas (M08–M13), name2structure (M16), composition root (M19) ni `tools`.
+- M10 `gui.controllers` puede consumir M23 como adaptador asíncrono para la UI; M23 no importa ni depende de GUI/controllers.
 - M00, M01 y Clean2D no dependen de M23; Clean2D mantiene su pipeline determinista.
 - El servicio no recibe documentos ni canvas, no persiste prompts/respuestas y no expone un grafo en resultados fallidos.
 - El adaptador HTTP no tiene endpoint predeterminado: requiere base URL/modelo explícitos, usa Chat Completions no streaming, limita tiempo/tamaño y no sigue redirects.

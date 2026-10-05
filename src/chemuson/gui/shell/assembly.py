@@ -33,6 +33,7 @@ from chemuson.gui.controllers import (
     DocumentController,
     ExportController,
     FileController,
+    MolecularAssistantController,
     RecoveryController,
     TemplateController,
     TextFormatController,
@@ -103,6 +104,12 @@ def assemble_application_shell(self) -> None:
     self._text_format_controller = TextFormatController()
     self._recovery_controller = RecoveryController()
     self._template_controller = TemplateController()
+    self._molecular_assistant_controller = MolecularAssistantController(self)
+    self._molecular_assistant_controller.job_finished.connect(
+        self._on_molecular_assistant_job_finished
+    )
+    self._molecular_assistant_dialogs: dict[int, tuple[object, ChemusonCanvas]] = {}
+    self._molecular_assistant_results: dict[int, object] = {}
     self._compchem_coordset = None
     self._latest_compchem_job_id = 0
     self._compchem_job_backends: dict[int, str] = {}

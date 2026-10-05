@@ -44,9 +44,9 @@ El detalle voluminoso de esos reportes quedó consolidado aquí; los contratos y
 
 **Decisiones/no objetivos:** sin cambios a lógica química, Clean2D, ChemName, geometría de plantillas, serialización `.cmsn`, versión o dependencias; sin iniciar Fase 9. Las capturas de `docs/ui-modernization/after/` son la evidencia canónica de estado final; las capturas reales aprobadas KDE/Wayland se conservan aparte. Iteraciones intermedias, generadores de una sola fase y el ejecutable del spike se retiraron tras resumir decisiones y resultados.
 
-### AI Molecular Structure Bridge — Phase 1 Foundation
+### AI Molecular Structure Bridge — Phase 1 Foundation y Phase 2 UI mínima
 
-La fase se cerró y archivó como `2026-10-04-define-ai-molecular-structure-bridge`. M23 ofrece un servicio provider-neutral, salida JSON SMILES estricta, validación ChemIO aislada y un adaptador HTTP OpenAI-compatible explícito; no se añadió UI ni se modificó Clean2D. La suite automática usa providers/transports falsos; los 60 tests moleculares focalizados también pasaron con RDKit en `.venv`. Quedó diferida a Phase 2 la prueba de atomicidad observable del canvas. El baseline completo conserva el fallo histórico de `test_compchem_controller_generates_async_with_fake_backend` y Ruff el F401 de la prueba Clean2D.
+Phase 1 se cerró y archivó como `2026-10-04-define-ai-molecular-structure-bridge`. M23 ofrece servicio provider-neutral, salida JSON SMILES estricta, validación ChemIO aislada y adaptador HTTP OpenAI-compatible explícito; no modificó Clean2D. Phase 2 se implementa en `add-ai-molecular-assistant-ui`: QAction en Structure/Command Palette, formulario modeless con configuración explícita/transitoria, controlador M10 con worker en hilo aparte, revisión del resultado y confirmación antes de inserción mediante el macro undoable existente. M10 consume M23; M23 mantiene únicamente M00/M01 y Clean2D sigue independiente. Las pruebas offline verifican fallos/abandono sin mutación, ruta de inserción y undo/redo normal. Por el límite solicitado de 5–10 minutos, no se repitió la suite completa: el baseline tardó 19:26, con el fallo histórico `test_compchem_controller_generates_async_with_fake_backend`; Ruff mantiene el F401 histórico de la prueba Clean2D. Phases 3–5 siguen sin iniciar en este punto.
 
 ### Clean2D — campañas separadas y no integradas
 

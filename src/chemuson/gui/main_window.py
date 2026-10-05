@@ -35,7 +35,12 @@ from chemuson.gui.periodic_table import PeriodicTableDialog
 from chemuson.gui.styles import get_tool_palette_stylesheet
 from chemuson.gui.theme import apply_theme, resolve_theme_name
 from chemuson.gui.icons import set_icon_theme
-from chemuson.gui.dialogs import PreferencesDialog, QuickStartDialog, StyleDialog
+from chemuson.gui.dialogs import (
+    MolecularAssistantDialog,
+    PreferencesDialog,
+    QuickStartDialog,
+    StyleDialog,
+)
 from chemuson.gui.template_library import DEFAULT_CATEGORY_USER
 from chemuson.gui.template_browser_service import (
     TemplateBrowserContext,
@@ -2174,6 +2179,124 @@ class ChemusonWindow(QMainWindow):
     def _on_import_smiles(self) -> None:
         """Import a molecule from a SMILES string."""
         self._template_controller.on_import_smiles(self._template_controller_context())
+
+    def _on_ai_molecular_assistant(self) -> None:
+        """Abre el flujo modeless de propuesta/validación/inserción IA."""
+        dialog = MolecularAssistantDialog(self)
+        dialog.generation_requested.connect(
+            lambda description, base_url, model, api_key, json_output, d=dialog: (
+                self._start_molecular_assistant_job(
+                    d, description, base_url, model, api_key, json_output
+                )
+            )
+        )
+        dialog.insert_requested.connect(
+            lambda d=dialog: self._insert_molecular_assistant_result(d)
+        )
+        dialog.finished.connect(
+            lambda _result, d=dialog: self._on_molecular_assistant_dialog_finished(d)
+        )
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
+
+    def _start_molecular_assistant_job(
+        self,
+        dialog: MolecularAssistantDialog,
+        description: str,
+        base_url: str,
+        model: str,
+        api_key: str,
+        supports_json_output: bool,
+    ) -> None:
+        """Start a provider request without blocking the GUI event loop."""
+        job_id = self._molecular_assistant_controller.start_job(
+            description,
+            base_url=base_url,
+            model=model,
+            api_key=api_key,
+            supports_json_output=supports_json_output,
+        )
+        if job_id is None:
+            dialog.show_configuration_error()
+            return
+        dialog.set_job_id(job_id)
+        dialog.clear_api_key()
+        dialog.set_pending()
+        self._molecular_assistant_dialogs[job_id] = (dialog, self.canvas)
+        self.statusBar().showMessage("Generando y validando estructura con IA…", 5000)
+
+    def _on_molecular_assistant_job_finished(self, job_id: int, result: object) -> None:
+        """Present only successful validated results; failures never reach canvas."""
+        job_id = int(job_id)
+        job = self._molecular_assistant_dialogs.get(job_id)
+        if job is None:
+            return
+        dialog, _target_canvas = job
+        status = getattr(result, "status", None)
+        status_value = getattr(status, "value", str(status or "provider_error"))
+        graph = getattr(result, "graph", None)
+        reason_code = str(getattr(result, "reason_code", None) or "provider_error")
+        if (
+            status_value != "success"
+            or graph is None
+            or getattr(result, "validation_passed", None) is not True
+        ):
+            dialog.show_failure(status_value, reason_code)
+            self.statusBar().showMessage(
+                f"Asistente molecular: {status_value} ({reason_code}).", 7000
+            )
+            return
+        self._molecular_assistant_results[job_id] = result
+        dialog.show_preview(
+            provider_id=str(getattr(result, "provider_id", "unknown")),
+            model_id=getattr(result, "model_id", None),
+            smiles=str(getattr(result, "proposed_smiles", "") or ""),
+        )
+        self.statusBar().showMessage("Propuesta validada; revisa antes de insertar.", 7000)
+
+    def _insert_molecular_assistant_result(self, dialog: MolecularAssistantDialog) -> None:
+        """Commit the reviewed graph through the canvas's ordinary undo macro."""
+        job_id = dialog.job_id
+        if job_id is None:
+            return
+        job = self._molecular_assistant_dialogs.get(job_id)
+        result = self._molecular_assistant_results.get(job_id)
+        if job is None or result is None:
+            return
+        _request_dialog, target_canvas = job
+        try:
+            target_index = self.tabs.indexOf(target_canvas)
+        except RuntimeError:
+            target_index = -1
+        if target_index < 0:
+            dialog.show_insert_notice(
+                "El documento original ya no está disponible; no se insertó la propuesta."
+            )
+            return
+        if self.canvas is not target_canvas:
+            dialog.show_insert_notice(
+                "Activa el documento donde iniciaste la solicitud y confirma la inserción de nuevo."
+            )
+            return
+        graph = getattr(result, "graph", None)
+        if graph is None:
+            return
+        target_canvas._insert_molgraph(graph, select_inserted=True)
+        dialog.accept()
+        self.statusBar().showMessage("Estructura de IA insertada; puedes deshacerla.", 7000)
+
+    def _on_molecular_assistant_dialog_finished(
+        self,
+        dialog: MolecularAssistantDialog,
+    ) -> None:
+        """Abandon pending work and discard transient result/config references."""
+        job_id = dialog.job_id
+        if job_id is None:
+            return
+        self._molecular_assistant_controller.abandon_job(job_id)
+        self._molecular_assistant_dialogs.pop(job_id, None)
+        self._molecular_assistant_results.pop(job_id, None)
 
     def _on_name_to_structure(self) -> None:
         """Convierte nombre común/sistemático a estructura en worker."""

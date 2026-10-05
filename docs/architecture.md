@@ -128,7 +128,7 @@ capa terminal: ningún módulo M00–M18 puede depender del bootstrap.
 | --- | --- |
 | Responsabilidad | UI PyQt6: ventana principal, canvas/editor 2D, acciones, docks, controllers, comandos undo/redo, rendering y herramientas visuales. |
 | Archivos principales | `main_window.py`, `shell/`, `canvas/`, `controllers/`, `items.py`, `docks.py`, `toolbar.py`, `actions/`, `commands/`, `dialogs/`. |
-| Puede importar | Servicios de dominio (`core`, `chemio`, `clean2d`, `chemname`, `geometry3d`, `compchem`, `spectroscopy`, `update`, `name2structure`) para orquestar UI. |
+| Puede importar | Servicios de dominio (`core`, `chemio`, `clean2d`, `chemname`, `geometry3d`, `compchem`, `spectroscopy`, `update`, `name2structure`) y el adaptador M10 que consume M23 para la generación IA revisada por el usuario. |
 | No debería importar | `tools`; no debería implementar lógica química pesada que pueda vivir en paquetes de dominio. |
 | API pública | `chemuson.gui.main_window.ChemusonWindow`, `chemuson.gui.canvas.ChemusonCanvas` y constantes reexportadas en `canvas/__init__.py`. |
 | Internos/privados | `shell/` ensambla regiones y wiring de `ChemusonWindow` sin poseer handlers; también son internos los mixins de `canvas/`, controllers concretos, builders, comandos y widgets auxiliares. `CanvasStructureMixin.rebuild_persistence_view()` es el hook público que satisface estructuralmente el contrato de persistencia y delega en la reconstrucción visual existente. |
@@ -204,7 +204,7 @@ capa terminal: ningún módulo M00–M18 puede depender del bootstrap.
 | `platform.settings` | Ningún módulo ChemUSON; sólo QtCore/importlib.resources externos. |
 | `resilience` | Ningún módulo ChemUSON; sólo librería estándar y Qt externo. |
 | `name2structure` | `core`, `chemio`. |
-| `molecular_assistant` (M23) | `core`, `chemio`; no es dependencia de M02/Clean2D. |
+| `molecular_assistant` (M23) | `core`, `chemio`; M10 GUI controllers consumen M23; no es dependencia de M02/Clean2D. |
 
 Estas dependencias describen el estado actual, no siempre el ideal. Las reglas siguientes definen el objetivo de mantenibilidad.
 

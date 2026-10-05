@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-10-04
+goal: Let users request a structure, validate it through M23, review it, and
+  explicitly insert it through normal canvas undo commands.

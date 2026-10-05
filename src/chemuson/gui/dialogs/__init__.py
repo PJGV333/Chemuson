@@ -31,6 +31,7 @@ from PyQt6.QtWidgets import (
 
 from chemuson.core.model import ChemState
 from chemuson.gui.style import DrawingStyle
+from .molecular_assistant_dialog import MolecularAssistantDialog as MolecularAssistantDialog
 
 
 def format_update_behavior_summary(

@@ -321,6 +321,12 @@ class MainWindowUiBuilder:
         window.action_style.triggered.connect(window._on_style_dialog)
         window.action_import_smiles = QAction("Importar SMILES...", window)
         window.action_import_smiles.triggered.connect(window._on_import_smiles)
+        window.action_ai_molecular_assistant = QAction(
+            "Dibujar estructura con IA...", window
+        )
+        window.action_ai_molecular_assistant.triggered.connect(
+            window._on_ai_molecular_assistant
+        )
         window.action_export_smiles = QAction("Exportar SMILES...", window)
         window.action_export_smiles.triggered.connect(window._on_export_smiles)
         window.action_draw_smiles = QAction("Dibujar desde SMILES...", window)
@@ -562,6 +568,7 @@ class MainWindowUiBuilder:
         structure_menu.addAction(window.action_template_export_library)
         structure_menu.addSeparator()
         structure_menu.addAction(window.action_name_to_structure)
+        structure_menu.addAction(window.action_ai_molecular_assistant)
         structure_menu.addAction(window.action_import_smiles)
         structure_menu.addAction(window.action_export_smiles)
         structure_menu.addSeparator()

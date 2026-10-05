@@ -683,6 +683,7 @@ modules:
   - tests/test_ui_app_bar_tabs.py
   - tests/test_ui_tool_rail.py
   - tests/test_command_palette.py
+  - tests/test_molecular_assistant_ui.py
   title: Orquestación de interfaz PyQt6
 - circular_dependencies: []
   current_dependencies:
@@ -779,10 +780,12 @@ modules:
   - M14
   - M21
   - M22
+  - M23
   entry_points: []
   forbidden_dependencies: []
   id: M10
-  internal_api: []
+  internal_api:
+  - molecular_assistant_controller
   name: gui.controllers
   paths:
   - src/chemuson/gui/controllers/
@@ -797,6 +800,7 @@ modules:
   - ExportController
   - FileController
   - FileWorkflowContext
+  - MolecularAssistantController
   - RecentFilesContext
   - RecoveryController
   - TextFormatController
@@ -808,7 +812,7 @@ modules:
   - ValidationFixResult
   - ViewController
   responsibility: 'Controllers de la GUI: orquestación de canvas, documentos, exportación,
-    actualización y validación.'
+    actualización, validación y adaptadores de aplicación para servicios asíncronos.'
   risk_level: medium
   status: evolving
   target_dependencies:
@@ -828,8 +832,11 @@ modules:
   - M18
   - M21
   - M22
+  - M23
   temporary_exceptions: []
-  tests: []
+  tests:
+  - tests/test_molecular_assistant_ui.py
+  - tests/architecture/test_molecular_assistant_ui_boundary.py
   title: Controllers de la GUI
 - circular_dependencies: []
   current_dependencies:
@@ -930,6 +937,7 @@ modules:
   - tlc_insert_dialog
   - gel_insert_dialog
   - trackball_rotation_dialog
+  - molecular_assistant_dialog
   name: gui.dialogs
   notes: Sin __all__ en __init__.py. Los diálogos usan ChemState de core y DrawingStyle
     de gui.style.
@@ -945,7 +953,8 @@ modules:
   - M08
   - M14
   temporary_exceptions: []
-  tests: []
+  tests:
+  - tests/test_molecular_assistant_ui.py
   title: Diálogos de la GUI
 - circular_dependencies: []
   current_dependencies:

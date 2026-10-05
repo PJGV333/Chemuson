@@ -10,6 +10,7 @@ from .document_controller import (
 )
 from .export_controller import ExportController
 from .file_controller import FileController, FileWorkflowContext
+from .molecular_assistant_controller import MolecularAssistantController
 from .recovery_controller import RecoveryController
 from .text_format_controller import TextFormatController
 from .template_controller import TemplateController, TemplateControllerContext
@@ -28,6 +29,7 @@ __all__ = [
     "ExportController",
     "FileController",
     "FileWorkflowContext",
+    "MolecularAssistantController",
     "RecentFilesContext",
     "RecoveryController",
     "TextFormatController",
