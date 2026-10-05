@@ -14,6 +14,11 @@ from chemuson.molecular_assistant.provider import (
     ProviderError,
     ProviderErrorCode,
 )
+from chemuson.molecular_assistant.profiles import (
+    OPENAI_COMPATIBLE_PROFILES,
+    OpenAICompatibleProfile,
+    get_openai_compatible_profile,
+)
 from chemuson.molecular_assistant.service import MolecularAssistant
 
 __all__ = [
@@ -23,9 +28,12 @@ __all__ = [
     "MolecularAssistantStatus",
     "MolecularStructureProvider",
     "OpenAICompatibleConfig",
+    "OpenAICompatibleProfile",
+    "OPENAI_COMPATIBLE_PROFILES",
     "OpenAICompatibleProvider",
     "ProviderCancelled",
     "ProviderError",
     "ProviderErrorCode",
     "ProviderResponse",
+    "get_openai_compatible_profile",
 ]

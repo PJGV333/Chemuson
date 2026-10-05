@@ -11,9 +11,10 @@ M23 convierte una descripción textual en una propuesta estructurada `{"smiles":
 - M10 `gui.controllers` puede consumir M23 como adaptador asíncrono para la UI; M23 no importa ni depende de GUI/controllers.
 - M00, M01 y Clean2D no dependen de M23; Clean2D mantiene su pipeline determinista.
 - El servicio no recibe documentos ni canvas, no persiste prompts/respuestas y no expone un grafo en resultados fallidos.
-- El adaptador HTTP no tiene endpoint predeterminado: requiere base URL/modelo explícitos, usa Chat Completions no streaming, limita tiempo/tamaño y no sigue redirects.
+- El adaptador HTTP requiere base URL/modelo explícitos, usa Chat Completions no streaming, limita tiempo/tamaño y no sigue redirects. Los perfiles OpenAI, LM Studio y llama.cpp sólo aportan defaults editables; no añaden protocolos ni afirman compatibilidad live.
+- Los IDs de modelo son aportados por el usuario porque dependen del endpoint cargado; no hay catálogo ni descubrimiento de modelos.
 - Las pruebas usan proveedores y transportes falsos; ninguna hace solicitudes de red.
 
 ## API pública
 
-`MolecularAssistant`, `MolecularAssistantRequest`, `MolecularAssistantResult`, `MolecularAssistantStatus`, `MolecularStructureProvider`, `ProviderResponse`, `OpenAICompatibleConfig`, `OpenAICompatibleProvider`, `ProviderError`, `ProviderErrorCode` y `ProviderCancelled` se reexportan desde `chemuson.molecular_assistant`.
+`MolecularAssistant`, `MolecularAssistantRequest`, `MolecularAssistantResult`, `MolecularAssistantStatus`, `MolecularStructureProvider`, `ProviderResponse`, `OpenAICompatibleConfig`, `OpenAICompatibleProfile`, `OPENAI_COMPATIBLE_PROFILES`, `get_openai_compatible_profile`, `OpenAICompatibleProvider`, `ProviderError`, `ProviderErrorCode` y `ProviderCancelled` se reexportan desde `chemuson.molecular_assistant`.

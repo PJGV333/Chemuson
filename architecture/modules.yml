@@ -1372,6 +1372,7 @@ modules:
   - _UrllibTransport
   - limits
   - models
+  - profiles
   - provider
   - service
   name: molecular_assistant
@@ -1385,12 +1386,15 @@ modules:
   - MolecularAssistantStatus
   - MolecularStructureProvider
   - OpenAICompatibleConfig
+  - OpenAICompatibleProfile
+  - OPENAI_COMPATIBLE_PROFILES
   - OpenAICompatibleProvider
   - ProviderCancelled
   - ProviderError
   - ProviderErrorCode
   - ProviderResponse
-  responsibility: Proponer una estructura molecular desde una descripción y validar estrictamente el SMILES mediante ChemIO aislado.
+  - get_openai_compatible_profile
+  responsibility: Proponer una estructura molecular desde una descripción y validar estrictamente el SMILES mediante ChemIO aislado; ofrecer perfiles de endpoints OpenAI-compatible sin fijar modelos.
   risk_level: medium
   status: evolving
   target_dependencies:

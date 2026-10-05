@@ -2182,11 +2182,14 @@ class ChemusonWindow(QMainWindow):
 
     def _on_ai_molecular_assistant(self) -> None:
         """Abre el flujo modeless de propuesta/validación/inserción IA."""
-        dialog = MolecularAssistantDialog(self)
+        dialog = MolecularAssistantDialog(
+            self,
+            profiles=self._molecular_assistant_controller.provider_profiles,
+        )
         dialog.generation_requested.connect(
-            lambda description, base_url, model, api_key, json_output, d=dialog: (
+            lambda description, provider_id, base_url, model, api_key, json_output, d=dialog: (
                 self._start_molecular_assistant_job(
-                    d, description, base_url, model, api_key, json_output
+                    d, description, provider_id, base_url, model, api_key, json_output
                 )
             )
         )
@@ -2204,6 +2207,7 @@ class ChemusonWindow(QMainWindow):
         self,
         dialog: MolecularAssistantDialog,
         description: str,
+        provider_id: str,
         base_url: str,
         model: str,
         api_key: str,
@@ -2216,6 +2220,7 @@ class ChemusonWindow(QMainWindow):
             model=model,
             api_key=api_key,
             supports_json_output=supports_json_output,
+            provider_id=provider_id,
         )
         if job_id is None:
             dialog.show_configuration_error()

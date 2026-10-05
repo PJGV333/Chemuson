@@ -14,8 +14,10 @@ from chemuson.molecular_assistant import (
     MolecularAssistant,
     MolecularAssistantRequest,
     MolecularAssistantStatus,
+    OPENAI_COMPATIBLE_PROFILES,
     OpenAICompatibleConfig,
     OpenAICompatibleProvider,
+    get_openai_compatible_profile,
     ProviderCancelled,
     ProviderError,
     ProviderErrorCode,
@@ -404,6 +406,53 @@ def test_openai_adapter_posts_explicit_request_and_extracts_transport_metadata()
     assert provider.provider_id == "test-gateway"
     assert provider.model_id == "configured-model"
     assert "test-secret" not in repr(config)
+
+
+@pytest.mark.parametrize(
+    ("profile_id", "expected_url", "api_key"),
+    [
+        ("openai", "https://api.openai.com/v1/chat/completions", "test-key"),
+        ("lm-studio", "http://127.0.0.1:1234/v1/chat/completions", None),
+        ("llama-cpp", "http://127.0.0.1:8080/v1/chat/completions", None),
+    ],
+)
+def test_provider_profiles_use_the_same_explicit_chat_completions_contract(
+    profile_id, expected_url, api_key
+):
+    profile = get_openai_compatible_profile(profile_id)
+    assert profile is not None
+    transport = FakeTransport(
+        response=provider_module.HttpResponse(200, _openai_body('{"smiles":"CCO"}'))
+    )
+    provider = OpenAICompatibleProvider(
+        OpenAICompatibleConfig(
+            base_url=profile.default_base_url,
+            model="endpoint-owned-model-id",
+            api_key=api_key,
+            provider_id=profile.profile_id,
+        ),
+        transport=transport,
+    )
+
+    response = provider.generate(MolecularAssistantRequest("Draw ethanol"))
+
+    request = transport.calls[0]
+    assert request["url"] == expected_url
+    assert json.loads(request["body"])["model"] == "endpoint-owned-model-id"
+    assert ("Authorization" in request["headers"]) is (api_key is not None)
+    assert provider.provider_id == profile_id
+    assert response.model_id == "served-model"
+
+
+def test_provider_profile_catalog_is_explicit_unique_and_keeps_generic_default():
+    profile_ids = [profile.profile_id for profile in OPENAI_COMPATIBLE_PROFILES]
+    assert profile_ids == ["openai-compatible", "openai", "lm-studio", "llama-cpp"]
+    assert len(profile_ids) == len(set(profile_ids))
+    assert get_openai_compatible_profile("openai").api_key_required is True
+    assert get_openai_compatible_profile("lm-studio").api_key_required is False
+    assert get_openai_compatible_profile("llama-cpp").api_key_required is False
+    assert get_openai_compatible_profile("not-configured") is None
+    assert OpenAICompatibleConfig("https://provider.example/v1", "model").provider_id == "openai-compatible"
 
 
 def test_openai_adapter_omits_optional_json_mode_by_default():

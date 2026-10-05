@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from typing import Protocol
+
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialog,
     QFormLayout,
     QHBoxLayout,
@@ -15,15 +19,29 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+class ProviderProfileView(Protocol):
+    """Read-only profile fields injected by the M23-owning controller."""
+
+    profile_id: str
+    display_name: str
+    default_base_url: str
+    api_key_required: bool
+
 
 class MolecularAssistantDialog(QDialog):
     """Collect one explicit request/configuration and review before insertion."""
 
-    generation_requested = pyqtSignal(str, str, str, str, bool)
+    generation_requested = pyqtSignal(str, str, str, str, str, bool)
     insert_requested = pyqtSignal()
 
-    def __init__(self, parent=None) -> None:
+    def __init__(
+        self,
+        parent=None,
+        *,
+        profiles: Sequence[ProviderProfileView],
+    ) -> None:
         super().__init__(parent)
+        self._profiles_by_id = {profile.profile_id: profile for profile in profiles}
         self.setWindowTitle("Generar estructura con IA")
         self.setModal(False)
         self.setMinimumWidth(520)
@@ -35,18 +53,24 @@ class MolecularAssistantDialog(QDialog):
         self.description_edit.document().setMaximumBlockCount(100)
         self.description_edit.setMinimumHeight(76)
 
+        self.provider_combo = QComboBox(self)
+        for profile in profiles:
+            self.provider_combo.addItem(profile.display_name, profile.profile_id)
         self.base_url_edit = QLineEdit(self)
         self.base_url_edit.setPlaceholderText("https://servidor/v1 o http://localhost:1234/v1")
         self.model_edit = QLineEdit(self)
+        self.model_edit.setPlaceholderText("ID del modelo expuesto por el endpoint")
+        self.api_key_label = QLabel("API key (opcional)", self)
         self.api_key_edit = QLineEdit(self)
         self.api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.json_output_check = QCheckBox("Solicitar salida JSON estructurada si el endpoint la admite")
 
         form = QFormLayout()
         form.addRow("Descripción", self.description_edit)
+        form.addRow("Proveedor", self.provider_combo)
         form.addRow("Endpoint base", self.base_url_edit)
         form.addRow("Modelo", self.model_edit)
-        form.addRow("API key (opcional)", self.api_key_edit)
+        form.addRow(self.api_key_label, self.api_key_edit)
         form.addRow("", self.json_output_check)
 
         self.status_label = QLabel(self)
@@ -88,6 +112,8 @@ class MolecularAssistantDialog(QDialog):
         layout.addWidget(self.preview_group)
         layout.addLayout(buttons)
 
+        self.provider_combo.currentIndexChanged.connect(self._on_provider_profile_changed)
+        self._on_provider_profile_changed(clear_api_key=False)
         self.generate_button.clicked.connect(self._submit)
         self.insert_button.clicked.connect(self.insert_requested.emit)
         self.close_button.clicked.connect(self.reject)
@@ -114,7 +140,7 @@ class MolecularAssistantDialog(QDialog):
         """Report invalid local configuration without exposing provider details."""
         self.generate_button.setEnabled(True)
         self.insert_button.setVisible(False)
-        self.status_label.setText("Revisa la URL HTTP(S) y el identificador del modelo.")
+        self.status_label.setText("Revisa el endpoint, el modelo y la API key requerida por el proveedor.")
 
     def show_failure(self, status: str, reason_code: str) -> None:
         """Present stable result identifiers only; raw diagnostics are never shown."""
@@ -153,8 +179,22 @@ class MolecularAssistantDialog(QDialog):
         """Show a local insertion constraint while keeping the valid preview."""
         self.status_label.setText(message)
 
+    def _on_provider_profile_changed(self, *_args, clear_api_key: bool = True) -> None:
+        profile = self._profiles_by_id.get(self.provider_combo.currentData())
+        if profile is None:
+            return
+        if clear_api_key:
+            self.api_key_edit.clear()
+        if profile.default_base_url:
+            self.base_url_edit.setText(profile.default_base_url)
+        self.api_key_label.setText(
+            "API key (requerida)" if profile.api_key_required else "API key (opcional)"
+        )
+
     def _submit(self) -> None:
         description = self.description_edit.toPlainText().strip()
+        provider_id = self.provider_combo.currentData()
+        profile = self._profiles_by_id.get(provider_id)
         base_url = self.base_url_edit.text().strip()
         model = self.model_edit.text().strip()
         if not description:
@@ -163,9 +203,16 @@ class MolecularAssistantDialog(QDialog):
         if not base_url or not model:
             self.status_label.setText("Indica explícitamente el endpoint base y el modelo.")
             return
+        if profile is None:
+            self.show_configuration_error()
+            return
+        if profile.api_key_required and not self.api_key_edit.text().strip():
+            self.status_label.setText("El proveedor seleccionado requiere una API key.")
+            return
         self.status_label.setText("Preparando solicitud…")
         self.generation_requested.emit(
             description,
+            provider_id,
             base_url,
             model,
             self.api_key_edit.text(),

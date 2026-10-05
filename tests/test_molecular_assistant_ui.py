@@ -11,6 +11,7 @@ from chemuson.core.model import MolGraph
 from chemuson.gui.dialogs import MolecularAssistantDialog
 from chemuson.gui.main_window import ChemusonWindow
 from chemuson.molecular_assistant import (
+    OPENAI_COMPATIBLE_PROFILES,
     MolecularAssistantResult,
     MolecularAssistantStatus,
 )
@@ -138,6 +139,47 @@ def test_dialog_is_modeless_masks_key_and_rejects_missing_request_fields():
         window.close()
 
 
+def test_provider_profiles_fill_editable_endpoint_and_clear_transient_keys():
+    dialog = MolecularAssistantDialog(profiles=OPENAI_COMPATIBLE_PROFILES)
+    try:
+        emitted = []
+        dialog.generation_requested.connect(lambda *args: emitted.append(args))
+        dialog.description_edit.setPlainText("Dibuja etanol")
+        dialog.model_edit.setText("loaded-model-id")
+        dialog.api_key_edit.setText("key-for-another-profile")
+
+        openai_index = dialog.provider_combo.findData("openai")
+        dialog.provider_combo.setCurrentIndex(openai_index)
+        assert dialog.base_url_edit.text() == "https://api.openai.com/v1"
+        assert dialog.api_key_label.text() == "API key (requerida)"
+        assert dialog.api_key_edit.text() == ""
+        dialog.generate_button.click()
+        assert emitted == []
+        assert "requiere una API key" in dialog.status_label.text()
+
+        dialog.api_key_edit.setText("transient-openai-key")
+        dialog.generate_button.click()
+        assert emitted == [
+            (
+                "Dibuja etanol",
+                "openai",
+                "https://api.openai.com/v1",
+                "loaded-model-id",
+                "transient-openai-key",
+                False,
+            )
+        ]
+
+        local_index = dialog.provider_combo.findData("lm-studio")
+        dialog.provider_combo.setCurrentIndex(local_index)
+        assert dialog.base_url_edit.text() == "http://127.0.0.1:1234/v1"
+        assert dialog.api_key_label.text() == "API key (opcional)"
+        assert dialog.api_key_edit.text() == ""
+        assert dialog.model_edit.text() == "loaded-model-id"
+    finally:
+        dialog.close()
+
+
 def test_controller_runs_generation_on_worker_thread_and_keeps_key_transient():
     gui_thread_id = threading.get_ident()
     observed = {}
@@ -193,6 +235,44 @@ def test_controller_rejects_bad_endpoint_without_starting_a_job():
     ) is None
     assert controller.active_jobs() == ()
     assert calls == []
+
+
+def test_controller_enforces_profile_key_before_worker_and_sets_profile_identity():
+    observed = []
+    from chemuson.gui.controllers import MolecularAssistantController
+
+    controller = MolecularAssistantController(
+        generator=lambda _description, config: observed.append(config) or _success_result()
+    )
+    assert controller.start_job(
+        "Dibuja cafeína",
+        base_url="https://api.openai.com/v1",
+        model="test-model",
+        provider_id="openai",
+    ) is None
+    assert controller.start_job(
+        "Dibuja cafeína",
+        base_url="https://provider.example/v1",
+        model="test-model",
+        provider_id="unknown-profile",
+        api_key="secret",
+    ) is None
+    assert controller.active_jobs() == ()
+    assert observed == []
+
+    finished = QSignalSpy(controller.job_finished)
+    job_id = controller.start_job(
+        "Dibuja cafeína",
+        base_url="https://api.openai.com/v1",
+        model="test-model",
+        provider_id="openai",
+        api_key="openai-secret",
+    )
+    assert job_id is not None
+    assert finished.wait(5000)
+    assert _wait_for(lambda: not controller.active_jobs())
+    assert observed[0].provider_id == "openai"
+    assert "openai-secret" not in repr(observed[0])
 
 
 def test_abandoned_job_suppresses_late_success_result():

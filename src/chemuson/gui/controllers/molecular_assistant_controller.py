@@ -13,7 +13,9 @@ from chemuson.molecular_assistant import (
     MolecularAssistantResult,
     MolecularAssistantStatus,
     OpenAICompatibleConfig,
+    OPENAI_COMPATIBLE_PROFILES,
     OpenAICompatibleProvider,
+    get_openai_compatible_profile,
 )
 
 
@@ -85,6 +87,11 @@ class MolecularAssistantController(QObject):
         self._pending_results: dict[int, MolecularAssistantResult] = {}
         self._abandoned_jobs: set[int] = set()
 
+    @property
+    def provider_profiles(self):
+        """Expose immutable profile metadata to the UI without a direct M23 import."""
+        return OPENAI_COMPATIBLE_PROFILES
+
     def start_job(
         self,
         description: str,
@@ -93,9 +100,17 @@ class MolecularAssistantController(QObject):
         model: str,
         api_key: str | None = None,
         supports_json_output: bool = False,
+        provider_id: str = "openai-compatible",
     ) -> int | None:
         """Validate explicit per-request configuration and start background work."""
         if not isinstance(description, str) or not description.strip():
+            return None
+        profile = get_openai_compatible_profile(provider_id)
+        if profile is None:
+            return None
+        if profile.api_key_required and (
+            not isinstance(api_key, str) or not api_key.strip()
+        ):
             return None
         try:
             config = OpenAICompatibleConfig(
@@ -103,6 +118,7 @@ class MolecularAssistantController(QObject):
                 model=model.strip() if isinstance(model, str) else model,
                 api_key=api_key if api_key else None,
                 supports_json_output=supports_json_output,
+                provider_id=profile.profile_id,
             )
         except (TypeError, ValueError):
             return None
