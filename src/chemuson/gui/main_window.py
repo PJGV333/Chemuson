@@ -110,6 +110,10 @@ class ChemusonWindow(QMainWindow):
     def __init__(self) -> None:
         """Inicializa la instancia y delega el ensamblaje del application shell."""
         super().__init__()
+        self._shutdown_started = False
+        self._close_approved = False
+        self._async_shutdown_complete = False
+        self._shutdown_threads: set[QThread] = set()
         assemble_application_shell(self)
 
     def _apply_theme(self) -> None:
@@ -559,6 +563,8 @@ class ChemusonWindow(QMainWindow):
 
     def _schedule_chemical_properties_update(self) -> None:
         """Programa recálculo ligero del dock de propiedades químicas."""
+        if self._shutdown_started:
+            return
         timer = getattr(self, "_properties_update_timer", None)
         if timer is None:
             return
@@ -566,6 +572,8 @@ class ChemusonWindow(QMainWindow):
 
     def _refresh_chemical_properties_dock(self) -> None:
         """Refresca propiedades calculadas del documento activo."""
+        if self._shutdown_started:
+            return
         dock = getattr(self, "chemical_properties_dock", None)
         if dock is None:
             return
@@ -726,6 +734,8 @@ class ChemusonWindow(QMainWindow):
 
     def _start_descriptor_job(self, graph, base_rows: list[tuple[str, str]]) -> None:
         """Inicia cálculo asíncrono de descriptores RDKit para el dock."""
+        if self._shutdown_started:
+            return
         job_id = int(getattr(self, "_next_descriptor_job_id", 1))
         self._next_descriptor_job_id = job_id + 1
         self._latest_descriptor_job_id = job_id
@@ -743,6 +753,8 @@ class ChemusonWindow(QMainWindow):
     def _on_descriptor_job_finished(self, job_id: int, descriptors: dict, error: str) -> None:
         """Actualiza el dock cuando termina el worker de descriptores."""
         job = getattr(self, "_descriptor_jobs", {}).pop(int(job_id), None)
+        if self._shutdown_started:
+            return
         if job is None or int(job_id) != int(getattr(self, "_latest_descriptor_job_id", 0)):
             return
         _thread, _worker, base_rows = job
@@ -796,6 +808,8 @@ class ChemusonWindow(QMainWindow):
         )
 
     def _start_compchem_job(self, operation: str, *, backend: str | None = None, force: bool = False) -> None:
+        if self._shutdown_started:
+            return
         canvas = getattr(self, "canvas", None)
         dock = getattr(self, "compchem_dock", None)
         if canvas is None or dock is None:
@@ -827,10 +841,14 @@ class ChemusonWindow(QMainWindow):
         self._start_compchem_job("optimize")
 
     def _on_compchem_reset(self) -> None:
+        if self._shutdown_started:
+            return
         self._reset_compchem_state("Regenerando conformero 3D...")
         self._start_compchem_job("generate", backend="rdkit", force=True)
 
     def _on_compchem_frame_ready(self, job_id: int, frame: object) -> None:
+        if self._shutdown_started:
+            return
         if int(job_id) != int(getattr(self, "_latest_compchem_job_id", 0)):
             return
         dock = getattr(self, "compchem_dock", None)
@@ -840,6 +858,8 @@ class ChemusonWindow(QMainWindow):
     def _on_compchem_job_finished(self, job_id: int, result: object) -> None:
         backend = self._compchem_job_backends.pop(int(job_id), "rdkit")
         self._compchem_job_operations.pop(int(job_id), None)
+        if self._shutdown_started:
+            return
         if int(job_id) != int(getattr(self, "_latest_compchem_job_id", 0)):
             return
         dock = getattr(self, "compchem_dock", None)
@@ -859,6 +879,8 @@ class ChemusonWindow(QMainWindow):
         dock.set_has_coordinates(True)
 
     def _on_compchem_project_to_2d(self) -> None:
+        if self._shutdown_started:
+            return
         coordset = self._compchem_coordset
         canvas = getattr(self, "canvas", None)
         if coordset is None or canvas is None:
@@ -907,6 +929,8 @@ class ChemusonWindow(QMainWindow):
         self.statusBar().showMessage("Proyección 3D aplicada a 2D.", 7000)
 
     def _on_compchem_export_xyz(self) -> None:
+        if self._shutdown_started:
+            return
         coordset = self._compchem_coordset
         if coordset is None:
             self.statusBar().showMessage("No hay coordenadas 3D para exportar.", 5000)
@@ -919,6 +943,8 @@ class ChemusonWindow(QMainWindow):
         self.statusBar().showMessage(f"Exportado XYZ: {filepath}", 7000)
 
     def _on_compchem_export_input(self, program: str) -> None:
+        if self._shutdown_started:
+            return
         coordset = self._compchem_coordset
         if coordset is None:
             self.statusBar().showMessage("No hay coordenadas 3D para exportar.", 5000)
@@ -1320,10 +1346,14 @@ class ChemusonWindow(QMainWindow):
 
     def _maybe_check_updates_startup(self) -> None:
         """Chequea updates en inicio respetando política y frecuencia."""
+        if self._shutdown_started:
+            return
         self._check_for_updates(force=False, interactive=False)
 
     def _on_check_updates_now(self) -> None:
         """Lanza chequeo manual de actualizaciones desde el menú Ayuda."""
+        if self._shutdown_started:
+            return
         self._check_for_updates(force=True, interactive=True)
 
     def _update_controller_context(self) -> UpdateControllerContext:
@@ -1336,6 +1366,8 @@ class ChemusonWindow(QMainWindow):
 
     def _check_for_updates(self, force: bool, interactive: bool) -> None:
         """Ejecuta chequeo de updates delegando en UpdateController."""
+        if self._shutdown_started:
+            return
         self._update_controller.check_for_updates(
             self._update_controller_context(),
             force=force,
@@ -1524,17 +1556,14 @@ class ChemusonWindow(QMainWindow):
         )
 
     def closeEvent(self, event) -> None:
-        """Método auxiliar para closeEvent.
+        """Confirma cierre y coordina la terminación segura de workers Qt."""
+        if self._close_approved:
+            if self._async_shutdown_complete:
+                event.accept()
+            else:
+                event.ignore()
+            return
 
-        Args:
-            event: Descripción del parámetro.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la interfaz.
-        """
         canvases = [
             canvas
             for i in range(self.tabs.count())
@@ -1550,7 +1579,83 @@ class ChemusonWindow(QMainWindow):
         if not self._apply_pending_windows_update_on_exit():
             event.ignore()
             return
-        event.accept()
+
+        # Do not abandon work until all ordinary close decisions have passed.
+        self._close_approved = True
+        if self._begin_async_worker_shutdown():
+            event.accept()
+            return
+        self.setEnabled(False)
+        event.ignore()
+
+    def _begin_async_worker_shutdown(self) -> bool:
+        """Suppress new/late UI work and defer close until owned QThreads stop."""
+        if self._shutdown_started:
+            return self._async_shutdown_complete
+        self._shutdown_started = True
+
+        properties_timer = getattr(self, "_properties_update_timer", None)
+        if properties_timer is not None:
+            properties_timer.stop()
+        for autosave in getattr(self, "_canvas_autosave_managers", {}).values():
+            autosave.stop()
+
+        for controller_name in (
+            "_molecular_assistant_controller",
+            "_compchem3d_controller",
+            "_template_controller",
+        ):
+            controller = getattr(self, controller_name, None)
+            begin_shutdown = getattr(controller, "begin_shutdown", None)
+            if callable(begin_shutdown):
+                begin_shutdown()
+
+        for canvas in self.findChildren(ChemusonCanvas):
+            begin_shutdown = getattr(canvas, "begin_shutdown", None)
+            if callable(begin_shutdown):
+                begin_shutdown()
+
+        for dialog, _canvas in tuple(
+            getattr(self, "_molecular_assistant_dialogs", {}).values()
+        ):
+            dialog.close()
+        getattr(self, "_molecular_assistant_dialogs", {}).clear()
+        getattr(self, "_molecular_assistant_results", {}).clear()
+
+        for job_id, (thread, worker, progress) in tuple(
+            getattr(self, "_name2structure_jobs", {}).items()
+        ):
+            if progress is not None:
+                progress.close()
+                progress.deleteLater()
+                self._name2structure_jobs[job_id] = (thread, worker, None)
+
+        self._async_shutdown_complete = self._track_running_shutdown_threads()
+        return self._async_shutdown_complete
+
+    def _track_running_shutdown_threads(self) -> bool:
+        """Retain and observe every running QThread below this window."""
+        for thread in self.findChildren(QThread):
+            if not thread.isRunning() or thread in self._shutdown_threads:
+                continue
+            self._shutdown_threads.add(thread)
+            thread.finished.connect(self._on_async_shutdown_thread_finished)
+            thread.requestInterruption()
+            if not thread.isRunning():
+                thread.wait()
+                self._shutdown_threads.discard(thread)
+        self._async_shutdown_complete = not self._shutdown_threads
+        return self._async_shutdown_complete
+
+    def _on_async_shutdown_thread_finished(self) -> None:
+        """Wait for final thread exit before allowing QObject owner teardown."""
+        thread = self.sender()
+        if isinstance(thread, QThread):
+            thread.wait()
+            self._shutdown_threads.discard(thread)
+        if self._track_running_shutdown_threads():
+            self.setEnabled(True)
+            self.close()
 
     def changeEvent(self, event) -> None:
         """Método auxiliar para changeEvent.
@@ -2182,6 +2287,8 @@ class ChemusonWindow(QMainWindow):
 
     def _on_ai_molecular_assistant(self) -> None:
         """Abre el flujo modeless de propuesta/validación/inserción IA."""
+        if self._shutdown_started:
+            return
         dialog = MolecularAssistantDialog(
             self,
             profiles=self._molecular_assistant_controller.provider_profiles,
@@ -2214,6 +2321,8 @@ class ChemusonWindow(QMainWindow):
         supports_json_output: bool,
     ) -> None:
         """Start a provider request without blocking the GUI event loop."""
+        if self._shutdown_started:
+            return
         job_id = self._molecular_assistant_controller.start_job(
             description,
             base_url=base_url,
@@ -2233,6 +2342,8 @@ class ChemusonWindow(QMainWindow):
 
     def _on_molecular_assistant_job_finished(self, job_id: int, result: object) -> None:
         """Present only successful validated results; failures never reach canvas."""
+        if self._shutdown_started:
+            return
         job_id = int(job_id)
         job = self._molecular_assistant_dialogs.get(job_id)
         if job is None:
@@ -2262,6 +2373,8 @@ class ChemusonWindow(QMainWindow):
 
     def _insert_molecular_assistant_result(self, dialog: MolecularAssistantDialog) -> None:
         """Commit the reviewed graph through the canvas's ordinary undo macro."""
+        if self._shutdown_started:
+            return
         job_id = dialog.job_id
         if job_id is None:
             return
@@ -2305,6 +2418,8 @@ class ChemusonWindow(QMainWindow):
 
     def _on_name_to_structure(self) -> None:
         """Convierte nombre común/sistemático a estructura en worker."""
+        if self._shutdown_started:
+            return
         name, ok = QInputDialog.getText(
             self,
             "Nombre a estructura",
@@ -2314,8 +2429,10 @@ class ChemusonWindow(QMainWindow):
             return
         self._start_name_to_structure_job(name.strip())
 
-    def _start_name_to_structure_job(self, query: str) -> int:
+    def _start_name_to_structure_job(self, query: str) -> int | None:
         """Inicia resolución Name->Structure no bloqueante."""
+        if self._shutdown_started:
+            return None
         job_id = int(getattr(self, "_next_name2structure_job_id", 1))
         self._next_name2structure_job_id = job_id + 1
         thread = QThread(self)
@@ -2346,9 +2463,11 @@ class ChemusonWindow(QMainWindow):
         job = getattr(self, "_name2structure_jobs", {}).pop(int(job_id), None)
         if job is not None:
             _thread, _worker, progress = job
-            if progress is not None:
+            if progress is not None and not self._shutdown_started:
                 progress.close()
                 progress.deleteLater()
+        if self._shutdown_started:
+            return
         if int(job_id) in getattr(self, "_cancelled_name2structure_jobs", set()):
             self._cancelled_name2structure_jobs.discard(int(job_id))
             self.statusBar().showMessage("Búsqueda Name→Structure cancelada.", 5000)

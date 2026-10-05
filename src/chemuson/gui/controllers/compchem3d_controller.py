@@ -152,20 +152,23 @@ class CompChem3DController(QObject):
         self._next_job_id = 1
         self._jobs: dict[int, tuple[QThread, CompChem3DWorker]] = {}
         self._pending_results: dict[int, Any] = {}
+        self._shutting_down = False
 
     def start_job(
         self,
         graph: MolGraph,
         spec: CompChemJobSpec,
         coordset: CoordinateSet3D | None = None,
-    ) -> int:
+    ) -> int | None:
+        if self._shutting_down:
+            return None
         job_id = self._next_job_id
         self._next_job_id += 1
         thread = QThread(self)
         worker = CompChem3DWorker(job_id, graph, spec, coordset)
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
-        worker.frame_ready.connect(self.frame_ready)
+        worker.frame_ready.connect(self._relay_frame_ready)
         worker.finished.connect(self._record_worker_finished)
         worker.finished.connect(thread.quit)
         worker.finished.connect(worker.deleteLater)
@@ -179,12 +182,33 @@ class CompChem3DController(QObject):
     def active_jobs(self) -> tuple[int, ...]:
         return tuple(sorted(self._jobs))
 
+    def has_active_jobs(self) -> bool:
+        """Whether an owned CompChem QThread is still running."""
+        return any(thread.isRunning() for thread, _worker in self._jobs.values())
+
+    @property
+    def shutdown_complete(self) -> bool:
+        return self._shutting_down and not self.has_active_jobs()
+
+    def begin_shutdown(self) -> None:
+        """Suppress results and request cooperative interruption of workers."""
+        if self._shutting_down:
+            return
+        self._shutting_down = True
+        for thread, _worker in self._jobs.values():
+            thread.requestInterruption()
+
+    def _relay_frame_ready(self, job_id: int, frame: object) -> None:
+        if not self._shutting_down:
+            self.frame_ready.emit(job_id, frame)
+
     def _record_worker_finished(self, job_id: int, result: Any) -> None:
-        self._pending_results[int(job_id)] = result
+        if not self._shutting_down:
+            self._pending_results[int(job_id)] = result
 
     def _on_thread_finished(self, job_id: int) -> None:
         job_id = int(job_id)
         self._jobs.pop(job_id, None)
         result = self._pending_results.pop(job_id, None)
-        if result is not None:
+        if result is not None and not self._shutting_down:
             self.job_finished.emit(job_id, result)

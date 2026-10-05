@@ -62,6 +62,7 @@ class TemplateController(QObject):
         super().__init__()
         self._next_smiles_export_job_id = 1
         self._smiles_export_jobs: dict[int, _SmilesExportJob] = {}
+        self._shutting_down = False
 
     def start_template_insert_by_id(
         self,
@@ -372,7 +373,17 @@ class TemplateController(QObject):
             graph = smiles_to_molgraph(smiles)
             return graph, {"selected_source": "smiles_to_molgraph"}
 
+    def begin_shutdown(self) -> None:
+        """Suppress late export UI and request cooperative worker interruption."""
+        if self._shutting_down:
+            return
+        self._shutting_down = True
+        for job in self._smiles_export_jobs.values():
+            job.thread.requestInterruption()
+
     def on_export_smiles(self, context: TemplateControllerContext) -> None:
+        if self._shutting_down:
+            return
         try:
             atom_ids, bonds = context.canvas._selected_structure_ids()
             target_graph = (
@@ -397,6 +408,8 @@ class TemplateController(QObject):
         graph: MolGraph,
     ) -> None:
         """Inicia la exportación SMILES fuera del hilo de la UI."""
+        if self._shutting_down:
+            return
         if self._smiles_export_jobs:
             context.show_status("Exportación SMILES en curso...")
             return
@@ -425,7 +438,7 @@ class TemplateController(QObject):
     def _on_smiles_export_finished(self, job_id: int, smiles: str, error: str) -> None:
         """Muestra el resultado de una exportación SMILES terminada."""
         job = self._smiles_export_jobs.pop(int(job_id), None)
-        if job is None:
+        if job is None or self._shutting_down:
             return
         if error:
             QMessageBox.critical(

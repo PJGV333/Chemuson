@@ -88,6 +88,7 @@ class ChemusonCanvas(
             Puede modificar el estado interno o la escena.
         """
         super().__init__(parent)
+        self._shutdown_started = False
 
         self.scene = QGraphicsScene()
         self.setScene(self.scene)

@@ -86,6 +86,7 @@ class MolecularAssistantController(QObject):
         self._jobs: dict[int, tuple[QThread, _MolecularAssistantWorker]] = {}
         self._pending_results: dict[int, MolecularAssistantResult] = {}
         self._abandoned_jobs: set[int] = set()
+        self._shutting_down = False
 
     @property
     def provider_profiles(self):
@@ -103,6 +104,8 @@ class MolecularAssistantController(QObject):
         provider_id: str = "openai-compatible",
     ) -> int | None:
         """Validate explicit per-request configuration and start background work."""
+        if self._shutting_down:
+            return None
         if not isinstance(description, str) or not description.strip():
             return None
         profile = get_openai_compatible_profile(provider_id)
@@ -146,8 +149,26 @@ class MolecularAssistantController(QObject):
         return job_id
 
     def active_jobs(self) -> tuple[int, ...]:
-        """Return currently running job identifiers."""
+        """Return job identifiers whose QThreads have not completed."""
         return tuple(sorted(self._jobs))
+
+    def has_active_jobs(self) -> bool:
+        """Whether any owned QThread is still running."""
+        return any(thread.isRunning() for thread, _worker in self._jobs.values())
+
+    @property
+    def shutdown_complete(self) -> bool:
+        """Whether shutdown began and every owned QThread has stopped."""
+        return self._shutting_down and not self.has_active_jobs()
+
+    def begin_shutdown(self) -> None:
+        """Suppress late results and request cooperative worker interruption."""
+        if self._shutting_down:
+            return
+        self._shutting_down = True
+        for job_id, (thread, _worker) in self._jobs.items():
+            self._abandoned_jobs.add(job_id)
+            thread.requestInterruption()
 
     def abandon_job(self, job_id: int) -> None:
         """Ignore a late result without claiming to abort an in-flight HTTP call."""
@@ -157,6 +178,8 @@ class MolecularAssistantController(QObject):
 
     @pyqtSlot(int, object)
     def _record_worker_finished(self, job_id: int, result: Any) -> None:
+        if self._shutting_down:
+            return
         if isinstance(result, MolecularAssistantResult):
             self._pending_results[int(job_id)] = result
 
@@ -164,7 +187,7 @@ class MolecularAssistantController(QObject):
         job_id = int(job_id)
         self._jobs.pop(job_id, None)
         result = self._pending_results.pop(job_id, None)
-        if job_id in self._abandoned_jobs:
+        if self._shutting_down or job_id in self._abandoned_jobs:
             self._abandoned_jobs.discard(job_id)
             return
         if result is not None:

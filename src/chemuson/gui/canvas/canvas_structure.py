@@ -3226,6 +3226,14 @@ class CanvasStructureMixin:
         except RuntimeError:
             pass
 
+    def begin_shutdown(self) -> None:
+        """Suppress analysis results and request interruption of owned workers."""
+        self._shutdown_started = True
+        for job in getattr(self, "_analysis_jobs", {}).values():
+            thread = job.get("thread")
+            if isinstance(thread, QThread):
+                thread.requestInterruption()
+
     def _run_analysis_action(self, mode: str, scene_pos: QPointF) -> None:
         """Método auxiliar para  run analysis action.
 
@@ -3239,6 +3247,8 @@ class CanvasStructureMixin:
         Side Effects:
             Puede modificar el estado interno o la escena.
         """
+        if self._shutdown_started:
+            return
         graph, bbox = self._analysis_graph_and_bbox()
         if graph is None:
             return
@@ -3258,6 +3268,8 @@ class CanvasStructureMixin:
         scene_pos: QPointF,
     ) -> None:
         """Ejecuta análisis con nombre/SMILES fuera del hilo de UI."""
+        if self._shutdown_started:
+            return
         jobs = getattr(self, "_analysis_jobs", None)
         if jobs is None:
             jobs = {}
@@ -3296,7 +3308,7 @@ class CanvasStructureMixin:
         """Inserta el texto de análisis generado en segundo plano."""
         jobs = getattr(self, "_analysis_jobs", {})
         job = jobs.pop(int(job_id), None)
-        if job is None:
+        if job is None or self._shutdown_started:
             return
         if error:
             self._show_status_message(f"No se pudo calcular el análisis: {error}")
