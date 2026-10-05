@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-10-04
+goal: Evaluate ChemIO-validated AI structure proposals through the existing Clean2D engine and report diagnostic before/after geometry metrics without changing the graph or Clean2D policy.

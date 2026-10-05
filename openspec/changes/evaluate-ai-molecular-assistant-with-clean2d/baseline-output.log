@@ -1,0 +1,41 @@
+Phase 3 baseline command results (captured on clean HEAD aca8ea3557c2bce148a74e39842b60881cefda38; before Phase 3 files were created)
+
+$ git status --short
+[no output]
+$ git rev-parse HEAD
+aca8ea3557c2bce148a74e39842b60881cefda38
+$ git rev-parse origin/ai/molecular-assistant-foundation
+aca8ea3557c2bce148a74e39842b60881cefda38
+
+$ python -m compileall src tests tools packaging
+[Listing source directories; exit 0]
+
+$ pytest --collect-only -q
+1902 tests collected in 0.82s
+[exit 0]
+
+$ timeout 300s pytest -q tests/test_molecular_assistant.py tests/test_clean2d_safety.py tests/test_clean2d_engine_candidates.py tests/test_clean2d_quality_reporting.py
+ss...................................................................... [ 54%]
+...........................................................              [100%]
+129 passed, 2 skipped in 1.86s
+[exit 0]
+
+$ ruff check src tests tools packaging --select F401,F811,F821,E722,E741
+F401 [*] `math` imported but unused
+ --> tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py:3:8
+  |
+1 | from __future__ import annotations
+2 |
+3 | import math
+  |        ^^^^
+4 |
+5 | from chemuson.clean2d import (
+  |
+help: Remove unused import: `math`
+
+Found 1 error.
+[*] 1 fixable with the --fix option.
+[exit 1]
+
+$ pytest -q
+[NOT RUN: the captured full-suite baseline is 19:26, exceeds the requested maximum, and has one unrelated pre-existing CompChem failure.]

@@ -87,6 +87,16 @@ def test_clean2d_source_has_no_ai_imports():
         ), f"Clean2D imported the AI module in {path.relative_to(ROOT)}"
 
 
+def test_ai_clean2d_orchestration_is_tool_only_and_does_not_add_reverse_imports():
+    evaluator = ROOT / "tools" / "ai_clean2d_evaluation.py"
+    imports = _import_names(ast.parse(evaluator.read_text(encoding="utf-8")))
+    assert "chemuson.clean2d" in imports
+    assert "chemuson.molecular_assistant" in imports
+    assert not any(name.startswith("chemuson.gui") for name in imports)
+    assert evaluator.parent == ROOT / "tools"
+    test_clean2d_source_has_no_ai_imports()
+
+
 def test_request_contains_no_canvas_document_or_mutation_context():
     assert [field.name for field in fields(MolecularAssistantRequest)] == ["description"]
 
