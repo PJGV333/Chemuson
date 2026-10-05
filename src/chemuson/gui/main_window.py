@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QEvent, QPointF, QPoint, QThread
 from PyQt6.QtGui import QAction, QColor, QCursor, QTextCursor
+from dataclasses import dataclass, fields
 from typing import Optional
 import copy
 import math
@@ -29,6 +30,8 @@ import os
 from chemuson.gui.canvas import (
     ChemusonCanvas,
 )
+from chemuson.chemio.rdkit_io import molgraph_to_smiles_isolated_or_error
+from chemuson.core.model import MolGraph
 from chemuson.gui.items import EnergyDiagramItem
 from chemuson.gui.elemental_analysis_dialog import ElementalAnalysisDialog
 from chemuson.gui.periodic_table import PeriodicTableDialog
@@ -100,6 +103,18 @@ from chemuson.version import get_app_version
 __all__ = [
     "ChemusonWindow",
 ]
+
+
+@dataclass(slots=True)
+class _MolecularAssistantTransformContext:
+    """Source snapshot plus worker-produced source SMILES."""
+
+    canvas: ChemusonCanvas
+    atom_ids: frozenset[int]
+    source_graph: MolGraph
+    source_signature: tuple
+    target_center: QPointF
+    source_smiles: str | None = None
 
 
 class ChemusonWindow(QMainWindow):
@@ -1621,6 +1636,7 @@ class ChemusonWindow(QMainWindow):
             dialog.close()
         getattr(self, "_molecular_assistant_dialogs", {}).clear()
         getattr(self, "_molecular_assistant_results", {}).clear()
+        getattr(self, "_molecular_assistant_transform_jobs", {}).clear()
 
         for job_id, (thread, worker, progress) in tuple(
             getattr(self, "_name2structure_jobs", {}).items()
@@ -2286,20 +2302,161 @@ class ChemusonWindow(QMainWindow):
         self._template_controller.on_import_smiles(self._template_controller_context())
 
     def _on_ai_molecular_assistant(self) -> None:
-        """Abre el flujo modeless de propuesta/validación/inserción IA."""
+        """Abre el flujo modeless para generar una molécula nueva."""
+        self._open_molecular_assistant_dialog()
+
+    def _on_ai_molecular_transform(self) -> None:
+        """Abre una transformación IA sólo para una molécula completa seleccionada."""
+        if self._shutdown_started:
+            return
+        transform_context = self._capture_selected_molecule_for_ai_transform()
+        if transform_context is None:
+            self.statusBar().showMessage(
+                "Selecciona todos los átomos de una sola molécula conectada para transformarla.",
+                7000,
+            )
+            return
+        self._open_molecular_assistant_dialog(transform_context)
+
+    @staticmethod
+    def _assistant_graph_signature(graph: MolGraph) -> tuple:
+        """Capture every Atom/Bond dataclass field for stale-source validation."""
+        atoms = tuple(
+            (
+                atom_id,
+                tuple(getattr(atom, item.name) for item in fields(atom)),
+            )
+            for atom_id, atom in sorted(graph.atoms.items())
+        )
+        bonds = tuple(
+            (
+                bond_id,
+                tuple(getattr(bond, item.name) for item in fields(bond)),
+            )
+            for bond_id, bond in sorted(graph.bonds.items())
+        )
+        return atoms, bonds
+
+    @staticmethod
+    def _build_assistant_component_graph(
+        canvas: ChemusonCanvas,
+        atom_ids: set[int],
+    ) -> MolGraph:
+        """Deep-copy a component without selection-copy metadata omissions."""
+        graph = MolGraph()
+        graph.atoms = {
+            atom_id: copy.deepcopy(atom)
+            for atom_id, atom in canvas.model.atoms.items()
+            if atom_id in atom_ids
+        }
+        graph.bonds = {
+            bond_id: copy.deepcopy(bond)
+            for bond_id, bond in canvas.model.bonds.items()
+            if bond.a1_id in atom_ids and bond.a2_id in atom_ids
+        }
+        graph._next_atom_id = max(atom_ids, default=0) + 1
+        graph._next_bond_id = max(graph.bonds, default=0) + 1
+        return graph
+
+    def _capture_selected_molecule_for_ai_transform(
+        self,
+    ) -> _MolecularAssistantTransformContext | None:
+        canvas = self.canvas
+        selected_atom_ids = set(canvas.state.selected_atoms)
+        if (
+            not selected_atom_ids
+            or not selected_atom_ids.issubset(canvas.model.atoms)
+        ):
+            return None
+        component_atom_ids = canvas._connected_component_atom_ids(
+            min(selected_atom_ids)
+        )
+        if component_atom_ids != selected_atom_ids:
+            return None
+        for bond_id in canvas.state.selected_bonds:
+            bond = canvas.model.bonds.get(bond_id)
+            if (
+                bond is None
+                or bond.a1_id not in selected_atom_ids
+                or bond.a2_id not in selected_atom_ids
+            ):
+                return None
+
+        source_graph = self._build_assistant_component_graph(canvas, selected_atom_ids)
+        if not source_graph.atoms:
+            return None
+        xs = [atom.x for atom in source_graph.atoms.values()]
+        ys = [atom.y for atom in source_graph.atoms.values()]
+        return _MolecularAssistantTransformContext(
+            canvas=canvas,
+            atom_ids=frozenset(selected_atom_ids),
+            source_graph=source_graph,
+            source_signature=self._assistant_graph_signature(source_graph),
+            target_center=QPointF(
+                (min(xs) + max(xs)) / 2.0,
+                (min(ys) + max(ys)) / 2.0,
+            ),
+        )
+
+    def _is_current_ai_transform_source(
+        self,
+        context: _MolecularAssistantTransformContext,
+    ) -> bool:
+        canvas = context.canvas
+        if self.canvas is not canvas or self.tabs.indexOf(canvas) < 0:
+            return False
+        atom_ids = set(context.atom_ids)
+        if not atom_ids or not atom_ids.issubset(canvas.model.atoms):
+            return False
+        if set(canvas.state.selected_atoms) != atom_ids:
+            return False
+        if canvas._connected_component_atom_ids(min(atom_ids)) != atom_ids:
+            return False
+        for bond_id in canvas.state.selected_bonds:
+            bond = canvas.model.bonds.get(bond_id)
+            if (
+                bond is None
+                or bond.a1_id not in atom_ids
+                or bond.a2_id not in atom_ids
+            ):
+                return False
+        current_graph = self._build_assistant_component_graph(canvas, atom_ids)
+        return (
+            self._assistant_graph_signature(current_graph) == context.source_signature
+        )
+
+    def _open_molecular_assistant_dialog(
+        self,
+        transform_context: _MolecularAssistantTransformContext | None = None,
+    ) -> None:
         if self._shutdown_started:
             return
         dialog = MolecularAssistantDialog(
             self,
             profiles=self._molecular_assistant_controller.provider_profiles,
+            transform_mode=transform_context is not None,
         )
-        dialog.generation_requested.connect(
-            lambda description, provider_id, base_url, model, api_key, json_output, d=dialog: (
-                self._start_molecular_assistant_job(
-                    d, description, provider_id, base_url, model, api_key, json_output
-                )
+
+        def start_requested_generation(
+            description: str,
+            provider_id: str,
+            base_url: str,
+            model: str,
+            api_key: str,
+            json_output: bool,
+        ) -> None:
+            self._start_molecular_assistant_job(
+                dialog,
+                description,
+                provider_id,
+                base_url,
+                model,
+                api_key,
+                json_output,
+                transform_context=transform_context,
             )
-        )
+
+        dialog.generation_requested.connect(start_requested_generation)
         dialog.insert_requested.connect(
             lambda d=dialog: self._insert_molecular_assistant_result(d)
         )
@@ -2319,10 +2476,31 @@ class ChemusonWindow(QMainWindow):
         model: str,
         api_key: str,
         supports_json_output: bool,
+        *,
+        transform_context: _MolecularAssistantTransformContext | None = None,
     ) -> None:
         """Start a provider request without blocking the GUI event loop."""
         if self._shutdown_started:
             return
+        request_transform = None
+        if transform_context is not None:
+
+            def transform_request(user_instruction: str) -> str:
+                source_smiles = molgraph_to_smiles_isolated_or_error(
+                    transform_context.source_graph,
+                    timeout_s=8.0,
+                )
+                if not isinstance(source_smiles, str) or not source_smiles.strip():
+                    raise ValueError("Source SMILES export returned no structure")
+                transform_context.source_smiles = source_smiles
+                return (
+                    "Transform the complete molecule represented by the source SMILES below. "
+                    "Return one complete replacement molecule as the proposed structure.\n\n"
+                    f"Source SMILES: {source_smiles}\n"
+                    f"Requested transformation: {user_instruction}"
+                )
+
+            request_transform = transform_request
         job_id = self._molecular_assistant_controller.start_job(
             description,
             base_url=base_url,
@@ -2330,6 +2508,7 @@ class ChemusonWindow(QMainWindow):
             api_key=api_key,
             supports_json_output=supports_json_output,
             provider_id=provider_id,
+            request_transform=request_transform,
         )
         if job_id is None:
             dialog.show_configuration_error()
@@ -2337,7 +2516,12 @@ class ChemusonWindow(QMainWindow):
         dialog.set_job_id(job_id)
         dialog.clear_api_key()
         dialog.set_pending()
-        self._molecular_assistant_dialogs[job_id] = (dialog, self.canvas)
+        target_canvas = (
+            transform_context.canvas if transform_context is not None else self.canvas
+        )
+        self._molecular_assistant_dialogs[job_id] = (dialog, target_canvas)
+        if transform_context is not None:
+            self._molecular_assistant_transform_jobs[job_id] = transform_context
         self.statusBar().showMessage("Generando y validando estructura con IA…", 5000)
 
     def _on_molecular_assistant_job_finished(self, job_id: int, result: object) -> None:
@@ -2363,16 +2547,31 @@ class ChemusonWindow(QMainWindow):
                 f"Asistente molecular: {status_value} ({reason_code}).", 7000
             )
             return
+        transform_context = self._molecular_assistant_transform_jobs.get(job_id)
+        source_smiles = None
+        if transform_context is not None:
+            source_smiles = transform_context.source_smiles
+            if not source_smiles:
+                dialog.show_failure("validation_error", "source_structure_unavailable")
+                return
         self._molecular_assistant_results[job_id] = result
         dialog.show_preview(
             provider_id=str(getattr(result, "provider_id", "unknown")),
             model_id=getattr(result, "model_id", None),
             smiles=str(getattr(result, "proposed_smiles", "") or ""),
+            source_smiles=source_smiles,
         )
-        self.statusBar().showMessage("Propuesta validada; revisa antes de insertar.", 7000)
+        status_message = (
+            "Transformación validada; revisa antes de reemplazar."
+            if transform_context is not None
+            else "Propuesta validada; revisa antes de insertar."
+        )
+        self.statusBar().showMessage(status_message, 7000)
 
-    def _insert_molecular_assistant_result(self, dialog: MolecularAssistantDialog) -> None:
-        """Commit the reviewed graph through the canvas's ordinary undo macro."""
+    def _insert_molecular_assistant_result(
+        self, dialog: MolecularAssistantDialog
+    ) -> None:
+        """Commit an approved proposal or whole-molecule replacement."""
         if self._shutdown_started:
             return
         job_id = dialog.job_id
@@ -2394,11 +2593,33 @@ class ChemusonWindow(QMainWindow):
             return
         if self.canvas is not target_canvas:
             dialog.show_insert_notice(
-                "Activa el documento donde iniciaste la solicitud y confirma la inserción de nuevo."
+                "Activa el documento donde iniciaste la solicitud y confirma la operación de nuevo."
             )
             return
         graph = getattr(result, "graph", None)
         if graph is None:
+            return
+        transform_context = self._molecular_assistant_transform_jobs.get(job_id)
+        if transform_context is not None:
+            if not self._is_current_ai_transform_source(transform_context):
+                dialog.show_insert_notice(
+                    "La selección o la molécula original cambió; no se reemplazó."
+                )
+                return
+            inserted_atom_ids = target_canvas._replace_molecular_component(
+                set(transform_context.atom_ids),
+                graph,
+                transform_context.target_center,
+            )
+            if not inserted_atom_ids:
+                dialog.show_insert_notice(
+                    "No se pudo reemplazar la molécula; no se aplicaron cambios."
+                )
+                return
+            dialog.accept()
+            self.statusBar().showMessage(
+                "Molécula transformada; puedes deshacer la operación.", 7000
+            )
             return
         target_canvas._insert_molgraph(graph, select_inserted=True)
         dialog.accept()
@@ -2415,6 +2636,7 @@ class ChemusonWindow(QMainWindow):
         self._molecular_assistant_controller.abandon_job(job_id)
         self._molecular_assistant_dialogs.pop(job_id, None)
         self._molecular_assistant_results.pop(job_id, None)
+        self._molecular_assistant_transform_jobs.pop(job_id, None)
 
     def _on_name_to_structure(self) -> None:
         """Convierte nombre común/sistemático a estructura en worker."""

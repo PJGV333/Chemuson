@@ -455,8 +455,14 @@ class DeleteSelectionCommand(QUndoCommand):
                 isotope=atom.isotope,
                 radical_electrons=int(getattr(atom, "radical_electrons", 0) or 0),
                 oxidation_state=getattr(atom, "oxidation_state", None),
+                stereo_cip=getattr(atom, "stereo_cip", None),
+                stereo_axial=getattr(atom, "stereo_axial", None),
+                stereo_helical=getattr(atom, "stereo_helical", None),
+                stereo_si_re=getattr(atom, "stereo_si_re", None),
                 explicit_h=atom.explicit_h,
+                group_h_cap=getattr(atom, "group_h_cap", None),
                 mapping=atom.mapping,
+                r_group_substituents=getattr(atom, "r_group_substituents", ()),
                 is_query=atom.is_query,
                 is_explicit=atom.is_explicit,
                 no_implicit=bool(getattr(atom, "no_implicit", False)),
@@ -470,13 +476,17 @@ class DeleteSelectionCommand(QUndoCommand):
             )
             self._view.add_atom_item(restored_atom)
         for bond in self._removed_bonds:
-            self._model.add_bond(
+            restored_bond = self._model.add_bond(
                 bond.a1_id,
                 bond.a2_id,
                 bond.order,
                 bond_id=bond.id,
                 style=bond.style,
                 stereo=bond.stereo,
+                stereo_ez=getattr(bond, "stereo_ez", None),
+                stereo_axial=getattr(bond, "stereo_axial", None),
+                stereo_endo_exo=getattr(bond, "stereo_endo_exo", None),
+                stereo_helical=getattr(bond, "stereo_helical", None),
                 is_aromatic=bond.is_aromatic,
                 display_order=bond.display_order,
                 is_query=bond.is_query,
@@ -485,10 +495,13 @@ class DeleteSelectionCommand(QUndoCommand):
                 stroke_px=bond.stroke_px,
                 color=bond.color,
                 donor_atom_id=getattr(bond, "donor_atom_id", None),
+                flex_curve_1=getattr(bond, "flex_curve_1", None),
+                flex_curve_2=getattr(bond, "flex_curve_2", None),
                 pi_offset_sign=getattr(bond, "pi_offset_sign", None),
                 opacity=getattr(bond, "opacity", None),
+                interaction_kind=getattr(bond, "interaction_kind", None),
             )
-            self._view.add_bond_item(bond)
+            self._view.add_bond_item(restored_bond)
         for item, start, end, kind, curve_factor in self._removed_arrows:
             self._view.readd_arrow_item(item, start, end, kind, curve_factor=curve_factor)
         for item, rect, padding, kind, stroke_px in self._removed_brackets:
@@ -533,3 +546,8 @@ class DeleteSelectionCommand(QUndoCommand):
                         band.lane_ref = lane
             self._view.readd_plate_item(item)
         self._refresh_view_after_structure_change()
+        for atom in self._removed_atoms:
+            restored_atom = self._model.atoms.get(atom.id)
+            if restored_atom is not None:
+                restored_atom.implicit_h = atom.implicit_h
+                restored_atom.has_valence_error = atom.has_valence_error

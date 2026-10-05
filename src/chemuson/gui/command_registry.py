@@ -235,6 +235,13 @@ def build_command_registry(window) -> CommandRegistry:
         "Estructura",
         ["ia", "ai", "generar", "estructura", "molécula", "smiles"],
     )
+    _register(
+        reg,
+        window,
+        "action_ai_molecular_transform",
+        "Estructura",
+        ["ia", "ai", "transformar", "reemplazar", "molécula", "selección"],
+    )
 
     # Análisis
     _register(reg, window, "action_analysis_name", "Análisis", ["nombre", "smiles", "nomenclatura"])

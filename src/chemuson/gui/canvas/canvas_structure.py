@@ -1139,6 +1139,31 @@ class CanvasStructureMixin:
         if any(bond.is_aromatic for bond in self.model.bonds.values()):
             self._kekulize_aromatic_bonds()
 
+    def _replace_molecular_component(
+        self,
+        atom_ids: set[int],
+        graph: MolGraph,
+        target: QPointF,
+    ) -> set[int]:
+        """Replace one validated component as a single undoable canvas operation."""
+        atom_ids = {int(atom_id) for atom_id in atom_ids}
+        if not atom_ids or not atom_ids.issubset(self.model.atoms) or not graph.atoms:
+            return set()
+
+        previous_atom_ids = set(self.model.atoms)
+        self.begin_validation_batch()
+        self.undo_stack.beginMacro("Transform molecule with AI")
+        try:
+            self._delete_selection(atom_ids, set())
+            self._insert_molgraph_at(graph, QPointF(target))
+        finally:
+            self.undo_stack.endMacro()
+            self.end_validation_batch()
+
+        inserted_atom_ids = set(self.model.atoms) - previous_atom_ids
+        self._select_inserted_items(inserted_atom_ids)
+        return inserted_atom_ids
+
     def begin_template_insert_mode(self, graph: MolGraph, label: str) -> None:
         """Activa la inserción por clic para una plantilla."""
         self._pending_template_graph = graph

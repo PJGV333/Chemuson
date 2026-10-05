@@ -39,17 +39,27 @@ class MolecularAssistantDialog(QDialog):
         parent=None,
         *,
         profiles: Sequence[ProviderProfileView],
+        transform_mode: bool = False,
     ) -> None:
         super().__init__(parent)
         self._profiles_by_id = {profile.profile_id: profile for profile in profiles}
-        self.setWindowTitle("Generar estructura con IA")
+        self._transform_mode = bool(transform_mode)
+        self.setWindowTitle(
+            "Transformar molécula con IA"
+            if self._transform_mode
+            else "Generar estructura con IA"
+        )
         self.setModal(False)
         self.setMinimumWidth(520)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self._job_id: int | None = None
 
         self.description_edit = QPlainTextEdit(self)
-        self.description_edit.setPlaceholderText("Dibuja cafeína…")
+        self.description_edit.setPlaceholderText(
+            "Describe cómo transformar la molécula…"
+            if self._transform_mode
+            else "Dibuja cafeína…"
+        )
         self.description_edit.document().setMaximumBlockCount(100)
         self.description_edit.setMinimumHeight(76)
 
@@ -88,13 +98,26 @@ class MolecularAssistantDialog(QDialog):
         self.provenance_label = QLabel(self)
         self.provenance_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.provenance_label.setVisible(False)
+        self.source_smiles_label = QLabel("Molécula original (SMILES)", self)
+        self.source_smiles_label.setVisible(False)
+        self.source_smiles_preview = QPlainTextEdit(self)
+        self.source_smiles_preview.setReadOnly(True)
+        self.source_smiles_preview.setMaximumHeight(72)
+        self.source_smiles_preview.setVisible(False)
+        self.proposal_smiles_label = QLabel("Estructura propuesta (SMILES)", self)
+        self.proposal_smiles_label.setVisible(False)
         self.smiles_preview = QPlainTextEdit(self)
         self.smiles_preview.setReadOnly(True)
         self.smiles_preview.setMaximumHeight(100)
         self.smiles_preview.setVisible(False)
 
         self.generate_button = QPushButton("Generar y validar", self)
-        self.insert_button = QPushButton("Insertar en el documento", self)
+        self.insert_button = QPushButton(
+            "Reemplazar molécula seleccionada"
+            if self._transform_mode
+            else "Insertar en el documento",
+            self,
+        )
         self.insert_button.setVisible(False)
         self.close_button = QPushButton("Cerrar", self)
 
@@ -108,6 +131,9 @@ class MolecularAssistantDialog(QDialog):
         layout.addLayout(form)
         layout.addWidget(self.status_label)
         layout.addWidget(self.provenance_label)
+        layout.addWidget(self.source_smiles_label)
+        layout.addWidget(self.source_smiles_preview)
+        layout.addWidget(self.proposal_smiles_label)
         layout.addWidget(self.smiles_preview)
         layout.addWidget(self.preview_group)
         layout.addLayout(buttons)
@@ -147,6 +173,9 @@ class MolecularAssistantDialog(QDialog):
         self.generate_button.setEnabled(True)
         self.insert_button.setVisible(False)
         self.provenance_label.setVisible(False)
+        self.source_smiles_label.setVisible(False)
+        self.source_smiles_preview.setVisible(False)
+        self.proposal_smiles_label.setVisible(False)
         self.smiles_preview.setVisible(False)
         self.preview_group.setVisible(False)
         self.status_label.setText(
@@ -160,6 +189,7 @@ class MolecularAssistantDialog(QDialog):
         provider_id: str,
         model_id: str | None,
         smiles: str,
+        source_smiles: str | None = None,
     ) -> None:
         """Show the validated proposal, provenance, and semantic limitation."""
         self.generate_button.setEnabled(False)
@@ -168,12 +198,21 @@ class MolecularAssistantDialog(QDialog):
             f"Modelo: {model_id or 'N/D'}"
         )
         self.provenance_label.setVisible(True)
+        if self._transform_mode and source_smiles is not None:
+            self.source_smiles_preview.setPlainText(source_smiles)
+            self.source_smiles_label.setVisible(True)
+            self.source_smiles_preview.setVisible(True)
+        self.proposal_smiles_label.setVisible(True)
         self.smiles_preview.setPlainText(smiles)
         self.smiles_preview.setVisible(True)
         self.preview_group.setVisible(True)
         self.insert_button.setVisible(True)
         self.insert_button.setEnabled(True)
-        self.status_label.setText("Revisa la propuesta. No se insertará hasta que lo confirmes.")
+        self.status_label.setText(
+            "Revisa la transformación. No se reemplazará la molécula hasta que lo confirmes."
+            if self._transform_mode
+            else "Revisa la propuesta. No se insertará hasta que lo confirmes."
+        )
 
     def show_insert_notice(self, message: str) -> None:
         """Show a local insertion constraint while keeping the valid preview."""

@@ -327,6 +327,12 @@ class MainWindowUiBuilder:
         window.action_ai_molecular_assistant.triggered.connect(
             window._on_ai_molecular_assistant
         )
+        window.action_ai_molecular_transform = QAction(
+            "Transformar molécula seleccionada con IA...", window
+        )
+        window.action_ai_molecular_transform.triggered.connect(
+            window._on_ai_molecular_transform
+        )
         window.action_export_smiles = QAction("Exportar SMILES...", window)
         window.action_export_smiles.triggered.connect(window._on_export_smiles)
         window.action_draw_smiles = QAction("Dibujar desde SMILES...", window)
@@ -569,6 +575,7 @@ class MainWindowUiBuilder:
         structure_menu.addSeparator()
         structure_menu.addAction(window.action_name_to_structure)
         structure_menu.addAction(window.action_ai_molecular_assistant)
+        structure_menu.addAction(window.action_ai_molecular_transform)
         structure_menu.addAction(window.action_import_smiles)
         structure_menu.addAction(window.action_export_smiles)
         structure_menu.addSeparator()

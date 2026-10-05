@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-10-05
+goal: Let users request a validated AI transformation of one complete selected molecule, review source and proposal, and replace the source only through a single undoable canvas operation.

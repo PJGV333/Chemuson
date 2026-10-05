@@ -110,6 +110,7 @@ def assemble_application_shell(self) -> None:
     )
     self._molecular_assistant_dialogs: dict[int, tuple[object, ChemusonCanvas]] = {}
     self._molecular_assistant_results: dict[int, object] = {}
+    self._molecular_assistant_transform_jobs: dict[int, object] = {}
     self._compchem_coordset = None
     self._latest_compchem_job_id = 0
     self._compchem_job_backends: dict[int, str] = {}

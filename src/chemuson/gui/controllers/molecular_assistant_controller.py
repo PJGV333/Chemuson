@@ -102,8 +102,9 @@ class MolecularAssistantController(QObject):
         api_key: str | None = None,
         supports_json_output: bool = False,
         provider_id: str = "openai-compatible",
+        request_transform: Callable[[str], str] | None = None,
     ) -> int | None:
-        """Validate explicit per-request configuration and start background work."""
+        """Validate configuration and run optional request transformation in the worker."""
         if self._shutting_down:
             return None
         if not isinstance(description, str) or not description.strip():
@@ -130,11 +131,23 @@ class MolecularAssistantController(QObject):
         self._next_job_id += 1
         thread = QThread(self)
         thread.setObjectName(f"MolecularAssistant-{job_id}")
+        base_generator = self._generator
+        generator = base_generator
+        if request_transform is not None:
+
+            def generate_transformed(
+                user_description: str,
+                request_config: OpenAICompatibleConfig,
+            ) -> MolecularAssistantResult:
+                transformed_description = request_transform(user_description)
+                return base_generator(transformed_description, request_config)
+
+            generator = generate_transformed
         worker = _MolecularAssistantWorker(
             job_id,
             description,
             config,
-            self._generator,
+            generator,
         )
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
