@@ -98,8 +98,14 @@ class PubChemNameConnector:
 
     source = "pubchem"
 
-    def __init__(self, cache_path: Path | None = None) -> None:
+    def __init__(
+        self,
+        cache_path: Path | None = None,
+        *,
+        allow_network: bool = True,
+    ) -> None:
         self.cache_path = cache_path or Path.home() / ".chemuson" / "name2structure_cache.json"
+        self.allow_network = bool(allow_network)
 
     def resolve(self, name: str, timeout_s: float = 8.0) -> NameToStructureResult:
         query = str(name or "").strip()
@@ -121,6 +127,9 @@ class PubChemNameConnector:
                 )
             if error:
                 return NameToStructureResult(query, None, self.source, 0.0, message=error)
+
+        if not self.allow_network:
+            return NameToStructureResult(query, None, self.source, 0.0, message="not_found")
 
         try:
             smiles, resolved_name = self._fetch_smiles(query, timeout_s=timeout_s)
@@ -209,8 +218,8 @@ def resolve_name_to_structure(
         return NameToStructureResult(query, None, "none", 0.0, message="empty_query")
 
     active_connectors = connectors or [StaticNameConnector()]
-    if connectors is None and allow_network:
-        active_connectors.append(PubChemNameConnector())
+    if connectors is None:
+        active_connectors.append(PubChemNameConnector(allow_network=allow_network))
 
     last = NameToStructureResult(query, None, "none", 0.0, message="not_found")
     for connector in active_connectors:

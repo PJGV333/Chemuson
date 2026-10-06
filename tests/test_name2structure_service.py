@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-
+import json
 
 from chemuson.core.model import MolGraph
 from chemuson.name2structure import (
     NameToStructureResult,
+    PubChemNameConnector,
     StaticNameConnector,
     resolve_name_to_structure,
 )
@@ -56,6 +57,44 @@ def test_resolver_uses_connectors_in_order() -> None:
     assert result.ok
     assert result.source == "hit"
     assert result.confidence == 0.95
+
+
+def test_offline_resolver_uses_pubchem_cache_without_external_fetch(monkeypatch, tmp_path) -> None:
+    graph = MolGraph()
+    graph.add_atom("C", 0.0, 0.0)
+    cache_path = tmp_path / ".chemuson" / "name2structure_cache.json"
+    cache_path.parent.mkdir()
+    cache_path.write_text(
+        json.dumps(
+            {
+                "cached molecule": {
+                    "smiles": "C",
+                    "resolved_name": "cached molecule",
+                    "confidence": 0.86,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(service.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(service, "_smiles_to_graph", lambda *_args, **_kwargs: (graph, ""))
+    fetches = []
+    monkeypatch.setattr(
+        PubChemNameConnector,
+        "_fetch_smiles",
+        lambda *_args, **_kwargs: fetches.append(True),
+    )
+
+    result = resolve_name_to_structure("cached molecule", allow_network=False)
+
+    assert result.ok
+    assert result.source == "pubchem"
+    assert result.from_cache is True
+    assert result.graph is graph
+    missing = resolve_name_to_structure("not in cache", allow_network=False)
+    assert not missing.ok
+    assert missing.message == "not_found"
+    assert fetches == []
 
 
 def test_static_connector_reports_not_found_without_rdkit_call(monkeypatch) -> None:

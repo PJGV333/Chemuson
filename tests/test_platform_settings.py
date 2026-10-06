@@ -3,20 +3,24 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import pytest
+from PyQt6.QtCore import QSettings
 
 from chemuson.platform.settings import (
     AIProviderPreferences,
+    IdentityVerificationPreferences,
     NamingPreferences,
     NumberingPreferences,
     UI_THEME_CHOICES,
     UiPreferences,
     SidePanelPreferences,
     load_ai_provider_preferences,
+    load_identity_verification_preferences,
     load_naming_preferences,
     load_numbering_preferences,
     load_side_panel_preferences,
     load_ui_preferences,
     save_ai_provider_preferences,
+    save_identity_verification_preferences,
     save_naming_preferences,
     save_numbering_preferences,
     save_side_panel_preferences,
@@ -59,6 +63,50 @@ def test_ai_provider_preferences_roundtrip_per_profile_without_secrets() -> None
     assert load_ai_provider_preferences(settings, "llama-cpp") == saved
     assert "ai/providers/llama-cpp/api_key" not in settings.values
     assert "ai/providers/openai/base_url" not in settings.values
+
+
+def test_identity_verification_preferences_default_offline_and_roundtrip() -> None:
+    settings = FakeSettings({})
+    assert load_identity_verification_preferences(settings) == IdentityVerificationPreferences()
+
+    preferences = IdentityVerificationPreferences(
+        enabled=True,
+        allow_external_reference=True,
+    )
+    save_identity_verification_preferences(settings, preferences)
+    assert load_identity_verification_preferences(settings) == preferences
+    assert settings.values == {
+        "ai/identity_verification/enabled": True,
+        "ai/identity_verification/allow_external_reference": True,
+    }
+
+    save_identity_verification_preferences(
+        settings,
+        IdentityVerificationPreferences(enabled=False, allow_external_reference=True),
+    )
+    assert load_identity_verification_preferences(settings) == IdentityVerificationPreferences(
+        enabled=False,
+        allow_external_reference=False,
+    )
+
+
+def test_qsettings_provider_preferences_never_persist_api_keys(tmp_path) -> None:
+    path = tmp_path / "settings.ini"
+    settings = QSettings(str(path), QSettings.Format.IniFormat)
+    settings.setValue("ai/providers/openai/api_key", "legacy-sensitive-key")
+    save_ai_provider_preferences(
+        settings,
+        AIProviderPreferences("openai", "https://api.openai.com/v1", "model"),
+    )
+    save_identity_verification_preferences(
+        settings,
+        IdentityVerificationPreferences(True, False),
+    )
+    settings.sync()
+
+    assert not settings.contains("ai/providers/openai/api_key")
+    assert "legacy-sensitive-key" not in path.read_text(encoding="utf-8")
+    assert load_identity_verification_preferences(settings) == IdentityVerificationPreferences()
 
 
 def test_ai_provider_preferences_normalize_out_of_range_settings() -> None:

@@ -128,6 +128,8 @@ def test_dialog_is_modeless_masks_key_and_rejects_missing_request_fields():
         dialog = _open_dialog(window)
         assert not dialog.isModal()
         assert dialog.api_key_edit.echoMode() == dialog.api_key_edit.EchoMode.Password
+        assert dialog.identity_verification_enabled is True
+        assert dialog.allow_external_identity_reference is False
         emitted = []
         dialog.generation_requested.connect(lambda *args: emitted.append(args))
 
@@ -271,10 +273,10 @@ def test_controller_runs_identity_verification_in_the_worker_and_relays_separate
         events.append(("generation", threading.get_ident()))
         return _success_result()
 
-    def verifier(description, result):
+    def verifier(description, result, enabled, allow_network):
         assert description == "Draw ethanol"
         assert result.status is MolecularAssistantStatus.SUCCESS
-        events.append(("identity", threading.get_ident()))
+        events.append(("identity", threading.get_ident(), enabled, allow_network))
         return identity
 
     from chemuson.gui.controllers import MolecularAssistantController
@@ -295,7 +297,8 @@ def test_controller_runs_identity_verification_in_the_worker_and_relays_separate
         assert len(identity_ready) == 1
         assert events[0][0] == "generation"
         assert events[1][0] == "identity"
-        assert all(thread_id != gui_thread_id for _kind, thread_id in events)
+        assert all(event[1] != gui_thread_id for event in events)
+        assert events[1][2:] == (True, False)
         assert identity_ready[0][1] is identity
     finally:
         for job_id in controller.active_jobs():

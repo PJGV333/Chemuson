@@ -80,6 +80,28 @@ def test_m23_source_imports_only_core_chemio_and_its_own_package():
         assert not any(name == "tools" or name.startswith("tools.") for name in names)
 
 
+def test_identity_verification_stays_outside_m23_and_defaults_offline():
+    identity_source = ROOT / "src" / "chemuson" / "name2structure" / "identity.py"
+    identity_tree = ast.parse(identity_source.read_text(encoding="utf-8"))
+    identity_imports = _import_names(identity_tree)
+    assert not any(
+        name == "chemuson.molecular_assistant"
+        or name.startswith("chemuson.molecular_assistant.")
+        for name in identity_imports
+    )
+    assert "allow_network: bool = False" in identity_source.read_text(encoding="utf-8")
+
+    controller = (
+        ROOT
+        / "src"
+        / "chemuson"
+        / "gui"
+        / "controllers"
+        / "molecular_assistant_controller.py"
+    ).read_text(encoding="utf-8")
+    assert "identity_allow_network: bool = False" in controller
+
+
 def test_clean2d_source_has_no_ai_imports():
     for path in CLEAN2D_SOURCE.rglob("*.py"):
         names = _import_names(ast.parse(path.read_text(encoding="utf-8")))

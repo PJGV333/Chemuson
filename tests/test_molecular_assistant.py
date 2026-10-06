@@ -656,3 +656,43 @@ def test_api_key_rejects_actual_line_break_characters(api_key):
 def test_api_key_allows_literal_backslash_sequences(api_key):
     config = OpenAICompatibleConfig("https://provider.example", "model", api_key=api_key)
     assert config.api_key == api_key
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "https://provider.example/v1",
+        "https://api.openai.com/v1",
+        "http://localhost:8080/v1",
+        "http://127.0.0.1:8081/v1",
+        "http://127.23.45.67/v1",
+        "http://[::1]:8080/v1",
+    ],
+)
+def test_api_keys_are_allowed_only_over_tls_or_loopback_http(base_url):
+    config = OpenAICompatibleConfig(base_url, "model", api_key="confidential-key")
+
+    assert config.api_key == "confidential-key"
+    assert "confidential-key" not in repr(config)
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "http://example.com/v1",
+        "http://192.168.1.12:8080/v1",
+        "http://10.2.3.4/v1",
+        "http://172.20.1.7/v1",
+        "http://[2001:db8::1]/v1",
+    ],
+)
+def test_api_key_is_rejected_for_all_non_loopback_http_hosts(base_url):
+    with pytest.raises(ValueError, match="HTTPS or a loopback") as error:
+        OpenAICompatibleConfig(base_url, "model", api_key="confidential-key")
+
+    assert "confidential-key" not in str(error.value)
+
+
+def test_unkeyed_remote_http_remains_valid():
+    config = OpenAICompatibleConfig("http://model-server.example/v1", "model")
+    assert config.endpoint_url == "http://model-server.example/v1/chat/completions"

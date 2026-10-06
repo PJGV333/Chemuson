@@ -89,12 +89,15 @@ from chemuson.gui.clean2d_geometry import (
 from chemuson.gui.shell import assemble_application_shell
 from chemuson.platform.settings import (
     AIProviderPreferences,
+    IdentityVerificationPreferences,
     NamingPreferences,
     UiPreferences,
     load_ai_provider_preferences,
+    load_identity_verification_preferences,
     load_naming_preferences,
     load_ui_preferences,
     save_ai_provider_preferences,
+    save_identity_verification_preferences,
     save_naming_preferences,
     save_ui_preferences,
     setting_bool,
@@ -2451,11 +2454,14 @@ class ChemusonWindow(QMainWindow):
                 ),
             )
         }
+        identity_preferences = load_identity_verification_preferences(self._settings)
         dialog = MolecularAssistantDialog(
             self,
             profiles=profiles,
             transform_mode=transform_context is not None,
             profile_preferences=profile_preferences,
+            identity_verification_enabled=identity_preferences.enabled,
+            allow_external_identity_reference=identity_preferences.allow_external_reference,
         )
 
         def start_requested_generation(
@@ -2479,6 +2485,8 @@ class ChemusonWindow(QMainWindow):
                 timeout_s,
                 max_tokens,
                 transform_context=transform_context,
+                identity_enabled=dialog.identity_verification_enabled,
+                identity_allow_network=dialog.allow_external_identity_reference,
             )
 
         dialog.generation_requested.connect(start_requested_generation)
@@ -2511,6 +2519,8 @@ class ChemusonWindow(QMainWindow):
         max_tokens: int = 4096,
         *,
         transform_context: _MolecularAssistantTransformContext | None = None,
+        identity_enabled: bool = True,
+        identity_allow_network: bool = False,
     ) -> None:
         """Start a provider request without blocking the GUI event loop."""
         if self._shutdown_started:
@@ -2528,6 +2538,8 @@ class ChemusonWindow(QMainWindow):
             timeout_s=timeout_s,
             max_tokens=max_tokens,
             source_graph=source_graph,
+            identity_enabled=identity_enabled,
+            identity_allow_network=identity_allow_network,
         )
         if job_id is None:
             dialog.show_configuration_error()
@@ -2542,6 +2554,13 @@ class ChemusonWindow(QMainWindow):
                     timeout_s=timeout_s,
                     supports_json_output=supports_json_output,
                     max_tokens=max_tokens,
+                ),
+            )
+            save_identity_verification_preferences(
+                self._settings,
+                IdentityVerificationPreferences(
+                    enabled=identity_enabled,
+                    allow_external_reference=identity_allow_network,
                 ),
             )
             self._settings.sync()
@@ -2615,6 +2634,7 @@ class ChemusonWindow(QMainWindow):
             smiles=str(getattr(result, "proposed_smiles", "") or ""),
             source_smiles=source_smiles,
             identity_status=identity_status,
+            identity_reason_code=getattr(identity, "reason_code", None),
             requested_name=getattr(identity, "requested_name", None),
             reference_identifier=getattr(identity, "reference_identifier", None),
         )

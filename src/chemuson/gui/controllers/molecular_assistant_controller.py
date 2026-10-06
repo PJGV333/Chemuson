@@ -28,7 +28,7 @@ from chemuson.molecular_assistant import (
 
 AssistantRequest = MolecularAssistantRequest | MolecularTransformationRequest
 ResultGenerator = Callable[[AssistantRequest, OpenAICompatibleConfig], MolecularAssistantResult]
-IdentityVerifier = Callable[[str, MolecularAssistantResult], object]
+IdentityVerifier = Callable[[str, MolecularAssistantResult, bool, bool], object]
 
 
 def _generate_structure(
@@ -63,6 +63,8 @@ class _MolecularAssistantWorker(QObject):
         generator: ResultGenerator,
         source_graph: MolGraph | None,
         identity_verifier: IdentityVerifier | None,
+        identity_enabled: bool,
+        identity_allow_network: bool,
     ) -> None:
         super().__init__()
         self._job_id = int(job_id)
@@ -71,6 +73,8 @@ class _MolecularAssistantWorker(QObject):
         self._generator = generator
         self._source_graph = source_graph
         self._identity_verifier = identity_verifier
+        self._identity_enabled = identity_enabled
+        self._identity_allow_network = identity_allow_network
 
     @pyqtSlot()
     def run(self) -> None:
@@ -109,7 +113,12 @@ class _MolecularAssistantWorker(QObject):
             and result.status is MolecularAssistantStatus.SUCCESS
         ):
             try:
-                identity = self._identity_verifier(self._description, result)
+                identity = self._identity_verifier(
+                    self._description,
+                    result,
+                    self._identity_enabled,
+                    self._identity_allow_network,
+                )
             except Exception:
                 identity = MolecularIdentityVerification(
                     MolecularIdentityStatus.REFERENCE_ERROR,
@@ -161,11 +170,15 @@ class MolecularAssistantController(QObject):
         timeout_s: float = 60.0,
         max_tokens: int = 4096,
         source_graph: MolGraph | None = None,
+        identity_enabled: bool = True,
+        identity_allow_network: bool = False,
     ) -> int | None:
         """Validate configuration and run generation or typed whole-molecule transformation."""
         if self._shutting_down:
             return None
         if not isinstance(description, str) or not description.strip():
+            return None
+        if not isinstance(identity_enabled, bool) or not isinstance(identity_allow_network, bool):
             return None
         profile = get_openai_compatible_profile(provider_id)
         if profile is None:
@@ -198,6 +211,8 @@ class MolecularAssistantController(QObject):
             self._generator,
             source_graph,
             self._identity_verifier,
+            identity_enabled,
+            identity_allow_network,
         )
         worker.moveToThread(thread)
         thread.started.connect(worker.run)

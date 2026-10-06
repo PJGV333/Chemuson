@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 import re
+from typing import Protocol
 
 from chemuson.core.model import MolGraph
 from chemuson.name2structure.service import (
@@ -30,7 +30,15 @@ class MolecularIdentityVerification:
     reason_code: str | None = None
 
 
-IdentityResolver = Callable[[str], NameToStructureResult]
+class IdentityResolver(Protocol):
+    """Name resolver contract with explicit, per-call network permission."""
+
+    def __call__(
+        self,
+        name: str,
+        *,
+        allow_network: bool,
+    ) -> NameToStructureResult: ...
 
 _NAME_REQUEST = re.compile(
     r"^\s*(?:draw|generate|dibuja|genera)(?:\s+(?:the|la|el))?\s+(.+?)\s*[.!?]?\s*$",
@@ -81,9 +89,20 @@ def verify_molecular_identity(
     proposed_graph: MolGraph,
     *,
     resolver: IdentityResolver | None = None,
-    allow_network: bool = True,
+    allow_network: bool = False,
+    enabled: bool = True,
 ) -> MolecularIdentityVerification:
-    """Compare isolated stereochemical InChI identity with an existing name resolver."""
+    """Compare isolated InChI identity using an explicit network policy.
+
+    Offline lookup is the default. Injected resolvers receive ``allow_network``
+    as a keyword argument just like the built-in Name→Structure resolver.
+    """
+    if enabled is not True:
+        return MolecularIdentityVerification(
+            MolecularIdentityStatus.NOT_APPLICABLE,
+            reason_code="verification_disabled",
+        )
+    allow_network = allow_network is True
     requested_name = extract_requested_molecule_name(request)
     if requested_name is None:
         return MolecularIdentityVerification(MolecularIdentityStatus.NOT_APPLICABLE)
@@ -96,7 +115,7 @@ def verify_molecular_identity(
 
     try:
         reference = (
-            resolver(requested_name)
+            resolver(requested_name, allow_network=allow_network)
             if resolver is not None
             else resolve_name_to_structure(
                 requested_name,
@@ -122,7 +141,13 @@ def verify_molecular_identity(
         return MolecularIdentityVerification(
             status,
             requested_name=requested_name,
-            reason_code="reference_unavailable" if failed else "reference_not_found",
+            reason_code=(
+                "reference_unavailable"
+                if failed
+                else "reference_not_found"
+                if allow_network
+                else "reference_not_found_offline"
+            ),
         )
     if reference.confidence < 0.7:
         return MolecularIdentityVerification(

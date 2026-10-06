@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import math
 import socket
@@ -115,6 +116,14 @@ class OpenAICompatibleConfig:
             or "\n" in self.api_key
         ):
             raise ValueError("api_key must be an opaque single-line string")
+        if (
+            self.api_key
+            and parsed.scheme == "http"
+            and not _is_loopback_host(parsed.hostname or "")
+        ):
+            raise ValueError(
+                "API keys require HTTPS or a loopback HTTP endpoint"
+            )
         if not isinstance(self.supports_json_output, bool):
             raise ValueError("supports_json_output must be boolean")
         if (
@@ -137,6 +146,19 @@ class OpenAICompatibleConfig:
         if urlsplit(base).path.rstrip("/").endswith("/v1"):
             return f"{base}/chat/completions"
         return f"{base}/v1/chat/completions"
+
+
+def _is_loopback_host(host: str) -> bool:
+    """Recognize only literal loopback IPs and the exact localhost name."""
+    normalized = host.casefold()
+    if normalized == "localhost":
+        return True
+    if "%" in normalized:
+        return False
+    try:
+        return ipaddress.ip_address(normalized).is_loopback
+    except ValueError:
+        return False
 
 
 @dataclass(frozen=True)

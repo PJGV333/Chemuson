@@ -44,6 +44,8 @@ class MolecularAssistantDialog(QDialog):
         profiles: Sequence[ProviderProfileView],
         transform_mode: bool = False,
         profile_preferences: Mapping[str, Mapping[str, object]] | None = None,
+        identity_verification_enabled: bool = True,
+        allow_external_identity_reference: bool = False,
     ) -> None:
         super().__init__(parent)
         self._profiles_by_id = {profile.profile_id: profile for profile in profiles}
@@ -90,6 +92,26 @@ class MolecularAssistantDialog(QDialog):
         self.max_tokens_spin.setRange(64, 8192)
         self.max_tokens_spin.setValue(4096)
         self.json_output_check = QCheckBox("Solicitar salida JSON estructurada si el endpoint la admite")
+
+        identity_group = QGroupBox("Verificación de identidad", self)
+        identity_layout = QVBoxLayout(identity_group)
+        self.identity_verification_check = QCheckBox(
+            "Verificar la identidad molecular solicitada", identity_group
+        )
+        self.identity_verification_check.setChecked(bool(identity_verification_enabled))
+        self.external_identity_check = QCheckBox(
+            "Permitir consulta externa para verificar identidad", identity_group
+        )
+        self.external_identity_check.setToolTip(
+            "Puede enviar el nombre químico a un servicio externo de referencia (PubChem)."
+        )
+        self.external_identity_check.setChecked(bool(allow_external_identity_reference))
+        self.external_identity_check.setEnabled(bool(identity_verification_enabled))
+        self.identity_verification_check.toggled.connect(
+            self.external_identity_check.setEnabled
+        )
+        identity_layout.addWidget(self.identity_verification_check)
+        identity_layout.addWidget(self.external_identity_check)
 
         advanced_group = QGroupBox("Opciones avanzadas", self)
         advanced_form = QFormLayout(advanced_group)
@@ -163,6 +185,7 @@ class MolecularAssistantDialog(QDialog):
 
         layout = QVBoxLayout(self)
         layout.addLayout(form)
+        layout.addWidget(identity_group)
         layout.addWidget(advanced_group)
         layout.addWidget(self.status_label)
         layout.addWidget(self.provenance_label)
@@ -193,11 +216,26 @@ class MolecularAssistantDialog(QDialog):
         """Remove the key from the visible form after it is handed to the worker."""
         self.api_key_edit.clear()
 
+    @property
+    def identity_verification_enabled(self) -> bool:
+        """Whether this request should run the independent identity check."""
+        return self.identity_verification_check.isChecked()
+
+    @property
+    def allow_external_identity_reference(self) -> bool:
+        """Whether this request may consult an external name reference."""
+        return (
+            self.identity_verification_check.isChecked()
+            and self.external_identity_check.isChecked()
+        )
+
     def set_pending(self) -> None:
         """Show bounded background generation without blocking the window."""
         self.generate_button.setEnabled(False)
         self.insert_button.setVisible(False)
         self.insert_variant_button.setVisible(False)
+        self.identity_verification_check.setEnabled(False)
+        self.external_identity_check.setEnabled(False)
         self._elapsed_timer.start()
         self._update_elapsed_status()
         self._elapsed_update.start()
@@ -215,13 +253,20 @@ class MolecularAssistantDialog(QDialog):
         """Report invalid local configuration without exposing provider details."""
         self._stop_elapsed_timer()
         self.generate_button.setEnabled(True)
+        self.identity_verification_check.setEnabled(True)
+        self.external_identity_check.setEnabled(self.identity_verification_check.isChecked())
         self.insert_button.setVisible(False)
-        self.status_label.setText("Revisa el endpoint, el modelo y la API key requerida por el proveedor.")
+        self.status_label.setText(
+            "Revisa endpoint, modelo y API key. Las credenciales sólo pueden enviarse "
+            "a un endpoint HTTPS o a loopback local."
+        )
 
     def show_failure(self, status: str, reason_code: str) -> None:
         """Translate a stable failure code without exposing raw diagnostics."""
         self._stop_elapsed_timer()
         self.generate_button.setEnabled(True)
+        self.identity_verification_check.setEnabled(True)
+        self.external_identity_check.setEnabled(self.identity_verification_check.isChecked())
         self.insert_button.setVisible(False)
         self.insert_variant_button.setVisible(False)
         self.identity_label.setVisible(False)
@@ -254,6 +299,7 @@ class MolecularAssistantDialog(QDialog):
         smiles: str,
         source_smiles: str | None = None,
         identity_status: str = "unverified",
+        identity_reason_code: str | None = None,
         requested_name: str | None = None,
         reference_identifier: str | None = None,
     ) -> None:
@@ -261,13 +307,19 @@ class MolecularAssistantDialog(QDialog):
         self._identity_status = identity_status
         self._stop_elapsed_timer()
         self.generate_button.setEnabled(False)
+        self.identity_verification_check.setEnabled(False)
+        self.external_identity_check.setEnabled(False)
         self.provenance_label.setText(
             f"SMILES válido (ChemIO): ✓ · Proveedor: {provider_id} · "
             f"Modelo: {model_id or 'N/D'}"
         )
         self.provenance_label.setVisible(True)
         identity_text = {
-            "not_applicable": "Identidad molecular: no aplicable a una solicitud generativa abierta.",
+            "not_applicable": (
+                "Identidad: no aplicable; la verificación está desactivada."
+                if identity_reason_code == "verification_disabled"
+                else "Identidad molecular: no aplicable a una solicitud generativa abierta."
+            ),
             "verified": "Identidad solicitada: ✓ verificada mediante referencia química.",
             "mismatch": (
                 "Identidad solicitada: ✗ la estructura propuesta es químicamente "
@@ -276,7 +328,12 @@ class MolecularAssistantDialog(QDialog):
                 "Solo se insertará tras confirmación explícita."
             ),
             "reference_error": "Identidad: no verificada por un error al consultar/canonicalizar la referencia.",
-            "unverified": "Identidad: no verificada; no hay una referencia confiable disponible.",
+            "unverified": (
+                "Identidad no verificada: no se consultaron fuentes externas y no hay "
+                "referencia local disponible."
+                if identity_reason_code == "reference_not_found_offline"
+                else "Identidad: no verificada; no hay una referencia confiable disponible."
+            ),
         }
         identity_suffix = (
             f" Referencia: {reference_identifier}." if reference_identifier else ""

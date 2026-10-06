@@ -62,6 +62,14 @@ class AIProviderPreferences:
     max_tokens: int = 4096
 
 
+@dataclass(frozen=True, slots=True)
+class IdentityVerificationPreferences:
+    """Non-secret identity lookup policy; external access defaults off."""
+
+    enabled: bool = True
+    allow_external_reference: bool = False
+
+
 #: Stable page keys accepted by ``ui/side_panel/active_tab``.
 SIDE_PANEL_TAB_KEYS: tuple[str, ...] = (
     "inspector",
@@ -165,6 +173,33 @@ def setting_bool(value: object, default: bool) -> bool:
         return bool(int(str(value)))
     except (TypeError, ValueError):
         return bool(value)
+
+
+def load_identity_verification_preferences(
+    settings: SettingsStore,
+) -> IdentityVerificationPreferences:
+    """Load offline-by-default molecular identity policy."""
+    enabled = setting_bool(settings.value("ai/identity_verification/enabled", True), True)
+    allow_external = setting_bool(
+        settings.value("ai/identity_verification/allow_external_reference", False),
+        False,
+    )
+    return IdentityVerificationPreferences(
+        enabled=enabled,
+        allow_external_reference=enabled and allow_external,
+    )
+
+
+def save_identity_verification_preferences(
+    settings: SettingsStore,
+    preferences: IdentityVerificationPreferences,
+) -> None:
+    """Persist identity policy only; it contains no provider credential."""
+    settings.setValue("ai/identity_verification/enabled", bool(preferences.enabled))
+    settings.setValue(
+        "ai/identity_verification/allow_external_reference",
+        bool(preferences.enabled and preferences.allow_external_reference),
+    )
 
 
 def load_naming_preferences(settings: SettingsStore) -> NamingPreferences:

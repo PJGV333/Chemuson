@@ -107,9 +107,11 @@ def assemble_application_shell(self) -> None:
     self._template_controller = TemplateController()
     self._molecular_assistant_controller = MolecularAssistantController(
         self,
-        identity_verifier=lambda request, result: verify_molecular_identity(
+        identity_verifier=lambda request, result, enabled, allow_network: verify_molecular_identity(
             request,
             result.graph,
+            enabled=enabled,
+            allow_network=allow_network,
         ),
     )
     self._molecular_assistant_controller.job_finished.connect(
