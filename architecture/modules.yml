@@ -788,6 +788,7 @@ modules:
   internal_api:
   - molecular_assistant_controller
   name: gui.controllers
+  notes: Molecular Assistant orquesta IA y referencias Name→Structure secuencialmente en el worker existente; M16 sólo recibe el nombre explícito extraído y la política de red.
   paths:
   - src/chemuson/gui/controllers/
   public_api:
@@ -802,6 +803,9 @@ modules:
   - FileController
   - FileWorkflowContext
   - MolecularAssistantController
+  - MolecularAssistantResolution
+  - MolecularResolutionMethod
+  - StructureOrigin
   - RecentFilesContext
   - RecoveryController
   - TextFormatController
@@ -837,6 +841,7 @@ modules:
   temporary_exceptions: []
   tests:
   - tests/test_molecular_assistant_ui.py
+  - tests/test_molecular_assistant_reference_resolution.py
   - tests/architecture/test_molecular_assistant_ui_boundary.py
   title: Controllers de la GUI
 - circular_dependencies: []
@@ -1413,5 +1418,6 @@ modules:
   temporary_exceptions: []
   tests:
   - tests/test_molecular_assistant.py
+  - tests/test_molecular_assistant_recovery.py
   - tests/architecture/test_molecular_assistant_boundary.py
   title: Asistente de estructuras moleculares

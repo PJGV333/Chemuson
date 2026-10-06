@@ -6,6 +6,12 @@ from dataclasses import dataclass
 from enum import Enum
 
 from chemuson.core.model import MolGraph
+from chemuson.molecular_assistant.limits import MAX_TOKEN_DIAGNOSTIC
+
+
+_ALLOWED_FINISH_REASONS = frozenset(
+    {"stop", "length", "content_filter", "tool_calls", "function_call", "unknown"}
+)
 
 
 class MolecularAssistantStatus(str, Enum):
@@ -42,13 +48,30 @@ class MolecularTransformationRequest:
 
 @dataclass(frozen=True)
 class ProviderResponse:
-    """Provider message content and bounded structured-output diagnostics."""
+    """Provider content and bounded, non-sensitive response metadata."""
 
     content: str
     model_id: str | None = None
     structured_output_requested: bool = False
     structured_output_native: bool | None = None
     structured_output_fallback_used: bool = False
+    finish_reason: str | None = None
+    completion_tokens: int | None = None
+    reasoning_tokens: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.finish_reason is not None and self.finish_reason not in _ALLOWED_FINISH_REASONS:
+            raise ValueError("finish_reason is not an allowlisted value")
+        for name, count in (
+            ("completion_tokens", self.completion_tokens),
+            ("reasoning_tokens", self.reasoning_tokens),
+        ):
+            if count is not None and (
+                isinstance(count, bool)
+                or not isinstance(count, int)
+                or not 0 <= count <= MAX_TOKEN_DIAGNOSTIC
+            ):
+                raise ValueError(f"{name} is outside the diagnostic bound")
 
 
 @dataclass(frozen=True)
@@ -67,8 +90,23 @@ class MolecularAssistantResult:
     structured_output_fallback_used: bool = False
     format_repair_used: bool = False
     format_repair_succeeded: bool | None = None
+    finish_reason: str | None = None
+    completion_tokens: int | None = None
+    reasoning_tokens: int | None = None
 
     def __post_init__(self) -> None:
+        if self.finish_reason is not None and self.finish_reason not in _ALLOWED_FINISH_REASONS:
+            raise ValueError("finish_reason is not an allowlisted value")
+        for name, count in (
+            ("completion_tokens", self.completion_tokens),
+            ("reasoning_tokens", self.reasoning_tokens),
+        ):
+            if count is not None and (
+                isinstance(count, bool)
+                or not isinstance(count, int)
+                or not 0 <= count <= MAX_TOKEN_DIAGNOSTIC
+            ):
+                raise ValueError(f"{name} is outside the diagnostic bound")
         if not isinstance(self.structured_output_requested, bool):
             raise ValueError("structured_output_requested must be boolean")
         if self.structured_output_native is not None and not isinstance(

@@ -99,7 +99,8 @@ def test_identity_verification_stays_outside_m23_and_defaults_offline():
         / "controllers"
         / "molecular_assistant_controller.py"
     ).read_text(encoding="utf-8")
-    assert "identity_allow_network: bool = False" in controller
+    assert "allow_external_reference: bool = False" in controller
+    assert '"ai_reference"' in (ROOT / "src/chemuson/platform/settings.py").read_text(encoding="utf-8")
 
 
 def test_clean2d_source_has_no_ai_imports():

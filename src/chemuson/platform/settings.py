@@ -64,10 +64,25 @@ class AIProviderPreferences:
 
 @dataclass(frozen=True, slots=True)
 class IdentityVerificationPreferences:
-    """Non-secret identity lookup policy; external access defaults off."""
+    """Legacy non-secret identity lookup policy; external access defaults off."""
 
     enabled: bool = True
     allow_external_reference: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class MolecularAssistantPreferences:
+    """Non-secret reference-resolution method and network permission."""
+
+    resolution_method: str = "ai_reference"
+    allow_external_reference: bool = False
+
+
+MOLECULAR_RESOLUTION_METHODS: tuple[str, ...] = (
+    "ai",
+    "ai_reference",
+    "reference",
+)
 
 
 #: Stable page keys accepted by ``ui/side_panel/active_tab``.
@@ -199,6 +214,45 @@ def save_identity_verification_preferences(
     settings.setValue(
         "ai/identity_verification/allow_external_reference",
         bool(preferences.enabled and preferences.allow_external_reference),
+    )
+
+
+def load_molecular_assistant_preferences(
+    settings: SettingsStore,
+) -> MolecularAssistantPreferences:
+    """Load the offline-by-default resolution route without reading secrets."""
+    stored_method = settings.value("ai/molecular_assistant/resolution_method", None)
+    if stored_method is None:
+        legacy_enabled = setting_bool(
+            settings.value("ai/identity_verification/enabled", True),
+            True,
+        )
+        method = "ai_reference" if legacy_enabled else "ai"
+    else:
+        method = str(stored_method or "ai_reference").strip()
+    if method not in MOLECULAR_RESOLUTION_METHODS:
+        method = "ai_reference"
+    allow_external = setting_bool(
+        settings.value("ai/identity_verification/allow_external_reference", False),
+        False,
+    )
+    return MolecularAssistantPreferences(method, allow_external)
+
+
+def save_molecular_assistant_preferences(
+    settings: SettingsStore,
+    preferences: MolecularAssistantPreferences,
+) -> None:
+    """Persist only the selected route and explicit PubChem network permission."""
+    method = str(preferences.resolution_method or "ai_reference").strip()
+    if method not in MOLECULAR_RESOLUTION_METHODS:
+        raise ValueError("resolution_method is invalid")
+    if not isinstance(preferences.allow_external_reference, bool):
+        raise ValueError("allow_external_reference must be boolean")
+    settings.setValue("ai/molecular_assistant/resolution_method", method)
+    settings.setValue(
+        "ai/identity_verification/allow_external_reference",
+        bool(preferences.allow_external_reference),
     )
 
 

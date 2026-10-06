@@ -13,6 +13,12 @@ from chemuson.gui.main_window import ChemusonWindow
 from chemuson.name2structure import (
     MolecularIdentityStatus,
     MolecularIdentityVerification,
+    NameToStructureResult,
+)
+from chemuson.gui.controllers.molecular_assistant_controller import (
+    MolecularAssistantResolution,
+    MolecularResolutionMethod,
+    StructureOrigin,
 )
 from chemuson.molecular_assistant import (
     OPENAI_COMPATIBLE_PROFILES,
@@ -263,7 +269,10 @@ def test_controller_runs_generation_on_worker_thread_and_keeps_key_transient():
         assert finished.wait(5000)
         assert _wait_for(lambda: not controller.active_jobs())
 
-        assert completed == [(job_id, result)]
+        assert len(completed) == 1
+        assert completed[0][0] == job_id
+        assert completed[0][1].ai_result is result
+        assert completed[0][1].default_candidate == "ai"
         assert observed["thread_id"] != gui_thread_id
         assert observed["description"] == "Dibuja cafeína"
         assert observed["api_key"] == "transient-secret"
@@ -288,10 +297,22 @@ def test_controller_runs_identity_verification_in_the_worker_and_relays_separate
         events.append(("generation", threading.get_ident()))
         return _success_result()
 
-    def verifier(description, result, enabled, allow_network):
+    def resolver(name, *, allow_network):
+        events.append(("reference", threading.get_ident(), name, allow_network))
+        return NameToStructureResult(
+            name,
+            _single_carbon_graph(),
+            "fake-reference",
+            1.0,
+            smiles="C",
+            resolved_name=name,
+        )
+
+    def verifier(description, result, reference):
         assert description == "Draw ethanol"
         assert result.status is MolecularAssistantStatus.SUCCESS
-        events.append(("identity", threading.get_ident(), enabled, allow_network))
+        assert reference.source == "fake-reference"
+        events.append(("identity", threading.get_ident()))
         return identity
 
     from chemuson.gui.controllers import MolecularAssistantController
@@ -299,6 +320,7 @@ def test_controller_runs_identity_verification_in_the_worker_and_relays_separate
     controller = MolecularAssistantController(
         generator=generator,
         identity_verifier=verifier,
+        reference_resolver=resolver,
     )
     try:
         finished = QSignalSpy(controller.job_finished)
@@ -307,13 +329,13 @@ def test_controller_runs_identity_verification_in_the_worker_and_relays_separate
             "Draw ethanol",
             base_url="http://127.0.0.1:8081/v1",
             model="local-model",
+            resolution_method=MolecularResolutionMethod.AI_REFERENCE,
         )
         assert finished.wait(5000)
         assert len(identity_ready) == 1
-        assert events[0][0] == "generation"
-        assert events[1][0] == "identity"
+        assert [event[0] for event in events] == ["generation", "reference", "identity"]
         assert all(event[1] != gui_thread_id for event in events)
-        assert events[1][2:] == (True, False)
+        assert events[1][2:] == ("ethanol", False)
         assert identity_ready[0][1] is identity
     finally:
         for job_id in controller.active_jobs():
@@ -344,8 +366,20 @@ def test_successful_format_repair_still_runs_identity_verification(monkeypatch):
 
     checked = []
 
-    def verifier(_description, result, enabled, allow_network):
-        checked.append((result, enabled, allow_network))
+    def resolver(name, *, allow_network):
+        assert name == "ethanol"
+        assert allow_network is False
+        return NameToStructureResult(
+            name,
+            _single_carbon_graph(),
+            "fake-reference",
+            1.0,
+            smiles="C",
+            resolved_name=name,
+        )
+
+    def verifier(_description, result, reference):
+        checked.append((result, reference))
         assert result.format_repair_used is True
         assert result.format_repair_succeeded is True
         return MolecularIdentityVerification(
@@ -359,6 +393,7 @@ def test_successful_format_repair_still_runs_identity_verification(monkeypatch):
     controller = MolecularAssistantController(
         generator=generator,
         identity_verifier=verifier,
+        reference_resolver=resolver,
     )
     try:
         finished = QSignalSpy(controller.job_finished)
@@ -367,12 +402,13 @@ def test_successful_format_repair_still_runs_identity_verification(monkeypatch):
             "Draw ethanol",
             base_url="https://provider.example/v1",
             model="repair-model",
+            resolution_method=MolecularResolutionMethod.AI_REFERENCE,
         )
         assert finished.wait(5000)
         assert _wait_for(lambda: not controller.active_jobs())
         assert len(identity_ready) == 1
         assert len(checked) == 1
-        assert checked[0][1:] == (True, False)
+        assert checked[0][1].source == "fake-reference"
         assert checked[0][0].status is MolecularAssistantStatus.SUCCESS
         assert identity_ready[0][1].status is MolecularIdentityStatus.VERIFIED
     finally:
@@ -541,18 +577,42 @@ def test_identity_mismatch_requires_explicit_override_confirmation(monkeypatch):
         before = _editor_snapshot(canvas)
         dialog = _open_dialog(window)
         window._register_molecular_assistant_dialog_job(dialog, 75, canvas)
-        window._molecular_assistant_identity_results[75] = MolecularIdentityVerification(
+        identity = MolecularIdentityVerification(
             MolecularIdentityStatus.MISMATCH,
             requested_name="colesterol",
-            reference_identifier="fake-reference:cholesterol",
+            reference_identifier="pubchem:cholesterol",
         )
-        result = _success_result()
+        ai_result = _success_result()
+        reference_graph, reference_error = service_module.smiles_to_molgraph_isolated(
+            "CCO", timeout_s=5.0
+        )
+        assert reference_error is None and reference_graph is not None
+        reference_result = NameToStructureResult(
+            "colesterol",
+            reference_graph,
+            "pubchem",
+            0.9,
+            smiles="CCO",
+            resolved_name="cholesterol",
+        )
+        result = MolecularAssistantResolution(
+            MolecularResolutionMethod.AI_REFERENCE,
+            ai_result,
+            reference_result,
+            identity,
+            "reference",
+            StructureOrigin.AI_MISMATCH_REFERENCE,
+        )
+        window._molecular_assistant_identity_results[75] = identity
         window._molecular_assistant_results[75] = result
 
         window._on_molecular_assistant_job_finished(75, result)
         assert "no coincide" in dialog.identity_label.text()
-        assert "SMILES válido (ChemIO): ✓" in dialog.provenance_label.text()
-        assert dialog.insert_button.text() == "Insertar de todos modos"
+        assert "y referencia no coinciden" in dialog.provenance_label.text()
+        assert "test-provider/test-model" in dialog.provenance_label.text()
+        assert dialog.insert_button.text() == "Usar referencia PubChem"
+        assert dialog.use_ai_proposal_button.isVisible()
+        assert dialog.reference_smiles_preview.toPlainText() == "CCO"
         assert _editor_snapshot(canvas) == before
 
         answers = [QMessageBox.StandardButton.No, QMessageBox.StandardButton.Yes]
@@ -563,14 +623,119 @@ def test_identity_mismatch_requires_explicit_override_confirmation(monkeypatch):
             return answers.pop(0)
 
         monkeypatch.setattr(QMessageBox, "warning", confirm)
-        dialog.insert_button.click()
+        dialog.use_ai_proposal_button.click()
         assert _editor_snapshot(canvas) == before
         assert "no confirmaste" in dialog.status_label.text()
 
-        dialog.insert_button.click()
+        dialog.use_ai_proposal_button.click()
         assert len(canvas.model.atoms) == 1
         assert len(prompts) == 2
         assert all("colesterol" in prompt for prompt in prompts)
+    finally:
+        window.canvas.undo_stack.setClean()
+        window.close()
+
+
+def test_mismatch_reference_candidate_uses_normal_undo_redo_without_override(monkeypatch):
+    window = ChemusonWindow()
+    try:
+        canvas = window.canvas
+        dialog = _open_dialog(window)
+        window._register_molecular_assistant_dialog_job(dialog, 76, canvas)
+        ai_result = _success_result()
+        reference_graph = service_module.smiles_to_molgraph_isolated
+        reference, error = reference_graph("CCO", timeout_s=5.0)
+        assert error is None and reference is not None
+        identity = MolecularIdentityVerification(
+            MolecularIdentityStatus.MISMATCH,
+            requested_name="ethanol",
+            reference_identifier="pubchem:ethanol",
+        )
+        outcome = MolecularAssistantResolution(
+            MolecularResolutionMethod.AI_REFERENCE,
+            ai_result,
+            NameToStructureResult("ethanol", reference, "pubchem", 0.9, "CCO", "ethanol"),
+            identity,
+            "reference",
+            StructureOrigin.AI_MISMATCH_REFERENCE,
+        )
+        window._molecular_assistant_identity_results[76] = identity
+        window._molecular_assistant_results[76] = outcome
+        window._on_molecular_assistant_job_finished(76, outcome)
+        monkeypatch.setattr(
+            QMessageBox,
+            "warning",
+            lambda *_args: pytest.fail("reference selection must not ask for AI override"),
+        )
+
+        dialog.insert_button.click()
+        assert len(canvas.model.atoms) == len(reference.atoms)
+        assert canvas.undo_stack.index() == 1
+        canvas.undo_stack.undo()
+        assert not canvas.model.atoms
+        canvas.undo_stack.redo()
+        assert len(canvas.model.atoms) == len(reference.atoms)
+    finally:
+        window.canvas.undo_stack.setClean()
+        window.close()
+
+
+def test_reference_fallback_preview_and_insertion_use_normal_undo_path():
+    window = ChemusonWindow()
+    try:
+        canvas = window.canvas
+        dialog = _open_dialog(window)
+        window._register_molecular_assistant_dialog_job(dialog, 77, canvas)
+        reference_graph, error = service_module.smiles_to_molgraph_isolated(
+            "CCO", timeout_s=5.0
+        )
+        assert error is None and reference_graph is not None
+        ai_failure = MolecularAssistantResult(
+            status=MolecularAssistantStatus.PROVIDER_ERROR,
+            provider_id="llama-cpp",
+            model_id="qwen-local",
+            reason_code="generation_exhausted",
+            finish_reason="length",
+            completion_tokens=4096,
+            reasoning_tokens=4096,
+        )
+        reference_result = NameToStructureResult(
+            "tetrandrine",
+            reference_graph,
+            "pubchem",
+            0.95,
+            smiles="CCO",
+            resolved_name="Tetrandrine",
+        )
+        identity = MolecularIdentityVerification(
+            MolecularIdentityStatus.NOT_APPLICABLE,
+            requested_name="tetrandrine",
+            reason_code="proposal_unavailable",
+        )
+        outcome = MolecularAssistantResolution(
+            MolecularResolutionMethod.AI_REFERENCE,
+            ai_failure,
+            reference_result,
+            identity,
+            "reference",
+            StructureOrigin.REFERENCE,
+        )
+        window._molecular_assistant_identity_results[77] = identity
+        window._molecular_assistant_results[77] = outcome
+
+        window._on_molecular_assistant_job_finished(77, outcome)
+        assert "agotó el límite de generación" in dialog.status_label.text()
+        assert "PubChem" in dialog.provenance_label.text()
+        assert dialog.smiles_preview.toPlainText() == "CCO"
+        assert dialog.insert_button.text() == "Insertar referencia química"
+
+        dialog.insert_button.click()
+        assert len(canvas.model.atoms) == len(reference_graph.atoms)
+        assert canvas.undo_stack.index() == 1
+        canvas.undo_stack.undo()
+        assert not canvas.model.atoms
+        canvas.undo_stack.redo()
+        assert len(canvas.model.atoms) == len(reference_graph.atoms)
     finally:
         window.canvas.undo_stack.setClean()
         window.close()

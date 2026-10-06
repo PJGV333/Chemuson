@@ -22,12 +22,25 @@ from chemuson.molecular_assistant import service as service_module
 from chemuson.molecular_assistant.limits import MAX_FORMAT_REPAIR_CONTENT_BYTES
 
 
-def _body(content: str, *, reasoning: str | None = None) -> bytes:
+def _body(
+    content: str,
+    *,
+    reasoning: str | None = None,
+    finish_reason: str | None = None,
+    completion_tokens: object = None,
+    reasoning_tokens: object = None,
+) -> bytes:
     message = {"content": content}
     if reasoning is not None:
         message["reasoning_content"] = reasoning
+    choice = {"message": message, "finish_reason": finish_reason}
+    usage = {}
+    if completion_tokens is not None:
+        usage["completion_tokens"] = completion_tokens
+    if reasoning_tokens is not None:
+        usage["completion_tokens_details"] = {"reasoning_tokens": reasoning_tokens}
     return json.dumps(
-        {"choices": [{"message": message}], "model": "served-model"}
+        {"choices": [choice], "model": "served-model", "usage": usage}
     ).encode("utf-8")
 
 
@@ -307,6 +320,65 @@ def test_capability_fallback_and_format_repair_share_a_three_request_ceiling(mon
     assert result.format_repair_succeeded is True
     assert "transient-test-key" not in repr(result)
     assert "private" not in repr(result)
+
+
+def test_empty_length_response_is_generation_exhausted_without_format_repair(monkeypatch):
+    transport = QueueTransport(
+        [
+            provider_module.HttpResponse(
+                200,
+                _body(
+                    "",
+                    reasoning="private reasoning must not be retained",
+                    finish_reason="length",
+                    completion_tokens=4096,
+                    reasoning_tokens=4096,
+                ),
+            )
+        ]
+    )
+    provider = OpenAICompatibleProvider(_native_config(), transport=transport)
+    monkeypatch.setattr(
+        service_module,
+        "smiles_to_molgraph_isolated",
+        lambda *_args, **_kwargs: pytest.fail("empty exhausted content must not reach ChemIO"),
+    )
+
+    result = MolecularAssistant(provider).generate(MolecularAssistantRequest("Draw tetrandrine"))
+
+    assert result.status is MolecularAssistantStatus.MALFORMED_RESPONSE
+    assert result.reason_code == "generation_exhausted"
+    assert result.finish_reason == "length"
+    assert result.completion_tokens == 4096
+    assert result.reasoning_tokens == 4096
+    assert result.format_repair_used is False
+    assert len(transport.calls) == 1
+    assert "private reasoning" not in repr(result)
+    assert "reasoning_content" not in repr(result)
+
+
+def test_untrusted_finish_and_token_metadata_is_normalized_or_discarded():
+    transport = QueueTransport(
+        [
+            provider_module.HttpResponse(
+                200,
+                _body(
+                    '{"smiles":"CCO"}',
+                    finish_reason="provider-specific-secret",
+                    completion_tokens=-1,
+                    reasoning_tokens=1.5,
+                ),
+            )
+        ]
+    )
+    response = OpenAICompatibleProvider(_native_config(), transport=transport).generate(
+        MolecularAssistantRequest("Draw ethanol")
+    )
+
+    assert response.finish_reason == "unknown"
+    assert response.completion_tokens is None
+    assert response.reasoning_tokens is None
+    assert "provider-specific-secret" not in repr(response)
 
 
 def test_unknown_capability_is_distinct_from_prompt_only():

@@ -57,7 +57,6 @@ from chemuson.gui.tab_manager import CanvasTabManager
 from chemuson.gui.template_browser_service import TemplateBrowserService
 from chemuson.gui.template_library import TemplateLibrary
 from chemuson.gui.text_toolbar import TextFormatToolbar
-from chemuson.name2structure import verify_molecular_identity
 from chemuson.gui.tool_rail import ToolRail, ToolShortcutDispatcher
 from chemuson.gui.toolbar import ChemusonToolbar, SymbolPaletteToolbar
 from chemuson.platform.settings import application_settings
@@ -105,15 +104,7 @@ def assemble_application_shell(self) -> None:
     self._text_format_controller = TextFormatController()
     self._recovery_controller = RecoveryController()
     self._template_controller = TemplateController()
-    self._molecular_assistant_controller = MolecularAssistantController(
-        self,
-        identity_verifier=lambda request, result, enabled, allow_network: verify_molecular_identity(
-            request,
-            result.graph,
-            enabled=enabled,
-            allow_network=allow_network,
-        ),
-    )
+    self._molecular_assistant_controller = MolecularAssistantController(self)
     self._molecular_assistant_controller.job_finished.connect(
         self._on_molecular_assistant_job_finished
     )

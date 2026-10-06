@@ -13,6 +13,7 @@ from chemuson.molecular_assistant.limits import (
     MAX_MODEL_CONTENT_BYTES,
     MAX_PROMPT_BYTES,
     MAX_SMILES_BYTES,
+    MAX_TOKEN_DIAGNOSTIC,
 )
 from chemuson.molecular_assistant.models import (
     _FormatRepairRequest,
@@ -125,7 +126,10 @@ class MolecularAssistant:
         response = response_or_failure
         model_id = response.model_id.strip() if response.model_id else configured_model_id
         output_diagnostics = self._output_diagnostics(response)
-        smiles, response_reason = self._decode_smiles(response.content)
+        if not response.content.strip() and response.finish_reason == "length":
+            smiles, response_reason = None, "generation_exhausted"
+        else:
+            smiles, response_reason = self._decode_smiles(response.content)
         format_repair_used = False
         format_repair_succeeded: bool | None = None
 
@@ -283,6 +287,20 @@ class MolecularAssistant:
                 and not isinstance(response.structured_output_native, bool)
             )
             or not isinstance(response.structured_output_fallback_used, bool)
+            or (
+                response.finish_reason is not None
+                and response.finish_reason
+                not in {"stop", "length", "content_filter", "tool_calls", "function_call", "unknown"}
+            )
+            or any(
+                value is not None
+                and (
+                    isinstance(value, bool)
+                    or not isinstance(value, int)
+                    or not 0 <= value <= MAX_TOKEN_DIAGNOSTIC
+                )
+                for value in (response.completion_tokens, response.reasoning_tokens)
+            )
         ):
             return self._failure(
                 MolecularAssistantStatus.PROVIDER_ERROR,
@@ -295,12 +313,38 @@ class MolecularAssistant:
         return response
 
     @staticmethod
-    def _output_diagnostics(*sources: object | None) -> dict[str, bool | None]:
+    def _output_diagnostics(*sources: object | None) -> dict[str, object]:
         native: bool | None = None
+        finish_reason: str | None = None
+        completion_tokens: int | None = None
+        reasoning_tokens: int | None = None
         for source in reversed(sources):
             value = getattr(source, "structured_output_native", None)
             if isinstance(value, bool):
                 native = value
+                break
+        for source in reversed(sources):
+            value = getattr(source, "finish_reason", None)
+            if value in {
+                "stop", "length", "content_filter", "tool_calls", "function_call", "unknown"
+            }:
+                finish_reason = value
+                completion = getattr(source, "completion_tokens", None)
+                reasoning = getattr(source, "reasoning_tokens", None)
+                completion_tokens = (
+                    completion
+                    if isinstance(completion, int)
+                    and not isinstance(completion, bool)
+                    and 0 <= completion <= MAX_TOKEN_DIAGNOSTIC
+                    else None
+                )
+                reasoning_tokens = (
+                    reasoning
+                    if isinstance(reasoning, int)
+                    and not isinstance(reasoning, bool)
+                    and 0 <= reasoning <= MAX_TOKEN_DIAGNOSTIC
+                    else None
+                )
                 break
         return {
             "structured_output_requested": any(
@@ -312,6 +356,9 @@ class MolecularAssistant:
                 getattr(source, "structured_output_fallback_used", False) is True
                 for source in sources
             ),
+            "finish_reason": finish_reason,
+            "completion_tokens": completion_tokens,
+            "reasoning_tokens": reasoning_tokens,
         }
 
     @staticmethod
@@ -397,6 +444,9 @@ class MolecularAssistant:
         structured_output_fallback_used: bool = False,
         format_repair_used: bool = False,
         format_repair_succeeded: bool | None = None,
+        finish_reason: str | None = None,
+        completion_tokens: int | None = None,
+        reasoning_tokens: int | None = None,
     ) -> MolecularAssistantResult:
         return MolecularAssistantResult(
             status=status,
@@ -410,4 +460,7 @@ class MolecularAssistant:
             structured_output_fallback_used=structured_output_fallback_used,
             format_repair_used=format_repair_used,
             format_repair_succeeded=format_repair_succeeded,
+            finish_reason=finish_reason,
+            completion_tokens=completion_tokens,
+            reasoning_tokens=reasoning_tokens,
         )

@@ -19,6 +19,7 @@ from chemuson.molecular_assistant.limits import (
     MAX_HTTP_RESPONSE_BYTES,
     MAX_MAX_OUTPUT_TOKENS,
     MAX_PROVIDER_TIMEOUT_S,
+    MAX_TOKEN_DIAGNOSTIC,
     MIN_MAX_OUTPUT_TOKENS,
     MIN_PROVIDER_TIMEOUT_S,
 )
@@ -257,6 +258,30 @@ class _UrllibTransport:
         return HttpResponse(status_code=response.status, body=response_body)
 
 
+_ALLOWED_FINISH_REASONS = frozenset(
+    {"stop", "length", "content_filter", "tool_calls", "function_call"}
+)
+
+
+def _normalize_finish_reason(value: object) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        return "unknown"
+    normalized = value.strip().casefold()
+    return normalized if normalized in _ALLOWED_FINISH_REASONS else "unknown"
+
+
+def _bounded_token_count(value: object) -> int | None:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not 0 <= value <= MAX_TOKEN_DIAGNOSTIC
+    ):
+        return None
+    return value
+
+
 _STRUCTURED_OUTPUT_SYSTEM_PROMPT = r"""Return ONLY one syntactically valid JSON object as the entire message.content.
 The first non-whitespace character MUST be { and the last non-whitespace
 character MUST be }. Include exactly one key, "smiles", whose value is a JSON
@@ -319,6 +344,9 @@ class OpenAICompatibleProvider:
                 response.model_id,
                 structured_output_requested=False,
                 structured_output_native=False,
+                finish_reason=response.finish_reason,
+                completion_tokens=response.completion_tokens,
+                reasoning_tokens=response.reasoning_tokens,
             )
 
         try:
@@ -346,6 +374,9 @@ class OpenAICompatibleProvider:
                 structured_output_requested=True,
                 structured_output_native=False,
                 structured_output_fallback_used=True,
+                finish_reason=fallback.finish_reason,
+                completion_tokens=fallback.completion_tokens,
+                reasoning_tokens=fallback.reasoning_tokens,
             )
 
         self._structured_output_capability = StructuredOutputCapability.OPENAI_JSON_OBJECT
@@ -354,6 +385,9 @@ class OpenAICompatibleProvider:
             response.model_id,
             structured_output_requested=True,
             structured_output_native=True,
+            finish_reason=response.finish_reason,
+            completion_tokens=response.completion_tokens,
+            reasoning_tokens=response.reasoning_tokens,
         )
 
     def _post_completion(
@@ -436,7 +470,8 @@ class OpenAICompatibleProvider:
 
         try:
             envelope = json.loads(response.body.decode("utf-8"))
-            content = envelope["choices"][0]["message"]["content"]
+            choice = envelope["choices"][0]
+            content = choice["message"]["content"]
         except (KeyError, IndexError, TypeError, ValueError, UnicodeError, RecursionError):
             raise ProviderError(ProviderErrorCode.PROVIDER_ERROR) from None
         if not isinstance(envelope, dict) or not isinstance(content, str):
@@ -444,4 +479,20 @@ class OpenAICompatibleProvider:
 
         response_model = envelope.get("model")
         model_id = response_model.strip() if isinstance(response_model, str) else ""
-        return ProviderResponse(content=content, model_id=model_id or self.config.model)
+        usage = envelope.get("usage")
+        if not isinstance(usage, dict):
+            usage = {}
+        completion_tokens = _bounded_token_count(usage.get("completion_tokens"))
+        details = usage.get("completion_tokens_details")
+        if not isinstance(details, dict):
+            details = {}
+        reasoning_tokens = _bounded_token_count(
+            usage.get("reasoning_tokens", details.get("reasoning_tokens"))
+        )
+        return ProviderResponse(
+            content=content,
+            model_id=model_id or self.config.model,
+            finish_reason=_normalize_finish_reason(choice.get("finish_reason")),
+            completion_tokens=completion_tokens,
+            reasoning_tokens=reasoning_tokens,
+        )

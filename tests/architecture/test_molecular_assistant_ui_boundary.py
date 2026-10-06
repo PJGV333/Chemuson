@@ -28,6 +28,25 @@ def test_m10_controller_consumes_m23_without_reversing_the_boundary():
     assert "M23" not in modules["M02"]["target_dependencies"]
 
 
+def test_reference_orchestration_reuses_name2structure_without_clean2d_or_model_tools():
+    root = Path(__file__).resolve().parents[2]
+    modules = _modules()
+    assert "M16" in modules["M10"]["current_dependencies"]
+    controller_path = root / "src/chemuson/gui/controllers/molecular_assistant_controller.py"
+    controller = controller_path.read_text(encoding="utf-8")
+    provider_path = root / "src/chemuson/molecular_assistant/provider.py"
+    provider = provider_path.read_text(encoding="utf-8")
+
+    assert "extract_requested_molecule_name" in controller
+    assert "resolve_name_to_structure" in controller
+    assert "allow_network=self._allow_external_reference" in controller
+    assert "smiles_to_molgraph_isolated" in controller
+    assert "chemuson.clean2d" not in controller
+    assert '"tools"' not in provider
+    assert "browser" not in provider.casefold()
+    assert "browsing" not in provider.casefold()
+
+
 def test_only_the_gui_controller_imports_m23_for_the_phase2_flow():
     controller = (
         ROOT

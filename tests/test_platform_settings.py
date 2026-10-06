@@ -8,6 +8,7 @@ from PyQt6.QtCore import QSettings
 from chemuson.platform.settings import (
     AIProviderPreferences,
     IdentityVerificationPreferences,
+    MolecularAssistantPreferences,
     NamingPreferences,
     NumberingPreferences,
     UI_THEME_CHOICES,
@@ -15,12 +16,14 @@ from chemuson.platform.settings import (
     SidePanelPreferences,
     load_ai_provider_preferences,
     load_identity_verification_preferences,
+    load_molecular_assistant_preferences,
     load_naming_preferences,
     load_numbering_preferences,
     load_side_panel_preferences,
     load_ui_preferences,
     save_ai_provider_preferences,
     save_identity_verification_preferences,
+    save_molecular_assistant_preferences,
     save_naming_preferences,
     save_numbering_preferences,
     save_side_panel_preferences,
@@ -107,6 +110,30 @@ def test_qsettings_provider_preferences_never_persist_api_keys(tmp_path) -> None
     assert not settings.contains("ai/providers/openai/api_key")
     assert "legacy-sensitive-key" not in path.read_text(encoding="utf-8")
     assert load_identity_verification_preferences(settings) == IdentityVerificationPreferences()
+
+
+def test_molecular_assistant_route_preferences_are_offline_by_default_and_nonsecret():
+    settings = FakeSettings({})
+    assert load_molecular_assistant_preferences(settings) == MolecularAssistantPreferences()
+    assert load_molecular_assistant_preferences(
+        FakeSettings({"ai/identity_verification/enabled": False})
+    ).resolution_method == "ai"
+
+    preferences = MolecularAssistantPreferences("reference", True)
+    save_molecular_assistant_preferences(settings, preferences)
+    assert load_molecular_assistant_preferences(settings) == preferences
+    assert settings.values == {
+        "ai/molecular_assistant/resolution_method": "reference",
+        "ai/identity_verification/allow_external_reference": True,
+    }
+
+    settings.values["ai/molecular_assistant/resolution_method"] = "arbitrary"
+    assert load_molecular_assistant_preferences(settings).resolution_method == "ai_reference"
+    with pytest.raises(ValueError):
+        save_molecular_assistant_preferences(
+            settings,
+            MolecularAssistantPreferences("ai", "yes"),
+        )
 
 
 def test_ai_provider_preferences_normalize_out_of_range_settings() -> None:

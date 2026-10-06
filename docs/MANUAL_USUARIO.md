@@ -821,11 +821,21 @@ Cuando una estructura excede la cobertura o la interpretación no es confiable, 
 
 **Estructura > Nombre a estructura...** puede usar fuentes offline y, cuando está habilitado y disponible, una consulta a PubChem. La operación usa caché y trabajo en segundo plano para evitar bloquear la interfaz.
 
-### 20.3 Descriptores y RDKit aislado
+### 20.3 Asistente molecular
+
+**Estructura > Dibujar estructura con IA...** abre el Asistente molecular. El método inicial es **IA + referencia**; también se puede elegir **Solo IA** o **Referencia química**. La última ruta no llama al modelo y requiere una petición explícita de una molécula por nombre.
+
+En IA + referencia, ChemUSON consulta Name→Structure sólo cuando reconoce una petición inequívoca como «Dibuja tetrandrina». La verificación externa está desactivada por defecto: en modo offline se permiten nombres estáticos y la caché local existente. Al habilitar PubChem, ChemUSON envía únicamente el nombre químico extraído; no envía el prompt completo, documentos, SMILES privados ni claves.
+
+La vista previa distingue siempre **propuesta IA** de **referencia química**. Una coincidencia se compara por identidad InChI aislada, no por texto SMILES. Si difieren, se muestran ambas estructuras y se recomienda la referencia; usar la propuesta IA requiere una elección y confirmación explícitas. Si la IA falla pero hay referencia válida, se puede revisar e insertar la referencia. Toda estructura pasa por ChemIO, y la inserción de IA o referencia usa el mismo Undo/Redo.
+
+El modelo no navega ni recibe herramientas HTTP, credenciales de PubChem ni URLs de consulta. Las transformaciones de una molécula seleccionada siguen siendo IA-only.
+
+### 20.4 Descriptores y RDKit aislado
 
 Las tareas que dependen de RDKit se ejecutan preferentemente en un proceso aislado. Esto protege la interfaz frente a fallos nativos o cálculos lentos. La disponibilidad de determinados descriptores depende del backend instalado.
 
-### 20.4 Validación
+### 20.5 Validación
 
 La validación reporta la valencia observada como suma de órdenes de enlace, hidrógenos asignados e hidrógenos implícitos. No toda advertencia tiene una corrección automática; el botón solo se habilita cuando existe una acción definida.
 

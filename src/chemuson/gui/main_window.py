@@ -90,15 +90,15 @@ from chemuson.gui.clean2d_geometry import (
 from chemuson.gui.shell import assemble_application_shell
 from chemuson.platform.settings import (
     AIProviderPreferences,
-    IdentityVerificationPreferences,
+    MolecularAssistantPreferences,
     NamingPreferences,
     UiPreferences,
     load_ai_provider_preferences,
-    load_identity_verification_preferences,
+    load_molecular_assistant_preferences,
     load_naming_preferences,
     load_ui_preferences,
     save_ai_provider_preferences,
-    save_identity_verification_preferences,
+    save_molecular_assistant_preferences,
     save_naming_preferences,
     save_ui_preferences,
     setting_bool,
@@ -2474,14 +2474,16 @@ class ChemusonWindow(QMainWindow):
                 ),
             )
         }
-        identity_preferences = load_identity_verification_preferences(self._settings)
+        assistant_preferences = load_molecular_assistant_preferences(self._settings)
         dialog = MolecularAssistantDialog(
             self,
             profiles=profiles,
             transform_mode=transform_context is not None,
             profile_preferences=profile_preferences,
-            identity_verification_enabled=identity_preferences.enabled,
-            allow_external_identity_reference=identity_preferences.allow_external_reference,
+            resolution_method=(
+                "ai" if transform_context is not None else assistant_preferences.resolution_method
+            ),
+            allow_external_reference=assistant_preferences.allow_external_reference,
         )
 
         def start_requested_generation(
@@ -2505,8 +2507,8 @@ class ChemusonWindow(QMainWindow):
                 timeout_s,
                 max_tokens,
                 transform_context=transform_context,
-                identity_enabled=dialog.identity_verification_enabled,
-                identity_allow_network=dialog.allow_external_identity_reference,
+                resolution_method=dialog.resolution_method,
+                allow_external_reference=dialog.allow_external_reference,
             )
 
         dialog.generation_requested.connect(start_requested_generation)
@@ -2518,6 +2520,9 @@ class ChemusonWindow(QMainWindow):
                 d,
                 as_variant=True,
             )
+        )
+        dialog.use_ai_proposal_requested.connect(
+            lambda d=dialog: self._insert_molecular_assistant_result(d, candidate="ai")
         )
         dialog.show()
         dialog.raise_()
@@ -2561,8 +2566,10 @@ class ChemusonWindow(QMainWindow):
         max_tokens: int = 4096,
         *,
         transform_context: _MolecularAssistantTransformContext | None = None,
-        identity_enabled: bool = True,
-        identity_allow_network: bool = False,
+        resolution_method: str | None = None,
+        allow_external_reference: bool | None = None,
+        identity_enabled: bool | None = None,
+        identity_allow_network: bool | None = None,
     ) -> None:
         """Start a provider request without blocking the GUI event loop."""
         if self._shutdown_started:
@@ -2570,6 +2577,13 @@ class ChemusonWindow(QMainWindow):
         source_graph = (
             transform_context.source_graph if transform_context is not None else None
         )
+        if resolution_method is None:
+            resolution_method = "ai" if identity_enabled is False else "ai_reference"
+        if allow_external_reference is None:
+            allow_external_reference = identity_allow_network is True
+        if transform_context is not None:
+            resolution_method = "ai"
+            allow_external_reference = False
         job_id = self._molecular_assistant_controller.start_job(
             description,
             base_url=base_url,
@@ -2580,31 +2594,33 @@ class ChemusonWindow(QMainWindow):
             timeout_s=timeout_s,
             max_tokens=max_tokens,
             source_graph=source_graph,
-            identity_enabled=identity_enabled,
-            identity_allow_network=identity_allow_network,
+            resolution_method=resolution_method,
+            allow_external_reference=allow_external_reference,
         )
         if job_id is None:
             dialog.show_configuration_error()
             return
         try:
-            save_ai_provider_preferences(
-                self._settings,
-                AIProviderPreferences(
-                    profile_id=provider_id,
-                    base_url=base_url,
-                    model=model,
-                    timeout_s=timeout_s,
-                    supports_json_output=supports_json_output,
-                    max_tokens=max_tokens,
-                ),
-            )
-            save_identity_verification_preferences(
-                self._settings,
-                IdentityVerificationPreferences(
-                    enabled=identity_enabled,
-                    allow_external_reference=identity_allow_network,
-                ),
-            )
+            if resolution_method != "reference":
+                save_ai_provider_preferences(
+                    self._settings,
+                    AIProviderPreferences(
+                        profile_id=provider_id,
+                        base_url=base_url,
+                        model=model,
+                        timeout_s=timeout_s,
+                        supports_json_output=supports_json_output,
+                        max_tokens=max_tokens,
+                    ),
+                )
+            if transform_context is None:
+                save_molecular_assistant_preferences(
+                    self._settings,
+                    MolecularAssistantPreferences(
+                        resolution_method=resolution_method,
+                        allow_external_reference=allow_external_reference,
+                    ),
+                )
             self._settings.sync()
         except (TypeError, ValueError):
             pass
@@ -2619,7 +2635,11 @@ class ChemusonWindow(QMainWindow):
         )
         dialog.clear_api_key()
         dialog.set_pending()
-        self.statusBar().showMessage("Generando y validando estructura con IA…", 5000)
+        self.statusBar().showMessage(
+            "Resolviendo referencia química…" if resolution_method == "reference"
+            else "Generando y validando estructura…",
+            5000,
+        )
 
     def _on_molecular_assistant_source_smiles_ready(
         self,
@@ -2643,7 +2663,7 @@ class ChemusonWindow(QMainWindow):
             self._molecular_assistant_identity_results[job_id] = identity
 
     def _on_molecular_assistant_job_finished(self, job_id: int, result: object) -> None:
-        """Present only successful validated results; failures never reach canvas."""
+        """Present validated AI/reference candidates without mutating the canvas."""
         if self._shutdown_started:
             return
         job_id = int(job_id)
@@ -2654,6 +2674,12 @@ class ChemusonWindow(QMainWindow):
         if sip.isdeleted(dialog):
             self._cleanup_molecular_assistant_job(job_id)
             return
+        ai_result = getattr(result, "ai_result", None)
+        if ai_result is None and hasattr(result, "proposed_smiles"):
+            ai_result = result
+        identity = self._molecular_assistant_identity_results.get(job_id)
+        if identity is None:
+            identity = getattr(result, "identity", None)
         status = getattr(result, "status", None)
         status_value = getattr(status, "value", str(status or "provider_error"))
         graph = getattr(result, "graph", None)
@@ -2663,21 +2689,33 @@ class ChemusonWindow(QMainWindow):
             or graph is None
             or getattr(result, "validation_passed", None) is not True
         ):
+            diagnostic = ai_result or result
+            reference_candidate = getattr(result, "reference_result", None)
+            reference_failure = (
+                getattr(reference_candidate, "message", None)
+                if reference_candidate is not None
+                and getattr(reference_candidate, "graph", None) is None
+                else None
+            )
             dialog.show_failure(
                 status_value,
                 reason_code,
                 structured_output_requested=bool(
-                    getattr(result, "structured_output_requested", False)
+                    getattr(diagnostic, "structured_output_requested", False)
                 ),
-                structured_output_native=getattr(result, "structured_output_native", None),
+                structured_output_native=getattr(diagnostic, "structured_output_native", None),
                 structured_output_fallback_used=bool(
-                    getattr(result, "structured_output_fallback_used", False)
+                    getattr(diagnostic, "structured_output_fallback_used", False)
                 ),
-                format_repair_used=bool(getattr(result, "format_repair_used", False)),
-                format_repair_succeeded=getattr(result, "format_repair_succeeded", None),
+                format_repair_used=bool(getattr(diagnostic, "format_repair_used", False)),
+                format_repair_succeeded=getattr(diagnostic, "format_repair_succeeded", None),
+                finish_reason=getattr(diagnostic, "finish_reason", None),
+                completion_tokens=getattr(diagnostic, "completion_tokens", None),
+                reasoning_tokens=getattr(diagnostic, "reasoning_tokens", None),
+                reference_failure=reference_failure,
             )
             self.statusBar().showMessage(
-                "No se pudo generar una estructura válida; revisa el detalle de la ventana.",
+                "No se obtuvo una estructura validada; revisa el detalle de la ventana.",
                 7000,
             )
             self._cleanup_molecular_assistant_job(job_id)
@@ -2691,32 +2729,62 @@ class ChemusonWindow(QMainWindow):
                 self._cleanup_molecular_assistant_job(job_id)
                 return
         self._molecular_assistant_results[job_id] = result
-        identity = self._molecular_assistant_identity_results.get(job_id)
         identity_status = getattr(identity, "status", "unverified")
         identity_status = getattr(identity_status, "value", str(identity_status))
+        reference = getattr(result, "reference_result", None)
+        reference_source = getattr(reference, "source", None)
+        reference_name = (
+            getattr(reference, "resolved_name", None)
+            or getattr(reference, "query", None)
+        )
+        reference_smiles = getattr(reference, "smiles", None)
+        reference_identifier = getattr(identity, "reference_identifier", None)
+        if not reference_identifier and reference is not None and reference.graph is not None:
+            reference_identifier = f"{reference_source}:{reference_name}"
+        origin = getattr(result, "origin", None)
+        origin = getattr(origin, "value", str(origin or "ai"))
+        ai_smiles = getattr(ai_result, "proposed_smiles", None)
+        is_reference_origin = origin == "reference"
+        primary_smiles = (
+            reference_smiles if is_reference_origin else ai_smiles
+        ) or str(getattr(result, "proposed_smiles", "") or "")
+        diagnostic = ai_result or result
         dialog.show_preview(
             provider_id=str(getattr(result, "provider_id", "unknown")),
             model_id=getattr(result, "model_id", None),
-            smiles=str(getattr(result, "proposed_smiles", "") or ""),
+            smiles=primary_smiles,
+            ai_smiles=ai_smiles,
+            reference_smiles=(
+                reference_smiles if identity_status == "mismatch" else None
+            ),
+            reference_source=reference_source,
+            reference_resolved_name=reference_name,
+            reference_from_cache=bool(getattr(reference, "from_cache", False)),
+            structure_origin=origin,
+            ai_failure_reason=getattr(result, "ai_failure_reason", None),
             source_smiles=source_smiles,
             identity_status=identity_status,
             identity_reason_code=getattr(identity, "reason_code", None),
             structured_output_requested=bool(
-                getattr(result, "structured_output_requested", False)
+                getattr(diagnostic, "structured_output_requested", False)
             ),
-            structured_output_native=getattr(result, "structured_output_native", None),
+            structured_output_native=getattr(diagnostic, "structured_output_native", None),
             structured_output_fallback_used=bool(
-                getattr(result, "structured_output_fallback_used", False)
+                getattr(diagnostic, "structured_output_fallback_used", False)
             ),
-            format_repair_used=bool(getattr(result, "format_repair_used", False)),
-            format_repair_succeeded=getattr(result, "format_repair_succeeded", None),
+            format_repair_used=bool(getattr(diagnostic, "format_repair_used", False)),
+            format_repair_succeeded=getattr(diagnostic, "format_repair_succeeded", None),
             requested_name=getattr(identity, "requested_name", None),
-            reference_identifier=getattr(identity, "reference_identifier", None),
+            reference_identifier=reference_identifier,
+            completion_tokens=getattr(diagnostic, "completion_tokens", None),
+            reasoning_tokens=getattr(diagnostic, "reasoning_tokens", None),
+            ai_provider_id=getattr(ai_result, "provider_id", None),
+            ai_model_id=getattr(ai_result, "model_id", None),
         )
         status_message = (
             "Transformación validada; revisa antes de reemplazar."
             if transform_context is not None
-            else "Propuesta validada; revisa antes de insertar."
+            else "Estructura validada; revisa la procedencia antes de insertar."
         )
         self.statusBar().showMessage(status_message, 7000)
 
@@ -2725,8 +2793,9 @@ class ChemusonWindow(QMainWindow):
         dialog: MolecularAssistantDialog,
         *,
         as_variant: bool = False,
+        candidate: str | None = None,
     ) -> None:
-        """Commit an approved proposal, separate variant, or source replacement."""
+        """Insert the explicitly selected AI/reference candidate through normal undo."""
         if self._shutdown_started:
             return
         job_id = dialog.job_id
@@ -2751,7 +2820,16 @@ class ChemusonWindow(QMainWindow):
                 "Activa el documento donde iniciaste la solicitud y confirma la operación de nuevo."
             )
             return
-        graph = getattr(result, "graph", None)
+        if candidate is None:
+            candidate = getattr(dialog, "_insert_candidate", None)
+        if candidate is None:
+            candidate = getattr(result, "default_candidate", "ai")
+        graph_for_candidate = getattr(result, "graph_for_candidate", None)
+        graph = (
+            graph_for_candidate(candidate)
+            if callable(graph_for_candidate)
+            else getattr(result, "graph", None)
+        )
         if graph is None:
             return
         transform_context = self._molecular_assistant_transform_jobs.get(job_id)
@@ -2764,9 +2842,13 @@ class ChemusonWindow(QMainWindow):
         identity = self._molecular_assistant_identity_results.get(job_id)
         identity_status = getattr(identity, "status", "unverified")
         identity_status = getattr(identity_status, "value", str(identity_status))
-        if identity_status == "mismatch" and not self._confirm_molecular_identity_override(
-            getattr(identity, "requested_name", None),
-            getattr(identity, "reference_identifier", None),
+        if (
+            candidate == "ai"
+            and identity_status == "mismatch"
+            and not self._confirm_molecular_identity_override(
+                getattr(identity, "requested_name", None),
+                getattr(identity, "reference_identifier", None),
+            )
         ):
             dialog.show_insert_notice(
                 "No se insertó: la identidad difiere de la referencia y no confirmaste el override."
@@ -2805,8 +2887,34 @@ class ChemusonWindow(QMainWindow):
             )
             return
         target_canvas._insert_molgraph(graph, select_inserted=True)
+        origin_for_candidate = getattr(result, "origin_for_candidate", None)
+        selected_origin = (
+            origin_for_candidate(candidate)
+            if callable(origin_for_candidate)
+            else None
+        )
+        selected_origin = getattr(selected_origin, "value", str(selected_origin or "ai"))
         dialog.accept()
-        self.statusBar().showMessage("Estructura de IA insertada; puedes deshacerla.", 7000)
+        reference = getattr(result, "reference_result", None)
+        source_labels = {"pubchem": "PubChem", "offline-common": "local"}
+        source_label = source_labels.get(getattr(reference, "source", ""), "química")
+        resolved_name = str(
+            getattr(reference, "resolved_name", "") or getattr(reference, "query", "") or ""
+        )
+        safe_name = "".join(
+            char for char in resolved_name
+            if char.isalnum() or char in " -.,()[]'"
+        )[:96].strip()
+        if candidate == "reference":
+            subject = f" «{safe_name}»" if safe_name else ""
+            message = f"Referencia {source_label}{subject} insertada; puedes deshacerla."
+        elif selected_origin == "ai_mismatch_reference":
+            message = f"Propuesta IA insertada con override explícito frente a {source_label}."
+        elif selected_origin == "ai_verified_by_reference":
+            message = f"Propuesta IA verificada con {source_label} e insertada; puedes deshacerla."
+        else:
+            message = "Estructura de IA insertada; puedes deshacerla."
+        self.statusBar().showMessage(message, 7000)
 
     def _confirm_molecular_identity_override(
         self,
