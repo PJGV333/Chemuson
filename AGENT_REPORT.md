@@ -66,14 +66,10 @@ estimación de compactación histórica están en el reporte enlazado arriba. Lo
 objetos Flatpak activos publicados por `gh-pages` se preservan. No se inició
 otra fase de producto.
 
-## Bloqueo de diseño — Phase 5 Molecular Assistant
+## Continuación ChemUSON — Phase 4.5/5 (2026-10-07)
 
-**Estado al `ed2953d728c3dad78ad3adb085b89256bbb5d489`** (`ai/molecular-assistant-foundation`, limpio y sincronizado con `origin`). Phase 2, 3 y 4 están implementadas, validadas y publicadas en commits separados. No se hizo merge a `main`.
-
-No se implementa Phase 5 todavía: “edición molecular estructurada mediante IA” no fija la semántica de edición ni la forma del cambio, y esas alternativas afectan operaciones químicas y comportamiento undo/redo incompatibles. El repositorio ofrece `molgraph_to_smiles_isolated`, validación M23 de SMILES completo, `DeleteSelectionCommand` y la inserción undoable del canvas; aun así hay que elegir entre:
-
-1. **Reemplazo completo del componente molecular seleccionado**: permitir exactamente una molécula aislada completa; exportarla a SMILES aislado, enviar la instrucción y el SMILES fuente al M23 existente, mostrar fuente/propuesta y reemplazarla sólo tras aprobación explícita, dentro de un único paso undoable. La salida se conserva como SMILES completo y pasa por la validación ChemIO ya existente. No habría DSL ni cambios al contrato público de M23.
-2. **Operaciones atómicas estructuradas**: devolver y aplicar una lista allowlisted de acciones sobre átomos/enlaces. Esto requiere decidir operaciones exactas, cómo se identifican átomos sin ambigüedad frente al mapeo SMILES/MolGraph, qué restricciones de valencia/estereoquímica aplicar y la política de rechazo/undo.
-3. **Propuesta no destructiva como estructura separada**: insertar una molécula derivada nueva y conservar la fuente intacta; es más segura, pero no reemplaza/edita la selección.
-
-La opción 1 parece el alcance mínimo que conserva el contrato M23 aprobado y entrega edición real con confirmación y undo; no se adopta sin autorización porque cambia la semántica de la selección existente. **Decisión solicitada:** confirmar la opción 1, elegir la opción 3 o definir el allowlist/mapeo de la opción 2. Hasta entonces no se crea el OpenSpec normativo de Phase 5 ni se modifica código/canvas/contratos químicos. No se introdujeron agentes autónomos, tool calling ni ejecución de código.
+- Rama `ai/molecular-assistant-foundation`, base `6d4fca961cc7695ed01d78ae8f0a1ad769388384`. Commit funcional `c0233eb` se publicó con push normal; no hubo merge, rebase ni force-push.
+- Se cerró el contrato tipado de transformación M23, Insert Variant/Replace undoable, controles y perfiles runtime sin secretos, verificación conservadora de identidad con ChemIO aislado y resumen seguro del evaluador Clean2D. No se modificó `src/chemuson/clean2d/`, persistencia `.cmsn` ni dependencias runtime.
+- Tests: colección actual 1946; shards cubrieron 1922 passed, 20 skipped, 4 fallidos. Los fallos son el test Clean2D ya registrado en baseline y tres aserciones de importación estereoquímica bajo RDKit 2026.03.6. Suite de arquitectura 278 passed; OpenSpec estricto 52 passed. Ruff de archivos cambiados PASS; Ruff global conserva solo el F401 `math` histórico.
+- No se repitió la suite monolítica: su referencia histórica es 19:26 y el límite activo es 10 minutos. El par CompChem→Assistant pasó 5/5 en ambos órdenes; el bloque ordenado Assistant→transform→UI pasó 99. No se reprodujo SIGSEGV en los shards, pero tampoco se afirma que el aborto monolítico histórico esté descartado ni se encontró un segundo trigger de producción.
+- Smoke local únicamente contra Qwen 3.8 27B en `127.0.0.1:8081`: etanol/cafeína pasaron ChemIO e identidad offline; colesterol, vancomicina y eritromicina devolvieron `invalid_json`. No se usó red externa ni se guardó salida cruda. Evidencia detallada: `openspec/changes/stabilize-ai-molecular-assistant-integration/validation.md` y `/tmp/chemuson-qwen-local-smoke/`.

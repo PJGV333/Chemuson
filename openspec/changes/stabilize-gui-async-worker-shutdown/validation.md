@@ -28,3 +28,9 @@
 
 - Window teardown uses the QObject descendant tree as a safety barrier. Interruption requests remain advisory; workers finish under existing bounded operations, and the GUI event loop remains responsive.
 - No `QThread.terminate()`, busy wait, arbitrary sleep, external dependency, live provider, model server, or network service was used.
+
+## Current continuation (2026-10-07)
+
+The original CompChem→Assistant pair passed **5/5** again in both forward and reverse order. The ordered M23→transform→UI shard passed **99 tests**, and the dedicated shutdown test passed **2 tests**. A full current suite was not run because the recorded 19:26 baseline exceeds the active 10-minute cap. The complete 1946-test collection was covered by bounded shards; their precise totals, the unrelated Clean2D/stereo failures, local Qwen smoke outcomes, and the 8-minute shard split are in `../stabilize-ai-molecular-assistant-integration/validation.md`.
+
+No second SIGSEGV trigger was reproduced. The historically recorded monolithic SIGSEGV is not claimed eliminated: no current monolithic run was made, and isolated/bounded shards cannot prove absence of an order-dependent crash outside the exercised regions.

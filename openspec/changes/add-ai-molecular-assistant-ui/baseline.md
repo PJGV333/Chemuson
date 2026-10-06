@@ -2,7 +2,7 @@
 
 Captured on `ai/molecular-assistant-foundation` before production-code changes. `HEAD` and `origin/ai/molecular-assistant-foundation` were both `b9d4d9e67dc4f1e176d418a43fb9b3af63641eb6`; `git status --short` was empty. A recovery checkpoint branch `checkpoint/ai-molecular-assistant-before-phase2` points to this baseline.
 
-The full command transcript is preserved verbatim in [`baseline-output.log`](baseline-output.log).
+Detailed baseline commands and exact outcomes are summarized in this file and `validation.md`; the original verbose transcript has been retired.
 
 | Command | Baseline result |
 |---|---|

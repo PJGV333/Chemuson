@@ -233,16 +233,16 @@ chemuson --version
 
 ## Instalación para desarrollo
 
-```bash
-python3 -m venv chemuson
-./chemuson/bin/pip install -r requirements.txt
-```
-
-Opcional (modo editable):
+En un checkout nuevo, crea un entorno virtual con el nombre que prefieras e instala ChemUSON en modo editable. `pyproject.toml` declara las dependencias de runtime; `requirements-dev.txt` añade solo herramientas de desarrollo y pruebas:
 
 ```bash
-./chemuson/bin/pip install -e .
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -e .
+python -m pip install -r requirements-dev.txt
 ```
+
+En fish, activa el entorno con `source .venv/bin/activate.fish`. También puedes usar `requirements.txt` para instalar explícitamente las dependencias de runtime. Open Babel es opcional y, si se necesita para optimización 3D, se instala como ejecutable del sistema (`obabel`); no es una dependencia Python obligatoria.
 
 ## Ejecución
 

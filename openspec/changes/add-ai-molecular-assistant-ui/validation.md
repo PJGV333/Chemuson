@@ -3,7 +3,7 @@
 ## Baseline
 
 - Branch `ai/molecular-assistant-foundation`; `HEAD` and `origin/ai/molecular-assistant-foundation`: `b9d4d9e67dc4f1e176d418a43fb9b3af63641eb6`.
-- Tree clean before changes. Full baseline transcript: `baseline-output.log`.
+- Tree clean before changes; baseline command outcomes and known findings are recorded in `baseline.md`.
 - Baseline full suite: 1 unrelated CompChem failure, 1,828 passed, 57 skipped; runtime 19:26. Baseline repository Ruff: one unrelated F401 in the Clean2D test.
 
 ## Focused verification

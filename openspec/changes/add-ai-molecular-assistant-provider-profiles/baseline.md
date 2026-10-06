@@ -1,6 +1,6 @@
 # Phase 4 baseline
 
-Captured before Phase 4 file changes on `ai/molecular-assistant-foundation`. `HEAD` and `origin/ai/molecular-assistant-foundation` were both `5f8f5386ab6dea4b084c7e00597ee34d533728c6`; `git status --short` was empty. Recovery checkpoint `checkpoint/ai-molecular-assistant-before-phase4` points to this commit. Command results are summarized in [`baseline-output.log`](baseline-output.log).
+Captured before Phase 4 file changes on `ai/molecular-assistant-foundation`. `HEAD` and `origin/ai/molecular-assistant-foundation` were both `5f8f5386ab6dea4b084c7e00597ee34d533728c6`; `git status --short` was empty. Recovery checkpoint `checkpoint/ai-molecular-assistant-before-phase4` points to this commit. Command results and known findings are summarized in `validation.md`; verbose command output was not retained in the repository.
 
 | Command | Baseline result |
 |---|---|
