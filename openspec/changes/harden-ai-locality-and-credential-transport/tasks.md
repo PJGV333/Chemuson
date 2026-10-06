@@ -19,4 +19,5 @@
 
 - [x] Record the future Local Chemistry Specialist Model as research only; include project continuation and prudent SIGSEGV wording.
 - [x] Run bounded focused tests, compileall, architecture, strict OpenSpec validation, changed-file Ruff rules, and diff check.
-- [x] Commit and normally push this branch only; no merge/rebase/force-push/squash; stop after push.
+- [x] Commit the work in one or two clear commits; do not merge, rebase, force-push, or squash.
+- [ ] Push normally to `origin/ai/molecular-assistant-foundation` (attempted once; blocked because GitHub HTTPS credentials are unavailable in this environment).

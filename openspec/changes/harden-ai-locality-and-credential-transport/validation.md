@@ -23,6 +23,10 @@ The strict OpenSpec validation of this change passes. `openspec validate --all -
 
 An early run temporarily placed two new policy-widget tests in the existing 21-test Molecular Assistant UI module. All assertions completed, then process shutdown emitted a `_DescriptorWorker` deleted-wrapper traceback and exited 134. The original 19-test module passed again at HEAD baseline and after the two new tests were isolated in `tests/test_molecular_identity_ui_policy.py`; each new test file passes independently. This task does not claim to resolve the broader SIGSEGV/worker-shutdown issue. No Clean2D code or worker-lifecycle code was changed.
 
+## Git delivery
+
+The work is committed locally in two commits on `ai/molecular-assistant-foundation`. A single normal `git push origin ai/molecular-assistant-foundation` was attempted and failed with `fatal: could not read Username for 'https://github.com': No such device or address`. The working tree remains clean; no retry, merge, rebase, force-push, or squash was performed. Push remains pending usable GitHub credentials.
+
 ## Explicit exclusions
 
 No full monolithic pytest run, manual model evaluation, external network lookup, dataset download, model selection/training/fine-tuning, Clean2D stress campaign, or SIGSEGV campaign was performed. Historical SIGSEGV evidence remains as recorded in `docs/history/CAMPAIGNS.md` and is not a claim of definitive resolution.
