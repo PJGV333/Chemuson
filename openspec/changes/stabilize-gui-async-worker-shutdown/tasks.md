@@ -21,4 +21,4 @@
 
 - [x] 4.1 Run focused tests, architecture tests, compileall, Ruff, strict OpenSpec, and diff check. Ruff reports only the pre-existing unused `math` import in `tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py`.
 - [x] 4.2 Run the full suite once and document the unchanged baseline failure: it aborts with SIGSEGV at the same Molecular Assistant controller test and Qt `QUndoStack` destruction stack; two baseline failures are also visible before abort (Clean2D candidates and CompChem fake backend). The focused crash pair and worker-family block pass.
-- [ ] 4.3 Record files, gates, commit, push, final HEAD and tree state.
+- [x] 4.3 Record files, gates, commit, push, final HEAD and tree state.

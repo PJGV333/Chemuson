@@ -68,7 +68,7 @@ otra fase de producto.
 
 ## Continuación ChemUSON — Phase 4.5/5 (2026-10-07)
 
-- Rama `ai/molecular-assistant-foundation`, base `6d4fca961cc7695ed01d78ae8f0a1ad769388384`. Commit funcional `c0233eb` se publicó con push normal; no hubo merge, rebase ni force-push.
+- Rama `ai/molecular-assistant-foundation`, base `6d4fca961cc7695ed01d78ae8f0a1ad769388384`. `c0233eb` (funcional) y `6d36e3a` (higiene/dependencias) se publicaron con pushes normales. No hubo merge, rebase ni force-push. El commit de cierre de este informe/tasks se publicará también mediante push normal.
 - Se cerró el contrato tipado de transformación M23, Insert Variant/Replace undoable, controles y perfiles runtime sin secretos, verificación conservadora de identidad con ChemIO aislado y resumen seguro del evaluador Clean2D. No se modificó `src/chemuson/clean2d/`, persistencia `.cmsn` ni dependencias runtime.
 - Tests: colección actual 1946; shards cubrieron 1922 passed, 20 skipped, 4 fallidos. Los fallos son el test Clean2D ya registrado en baseline y tres aserciones de importación estereoquímica bajo RDKit 2026.03.6. Suite de arquitectura 278 passed; OpenSpec estricto 52 passed. Ruff de archivos cambiados PASS; Ruff global conserva solo el F401 `math` histórico.
 - No se repitió la suite monolítica: su referencia histórica es 19:26 y el límite activo es 10 minutos. El par CompChem→Assistant pasó 5/5 en ambos órdenes; el bloque ordenado Assistant→transform→UI pasó 99. No se reprodujo SIGSEGV en los shards, pero tampoco se afirma que el aborto monolítico histórico esté descartado ni se encontró un segundo trigger de producción.

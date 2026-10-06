@@ -14,4 +14,4 @@
 ## 3. Verification and closeout
 
 - [x] 3.1 Run bounded focused tests, architecture, compileall, collect-only, Ruff, strict OpenSpec, and diff check; log each result.
-- [ ] 3.2 Commit and push only to `origin/ai/molecular-assistant-foundation`; do not merge/rebase/force-push.
+- [x] 3.2 Commit and push only to `origin/ai/molecular-assistant-foundation`; do not merge/rebase/force-push.
