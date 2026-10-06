@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-10-08
+goal: Add an explicit, offline-by-default reference-structure route to Molecular Assistant, reconcile named AI proposals safely, and diagnose exhausted structured generation.
