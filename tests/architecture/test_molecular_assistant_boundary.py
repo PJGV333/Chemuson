@@ -9,7 +9,10 @@ from pathlib import Path
 
 import yaml
 
-from chemuson.molecular_assistant import MolecularAssistantRequest
+from chemuson.molecular_assistant import (
+    MolecularAssistantRequest,
+    MolecularTransformationRequest,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -99,6 +102,10 @@ def test_ai_clean2d_orchestration_is_tool_only_and_does_not_add_reverse_imports(
 
 def test_request_contains_no_canvas_document_or_mutation_context():
     assert [field.name for field in fields(MolecularAssistantRequest)] == ["description"]
+    assert [field.name for field in fields(MolecularTransformationRequest)] == [
+        "source_smiles",
+        "instruction",
+    ]
 
 
 def test_package_import_does_not_load_gui_clean2d_chemname_or_rdkit():

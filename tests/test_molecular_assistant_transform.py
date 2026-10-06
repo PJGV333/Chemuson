@@ -8,7 +8,7 @@ from PyQt6.QtCore import QPointF
 from PyQt6.QtWidgets import QApplication
 
 from chemuson.core.model import BondStyle, MolGraph
-from chemuson.gui import main_window as main_window_module
+from chemuson.gui.controllers import molecular_assistant_controller as assistant_controller_module
 from chemuson.gui.dialogs import MolecularAssistantDialog
 from chemuson.gui.main_window import ChemusonWindow
 from chemuson.molecular_assistant import (
@@ -140,14 +140,14 @@ def test_transform_reviews_source_and_proposal_then_replaces_in_one_undo_step(
         observations["source_groups"] = source_copy_atom.r_group_substituents
         return "CCO"
 
-    def fake_generator(description, config):
+    def fake_generator(request, config):
         observations["generator_thread"] = threading.get_ident()
-        observations["description"] = description
+        observations["transformation_request"] = request
         observations["api_key"] = config.api_key
         return _success(proposed_graph, "NCCCl")
 
     monkeypatch.setattr(
-        main_window_module,
+        assistant_controller_module,
         "molgraph_to_smiles_isolated_or_error",
         fake_source_export,
     )
@@ -203,9 +203,10 @@ def test_transform_reviews_source_and_proposal_then_replaces_in_one_undo_step(
         assert observations["export_atoms"] == len(source_atom_ids)
         assert observations["source_stereo"] == "R"
         assert observations["source_groups"] == ("Me", "Et")
-        assert "Source SMILES: CCO" in observations["description"]
-        assert "Sustituye el oxígeno terminal por cloro" in observations["description"]
-        assert "transient-transform-key" not in observations["description"]
+        transformation_request = observations["transformation_request"]
+        assert transformation_request.source_smiles == "CCO"
+        assert transformation_request.instruction == "Sustituye el oxígeno terminal por cloro"
+        assert "transient-transform-key" not in repr(transformation_request)
         assert dialog.source_smiles_preview.toPlainText() == "CCO"
         assert dialog.proposal_smiles_label.text() == "Estructura propuesta (SMILES)"
         assert dialog.proposal_smiles_label.isVisible()
@@ -259,6 +260,77 @@ def test_transform_reviews_source_and_proposal_then_replaces_in_one_undo_step(
         _finish_window(window)
 
 
+def test_transform_insert_variant_preserves_source_and_has_exact_undo_redo(monkeypatch):
+    window, source_atom_ids, other_atom_ids = _make_window_with_two_molecules()
+    canvas = window.canvas
+    proposal = _graph(("N", "C", "Cl"))
+    monkeypatch.setattr(
+        assistant_controller_module,
+        "molgraph_to_smiles_isolated_or_error",
+        lambda *_args, **_kwargs: "CCO",
+    )
+
+    def fake_generator(request, _config):
+        assert request.source_smiles == "CCO"
+        assert request.instruction == "Añade un átomo de cloro"
+        return _success(proposal, "NCCCl")
+
+    window._molecular_assistant_controller._generator = fake_generator
+    before_signature = window._assistant_graph_signature(canvas.model)
+    source_signature = window._assistant_graph_signature(
+        window._build_assistant_component_graph(canvas, source_atom_ids)
+    )
+    other_signature = window._assistant_graph_signature(
+        window._build_assistant_component_graph(canvas, other_atom_ids)
+    )
+    before_atom_ids = set(canvas.model.atoms)
+    before_index = canvas.undo_stack.index()
+    before_count = canvas.undo_stack.count()
+
+    try:
+        window._on_ai_molecular_transform()
+        dialog = window.findChildren(MolecularAssistantDialog)[-1]
+        dialog.provider_combo.setCurrentIndex(dialog.provider_combo.findData("llama-cpp"))
+        dialog.model_edit.setText("offline-test-model")
+        dialog.description_edit.setPlainText("Añade un átomo de cloro")
+        dialog.generate_button.click()
+        assert _wait_for(lambda: dialog.insert_variant_button.isVisible())
+        assert dialog.insert_variant_button.text() == "Insertar variante"
+        assert dialog.insert_button.text() == "Reemplazar molécula seleccionada"
+
+        dialog.insert_variant_button.click()
+        assert canvas.undo_stack.count() == before_count + 1
+        assert canvas.undo_stack.index() == before_index + 1
+        assert source_atom_ids.issubset(canvas.model.atoms)
+        assert other_atom_ids.issubset(canvas.model.atoms)
+        assert window._assistant_graph_signature(
+            window._build_assistant_component_graph(canvas, source_atom_ids)
+        ) == source_signature
+        assert window._assistant_graph_signature(
+            window._build_assistant_component_graph(canvas, other_atom_ids)
+        ) == other_signature
+        variant_atom_ids = set(canvas.model.atoms) - before_atom_ids
+        assert len(variant_atom_ids) == len(proposal.atoms)
+        source_right = max(canvas.model.get_atom(atom_id).x for atom_id in source_atom_ids)
+        variant_left = min(canvas.model.get_atom(atom_id).x for atom_id in variant_atom_ids)
+        assert variant_left > source_right
+        after_signature = window._assistant_graph_signature(canvas.model)
+
+        canvas.undo_stack.undo()
+        assert window._assistant_graph_signature(canvas.model) == before_signature
+        assert canvas.undo_stack.index() == before_index
+        assert source_atom_ids.issubset(canvas.model.atoms)
+
+        canvas.undo_stack.redo()
+        assert window._assistant_graph_signature(canvas.model) == after_signature
+        assert canvas.undo_stack.index() == before_index + 1
+        assert window._assistant_graph_signature(
+            window._build_assistant_component_graph(canvas, source_atom_ids)
+        ) == source_signature
+    finally:
+        _finish_window(window)
+
+
 def test_transform_export_failure_decline_and_stale_source_fail_closed(monkeypatch):
     window, source_atom_ids, _other_atom_ids = _make_window_with_two_molecules()
     calls = []
@@ -271,7 +343,7 @@ def test_transform_export_failure_decline_and_stale_source_fail_closed(monkeypat
 
     try:
         monkeypatch.setattr(
-            main_window_module,
+            assistant_controller_module,
             "molgraph_to_smiles_isolated_or_error",
             lambda *_args, **_kwargs: (_ for _ in ()).throw(
                 RuntimeError("private detail")
@@ -287,7 +359,7 @@ def test_transform_export_failure_decline_and_stale_source_fail_closed(monkeypat
         export_failure_dialog.generate_button.click()
         assert _wait_for(
             lambda: (
-                "Estado: provider_error" in export_failure_dialog.status_label.text()
+                "exportar la molécula original" in export_failure_dialog.status_label.text()
             )
         )
         assert calls == []
@@ -299,7 +371,7 @@ def test_transform_export_failure_decline_and_stale_source_fail_closed(monkeypat
         )
 
         monkeypatch.setattr(
-            main_window_module,
+            assistant_controller_module,
             "molgraph_to_smiles_isolated_or_error",
             lambda *_args, **_kwargs: "CCO",
         )
@@ -378,7 +450,7 @@ def test_transform_dialog_close_suppresses_late_worker_result(monkeypatch):
 
     window._molecular_assistant_controller._generator = delayed_generator
     monkeypatch.setattr(
-        main_window_module,
+        assistant_controller_module,
         "molgraph_to_smiles_isolated_or_error",
         lambda *_args, **_kwargs: "CCO",
     )

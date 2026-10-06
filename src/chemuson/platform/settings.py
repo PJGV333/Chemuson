@@ -50,6 +50,18 @@ class SidePanelPreferences:
     visible: bool = True
 
 
+@dataclass(frozen=True, slots=True)
+class AIProviderPreferences:
+    """Non-secret, per-profile settings for an OpenAI-compatible endpoint."""
+
+    profile_id: str
+    base_url: str = ""
+    model: str = ""
+    timeout_s: int = 60
+    supports_json_output: bool = False
+    max_tokens: int = 4096
+
+
 #: Stable page keys accepted by ``ui/side_panel/active_tab``.
 SIDE_PANEL_TAB_KEYS: tuple[str, ...] = (
     "inspector",
@@ -69,6 +81,72 @@ UI_THEME_CHOICES: tuple[str, ...] = ("light", "dark", "system")
 def application_settings() -> QSettings:
     """Create the application's persistent settings store."""
     return QSettings("Chemuson", "Chemuson")
+
+
+def load_ai_provider_preferences(
+    settings: SettingsStore,
+    profile_id: str,
+    *,
+    default_base_url: str = "",
+) -> AIProviderPreferences:
+    """Load bounded provider settings; credentials and prompts are never read."""
+    _validate_ai_profile_id(profile_id)
+    prefix = f"ai/providers/{profile_id}"
+    timeout = _bounded_int(settings.value(f"{prefix}/timeout_s", 60), 60, 10, 600)
+    max_tokens = _bounded_int(settings.value(f"{prefix}/max_tokens", 4096), 4096, 64, 8192)
+    base_url = settings.value(f"{prefix}/base_url", default_base_url)
+    model = settings.value(f"{prefix}/model", "")
+    return AIProviderPreferences(
+        profile_id=profile_id,
+        base_url=str(base_url or "")[:2048],
+        model=str(model or "")[:256],
+        timeout_s=timeout,
+        supports_json_output=setting_bool(
+            settings.value(f"{prefix}/supports_json_output", False), False
+        ),
+        max_tokens=max_tokens,
+    )
+
+
+def save_ai_provider_preferences(
+    settings: SettingsStore,
+    preferences: AIProviderPreferences,
+) -> None:
+    """Persist only endpoint/runtime choices, explicitly removing legacy key storage."""
+    _validate_ai_profile_id(preferences.profile_id)
+    if not 10 <= int(preferences.timeout_s) <= 600:
+        raise ValueError("timeout_s must be between 10 and 600")
+    if not 64 <= int(preferences.max_tokens) <= 8192:
+        raise ValueError("max_tokens must be between 64 and 8192")
+    prefix = f"ai/providers/{preferences.profile_id}"
+    settings.setValue(f"{prefix}/base_url", str(preferences.base_url)[:2048])
+    settings.setValue(f"{prefix}/model", str(preferences.model)[:256])
+    settings.setValue(f"{prefix}/timeout_s", int(preferences.timeout_s))
+    settings.setValue(
+        f"{prefix}/supports_json_output", bool(preferences.supports_json_output)
+    )
+    settings.setValue(f"{prefix}/max_tokens", int(preferences.max_tokens))
+    settings.remove(f"{prefix}/api_key")
+
+
+def _validate_ai_profile_id(profile_id: str) -> None:
+    if (
+        not isinstance(profile_id, str)
+        or not profile_id
+        or len(profile_id) > 64
+        or any(not (char.isascii() and (char.isalnum() or char in "-_")) for char in profile_id)
+    ):
+        raise ValueError("profile_id is invalid")
+
+
+def _bounded_int(value: object, default: int, minimum: int, maximum: int) -> int:
+    if isinstance(value, bool):
+        return default
+    try:
+        normalized = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return default
+    return normalized if minimum <= normalized <= maximum else default
 
 
 def setting_bool(value: object, default: bool) -> bool:

@@ -14,6 +14,7 @@ from chemuson.molecular_assistant import (
     MolecularAssistant,
     MolecularAssistantRequest,
     MolecularAssistantStatus,
+    MolecularTransformationRequest,
     OPENAI_COMPATIBLE_PROFILES,
     OpenAICompatibleConfig,
     OpenAICompatibleProvider,
@@ -360,7 +361,39 @@ def test_explicit_cancellation_returns_no_partial_graph():
     assert result.validation_passed is None
 
 
+def test_transform_uses_typed_request_and_existing_decoder_validation(monkeypatch):
+    provider = FakeProvider(content='{"smiles":"CCO"}')
+    parser_calls = []
+    monkeypatch.setattr(
+        service_module,
+        "smiles_to_molgraph_isolated",
+        lambda smiles, *, timeout_s: parser_calls.append((smiles, timeout_s))
+        or (_single_atom_graph(), None),
+    )
+
+    result = MolecularAssistant(provider).transform(
+        MolecularTransformationRequest("OCC", "Replace terminal oxygen with chlorine")
+    )
+
+    assert result.status is MolecularAssistantStatus.SUCCESS
+    assert parser_calls == [("CCO", CHEMIO_VALIDATION_TIMEOUT_S)]
+    assert len(provider.calls) == 1
+    assert "Source SMILES: OCC" in provider.calls[0].description
+    assert "Replace terminal oxygen with chlorine" in provider.calls[0].description
+
+
+def test_transform_rejects_missing_source_or_instruction_without_provider_io():
+    provider = FakeProvider()
+    result = MolecularAssistant(provider).transform(
+        MolecularTransformationRequest(" ", "change the molecule")
+    )
+    assert result.status is MolecularAssistantStatus.INVALID_REQUEST
+    assert result.reason_code == "invalid_transformation"
+    assert provider.calls == []
+
+
 def test_fake_provider_path_does_not_open_network(monkeypatch):
+
     def network_must_not_open(*_args, **_kwargs):
         pytest.fail("fake-provider tests must not open a network connection")
 
@@ -400,6 +433,7 @@ def test_openai_adapter_posts_explicit_request_and_extracts_transport_metadata()
     assert call["max_response_bytes"] == MAX_HTTP_RESPONSE_BYTES
     assert payload["model"] == "configured-model"
     assert payload["stream"] is False
+    assert payload["max_tokens"] == config.max_tokens
     assert payload["response_format"] == {"type": "json_object"}
     assert payload["messages"][1] == {"role": "user", "content": "Draw ethanol"}
     assert response == ProviderResponse('{"smiles":"CCO"}', "served-model")
@@ -595,6 +629,11 @@ def test_redirect_handler_does_not_follow_server_selected_destination():
         {"base_url": "https://provider.example", "model": " "},
         {"base_url": "https://provider.example", "model": " model"},
         {"base_url": "https://provider.example", "model": "model", "timeout_s": 0},
+        {"base_url": "https://provider.example", "model": "model", "timeout_s": 9},
+        {"base_url": "https://provider.example", "model": "model", "timeout_s": 601},
+        {"base_url": "https://provider.example", "model": "model", "max_tokens": 63},
+        {"base_url": "https://provider.example", "model": "model", "max_tokens": 8193},
+        {"base_url": "https://provider.example", "model": "model", "max_tokens": True},
         {"base_url": "https://provider.example", "model": "model", "timeout_s": True},
         {"base_url": "https://provider.example", "model": "model", "timeout_s": float("inf")},
         {"base_url": "https://provider.example", "model": "model", "timeout_s": 10**1000},

@@ -4,12 +4,16 @@ import threading
 import time
 
 import pytest
-from PyQt6.QtTest import QSignalSpy
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtTest import QSignalSpy, QTest
+from PyQt6.QtWidgets import QApplication, QMessageBox
 
 from chemuson.core.model import MolGraph
 from chemuson.gui.dialogs import MolecularAssistantDialog
 from chemuson.gui.main_window import ChemusonWindow
+from chemuson.name2structure import (
+    MolecularIdentityStatus,
+    MolecularIdentityVerification,
+)
 from chemuson.molecular_assistant import (
     OPENAI_COMPATIBLE_PROFILES,
     MolecularAssistantResult,
@@ -151,7 +155,9 @@ def test_provider_profiles_fill_editable_endpoint_and_clear_transient_keys():
         openai_index = dialog.provider_combo.findData("openai")
         dialog.provider_combo.setCurrentIndex(openai_index)
         assert dialog.base_url_edit.text() == "https://api.openai.com/v1"
+        assert dialog.model_edit.text() == ""
         assert dialog.api_key_label.text() == "API key (requerida)"
+        dialog.model_edit.setText("openai-model")
         assert dialog.api_key_edit.text() == ""
         dialog.generate_button.click()
         assert emitted == []
@@ -164,9 +170,11 @@ def test_provider_profiles_fill_editable_endpoint_and_clear_transient_keys():
                 "Dibuja etanol",
                 "openai",
                 "https://api.openai.com/v1",
-                "loaded-model-id",
+                "openai-model",
                 "transient-openai-key",
                 False,
+                60,
+                4096,
             )
         ]
 
@@ -175,7 +183,30 @@ def test_provider_profiles_fill_editable_endpoint_and_clear_transient_keys():
         assert dialog.base_url_edit.text() == "http://127.0.0.1:1234/v1"
         assert dialog.api_key_label.text() == "API key (opcional)"
         assert dialog.api_key_edit.text() == ""
-        assert dialog.model_edit.text() == "loaded-model-id"
+        assert dialog.model_edit.text() == ""
+    finally:
+        dialog.close()
+
+
+def test_dialog_elapsed_timer_and_human_facing_provider_failures():
+    dialog = MolecularAssistantDialog(profiles=OPENAI_COMPATIBLE_PROFILES)
+    try:
+        dialog.timeout_spin.setValue(180)
+        dialog.set_pending()
+        assert dialog.status_label.text().startswith("Generando y validando…")
+        QTest.qWait(1050)
+        assert " s" in dialog.status_label.text()
+
+        dialog.show_failure("provider_error", "timeout")
+        assert "(180 s)" in dialog.status_label.text()
+        assert "timeout" not in dialog.status_label.text()
+
+        dialog.show_failure("malformed_response", "invalid_json")
+        assert "formato estructurado requerido" in dialog.status_label.text()
+        assert "invalid_json" not in dialog.status_label.text()
+
+        dialog.show_failure("provider_error", "network_error")
+        assert "contactar el endpoint configurado" in dialog.status_label.text()
     finally:
         dialog.close()
 
@@ -185,11 +216,13 @@ def test_controller_runs_generation_on_worker_thread_and_keeps_key_transient():
     observed = {}
     result = _success_result()
 
-    def fake_generator(description, config):
+    def fake_generator(request, config):
         observed["thread_id"] = threading.get_ident()
-        observed["description"] = description
+        observed["description"] = request.description
         observed["api_key"] = config.api_key
         observed["config_repr"] = repr(config)
+        observed["timeout_s"] = config.timeout_s
+        observed["max_tokens"] = config.max_tokens
         return result
 
     from chemuson.gui.controllers import MolecularAssistantController
@@ -206,6 +239,8 @@ def test_controller_runs_generation_on_worker_thread_and_keeps_key_transient():
             base_url="https://provider.example/v1",
             model="test-model",
             api_key="transient-secret",
+            timeout_s=180,
+            max_tokens=2048,
         )
         assert job_id is not None
         assert finished.wait(5000)
@@ -215,7 +250,53 @@ def test_controller_runs_generation_on_worker_thread_and_keeps_key_transient():
         assert observed["thread_id"] != gui_thread_id
         assert observed["description"] == "Dibuja cafeína"
         assert observed["api_key"] == "transient-secret"
+        assert observed["timeout_s"] == 180
+        assert observed["max_tokens"] == 2048
         assert "transient-secret" not in observed["config_repr"]
+    finally:
+        for job_id in controller.active_jobs():
+            controller.abandon_job(job_id)
+
+
+def test_controller_runs_identity_verification_in_the_worker_and_relays_separately():
+    gui_thread_id = threading.get_ident()
+    events = []
+    identity = MolecularIdentityVerification(
+        MolecularIdentityStatus.VERIFIED,
+        requested_name="ethanol",
+        reference_identifier="fake:ethanol",
+    )
+
+    def generator(_request, _config):
+        events.append(("generation", threading.get_ident()))
+        return _success_result()
+
+    def verifier(description, result):
+        assert description == "Draw ethanol"
+        assert result.status is MolecularAssistantStatus.SUCCESS
+        events.append(("identity", threading.get_ident()))
+        return identity
+
+    from chemuson.gui.controllers import MolecularAssistantController
+
+    controller = MolecularAssistantController(
+        generator=generator,
+        identity_verifier=verifier,
+    )
+    try:
+        finished = QSignalSpy(controller.job_finished)
+        identity_ready = QSignalSpy(controller.identity_ready)
+        controller.start_job(
+            "Draw ethanol",
+            base_url="http://127.0.0.1:8081/v1",
+            model="local-model",
+        )
+        assert finished.wait(5000)
+        assert len(identity_ready) == 1
+        assert events[0][0] == "generation"
+        assert events[1][0] == "identity"
+        assert all(thread_id != gui_thread_id for _kind, thread_id in events)
+        assert identity_ready[0][1] is identity
     finally:
         for job_id in controller.active_jobs():
             controller.abandon_job(job_id)
@@ -336,10 +417,10 @@ def test_failure_result_preserves_canvas_selection_undo_and_dirty_state(
 
         assert _editor_snapshot(window.canvas) == before
         assert not dialog.insert_button.isVisible()
-        assert dialog.status_label.text() == (
-            f"No se generó una estructura válida. Estado: {status.value}; "
-            f"motivo: {reason_code}."
-        )
+        assert dialog.status_label.text()
+        assert reason_code not in dialog.status_label.text()
+        if reason_code == "invalid_json":
+            assert "formato estructurado" in dialog.status_label.text()
     finally:
         window.close()
 
@@ -374,6 +455,49 @@ def test_success_is_previewed_before_normal_canvas_insertion(monkeypatch):
         assert 72 not in window._molecular_assistant_dialogs
         assert 72 not in window._molecular_assistant_results
     finally:
+        window.close()
+
+
+def test_identity_mismatch_requires_explicit_override_confirmation(monkeypatch):
+    window = ChemusonWindow()
+    try:
+        canvas = window.canvas
+        before = _editor_snapshot(canvas)
+        dialog = _open_dialog(window)
+        dialog.set_job_id(75)
+        window._molecular_assistant_dialogs[75] = (dialog, canvas)
+        window._molecular_assistant_identity_results[75] = MolecularIdentityVerification(
+            MolecularIdentityStatus.MISMATCH,
+            requested_name="colesterol",
+            reference_identifier="fake-reference:cholesterol",
+        )
+        result = _success_result()
+        window._molecular_assistant_results[75] = result
+
+        window._on_molecular_assistant_job_finished(75, result)
+        assert "no coincide" in dialog.identity_label.text()
+        assert "SMILES válido (ChemIO): ✓" in dialog.provenance_label.text()
+        assert dialog.insert_button.text() == "Insertar de todos modos"
+        assert _editor_snapshot(canvas) == before
+
+        answers = [QMessageBox.StandardButton.No, QMessageBox.StandardButton.Yes]
+        prompts = []
+
+        def confirm(*args):
+            prompts.append(args[2])
+            return answers.pop(0)
+
+        monkeypatch.setattr(QMessageBox, "warning", confirm)
+        dialog.insert_button.click()
+        assert _editor_snapshot(canvas) == before
+        assert "no confirmaste" in dialog.status_label.text()
+
+        dialog.insert_button.click()
+        assert len(canvas.model.atoms) == 1
+        assert len(prompts) == 2
+        assert all("colesterol" in prompt for prompt in prompts)
+    finally:
+        window.canvas.undo_stack.setClean()
         window.close()
 
 

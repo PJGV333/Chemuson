@@ -4,6 +4,7 @@ from chemuson.molecular_assistant.models import (
     MolecularAssistantRequest,
     MolecularAssistantResult,
     MolecularAssistantStatus,
+    MolecularTransformationRequest,
     ProviderResponse,
 )
 from chemuson.molecular_assistant.provider import (
@@ -26,6 +27,7 @@ __all__ = [
     "MolecularAssistantRequest",
     "MolecularAssistantResult",
     "MolecularAssistantStatus",
+    "MolecularTransformationRequest",
     "MolecularStructureProvider",
     "OpenAICompatibleConfig",
     "OpenAICompatibleProfile",

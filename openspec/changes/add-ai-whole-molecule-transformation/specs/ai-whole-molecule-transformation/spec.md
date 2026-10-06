@@ -38,17 +38,23 @@ The GUI SHALL export the selected source graph to isolated ChemIO SMILES and com
 
 ### Requirement: The proposal SHALL be reviewed before replacement
 
-The review UI SHALL show source SMILES, proposed SMILES, provider/model provenance when available, and the existing caveat that ChemIO parser acceptance does not prove semantic correctness. Replacement SHALL occur only after an explicit user approval.
+The review UI SHALL show source SMILES, proposed SMILES, provider/model provenance when available, and the existing caveat that ChemIO parser acceptance does not prove semantic correctness. It SHALL offer Insert Variant, Replace Original, and Cancel. Mutation SHALL occur only after an explicit user choice.
 
 #### Scenario: User declines or closes the preview
 - **WHEN** a user declines the transformation or closes the dialog
 - **THEN** the source molecule, other graph components, selection, undo index, and dirty state remain unchanged
 - **AND** any late result is ignored.
 
-#### Scenario: User approves a successful proposal
+#### Scenario: User chooses Replace Original
 - **WHEN** the user explicitly chooses Replace for a successful, ChemIO-validated proposal
 - **THEN** only the selected source component is removed and the proposal is placed at the source component's original center
 - **AND** the replacement is recorded as exactly one undoable operation.
+
+#### Scenario: User chooses Insert Variant
+- **WHEN** the user explicitly chooses Insert Variant for a successful, ChemIO-validated proposal
+- **THEN** the complete source component remains unchanged
+- **AND** the proposal is inserted as a separate molecule at a non-overlapping position relative to the source
+- **AND** the variant insertion is exactly one undoable operation without automatic Clean2D.
 
 ### Requirement: Replacement SHALL be conditional on an unchanged source
 
@@ -61,13 +67,13 @@ Before applying an approved proposal, the application SHALL verify that the targ
 
 ### Requirement: Undo and redo SHALL restore the whole-molecule transaction
 
-The replacement SHALL compose existing delete/add canvas commands in one undo macro. Undo SHALL restore the exact source component and remove the proposal; redo SHALL reapply the replacement. Other molecules and unrelated drawing objects SHALL remain untouched.
+The replacement SHALL compose existing delete/add canvas commands in one undo macro. Undo SHALL restore the exact source component and remove the proposal after Replace; for Insert Variant, Undo SHALL remove only the variant. Redo SHALL replay the selected operation. Other molecules and unrelated drawing objects SHALL remain untouched.
 
 #### Scenario: User undoes and redoes replacement
 - **WHEN** a successful replacement is followed by Undo and Redo
-- **THEN** Undo restores the original source component and editor graph
-- **AND** Redo restores the proposed component
-- **AND** the operation occupies one undo-stack step.
+- **THEN** Undo/Redo restores the original source for Replace, or removes/restores only the inserted variant for Insert Variant
+- **AND** the source is untouched by variant Undo/Redo
+- **AND** each chosen operation occupies one undo-stack step.
 
 ### Requirement: Tests SHALL remain deterministic and offline
 

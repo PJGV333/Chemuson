@@ -2,16 +2,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import pytest
+
 from chemuson.platform.settings import (
+    AIProviderPreferences,
     NamingPreferences,
     NumberingPreferences,
     UI_THEME_CHOICES,
     UiPreferences,
     SidePanelPreferences,
+    load_ai_provider_preferences,
     load_naming_preferences,
     load_numbering_preferences,
     load_side_panel_preferences,
     load_ui_preferences,
+    save_ai_provider_preferences,
     save_naming_preferences,
     save_numbering_preferences,
     save_side_panel_preferences,
@@ -32,6 +37,49 @@ class FakeSettings:
 
     def remove(self, key: str) -> None:
         self.values.pop(key, None)
+
+
+def test_ai_provider_preferences_roundtrip_per_profile_without_secrets() -> None:
+    settings = FakeSettings({
+        "ai/providers/llama-cpp/api_key": "legacy-secret",
+    })
+    defaults = load_ai_provider_preferences(
+        settings,
+        "llama-cpp",
+        default_base_url="http://127.0.0.1:8080/v1",
+    )
+    assert defaults == AIProviderPreferences(
+        "llama-cpp", "http://127.0.0.1:8080/v1", "", 60, False, 4096
+    )
+
+    saved = AIProviderPreferences(
+        "llama-cpp", "http://127.0.0.1:8081/v1", "local-model", 180, True, 2048
+    )
+    save_ai_provider_preferences(settings, saved)
+    assert load_ai_provider_preferences(settings, "llama-cpp") == saved
+    assert "ai/providers/llama-cpp/api_key" not in settings.values
+    assert "ai/providers/openai/base_url" not in settings.values
+
+
+def test_ai_provider_preferences_normalize_out_of_range_settings() -> None:
+    settings = FakeSettings({
+        "ai/providers/lm-studio/timeout_s": 601,
+        "ai/providers/lm-studio/max_tokens": 1,
+        "ai/providers/lm-studio/supports_json_output": "yes",
+    })
+    preferences = load_ai_provider_preferences(settings, "lm-studio")
+    assert preferences.timeout_s == 60
+    assert preferences.max_tokens == 4096
+    assert preferences.supports_json_output is True
+
+
+def test_ai_provider_preferences_reject_invalid_save() -> None:
+    settings = FakeSettings({})
+    with pytest.raises(ValueError):
+        save_ai_provider_preferences(
+            settings,
+            AIProviderPreferences("openai", timeout_s=9),
+        )
 
 
 def test_setting_bool_preserves_legacy_qsettings_values() -> None:

@@ -17,6 +17,7 @@ from chemuson.molecular_assistant.models import (
     MolecularAssistantRequest,
     MolecularAssistantResult,
     MolecularAssistantStatus,
+    MolecularTransformationRequest,
     ProviderResponse,
 )
 from chemuson.molecular_assistant.provider import (
@@ -49,6 +50,32 @@ class MolecularAssistant:
 
     def __init__(self, provider: MolecularStructureProvider) -> None:
         self.provider = provider
+
+    def transform(
+        self,
+        request: MolecularTransformationRequest,
+    ) -> MolecularAssistantResult:
+        """Transform one source SMILES through the same strict generation/validation path."""
+        if (
+            not isinstance(request, MolecularTransformationRequest)
+            or not isinstance(request.source_smiles, str)
+            or not request.source_smiles.strip()
+            or not isinstance(request.instruction, str)
+            or not request.instruction.strip()
+        ):
+            return self._failure(
+                MolecularAssistantStatus.INVALID_REQUEST,
+                "invalid_transformation",
+                provider_id=self._provider_id(),
+                model_id=self._configured_model_id(),
+            )
+        description = (
+            "Transform the complete molecule represented by this source SMILES. "
+            "Return one complete replacement molecule as a SMILES proposal.\n\n"
+            f"Source SMILES: {request.source_smiles.strip()}\n"
+            f"Requested transformation: {request.instruction.strip()}"
+        )
+        return self.generate(MolecularAssistantRequest(description))
 
     def generate(self, request: MolecularAssistantRequest) -> MolecularAssistantResult:
         """Generate a proposal without logging input or mutating application state."""

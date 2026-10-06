@@ -13,8 +13,13 @@ from typing import Mapping, Protocol
 from urllib.parse import urlsplit
 
 from chemuson.molecular_assistant.limits import (
+    DEFAULT_MAX_OUTPUT_TOKENS,
     DEFAULT_PROVIDER_TIMEOUT_S,
     MAX_HTTP_RESPONSE_BYTES,
+    MAX_MAX_OUTPUT_TOKENS,
+    MAX_PROVIDER_TIMEOUT_S,
+    MIN_MAX_OUTPUT_TOKENS,
+    MIN_PROVIDER_TIMEOUT_S,
 )
 from chemuson.molecular_assistant.models import (
     MolecularAssistantRequest,
@@ -64,6 +69,7 @@ class OpenAICompatibleConfig:
     timeout_s: float = DEFAULT_PROVIDER_TIMEOUT_S
     supports_json_output: bool = False
     provider_id: str = "openai-compatible"
+    max_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS
 
     def __post_init__(self) -> None:
         if (
@@ -101,8 +107,8 @@ class OpenAICompatibleConfig:
             )
         except (OverflowError, TypeError, ValueError):
             valid_timeout = False
-        if not valid_timeout:
-            raise ValueError("timeout_s must be finite and positive")
+        if not valid_timeout or not MIN_PROVIDER_TIMEOUT_S <= float(self.timeout_s) <= MAX_PROVIDER_TIMEOUT_S:
+            raise ValueError("timeout_s must be finite and between 10 and 600 seconds")
         if self.api_key is not None and (
             not isinstance(self.api_key, str)
             or "\r" in self.api_key
@@ -111,6 +117,12 @@ class OpenAICompatibleConfig:
             raise ValueError("api_key must be an opaque single-line string")
         if not isinstance(self.supports_json_output, bool):
             raise ValueError("supports_json_output must be boolean")
+        if (
+            isinstance(self.max_tokens, bool)
+            or not isinstance(self.max_tokens, int)
+            or not MIN_MAX_OUTPUT_TOKENS <= self.max_tokens <= MAX_MAX_OUTPUT_TOKENS
+        ):
+            raise ValueError("max_tokens must be an integer between 64 and 8192")
         if (
             not isinstance(self.provider_id, str)
             or not self.provider_id.strip()
@@ -210,6 +222,7 @@ class OpenAICompatibleProvider:
                 {"role": "user", "content": request.description},
             ],
             "stream": False,
+            "max_tokens": self.config.max_tokens,
         }
         if self.config.supports_json_output:
             payload["response_format"] = {"type": "json_object"}

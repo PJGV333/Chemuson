@@ -1,6 +1,6 @@
 # Phase 3 baseline
 
-Captured before creating or changing Phase 3 files on branch `ai/molecular-assistant-foundation`. `HEAD` and `origin/ai/molecular-assistant-foundation` were both `aca8ea3557c2bce148a74e39842b60881cefda38`; `git status --short` was empty. A recovery checkpoint branch `checkpoint/ai-molecular-assistant-before-phase3` points to this commit. See [`baseline-output.log`](baseline-output.log) for command outcomes.
+Captured before creating or changing Phase 3 files on branch `ai/molecular-assistant-foundation`. `HEAD` and `origin/ai/molecular-assistant-foundation` were both `aca8ea3557c2bce148a74e39842b60881cefda38`; `git status --short` was empty. A recovery checkpoint branch `checkpoint/ai-molecular-assistant-before-phase3` points to this commit. Exact relevant command outcomes are summarized below and in `validation.md`; verbose output was not retained in the repository.
 
 | Command | Baseline result |
 |---|---|

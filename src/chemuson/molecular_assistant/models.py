@@ -28,6 +28,14 @@ class MolecularAssistantRequest:
 
 
 @dataclass(frozen=True)
+class MolecularTransformationRequest:
+    """A provider-neutral instruction to transform one complete source molecule."""
+
+    source_smiles: str
+    instruction: str
+
+
+@dataclass(frozen=True)
 class ProviderResponse:
     """Raw structured-response content and optional transport model identity."""
 

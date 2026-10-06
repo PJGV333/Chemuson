@@ -778,6 +778,7 @@ modules:
   - M09
   - M11
   - M14
+  - M16
   - M21
   - M22
   - M23
@@ -1112,10 +1113,15 @@ modules:
   id: M16
   internal_api:
   - service
+  - identity
   name: name2structure
   paths:
   - src/chemuson/name2structure/
   public_api:
+  - MolecularIdentityStatus
+  - MolecularIdentityVerification
+  - extract_requested_molecule_name
+  - verify_molecular_identity
   - NameToStructureResult
   - PubChemNameConnector
   - StaticNameConnector
@@ -1287,14 +1293,17 @@ modules:
   - src/chemuson/platform/settings.py
   - src/chemuson/platform/resources.py
   public_api:
+  - AIProviderPreferences
   - NamingPreferences
   - NumberingPreferences
   - UI_THEME_CHOICES
   - UiPreferences
   - application_settings
+  - load_ai_provider_preferences
   - load_naming_preferences
   - load_numbering_preferences
   - load_ui_preferences
+  - save_ai_provider_preferences
   - save_naming_preferences
   - save_numbering_preferences
   - save_ui_preferences
@@ -1376,12 +1385,13 @@ modules:
   - provider
   - service
   name: molecular_assistant
-  notes: El servicio no persiste solicitudes/respuestas ni accede a documentos; sólo publica MolGraph tras validación ChemIO aislada. El adaptador HTTP requiere endpoint y modelo explícitos.
+  notes: El servicio no persiste solicitudes/respuestas ni accede a documentos; sólo publica MolGraph tras validación ChemIO aislada. La transformación usa una solicitud tipada source-SMILES + instruction y el mismo decoder/validator. El adaptador HTTP requiere endpoint y modelo explícitos.
   paths:
   - src/chemuson/molecular_assistant/
   public_api:
   - MolecularAssistant
   - MolecularAssistantRequest
+  - MolecularTransformationRequest
   - MolecularAssistantResult
   - MolecularAssistantStatus
   - MolecularStructureProvider
@@ -1394,7 +1404,7 @@ modules:
   - ProviderErrorCode
   - ProviderResponse
   - get_openai_compatible_profile
-  responsibility: Proponer una estructura molecular desde una descripción y validar estrictamente el SMILES mediante ChemIO aislado; ofrecer perfiles de endpoints OpenAI-compatible sin fijar modelos.
+  responsibility: Proponer o transformar estructuras con contratos provider-neutral y validar estrictamente SMILES mediante ChemIO aislado; ofrecer perfiles OpenAI-compatible sin fijar modelos.
   risk_level: medium
   status: evolving
   target_dependencies:

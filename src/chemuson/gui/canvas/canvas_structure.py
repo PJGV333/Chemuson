@@ -1164,6 +1164,41 @@ class CanvasStructureMixin:
         self._select_inserted_items(inserted_atom_ids)
         return inserted_atom_ids
 
+    def _insert_molecular_variant(
+        self,
+        source_atom_ids: set[int],
+        graph: MolGraph,
+        *,
+        gap: float = 42.0,
+    ) -> set[int]:
+        """Insert a separate proposal to the right of its source as one paste undo step."""
+        source_atom_ids = {int(atom_id) for atom_id in source_atom_ids}
+        if (
+            not source_atom_ids
+            or not source_atom_ids.issubset(self.model.atoms)
+            or not isinstance(graph, MolGraph)
+            or not graph.atoms
+        ):
+            return set()
+        source_atoms = [self.model.get_atom(atom_id) for atom_id in source_atom_ids]
+        source_right = max(atom.x for atom in source_atoms)
+        source_center_y = (
+            min(atom.y for atom in source_atoms) + max(atom.y for atom in source_atoms)
+        ) / 2.0
+        variant_width = max(atom.x for atom in graph.atoms.values()) - min(
+            atom.x for atom in graph.atoms.values()
+        )
+        target = QPointF(
+            source_right + float(gap) + variant_width / 2.0,
+            source_center_y,
+        )
+        previous_atom_ids = set(self.model.atoms)
+        self._insert_molgraph_at(graph, target)
+        inserted_atom_ids = set(self.model.atoms) - previous_atom_ids
+        if inserted_atom_ids:
+            self._select_inserted_items(inserted_atom_ids)
+        return inserted_atom_ids
+
     def begin_template_insert_mode(self, graph: MolGraph, label: str) -> None:
         """Activa la inserción por clic para una plantilla."""
         self._pending_template_graph = graph

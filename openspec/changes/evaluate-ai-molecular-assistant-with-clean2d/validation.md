@@ -5,7 +5,7 @@
 - Branch `ai/molecular-assistant-foundation`, clean tree at `aca8ea3557c2bce148a74e39842b60881cefda38`; same as `origin`.
 - Baseline: compileall passed; 1,902 tests collected; focused M23/Clean2D tests `129 passed, 2 skipped` in 1.86s.
 - Repository-wide Ruff baseline has the existing unrelated F401 `math` import in `tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py:3`.
-- Full pytest was not run: the prior recorded baseline takes 19:26 and contains a pre-existing CompChem failure, exceeding the requested 5–10 minute maximum. See `baseline.md` and `baseline-output.log`.
+- Full pytest was not run: the prior recorded baseline takes 19:26 and contains a pre-existing CompChem failure, exceeding the requested 5–10 minute maximum. See `baseline.md`; its summary contains the recorded duration and baseline failure.
 
 ## Focused verification
 

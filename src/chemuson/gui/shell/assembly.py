@@ -57,6 +57,7 @@ from chemuson.gui.tab_manager import CanvasTabManager
 from chemuson.gui.template_browser_service import TemplateBrowserService
 from chemuson.gui.template_library import TemplateLibrary
 from chemuson.gui.text_toolbar import TextFormatToolbar
+from chemuson.name2structure import verify_molecular_identity
 from chemuson.gui.tool_rail import ToolRail, ToolShortcutDispatcher
 from chemuson.gui.toolbar import ChemusonToolbar, SymbolPaletteToolbar
 from chemuson.platform.settings import application_settings
@@ -104,12 +105,25 @@ def assemble_application_shell(self) -> None:
     self._text_format_controller = TextFormatController()
     self._recovery_controller = RecoveryController()
     self._template_controller = TemplateController()
-    self._molecular_assistant_controller = MolecularAssistantController(self)
+    self._molecular_assistant_controller = MolecularAssistantController(
+        self,
+        identity_verifier=lambda request, result: verify_molecular_identity(
+            request,
+            result.graph,
+        ),
+    )
     self._molecular_assistant_controller.job_finished.connect(
         self._on_molecular_assistant_job_finished
     )
+    self._molecular_assistant_controller.source_smiles_ready.connect(
+        self._on_molecular_assistant_source_smiles_ready
+    )
+    self._molecular_assistant_controller.identity_ready.connect(
+        self._on_molecular_assistant_identity_ready
+    )
     self._molecular_assistant_dialogs: dict[int, tuple[object, ChemusonCanvas]] = {}
     self._molecular_assistant_results: dict[int, object] = {}
+    self._molecular_assistant_identity_results: dict[int, object] = {}
     self._molecular_assistant_transform_jobs: dict[int, object] = {}
     self._compchem_coordset = None
     self._latest_compchem_job_id = 0

@@ -3,8 +3,12 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
-from chemuson.clean2d import Clean2DMode, run_clean2d_engine
+from chemuson.clean2d import Clean2DCandidate, Clean2DMode, run_clean2d_engine
 from chemuson.core.model import MolGraph
+from chemuson.name2structure import (
+    MolecularIdentityStatus,
+    MolecularIdentityVerification,
+)
 from chemuson.molecular_assistant import (
     MolecularAssistantResult,
     MolecularAssistantStatus,
@@ -33,13 +37,29 @@ def _success(graph: MolGraph | None = None) -> MolecularAssistantResult:
 
 def _candidate_result(*, state: str = "no-op", coords=None, reason: str = ""):
     candidate = None
+    candidates = ()
     if coords is not None:
-        candidate = SimpleNamespace(coords=coords, rejected=False)
+        candidate = Clean2DCandidate(
+            source="selected-source",
+            coords=coords,
+            score=0.25,
+            novelty=1.0,
+        )
+        candidates = (candidate,)
+    rejected = Clean2DCandidate(
+        source="rejected-source",
+        coords={},
+        score=float("inf"),
+        rejected=True,
+        rejection_reason="backend-failure",
+    )
     return SimpleNamespace(
         selected=candidate,
+        candidates=candidates,
+        rejected=(rejected,),
         result_state=state,
         stable_reason=reason,
-        candidate_sources=("current",) if candidate is not None else (),
+        candidate_sources=tuple(item.source for item in (*candidates, rejected)),
     )
 
 
@@ -63,6 +83,13 @@ def test_success_evaluates_a_clone_and_reports_finite_before_after_metrics() -> 
     assert {atom_id: (atom.x, atom.y) for atom_id, atom in original_graph.atoms.items()} == original_coords
     assert clean2d["state"] == "no-op"
     assert clean2d["reason"] is None
+    assert clean2d["selected_source"] == "selected-source"
+    assert clean2d["selected_outcome_state"] == "applied"
+    assert clean2d["selected_score"] == 0.25
+    assert clean2d["selected_stable_reason"] is None
+    assert [row["source"] for row in clean2d["candidate_summaries"]] == ["selected-source"]
+    assert [row["source"] for row in clean2d["rejected_candidate_summaries"]] == ["rejected-source"]
+    assert clean2d["rejected_candidate_summaries"][0]["score"] is None
     assert set(clean2d["metrics"]["before"]) == set(evaluation._METRIC_FIELDS)
     assert set(clean2d["metrics"]["after"]) == set(evaluation._METRIC_FIELDS)
     assert clean2d["metrics"]["before"]["min_nonbonded_distance"] is None
@@ -70,6 +97,29 @@ def test_success_evaluates_a_clone_and_reports_finite_before_after_metrics() -> 
     decoded = json.loads(evaluation.encode_report(report))
     assert decoded["molecular_assistant"]["provider_id"] == "fake-provider"
     assert "description" not in decoded["molecular_assistant"]
+
+
+def test_evaluator_carries_requested_identity_provenance() -> None:
+    identity = MolecularIdentityVerification(
+        MolecularIdentityStatus.MISMATCH,
+        requested_name="cholesterol",
+        reference_identifier="offline:cholesterol",
+    )
+    report = evaluation.evaluate_result(
+        _success(),
+        clean2d_runner=lambda *_args, **_kwargs: _candidate_result(),
+        identity_verification=identity,
+    )
+
+    assert report["identity_verification"] == {
+        "requested_name": "cholesterol",
+        "status": "mismatch",
+        "reference_identifier": "offline:cholesterol",
+        "reason_code": None,
+    }
+    assert report["clean2d"]["requested_name"] == "cholesterol"
+    assert report["clean2d"]["identity_status"] == "mismatch"
+    assert report["clean2d"]["reference_identifier"] == "offline:cholesterol"
 
 
 def test_failed_molecular_result_never_reaches_clean2d() -> None:
@@ -155,3 +205,39 @@ def test_cli_requires_explicit_provider_and_request_fields() -> None:
         assert exc.code == 2
     else:
         raise AssertionError("CLI should reject missing endpoint, model, and description")
+
+
+def test_cli_does_not_read_openai_api_key_without_explicit_flag(monkeypatch, capsys) -> None:
+    observed = {}
+
+    def fake_provider(config):
+        observed["config"] = config
+        return object()
+
+    class FakeAssistant:
+        def __init__(self, _provider):
+            pass
+
+        def generate(self, _request):
+            return MolecularAssistantResult(
+                status=MolecularAssistantStatus.PROVIDER_ERROR,
+                provider_id="fake",
+                model_id="local-model",
+                reason_code="network_error",
+            )
+
+    monkeypatch.setenv("OPENAI_API_KEY", "must-not-be-used")
+    monkeypatch.setattr(evaluation, "OpenAICompatibleProvider", fake_provider)
+    monkeypatch.setattr(evaluation, "MolecularAssistant", FakeAssistant)
+
+    code = evaluation.main(
+        [
+            "--base-url", "http://127.0.0.1:8081/v1",
+            "--model", "local-model",
+            "--description", "Dibuja etanol",
+        ]
+    )
+
+    assert code == 1
+    assert observed["config"].api_key is None
+    assert "must-not-be-used" not in capsys.readouterr().out

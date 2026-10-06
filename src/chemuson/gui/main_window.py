@@ -30,7 +30,6 @@ import os
 from chemuson.gui.canvas import (
     ChemusonCanvas,
 )
-from chemuson.chemio.rdkit_io import molgraph_to_smiles_isolated_or_error
 from chemuson.core.model import MolGraph
 from chemuson.gui.items import EnergyDiagramItem
 from chemuson.gui.elemental_analysis_dialog import ElementalAnalysisDialog
@@ -89,10 +88,13 @@ from chemuson.gui.clean2d_geometry import (
 )
 from chemuson.gui.shell import assemble_application_shell
 from chemuson.platform.settings import (
+    AIProviderPreferences,
     NamingPreferences,
     UiPreferences,
+    load_ai_provider_preferences,
     load_naming_preferences,
     load_ui_preferences,
+    save_ai_provider_preferences,
     save_naming_preferences,
     save_ui_preferences,
     setting_bool,
@@ -2431,10 +2433,29 @@ class ChemusonWindow(QMainWindow):
     ) -> None:
         if self._shutdown_started:
             return
+        profiles = self._molecular_assistant_controller.provider_profiles
+        profile_preferences = {
+            profile.profile_id: {
+                "base_url": saved.base_url,
+                "model": saved.model,
+                "timeout_s": saved.timeout_s,
+                "supports_json_output": saved.supports_json_output,
+                "max_tokens": saved.max_tokens,
+            }
+            for profile in profiles
+            for saved in (
+                load_ai_provider_preferences(
+                    self._settings,
+                    profile.profile_id,
+                    default_base_url=profile.default_base_url,
+                ),
+            )
+        }
         dialog = MolecularAssistantDialog(
             self,
-            profiles=self._molecular_assistant_controller.provider_profiles,
+            profiles=profiles,
             transform_mode=transform_context is not None,
+            profile_preferences=profile_preferences,
         )
 
         def start_requested_generation(
@@ -2444,6 +2465,8 @@ class ChemusonWindow(QMainWindow):
             model: str,
             api_key: str,
             json_output: bool,
+            timeout_s: int,
+            max_tokens: int,
         ) -> None:
             self._start_molecular_assistant_job(
                 dialog,
@@ -2453,12 +2476,20 @@ class ChemusonWindow(QMainWindow):
                 model,
                 api_key,
                 json_output,
+                timeout_s,
+                max_tokens,
                 transform_context=transform_context,
             )
 
         dialog.generation_requested.connect(start_requested_generation)
         dialog.insert_requested.connect(
             lambda d=dialog: self._insert_molecular_assistant_result(d)
+        )
+        dialog.insert_variant_requested.connect(
+            lambda d=dialog: self._insert_molecular_assistant_result(
+                d,
+                as_variant=True,
+            )
         )
         dialog.finished.connect(
             lambda _result, d=dialog: self._on_molecular_assistant_dialog_finished(d)
@@ -2476,31 +2507,17 @@ class ChemusonWindow(QMainWindow):
         model: str,
         api_key: str,
         supports_json_output: bool,
+        timeout_s: int = 60,
+        max_tokens: int = 4096,
         *,
         transform_context: _MolecularAssistantTransformContext | None = None,
     ) -> None:
         """Start a provider request without blocking the GUI event loop."""
         if self._shutdown_started:
             return
-        request_transform = None
-        if transform_context is not None:
-
-            def transform_request(user_instruction: str) -> str:
-                source_smiles = molgraph_to_smiles_isolated_or_error(
-                    transform_context.source_graph,
-                    timeout_s=8.0,
-                )
-                if not isinstance(source_smiles, str) or not source_smiles.strip():
-                    raise ValueError("Source SMILES export returned no structure")
-                transform_context.source_smiles = source_smiles
-                return (
-                    "Transform the complete molecule represented by the source SMILES below. "
-                    "Return one complete replacement molecule as the proposed structure.\n\n"
-                    f"Source SMILES: {source_smiles}\n"
-                    f"Requested transformation: {user_instruction}"
-                )
-
-            request_transform = transform_request
+        source_graph = (
+            transform_context.source_graph if transform_context is not None else None
+        )
         job_id = self._molecular_assistant_controller.start_job(
             description,
             base_url=base_url,
@@ -2508,11 +2525,28 @@ class ChemusonWindow(QMainWindow):
             api_key=api_key,
             supports_json_output=supports_json_output,
             provider_id=provider_id,
-            request_transform=request_transform,
+            timeout_s=timeout_s,
+            max_tokens=max_tokens,
+            source_graph=source_graph,
         )
         if job_id is None:
             dialog.show_configuration_error()
             return
+        try:
+            save_ai_provider_preferences(
+                self._settings,
+                AIProviderPreferences(
+                    profile_id=provider_id,
+                    base_url=base_url,
+                    model=model,
+                    timeout_s=timeout_s,
+                    supports_json_output=supports_json_output,
+                    max_tokens=max_tokens,
+                ),
+            )
+            self._settings.sync()
+        except (TypeError, ValueError):
+            pass
         dialog.set_job_id(job_id)
         dialog.clear_api_key()
         dialog.set_pending()
@@ -2523,6 +2557,22 @@ class ChemusonWindow(QMainWindow):
         if transform_context is not None:
             self._molecular_assistant_transform_jobs[job_id] = transform_context
         self.statusBar().showMessage("Generando y validando estructura con IA…", 5000)
+
+    def _on_molecular_assistant_source_smiles_ready(
+        self,
+        job_id: int,
+        source_smiles: str,
+    ) -> None:
+        context = self._molecular_assistant_transform_jobs.get(int(job_id))
+        if context is not None:
+            context.source_smiles = source_smiles
+
+    def _on_molecular_assistant_identity_ready(
+        self,
+        job_id: int,
+        identity: object,
+    ) -> None:
+        self._molecular_assistant_identity_results[int(job_id)] = identity
 
     def _on_molecular_assistant_job_finished(self, job_id: int, result: object) -> None:
         """Present only successful validated results; failures never reach canvas."""
@@ -2544,7 +2594,8 @@ class ChemusonWindow(QMainWindow):
         ):
             dialog.show_failure(status_value, reason_code)
             self.statusBar().showMessage(
-                f"Asistente molecular: {status_value} ({reason_code}).", 7000
+                "No se pudo generar una estructura válida; revisa el detalle de la ventana.",
+                7000,
             )
             return
         transform_context = self._molecular_assistant_transform_jobs.get(job_id)
@@ -2555,11 +2606,17 @@ class ChemusonWindow(QMainWindow):
                 dialog.show_failure("validation_error", "source_structure_unavailable")
                 return
         self._molecular_assistant_results[job_id] = result
+        identity = self._molecular_assistant_identity_results.get(job_id)
+        identity_status = getattr(identity, "status", "unverified")
+        identity_status = getattr(identity_status, "value", str(identity_status))
         dialog.show_preview(
             provider_id=str(getattr(result, "provider_id", "unknown")),
             model_id=getattr(result, "model_id", None),
             smiles=str(getattr(result, "proposed_smiles", "") or ""),
             source_smiles=source_smiles,
+            identity_status=identity_status,
+            requested_name=getattr(identity, "requested_name", None),
+            reference_identifier=getattr(identity, "reference_identifier", None),
         )
         status_message = (
             "Transformación validada; revisa antes de reemplazar."
@@ -2569,9 +2626,12 @@ class ChemusonWindow(QMainWindow):
         self.statusBar().showMessage(status_message, 7000)
 
     def _insert_molecular_assistant_result(
-        self, dialog: MolecularAssistantDialog
+        self,
+        dialog: MolecularAssistantDialog,
+        *,
+        as_variant: bool = False,
     ) -> None:
-        """Commit an approved proposal or whole-molecule replacement."""
+        """Commit an approved proposal, separate variant, or source replacement."""
         if self._shutdown_started:
             return
         job_id = dialog.job_id
@@ -2603,9 +2663,37 @@ class ChemusonWindow(QMainWindow):
         if transform_context is not None:
             if not self._is_current_ai_transform_source(transform_context):
                 dialog.show_insert_notice(
-                    "La selección o la molécula original cambió; no se reemplazó."
+                    "La selección o la molécula original cambió; no se aplicaron cambios."
                 )
                 return
+        identity = self._molecular_assistant_identity_results.get(job_id)
+        identity_status = getattr(identity, "status", "unverified")
+        identity_status = getattr(identity_status, "value", str(identity_status))
+        if identity_status == "mismatch" and not self._confirm_molecular_identity_override(
+            getattr(identity, "requested_name", None),
+            getattr(identity, "reference_identifier", None),
+        ):
+            dialog.show_insert_notice(
+                "No se insertó: la identidad difiere de la referencia y no confirmaste el override."
+            )
+            return
+        if transform_context is not None and as_variant:
+            inserted_atom_ids = target_canvas._insert_molecular_variant(
+                set(transform_context.atom_ids),
+                graph,
+            )
+            if not inserted_atom_ids:
+                dialog.show_insert_notice(
+                    "No se pudo insertar la variante; la molécula original permanece intacta."
+                )
+                return
+            dialog.accept()
+            self.statusBar().showMessage(
+                "Variante insertada; la molécula original se conservó. Puedes deshacer.",
+                7000,
+            )
+            return
+        if transform_context is not None:
             inserted_atom_ids = target_canvas._replace_molecular_component(
                 set(transform_context.atom_ids),
                 graph,
@@ -2625,6 +2713,24 @@ class ChemusonWindow(QMainWindow):
         dialog.accept()
         self.statusBar().showMessage("Estructura de IA insertada; puedes deshacerla.", 7000)
 
+    def _confirm_molecular_identity_override(
+        self,
+        requested_name: str | None,
+        reference_identifier: str | None,
+    ) -> bool:
+        name = requested_name or "la molécula solicitada"
+        reference = f"\nReferencia: {reference_identifier}" if reference_identifier else ""
+        choice = QMessageBox.warning(
+            self,
+            "La identidad molecular no coincide",
+            "La estructura propuesta es químicamente interpretable, pero no coincide "
+            f"con la referencia disponible para {name}.{reference}\n\n"
+            "¿Insertar de todos modos?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return choice == QMessageBox.StandardButton.Yes
+
     def _on_molecular_assistant_dialog_finished(
         self,
         dialog: MolecularAssistantDialog,
@@ -2636,6 +2742,7 @@ class ChemusonWindow(QMainWindow):
         self._molecular_assistant_controller.abandon_job(job_id)
         self._molecular_assistant_dialogs.pop(job_id, None)
         self._molecular_assistant_results.pop(job_id, None)
+        self._molecular_assistant_identity_results.pop(job_id, None)
         self._molecular_assistant_transform_jobs.pop(job_id, None)
 
     def _on_name_to_structure(self) -> None:

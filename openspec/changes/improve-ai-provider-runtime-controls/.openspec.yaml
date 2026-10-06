@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-10-07
+goal: Configure bounded provider runtime controls per profile and improve nonblocking status, persistence, and controlled error messages.

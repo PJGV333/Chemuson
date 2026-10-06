@@ -33,4 +33,10 @@ The abort remains in the existing Molecular Assistant/Qt teardown path: `QSignal
 
 A diagnostic prefix run exposed an order-dependent test-fixture issue: the window's chemical-properties timer could recalculate deliberately decorated source metadata between snapshot and review. The test fixture now stops that timer after seeding the canvas; the final transformation tests and focused block pass with this deterministic setup.
 
-Logs are kept outside the repository under `/tmp/chemuson-phase5-full-suite-final.log` (final run), `/tmp/chemuson-phase5-full-prefix.log` (diagnostic identification of the fixed fixture issue), `/tmp/chemuson-phase5-focused-tests.log`, and the paths listed in `baseline.md`.
+Logs are kept outside the repository under `/tmp/chemuson-phase5-full-suite-final.log` (historical run), `/tmp/chemuson-phase5-full-prefix.log` (diagnostic identification of the fixed fixture issue), `/tmp/chemuson-phase5-focused-tests.log`, and the paths listed in `baseline.md`.
+
+## Continuation — typed transform and Insert Variant
+
+The request now crosses M23 as `MolecularTransformationRequest(source_smiles, instruction)` and calls `MolecularAssistant.transform()`; the generic `transform_request` hook was removed. Source export remains in the worker, and the existing strict decoder/ChemIO validator is reused. Preview offers Insert Variant, Replace Original, and Cancel. Insert Variant inserts a separate translated component with one undoable paste-style operation; its test proves Undo/Redo affects only the variant. Replace Original retains the existing atomic macro.
+
+Current focused results: `tests/test_molecular_assistant_transform.py` **5 passed**, `tests/test_molecular_assistant_ui.py` **19 passed**, `tests/test_gui_async_worker_shutdown.py` **2 passed**, and ordered M23→transform→UI **99 passed**. Architecture suite **278 passed**. Current full collection is 1946 and was exercised as time-bounded shards; historical monolithic logs are not rerun because 19:26 exceeds the current 10-minute cap. The only Clean2D-related failure remains the independently recorded candidate test; `src/chemuson/clean2d/` remains untouched.

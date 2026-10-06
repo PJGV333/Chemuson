@@ -7,10 +7,17 @@ from typing import Any
 
 from PyQt6.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
 
+from chemuson.chemio.rdkit_io import molgraph_to_smiles_isolated_or_error
+from chemuson.core.model import MolGraph
+from chemuson.name2structure import (
+    MolecularIdentityStatus,
+    MolecularIdentityVerification,
+)
 from chemuson.molecular_assistant import (
     MolecularAssistant,
     MolecularAssistantRequest,
     MolecularAssistantResult,
+    MolecularTransformationRequest,
     MolecularAssistantStatus,
     OpenAICompatibleConfig,
     OPENAI_COMPATIBLE_PROFILES,
@@ -19,15 +26,19 @@ from chemuson.molecular_assistant import (
 )
 
 
-ResultGenerator = Callable[[str, OpenAICompatibleConfig], MolecularAssistantResult]
+AssistantRequest = MolecularAssistantRequest | MolecularTransformationRequest
+ResultGenerator = Callable[[AssistantRequest, OpenAICompatibleConfig], MolecularAssistantResult]
+IdentityVerifier = Callable[[str, MolecularAssistantResult], object]
 
 
 def _generate_structure(
-    description: str,
+    request: AssistantRequest,
     config: OpenAICompatibleConfig,
 ) -> MolecularAssistantResult:
-    provider = OpenAICompatibleProvider(config)
-    return MolecularAssistant(provider).generate(MolecularAssistantRequest(description))
+    assistant = MolecularAssistant(OpenAICompatibleProvider(config))
+    if isinstance(request, MolecularTransformationRequest):
+        return assistant.transform(request)
+    return assistant.generate(request)
 
 
 def _provider_failure(config: OpenAICompatibleConfig) -> MolecularAssistantResult:
@@ -42,7 +53,7 @@ def _provider_failure(config: OpenAICompatibleConfig) -> MolecularAssistantResul
 class _MolecularAssistantWorker(QObject):
     """Execute provider I/O and isolated ChemIO validation on a QThread."""
 
-    finished = pyqtSignal(int, object)
+    finished = pyqtSignal(int, object, str, object)
 
     def __init__(
         self,
@@ -50,22 +61,61 @@ class _MolecularAssistantWorker(QObject):
         description: str,
         config: OpenAICompatibleConfig,
         generator: ResultGenerator,
+        source_graph: MolGraph | None,
+        identity_verifier: IdentityVerifier | None,
     ) -> None:
         super().__init__()
         self._job_id = int(job_id)
         self._description = description
         self._config = config
         self._generator = generator
+        self._source_graph = source_graph
+        self._identity_verifier = identity_verifier
 
     @pyqtSlot()
     def run(self) -> None:
+        source_smiles = ""
+        request: AssistantRequest = MolecularAssistantRequest(self._description)
+        if self._source_graph is not None:
+            try:
+                source_smiles = molgraph_to_smiles_isolated_or_error(
+                    self._source_graph,
+                    timeout_s=8.0,
+                )
+            except Exception:
+                source_smiles = ""
+            if not isinstance(source_smiles, str) or not source_smiles.strip():
+                result = MolecularAssistantResult(
+                    status=MolecularAssistantStatus.VALIDATION_ERROR,
+                    provider_id=self._config.provider_id,
+                    model_id=self._config.model,
+                    reason_code="source_export_failed",
+                )
+                self.finished.emit(self._job_id, result, "", None)
+                return
+            request = MolecularTransformationRequest(
+                source_smiles=source_smiles.strip(),
+                instruction=self._description,
+            )
         try:
-            result = self._generator(self._description, self._config)
+            result = self._generator(request, self._config)
         except Exception:
             result = _provider_failure(self._config)
         if not isinstance(result, MolecularAssistantResult):
             result = _provider_failure(self._config)
-        self.finished.emit(self._job_id, result)
+        identity = None
+        if (
+            self._identity_verifier is not None
+            and result.status is MolecularAssistantStatus.SUCCESS
+        ):
+            try:
+                identity = self._identity_verifier(self._description, result)
+            except Exception:
+                identity = MolecularIdentityVerification(
+                    MolecularIdentityStatus.REFERENCE_ERROR,
+                    reason_code="verification_error",
+                )
+        self.finished.emit(self._job_id, result, source_smiles, identity)
 
 
 class MolecularAssistantController(QObject):
@@ -73,18 +123,24 @@ class MolecularAssistantController(QObject):
 
     job_started = pyqtSignal(int)
     job_finished = pyqtSignal(int, object)
+    source_smiles_ready = pyqtSignal(int, str)
+    identity_ready = pyqtSignal(int, object)
 
     def __init__(
         self,
         parent: QObject | None = None,
         *,
         generator: ResultGenerator | None = None,
+        identity_verifier: IdentityVerifier | None = None,
     ) -> None:
         super().__init__(parent)
         self._generator = generator or _generate_structure
+        self._identity_verifier = identity_verifier
         self._next_job_id = 1
         self._jobs: dict[int, tuple[QThread, _MolecularAssistantWorker]] = {}
         self._pending_results: dict[int, MolecularAssistantResult] = {}
+        self._pending_source_smiles: dict[int, str] = {}
+        self._pending_identities: dict[int, object] = {}
         self._abandoned_jobs: set[int] = set()
         self._shutting_down = False
 
@@ -102,9 +158,11 @@ class MolecularAssistantController(QObject):
         api_key: str | None = None,
         supports_json_output: bool = False,
         provider_id: str = "openai-compatible",
-        request_transform: Callable[[str], str] | None = None,
+        timeout_s: float = 60.0,
+        max_tokens: int = 4096,
+        source_graph: MolGraph | None = None,
     ) -> int | None:
-        """Validate configuration and run optional request transformation in the worker."""
+        """Validate configuration and run generation or typed whole-molecule transformation."""
         if self._shutting_down:
             return None
         if not isinstance(description, str) or not description.strip():
@@ -123,6 +181,8 @@ class MolecularAssistantController(QObject):
                 api_key=api_key if api_key else None,
                 supports_json_output=supports_json_output,
                 provider_id=profile.profile_id,
+                timeout_s=timeout_s,
+                max_tokens=max_tokens,
             )
         except (TypeError, ValueError):
             return None
@@ -131,23 +191,13 @@ class MolecularAssistantController(QObject):
         self._next_job_id += 1
         thread = QThread(self)
         thread.setObjectName(f"MolecularAssistant-{job_id}")
-        base_generator = self._generator
-        generator = base_generator
-        if request_transform is not None:
-
-            def generate_transformed(
-                user_description: str,
-                request_config: OpenAICompatibleConfig,
-            ) -> MolecularAssistantResult:
-                transformed_description = request_transform(user_description)
-                return base_generator(transformed_description, request_config)
-
-            generator = generate_transformed
         worker = _MolecularAssistantWorker(
             job_id,
             description,
             config,
-            generator,
+            self._generator,
+            source_graph,
+            self._identity_verifier,
         )
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
@@ -189,19 +239,35 @@ class MolecularAssistantController(QObject):
         if job_id in self._jobs:
             self._abandoned_jobs.add(job_id)
 
-    @pyqtSlot(int, object)
-    def _record_worker_finished(self, job_id: int, result: Any) -> None:
+    @pyqtSlot(int, object, str, object)
+    def _record_worker_finished(
+        self,
+        job_id: int,
+        result: Any,
+        source_smiles: str,
+        identity: object,
+    ) -> None:
         if self._shutting_down:
             return
         if isinstance(result, MolecularAssistantResult):
             self._pending_results[int(job_id)] = result
+            if isinstance(source_smiles, str) and source_smiles:
+                self._pending_source_smiles[int(job_id)] = source_smiles
+            if identity is not None:
+                self._pending_identities[int(job_id)] = identity
 
     def _on_thread_finished(self, job_id: int) -> None:
         job_id = int(job_id)
         self._jobs.pop(job_id, None)
         result = self._pending_results.pop(job_id, None)
+        source_smiles = self._pending_source_smiles.pop(job_id, None)
+        identity = self._pending_identities.pop(job_id, None)
         if self._shutting_down or job_id in self._abandoned_jobs:
             self._abandoned_jobs.discard(job_id)
             return
         if result is not None:
+            if source_smiles is not None:
+                self.source_smiles_ready.emit(job_id, source_smiles)
+            if identity is not None:
+                self.identity_ready.emit(job_id, identity)
             self.job_finished.emit(job_id, result)

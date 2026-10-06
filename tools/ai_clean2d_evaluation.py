@@ -21,8 +21,13 @@ from chemuson.clean2d import (
     capture_clean2d_snapshot,
     classify_clean2d_layout_quality,
     run_clean2d_engine,
+    summarize_clean2d_candidates,
 )
 from chemuson.core.model import MolGraph
+from chemuson.name2structure import (
+    MolecularIdentityVerification,
+    verify_molecular_identity,
+)
 from chemuson.molecular_assistant import (
     MolecularAssistant,
     MolecularAssistantRequest,
@@ -55,6 +60,7 @@ def evaluate_result(
     clean2d_runner: MetricRunner | None = None,
     mode: Clean2DMode | str = Clean2DMode.QUICK,
     target_bond_length: float = 42.0,
+    identity_verification: MolecularIdentityVerification | None = None,
 ) -> dict[str, Any]:
     """Build a JSON-safe report, passing only validated successful graphs to M02."""
     if not isinstance(result, MolecularAssistantResult):
@@ -69,9 +75,11 @@ def evaluate_result(
         "reason_code": result.reason_code,
         "proposed_smiles": result.proposed_smiles,
     }
+    identity_record = _identity_record(identity_verification)
     report: dict[str, Any] = {
         "schema_version": 1,
         "molecular_assistant": assistant_record,
+        "identity_verification": identity_record,
         "clean2d": None,
     }
     if (
@@ -133,6 +141,25 @@ def evaluate_result(
         "state": state,
         "reason": stable_reason,
         "candidate_sources": list(getattr(clean_result, "candidate_sources", ()) or ()),
+        "selected_source": getattr(selected, "source", None),
+        "selected_outcome_state": (
+            getattr(selected, "outcome_state", None)
+            if selected is not None
+            else state
+        ),
+        "selected_score": (
+            _json_finite(getattr(selected, "score", None))
+            if selected is not None
+            else None
+        ),
+        "selected_stable_reason": _selected_stable_reason(clean_result, selected),
+        "candidate_summaries": _candidate_summaries(clean_result, rejected=False),
+        "rejected_candidate_summaries": _candidate_summaries(clean_result, rejected=True),
+        "requested_name": identity_record["requested_name"] if identity_record else None,
+        "identity_status": identity_record["status"] if identity_record else None,
+        "reference_identifier": (
+            identity_record["reference_identifier"] if identity_record else None
+        ),
         "metrics": {"before": before_metrics, "after": after_metrics},
     }
     return report
@@ -150,8 +177,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--description", required=True, help="One molecular structure request")
     parser.add_argument(
         "--api-key-env",
-        default="OPENAI_API_KEY",
-        help="Environment variable containing an optional API key (default: OPENAI_API_KEY)",
+        default=None,
+        help="Explicit environment variable containing an optional API key (not read by default)",
     )
     parser.add_argument(
         "--timeout",
@@ -186,13 +213,63 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     provider = OpenAICompatibleProvider(config)
     result = MolecularAssistant(provider).generate(MolecularAssistantRequest(args.description))
+    identity_verification = (
+        verify_molecular_identity(args.description, result.graph)
+        if result.status == MolecularAssistantStatus.SUCCESS and result.graph is not None
+        else None
+    )
     report = evaluate_result(
         result,
         mode=args.mode,
         target_bond_length=target,
+        identity_verification=identity_verification,
     )
     print(encode_report(report))
     return 0 if result.status == MolecularAssistantStatus.SUCCESS else 1
+
+
+def _identity_record(
+    identity: MolecularIdentityVerification | None,
+) -> dict[str, Any] | None:
+    if identity is None:
+        return None
+    status = getattr(identity.status, "value", str(identity.status))
+    return {
+        "requested_name": identity.requested_name,
+        "status": status,
+        "reference_identifier": identity.reference_identifier,
+        "reason_code": identity.reason_code,
+    }
+
+
+def _candidate_summaries(clean_result: Any, *, rejected: bool) -> list[dict[str, Any]]:
+    """Return JSON-safe candidate diagnostics from the established M02 helper."""
+    rows = summarize_clean2d_candidates(clean_result)
+    return [
+        _json_safe(row)
+        for row in rows
+        if bool(row.get("rejected", False)) is rejected
+    ]
+
+
+def _selected_stable_reason(clean_result: Any, selected: Any) -> str | None:
+    if selected is not None and bool(getattr(selected, "rejected", False)):
+        reason = getattr(selected, "stable_rejection_reason", None)
+    else:
+        reason = getattr(clean_result, "stable_reason", None)
+    return str(reason) if reason else None
+
+
+def _json_safe(value: Any) -> Any:
+    if value is None or isinstance(value, (bool, str, int)):
+        return value
+    if isinstance(value, float):
+        return _json_finite(value)
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (tuple, list)):
+        return [_json_safe(item) for item in value]
+    return None
 
 
 def _metrics(graph: MolGraph, coords: dict[int, tuple[float, float]], target: float) -> dict[str, Any]:

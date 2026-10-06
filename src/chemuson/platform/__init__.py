@@ -1,6 +1,7 @@
 """Platform-neutral application settings and preference policies."""
 
 from .settings import (
+    AIProviderPreferences,
     NamingPreferences,
     NumberingPreferences,
     SIDE_PANEL_TAB_KEYS,
@@ -8,10 +9,12 @@ from .settings import (
     UI_THEME_CHOICES,
     UiPreferences,
     application_settings,
+    load_ai_provider_preferences,
     load_naming_preferences,
     load_numbering_preferences,
     load_side_panel_preferences,
     load_ui_preferences,
+    save_ai_provider_preferences,
     save_naming_preferences,
     save_numbering_preferences,
     save_side_panel_preferences,
@@ -20,6 +23,7 @@ from .settings import (
 )
 
 __all__ = [
+    "AIProviderPreferences",
     "NamingPreferences",
     "NumberingPreferences",
     "SIDE_PANEL_TAB_KEYS",
@@ -27,10 +31,12 @@ __all__ = [
     "UI_THEME_CHOICES",
     "UiPreferences",
     "application_settings",
+    "load_ai_provider_preferences",
     "load_naming_preferences",
     "load_numbering_preferences",
     "load_side_panel_preferences",
     "load_ui_preferences",
+    "save_ai_provider_preferences",
     "save_naming_preferences",
     "save_numbering_preferences",
     "save_side_panel_preferences",
