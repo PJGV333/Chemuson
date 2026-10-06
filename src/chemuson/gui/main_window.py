@@ -4,6 +4,7 @@ Ventana principal de Chemuson.
 Compone menús, barras de herramientas, docks y el lienzo central.
 """
 
+from PyQt6 import sip
 from PyQt6.QtWidgets import (
     QAbstractSpinBox,
     QApplication,
@@ -1635,13 +1636,32 @@ class ChemusonWindow(QMainWindow):
             if callable(begin_shutdown):
                 begin_shutdown()
 
-        for dialog, _canvas in tuple(
-            getattr(self, "_molecular_assistant_dialogs", {}).values()
-        ):
-            dialog.close()
-        getattr(self, "_molecular_assistant_dialogs", {}).clear()
-        getattr(self, "_molecular_assistant_results", {}).clear()
-        getattr(self, "_molecular_assistant_transform_jobs", {}).clear()
+        dialogs_by_identity: dict[int, object] = {
+            id(dialog): dialog
+            for dialog in self.findChildren(MolecularAssistantDialog)
+        }
+        registries = (
+            "_molecular_assistant_dialogs",
+            "_molecular_assistant_results",
+            "_molecular_assistant_identity_results",
+            "_molecular_assistant_transform_jobs",
+        )
+        for job in getattr(self, "_molecular_assistant_dialogs", {}).values():
+            if isinstance(job, tuple) and job:
+                dialog = job[0]
+                dialogs_by_identity[id(dialog)] = dialog
+        job_ids = {
+            job_id
+            for registry_name in registries
+            for job_id in getattr(self, registry_name, {})
+        }
+        for job_id in job_ids:
+            self._cleanup_molecular_assistant_job(job_id)
+        for dialog in dialogs_by_identity.values():
+            if isinstance(dialog, QDialog) and not sip.isdeleted(dialog):
+                dialog.close()
+        for registry_name in registries:
+            getattr(self, registry_name, {}).clear()
 
         for job_id, (thread, worker, progress) in tuple(
             getattr(self, "_name2structure_jobs", {}).items()
@@ -2499,12 +2519,34 @@ class ChemusonWindow(QMainWindow):
                 as_variant=True,
             )
         )
-        dialog.finished.connect(
-            lambda _result, d=dialog: self._on_molecular_assistant_dialog_finished(d)
-        )
         dialog.show()
         dialog.raise_()
         dialog.activateWindow()
+
+    def _register_molecular_assistant_dialog_job(
+        self,
+        dialog: MolecularAssistantDialog,
+        job_id: int,
+        target_canvas: ChemusonCanvas,
+        *,
+        transform_context: _MolecularAssistantTransformContext | None = None,
+    ) -> None:
+        """Associate one dialog job and bind lifetime cleanup to its stable ID."""
+        job_id = int(job_id)
+        dialog.set_job_id(job_id)
+        self._molecular_assistant_dialogs[job_id] = (dialog, target_canvas)
+        if transform_context is not None:
+            self._molecular_assistant_transform_jobs[job_id] = transform_context
+        dialog.finished.connect(
+            lambda _result, stable_job_id=job_id: self._on_molecular_assistant_dialog_finished(
+                stable_job_id
+            )
+        )
+        dialog.destroyed.connect(
+            lambda *_args, stable_job_id=job_id: self._cleanup_molecular_assistant_job(
+                stable_job_id
+            )
+        )
 
     def _start_molecular_assistant_job(
         self,
@@ -2566,15 +2608,17 @@ class ChemusonWindow(QMainWindow):
             self._settings.sync()
         except (TypeError, ValueError):
             pass
-        dialog.set_job_id(job_id)
-        dialog.clear_api_key()
-        dialog.set_pending()
         target_canvas = (
             transform_context.canvas if transform_context is not None else self.canvas
         )
-        self._molecular_assistant_dialogs[job_id] = (dialog, target_canvas)
-        if transform_context is not None:
-            self._molecular_assistant_transform_jobs[job_id] = transform_context
+        self._register_molecular_assistant_dialog_job(
+            dialog,
+            job_id,
+            target_canvas,
+            transform_context=transform_context,
+        )
+        dialog.clear_api_key()
+        dialog.set_pending()
         self.statusBar().showMessage("Generando y validando estructura con IA…", 5000)
 
     def _on_molecular_assistant_source_smiles_ready(
@@ -2582,7 +2626,10 @@ class ChemusonWindow(QMainWindow):
         job_id: int,
         source_smiles: str,
     ) -> None:
-        context = self._molecular_assistant_transform_jobs.get(int(job_id))
+        job_id = int(job_id)
+        if job_id not in self._molecular_assistant_dialogs:
+            return
+        context = self._molecular_assistant_transform_jobs.get(job_id)
         if context is not None:
             context.source_smiles = source_smiles
 
@@ -2591,7 +2638,9 @@ class ChemusonWindow(QMainWindow):
         job_id: int,
         identity: object,
     ) -> None:
-        self._molecular_assistant_identity_results[int(job_id)] = identity
+        job_id = int(job_id)
+        if job_id in self._molecular_assistant_dialogs:
+            self._molecular_assistant_identity_results[job_id] = identity
 
     def _on_molecular_assistant_job_finished(self, job_id: int, result: object) -> None:
         """Present only successful validated results; failures never reach canvas."""
@@ -2602,6 +2651,9 @@ class ChemusonWindow(QMainWindow):
         if job is None:
             return
         dialog, _target_canvas = job
+        if sip.isdeleted(dialog):
+            self._cleanup_molecular_assistant_job(job_id)
+            return
         status = getattr(result, "status", None)
         status_value = getattr(status, "value", str(status or "provider_error"))
         graph = getattr(result, "graph", None)
@@ -2611,11 +2663,24 @@ class ChemusonWindow(QMainWindow):
             or graph is None
             or getattr(result, "validation_passed", None) is not True
         ):
-            dialog.show_failure(status_value, reason_code)
+            dialog.show_failure(
+                status_value,
+                reason_code,
+                structured_output_requested=bool(
+                    getattr(result, "structured_output_requested", False)
+                ),
+                structured_output_native=getattr(result, "structured_output_native", None),
+                structured_output_fallback_used=bool(
+                    getattr(result, "structured_output_fallback_used", False)
+                ),
+                format_repair_used=bool(getattr(result, "format_repair_used", False)),
+                format_repair_succeeded=getattr(result, "format_repair_succeeded", None),
+            )
             self.statusBar().showMessage(
                 "No se pudo generar una estructura válida; revisa el detalle de la ventana.",
                 7000,
             )
+            self._cleanup_molecular_assistant_job(job_id)
             return
         transform_context = self._molecular_assistant_transform_jobs.get(job_id)
         source_smiles = None
@@ -2623,6 +2688,7 @@ class ChemusonWindow(QMainWindow):
             source_smiles = transform_context.source_smiles
             if not source_smiles:
                 dialog.show_failure("validation_error", "source_structure_unavailable")
+                self._cleanup_molecular_assistant_job(job_id)
                 return
         self._molecular_assistant_results[job_id] = result
         identity = self._molecular_assistant_identity_results.get(job_id)
@@ -2635,6 +2701,15 @@ class ChemusonWindow(QMainWindow):
             source_smiles=source_smiles,
             identity_status=identity_status,
             identity_reason_code=getattr(identity, "reason_code", None),
+            structured_output_requested=bool(
+                getattr(result, "structured_output_requested", False)
+            ),
+            structured_output_native=getattr(result, "structured_output_native", None),
+            structured_output_fallback_used=bool(
+                getattr(result, "structured_output_fallback_used", False)
+            ),
+            format_repair_used=bool(getattr(result, "format_repair_used", False)),
+            format_repair_succeeded=getattr(result, "format_repair_succeeded", None),
             requested_name=getattr(identity, "requested_name", None),
             reference_identifier=getattr(identity, "reference_identifier", None),
         )
@@ -2751,19 +2826,31 @@ class ChemusonWindow(QMainWindow):
         )
         return choice == QMessageBox.StandardButton.Yes
 
-    def _on_molecular_assistant_dialog_finished(
-        self,
-        dialog: MolecularAssistantDialog,
-    ) -> None:
-        """Abandon pending work and discard transient result/config references."""
-        job_id = dialog.job_id
-        if job_id is None:
+    def _cleanup_molecular_assistant_job(self, job_id: int) -> None:
+        """Abandon and remove one assistant job without dereferencing its dialog."""
+        job_id = int(job_id)
+        registry_names = (
+            "_molecular_assistant_dialogs",
+            "_molecular_assistant_results",
+            "_molecular_assistant_identity_results",
+            "_molecular_assistant_transform_jobs",
+        )
+        registries = [
+            getattr(self, name, None)
+            for name in registry_names
+        ]
+        if not any(isinstance(registry, dict) and job_id in registry for registry in registries):
             return
-        self._molecular_assistant_controller.abandon_job(job_id)
-        self._molecular_assistant_dialogs.pop(job_id, None)
-        self._molecular_assistant_results.pop(job_id, None)
-        self._molecular_assistant_identity_results.pop(job_id, None)
-        self._molecular_assistant_transform_jobs.pop(job_id, None)
+        controller = getattr(self, "_molecular_assistant_controller", None)
+        if controller is not None and not sip.isdeleted(controller):
+            controller.abandon_job(job_id)
+        for registry in registries:
+            if isinstance(registry, dict):
+                registry.pop(job_id, None)
+
+    def _on_molecular_assistant_dialog_finished(self, job_id: int) -> None:
+        """Clean up the completed dialog association using only its stable ID."""
+        self._cleanup_molecular_assistant_job(job_id)
 
     def _on_name_to_structure(self) -> None:
         """Convierte nombre común/sistemático a estructura en worker."""

@@ -140,6 +140,9 @@ class MolecularAssistantDialog(QDialog):
 
         self.provenance_label = QLabel(self)
         self.provenance_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.output_diagnostic_label = QLabel(self)
+        self.output_diagnostic_label.setWordWrap(True)
+        self.output_diagnostic_label.setVisible(False)
         self.identity_label = QLabel(self)
         self.identity_label.setWordWrap(True)
         self.identity_label.setVisible(False)
@@ -189,6 +192,7 @@ class MolecularAssistantDialog(QDialog):
         layout.addWidget(advanced_group)
         layout.addWidget(self.status_label)
         layout.addWidget(self.provenance_label)
+        layout.addWidget(self.output_diagnostic_label)
         layout.addWidget(self.identity_label)
         layout.addWidget(self.source_smiles_label)
         layout.addWidget(self.source_smiles_preview)
@@ -261,8 +265,18 @@ class MolecularAssistantDialog(QDialog):
             "a un endpoint HTTPS o a loopback local."
         )
 
-    def show_failure(self, status: str, reason_code: str) -> None:
-        """Translate a stable failure code without exposing raw diagnostics."""
+    def show_failure(
+        self,
+        status: str,
+        reason_code: str,
+        *,
+        structured_output_requested: bool = False,
+        structured_output_native: bool | None = None,
+        structured_output_fallback_used: bool = False,
+        format_repair_used: bool = False,
+        format_repair_succeeded: bool | None = None,
+    ) -> None:
+        """Translate stable codes and bounded diagnostics without raw provider data."""
         self._stop_elapsed_timer()
         self.generate_button.setEnabled(True)
         self.identity_verification_check.setEnabled(True)
@@ -271,6 +285,13 @@ class MolecularAssistantDialog(QDialog):
         self.insert_variant_button.setVisible(False)
         self.identity_label.setVisible(False)
         self.provenance_label.setVisible(False)
+        self._show_output_diagnostics(
+            structured_output_requested=structured_output_requested,
+            structured_output_native=structured_output_native,
+            structured_output_fallback_used=structured_output_fallback_used,
+            format_repair_used=format_repair_used,
+            format_repair_succeeded=format_repair_succeeded,
+        )
         self.source_smiles_label.setVisible(False)
         self.source_smiles_preview.setVisible(False)
         self.proposal_smiles_label.setVisible(False)
@@ -284,6 +305,7 @@ class MolecularAssistantDialog(QDialog):
             "invalid_json": "El modelo respondió, pero no respetó el formato estructurado requerido.",
             "network_error": "No fue posible contactar el endpoint configurado.",
             "http_error": "El endpoint rechazó la solicitud o devolvió un error HTTP.",
+            "structured_output_unsupported": "El endpoint no admite el modo JSON estructurado.",
             "source_export_failed": "No fue posible exportar la molécula original para transformarla.",
             "invalid_smiles": "La estructura propuesta no pudo validarse químicamente.",
         }
@@ -300,6 +322,11 @@ class MolecularAssistantDialog(QDialog):
         source_smiles: str | None = None,
         identity_status: str = "unverified",
         identity_reason_code: str | None = None,
+        structured_output_requested: bool = False,
+        structured_output_native: bool | None = None,
+        structured_output_fallback_used: bool = False,
+        format_repair_used: bool = False,
+        format_repair_succeeded: bool | None = None,
         requested_name: str | None = None,
         reference_identifier: str | None = None,
     ) -> None:
@@ -314,6 +341,13 @@ class MolecularAssistantDialog(QDialog):
             f"Modelo: {model_id or 'N/D'}"
         )
         self.provenance_label.setVisible(True)
+        self._show_output_diagnostics(
+            structured_output_requested=structured_output_requested,
+            structured_output_native=structured_output_native,
+            structured_output_fallback_used=structured_output_fallback_used,
+            format_repair_used=format_repair_used,
+            format_repair_succeeded=format_repair_succeeded,
+        )
         identity_text = {
             "not_applicable": (
                 "Identidad: no aplicable; la verificación está desactivada."
@@ -375,6 +409,33 @@ class MolecularAssistantDialog(QDialog):
             if self._transform_mode
             else "Revisa la propuesta. No se insertará hasta que lo confirmes."
         )
+
+    def _show_output_diagnostics(
+        self,
+        *,
+        structured_output_requested: bool,
+        structured_output_native: bool | None,
+        structured_output_fallback_used: bool,
+        format_repair_used: bool,
+        format_repair_succeeded: bool | None,
+    ) -> None:
+        messages: list[str] = []
+        if structured_output_fallback_used:
+            messages.append("JSON nativo no soportado; se usó el contrato textual")
+        elif structured_output_native is True:
+            messages.append("Salida JSON nativa: usada")
+        elif structured_output_requested:
+            messages.append("Salida JSON nativa: no confirmada")
+        elif structured_output_native is False:
+            messages.append("Contrato JSON textual: usado")
+        if format_repair_used:
+            messages.append(
+                "Reintento de formato: exitoso"
+                if format_repair_succeeded is True
+                else "Reintento de formato: fallido"
+            )
+        self.output_diagnostic_label.setText(" · ".join(messages))
+        self.output_diagnostic_label.setVisible(bool(messages))
 
     def show_insert_notice(self, message: str) -> None:
         """Show a local insertion constraint while keeping the valid preview."""

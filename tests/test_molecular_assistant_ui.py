@@ -404,8 +404,7 @@ def test_failure_result_preserves_canvas_selection_undo_and_dirty_state(
         _seed_canvas(window)
         before = _editor_snapshot(window.canvas)
         dialog = _open_dialog(window)
-        dialog.set_job_id(71)
-        window._molecular_assistant_dialogs[71] = (dialog, window.canvas)
+        window._register_molecular_assistant_dialog_job(dialog, 71, window.canvas)
         failure = MolecularAssistantResult(
             status=status,
             provider_id="test-provider",
@@ -433,8 +432,7 @@ def test_success_is_previewed_before_normal_canvas_insertion(monkeypatch):
     try:
         canvas = window.canvas
         dialog = _open_dialog(window)
-        dialog.set_job_id(72)
-        window._molecular_assistant_dialogs[72] = (dialog, canvas)
+        window._register_molecular_assistant_dialog_job(dialog, 72, canvas)
         result = _success_result()
         insert_calls = []
         monkeypatch.setattr(
@@ -467,8 +465,7 @@ def test_identity_mismatch_requires_explicit_override_confirmation(monkeypatch):
         canvas = window.canvas
         before = _editor_snapshot(canvas)
         dialog = _open_dialog(window)
-        dialog.set_job_id(75)
-        window._molecular_assistant_dialogs[75] = (dialog, canvas)
+        window._register_molecular_assistant_dialog_job(dialog, 75, canvas)
         window._molecular_assistant_identity_results[75] = MolecularIdentityVerification(
             MolecularIdentityStatus.MISMATCH,
             requested_name="colesterol",
@@ -511,8 +508,7 @@ def test_declining_preview_and_late_result_after_close_do_not_mutate_canvas():
         canvas = window.canvas
         before = _editor_snapshot(canvas)
         dialog = _open_dialog(window)
-        dialog.set_job_id(73)
-        window._molecular_assistant_dialogs[73] = (dialog, canvas)
+        window._register_molecular_assistant_dialog_job(dialog, 73, canvas)
         window._on_molecular_assistant_job_finished(73, _success_result())
         dialog.reject()
         QApplication.processEvents()
@@ -520,8 +516,7 @@ def test_declining_preview_and_late_result_after_close_do_not_mutate_canvas():
         assert 73 not in window._molecular_assistant_results
 
         late_dialog = _open_dialog(window)
-        late_dialog.set_job_id(74)
-        window._molecular_assistant_dialogs[74] = (late_dialog, canvas)
+        window._register_molecular_assistant_dialog_job(late_dialog, 74, canvas)
         late_dialog.reject()
         QApplication.processEvents()
         window._on_molecular_assistant_job_finished(74, _success_result())
