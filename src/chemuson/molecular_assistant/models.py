@@ -28,6 +28,11 @@ class MolecularAssistantRequest:
 
 
 @dataclass(frozen=True)
+class _FormatRepairRequest(MolecularAssistantRequest):
+    """Internal marker so adapters can isolate quoted model output as untrusted data."""
+
+
+@dataclass(frozen=True)
 class MolecularTransformationRequest:
     """A provider-neutral instruction to transform one complete source molecule."""
 
@@ -37,10 +42,13 @@ class MolecularTransformationRequest:
 
 @dataclass(frozen=True)
 class ProviderResponse:
-    """Raw structured-response content and optional transport model identity."""
+    """Provider message content and bounded structured-output diagnostics."""
 
     content: str
     model_id: str | None = None
+    structured_output_requested: bool = False
+    structured_output_native: bool | None = None
+    structured_output_fallback_used: bool = False
 
 
 @dataclass(frozen=True)
@@ -54,8 +62,29 @@ class MolecularAssistantResult:
     graph: MolGraph | None = None
     validation_passed: bool | None = None
     reason_code: str | None = None
+    structured_output_requested: bool = False
+    structured_output_native: bool | None = None
+    structured_output_fallback_used: bool = False
+    format_repair_used: bool = False
+    format_repair_succeeded: bool | None = None
 
     def __post_init__(self) -> None:
+        if not isinstance(self.structured_output_requested, bool):
+            raise ValueError("structured_output_requested must be boolean")
+        if self.structured_output_native is not None and not isinstance(
+            self.structured_output_native, bool
+        ):
+            raise ValueError("structured_output_native must be boolean or None")
+        if not isinstance(self.structured_output_fallback_used, bool):
+            raise ValueError("structured_output_fallback_used must be boolean")
+        if not isinstance(self.format_repair_used, bool):
+            raise ValueError("format_repair_used must be boolean")
+        if self.format_repair_succeeded is not None and not isinstance(
+            self.format_repair_succeeded, bool
+        ):
+            raise ValueError("format_repair_succeeded must be boolean or None")
+        if self.format_repair_used != (self.format_repair_succeeded is not None):
+            raise ValueError("format repair diagnostics must agree")
         if self.status == MolecularAssistantStatus.SUCCESS:
             if not isinstance(self.graph, MolGraph) or not self.graph.atoms:
                 raise ValueError("success requires a non-empty MolGraph")

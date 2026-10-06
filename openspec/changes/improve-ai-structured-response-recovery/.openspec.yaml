@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-10-08
+goal: Improve strict structured molecular responses through explicit endpoint capability handling and a single bounded format-only retry.

@@ -14,6 +14,7 @@ from chemuson.molecular_assistant.provider import (
     ProviderCancelled,
     ProviderError,
     ProviderErrorCode,
+    StructuredOutputCapability,
 )
 from chemuson.molecular_assistant.profiles import (
     OPENAI_COMPATIBLE_PROFILES,
@@ -36,6 +37,7 @@ __all__ = [
     "ProviderCancelled",
     "ProviderError",
     "ProviderErrorCode",
+    "StructuredOutputCapability",
     "ProviderResponse",
     "get_openai_compatible_profile",
 ]

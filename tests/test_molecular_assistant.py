@@ -51,10 +51,25 @@ class FakeProvider:
         return ProviderResponse(content=self.content, model_id=self.model_id)
 
 
+class SequenceProvider:
+    provider_id = "sequence-provider"
+    model_id = "sequence-model"
+
+    def __init__(self, contents: list[str]) -> None:
+        self.contents = list(contents)
+        self.calls: list[MolecularAssistantRequest] = []
+
+    def generate(self, request: MolecularAssistantRequest) -> ProviderResponse:
+        self.calls.append(request)
+        assert self.contents, "unexpected extra provider request"
+        return ProviderResponse(self.contents.pop(0), self.model_id)
+
+
 @dataclass
 class FakeTransport:
     response: provider_module.HttpResponse | None = None
     failure: Exception | None = None
+    responses: list[provider_module.HttpResponse | Exception] | None = None
 
     def __post_init__(self):
         self.calls: list[dict[str, object]] = []
@@ -71,13 +86,27 @@ class FakeTransport:
         )
         if self.failure is not None:
             raise self.failure
+        if self.responses is not None:
+            assert self.responses, "unexpected extra provider request"
+            response = self.responses.pop(0)
+            if isinstance(response, Exception):
+                raise response
+            return response
         assert self.response is not None
         return self.response
 
 
-def _openai_body(content: str, *, model: str = "served-model") -> bytes:
+def _openai_body(
+    content: str,
+    *,
+    model: str = "served-model",
+    reasoning: str | None = None,
+) -> bytes:
+    message = {"content": content}
+    if reasoning is not None:
+        message["reasoning_content"] = reasoning
     return json.dumps(
-        {"choices": [{"message": {"content": content}}], "model": model}
+        {"choices": [{"message": message}], "model": model}
     ).encode("utf-8")
 
 
@@ -436,7 +465,12 @@ def test_openai_adapter_posts_explicit_request_and_extracts_transport_metadata()
     assert payload["max_tokens"] == config.max_tokens
     assert payload["response_format"] == {"type": "json_object"}
     assert payload["messages"][1] == {"role": "user", "content": "Draw ethanol"}
-    assert response == ProviderResponse('{"smiles":"CCO"}', "served-model")
+    assert response == ProviderResponse(
+        '{"smiles":"CCO"}',
+        "served-model",
+        structured_output_requested=True,
+        structured_output_native=True,
+    )
     assert provider.provider_id == "test-gateway"
     assert provider.model_id == "configured-model"
     assert "test-secret" not in repr(config)
@@ -489,12 +523,16 @@ def test_provider_profile_catalog_is_explicit_unique_and_keeps_generic_default()
     assert OpenAICompatibleConfig("https://provider.example/v1", "model").provider_id == "openai-compatible"
 
 
-def test_openai_adapter_omits_optional_json_mode_by_default():
+def test_openai_adapter_omits_json_mode_for_prompt_only_capability():
     transport = FakeTransport(
         response=provider_module.HttpResponse(200, _openai_body('{"smiles":"CCO"}'))
     )
     provider = OpenAICompatibleProvider(
-        OpenAICompatibleConfig("http://localhost:8000", "local-model"),
+        OpenAICompatibleConfig(
+            "http://localhost:8000",
+            "local-model",
+            supports_json_output=False,
+        ),
         transport=transport,
     )
 

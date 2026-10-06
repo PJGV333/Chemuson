@@ -16,9 +16,12 @@ from chemuson.name2structure import (
 )
 from chemuson.molecular_assistant import (
     OPENAI_COMPATIBLE_PROFILES,
+    MolecularAssistant,
     MolecularAssistantResult,
     MolecularAssistantStatus,
+    ProviderResponse,
 )
+from chemuson.molecular_assistant import service as service_module
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -203,11 +206,23 @@ def test_dialog_elapsed_timer_and_human_facing_provider_failures():
         assert "(180 s)" in dialog.status_label.text()
         assert "timeout" not in dialog.status_label.text()
 
-        dialog.show_failure("malformed_response", "invalid_json")
+        dialog.show_failure(
+            "malformed_response",
+            "invalid_json",
+            structured_output_requested=True,
+            structured_output_native=False,
+            structured_output_fallback_used=True,
+            format_repair_used=True,
+            format_repair_succeeded=False,
+        )
         assert "formato estructurado requerido" in dialog.status_label.text()
         assert "invalid_json" not in dialog.status_label.text()
+        assert "contrato textual" in dialog.output_diagnostic_label.text()
+        assert "Reintento de formato: fallido" in dialog.output_diagnostic_label.text()
+        assert "secret" not in dialog.output_diagnostic_label.text()
 
         dialog.show_failure("provider_error", "network_error")
+        assert not dialog.output_diagnostic_label.isVisible()
         assert "contactar el endpoint configurado" in dialog.status_label.text()
     finally:
         dialog.close()
@@ -300,6 +315,66 @@ def test_controller_runs_identity_verification_in_the_worker_and_relays_separate
         assert all(event[1] != gui_thread_id for event in events)
         assert events[1][2:] == (True, False)
         assert identity_ready[0][1] is identity
+    finally:
+        for job_id in controller.active_jobs():
+            controller.abandon_job(job_id)
+
+
+def test_successful_format_repair_still_runs_identity_verification(monkeypatch):
+    monkeypatch.setattr(
+        service_module,
+        "smiles_to_molgraph_isolated",
+        lambda _smiles, *, timeout_s: (_single_carbon_graph(), None),
+    )
+
+    class RepairProvider:
+        provider_id = "repair-provider"
+        model_id = "repair-model"
+
+        def __init__(self):
+            self.count = 0
+
+        def generate(self, _request):
+            self.count += 1
+            content = "not JSON" if self.count == 1 else '{"smiles":"CCO"}'
+            return ProviderResponse(content, self.model_id)
+
+    def generator(request, _config):
+        return MolecularAssistant(RepairProvider()).generate(request)
+
+    checked = []
+
+    def verifier(_description, result, enabled, allow_network):
+        checked.append((result, enabled, allow_network))
+        assert result.format_repair_used is True
+        assert result.format_repair_succeeded is True
+        return MolecularIdentityVerification(
+            MolecularIdentityStatus.VERIFIED,
+            requested_name="ethanol",
+            reference_identifier="fake:ethanol",
+        )
+
+    from chemuson.gui.controllers import MolecularAssistantController
+
+    controller = MolecularAssistantController(
+        generator=generator,
+        identity_verifier=verifier,
+    )
+    try:
+        finished = QSignalSpy(controller.job_finished)
+        identity_ready = QSignalSpy(controller.identity_ready)
+        controller.start_job(
+            "Draw ethanol",
+            base_url="https://provider.example/v1",
+            model="repair-model",
+        )
+        assert finished.wait(5000)
+        assert _wait_for(lambda: not controller.active_jobs())
+        assert len(identity_ready) == 1
+        assert len(checked) == 1
+        assert checked[0][1:] == (True, False)
+        assert checked[0][0].status is MolecularAssistantStatus.SUCCESS
+        assert identity_ready[0][1].status is MolecularIdentityStatus.VERIFIED
     finally:
         for job_id in controller.active_jobs():
             controller.abandon_job(job_id)
