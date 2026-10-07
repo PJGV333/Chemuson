@@ -42,4 +42,8 @@ The known `_DescriptorWorker` teardown issue is not rerun: the full assistant UI
 
 Functional gates A–J pass: live PubChem structures and ChemIO validation; reference-only preview/insertion/Undo; live PubChem fallback for injected AI exhaustion/timeout; cholesterol reference fallback; deterministic offline mismatch; lifecycle; architecture; strict OpenSpec; and zero Clean2D changes. AI/model limitations and unrelated ChemUSON debt are documented separately in `docs/modules/M23-molecular-assistant.md`.
 
-**Delivery gate K/L (clean working tree and local == remote) remains pending the required normal commit/push.** Task 5.5 is intentionally unchecked until a real commit and push have completed. No merge, rebase, or force-push has been performed.
+## Final merge readiness
+
+Functional gates A–J pass. The required focused commit was created as `e838766`, but its normal `git push origin ai/molecular-assistant-foundation` failed with `fatal: could not read Username for 'https://github.com': No such device or address`. `git ls-remote` confirmed the branch remote still points to the starting SHA `915ebb27d0f4858e3fef221a8d457ba0f5f0e92f`; local and remote therefore differ. The documentation closure is recorded in the second and final permitted local commit. The working tree is clean, but the branch remains unpublished until the owner supplies/configures push authentication and pushes normally.
+
+Task 5.5 remains unchecked because no push succeeded. No merge, rebase, force-push, or alternate-URL retry was performed. **Merge readiness: NOT READY**, solely because the local branch cannot be pushed with the available HTTPS credentials and remote != local.

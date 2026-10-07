@@ -62,6 +62,12 @@ Futuras campañas separadas aún posibles: evaluación manual más amplia de mod
 
 La etapa actual de integración del Molecular Assistant cierra con política de verificación offline por defecto y opt-in explícito de consultas externas, bloqueo de API keys sobre HTTP remoto, preferencias no secretas, documentación y validación focalizada. La integración actual queda cerrada como etapa, no como proyecto: el Molecular Assistant continúa. No se modificó Clean2D, no se entrenó ni seleccionó un modelo, no se descargaron datos, y esta rama no se integró a `main`.
 
+#### Microfase pre-merge — contrato live de PubChem y limitaciones
+
+La validación real encontró que el conector pedía `IsomericSMILES,CanonicalSMILES,IUPACName`, mientras PUG REST devolvía actualmente `SMILES,ConnectivitySMILES,IUPACName`; el parser antiguo acababa en `empty_smiles` aunque PubChem tenía la estructura. Name→Structure ahora solicita las propiedades actuales, prefiere `SMILES`, conserva compatibilidad legacy y valida la estructura mediante ChemIO aislado antes de ofrecerla. Los PUG queries ingleses `tetrandrine`/`cholesterol` tuvieron respuesta usable; los nombres de prompt `tetrandrina`/`colesterol` fueron 404, por lo que una tabla explícita y pequeña de aliases conserva el nombre original y la consulta canónica.
+
+El smoke reference-only de “Dibuja la tetrandrina” completó PubChem → ChemIO → preview → inserción undoable. Los smokes AI+reference de tetrandrina y colesterol usaron fallos de proveedor inyectados y referencias live para verificar fallback; el endpoint Qwen local no estaba disponible, así que no se afirma un resultado de Qwen ni se fuerza un mismatch live. El mismatch sigue cubierto offline. El feature es integrable, pero no infalible: las limitaciones del modelo, las fronteras de ChemIO/identity y la deuda Qt independiente están separadas en [`M23-molecular-assistant.md`](../modules/M23-molecular-assistant.md). No se modificó Clean2D ni se ofreció browsing al modelo.
+
 ### Clean2D — campañas separadas y no integradas
 
 **No se modificó código Clean2D en la campaña UI ni en esta higiene.** En `main` se conservan las campañas OpenSpec de julio sobre corpus, snapshots, métricas, baseline/diff review, determinismo, preservación compleja y layouts aromáticos/mistos. Sus propuestas y baselines permanecen en los archivos OpenSpec archivados.
