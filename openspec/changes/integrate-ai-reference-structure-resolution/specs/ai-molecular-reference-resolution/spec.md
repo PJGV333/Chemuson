@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Reference resolution is application-controlled and offline by default
-The Molecular Assistant orchestration SHALL distinguish model proposals from chemical reference structures and SHALL reuse `extract_requested_molecule_name()` plus the existing `resolve_name_to_structure()` service. It MUST NOT provide model browsing, arbitrary URL selection, HTTP tools, PubChem credentials, or reference payloads to the model. External access SHALL default off; offline mode MAY use static entries and the existing local PubChem cache.
+The Molecular Assistant orchestration SHALL distinguish model proposals from chemical reference structures and SHALL reuse `extract_requested_molecule_name()` plus the existing `resolve_name_to_structure()` service. It MUST NOT provide model browsing, arbitrary URL selection, HTTP tools, PubChem credentials, or reference payloads to the model. External access SHALL default off; offline mode MAY use static entries and the existing local PubChem cache. PubChem PUG REST requests SHALL use the supported `SMILES`, `ConnectivitySMILES`, and `IUPACName` properties, preferring stereo-capable `SMILES` and falling back to connectivity only when necessary; legacy SMILES property names MAY remain parser fallbacks.
 
 #### Scenario: Explicit named request with external access disabled
 - **GIVEN** the prompt explicitly names one molecule and reference mode is selected
@@ -25,6 +25,14 @@ The Molecular Assistant orchestration SHALL distinguish model proposals from che
 - **WHEN** ChemUSON prepares the provider request
 - **THEN** it uses only the explicitly configured completion endpoint and ordinary prompt/response contract
 - **AND** it defines no browsing, browser, search, tool, or model-selected URL capability.
+
+### Requirement: Verified name aliases preserve query provenance
+Name→Structure MAY normalize only explicitly verified language aliases through a small deterministic alias table. The submitted name SHALL remain available as the original query, and the canonical lookup spelling SHALL be recorded separately; the resolver SHALL retain the connector source/cache provenance. Aliases SHALL NOT be inferred by an LLM or fetched from the network.
+
+#### Scenario: Spanish tetrandrina and cholesterol names resolve through verified English aliases
+- **GIVEN** PUG REST does not resolve `tetrandrina` or `colesterol`, while `tetrandrine` and `cholesterol` return usable current-property responses
+- **WHEN** the user submits an explicit named-molecule request in Spanish
+- **THEN** Name→Structure queries the verified canonical spelling and retains both the original query and canonical query with PubChem provenance.
 
 ### Requirement: Reference structures pass ChemIO and retain stable provenance
 A reference SHALL NOT become an insertable candidate until its SMILES has passed isolated ChemIO validation. Application results and previews SHALL carry a closed structure-origin value (`ai`, `reference`, `ai_verified_by_reference`, or `ai_mismatch_reference`) and stable reference metadata including source, resolved name, and cache status when available. Provider-supplied strings SHALL NOT determine origin logic.

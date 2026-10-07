@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """Servicio Name→Structure con fuentes offline y PubChem."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 from pathlib import Path
 from typing import Protocol
@@ -11,6 +11,12 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 from chemuson.core.model import MolGraph
+
+
+NAME_QUERY_ALIASES: dict[str, str] = {
+    "colesterol": "cholesterol",
+    "tetrandrina": "tetrandrine",
+}
 
 
 COMMON_NAME_SMILES: dict[str, str] = {
@@ -50,6 +56,7 @@ class NameToStructureResult:
     resolved_name: str = ""
     message: str = ""
     from_cache: bool = False
+    resolved_query: str = ""
 
     @property
     def ok(self) -> bool:
@@ -163,7 +170,7 @@ class PubChemNameConnector:
         encoded = quote(query, safe="")
         url = (
             "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/"
-            f"{encoded}/property/IsomericSMILES,CanonicalSMILES,IUPACName/JSON"
+            f"{encoded}/property/SMILES,ConnectivitySMILES,IUPACName/JSON"
         )
         request = Request(url, headers={"User-Agent": "Chemuson/Name2Structure"})
         with urlopen(request, timeout=max(1.0, float(timeout_s))) as response:
@@ -172,7 +179,13 @@ class PubChemNameConnector:
         if not props:
             raise ValueError("not_found")
         first = props[0]
-        smiles = str(first.get("IsomericSMILES") or first.get("CanonicalSMILES") or "").strip()
+        smiles = str(
+            first.get("SMILES")
+            or first.get("IsomericSMILES")
+            or first.get("ConnectivitySMILES")
+            or first.get("CanonicalSMILES")
+            or ""
+        ).strip()
         if not smiles:
             raise ValueError("empty_smiles")
         resolved_name = str(first.get("IUPACName") or query).strip()
@@ -217,17 +230,28 @@ def resolve_name_to_structure(
     if not query:
         return NameToStructureResult(query, None, "none", 0.0, message="empty_query")
 
+    query_key = " ".join(query.casefold().split())
+    resolved_query = NAME_QUERY_ALIASES.get(query_key, query)
+    alias_used = resolved_query != query
     active_connectors = connectors or [StaticNameConnector()]
     if connectors is None:
         active_connectors.append(PubChemNameConnector(allow_network=allow_network))
 
     last = NameToStructureResult(query, None, "none", 0.0, message="not_found")
     for connector in active_connectors:
-        result = connector.resolve(query, timeout_s=timeout_s)
+        result = connector.resolve(resolved_query, timeout_s=timeout_s)
         if result.ok:
-            return result
+            return (
+                replace(result, query=query, resolved_query=resolved_query)
+                if alias_used
+                else result
+            )
         last = result
-    return last
+    return (
+        replace(last, query=query, resolved_query=resolved_query)
+        if alias_used
+        else last
+    )
 
 
 def _smiles_to_graph(smiles: str, timeout_s: float) -> tuple[MolGraph | None, str]:
