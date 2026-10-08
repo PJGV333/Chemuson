@@ -12,7 +12,7 @@
   <launchable type="desktop-id">io.github.PJGV333.Chemuson.desktop</launchable>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>AGPL-3.0-only</project_license>
-  <developer id="io.github.PJGV333">
+  <developer id="io.github.pjgv333">
     <name>Grupo de Quimica Supramolecular - Universidad de Sonora</name>
   </developer>
   <url type="homepage">https://github.com/PJGV333/Chemuson</url>

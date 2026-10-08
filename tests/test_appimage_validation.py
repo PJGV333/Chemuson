@@ -95,6 +95,8 @@ def test_preview_and_release_workflows_build_and_validate_same_type2_package() -
         assert "--appimage-extract" in (ROOT / "packaging/release/validate_appimage.py").read_text()
     assert "--build-type preview" in preview_text
     assert "--build-type release" in release_text
+    assert "appstream" in preview_text
+    assert "appstream" in release_text
     assert "desktop-file-utils" in preview_text
     assert "desktop-file-utils" in release_text
     assert "zsyncmake" in (ROOT / "packaging/linux/build_appimage.sh").read_text()

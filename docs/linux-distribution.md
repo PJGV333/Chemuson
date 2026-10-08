@@ -85,7 +85,7 @@ chmod +x Chemuson-vX.Y.Z-linux-x86_64.AppImage
 
 ### Build local AppImage Type 2
 
-Requiere `curl`, `desktop-file-validate` y las dependencias Qt del runner. `zsyncmake` se reutiliza desde el AppImageKit `appimagetool` oficial pinneado. El helper verifica el SHA-256 del asset, su commit/versión y falla si la descarga cambia. No requiere ni instala `linuxdeploy`: PyInstaller ya contiene el bundle de PyQt6/RDKit y `appimagetool` empaqueta ese AppDir.
+Requiere `curl`, `desktop-file-utils`, `appstream` (`appstreamcli`) y las dependencias Qt del runner. `zsyncmake` se reutiliza desde el AppImageKit `appimagetool` oficial pinneado. El helper verifica el SHA-256 del asset, su commit/versión y falla si la descarga cambia. No requiere ni instala `linuxdeploy`: PyInstaller ya contiene el bundle de PyQt6/RDKit y `appimagetool` empaqueta ese AppDir.
 
 ```bash
 pyinstaller --clean --noconfirm chemuson.spec
