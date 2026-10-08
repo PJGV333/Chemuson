@@ -24,14 +24,33 @@ def _loaded_rdkit_modules() -> list[str]:
 
 
 def _loaded_gui_modules() -> list[str]:
-    return sorted(
+    """Report ChemUSON GUI imports or an active Qt GUI application.
+
+    Frozen Qt runtime hooks may load the Qt bindings; only a running Qt
+    application would mean that packaged smoke dispatch bootstrapped a GUI.
+    """
+    loaded = [
         name
         for name in sys.modules
-        if name == "PyQt6"
-        or name.startswith("PyQt6.")
-        or name == "chemuson.gui"
-        or name.startswith("chemuson.gui.")
-    )
+        if name == "chemuson.gui" or name.startswith("chemuson.gui.")
+    ]
+    for module_name, application_name in (
+        ("PyQt6.QtGui", "QGuiApplication"),
+        ("PyQt6.QtWidgets", "QApplication"),
+    ):
+        module = sys.modules.get(module_name)
+        application_type = getattr(module, application_name, None)
+        instance = getattr(application_type, "instance", None)
+        if not callable(instance):
+            continue
+        try:
+            has_instance = instance() is not None
+        except Exception:
+            loaded.append(f"{module_name}.{application_name}.instance_check_failed")
+        else:
+            if has_instance:
+                loaded.append(f"{module_name}.{application_name}")
+    return sorted(set(loaded))
 
 
 def _ethanol_graph() -> MolGraph:

@@ -133,7 +133,9 @@ def validate(executable: Path, *, timeout: int = 120) -> dict[str, Any]:
         if process.returncode != 0:
             raise ValueError(
                 f"Frozen executable RDKit smoke exited {process.returncode}: "
-                f"{report.get('failures') or report.get('error') or process.stderr[-2000:]}"
+                f"{report.get('failures') or report.get('error') or process.stderr[-2000:]}; "
+                f"parent GUI before={report.get('parent_gui_before')!r}, "
+                f"after={report.get('parent_gui_after')!r}"
             )
         _validate_report(report, executable)
         return report

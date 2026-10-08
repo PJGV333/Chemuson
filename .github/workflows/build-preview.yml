@@ -87,7 +87,9 @@ jobs:
           pyinstaller --clean --noconfirm chemuson.spec
           if (-not (Test-Path "dist\Chemuson.exe")) { throw "Portable executable was not generated." }
           python packaging/release/validate_packaged_icons.py --executable "dist/Chemuson.exe"
+          if ($LASTEXITCODE -ne 0) { throw "Packaged icon validation failed (exit $LASTEXITCODE)." }
           python packaging/release/validate_packaged_rdkit_worker.py --executable "dist/Chemuson.exe"
+          if ($LASTEXITCODE -ne 0) { throw "Packaged RDKit validation failed (exit $LASTEXITCODE)." }
           choco install innosetup --no-progress -y
           $env:CHEMUSON_VERSION = $env:PREVIEW_VERSION
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "packaging\windows\Chemuson.iss"

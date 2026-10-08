@@ -134,3 +134,11 @@ def test_preview_metadata_uses_canonical_version_and_official_workflow_stays_sep
     assert "validate_packaged_rdkit_worker.py --executable dist/Chemuson" in text
     assert "validate_packaged_rdkit_worker.py --executable \"dist/Chemuson.exe\"" in release_text
     assert "validate_packaged_rdkit_worker.py --executable dist/Chemuson" in release_text
+    workflow = _workflow()[1]
+    windows_build = workflow["jobs"]["build_windows"]
+    validation_step = next(
+        step for step in windows_build["steps"]
+        if "validate_packaged_rdkit_worker.py" in step.get("run", "")
+    )
+    assert validation_step["run"].count("if ($LASTEXITCODE -ne 0)") == 2
+    assert "Packaged RDKit validation failed" in validation_step["run"]

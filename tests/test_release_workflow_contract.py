@@ -102,6 +102,13 @@ def test_frozen_rdkit_smoke_gates_windows_linux_and_appimage_builds() -> None:
             str(step.get("run", "")) for step in workflow["jobs"][job_name]["steps"]
         )
         assert "validate_packaged_rdkit_worker.py" in job_text
+    windows_validation = next(
+        step
+        for step in workflow["jobs"]["build_windows"]["steps"]
+        if "validate_packaged_rdkit_worker.py" in step.get("run", "")
+    )
+    assert windows_validation["run"].count("if ($LASTEXITCODE -ne 0)") == 2
+    assert "Packaged RDKit validation failed" in windows_validation["run"]
 
 
 def test_gate_uses_bounded_non_monolithic_release_checks() -> None:
