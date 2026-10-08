@@ -37,7 +37,7 @@
 - [x] 6.1 Run strict OpenSpec for this change, architecture, version/release/updater/packaging tests, compileall, focused Ruff and `git diff --check`; cap every automated test command at 10 minutes and do not rerun the monolithic suite.
 - [x] 6.2 Validate AppStream XML, Flatpak YAML, release/preview workflow policy and manifest/checksum/provenance smoke with available tools; explicitly report unavailable Windows/Flatpak-builder/AppImage Type 2 validation.
 - [x] 6.3 Verify no tag/release/gh-pages/channel publication occurred and no Clean2D/chemistry/`.cmsn` changes exist.
-- [ ] 6.4 Commit focused changes on this prep branch and push only if normal authentication is available; verify remote branch SHA. Never merge/rebase/force-push or modify `main`, tags, GitHub Releases or `gh-pages`.
+- [x] 6.4 Commit focused changes on this prep branch and push only if normal authentication is available; verify remote branch SHA. Never merge/rebase/force-push or modify `main`, tags, GitHub Releases or `gh-pages`.
 
 ## 7. Genuine AppImage Type 2 addendum
 - [x] 7.1 Add a reproducible AppDir with `AppRun`, validated desktop entry, ChemUSON SVG icon, AppStream metainfo and the existing PyInstaller binary/resources.
@@ -62,7 +62,7 @@
 - [x] 10.2 Reproduce the shared cause from a real Linux PyInstaller binary: `collect_all("chemuson")` skips because it is not installed as a package in the build environment; binary archive has zero SVGs while QtSvg bindings are present.
 - [x] 10.3 Add deterministic PyInstaller `datas` for exactly 69 package-relative static SVGs and fail if any are missing; preserve source/frozen lookup and themes.
 - [x] 10.4 Add environment-gated frozen binary diagnostics for path resolution, all 69 SVG resources, QtSvg and visible raster pixels for essential icon categories in light/dark themes and DPR 2.
-- [ ] 10.5 Linux PyInstaller executable and authentic preview/release AppImages pass frozen-process path/resource/QtSvg/raster and QToolButton checks on clean packaging commit `46af127e6790d62b713453475eabedf4513f7afb`. Windows jobs are wired fail-closed but remain unexecuted locally; verify in the next Actions run before owner retest.
+- [x] 10.5 Linux PyInstaller executable, extracted preview AppImage and Windows portable pass frozen-process path/resource/QtSvg/raster, QToolButton and RDKit checks in Build Preview `37854485440` on `d339b71a6ea8b7085572e59b37492c27b35759c8`; owner manual retest remains pending.
 - [x] 10.6 Update tests/docs without altering the SVG inventory or chemical/UI behavior; owner manual retest remains NOT PASSED and blocks beta publication.
 
 ## 11. UI-ONBOARDING-001 and BRANDING-001
@@ -75,11 +75,11 @@
 
 ## 12. P1 — RDKit isolated backend unavailable in packaged executable
 - [x] 12.1 Record the owner's Windows portable failure (formula/mass/estimated spectra work; RDKit descriptors report unavailable), mark this P1 as failed/blocking, and stop manual package verification until a corrected preview is available.
-- [ ] 12.2 Reproduce the pre-fix invocation failure from an actual frozen executable; separately verify RDKit/native imports in the installed runtime and make the corrected frozen smoke prove imports resolve inside each packaged bundle.
+- [x] 12.2 Reproduce the pre-fix invocation failure from an actual frozen executable; separately verify RDKit/native imports in the installed runtime and make the corrected frozen smoke prove imports resolve inside each packaged bundle. Corrected Windows, Linux PyInstaller and extracted AppImage gates passed in Build Preview `37854485440` on SHA `d339b71a6ea8b7085572e59b37492c27b35759c8`.
 - [x] 12.3 Implement a frozen-only worker dispatch in the existing executable; keep source mode compatible, retain process isolation/JSON API/timeouts, support Windows `console=False` without stdin/stdout, prevent GUI bootstrap/recursion, and ensure timeout cleanup/no orphaned process.
 - [x] 12.4 Add required diagnostics for import/native-extension, worker start/exit, timeout, malformed response and chemistry errors; make the Properties pane label only actual RDKit import failure as unavailable while retaining partial results.
 - [x] 12.5 Add a non-skipping frozen executable validator/smoke: require `sys.executable` to be the tested executable, extensions to load from its extracted bundle, ethanol logP/TPSA/HBD/HBA values, and bounded isolated 3D plus SMILES calls; assert the parent stays RDKit/GUI-free.
-- [ ] 12.6 Wire fail-closed frozen smoke gates into Windows portable, Linux PyInstaller and extracted AppImage jobs in both Build Preview and official release workflows; run the real Build Preview package jobs. Do not trigger the official release workflow because no tag/release is authorized.
+- [x] 12.6 Wire fail-closed frozen smoke gates into Windows portable, Linux PyInstaller and extracted AppImage jobs in both Build Preview and official release workflows; run the real Build Preview package jobs. Preview `37854485440` passed all package jobs; official release workflow was not triggered because no tag/release is authorized.
 - [x] 12.7 Add focused unit/integration tests for source worker errors/protocol, frozen dispatch, app-UI messages, smoke validator, workflows and architecture catalog; do not alter chemistry algorithms, Clean2D, `.cmsn`, or the independent Qt teardown debt.
-- [ ] 12.8 Run bounded RDKit/app packaging tests, architecture, strict OpenSpec, scoped Ruff, compileall and diff check; push a normal commit only to `release/v0.3.0-beta.1-prep` and wait for the matching Preview/CI jobs, without tags/releases/publication.
+- [x] 12.8 Run bounded RDKit/app packaging tests, architecture, strict OpenSpec, scoped Ruff, compileall and diff check; push a normal commit only to `release/v0.3.0-beta.1-prep` and wait for the matching Preview/CI jobs, without tags/releases/publication. Preview `37854485440` passed; the separate full pytest CI job still aborts on the documented Qt teardown SIGSEGV and is not represented as passing.
 - [ ] 12.9 Owner manually retests corrected Windows portable and AppImage/Linux packages; beta acceptance remains awaiting manual retest.
