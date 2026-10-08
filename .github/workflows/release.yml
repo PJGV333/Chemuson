@@ -73,6 +73,7 @@ jobs:
           tests/test_preview_build.py
           tests/test_preview_workflow_contract.py
           tests/test_release_workflow_contract.py
+          tests/test_test_workflow_contract.py
           tests/test_appimage_validation.py
           tests/test_linux_distribution_scripts.py
           tests/test_packaged_icon_smoke.py
@@ -105,6 +106,7 @@ jobs:
           tests/test_preview_build.py
           tests/test_preview_workflow_contract.py
           tests/test_release_workflow_contract.py
+          tests/test_test_workflow_contract.py
           tests/test_appimage_validation.py
           tests/test_linux_distribution_scripts.py
           tests/test_packaged_icon_smoke.py
