@@ -53,14 +53,14 @@
 - [x] 8.2 Add a static workflow contract proving dev dependencies are installed before full pytest collection and that the real suite is not skipped/ignored or masked.
 
 ## 9. Addendum validation
-- [ ] 9.1 Run the AppImage packaging, release workflow, preview helper/workflow, CI workflow, architecture and OpenSpec tests with a 10-minute cap per test command; run compileall, focused Ruff and diff checks.
+- [x] 9.1 Run the AppImage packaging, release workflow, preview helper/workflow, CI workflow, architecture and OpenSpec tests with a 10-minute cap per test command; run compileall, focused Ruff and diff checks.
 - [x] 9.2 Perform real Linux PyInstaller→AppImageTool preview/release builds with bounded time, full Type 2/resource/icon/updater validation; do not claim graphical acceptance from a headless runner.
-- [ ] 9.3 Record whether normal push authorization exists. Commit AppImage and CI fixes separately; push only this prep branch if possible. Do not create tag/release or merge.
+- [x] 9.3 Authorization recorded: `gh auth status` is unauthenticated. Packaging and CI fixes are in separate commits (`ca7f89e`, `ec20a70`, `46af127`); the noninteractive normal push failed before remote update (`could not read Username`). No password was used. Do not create tag/release or merge; push remains pending.
 
 ## 10. P1 packaged UI icon defect addendum
 - [x] 10.1 Record the owner's confirmed missing-icon failures for Windows and Linux portable packages from preview run `37826597134`; mark manual acceptance `FAILED — P1 blocks beta acceptance` and preserve owner retest as a separate gate.
 - [x] 10.2 Reproduce the shared cause from a real Linux PyInstaller binary: `collect_all("chemuson")` skips because it is not installed as a package in the build environment; binary archive has zero SVGs while QtSvg bindings are present.
 - [x] 10.3 Add deterministic PyInstaller `datas` for exactly 69 package-relative static SVGs and fail if any are missing; preserve source/frozen lookup and themes.
 - [x] 10.4 Add environment-gated frozen binary diagnostics for path resolution, all 69 SVG resources, QtSvg and visible raster pixels for essential icon categories in light/dark themes and DPR 2.
-- [ ] 10.5 Linux actual PyInstaller executable and authentic preview/release AppImages pass frozen-process path/resource/QtSvg/raster checks. Windows preview/release executable checks are wired fail-closed but remain unexecuted locally; verify in the next Actions run.
+- [ ] 10.5 Linux PyInstaller executable and authentic preview/release AppImages pass frozen-process path/resource/QtSvg/raster and QToolButton checks on clean packaging commit `46af127e6790d62b713453475eabedf4513f7afb`. Windows jobs are wired fail-closed but remain unexecuted locally; verify in the next Actions run before owner retest.
 - [x] 10.6 Update tests/docs without altering the SVG inventory or chemical/UI behavior; owner manual retest remains NOT PASSED and blocks beta publication.
