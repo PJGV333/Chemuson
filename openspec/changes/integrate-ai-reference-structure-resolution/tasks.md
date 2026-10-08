@@ -23,4 +23,4 @@
 - [x] 5.2 Run and record Molecular Assistant, identity, Name→Structure, settings, architecture, and lifecycle tests under the 10-minute command cap.
 - [x] 5.3 Run compileall, strict OpenSpec validation, modified-file Ruff rules, and `git diff --check`; do not run monolithic pytest.
 - [x] 5.4 After offline gates only, perform bounded live PubChem tetrandrina/tetrandrine/cholesterol checks and assistant reference/fallback smokes; use local Qwen only if an endpoint is already available.
-- [ ] 5.5 Commit focused changes and normally push this branch only; stop after push, with no merge/rebase/force-push.
+- [x] 5.5 Commit focused changes and normally push this branch only; stop after push, with no merge/rebase/force-push.

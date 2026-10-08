@@ -21,7 +21,7 @@
 - `pytest -q tests/test_molecular_assistant_transform.py`: `5 passed in 8.20s`.
 - `pytest -q tests/architecture`: `280 passed in 15.99s`.
 - `ruff check src tests tools packaging --select F401,F811,F821,E722,E741`: exit 1 for the known unrelated `F401` `math` in `tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py:3` only.
-- No monolithic `pytest -q` was run (explicitly prohibited for this task).
+- For the original pre-implementation baseline at SHA `915ebb27d0f4858e3fef221a8d457ba0f5f0e92f`, no monolithic `pytest -q` was run, as specified at that time. This later documentation microphase ran its required pre-change baseline once; see below.
 
 ## Initial live PUG REST observation (no payload retained)
 
@@ -30,3 +30,18 @@
 - The existing connector's legacy request/parser returned controlled `empty_smiles` for both `tetrandrine` and `cholesterol`, despite the current PUG REST response containing `SMILES` and `ConnectivitySMILES`.
 - No local Qwen/llama.cpp endpoint was listening at `127.0.0.1:8080` (connection refused). No model was started.
 - Only concise status/property-name/conversion observations are recorded here; HTTP response bodies were not saved.
+
+## Microfase documental — baseline al 2026-10-07
+
+- `git fetch origin --prune`: completado.
+- `git status --short --branch`: `## ai/molecular-assistant-foundation...origin/ai/molecular-assistant-foundation` (limpio).
+- `HEAD` y `origin/ai/molecular-assistant-foundation`: `b4e0e661c0062e5e7bb69d5ea0dd712ea7e8e38e`.
+- `origin/main`: `4068319e9a1deee7dbf239872191a8f509c8b641`.
+- `git rev-list --left-right --count origin/main...origin/ai/molecular-assistant-foundation`: `0 23`; `origin/main` es ancestro de la rama AI.
+- `python -m compileall src tests tools packaging`: exit 0.
+- `pytest --collect-only -q`: `2027 tests collected in 0.88s`, exit 0.
+- Baseline completo ejecutado una sola vez antes de cambios: `timeout 10m pytest -q`. Mostró dos marcadores `F` antes de abortar alrededor del 63% por SIGSEGV durante teardown Qt (`QUndoStack`/`QWidget`, con worker `chemuson-3d_0`); terminó con exit 139 y sin resumen final. No se repitió. La deuda histórica de teardown/SIGSEGV permanece sin declarar resuelta.
+- `ruff check src tests tools packaging --select F401,F811,F821,E722,E741`: exit 1 por el F401 histórico `math` en `tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py:3`; no se modificó.
+- Validación focal posterior del árbol de campaña: OpenSpec estricto válido; `pytest -q tests/architecture` 280 passed; compileall quiet exit 0; `git diff --check` limpio.
+- `git diff origin/main...HEAD -- src/chemuson/clean2d/`: vacío.
+- Decisión del propietario: conservar `Pillow`. `origin/main:pyproject.toml` ya declara el paquete en `[project].dependencies`; `6d36e3a` reconcilió `requirements.txt` con esa declaración. La ausencia de imports PIL directos no invalida la dependencia; no se modifica ninguna dependencia en esta microfase.
