@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Builder AppImage de Chemuson.
-# Si existe un AppImage previo lo reutiliza; en caso contrario
-# envuelve el binario Linux portable y además genera metadata de update.
+# Builder del ejecutable portable Linux de Chemuson.
+# Conserva el sufijo histórico .AppImage por compatibilidad del updater; no
+# crea un contenedor AppImage Type 2. También genera metadata de update.
 
 VERSION="${1:?missing VERSION}"
 DIST_DIR="${2:-dist}"
@@ -12,10 +12,26 @@ OWNER="${4:-PJGV333}"
 REPO="${5:-Chemuson}"
 CHANNEL="${6:-stable}"
 TAG="${7:-v${VERSION}}"
+SOURCE_SHA="${8:-}"
+BUILD_TYPE="${9:-release}"
+SOURCE_BRANCH="${10:-}"
 
-APPIMAGE_NAME="Chemuson-v${VERSION}-linux-x86_64.AppImage"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+if [[ "${BUILD_TYPE}" == "preview" ]]; then
+  python "${ROOT_DIR}/packaging/release/preview_build.py" verify \
+    --version "${VERSION}" --git-sha "${SOURCE_SHA}" \
+    --source-branch "${SOURCE_BRANCH}" >/dev/null
+  APPIMAGE_NAME="Chemuson-v${VERSION}-preview-${SOURCE_SHA:0:8}-linux-x86_64.AppImage"
+elif [[ "${BUILD_TYPE}" == "release" ]]; then
+  python "${ROOT_DIR}/packaging/release/release_policy.py" \
+    --version "${VERSION}" --channel "${CHANNEL}" --tag "${TAG}" >/dev/null
+  APPIMAGE_NAME="Chemuson-v${VERSION}-linux-x86_64.AppImage"
+  DOWNLOAD_BASE_URL="${APPIMAGE_DOWNLOAD_BASE_URL:-https://github.com/${OWNER}/${REPO}/releases/download/${TAG}}"
+else
+  echo "Unsupported build type: ${BUILD_TYPE}" >&2
+  exit 2
+fi
 APPIMAGE_PATH="${OUT_DIR}/${APPIMAGE_NAME}"
-DOWNLOAD_BASE_URL="${APPIMAGE_DOWNLOAD_BASE_URL:-https://github.com/${OWNER}/${REPO}/releases/download/${TAG}}"
 
 mkdir -p "$OUT_DIR"
 
@@ -31,6 +47,12 @@ else
   exit 1
 fi
 
+# Preview outputs are Actions-only and must never contain public updater metadata.
+if [[ "${BUILD_TYPE}" == "preview" ]]; then
+  echo "Built preview portable executable ${APPIMAGE_PATH} (no public updater metadata)."
+  exit 0
+fi
+
 # Metadata AppImageUpdate (best-effort para releases GitHub).
 UPDATE_TRACK="latest"
 if [[ "$CHANNEL" == "beta" ]]; then
@@ -44,8 +66,10 @@ cat > "${APPIMAGE_PATH}.update.json" <<EOF
   "asset": "${APPIMAGE_NAME}",
   "owner": "${OWNER}",
   "repository": "${REPO}",
+  "version": "${VERSION}",
   "channel": "${CHANNEL}",
   "tag": "${TAG}",
+  "source_sha": "${SOURCE_SHA}",
   "download_base_url": "${DOWNLOAD_BASE_URL}",
   "appimage_update_information": "${APPIMAGE_UPDATE_INFO}"
 }

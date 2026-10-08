@@ -7,8 +7,15 @@ import hashlib
 import hmac
 import json
 import os
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+RELEASE_TOOLS_DIR = Path(__file__).resolve().parent
+if str(RELEASE_TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(RELEASE_TOOLS_DIR))
+
+from release_policy import validate_commit_identity, validate_version_channel
 
 
 def sha256_of(path: Path) -> str:
@@ -35,7 +42,16 @@ def artifact_key(name: str) -> str:
     return name
 
 
-def build_manifest(channel: str, version: str, base_url: str, artifacts_dir: Path) -> dict:
+def build_manifest(
+    channel: str,
+    version: str,
+    base_url: str,
+    artifacts_dir: Path,
+    source_sha: str = "",
+) -> dict:
+    release = validate_version_channel(version, channel)
+    if source_sha:
+        source_sha = validate_commit_identity(source_sha, source_sha)
     artifacts = {}
     for path in sorted(artifacts_dir.iterdir()):
         if not path.is_file():
@@ -57,12 +73,17 @@ def build_manifest(channel: str, version: str, base_url: str, artifacts_dir: Pat
             "url": f"{base_url.rstrip('/')}/{path.name}",
             "sha256": sha256_of(path),
         }
-    return {
+    manifest = {
         "channel": channel,
-        "latest": version,
+        "latest": release.version,
+        "version": release.version,
+        "tag": release.tag,
         "published_at": datetime.now(timezone.utc).isoformat(),
         "artifacts": artifacts,
     }
+    if source_sha:
+        manifest["source_sha"] = source_sha
+    return manifest
 
 
 def sign_manifest(manifest: dict, key: str) -> dict:
@@ -80,6 +101,11 @@ def main() -> None:
     parser.add_argument("--artifacts-dir", required=True, help="Directorio de artifacts.")
     parser.add_argument("--base-url", required=True, help="Base URL de descarga de assets.")
     parser.add_argument("--output", required=True, help="Ruta destino del JSON.")
+    parser.add_argument(
+        "--source-sha",
+        default=os.getenv("GITHUB_SHA", ""),
+        help="SHA completo del commit que produjo este manifest.",
+    )
     parser.add_argument("--key", default="", help="Clave HMAC opcional.")
     args = parser.parse_args()
 
@@ -88,6 +114,7 @@ def main() -> None:
         version=args.version,
         base_url=args.base_url,
         artifacts_dir=Path(args.artifacts_dir).resolve(),
+        source_sha=args.source_sha,
     )
     key = args.key or os.getenv("CHEMUSON_SIGN_KEY", "")
     if key:

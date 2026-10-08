@@ -5,7 +5,7 @@
 #define MyAppPublisher "Chemuson"
 #define MyAppExeName "Chemuson.exe"
 #if MyAppVersion == ""
-  #define MyAppVersion "0.0.0-dev"
+  #error "CHEMUSON_VERSION must be set explicitly before compiling the installer."
 #endif
 
 [Setup]

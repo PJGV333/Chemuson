@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <component type="desktop-application">
   <id>io.github.PJGV333.Chemuson</id>
   <name>Chemuson</name>
@@ -18,8 +18,9 @@
   <url type="homepage">https://github.com/PJGV333/Chemuson</url>
   <url type="bugtracker">https://github.com/PJGV333/Chemuson/issues</url>
   <releases>
-    <release version="0.2.3-beta.3" date="2026-04-09"/>
-    <release version="0.2.1" date="2026-02-26"/>
+    <release version="0.3.0-beta.1" date="2026-10-08" />
+    <release version="0.2.3-beta.3" date="2026-04-09" />
+    <release version="0.2.1" date="2026-02-26" />
   </releases>
-  <content_rating type="oars-1.1"/>
+  <content_rating type="oars-1.1" />
 </component>

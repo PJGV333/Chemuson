@@ -1,86 +1,24 @@
-# Hotfix Releases
+# Hotfix releases
 
-Fecha: 2026-03-08
+Un hotfix publicado necesita una versión y un tag nuevos. El updater entrega Releases oficiales por canal; no distribuye commits sueltos ni previews de Actions.
 
-## Objetivo
+## Preparación segura
 
-Permitir publicar correcciones pequenas con la menor friccion posible para:
+1. Corregir el defecto en una rama y actualizar `_version.py` junto con AppStream mediante `packaging/release/set_version.py` antes del commit/tag revisado.
+2. Construir un preview desde `release/**-prep` con [PREVIEW_BUILDS.md](release/PREVIEW_BUILDS.md) y probar los artifacts en VM/perfil aislado. El preview no es actualización y no modifica beta/stable.
+3. Registrar aceptación, versión y SHA. Un hotfix beta incrementa el número prerelease (`X.Y.Z-beta.N`); un hotfix stable posterior a `X.Y.Z` incrementa PATCH (`X.Y.(Z+1)`). Nunca reutilizar un tag ni intentar reemplazar el asset de un release existente.
+4. Sólo tras aprobación del propietario, crear el tag protegido `vX.Y.Z-beta.N` o `vX.Y.Z`. `.github/workflows/release.yml` valida que tag, `_version.py`, AppStream y SHA sean idénticos; el canal deriva del tag. No hay dispatch manual de versión/canal.
+5. Confirmar resultados del gate y de cada plataforma, checksums, procedencia y estado de publicación. Si se interrumpe después de publicar, detener la promoción: no mover tags, no sobreescribir assets y no forzar una segunda publicación del mismo tag.
 
-- testers del canal `beta`
-- usuarios finales del canal `stable`
+## Reglas de canal
 
-sin compilar localmente ni preparar artifacts a mano.
+- `beta.N` y `rc.N` son prereleases y se enrutan sólo a beta.
+- `X.Y.Z` sin prerelease se enruta sólo a stable.
+- Los usuarios beta pueden estar sujetos a la política del updater existente; no se debe relabelar un paquete ni cambiar manualmente un manifest para promoverlo.
+- La configuración de rulesets y GitHub environments es un prerrequisito externo que debe verificar el propietario.
 
-## Limitacion importante
+## Compilaciones sin publicación
 
-El updater de Chemuson **no distribuye commits sueltos**. Solo ve **releases publicadas** con una **version mas nueva** que la instalada.
+Para revisar un hotfix antes de autorizar tag/release, usar la ejecución **Build Preview** y descargar sus cuatro artifacts de Actions. Si el workflow no está disponible en GitHub o el usuario/agente no está autorizado, dejar la prueba pendiente; no improvisar una ruta con permisos ampliados.
 
-Eso significa:
-
-- un commit en Git no llega por si solo a los usuarios;
-- un asset corregido con la misma version tampoco se ofrecera como update;
-- cada hotfix necesita una version nueva y artifacts nuevos.
-
-## Flujo recomendado
-
-### 1. Hotfix para testers
-
-1. Haces commit/push del arreglo a la rama que quieras publicar.
-2. En GitHub Actions ejecutas manualmente la workflow `release`.
-3. Usas por ejemplo:
-   - `version = 0.2.2-beta.1`
-   - `channel = beta`
-4. La workflow:
-   - sincroniza `src/chemuson/_version.py` dentro de CI,
-   - compila Windows/Linux/Flatpak,
-   - publica una **prerelease** `v0.2.2-beta.1`.
-5. Los testers con canal `beta` podran recibirla desde `Ayuda -> Buscar actualizaciones...`.
-
-### 2. Promocion a estable
-
-Cuando el hotfix ya fue validado por testers:
-
-1. Ejecutas otra vez la workflow `release`.
-2. Usas por ejemplo:
-   - `version = 0.2.2`
-   - `channel = stable`
-3. Se publica la release estable y los usuarios del canal `stable` la veran.
-
-## Como lo usan los testers
-
-Los testers deben tener el canal `beta` en preferencias de actualizacion.
-
-Comportamiento esperado:
-
-- `stable` solo ve releases estables;
-- `beta` ve tanto prereleases beta como releases estables mas nuevas.
-
-## Que automatiza ahora CI
-
-La workflow `release` ya no depende de que la version del repositorio coincida manualmente con el nombre del release.
-
-Durante la ejecucion:
-
-- toma la version indicada en la workflow o en el tag,
-- actualiza `_version.py`,
-- construye artifacts con esa misma version,
-- publica la release/tag correspondiente.
-
-## Convencion sugerida
-
-- Beta para testers: `X.Y.Z-beta.N`
-- Hotfix estable: `X.Y.Z`
-
-Ejemplo:
-
-- testers: `0.2.2-beta.1`
-- testers con ajuste extra: `0.2.2-beta.2`
-- salida estable final: `0.2.2`
-
-## Recomendacion operativa
-
-Si quieres mover cambios pequenos muy rapido:
-
-- usa `beta` como canal de entrega inmediata,
-- valida con testers,
-- promociona el mismo hotfix a `stable` cuando quede confirmado.
+La guía completa de SemVer, recuperación e inmutabilidad está en [VERSIONING_POLICY.md](release/VERSIONING_POLICY.md).

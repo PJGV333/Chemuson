@@ -79,3 +79,28 @@ otra fase de producto.
 La rama `ai/molecular-assistant-foundation` parte de `b4e0e661c0062e5e7bb69d5ea0dd712ea7e8e38e`, con `origin/main` en `4068319e9a1deee7dbf239872191a8f509c8b641`, 23 commits ahead y 0 behind; el árbol estaba limpio y el fast-forward era posible. OpenSpec estricto, arquitectura (280), compileall y diff-check pasaron; no hay diff de Clean2D. El propietario confirmó que `origin/main:pyproject.toml` ya declara Pillow y que `6d36e3a` reconcilió `requirements.txt` con esa declaración; conservar Pillow no constituye una dependencia nueva del proyecto. No se modifican dependencias ni código de producto. El bloqueo queda levantado y la microfase continúa con los gates de integración autorizados.
 
 Como captura baseline obligatoria, se ejecutó una sola vez `timeout 10m pytest -q` antes de los cambios documentales: emitió dos marcadores `F` y abortó cerca del 63% en teardown Qt con SIGSEGV/exit 139 (`QUndoStack`/`QWidget`, worker `chemuson-3d_0`), sin resumen final. Se documenta como compatible con la deuda Qt/SIGSEGV histórica ya conocida; no se repitió ni se afirma que esté resuelta. Ruff global volvió a encontrar únicamente el F401 histórico `math` en el test Clean2D. Evidencia y comandos registrados en `openspec/changes/integrate-ai-reference-structure-resolution/baseline.md` y `validation.md`.
+
+## Preparación ChemUSON v0.3.0-beta.1 + Actions preview (2026-10-08)
+
+### Decisiones y cambios
+
+- Rama local `release/v0.3.0-beta.1-prep`, creada desde `origin/main` `8640bed18f0961ef9582f8376e98e9a33dbc3c01`. Se preparó `_version.py` en `0.3.0-beta.1` y AppStream con fecha `2026-10-08`; Pillow y `pyproject.toml` dinámico se conservan. No se creó tag.
+- Se endurecieron `release.yml` (tag-only, validación tag/versión/AppStream/SHA/API, gate acotado del mismo SHA, permisos read-only por defecto, `contents: write` sólo en jobs de publicación, no overwrite, colisiones de artifacts bloqueadas y procedencia/checksums). Se mantienen los builders y verificaciones oficiales; `test.yml` no se modificó.
+- Nuevo `build-preview.yml` (local) con `workflow_dispatch` y push filtrado a `release/**-prep`. Los jobs verifican el mismo SHA/version canónico y producen cuatro grupos Actions con nombres distintos de release, checksum SHA-256 y `preview-provenance.json`. `contents: read`; sin secrets, tags/releases, `git push`, manifests públicos, remoto Chemuson ni `gh-pages`. El preview Linux omite sidecars públicos; Flatpak usa rama local `preview-<sha>`.
+- Inno ahora exige `CHEMUSON_VERSION`; el smoke Windows existente conserva su valor explícito. Los scripts release validan la pareja versión/canal; no se altera lógica química, Clean2D, Molecular Assistant, dependencias ni `.cmsn`.
+- Documentación: `docs/release/VERSIONING_POLICY.md`, `0.3.0-beta.1.md`, `manual-acceptance-0.3.0.md` (70 casos `NOT TESTED`), `PREVIEW_BUILDS.md`, catálogo exacto de excepciones, README, guías Linux/Windows/hotfix, OpenSpec y esta validación.
+
+### Verificación
+
+- OpenSpec estricto: `openspec validate prepare-chemuson-0-3-0-beta-1 --strict` PASS.
+- Arquitectura: 280 passed. Suites enfocadas release/version/updater/package/preview/workflow: 104 passed en 1.76s. Colecta total: 2072 tests.
+- `python -m compileall -q src tests tools packaging`, Ruff scoped, `bash -n`, parseo de AppStream XML/Flatpak YAML/workflows y `git diff --check`: PASS.
+- Ruff global sigue fallando sólo por el F401 histórico `math` de `tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py:3`; no se tocó. Suite monolítica no ejecutada. `actionlint`, PyInstaller, flatpak-builder, appimagetool e Inno Setup no están disponibles localmente.
+- `gh auth status`: sin sesión. El workflow no está en GitHub; no se inició un run. Builds reales: NOT BUILT; los smoke locales usan un ejecutable stub. Matriz manual: no ejecutada.
+- No se realizaron operaciones de tag, Release, canal, remoto Flatpak o `gh-pages`; no hay cambios de Clean2D, dependencias ni persistencia. No hubo commit, push, merge, rebase ni force-push. El propietario debe revisar el árbol local y autorizar por separado cualquier push/ejecución.
+
+### Estado
+
+- `PREVIEW BUILD INFRASTRUCTURE: NOT READY` para ejecución remota: contratos estáticos locales pasan, pero la rama/workflow no está publicada ni probada en runners.
+- `PREVIEW ARTIFACTS: NOT BUILT` (ninguno de los cuatro paquetes se compiló realmente).
+- `RELEASE READINESS: NOT READY TO PUBLISH`; `MERGE READINESS: NOT READY`. Pendientes: disponibilidad autorizada del workflow en GitHub, builds reales, aceptación manual, revisión Qt/documentación y decisión del propietario.

@@ -1,11 +1,11 @@
-# Distribucion Linux dual: Flatpak + AppImage
+# Distribución Linux dual: Flatpak + ejecutable portable
 
-Fecha: 2026-04-09
+Fecha: 2026-10-08
 
 ## Objetivo
 
 - **Canal principal instalable:** Flatpak.
-- **Canal portable:** AppImage (se mantiene).
+- **Canal portable:** ejecutable PyInstaller con sufijo histórico `.AppImage` (no es AppImage Type 2).
 
 ## Estrategia Flatpak reproducible
 
@@ -22,8 +22,8 @@ Fecha: 2026-04-09
 ## Artefactos publicados
 
 - Flatpak bundle: `Chemuson-vX.Y.Z-linux-x86_64.flatpak`
-- AppImage portable: `Chemuson-vX.Y.Z-linux-x86_64.AppImage`
-- Sidecars AppImage (best-effort):
+- Ejecutable portable PyInstaller: `Chemuson-vX.Y.Z-linux-x86_64.AppImage` (nombre heredado, no contenedor Type 2).
+- Sidecars del updater oficial (best-effort; no se generan para previews):
   - `Chemuson-vX.Y.Z-linux-x86_64.AppImage.updateinfo`
   - `Chemuson-vX.Y.Z-linux-x86_64.AppImage.update.json`
   - `Chemuson-vX.Y.Z-linux-x86_64.AppImage.zsync` (si `zsyncmake` esta disponible)
@@ -74,7 +74,7 @@ Nota:
 - Si instalas desde `.flatpakref` o desde un bundle generado con `CHEMUSON_FLATPAK_REPO_URL`, `flatpak update` encuentra futuras versiones automaticamente.
 - Si solo instalaste un bundle local sin remote persistente, deberas reinstalar manualmente.
 
-### AppImage (portable)
+### Ejecutable portable Linux (sufijo `.AppImage`; no Type 2)
 
 ```bash
 chmod +x Chemuson-vX.Y.Z-linux-x86_64.AppImage
@@ -83,7 +83,7 @@ chmod +x Chemuson-vX.Y.Z-linux-x86_64.AppImage
 
 ## Uso para mantenedores
 
-### Build local AppImage
+### Build local portable Linux executable
 
 ```bash
 pyinstaller --clean --noconfirm chemuson.spec
@@ -130,7 +130,9 @@ Opcional:
 ## Pipeline CI/CD
 
 - `release.yml`
-  - `build_linux`: AppImage + metadata de update.
+  - `build_linux`: ejecutable portable PyInstaller con sufijo `.AppImage` + metadata de update.
+- `build-preview.yml`
+  - compila desde ramas `release/**-prep` y adjunta portable Windows, installer Inno, portable Linux y Flatpak como artifacts Actions con SHA/procedencia; no publica Release, tags, remoto, `gh-pages` ni manifests públicos.
   - `build_flatpak`: build de bundle Flatpak + repo OSTree + validacion explicita de `.flatpakrepo/.flatpakref` y `repo/summary`.
   - `publish_flatpak_remote`: valida el payload antes y despues de moverlo entre jobs, publica el repo oficial por canal en `gh-pages` y verifica las URLs publicadas.
   - `release`: agrega checksums, firma opcional HMAC y publica assets en GitHub Releases.
@@ -141,6 +143,10 @@ Opcional:
 
 - `test.yml`
   - `flatpak-smoke`: validacion sintactica del manifiesto Flatpak.
+
+## Previews y checksums
+
+Para ejecutar una compilación previa a publicación y descargar sus cuatro artifacts, sigue [docs/release/PREVIEW_BUILDS.md](release/PREVIEW_BUILDS.md). El preview Linux omite metadata pública de update y su bundle Flatpak no enlaza un remoto Chemuson.
 
 ## Checksums y firma
 

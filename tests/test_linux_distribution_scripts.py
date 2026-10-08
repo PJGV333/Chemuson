@@ -11,6 +11,8 @@ from pathlib import Path
 
 import pytest
 
+from chemuson import __version__ as APP_VERSION
+
 
 def _load_manifest_module():
     script_path = (
@@ -142,14 +144,26 @@ def test_generate_channel_manifest_ignores_sidecars_and_includes_flatpak(tmp_pat
         version="1.2.3",
         base_url="https://example.invalid/download",
         artifacts_dir=artifacts_dir,
+        source_sha="a" * 40,
     )
 
     artifacts = manifest.get("artifacts", {})
+    assert manifest["version"] == "1.2.3"
+    assert manifest["tag"] == "v1.2.3"
+    assert manifest["source_sha"] == "a" * 40
     assert "linux-x86_64-flatpak-bundle" in artifacts
     assert "linux-x86_64-appimage" in artifacts
     assert all(not key.endswith(".updateinfo") for key in artifacts.keys())
     assert all(not key.endswith(".update.json") for key in artifacts.keys())
     assert all(not key.endswith(".zsync") for key in artifacts.keys())
+
+    with pytest.raises(ValueError, match="belongs to channel"):
+        module.build_manifest(
+            channel="beta",
+            version="1.2.3",
+            base_url="https://example.invalid/download",
+            artifacts_dir=artifacts_dir,
+        )
 
 
 def test_generate_flatpak_remote_files_builds_repo_and_ref_payloads() -> None:
@@ -340,7 +354,7 @@ def test_build_appimage_script_writes_update_metadata(tmp_path) -> None:
     cmd = [
         "bash",
         str(script_path),
-        "1.2.3",
+        "1.2.3-beta.1",
         str(dist_dir),
         str(out_dir),
         "PJGV333",
@@ -350,9 +364,9 @@ def test_build_appimage_script_writes_update_metadata(tmp_path) -> None:
     ]
     subprocess.run(cmd, check=True, cwd=str(repo_root))
 
-    appimage = out_dir / "Chemuson-v1.2.3-linux-x86_64.AppImage"
-    updateinfo = out_dir / "Chemuson-v1.2.3-linux-x86_64.AppImage.updateinfo"
-    updatejson = out_dir / "Chemuson-v1.2.3-linux-x86_64.AppImage.update.json"
+    appimage = out_dir / "Chemuson-v1.2.3-beta.1-linux-x86_64.AppImage"
+    updateinfo = out_dir / "Chemuson-v1.2.3-beta.1-linux-x86_64.AppImage.updateinfo"
+    updatejson = out_dir / "Chemuson-v1.2.3-beta.1-linux-x86_64.AppImage.update.json"
 
     assert appimage.exists()
     assert os.access(appimage, os.X_OK)
@@ -363,5 +377,116 @@ def test_build_appimage_script_writes_update_metadata(tmp_path) -> None:
     assert "gh-releases-zsync|PJGV333|Chemuson|prerelease|" in update_info_text
 
     payload = json.loads(updatejson.read_text(encoding="utf-8"))
+    assert payload["version"] == "1.2.3-beta.1"
     assert payload["channel"] == "beta"
     assert payload["tag"] == "v1.2.3-beta.1"
+
+
+def test_build_appimage_preview_omits_public_updater_metadata(tmp_path) -> None:
+    repo_root = Path(__file__).resolve().parent.parent
+    script_path = repo_root / "packaging" / "linux" / "build_appimage.sh"
+    dist_dir = tmp_path / "dist"
+    out_dir = tmp_path / "dist-preview"
+    dist_dir.mkdir(parents=True, exist_ok=True)
+    app_bin = dist_dir / "Chemuson"
+    app_bin.write_text("#!/usr/bin/env bash\\necho chemuson\\n", encoding="utf-8")
+    app_bin.chmod(0o755)
+    sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+    subprocess.run(
+        [
+            "bash",
+            str(script_path),
+            APP_VERSION,
+            str(dist_dir),
+            str(out_dir),
+            "",
+            "",
+            "beta",
+            "",
+            sha,
+            "preview",
+            "release/v0.3.0-beta.1-prep",
+        ],
+        check=True,
+        cwd=str(repo_root),
+    )
+
+    artifact = out_dir / f"Chemuson-v{APP_VERSION}-preview-{sha[:8]}-linux-x86_64.AppImage"
+    assert artifact.is_file()
+    assert os.access(artifact, os.X_OK)
+    assert not Path(f"{artifact}.updateinfo").exists()
+    assert not Path(f"{artifact}.update.json").exists()
+    assert not Path(f"{artifact}.zsync").exists()
+
+
+def test_preview_flatpak_refuses_public_remote_and_signing_credentials(tmp_path) -> None:
+    repo_root = Path(__file__).resolve().parent.parent
+    script_path = repo_root / "packaging" / "linux" / "build_flatpak.sh"
+    sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    env = os.environ.copy()
+    env["CHEMUSON_FLATPAK_REPO_URL"] = "https://example.invalid/flatpak/beta/repo/"
+    output_dir = tmp_path / "dist-flatpak-preview"
+
+    result = subprocess.run(
+        [
+            "bash",
+            str(script_path),
+            APP_VERSION,
+            "beta",
+            str(output_dir),
+            "packaging/flatpak/io.github.PJGV333.Chemuson.yml",
+            "preview",
+            sha,
+            "release/v0.3.0-beta.1-prep",
+        ],
+        cwd=repo_root,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 2
+    assert "cannot use public remote URLs or signing credentials" in result.stderr
+    assert not output_dir.exists()
+
+
+def test_build_appimage_rejects_mismatched_channel(tmp_path) -> None:
+    repo_root = Path(__file__).resolve().parent.parent
+    script_path = repo_root / "packaging" / "linux" / "build_appimage.sh"
+    dist_dir = tmp_path / "dist"
+    dist_dir.mkdir(parents=True, exist_ok=True)
+    app_bin = dist_dir / "Chemuson"
+    app_bin.write_text("#!/usr/bin/env bash\\necho chemuson\\n", encoding="utf-8")
+    app_bin.chmod(0o755)
+
+    result = subprocess.run(
+        [
+            "bash",
+            str(script_path),
+            "1.2.3-beta.1",
+            str(dist_dir),
+            str(tmp_path / "dist-appimage"),
+            "PJGV333",
+            "Chemuson",
+            "stable",
+            "v1.2.3-beta.1",
+        ],
+        cwd=str(repo_root),
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "belongs to channel" in result.stderr

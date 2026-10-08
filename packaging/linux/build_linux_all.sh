@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build helper: genera AppImage + Flatpak + checksums en un solo flujo.
+# Build helper: genera el ejecutable portable Linux (.AppImage-named) + Flatpak + checksums.
 # Uso:
 #   bash packaging/linux/build_linux_all.sh <VERSION> [CHANNEL]
 # Ejemplo:
-#   bash packaging/linux/build_linux_all.sh 0.2.3-beta.3 beta
+#   bash packaging/linux/build_linux_all.sh 0.3.0-beta.1 beta
 
-VERSION="${1:?missing VERSION (e.g. 0.2.3-beta.3)}"
+VERSION="${1:?missing VERSION (e.g. 0.3.0-beta.1)}"
 CHANNEL="${2:-stable}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -58,7 +58,7 @@ python -m pip install pyinstaller
 echo "[1/5] Building portable Linux binary with PyInstaller"
 pyinstaller --clean --noconfirm chemuson.spec
 
-echo "[2/5] Building AppImage + update metadata"
+echo "[2/5] Building Linux portable executable (.AppImage suffix) + updater metadata"
 bash "${APPIMAGE_SCRIPT}" \
   "${VERSION}" \
   "${DIST_DIR}" \
@@ -66,7 +66,8 @@ bash "${APPIMAGE_SCRIPT}" \
   "${OWNER}" \
   "${REPO}" \
   "${CHANNEL}" \
-  "${TAG}"
+  "${TAG}" \
+  "${SOURCE_SHA:-}"
 
 echo "[3/5] Building Flatpak bundle"
 # build_flatpak.sh already classifies common failures:
@@ -91,5 +92,5 @@ else
 fi
 
 echo "Done. Artifacts:"
-echo "- AppImage: ${APPIMAGE_OUT_DIR}"
+echo "- Linux portable executable (.AppImage-named): ${APPIMAGE_OUT_DIR}"
 echo "- Flatpak:  ${FLATPAK_OUT_DIR}"

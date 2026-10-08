@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "policy": {
+    "automatic_skips": false,
+    "blanket_ignores": false,
+    "unknown_failures_block": true,
+    "suite_crash_is_pass": false
+  },
+  "exceptions": [
+    {
+      "id": "clean2d-cyclic-candidate-baseline",
+      "kind": "pytest_node",
+      "case": "tests/test_clean2d_engine_candidates.py::test_generate_candidates_attempts_rdkit_for_cyclic_graphs",
+      "status": "open",
+      "owner": "Clean2D maintainer / project owner",
+      "tracking": "openspec/changes/stabilize-gui-async-worker-shutdown/baseline.md",
+      "evidence": "openspec/changes/stabilize-gui-async-worker-shutdown/baseline.md",
+      "retire_when": "The exact isolated test passes on the supported release environment and its baseline record is closed in a Clean2D-scoped change."
+    },
+    {
+      "id": "compchem-async-test-baseline",
+      "kind": "pytest_node",
+      "case": "tests/test_compchem3d_dock.py::test_compchem_controller_generates_async_with_fake_backend",
+      "status": "open",
+      "owner": "CompChem controller maintainer / project owner",
+      "tracking": "docs/history/REPOSITORY_CLEANUP_2026-10-03.md",
+      "evidence": "openspec/changes/ui-modernization-final-qa-release-2026-10-02/report.md",
+      "retire_when": "The exact test passes repeatedly on the supported release environment and its historical failure has a reviewed root cause or resolution."
+    },
+    {
+      "id": "qt-order-dependent-teardown-abort",
+      "kind": "ordered_reproducer",
+      "case": "tests/test_compchem3d_dock.py::test_compchem_exports_xyz_and_inputs -> tests/test_molecular_assistant_ui.py::test_controller_runs_generation_on_worker_thread_and_keeps_key_transient",
+      "status": "open",
+      "owner": "GUI/Qt lifecycle maintainer / project owner",
+      "tracking": "openspec/changes/stabilize-gui-async-worker-shutdown/validation.md",
+      "evidence": "openspec/changes/stabilize-gui-async-worker-shutdown/baseline.md",
+      "retire_when": "The exact forward-order reproducer passes repeatedly and installed beta artifacts close cleanly on supported Windows and Linux environments; do not infer resolution from isolated shards."
+    },
+    {
+      "id": "clean2d-test-unused-math-import",
+      "kind": "static_finding",
+      "case": "ruff F401 tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py:3",
+      "status": "open",
+      "owner": "Clean2D test owner / project owner",
+      "tracking": "docs/history/REPOSITORY_CLEANUP_2026-10-03.md",
+      "evidence": "openspec/changes/repository-hygiene-closure-2026-10-03/baseline.md",
+      "retire_when": "The exact unused import is removed in a separately scoped Clean2D test-maintenance change and repository Ruff reports no F401."
+    }
+  ]
+}

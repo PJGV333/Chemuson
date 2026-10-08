@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-10-08
+goal: Prepare an auditable beta candidate on a dedicated branch; establish
+  SemVer and same-SHA official-release gates plus isolated Actions preview
+  builds; do not publish tags, releases, or distribution channels.

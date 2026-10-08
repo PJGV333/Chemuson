@@ -4,15 +4,40 @@ set -euo pipefail
 # Builder local para bundle Flatpak de Chemuson.
 
 VERSION="${1:?missing VERSION}"
-BRANCH="${2:-stable}"
+CHANNEL="${2:-stable}"
+BRANCH="${CHANNEL}"
 OUT_DIR="${3:-dist-flatpak}"
 MANIFEST_PATH="${4:-packaging/flatpak/io.github.PJGV333.Chemuson.yml}"
+BUILD_TYPE="${5:-release}"
+SOURCE_SHA="${6:-}"
+SOURCE_BRANCH="${7:-}"
 APP_ID="${APP_ID:-io.github.PJGV333.Chemuson}"
 ARCH="${ARCH:-x86_64}"
 RUNTIME_REPO="${CHEMUSON_FLATPAK_RUNTIME_REPO:-https://dl.flathub.org/repo/flathub.flatpakrepo}"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+if [[ "${BUILD_TYPE}" == "preview" ]]; then
+  python "${REPO_ROOT}/packaging/release/preview_build.py" verify \
+    --version "${VERSION}" --git-sha "${SOURCE_SHA}" \
+    --source-branch "${SOURCE_BRANCH}" >/dev/null
+  BRANCH="preview-${SOURCE_SHA:0:8}"
+elif [[ "${BUILD_TYPE}" == "release" ]]; then
+  python "${REPO_ROOT}/packaging/release/release_policy.py" \
+    --version "${VERSION}" --channel "${CHANNEL}" >/dev/null
+else
+  echo "Unsupported build type: ${BUILD_TYPE}" >&2
+  exit 2
+fi
+
 REPO_TITLE="${CHEMUSON_FLATPAK_REPO_TITLE:-Chemuson (${BRANCH})}"
-REPO_COMMENT="${CHEMUSON_FLATPAK_REPO_COMMENT:-Canal oficial Flatpak de Chemuson (${BRANCH}).}"
-REPO_DESCRIPTION="${CHEMUSON_FLATPAK_REPO_DESCRIPTION:-Repositorio oficial Flatpak de Chemuson para el canal ${BRANCH}.}"
+if [[ "${BUILD_TYPE}" == "preview" ]]; then
+  REPO_COMMENT="${CHEMUSON_FLATPAK_REPO_COMMENT:-Chemuson local preview build (${BRANCH}).}"
+  REPO_DESCRIPTION="${CHEMUSON_FLATPAK_REPO_DESCRIPTION:-Repositorio local preview de Chemuson (${BRANCH}).}"
+else
+  REPO_COMMENT="${CHEMUSON_FLATPAK_REPO_COMMENT:-Canal oficial Flatpak de Chemuson (${BRANCH}).}"
+  REPO_DESCRIPTION="${CHEMUSON_FLATPAK_REPO_DESCRIPTION:-Repositorio oficial Flatpak de Chemuson para el canal ${BRANCH}.}"
+fi
 REPO_HOMEPAGE="${CHEMUSON_FLATPAK_HOMEPAGE:-https://github.com/PJGV333/Chemuson}"
 REPO_ICON_URL="${CHEMUSON_FLATPAK_ICON_URL:-}"
 REPO_GPG_KEY_ID="${CHEMUSON_FLATPAK_GPG_KEY_ID:-}"
@@ -20,10 +45,23 @@ REPO_GPG_HOMEDIR="${CHEMUSON_FLATPAK_GPG_HOMEDIR:-}"
 REPO_PUBLIC_KEY_FILE="${CHEMUSON_FLATPAK_PUBLIC_KEY_FILE:-}"
 REPO_CONFIG_BASENAME="${CHEMUSON_FLATPAK_CONFIG_BASENAME:-Chemuson}"
 REPO_REMOTE_NAME="${CHEMUSON_FLATPAK_REMOTE_NAME:-chemuson-${BRANCH}}"
+if [[ "${BUILD_TYPE}" == "preview" ]] && {
+  [[ -n "${CHEMUSON_FLATPAK_REPO_URL:-}" ]] ||
+  [[ -n "${REPO_GPG_KEY_ID}" ]] ||
+  [[ -n "${REPO_GPG_HOMEDIR}" ]] ||
+  [[ -n "${REPO_PUBLIC_KEY_FILE}" ]];
+}; then
+  echo "Preview Flatpak builds cannot use public remote URLs or signing credentials." >&2
+  exit 2
+fi
 
 BUILD_DIR="${OUT_DIR}/build-dir"
 REPO_DIR="${OUT_DIR}/repo"
-BUNDLE_PATH="${OUT_DIR}/Chemuson-v${VERSION}-linux-${ARCH}.flatpak"
+if [[ "${BUILD_TYPE}" == "preview" ]]; then
+  BUNDLE_PATH="${OUT_DIR}/Chemuson-v${VERSION}-preview-${SOURCE_SHA:0:8}-linux-${ARCH}.flatpak"
+else
+  BUNDLE_PATH="${OUT_DIR}/Chemuson-v${VERSION}-linux-${ARCH}.flatpak"
+fi
 APP_REF="app/${APP_ID}/${ARCH}/${BRANCH}"
 
 mkdir -p "$OUT_DIR"

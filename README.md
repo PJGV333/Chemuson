@@ -14,7 +14,7 @@
 >
 > Chemuson está en desarrollo activo. Las funciones, formatos y resultados pueden cambiar mientras el proyecto madura.
 >
-> Estado de junio de 2026: la rama de trabajo usa SemVer de aplicación `0.3.0-dev` en `src/chemuson/_version.py` como fuente canónica. Esto prepara Workbench v0.3; no implica release publicada ni tag.
+> Estado de octubre de 2026: esta rama de preparación usa `0.3.0-beta.1` en `src/chemuson/_version.py` como fuente canónica. **No implica tag, GitHub Release ni publicación de canales.** Los paquetes Actions de prueba, si se generan, son artifacts temporales no disponibles en el updater. Consulta [la política de versionado](docs/release/VERSIONING_POLICY.md) y [la guía de previews](docs/release/PREVIEW_BUILDS.md).
 
 ## ¿Qué hace Chemuson?
 
@@ -108,7 +108,7 @@ Formatos soportados (estrategia híbrida):
   - Portable: `Chemuson-vX.Y.Z-windows-x86_64-portable.exe`
   - Instalador: `Chemuson-vX.Y.Z-windows-x86_64-setup.exe`
 - **Linux**
-  - Portable: `Chemuson-vX.Y.Z-linux-x86_64.AppImage`
+  - Portable PyInstaller: `Chemuson-vX.Y.Z-linux-x86_64.AppImage` (sufijo histórico; no es AppImage Type 2).
   - Instalable recomendado: **Flatpak** (canal oficial con remoto actualizable)
 
 Convención de nombres en release:
@@ -134,10 +134,10 @@ $env:CHEMUSON_VERSION = "<version>"
 & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "packaging\windows\Chemuson.iss"
 ```
 
-### Linux: Flatpak principal + AppImage portable
+### Linux: Flatpak principal + ejecutable portable
 
 - Canal instalable principal: **Flatpak** (`.flatpak`).
-- Canal portable: **AppImage** (`.AppImage`) sin instalación.
+- Portable: ejecutable PyInstaller con sufijo histórico `.AppImage`; no es contenedor AppImage Type 2.
 - Documento técnico y comandos completos: [docs/linux-distribution.md](docs/linux-distribution.md)
 
 Instalacion rapida Flatpak estable (Arch/CachyOS, usuario final):
@@ -168,7 +168,7 @@ Notas:
 - Si `stable` todavia no aparece ahi, el remoto estable aun no ha sido sembrado; usa `beta` temporalmente o publica primero una release estable.
 - La ruta recomendada es `.flatpakref` porque registra el remoto oficial para que `flatpak update` reciba futuras versiones.
 
-Ejecución AppImage:
+Ejecución portable Linux (sufijo histórico `.AppImage`):
 
 ```bash
 chmod +x Chemuson-vX.Y.Z-linux-x86_64.AppImage
@@ -179,7 +179,7 @@ chmod +x Chemuson-vX.Y.Z-linux-x86_64.AppImage
 
 - Se añadió núcleo de update en `src/chemuson/update/`.
 - Fuente de versión única: `src/chemuson/_version.py`.
-- Política de versión: SemVer de app. Las ramas de desarrollo pueden usar sufijo prerelease/dev como `0.3.0-dev`; releases futuras deben sincronizar CI, empaquetado y updater con esa fuente canónica antes de publicar.
+- Política de versión: SemVer de app. Ramas de desarrollo/preparación usan `_version.py` como fuente canónica; la release oficial sólo acepta tags protegidos que coincidan con esa fuente y sus metadatos. Consulta [VERSIONING_POLICY.md](docs/release/VERSIONING_POLICY.md).
 - Canales soportados: `stable` y `beta`.
 - Verificación de integridad:
   - hash SHA-256 (`.sha256`),
@@ -210,7 +210,7 @@ chemuson --version
 ## Migración sin romper portable actual
 
 - El flujo portable actual **se mantiene**.
-- Puedes seguir abriendo Chemuson con el ejecutable/AppImage sin instalar.
+- Puedes seguir abriendo Chemuson con los ejecutables portables sin instalar; el archivo Linux `.AppImage`-named es PyInstaller, no Type 2.
 - Si migras a instalador en Windows, conserva tus archivos de trabajo (`.cmsn`) y configuración local.
 - Los mecanismos nuevos de update no eliminan compatibilidad con releases portables existentes.
 
@@ -229,7 +229,8 @@ chemuson --version
   - `Chemuson-vX.Y.Z-linux-x86_64.flatpak`
   - `Chemuson-vX.Y.Z-linux-x86_64.AppImage`
 - `test.yml` valida manifiesto Flatpak con job `flatpak-smoke`.
-- Para AppImage se publican sidecars de metadata de update (`.updateinfo` y `.update.json`) y `.zsync` cuando esté disponible.
+- El workflow oficial genera sidecars de metadata de update (`.updateinfo` y `.update.json`) y `.zsync` cuando está disponible. Los previews de Actions omiten esos sidecars y no modifican el updater.
+- [PREVIEW_BUILDS.md](docs/release/PREVIEW_BUILDS.md) explica cómo descargar los paquetes de prueba desde Actions; la compilación preview no equivale a una publicación.
 
 ## Instalación para desarrollo
 

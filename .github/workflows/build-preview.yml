@@ -1,0 +1,330 @@
+name: Build Preview
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "release/**-prep"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chemuson-preview-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Validate preview source
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.identity.outputs.version }}
+      sha: ${{ steps.identity.outputs.sha }}
+      short_sha: ${{ steps.identity.outputs.short_sha }}
+      branch: ${{ steps.identity.outputs.branch }}
+    steps:
+      - name: Checkout event commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate branch, canonical version and exact SHA
+        id: identity
+        run: python packaging/release/preview_build.py prepare
+
+  build_windows:
+    name: Windows portable and installer
+    needs: prepare
+    runs-on: windows-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    env:
+      PYTHONUTF8: "1"
+      PREVIEW_VERSION: ${{ needs.prepare.outputs.version }}
+      PREVIEW_SHA: ${{ needs.prepare.outputs.sha }}
+      PREVIEW_SHORT_SHA: ${{ needs.prepare.outputs.short_sha }}
+      PREVIEW_BRANCH: ${{ needs.prepare.outputs.branch }}
+    steps:
+      - name: Checkout validated source commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Verify exact source identity
+        shell: pwsh
+        run: >-
+          python packaging/release/preview_build.py verify
+          --version "$env:PREVIEW_VERSION"
+          --git-sha "$env:PREVIEW_SHA"
+          --source-branch "$env:PREVIEW_BRANCH"
+
+      - name: Install package dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build portable executable and Inno installer
+        shell: pwsh
+        run: |
+          pyinstaller --clean --noconfirm chemuson.spec
+          if (-not (Test-Path "dist\Chemuson.exe")) { throw "Portable executable was not generated." }
+          choco install innosetup --no-progress -y
+          $env:CHEMUSON_VERSION = $env:PREVIEW_VERSION
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "packaging\windows\Chemuson.iss"
+          $installer = "dist-installer\Chemuson-v$env:PREVIEW_VERSION-windows-x86_64-setup.exe"
+          if (-not (Test-Path $installer)) { throw "Inno installer was not generated: $installer" }
+
+          New-Item -ItemType Directory -Force -Path preview-windows-portable, preview-windows-installer | Out-Null
+          $portableName = "Chemuson-v$env:PREVIEW_VERSION-preview-$env:PREVIEW_SHORT_SHA-windows-x86_64-portable.exe"
+          $installerName = "Chemuson-v$env:PREVIEW_VERSION-preview-$env:PREVIEW_SHORT_SHA-windows-x86_64-setup.exe"
+          Copy-Item "dist\Chemuson.exe" "preview-windows-portable\$portableName"
+          Copy-Item $installer "preview-windows-installer\$installerName"
+
+      - name: Verify files and write checksums/provenance
+        shell: pwsh
+        run: |
+          $portableName = "Chemuson-v$env:PREVIEW_VERSION-preview-$env:PREVIEW_SHORT_SHA-windows-x86_64-portable.exe"
+          $installerName = "Chemuson-v$env:PREVIEW_VERSION-preview-$env:PREVIEW_SHORT_SHA-windows-x86_64-setup.exe"
+          python packaging/release/preview_build.py manifest --output-dir preview-windows-portable --version "$env:PREVIEW_VERSION" --git-sha "$env:PREVIEW_SHA" --source-branch "$env:PREVIEW_BRANCH" --operating-system "Windows / $env:RUNNER_OS-$env:RUNNER_ARCH" --files $portableName
+          python packaging/release/preview_build.py manifest --output-dir preview-windows-installer --version "$env:PREVIEW_VERSION" --git-sha "$env:PREVIEW_SHA" --source-branch "$env:PREVIEW_BRANCH" --operating-system "Windows / $env:RUNNER_OS-$env:RUNNER_ARCH" --files $installerName
+
+      - name: Upload Windows portable preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: chemuson-preview-windows-portable
+          path: preview-windows-portable/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Windows installer preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: chemuson-preview-windows-installer
+          path: preview-windows-installer/*
+          if-no-files-found: error
+          retention-days: 14
+
+  build_linux_appimage:
+    name: Linux portable executable
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PREVIEW_VERSION: ${{ needs.prepare.outputs.version }}
+      PREVIEW_SHA: ${{ needs.prepare.outputs.sha }}
+      PREVIEW_SHORT_SHA: ${{ needs.prepare.outputs.short_sha }}
+      PREVIEW_BRANCH: ${{ needs.prepare.outputs.branch }}
+    steps:
+      - name: Checkout validated source commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Qt runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libopengl0 libxkbcommon-x11-0 libxcb-cursor0
+
+      - name: Verify exact source identity
+        run: >-
+          python packaging/release/preview_build.py verify
+          --version "$PREVIEW_VERSION"
+          --git-sha "$PREVIEW_SHA"
+          --source-branch "$PREVIEW_BRANCH"
+
+      - name: Install package dependencies and build portable executable
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+          pyinstaller --clean --noconfirm chemuson.spec
+          test -s dist/Chemuson
+          test -x dist/Chemuson
+
+      - name: Build preview portable package without updater metadata
+        run: |
+          bash packaging/linux/build_appimage.sh \
+            "$PREVIEW_VERSION" "dist" "dist-preview" "" "" "beta" "" \
+            "$PREVIEW_SHA" "preview" "$PREVIEW_BRANCH"
+          APPIMAGE_NAME="Chemuson-v${PREVIEW_VERSION}-preview-${PREVIEW_SHORT_SHA}-linux-x86_64.AppImage"
+          test -s "dist-preview/${APPIMAGE_NAME}"
+          test -x "dist-preview/${APPIMAGE_NAME}"
+          test ! -e "dist-preview/${APPIMAGE_NAME}.updateinfo"
+          test ! -e "dist-preview/${APPIMAGE_NAME}.update.json"
+          test ! -e "dist-preview/${APPIMAGE_NAME}.zsync"
+          mkdir -p preview-linux-appimage
+          cp "dist-preview/${APPIMAGE_NAME}" preview-linux-appimage/
+          python packaging/release/preview_build.py manifest \
+            --output-dir preview-linux-appimage \
+            --version "$PREVIEW_VERSION" --git-sha "$PREVIEW_SHA" \
+            --source-branch "$PREVIEW_BRANCH" \
+            --operating-system "Linux / ${RUNNER_OS}-${RUNNER_ARCH}" \
+            --files "$APPIMAGE_NAME"
+
+      - name: Upload Linux portable preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: chemuson-preview-linux-appimage
+          path: preview-linux-appimage/*
+          if-no-files-found: error
+          retention-days: 14
+
+  build_linux_flatpak:
+    name: Linux Flatpak bundle
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      PREVIEW_VERSION: ${{ needs.prepare.outputs.version }}
+      PREVIEW_SHA: ${{ needs.prepare.outputs.sha }}
+      PREVIEW_SHORT_SHA: ${{ needs.prepare.outputs.short_sha }}
+      PREVIEW_BRANCH: ${{ needs.prepare.outputs.branch }}
+    steps:
+      - name: Checkout validated source commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Flatpak build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder ostree
+
+      - name: Verify exact source identity
+        run: >-
+          python packaging/release/preview_build.py verify
+          --version "$PREVIEW_VERSION"
+          --git-sha "$PREVIEW_SHA"
+          --source-branch "$PREVIEW_BRANCH"
+
+      - name: Build local Flatpak bundle only
+        run: |
+          bash packaging/linux/build_flatpak.sh \
+            "$PREVIEW_VERSION" "beta" "dist-flatpak-preview" \
+            "packaging/flatpak/io.github.PJGV333.Chemuson.yml" \
+            "preview" "$PREVIEW_SHA" "$PREVIEW_BRANCH"
+          FLATPAK_NAME="Chemuson-v${PREVIEW_VERSION}-preview-${PREVIEW_SHORT_SHA}-linux-x86_64.flatpak"
+          test -s "dist-flatpak-preview/${FLATPAK_NAME}"
+          mkdir -p preview-linux-flatpak
+          cp "dist-flatpak-preview/${FLATPAK_NAME}" preview-linux-flatpak/
+          python packaging/release/preview_build.py manifest \
+            --output-dir preview-linux-flatpak \
+            --version "$PREVIEW_VERSION" --git-sha "$PREVIEW_SHA" \
+            --source-branch "$PREVIEW_BRANCH" \
+            --operating-system "Linux / ${RUNNER_OS}-${RUNNER_ARCH} (Flatpak)" \
+            --files "$FLATPAK_NAME"
+
+      - name: Upload Linux Flatpak preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: chemuson-preview-linux-flatpak
+          path: preview-linux-flatpak/*
+          if-no-files-found: error
+          retention-days: 14
+
+  preview_report:
+    name: Preview build report
+    if: always()
+    needs: [prepare, build_windows, build_linux_appimage, build_linux_flatpak]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Write per-platform status report
+        env:
+          PREPARE_STATUS: ${{ needs.prepare.result }}
+          WINDOWS_STATUS: ${{ needs.build_windows.result }}
+          APPIMAGE_STATUS: ${{ needs.build_linux_appimage.result }}
+          FLATPAK_STATUS: ${{ needs.build_linux_flatpak.result }}
+          PREVIEW_VERSION: ${{ needs.prepare.outputs.version }}
+          PREVIEW_SHA: ${{ needs.prepare.outputs.sha }}
+          PREVIEW_BRANCH: ${{ needs.prepare.outputs.branch }}
+          EVENT_SHA: ${{ github.sha }}
+          EVENT_BRANCH: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          statuses = {
+              "source_validation": os.environ["PREPARE_STATUS"],
+              "windows_portable_and_installer": os.environ["WINDOWS_STATUS"],
+              "linux_appimage_portable": os.environ["APPIMAGE_STATUS"],
+              "linux_flatpak": os.environ["FLATPAK_STATUS"],
+          }
+          complete = all(value == "success" for value in statuses.values())
+          report = {
+              "version": os.environ.get("PREVIEW_VERSION", ""),
+              "build_type": "preview",
+              "git_sha": os.environ.get("PREVIEW_SHA", "") or os.environ["EVENT_SHA"],
+              "source_branch": os.environ.get("PREVIEW_BRANCH", "") or os.environ["EVENT_BRANCH"],
+              "build_time_utc": datetime.now(timezone.utc).isoformat(),
+              "publication": False,
+              "build_status": "success" if complete else "failure",
+              "complete": complete,
+              "jobs": statuses,
+          }
+          Path("preview-build-report.json").write_text(
+              json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text(
+              "## Chemuson preview build\n\n"
+              f"- Version: `{report['version'] or 'unavailable'}`\n"
+              f"- Branch: `{report['source_branch']}`\n"
+              f"- SHA: `{report['git_sha']}`\n"
+              f"- Overall: **{report['build_status'].upper()}**\n\n"
+              + "\n".join(f"- {name}: **{status.upper()}**" for name, status in statuses.items())
+              + "\n\nPublication: **false**\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(report, indent=2))
+          if not complete:
+              raise SystemExit("Preview is incomplete; at least one build job did not succeed.")
+          PY
+
+      - name: Upload preview status report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chemuson-preview-build-report
+          path: preview-build-report.json
+          if-no-files-found: error
+          retention-days: 14

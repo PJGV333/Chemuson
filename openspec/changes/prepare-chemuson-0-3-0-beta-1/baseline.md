@@ -1,0 +1,48 @@
+# Baseline — preparación v0.3.0-beta.1
+
+Fecha de captura: 2026-10-08 UTC. Capturada desde la rama nueva `release/v0.3.0-beta.1-prep`, creada limpia desde `origin/main`.
+
+## Git y publicaciones observadas
+
+- `git fetch origin --prune`: completado.
+- `git status --short --branch` antes de crear la rama: `## main...origin/main` (limpio).
+- `origin/main` y HEAD inicial: `8640bed18f0961ef9582f8376e98e9a33dbc3c01`; coincide con el HEAD de referencia recibido.
+- `origin/gh-pages`: `c856fc1445a11576a5a2718cd40380bc54056853`.
+- Tags de versión observados: `v0.2.5` es el más reciente; apunta a `ec5f9b811c9d7a71178d20edf49b4435286c7659`. No existe tag `v0.3.0-beta.1`.
+- GitHub Releases API pública: `v0.2.5` stable, publicada 2026-05-01; `v0.2.4` stable; la beta más reciente es `v0.2.3-beta.3` (2026-04-09). No se consultó GitHub con credenciales ni se cambió una publicación.
+- `https://pjgv333.github.io/Chemuson/`, y los `.flatpakref` beta/stable respondieron HTTP 200; ambos canales existen actualmente.
+- Se creó la rama `release/v0.3.0-beta.1-prep` desde `origin/main`. HEAD inicial de rama: `8640bed18f0961ef9582f8376e98e9a33dbc3c01`.
+
+## Versionado y pipeline antes de cambios
+
+- `src/chemuson/_version.py`: `0.3.0-dev`.
+- `pyproject.toml` usa `dynamic = ["version"]` y `chemuson._version.__version__` como fuente del paquete.
+- AppStream metainfo conserva `0.2.3-beta.3` y `0.2.1`, por lo que no refleja la última estable ni la próxima beta.
+- Inno Setup ya toma `CHEMUSON_VERSION`, pero conserva un fallback `0.0.0-dev` si falta.
+- `release.yml` permite dispatch con versión por defecto obsoleta `0.2.3-beta.3` y canal elegible por separado. Un beta podría seleccionarse como stable; RC se clasifica actualmente como stable. Cada build modifica `_version.py` durante CI, de modo que los bytes del artefacto no corresponden literalmente al contenido fuente del tag.
+- `release.yml` no tiene gate de pruebas en el mismo SHA; `test.yml` y release son workflows independientes. El workflow de release dispone de `contents: write` global y puede publicar en `gh-pages`.
+- Checksums SHA-256 se generan siempre; HMAC y firma GPG Flatpak son opcionales por secretos. La firma no debe confundirse con el checksum.
+- `build_appimage.sh` copia el ejecutable PyInstaller portable y lo nombra `.AppImage`; el reporte de QA anterior confirma que no es un contenedor AppImage Type 2. Se conserva como limitación explícita; no se afirma haber construido un AppImage real.
+- Flatpak usa las ramas separadas `beta`/`stable`, App ID estable y runtime KDE 6.10; el manifiesto concede `--share=network` y `--filesystem=home`, sin que esta campaña amplíe permisos.
+- No hay `docs/release/` ni política de versionado/aceptación estable.
+
+## Baseline de herramientas y pruebas
+
+- `python -m compileall src tests tools packaging`: exit 0.
+- `pytest --collect-only -q`: `2027 tests collected in 0.93s`, exit 0; salida íntegra en `/tmp/chemuson-release-prep-baseline-collect.txt`.
+- `timeout 8m pytest -q tests/architecture`: `280 passed in 12.50s`.
+- `timeout 8m pytest -q tests/test_release_version_script.py tests/test_version_metadata.py tests/test_update_semver.py tests/test_update_policy.py tests/test_update_core.py tests/test_update_provider.py tests/test_update_security.py tests/test_update_portable.py tests/test_update_windows.py tests/test_update_telemetry.py tests/test_update_ui_text.py`: `52 passed in 0.68s`.
+- `ruff check src tests tools packaging --select F401,F811,F821,E722,E741`: exit 1 únicamente por el F401 histórico `math` en `tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py:3`.
+- XML AppStream y YAML Flatpak parsean correctamente.
+- Herramientas locales: `flatpak`, `wine`, Python/pytest/ruff disponibles; `flatpak-builder`, `appimagetool`, `pyinstaller`, Inno Setup (`iscc`), `actionlint` y `shellcheck` no disponibles. No puede hacerse aquí una compilación real de los artefactos de los tres sistemas.
+- `gh release list` no puede autenticarse con `gh`; se usó la API REST pública de GitHub sólo para lectura.
+
+## Suite completa y excepciones históricas
+
+No se repite la suite monolítica. En la revisión inmediatamente anterior, sobre el mismo árbol de producto (el commit actual `8640bed` añade cierre documental a `b4e0e66`), la ejecución baseline `timeout 10m pytest -q` mostró dos marcadores `F` antes de abortar cerca del 63% con SIGSEGV durante teardown Qt (`QUndoStack`/`QWidget`), exit 139 y sin resumen. No se identificaron los dos node IDs a partir de ese proceso; no se atribuyen causas. La deuda `_DescriptorWorker`/Qt sigue abierta. Evidencia previa más detallada: `openspec/changes/stabilize-gui-async-worker-shutdown/validation.md` y `openspec/changes/integrate-ai-reference-structure-resolution/baseline.md`.
+
+Fallos de test conocidos identificados por campañas anteriores, pero no convertidos en skips globales: `tests/test_clean2d_engine_candidates.py::test_generate_candidates_attempts_rdkit_for_cyclic_graphs` (reproducido aisladamente en main); `tests/test_compchem3d_dock.py::test_compchem_controller_generates_async_with_fake_backend` (fallo histórico de baseline); tres aserciones de `tests/test_smiles_stereo_import.py` bajo RDKit 2026.03.6 no declaradas baseline concluyente. Ninguno se corrige aquí. La política de excepciones exactas y la evidencia se detallan en `docs/release/KNOWN_BASELINE_EXCEPTIONS.json`.
+
+## Baseline del requisito de preview
+
+En el HEAD inicial `8640bed18f0961ef9582f8376e98e9a33dbc3c01` no existía `.github/workflows/build-preview.yml` ni un helper que publicara artifacts preview con procedencia. El único workflow era el release oficial, con trigger de tag y dispatch manual separado; `contents: write` era global. No existía un contrato estático de aislamiento preview. No se ejecutó ninguna build preview en la baseline, no se subieron artefactos y no se consultaron canales con credenciales.

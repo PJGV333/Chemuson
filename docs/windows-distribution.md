@@ -69,10 +69,8 @@ $env:WINDOWS_CODESIGN_CERT_PASSWORD = "<password>"
 
 ## GitHub Actions
 
-- `.github/workflows/release.yml`
-  - construye portable + setup en `build_windows`.
-  - firma `.exe/.msi` de manera opcional (si hay secretos).
-  - publica assets junto con checksums/manifiesto.
+- `.github/workflows/release.yml` construye portable + setup desde el SHA/tag validado, firma Authenticode de manera opcional (si hay secretos) y sólo publica tras los gates oficiales.
+- `.github/workflows/build-preview.yml` genera artifacts de prueba `chemuson-preview-windows-portable` y `chemuson-preview-windows-installer`; ambos contienen checksums/procedencia y **no** se publican en Releases ni en el updater. Instrucciones: [PREVIEW_BUILDS.md](release/PREVIEW_BUILDS.md).
 
 Comandos clave ejecutados en `build_windows`:
 
