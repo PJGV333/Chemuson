@@ -312,7 +312,7 @@ jobs:
               json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
           )
           Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text(
-              "## Chemuson preview build\n\n"
+              "## ChemUSON preview build\n\n"
               f"- Version: `{report['version'] or 'unavailable'}`\n"
               f"- Branch: `{report['source_branch']}`\n"
               f"- SHA: `{report['git_sha']}`\n"

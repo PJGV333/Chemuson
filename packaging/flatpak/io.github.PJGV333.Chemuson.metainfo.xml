@@ -1,11 +1,11 @@
 <?xml version='1.0' encoding='utf-8'?>
 <component type="desktop-application">
   <id>io.github.PJGV333.Chemuson</id>
-  <name>Chemuson</name>
+  <name>ChemUSON</name>
   <summary>Editor molecular 2D libre para dibujo y analisis quimico</summary>
   <description>
     <p>
-      Chemuson es un editor molecular 2D orientado a trabajo academico y de
+      ChemUSON es un editor molecular 2D orientado a trabajo academico y de
       investigacion, con soporte para SMILES, Molfile y archivos propios .cmsn.
     </p>
   </description>

@@ -3,5 +3,6 @@ created: 2026-10-08
 goal: Prepare an auditable beta candidate on a dedicated branch; establish
   SemVer and same-SHA official-release gates, isolated Actions previews with
   an authentic validated AppImage Type 2, complete Python CI dependencies,
-  and repair/verify packaged SVG icons across Windows and Linux; do not publish
-  tags, releases, or distribution channels.
+  repair/verify packaged SVG icons, stabilize the three-step onboarding, and
+  normalize visible branding to ChemUSON across Windows and Linux; do not
+  publish tags, releases, or distribution channels.

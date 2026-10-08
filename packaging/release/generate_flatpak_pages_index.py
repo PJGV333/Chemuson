@@ -52,10 +52,10 @@ def build_index_html(channels: list[dict[str, str]]) -> str:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Chemuson Flatpak</title>
+  <title>ChemUSON Flatpak</title>
 </head>
 <body>
-  <h1>Chemuson Flatpak</h1>
+  <h1>ChemUSON Flatpak</h1>
   <p>{intro}</p>
   <ul>
 {items}

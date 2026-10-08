@@ -17,6 +17,7 @@ def run_app() -> None:
     try:
         app = QApplication(sys.argv)
         app.setApplicationName("Chemuson")
+        app.setApplicationDisplayName("ChemUSON")
         app.setApplicationVersion(get_app_version())
         window = ChemusonWindow()
         ChemusonWindow.check_autosaves(window)
@@ -27,7 +28,7 @@ def run_app() -> None:
         if QApplication.instance() is not None:
             QMessageBox.critical(
                 None,
-                "Chemuson - Error crítico",
+                "ChemUSON - Error crítico",
                 "No se pudo iniciar la aplicación.\n"
                 f"Se guardó un reporte en:\n{log_path}",
             )

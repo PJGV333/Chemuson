@@ -129,13 +129,13 @@ def _write_flatpak_remote_configs(
 ) -> None:
     repo_lines = [
         "[Flatpak Repo]",
-        "Title=Chemuson",
+        "Title=ChemUSON",
         "Url=https://example.invalid/repo/",
         f"DefaultBranch={channel}",
     ]
     ref_lines = [
         "[Flatpak Ref]",
-        "Title=Chemuson",
+        "Title=ChemUSON",
         "Name=io.github.PJGV333.Chemuson",
         f"Branch={channel}",
         "IsRuntime=false",
@@ -164,11 +164,11 @@ def test_generate_channel_manifest_ignores_sidecars_and_includes_flatpak(tmp_pat
     (artifacts_dir / "Chemuson-v1.2.3-linux-x86_64.flatpak").write_bytes(b"flatpak")
     (artifacts_dir / "Chemuson-v1.2.3-linux-x86_64.AppImage").write_bytes(b"appimage")
     (artifacts_dir / "Chemuson-stable.flatpakrepo").write_text(
-        "[Flatpak Repo]\nTitle=Chemuson\n",
+        "[Flatpak Repo]\nTitle=ChemUSON\n",
         encoding="utf-8",
     )
     (artifacts_dir / "Chemuson-stable.flatpakref").write_text(
-        "[Flatpak Ref]\nTitle=Chemuson\n",
+        "[Flatpak Ref]\nTitle=ChemUSON\n",
         encoding="utf-8",
     )
     (artifacts_dir / "Chemuson-v1.2.3-linux-x86_64.AppImage.updateinfo").write_text(
@@ -215,7 +215,7 @@ def test_generate_flatpak_remote_files_builds_repo_and_ref_payloads() -> None:
     module = _load_flatpak_remote_module()
 
     repo_text = module.build_flatpak_repo_config(
-        title="Chemuson (beta)",
+        title="ChemUSON (beta)",
         repo_url="https://pjgv333.github.io/Chemuson/flatpak/beta/repo",
         homepage="https://github.com/PJGV333/Chemuson",
         comment="Canal oficial beta",
@@ -224,7 +224,7 @@ def test_generate_flatpak_remote_files_builds_repo_and_ref_payloads() -> None:
         default_branch="beta",
     )
     ref_text = module.build_flatpak_ref_config(
-        title="Chemuson (beta)",
+        title="ChemUSON (beta)",
         app_id="io.github.PJGV333.Chemuson",
         branch="beta",
         repo_url="https://pjgv333.github.io/Chemuson/flatpak/beta/repo",
@@ -234,7 +234,7 @@ def test_generate_flatpak_remote_files_builds_repo_and_ref_payloads() -> None:
     )
 
     assert "[Flatpak Repo]" in repo_text
-    assert "Title=Chemuson (beta)" in repo_text
+    assert "Title=ChemUSON (beta)" in repo_text
     assert "Url=https://pjgv333.github.io/Chemuson/flatpak/beta/repo/" in repo_text
     assert "DefaultBranch=beta" in repo_text
     assert "[Flatpak Ref]" in ref_text
@@ -379,6 +379,8 @@ def test_generate_flatpak_pages_index_only_links_existing_channels(tmp_path) -> 
     html = module.build_index_html(channels)
 
     assert len(channels) == 1
+    assert "<title>ChemUSON Flatpak</title>" in html
+    assert "<h1>ChemUSON Flatpak</h1>" in html
     assert "./flatpak/stable/Chemuson-stable.flatpakref" in html
     assert "./flatpak/stable/Chemuson-stable.flatpakrepo" in html
     assert "./flatpak/beta/Chemuson-beta.flatpakref" not in html

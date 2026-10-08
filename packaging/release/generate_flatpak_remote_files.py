@@ -96,17 +96,17 @@ def build_flatpak_ref_config(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Genera archivos Flatpak para instalar Chemuson desde un remoto oficial."
+        description="Genera archivos Flatpak para instalar ChemUSON desde un remoto oficial."
     )
     parser.add_argument("--repo-url", required=True, help="URL pública del repo OSTree.")
     parser.add_argument("--app-id", required=True, help="App ID Flatpak.")
     parser.add_argument("--branch", required=True, help="Branch/canal Flatpak.")
     parser.add_argument("--out-dir", required=True, help="Directorio destino.")
     parser.add_argument("--basename", default="Chemuson", help="Prefijo de archivos.")
-    parser.add_argument("--repo-title", default="Chemuson", help="Título del remoto.")
+    parser.add_argument("--repo-title", default="ChemUSON", help="Título del remoto.")
     parser.add_argument(
         "--ref-title",
-        default="Chemuson",
+        default="ChemUSON",
         help="Título visible del archivo .flatpakref.",
     )
     parser.add_argument("--homepage", default="", help="Homepage opcional.")

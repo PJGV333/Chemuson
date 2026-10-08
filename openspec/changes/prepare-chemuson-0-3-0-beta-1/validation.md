@@ -31,13 +31,25 @@ Fecha: 2026-10-08. Rama de trabajo: `release/v0.3.0-beta.1-prep`. Commits de pac
 - El smoke automatizado, incluido el dibujo QToolButton, **no** cambia los casos manuales a PASS. El propietario debe instalar y revisar visualmente Windows portable y Linux portable/AppImage en ambos temas. Este P1 bloquea explícitamente publicación beta.
 - No hay build Windows local, artifact corregido de Actions ni run remoto nuevo. El build Linux local no equivale a un preview verificado por GitHub Actions. Windows, installer/setup, Flatpak real y aceptación gráfica siguen sin verificar.
 - `.github/workflows/test.yml` instala `requirements.txt`, `requirements-dev.txt` y el proyecto editable; no duplica PyYAML ni añade dependencias Python runtime. El contrato estático comprueba pytest real sin skips/enmascaramiento, pero aún no se ejecutó el workflow remoto.
-- `gh auth status`: sin sesión autenticada. El único push normal no interactivo de `release/v0.3.0-beta.1-prep` falló en la consulta de credenciales (`could not read Username`); no hubo actualización remota. No se solicitó ni usó contraseña. Push y run preview/CI quedan pendientes de GitHub Desktop o sesión normal autenticada.
-- No se creó tag ni Release, no se modificaron `main`, `gh-pages`, canales públicos ni publicación remota. No se tocaron Clean2D, química, Molecular Assistant, GUI de producto ni persistencia `.cmsn`.
+- Al comenzar esta tarea, `gh auth status` no tenía una sesión activa y un intento anterior de push había fallado con `could not read Username`. Más tarde el CLI indicó que la sesión HTTPS normal del propietario estaba autenticada; el resultado del push de esta tarea se registra en la sección de validación incremental inferior.
+- No se creó tag ni Release, no se modificaron `main`, `gh-pages`, canales públicos ni publicación remota. No se tocaron Clean2D, química, Molecular Assistant ni persistencia `.cmsn`; los cambios de GUI se limitan al onboarding solicitado y las cadenas visibles de marca.
 
-## Dictamen
+## Dictamen previo a UI-ONBOARDING-001 / BRANDING-001
 
-- `PREVIEW BUILD INFRASTRUCTURE: STATIC CONTRACTS PASS; REMOTE RUN BLOCKED BY MISSING AUTH`.
+- `PREVIEW BUILD INFRASTRUCTURE: STATIC CONTRACTS PASS; REMOTE RUN BLOCKED BY MISSING AUTH` (estado al cerrar la validación previa).
 - `LOCAL LINUX APPIMAGE TYPE 2: PASS` (preview y release locales, source SHA `46af127e6790d62b713453475eabedf4513f7afb`).
 - `WINDOWS FROZEN BINARY / ACTIONS ARTIFACTS: NOT VERIFIED`.
 - `MANUAL ICON ACCEPTANCE: FAILED / RETEST PENDING — P1 BLOCKS BETA PUBLICATION`.
 - `RELEASE READINESS: NOT READY TO PUBLISH`; `MERGE READINESS: NOT READY`.
+
+## UI-ONBOARDING-001 y BRANDING-001 — validación incremental (2026-10-08)
+
+- `openspec validate prepare-chemuson-0-3-0-beta-1 --strict`: PASS; `git diff --check`: PASS.
+- Tests focalizados de GUI, onboarding, marca, instaladores/metadatos, AppImage validator, workflows y actualización: **88 passed in 13.30s**.
+- Tests de arquitectura: **280 passed in 10.78s**. Tests de updater y compatibilidad: **36 passed in 0.87s**. Persistencia/autosave/recovery: **34 passed in 0.99s**.
+- Geometría del onboarding en escalas Qt simuladas `QT_SCALE_FACTOR=1.0, 1.25, 1.5, 2.0`: **3 tests passed en cada escala** (12 ejecuciones); las pruebas ejercitan 980×600, 1440×900, 1600×900, movimiento, agujeros de objetivos y límites de tarjeta.
+- `pytest --collect-only -q`: **2093 tests collected in 0.98s**. No se ejecutó `pytest -q` monolítico por el antecedente Qt/SIGSEGV documentado.
+- `ruff check` sobre todos los Python modificados, reglas `F401,F811,F821,E722,E741`: PASS. `python -m compileall src tests tools packaging`: PASS.
+- `bash -n` en builders Linux, parseo YAML de Flatpak y workflows de release/preview, AppStream XML y `desktop-file-validate` de los desktop entries y la plantilla AppImage: PASS. AppStream devuelve exit 0 con `redundante: 1`; desktop-file-validate conserva un hint de categorías principales múltiples en el desktop Flatpak (sin error).
+- Identidad técnica protegida por tests: versión `0.3.0-beta.1`, package/import, `QApplication.applicationName`, QSettings, `.cmsn`, App ID/repo, rutas/remote updater, ejecutables/nombres de artifact, AppId/instalación existente de Inno. Se agregó además la comprobación ChemUSON al validador AppImage y al índice HTML Flatpak.
+- Aceptación manual `UI-ONBOARDING-001` y `BRANDING-001` sigue **NOT TESTED — owner retest required**. Escalas Qt simuladas y validación estática no acreditan paquete/instalación reales Windows/Linux. No se inició ni publicó ningún release/tag.

@@ -525,6 +525,81 @@ def test_onboarding_shows_on_first_run(win):
     assert overlay.step == 0
 
 
+def test_onboarding_waits_for_visible_layout_and_tracks_window_geometry(
+    _qapp, _isolated_config_home
+):
+    from PyQt6.QtCore import QPoint, QRect
+    from chemuson.platform.settings import application_settings
+
+    settings = application_settings()
+    settings.remove("ui/onboarding/completed")
+    window = ChemusonWindow()
+    window.resize(980, 600)
+    assert _find_onboarding(window) is None, (
+        "el overlay no debe crearse con los objetivos todavía ocultos"
+    )
+
+    window.show()
+    QApplication.processEvents()
+    overlay = _find_onboarding(window)
+    assert overlay is not None and overlay.isVisible()
+
+    for width, height in ((980, 600), (1440, 900), (1600, 900)):
+        window.resize(width, height)
+        QApplication.processEvents()
+        QApplication.processEvents()
+        assert overlay.geometry() == window.rect()
+
+        target = overlay._targets[overlay.step]
+        assert target is window.tool_rail
+        target_origin = overlay.mapFromGlobal(target.mapToGlobal(QPoint(0, 0)))
+        expected_hole = QRect(target_origin, target.size()).adjusted(6, 6, -6, -6)
+        assert overlay.hole == expected_hole
+        assert QRect(0, 0, overlay.width(), overlay.height()).contains(
+            overlay.card.geometry()
+        ), f"tarjeta recortada en {width}x{height}"
+
+        rail_geometry = window.tool_rail.geometry()
+        overlay._relayout()
+        assert window.tool_rail.geometry() == rail_geometry, (
+            "el onboarding no debe cambiar la geometría del rail"
+        )
+
+    window.move(40, 50)
+    QApplication.processEvents()
+    QApplication.processEvents()
+    target = overlay._targets[overlay.step]
+    target_origin = overlay.mapFromGlobal(target.mapToGlobal(QPoint(0, 0)))
+    assert overlay.hole == QRect(target_origin, target.size()).adjusted(6, 6, -6, -6)
+
+    window.close()
+    QApplication.processEvents()
+
+
+def test_onboarding_close_releases_overlay(_qapp, _isolated_config_home):
+    from PyQt6 import sip
+    from PyQt6.QtCore import QEvent
+    from chemuson.platform.settings import application_settings
+
+    application_settings().remove("ui/onboarding/completed")
+    window = ChemusonWindow()
+    window.resize(980, 600)
+    window.show()
+    QApplication.processEvents()
+    overlay = _find_onboarding(window)
+    assert overlay is not None
+
+    overlay.request_close()
+    QApplication.processEvents()
+    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    QApplication.processEvents()
+
+    assert sip.isdeleted(overlay)
+    assert _find_onboarding(window) is None
+    window.close()
+    QApplication.processEvents()
+
+
 def test_onboarding_not_shown_when_completed(_qapp, _isolated_config_home):
     from chemuson.platform.settings import application_settings
 
@@ -713,6 +788,8 @@ def test_onboarding_mask_is_path_subtraction_and_hole_is_transparent(win):
 
 def test_onboarding_hole_tracks_each_target_zone(win):
     """El agujero se posiciona sobre ToolRail, Canvas y SidePanel en cada paso."""
+    from PyQt6.QtCore import QPoint, QRect
+
     overlay = _show_onboarding(win)
     for step in range(3):
         overlay._step = step
@@ -721,9 +798,11 @@ def test_onboarding_hole_tracks_each_target_zone(win):
         target = overlay._targets[step]
         hole = overlay.hole
         assert target is not None and hole.isValid(), f"paso {step + 1}: sin agujero"
-        # El agujero es el rect del objetivo con el margen interior.
-        assert hole.width() == target.width() - 2 * 6
-        assert hole.height() == target.height() - 2 * 6
+        target_origin = overlay.mapFromGlobal(target.mapToGlobal(QPoint(0, 0)))
+        assert hole == QRect(target_origin, target.size()).adjusted(6, 6, -6, -6)
+        assert QRect(0, 0, overlay.width(), overlay.height()).contains(
+            overlay.card.geometry()
+        )
     overlay.close()
     QApplication.processEvents()
 
@@ -731,6 +810,29 @@ def test_onboarding_hole_tracks_each_target_zone(win):
 # ---------------------------------------------------------------------------
 # 7. Onboarding: tarjeta theme-aware (QSS de tokens, sin colores hardcodeados)
 # ---------------------------------------------------------------------------
+def test_visible_application_branding_is_chemuson(win, monkeypatch):
+    from PyQt6.QtWidgets import QTextBrowser
+
+    from chemuson.gui.dialogs import QuickStartDialog
+
+    assert win.windowTitle().startswith("ChemUSON ")
+    assert win.app_bar.brand_name.text() == "ChemUSON"
+    assert win.action_about.text() == "Acerca de ChemUSON..."
+
+    about_calls = []
+    monkeypatch.setattr(
+        "chemuson.gui.main_window.QMessageBox.about",
+        lambda *args: about_calls.append(args),
+    )
+    win._on_about()
+    assert about_calls[0][1] == "Acerca de ChemUSON"
+    assert "<h2>ChemUSON</h2>" in about_calls[0][2]
+
+    quick_start = QuickStartDialog(win)
+    assert "ChemUSON" in quick_start.findChild(QTextBrowser).toHtml()
+    quick_start.close()
+
+
 def test_onboarding_card_has_no_hardcoded_colors():
     """La tarjeta se presenta con objectName + QSS de tokens, no con colores fijos."""
     import inspect

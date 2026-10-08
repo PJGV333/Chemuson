@@ -40,7 +40,7 @@ decide la persistencia de ``ui/onboarding/completed``.
 """
 from __future__ import annotations
 
-from PyQt6.QtCore import QPoint, QRect, QRectF, Qt, pyqtSignal
+from PyQt6.QtCore import QEvent, QPoint, QRect, QRectF, QTimer, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFontMetrics, QPainter, QPainterPath
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -212,6 +212,26 @@ class OnboardingOverlay(QWidget):
         self._targets = list(targets) if targets is not None else [None, None, None]
         self._step = 0
         self._hole = QRect()
+        self._relayout_timer = QTimer(self)
+        self._relayout_timer.setSingleShot(True)
+        self._relayout_timer.timeout.connect(self._relayout)
+        self._geometry_event_types = {
+            QEvent.Type.Show,
+            QEvent.Type.Hide,
+            QEvent.Type.Resize,
+            QEvent.Type.Move,
+            QEvent.Type.LayoutRequest,
+        }
+        for event_name in ("ScreenChangeInternal", "DevicePixelRatioChange"):
+            event_type = getattr(QEvent.Type, event_name, None)
+            if event_type is not None:
+                self._geometry_event_types.add(event_type)
+        parent_widget = self.parentWidget()
+        if parent_widget is not None:
+            parent_widget.installEventFilter(self)
+        for target in self._targets:
+            if target is not None:
+                target.installEventFilter(self)
         self._card = _Card(self)
         self._card.previous.connect(self._on_previous)
         self._card.next.connect(self._on_next)
@@ -228,6 +248,18 @@ class OnboardingOverlay(QWidget):
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
         self._relayout()
+
+    def eventFilter(self, watched, event) -> bool:  # noqa: N802
+        """Recalcula el spotlight cuando cambian ventana, layout o pantalla."""
+        if (
+            (watched is self.parentWidget() or watched in self._targets)
+            and event.type() in self._geometry_event_types
+            and not self._relayout_timer.isActive()
+        ):
+            # Espera a que Qt termine de propagar el resize/layout del padre y
+            # sus hijos; así las coordenadas globales ya reflejan el layout final.
+            self._relayout_timer.start(0)
+        return super().eventFilter(watched, event)
 
     # ------------------------------------------------------------------
     # Navegación
@@ -312,7 +344,9 @@ class OnboardingOverlay(QWidget):
         return QRect(top_left, widget.size())
 
     def _relayout(self) -> None:
-        self.setGeometry(self.parentWidget().rect() if self.parentWidget() else self.rect())
+        parent = self.parentWidget()
+        if parent is not None and self.geometry() != parent.rect():
+            self.setGeometry(parent.rect())
         hole = self._target_rect(self._step)
         if not hole.isValid():
             hole = self.rect().adjusted(

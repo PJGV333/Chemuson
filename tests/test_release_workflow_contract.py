@@ -81,6 +81,9 @@ def test_inno_requires_an_explicit_version_and_existing_smoke_supplies_one() -> 
     setup_script = (ROOT / "packaging/windows/Chemuson.iss").read_text(encoding="utf-8")
     test_workflow = (ROOT / ".github/workflows/test.yml").read_text(encoding="utf-8")
     assert "#error" in setup_script
+    assert 'MyAppName "ChemUSON"' in setup_script
+    assert 'MyAppPublisher "ChemUSON"' in setup_script
+    assert 'MyAppExeName "Chemuson.exe"' in setup_script
     assert "0.0.0-dev" not in setup_script
     assert '$env:CHEMUSON_VERSION = "0.0.0-ci"' in test_workflow
 

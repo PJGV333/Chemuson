@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import (
     QProgressDialog,
     QTextEdit,
 )
-from PyQt6.QtCore import Qt, QEvent, QPointF, QPoint, QThread
+from PyQt6.QtCore import Qt, QEvent, QPointF, QPoint, QThread, QTimer
 from PyQt6.QtGui import QAction, QColor, QCursor, QTextCursor
 from dataclasses import dataclass, fields
 from typing import Optional
@@ -135,7 +135,15 @@ class ChemusonWindow(QMainWindow):
         self._close_approved = False
         self._async_shutdown_complete = False
         self._shutdown_threads: set[QThread] = set()
+        self._onboarding_start_scheduled = False
         assemble_application_shell(self)
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        """Inicia el onboarding después del primer layout visible de Qt."""
+        super().showEvent(event)
+        if not self._onboarding_start_scheduled:
+            self._onboarding_start_scheduled = True
+            QTimer.singleShot(0, self._maybe_show_onboarding)
 
     def _apply_theme(self) -> None:
         """Aplica el tema actual a la ventana y a las barras con estilo propio."""
@@ -381,7 +389,7 @@ class ChemusonWindow(QMainWindow):
         registry._by_action = fresh._by_action
 
     def _maybe_show_onboarding(self) -> None:
-        """Muestra el onboarding nativo en la primera ejecución (Fase 7).
+        """Muestra el onboarding nativo después de finalizar el primer layout.
 
         Persiste ``ui/onboarding/completed`` **solo** cuando el onboarding se
         considera completado (el mismo ``QSettings`` que el resto de la GUI):
@@ -389,9 +397,9 @@ class ChemusonWindow(QMainWindow):
         - cerrar anticipadamente con "No volver a mostrar" → ``True``;
         - cerrar anticipadamente sin marcar → NO se persiste: el onboarding
           se ofrece de nuevo en el siguiente arranque.
-        El ``QuickStartDialog`` clásico (menú Ayuda) se conserva como
-        fallback. El overlay es un hijo de la ventana y resalta
-        ``tool_rail`` / lienzo / ``side_panel`` sin tocar la escena.
+        El ``QuickStartDialog`` clásico (menú Ayuda) se conserva. El overlay
+        se crea tras el primer ``showEvent`` para que sus objetivos ya tengan
+        geometría final; no modifica el layout de rail, lienzo ni panel lateral.
         """
         from chemuson.gui.onboarding import OnboardingOverlay
         from chemuson.platform.settings import application_settings, setting_bool
@@ -1462,7 +1470,7 @@ class ChemusonWindow(QMainWindow):
             self,
             "Abrir archivo(s)",
             "",
-            "Archivos de Chemuson (*.cmsn);;Archivos MOL (*.mol *.sdf);;Archivos CML (*.cml);;Todos los archivos (*.*)"
+            "Archivos de ChemUSON (*.cmsn);;Archivos MOL (*.mol *.sdf);;Archivos CML (*.cml);;Todos los archivos (*.*)"
         )
         for filepath in filepaths:
             self._open_file_path(filepath)
@@ -3136,8 +3144,8 @@ class ChemusonWindow(QMainWindow):
         version = get_app_version()
         QMessageBox.about(
             self,
-            "Acerca de Chemuson",
-            "<h2>Chemuson</h2>"
+            "Acerca de ChemUSON",
+            "<h2>ChemUSON</h2>"
             "<p>Editor Molecular Libre</p>"
             f"<p>Versión {version}</p>"
             "<p>Un editor de estructuras químicas de código abierto "

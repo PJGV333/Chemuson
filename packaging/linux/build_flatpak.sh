@@ -30,13 +30,13 @@ else
   exit 2
 fi
 
-REPO_TITLE="${CHEMUSON_FLATPAK_REPO_TITLE:-Chemuson (${BRANCH})}"
+REPO_TITLE="${CHEMUSON_FLATPAK_REPO_TITLE:-ChemUSON (${BRANCH})}"
 if [[ "${BUILD_TYPE}" == "preview" ]]; then
-  REPO_COMMENT="${CHEMUSON_FLATPAK_REPO_COMMENT:-Chemuson local preview build (${BRANCH}).}"
-  REPO_DESCRIPTION="${CHEMUSON_FLATPAK_REPO_DESCRIPTION:-Repositorio local preview de Chemuson (${BRANCH}).}"
+  REPO_COMMENT="${CHEMUSON_FLATPAK_REPO_COMMENT:-ChemUSON local preview build (${BRANCH}).}"
+  REPO_DESCRIPTION="${CHEMUSON_FLATPAK_REPO_DESCRIPTION:-Repositorio local preview de ChemUSON (${BRANCH}).}"
 else
-  REPO_COMMENT="${CHEMUSON_FLATPAK_REPO_COMMENT:-Canal oficial Flatpak de Chemuson (${BRANCH}).}"
-  REPO_DESCRIPTION="${CHEMUSON_FLATPAK_REPO_DESCRIPTION:-Repositorio oficial Flatpak de Chemuson para el canal ${BRANCH}.}"
+  REPO_COMMENT="${CHEMUSON_FLATPAK_REPO_COMMENT:-Canal oficial Flatpak de ChemUSON (${BRANCH}).}"
+  REPO_DESCRIPTION="${CHEMUSON_FLATPAK_REPO_DESCRIPTION:-Repositorio oficial Flatpak de ChemUSON para el canal ${BRANCH}.}"
 fi
 REPO_HOMEPAGE="${CHEMUSON_FLATPAK_HOMEPAGE:-https://github.com/PJGV333/Chemuson}"
 REPO_ICON_URL="${CHEMUSON_FLATPAK_ICON_URL:-}"

@@ -148,6 +148,9 @@ def test_startup_success_order() -> None:
         def setApplicationName(self, name: str) -> None:
             events.append(("set_name", name))
 
+        def setApplicationDisplayName(self, name: str) -> None:
+            events.append(("set_display_name", name))
+
         def setApplicationVersion(self, version: str) -> None:
             events.append(("set_version", version))
 
@@ -189,6 +192,7 @@ def test_startup_success_order() -> None:
         "install_crash_reporter",
         ("create_application", ["chemuson"]),
         ("set_name", "Chemuson"),
+        ("set_display_name", "ChemUSON"),
         ("set_version", "1.2.3"),
         "create_window",
         ("check_autosaves", ANY),

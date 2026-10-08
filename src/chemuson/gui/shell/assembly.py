@@ -68,7 +68,7 @@ def assemble_application_shell(self) -> None:
     self._ui_builder = MainWindowUiBuilder()
     self._app_version = get_app_version()
     self.current_theme = "light"
-    self.setWindowTitle(f"Chemuson {self._app_version} - Editor Molecular Libre")
+    self.setWindowTitle(f"ChemUSON {self._app_version} - Editor Molecular Libre")
     self.resize(1200, 900)
 
     # === CORE COMPONENTS ===
@@ -421,8 +421,6 @@ def assemble_application_shell(self) -> None:
     self.installEventFilter(self)
     QTimer.singleShot(1200, self._maybe_check_updates_startup)
 
-    # === ONBOARDING (Fase 7: onboarding nativo de primera ejecución) ===
-    # Solo se muestra si ``ui/onboarding/completed`` no está persistido. El
-    # overlay es un hijo de la ventana y resalta rail/lienzo/panel lateral sin
-    # tocar la escena ni el canvas. La persistencia la decide el ensamblado.
-    self._maybe_show_onboarding()
+    # === ONBOARDING ===
+    # La ventana lo inicia desde su primer showEvent, después de que Qt
+    # calcule las geometrías finales de los objetivos y el layout.

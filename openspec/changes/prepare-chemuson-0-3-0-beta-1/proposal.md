@@ -18,6 +18,9 @@ ChemUSON tiene ya una línea 0.3.0, builds Windows/Linux/Flatpak, canales beta/s
 - Aislar por contrato el workflow preview de Releases, tags, canales, manifests públicos y `gh-pages`, con permisos `contents: read` y pruebas estáticas.
 - Auditar Windows, Flatpak y el ejecutable portable Linux existente; registrar límites que no puedan probarse en este host.
 - Bloquear la aceptación beta por los iconos SVG ausentes en los paquetes Windows/Linux; verificar recursos y rasterizado QtSvg en ejecutables congelados de preview y release.
+- Registrar y corregir `UI-ONBOARDING-001`: posponer el recorrido automático hasta que el layout sea visible, conservar sus tres pasos y recalcular geometría ante resize/DPI.
+- Registrar y corregir `BRANDING-001`: normalizar las superficies visibles a **ChemUSON**, sin cambiar identidades técnicas, persistencia, nombres de artefactos ni actualización.
+- Mantener la aceptación manual de ambos asuntos pendiente hasta el retest del propietario en los nuevos paquetes.
 
 ## Capabilities
 
@@ -28,7 +31,10 @@ ChemUSON tiene ya una línea 0.3.0, builds Windows/Linux/Flatpak, canales beta/s
 
 ### Modified Capabilities
 
-Ninguna. El updater conserva sus contratos actuales; la campaña endurece el proceso de preparación/publicación.
+- `ui-onboarding`: geometría fiable del recorrido actual de tres pasos, sin alterar el layout ni la semántica QSettings.
+- `visible-branding`: nombre presentado como ChemUSON con preservación de identidad técnica.
+
+El updater conserva sus contratos actuales; estos cambios no cambian canales, rutas ni formatos.
 
 ## Impact
 

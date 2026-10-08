@@ -1,8 +1,8 @@
 ; Instalador MVP de Chemuson para Inno Setup.
 
-#define MyAppName "Chemuson"
+#define MyAppName "ChemUSON"
 #define MyAppVersion GetEnv("CHEMUSON_VERSION")
-#define MyAppPublisher "Chemuson"
+#define MyAppPublisher "ChemUSON"
 #define MyAppExeName "Chemuson.exe"
 #if MyAppVersion == ""
   #error "CHEMUSON_VERSION must be set explicitly before compiling the installer."
@@ -16,7 +16,7 @@ AppPublisher={#MyAppPublisher}
 UninstallDisplayIcon={app}\{#MyAppExeName}
 AppMutex=ChemusonMainMutex
 DefaultDirName={autopf}\Chemuson
-DefaultGroupName=Chemuson
+DefaultGroupName=ChemUSON
 DisableProgramGroupPage=yes
 OutputDir=..\..\dist-installer
 OutputBaseFilename=Chemuson-v{#MyAppVersion}-windows-x86_64-setup
@@ -32,11 +32,11 @@ Source: "..\\..\\dist\\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "chemuson-installed.marker"; DestDir: "{app}"; DestName: ".chemuson-installed"; Flags: ignoreversion
 
 [Icons]
-Name: "{autoprograms}\\Chemuson"; Filename: "{app}\\{#MyAppExeName}"
-Name: "{autodesktop}\\Chemuson"; Filename: "{app}\\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{autoprograms}\\ChemUSON"; Filename: "{app}\\{#MyAppExeName}"
+Name: "{autodesktop}\\ChemUSON"; Filename: "{app}\\{#MyAppExeName}"; Tasks: desktopicon
 
 [Tasks]
 Name: "desktopicon"; Description: "Crear acceso directo en escritorio"; GroupDescription: "Opciones adicionales:"
 
 [Run]
-Filename: "{app}\\{#MyAppExeName}"; Description: "Iniciar Chemuson"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\\{#MyAppExeName}"; Description: "Iniciar ChemUSON"; Flags: nowait postinstall skipifsilent

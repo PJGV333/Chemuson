@@ -22,7 +22,7 @@ Ambos se publican en paralelo en cada release.
 ## Updater para instalaciones
 
 - El instalador crea el marcador `.chemuson-installed` dentro del directorio de la app.
-- En runtime, Chemuson detecta si corre como instalado o portable.
+- En runtime, ChemUSON detecta si corre como instalado o portable.
 - Si esta instalado en Windows, el updater prioriza assets `installer`.
 - En modo `notify`, se ofrece descargar el setup y aplicarlo al cerrar.
 - En modo `silent`, prepara el setup en segundo plano y lo aplica al cierre.

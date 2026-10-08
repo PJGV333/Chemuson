@@ -40,8 +40,8 @@ def format_update_behavior_summary(
     """Resume el comportamiento del updater según la edición instalada."""
     return (
         "Comportamiento según la edición:\n"
-        "- Auto-update real: AppImage y ejecutable portable. Chemuson reemplaza el binario al cerrar.\n"
-        "- Instalación silenciosa al cerrar: Windows instalado con setup. Chemuson descarga el instalador oficial y lo ejecuta al salir.\n"
+        "- Auto-update real: AppImage y ejecutable portable. ChemUSON reemplaza el binario al cerrar.\n"
+        "- Instalación silenciosa al cerrar: Windows instalado con setup. ChemUSON descarga el instalador oficial y lo ejecuta al salir.\n"
         f"- Flatpak: usa flatpak update {app_id}."
     )
 
@@ -342,7 +342,7 @@ class PreferencesDialog(QDialog):
         layout.addWidget(self.rdkit_isolated_checkbox)
 
         label = QLabel(
-            "Si RDKit falla al extraer estereo, Chemuson degrada a N/D sin crashear."
+            "Si RDKit falla al extraer estereo, ChemUSON degrada a N/D sin crashear."
         )
         label.setStyleSheet("color: #666666;")
         layout.addWidget(label)
@@ -856,8 +856,8 @@ class QuickStartDialog(QDialog):
         text = QTextBrowser()
         text.setOpenExternalLinks(False)
         text.setHtml(
-            "<h3>Guía Rápida de Chemuson</h3>"
-            "<p>Bienvenido a Chemuson, su editor molecular libre.</p>"
+            "<h3>Guía Rápida de ChemUSON</h3>"
+            "<p>Bienvenido a ChemUSON, su editor molecular libre.</p>"
             "<ul>"
             "<li><b>Dibujar Átomos:</b> Seleccione un elemento en el panel izquierdo y haga clic en el folio.</li>"
             "<li><b>Dibujar Enlaces:</b> Haga clic en un átomo y arrastre hacia otro o hacia un espacio vacío para crear un enlace."

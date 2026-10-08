@@ -37,6 +37,10 @@ See `proposal.md` for motivation. Current state and baseline are in `baseline.md
 
 11. **Static isolation contracts.** Tests parse the preview workflow and assert read-only permissions, exact-SHA checkout, expected artifact groups/existence checks, no publication/tag/`gh-pages` operations, and separation from the official workflow. The tests establish workflow structure only; they are not evidence that Windows, AppImage-named portable, or Flatpak packaging actually built. Real preview validation requires a successful GitHub Actions run with all four outputs.
 
+12. **UI-ONBOARDING-001 — defer geometry-dependent UI until show.** The tour was created at the end of shell assembly, before the top-level window was shown and Qt had assigned final child geometries; invisible targets caused the spotlight fallback to use a synthetic window rectangle. Start the same three-step overlay once from the first `showEvent`, queue geometry recalculation after parent/target resize/layout/screen events, map visible targets using global coordinates, and keep card placement clamped inside the client overlay. Preserve the existing `ui/onboarding/completed` QSettings contract and manual Quick Start action. Do not treat simulated Qt scale-factor coverage as Windows visual acceptance.
+
+13. **BRANDING-001 — presentation-only name normalization.** Use `ChemUSON` for visible GUI strings, desktop/AppStream names, installer display metadata and release display titles. Preserve Python package/imports, executable and artifact filenames, repository slug, App ID, updater routes, QSettings/persistence identity, install directory and `.cmsn` contract. Do not perform case-insensitive replacements across the tree; tests explicitly protect representative technical IDs and installer upgrade identity. Manual presentation in new packages remains owner-pending.
+
 ## Risks / Trade-offs
 
 - [GitHub environment/tag rulesets are repository settings, not versioned workflow files] → document exact required settings; do not claim stable protection is active unless the owner verifies it.

@@ -118,7 +118,7 @@ def format_update_disabled_message(flatpak: bool = False, app_id: str = FLATPAK_
     """Construye mensaje cuando el chequeo interno de updates está deshabilitado."""
     if flatpak:
         return (
-            "Esta edicion Flatpak no usa auto-update real dentro de Chemuson.\n"
+            "Esta edicion Flatpak no usa auto-update real dentro de ChemUSON.\n"
             "Se actualiza con Flatpak, no desde la propia app.\n\n"
             f"Usa:\nflatpak update {app_id}\n\n"
             "Si instalaste desde un bundle local sin un remote configurado, "
@@ -643,7 +643,7 @@ class UpdateController:
                 raise RuntimeError("No se pudo determinar la ruta del ejecutable actual.")
             if not is_portable_target_writable(target_path):
                 raise PermissionError(
-                    "Chemuson no tiene permisos para reemplazar el ejecutable actual."
+                    "ChemUSON no tiene permisos para reemplazar el ejecutable actual."
                 )
             downloaded = self._download_update_candidate(candidate)
         except Exception as exc:
@@ -691,7 +691,7 @@ class UpdateController:
         if self._settings.mode == UpdateMode.SILENT and not interactive:
             if self._queue_windows_installer_update(context, candidate, show_errors=False):
                 context.show_status(
-                    f"Instalación silenciosa {version} lista para aplicarse al cerrar Chemuson.",
+                    f"Instalación silenciosa {version} lista para aplicarse al cerrar ChemUSON.",
                     20000,
                 )
             return
@@ -702,7 +702,7 @@ class UpdateController:
             (
                 f"Hay una nueva versión disponible ({version}).\n\n"
                 "Esta edición no usa auto-update real.\n"
-                "Chemuson descargará el instalador oficial y lo ejecutará en silencio al cerrar.\n\n"
+                "ChemUSON descargará el instalador oficial y lo ejecutará en silencio al cerrar.\n\n"
                 "¿Quieres prepararlo ahora?"
             ),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -713,7 +713,7 @@ class UpdateController:
         if not self._queue_windows_installer_update(context, candidate):
             return
         context.show_status(
-            f"Instalador {version} preparado. Se ejecutará en silencio al cerrar Chemuson.",
+            f"Instalador {version} preparado. Se ejecutará en silencio al cerrar ChemUSON.",
             20000,
         )
         if interactive:
@@ -721,7 +721,7 @@ class UpdateController:
                 context.parent,
                 "Aplicar actualización",
                 "El instalador de actualización está listo.\n"
-                "¿Deseas cerrar Chemuson ahora para ejecutar la instalación silenciosa?",
+                "¿Deseas cerrar ChemUSON ahora para ejecutar la instalación silenciosa?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
@@ -743,7 +743,7 @@ class UpdateController:
         if self._settings.mode == UpdateMode.SILENT and not interactive:
             if self._queue_portable_binary_update(context, candidate, portable_context, show_errors=False):
                 context.show_status(
-                    f"Auto-update real {version} listo: Chemuson reemplazará el {target_label} al cerrar.",
+                    f"Auto-update real {version} listo: ChemUSON reemplazará el {target_label} al cerrar.",
                     20000,
                 )
             return
@@ -754,7 +754,7 @@ class UpdateController:
             (
                 f"Hay una nueva versión disponible ({version}).\n\n"
                 "Esto es auto-update real.\n"
-                f"Chemuson descargará la actualización y reemplazará el {target_label} actual al cerrar.\n\n"
+                f"ChemUSON descargará la actualización y reemplazará el {target_label} actual al cerrar.\n\n"
                 "¿Quieres prepararla ahora?"
             ),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -765,7 +765,7 @@ class UpdateController:
         if not self._queue_portable_binary_update(context, candidate, portable_context):
             return
         context.show_status(
-            f"Auto-update real {version} preparado. Se aplicará al cerrar Chemuson.",
+            f"Auto-update real {version} preparado. Se aplicará al cerrar ChemUSON.",
             20000,
         )
         if interactive:
@@ -773,7 +773,7 @@ class UpdateController:
                 context.parent,
                 "Aplicar actualización",
                 "El auto-update real está listo.\n"
-                "¿Deseas cerrar Chemuson ahora para completar el reemplazo?",
+                "¿Deseas cerrar ChemUSON ahora para completar el reemplazo?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )

@@ -119,8 +119,8 @@ def _validate_appdir(appdir: Path, *, version: str) -> tuple[Path, Path]:
     entry = parser["Desktop Entry"] if parser.has_section("Desktop Entry") else {}
     if entry.get("Type") != "Application" or entry.get("Exec") != "AppRun":
         raise ValueError("AppDir desktop entry must be an Application launching AppRun.")
-    if entry.get("Name") != "Chemuson" or entry.get("Icon") != APP_ID:
-        raise ValueError("AppDir desktop entry name/icon does not identify Chemuson.")
+    if entry.get("Name") != "ChemUSON" or entry.get("Icon") != APP_ID:
+        raise ValueError("AppDir desktop entry name/icon does not identify ChemUSON.")
     if entry.get("X-AppImage-Version") != version:
         raise ValueError("AppDir desktop metadata version does not match the canonical version.")
 
@@ -140,7 +140,7 @@ def _validate_appdir(appdir: Path, *, version: str) -> tuple[Path, Path]:
         raise ValueError("AppDir application icon must be SVG.")
     metadata_id = metadata_root.findtext("id", default="").strip()
     if metadata_id != APP_ID:
-        raise ValueError("AppDir AppStream component ID does not match Chemuson.")
+        raise ValueError("AppDir AppStream component ID does not match ChemUSON.")
     releases = metadata_root.findall(".//release")
     if not any(release.attrib.get("version") == version for release in releases):
         raise ValueError("AppDir AppStream release version does not match the canonical version.")
@@ -222,7 +222,7 @@ def _headless_startup_smoke(apprun: Path, *, scratch: Path) -> None:
     crash_logs = list((config / "chemuson/crash_logs").glob("crash_*.txt"))
     if crash_logs:
         details = crash_logs[0].read_text(encoding="utf-8", errors="replace")[-4000:]
-        raise ValueError(f"Chemuson wrote a crash report during headless startup: {details}")
+        raise ValueError(f"ChemUSON wrote a crash report during headless startup: {details}")
     print("Headless launch stayed alive for 12s; this is not interactive GUI acceptance.")
 
 

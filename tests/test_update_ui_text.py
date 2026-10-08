@@ -48,6 +48,7 @@ def test_format_update_disabled_message_for_flatpak() -> None:
     message = format_update_disabled_message(flatpak=True, app_id=FLATPAK_APP_ID)
 
     assert "flatpak" in message.lower()
+    assert "ChemUSON" in message
     assert "no usa auto-update real" in message.lower()
     assert f"flatpak update {FLATPAK_APP_ID}".lower() in message.lower()
 
@@ -65,4 +66,5 @@ def test_format_update_behavior_summary_clarifies_delivery_modes() -> None:
     assert "appimage" in message.lower()
     assert "instalación silenciosa al cerrar" in message.lower()
     assert "windows instalado con setup" in message.lower()
+    assert "ChemUSON" in message
     assert f"flatpak update {FLATPAK_APP_ID}".lower() in message.lower()

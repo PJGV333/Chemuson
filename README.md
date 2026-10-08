@@ -12,13 +12,13 @@
 
 > **Proyecto en construcción.**
 >
-> Chemuson está en desarrollo activo. Las funciones, formatos y resultados pueden cambiar mientras el proyecto madura.
+> ChemUSON está en desarrollo activo. Las funciones, formatos y resultados pueden cambiar mientras el proyecto madura.
 >
 > Estado de octubre de 2026: esta rama de preparación usa `0.3.0-beta.1` en `src/chemuson/_version.py` como fuente canónica. **No implica tag, GitHub Release ni publicación de canales.** Los paquetes Actions de prueba, si se generan, son artifacts temporales no disponibles en el updater. Consulta [la política de versionado](docs/release/VERSIONING_POLICY.md) y [la guía de previews](docs/release/PREVIEW_BUILDS.md).
 
-## ¿Qué hace Chemuson?
+## ¿Qué hace ChemUSON?
 
-Chemuson permite dibujar estructuras químicas 2D, analizarlas y exportarlas en formatos comunes para trabajo académico y de investigación.
+ChemUSON permite dibujar estructuras químicas 2D, analizarlas y exportarlas en formatos comunes para trabajo académico y de investigación.
 
 Capacidades actuales (resumen):
 - Editor gráfico 2D con herramientas para átomos, enlaces, anillos, cadenas y anotaciones.
@@ -42,7 +42,7 @@ Capacidades actuales (resumen):
 
 ## Autosave y recuperación
 
-- Chemuson guarda autosaves automáticamente cada ~2 minutos y también después de unos segundos de inactividad cuando hay cambios.
+- ChemUSON guarda autosaves automáticamente cada ~2 minutos y también después de unos segundos de inactividad cuando hay cambios.
 - Al iniciar, si existen autosaves pendientes, aparece un diálogo para **recuperar** o **descartar** cada sesión.
 - Al guardar manualmente, se limpian autosaves obsoletos del documento y se conserva un respaldo rotativo reciente.
 
@@ -210,7 +210,7 @@ chemuson --version
 ## Migración sin romper portable actual
 
 - El flujo portable actual **se mantiene**.
-- Puedes seguir abriendo Chemuson con los ejecutables portables sin instalar; el archivo Linux `.AppImage`-named es PyInstaller, no Type 2.
+- Puedes seguir abriendo ChemUSON con los ejecutables portables sin instalar; el archivo Linux `.AppImage`-named es PyInstaller, no Type 2.
 - Si migras a instalador en Windows, conserva tus archivos de trabajo (`.cmsn`) y configuración local.
 - Los mecanismos nuevos de update no eliminan compatibilidad con releases portables existentes.
 

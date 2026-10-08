@@ -39,10 +39,10 @@ def write_crash_log(exc: BaseException) -> str:
 
     trace_text = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
     content = [
-        "Chemuson Crash Report",
+        "ChemUSON Crash Report",
         "=" * 80,
         f"Timestamp: {now.isoformat()}",
-        f"Chemuson version: {_chemuson_version()}",
+        f"ChemUSON version: {_chemuson_version()}",
         f"Python: {platform.python_version()}",
         f"Platform: {platform.platform()}",
         "",
@@ -88,7 +88,7 @@ def install() -> None:
 
         app = QApplication.instance() if QApplication is not None else None
         if app is not None and QMessageBox is not None:
-            QMessageBox.critical(None, "Chemuson - Error crítico", message)
+            QMessageBox.critical(None, "ChemUSON - Error crítico", message)
         else:
             sys.stderr.write(message + "\n")
 

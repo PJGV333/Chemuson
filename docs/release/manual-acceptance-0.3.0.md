@@ -112,6 +112,8 @@ Resultado permitido por caso: `PASS`, `FAIL`, `BLOCKED` o `NOT TESTED`. Registra
 | UI-06 | Forzar excepción de una acción y continuar usando la app. | Mensaje controlado; estado del documento coherente. | P1 | NOT TESTED — |
 | UI-07 | **Retest Windows portable corregido.** Abrir la aplicación en temas claro y oscuro; comprobar puntero/selección, enlace simple, anillo aromático, buscar, deshacer, rehacer, documento nuevo y limpieza en la barra/controles. | Cada control muestra un icono visible y legible en ambos temas; adjuntar captura y SHA del portable. | P1 | NOT TESTED — owner retest required |
 | UI-08 | **Retest Linux AppImage Type 2 corregido.** Abrir el AppImage instalado/extraído en temas claro y oscuro; comprobar puntero/selección, enlace simple, anillo aromático, buscar, deshacer, rehacer, documento nuevo y limpieza. | Cada control muestra un icono visible y legible en ambos temas; adjuntar captura, SHA y confirmar tipo Type 2. | P1 | NOT TESTED — owner retest required |
+| UI-ONBOARDING-001 | **Retest del onboarding en Windows portable y Linux.** En primera ejecución, comprobar rail, lienzo y panel lateral en 980×600, 1440×900 y 1600×900; probar escalas 100%, 125%, 150% y 200%, mover/redimensionar la ventana, avanzar/retroceder/cerrar y reiniciar con/sin «No volver a mostrar». | La máscara cubre la ventana cliente, cada agujero coincide con su objetivo, la tarjeta queda visible, el rail no se desplaza y las preferencias/cierre funcionan igual en Windows y Linux. | P2 | NOT TESTED — previous Windows report; owner retest required |
+| BRANDING-001 | **Retest de marca en Windows portable/setup y Linux.** Revisar título y barra superior, Acerca de/Ayuda, mensajes visibles, nombre mostrado del instalador y desinstalador, launcher y AppStream. | Todas las superficies presentan `ChemUSON`; instalación/actualización/desinstalación detectan la identidad existente y permanecen operativas. | P2 | NOT TESTED — owner retest required |
 
 ## H. Paquetes, actualización y separación de canales
 
@@ -123,7 +125,7 @@ Resultado permitido por caso: `PASS`, `FAIL`, `BLOCKED` o `NOT TESTED`. Registra
 | DIST-04 | Comparar SHA/versión entre portable y setup. | Ambos declaran misma versión y source SHA del run; nombres dicen preview. | P1 | NOT TESTED — |
 | DIST-05 | Ejecutar el Linux portable/AppImage Type 2 corregido en distro/VM soportada. | Lanza con dependencias esperadas; verificar firma `AI\x02` y extracción sin FUSE antes de la prueba visual. | P1 | NOT TESTED — |
 | DIST-06 | Inspeccionar preview portable: `.updateinfo`, `.update.json`, `.zsync`. | Los tres sidecars de updater público están ausentes. | P1 | NOT TESTED — |
-| DIST-07 | Instalar bundle Flatpak preview desde archivo local, sin añadir remoto Chemuson. | Bundle se instala y abre en rama/nombre de preview; no crea remoto beta/stable. | P1 | NOT TESTED — |
+| DIST-07 | Instalar bundle Flatpak preview desde archivo local, sin añadir remoto ChemUSON. | Bundle se instala y abre en rama/nombre de preview; no crea remoto beta/stable. | P1 | NOT TESTED — |
 | DIST-08 | Confirmar que instalar preview no cambia manifiestos beta/stable ni el updater instalado. | Canales públicos y versiones disponibles siguen idénticos al iniciar la prueba. | P0 | NOT TESTED — |
 | DIST-09 | Abrir los cuatro manifests y comprobar versión, rama, SHA y `publication=false`. | Los cuatro grupos apuntan a la misma ejecución/commit y checksums verificables. | P1 | NOT TESTED — |
 | DIST-10 | Probar actualización de una instalación estable con preview presente en otra VM. | Instalación estable no ofrece ni instala el preview. | P0 | NOT TESTED — |
@@ -136,6 +138,13 @@ Resultado permitido por caso: `PASS`, `FAIL`, `BLOCKED` o `NOT TESTED`. Registra
 | UI-FAIL-LINUX-01 | Linux portable del run `37826597134` (binario PyInstaller renombrado, no Type 2) | En tema claro y oscuro faltan numerosos iconos de barras de dibujo, herramientas y controles superiores. | P1 | **FAILED — P1 blocks beta acceptance** — propietario |
 
 Estos defectos confirman la baseline del candidato, no el estado de los paquetes corregidos. UI-07/UI-08 siguen `NOT TESTED` hasta el retest manual propietario.
+
+## Correcciones UI/identidad pendientes de retest
+
+- **UI-ONBOARDING-001:** el propietario observó la tarjeta desalineada y el spotlight/rail incorrectos en Windows portable. La fuente ahora difiere el inicio hasta el primer layout visible y recalcula geometría; el resultado manual del candidato anterior permanece **FAILED**, y el paquete corregido queda **NOT TESTED — owner retest required**.
+- **BRANDING-001:** las cadenas y metadatos visibles se normalizaron a `ChemUSON`; aún no se ha revisado el paquete resultante en Windows/Linux. Resultado manual: **NOT TESTED — owner retest required**.
+
+Los dos resultados sólo pueden actualizarse con la versión y SHA exactos de los nuevos artifacts, entorno real y evidencia del propietario. Los tests estáticos y los Qt scale-factors simulados no sustituyen esta comprobación.
 
 ## Severidad, promoción y cierre
 

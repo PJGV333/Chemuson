@@ -10,10 +10,10 @@ Fecha: 2026-10-08
 ## Estrategia Flatpak reproducible
 
 - El manifiesto Flatpak declara dependencias Python como modulos explicitos con `url + sha256` pinneados.
-- El modulo de Chemuson instala el paquete con:
+- El modulo de ChemUSON instala el paquete con:
   - `pip3 install --prefix=/app --no-build-isolation --no-deps .`
 - Resultado:
-  - evita resolucion dinamica de PyPI en el paso de instalacion de Chemuson,
+  - evita resolucion dinamica de PyPI en el paso de instalacion de ChemUSON,
   - hace el build mas reproducible (mismas fuentes y checksums),
   - previene fallos tipo `No matching distribution found for PyQt6` durante `pip install .`.
 - Runtime KDE actualizado:
@@ -154,7 +154,7 @@ Opcional:
 
 ## Previews y checksums
 
-Para ejecutar una compilación previa a publicación y descargar sus cuatro artifacts, sigue [docs/release/PREVIEW_BUILDS.md](release/PREVIEW_BUILDS.md). El preview Linux omite metadata pública de update y su bundle Flatpak no enlaza un remoto Chemuson.
+Para ejecutar una compilación previa a publicación y descargar sus cuatro artifacts, sigue [docs/release/PREVIEW_BUILDS.md](release/PREVIEW_BUILDS.md). El preview Linux omite metadata pública de update y su bundle Flatpak no enlaza un remoto ChemUSON.
 
 ## Checksums y firma
 

@@ -64,3 +64,11 @@
 - [x] 10.4 Add environment-gated frozen binary diagnostics for path resolution, all 69 SVG resources, QtSvg and visible raster pixels for essential icon categories in light/dark themes and DPR 2.
 - [ ] 10.5 Linux PyInstaller executable and authentic preview/release AppImages pass frozen-process path/resource/QtSvg/raster and QToolButton checks on clean packaging commit `46af127e6790d62b713453475eabedf4513f7afb`. Windows jobs are wired fail-closed but remain unexecuted locally; verify in the next Actions run before owner retest.
 - [x] 10.6 Update tests/docs without altering the SVG inventory or chemical/UI behavior; owner manual retest remains NOT PASSED and blocks beta publication.
+
+## 11. UI-ONBOARDING-001 and BRANDING-001
+- [x] 11.1 Record the second Build Preview's Windows onboarding alignment report; preserve its prior manual result and mark the corrected-package retest pending in the acceptance matrix.
+- [x] 11.2 Defer automatic onboarding until the main window's first shown layout; track parent/target geometry, keep the three steps and existing QSettings semantics, and test overlay cleanup, alignment, card bounds, target-geometry stability, resize and move.
+- [x] 11.3 Normalize application-owned display strings and Windows/Linux presentation metadata to `ChemUSON`, including Help/About, update messages, installer display metadata, desktop entries and AppStream.
+- [x] 11.4 Add static/focused regression tests for displayed branding, package metadata and technical identity/installer/updater compatibility; preserve all package IDs, commands, paths, update routes and artifact names.
+- [x] 11.5 Update the active beta notes and manual acceptance matrix with `UI-ONBOARDING-001` and `BRANDING-001`; keep new package/manual results pending owner retest.
+- [ ] 11.6 Owner manually retests the new preview packages on Windows and Linux, including three window sizes, common DPI scales, branding surfaces, installer upgrade/uninstall identity and updater compatibility.

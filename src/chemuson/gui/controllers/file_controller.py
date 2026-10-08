@@ -94,7 +94,7 @@ class FileController:
                 context.parent,
                 "Guardar archivo",
                 "",
-                "Archivo de Chemuson (*.cmsn);;Archivo MOL (*.mol);;Archivo CML (*.cml);;Todos los archivos (*.*)",
+                "Archivo de ChemUSON (*.cmsn);;Archivo MOL (*.mol);;Archivo CML (*.cml);;Todos los archivos (*.*)",
             )
         if not filepath:
             return

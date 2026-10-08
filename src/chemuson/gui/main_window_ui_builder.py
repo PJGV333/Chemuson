@@ -98,7 +98,7 @@ class MainWindowUiBuilder:
         help_menu.addAction(window.action_quick_start)
         help_menu.addAction(window.action_check_updates_now)
         help_menu.addSeparator()
-        window.action_about = QAction("Acerca de Chemuson...", window)
+        window.action_about = QAction("Acerca de ChemUSON...", window)
         window.action_about.triggered.connect(window._on_about)
         help_menu.addAction(window.action_about)
 

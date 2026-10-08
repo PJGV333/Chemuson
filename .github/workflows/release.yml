@@ -483,7 +483,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.vars.outputs.tag }}
-          name: Chemuson v${{ steps.vars.outputs.version }}
+          name: ChemUSON v${{ steps.vars.outputs.version }}
           overwrite_files: false
           fail_on_unmatched_files: true
           files: |

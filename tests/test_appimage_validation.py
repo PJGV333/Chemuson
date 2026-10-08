@@ -68,6 +68,9 @@ def test_appimage_builder_uses_appdir_and_pinned_tool_not_copy_or_rename() -> No
     assert "AppRun" in builder
     assert '${APP_ID}.appdata.xml' in builder
     desktop_template = (ROOT / "packaging/linux/appimage/io.github.PJGV333.Chemuson.desktop.in").read_text()
+    validator = (ROOT / "packaging/release/validate_appimage.py").read_text(encoding="utf-8")
+    assert "Name=ChemUSON" in desktop_template
+    assert 'entry.get("Name") != "ChemUSON"' in validator
     assert 'Categories=Science;Chemistry;' in desktop_template
     assert 'ARCH=x86_64 "${APPIMAGETOOL}" "${APPDIR}" "${APPIMAGE_PATH}"' in builder
     assert "--updateinformation \"${UPDATE_INFO}\"" in builder

@@ -2,9 +2,9 @@
 
 **Documento:** manual de usuario de la interfaz gráfica  
 **Aplicación:** ChemUSON  
-**Estado del proyecto:** desarrollo activo (`0.3.0-dev`)  
-**Revisión del manual:** 2 de octubre de 2026<br>
-**Código auditado:** Release Candidate de la UI, `origin/main` en `140a080c336515650bbeea0a4e6ead67a9999b23` (Fases 1–7).
+**Estado del proyecto:** preparación de beta (`0.3.0-beta.1`, no publicada)<br>
+**Revisión del manual:** 8 de octubre de 2026<br>
+**Código auditado:** rama `release/v0.3.0-beta.1-prep`; aceptación de paquetes pendiente de retest manual.
 
 > ChemUSON es un editor molecular 2D orientado a docencia, investigación y comunicación científica. Este manual describe la interfaz realmente implementada en la revisión indicada. Algunas etiquetas aún aparecen en inglés y el menú **Reacción** contiene por ahora únicamente una entrada deshabilitada, **Próximamente**.
 
@@ -315,7 +315,7 @@ En esta revisión, el menú contiene únicamente **Próximamente**, deshabilitad
 
 - **Guía rápida...:** abre la introducción breve integrada.
 - **Buscar actualizaciones...:** consulta el canal configurado.
-- **Acerca de Chemuson...:** muestra versión e información del proyecto.
+- **Acerca de ChemUSON...:** muestra versión e información del proyecto.
 
 Ruta rápida: para ejecutar cualquier comando sin recorrer los menús, use la **paleta de comandos** (`Ctrl+P` o la píldora **Buscar o ejecutar...**; ver §10.1).
 

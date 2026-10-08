@@ -185,7 +185,7 @@ class AppBar(QFrame):
         # --- Marca -------------------------------------------------------
         self.brand_label = QLabel(self)
         layout.addWidget(self.brand_label)
-        self.brand_name = QLabel("Chemuson", self)
+        self.brand_name = QLabel("ChemUSON", self)
         self.brand_name.setObjectName("appBrandName")
         layout.addWidget(self.brand_name)
         self.version_label = QLabel(version or "", self)
