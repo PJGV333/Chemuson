@@ -34,6 +34,30 @@ from chemuson.gui.onboarding import _MASK_COLOR, OnboardingOverlay
 from chemuson.gui.tool_rail import _tooltip_for_action
 
 
+def test_rdkit_descriptor_failures_preserve_partial_properties_and_cause() -> None:
+    from types import SimpleNamespace
+
+    received: list[list[tuple[str, str]]] = []
+    window = SimpleNamespace(
+        _shutdown_started=False,
+        _latest_descriptor_job_id=4,
+        _descriptor_jobs={4: (None, None, [("Fórmula", "C2H6O"), ("Masa", "46.069")])},
+        chemical_properties_dock=SimpleNamespace(update_properties=lambda rows: received.append(rows)),
+        _format_descriptor_worker_error=ChemusonWindow._format_descriptor_worker_error,
+    )
+
+    ChemusonWindow._on_descriptor_job_finished(window, 4, {}, "worker_exit_signal:6")
+
+    assert len(received) == 1
+    assert received[0][:2] == [("Fórmula", "C2H6O"), ("Masa", "46.069")]
+    assert "terminó inesperadamente" in received[0][2][1]
+    assert "no disponible" not in received[0][2][1]
+    assert "RDKit no disponible" in ChemusonWindow._format_descriptor_worker_error(
+        "rdkit_unavailable: ImportError"
+    )
+    assert "no disponible" not in ChemusonWindow._format_descriptor_worker_error("timeout")
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

@@ -7,7 +7,7 @@
 1. Abrir el repositorio → **Actions** → **Build Preview**.
 2. Si aparece **Run workflow**, elegir la rama `release/v0.3.0-beta.1-prep` (o la rama de preparación correspondiente). La versión se obtiene de `src/chemuson/_version.py`; no se escribe manualmente.
 3. Ejecutar el workflow y esperar a que la validación de rama/SHA y los tres jobs de paquetes terminen.
-4. Windows y Linux ejecutan `validate_packaged_icons.py` sobre el ejecutable PyInstaller real antes de subirlo. El smoke aislado comprueba en el proceso congelado las 69 SVG, rutas `__file__`/`sys._MEIPASS`, QtSvg, píxeles visibles de iconos esenciales y su dibujo en `QToolButton` en temas claro/oscuro y DPR 2. En Linux, el job construye AppImage Type 2 y repite el smoke sobre el ejecutable extraído del paquete.
+4. Windows y Linux ejecutan `validate_packaged_icons.py` y `validate_packaged_rdkit_worker.py` sobre el ejecutable PyInstaller real antes de subirlo. El gate RDKit comprueba imports nativos dentro del bundle, descriptores conocidos de etanol, SMILES de entrada/canónico y conformero 3D mediante el worker aislado; no admite skip. En Linux, el job construye AppImage Type 2 y `validate_appimage.py` repite ambos smokes sobre el ejecutable extraído del paquete. Estos gates automatizados no sustituyen la aceptación manual del propietario.
 5. Revisar el resumen final. El run sólo es completo si Windows portable/installer, Linux AppImage Type 2 y Linux Flatpak muestran `success`.
 6. Abrir la ejecución → sección **Artifacts** y descargar por separado:
    - `chemuson-preview-windows-portable`
@@ -48,6 +48,6 @@ El agente debe devolver la URL del run, SHA/versión y resultado de cada job, ad
 
 - El run previo [#37826597134](https://github.com/PJGV333/Chemuson/actions/runs/37826597134) pasó con cuatro grupos, pero su Linux `.AppImage` era un ejecutable PyInstaller renombrado. El propietario confirmó en ese run iconos ausentes en Windows y Linux portable, en temas claro y oscuro: **P1 — FAILED, bloquea la aceptación beta**. No se acepta como prueba del nuevo Type 2 ni de iconos corregidos.
 - Esta implementación queda `PREVIEW BUILD INFRASTRUCTURE: NOT READY` para uso remoto hasta que se publique la rama autorizada y una nueva ejecución valide Windows, AppImage Type 2 y los cuatro grupos.
-- Se construyeron localmente un ejecutable Linux PyInstaller y AppImages Type 2 preview/release para verificar las 69 SVG y su render QtSvg; son pruebas locales, no artifacts de Actions ni evidencia Windows. No hay aún paquetes nuevos publicados en GitHub. Los casos manuales corregidos de Windows y Linux siguen `NOT TESTED`; requieren retest visual del propietario.
+- Se construyeron localmente un ejecutable Linux PyInstaller y AppImages Type 2 preview/release para verificar las 69 SVG y su render QtSvg; son pruebas locales, no artifacts de Actions ni evidencia Windows. El nuevo gate RDKit debe pasar en un run Actions nuevo antes de aceptar los artifacts. Los casos manuales corregidos de Windows/Linux, onboarding y marca siguen `NOT TESTED`; requieren retest del propietario.
 
 No anunciar disponibilidad pública a partir de estos artifacts. El estado cambiará sólo después de publicar normalmente la rama autorizada, revisar el aislamiento y completar una ejecución Actions con los cuatro jobs exitosos.

@@ -164,6 +164,26 @@ def _validate_frozen_icons(executable: Path, *, cwd: Path, env: dict[str, str]) 
     return report
 
 
+def _validate_frozen_rdkit_worker(
+    executable: Path, *, cwd: Path, env: dict[str, str]
+) -> dict[str, object]:
+    validator = Path(__file__).with_name("validate_packaged_rdkit_worker.py").resolve()
+    result = _run(
+        [sys.executable, str(validator), "--executable", str(executable), "--timeout", "120"],
+        cwd=cwd,
+        env=env,
+        timeout=150,
+    )
+    try:
+        report = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise ValueError("Frozen AppImage executable did not return RDKit smoke JSON.") from exc
+    if not isinstance(report, dict) or report.get("ok") is not True:
+        raise ValueError("Frozen AppImage executable failed the RDKit worker smoke.")
+    print("Frozen AppImage RDKit imports, descriptors, SMILES, and 3D worker smoke passed.")
+    return report
+
+
 def _appimage_update_information(appimage: Path, *, cwd: Path, env: dict[str, str]) -> str:
     result = _run(
         [str(appimage), "--appimage-updateinformation"],
@@ -264,6 +284,7 @@ def validate_appimage(
             raise ValueError("AppImage --appimage-extract did not produce squashfs-root.")
         apprun, executable = _validate_appdir(appdir, version=version)
         icon_report = _validate_frozen_icons(executable, cwd=scratch, env=environment)
+        rdkit_report = _validate_frozen_rdkit_worker(executable, cwd=scratch, env=environment)
         version_result = _run(
             [str(apprun), "--version"], cwd=scratch, env=environment, timeout=90
         )
@@ -322,6 +343,7 @@ def validate_appimage(
         "build_type": build_type,
         "embedded_update_information": embedded_update_info,
         "icon_smoke": icon_report,
+        "rdkit_worker_smoke": rdkit_report,
     }
 
 

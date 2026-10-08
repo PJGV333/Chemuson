@@ -79,6 +79,8 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 pip install pyinstaller
 pyinstaller --clean --noconfirm chemuson.spec
+python packaging/release/validate_packaged_icons.py --executable "dist/Chemuson.exe"
+python packaging/release/validate_packaged_rdkit_worker.py --executable "dist/Chemuson.exe"
 $env:CHEMUSON_VERSION = "<version>"
 & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "packaging\windows\Chemuson.iss"
 & "packaging\windows\sign_artifacts.ps1" -InputDir "release-assets"

@@ -21,6 +21,10 @@ ChemUSON tiene ya una línea 0.3.0, builds Windows/Linux/Flatpak, canales beta/s
 - Registrar y corregir `UI-ONBOARDING-001`: posponer el recorrido automático hasta que el layout sea visible, conservar sus tres pasos y recalcular geometría ante resize/DPI.
 - Registrar y corregir `BRANDING-001`: normalizar las superficies visibles a **ChemUSON**, sin cambiar identidades técnicas, persistencia, nombres de artefactos ni actualización.
 - Mantener la aceptación manual de ambos asuntos pendiente hasta el retest del propietario en los nuevos paquetes.
+- Registrar `P1 — RDKit isolated backend unavailable in packaged executable`: el propietario observó que Windows portable muestra fórmula/masa/espectros estimados pero no descriptores RDKit. Verificar por separado las extensiones nativas empaquetadas y el worker aislado real en Windows portable, Linux PyInstaller y AppImage.
+- Añadir un modo worker interno al ejecutable congelado (sin GUI, sin Python externo, sin import RDKit en el padre, compatible con Windows `console=False`): el AppImage PyInstaller previo reproduce que el ejecutable recibe `_rdkit_worker.py` como argumento CLI no reconocido y termina con código 2. La disponibilidad/import de RDKit se valida por separado, sin atribuir el fallo a ausencia del paquete. Mantener aislamiento, contrato JSON, timeouts y errores controlados.
+- Hacer que Preview y el workflow oficial fallen si el RDKit smoke congelado falla o no produce descriptores conocidos/SMILES/3D; no permitir `skip` porque RDKit es dependencia obligatoria.
+- Mantener `P1` bloqueante y el retest manual del propietario pendiente; el SIGSEGV de teardown Qt sigue siendo deuda independiente.
 
 ## Capabilities
 
@@ -33,8 +37,9 @@ ChemUSON tiene ya una línea 0.3.0, builds Windows/Linux/Flatpak, canales beta/s
 
 - `ui-onboarding`: geometría fiable del recorrido actual de tres pasos, sin alterar el layout ni la semántica QSettings.
 - `visible-branding`: nombre presentado como ChemUSON con preservación de identidad técnica.
+- `packaged-rdkit-worker`: carga de RDKit nativo y ejecución del worker aislado desde los binarios PyInstaller distribuidos.
 
-El updater conserva sus contratos actuales; estos cambios no cambian canales, rutas ni formatos.
+El updater conserva sus contratos actuales; estos cambios no cambian canales, rutas ni formatos. La corrección RDKit se limita al protocolo de lanzamiento/diagnóstico del worker, a su verificación de empaquetado y al mensaje de fallo del panel; no altera algoritmos químicos, Clean2D ni persistencia `.cmsn`.
 
 ## Impact
 

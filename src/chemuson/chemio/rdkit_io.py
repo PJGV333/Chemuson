@@ -1378,12 +1378,29 @@ def _smiles_to_molgraph_isolated_result(smiles: str, timeout_s: float) -> tuple[
 
 
 def rdkit_worker_unavailable_message(worker_error: str, *, direct_error: str = "") -> str:
+    error_text = str(worker_error or "worker_error")
+    code = error_text.partition(":")[0].strip()
+    explanations = {
+        "rdkit_unavailable": "RDKit no se pudo importar en el intérprete del worker.",
+        "rdkit_extension_import_failed": "RDKit está presente, pero falló la carga de una extensión nativa.",
+        "rdkit_extension_not_packaged": "El paquete no contiene todas las extensiones nativas de RDKit.",
+        "timeout": "El worker aislado de RDKit superó el tiempo límite.",
+        "worker_start_failed": "No se pudo iniciar el proceso worker aislado de RDKit.",
+        "worker_bootstrap_failed": "Falló el inicio interno del worker RDKit empaquetado.",
+        "invalid_worker_json": "El worker RDKit devolvió JSON inválido.",
+        "invalid_worker_payload": "El worker RDKit devolvió una respuesta inválida.",
+        "worker_no_response": "El worker RDKit terminó sin escribir una respuesta.",
+    }
+    explanation = explanations.get(code, "La operación del worker aislado de RDKit no se completó.")
     parts = [
-        "RDKit worker no disponible",
-        f"worker_error: {worker_error or 'desconocido'}",
+        f"RDKit worker no disponible: {explanation}",
+        f"worker_error: {error_text}",
         f"sys.executable: {sys.executable}",
-        "Verifica que RDKit esté instalado en el mismo intérprete que ejecuta Chemuson.",
     ]
+    if code == "rdkit_unavailable":
+        parts.append("Verifica que RDKit esté instalado en el runtime del worker.")
+    elif code in {"rdkit_extension_import_failed", "rdkit_extension_not_packaged"}:
+        parts.append("Verifica que las extensiones nativas estén incluidas y cargables en el paquete.")
     if direct_error:
         parts.insert(2, f"direct_error: {direct_error}")
     return "\n".join(parts)

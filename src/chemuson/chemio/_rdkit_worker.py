@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import importlib
+import importlib.machinery
+import importlib.util
 import json
 import sys
-from typing import Any
+from pathlib import Path
+from typing import Any, TextIO
 
 try:
-    from pathlib import Path
-
     _SRC_ROOT = Path(__file__).resolve().parents[2]
     if str(_SRC_ROOT) not in sys.path:
         sys.path.insert(0, str(_SRC_ROOT))
@@ -17,10 +19,12 @@ except Exception:  # pragma: no cover - fallback defensivo en worker aislado
     _ATOMIC_NUMBERS = {}
 
 
-def _fail(message: str, **extra: Any) -> int:
+def _fail(message: str, *, output: TextIO | None = None, **extra: Any) -> int:
     payload = {"ok": False, "error": message}
     payload.update(extra)
-    sys.stdout.write(json.dumps(payload))
+    stream = output if output is not None else sys.stdout
+    if stream is not None:
+        stream.write(json.dumps(payload))
     return 0
 
 
@@ -430,31 +434,77 @@ def _visual_stereo_metadata(Chem, mol) -> dict[str, Any]:
     }
 
 
-def _handle_diagnostics_mode() -> dict[str, Any]:
-    """Diagnóstico aislado de disponibilidad RDKit en el worker."""
+def _rdkit_import_failure_code() -> str:
     try:
-        try:
-            import rdkit
+        spec = importlib.util.find_spec("rdkit")
+    except Exception:
+        spec = None
+    return "rdkit_extension_import_failed" if spec is not None else "rdkit_unavailable"
 
-            rdkit_version = str(getattr(rdkit, "__version__", ""))
-        except Exception:
-            rdkit_version = ""
-        payload = {
-            "ok": True,
-            "rdkit_version": rdkit_version,
-            "python_executable": sys.executable,
-            "sys_path_head": [str(item) for item in sys.path[:6]],
-            "worker_file": __file__,
-        }
-        return payload
+
+def _handle_diagnostics_mode() -> dict[str, Any]:
+    """Importa RDKit y verifica extensiones compiladas desde este worker."""
+    frozen = bool(getattr(sys, "frozen", False))
+    meipass = Path(str(getattr(sys, "_MEIPASS", ""))).resolve() if frozen else None
+    base = {
+        "python_executable": sys.executable,
+        "worker_file": __file__,
+        "worker_frozen": frozen,
+        "worker_meipass": str(meipass) if meipass else "",
+        "sys_path_head": [str(item) for item in sys.path[:6]],
+    }
+    try:
+        import rdkit
+    except Exception as exc:
+        return {"ok": False, "error": _rdkit_import_failure_code(), "detail": str(exc), **base}
+
+    module_names = (
+        "rdkit.Chem.rdchem",
+        "rdkit.Chem.rdMolDescriptors",
+        "rdkit.Chem.rdDistGeom",
+    )
+    native_extensions: dict[str, dict[str, Any]] = {}
+    try:
+        for name in module_names:
+            module = importlib.import_module(name)
+            module_path = Path(str(getattr(module, "__file__", ""))).resolve()
+            native = any(str(module_path).endswith(suffix) for suffix in importlib.machinery.EXTENSION_SUFFIXES)
+            inside_bundle = bool(meipass and module_path.is_relative_to(meipass))
+            native_extensions[name] = {
+                "path": str(module_path),
+                "exists": module_path.is_file(),
+                "native": native,
+                "inside_bundle": inside_bundle if frozen else None,
+            }
     except Exception as exc:
         return {
             "ok": False,
-            "error": "rdkit_unavailable",
+            "error": "rdkit_extension_import_failed",
             "detail": str(exc),
-            "python_executable": sys.executable,
-            "worker_file": __file__,
+            "native_extensions": native_extensions,
+            **base,
         }
+
+    invalid = [
+        name
+        for name, info in native_extensions.items()
+        if not info["exists"] or not info["native"] or (frozen and not info["inside_bundle"])
+    ]
+    if invalid:
+        return {
+            "ok": False,
+            "error": "rdkit_extension_not_packaged",
+            "detail": ", ".join(invalid),
+            "rdkit_version": str(getattr(rdkit, "__version__", "")),
+            "native_extensions": native_extensions,
+            **base,
+        }
+    return {
+        "ok": True,
+        "rdkit_version": str(getattr(rdkit, "__version__", "")),
+        "native_extensions": native_extensions,
+        **base,
+    }
 
 
 def _handle_graph_to_smiles_mode(Chem, request: dict[str, Any]) -> dict[str, Any]:
@@ -489,8 +539,12 @@ def _handle_graph_descriptors_mode(Chem, request: dict[str, Any]) -> dict[str, A
     if mol is None:
         return {"ok": False, "error": error or "invalid_graph"}
     try:
+        from rdkit.Chem import rdMolDescriptors
+    except Exception as exc:
+        return {"ok": False, "error": "rdkit_extension_import_failed", "detail": str(exc)}
+    try:
+        from rdkit.Chem import Crippen, Descriptors, Lipinski
         Chem.SanitizeMol(mol)
-        from rdkit.Chem import Crippen, Descriptors, Lipinski, rdMolDescriptors
 
         hbd = int(Lipinski.NumHDonors(mol))
         hba = int(Lipinski.NumHAcceptors(mol))
@@ -523,8 +577,11 @@ def _handle_graph_conformer3d_mode(Chem, request: dict[str, Any]) -> dict[str, A
     if mol.GetNumAtoms() == 0:
         return {"ok": False, "error": "empty_graph"}
     try:
-        Chem.SanitizeMol(mol)
         from rdkit.Chem import AllChem
+    except Exception as exc:
+        return {"ok": False, "error": "rdkit_extension_import_failed", "detail": str(exc)}
+    try:
+        Chem.SanitizeMol(mol)
 
         reverse_map = {rd_idx: atom_id for atom_id, rd_idx in id_map.items()}
         mol_h = Chem.AddHs(mol, addCoords=True)
@@ -765,67 +822,73 @@ def _positions_for_original_atoms(mol_h, reverse_map: dict[int, int]) -> dict[st
     return positions
 
 
-def main() -> int:
+def main(stdin: TextIO | None = None, stdout: TextIO | None = None) -> int:
+    """Process one JSON request, optionally using explicit file streams when frozen."""
+    input_stream = stdin if stdin is not None else sys.stdin
+    output_stream = stdout if stdout is not None else sys.stdout
+    if input_stream is None or output_stream is None:
+        return _fail("worker_stdio_unavailable", output=output_stream)
     try:
-        request = json.loads(sys.stdin.read() or "{}")
+        request = json.loads(input_stream.read() or "{}")
     except Exception:
-        return _fail("invalid_json")
+        return _fail("invalid_json", output=output_stream)
     if not isinstance(request, dict):
-        return _fail("invalid_request")
+        return _fail("invalid_request", output=output_stream)
 
     mode = str(request.get("mode", "graph") or "graph")
     if mode == "diagnostics":
-        sys.stdout.write(json.dumps(_handle_diagnostics_mode()))
+        output_stream.write(json.dumps(_handle_diagnostics_mode()))
         return 0
 
     try:
         from rdkit import Chem
     except Exception as exc:  # pragma: no cover - entorno sin rdkit
-        return _fail("rdkit_unavailable", detail=str(exc), python_executable=sys.executable, worker_file=__file__)
+        error = _rdkit_import_failure_code()
+        return _fail(error, output=output_stream, detail=str(exc), python_executable=sys.executable, worker_file=__file__)
 
     if mode == "text":
         result = _handle_text_mode(Chem, request)
-        sys.stdout.write(json.dumps(result))
+        output_stream.write(json.dumps(result))
         return 0
     if mode == "to_molblock":
         result = _handle_to_molblock_mode(Chem, request)
-        sys.stdout.write(json.dumps(result))
+        output_stream.write(json.dumps(result))
         return 0
     if mode == "smiles_depict_candidates":
         result = _handle_smiles_depict_candidates_mode(Chem, request)
-        sys.stdout.write(json.dumps(result))
+        output_stream.write(json.dumps(result))
         return 0
     if mode == "graph_to_smiles":
         result = _handle_graph_to_smiles_mode(Chem, request)
-        sys.stdout.write(json.dumps(result))
+        output_stream.write(json.dumps(result))
         return 0
     if mode == "graph_to_inchi":
         result = _handle_graph_to_inchi_mode(Chem, request)
-        sys.stdout.write(json.dumps(result))
+        output_stream.write(json.dumps(result))
         return 0
     if mode == "graph_descriptors":
         result = _handle_graph_descriptors_mode(Chem, request)
-        sys.stdout.write(json.dumps(result))
+        output_stream.write(json.dumps(result))
         return 0
     if mode == "graph_conformer3d":
         result = _handle_graph_conformer3d_mode(Chem, request)
-        sys.stdout.write(json.dumps(result))
+        output_stream.write(json.dumps(result))
         return 0
     if mode == "graph_optimize3d":
         result = _handle_graph_optimize3d_mode(Chem, request)
-        sys.stdout.write(json.dumps(result))
+        output_stream.write(json.dumps(result))
         return 0
     if mode == "graph_clean2d":
         result = _handle_graph_clean2d_mode(Chem, request)
-        sys.stdout.write(json.dumps(result))
+        output_stream.write(json.dumps(result))
         return 0
 
     mol, id_map, error = _build_mol_from_graph_payload(Chem, request)
     if mol is None:
-        return _fail(error or "invalid_graph")
+        return _fail(error or "invalid_graph", output=output_stream)
     chain = request.get("chain", [])
     if not isinstance(chain, list) or not chain:
-        return _fail("missing_chain")
+        return _fail("missing_chain", output=output_stream)
     try:
         normalized_chain = [int(x) for x in chain]
         if mode == "advanced_graph":
@@ -839,8 +902,8 @@ def main() -> int:
         else:
             descriptors = _stereo_descriptors_for_chain(Chem, mol, id_map, normalized_chain)
     except Exception as exc:
-        return _fail("stereo_failed", detail=str(exc))
-    sys.stdout.write(json.dumps({"ok": True, "descriptors": descriptors}))
+        return _fail("stereo_failed", output=output_stream, detail=str(exc))
+    output_stream.write(json.dumps({"ok": True, "descriptors": descriptors}))
     return 0
 
 

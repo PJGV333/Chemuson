@@ -33,7 +33,22 @@ binaries_rdkit = collect_dynamic_libs("rdkit")
 datas = datas_c + datas_icons + datas_qt
 binaries = binaries_c + binaries_qt + binaries_rdkit
 hiddenimports = sorted(
-    set(hidden_c + hidden_qt + ["PyQt6.QtSvg", "PyQt6.QtPrintSupport", "rdkit"])
+    set(
+        hidden_c
+        + hidden_qt
+        + [
+            "PyQt6.QtSvg",
+            "PyQt6.QtPrintSupport",
+            "chemuson.chemio._rdkit_worker",
+            "chemuson.chemio.rdkit_packaged_smoke",
+            "rdkit",
+            "rdkit.Chem.AllChem",
+            "rdkit.Chem.rdchem",
+            "rdkit.Chem.rdDistGeom",
+            "rdkit.Chem.rdMolDescriptors",
+            "rdkit.Chem.rdForceFieldHelpers",
+        ]
+    )
 )
 
 entry_script = str(Path("src") / "chemuson" / "__main__.py")

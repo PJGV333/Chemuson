@@ -2,6 +2,8 @@
 
 > **P1 — Missing UI icons in packaged Windows and Linux builds — FAILED — Blocks beta acceptance.** El propietario observó iconos esenciales ausentes en los paquetes portable Windows y Linux del Actions run [#37826597134](https://github.com/PJGV333/Chemuson/actions/runs/37826597134), en tema claro y oscuro. Los casos históricos `UI-FAIL-WIN-01` y `UI-FAIL-LINUX-01` quedan `FAILED — P1 blocks beta acceptance`. Un smoke automatizado no los convierte en aprobados; el propietario repetirá la verificación visual con los paquetes corregidos.
 >
+> **P1 — RDKit isolated backend unavailable in packaged executable — FAILED — Blocks beta acceptance.** El propietario informó que Windows portable calcula fórmula, masa y espectros estimados, pero no muestra descriptores RDKit. La verificación manual de esta función queda detenida hasta que un nuevo preview pase las pruebas del ejecutable congelado; el retest manual de Windows/Linux seguirá pendiente.
+>
 > Las filas históricas ya iniciadas conservan su estado. Los casos nuevos empiezan en `NOT TESTED`; la matriz no acredita aceptación hasta completar pruebas con paquetes instalados y SHA identificables.
 
 ## Registro de ejecución
@@ -84,6 +86,10 @@ Resultado permitido por caso: `PASS`, `FAIL`, `BLOCKED` o `NOT TESTED`. Registra
 | CLEAN-04 | Aplicar Clean2D y después Undo/Redo. | La operación se revierte/restaura como una acción coherente. | P1 | NOT TESTED — |
 | CLEAN-05 | Ejecutar Clean2D en estructura con sustituyentes cercanos. | No desaparecen enlaces ni átomos; resultado revisable. | P1 | NOT TESTED — |
 | CLEAN-06 | Abrir reporte/calidad tras una estructura válida y otra problemática. | Diagnóstico corresponde a la molécula y no altera su geometría. | P2 | NOT TESTED — |
+| RDKIT-WIN-01 | **Histórico — etanol `CCO` en Windows portable previo al fix:** abrir Propiedades y consultar Descriptores RDKit. | logP ≈ -0.0014, TPSA 20.23, HBD 1 y HBA 1; fórmula/masa/espectros estimados siguen disponibles; worker usa el runtime empaquetado. | P1 | FAILED — owner report: “RDKit no disponible; resultado parcial”; retest bloqueado hasta preview corregido |
+| RDKIT-WIN-02 | **Corregido — etanol `CCO` en Windows portable:** abrir Propiedades y consultar Descriptores RDKit. | Los descriptores conocidos aparecen; no requiere Python/RDKit del sistema y la aplicación conserva los resultados parciales si el worker falla. | P1 | NOT TESTED — corrected package automation required; owner manual retest pending |
+| RDKIT-LINUX-01 | **Etanol `CCO` en Linux AppImage corregido:** abrir Propiedades y consultar Descriptores RDKit. | Los mismos descriptores que Windows; no requiere Python/RDKit del sistema. | P1 | NOT TESTED — owner halted this verification; corrected artifact required |
+| RDKIT-3D-SMILES-01 | Ejecutar smoke del worker para etanol desde portable Windows y desde el ejecutable extraído del AppImage. | Worker aislado produce SMILES canónico `CCO` y coordenadas 3D finitas; proceso padre no carga RDKit; timeout y errores no bloquean la GUI. | P1 | NOT TESTED — automated package gate required; owner manual retest pending |
 
 ## F. Molecular Assistant (experimental)
 
@@ -143,8 +149,9 @@ Estos defectos confirman la baseline del candidato, no el estado de los paquetes
 
 - **UI-ONBOARDING-001:** el propietario observó la tarjeta desalineada y el spotlight/rail incorrectos en Windows portable. La fuente ahora difiere el inicio hasta el primer layout visible y recalcula geometría; el resultado manual del candidato anterior permanece **FAILED**, y el paquete corregido queda **NOT TESTED — owner retest required**.
 - **BRANDING-001:** las cadenas y metadatos visibles se normalizaron a `ChemUSON`; aún no se ha revisado el paquete resultante en Windows/Linux. Resultado manual: **NOT TESTED — owner retest required**.
+- **P1 — RDKit isolated backend unavailable in packaged executable:** el fallo portable Windows informado queda **FAILED**; `RDKIT-LINUX-01` y `RDKIT-3D-SMILES-01` permanecen **NOT TESTED**. Los tests del ejecutable congelado son gate de build, no sustituyen la aceptación manual del propietario.
 
-Los dos resultados sólo pueden actualizarse con la versión y SHA exactos de los nuevos artifacts, entorno real y evidencia del propietario. Los tests estáticos y los Qt scale-factors simulados no sustituyen esta comprobación.
+UI-ONBOARDING-001, BRANDING-001 y RDKit sólo pueden actualizarse con la versión y SHA exactos de los nuevos artifacts, entorno real y evidencia del propietario. Los tests estáticos, smoke del ejecutable congelado y Qt scale-factors simulados no sustituyen la comprobación manual.
 
 ## Severidad, promoción y cierre
 

@@ -779,6 +779,33 @@ class ChemusonWindow(QMainWindow):
         self._descriptor_jobs[job_id] = (thread, worker, list(base_rows))
         thread.start()
 
+    @staticmethod
+    def _format_descriptor_worker_error(error: str) -> str:
+        """Map worker failure categories without conflating them with missing RDKit."""
+        code, separator, detail = str(error or "worker_error").partition(":")
+        code = code.strip()
+        detail = detail.strip() if separator else ""
+        if code == "rdkit_unavailable":
+            message = "RDKit no disponible"
+        elif code == "rdkit_extension_import_failed":
+            message = "RDKit está presente, pero falló la carga de una extensión nativa"
+        elif code == "rdkit_extension_not_packaged":
+            message = "El paquete no contiene todas las extensiones nativas de RDKit"
+        elif code == "timeout":
+            message = "El worker aislado de RDKit superó el tiempo límite"
+        elif code in {"invalid_worker_json", "invalid_worker_payload", "worker_no_response"}:
+            message = "El worker aislado de RDKit devolvió una respuesta inválida"
+        elif code.startswith("worker_start_failed") or code.startswith("worker_bootstrap_failed"):
+            message = "No se pudo iniciar el worker aislado de RDKit"
+        elif code.startswith("worker_exit_code") or code.startswith("worker_exit_signal"):
+            message = "El proceso aislado de RDKit terminó inesperadamente"
+        elif code in {"descriptors_failed", "invalid_descriptors", "invalid_graph", "invalid_graph_payload"}:
+            message = "RDKit no pudo calcular descriptores para esta estructura"
+        else:
+            message = "Falló el cálculo aislado de descriptores RDKit"
+        suffix = detail or code
+        return f"{message}; resultado parcial ({suffix})"
+
     def _on_descriptor_job_finished(self, job_id: int, descriptors: dict, error: str) -> None:
         """Actualiza el dock cuando termina el worker de descriptores."""
         job = getattr(self, "_descriptor_jobs", {}).pop(int(job_id), None)
@@ -792,7 +819,7 @@ class ChemusonWindow(QMainWindow):
             return
         rows = list(base_rows)
         if error:
-            rows.append(("Descriptores RDKit", f"RDKit no disponible; resultado parcial ({error})"))
+            rows.append(("Descriptores RDKit", self._format_descriptor_worker_error(error)))
             dock.update_properties(rows)
             return
         rows.extend(self._descriptor_rows(descriptors))

@@ -88,6 +88,22 @@ def test_inno_requires_an_explicit_version_and_existing_smoke_supplies_one() -> 
     assert '$env:CHEMUSON_VERSION = "0.0.0-ci"' in test_workflow
 
 
+def test_frozen_rdkit_smoke_gates_windows_linux_and_appimage_builds() -> None:
+    text, workflow = _workflow()
+    assert 'validate_packaged_rdkit_worker.py --executable "dist/Chemuson.exe"' in text
+    assert "validate_packaged_rdkit_worker.py --executable dist/Chemuson" in text
+    assert "validate_packaged_rdkit_worker.py" in (
+        ROOT / "packaging/release/validate_appimage.py"
+    ).read_text(encoding="utf-8")
+    assert "tests/test_rdkit_packaged_worker.py" in text
+    assert "tests/test_rdkit_descriptors.py" in text
+    for job_name in ("build_windows", "build_linux"):
+        job_text = "\n".join(
+            str(step.get("run", "")) for step in workflow["jobs"][job_name]["steps"]
+        )
+        assert "validate_packaged_rdkit_worker.py" in job_text
+
+
 def test_gate_uses_bounded_non_monolithic_release_checks() -> None:
     text, workflow = _workflow()
     gate_text = text.split("  build_windows:", 1)[0]

@@ -88,6 +88,60 @@ if forbidden:
     assert result.returncode == 0, result.stderr
 
 
+def test_frozen_internal_worker_dispatch_uses_json_files_without_gui_or_rdkit(tmp_path: Path) -> None:
+    request = tmp_path / "request.json"
+    response = tmp_path / "response.json"
+    request.write_text("{", encoding="utf-8")
+    result = _run_isolated(
+        """
+import json
+import os
+import sys
+from pathlib import Path
+from chemuson.__main__ import main
+sys.frozen = True
+os.environ["CHEMUSON_INTERNAL_RDKIT_WORKER"] = "1"
+sys.argv = ["Chemuson", "--chemuson-internal-rdkit-worker", sys.argv[1], sys.argv[2]]
+code = main()
+if code != 0:
+    raise AssertionError(code)
+response = json.loads(Path(sys.argv[3]).read_text(encoding="utf-8"))
+if response != {"ok": False, "error": "invalid_json"}:
+    raise AssertionError(response)
+forbidden = sorted(
+    name for name in sys.modules
+    if name == "PyQt6" or name.startswith("PyQt6.")
+    or name == "chemuson.gui" or name.startswith("chemuson.gui.")
+    or name == "rdkit" or name.startswith("rdkit.")
+)
+if forbidden:
+    raise AssertionError(forbidden)
+""",
+        str(request),
+        str(response),
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_frozen_internal_worker_dispatch_requires_frozen_handshake(tmp_path: Path) -> None:
+    response = tmp_path / "response.json"
+    result = _run_isolated(
+        """
+import os
+import sys
+from chemuson.__main__ import main
+os.environ["CHEMUSON_INTERNAL_RDKIT_WORKER"] = "1"
+sys.argv = ["chemuson", "--chemuson-internal-rdkit-worker", "missing.json", sys.argv[1]]
+if main() != 64:
+    raise AssertionError("source process accepted internal frozen mode")
+if "chemuson.gui" in sys.modules or "rdkit" in sys.modules:
+    raise AssertionError("worker guard imported GUI or RDKit")
+""",
+        str(response),
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_default_cli_invocation_delegates_once() -> None:
     result = _run_isolated(
         """

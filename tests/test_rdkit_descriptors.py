@@ -19,10 +19,8 @@ class RdkitDescriptorWorkerTest(unittest.TestCase):
         graph.add_bond(c2.id, o.id, order=1)
 
         descriptors, error = molecular_descriptors_isolated(graph, timeout_s=5.0)
-        if error == "rdkit_unavailable":
-            self.skipTest("RDKit no disponible en el worker")
 
-        self.assertIsNone(error)
+        self.assertIsNone(error, msg=f"RDKit isolated worker failed: {error}")
         self.assertIsNotNone(descriptors)
         assert descriptors is not None
         self.assertIn("logp", descriptors)
@@ -31,8 +29,11 @@ class RdkitDescriptorWorkerTest(unittest.TestCase):
         self.assertIn("hba", descriptors)
         self.assertIn("rotatable_bonds", descriptors)
         self.assertIn("lipinski_violations", descriptors)
-        self.assertGreaterEqual(float(descriptors["tpsa"]), 0.0)
-        self.assertGreaterEqual(int(descriptors["hbd"]), 1)
+        self.assertAlmostEqual(float(descriptors["logp"]), -0.0014, delta=1e-4)
+        self.assertAlmostEqual(float(descriptors["tpsa"]), 20.23, delta=1e-6)
+        self.assertEqual(int(descriptors["hbd"]), 1)
+        self.assertEqual(int(descriptors["hba"]), 1)
+        self.assertAlmostEqual(float(descriptors["molecular_weight"]), 46.069, delta=1e-6)
 
 
 if __name__ == "__main__":

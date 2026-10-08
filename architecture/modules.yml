@@ -109,6 +109,7 @@ modules:
   - persistence
   - cml_io
   - _rdkit_worker
+  - rdkit_packaged_smoke
   name: chemio
   notes: ChemIO gestiona formatos, parsing, persistencia y workers RDKit; no contiene
     scoring, ranking ni layout Clean2D. La persistencia recibe un documento mediante
@@ -129,6 +130,7 @@ modules:
   - tests/test_smiles_import_isolated.py
   - tests/test_rdkit_smoke.py
   - tests/test_rdkit_descriptors.py
+  - tests/test_rdkit_packaged_worker.py
   - tests/test_rdkit_strict_validation.py
   - tests/test_coordination_persistence.py
   title: Import/export químico y persistencia
@@ -1199,6 +1201,7 @@ modules:
   - M18
   - M08
   - M22
+  - M01
   entry_points:
   - chemuson
   - python -m chemuson
@@ -1211,14 +1214,15 @@ modules:
   - src/chemuson/app/
   public_api:
   - main
-  responsibility: Punto de entrada CLI, parsing inicial y arranque diferido de la
-    GUI.
+  responsibility: Punto de entrada CLI, parsing inicial, despacho del worker RDKit
+    congelado y arranque diferido de la GUI.
   risk_level: medium
   status: stable
   target_dependencies:
   - M18
   - M08
   - M22
+  - M01
   temporary_exceptions: []
   tests:
   - tests/test_application_startup_non_qt.py

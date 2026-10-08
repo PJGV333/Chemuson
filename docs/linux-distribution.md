@@ -90,6 +90,7 @@ Requiere `curl`, `desktop-file-utils`, `appstream` (`appstreamcli`) y las depend
 ```bash
 pyinstaller --clean --noconfirm chemuson.spec
 python packaging/release/validate_packaged_icons.py --executable dist/Chemuson
+python packaging/release/validate_packaged_rdkit_worker.py --executable dist/Chemuson
 bash packaging/linux/build_appimage.sh \
   "<version>" \
   "dist" \

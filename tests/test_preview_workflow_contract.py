@@ -130,3 +130,7 @@ def test_preview_metadata_uses_canonical_version_and_official_workflow_stays_sep
     assert "build_windows:" in release_text
     assert "build_linux:" in release_text
     assert "build_flatpak:" in release_text
+    assert "validate_packaged_rdkit_worker.py --executable \"dist/Chemuson.exe\"" in text
+    assert "validate_packaged_rdkit_worker.py --executable dist/Chemuson" in text
+    assert "validate_packaged_rdkit_worker.py --executable \"dist/Chemuson.exe\"" in release_text
+    assert "validate_packaged_rdkit_worker.py --executable dist/Chemuson" in release_text

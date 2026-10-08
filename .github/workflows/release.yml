@@ -79,8 +79,18 @@ jobs:
           tests/test_packaged_icon_smoke.py
           packaging/release/validate_appimage.py
           packaging/release/validate_packaged_icons.py
+          packaging/release/validate_packaged_rdkit_worker.py
+          tests/test_rdkit_packaged_worker.py
+          tests/test_rdkit_descriptors.py
+          tests/test_application_startup_non_qt.py
+          tests/test_ui_polish.py
+          tests/test_smiles_import_isolated.py
           src/chemuson/__main__.py
-          src/chemuson/gui/theme/icon_smoke.py
+          src/chemuson/chemio/rdkit_safe.py
+          src/chemuson/chemio/rdkit_packaged_smoke.py
+          src/chemuson/chemio/_rdkit_worker.py
+          src/chemuson/chemio/rdkit_io.py
+          src/chemuson/gui/main_window.py
           --select F401,F811,F821,E722,E741
 
       - name: Run architecture tests on validated tag SHA
@@ -110,6 +120,11 @@ jobs:
           tests/test_appimage_validation.py
           tests/test_linux_distribution_scripts.py
           tests/test_packaged_icon_smoke.py
+          tests/test_rdkit_packaged_worker.py
+          tests/test_rdkit_descriptors.py
+          tests/test_application_startup_non_qt.py
+          tests/test_smiles_import_isolated.py
+          tests/test_ui_polish.py
 
   build_windows:
     needs: release_gate
@@ -153,7 +168,9 @@ jobs:
 
       - name: Validate frozen Windows SVG icons
         shell: pwsh
-        run: python packaging/release/validate_packaged_icons.py --executable "dist/Chemuson.exe"
+        run: |
+          python packaging/release/validate_packaged_icons.py --executable "dist/Chemuson.exe"
+          python packaging/release/validate_packaged_rdkit_worker.py --executable "dist/Chemuson.exe"
 
       - name: Build installer (Inno Setup)
         shell: pwsh
@@ -233,7 +250,9 @@ jobs:
         run: pyinstaller --clean --noconfirm chemuson.spec
 
       - name: Validate frozen Linux SVG icons
-        run: python packaging/release/validate_packaged_icons.py --executable dist/Chemuson
+        run: |
+          python packaging/release/validate_packaged_icons.py --executable dist/Chemuson
+          python packaging/release/validate_packaged_rdkit_worker.py --executable dist/Chemuson
 
       - name: Build authentic AppImage Type 2 with updater metadata
         run: |

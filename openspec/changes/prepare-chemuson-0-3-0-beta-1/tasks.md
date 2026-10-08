@@ -72,3 +72,14 @@
 - [x] 11.4 Add static/focused regression tests for displayed branding, package metadata and technical identity/installer/updater compatibility; preserve all package IDs, commands, paths, update routes and artifact names.
 - [x] 11.5 Update the active beta notes and manual acceptance matrix with `UI-ONBOARDING-001` and `BRANDING-001`; keep new package/manual results pending owner retest.
 - [ ] 11.6 Owner manually retests the new preview packages on Windows and Linux, including three window sizes, common DPI scales, branding surfaces, installer upgrade/uninstall identity and updater compatibility.
+
+## 12. P1 — RDKit isolated backend unavailable in packaged executable
+- [x] 12.1 Record the owner's Windows portable failure (formula/mass/estimated spectra work; RDKit descriptors report unavailable), mark this P1 as failed/blocking, and stop manual package verification until a corrected preview is available.
+- [ ] 12.2 Reproduce the pre-fix invocation failure from an actual frozen executable; separately verify RDKit/native imports in the installed runtime and make the corrected frozen smoke prove imports resolve inside each packaged bundle.
+- [x] 12.3 Implement a frozen-only worker dispatch in the existing executable; keep source mode compatible, retain process isolation/JSON API/timeouts, support Windows `console=False` without stdin/stdout, prevent GUI bootstrap/recursion, and ensure timeout cleanup/no orphaned process.
+- [x] 12.4 Add required diagnostics for import/native-extension, worker start/exit, timeout, malformed response and chemistry errors; make the Properties pane label only actual RDKit import failure as unavailable while retaining partial results.
+- [x] 12.5 Add a non-skipping frozen executable validator/smoke: require `sys.executable` to be the tested executable, extensions to load from its extracted bundle, ethanol logP/TPSA/HBD/HBA values, and bounded isolated 3D plus SMILES calls; assert the parent stays RDKit/GUI-free.
+- [ ] 12.6 Wire fail-closed frozen smoke gates into Windows portable, Linux PyInstaller and extracted AppImage jobs in both Build Preview and official release workflows; run the real Build Preview package jobs. Do not trigger the official release workflow because no tag/release is authorized.
+- [x] 12.7 Add focused unit/integration tests for source worker errors/protocol, frozen dispatch, app-UI messages, smoke validator, workflows and architecture catalog; do not alter chemistry algorithms, Clean2D, `.cmsn`, or the independent Qt teardown debt.
+- [ ] 12.8 Run bounded RDKit/app packaging tests, architecture, strict OpenSpec, scoped Ruff, compileall and diff check; push a normal commit only to `release/v0.3.0-beta.1-prep` and wait for the matching Preview/CI jobs, without tags/releases/publication.
+- [ ] 12.9 Owner manually retests corrected Windows portable and AppImage/Linux packages; beta acceptance remains awaiting manual retest.

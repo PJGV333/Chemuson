@@ -87,6 +87,7 @@ jobs:
           pyinstaller --clean --noconfirm chemuson.spec
           if (-not (Test-Path "dist\Chemuson.exe")) { throw "Portable executable was not generated." }
           python packaging/release/validate_packaged_icons.py --executable "dist/Chemuson.exe"
+          python packaging/release/validate_packaged_rdkit_worker.py --executable "dist/Chemuson.exe"
           choco install innosetup --no-progress -y
           $env:CHEMUSON_VERSION = $env:PREVIEW_VERSION
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "packaging\windows\Chemuson.iss"
@@ -169,6 +170,7 @@ jobs:
           test -s dist/Chemuson
           test -x dist/Chemuson
           python packaging/release/validate_packaged_icons.py --executable dist/Chemuson
+          python packaging/release/validate_packaged_rdkit_worker.py --executable dist/Chemuson
 
       - name: Build preview portable package without updater metadata
         run: |

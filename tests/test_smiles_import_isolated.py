@@ -45,6 +45,13 @@ def test_smiles_to_molgraph_reports_worker_diagnostics_on_failure(monkeypatch) -
     assert "sys.executable" in message or sys.executable in message
 
 
+def test_worker_timeout_diagnostic_does_not_claim_rdkit_is_missing() -> None:
+    message = rdkit_io.rdkit_worker_unavailable_message("timeout")
+
+    assert "superó el tiempo límite" in message
+    assert "Verifica que RDKit esté instalado" not in message
+
+
 def test_isolated_smiles_import_generates_non_degenerate_coordinates() -> None:
     graph, error = smiles_to_molgraph_isolated("CC", timeout_s=5.0)
     if graph is None:

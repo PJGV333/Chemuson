@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -138,7 +140,7 @@ def molecular_descriptors_isolated(
     )
     response = _run_worker(request, timeout_s=timeout_s)
     if not response.get("ok"):
-        return None, str(response.get("error", "worker_error"))
+        return None, _worker_error_text(response)
     descriptors = response.get("descriptors", {})
     if not isinstance(descriptors, dict):
         return None, "invalid_descriptors"
@@ -425,26 +427,36 @@ def _worker_path() -> Path:
 
 
 def _run_worker(request: dict[str, Any], timeout_s: float) -> dict[str, Any]:
-    """Ejecuta worker RDKit y devuelve JSON robusto, incluso ante crash."""
+    """Ejecuta worker RDKit aislado en Python o dentro del EXE congelado."""
+    frozen = bool(getattr(sys, "frozen", False))
     worker = _worker_path()
-    cmd = [sys.executable, str(worker)]
-    base = {
-        "python_executable": sys.executable,
-        "worker_path": str(worker),
-    }
+    worker_label = "frozen:chemuson.chemio._rdkit_worker" if frozen else str(worker)
+    base = {"python_executable": sys.executable, "worker_path": worker_label}
+    timeout = max(1.0, float(timeout_s))
+
+    if frozen:
+        return _run_frozen_worker(request, timeout=timeout, base=base)
+
     try:
         proc = subprocess.run(
-            cmd,
+            [sys.executable, str(worker)],
             input=json.dumps(request),
             text=True,
             capture_output=True,
-            timeout=max(1.0, float(timeout_s)),
+            timeout=timeout,
             check=False,
         )
     except subprocess.TimeoutExpired:
         return {"ok": False, "error": "timeout", **base}
+    except OSError as exc:
+        return {
+            "ok": False,
+            "error": "worker_start_failed",
+            "detail": str(exc),
+            **base,
+        }
     except Exception as exc:
-        return {"ok": False, "error": str(exc), **base}
+        return {"ok": False, "error": "worker_start_failed", "detail": str(exc), **base}
 
     if proc.returncode != 0:
         payload = {
@@ -456,21 +468,116 @@ def _run_worker(request: dict[str, Any], timeout_s: float) -> dict[str, Any]:
         }
         if proc.returncode < 0:
             payload["error"] = f"worker_exit_signal:{-proc.returncode}"
-            return payload
-        payload["error"] = f"worker_exit_code:{proc.returncode}"
+        else:
+            payload["error"] = f"worker_exit_code:{proc.returncode}"
         return payload
+    return _parse_worker_response(proc.stdout or "", base, stderr=proc.stderr or "")
+
+
+def _run_frozen_worker(
+    request: dict[str, Any],
+    *,
+    timeout: float,
+    base: dict[str, str],
+) -> dict[str, Any]:
+    """Run the embedded worker mode using JSON files, independent of console IO."""
     try:
-        data = json.loads(proc.stdout or "{}")
+        with tempfile.TemporaryDirectory(prefix="chemuson-rdkit-worker-") as temporary:
+            root = Path(temporary)
+            request_path = root / "request.json"
+            response_path = root / "response.json"
+            request_path.write_text(json.dumps(request), encoding="utf-8")
+            environment = os.environ.copy()
+            environment["CHEMUSON_INTERNAL_RDKIT_WORKER"] = "1"
+            command = [
+                sys.executable,
+                "--chemuson-internal-rdkit-worker",
+                str(request_path),
+                str(response_path),
+            ]
+            options: dict[str, Any] = {}
+            if os.name == "nt":
+                options["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            try:
+                proc = subprocess.run(
+                    command,
+                    stdin=subprocess.DEVNULL,
+                    capture_output=True,
+                    text=True,
+                    env=environment,
+                    timeout=timeout,
+                    check=False,
+                    **options,
+                )
+            except subprocess.TimeoutExpired:
+                return {"ok": False, "error": "timeout", **base}
+            except OSError as exc:
+                return {
+                    "ok": False,
+                    "error": "worker_start_failed",
+                    "detail": str(exc),
+                    **base,
+                }
+            except Exception as exc:
+                return {"ok": False, "error": "worker_start_failed", "detail": str(exc), **base}
+
+            if proc.returncode != 0:
+                error = (
+                    f"worker_exit_signal:{-proc.returncode}"
+                    if proc.returncode < 0
+                    else f"worker_exit_code:{proc.returncode}"
+                )
+                return {
+                    "ok": False,
+                    "error": error,
+                    "returncode": int(proc.returncode),
+                    "stdout": (proc.stdout or "").strip(),
+                    "stderr": (proc.stderr or "").strip(),
+                    **base,
+                }
+            if not response_path.is_file():
+                return {
+                    "ok": False,
+                    "error": "worker_no_response",
+                    "stdout": (proc.stdout or "").strip(),
+                    "stderr": (proc.stderr or "").strip(),
+                    **base,
+                }
+            try:
+                output = response_path.read_text(encoding="utf-8")
+            except OSError as exc:
+                return {"ok": False, "error": "invalid_worker_json", "detail": str(exc), **base}
+            return _parse_worker_response(output, base, stderr=proc.stderr or "")
+    except OSError as exc:
+        return {"ok": False, "error": "worker_start_failed", "detail": str(exc), **base}
+
+
+def _parse_worker_response(
+    output: str,
+    base: dict[str, str],
+    *,
+    stderr: str = "",
+) -> dict[str, Any]:
+    try:
+        data = json.loads(output or "{}")
     except Exception:
         return {
             "ok": False,
             "error": "invalid_worker_json",
-            "stdout": (proc.stdout or "").strip(),
-            "stderr": (proc.stderr or "").strip(),
+            "stdout": output.strip()[-4000:],
+            "stderr": stderr.strip()[-4000:],
             **base,
         }
     if not isinstance(data, dict):
         return {"ok": False, "error": "invalid_worker_payload", **base}
     data.setdefault("python_executable", sys.executable)
-    data.setdefault("worker_path", str(worker))
+    data.setdefault("worker_path", base["worker_path"])
     return data
+
+
+def _worker_error_text(response: dict[str, Any]) -> str:
+    error = str(response.get("error", "worker_error"))
+    detail = str(response.get("detail", "") or response.get("stderr", "") or "").strip()
+    if detail:
+        return f"{error}: {detail[:500]}"
+    return error
