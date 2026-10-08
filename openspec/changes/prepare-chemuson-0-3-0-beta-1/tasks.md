@@ -38,3 +38,29 @@
 - [x] 6.2 Validate AppStream XML, Flatpak YAML, release/preview workflow policy and manifest/checksum/provenance smoke with available tools; explicitly report unavailable Windows/Flatpak-builder/AppImage Type 2 validation.
 - [x] 6.3 Verify no tag/release/gh-pages/channel publication occurred and no Clean2D/chemistry/`.cmsn` changes exist.
 - [ ] 6.4 Commit focused changes on this prep branch and push only if normal authentication is available; verify remote branch SHA. Never merge/rebase/force-push or modify `main`, tags, GitHub Releases or `gh-pages`.
+
+## 7. Genuine AppImage Type 2 addendum
+- [x] 7.1 Add a reproducible AppDir with `AppRun`, validated desktop entry, ChemUSON SVG icon, AppStream metainfo and the existing PyInstaller binary/resources.
+- [x] 7.2 Pin the official AppImageKit appimagetool asset by upstream URL/asset/version and SHA-256; verify the tool before execution and document why linuxdeploy is unnecessary.
+- [x] 7.3 Replace executable-copy/rename behavior with appimagetool Type 2 generation in the shared Linux builder; pin preview and official Linux build jobs to a compatible runner.
+- [x] 7.4 Validate ELF/x86_64 + `AI\\x02`, extract with `--appimage-extract` without FUSE, validate AppDir/desktop/icon/AppStream, inspect bundled PyQt6/ChemUSON resources, verify internal version and perform a bounded headless launch.
+- [x] 7.5 Preserve official artifact names and update-information string; embed the exact existing AppImageUpdate value and retain/validate `.updateinfo`, `.update.json`, `.zsync`, channel, tag and source SHA. Previews remain without update metadata.
+- [x] 7.6 Update both preview and official release workflow steps and add regression tests for false AppImages, Type 2 signature, extraction/AppDir/launch validation, updater compatibility, SHA/provenance and workflow integration.
+- [x] 7.7 Update current release/preview/Linux packaging documentation and manual acceptance criteria. Historical campaign records remain historical facts.
+
+## 8. Python CI dependency addendum
+- [x] 8.1 Install `requirements.txt`, `requirements-dev.txt`, and the editable project in `.github/workflows/test.yml`; do not duplicate PyYAML or add runtime dependencies.
+- [x] 8.2 Add a static workflow contract proving dev dependencies are installed before full pytest collection and that the real suite is not skipped/ignored or masked.
+
+## 9. Addendum validation
+- [ ] 9.1 Run the AppImage packaging, release workflow, preview helper/workflow, CI workflow, architecture and OpenSpec tests with a 10-minute cap per test command; run compileall, focused Ruff and diff checks.
+- [x] 9.2 Perform real Linux PyInstaller→AppImageTool preview/release builds with bounded time, full Type 2/resource/icon/updater validation; do not claim graphical acceptance from a headless runner.
+- [ ] 9.3 Record whether normal push authorization exists. Commit AppImage and CI fixes separately; push only this prep branch if possible. Do not create tag/release or merge.
+
+## 10. P1 packaged UI icon defect addendum
+- [x] 10.1 Record the owner's confirmed missing-icon failures for Windows and Linux portable packages from preview run `37826597134`; mark manual acceptance `FAILED — P1 blocks beta acceptance` and preserve owner retest as a separate gate.
+- [x] 10.2 Reproduce the shared cause from a real Linux PyInstaller binary: `collect_all("chemuson")` skips because it is not installed as a package in the build environment; binary archive has zero SVGs while QtSvg bindings are present.
+- [x] 10.3 Add deterministic PyInstaller `datas` for exactly 69 package-relative static SVGs and fail if any are missing; preserve source/frozen lookup and themes.
+- [x] 10.4 Add environment-gated frozen binary diagnostics for path resolution, all 69 SVG resources, QtSvg and visible raster pixels for essential icon categories in light/dark themes and DPR 2.
+- [ ] 10.5 Linux actual PyInstaller executable and authentic preview/release AppImages pass frozen-process path/resource/QtSvg/raster checks. Windows preview/release executable checks are wired fail-closed but remain unexecuted locally; verify in the next Actions run.
+- [x] 10.6 Update tests/docs without altering the SVG inventory or chemical/UI behavior; owner manual retest remains NOT PASSED and blocks beta publication.

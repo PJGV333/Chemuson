@@ -76,6 +76,51 @@ def _load_flatpak_validate_module():
     return module
 
 
+def _write_fake_appimagetool(tmp_path: Path) -> Path:
+    tool = tmp_path / "fake-appimagetool"
+    tool.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, os, pathlib, sys\n"
+        "args = sys.argv[1:]\n"
+        "if args == ['--version']:\n"
+        "    print('appimagetool, continuous build (commit 5735cc5)')\n"
+        "    raise SystemExit(0)\n"
+        "appdir, output = pathlib.Path(args[-2]), pathlib.Path(args[-1])\n"
+        "for required in ('AppRun', 'io.github.PJGV333.Chemuson.desktop', '.DirIcon', 'usr/bin/Chemuson'):\n"
+        "    if not (appdir / required).exists(): raise SystemExit(f'missing {required}')\n"
+        "header = bytearray(64)\n"
+        "header[:8] = b'\\x7fELF\\x02\\x01\\x01\\x00'\n"
+        "header[8:11] = b'AI\\x02'\n"
+        "header[16:18] = (2).to_bytes(2, 'little')\n"
+        "header[18:20] = (62).to_bytes(2, 'little')\n"
+        "output.parent.mkdir(parents=True, exist_ok=True)\n"
+        "output.write_bytes(header + b'fake-squashfs-payload')\n"
+        "output.chmod(0o755)\n"
+        "if os.environ.get('APPIMAGE_TOOL_CAPTURE'):\n"
+        "    pathlib.Path(os.environ['APPIMAGE_TOOL_CAPTURE']).write_text(json.dumps(args))\n",
+        encoding="utf-8",
+    )
+    tool.chmod(0o755)
+    return tool
+
+
+def _write_fake_zsyncmake(tmp_path: Path) -> Path:
+    bindir = tmp_path / "bin"
+    bindir.mkdir(exist_ok=True)
+    tool = bindir / "zsyncmake"
+    tool.write_text(
+        "#!/usr/bin/env python3\n"
+        "import pathlib, sys\n"
+        "args = sys.argv[1:]\n"
+        "out = pathlib.Path(args[args.index('-o') + 1])\n"
+        "url = args[args.index('-u') + 1]\n"
+        "out.write_text('zsync: 0.6.2\\nURL: ' + url + '\\n')\n",
+        encoding="utf-8",
+    )
+    tool.chmod(0o755)
+    return bindir
+
+
 def _write_flatpak_remote_configs(
     root: Path,
     *,
@@ -339,50 +384,53 @@ def test_generate_flatpak_pages_index_only_links_existing_channels(tmp_path) -> 
     assert "./flatpak/beta/Chemuson-beta.flatpakref" not in html
 
 
-def test_build_appimage_script_writes_update_metadata(tmp_path) -> None:
+def test_build_appimage_script_embeds_existing_update_information(tmp_path) -> None:
     repo_root = Path(__file__).resolve().parent.parent
     script_path = repo_root / "packaging" / "linux" / "build_appimage.sh"
     dist_dir = tmp_path / "dist"
     out_dir = tmp_path / "dist-appimage"
     dist_dir.mkdir(parents=True, exist_ok=True)
-
-    # Binario ejecutable mínimo para activar ruta fallback del script.
     app_bin = dist_dir / "Chemuson"
     app_bin.write_text("#!/usr/bin/env bash\necho chemuson\n", encoding="utf-8")
     app_bin.chmod(0o755)
+    fake_tool = _write_fake_appimagetool(tmp_path)
+    fake_zsync_bin = _write_fake_zsyncmake(tmp_path)
+    capture = tmp_path / "appimagetool-args.json"
+    env = os.environ.copy()
+    env["APPIMAGETOOL_BIN"] = str(fake_tool)
+    env["APPIMAGE_TOOL_CAPTURE"] = str(capture)
+    env["PATH"] = f"{fake_zsync_bin}{os.pathsep}{env['PATH']}"
+    source_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo_root, check=True, capture_output=True, text=True
+    ).stdout.strip()
 
-    cmd = [
-        "bash",
-        str(script_path),
-        "1.2.3-beta.1",
-        str(dist_dir),
-        str(out_dir),
-        "PJGV333",
-        "Chemuson",
-        "beta",
-        "v1.2.3-beta.1",
-    ]
-    subprocess.run(cmd, check=True, cwd=str(repo_root))
+    subprocess.run(
+        [
+            "bash", str(script_path), "1.2.3-beta.1", str(dist_dir), str(out_dir),
+            "PJGV333", "Chemuson", "beta", "v1.2.3-beta.1", source_sha,
+        ],
+        check=True,
+        cwd=str(repo_root),
+        env=env,
+    )
 
     appimage = out_dir / "Chemuson-v1.2.3-beta.1-linux-x86_64.AppImage"
-    updateinfo = out_dir / "Chemuson-v1.2.3-beta.1-linux-x86_64.AppImage.updateinfo"
-    updatejson = out_dir / "Chemuson-v1.2.3-beta.1-linux-x86_64.AppImage.update.json"
-
-    assert appimage.exists()
+    updateinfo = Path(f"{appimage}.updateinfo")
+    updatejson = Path(f"{appimage}.update.json")
+    zsync = Path(f"{appimage}.zsync")
+    assert appimage.read_bytes()[8:11] == b"AI\x02"
     assert os.access(appimage, os.X_OK)
-    assert updateinfo.exists()
-    assert updatejson.exists()
-
-    update_info_text = updateinfo.read_text(encoding="utf-8").strip()
-    assert "gh-releases-zsync|PJGV333|Chemuson|prerelease|" in update_info_text
-
-    payload = json.loads(updatejson.read_text(encoding="utf-8"))
-    assert payload["version"] == "1.2.3-beta.1"
-    assert payload["channel"] == "beta"
-    assert payload["tag"] == "v1.2.3-beta.1"
+    update_information = (
+        "gh-releases-zsync|PJGV333|Chemuson|prerelease|"
+        "Chemuson-v1.2.3-beta.1-linux-x86_64.AppImage.zsync"
+    )
+    assert updateinfo.read_text(encoding="utf-8").strip() == update_information
+    assert update_information in json.loads(capture.read_text(encoding="utf-8"))
+    assert json.loads(updatejson.read_text(encoding="utf-8"))["appimage_update_information"] == update_information
+    assert "URL: https://github.com/PJGV333/Chemuson/releases/download/v1.2.3-beta.1/" in zsync.read_text(encoding="utf-8")
 
 
-def test_build_appimage_preview_omits_public_updater_metadata(tmp_path) -> None:
+def test_build_appimage_preview_creates_type2_without_public_updater_metadata(tmp_path) -> None:
     repo_root = Path(__file__).resolve().parent.parent
     script_path = repo_root / "packaging" / "linux" / "build_appimage.sh"
     dist_dir = tmp_path / "dist"
@@ -391,6 +439,7 @@ def test_build_appimage_preview_omits_public_updater_metadata(tmp_path) -> None:
     app_bin = dist_dir / "Chemuson"
     app_bin.write_text("#!/usr/bin/env bash\\necho chemuson\\n", encoding="utf-8")
     app_bin.chmod(0o755)
+    fake_tool = _write_fake_appimagetool(tmp_path)
     sha = subprocess.run(
         ["git", "rev-parse", "HEAD"],
         cwd=repo_root,
@@ -398,28 +447,21 @@ def test_build_appimage_preview_omits_public_updater_metadata(tmp_path) -> None:
         capture_output=True,
         text=True,
     ).stdout.strip()
+    env = os.environ.copy()
+    env["APPIMAGETOOL_BIN"] = str(fake_tool)
 
     subprocess.run(
         [
-            "bash",
-            str(script_path),
-            APP_VERSION,
-            str(dist_dir),
-            str(out_dir),
-            "",
-            "",
-            "beta",
-            "",
-            sha,
-            "preview",
-            "release/v0.3.0-beta.1-prep",
+            "bash", str(script_path), APP_VERSION, str(dist_dir), str(out_dir), "", "",
+            "beta", "", sha, "preview", "release/v0.3.0-beta.1-prep",
         ],
         check=True,
         cwd=str(repo_root),
+        env=env,
     )
 
     artifact = out_dir / f"Chemuson-v{APP_VERSION}-preview-{sha[:8]}-linux-x86_64.AppImage"
-    assert artifact.is_file()
+    assert artifact.read_bytes()[8:11] == b"AI\x02"
     assert os.access(artifact, os.X_OK)
     assert not Path(f"{artifact}.updateinfo").exists()
     assert not Path(f"{artifact}.update.json").exists()
@@ -483,6 +525,9 @@ def test_build_appimage_rejects_mismatched_channel(tmp_path) -> None:
             "Chemuson",
             "stable",
             "v1.2.3-beta.1",
+            subprocess.run(
+                ["git", "rev-parse", "HEAD"], cwd=repo_root, check=True, capture_output=True, text=True
+            ).stdout.strip(),
         ],
         cwd=str(repo_root),
         capture_output=True,

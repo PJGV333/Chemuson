@@ -69,10 +69,13 @@ def test_preview_has_no_release_tag_gh_pages_or_public_channel_operations() -> N
     assert not [token for token in forbidden if token.lower() in lowered]
 
     appimage_builder = (ROOT / "packaging/linux/build_appimage.sh").read_text(encoding="utf-8")
-    preview_appimage_path = appimage_builder.split('if [[ "${BUILD_TYPE}" == "preview" ]]', 1)[1]
-    assert "no public updater metadata" in appimage_builder.lower()
-    assert "exit 0" in preview_appimage_path
-    assert appimage_builder.index('if [[ "${BUILD_TYPE}" == "preview" ]]') < appimage_builder.index("# Metadata AppImageUpdate")
+    appimage_validator = (ROOT / "packaging/release/validate_appimage.py").read_text(encoding="utf-8")
+    assert '"${APPIMAGETOOL}" "${APPDIR}" "${APPIMAGE_PATH}"' in appimage_builder
+    assert "--updateinformation \"${UPDATE_INFO}\"" in appimage_builder
+    assert 'if build_type == "preview":' in appimage_validator
+    preview_validation = appimage_validator.split('if build_type == "preview":', 1)[1].split("else:", 1)[0]
+    assert "embedded_update_info" in preview_validation
+    assert "updateinfo_path" in preview_validation and "update_json_path" in preview_validation
     flatpak_builder = (ROOT / "packaging/linux/build_flatpak.sh").read_text(encoding="utf-8")
     assert "Preview Flatpak builds cannot use public remote URLs or signing credentials." in flatpak_builder
     assert 'BRANCH="preview-${SOURCE_SHA:0:8}"' in flatpak_builder

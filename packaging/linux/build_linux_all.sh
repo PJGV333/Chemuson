@@ -45,6 +45,14 @@ fi
 
 cd "${ROOT_DIR}"
 
+if [[ -z "${SOURCE_SHA:-}" ]]; then
+  if [[ -n "$(git status --porcelain --untracked-files=all)" ]]; then
+    echo "SOURCE_SHA is required when building from a dirty checkout." >&2
+    exit 2
+  fi
+  SOURCE_SHA="$(git rev-parse HEAD)"
+fi
+
 if [[ ! -d "${VENV_DIR}" ]]; then
   python3 -m venv "${VENV_DIR}"
 fi

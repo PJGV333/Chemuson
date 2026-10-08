@@ -14,6 +14,14 @@ The release acceptance matrix SHALL assign stable case IDs and provide prerequis
 - **THEN** the recorded result identifies the exact artifact/version, environment and observed evidence
 - **AND** unexecuted cases remain `NOT TESTED`, not implied PASS.
 
+### Requirement: Linux AppImage acceptance distinguishes format from graphical behavior
+The Linux distribution cases SHALL verify the AppImage Type 2 signature, successful `--appimage-extract`, expected AppDir entries and internal version before installation. Runner-side offscreen startup evidence SHALL be recorded separately from interactive visual acceptance; headless execution MUST NOT be reported as graphical QA.
+
+#### Scenario: AppImage package is received
+- **WHEN** a tester downloads a Linux preview/release package
+- **THEN** its SHA/provenance and Type 2 structure are verified before installation
+- **AND** visual, input, close/teardown and chemical workflows remain manual test cases.
+
 ### Requirement: Stable promotion has explicit severity gates
 A stable promotion SHALL require approval of the owner and completion of the declared priority manual cases. Any open P0 or P1 attributable to the candidate SHALL block stable publication. P2/P3 issues MAY be accepted only with a documented workaround, owner decision and follow-up. The matrix SHALL distinguish product defects from known test-harness baseline exceptions.
 
@@ -34,6 +42,18 @@ Manual checks SHALL compare molecular connectivity, atom/bond properties, charge
 - **WHEN** a representative `.cmsn` document is saved, closed and reopened
 - **THEN** its graph, chemistry-relevant properties and expected coordinates are preserved
 - **AND** any mismatch is recorded as a failure rather than repaired silently.
+
+### Requirement: Packaged icon defects block beta acceptance until manual retest
+A confirmed P1 missing-icon defect SHALL be recorded as `FAILED — P1 blocks beta acceptance` per affected platform in the manual matrix. For this campaign it MUST block beta publication, not only stable promotion, until the owner completes the manual retest. Automated source/offscreen or frozen-resource smoke checks MUST NOT turn those manual cases into PASS. The owner MUST install the corrected Windows portable and Linux portable/AppImage artifacts and visually verify pointer/select, single bond, aromatic ring, search, undo, redo, new document and clean tools in light and dark themes before changing their status.
+
+#### Scenario: Frozen smoke passes while manual retest is pending
+- **WHEN** the packaged executable reports all required SVGs and visible QtSvg rasters
+- **THEN** this is recorded only as automated packaging evidence
+- **AND** the affected manual cases remain blocked/failed until owner visual retest on the real packages.
+
+#### Scenario: Owner confirms icons on corrected packages
+- **WHEN** the owner records artifact SHA, platform, themes and screenshots/evidence after retest
+- **THEN** only the corresponding platform/theme matrix case may change from FAILED to PASS.
 
 ### Requirement: AI acceptance distinguishes structure validity from identity
 Molecular Assistant cases SHALL record provider availability, source provenance, ChemIO validity and identity/reference status separately. A valid SMILES alone SHALL NOT be considered proof of the requested molecular identity. Tests SHALL cover offline/provider failure behavior without assuming a Qwen endpoint exists.

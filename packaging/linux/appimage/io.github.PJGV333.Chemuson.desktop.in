@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Chemuson
+Comment=Editor molecular 2D libre
+Exec=AppRun
+TryExec=AppRun
+Icon=io.github.PJGV333.Chemuson
+Terminal=false
+Categories=Science;Chemistry;
+Keywords=chemistry;molecule;editor;smiles;molfile;
+X-AppImage-Version=@APP_VERSION@

@@ -12,9 +12,12 @@ ChemUSON tiene ya una línea 0.3.0, builds Windows/Linux/Flatpak, canales beta/s
 - Retirar el dispatch que acepta versión/canal separados; evitar colisión/reutilización de releases, controlar permisos y preservar separación beta/stable.
 - Mantener checksums obligatorios, declarar explícitamente el alcance opcional de HMAC/GPG y registrar procedencia verificable de los artefactos.
 - Documentar excepciones baseline por test exacto, sin skips generales, y preparar notas beta, política de versionado y matriz manual beta/estable.
-- Añadir compilaciones preview independientes para ramas de preparación: portable e instalador Windows, ejecutable portable Linux con sufijo histórico `.AppImage`, y bundle Flatpak. Adjuntar checksums y procedencia sin publicar nada.
+- Añadir compilaciones preview independientes para ramas de preparación: portable e instalador Windows, AppImage Linux Type 2 auténtico, y bundle Flatpak. Adjuntar checksums y procedencia sin publicar nada.
+- Construir AppImage desde un AppDir verificable con AppRun, desktop entry, icono y bundle PyInstaller; preservar y validar el contrato existente de updater, incluido el update-information embebido.
+- Corregir CI Python para instalar `requirements-dev.txt` sin duplicar dependencias runtime y proteger el manifiesto de test mediante contrato estático.
 - Aislar por contrato el workflow preview de Releases, tags, canales, manifests públicos y `gh-pages`, con permisos `contents: read` y pruebas estáticas.
 - Auditar Windows, Flatpak y el ejecutable portable Linux existente; registrar límites que no puedan probarse en este host.
+- Bloquear la aceptación beta por los iconos SVG ausentes en los paquetes Windows/Linux; verificar recursos y rasterizado QtSvg en ejecutables congelados de preview y release.
 
 ## Capabilities
 
@@ -29,4 +32,4 @@ Ninguna. El updater conserva sus contratos actuales; la campaña endurece el pro
 
 ## Impact
 
-Afecta `.github/workflows/release.yml`, el nuevo `.github/workflows/build-preview.yml`, scripts de `packaging/linux/` y `packaging/release/`, `_version.py`, AppStream/Inno metadata, tests de release/versionado/aislamiento preview, `docs/release/`, README y OpenSpec. No añade dependencias runtime, no toca química, Clean2D, `.cmsn`, `gh-pages` ni canales publicados. No crea tag ni GitHub Release; los previews sólo suben artefactos a la ejecución de Actions.
+Afecta `.github/workflows/release.yml`, `.github/workflows/build-preview.yml`, `.github/workflows/test.yml`, scripts y AppDir de `packaging/linux/`, validadores de `packaging/release/`, `_version.py`, AppStream/Inno metadata, tests de release/versionado/preview/AppImage/CI, `docs/release/`, documentación Linux, README y OpenSpec. No añade dependencias runtime, no toca química, Clean2D, `.cmsn`, `gh-pages` ni canales publicados. No crea tag ni GitHub Release; los previews sólo suben artefactos a la ejecución de Actions.

@@ -1,10 +1,12 @@
 # Matriz de aceptación manual — ChemUSON 0.3.0-beta.1
 
-> Plantilla de trabajo: **todas las filas empiezan en `NOT TESTED`**. La matriz no acredita una pasada hasta que se complete con un paquete instalado y SHA identificables. No se ha ejecutado aún sobre artifacts de esta campaña.
+> **P1 — Missing UI icons in packaged Windows and Linux builds — FAILED — Blocks beta acceptance.** El propietario observó iconos esenciales ausentes en los paquetes portable Windows y Linux del Actions run [#37826597134](https://github.com/PJGV333/Chemuson/actions/runs/37826597134), en tema claro y oscuro. Los casos históricos `UI-FAIL-WIN-01` y `UI-FAIL-LINUX-01` quedan `FAILED — P1 blocks beta acceptance`. Un smoke automatizado no los convierte en aprobados; el propietario repetirá la verificación visual con los paquetes corregidos.
+>
+> Las filas históricas ya iniciadas conservan su estado. Los casos nuevos empiezan en `NOT TESTED`; la matriz no acredita aceptación hasta completar pruebas con paquetes instalados y SHA identificables.
 
 ## Registro de ejecución
 
-- Artefacto: `Windows portable / Windows setup / Linux portable (.AppImage-named) / Linux Flatpak`
+- Artefacto: `Windows portable / Windows setup / Linux AppImage Type 2 / Linux Flatpak`
 - Versión y SHA completo: `NOT RECORDED`
 - Fuente: `Actions run URL + artifact name`
 - Sistema/versión/arquitectura: `NOT RECORDED`
@@ -108,6 +110,8 @@ Resultado permitido por caso: `PASS`, `FAIL`, `BLOCKED` o `NOT TESTED`. Registra
 | UI-04 | Navegar menú/herramientas con teclado y revisar atajos visibles. | Acciones disponibles por teclado y foco perceptible donde corresponda. | P2 | NOT TESTED — |
 | UI-05 | Cambiar intervalos/canal del updater sin guardar credenciales. | Preferencias permitidas persisten; secretos no se guardan. | P1 | NOT TESTED — |
 | UI-06 | Forzar excepción de una acción y continuar usando la app. | Mensaje controlado; estado del documento coherente. | P1 | NOT TESTED — |
+| UI-07 | **Retest Windows portable corregido.** Abrir la aplicación en temas claro y oscuro; comprobar puntero/selección, enlace simple, anillo aromático, buscar, deshacer, rehacer, documento nuevo y limpieza en la barra/controles. | Cada control muestra un icono visible y legible en ambos temas; adjuntar captura y SHA del portable. | P1 | NOT TESTED — owner retest required |
+| UI-08 | **Retest Linux AppImage Type 2 corregido.** Abrir el AppImage instalado/extraído en temas claro y oscuro; comprobar puntero/selección, enlace simple, anillo aromático, buscar, deshacer, rehacer, documento nuevo y limpieza. | Cada control muestra un icono visible y legible en ambos temas; adjuntar captura, SHA y confirmar tipo Type 2. | P1 | NOT TESTED — owner retest required |
 
 ## H. Paquetes, actualización y separación de canales
 
@@ -117,17 +121,27 @@ Resultado permitido por caso: `PASS`, `FAIL`, `BLOCKED` o `NOT TESTED`. Registra
 | DIST-02 | Ejecutar Windows portable en VM/perfil aislado. | Arranca con versión del manifest; no instala ni actualiza canal público. | P1 | NOT TESTED — |
 | DIST-03 | Instalar Windows setup en VM, iniciar, cerrar y desinstalar. | Setup muestra versión preparada y se instala/desinstala sin pérdida inesperada. | P1 | NOT TESTED — |
 | DIST-04 | Comparar SHA/versión entre portable y setup. | Ambos declaran misma versión y source SHA del run; nombres dicen preview. | P1 | NOT TESTED — |
-| DIST-05 | Ejecutar el Linux portable en distro/VM soportada. | Lanza con dependencias esperadas; se reconoce que `.AppImage` no es Type 2. | P1 | NOT TESTED — |
+| DIST-05 | Ejecutar el Linux portable/AppImage Type 2 corregido en distro/VM soportada. | Lanza con dependencias esperadas; verificar firma `AI\x02` y extracción sin FUSE antes de la prueba visual. | P1 | NOT TESTED — |
 | DIST-06 | Inspeccionar preview portable: `.updateinfo`, `.update.json`, `.zsync`. | Los tres sidecars de updater público están ausentes. | P1 | NOT TESTED — |
 | DIST-07 | Instalar bundle Flatpak preview desde archivo local, sin añadir remoto Chemuson. | Bundle se instala y abre en rama/nombre de preview; no crea remoto beta/stable. | P1 | NOT TESTED — |
 | DIST-08 | Confirmar que instalar preview no cambia manifiestos beta/stable ni el updater instalado. | Canales públicos y versiones disponibles siguen idénticos al iniciar la prueba. | P0 | NOT TESTED — |
 | DIST-09 | Abrir los cuatro manifests y comprobar versión, rama, SHA y `publication=false`. | Los cuatro grupos apuntan a la misma ejecución/commit y checksums verificables. | P1 | NOT TESTED — |
 | DIST-10 | Probar actualización de una instalación estable con preview presente en otra VM. | Instalación estable no ofrece ni instala el preview. | P0 | NOT TESTED — |
 
+### Incidencia P1 observada en el primer preview (estado histórico, no retest)
+
+| ID | Artifact/run observado | Pasos y resultado | Severidad | Estado / evidencia |
+|---|---|---|---|---|
+| UI-FAIL-WIN-01 | Windows portable, Actions run `37826597134` | En tema claro y oscuro, botones de barra lateral y controles superiores aparecen sin numerosos iconos; C/T/esfera y otros símbolos sí aparecen. Ventana y bienvenida abren, versión `0.3.0-beta.1`. | P1 | **FAILED — P1 blocks beta acceptance** — propietario |
+| UI-FAIL-LINUX-01 | Linux portable del run `37826597134` (binario PyInstaller renombrado, no Type 2) | En tema claro y oscuro faltan numerosos iconos de barras de dibujo, herramientas y controles superiores. | P1 | **FAILED — P1 blocks beta acceptance** — propietario |
+
+Estos defectos confirman la baseline del candidato, no el estado de los paquetes corregidos. UI-07/UI-08 siguen `NOT TESTED` hasta el retest manual propietario.
+
 ## Severidad, promoción y cierre
 
 - **P0:** pérdida/corrupción química o `.cmsn`, exposición de credenciales, canal/update público alterado por preview, no arranque en plataformas soportadas, identidad química crítica incorrecta. Bloquea beta/stable hasta resolver.
-- **P1:** flujo esencial roto, crash reproducible de app empaquetada, instalación/actualización incorrecta, datos no reversibles o limitación de privacidad. Bloquea stable; beta sólo con decisión explícita y riesgo acotado.
+- **P1:** flujo esencial roto, crash reproducible de app empaquetada, instalación/actualización incorrecta, datos no reversibles o limitación de privacidad. En general bloquea stable; cualquier excepción beta requiere decisión explícita del propietario y riesgo acotado.
+- **Regla específica de esta campaña:** el P1 confirmado de iconos ausentes bloquea la aceptación y publicación beta hasta que el propietario reteste los paquetes corregidos en Windows y Linux y registre evidencia. El smoke automatizado no satisface ese gate; estado actual `BETA PUBLICATION: BLOCKED — AWAITING MANUAL RETEST`.
 - **P2:** defecto no crítico con workaround claro. Puede aceptarse sólo con decisión del propietario y seguimiento.
 - **P3:** cosmético/menor. Registrar; aceptación requiere decisión explícita para stable.
 

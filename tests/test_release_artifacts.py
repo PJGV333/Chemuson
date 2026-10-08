@@ -17,21 +17,46 @@ from validate_release_artifacts import validate_release_artifacts  # noqa: E402
 from write_build_provenance import build_provenance  # noqa: E402
 
 
+def _fake_type2_header() -> bytes:
+    header = bytearray(64)
+    header[:8] = b"\x7fELF\x02\x01\x01\x00"
+    header[8:11] = b"AI\x02"
+    header[16:18] = (2).to_bytes(2, "little")
+    header[18:20] = (62).to_bytes(2, "little")
+    return bytes(header)
+
+
 def _make_release_dir(root: Path, *, version: str = "0.3.0-beta.1", channel: str = "beta") -> str:
     tag = f"v{version}"
     sha = "a" * 40
+    appimage_name = f"Chemuson-v{version}-linux-x86_64.AppImage"
+    update_track = "prerelease" if channel == "beta" else "latest"
+    update_information = f"gh-releases-zsync|PJGV333|Chemuson|{update_track}|{appimage_name}.zsync"
     names = [
         f"Chemuson-v{version}-windows-x86_64-portable.exe",
         f"Chemuson-v{version}-windows-x86_64-setup.exe",
         f"Chemuson-v{version}-linux-x86_64.AppImage",
         f"Chemuson-v{version}-linux-x86_64.AppImage.updateinfo",
         f"Chemuson-v{version}-linux-x86_64.AppImage.update.json",
+        f"Chemuson-v{version}-linux-x86_64.AppImage.zsync",
         f"Chemuson-v{version}-linux-x86_64.flatpak",
     ]
     for name in names:
         (root / name).write_bytes(b"artifact")
-    (root / names[4]).write_text(
-        json.dumps({"version": version, "channel": channel, "tag": tag, "source_sha": sha}),
+    (root / appimage_name).write_bytes(_fake_type2_header())
+    (root / f"{appimage_name}.updateinfo").write_text(update_information + "\n", encoding="utf-8")
+    (root / f"{appimage_name}.zsync").write_text(
+        f"zsync: 0.6.2\nURL: https://github.com/PJGV333/Chemuson/releases/download/{tag}/{appimage_name}\n",
+        encoding="utf-8",
+    )
+    (root / f"{appimage_name}.update.json").write_text(
+        json.dumps({
+            "version": version,
+            "channel": channel,
+            "tag": tag,
+            "source_sha": sha,
+            "appimage_update_information": update_information,
+        }),
         encoding="utf-8",
     )
     (root / f"Chemuson-{channel}.flatpakref").write_text(
@@ -66,7 +91,7 @@ def test_build_provenance_and_release_artifact_set_match_exact_release(tmp_path)
         source_sha=sha,
     )
 
-    assert len(validated) == 9
+    assert len(validated) == 10
     record = json.loads((tmp_path / "build-provenance.json").read_text(encoding="utf-8"))
     assert record["tag"] == tag
     assert record["source_sha"] == sha

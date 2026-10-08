@@ -86,6 +86,7 @@ jobs:
         run: |
           pyinstaller --clean --noconfirm chemuson.spec
           if (-not (Test-Path "dist\Chemuson.exe")) { throw "Portable executable was not generated." }
+          python packaging/release/validate_packaged_icons.py --executable "dist/Chemuson.exe"
           choco install innosetup --no-progress -y
           $env:CHEMUSON_VERSION = $env:PREVIEW_VERSION
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "packaging\windows\Chemuson.iss"
@@ -123,9 +124,9 @@ jobs:
           retention-days: 14
 
   build_linux_appimage:
-    name: Linux portable executable
+    name: Linux AppImage Type 2
     needs: prepare
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 35
     permissions:
       contents: read
@@ -150,7 +151,7 @@ jobs:
       - name: Install Qt runtime libraries
         run: |
           sudo apt-get update
-          sudo apt-get install -y libegl1 libgl1 libopengl0 libxkbcommon-x11-0 libxcb-cursor0
+          sudo apt-get install -y curl desktop-file-utils libegl1 libgl1 libopengl0 libxkbcommon-x11-0 libxcb-cursor0
 
       - name: Verify exact source identity
         run: >-
@@ -167,6 +168,7 @@ jobs:
           pyinstaller --clean --noconfirm chemuson.spec
           test -s dist/Chemuson
           test -x dist/Chemuson
+          python packaging/release/validate_packaged_icons.py --executable dist/Chemuson
 
       - name: Build preview portable package without updater metadata
         run: |
@@ -179,6 +181,10 @@ jobs:
           test ! -e "dist-preview/${APPIMAGE_NAME}.updateinfo"
           test ! -e "dist-preview/${APPIMAGE_NAME}.update.json"
           test ! -e "dist-preview/${APPIMAGE_NAME}.zsync"
+          python packaging/release/validate_appimage.py \
+            --appimage "dist-preview/${APPIMAGE_NAME}" \
+            --version "$PREVIEW_VERSION" --source-sha "$PREVIEW_SHA" \
+            --build-type preview
           mkdir -p preview-linux-appimage
           cp "dist-preview/${APPIMAGE_NAME}" preview-linux-appimage/
           python packaging/release/preview_build.py manifest \

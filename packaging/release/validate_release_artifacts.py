@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 
 from release_policy import validate_commit_identity, validate_version_channel
+from validate_appimage import validate_type2_header
 
 
 def _require_nonempty(root: Path, name: str) -> Path:
@@ -40,6 +41,7 @@ def validate_release_artifacts(
         f"Chemuson-v{version}-linux-x86_64.AppImage",
         f"Chemuson-v{version}-linux-x86_64.AppImage.updateinfo",
         f"Chemuson-v{version}-linux-x86_64.AppImage.update.json",
+        f"Chemuson-v{version}-linux-x86_64.AppImage.zsync",
         f"Chemuson-v{version}-linux-x86_64.flatpak",
         f"Chemuson-{channel}.flatpakref",
         f"Chemuson-{channel}.flatpakrepo",
@@ -47,19 +49,38 @@ def validate_release_artifacts(
     ]
     paths = [_require_nonempty(root, name) for name in names]
 
+    appimage_path = root / f"Chemuson-v{version}-linux-x86_64.AppImage"
+    validate_type2_header(appimage_path)
     update_path = root / f"Chemuson-v{version}-linux-x86_64.AppImage.update.json"
     update = json.loads(update_path.read_text(encoding="utf-8"))
+    update_track = "prerelease" if channel == "beta" else "latest"
+    expected_update_information = (
+        f"gh-releases-zsync|PJGV333|Chemuson|{update_track}|{appimage_path.name}.zsync"
+    )
     expected_update = {
         "version": version,
         "channel": channel,
         "tag": tag,
         "source_sha": source_sha.lower(),
+        "appimage_update_information": expected_update_information,
     }
     for key, expected in expected_update.items():
         if update.get(key) != expected:
             raise ValueError(
                 f"AppImage updater metadata {key!r} must equal {expected!r}."
             )
+
+    updateinfo_path = root / f"{appimage_path.name}.updateinfo"
+    if updateinfo_path.read_text(encoding="utf-8").strip() != expected_update_information:
+        raise ValueError("AppImage .updateinfo sidecar differs from the embedded update contract.")
+    zsync_path = root / f"{appimage_path.name}.zsync"
+    zsync_lines = zsync_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    zsync_url = next((line[5:] for line in zsync_lines if line.startswith("URL: ")), "")
+    expected_zsync_url = (
+        f"https://github.com/PJGV333/Chemuson/releases/download/{tag}/{appimage_path.name}"
+    )
+    if zsync_url != expected_zsync_url:
+        raise ValueError("AppImage .zsync URL does not match the immutable release asset URL.")
 
     provenance = json.loads((root / "build-provenance.json").read_text(encoding="utf-8"))
     expected_provenance = {

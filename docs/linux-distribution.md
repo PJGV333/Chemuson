@@ -5,7 +5,7 @@ Fecha: 2026-10-08
 ## Objetivo
 
 - **Canal principal instalable:** Flatpak.
-- **Canal portable:** ejecutable PyInstaller con sufijo histórico `.AppImage` (no es AppImage Type 2).
+- **Canal portable:** AppImage Type 2 auténtico, generado desde el ejecutable PyInstaller dentro de un AppDir validado. El AppImage sólo se empaqueta si el smoke del ejecutable congelado comprueba los 69 SVG y rasteriza los iconos esenciales mediante QtSvg en ambos temas.
 
 ## Estrategia Flatpak reproducible
 
@@ -22,11 +22,11 @@ Fecha: 2026-10-08
 ## Artefactos publicados
 
 - Flatpak bundle: `Chemuson-vX.Y.Z-linux-x86_64.flatpak`
-- Ejecutable portable PyInstaller: `Chemuson-vX.Y.Z-linux-x86_64.AppImage` (nombre heredado, no contenedor Type 2).
-- Sidecars del updater oficial (best-effort; no se generan para previews):
+- AppImage Type 2: `Chemuson-vX.Y.Z-linux-x86_64.AppImage`.
+- Sidecars del updater oficial (no se generan para previews):
   - `Chemuson-vX.Y.Z-linux-x86_64.AppImage.updateinfo`
   - `Chemuson-vX.Y.Z-linux-x86_64.AppImage.update.json`
-  - `Chemuson-vX.Y.Z-linux-x86_64.AppImage.zsync` (si `zsyncmake` esta disponible)
+  - `Chemuson-vX.Y.Z-linux-x86_64.AppImage.zsync` (requerido para el canal AppImageUpdate oficial)
 
 ## Uso para usuarios finales
 
@@ -74,7 +74,7 @@ Nota:
 - Si instalas desde `.flatpakref` o desde un bundle generado con `CHEMUSON_FLATPAK_REPO_URL`, `flatpak update` encuentra futuras versiones automaticamente.
 - Si solo instalaste un bundle local sin remote persistente, deberas reinstalar manualmente.
 
-### Ejecutable portable Linux (sufijo `.AppImage`; no Type 2)
+### AppImage Type 2 Linux
 
 ```bash
 chmod +x Chemuson-vX.Y.Z-linux-x86_64.AppImage
@@ -83,10 +83,13 @@ chmod +x Chemuson-vX.Y.Z-linux-x86_64.AppImage
 
 ## Uso para mantenedores
 
-### Build local portable Linux executable
+### Build local AppImage Type 2
+
+Requiere `curl`, `desktop-file-validate` y las dependencias Qt del runner. `zsyncmake` se reutiliza desde el AppImageKit `appimagetool` oficial pinneado. El helper verifica el SHA-256 del asset, su commit/versión y falla si la descarga cambia. No requiere ni instala `linuxdeploy`: PyInstaller ya contiene el bundle de PyQt6/RDKit y `appimagetool` empaqueta ese AppDir.
 
 ```bash
 pyinstaller --clean --noconfirm chemuson.spec
+python packaging/release/validate_packaged_icons.py --executable dist/Chemuson
 bash packaging/linux/build_appimage.sh \
   "<version>" \
   "dist" \
@@ -94,7 +97,12 @@ bash packaging/linux/build_appimage.sh \
   "PJGV333" \
   "Chemuson" \
   "stable" \
-  "v<version>"
+  "v<version>" \
+  "$(git rev-parse HEAD)"
+python packaging/release/validate_appimage.py \
+  --appimage "dist-appimage/Chemuson-v<version>-linux-x86_64.AppImage" \
+  --version "<version>" --source-sha "$(git rev-parse HEAD)" \
+  --build-type release --channel stable --tag "v<version>"
 ```
 
 ### Build local Flatpak
@@ -130,7 +138,7 @@ Opcional:
 ## Pipeline CI/CD
 
 - `release.yml`
-  - `build_linux`: ejecutable portable PyInstaller con sufijo `.AppImage` + metadata de update.
+  - `build_linux`: AppImage Type 2 real desde AppDir, validado por firma/extracción/resources/version/arranque headless y smoke real de iconos del ejecutable extraído, con el contrato existente de AppImageUpdate.
 - `build-preview.yml`
   - compila desde ramas `release/**-prep` y adjunta portable Windows, installer Inno, portable Linux y Flatpak como artifacts Actions con SHA/procedencia; no publica Release, tags, remoto, `gh-pages` ni manifests públicos.
   - `build_flatpak`: build de bundle Flatpak + repo OSTree + validacion explicita de `.flatpakrepo/.flatpakref` y `repo/summary`.

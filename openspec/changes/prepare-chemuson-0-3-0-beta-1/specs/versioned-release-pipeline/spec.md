@@ -62,6 +62,27 @@ A published tag or release SHALL NOT be moved, deleted and reused, or have exist
 - **WHEN** preflight finds an existing GitHub Release for the requested tag
 - **THEN** the workflow stops without replacing release assets or updating a channel.
 
+### Requirement: Official Linux portable is an authentic AppImage Type 2
+The official Linux portable artifact SHALL be produced with the pinned, SHA-256-verified upstream AppImageKit appimagetool from the existing PyInstaller binary and a validated AppDir. It MUST pass ELF/architecture/Type 2 signature validation, FUSE-free extraction, AppRun/desktop/icon/AppStream validation, PyQt6/ChemUSON resource inspection, exact internal version, source SHA/provenance validation and a bounded offscreen launch before upload.
+
+For updater compatibility, the release artifact MUST keep the contractual `Chemuson-v<VERSION>-linux-x86_64.AppImage` name and existing `.updateinfo`/`.update.json` sidecars. The AppImage Type 2 header update information MUST equal the existing update string and sidecar, and `.zsync` MUST be generated for the release build. Channel, tag and full source SHA MUST remain consistent. No update information or public update sidecars are allowed in preview builds.
+
+#### Scenario: Official beta AppImage includes compatible updater metadata
+- **WHEN** the `v0.3.0-beta.1` release SHA is built
+- **THEN** the package is a valid, extractable AppImage Type 2 containing the expected canonical version and AppDir resources
+- **AND** its embedded `gh-releases-zsync` update information remains on the existing prerelease track and matches the metadata sidecars.
+
+#### Scenario: AppImage tool or validation fails
+- **WHEN** the pinned appimagetool hash/version, signature, extraction, AppDir, resource, version, update metadata, or startup check fails
+- **THEN** the Linux build fails before artifact upload or release assembly.
+
+### Requirement: Official Windows and Linux packages prove SVG icons render before release
+Every official Windows portable executable and Linux PyInstaller/AppImage artifact SHALL pass the same opt-in frozen icon smoke used by preview before artifact assembly. It MUST verify 69 SVG resources at the runtime-resolved path, QtSvg, and nontransparent raster output for essential toolbar/control icons in both light and dark themes. Release MUST NOT weaken or omit this check. This evidence is automated only and cannot approve the owner's manual visual acceptance.
+
+#### Scenario: An official platform package omits or renders a blank essential icon
+- **WHEN** a frozen executable misses any required SVG or its QtSvg raster is blank/invalid
+- **THEN** the corresponding release build fails before upload/assembly and publication is blocked.
+
 ### Requirement: Artifact integrity and provenance are auditable
 Every release artifact SHALL have a SHA-256 checksum. The release payload SHALL identify its tag, canonical version, channel and validated source SHA. HMAC and Flatpak GPG signatures SHALL be reported accurately as optional unless required secrets are present; an unsigned artifact MUST NOT be described as cryptographically signed. Publication SHALL preserve separate beta/stable targets.
 
