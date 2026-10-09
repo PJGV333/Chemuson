@@ -25,4 +25,4 @@
 - [x] 4.2 Ejecutar una vez todos los tests mediante los ocho shards locales; cobertura JUnit exacta: 2.130/2.130, 2.111 pasaron y 19 skips preexistentes, cero fallos. Máximo shard 180.759 s; no ejecutar pytest monolítico.
 - [x] 4.3 Ejecutar compileall, colección acotada, Ruff focal, OpenSpec estricto, contratos de workflow, arquitectura y `git diff --check`.
 - [x] 4.4 Registrar archivos y resultados en `validation.md`; crear commits pequeños sin merge/PR/tag/release.
-- [ ] 4.5 Hacer push normal sólo a `fix/ci-pytest-stabilization` y verificar que el run final apruebe plan, ocho shards, resumen, Windows y Flatpak; no declarar lista la campaña sólo con pruebas locales.
+- [x] 4.5 Hacer push normal sólo a `fix/ci-pytest-stabilization`; Actions #37998454421 aprobó plan, ocho shards, resumen, Windows y Flatpak, con cobertura JUnit exacta 2.130/2.130. No hubo merge, tag ni release.

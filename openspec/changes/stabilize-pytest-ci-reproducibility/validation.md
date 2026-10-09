@@ -81,9 +81,9 @@ El primer pase del verificador detectó además que los IDs parametrizados con I
 - `git diff --check`: PASS.
 - No se ejecutó el pytest monolítico.
 
-## CI remoto pendiente
+## CI remoto previo a la microcorrección
 
-El run upstream #343 confirmó el SHA base y que falló el job `pytest`; `windows-smoke` y `flatpak-smoke` pasaron entonces. Los logs de Actions accesibles sin autenticación sólo exponen una anotación genérica de exit 1; su descarga respondió 403. Los smoke jobs se mantuvieron en el workflow nuevo, pero no hubo ejecución remota de aquel cambio porque el push no fue autenticado. Por ello los resultados locales no se presentan como evidencia de CI completo ni se declara la campaña aceptada.
+El run upstream #343 confirmó el SHA base y que falló el job `pytest`; `windows-smoke` y `flatpak-smoke` pasaron entonces. En aquella ejecución no se pudo publicar ni observar CI posterior, por lo que los resultados locales no se presentaron como evidencia de CI completo.
 
 ## Microcorrección final — pestañas del panel lateral
 
@@ -102,4 +102,8 @@ La fórmula sumaba 2 px redundantes a cada uno de los cinco botones, además de 
 - Test afectado: **1 passed** (timeout externo 60 s); `tests/test_side_panel.py`: **10 passed** (120 s); grupo `test_side_panel.py`, `test_ui_theme_foundation.py`, `test_ui_polish.py`: **75 passed** (300 s); arquitectura: **280 passed** (300 s).
 - `compileall`: PASS; Ruff focal: PASS; OpenSpec strict: PASS; `git diff --check`: PASS. Ruff global sigue mostrando únicamente el `F401 math` preexistente y fuera de alcance.
 
-**CI posterior a esta corrección: pendiente de push y ejecución. Estado: NOT READY hasta verificar en Actions el plan, ocho shards, resumen, Windows smoke, Flatpak smoke y cobertura exacta de 2.130 IDs.**
+### GitHub Actions posterior a la corrección
+
+Run [#37998454421](https://github.com/PJGV333/Chemuson/actions/runs/37998454421), push de `fix/ci-pytest-stabilization` en SHA `d00efb2e159f27d0af2d29d87c1a6894ec1696f5`: **success**. `pytest-plan`, los ocho shards, `pytest-summary`, `windows-smoke` y `flatpak-smoke` aprobaron. Los ocho JUnit contabilizan 2.130/2.130 IDs únicos: **2.110 passed, 20 skipped, 0 failed**. Cada shard ejecutó todos los IDs asignados; el más lento tomó 216.575 s frente al límite de 300 s. El resumen confirmó el manifiesto de 2.130 IDs y ausencia de reportes incompletos, duplicados o faltantes.
+
+Estado tras el run: la corrección visual está verificada en Actions y la campaña está técnicamente lista para revisión. Sin merge, PR, tag, release ni publicación de beta.
