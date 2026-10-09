@@ -290,36 +290,45 @@ def test_primary_tabs_have_complete_labels_padding_and_separation(window) -> Non
     for size in ((1440, 900), (980, 600)):
         window.resize(*size)
         QApplication.processEvents()
-        initial_geometry = _primary_tab_geometry(row, viewport)
-        stable_geometry = _wait_for_stable_primary_tab_geometry(row, viewport)
-        previous_right = None
-        for key, button in row.main_tab_buttons.items():
-            position = button.mapTo(viewport, QPoint(0, 0))
-            text_width = QFontMetrics(button.font()).horizontalAdvance(button.text())
-            right = position.x() + button.width()
-
-            assert button.isVisible(), f"primary tab {key} must remain visible at {size}"
-            assert button.font().pixelSize() >= 10, "tab text must not be reduced further"
-            assert button.width() >= text_width + 2 * minimum_padding_x, (
-                f"primary tab {key} needs at least {minimum_padding_x}px lateral "
-                f"padding around its {text_width}px label"
-            )
-            assert position.x() >= 0 and right <= viewport.width(), (
-                f"primary tab {key} is clipped at stable geometry {size}: "
-                f"x={position.x()}, width={button.width()}, "
-                f"viewport={viewport.width()}, strip={row._strip.width()}, "
-                f"scroll={row.scroll_area.horizontalScrollBar().value()}/"
-                f"{row.scroll_area.horizontalScrollBar().minimum()}.."
-                f"{row.scroll_area.horizontalScrollBar().maximum()}, "
-                f"active={panel.active_page_key}, "
+        for active_key in row.main_tab_buttons:
+            row.set_active(active_key)
+            QApplication.processEvents()
+            initial_geometry = _primary_tab_geometry(row, viewport)
+            stable_geometry = _wait_for_stable_primary_tab_geometry(row, viewport)
+            scroll_bar = row.scroll_area.horizontalScrollBar()
+            assert scroll_bar.maximum() == 0 and scroll_bar.value() == 0, (
+                f"all five primary tabs must fit without scrolling at {size}; "
+                f"active={active_key}, viewport={viewport.width()}, "
+                f"strip={row._strip.width()}, scroll={scroll_bar.value()}/"
+                f"{scroll_bar.minimum()}..{scroll_bar.maximum()}, "
                 f"initial={initial_geometry}, stable={stable_geometry}"
             )
-            if previous_right is not None:
-                gap = position.x() - previous_right
-                assert gap >= minimum_gap, (
-                    f"primary tab {key} needs a visible {minimum_gap}px gap; got {gap}px"
+            previous_right = None
+            for key, button in row.main_tab_buttons.items():
+                position = button.mapTo(viewport, QPoint(0, 0))
+                text_width = QFontMetrics(button.font()).horizontalAdvance(button.text())
+                right = position.x() + button.width()
+
+                assert button.isVisible(), f"primary tab {key} must remain visible at {size}"
+                assert button.font().pixelSize() >= 10, "tab text must not be reduced further"
+                assert button.width() >= text_width + 2 * minimum_padding_x, (
+                    f"primary tab {key} needs at least {minimum_padding_x}px lateral "
+                    f"padding around its {text_width}px label"
                 )
-            previous_right = right
+                assert position.x() >= 0 and right <= viewport.width(), (
+                    f"primary tab {key} is clipped at stable geometry {size}: "
+                    f"x={position.x()}, width={button.width()}, "
+                    f"viewport={viewport.width()}, strip={row._strip.width()}, "
+                    f"scroll={scroll_bar.value()}/{scroll_bar.minimum()}.."
+                    f"{scroll_bar.maximum()}, active={active_key}, "
+                    f"initial={initial_geometry}, stable={stable_geometry}"
+                )
+                if previous_right is not None:
+                    gap = position.x() - previous_right
+                    assert gap >= minimum_gap, (
+                        f"primary tab {key} needs a visible {minimum_gap}px gap; got {gap}px"
+                    )
+                previous_right = right
 
         assert 336 <= panel.width() <= 340, (
             f"SidePanel width must stay within 336–340px for readable tabs; "

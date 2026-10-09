@@ -102,7 +102,7 @@ class SideTabRow(QFrame):
             button.setFont(tab_font)
             tab_text_width = QFontMetrics(tab_font).horizontalAdvance(button.text())
             button.setFixedWidth(
-                tab_text_width + 2 * METRICS["sideTabPadX"] + 2
+                tab_text_width + 2 * METRICS["sideTabPadX"]
             )
             button.clicked.connect(
                 lambda _checked=False, page=key: self.pageRequested.emit(page)
