@@ -49,23 +49,27 @@ The machine-readable source of the original exact regression cases is `tests/dat
 
 ## Stage 2/3 survey — 78 unique independently resolved structures
 
-On **2026-10-08**, 88 PubChem PUG REST queries were deduplicated to 78 unique molecular structures. Each row in [`tests/data/chemname_iupac_reference_campaign.psv`](../../../tests/data/chemname_iupac_reference_campaign.psv) records the submitted SMILES, formula, PubChem CID, PubChem `IUPACName`, returned connectivity SMILES, exact pre-fix ChemName output, and baseline classification. All 78 input/connectivity pairs produced the same RDKit-canonicalized graph. The 88 requests included overlapping representations/cross-family cases; metrics below count unique structures within a family and are intentionally not additive.
+On **2026-10-08**, 88 PubChem PUG REST queries were deduplicated to 78 unique molecular structures. The 79-row [`tests/data/chemname_iupac_reference_campaign.psv`](../../../tests/data/chemname_iupac_reference_campaign.psv) contains those 78 survey structures plus one independently verified follow-up regression case (CID 12052398). Each row records the submitted SMILES, formula, PubChem CID, PubChem `IUPACName`, returned connectivity SMILES, exact pre-fix ChemName output, and baseline classification. All input/connectivity pairs produced the same RDKit-canonicalized graph. The 88 survey requests included overlapping representations/cross-family cases; metrics below count unique structures within a family and are intentionally not additive.
 
-Stage 1 already had two independently referenced structures. Acetamide is one of these 78; the substituted aryl ketone is not in this survey. Thus the survey adds **77 new structures**, for **79 unique independently referenced structures** across the campaign. PubChem `IUPACName` is an independent registry result, not assumed automatically to be a PIN. The baseline assessed 53 outputs as chemically complete/correct, including **30 exact PubChem name matches and 23 valid systematic/retained-name variants**; 16 as incorrect/incomplete or contrary to the applicable preferred suffix convention; 8 as unsupported (`N/D`); and 1 as reference-pending.
+Stage 1 already had two independently referenced structures. Acetamide is one of these 78; the substituted aryl ketone is not in this survey. Thus the survey adds **77 new structures**, for **79** at the initial campaign checkpoint; the additional follow-up case brings the total to **80 unique independently referenced structures**. PubChem `IUPACName` is an independent registry result, not assumed automatically to be a PIN. The original 78-row baseline assessed 53 outputs as chemically complete/correct, including **30 exact PubChem name matches and 23 valid systematic/retained-name variants**; 16 as incorrect/incomplete; 8 as unsupported (`N/D`); and 1 as reference-pending. The follow-up case was also incorrect, so the expanded fixture baseline is **53 correct, 17 incorrect, 8 unsupported, and 1 reference-pending**.
+
+#### Follow-up ester reference
+
+The existing amino-oxo ester regression graph in `tests/test_chemname_pr27.py` corresponds to `COC(=O)C(N)C(=O)C`, formula `C5H9NO3`. PubChem PUG REST resolves CID 12052398, connectivity `CC(=O)C(C(=O)OC)N`, and `IUPACName` **methyl 2-amino-3-oxobutanoate**. ChemName's previous `2-amino-3-oxobutanoate` omitted the methyl ester component. This independent identity check backs the corrected complete name and also served as a negative control for the earlier family regression.
 
 ### Baseline classifications by overlapping family
 
 | Family | Structures | Correct | Incorrect | Unsupported | Reference pending |
 |---|---:|---:|---:|---:|---:|
 | Carboxylic acids (including multifunctional acids) | 12 | 8 | 2 | 2 | 0 |
-| Esters | 9 | 0 | 5 | 3 | 1 |
+| Esters | 10 | 0 | 6 | 3 | 1 |
 | Aldehydes | 8 | 6 | 1 | 1 | 0 |
 | Ketones | 8 | 6 | 1 | 1 | 0 |
 | Alcohols | 8 | 6 | 2 | 0 | 0 |
 | Amines | 8 | 7 | 1 | 0 | 0 |
 | Amides | 8 | 5 | 3 | 0 | 0 |
 | Aromatic structures | 15 | 14 | 0 | 1 | 0 |
-| Multifunctional structures | 12 | 10 | 2 | 0 | 0 |
+| Multifunctional structures | 13 | 10 | 3 | 0 | 0 |
 
 A family tag can overlap another tag (for example, an amino acid is both acid and multifunctional). `correct` accepts a documented valid systematic or retained variant even if it is not PubChem's exact string or the PIN. The single pending adjudication is whether `1-acetoxyethane` is acceptable general prefix-mode nomenclature for ethyl acetate; the reference-backed preferred form is `ethyl acetate` (Blue Book P-65.6.3.3.1).
 
@@ -79,7 +83,7 @@ A family tag can overlap another tag (for example, an amino acid is both acid an
 ### Defects and unsupported candidates captured before fixes
 
 - Acid parent selection/suffix: `CC(C)C(=O)O` and benzoic acid return `N/D`; `O=C(O)C(=O)O` becomes `2-carboxyethanoic acid` (adds a carbon), and succinic acid `O=C(O)CCC(=O)O` becomes `4-carboxybutanoic acid` (also adds a carboxyl carbon).
-- Ester component loss: methyl/ethyl propanoate, methyl acetate, methyl propenoate, and ethyl 2-hydroxypropanoate return only the acid-derived `...oate` name; aromatic benzoates and methyl 2-methylpropanoate return `N/D`.
+- Ester component loss: methyl/ethyl propanoate, methyl acetate, methyl propenoate, ethyl 2-hydroxypropanoate, ethyl 3-aminopropanoate, and methyl 2-amino-3-oxobutanoate return only the acid-derived `...oate` name; aromatic benzoates and methyl 2-methylpropanoate return `N/D`.
 - Branched aldehyde `CC(C)C=O` returns `N/D`; propanedial returns `3-oxopropanal` instead of the documented preferred dial suffix.
 - Same-class suffixes are not combined for `OCCO`, `OCCCO`, `NCCN`, and `CC(=O)CCC(=O)C`; names instead demote one identical function to `hydroxy`/`amino`/`oxo`.
 - `CNC(C)=O`, `CCNC(C)=O`, and `NC(=O)CC(=O)N` omit or misrepresent amide N-substitution/multiplicity. `CCOC(=O)CCN` omits the ethyl ester component.

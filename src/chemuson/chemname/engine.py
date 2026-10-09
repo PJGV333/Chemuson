@@ -79,6 +79,7 @@ class FunctionalOccurrence:
     aux_atom_ids: set[int]
     prefix_name: str
     suffix_name: str
+    organyl_name: str | None = None
 
 
 @dataclass
@@ -92,6 +93,7 @@ class FunctionalSelection:
     kind: str
     priority: int
     primary_atoms: list[int]
+    organyl_name: str | None = None
 
 
 def _load_template_cached(key: str, path: str | Path) -> TemplateMol:
@@ -342,6 +344,11 @@ def _name_linear(
 
     stereo = _stereo_descriptors_for_linear(view, chain, opts)
     rendered = render_name(substituents, parent, stereo_descriptors=stereo)
+    if func is not None and func.kind == "ester":
+        if not func.organyl_name:
+            raise ChemNameNotSupported("Unsupported ester organyl component")
+        acid_part = "acetate" if rendered == "ethanoate" else rendered
+        rendered = f"{func.organyl_name} {acid_part}"
     return _apply_radical_suffix_if_needed(view, chain, substituents, rendered, opts)
 
 
@@ -2013,6 +2020,62 @@ def _stereo_descriptors_from_annotations(
     return found
 
 
+def _ester_organyl_name(
+    view: MolView, carbonyl_atom: int, ester_oxygen: int, chain_set: set[int]
+) -> str:
+    """Name a simple ester O-alkyl component without discarding annotations."""
+    oxygen_neighbors = [
+        nbr for nbr in view.neighbors(ester_oxygen) if view.element(nbr) != "H"
+    ]
+    if len(oxygen_neighbors) != 2 or carbonyl_atom not in oxygen_neighbors:
+        raise ChemNameNotSupported("Unsupported ester oxygen connectivity")
+    organyl_atoms = [nbr for nbr in oxygen_neighbors if nbr != carbonyl_atom]
+    if len(organyl_atoms) != 1 or view.element(organyl_atoms[0]) != "C":
+        raise ChemNameNotSupported("Unsupported ester organyl topology")
+
+    blocked = set(chain_set) | {carbonyl_atom, ester_oxygen}
+    start_atom = organyl_atoms[0]
+    pending = [start_atom]
+    branch_atoms: set[int] = set()
+    while pending:
+        atom_id = pending.pop()
+        if atom_id in blocked or atom_id in branch_atoms:
+            continue
+        if view.element(atom_id) != "C":
+            raise ChemNameNotSupported("Non-carbon in ester organyl component")
+        if (
+            view.formal_charge(atom_id)
+            or view.isotope(atom_id) is not None
+            or view.has_radical(atom_id)
+            or view.stereo_cip(atom_id)
+            or view.stereo_axial(atom_id)
+            or view.stereo_helical(atom_id)
+            or view.stereo_si_re(atom_id)
+        ):
+            raise ChemNameNotSupported("Annotated ester organyl is unsupported")
+        branch_atoms.add(atom_id)
+        for nbr in view.neighbors(atom_id):
+            if view.element(nbr) == "H":
+                continue
+            bond = view._get_bond(atom_id, nbr)  # noqa: SLF001 - read-only metadata check.
+            wedge_stereo = getattr(bond, "stereo", None)
+            wedge_stereo = getattr(wedge_stereo, "value", wedge_stereo)
+            if (
+                wedge_stereo not in {None, "", "none"}
+                or view.bond_stereo_ez(atom_id, nbr)
+                or view.bond_stereo_axial(atom_id, nbr)
+                or view.bond_stereo_endo_exo(atom_id, nbr)
+            ):
+                raise ChemNameNotSupported("Annotated ester organyl bond is unsupported")
+            if nbr in blocked:
+                continue
+            if view.element(nbr) != "C" or view.bond_order_between(atom_id, nbr) != 1:
+                raise ChemNameNotSupported("Unsupported ester organyl decoration")
+            pending.append(nbr)
+
+    return alkyl_substituent_name(view, start_atom, blocked)
+
+
 def _find_functional_group(
     view: MolView, chain: list[int], allow_other_hetero: bool = False
 ) -> FunctionalSelection | None:
@@ -2105,6 +2168,7 @@ def _find_functional_group(
                 h_total = implicit_h_count(view, o_single) + view.explicit_h(o_single)
                 heavy_neighbors = [n for n in view.neighbors(o_single) if view.element(n) != "H"]
                 if h_total == 0 and len(heavy_neighbors) == 2:
+                    organyl_name = _ester_organyl_name(view, atom_id, o_single, chain_set)
                     occurrences.append(
                         FunctionalOccurrence(
                             kind="ester",
@@ -2112,6 +2176,7 @@ def _find_functional_group(
                             aux_atom_ids={carbonyl_oxygen[0], o_single},
                             prefix_name="alkoxycarbonyl",
                             suffix_name="oate",
+                            organyl_name=organyl_name,
                         )
                     )
                     break
@@ -2292,6 +2357,7 @@ def _find_functional_group(
         kind=primary.kind,
         priority=priority.get(primary.kind, 99),
         primary_atoms=[occ.atom_id for occ in occurrences if occ.kind == primary.kind],
+        organyl_name=primary.organyl_name,
     )
 
 

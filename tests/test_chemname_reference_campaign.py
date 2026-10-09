@@ -22,9 +22,9 @@ def _load_cases() -> list[dict[str, str]]:
 CASES = _load_cases()
 
 
-def test_reference_corpus_has_78_independently_resolved_structures() -> None:
-    assert len(CASES) == 78
-    assert len({case["pubchem_cid"] for case in CASES}) == 78
+def test_reference_corpus_has_79_independently_resolved_structures() -> None:
+    assert len(CASES) == 79
+    assert len({case["pubchem_cid"] for case in CASES}) == 79
     assert all(case["pubchem_name"] and case["pubchem_connectivity_smiles"] for case in CASES)
     assert all(case["formula"] and case["smiles"] for case in CASES)
     assert {case["baseline_classification"] for case in CASES} == {

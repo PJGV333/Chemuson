@@ -185,7 +185,7 @@ class ChemNamePR27Test(unittest.TestCase):
         graph.add_bond(ester_o.id, ester_methyl.id, order=1)
         graph.add_bond(chain[1], amino_n.id, order=1)
         graph.add_bond(chain[2], keto_o.id, order=2)
-        self.assertEqual(iupac_name(graph), "2-amino-3-oxobutanoate")
+        self.assertEqual(iupac_name(graph), "methyl 2-amino-3-oxobutanoate")
 
     def test_multiple_unsaturations_linear(self):
         graph = MolGraph()

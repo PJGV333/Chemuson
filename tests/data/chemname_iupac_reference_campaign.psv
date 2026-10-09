@@ -77,3 +77,4 @@ multi_4hydroxybutanoicacid|multi|O=C(O)CCCO|C4H8O3|10413|4-hydroxybutanoic acid|
 multi_2aminopropanoicacid|multi|CC(N)C(=O)O|C3H7NO2|602|2-aminopropanoic acid|CC(C(=O)O)N|2-aminopropanoic acid|correct|2-aminopropanoic acid
 multi_3oxobutanamide|multi|CC(=O)CC(=O)N|C4H7NO2|80077|3-oxobutanamide|CC(=O)CC(=O)N|3-oxobutanamide|correct|3-oxobutanamide
 multi_ethyl_3aminopropanoate|multi|CCOC(=O)CCN|C5H11NO2|419889|ethyl 3-aminopropanoate|CCOC(=O)CCN|3-aminopropanoate|incorrect|ethyl 3-aminopropanoate
+multi_methyl_2amino3oxobutanoate|multi,ester|COC(=O)C(N)C(=O)C|C5H9NO3|12052398|methyl 2-amino-3-oxobutanoate|CC(=O)C(C(=O)OC)N|2-amino-3-oxobutanoate|incorrect|methyl 2-amino-3-oxobutanoate
