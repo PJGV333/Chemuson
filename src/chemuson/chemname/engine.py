@@ -2300,8 +2300,11 @@ def _find_functional_group(
                     )
                 )
 
-        if len(carbonyl_oxygen) == 1 and len(outside_neighbors) == 1:
-            if len(chain_neighbors) == 1:
+        if len(carbonyl_oxygen) == 1:
+            external_carbon_neighbors = [
+                nbr for nbr in outside_neighbors if view.element(nbr) == "C"
+            ]
+            if len(chain_neighbors) == 1 and len(outside_neighbors) == 1:
                 occurrences.append(
                     FunctionalOccurrence(
                         kind="aldehyde",
@@ -2311,7 +2314,13 @@ def _find_functional_group(
                         suffix_name="al",
                     )
                 )
-            elif len(chain_neighbors) == 2:
+            elif (
+                len(chain_neighbors) == 2 and len(outside_neighbors) == 1
+            ) or (
+                len(chain_neighbors) == 1
+                and len(external_carbon_neighbors) == 1
+                and len(outside_neighbors) == 2
+            ):
                 occurrences.append(
                     FunctionalOccurrence(
                         kind="ketone",
