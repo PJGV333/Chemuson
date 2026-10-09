@@ -330,6 +330,7 @@ modules:
   - stereo_advanced
   - coordination
   - special
+  - packaged_smoke
   name: chemname
   notes: 'Importa chemio de forma lazy (TYPE_CHECKING en stereo_advanced.py, runtime
     dentro de funciones en engine.py).
@@ -344,7 +345,7 @@ modules:
   - iupac_name
   - NameOptions
   responsibility: 'IUPAC-lite y nomenclatura semisistemática: selección de cadenas/anillos,
-    plantillas, grupos funcionales, estereoquímica y coordinación.'
+    plantillas, grupos funcionales, estereoquímica, coordinación y smoke de recursos empaquetados.'
   risk_level: medium
   status: evolving
   target_dependencies:
@@ -355,6 +356,8 @@ modules:
   temporary_exceptions: []
   tests:
   - tests/test_iupac_ui.py
+  - tests/test_chemname_packaged_smoke.py
+  - tests/test_packaged_chemname_smoke.py
   title: Nomenclatura IUPAC-lite
 - circular_dependencies: []
   current_dependencies:
@@ -1202,6 +1205,7 @@ modules:
   - M08
   - M22
   - M01
+  - M04
   entry_points:
   - chemuson
   - python -m chemuson
@@ -1215,7 +1219,7 @@ modules:
   public_api:
   - main
   responsibility: Punto de entrada CLI, parsing inicial, despacho del worker RDKit
-    congelado y arranque diferido de la GUI.
+    congelado y del ChemName smoke de empaquetado, y arranque diferido de la GUI.
   risk_level: medium
   status: stable
   target_dependencies:
@@ -1223,6 +1227,8 @@ modules:
   - M08
   - M22
   - M01
+  - M04
+  notes: La dependencia M04 se usa sólo en el modo privado de smoke de empaquetado; el arranque normal continúa sin importar ChemName desde el entry point.
   temporary_exceptions: []
   tests:
   - tests/test_application_startup_non_qt.py

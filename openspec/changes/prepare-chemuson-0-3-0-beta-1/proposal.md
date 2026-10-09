@@ -25,6 +25,8 @@ ChemUSON tiene ya una línea 0.3.0, builds Windows/Linux/Flatpak, canales beta/s
 - Añadir un modo worker interno al ejecutable congelado (sin GUI, sin Python externo, sin import RDKit en el padre, compatible con Windows `console=False`): el AppImage PyInstaller previo reproduce que el ejecutable recibe `_rdkit_worker.py` como argumento CLI no reconocido y termina con código 2. La disponibilidad/import de RDKit se valida por separado, sin atribuir el fallo a ausencia del paquete. Mantener aislamiento, contrato JSON, timeouts y errores controlados.
 - Hacer que Preview y el workflow oficial fallen si el RDKit smoke congelado falla o no produce descriptores conocidos/SMILES/3D; no permitir `skip` porque RDKit es dependencia obligatoria.
 - Mantener `P1` bloqueante y el retest manual del propietario pendiente; el SIGSEGV de teardown Qt sigue siendo deuda independiente.
+- Diagnosticar `P1 — ChemName templates omitted from frozen packages` inspeccionando primero artefactos Windows/AppImage reales y Flatpak por separado; incluir explícitamente los recursos requeridos y comparar Python con nombres del ejecutable congelado sin cambiar reglas de nomenclatura.
+- Completar BRANDING-001 con el texto aprobado de Acerca de y el título principal simplificado, preservando atribuciones legales e identidades internas.
 
 ## Capabilities
 

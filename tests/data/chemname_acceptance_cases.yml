@@ -2,7 +2,7 @@
   "meta": {
     "description": "ChemName acceptance dataset (JSON-in-YAML format).",
     "version": 1,
-    "total_cases": 70
+    "total_cases": 74
   },
   "cases": [
     {
@@ -770,6 +770,46 @@
       "options": {
         "rdkit_isolated": true,
         "strict": true
+      }
+    },
+    {
+      "id": "smiles_ethanol",
+      "title": "P1 packaged smoke: ethanol",
+      "input_type": "smiles",
+      "input": "CCO",
+      "expect": "^ethan-1-ol$",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "smiles_acetamide",
+      "title": "P1 packaged smoke: acetamide",
+      "input_type": "smiles",
+      "input": "CC(=O)N",
+      "expect": "^1-aminoethanamide$",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "smiles_ethane",
+      "title": "P1 packaged smoke: ethane",
+      "input_type": "smiles",
+      "input": "CC",
+      "expect": "^ethane$",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "smiles_cyclohexane",
+      "title": "P1 packaged smoke: cyclohexane",
+      "input_type": "smiles",
+      "input": "C1CCCCC1",
+      "expect": "^cyclohexane$",
+      "options": {
+        "rdkit_isolated": true
       }
     }
   ]

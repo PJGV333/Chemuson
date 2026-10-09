@@ -4,6 +4,8 @@
 >
 > **P1 — RDKit isolated backend unavailable in packaged executable — FAILED — Blocks beta acceptance.** El propietario informó que Windows portable calcula fórmula, masa y espectros estimados, pero no muestra descriptores RDKit. La verificación manual de esta función queda detenida hasta que un nuevo preview pase las pruebas del ejecutable congelado; el retest manual de Windows/Linux seguirá pendiente.
 >
+> **P1 — ChemName MOL templates omitted from frozen packages — FAILED — Blocks beta acceptance.** Los CArchive reales de Windows portable y AppImage del run `37855524295` carecen de los nueve `.mol` necesarios; al no existir una ruta de templates, ChemName degrada nombres soportados a `N/D` en la barra de estado y en anotaciones. No se observó un defecto de reglas de nomenclatura. El bundle Flatpak del mismo run sí contiene los nueve recursos, pero aún necesita smoke de nombres. Los paquetes corregidos, con nombres verificados automáticamente, requieren retest manual del propietario.
+
 > Las filas históricas ya iniciadas conservan su estado. Los casos nuevos empiezan en `NOT TESTED`; la matriz no acredita aceptación hasta completar pruebas con paquetes instalados y SHA identificables.
 
 ## Registro de ejecución
@@ -76,10 +78,14 @@ Resultado permitido por caso: `PASS`, `FAIL`, `BLOCKED` o `NOT TESTED`. Registra
 | EXP-05 | Exportar con numeración visual activada y desactivada. | Numeración afecta la salida gráfica, no el grafo químico. | P2 | NOT TESTED — |
 | EXP-06 | Exportar a un directorio sin permiso o con destino inválido. | Error informado; documento fuente permanece intacto. | P1 | NOT TESTED — |
 
-## E. Clean2D y propiedades
+## E. ChemName, Clean2D y propiedades
 
 | ID | Pasos y datos | Resultado esperado | Severidad | Resultado / evidencia |
 |---|---|---|---|---|
+| CHEMNAME-WIN-OLD-01 | Inspección del portable Windows del run `37855524295`, SHA-256 `f2648e29f3557c301fe8b2a094bd4ca5cd1bbb0b20c69090419d2e51fd6897cd`: revisar CArchive PyInstaller. | Los nueve `.mol` de ChemName deben estar en el paquete. La ausencia confirma el P1 del portable anterior, sin atribuirlo a reglas químicas. | P1 | **FAILED — P1 blocks beta acceptance** — CArchive TOC contiene 0 `.mol` de `chemuson/chemname/templates`. |
+| CHEMNAME-LINUX-OLD-01 | Inspección del ejecutable extraído del AppImage preview `37855524295`, SHA-256 AppImage `e2d76a6af54367e8ce1dddf1b5b8d3c8a2ace0d1bc00e71cce9262bf0e1e2e43`. | Los nueve `.mol` deben existir dentro del CArchive y resolverse por el ejecutable. | P1 | **FAILED — P1 blocks beta acceptance** — CArchive TOC contiene 0 templates `.mol`. |
+| CHEMNAME-FLATPAK-OLD-01 | Bundle preview `37855524295`, SHA-256 `e319cd2cb73d7eea7e979cb6447ad99b6c2e659e4789340e4c832503ea208700`; importarlo sólo en un OSTree temporal y enumerar package data. | Los nueve `.mol` aparecen bajo `site-packages/chemuson/chemname/templates`; el smoke de nombres requiere nueva build. | P1 | **NOT TESTED —** 9/9 recursos están en el bundle; no se ejecutó el smoke de ChemName de la app instalada. |
+| CHEMNAME-RETEST-01 | En cada nuevo preview Windows portable/setup, Linux AppImage y Flatpak, crear/abrir etanol `CCO`, benceno, acetamida, etano y ciclohexano; revisar nombre en barra de estado y anotación; probar elemento no soportado. | Los nombres coinciden con Python: `ethan-1-ol`, `benzene`, `1-aminoethanamide`, `ethane`, `cyclohexane`; el caso no soportado muestra `N/D` sin excepción ni cambio químico. | P1 | NOT TESTED — owner retest required; automation is not manual acceptance. |
 | CLEAN-01 | Ejecutar Clean2D en etanol. | Geometría mejora y número/conectividad de átomos no cambia. | P1 | NOT TESTED — |
 | CLEAN-02 | Ejecutar Clean2D en benceno. | Anillo queda legible; aromaticidad y conectividad permanecen. | P1 | NOT TESTED — |
 | CLEAN-03 | Ejecutar Clean2D en `N[C@@H](C)C(=O)O`. | No se altera centro estéreo/topología sin aviso. | P0 | NOT TESTED — |
@@ -119,7 +125,7 @@ Resultado permitido por caso: `PASS`, `FAIL`, `BLOCKED` o `NOT TESTED`. Registra
 | UI-07 | **Retest Windows portable corregido.** Abrir la aplicación en temas claro y oscuro; comprobar puntero/selección, enlace simple, anillo aromático, buscar, deshacer, rehacer, documento nuevo y limpieza en la barra/controles. | Cada control muestra un icono visible y legible en ambos temas; adjuntar captura y SHA del portable. | P1 | NOT TESTED — owner retest required |
 | UI-08 | **Retest Linux AppImage Type 2 corregido.** Abrir el AppImage instalado/extraído en temas claro y oscuro; comprobar puntero/selección, enlace simple, anillo aromático, buscar, deshacer, rehacer, documento nuevo y limpieza. | Cada control muestra un icono visible y legible en ambos temas; adjuntar captura, SHA y confirmar tipo Type 2. | P1 | NOT TESTED — owner retest required |
 | UI-ONBOARDING-001 | **Retest del onboarding en Windows portable y Linux.** En primera ejecución, comprobar rail, lienzo y panel lateral en 980×600, 1440×900 y 1600×900; probar escalas 100%, 125%, 150% y 200%, mover/redimensionar la ventana, avanzar/retroceder/cerrar y reiniciar con/sin «No volver a mostrar». | La máscara cubre la ventana cliente, cada agujero coincide con su objetivo, la tarjeta queda visible, el rail no se desplaza y las preferencias/cierre funcionan igual en Windows y Linux. | P2 | NOT TESTED — previous Windows report; owner retest required |
-| BRANDING-001 | **Retest de marca en Windows portable/setup y Linux.** Revisar título y barra superior, Acerca de/Ayuda, mensajes visibles, nombre mostrado del instalador y desinstalador, launcher y AppStream. | Todas las superficies presentan `ChemUSON`; instalación/actualización/desinstalación detectan la identidad existente y permanecen operativas. | P2 | NOT TESTED — owner retest required |
+| BRANDING-001 | **Retest de marca en Windows portable/setup y Linux.** Revisar título y barra superior, Acerca de/Ayuda, mensajes visibles, nombre mostrado del instalador y desinstalador, launcher y AppStream. | Todas las superficies presentan `ChemUSON`; el título es `ChemUSON 0.3.0-beta.1 — Editor Molecular Libre` y Acerca de muestra la descripción aprobada; instalación/actualización/desinstalación detectan la identidad existente y permanecen operativas. | P2 | NOT TESTED — owner retest required |
 
 ## H. Paquetes, actualización y separación de canales
 
@@ -150,6 +156,7 @@ Estos defectos confirman la baseline del candidato, no el estado de los paquetes
 - **UI-ONBOARDING-001:** el propietario observó la tarjeta desalineada y el spotlight/rail incorrectos en Windows portable. La fuente ahora difiere el inicio hasta el primer layout visible y recalcula geometría; el resultado manual del candidato anterior permanece **FAILED**, y el paquete corregido queda **NOT TESTED — owner retest required**.
 - **BRANDING-001:** las cadenas y metadatos visibles se normalizaron a `ChemUSON`; aún no se ha revisado el paquete resultante en Windows/Linux. Resultado manual: **NOT TESTED — owner retest required**.
 - **P1 — RDKit isolated backend unavailable in packaged executable:** el fallo portable Windows informado queda **FAILED**; `RDKIT-LINUX-01` y `RDKIT-3D-SMILES-01` permanecen **NOT TESTED**. Los tests del ejecutable congelado son gate de build, no sustituyen la aceptación manual del propietario.
+- **P1 — ChemName templates absent from frozen executables:** Windows portable y AppImage anteriores quedan **FAILED** por cero `.mol`; el Flatpak anterior tiene 9/9 archivos, pero no ejecutó su smoke de nomenclatura. Nuevo paquete espera el Build Preview corregido; `CHEMNAME-RETEST-01` sigue **NOT TESTED — owner retest required**.
 
 UI-ONBOARDING-001, BRANDING-001 y RDKit sólo pueden actualizarse con la versión y SHA exactos de los nuevos artifacts, entorno real y evidencia del propietario. Los tests estáticos, smoke del ejecutable congelado y Qt scale-factors simulados no sustituyen la comprobación manual.
 
@@ -157,7 +164,7 @@ UI-ONBOARDING-001, BRANDING-001 y RDKit sólo pueden actualizarse con la versió
 
 - **P0:** pérdida/corrupción química o `.cmsn`, exposición de credenciales, canal/update público alterado por preview, no arranque en plataformas soportadas, identidad química crítica incorrecta. Bloquea beta/stable hasta resolver.
 - **P1:** flujo esencial roto, crash reproducible de app empaquetada, instalación/actualización incorrecta, datos no reversibles o limitación de privacidad. En general bloquea stable; cualquier excepción beta requiere decisión explícita del propietario y riesgo acotado.
-- **Regla específica de esta campaña:** el P1 confirmado de iconos ausentes bloquea la aceptación y publicación beta hasta que el propietario reteste los paquetes corregidos en Windows y Linux y registre evidencia. El smoke automatizado no satisface ese gate; estado actual `BETA PUBLICATION: BLOCKED — AWAITING MANUAL RETEST`.
+- **Regla específica de esta campaña:** los P1 confirmados (iconos ausentes, fallo RDKit empaquetado y templates ChemName ausentes) bloquean la aceptación y publicación beta hasta que el propietario reteste los paquetes corregidos en Windows y Linux, registre resultados por formato y decida cualquier incidencia. Los smokes automatizados no satisfacen el gate manual; estado actual `BETA PUBLICATION: BLOCKED — AWAITING MANUAL RETEST`.
 - **P2:** defecto no crítico con workaround claro. Puede aceptarse sólo con decisión del propietario y seguimiento.
 - **P3:** cosmético/menor. Registrar; aceptación requiere decisión explícita para stable.
 

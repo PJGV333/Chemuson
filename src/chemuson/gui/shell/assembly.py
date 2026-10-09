@@ -68,7 +68,7 @@ def assemble_application_shell(self) -> None:
     self._ui_builder = MainWindowUiBuilder()
     self._app_version = get_app_version()
     self.current_theme = "light"
-    self.setWindowTitle(f"ChemUSON {self._app_version} - Editor Molecular Libre")
+    self.setWindowTitle(f"ChemUSON {self._app_version} — Editor Molecular Libre")
     self.resize(1200, 900)
 
     # === CORE COMPONENTS ===

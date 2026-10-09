@@ -12,6 +12,20 @@ def _text(relative_path: str) -> str:
     return (ROOT / relative_path).read_text(encoding="utf-8")
 
 
+def test_about_description_and_main_window_title_use_approved_copy() -> None:
+    about_source = _text("src/chemuson/gui/main_window.py")
+    shell_source = _text("src/chemuson/gui/shell/assembly.py")
+
+    assert "ChemUSON es un editor molecular libre y de código abierto para " in about_source
+    assert "crear, editar, visualizar y analizar estructuras químicas, diagramas " in about_source
+    assert "y anotaciones científicas." in about_source
+    assert "inspirado en ChemDoodle" not in about_source
+    assert (
+        'self.setWindowTitle(f"ChemUSON {self._app_version} — Editor Molecular Libre")'
+        in shell_source
+    )
+
+
 def test_linux_launchers_and_appstream_present_official_name() -> None:
     flatpak_desktop = _text("packaging/flatpak/io.github.PJGV333.Chemuson.desktop")
     appimage_desktop = _text(

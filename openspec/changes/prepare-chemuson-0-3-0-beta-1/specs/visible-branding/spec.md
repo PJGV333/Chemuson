@@ -7,7 +7,7 @@ Normalize user-visible application identity to the official spelling **ChemUSON*
 ## ADDED Requirements
 
 ### Requirement: Application presentation uses the official spelling
-Application-owned visible presentation surfaces MUST use `ChemUSON`: the main-window title prefix, app bar, Qt application display name, About and Help content, user-facing dialogs/notifications, Windows installer display metadata, Linux desktop launchers, Flatpak remote/index display titles, and AppStream display metadata. A descriptive window-title suffix and the existing version `0.3.0-beta.1` may remain.
+Application-owned visible presentation surfaces MUST use `ChemUSON`: the main-window title prefix, app bar, Qt application display name, About and Help content, user-facing dialogs/notifications, Windows installer display metadata, Linux desktop launchers, Flatpak remote/index display titles, and AppStream display metadata. The About description MUST be `ChemUSON es un editor molecular libre y de código abierto para crear, editar, visualizar y analizar estructuras químicas, diagramas y anotaciones científicas.` The main-window title MUST use `ChemUSON <version> — Editor Molecular Libre`. A descriptive title suffix and the existing version `0.3.0-beta.1` may remain.
 
 #### Scenario: User opens the application and Help
 - **WHEN** the user views the main window, app bar, About/Help dialogs, or an application notification

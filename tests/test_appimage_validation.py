@@ -99,6 +99,8 @@ def test_preview_and_release_workflows_build_and_validate_same_type2_package() -
     assert "--appimage-extract" in appimage_validator
     assert "_validate_frozen_rdkit_worker" in appimage_validator
     assert "validate_packaged_rdkit_worker.py" in appimage_validator
+    assert "_validate_frozen_chemname" in appimage_validator
+    assert "validate_packaged_chemname.py" in appimage_validator
     assert "--build-type preview" in preview_text
     assert "--build-type release" in release_text
     assert "appstream" in preview_text
@@ -132,4 +134,6 @@ def test_release_gate_checks_appimage_packaging_contracts() -> None:
     assert "packaging/release/validate_appimage.py" in release_text
     assert "validate_packaged_icons.py" in validator
     assert "validate_packaged_rdkit_worker.py" in validator
+    assert "validate_packaged_chemname.py" in validator
+    assert "exactly the nine ChemName MOL templates" in validator
     assert "PyInstaller CArchive must contain all 69 static SVG icons" in validator

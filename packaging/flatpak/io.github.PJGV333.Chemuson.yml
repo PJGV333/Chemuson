@@ -78,6 +78,12 @@ modules:
     build-commands:
       # El update en Flatpak se delega a flatpak/remote oficial.
       - pip3 install --prefix=/app --no-build-isolation --no-deps .
+      - >-
+        python3 -I -c "import json,site; site.addsitedir('/app/lib/python3.13/site-packages');
+        from chemuson.chemname.packaged_smoke import run_smoke;
+        report=run_smoke(require_frozen=False, expected_package_root='/app');
+        print(json.dumps(report, sort_keys=True));
+        raise SystemExit(0 if report.get('ok') is True else 1)"
       - install -Dm644 packaging/flatpak/io.github.PJGV333.Chemuson.desktop /app/share/applications/io.github.PJGV333.Chemuson.desktop
       - install -Dm644 packaging/flatpak/io.github.PJGV333.Chemuson.metainfo.xml /app/share/metainfo/io.github.PJGV333.Chemuson.metainfo.xml
       - install -Dm644 packaging/flatpak/io.github.PJGV333.Chemuson.svg /app/share/icons/hicolor/scalable/apps/io.github.PJGV333.Chemuson.svg

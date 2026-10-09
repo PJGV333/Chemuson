@@ -130,6 +130,11 @@ def test_preview_metadata_uses_canonical_version_and_official_workflow_stays_sep
     assert "build_windows:" in release_text
     assert "build_linux:" in release_text
     assert "build_flatpak:" in release_text
+    assert "tools/chemname_acceptance.py" in text
+    assert "validate_packaged_chemname.py --executable \"dist/Chemuson.exe\"" in text
+    assert "validate_packaged_chemname.py --executable dist/Chemuson" in text
+    assert "validate_packaged_chemname.py --executable \"dist/Chemuson.exe\"" in release_text
+    assert "validate_packaged_chemname.py --executable dist/Chemuson" in release_text
     assert "validate_packaged_rdkit_worker.py --executable \"dist/Chemuson.exe\"" in text
     assert "validate_packaged_rdkit_worker.py --executable dist/Chemuson" in text
     assert "validate_packaged_rdkit_worker.py --executable \"dist/Chemuson.exe\"" in release_text
@@ -140,5 +145,6 @@ def test_preview_metadata_uses_canonical_version_and_official_workflow_stays_sep
         step for step in windows_build["steps"]
         if "validate_packaged_rdkit_worker.py" in step.get("run", "")
     )
-    assert validation_step["run"].count("if ($LASTEXITCODE -ne 0)") == 2
+    assert validation_step["run"].count("if ($LASTEXITCODE -ne 0)") == 3
     assert "Packaged RDKit validation failed" in validation_step["run"]
+    assert "Packaged ChemName validation failed" in validation_step["run"]

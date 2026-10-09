@@ -95,6 +95,10 @@ def test_frozen_rdkit_smoke_gates_windows_linux_and_appimage_builds() -> None:
     assert "validate_packaged_rdkit_worker.py" in (
         ROOT / "packaging/release/validate_appimage.py"
     ).read_text(encoding="utf-8")
+    assert "tools/chemname_acceptance.py" in text
+    assert "packaging/release/validate_packaged_chemname.py" in text
+    assert "tests/test_packaged_chemname_smoke.py" in text
+    assert "tests/test_chemname_packaged_smoke.py" in text
     assert "tests/test_rdkit_packaged_worker.py" in text
     assert "tests/test_rdkit_descriptors.py" in text
     for job_name in ("build_windows", "build_linux"):
@@ -107,8 +111,9 @@ def test_frozen_rdkit_smoke_gates_windows_linux_and_appimage_builds() -> None:
         for step in workflow["jobs"]["build_windows"]["steps"]
         if "validate_packaged_rdkit_worker.py" in step.get("run", "")
     )
-    assert windows_validation["run"].count("if ($LASTEXITCODE -ne 0)") == 2
+    assert windows_validation["run"].count("if ($LASTEXITCODE -ne 0)") == 3
     assert "Packaged RDKit validation failed" in windows_validation["run"]
+    assert "validate_packaged_chemname.py" in windows_validation["run"]
 
 
 def test_gate_uses_bounded_non_monolithic_release_checks() -> None:

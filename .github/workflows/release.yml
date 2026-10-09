@@ -55,6 +55,9 @@ jobs:
       - name: Validate exact baseline exception catalog
         run: python packaging/release/validate_baseline_exceptions.py
 
+      - name: Run Python ChemName acceptance
+        run: python tools/chemname_acceptance.py --quiet --report "$RUNNER_TEMP/chemname-source-acceptance.json"
+
       - name: Compile source, tests and packaging tools
         run: python -m compileall -q src tests tools packaging
 
@@ -80,6 +83,9 @@ jobs:
           packaging/release/validate_appimage.py
           packaging/release/validate_packaged_icons.py
           packaging/release/validate_packaged_rdkit_worker.py
+          packaging/release/validate_packaged_chemname.py
+          tests/test_packaged_chemname_smoke.py
+          tests/test_chemname_packaged_smoke.py
           tests/test_rdkit_packaged_worker.py
           tests/test_rdkit_descriptors.py
           tests/test_application_startup_non_qt.py
@@ -173,6 +179,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Packaged icon validation failed (exit $LASTEXITCODE)." }
           python packaging/release/validate_packaged_rdkit_worker.py --executable "dist/Chemuson.exe"
           if ($LASTEXITCODE -ne 0) { throw "Packaged RDKit validation failed (exit $LASTEXITCODE)." }
+          python packaging/release/validate_packaged_chemname.py --executable "dist/Chemuson.exe"
+          if ($LASTEXITCODE -ne 0) { throw "Packaged ChemName validation failed (exit $LASTEXITCODE)." }
 
       - name: Build installer (Inno Setup)
         shell: pwsh
@@ -255,6 +263,7 @@ jobs:
         run: |
           python packaging/release/validate_packaged_icons.py --executable dist/Chemuson
           python packaging/release/validate_packaged_rdkit_worker.py --executable dist/Chemuson
+          python packaging/release/validate_packaged_chemname.py --executable dist/Chemuson
 
       - name: Build authentic AppImage Type 2 with updater metadata
         run: |

@@ -23,6 +23,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--icon-smoke-test", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--rdkit-packaged-smoke-test", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--rdkit-smoke-report", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--chemname-packaged-smoke-test", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--chemname-smoke-report", type=Path, help=argparse.SUPPRESS)
     return parser
 
 
@@ -89,6 +91,32 @@ def main() -> int:
             report = {"ok": False, "error": "packaged_smoke_failed", "detail": str(exc)}
         try:
             args.rdkit_smoke_report.write_text(
+                json.dumps(report, sort_keys=True), encoding="utf-8"
+            )
+        except OSError:
+            return 1
+        return 0 if report.get("ok") is True else 1
+    if args.chemname_packaged_smoke_test:
+        if (
+            not getattr(sys, "frozen", False)
+            or os.environ.get("CHEMUSON_CHEMNAME_PACKAGED_SMOKE") != "1"
+        ):
+            parser.error("--chemname-packaged-smoke-test is reserved for the packaging smoke workflow.")
+        if args.chemname_smoke_report is None:
+            parser.error("--chemname-smoke-report is required for packaged ChemName validation.")
+        try:
+            from chemuson.chemname.packaged_smoke import run_smoke
+
+            report = run_smoke()
+        except Exception as exc:
+            report = {
+                "ok": False,
+                "error": "packaged_chemname_smoke_failed",
+                "exception_type": type(exc).__name__,
+                "detail": str(exc),
+            }
+        try:
+            args.chemname_smoke_report.write_text(
                 json.dumps(report, sort_keys=True), encoding="utf-8"
             )
         except OSError:

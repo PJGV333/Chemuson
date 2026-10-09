@@ -88,6 +88,26 @@ if forbidden:
     assert result.returncode == 0, result.stderr
 
 
+def test_chemname_packaged_smoke_cli_is_not_available_in_source_mode() -> None:
+    result = _run_isolated(
+        """
+import sys
+from chemuson.__main__ import main
+sys.argv = ["chemuson", "--chemname-packaged-smoke-test", "--chemname-smoke-report", "report.json"]
+try:
+    main()
+except SystemExit as exc:
+    if exc.code != 2:
+        raise AssertionError(exc.code)
+else:
+    raise AssertionError("source process accepted the private frozen smoke mode")
+if "chemuson.gui" in sys.modules or "chemuson.app.bootstrap" in sys.modules:
+    raise AssertionError("private smoke guard loaded the GUI")
+"""
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_frozen_internal_worker_dispatch_uses_json_files_without_gui_or_rdkit(tmp_path: Path) -> None:
     request = tmp_path / "request.json"
     response = tmp_path / "response.json"

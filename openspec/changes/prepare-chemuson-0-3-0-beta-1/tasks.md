@@ -72,6 +72,7 @@
 - [x] 11.4 Add static/focused regression tests for displayed branding, package metadata and technical identity/installer/updater compatibility; preserve all package IDs, commands, paths, update routes and artifact names.
 - [x] 11.5 Update the active beta notes and manual acceptance matrix with `UI-ONBOARDING-001` and `BRANDING-001`; keep new package/manual results pending owner retest.
 - [ ] 11.6 Owner manually retests the new preview packages on Windows and Linux, including three window sizes, common DPI scales, branding surfaces, installer upgrade/uninstall identity and updater compatibility.
+- [x] 11.7 Replace the About description with the owner-approved ChemUSON project description and use the non-repeating em-dash main-window title; audit visible surfaces without changing historical credits, licenses, attributions or internal identifiers.
 
 ## 12. P1 — RDKit isolated backend unavailable in packaged executable
 - [x] 12.1 Record the owner's Windows portable failure (formula/mass/estimated spectra work; RDKit descriptors report unavailable), mark this P1 as failed/blocking, and stop manual package verification until a corrected preview is available.
@@ -83,3 +84,13 @@
 - [x] 12.7 Add focused unit/integration tests for source worker errors/protocol, frozen dispatch, app-UI messages, smoke validator, workflows and architecture catalog; do not alter chemistry algorithms, Clean2D, `.cmsn`, or the independent Qt teardown debt.
 - [x] 12.8 Run bounded RDKit/app packaging tests, architecture, strict OpenSpec, scoped Ruff, compileall and diff check; push a normal commit only to `release/v0.3.0-beta.1-prep` and wait for the matching Preview/CI jobs, without tags/releases/publication. Preview `37854485440` passed; the separate full pytest CI job still aborts on the documented Qt teardown SIGSEGV and is not represented as passing.
 - [ ] 12.9 Owner manually retests corrected Windows portable and AppImage/Linux packages; beta acceptance remains awaiting manual retest.
+
+## 13. P1 — ChemName templates omitted from frozen packages
+- [x] 13.1 Inspect actual Windows portable and extracted AppImage CArchive tables and the prior Flatpak bundle before changing code; compare against the nine source `.mol` templates.
+- [x] 13.2 Record the source naming baseline, diagnose the masked `FileNotFoundError` with `return_nd_on_fail=False`, and inspect the status-bar and analysis-annotation call paths; do not modify naming rules.
+- [x] 13.3 Add an explicit nine-template PyInstaller inventory and package-relative `datas` entries; keep existing setuptools/Flatpak package-data behavior and catalog the private M19→M04 smoke dependency.
+- [x] 13.4 Extend the ChemName acceptance corpus with ethanol, acetamide, ethane and cyclohexane; add source/frozen smoke coverage for every template and representative molecule names.
+- [x] 13.5 Add fail-closed Windows/Linux executable validators that compare actual frozen names/resources against Python source, and add a Flatpak `/app` package-data smoke.
+- [x] 13.6 Gate Build Preview and official package workflows, record the historical missing-resource P1 and manual retest cases, and preserve the owner-pending state.
+- [ ] 13.7 Run bounded focused tests, strict OpenSpec and a new Build Preview for the pushed prep-branch SHA; report per-format evidence. Owner manual retest remains required before beta acceptance.
+- [ ] 13.8 Owner repeats ChemName naming/resource checks on the corrected Windows portable/setup, extracted AppImage and Flatpak, recording the exact artifact SHA and both status-bar/analysis names.

@@ -55,6 +55,14 @@ A confirmed P1 missing-icon defect SHALL be recorded as `FAILED — P1 blocks be
 - **WHEN** the owner records artifact SHA, platform, themes and screenshots/evidence after retest
 - **THEN** only the corresponding platform/theme matrix case may change from FAILED to PASS.
 
+### Requirement: Packaged ChemName regression stays blocked until real package retest
+The manual acceptance matrix SHALL record the frozen-package ChemName template omission as a P1, distinguish Windows/Linux PyInstaller evidence from the Flatpak package, and keep corrected package retests `NOT TESTED` until the owner evaluates the exact preview SHAs. Automated source/frozen name checks MUST NOT be reported as GUI/manual acceptance.
+
+#### Scenario: Corrected ChemName package passes automation
+- **WHEN** the new Windows/Linux executable and Flatpak smoke checks pass
+- **THEN** their names/resources are recorded as automated evidence only
+- **AND** the owner's manual status-bar, annotation, and package retest remains pending.
+
 ### Requirement: AI acceptance distinguishes structure validity from identity
 Molecular Assistant cases SHALL record provider availability, source provenance, ChemIO validity and identity/reference status separately. A valid SMILES alone SHALL NOT be considered proof of the requested molecular identity. Tests SHALL cover offline/provider failure behavior without assuming a Qwen endpoint exists.
 

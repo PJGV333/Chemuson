@@ -90,6 +90,25 @@ def _validate_pyinstaller_resources(executable: Path) -> None:
         raise ValueError("PyInstaller CArchive does not contain Qt's offscreen platform plugin.")
     if not any(name.endswith("chemuson/gui/theme/icons/i-flask.svg") for name in names):
         raise ValueError("PyInstaller CArchive does not contain ChemUSON's packaged SVG resources.")
+    expected_templates = {
+        "chemuson/chemname/templates/fused/pyrene_cas.mol",
+        "chemuson/chemname/templates/fused/pyrene_iupac2004.mol",
+        "chemuson/chemname/templates/simple/benzene.mol",
+        "chemuson/chemname/templates/special/alpha_d_glucopyranose.mol",
+        "chemuson/chemname/templates/special/androstane_core.mol",
+        "chemuson/chemname/templates/special/beta_d_fructofuranose.mol",
+        "chemuson/chemname/templates/special/beta_d_glucopyranose.mol",
+        "chemuson/chemname/templates/special/cholestane_core.mol",
+        "chemuson/chemname/templates/special/d_ribose.mol",
+    }
+    packaged_templates = {
+        name for name in names if "/chemuson/chemname/templates/" in f"/{name}"
+    }
+    if packaged_templates != expected_templates:
+        raise ValueError(
+            "PyInstaller CArchive must contain exactly the nine ChemName MOL templates; "
+            f"found {sorted(packaged_templates)}."
+        )
 
 
 def _validate_appdir(appdir: Path, *, version: str) -> tuple[Path, Path]:
@@ -181,6 +200,30 @@ def _validate_frozen_rdkit_worker(
     if not isinstance(report, dict) or report.get("ok") is not True:
         raise ValueError("Frozen AppImage executable failed the RDKit worker smoke.")
     print("Frozen AppImage RDKit imports, descriptors, SMILES, and 3D worker smoke passed.")
+    return report
+
+
+def _validate_frozen_chemname(
+    executable: Path, *, cwd: Path, env: dict[str, str]
+) -> dict[str, object]:
+    validator = Path(__file__).with_name("validate_packaged_chemname.py").resolve()
+    result = _run(
+        [sys.executable, str(validator), "--executable", str(executable), "--timeout", "120"],
+        cwd=cwd,
+        env=env,
+        timeout=150,
+    )
+    try:
+        report = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise ValueError("Frozen AppImage executable did not return ChemName smoke JSON.") from exc
+    if not isinstance(report, dict) or report.get("ok") is not True:
+        raise ValueError("Frozen AppImage executable failed the ChemName smoke.")
+    print(
+        "Frozen AppImage ChemName templates and molecule names match Python source: "
+        f"{len(report.get('template_resources', []))} templates, "
+        f"{len(report.get('molecule_results', []))} molecule cases."
+    )
     return report
 
 
@@ -285,6 +328,7 @@ def validate_appimage(
         apprun, executable = _validate_appdir(appdir, version=version)
         icon_report = _validate_frozen_icons(executable, cwd=scratch, env=environment)
         rdkit_report = _validate_frozen_rdkit_worker(executable, cwd=scratch, env=environment)
+        chemname_report = _validate_frozen_chemname(executable, cwd=scratch, env=environment)
         version_result = _run(
             [str(apprun), "--version"], cwd=scratch, env=environment, timeout=90
         )
@@ -344,6 +388,7 @@ def validate_appimage(
         "embedded_update_information": embedded_update_info,
         "icon_smoke": icon_report,
         "rdkit_worker_smoke": rdkit_report,
+        "chemname_smoke": chemname_report,
     }
 
 

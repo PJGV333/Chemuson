@@ -34,6 +34,18 @@ Every Windows and Linux PyInstaller preview MUST run an opt-in frozen-process ic
 - **WHEN** any expected file is absent/empty or a build job fails
 - **THEN** that artifact is not reported as built, the run summary records the failure, and the overall workflow conclusion is failure rather than partial success.
 
+### Requirement: PyInstaller packages preserve ChemName template resources
+Windows portable and Linux PyInstaller packages MUST contain exactly the nine `.mol` templates under `chemuson/chemname/templates`. Their actual frozen executables MUST load each resource from the bundle and name the template plus ethanol, benzene, acetamide, ethane, cyclohexane and an unsupported-element control. A fail-closed validator MUST compare all returned names against Python source results and reject missing resources, exceptions, wrong executable identity or resource paths outside the bundle. The Flatpak build MUST run the same ChemName smoke against the installed `/app` package data. These automated checks MUST NOT be treated as manual owner acceptance.
+
+#### Scenario: Frozen package is built
+- **WHEN** Windows portable or Linux PyInstaller is produced
+- **THEN** all nine templates resolve inside the tested executable bundle and the molecule names match Python source exactly
+- **AND** missing resources or a naming exception fail the build.
+
+#### Scenario: Flatpak app package is assembled
+- **WHEN** the Flatpak Python package is installed under `/app`
+- **THEN** the ChemName smoke verifies all template names and representative molecule names using resources from `/app`.
+
 ### Requirement: Preview Linux AppImage has no public update channel
 The preview AppImage SHALL be built as Type 2 but MUST NOT embed AppImageUpdate information or include `.updateinfo`, `.update.json`, or `.zsync` sidecars. It SHALL retain the unique preview/SHA package name, Actions-only checksums and provenance.
 

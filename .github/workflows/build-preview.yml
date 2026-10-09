@@ -81,6 +81,13 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      - name: Run Python ChemName acceptance before freezing
+        shell: pwsh
+        run: |
+          $env:PYTHONPATH = Join-Path $PWD "src"
+          python tools/chemname_acceptance.py --quiet --report "$env:RUNNER_TEMP\chemname-source-acceptance.json"
+          if ($LASTEXITCODE -ne 0) { throw "Python ChemName acceptance failed (exit $LASTEXITCODE)." }
+
       - name: Build portable executable and Inno installer
         shell: pwsh
         run: |
@@ -90,6 +97,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Packaged icon validation failed (exit $LASTEXITCODE)." }
           python packaging/release/validate_packaged_rdkit_worker.py --executable "dist/Chemuson.exe"
           if ($LASTEXITCODE -ne 0) { throw "Packaged RDKit validation failed (exit $LASTEXITCODE)." }
+          python packaging/release/validate_packaged_chemname.py --executable "dist/Chemuson.exe"
+          if ($LASTEXITCODE -ne 0) { throw "Packaged ChemName validation failed (exit $LASTEXITCODE)." }
           choco install innosetup --no-progress -y
           $env:CHEMUSON_VERSION = $env:PREVIEW_VERSION
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "packaging\windows\Chemuson.iss"
@@ -168,11 +177,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
+          PYTHONPATH=src python tools/chemname_acceptance.py --quiet --report "$RUNNER_TEMP/chemname-source-acceptance.json"
           pyinstaller --clean --noconfirm chemuson.spec
           test -s dist/Chemuson
           test -x dist/Chemuson
           python packaging/release/validate_packaged_icons.py --executable dist/Chemuson
           python packaging/release/validate_packaged_rdkit_worker.py --executable dist/Chemuson
+          python packaging/release/validate_packaged_chemname.py --executable dist/Chemuson
 
       - name: Build preview portable package without updater metadata
         run: |

@@ -3175,8 +3175,9 @@ class ChemusonWindow(QMainWindow):
             "<h2>ChemUSON</h2>"
             "<p>Editor Molecular Libre</p>"
             f"<p>Versión {version}</p>"
-            "<p>Un editor de estructuras químicas de código abierto "
-            "inspirado en ChemDoodle.</p>"
+            "<p>ChemUSON es un editor molecular libre y de código abierto para "
+            "crear, editar, visualizar y analizar estructuras químicas, diagramas "
+            "y anotaciones científicas.</p>"
         )
     
     # -------------------------------------------------------------------------

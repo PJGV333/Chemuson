@@ -54,7 +54,7 @@ def test_pyinstaller_spec_explicitly_places_all_static_icons_under_package_path(
     assert 'STATIC_ICON_DIR = PROJECT_ROOT / "src" / "chemuson" / "gui" / "theme" / "icons"' in spec
     assert 'len(STATIC_ICON_FILES) != 69' in spec
     assert '(str(path), "chemuson/gui/theme/icons") for path in STATIC_ICON_FILES' in spec
-    assert 'datas = datas_c + datas_icons + datas_qt' in spec
+    assert 'datas = datas_c + datas_chemname_templates + datas_icons + datas_qt' in spec
 
 
 def test_preview_and_release_gate_frozen_icon_smokes_on_both_platforms() -> None:

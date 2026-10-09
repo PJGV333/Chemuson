@@ -3,7 +3,7 @@
 import os
 
 import pytest
-from PyQt6.QtWidgets import QApplication, QLabel
+from PyQt6.QtWidgets import QApplication, QLabel, QMessageBox
 
 
 from chemuson.core.model import ChemState, MolGraph
@@ -75,6 +75,26 @@ def test_preferences_dialog_explains_update_delivery_modes() -> None:
     assert "flatpak update io.github.pjgv333.chemuson" in all_text.lower()
 
 
-def test_main_window_shows_iupac_status_field() -> None:
+def test_main_window_shows_chemname_and_approved_about_copy(monkeypatch) -> None:
     window = ChemusonWindow()
-    assert window._iupac_name_label.text().startswith("Nombre IUPAC:")
+    window.canvas.model = _ethane_graph()
+    window._update_iupac_name_indicator()
+
+    assert window._iupac_name_label.text() == "Nombre IUPAC: ethane"
+    annotation = window.canvas._analysis_build_text(_ethane_graph(), "name")
+    assert "Nombre IUPAC: ethane" in annotation
+
+    captured = {}
+
+    def capture_about(_parent, title, text):
+        captured["title"] = title
+        captured["text"] = text
+
+    monkeypatch.setattr(QMessageBox, "about", capture_about)
+    window._on_about()
+    assert captured["title"] == "Acerca de ChemUSON"
+    assert (
+        "ChemUSON es un editor molecular libre y de código abierto para crear, editar, "
+        "visualizar y analizar estructuras químicas, diagramas y anotaciones científicas."
+    ) in captured["text"]
+    assert window.windowTitle() == "ChemUSON 0.3.0-beta.1 — Editor Molecular Libre"
