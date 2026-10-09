@@ -23,7 +23,7 @@ When ChemName names a neutral, singly attached benzene as a phenyl substituent, 
 #### Scenario: Unsupported stereochemistry in an aryl substituent
 - **GIVEN** a phenyl substituent carrying stereochemical metadata on a branch that this naming path cannot describe
 - **WHEN** ChemName attempts to name the structure
-- **THEN** it returns `N/D` under the default safe option (or raises the supported-not-implemented error in strict mode)
+- **THEN** it returns `N/D` under the default safe option (or raises `ChemNameNotSupported` when `return_nd_on_fail` is disabled)
 - **AND** it SHALL NOT discard the stereochemistry and return a bare or partially decorated phenyl name
 
 #### Scenario: Unsupported aryl connectivity or decoration

@@ -2,7 +2,7 @@
   "meta": {
     "description": "ChemName acceptance dataset (JSON-in-YAML format).",
     "version": 1,
-    "total_cases": 74
+    "total_cases": 78
   },
   "cases": [
     {
@@ -784,10 +784,50 @@
     },
     {
       "id": "smiles_acetamide",
-      "title": "P1 packaged smoke: acetamide",
+      "title": "Primary carboxamide systematic name (IUPAC Blue Book P-66.1.1.1.1.1)",
       "input_type": "smiles",
       "input": "CC(=O)N",
-      "expect": "^1-aminoethanamide$",
+      "expect": "^ethanamide$",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "smiles_substituted_aryl_ketone",
+      "title": "PubChem CID 118802021: amino/methyl substituted phenyl ketone",
+      "input_type": "smiles",
+      "input": "CC(=O)Cc1cc(N)ccc1C",
+      "expect": "^1-\\(5-amino-2-methylphenyl\\)propan-2-one$",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "smiles_substituted_aryl_ketone_reordered",
+      "title": "Equivalent atom-order form of PubChem CID 118802021",
+      "input_type": "smiles",
+      "input": "Cc1ccc(N)cc1CC(=O)C",
+      "expect": "^1-\\(5-amino-2-methylphenyl\\)propan-2-one$",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "smiles_direct_aryl_ketone_unsupported",
+      "title": "Direct acyl-substituted benzene remains outside this tranche",
+      "input_type": "smiles",
+      "input": "CC(=O)c1cc(N)ccc1C",
+      "expect": "ND",
+      "options": {
+        "rdkit_isolated": true
+      }
+    },
+    {
+      "id": "smiles_stereogenic_aryl_branch_unsupported",
+      "title": "Stereogenic phenyl decoration is not silently flattened",
+      "input_type": "smiles",
+      "input": "CC(=O)Cc1cc(N)ccc1[C@H](C)O",
+      "expect": "ND",
       "options": {
         "rdkit_isolated": true
       }

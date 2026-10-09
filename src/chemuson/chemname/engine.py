@@ -1950,6 +1950,7 @@ def _find_functional_group(
     chain_set = set(chain)
     chain_index = {atom_id: idx for idx, atom_id in enumerate(chain)}
     occurrences: list[FunctionalOccurrence] = []
+    amide_nitrogens: set[int] = set()
 
     for atom_id in chain:
         chain_neighbors = [nbr for nbr in view.neighbors(atom_id) if nbr in chain_set]
@@ -2041,6 +2042,7 @@ def _find_functional_group(
                 n_heavy = [n for n in view.neighbors(n_atom) if view.element(n) != "H"]
                 if atom_id not in n_heavy:
                     continue
+                amide_nitrogens.add(n_atom)
                 extras = [n for n in n_heavy if n != atom_id]
                 prefix = "amido" if not extras else "acylamido"
                 occurrences.append(
@@ -2133,7 +2135,11 @@ def _find_functional_group(
                             suffix_name="ol",
                         )
                     )
-            if elem == "N" and view.bond_order_between(atom_id, nbr) == 1:
+            if (
+                elem == "N"
+                and nbr not in amide_nitrogens
+                and view.bond_order_between(atom_id, nbr) == 1
+            ):
                 h_total = implicit_h_count(view, nbr) + view.explicit_h(nbr)
                 heavy_neighbors = [n for n in view.neighbors(nbr) if view.element(n) != "H"]
                 if h_total >= 1 and len(heavy_neighbors) == 1:

@@ -28,7 +28,8 @@ EXPECTED_TEMPLATE_NAMES = {
 EXPECTED_MOLECULE_NAMES = {
     "ethanol": "ethan-1-ol",
     "benzene": "benzene",
-    "acetamide": "1-aminoethanamide",
+    "acetamide": "ethanamide",
+    "substituted_aryl_ketone": "1-(5-amino-2-methylphenyl)propan-2-one",
     "ethane": "ethane",
     "cyclohexane": "cyclohexane",
     "unsupported_element": "N/D",
@@ -40,6 +41,34 @@ def _graph(elements: tuple[str, ...], bonds: tuple[tuple[int, int, int], ...]) -
     atoms = [graph.add_atom(element, float(index), 0.0) for index, element in enumerate(elements)]
     for first, second, order in bonds:
         graph.add_bond(atoms[first].id, atoms[second].id, order=order)
+    return graph
+
+
+def _substituted_aryl_ketone() -> MolGraph:
+    """Build the reference-backed multisubstituted phenyl regression graph."""
+    graph = MolGraph()
+    ring = [graph.add_atom("C", float(index), 0.0) for index in range(6)]
+    for index in range(6):
+        graph.add_bond(
+            ring[index].id,
+            ring[(index + 1) % 6].id,
+            order=1,
+            is_aromatic=True,
+        )
+
+    methylene = graph.add_atom("C", -1.0, 0.0)
+    carbonyl = graph.add_atom("C", -2.0, 0.0)
+    oxygen = graph.add_atom("O", -2.5, 0.8)
+    terminal_methyl = graph.add_atom("C", -3.0, 0.0)
+    graph.add_bond(ring[0].id, methylene.id, order=1)
+    graph.add_bond(methylene.id, carbonyl.id, order=1)
+    graph.add_bond(carbonyl.id, oxygen.id, order=2)
+    graph.add_bond(carbonyl.id, terminal_methyl.id, order=1)
+
+    amino = graph.add_atom("N", 4.0, 1.0)
+    methyl = graph.add_atom("C", 1.0, 1.0)
+    graph.add_bond(ring[4].id, amino.id, order=1)
+    graph.add_bond(ring[1].id, methyl.id, order=1)
     return graph
 
 
@@ -57,6 +86,7 @@ def _molecule_cases() -> dict[str, MolGraph]:
         "ethanol": _graph(("C", "C", "O"), ((0, 1, 1), (1, 2, 1))),
         "benzene": benzene,
         "acetamide": _graph(("C", "C", "O", "N"), ((0, 1, 1), (1, 2, 2), (1, 3, 1))),
+        "substituted_aryl_ketone": _substituted_aryl_ketone(),
         "ethane": _graph(("C", "C"), ((0, 1, 1),)),
         "cyclohexane": _graph(
             ("C", "C", "C", "C", "C", "C"),

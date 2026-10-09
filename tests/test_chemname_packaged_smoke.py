@@ -32,6 +32,7 @@ def test_acceptance_harness_includes_the_frozen_name_regressions() -> None:
     expected_harness_names = {
         "ethanol": "smiles_ethanol",
         "acetamide": "smiles_acetamide",
+        "substituted_aryl_ketone": "smiles_substituted_aryl_ketone",
         "ethane": "smiles_ethane",
         "cyclohexane": "smiles_cyclohexane",
     }

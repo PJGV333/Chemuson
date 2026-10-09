@@ -8,7 +8,7 @@ from chemuson.chemcalc.valence import implicit_h_count
 
 from .errors import ChemNameNotSupported
 from .molview import MolView
-from .rings import RingContext, _ring_aromatic_basic, find_rings_simple
+from .rings import RingContext, _ring_aromatic_basic, find_rings_simple, ring_order
 
 # Mapeo de halógenos a prefijos de sustituyentes.
 HALO_MAP: Dict[str, str] = {
@@ -176,7 +176,7 @@ def ring_substituent_name(
             continue
         rtype = ring_ctx.ring_types.get(ring)
         if rtype == "benzene":
-            return "phenyl"
+            return _phenyl_substituent_name(view, ring, start_atom, parent_set, ring_ctx)
         if rtype == "cyclohexane":
             return "cyclohexyl"
 
@@ -197,6 +197,240 @@ def ring_substituent_name(
             if view.bond_order_between(start_atom, ring_neighbor) == 1:
                 return "benzyl"
     return None
+
+
+def _phenyl_substituent_name(
+    view: MolView,
+    ring: set[int],
+    attachment_atom: int,
+    parent_set: set[int],
+    ring_ctx: RingContext,
+) -> str:
+    """Build a decorated phenyl name without losing ring information.
+
+    The attachment atom is fixed at locant 1. Unsupported topology or metadata
+    fails closed instead of falling back to the unqualified ``phenyl`` name.
+    """
+    ring_set = set(ring)
+    parent_edges = [
+        (ring_atom, nbr)
+        for ring_atom in ring_set
+        for nbr in view.neighbors(ring_atom)
+        if nbr in parent_set
+    ]
+    if (
+        len(parent_edges) != 1
+        or parent_edges[0][0] != attachment_atom
+        or view.bond_order_between(*parent_edges[0]) != 1
+        or _bond_has_stereochemistry(view, *parent_edges[0])
+    ):
+        raise ChemNameNotSupported("Unsupported phenyl attachment topology")
+    parent_atom = parent_edges[0][1]
+    _validate_phenyl_decoration_metadata(view, ring_set, parent_set, ring_ctx)
+
+    ordered_ring = ring_order(view, ring_set)
+    if len(ordered_ring) != 6 or attachment_atom not in ring_set:
+        raise ChemNameNotSupported("Unsupported phenyl ring ordering")
+
+    attachment_index = ordered_ring.index(attachment_atom)
+    best_substituents: list[tuple[str, int]] | None = None
+    best_key = None
+    for direction in (1, -1):
+        numbering = [
+            ordered_ring[(attachment_index + direction * offset) % len(ordered_ring)]
+            for offset in range(len(ordered_ring))
+        ]
+        substituents = _simple_phenyl_substituents(
+            view, numbering, ring_set, parent_atom
+        )
+        locants = tuple(sorted(locant for _name, locant in substituents))
+        alphabetical = tuple(sorted((name, locant) for name, locant in substituents))
+        key = (locants, alphabetical)
+        if best_key is None or key < best_key:
+            best_key = key
+            best_substituents = substituents
+
+    if best_substituents is None:
+        raise ChemNameNotSupported("No supported phenyl numbering")
+    if not best_substituents:
+        return "phenyl"
+    groups: dict[str, list[int]] = {}
+    for name, locant in best_substituents:
+        groups.setdefault(name, []).append(locant)
+    blocks: list[str] = []
+    for name in sorted(groups):
+        locants = sorted(groups[name])
+        if len(locants) == 1:
+            blocks.append(f"{locants[0]}-{name}")
+            continue
+        multiplier = UNSAT_MULTIPLIER.get(len(locants))
+        if multiplier is None:
+            raise ChemNameNotSupported("Too many identical phenyl substituents")
+        blocks.append(f"{','.join(str(locant) for locant in locants)}-{multiplier}{name}")
+    return f"({'-'.join(blocks)}phenyl)"
+
+
+def _simple_phenyl_substituents(
+    view: MolView,
+    numbering: list[int],
+    ring_set: set[int],
+    parent_atom: int,
+) -> list[tuple[str, int]]:
+    """Recognize the neutral simple decorations supported by this campaign."""
+    substituents: list[tuple[str, int]] = []
+    for index, ring_atom in enumerate(numbering):
+        locant = index + 1
+        for nbr in view.neighbors(ring_atom):
+            if nbr in ring_set or nbr == parent_atom:
+                continue
+            elem = view.element(nbr)
+            if elem == "H":
+                if view.isotope(nbr) is not None:
+                    raise ChemNameNotSupported("Isotopic phenyl substituent is unsupported")
+                continue
+            if elem in HALO_MAP:
+                name = HALO_MAP[elem]
+            elif elem == "C":
+                name = alkyl_substituent_name(view, nbr, ring_set)
+            elif elem == "N":
+                name = amino_substituent_name(view, nbr, ring_set)
+                if name is None:
+                    raise ChemNameNotSupported("Unsupported nitrogen on phenyl substituent")
+            elif elem == "O":
+                name = alkoxy_substituent_name(view, nbr, ring_set)
+                if name is None:
+                    heavy_neighbors = [
+                        atom for atom in view.neighbors(nbr) if view.element(atom) != "H"
+                    ]
+                    h_total = implicit_h_count(view, nbr) + view.explicit_h(nbr)
+                    if (
+                        len(heavy_neighbors) != 1
+                        or heavy_neighbors[0] != ring_atom
+                        or h_total < 1
+                        or view.bond_order_between(ring_atom, nbr) != 1
+                    ):
+                        raise ChemNameNotSupported("Unsupported oxygen on phenyl substituent")
+                    name = "hydroxy"
+            else:
+                raise ChemNameNotSupported("Unsupported phenyl substituent")
+            substituents.append((name, locant))
+    return substituents
+
+
+def _validate_phenyl_decoration_metadata(
+    view: MolView,
+    ring_set: set[int],
+    parent_set: set[int],
+    ring_ctx: RingContext,
+) -> None:
+    """Reject unsupported stereo/state/connectivity on a phenyl substituent."""
+    for atom_id in ring_set:
+        if (
+            view.formal_charge(atom_id) != 0
+            or view.isotope(atom_id) is not None
+            or view.has_radical(atom_id)
+            or _atom_has_stereochemistry(view, atom_id)
+        ):
+            raise ChemNameNotSupported("Unsupported phenyl atom metadata")
+        for nbr in view.neighbors(atom_id):
+            if nbr in ring_set and _bond_has_stereochemistry(view, atom_id, nbr):
+                raise ChemNameNotSupported("Unsupported phenyl bond stereochemistry")
+
+    seeds = {
+        nbr
+        for atom_id in ring_set
+        for nbr in view.neighbors(atom_id)
+        if nbr not in ring_set
+        and nbr not in parent_set
+        and view.element(nbr) != "H"
+    }
+    visited: set[int] = set()
+    for seed in seeds:
+        if seed in visited:
+            continue
+        component: set[int] = set()
+        ring_anchors: set[int] = set()
+        touches_parent = False
+        stack = [seed]
+        while stack:
+            atom_id = stack.pop()
+            if atom_id in ring_set:
+                ring_anchors.add(atom_id)
+                continue
+            if atom_id in parent_set:
+                touches_parent = True
+                continue
+            if view.element(atom_id) == "H":
+                if view.isotope(atom_id) is not None:
+                    raise ChemNameNotSupported("Unsupported isotope on phenyl decoration")
+                continue
+            if atom_id in component:
+                continue
+            component.add(atom_id)
+            if atom_id in ring_ctx.atom_rings:
+                raise ChemNameNotSupported("Nested ring decoration is unsupported")
+            if (
+                view.formal_charge(atom_id) != 0
+                or view.isotope(atom_id) is not None
+                or view.has_radical(atom_id)
+                or _atom_has_stereochemistry(view, atom_id)
+            ):
+                raise ChemNameNotSupported("Unsupported phenyl decoration metadata")
+            for nbr in view.neighbors(atom_id):
+                if nbr in ring_set:
+                    ring_anchors.add(nbr)
+                    if _bond_has_stereochemistry(view, atom_id, nbr):
+                        raise ChemNameNotSupported("Unsupported phenyl decoration stereochemistry")
+                elif nbr in parent_set:
+                    touches_parent = True
+                    if _bond_has_stereochemistry(view, atom_id, nbr):
+                        raise ChemNameNotSupported("Unsupported phenyl decoration stereochemistry")
+                elif view.element(nbr) == "H":
+                    if view.isotope(nbr) is not None:
+                        raise ChemNameNotSupported("Unsupported isotope on phenyl decoration")
+                else:
+                    if _bond_has_stereochemistry(view, atom_id, nbr):
+                        raise ChemNameNotSupported("Unsupported phenyl decoration stereochemistry")
+                    stack.append(nbr)
+        if len(ring_anchors) != 1 or touches_parent:
+            raise ChemNameNotSupported("Unsupported phenyl decoration connectivity")
+        visited.update(component)
+
+
+def _atom_has_stereochemistry(view: MolView, atom_id: int) -> bool:
+    return any(
+        (
+            view.stereo_cip(atom_id),
+            view.stereo_axial(atom_id),
+            view.stereo_helical(atom_id),
+            view.stereo_si_re(atom_id),
+        )
+    )
+
+
+def _bond_has_stereochemistry(view: MolView, atom_a: int, atom_b: int) -> bool:
+    if any(
+        (
+            view.bond_stereo_ez(atom_a, atom_b),
+            view.bond_stereo_axial(atom_a, atom_b),
+            view.bond_stereo_endo_exo(atom_a, atom_b),
+        )
+    ):
+        return True
+    bond = view._get_bond(atom_a, atom_b)
+    if bond is None:
+        return False
+    if isinstance(bond, dict):
+        raw_style = bond.get("style")
+        raw_stereo = bond.get("stereo")
+        raw_helical = bond.get("stereo_helical")
+    else:
+        raw_style = getattr(bond, "style", None)
+        raw_stereo = getattr(bond, "stereo", None)
+        raw_helical = getattr(bond, "stereo_helical", None)
+    style = str(getattr(raw_style, "value", raw_style) or "").lower()
+    stereo = str(getattr(raw_stereo, "value", raw_stereo) or "none").lower()
+    return style in {"wedge", "hashed", "wavy"} or stereo not in {"", "none"} or bool(raw_helical)
 
 
 def halomethyl_substituent_name(
