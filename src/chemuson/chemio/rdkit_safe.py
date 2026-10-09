@@ -70,6 +70,37 @@ def smiles_depict_candidates_isolated(
     return [candidate for candidate in candidates if isinstance(candidate, dict)], None
 
 
+def _apply_stereo_metadata_to_graph(graph, metadata: Any) -> None:
+    """Transfiere descriptores RDKit por índice CTAB al grafo ChemIO."""
+    if not isinstance(metadata, dict):
+        return
+    atoms = [graph.atoms[atom_id] for atom_id in sorted(graph.atoms)]
+    for entry in metadata.get("chiral_centers", []):
+        if not isinstance(entry, dict):
+            continue
+        atom_idx = int(entry.get("atom_idx", -1))
+        if 0 <= atom_idx < len(atoms):
+            cip = str(entry.get("cip", "") or "").strip().upper()
+            if cip in {"R", "S"}:
+                atoms[atom_idx].stereo_cip = cip
+
+    for entry in metadata.get("stereo_bonds", []):
+        if not isinstance(entry, dict):
+            continue
+        a1_idx = int(entry.get("begin_atom_idx", -1))
+        a2_idx = int(entry.get("end_atom_idx", -1))
+        if not (0 <= a1_idx < len(atoms) and 0 <= a2_idx < len(atoms)):
+            continue
+        pair = {int(atoms[a1_idx].id), int(atoms[a2_idx].id)}
+        descriptor = str(entry.get("stereo", "") or "").strip().upper()
+        if descriptor not in {"E", "Z"}:
+            continue
+        for bond in graph.bonds.values():
+            if {int(bond.a1_id), int(bond.a2_id)} == pair and int(bond.order) == 2:
+                bond.stereo_ez = descriptor
+                break
+
+
 def smiles_to_molgraph_isolated(
     smiles: str,
     timeout_s: float = 8.0,
@@ -83,11 +114,35 @@ def smiles_to_molgraph_isolated(
         return None, "empty_molblock"
     try:
         # Import local para evitar ciclos en carga de módulo.
-        from chemuson.chemio.rdkit_io import molfile_to_molgraph
+        from chemuson.chemio.rdkit_io import _molfile_to_molgraph_with_stereo_metadata
 
-        return molfile_to_molgraph(molblock), None
+        metadata = response.get("metadata")
+        graph = _molfile_to_molgraph_with_stereo_metadata(
+            molblock,
+            stereo_metadata=metadata if isinstance(metadata, dict) else {},
+        )
+        return graph, None
     except Exception as exc:
         return None, str(exc)
+
+
+def molgraph_to_molblock_isolated(
+    graph,
+    timeout_s: float = 8.0,
+) -> tuple[str | None, str | None]:
+    """Serializa un grafo ChemIO a MOL mediante el worker RDKit aislado."""
+    request = _graph_request_payload(
+        graph=graph,
+        chain_atom_ids=[],
+        mode="graph_to_molblock",
+    )
+    response = _run_worker(request, timeout_s=timeout_s)
+    if not response.get("ok"):
+        return None, str(response.get("error", "worker_error"))
+    molblock = str(response.get("molblock", "") or "").strip()
+    if not molblock:
+        return None, "empty_molblock"
+    return molblock, None
 
 
 def molgraph_to_smiles_isolated(
@@ -394,6 +449,8 @@ def _graph_request_payload(
             {
                 "id": int(atom.id),
                 "element": str(atom.element),
+                "x": float(getattr(atom, "x", 0.0)),
+                "y": float(getattr(atom, "y", 0.0)),
                 "formal_charge": int(getattr(atom, "formal_charge", getattr(atom, "charge", 0)) or 0),
                 "isotope": getattr(atom, "isotope", None),
                 "radical_electrons": int(getattr(atom, "radical_electrons", 0) or 0),
@@ -411,6 +468,7 @@ def _graph_request_payload(
                 "order": int(getattr(bond, "order", 1) or 1),
                 "is_aromatic": bool(getattr(bond, "is_aromatic", False)),
                 "style": str(getattr(getattr(bond, "style", None), "value", getattr(bond, "style", ""))),
+                "stereo": str(getattr(getattr(bond, "stereo", None), "value", getattr(bond, "stereo", ""))),
                 "donor_atom_id": getattr(bond, "donor_atom_id", None),
                 "stereo_ez": getattr(bond, "stereo_ez", None),
                 "stereo_axial": getattr(bond, "stereo_axial", None),

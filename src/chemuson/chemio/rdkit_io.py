@@ -108,6 +108,25 @@ def _graph_has_duplicate_bond_pairs(molgraph: MolGraph) -> bool:
     return False
 
 
+def _graph_has_stereo_annotations(molgraph: MolGraph) -> bool:
+    stereo_styles = {BondStyle.WEDGE, BondStyle.HASHED, BondStyle.WAVY}
+    return any(
+        any(
+            str(getattr(atom, attribute, None) or "").strip()
+            for attribute in ("stereo_cip", "stereo_axial", "stereo_helical", "stereo_si_re")
+        )
+        for atom in molgraph.atoms.values()
+    ) or any(
+        getattr(bond, "style", BondStyle.PLAIN) in stereo_styles
+        or getattr(bond, "stereo", BondStereo.NONE) != BondStereo.NONE
+        or any(
+            str(getattr(bond, attribute, None) or "").strip()
+            for attribute in ("stereo_ez", "stereo_axial", "stereo_endo_exo", "stereo_helical")
+        )
+        for bond in molgraph.bonds.values()
+    )
+
+
 def _require_rdkit():
     """Lanza un error si RDKit no está instalado."""
     if not _rdkit_available():
@@ -715,6 +734,99 @@ class StrictValidationResult:
     normalized_graph: Optional[MolGraph] = None
 
 
+def _rdkit_bond_dir_for_graph_bond(Chem, bond):
+    """Convierte paridad gráfica ChemIO a dirección RDKit orientada a ``a1_id``."""
+    style = getattr(bond, "style", BondStyle.PLAIN)
+    stereo = getattr(bond, "stereo", BondStereo.NONE)
+    if style == BondStyle.WEDGE or stereo == BondStereo.UP:
+        return Chem.BondDir.BEGINWEDGE
+    if style == BondStyle.HASHED or stereo == BondStereo.DOWN:
+        return Chem.BondDir.BEGINDASH
+    if style == BondStyle.WAVY or stereo == BondStereo.EITHER:
+        return Chem.BondDir.UNKNOWN
+    return Chem.BondDir.NONE
+
+
+def _apply_graph_stereo_to_rdkit(Chem, mol, molgraph: MolGraph, id_map: Dict[int, int]) -> None:
+    """Aplica únicamente anotaciones estereoquímicas explícitas del grafo."""
+    try:
+        Chem.AssignChiralTypesFromBondDirs(mol, replaceExistingTags=True)
+    except Exception:
+        pass
+
+    for atom in sorted(molgraph.atoms.values(), key=lambda item: item.id):
+        expected = str(getattr(atom, "stereo_cip", None) or "").strip().upper()
+        if not expected:
+            continue
+        if expected not in {"R", "S"}:
+            raise ValueError(f"Unsupported tetrahedral stereo descriptor: {expected}")
+        rd_atom = mol.GetAtomWithIdx(id_map[int(atom.id)])
+        matched = False
+        for tag in (Chem.ChiralType.CHI_TETRAHEDRAL_CW, Chem.ChiralType.CHI_TETRAHEDRAL_CCW):
+            rd_atom.SetChiralTag(tag)
+            Chem.AssignStereochemistry(mol, cleanIt=True, force=True)
+            actual = rd_atom.GetProp("_CIPCode") if rd_atom.HasProp("_CIPCode") else ""
+            if actual == expected:
+                matched = True
+                break
+        if not matched:
+            raise ValueError(f"Cannot preserve tetrahedral stereo descriptor {expected} for atom {atom.id}")
+
+    stereo_bonds = [
+        bond
+        for bond in molgraph.bonds.values()
+        if str(getattr(bond, "stereo_ez", None) or "").strip().upper()
+    ]
+    if stereo_bonds:
+        try:
+            from rdkit.Chem import rdCIPLabeler
+
+            rdCIPLabeler.AssignCIPLabels(mol)
+        except Exception as exc:
+            raise ValueError(f"Cannot rank E/Z substituents: {exc}") from exc
+
+    for source_bond in stereo_bonds:
+        expected = str(source_bond.stereo_ez).strip().upper()
+        if expected not in {"E", "Z"}:
+            raise ValueError(f"Unsupported double-bond stereo descriptor: {expected}")
+        begin_idx = id_map[int(source_bond.a1_id)]
+        end_idx = id_map[int(source_bond.a2_id)]
+        rd_bond = mol.GetBondBetweenAtoms(begin_idx, end_idx)
+        if rd_bond is None or rd_bond.GetBondType() != Chem.BondType.DOUBLE:
+            raise ValueError(f"E/Z annotation does not identify a double bond: {source_bond.id}")
+
+        def _highest_priority_neighbor(atom_idx: int, other_idx: int) -> int:
+            candidates = [
+                neighbor
+                for neighbor in mol.GetAtomWithIdx(atom_idx).GetNeighbors()
+                if neighbor.GetIdx() != other_idx
+            ]
+            if not candidates:
+                raise ValueError(f"E/Z annotation has no explicit substituent at atom {atom_idx}")
+            ranked = sorted(
+                candidates,
+                key=lambda neighbor: int(neighbor.GetProp("_CIPRank"))
+                if neighbor.HasProp("_CIPRank")
+                else -1,
+                reverse=True,
+            )
+            if len(ranked) > 1 and (
+                not ranked[0].HasProp("_CIPRank")
+                or ranked[0].GetProp("_CIPRank") == ranked[1].GetProp("_CIPRank")
+            ):
+                raise ValueError(f"E/Z annotation has tied substituents at atom {atom_idx}")
+            return int(ranked[0].GetIdx())
+
+        first = _highest_priority_neighbor(begin_idx, end_idx)
+        second = _highest_priority_neighbor(end_idx, begin_idx)
+        rd_bond.SetStereoAtoms(first, second)
+        rd_bond.SetStereo(Chem.BondStereo.STEREOE if expected == "E" else Chem.BondStereo.STEREOZ)
+
+    if stereo_bonds:
+        Chem.SetDoubleBondNeighborDirections(mol)
+    Chem.AssignStereochemistry(mol, cleanIt=True, force=True)
+
+
 def molgraph_to_rdkit_with_map(molgraph: MolGraph):
     """Convierte un `MolGraph` a RDKit `Mol` y mapea IDs internos.
 
@@ -813,6 +925,9 @@ def molgraph_to_rdkit_with_map(molgraph: MolGraph):
             rw.GetAtomWithIdx(id_map[bond.a1_id]).SetIsAromatic(True)
             rw.GetAtomWithIdx(id_map[bond.a2_id]).SetIsAromatic(True)
         if rd_bond is not None:
+            bond_dir = _rdkit_bond_dir_for_graph_bond(Chem, bond)
+            if bond_dir != Chem.BondDir.NONE:
+                rd_bond.SetBondDir(bond_dir)
             if getattr(bond, "stereo_axial", None):
                 rd_bond.SetProp("_ChemusonStereoAxial", str(bond.stereo_axial))
             if getattr(bond, "stereo_endo_exo", None):
@@ -823,10 +938,12 @@ def molgraph_to_rdkit_with_map(molgraph: MolGraph):
     mol = rw.GetMol()
     # Preservar coordenadas 2D del editor.
     conf = Chem.Conformer(mol.GetNumAtoms())
+    conf.Set3D(False)
     for atom_id, idx in id_map.items():
         atom = molgraph.atoms[atom_id]
         conf.SetAtomPosition(idx, (atom.x, atom.y, 0.0))
     mol.AddConformer(conf, assignId=True)
+    _apply_graph_stereo_to_rdkit(Chem, mol, molgraph, id_map)
     return mol, id_map
 
 
@@ -863,19 +980,24 @@ def molgraph_to_smiles(molgraph: MolGraph) -> str:
         SMILES canónico o aproximado en el camino de respaldo.
     """
     export_graph = _prepare_molgraph_for_smiles_export(molgraph)
+    has_stereo = _graph_has_stereo_annotations(export_graph)
     if _graph_requires_rdkit_fallback(export_graph):
+        if has_stereo:
+            raise RuntimeError("RDKit-required stereo cannot be exported with the internal SMILES fallback")
         return _molgraph_to_smiles_fallback(export_graph)
-    if _rdkit_available():
+    if has_stereo or _rdkit_available():
+        worker_error = ""
         try:
             from chemuson.chemio.rdkit_safe import molgraph_to_smiles_isolated
 
             smiles, error = molgraph_to_smiles_isolated(export_graph)
             if not error and smiles:
                 return smiles
-        except Exception:
-            # RDKit can reject some hypervalent depictions (e.g., interhalogens, noble gases).
-            # Fall back to the internal writer so the editor can still export something useful.
-            return _molgraph_to_smiles_fallback(export_graph)
+            worker_error = str(error or "empty_smiles")
+        except Exception as exc:
+            worker_error = str(exc)
+        if has_stereo:
+            raise RuntimeError(f"Stereo-preserving SMILES export failed: {worker_error or 'worker_error'}")
     return _molgraph_to_smiles_fallback(export_graph)
 
 
@@ -897,6 +1019,37 @@ def molgraph_to_smiles_isolated_or_error(
     return smiles
 
 
+def _graph_has_rdkit_only_stereo(molgraph: MolGraph) -> bool:
+    return any(str(getattr(atom, "stereo_cip", None) or "").strip() for atom in molgraph.atoms.values()) or any(
+        str(getattr(bond, "stereo_ez", None) or "").strip() for bond in molgraph.bonds.values()
+    )
+
+
+def _graph_has_potential_double_bond_stereo(molgraph: MolGraph) -> bool:
+    degree = _structural_degree_map(molgraph)
+    return any(
+        int(getattr(bond, "order", 1) or 1) == 2
+        and degree.get(int(bond.a1_id), 0) >= 2
+        and degree.get(int(bond.a2_id), 0) >= 2
+        for bond in molgraph.bonds.values()
+        if bond_is_structural(bond)
+    )
+
+
+def _mark_unassigned_double_bonds_unknown(Chem, mol) -> None:
+    """Evita que coordenadas de dibujo asignen E/Z a dobles no especificados."""
+    try:
+        potential = Chem.FindPotentialStereo(mol, flagPossible=True)
+    except Exception:
+        return
+    for stereo_info in potential:
+        if (
+            stereo_info.type == Chem.StereoType.Bond_Double
+            and stereo_info.specified == Chem.StereoSpecified.Unspecified
+        ):
+            mol.GetBondWithIdx(int(stereo_info.centeredOn)).SetStereo(Chem.BondStereo.STEREOANY)
+
+
 def molgraph_to_molfile(molgraph: MolGraph) -> str:
     """Genera un bloque MOL (V2000) desde un `MolGraph`.
 
@@ -906,14 +1059,29 @@ def molgraph_to_molfile(molgraph: MolGraph) -> str:
     Returns:
         Cadena MOL. Si RDKit falla, usa un exportador interno básico.
     """
+    rdkit_only_stereo = _graph_has_rdkit_only_stereo(molgraph)
+    potential_ez = _graph_has_potential_double_bond_stereo(molgraph)
     if _graph_requires_rdkit_fallback(molgraph):
+        if rdkit_only_stereo:
+            raise RuntimeError("RDKit-required stereo cannot be exported with the internal MOL fallback")
         return _molgraph_to_molfile_fallback(molgraph)
     if _rdkit_available():
         try:
             mol = molgraph_to_rdkit(molgraph)
+            _mark_unassigned_double_bonds_unknown(Chem, mol)
             return Chem.MolToMolBlock(mol)
-        except Exception:
+        except Exception as exc:
+            if rdkit_only_stereo:
+                raise RuntimeError(f"MOL stereo serialization failed: {exc}") from exc
             return _molgraph_to_molfile_fallback(molgraph)
+    if rdkit_only_stereo or potential_ez:
+        from chemuson.chemio.rdkit_safe import molgraph_to_molblock_isolated
+
+        molblock, error = molgraph_to_molblock_isolated(molgraph)
+        if not error and molblock:
+            return molblock
+        if rdkit_only_stereo:
+            raise RuntimeError(f"MOL stereo serialization failed: {error or 'empty_molblock'}")
     return _molgraph_to_molfile_fallback(molgraph)
 
 
@@ -1157,7 +1325,7 @@ def _molfile_to_molgraph_fallback(molfile: str) -> MolGraph:
         atom = graph.add_atom(symbol, x, y, is_explicit=(symbol != "C"))
         atom_ids.append(atom.id)
 
-    unique_bonds: dict[tuple[int, int], tuple[int, bool, int]] = {}
+    unique_bonds: dict[tuple[int, int], tuple[int, int, int, bool, int]] = {}
     for offset in range(bond_count):
         a1_idx, a2_idx, bond_type, stereo_code = _parse_bond_line(lines[bond_start + offset])
         if not (1 <= a1_idx <= len(atom_ids) and 1 <= a2_idx <= len(atom_ids)):
@@ -1167,12 +1335,17 @@ def _molfile_to_molgraph_fallback(molfile: str) -> MolGraph:
         order, aromatic = _fallback_bond_order_and_aromatic(int(bond_type))
         pair = (min(a1_idx, a2_idx), max(a1_idx, a2_idx))
         previous = unique_bonds.get(pair)
-        if previous is None or _fallback_bond_rank(order, aromatic) > _fallback_bond_rank(
-            previous[0], previous[1]
-        ):
-            unique_bonds[pair] = (order, aromatic, stereo_code)
+        candidate_rank = (_fallback_bond_rank(order, aromatic), int(bool(stereo_code)))
+        previous_rank = (
+            (_fallback_bond_rank(previous[2], previous[3]), int(bool(previous[4])))
+            if previous is not None
+            else (-1, -1)
+        )
+        if previous is None or candidate_rank > previous_rank:
+            # Keep the CTAB endpoint order: stereo codes 1/6 are directed from a1.
+            unique_bonds[pair] = (a1_idx, a2_idx, order, aromatic, stereo_code)
 
-    for (a1_idx, a2_idx), (order, aromatic, stereo_code) in sorted(unique_bonds.items()):
+    for (_pair_a1, _pair_a2), (a1_idx, a2_idx, order, aromatic, stereo_code) in sorted(unique_bonds.items()):
         style, stereo = _style_and_stereo_from_mol_stereo(stereo_code)
         graph.add_bond(
             atom_ids[a1_idx - 1],
@@ -1287,7 +1460,36 @@ def normalize_molblock_header(molfile: str) -> str:
     return "\n".join(lines)
 
 
+def _molfile_has_atom_stereo_parity(molfile: str) -> bool:
+    lines = str(molfile or "").splitlines()
+    counts_idx = _find_counts_line_index(lines)
+    counts = _parse_counts(lines[counts_idx]) if counts_idx is not None else None
+    if counts is None:
+        return False
+    atom_count, _bond_count = counts
+    for line in lines[counts_idx + 1 : counts_idx + 1 + atom_count]:
+        try:
+            if int(line[39:42].strip() or "0") != 0:
+                return True
+        except (TypeError, ValueError):
+            continue
+    return False
+
+
 def molfile_to_molgraph(molfile: str, *, target_bond_length: float = 40.0) -> MolGraph:
+    return _molfile_to_molgraph_with_stereo_metadata(
+        molfile,
+        target_bond_length=target_bond_length,
+        stereo_metadata=None,
+    )
+
+
+def _molfile_to_molgraph_with_stereo_metadata(
+    molfile: str,
+    *,
+    target_bond_length: float = 40.0,
+    stereo_metadata: Optional[dict[str, object]] = None,
+) -> MolGraph:
     """Importa un bloque MOL (V2000) a `MolGraph`.
 
     Args:
@@ -1317,6 +1519,24 @@ def molfile_to_molgraph(molfile: str, *, target_bond_length: float = 40.0) -> Mo
             graph = rdkit_to_molgraph(mol)
         except Exception:
             raise fallback_error
+    if stereo_metadata is None and (
+        _graph_has_potential_double_bond_stereo(graph) or _molfile_has_atom_stereo_parity(normalized)
+    ):
+        from chemuson.chemio.rdkit_safe import run_rdkit_stereo_extract
+
+        extracted = run_rdkit_stereo_extract(normalized, fmt="molblock", timeout_s=8.0)
+        if not extracted.get("ok"):
+            raise RuntimeError(
+                "MOL stereo could not be inspected without lossy import: "
+                f"{extracted.get('error', 'worker_error')}"
+            )
+        from chemuson.chemio.rdkit_safe import _apply_stereo_metadata_to_graph
+
+        _apply_stereo_metadata_to_graph(graph, extracted.get("stereo_metadata"))
+    elif stereo_metadata is not None:
+        from chemuson.chemio.rdkit_safe import _apply_stereo_metadata_to_graph
+
+        _apply_stereo_metadata_to_graph(graph, stereo_metadata)
     _scale_to_default(graph, target_bond_length)
     return graph
 
@@ -1503,9 +1723,15 @@ def rdkit_to_molgraph(mol) -> MolGraph:
             donor_atom_id=donor_atom_id,
         )
         stereo = bond.GetStereo()
-        if stereo == Chem.BondStereo.STEREOE:
+        if stereo in {
+            Chem.BondStereo.STEREOE,
+            getattr(Chem.BondStereo, "STEREOTRANS", Chem.BondStereo.STEREOE),
+        }:
             new_bond.stereo_ez = "E"
-        elif stereo == Chem.BondStereo.STEREOZ:
+        elif stereo in {
+            Chem.BondStereo.STEREOZ,
+            getattr(Chem.BondStereo, "STEREOCIS", Chem.BondStereo.STEREOZ),
+        }:
             new_bond.stereo_ez = "Z"
         for prop_name, attr_name in (
             ("_ChemusonStereoAxial", "stereo_axial"),
@@ -1869,8 +2095,11 @@ def _molgraph_to_molfile_fallback(molgraph: MolGraph) -> str:
     Returns:
         Cadena con el bloque MOL (V2000) básico.
     """
+    if _graph_has_rdkit_only_stereo(molgraph):
+        raise ValueError("Internal MOL fallback cannot encode CIP or E/Z annotations")
     atoms = [molgraph.atoms[atom_id] for atom_id in sorted(molgraph.atoms.keys())]
     bonds = _unique_bonds_for_export(molgraph)
+    degree = _structural_degree_map(molgraph)
     atom_index = {atom.id: idx + 1 for idx, atom in enumerate(atoms)}
     aliases: list[tuple[int, str]] = []
 
@@ -1893,8 +2122,24 @@ def _molgraph_to_molfile_fallback(molgraph: MolGraph) -> str:
 
     for bond in bonds:
         bond_type = 4 if bond.is_aromatic else max(1, min(3, bond.order))
+        stereo_code = {
+            BondStyle.WEDGE: 1,
+            BondStyle.HASHED: 6,
+            BondStyle.WAVY: 4,
+        }.get(bond.style, {
+            BondStereo.UP: 1,
+            BondStereo.DOWN: 6,
+            BondStereo.EITHER: 4,
+        }.get(
+            bond.stereo,
+            3
+            if bond.order == 2
+            and degree.get(int(bond.a1_id), 0) >= 2
+            and degree.get(int(bond.a2_id), 0) >= 2
+            else 0,
+        ))
         lines.append(
-            f"{atom_index[bond.a1_id]:>3}{atom_index[bond.a2_id]:>3}{bond_type:>3}  0  0  0  0"
+            f"{atom_index[bond.a1_id]:>3}{atom_index[bond.a2_id]:>3}{bond_type:>3}{stereo_code:>3}  0  0  0"
         )
 
     charges: list[tuple[int, int]] = []
