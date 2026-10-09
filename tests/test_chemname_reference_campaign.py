@@ -22,9 +22,9 @@ def _load_cases() -> list[dict[str, str]]:
 CASES = _load_cases()
 
 
-def test_reference_corpus_has_79_independently_resolved_structures() -> None:
-    assert len(CASES) == 79
-    assert len({case["pubchem_cid"] for case in CASES}) == 79
+def test_reference_corpus_has_80_independently_resolved_structures() -> None:
+    assert len(CASES) == 80
+    assert len({case["pubchem_cid"] for case in CASES}) == 80
     assert all(case["pubchem_name"] and case["pubchem_connectivity_smiles"] for case in CASES)
     assert all(case["formula"] and case["smiles"] for case in CASES)
     assert {case["baseline_classification"] for case in CASES} == {
@@ -33,10 +33,10 @@ def test_reference_corpus_has_79_independently_resolved_structures() -> None:
         "unsupported",
         "reference_pending",
     }
-    assert all(
-        bool(case["target_name"]) == (case["baseline_classification"] != "reference_pending")
-        for case in CASES
-    )
+    assert all(case["target_name"] for case in CASES)
+    assert [case["id"] for case in CASES if case["baseline_classification"] == "reference_pending"] == [
+        "ester_ethyl_ethanoate"
+    ]
 
 
 @pytest.mark.parametrize("case", CASES, ids=[case["id"] for case in CASES])
@@ -59,6 +59,22 @@ def test_pubchem_connectivity_reference_matches_exact_input(case: dict[str, str]
 def test_reference_backed_correct_names_remain_stable(case: dict[str, str]) -> None:
     graph = smiles_to_molgraph(case["smiles"])
     assert iupac_name(graph, NameOptions(rdkit_isolated=False)) == case["baseline_name"]
+
+
+SYSTEMATIC_VARIANTS = {
+    "amide_nmethylethanamide": "N-methylethanamide",
+    "amide_nethylethanamide": "N-ethylethanamide",
+}
+
+
+@pytest.mark.parametrize("case", CASES, ids=[case["id"] for case in CASES])
+def test_final_campaign_names_match_targets_or_adjudicated_systematic_variants(
+    case: dict[str, str],
+) -> None:
+    graph = smiles_to_molgraph(case["smiles"])
+    actual = iupac_name(graph, NameOptions(rdkit_isolated=False))
+    expected = SYSTEMATIC_VARIANTS.get(case["id"], case["target_name"])
+    assert actual == expected
 
 
 @pytest.mark.parametrize(

@@ -12,7 +12,7 @@ acid_2hydroxypropanoic|acid,multi|CC(O)C(=O)O|C3H6O3|612|2-hydroxypropanoic acid
 acid_2oxopropanoic|acid,multi|CC(=O)C(=O)O|C3H4O3|1060|2-oxopropanoic acid|CC(=O)C(=O)O|2-oxopropanoic acid|correct|2-oxopropanoic acid
 acid_3aminopropanoic|acid|NCCC(=O)O|C3H7NO2|239|3-aminopropanoic acid|C(CN)C(=O)O|3-aminopropanoic acid|correct|3-aminopropanoic acid
 ester_methyl_ethanoate|ester|COC(=O)C|C3H6O2|6584|methyl acetate|CC(=O)OC|ethanoate|incorrect|methyl acetate
-ester_ethyl_ethanoate|ester|CCOC(=O)C|C4H8O2|8857|ethyl acetate|CCOC(=O)C|1-acetoxyethane|reference_pending|
+ester_ethyl_ethanoate|ester|CCOC(=O)C|C4H8O2|8857|ethyl acetate|CCOC(=O)C|1-acetoxyethane|reference_pending|ethyl acetate
 ester_methyl_propanoate|ester|CCC(=O)OC|C4H8O2|11124|methyl propanoate|CCC(=O)OC|propanoate|incorrect|methyl propanoate
 ester_ethyl_propanoate|ester|CCOC(=O)CC|C5H10O2|7749|ethyl propanoate|CCC(=O)OCC|propanoate|incorrect|ethyl propanoate
 ester_methyl_2methylpropanoate|ester|CC(C)C(=O)OC|C5H10O2|11039|methyl 2-methylpropanoate|CC(C)C(=O)OC|N/D|unsupported|methyl 2-methylpropanoate
@@ -78,3 +78,4 @@ multi_2aminopropanoicacid|multi|CC(N)C(=O)O|C3H7NO2|602|2-aminopropanoic acid|CC
 multi_3oxobutanamide|multi|CC(=O)CC(=O)N|C4H7NO2|80077|3-oxobutanamide|CC(=O)CC(=O)N|3-oxobutanamide|correct|3-oxobutanamide
 multi_ethyl_3aminopropanoate|multi|CCOC(=O)CCN|C5H11NO2|419889|ethyl 3-aminopropanoate|CCOC(=O)CCN|3-aminopropanoate|incorrect|ethyl 3-aminopropanoate
 multi_methyl_2amino3oxobutanoate|multi,ester|COC(=O)C(N)C(=O)C|C5H9NO3|12052398|methyl 2-amino-3-oxobutanoate|CC(=O)C(C(=O)OC)N|2-amino-3-oxobutanoate|incorrect|methyl 2-amino-3-oxobutanoate
+amine_methylammonium|amine|C[NH3+]|CH6N+|644041|methylazanium|C[NH3+]|methan-1-amine|incorrect|methylazanium

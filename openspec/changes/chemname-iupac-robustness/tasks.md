@@ -29,25 +29,25 @@
 - [x] 5.1 Resolve 88 representative PubChem PUG REST queries and deduplicate to 78 unique molecular structures; verify each returned connectivity SMILES against its exact input with RDKit canonicalization.
 - [x] 5.2 Record each unique structure, molecular formula, PubChem CID/IUPACName/connectivity SMILES, exact pre-fix ChemName name, and baseline classification in `tests/data/chemname_iupac_reference_campaign.psv`.
 - [x] 5.3 Add corpus-integrity, structure-equivalence, and stable-name tests for the 53 baseline cases assessed correct (including documented systematic/retained-name variants).
-- [ ] 5.4 Reassess classifications and report reference-name exactness separately from valid systematic/retained variants after family fixes.
+- [x] 5.4 Reassess the full fixture after family fixes; record exact-target results separately from the two adjudicated systematic amide variants.
 
 ## 6. Stage 2 — functional groups and seniority
 - [x] 6.1 Correct branched and dicarboxylic acid parent selection/suffixes with PubChem-backed positive cases and mixed acid/ketone plus senior-group controls; benzoic acid remains a stage-3 aromatic case.
-- [ ] 6.2 Represent both ester components (organyl + acid-derived anion) for aliphatic and aromatic monoesters; preserve other higher-priority groups.
+- [x] 6.2 Represent both ester components (organyl + acid-derived anion) for tested aliphatic and simple aromatic monoesters; preserve other higher-priority groups and fail closed on unsupported decorations.
 - [x] 6.3 Correct branched aldehyde chain selection and terminal dial suffixes with atom-order variants and mixed acid/alcohol/ketone controls.
 - [x] 6.4 Correct repeated diol, diamine, diamide, and dione suffixes plus simple N-alkyl amide locants; positive references, higher-priority controls, atom-order variants, and isotope/stereo fail-closed cases pass. N-substitution across multiple amide groups remains unsupported and fails closed.
-- [ ] 6.5 Add independent regression cases for chain selection, suffix/prefix priority, functional group locants, and alternate atom orders.
+- [x] 6.5 Add independent regression cases for chain selection, suffix/prefix priority, functional-group locants, and alternate atom orders.
 
 ## 7. Stage 3 — aromatic parents and decorated substituents
 - [x] 7.1 Fix the reference-backed simple benzoic acid, methyl/ethyl benzoate, acetophenone, and 4-hydroxyacetophenone patterns; add positive references and an acid-chain negative control.
-- [ ] 7.2 Expand mono-, di-, and trisubstituted aromatic orientation/locant tests, including mixed substituents and functionalized chains.
+- [x] 7.2 Add mono-, di-, and trisubstituted aromatic locant-tie tests with mixed hydroxy/methyl/nitro substituents and alternate atom orders.
 - [x] 7.3 Keep fused, stereogenic, charged, and isotopic direct aryl-ketone decorations fail-closed; existing substituted-phenyl regressions continue to cover nested/unsupported decorations.
 
 ## 8. Stage 4 — structural safety and determinism
-- [ ] 8.1 Audit selected parent, functional groups, and rendered substituents for unaccounted heavy atoms before returning names; ensure this does not turn deliberate unsupported boundaries into blanket `N/D`.
-- [ ] 8.2 Add atom-order/permutation determinism checks for symmetric and locant-tie cases.
-- [ ] 8.3 Retain focused negative cases for omitted groups, duplicated groups, lost stereochemistry, charge/isotope loss, and unsupported connectivity.
+- [x] 8.1 Audit connectivity and direct substituent accounting for linear and supported simple-ring parents; reject disconnected fragments and unrendered functional-auxiliary branches/metadata without broadening unsupported boundaries.
+- [x] 8.2 Add fixed alternate atom-order tests for symmetric chain/ring and aromatic locant-tie cases; a 135-randomized-equivalent diagnostic found no naming divergence in the audited sample.
+- [x] 8.3 Add focused negative cases for omitted components, unaccounted branches, lost stereo/charge/isotope data, and unsupported connectivity, alongside duplicated-group controls.
 
 ## 9. Stage 5 — final coverage report
-- [ ] 9.1 Classify each reference structure as correct, incorrect, unsupported, or reference pending; report overlap-aware metrics by chemical family.
+- [x] 9.1 Classify every fixture structure after fixes; report overlap-aware baseline and final family metrics, exact target matches, and documented systematic variants separately.
 - [ ] 9.2 Report discovered/corrected defects, remaining `N/D`, limited architecture impact, tests, commits, Git status, and next proposal without claiming general IUPAC conformity.

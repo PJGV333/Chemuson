@@ -1,6 +1,6 @@
 # Reference-backed ChemName regression corpus
 
-Retrieval date for all online records: **2026-10-08**. Names are compared against exact input structures; no ChemName-generated value is used as its own reference.
+The original survey records were retrieved on **2026-10-08**; the methylammonium reference was retrieved on **2026-10-09**. Names are compared against exact input structures; no ChemName-generated value is used as its own reference.
 
 ## C1 — Primary carboxamide
 
@@ -37,6 +37,23 @@ Reference:
 - [PubChem CID 118802021](https://pubchem.ncbi.nlm.nih.gov/compound/118802021)
 - [PubChem PUG REST query for the exact input SMILES](https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/CC%28%3DO%29Cc1cc%28N%29ccc1C/property/IUPACName,CanonicalSMILES/JSON)
 
+## C3 — Methylammonium charge preservation
+
+| Field | Value |
+|---|---|
+| Isomeric SMILES | `C[NH3+]` |
+| Formula | `CH6N+` |
+| Baseline ChemName | `methan-1-amine` (loses the cation) |
+| Required campaign output | `methylazanium` |
+| Independent registry | PubChem CID 644041; `IUPACName`: `methylazanium`; connectivity `C[NH3+]` |
+| Retrieval date | 2026-10-09 |
+
+The exact cation now has a dedicated positive assertion. The adjacent ethylammonium form remains outside this narrowly referenced support case and fails closed rather than inheriting the methyl name.
+
+Reference:
+- [PubChem CID 644041](https://pubchem.ncbi.nlm.nih.gov/compound/644041)
+- [PubChem PUG REST properties for `C[NH3+]`](https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/C%5BNH3%2B%5D/property/MolecularFormula,IUPACName,ConnectivitySMILES/JSON)
+
 ## Negative / safety sentinels
 
 - `CC(=O)Cc1cc(N)ccc1[C@H](C)O` carries a stereogenic hydroxyethyl branch on the phenyl group. The isolated SMILES import represents the stereochemistry as hashed-bond metadata; the campaign's exact safe expectation is `N/D` until this path can emit and reference the descriptor. A separate graph-level unit test sets `stereo_cip=R` to cover atom metadata as well.
@@ -49,13 +66,17 @@ The machine-readable source of the original exact regression cases is `tests/dat
 
 ## Stage 2/3 survey — 78 unique independently resolved structures
 
-On **2026-10-08**, 88 PubChem PUG REST queries were deduplicated to 78 unique molecular structures. The 79-row [`tests/data/chemname_iupac_reference_campaign.psv`](../../../tests/data/chemname_iupac_reference_campaign.psv) contains those 78 survey structures plus one independently verified follow-up regression case (CID 12052398). Each row records the submitted SMILES, formula, PubChem CID, PubChem `IUPACName`, returned connectivity SMILES, exact pre-fix ChemName output, and baseline classification. All input/connectivity pairs produced the same RDKit-canonicalized graph. The 88 survey requests included overlapping representations/cross-family cases; metrics below count unique structures within a family and are intentionally not additive.
+On **2026-10-08**, 88 PubChem PUG REST queries were deduplicated to 78 unique molecular structures. The 80-row [`tests/data/chemname_iupac_reference_campaign.psv`](../../../tests/data/chemname_iupac_reference_campaign.psv) contains those 78 survey structures, one independently verified follow-up regression case (CID 12052398), and the separately resolved methylammonium charge case (CID 644041). Each row records the submitted SMILES, formula, PubChem CID, PubChem `IUPACName`, returned connectivity SMILES, exact pre-fix ChemName output, baseline classification, and final target. All input/connectivity pairs produced the same RDKit-canonicalized graph. The 88 survey requests included overlapping representations/cross-family cases; metrics below count unique structures within a family and are intentionally not additive.
 
-Stage 1 already had two independently referenced structures. Acetamide is one of these 78; the substituted aryl ketone is not in this survey. Thus the survey adds **77 new structures**, for **79** at the initial campaign checkpoint; the additional follow-up case brings the total to **80 unique independently referenced structures**. PubChem `IUPACName` is an independent registry result, not assumed automatically to be a PIN. The original 78-row baseline assessed 53 outputs as chemically complete/correct, including **30 exact PubChem name matches and 23 valid systematic/retained-name variants**; 16 as incorrect/incomplete; 8 as unsupported (`N/D`); and 1 as reference-pending. The follow-up case was also incorrect, so the expanded fixture baseline is **53 correct, 17 incorrect, 8 unsupported, and 1 reference-pending**.
+Stage 1 already had two independently referenced structures. Acetamide is one of the 78 survey structures; the substituted aryl ketone is separate. Thus the survey adds **77 new structures**, for **79** at the initial campaign checkpoint; the follow-up ester brings that count to **80**, and methylammonium to **81 total independently referenced campaign structures**. PubChem `IUPACName` is an independent registry result, not assumed automatically to be a PIN. The original 78-row baseline assessed 53 outputs as chemically complete/correct, including **30 exact PubChem name matches and 23 valid systematic/retained-name variants**; 16 as incorrect/incomplete; 8 as unsupported (`N/D`); and 1 as reference-pending. The follow-up ester and methylammonium cases were also incorrect at baseline, so the 80-row fixture baseline is **53 correct, 18 incorrect, 8 unsupported, and 1 reference-pending**.
 
 #### Follow-up ester reference
 
 The existing amino-oxo ester regression graph in `tests/test_chemname_pr27.py` corresponds to `COC(=O)C(N)C(=O)C`, formula `C5H9NO3`. PubChem PUG REST resolves CID 12052398, connectivity `CC(=O)C(C(=O)OC)N`, and `IUPACName` **methyl 2-amino-3-oxobutanoate**. ChemName's previous `2-amino-3-oxobutanoate` omitted the methyl ester component. This independent identity check backs the corrected complete name and also served as a negative control for the earlier family regression.
+
+### Final measured fixture coverage after family fixes
+
+A strict final audit of all 80 fixture structures (`rdkit_isolated=False`, `return_nd_on_fail=False`) produced no exceptions or `N/D`: 78 outputs match their recorded target strings and the remaining two are the documented systematic N-substituted amide forms `N-methylethanamide` and `N-ethylethanamide`. The formerly pending ethyl acetate case now matches its reference target; methylammonium is named `methylazanium`, matching PubChem CID 644041 and preserving the cation. The separate stage-1 substituted-aryl reference also remains covered by its exact regression test, bringing campaign-wide independent references to 81. These measurements describe only this finite corpus; they do not establish general IUPAC compliance. The per-structure final audit is enforced by `tests/test_chemname_reference_campaign.py`.
 
 ### Baseline classifications by overlapping family
 
@@ -66,12 +87,28 @@ The existing amino-oxo ester regression graph in `tests/test_chemname_pr27.py` c
 | Aldehydes | 8 | 6 | 1 | 1 | 0 |
 | Ketones | 8 | 6 | 1 | 1 | 0 |
 | Alcohols | 8 | 6 | 2 | 0 | 0 |
-| Amines | 8 | 7 | 1 | 0 | 0 |
+| Amines | 9 | 7 | 2 | 0 | 0 |
 | Amides | 8 | 5 | 3 | 0 | 0 |
 | Aromatic structures | 15 | 14 | 0 | 1 | 0 |
 | Multifunctional structures | 13 | 10 | 3 | 0 | 0 |
 
-A family tag can overlap another tag (for example, an amino acid is both acid and multifunctional). `correct` accepts a documented valid systematic or retained variant even if it is not PubChem's exact string or the PIN. The single pending adjudication is whether `1-acetoxyethane` is acceptable general prefix-mode nomenclature for ethyl acetate; the reference-backed preferred form is `ethyl acetate` (Blue Book P-65.6.3.3.1).
+A family tag can overlap another tag (for example, an amino acid is both acid and multifunctional). `correct` accepts a documented valid systematic or retained variant even if it is not PubChem's exact string or the PIN. The one `reference_pending` classification is historical: the baseline output `1-acetoxyethane` had not been adjudicated. The current output is the independently backed `ethyl acetate` (CID 8857; Blue Book P-65.6.3.3.1), so no current corpus case remains pending.
+
+#### Current final status by overlapping family
+
+| Family | Structures | Exact target strings | Adjudicated systematic variants | Unsupported/other |
+|---|---:|---:|---:|---:|
+| Carboxylic acids | 12 | 12 | 0 | 0 |
+| Esters | 10 | 10 | 0 | 0 |
+| Aldehydes | 8 | 8 | 0 | 0 |
+| Ketones | 8 | 8 | 0 | 0 |
+| Alcohols | 8 | 8 | 0 | 0 |
+| Amines | 9 | 9 | 0 | 0 |
+| Amides | 8 | 6 | 2 | 0 |
+| Aromatic structures | 15 | 15 | 0 | 0 |
+| Multifunctional structures | 13 | 13 | 0 | 0 |
+
+Family rows overlap by design and therefore do not sum to the 80 unique fixture structures. The two systematic variants are the N-methyl and N-ethyl ethanamide outputs; PubChem's retained acetamide strings remain recorded as independent registry names.
 
 ### Reproducible normative anchors
 
@@ -94,5 +131,5 @@ The exact structures already in the corpus now produce their recorded target nam
 - Ester component loss: methyl/ethyl propanoate, methyl acetate, methyl propenoate, ethyl 2-hydroxypropanoate, ethyl 3-aminopropanoate, and methyl 2-amino-3-oxobutanoate return only the acid-derived `...oate` name; aromatic benzoates and methyl 2-methylpropanoate return `N/D`.
 - Branched aldehyde `CC(C)C=O` returns `N/D`; propanedial returns `3-oxopropanal` instead of the documented preferred dial suffix.
 - Same-class suffixes are not combined for `OCCO`, `OCCCO`, `NCCN`, and `CC(=O)CCC(=O)C`; names instead demote one identical function to `hydroxy`/`amino`/`oxo`.
-- `CNC(C)=O`, `CCNC(C)=O`, and `NC(=O)CC(=O)N` omit or misrepresent amide N-substitution/multiplicity. `CCOC(=O)CCN` omits the ethyl ester component.
+- `CNC(C)=O`, `CCNC(C)=O`, and `NC(=O)CC(=O)N` omit or misrepresent amide N-substitution/multiplicity. `CCOC(=O)CCN` omits the ethyl ester component. `C[NH3+]` was named as neutral `methan-1-amine`, losing charge; its reference-backed final name is `methylazanium` (PubChem CID 644041).
 - Acetophenone and 4-hydroxyacetophenone return `N/D`; their simple structures have independent PubChem references and are stage-3 support candidates, not deliberate boundaries.
