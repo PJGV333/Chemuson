@@ -90,14 +90,20 @@ def test_drag_clears_live_state_before_undo_stack_index_changes() -> None:
     canvas._sync_selection_from_scene()
 
     states_during_push: list[bool] = []
-    canvas.undo_stack.indexChanged.connect(
-        lambda _index: states_during_push.append(bool(canvas._dragging_selection))
-    )
 
-    _drag_selection(canvas, canvas.atom_items[atom_a.id].scenePos(), 22, 12)
+    def record_drag_state(_index: int) -> None:
+        states_during_push.append(bool(canvas._dragging_selection))
 
-    assert states_during_push
-    assert states_during_push == [False]
+    canvas.undo_stack.indexChanged.connect(record_drag_state)
+    try:
+        _drag_selection(canvas, canvas.atom_items[atom_a.id].scenePos(), 22, 12)
+
+        assert states_during_push
+        assert states_during_push == [False]
+    finally:
+        # QUndoStack may emit indexChanged while Qt destroys the canvas. Do not
+        # leave a Python callback capturing a partially destroyed QWidget alive.
+        canvas.undo_stack.indexChanged.disconnect(record_drag_state)
 
 
 def test_live_drag_defers_expensive_refresh_until_release(monkeypatch) -> None:
