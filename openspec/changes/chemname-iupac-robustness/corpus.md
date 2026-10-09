@@ -45,4 +45,42 @@ Reference:
 
 ## Reproducibility and metric policy
 
-The machine-readable source of exact regression cases is `tests/data/chemname_acceptance_cases.yml`; each named case is exercised by `tools/chemname_acceptance.py`. The acceptance harness records status, exact name, input-build time, name-generation time, and total duration. The gating metric is **exact-name correctness / no unexpected fail or error**; timing values are reported diagnostically and no hardware-sensitive latency threshold is invented. Unsupported sentinels gate on explicit `N/D`/not-supported behavior.
+The machine-readable source of the original exact regression cases is `tests/data/chemname_acceptance_cases.yml`; each named case is exercised by `tools/chemname_acceptance.py`. The acceptance harness records status, exact name, input-build time, name-generation time, and total duration. Timing values are diagnostics, not hardware-sensitive gates.
+
+## Stage 2/3 survey — 78 unique independently resolved structures
+
+On **2026-10-08**, 88 PubChem PUG REST queries were deduplicated to 78 unique molecular structures. Each row in [`tests/data/chemname_iupac_reference_campaign.psv`](../../../tests/data/chemname_iupac_reference_campaign.psv) records the submitted SMILES, formula, PubChem CID, PubChem `IUPACName`, returned connectivity SMILES, exact pre-fix ChemName output, and baseline classification. All 78 input/connectivity pairs produced the same RDKit-canonicalized graph. The 88 requests included overlapping representations/cross-family cases; metrics below count unique structures within a family and are intentionally not additive.
+
+Stage 1 already had two independently referenced structures. Acetamide is one of these 78; the substituted aryl ketone is not in this survey. Thus the survey adds **77 new structures**, for **79 unique independently referenced structures** across the campaign. PubChem `IUPACName` is an independent registry result, not assumed automatically to be a PIN. The baseline assessed 53 outputs as chemically complete/correct, including **30 exact PubChem name matches and 23 valid systematic/retained-name variants**; 16 as incorrect/incomplete or contrary to the applicable preferred suffix convention; 8 as unsupported (`N/D`); and 1 as reference-pending.
+
+### Baseline classifications by overlapping family
+
+| Family | Structures | Correct | Incorrect | Unsupported | Reference pending |
+|---|---:|---:|---:|---:|---:|
+| Carboxylic acids (including multifunctional acids) | 12 | 8 | 2 | 2 | 0 |
+| Esters | 9 | 0 | 5 | 3 | 1 |
+| Aldehydes | 8 | 6 | 1 | 1 | 0 |
+| Ketones | 8 | 6 | 1 | 1 | 0 |
+| Alcohols | 8 | 6 | 2 | 0 | 0 |
+| Amines | 8 | 7 | 1 | 0 | 0 |
+| Amides | 8 | 5 | 3 | 0 | 0 |
+| Aromatic structures | 15 | 14 | 0 | 1 | 0 |
+| Multifunctional structures | 12 | 10 | 2 | 0 | 0 |
+
+A family tag can overlap another tag (for example, an amino acid is both acid and multifunctional). `correct` accepts a documented valid systematic or retained variant even if it is not PubChem's exact string or the PIN. The single pending adjudication is whether `1-acetoxyethane` is acceptable general prefix-mode nomenclature for ethyl acetate; the reference-backed preferred form is `ethyl acetate` (Blue Book P-65.6.3.3.1).
+
+### Reproducible normative anchors
+
+- Seniority and selection of suffix classes: IUPAC Blue Book (2013), P-41 and P-44 ([P-4](https://iupac.qmul.ac.uk/BlueBook/P4.html), [P-5](https://iupac.qmul.ac.uk/BlueBook/P5.html)).
+- Amines: P-62; hydroxy compounds and multiplicative `diol`: P-63.1.2; ketones, `oxo`, and polyfunctional ketones: P-64, especially P-64.2.1.2/P-64.7.
+- Carboxylic acids and polyacids: P-65.1, especially P-65.1.2.2; ester organyl-plus-anion names: P-65.6.3.3.1; see [P-6](https://iupac.qmul.ac.uk/BlueBook/P6.html).
+- N-substituted and multiple amides: P-66.1.1.1.1.1/P-66.1.1.3.1; mono-/dialdehydes: P-66.6.1.1.1; see [P-6a](https://iupac.qmul.ac.uk/BlueBook/P6a.html).
+
+### Defects and unsupported candidates captured before fixes
+
+- Acid parent selection/suffix: `CC(C)C(=O)O` and benzoic acid return `N/D`; `O=C(O)C(=O)O` becomes `2-carboxyethanoic acid` (adds a carbon), and succinic acid `O=C(O)CCC(=O)O` becomes `4-carboxybutanoic acid` (also adds a carboxyl carbon).
+- Ester component loss: methyl/ethyl propanoate, methyl acetate, methyl propenoate, and ethyl 2-hydroxypropanoate return only the acid-derived `...oate` name; aromatic benzoates and methyl 2-methylpropanoate return `N/D`.
+- Branched aldehyde `CC(C)C=O` returns `N/D`; propanedial returns `3-oxopropanal` instead of the documented preferred dial suffix.
+- Same-class suffixes are not combined for `OCCO`, `OCCCO`, `NCCN`, and `CC(=O)CCC(=O)C`; names instead demote one identical function to `hydroxy`/`amino`/`oxo`.
+- `CNC(C)=O`, `CCNC(C)=O`, and `NC(=O)CC(=O)N` omit or misrepresent amide N-substitution/multiplicity. `CCOC(=O)CCN` omits the ethyl ester component.
+- Acetophenone and 4-hydroxyacetophenone return `N/D`; their simple structures have independent PubChem references and are stage-3 support candidates, not deliberate boundaries.

@@ -1,0 +1,79 @@
+id|families|smiles|formula|pubchem_cid|pubchem_name|pubchem_connectivity_smiles|baseline_name|baseline_classification|target_name
+acid_ethanoic|acid|CC(=O)O|C2H4O2|176|acetic acid|CC(=O)O|ethanoic acid|correct|ethanoic acid
+acid_propanoic|acid|CCC(=O)O|C3H6O2|1032|propanoic acid|CCC(=O)O|propanoic acid|correct|propanoic acid
+acid_2methylpropanoic|acid|CC(C)C(=O)O|C4H8O2|6590|2-methylpropanoic acid|CC(C)C(=O)O|N/D|unsupported|2-methylpropanoic acid
+acid_butanoic|acid|CCCC(=O)O|C4H8O2|264|butanoic acid|CCCC(=O)O|butanoic acid|correct|butanoic acid
+acid_propenoic|acid|C=CC(=O)O|C3H4O2|6581|prop-2-enoic acid|C=CC(=O)O|prop-2-enoic acid|correct|prop-2-enoic acid
+acid_benzoic|acid|O=C(O)c1ccccc1|C7H6O2|243|benzoic acid|C1=CC=C(C=C1)C(=O)O|N/D|unsupported|benzoic acid
+acid_phenylacetic|acid,aromatic|O=C(O)Cc1ccccc1|C8H8O2|999|2-phenylacetic acid|C1=CC=C(C=C1)CC(=O)O|2-phenylethanoic acid|correct|2-phenylethanoic acid
+acid_ethanedioic|acid|O=C(O)C(=O)O|C2H2O4|971|oxalic acid|C(=O)(C(=O)O)O|2-carboxyethanoic acid|incorrect|ethanedioic acid
+acid_butanedioic|acid|O=C(O)CCC(=O)O|C4H6O4|1110|butanedioic acid|C(CC(=O)O)C(=O)O|4-carboxybutanoic acid|incorrect|butanedioic acid
+acid_2hydroxypropanoic|acid,multi|CC(O)C(=O)O|C3H6O3|612|2-hydroxypropanoic acid|CC(C(=O)O)O|2-hydroxypropanoic acid|correct|2-hydroxypropanoic acid
+acid_2oxopropanoic|acid,multi|CC(=O)C(=O)O|C3H4O3|1060|2-oxopropanoic acid|CC(=O)C(=O)O|2-oxopropanoic acid|correct|2-oxopropanoic acid
+acid_3aminopropanoic|acid|NCCC(=O)O|C3H7NO2|239|3-aminopropanoic acid|C(CN)C(=O)O|3-aminopropanoic acid|correct|3-aminopropanoic acid
+ester_methyl_ethanoate|ester|COC(=O)C|C3H6O2|6584|methyl acetate|CC(=O)OC|ethanoate|incorrect|methyl acetate
+ester_ethyl_ethanoate|ester|CCOC(=O)C|C4H8O2|8857|ethyl acetate|CCOC(=O)C|1-acetoxyethane|reference_pending|
+ester_methyl_propanoate|ester|CCC(=O)OC|C4H8O2|11124|methyl propanoate|CCC(=O)OC|propanoate|incorrect|methyl propanoate
+ester_ethyl_propanoate|ester|CCOC(=O)CC|C5H10O2|7749|ethyl propanoate|CCC(=O)OCC|propanoate|incorrect|ethyl propanoate
+ester_methyl_2methylpropanoate|ester|CC(C)C(=O)OC|C5H10O2|11039|methyl 2-methylpropanoate|CC(C)C(=O)OC|N/D|unsupported|methyl 2-methylpropanoate
+ester_methyl_benzoate|ester|COC(=O)c1ccccc1|C8H8O2|7150|methyl benzoate|COC(=O)C1=CC=CC=C1|N/D|unsupported|methyl benzoate
+ester_ethyl_benzoate|ester|CCOC(=O)c1ccccc1|C9H10O2|7165|ethyl benzoate|CCOC(=O)C1=CC=CC=C1|N/D|unsupported|ethyl benzoate
+ester_methyl_propenoate|ester|C=CC(=O)OC|C4H6O2|7294|methyl prop-2-enoate|COC(=O)C=C|prop-2-enoate|incorrect|methyl prop-2-enoate
+ester_ethyl_2hydroxypropanoate|ester|CCOC(=O)C(O)C|C5H10O3|7344|ethyl 2-hydroxypropanoate|CCOC(=O)C(C)O|2-hydroxypropanoate|incorrect|ethyl 2-hydroxypropanoate
+aldehyde_ethanal|aldehyde|CC=O|C2H4O|177|acetaldehyde|CC=O|ethanal|correct|ethanal
+aldehyde_propanal|aldehyde|CCC=O|C3H6O|527|propanal|CCC=O|propanal|correct|propanal
+aldehyde_2methylpropanal|aldehyde|CC(C)C=O|C4H8O|6561|2-methylpropanal|CC(C)C=O|N/D|unsupported|2-methylpropanal
+aldehyde_propenal|aldehyde|C=CC=O|C3H4O|7847|prop-2-enal|C=CC=O|prop-2-enal|correct|prop-2-enal
+aldehyde_2hydroxyethanal|aldehyde,multi|O=CCO|C2H4O2|756|2-hydroxyacetaldehyde|C(C=O)O|2-hydroxyethanal|correct|2-hydroxyethanal
+aldehyde_2oxoethanoicacid|aldehyde|O=CC(=O)O|C2H2O3|760|oxaldehydic acid|C(=O)C(=O)O|2-oxoethanoic acid|correct|2-oxoethanoic acid
+aldehyde_propanedial|aldehyde,multi|O=CCC=O|C3H4O2|10964|propanedial|C(C=O)C=O|3-oxopropanal|incorrect|propanedial
+aldehyde_phenylacetaldehyde|aldehyde|O=CCc1ccccc1|C8H8O|998|2-phenylacetaldehyde|C1=CC=C(C=C1)CC=O|2-phenylethanal|correct|2-phenylethanal
+ketone_propanone|ketone|CC(=O)C|C3H6O|180|propan-2-one|CC(=O)C|propan-2-one|correct|propan-2-one
+ketone_butan2one|ketone|CCC(=O)C|C4H8O|6569|butan-2-one|CCC(=O)C|butan-2-one|correct|butan-2-one
+ketone_pentan3one|ketone|CCC(=O)CC|C5H10O|7288|pentan-3-one|CCC(=O)CC|pentan-3-one|correct|pentan-3-one
+ketone_pentan2one|ketone|CC(=O)CCC|C5H10O|7895|pentan-2-one|CCCC(=O)C|pentan-2-one|correct|pentan-2-one
+ketone_hexane25dione|ketone|CC(=O)CCC(=O)C|C6H10O2|8035|hexane-2,5-dione|CC(=O)CCC(=O)C|5-oxohexan-2-one|incorrect|hexane-2,5-dione
+ketone_4hydroxybutan2one|ketone,multi|CC(=O)CCO|C4H8O2|111509|4-hydroxybutan-2-one|CC(=O)CCO|4-hydroxybutan-2-one|correct|4-hydroxybutan-2-one
+ketone_acetophenone|ketone|CC(=O)c1ccccc1|C8H8O|7410|1-phenylethanone|CC(=O)C1=CC=CC=C1|N/D|unsupported|1-phenylethan-1-one
+ketone_3oxobutanoicacid|ketone,multi|CC(=O)CC(=O)O|C4H6O3|96|3-oxobutanoic acid|CC(=O)CC(=O)O|3-oxobutanoic acid|correct|3-oxobutanoic acid
+alcohol_ethanol|alcohol|CCO|C2H6O|702|ethanol|CCO|ethan-1-ol|correct|ethan-1-ol
+alcohol_propan1ol|alcohol|CCCO|C3H8O|1031|propan-1-ol|CCCO|propan-1-ol|correct|propan-1-ol
+alcohol_propan2ol|alcohol|CC(O)C|C3H8O|3776|propan-2-ol|CC(C)O|propan-2-ol|correct|propan-2-ol
+alcohol_butan2ol|alcohol|CCC(O)C|C4H10O|6568|butan-2-ol|CCC(C)O|butan-2-ol|correct|butan-2-ol
+alcohol_ethanediol|alcohol|OCCO|C2H6O2|174|ethane-1,2-diol|C(CO)O|2-hydroxyethan-1-ol|incorrect|ethane-1,2-diol
+alcohol_propanediol|alcohol|OCCCO|C3H8O2|10442|propane-1,3-diol|C(CO)CO|3-hydroxypropan-1-ol|incorrect|propane-1,3-diol
+alcohol_allyl|alcohol|C=CCO|C3H6O|7858|prop-2-en-1-ol|C=CCO|prop-2-en-1-ol|correct|prop-2-en-1-ol
+alcohol_2phenylethanol|alcohol|OCCc1ccccc1|C8H10O|6054|2-phenylethanol|C1=CC=C(C=C1)CCO|2-phenylethan-1-ol|correct|2-phenylethan-1-ol
+amine_methylamine|amine|CN|CH5N|6329|methanamine|CN|methan-1-amine|correct|methan-1-amine
+amine_ethylamine|amine|CCN|C2H7N|6341|ethanamine|CCN|ethan-1-amine|correct|ethan-1-amine
+amine_propan1amine|amine|CCCN|C3H9N|7852|propan-1-amine|CCCN|propan-1-amine|correct|propan-1-amine
+amine_propan2amine|amine|CC(C)N|C3H9N|6363|propan-2-amine|CC(C)N|propan-2-amine|correct|propan-2-amine
+amine_ethane12diamine|amine|NCCN|C2H8N2|3301|ethane-1,2-diamine|C(CN)N|2-aminoethan-1-amine|incorrect|ethane-1,2-diamine
+amine_2aminoethanol|amine|NCCO|C2H7NO|700|2-aminoethanol|C(CO)N|2-aminoethan-1-ol|correct|2-aminoethan-1-ol
+amine_aniline|amine,aromatic|Nc1ccccc1|C6H7N|6115|aniline|C1=CC=C(C=C1)N|aminobenzene|correct|aminobenzene
+amine_glycine|amine,multi|NCC(=O)O|C2H5NO2|750|2-aminoacetic acid|C(C(=O)O)N|2-aminoethanoic acid|correct|2-aminoethanoic acid
+amide_ethanamide|amide|CC(=O)N|C2H5NO|178|acetamide|CC(=O)N|ethanamide|correct|ethanamide
+amide_propanamide|amide|CCC(=O)N|C3H7NO|6578|propanamide|CCC(=O)N|propanamide|correct|propanamide
+amide_butanamide|amide|CCCC(=O)N|C4H9NO|10927|butanamide|CCCC(=O)N|butanamide|correct|butanamide
+amide_nmethylethanamide|amide|CNC(C)=O|C3H7NO|6582|N-methylacetamide|CC(=O)NC|ethanamide|incorrect|N-methylacetamide
+amide_nethylethanamide|amide|CCNC(C)=O|C4H9NO|12253|N-ethylacetamide|CCNC(=O)C|1-acylamidoethane|incorrect|N-ethylacetamide
+amide_propanediamide|amide|NC(=O)CC(=O)N|C3H6N2O2|7911|propanediamide|C(C(=O)N)C(=O)N|3-amidopropanamide|incorrect|propanediamide
+amide_2aminoethanamide|amide,multi|NCC(=O)N|C2H6N2O|69020|2-aminoacetamide|C(C(=O)N)N|2-aminoethanamide|correct|2-aminoethanamide
+amide_2hydroxyethanamide|amide|NC(=O)CO|C2H5NO2|69021|2-hydroxyacetamide|C(C(=O)N)O|2-hydroxyethanamide|correct|2-hydroxyethanamide
+arom_benzene|aromatic|c1ccccc1|C6H6|241|benzene|C1=CC=CC=C1|benzene|correct|benzene
+arom_methylbenzene|aromatic|Cc1ccccc1|C7H8|1140|toluene|CC1=CC=CC=C1|methylbenzene|correct|methylbenzene
+arom_12dimethylbenzene|aromatic|Cc1ccccc1C|C8H10|7237|1,2-xylene|CC1=CC=CC=C1C|1,2-dimethylbenzene|correct|1,2-dimethylbenzene
+arom_13dimethylbenzene|aromatic|Cc1cccc(C)c1|C8H10|7929|1,3-xylene|CC1=CC(=CC=C1)C|1,3-dimethylbenzene|correct|1,3-dimethylbenzene
+arom_14dimethylbenzene|aromatic|Cc1ccc(C)cc1|C8H10|7809|1,4-xylene|CC1=CC=C(C=C1)C|1,4-dimethylbenzene|correct|1,4-dimethylbenzene
+arom_123trimethylbenzene|aromatic|Cc1c(C)c(C)ccc1|C9H12|10686|1,2,3-trimethylbenzene|CC1=C(C(=CC=C1)C)C|1,2,3-trimethylbenzene|correct|1,2,3-trimethylbenzene
+arom_124trimethylbenzene|aromatic|Cc1c(C)cc(C)cc1|C9H12|7247|1,2,4-trimethylbenzene|CC1=CC(=C(C=C1)C)C|1,2,4-trimethylbenzene|correct|1,2,4-trimethylbenzene
+arom_135trimethylbenzene|aromatic|Cc1cc(C)cc(C)c1|C9H12|7947|1,3,5-trimethylbenzene|CC1=CC(=CC(=C1)C)C|1,3,5-trimethylbenzene|correct|1,3,5-trimethylbenzene
+arom_methoxybenzene|aromatic|COc1ccccc1|C7H8O|7519|anisole|COC1=CC=CC=C1|methoxybenzene|correct|methoxybenzene
+arom_4methylaniline|aromatic|Cc1ccc(N)cc1|C7H9N|7813|4-methylaniline|CC1=CC=C(C=C1)N|1-amino-4-methylbenzene|correct|1-amino-4-methylbenzene
+arom_4nitrotoluene|aromatic|Cc1ccc([N+](=O)[O-])cc1|C7H7NO2|7473|1-methyl-4-nitrobenzene|CC1=CC=C(C=C1)[N+](=O)[O-]|1-methyl-4-nitrobenzene|correct|1-methyl-4-nitrobenzene
+arom_4ethylphenol|aromatic|CCc1ccc(O)cc1|C8H10O|31242|4-ethylphenol|CCC1=CC=C(C=C1)O|1-ethyl-4-hydroxybenzene|correct|1-ethyl-4-hydroxybenzene
+arom_4hydroxyacetophenone|aromatic|CC(=O)c1ccc(O)cc1|C8H8O2|7469|1-(4-hydroxyphenyl)ethanone|CC(=O)C1=CC=C(C=C1)O|N/D|unsupported|1-(4-hydroxyphenyl)ethan-1-one
+multi_4hydroxybutanoicacid|multi|O=C(O)CCCO|C4H8O3|10413|4-hydroxybutanoic acid|C(CC(=O)O)CO|4-hydroxybutanoic acid|correct|4-hydroxybutanoic acid
+multi_2aminopropanoicacid|multi|CC(N)C(=O)O|C3H7NO2|602|2-aminopropanoic acid|CC(C(=O)O)N|2-aminopropanoic acid|correct|2-aminopropanoic acid
+multi_3oxobutanamide|multi|CC(=O)CC(=O)N|C4H7NO2|80077|3-oxobutanamide|CC(=O)CC(=O)N|3-oxobutanamide|correct|3-oxobutanamide
+multi_ethyl_3aminopropanoate|multi|CCOC(=O)CCN|C5H11NO2|419889|ethyl 3-aminopropanoate|CCOC(=O)CCN|3-aminopropanoate|incorrect|ethyl 3-aminopropanoate

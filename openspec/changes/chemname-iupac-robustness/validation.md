@@ -41,3 +41,17 @@ An additional unscoped default Ruff scan is non-clean with **58 legacy style dia
 - `ethanamide` is the requested systematic display form; the Blue Book PIN is retained `acetamide`, as documented in `corpus.md`.
 - Remaining unsupported cases fail closed; this tranche does not assert general IUPAC compliance.
 - Local commits: `d7823bd` (scope/baseline) and `bdfd00233b6f1c7c8c3e3c67a65f83acb1dd4cde` (ChemName implementation/regressions). The branch is `chemname/iupac-robustness`; `release/v0.3.0-beta.1-prep` and its origin still resolve to `6aeef19028ffd047f8a39bc8f6063ea0b57210bf`; `main` and `origin/main` remain `f0fde603371255902bf0e630ca1ce032b8f16ad3`. No push, merge, tag, release, or public-channel operation occurred.
+
+## Stage 2/3 expansion baseline before new production fixes
+
+At the requested starting commit `a89e1f8562595db718a9d781b3183a4c2f5942de`, current reference-corpus baseline:
+
+- Existing bounded ChemName/UI shard: `timeout --signal=TERM --kill-after=5s 120s env PYTHONPATH=src pytest -q tests/test_chemname_*.py tests/test_iupac_ui.py`: **226 passed, 7 skipped in 34.84s**.
+- New corpus integrity, 78 PubChem connectivity comparisons, and 53 name-stability checks: `timeout --signal=TERM --kill-after=3s 90s env PYTHONPATH=src pytest -q tests/test_chemname_reference_campaign.py`: **132 passed in 7.80s**.
+- Combined bounded ChemName/UI shard with the new reference tests: `timeout --signal=TERM --kill-after=5s 120s env PYTHONPATH=src pytest -q tests/test_chemname_*.py tests/test_iupac_ui.py`: **358 passed, 7 skipped in 43.52s**.
+- `timeout --signal=TERM --kill-after=3s 60s python -m compileall -q src tests tools packaging`: **PASS**; scoped Ruff: **PASS**; strict OpenSpec validation: **PASS**; corpus parse and `git diff --check`: **PASS**.
+- Compileall and scoped Ruff remained **PASS** before any production change.
+- The 78-structure survey baseline classifies **53 correct (30 exact PubChem IUPACName strings + 23 valid variants), 16 incorrect, 8 unsupported, and 1 reference pending**. By tagged family the survey covers: acids 12, esters 9, aldehydes 8, ketones 8, alcohols 8, amines 8, amides 8, aromatics 15, multifunctional structures 12; overlaps mean these counts are not additive. Molecule-level evidence and baseline outputs are in `corpus.md` and the PSV fixture.
+- The one pending adjudication is `CCOC(=O)C` → `1-acetoxyethane`; no exact test expectation will be imposed until its general-nomenclature status is settled.
+
+These are baseline findings, not final campaign metrics. No new naming rule or production code has yet been changed in this expansion.

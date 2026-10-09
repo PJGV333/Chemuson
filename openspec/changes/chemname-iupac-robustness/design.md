@@ -15,7 +15,7 @@ The IUPAC Blue Book, *P-66.1.1.1.1.1*, specifies substitutive amide formation by
 - Keep the acceptance corpus exact and auditable, with independent references and per-case status/timing evidence.
 
 **Non-Goals:**
-- General IUPAC coverage, direct acyl-substituted benzenes such as acetophenone, nested/fused/polycyclic aryl substituent expansion, or new nomenclature for unreferenced molecules.
+- General IUPAC coverage, arbitrary nested/fused/polycyclic aryl expansion, or new nomenclature for unreferenced molecules. The original tranche's `N/D` result for acetophenone is not a permanent exclusion: the simple PubChem-backed acetophenone and 4-hydroxyacetophenone structures are explicit stage-3 candidates in the campaign expansion.
 - Changing stereo algorithms, isotope/formal-charge presentation, or any name outside the minimal regression corpus.
 - Changes to ChemIO/RDKit worker isolation, GUI freshness, Clean2D, persistence, package identity, or release/publication.
 
@@ -37,3 +37,11 @@ The IUPAC Blue Book, *P-66.1.1.1.1.1*, specifies substitutive amide formation by
 ## Migration / rollback
 
 No data migration or public interface change is needed. If a focused test exposes ambiguity or a lost annotation, revert the corresponding small commit rather than widening the scope. No release or distribution action is part of this campaign.
+
+## Expansion design addendum — stages 2–5
+
+The extended campaign uses the existing OpenSpec, branch, and reference corpus rather than resetting prior work. The 78-structure survey records PubChem identity/connectivity, formula, registry name, and exact pre-fix ChemName output. Registry `IUPACName` fields are evidence, not automatic PIN oracles; manual adjudication keeps `correct`, `incorrect`, `unsupported`, and `reference_pending` distinct and notes valid retained/systematic variants.
+
+For chain-sensitive functional groups, candidate carbon parents must be evaluated against the senior characteristic-group atoms before choosing a longest carbon path; a longer path that omits a carboxyl, amide, ester acyl, or aldehyde carbon must not win merely by graph diameter. Same-class multiple suffixes and N-substituents require explicit occurrence counts/locants rather than treating every second group as a generic prefix. Ester naming must retain both the acid-derived anion and the organyl component. These changes require positive reference-backed cases and mixed-function/negative controls for each affected rule.
+
+Safety checks should be based on graph-accounting records produced during recognition/rendering: parent atoms, functional-group atoms, and atoms consumed by named substituents. A final coverage check may reject a name only when an atom/feature was not consumed by a verified naming component; it must not replace unsupported handling with indiscriminate `N/D`. Structural metadata (stereo, charge, isotope, radicals, bond annotations) must be checked on atoms not fully represented by the chosen name. Determinism is tested through atom-order variants and tied locant cases, not inferred from one serialization.
