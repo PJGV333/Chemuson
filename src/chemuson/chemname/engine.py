@@ -301,6 +301,13 @@ def _name_linear(
 
     # Identificar grupo funcional principal (ácido, aldehído, etc.).
     func = _find_functional_group(view, chain)
+    if (
+        allow_rings
+        and ring_ctx is not None
+        and func is not None
+        and func.kind == "ketone"
+    ):
+        _validate_simple_aryl_ketone_scope(view, func.atom_id, ring_ctx)
     func_atom = func.atom_id if func else None
     func_suffix = func.suffix if func else None
     ignore_atoms = set(func.ignore_atoms) if func else set()
@@ -376,6 +383,69 @@ def _name_linear(
         acid_part = "acetate" if rendered == "ethanoate" else rendered
         rendered = f"{func.organyl_name} {acid_part}"
     return _apply_radical_suffix_if_needed(view, chain, substituents, rendered, opts)
+
+
+def _validate_simple_aryl_ketone_scope(
+    view: MolView, carbonyl_atom: int, ring_ctx: RingContext
+) -> None:
+    """Keep direct aryl-ketone support within the two reviewed simple cases."""
+    attachments = [
+        (ring, atom_id)
+        for ring in ring_ctx.rings
+        if ring_ctx.ring_types.get(ring) == "benzene"
+        for atom_id in ring
+        if carbonyl_atom in view.neighbors(atom_id)
+    ]
+    if not attachments:
+        return
+    if len(ring_ctx.rings) != 1 or len(attachments) != 1:
+        raise ChemNameNotSupported("Unsupported direct aromatic ketone topology")
+
+    ring, attachment = attachments[0]
+    for atom_id in ring:
+        if (
+            view.formal_charge(atom_id)
+            or view.isotope(atom_id) is not None
+            or view.has_radical(atom_id)
+            or view.stereo_cip(atom_id)
+            or view.stereo_axial(atom_id)
+            or view.stereo_helical(atom_id)
+            or view.stereo_si_re(atom_id)
+        ):
+            raise ChemNameNotSupported("Annotated direct aryl ketone ring is unsupported")
+
+    hydroxy_atoms: list[int] = []
+    for atom_id in ring:
+        for nbr in view.neighbors(atom_id):
+            if nbr in ring or nbr == carbonyl_atom or view.element(nbr) == "H":
+                continue
+            if view.element(nbr) != "O" or view.bond_order_between(atom_id, nbr) != 1:
+                raise ChemNameNotSupported("Unsupported direct aryl ketone decoration")
+            heavy_neighbors = [n for n in view.neighbors(nbr) if view.element(n) != "H"]
+            h_total = implicit_h_count(view, nbr) + view.explicit_h(nbr)
+            if (
+                len(heavy_neighbors) != 1
+                or h_total < 1
+                or view.formal_charge(nbr)
+                or view.isotope(nbr) is not None
+                or view.has_radical(nbr)
+            ):
+                raise ChemNameNotSupported("Unsupported direct aryl ketone oxygen decoration")
+            hydroxy_atoms.append(atom_id)
+
+    if len(hydroxy_atoms) > 1:
+        raise ChemNameNotSupported("Multiple direct aryl-ketone hydroxy groups are unsupported")
+    if hydroxy_atoms:
+        distances = {attachment: 0}
+        pending = [attachment]
+        while pending:
+            current = pending.pop(0)
+            for nbr in view.neighbors(current):
+                if nbr in ring and nbr not in distances:
+                    distances[nbr] = distances[current] + 1
+                    pending.append(nbr)
+        if distances.get(hydroxy_atoms[0]) != 3:
+            raise ChemNameNotSupported("Only para-hydroxy aryl ketones are in scope")
 
 
 def _select_linear_parent_chain(view: MolView, opts: NameOptions) -> list[int]:

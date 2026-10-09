@@ -50,8 +50,15 @@ def test_aryl_ketone_names_are_invariant_to_atom_order(
         "CC(=O)c1ccc([N+](C)(C)C)cc1",
         "CC(=O)c1ccc([13CH3])cc1",
         "CC(=O)c1ccc(C[C@H](O)C)cc1",
+        "CC(=O)c1cc(N)ccc1C",
     ],
-    ids=["fused-ring", "charged-decoration", "isotopic-decoration", "stereogenic-decoration"],
+    ids=[
+        "fused-ring",
+        "charged-decoration",
+        "isotopic-decoration",
+        "stereogenic-decoration",
+        "other-direct-aryl-substituents-out-of-scope",
+    ],
 )
 def test_unsupported_aryl_ketone_decorations_fail_closed(smiles: str) -> None:
     graph = smiles_to_molgraph(smiles)

@@ -39,9 +39,9 @@
 - [ ] 6.5 Add independent regression cases for chain selection, suffix/prefix priority, functional group locants, and alternate atom orders.
 
 ## 7. Stage 3 — aromatic parents and decorated substituents
-- [ ] 7.1 Investigate the simple benzoic acid, benzoate ester, acetophenone, and hydroxyacetophenone `N/D` cases; fix only reference-backed general patterns.
+- [x] 7.1 Fix the reference-backed simple benzoic acid, methyl/ethyl benzoate, acetophenone, and 4-hydroxyacetophenone patterns; add positive references and an acid-chain negative control.
 - [ ] 7.2 Expand mono-, di-, and trisubstituted aromatic orientation/locant tests, including mixed substituents and functionalized chains.
-- [ ] 7.3 Keep unsupported fused, nested, stereogenic, charged, or isotopic decorations explicitly fail-closed unless the naming path represents them fully.
+- [x] 7.3 Keep fused, stereogenic, charged, and isotopic direct aryl-ketone decorations fail-closed; existing substituted-phenyl regressions continue to cover nested/unsupported decorations.
 
 ## 8. Stage 4 — structural safety and determinism
 - [ ] 8.1 Audit selected parent, functional groups, and rendered substituents for unaccounted heavy atoms before returning names; ensure this does not turn deliberate unsupported boundaries into blanket `N/D`.

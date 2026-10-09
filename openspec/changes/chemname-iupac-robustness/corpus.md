@@ -84,6 +84,10 @@ A family tag can overlap another tag (for example, an amino acid is both acid an
 
 For `CNC(C)=O` and `CCNC(C)=O`, PubChem records `N-methylacetamide` and `N-ethylacetamide`; the implementation now emits the fully specified systematic-parent forms `N-methylethanamide` and `N-ethylethanamide`. The corpus retains PubChem strings as independent registry references, not automatic exact-output or PIN oracles. This follows the campaign's recorded distinction between systematic `ethanamide` and retained `acetamide`; both forms preserve the N-substituent and parent connectivity.
 
+### Stage 3 aromatic cases now supported
+
+The exact structures already in the corpus now produce their recorded target names: benzoic acid (CID 243), methyl benzoate (CID 7150), ethyl benzoate (CID 7165), acetophenone (CID 7410), and 4-hydroxyacetophenone (CID 7469). Acetophenone outputs use explicit locant `1` (`1-phenylethan-1-one`), whereas PubChem's registry string is `1-phenylethanone`; the corpus target records the chosen systematic form. Fixed atom-order pairs cover both aromatic carboxyl parents and aryl ketones. Direct aryl-ketone support is intentionally allowlisted to acetophenone and its para-hydroxy case; other substituted direct aryl ketones such as `CC(=O)c1cc(N)ccc1C` remain `N/D` even though the separate phenyl-substituent path can name `CC(=O)Cc1cc(N)ccc1C`. Fused, charged, isotopic, and stereogenic direct aryl-ketone decorations remain `N/D`; phenylacetic acid remains distinct from benzoic acid.
+
 ### Defects and unsupported candidates captured before fixes
 
 - Acid parent selection/suffix: `CC(C)C(=O)O` and benzoic acid return `N/D`; `O=C(O)C(=O)O` becomes `2-carboxyethanoic acid` (adds a carbon), and succinic acid `O=C(O)CCC(=O)O` becomes `4-carboxybutanoic acid` (also adds a carboxyl carbon).
