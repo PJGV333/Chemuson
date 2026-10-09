@@ -83,4 +83,23 @@ El primer pase del verificador detectó además que los IDs parametrizados con I
 
 ## CI remoto pendiente
 
-El run upstream #343 confirmó el SHA base y que falló el job `pytest`; `windows-smoke` y `flatpak-smoke` pasaron entonces. Los logs de Actions accesibles sin autenticación sólo exponen una anotación genérica de exit 1; su descarga respondió 403. Los smoke jobs se mantuvieron en el workflow nuevo, pero **no hubo ejecución remota de este cambio** porque el push no fue autenticado. Por ello los resultados locales no se presentan como evidencia de CI completo ni se declara la campaña aceptada.
+El run upstream #343 confirmó el SHA base y que falló el job `pytest`; `windows-smoke` y `flatpak-smoke` pasaron entonces. Los logs de Actions accesibles sin autenticación sólo exponen una anotación genérica de exit 1; su descarga respondió 403. Los smoke jobs se mantuvieron en el workflow nuevo, pero no hubo ejecución remota de aquel cambio porque el push no fue autenticado. Por ello los resultados locales no se presentan como evidencia de CI completo ni se declara la campaña aceptada.
+
+## Microcorrección final — pestañas del panel lateral
+
+### Evidencia y causa raíz
+
+El run #344 (`37984526481`, SHA `c01a1f626b51da019d702d87517bc6355ffcd1c5`) confirma que el layout ya estaba estable: a 1440 × 900, viewport 308 px, tira 313 px, rango de scroll 0..5 y offset 5; `Inspector` quedó en x=-3 con ancho 55 px. Sólo falló `test_primary_tabs_have_complete_labels_padding_and_separation`; el plan, los otros siete shards y ambos smoke jobs pasaron. Los logs detallados muestran 264 passed, 1 skipped y 1 failed en shard 5. La suma verificada sobre los ocho artefactos JUnit es **2.109 passed, 20 skipped, 1 failed** (2.130 casos).
+
+La fórmula sumaba 2 px redundantes a cada uno de los cinco botones, además de los 3 px laterales contractuales. Retirarlos reduce la tira exactamente 10 px: con las dimensiones de Actions, 313 → 303 px frente a viewport 308 px; desaparece el rango de desplazamiento que permitía a `ensureWidgetVisible()` empujar el primer botón fuera de vista. No fue necesario cambiar `set_active()` ni `ensureWidgetVisible()`.
+
+### Corrección y prueba
+
+- `side_panel.py`: ancho fijo igual a texto + `2 * sideTabPadX`; se conservan font-size 10 px, padding mínimo 3 px y gap 3 px.
+- `test_side_panel.py`: en 1440 × 900 y 980 × 600, espera geometría estable y comprueba las cinco pestañas sin clipping ni rango/offset de scroll, al activar cada una.
+- Medición local antes/después en viewport 308 px: tira 305 → 295 px; `scroll=(0,0,0)` en ambas ventanas y en los cinco estados activos. Los anchos locales pasan a 52/55/66/49/57 px, cada uno exactamente 6 px por encima de su etiqueta: 3 px laterales por lado.
+- Baseline previo a editar: test afectado **1 passed**, archivo lateral **10 passed**, colecta completa **2.130 tests**, `compileall` y Ruff focal PASS; strict OpenSpec PASS. Ruff global conserva sólo `F401 math` fuera de alcance. La interpretación inicial de Python 3.11 no tenía pytest; el Python 3.14 del sistema sin `chem/lib` no tenía RDKit. Se usó el Python 3.14.7 del sistema con `chem/lib/python3.14/site-packages` del checkout (pytest 9.1.1, PyQt6 6.11.0, RDKit 2026.03.6); colecta completa: 2.130 tests. No se ejecutó la suite monolítica.
+- Test afectado: **1 passed** (timeout externo 60 s); `tests/test_side_panel.py`: **10 passed** (120 s); grupo `test_side_panel.py`, `test_ui_theme_foundation.py`, `test_ui_polish.py`: **75 passed** (300 s); arquitectura: **280 passed** (300 s).
+- `compileall`: PASS; Ruff focal: PASS; OpenSpec strict: PASS; `git diff --check`: PASS. Ruff global sigue mostrando únicamente el `F401 math` preexistente y fuera de alcance.
+
+**CI posterior a esta corrección: pendiente de push y ejecución. Estado: NOT READY hasta verificar en Actions el plan, ocho shards, resumen, Windows smoke, Flatpak smoke y cobertura exacta de 2.130 IDs.**
