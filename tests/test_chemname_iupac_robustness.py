@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from chemuson.chemio.rdkit_io import smiles_to_molgraph
 from chemuson.chemname import NameOptions, iupac_name
 from chemuson.chemname.errors import ChemNameNotSupported
 from chemuson.core.model import MolGraph
@@ -98,3 +99,39 @@ def test_charged_aryl_branch_fails_closed() -> None:
 
 def test_multiple_ring_to_parent_connections_fail_closed() -> None:
     assert iupac_name(_aryl_ketone(multiple_parent_attachments=True)) == "N/D"
+
+
+@pytest.mark.parametrize(
+    "smiles",
+    [
+        "CCO.CC",
+        "CC([13CH3])CC",
+        "CC[C@H](O)C",
+        "CC[C@@H](O)C",
+        "CC([CH2+])CC",
+        "CC[NH3+]",
+        "Cc1ccc([13CH3])cc1",
+        "Nc1ccc([NH3+])cc1",
+        "[13c]1ccccc1",
+        "Cc1ccc(C[C@H](O)C)cc1",
+        "O=C(O)c1ccc([13CH3])cc1",
+    ],
+    ids=[
+        "disconnected-fragment",
+        "isotopic-linear-branch",
+        "stereo-up",
+        "stereo-down",
+        "charged-carbon-branch",
+        "unsupported-ethylammonium",
+        "isotopic-ring-substituent",
+        "charged-ring-substituent",
+        "isotopic-ring-parent",
+        "stereogenic-ring-substituent",
+        "isotopic-benzoic-acid-decoration",
+    ],
+)
+def test_unrepresented_components_and_annotations_fail_closed(smiles: str) -> None:
+    graph = smiles_to_molgraph(smiles)
+    assert iupac_name(graph) == "N/D"
+    with pytest.raises(ChemNameNotSupported):
+        iupac_name(graph, NameOptions(return_nd_on_fail=False))

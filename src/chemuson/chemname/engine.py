@@ -6,6 +6,8 @@ composición final del nombre para las moléculas soportadas.
 
 from __future__ import annotations
 
+import re
+from collections import Counter
 from dataclasses import dataclass
 from itertools import combinations
 from pathlib import Path
@@ -173,6 +175,7 @@ def iupac_name_lite(graph, opts: NameOptions) -> str:
         Nombre IUPAC-lite generado.
     """
     view = MolView(graph)
+    _ensure_single_connected_component(view)
     if opts.enable_experimental and opts.enable_special_templates:
         special = detect_special_template(view)
         if special is not None:
@@ -331,6 +334,8 @@ def _name_linear(
 
     # Recolectamos sustituyentes y calculamos el nombre del padre.
     substituents = substituents_on_chain(view, chain, ignore_atoms=ignore_atoms, ring_ctx=ring_ctx)
+    _validate_linear_functional_auxiliaries(view, chain, func)
+    _validate_substituent_coverage(view, chain, ignore_atoms, substituents)
     substituents.extend(_isotope_substituents_on_chain(view, chain))
     for prefix_name, prefix_atom in functional_prefixes:
         locant = _locant_for_atom(chain, prefix_atom)
@@ -373,7 +378,10 @@ def _name_linear(
     )
 
     stereo = _stereo_descriptors_for_linear(view, chain, opts)
+    _validate_linear_parent_stereo(view, chain, stereo)
     rendered = render_name(substituents, parent, stereo_descriptors=stereo)
+    if _is_supported_methylammonium(view, chain, func):
+        rendered = "methylazanium"
     if func is not None and func.kind == "amide" and func.n_substituents:
         n_prefix = _amide_n_substitution_prefix(func.n_substituents)
         rendered = f"{n_prefix}{rendered}"
@@ -383,6 +391,316 @@ def _name_linear(
         acid_part = "acetate" if rendered == "ethanoate" else rendered
         rendered = f"{func.organyl_name} {acid_part}"
     return _apply_radical_suffix_if_needed(view, chain, substituents, rendered, opts)
+
+
+def _ensure_single_connected_component(view: MolView) -> None:
+    """Refuse to name one component while silently dropping another molecule."""
+    atoms = view.atoms()
+    if not atoms:
+        raise ChemNameNotSupported("Empty molecular graph")
+    visited: set[int] = set()
+    components = 0
+    for start in atoms:
+        if start in visited:
+            continue
+        components += 1
+        if components > 1:
+            raise ChemNameNotSupported("Disconnected molecular components are unsupported")
+        pending = [start]
+        while pending:
+            atom_id = pending.pop()
+            if atom_id in visited:
+                continue
+            visited.add(atom_id)
+            pending.extend(nbr for nbr in view.neighbors(atom_id) if nbr not in visited)
+
+
+def _is_supported_methylammonium(
+    view: MolView, chain: list[int], func: FunctionalSelection | None
+) -> bool:
+    if func is None or func.kind != "amine" or len(chain) != 1:
+        return False
+    carbon = chain[0]
+    if view.element(carbon) != "C":
+        return False
+    heavy_neighbors = [nbr for nbr in view.neighbors(carbon) if view.element(nbr) != "H"]
+    if len(heavy_neighbors) != 1:
+        return False
+    nitrogen = heavy_neighbors[0]
+    return (
+        nitrogen in func.ignore_atoms
+        and view.element(nitrogen) == "N"
+        and view.formal_charge(nitrogen) == 1
+        and implicit_h_count(view, nitrogen) + view.explicit_h(nitrogen) == 3
+        and [nbr for nbr in view.neighbors(nitrogen) if view.element(nbr) != "H"] == [carbon]
+    )
+
+
+def _validate_linear_functional_auxiliaries(
+    view: MolView, chain: list[int], func: FunctionalSelection | None
+) -> None:
+    """Reject metadata or branches on ignored functional atoms that are not named."""
+    if func is None:
+        return
+    chain_set = set(chain)
+    ignore_atoms = set(func.ignore_atoms)
+    for atom_id in ignore_atoms:
+        if (
+            view.isotope(atom_id) is not None
+            or view.has_radical(atom_id)
+            or view.stereo_cip(atom_id)
+            or view.stereo_axial(atom_id)
+            or view.stereo_helical(atom_id)
+            or view.stereo_si_re(atom_id)
+        ):
+            raise ChemNameNotSupported("Annotated functional-group atom is unsupported")
+        charge = view.formal_charge(atom_id)
+        supported_carboxylate = (
+            func.kind == "carboxylate"
+            and view.element(atom_id) == "O"
+            and charge == -1
+        )
+        supported_sulfonate = (
+            func.kind == "sulfonate"
+            and view.element(atom_id) == "O"
+            and charge == -1
+        )
+        supported_methylammonium = (
+            _is_supported_methylammonium(view, chain, func) and atom_id in ignore_atoms
+        )
+        if charge and not (
+            supported_carboxylate or supported_sulfonate or supported_methylammonium
+        ):
+            raise ChemNameNotSupported("Charged functional-group atom is unsupported")
+        for nbr in view.neighbors(atom_id):
+            if nbr in chain_set or nbr in ignore_atoms:
+                continue
+            if view.element(nbr) == "H":
+                if view.isotope(nbr) is not None or view.formal_charge(nbr):
+                    raise ChemNameNotSupported("Annotated functional-group hydrogen is unsupported")
+                continue
+            ester_organyl = (
+                func.kind == "ester"
+                and func.organyl_name is not None
+                and view.element(atom_id) == "O"
+                and view.bond_order_between(func.atom_id, atom_id) == 1
+                and view.element(nbr) == "C"
+            )
+            amide_n_alkyl = (
+                func.kind == "amide"
+                and bool(func.n_substituents)
+                and view.element(atom_id) == "N"
+                and view.bond_order_between(func.atom_id, atom_id) == 1
+                and view.element(nbr) == "C"
+            )
+            if not (ester_organyl or amide_n_alkyl):
+                raise ChemNameNotSupported("Unaccounted functional-group branch")
+
+
+def _bond_stereo_marker(view: MolView, atom_a: int, atom_b: int) -> str | None:
+    """Return a conservative marker for any stereo-bearing or wedge bond."""
+    if (
+        view.bond_stereo_ez(atom_a, atom_b)
+        or view.bond_stereo_axial(atom_a, atom_b)
+        or view.bond_stereo_endo_exo(atom_a, atom_b)
+    ):
+        return "descriptor"
+    bond = view._get_bond(atom_a, atom_b)  # noqa: SLF001 - read-only annotation audit.
+    if bond is None:
+        return None
+    if isinstance(bond, dict):
+        stereo = bond.get("stereo")
+        style = bond.get("style")
+    else:
+        stereo = getattr(bond, "stereo", None)
+        style = getattr(bond, "style", None)
+    stereo = getattr(stereo, "value", stereo)
+    style = getattr(style, "value", style)
+    stereo_text = str(stereo).lower().split(".")[-1]
+    style_text = str(style).lower().split(".")[-1]
+    if style_text in {"wedge", "dash", "hashed_wedge", "hashed_dash"}:
+        return "wedge"
+    if stereo_text not in {"", "none"}:
+        return "wedge" if stereo_text in {"up", "down"} else "descriptor"
+    return None
+
+
+def _is_supported_nitro_component(
+    view: MolView, root: int, component: set[int], locant: int, substituents: list[Sub]
+) -> bool:
+    if view.element(root) != "N" or len(component) != 3:
+        return False
+    if not any(sub.name == "nitro" and sub.locant == locant for sub in substituents):
+        return False
+    oxygens = [atom_id for atom_id in component if view.element(atom_id) == "O"]
+    if len(oxygens) != 2 or view.formal_charge(root) != 1:
+        return False
+    charges = sorted(view.formal_charge(atom_id) for atom_id in oxygens)
+    orders = sorted(view.bond_order_between(root, atom_id) for atom_id in oxygens)
+    return charges == [-1, 0] and orders == [1, 2]
+
+
+def _is_supported_azido_component(
+    view: MolView, root: int, component: set[int], locant: int, substituents: list[Sub]
+) -> bool:
+    if view.element(root) != "N" or len(component) != 3:
+        return False
+    if any(view.element(atom_id) != "N" for atom_id in component):
+        return False
+    if not any(sub.name == "azido" and sub.locant == locant for sub in substituents):
+        return False
+    if sorted(view.formal_charge(atom_id) for atom_id in component) != [-1, 0, 1]:
+        return False
+    internal_orders = sorted(
+        view.bond_order_between(atom_a, atom_b)
+        for atom_a in component
+        for atom_b in component
+        if atom_a < atom_b and atom_b in view.neighbors(atom_a)
+    )
+    return internal_orders == [2, 2]
+
+
+def _validate_substituent_coverage(
+    view: MolView,
+    parent_atoms: list[int],
+    ignore_atoms: set[int],
+    substituents: list[Sub],
+) -> None:
+    """Audit direct branch accounting and fail closed on lost branch metadata."""
+    parent_set = set(parent_atoms)
+    roots: list[tuple[int, int]] = []
+    expected: Counter[int] = Counter()
+    for locant, atom_id in enumerate(parent_atoms, start=1):
+        for nbr in view.neighbors(atom_id):
+            if nbr in parent_set or nbr in ignore_atoms:
+                continue
+            if view.element(nbr) == "H" and view.isotope(nbr) is None:
+                continue
+            expected[locant] += 1
+            roots.append((locant, nbr))
+    actual = Counter(sub.locant for sub in substituents)
+    if expected != actual:
+        raise ChemNameNotSupported("Unaccounted substituent attachment")
+
+    blocked = parent_set | ignore_atoms
+    for locant, root in roots:
+        component: set[int] = set()
+        pending = [root]
+        while pending:
+            atom_id = pending.pop()
+            if atom_id in blocked or atom_id in component:
+                continue
+            component.add(atom_id)
+            pending.extend(nbr for nbr in view.neighbors(atom_id) if nbr not in blocked)
+        nitro = _is_supported_nitro_component(view, root, component, locant, substituents)
+        azido = _is_supported_azido_component(view, root, component, locant, substituents)
+        if any(view.formal_charge(atom_id) for atom_id in component) and not (nitro or azido):
+            raise ChemNameNotSupported("Charged substituent metadata is unsupported")
+        if any(view.isotope(atom_id) is not None for atom_id in component):
+            if not (
+                len(component) == 1
+                and view.element(root) == "H"
+                and any(
+                    sub.locant == locant
+                    and sub.name
+                    in {"deuterio", "tritio", f"({view.isotope(root)}H)"}
+                    for sub in substituents
+                )
+            ):
+                raise ChemNameNotSupported("Isotopic substituent metadata is unsupported")
+        if any(
+            view.has_radical(atom_id)
+            or view.stereo_cip(atom_id)
+            or view.stereo_axial(atom_id)
+            or view.stereo_helical(atom_id)
+            or view.stereo_si_re(atom_id)
+            for atom_id in component
+        ):
+            if not (
+                len(component) == 1
+                and view.element(root) == "O"
+                and view.has_radical(root)
+                and any(sub.name == "oxyl" and sub.locant == locant for sub in substituents)
+            ):
+                raise ChemNameNotSupported("Annotated substituent metadata is unsupported")
+        for atom_id in component:
+            for nbr in view.neighbors(atom_id):
+                if nbr in blocked or nbr not in component:
+                    continue
+                if _bond_stereo_marker(view, atom_id, nbr):
+                    raise ChemNameNotSupported("Stereochemical substituent bond is unsupported")
+
+
+def _validate_parent_ring_annotations(view: MolView, parent_atoms: set[int]) -> None:
+    """Reject ring-parent charge, isotope, radical, and stereo data not rendered."""
+    for atom_id in parent_atoms:
+        if (
+            view.formal_charge(atom_id)
+            or view.isotope(atom_id) is not None
+            or view.has_radical(atom_id)
+            or view.stereo_cip(atom_id)
+            or view.stereo_axial(atom_id)
+            or view.stereo_helical(atom_id)
+            or view.stereo_si_re(atom_id)
+        ):
+            raise ChemNameNotSupported("Annotated ring-parent atom is unsupported")
+    for atom_a, atom_b, _order in view.bonds():
+        if atom_a in parent_atoms and atom_b in parent_atoms:
+            if _bond_stereo_marker(view, atom_a, atom_b):
+                raise ChemNameNotSupported("Stereochemical ring-parent bond is unsupported")
+
+
+def _validate_linear_parent_stereo(
+    view: MolView, chain: list[int], descriptors: list[str]
+) -> None:
+    """Require every explicit parent stereochemical annotation to be rendered."""
+    locant_by_atom = {atom_id: idx + 1 for idx, atom_id in enumerate(chain)}
+
+    def has_descriptor(locant: int) -> bool:
+        for item in descriptors:
+            match = re.match(r"^\(?([0-9]+)", str(item).strip())
+            if match and int(match.group(1)) == locant:
+                return True
+        return False
+
+    for atom_id in view.atoms():
+        labels = (
+            view.stereo_cip(atom_id),
+            view.stereo_axial(atom_id),
+            view.stereo_helical(atom_id),
+            view.stereo_si_re(atom_id),
+        )
+        if not any(labels):
+            continue
+        locant = locant_by_atom.get(atom_id)
+        if locant is None or not has_descriptor(locant):
+            raise ChemNameNotSupported("Unrendered atom stereochemistry")
+
+    for atom_a, atom_b, _order in view.bonds():
+        marker = _bond_stereo_marker(view, atom_a, atom_b)
+        if marker is None:
+            continue
+        loc_a = locant_by_atom.get(atom_a)
+        loc_b = locant_by_atom.get(atom_b)
+        if loc_a is None or loc_b is None:
+            raise ChemNameNotSupported("Stereochemistry outside the selected parent is unsupported")
+        if marker == "descriptor":
+            locant = min(loc_a, loc_b)
+        else:
+            candidates = [
+                atom_id
+                for atom_id in (atom_a, atom_b)
+                if len([n for n in view.neighbors(atom_id) if view.element(n) != "H"]) >= 3
+            ]
+            if len(candidates) != 1:
+                raise ChemNameNotSupported("Ambiguous wedge stereochemistry")
+            locant = locant_by_atom[candidates[0]]
+        if not has_descriptor(locant):
+            raise ChemNameNotSupported("Unrendered bond stereochemistry")
+
+    for atom_id in chain:
+        if view.formal_charge(atom_id):
+            raise ChemNameNotSupported("Charged parent atom is unsupported")
 
 
 def _validate_simple_aryl_ketone_scope(
@@ -629,6 +947,7 @@ def _name_cycloalkane(
     for atom_id in ring_atoms:
         if view.element(atom_id) != "C":
             raise ChemNameNotSupported("Non-carbon ring not supported")
+    _validate_parent_ring_annotations(view, set(ring_atoms))
 
     parent = CYCLO_PARENT.get(len(ring_atoms))
     if parent is None:
@@ -668,10 +987,12 @@ def _name_cycloalkane(
         parent_name_cyclo = parent[:-3] if parent.endswith("ane") else parent
         parent_name_cyclo = f"{parent_name_cyclo}-{locants}-{unsat_suffix}"
         substituents = ring_substituents(view, oriented, ring_ctx=ring_ctx)
+        _validate_substituent_coverage(view, oriented, set(), substituents)
         return render_name(substituents, parent_name_cyclo, always_include_locant=False)
 
     oriented = choose_ring_orientation(view, ring_atoms, opts, ring_ctx=ring_ctx)
     substituents = ring_substituents(view, oriented, ring_ctx=ring_ctx)
+    _validate_substituent_coverage(view, oriented, set(), substituents)
     return render_name(substituents, parent, always_include_locant=False)
 
 
@@ -777,6 +1098,7 @@ def _name_benzene_carboxy(
 
     if best_numbering is None or best_substituents is None:
         raise ChemNameNotSupported("Unable to orient aromatic carboxy parent")
+    _validate_substituent_coverage(view, best_numbering, ignore_atoms, best_substituents)
     parent = "benzoate" if organyl_name else "benzoic acid"
     rendered = render_name(
         best_substituents, parent, always_include_locant=bool(best_substituents)
@@ -804,6 +1126,7 @@ def _name_benzene(
     for atom_id in ring_atoms:
         if view.element(atom_id) != "C":
             raise ChemNameNotSupported("Unsupported aromatic ring")
+    _validate_parent_ring_annotations(view, set(ring_atoms))
     carboxy_name = _name_benzene_carboxy(view, ring_atoms, opts, ring_ctx)
     if carboxy_name is not None:
         return carboxy_name
@@ -844,6 +1167,7 @@ def _name_benzene(
         allow_nitrile=True,
         ring_ctx=ring_ctx,
     )
+    _validate_substituent_coverage(view, oriented, set(), substituents)
     return render_name(substituents, "benzene", always_include_locant=False)
 
 
@@ -902,6 +1226,7 @@ def _name_benzene_sulfonic(
         ignore_atoms=ignore_atoms,
         ring_ctx=ring_ctx,
     )
+    _validate_substituent_coverage(view, oriented, ignore_atoms, substituents)
     return render_name(substituents, parent, always_include_locant=bool(substituents))
 
 
@@ -929,6 +1254,8 @@ def _name_aromatic_dione(
 
     if parent_base == "benzene":
         best_name = None
+        best_numbering: list[int] | None = None
+        best_substituents: list[Sub] | None = None
         best_key = None
         for numbering in enumerate_ring_numberings(ring_order_atoms):
             locant_map = {atom_id: idx + 1 for idx, atom_id in enumerate(numbering)}
@@ -950,7 +1277,13 @@ def _name_aromatic_dione(
             key = orientation_key(subs, opts, primary_locants=dione_locants)
             if best_key is None or key < best_key:
                 best_key = key
+                best_numbering = list(numbering)
+                best_substituents = subs
                 best_name = render_name(subs, parent, always_include_locant=bool(subs))
+        if best_numbering is not None and best_substituents is not None:
+            _validate_substituent_coverage(
+                view, best_numbering, set(carbonyl_oxygens), best_substituents
+            )
         return best_name
 
     if parent_base == "naphthalene":
@@ -1022,6 +1355,7 @@ def _name_heteroaromatic(
     hetero_priority = info.get("hetero_priority") or {}
     if not kind or not ring_atoms or not hetero_atoms:
         raise ChemNameNotSupported("Unsupported heteroaromatic ring")
+    _validate_parent_ring_annotations(view, set(ring_atoms))
     if kind in {"phosphabenzene", "silabenzene", "borabenzene"} and not opts.enable_exotic_hetero:
         raise ChemNameNotSupported("Experimental heteroaromatic disabled")
 
@@ -1063,6 +1397,7 @@ def _name_heteroaromatic(
         forbid_hetero_substituents=True,
         ring_ctx=ring_ctx,
     )
+    _validate_substituent_coverage(view, oriented, set(), substituents)
     return render_name(substituents, kind, always_include_locant=False)
 
 
@@ -1081,6 +1416,7 @@ def _name_naphthalene(view: MolView, info: dict, opts: NameOptions) -> str:
     fusion_atoms = set(info.get("fusion_atoms", ()))
     if len(ring_atoms) != 10 or len(fusion_atoms) != 2:
         raise ChemNameNotSupported("Unsupported fused ring")
+    _validate_parent_ring_annotations(view, ring_atoms)
 
     order = _perimeter_cycle(view, ring_atoms, fusion_atoms)
     if not order:

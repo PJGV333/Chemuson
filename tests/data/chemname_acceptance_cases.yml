@@ -101,7 +101,7 @@
       "title": "Methylammonium",
       "input_type": "file",
       "input": "chemname_acceptance_mols/methylammonium.mol",
-      "expect": "amine$",
+      "expect": "methylazanium",
       "options": {
         "rdkit_isolated": true
       }

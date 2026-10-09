@@ -41,14 +41,12 @@ def build_naphthalene(graph: MolGraph) -> list[int]:
 class ChemNamePR28Test(unittest.TestCase):
     """Cobertura incremental de capacidades PR28 (fases 1-3)."""
 
-    def test_methylammonium_is_not_nd(self):
+    def test_methylammonium_uses_reference_backed_cation_name(self):
         graph = MolGraph()
         carbon = graph.add_atom("C", 0.0, 0.0)
         nitrogen = graph.add_atom("N", 1.0, 0.0, charge=1, explicit_h=3)
         graph.add_bond(carbon.id, nitrogen.id, order=1)
-        name = iupac_name(graph)
-        self.assertNotEqual(name, "N/D")
-        self.assertIn("amine", name)
+        self.assertEqual(iupac_name(graph), "methylazanium")
 
     def test_molview_charge_isotope_radical_accessors(self):
         graph = MolGraph()
