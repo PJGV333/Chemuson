@@ -80,6 +80,7 @@ class FunctionalOccurrence:
     prefix_name: str
     suffix_name: str
     organyl_name: str | None = None
+    n_substituents: list[str] | None = None
 
 
 @dataclass
@@ -94,6 +95,7 @@ class FunctionalSelection:
     priority: int
     primary_atoms: list[int]
     organyl_name: str | None = None
+    n_substituents: list[str] | None = None
 
 
 def _load_template_cached(key: str, path: str | Path) -> TemplateMol:
@@ -334,7 +336,14 @@ def _name_linear(
     suffix_count = (
         len(func.primary_atoms)
         if func is not None
-        and func.kind in {"acid", "aldehyde", "ketone", "alcohol", "amine"}
+        and func.kind in {
+            "acid",
+            "aldehyde",
+            "ketone",
+            "alcohol",
+            "amine",
+            "amide",
+        }
         else 1
     )
     suffix_locants = None
@@ -358,6 +367,9 @@ def _name_linear(
 
     stereo = _stereo_descriptors_for_linear(view, chain, opts)
     rendered = render_name(substituents, parent, stereo_descriptors=stereo)
+    if func is not None and func.kind == "amide" and func.n_substituents:
+        n_prefix = _amide_n_substitution_prefix(func.n_substituents)
+        rendered = f"{n_prefix}{rendered}"
     if func is not None and func.kind == "ester":
         if not func.organyl_name:
             raise ChemNameNotSupported("Unsupported ester organyl component")
@@ -2034,6 +2046,53 @@ def _stereo_descriptors_from_annotations(
     return found
 
 
+def _checked_alkyl_component_name(
+    view: MolView, start_atom: int, blocked: set[int], component: str
+) -> str:
+    """Name a simple alkyl component only when no atom/bond annotation is lost."""
+    pending = [start_atom]
+    branch_atoms: set[int] = set()
+    while pending:
+        atom_id = pending.pop()
+        if atom_id in blocked or atom_id in branch_atoms:
+            continue
+        if view.element(atom_id) != "C":
+            raise ChemNameNotSupported(f"Non-carbon in {component}")
+        if (
+            view.formal_charge(atom_id)
+            or view.isotope(atom_id) is not None
+            or view.has_radical(atom_id)
+            or view.stereo_cip(atom_id)
+            or view.stereo_axial(atom_id)
+            or view.stereo_helical(atom_id)
+            or view.stereo_si_re(atom_id)
+        ):
+            raise ChemNameNotSupported(f"Annotated {component} is unsupported")
+        branch_atoms.add(atom_id)
+        for nbr in view.neighbors(atom_id):
+            if view.element(nbr) == "H":
+                if view.isotope(nbr) is not None or view.formal_charge(nbr):
+                    raise ChemNameNotSupported(f"Annotated hydrogen in {component}")
+                continue
+            bond = view._get_bond(atom_id, nbr)  # noqa: SLF001 - read-only metadata check.
+            wedge_stereo = getattr(bond, "stereo", None)
+            wedge_stereo = getattr(wedge_stereo, "value", wedge_stereo)
+            if (
+                wedge_stereo not in {None, "", "none"}
+                or view.bond_stereo_ez(atom_id, nbr)
+                or view.bond_stereo_axial(atom_id, nbr)
+                or view.bond_stereo_endo_exo(atom_id, nbr)
+            ):
+                raise ChemNameNotSupported(f"Annotated bond in {component} is unsupported")
+            if nbr in blocked:
+                continue
+            if view.element(nbr) != "C" or view.bond_order_between(atom_id, nbr) != 1:
+                raise ChemNameNotSupported(f"Unsupported decoration in {component}")
+            pending.append(nbr)
+
+    return alkyl_substituent_name(view, start_atom, blocked)
+
+
 def _ester_organyl_name(
     view: MolView, carbonyl_atom: int, ester_oxygen: int, chain_set: set[int]
 ) -> str:
@@ -2046,48 +2105,44 @@ def _ester_organyl_name(
     organyl_atoms = [nbr for nbr in oxygen_neighbors if nbr != carbonyl_atom]
     if len(organyl_atoms) != 1 or view.element(organyl_atoms[0]) != "C":
         raise ChemNameNotSupported("Unsupported ester organyl topology")
-
     blocked = set(chain_set) | {carbonyl_atom, ester_oxygen}
-    start_atom = organyl_atoms[0]
-    pending = [start_atom]
-    branch_atoms: set[int] = set()
-    while pending:
-        atom_id = pending.pop()
-        if atom_id in blocked or atom_id in branch_atoms:
-            continue
-        if view.element(atom_id) != "C":
-            raise ChemNameNotSupported("Non-carbon in ester organyl component")
-        if (
-            view.formal_charge(atom_id)
-            or view.isotope(atom_id) is not None
-            or view.has_radical(atom_id)
-            or view.stereo_cip(atom_id)
-            or view.stereo_axial(atom_id)
-            or view.stereo_helical(atom_id)
-            or view.stereo_si_re(atom_id)
-        ):
-            raise ChemNameNotSupported("Annotated ester organyl is unsupported")
-        branch_atoms.add(atom_id)
-        for nbr in view.neighbors(atom_id):
-            if view.element(nbr) == "H":
-                continue
-            bond = view._get_bond(atom_id, nbr)  # noqa: SLF001 - read-only metadata check.
-            wedge_stereo = getattr(bond, "stereo", None)
-            wedge_stereo = getattr(wedge_stereo, "value", wedge_stereo)
-            if (
-                wedge_stereo not in {None, "", "none"}
-                or view.bond_stereo_ez(atom_id, nbr)
-                or view.bond_stereo_axial(atom_id, nbr)
-                or view.bond_stereo_endo_exo(atom_id, nbr)
-            ):
-                raise ChemNameNotSupported("Annotated ester organyl bond is unsupported")
-            if nbr in blocked:
-                continue
-            if view.element(nbr) != "C" or view.bond_order_between(atom_id, nbr) != 1:
-                raise ChemNameNotSupported("Unsupported ester organyl decoration")
-            pending.append(nbr)
+    return _checked_alkyl_component_name(
+        view, organyl_atoms[0], blocked, "ester organyl component"
+    )
 
-    return alkyl_substituent_name(view, start_atom, blocked)
+
+def _amide_n_substituent_names(
+    view: MolView, nitrogen_atom: int, substituent_atoms: list[int], chain_set: set[int]
+) -> list[str]:
+    """Name N-alkyl groups for a primary amide while preserving their metadata."""
+    if (
+        view.formal_charge(nitrogen_atom)
+        or view.isotope(nitrogen_atom) is not None
+        or view.has_radical(nitrogen_atom)
+        or view.stereo_cip(nitrogen_atom)
+    ):
+        raise ChemNameNotSupported("Annotated amide nitrogen is unsupported")
+    blocked = set(chain_set) | {nitrogen_atom}
+    return [
+        _checked_alkyl_component_name(view, atom_id, blocked, "amide N-substituent")
+        for atom_id in substituent_atoms
+    ]
+
+
+def _amide_n_substitution_prefix(names: list[str]) -> str:
+    """Format N-locants and N-alkyl multiplicity for a single amide group."""
+    ordered = sorted(names)
+    if not ordered:
+        return ""
+    if len(ordered) == 1:
+        return f"N-{ordered[0]}"
+    if len(set(ordered)) == 1:
+        multiplier = MULTIPLIER.get(len(ordered))
+        if multiplier is None:
+            raise ChemNameNotSupported("Too many amide N-substituents")
+        locants = ",".join("N" for _ in ordered)
+        return f"{locants}-{multiplier}{ordered[0]}"
+    return "-".join(f"N-{name}" for name in ordered)
 
 
 def _find_functional_group(
@@ -2203,6 +2258,9 @@ def _find_functional_group(
                 amide_nitrogens.add(n_atom)
                 extras = [n for n in n_heavy if n != atom_id]
                 prefix = "amido" if not extras else "acylamido"
+                n_substituents = _amide_n_substituent_names(
+                    view, n_atom, extras, chain_set
+                )
                 occurrences.append(
                     FunctionalOccurrence(
                         kind="amide",
@@ -2210,6 +2268,7 @@ def _find_functional_group(
                         aux_atom_ids={carbonyl_oxygen[0], n_atom},
                         prefix_name=prefix,
                         suffix_name="amide",
+                        n_substituents=n_substituents,
                     )
                 )
                 break
@@ -2353,13 +2412,24 @@ def _find_functional_group(
         occurrences,
         key=lambda occ: (priority.get(occ.kind, 99), chain_index.get(occ.atom_id, 999)),
     )
+    amide_occurrences = [occ for occ in occurrences if occ.kind == "amide"]
+    if primary.kind != "amide" and any(occ.n_substituents for occ in amide_occurrences):
+        raise ChemNameNotSupported("N-substituted amide prefix is unsupported")
+    if primary.kind == "amide" and len(amide_occurrences) > 1 and any(
+        occ.n_substituents for occ in amide_occurrences
+    ):
+        raise ChemNameNotSupported("N-substitution on multiple amide groups is unsupported")
+    primary_n_substituents = (
+        list(primary.n_substituents or []) if primary.kind == "amide" else []
+    )
 
     ignore_atoms: set[int] = set()
     prefixes: list[tuple[str, int]] = []
     for occ in occurrences:
         ignore_atoms |= occ.aux_atom_ids
         if occ is primary or (
-            primary.kind in {"acid", "aldehyde", "ketone", "alcohol", "amine"}
+            primary.kind
+            in {"acid", "aldehyde", "ketone", "alcohol", "amine", "amide"}
             and occ.kind == primary.kind
         ):
             continue
@@ -2375,6 +2445,7 @@ def _find_functional_group(
         priority=priority.get(primary.kind, 99),
         primary_atoms=[occ.atom_id for occ in occurrences if occ.kind == primary.kind],
         organyl_name=primary.organyl_name,
+        n_substituents=primary_n_substituents,
     )
 
 

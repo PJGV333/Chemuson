@@ -1062,6 +1062,8 @@ def parent_name(
             suffix = "edioic acid"
         elif suffix == "al":
             suffix = "edial"
+        elif suffix == "amide":
+            suffix = "ediamide"
         elif suffix in {"one", "ol", "amine"}:
             multiplier = UNSAT_MULTIPLIER.get(suffix_count)
             if multiplier is None:
@@ -1113,6 +1115,7 @@ def parent_name(
         "oate",
         "nitrile",
         "amide",
+        "ediamide",
         "sulfonic acid",
         "sulfonate",
     } or suffix.endswith("oic acid"):

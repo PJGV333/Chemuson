@@ -80,6 +80,10 @@ A family tag can overlap another tag (for example, an amino acid is both acid an
 - Carboxylic acids and polyacids: P-65.1, especially P-65.1.2.2; ester organyl-plus-anion names: P-65.6.3.3.1; see [P-6](https://iupac.qmul.ac.uk/BlueBook/P6.html).
 - N-substituted and multiple amides: P-66.1.1.1.1.1/P-66.1.1.3.1; mono-/dialdehydes: P-66.6.1.1.1; see [P-6a](https://iupac.qmul.ac.uk/BlueBook/P6a.html).
 
+### Name-form adjudications used during fixes
+
+For `CNC(C)=O` and `CCNC(C)=O`, PubChem records `N-methylacetamide` and `N-ethylacetamide`; the implementation now emits the fully specified systematic-parent forms `N-methylethanamide` and `N-ethylethanamide`. The corpus retains PubChem strings as independent registry references, not automatic exact-output or PIN oracles. This follows the campaign's recorded distinction between systematic `ethanamide` and retained `acetamide`; both forms preserve the N-substituent and parent connectivity.
+
 ### Defects and unsupported candidates captured before fixes
 
 - Acid parent selection/suffix: `CC(C)C(=O)O` and benzoic acid return `N/D`; `O=C(O)C(=O)O` becomes `2-carboxyethanoic acid` (adds a carbon), and succinic acid `O=C(O)CCC(=O)O` becomes `4-carboxybutanoic acid` (also adds a carboxyl carbon).
