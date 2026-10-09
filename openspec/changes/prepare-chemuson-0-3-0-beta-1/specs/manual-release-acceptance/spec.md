@@ -63,6 +63,19 @@ The manual acceptance matrix SHALL record the frozen-package ChemName template o
 - **THEN** their names/resources are recorded as automated evidence only
 - **AND** the owner's manual status-bar, annotation, and package retest remains pending.
 
+### Requirement: ChemName resource, UI freshness, and algorithm accuracy are separate acceptance claims
+The acceptance matrix SHALL distinguish missing packaged resources from nomenclature-rule accuracy and from stale GUI state. For each structure identity change, the status name and generated analysis annotation SHALL match the current graph immediately, including Undo/Redo; no result from an earlier graph revision may overwrite it. Unsupported or unverified output SHALL remain `N/D`/unverified rather than being represented as a confirmed preferred IUPAC name. Algorithm disputes SHALL include an exact structure, active options, expected name and authoritative reference; source/frozen parity alone MUST NOT be treated as proof of IUPAC correctness. The deferred `chemname/iupac-robustness` campaign SHALL not include postponed formula/isotope/charge presentation work.
+
+#### Scenario: Structure identity changes and is undone/redone
+- **WHEN** a tester changes ethane to ethanol, checks the status bar and annotation, then performs Undo and Redo
+- **THEN** the displayed names follow `ethane` → `ethan-1-ol` → `ethane` → `ethan-1-ol`
+- **AND** the check records the exact artifact and does not infer algorithm correctness beyond these specified cases.
+
+#### Scenario: A nomenclature-rule concern is reported
+- **WHEN** a name is disputed
+- **THEN** its exact molecule and authoritative preferred-name reference are recorded separately from packaging and GUI update results
+- **AND** no algorithm rule is changed solely from an unverified example.
+
 ### Requirement: AI acceptance distinguishes structure validity from identity
 Molecular Assistant cases SHALL record provider availability, source provenance, ChemIO validity and identity/reference status separately. A valid SMILES alone SHALL NOT be considered proof of the requested molecular identity. Tests SHALL cover offline/provider failure behavior without assuming a Qwen endpoint exists.
 

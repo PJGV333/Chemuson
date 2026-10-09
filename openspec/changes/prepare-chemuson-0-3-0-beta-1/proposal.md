@@ -27,6 +27,9 @@ ChemUSON tiene ya una línea 0.3.0, builds Windows/Linux/Flatpak, canales beta/s
 - Mantener `P1` bloqueante y el retest manual del propietario pendiente; el SIGSEGV de teardown Qt sigue siendo deuda independiente.
 - Diagnosticar `P1 — ChemName templates omitted from frozen packages` inspeccionando primero artefactos Windows/AppImage reales y Flatpak por separado; incluir explícitamente los recursos requeridos y comparar Python con nombres del ejecutable congelado sin cambiar reglas de nomenclatura.
 - Completar BRANDING-001 con el texto aprobado de Acerca de y el título principal simplificado, preservando atribuciones legales e identidades internas.
+- Separar en el diagnóstico la actualización obsoleta del indicador ChemName de la calidad de las reglas: verificar cambios de estructura, Undo/Redo y ausencia de caché/callback tardío sin alterar nomenclatura no demostrada defectuosa.
+- Investigar y corregir únicamente la retención de un callback de test que causa SIGSEGV Qt al destruir un QUndoStack; mantener los hallazgos Clean2D/CompChem como fallos independientes y no suprimirlos.
+- Registrar para una campaña futura `chemname/iupac-robustness` la comparación de ejemplos exactos con referencias IUPAC actuales; aplazar mejoras de presentación de fórmulas, isótopos y cargas.
 
 ## Capabilities
 

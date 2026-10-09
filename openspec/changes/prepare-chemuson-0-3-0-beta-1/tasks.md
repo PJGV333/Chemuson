@@ -94,3 +94,12 @@
 - [x] 13.6 Gate Build Preview and official package workflows, record the historical missing-resource P1 and manual retest cases, and preserve the owner-pending state.
 - [x] 13.7 Run bounded focused tests, strict OpenSpec and a new Build Preview for the pushed prep-branch SHA; report per-format evidence. Build Preview `37866732971` passed all four artifact groups on `1ad1db00aeb4f76e06cbffc5e23312b19e1dfa8f`; per-format hashes/automated smoke are in `validation.md`. Owner manual retest remains required before beta acceptance.
 - [ ] 13.8 Owner repeats ChemName naming/resource checks on the corrected Windows portable/setup, extracted AppImage and Flatpak, recording the exact artifact SHA and both status-bar/analysis names.
+
+## 14. ChemName live invalidation and independent Qt/CI diagnosis
+- [x] 14.1 Separate the historical frozen-template omission from source algorithm correctness; rerun the bounded source acceptance corpus without changing nomenclature rules.
+- [x] 14.2 Verify the actual status-bar signal path on a real molecular edit plus Undo/Redo; ensure each state is recomputed from the current graph before returning control.
+- [x] 14.3 Reproduce the Qt teardown SIGSEGV in the ordered drag/lifecycle test shard and identify the retained `indexChanged` callback from `test_drag_move_undo.py`.
+- [x] 14.4 Disconnect the test callback in `finally`; verify the same ordered shard completes without a crash. Do not refactor production Qt lifecycle code.
+- [x] 14.5 Map the two ordinary failures in test run `37867439026` to exact nodes, reproduce boundedly where possible, and preserve Clean2D/CompChem code and tests without suppressing failures.
+- [x] 14.6 Record the deferred `chemname/iupac-robustness` campaign, including authoritative reference names and a separate verdict for GUI staleness versus algorithm output. Do not begin presentation enhancements.
+- [ ] 14.7 Owner supplies any disputed structure/name and completes the artifact-backed ChemName update/Undo/Redo and manual platform retests; no native Windows verification is inferred from CI.

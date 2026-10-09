@@ -355,4 +355,23 @@ Pendiente: CDXML/MRV/PDB, metadatos avanzados de publicación y round-trip indus
 
 ### Siguiente implementación sugerida
 
-El siguiente bloque práctico es **Workbench v0.3: validación corregible + 3D/compchem UI + estabilidad**. La prioridad ya no es reescribir Clean2D ni migrar a Rust, sino cerrar los MVPs iniciados, mantener `pytest -q` como puerta de salud y preparar una futura línea 0.3.x sin publicar release/tag todavía.
+El siguiente bloque práctico es **Workbench v0.3: validación corregible + 3D/compchem UI + estabilidad**. La prioridad ya no es reescribir Clean2D ni migrar a Rust, sino cerrar los MVPs iniciados, mantener gates de pruebas acotados y preparar una futura línea 0.3.x sin publicar release/tag todavía.
+
+### Campaña diferida: `chemname/iupac-robustness`
+
+**Estado:** propuesta futura; no iniciada en la estabilización beta.
+
+**Objetivo**
+- Distinguir errores de actualización/caché de la interfaz de discrepancias reales en las reglas de nomenclatura.
+- Auditar ChemName contra nombres PIN actuales, con referencias normativas reproducibles, antes de modificar reglas.
+
+**Trabajo previsto**
+- Para cada caso, conservar estructura exacta (SMILES/mol), opciones ChemName, nombre generado, nombre esperado, edición de la referencia IUPAC y la regla aplicable.
+- Cubrir cadenas, localizadores, grupos funcionales, heterociclos, anillos fusionados, estereoquímica, isótopos, cargas y casos explícitamente no soportados, separando `N/D` de una respuesta aceptada.
+- Añadir pruebas de cambio de identidad, Undo/Redo y anotación para detectar texto obsoleto; proteger futuras tareas asíncronas con una revisión/identidad de grafo.
+- Tratar `eth-1-ene` observado en una sonda exploratoria como candidato para adjudicación normativa, no como defecto confirmado hasta fijar referencia y nombre esperado.
+
+**Fuera de alcance de esta campaña beta**
+- No cambiar reglas de ChemName sin reproducción y fuente autoritativa.
+- No iniciar mejoras de presentación científica de fórmulas, isótopos o cargas.
+- No mezclar validación de recursos empaquetados con exactitud nomenclatural; los smokes de paridad fuente/frozen prueban consistencia, no conformidad IUPAC completa.

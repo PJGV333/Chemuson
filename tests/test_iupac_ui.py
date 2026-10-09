@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import QApplication, QLabel, QMessageBox
 
 from chemuson.core.model import ChemState, MolGraph
 from chemuson.gui.canvas import ChemusonCanvas
+from chemuson.gui.commands import AddBondCommand
 from chemuson.gui.dialogs import PreferencesDialog
 from chemuson.gui.main_window import ChemusonWindow
 from chemuson.gui.style import CHEMDOODLE_LIKE
@@ -36,6 +37,38 @@ def test_canvas_analysis_uses_nombre_iupac_label() -> None:
     canvas = ChemusonCanvas()
     text = canvas._analysis_build_text(_ethane_graph(), "name")
     assert "Nombre IUPAC:" in text
+
+
+def test_name_indicator_tracks_structure_changes_through_undo_redo() -> None:
+    window = ChemusonWindow()
+    canvas = window.canvas
+    try:
+        canvas.model = _ethane_graph()
+        canvas.rebuild_persistence_view()
+        window._update_iupac_name_indicator()
+        assert window._iupac_name_label.text() == "Nombre IUPAC: ethane"
+
+        terminal_carbon_id = max(canvas.model.atoms)
+        canvas.undo_stack.push(
+            AddBondCommand(
+                canvas.model,
+                canvas,
+                terminal_carbon_id,
+                None,
+                new_atom_element="O",
+                new_atom_pos=(2.0, 0.0),
+            )
+        )
+        assert window._iupac_name_label.text() == "Nombre IUPAC: ethan-1-ol"
+
+        canvas.undo_stack.undo()
+        assert window._iupac_name_label.text() == "Nombre IUPAC: ethane"
+
+        canvas.undo_stack.redo()
+        assert window._iupac_name_label.text() == "Nombre IUPAC: ethan-1-ol"
+    finally:
+        canvas.undo_stack.setClean()
+        window.close()
 
 
 def test_preferences_dialog_emits_naming_options() -> None:
