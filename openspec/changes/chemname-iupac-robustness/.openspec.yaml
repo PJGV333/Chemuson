@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-10-08
+goal: Correct two reproducible ChemName losses against independent nomenclature references: treat a primary carboxamide as the principal amide rather than an amino substituent, and retain supported substituents and locants when naming substituted phenyl groups; fail closed where this narrow naming path cannot preserve connectivity, functional groups, isotope/charge state, or stereochemistry.
