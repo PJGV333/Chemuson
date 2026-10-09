@@ -605,6 +605,115 @@ def _name_cycloalkane(
     return render_name(substituents, parent, always_include_locant=False)
 
 
+def _name_benzene_carboxy(
+    view: MolView,
+    ring_atoms: list[int],
+    opts: NameOptions,
+    ring_ctx: RingContext | None,
+) -> str | None:
+    """Name one simple benzoic-acid or benzoate functional attachment."""
+    ring_set = set(ring_atoms)
+    matches: list[tuple[int, int, int, int | None, str | None]] = []
+    for ring_atom in ring_atoms:
+        for carbonyl_atom in view.neighbors(ring_atom):
+            if carbonyl_atom in ring_set or view.element(carbonyl_atom) != "C":
+                continue
+            double_oxygens = [
+                nbr
+                for nbr in view.neighbors(carbonyl_atom)
+                if view.element(nbr) == "O"
+                and view.bond_order_between(carbonyl_atom, nbr) == 2
+            ]
+            single_oxygens = [
+                nbr
+                for nbr in view.neighbors(carbonyl_atom)
+                if view.element(nbr) == "O"
+                and view.bond_order_between(carbonyl_atom, nbr) == 1
+            ]
+            carbon_neighbors = [
+                nbr for nbr in view.neighbors(carbonyl_atom) if view.element(nbr) == "C"
+            ]
+            if (
+                len(double_oxygens) != 1
+                or len(single_oxygens) != 1
+                or carbon_neighbors != [ring_atom]
+            ):
+                continue
+            single_oxygen = single_oxygens[0]
+            oxygen_neighbors = [
+                nbr for nbr in view.neighbors(single_oxygen) if view.element(nbr) != "H"
+            ]
+            h_total = implicit_h_count(view, single_oxygen) + view.explicit_h(single_oxygen)
+            if h_total >= 1 and len(oxygen_neighbors) == 1:
+                matches.append(
+                    (ring_atom, carbonyl_atom, double_oxygens[0], single_oxygen, None)
+                )
+            elif h_total == 0 and len(oxygen_neighbors) == 2:
+                organyl_atoms = [nbr for nbr in oxygen_neighbors if nbr != carbonyl_atom]
+                if len(organyl_atoms) != 1 or view.element(organyl_atoms[0]) != "C":
+                    raise ChemNameNotSupported("Unsupported benzoate organyl topology")
+                blocked = ring_set | {carbonyl_atom, single_oxygen}
+                organyl_name = _checked_alkyl_component_name(
+                    view, organyl_atoms[0], blocked, "benzoate organyl component"
+                )
+                matches.append(
+                    (ring_atom, carbonyl_atom, double_oxygens[0], single_oxygen, organyl_name)
+                )
+
+    if not matches:
+        return None
+    if len(matches) != 1:
+        raise ChemNameNotSupported("Multiple aromatic carboxy groups are unsupported")
+
+    attachment, carbonyl_atom, carbonyl_oxygen, single_oxygen, organyl_name = matches[0]
+    functional_atoms = {carbonyl_atom, carbonyl_oxygen, single_oxygen}
+    for atom_id in functional_atoms:
+        if (
+            view.formal_charge(atom_id)
+            or view.isotope(atom_id) is not None
+            or view.has_radical(atom_id)
+            or view.stereo_cip(atom_id)
+            or view.stereo_axial(atom_id)
+            or view.stereo_helical(atom_id)
+            or view.stereo_si_re(atom_id)
+        ):
+            raise ChemNameNotSupported("Annotated aromatic carboxy group is unsupported")
+
+    ignore_atoms = set(functional_atoms)
+    best_numbering: list[int] | None = None
+    best_substituents: list[Sub] | None = None
+    best_key: tuple | None = None
+    for numbering in enumerate_ring_numberings(ring_atoms):
+        if numbering[0] != attachment:
+            continue
+        substituents = ring_substituents(
+            view,
+            numbering,
+            allow_hydroxy=True,
+            allow_nitro=True,
+            allow_amino=True,
+            allow_alkoxy=True,
+            allow_ester=True,
+            allow_amide=True,
+            allow_nitrile=True,
+            ignore_atoms=ignore_atoms,
+            ring_ctx=ring_ctx,
+        )
+        key = orientation_key(substituents, opts, primary_locants=[1])
+        if best_key is None or key < best_key:
+            best_key = key
+            best_numbering = list(numbering)
+            best_substituents = substituents
+
+    if best_numbering is None or best_substituents is None:
+        raise ChemNameNotSupported("Unable to orient aromatic carboxy parent")
+    parent = "benzoate" if organyl_name else "benzoic acid"
+    rendered = render_name(
+        best_substituents, parent, always_include_locant=bool(best_substituents)
+    )
+    return f"{organyl_name} {rendered}" if organyl_name else rendered
+
+
 def _name_benzene(
     view: MolView,
     ring_atoms: list[int],
@@ -625,6 +734,9 @@ def _name_benzene(
     for atom_id in ring_atoms:
         if view.element(atom_id) != "C":
             raise ChemNameNotSupported("Unsupported aromatic ring")
+    carboxy_name = _name_benzene_carboxy(view, ring_atoms, opts, ring_ctx)
+    if carboxy_name is not None:
+        return carboxy_name
     dione_name = _name_aromatic_dione(
         view,
         ring_atoms,
@@ -2202,7 +2314,15 @@ def _find_functional_group(
             o_single = single_oxygen[0]
             h_total = implicit_h_count(view, o_single) + view.explicit_h(o_single)
             heavy_neighbors = [n for n in view.neighbors(o_single) if view.element(n) != "H"]
-            if h_total >= 1 and len(heavy_neighbors) == 1 and len(chain_neighbors) == 1:
+            is_neutral_acid_oxygen = h_total >= 1 and len(heavy_neighbors) == 1
+            is_carboxylate_oxygen = (
+                h_total == 0
+                and len(heavy_neighbors) == 1
+                and view.formal_charge(o_single) <= -1
+            )
+            if is_neutral_acid_oxygen or is_carboxylate_oxygen:
+                acid_oxygen = o_single
+            if len(chain_neighbors) == 1 and is_neutral_acid_oxygen:
                 occurrences.append(
                     FunctionalOccurrence(
                         kind="acid",
@@ -2212,13 +2332,7 @@ def _find_functional_group(
                         suffix_name="oic acid",
                     )
                 )
-                acid_oxygen = o_single
-            elif (
-                h_total == 0
-                and len(heavy_neighbors) == 1
-                and len(chain_neighbors) == 1
-                and view.formal_charge(o_single) <= -1
-            ):
+            elif len(chain_neighbors) == 1 and is_carboxylate_oxygen:
                 occurrences.append(
                     FunctionalOccurrence(
                         kind="carboxylate",
@@ -2228,7 +2342,6 @@ def _find_functional_group(
                         suffix_name="oate",
                     )
                 )
-                acid_oxygen = o_single
 
         if len(carbonyl_oxygen) == 1 and len(chain_neighbors) == 1:
             for o_single in single_oxygen:
