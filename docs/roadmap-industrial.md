@@ -357,21 +357,17 @@ Pendiente: CDXML/MRV/PDB, metadatos avanzados de publicación y round-trip indus
 
 El siguiente bloque práctico es **Workbench v0.3: validación corregible + 3D/compchem UI + estabilidad**. La prioridad ya no es reescribir Clean2D ni migrar a Rust, sino cerrar los MVPs iniciados, mantener gates de pruebas acotados y preparar una futura línea 0.3.x sin publicar release/tag todavía.
 
-### Campaña diferida: `chemname/iupac-robustness`
+### Campaña: `chemname/iupac-robustness`
 
-**Estado:** propuesta futura; no iniciada en la estabilización beta.
+**Estado (2026-10-08): primera tranche de correcciones reproducibles completada en la rama local `chemname/iupac-robustness`; sin merge, push, tag ni publicación.** OpenSpec y referencias: [`openspec/changes/chemname-iupac-robustness/`](../openspec/changes/chemname-iupac-robustness/).
 
-**Objetivo**
-- Distinguir errores de actualización/caché de la interfaz de discrepancias reales en las reglas de nomenclatura.
-- Auditar ChemName contra nombres PIN actuales, con referencias normativas reproducibles, antes de modificar reglas.
+**Resultados con referencias independientes**
+- `CC(=O)N` ahora produce el sistemático solicitado `ethanamide`, sin prefijo `amino` falso. Blue Book P-66.1.1.1.1.1 respalda la formación substitutiva; P-66.1.1.1.2.1 precisa que el PIN retenido es `acetamide`, por lo que no se presenta `ethanamide` como PIN.
+- `CC(=O)Cc1cc(N)ccc1C` y su SMILES con distinto orden de átomos ahora conservan amino y metilo como `1-(5-amino-2-methylphenyl)propan-2-one`, que coincide con PubChem CID 118802021.
+- La corrección solo nombra un fenilo neutral de conexión única con decoraciones simples reconocidas. Conectividad múltiple/cruzada y metadatos de estereoquímica, carga o isótopo que esta ruta no representa devuelven `N/D` en vez de omitir información. Las cetonas aciladas directamente al anillo, como acetofenonas multisustituidas, siguen fuera de soporte y no reciben un nombre parcial.
+- Evidencia exacta, salidas baseline y reglas de métrica están en `corpus.md` y `validation.md`; la paridad de nombre no se infiere de un test que comparte el motor.
 
-**Trabajo previsto**
-- Para cada caso, conservar estructura exacta (SMILES/mol), opciones ChemName, nombre generado, nombre esperado, edición de la referencia IUPAC y la regla aplicable.
-- Cubrir cadenas, localizadores, grupos funcionales, heterociclos, anillos fusionados, estereoquímica, isótopos, cargas y casos explícitamente no soportados, separando `N/D` de una respuesta aceptada.
-- Añadir pruebas de cambio de identidad, Undo/Redo y anotación para detectar texto obsoleto; proteger futuras tareas asíncronas con una revisión/identidad de grafo.
-- Tratar `eth-1-ene` observado en una sonda exploratoria como candidato para adjudicación normativa, no como defecto confirmado hasta fijar referencia y nombre esperado.
-
-**Fuera de alcance de esta campaña beta**
-- No cambiar reglas de ChemName sin reproducción y fuente autoritativa.
-- No iniciar mejoras de presentación científica de fórmulas, isótopos o cargas.
-- No mezclar validación de recursos empaquetados con exactitud nomenclatural; los smokes de paridad fuente/frozen prueban consistencia, no conformidad IUPAC completa.
+**Trabajo pendiente de alcance más amplio**
+- Auditar más grupos funcionales, anillos, heterociclos, estereoquímica e isótopos contra referencias normativas independientes; este tranche no declara conformidad IUPAC general.
+- Tratar `eth-1-ene` observado en una sonda exploratoria como candidato de adjudicación, no defecto confirmado, hasta fijar referencia y nombre esperado.
+- Mantener las mejoras de presentación de fórmulas, isótopos y cargas en una campaña separada. La exactitud de nombres sigue separada de la validez de recursos empaquetados y de la actualización de UI.

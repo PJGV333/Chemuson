@@ -39,8 +39,8 @@ Reference:
 
 ## Negative / safety sentinels
 
-- A stereogenic branch on the substituted phenyl group is not silently flattened. Until this path can emit and reference the correct descriptor, the expected safe result is `N/D`.
-- Unsupported ring-to-parent multiple connections, cross-links, or decorations whose charge/isotope/function/stereo is not represented must likewise fail closed.
+- `CC(=O)Cc1cc(N)ccc1[C@H](C)O` carries a stereogenic hydroxyethyl branch on the phenyl group. The isolated SMILES import represents the stereochemistry as hashed-bond metadata; the campaign's exact safe expectation is `N/D` until this path can emit and reference the descriptor. A separate graph-level unit test sets `stereo_cip=R` to cover atom metadata as well.
+- Unsupported ring-to-parent multiple connections, cross-links, or decorations whose charge/isotope/function/stereo is not represented must likewise fail closed. Unit sentinels exercise charged/isotopic branch metadata and multiple ring-to-parent attachments.
 - `CC(=O)c1cc(N)ccc1C` currently fails the engine's supported path and returns `N/D` by default. Direct aryl ketones remain outside this tranche; the change must not turn this unsupported case into a partial name.
 
 ## Reproducibility and metric policy
