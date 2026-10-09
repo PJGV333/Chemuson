@@ -329,11 +329,15 @@ def _name_linear(
     func_locant = _locant_for_atom(chain, func_atom) if func_atom is not None else None
     unsaturations = _unsaturations_for_chain(view, chain)
 
+    suffix_count = (
+        len(func.primary_atoms) if func is not None and func.kind == "acid" else 1
+    )
     parent = parent_name(
         len(chain),
         unsaturations=unsaturations,
         suffix=func_suffix,
         suffix_locant=func_locant,
+        suffix_count=suffix_count,
     )
 
     stereo = _stereo_descriptors_for_linear(view, chain, opts)
@@ -2275,7 +2279,7 @@ def _find_functional_group(
     prefixes: list[tuple[str, int]] = []
     for occ in occurrences:
         ignore_atoms |= occ.aux_atom_ids
-        if occ is primary:
+        if occ is primary or (primary.kind == "acid" and occ.kind == "acid"):
             continue
         prefixes.append((occ.prefix_name, occ.atom_id))
     prefixes.sort(key=lambda item: (chain_index.get(item[1], 999), item[0]))

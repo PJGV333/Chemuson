@@ -59,3 +59,18 @@ def test_pubchem_connectivity_reference_matches_exact_input(case: dict[str, str]
 def test_reference_backed_correct_names_remain_stable(case: dict[str, str]) -> None:
     graph = smiles_to_molgraph(case["smiles"])
     assert iupac_name(graph, NameOptions(rdkit_isolated=False)) == case["baseline_name"]
+
+
+@pytest.mark.parametrize(
+    ("smiles", "expected"),
+    [
+        ("O=C(O)C(=O)O", "ethanedioic acid"),
+        ("O=C(O)CCC(=O)O", "butanedioic acid"),
+    ],
+    ids=["ethanedioic-acid", "butanedioic-acid"],
+)
+def test_all_principal_carboxyl_groups_use_multiplicative_suffix(
+    smiles: str, expected: str
+) -> None:
+    graph = smiles_to_molgraph(smiles)
+    assert iupac_name(graph, NameOptions(rdkit_isolated=False)) == expected

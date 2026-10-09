@@ -1030,6 +1030,7 @@ def parent_name(
     suffix: str | None = None,
     suffix_locant: int | None = None,
     functional_prefixes: list[tuple[int, str]] | None = None,
+    suffix_count: int = 1,
 ) -> str:
     """Construye el nombre del padre con insaturaciones y sufijo.
 
@@ -1039,6 +1040,7 @@ def parent_name(
         suffix: Sufijo funcional (al, one, ol, etc.).
         suffix_locant: Locante del sufijo si corresponde.
         functional_prefixes: Prefijos funcionales adicionales (locante, nombre).
+        suffix_count: Número de ocurrencias del sufijo principal cuando aplica.
 
     Returns:
         Nombre del padre con insaturaciones y sufijos aplicados.
@@ -1049,6 +1051,12 @@ def parent_name(
     parent = ALKANE_PARENT.get(length)
     if parent is None:
         raise ChemNameNotSupported("Unsupported parent length")
+    if suffix_count < 1:
+        raise ChemNameNotSupported("Invalid suffix multiplicity")
+    if suffix_count > 1:
+        if suffix_count != 2 or suffix != "oic acid":
+            raise ChemNameNotSupported("Unsupported suffix multiplicity")
+        suffix = "edioic acid"
 
     def _apply_prefixes(base_name: str) -> str:
         """Combina prefijos funcionales previos con el nombre base."""
@@ -1078,7 +1086,7 @@ def parent_name(
         "amide",
         "sulfonic acid",
         "sulfonate",
-    }:
+    } or suffix.endswith("oic acid"):
         if suffix_locant not in {None, 1}:
             raise ChemNameNotSupported("Unsupported suffix locant")
         if unsaturations:
@@ -1089,8 +1097,8 @@ def parent_name(
                 base = parent
             else:
                 base = parent[:-1] if parent.endswith("e") else parent
-        if suffix == "oic acid":
-            return _apply_prefixes(f"{base}oic acid")
+        if suffix.endswith("oic acid"):
+            return _apply_prefixes(f"{base}{suffix}")
         if suffix == "oate":
             return _apply_prefixes(f"{base}oate")
         if suffix == "amide":
