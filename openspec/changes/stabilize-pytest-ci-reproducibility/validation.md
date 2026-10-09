@@ -2,13 +2,9 @@
 
 ## Estado de aceptación
 
-**NOT READY para aceptación de campaña.** La validación local completa está verde, pero no se pudo publicar `fix/ci-pytest-stabilization` ni observar un run de Actions sobre este cambio. `gh auth status` indica que no hay sesión GitHub. El push normal falló antes de transmitir commits:
+**CAMPAÑA APROBADA EN LA RAMA DESCENDIENTE PUBLICADA; aceptación beta pendiente.** La microcorrección está en `fix/ci-pytest-stabilization` SHA `571e012ad45a4973e18d42d9d8943ae204cfd9b3`. Actions [#37999001943](https://github.com/PJGV333/Chemuson/actions/runs/37999001943) pasó plan, ocho shards, resumen, Windows smoke y Flatpak smoke: **2.110 passed, 20 skipped, 0 failed**, con los 2.130 IDs del manifiesto.
 
-```text
-fatal: could not read Username for 'https://github.com': terminal prompts disabled
-```
-
-`git ls-remote --heads origin fix/ci-pytest-stabilization` no devuelve una rama remota. No hubo merge, PR, tag, release ni publicación de artefactos. Además, el `Inspector x=-3` reportado por CI no se reproduce localmente; su causa remota sigue abierta y no se tocó producción/UI.
+El push separado de la rama fuente fue bloqueado inicialmente por falta de credenciales; el SHA quedó después publicado como rama descendiente verificada. Por solicitud explícita, se integró localmente en `release/v0.3.0-beta.1-prep` por fast-forward-only. Ese nuevo HEAD requiere su propio CI y sus propios cuatro paquetes de preview; no se infieren a partir de Actions de origen. El clipping `Inspector x=-3` se reprodujo en CI y se corrigió retirando sólo el exceso de anchura; la matriz cubre ambos tamaños y todas las pestañas activas. No hubo merge commit, PR, tag, release ni publicación a canales.
 
 ## Git y alcance
 

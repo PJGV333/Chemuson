@@ -53,4 +53,10 @@ Los 9 skips del grupo focal son los skips condicionales preexistentes del modo d
 - Commit de implementación: `8cf4cbc` sobre el commit OpenSpec `a5acf76`; ambos son locales en `fix/chemio-stereo-roundtrip`.
 - Se intentó únicamente el push normal previsto: `git push -u origin fix/chemio-stereo-roundtrip`. GitHub rechazó el intento antes de transmitir commits: `fatal: could not read Username for 'https://github.com': No existe el dispositivo o la dirección`.
 - `gh auth status` confirma que no hay sesión iniciada en GitHub. No se solicitaron/guardaron credenciales, no se cambió la configuración global de Git y no se intentaron otros mecanismos de publicación.
-- Por tanto, el push queda pendiente de autenticación habilitada por el usuario. No hubo merge, PR, tag, release ni publicación de artefactos.
+- Estado histórico al cerrar la campaña original: el push separado quedaba pendiente de autenticación. No hubo merge, PR, tag, release ni publicación de artefactos desde esa rama.
+
+## Publicación descendiente e integración beta autorizada
+
+- El commit de implementación `8cf4cbc` quedó publicado como ancestro de `fix/ci-pytest-stabilization` en SHA `571e012ad45a4973e18d42d9d8943ae204cfd9b3`. El run Actions [#37999001943](https://github.com/PJGV333/Chemuson/actions/runs/37999001943) aprobó el plan, ocho shards y smokes Windows/Flatpak: **2.110 passed, 20 skipped, 0 failed**. Esto verifica la integración del código en una rama descendiente; no equivale al push independiente de `fix/chemio-stereo-roundtrip`.
+- Por solicitud explícita de integración en `release/v0.3.0-beta.1-prep`, el cambio se incorporó mediante fast-forward-only desde dicho SHA. Los tests focalizados post-FF pasan (**12** tests ChemIO stereo) y la campaña beta registra refs, alcance y baselines.
+- La aceptación manual de estereoquímica en los cuatro paquetes continúa `NOT TESTED`; un smoke CI y la comparación RDKit no la convierten en aprobación manual. No se han creado tags/releases ni publicado canales.

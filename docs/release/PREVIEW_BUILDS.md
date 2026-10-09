@@ -44,6 +44,33 @@ El agente debe devolver la URL del run, SHA/versión y resultado de cada job, ad
 - Los tests de contrato inspeccionan permisos, SHA, nombres y ausencia de pasos de publicación. Son evidencia **estática** únicamente; no prueban compilación real.
 - La retención esperada de artifacts es 14 días. Descargarlos pronto si se necesita conservar evidencia.
 
+## Guía de aceptación manual — usar la matriz existente
+
+Probar cada paquete por separado en una VM/perfil limpio y registrar resultado, versión, SHA completo, sistema, tester y evidencia **en `manual-acceptance-0.3.0.md`**. No crear otra matriz. Los smokes de Build Preview son evidencia de compilación, no cambian casos manuales de `NOT TESTED` a `PASS`.
+
+### P0 — ejecutar primero; cualquier fallo bloquea
+
+1. Antes de abrir, comprobar `preview-provenance.json`, versión `0.3.0-beta.1`, SHA y `checksums.sha256`; AppImage debe ser Type 2 extraíble. Probar Windows portable e installer, AppImage y Flatpak local por separado, sin modificar canales públicos.
+2. Arranque, apertura y cierre repetidos; verificar versión/marca, iconos, menús y herramientas esenciales. Windows/Linux: temas claro y oscuro. Registrar `START-01/05/06`, `UI-07/08` y `BRANDING-001` según corresponda.
+3. Dibujar átomos/enlaces/anillos, verificar valencias/conectividad y Undo/Redo; guardar copia `.cmsn`, cerrar, reabrir y comparar estructura/propiedades. Usar `DRAW-*`, `DATA-01/12`.
+4. Importar/exportar SMILES y MOL/SDF; validar conectividad, fórmula, carga y **identidad** tras cada paso (un SMILES sintácticamente válido no prueba identidad). Ejecutar explícitamente `DATA-11` para enantiómeros y E/Z; la pérdida estéreo silenciosa es P0.
+5. Si hay crash, pérdida/corrupción `.cmsn`, cambio de identidad/estereoquímica o error químico silencioso grave, marcar `FAIL`, conservar el archivo/evidencia y detener esa aceptación.
+
+### P1 — funcionalidad principal
+
+- ChemName con etanol `CCO`, benceno `c1ccccc1` y acetamida `CC(N)=O`; comprobar barra de estado/anotación al editar y Undo/Redo. Un nombre antiguo no debe persistir; salida no confiable debe ser `N/D`. Casos `CHEMNAME-RETEST-01/UPDATE-01`.
+- Etanol: descriptores RDKit frente a la referencia del caso; registrar separadamente si faltan. Clean2D en simple/aromática y comparar el grafo antes/después (`RDKIT-*`, `CLEAN-*`).
+- Apariencia de paneles/diálogos, onboarding, temas, plantillas, texto, anotaciones, flechas y diagramas (`UI-*`, `UI-ONBOARDING-001`). Retest manual, no el smoke Qt, determina aceptación.
+
+### P2 — capacidades avanzadas y limitaciones
+
+- Assistant local/offline y resolución PubChem: registrar proveedor/procedencia/identidad por separado; una respuesta SMILES válida no demuestra que sea la molécula solicitada. La IA es experimental.
+- Nombres IUPAC complejos: sólo aceptar frente a estructura exacta y referencia confiable; la campaña de robustez sigue separada y los casos no soportados pueden ser `N/D`.
+- Clean2D de estructuras rígidas/macrociclos y CompChem: funciones avanzadas con límites/entorno propios; no inferir cobertura universal desde casos simples.
+- Updater/distribución: confirmar que los previews no alteran beta/estable ni ofrecen actualizaciones públicas (`DIST-*`). Las pruebas automatizadas no sustituyen upgrade/uninstall manual.
+
+**La prioridad de ejecución no reescribe la severidad ni los resultados ya documentados en la matriz.** Mantener incidentes históricos `FAILED`, y todos los casos no ejecutados como `NOT TESTED`.
+
 ## Estado de esta campaña
 
 - El run previo [#37826597134](https://github.com/PJGV333/Chemuson/actions/runs/37826597134) pasó con cuatro grupos, pero su Linux `.AppImage` era un ejecutable PyInstaller renombrado. El propietario confirmó en ese run iconos ausentes en Windows y Linux portable, en temas claro y oscuro: **P1 — FAILED, bloquea la aceptación beta**. No se acepta como prueba del nuevo Type 2 ni de iconos corregidos.

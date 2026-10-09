@@ -23,4 +23,4 @@
 - [x] 4.2 Ejecutar compileall, colecta acotada, Ruff focal, OpenSpec estricto disponible y `git diff --check`; documentar full-suite no ejecutada y la única F401 baseline de Ruff global.
 - [x] 4.3 Registrar archivos, límites de backend, regresiones/resultados y estado Git/push en `validation.md`.
 - [x] 4.4 Crear commits pequeños; sin merge/PR/tag ni publicación.
-- [ ] 4.5 Hacer push normal sólo a `fix/chemio-stereo-roundtrip`; pendiente porque GitHub no dispone de credenciales en este entorno.
+- [x] 4.5 Publicar la implementación en una rama descendiente aprobada y verificar Actions. El push separado a `fix/chemio-stereo-roundtrip` no se ejecutó por falta de credenciales; quedó supersedido cuando `8cf4cbc` pasó a ser ancestro de `fix/ci-pytest-stabilization` (`571e012`) y Actions aprobó los 2.130 casos. La integración beta queda registrada en la campaña de preparación; no se afirma que se publicó la rama original.

@@ -96,6 +96,30 @@ Fecha: 2026-10-08. Rama de trabajo: `release/v0.3.0-beta.1-prep`. Commits de pac
 - CI `test` del mismo SHA: `windows-smoke` y `flatpak-smoke` PASS; job pytest monolítico seguía en progreso al registrar esta evidencia (la deuda histórica de teardown Qt está documentada por separado). No se informa suite completa como PASS. `gh-pages`, tags, GitHub Release y canales públicos no se tocaron.
 - **Siguiente y último gate de aceptación:** propietario debe probar los artifacts exactos y registrar estados de ChemName, iconos, onboarding, branding, instalación/upgrade/uninstall y DPI. `CHEMNAME-RETEST-01`, UI-ONBOARDING-001, BRANDING-001 y beta acceptance permanecen NOT TESTED / BLOCKED según la matriz; beta no está lista para publicar.
 
+## Integración de ChemIO stereo y CI/panel lateral — verificación previa al push
+
+### Refs, alcance y estrategia
+
+- Se verificó árbol limpio y HEAD/upstream local/remoto antes de integrar. Destino local/remoto `release/v0.3.0-beta.1-prep`: `6aeef19028ffd047f8a39bc8f6063ea0b57210bf`. Origen remoto `fix/ci-pytest-stabilization`: `571e012ad45a4973e18d42d9d8943ae204cfd9b3`; coincide con el run verde #37999001943.
+- `git merge-base --is-ancestor` confirmó que el origen desciende del destino; `rev-list --left-right --count target...source` devolvió `0 10`. Integración local mediante `git merge --ff-only origin/fix/ci-pytest-stabilization`; resultado inicial `571e012ad45a4973e18d42d9d8943ae204cfd9b3`. No squash/rebase/merge commit.
+- Diff del FF: 29 archivos, sólo workflow/test runner, OpenSpecs de ChemIO/CI, tres módulos ChemIO, tests de regresión, side panel y helpers de sharding. Ningún cambio a `src/chemuson/clean2d/`, `src/chemuson/chemname/`, `src/chemuson/chemio/persistence.py` o `packaging/`; la campaña `chemname/iupac-robustness` no está incluida. `chemuson.spec` intacto: inventario explícito de 69 SVG, nueve templates `.mol`, PyQt6/QtSvg y RDKit/worker native bundling.
+- Versión canónica comprobada con el source path: `0.3.0-beta.1`. El manifiesto ya actualizado contiene 2.130 IDs, hash `9eb563b221efcc98be35cad5de67d807a0051756e7a9a58d2d447fe83dea48f7`.
+
+### Baseline del destino y verificación tras integrar
+
+- Antes del FF, en `6aeef19`: `compileall` PASS, collect **2.120** en 1.00 s, arquitectura **280 passed** en 10.65 s; baseline global Ruff: sólo `F401 math` en `tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py:3`.
+- Los dos P0 ChemIO conocidos fallaban por `stereo_cip` ausente aunque existiera cuña/hash: `test_chiral_smiles_import_creates_wedge_or_hash` y `test_amino_acid_chiral_smiles_import_creates_wedge_or_hash`. Son fallos de baseline esperados que la rama revisada corrige, no regresiones nuevas.
+- Después del FF: `tests/test_smiles_stereo_import.py` **12 passed**; side panel + worker RDKit + icon/ChemName smoke + AppImage validator **35 passed**; contratos preview/release/test/version **23 passed**; `tests/architecture` **280 passed**; harness ChemName fuente **69 passed, 0 failed, 5 skipped**.
+- El plan CI local comprueba **2.130/2.130**, 8 shards `[267,267,266,266,266,266,266,266]`, sin huecos/duplicados. `compileall`, Ruff focal, las tres validaciones OpenSpec estrictas y `git diff --check` del rango integrado: PASS. Ruff global mantiene únicamente el F401 baseline documentado.
+- La geometría final de panel sigue usando etiquetas/tipografía/padding/gap mínimos; el cambio retira sólo 2 px redundantes por botón. La prueba cubre ambos tamaños y cada estado activo. No cambia el mecanismo de empaquetado ni la conducta química.
+
+### Estado remoto y aceptación
+
+- El run fuente [#37999001943](https://github.com/PJGV333/Chemuson/actions/runs/37999001943), SHA `571e012`, pasó plan, ocho shards, summary, Windows smoke y Flatpak smoke con **2.110 passed, 20 skipped, 0 failed**. Es evidencia válida de origen, pero no sustituye Actions del HEAD integrado beta.
+- La matriz existente de aceptación conserva 90 IDs acumulados (incluidos addenda de empaquetado ya presentes); no se creó matriz paralela ni se agregó ID. Se refinó `DATA-11` para incluir enantiómeros opuestos, aminoácido y E/Z, con resultado aún `NOT TESTED`.
+- En `docs/release/PREVIEW_BUILDS.md` se añade una guía breve P0/P1/P2 que referencia casos existentes y conserva todos los resultados manuales. La IA sigue experimental; validez SMILES no certifica identidad; ChemName no promete exactitud IUPAC universal; Clean2D/CompChem avanzado mantiene límites documentados.
+- **Pendiente antes de cierre:** push normal sólo a la rama prep; obtener CI real en el SHA final; Build Preview real de Windows portable, Windows installer, AppImage Type 2 y Flatpak; descargar artifacts y comprobar IDs, checksums y provenance. No se declara aún READY FOR MANUAL ACCEPTANCE ni se han cambiado canales.
+
 ## ChemName live-name update and Qt/CI investigation (2026-10-09)
 
 - Separate diagnosis: the previous frozen-package P1 was missing `.mol` resources; the source tests do not demonstrate a ChemName rule failure. `current_iupac_name()` has no name cache or asynchronous worker. The active canvas is refreshed synchronously from `QUndoStack.indexChanged`, and the analysis annotation calls the same current-graph name function.

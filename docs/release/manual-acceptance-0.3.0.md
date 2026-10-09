@@ -64,7 +64,7 @@ Resultado permitido por caso: `PASS`, `FAIL`, `BLOCKED` o `NOT TESTED`. Registra
 | DATA-08 | Importar Molfile de una molécula con dos elementos y una carga. | Elementos, conectividad y carga coinciden con el fixture fuente. | P1 | NOT TESTED — |
 | DATA-09 | Importar SMILES inválido `C1CC`. | Rechazo controlado con explicación; documento activo intacto. | P1 | NOT TESTED — |
 | DATA-10 | Exportar `CCO` a Molfile y reimportar en documento nuevo. | Conectividad y elementos equivalentes antes/después. | P1 | NOT TESTED — |
-| DATA-11 | Importar `N[C@@H](C)C(=O)O`, exportar y reimportar en formato soportado. | El centro estéreo permanece o cualquier limitación se informa explícitamente. | P1 | NOT TESTED — |
+| DATA-11 | Importar los enantiómeros `C[C@H](O)F` y `C[C@@H](O)F`, el aminoácido `N[C@@H](C)C(=O)O` y los alquenos `F/C=C/F` y `F/C=C\F`; hacer round-trip SMILES↔MOL/SDF en las rutas soportadas. | Se conserva la identidad tetraédrica/E/Z de cada entrada y los enantiómeros siguen siendo distintos. Comparar con referencia estereoquímica independiente; no comparar sólo el texto `@`/`@@`. Si un formato no puede representarla, debe informar/fallar explícitamente, nunca borrarla en silencio. | P0 | NOT TESTED — |
 | DATA-12 | Guardar estructura con carga formal y aromaticidad; volver a abrir. | Propiedades químicas no cambian silenciosamente. | P0 | NOT TESTED — |
 
 ## D. Exportación gráfica y archivos

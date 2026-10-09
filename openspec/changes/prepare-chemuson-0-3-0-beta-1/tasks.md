@@ -103,3 +103,11 @@
 - [x] 14.5 Map the two ordinary failures in test run `37867439026` to exact nodes, reproduce boundedly where possible, and preserve Clean2D/CompChem code and tests without suppressing failures.
 - [x] 14.6 Record the deferred `chemname/iupac-robustness` campaign, including authoritative reference names and a separate verdict for GUI staleness versus algorithm output. Do not begin presentation enhancements.
 - [ ] 14.7 Owner supplies any disputed structure/name and completes the artifact-backed ChemName update/Undo/Redo and manual platform retests; no native Windows verification is inferred from CI.
+
+## 15. Integración de las campañas ChemIO stereo y CI aprobadas
+- [x] 15.1 Revalidar refs/upstream: origen `fix/ci-pytest-stabilization` en `571e012`, descendiente estricto del destino; destino base `6aeef19`, divergencia 0/10, CI de origen #379990 green.
+- [x] 15.2 Integrar sólo con `git merge --ff-only`, preservando los commits y sin incorporar `chemname/iupac-robustness` ni cambios de subsistemas protegidos.
+- [x] 15.3 Verificar localmente ChemIO stereo, panel, smokes/contratos de empaquetado, arquitectura, OpenSpec estricto, plan de ocho shards, versión, Ruff focal, compileall y diff.
+- [ ] 15.4 Publicar sólo `release/v0.3.0-beta.1-prep` y verificar CI del SHA final y Build Preview de los cuatro formatos.
+- [ ] 15.5 Descargar/verificar cada artifact, checksum/provenance y `publication=false`; registrar run/IDs/SHA en `validation.md` y notas beta.
+- [ ] 15.6 Propietario completa aceptación manual en Windows y Linux; automation no cambia estados manuales.
