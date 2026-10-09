@@ -24,4 +24,4 @@ El SMILES histórico de tetrandrina produce cero centros especificados y dos cen
 
 ## Validación
 
-Ver `validation.md`. La aceptación exige enantiómeros opuestos no equivalentes, equivalencia de representación alternativa, centros no especificados que siguen sin asignar, controles moleculares y MOL/SDF focalizados. No se ejecutará Clean2D ni se afirmará validación de otros subsistemas.
+Ver `validation.md`. La aceptación exige enantiómeros opuestos no equivalentes, equivalencia de representación alternativa, centros no especificados que siguen sin asignar, controles moleculares y MOL/SDF focalizados. No se ejecutará la suite completa de Clean2D ni se afirmará validación integral de otros subsistemas; sólo se incluyen regresiones focalizadas de consumidores ChemIO para comprobar que no cambió su contrato.

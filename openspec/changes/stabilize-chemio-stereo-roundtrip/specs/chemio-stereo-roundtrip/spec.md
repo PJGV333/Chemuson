@@ -40,9 +40,10 @@ Explicit E/Z stereochemistry SHALL be preserved when the source and destination 
 ### Requirement: MOL/SDF wedge parity is oriented
 MOL/SDF stereo bond directions SHALL remain attached to the correct bond endpoint through internal parsing and serialization. Reordering atom/bond neighbors SHALL not reverse or erase tetrahedral identity.
 
-#### Scenario: Reordered CTAB bond endpoints
-- **WHEN** a MOL stereo bond is parsed with either endpoint first
-- **THEN** its orientation/parity is retained and the effective stereoisomer is unchanged on export.
+#### Scenario: CTAB stereo bond endpoint order
+- **WHEN** a MOL stereo bond is parsed from a CTAB whose ordered endpoints define its wedge/hash direction
+- **THEN** ChemIO retains that endpoint order and parity rather than sorting the atom pair independently
+- **AND** the effective stereoisomer is unchanged on export.
 
 ## Invariants
 
