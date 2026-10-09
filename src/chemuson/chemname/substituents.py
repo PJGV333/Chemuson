@@ -1054,9 +1054,14 @@ def parent_name(
     if suffix_count < 1:
         raise ChemNameNotSupported("Invalid suffix multiplicity")
     if suffix_count > 1:
-        if suffix_count != 2 or suffix != "oic acid":
+        if suffix_count != 2:
             raise ChemNameNotSupported("Unsupported suffix multiplicity")
-        suffix = "edioic acid"
+        if suffix == "oic acid":
+            suffix = "edioic acid"
+        elif suffix == "al":
+            suffix = "edial"
+        else:
+            raise ChemNameNotSupported("Unsupported suffix multiplicity")
 
     def _apply_prefixes(base_name: str) -> str:
         """Combina prefijos funcionales previos con el nombre base."""
@@ -1080,6 +1085,7 @@ def parent_name(
 
     if suffix in {
         "al",
+        "edial",
         "oic acid",
         "oate",
         "nitrile",
@@ -1097,7 +1103,7 @@ def parent_name(
                 base = parent
             else:
                 base = parent[:-1] if parent.endswith("e") else parent
-        if suffix.endswith("oic acid"):
+        if suffix.endswith("oic acid") or suffix == "edial":
             return _apply_prefixes(f"{base}{suffix}")
         if suffix == "oate":
             return _apply_prefixes(f"{base}oate")

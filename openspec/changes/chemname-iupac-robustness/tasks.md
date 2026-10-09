@@ -34,7 +34,7 @@
 ## 6. Stage 2 — functional groups and seniority
 - [x] 6.1 Correct branched and dicarboxylic acid parent selection/suffixes with PubChem-backed positive cases and mixed acid/ketone plus senior-group controls; benzoic acid remains a stage-3 aromatic case.
 - [ ] 6.2 Represent both ester components (organyl + acid-derived anion) for aliphatic and aromatic monoesters; preserve other higher-priority groups.
-- [ ] 6.3 Correct branched aldehyde chain selection and multiplicative dial suffixes without degrading mixed acid/aldehyde cases.
+- [x] 6.3 Correct branched aldehyde chain selection and terminal dial suffixes with atom-order variants and mixed acid/alcohol/ketone controls.
 - [ ] 6.4 Correct repeated same-class suffixes (diol, diamine, diamide, dione) and N-substituted amide locants; retain explicit mixed-priority counterexamples.
 - [ ] 6.5 Add independent regression cases for chain selection, suffix/prefix priority, functional group locants, and alternate atom orders.
 

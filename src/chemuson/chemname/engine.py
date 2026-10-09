@@ -332,8 +332,12 @@ def _name_linear(
     unsaturations = _unsaturations_for_chain(view, chain)
 
     suffix_count = (
-        len(func.primary_atoms) if func is not None and func.kind == "acid" else 1
+        len(func.primary_atoms)
+        if func is not None and func.kind in {"acid", "aldehyde"}
+        else 1
     )
+    if func is not None and func.kind == "aldehyde" and suffix_count > 1:
+        func_locant = None
     parent = parent_name(
         len(chain),
         unsaturations=unsaturations,
@@ -2344,7 +2348,9 @@ def _find_functional_group(
     prefixes: list[tuple[str, int]] = []
     for occ in occurrences:
         ignore_atoms |= occ.aux_atom_ids
-        if occ is primary or (primary.kind == "acid" and occ.kind == "acid"):
+        if occ is primary or (
+            primary.kind in {"acid", "aldehyde"} and occ.kind == primary.kind
+        ):
             continue
         prefixes.append((occ.prefix_name, occ.atom_id))
     prefixes.sort(key=lambda item: (chain_index.get(item[1], 999), item[0]))
