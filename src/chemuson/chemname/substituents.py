@@ -1062,11 +1062,11 @@ def parent_name(
             suffix = "edioic acid"
         elif suffix == "al":
             suffix = "edial"
-        elif suffix == "one":
+        elif suffix in {"one", "ol"}:
             multiplier = UNSAT_MULTIPLIER.get(suffix_count)
             if multiplier is None:
                 raise ChemNameNotSupported("Unsupported suffix multiplicity")
-            suffix = f"{multiplier}one"
+            suffix = f"{multiplier}{suffix}"
         else:
             raise ChemNameNotSupported("Unsupported suffix multiplicity")
 
@@ -1084,7 +1084,7 @@ def parent_name(
         with_terminal_e = (
             suffix is None
             or suffix == "nitrile"
-            or (suffix_count > 1 and suffix.endswith("one"))
+            or (suffix_count > 1 and suffix.endswith(("one", "ol")))
         )
         unsat_descriptor, use_a = _format_unsaturations(unsaturations, with_terminal_e)
 
@@ -1094,7 +1094,7 @@ def parent_name(
         root = alkane_root(parent, use_a=use_a)
         return _apply_prefixes(f"{root}-{unsat_descriptor}")
 
-    if suffix_count > 1 and suffix.endswith("one"):
+    if suffix_count > 1 and suffix.endswith(("one", "ol")):
         locants = sorted(suffix_locants or [])
         if len(locants) != suffix_count:
             raise ChemNameNotSupported("Missing repeated suffix locants")

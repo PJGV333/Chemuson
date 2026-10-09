@@ -333,13 +333,14 @@ def _name_linear(
 
     suffix_count = (
         len(func.primary_atoms)
-        if func is not None and func.kind in {"acid", "aldehyde", "ketone"}
+        if func is not None
+        and func.kind in {"acid", "aldehyde", "ketone", "alcohol"}
         else 1
     )
     suffix_locants = None
     if func is not None and func.kind == "aldehyde" and suffix_count > 1:
         func_locant = None
-    elif func is not None and func.kind == "ketone" and suffix_count > 1:
+    elif func is not None and func.kind in {"ketone", "alcohol"} and suffix_count > 1:
         suffix_locants = sorted(
             locant
             for atom_id in func.primary_atoms
@@ -2358,7 +2359,7 @@ def _find_functional_group(
     for occ in occurrences:
         ignore_atoms |= occ.aux_atom_ids
         if occ is primary or (
-            primary.kind in {"acid", "aldehyde", "ketone"}
+            primary.kind in {"acid", "aldehyde", "ketone", "alcohol"}
             and occ.kind == primary.kind
         ):
             continue
