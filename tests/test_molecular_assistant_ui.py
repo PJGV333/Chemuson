@@ -4,6 +4,7 @@ import threading
 import time
 
 import pytest
+from PyQt6.QtCore import QSettings, QStandardPaths
 from PyQt6.QtTest import QSignalSpy, QTest
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
@@ -37,7 +38,26 @@ def _qapp():
 
 @pytest.fixture(autouse=True)
 def _isolated_config_home(tmp_path, monkeypatch):
+    config_location = QStandardPaths.writableLocation(
+        QStandardPaths.StandardLocation.ConfigLocation
+    )
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    QSettings.setPath(
+        QSettings.Format.NativeFormat,
+        QSettings.Scope.UserScope,
+        str(tmp_path),
+    )
+    try:
+        settings = QSettings("Chemuson", "Chemuson")
+        settings.clear()
+        settings.sync()
+        yield
+    finally:
+        QSettings.setPath(
+            QSettings.Format.NativeFormat,
+            QSettings.Scope.UserScope,
+            config_location,
+        )
 
 
 def _success_result(graph: MolGraph | None = None) -> MolecularAssistantResult:
@@ -137,6 +157,7 @@ def test_dialog_is_modeless_masks_key_and_rejects_missing_request_fields():
         dialog = _open_dialog(window)
         assert not dialog.isModal()
         assert dialog.api_key_edit.echoMode() == dialog.api_key_edit.EchoMode.Password
+        assert dialog.resolution_method == "ai_reference"
         assert dialog.identity_verification_enabled is True
         assert dialog.allow_external_identity_reference is False
         emitted = []

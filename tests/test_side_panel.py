@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from time import monotonic
+
 import pytest
 from PyQt6.QtCore import QSettings, QStandardPaths, QPoint, Qt
+from PyQt6.QtTest import QTest
 from PyQt6.QtGui import QFontMetrics
 from PyQt6.QtWidgets import QApplication, QDockWidget, QLabel, QMenu
 
@@ -44,6 +47,52 @@ def window():
     finally:
         instance.close()
         QApplication.processEvents()
+
+
+def _primary_tab_geometry(row, viewport) -> dict[str, object]:
+    scroll_bar = row.scroll_area.horizontalScrollBar()
+    return {
+        "viewport": (viewport.width(), viewport.height()),
+        "strip": row._strip.geometry().getRect(),
+        "scroll": (
+            scroll_bar.minimum(),
+            scroll_bar.maximum(),
+            scroll_bar.value(),
+        ),
+        "tabs": tuple(
+            (
+                key,
+                button.mapTo(viewport, QPoint(0, 0)).x(),
+                button.width(),
+                button.isVisible(),
+            )
+            for key, button in row.main_tab_buttons.items()
+        ),
+    }
+
+
+def _wait_for_stable_primary_tab_geometry(row, viewport, max_observations: int = 20):
+    started = monotonic()
+    previous = None
+    stable_observations = 0
+    observations = []
+    for _ in range(max_observations):
+        QApplication.processEvents()
+        observed = _primary_tab_geometry(row, viewport)
+        observations.append(observed)
+        if observed == previous:
+            stable_observations += 1
+            if stable_observations >= 2:
+                return observed
+        else:
+            stable_observations = 0
+        previous = observed
+        QTest.qWait(5)
+    raise AssertionError(
+        "primary-tab geometry did not stabilize after "
+        f"{max_observations} observations in {monotonic() - started:.3f}s; "
+        f"recent={observations[-5:]}"
+    )
 
 
 def _view_menu(window: ChemusonWindow) -> QMenu:
@@ -241,6 +290,8 @@ def test_primary_tabs_have_complete_labels_padding_and_separation(window) -> Non
     for size in ((1440, 900), (980, 600)):
         window.resize(*size)
         QApplication.processEvents()
+        initial_geometry = _primary_tab_geometry(row, viewport)
+        stable_geometry = _wait_for_stable_primary_tab_geometry(row, viewport)
         previous_right = None
         for key, button in row.main_tab_buttons.items():
             position = button.mapTo(viewport, QPoint(0, 0))
@@ -254,8 +305,14 @@ def test_primary_tabs_have_complete_labels_padding_and_separation(window) -> Non
                 f"padding around its {text_width}px label"
             )
             assert position.x() >= 0 and right <= viewport.width(), (
-                f"primary tab {key} is clipped at {size}: "
-                f"x={position.x()}, width={button.width()}, viewport={viewport.width()}"
+                f"primary tab {key} is clipped at stable geometry {size}: "
+                f"x={position.x()}, width={button.width()}, "
+                f"viewport={viewport.width()}, strip={row._strip.width()}, "
+                f"scroll={row.scroll_area.horizontalScrollBar().value()}/"
+                f"{row.scroll_area.horizontalScrollBar().minimum()}.."
+                f"{row.scroll_area.horizontalScrollBar().maximum()}, "
+                f"active={panel.active_page_key}, "
+                f"initial={initial_geometry}, stable={stable_geometry}"
             )
             if previous_right is not None:
                 gap = position.x() - previous_right

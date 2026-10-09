@@ -43,19 +43,53 @@ def test_compchem_controller_generates_async_with_fake_backend(monkeypatch) -> N
             energy=-1.25,
         )
 
+    lifecycle: list[tuple[str, int]] = []
+    original_thread = compchem_module.QThread
+    original_worker = compchem_module.CompChem3DWorker
+
+    class TracedThread(original_thread):
+        def __init__(self, parent=None):
+            super().__init__(parent)
+            self.finished.connect(
+                lambda: lifecycle.append(("thread.finished", -1))
+            )
+
+    class TracedWorker(original_worker):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.finished.connect(
+                lambda job_id, _result: lifecycle.append(
+                    ("worker.finished", int(job_id))
+                )
+            )
+
     monkeypatch.setattr(compchem_module, "conformer_3d_for_graph", fake_conformer)
+    monkeypatch.setattr(compchem_module, "QThread", TracedThread)
+    monkeypatch.setattr(compchem_module, "CompChem3DWorker", TracedWorker)
     controller = CompChem3DController()
     finished: list[object] = []
     loop = QEventLoop()
-    controller.job_finished.connect(lambda _job_id, result: (finished.append(result), loop.quit()))
 
+    def on_job_finished(job_id, result) -> None:
+        lifecycle.append(("job_finished", int(job_id)))
+        finished.append(result)
+        loop.quit()
+
+    controller.job_finished.connect(on_job_finished)
     controller.start_job(
         graph,
         CompChemJobSpec("generate", "rdkit", OptimizationSettings(forcefield=ForceField.UFF)),
     )
-    QTimer.singleShot(3000, loop.quit)
-    loop.exec()
+    if not finished:
+        QTimer.singleShot(3000, loop.quit)
+        loop.exec()
 
+    event_names = [name for name, _job_id in lifecycle]
+    assert event_names == ["worker.finished", "thread.finished", "job_finished"], (
+        f"unexpected Qt lifecycle events {lifecycle}; "
+        f"active_jobs={controller.active_jobs()}, "
+        f"pending_results={tuple(controller._pending_results)}"
+    )
     assert finished
     result = finished[0]
     assert result.ok

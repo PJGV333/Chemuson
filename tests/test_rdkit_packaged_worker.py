@@ -7,7 +7,6 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from types import ModuleType
 from typing import Any
 
 import pytest
@@ -15,7 +14,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "packaging" / "release"))
 
-from chemuson.chemio import rdkit_packaged_smoke, rdkit_safe  # noqa: E402
+from chemuson.chemio import rdkit_safe  # noqa: E402
 import validate_packaged_rdkit_worker as packaged_validator  # noqa: E402
 
 
@@ -66,48 +65,67 @@ def _valid_frozen_report(executable: Path) -> dict[str, Any]:
     }
 
 
-def test_smoke_allows_qt_runtime_hooks_without_a_gui_application(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    class FakeApplication:
-        @staticmethod
-        def instance() -> None:
-            return None
-
-    qt_core = ModuleType("PyQt6.QtCore")
-    qt_gui = ModuleType("PyQt6.QtGui")
-    qt_widgets = ModuleType("PyQt6.QtWidgets")
-    qt_gui.QGuiApplication = FakeApplication
-    qt_widgets.QApplication = FakeApplication
-    monkeypatch.setitem(sys.modules, "PyQt6.QtCore", qt_core)
-    monkeypatch.setitem(sys.modules, "PyQt6.QtGui", qt_gui)
-    monkeypatch.setitem(sys.modules, "PyQt6.QtWidgets", qt_widgets)
-
-    assert rdkit_packaged_smoke._loaded_gui_modules() == []
-
-
-def test_smoke_detects_active_qt_application_and_chemuson_gui(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    class FakeApplication:
-        @staticmethod
-        def instance() -> object:
-            return object()
-
-    qt_gui = ModuleType("PyQt6.QtGui")
-    qt_widgets = ModuleType("PyQt6.QtWidgets")
-    qt_gui.QGuiApplication = type(
-        "InactiveApplication", (), {"instance": staticmethod(lambda: None)}
+def _assert_isolated_gui_import_probe(code: str) -> None:
+    environment = os.environ.copy()
+    environment["QT_QPA_PLATFORM"] = "offscreen"
+    environment["PYTHONPATH"] = os.pathsep.join(
+        filter(None, (str(ROOT / "src"), environment.get("PYTHONPATH", "")))
     )
-    qt_widgets.QApplication = FakeApplication
-    monkeypatch.setitem(sys.modules, "PyQt6.QtGui", qt_gui)
-    monkeypatch.setitem(sys.modules, "PyQt6.QtWidgets", qt_widgets)
-    monkeypatch.setitem(sys.modules, "chemuson.gui", ModuleType("chemuson.gui"))
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
 
-    assert rdkit_packaged_smoke._loaded_gui_modules() == [
-        "PyQt6.QtWidgets.QApplication",
-        "chemuson.gui",
-    ]
+
+def test_smoke_allows_qt_runtime_hooks_without_a_gui_application() -> None:
+    _assert_isolated_gui_import_probe(
+        """
+import sys
+from types import ModuleType
+class NoApplication:
+    @staticmethod
+    def instance():
+        return None
+for module_name in ("PyQt6.QtCore", "PyQt6.QtGui", "PyQt6.QtWidgets"):
+    sys.modules[module_name] = ModuleType(module_name)
+sys.modules["PyQt6.QtGui"].QGuiApplication = NoApplication
+sys.modules["PyQt6.QtWidgets"].QApplication = NoApplication
+from chemuson.chemio import rdkit_packaged_smoke
+assert rdkit_packaged_smoke._loaded_gui_modules() == []
+"""
+    )
+
+
+def test_smoke_detects_active_qt_application_and_chemuson_gui() -> None:
+    _assert_isolated_gui_import_probe(
+        """
+import sys
+from types import ModuleType
+class InactiveApplication:
+    @staticmethod
+    def instance():
+        return None
+class ActiveApplication:
+    @staticmethod
+    def instance():
+        return object()
+sys.modules["PyQt6.QtGui"] = ModuleType("PyQt6.QtGui")
+sys.modules["PyQt6.QtGui"].QGuiApplication = InactiveApplication
+sys.modules["PyQt6.QtWidgets"] = ModuleType("PyQt6.QtWidgets")
+sys.modules["PyQt6.QtWidgets"].QApplication = ActiveApplication
+sys.modules["chemuson.gui"] = ModuleType("chemuson.gui")
+from chemuson.chemio import rdkit_packaged_smoke
+assert rdkit_packaged_smoke._loaded_gui_modules() == [
+    "PyQt6.QtWidgets.QApplication", "chemuson.gui"
+]
+"""
+    )
 
 
 def test_source_worker_imports_rdkit_and_native_extensions() -> None:

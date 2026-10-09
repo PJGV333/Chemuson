@@ -13,6 +13,8 @@ from chemuson.clean2d import (
     ring_degeneracy_score,
     run_clean2d_engine,
 )
+from chemuson.clean2d import engine as clean2d_engine
+from chemuson.chemio import rdkit_safe
 from chemuson.chemio.rdkit_safe import _project_missing_clean2d_hydrogens
 from chemuson.core.model import MolGraph
 
@@ -56,18 +58,54 @@ def _angle(
     return abs((math.degrees(a2 - a1) + 180.0) % 360.0 - 180.0)
 
 
-def test_generate_candidates_attempts_rdkit_for_cyclic_graphs() -> None:
+def test_generate_candidates_attempts_rdkit_for_cyclic_graphs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend_calls: list[tuple[MolGraph, float]] = []
+    isolated_candidates = []
+    original_backend = rdkit_safe.clean2d_isolated
+    original_candidate = clean2d_engine._candidate_from_rdkit_isolated
+
+    def backend_spy(received_graph: MolGraph, *, timeout_s: float):
+        backend_calls.append((received_graph, timeout_s))
+        return original_backend(received_graph, timeout_s=timeout_s)
+
+    def candidate_spy(*args, **kwargs):
+        candidate = original_candidate(*args, **kwargs)
+        isolated_candidates.append(candidate)
+        return candidate
+
+    monkeypatch.setattr(rdkit_safe, "clean2d_isolated", backend_spy)
+    monkeypatch.setattr(
+        clean2d_engine, "_candidate_from_rdkit_isolated", candidate_spy
+    )
+
     graph = MolGraph()
     ring = []
     for idx, (x, y) in enumerate([(0, 0), (4, 0), (5, 1), (3, 2), (1, 2), (-1, 1)], 1):
         ring.append(graph.add_atom("C", float(x), float(y), atom_id=idx).id)
     for idx in range(6):
         graph.add_bond(ring[idx], ring[(idx + 1) % 6], order=1, is_aromatic=True)
-    candidates = generate_clean2d_candidates(graph, ring, mode="publication", target_bond_length=40.0)
+    candidates = generate_clean2d_candidates(
+        graph, ring, mode="publication", target_bond_length=40.0
+    )
     sources = {candidate.source for candidate in candidates}
 
-    assert "rdkit_isolated" in sources
+    assert len(backend_calls) == 1
+    assert backend_calls[0][0] is graph
+    assert len(isolated_candidates) == 1
+    isolated = isolated_candidates[0]
+    assert isolated is not None and not isolated.rejected
+    assert set(isolated.coords) == set(ring)
     assert "simple_aromatic_template" in sources
+    assert "rdkit_isolated" not in sources
+
+    template = next(
+        candidate
+        for candidate in candidates
+        if candidate.source == "simple_aromatic_template"
+    )
+    assert template.geometry_hash == clean2d_geometry_hash(graph, isolated.coords, ring)
 
 
 def test_engine_rebuilds_distorted_ring_with_internal_candidate() -> None:
