@@ -71,6 +71,31 @@ def longest_carbon_chain(view: MolView) -> List[int]:
     return best_path
 
 
+def carbon_chain_candidates(view: MolView) -> List[List[int]]:
+    """Enumerate deterministic carbon paths in an acyclic carbon skeleton.
+
+    The parent-chain selector uses these paths when functional-group seniority
+    can outweigh the unconstrained carbon-graph diameter. Callers should avoid
+    this exhaustive enumeration for cyclic carbon skeletons.
+    """
+    carbon_nodes = sorted(carbon_skeleton_nodes(view))
+    carbon_set = set(carbon_nodes)
+    adjacency = {
+        node: sorted(nbr for nbr in view.neighbors(node) if nbr in carbon_set)
+        for node in carbon_nodes
+    }
+    paths: dict[Tuple[int, ...], List[int]] = {}
+    for start in carbon_nodes:
+        dist, parent = _bfs(start, adjacency)
+        for end in dist:
+            path = _reconstruct_path(parent, start, end)
+            if not path:
+                continue
+            canonical = min(tuple(path), tuple(reversed(path)))
+            paths[canonical] = list(canonical)
+    return sorted(paths.values(), key=lambda path: (-len(path), tuple(path)))
+
+
 def longest_chain_in_subset(view: MolView, allowed_nodes: Set[int]) -> List[int]:
     """Devuelve la cadena de carbono más larga dentro de un subconjunto.
 

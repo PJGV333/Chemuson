@@ -20,7 +20,11 @@ from .functional_groups import detect_sulfonic_attachment
 from .locants import Sub, orientation_key, substituents_on_chain
 from .molview import MolView
 from .options import NameOptions
-from .parent_chain import longest_carbon_chain, longest_chain_in_subset
+from .parent_chain import (
+    carbon_chain_candidates,
+    longest_carbon_chain,
+    longest_chain_in_subset,
+)
 from .render import MULTIPLIER, render_name
 from .ring_naming import (
     enumerate_ring_numberings,
@@ -85,6 +89,9 @@ class FunctionalSelection:
     atom_id: int
     ignore_atoms: set[int]
     prefixes: list[tuple[str, int]]
+    kind: str
+    priority: int
+    primary_atoms: list[int]
 
 
 def _load_template_cached(key: str, path: str | Path) -> TemplateMol:
@@ -279,7 +286,12 @@ def _name_linear(
             raise ChemNameNotSupported("Unsupported element")
 
     # Selección de cadena principal (o la proporcionada por el llamador).
-    chain = chain_override or longest_carbon_chain(view)
+    if chain_override is not None:
+        chain = chain_override
+    elif view.is_acyclic():
+        chain = _select_linear_parent_chain(view, opts)
+    else:
+        chain = longest_carbon_chain(view)
     if not chain:
         raise ChemNameNotSupported("No carbon chain found")
 
@@ -327,6 +339,69 @@ def _name_linear(
     stereo = _stereo_descriptors_for_linear(view, chain, opts)
     rendered = render_name(substituents, parent, stereo_descriptors=stereo)
     return _apply_radical_suffix_if_needed(view, chain, substituents, rendered, opts)
+
+
+def _select_linear_parent_chain(view: MolView, opts: NameOptions) -> list[int]:
+    """Choose an acyclic carbon path that does not omit senior functions.
+
+    A plain graph-diameter choice can select a longer branch while leaving a
+    carboxyl or aldehyde carbonyl outside the parent. Evaluate carbon paths by
+    detected functional seniority and multiplicity before path length.
+    """
+    candidates = carbon_chain_candidates(view)
+    if not candidates:
+        return []
+
+    def candidate_key(chain: list[int]) -> tuple:
+        selection = _find_functional_group(view, chain)
+        if selection is None:
+            return (99, 0, 0, -len(chain), (), (), tuple(chain))
+
+        length = len(chain)
+        primary_forward = tuple(
+            sorted(chain.index(atom_id) + 1 for atom_id in selection.primary_atoms)
+        )
+        primary_reverse = tuple(
+            sorted(length + 1 - locant for locant in primary_forward)
+        )
+        primary_key = min(primary_forward, primary_reverse)
+
+        prefixes_forward = tuple(
+            sorted(
+                (name, chain.index(atom_id) + 1)
+                for name, atom_id in selection.prefixes
+                if atom_id in chain
+            )
+        )
+        prefixes_reverse = tuple(
+            sorted((name, length + 1 - locant) for name, locant in prefixes_forward)
+        )
+        prefix_key = min(prefixes_forward, prefixes_reverse)
+
+        try:
+            substituents = substituents_on_chain(
+                view, chain, ignore_atoms=selection.ignore_atoms
+            )
+            forward_subs = orientation_key(substituents, opts)
+            reverse_subs = orientation_key(
+                [Sub(sub.name, length + 1 - sub.locant) for sub in substituents], opts
+            )
+            substituent_key = min(forward_subs, reverse_subs)
+        except ChemNameNotSupported:
+            substituent_key = ()
+
+        return (
+            selection.priority,
+            -len(selection.primary_atoms),
+            -(len(selection.prefixes) + 1),
+            -length,
+            primary_key,
+            prefix_key,
+            substituent_key,
+            tuple(chain),
+        )
+
+    return min(candidates, key=candidate_key)
 
 
 def _longest_chain_excluding(view: MolView, excluded_atoms: set[int]) -> list[int]:
@@ -2210,6 +2285,9 @@ def _find_functional_group(
         atom_id=primary.atom_id,
         ignore_atoms=ignore_atoms,
         prefixes=prefixes,
+        kind=primary.kind,
+        priority=priority.get(primary.kind, 99),
+        primary_atoms=[occ.atom_id for occ in occurrences if occ.kind == primary.kind],
     )
 
 
