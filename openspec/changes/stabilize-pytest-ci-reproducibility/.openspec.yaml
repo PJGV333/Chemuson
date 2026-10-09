@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-10-09
+goal: Make the six known ChemUSON CI regressions deterministic, isolated, diagnosable, and fully covered by bounded parallel pytest shards without excluding tests or changing chemistry/GUI behavior.
