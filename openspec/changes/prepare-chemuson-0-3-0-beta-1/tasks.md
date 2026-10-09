@@ -92,5 +92,5 @@
 - [x] 13.4 Extend the ChemName acceptance corpus with ethanol, acetamide, ethane and cyclohexane; add source/frozen smoke coverage for every template and representative molecule names.
 - [x] 13.5 Add fail-closed Windows/Linux executable validators that compare actual frozen names/resources against Python source, and add a Flatpak `/app` package-data smoke.
 - [x] 13.6 Gate Build Preview and official package workflows, record the historical missing-resource P1 and manual retest cases, and preserve the owner-pending state.
-- [ ] 13.7 Run bounded focused tests, strict OpenSpec and a new Build Preview for the pushed prep-branch SHA; report per-format evidence. Owner manual retest remains required before beta acceptance.
+- [x] 13.7 Run bounded focused tests, strict OpenSpec and a new Build Preview for the pushed prep-branch SHA; report per-format evidence. Build Preview `37866732971` passed all four artifact groups on `1ad1db00aeb4f76e06cbffc5e23312b19e1dfa8f`; per-format hashes/automated smoke are in `validation.md`. Owner manual retest remains required before beta acceptance.
 - [ ] 13.8 Owner repeats ChemName naming/resource checks on the corrected Windows portable/setup, extracted AppImage and Flatpak, recording the exact artifact SHA and both status-bar/analysis names.
