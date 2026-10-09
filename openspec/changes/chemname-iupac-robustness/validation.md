@@ -16,7 +16,7 @@ Before changing production logic:
 
 These were deliberate red tests, not final unresolved failures.
 
-## Post-change correctness and metrics
+## Stage 1 implementation verification snapshot (historical)
 
 - Exact bounded acceptance subset (`smiles_acetamide`, both atom-order forms of the substituted aryl ketone, direct aryl ketone unsupported, stereogenic aryl branch unsupported), under an external 60-second timeout: **5 passed, 0 failed, 0 skipped, 0 errors**. Exact outputs:
   - `CC(=O)N` → `ethanamide`.
@@ -34,13 +34,26 @@ These were deliberate red tests, not final unresolved failures.
 
 An additional unscoped default Ruff scan is non-clean with **58 legacy style diagnostics** across the touched modules (mostly pre-existing import ordering, old typing aliases, broad catches and modernization rules). The added phenyl helper has no remaining diagnostic in that scan. No unrelated style cleanup was made; the repository-mandated scoped rules pass.
 
+## Final expanded campaign validation
+
+- Full bounded ChemName/UI shard, `timeout --signal=TERM --kill-after=5s 150s env PYTHONPATH=src pytest -q tests/test_chemname_*.py tests/test_iupac_ui.py`: **518 passed, 7 skipped in 69.24s**. This includes the complete ChemName acceptance dataset, source/package smoke checks, eleven structural-loss sentinels, 80 per-structure final reference checks, and aromatic atom-order tests.
+- Architecture suite, `timeout --signal=TERM --kill-after=5s 120s env PYTHONPATH=src pytest -q tests/architecture`: **280 passed in 12.92s**.
+- Strict final audit of `tests/data/chemname_iupac_reference_campaign.psv` with `return_nd_on_fail=False`: **80 structures; 78 exact target strings, 2 documented systematic variants, 0 `N/D`, 0 exceptions, 0 other mismatches**. The systematic variants are `N-methylethanamide` and `N-ethylethanamide`; no current case remains reference-pending. The earlier stage-1 substituted-aryl reference also has an exact regression, bringing the campaign total to 81.
+- Randomized diagnostic: **140 randomized SMILES equivalents across the 15 tagged aromatic structures and 13 selected functional-group controls (including methylazanium); zero name divergences**. Fixed deterministic pairs remain in the test suite; randomization is a diagnostic, not a flaky test.
+- Structural audit red/green: initially exposed silent omission of disconnected components, branch isotope/stereo metadata, and unrepresented charge. The audit now rejects disconnected molecular graphs, checks direct substituent counts and functional auxiliary branches on linear/simple-ring routes, and fails closed for unrendered metadata. Reference-backed `methylazanium` now preserves the methylammonium charge; existing nitro, azido, sulfonate, and carboxylate cases remain green, while unsupported charged-carbon and ethylammonium forms fail closed.
+- `python -m compileall -q src tests tools packaging`: **PASS**; scoped Ruff (`F401,F811,F821,E722,E741`): **PASS**; `openspec validate chemname-iupac-robustness --strict`: **PASS**; `git diff --check`: **PASS**.
+- All commands used external timeouts no greater than 150 seconds. The monolithic suite was not run. No timeout or test failure remains in the final bounded runs.
+
 ## Boundaries and delivery
 
 - No monolithic `pytest -q` was run. No test timed out; no timeout was retried.
-- No Clean2D, ChemIO/RDKit worker, GUI, `.cmsn`, architecture catalog, dependency, release workflow, or public-channel change was made.
-- `ethanamide` is the requested systematic display form; the Blue Book PIN is retained `acetamide`, as documented in `corpus.md`.
-- Remaining unsupported cases fail closed; this tranche does not assert general IUPAC compliance.
-- Local commits: `d7823bd` (scope/baseline) and `bdfd00233b6f1c7c8c3e3c67a65f83acb1dd4cde` (ChemName implementation/regressions). The branch is `chemname/iupac-robustness`; `release/v0.3.0-beta.1-prep` and its origin still resolve to `6aeef19028ffd047f8a39bc8f6063ea0b57210bf`; `main` and `origin/main` remain `f0fde603371255902bf0e630ca1ce032b8f16ad3`. No push, merge, tag, release, or public-channel operation occurred.
+- Production changes are confined to existing `src/chemuson/chemname/engine.py`; no dependencies, package identities, architecture catalog, serialization, GUI, Clean2D, or RDKit worker changes were made.
+- `ethanamide` is the requested systematic display form; the Blue Book PIN is retained `acetamide`. The N-methyl/N-ethyl ethanamide variants and explicit-locant acetophenone form are documented as systematic alternatives, not claimed PINs.
+- Supported direct aryl ketones are deliberately allowlisted to acetophenone and 4-hydroxyacetophenone. Other substituted/fused/stereogenic/charged/isotopic aryl ketones, disconnected graphs, unrepresented atom annotations, and ethylammonium remain `N/D`; the finite reference corpus has no remaining unsupported or pending structures.
+- This work does not claim general IUPAC compliance and does not satisfy beta owner manual acceptance. Owner retesting, Windows-native acceptance, and the previously recorded Clean2D/CompChem CI dispositions remain release gates.
+- Campaign commits in this continuation: `b1e1a3f` (simple aryl ketones), `95fc2b1` (benzoic acids/esters), `a543ac1` (direct aryl-ketone boundaries), `09e0cb9` (structural accounting and charge preservation), and `2e7edc3` (final reference/determinism audit), plus earlier campaign commits.
+- The branch is `chemname/iupac-robustness`; after final documentation commit, verify clean status. `release/v0.3.0-beta.1-prep` and its origin remain at `6aeef19028ffd047f8a39bc8f6063ea0b57210bf`; `main` and `origin/main` remain at `f0fde603371255902bf0e630ca1ce032b8f16ad3`. No push, merge, tag, release, or public-channel operation occurred.
+- Next proposal: continue only with new, independently referenced, bounded families; keep general direct aryl-ketone systems and untested charged/stereochemical branches fail-closed. Do not unblock beta acceptance without the owner gates above.
 
 ## Stage 2/3 expansion baseline before new production fixes
 
@@ -52,6 +65,6 @@ At the requested starting commit `a89e1f8562595db718a9d781b3183a4c2f5942de`, cur
 - `timeout --signal=TERM --kill-after=3s 60s python -m compileall -q src tests tools packaging`: **PASS**; scoped Ruff: **PASS**; strict OpenSpec validation: **PASS**; corpus parse and `git diff --check`: **PASS**.
 - Compileall and scoped Ruff remained **PASS** before any production change.
 - The 78-structure survey baseline classifies **53 correct (30 exact PubChem IUPACName strings + 23 valid variants), 16 incorrect, 8 unsupported, and 1 reference pending**. By tagged family the survey covers: acids 12, esters 9, aldehydes 8, ketones 8, alcohols 8, amines 8, amides 8, aromatics 15, multifunctional structures 12; overlaps mean these counts are not additive. Molecule-level evidence and baseline outputs are in `corpus.md` and the PSV fixture.
-- The one pending adjudication is `CCOC(=O)C` → `1-acetoxyethane`; no exact test expectation will be imposed until its general-nomenclature status is settled.
+- The baseline's pending `CCOC(=O)C` output was `1-acetoxyethane`; the final output is now the independently referenced `ethyl acetate`.
 
-These are baseline findings, not final campaign metrics. No new naming rule or production code has yet been changed in this expansion.
+These are historical baseline findings, not final campaign metrics. At the baseline checkpoint no production change had yet been made; the final campaign results follow.

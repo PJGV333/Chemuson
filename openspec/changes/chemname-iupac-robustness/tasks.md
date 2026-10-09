@@ -50,4 +50,4 @@
 
 ## 9. Stage 5 — final coverage report
 - [x] 9.1 Classify every fixture structure after fixes; report overlap-aware baseline and final family metrics, exact target matches, and documented systematic variants separately.
-- [ ] 9.2 Report discovered/corrected defects, remaining `N/D`, limited architecture impact, tests, commits, Git status, and next proposal without claiming general IUPAC conformity.
+- [x] 9.2 Report corrected defects, explicit remaining `N/D` boundaries, limited architecture impact, final tests/commits/refs, clean Git status, and next proposal without claiming general IUPAC conformity.
