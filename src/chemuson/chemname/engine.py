@@ -333,10 +333,18 @@ def _name_linear(
 
     suffix_count = (
         len(func.primary_atoms)
-        if func is not None and func.kind in {"acid", "aldehyde"}
+        if func is not None and func.kind in {"acid", "aldehyde", "ketone"}
         else 1
     )
+    suffix_locants = None
     if func is not None and func.kind == "aldehyde" and suffix_count > 1:
+        func_locant = None
+    elif func is not None and func.kind == "ketone" and suffix_count > 1:
+        suffix_locants = sorted(
+            locant
+            for atom_id in func.primary_atoms
+            if (locant := _locant_for_atom(chain, atom_id)) is not None
+        )
         func_locant = None
     parent = parent_name(
         len(chain),
@@ -344,6 +352,7 @@ def _name_linear(
         suffix=func_suffix,
         suffix_locant=func_locant,
         suffix_count=suffix_count,
+        suffix_locants=suffix_locants,
     )
 
     stereo = _stereo_descriptors_for_linear(view, chain, opts)
@@ -2349,7 +2358,8 @@ def _find_functional_group(
     for occ in occurrences:
         ignore_atoms |= occ.aux_atom_ids
         if occ is primary or (
-            primary.kind in {"acid", "aldehyde"} and occ.kind == primary.kind
+            primary.kind in {"acid", "aldehyde", "ketone"}
+            and occ.kind == primary.kind
         ):
             continue
         prefixes.append((occ.prefix_name, occ.atom_id))

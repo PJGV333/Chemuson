@@ -1031,6 +1031,7 @@ def parent_name(
     suffix_locant: int | None = None,
     functional_prefixes: list[tuple[int, str]] | None = None,
     suffix_count: int = 1,
+    suffix_locants: list[int] | None = None,
 ) -> str:
     """Construye el nombre del padre con insaturaciones y sufijo.
 
@@ -1041,6 +1042,7 @@ def parent_name(
         suffix_locant: Locante del sufijo si corresponde.
         functional_prefixes: Prefijos funcionales adicionales (locante, nombre).
         suffix_count: Número de ocurrencias del sufijo principal cuando aplica.
+        suffix_locants: Locantes de sufijos repetidos que requieren indicación.
 
     Returns:
         Nombre del padre con insaturaciones y sufijos aplicados.
@@ -1060,6 +1062,11 @@ def parent_name(
             suffix = "edioic acid"
         elif suffix == "al":
             suffix = "edial"
+        elif suffix == "one":
+            multiplier = UNSAT_MULTIPLIER.get(suffix_count)
+            if multiplier is None:
+                raise ChemNameNotSupported("Unsupported suffix multiplicity")
+            suffix = f"{multiplier}one"
         else:
             raise ChemNameNotSupported("Unsupported suffix multiplicity")
 
@@ -1074,7 +1081,11 @@ def parent_name(
     unsat_descriptor = ""
     use_a = False
     if unsaturations:
-        with_terminal_e = suffix is None or suffix == "nitrile"
+        with_terminal_e = (
+            suffix is None
+            or suffix == "nitrile"
+            or (suffix_count > 1 and suffix.endswith("one"))
+        )
         unsat_descriptor, use_a = _format_unsaturations(unsaturations, with_terminal_e)
 
     if suffix is None:
@@ -1082,6 +1093,18 @@ def parent_name(
             return _apply_prefixes(parent)
         root = alkane_root(parent, use_a=use_a)
         return _apply_prefixes(f"{root}-{unsat_descriptor}")
+
+    if suffix_count > 1 and suffix.endswith("one"):
+        locants = sorted(suffix_locants or [])
+        if len(locants) != suffix_count:
+            raise ChemNameNotSupported("Missing repeated suffix locants")
+        if unsaturations:
+            root = alkane_root(parent, use_a=use_a)
+            base = f"{root}-{unsat_descriptor}"
+        else:
+            base = parent
+        locant_text = ",".join(str(locant) for locant in locants)
+        return _apply_prefixes(f"{base}-{locant_text}-{suffix}")
 
     if suffix in {
         "al",
