@@ -115,10 +115,25 @@ Fecha: 2026-10-08. Rama de trabajo: `release/v0.3.0-beta.1-prep`. Commits de pac
 
 ### Estado remoto y aceptación
 
-- El run fuente [#37999001943](https://github.com/PJGV333/Chemuson/actions/runs/37999001943), SHA `571e012`, pasó plan, ocho shards, summary, Windows smoke y Flatpak smoke con **2.110 passed, 20 skipped, 0 failed**. Es evidencia válida de origen, pero no sustituye Actions del HEAD integrado beta.
+- El run fuente [#37999001943](https://github.com/PJGV333/Chemuson/actions/runs/37999001943), SHA `571e012`, pasó plan, ocho shards, summary, Windows smoke y Flatpak smoke con **2.110 passed, 20 skipped, 0 failed**.
 - La matriz existente de aceptación conserva 90 IDs acumulados (incluidos addenda de empaquetado ya presentes); no se creó matriz paralela ni se agregó ID. Se refinó `DATA-11` para incluir enantiómeros opuestos, aminoácido y E/Z, con resultado aún `NOT TESTED`.
 - En `docs/release/PREVIEW_BUILDS.md` se añade una guía breve P0/P1/P2 que referencia casos existentes y conserva todos los resultados manuales. La IA sigue experimental; validez SMILES no certifica identidad; ChemName no promete exactitud IUPAC universal; Clean2D/CompChem avanzado mantiene límites documentados.
-- **Pendiente antes de cierre:** push normal sólo a la rama prep; obtener CI real en el SHA final; Build Preview real de Windows portable, Windows installer, AppImage Type 2 y Flatpak; descargar artifacts y comprobar IDs, checksums y provenance. No se declara aún READY FOR MANUAL ACCEPTANCE ni se han cambiado canales.
+
+## Publicación y verificación post-push (2026-10-10)
+
+- Push normal de **sólo** `release/v0.3.0-beta.1-prep`, desde `6aeef19` hasta `57d481d21fee2db6ecacf6a862839caa63a1c56d`. El run de test [#38006731537](https://github.com/PJGV333/Chemuson/actions/runs/38006731537) concluyó `success` en este SHA. Plan + ocho shards + summary + Windows smoke + Flatpak smoke: **2.130/2.130 IDs únicos; 2.110 passed, 20 skipped, 0 failed**; el shard más lento duró 175.432 s (límite 300 s). JUnit descargado y contado localmente.
+- Build Preview [#38006731375](https://github.com/PJGV333/Chemuson/actions/runs/38006731375) concluyó `success` para el mismo SHA/version/branch. Reporte [artifact 11651274423](https://github.com/PJGV333/Chemuson/actions/runs/38006731375/artifacts/11651274423): `complete=true`, cuatro jobs `success`, versión `0.3.0-beta.1`, `publication=false`. Los cuatro ZIP artifact se descargaron; SHA-256 binario, tamaños y manifiestos coinciden. Cada `preview-provenance.json` declara SHA completo `57d481d…`, branch prep y `publication=false`; `checksums.sha256` incluye binario y provenance.
+
+| Formato | Artifact / descarga | Nombre del paquete | SHA-256 del paquete | SHA-256 `preview-provenance.json` |
+|---|---|---|---|---|
+| Windows portable | [11651882043](https://github.com/PJGV333/Chemuson/actions/runs/38006731375/artifacts/11651882043) | `Chemuson-v0.3.0-beta.1-preview-57d481d2-windows-x86_64-portable.exe` | `dde7c8f94fef2fd344756c8aa25eac53bd998c2ff8a007021f4e05f014e00bc6` | `d81d289420ed9611ed05a9b5a7cd5f00c1290c15ab82869b82c8f9e3547a7c04` |
+| Windows setup | [11651667473](https://github.com/PJGV333/Chemuson/actions/runs/38006731375/artifacts/11651667473) | `Chemuson-v0.3.0-beta.1-preview-57d481d2-windows-x86_64-setup.exe` | `95604f16ab7600d41e997c60d4ed485cf86782246a15faec8720dd6383d8eeed` | `6ae55ec910e800c38838b8eb8e58394b56beb683ee88ddb087e2ce4e6f053595` |
+| Linux AppImage Type 2 | [11650889195](https://github.com/PJGV333/Chemuson/actions/runs/38006731375/artifacts/11650889195) | `Chemuson-v0.3.0-beta.1-preview-57d481d2-linux-x86_64.AppImage` | `ec26ce53bfd6202d72e310e160c0bbc5a32c091deafcf6cc5b6fdeb066826e9c` | `848689fab06066f316f8836ad3499788f7cfdcc3138f771be872b7bfa0319f84` |
+| Linux Flatpak | [11651388730](https://github.com/PJGV333/Chemuson/actions/runs/38006731375/artifacts/11651388730) | `Chemuson-v0.3.0-beta.1-preview-57d481d2-linux-x86_64.flatpak` | `f4562e2a5cb6676042043eb8c0efc3d4f6006f7013ca58067da2924ddfeeea84` | `6624839c88660c97d615d4af5ea9408b8f9e921b6b03bec77105b7e7c4473849` |
+
+- **Automated package gates:** Windows portable froze RDKit worker/native extensions and passed descriptors/SMILES/3D smoke; its frozen ChemName smoke matched Python for 9/9 templates and 6/6 controls. The Windows icon smoke step passed. AppImage header is ELF + `AI\x02` (Type 2); extracted executable passed RDKit, frozen ChemName 9/9 + 6/6, SVG light/dark/HiDPI and bounded headless launch. Flatpak build ran ChemName smoke under `/app`: 9/9 templates + 6/6 controls. Installer artifact was built from the validated EXE; it was not manually installed.
+- **Alcance manual/P0-P2:** P0 identity/stereo (`DATA-11`), `.cmsn`, start/close/corruption tests remain `NOT TESTED`; no manual P0 failure is claimed fixed or passed. P1 icon/RDKit/ChemName corrected-build smokes pass, but visual/GUI and owner retests remain `NOT TESTED`; historical failed-package rows stay `FAILED`. P2 Assistant/remote source identity, IUPAC robustness, Clean2D complejo/CompChem y actualización permanecen limitados o pendientes.
+- **Dictamen:** lista para **aceptación manual** con los cuatro artifacts exactos de SHA `57d481d`; no lista para beta/publicación hasta completar los gates manuales P0/P1 y decisión explícita del propietario. La retención prevista de artifacts es 14 días. No se crearon tags/releases ni se modificaron canales públicos.
 
 ## ChemName live-name update and Qt/CI investigation (2026-10-09)
 
