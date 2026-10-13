@@ -2,7 +2,7 @@
 
 Fecha: 2026-10-13. Base verificada: `c75026d5656972e0ee3f002f615d80060113bc68`; rama: `fix/beta-mol-roundtrip-qt-shutdown`.
 
-Commits funcionales: `3471197` (ChemIO/MOL) y `258c67e` (teardown Qt). El informe OpenSpec forma un commit documental independiente.
+Commits funcionales: `3471197` (ChemIO/MOL) y `258c67e` (teardown Qt). `dc44424` añadió el OpenSpec inicial; `f198095` actualizó el manifiesto CI de los 15 tests nuevos y registró el estado remoto.
 
 ## Evidencia focalizada
 
@@ -34,4 +34,5 @@ Esto corrige la causa confirmada de la reproducción source; no prueba que sea i
 
 - CI inicial del push, run [38483483503](https://github.com/PJGV333/Chemuson/actions/runs/38483483503), SHA `dc44424aef6bb96e25e9513a1e30728120eaa99a`: Windows smoke e instalador **PASS**; Flatpak manifest **PASS**; `pytest-plan` falló antes de ejecutar shards porque el manifiesto versionado esperaba 2130 IDs y la colección actualizó a 2145 (+15 tests de este cambio). El summary falló como consecuencia y ningún shard corrió. No fue un fallo de tests de producto.
 - Se regeneró explícitamente `tests/ci/expected_pytest_nodeids.txt` mediante `PYTHONPATH="$PWD/chem/lib/python3.14/site-packages:$PWD/src" /usr/bin/python tools/ci_pytest_shards.py update-expected --confirm`. Verificación local: `tools/ci_pytest_shards.py plan --shards 8 ...`: **2145 node IDs**, distribución `[269, 268, 268, 268, 268, 268, 268, 268]`, SHA-256 `23b4746059ae9fee60abc33381e95f2e1d75fe582a12f693a1d2a3a7ae40fc1e`; `tests/test_test_workflow_contract.py`: **4 passed**. La lista sólo incorpora los 15 node IDs nuevos solicitados; no elimina/oculta fallos.
-- El push del manifiesto actualizado reactivará CI por shards; su estado final se añadirá después de observar el SHA remoto. No se construyó un AppImage local. Build Preview sólo admite `release/**-prep`, por lo que esta rama `fix/**` no es elegible para generar el paquete; no se modificó ni publicó otra rama para sortear esa política. Un AppImage actualizado sólo se generará mediante Build Preview en el flujo de preparación autorizado. DATA-11 **no** se declara completo.
+- CI con manifiesto corregido, run [38483720208](https://github.com/PJGV333/Chemuson/actions/runs/38483720208), SHA `f1980958d80b3195da4b039be15364ebc66ddfa6`: **PASS**. Plan + resumen y los ocho shards (0–7) pasaron; se asignaron/ejecutaron **2145/2145** node IDs, **20 skipped**, **0 failures/errors**, sin timeout. Windows smoke/instalador y Flatpak manifest también pasaron.
+- No se construyó un AppImage local. Build Preview sólo admite `release/**-prep`, por lo que esta rama `fix/**` no es elegible para generar el paquete; no se modificó ni publicó otra rama para sortear esa política. Un AppImage actualizado sólo se generará mediante Build Preview en el flujo de preparación autorizado. DATA-11 **no** se declara completo.

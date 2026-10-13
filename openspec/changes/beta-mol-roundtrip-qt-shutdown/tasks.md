@@ -25,5 +25,5 @@
 - [x] Ejecutar arquitectura, OpenSpec estricto, compileall, Ruff focal y `git diff --check`.
 - [x] Registrar reportes en OpenSpec; ejecutar test de `.cmsn`/autosave sin alterar formato.
 - [x] Crear dos commits funcionales independientes: ChemIO/MOL y teardown Qt demostrado; OpenSpec/reporte en commit documental aparte.
-- [ ] Consultar autorización normal y publicar sólo la rama solicitada si está disponible; CI por shards para el SHA publicado.
+- [x] Consultar autorización normal y publicar sólo la rama solicitada; corregir el manifiesto explícito de node IDs (+15) y confirmar CI por shards para el SHA publicado.
 - [x] No declarar DATA-11 completado. Build Preview sólo admite `release/**-prep`, por lo que no se generó paquete desde la rama fix; aceptación manual del propietario queda pendiente.
