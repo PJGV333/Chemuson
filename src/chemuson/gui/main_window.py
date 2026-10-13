@@ -1650,6 +1650,12 @@ class ChemusonWindow(QMainWindow):
             return self._async_shutdown_complete
         self._shutdown_started = True
 
+        active_canvas = self._active_canvas_connected
+        if active_canvas is not None:
+            if not sip.isdeleted(active_canvas):
+                self._disconnect_canvas_signals(active_canvas)
+            self._active_canvas_connected = None
+
         properties_timer = getattr(self, "_properties_update_timer", None)
         if properties_timer is not None:
             properties_timer.stop()
