@@ -38,6 +38,8 @@ class FileController:
 
     def load_file_into_canvas(self, filepath: str, canvas: ChemusonCanvas) -> None:
         """Carga un archivo químico dentro de un canvas específico."""
+        if filepath.lower().endswith(".sdf"):
+            raise ValueError("SDF multi-registro no está soportado; abre un archivo MOL (.mol).")
         if filepath.lower().endswith(".cmsn"):
             canvas.clear_canvas()
             PersistenceManager.load_from_file(filepath, canvas)
@@ -98,6 +100,13 @@ class FileController:
             )
         if not filepath:
             return
+        if filepath.lower().endswith(".sdf"):
+            QMessageBox.critical(
+                context.parent,
+                "Formato no soportado",
+                "SDF multi-registro no está soportado. Guarda la estructura como MOL (.mol).",
+            )
+            return
         try:
             autosave_manager = context.tab_manager.autosave_manager_for(context.canvas)
             if filepath.lower().endswith(".cml") or "CML" in selected_filter:
@@ -106,10 +115,12 @@ class FileController:
                     fh.write(molgraph_to_cml(context.canvas.graph))
                 if not filepath.lower().endswith(".cml"):
                     filepath = target_path
-            elif filepath.lower().endswith(".mol") or filepath.lower().endswith(".sdf") or "MOL" in selected_filter:
+            elif filepath.lower().endswith(".mol") or "MOL" in selected_filter.upper():
+                target_path = filepath if filepath.lower().endswith(".mol") else filepath + ".mol"
                 molfile = molgraph_to_molfile(context.canvas.graph)
-                with open(filepath, "w", encoding="utf-8") as fh:
+                with open(target_path, "w", encoding="utf-8") as fh:
                     fh.write(molfile)
+                filepath = target_path
             else:
                 if not filepath.lower().endswith(".cmsn"):
                     filepath += ".cmsn"

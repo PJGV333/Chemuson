@@ -6,9 +6,11 @@ SMILES, MOL y SVG. Incluye rutas de respaldo para exportar sin RDKit.
 
 from __future__ import annotations
 
+import math
 import os
 import re
 import sys
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Dict, Iterable, Optional, Tuple
 
@@ -399,6 +401,39 @@ def _median_structural_bond_length(molgraph: MolGraph) -> float:
     if len(lengths) % 2:
         return float(lengths[mid])
     return (float(lengths[mid - 1]) + float(lengths[mid])) * 0.5
+
+
+def _normalized_molgraph_for_mol_export(
+    molgraph: MolGraph,
+    target_bond_length: float = 1.5,
+) -> MolGraph:
+    """Scale a private graph copy to conventional MOL 2D bond coordinates."""
+    export_graph = deepcopy(molgraph)
+    lengths: list[float] = []
+    for bond in export_graph.bonds.values():
+        if not bond_is_structural(bond):
+            continue
+        a1 = export_graph.atoms.get(int(bond.a1_id))
+        a2 = export_graph.atoms.get(int(bond.a2_id))
+        if a1 is None or a2 is None:
+            continue
+        length = math.hypot(float(a2.x) - float(a1.x), float(a2.y) - float(a1.y))
+        if length > 1e-6:
+            lengths.append(length)
+    if not lengths:
+        return export_graph
+    lengths.sort()
+    middle = len(lengths) // 2
+    median = (
+        float(lengths[middle])
+        if len(lengths) % 2
+        else (float(lengths[middle - 1]) + float(lengths[middle])) * 0.5
+    )
+    scale = float(target_bond_length) / median
+    for atom in export_graph.atoms.values():
+        atom.x = float(atom.x) * scale
+        atom.y = float(atom.y) * scale
+    return export_graph
 
 
 def _atoms_are_export_merge_compatible(a, b) -> bool:
@@ -1051,38 +1086,36 @@ def _mark_unassigned_double_bonds_unknown(Chem, mol) -> None:
 
 
 def molgraph_to_molfile(molgraph: MolGraph) -> str:
-    """Genera un bloque MOL (V2000) desde un `MolGraph`.
+    """Genera un bloque MOL (V2000) desde una copia normalizada del grafo.
 
-    Args:
-        molgraph: Grafo molecular de Chemuson.
-
-    Returns:
-        Cadena MOL. Si RDKit falla, usa un exportador interno básico.
+    RDKit, el worker aislado y el fallback reciben exactamente las mismas
+    coordenadas 2D en escala química; el documento del editor no se modifica.
     """
-    rdkit_only_stereo = _graph_has_rdkit_only_stereo(molgraph)
-    potential_ez = _graph_has_potential_double_bond_stereo(molgraph)
-    if _graph_requires_rdkit_fallback(molgraph):
+    export_graph = _normalized_molgraph_for_mol_export(molgraph)
+    rdkit_only_stereo = _graph_has_rdkit_only_stereo(export_graph)
+    potential_ez = _graph_has_potential_double_bond_stereo(export_graph)
+    if _graph_requires_rdkit_fallback(export_graph):
         if rdkit_only_stereo:
             raise RuntimeError("RDKit-required stereo cannot be exported with the internal MOL fallback")
-        return _molgraph_to_molfile_fallback(molgraph)
+        return _molgraph_to_molfile_fallback(export_graph)
     if _rdkit_available():
         try:
-            mol = molgraph_to_rdkit(molgraph)
+            mol = molgraph_to_rdkit(export_graph)
             _mark_unassigned_double_bonds_unknown(Chem, mol)
             return Chem.MolToMolBlock(mol)
         except Exception as exc:
             if rdkit_only_stereo:
                 raise RuntimeError(f"MOL stereo serialization failed: {exc}") from exc
-            return _molgraph_to_molfile_fallback(molgraph)
+            return _molgraph_to_molfile_fallback(export_graph)
     if rdkit_only_stereo or potential_ez:
         from chemuson.chemio.rdkit_safe import molgraph_to_molblock_isolated
 
-        molblock, error = molgraph_to_molblock_isolated(molgraph)
+        molblock, error = molgraph_to_molblock_isolated(export_graph)
         if not error and molblock:
             return molblock
         if rdkit_only_stereo:
             raise RuntimeError(f"MOL stereo serialization failed: {error or 'empty_molblock'}")
-    return _molgraph_to_molfile_fallback(molgraph)
+    return _molgraph_to_molfile_fallback(export_graph)
 
 
 def molgraph_to_svg(molgraph: MolGraph, size: Tuple[int, int] = (300, 200)) -> str:
@@ -1519,8 +1552,15 @@ def _molfile_to_molgraph_with_stereo_metadata(
             graph = rdkit_to_molgraph(mol)
         except Exception:
             raise fallback_error
+    has_directed_tetrahedral_stereo = any(
+        bond.style in {BondStyle.WEDGE, BondStyle.HASHED}
+        or bond.stereo in {BondStereo.UP, BondStereo.DOWN}
+        for bond in graph.bonds.values()
+    )
     if stereo_metadata is None and (
-        _graph_has_potential_double_bond_stereo(graph) or _molfile_has_atom_stereo_parity(normalized)
+        _graph_has_potential_double_bond_stereo(graph)
+        or _molfile_has_atom_stereo_parity(normalized)
+        or has_directed_tetrahedral_stereo
     ):
         from chemuson.chemio.rdkit_safe import run_rdkit_stereo_extract
 
