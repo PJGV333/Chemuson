@@ -88,15 +88,19 @@ class FileController:
             QMessageBox.critical(context.parent, "Error", f"No se pudo abrir el archivo:\n{exc}")
 
     def save_file(self, context: FileWorkflowContext) -> None:
-        """Guarda el documento activo en formato nativo o MOL."""
+        """Guarda el documento completo en su formato nativo `.cmsn`."""
         filepath = context.tab_manager.file_path_for(context.canvas)
+        if filepath and filepath.lower().endswith(".mol"):
+            # Un Molfile contiene sólo la estructura y no puede ser la ruta
+            # nativa de un documento que también puede tener anotaciones.
+            filepath = ""
         selected_filter = ""
         if not filepath:
             filepath, selected_filter = QFileDialog.getSaveFileName(
                 context.parent,
-                "Guardar archivo",
+                "Guardar documento nativo",
                 "",
-                "Archivo de ChemUSON (*.cmsn);;Archivo MOL (*.mol);;Archivo CML (*.cml);;Todos los archivos (*.*)",
+                "Documento ChemUSON (*.cmsn);;Archivo CML (*.cml);;Todos los archivos (*.*)",
             )
         if not filepath:
             return
@@ -104,7 +108,16 @@ class FileController:
             QMessageBox.critical(
                 context.parent,
                 "Formato no soportado",
-                "SDF multi-registro no está soportado. Guarda la estructura como MOL (.mol).",
+                "SDF multi-registro no está soportado. Exporta la estructura como MOL (.mol).",
+            )
+            return
+        if filepath.lower().endswith(".mol") or "MOL" in selected_filter.upper():
+            QMessageBox.critical(
+                context.parent,
+                "Exportación molecular",
+                "MOL exporta sólo la estructura molecular; no incluye anotaciones de texto ni flechas. "
+                "Usa «Exportar como > Estructura molecular (MOL)» para exportarla. "
+                "El documento nativo debe guardarse como .cmsn.",
             )
             return
         try:
@@ -115,12 +128,6 @@ class FileController:
                     fh.write(molgraph_to_cml(context.canvas.graph))
                 if not filepath.lower().endswith(".cml"):
                     filepath = target_path
-            elif filepath.lower().endswith(".mol") or "MOL" in selected_filter.upper():
-                target_path = filepath if filepath.lower().endswith(".mol") else filepath + ".mol"
-                molfile = molgraph_to_molfile(context.canvas.graph)
-                with open(target_path, "w", encoding="utf-8") as fh:
-                    fh.write(molfile)
-                filepath = target_path
             else:
                 if not filepath.lower().endswith(".cmsn"):
                     filepath += ".cmsn"
@@ -133,6 +140,40 @@ class FileController:
             context.show_status(f"Guardado: {filepath}")
         except Exception as exc:
             QMessageBox.critical(context.parent, "Error", f"No se pudo guardar:\n{exc}")
+
+    def export_mol(self, context: FileWorkflowContext) -> None:
+        """Exporta únicamente la estructura molecular, sin mutar el documento."""
+        filepath, _selected_filter = QFileDialog.getSaveFileName(
+            context.parent,
+            "Exportar estructura molecular como MOL",
+            "",
+            "Molfile — sólo estructura molecular (*.mol)",
+        )
+        if not filepath:
+            return
+        if filepath.lower().endswith(".sdf"):
+            QMessageBox.critical(
+                context.parent,
+                "Formato no soportado",
+                "SDF multi-registro no está soportado. Exporta como MOL (.mol).",
+            )
+            return
+        target_path = filepath if filepath.lower().endswith(".mol") else filepath + ".mol"
+        try:
+            molfile = molgraph_to_molfile(context.canvas.graph)
+            with open(target_path, "w", encoding="utf-8") as fh:
+                fh.write(molfile)
+        except Exception as exc:
+            QMessageBox.critical(
+                context.parent,
+                "Error al exportar estructura molecular",
+                f"No se pudo exportar el MOL:\n{exc}",
+            )
+            return
+        context.show_status(
+            f"Estructura molecular exportada: {target_path}. MOL no incluye texto ni flechas; "
+            "el documento nativo y su estado de guardado no se modificaron."
+        )
 
     def copy_as(self, context: FileWorkflowContext, format_name: str) -> None:
         """Copia la estructura actual en el formato textual solicitado."""

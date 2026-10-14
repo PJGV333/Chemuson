@@ -8,6 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from PyQt6.QtCore import QPointF
 from rdkit import Chem
 from rdkit.Chem import AllChem, rdMolDescriptors
 
@@ -20,7 +21,11 @@ from chemuson.chemio.rdkit_io import (
 )
 from chemuson.core.model import MolGraph
 from chemuson.gui.controllers import file_controller as file_controller_module
+from chemuson.gui.canvas import ChemusonCanvas
+from chemuson.gui.commands.annotation_commands import AddArrowCommand
+from chemuson.gui.commands.text_commands import AddTextItemCommand
 from chemuson.gui.controllers.file_controller import FileController
+from chemuson.gui.items import TextAnnotationItem
 
 
 S_SMILES = "C[C@H](F)CO"
@@ -248,34 +253,138 @@ def test_chemuson_exported_mol_opens_through_chemuson_file_controller(tmp_path) 
     _run_open_probe(chemuson_path, S_SMILES, tmp_path)
 
 
-@pytest.mark.parametrize(
-    ("entered_name", "expected_name"),
-    (("molecule", "molecule.mol"), ("molecule.mol", "molecule.mol")),
-)
-def test_save_as_mol_adds_extension_once_and_updates_document_after_write(
+def test_mol_export_preserves_dirty_native_document_and_autosave(
     tmp_path,
     monkeypatch,
-    entered_name: str,
-    expected_name: str,
 ) -> None:
-    context, tab_manager, recent, statuses = _save_context(tmp_path)
-    selected_path = tmp_path / entered_name
+    canvas = ChemusonCanvas()
+    atom_a = canvas.model.add_atom("C", 100.0, 100.0)
+    atom_b = canvas.model.add_atom("O", 140.0, 100.0, is_explicit=True)
+    canvas.model.add_bond(atom_a.id, atom_b.id)
+    canvas._rebuild_items_from_model()
+    annotation = TextAnnotationItem("nota importante", 200.0, 100.0)
+    canvas.undo_stack.push(AddTextItemCommand(canvas, annotation))
+    canvas.undo_stack.push(
+        AddArrowCommand(canvas, QPointF(220.0, 100.0), QPointF(280.0, 100.0), "forward")
+    )
+
+    native_path = str(tmp_path / "documento-completo.cmsn")
+    class Autosave:
+        def __init__(self):
+            self.cleaned = False
+            self.original_paths: list[str | None] = []
+
+        def cleanup_after_save(self):
+            self.cleaned = True
+
+        def set_original_path(self, path):
+            self.original_paths.append(path)
+
+    class TabManager:
+        def __init__(self):
+            self.path = native_path
+            self.autosave = Autosave()
+            self.path_updates = []
+
+        def file_path_for(self, _canvas):
+            return self.path
+
+        def autosave_manager_for(self, _canvas):
+            return self.autosave
+
+        def set_canvas_file_path(self, _canvas, path):
+            self.path_updates.append(path)
+            self.path = path
+
+    tab_manager = TabManager()
+    recent: list[str] = []
+    statuses: list[str] = []
+    context = SimpleNamespace(
+        parent=None,
+        canvas=canvas,
+        tab_manager=tab_manager,
+        add_recent_file=recent.append,
+        show_status=statuses.append,
+    )
+    selected_path = tmp_path / "estructura"
     monkeypatch.setattr(
         file_controller_module.QFileDialog,
         "getSaveFileName",
-        lambda *_args, **_kwargs: (str(selected_path), MOL_FILTER),
+        lambda *_args, **_kwargs: (str(selected_path), "Molfile (*.mol)"),
+    )
+
+    FileController().export_mol(context)
+
+    exported_path = tmp_path / "estructura.mol"
+    exported = exported_path.read_text(encoding="utf-8")
+    restored = molfile_to_molgraph(exported)
+    assert len(restored.atoms) == 2
+    assert len(restored.bonds) == 1
+    assert "nota importante" not in exported
+    assert annotation.scene() is canvas.scene
+    assert len(canvas.arrow_items) == 1
+    assert canvas.arrow_items[0].scene() is canvas.scene
+    assert canvas.undo_stack.isClean() is False
+    assert tab_manager.path == native_path
+    assert tab_manager.path_updates == []
+    assert tab_manager.autosave.cleaned is False
+    assert tab_manager.autosave.original_paths == []
+    assert recent == []
+    assert len(statuses) == 1
+    assert "no incluye texto ni flechas" in statuses[0]
+    assert "no se modificaron" in statuses[0]
+
+
+def test_save_file_rejects_mol_as_a_native_document(monkeypatch, tmp_path) -> None:
+    context, tab_manager, recent, statuses = _save_context(tmp_path)
+    selected_path = tmp_path / "incomplete-copy.mol"
+    errors: list[str] = []
+    monkeypatch.setattr(
+        file_controller_module.QFileDialog,
+        "getSaveFileName",
+        lambda *_args, **_kwargs: (str(selected_path), "Todos los archivos (*.*)"),
+    )
+    monkeypatch.setattr(
+        file_controller_module.QMessageBox,
+        "critical",
+        lambda _parent, _title, message: errors.append(message),
     )
 
     FileController().save_file(context)
 
-    expected_path = tmp_path / expected_name
-    assert expected_path.is_file()
-    assert "V2000" in expected_path.read_text(encoding="utf-8")
-    assert tab_manager.path == str(expected_path)
-    assert context.canvas.undo_stack.clean
-    assert tab_manager.autosave.cleaned
-    assert recent == [str(expected_path)]
-    assert statuses == [f"Guardado: {expected_path}"]
+    assert errors and "no incluye anotaciones de texto ni flechas" in errors[0]
+    assert not selected_path.exists()
+    assert tab_manager.path is None
+    assert context.canvas.undo_stack.clean is False
+    assert tab_manager.autosave.cleaned is False
+    assert recent == []
+    assert statuses == []
+
+
+def test_save_on_imported_mol_prompts_for_native_save_without_discarding_state(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    context, tab_manager, recent, statuses = _save_context(tmp_path)
+    imported_mol_path = str(tmp_path / "imported.mol")
+    tab_manager.path = imported_mol_path
+    dialog_args: list[tuple[object, ...]] = []
+    monkeypatch.setattr(
+        file_controller_module.QFileDialog,
+        "getSaveFileName",
+        lambda *args, **_kwargs: (dialog_args.append(args) or "", ""),
+    )
+
+    FileController().save_file(context)
+
+    assert dialog_args
+    assert dialog_args[0][1] == "Guardar documento nativo"
+    assert "*.mol" not in dialog_args[0][3]
+    assert tab_manager.path == imported_mol_path
+    assert context.canvas.undo_stack.clean is False
+    assert tab_manager.autosave.cleaned is False
+    assert recent == []
+    assert statuses == []
 
 
 def test_save_as_cmsn_keeps_native_extension_and_writer(monkeypatch, tmp_path) -> None:
@@ -304,7 +413,7 @@ def test_save_as_cmsn_keeps_native_extension_and_writer(monkeypatch, tmp_path) -
     assert recent == [str(expected_path)]
 
 
-def test_mol_write_failure_is_reported_without_marking_document_saved(monkeypatch, tmp_path) -> None:
+def test_mol_export_failure_is_reported_without_changing_document_state(monkeypatch, tmp_path) -> None:
     context, tab_manager, recent, statuses = _save_context(tmp_path)
     selected_path = tmp_path / "not-written"
     errors: list[str] = []
@@ -324,9 +433,9 @@ def test_mol_write_failure_is_reported_without_marking_document_saved(monkeypatc
         lambda _parent, _title, message: errors.append(message),
     )
 
-    FileController().save_file(context)
+    FileController().export_mol(context)
 
-    assert errors == ["No se pudo guardar:\ndisk full"]
+    assert errors == ["No se pudo exportar el MOL:\ndisk full"]
     assert not selected_path.with_suffix(".mol").exists()
     assert tab_manager.path is None
     assert not context.canvas.undo_stack.clean
@@ -353,7 +462,7 @@ def test_sdf_is_rejected_instead_of_saving_a_mol_block(monkeypatch, tmp_path) ->
     FileController().save_file(context)
 
     assert errors == [
-        "SDF multi-registro no está soportado. Guarda la estructura como MOL (.mol)."
+        "SDF multi-registro no está soportado. Exporta la estructura como MOL (.mol)."
     ]
     assert not selected_path.exists()
     assert tab_manager.path is None

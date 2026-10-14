@@ -10,7 +10,7 @@ La aplicación ya tenía coordinación de cierre para QThreads descendientes, pe
 
 ## Alcance
 
-- Añadir `.mol` en Guardar como de forma idempotente y persistir ruta/estado limpio únicamente tras escritura exitosa.
+- Separar Guardar (documento nativo `.cmsn`) de Exportar estructura molecular a `.mol`. El MOL se escribe con sufijo idempotente, pero no cambia la ruta nativa, el estado dirty, el autoguardado ni los archivos recientes.
 - Normalizar coordenadas MOL mediante una copia del grafo y un único escalado uniforme, compartido por rutas RDKit/fallback, usando longitud de enlace mediana objetivo cercana a 1.5; no mutar el documento ni reflejarlo.
 - Reimportar archivos MOL reales, mantener conectividad, átomos/enlaces, cargas, isótopos y estereoquímica especificada; identificar errores de lectura/escritura en el flujo real.
 - Tratar SDF explícitamente como no soportado en esta campaña: no ofrecerlo en filtros ni escribir un MOL simple con extensión `.sdf`; una implementación completa multi-registro requiere un cambio separado.
@@ -19,8 +19,9 @@ La aplicación ya tenía coordinación de cierre para QThreads descendientes, pe
 
 ## Contratos de compatibilidad
 
-- `.cmsn` conserva su formato, ruta de guardado y flujo actual.
-- `.mol` es un único registro CTAB válido. El importador conserva la geometría relativa y escala al tamaño interno del lienzo; exportar no altera las coordenadas fuente.
+- `.cmsn` conserva su formato, ruta de guardado y flujo actual, y es la única salida de Guardar que declara guardado el documento completo.
+- `.mol` es una exportación explícita de la estructura molecular (un único registro CTAB), no una copia completa del documento: no contiene anotaciones de texto ni flechas. Exportar no altera ruta, dirty state, autoguardado, recientes, coordenadas ni objetos del documento fuente.
+- La interfaz identifica MOL como exportación de estructura y avisa que texto/flechas quedan fuera; no permite tratar `.mol` como ruta nativa de Guardar.
 - La representación del estereoisómero se compara químicamente (incluyendo CIP cuando esté definido), no por texto literal `@`/`@@`.
 - No se inventa estereoquímica ausente. Las rutas sin capacidad fiel deben fallar explícitamente.
 - SDF multi-registro no se declara compatible ni se mezcla su implementación con esta campaña.
@@ -28,7 +29,7 @@ La aplicación ya tenía coordinación de cierre para QThreads descendientes, pe
 
 ## Casos reproducibles
 
-1. Guardar MOL con filtro seleccionado como `molecula` y como `molecula.mol`.
+1. Exportar estructura MOL seleccionando `molecula` y `molecula.mol`; con molécula + anotación + flecha comprobar que sólo se exporta la molécula y el documento conserva ruta, dirty state y autosave.
 2. Exportar/importar `C[C@H](F)CO` y control R `C[C@@H](F)CO`; abrir tanto MOL propio como MOL generado por RDKit mediante el controlador de archivos.
 3. Ejecutar las rutas RDKit y fallback admisibles y medir longitudes directamente del CTAB.
 4. Forzar fallos de lectura/escritura y comprobar el error mostrado y que no se actualizan ruta ni estado limpio.

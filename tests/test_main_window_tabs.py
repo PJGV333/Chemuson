@@ -30,6 +30,27 @@ def _isolated_config_home(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
 
 
+def test_mol_structure_export_is_separate_from_native_save() -> None:
+    window = ChemusonWindow()
+    try:
+        assert window.action_save.text() == "Guardar"
+        assert window.action_export_mol.text() == "Estructura molecular (MOL)..."
+        file_menu = next(
+            action.menu()
+            for action in window._menu_aggregator.actions()
+            if action.menu() is not None and action.menu().title() == "Archivo"
+        )
+        export_menu = next(
+            action.menu()
+            for action in file_menu.actions()
+            if action.menu() is not None and action.menu().title() == "Exportar como"
+        )
+        assert window.action_export_mol in export_menu.actions()
+    finally:
+        window.canvas.undo_stack.setClean()
+        window.close()
+
+
 def test_new_creates_independent_tab() -> None:
     window = ChemusonWindow()
     initial = window.tabs.count()

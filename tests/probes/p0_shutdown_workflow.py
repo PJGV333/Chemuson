@@ -66,14 +66,16 @@ def main() -> int:
             str(target),
             "Archivo MOL (*.mol)",
         )
-        window._on_file_save()
+        window._on_export_mol()
         mol_path = target.with_suffix(".mol")
         assert mol_path.is_file()
         assert not target.exists()
         imported = molfile_to_molgraph(mol_path.read_text(encoding="utf-8"))
         assert len(imported.atoms) == 5 and len(imported.bonds) == 4
-        assert window._tab_manager.file_path_for(canvas) == str(mol_path)
-        assert canvas.undo_stack.isClean()
+        assert window._tab_manager.file_path_for(canvas) is None
+        assert not canvas.undo_stack.isClean()
+        manager = window._tab_manager.autosave_manager_for(canvas)
+        assert manager.core._original_path is None
         result["exported"] = str(mol_path)
 
     if scenario == "modified":

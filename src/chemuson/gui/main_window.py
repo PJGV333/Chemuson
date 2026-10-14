@@ -1554,6 +1554,10 @@ class ChemusonWindow(QMainWindow):
         """Export the canvas in the specified format."""
         self._export_controller.export(self, format)
 
+    def _on_export_mol(self) -> None:
+        """Exporta el grafo molecular sin guardar/cambiar el documento completo."""
+        self._file_controller.export_mol(self._file_workflow_context())
+
     def _confirm_discard_changes(self, canvas: ChemusonCanvas) -> bool:
         """Confirma descarte del canvas especificado."""
         return self._document_controller.confirm_discard_changes(

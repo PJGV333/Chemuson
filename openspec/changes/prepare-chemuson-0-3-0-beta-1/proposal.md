@@ -30,6 +30,7 @@ ChemUSON tiene ya una línea 0.3.0, builds Windows/Linux/Flatpak, canales beta/s
 - Separar en el diagnóstico la actualización obsoleta del indicador ChemName de la calidad de las reglas: verificar cambios de estructura, Undo/Redo y ausencia de caché/callback tardío sin alterar nomenclatura no demostrada defectuosa.
 - Investigar y corregir únicamente la retención de un callback de test que causa SIGSEGV Qt al destruir un QUndoStack; mantener los hallazgos Clean2D/CompChem como fallos independientes y no suprimirlos.
 - Registrar para una campaña futura `chemname/iupac-robustness` la comparación de ejemplos exactos con referencias IUPAC actuales; aplazar mejoras de presentación de fórmulas, isótopos y cargas.
+- Antes de integrar `fix/beta-mol-roundtrip-qt-shutdown`, verificar que exportar MOL desde un documento con anotaciones/flechas no lo marque como guardado ni invalide su ruta/autosave; registrar por separado la aceptación manual limitada de DATA-11 y dejar DATA-13 pendiente.
 
 ## Capabilities
 

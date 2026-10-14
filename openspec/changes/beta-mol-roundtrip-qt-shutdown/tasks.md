@@ -8,12 +8,13 @@
 
 ## 2. MOL y flujo de archivos
 - [x] Implementar normalización MOL compartida, positiva y uniforme, sin mutar MolGraph fuente; aplicarla a RDKit/worker/fallback.
-- [x] Añadir extensión MOL por filtro, actualizar ruta sólo tras escritura exitosa y conservar guardado `.cmsn`.
+- [x] Separar exportación molecular `.mol` de Guardar documento `.cmsn`; extensión idempotente y ningún cambio de ruta/dirty/autosave/recientes al exportar.
 - [x] Reimportar fixture S y control R desde archivos MOL propios y RDKit mediante FileController.
 - [x] Validar elementos, conteos, conectividad, órdenes, cargas, isótopos, configuración CIP, extensión y coordenadas.
 - [x] Cubrir fallback cuando representa fielmente el caso y fallo explícito cuando no puede preservar stereo.
 - [x] Retirar anuncio SDF y rechazar `.sdf` con mensaje; documentar implementación multi-registro fuera de alcance.
 - [x] Cubrir errores de lectura/escritura visibles y ausencia de falso estado guardado.
+- [x] Regresión P0 con molécula + texto + flecha: MOL sólo contiene la estructura y no altera ruta nativa, dirty state, autosave ni lista de recientes; el usuario recibe una advertencia explícita de contenido excluido.
 
 ## 3. Cierre Qt y recuperación
 - [x] Cubrir cierre normal, posterior a exportar, con documento modificado, destrucción de canvas y señales async en subprocesos acotados.

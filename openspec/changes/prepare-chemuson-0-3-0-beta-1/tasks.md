@@ -111,3 +111,12 @@
 - [x] 15.4 Publicar sólo `release/v0.3.0-beta.1-prep` y verificar CI #38008585666 + Build Preview #38008585493 para los cuatro formatos en SHA `f17609f97551aa94d90fac4819c450c6ee5e1005`.
 - [x] 15.5 Descargar/verificar cada artifact, checksum/provenance y `publication=false`; registrar run/IDs/SHA en `validation.md` y notas beta.
 - [ ] 15.6 Propietario completa aceptación manual en Windows y Linux; automation no cambia estados manuales.
+
+## 16. P0 MOL export safety and integration of the Qt/ChemIO campaign
+- [x] 16.1 Verify clean source/destination refs, exact requested SHAs, ancestry and fast-forward availability before integration.
+- [x] 16.2 Exercise graph-only MOL export against document dirty/path/autosave semantics; record the reproducible false-save/data-loss path before merging.
+- [x] 16.3 Implement the narrow export-only route and regression tests for molecule + text annotation + arrow; update OpenSpec and manual acceptance without changing `.cmsn` persistence.
+- [x] 16.4 Record DATA-11 manual PASS only for `(2S)-2-fluoropropan-1-ol`; keep opposite enantiomer, amino acid, E/Z and DATA-13 manual verification pending.
+- [ ] 16.5 Push the corrective commit first to `fix/beta-mol-roundtrip-qt-shutdown`, verify CI on that SHA, then re-check fast-forward ancestry/counts.
+- [ ] 16.6 Integrate `release/v0.3.0-beta.1-prep` only with `git merge --ff-only`; verify source code and exact remote/local SHA.
+- [ ] 16.7 After push/CI, dispatch Build Preview from the exact updated prep SHA; verify four artifact groups, checksums and provenance. No tag/Release/channel publication.

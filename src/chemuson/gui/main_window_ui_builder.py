@@ -441,6 +441,9 @@ class MainWindowUiBuilder:
         window.action_export_cml = QAction("CML...", window)
         window.action_export_cml.triggered.connect(lambda: window._on_export("cml"))
         file_menu.addAction(window.action_export_cml)
+        window.action_export_mol = QAction("Estructura molecular (MOL)...", window)
+        window.action_export_mol.triggered.connect(window._on_export_mol)
+        file_menu.addAction(window.action_export_mol)
 
     def _add_copy_as_menu(self, window, edit_menu: QMenu) -> None:
         copy_as_menu = edit_menu.addMenu("Copiar como")

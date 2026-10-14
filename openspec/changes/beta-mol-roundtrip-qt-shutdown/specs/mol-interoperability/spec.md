@@ -2,16 +2,25 @@
 
 ## ADDED Requirements
 
-### Requirement: Guardar como MOL conserva el filtro y el sufijo
-Cuando se elige el filtro MOL, el sistema SHALL escribir un archivo `.mol`, añadiendo el sufijo si no existe y evitando duplicarlo. La ruta del documento, estado limpio, recientes y limpieza de autosave SHALL actualizarse sólo tras escritura correcta.
+### Requirement: Exportar MOL no guarda el documento completo
+La acción de Guardar SHALL persistir el documento completo en `.cmsn`. La exportación `.mol` SHALL presentarse por separado como exportación únicamente de la estructura molecular. El archivo SHALL contener sólo un registro CTAB; texto y flechas no están representados y la interfaz MUST indicarlo explícitamente. Exportar SHALL añadir `.mol` idempotentemente y MUST NOT cambiar la ruta nativa, clean/dirty del undo stack, estado/origen/temporizadores de autosave ni recientes. Un intento de tratar `.mol` como destino de Guardar SHALL ser rechazado con una explicación y no SHALL alterar el estado del documento.
 
-#### Scenario: Guardado MOL sin sufijo
-- **WHEN** el usuario selecciona el filtro MOL y escribe `molecula`
-- **THEN** el archivo se guarda como `molecula.mol` y el documento conserva esa ruta
+#### Scenario: Documento con molécula, texto y flecha
+- **WHEN** el usuario exporta ese documento como MOL
+- **THEN** el CTAB contiene sólo la molécula; se informa que texto/flechas no se incluyen y que `.cmsn` conserva el documento completo
+- **AND** ruta nativa, dirty state, autosave y recientes permanecen intactos
 
-#### Scenario: Escritura fallida
-- **WHEN** el escritor o el sistema de archivos rechaza el guardado MOL
-- **THEN** se muestra el error concreto y el documento sigue sin guardar, con su ruta previa
+#### Scenario: Exportación MOL sin sufijo o con sufijo
+- **WHEN** el usuario exporta como `molecula` o `molecula.mol`
+- **THEN** se escribe exactamente `molecula.mol` sin alterar el estado del documento
+
+#### Scenario: Escritura MOL fallida
+- **WHEN** el escritor o el sistema de archivos rechaza la exportación
+- **THEN** se muestra el error concreto y no cambian ruta, estado dirty, autosave ni recientes
+
+#### Scenario: Usuario intenta Guardar en una ruta MOL
+- **WHEN** el destino de Guardar es `.mol`
+- **THEN** la acción no escribe el archivo ni marca guardado el documento, e informa de usar Exportar estructura molecular
 
 ### Requirement: Coordenadas MOL 2D usan escala química
 El exportador SHALL preservar proporciones, ángulos, conectividad y orientación, usando un escalado positivo uniforme que sitúe la mediana de longitud de enlace estructural cerca de 1.5 unidades MOL. La conversión SHALL aplicar la misma regla a todos los backends soportados y no SHALL mutar las coordenadas del documento.
@@ -47,7 +56,8 @@ Hasta implementar el contrato SDF multi-registro, la GUI SHALL NOT anunciar ni e
 
 ## Invariantes
 
-- `.cmsn` y sus payloads no cambian.
-- Ninguna exportación cambia el grafo/documento fuente.
+- `.cmsn` y sus payloads no cambian; Guardar conserva el documento completo.
+- MOL se presenta únicamente como exportación molecular parcial, no como copia completa del documento.
+- Ninguna exportación cambia el grafo/documento fuente, sus rutas, estado dirty o autosave.
 - Sin reflexión ni asignación estéreo ausente.
 - No cambian Clean2D, ChemName, reglas IUPAC ni dependencias runtime.

@@ -88,3 +88,16 @@ Molecular Assistant cases SHALL record provider availability, source provenance,
 - **WHEN** a model endpoint is offline or returns invalid/exhausted output
 - **THEN** the application fails controllably or offers an explicitly identified valid reference
 - **AND** the test records the observed result without claiming a model success.
+
+### Requirement: MOL export data boundary and partial manual stereo acceptance are explicit
+The acceptance matrix SHALL distinguish saving a complete `.cmsn` document from exporting only a molecular graph as `.mol`. It MUST record that annotations/arrows are excluded, that export must not change dirty state, native path, autosave, or recent files, and that automated tests do not replace manual package acceptance. A manual stereo PASS SHALL be scoped to the exact molecule and route actually exercised; it MUST NOT generalize to all chiral molecules or E/Z. A separate manual case SHALL remain pending for a document containing one molecule, text, and an arrow until the owner verifies the exact package.
+
+#### Scenario: Owner confirms one MOL stereo round-trip
+- **WHEN** the owner records a successful exported/reimported `(2S)-2-fluoropropan-1-ol` in ChemUSON
+- **THEN** DATA-11 may be marked PASS only for that molecule and evidence
+- **AND** other stereochemical cases remain NOT TESTED unless individually exercised.
+
+#### Scenario: Automated export-boundary regression passes
+- **WHEN** source tests verify MOL contains only the graph and preserves dirty/path/autosave state for a molecule+text+arrow document
+- **THEN** that result is recorded as automated evidence
+- **AND** manual DATA-13 remains NOT TESTED until owner retest on the exact preview package.
