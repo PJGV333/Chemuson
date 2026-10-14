@@ -110,8 +110,7 @@ El DPR SHALL aplicarse **una sola vez**: el `QPixmap` se crea con el backing fí
 #### Scenario: Smoke HiDPI del shell
 - **GIVEN** un entorno offscreen con `QT_SCALE_FACTOR=2`
 - **WHEN** se construye la ventana principal
-- **THEN** la app bar, el rail de herramientas y el side panel existen y
-  están visibles
+- **THEN** la app bar y el rail de herramientas existen y están visibles, y el SidePanel existe inicialmente oculto
 - **AND** los iconos del rail son `QIcon` no nulos.
 
 ### Requirement: Onboarding de primera ejecución
@@ -120,8 +119,9 @@ La aplicación SHALL mostrar un overlay de bienvenida nativo Qt **solo la
 primera vez** (o tras borrar la preferencia), con exactamente 3 pasos:
 (1) Tool Rail — "Elige aquí las herramientas de dibujo y anotación."
 (2) Canvas — "Dibuja, selecciona y edita tus estructuras en el lienzo."
-(3) SidePanel — "Inspector, validación, propiedades, plantillas y apariencia
-están aquí." El overlay SHALL ofrecer `Anterior`, `Siguiente`, `Cerrar` y una
+(3) SidePanel — "Abre Ver y elige Panel lateral o una sección para mostrarlo
+aquí." El tercer spotlight SHALL dirigirse al botón de menú visible del AppBar,
+no a la geometría del panel oculto. El overlay SHALL ofrecer `Anterior`, `Siguiente`, `Cerrar` y una
 opción "No mostrar de nuevo". **Semántica de persistencia (corrección Fase
 7, post-push)**: la clave `ui/onboarding/completed` se fija en `platform.
 settings` a `True` **solo** cuando el onboarding se considera completado:
@@ -137,8 +137,9 @@ escena).
 SHALL obtenerse restando caminos (`outer - inner`) y rellenar únicamente esa
 diferencia; el overlay SHALL NO limpiar píxeles con `CompositionMode_Clear`
 (produce franjas/bordes negros en KDE/Wayland real). La máscara oscura y el
-agujero transparente se conservan en ToolRail, Canvas y SidePanel, en light y
-dark.
+agujero transparente se conservan en ToolRail y Canvas; el tercer paso
+resalta el botón de menú visible del AppBar mientras SidePanel permanece oculto,
+en light y dark.
 
 **Tarjeta (corrección post-push, gate manual Fase 7)**: la tarjeta SHALL ser
 theme-aware mediante `objectName` + el sistema QSS de tokens, sin colores
@@ -152,7 +153,14 @@ persistencia de `finished(bool)` NO cambia.
 - **GIVEN** una `QSettings` sin `ui/onboarding/completed`
 - **WHEN** se monta el shell
 - **THEN** el overlay se muestra en el paso 1 (Tool Rail)
-- **AND** `Siguiente` avanza a Canvas y luego a SidePanel.
+- **AND** `Siguiente` avanza a Canvas y luego al acceso al SidePanel desde Ver
+- **AND** el tercer spotlight se alinea con el botón de menú y no abre el panel.
+
+#### Scenario: El panel oculto no provoca un spotlight inválido
+- **GIVEN** onboarding iniciado con SidePanel oculto
+- **WHEN** se avanza al tercer paso
+- **THEN** el agujero resalta el menú visible y el panel sigue oculto
+- **AND** la geometría de rail/canvas no cambia.
 
 #### Scenario: No se repite
 - **GIVEN** `ui/onboarding/completed` verdadero

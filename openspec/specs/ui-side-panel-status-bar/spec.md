@@ -6,8 +6,10 @@ TBD - created by archiving change 2026-09-27-modernize-ui-side-panel-status-bar.
 ### Requirement: Una única superficie lateral reutiliza los docks funcionales existentes
 
 La aplicación SHALL exponer `SidePanel` en
-`src/chemuson/gui/side_panel.py`, de ancho objetivo 340 px (rango aceptable
-300–340 px), integrado al lado del lienzo y sin chrome de docking clásico.
+`src/chemuson/gui/side_panel.py`, con ancho inicial de 340 px y mínimo legible
+300 px, integrado al lado del lienzo mediante un `QSplitter(Qt.Horizontal)` y
+sin chrome de docking clásico. El usuario SHALL poder ajustar el divisor; el
+lienzo ocupa el espacio restante y el rail no participa del divisor.
 `SidePanel` SHALL presentar Inspector, Validación, Propiedades, Plantillas y
 Apariencia como tabs principales, con Inspector activo por defecto. SHALL
 mantener Espectroscopía y CompChem accesibles mediante un control `…` dentro
@@ -31,9 +33,11 @@ ninguna página SHALL mostrarse como QDockWidget clásico flotante o acoplado.
 
 ### Requirement: Los cinco tabs principales permanecen legibles y sin clipping
 
-`SideTabRow` SHALL mantener visibles los cinco labels principales completos con
-fuente de al menos 10 px, padding horizontal real de al menos 3 px por tab y
-separación de al menos 3 px entre tabs. SHALL conservar el acento/underline del
+`SideTabRow` SHALL conservar los cinco textos completos como contenido de cada
+botón, exponerlos como tooltip y nombre accesible aunque la vista se recorte, y
+mantener fuente de al menos 10 px, padding horizontal real de al menos 3 px por
+tab y separación de al menos 3 px entre tabs cuando el ancho inicial es 340 px.
+SHALL conservar el acento/underline del
 tab activo y mantener Espectroscopía y CompChem dentro de `…`. La aceptación
 visual SHALL basarse en texto íntegro, separación y contención en la fila; no
 SHALL exigir `horizontalScrollBar().maximum() == 0` como objetivo independiente.
@@ -45,6 +49,12 @@ SHALL exigir `horizontalScrollBar().maximum() == 0` como objetivo independiente.
 - **AND** cada tab conserva padding horizontal y el activo conserva el acento/underline
 - **AND** Espectroscopía y CompChem siguen accesibles desde `…`.
 
+#### Scenario: Tooltip de una pestaña recortada
+- **GIVEN** SidePanel reducido por el usuario hasta un ancho permitido
+- **WHEN** una etiqueta se recorta visualmente
+- **THEN** el tooltip y el nombre accesible conservan la etiqueta completa
+- **AND** la navegación y el overflow existentes no cambian.
+
 #### Scenario: La página activa viene del overflow
 - **GIVEN** SidePanel visible
 - **WHEN** se elige Espectroscopía o CompChem desde `…`
@@ -55,8 +65,9 @@ SHALL exigir `horizontalScrollBar().maximum() == 0` como objetivo independiente.
 ### Requirement: Las acciones Ver navegan al SidePanel en vez de alternar docks
 
 El menú Ver SHALL exponer acciones Inspector, Validación, Propiedades
-químicas, Plantillas, Apariencia, Espectroscopía y CompChem. Cada acción
-SHALL delegar a `side_panel.show_page(key)`, SHALL hacer visible el panel si
+químicas, Plantillas, Apariencia, Espectroscopía y CompChem. El SidePanel SHALL
+iniciar oculto en toda ventana nueva independientemente de `visible` guardado.
+Cada acción SHALL delegar a `side_panel.show_page(key)`, SHALL hacer visible el panel si
 estaba oculto y SHALL seleccionar la página pedida. Las acciones SHALL NOT
 usar `toggleViewAction()` de los docks ni mostrar un dock clásico.
 Una acción separada de visibilidad puede ocultar/restaurar el SidePanel.
@@ -67,6 +78,11 @@ Una acción separada de visibilidad puede ocultar/restaurar el SidePanel.
 - **THEN** SidePanel queda visible con la página solicitada activa
 - **AND** el widget de página activa es el QDockWidget histórico correspondiente
 - **AND** los siete docks conservan `isFloating() == False` y área de docking nula.
+
+#### Scenario: Inicio oculto con la preferencia anterior abierta
+- **GIVEN** settings con `visible=true` y `active_tab=compchem`
+- **WHEN** se crea una ventana nueva
+- **THEN** el panel permanece oculto, CompChem sigue seleccionada y el valor guardado no fuerza su apertura.
 
 #### Scenario: Ocultar y restaurar el panel
 - **GIVEN** SidePanel visible con una página seleccionada
@@ -83,22 +99,23 @@ Una acción separada de visibilidad puede ocultar/restaurar el SidePanel.
 ### Requirement: Estado del SidePanel persistido y normalizado
 
 La aplicación SHALL persistir `ui/side_panel/active_tab` y
-`ui/side_panel/visible` mediante `chemuson.platform.settings`. En una
-instalación sin valores previos SHALL iniciar visible en Inspector. Claves de
-tab desconocidas o valores de visibilidad inválidos SHALL degradar a
-`inspector` y `true` respectivamente. Cambiar tab o visibilidad SHALL guardar
+`ui/side_panel/visible` mediante `chemuson.platform.settings`, sin usar la
+visibilidad persistida para abrir una ventana nueva. La pestaña activa SHALL
+restaurarse, pero cada ventana inicia con el panel oculto. Claves de tab
+desconocidas o valores de visibilidad inválidos SHALL degradar a `inspector` y
+`true` respectivamente como valores normalizados. Cambiar tab o visibilidad SHALL guardar
 el estado sin duplicar el estado funcional de los docks.
 
-#### Scenario: Restaurar preferencias válidas
-- **GIVEN** settings con `active_tab=compchem` y `visible=false`
+#### Scenario: Restaurar página sin restaurar visibilidad
+- **GIVEN** settings con `active_tab=compchem` y cualquier valor de `visible`
 - **WHEN** se crea SidePanel
 - **THEN** CompChem es la página activa y el panel comienza oculto.
 
 #### Scenario: Defaults y valores inválidos
 - **GIVEN** settings ausentes, una clave de tab desconocida o una visibilidad inválida
 - **WHEN** se cargan las preferencias
-- **THEN** cada valor ausente/inválido toma su default seguro
-- **AND** el panel inicia en Inspector y visible cuando ambos valores son inválidos/ausentes.
+- **THEN** cada valor ausente/inválido toma su default seguro (`inspector`/`true`)
+- **AND** la ventana inicia oculta aunque el valor normalizado de `visible` sea `true`.
 
 #### Scenario: Persistir navegación
 - **GIVEN** SidePanel creado con un store de settings
@@ -150,12 +167,14 @@ polling ni cálculos químicos.
 - **AND** el mensaje temporal sigue accesible por `showMessage()`
 - **AND** no se muestran datos de fórmula/cursor/autosave inventados.
 
-### Requirement: Tema y tamaño mínimo utilizable
+### Requirement: Tema, splitter y tamaño mínimo utilizable
 
 Los tabs, overflow y páginas embebidas SHALL seguir los tokens del tema
-existente al cambiar entre light/dark. Con la ventana a 980×600, el panel SHALL
-mantener ancho dentro del rango especificado y el lienzo SHALL conservar un
-área positiva sin solapamiento.
+existente al cambiar entre light/dark. El SidePanel SHALL tener mínimo de
+300 px; el lienzo conserva un mínimo de 400 px y el rail permanece intacto.
+Ocultar el panel SHALL devolver el ancho disponible al lienzo y volver a
+mostrarlo SHALL recuperar un ancho razonable. Con la ventana a 980×600, ningún
+control SHALL quedar perdido ni el lienzo SHALL tener geometría negativa.
 
 #### Scenario: Tema y ventana compacta
 - **GIVEN** la ventana con SidePanel visible

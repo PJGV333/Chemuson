@@ -11,8 +11,14 @@ The onboarding overlay MUST be created only after the main window is shown and i
 
 #### Scenario: First launch
 - **WHEN** the main window is first shown and onboarding has not been completed
-- **THEN** the existing three steps appear in order: tool rail, molecular canvas, side panel
-- **AND** each spotlight aligns with its corresponding visible target and the card is fully visible.
+- **THEN** the existing three steps appear in order: tool rail, molecular canvas, and the side-panel access through the AppBar menu
+- **AND** each spotlight aligns with a visible target, the side panel remains closed until explicitly opened from Ver, and the card is fully visible.
+
+#### Scenario: Side panel is hidden during onboarding
+- **GIVEN** the side panel starts hidden and the tour is on its third step
+- **WHEN** the spotlight is positioned
+- **THEN** it targets the visible AppBar menu button rather than hidden-panel geometry
+- **AND** no automatic panel opening or layout shift occurs.
 
 #### Scenario: Resize or display-scale change
 - **WHEN** the window is resized, moved, or receives a screen/DPI change
