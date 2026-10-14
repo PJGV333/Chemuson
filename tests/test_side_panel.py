@@ -121,6 +121,11 @@ def test_side_panel_hosts_the_original_docks_without_duplicate_pages(window) -> 
     docks = _dock_pages(window)
 
     assert isinstance(panel, SidePanel)
+    window.resize(1200, 900)
+    window.show()
+    QApplication.processEvents()
+    panel.set_panel_visible(True)
+    QApplication.processEvents()
     assert 336 <= panel.width() <= 340
     assert panel.stack.count() == len(docks) == 7
     assert len(window.findChildren(QDockWidget)) == 7
@@ -137,6 +142,7 @@ def test_side_panel_hosts_the_original_docks_without_duplicate_pages(window) -> 
 def test_side_panel_defaults_to_inspector_and_overflow_selects_in_place(window) -> None:
     panel = window.side_panel
     assert panel.active_page_key == "inspector"
+    assert panel.isHidden(), "cada ventana nueva inicia con el panel oculto"
     assert panel.stack.currentWidget() is window.inspector_dock
     assert tuple(panel.main_tab_buttons) == SidePanel.MAIN_PAGE_KEYS
     assert tuple(action.text() for action in panel.overflow_menu.actions()) == (
@@ -172,28 +178,40 @@ def test_validation_controls_fit_within_side_panel_page(window) -> None:
         control.show()
     QApplication.processEvents()
 
-    panel_rect = window.side_panel.rect()
-    for control in controls:
-        top_left = control.mapTo(window.side_panel, control.rect().topLeft())
-        right = top_left.x() + control.width()
-        bottom = top_left.y() + control.height()
-        label = (
-            control.objectName()
-            or getattr(control, "text", lambda: "")()
-            or type(control).__name__
-        )
-        assert (
-            panel_rect.left() <= top_left.x()
-            and right <= panel_rect.right() + 1
-            and panel_rect.top() <= top_left.y()
-            and bottom <= panel_rect.bottom() + 1
-        ), (
-            f"validation control {label} "
-            f"extends outside the side panel: {top_left}, {control.size()}"
-        )
+    for requested_width in (340, 300):
+        if requested_width == 300:
+            window._central_splitter.setSizes([800, requested_width])
+            QApplication.processEvents()
+        panel_rect = window.side_panel.rect()
+        assert window.side_panel.width() >= 300
+        if requested_width == 340:
+            assert 336 <= window.side_panel.width() <= 340
+        else:
+            assert window.side_panel.width() == 300
+        for control in controls:
+            top_left = control.mapTo(window.side_panel, control.rect().topLeft())
+            right = top_left.x() + control.width()
+            bottom = top_left.y() + control.height()
+            label = (
+                control.objectName()
+                or getattr(control, "text", lambda: "")()
+                or type(control).__name__
+            )
+            assert (
+                panel_rect.left() <= top_left.x()
+                and right <= panel_rect.right() + 1
+                and panel_rect.top() <= top_left.y()
+                and bottom <= panel_rect.bottom() + 1
+            ), (
+                f"validation control {label} "
+                f"extends outside the side panel: {top_left}, {control.size()}"
+            )
 
 
 def test_view_menu_actions_show_and_select_pages_without_dock_toggles(window) -> None:
+    window.resize(1200, 900)
+    window.show()
+    QApplication.processEvents()
     view_menu = _view_menu(window)
     actions = {action.text(): action for action in view_menu.actions()}
     labels_and_keys = (
@@ -212,7 +230,9 @@ def test_view_menu_actions_show_and_select_pages_without_dock_toggles(window) ->
         assert all(actions[label] is not dock.toggleViewAction() for dock in docks.values())
         window.side_panel.set_panel_visible(False)
         actions[label].trigger()
+        QApplication.processEvents()
         assert not window.side_panel.isHidden()
+        assert 336 <= window.side_panel.width() <= 340
         assert window.side_panel.active_page_key == key
         assert window.side_panel.stack.currentWidget() is docks[key]
         assert all(not dock.isFloating() for dock in docks.values())
@@ -236,7 +256,79 @@ def test_side_panel_persists_active_page_and_visibility(window) -> None:
         restored.close()
 
 
-def test_invalid_side_panel_settings_fall_back_to_visible_inspector() -> None:
+def test_new_window_starts_hidden_even_when_previous_visibility_was_true() -> None:
+    settings = application_settings()
+    settings.setValue("ui/side_panel/active_tab", "compchem")
+    settings.setValue("ui/side_panel/visible", True)
+
+    window = ChemusonWindow()
+    try:
+        assert window.side_panel.isHidden()
+        assert window.side_panel.active_page_key == "compchem"
+        assert settings.value("ui/side_panel/visible") is True
+    finally:
+        window.close()
+
+
+def _drag_splitter_handle(window: ChemusonWindow, delta_x: int) -> None:
+    splitter = window._central_splitter
+    handle = splitter.handle(1)
+    start = handle.rect().center()
+    target = QPoint(start.x() + delta_x, start.y())
+    QTest.mousePress(handle, Qt.MouseButton.LeftButton, pos=start)
+    QTest.mouseMove(handle, target, delay=25)
+    QTest.mouseRelease(handle, Qt.MouseButton.LeftButton, pos=handle.rect().center())
+    QApplication.processEvents()
+
+
+def test_splitter_resizes_panel_and_restores_canvas_space(window) -> None:
+    window.resize(1440, 900)
+    window.side_panel.set_panel_visible(True)
+    window.show()
+    QApplication.processEvents()
+    splitter = window._central_splitter
+    panel = window.side_panel
+    initial_width = panel.width()
+
+    _drag_splitter_handle(window, -70)
+    expanded_width = panel.width()
+    assert expanded_width > initial_width + 30, (initial_width, expanded_width)
+
+    _drag_splitter_handle(window, 40)
+    reduced_width = panel.width()
+    assert 300 <= reduced_width < expanded_width - 20
+    assert window.tabs.width() >= 400
+    assert window.tool_rail.width() == 58
+    assert splitter.handle(1).isVisible()
+
+    window.resize(980, 600)
+    QApplication.processEvents()
+    compact_width = panel.width()
+    assert compact_width >= 300
+    assert window.tabs.width() >= 400
+
+    window.resize(1600, 900)
+    QApplication.processEvents()
+    assert abs(panel.width() - compact_width) < 30
+    assert window.tabs.width() > 400
+
+    width_before_hide = panel.width()
+    canvas_before_hide = window.tabs.width()
+    panel.set_panel_visible(False)
+    QApplication.processEvents()
+    assert panel.isHidden()
+    assert window.tabs.width() > canvas_before_hide + width_before_hide - 30
+
+    actions = {action.text(): action for action in _view_menu(window).actions()}
+    actions["Inspector"].trigger()
+    QApplication.processEvents()
+    assert not panel.isHidden()
+    assert panel.active_page_key == "inspector"
+    assert abs(panel.width() - width_before_hide) < 30
+    assert panel.stack.count() == 7
+
+
+def test_invalid_side_panel_settings_keep_inspector_selected_and_start_hidden() -> None:
     settings = application_settings()
     settings.setValue("ui/side_panel/active_tab", "unknown")
     settings.setValue("ui/side_panel/visible", "")
@@ -244,7 +336,7 @@ def test_invalid_side_panel_settings_fall_back_to_visible_inspector() -> None:
     window = ChemusonWindow()
     try:
         assert window.side_panel.active_page_key == "inspector"
-        assert not window.side_panel.isHidden()
+        assert window.side_panel.isHidden()
     finally:
         window.close()
 
@@ -282,6 +374,7 @@ def test_status_bar_keeps_existing_indicators_and_show_message(window) -> None:
 def test_primary_tabs_have_complete_labels_padding_and_separation(window) -> None:
     window.show()
     panel = window.side_panel
+    panel.set_panel_visible(True)
     row = panel.tab_row
     viewport = row.scroll_area.viewport()
     minimum_padding_x = 3
@@ -331,20 +424,38 @@ def test_primary_tabs_have_complete_labels_padding_and_separation(window) -> Non
                 previous_right = right
 
         assert 336 <= panel.width() <= 340, (
-            f"SidePanel width must stay within 336–340px for readable tabs; "
+            f"SidePanel initial width must stay within 336–340px; "
             f"got {panel.width()}px"
         )
+        for key, button in row.main_tab_buttons.items():
+            assert button.toolTip() == button.accessibleName() == button.text()
+
+
+def test_narrow_tabs_keep_full_tooltips_and_accessible_names(window) -> None:
+    window.resize(980, 600)
+    window.side_panel.set_panel_visible(True)
+    window.show()
+    window._central_splitter.setSizes([500, 300])
+    QApplication.processEvents()
+
+    row = window.side_panel.tab_row
+    assert window.side_panel.width() >= 300
+    assert row._strip.width() > row.scroll_area.viewport().width()
+    for key, button in row.main_tab_buttons.items():
+        assert button.text() == SidePanel.PAGE_LABELS[key]
+        assert button.toolTip() == SidePanel.PAGE_LABELS[key]
+        assert button.accessibleName() == SidePanel.PAGE_LABELS[key]
 
 
 def test_side_panel_remains_usable_in_dark_theme_at_compact_window_size(window) -> None:
     active_page = window.side_panel.active_page_key
     window.resize(980, 600)
     window.show()
+    window.side_panel.set_panel_visible(True)
     window.toggle_theme(True)
     QApplication.processEvents()
 
     assert 336 <= window.side_panel.width() <= 340
-    assert 300 <= window.side_panel.width() <= 340
     assert window.tabs.width() > 0
     assert window.side_panel.active_page_key == active_page
 

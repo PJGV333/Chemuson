@@ -283,17 +283,20 @@ class TestRealWindow:
         menu_titles = [a.text() for a in win.menuBar().actions()]
         for title in ("Archivo", "Editar", "Ver", "Estructura", "Reacción", "Ayuda"):
             assert any(title in m for m in menu_titles), title
-        # Wrapper central [app_bar, text_toolbar, body(rail, tabs)]
+        # Wrapper central [app_bar, text_toolbar, body(rail, splitter(canvas, side_panel))]
         central = win.centralWidget()
         assert central is not win.tabs
         assert win.app_bar.parent() is central
-        assert win.tabs.parent() is central
+        assert win._central_splitter.parent() is central
+        assert win.tabs.parent() is win._central_splitter
+        assert win.side_panel.parent() is win._central_splitter
+        assert win.side_panel.isHidden()
         assert win.text_toolbar.parent() is central
         assert win.tool_rail.parent() is central
 
     def test_vertical_hierarchy_appbar_above_text_toolbar(self) -> None:
         """Convergencia con el spike: AppBar -> TextFormatToolbar (oculta
-        por defecto) -> [rail | canvas].
+        por defecto) -> [rail | splitter(canvas | side panel)].
 
         La ``TextFormatToolbar`` ya no es toolbar de área superior de
         ``QMainWindow``; vive en el layout central, debajo de la app bar y
@@ -314,7 +317,7 @@ class TestRealWindow:
             if layout.itemAt(i) is not None and layout.itemAt(i).widget() is not None
         ]
         # Orden vertical exacto dentro del wrapper central:
-        # app_bar → text_toolbar (oculta) → banda body (rail + canvas).
+        # app_bar → text_toolbar (oculta) → banda body (rail + splitter).
         assert win.app_bar in widgets
         assert win.text_toolbar in widgets
         assert widgets.index(win.app_bar) < widgets.index(win.text_toolbar)
@@ -327,8 +330,10 @@ class TestRealWindow:
             if body.itemAt(i) is not None and body.itemAt(i).widget() is not None
         ]
         assert win.tool_rail in body_widgets
-        assert win.tabs in body_widgets
-        assert body_widgets.index(win.tool_rail) < body_widgets.index(win.tabs)
+        assert win._central_splitter in body_widgets
+        assert body_widgets.index(win.tool_rail) < body_widgets.index(win._central_splitter)
+        assert win._central_splitter.widget(0) is win.tabs
+        assert win._central_splitter.widget(1) is win.side_panel
         # No es una toolbar de área de QMainWindow (no compite por la franja
         # superior con la app bar): su padre es el wrapper central, no la
         # ventana.

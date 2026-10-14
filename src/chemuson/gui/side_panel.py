@@ -91,6 +91,8 @@ class SideTabRow(QFrame):
             button.setObjectName(f"sideTab_{key}")
             button.setProperty("sideTab", True)
             button.setText(self.PAGE_LABELS[key])
+            button.setToolTip(self.PAGE_LABELS[key])
+            button.setAccessibleName(self.PAGE_LABELS[key])
             button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
             button.setCheckable(True)
             button.setAutoRaise(True)
@@ -177,8 +179,8 @@ class SidePanel(QFrame):
             )
 
         self.setObjectName("sidePanel")
-        self.setFixedWidth(METRICS["sideW"])
-        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
+        self.setMinimumWidth(300)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         self._settings = settings or application_settings()
         self._pages = dict(docks)
         self._overflow_actions: dict[str, QAction] = {}
@@ -215,7 +217,10 @@ class SidePanel(QFrame):
         self.stack.setCurrentWidget(self._pages[self.active_page_key])
         self.tab_row.set_active(self.active_page_key)
         self._sync_overflow_actions()
-        self.setVisible(preferences.visible)
+        # Siempre se inicia oculto, incluso si una sesión anterior lo dejó
+        # abierto. No sobrescribir la preferencia persistida: la navegación
+        # explícita desde Ver sigue guardando el estado elegido por el usuario.
+        self.setVisible(False)
 
     @property
     def main_tab_buttons(self) -> dict[str, QToolButton]:

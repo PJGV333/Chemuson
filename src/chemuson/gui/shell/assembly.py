@@ -9,6 +9,7 @@ from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
+    QSplitter,
     QTabWidget,
     QTextEdit,
     QWidget,
@@ -130,6 +131,7 @@ def assemble_application_shell(self) -> None:
     self.tabs.setDocumentMode(True)
     self.tabs.setTabsClosable(True)
     self.tabs.setMovable(True)
+    self.tabs.setMinimumWidth(400)
     self._tab_manager = CanvasTabManager(
         self.tabs,
         autosave_parent=self,
@@ -178,14 +180,22 @@ def assemble_application_shell(self) -> None:
     # ``_sync_text_toolbar_visibility``).
     self.text_toolbar.setVisible(False)
     central_layout.addWidget(self.text_toolbar)
-    # Franja horizontal: rail (58 px) + canvas (el rail se añade en la
-    # sección TOOL RAIL; la referencia se guarda para ese fin).
+    # Franja horizontal: rail (58 px) + splitter canvas/panel. El rail se
+    # añade en la sección TOOL RAIL; el splitter conserva el espacio restante
+    # para el canvas y permite ajustar el ancho lateral con el ratón.
     _body_layout = QHBoxLayout()
     _body_layout.setContentsMargins(0, 0, 0, 0)
     _body_layout.setSpacing(0)
     central_layout.addLayout(_body_layout)
     self._central_body_layout = _body_layout
-    _body_layout.addWidget(self.tabs)
+    self._central_splitter = QSplitter(Qt.Orientation.Horizontal, central)
+    self._central_splitter.setObjectName("canvasSideSplitter")
+    self._central_splitter.setHandleWidth(6)
+    self._central_splitter.setChildrenCollapsible(False)
+    self._central_splitter.addWidget(self.tabs)
+    self._central_splitter.setCollapsible(0, False)
+    self._central_splitter.setStretchFactor(0, 1)
+    _body_layout.addWidget(self._central_splitter, 1)
     self.setCentralWidget(central)
     # La tab bar nativa del QTabWidget se sustituye visualmente por la
     # DocumentTabBar (espejo); el QTabWidget sigue siendo la fuente de
@@ -282,7 +292,10 @@ def assemble_application_shell(self) -> None:
         },
         settings=self._settings,
     )
-    self._central_body_layout.addWidget(self.side_panel)
+    self._central_splitter.addWidget(self.side_panel)
+    self._central_splitter.setCollapsible(1, False)
+    self._central_splitter.setStretchFactor(1, 0)
+    self._central_splitter.setSizes([800, METRICS["sideW"]])
 
     # === LEFT TOOLBAR (Drawing tools) ===
     self.toolbar = ChemusonToolbar()

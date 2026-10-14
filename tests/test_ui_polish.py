@@ -11,8 +11,8 @@ Cubre:
   de PlantillasDock (88×56, sin recorte en el SidePanel de 340 px), con el
   bounding box relativo de la estructura invariante entre DPR 1 y DPR 2.
 - Refresco de la ``CommandPalette`` tras mutación de plantillas.
-- Onboarding nativo de primera ejecución (3 pasos, semántica de
-  persistencia de "No volver a mostrar", no-repetir).
+- Onboarding nativo de primera ejecución (3 pasos, acceso a Ver con el panel
+  oculto, semántica de persistencia de "No volver a mostrar", no-repetir).
 - Render del onboarding: máscara por resta de caminos (``outer - inner``) sin
   ``CompositionMode_Clear``, tarjeta theme-aware (QSS de tokens) y layout
   estable entre pasos.
@@ -275,13 +275,15 @@ def test_templates_tree_sets_thumbnail_icon_size(win):
     from chemuson.gui.docks import _TEMPLATE_THUMB_SIZE, PlantillasDock
 
     assert isinstance(win.templates_dock, PlantillasDock)
+    win.side_panel.set_panel_visible(True)
+    QApplication.processEvents()
     tree = win.templates_dock.tree
     assert tree.iconSize() == _TEMPLATE_THUMB_SIZE
     # El tamaño lógico debe coincidir con el pixmap de
     # ``template_preview_icon`` (88×56).
     assert _TEMPLATE_THUMB_SIZE == QSize(88, 56)
-    # Debe caber en el SidePanel (340 px) con margen para el texto del ítem.
-    assert win.side_panel.width() == 340
+    # Debe caber en el SidePanel de ancho inicial (336–340 px) con margen.
+    assert 336 <= win.side_panel.width() <= 340
     assert _TEMPLATE_THUMB_SIZE.width() < win.side_panel.width()
 
 
@@ -547,6 +549,8 @@ def test_onboarding_shows_on_first_run(win):
     assert overlay is not None, "el onboarding debe mostrarse en la primera ejecución"
     assert overlay.isVisible()
     assert overlay.step == 0
+    assert win.side_panel.isHidden()
+    assert overlay._targets[2] is win.app_bar.menu_button
 
 
 def test_onboarding_waits_for_visible_layout_and_tracks_window_geometry(
@@ -596,6 +600,39 @@ def test_onboarding_waits_for_visible_layout_and_tracks_window_geometry(
     target_origin = overlay.mapFromGlobal(target.mapToGlobal(QPoint(0, 0)))
     assert overlay.hole == QRect(target_origin, target.size()).adjusted(6, 6, -6, -6)
 
+    window.close()
+    QApplication.processEvents()
+
+
+def test_onboarding_keeps_hidden_panel_closed_and_highlights_view_menu(
+    _qapp, _isolated_config_home
+):
+    from PyQt6.QtCore import QPoint, QRect
+    from chemuson.platform.settings import application_settings
+
+    settings = application_settings()
+    settings.remove("ui/onboarding/completed")
+    settings.setValue("ui/side_panel/active_tab", "compchem")
+    settings.setValue("ui/side_panel/visible", True)
+    window = ChemusonWindow()
+    window.resize(980, 600)
+    window.show()
+    QApplication.processEvents()
+    overlay = _find_onboarding(window)
+    assert overlay is not None
+    assert window.side_panel.isHidden()
+    assert window.side_panel.active_page_key == "compchem"
+
+    overlay.advance()
+    overlay.advance()
+    QApplication.processEvents()
+    target = window.app_bar.menu_button
+    origin = overlay.mapFromGlobal(target.mapToGlobal(QPoint(0, 0)))
+    assert overlay._targets[2] is target
+    assert overlay.hole == QRect(origin, target.size()).adjusted(6, 6, -6, -6)
+    assert window.side_panel.isHidden()
+    assert "Ver" in overlay.card.body_label.text()
+    assert "Panel lateral" in overlay.card.body_label.text()
     window.close()
     QApplication.processEvents()
 
@@ -761,8 +798,8 @@ def test_onboarding_reappears_when_not_completed(_qapp, _isolated_config_home):
 # 6. Onboarding: máscara por resta de caminos (sin ``CompositionMode_Clear``)
 # ---------------------------------------------------------------------------
 def _show_onboarding(win: ChemusonWindow) -> OnboardingOverlay:
-    """Monta el overlay sobre la ventana y procesa eventos (para medir)."""
-    overlay = OnboardingOverlay(win, [win.tool_rail, win.canvas, win.side_panel])
+    """Monta el overlay sobre accesos visibles y procesa eventos (para medir)."""
+    overlay = OnboardingOverlay(win, [win.tool_rail, win.canvas, win.app_bar.menu_button])
     overlay.show()
     QApplication.processEvents()
     return overlay
@@ -811,7 +848,7 @@ def test_onboarding_mask_is_path_subtraction_and_hole_is_transparent(win):
 
 
 def test_onboarding_hole_tracks_each_target_zone(win):
-    """El agujero se posiciona sobre ToolRail, Canvas y SidePanel en cada paso."""
+    """El agujero sigue rail, canvas y acceso visible al menú Ver."""
     from PyQt6.QtCore import QPoint, QRect
 
     overlay = _show_onboarding(win)

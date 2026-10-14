@@ -4,6 +4,7 @@ from __future__ import annotations
 
 
 import pytest
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication
 
 
@@ -83,6 +84,69 @@ def test_chemical_properties_dock_copies_tsv() -> None:
     assert text.splitlines()[0] == "Propiedad\tValor"
     assert "Fórmula\tC2H6O" in text
     assert QApplication.clipboard().text() == text
+
+
+def test_chemical_properties_scientific_display_is_presentation_only_and_theme_safe() -> None:
+    window = ChemusonWindow()
+    rows = [
+        ("Fórmula", "C66H75Cl2N9O24"),
+        ("Fórmula", "C2H6O"),
+        ("^1H NMR est.", "1.23 (3H)"),
+        ("^13C NMR est.", "26.1 ppm"),
+        ("MS est.", "M+ 46.0419; [M+H]+ 47.0492"),
+        ("Masa exacta", "46.0419"),
+        ("logP", "-0.14"),
+        ("Concentración", "2.50 %"),
+        ("Nota", "C2H6O"),
+    ]
+    try:
+        window.resize(1440, 900)
+        window.side_panel.show_page("properties")
+        window.show()
+        QApplication.processEvents()
+        window._properties_update_timer.stop()
+        window.chemical_properties_dock.update_properties(rows)
+        QApplication.processEvents()
+
+        dock = window.chemical_properties_dock
+        table = dock.prop_table
+        expected = {
+            (0, 1): "C₆₆H₇₅Cl₂N₉O₂₄",
+            (1, 1): "C₂H₆O",
+            (2, 0): "¹H NMR est.",
+            (3, 0): "¹³C NMR est.",
+            (4, 1): "M⁺ 46.0419; [M+H]⁺ 47.0492",
+            (5, 1): "46.0419",
+            (6, 1): "-0.14",
+            (7, 1): "2.50 %",
+            (8, 1): "C2H6O",
+        }
+        for theme in ("light", "dark"):
+            window.current_theme = theme
+            window._apply_theme()
+            QApplication.processEvents()
+            for (row, column), displayed in expected.items():
+                item = table.item(row, column)
+                assert item.text() == displayed
+                assert not (item.textAlignment() & int(Qt.AlignmentFlag.AlignRight))
+                assert item.flags() & Qt.ItemFlag.ItemIsSelectable
+                rect = table.visualItemRect(item)
+                assert rect.width() > 0 and table.fontMetrics().horizontalAdvance(item.text()) <= rect.width()
+            table.setCurrentCell(0, 1)
+            assert table.item(0, 1).isSelected()
+            assert not table.viewport().grab().toImage().isNull()
+
+        copied = dock.copy_properties_tsv()
+        assert copied.splitlines()[0] == "Propiedad\tValor"
+        for key, value in rows:
+            assert f"{key}\t{value}" in copied
+        assert "C₆₆" not in copied and "¹H NMR" not in copied and "<sub>" not in copied
+        assert QApplication.clipboard().text() == copied
+        assert dock._rows == rows
+        assert table.item(0, 1).data(Qt.ItemDataRole.UserRole) == "C66H75Cl2N9O24"
+    finally:
+        window.close()
+        QApplication.processEvents()
 
 
 def test_spectrum_peak_selection_selects_canvas_atom() -> None:

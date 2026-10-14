@@ -4,6 +4,7 @@ Docks de Chemuson.
 Paneles laterales para plantillas, inspección de propiedades y apariencia.
 """
 import json
+import re
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
@@ -33,6 +34,34 @@ from chemuson.gui.style import DrawingStyle
 #: :class:`PlantillasDock`: coincide con el tamaño lógico del pixmap de
 #: ``template_browser_service.template_preview_icon`` (88×56, DPR-aware).
 _TEMPLATE_THUMB_SIZE = QSize(88, 56)
+_CHEMICAL_FORMULA_KEYS = {"fórmula", "formula", "fórmula molecular", "molecular formula"}
+_CHEMICAL_NMR_LABELS = {
+    "^1h nmr est.": "¹H NMR est.",
+    "^13c nmr est.": "¹³C NMR est.",
+}
+_SUBSCRIPT_DIGITS = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
+
+
+def _chemical_property_display_text(key: str, value: str, column: int) -> str:
+    """Format selected scientific labels for display without changing source data."""
+    normalized_key = key.strip().casefold()
+    if column == 0 and normalized_key in _CHEMICAL_NMR_LABELS:
+        return _CHEMICAL_NMR_LABELS[normalized_key]
+    if column != 1:
+        return value
+    if normalized_key in _CHEMICAL_FORMULA_KEYS:
+        return re.sub(
+            r"(?<=[A-Za-z)])[0-9]+",
+            lambda match: match.group().translate(_SUBSCRIPT_DIGITS),
+            value,
+        )
+    if normalized_key in {"ms est.", "ms"}:
+        return re.sub(
+            r"\[M\+H\]\+|M\+",
+            lambda match: "[M+H]⁺" if match.group() == "[M+H]+" else "M⁺",
+            value,
+        )
+    return value
 
 
 class PlantillasDock(QDockWidget):
@@ -354,8 +383,12 @@ class ChemicalPropertiesDock(QDockWidget):
         self.btn_copy_properties.setVisible(True)
         self.prop_table.setRowCount(len(self._rows))
         for row, (key, value) in enumerate(self._rows):
-            self.prop_table.setItem(row, 0, QTableWidgetItem(str(key)))
-            self.prop_table.setItem(row, 1, QTableWidgetItem(str(value)))
+            for column, raw_text in enumerate((key, value)):
+                item = QTableWidgetItem(
+                    _chemical_property_display_text(key, raw_text, column)
+                )
+                item.setData(Qt.ItemDataRole.UserRole, raw_text)
+                self.prop_table.setItem(row, column, item)
 
     def copy_properties_tsv(self) -> str:
         """Copia las propiedades visibles como TSV y devuelve el texto."""

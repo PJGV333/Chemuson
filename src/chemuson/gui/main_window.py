@@ -398,8 +398,9 @@ class ChemusonWindow(QMainWindow):
         - cerrar anticipadamente sin marcar → NO se persiste: el onboarding
           se ofrece de nuevo en el siguiente arranque.
         El ``QuickStartDialog`` clásico (menú Ayuda) se conserva. El overlay
-        se crea tras el primer ``showEvent`` para que sus objetivos ya tengan
-        geometría final; no modifica el layout de rail, lienzo ni panel lateral.
+        se crea tras el primer ``showEvent`` para que sus objetivos visibles
+        tengan geometría final; el tercer paso resalta el menú del AppBar y no
+        abre ni usa la geometría del SidePanel oculto.
         """
         from chemuson.gui.onboarding import OnboardingOverlay
         from chemuson.platform.settings import application_settings, setting_bool
@@ -409,7 +410,7 @@ class ChemusonWindow(QMainWindow):
             return
         overlay = OnboardingOverlay(
             self,
-            targets=[self.tool_rail, self.canvas, self.side_panel],
+            targets=[self.tool_rail, self.canvas, self.app_bar.menu_button],
         )
 
         def _on_finished(completed: bool) -> None:

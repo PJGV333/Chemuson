@@ -10,8 +10,10 @@ herramientas, lienzo y panel lateral) mediante:
   ``Cerrar`` y una casilla ``No volver a mostrar``.
 
 No toca la escena ni el canvas: el agujero se posiciona sobre geometrías
-públicas (``tool_rail``, el widget central y ``side_panel``) mapeadas a las
-coordenadas del overlay. La persistencia usa ``platform.settings`` (el mismo
+públicas (``tool_rail``, el canvas y el botón de menú del AppBar) mapeadas a
+las coordenadas del overlay. El paso lateral guía a ``Ver`` para abrir el
+SidePanel explícitamente, que permanece oculto al iniciar. La persistencia usa
+``platform.settings`` (el mismo
 ``QSettings`` que el resto de la GUI) con la clave
 ``ui/onboarding/completed``.
 
@@ -61,7 +63,7 @@ _STEPS: tuple[tuple[str, str, str], ...] = (
     ("Lienzo",
      "Dibuja, selecciona y edita tus estructuras en el lienzo.", "canvas"),
     ("Panel lateral",
-     "Inspector, validación, propiedades, plantillas y apariencia están aquí.",
+     "Abre Ver y elige Panel lateral o una sección para mostrarlo aquí.",
      "sidepanel"),
 )
 
@@ -194,8 +196,8 @@ class OnboardingOverlay(QWidget):
     Args:
         parent: Ventana principal que contiene el overlay.
         targets: Lista de ``QWidget`` objetivo por paso (en el orden de
-            :data:`_STEPS``: rail, lienzo/central, panel lateral). ``None``
-            en una posición desactiva el resalte de ese paso (tarjeta central).
+            :data:`_STEPS``: rail, lienzo y botón visible del menú para abrir
+            el panel lateral). ``None`` en una posición desactiva el resalte.
     """
 
     finished = pyqtSignal(bool)
