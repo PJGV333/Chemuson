@@ -45,6 +45,7 @@ Se revisó el diff del manifiesto de IDs: cinco casos nuevos de interfaz, una pr
 ## CI y entrega remota
 
 - Primer CI tras push, [run 38647067861](https://github.com/PJGV333/Chemuson/actions/runs/38647067861), SHA `4f8c4326de02d5776ed06fd96476c357284f9f04`: falló sólo la nueva aserción de legibilidad en el shard 7; en Ubuntu runner el valor MS ocupaba 176 px y la columna Stretch/Stretch ofrecía 167 px. Se corrigió el reparto de columnas en `ChemicalPropertiesDock` (Propiedad `ResizeToContents`, Valor `Stretch`) y se repitió localmente el shard focalizado: 19 passed.
-- CI final, [run 38647689407](https://github.com/PJGV333/Chemuson/actions/runs/38647689407), SHA `6287bf519f4ac0c581c5807045b2913bee7e0419`: **success**; 8/8 shards, 2152/2152 node IDs verificados (269 por shard), pytest-plan, Windows smoke e inspección Flatpak pasaron.
+- CI tras corregir las anchuras, [run 38647689407](https://github.com/PJGV333/Chemuson/actions/runs/38647689407), SHA `6287bf519f4ac0c581c5807045b2913bee7e0419`: **success**; 8/8 shards, 2152/2152 node IDs verificados (269 por shard), pytest-plan, Windows smoke e inspección Flatpak pasaron.
+- CI del HEAD final, [run 38648382216](https://github.com/PJGV333/Chemuson/actions/runs/38648382216), SHA `ee75534ba9a02fffeeae001912501db0da4ddfc4`: **success**; 8/8 shards, los mismos 2152 node IDs, pytest-plan, Windows smoke e inspección Flatpak pasaron.
 - Rama publicada por push normal: `fix/beta-properties-panel-polish` — https://github.com/PJGV333/Chemuson/tree/fix/beta-properties-panel-polish.
-- Commits: `95bec64` código/pruebas; `4f8c432` OpenSpec/notas/matriz; `6287bf5` ajuste de ancho encontrado por CI. No se abrió PR, no se integró a prep y no se creó/publicó una beta o tag.
+- Commits: `95bec64` código/pruebas; `4f8c432` OpenSpec/notas/matriz; `6287bf5` ajuste de ancho encontrado por CI; `ee75534` registro final de validación. No se abrió PR, no se integró a prep y no se creó/publicó una beta o tag.
