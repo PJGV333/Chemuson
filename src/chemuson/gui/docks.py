@@ -352,7 +352,9 @@ class ChemicalPropertiesDock(QDockWidget):
 
         self.prop_table = QTableWidget(0, 2)
         self.prop_table.setHorizontalHeaderLabels(["Propiedad", "Valor"])
-        self.prop_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        header = self.prop_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.prop_table.verticalHeader().setVisible(False)
         self.prop_table.setAlternatingRowColors(True)
         layout.addWidget(self.prop_table)
