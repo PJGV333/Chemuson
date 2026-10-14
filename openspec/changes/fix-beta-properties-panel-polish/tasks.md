@@ -8,4 +8,4 @@
 - [x] 1.6 Añadir tooltips completos a pestañas y pruebas de overflow/clipping.
 - [x] 1.7 Actualizar la especificación, notas beta y matriz de aceptación manual sin cerrar estados no probados.
 - [x] 1.8 Ejecutar validación focalizada acotada, arquitectura, Ruff, compileall, OpenSpec estricto y diff check; registrar fallos previos separados.
-- [ ] 1.9 Crear commits pequeños, intentar push normal sólo si existe autenticación y comprobar CI; no integrar ni publicar beta.
+- [x] 1.9 Crear commits pequeños, intentar push normal sólo si existe autenticación y comprobar CI; no integrar ni publicar beta.

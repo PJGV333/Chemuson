@@ -12,7 +12,7 @@ Todos los comandos pytest tuvieron timeout externo real menor a 10 minutos:
 
 | Comando | Resultado | Tiempo |
 |---|---:|---:|
-| `pytest -q tests/test_side_panel.py tests/test_spectroscopy_dock.py` | 19 passed | 5.99 s |
+| `pytest -q tests/test_side_panel.py tests/test_spectroscopy_dock.py` | 19 passed | 5.93 s (tras el ajuste de anchuras) |
 | `pytest -q tests/test_ui_polish.py` | 38 passed | 9.77 s |
 | `pytest -q tests/test_ui_tool_rail.py` | 64 passed | 35.81 s |
 | `pytest -q tests/test_ui_app_bar_tabs.py` | 24 passed | 4.30 s |
@@ -42,6 +42,9 @@ Se revisó el diff del manifiesto de IDs: cinco casos nuevos de interfaz, una pr
 - **Caveat Qt explícito:** un probe fuente/offscreen con timeout externo de 30 s reajustó el splitter en 340/320/300 px y `window.close()` devolvió `async_shutdown_complete=True`, pero el proceso terminó con SIGSEGV 139 durante el teardown del intérprete Qt. Un segundo intento acotado añadió limpieza explícita del UndoStack y `processEvents()` después del cierre; terminó igual. No quedó core versionado y no se continuó instrumentando. La prueba focalizada pytest de splitter/hide/show y los demás shards Qt indicados arriba pasaron. No se determinó la causa y no se presenta como crash del paquete ni como corregido; coincide con la limitación de teardown que el usuario pidió mantener explícita.
 - La aceptación manual de Windows/Linux/AppImage sigue `NOT TESTED`; la automatización local no sustituye la instalación ni la prueba personal solicitada por el propietario. No se creó tag/Release ni se integró a la rama prep.
 
-## Entrega remota
+## CI y entrega remota
 
-Pendiente de registrar commits, autenticación, push y CI después de la revisión del diff local.
+- Primer CI tras push, [run 38647067861](https://github.com/PJGV333/Chemuson/actions/runs/38647067861), SHA `4f8c4326de02d5776ed06fd96476c357284f9f04`: falló sólo la nueva aserción de legibilidad en el shard 7; en Ubuntu runner el valor MS ocupaba 176 px y la columna Stretch/Stretch ofrecía 167 px. Se corrigió el reparto de columnas en `ChemicalPropertiesDock` (Propiedad `ResizeToContents`, Valor `Stretch`) y se repitió localmente el shard focalizado: 19 passed.
+- CI final, [run 38647689407](https://github.com/PJGV333/Chemuson/actions/runs/38647689407), SHA `6287bf519f4ac0c581c5807045b2913bee7e0419`: **success**; 8/8 shards, 2152/2152 node IDs verificados (269 por shard), pytest-plan, Windows smoke e inspección Flatpak pasaron.
+- Rama publicada por push normal: `fix/beta-properties-panel-polish` — https://github.com/PJGV333/Chemuson/tree/fix/beta-properties-panel-polish.
+- Commits: `95bec64` código/pruebas; `4f8c432` OpenSpec/notas/matriz; `6287bf5` ajuste de ancho encontrado por CI. No se abrió PR, no se integró a prep y no se creó/publicó una beta o tag.
