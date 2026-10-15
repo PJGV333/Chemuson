@@ -82,5 +82,11 @@ El fallo intermitente de CompChem observado en campañas anteriores no apareció
 
 ## Estado Git
 
-- Commits locales en la rama: implementación + OpenSpec (ver `git log`).
-- Publicación: sólo `origin/clean2d/wedge-bond-campaign`. Sin merge a `release/v0.3.0-beta.1-prep` ni `main`, sin tags, sin releases.
+- Commits locales en la rama: `946de07` (`fix(clean2d): preserve wedge configuration by cyclic neighbour order`) y `4fd9dd6` (`docs(openspec): record clean2d wedge stereo campaign and evidence`).
+- Publicación: sólo `origin/clean2d/wedge-bond-campaign`, SHA remoto `4fd9dd64bed21bc51ce6ce0341c8e807b1d496b7`. Sin merge a `release/v0.3.0-beta.1-prep` ni `main`, sin tags, sin releases.
+
+## CI en la rama publicada
+
+- Run de `test.yml` para `4fd9dd6`: id **38819097932**, conclusión **success**.
+- Jobs en verde: `pytest-plan`, los ocho `pytest shard 0..7`, `pytest-summary`, `windows-smoke` y `flatpak-smoke`.
+- `pytest-summary` registró: `pytest shard coverage verified: 2174 unique node IDs, 8 complete successful shards`.
