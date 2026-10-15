@@ -6,14 +6,14 @@ import pytest
 from PyQt6.QtCore import QSettings
 
 from chemuson.platform.settings import (
+    UI_THEME_CHOICES,
     AIProviderPreferences,
     IdentityVerificationPreferences,
     MolecularAssistantPreferences,
     NamingPreferences,
     NumberingPreferences,
-    UI_THEME_CHOICES,
-    UiPreferences,
     SidePanelPreferences,
+    UiPreferences,
     load_ai_provider_preferences,
     load_identity_verification_preferences,
     load_molecular_assistant_preferences,
@@ -192,6 +192,9 @@ def test_ui_preferences_roundtrip_and_normalize() -> None:
     assert load_ui_preferences(
         FakeSettings({"ui/theme": "dark", "ui/show_menu_bar": "yes"})
     ) == UiPreferences(theme="dark", show_menu_bar=True)
+    assert load_ui_preferences(
+        FakeSettings({"ui/show_menu_bar": "yes", "ui/show_main_toolbar": "0"})
+    ) == UiPreferences(show_menu_bar=True, show_main_toolbar=False)
 
     # Valores inválidos o ausentes resuelven a light y modo compacto.
     assert load_ui_preferences(FakeSettings({"ui/theme": "neon"})) == UiPreferences(theme="light")
@@ -203,18 +206,31 @@ def test_ui_preferences_roundtrip_and_normalize() -> None:
     settings = FakeSettings({})
     save_ui_preferences(
         settings,
-        UiPreferences(theme="system", show_menu_bar=True),
+        UiPreferences(
+            theme="system",
+            show_menu_bar=True,
+            show_main_toolbar=False,
+        ),
     )
     assert settings.values["ui/theme"] == "system"
     assert settings.values["ui/show_menu_bar"] is True
+    assert settings.values["ui/show_main_toolbar"] is False
 
-    save_ui_preferences(settings, UiPreferences(theme="invalid", show_menu_bar=True))
+    save_ui_preferences(
+        settings,
+        UiPreferences(theme="invalid", show_menu_bar=True, show_main_toolbar=True),
+    )
     assert settings.values["ui/theme"] == "light"
     assert settings.values["ui/show_menu_bar"] is True
+    assert settings.values["ui/show_main_toolbar"] is True
 
     # El valor persistido se relee normalizado.
-    settings = FakeSettings({"ui/theme": "DARK", "ui/show_menu_bar": "0"})
-    assert load_ui_preferences(settings) == UiPreferences(theme="dark", show_menu_bar=False)
+    settings = FakeSettings(
+        {"ui/theme": "DARK", "ui/show_menu_bar": "0", "ui/show_main_toolbar": "0"}
+    )
+    assert load_ui_preferences(settings) == UiPreferences(
+        theme="dark", show_menu_bar=False, show_main_toolbar=False
+    )
 
 
 def test_side_panel_preferences_default_and_roundtrip() -> None:

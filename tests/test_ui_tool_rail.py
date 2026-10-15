@@ -463,7 +463,7 @@ def test_dispatcher_suppresses_keys_outside_the_window():
 # ---------------------------------------------------------------------------
 
 
-def test_historical_toolbars_are_hidden_but_still_own_actions():
+def test_drawing_toolbars_remain_hidden_but_still_own_actions():
     from chemuson.gui.main_window import ChemusonWindow
 
     win = ChemusonWindow()
@@ -503,10 +503,9 @@ def test_rail_and_flyout_metrics_match_mockup():
 # ---------------------------------------------------------------------------
 
 
-def test_shell_has_no_visible_menubar_or_toolbars():
-    """La QMenuBar y las toolbars clásicas no se muestran; la QMenuBar
-    sigue existiendo (menús/acciones/atajos intactos) y se abre como popup
-    (hamburguesa o Alt)."""
+def test_shell_has_compact_menubar_and_visible_main_toolbar():
+    """La barra de acciones principal está visible; el menubar clásico
+    permanece compacto y accesible por hamburguesa/Alt."""
     from PyQt6.QtWidgets import QToolBar
 
     from chemuson.gui.main_window import ChemusonWindow
@@ -518,8 +517,11 @@ def test_shell_has_no_visible_menubar_or_toolbars():
     assert win.menuBar().isVisible() is False
     # Los 6 menús superiores siguen en el menubar oculto.
     assert len([a for a in win.menuBar().actions() if a.menu() is not None]) == 6
-    visible = [t.objectName() for t in win.findChildren(QToolBar) if t.isVisible()]
-    assert visible == []
+    visible = [t for t in win.findChildren(QToolBar) if t.isVisible()]
+    assert visible == [win.main_toolbar]
+    assert win.action_show_main_toolbar in win.view_menu.actions()
+    assert win.tool_rail.isVisible()
+    assert win.side_panel.isHidden()
     win.close()
 
 

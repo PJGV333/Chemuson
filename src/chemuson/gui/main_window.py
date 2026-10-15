@@ -191,6 +191,7 @@ class ChemusonWindow(QMainWindow):
         preferences = load_ui_preferences(self._settings)
         self.current_theme = preferences.theme
         self._show_menu_bar = preferences.show_menu_bar
+        self._show_main_toolbar = preferences.show_main_toolbar
 
     def _create_menu_bar(self) -> None:
         """Construye menús principales delegando el wiring repetitivo."""
@@ -216,6 +217,22 @@ class ChemusonWindow(QMainWindow):
             UiPreferences(
                 theme=self.current_theme,
                 show_menu_bar=self._show_menu_bar,
+                show_main_toolbar=self._show_main_toolbar,
+            ),
+        )
+
+    def _on_toggle_main_toolbar(self, visible: bool) -> None:
+        """Persiste la visibilidad del QToolBar principal existente."""
+        self._show_main_toolbar = bool(visible)
+        toolbar = getattr(self, "main_toolbar", None)
+        if toolbar is not None:
+            toolbar.setVisible(self._show_main_toolbar)
+        save_ui_preferences(
+            self._settings,
+            UiPreferences(
+                theme=self.current_theme,
+                show_menu_bar=self._show_menu_bar,
+                show_main_toolbar=self._show_main_toolbar,
             ),
         )
 
@@ -1828,7 +1845,11 @@ class ChemusonWindow(QMainWindow):
             self._apply_theme()
             save_ui_preferences(
                 self._settings,
-                UiPreferences(theme=theme, show_menu_bar=self._show_menu_bar),
+                UiPreferences(
+                    theme=theme,
+                    show_menu_bar=self._show_menu_bar,
+                    show_main_toolbar=self._show_main_toolbar,
+                ),
             )
 
         self.action_show_carbons.setChecked(self.canvas.state.show_implicit_carbons)

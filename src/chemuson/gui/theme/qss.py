@@ -924,12 +924,20 @@ QTabBar#docTabs::right-scrollbar:hover {{
 
 QToolButton[tabClose="true"] {{
     background-color: transparent;
-    border: none;
-    border-radius: 5px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 0px;
+    min-width: 24px;
+    min-height: 24px;
 }}
 
 QToolButton[tabClose="true"]:hover {{
-    background-color: {c('border')};
+    background-color: {c('surface2')};
+    border: 1px solid {c('borderStrong')};
+}}
+
+QToolButton[tabClose="true"]:focus {{
+    border: 1px solid {c('accent')};
 }}
 
 #dirtyDot {{

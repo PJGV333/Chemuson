@@ -196,7 +196,6 @@ class TestAppBarUnit:
         )
         bar.refresh_icons("light")
         light_theme_icon = bar.theme_button.icon()
-        light_brand = bar.brand_label.pixmap().copy()
         assert not light_theme_icon.isNull()
         bar.refresh_icons("dark")
         dark_theme_icon = bar.theme_button.icon()
@@ -269,12 +268,15 @@ class TestDocumentTabBarUnit:
 # ---------------------------------------------------------------------------
 
 class TestRealWindow:
-    def test_app_bar_mounted_and_classic_toolbar_hidden(self) -> None:
+    def test_app_bar_mounted_and_main_toolbar_visible_by_default(self) -> None:
         win = _make_action_window()
         assert win.app_bar is not None and win.app_bar.isVisibleTo(win)
         assert win.app_bar.minimumHeight() == 54
         assert win.tabs.tabBar().isHidden()
-        assert not win.main_toolbar.isVisible()
+        assert win.main_toolbar.isVisible()
+        assert win.action_show_main_toolbar is win.main_toolbar.toggleViewAction()
+        assert win.action_show_main_toolbar.text() == "Mostrar barra de herramientas"
+        assert win.action_show_main_toolbar in win.view_menu.actions()
         # Convergencia con el spike: la QMenuBar clásica queda oculta
         # (no eliminada): los 6 menús superiores siguen en ella y también
         # en el menú agregado de la app bar.

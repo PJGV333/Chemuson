@@ -145,6 +145,18 @@ class MainWindowUiBuilder:
             window,
             window.action_show_main_toolbar_aux.isChecked(),
         )
+        window.main_toolbar.setVisible(window._show_main_toolbar)
+        # Reutiliza la QAction nativa del QToolBar, sin crear un toggle
+        # paralelo; se inserta junto a Mostrar barra de menús en Ver.
+        window.action_show_main_toolbar = window.main_toolbar.toggleViewAction()
+        window.action_show_main_toolbar.setText("Mostrar barra de herramientas")
+        window.action_show_main_toolbar.setChecked(window._show_main_toolbar)
+        window.action_show_main_toolbar.toggled.connect(window._on_toggle_main_toolbar)
+        first_separator = next(
+            (action for action in window.view_menu.actions() if action.isSeparator()),
+            None,
+        )
+        window.view_menu.insertAction(first_separator, window.action_show_main_toolbar)
 
     def refresh_main_toolbar_icons(self, window) -> None:
         """Regenera iconos de la barra principal según el tema activo."""

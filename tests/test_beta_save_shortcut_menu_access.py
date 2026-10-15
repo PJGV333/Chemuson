@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from pathlib import Path
 
 import pytest
-from PyQt6.QtCore import Qt, QSettings
+from PyQt6.QtCore import QPoint, QSettings, Qt
+from PyQt6.QtGui import QUndoCommand
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QFileDialog, QMessageBox
 
@@ -76,6 +78,28 @@ def _close_button(window: ChemusonWindow, canvas):
     assert side is not None
     assert side.close_button.isVisible()
     return side.close_button
+
+
+def _rendered_button_colors(button) -> Counter[str]:
+    image = button.grab().toImage()
+    return Counter(
+        image.pixelColor(x, y).name()
+        for x in range(image.width())
+        for y in range(image.height())
+        if image.pixelColor(x, y).alpha() > 0
+    )
+
+
+class _ValueCommand(QUndoCommand):
+    def __init__(self, state: list[int]):
+        super().__init__("value")
+        self.state = state
+
+    def redo(self) -> None:
+        self.state[0] = 1
+
+    def undo(self) -> None:
+        self.state[0] = 0
 
 
 @pytest.mark.parametrize("classic_menu", [False, True], ids=["compact", "classic"])
@@ -464,4 +488,190 @@ def test_save_then_theme_preference_save_does_not_reset_menu_mode(window) -> Non
     window.action_show_menu_bar.trigger()
     window._apply_preferences({"theme": "dark"})
     assert window.menuBar().isVisible()
+    preferences = load_ui_preferences(window._settings)
+    assert preferences.show_menu_bar is True
+    assert preferences.show_main_toolbar is True
+
+
+def test_close_icons_are_visible_when_clean_dirty_new_and_rethemed(window) -> None:
+    bar = window.app_bar.tab_bar
+    first = window._canvas_from_tab_index(0)
+    assert first is not None
+    _add_atom_and_mark_dirty(first, "C")
+    assert bar._side_button(0).is_dirty_shown()
+
+    window._on_file_new()
+    QApplication.processEvents()
+    assert window.tabs.count() == 2
+    for theme in ("light", "dark", "light"):
+        window.current_theme = theme
+        window._apply_theme()
+        QApplication.processEvents()
+        for index in range(window.tabs.count()):
+            side = bar._side_button(index)
+            button = side.close_button
+            assert button.isVisible()
+            assert button.toolTip() == "Cerrar pestaña"
+            assert button.accessibleName() == "Cerrar pestaña"
+            assert button.width() >= 24 and button.height() >= 24
+            assert not button.icon().isNull()
+            # Comprobar la pintura real del botón con el puntero fuera de él:
+            # la X no depende del estado hover y conserva el tinte del tema.
+            QTest.mouseMove(window.app_bar.menu_button, QPoint(1, 1))
+            QApplication.processEvents()
+            expected_color = window.app_bar._icons.theme_color(theme, "icon")
+            assert _rendered_button_colors(button)[expected_color] > 0
+    assert bar._side_button(0).is_dirty_shown()
+    assert not bar._side_button(1).is_dirty_shown()
+
+
+def test_reordered_close_icon_closes_only_the_document_under_it(window) -> None:
+    window._on_file_new()
+    window._on_file_new()
+    QApplication.processEvents()
+    documents = [window._canvas_from_tab_index(i) for i in range(window.tabs.count())]
+    assert all(document is not None for document in documents)
+    target = documents[0]
+    remaining = [document for document in documents[1:]]
+    window.app_bar.tabMoved.emit(0, 2)
+    QApplication.processEvents()
+    assert window.tabs.indexOf(target) == 2
+    window.tabs.setCurrentWidget(remaining[0])
+    QApplication.processEvents()
+
+    button = _close_button(window, target)
+    assert not button.icon().isNull()
+    QTest.mouseClick(button, Qt.MouseButton.LeftButton)
+    QApplication.processEvents()
+
+    assert window.tabs.count() == 2
+    assert window.tabs.indexOf(target) == -1
+    assert all(window.tabs.indexOf(document) >= 0 for document in remaining)
+
+
+def test_toolbar_toggle_is_native_grouped_persistent_and_independent(window) -> None:
+    toolbar = window.main_toolbar
+    action = window.action_show_main_toolbar
+    menu_actions = window.view_menu.actions()
+    assert action is toolbar.toggleViewAction()
+    assert action.text() == "Mostrar barra de herramientas"
+    assert window.action_show_menu_bar is menu_actions[0]
+    assert action is menu_actions[1]
+    assert menu_actions[2].isSeparator()
+    assert menu_actions.count(action) == 1
+    assert not window.action_show_menu_bar.isChecked()
+    assert not window.menuBar().isVisible()
+    assert action.isChecked() and toolbar.isVisible()
+    for command in (
+        window.action_new,
+        window.action_open,
+        window.action_save,
+        window.action_undo,
+        window.action_redo,
+    ):
+        assert command in toolbar.actions()
+    assert window.tool_rail.isVisible()
+    assert window.side_panel.isHidden()
+
+    # La acción antigua sólo cambia qué botones auxiliares contiene la barra.
+    assert not window.action_show_main_toolbar_aux.isChecked()
+    assert window.action_copy not in toolbar.actions()
+    window.action_show_main_toolbar_aux.trigger()
+    assert window.action_copy in toolbar.actions()
+    assert toolbar.isVisible()
+
+    action.trigger()
+    QApplication.processEvents()
+    assert not toolbar.isVisible()
+    assert action.isChecked() is False
+    preferences = load_ui_preferences(window._settings)
+    assert preferences.show_main_toolbar is False
+    assert preferences.show_menu_bar is False
+    assert window.side_panel.isHidden() and window.tool_rail.isVisible()
+
+    window.action_show_menu_bar.trigger()
+    QApplication.processEvents()
+    assert window.menuBar().isVisible() and not toolbar.isVisible()
     assert load_ui_preferences(window._settings).show_menu_bar is True
+
+    # La configuración se aplica al construir otra ventana; ninguna barra
+    # cambia la preferencia del panel lateral.
+    second = ChemusonWindow()
+    try:
+        second.show()
+        QApplication.processEvents()
+        assert not second.main_toolbar.isVisible()
+        assert not second.action_show_main_toolbar.isChecked()
+        assert second.menuBar().isVisible()
+        assert second.side_panel.isHidden()
+    finally:
+        for index in range(second.tabs.count()):
+            canvas = second._canvas_from_tab_index(index)
+            if canvas is not None:
+                canvas.undo_stack.setClean()
+        second.close()
+        QApplication.processEvents()
+
+    action.trigger()
+    QApplication.processEvents()
+    assert toolbar.isVisible() and action.isChecked()
+    assert window.menuBar().isVisible()
+    window.action_show_menu_bar.trigger()
+    QApplication.processEvents()
+    assert toolbar.isVisible() and not window.menuBar().isVisible()
+    preferences = load_ui_preferences(window._settings)
+    assert preferences.show_main_toolbar is True
+    assert preferences.show_menu_bar is False
+    # Aux permanece independiente también al ocultar/mostrar la barra entera.
+    assert window.action_show_main_toolbar_aux.isChecked()
+    assert window.action_copy in toolbar.actions()
+
+
+def test_main_toolbar_keeps_layout_in_both_themes_and_small_windows(window) -> None:
+    assert window.main_toolbar.isVisible()
+    for theme in ("light", "dark"):
+        window.current_theme = theme
+        window._apply_theme()
+        for width, height in ((1440, 900), (980, 600), (900, 560)):
+            window.resize(width, height)
+            QApplication.processEvents()
+            assert window.main_toolbar.isVisible()
+            assert window.main_toolbar.width() > 0
+            assert window.main_toolbar.height() > 0
+            assert window.app_bar.isVisible()
+            assert window.tool_rail.isVisible()
+            assert window.side_panel.isHidden()
+            assert window.tabs.width() >= 400
+            assert not window.menuBar().isVisible()
+
+
+def test_save_undo_redo_shortcuts_survive_hiding_main_toolbar(window, tmp_path) -> None:
+    canvas = window.canvas
+    path = tmp_path / "shortcuts.cmsn"
+    _save_path(window, canvas, path)
+    _add_atom_and_mark_dirty(canvas, "N")
+    window.action_show_main_toolbar.trigger()
+    assert not window.main_toolbar.isVisible()
+    assert window.action_save in window.actions()
+    assert [shortcut.toString() for shortcut in window.action_save.shortcuts()] == [
+        "Ctrl+S",
+        "Ctrl+G",
+    ]
+
+    QTest.keyClick(canvas, Qt.Key.Key_S, Qt.KeyboardModifier.ControlModifier)
+    QApplication.processEvents()
+    assert _saved_elements(path) == ["N"]
+    assert canvas.undo_stack.isClean()
+
+    state = [0]
+    canvas.undo_stack.push(_ValueCommand(state))
+    assert state == [1]
+    QTest.keySequence(canvas, window.action_undo.shortcut())
+    QApplication.processEvents()
+    assert state == [0]
+    QTest.keySequence(canvas, window.action_redo.shortcut())
+    QApplication.processEvents()
+    assert state == [1]
+    assert not window.main_toolbar.isVisible()
+    assert window.action_undo in window.main_toolbar.actions()
+    assert window.action_redo in window.main_toolbar.actions()

@@ -155,12 +155,11 @@ def assemble_application_shell(self) -> None:
     self.text_toolbar.opacity_changed.connect(self._on_opacity_changed)
 
     # === APP BAR (Fase 3) ===
-    # Shell superior (marca, pestañas de documento, búsqueda placeholder,
-    # undo/redo, tema y ajustes). Reemplaza visualmente la franja superior
-    # clásica; la `main_toolbar` histórica se oculta abajo (no se elimina).
-    # Orden vertical (polish Fase 3): QMenuBar (histórica) -> AppBar ->
-    # TextFormatToolbar -> Canvas. La barra de texto conserva todas sus
-    # acciones y señales; solo deja de ser toolbar de área superior.
+    # Shell central superior (marca, pestañas, búsqueda, undo/redo, tema y
+    # ajustes). La barra de acciones QMainWindow puede mostrarse encima de
+    # esta composición desde Ver; el AppBar y el toolbar son independientes.
+    # Orden central: AppBar -> TextFormatToolbar -> Canvas. La barra de texto
+    # conserva sus acciones/señales y sólo aparece en contexto.
     self.app_bar = AppBar(
         parent=self,
         version=self._app_version,
@@ -353,9 +352,6 @@ def assemble_application_shell(self) -> None:
     self.menuBar().setVisible(self._show_menu_bar)
     self.app_bar.menuRequested.connect(self._open_main_menu_popup)
     self._create_main_toolbar()
-    # Fase 3: la toolbar superior clásica deja de mostrarse; sus QAction
-    # siguen accesibles por menú, atajos y app bar (objetos conservados).
-    self.main_toolbar.setVisible(False)
     self._sync_label_menu_state()
     self._template_browser.migrate_legacy_templates(self._template_browser_context())
     self._template_browser.refresh_template_views(self._template_browser_context())

@@ -35,10 +35,10 @@ __all__ = [
 ]
 
 _TAB_ICON_SIZE = 14
-_CLOSE_ICON_SIZE = 11
+_CLOSE_ICON_SIZE = 14
 _PLUS_ICON_SIZE = 14
 _DOT_SIZE = 7
-_CLOSE_BTN_SIZE = 18
+_CLOSE_BTN_SIZE = 24
 _NEW_BTN_SIZE = 28
 
 
@@ -71,10 +71,12 @@ class _TabSideButton(QWidget):
         self.close_button.setFixedSize(_CLOSE_BTN_SIZE, _CLOSE_BTN_SIZE)
         self.close_button.setIconSize(QSize(_CLOSE_ICON_SIZE, _CLOSE_ICON_SIZE))
         self.close_button.setToolTip("Cerrar pestaña")
+        self.close_button.setAccessibleName("Cerrar pestaña")
         self.close_button.clicked.connect(lambda _checked=False: self._request_close())
 
         layout.addWidget(self.dirty_dot)
         layout.addWidget(self.close_button)
+        self.refresh_icons(self._tint)
 
     def attach(self, bar: "DocumentTabBar") -> None:
         """Vincula el botón a la barra que lo contiene (para cerrar)."""
