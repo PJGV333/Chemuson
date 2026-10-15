@@ -65,6 +65,7 @@ from chemuson.geometry3d import (
     ForceField,
     OptimizationSettings,
     project_conformer_to_2d,
+    scene_molecule_from_graph,
 )
 from chemuson.geometry3d.export_xyz import molgraph_to_xyz
 from chemuson.compchem.exporters import (
@@ -510,6 +511,44 @@ class ChemusonWindow(QMainWindow):
             action.setChecked(checked)
             action.blockSignals(was_blocked)
 
+    def _on_viewport3d_visibility_changed(self, visible: bool) -> None:
+        """Carga o limpia la escena efímera cuando el dock cambia de visibilidad."""
+        if not visible:
+            return
+        if self._compchem_coordset is not None:
+            self._refresh_viewport3d_scene()
+            return
+        dock = getattr(self, "viewport3d_dock", None)
+        if dock is None:
+            return
+        if not getattr(self.canvas.model, "atoms", None):
+            dock.clear_scene()
+            dock.set_status("No hay estructura para mostrar.")
+            return
+        if getattr(self, "_compchem_job_backends", {}):
+            dock.set_status("Generando conformero 3D…")
+            return
+        dock.clear_scene()
+        dock.set_status("Generando conformero 3D…")
+        self._start_compchem_job("generate", backend="rdkit")
+
+    def _refresh_viewport3d_scene(self) -> None:
+        """Reconstruye la escena 3D sin escribir en el documento activo."""
+        dock = getattr(self, "viewport3d_dock", None)
+        coordset = getattr(self, "_compchem_coordset", None)
+        canvas = getattr(self, "canvas", None)
+        if dock is None or coordset is None or canvas is None:
+            return
+        try:
+            scene = scene_molecule_from_graph(canvas.model, coordset)
+        except Exception as exc:
+            dock.clear_scene()
+            dock.set_status(f"No se pudo preparar la escena 3D: {exc}")
+            return
+        dock.set_scene(scene)
+        if not scene.atoms:
+            dock.set_status("El conformero no contiene coordenadas visibles.")
+
     def _set_active_canvas(
         self,
         canvas: ChemusonCanvas,
@@ -571,6 +610,9 @@ class ChemusonWindow(QMainWindow):
         self._sync_fragment_pivot_actions()
         self._update_tab_title(self.canvas)
         self.text_toolbar.set_opacity_percent(self.canvas.current_opacity_percent())
+        viewport = getattr(self, "viewport3d_dock", None)
+        if viewport is not None and viewport.isVisible():
+            self._refresh_viewport3d_scene()
 
     def _update_iupac_name_indicator(self) -> None:
         """Refresca el indicador de nombre IUPAC en la barra de estado."""
@@ -814,6 +856,10 @@ class ChemusonWindow(QMainWindow):
             dock.set_status(message)
             dock.set_busy(False)
             dock.set_has_coordinates(False)
+        viewport = getattr(self, "viewport3d_dock", None)
+        if viewport is not None:
+            viewport.clear_scene()
+            viewport.set_status(message)
 
     def _compchem_settings(self) -> OptimizationSettings:
         dock = self.compchem_dock
@@ -898,6 +944,9 @@ class ChemusonWindow(QMainWindow):
         cache_state = str((getattr(result, "metadata", {}) or {}).get("cache_state", "miss"))
         dock.set_result_summary(result, backend=backend, cache_state=cache_state)
         dock.set_has_coordinates(True)
+        viewport = getattr(self, "viewport3d_dock", None)
+        if viewport is not None and viewport.isVisible():
+            self._refresh_viewport3d_scene()
 
     def _on_compchem_project_to_2d(self) -> None:
         if self._shutdown_started:

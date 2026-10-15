@@ -525,6 +525,8 @@ class MainWindowUiBuilder:
         view_menu.addSeparator()
         view_menu.addAction(window.symbols_toolbar.toggleViewAction())
         view_menu.addSeparator()
+        view_menu.addAction(window.action_toggle_viewport3d)
+        view_menu.addSeparator()
 
         window.action_toggle_side_panel = view_menu.addAction("Panel lateral")
         window.action_toggle_side_panel.setCheckable(True)

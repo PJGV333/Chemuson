@@ -540,6 +540,7 @@ modules:
   - tool_rail
   - flyout
   - side_panel
+  - viewport3d
   name: gui
   notes: 'GUI importa todos los subsistemas de dominio para orquestación. No implementa
     lógica química pesada. items.py es un módulo individual (no paquete): src/chemuson/gui/items.py
@@ -565,7 +566,10 @@ modules:
     en un QStackedWidget, sin duplicar contenido ni registrarlas para docking clásico;
     el menú Ver y la visibilidad se delegan en su API pública. Las preferencias
     active_tab/visible usan M21; QStatusBar conserva showMessage e indicadores
-    IUPAC/carga.'
+    IUPAC/carga. El subpaquete gui/viewport3d contiene un visor 3D aislado
+    basado en PyQt6/OpenGL que consume escenas M05 sin mutar MolGraph ni el
+    documento; su dock es independiente del SidePanel y no añade una página
+    duplicada.'
   paths:
   - src/chemuson/gui/__init__.py
   - src/chemuson/gui/app_bar.py
@@ -607,6 +611,7 @@ modules:
   - src/chemuson/gui/toolbar.py
   - src/chemuson/gui/tool_rail.py
   - src/chemuson/gui/flyout.py
+  - src/chemuson/gui/viewport3d/
   - src/chemuson/gui/wedge_geometry.py
   - src/chemuson/gui/actions/
   - src/chemuson/gui/shell/
@@ -643,6 +648,10 @@ modules:
   - tests/test_dimensions_scaling.py
   - tests/test_document_controller.py
   - tests/test_compchem3d_dock.py
+  - tests/test_viewport3d_geometry.py
+  - tests/test_viewport3d_camera.py
+  - tests/test_viewport3d_picking.py
+  - tests/test_viewport3d_widget.py
   - tests/test_spectroscopy_dock.py
   - tests/test_validation_dock.py
   - tests/architecture/test_main_window_background_workers.py

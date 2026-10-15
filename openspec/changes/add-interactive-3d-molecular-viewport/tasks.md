@@ -33,4 +33,4 @@
 - [x] 5.1 Ejecutar tests focalizados, compileall, Ruff scoped, validación OpenSpec estricta y `git diff --check`.
 - [x] 5.2 Ejecutar una prueba visual reproducible en el display disponible; verificar la captura de esferas y varilla renderizadas.
 - [x] 5.3 Ejecutar un subconjunto de regresión GUI existente; no rerun de la suite monolítica si reproduce el segfault baseline.
-- [ ] 5.4 Registrar archivos, limitaciones y commits locales separados; no publicar ni modificar otras ramas.
+- [x] 5.4 Registrar archivos, limitaciones y commits locales separados; no publicar ni modificar otras ramas.

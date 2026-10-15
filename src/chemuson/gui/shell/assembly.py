@@ -59,6 +59,7 @@ from chemuson.gui.template_library import TemplateLibrary
 from chemuson.gui.text_toolbar import TextFormatToolbar
 from chemuson.gui.tool_rail import ToolRail, ToolShortcutDispatcher
 from chemuson.gui.toolbar import ChemusonToolbar, SymbolPaletteToolbar
+from chemuson.gui.viewport3d import MolecularViewportDock
 from chemuson.platform.settings import application_settings
 from chemuson.version import get_app_version
 
@@ -253,6 +254,14 @@ def assemble_application_shell(self) -> None:
     self.compchem_dock.reset_requested.connect(self._on_compchem_reset)
     self.compchem_dock.export_xyz_requested.connect(self._on_compchem_export_xyz)
     self.compchem_dock.export_input_requested.connect(self._on_compchem_export_input)
+
+    self.viewport3d_dock = MolecularViewportDock(self)
+    self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.viewport3d_dock)
+    self.viewport3d_dock.hide()
+    self.action_toggle_viewport3d = self.viewport3d_dock.toggleViewAction()
+    assert self.action_toggle_viewport3d is not None
+    self.action_toggle_viewport3d.setText("Visor molecular 3D")
+    self.viewport3d_dock.visibilityChanged.connect(self._on_viewport3d_visibility_changed)
 
     self._properties_update_timer = QTimer(self)
     self._properties_update_timer.setSingleShot(True)
