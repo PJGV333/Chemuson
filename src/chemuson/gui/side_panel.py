@@ -180,13 +180,13 @@ class SideTabRow(QFrame):
                 return
             strip_layout.invalidate()
             strip_layout.activate()
-            strip.setMinimumWidth(0)
-            strip.adjustSize()
             content_width = strip_layout.sizeHint().width()
             viewport_width = scroll_area.viewport().width()
             strip_width = max(content_width, viewport_width)
-            strip.setMinimumWidth(strip_width)
-            strip.resize(strip_width, strip.height())
+            if strip.minimumWidth() != strip_width:
+                strip.setMinimumWidth(strip_width)
+            if strip.width() != strip_width:
+                strip.resize(strip_width, strip.height())
             scroll_area.updateGeometry()
         finally:
             self._refreshing_tab_geometry = False
