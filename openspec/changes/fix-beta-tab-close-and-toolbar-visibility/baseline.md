@@ -30,3 +30,32 @@ EXIT:0
 ## Archivos de logs completos de baseline local
 
 Las salidas crudas de captura de este entorno, anteriores a cambios, se conservaron durante la tarea en `/tmp/chemuson-interface-final-baseline/` (`compile-collect.log`, `pytest.log`, `ruff.log`, `ui-focused.log`, `icon-probe.log`, `failing-node.log`). Los comandos automáticos usaron límite externo ≤480 s; ninguna prueba Qt interactiva queda sin timeout.
+
+## Baseline de la segunda ronda (shell compacto solicitado)
+
+Fecha: tras `2c705ad` (HEAD `2c705ad`, árbol limpio y sincronizado con `origin`).
+Sonda Qt offscreen con INI temporal, ejecución acotada a 90 s, antes de editar producción.
+
+```text
+menuBar visible: False h: 43            (sizeHint 36→58; ítems 50 px de alto)
+main_toolbar visible: True h: 65
+app_bar h: 54 ; statusbar h: 34
+toolbar actions: ['Nuevo', 'Abrir...', 'Guardar', '', 'Deshacer', 'Rehacer', '',
+                  'Girar 90° a la izquierda', 'Girar 90° a la derecha',
+                  'Giro 180° horizontal', 'Giro 180° vertical', '', 'Limpiar 2D',
+                  '', 'Dibujar desde SMILES...']
+clean: tabRect=(0,0,148,37) side=28x24 closePos=(2,0) closeSize=26x26 dot=hidden
+dirty: tabRect=(0,0,148,37) side=28x24 closePos=(14,0) closeSize=26x26 dot=visible
+```
+
+- La X se desplaza 12 px hacia la derecha al aparecer el punto dirty y queda
+  parcialmente fuera del rect de la pestaña (el bloque lateral mide 28 px mientras
+  su layout exige 40 px).
+- El botón de cierre mide realmente 26×26 pese a `setFixedSize(24, 24)`: la QSS
+  `QToolButton[tabClose="true"] { min-width/min-height: 24px }` se suma al borde de
+  1 px en el modelo de caja QSS.
+- Comandos de baseline: `python -m compileall -q src tests tools packaging` exit 0;
+  `pytest --collect-only -q` → 2174 IDs; focalizado UI
+  (`test_beta_save_shortcut_menu_access.py`, `test_ui_app_bar_tabs.py`,
+  `test_ui_tool_rail.py`, `test_platform_settings.py`) → 120 passed en 143 s;
+  Ruff con las reglas del AGENTS deja sólo el `F401 math` histórico.
