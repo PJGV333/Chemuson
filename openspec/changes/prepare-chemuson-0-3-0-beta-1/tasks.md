@@ -120,3 +120,13 @@
 - [ ] 16.5 Push the corrective commit first to `fix/beta-mol-roundtrip-qt-shutdown`, verify CI on that SHA, then re-check fast-forward ancestry/counts.
 - [ ] 16.6 Integrate `release/v0.3.0-beta.1-prep` only with `git merge --ff-only`; verify source code and exact remote/local SHA.
 - [ ] 16.7 After push/CI, dispatch Build Preview from the exact updated prep SHA; verify four artifact groups, checksums and provenance. No tag/Release/channel publication.
+
+## 17. Final SideTabRow CI fix and beta pre-release gate (2026-10-15)
+- [x] 17.1 Reproduce the shard-1 selection failure and correct the test's shared Qt modifier state only; keep the selection assertion and avoid production changes.
+- [x] 17.2 Push commit `de881d2d31e45b434169bc971222bfec49e1dc07` on the reviewed branch; require green CI before integration.
+- [x] 17.3 Fast-forward `fix/beta-properties-panel-polish` into prep without squash/rebase; verify remote SHA.
+- [x] 17.4 Run authoritative 8-shard CI and all four Build Preview package jobs on the same integrated SHA; download and verify artifacts, checksums, provenance and package smoke evidence.
+- [x] 17.5 Update release notes, manual acceptance and validation records with exact SHA, runs/artifacts, limited owner approvals and pending manual blockers.
+- [ ] 17.6 Owner retests current artifacts against remaining P0/P1 cases (data/close stability, install/setup, icons, RDKit, ChemName); record exact SHA, environment and evidence. Do not use automation as manual PASS.
+- [ ] 17.7 Verify protected `v*` tag ruleset and required GitHub environments; the repository API returned no rulesets in this preflight.
+- [ ] 17.8 Obtain explicit final owner authorization before creating `v0.3.0-beta.1` or a GitHub Release. No official tag/release is created by this task.
