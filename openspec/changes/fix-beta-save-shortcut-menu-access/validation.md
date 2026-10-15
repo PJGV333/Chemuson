@@ -38,9 +38,10 @@ No se tocaron Clean2D, ChemName, ChemIO, química/estereoquímica ni persistenci
 
 ## Estado de entrega
 
-- Commit/push correctivo: pendiente de este registro final.
-- CI remoto de la rama y SHA final: pendiente hasta publicar la rama por push normal. No se ha hecho merge a beta, creado tag/release ni iniciado publicación de artefactos.
-- Aceptación visual interactiva manual: pendiente del propietario; las pruebas Qt no sustituyen la aceptación en sus plataformas.
+- Commit de implementación: `24b94f920ed6fa77afc711b9af624a1f89757946` (`fix(gui): restore save shortcuts and optional menus`), descendiente directo de la base indicada arriba.
+- Rama `fix/beta-save-shortcut-menu-access` publicada por push normal en `origin`; HEAD remoto verificado en ese SHA. La rama beta sigue en la base original `9bc8192db3835262191ddb5247a8ff87f4d9169f`.
+- CI GitHub Actions **success** para el SHA de implementación: [run 38769058477](https://github.com/PJGV333/Chemuson/actions/runs/38769058477). Pasaron pytest-plan, los ocho shards y pytest-summary (reconciliación total), windows-smoke y flatpak-smoke. Hubo únicamente avisos deprecativos de Node.js 20 y migración futura de `ubuntu-latest`; no bloquearon la ejecución.
+- No se hizo merge a beta, creado tag/release ni iniciado publicación de artefactos. La aceptación visual interactiva manual sigue pendiente del propietario; las pruebas Qt no la sustituyen.
 
 ## Comprobación manual breve
 

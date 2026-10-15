@@ -9,4 +9,4 @@
 - [x] 3.2 Añadir regresiones de interacción para menú visible/compacto, misma QAction/QMenu, hamburguesa, tema claro/oscuro y tamaños distintos.
 - [x] 4.1 Verificar botón X visible/accionable y Save/Discard/Cancel, pestaña limpia y pestaña dirty no activa; comprobar que cancelación/error no cierra ni pierde datos.
 - [x] 4.2 Ejecutar pruebas focalizadas (timeout externo ≤600 s), ocho shards completos y acotados, arquitectura, OpenSpec estricto, Ruff focalizado y `git diff --check`; registrar resultados y actualizar el manifiesto CI de node IDs sólo con los IDs revisados.
-- [ ] 4.3 Crear commits pequeños, publicar sólo la rama correctiva por push normal si hay autenticación y comprobar SHA/CI. No integrar a beta ni crear tag/release.
+- [x] 4.3 Crear commits enfocados, publicar sólo la rama correctiva por push normal y comprobar SHA/CI. No integrar a beta ni crear tag/release.
