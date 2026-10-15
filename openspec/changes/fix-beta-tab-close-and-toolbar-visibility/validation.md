@@ -29,5 +29,7 @@
 ## Aceptación y publicación
 
 - La aceptación visual interactiva en las plataformas del propietario queda pendiente; pruebas Qt/render y automatización no se presentan como sustituto de esa aceptación manual.
-- Commit, push normal de esta rama y CI remoto: pendientes de completar y registrar antes de cerrar esta tarea.
+- Commit de implementación: `a014650cc8a0c215a7276159de7a41374433ed1c` (`fix(gui): show tab close controls and main toolbar`), publicado por push normal únicamente a `fix/beta-save-shortcut-menu-access`.
+- GitHub Actions [#38779862340](https://github.com/PJGV333/Chemuson/actions/runs/38779862340): pytest-plan, Windows-smoke y Flatpak-smoke pasaron; la validación de pytest quedó roja. El shard 1 falló dos veces (intento 1 y reejecución de fallidos) únicamente en el caso baseline `tests/test_compchem3d_dock.py::test_compchem_controller_generates_async_with_fake_backend`: a los 3 s el test había registrado `worker.finished`, pero aún no `thread.finished`/`job_finished`. El mismo nodo ya había fallado transitoriamente durante el baseline previo a cambios y pasó aislado; los shards locales finales pasaron. No se atribuye a este cambio de GUI.
+- La CI verde queda bloqueada por este fallo preexistente e intermitente. No se modificó dicho test ni otro subsistema fuera del alcance autorizado; queda pendiente decisión sobre autorizar un endurecimiento test-only o aceptar/documentar el baseline existente.
 - No se integra a beta/main ni se crean tags/releases.
