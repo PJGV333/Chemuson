@@ -162,6 +162,7 @@ class SideTabRow(QFrame):
 
         self._refreshing_tab_geometry = True
         try:
+            widths_changed = False
             for button in buttons.values():
                 button.ensurePolished()
                 text_width = QFontMetrics(button.font()).horizontalAdvance(
@@ -174,20 +175,26 @@ class SideTabRow(QFrame):
                 )
                 if button.width() != required_width:
                     button.setFixedWidth(required_width)
+                    widths_changed = True
 
             strip_layout = strip.layout()
             if strip_layout is None:
                 return
-            strip_layout.invalidate()
-            strip_layout.activate()
+            if widths_changed:
+                strip_layout.invalidate()
+                strip_layout.activate()
             content_width = strip_layout.sizeHint().width()
             viewport_width = scroll_area.viewport().width()
             strip_width = max(content_width, viewport_width)
+            geometry_changed = widths_changed
             if strip.minimumWidth() != strip_width:
                 strip.setMinimumWidth(strip_width)
+                geometry_changed = True
             if strip.width() != strip_width:
                 strip.resize(strip_width, strip.height())
-            scroll_area.updateGeometry()
+                geometry_changed = True
+            if geometry_changed:
+                scroll_area.updateGeometry()
         finally:
             self._refreshing_tab_geometry = False
 
