@@ -20,8 +20,15 @@ from chemuson.platform.settings import load_ui_preferences
 @pytest.fixture
 def window(tmp_path, monkeypatch):
     settings_path = tmp_path / "Chemuson.ini"
+    seed = QSettings(str(settings_path), QSettings.Format.IniFormat)
+    seed.clear()
+    seed.setValue("ui/onboarding/completed", True)
+    seed.sync()
 
     def settings_factory():
+        # No limpia en cada llamada: los objetos QSettings del mismo archivo
+        # comparten estado, así que limpiar repetidamente borraría lo que la
+        # propia ventana persiste (y las pruebas de reinicio serían falsas).
         return QSettings(str(settings_path), QSettings.Format.IniFormat)
 
     monkeypatch.setattr("chemuson.platform.settings.application_settings", settings_factory)
@@ -106,8 +113,8 @@ class _ValueCommand(QUndoCommand):
 def test_ctrl_s_saves_only_active_existing_document_through_original_action(
     window, tmp_path, monkeypatch, classic_menu
 ) -> None:
-    if classic_menu:
-        window.action_show_menu_bar.trigger()
+    window.action_show_menu_bar.setChecked(classic_menu)
+    QApplication.processEvents()
     assert window.menuBar().isVisible() is classic_menu
     monkeypatch.setattr(
         QFileDialog,
@@ -181,7 +188,7 @@ def test_menu_save_uses_same_action_and_writes_cmsn(window, tmp_path) -> None:
     _save_path(window, canvas, path)
     _add_atom_and_mark_dirty(canvas, "F")
 
-    window.action_show_menu_bar.trigger()
+    window.action_show_menu_bar.setChecked(True)
     QApplication.processEvents()
     assert window.menuBar().isVisible()
     file_action = next(
@@ -424,8 +431,9 @@ def test_close_save_write_failure_keeps_dirty_tab_open(
 def test_menu_mode_toggle_persists_and_preserves_layout_across_themes(
     window, tmp_path
 ) -> None:
-    assert not window.action_show_menu_bar.isChecked()
-    assert not window.menuBar().isVisible()
+    # La barra de menús tradicional es visible por defecto en la beta.
+    assert window.action_show_menu_bar.isChecked()
+    assert window.menuBar().isVisible()
     assert window.action_show_menu_bar.text() == "Mostrar barra de menús"
     assert window.action_show_menu_bar in window.view_menu.actions()
     aggregated_view = next(
@@ -437,10 +445,10 @@ def test_menu_mode_toggle_persists_and_preserves_layout_across_themes(
 
     window.action_show_menu_bar.trigger()
     QApplication.processEvents()
-    assert window.action_show_menu_bar.isChecked()
-    assert window.menuBar().isVisible()
+    assert not window.action_show_menu_bar.isChecked()
+    assert not window.menuBar().isVisible()
     prefs = load_ui_preferences(window._settings)
-    assert prefs.show_menu_bar is True
+    assert prefs.show_menu_bar is False
 
     expected_titles = ("Archivo", "Editar", "Ver", "Estructura", "Reacción", "Ayuda")
     original_menus = [action.menu() for action in window.menuBar().actions()]
@@ -453,16 +461,14 @@ def test_menu_mode_toggle_persists_and_preserves_layout_across_themes(
         for width, height in ((1440, 900), (980, 600)):
             window.resize(width, height)
             QApplication.processEvents()
-            assert window.menuBar().isVisible()
+            assert not window.menuBar().isVisible()
             assert [menu.title() for menu in original_menus] == list(expected_titles)
             assert [action.menu() for action in window.menuBar().actions()] == original_menus
             assert window.action_save is original_save
             assert window.tabs is original_canvas
             assert window.command_palette is original_palette
 
-    window.action_show_menu_bar.trigger()
-    QApplication.processEvents()
-    assert not window.menuBar().isVisible()
+    # Con la barra tradicional oculta permanece el acceso hamburguesa.
     assert window.app_bar.menu_button.isVisible()
     assert load_ui_preferences(window._settings).show_menu_bar is False
 
@@ -485,11 +491,13 @@ def test_menu_mode_toggle_persists_and_preserves_layout_across_themes(
 
 
 def test_save_then_theme_preference_save_does_not_reset_menu_mode(window) -> None:
-    window.action_show_menu_bar.trigger()
+    window.action_show_menu_bar.setChecked(False)
+    QApplication.processEvents()
+    assert not window.menuBar().isVisible()
     window._apply_preferences({"theme": "dark"})
-    assert window.menuBar().isVisible()
+    assert not window.menuBar().isVisible()
     preferences = load_ui_preferences(window._settings)
-    assert preferences.show_menu_bar is True
+    assert preferences.show_menu_bar is False
     assert preferences.show_main_toolbar is True
 
 
@@ -559,17 +567,28 @@ def test_toolbar_toggle_is_native_grouped_persistent_and_independent(window) -> 
     assert action is menu_actions[1]
     assert menu_actions[2].isSeparator()
     assert menu_actions.count(action) == 1
-    assert not window.action_show_menu_bar.isChecked()
-    assert not window.menuBar().isVisible()
+    assert window.action_show_menu_bar.isChecked()
+    assert window.menuBar().isVisible()
     assert action.isChecked() and toolbar.isVisible()
-    for command in (
+    # La barra superior es la pequeña de tres botones: Nuevo, Abrir, Guardar.
+    assert [a for a in toolbar.actions() if not a.isSeparator()] == [
         window.action_new,
         window.action_open,
         window.action_save,
+    ]
+    for removed in (
         window.action_undo,
         window.action_redo,
+        window.action_rotate_left,
+        window.action_rotate_right,
+        window.action_flip_horizontal,
+        window.action_flip_vertical,
+        window.action_clean_2d,
+        window.action_draw_smiles,
     ):
-        assert command in toolbar.actions()
+        assert removed not in toolbar.actions()
+    assert window.app_bar.undo_button.defaultAction() is window.action_undo
+    assert window.app_bar.redo_button.defaultAction() is window.action_redo
     assert window.tool_rail.isVisible()
     assert window.side_panel.isHidden()
 
@@ -586,13 +605,13 @@ def test_toolbar_toggle_is_native_grouped_persistent_and_independent(window) -> 
     assert action.isChecked() is False
     preferences = load_ui_preferences(window._settings)
     assert preferences.show_main_toolbar is False
-    assert preferences.show_menu_bar is False
+    assert preferences.show_menu_bar is True
     assert window.side_panel.isHidden() and window.tool_rail.isVisible()
 
     window.action_show_menu_bar.trigger()
     QApplication.processEvents()
-    assert window.menuBar().isVisible() and not toolbar.isVisible()
-    assert load_ui_preferences(window._settings).show_menu_bar is True
+    assert not window.menuBar().isVisible() and not toolbar.isVisible()
+    assert load_ui_preferences(window._settings).show_menu_bar is False
 
     # La configuración se aplica al construir otra ventana; ninguna barra
     # cambia la preferencia del panel lateral.
@@ -602,7 +621,7 @@ def test_toolbar_toggle_is_native_grouped_persistent_and_independent(window) -> 
         QApplication.processEvents()
         assert not second.main_toolbar.isVisible()
         assert not second.action_show_main_toolbar.isChecked()
-        assert second.menuBar().isVisible()
+        assert not second.menuBar().isVisible()
         assert second.side_panel.isHidden()
     finally:
         for index in range(second.tabs.count()):
@@ -615,13 +634,13 @@ def test_toolbar_toggle_is_native_grouped_persistent_and_independent(window) -> 
     action.trigger()
     QApplication.processEvents()
     assert toolbar.isVisible() and action.isChecked()
-    assert window.menuBar().isVisible()
+    assert not window.menuBar().isVisible()
     window.action_show_menu_bar.trigger()
     QApplication.processEvents()
-    assert toolbar.isVisible() and not window.menuBar().isVisible()
+    assert toolbar.isVisible() and window.menuBar().isVisible()
     preferences = load_ui_preferences(window._settings)
     assert preferences.show_main_toolbar is True
-    assert preferences.show_menu_bar is False
+    assert preferences.show_menu_bar is True
     # Aux permanece independiente también al ocultar/mostrar la barra entera.
     assert window.action_show_main_toolbar_aux.isChecked()
     assert window.action_copy in toolbar.actions()
@@ -642,7 +661,7 @@ def test_main_toolbar_keeps_layout_in_both_themes_and_small_windows(window) -> N
             assert window.tool_rail.isVisible()
             assert window.side_panel.isHidden()
             assert window.tabs.width() >= 400
-            assert not window.menuBar().isVisible()
+            assert window.menuBar().isVisible()
 
 
 def test_save_undo_redo_shortcuts_survive_hiding_main_toolbar(window, tmp_path) -> None:
@@ -673,5 +692,9 @@ def test_save_undo_redo_shortcuts_survive_hiding_main_toolbar(window, tmp_path) 
     QApplication.processEvents()
     assert state == [1]
     assert not window.main_toolbar.isVisible()
-    assert window.action_undo in window.main_toolbar.actions()
-    assert window.action_redo in window.main_toolbar.actions()
+    # Undo/Redo ya no viven en la barra superior: su única representación
+    # visible son los botones de la app bar, y siguen alcanzables por atajo.
+    assert window.action_undo not in window.main_toolbar.actions()
+    assert window.action_redo not in window.main_toolbar.actions()
+    assert window.app_bar.undo_button.isVisible()
+    assert window.app_bar.redo_button.isVisible()

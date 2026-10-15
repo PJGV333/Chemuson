@@ -6,6 +6,7 @@ import pytest
 from PyQt6.QtCore import QSettings
 
 from chemuson.platform.settings import (
+    SHELL_DEFAULTS_VERSION,
     UI_THEME_CHOICES,
     AIProviderPreferences,
     IdentityVerificationPreferences,
@@ -192,29 +193,41 @@ def test_ui_preferences_roundtrip_and_normalize() -> None:
     assert load_ui_preferences(
         FakeSettings({"ui/theme": "dark", "ui/show_menu_bar": "yes"})
     ) == UiPreferences(theme="dark", show_menu_bar=True)
+
+    # Con el marcador de defaults ya aplicado se respeta lo persistido.
+    migrated = {"ui/shell_defaults_version": 1}
     assert load_ui_preferences(
-        FakeSettings({"ui/show_menu_bar": "yes", "ui/show_main_toolbar": "0"})
+        FakeSettings({**migrated, "ui/show_menu_bar": "yes", "ui/show_main_toolbar": "0"})
     ) == UiPreferences(show_menu_bar=True, show_main_toolbar=False)
 
-    # Valores inválidos o ausentes resuelven a light y modo compacto.
+    # Valores ausentes resuelven a light con ambas barras visibles.
     assert load_ui_preferences(FakeSettings({"ui/theme": "neon"})) == UiPreferences(theme="light")
     assert load_ui_preferences(FakeSettings({})) == UiPreferences(theme="light")
     assert load_ui_preferences(
-        FakeSettings({"ui/show_menu_bar": "0"})
+        FakeSettings({**migrated, "ui/show_menu_bar": "0"})
     ).show_menu_bar is False
+    assert load_ui_preferences(
+        FakeSettings({**migrated, "ui/show_main_toolbar": "0"})
+    ).show_main_toolbar is False
 
     settings = FakeSettings({})
     save_ui_preferences(
         settings,
         UiPreferences(
             theme="system",
-            show_menu_bar=True,
+            show_menu_bar=False,
             show_main_toolbar=False,
         ),
     )
     assert settings.values["ui/theme"] == "system"
-    assert settings.values["ui/show_menu_bar"] is True
+    assert settings.values["ui/show_menu_bar"] is False
     assert settings.values["ui/show_main_toolbar"] is False
+    # Guardar preferencias sella la versión de defaults: la migración no se
+    # repite y la elección del usuario persiste.
+    assert settings.values["ui/shell_defaults_version"] == SHELL_DEFAULTS_VERSION
+    assert load_ui_preferences(settings) == UiPreferences(
+        theme="system", show_menu_bar=False, show_main_toolbar=False
+    )
 
     save_ui_preferences(
         settings,
@@ -226,11 +239,54 @@ def test_ui_preferences_roundtrip_and_normalize() -> None:
 
     # El valor persistido se relee normalizado.
     settings = FakeSettings(
-        {"ui/theme": "DARK", "ui/show_menu_bar": "0", "ui/show_main_toolbar": "0"}
+        {
+            "ui/theme": "DARK",
+            "ui/shell_defaults_version": SHELL_DEFAULTS_VERSION,
+            "ui/show_menu_bar": "0",
+            "ui/show_main_toolbar": "0",
+        }
     )
     assert load_ui_preferences(settings) == UiPreferences(
         theme="dark", show_menu_bar=False, show_main_toolbar=False
     )
+
+
+def test_ui_shell_defaults_migrate_once_and_then_respect_user_choice() -> None:
+    """Los defaults nuevos (ambas barras visibles) se aplican una sola vez.
+
+    Un INI previo a la beta puede tener ``ui/show_menu_bar=false`` escrito por
+    el default anterior; es indistinguible de una elección explícita, así que
+    el marcador ``ui/shell_defaults_version`` gobierna la migración.
+    """
+    legacy = FakeSettings(
+        {"ui/theme": "dark", "ui/show_menu_bar": "0", "ui/show_main_toolbar": "0"}
+    )
+    assert load_ui_preferences(legacy) == UiPreferences(
+        theme="dark", show_menu_bar=True, show_main_toolbar=True
+    )
+
+    # Sin guardado previo la migración es idempotente.
+    assert load_ui_preferences(legacy) == UiPreferences(
+        theme="dark", show_menu_bar=True, show_main_toolbar=True
+    )
+
+    save_ui_preferences(
+        legacy,
+        UiPreferences(theme="dark", show_menu_bar=False, show_main_toolbar=True),
+    )
+    assert load_ui_preferences(legacy) == UiPreferences(
+        theme="dark", show_menu_bar=False, show_main_toolbar=True
+    )
+    # Un marcador futuro no se reescribe hacia atrás.
+    future = FakeSettings(
+        {
+            "ui/shell_defaults_version": SHELL_DEFAULTS_VERSION + 1,
+            "ui/show_menu_bar": "0",
+        }
+    )
+    assert load_ui_preferences(future).show_menu_bar is False
+    # Un marcador ilegible no rompe la carga: resuelve al default actual.
+    assert load_ui_preferences(FakeSettings({"ui/shell_defaults_version": "x"})).show_menu_bar is True
 
 
 def test_side_panel_preferences_default_and_roundtrip() -> None:

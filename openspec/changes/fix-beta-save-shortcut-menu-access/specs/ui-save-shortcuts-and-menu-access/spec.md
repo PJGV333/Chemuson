@@ -40,7 +40,7 @@ El botón X SHALL estar visible y accionable para pestañas existentes y SHALL d
 
 ### Requirement: La barra de menús clásica es opcional y persistente
 
-Ver SHALL contener una opción checkable titulada exactamente **Mostrar barra de menús**. Activarla SHALL mostrar permanentemente Archivo, Editar, Ver, Estructura, Reacción y Ayuda; desactivarla SHALL restaurar el modo compacto actual mediante hamburguesa. Ambas presentaciones SHALL reutilizar los mismos `QMenu` y `QAction`, atajos y callbacks. La preferencia SHALL persistir por el sistema de configuración UI existente y el modo compacto seguirá siendo el default.
+Ver SHALL contener una opción checkable titulada exactamente **Mostrar barra de menús**. Activarla SHALL mostrar permanentemente Archivo, Editar, Ver, Estructura, Reacción y Ayuda; desactivarla SHALL restaurar el modo compacto con acceso por hamburguesa/Alt. Ambas presentaciones SHALL reutilizar los mismos `QMenu` y `QAction`, atajos y callbacks. La preferencia SHALL persistir por el sistema de configuración UI existente. La barra tradicional es el **default de la beta** (`fix-beta-tab-close-and-toolbar-visibility`): el default anterior (compacto) se migra una sola vez mediante el marcador de versión de defaults y toda elección posterior del usuario se respeta.
 
 #### Scenario: Cambiar modo de menús
 - **WHEN** el usuario alterna la opción en Ver
@@ -53,3 +53,8 @@ Ver SHALL contener una opción checkable titulada exactamente **Mostrar barra de
 #### Scenario: Temas y tamaños
 - **WHEN** se usa la barra compacta o clásica en tema claro/oscuro y en ventanas de tamaños diferentes
 - **THEN** los seis menús y sus acciones siguen accesibles, y el rail de dibujo, Command Palette y estructura de documentos permanecen sin cambios.
+
+#### Scenario: Default de la beta sobre configuración previa
+- **GIVEN** una configuración escrita cuando el default era compacto (`ui/show_menu_bar=false`) y sin marcador de defaults
+- **WHEN** se abre la ventana
+- **THEN** la barra de menús aparece visible una vez (defaults nuevos) y la siguiente elección explícita del usuario persiste.

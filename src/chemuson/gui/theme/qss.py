@@ -61,25 +61,25 @@ QLabel {{
 }}
 
 /* =========================================================== */
-/* Menu Bar (dirección del spike: superficie + borde inferior) */
+/* Menu Bar (fila compacta: superficie + borde inferior)       */
 /* =========================================================== */
 QMenuBar {{
     background-color: {c('surface')};
     color: {c('text1')};
     border: none;
     border-bottom: 1px solid {c('border')};
-    padding: 4px 8px;
-    spacing: 4px;
+    padding: 1px 6px;
+    spacing: 2px;
     font-size: {_FONT_BASE}px;
-    min-height: 34px;
+    min-height: 22px;
 }}
 
 QMenuBar::item {{
     background: transparent;
     color: {c('text2')};
-    padding: 5px 12px;
+    padding: 3px 10px;
     border-radius: {_RADIUS_CHIP}px;
-    margin: 3px 2px;
+    margin: 0px 1px;
 }}
 
 QMenuBar::item:hover {{
@@ -161,6 +161,49 @@ QToolBar::separator {{
 
 QToolBar::handle {{
     background-color: transparent;
+}}
+
+/* Barra superior compacta (Nuevo/Abrir/Guardar): misma métrica visual que
+   la app bar, sin el padding de las paletas verticales. */
+QToolBar#mainToolBar {{
+    background-color: {c('surface')};
+    border: none;
+    border-bottom: 1px solid {c('border')};
+    spacing: 4px;
+    padding: 3px;
+}}
+
+QToolBar#mainToolBar::separator {{
+    width: 1px;
+    background-color: {c('border')};
+    margin: 4px 6px;
+}}
+
+QToolBar#mainToolBar QToolButton {{
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: {_RADIUS_CHIP}px;
+    padding: 4px;
+    min-width: 18px;
+    min-height: 18px;
+    color: {c('text2')};
+}}
+
+QToolBar#mainToolBar QToolButton:hover {{
+    background-color: {c('surface2')};
+    border: 1px solid {c('border')};
+    color: {c('text1')};
+}}
+
+QToolBar#mainToolBar QToolButton:pressed,
+QToolBar#mainToolBar QToolButton:checked {{
+    background-color: {c('surface3')};
+    border: 1px solid {c('borderStrong')};
+    color: {c('text1')};
+}}
+
+QToolBar#mainToolBar QToolButton:disabled {{
+    color: {c('text3')};
 }}
 
 /* =========================================================== */
@@ -927,8 +970,6 @@ QToolButton[tabClose="true"] {{
     border: 1px solid transparent;
     border-radius: 6px;
     padding: 0px;
-    min-width: 24px;
-    min-height: 24px;
 }}
 
 QToolButton[tabClose="true"]:hover {{
@@ -940,9 +981,16 @@ QToolButton[tabClose="true"]:focus {{
     border: 1px solid {c('accent')};
 }}
 
+/* El punto dirty ocupa siempre su celda (geometría de pestaña invariante);
+   la QSS sólo controla si se pinta. */
 #dirtyDot {{
     background-color: {c('accent')};
     border-radius: 4px;
+}}
+
+#dirtyDot[dirty="false"] {{
+    background-color: transparent;
+    border: none;
 }}
 
 /* Píldora de búsqueda (placeholder de la command palette, Fase 6) */
