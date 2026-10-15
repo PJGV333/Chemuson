@@ -16,3 +16,16 @@
 - Después, durante el ensamblaje, `ChemusonWindow._apply_theme()` aplica el stylesheet/QPalette al `QMainWindow`; el SidePanel queda oculto hasta una acción Ver.
 - La hoja `QToolButton[sideTab="true"]` define padding, `font-size` y peso; `QScrollArea` se crea no-resizable y con scrollbars no visibles.
 - `set_active()` vuelve a unpolish/polish cada botón y llama `ensureWidgetVisible()` para la pestaña activa. La prueba existente de cinco tabs mide después de invocar `set_active()` para cada una, por lo que no certifica la primera presentación tras show.
+
+## Baseline — bloqueo de selección en CI (HEAD `29e3594618afd131ec8f22999d664f6e43185c69`)
+
+Antes del cambio de prueba, el árbol estaba limpio en `fix/beta-properties-panel-polish`; el remoto apuntaba al mismo HEAD.
+
+- `python -m compileall -q src tests tools packaging`: PASS.
+- `pytest --collect-only -q`: 2154 node IDs.
+- Ruff en `side_panel.py` y `test_spectroscopy_dock.py`, reglas de errores/imports seleccionadas: PASS.
+- El test aislado pasó en Python 3.14.7 / PyQt 6.11.0; el shard 1 fallaba en CI Ubuntu 24.04 / Python 3.11.17 / pytest 9.1.1.
+- Se creó `/tmp/chemuson-ci-py311` (fuera del repo) instalando `requirements.txt`, `requirements-dev.txt` y el editable del proyecto; resolvió PyQt6 6.11.0 / Qt 6.11.2, pytest 9.1.1, NumPy 2.4.6 y RDKit 2026.9.1. La colección reprodujo el plan CI exacto: 2154 IDs, 8 shards `[270,270,269,269,269,269,269,269]`, SHA `516534cabacbc81975501ab9ea0e5a7420e95affc070d15a04d61be68f446a93`.
+- En ese entorno equivalente, el test aislado y el archivo completo pasan; el shard 1 sin cambios falla reproduciblemente: 267 passed, 2 skipped, 1 failed en 89.24 s (`isSelected()` falso). El par de tests `test_ctrl_k_shortcut_triggers_clean_2d_full` y `test_ctrl_alt_k_shortcut_triggers_clean_2d_propose_action`, seguido del test fallido, reproduce el caso en 1.18 s.
+- Instrumentación temporal, eliminada antes del fix: al inicio del tema light, `currentRow/Column=-1/-1`, modifier `ControlModifier`; `setCurrentCell` selecciona. Para dark, `currentRow/Column=0/1` y la celda ya está seleccionada, pero persiste `ControlModifier`; repetir `setCurrentCell` conmuta la selección a False. El estado compartido procede de los eventos sintéticos Ctrl de tests previos. No se toca producción.
+- Con liberación explícita de modificadores al inicio del test y aserción de `NoModifier`, la secuencia de tres tests pasa y el shard 1 completo pasa: 268 passed, 2 skipped en 90.84 s.

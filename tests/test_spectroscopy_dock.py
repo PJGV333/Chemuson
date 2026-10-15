@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import pytest
 from PyQt6.QtCore import Qt
+from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication
 
 
@@ -110,6 +111,16 @@ def test_chemical_properties_scientific_display_is_presentation_only_and_theme_s
 
         dock = window.chemical_properties_dock
         table = dock.prop_table
+        for modifier_key in (
+            Qt.Key.Key_Control,
+            Qt.Key.Key_Shift,
+            Qt.Key.Key_Alt,
+            Qt.Key.Key_Meta,
+        ):
+            QTest.keyRelease(window, modifier_key)
+        QApplication.processEvents()
+        assert QApplication.keyboardModifiers() == Qt.KeyboardModifier.NoModifier
+
         expected = {
             (0, 1): "C₆₆H₇₅Cl₂N₉O₂₄",
             (1, 1): "C₂H₆O",
