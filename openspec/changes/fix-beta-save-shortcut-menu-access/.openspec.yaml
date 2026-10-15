@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-10-15
+goal: Corregir Ctrl+S del documento activo y habilitar opcionalmente una barra clásica de menús persistente, conservando los flujos actuales de guardado, cierre, menús y atajos.

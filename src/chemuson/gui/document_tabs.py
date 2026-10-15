@@ -35,15 +35,27 @@ __all__ = [
 ]
 
 _TAB_ICON_SIZE = 14
-_CLOSE_ICON_SIZE = 11
+_CLOSE_ICON_SIZE = 14
 _PLUS_ICON_SIZE = 14
 _DOT_SIZE = 7
-_CLOSE_BTN_SIZE = 18
+_CLOSE_BTN_SIZE = 24
 _NEW_BTN_SIZE = 28
+#: Geometría fija del bloque derecho de cada pestaña. El espacio del punto
+#: dirty se reserva **siempre** (el widget ocupa su hueco aunque no se pinte):
+#: así el botón cerrar no se desplaza al pasar de limpia a modificada y la
+#: geometría de la pestaña es idéntica en ambos estados.
+_SIDE_MARGIN_X = 2
+_SIDE_SPACING = 5
+_SIDE_WIDTH = _SIDE_MARGIN_X * 2 + _DOT_SIZE + _SIDE_SPACING + _CLOSE_BTN_SIZE
 
 
 class _TabSideButton(QWidget):
-    """Widget derecho de cada pestaña: punto de suciedad + botón cerrar."""
+    """Widget derecho de cada pestaña: punto de suciedad + botón cerrar.
+
+    Tamaño fijo (:data:`_SIDE_WIDTH` × :data:`_CLOSE_BTN_SIZE`): el punto
+    dirty siempre ocupa su celda y sólo cambia su pintura, por lo que la X
+    permanece en la misma posición con documento limpio o modificado.
+    """
 
     def __init__(
         self,
@@ -56,25 +68,31 @@ class _TabSideButton(QWidget):
         self._tint = tint
         self._icons = icon_provider
         self._bar: DocumentTabBar | None = None
+        self._dirty = False
+        self.setFixedSize(_SIDE_WIDTH, _CLOSE_BTN_SIZE)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(2, 0, 2, 0)
-        layout.setSpacing(5)
+        layout.setContentsMargins(_SIDE_MARGIN_X, 0, _SIDE_MARGIN_X, 0)
+        layout.setSpacing(_SIDE_SPACING)
 
         self.dirty_dot = QWidget(self)
         self.dirty_dot.setObjectName("dirtyDot")
         self.dirty_dot.setFixedSize(_DOT_SIZE, _DOT_SIZE)
-        self.dirty_dot.hide()
+        # Ocupa siempre su celda; la QSS pinta el acento sólo con
+        # ``dirty="true"`` (espacio reservado, indicador condicional).
+        self.dirty_dot.setProperty("dirty", "false")
 
         self.close_button = QToolButton(self)
         self.close_button.setProperty("tabClose", "true")
         self.close_button.setFixedSize(_CLOSE_BTN_SIZE, _CLOSE_BTN_SIZE)
         self.close_button.setIconSize(QSize(_CLOSE_ICON_SIZE, _CLOSE_ICON_SIZE))
         self.close_button.setToolTip("Cerrar pestaña")
+        self.close_button.setAccessibleName("Cerrar pestaña")
         self.close_button.clicked.connect(lambda _checked=False: self._request_close())
 
         layout.addWidget(self.dirty_dot)
         layout.addWidget(self.close_button)
+        self.refresh_icons(self._tint)
 
     def attach(self, bar: "DocumentTabBar") -> None:
         """Vincula el botón a la barra que lo contiene (para cerrar)."""
@@ -85,12 +103,25 @@ class _TabSideButton(QWidget):
             self._bar._close_tab_for_side(self)
 
     def set_dirty(self, dirty: bool) -> None:
-        self.dirty_dot.setVisible(bool(dirty))
+        """Pinta u oculta el punto sin cambiar ninguna geometría."""
+        dirty = bool(dirty)
+        if dirty == self._dirty:
+            return
+        self._dirty = dirty
+        self.dirty_dot.setProperty("dirty", "true" if dirty else "false")
+        # Los selectores QSS por propiedad dinámica exigen re-polish.
+        style = self.dirty_dot.style()
+        style.unpolish(self.dirty_dot)
+        style.polish(self.dirty_dot)
+        self.dirty_dot.update()
 
     def is_dirty_shown(self) -> bool:
-        # ``isVisibleTo``: el estado de visibilidad propio, independiente de
-        # si la cadena de padres está mostrada (tests offscreen sin show).
-        return self.dirty_dot.isVisibleTo(self)
+        """Indica si el punto dirty está pintado (estado lógico dirty).
+
+        El widget siempre está visible porque reserva su espacio; lo que
+        cambia es su pintura, no su geometría.
+        """
+        return self._dirty
 
     def refresh_icons(self, tint: str) -> None:
         self._tint = tint

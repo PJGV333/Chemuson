@@ -463,7 +463,7 @@ def test_dispatcher_suppresses_keys_outside_the_window():
 # ---------------------------------------------------------------------------
 
 
-def test_historical_toolbars_are_hidden_but_still_own_actions():
+def test_drawing_toolbars_remain_hidden_but_still_own_actions():
     from chemuson.gui.main_window import ChemusonWindow
 
     win = ChemusonWindow()
@@ -503,10 +503,9 @@ def test_rail_and_flyout_metrics_match_mockup():
 # ---------------------------------------------------------------------------
 
 
-def test_shell_has_no_visible_menubar_or_toolbars():
-    """La QMenuBar y las toolbars clásicas no se muestran; la QMenuBar
-    sigue existiendo (menús/acciones/atajos intactos) y se abre como popup
-    (hamburguesa o Alt)."""
+def test_shell_has_compact_menubar_and_visible_main_toolbar(isolated_shell_settings):
+    """La barra de acciones principal está visible; el menubar tradicional
+    es compacto y la hamburguesa/Alt siguen accesibles."""
     from PyQt6.QtWidgets import QToolBar
 
     from chemuson.gui.main_window import ChemusonWindow
@@ -515,11 +514,17 @@ def test_shell_has_no_visible_menubar_or_toolbars():
     win.show()
     QApplication.processEvents()
     assert win.menuBar() is not None
-    assert win.menuBar().isVisible() is False
-    # Los 6 menús superiores siguen en el menubar oculto.
+    assert win.menuBar().isVisible() is True
+    assert win.menuBar().height() <= 36
+    # Los 6 menús superiores siguen en el menubar.
     assert len([a for a in win.menuBar().actions() if a.menu() is not None]) == 6
-    visible = [t.objectName() for t in win.findChildren(QToolBar) if t.isVisible()]
-    assert visible == []
+    visible = [t for t in win.findChildren(QToolBar) if t.isVisible()]
+    assert visible == [win.main_toolbar]
+    assert win.main_toolbar.height() <= 40
+    assert win.action_show_main_toolbar in win.view_menu.actions()
+    assert win.app_bar.menu_button.isVisible()
+    assert win.tool_rail.isVisible()
+    assert win.side_panel.isHidden()
     win.close()
 
 
@@ -782,19 +787,21 @@ def test_shortcut_dispatcher_class_exists():
     assert ToolShortcutDispatcher is not None
 
 
-def test_ctrl_k_triggers_clean2d_and_menubar_hidden():
+def test_ctrl_k_triggers_clean2d_and_menubar_stays_functional(
+    isolated_shell_settings,
+):
     """El dispatcher no roba combinaciones con modificadores: Ctrl+K dispara
     ``action_clean_2d_full`` (limpia 2D, 1 paso) y NO abre la paleta (ahora en
-    Ctrl+P). La QMenuBar queda oculta (convergencia con el spike) pero viva:
-    sus QMenu/QAction/atajos son los originales y se abren por popup
-    (hamburguesa/Alt)."""
+    Ctrl+P). La ``QMenuBar`` tradicional está visible pero sigue siendo la
+    misma: sus QMenu/QAction/atajos son los originales y, si se oculta, se
+    abren por popup (hamburguesa/Alt)."""
     from chemuson.gui.main_window import ChemusonWindow
 
     win = ChemusonWindow()
     win.show()
     QApplication.processEvents()
     assert win.menuBar() is not None
-    assert win.menuBar().isVisible() is False
+    assert win.menuBar().isVisible() is True
 
     saw_clean_2d = []
     win.action_clean_2d_full.triggered.connect(lambda: saw_clean_2d.append(True))

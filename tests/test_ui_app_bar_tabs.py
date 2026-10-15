@@ -196,7 +196,6 @@ class TestAppBarUnit:
         )
         bar.refresh_icons("light")
         light_theme_icon = bar.theme_button.icon()
-        light_brand = bar.brand_label.pixmap().copy()
         assert not light_theme_icon.isNull()
         bar.refresh_icons("dark")
         dark_theme_icon = bar.theme_button.icon()
@@ -269,17 +268,29 @@ class TestDocumentTabBarUnit:
 # ---------------------------------------------------------------------------
 
 class TestRealWindow:
-    def test_app_bar_mounted_and_classic_toolbar_hidden(self) -> None:
+    def test_app_bar_mounted_and_main_toolbar_visible_by_default(
+        self, isolated_shell_settings
+    ) -> None:
         win = _make_action_window()
         assert win.app_bar is not None and win.app_bar.isVisibleTo(win)
         assert win.app_bar.minimumHeight() == 54
         assert win.tabs.tabBar().isHidden()
-        assert not win.main_toolbar.isVisible()
-        # Convergencia con el spike: la QMenuBar clásica queda oculta
-        # (no eliminada): los 6 menús superiores siguen en ella y también
-        # en el menú agregado de la app bar.
+        assert win.main_toolbar.isVisible()
+        # La barra superior es la pequeña de tres botones.
+        assert [a for a in win.main_toolbar.actions() if not a.isSeparator()] == [
+            win.action_new,
+            win.action_open,
+            win.action_save,
+        ]
+        assert win.action_show_main_toolbar is win.main_toolbar.toggleViewAction()
+        assert win.action_show_main_toolbar.text() == "Mostrar barra de herramientas"
+        assert win.action_show_main_toolbar in win.view_menu.actions()
+        # La QMenuBar tradicional con los seis menús es visible por defecto
+        # (compacta) y sigue siendo la misma: los seis QMenu también están en
+        # el menú agregado de la hamburguesa.
         assert win.menuBar() is not None
-        assert win.menuBar().isVisible() is False
+        assert win.menuBar().isVisible() is True
+        assert win.menuBar().height() <= 36
         menu_titles = [a.text() for a in win.menuBar().actions()]
         for title in ("Archivo", "Editar", "Ver", "Estructura", "Reacción", "Ayuda"):
             assert any(title in m for m in menu_titles), title
@@ -294,18 +305,20 @@ class TestRealWindow:
         assert win.text_toolbar.parent() is central
         assert win.tool_rail.parent() is central
 
-    def test_vertical_hierarchy_appbar_above_text_toolbar(self) -> None:
+    def test_vertical_hierarchy_appbar_above_text_toolbar(
+        self, isolated_shell_settings
+    ) -> None:
         """Convergencia con el spike: AppBar -> TextFormatToolbar (oculta
         por defecto) -> [rail | splitter(canvas | side panel)].
 
         La ``TextFormatToolbar`` ya no es toolbar de área superior de
         ``QMainWindow``; vive en el layout central, debajo de la app bar y
         sobre la franja canvas, conservando sus acciones y señales. La
-        ``QMenuBar`` clásica queda oculta (menús intactos, accesibles por
-        la hamburguesa/Alt).
+        ``QMenuBar`` tradicional es visible por defecto y, si se oculta,
+        los menús siguen accesibles por la hamburguesa/Alt.
         """
         win = _make_action_window()
-        assert win.menuBar().isVisible() is False
+        assert win.menuBar().isVisible() is True
         # La toolbar de texto es contextual: oculta por defecto.
         assert win.text_toolbar.isVisible() is False
         central = win.centralWidget()

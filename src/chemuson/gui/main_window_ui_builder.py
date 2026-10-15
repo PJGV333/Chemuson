@@ -14,6 +14,9 @@ from .controllers.view_controller import ViewController
 class MainWindowUiBuilder:
     """Construcción declarativa de menús y barras principales."""
 
+    #: Iconos de la barra superior compacta (coherentes con la app bar).
+    _MAIN_TOOLBAR_ICON = 18
+
     def create_local_actions(self, window) -> None:
         self._create_shell_actions(window)
         self._create_template_actions(window)
@@ -104,38 +107,29 @@ class MainWindowUiBuilder:
 
     def build_main_toolbar(self, window) -> None:
         window.main_toolbar = QToolBar("Principal")
+        # Nombre estable para la QSS: la barra compacta superior se estiliza
+        # aparte de las toolbars verticales de dibujo (``QToolBar`` genérico).
+        window.main_toolbar.setObjectName("mainToolBar")
         window.main_toolbar.setMovable(False)
         window.main_toolbar.setFloatable(False)
-        window.main_toolbar.setIconSize(QSize(24, 24))
+        window.main_toolbar.setIconSize(
+            QSize(self._MAIN_TOOLBAR_ICON, self._MAIN_TOOLBAR_ICON)
+        )
         window.main_toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         window.addToolBar(Qt.ToolBarArea.TopToolBarArea, window.main_toolbar)
 
         self.refresh_main_toolbar_icons(window)
 
+        # La barra superior muestra exclusivamente Nuevo, Abrir y Guardar.
+        # Deshacer/Rehacer siguen representados en la app bar y todas las
+        # acciones retiradas de esta barra conservan sus rutas actuales
+        # (menús, atajos, rail y paleta de comandos); no se duplican QActions.
         for action in (
             window.action_new,
             window.action_open,
             window.action_save,
         ):
             window.main_toolbar.addAction(action)
-        window.main_toolbar.addSeparator()
-        for action in (
-            window.action_undo,
-            window.action_redo,
-        ):
-            window.main_toolbar.addAction(action)
-        window.main_toolbar.addSeparator()
-        for action in (
-            window.action_rotate_left,
-            window.action_rotate_right,
-            window.action_flip_horizontal,
-            window.action_flip_vertical,
-        ):
-            window.main_toolbar.addAction(action)
-        window.main_toolbar.addSeparator()
-        window.main_toolbar.addAction(window.action_clean_2d)
-        window.main_toolbar.addSeparator()
-        window.main_toolbar.addAction(window.action_draw_smiles)
 
         window._main_toolbar_aux_separator_1 = QAction(window)
         window._main_toolbar_aux_separator_1.setSeparator(True)
@@ -145,6 +139,18 @@ class MainWindowUiBuilder:
             window,
             window.action_show_main_toolbar_aux.isChecked(),
         )
+        window.main_toolbar.setVisible(window._show_main_toolbar)
+        # Reutiliza la QAction nativa del QToolBar, sin crear un toggle
+        # paralelo; se inserta junto a Mostrar barra de menús en Ver.
+        window.action_show_main_toolbar = window.main_toolbar.toggleViewAction()
+        window.action_show_main_toolbar.setText("Mostrar barra de herramientas")
+        window.action_show_main_toolbar.setChecked(window._show_main_toolbar)
+        window.action_show_main_toolbar.toggled.connect(window._on_toggle_main_toolbar)
+        first_separator = next(
+            (action for action in window.view_menu.actions() if action.isSeparator()),
+            None,
+        )
+        window.view_menu.insertAction(first_separator, window.action_show_main_toolbar)
 
     def refresh_main_toolbar_icons(self, window) -> None:
         """Regenera iconos de la barra principal según el tema activo."""
@@ -172,26 +178,27 @@ class MainWindowUiBuilder:
         window.action_preferences.setIcon(draw_generic_icon("sliders"))
 
     def set_main_toolbar_aux_visible(self, window, visible: bool) -> None:
+        """Añade/quita copiar/pegar/zoom a la barra superior (opción explícita).
+
+        La barra base es siempre Nuevo/Abrir/Guardar; esta opción heredada
+        sigue siendo la única que puede ampliar esa barra y no altera su
+        visibilidad global (gobernada por ``Mostrar barra de herramientas``).
+        """
         if not hasattr(window, "main_toolbar"):
             return
         aux_actions = (
+            window._main_toolbar_aux_separator_1,
             window.action_copy,
             window.action_paste,
-            window._main_toolbar_aux_separator_1,
+            window._main_toolbar_aux_separator_2,
             window.action_zoom_in,
             window.action_zoom_out,
-            window._main_toolbar_aux_separator_2,
         )
-        current = window.main_toolbar.actions()
         if visible:
-            anchor = window.action_rotate_left if window.action_rotate_left in current else None
             for action in aux_actions:
                 if action in window.main_toolbar.actions():
                     continue
-                if anchor is not None:
-                    window.main_toolbar.insertAction(anchor, action)
-                else:
-                    window.main_toolbar.addAction(action)
+                window.main_toolbar.addAction(action)
             return
         for action in aux_actions:
             if action in window.main_toolbar.actions():
@@ -482,6 +489,11 @@ class MainWindowUiBuilder:
         window.fragment_rotate_menu.addAction(window.action_fragment_invert)
 
     def _build_view_menu(self, window, view_menu: QMenu) -> None:
+        window.action_show_menu_bar = view_menu.addAction("Mostrar barra de menús")
+        window.action_show_menu_bar.setCheckable(True)
+        window.action_show_menu_bar.setChecked(window._show_menu_bar)
+        window.action_show_menu_bar.toggled.connect(window._on_toggle_menu_bar)
+        view_menu.addSeparator()
         view_menu.addAction(window.action_show_carbons)
         view_menu.addAction(window.action_show_hydrogens)
         view_menu.addSeparator()

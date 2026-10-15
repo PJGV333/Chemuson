@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-10-15
+goal: Corregir la X de las pestañas (sin desplazamiento al pasar a modificada), mostrar por defecto la barra de menús tradicional compacta y dejar la barra de herramientas superior en tres botones (Nuevo/Abrir/Guardar), conservando acciones, atajos, cierre seguro, hamburguesa y panel lateral existentes.

@@ -32,14 +32,20 @@ class NumberingPreferences:
 
 @dataclass(frozen=True, slots=True)
 class UiPreferences:
-    """Preferencias de interfaz (tema) persistidas.
+    """Preferencias de interfaz persistidas.
 
     ``theme`` admite ``"light"``, ``"dark"`` o ``"system"`` (valor lógico
     preparado para la opción "seguir sistema"; el resolve a light/dark lo
-    hace la capa de temas, no este módulo).
+    hace la capa de temas, no este módulo). ``show_menu_bar`` conserva si se
+    presenta permanentemente la barra de menús tradicional (visible por
+    defecto en la beta; el acceso hamburguesa permanece cuando se oculta);
+    ``show_main_toolbar`` controla la barra superior de acciones (Nuevo,
+    Abrir y Guardar), visible por defecto.
     """
 
     theme: str = "light"
+    show_menu_bar: bool = True
+    show_main_toolbar: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -286,16 +292,39 @@ def save_numbering_preferences(settings: SettingsStore, preferences: NumberingPr
     settings.setValue("numbering/include_export", bool(preferences.include_export))
 
 
-def load_ui_preferences(settings: SettingsStore) -> UiPreferences:
-    """Read and normalize persistent UI preferences (theme).
+#: Versión de los *defaults* del shell superior. Cambiar un default de
+#: ``UiPreferences`` entre releases requiere incrementarla: la primera carga
+#: tras el cambio aplica los defaults nuevos una sola vez (los valores
+#: antiguos escritos con el default previo son indistinguibles de una
+#: elección explícita) y el marcador se persiste en el siguiente guardado,
+#: de modo que toda elección posterior del usuario se respeta.
+SHELL_DEFAULTS_VERSION = 1
 
-    Valores ausentes o inválidos resuelven a ``"light"`` (comportamiento
-    histórico de la aplicación).
-    """
+
+def _shell_defaults_version(settings: SettingsStore) -> int:
+    try:
+        return int(settings.value("ui/shell_defaults_version", 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def load_ui_preferences(settings: SettingsStore) -> UiPreferences:
+    """Read and normalize persistent UI preferences (theme and bars)."""
     raw = str(settings.value("ui/theme", "light") or "light").strip().lower()
     if raw not in UI_THEME_CHOICES:
         raw = "light"
-    return UiPreferences(theme=raw)
+    if _shell_defaults_version(settings) < SHELL_DEFAULTS_VERSION:
+        # Defaults de la beta: barra de menús y barra de acciones visibles.
+        return UiPreferences(theme=raw, show_menu_bar=True, show_main_toolbar=True)
+    show_menu_bar = setting_bool(settings.value("ui/show_menu_bar", True), True)
+    show_main_toolbar = setting_bool(
+        settings.value("ui/show_main_toolbar", True), True
+    )
+    return UiPreferences(
+        theme=raw,
+        show_menu_bar=show_menu_bar,
+        show_main_toolbar=show_main_toolbar,
+    )
 
 
 def save_ui_preferences(settings: SettingsStore, preferences: UiPreferences) -> None:
@@ -304,6 +333,11 @@ def save_ui_preferences(settings: SettingsStore, preferences: UiPreferences) -> 
     if theme not in UI_THEME_CHOICES:
         theme = "light"
     settings.setValue("ui/theme", theme)
+    settings.setValue("ui/show_menu_bar", bool(preferences.show_menu_bar))
+    settings.setValue("ui/show_main_toolbar", bool(preferences.show_main_toolbar))
+    # Marca que los defaults ya se aplicaron: a partir de aquí se respeta lo
+    # que el usuario persista, aunque cambien los defaults en el futuro.
+    settings.setValue("ui/shell_defaults_version", SHELL_DEFAULTS_VERSION)
 
 
 def _side_panel_visible(value: object) -> bool:
