@@ -189,21 +189,32 @@ def test_ui_preferences_roundtrip_and_normalize() -> None:
 
     assert load_ui_preferences(FakeSettings({"ui/theme": "dark"})) == UiPreferences(theme="dark")
     assert load_ui_preferences(FakeSettings({"ui/theme": "system"})) == UiPreferences(theme="system")
+    assert load_ui_preferences(
+        FakeSettings({"ui/theme": "dark", "ui/show_menu_bar": "yes"})
+    ) == UiPreferences(theme="dark", show_menu_bar=True)
 
-    # Valores inválidos o ausentes resuelven a light (comportamiento histórico).
+    # Valores inválidos o ausentes resuelven a light y modo compacto.
     assert load_ui_preferences(FakeSettings({"ui/theme": "neon"})) == UiPreferences(theme="light")
     assert load_ui_preferences(FakeSettings({})) == UiPreferences(theme="light")
+    assert load_ui_preferences(
+        FakeSettings({"ui/show_menu_bar": "0"})
+    ).show_menu_bar is False
 
     settings = FakeSettings({})
-    save_ui_preferences(settings, UiPreferences(theme="system"))
+    save_ui_preferences(
+        settings,
+        UiPreferences(theme="system", show_menu_bar=True),
+    )
     assert settings.values["ui/theme"] == "system"
+    assert settings.values["ui/show_menu_bar"] is True
 
-    save_ui_preferences(settings, UiPreferences(theme="invalid"))
+    save_ui_preferences(settings, UiPreferences(theme="invalid", show_menu_bar=True))
     assert settings.values["ui/theme"] == "light"
+    assert settings.values["ui/show_menu_bar"] is True
 
     # El valor persistido se relee normalizado.
-    settings = FakeSettings({"ui/theme": "DARK"})
-    assert load_ui_preferences(settings).theme == "dark"
+    settings = FakeSettings({"ui/theme": "DARK", "ui/show_menu_bar": "0"})
+    assert load_ui_preferences(settings) == UiPreferences(theme="dark", show_menu_bar=False)
 
 
 def test_side_panel_preferences_default_and_roundtrip() -> None:

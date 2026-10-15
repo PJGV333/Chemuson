@@ -482,6 +482,11 @@ class MainWindowUiBuilder:
         window.fragment_rotate_menu.addAction(window.action_fragment_invert)
 
     def _build_view_menu(self, window, view_menu: QMenu) -> None:
+        window.action_show_menu_bar = view_menu.addAction("Mostrar barra de menús")
+        window.action_show_menu_bar.setCheckable(True)
+        window.action_show_menu_bar.setChecked(window._show_menu_bar)
+        window.action_show_menu_bar.toggled.connect(window._on_toggle_menu_bar)
+        view_menu.addSeparator()
         view_menu.addAction(window.action_show_carbons)
         view_menu.addAction(window.action_show_hydrogens)
         view_menu.addSeparator()

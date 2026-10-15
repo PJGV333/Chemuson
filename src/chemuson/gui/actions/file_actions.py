@@ -19,6 +19,9 @@ def create_file_actions(window) -> None:
         QKeySequence("Ctrl+G"),
     ])
     window.action_save.triggered.connect(window._on_file_save)
+    # El QMenuBar y las toolbars clásicas se ocultan en el modo compacto.
+    # Asociar la misma QAction a la ventana mantiene sus atajos activos.
+    window.addAction(window.action_save)
 
     window.action_recovery_center = QAction("Centro de recuperación...", window)
     window.action_recovery_center.triggered.connect(window._on_open_recovery_center)

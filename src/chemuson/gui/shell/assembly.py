@@ -348,11 +348,9 @@ def assemble_application_shell(self) -> None:
 
     # === MENU AND TOOLBARS ===
     self._create_menu_bar()
-    # Convergencia con el spike aprobado: el ``QMenuBar`` clásico queda
-    # oculto (no eliminado): las ``QMenu``, ``QAction``, atajos y handlers
-    # son los originales; el acceso visible es la hamburguesa de la app
-    # bar (y la tecla Alt) que abren el menubar como popup.
-    self.menuBar().setVisible(False)
+    # El modo compacto conserva el acceso por hamburguesa/Alt; la preferencia
+    # puede mostrar permanentemente este mismo menubar clásico.
+    self.menuBar().setVisible(self._show_menu_bar)
     self.app_bar.menuRequested.connect(self._open_main_menu_popup)
     self._create_main_toolbar()
     # Fase 3: la toolbar superior clásica deja de mostrarse; sus QAction

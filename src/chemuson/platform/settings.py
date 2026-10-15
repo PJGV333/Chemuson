@@ -32,14 +32,16 @@ class NumberingPreferences:
 
 @dataclass(frozen=True, slots=True)
 class UiPreferences:
-    """Preferencias de interfaz (tema) persistidas.
+    """Preferencias de interfaz persistidas.
 
     ``theme`` admite ``"light"``, ``"dark"`` o ``"system"`` (valor lógico
     preparado para la opción "seguir sistema"; el resolve a light/dark lo
-    hace la capa de temas, no este módulo).
+    hace la capa de temas, no este módulo). ``show_menu_bar`` conserva si se
+    presenta permanentemente el menú clásico en lugar del acceso compacto.
     """
 
     theme: str = "light"
+    show_menu_bar: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -287,15 +289,12 @@ def save_numbering_preferences(settings: SettingsStore, preferences: NumberingPr
 
 
 def load_ui_preferences(settings: SettingsStore) -> UiPreferences:
-    """Read and normalize persistent UI preferences (theme).
-
-    Valores ausentes o inválidos resuelven a ``"light"`` (comportamiento
-    histórico de la aplicación).
-    """
+    """Read and normalize persistent UI preferences (theme and menu bar)."""
     raw = str(settings.value("ui/theme", "light") or "light").strip().lower()
     if raw not in UI_THEME_CHOICES:
         raw = "light"
-    return UiPreferences(theme=raw)
+    show_menu_bar = setting_bool(settings.value("ui/show_menu_bar", False), False)
+    return UiPreferences(theme=raw, show_menu_bar=show_menu_bar)
 
 
 def save_ui_preferences(settings: SettingsStore, preferences: UiPreferences) -> None:
@@ -304,6 +303,7 @@ def save_ui_preferences(settings: SettingsStore, preferences: UiPreferences) -> 
     if theme not in UI_THEME_CHOICES:
         theme = "light"
     settings.setValue("ui/theme", theme)
+    settings.setValue("ui/show_menu_bar", bool(preferences.show_menu_bar))
 
 
 def _side_panel_visible(value: object) -> bool:

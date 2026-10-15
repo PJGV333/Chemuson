@@ -187,21 +187,17 @@ class ChemusonWindow(QMainWindow):
         self._apply_theme()
 
     def _load_theme_preferences(self) -> None:
-        """Carga el tema persistido (M21, clave ``ui/theme``).
-
-        Sustituye el valor por defecto asignado durante el ensamblaje;
-        valores ausentes o inválidos resuelven a ``light`` (M21).
-        """
-        self.current_theme = load_ui_preferences(self._settings).theme
+        """Carga las preferencias UI persistidas antes de montar las regiones."""
+        preferences = load_ui_preferences(self._settings)
+        self.current_theme = preferences.theme
+        self._show_menu_bar = preferences.show_menu_bar
 
     def _create_menu_bar(self) -> None:
         """Construye menús principales delegando el wiring repetitivo."""
         self._ui_builder.build_menu_bar(self)
-        # Convergencia visual con el spike aprobado: el ``QMenuBar``
-        # clásico queda oculto. Los 6 ``QMenu`` superiores (originales,
-        # con sus ``QAction``/atajos/callbacks intactos) se agregan en un
-        # único ``QMenu`` discreto colgado de la hamburguesa de la app
-        # bar; el ``QMenuBar`` solo conserva sus ``QAction`` de tope.
+        # El ``QMenuBar`` conserva los seis menús originales; el agregador
+        # de la hamburguesa reutiliza esos mismos ``QMenu`` para el modo
+        # compacto, sin duplicar acciones, atajos ni callbacks.
         self._menu_aggregator = QMenu("Menú", self)
         for top in self.menuBar().actions():
             top_menu = top.menu()
@@ -210,6 +206,18 @@ class ChemusonWindow(QMainWindow):
         # La hamburguesa de la app bar abre ``_menu_aggregator`` vía la
         # señal ``menuRequested`` (una sola vía; sin ``setMenu`` para no
         # abrir dos popups simultáneos).
+
+    def _on_toggle_menu_bar(self, visible: bool) -> None:
+        """Alterna y persiste el menubar clásico sin reconstruir menús."""
+        self._show_menu_bar = bool(visible)
+        self.menuBar().setVisible(self._show_menu_bar)
+        save_ui_preferences(
+            self._settings,
+            UiPreferences(
+                theme=self.current_theme,
+                show_menu_bar=self._show_menu_bar,
+            ),
+        )
 
     def _open_main_menu_popup(self) -> None:
         """Abre el menú agregado (los 6 menús originales) como popup.
@@ -230,12 +238,7 @@ class ChemusonWindow(QMainWindow):
         menu.popup(pos)
 
     def eventFilter(self, obj, event) -> bool:  # noqa: N802
-        """Tecla Alt (sin modificadores) abre el menús popup.
-
-        El ``QMenuBar`` queda oculto visualmente; Alt sigue siendo la forma
-        estándar de alcanzar los menús (mismo comportamiento que cuando la
-        barra era visible, sin recrear una barra clásica).
-        """
+        """Alt sin modificadores abre el agregador con los menús originales."""
         if (
             event.type() == QEvent.Type.KeyPress
             and event.key() == Qt.Key.Key_Alt
@@ -1823,7 +1826,10 @@ class ChemusonWindow(QMainWindow):
         if theme != self.current_theme:
             self.current_theme = theme
             self._apply_theme()
-            save_ui_preferences(self._settings, UiPreferences(theme=theme))
+            save_ui_preferences(
+                self._settings,
+                UiPreferences(theme=theme, show_menu_bar=self._show_menu_bar),
+            )
 
         self.action_show_carbons.setChecked(self.canvas.state.show_implicit_carbons)
         self.action_show_hydrogens.setChecked(self.canvas.state.show_implicit_hydrogens)
