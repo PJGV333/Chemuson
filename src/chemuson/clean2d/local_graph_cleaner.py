@@ -309,36 +309,114 @@ def is_complex_clean2d_graph(graph: MolGraph, atom_ids: Iterable[int] | None = N
     return len(selected) > 18 and _has_bridged_or_fused_system(ctx.cycles)
 
 
+def _structural_bonds_touching_selection(graph: MolGraph, atom_ids: set[int]) -> list[Bond]:
+    """Enlaces estructurales con al menos un extremo en la selección.
+
+    Incluye los enlaces de **frontera** (un extremo dentro y otro fuera), que son
+    los que fijan el orden de un centro estereogénico parcialmente seleccionado.
+    """
+    return [
+        bond
+        for bond in graph.bonds.values()
+        if (bond.a1_id in atom_ids or bond.a2_id in atom_ids) and bond_affects_valence(bond)
+    ]
+
+
+def _layout_point(graph: MolGraph, coords: dict[int, tuple[float, float]], atom_id: int) -> tuple[float, float] | None:
+    """Coordenada de un átomo: la de la propuesta si existe, si no la del grafo.
+
+    Los átomos fuera de la selección no se mueven durante una limpieza, así que su
+    posición real es la del grafo y debe participar en la firma del centro.
+    """
+    point = coords.get(atom_id)
+    if point is not None:
+        return (float(point[0]), float(point[1]))
+    atom = graph.atoms.get(atom_id)
+    if atom is None:
+        return None
+    return (float(atom.x), float(atom.y))
+
+
+def _structural_neighbour_styles(graph: MolGraph, center: int) -> dict[int, str]:
+    """Vecinos estructurales reales de un centro y estilo de enlace de cada uno."""
+    neighbours: dict[int, str] = {}
+    for bond in graph.bonds.values():
+        if not bond_affects_valence(bond):
+            continue
+        style = getattr(normalize_bond_style(getattr(bond, "style", BondStyle.PLAIN)), "value", "plain")
+        if bond.a1_id == center:
+            neighbours[int(bond.a2_id)] = style
+        elif bond.a2_id == center:
+            neighbours[int(bond.a1_id)] = style
+    return neighbours
+
+
+def _cyclic_neighbour_order(
+    graph: MolGraph,
+    coords: dict[int, tuple[float, float]],
+    center: int,
+    neighbour_styles: dict[int, str],
+) -> tuple[tuple[int, str], ...]:
+    """Orden cíclico antihorario (canónico por rotación) de los vecinos del centro.
+
+    Es el invariante que determina la configuración dibujada: dos disposiciones
+    con el mismo orden cíclico y los mismos estilos de enlace describen la misma
+    estereoquímica, mientras que una imagen especular o un intercambio de
+    vecinos invierten el orden.
+    """
+    center_point = _layout_point(graph, coords, center)
+    if center_point is None:
+        return ()
+    ordered: list[tuple[float, int, str]] = []
+    for neighbour_id, style in neighbour_styles.items():
+        point = _layout_point(graph, coords, neighbour_id)
+        if point is None:
+            continue
+        dx = point[0] - center_point[0]
+        dy = point[1] - center_point[1]
+        if math.hypot(dx, dy) <= 1e-9:
+            # Vecino degenerado (superpuesto al centro): la firma no define
+            # orden; otros filtros de colisión rechazan esa geometría.
+            continue
+        ordered.append((math.atan2(dy, dx), neighbour_id, style))
+    if not ordered:
+        return ()
+    ordered.sort(key=lambda item: (item[0], item[1]))
+    sequence = tuple((neighbour_id, style) for _angle, neighbour_id, style in ordered)
+    rotations = [sequence[index:] + sequence[:index] for index in range(len(sequence))]
+    return min(rotations)
+
+
 def stereo_layout_signature(
     graph: MolGraph,
     coords: dict[int, tuple[float, float]],
     atom_ids: Iterable[int] | None = None,
 ) -> tuple[Any, ...]:
+    """Firma de la disposición estereoquímica dibujada.
+
+    La configuración percibida en un dibujo 2D queda determinada por el orden
+    cíclico de los vecinos de cada centro estereogénico y el estilo de enlace de
+    cada vecino (cuña sólida, rayada o normal), más la estereoquímica explícita
+    de los enlaces. Por eso la firma compara:
+
+    - el **orden cíclico canónico** de los vecinos reales de cada centro, con
+      todos los vecinos del grafo (también los que quedan fuera de la
+      selección), y
+    - los enlaces con estereoquímica explícita que tocan la selección
+      (incluidos los de frontera).
+
+    Una rotación, un cambio de escala o un re-encuadre que conserva el orden
+    cíclico NO cambian la configuración y no deben rechazar un candidato; una
+    imagen especular, un intercambio de sustituyentes o un cambio de cuña sí la
+    cambian y sí se detectan.
+    """
     selected = _normalize_atom_ids(graph, atom_ids)
-    bonds = _selected_structural_bonds(graph, selected)
-    adjacency = _adjacency_for_bonds(selected, bonds)
+    bonds = _structural_bonds_touching_selection(graph, selected)
     stereo_centers = _stereo_centers(graph, selected, bonds)
     entries: list[Any] = []
     for center in sorted(stereo_centers):
-        if center not in coords:
-            continue
-        neighbors = sorted(neigh for neigh in adjacency.get(center, set()) if neigh in coords)
-        pair_signs: list[tuple[int, int, int]] = []
-        cx, cy = coords[center]
-        for idx, left in enumerate(neighbors):
-            lx, ly = coords[left][0] - cx, coords[left][1] - cy
-            llen = math.hypot(lx, ly)
-            if llen <= 1e-9:
-                continue
-            for right in neighbors[idx + 1 :]:
-                rx, ry = coords[right][0] - cx, coords[right][1] - cy
-                rlen = math.hypot(rx, ry)
-                if rlen <= 1e-9:
-                    continue
-                signed = (lx * ry - ly * rx) / (llen * rlen)
-                sign = 1 if signed > 0.05 else -1 if signed < -0.05 else 0
-                pair_signs.append((left, right, sign))
-        entries.append(("center", center, tuple(pair_signs)))
+        neighbour_styles = _structural_neighbour_styles(graph, center)
+        entries.append(("center", int(center), _cyclic_neighbour_order(graph, coords, center, neighbour_styles)))
     for bond in sorted(bonds, key=lambda item: item.id):
         style = normalize_bond_style(getattr(bond, "style", BondStyle.PLAIN))
         stereo = getattr(getattr(bond, "stereo", None), "value", getattr(bond, "stereo", None))
