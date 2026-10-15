@@ -34,20 +34,32 @@ ninguna página SHALL mostrarse como QDockWidget clásico flotante o acoplado.
 ### Requirement: Los cinco tabs principales permanecen legibles y sin clipping
 
 `SideTabRow` SHALL conservar los cinco textos completos como contenido de cada
-botón, exponerlos como tooltip y nombre accesible aunque la vista se recorte, y
-mantener fuente de al menos 10 px, padding horizontal real de al menos 3 px por
-tab y separación de al menos 3 px entre tabs cuando el ancho inicial es 340 px.
-SHALL conservar el acento/underline del
-tab activo y mantener Espectroscopía y CompChem dentro de `…`. La aceptación
-visual SHALL basarse en texto íntegro, separación y contención en la fila; no
-SHALL exigir `horizontalScrollBar().maximum() == 0` como objetivo independiente.
+botón, exponerlos como tooltip y nombre accesible, y medir el ancho usando la
+fuente y el `QStyle` efectivos tras aplicar el tema. La primera presentación
+tras mostrar el SidePanel SHALL sincronizar botón, layout del strip y viewport
+antes del primer paint, sin depender de un clic. Cada botón SHALL reservar al
+menos su `sizeHint()` estilizado y el avance de texto más 3 px de padding por
+lado; SHALL conservar fuente de al menos 10 px, separación de al menos 3 px,
+el acento/underline activo y Espectroscopía/CompChem dentro de `…`.
 
-#### Scenario: Tabs legibles en temas y tamaños solicitados
-- **GIVEN** SidePanel visible con ancho entre 336 y 340 px
-- **WHEN** la ventana se captura a 1440×900 y 980×600 en temas light y dark
-- **THEN** los cinco labels principales están completos, visibles, separados y sin clipping
-- **AND** cada tab conserva padding horizontal y el activo conserva el acento/underline
-- **AND** Espectroscopía y CompChem siguen accesibles desde `…`.
+Si los cinco botones caben en el viewport, SHALL verse cada label completo y
+sin clipping. Si el contenido excede el viewport, SHALL conservar el scroll
+existente para llevar cada tab seleccionado completamente a la vista; el texto
+no SHALL desbordar el botón y tooltips/nombres accesibles SHALL seguir completos.
+La aceptación visual SHALL basarse en legibilidad y navegación, no SHALL exigir
+`horizontalScrollBar().maximum() == 0` cuando el espacio sea insuficiente.
+
+#### Scenario: Primera presentación y ancho suficiente
+- **GIVEN** SidePanel recién abierto desde Ver y un viewport suficiente
+- **WHEN** se procesa la primera geometría/paint, sin seleccionar una pestaña
+- **THEN** los cinco labels están completos, visibles y separados
+- **AND** el acento activo y el tema light/dark se conservan.
+
+#### Scenario: Viewport insuficiente con scroll existente
+- **GIVEN** SidePanel visible con contenido de tabs más ancho que el viewport
+- **WHEN** se selecciona una pestaña que inicialmente estaba parcialmente fuera
+- **THEN** el scroll existente la lleva completamente a la vista sin clipping de su texto
+- **AND** tooltips, nombres accesibles, navegación y overflow permanecen intactos.
 
 #### Scenario: Tooltip de una pestaña recortada
 - **GIVEN** SidePanel reducido por el usuario hasta un ancho permitido

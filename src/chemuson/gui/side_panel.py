@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from PyQt6.QtCore import QPoint, Qt, pyqtSignal
+from PyQt6.QtCore import QEvent, QPoint, Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QFont, QFontMetrics
 from PyQt6.QtWidgets import (
     QDockWidget,
@@ -60,6 +60,7 @@ class SideTabRow(QFrame):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._refreshing_tab_geometry = False
         self.setObjectName("sideTabRow")
         self.setFixedHeight(METRICS["sideTabH"])
         self.main_tab_buttons: dict[str, QToolButton] = {}
@@ -116,6 +117,7 @@ class SideTabRow(QFrame):
         self._strip.setMinimumWidth(strip_layout.sizeHint().width())
         self.scroll_area.setWidget(self._strip)
         layout.addWidget(self.scroll_area, 1)
+        self._refresh_tab_geometry()
 
         self.overflow_button = QToolButton(self)
         self.overflow_button.setObjectName("sidePanelOverflow")
@@ -131,6 +133,63 @@ class SideTabRow(QFrame):
         )
         self.overflow_button.clicked.connect(self.overflowRequested)
         layout.addWidget(self.overflow_button)
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        """Resolve final styled tab widths before the first visible paint."""
+        super().showEvent(event)
+        self._refresh_tab_geometry()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        """Keep the non-resizable scroll-strip sized for its styled content."""
+        super().resizeEvent(event)
+        self._refresh_tab_geometry()
+
+    def changeEvent(self, event) -> None:  # noqa: N802
+        """Recompute intrinsic tab widths after Qt style/font changes."""
+        super().changeEvent(event)
+        if event.type() in (QEvent.Type.StyleChange, QEvent.Type.FontChange):
+            self._refresh_tab_geometry()
+
+    def _refresh_tab_geometry(self) -> None:
+        """Synchronize button/strip sizes from the effective Qt style metrics."""
+        if getattr(self, "_refreshing_tab_geometry", False):
+            return
+        buttons = getattr(self, "main_tab_buttons", None)
+        strip = getattr(self, "_strip", None)
+        scroll_area = getattr(self, "scroll_area", None)
+        if not buttons or strip is None or scroll_area is None:
+            return
+
+        self._refreshing_tab_geometry = True
+        try:
+            for button in buttons.values():
+                button.ensurePolished()
+                text_width = QFontMetrics(button.font()).horizontalAdvance(
+                    button.text()
+                )
+                styled_width = button.sizeHint().width()
+                required_width = max(
+                    styled_width,
+                    text_width + 2 * METRICS["sideTabPadX"],
+                )
+                if button.width() != required_width:
+                    button.setFixedWidth(required_width)
+
+            strip_layout = strip.layout()
+            if strip_layout is None:
+                return
+            strip_layout.invalidate()
+            strip_layout.activate()
+            strip.setMinimumWidth(0)
+            strip.adjustSize()
+            content_width = strip_layout.sizeHint().width()
+            viewport_width = scroll_area.viewport().width()
+            strip_width = max(content_width, viewport_width)
+            strip.setMinimumWidth(strip_width)
+            strip.resize(strip_width, strip.height())
+            scroll_area.updateGeometry()
+        finally:
+            self._refreshing_tab_geometry = False
 
     def set_active(self, page_key: str) -> None:
         """Reflect a primary or overflow page without storing page state."""

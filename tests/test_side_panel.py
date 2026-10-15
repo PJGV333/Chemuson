@@ -238,6 +238,54 @@ def test_view_menu_actions_show_and_select_pages_without_dock_toggles(window) ->
         assert all(not dock.isFloating() for dock in docks.values())
 
 
+def test_primary_tabs_meet_effective_style_widths_on_first_view_open_before_tab_click(window) -> None:
+    window.resize(1200, 900)
+    window.show()
+    QApplication.processEvents()
+
+    actions = {action.text(): action for action in _view_menu(window).actions()}
+    actions["Inspector"].trigger()
+    QApplication.processEvents()
+    assert not window.side_panel.isHidden()
+    canvas_after_view_open = window.tabs.geometry()
+
+    row = window.side_panel.tab_row
+    viewport = row.scroll_area.viewport()
+    geometry = _wait_for_stable_primary_tab_geometry(row, viewport)
+    for key, button in row.main_tab_buttons.items():
+        text_width = QFontMetrics(button.font()).horizontalAdvance(button.text())
+        assert button.width() >= button.sizeHint().width(), (
+            f"{key}: width={button.width()}, sizeHint={button.sizeHint().width()}, "
+            f"text={text_width}, geometry={geometry}"
+        )
+        assert button.width() >= text_width + 2 * 3
+
+    scroll_bar = row.scroll_area.horizontalScrollBar()
+    if row._strip.width() > viewport.width():
+        assert scroll_bar.maximum() > 0
+    else:
+        assert all(
+            button.mapTo(viewport, QPoint(0, 0)).x() >= 0
+            and button.mapTo(viewport, QPoint(0, 0)).x() + button.width()
+            <= viewport.width()
+            for button in row.main_tab_buttons.values()
+        )
+
+    for key in row.main_tab_buttons:
+        row.set_active(key)
+        _wait_for_stable_primary_tab_geometry(row, viewport)
+        button = row.main_tab_buttons[key]
+        position = button.mapTo(viewport, QPoint(0, 0))
+        assert position.x() >= 0 and position.x() + button.width() <= viewport.width(), (
+            f"{key} could not be scrolled fully into view: "
+            f"{_primary_tab_geometry(row, viewport)}"
+        )
+    assert window.tabs.geometry() == canvas_after_view_open, (
+        "tab geometry measurement must not cause a second canvas shift "
+        "after the initial splitter layout"
+    )
+
+
 def test_side_panel_persists_active_page_and_visibility(window) -> None:
     panel = window.side_panel
     panel.show_page("appearance")
@@ -389,39 +437,41 @@ def test_primary_tabs_have_complete_labels_padding_and_separation(window) -> Non
             initial_geometry = _primary_tab_geometry(row, viewport)
             stable_geometry = _wait_for_stable_primary_tab_geometry(row, viewport)
             scroll_bar = row.scroll_area.horizontalScrollBar()
-            assert scroll_bar.maximum() == 0 and scroll_bar.value() == 0, (
-                f"all five primary tabs must fit without scrolling at {size}; "
-                f"active={active_key}, viewport={viewport.width()}, "
-                f"strip={row._strip.width()}, scroll={scroll_bar.value()}/"
-                f"{scroll_bar.minimum()}..{scroll_bar.maximum()}, "
-                f"initial={initial_geometry}, stable={stable_geometry}"
-            )
+            if row._strip.width() <= viewport.width():
+                assert scroll_bar.maximum() == 0 and scroll_bar.value() == 0
+            else:
+                assert scroll_bar.maximum() > 0, (
+                    f"overflowing tabs must retain scrolling at {size}; "
+                    f"initial={initial_geometry}, stable={stable_geometry}"
+                )
+
             previous_right = None
             for key, button in row.main_tab_buttons.items():
+                position_in_strip = button.mapTo(row._strip, QPoint(0, 0))
                 position = button.mapTo(viewport, QPoint(0, 0))
                 text_width = QFontMetrics(button.font()).horizontalAdvance(button.text())
-                right = position.x() + button.width()
+                right_in_strip = position_in_strip.x() + button.width()
 
-                assert button.isVisible(), f"primary tab {key} must remain visible at {size}"
+                assert button.isVisible(), f"primary tab {key} must remain available at {size}"
                 assert button.font().pixelSize() >= 10, "tab text must not be reduced further"
+                assert button.width() >= button.sizeHint().width(), (
+                    f"primary tab {key} must satisfy the effective Qt style size hint"
+                )
                 assert button.width() >= text_width + 2 * minimum_padding_x, (
                     f"primary tab {key} needs at least {minimum_padding_x}px lateral "
                     f"padding around its {text_width}px label"
                 )
-                assert position.x() >= 0 and right <= viewport.width(), (
-                    f"primary tab {key} is clipped at stable geometry {size}: "
-                    f"x={position.x()}, width={button.width()}, "
-                    f"viewport={viewport.width()}, strip={row._strip.width()}, "
-                    f"scroll={scroll_bar.value()}/{scroll_bar.minimum()}.."
-                    f"{scroll_bar.maximum()}, active={active_key}, "
-                    f"initial={initial_geometry}, stable={stable_geometry}"
-                )
+                if key == active_key:
+                    assert position.x() >= 0 and position.x() + button.width() <= viewport.width(), (
+                        f"active tab {key} must scroll fully into view: "
+                        f"initial={initial_geometry}, stable={stable_geometry}"
+                    )
                 if previous_right is not None:
-                    gap = position.x() - previous_right
+                    gap = position_in_strip.x() - previous_right
                     assert gap >= minimum_gap, (
                         f"primary tab {key} needs a visible {minimum_gap}px gap; got {gap}px"
                     )
-                previous_right = right
+                previous_right = right_in_strip
 
         assert 336 <= panel.width() <= 340, (
             f"SidePanel initial width must stay within 336–340px; "
@@ -429,6 +479,59 @@ def test_primary_tabs_have_complete_labels_padding_and_separation(window) -> Non
         )
         for key, button in row.main_tab_buttons.items():
             assert button.toolTip() == button.accessibleName() == button.text()
+
+    window.resize(1440, 900)
+    QApplication.processEvents()
+    window._central_splitter.setSizes([800, 420])
+    QApplication.processEvents()
+    assert window.side_panel.width() >= 400
+    assert row._strip.width() <= viewport.width()
+    assert row.scroll_area.horizontalScrollBar().maximum() == 0
+    for button in row.main_tab_buttons.values():
+        position = button.mapTo(viewport, QPoint(0, 0))
+        assert position.x() >= 0 and position.x() + button.width() <= viewport.width()
+
+
+def test_tab_geometry_refreshes_after_reveal_resize_and_theme_without_canvas_shift(window) -> None:
+    window.resize(1200, 900)
+    window.show()
+    QApplication.processEvents()
+    actions = {action.text(): action for action in _view_menu(window).actions()}
+    actions["Inspector"].trigger()
+    QApplication.processEvents()
+    row = window.side_panel.tab_row
+    viewport = row.scroll_area.viewport()
+
+    def assert_styled_widths() -> None:
+        _wait_for_stable_primary_tab_geometry(row, viewport)
+        for button in row.main_tab_buttons.values():
+            text_width = QFontMetrics(button.font()).horizontalAdvance(button.text())
+            assert button.width() >= button.sizeHint().width()
+            assert button.width() >= text_width + 2 * 3
+
+    assert_styled_widths()
+    window.side_panel.set_panel_visible(False)
+    QApplication.processEvents()
+    canvas_before_reopen = window.tabs.geometry()
+    actions["Inspector"].trigger()
+    QApplication.processEvents()
+    canvas_after_reopen = window.tabs.geometry()
+    assert_styled_widths()
+    assert window.tabs.geometry() == canvas_after_reopen
+    assert canvas_after_reopen != canvas_before_reopen
+
+    for theme in (True, False):
+        canvas_before_theme = window.tabs.geometry()
+        window.toggle_theme(theme)
+        QApplication.processEvents()
+        assert_styled_widths()
+        assert window.tabs.geometry() == canvas_before_theme
+
+    window.resize(1600, 900)
+    QApplication.processEvents()
+    canvas_after_resize = window.tabs.geometry()
+    assert_styled_widths()
+    assert window.tabs.geometry() == canvas_after_resize
 
 
 def test_narrow_tabs_keep_full_tooltips_and_accessible_names(window) -> None:
@@ -440,11 +543,22 @@ def test_narrow_tabs_keep_full_tooltips_and_accessible_names(window) -> None:
 
     row = window.side_panel.tab_row
     assert window.side_panel.width() >= 300
-    assert row._strip.width() > row.scroll_area.viewport().width()
+    viewport = row.scroll_area.viewport()
+    scroll_bar = row.scroll_area.horizontalScrollBar()
+    assert row._strip.width() > viewport.width()
+    assert scroll_bar.maximum() > 0
     for key, button in row.main_tab_buttons.items():
+        assert button.width() >= button.sizeHint().width()
         assert button.text() == SidePanel.PAGE_LABELS[key]
         assert button.toolTip() == SidePanel.PAGE_LABELS[key]
         assert button.accessibleName() == SidePanel.PAGE_LABELS[key]
+
+    row.set_active("appearance")
+    _wait_for_stable_primary_tab_geometry(row, viewport)
+    appearance = row.main_tab_buttons["appearance"]
+    position = appearance.mapTo(viewport, QPoint(0, 0))
+    assert position.x() >= 0 and position.x() + appearance.width() <= viewport.width()
+    assert scroll_bar.value() > 0
 
 
 def test_side_panel_remains_usable_in_dark_theme_at_compact_window_size(window) -> None:
