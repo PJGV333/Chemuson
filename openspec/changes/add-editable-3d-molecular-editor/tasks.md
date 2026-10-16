@@ -29,7 +29,7 @@
 - [x] 4.1 Añadir selección de elemento y construcción 3D de átomo libre/enlazado.
 - [x] 4.2 Reusar `MolGraph`, validación y comandos de `gui/commands`; agrupar topología + coordenadas como una sola acción.
 - [x] 4.3 Reconciliar topología 2D con firma; no mostrar ni optimizar snapshots incompatibles, preservarlos para undo y pedir regeneración; H se reconstruyen en el siguiente trabajo RDKit.
-- [ ] 4.4 Completar las pruebas negativas del constructor (valencia, endpoint inexistente y duplicado). Cobertura ya verificada: creación átomo/enlace, orden doble, H derivados no persistentes, sincronización 2D/3D y undo/redo de topología; queda pendiente cerrar esas tres negativas explícitas.
+- [x] 4.4 Completar las pruebas negativas del constructor (valencia, endpoint inexistente y duplicado). Se verificó que los rechazos conservan grafo, geometría 3D e historial undo; la cobertura previa incluye construcción atómica de átomo+enlace, orden doble, H derivados no persistentes, sincronización 2D/3D y undo/redo de topología.
 
 ## 5. Live Molecular Mechanics real
 

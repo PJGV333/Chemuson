@@ -61,3 +61,61 @@ En la UI, comprueba que el dihedro llegue a 60°, activa MMFF94 Live MM, observa
 - Repetir manualmente el cierre gráfico; el intento posterior del agente quedó bloqueado y no debe reintentarse mediante otra herramienta.
 - Smoke gráfico de etano y benceno.
 - No se ejecutó la suite completa por el SIGSEGV de baseline conocido.
+
+## Consolidación y pulido de fases 1–4 — addendum 2026-10-16
+
+Este addendum amplía la evidencia sin editar ni sustituir los resultados de investigación, baseline o demostración gráfica anteriores. El trabajo se realizó en `feature/chemuson-3d`, HEAD inicial de esta continuación `a7dc0dcadf3d6a5fe735ed556f23f1ab5373cf6e`, upstream `origin/feature/chemuson-3d`. No hubo push, merge ni PR.
+
+### 1. Defectos corregidos
+
+- El constructor 3D valida la valencia sobre una copia candidata antes de abrir la macro de undo. El rechazo comunica el motivo y no altera el modelo, las coordenadas ni el historial.
+- `AddBondCommand` rechaza un átomo inicial/final inexistente, autoenlace o par duplicado antes de modificar el grafo. La prueba existente confirma que agregar átomo+enlace sigue siendo una sola acción reversible.
+- Las regresiones de valencia incompatible, endpoint inexistente y duplicado comparan el estado de grafo/geometría/historial antes y después.
+
+### 2. Interfaz y renderizado
+
+No se cambiaron shaders, iluminación, paleta, tamaños, layout del dock ni navegación. La instrucción de validación gráfica anterior prohíbe reintentar desde el agente la demostración bloqueada; por ello no presento cambios visuales ni una nueva verificación OpenGL como hechos. La mejora visual y la revisión de compresión/redimensionamiento del dock permanecen pendientes de una prueba gráfica autorizada.
+
+### 3. Estado de integración 2D ↔ 3D
+
+- El control existente `Generar conformero 3D` y el worker RDKit aislado siguen usando el `MolGraph` documental; se probó el servicio sobre grafos 2D importados desde SMILES. El generador produce coordenadas de conformero RDKit y una escena con H derivados sin añadirlos al grafo.
+- La construcción directa conserva `MolGraph` como autoridad. La prueba crea átomo+enlace en un único paso undoable; las coordenadas 3D no mueven el layout 2D. La proyección 3D→2D requiere confirmación explícita y se puede deshacer.
+- La geometría `.cmsn` se guardó y reabrió; IDs documentales y layout 2D se conservaron, mientras los H derivados no se serializaron.
+- Se probó una estructura con carga formal +1 por el servicio 3D: `MolGraph` mantuvo la carga y los H generados siguieron fuera del documento.
+- **Límite estereoquímico:** estos tests no validan que la conformación 3D respete cuñas/CIP. La inspección del payload confirma que `BondStereo` wedge/hash no se serializa al worker y `stereo_cip` no se convierte en una etiqueta quiral RDKit; por tanto no se afirma preservación de la geometría estereoquímica. El grafo documental no se muta, pero esta condición sigue abierta.
+
+### 4. Matriz química ejecutada
+
+Los cinco casos se importaron como `MolGraph`, se generó conformero y se comparó la escena con el documento. Todos los valores de escena fueron finitos; los IDs no generados coincidieron con los IDs del `MolGraph`.
+
+| Caso | Átomos/enlaces documentales | Átomos/enlaces de escena | Resultado adicional |
+|---|---:|---:|---|
+| Agua | 1 / 0 | 3 / 2 | 2 H derivados; ángulo H–O–H observado 103.98° |
+| Etano | 2 / 1 | 8 / 7 | 6 H derivados |
+| Etanol | 3 / 2 | 9 / 8 | 6 H derivados; C–C/C–O documentales y O–H derivado |
+| Butano | 4 / 3 | 14 / 13 | 10 H derivados; torsión/Live MM cubierta por pruebas focalizadas |
+| Benceno | 6 / 6 | 12 / 12 | 6 H derivados; anillo cíclico 3 enlaces sencillos + 3 dobles (Kekulé) |
+
+Rangos Z medidos en la escena (Å): agua 0.348, etano 2.579, etanol 2.316, butano 3.395 y benceno 4.710. Ninguna escena fue una proyección con todos los Z iguales a cero.
+
+En la ruta de importación probada, benceno está representado como Kekulé alternante; `is_aromatic` no está marcado en sus seis enlaces. No se interpreta esa salida como preservación de flags aromáticos explícitos.
+
+Live MM ejecutó MMFF94, MMFF94s y UFF sobre butano: cada flujo emitió 40 snapshots (pasos 2–80), con coordenadas/energía progresivas y átomo fijado. Energías del primer al último frame en esa corrida: MMFF94 3917.374218→−2.605608; MMFF94s 3917.374218→−2.605608; UFF 1154.252171→5.212458 kcal/mol. El test del worker verifica snapshots distintos, finitud, paso/energía, restricción del átomo y resultado terminal.
+
+### 5. Rendimiento observado
+
+Una corrida de conformer RDKit con proceso aislado midió 0.164–0.239 s por molécula para estos casos pequeños; construir `SceneMolecule3D` midió 0.000067–0.000106 s. Esto apunta a generación/proceso RDKit, no a ensamblaje de escena, como el costo dominante de esta muestra. No se midieron FPS, interacción OpenGL ni moléculas grandes; no se aplicaron optimizaciones de renderizado sin esa evidencia.
+
+### 6. SIGSEGV y cierre
+
+El shard `tests/test_gui_async_worker_shutdown.py` pasó **2 tests** en modo Qt offscreen y terminó con exit 0; el shard combinado focalizado también terminó limpiamente. Esto no reproduce el cierre de la demostración real con contexto OpenGL. La causa registrada anteriormente (`sip_api_get_address`/limpieza de wrappers) permanece sin determinar y distinta del fallo de worker `threading._worker` de la suite baseline. No se ejecutó otra demo gráfica ni se repitió pytest completo: el informe/tareas anteriores documentan la aprobación bloqueada y el límite de suite, respectivamente. El SIGSEGV no se declara resuelto.
+
+### 7. Validaciones, limitaciones y pasos para CachyOS
+
+- Suite focalizada de viewport, geometría, persistencia, comandos, Live MM, pestañas y shutdown: **100 passed in 51.15s**; no equivale a la suite completa.
+- Tests arquitectónicos: 280 passed; `compileall`: exit 0; Ruff scoped a los archivos Python modificados: All checks passed; `git diff --check`: exit 0.
+- Ambos `openspec validate ... --strict` indicaron `Change valid`. El CLI emitió avisos de formato `rules` en artefactos y los ignoró; no se modificaron retrospectivamente.
+- Siguen abiertos: demostración gráfica completa y cierre limpio Qt/SIP; pulido visual/viewport; suite monolítica; preservación de geometría quiral; flags aromáticos explícitos en la ruta de importación probada; recorridos manuales completos de guardado/pestañas.
+- Prueba manual mínima en CachyOS, desde la raíz del repositorio y con dependencias instaladas: `QT_QPA_PLATFORM=xcb PYTHONPATH=src ./.venv/bin/python -m chemuson`. Después, verifica los dos recorridos, guardar/reabrir, cambio de pestañas, Live MM y cierre limpio. Estas comprobaciones manuales no se consideran realizadas por esta ejecución.
+
+Commits locales de código y tests: `58383965` (`fix(3d): reject invalid molecular builder edits`) y `1b7fb1ec` (`test(3d): add chemistry and live-mm acceptance coverage`). Este addendum OpenSpec se registra en un commit documental separado. No se publica la rama; el estado final de commits/worktree se verifica tras esa operación.
