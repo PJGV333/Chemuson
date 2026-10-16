@@ -9,10 +9,11 @@ La referencia funcional de Avogadro 1.2.0 se usa únicamente para identificar ca
 ## Alcance
 
 - Crear una especificación y una implementación aislada bajo `src/chemuson/gui/viewport3d/`.
-- Consumir `SceneMolecule3D` y `CoordinateSet3D` existentes sin cambiar `MolGraph`, `.cmsn` ni los servicios de geometría.
+- Consumir `SceneMolecule3D` y `CoordinateSet3D` sin cambiar `MolGraph` ni `.cmsn`; completar sólo metadatos 3D efímeros de hidrógenos añadidos por RDKit para poder construir la escena completa.
 - Añadir cámara orbital con perspectiva/ortográfica, pan, zoom y encuadre automático.
 - Renderizar átomos como esferas y enlaces como varillas mediante `QOpenGLWidget` y shaders/VBO propios.
 - Implementar picking CPU por rayos sobre esferas y cápsulas de enlace, con selección local del visor.
+- Endurecer ciclo de vida OpenGL, encuadre respecto al aspect ratio, intersección finita de cápsulas y clipping para escalas moleculares amplias.
 - Exponer el visor como un `QDockWidget` independiente, accesible desde `Ver`, sin alterar el `SidePanel` de siete docks.
 - Añadir pruebas puras de cámara, transformaciones, picking, invariantes y pruebas GUI acotadas que no requieran un contexto OpenGL real.
 
@@ -28,7 +29,7 @@ La referencia funcional de Avogadro 1.2.0 se usa únicamente para identificar ca
 ## Módulos afectados
 
 - M08 GUI: nuevo subpaquete `gui/viewport3d/`, composición de `ChemusonWindow`, menú `Ver` y tests GUI.
-- M05 geometry3d: sólo se consume su API pública; no se modifica.
+- M05 geometry3d y M04 chemio: completar metadata transitoria de átomos/enlaces hidrógeno del conformero RDKit para `SceneMolecule3D`; no modificar `MolGraph` ni persistencia.
 - Catálogo arquitectónico: registrar la propiedad del nuevo subpaquete y sus tests dentro de M08.
 
 ## Dependencias y decisión inicial

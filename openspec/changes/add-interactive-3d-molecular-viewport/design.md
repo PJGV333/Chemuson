@@ -29,9 +29,17 @@ El baseline previo a esta especificación queda registrado en `baseline.md`.
 
 7. **Datos y degradación.** Moléculas vacías muestran un estado informativo. Escenas sin coordenadas suficientes omiten primitivas incompletas sin mutar el modelo. Un fallo del backend de generación o de OpenGL deja el editor 2D y el documento operativos y muestra el motivo estable en el dock; no se presenta una captura o éxito visual ficticio.
 
+## Endurecimiento de corrección
+
+1. `set_scene` y cambios de selección sólo invalidan el buffer GPU y solicitan repintado. La subida y liberación de recursos se ejecutan con el contexto propietario actual; `aboutToBeDestroyed` libera los recursos y un contexto recreado vuelve a compilar y subir la escena.
+2. El fit usa el aspect ratio real y los radios visuales para contener la esfera de bounds completa bajo perspectiva u ortográfica. La escena inicial se encuadra al conocerse el tamaño del viewport y durante resize mientras el usuario no haya navegado; orbit/pan/zoom desactivan ese auto-fit. El fit explícito siempre vuelve a encuadrar. Los planos near/far se derivan del radio y distancia para no truncar moléculas grandes.
+3. El picking de enlace busca la primera intersección positiva con la superficie de una cápsula finita: cilindro lateral y hemisferios externos, incluidos rayos que empiezan dentro, tangencias y segmentos cortos. Se compara esa distancia de superficie con las esferas de los átomos.
+4. El worker RDKit devuelve coordenadas y enlaces de los hidrógenos añadidos como metadata transitoria; `scene_molecule_from_graph` los agrega a `SceneMolecule3D`. No se asignan IDs al `MolGraph`, no se cambian selecciones/documentos ni se serializa metadata generada en `.cmsn`.
+
 ## Archivos afectados
 
-- `src/chemuson/gui/viewport3d/*.py` — nueva implementación M08.
+- `src/chemuson/gui/viewport3d/*.py` — nueva implementación M08 y estabilización del renderer/cámara/picking.
+- `src/chemuson/geometry3d/model.py`, `src/chemuson/chemio/rdkit_safe.py` y `src/chemuson/chemio/_rdkit_worker.py` — metadata transitoria para hidrógenos y enlaces añadidos por RDKit.
 - `src/chemuson/gui/shell/assembly.py` — composición del dock y actualización con trabajos CompChem.
 - `src/chemuson/gui/main_window.py` — estado/refresh del visor y limpieza al cambiar de documento.
 - `src/chemuson/gui/main_window_ui_builder.py` — entrada `Ver → Visor molecular 3D`.
@@ -49,7 +57,9 @@ El baseline previo a esta especificación queda registrado en `baseline.md`.
 
 ## Pruebas necesarias
 
-- Unitarias: vectores, cámara, matrices/proyección, orbit/pan/zoom/fit, rayos, esfera, cápsula, selección más cercana y malla degenerada.
+- Unitarias: vectores, cámara, matrices/proyección, orbit/pan/zoom/fit con aspect ratio y resize, rayos, esfera, cápsula (interior/tangente/paralela/segmento corto), selección más cercana y malla degenerada.
 - Integración GUI offscreen: dock oculto por defecto, acción `Ver`, actualización con escena, cierre sin destruir el canvas y ausencia de mutaciones químicas.
+- Renderer: ciclo de contexto, subida diferida durante `paintGL`, teardown y reconstrucción de escena/buffers al recrear contexto.
+- Geometría 3D: hidrógenos y enlaces generados aparecen en escena sin mutar grafo ni persistir en `.cmsn`.
 - Arquitectura: catálogo M08, imports de `geometry3d` sin Qt inverso y ausencia de Avogadro/GL_SELECT/PyOpenGL en el nuevo subpaquete.
 - Verificación: compileall, tests focalizados, Ruff selectivo, OpenSpec estricto y `git diff --check`. La suite monolítica seguirá documentando cualquier fallo baseline no causado por este cambio.

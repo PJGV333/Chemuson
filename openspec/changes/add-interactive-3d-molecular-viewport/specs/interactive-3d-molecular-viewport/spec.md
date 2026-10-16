@@ -102,3 +102,56 @@ Chemuson SHALL exponer un `QDockWidget` de visor 3D oculto por defecto y una ún
 - **WHEN** se activa el documento B
 - **THEN** se descarta la escena/coordset efímera de A mediante la ruta existente de reset
 - **AND** no se reutiliza la selección 3D de A en B
+
+### Requirement: Las operaciones GPU respetan el ciclo de vida del contexto
+
+El widget SHALL modificar/subir datos GPU sólo dentro de un callback con el contexto OpenGL propietario actual. Los cambios de escena o selección SHALL marcar la malla como sucia y pedir repintado, no invocar OpenGL directamente. El widget SHALL liberar recursos antes de destruir su contexto y SHALL reconstruirlos al recibir otro contexto; un fallo parcial de inicialización SHALL dejar recursos recuperables y el estado de indisponibilidad visible.
+
+#### Scenario: La escena cambia tras inicializar OpenGL
+- **GIVEN** un widget cuyo contexto OpenGL ya está inicializado
+- **WHEN** cambia la escena o la selección
+- **THEN** la escena queda marcada para subir durante el siguiente `paintGL` con el contexto actual
+- **AND** no se ejecutan operaciones OpenGL desde el setter ni desde un callback sin contexto
+
+#### Scenario: El contexto se destruye y se crea de nuevo
+- **GIVEN** un renderer con buffers asociados a un contexto válido
+- **WHEN** Qt destruye el contexto y crea otro para el mismo widget
+- **THEN** los recursos anteriores se liberan con su contexto actual y la malla se vuelve a inicializar/subir una sola vez
+
+### Requirement: Fit y clipping contienen la escena en todas las relaciones de aspecto
+
+El fit SHALL incluir los radios visuales y usar el ancho y alto efectivos del viewport para contener el volumen molecular entero bajo perspectiva u ortográfica. La escena inicial SHALL auto-encuadrarse al disponerse de tamaño; resize SHALL mantener el encuadre automático hasta la primera navegación manual. Orbit, pan o zoom SHALL preservar la cámara manual ante posteriores resize; el fit explícito SHALL restaurar el encuadre automático. Los planos near/far SHALL contener la escena encuadrada aunque sus dimensiones excedan la escala molecular nominal.
+
+#### Scenario: Molécula grande en viewport angosto
+- **GIVEN** una molécula válida y un viewport estrecho o de pocos píxeles
+- **WHEN** se hace fit en perspectiva u ortográfica
+- **THEN** los extremos de todos los átomos y enlaces permanecen dentro de los límites visibles y el buffer de profundidad no los recorta
+
+#### Scenario: Navegación manual seguida de resize
+- **GIVEN** una escena auto-encuadrada y luego orbitada, paneada o ampliada manualmente
+- **WHEN** cambia el tamaño del viewport
+- **THEN** la orientación, centro y escala/distance manuales permanecen, ajustando sólo la proyección al nuevo aspect ratio
+
+### Requirement: Picking de enlace devuelve la primera superficie de cápsula
+
+El picking de enlace SHALL calcular la primera intersección no negativa de un rayo con la superficie exterior de la cápsula finita formada por el cilindro y sus hemisferios. SHALL validar raíces para el tramo lateral y extremos, manejar rayos interiores, paralelos, tangentes y enlaces cortos/degenerados, y comparar la distancia de superficie resultante con el hit de cada esfera. SHALL devolver `None` cuando no exista una intersección válida.
+
+#### Scenario: Rayo atraviesa el interior del cilindro
+- **GIVEN** un rayo que entra por un lateral de un enlace largo
+- **WHEN** se hace picking sin una esfera más cercana
+- **THEN** la distancia devuelta corresponde al primer contacto lateral con la cápsula, no al centro del cilindro ni a su superficie opuesta
+
+#### Scenario: Rayo atraviesa una tapa hemisférica
+- **GIVEN** un enlace corto o un rayo que apunta hacia una de sus tapas
+- **WHEN** el rayo alcanza la región exterior de la tapa
+- **THEN** el hit corresponde al primer contacto positivo con el hemisferio y no a una raíz de la mitad interna de la esfera
+
+### Requirement: Los hidrógenos generados forman parte de la escena efímera
+
+Cuando el conformero RDKit añade hidrógenos ausentes del grafo, geometry3d SHALL exponer sus coordenadas y enlaces en metadata transitoria compatible con `SceneMolecule3D`. El viewport SHALL renderizar/pickear esos átomos y enlaces usando la misma ruta que primitivas existentes. Esta metadata SHALL NOT agregar átomos/enlaces al `MolGraph`, alterar el estado químico ni persistirse en `.cmsn`.
+
+#### Scenario: Conformero de etano con hidrógenos implícitos
+- **GIVEN** un `MolGraph` de etano sin átomos explícitos de hidrógeno
+- **WHEN** se genera un conformero 3D y se construye su escena
+- **THEN** la escena contiene coordenadas de carbono y todos los hidrógenos añadidos con enlaces a sus carbonos
+- **AND** el grafo original y un round-trip `.cmsn` conservan exclusivamente los átomos/enlaces del documento original

@@ -13,3 +13,12 @@ Fecha de captura: 2026-10-15.
 
 Salida completa conservada fuera del árbol de producción en:
 `/home/ccachyavgp/.hermes/cache/scratch/chemuson-3d-viewport-baseline-20261015-complete.txt`
+
+## Baseline de estabilización (antes de cambios, HEAD `e2a5a3d`)
+
+- Fecha: 2026-10-15. Rama `feature/chemuson-3d`, `HEAD` igual a `origin/feature/chemuson-3d`; worktree limpio.
+- `python -m compileall src tests tools packaging`: **exit 0**.
+- `pytest --collect-only -q`: **2084 tests collected in 0.43s**, **exit 0**.
+- `timeout 600 pytest -q`: **exit -11** tras 281s, progreso hasta aproximadamente el 62 %, dos `F` visibles al 41 % y 51 %, seguido por `Fatal Python error: Segmentation fault` con worker `concurrent.futures` y frame principal inválido. No se conservan nombres ni trazas de esos dos fallos; ninguno se atribuye a este cambio sin reproducción diferencial.
+- Ruff `src tests tools packaging --select F401,F811,F821,E722,E741`: **exit 1**, un `F401` preexistente para `math` en `tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py:3`.
+- Salida completa de esta captura guardada fuera del repositorio en `/home/ccachyavgp/.hermes/cache/scratch/chemuson-viewport-stabilization-baseline-20261015.txt`.

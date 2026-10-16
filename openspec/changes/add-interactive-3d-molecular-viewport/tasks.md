@@ -34,3 +34,13 @@
 - [x] 5.2 Ejecutar una prueba visual reproducible en el display disponible; verificar la captura de esferas y varilla renderizadas.
 - [x] 5.3 Ejecutar un subconjunto de regresión GUI existente; no rerun de la suite monolítica si reproduce el segfault baseline.
 - [x] 5.4 Registrar archivos, limitaciones y commits locales separados; no publicar ni modificar otras ramas.
+
+## 6. Estabilización de corrección
+
+- [x] 6.1 Añadir baseline pre-cambio en `baseline.md` para el HEAD `e2a5a3d`; conservar salida, conteo, fallos visibles y segfault como no atribuidos, sin inventar nombres de tests ni causas.
+- [ ] 6.2 Cubrir en tests RED la subida GPU diferida, destrucción/recreación de contexto y estado de inicialización fallida.
+- [ ] 6.3 Cubrir en tests RED el fit con aspect ratio/radios, auto-fit inicial/resize, preservación tras navegación manual y clipping de escena amplia.
+- [ ] 6.4 Cubrir en tests RED cápsulas exactas: primer contacto lateral, hemisferios, origen interior, tangente, paralela y segmento corto.
+- [ ] 6.5 Incluir hidrógenos añadidos por RDKit y sus enlaces en `SceneMolecule3D` a partir de metadata efímera; probar no mutación ni persistencia `.cmsn`.
+- [ ] 6.6 Ejecutar pruebas focalizadas y smoke visual con etano/benzene; revisar diff y conservar cambios sólo en este worktree/branch.
+- [ ] 6.7 Re-ejecutar checks globales; registrar claramente fallos residuales sin atribuirlos al visor salvo evidencia diferencial.
