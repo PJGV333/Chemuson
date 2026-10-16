@@ -70,7 +70,7 @@ Durante un arrastre, el worker SHALL fijar mediante restricciones los IDs que el
 
 ### Requirement: Revisiones impiden que resultados viejos sobrescriban ediciones nuevas
 
-Cada trabajo SHALL llevar `document_token`, `job_id`, `graph_revision` y `coordinate_revision`. El hilo UI SHALL validar estos campos antes de aplicar cada frame. Una edición topológica o geométrica SHALL invalidar inmediatamente el trabajo anterior y SHALL programar sólo el snapshot más reciente. Los frames de una pestaña inactiva SHALL actualizar únicamente ese documento si su revisión sigue válida; los frames de una pestaña cerrada SHALL descartarse.
+Cada trabajo SHALL llevar `document_token`, `job_id` y `document_revision`, que cambia ante comandos 2D o 3D y ante undo/redo. El hilo UI SHALL validar estos campos antes de aplicar cada frame. Una edición topológica o geométrica SHALL invalidar inmediatamente el trabajo anterior y SHALL coalesce el snapshot más reciente. Al cambiar de pestaña se cancela el trabajo activo; frames tardíos de documentos inactivos o cerrados SHALL descartarse.
 
 #### Scenario: Edición concurrente invalida trabajo
 - **GIVEN** un trabajo activo en revisión N
@@ -79,24 +79,24 @@ Cada trabajo SHALL llevar `document_token`, `job_id`, `graph_revision` y `coordi
 - **AND** se cancela/reinicia el worker con el snapshot más reciente
 
 #### Scenario: Cambiar de pestaña
-- **GIVEN** dos documentos con trabajos/revisiones independientes
+- **GIVEN** un trabajo activo ligado al documento actual
 - **WHEN** el usuario cambia la pestaña activa
-- **THEN** cada resultado sólo se aplica a su documento token y revisión coincidentes
-- **AND** el renderer muestra exclusivamente el estado de la pestaña activa
+- **THEN** el proceso del documento anterior se cancela y su geometría committed se conserva
+- **AND** al volver a la pestaña se muestra exclusivamente su propio estado 3D
 
 ### Requirement: Cancelar y cerrar detiene el proceso y cierra recursos
 
-El usuario SHALL poder detener y aceptar el último frame válido, o cancelar y restaurar el snapshot committed previo. Al cerrar/cambiar documento, el supervisor SHALL cancelar el hijo, esperar un límite acotado, terminarlo forzosamente si no responde, cerrar pipes y suprimir emisiones tardías. No SHALL bloquear el hilo GUI durante espera indefinida.
+Desactivar el toggle Live MM SHALL cancelar el worker y restaurar el snapshot committed si el gesto ya fue confirmado. Al soltar un arrastre se confirma el gesto; un worker que termina normalmente SHALL guardar el último frame mediante una sola acción undoable. Al cerrar/cambiar documento, el supervisor SHALL cancelar el hijo, esperar un límite acotado, terminarlo forzosamente si no responde, cerrar pipes y suprimir emisiones tardías. No SHALL bloquear el hilo GUI durante espera indefinida.
 
-#### Scenario: Parar y aceptar
+#### Scenario: Relajación termina
 - **GIVEN** varios frames válidos ya aplicados
-- **WHEN** el usuario selecciona `Parar/aceptar`
-- **THEN** el proceso se detiene y la geometría preview final se guarda mediante una sola acción undoable
+- **WHEN** el worker termina normalmente
+- **THEN** la geometría final se guarda mediante una sola acción undoable
 - **AND** los frames anteriores no agregan entradas al historial
 
 #### Scenario: Cancelar
 - **GIVEN** preview de Live MM aún no aceptado
-- **WHEN** el usuario cancela
+- **WHEN** el usuario desactiva Live MM
 - **THEN** se restauran las coordenadas committed anteriores sin una entrada undo
 - **AND** la química y coordenadas 2D permanecen intactas
 

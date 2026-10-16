@@ -53,7 +53,7 @@ El dock SHALL ofrecer un modo de edición explícito, desactivado por defecto. C
 - **AND** no cambian su ID, `Atom.x/y`, conectividad, cámara ni el resto de coordenadas
 
 #### Scenario: Traslación de componente conectado
-- **GIVEN** un componente seleccionado mediante doble clic
+- **GIVEN** un componente seleccionado mediante `Ctrl+clic`
 - **WHEN** el usuario lo arrastra como fragmento
 - **THEN** se aplica el mismo vector 3D a todos sus átomos
 - **AND** las distancias internas y la topología del componente se conservan
@@ -63,19 +63,19 @@ El dock SHALL ofrecer un modo de edición explícito, desactivado por defecto. C
 - **WHEN** el usuario activa `Fit` o cambia perspectiva/ortográfica
 - **THEN** sólo cambian parámetros de cámara y el estado undo/redo no cambia
 
-### Requirement: Distancias, ángulos y dihedros se editan con ratón y valores numéricos
+### Requirement: Distancias, ángulos y dihedros se editan con valores numéricos
 
-El editor SHALL ofrecer controles numéricos con unidades explícitas —distancia en Å y ángulos en grados— para el enlace o conjunto de átomos seleccionado. SHALL ofrecer gestos de ratón equivalentes para estirar un enlace, variar un ángulo o cambiar un dihedro válido. Las transformaciones SHALL conservar IDs/conectividad, rechazar valores no finitos y mostrar errores de geometría degenerada sin mutar el estado.
+El editor SHALL ofrecer controles numéricos con unidades explícitas —distancia en Å y ángulos en grados— para IDs de átomo indicados. Las transformaciones SHALL conservar IDs/conectividad, rechazar valores no finitos y mostrar errores de geometría degenerada sin mutar el estado.
 
 #### Scenario: Fijar una distancia de enlace
 - **GIVEN** un enlace covalente editable seleccionado y un valor de distancia positivo y finito
-- **WHEN** el usuario confirma el valor numérico o el gesto de extensión
+- **WHEN** el usuario confirma el valor numérico
 - **THEN** la distancia geométrica entre sus extremos coincide con el valor dentro de la tolerancia definida
 - **AND** el enlace sigue usando los mismos IDs y propiedades químicas
 
 #### Scenario: Fijar un ángulo
 - **GIVEN** un átomo central y dos vecinos con geometría no degenerada
-- **WHEN** el usuario cambia el valor numérico o arrastra el ángulo
+- **WHEN** el usuario confirma el valor numérico
 - **THEN** el ángulo geométrico resultante coincide con el objetivo
 - **AND** sólo rota el lado seleccionado como unidad alrededor del centro
 
@@ -87,13 +87,13 @@ El editor SHALL ofrecer controles numéricos con unidades explícitas —distanc
 
 #### Scenario: Dihedro sobre enlace cíclico
 - **GIVEN** un enlace central cuyos extremos siguen conectados al retirar temporalmente ese enlace
-- **WHEN** se intenta arrastrar o fijar un dihedro independiente
+- **WHEN** se intenta fijar un dihedro independiente
 - **THEN** la acción se rechaza como no rotatable por cierre de anillo
 - **AND** no se cambian coordenadas ni topología
 
 ### Requirement: El constructor 3D modifica el único `MolGraph`
 
-La herramienta SHALL permitir seleccionar un elemento compatible y crear átomos libres o enlazados, crear/modificar un enlace compatible y conservar los IDs estables. Las operaciones SHALL usar `MolGraph`, validación existente y los comandos existentes/compuestos de canvas; SHALL rechazar endpoint inexistente, enlace duplicado, autoenlace y orden/valencia no admitidos. H generados por RDKit SHALL permanecer derivados salvo que se creen explícitamente.
+La herramienta SHALL permitir seleccionar un elemento y orden de enlace compatible, y crear átomos libres o enlazados a un ancla. Las operaciones SHALL usar `MolGraph`, validación existente y los comandos existentes/compuestos de canvas; SHALL rechazar elementos/órdenes no admitidos y conservar IDs estables. La unión de dos átomos ya existentes queda fuera de este incremento. H generados por RDKit SHALL permanecer derivados salvo que se creen explícitamente.
 
 #### Scenario: Añadir átomo enlazado
 - **GIVEN** un átomo ancla válido, elemento seleccionable y geometría disponible
@@ -102,18 +102,18 @@ La herramienta SHALL permitir seleccionar un elemento compatible y crear átomos
 - **AND** se asignan posiciones 2D/3D coherentes y una sola acción de undo
 - **AND** el renderer muestra la conectividad nueva con los H visuales recalculados
 
-#### Scenario: Cambiar orden de enlace
-- **GIVEN** un enlace no-query editable
-- **WHEN** se elige un orden permitido que supera la validación química existente
-- **THEN** el `MolGraph` se actualiza y la escena 3D refleja el cambio
-- **AND** no se crean enlaces paralelos
+#### Scenario: Elegir orden del enlace construido
+- **GIVEN** un átomo ancla y un orden de enlace permitido
+- **WHEN** se crea un nuevo átomo enlazado con ese orden
+- **THEN** el `MolGraph` y la escena 3D reflejan la conectividad y el orden
+- **AND** topología y coordenadas se deshacen como una acción
 
 #### Scenario: Cambio estructural iniciado desde 2D
 - **GIVEN** coordenadas 3D guardadas y una operación 2D de añadir, borrar o cambiar conectividad
 - **WHEN** la operación se confirma, deshace o rehace
-- **THEN** la escena se reconcilia con el `MolGraph` actualizado
-- **AND** posiciones de IDs supervivientes se conservan
-- **AND** H generados se invalidan y recalculan para la nueva conectividad
+- **THEN** una firma química compatible conserva y muestra la geometría; un cambio incompatible la marca obsoleta, la oculta y deshabilita optimización/exportación sin destruir el snapshot
+- **AND** undo/redo que restaura la firma compatible vuelve a mostrar la geometría conservada
+- **AND** los H generados siguen efímeros y se recalculan en el siguiente trabajo RDKit
 
 ### Requirement: Cada gesto 3D es una transacción undoable
 
