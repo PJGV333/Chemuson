@@ -356,13 +356,6 @@ class CanvasSelectionInputMixin:
                 self._cancel_drag()
                 return
 
-        if (
-            not self._is_on_paper(scene_pos.x(), scene_pos.y())
-            and self.current_tool not in {"tool_select", "tool_select_lasso", "tool_rotate_3d_precise"}
-        ):
-            super().mousePressEvent(event)
-            return
-
         if event.button() == Qt.MouseButton.RightButton:
             if isinstance(clicked_item, (TLCSpotItem, GelBandItem)):
                 super().mousePressEvent(event)
@@ -421,8 +414,6 @@ class CanvasSelectionInputMixin:
 
         if self._pending_template_graph is not None:
             clicked_atom_id, _clicked_bond_id = self._pick_hover_target(scene_pos)
-            if not self._is_on_paper(scene_pos.x(), scene_pos.y()):
-                return
             self._insert_molgraph_at(
                 self._pending_template_graph,
                 scene_pos,

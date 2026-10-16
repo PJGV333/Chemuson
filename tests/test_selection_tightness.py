@@ -117,7 +117,6 @@ def test_precise_rotation_starts_free_selection_by_default(monkeypatch):
     canvas.set_current_tool("tool_rotate_3d_precise")
 
     calls: list[tuple[bool, bool]] = []
-    monkeypatch.setattr(canvas, "_is_on_paper", lambda x, y: True)
     monkeypatch.setattr(canvas, "_get_item_at", lambda scene_pos: None)
     monkeypatch.setattr(
         canvas,

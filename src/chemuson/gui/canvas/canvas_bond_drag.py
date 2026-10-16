@@ -54,6 +54,7 @@ class CanvasBondDragMixin:
             self._force_full_scene_sync_on_undo_change = False
             self._sync_scene_with_model()
             self._restore_selection_snapshot(snapshot)
+        self._update_scene_rect()
         self._update_hover(self._last_scene_pos)
         self._update_selection_overlay()
 

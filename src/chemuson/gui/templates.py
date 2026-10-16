@@ -213,8 +213,8 @@ def build_haworth_template(
         style = BondStyle.BOLD if i in bold_edges else BondStyle.PLAIN
         _add_bond(graph, ring_ids[i], ring_ids[(i + 1) % 6], style=style)
         
-    # Substituents
-    # Vertical offsets
+    # Substituents: the Y sign encodes up/down; C3 is angled outward to avoid
+    # crossing the ring or neighboring CH2OH label.
     v_up = -1.2 * L
     v_down = 1.2 * L
     
@@ -230,7 +230,7 @@ def build_haworth_template(
         # (RingAtomIdx, Element, OffsetY, OffsetX)
         (1, "OH", anomeric_offset,   0.0), # C1
         (2, "OH", v_down, 0.0), # C2
-        (3, "OH", v_up,   0.0), # C3
+        (3, "OH", -0.85 * L, -0.85 * L), # C3: upward/outward to clear the ring and C5 label.
         (4, "OH", v_down, 0.0), # C4
         (5, "CH2OH", v_up, 0.0), # C5
     ]

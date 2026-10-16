@@ -18,14 +18,14 @@
 - [x] 3.4 Añadir matriz geométrica de no intersección y clearance acotado para F/Cl/Br/N⁺/CH₂OH, 4 orientaciones, punta/base, simple/doble/triple/bold/cuñas.
 
 ## 4. Canvas y anillos/Haworth
-- [ ] 4.1 Reproducir qué límite impide crear enlaces junto al borde y rastrear eventos, coordenadas y `sceneRect`.
-- [ ] 4.2 Habilitar expansión/navegación fuera del viewport visible sin clamp, mutación de grafo ni salto del viewport.
-- [ ] 4.3 Revisar render, colocación, snapping y Undo de plantillas de anillo/Haworth; corregir sólo fallos reproducibles.
-- [ ] 4.4 Añadir pruebas de interacción Qt con casos próximos al borde y ciclos/Haworth.
+- [x] 4.1 Reproducir por QTest que `_is_on_paper` rechazaba x=20 y x=-40 (margen 40); `sceneRect` no incluía coordenadas del grafo.
+- [x] 4.2 Quitar el gate de página; expandir `sceneRect` por átomos + viewport actual y preservar el foco al Undo, sin clamp de coordenadas.
+- [x] 4.3 Revisar Haworth α/β y front bold/plain; corregir la etiqueta OH de C3 que cruzaba dos enlaces del anillo y la etiqueta CH₂OH, preservando grafo y Undo.
+- [x] 4.4 Añadir QTests de enlace en margen/borde/fuera del viewport, ciclo hexagonal en borde, expansión/Undo de sceneRect y colocación/Undo de Haworth.
 
 ## 5. Validación y entrega
 - [x] 5.1 Versionar una única lámina before/after claro/oscuro con galería reproducible; dejar capturas exploratorias en `/tmp`.
-- [ ] 5.2 Ejecutar pruebas focales por fase, arquitectura, compileall, Ruff focal/global y OpenSpec estricto.
-- [ ] 5.3 Ejecutar plan de ocho shards con límites por proceso; documentar cualquier timeout y reconciliar todos los node IDs sin declarar verde lo no verificado.
-- [ ] 5.4 Actualizar `validation.md`, hacer commits pequeños y publicar sólo `feat/molecular-depiction-excellence`.
-- [ ] 5.5 Informar SHA, commits, archivos, resultados, evidencia y estado `READY FOR MANUAL REVIEW` o `NOT READY`; no integrar/tag/release.
+- [x] 5.2 Ejecutar pruebas focales por fase, arquitectura, compileall, Ruff focal/global y OpenSpec estricto; documentar el hallazgo Ruff baseline conocido.
+- [x] 5.3 Ejecutar plan de ocho shards con límites por proceso; shard 4 agotó 300 s y sus 284 IDs se verificaron por particiones. La ejecución oficial no se declara verde.
+- [x] 5.4 Actualizar `validation.md` y guardar el trabajo en commits locales sólo en `feat/molecular-depiction-excellence`; no se publica sin autorización explícita.
+- [x] 5.5 Informar SHA, commits, archivos, resultados, evidencia y estado `NOT READY`; no integrar/tag/release.

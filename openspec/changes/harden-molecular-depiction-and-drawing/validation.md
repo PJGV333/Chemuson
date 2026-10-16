@@ -2,7 +2,7 @@
 
 ## Estado
 
-La corrección de trimming etiqueta↔enlace está implementada; Clean2D y el input del canvas siguen sin cambios de producción. OpenSpec/baseline inicial comprometido en `632f576`; OpenSpec estricto pasó. El baseline global no está completamente verde: `pytest -q` agotó 480 s y el shard agregado 4 agotó 300 s. Los 2267 node IDs quedaron cubiertos en particiones terminadas: 2247 passed, 20 skipped, 0 fallos de aserción. El verificador oficial de ocho shards no se declara success; detalle en `baseline.md`.
+Están implementados los ajustes medidos de etiqueta↔enlace, el acceso de dibujo en bordes y la geometría Haworth C3. Clean2D permanece sin cambios por falta del documento exacto que reproduce el caso del propietario. OpenSpec/baseline inicial comprometido en `632f576`; el baseline global no está completamente verde: `pytest -q` agotó 480 s y el shard agregado 4 agotó 300 s. Los 2267 node IDs baseline quedaron cubiertos en particiones terminadas: 2247 passed, 20 skipped, 0 fallos de aserción. El verificador oficial baseline de ocho shards no se declara success; detalle en `baseline.md`.
 
 ## Diagnóstico Clean2D (sin cambio)
 
@@ -21,14 +21,24 @@ La implementación sustituye el bounding-ellipse genérico por soporte direccion
 
 ## Canvas y Haworth
 
-Causa preliminar del límite visible confirmada en código: `CanvasSelectionInputMixin.mousePressEvent` descarta herramientas de dibujo si `_is_on_paper(scene_pos)` es falso; la zona válida excluye `PAPER_MARGIN=40` px. Además, `_update_scene_rect` usa la hoja + un margen ligado al viewport, no las coordenadas del grafo. Falta la reproducción Qt de borde/Undo y el diseño de expansión de navegación.
+Baseline Qt: `_is_on_paper` con `PAPER_MARGIN=40` rechazó QTest de enlace desde x=`20` (dentro del papel) y x=`-40` (borde visible); un click no aceptado dejó grafo/undo vacíos. El `sceneRect` inicial `(-884,-884,2568,2768)` no incluía un átomo en x=`-1124`. Se retiraron ambos gates de página (herramienta y plantilla); ahora los límites incluyen coordenadas moleculares más el viewport visible y se actualizan al cambiar el índice de Undo. Un QTest arranca en x=`-40` y suelta en x=`-80`, fuera del viewport: crea el enlace y expande el límite izquierdo de escena; Undo/Redo conserva el grafo y Undo no salta el foco. QTest de anillo confirma ciclo 6/6 y grado 2 por átomo en el borde.
 
-Pendiente revisar visualmente la plantilla Haworth y geometría de cuñas en bifurcaciones antes de cambiar producción.
+La sonda Haworth baseline detectó OH de C3 superpuesto con tres trazos de anillo/CH₂OH. Se reorientó sólo esa coordenada; la prueba cubre α/β × bold/plain, cero colisiones glyph↔glyph/glyph↔bond, 11 átomos y 11 enlaces invariantes. La inserción Haworth en el borde y Undo/Redo también pasan. Imágenes antes/después exploratorias en `/tmp/chemuson-depiction-campaign-baseline/haworth-chair-*.png`; owner visual review sigue pendiente.
 
 ## Ruff / evidencia
 
 Ruff focal en los archivos de esta fase, compileall focal y `git diff --check` pasaron. El único error baseline global Ruff sigue siendo el F401 histórico `math` en `tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py:3`; no se modificó. Exploraciones bajo `/tmp`; `tools/visual/render_bond_junction_gallery.py` reproduce la única lámina comparativa versionada.
 
+## Validación final
+
+La colección actual contiene **2275 node IDs** (8 shards: `[285, 285, 285, 284, 284, 284, 284, 284]`, SHA256 `b37eec04282f93bea22acfd35e086f110094278a8d29d476ac7bdb7ecdf73319`). `pytest --collect-only -q` y la generación del plan coincidieron con el manifiesto actualizado.
+
+- Focales de canvas, selección, plantilla Haworth y wedges: **73 passed**; arquitectura: **280 passed**; workflow del manifiesto/shards: **4 passed**.
+- `python -m compileall -q src tests tools packaging`, Ruff focal con `F401,F811,F821,E722,E741`, `git diff --check` y `openspec validate harden-molecular-depiction-and-drawing --strict`: success.
+- Ruff global selectivo conserva un único error baseline, `F401 math` en `tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py:3`; no se cambió.
+- Shards terminados: 0 `284 passed, 1 skipped`; 1 `285 passed`; 2 `281 passed, 4 skipped`; 3 `279 passed, 5 skipped`; 5 `282 passed, 2 skipped`; 6 `280 passed, 4 skipped`; 7 `284 passed`. El shard 4 excedió el límite de 300 s al 95% (sin fallo de aserción). Sus 284 IDs se recuperaron en tres particiones: Clean2D `86 passed`, resto no UI `130 passed, 4 skipped`, y `test_ui_tool_rail.py` `64 passed`.
+- Cobertura total reconciliada: **2255 passed, 20 skipped, 0 fallos de aserción**. Aun así, el verificador oficial de ocho shards no se declara verde por el timeout del shard 4; el baseline monolítico `pytest -q` también agotó 480 s y no se repitió como corrida agregada.
+
 ## Entrega
 
-Pendiente. La entrega permanecerá exclusivamente en `feat/molecular-depiction-excellence`; sin merge a `main`/`release/v0.3.0-beta.1-prep`, tags ni releases. La revisión visual del propietario es independiente de las pruebas automáticas.
+**NOT READY** para cerrar la campaña: falta el documento/caso exacto del fallo Clean2D del propietario y su revisión visual manual; además, la corrida oficial de ocho shards tuvo el timeout documentado. Los cambios y validaciones quedan en `feat/molecular-depiction-excellence`; sólo commits locales, sin push no autorizado, merge a `main`/`release/v0.3.0-beta.1-prep`, tags ni releases. La única lámina comparativa versionada es `docs/visual/bond-junctions-before-after.png`; capturas exploratorias permanecen en `/tmp`.

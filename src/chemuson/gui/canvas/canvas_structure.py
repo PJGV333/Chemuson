@@ -88,7 +88,6 @@ from .canvas_constants import (
     MIN_ATOM_DIST_SCALE,
     MIN_BOND_DIST_SCALE,
     NUMBERING_TEXT_ROLE,
-    PAPER_MARGIN,
     SP3_OCCUPIED_TOLERANCE_DEG,
     WAVY_ANCHOR_ANGLE_ROLE,
     WAVY_ANCHOR_BOND_ROLE,
@@ -3931,21 +3930,3 @@ class CanvasStructureMixin:
                 order = 1
             edges.append((i, j, order, BondStyle.PLAIN, BondStereo.NONE, True))
         return edges
-
-    def _is_on_paper(self, x: float, y: float) -> bool:
-        """Método auxiliar para  is on paper.
-
-        Args:
-            x: Descripción del parámetro.
-            y: Descripción del parámetro.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la escena.
-        """
-        return (
-            PAPER_MARGIN <= x <= self.paper_width - PAPER_MARGIN
-            and PAPER_MARGIN <= y <= self.paper_height - PAPER_MARGIN
-        )

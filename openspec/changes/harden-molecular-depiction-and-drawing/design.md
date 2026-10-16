@@ -18,6 +18,12 @@ La galería y la geometría mostraron que la separación se derivaba del margen 
 
 La brecha se cerró sin intersecciones en la matriz (0.5–5.0 unidades); la lámina before/after mantiene juntas las 20 uniones originales y añade 20 orientaciones de etiqueta, en claro y oscuro. Esto no concluye la revisión visual del propietario. Tampoco se presupone que toda forma de bifurcación sea un defecto: sólo se ajustó el trimming que explicaba la métrica observada.
 
+## Resultado de borde y Haworth
+
+La reproducción Qt confirmó que el gate de `mousePressEvent` llamaba `_is_on_paper`, que excluía `PAPER_MARGIN=40` unidades aunque el punto fuese visible; start x=`20` y x=`-40` se rechazaban. El `sceneRect` previo era `(-884,-884,2568,2768)` y no dependía de coordenadas de átomos (un nuevo átomo en x=`-1124` quedaba fuera). Se quitó el gate de página y se amplían los límites con coordenadas moleculares y el viewport actual; al deshacer se conserva la región visible. QTest ahora dibuja desde x=`-40` hasta x=`-80` (release fuera del viewport), expande el `sceneRect` y conserva su foco tras Undo.
+
+La prueba visual de `build_haworth_template(40)` encontró que el OH de C3 cruzaba enlaces del anillo y la etiqueta CH₂OH en las variantes α/β y bold/plain. Sólo se reorientó esa coordenada de sustituyente hacia arriba/afuera; IDs, once átomos y once enlaces no cambian. QTests confirman cero intersecciones label-label o label-bond en las cuatro variantes. La herramienta de anillo crea un ciclo de seis enlaces junto al borde (grado 2) y la inserción Haworth allí conserva topología con Undo/Redo. Galerías intermedias Haworth antes/después están bajo `/tmp/chemuson-depiction-campaign-baseline/`.
+
 ## Secuencia y límites técnicos
 
 1. **Clean2D primero**: construir repros con ciclo de seis enlaces dibujado manualmente (incluyendo enlaces simples no aromáticos y aromaticidad explícita) y plantilla equivalente. Registrar clasificación, política, selección, fuentes/rechazos, estado final, grafo, coordenadas, longitudes, cruces y degeneración del anillo en quick/publication/propose según proceda. Si un candidato aceptado visualmente abre/colapsa el ciclo, rastrear su fuente y compuertas; no relajar invariantes para forzar un resultado.

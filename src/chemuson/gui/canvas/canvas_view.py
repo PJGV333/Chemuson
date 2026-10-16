@@ -966,14 +966,24 @@ class ChemusonCanvas(
 
         margin = max(100.0, view_w, view_h)
 
-        # Preserve current view center so changing the scene rect doesn't jump
-        # the document to a corner.
+        # Grow the workspace around the paper and all molecular coordinates.
+        # Keep the current viewport in the new bounds so undoing an outlying
+        # drawing cannot clamp the user back to the page.
         current_center = self.mapToScene(viewport_rect.center()) if not viewport_rect.isEmpty() else None
+        content_bounds = QRectF(0.0, 0.0, float(self.paper_width), float(self.paper_height))
+        for atom in self.model.atoms.values():
+            atom_x = float(atom.x)
+            atom_y = float(atom.y)
+            if math.isfinite(atom_x) and math.isfinite(atom_y):
+                content_bounds = content_bounds.united(
+                    QRectF(atom_x - 1.0, atom_y - 1.0, 2.0, 2.0)
+                )
+        if not viewport_rect.isEmpty():
+            visible_bounds = self.mapToScene(viewport_rect).boundingRect()
+            if not visible_bounds.isEmpty():
+                content_bounds = content_bounds.united(visible_bounds)
         self.scene.setSceneRect(
-            -margin,
-            -margin,
-            float(self.paper_width) + 2.0 * margin,
-            float(self.paper_height) + 2.0 * margin,
+            content_bounds.adjusted(-margin, -margin, margin, margin)
         )
         if current_center is not None:
             self.centerOn(current_center)

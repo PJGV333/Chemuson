@@ -4,11 +4,14 @@ import json
 from pathlib import Path
 
 import pytest
+from PyQt6.QtGui import QPainterPath
+from PyQt6.QtWidgets import QApplication
 
 
 import chemuson.gui.template_library as template_library
 from chemuson.chemio.rdkit_io import molgraph_to_molfile
 from chemuson.core.model import MolGraph
+from chemuson.gui.canvas import ChemusonCanvas
 from chemuson.gui.template_conversion import graph_from_template_payload
 from chemuson.gui.template_library import DEFAULT_CATEGORY_USER, TemplateLibrary
 from chemuson.gui.templates import build_haworth_template
@@ -92,6 +95,92 @@ def test_builtin_bio_templates_do_not_degrade_to_dummy_atoms(tmp_path):
         assert len(matches) == 1
         graph = lib.graph_from_template(matches[0]["id"])
         assert all(atom.element != "*" for atom in graph.atoms.values())
+
+
+def test_haworth_template_has_no_label_bond_or_label_label_collisions():
+    """Haworth substituent labels remain clear for either anomer and front-edge style."""
+    app = QApplication.instance() or QApplication([])
+    for anomeric_up in (True, False):
+        for bold_front in (True, False):
+            graph = build_haworth_template(
+                40.0,
+                anomeric_up=anomeric_up,
+                bold_front=bold_front,
+            )
+            canvas = ChemusonCanvas()
+            atom_id_map = {}
+            for atom in graph.atoms.values():
+                created = canvas.model.add_atom(
+                    atom.element,
+                    atom.x + 400.0,
+                    atom.y + 300.0,
+                    charge=atom.charge,
+                    isotope=atom.isotope,
+                    explicit_h=atom.explicit_h,
+                    group_h_cap=atom.group_h_cap,
+                    is_explicit=atom.is_explicit,
+                    no_implicit=atom.no_implicit,
+                    label_scale=atom.label_scale,
+                )
+                atom_id_map[atom.id] = created.id
+            for bond in graph.bonds.values():
+                canvas.model.add_bond(
+                    atom_id_map[bond.a1_id],
+                    atom_id_map[bond.a2_id],
+                    order=bond.order,
+                    style=bond.style,
+                    stereo=bond.stereo,
+                    is_aromatic=bond.is_aromatic,
+                    display_order=bond.display_order,
+                )
+            before_edges = tuple(
+                (bond.a1_id, bond.a2_id, bond.order, bond.style, bond.is_aromatic)
+                for bond in canvas.model.bonds.values()
+            )
+            canvas._rebuild_items_from_model()
+
+            label_shapes = {}
+            for atom_id, atom_item in canvas.atom_items.items():
+                shape = QPainterPath()
+                if atom_item.label.isVisible():
+                    shape.addPath(atom_item.label.mapToScene(atom_item.label.shape()))
+                if atom_item.charge_label.isVisible():
+                    shape.addPath(
+                        atom_item.charge_label.mapToScene(atom_item.charge_label.shape())
+                    )
+                if not shape.isEmpty():
+                    label_shapes[atom_id] = shape
+            for left_id, left_shape in label_shapes.items():
+                for right_id, right_shape in label_shapes.items():
+                    if right_id > left_id:
+                        assert not left_shape.intersects(right_shape), (
+                            "label-label overlap",
+                            anomeric_up,
+                            bold_front,
+                            left_id,
+                            right_id,
+                        )
+            for bond_id, bond_item in canvas.bond_items.items():
+                bond = canvas.model.get_bond(bond_id)
+                bond_shape = bond_item.mapToScene(bond_item.shape())
+                for atom_id, label_shape in label_shapes.items():
+                    assert not bond_shape.intersects(label_shape), (
+                        "bond-label overlap",
+                        anomeric_up,
+                        bold_front,
+                        bond_id,
+                        atom_id,
+                        atom_id in (bond.a1_id, bond.a2_id),
+                    )
+            after_edges = tuple(
+                (bond.a1_id, bond.a2_id, bond.order, bond.style, bond.is_aromatic)
+                for bond in canvas.model.bonds.values()
+            )
+            assert after_edges == before_edges
+            assert len(canvas.model.atoms) == 11
+            assert len(canvas.model.bonds) == 11
+            canvas.close()
+            app.processEvents()
 
 
 def test_load_normalizes_partial_library_data(tmp_path):
