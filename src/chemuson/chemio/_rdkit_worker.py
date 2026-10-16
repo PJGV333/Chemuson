@@ -679,6 +679,8 @@ def _handle_graph_optimize3d_mode(
             completed += block
             sequence += 1
             energy = float(ff.CalcEnergy())
+            conf = mol_h.GetConformer()
+            generated = _generated_hydrogen_metadata(mol_h, conf, original_atom_count, reverse_map)
             frame = {
                 "step": completed,
                 "energy": energy,
@@ -686,6 +688,7 @@ def _handle_graph_optimize3d_mode(
                 "forcefield": method,
                 "converged": converged_code == 0,
                 "positions": _positions_for_original_atoms(mol_h, reverse_map),
+                **generated,
             }
             if emit_frames:
                 _write_worker_event({"event": "frame", "sequence": sequence, **frame})

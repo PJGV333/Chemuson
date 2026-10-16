@@ -196,6 +196,15 @@ def optimize_stream(
     )
 
 
+def _derived_hydrogen_metadata(payload: dict) -> dict[str, object]:
+    """Copy scene-only hydrogen geometry carried alongside documentary positions."""
+    return {
+        key: payload[key]
+        for key in ("generated_atoms", "generated_bonds")
+        if isinstance(payload.get(key), list)
+    }
+
+
 def _frame_from_event(event: dict, *, source: str) -> OptimizationFrame | None:
     if event.get("event") != "frame":
         return None
@@ -216,6 +225,7 @@ def _frame_from_event(event: dict, *, source: str) -> OptimizationFrame | None:
                 "forcefield": method,
                 "energy_unit": str(event.get("energy_unit", "kcal/mol")),
                 "frame": True,
+                **_derived_hydrogen_metadata(event),
             },
         ),
         energy=energy,
@@ -275,7 +285,7 @@ def _frames_from_metadata(metadata: dict, source: str) -> tuple[OptimizationFram
                     source=source or "rdkit",
                     method=method,
                     energy=energy,
-                    metadata={"frame": True},
+                    metadata={"frame": True, **_derived_hydrogen_metadata(item)},
                 ),
                 energy=energy,
                 converged=bool(item.get("converged", False)),

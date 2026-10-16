@@ -334,6 +334,38 @@ def test_rdkit_backend_returns_optimization_frames_if_available() -> None:
     assert all(frame.coordinates.positions for frame in frames)
 
 
+def test_rdkit_backend_frames_keep_derived_hydrogens() -> None:
+    generated_atoms = [
+        {"id": "genH2", "element": "H", "coords": [1.0, 0.0, 0.0]}
+    ]
+    generated_bonds = [
+        {"id": "genB1", "a1_id": 1, "a2_id": "genH2", "order": 1}
+    ]
+    frames = rdkit_backend._frames_from_metadata(
+        {
+            "method": "MMFF94",
+            "frames": [
+                {
+                    "step": 2,
+                    "energy": 3.0,
+                    "positions": {"1": [0.0, 0.0, 0.0], "2": [2.0, 0.0, 0.0]},
+                    "generated_atoms": generated_atoms,
+                    "generated_bonds": generated_bonds,
+                }
+            ],
+        },
+        "rdkit",
+    )
+
+    assert len(frames) == 1
+    frame = frames[0]
+    assert frame.coordinates.metadata["generated_atoms"] == generated_atoms
+    assert frame.coordinates.metadata["generated_bonds"] == generated_bonds
+    scene = scene_molecule_from_graph(_ethane_graph(), frame.coordinates)
+    assert len(scene.atoms) == 3
+    assert len(scene.bonds) == 2
+
+
 @pytest.mark.parametrize(
     ("name", "smiles", "document_atoms", "document_bonds", "generated_hydrogens"),
     [

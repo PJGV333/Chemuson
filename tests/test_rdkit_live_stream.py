@@ -111,6 +111,16 @@ def test_rdkit_stream_emits_progressive_butane_frames_with_fixed_atom(forcefield
     )
     assert terminal["energy_unit"] == "kcal/mol"
 
+    from chemuson.geometry3d.model import scene_molecule_from_graph
+    from chemuson.geometry3d.rdkit_backend import _frame_from_event
+
+    for event in frames:
+        live_frame = _frame_from_event(event, source="rdkit")
+        assert live_frame is not None
+        live_scene = scene_molecule_from_graph(graph, live_frame.coordinates)
+        assert len(live_scene.atoms) == 14
+        assert len(live_scene.bonds) == 13
+
 
 def test_rdkit_backend_stream_returns_last_frame_and_emits_callbacks():
     from chemuson.geometry3d import CoordinateSet3D, ForceField, OptimizationSettings

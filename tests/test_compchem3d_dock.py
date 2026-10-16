@@ -449,6 +449,47 @@ def test_3d_builder_respects_selected_double_bond_order() -> None:
         window.close()
 
 
+def test_3d_geometry_preview_keeps_and_moves_derived_hydrogens() -> None:
+    from chemuson.geometry3d.model import scene_molecule_from_graph
+
+    window = ChemusonWindow()
+    try:
+        canvas = window.canvas
+        carbon = canvas.model.add_atom("C", 0.0, 0.0, is_explicit=True)
+        initial = CoordinateSet3D(
+            {carbon.id: (0.0, 0.0, 0.0)},
+            source="test",
+            method="mmff",
+            metadata={
+                "generated_atoms": [
+                    {"id": "genH1", "element": "H", "coords": [1.0, 0.0, 0.0]}
+                ],
+                "generated_bonds": [
+                    {"id": "genB1", "a1_id": carbon.id, "a2_id": "genH1", "order": 1}
+                ],
+            },
+        )
+        canvas.set_geometry3d_coordinates(initial)
+
+        window._on_viewport_geometry_preview(
+            initial.positions,
+            {carbon.id: (0.0, 1.0, 0.0)},
+            (carbon.id,),
+        )
+
+        preview = window._compchem_preview_coordset
+        assert preview is not None
+        scene = scene_molecule_from_graph(canvas.model, preview)
+        hydrogen = next(atom for atom in scene.atoms if atom.generated)
+        assert len(scene.atoms) == 2
+        assert len(scene.bonds) == 1
+        assert (hydrogen.x, hydrogen.y, hydrogen.z) == (1.0, 1.0, 0.0)
+    finally:
+        window._close_approved = True
+        window._async_shutdown_complete = True
+        window.close()
+
+
 def test_3d_builder_rejects_incompatible_valence_without_partial_edit() -> None:
     window = ChemusonWindow()
     try:
@@ -610,6 +651,14 @@ def test_geometry_constraint_controls_are_applied_and_undoable(
             },
             source="test",
             method="manual",
+            metadata={
+                "generated_atoms": [
+                    {"id": "genH2", "element": "H", "coords": [1.5, 1.0, 0.0]}
+                ],
+                "generated_bonds": [
+                    {"id": "genB2", "a1_id": 2, "a2_id": "genH2", "order": 1}
+                ],
+            },
         )
         window.canvas.set_geometry3d_coordinates(original)
 
@@ -617,6 +666,9 @@ def test_geometry_constraint_controls_are_applied_and_undoable(
 
         updated = window.canvas.coordinate_set_3d
         assert updated is not None
+        from chemuson.geometry3d.model import scene_molecule_from_graph
+
+        assert len(scene_molecule_from_graph(graph, updated).atoms) == 5
         measured = getattr(editing, metric)(updated, *atom_ids)
         assert measured == pytest.approx(target, abs=1.0e-4)
         assert window.canvas.undo_stack.count() == 1

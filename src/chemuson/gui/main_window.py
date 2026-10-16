@@ -4,6 +4,7 @@ Ventana principal de Chemuson.
 Compone menús, barras de herramientas, docks y el lienzo central.
 """
 
+from collections.abc import Mapping
 from PyQt6 import sip
 from PyQt6.QtWidgets import (
     QAbstractSpinBox,
@@ -67,6 +68,7 @@ from chemuson.geometry3d import (
     OptimizationSettings,
     project_conformer_to_2d,
     scene_molecule_from_graph,
+    translated_generated_hydrogen_metadata,
 )
 from chemuson.geometry3d.export_xyz import molgraph_to_xyz
 from chemuson.compchem.exporters import (
@@ -1242,13 +1244,15 @@ class ChemusonWindow(QMainWindow):
         positions: object,
         selected_atom_ids: object,
     ) -> None:
-        if self.canvas.geometry3d_is_stale:
+        if self.canvas.geometry3d_is_stale or not isinstance(positions, Mapping):
             return
+        previous = self._compchem_preview_coordset or self.canvas.coordinate_set_3d
         try:
             coordinates = CoordinateSet3D(
                 positions=positions,
                 source="manual",
                 method="interactive-3d-edit",
+                metadata=translated_generated_hydrogen_metadata(previous, positions),
             )
         except (TypeError, ValueError):
             return
@@ -1274,15 +1278,17 @@ class ChemusonWindow(QMainWindow):
         after_positions: object,
         selected_atom_ids: object,
     ) -> None:
-        if self.canvas.geometry3d_is_stale:
+        if self.canvas.geometry3d_is_stale or not isinstance(after_positions, Mapping):
             return
         if after_positions == before_positions:
             return
+        previous = self._compchem_preview_coordset or self.canvas.coordinate_set_3d
         try:
             coordinates = CoordinateSet3D(
                 positions=after_positions,
                 source="manual",
                 method="interactive-3d-edit",
+                metadata=translated_generated_hydrogen_metadata(previous, after_positions),
             )
         except (TypeError, ValueError) as exc:
             self.viewport3d_dock.set_status(f"No se pudo guardar la edición 3D: {exc}")
@@ -1361,10 +1367,12 @@ class ChemusonWindow(QMainWindow):
         except (TypeError, ValueError, KeyError) as exc:
             self.viewport3d_dock.set_status(f"Restricción geométrica no aplicada: {exc}")
             return
+        updated_positions = updated.normalized_positions()
         coordinates = CoordinateSet3D(
-            positions=updated.normalized_positions(),
+            positions=updated_positions,
             source="manual",
             method=f"geometry-constraint:{operation}",
+            metadata=translated_generated_hydrogen_metadata(coordset, updated_positions),
         )
         self.canvas.undo_stack.push(
             SetGeometry3DCommand(

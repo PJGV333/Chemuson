@@ -20,6 +20,7 @@ from .model import (
     SceneBond3D,
     SceneMolecule3D,
     scene_molecule_from_graph,
+    translated_generated_hydrogen_metadata,
 )
 
 __all__ = [
@@ -40,4 +41,5 @@ __all__ = [
     "conformer_3d_for_graph_async",
     "project_conformer_to_2d",
     "scene_molecule_from_graph",
+    "translated_generated_hydrogen_metadata",
 ]

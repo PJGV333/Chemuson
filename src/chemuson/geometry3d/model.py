@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import math
 from enum import Enum
-from typing import Mapping
+from typing import Any, Mapping
 
 
 class ForceField(str, Enum):
@@ -34,6 +34,99 @@ class CoordinateSet3D:
             int(atom_id): (float(coords[0]), float(coords[1]), float(coords[2]))
             for atom_id, coords in self.positions.items()
         }
+
+
+def translated_generated_hydrogen_metadata(
+    previous: CoordinateSet3D | None,
+    new_positions: Mapping[Any, Any],
+) -> dict[str, object]:
+    """Conserva los H derivados y los traslada con su átomo documental padre."""
+    if previous is None:
+        return {}
+    metadata = previous.metadata
+    generated_atoms = metadata.get("generated_atoms", ())
+    generated_bonds = metadata.get("generated_bonds", ())
+    if not isinstance(generated_atoms, list) or not generated_atoms:
+        return {}
+    if not isinstance(generated_bonds, list):
+        generated_bonds = []
+
+    old_positions = previous.normalized_positions()
+    normalized_new: dict[int, tuple[float, float, float]] = {}
+    for atom_id, raw_position in new_positions.items():
+        if not isinstance(raw_position, (list, tuple)) or len(raw_position) != 3:
+            continue
+        try:
+            normalized_id = int(atom_id)
+            position = (
+                float(raw_position[0]),
+                float(raw_position[1]),
+                float(raw_position[2]),
+            )
+        except (TypeError, ValueError, OverflowError):
+            continue
+        if all(math.isfinite(component) for component in position):
+            normalized_new[normalized_id] = position
+
+    generated_ids = {
+        str(item.get("id"))
+        for item in generated_atoms
+        if isinstance(item, Mapping) and item.get("id") is not None
+    }
+    parent_by_hydrogen: dict[str, int] = {}
+    for bond in generated_bonds:
+        if not isinstance(bond, Mapping):
+            continue
+        first, second = bond.get("a1_id"), bond.get("a2_id")
+        if str(first) in generated_ids:
+            hydrogen_id, raw_parent_id = str(first), second
+        elif str(second) in generated_ids:
+            hydrogen_id, raw_parent_id = str(second), first
+        else:
+            continue
+        if raw_parent_id is None:
+            continue
+        try:
+            parent_by_hydrogen[hydrogen_id] = int(raw_parent_id)
+        except (TypeError, ValueError, OverflowError):
+            continue
+
+    translated_atoms: list[dict[str, object]] = []
+    for item in generated_atoms:
+        if not isinstance(item, Mapping):
+            continue
+        raw_coordinates = item.get("coords") or item.get("position")
+        if not isinstance(raw_coordinates, (list, tuple)) or len(raw_coordinates) != 3:
+            translated_atoms.append(dict(item))
+            continue
+        try:
+            coordinates = (
+                float(raw_coordinates[0]),
+                float(raw_coordinates[1]),
+                float(raw_coordinates[2]),
+            )
+        except (TypeError, ValueError, OverflowError):
+            translated_atoms.append(dict(item))
+            continue
+        if not all(math.isfinite(value) for value in coordinates):
+            translated_atoms.append(dict(item))
+            continue
+        parent_id = parent_by_hydrogen.get(str(item.get("id")))
+        if parent_id in old_positions and parent_id in normalized_new:
+            old_parent = old_positions[parent_id]
+            new_parent = normalized_new[parent_id]
+            coordinates = tuple(
+                value + new_parent[index] - old_parent[index]
+                for index, value in enumerate(coordinates)
+            )
+        translated_item = dict(item)
+        translated_item["coords"] = list(coordinates)
+        translated_atoms.append(translated_item)
+
+    return {
+        "generated_atoms": translated_atoms,
+        "generated_bonds": [dict(item) for item in generated_bonds if isinstance(item, Mapping)],
+    }
 
 
 @dataclass(frozen=True)
