@@ -1,0 +1,23 @@
+{
+  "based_on": "current-renderer",
+  "name": "Unapproved experiment — evidence only",
+  "parameters": {
+    "bold_double_bond_offset_ratio": 0.22,
+    "bond_stroke_ratio": 0.07,
+    "cap_style": "round",
+    "double_bond_inner_trim_ratio": 0.23,
+    "double_bond_offset_ratio": 0.14,
+    "hashed_wedge_count": 7,
+    "hashed_wedge_max_width_ratio": 0.3,
+    "hashed_wedge_min_width_ratio": 0.05,
+    "hashed_wedge_stroke_ratio": 0.065,
+    "hashed_wedge_terminal_shift_ratio": 0.35,
+    "join_style": "round",
+    "label_clearance_ratio": 0.055,
+    "solid_wedge_tip_width_ratio": 0.14,
+    "solid_wedge_width_ratio": 0.31,
+    "triple_bond_offset_ratio": 0.22
+  },
+  "schema": "chemuson.depiction-style",
+  "version": 1
+}

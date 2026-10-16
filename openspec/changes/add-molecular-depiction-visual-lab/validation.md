@@ -6,7 +6,7 @@ Rama `feat/molecular-depiction-visual-lab`, creada desde `ee5294800c5779f7451e62
 
 ## Verificación focal
 
-- `pytest -q tests/test_depiction_lab_parameters.py tests/test_depiction_lab_renderer.py tests/test_depiction_lab_ui.py tests/test_depiction_lab_export.py`: **41 passed** (1.95 s; rerun final tras los cambios del reporte/perfiles: 41 passed en 1.95 s).
+- `pytest -q tests/test_depiction_lab_parameters.py tests/test_depiction_lab_renderer.py tests/test_depiction_lab_ui.py tests/test_depiction_lab_export.py`: **41 passed** (rerun final tras los cambios del reporte/perfiles: 1.90 s).
 - Incluye 15 parámetros que cambian la salida/propiedad de un `BondItem` real; invariantes de grafos; independencia Current/Working; 12 escenas deterministas; overlays descartables; esquema JSON, migración v0→v1, carga/guardado; UI sincronizada y apagado Qt en subproceso acotado; exportación PNG/SVG/JSON/Markdown y hoja Current/Working de los 12 casos.
 - Exportación completa y ciclo UI se prueban con Qt offscreen en procesos aislados y timeouts externos. Ninguna aprobación estética o preset editorial se da por establecida.
 - `python -m compileall src tests tools packaging`: **PASS**.
@@ -32,6 +32,16 @@ Se generó un plan de 8 shards con **2,326 node IDs únicos**, exactamente los d
 El único fallo de shard es `tests/test_compchem3d_dock.py::test_compchem_controller_generates_async_with_fake_backend`. En ejecución aislada en proceso fresco pasa (**1 passed, 0.22 s**). Es el mismo fallo Qt dependiente del orden que el baseline de esta campaña ya registraba en el shard 4; con el manifiesto ampliado la repartición lo ubica en shard 3. No lo causó el laboratorio, no se editó ni se ocultó. El plan completa 2,306 passed + 19 skipped + 1 fallo = 2,326; el verificador reporta esa excepción sin error de cobertura. Los ocho shards sí se ejecutaron; no se repitió `pytest -q` monolítico después del baseline: el run inicial se agotó al límite externo de 600 s cerca de 34 %.
 
 Un intento de herramienta con índice 8 fue rechazado por la validación del rango (shards indexados 0–7); no inició tests. Se corrió índice 0 a continuación y los ocho resultados quedaron completos.
+
+## Evidencia visual y revisión
+
+Se generó evidencia después del commit renderer `d4cda5f4f20e63d4eb8594e1a65d54d8b95d8aaa` (el reporte marca el worktree `modified` porque los propios artefactos se estaban creando en el repo). El perfil se llama **“Unapproved experiment — evidence only”** deliberadamente: es una muestra técnica, no recomendación, preset editorial ni aprobación estética.
+
+- [Hoja de contacto clara de Current/Working, 12 casos](evidence/gallery-light/contact-sheet-light.png) — SHA-256 `3d8f9a817ab561203f41a2fed068b090d8bf3fff83943f304cc9bef67ee25dc7`.
+- [Comparación oscura A1 (PNG)](evidence/case-A1-dark/comparison-A1-dark.png) — SHA-256 `ed3b0a8038f2ce8ef301581ac0a0167b1e3bb140365958fd073f2396236475e8`.
+- [Reporte de 12 casos](evidence/gallery-light/report.md), [bundle de A1 (PNG/SVG/perfil/reporte)](evidence/case-A1-dark/report.md) y perfiles JSON exactos incluidos junto a las imágenes. SVG se generó desde la misma `QGraphicsScene`.
+
+**READY FOR OWNER VISUAL REVIEW; NOT VISUALLY APPROVED.** El propietario decide si los ajustes se aceptan o se descartan. No se promueven defaults.
 
 ## Límites y revisión
 

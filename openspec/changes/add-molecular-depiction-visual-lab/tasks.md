@@ -27,6 +27,6 @@
 - [x] 4.5 Validar OpenSpec y documentar evidencia/limitaciones en `validation.md` y `AGENT_REPORT.md`.
 
 ## 5. Entrega de rama
-- [ ] 5.1 Hacer commits pequeños y coherentes en `feat/molecular-depiction-visual-lab`.
+- [x] 5.1 Hacer commits pequeños y coherentes en `feat/molecular-depiction-visual-lab`.
 - [ ] 5.2 Si autenticación disponible, push únicamente a esta rama; verificar SHA remoto y árbol limpio.
-- [ ] 5.3 Declarar `READY FOR OWNER VISUAL REVIEW` sólo si todos los criterios objetivos pasan; nunca aprobar el preset estético.
+- [x] 5.3 Declarar `READY FOR OWNER VISUAL REVIEW`; el preset de evidencia no está aprobado y queda a criterio visual del propietario.
