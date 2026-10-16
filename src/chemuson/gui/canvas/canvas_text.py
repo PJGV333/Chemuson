@@ -2452,85 +2452,124 @@ class CanvasTextMixin:
                 continue
             ux = dx / length
             uy = dy / length
-            shrink_start_extra = 0.0
-            shrink_end_extra = 0.0
+            extent_start = self._label_projection_extent_for_atom(bond.a1_id, ux, uy)
+            extent_end = self._label_projection_extent_for_atom(bond.a2_id, -ux, -uy)
             if bond.style == BondStyle.WEDGE:
-                # A wedge is narrow at `a1` and wide at `a2`; only the wide end
-                # needs extra label clearance. Applying the same padding to the
-                # tip creates visible gaps on labeled heteroatoms.
-                shrink_end_extra = max(
-                    0.0,
-                    self._bond_render_width(bond) - self.drawing_style.stroke_px,
+                clearance = 1.5
+            else:
+                pen_width = max(0.0, float(item.pen().widthF()))
+                secondary_pen = getattr(item, "_secondary_pen", None)
+                if secondary_pen is not None:
+                    pen_width = max(pen_width, float(secondary_pen.widthF()))
+                clearance = max(1.0, pen_width * 0.5 + 1.0)
+            shrink_start = 0.0 if extent_start is None else extent_start + clearance
+            shrink_end = 0.0 if extent_end is None else extent_end + clearance
+            if bond.style == BondStyle.HASHED:
+                shrink_start, shrink_end = self._hashed_label_shrinks(
+                    item,
+                    length,
+                    extent_start,
+                    extent_end,
                 )
-            shrink_start = self._label_shrink_for_atom(
-                bond.a1_id,
-                ux,
-                uy,
-                extra_pad=shrink_start_extra,
-            )
-            shrink_end = self._label_shrink_for_atom(
-                bond.a2_id,
-                -ux,
-                -uy,
-                extra_pad=shrink_end_extra,
-            )
             item.set_label_shrink(shrink_start, shrink_end)
             item.update_positions(atom1, atom2)
         self._refresh_implicit_h_overlays(atom_ids)
 
-    def _label_shrink_for_atom(
+    def _label_projection_extent_for_atom(
         self,
         atom_id: int,
         ux: float,
         uy: float,
-        *,
-        extra_pad: float = 0.0,
-    ) -> float:
-        """Método auxiliar para  label shrink for atom.
-
-        Args:
-            atom_id: Descripción del parámetro.
-            ux: Descripción del parámetro.
-            uy: Descripción del parámetro.
-            extra_pad: Padding adicional para geometrías con ancho real.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la escena.
-        """
-        item = self.atom_items.get(atom_id)
+    ) -> float | None:
+        """Project visible atom-label geometry onto a bond ray."""
         atom = self.model.atoms.get(atom_id)
+        item = self.atom_items.get(atom_id)
+        if atom is None:
+            return None
         if (
-            atom is not None
-            and bool(getattr(atom, "is_coordination_center", False))
+            bool(getattr(atom, "is_coordination_center", False))
             and not bool(getattr(atom, "sphere_transparent", False))
         ):
             if item is not None and hasattr(item, "_coordination_draw_radius"):
                 try:
-                    return max(0.0, float(item._coordination_draw_radius()) + 1.5)
+                    return max(0.0, float(item._coordination_draw_radius()))
                 except Exception:
                     pass
             configured = getattr(atom, "sphere_radius", None)
             return max(0.0, float(configured) if configured is not None else 16.0)
-        if item is None or not item.label.isVisible():
+        if item is None:
+            return None
+
+        extent: float | None = None
+        for glyph in (item.label, item.charge_label):
+            if not glyph.isVisible():
+                continue
+            path = glyph.mapToScene(glyph.shape())
+            for polygon in path.toSubpathPolygons():
+                for point in polygon:
+                    projection = (point.x() - atom.x) * ux + (point.y() - atom.y) * uy
+                    extent = projection if extent is None else max(extent, projection)
+        if extent is None:
+            return None
+        return extent
+
+    def _hashed_label_shrinks(
+        self,
+        item,
+        length: float,
+        extent_start: float | None,
+        extent_end: float | None,
+    ) -> tuple[float, float]:
+        """Move terminal hash marks toward labels while preserving a visible gap."""
+        count = max(1, int(item._style.hash_count))
+        half_interval_fraction = 0.5 / count
+        hash_stroke = max(0.0, float(item.pen().widthF()))
+        visible_gap = hash_stroke * 0.5 + 1.0
+        start_fixed = max(0.0, float(item._endpoint_trim_start))
+        end_fixed = max(0.0, float(item._endpoint_trim_end))
+        start_target = None if extent_start is None else extent_start + visible_gap
+        end_target = None if extent_end is None else extent_end + visible_gap
+
+        if start_target is not None and end_target is not None:
+            denominator = 1.0 - 2.0 * half_interval_fraction
+            if denominator <= 1e-9:
+                total_start, total_end = start_fixed, end_fixed
+            else:
+                interval_length = (length - start_target - end_target) / denominator
+                total_start = start_target - half_interval_fraction * interval_length
+                total_end = end_target - half_interval_fraction * interval_length
+        elif start_target is not None:
+            total_end = end_fixed
+            total_start = (
+                start_target - half_interval_fraction * (length - total_end)
+            ) / (1.0 - half_interval_fraction)
+        elif end_target is not None:
+            total_start = start_fixed
+            total_end = (
+                end_target - half_interval_fraction * (length - total_start)
+            ) / (1.0 - half_interval_fraction)
+        else:
+            total_start, total_end = start_fixed, end_fixed
+
+        total_start = max(start_fixed, total_start)
+        total_end = max(end_fixed, total_end)
+        available = max(0.0, length - max(1.0, hash_stroke))
+        if total_start + total_end > available and total_start + total_end > 0.0:
+            scale = available / (total_start + total_end)
+            total_start *= scale
+            total_end *= scale
+        return (
+            max(0.0, total_start - start_fixed),
+            max(0.0, total_end - end_fixed),
+        )
+
+    def _label_shrink_for_atom(self, atom_id: int, ux: float, uy: float) -> float:
+        """Return visible label extent along a ray plus rendering clearance."""
+        extent = self._label_projection_extent_for_atom(atom_id, ux, uy)
+        if extent is None:
             return 0.0
-        rect = item.label.mapRectToParent(item.label.boundingRect())
-        if rect.isNull() or rect.width() <= 0 or rect.height() <= 0:
-            return 0.0
-        # Increased padding to clear label characters (especially "C")
-        # 6.0px provides a comfortable margin for standard font sizes.
-        pad = 6.0
-        display_element = self._resolved_display_element(atom) if atom is not None else ""
-        if atom is not None and display_element in ELEMENT_SYMBOLS and display_element not in {"C", "H"}:
-            pad = 3.5
-            if self._inline_label_hydrogen_count(atom_id, display_element) > 0:
-                pad = 5.0
-        pad += max(0.0, float(extra_pad))
-        rect = rect.adjusted(-pad, -pad, pad, pad)
-        distance = self._ray_ellipse_distance(rect, ux, uy)
-        return distance if distance is not None else 0.0
+        clearance = max(1.5, self.drawing_style.stroke_px * 0.5 + 0.8)
+        return max(0.0, extent + clearance)
 
     def _apply_text_settings(self, item: TextAnnotationItem, property_name: str = "all") -> None:
         """Apply text format settings to the item, ideally merging only what changed."""

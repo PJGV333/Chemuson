@@ -24,9 +24,9 @@ from chemuson.gui.canvas import ChemusonCanvas
 
 
 WIDTH = 1680
-HEIGHT = 1160
+HEIGHT = 2120
 COLUMNS = 4
-ROWS = 5
+ROWS = 10
 CELL_WIDTH = 400
 CELL_HEIGHT = 195
 PAGE = QRectF(36.0, 36.0, WIDTH - 72.0, HEIGHT - 72.0)
@@ -54,11 +54,13 @@ class GalleryCase:
     stereo_stroke: float = 2.6
     ring: str | None = None
     explicit_h: bool = False
+    label_endpoint: str | None = None
+    label_scale: float = 1.0
 
 
 def gallery_cases() -> tuple[GalleryCase, ...]:
     """Return fixed synthetic depictions; angles are measured at the junction."""
-    return (
+    junction_cases = (
         GalleryCase("01 · simple + solid wedge · 30°", (Branch(30),)),
         GalleryCase(
             "02 · simple + hashed wedge · 60°",
@@ -132,6 +134,36 @@ def gallery_cases() -> tuple[GalleryCase, ...]:
         GalleryCase("19 · aromatic ring + solid wedge", ring="aromatic"),
         GalleryCase("20 · fused aromatic rings + wedge", ring="fused"),
     )
+    label_cases = tuple(
+        GalleryCase(
+            f"{index:02d} · {label} label / {style_name} / {endpoint}",
+            center_element=element,
+            charge=charge,
+            stereo_style=style,
+            stereo_length=55.0,
+            label_endpoint=endpoint,
+            label_scale=scale,
+        )
+        for index, (label, element, charge, scale, style, style_name, endpoint) in enumerate(
+            (
+                (label, element, charge, scale, style, style_name, endpoint)
+                for label, element, charge, scale in (
+                    ("F", "F", 0, 1.0),
+                    ("Cl", "Cl", 0, 1.0),
+                    ("Br", "Br", 0, 1.0),
+                    ("N+", "N", 1, 1.0),
+                    ("CH2OH", "CH2OH", 0, 1.25),
+                )
+                for endpoint in ("tip", "base")
+                for style, style_name in (
+                    (BondStyle.WEDGE, "solid wedge"),
+                    (BondStyle.HASHED, "hashed wedge"),
+                )
+            ),
+            start=len(junction_cases) + 1,
+        )
+    )
+    return junction_cases + label_cases
 
 
 def _add_bond(canvas: ChemusonCanvas, a1: int, a2: int, branch: Branch) -> None:
@@ -174,6 +206,29 @@ def _add_aromatic_ring(canvas: ChemusonCanvas, cx: float, cy: float, radius: flo
 def _add_case(canvas: ChemusonCanvas, case: GalleryCase, x0: float, y0: float, index: int) -> None:
     cx = x0 + CELL_WIDTH * 0.54
     cy = y0 + CELL_HEIGHT * 0.60
+    if case.label_endpoint is not None:
+        label = canvas.model.add_atom(
+            case.center_element,
+            cx,
+            cy,
+            formal_charge=case.charge,
+            is_explicit=True,
+            label_scale=case.label_scale,
+        )
+        if case.label_endpoint == "tip":
+            other = canvas.model.add_atom("C", cx + case.stereo_length, cy)
+            a1_id, a2_id = label.id, other.id
+        else:
+            other = canvas.model.add_atom("C", cx - case.stereo_length, cy)
+            a1_id, a2_id = other.id, label.id
+        canvas.model.add_bond(
+            a1_id,
+            a2_id,
+            style=case.stereo_style,
+            stereo=BondStereo.UP if case.stereo_style == BondStyle.WEDGE else BondStereo.DOWN,
+            stroke_px=case.stereo_stroke,
+        )
+        return
     if case.ring:
         radius = 35.0
         if case.ring == "aromatic":

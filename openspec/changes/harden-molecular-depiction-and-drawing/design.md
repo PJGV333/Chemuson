@@ -4,7 +4,19 @@
 
 La rama es `feat/molecular-depiction-excellence`, HEAD `c38d954b9b7fb88a1aba04c06fc9376d5494ecc4`, sincronizada con su upstream. La Fase previa centra las rayas hash en `src/chemuson/gui/bond_junctions.py`; no modificó Clean2D ni límites del canvas. La galería Qt de uniones y sus pruebas son la base reutilizable. El inventario de baseline está en `baseline.md`.
 
-La observación de que Clean2D «abre» un anillo aún no identifica si el defecto está en el grafo, un candidato geométrico, una validación incompleta, una selección parcial o sólo en la visualización. No se presume conectividad alterada hasta comparar snapshots del grafo antes/después y coordenadas elegidas. Tampoco se presupone que toda separación cuña-etiqueta o forma de bifurcación sea un defecto: primero se mide y compara con etiquetas y ángulos variados.
+## Primera reproducción Clean2D (sin parche)
+
+En un ciclo cerrado de seis átomos construido con coordenadas manuales, variantes de enlaces simples/Kekulé/aromáticos produjeron candidatos seguros en quick/publication; la ruta real de ventana seleccionó `rdkit_isolated` (simple no aromático) o `simple_aromatic_template` (aromático), conservó todos los endpoints/órdenes/estilos y mejoró la razón de área del anillo de `0.753` a `0.907`, sin cruces. La API del motor tampoco muta el grafo por sí misma; la aplicación del controlador sí fue comprobada en el flujo GUI.
+
+Se reprodujo una situación visualmente ambigua distinta: seis átomos en una forma casi cerrada pero con **sólo cinco enlaces** y terminales a `5.83` unidades. El grafo es una cadena, no un ciclo. Ctrl+K eligió `rdkit_isolated` y reubicó la cadena como zigzag; los seis átomos y los cinco endpoints permanecieron intactos. Esto explica cómo una figura que parecía un anillo puede «abrirse» al limpiar, pero no prueba que sea el mismo documento/caso del propietario. El test Qt de herramienta de enlace también confirma cierre cuando el usuario crea los seis enlaces y alcanza el átomo inicial.
+
+Por tanto, todavía no hay evidencia de que Clean2D elimine o cambie conectividad de un ciclo de seis enlaces. No se añadirá un enlace automáticamente ni se cambiará la política de limpieza basándose en una figura de conectividad ausente. Queda pendiente obtener el archivo/caso exacto o fijar un repro manual reproducible de seis enlaces que falle.
+
+## Resultado de la fase de etiquetas
+
+La galería y la geometría mostraron que la separación se derivaba del margen fijo aplicado sobre bounding-ellipses y de sumar casi todo el ancho de cuña en su extremo ancho; el hash añadía además un intervalo vacío antes del primer mark. Se cambió el cálculo para proyectar el contorno real visible de etiqueta/carga sobre cada rayo y aplicar clearance según el tipo/ancho de trazo. La cuña sólida deja un margen nominal de `1.5` unidades; cada extremo hash se posiciona considerando el radio del trazo y mantiene al menos `1.0` unidad visible en los casos medidos. El conteo y espaciado uniforme interno de marks no cambian. Una matriz automatizada cubre F/Cl/Br/N⁺/CH₂OH, cuatro ángulos, punta/base y enlaces simple/doble/triple/bold/wedge/hash.
+
+La brecha se cerró sin intersecciones en la matriz (0.5–5.0 unidades); la lámina before/after mantiene juntas las 20 uniones originales y añade 20 orientaciones de etiqueta, en claro y oscuro. Esto no concluye la revisión visual del propietario. Tampoco se presupone que toda forma de bifurcación sea un defecto: sólo se ajustó el trimming que explicaba la métrica observada.
 
 ## Secuencia y límites técnicos
 

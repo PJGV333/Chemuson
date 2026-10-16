@@ -4,6 +4,7 @@ import math
 
 import pytest
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QPainterPath, QPainterPathStroker
 from PyQt6.QtWidgets import QApplication
 
 
@@ -455,6 +456,109 @@ def test_wedge_tip_on_labeled_nitrogen_is_not_overtrimmed():
     assert item._label_shrink_start < 12.0
     assert not wedge_path.intersects(label_shape)
     assert not wedge_path.intersects(charge_shape)
+
+
+def test_visible_label_clearance_is_tight_without_overlap_across_bond_styles():
+    """Labels stay legible at wedge tips/bases and ordinary bond endpoints."""
+    canvas = ChemusonCanvas()
+    label_cases = []
+    bond_styles = (
+        ("plain", BondStyle.PLAIN, 1),
+        ("double", BondStyle.PLAIN, 2),
+        ("triple", BondStyle.PLAIN, 3),
+        ("bold", BondStyle.BOLD, 1),
+        ("solid wedge", BondStyle.WEDGE, 1),
+        ("hashed wedge", BondStyle.HASHED, 1),
+    )
+    labels = (
+        ("F", 0, 1.0),
+        ("Cl", 0, 1.0),
+        ("Br", 0, 1.0),
+        ("N", 1, 1.0),
+        ("CH2OH", 0, 1.25),
+    )
+
+    for row, (element, charge, label_scale) in enumerate(labels):
+        for style_index, (style_name, style, order) in enumerate(bond_styles):
+            for endpoint_index, endpoint in enumerate(("tip", "base")):
+                for angle_index, angle_deg in enumerate((0.0, 35.0, 90.0, 145.0)):
+                    angle = math.radians(angle_deg)
+                    axis_x, axis_y = math.cos(angle), math.sin(angle)
+                    x = 100.0 + (style_index * 2 + endpoint_index) * 140.0
+                    y = 100.0 + (row * 4 + angle_index) * 150.0
+                    label_atom = canvas.model.add_atom(
+                        element,
+                        x,
+                        y,
+                        charge=charge,
+                        is_explicit=True,
+                        label_scale=label_scale,
+                    )
+                    direction = 1.0 if endpoint == "tip" else -1.0
+                    other = canvas.model.add_atom(
+                        "C",
+                        label_atom.x + direction * 60.0 * axis_x,
+                        label_atom.y + direction * 60.0 * axis_y,
+                    )
+                    if endpoint == "tip":
+                        a1_id, a2_id = label_atom.id, other.id
+                    else:
+                        a1_id, a2_id = other.id, label_atom.id
+                    bond = canvas.model.add_bond(
+                        a1_id,
+                        a2_id,
+                        order=order,
+                        style=style,
+                        stereo=(BondStereo.UP if style == BondStyle.WEDGE else BondStereo.DOWN)
+                        if style in {BondStyle.WEDGE, BondStyle.HASHED}
+                        else BondStereo.NONE,
+                    )
+                    label_cases.append(
+                        (
+                            element,
+                            style_name,
+                            endpoint,
+                            label_atom.id,
+                            bond.id,
+                            direction * axis_x,
+                            direction * axis_y,
+                        )
+                    )
+
+    canvas._rebuild_items_from_model()
+    for element, style_name, endpoint, atom_id, bond_id, axis_x, axis_y in label_cases:
+        atom = canvas.model.get_atom(atom_id)
+        atom_item = canvas.atom_items[atom_id]
+        bond_item = canvas.bond_items[bond_id]
+        label_path = QPainterPath()
+        for glyph in (atom_item.label, atom_item.charge_label):
+            if glyph.isVisible():
+                label_path.addPath(glyph.mapToScene(glyph.shape()))
+        bond_shape = bond_item.mapToScene(bond_item.shape())
+        secondary_pen = getattr(bond_item, "_secondary_pen", None)
+        if bond_item._has_secondary_path and secondary_pen is not None:
+            stroker = QPainterPathStroker()
+            stroker.setWidth(float(secondary_pen.widthF()))
+            stroker.setCapStyle(secondary_pen.capStyle())
+            stroker.setJoinStyle(secondary_pen.joinStyle())
+            bond_shape.addPath(
+                bond_item.mapToScene(stroker.createStroke(bond_item._secondary_path))
+            )
+
+        assert not bond_shape.intersects(label_path), (element, style_name, endpoint)
+        label_support = max(
+            axis_x * (point.x() - atom.x) + axis_y * (point.y() - atom.y)
+            for polygon in label_path.toSubpathPolygons()
+            for point in polygon
+        )
+        bond_support = min(
+            axis_x * (point.x() - atom.x) + axis_y * (point.y() - atom.y)
+            for polygon in bond_shape.toSubpathPolygons()
+            for point in polygon
+        )
+        gap = bond_support - label_support
+        assert gap >= 0.5, (element, style_name, endpoint, gap)
+        assert gap <= 5.0, (element, style_name, endpoint, gap)
 
 
 def test_aromatic_double_bold_uses_thin_secondary_pi_line():

@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import QApplication
 from chemuson.core.model import Atom, Bond, BondStyle, BondStereo
 from chemuson.gui.bond_junctions import hashed_wedge_segments
 from chemuson.gui.items import BondItem
-from tools.visual.render_bond_junction_gallery import compose_comparison, render_gallery
+from tools.visual.render_bond_junction_gallery import HEIGHT, WIDTH, compose_comparison, render_gallery
 
 
 @pytest.mark.parametrize("angle_deg", (30.0, 60.0, 90.0, 120.0, 150.0, 179.0))
@@ -223,7 +223,7 @@ def test_comparison_sheet_contains_equal_sized_before_after_theme_panels(tmp_pat
     after.mkdir()
     for theme in ("light", "dark"):
         for directory, color in ((before, "#FF0000"), (after, "#0000FF")):
-            panel = QImage(1680, 1160, QImage.Format.Format_ARGB32_Premultiplied)
+            panel = QImage(WIDTH, HEIGHT, QImage.Format.Format_ARGB32_Premultiplied)
             panel.fill(QColor(color))
             assert panel.save(str(directory / f"bond-junctions-{theme}.png"))
 
@@ -231,7 +231,7 @@ def test_comparison_sheet_contains_equal_sized_before_after_theme_panels(tmp_pat
     compose_comparison(before, after, output)
     sheet = QImage(str(output))
 
-    assert sheet.width() == 3360
-    assert sheet.height() == 2 * (1160 + 44)
+    assert sheet.width() == 2 * WIDTH
+    assert sheet.height() == 2 * (HEIGHT + 44)
     assert sheet.pixelColor(10, 44).name() == "#ff0000"
     assert sheet.pixelColor(1690, 44).name() == "#0000ff"
