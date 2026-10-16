@@ -19,5 +19,5 @@
 - [x] 4.1 Reorganizar las opciones de Ver en submenús reutilizando las QActions/conexiones existentes; la acción de recuperación queda primera y marcada.
 - [x] 4.2 Retirar la opción y wiring obsoletos de Copiar/Zoom hacia la QToolBar; preservar las acciones funcionales de Copiar/Zoom y sus rutas/atajos.
 - [x] 4.3 Añadir pruebas de mouse QTest, límites de `QScreen.availableGeometry()` para menú y submenús, temas claro/oscuro, tamaños solicitados, restauración por hamburguesa y persistencia tras reinicio; guardar evidencia visual.
-- [ ] 4.4 Ejecutar validaciones focalizadas acotadas, arquitectura, Ruff, compileall, OpenSpec estricto y CI por shards; publicar en esta misma rama y reportar SHA/resultados.
+- [x] 4.4 Ejecutar validaciones focalizadas acotadas, arquitectura, Ruff, compileall, OpenSpec estricto y CI por shards; publicar en esta misma rama y reportar SHA/resultados.
 - [ ] 4.5 Esperar la revisión manual del propietario; no integrar en beta prep, no tag/release y no declarar beta lista.

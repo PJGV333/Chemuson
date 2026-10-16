@@ -57,6 +57,8 @@ Se eliminó la acción obsoleta «Mostrar copiar/zoom en barra de herramientas»
 
 El backend offscreen no permite configurar `QScreen` a los tres modos solicitados; esos valores se probaron como tamaños de ventana, comparando siempre el popup real contra `availableGeometry`. En una inspección exploratoria separada con XCB, Qt reportó `availableGeometry=(0,0,1429,740)`, DPR `1.34375`, y el menú raíz midió `(347,65,271,271)`; la primera fila `(356,78,253,35)` y el menú completo cabían. No obstante, esa automatización adicional con QTest no abrió de forma fiable todos los submenús en XCB y el proceso de captura terminó con SIGSEGV durante el teardown de Qt. No se trata como prueba aprobada ni se alteró código de lifecycle para ocultarlo; la suite oficial usa offscreen y la validación manual del propietario sigue siendo obligatoria.
 
-### Publicación
+### Publicación y CI por shards
 
-Verificaciones y OpenSpec local listos; plan CI completo por shards pendiente del push de esta iteración. La entrega permanecerá en `fix/beta-final-ui-clean2d`; no integrar en beta prep/main, no crear tags/releases y no declarar beta lista. Aceptación manual del propietario pendiente.
+- Publicado por push normal únicamente a `fix/beta-final-ui-clean2d`, commit de implementación `9b7bd010643de119e27f0824d600db79da8ee788`; `origin/fix/beta-final-ui-clean2d` coincidió con el HEAD local.
+- GitHub Actions [run 38842965169](https://github.com/PJGV333/Chemuson/actions/runs/38842965169), para ese SHA: **success**. El plan recogió los 2238 IDs y distribuyó los ocho shards `[280,280,280,280,280,280,279,279]`; todos los shards y la verificación de IDs/JUnit pasaron. El shard más largo tardó 3m21s. También pasaron `windows-smoke` y `flatpak-smoke`.
+- No se integró en `release/v0.3.0-beta.1-prep` ni en `main`; no hubo tag, Release ni publicación de paquetes. La revisión manual del propietario sigue pendiente; no declarar beta lista hasta recibirla.
