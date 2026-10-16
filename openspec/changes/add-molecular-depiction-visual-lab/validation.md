@@ -35,10 +35,11 @@ Un intento de herramienta con índice 8 fue rechazado por la validación del ran
 
 ## Evidencia visual y revisión
 
-Se generó evidencia después del commit renderer `d4cda5f4f20e63d4eb8594e1a65d54d8b95d8aaa` (el reporte marca el worktree `modified` porque los propios artefactos se estaban creando en el repo). El perfil se llama **“Unapproved experiment — evidence only”** deliberadamente: es una muestra técnica, no recomendación, preset editorial ni aprobación estética.
+Se generó evidencia después del commit renderer `e5b9771c5118be51f3061d80210a97e26b7e7388` (el reporte marca el worktree `modified` porque los propios artefactos se estaban creando en el repo). El perfil se llama **“Unapproved experiment — evidence only”** deliberadamente: es una muestra técnica, no recomendación, preset editorial ni aprobación estética.
 
 - [Hoja de contacto clara de Current/Working, 12 casos](evidence/gallery-light/contact-sheet-light.png) — SHA-256 `3d8f9a817ab561203f41a2fed068b090d8bf3fff83943f304cc9bef67ee25dc7`.
 - [Comparación oscura A1 (PNG)](evidence/case-A1-dark/comparison-A1-dark.png) — SHA-256 `ed3b0a8038f2ce8ef301581ac0a0167b1e3bb140365958fd073f2396236475e8`.
+- SVGs normalizados sin whitespace final; hashes actuales están en el [reporte del bundle A1](evidence/case-A1-dark/report.md).
 - [Reporte de 12 casos](evidence/gallery-light/report.md), [bundle de A1 (PNG/SVG/perfil/reporte)](evidence/case-A1-dark/report.md) y perfiles JSON exactos incluidos junto a las imágenes. SVG se generó desde la misma `QGraphicsScene`.
 
 **READY FOR OWNER VISUAL REVIEW; NOT VISUALLY APPROVED.** El propietario decide si los ajustes se aceptan o se descartan. No se promueven defaults.

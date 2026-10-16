@@ -1,7 +1,7 @@
 # Depiction Visual Lab — gallery evidence
 
 - ChemUSON version: `0.3.0-beta.1`
-- Renderer source SHA at export: `d4cda5f4f20e63d4eb8594e1a65d54d8b95d8aaa`
+- Renderer source SHA at export: `e5b9771c5118be51f3061d80210a97e26b7e7388`
 - Git working tree at export: `modified`
 - Platform: `Linux-7.2.9-2-cachyos-x86_64-with-glibc2.44`; Qt/PyQt `6.11.0` / `6.11.0`
 - Theme: `light`; cases: 12; contact sheet: `contact-sheet-light.png`

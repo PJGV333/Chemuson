@@ -1,7 +1,7 @@
 # Depiction Visual Lab — reproduction report
 
 - ChemUSON version: `0.3.0-beta.1`
-- Renderer source SHA at export: `d4cda5f4f20e63d4eb8594e1a65d54d8b95d8aaa`
+- Renderer source SHA at export: `e5b9771c5118be51f3061d80210a97e26b7e7388`
 - Git working tree at export: `modified`
 - Platform: `Linux-7.2.9-2-cachyos-x86_64-with-glibc2.44`
 - Qt / PyQt: `6.11.0` / `6.11.0`
@@ -58,6 +58,6 @@
 - `current-A1-dark.png` — SHA256 `d415e845e39391870bde714a49bb681d383a5ab5fc3d3a6b7cd0a1781a19d4c4`
 - `working-A1-dark.png` — SHA256 `d1f48783364062ef29c88fa34e647a845d59d2644a5591bb77cc3514d130f52b`
 - `comparison-A1-dark.png` — SHA256 `ed3b0a8038f2ce8ef301581ac0a0167b1e3bb140365958fd073f2396236475e8`
-- `current-A1-dark.svg` — SHA256 `e6ba844ca5ac4e184c0a99ef65b63a861fabe9f1d432b49bdf5539c3c9d0ad84`
-- `working-A1-dark.svg` — SHA256 `062fa08b08f6f6b55c51f36468f7ea25bc6a9af328b9a8cb8c2c2d7bbaf03d35`
+- `current-A1-dark.svg` — SHA256 `48d30a2ecce575a682e4cf2f6376313af4cf3985a313b7f4d57d403bea4f02e2`
+- `working-A1-dark.svg` — SHA256 `86fd44bac57426590a792dc140e9b4ab4b9ff2b5793e2a4188fb60f82ba62faf`
 - `working-profile.json` — SHA256 `ecf75b87ee50571b66ed9a83d5d7f061e99772ea511b44dcb7c064c013b2097e`
