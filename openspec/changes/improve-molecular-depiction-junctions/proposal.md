@@ -8,8 +8,8 @@ La representación 2D ya conserva la geometría y la semántica química del gra
 
 - Añadir una galería determinista de moléculas sintéticas y estructuras cíclicas con uniones simples, dobles, triples, bold, cuñas sólidas/rayadas, bifurcaciones y proximidad a etiquetas/cargas.
 - Medir y documentar los casos base en temas claro/oscuro antes de ajustar geometría.
-- Añadir un módulo geométrico interno únicamente si el diagnóstico demuestra que el cálculo actual necesita representar explícitamente perfiles de trazos (incluidas las líneas sigma/pi de dobles enlaces).
-- Realizar ajustes estrechos de los contornos de cuña y terminaciones rayadas sólo si una comparación visual y pruebas geométricas confirman una mejora sin regresiones.
+- Añadir un helper geométrico puro y estrecho para centrar marcas hash en intervalos uniformes, tras confirmar un saliente terminal; no generalizar perfiles sigma/pi sin un defecto visible confirmado.
+- Realizar ajustes estrechos sólo si una comparación visual y pruebas geométricas confirman una mejora sin regresiones; los contornos solid wedge y sigma/pi quedan intactos en esta iteración.
 - Añadir pruebas de renderizado/invariantes que comprueben determinismo, seguridad de etiquetas y preservación del grafo químico.
 
 ## Fuera de alcance

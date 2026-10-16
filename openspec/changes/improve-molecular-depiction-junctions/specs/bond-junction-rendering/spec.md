@@ -2,55 +2,49 @@
 
 ## ADDED Requirements
 
-### Requirement: Bond junctions preserve molecular identity
+### Requirement: Bond-junction rendering preserves molecular identity
 
 Bond-junction rendering SHALL be a deterministic presentation-only transformation. It MUST NOT mutate atom identities, coordinates, connectivity, bond orders/styles, charges, aromaticity, stereochemistry, document data, or undo history.
 
 #### Scenario: Rebuild items leaves the molecular graph unchanged
 - **GIVEN** a molecular graph containing wedges, multiple bonds, labels, charges, and rings
 - **WHEN** the canvas rebuilds or refreshes its bond graphics items
-- **THEN** every graph field and molecular coordinate SHALL remain byte-for-byte/equality unchanged
+- **THEN** every graph field and molecular coordinate SHALL remain unchanged
 - **AND** wedge/hash endpoint orientation and `bold` style semantics SHALL remain unchanged
 
-### Requirement: Junction profiles retain individual stroke geometry
+### Requirement: Hashed-wedge marks use a centered, bounded profile
 
-A junction calculation that handles a multiple bond SHALL represent its sigma and pi strokes separately, including their actual offsets, widths, trims, and caps. It SHALL NOT replace a double bond with one centerline and an enlarged scalar width. Solid and hashed wedge contours SHALL retain their distinct visual profiles.
+Hashed-wedge marks SHALL be centered at equal intervals along the existing bond segment. Their widths SHALL vary monotonically from narrow to wide, interpolated at each mark center. Geometry SHALL be finite, deterministic, and independent of molecular graph mutation or Qt rasterization.
 
-#### Scenario: Solid wedge meets a double bond
-- **GIVEN** a solid wedge meeting a double bond at a shared atom
-- **WHEN** the join is rendered
-- **THEN** the sigma stroke SHALL connect without an unjustified peak or gap
-- **AND** the pi stroke SHALL retain its independent offset and intended end trim
-- **AND** neither line SHALL be displaced into an atom label
+#### Scenario: Hashed wedge meets a simple or bold bond
+- **GIVEN** a hashed wedge meeting a simple or thick `bold` bond at a shared atom
+- **WHEN** its transverse marks are rendered
+- **THEN** mark centers SHALL have uniform longitudinal spacing and symmetric half-interval margins at the two endpoints
+- **AND** mark widths SHALL grow monotonically without changing mark count or bond orientation
+- **AND** no terminal mark SHALL be centered exactly on the shared atom
+- **AND** `bold` SHALL remain a non-stereochemical stroke
 
-#### Scenario: Hashed wedge meets a bold bond
-- **GIVEN** a hashed wedge meeting a thick `bold` bond at its wide end
-- **WHEN** the join is rendered
-- **THEN** the hash marks SHALL remain monotonically ordered in width with uniform longitudinal spacing
-- **AND** the terminal contact SHALL have no isolated protrusion beyond the connected stroke envelope
-- **AND** the hashed orientation and `bold` semantics SHALL remain unchanged
+### Requirement: Existing solid-wedge geometry remains bounded and label-safe
 
-### Requirement: Wedge geometry remains bounded and label-safe
-
-Solid wedge geometry SHALL remain finite, non-self-intersecting, and bounded by the local bond length and stroke profile. A junction adjustment SHALL NOT enter the visible shape of a neighboring atom label, charge, or explicit hydrogen.
+Solid wedge geometry SHALL remain finite, non-self-intersecting, and bounded by the local bond length and stroke profile. This change SHALL NOT alter wedge contours or enter the visible shape of neighboring atom labels, charges, or explicit hydrogens.
 
 #### Scenario: Junction-angle regression matrix
-- **GIVEN** junctions at 30°, 60°, 90°, 120°, 150°, and near-collinear angles, at multiple scales and widths
-- **WHEN** wedge corners are adapted to neighboring strokes
-- **THEN** the polygon SHALL preserve the narrow/wide endpoint ordering
-- **AND** no corner SHALL form an unbounded miter, detached spike, or self-intersection
+- **GIVEN** solid-wedge junctions at 30°, 60°, 90°, 120°, 150°, and near-collinear angles, at multiple lengths and stroke widths
+- **WHEN** their existing contours are generated
+- **THEN** the narrow/wide endpoint ordering SHALL be preserved
+- **AND** no polygon SHALL form an unbounded miter or self-intersection
 
 #### Scenario: Labeled heteroatom junction
-- **GIVEN** an N/O/S atom with charge and/or explicit hydrogen at a wedge junction
-- **WHEN** the scene is rendered
-- **THEN** the molecular label, charge, and hydrogen glyphs SHALL remain unobscured
+- **GIVEN** an N/O/S atom with charge and/or explicit hydrogen near a wedge junction
+- **WHEN** the gallery is rendered
+- **THEN** its existing label glyphs SHALL remain visible and the molecule's graph SHALL be unchanged
 
 ### Requirement: Junction comparisons are reproducible across rendering surfaces
 
-The curated junction gallery SHALL be reproducible from source and render the same molecular examples in light and dark application contexts. Geometry SHALL be deterministic across zoom and vector export; themes SHALL affect only the applicable color/surface tokens, not molecular geometry.
+The curated gallery SHALL be reproducible from source and render the same molecular examples in light and dark application contexts. It SHALL use the production Qt graphics items; theme changes SHALL affect page/surface colors without changing molecular geometry. The optional comparison sheet SHALL show matching before/after panels at equal dimensions.
 
-#### Scenario: Theme, zoom, and export comparison
+#### Scenario: Theme and comparison rendering
 - **GIVEN** the same molecule, style, and coordinates
-- **WHEN** rendered at supported zoom scales, in light/dark context, and through vector export where available
+- **WHEN** the gallery is rendered in light/dark context and composed with its baseline
 - **THEN** atom positions and junction topology SHALL be unchanged
-- **AND** only expected antialiasing/device-pixel differences SHALL occur
+- **AND** only expected theme and antialiasing differences SHALL occur

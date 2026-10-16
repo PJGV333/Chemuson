@@ -35,3 +35,11 @@ La primera invocación de verificación no encontró el plan porque se guardó c
 ## Alcance de la captura
 
 No se modificó código de producción, Clean2D, modelo químico, catálogo de módulos, serialización ni tests existentes antes de completar esta captura. No se declara aceptación visual del producto por estas mediciones.
+
+## Evidencia visual reproducible de la campaña
+
+- Generador versionado: `tools/visual/render_bond_junction_gallery.py`; usa `ChemusonCanvas`/`BondItem`, soporta claro/oscuro, atom numbering real y composición de una lámina 2×2. Las capturas exploratorias se escriben en `/tmp` por defecto.
+- Capturas base (antes del cambio de hash geometry): `/tmp/chemuson-bond-junction-baseline/bond-junctions-light.png` y `bond-junctions-dark.png` (1680×1160 cada una).
+- Capturas posteriores: `/tmp/chemuson-bond-junction-after/bond-junctions-light.png` y `bond-junctions-dark.png` (1680×1160 cada una); numeración opcional inspeccionada en `/tmp/chemuson-bond-junction-numbered/`.
+- Lámina única versionada: [`docs/visual/bond-junctions-before-after.png`](../../../docs/visual/bond-junctions-before-after.png), 3360×2408; columnas antes/después y filas tema claro/oscuro.
+- La comparación del agente observa menor saliente terminal en hash→simple/bold y un perfil de marcas más simétrico. La separación al átomo se debe revisar en el tamaño/zoom de uso real; esta comparación no constituye aceptación visual del propietario.

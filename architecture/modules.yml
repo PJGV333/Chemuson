@@ -523,6 +523,7 @@ modules:
   - commands
   - dialogs
   - items
+  - bond_junctions
   - elemental_analysis_dialog
   - numbering
   - tab_manager
@@ -613,6 +614,7 @@ modules:
   - src/chemuson/gui/tool_rail.py
   - src/chemuson/gui/flyout.py
   - src/chemuson/gui/wedge_geometry.py
+  - src/chemuson/gui/bond_junctions.py
   - src/chemuson/gui/actions/
   - src/chemuson/gui/shell/
   - src/chemuson/gui/background_workers.py
@@ -669,6 +671,7 @@ modules:
   - tests/test_double_bond_orientation_toggle.py
   - tests/test_double_bond_vertex_rendering.py
   - tests/test_export_rendering.py
+  - tests/test_bond_junctions.py
   - tests/test_wedge_geometry.py
   - tests/test_sp3_bond_placement.py
   - tests/test_diagram_presets.py

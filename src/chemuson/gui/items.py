@@ -40,6 +40,7 @@ from chemuson.gui.energy_diagrams import (
     normalize_energy_occupancies,
 )
 from chemuson.gui.orbitals import OrbitalRenderer, orbital_renderer
+from chemuson.gui.bond_junctions import hashed_wedge_segments
 from chemuson.gui.style import DrawingStyle, CHEMDOODLE_LIKE
 from chemuson.gui.wedge_geometry import compute_wedge_points
 
@@ -2523,16 +2524,16 @@ class BondItem(QGraphicsPathItem):
             e1x, e1y, e2x, e2y = self._extend_line_endpoints(
                 h1x, h1y, h2x, h2y, ux, uy, h_trim_start, h_trim_end, stroke_px
             )
-            for i in range(1, steps + 1):
-                t = i / steps
-                px = e1x + (e2x - e1x) * t
-                py = e1y + (e2y - e1y) * t
-                width = (
-                    self._style.hash_min_px
-                    + (self._style.hash_max_px - self._style.hash_min_px) * t
-                ) * stroke_scale
-                path.moveTo(px + nx * width / 2, py + ny * width / 2)
-                path.lineTo(px - nx * width / 2, py - ny * width / 2)
+            marks = hashed_wedge_segments(
+                (e1x, e1y),
+                (e2x, e2y),
+                steps,
+                self._style.hash_min_px * stroke_scale,
+                self._style.hash_max_px * stroke_scale,
+            )
+            for mark_start, mark_end in marks:
+                path.moveTo(*mark_start)
+                path.lineTo(*mark_end)
             hash_stroke = max(self._style.hash_stroke_px * stroke_scale, stroke_px * 0.85)
             pen = QPen(color, hash_stroke)
             pen.setCapStyle(self._style.cap_style)

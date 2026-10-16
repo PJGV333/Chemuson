@@ -8,17 +8,24 @@ La galería exploratoria base renderiza casos de 30°, 60°, 90°, 120°, 150° 
 
 El doble enlace se dibuja con componentes distintos: línea sigma central y línea pi desplazada, normalmente recortada hacia el interior; el doble aromático `bold` también puede tener sigma gruesa y pi fina. El contexto actual de uniones no expresa ese perfil completo. Esto es una hipótesis de insuficiencia de representación, no un defecto visual confirmado: antes de cambiarla hay que demostrar qué contorno debe conectar con la cuña y cuál debe quedar retranqueado.
 
+## Resultado del diagnóstico y decisión de implementación
+
+La galería reproducible confirmó que algunos hash marks terminales quedaban centrados exactamente sobre el átomo compartido (`t = 1`), dejando una pequeña prolongación transversal en uniones hash→simple/bold. La comparación antes/después muestra que centrar cada marca en uno de `n` intervalos iguales (`t = (i + 0.5) / n`) reparte el margen en ambos extremos; el ancho sigue creciendo linealmente en esos mismos centros. No se cambiaron recuento, orientación, semántica, estilos ni el trazo vecino. A escala nominal, la captura posterior elimina el saliente aislado; la aceptación final sigue pendiente de revisión visual del propietario.
+
+La inspección de simple/doble/bold frente a cuñas no confirmó un defecto de sigma/pi. Aunque el contexto de uniones no transmite cada componente de un doble, el renderer ya dibuja sigma/pi por separado y retranquea intencionalmente la pi. No se conectaron ni recortaron esas líneas. Tampoco se alteraron contornos de cuña sólida: la matriz nueva comprueba su geometría actual como control.
+
 ## Decisiones
 
-1. La galería y la medición preceden a los cambios de producción. El material exploratorio se guarda en `/tmp`; el repositorio contiene sólo un generador reproducible y, si resulta útil, una lámina final única.
-2. Todo cálculo nuevo vive dentro de `chemuson.gui` y recibe coordenadas/patrones de trazos inmutables; no lee ni escribe el grafo molecular. El adaptador de `BondItem` conserva su API actual y no reubica átomos.
-3. Si se crea `bond_junctions.py`, representa por separado sigma, pi, contornos de cuñas y segmentos hash con geometría explícita; no colapsa doble enlace a una sola línea de grosor compuesto. Las intersecciones se acotan con límites geométricos derivados de las anchuras reales, evitando nuevos factores de compensación arbitrarios.
+1. La galería y la medición preceden a los cambios de producción. El material exploratorio permanece en `/tmp`; el repositorio conserva el generador reproducible y una lámina comparativa antes/después, claro/oscuro.
+2. `bond_junctions.py` contiene únicamente el cálculo puro de segmentos hash, sin Qt ni acceso al grafo. El adaptador de `BondItem` conserva su API actual y no reubica átomos.
+3. No se introduce un motor genérico de perfiles sigma/pi ni recortes de intersección: la hipótesis de que el tratamiento existente causa un defecto visual no quedó confirmada. Los enlaces múltiples conservan su implementación actual de líneas independientes.
 4. Los trazos `bold` siguen siendo trazos gruesos no estereoquímicos; sólo los estilos `WEDGE`/`HASHED` transmiten estereoquímica. La orientación de la cuña depende de los extremos existentes y nunca se invierte como efecto secundario.
-5. Ningún cambio al estilo base/presets de documento. `ChemUSON Publication` queda condicionado al cierre visual de las fases anteriores y revisión de configuración/preferencias.
+5. No se modifica el estilo base ni los presets de documento. El gate para `ChemUSON Publication` no se cumple: no están validados todos los perfiles/exportaciones ni las preferencias/documentos, por lo que se aplaza.
 
 ## Invariantes
 
 - Snapshot exacto de IDs, elementos, coordenadas, conexiones, orden, aromaticidad, carga y metadatos estéreo antes/después de refrescar items.
+- Segmentos hash deterministas, uniformemente espaciados y de anchura monótona; la API existente y la orientación de extremos se conservan.
 - Renderizado determinista para iguales datos, estilo, escala, tema y destino.
 - Cuñas válidas: orden de esquinas estable, polígono no autointersecado, base finita y relación anchura/longitud acotada.
 - Ningún extremo invade el `shape()` de etiqueta/carga/H; uniones locales no crean salientes mayores que el grosor renderizado involucrado.
