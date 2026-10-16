@@ -56,4 +56,5 @@ El grafo combinado asigna IDs 1–5 a la referencia y 6–8 a CCO; ningún candi
 - `pytest -q tests/architecture`: 280 passed. `pytest -q tests/test_test_workflow_contract.py`: 4 passed. Tests focalizados UI/Clean2D/settings/cabecera también pasaron.
 - `openspec validate finalize-beta-ui-clean2d --strict --no-interactive`: válido.
 - `python -m compileall src tests tools packaging`: pasó. Ruff focal (`F401,F811,F821,E722,E741`): permanece sólo el hallazgo baseline ajeno `F401 math` en `tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py:3`; no hay hallazgos nuevos. `git diff --check`: pasó.
-- Esta validación es local; la corrida remota asociada al push se registra por separado. La aceptación manual del propietario continúa pendiente.
+- GitHub Actions: run [`38828153444`](https://github.com/PJGV333/Chemuson/actions/runs/38828153444), para el árbol de implementación `a31c43d166cb4d8e7706c1c0d3ba561beb34e967`, terminó **success**: plan, los 8 shards, verificación agregada, `windows-smoke` y `flatpak-smoke` verdes. Hubo sólo avisos de deprecación de Node 20 y migración futura de `ubuntu-latest`; no afectaron el resultado.
+- La rama de revisión fue publicada por push normal; no se actualizó `beta`/`main` ni se generaron tags, releases o paquetes oficiales. La aceptación manual del propietario continúa pendiente.

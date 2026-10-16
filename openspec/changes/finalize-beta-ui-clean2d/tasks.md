@@ -26,4 +26,4 @@
 - [x] 4.1 Ejecutar tests focalizados UI y Clean2D; arquitectura, OpenSpec estricto, Ruff focal, compileall y `git diff --check`.
 - [x] 4.2 Ejecutar la suite completa por shards de CI con límite externo ≤300 s por shard; reconciliar node IDs y reportar CI exacto en `validation.md`.
 - [x] 4.3 Registrar archivos separados por UI/Clean2D, commits, SHAs, CI y limitaciones; mantener pendiente la aceptación manual del propietario.
-- [ ] 4.4 Publicar por push normal solo `fix/beta-final-ui-clean2d`; nunca actualizar beta/main ni publicar tags, releases o paquetes oficiales.
+- [x] 4.4 Publicar por push normal solo `fix/beta-final-ui-clean2d`; nunca actualizar beta/main ni publicar tags, releases o paquetes oficiales.
