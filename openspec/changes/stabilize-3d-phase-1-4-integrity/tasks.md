@@ -16,8 +16,8 @@
 
 ## 3. Estereoquímica RDKit
 
-- [ ] 3.1 Trazar campos disponibles en `Atom`, `Bond`, importación/persistencia y payload worker.
-- [ ] 3.2 Añadir tests RED para pares R/S, E/Z y controles no especificados, con verificación de CIP/bond stereo y geometría.
+- [ ] 3.1 Trazar campos disponibles en `Atom`, `Bond`, importación/persistencia y payload worker; comprobar la asociación de etiquetas por índice/ID estable.
+- [ ] 3.2 Añadir tests RED para importación R/S y E/Z, pares R/S y E/Z, controles no especificados, y verificación CIP/bond stereo y geometría.
 - [ ] 3.3 Implementar mapeo sólo para encoding inequívoco; rechazar explícitamente etiquetas ambiguas/no soportadas.
 - [ ] 3.4 Verificar configuraciones tras Embed y tras cada resultado final de minimización; cubrir que Live MM no invierta configuración sin aviso.
 

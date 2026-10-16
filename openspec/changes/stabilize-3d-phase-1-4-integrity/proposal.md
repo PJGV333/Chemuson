@@ -7,7 +7,7 @@ Cerrar defectos de fidelidad geométrica y química detectados durante la consol
 ## Alcance
 
 - Aplicar a los hidrógenos derivados las mismas transformaciones rígidas que reciben sus fragmentos al trasladar, rotar, ajustar longitudes/ángulos/dihedros y optimizar.
-- Llevar la estereoquímica explícita y soportada del grafo al worker RDKit y verificarla después de generar y relajar conformeros. Si la representación no define inequívocamente una configuración, no inventarla ni afirmar preservación.
+- Llevar al grafo documental la estereoquímica explícita procedente de importación SMILES/molfile y el payload al worker RDKit; verificarla después de generar y relajar conformeros. Si la representación no define inequívocamente una configuración, no inventarla ni afirmar preservación.
 - Preservar la semántica aromática y órdenes de enlace en las rutas RDKit, escena y render; no inferir aromaticidad indiscriminadamente.
 - Compactar los controles del dock y mejorar legibilidad/contraste del viewport con cambios acotados; la aceptación visual requiere display real y puede quedar pendiente si el entorno bloquea el lanzamiento.
 - Investigar por separado los SIGSEGV de `pytest` y del cierre Qt/SIP con evidencia reproducible disponible; no ocultarlos ni atribuir causa común sin prueba.

@@ -2,7 +2,7 @@
 
 ### Requirement: La generación 3D respeta estereoquímica explícita inequívoca
 
-El worker RDKit SHALL recibir la estereoquímica documental disponible para centros tetraédricos y dobles enlaces. Para configuraciones R/S o E/Z explícitas que puedan codificarse sin ambigüedad, SHALL asignar la representación RDKit correspondiente y verificarla después de conformar y optimizar. SHALL NOT aceptar silenciosamente una configuración opuesta. Si cuñas/hash, CIP u otro dato son insuficientes o contradictorios para reconstruir la configuración, el servicio SHALL devolver un diagnóstico explícito y no etiquetar el conformero como estereoquímicamente fiel.
+El worker RDKit SHALL recibir la estereoquímica documental disponible para centros tetraédricos y dobles enlaces. La importación SMILES SHALL conservar los descriptores explícitos R/S y E/Z en `MolGraph`, mapeándolos desde índices RDKit a IDs estables; no SHALL degradarlos a una cuña/hash visual ambigua ni descartarlos. Para configuraciones R/S o E/Z explícitas que puedan codificarse sin ambigüedad, el worker SHALL asignar la representación RDKit correspondiente y verificarla después de conformar y optimizar. SHALL NOT aceptar silenciosamente una configuración opuesta. Si cuñas/hash, CIP u otro dato son insuficientes o contradictorios para reconstruir la configuración, el servicio SHALL devolver un diagnóstico explícito y no etiquetar el conformero como estereoquímicamente fiel.
 
 #### Scenario: Centros R y S
 - **GIVEN** dos grafos con configuración tetraédrica inequívoca y CIP objetivo R o S

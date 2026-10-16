@@ -17,7 +17,7 @@ La evidencia existente incluye un core de la demo en el que la UI muere durante 
 ## Cambio mínimo previsto
 
 - Extraer/añadir un helper puro que transforme coordenadas de H metadata junto a la transformación aplicada a los IDs parentales; reutilizarlo desde edición y Live MM, sin incluir IDs derivados en comandos/persistencia.
-- Completar payload de estereoquímica con campos existentes. Para R/S absolutos inequívocos puede probarse la asignación mediante tags RDKit y validación CIP. Para E/Z se necesitan átomos de referencia ordenados a ambos lados del doble enlace; si no hay representación suficiente, devolver limitación explícita. Validar antes y después de relajación.
+- Completar el payload RDKit y la importación de texto para no perder etiquetas CIP/EZ explícitas: el worker puede devolver descriptores por índice de átomo/enlace y el adaptador los aplica a IDs documentales estables. Para R/S absolutos inequívocos se asignan tags y se valida CIP. Para E/Z se fijan los átomos de referencia ordenados a ambos lados del doble enlace; si falta representación suficiente, devolver limitación explícita. Validar tras embedding y relajación.
 - Propagar `is_aromatic` y orden a `SceneBond3D`; malla de orden doble/triple/aromático se representa sin cambiar el picking/documento 2D.
 - Reorganizar controles en secciones compactas y ajustar iluminación/paleta mediante contrato de malla/shader existente; conservar Live MM accesible.
 
