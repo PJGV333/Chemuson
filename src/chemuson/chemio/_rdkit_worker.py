@@ -609,7 +609,12 @@ def _handle_graph_conformer3d_mode(Chem, request: dict[str, Any]) -> dict[str, A
         return {"ok": False, "error": "conformer3d_failed", "detail": str(exc)}
 
 
-def _handle_graph_optimize3d_mode(Chem, request: dict[str, Any]) -> dict[str, Any]:
+def _handle_graph_optimize3d_mode(
+    Chem,
+    request: dict[str, Any],
+    *,
+    emit_frames: bool = False,
+) -> dict[str, Any]:
     """Optimiza coordenadas 3D con UFF/MMFF94/MMFF94s."""
     mol, id_map, error = _build_mol_from_graph_payload(Chem, request)
     if mol is None:
@@ -653,22 +658,39 @@ def _handle_graph_optimize3d_mode(Chem, request: dict[str, Any]) -> dict[str, An
             return {"ok": False, "error": "unsupported_forcefield", "detail": requested}
         if ff is None:
             return {"ok": False, "error": "forcefield_unavailable"}
+        raw_fixed_ids = request.get("fixed_atom_ids", [])
+        if isinstance(raw_fixed_ids, (list, tuple, set)):
+            for raw_atom_id in raw_fixed_ids:
+                try:
+                    rdkit_index = id_map.get(int(raw_atom_id))
+                except (TypeError, ValueError):
+                    continue
+                if rdkit_index is not None:
+                    ff.AddFixedPoint(int(rdkit_index))
+        if emit_frames:
+            ff.Initialize()
         frames: list[dict[str, Any]] = []
+        sequence = 0
         converged_code = 1
         completed = 0
         while completed < max_iters:
             block = min(steps_per_update, max_iters - completed)
             converged_code = int(ff.Minimize(maxIts=block))
             completed += block
+            sequence += 1
             energy = float(ff.CalcEnergy())
-            frames.append(
-                {
-                    "step": completed,
-                    "energy": energy,
-                    "converged": converged_code == 0,
-                    "positions": _positions_for_original_atoms(mol_h, reverse_map),
-                }
-            )
+            frame = {
+                "step": completed,
+                "energy": energy,
+                "energy_unit": "kcal/mol",
+                "forcefield": method,
+                "converged": converged_code == 0,
+                "positions": _positions_for_original_atoms(mol_h, reverse_map),
+            }
+            if emit_frames:
+                _write_worker_event({"event": "frame", "sequence": sequence, **frame})
+            else:
+                frames.append(frame)
             if converged_code == 0:
                 break
         energy = float(ff.CalcEnergy())
@@ -685,6 +707,8 @@ def _handle_graph_optimize3d_mode(Chem, request: dict[str, Any]) -> dict[str, An
                 "source": "rdkit",
                 "method": method,
                 "energy": energy,
+                "energy_unit": "kcal/mol",
+                "forcefield": method,
                 "converged": converged_code == 0,
                 "max_iters": max_iters,
                 "steps_per_update": steps_per_update,
@@ -696,6 +720,11 @@ def _handle_graph_optimize3d_mode(Chem, request: dict[str, Any]) -> dict[str, An
         }
     except Exception as exc:
         return {"ok": False, "error": "optimize3d_failed", "detail": str(exc)}
+
+
+def _write_worker_event(event: dict[str, Any]) -> None:
+    sys.stdout.write(json.dumps(event, separators=(",", ":")) + "\n")
+    sys.stdout.flush()
 
 
 def _apply_initial_coordinates(Chem, mol, id_map: dict[int, int], coordinates: Any) -> bool:
@@ -859,6 +888,26 @@ def main() -> int:
     if mode == "graph_optimize3d":
         result = _handle_graph_optimize3d_mode(Chem, request)
         sys.stdout.write(json.dumps(result))
+        return 0
+    if mode == "graph_optimize3d_stream":
+        result = _handle_graph_optimize3d_mode(Chem, request, emit_frames=True)
+        if result.get("ok"):
+            metadata = result.get("metadata", {})
+            _write_worker_event(
+                {
+                    "event": "done",
+                    "ok": True,
+                    "method": metadata.get("method", "rdkit"),
+                    "forcefield": metadata.get("forcefield", ""),
+                    "energy": metadata.get("energy"),
+                    "energy_unit": metadata.get("energy_unit", "kcal/mol"),
+                    "converged": metadata.get("converged", False),
+                    "positions": result.get("positions", {}),
+                    "metadata": metadata,
+                }
+            )
+        else:
+            _write_worker_event({"event": "error", **result})
         return 0
     if mode == "graph_clean2d":
         result = _handle_graph_clean2d_mode(Chem, request)

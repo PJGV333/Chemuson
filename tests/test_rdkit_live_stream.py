@@ -1,0 +1,170 @@
+from __future__ import annotations
+
+import math
+import threading
+import time
+
+import pytest
+
+from chemuson.chemio import rdkit_safe
+from chemuson.core.model import MolGraph
+
+
+def _butane() -> tuple[MolGraph, dict[int, tuple[float, float, float]]]:
+    graph = MolGraph()
+    atoms = [graph.add_atom("C", index * 40.0, 0.0) for index in range(4)]
+    for first, second in zip(atoms, atoms[1:]):
+        graph.add_bond(first.id, second.id, order=1)
+    coordinates = {
+        atoms[0].id: (0.0, 0.0, 0.0),
+        atoms[1].id: (2.5, 0.0, 0.0),
+        atoms[2].id: (4.8, 1.4, 0.0),
+        atoms[3].id: (7.1, 0.3, 2.0),
+    }
+    return graph, coordinates
+
+
+def test_worker_stream_yields_frame_before_process_finishes(tmp_path, monkeypatch):
+    worker = tmp_path / "stream_worker.py"
+    worker.write_text(
+        "import json, time\n"
+        "print(json.dumps({'event':'frame','sequence':1}), flush=True)\n"
+        "time.sleep(0.5)\n"
+        "print(json.dumps({'event':'done','ok':True}), flush=True)\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(rdkit_safe, "_worker_path", lambda: worker)
+    started = time.monotonic()
+
+    events = rdkit_safe._run_worker_stream({}, timeout_s=3.0)
+    first = next(events)
+    first_elapsed = time.monotonic() - started
+
+    assert first == {"event": "frame", "sequence": 1}
+    assert first_elapsed < 0.4
+    assert next(events) == {"event": "done", "ok": True}
+    assert time.monotonic() - started >= 0.4
+
+
+def test_worker_stream_cancels_child_process(tmp_path, monkeypatch):
+    worker = tmp_path / "cancel_worker.py"
+    worker.write_text(
+        "import json, time\n"
+        "print(json.dumps({'event':'frame','sequence':1}), flush=True)\n"
+        "time.sleep(10)\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(rdkit_safe, "_worker_path", lambda: worker)
+    cancel_event = threading.Event()
+    events = rdkit_safe._run_worker_stream(
+        {}, timeout_s=15.0, cancel_event=cancel_event
+    )
+
+    assert next(events)["event"] == "frame"
+    started = time.monotonic()
+    cancel_event.set()
+    cancelled = next(events)
+
+    assert cancelled["event"] == "cancelled"
+    assert time.monotonic() - started < 1.0
+
+
+def test_rdkit_stream_emits_progressive_butane_frames_with_fixed_atom():
+    from chemuson.chemio.rdkit_safe import is_rdkit_worker_available
+
+    if not is_rdkit_worker_available(timeout_s=5.0):
+        pytest.skip("RDKit worker no disponible")
+    graph, initial = _butane()
+    events = list(
+        rdkit_safe.optimize_3d_stream_isolated(
+            graph,
+            coordinates=initial,
+            forcefield="MMFF94",
+            max_iters=80,
+            steps_per_update=2,
+            fixed_atom_ids={1},
+            timeout_s=20.0,
+        )
+    )
+
+    terminal = events[-1]
+    if terminal.get("error") == "missing_mmff_parameters":
+        pytest.skip("MMFF94 sin parámetros para el butano de prueba")
+    frames = [event for event in events if event.get("event") == "frame"]
+
+    assert terminal["event"] == "done", terminal
+    assert terminal["ok"] is True
+    assert terminal["method"] == "MMFF94"
+    assert len(frames) >= 2
+    assert [frame["sequence"] for frame in frames] == sorted(
+        frame["sequence"] for frame in frames
+    )
+    assert all(math.isfinite(frame["energy"]) for frame in frames)
+    assert all(frame["positions"]["1"] == list(initial[1]) for frame in frames)
+    assert any(
+        frame["positions"]["2"] != list(initial[2]) for frame in frames
+    )
+    assert any(
+        not math.isclose(first["energy"], second["energy"], abs_tol=1e-10)
+        for first, second in zip(frames, frames[1:])
+    )
+    assert terminal["energy_unit"] == "kcal/mol"
+
+
+def test_rdkit_backend_stream_returns_last_frame_and_emits_callbacks():
+    from chemuson.geometry3d import CoordinateSet3D, ForceField, OptimizationSettings
+    from chemuson.geometry3d.rdkit_backend import optimize_stream
+
+    graph, initial = _butane()
+    initial_coordinates = CoordinateSet3D(initial, source="test", method="manual")
+    callbacks = []
+    result = optimize_stream(
+        graph,
+        initial_coordinates,
+        OptimizationSettings(
+            forcefield=ForceField.MMFF94,
+            max_iters=80,
+            steps_per_update=2,
+            timeout_s=20.0,
+        ),
+        fixed_atom_ids=(1,),
+        on_frame=callbacks.append,
+    )
+
+    assert result.ok, result.message
+    assert result.energy is not None and math.isfinite(result.energy)
+    assert len(callbacks) >= 2
+    assert tuple(callbacks) == result.frames
+    assert result.coordinates is not None
+    assert result.coordinates.positions == callbacks[-1].coordinates.positions
+    assert all(frame.coordinates.positions[1] == initial[1] for frame in callbacks)
+
+
+def test_worker_stream_times_out_and_terminates_child(tmp_path, monkeypatch):
+    worker = tmp_path / "timeout_worker.py"
+    worker.write_text("import time\ntime.sleep(10)\n", encoding="utf-8")
+    monkeypatch.setattr(rdkit_safe, "_worker_path", lambda: worker)
+    started = time.monotonic()
+
+    events = list(rdkit_safe._run_worker_stream({}, timeout_s=0.15))
+
+    assert events[-1]["error"] == "timeout"
+    assert time.monotonic() - started < 1.0
+
+
+def test_worker_stream_reports_nonzero_exit_after_progress(tmp_path, monkeypatch):
+    worker = tmp_path / "failed_worker.py"
+    worker.write_text(
+        "import json, sys\n"
+        "print(json.dumps({'event':'frame','sequence':1}), flush=True)\n"
+        "sys.exit(7)\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(rdkit_safe, "_worker_path", lambda: worker)
+
+    events = list(rdkit_safe._run_worker_stream({}, timeout_s=3.0))
+
+    assert events[0]["event"] == "frame"
+    assert events[-1]["event"] == "error"
+    assert events[-1]["error"] == "worker_exit_code"
+    assert events[-1]["returncode"] == 7

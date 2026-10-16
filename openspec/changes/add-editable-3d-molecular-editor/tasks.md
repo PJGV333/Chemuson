@@ -33,9 +33,9 @@
 
 ## 5. Live Molecular Mechanics real
 
-- [ ] 5.1 Añadir protocolo NDJSON con frames emitidos y flush antes del resultado terminal; conservar aislamiento del proceso RDKit.
-- [ ] 5.2 Añadir minimización incremental MMFF94/MMFF94s y fallback UFF explícito; reportar kcal/mol y falta de parámetros.
-- [ ] 5.3 Añadir restricciones temporales `AddFixedPoint` para IDs bajo arrastre.
+- [x] 5.1 Añadir protocolo NDJSON con frames emitidos y flush antes del resultado terminal; conservar aislamiento del proceso RDKit.
+- [x] 5.2 Añadir minimización incremental MMFF94/MMFF94s y fallback UFF explícito; reportar kcal/mol y falta de parámetros.
+- [x] 5.3 Añadir restricciones temporales `AddFixedPoint` para IDs bajo arrastre.
 - [ ] 5.4 Añadir debounce/coalescencia, un worker activo, tokens de documento/revisiones y descarte de frames obsoletos.
 - [ ] 5.5 Implementar stop-accept/cancel-restore, terminación acotada del proceso y limpieza al cerrar/cambiar documento.
 - [ ] 5.6 Probar frames que llegan antes de `done`, energía/coords progresivas, cancelación, expiración, error, pinned atom y resultado tardío.

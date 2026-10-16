@@ -9,7 +9,14 @@ from PyQt6.QtWidgets import QApplication, QFileDialog, QMessageBox
 
 
 from chemuson.core.model import MolGraph
-from chemuson.geometry3d import Conformer3DResult, CoordinateSet3D, ForceField, OptimizationSettings
+from chemuson.geometry3d import (
+    Conformer3DResult,
+    CoordinateSet3D,
+    ForceField,
+    OptimizationFrame,
+    OptimizationResult,
+    OptimizationSettings,
+)
 from chemuson.gui.controllers import CompChem3DController, CompChem3DWorker, CompChemJobSpec
 from chemuson.gui.main_window import ChemusonWindow
 import chemuson.gui.controllers.compchem3d_controller as compchem_module
@@ -78,6 +85,62 @@ def test_compchem_worker_handles_backend_failure() -> None:
     assert finished
     assert not finished[0].ok
     assert "RDKit aislado" in finished[0].message
+
+
+def test_compchem_worker_relays_live_frames_before_completion(monkeypatch) -> None:
+    from chemuson.geometry3d import rdkit_backend
+
+    graph = _chain_graph()
+    coordset = CoordinateSet3D(
+        {1: (0.0, 0.0, 0.0), 2: (1.0, 0.0, 0.0), 3: (2.0, 0.0, 0.0)},
+        source="test",
+        method="manual",
+    )
+    frame = OptimizationFrame(
+        step=2,
+        coordinates=CoordinateSet3D(
+            {1: (0.0, 0.0, 0.0), 2: (1.1, 0.0, 0.0), 3: (2.0, 0.0, 0.0)},
+            source="rdkit",
+            method="UFF",
+            energy=-2.5,
+        ),
+        energy=-2.5,
+    )
+    received = {}
+
+    def fake_optimize_stream(_graph, _coordset, _settings, **kwargs):
+        received.update(kwargs)
+        kwargs["on_frame"](frame)
+        return OptimizationResult(
+            frame.coordinates,
+            converged=True,
+            energy=frame.energy,
+            method=frame.coordinates.method,
+            frames=(frame,),
+        )
+
+    monkeypatch.setattr(rdkit_backend, "optimize_stream", fake_optimize_stream)
+    worker = CompChem3DWorker(
+        9,
+        graph,
+        CompChemJobSpec(
+            "optimize",
+            "rdkit",
+            OptimizationSettings(forcefield=ForceField.UFF),
+            fixed_atom_ids=(1,),
+        ),
+        coordset,
+    )
+    events = []
+    worker.frame_ready.connect(lambda job_id, value: events.append(("frame", job_id, value)))
+    worker.finished.connect(lambda job_id, _result: events.append(("finished", job_id)))
+
+    worker.run()
+
+    assert [event[0] for event in events] == ["frame", "finished"]
+    assert events[0][1:] == (9, frame)
+    assert received["fixed_atom_ids"] == (1,)
+    assert callable(received["on_frame"])
 
 
 def test_compchem_projection_is_undoable(monkeypatch) -> None:

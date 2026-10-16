@@ -3,6 +3,7 @@ from __future__ import annotations
 """Async controller for the 3D / CompChem dock."""
 
 from dataclasses import dataclass
+import threading
 from typing import Any
 
 from PyQt6.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
@@ -10,7 +11,6 @@ from PyQt6.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
 from chemuson.core.model import MolGraph
 from chemuson.geometry3d import (
     CoordinateSet3D,
-    OptimizationFrame,
     OptimizationResult,
     OptimizationSettings,
     conformer_3d_for_graph,
@@ -25,6 +25,7 @@ class CompChemJobSpec:
     backend: str
     settings: OptimizationSettings
     force: bool = False
+    fixed_atom_ids: tuple[int, ...] = ()
 
 
 class CompChem3DWorker(QObject):
@@ -45,6 +46,11 @@ class CompChem3DWorker(QObject):
         self._graph = graph
         self._spec = spec
         self._coordset = coordset
+        self._cancel_event = threading.Event()
+
+    def cancel(self) -> None:
+        """Solicita cancelación cooperativa del proceso RDKit de Live MM."""
+        self._cancel_event.set()
 
     @pyqtSlot()
     def run(self) -> None:
@@ -111,22 +117,14 @@ class CompChem3DWorker(QObject):
 
         from chemuson.geometry3d import rdkit_backend
 
-        frames: list[OptimizationFrame] = []
-        for frame in rdkit_backend.optimize_iter(self._graph, self._coordset, self._spec.settings):
-            frames.append(frame)
-            self.frame_ready.emit(self._job_id, frame)
-        if frames:
-            last = frames[-1]
-            return OptimizationResult(
-                last.coordinates,
-                converged=last.converged,
-                energy=last.energy,
-                method=last.coordinates.method,
-                message=last.message,
-                frames=tuple(frames),
-                metadata={"cache_state": "miss"},
-            )
-        result = rdkit_backend.optimize(self._graph, self._coordset, self._spec.settings)
+        result = rdkit_backend.optimize_stream(
+            self._graph,
+            self._coordset,
+            self._spec.settings,
+            fixed_atom_ids=self._spec.fixed_atom_ids,
+            cancel_event=self._cancel_event,
+            on_frame=lambda frame: self.frame_ready.emit(self._job_id, frame),
+        )
         metadata = dict(getattr(result, "metadata", {}) or {})
         metadata.setdefault("cache_state", "miss")
         return OptimizationResult(
@@ -195,8 +193,23 @@ class CompChem3DController(QObject):
         if self._shutting_down:
             return
         self._shutting_down = True
-        for thread, _worker in self._jobs.values():
+        for thread, worker in self._jobs.values():
             thread.requestInterruption()
+            cancel = getattr(worker, "cancel", None)
+            if callable(cancel):
+                cancel()
+
+    def cancel_job(self, job_id: int) -> bool:
+        """Cancela una optimización RDKit activa sin bloquear el hilo GUI."""
+        job = self._jobs.get(int(job_id))
+        if job is None:
+            return False
+        _thread, worker = job
+        cancel = getattr(worker, "cancel", None)
+        if not callable(cancel):
+            return False
+        cancel()
+        return True
 
     def _relay_frame_ready(self, job_id: int, frame: object) -> None:
         if not self._shutting_down:

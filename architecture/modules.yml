@@ -413,7 +413,10 @@ modules:
   - M01
   temporary_exceptions: []
   tests:
+  - tests/test_geometry3d_editing.py
+  - tests/test_geometry3d_editing_metrics.py
   - tests/test_geometry3d_service.py
+  - tests/test_rdkit_live_stream.py
   title: Servicios 3D
 - circular_dependencies: []
   current_dependencies:
@@ -648,6 +651,7 @@ modules:
   - tests/test_dimensions_scaling.py
   - tests/test_document_controller.py
   - tests/test_compchem3d_dock.py
+  - tests/test_geometry3d_persistence.py
   - tests/test_viewport3d_geometry.py
   - tests/test_viewport3d_camera.py
   - tests/test_viewport3d_picking.py

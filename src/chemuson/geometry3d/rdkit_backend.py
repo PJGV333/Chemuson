@@ -2,7 +2,9 @@ from __future__ import annotations
 
 """Backend RDKit aislado para conformaciones y optimización 3D."""
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+import math
+import threading
 
 from chemuson.core.model import MolGraph
 from chemuson.geometry3d.model import CoordinateSet3D, OptimizationFrame, OptimizationResult, OptimizationSettings
@@ -75,19 +77,167 @@ def optimize_iter(
     graph: MolGraph,
     coordset: CoordinateSet3D | None = None,
     settings: OptimizationSettings | None = None,
+    *,
+    fixed_atom_ids: set[int] | tuple[int, ...] = (),
+    cancel_event: threading.Event | None = None,
 ) -> Iterator[OptimizationFrame]:
-    """Itera frames reales devueltos por el worker RDKit aislado."""
-    result = optimize(graph, coordset, settings)
-    if result.frames:
-        yield from result.frames
-    elif result.coordinates is not None:
-        yield OptimizationFrame(
-            step=(settings or OptimizationSettings()).max_iters,
-            coordinates=result.coordinates,
-            energy=result.energy,
-            converged=result.converged,
-            message=result.message,
+    """Emite cada frame NDJSON recibido mientras RDKit sigue optimizando."""
+    settings = settings or OptimizationSettings()
+    from chemuson.chemio.rdkit_safe import optimize_3d_stream_isolated
+
+    events = optimize_3d_stream_isolated(
+        graph,
+        coordinates=coordset.normalized_positions() if coordset is not None else None,
+        forcefield=settings.forcefield.value,
+        max_iters=settings.max_iters,
+        steps_per_update=settings.steps_per_update,
+        seed=settings.seed,
+        fixed_atom_ids=fixed_atom_ids,
+        timeout_s=settings.timeout_s,
+        cancel_event=cancel_event,
+    )
+    for event in events:
+        frame = _frame_from_event(event, source="rdkit")
+        if frame is not None:
+            yield frame
+        elif event.get("event") in {"error", "cancelled"}:
+            error = str(event.get("error", event.get("event", "worker_error")))
+            detail = str(event.get("detail", "") or "")
+            raise RuntimeError(f"{error}: {detail}".rstrip(": "))
+
+
+def optimize_stream(
+    graph: MolGraph,
+    coordset: CoordinateSet3D | None = None,
+    settings: OptimizationSettings | None = None,
+    *,
+    fixed_atom_ids: set[int] | tuple[int, ...] = (),
+    cancel_event: threading.Event | None = None,
+    on_frame: Callable[[OptimizationFrame], None] | None = None,
+) -> OptimizationResult:
+    """Consume el flujo RDKit, notificando frames antes del resultado terminal."""
+    settings = settings or OptimizationSettings()
+    from chemuson.chemio.rdkit_safe import optimize_3d_stream_isolated
+
+    frames: list[OptimizationFrame] = []
+    terminal: dict | None = None
+    try:
+        events = optimize_3d_stream_isolated(
+            graph,
+            coordinates=coordset.normalized_positions() if coordset is not None else None,
+            forcefield=settings.forcefield.value,
+            max_iters=settings.max_iters,
+            steps_per_update=settings.steps_per_update,
+            seed=settings.seed,
+            fixed_atom_ids=fixed_atom_ids,
+            timeout_s=settings.timeout_s,
+            cancel_event=cancel_event,
         )
+        for event in events:
+            frame = _frame_from_event(event, source="rdkit")
+            if frame is not None:
+                frames.append(frame)
+                if on_frame is not None:
+                    on_frame(frame)
+            if event.get("event") in {"done", "error", "cancelled"}:
+                terminal = event
+    except Exception as exc:
+        return OptimizationResult(
+            None,
+            method=settings.forcefield.value,
+            message=f"stream_failed:{exc}",
+            frames=tuple(frames),
+        )
+
+    if terminal is None:
+        return OptimizationResult(
+            None,
+            method=settings.forcefield.value,
+            message="missing_terminal_event",
+            frames=tuple(frames),
+        )
+    if terminal.get("event") != "done" or not terminal.get("ok"):
+        error = str(terminal.get("error", terminal.get("event", "worker_error")))
+        detail = str(terminal.get("detail", "") or "")
+        return OptimizationResult(
+            None,
+            method=str(terminal.get("method", settings.forcefield.value)),
+            message=f"{error}: {detail}".rstrip(": "),
+            frames=tuple(frames),
+        )
+
+    positions = _event_positions(terminal.get("positions"))
+    if not positions:
+        return OptimizationResult(
+            None,
+            method=str(terminal.get("method", settings.forcefield.value)),
+            message="invalid_positions",
+            frames=tuple(frames),
+        )
+    metadata = terminal.get("metadata", {})
+    metadata = dict(metadata) if isinstance(metadata, dict) else {}
+    metadata.setdefault("energy_unit", str(terminal.get("energy_unit", "kcal/mol")))
+    metadata.setdefault("forcefield", str(terminal.get("forcefield", terminal.get("method", ""))))
+    energy = _float_or_none(terminal.get("energy"))
+    coordinates = CoordinateSet3D(
+        positions=positions,
+        source=str(metadata.get("source", "rdkit")),
+        method=str(terminal.get("method", metadata.get("method", settings.forcefield.value))),
+        energy=energy,
+        metadata=metadata,
+    )
+    return OptimizationResult(
+        coordinates,
+        converged=bool(terminal.get("converged", False)),
+        energy=energy,
+        method=coordinates.method,
+        frames=tuple(frames),
+        metadata=metadata,
+    )
+
+
+def _frame_from_event(event: dict, *, source: str) -> OptimizationFrame | None:
+    if event.get("event") != "frame":
+        return None
+    positions = _event_positions(event.get("positions"))
+    energy = _float_or_none(event.get("energy"))
+    if not positions or energy is None or not math.isfinite(energy):
+        return None
+    method = str(event.get("forcefield", "rdkit"))
+    step = int(event.get("step", event.get("sequence", 0)) or 0)
+    return OptimizationFrame(
+        step=step,
+        coordinates=CoordinateSet3D(
+            positions=positions,
+            source=source,
+            method=method,
+            energy=energy,
+            metadata={
+                "forcefield": method,
+                "energy_unit": str(event.get("energy_unit", "kcal/mol")),
+                "frame": True,
+            },
+        ),
+        energy=energy,
+        converged=bool(event.get("converged", False)),
+    )
+
+
+def _event_positions(raw_positions: object) -> dict[int, tuple[float, float, float]]:
+    if not isinstance(raw_positions, dict):
+        return {}
+    positions: dict[int, tuple[float, float, float]] = {}
+    try:
+        for atom_id, raw_point in raw_positions.items():
+            if not isinstance(raw_point, (list, tuple)) or len(raw_point) != 3:
+                continue
+            point = tuple(float(component) for component in raw_point)
+            if not all(math.isfinite(component) for component in point):
+                continue
+            positions[int(atom_id)] = (point[0], point[1], point[2])
+    except (TypeError, ValueError, OverflowError):
+        return {}
+    return positions
 
 
 def _float_or_none(value: object) -> float | None:

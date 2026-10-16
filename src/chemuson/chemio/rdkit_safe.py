@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+import queue
 import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -202,6 +205,37 @@ def optimize_3d_isolated(
         return None, {}, "empty_positions"
     metadata = _metadata_with_frames(response)
     return positions, metadata, None
+
+
+def optimize_3d_stream_isolated(
+    graph,
+    *,
+    coordinates: dict[int, tuple[float, float, float]] | None = None,
+    forcefield: str = "MMFF94",
+    max_iters: int = 200,
+    steps_per_update: int = 25,
+    seed: int = 0xC0FFEE,
+    fixed_atom_ids: set[int] | tuple[int, ...] = (),
+    timeout_s: float = 20.0,
+    cancel_event: threading.Event | None = None,
+):
+    """Emite eventos NDJSON de optimización conforme llegan del worker RDKit."""
+    request = _graph_request_payload(
+        graph=graph,
+        chain_atom_ids=[],
+        mode="graph_optimize3d_stream",
+    )
+    request.update(
+        {
+            "forcefield": str(forcefield or "MMFF94"),
+            "max_iters": int(max_iters or 200),
+            "steps_per_update": int(steps_per_update or 25),
+            "seed": int(seed),
+            "coordinates": _coordinates_payload(coordinates or {}),
+            "fixed_atom_ids": sorted({int(atom_id) for atom_id in fixed_atom_ids}),
+        }
+    )
+    yield from _run_worker_stream(request, timeout_s=timeout_s, cancel_event=cancel_event)
 
 
 def clean2d_isolated(
@@ -474,3 +508,157 @@ def _run_worker(request: dict[str, Any], timeout_s: float) -> dict[str, Any]:
     data.setdefault("python_executable", sys.executable)
     data.setdefault("worker_path", str(worker))
     return data
+
+
+def _run_worker_stream(
+    request: dict[str, Any],
+    *,
+    timeout_s: float,
+    cancel_event: threading.Event | None = None,
+):
+    """Lee eventos NDJSON en paralelo y termina el hijo ante cancelación/timeout."""
+    if cancel_event is not None and cancel_event.is_set():
+        yield {"event": "cancelled", "ok": False, "error": "cancelled"}
+        return
+
+    worker = _worker_path()
+    command = [sys.executable, str(worker)]
+    try:
+        process = subprocess.Popen(
+            command,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+        )
+    except Exception as exc:
+        yield {
+            "event": "error",
+            "ok": False,
+            "error": "worker_start_failed",
+            "detail": str(exc),
+        }
+        return
+
+    messages: queue.Queue[tuple[str, str | None]] = queue.Queue()
+    stderr_parts: list[str] = []
+
+    def read_stdout() -> None:
+        try:
+            if process.stdout is not None:
+                for line in process.stdout:
+                    messages.put(("line", line))
+        finally:
+            messages.put(("stdout_end", None))
+
+    def read_stderr() -> None:
+        if process.stderr is None:
+            return
+        retained = 0
+        try:
+            for line in process.stderr:
+                if retained < 8192:
+                    stderr_parts.append(line)
+                    retained += len(line)
+        except (OSError, ValueError):
+            return
+
+    stdout_thread = threading.Thread(target=read_stdout, daemon=True)
+    stderr_thread = threading.Thread(target=read_stderr, daemon=True)
+    stdout_thread.start()
+    stderr_thread.start()
+    terminal_event: dict[str, Any] | None = None
+    deadline = time.monotonic() + max(0.01, float(timeout_s))
+    try:
+        if process.stdin is not None:
+            process.stdin.write(json.dumps(request))
+            process.stdin.close()
+
+        stdout_finished = False
+        while not stdout_finished:
+            if cancel_event is not None and cancel_event.is_set():
+                _terminate_stream_process(process)
+                yield {"event": "cancelled", "ok": False, "error": "cancelled"}
+                return
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                _terminate_stream_process(process)
+                yield {"event": "error", "ok": False, "error": "timeout"}
+                return
+            try:
+                kind, raw_line = messages.get(timeout=min(0.05, remaining))
+            except queue.Empty:
+                continue
+            if kind == "stdout_end":
+                stdout_finished = True
+                continue
+            try:
+                payload = json.loads(raw_line or "")
+            except (TypeError, json.JSONDecodeError):
+                _terminate_stream_process(process)
+                yield {"event": "error", "ok": False, "error": "invalid_worker_json"}
+                return
+            if not isinstance(payload, dict):
+                _terminate_stream_process(process)
+                yield {"event": "error", "ok": False, "error": "invalid_worker_payload"}
+                return
+            if payload.get("event") in {"done", "error", "cancelled"}:
+                terminal_event = payload
+            else:
+                yield payload
+
+        remaining = max(0.0, deadline - time.monotonic())
+        try:
+            returncode = process.wait(timeout=remaining)
+        except subprocess.TimeoutExpired:
+            _terminate_stream_process(process)
+            yield {"event": "error", "ok": False, "error": "timeout"}
+            return
+        if returncode != 0:
+            detail = "".join(stderr_parts).strip()[-4000:]
+            error = "worker_exit_signal" if returncode < 0 else "worker_exit_code"
+            yield {
+                "event": "error",
+                "ok": False,
+                "error": error,
+                "returncode": int(returncode),
+                "detail": detail,
+            }
+            return
+        if terminal_event is None:
+            detail = "".join(stderr_parts).strip()[-4000:]
+            yield {
+                "event": "error",
+                "ok": False,
+                "error": "missing_terminal_event",
+                "detail": detail,
+            }
+            return
+        yield terminal_event
+    finally:
+        if process.poll() is None:
+            _terminate_stream_process(process)
+        for pipe in (process.stdin, process.stdout, process.stderr):
+            if pipe is not None:
+                try:
+                    pipe.close()
+                except (OSError, ValueError):
+                    pass
+        stdout_thread.join(timeout=0.25)
+        stderr_thread.join(timeout=0.25)
+
+
+def _terminate_stream_process(process: subprocess.Popen[str]) -> None:
+    if process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=0.25)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            try:
+                process.wait(timeout=1.0)
+            except subprocess.TimeoutExpired:
+                return

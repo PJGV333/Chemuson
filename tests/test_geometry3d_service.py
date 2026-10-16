@@ -280,20 +280,39 @@ def test_rdkit_safe_sends_initial_coordinates(monkeypatch) -> None:
 def test_rdkit_backend_optimize_iter_uses_returned_frames(monkeypatch) -> None:
     from chemuson.chemio import rdkit_safe
 
-    def fake_optimize(*args, **kwargs):
-        metadata = {
-            "source": "rdkit",
+    def fake_stream(*args, **kwargs):
+        yield {
+            "event": "frame",
+            "sequence": 1,
+            "step": 2,
+            "energy": 5.0,
+            "forcefield": "UFF",
+            "energy_unit": "kcal/mol",
+            "converged": False,
+            "positions": {"1": [0, 0, 0], "2": [1, 0, 0], "3": [2, 0, 0]},
+        }
+        yield {
+            "event": "frame",
+            "sequence": 2,
+            "step": 4,
+            "energy": 1.0,
+            "forcefield": "UFF",
+            "energy_unit": "kcal/mol",
+            "converged": True,
+            "positions": {"1": [0, 0, 0], "2": [1.2, 0, 0], "3": [2.2, 0, 0]},
+        }
+        yield {
+            "event": "done",
+            "ok": True,
             "method": "UFF",
             "energy": 1.0,
-            "converged": False,
-            "frames": [
-                {"step": 2, "energy": 5.0, "converged": False, "positions": {"1": [0, 0, 0], "2": [1, 0, 0], "3": [2, 0, 0]}},
-                {"step": 4, "energy": 1.0, "converged": True, "positions": {"1": [0, 0, 0], "2": [1.2, 0, 0], "3": [2.2, 0, 0]}},
-            ],
+            "energy_unit": "kcal/mol",
+            "converged": True,
+            "positions": {"1": [0, 0, 0], "2": [1.2, 0, 0], "3": [2.2, 0, 0]},
+            "metadata": {"method": "UFF", "source": "rdkit"},
         }
-        return {1: (0.0, 0.0, 0.0), 2: (1.2, 0.0, 0.0), 3: (2.2, 0.0, 0.0)}, metadata, None
 
-    monkeypatch.setattr(rdkit_safe, "optimize_3d_isolated", fake_optimize)
+    monkeypatch.setattr(rdkit_safe, "optimize_3d_stream_isolated", fake_stream)
 
     frames = list(rdkit_backend.optimize_iter(_ethanol_graph(), settings=OptimizationSettings(forcefield=ForceField.UFF, max_iters=4, steps_per_update=2)))
 
