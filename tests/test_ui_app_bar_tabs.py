@@ -266,9 +266,9 @@ class TestRealWindow:
         assert win.app_bar is not None and win.app_bar.isVisibleTo(win)
         assert win.app_bar.minimumHeight() == 54
         assert win.tabs.tabBar().isHidden()
-        assert not win.main_toolbar.isVisible()
-        assert not win.action_show_main_toolbar.isChecked()
-        assert win.action_show_main_toolbar in win.view_menu.actions()
+        assert win.main_toolbar.isHidden()
+        assert win.action_show_menu_bar.isChecked()
+        assert win.action_show_menu_bar in win.view_menu.actions()
         # La AppBar integra cuatro acciones sin repetir controladores.
         assert win.app_bar.file_action_buttons["new"].defaultAction() is win.action_new
         assert win.app_bar.file_action_buttons["open"].defaultAction() is win.action_open
@@ -282,9 +282,9 @@ class TestRealWindow:
             win.action_open,
             win.action_save,
         ]
-        assert win.action_show_main_toolbar is win.main_toolbar.toggleViewAction()
-        assert win.action_show_main_toolbar.text() == "Mostrar barra de herramientas"
-        assert win.action_show_main_toolbar in win.view_menu.actions()
+        assert win.action_show_menu_bar.text() == "Mostrar barra de herramientas"
+        assert win.view_menu.actions().count(win.action_show_menu_bar) == 1
+        assert win.main_toolbar.toggleViewAction().isEnabled() is False
         # La QMenuBar tradicional con los seis menús es visible por defecto
         # (compacta) y sigue siendo la misma: los seis QMenu también están en
         # el menú agregado de la hamburguesa.

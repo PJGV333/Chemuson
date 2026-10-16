@@ -39,8 +39,9 @@ class UiPreferences:
     hace la capa de temas, no este módulo). ``show_menu_bar`` conserva si se
     presenta permanentemente la barra de menús tradicional (visible por
     defecto en la beta; el acceso hamburguesa permanece cuando se oculta);
-    ``show_main_toolbar`` controla la barra superior opcional de acciones
-    (Nuevo/Abrir/Guardar), oculta por defecto para mantener una cabecera de dos franjas.
+    ``show_main_toolbar`` se conserva como preferencia legada de la toolbar
+    histórica; el shell actual la mantiene oculta y no ofrece su toggle. Su
+    valor no controla la barra de menús ni la AppBar compacta.
     """
 
     theme: str = "light"

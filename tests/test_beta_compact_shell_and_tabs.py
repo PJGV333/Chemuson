@@ -8,8 +8,8 @@ Cubre:
   Ayuda) es visible por defecto y compacta, reutiliza los mismos ``QMenu`` y
   ``QAction``, puede ocultarse desde Ver conservando el acceso hamburguesa, y
   el default nuevo migra una sola vez sobre preferencias previas;
-- A2: la barra superior opcional conserva Nuevo/Abrir/Guardar, no aparece por
-  defecto ni duplica Pegar; la opción de Ver controla su visibilidad;
+- A2: «Mostrar barra de herramientas» controla sólo la QMenuBar; la toolbar
+  histórica permanece oculta incluso con preferencias antiguas;
 - A3: pasar de pestaña limpia a modificada no altera la geometría de la
   pestaña ni la posición de la X; el punto dirty sólo se pinta cuando toca y
   el cierre sigue apuntando al documento correcto.
@@ -22,7 +22,7 @@ from collections import Counter
 import pytest
 from PyQt6.QtCore import QPoint, QRect, QSettings, Qt
 from PyQt6.QtTest import QTest
-from PyQt6.QtWidgets import QApplication, QMessageBox, QToolButton
+from PyQt6.QtWidgets import QApplication, QMessageBox
 
 from chemuson.gui.document_tabs import (
     _CLOSE_BTN_SIZE,
@@ -41,8 +41,6 @@ from chemuson.platform.settings import (
 MENU_TITLES = ("Archivo", "Editar", "Ver", "Estructura", "Reacción", "Ayuda")
 #: Techo de altura de la fila de menús (baseline medido: 43 px → objetivo ≤36).
 MAX_MENU_BAR_HEIGHT = 36
-#: Techo de altura de la barra de herramientas de tres botones (baseline: 65 px).
-MAX_TOOLBAR_HEIGHT = 40
 
 
 def _pin_settings(tmp_path, monkeypatch, values: dict[str, object] | None = None):
@@ -222,7 +220,9 @@ def test_default_header_has_one_compact_action_row_and_shared_file_actions(shell
         assert shell.menuBar().isVisible()
         assert bar.height() == 54
         assert shell.main_toolbar.isHidden()
-        assert not shell.action_show_main_toolbar.isChecked()
+        assert shell.action_show_menu_bar.isChecked()
+        assert shell.action_show_menu_bar.text() == "Mostrar barra de herramientas"
+        assert not shell.main_toolbar.toggleViewAction().isEnabled()
         assert not bar.findChild(QLabel, "appBrandName")
         assert not bar.findChild(QLabel, "appVersionPill")
         assert bar.tab_bar.new_button.isHidden()
@@ -266,32 +266,43 @@ def test_menu_bar_stays_compact_and_usable_across_themes_and_sizes(
     assert shell.tabs.width() >= 400
 
 
-def test_hiding_menu_bar_keeps_hamburger_access_to_the_same_menus(shell) -> None:
+def test_hiding_menu_bar_keeps_hamburger_access_to_the_same_toggle(shell) -> None:
     menus = _top_menus(shell)
-    shell.action_show_menu_bar.trigger()
+    action = shell.action_show_menu_bar
+    assert action.text() == "Mostrar barra de herramientas"
+    assert shell.view_menu.actions().count(action) == 1
+    assert sum(a.text() == action.text() for a in shell.view_menu.actions()) == 1
+
+    action.trigger()
     QApplication.processEvents()
     assert not shell.menuBar().isVisible()
-    assert not shell.action_show_menu_bar.isChecked()
+    assert not action.isChecked()
+    assert shell.app_bar.isVisible()
+    assert shell.main_toolbar.isHidden()
     assert load_ui_preferences(shell._settings).show_menu_bar is False
 
-    # El acceso hamburguesa sigue ahí y abre exactamente los mismos menús.
+    # La hamburguesa abre los mismos QMenus; Ver contiene la misma QAction
+    # checkable, de modo que no depende de la QMenuBar oculta para restaurarse.
     assert shell.app_bar.menu_button.isVisible()
     shell._open_main_menu_popup()
     QApplication.processEvents()
     aggregated = [
-        action.menu()
-        for action in shell._menu_aggregator.actions()
-        if action.menu() is not None
+        item.menu()
+        for item in shell._menu_aggregator.actions()
+        if item.menu() is not None
     ]
     assert aggregated == menus
+    assert shell.view_menu in aggregated
+    assert action in shell.view_menu.actions()
     assert shell._menu_aggregator.isVisible()
-    shell._menu_aggregator.close()
-    QApplication.processEvents()
-
-    shell.action_show_menu_bar.trigger()
+    action.trigger()
     QApplication.processEvents()
     assert shell.menuBar().isVisible()
+    assert action.isChecked()
+    assert shell.main_toolbar.isHidden()
     assert load_ui_preferences(shell._settings).show_menu_bar is True
+    shell._menu_aggregator.close()
+    QApplication.processEvents()
 
 
 def test_new_menu_bar_default_migrates_once_over_legacy_preferences(
@@ -310,15 +321,14 @@ def test_new_menu_bar_default_migrates_once_over_legacy_preferences(
         assert win.menuBar().isVisible()
         assert not win.main_toolbar.isVisible()
         assert win.action_show_menu_bar.isChecked()
-        assert not win.action_show_main_toolbar.isChecked()
+        assert win.action_show_menu_bar.text() == "Mostrar barra de herramientas"
 
         # Una elección explícita posterior se respeta (y sella la migración).
         win.action_show_menu_bar.trigger()
-        win.action_show_main_toolbar.trigger()
         QApplication.processEvents()
         preferences = load_ui_preferences(win._settings)
         assert preferences.show_menu_bar is False
-        assert preferences.show_main_toolbar is True
+        assert preferences.show_main_toolbar is False
         assert (
             win._settings.value("ui/shell_defaults_version") == SHELL_DEFAULTS_VERSION
         )
@@ -330,20 +340,21 @@ def test_new_menu_bar_default_migrates_once_over_legacy_preferences(
     QApplication.processEvents()
     try:
         assert not reopened.menuBar().isVisible()
-        assert reopened.main_toolbar.isVisible()
+        assert reopened.main_toolbar.isHidden()
         assert not reopened.action_show_menu_bar.isChecked()
-        assert reopened.action_show_main_toolbar.isChecked()
     finally:
         _close_window(reopened)
 
 
 # ---------------------------------------------------------------------------
-# A2 — barra de herramientas de tres botones
+# A2 — la QToolBar histórica permanece oculta
 # ---------------------------------------------------------------------------
 
 
 def test_main_toolbar_exposes_only_new_open_save_with_existing_actions(shell) -> None:
     toolbar = shell.main_toolbar
+    assert toolbar.isHidden()
+    assert not toolbar.toggleViewAction().isEnabled()
     actions = [action for action in toolbar.actions() if not action.isSeparator()]
     assert actions == [shell.action_new, shell.action_open, shell.action_save]
     # Son exactamente las QActions de los menús (misma identidad, mismos
@@ -382,86 +393,91 @@ def test_main_toolbar_exposes_only_new_open_save_with_existing_actions(shell) ->
 
 @pytest.mark.parametrize("theme", ["light", "dark"])
 @pytest.mark.parametrize("size", [(1440, 900), (980, 600), (900, 560)])
-def test_main_toolbar_is_small_uniform_and_theme_stable(shell, theme, size) -> None:
-    shell.action_show_main_toolbar.trigger()
-    QApplication.processEvents()
+def test_toolbar_label_toggles_only_menu_bar_across_themes_and_sizes(
+    shell, theme, size
+) -> None:
     shell.current_theme = theme
     shell._apply_theme()
     shell.resize(*size)
     QApplication.processEvents()
+    action = shell.action_show_menu_bar
     toolbar = shell.main_toolbar
-    assert toolbar.isVisible()
-    assert toolbar.height() <= MAX_TOOLBAR_HEIGHT
-    buttons = [
-        button
-        for button in toolbar.findChildren(QToolButton)
-        if button.defaultAction() is not None and button.isVisible()
-    ]
-    assert len(buttons) == 3
-    sizes = {button.size() for button in buttons}
-    assert len(sizes) == 1, sizes
-    button_size = next(iter(sizes))
-    assert 20 <= button_size.width() <= 40
-    assert 20 <= button_size.height() <= 40
-    for button in buttons:
-        assert not button.icon().isNull()
-        assert button.iconSize().width() == 18
-        # Los tres botones caben dentro de la barra (sin recortes).
-        assert toolbar.rect().contains(button.geometry())
-    # La fila superior sigue siendo compacta en conjunto.
-    menubar_bottom = shell.menuBar().mapTo(shell, QPoint(0, shell.menuBar().height())).y()
-    assert toolbar.mapTo(shell, QPoint(0, 0)).y() >= menubar_bottom - 1
+    initial_menu_geometry = shell.menuBar().geometry()
+    initial_app_bar_geometry = shell.app_bar.geometry()
+    assert action.isChecked()
+    assert shell.menuBar().isVisible()
+
+    action.trigger()
+    QApplication.processEvents()
+    assert not shell.menuBar().isVisible()
+    assert not action.isChecked()
     assert shell.app_bar.isVisible()
+    assert shell.main_toolbar.isHidden()
+    assert not toolbar.toggleViewAction().isEnabled()
 
-
-def test_toolbar_toggle_controls_only_the_three_button_bar(shell) -> None:
-    toolbar = shell.main_toolbar
-    assert not toolbar.isVisible()
-    before = (
-        shell.menuBar().isVisible(),
-        shell.app_bar.isVisible(),
-        shell.tool_rail.isVisible(),
-        shell.side_panel.isHidden(),
-    )
-    shell.action_show_main_toolbar.trigger()
+    action.trigger()
     QApplication.processEvents()
-    assert toolbar.isVisible()
-    assert shell.action_show_main_toolbar.isChecked()
-    assert (
-        shell.menuBar().isVisible(),
-        shell.app_bar.isVisible(),
-        shell.tool_rail.isVisible(),
-        shell.side_panel.isHidden(),
-    ) == before
-    assert load_ui_preferences(shell._settings).show_main_toolbar is True
-
-    shell.action_show_main_toolbar.trigger()
-    QApplication.processEvents()
-    assert not toolbar.isVisible()
-    assert [a for a in toolbar.actions() if not a.isSeparator()] == [
-        shell.action_new,
-        shell.action_open,
-        shell.action_save,
-    ]
-    assert load_ui_preferences(shell._settings).show_main_toolbar is False
+    assert shell.menuBar().isVisible()
+    assert action.isChecked()
+    assert shell.menuBar().geometry() == initial_menu_geometry
+    assert shell.app_bar.geometry() == initial_app_bar_geometry
+    assert shell.main_toolbar.isHidden()
+    assert shell.tool_rail.isVisible()
+    assert shell.side_panel.isHidden()
 
 
-def test_toolbar_content_and_visibility_survive_reopening(shell) -> None:
-    shell.action_show_main_toolbar.trigger()
-    QApplication.processEvents()
-    assert shell.main_toolbar.isVisible()
-    second = ChemusonWindow()
-    second.show()
+def test_obsolete_toolbar_preference_never_reveals_legacy_toolbar(
+    tmp_path, monkeypatch
+) -> None:
+    values = {
+        "ui/shell_defaults_version": SHELL_DEFAULTS_VERSION,
+        "ui/show_menu_bar": True,
+        "ui/show_main_toolbar": True,
+    }
+    _pin_settings(tmp_path, monkeypatch, values)
+    win = ChemusonWindow()
+    win.show()
     QApplication.processEvents()
     try:
-        assert second.main_toolbar.isVisible()
-        assert [a for a in second.main_toolbar.actions() if not a.isSeparator()] == [
-            second.action_new,
-            second.action_open,
-            second.action_save,
-        ]
+        assert win.menuBar().isVisible()
+        assert win.action_show_menu_bar.isChecked()
+        assert win.main_toolbar.isHidden()
+        assert not win.main_toolbar.toggleViewAction().isEnabled()
+        win.action_show_menu_bar.trigger()
+        QApplication.processEvents()
+        assert not win.menuBar().isVisible()
+        assert win.main_toolbar.isHidden()
+        assert load_ui_preferences(win._settings).show_main_toolbar is True
     finally:
-        _close_window(second)
+        _close_window(win)
+
+    # La elección se conserva al reiniciar, mientras el valor legado true de
+    # la toolbar no la resucita; la misma QAction sigue alcanzable desde Ver
+    # en la hamburguesa y puede restaurar la fila.
+    reopened = ChemusonWindow()
+    reopened.show()
+    QApplication.processEvents()
+    try:
+        assert not reopened.menuBar().isVisible()
+        assert not reopened.action_show_menu_bar.isChecked()
+        assert reopened.main_toolbar.isHidden()
+        assert reopened.app_bar.menu_button.isVisible()
+        reopened._open_main_menu_popup()
+        QApplication.processEvents()
+        assert reopened.view_menu in [
+            item.menu()
+            for item in reopened._menu_aggregator.actions()
+            if item.menu() is not None
+        ]
+        assert reopened.action_show_menu_bar in reopened.view_menu.actions()
+        reopened.action_show_menu_bar.trigger()
+        QApplication.processEvents()
+        assert reopened.menuBar().isVisible()
+        assert reopened.action_show_menu_bar.isChecked()
+        assert reopened.main_toolbar.isHidden()
+        assert load_ui_preferences(reopened._settings).show_menu_bar is True
+    finally:
+        _close_window(reopened)
 
 
 # ---------------------------------------------------------------------------

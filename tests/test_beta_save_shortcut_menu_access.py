@@ -434,7 +434,7 @@ def test_menu_mode_toggle_persists_and_preserves_layout_across_themes(
     # La barra de menús tradicional es visible por defecto en la beta.
     assert window.action_show_menu_bar.isChecked()
     assert window.menuBar().isVisible()
-    assert window.action_show_menu_bar.text() == "Mostrar barra de menús"
+    assert window.action_show_menu_bar.text() == "Mostrar barra de herramientas"
     assert window.action_show_menu_bar in window.view_menu.actions()
     aggregated_view = next(
         action.menu()
@@ -557,127 +557,69 @@ def test_reordered_close_icon_closes_only_the_document_under_it(window) -> None:
     assert all(window.tabs.indexOf(document) >= 0 for document in remaining)
 
 
-def test_toolbar_toggle_is_native_grouped_persistent_and_independent(window) -> None:
+def test_toolbar_label_controls_only_menu_bar_and_persists(window) -> None:
     toolbar = window.main_toolbar
-    action = window.action_show_main_toolbar
+    action = window.action_show_menu_bar
     menu_actions = window.view_menu.actions()
-    assert action is toolbar.toggleViewAction()
     assert action.text() == "Mostrar barra de herramientas"
-    assert window.action_show_menu_bar is menu_actions[0]
-    assert action is menu_actions[1]
-    assert menu_actions[2].isSeparator()
-    assert menu_actions.count(action) == 1
-    assert window.action_show_menu_bar.isChecked()
-    assert window.menuBar().isVisible()
-    assert not action.isChecked() and not toolbar.isVisible()
+    assert action in menu_actions and menu_actions.count(action) == 1
+    assert toolbar.toggleViewAction() not in menu_actions
+    assert not toolbar.toggleViewAction().isEnabled()
+    assert action.isChecked() and window.menuBar().isVisible()
+    assert toolbar.isHidden()
+
     action.trigger()
     QApplication.processEvents()
-    assert action.isChecked() and toolbar.isVisible()
-    # La barra opcional conserva Nuevo/Abrir/Guardar.
-    assert [a for a in toolbar.actions() if not a.isSeparator()] == [
-        window.action_new,
-        window.action_open,
-        window.action_save,
-    ]
-    for removed in (
-        window.action_undo,
-        window.action_redo,
-        window.action_rotate_left,
-        window.action_rotate_right,
-        window.action_flip_horizontal,
-        window.action_flip_vertical,
-        window.action_clean_2d,
-        window.action_draw_smiles,
-    ):
-        assert removed not in toolbar.actions()
-    assert window.app_bar.undo_button.defaultAction() is window.action_undo
-    assert window.app_bar.redo_button.defaultAction() is window.action_redo
-    assert window.tool_rail.isVisible()
+    assert not action.isChecked() and not window.menuBar().isVisible()
+    assert toolbar.isHidden()
+    assert window.app_bar.isVisible() and window.tool_rail.isVisible()
     assert window.side_panel.isHidden()
-
-    # La acción auxiliar agrega sólo copiar/zoom (Pegar está en la AppBar).
-    assert not window.action_show_main_toolbar_aux.isChecked()
-    assert window.action_copy not in toolbar.actions()
-    window.action_show_main_toolbar_aux.trigger()
-    assert window.action_copy in toolbar.actions()
-    assert window.action_paste not in toolbar.actions()
-    assert toolbar.isVisible()
-
-    action.trigger()
-    QApplication.processEvents()
-    assert not toolbar.isVisible()
-    assert action.isChecked() is False
     preferences = load_ui_preferences(window._settings)
+    assert preferences.show_menu_bar is False
     assert preferences.show_main_toolbar is False
-    assert preferences.show_menu_bar is True
-    assert window.side_panel.isHidden() and window.tool_rail.isVisible()
-
-    window.action_show_menu_bar.trigger()
-    QApplication.processEvents()
-    assert not window.menuBar().isVisible() and not toolbar.isVisible()
-    assert load_ui_preferences(window._settings).show_menu_bar is False
-
-    # La configuración se aplica al construir otra ventana; ninguna barra
-    # cambia la preferencia del panel lateral.
-    second = ChemusonWindow()
-    try:
-        second.show()
-        QApplication.processEvents()
-        assert not second.main_toolbar.isVisible()
-        assert not second.action_show_main_toolbar.isChecked()
-        assert not second.menuBar().isVisible()
-        assert second.side_panel.isHidden()
-    finally:
-        for index in range(second.tabs.count()):
-            canvas = second._canvas_from_tab_index(index)
-            if canvas is not None:
-                canvas.undo_stack.setClean()
-        second.close()
-        QApplication.processEvents()
 
     action.trigger()
     QApplication.processEvents()
-    assert toolbar.isVisible() and action.isChecked()
-    assert not window.menuBar().isVisible()
-    window.action_show_menu_bar.trigger()
-    QApplication.processEvents()
-    assert toolbar.isVisible() and window.menuBar().isVisible()
-    preferences = load_ui_preferences(window._settings)
-    assert preferences.show_main_toolbar is True
-    assert preferences.show_menu_bar is True
-    # Aux permanece independiente también al ocultar/mostrar la barra entera.
-    assert window.action_show_main_toolbar_aux.isChecked()
-    assert window.action_copy in toolbar.actions()
+    assert action.isChecked() and window.menuBar().isVisible()
+    assert toolbar.isHidden()
+    assert load_ui_preferences(window._settings).show_menu_bar is True
 
 
-def test_main_toolbar_keeps_layout_in_both_themes_and_small_windows(window) -> None:
-    window.action_show_main_toolbar.trigger()
-    assert window.main_toolbar.isVisible()
+def test_menu_option_keeps_shell_layout_in_both_themes_and_small_windows(window) -> None:
+    action = window.action_show_menu_bar
     for theme in ("light", "dark"):
         window.current_theme = theme
         window._apply_theme()
         for width, height in ((1440, 900), (980, 600), (900, 560)):
             window.resize(width, height)
             QApplication.processEvents()
-            assert window.main_toolbar.isVisible()
-            assert window.main_toolbar.width() > 0
-            assert window.main_toolbar.height() > 0
+            assert window.menuBar().isVisible() and action.isChecked()
+            initial_menu_geometry = window.menuBar().geometry()
+            initial_app_bar_geometry = window.app_bar.geometry()
+            action.trigger()
+            QApplication.processEvents()
+            assert not window.menuBar().isVisible() and not action.isChecked()
             assert window.app_bar.isVisible()
+            assert window.main_toolbar.isHidden()
             assert window.tool_rail.isVisible()
             assert window.side_panel.isHidden()
+            action.trigger()
+            QApplication.processEvents()
+            assert window.menuBar().isVisible() and action.isChecked()
+            assert window.menuBar().geometry() == initial_menu_geometry
+            assert window.app_bar.geometry() == initial_app_bar_geometry
+            assert window.main_toolbar.isHidden()
             assert window.tabs.width() >= 400
-            assert window.menuBar().isVisible()
 
 
-def test_save_undo_redo_shortcuts_survive_hiding_main_toolbar(window, tmp_path) -> None:
-    if not window.main_toolbar.isVisible():
-        window.action_show_main_toolbar.trigger()
+def test_save_undo_redo_shortcuts_survive_hiding_menu_bar(window, tmp_path) -> None:
     canvas = window.canvas
     path = tmp_path / "shortcuts.cmsn"
     _save_path(window, canvas, path)
     _add_atom_and_mark_dirty(canvas, "N")
-    window.action_show_main_toolbar.trigger()
-    assert not window.main_toolbar.isVisible()
+    window.action_show_menu_bar.trigger()
+    assert not window.menuBar().isVisible()
+    assert window.main_toolbar.isHidden()
     assert window.action_save in window.actions()
     assert [shortcut.toString() for shortcut in window.action_save.shortcuts()] == [
         "Ctrl+S",

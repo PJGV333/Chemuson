@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-10-15
+goal: Corregir la opción visible «Mostrar barra de herramientas» para que controle exclusivamente la QMenuBar, conserve el acceso de restauración desde la hamburguesa y no muestre la toolbar antigua.

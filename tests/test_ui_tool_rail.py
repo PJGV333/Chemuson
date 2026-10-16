@@ -520,8 +520,10 @@ def test_shell_has_compact_menubar_and_hidden_main_toolbar_by_default(isolated_s
     visible = [toolbar for toolbar in win.findChildren(QToolBar) if toolbar.isVisible()]
     assert visible == []
     assert win.main_toolbar.isHidden()
-    assert not win.action_show_main_toolbar.isChecked()
-    assert win.action_show_main_toolbar in win.view_menu.actions()
+    assert win.action_show_menu_bar.isChecked()
+    assert win.action_show_menu_bar.text() == "Mostrar barra de herramientas"
+    assert win.action_show_menu_bar in win.view_menu.actions()
+    assert not win.main_toolbar.toggleViewAction().isEnabled()
     assert win.app_bar.menu_button.isVisible()
     assert win.tool_rail.isVisible()
     assert win.side_panel.isHidden()

@@ -139,7 +139,7 @@ class AppBar(QFrame):
     #: Píldora de búsqueda pulsada (Fase 6: la ventana la conecta a la misma
     #: ``QAction`` de apertura que Ctrl+P).
     searchActivated = pyqtSignal()
-    #: Botón hamburguesa: la ventana abre el ``QMenuBar`` (oculto) como popup.
+    #: Botón hamburguesa: la ventana abre los seis menús originales como popup.
     menuRequested = pyqtSignal()
 
     def __init__(
@@ -167,9 +167,9 @@ class AppBar(QFrame):
         layout.setSpacing(12)
 
         # --- Menú (hamburguesa) ----------------------------------------
-        # El ``QMenuBar`` histórico queda oculto; este botón es el acceso
-        # visible (clic o tecla Alt → ``QMenuBar.popup``). Las ``QMenu``,
-        # ``QAction`` y atajos siguen siendo las originales.
+        # Este botón conserva acceso a los menús originales cuando el
+        # ``QMenuBar`` está oculto; las ``QMenu``, ``QAction`` y atajos siguen
+        # siendo los mismos tanto en la fila clásica como en el popup.
         self.menu_button = QToolButton(self)
         self.menu_button.setProperty("appBarBtn", "true")
         self.menu_button.setFixedSize(_BAR_BUTTON_SIZE, _BAR_BUTTON_SIZE)

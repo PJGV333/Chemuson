@@ -138,18 +138,11 @@ class MainWindowUiBuilder:
             window,
             window.action_show_main_toolbar_aux.isChecked(),
         )
-        window.main_toolbar.setVisible(window._show_main_toolbar)
-        # Reutiliza la QAction nativa del QToolBar, sin crear un toggle
-        # paralelo; se inserta junto a Mostrar barra de menús en Ver.
-        window.action_show_main_toolbar = window.main_toolbar.toggleViewAction()
-        window.action_show_main_toolbar.setText("Mostrar barra de herramientas")
-        window.action_show_main_toolbar.setChecked(window._show_main_toolbar)
-        window.action_show_main_toolbar.toggled.connect(window._on_toggle_main_toolbar)
-        first_separator = next(
-            (action for action in window.view_menu.actions() if action.isSeparator()),
-            None,
-        )
-        window.view_menu.insertAction(first_separator, window.action_show_main_toolbar)
+        # La toolbar histórica no forma parte de la cabecera controlada por
+        # Ver. Mantenerla oculta incluso si QSettings conserva el valor viejo,
+        # y deshabilitar su toggle nativo de menú contextual.
+        window.main_toolbar.setVisible(False)
+        window.main_toolbar.toggleViewAction().setEnabled(False)
 
     def refresh_main_toolbar_icons(self, window) -> None:
         """Regenera iconos de la barra principal según el tema activo."""
@@ -487,7 +480,7 @@ class MainWindowUiBuilder:
         window.fragment_rotate_menu.addAction(window.action_fragment_invert)
 
     def _build_view_menu(self, window, view_menu: QMenu) -> None:
-        window.action_show_menu_bar = view_menu.addAction("Mostrar barra de menús")
+        window.action_show_menu_bar = view_menu.addAction("Mostrar barra de herramientas")
         window.action_show_menu_bar.setCheckable(True)
         window.action_show_menu_bar.setChecked(window._show_menu_bar)
         window.action_show_menu_bar.toggled.connect(window._on_toggle_menu_bar)
