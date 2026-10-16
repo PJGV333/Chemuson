@@ -71,6 +71,7 @@ from .transform_commands import (
     ScaleArrowItemsCommand,
     ScaleBracketItemsCommand,
     DeleteSelectionCommand,
+    SetGeometry3DCommand,
 )
 
 __all__ = [
@@ -125,4 +126,5 @@ __all__ = [
     "ScaleArrowItemsCommand",
     "ScaleBracketItemsCommand",
     "DeleteSelectionCommand",
+    "SetGeometry3DCommand",
 ]

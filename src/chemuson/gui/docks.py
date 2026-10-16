@@ -649,9 +649,15 @@ class CompChemDock(QDockWidget):
         row = self.frame_table.rowCount()
         self.frame_table.insertRow(row)
         energy = getattr(frame, "energy", None)
+        coordinates = getattr(frame, "coordinates", None)
+        metadata = getattr(coordinates, "metadata", {}) or {}
+        energy_unit = str(metadata.get("energy_unit") or "")
+        energy_text = "N/D" if energy is None else f"{float(energy):.6f}"
+        if energy_unit:
+            energy_text = f"{energy_text} {energy_unit}"
         values = [
             str(getattr(frame, "step", row + 1)),
-            "N/D" if energy is None else f"{float(energy):.6f}",
+            energy_text,
             "sí" if bool(getattr(frame, "converged", False)) else "no",
             str(getattr(frame, "message", "") or ""),
         ]
@@ -663,6 +669,8 @@ class CompChemDock(QDockWidget):
         converged = bool(getattr(result, "converged", False))
         method = str(getattr(result, "method", "") or "")
         message = str(getattr(result, "message", "") or "")
+        metadata = getattr(result, "metadata", {}) or {}
+        energy_unit = str(metadata.get("energy_unit") or ("kcal/mol" if backend == "rdkit" else "backend units"))
         parts = [
             f"Backend: {backend}",
             f"Método/campo: {method or self.selected_forcefield()}",
@@ -670,7 +678,7 @@ class CompChemDock(QDockWidget):
             f"Cache: {cache_state}",
         ]
         if energy is not None:
-            parts.append(f"Energía: {float(energy):.6f}")
+            parts.append(f"Energía: {float(energy):.6f} {energy_unit}")
         if message:
             parts.append(f"Mensaje: {message}")
         self.set_status(" | ".join(parts))

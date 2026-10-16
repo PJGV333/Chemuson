@@ -651,6 +651,7 @@ modules:
   - tests/test_dimensions_scaling.py
   - tests/test_document_controller.py
   - tests/test_compchem3d_dock.py
+  - tests/test_geometry3d_commands.py
   - tests/test_geometry3d_persistence.py
   - tests/test_viewport3d_geometry.py
   - tests/test_viewport3d_camera.py
@@ -860,6 +861,7 @@ modules:
 - circular_dependencies: []
   current_dependencies:
   - M00
+  - M05
   - M08
   entry_points: []
   forbidden_dependencies: []
@@ -919,6 +921,7 @@ modules:
   - TransformImageItemsCommand
   - ScaleArrowItemsCommand
   - ScaleBracketItemsCommand
+  - SetGeometry3DCommand
   - DeleteSelectionCommand
   responsibility: 'Comandos undo/redo para el canvas: operaciones atómicas sobre átomos,
     enlaces, texto y diagramas.'

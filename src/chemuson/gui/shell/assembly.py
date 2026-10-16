@@ -120,9 +120,14 @@ def assemble_application_shell(self) -> None:
     self._molecular_assistant_identity_results: dict[int, object] = {}
     self._molecular_assistant_transform_jobs: dict[int, object] = {}
     self._compchem_coordset = None
+    self._compchem_preview_coordset = None
     self._latest_compchem_job_id = 0
     self._compchem_job_backends: dict[int, str] = {}
     self._compchem_job_operations: dict[int, str] = {}
+    self._compchem_job_snapshots = {}
+    self._pending_3d_build_anchor_id = None
+    self._live_mm_fixed_atom_ids = ()
+    self._live_mm_pending = False
     self._compchem3d_controller.frame_ready.connect(self._on_compchem_frame_ready)
     self._compchem3d_controller.job_finished.connect(self._on_compchem_job_finished)
 
@@ -258,6 +263,32 @@ def assemble_application_shell(self) -> None:
     self.viewport3d_dock = MolecularViewportDock(self)
     self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.viewport3d_dock)
     self.viewport3d_dock.hide()
+    self.viewport3d_dock.liveMMToggled.connect(self._on_live_mm_toggled)
+    self.viewport3d_dock.geometryConstraintRequested.connect(
+        self._on_geometry_constraint_requested
+    )
+    self.viewport3d_dock.viewport.geometryPreviewChanged.connect(
+        self._on_viewport_geometry_preview
+    )
+    self.viewport3d_dock.viewport.geometryEditCommitted.connect(
+        self._on_viewport_geometry_committed
+    )
+    self.viewport3d_dock.viewport.geometryEditCancelled.connect(
+        self._on_viewport_geometry_cancelled
+    )
+    self.viewport3d_dock.viewport.buildCancelled.connect(
+        self._on_viewport_build_cancelled
+    )
+    self.viewport3d_dock.viewport.buildPointRequested.connect(
+        self._on_viewport_build_point_requested
+    )
+    self.viewport3d_dock.viewport.buildAnchorSelected.connect(
+        self._on_viewport_build_anchor_selected
+    )
+    self._live_mm_timer = QTimer(self)
+    self._live_mm_timer.setSingleShot(True)
+    self._live_mm_timer.setInterval(100)
+    self._live_mm_timer.timeout.connect(self._start_live_mm_job)
     self.action_toggle_viewport3d = self.viewport3d_dock.toggleViewAction()
     assert self.action_toggle_viewport3d is not None
     self.action_toggle_viewport3d.setText("Visor molecular 3D")

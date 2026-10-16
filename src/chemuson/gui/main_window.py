@@ -62,6 +62,7 @@ from chemuson.gui.controllers import (
     UpdateControllerContext,
 )
 from chemuson.geometry3d import (
+    CoordinateSet3D,
     ForceField,
     OptimizationSettings,
     project_conformer_to_2d,
@@ -483,6 +484,7 @@ class ChemusonWindow(QMainWindow):
         canvas.undo_stack.canUndoChanged.connect(self.action_undo.setEnabled)
         canvas.undo_stack.canRedoChanged.connect(self.action_redo.setEnabled)
         canvas.undo_stack.indexChanged.connect(self._on_active_undo_index_changed)
+        canvas.geometry3d_changed.connect(self._on_active_canvas_geometry3d_changed)
 
     def _disconnect_canvas_signals(self, canvas: ChemusonCanvas) -> None:
         """Desconecta señales del canvas activo anterior."""
@@ -491,6 +493,7 @@ class ChemusonWindow(QMainWindow):
             (canvas.undo_stack.canUndoChanged, self.action_undo.setEnabled),
             (canvas.undo_stack.canRedoChanged, self.action_redo.setEnabled),
             (canvas.undo_stack.indexChanged, self._on_active_undo_index_changed),
+            (canvas.geometry3d_changed, self._on_active_canvas_geometry3d_changed),
         ):
             try:
                 signal.disconnect(slot)
@@ -515,7 +518,10 @@ class ChemusonWindow(QMainWindow):
         """Carga o limpia la escena efímera cuando el dock cambia de visibilidad."""
         if not visible:
             return
-        if self._compchem_coordset is not None:
+        if (
+            self._compchem_preview_coordset is not None
+            or self._compchem_coordset is not None
+        ):
             self._refresh_viewport3d_scene()
             return
         dock = getattr(self, "viewport3d_dock", None)
@@ -535,9 +541,18 @@ class ChemusonWindow(QMainWindow):
     def _refresh_viewport3d_scene(self) -> None:
         """Reconstruye la escena 3D sin escribir en el documento activo."""
         dock = getattr(self, "viewport3d_dock", None)
-        coordset = getattr(self, "_compchem_coordset", None)
+        coordset = getattr(self, "_compchem_preview_coordset", None)
+        if coordset is None:
+            coordset = getattr(self, "_compchem_coordset", None)
         canvas = getattr(self, "canvas", None)
-        if dock is None or coordset is None or canvas is None:
+        if dock is None or canvas is None:
+            return
+        if canvas.geometry3d_is_stale and self._compchem_preview_coordset is None:
+            dock.clear_scene()
+            dock.set_status("La topología 2D cambió; regenere la geometría 3D.")
+            return
+        if coordset is None:
+            dock.clear_scene()
             return
         try:
             scene = scene_molecule_from_graph(canvas.model, coordset)
@@ -545,9 +560,206 @@ class ChemusonWindow(QMainWindow):
             dock.clear_scene()
             dock.set_status(f"No se pudo preparar la escena 3D: {exc}")
             return
-        dock.set_scene(scene)
+        dock.set_scene(
+            scene,
+            preserve_interaction=self._compchem_preview_coordset is not None,
+        )
         if not scene.atoms:
             dock.set_status("El conformero no contiene coordenadas visibles.")
+
+    def _on_active_canvas_geometry3d_changed(
+        self, coordset: object, _revision: int
+    ) -> None:
+        """Sincroniza la geometría guardada del documento activo con el visor."""
+        canvas = self.canvas
+        self._compchem_coordset = coordset
+        self._compchem_preview_coordset = None
+        if coordset is None:
+            canvas.geometry3d_graph_signature = None
+            canvas.geometry3d_is_stale = False
+        elif isinstance(coordset, CoordinateSet3D):
+            position_ids = set(coordset.normalized_positions())
+            canvas.geometry3d_graph_signature = self._geometry3d_graph_signature(
+                canvas.model, position_ids
+            )
+            canvas.geometry3d_is_stale = position_ids != set(canvas.model.atoms)
+        else:
+            return
+        dock = getattr(self, "compchem_dock", None)
+        if dock is not None:
+            dock.set_has_coordinates(
+                coordset is not None and not canvas.geometry3d_is_stale
+            )
+            if canvas.geometry3d_is_stale:
+                dock.set_status("La topología 2D cambió; regenere la geometría 3D.")
+        viewport = getattr(self, "viewport3d_dock", None)
+        if viewport is not None and viewport.isVisible():
+            self._refresh_viewport3d_scene()
+
+    def _restore_compchem_state_for_canvas(self, canvas: ChemusonCanvas) -> None:
+        """Restaura la geometría 3D propiedad del documento de la pestaña."""
+        self._compchem_preview_coordset = None
+        self._compchem_coordset = getattr(canvas, "coordinate_set_3d", None)
+        compatible = self._geometry3d_is_compatible(canvas, self._compchem_coordset)
+        dock = getattr(self, "compchem_dock", None)
+        if dock is not None:
+            dock.clear_frames()
+            dock.set_busy(False)
+            dock.set_has_coordinates(self._compchem_coordset is not None and compatible)
+            dock.set_status(
+                "Geometría 3D del documento lista."
+                if self._compchem_coordset is not None and compatible
+                else "La geometría 3D está desactualizada; regenérela."
+                if self._compchem_coordset is not None
+                else "Sin conformero 3D"
+            )
+        viewport = getattr(self, "viewport3d_dock", None)
+        if viewport is not None:
+            if self._compchem_coordset is None or not compatible:
+                viewport.clear_scene()
+                viewport.set_status(
+                    "La topología 2D cambió; regenere la geometría 3D."
+                    if self._compchem_coordset is not None
+                    else "Sin geometría 3D para este documento."
+                )
+            elif viewport.isVisible():
+                self._refresh_viewport3d_scene()
+
+    @staticmethod
+    def _geometry3d_graph_signature(graph, atom_ids=None) -> tuple:
+        """Firma química/topológica del grafo, sin coordenadas ni estilo 2D."""
+        available = set(getattr(graph, "atoms", {}))
+        included = available if atom_ids is None else available.intersection(atom_ids)
+        atom_fields = (
+            "element", "charge", "isotope", "radical_electrons", "oxidation_state",
+            "stereo_cip", "stereo_axial", "stereo_helical", "stereo_si_re",
+            "explicit_h", "group_h_cap", "mapping", "is_query",
+            "no_implicit", "r_group_substituents",
+            "is_coordination_center",
+        )
+        atoms = tuple(
+            (
+                int(atom_id),
+                tuple(
+                    tuple(getattr(atom, field))
+                    if field == "r_group_substituents"
+                    else getattr(atom, field, None)
+                    for field in atom_fields
+                ),
+            )
+            for atom_id, atom in sorted(graph.atoms.items())
+            if atom_id in included
+        )
+        bond_fields = (
+            "order", "stereo", "stereo_ez", "stereo_axial", "stereo_endo_exo",
+            "stereo_helical", "is_aromatic", "is_query", "donor_atom_id",
+            "interaction_kind",
+        )
+        bonds = tuple(
+            sorted(
+                (
+                    min(int(bond.a1_id), int(bond.a2_id)),
+                    max(int(bond.a1_id), int(bond.a2_id)),
+                    tuple(getattr(bond, field, None) for field in bond_fields),
+                )
+                for bond in graph.bonds.values()
+                if bond.a1_id in included and bond.a2_id in included
+            )
+        )
+        return atoms, bonds
+
+    def _geometry3d_is_compatible(self, canvas, coordset) -> bool:
+        if coordset is None:
+            canvas.geometry3d_graph_signature = None
+            canvas.geometry3d_is_stale = False
+            return False
+        position_ids = set(coordset.normalized_positions())
+        graph_ids = set(canvas.model.atoms)
+        signature = self._geometry3d_graph_signature(canvas.model, position_ids)
+        stored = getattr(canvas, "geometry3d_graph_signature", None)
+        if stored is None:
+            canvas.geometry3d_graph_signature = signature
+            stored = signature
+        compatible = position_ids == graph_ids and stored == signature
+        canvas.geometry3d_is_stale = not compatible
+        return compatible
+
+    def _cancel_compchem_jobs_for_canvas_switch(self) -> None:
+        """Cancela trabajos ligados a la pestaña que dejará de estar activa."""
+        controller = getattr(self, "_compchem3d_controller", None)
+        if controller is not None:
+            for job_id in list(getattr(self, "_compchem_job_backends", {})):
+                controller.cancel_job(job_id)
+        self._latest_compchem_job_id = 0
+        self._compchem_preview_coordset = None
+        self._live_mm_pending = False
+        timer = getattr(self, "_live_mm_timer", None)
+        if timer is not None:
+            timer.stop()
+
+    def _compchem_job_snapshot_matches(self, job_id: int) -> bool:
+        snapshot = getattr(self, "_compchem_job_snapshots", {}).get(int(job_id))
+        canvas = getattr(self, "canvas", None)
+        return bool(
+            snapshot is not None
+            and canvas is not None
+            and int(job_id) == int(getattr(self, "_latest_compchem_job_id", 0))
+            and snapshot == (canvas.document_token, canvas.document_revision)
+        )
+
+    def _cancel_obsolete_compchem_jobs(self) -> None:
+        """Cancela y descarta frames si cambió el documento o su contenido."""
+        controller = getattr(self, "_compchem3d_controller", None)
+        canvas = getattr(self, "canvas", None)
+        if controller is None or canvas is None:
+            return
+        current = (canvas.document_token, canvas.document_revision)
+        for job_id, snapshot in list(
+            getattr(self, "_compchem_job_snapshots", {}).items()
+        ):
+            if snapshot == current:
+                continue
+            controller.cancel_job(job_id)
+            if int(job_id) == int(self._latest_compchem_job_id):
+                self._latest_compchem_job_id = 0
+                self._compchem_preview_coordset = None
+                self._compchem_coordset = canvas.coordinate_set_3d
+                dock = getattr(self, "compchem_dock", None)
+                if dock is not None:
+                    dock.set_busy(False)
+                    dock.set_has_coordinates(
+                        self._compchem_coordset is not None
+                        and not canvas.geometry3d_is_stale
+                    )
+                    dock.set_status("Trabajo 3D cancelado por un cambio del documento.")
+                viewport = getattr(self, "viewport3d_dock", None)
+                if viewport is not None and viewport.isVisible():
+                    self._refresh_viewport3d_scene()
+
+    def _reconcile_geometry3d_for_active_document(self) -> None:
+        """Oculta geometrías incompatibles y permite recuperarlas con undo."""
+        canvas = getattr(self, "canvas", None)
+        if canvas is None:
+            return
+        coordset = canvas.coordinate_set_3d
+        compatible = self._geometry3d_is_compatible(canvas, coordset)
+        self._compchem_coordset = coordset
+        if coordset is None:
+            self._compchem_preview_coordset = None
+        elif not compatible:
+            self._live_mm_pending = False
+        dock = getattr(self, "compchem_dock", None)
+        if dock is not None:
+            dock.set_has_coordinates(coordset is not None and compatible)
+            if coordset is not None and not compatible:
+                dock.set_status("La topología 2D cambió; regenere la geometría 3D.")
+        viewport = getattr(self, "viewport3d_dock", None)
+        if viewport is not None:
+            if coordset is not None and not compatible:
+                viewport.clear_scene()
+                viewport.set_status("La topología 2D cambió; regenere la geometría 3D.")
+            elif viewport.isVisible():
+                self._refresh_viewport3d_scene()
 
     def _set_active_canvas(
         self,
@@ -557,6 +769,8 @@ class ChemusonWindow(QMainWindow):
         """Activa un canvas de pestaña y actualiza conexiones/estado de UI."""
         if canvas is None:
             return
+        if getattr(self, "canvas", None) is not canvas:
+            self._cancel_compchem_jobs_for_canvas_switch()
         if self._active_canvas_connected is not None and self._active_canvas_connected is not canvas:
             self._disconnect_canvas_signals(self._active_canvas_connected)
         self.canvas = canvas
@@ -583,7 +797,7 @@ class ChemusonWindow(QMainWindow):
         self._update_total_charge_indicator()
         self._update_iupac_name_indicator()
         self._schedule_chemical_properties_update()
-        self._reset_compchem_state("Sin conformero 3D")
+        self._restore_compchem_state_for_canvas(canvas)
         self.text_toolbar.set_opacity_percent(self.canvas.current_opacity_percent())
         if clear_tool_selection:
             self._clear_active_tool_selection()
@@ -604,15 +818,14 @@ class ChemusonWindow(QMainWindow):
 
     def _on_active_undo_index_changed(self, _index: int) -> None:
         """Actualiza widgets dependientes del estado del undo activo."""
+        self._cancel_obsolete_compchem_jobs()
+        self._reconcile_geometry3d_for_active_document()
         self._update_total_charge_indicator()
         self._update_iupac_name_indicator()
         self._schedule_chemical_properties_update()
         self._sync_fragment_pivot_actions()
         self._update_tab_title(self.canvas)
         self.text_toolbar.set_opacity_percent(self.canvas.current_opacity_percent())
-        viewport = getattr(self, "viewport3d_dock", None)
-        if viewport is not None and viewport.isVisible():
-            self._refresh_viewport3d_scene()
 
     def _update_iupac_name_indicator(self) -> None:
         """Refresca el indicador de nombre IUPAC en la barra de estado."""
@@ -850,6 +1063,7 @@ class ChemusonWindow(QMainWindow):
     def _reset_compchem_state(self, message: str = "Sin conformero 3D") -> None:
         """Descarta coordenadas 3D asociadas al documento activo."""
         self._compchem_coordset = None
+        self._compchem_preview_coordset = None
         dock = getattr(self, "compchem_dock", None)
         if dock is not None:
             dock.clear_frames()
@@ -874,7 +1088,15 @@ class ChemusonWindow(QMainWindow):
             timeout_s=20.0,
         )
 
-    def _start_compchem_job(self, operation: str, *, backend: str | None = None, force: bool = False) -> None:
+    def _start_compchem_job(
+        self,
+        operation: str,
+        *,
+        backend: str | None = None,
+        force: bool = False,
+        fixed_atom_ids: tuple[int, ...] = (),
+        settings: OptimizationSettings | None = None,
+    ) -> None:
         if self._shutdown_started:
             return
         canvas = getattr(self, "canvas", None)
@@ -885,21 +1107,44 @@ class ChemusonWindow(QMainWindow):
             dock.set_status("No hay estructura para calcular.")
             dock.set_has_coordinates(False)
             return
+        if operation == "optimize" and canvas.geometry3d_is_stale:
+            dock.set_status("La topología cambió; regenere la geometría antes de optimizar.")
+            return
         selected_backend = backend or dock.selected_backend()
-        settings = self._compchem_settings()
+        settings = settings or self._compchem_settings()
         graph_copy = copy.deepcopy(canvas.model)
-        coordset = self._compchem_coordset
-        spec = CompChemJobSpec(operation=operation, backend=selected_backend, settings=settings, force=force)
+        coordset = self._compchem_preview_coordset
+        if coordset is None:
+            coordset = canvas.coordinate_set_3d
+        spec = CompChemJobSpec(
+            operation=operation,
+            backend=selected_backend,
+            settings=settings,
+            force=force,
+            fixed_atom_ids=fixed_atom_ids,
+        )
         dock.clear_frames()
         dock.set_busy(True)
         dock.set_status(
             f"{'Generando conformero' if operation == 'generate' else 'Optimizando'} "
             f"({selected_backend}, {settings.forcefield.value})..."
         )
-        job_id = self._compchem3d_controller.start_job(graph_copy, spec, coordset)
+        controller = getattr(self, "_compchem3d_controller", None)
+        if controller is not None:
+            for active_job_id in controller.active_jobs():
+                controller.cancel_job(active_job_id)
+        job_id = controller.start_job(graph_copy, spec, coordset) if controller is not None else None
+        if job_id is None:
+            dock.set_busy(False)
+            dock.set_status("No se pudo iniciar el trabajo 3D.")
+            return
         self._latest_compchem_job_id = job_id
         self._compchem_job_backends[job_id] = selected_backend
         self._compchem_job_operations[job_id] = operation
+        self._compchem_job_snapshots[job_id] = (
+            canvas.document_token,
+            canvas.document_revision,
+        )
 
     def _on_compchem_generate(self) -> None:
         self._start_compchem_job("generate", backend="rdkit", force=False)
@@ -907,27 +1152,405 @@ class ChemusonWindow(QMainWindow):
     def _on_compchem_optimize(self) -> None:
         self._start_compchem_job("optimize")
 
+    def _on_live_mm_toggled(self, enabled: bool) -> None:
+        if self._shutdown_started:
+            return
+        timer = getattr(self, "_live_mm_timer", None)
+        if timer is not None:
+            timer.stop()
+        if enabled:
+            if self.canvas.geometry3d_is_stale:
+                self.viewport3d_dock.set_status(
+                    "La topología 2D cambió; regenere la geometría antes de usar Live MM."
+                )
+                return
+            coordset = self._compchem_preview_coordset or self.canvas.coordinate_set_3d
+            if coordset is None:
+                self.viewport3d_dock.set_status("Genere o construya primero una geometría 3D.")
+                return
+            self._live_mm_fixed_atom_ids = ()
+            timer.start(100)
+            return
+        self._live_mm_pending = False
+        job_id = int(getattr(self, "_latest_compchem_job_id", 0) or 0)
+        if self._compchem_job_operations.get(job_id) == "optimize":
+            controller = getattr(self, "_compchem3d_controller", None)
+            if controller is not None:
+                controller.cancel_job(job_id)
+        if not self.viewport3d_dock.viewport.geometry_drag_active:
+            self._compchem_preview_coordset = None
+            self._compchem_coordset = self.canvas.coordinate_set_3d
+            if self.viewport3d_dock.isVisible():
+                self._refresh_viewport3d_scene()
+
+    def _start_live_mm_job(self) -> None:
+        dock = getattr(self, "viewport3d_dock", None)
+        if (
+            self._shutdown_started
+            or dock is None
+            or not dock.live_mm_checkbox.isChecked()
+            or self.canvas.geometry3d_is_stale
+            or (self._compchem_preview_coordset is None and self.canvas.coordinate_set_3d is None)
+        ):
+            return
+        try:
+            forcefield = ForceField(dock.selected_live_forcefield())
+        except ValueError:
+            dock.set_status("Campo de fuerza Live MM no reconocido.")
+            return
+        settings = OptimizationSettings(
+            forcefield=forcefield,
+            max_iters=240,
+            steps_per_update=8,
+            timeout_s=20.0,
+        )
+        controller = getattr(self, "_compchem3d_controller", None)
+        if controller is None:
+            return
+        active_job_ids = controller.active_jobs()
+        if active_job_ids:
+            self._live_mm_pending = True
+            self._latest_compchem_job_id = 0
+            for job_id in active_job_ids:
+                controller.cancel_job(job_id)
+            return
+        self._live_mm_pending = False
+        self._start_compchem_job(
+            "optimize",
+            backend="rdkit",
+            fixed_atom_ids=tuple(self._live_mm_fixed_atom_ids),
+            settings=settings,
+        )
+
+    def _start_pending_live_mm_if_ready(self) -> None:
+        if not self._live_mm_pending:
+            return
+        controller = getattr(self, "_compchem3d_controller", None)
+        if controller is not None and controller.active_jobs():
+            return
+        self._live_mm_pending = False
+        if (
+            not self._shutdown_started
+            and self.viewport3d_dock.live_mm_checkbox.isChecked()
+            and not self.canvas.geometry3d_is_stale
+        ):
+            self._start_live_mm_job()
+
+    def _on_viewport_geometry_preview(
+        self,
+        _before: object,
+        positions: object,
+        selected_atom_ids: object,
+    ) -> None:
+        if self.canvas.geometry3d_is_stale:
+            return
+        try:
+            coordinates = CoordinateSet3D(
+                positions=positions,
+                source="manual",
+                method="interactive-3d-edit",
+            )
+        except (TypeError, ValueError):
+            return
+        self._compchem_preview_coordset = coordinates
+        self._live_mm_fixed_atom_ids = tuple(sorted(int(atom_id) for atom_id in selected_atom_ids))
+        if self.viewport3d_dock.isVisible():
+            self._refresh_viewport3d_scene()
+        if self.viewport3d_dock.live_mm_checkbox.isChecked():
+            controller = getattr(self, "_compchem3d_controller", None)
+            active_job_ids = controller.active_jobs() if controller is not None else []
+            if active_job_ids:
+                if not self._live_mm_pending:
+                    self._live_mm_pending = True
+                    self._latest_compchem_job_id = 0
+                    for job_id in active_job_ids:
+                        controller.cancel_job(job_id)
+            elif not self._live_mm_timer.isActive():
+                self._live_mm_timer.start(80)
+
+    def _on_viewport_geometry_committed(
+        self,
+        before_positions: object,
+        after_positions: object,
+        selected_atom_ids: object,
+    ) -> None:
+        if self.canvas.geometry3d_is_stale:
+            return
+        if after_positions == before_positions:
+            return
+        try:
+            coordinates = CoordinateSet3D(
+                positions=after_positions,
+                source="manual",
+                method="interactive-3d-edit",
+            )
+        except (TypeError, ValueError) as exc:
+            self.viewport3d_dock.set_status(f"No se pudo guardar la edición 3D: {exc}")
+            return
+        from chemuson.gui.commands import SetGeometry3DCommand
+
+        self.canvas.undo_stack.push(
+            SetGeometry3DCommand(
+                self.canvas,
+                coordinates,
+                text="Mover átomo o fragmento 3D",
+            )
+        )
+        self._live_mm_fixed_atom_ids = ()
+        if self.viewport3d_dock.live_mm_checkbox.isChecked():
+            self._live_mm_timer.start(100)
+
+    def _on_viewport_geometry_cancelled(self) -> None:
+        self._live_mm_timer.stop()
+        self._live_mm_pending = False
+        job_id = int(getattr(self, "_latest_compchem_job_id", 0) or 0)
+        controller = getattr(self, "_compchem3d_controller", None)
+        if job_id and self._compchem_job_operations.get(job_id) == "optimize":
+            if controller is not None:
+                controller.cancel_job(job_id)
+            self._latest_compchem_job_id = 0
+        self._compchem_preview_coordset = None
+        self._compchem_coordset = self.canvas.coordinate_set_3d
+        dock = getattr(self, "compchem_dock", None)
+        if dock is not None:
+            dock.set_busy(False)
+            dock.set_status("Arrastre 3D cancelado; se restauró la geometría anterior.")
+        if self.viewport3d_dock.isVisible():
+            self._refresh_viewport3d_scene()
+
+    def _on_viewport_build_cancelled(self) -> None:
+        self._pending_3d_build_anchor_id = None
+        self.viewport3d_dock.set_status("Construcción 3D cancelada.")
+
+    def _on_geometry_constraint_requested(
+        self,
+        operation: str,
+        atom_ids: object,
+        target_value: float,
+    ) -> None:
+        from chemuson.geometry3d import editing
+        from chemuson.gui.commands import SetGeometry3DCommand
+
+        canvas = getattr(self, "canvas", None)
+        if canvas is not None and canvas.geometry3d_is_stale:
+            self.viewport3d_dock.set_status("La geometría 3D está desactualizada.")
+            return
+        coordset = self._compchem_preview_coordset or getattr(canvas, "coordinate_set_3d", None)
+        if canvas is None or coordset is None:
+            self.viewport3d_dock.set_status("No hay coordenadas 3D editables.")
+            return
+        try:
+            ids = tuple(int(atom_id) for atom_id in atom_ids)
+            if operation == "bond_length" and len(ids) == 2:
+                bond = canvas.model.find_bond_between(ids[0], ids[1])
+                if bond is None:
+                    raise ValueError("Los átomos no están unidos por un enlace.")
+                updated = editing.set_bond_length(
+                    canvas.model, coordset, bond.id, float(target_value)
+                )
+            elif operation == "bond_angle" and len(ids) == 3:
+                updated = editing.set_bond_angle(
+                    canvas.model, coordset, ids, float(target_value)
+                )
+            elif operation == "dihedral" and len(ids) == 4:
+                updated = editing.set_dihedral(
+                    canvas.model, coordset, ids, float(target_value)
+                )
+            else:
+                raise ValueError("Indique 2, 3 o 4 IDs según la magnitud geométrica.")
+        except (TypeError, ValueError, KeyError) as exc:
+            self.viewport3d_dock.set_status(f"Restricción geométrica no aplicada: {exc}")
+            return
+        coordinates = CoordinateSet3D(
+            positions=updated.normalized_positions(),
+            source="manual",
+            method=f"geometry-constraint:{operation}",
+        )
+        self.canvas.undo_stack.push(
+            SetGeometry3DCommand(
+                self.canvas,
+                coordinates,
+                text="Ajustar geometría 3D",
+            )
+        )
+        self.viewport3d_dock.set_status("Geometría ajustada; use Live MM para relajarla.")
+        if self.viewport3d_dock.live_mm_checkbox.isChecked():
+            self._live_mm_fixed_atom_ids = ()
+            self._live_mm_timer.start(100)
+
+    def _on_viewport_build_anchor_selected(self, atom_id: object) -> None:
+        try:
+            resolved_id = int(atom_id)
+        except (TypeError, ValueError):
+            return
+        if resolved_id not in self.canvas.model.atoms:
+            return
+        self._pending_3d_build_anchor_id = resolved_id
+        self.viewport3d_dock.set_status(
+            f"Ancla {resolved_id} seleccionada; haga clic en el espacio para añadir un átomo."
+        )
+
+    def _on_viewport_build_point_requested(self, request: object) -> None:
+        if not isinstance(request, (tuple, list)) or len(request) != 2:
+            return
+        element, point = request
+        self._add_3d_atom(str(element), point)
+
+    def _add_3d_atom(self, element: str, point: object) -> None:
+        from chemuson.gui.commands import AddAtomCommand, AddBondCommand, SetGeometry3DCommand
+
+        canvas = getattr(self, "canvas", None)
+        if canvas is None:
+            return
+        if canvas.geometry3d_is_stale:
+            self.viewport3d_dock.set_status("Regenere la geometría antes de construir sobre ella.")
+            return
+        try:
+            click_point = tuple(float(value) for value in point)
+            if len(click_point) != 3 or not all(math.isfinite(value) for value in click_point):
+                raise ValueError("La posición 3D no es finita.")
+        except (TypeError, ValueError) as exc:
+            self.viewport3d_dock.set_status(f"No se pudo crear el átomo: {exc}")
+            return
+        coordset = self._compchem_preview_coordset or canvas.coordinate_set_3d
+        positions = coordset.normalized_positions() if coordset is not None else {}
+        parent_id = self._pending_3d_build_anchor_id
+        parent = canvas.model.atoms.get(parent_id) if parent_id is not None else None
+        bond_order, is_aromatic = self.viewport3d_dock.selected_bond_order()
+        bond_length_3d = {1: 1.5, 2: 1.34, 3: 1.20}.get(bond_order, 1.40)
+        if is_aromatic:
+            bond_length_3d = 1.40
+        new_position = click_point
+        if parent_id is not None:
+            parent_position = positions.get(parent_id)
+            if parent is None or parent_position is None:
+                self._pending_3d_build_anchor_id = None
+                self.viewport3d_dock.set_status("El ancla ya no pertenece a esta geometría.")
+                return
+            vector = tuple(click_point[index] - parent_position[index] for index in range(3))
+            length = math.sqrt(sum(value * value for value in vector))
+            if length < 1.0e-8:
+                vector, length = (1.0, 0.0, 0.0), 1.0
+            direction = tuple(value / length for value in vector)
+            new_position = tuple(
+                parent_position[index] + bond_length_3d * direction[index]
+                for index in range(3)
+            )
+            xy_length = math.hypot(direction[0], direction[1])
+            dx, dy = (
+                (direction[0] / xy_length, direction[1] / xy_length)
+                if xy_length > 1.0e-8
+                else (1.0, 0.0)
+            )
+            bond_length = float(getattr(canvas.state, "bond_length", 42.0) or 42.0)
+            x = parent.x + dx * bond_length
+            y = parent.y - dy * bond_length
+        else:
+            center = canvas.mapToScene(canvas.viewport().rect().center())
+            bond_length = float(getattr(canvas.state, "bond_length", 42.0) or 42.0)
+            x = center.x() + new_position[0] * bond_length
+            y = center.y() - new_position[1] * bond_length
+
+        undo_stack = canvas.undo_stack
+        previous_index = undo_stack.index()
+        undo_stack.beginMacro("Construir molécula en 3D")
+        try:
+            atom_command = AddAtomCommand(
+                canvas.model,
+                canvas,
+                element,
+                x,
+                y,
+                is_explicit=True,
+                expected_bonds=1 if parent_id is not None else 0,
+            )
+            undo_stack.push(atom_command)
+            new_atom_id = atom_command.atom_id
+            if new_atom_id is None:
+                raise ValueError("ChemUSON no asignó un ID al átomo.")
+            if parent_id is not None:
+                undo_stack.push(
+                    AddBondCommand(
+                        canvas.model,
+                        canvas,
+                        parent_id,
+                        new_atom_id,
+                        order=bond_order,
+                        is_aromatic=is_aromatic,
+                    )
+                )
+            updated_positions = {
+                int(atom_id): tuple(values)
+                for atom_id, values in positions.items()
+                if isinstance(atom_id, int) and atom_id in canvas.model.atoms
+            }
+            updated_positions[new_atom_id] = new_position
+            coordinates = CoordinateSet3D(
+                positions=updated_positions,
+                source="manual",
+                method="build-3d",
+            )
+            undo_stack.push(
+                SetGeometry3DCommand(
+                    canvas,
+                    coordinates,
+                    text="Guardar átomo 3D",
+                )
+            )
+        except Exception as exc:
+            undo_stack.endMacro()
+            if undo_stack.index() > previous_index:
+                undo_stack.undo()
+            self.viewport3d_dock.set_status(f"No se pudo construir el átomo: {exc}")
+            return
+        undo_stack.endMacro()
+        self._pending_3d_build_anchor_id = new_atom_id
+        self.viewport3d_dock.set_status(f"Átomo {element} {new_atom_id} añadido en 3D.")
+        if self.viewport3d_dock.live_mm_checkbox.isChecked():
+            self._live_mm_fixed_atom_ids = ()
+            self._live_mm_timer.start(100)
+
     def _on_compchem_reset(self) -> None:
         if self._shutdown_started:
             return
+        self.canvas.set_geometry3d_coordinates(None)
         self._reset_compchem_state("Regenerando conformero 3D...")
         self._start_compchem_job("generate", backend="rdkit", force=True)
 
     def _on_compchem_frame_ready(self, job_id: int, frame: object) -> None:
         if self._shutdown_started:
             return
-        if int(job_id) != int(getattr(self, "_latest_compchem_job_id", 0)):
+        if not self._compchem_job_snapshot_matches(job_id):
             return
         dock = getattr(self, "compchem_dock", None)
         if dock is not None:
             dock.add_frame(frame)
+        coordinates = getattr(frame, "coordinates", None)
+        if coordinates is not None:
+            self._compchem_preview_coordset = coordinates
+            viewport = getattr(self, "viewport3d_dock", None)
+            if viewport is not None and viewport.isVisible():
+                self._refresh_viewport3d_scene()
+                energy = getattr(frame, "energy", None)
+                metadata = getattr(coordinates, "metadata", {}) or {}
+                unit = str(metadata.get("energy_unit") or "kcal/mol")
+                energy_text = "N/D" if energy is None else f"{float(energy):.6f} {unit}"
+                viewport.set_status(
+                    f"Live MM · paso {getattr(frame, 'step', 0)} · E {energy_text}"
+                )
 
     def _on_compchem_job_finished(self, job_id: int, result: object) -> None:
         backend = self._compchem_job_backends.pop(int(job_id), "rdkit")
-        self._compchem_job_operations.pop(int(job_id), None)
+        operation = self._compchem_job_operations.pop(int(job_id), None)
+        snapshot = self._compchem_job_snapshots.pop(int(job_id), None)
         if self._shutdown_started:
             return
-        if int(job_id) != int(getattr(self, "_latest_compchem_job_id", 0)):
+        if (
+            snapshot is None
+            or int(job_id) != int(getattr(self, "_latest_compchem_job_id", 0))
+            or snapshot != (self.canvas.document_token, self.canvas.document_revision)
+        ):
+            self._start_pending_live_mm_if_ready()
             return
         dock = getattr(self, "compchem_dock", None)
         if dock is None:
@@ -935,18 +1558,57 @@ class ChemusonWindow(QMainWindow):
         dock.set_busy(False)
         coordinates = getattr(result, "coordinates", None)
         if coordinates is None:
-            self._compchem_coordset = None
+            viewport = getattr(self, "viewport3d_dock", None)
+            if (
+                operation == "optimize"
+                and viewport is not None
+                and viewport.viewport.geometry_drag_active
+            ):
+                dock.set_status("Live MM detenido; el arrastre 3D sigue activo.")
+                return
+            self._compchem_preview_coordset = None
+            self._compchem_coordset = self.canvas.coordinate_set_3d
             message = str(getattr(result, "message", "") or "Backend no disponible o sin coordenadas.")
             dock.set_status(f"3D no disponible: {message}")
-            dock.set_has_coordinates(False)
+            dock.set_has_coordinates(self._compchem_coordset is not None)
+            viewport = getattr(self, "viewport3d_dock", None)
+            if viewport is not None and viewport.isVisible():
+                self._refresh_viewport3d_scene()
             return
-        self._compchem_coordset = coordinates
+        viewport = getattr(self, "viewport3d_dock", None)
+        if (
+            operation == "optimize"
+            and viewport is not None
+            and viewport.viewport.geometry_drag_active
+        ):
+            self._compchem_preview_coordset = coordinates
+            dock.set_result_summary(
+                result,
+                backend=backend,
+                cache_state=str((getattr(result, "metadata", {}) or {}).get("cache_state", "miss")),
+            )
+            if viewport.isVisible():
+                self._refresh_viewport3d_scene()
+            return
+        self._compchem_preview_coordset = None
+        from chemuson.gui.commands import SetGeometry3DCommand
+
+        self.canvas.undo_stack.push(
+            SetGeometry3DCommand(
+                self.canvas,
+                coordinates,
+                text="Actualizar geometría 3D",
+            )
+        )
         cache_state = str((getattr(result, "metadata", {}) or {}).get("cache_state", "miss"))
         dock.set_result_summary(result, backend=backend, cache_state=cache_state)
         dock.set_has_coordinates(True)
         viewport = getattr(self, "viewport3d_dock", None)
         if viewport is not None and viewport.isVisible():
             self._refresh_viewport3d_scene()
+        if operation == "generate" and viewport is not None and viewport.live_mm_checkbox.isChecked():
+            self._live_mm_fixed_atom_ids = ()
+            self._live_mm_timer.start(100)
 
     def _on_compchem_project_to_2d(self) -> None:
         if self._shutdown_started:
@@ -955,6 +1617,9 @@ class ChemusonWindow(QMainWindow):
         canvas = getattr(self, "canvas", None)
         if coordset is None or canvas is None:
             self.statusBar().showMessage("No hay conformero 3D para proyectar.", 5000)
+            return
+        if canvas.geometry3d_is_stale:
+            self.statusBar().showMessage("La geometría 3D está desactualizada; regenérela.", 6000)
             return
         answer = QMessageBox.question(
             self,
@@ -1002,7 +1667,7 @@ class ChemusonWindow(QMainWindow):
         if self._shutdown_started:
             return
         coordset = self._compchem_coordset
-        if coordset is None:
+        if coordset is None or self.canvas.geometry3d_is_stale:
             self.statusBar().showMessage("No hay coordenadas 3D para exportar.", 5000)
             return
         filepath, _ = QFileDialog.getSaveFileName(self, "Exportar XYZ", "", "XYZ (*.xyz)")
@@ -1016,7 +1681,7 @@ class ChemusonWindow(QMainWindow):
         if self._shutdown_started:
             return
         coordset = self._compchem_coordset
-        if coordset is None:
+        if coordset is None or self.canvas.geometry3d_is_stale:
             self.statusBar().showMessage("No hay coordenadas 3D para exportar.", 5000)
             return
         program_key = str(program or "").lower()

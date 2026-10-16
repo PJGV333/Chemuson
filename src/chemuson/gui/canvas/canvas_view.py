@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+import uuid
 from typing import Dict, List, Optional, Tuple
 
 from PyQt6.QtCore import QPoint, QPointF, QRectF, QTimer, Qt, pyqtSignal
@@ -91,6 +92,8 @@ class ChemusonCanvas(
         """
         super().__init__(parent)
         self._shutdown_started = False
+        self.document_token = uuid.uuid4().hex
+        self.document_revision = 0
 
         self.scene = QGraphicsScene()
         self.setScene(self.scene)
@@ -103,6 +106,8 @@ class ChemusonCanvas(
         self.model = MolGraph()
         self.coordinate_set_3d: CoordinateSet3D | None = None
         self.geometry3d_revision = 0
+        self.geometry3d_graph_signature: tuple | None = None
+        self.geometry3d_is_stale: bool = False
         self.geometry3d_load_error: str | None = None
         self.state = ChemState()
         # Preferencias de nomenclatura avanzada (fase 4/6) por documento.
@@ -263,6 +268,7 @@ class ChemusonCanvas(
 
         self.scene.selectionChanged.connect(self._sync_selection_from_scene)
         self.undo_stack.indexChanged.connect(self._on_undo_stack_changed)
+        self.undo_stack.indexChanged.connect(self._advance_document_revision)
         self.setMouseTracking(True)
         self.viewport().setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -276,7 +282,12 @@ class ChemusonCanvas(
         """Actualiza la conformación 3D de este documento y notifica su revisión."""
         self.coordinate_set_3d = coordinates
         self.geometry3d_revision += 1
+        self.document_revision += 1
         self.geometry3d_changed.emit(coordinates, self.geometry3d_revision)
+
+    def _advance_document_revision(self, _index: int) -> None:
+        """Invalida snapshots asíncronos tras cualquier comando/undo/redo."""
+        self.document_revision += 1
 
     def _setup_view(self) -> None:
         """Método auxiliar para  setup view.

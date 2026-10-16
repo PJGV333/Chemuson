@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import math
 
+import pytest
+
 from chemuson.geometry3d import SceneAtom3D, SceneMolecule3D
 from chemuson.gui.viewport3d.geometry import scene_bounds
 from chemuson.gui.viewport3d import CameraProjection, CameraState
@@ -97,3 +99,29 @@ def test_unrepresentable_viewport_ratio_rejects_fit_without_changing_camera() ->
 
     assert not camera.fit_scene(_scene(), viewport_width=1.0e308, viewport_height=1.0e-308)
     assert (camera.target, camera.distance, camera.fit_radius) == before
+
+
+def test_screen_world_mapping_matches_perspective_and_orthographic_scale() -> None:
+    perspective = CameraState(
+        target=(0.0, 0.0, 0.0),
+        distance=10.0,
+        fov_y_degrees=90.0,
+    )
+    world = perspective.screen_to_world(
+        600.0, 500.0, 1000.0, 1000.0, plane_point=(0.0, 0.0, 0.0)
+    )
+    assert world == pytest.approx((2.0, 0.0, 0.0), abs=1.0e-8)
+    delta = perspective.screen_delta_to_world(
+        100.0, 0.0, 1000.0, 1000.0, position=(0.0, 0.0, 0.0)
+    )
+    assert delta == pytest.approx((2.0, 0.0, 0.0), abs=1.0e-8)
+
+    orthographic = CameraState(
+        target=(0.0, 0.0, 0.0),
+        ortho_scale=20.0,
+        projection=CameraProjection.ORTHOGRAPHIC,
+    )
+    world = orthographic.screen_to_world(
+        600.0, 500.0, 1000.0, 1000.0, plane_point=(0.0, 0.0, 0.0)
+    )
+    assert world == pytest.approx((2.0, 0.0, 0.0), abs=1.0e-8)

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from enum import Enum
 import math
 
-from .geometry import Vec3, add, cross, normalize, scale, scene_bounds, sub
+from .geometry import Vec3, add, cross, dot, normalize, scale, scene_bounds, sub
 
 
 class CameraProjection(str, Enum):
@@ -158,3 +158,98 @@ class CameraState:
             raise ValueError("El viewport debe tener dimensiones positivas")
         forward, right, up = self.basis
         return self.eye, forward, right, up
+
+    def screen_to_world(
+        self,
+        pixel_x: float,
+        pixel_y: float,
+        viewport_width: float,
+        viewport_height: float,
+        *,
+        plane_point: Vec3 | None = None,
+    ) -> Vec3:
+        """Unprojects a pixel sobre un plano perpendicular a la cámara."""
+        values = (pixel_x, pixel_y, viewport_width, viewport_height)
+        if (
+            viewport_width <= 0.0
+            or viewport_height <= 0.0
+            or not all(math.isfinite(float(value)) for value in values)
+        ):
+            raise ValueError("Viewport o coordenada de cursor no válidos")
+        eye, forward, right, up = self.ray_parameters(viewport_width, viewport_height)
+        if plane_point is None:
+            plane = self.target
+        else:
+            plane = (
+                float(plane_point[0]),
+                float(plane_point[1]),
+                float(plane_point[2]),
+            )
+        if len(plane) != 3 or not all(math.isfinite(value) for value in plane):
+            raise ValueError("Punto del plano no válido")
+        ndc_x = 2.0 * float(pixel_x) / float(viewport_width) - 1.0
+        ndc_y = 1.0 - 2.0 * float(pixel_y) / float(viewport_height)
+        aspect = float(viewport_width) / float(viewport_height)
+        if self.projection == CameraProjection.ORTHOGRAPHIC:
+            half_height = self.ortho_scale * 0.5
+            origin = add(
+                add(eye, scale(right, ndc_x * half_height * aspect)),
+                scale(up, ndc_y * half_height),
+            )
+            return add(origin, scale(forward, dot(sub(plane, origin), forward)))
+
+        half_fov = math.tan(math.radians(self.fov_y_degrees) * 0.5)
+        direction = normalize(
+            add(
+                forward,
+                add(
+                    scale(right, ndc_x * aspect * half_fov),
+                    scale(up, ndc_y * half_fov),
+                ),
+            )
+        )
+        denominator = dot(direction, forward)
+        if denominator <= 1.0e-12:
+            raise ValueError("El plano no intersecta el rayo de la cámara")
+        distance = dot(sub(plane, eye), forward) / denominator
+        if distance < 0.0 or not math.isfinite(distance):
+            raise ValueError("El plano no está delante de la cámara")
+        return add(eye, scale(direction, distance))
+
+    def screen_delta_to_world(
+        self,
+        delta_x: float,
+        delta_y: float,
+        viewport_width: float,
+        viewport_height: float,
+        *,
+        position: Vec3,
+    ) -> Vec3:
+        """Convierte desplazamiento de cursor a unidades del plano de pantalla."""
+        values = (delta_x, delta_y, viewport_width, viewport_height, *position)
+        if (
+            viewport_width <= 0.0
+            or viewport_height <= 0.0
+            or not all(math.isfinite(float(value)) for value in values)
+        ):
+            raise ValueError("Viewport o desplazamiento de cursor no válidos")
+        forward, right, up = self.basis
+        if self.projection == CameraProjection.ORTHOGRAPHIC:
+            units_per_pixel = self.ortho_scale / float(viewport_height)
+        else:
+            position3d = (
+                float(position[0]),
+                float(position[1]),
+                float(position[2]),
+            )
+            depth = dot(sub(position3d, self.eye), forward)
+            if depth <= 0.0:
+                raise ValueError("El átomo no está delante de la cámara")
+            units_per_pixel = (
+                2.0 * depth * math.tan(math.radians(self.fov_y_degrees) * 0.5)
+                / float(viewport_height)
+            )
+        return add(
+            scale(right, float(delta_x) * units_per_pixel),
+            scale(up, -float(delta_y) * units_per_pixel),
+        )
