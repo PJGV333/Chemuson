@@ -4,8 +4,8 @@
 
 ## Evidencia focalizada
 
-- `pytest` focalizado para viewport, geometría, persistencia, comandos, Live MM, pestañas y shutdown: **100 passed in 51.15s**, Qt offscreen.
-- Contratos arquitectónicos: **280 passed in 22.55s**.
+- `pytest` focalizado para viewport, geometría, persistencia, comandos, Live MM, pestañas y shutdown: **102 passed in 43.76s**, Qt offscreen.
+- Contratos arquitectónicos: **280 passed in 21.62s**.
 - `python -m compileall -q src tests tools packaging`: exit 0.
 - Ruff scoped sobre los archivos Python modificados (`F401,F811,F821,E722,E741`): All checks passed.
 - `openspec validate add-interactive-3d-molecular-viewport --strict` y `openspec validate add-editable-3d-molecular-editor --strict`: ambos `Change is valid`; el CLI avisó que ignoraba el formato de `rules` en artefactos.
@@ -17,7 +17,11 @@ Se generaron conformeros RDKit desde los grafos de agua, etano, etanol, butano y
 
 El worker Live MM de butano produjo **40 snapshots progresivos por campo** para MMFF94, MMFF94s y UFF (iteraciones 2–80), manteniendo fijo el átomo restringido; los tests validan coordenadas y energía cambiantes.
 
-En una corrida pequeña de un solo proceso, la generación RDKit tardó **0.164–0.239 s** por conformero y ensamblar `SceneMolecule3D`, **0.000067–0.000106 s**. No se midió FPS ni interacción GPU; esos valores no justifican optimizar shaders o geometría de navegación.
+## Continuidad de H derivados en escenas
+
+Se detectó y corrigió que la ruta de snapshots Live MM descartaba los H derivados al reconstruir cada escena. El worker ahora incluye sus posiciones y enlaces por frame, y el backend los conserva en `CoordinateSet3D`. El preview de arrastre y los cambios de restricción geométrica trasladan los H con el átomo documental padre. Las pruebas headless confirman 14 átomos/13 enlaces en cada frame de Live MM para los tres campos de fuerza y preservación en edición; `MolGraph` y persistencia siguen excluyendo H derivados. El test de escena no equivale a una inspección visual OpenGL.
+
+En una corrida pequeña de un solo proceso, la generación RDKit tardó **0.164–0.239 s** por conformero y ensamblar `SceneMolecule3D`, **0.000067–0.000106 s**. No se midió FPS, interacción GPU ni el costo adicional de serializar H por frame; esos valores no justifican optimizar shaders o geometría de navegación.
 
 ## Límites no resueltos
 
@@ -26,6 +30,6 @@ En una corrida pequeña de un solo proceso, la generación RDKit tardó **0.164�
 - La reconstrucción de quiralidad desde `BondStereo` wedge/hash o `stereo_cip` en el worker no está verificada; no afirmar preservación estereoquímica 3D. El ciclo de benceno tampoco conserva flags aromáticos explícitos en la ruta de importación probada.
 - No se reejecutó la suite completa por el SIGSEGV de baseline ya documentado.
 
-Commits locales de código/tests: `58383965` (`fix(3d): reject invalid molecular builder edits`) y `1b7fb1ec` (`test(3d): add chemistry and live-mm acceptance coverage`). El informe de viewport forma parte del commit documental separado; no se hizo push.
+Commits locales de código/tests: `58383965` (`fix(3d): reject invalid molecular builder edits`), `1b7fb1ec` (`test(3d): add chemistry and live-mm acceptance coverage`) y `4014d4f7` (`fix(3d): keep derived hydrogens in live frames`). Los informes se actualizan mediante commit documental separado; no se hizo push.
 
 Prueba manual pendiente en CachyOS desde la raíz del repo: `QT_QPA_PLATFORM=xcb PYTHONPATH=src ./.venv/bin/python -m chemuson`. Ejecutar ambos recorridos de aceptación y confirmar visualmente el renderizado y el cierre limpio; esta instrucción no constituye evidencia de que se haya ejecutado aquí.

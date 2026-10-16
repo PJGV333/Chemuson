@@ -57,7 +57,6 @@ En la UI, comprueba que el dihedro llegue a 60°, activa MMFF94 Live MM, observa
 
 ## Pendiente explícito
 
-- Pruebas negativas dedicadas del constructor 3D: endpoint inexistente, enlace duplicado y rechazo de valencia incompatible.
 - Repetir manualmente el cierre gráfico; el intento posterior del agente quedó bloqueado y no debe reintentarse mediante otra herramienta.
 - Smoke gráfico de etano y benceno.
 - No se ejecutó la suite completa por el SIGSEGV de baseline conocido.
@@ -102,9 +101,15 @@ En la ruta de importación probada, benceno está representado como Kekulé alte
 
 Live MM ejecutó MMFF94, MMFF94s y UFF sobre butano: cada flujo emitió 40 snapshots (pasos 2–80), con coordenadas/energía progresivas y átomo fijado. Energías del primer al último frame en esa corrida: MMFF94 3917.374218→−2.605608; MMFF94s 3917.374218→−2.605608; UFF 1154.252171→5.212458 kcal/mol. El test del worker verifica snapshots distintos, finitud, paso/energía, restricción del átomo y resultado terminal.
 
+### Seguimiento: continuidad de hidrógenos derivados
+
+La revisión de los callbacks de relajación detectó que las escenas de Live MM reconstruían cada frame sin los metadatos de H derivados. Se corrigió el worker/backend para incluir y conservar posiciones y enlaces de esos H en cada frame NDJSON; las vistas previas de movimiento y las restricciones geométricas ahora trasladan cada H con su átomo documental padre. Pruebas headless verifican que todas las escenas de butano en MMFF94/MMFF94s/UFF conserven 14 átomos y 13 enlaces, y que el preview de movimiento mantenga H unido. Los H siguen siendo metadata efímera, fuera de `MolGraph` y del archivo persistido.
+
+Tras cambios de topología, los H previos no se reutilizan porque su valencia/adjacencia puede quedar obsoleta; reaparecen al generar o relajar la geometría con RDKit. No se verificó visualmente OpenGL en esta actualización.
+
 ### 5. Rendimiento observado
 
-Una corrida de conformer RDKit con proceso aislado midió 0.164–0.239 s por molécula para estos casos pequeños; construir `SceneMolecule3D` midió 0.000067–0.000106 s. Esto apunta a generación/proceso RDKit, no a ensamblaje de escena, como el costo dominante de esta muestra. No se midieron FPS, interacción OpenGL ni moléculas grandes; no se aplicaron optimizaciones de renderizado sin esa evidencia.
+Una corrida de conformer RDKit con proceso aislado midió 0.164–0.239 s por molécula para estos casos pequeños; construir `SceneMolecule3D` midió 0.000067–0.000106 s. Esto apunta a generación/proceso RDKit, no a ensamblaje de escena, como el costo dominante de esta muestra. No se midieron FPS, interacción OpenGL, costo adicional de serializar H en frames ni moléculas grandes; no se aplicaron optimizaciones de renderizado sin esa evidencia.
 
 ### 6. SIGSEGV y cierre
 
@@ -112,10 +117,11 @@ El shard `tests/test_gui_async_worker_shutdown.py` pasó **2 tests** en modo Qt 
 
 ### 7. Validaciones, limitaciones y pasos para CachyOS
 
-- Suite focalizada de viewport, geometría, persistencia, comandos, Live MM, pestañas y shutdown: **100 passed in 51.15s**; no equivale a la suite completa.
-- Tests arquitectónicos: 280 passed; `compileall`: exit 0; Ruff scoped a los archivos Python modificados: All checks passed; `git diff --check`: exit 0.
+- Suite focalizada de viewport, geometría, persistencia, comandos, Live MM, pestañas y shutdown: **102 passed in 43.76s**; no equivale a la suite completa.
+- Tests arquitectónicos: **280 passed in 21.62s**.
+- `compileall`: exit 0; Ruff scoped a los archivos Python modificados: All checks passed; `git diff --check`: exit 0.
 - Ambos `openspec validate ... --strict` indicaron `Change valid`. El CLI emitió avisos de formato `rules` en artefactos y los ignoró; no se modificaron retrospectivamente.
 - Siguen abiertos: demostración gráfica completa y cierre limpio Qt/SIP; pulido visual/viewport; suite monolítica; preservación de geometría quiral; flags aromáticos explícitos en la ruta de importación probada; recorridos manuales completos de guardado/pestañas.
 - Prueba manual mínima en CachyOS, desde la raíz del repositorio y con dependencias instaladas: `QT_QPA_PLATFORM=xcb PYTHONPATH=src ./.venv/bin/python -m chemuson`. Después, verifica los dos recorridos, guardar/reabrir, cambio de pestañas, Live MM y cierre limpio. Estas comprobaciones manuales no se consideran realizadas por esta ejecución.
 
-Commits locales de código y tests: `58383965` (`fix(3d): reject invalid molecular builder edits`) y `1b7fb1ec` (`test(3d): add chemistry and live-mm acceptance coverage`). Este addendum OpenSpec se registra en un commit documental separado. No se publica la rama; el estado final de commits/worktree se verifica tras esa operación.
+Commits locales de código/tests: `58383965` (`fix(3d): reject invalid molecular builder edits`), `1b7fb1ec` (`test(3d): add chemistry and live-mm acceptance coverage`) y `4014d4f7` (`fix(3d): keep derived hydrogens in live frames`). Esta actualización de OpenSpec se registra en un commit documental separado. No se publica la rama.
