@@ -2480,7 +2480,10 @@ class CanvasTextMixin:
             uy = dy / length
             extent_start = self._label_projection_extent_for_atom(bond.a1_id, ux, uy)
             extent_end = self._label_projection_extent_for_atom(bond.a2_id, -ux, -uy)
-            if bond.style == BondStyle.WEDGE:
+            clearance_ratio = self.drawing_style.label_clearance_ratio
+            if clearance_ratio is not None:
+                clearance = max(0.0, float(clearance_ratio)) * length
+            elif bond.style == BondStyle.WEDGE:
                 clearance = 0.85
             else:
                 pen_width = max(0.0, float(item.pen().widthF()))
@@ -2499,6 +2502,9 @@ class CanvasTextMixin:
                     length,
                     extent_start,
                     extent_end,
+                    visible_gap_override=(
+                        clearance if clearance_ratio is not None else None
+                    ),
                 )
             item.set_label_shrink(shrink_start, shrink_end)
             item.update_positions(atom1, atom2)
@@ -2548,12 +2554,18 @@ class CanvasTextMixin:
         length: float,
         extent_start: float | None,
         extent_end: float | None,
+        *,
+        visible_gap_override: float | None = None,
     ) -> tuple[float, float]:
         """Move terminal hash marks toward labels while preserving a visible gap."""
         count = max(1, int(item._style.hash_count))
         half_interval_fraction = 0.5 / count
         hash_stroke = max(0.0, float(item.pen().widthF()))
-        visible_gap = hash_stroke * 0.5 + 1.5
+        visible_gap = (
+            max(0.0, float(visible_gap_override))
+            if visible_gap_override is not None
+            else hash_stroke * 0.5 + 1.5
+        )
         start_fixed = max(0.0, float(item._endpoint_trim_start))
         end_fixed = max(0.0, float(item._endpoint_trim_end))
         start_target = None if extent_start is None else extent_start + visible_gap
@@ -2597,7 +2609,11 @@ class CanvasTextMixin:
         extent = self._label_projection_extent_for_atom(atom_id, ux, uy)
         if extent is None:
             return 0.0
-        clearance = max(1.5, self.drawing_style.stroke_px * 0.5 + 0.8)
+        clearance_ratio = self.drawing_style.label_clearance_ratio
+        if clearance_ratio is None:
+            clearance = max(1.5, self.drawing_style.stroke_px * 0.5 + 0.8)
+        else:
+            clearance = max(0.0, float(clearance_ratio)) * self._local_bond_length(atom_id)
         return max(0.0, extent + clearance)
 
     def _apply_text_settings(self, item: TextAnnotationItem, property_name: str = "all") -> None:

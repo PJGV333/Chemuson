@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-10-16
+goal: Provide an isolated development GUI to calibrate ChemUSON production depiction and export reproducible owner-review evidence without changing production defaults or chemical data.

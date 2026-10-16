@@ -3,7 +3,7 @@
 ## Purpose
 Provide an isolated Qt development tool for visual calibration of ChemUSON molecular depiction using the production renderer without modifying chemical data or default production behavior.
 
-## Requirements
+## ADDED Requirements
 
 ### Requirement: Visual lab renders through the production molecular renderer
 The lab SHALL display production `ChemusonCanvas`, `AtomItem`, and `BondItem` render output in its Current and Working panels. It SHALL NOT reproduce bonds as independent decorative lines or call Clean2D automatically. Current and Working SHALL represent independent copies of the same input graph and coordinate layout.

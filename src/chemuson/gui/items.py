@@ -1521,6 +1521,7 @@ class BondItem(QGraphicsPathItem):
         width: float,
         stroke_px: float,
         neighbors: list[WedgeNeighbor],
+        tip_width_ratio: float | None = None,
     ) -> tuple[tuple[float, float], tuple[float, float]]:
         """Adapta la punta: punto agudo o borde corto (trapezoidal)."""
         best: tuple[float, float, float] | None = None
@@ -1541,7 +1542,10 @@ class BondItem(QGraphicsPathItem):
             return (tip_x, tip_y), (tip_x, tip_y)
 
         _, _, nwidth = best
-        tip_half = max(stroke_px * 0.42, min(nwidth * 0.32, width * 0.14))
+        if tip_width_ratio is None:
+            tip_half = max(stroke_px * 0.42, min(nwidth * 0.32, width * 0.14))
+        else:
+            tip_half = width * max(0.0, min(0.5, float(tip_width_ratio))) * 0.5
         tip_back = max(stroke_px * 0.10, min(stroke_px * 0.36, width * 0.06))
         cx = tip_x - ux * tip_back
         cy = tip_y - uy * tip_back
@@ -1990,6 +1994,8 @@ class BondItem(QGraphicsPathItem):
                 path.lineTo(e2x, e2y)
             else:
                 offset = self._style.double_offset_px
+                if effective_order == 3 and self._style.triple_bond_offset_px is not None:
+                    offset = self._style.triple_bond_offset_px
                 if effective_order == 2:
                     if self._symmetric_double:
                         half_offset = offset * 0.5
@@ -2034,7 +2040,12 @@ class BondItem(QGraphicsPathItem):
                 path.moveTo(e1x, e1y)
                 path.lineTo(e2x, e2y)
             else:
-                offset = max(self._style.double_offset_px * stroke_scale, bold_px * 0.9)
+                if self._style.bold_double_offset_px is None:
+                    offset = max(self._style.double_offset_px * stroke_scale, bold_px * 0.9)
+                else:
+                    offset = self._style.bold_double_offset_px * stroke_scale
+                if effective_order == 3 and self._style.triple_bond_offset_px is not None:
+                    offset = self._style.triple_bond_offset_px * stroke_scale
                 if effective_order == 2:
                     path.moveTo(e1x, e1y)
                     path.lineTo(e2x, e2y)
@@ -2248,6 +2259,7 @@ class BondItem(QGraphicsPathItem):
                 width,
                 stroke_px,
                 self._wedge_join_start,
+                self._style.wedge_tip_width_ratio,
             )
             if wedge_trim_start <= 1e-6 and self._style.cap_style == Qt.PenCapStyle.RoundCap:
                 tip_overlap = min(stroke_px * 0.18, width * 0.035)
@@ -2569,7 +2581,10 @@ class BondItem(QGraphicsPathItem):
                 self._style.hash_max_px * stroke_scale,
             )
             mark_length = math.hypot(e2x - e1x, e2y - e1y)
-            terminal_shift = mark_length / max(steps, 1) * 0.25
+            terminal_shift_ratio = self._style.hashed_terminal_shift_ratio
+            if terminal_shift_ratio is None:
+                terminal_shift_ratio = 0.25
+            terminal_shift = mark_length / max(steps, 1) * terminal_shift_ratio
             shift_start = (
                 self._hashed_double_join_start
                 and self._label_shrink_start <= 1e-6

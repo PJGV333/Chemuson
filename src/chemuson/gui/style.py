@@ -23,6 +23,12 @@ class DrawingStyle:
     hash_stroke_px: float
     cap_style: Qt.PenCapStyle
     join_style: Qt.PenJoinStyle
+    # Experimental-only overrides. None preserves the historical renderer path.
+    triple_bond_offset_px: float | None = None
+    bold_double_offset_px: float | None = None
+    wedge_tip_width_ratio: float | None = None
+    hashed_terminal_shift_ratio: float | None = None
+    label_clearance_ratio: float | None = None
 
 
 # Preset inspirado en el estilo visual de ChemDoodle.
