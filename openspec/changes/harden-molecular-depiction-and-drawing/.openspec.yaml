@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-10-15
+goal: Improve Clean2D ring safety, wedge-to-label and branching geometry, canvas-edge drawing, and ring/Haworth drawing ergonomics without changing molecular identity or protected branches.
