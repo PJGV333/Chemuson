@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 )
 
 from chemuson.core.model import ChemState, MolGraph
+from chemuson.geometry3d.model import CoordinateSet3D
 from chemuson.gui.composite_diagram_item import CompositeDiagramItem
 from chemuson.gui.items import (
     AromaticCircleItem,
@@ -74,6 +75,7 @@ class ChemusonCanvas(
     """Lienzo principal para dibujar moleculas en paginas."""
 
     selection_changed = pyqtSignal(int, int, int, dict)
+    geometry3d_changed = pyqtSignal(object, int)
 
     def __init__(self, parent=None) -> None:
         """Inicializa la instancia.
@@ -99,6 +101,9 @@ class ChemusonCanvas(
         self.paper_width = DEFAULT_PAPER_WIDTH
         self.paper_height = DEFAULT_PAPER_HEIGHT
         self.model = MolGraph()
+        self.coordinate_set_3d: CoordinateSet3D | None = None
+        self.geometry3d_revision = 0
+        self.geometry3d_load_error: str | None = None
         self.state = ChemState()
         # Preferencias de nomenclatura avanzada (fase 4/6) por documento.
         self.name_advanced_enabled = True
@@ -266,6 +271,12 @@ class ChemusonCanvas(
     def graph(self) -> MolGraph:
         """Alias for model for compatibility."""
         return self.model
+
+    def set_geometry3d_coordinates(self, coordinates: CoordinateSet3D | None) -> None:
+        """Actualiza la conformación 3D de este documento y notifica su revisión."""
+        self.coordinate_set_3d = coordinates
+        self.geometry3d_revision += 1
+        self.geometry3d_changed.emit(coordinates, self.geometry3d_revision)
 
     def _setup_view(self) -> None:
         """Método auxiliar para  setup view.
