@@ -885,22 +885,6 @@ QFrame#app_bar QLabel {{
     background: transparent;
 }}
 
-#appBrandName {{
-    color: {c('text1')};
-    font-size: 14px;
-    font-weight: 700;
-}}
-
-#appVersionPill {{
-    color: {c('text3')};
-    font-size: 10px;
-    font-weight: 600;
-    border: 1px solid {c('border')};
-    border-radius: 5px;
-    padding: 1px 5px;
-    background: transparent;
-}}
-
 /* Pestañas de documento (espejo del QTabWidget) */
 QTabBar#docTabs {{
     background: transparent;

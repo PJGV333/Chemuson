@@ -503,9 +503,8 @@ def test_rail_and_flyout_metrics_match_mockup():
 # ---------------------------------------------------------------------------
 
 
-def test_shell_has_compact_menubar_and_visible_main_toolbar(isolated_shell_settings):
-    """La barra de acciones principal está visible; el menubar tradicional
-    es compacto y la hamburguesa/Alt siguen accesibles."""
+def test_shell_has_compact_menubar_and_hidden_main_toolbar_by_default(isolated_shell_settings):
+    """El menú tradicional y la AppBar forman las dos franjas por defecto."""
     from PyQt6.QtWidgets import QToolBar
 
     from chemuson.gui.main_window import ChemusonWindow
@@ -518,9 +517,10 @@ def test_shell_has_compact_menubar_and_visible_main_toolbar(isolated_shell_setti
     assert win.menuBar().height() <= 36
     # Los 6 menús superiores siguen en el menubar.
     assert len([a for a in win.menuBar().actions() if a.menu() is not None]) == 6
-    visible = [t for t in win.findChildren(QToolBar) if t.isVisible()]
-    assert visible == [win.main_toolbar]
-    assert win.main_toolbar.height() <= 40
+    visible = [toolbar for toolbar in win.findChildren(QToolBar) if toolbar.isVisible()]
+    assert visible == []
+    assert win.main_toolbar.isHidden()
+    assert not win.action_show_main_toolbar.isChecked()
     assert win.action_show_main_toolbar in win.view_menu.actions()
     assert win.app_bar.menu_button.isVisible()
     assert win.tool_rail.isVisible()

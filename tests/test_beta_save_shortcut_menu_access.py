@@ -498,7 +498,7 @@ def test_save_then_theme_preference_save_does_not_reset_menu_mode(window) -> Non
     assert not window.menuBar().isVisible()
     preferences = load_ui_preferences(window._settings)
     assert preferences.show_menu_bar is False
-    assert preferences.show_main_toolbar is True
+    assert preferences.show_main_toolbar is False
 
 
 def test_close_icons_are_visible_when_clean_dirty_new_and_rethemed(window) -> None:
@@ -569,8 +569,11 @@ def test_toolbar_toggle_is_native_grouped_persistent_and_independent(window) -> 
     assert menu_actions.count(action) == 1
     assert window.action_show_menu_bar.isChecked()
     assert window.menuBar().isVisible()
+    assert not action.isChecked() and not toolbar.isVisible()
+    action.trigger()
+    QApplication.processEvents()
     assert action.isChecked() and toolbar.isVisible()
-    # La barra superior es la pequeña de tres botones: Nuevo, Abrir, Guardar.
+    # La barra opcional conserva Nuevo/Abrir/Guardar.
     assert [a for a in toolbar.actions() if not a.isSeparator()] == [
         window.action_new,
         window.action_open,
@@ -592,11 +595,12 @@ def test_toolbar_toggle_is_native_grouped_persistent_and_independent(window) -> 
     assert window.tool_rail.isVisible()
     assert window.side_panel.isHidden()
 
-    # La acción antigua sólo cambia qué botones auxiliares contiene la barra.
+    # La acción auxiliar agrega sólo copiar/zoom (Pegar está en la AppBar).
     assert not window.action_show_main_toolbar_aux.isChecked()
     assert window.action_copy not in toolbar.actions()
     window.action_show_main_toolbar_aux.trigger()
     assert window.action_copy in toolbar.actions()
+    assert window.action_paste not in toolbar.actions()
     assert toolbar.isVisible()
 
     action.trigger()
@@ -647,6 +651,7 @@ def test_toolbar_toggle_is_native_grouped_persistent_and_independent(window) -> 
 
 
 def test_main_toolbar_keeps_layout_in_both_themes_and_small_windows(window) -> None:
+    window.action_show_main_toolbar.trigger()
     assert window.main_toolbar.isVisible()
     for theme in ("light", "dark"):
         window.current_theme = theme
@@ -665,6 +670,8 @@ def test_main_toolbar_keeps_layout_in_both_themes_and_small_windows(window) -> N
 
 
 def test_save_undo_redo_shortcuts_survive_hiding_main_toolbar(window, tmp_path) -> None:
+    if not window.main_toolbar.isVisible():
+        window.action_show_main_toolbar.trigger()
     canvas = window.canvas
     path = tmp_path / "shortcuts.cmsn"
     _save_path(window, canvas, path)

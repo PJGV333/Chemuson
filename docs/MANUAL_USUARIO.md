@@ -205,7 +205,7 @@ Los paneles laterales se muestran u ocultan desde **Ver** (back-compatibilidad).
 | **Zoom +** | `Ctrl++` estándar | Aumenta la escala del lienzo. |
 | **Zoom -** | `Ctrl+-` estándar | Reduce la escala. |
 | **Zoom 100%** | `Ctrl+0` | Restablece el zoom. |
-| **Mostrar copiar/pegar/zoom en barra superior** | - | Añade o retira esos botones auxiliares de la barra superior. |
+| **Mostrar copiar/zoom en barra de herramientas** | - | Añade o retira esos botones auxiliares; Nuevo/Abrir/Guardar/Pegar están en la AppBar. |
 | **Reglas** | - | Muestra u oculta reglas horizontal y vertical. |
 | **Cuadrícula** | - | Muestra u oculta la cuadrícula del lienzo. |
 

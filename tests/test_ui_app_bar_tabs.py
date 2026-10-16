@@ -39,7 +39,6 @@ APP_BAR_SVG_NAMES = (
     "moon",
     "sun",
     "sliders",
-    "flask",
     "x",
     "doc",
 )
@@ -63,16 +62,6 @@ def _make_action_window():
     win.show()
     QApplication.processEvents()
     return win
-
-
-def _pixmap_signature(pixmap) -> list[int]:
-    """Firma de píxeles para comparar QPixmaps (PyQt6 no define ``==``)."""
-    image = pixmap.toImage()
-    w, h = image.width(), image.height()
-    return [
-        image.pixelColor(x, y).rgba()
-        for x, y in ((0, 0), (w // 2, h // 2), (max(w - 1, 0), max(h - 1, 0)), (3, 8), (w - 4, 5))
-    ]
 
 
 # ---------------------------------------------------------------------------
@@ -121,6 +110,13 @@ class _FakeActions:
         from PyQt6.QtWidgets import QApplication
 
         app = QApplication.instance()
+        self.new = QAction("Nuevo", app)
+        self.new.setShortcut("Ctrl+N")
+        self.open = QAction("Abrir", app)
+        self.open.setShortcut("Ctrl+O")
+        self.save = QAction("Guardar", app)
+        self.save.setShortcut("Ctrl+S")
+        self.paste = QAction("Pegar", app)
         self.undo = QAction("Deshacer", app)
         self.undo.setShortcut("Ctrl+Z")
         self.redo = QAction("Rehacer", app)
@@ -130,45 +126,47 @@ class _FakeActions:
         self.theme.setCheckable(True)
 
 
+def _make_app_bar(actions: _FakeActions) -> AppBar:
+    return AppBar(
+        new_action=actions.new,
+        open_action=actions.open,
+        save_action=actions.save,
+        paste_action=actions.paste,
+        undo_action=actions.undo,
+        redo_action=actions.redo,
+        preferences_action=actions.prefs,
+        theme_action=actions.theme,
+    )
+
+
 class TestAppBarUnit:
     def test_structure_and_fixed_height(self) -> None:
         app = _FakeActions()
-        bar = AppBar(
-            version="0.4",
-            undo_action=app.undo,
-            redo_action=app.redo,
-            preferences_action=app.prefs,
-            theme_action=app.theme,
-        )
+        bar = _make_app_bar(app)
         assert bar.height() == 54 or bar.minimumHeight() == METRICS["appbarH"]
         assert bar.tab_bar is not None
         assert isinstance(bar.search_pill, SearchPill)
-        assert not bar.brand_label.pixmap().isNull()
-        assert bar.version_label.text() == "0.4"
+        assert not hasattr(bar, "brand_label")
+        assert not hasattr(bar, "brand_name")
+        assert not hasattr(bar, "version_label")
+        assert set(bar.file_action_buttons) == {"new", "open", "save", "paste"}
+        assert bar.tab_bar.new_button.isHidden()
 
     def test_buttons_hold_existing_qactions(self) -> None:
         app = _FakeActions()
-        bar = AppBar(
-            version="0.4",
-            undo_action=app.undo,
-            redo_action=app.redo,
-            preferences_action=app.prefs,
-            theme_action=app.theme,
-        )
+        bar = _make_app_bar(app)
         assert bar.undo_button.defaultAction() is app.undo
         assert bar.redo_button.defaultAction() is app.redo
         assert bar.preferences_button.defaultAction() is app.prefs
         assert bar.theme_button.defaultAction() is app.theme
+        assert bar.file_action_buttons["new"].defaultAction() is app.new
+        assert bar.file_action_buttons["open"].defaultAction() is app.open
+        assert bar.file_action_buttons["save"].defaultAction() is app.save
+        assert bar.file_action_buttons["paste"].defaultAction() is app.paste
 
     def test_search_pill_is_entry_to_command_palette(self) -> None:
         app = _FakeActions()
-        bar = AppBar(
-            version="0.4",
-            undo_action=app.undo,
-            redo_action=app.redo,
-            preferences_action=app.prefs,
-            theme_action=app.theme,
-        )
+        bar = _make_app_bar(app)
         # La píldora no registra QShortcut/atajo alguno: abre la command
         # palette por la misma ``QAction`` de apertura (Ctrl+P) que la ventana
         # conecta a ``searchActivated`` (un único camino de apertura).
@@ -187,21 +185,14 @@ class TestAppBarUnit:
 
     def test_theme_refresh_recolors_icons(self) -> None:
         app = _FakeActions()
-        bar = AppBar(
-            version="0.4",
-            undo_action=app.undo,
-            redo_action=app.redo,
-            preferences_action=app.prefs,
-            theme_action=app.theme,
-        )
+        bar = _make_app_bar(app)
         bar.refresh_icons("light")
         light_theme_icon = bar.theme_button.icon()
         assert not light_theme_icon.isNull()
         bar.refresh_icons("dark")
         dark_theme_icon = bar.theme_button.icon()
         assert not dark_theme_icon.isNull()
-        # El botón de tema cambia de glifo (moon -> sun) y el tinte de la
-        # marca pasa a usar el accent oscuro.
+        # El botón de tema cambia de glifo (moon -> sun) sin cambiar la altura.
         assert light_theme_icon.cacheKey() != dark_theme_icon.cacheKey()
         bar.refresh_icons("light")
         assert bar.theme_button.icon().cacheKey() == light_theme_icon.cacheKey()
@@ -268,15 +259,24 @@ class TestDocumentTabBarUnit:
 # ---------------------------------------------------------------------------
 
 class TestRealWindow:
-    def test_app_bar_mounted_and_main_toolbar_visible_by_default(
+    def test_app_bar_mounted_and_main_toolbar_hidden_by_default(
         self, isolated_shell_settings
     ) -> None:
         win = _make_action_window()
         assert win.app_bar is not None and win.app_bar.isVisibleTo(win)
         assert win.app_bar.minimumHeight() == 54
         assert win.tabs.tabBar().isHidden()
-        assert win.main_toolbar.isVisible()
-        # La barra superior es la pequeña de tres botones.
+        assert not win.main_toolbar.isVisible()
+        assert not win.action_show_main_toolbar.isChecked()
+        assert win.action_show_main_toolbar in win.view_menu.actions()
+        # La AppBar integra cuatro acciones sin repetir controladores.
+        assert win.app_bar.file_action_buttons["new"].defaultAction() is win.action_new
+        assert win.app_bar.file_action_buttons["open"].defaultAction() is win.action_open
+        assert win.app_bar.file_action_buttons["save"].defaultAction() is win.action_save
+        assert win.app_bar.file_action_buttons["paste"].defaultAction() is win.action_paste
+        assert win.app_bar.tab_bar.new_button.isHidden()
+        assert win.main_toolbar.isHidden()
+        # La barra opcional conserva sus tres acciones históricas.
         assert [a for a in win.main_toolbar.actions() if not a.isSeparator()] == [
             win.action_new,
             win.action_open,
@@ -372,12 +372,12 @@ class TestRealWindow:
         assert not win.app_bar.tab_bar._side_button(0).is_dirty_shown()
         assert win.app_bar.tab_bar.current_index() == 0
 
-    def test_new_document_via_plus_button(self) -> None:
+    def test_new_document_via_appbar_action_button(self) -> None:
         win = _make_action_window()
         fired = []
-        # La app bar reutiliza la misma action_new (no un segundo handler).
+        # El botón Nuevo de la AppBar reutiliza la misma QAction.
         win.action_new.triggered.connect(lambda: fired.append(True))
-        win.app_bar.tab_bar.new_button.click()
+        win.app_bar.file_action_buttons["new"].click()
         QApplication.processEvents()
         assert fired == [True]
         assert win.tabs.count() == 2
@@ -439,6 +439,17 @@ class TestRealWindow:
         assert bar.undo_button.defaultAction() is win.action_undo
         assert bar.redo_button.defaultAction() is win.action_redo
         assert bar.preferences_button.defaultAction() is win.action_preferences
+        assert bar.file_action_buttons["new"].defaultAction() is win.action_new
+        assert bar.file_action_buttons["open"].defaultAction() is win.action_open
+        assert bar.file_action_buttons["save"].defaultAction() is win.action_save
+        assert bar.file_action_buttons["paste"].defaultAction() is win.action_paste
+        assert win.action_paste not in win.main_toolbar.actions()
+        edit_menu = next(
+            action.menu()
+            for action in win.menuBar().actions()
+            if action.text() == "Editar"
+        )
+        assert edit_menu.actions().count(win.action_paste) == 1
         # Atajos originales intactos, sin duplicados (estándar de plataforma).
         from PyQt6.QtGui import QKeySequence
 
@@ -471,6 +482,7 @@ class TestRealWindow:
         # ``action_clean_2d_full`` (corrección de UX).
         assert win.action_command_palette.shortcut().toString() == "Ctrl+P"
         assert win.action_clean_2d_full.shortcut().toString() == "Ctrl+K"
+        assert win.action_save.shortcut().toString() == "Ctrl+S"
 
     def test_theme_cycle_light_dark_light(self) -> None:
         win = _make_action_window()
@@ -481,18 +493,15 @@ class TestRealWindow:
         QApplication.processEvents()
         bar = win.app_bar
         light_theme_icon = bar.theme_button.icon().cacheKey()
-        light_brand = bar.brand_label.pixmap().copy()
         win.toggle_theme()
         QApplication.processEvents()
         assert win.action_theme_toggle.isChecked()
         assert bar.theme_button.icon().cacheKey() != light_theme_icon
-        assert not bar.brand_label.pixmap().isNull()
         win.toggle_theme()
         QApplication.processEvents()
         assert not win.action_theme_toggle.isChecked()
         # Vuelta exacta a claro (caché theme-aware, sin contaminación).
         assert bar.theme_button.icon().cacheKey() == light_theme_icon
-        assert _pixmap_signature(bar.brand_label.pixmap()) == _pixmap_signature(light_brand)
         # La altura no cambia con el tema.
         assert bar.minimumHeight() == 54
 

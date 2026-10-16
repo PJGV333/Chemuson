@@ -1,5 +1,4 @@
-"""Correcciones de shell de la beta: barra de menús tradicional, barra de
-herramientas de tres botones y geometría estable de las pestañas.
+"""Correcciones de shell de la beta: AppBar de dos franjas y pestañas estables.
 
 OpenSpec: ``fix-beta-tab-close-and-toolbar-visibility`` (Fase A de la
 corrección solicitada tras la aceptación visual).
@@ -9,9 +8,8 @@ Cubre:
   Ayuda) es visible por defecto y compacta, reutiliza los mismos ``QMenu`` y
   ``QAction``, puede ocultarse desde Ver conservando el acceso hamburguesa, y
   el default nuevo migra una sola vez sobre preferencias previas;
-- A2: la barra de herramientas superior contiene exclusivamente Nuevo, Abrir
-  y Guardar (mismas QActions), es pequeña/uniforme en ambos temas y la opción
-  de Ver controla sólo esa barra;
+- A2: la barra superior opcional conserva Nuevo/Abrir/Guardar, no aparece por
+  defecto ni duplica Pegar; la opción de Ver controla su visibilidad;
 - A3: pasar de pestaña limpia a modificada no altera la geometría de la
   pestaña ni la posición de la X; el punto dirty sólo se pinta cuando toca y
   el cierre sigue apuntando al documento correcto.
@@ -78,7 +76,7 @@ def _open_window(tmp_path, monkeypatch, values: dict[str, object] | None = None)
 
 @pytest.fixture
 def shell(tmp_path, monkeypatch):
-    """Ventana real con preferencias de beta recién creadas."""
+    """Ventana real con menú visible y toolbar opcional oculta por defecto."""
     win = _open_window(tmp_path, monkeypatch)
     yield win
     for index in range(win.tabs.count()):
@@ -214,6 +212,39 @@ def test_menu_bar_reuses_the_same_menus_and_actions_without_duplicates(shell) ->
     assert not duplicated
 
 
+def test_default_header_has_one_compact_action_row_and_shared_file_actions(shell, tmp_path) -> None:
+    from PyQt6.QtWidgets import QLabel
+
+    for width in (1440, 980, 900):
+        shell.resize(width, 600)
+        QApplication.processEvents()
+        bar = shell.app_bar
+        assert shell.menuBar().isVisible()
+        assert bar.height() == 54
+        assert shell.main_toolbar.isHidden()
+        assert not shell.action_show_main_toolbar.isChecked()
+        assert not bar.findChild(QLabel, "appBrandName")
+        assert not bar.findChild(QLabel, "appVersionPill")
+        assert bar.tab_bar.new_button.isHidden()
+        assert bar.file_action_buttons["new"].defaultAction() is shell.action_new
+        assert bar.file_action_buttons["open"].defaultAction() is shell.action_open
+        assert bar.file_action_buttons["save"].defaultAction() is shell.action_save
+        assert bar.file_action_buttons["paste"].defaultAction() is shell.action_paste
+        for button in bar.file_action_buttons.values():
+            assert button.isVisible()
+            assert not button.icon().isNull()
+            assert bar.file_action_group.rect().contains(button.geometry())
+        edit_menu = next(menu for menu in _top_menus(shell) if menu.title() == "Editar")
+        assert edit_menu.actions().count(shell.action_paste) == 1
+        assert shell.action_paste not in shell.main_toolbar.actions()
+        if width == 1440:
+            shell.resize(1440, 900)
+            QApplication.processEvents()
+            screenshot = tmp_path / "compact-header-light-1440x900.png"
+            assert shell.grab().save(str(screenshot))
+            assert screenshot.stat().st_size > 0
+
+
 @pytest.mark.parametrize("theme", ["light", "dark"])
 @pytest.mark.parametrize("size", [(1440, 900), (980, 600), (900, 560)])
 def test_menu_bar_stays_compact_and_usable_across_themes_and_sizes(
@@ -269,16 +300,17 @@ def test_new_menu_bar_default_migrates_once_over_legacy_preferences(
     """Un INI previo a la beta con el modo compacto persistido migra una vez."""
     legacy = {
         "ui/theme": "dark",
-        "ui/show_menu_bar": "false",
-        "ui/show_main_toolbar": "false",
+        "ui/shell_defaults_version": 1,
+        "ui/show_menu_bar": False,
+        "ui/show_main_toolbar": True,
     }
     win = _open_window(tmp_path, monkeypatch, legacy)
     try:
         assert win.current_theme == "dark"
         assert win.menuBar().isVisible()
-        assert win.main_toolbar.isVisible()
+        assert not win.main_toolbar.isVisible()
         assert win.action_show_menu_bar.isChecked()
-        assert win.action_show_main_toolbar.isChecked()
+        assert not win.action_show_main_toolbar.isChecked()
 
         # Una elección explícita posterior se respeta (y sella la migración).
         win.action_show_menu_bar.trigger()
@@ -286,7 +318,7 @@ def test_new_menu_bar_default_migrates_once_over_legacy_preferences(
         QApplication.processEvents()
         preferences = load_ui_preferences(win._settings)
         assert preferences.show_menu_bar is False
-        assert preferences.show_main_toolbar is False
+        assert preferences.show_main_toolbar is True
         assert (
             win._settings.value("ui/shell_defaults_version") == SHELL_DEFAULTS_VERSION
         )
@@ -298,9 +330,9 @@ def test_new_menu_bar_default_migrates_once_over_legacy_preferences(
     QApplication.processEvents()
     try:
         assert not reopened.menuBar().isVisible()
-        assert not reopened.main_toolbar.isVisible()
+        assert reopened.main_toolbar.isVisible()
         assert not reopened.action_show_menu_bar.isChecked()
-        assert not reopened.action_show_main_toolbar.isChecked()
+        assert reopened.action_show_main_toolbar.isChecked()
     finally:
         _close_window(reopened)
 
@@ -351,6 +383,8 @@ def test_main_toolbar_exposes_only_new_open_save_with_existing_actions(shell) ->
 @pytest.mark.parametrize("theme", ["light", "dark"])
 @pytest.mark.parametrize("size", [(1440, 900), (980, 600), (900, 560)])
 def test_main_toolbar_is_small_uniform_and_theme_stable(shell, theme, size) -> None:
+    shell.action_show_main_toolbar.trigger()
+    QApplication.processEvents()
     shell.current_theme = theme
     shell._apply_theme()
     shell.resize(*size)
@@ -382,6 +416,7 @@ def test_main_toolbar_is_small_uniform_and_theme_stable(shell, theme, size) -> N
 
 def test_toolbar_toggle_controls_only_the_three_button_bar(shell) -> None:
     toolbar = shell.main_toolbar
+    assert not toolbar.isVisible()
     before = (
         shell.menuBar().isVisible(),
         shell.app_bar.isVisible(),
@@ -390,35 +425,36 @@ def test_toolbar_toggle_controls_only_the_three_button_bar(shell) -> None:
     )
     shell.action_show_main_toolbar.trigger()
     QApplication.processEvents()
-    assert not toolbar.isVisible()
-    assert not shell.action_show_main_toolbar.isChecked()
+    assert toolbar.isVisible()
+    assert shell.action_show_main_toolbar.isChecked()
     assert (
         shell.menuBar().isVisible(),
         shell.app_bar.isVisible(),
         shell.tool_rail.isVisible(),
         shell.side_panel.isHidden(),
     ) == before
-    assert load_ui_preferences(shell._settings).show_main_toolbar is False
+    assert load_ui_preferences(shell._settings).show_main_toolbar is True
 
     shell.action_show_main_toolbar.trigger()
     QApplication.processEvents()
-    assert toolbar.isVisible()
+    assert not toolbar.isVisible()
     assert [a for a in toolbar.actions() if not a.isSeparator()] == [
         shell.action_new,
         shell.action_open,
         shell.action_save,
     ]
-    assert load_ui_preferences(shell._settings).show_main_toolbar is True
+    assert load_ui_preferences(shell._settings).show_main_toolbar is False
 
 
 def test_toolbar_content_and_visibility_survive_reopening(shell) -> None:
     shell.action_show_main_toolbar.trigger()
     QApplication.processEvents()
+    assert shell.main_toolbar.isVisible()
     second = ChemusonWindow()
     second.show()
     QApplication.processEvents()
     try:
-        assert not second.main_toolbar.isVisible()
+        assert second.main_toolbar.isVisible()
         assert [a for a in second.main_toolbar.actions() if not a.isSeparator()] == [
             second.action_new,
             second.action_open,

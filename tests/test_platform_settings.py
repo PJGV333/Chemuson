@@ -195,12 +195,12 @@ def test_ui_preferences_roundtrip_and_normalize() -> None:
     ) == UiPreferences(theme="dark", show_menu_bar=True)
 
     # Con el marcador de defaults ya aplicado se respeta lo persistido.
-    migrated = {"ui/shell_defaults_version": 1}
+    migrated = {"ui/shell_defaults_version": SHELL_DEFAULTS_VERSION}
     assert load_ui_preferences(
         FakeSettings({**migrated, "ui/show_menu_bar": "yes", "ui/show_main_toolbar": "0"})
     ) == UiPreferences(show_menu_bar=True, show_main_toolbar=False)
 
-    # Valores ausentes resuelven a light con ambas barras visibles.
+    # Valores ausentes resuelven al menú visible y al toolbar opcional oculto.
     assert load_ui_preferences(FakeSettings({"ui/theme": "neon"})) == UiPreferences(theme="light")
     assert load_ui_preferences(FakeSettings({})) == UiPreferences(theme="light")
     assert load_ui_preferences(
@@ -252,22 +252,22 @@ def test_ui_preferences_roundtrip_and_normalize() -> None:
 
 
 def test_ui_shell_defaults_migrate_once_and_then_respect_user_choice() -> None:
-    """Los defaults nuevos (ambas barras visibles) se aplican una sola vez.
+    """El default nuevo oculta el toolbar y conserva visible el menú.
 
-    Un INI previo a la beta puede tener ``ui/show_menu_bar=false`` escrito por
-    el default anterior; es indistinguible de una elección explícita, así que
-    el marcador ``ui/shell_defaults_version`` gobierna la migración.
+    Un INI anterior puede contener ``ui/show_main_toolbar=true`` por defaults
+    previos; el marcador ``ui/shell_defaults_version`` gobierna esta migración
+    de una sola vez.
     """
     legacy = FakeSettings(
-        {"ui/theme": "dark", "ui/show_menu_bar": "0", "ui/show_main_toolbar": "0"}
+        {"ui/theme": "dark", "ui/show_menu_bar": "0", "ui/show_main_toolbar": "1"}
     )
     assert load_ui_preferences(legacy) == UiPreferences(
-        theme="dark", show_menu_bar=True, show_main_toolbar=True
+        theme="dark", show_menu_bar=True, show_main_toolbar=False
     )
 
     # Sin guardado previo la migración es idempotente.
     assert load_ui_preferences(legacy) == UiPreferences(
-        theme="dark", show_menu_bar=True, show_main_toolbar=True
+        theme="dark", show_menu_bar=True, show_main_toolbar=False
     )
 
     save_ui_preferences(

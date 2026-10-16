@@ -1,14 +1,11 @@
 """Barra de aplicación de Chemuson (Fase 3 del plan de modernización).
 
-``AppBar`` es el shell superior nativo (QtWidgets + QSS de tokens + iconos
-SVG del ``IconProvider``): marca (``flask`` + nombre + versión),
-``DocumentTabBar`` (espejo del ``QTabWidget`` de documentos), botón ``+``,
-píldora de búsqueda (``SearchPill``) que abre la ``CommandPalette`` (Fase 6;
-el badge ``Ctrl P`` se muestra y su clic comparten el mismo camino de apertura
-que el atajo global ``Ctrl+P``, ``action_command_palette``) y
-botones undo/redo/tema/ajustes que **sostienen las QAction existentes** de
-la ventana (``setDefaultAction`` → icono, tooltip con atajo y estado
-habilitado reales; sin duplicar handlers ni shortcuts).
+``AppBar`` es la franja compacta de documentos y acciones: QActions existentes
+para Nuevo/Abrir/Guardar/Pegar, ``DocumentTabBar`` (espejo del ``QTabWidget``
+de documentos; sin botón Nuevo duplicado en la ventana real), píldora de
+búsqueda (``SearchPill``) que abre la ``CommandPalette`` y controles
+undo/redo/tema/ajustes que sostienen las QActions existentes. No presenta
+marca, icono de matraz ni versión.
 
 Lenguaje visual del spike aprobado
 (``docs/ui-modernization/pyqt6-spike``): altura 54 px (``METRICS``),
@@ -38,7 +35,6 @@ __all__ = [
     "SearchPill",
 ]
 
-_BRAND_ICON_SIZE = 24
 _BAR_BUTTON_SIZE = 32
 _BAR_ICON_SIZE = 18
 _SEARCH_ICON_SIZE = 14
@@ -127,17 +123,14 @@ class SearchPill(QFrame):
 
 
 class AppBar(QFrame):
-    """Barra de aplicación: marca, pestañas de documento y controles.
+    """Franja compacta con documentos y acciones de archivo existentes.
 
-    No crea QAction ni atajos: recibe los existentes de la ventana
-    (``undo_action``, ``redo_action``, ``preferences_action``,
-    ``theme_action``) y los muestra mediante ``QToolButton``.
+    No crea QAction ni atajos: recibe las QAction originales de la ventana y
+    las muestra mediante ``QToolButton``.
     """
 
     #: Clic en una pestaña del espejo (la ventana activa esa pestaña).
     tabActivated = pyqtSignal(int)
-    #: Botón ``+`` (la ventana dispara la QAction "nuevo" existente).
-    newDocumentRequested = pyqtSignal()
     #: Botón de cierre de una pestaña (la ventana usa el flujo existente).
     closeRequested = pyqtSignal(int)
     #: Reordenamiento por drag en el espejo (la ventana mueve en el
@@ -152,7 +145,10 @@ class AppBar(QFrame):
     def __init__(
         self,
         *,
-        version: str,
+        new_action: QAction,
+        open_action: QAction,
+        save_action: QAction,
+        paste_action: QAction,
         undo_action: QAction,
         redo_action: QAction,
         preferences_action: QAction,
@@ -182,23 +178,42 @@ class AppBar(QFrame):
         self.menu_button.clicked.connect(self.menuRequested)
         layout.addWidget(self.menu_button)
 
-        # --- Marca -------------------------------------------------------
-        self.brand_label = QLabel(self)
-        layout.addWidget(self.brand_label)
-        self.brand_name = QLabel("ChemUSON", self)
-        self.brand_name.setObjectName("appBrandName")
-        layout.addWidget(self.brand_name)
-        self.version_label = QLabel(version or "", self)
-        self.version_label.setObjectName("appVersionPill")
-        layout.addWidget(self.version_label)
+        # --- Acciones compactas de archivo -------------------------------
+        self.file_action_group = QFrame(self)
+        self.file_action_group.setObjectName("appBarFileActions")
+        file_layout = QHBoxLayout(self.file_action_group)
+        file_layout.setContentsMargins(0, 0, 0, 0)
+        file_layout.setSpacing(4)
+        self.file_action_buttons: dict[str, QToolButton] = {}
+        for name, action in (
+            ("new", new_action),
+            ("open", open_action),
+            ("save", save_action),
+            ("paste", paste_action),
+        ):
+            button = QToolButton(self.file_action_group)
+            button.setObjectName(f"appBar{name.title()}Button")
+            button.setProperty("appBarBtn", "true")
+            button.setFixedSize(_BAR_BUTTON_SIZE, _BAR_BUTTON_SIZE)
+            button.setIconSize(QSize(_BAR_ICON_SIZE, _BAR_ICON_SIZE))
+            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+            button.setAccessibleName(action.text())
+            button.setDefaultAction(action)
+            button.setToolTip(_tooltip_from_action(action))
+            self.file_action_buttons[name] = button
+            file_layout.addWidget(button)
+        layout.addWidget(self.file_action_group)
 
-        # --- Pestañas de documento + botón nuevo -------------------------
-        self.tab_bar = DocumentTabBar(self._tint if self._tint else None, self)
+        # --- Pestañas de documento ---------------------------------------
+        self.tab_bar = DocumentTabBar(
+            self._tint if self._tint else None,
+            self,
+            show_new_button=False,
+        )
         self.tab_bar.tabActivated.connect(self.tabActivated)
-        self.tab_bar.newDocumentRequested.connect(self.newDocumentRequested)
         self.tab_bar.closeRequested.connect(self.closeRequested)
         self.tab_bar.tabMoved.connect(self.tabMoved)
-        layout.addWidget(self.tab_bar)
+        layout.addWidget(self.tab_bar, 1)
 
         # --- Controles derechos ------------------------------------------
         self.search_pill = SearchPill(self)
@@ -244,27 +259,23 @@ class AppBar(QFrame):
         layout.addWidget(self.preferences_button)
 
         # Estado inicial (la ventana lo re-aplica con su tema en
-        # ``_apply_theme``; sin esto la marca/pill nacerían sin icono).
+        # ``_apply_theme``; sin esto la pill nacería sin icono).
         self.refresh_icons("light")
 
     # ------------------------------------------------------------------
     # Iconos (theme-aware; el color es parte de la clave de caché)
     # ------------------------------------------------------------------
     def refresh_icons(self, theme_name: str) -> None:
-        """Re-tinta la marca, la pill, el botón de tema y las pestañas.
+        """Re-tinta la pill, el botón de tema y las pestañas.
 
         Los iconos de undo/redo/ajustes son de las QAction (los refresca
         ``refresh_main_toolbar_icons``); aquí se actualizan los propios de
         la barra.
         """
         resolved = "dark" if theme_name == "dark" else "light"
-        accent = self._icons.theme_color(resolved, "accent")
         icon_tint = self._icons.theme_color(resolved, "icon")
         muted_tint = self._icons.theme_color(resolved, "text3")
         self._tint = icon_tint
-        self.brand_label.setPixmap(
-            self._icons.pixmap("flask", accent, _BRAND_ICON_SIZE)
-        )
         self.menu_button.setIcon(
             self._icons.icon("menu", icon_tint, _BAR_ICON_SIZE)
         )

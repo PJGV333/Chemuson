@@ -872,12 +872,17 @@ def test_onboarding_hole_tracks_each_target_zone(win):
 # 7. Onboarding: tarjeta theme-aware (QSS de tokens, sin colores hardcodeados)
 # ---------------------------------------------------------------------------
 def test_visible_application_branding_is_chemuson(win, monkeypatch):
-    from PyQt6.QtWidgets import QTextBrowser
+    from PyQt6.QtWidgets import QLabel, QTextBrowser
 
     from chemuson.gui.dialogs import QuickStartDialog
 
     assert win.windowTitle().startswith("ChemUSON ")
-    assert win.app_bar.brand_name.text() == "ChemUSON"
+    assert not win.app_bar.findChild(QLabel, "appBrandName")
+    assert not win.app_bar.findChild(QLabel, "appVersionPill")
+    assert all(
+        label.text() not in {"ChemUSON", win._app_version}
+        for label in win.app_bar.findChildren(QLabel)
+    )
     assert win.action_about.text() == "Acerca de ChemUSON..."
 
     about_calls = []

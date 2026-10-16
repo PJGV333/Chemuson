@@ -32,7 +32,7 @@ def create_view_actions(window) -> None:
     window.action_zoom_reset.triggered.connect(window._on_zoom_reset)
 
     window.action_show_main_toolbar_aux = QAction(
-        "Mostrar copiar/pegar/zoom en barra superior",
+        "Mostrar copiar/zoom en barra de herramientas",
         window,
     )
     window.action_show_main_toolbar_aux.setCheckable(True)

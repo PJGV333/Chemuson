@@ -155,14 +155,17 @@ def assemble_application_shell(self) -> None:
     self.text_toolbar.opacity_changed.connect(self._on_opacity_changed)
 
     # === APP BAR (Fase 3) ===
-    # Shell central superior (marca, pestañas, búsqueda, undo/redo, tema y
-    # ajustes). La barra de acciones QMainWindow puede mostrarse encima de
+    # Shell central superior (acciones de archivo, pestañas, búsqueda,
+    # undo/redo, tema y ajustes). La barra de acciones QMainWindow puede mostrarse encima de
     # esta composición desde Ver; el AppBar y el toolbar son independientes.
     # Orden central: AppBar -> TextFormatToolbar -> Canvas. La barra de texto
     # conserva sus acciones/señales y sólo aparece en contexto.
     self.app_bar = AppBar(
         parent=self,
-        version=self._app_version,
+        new_action=self.action_new,
+        open_action=self.action_open,
+        save_action=self.action_save,
+        paste_action=self.action_paste,
         undo_action=self.action_undo,
         redo_action=self.action_redo,
         preferences_action=self.action_preferences,
@@ -202,8 +205,6 @@ def assemble_application_shell(self) -> None:
     self.tabs.tabBar().hide()
     self.app_bar.tabActivated.connect(self._on_document_tab_activated)
     self.app_bar.closeRequested.connect(self._on_tab_close_requested)
-    self.app_bar.newDocumentRequested.connect(self.action_new.trigger)
-    self.app_bar.tab_bar.set_new_action(self.action_new)
     self.app_bar.tabMoved.connect(self._on_document_tab_moved)
 
     self._canvas_file_paths = self._tab_manager.file_paths

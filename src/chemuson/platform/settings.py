@@ -39,13 +39,13 @@ class UiPreferences:
     hace la capa de temas, no este módulo). ``show_menu_bar`` conserva si se
     presenta permanentemente la barra de menús tradicional (visible por
     defecto en la beta; el acceso hamburguesa permanece cuando se oculta);
-    ``show_main_toolbar`` controla la barra superior de acciones (Nuevo,
-    Abrir y Guardar), visible por defecto.
+    ``show_main_toolbar`` controla la barra superior opcional de acciones
+    (Nuevo/Abrir/Guardar), oculta por defecto para mantener una cabecera de dos franjas.
     """
 
     theme: str = "light"
     show_menu_bar: bool = True
-    show_main_toolbar: bool = True
+    show_main_toolbar: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -298,7 +298,7 @@ def save_numbering_preferences(settings: SettingsStore, preferences: NumberingPr
 #: antiguos escritos con el default previo son indistinguibles de una
 #: elección explícita) y el marcador se persiste en el siguiente guardado,
 #: de modo que toda elección posterior del usuario se respeta.
-SHELL_DEFAULTS_VERSION = 1
+SHELL_DEFAULTS_VERSION = 2
 
 
 def _shell_defaults_version(settings: SettingsStore) -> int:
@@ -314,11 +314,11 @@ def load_ui_preferences(settings: SettingsStore) -> UiPreferences:
     if raw not in UI_THEME_CHOICES:
         raw = "light"
     if _shell_defaults_version(settings) < SHELL_DEFAULTS_VERSION:
-        # Defaults de la beta: barra de menús y barra de acciones visibles.
-        return UiPreferences(theme=raw, show_menu_bar=True, show_main_toolbar=True)
+        # Defaults nuevos: menú tradicional visible y barra de acciones opcional oculta.
+        return UiPreferences(theme=raw, show_menu_bar=True, show_main_toolbar=False)
     show_menu_bar = setting_bool(settings.value("ui/show_menu_bar", True), True)
     show_main_toolbar = setting_bool(
-        settings.value("ui/show_main_toolbar", True), True
+        settings.value("ui/show_main_toolbar", False), False
     )
     return UiPreferences(
         theme=raw,

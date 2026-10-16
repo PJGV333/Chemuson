@@ -150,6 +150,8 @@ class DocumentTabBar(QFrame):
         self,
         tint: str | None = None,
         parent: QWidget | None = None,
+        *,
+        show_new_button: bool = True,
     ):
         super().__init__(parent)
         self.setObjectName("docTabsWrap")
@@ -177,7 +179,10 @@ class DocumentTabBar(QFrame):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
         layout.addWidget(self.tab_bar, 1)
-        layout.addWidget(self.new_button)
+        if show_new_button:
+            layout.addWidget(self.new_button)
+        else:
+            self.new_button.hide()
 
         self.tab_bar.tabBarClicked.connect(self._on_tab_clicked)
         self.tab_bar.tabCloseRequested.connect(self.closeRequested)

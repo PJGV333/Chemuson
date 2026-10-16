@@ -70,7 +70,6 @@ class MainWindowUiBuilder:
         edit_menu.addAction(window.action_duplicate)
         edit_menu.addAction(window.action_delete)
         self._add_copy_as_menu(window, edit_menu)
-        edit_menu.addAction(window.action_paste)
         edit_menu.addAction(window.action_edit_electronic_diagram)
         edit_menu.addSeparator()
         self._build_rotate_menu(window, edit_menu)
@@ -178,18 +177,17 @@ class MainWindowUiBuilder:
         window.action_preferences.setIcon(draw_generic_icon("sliders"))
 
     def set_main_toolbar_aux_visible(self, window, visible: bool) -> None:
-        """Añade/quita copiar/pegar/zoom a la barra superior (opción explícita).
+        """Añade/quita copiar/zoom a la barra superior (opción explícita).
 
-        La barra base es siempre Nuevo/Abrir/Guardar; esta opción heredada
-        sigue siendo la única que puede ampliar esa barra y no altera su
-        visibilidad global (gobernada por ``Mostrar barra de herramientas``).
+        Nuevo/Abrir/Guardar/Pegar también están en la AppBar; esta opción
+        conserva únicamente copiar/zoom como acciones auxiliares y no altera
+        la visibilidad global de la barra.
         """
         if not hasattr(window, "main_toolbar"):
             return
         aux_actions = (
             window._main_toolbar_aux_separator_1,
             window.action_copy,
-            window.action_paste,
             window._main_toolbar_aux_separator_2,
             window.action_zoom_in,
             window.action_zoom_out,
