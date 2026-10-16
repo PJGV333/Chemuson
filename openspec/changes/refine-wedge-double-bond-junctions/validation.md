@@ -45,3 +45,7 @@ Diagnóstico acotado: el archivo CompChem completo pasa aislado (4 passed/0.98 s
 ## Estado de aceptación
 
 **NOT READY.** El shard 4 conserva un fallo reproducible bajo el orden del shard y los shards 5–8 no se ejecutaron. La suite no se declara verde. La comparación visual es automatizada; queda pendiente la revisión visual independiente del propietario. Sin merge a ramas protegidas, tag o release.
+
+## Entrega
+
+Implementación y evidencia documentadas en el commit `0864887edec2f8284be2afa46a83056420b43200` (`fix(gui): refine wedge and double-bond junctions`), publicado en `origin/feat/molecular-depiction-excellence`. No se hizo merge, tag ni release. La rama queda explícitamente pendiente de resolver la falla de Qt y de revisión visual del propietario.
