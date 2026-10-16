@@ -29,5 +29,5 @@
 - [x] 5.1 Ejecutar pruebas focales (74), arquitectura/contrato CI (284), renderizado, doble enlace, exportación, templates/Haworth y aromáticos (74); la matriz cubre 30–179°, tres escalas y anchuras, y ambas apariencias.
 - [x] 5.2 `compileall` completo y OpenSpec estricto pasan; Ruff global conserva sólo el F401 histórico registrado arriba. Se recolectaron 2267 IDs: siete shards terminaron en sus límites; el shard 4 agotó 300 s durante ejecución local simultánea. Se recuperó por familias acotadas: los 80 Clean2D IDs y 139 restantes (138 pass/1 skip) pasaron, y `test_ui_tool_rail.py` pasó 64/64 en aislamiento; cobertura global resultante 2247 pass, 20 skip, 0 fallos.
 - [x] 5.3 Guardar [`docs/visual/bond-junctions-before-after.png`](../../../docs/visual/bond-junctions-before-after.png), lámina comparativa antes/después en claro/oscuro; mejora limitada y residuos/hipótesis documentados.
-- [ ] 5.4 Actualizar `validation.md`, crear commits descriptivos y publicar sólo `feat/molecular-depiction-excellence`; nunca integrar a prep/main/tag/release.
-- [ ] 5.5 Informar SHA, archivos, commits, pruebas/CI y `READY FOR MANUAL VISUAL REVIEW` o `NOT READY`, distinguiéndolo de aceptación visual del propietario.
+- [x] 5.4 Actualizar `validation.md`, crear commits descriptivos y publicar sólo `feat/molecular-depiction-excellence`; nunca integrar a prep/main/tag/release.
+- [x] 5.5 Informar SHA, archivos, commits, pruebas/CI y `READY FOR MANUAL VISUAL REVIEW`, distinguiéndolo de aceptación visual del propietario.

@@ -4,6 +4,7 @@
 
 - Rama experimental: `feat/molecular-depiction-excellence`, basada en `origin/release/v0.3.0-beta.1-prep` (`9a70ee1c908a39e700098bcc0a54d464a606e24c`). El reporte OpenSpec/baseline se publicó antes de producción en `0856981`.
 - No se modificaron prep, `main`, tags, releases, Clean2D, persistencia `.cmsn`, presets ni la semántica química. No se añadió `ChemUSON Publication`.
+- Commit de alcance/baseline: `0856981`; implementación: `d058aa2` (`fix(gui): center hashed wedge junction strokes`). La implementación se publicó a `origin/feat/molecular-depiction-excellence`; al verificar el push, SHA local y remoto coincidían. El commit de cierre documental permanece en esta misma rama.
 - La única modificación de producción centra las marcas hash en intervalos iguales; orden/orientación, número de marcas, grosores interpolados y `BondItem` API se conservan. El snapshot de prueba confirma que refrescar el item no modifica los átomos/enlace.
 - `READY FOR MANUAL VISUAL REVIEW`; no es aceptación visual del propietario.
 
