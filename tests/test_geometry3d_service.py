@@ -334,6 +334,84 @@ def test_rdkit_backend_returns_optimization_frames_if_available() -> None:
     assert all(frame.coordinates.positions for frame in frames)
 
 
+@pytest.mark.parametrize(
+    ("name", "smiles", "document_atoms", "document_bonds", "generated_hydrogens"),
+    [
+        ("water", "O", 1, 0, 2),
+        ("ethane", "CC", 2, 1, 6),
+        ("ethanol", "CCO", 3, 2, 6),
+        ("butane", "CCCC", 4, 3, 10),
+        ("benzene", "c1ccccc1", 6, 6, 6),
+    ],
+)
+def test_3d_acceptance_molecules_preserve_graph_and_build_derived_hydrogens(
+    name: str,
+    smiles: str,
+    document_atoms: int,
+    document_bonds: int,
+    generated_hydrogens: int,
+) -> None:
+    from chemuson.chemio.rdkit_safe import (
+        is_rdkit_worker_available,
+        smiles_to_molgraph_isolated,
+    )
+
+    if not is_rdkit_worker_available(timeout_s=5.0):
+        pytest.skip("RDKit worker no disponible")
+    graph, error = smiles_to_molgraph_isolated(smiles, timeout_s=8.0)
+    assert graph is not None, (name, error)
+    atom_snapshot = {
+        atom_id: (atom.element, atom.charge, atom.isotope, atom.stereo_cip, atom.x, atom.y)
+        for atom_id, atom in graph.atoms.items()
+    }
+    bond_snapshot = {
+        bond_id: (bond.a1_id, bond.a2_id, bond.order, bond.is_aromatic)
+        for bond_id, bond in graph.bonds.items()
+    }
+
+    result = conformer_3d_for_graph(graph, timeout_s=20.0, force=True)
+
+    assert result.ok, (name, result.message)
+    coordinates = result.coordinate_set
+    assert coordinates is not None
+    scene = scene_molecule_from_graph(graph, coordinates)
+    assert len(graph.atoms) == document_atoms
+    assert len(graph.bonds) == document_bonds
+    assert len(scene.atoms) == document_atoms + generated_hydrogens
+    assert len(scene.bonds) == document_bonds + generated_hydrogens
+    assert all(math.isfinite(value) for atom in scene.atoms for value in (atom.x, atom.y, atom.z))
+    assert any(abs(atom.z) > 1.0e-6 for atom in scene.atoms)
+    assert {atom.id for atom in scene.atoms if not atom.generated} == set(graph.atoms)
+    assert sum(atom.generated and atom.element == "H" for atom in scene.atoms) == generated_hydrogens
+    assert all(bond.a1_id in {atom.id for atom in scene.atoms} for bond in scene.bonds)
+    assert all(bond.a2_id in {atom.id for atom in scene.atoms} for bond in scene.bonds)
+    assert result.method in {"mmff", "uff", "embed-only"}
+    assert {
+        atom_id: (atom.element, atom.charge, atom.isotope, atom.stereo_cip, atom.x, atom.y)
+        for atom_id, atom in graph.atoms.items()
+    } == atom_snapshot
+    assert {
+        bond_id: (bond.a1_id, bond.a2_id, bond.order, bond.is_aromatic)
+        for bond_id, bond in graph.bonds.items()
+    } == bond_snapshot
+    if name == "benzene":
+        # The importer stores the aromatic ring as a Kekulé graph (3 single + 3 double).
+        assert sum(bond.order == 1 for bond in graph.bonds.values()) == 3
+        assert sum(bond.order == 2 for bond in graph.bonds.values()) == 3
+        assert all(graph.atom_degree(atom_id) == 2 for atom_id in graph.atoms)
+    if name == "water":
+        oxygen = next(atom for atom in scene.atoms if not atom.generated and atom.element == "O")
+        hydrogens = [atom for atom in scene.atoms if atom.generated and atom.element == "H"]
+        vectors = [
+            tuple(getattr(hydrogen, axis) - getattr(oxygen, axis) for axis in ("x", "y", "z"))
+            for hydrogen in hydrogens
+        ]
+        dot = sum(a * b for a, b in zip(*vectors))
+        norms = [math.sqrt(sum(value * value for value in vector)) for vector in vectors]
+        angle = math.degrees(math.acos(max(-1.0, min(1.0, dot / (norms[0] * norms[1])))))
+        assert 95.0 <= angle <= 115.0
+
+
 def test_obabel_backend_degrades_or_runs() -> None:
     if not obabel_backend.is_available():
         pytest.skip("Open Babel no disponible")

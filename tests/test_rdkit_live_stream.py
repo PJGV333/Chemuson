@@ -69,7 +69,8 @@ def test_worker_stream_cancels_child_process(tmp_path, monkeypatch):
     assert time.monotonic() - started < 1.0
 
 
-def test_rdkit_stream_emits_progressive_butane_frames_with_fixed_atom():
+@pytest.mark.parametrize("forcefield", ["MMFF94", "MMFF94s", "UFF"])
+def test_rdkit_stream_emits_progressive_butane_frames_with_fixed_atom(forcefield):
     from chemuson.chemio.rdkit_safe import is_rdkit_worker_available
 
     if not is_rdkit_worker_available(timeout_s=5.0):
@@ -79,7 +80,7 @@ def test_rdkit_stream_emits_progressive_butane_frames_with_fixed_atom():
         rdkit_safe.optimize_3d_stream_isolated(
             graph,
             coordinates=initial,
-            forcefield="MMFF94",
+            forcefield=forcefield,
             max_iters=80,
             steps_per_update=2,
             fixed_atom_ids={1},
@@ -89,12 +90,12 @@ def test_rdkit_stream_emits_progressive_butane_frames_with_fixed_atom():
 
     terminal = events[-1]
     if terminal.get("error") == "missing_mmff_parameters":
-        pytest.skip("MMFF94 sin parámetros para el butano de prueba")
+        pytest.skip(f"{forcefield} sin parámetros para el butano de prueba")
     frames = [event for event in events if event.get("event") == "frame"]
 
     assert terminal["event"] == "done", terminal
     assert terminal["ok"] is True
-    assert terminal["method"] == "MMFF94"
+    assert terminal["method"] == forcefield
     assert len(frames) >= 2
     assert [frame["sequence"] for frame in frames] == sorted(
         frame["sequence"] for frame in frames

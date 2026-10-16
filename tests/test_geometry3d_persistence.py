@@ -11,7 +11,7 @@ def _canvas_with_atom() -> tuple[ChemusonCanvas, int]:
     return canvas, atom.id
 
 
-def test_geometry3d_round_trips_without_changing_2d_model():
+def test_geometry3d_round_trips_without_changing_2d_model(tmp_path):
     canvas, atom_id = _canvas_with_atom()
     canvas.coordinate_set_3d = CoordinateSet3D(
         {atom_id: (1.25, -2.5, 3.75)},
@@ -34,6 +34,16 @@ def test_geometry3d_round_trips_without_changing_2d_model():
     assert restored.coordinate_set_3d.metadata.get("generated_atoms") is None
     assert restored.model.atoms[atom_id].x == 15.0
     assert restored.model.atoms[atom_id].y == 25.0
+
+    path = tmp_path / "geometry.cmsn"
+    PersistenceManager.save_to_file(str(path), canvas)
+    reopened = ChemusonCanvas()
+    PersistenceManager.load_from_file(str(path), reopened)
+
+    assert reopened.coordinate_set_3d is not None
+    assert reopened.coordinate_set_3d.positions == {atom_id: (1.25, -2.5, 3.75)}
+    assert reopened.model.atoms[atom_id].x == 15.0
+    assert reopened.model.atoms[atom_id].y == 25.0
 
 
 def test_geometry3d_legacy_files_load_without_inventing_coordinates():
