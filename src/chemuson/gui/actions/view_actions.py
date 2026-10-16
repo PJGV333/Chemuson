@@ -31,14 +31,6 @@ def create_view_actions(window) -> None:
     window.action_zoom_reset.setShortcut("Ctrl+0")
     window.action_zoom_reset.triggered.connect(window._on_zoom_reset)
 
-    window.action_show_main_toolbar_aux = QAction(
-        "Mostrar copiar/zoom en barra de herramientas",
-        window,
-    )
-    window.action_show_main_toolbar_aux.setCheckable(True)
-    window.action_show_main_toolbar_aux.setChecked(False)
-    window.action_show_main_toolbar_aux.toggled.connect(window._on_toggle_main_toolbar_aux)
-
     window.action_rules = QAction("Reglas", window)
     window.action_rules.setCheckable(True)
     window.action_rules.setChecked(False)

@@ -33,3 +33,29 @@ La misma QAction dentro del mismo menú `Ver` SHALL permanecer accesible mediant
 - **WHEN** se alterna la visibilidad con tema claro/oscuro y tamaños habituales
 - **THEN** Ctrl+S, Nuevo/Abrir/Guardar/Pegar, Undo/Redo, tabs, indicador dirty, X y panel lateral siguen disponibles y no duplicados
 - **AND** ningún atajo ni callback se reconecta a una nueva ruta.
+
+### Requirement: El popup Ver y sus submenús caben en pantalla
+
+El popup de `Ver` SHALL colocar «Mostrar barra de herramientas» como primera acción visible, checkable y marcada cuando la fila de menús esté visible. El menú superior SHALL agrupar las opciones existentes en submenús concisos para que su geometría completa y las filas primera/última queden dentro de `QScreen.availableGeometry()`. Los submenús SHALL conservar las QActions originales y sus conexiones. La hamburguesa SHALL exponer esos mismos QMenus y la misma acción de recuperación.
+
+La opción obsoleta «Mostrar copiar/zoom en barra de herramientas» SHALL estar ausente del menú y de la paleta de comandos; SHALL NOT eliminar ni recrear las acciones funcionales Copiar o Zoom, ni cambiar sus atajos/rutas. La QToolBar histórica SHALL permanecer oculta e incapaz de reaparecer por su toggle nativo o por preferencias antiguas.
+
+#### Scenario: Menú compacto y completamente visible
+- **WHEN** se abre `Ver` con interacción de mouse en tema claro u oscuro y con las ventanas configuradas a 1600×900, 1280×720 o 1024×768
+- **THEN** la primera fila es la opción marcada «Mostrar barra de herramientas»
+- **AND** el popup y las filas primera y última están completamente dentro de `QScreen.availableGeometry()`.
+
+#### Scenario: Submenús accesibles
+- **WHEN** se despliega cada submenú de Ver con el puntero
+- **THEN** cada popup y sus opciones primera/última caben dentro del área disponible
+- **AND** las QActions de visualización, zoom, numeración, lienzo, paletas y paneles son las existentes, sin duplicados.
+
+#### Scenario: Restauración por mouse y reinicio
+- **WHEN** el usuario oculta la fila haciendo clic en la primera acción y reinicia la aplicación
+- **THEN** la fila continúa oculta, pero la hamburguesa permite abrir `Ver` y hacer clic en la misma acción para restaurarla
+- **AND** el estado visible se persiste tras otro reinicio, con AppBar visible y QToolBar histórica oculta.
+
+#### Scenario: Sin opción auxiliar obsoleta
+- **WHEN** se abre `Ver` o se busca la opción en la paleta de comandos
+- **THEN** «Mostrar copiar/zoom en barra de herramientas» no aparece
+- **AND** Copiar permanece en Editar y Zoom en Ver con sus QActions y atajos existentes.

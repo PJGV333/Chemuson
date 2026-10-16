@@ -14,3 +14,13 @@
 ## Archivos previstos
 
 `src/chemuson/gui/main_window_ui_builder.py`, documentación de preferencias en `src/chemuson/platform/settings.py` si hace falta, tests UI/preferences relevantes, y este OpenSpec. No tocar Clean2D ni capas químicas.
+
+## Iteración de accesibilidad geométrica
+
+La captura baseline en Qt offscreen midió el popup original en `778 × 786` px para `QScreen.availableGeometry() = 800 × 800` y encontró 22 opciones directas repartidas en columnas. Aunque Qt ajustaba algunas geometrías al borde, el menú consumía prácticamente toda el área disponible; la revisión manual confirmó que la primera opción no era accesible de forma fiable en la pantalla del propietario. El menú superior se reduce a siete filas: primero la acción checkable de recuperación, seguida por `Visualización`, `Zoom`, `Numeración`, `Tamaño de lienzo`, `Paletas` y `Paneles`. Cada submenú conserva las mismas QActions, orden y conexiones.
+
+Se elimina la QAction obsoleta «Mostrar copiar/zoom en barra de herramientas», su registro en la paleta y el wiring auxiliar que agregaba esas acciones a la QToolBar histórica. Las QActions funcionales `action_copy`, `action_zoom_in` y `action_zoom_out` no se eliminan ni se recrean: Copiar permanece en Editar y Zoom en su submenú con atajos existentes. La QToolBar continúa montada por compatibilidad, forzada oculta y con su toggle nativo deshabilitado.
+
+Las regresiones abren `Ver` con QTest, miden el popup y las filas primera/última contra `QScreen.availableGeometry()`, despliegan cada submenú mediante clic de mouse y verifican sus límites. También hacen clic real en la acción, restauran desde la hamburguesa y comprueban persistencia tras reinicio. Los tamaños de ventana solicitados y los dos temas se parametrizan; la geometría física/logical de QScreen la determina el backend Qt del job.
+
+Archivos de esta iteración: builder y registro/creación de la acción obsoleta en GUI; pruebas de shell/panel lateral; evidencia visual y este OpenSpec. Ningún módulo químico ni persistencia de documentos cambia.

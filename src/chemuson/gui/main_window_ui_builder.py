@@ -130,14 +130,6 @@ class MainWindowUiBuilder:
         ):
             window.main_toolbar.addAction(action)
 
-        window._main_toolbar_aux_separator_1 = QAction(window)
-        window._main_toolbar_aux_separator_1.setSeparator(True)
-        window._main_toolbar_aux_separator_2 = QAction(window)
-        window._main_toolbar_aux_separator_2.setSeparator(True)
-        self.set_main_toolbar_aux_visible(
-            window,
-            window.action_show_main_toolbar_aux.isChecked(),
-        )
         # La toolbar histórica no forma parte de la cabecera controlada por
         # Ver. Mantenerla oculta incluso si QSettings conserva el valor viejo,
         # y deshabilitar su toggle nativo de menú contextual.
@@ -168,32 +160,6 @@ class MainWindowUiBuilder:
         # Fase 3: la app bar muestra la Preferencias (sliders) vía el mismo
         # QAction (``setDefaultAction`` hereda su icono).
         window.action_preferences.setIcon(draw_generic_icon("sliders"))
-
-    def set_main_toolbar_aux_visible(self, window, visible: bool) -> None:
-        """Añade/quita copiar/zoom a la barra superior (opción explícita).
-
-        Nuevo/Abrir/Guardar/Pegar también están en la AppBar; esta opción
-        conserva únicamente copiar/zoom como acciones auxiliares y no altera
-        la visibilidad global de la barra.
-        """
-        if not hasattr(window, "main_toolbar"):
-            return
-        aux_actions = (
-            window._main_toolbar_aux_separator_1,
-            window.action_copy,
-            window._main_toolbar_aux_separator_2,
-            window.action_zoom_in,
-            window.action_zoom_out,
-        )
-        if visible:
-            for action in aux_actions:
-                if action in window.main_toolbar.actions():
-                    continue
-                window.main_toolbar.addAction(action)
-            return
-        for action in aux_actions:
-            if action in window.main_toolbar.actions():
-                window.main_toolbar.removeAction(action)
 
     def tool_status_label(self, window, tool_id: str) -> str:
         ring_label = f"Anillo {window.canvas.state.active_ring_size}"
@@ -480,27 +446,29 @@ class MainWindowUiBuilder:
         window.fragment_rotate_menu.addAction(window.action_fragment_invert)
 
     def _build_view_menu(self, window, view_menu: QMenu) -> None:
+        # Keep the recovery toggle as the first row: this popup is reachable
+        # from both the menu bar and the AppBar hamburger when the row is hidden.
         window.action_show_menu_bar = view_menu.addAction("Mostrar barra de herramientas")
         window.action_show_menu_bar.setCheckable(True)
         window.action_show_menu_bar.setChecked(window._show_menu_bar)
         window.action_show_menu_bar.toggled.connect(window._on_toggle_menu_bar)
-        view_menu.addSeparator()
-        view_menu.addAction(window.action_show_carbons)
-        view_menu.addAction(window.action_show_hydrogens)
-        view_menu.addSeparator()
-        view_menu.addAction(window.action_aromatic_circles)
-        view_menu.addSeparator()
-        view_menu.addAction(window.action_style)
-        view_menu.addSeparator()
-        view_menu.addAction(window.action_zoom_in)
-        view_menu.addAction(window.action_zoom_out)
-        view_menu.addAction(window.action_zoom_reset)
-        view_menu.addSeparator()
-        view_menu.addAction(window.action_show_main_toolbar_aux)
-        view_menu.addSeparator()
-        view_menu.addAction(window.action_rules)
-        view_menu.addAction(window.action_crosshair)
-        view_menu.addSeparator()
+
+        visualization_menu = view_menu.addMenu("Visualización")
+        for action in (
+            window.action_show_carbons,
+            window.action_show_hydrogens,
+            window.action_aromatic_circles,
+            window.action_style,
+            window.action_rules,
+            window.action_crosshair,
+        ):
+            visualization_menu.addAction(action)
+
+        zoom_menu = view_menu.addMenu("Zoom")
+        zoom_menu.addAction(window.action_zoom_in)
+        zoom_menu.addAction(window.action_zoom_out)
+        zoom_menu.addAction(window.action_zoom_reset)
+
         numbering_menu = view_menu.addMenu("Numeración")
         numbering_menu.addAction(window.action_numbering_enabled)
         numbering_menu.addSeparator()
@@ -510,7 +478,7 @@ class MainWindowUiBuilder:
         numbering_menu.addSeparator()
         numbering_menu.addAction(window.action_numbering_recalculate)
         numbering_menu.addAction(window.action_numbering_export)
-        view_menu.addSeparator()
+
         canvas_size_menu = view_menu.addMenu("Tamaño de lienzo")
         for action in (
             window.action_canvas_size_letter_portrait,
@@ -528,11 +496,12 @@ class MainWindowUiBuilder:
                 canvas_size_menu.addSeparator()
             else:
                 canvas_size_menu.addAction(action)
-        view_menu.addSeparator()
-        view_menu.addAction(window.symbols_toolbar.toggleViewAction())
-        view_menu.addSeparator()
 
-        window.action_toggle_side_panel = view_menu.addAction("Panel lateral")
+        palette_menu = view_menu.addMenu("Paletas")
+        palette_menu.addAction(window.symbols_toolbar.toggleViewAction())
+
+        panels_menu = view_menu.addMenu("Paneles")
+        window.action_toggle_side_panel = panels_menu.addAction("Panel lateral")
         window.action_toggle_side_panel.setCheckable(True)
         window.action_toggle_side_panel.setChecked(not window.side_panel.isHidden())
         window.action_toggle_side_panel.toggled.connect(
@@ -552,7 +521,7 @@ class MainWindowUiBuilder:
             ("spectroscopy", "Espectroscopía"),
             ("compchem", "CompChem"),
         ):
-            action = view_menu.addAction(label)
+            action = panels_menu.addAction(label)
             action.triggered.connect(
                 lambda _checked=False, key=page_key: window.side_panel.show_page(key)
             )

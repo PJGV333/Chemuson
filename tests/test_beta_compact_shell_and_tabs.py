@@ -21,6 +21,7 @@ from collections import Counter
 
 import pytest
 from PyQt6.QtCore import QPoint, QRect, QSettings, Qt
+from PyQt6.QtGui import QColor, QKeySequence, QPainter, QPen, QPixmap
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
@@ -96,6 +97,43 @@ def _close_window(win: ChemusonWindow) -> None:
 
 def _top_menus(win: ChemusonWindow) -> list:
     return [a.menu() for a in win.menuBar().actions() if a.menu() is not None]
+
+
+def _global_widget_rect(widget, local_rect: QRect) -> QRect:
+    return QRect(widget.mapToGlobal(local_rect.topLeft()), local_rect.size())
+
+
+def _assert_popup_fits_available_screen(popup, available: QRect) -> None:
+    popup_rect = _global_widget_rect(popup, popup.rect())
+    assert available.contains(popup_rect), (
+        f"popup {popup.objectName() or popup.title()!r} rect={popup_rect}, "
+        f"available={available}"
+    )
+    assert popup.height() <= available.height()
+    actions = [
+        action
+        for action in popup.actions()
+        if action.isVisible() and not action.isSeparator()
+    ]
+    assert actions
+    for action in (actions[0], actions[-1]):
+        row = _global_widget_rect(popup, popup.actionGeometry(action))
+        assert available.contains(row), (
+            f"menu row {action.text()!r} rect={row}, available={available}"
+        )
+
+
+def _save_popup_screen_evidence(popup, screen, destination) -> None:
+    available = screen.availableGeometry()
+    image = QPixmap(available.size())
+    image.fill(QColor("#f2f3f5"))
+    painter = QPainter(image)
+    painter.setPen(QPen(QColor("#667085"), 2))
+    painter.drawRect(image.rect().adjusted(1, 1, -2, -2))
+    origin = popup.mapToGlobal(popup.rect().topLeft()) - available.topLeft()
+    painter.drawPixmap(origin, popup.grab())
+    painter.end()
+    assert image.save(str(destination))
 
 
 def _mark_dirty(canvas, element: str = "C") -> None:
@@ -208,6 +246,221 @@ def test_menu_bar_reuses_the_same_menus_and_actions_without_duplicates(shell) ->
     flat = [action for menu in menus for action in menu.actions()]
     duplicated = [action for action in set(flat) if flat.count(action) > 1]
     assert not duplicated
+
+
+def test_view_popup_and_submenus_fit_available_screen(shell, tmp_path) -> None:
+    menu = shell.view_menu
+    screen = shell.screen()
+    available = screen.availableGeometry()
+    view_action = next(
+        action
+        for action in shell.menuBar().actions()
+        if action.menu() is menu
+    )
+
+    # Reuse one real window/QMenu across the matrix. Qt's offscreen platform
+    # has a fixed QScreen, so resize the app viewport and compare popup
+    # coordinates to the actual availableGeometry reported by that backend.
+    for theme in ("light", "dark"):
+        shell.current_theme = theme
+        shell._apply_theme()
+        for window_size in ((1600, 900), (1280, 720), (1024, 768)):
+            shell.resize(*window_size)
+            QApplication.processEvents()
+            QTest.mouseClick(
+                shell.menuBar(),
+                Qt.MouseButton.LeftButton,
+                pos=shell.menuBar().actionGeometry(view_action).center(),
+            )
+            QApplication.processEvents()
+
+            assert menu.isVisible()
+            assert menu.height() <= available.height()
+            visible = [
+                action
+                for action in menu.actions()
+                if action.isVisible() and not action.isSeparator()
+            ]
+            assert visible[0] is shell.action_show_menu_bar
+            assert shell.action_show_menu_bar.text() == "Mostrar barra de herramientas"
+            assert shell.action_show_menu_bar.isCheckable()
+            assert shell.action_show_menu_bar.isChecked()
+            _assert_popup_fits_available_screen(menu, available)
+
+            if theme == "light" and window_size == (1600, 900):
+                evidence = tmp_path / "view-menu-screen-bounds.png"
+                _save_popup_screen_evidence(menu, screen, evidence)
+                assert evidence.stat().st_size > 0
+
+            for parent_action in visible:
+                submenu = parent_action.menu()
+                if submenu is None:
+                    continue
+                QTest.mouseClick(
+                    menu,
+                    Qt.MouseButton.LeftButton,
+                    pos=menu.actionGeometry(parent_action).center(),
+                )
+                QTest.qWait(350)
+                QApplication.processEvents()
+                assert submenu.isVisible(), (
+                    f"theme={theme}, window_size={window_size}, "
+                    f"submenu={parent_action.text()}"
+                )
+                assert submenu.height() <= available.height()
+                _assert_popup_fits_available_screen(submenu, available)
+                submenu.close()
+                QApplication.processEvents()
+
+            menu.close()
+            QApplication.processEvents()
+
+
+def test_view_menu_submenus_reuse_actions_and_remove_obsolete_auxiliary_option(
+    shell,
+) -> None:
+    menus = {
+        action.text(): action.menu()
+        for action in shell.view_menu.actions()
+        if action.menu() is not None
+    }
+    visible = [
+        action
+        for action in shell.view_menu.actions()
+        if action.isVisible() and not action.isSeparator()
+    ]
+    assert visible[0] is shell.action_show_menu_bar
+    assert [action.text() for action in visible] == [
+        "Mostrar barra de herramientas",
+        "Visualización",
+        "Zoom",
+        "Numeración",
+        "Tamaño de lienzo",
+        "Paletas",
+        "Paneles",
+    ]
+    assert not hasattr(shell, "action_show_main_toolbar_aux")
+    assert menus["Visualización"].actions() == [
+        shell.action_show_carbons,
+        shell.action_show_hydrogens,
+        shell.action_aromatic_circles,
+        shell.action_style,
+        shell.action_rules,
+        shell.action_crosshair,
+    ]
+    assert menus["Zoom"].actions() == [
+        shell.action_zoom_in,
+        shell.action_zoom_out,
+        shell.action_zoom_reset,
+    ]
+    assert shell.action_copy in _top_menus(shell)[1].actions()
+    assert shell.action_copy.shortcut() == QKeySequence(
+        QKeySequence.StandardKey.Copy
+    )
+    assert shell.action_zoom_in in menus["Zoom"].actions()
+    assert shell.action_zoom_out in menus["Zoom"].actions()
+    assert shell.action_zoom_in.shortcut() == QKeySequence(
+        QKeySequence.StandardKey.ZoomIn
+    )
+    assert shell.action_zoom_out.shortcut() == QKeySequence(
+        QKeySequence.StandardKey.ZoomOut
+    )
+    assert shell.action_toggle_side_panel in menus["Paneles"].actions()
+    assert all(
+        action in menus["Paneles"].actions()
+        for action in shell.side_panel_actions.values()
+    )
+
+
+def test_mouse_toggle_restores_menu_bar_from_hamburger_and_persists(
+    tmp_path, monkeypatch
+) -> None:
+    settings_factory = _pin_settings(tmp_path, monkeypatch)
+    win = ChemusonWindow()
+    win.resize(1280, 720)
+    win.show()
+    QApplication.processEvents()
+    menu = win.view_menu
+    action = win.action_show_menu_bar
+    try:
+        top_action = next(
+            item for item in win.menuBar().actions() if item.menu() is menu
+        )
+        QTest.mouseClick(
+            win.menuBar(),
+            Qt.MouseButton.LeftButton,
+            pos=win.menuBar().actionGeometry(top_action).center(),
+        )
+        QApplication.processEvents()
+        QTest.mouseClick(
+            menu,
+            Qt.MouseButton.LeftButton,
+            pos=menu.actionGeometry(action).center(),
+        )
+        QApplication.processEvents()
+        assert not win.menuBar().isVisible()
+        assert not action.isChecked()
+        assert load_ui_preferences(settings_factory()).show_menu_bar is False
+        assert win.app_bar.isVisible()
+        assert win.main_toolbar.isHidden()
+        menu.close()
+        win._menu_aggregator.close()
+    finally:
+        menu.close()
+        win._menu_aggregator.close()
+        _close_window(win)
+
+    reopened = ChemusonWindow()
+    reopened.resize(1280, 720)
+    reopened.show()
+    QApplication.processEvents()
+    try:
+        assert not reopened.menuBar().isVisible()
+        assert not reopened.action_show_menu_bar.isChecked()
+        assert reopened.main_toolbar.isHidden()
+
+        QTest.mouseClick(reopened.app_bar.menu_button, Qt.MouseButton.LeftButton)
+        QApplication.processEvents()
+        aggregator = reopened._menu_aggregator
+        assert aggregator.isVisible()
+        view_action = next(
+            item for item in aggregator.actions() if item.menu() is reopened.view_menu
+        )
+        QTest.mouseMove(
+            aggregator,
+            aggregator.actionGeometry(view_action).center(),
+            delay=250,
+        )
+        QTest.qWait(350)
+        QApplication.processEvents()
+        assert reopened.view_menu.isVisible()
+        restore_action = reopened.action_show_menu_bar
+        QTest.mouseClick(
+            reopened.view_menu,
+            Qt.MouseButton.LeftButton,
+            pos=reopened.view_menu.actionGeometry(restore_action).center(),
+        )
+        QApplication.processEvents()
+        assert reopened.menuBar().isVisible()
+        assert restore_action.isChecked()
+        assert reopened.main_toolbar.isHidden()
+        assert load_ui_preferences(reopened._settings).show_menu_bar is True
+        reopened.view_menu.close()
+        aggregator.close()
+    finally:
+        reopened.view_menu.close()
+        reopened._menu_aggregator.close()
+        _close_window(reopened)
+
+    persisted = ChemusonWindow()
+    persisted.show()
+    QApplication.processEvents()
+    try:
+        assert persisted.menuBar().isVisible()
+        assert persisted.action_show_menu_bar.isChecked()
+        assert persisted.main_toolbar.isHidden()
+    finally:
+        _close_window(persisted)
 
 
 def test_default_header_has_one_compact_action_row_and_shared_file_actions(shell, tmp_path) -> None:

@@ -15,3 +15,7 @@ La ventana ofrece dos QAction distintas en `Ver`: `Mostrar barra de menús`, con
 ## Fuera de alcance
 
 No rediseñar la cabecera, no cambiar acciones de archivo, pestañas, atajos, panel lateral o comportamiento químico. No cambiar Clean2D, ChemIO, ChemName, otras preferencias, `release/v0.3.0-beta.1-prep`, `main`, tags, releases ni paquetes.
+
+## Seguimiento tras revisión manual
+
+La primera corrección resolvió qué controla la acción, pero la revisión manual encontró que el popup de `Ver` seguía siendo demasiado alto: sus numerosas opciones directas podían ocupar casi toda la geometría disponible y dejar la primera opción difícil de alcanzar. También seguía expuesta una opción obsoleta de añadir Copiar/Zoom a la QToolBar histórica. Esta iteración debe compactar el menú en submenús reutilizando las QActions originales; la acción marcada de recuperación permanece como primera fila. La opción obsoleta se retira sin afectar Copiar, Zoom ni sus atajos.

@@ -104,6 +104,15 @@ def _view_menu(window: ChemusonWindow) -> QMenu:
     )
 
 
+def _panel_actions(window: ChemusonWindow) -> dict[str, object]:
+    panels_menu = next(
+        action.menu()
+        for action in _view_menu(window).actions()
+        if action.menu() is not None and action.text() == "Paneles"
+    )
+    return {action.text(): action for action in panels_menu.actions()}
+
+
 def _dock_pages(window: ChemusonWindow) -> dict[str, QDockWidget]:
     return {
         "inspector": window.inspector_dock,
@@ -212,8 +221,7 @@ def test_view_menu_actions_show_and_select_pages_without_dock_toggles(window) ->
     window.resize(1200, 900)
     window.show()
     QApplication.processEvents()
-    view_menu = _view_menu(window)
-    actions = {action.text(): action for action in view_menu.actions()}
+    actions = _panel_actions(window)
     labels_and_keys = (
         ("Inspector", "inspector"),
         ("Validación", "validation"),
@@ -243,7 +251,7 @@ def test_primary_tabs_meet_effective_style_widths_on_first_view_open_before_tab_
     window.show()
     QApplication.processEvents()
 
-    actions = {action.text(): action for action in _view_menu(window).actions()}
+    actions = _panel_actions(window)
     actions["Inspector"].trigger()
     QApplication.processEvents()
     assert not window.side_panel.isHidden()
@@ -367,7 +375,7 @@ def test_splitter_resizes_panel_and_restores_canvas_space(window) -> None:
     assert panel.isHidden()
     assert window.tabs.width() > canvas_before_hide + width_before_hide - 30
 
-    actions = {action.text(): action for action in _view_menu(window).actions()}
+    actions = _panel_actions(window)
     actions["Inspector"].trigger()
     QApplication.processEvents()
     assert not panel.isHidden()
@@ -392,7 +400,7 @@ def test_invalid_side_panel_settings_keep_inspector_selected_and_start_hidden() 
 def test_app_bar_menu_reaches_appearance_and_preferences_action_is_preserved(window) -> None:
     assert window.app_bar.preferences_button.defaultAction() is window.action_preferences
 
-    actions = {action.text(): action for action in _view_menu(window).actions()}
+    actions = _panel_actions(window)
     actions["Apariencia"].trigger()
 
     assert window.side_panel.active_page_key == "appearance"
@@ -496,7 +504,7 @@ def test_tab_geometry_refreshes_after_reveal_resize_and_theme_without_canvas_shi
     window.resize(1200, 900)
     window.show()
     QApplication.processEvents()
-    actions = {action.text(): action for action in _view_menu(window).actions()}
+    actions = _panel_actions(window)
     actions["Inspector"].trigger()
     QApplication.processEvents()
     row = window.side_panel.tab_row

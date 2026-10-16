@@ -272,14 +272,6 @@ class ChemusonWindow(QMainWindow):
         """Construye la barra superior principal."""
         self._ui_builder.build_main_toolbar(self)
 
-    def _set_main_toolbar_aux_visible(self, visible: bool) -> None:
-        """Muestra/oculta copiar y zoom +/- en la barra opcional."""
-        self._ui_builder.set_main_toolbar_aux_visible(self, bool(visible))
-
-    def _on_toggle_main_toolbar_aux(self, checked: bool) -> None:
-        """Actualiza la visibilidad de copiar/zoom auxiliares."""
-        self._set_main_toolbar_aux_visible(bool(checked))
-
     def _create_document_tab(self, make_current: bool = False) -> ChemusonCanvas:
         """Crea una nueva pestaña con su propio canvas independiente."""
         return self._tab_manager.create_document_tab(

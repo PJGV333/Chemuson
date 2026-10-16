@@ -197,7 +197,6 @@ def build_command_registry(window) -> CommandRegistry:
     _register(reg, window, "action_zoom_in", "Ver", ["zoom", "acercar"], "zoom-in")
     _register(reg, window, "action_zoom_out", "Ver", ["zoom", "alejar"], "zoom-out")
     _register(reg, window, "action_zoom_reset", "Ver", ["zoom", "100", "reset"])
-    _register(reg, window, "action_show_main_toolbar_aux", "Ver", ["barra", "copiar", "zoom"])
     _register(reg, window, "action_rules", "Ver", ["reglas", "rulers", "margen"])
     _register(reg, window, "action_crosshair", "Ver", ["cuadrícula", "grid", "rejilla"])
     _register(reg, window, "action_numbering_enabled", "Ver", ["numeración", "números"])
