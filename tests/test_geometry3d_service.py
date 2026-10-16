@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from typing import Any
 
 import pytest
 
@@ -21,6 +22,7 @@ from chemuson.geometry3d import (
 )
 from chemuson.geometry3d.export_xyz import molgraph_to_xyz
 from chemuson.geometry3d import obabel_backend, rdkit_backend
+from chemuson.chemio.persistence import PersistenceManager
 
 
 def _ethanol_graph() -> MolGraph:
@@ -30,6 +32,14 @@ def _ethanol_graph() -> MolGraph:
     o = graph.add_atom("O", 84.0, 0.0)
     graph.add_bond(c1.id, c2.id, order=1)
     graph.add_bond(c2.id, o.id, order=1)
+    return graph
+
+
+def _ethane_graph() -> MolGraph:
+    graph = MolGraph()
+    first = graph.add_atom("C", 0.0, 0.0)
+    second = graph.add_atom("C", 42.0, 0.0)
+    graph.add_bond(first.id, second.id, order=1)
     return graph
 
 
@@ -97,6 +107,77 @@ def test_scene_molecule3d_includes_generated_atoms_without_mutating_graph() -> N
     assert len(graph.atoms) == 3
     assert len(scene.atoms) == 4
     assert any(atom.generated and atom.element == "H" for atom in scene.atoms)
+
+
+def test_generated_conformer_exposes_hydrogen_atoms_and_bonds_without_persisting_them(tmp_path) -> None:
+    from chemuson.chemio.rdkit_safe import is_rdkit_worker_available
+
+    if not is_rdkit_worker_available(timeout_s=5.0):
+        pytest.skip("RDKit worker no disponible")
+    graph = _ethane_graph()
+    result = conformer_3d_for_graph(graph, timeout_s=20.0, force=True)
+    assert result.ok, result.message
+    coordinates = result.coordinate_set
+    assert coordinates is not None
+    generated_atoms = coordinates.metadata.get("generated_atoms", [])
+    generated_bonds = coordinates.metadata.get("generated_bonds", [])
+    assert isinstance(generated_atoms, list)
+    assert isinstance(generated_bonds, list)
+
+    scene = scene_molecule_from_graph(graph, coordinates)
+
+    assert len(generated_atoms) == 6
+    assert len(generated_bonds) == 6
+    assert len(scene.atoms) == 8
+    assert len(scene.bonds) == 7
+    assert sum(atom.generated for atom in scene.atoms) == 6
+    assert len(graph.atoms) == 2
+    assert len(graph.bonds) == 1
+
+    class PersistenceStub:
+        def __init__(self, model: MolGraph) -> None:
+            self.model = model
+
+        def get_persistence_data(self) -> dict[str, Any]:
+            return {}
+
+        def load_persistence_data(self, data: dict[str, Any]) -> None:
+            pass
+
+        def rebuild_persistence_view(self) -> None:
+            pass
+
+    source = PersistenceStub(graph)
+    path = tmp_path / "ethane.cmsn"
+    PersistenceManager.save_to_file(str(path), source)
+    serialized = PersistenceManager.save_to_dict(source)
+    assert len(serialized["model"]["atoms"]) == 2
+    assert len(serialized["model"]["bonds"]) == 1
+
+    restored = PersistenceStub(MolGraph())
+    PersistenceManager.load_from_file(str(path), restored)
+    assert len(restored.model.atoms) == 2
+    assert len(restored.model.bonds) == 1
+
+
+def test_rdkit_optimization_preserves_generated_hydrogen_scene_metadata() -> None:
+    from chemuson.chemio.rdkit_safe import is_rdkit_worker_available
+
+    if not is_rdkit_worker_available(timeout_s=5.0):
+        pytest.skip("RDKit worker no disponible")
+    result = rdkit_backend.optimize(
+        _ethane_graph(),
+        settings=OptimizationSettings(forcefield=ForceField.UFF, max_iters=3, timeout_s=15.0),
+    )
+
+    assert result.ok
+    assert result.coordinates is not None
+    generated_atoms = result.coordinates.metadata.get("generated_atoms", [])
+    generated_bonds = result.coordinates.metadata.get("generated_bonds", [])
+    assert isinstance(generated_atoms, list)
+    assert isinstance(generated_bonds, list)
+    assert len(generated_atoms) == 6
+    assert len(generated_bonds) == 6
 
 
 def test_conformer_3d_for_graph_uses_cache() -> None:

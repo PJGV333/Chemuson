@@ -3,6 +3,7 @@ from __future__ import annotations
 """Modelos puros para conformaciones 3D y optimización molecular."""
 
 from dataclasses import dataclass, field
+import math
 from enum import Enum
 from typing import Mapping
 
@@ -160,6 +161,7 @@ def scene_molecule_from_graph(graph, coordinates: CoordinateSet3D) -> SceneMolec
                 generated=False,
             )
         )
+    atom_ids = {atom.id for atom in atoms}
     generated_atoms = coordinates.metadata.get("generated_atoms", ()) if hasattr(coordinates, "metadata") else ()
     if isinstance(generated_atoms, list):
         for item in generated_atoms:
@@ -169,21 +171,48 @@ def scene_molecule_from_graph(graph, coordinates: CoordinateSet3D) -> SceneMolec
             if not isinstance(coords, (list, tuple)) or len(coords) != 3:
                 continue
             element = str(item.get("element", "H"))
+            try:
+                position = tuple(float(component) for component in coords)
+                atom_id = str(item.get("id", f"gen{len(atoms) + 1}"))
+            except (TypeError, ValueError):
+                continue
+            if atom_id in atom_ids or not all(math.isfinite(component) for component in position):
+                continue
             atoms.append(
                 SceneAtom3D(
-                    id=str(item.get("id", f"gen{len(atoms) + 1}")),
+                    id=atom_id,
                     element=element,
-                    x=float(coords[0]),
-                    y=float(coords[1]),
-                    z=float(coords[2]),
+                    x=position[0],
+                    y=position[1],
+                    z=position[2],
                     radius=float(_VDW_RADII.get(element, 1.20)),
                     color=str(_ELEMENT_COLORS.get(element, "#B0B0B0")),
                     generated=True,
                 )
             )
-    bonds = tuple(
+            atom_ids.add(atom_id)
+    bonds = list(
         SceneBond3D(int(bond.id), int(bond.a1_id), int(bond.a2_id), int(getattr(bond, "order", 1) or 1))
         for bond in sorted(getattr(graph, "bonds", {}).values(), key=lambda item: item.id)
         if int(bond.a1_id) in positions and int(bond.a2_id) in positions
     )
-    return SceneMolecule3D(atoms=tuple(atoms), bonds=bonds, source=coordinates.source)
+    generated_bonds = coordinates.metadata.get("generated_bonds", ()) if hasattr(coordinates, "metadata") else ()
+    if isinstance(generated_bonds, list):
+        bond_ids = {bond.id for bond in bonds}
+        for item in generated_bonds:
+            if not isinstance(item, Mapping):
+                continue
+            a1_id = item.get("a1_id")
+            a2_id = item.get("a2_id")
+            if a1_id not in atom_ids or a2_id not in atom_ids:
+                continue
+            bond_id = str(item.get("id", f"genB{len(bonds) + 1}"))
+            if bond_id in bond_ids:
+                continue
+            try:
+                order = max(1, int(item.get("order", 1) or 1))
+            except (TypeError, ValueError):
+                continue
+            bonds.append(SceneBond3D(bond_id, a1_id, a2_id, order))
+            bond_ids.add(bond_id)
+    return SceneMolecule3D(atoms=tuple(atoms), bonds=tuple(bonds), source=coordinates.source)

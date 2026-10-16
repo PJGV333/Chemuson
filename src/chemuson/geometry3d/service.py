@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """Pipeline híbrido para conformaciones 3D reales y proyección 2D."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from concurrent.futures import Future, ThreadPoolExecutor
 import hashlib
 import math
@@ -24,6 +24,7 @@ class Conformer3DResult:
     energy: float | None = None
     message: str = ""
     from_cache: bool = False
+    metadata: Mapping[str, object] = field(default_factory=dict)
 
     @property
     def coordinate_set(self) -> CoordinateSet3D | None:
@@ -35,7 +36,12 @@ class Conformer3DResult:
             source=self.source,
             method=self.method,
             energy=self.energy,
-            metadata={"cache_key": self.cache_key, "from_cache": self.from_cache, "message": self.message},
+            metadata={
+                **dict(self.metadata),
+                "cache_key": self.cache_key,
+                "from_cache": self.from_cache,
+                "message": self.message,
+            },
         )
 
     @property
@@ -97,6 +103,7 @@ def conformer_3d_for_graph(
                 energy=cached.energy,
                 message=cached.message,
                 from_cache=True,
+                metadata=dict(cached.metadata),
             )
 
     settings = settings or OptimizationSettings(timeout_s=timeout_s)
@@ -111,6 +118,7 @@ def conformer_3d_for_graph(
         method=opt_result.coordinates.method,
         energy=opt_result.coordinates.energy,
         message=opt_result.message,
+        metadata=dict(opt_result.coordinates.metadata),
     )
     _store_cache(cache_key, result)
     return result

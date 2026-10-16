@@ -23,11 +23,12 @@ class CameraState:
     fov_y_degrees: float = 45.0
     ortho_scale: float = 10.0
     projection: CameraProjection = CameraProjection.PERSPECTIVE
+    fit_radius: float = 0.0
 
     MIN_DISTANCE = 0.05
-    MAX_DISTANCE = 1.0e5
+    MAX_DISTANCE = 1.0e12
     MIN_ORTHO_SCALE = 0.05
-    MAX_ORTHO_SCALE = 1.0e5
+    MAX_ORTHO_SCALE = 1.0e12
     MIN_PITCH = -math.pi / 2.0 + 0.02
     MAX_PITCH = math.pi / 2.0 - 0.02
 
@@ -98,19 +99,59 @@ class CameraState:
     def set_projection(self, projection: CameraProjection) -> None:
         self.projection = CameraProjection(projection)
 
-    def fit_scene(self, scene, padding: float = 1.35) -> bool:
+    def fit_scene(
+        self,
+        scene,
+        padding: float = 1.35,
+        viewport_width: float = 1.0,
+        viewport_height: float = 1.0,
+    ) -> bool:
         bounds = scene_bounds(scene)
-        if bounds is None:
+        if (
+            bounds is None
+            or viewport_width <= 0.0
+            or viewport_height <= 0.0
+            or not math.isfinite(viewport_width)
+            or not math.isfinite(viewport_height)
+            or not math.isfinite(padding)
+        ):
             return False
         padding = max(1.0, float(padding))
-        self.target = bounds.center
         radius = max(0.05, bounds.radius) * padding
+        if not math.isfinite(radius):
+            return False
+        aspect = float(viewport_width) / float(viewport_height)
+        if not math.isfinite(aspect) or aspect <= 0.0:
+            return False
         if self.projection == CameraProjection.ORTHOGRAPHIC:
-            self.ortho_scale = self._clamp_ortho_scale(2.0 * radius)
+            requested_scale = 2.0 * radius * max(1.0, 1.0 / aspect)
+            requested_distance = max(self.distance, radius * 1.1)
+            if (
+                not math.isfinite(requested_scale)
+                or requested_scale > self.MAX_ORTHO_SCALE
+                or requested_distance > self.MAX_DISTANCE
+            ):
+                return False
+            self.ortho_scale = self._clamp_ortho_scale(requested_scale)
+            self.distance = self._clamp_distance(requested_distance)
         else:
-            half_fov = math.radians(self.fov_y_degrees) * 0.5
-            self.distance = self._clamp_distance(radius / max(0.05, math.tan(half_fov)))
+            vertical_half_angle = math.radians(self.fov_y_degrees) * 0.5
+            horizontal_half_angle = math.atan(math.tan(vertical_half_angle) * aspect)
+            limiting_half_angle = min(vertical_half_angle, horizontal_half_angle)
+            requested_distance = radius / max(1.0e-9, math.sin(limiting_half_angle))
+            if not math.isfinite(requested_distance) or requested_distance > self.MAX_DISTANCE:
+                return False
+            self.distance = self._clamp_distance(requested_distance)
+        self.target = bounds.center
+        self.fit_radius = radius
         return True
+
+    def clip_planes(self) -> tuple[float, float]:
+        """Return depth planes that contain the currently fitted scene sphere."""
+        margin = max(0.05, self.fit_radius * 1.1)
+        near = max(0.001, self.distance - margin)
+        far = max(near + 0.01, self.distance + margin)
+        return near, far
 
     def ray_parameters(self, viewport_width: float, viewport_height: float) -> tuple[Vec3, Vec3, Vec3, Vec3]:
         if viewport_width <= 0.0 or viewport_height <= 0.0:

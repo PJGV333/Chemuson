@@ -8,7 +8,7 @@ from typing import Iterable
 
 Vec3 = tuple[float, float, float]
 EPSILON = 1.0e-9
-ATOM_RADIUS_SCALE = 0.38
+ATOM_RADIUS_SCALE = 0.30
 BOND_RADIUS = 0.12
 
 
@@ -104,60 +104,68 @@ def scene_bounds(scene) -> Bounds3D | None:
 
 
 def ray_sphere_intersection(ray: Ray3D, center: Vec3, radius: float) -> float | None:
+    roots = _ray_sphere_roots(ray, center, radius)
+    return roots[0] if roots else None
+
+
+def _ray_sphere_roots(ray: Ray3D, center: Vec3, radius: float) -> tuple[float, ...]:
     if radius <= EPSILON or not math.isfinite(radius) or not is_finite_vec(center):
-        return None
+        return ()
     offset = sub(ray.origin, center)
     half_b = dot(offset, ray.direction)
     discriminant = half_b * half_b - (dot(offset, offset) - radius * radius)
     if discriminant < 0.0:
-        return None
+        return ()
     root = math.sqrt(max(0.0, discriminant))
     near = -half_b - root
     far = -half_b + root
-    if near >= 0.0:
-        return near
-    if far >= 0.0:
-        return far
-    return None
+    return tuple(value for value in (near, far) if value >= 0.0)
 
 
 def ray_capsule_intersection(ray: Ray3D, start: Vec3, end: Vec3, radius: float) -> float | None:
-    """Devuelve la distancia del punto de aproximación rayo-segmento.
-
-    Para picking el orden de impactos es más importante que resolver una
-    ecuación de cilindro completa. La distancia mínima a la cápsula finita es
-    estable también para enlaces degenerados y rayos casi paralelos.
-    """
-    if radius <= EPSILON or not math.isfinite(radius):
+    """Devuelve la primera distancia positiva hasta la superficie de cápsula."""
+    if radius <= EPSILON or not math.isfinite(radius) or not is_finite_vec(start) or not is_finite_vec(end):
         return None
     segment = sub(end, start)
-    segment_length_sq = dot(segment, segment)
-    if segment_length_sq <= EPSILON:
+    segment_length = length(segment)
+    if segment_length <= EPSILON:
         return ray_sphere_intersection(ray, start, radius)
 
+    axis = scale(segment, 1.0 / segment_length)
     relative = sub(ray.origin, start)
-    ray_segment_dot = dot(ray.direction, segment)
-    ray_relative_dot = dot(ray.direction, relative)
-    segment_relative_dot = dot(segment, relative)
-    denominator = segment_length_sq - ray_segment_dot * ray_segment_dot
+    axial_origin = dot(relative, axis)
+    axial_direction = dot(ray.direction, axis)
+    radial_origin = sub(relative, scale(axis, axial_origin))
+    radial_direction = sub(ray.direction, scale(axis, axial_direction))
 
-    if abs(denominator) > EPSILON:
-        ray_t = (ray_segment_dot * segment_relative_dot - segment_length_sq * ray_relative_dot) / denominator
-        segment_u = (segment_relative_dot - ray_segment_dot * ray_relative_dot) / denominator
-    else:
-        ray_t = 0.0
-        segment_u = segment_relative_dot / segment_length_sq
+    candidates: list[float] = []
+    quadratic_a = dot(radial_direction, radial_direction)
+    quadratic_b = 2.0 * dot(radial_origin, radial_direction)
+    quadratic_c = dot(radial_origin, radial_origin) - radius * radius
+    if quadratic_a > 1.0e-14:
+        discriminant = quadratic_b * quadratic_b - 4.0 * quadratic_a * quadratic_c
+        tolerance = 1.0e-12 * max(1.0, quadratic_b * quadratic_b, abs(4.0 * quadratic_a * quadratic_c))
+        if discriminant >= -tolerance:
+            root = math.sqrt(max(0.0, discriminant))
+            q = -0.5 * (quadratic_b + math.copysign(root, quadratic_b))
+            if abs(q) > EPSILON:
+                roots = (q / quadratic_a, quadratic_c / q)
+            else:
+                roots = (-quadratic_b / (2.0 * quadratic_a),)
+            axial_tolerance = EPSILON * max(1.0, segment_length, radius)
+            for distance in roots:
+                if distance < 0.0 or not math.isfinite(distance):
+                    continue
+                axial = axial_origin + distance * axial_direction
+                if -axial_tolerance <= axial <= segment_length + axial_tolerance:
+                    candidates.append(distance)
 
-    if ray_t < 0.0:
-        ray_t = 0.0
-        segment_u = segment_relative_dot / segment_length_sq
-    segment_u = max(0.0, min(1.0, segment_u))
-    if ray_t > 0.0 and (segment_u <= 0.0 or segment_u >= 1.0):
-        endpoint = start if segment_u <= 0.0 else end
-        ray_t = max(0.0, dot(sub(endpoint, ray.origin), ray.direction))
+    axial_tolerance = EPSILON * max(1.0, segment_length, radius)
+    for endpoint, is_start in ((start, True), (end, False)):
+        for distance in _ray_sphere_roots(ray, endpoint, radius):
+            hit = add(ray.origin, scale(ray.direction, distance))
+            axial = dot(sub(hit, start), axis)
+            if (is_start and axial <= axial_tolerance) or (not is_start and axial >= segment_length - axial_tolerance):
+                candidates.append(distance)
 
-    ray_point = add(ray.origin, scale(ray.direction, ray_t))
-    segment_point = add(start, scale(segment, segment_u))
-    if length(sub(ray_point, segment_point)) <= radius + EPSILON:
-        return ray_t
-    return None
+    return min(candidates) if candidates else None

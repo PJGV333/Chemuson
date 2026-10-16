@@ -5,7 +5,7 @@ from __future__ import annotations
 from array import array
 
 from PyQt6 import sip
-from PyQt6.QtGui import QMatrix4x4, QVector3D
+from PyQt6.QtGui import QMatrix4x4, QOpenGLContext, QVector3D
 from PyQt6.QtOpenGL import (
     QOpenGLBuffer,
     QOpenGLFunctions_4_1_Core,
@@ -61,42 +61,56 @@ class MoleculeRenderer:
         self._vao: QOpenGLVertexArrayObject | None = None
         self._vertex_count = 0
         self._initialized = False
+        self._context: QOpenGLContext | None = None
 
     @property
     def initialized(self) -> bool:
         return self._initialized
 
     def initialize(self) -> tuple[bool, str]:
+        context = QOpenGLContext.currentContext()
+        if context is None:
+            return False, "No hay un contexto OpenGL actual para inicializar el renderer"
+        if self._initialized and self._context == context:
+            return True, "OpenGL 4.1 core inicializado"
+        self._context = context
         try:
             gl = QOpenGLFunctions_4_1_Core()
             if not gl.initializeOpenGLFunctions():
+                self.cleanup()
                 return False, "Qt no pudo inicializar funciones OpenGL 4.1 core"
             program = QOpenGLShaderProgram()
+            self._program = program
             if not program.addShaderFromSourceCode(QOpenGLShader.ShaderTypeBit.Vertex, _VERTEX_SHADER):
+                self.cleanup()
                 return False, program.log() or "No se pudo compilar el vertex shader"
             if not program.addShaderFromSourceCode(QOpenGLShader.ShaderTypeBit.Fragment, _FRAGMENT_SHADER):
+                self.cleanup()
                 return False, program.log() or "No se pudo compilar el fragment shader"
             if not program.link():
+                self.cleanup()
                 return False, program.log() or "No se pudo enlazar el shader program"
             vbo = QOpenGLBuffer(QOpenGLBuffer.Type.VertexBuffer)
+            self._vbo = vbo
             vao = QOpenGLVertexArrayObject()
+            self._vao = vao
             if not vbo.create() or not vao.create():
+                self.cleanup()
                 return False, "No se pudieron crear los buffers OpenGL"
             self._gl = gl
-            self._program = program
-            self._vbo = vbo
-            self._vao = vao
             self._initialized = True
             gl.glEnable(GL_DEPTH_TEST)
             gl.glDepthFunc(GL_LESS)
             return True, "OpenGL 4.1 core inicializado"
         except Exception as exc:
-            self._initialized = False
+            self.cleanup()
             return False, f"OpenGL no disponible: {exc}"
 
-    def upload(self, scene, selected_atom_id=None, selected_bond_id=None) -> None:
+    def upload(self, scene, selected_atom_id=None, selected_bond_id=None) -> bool:
         if not self._initialized or self._vbo is None or self._vao is None or self._program is None:
-            return
+            return False
+        if QOpenGLContext.currentContext() != self._context:
+            return False
         mesh = build_scene_mesh(scene, selected_atom_id, selected_bond_id)
         self._vertex_count = mesh.vertex_count
         self._vao.bind()
@@ -112,20 +126,24 @@ class MoleculeRenderer:
         self._program.setAttributeBuffer(2, GL_FLOAT, 6 * 4, 3, stride)
         self._vbo.release()
         self._vao.release()
+        return True
 
     def render(self, camera: CameraState, width: int, height: int) -> None:
         if not self._initialized or self._gl is None or self._program is None or self._vao is None:
+            return
+        if QOpenGLContext.currentContext() != self._context:
             return
         if width <= 0 or height <= 0:
             return
         gl = self._gl
         projection = QMatrix4x4()
         aspect = float(width) / float(height)
+        near, far = camera.clip_planes()
         if camera.projection == CameraProjection.ORTHOGRAPHIC:
             half_height = camera.ortho_scale * 0.5
-            projection.ortho(-half_height * aspect, half_height * aspect, -half_height, half_height, 0.01, camera.MAX_DISTANCE)
+            projection.ortho(-half_height * aspect, half_height * aspect, -half_height, half_height, near, far)
         else:
-            projection.perspective(camera.fov_y_degrees, aspect, 0.01, camera.MAX_DISTANCE)
+            projection.perspective(camera.fov_y_degrees, aspect, near, far)
         view = QMatrix4x4()
         forward, _right, up = camera.basis
         eye = camera.eye
@@ -143,3 +161,32 @@ class MoleculeRenderer:
 
     def clear(self) -> None:
         self._vertex_count = 0
+
+    def cleanup(self) -> None:
+        """Release Qt GPU wrappers while their owning context is current."""
+        context_is_current = QOpenGLContext.currentContext() == self._context
+        cleanup_error: Exception | None = None
+        try:
+            if context_is_current:
+                for resource, destroy in (
+                    (self._vbo, lambda item: item.destroy() if item.isCreated() else None),
+                    (self._vao, lambda item: item.destroy() if item.isCreated() else None),
+                    (self._program, lambda item: (item.release(), item.removeAllShaders())),
+                ):
+                    if resource is None:
+                        continue
+                    try:
+                        destroy(resource)
+                    except Exception as exc:
+                        if cleanup_error is None:
+                            cleanup_error = exc
+        finally:
+            self._gl = None
+            self._program = None
+            self._vbo = None
+            self._vao = None
+            self._vertex_count = 0
+            self._initialized = False
+            self._context = None
+        if cleanup_error is not None:
+            raise cleanup_error

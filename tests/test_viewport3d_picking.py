@@ -32,6 +32,24 @@ def test_pick_bond_when_atom_spheres_do_not_cover_cursor() -> None:
     assert hit.primitive_id == 7
 
 
+def test_pick_uses_first_surface_depth_when_atom_occludes_bond() -> None:
+    scene = SceneMolecule3D(
+        atoms=(
+            SceneAtom3D(1, "C", 0.0, 0.0, 0.0, 1.7, "#404040"),
+            SceneAtom3D(2, "C", -1.0, 0.0, -0.2, 0.1, "#404040"),
+            SceneAtom3D(3, "C", 1.0, 0.0, -0.2, 0.1, "#404040"),
+        ),
+        bonds=(SceneBond3D(9, 2, 3),),
+    )
+    camera = CameraState(target=(0.0, 0.0, 0.0), distance=5.0, yaw=0.0, pitch=0.0)
+
+    hit = pick_scene(scene, camera, 800, 600, 400, 300)
+
+    assert hit is not None
+    assert hit.kind == "atom"
+    assert hit.primitive_id == 1
+
+
 def test_pick_empty_scene_returns_none() -> None:
     camera = CameraState()
     scene = SceneMolecule3D(atoms=(), bonds=())

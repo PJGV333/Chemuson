@@ -515,6 +515,46 @@ def _handle_graph_descriptors_mode(Chem, request: dict[str, Any]) -> dict[str, A
     return {"ok": True, "descriptors": descriptors}
 
 
+def _generated_hydrogen_metadata(mol, conformer, original_atom_count: int, reverse_map: dict[int, int]) -> dict[str, list[dict[str, Any]]]:
+    """Return non-document atoms/bonds appended by ``Chem.AddHs``."""
+    generated_atoms: list[dict[str, Any]] = []
+    generated_bonds: list[dict[str, Any]] = []
+    generated_atom_ids: dict[int, str] = {}
+    for atom in mol.GetAtoms():
+        atom_index = int(atom.GetIdx())
+        if atom_index < original_atom_count or atom.GetSymbol() != "H":
+            continue
+        position = conformer.GetAtomPosition(atom_index)
+        generated_id = f"genH{atom_index}"
+        generated_atom_ids[atom_index] = generated_id
+        generated_atoms.append(
+            {
+                "id": generated_id,
+                "element": "H",
+                "coords": [float(position.x), float(position.y), float(position.z)],
+            }
+        )
+
+    for bond in mol.GetBonds():
+        start_index = int(bond.GetBeginAtomIdx())
+        end_index = int(bond.GetEndAtomIdx())
+        if start_index not in generated_atom_ids and end_index not in generated_atom_ids:
+            continue
+        start_id = reverse_map.get(start_index, generated_atom_ids.get(start_index))
+        end_id = reverse_map.get(end_index, generated_atom_ids.get(end_index))
+        if start_id is None or end_id is None:
+            continue
+        generated_bonds.append(
+            {
+                "id": f"genB{int(bond.GetIdx())}",
+                "a1_id": start_id,
+                "a2_id": end_id,
+                "order": max(1, int(round(float(bond.GetBondTypeAsDouble())))),
+            }
+        )
+    return {"generated_atoms": generated_atoms, "generated_bonds": generated_bonds}
+
+
 def _handle_graph_conformer3d_mode(Chem, request: dict[str, Any]) -> dict[str, Any]:
     """Genera coordenadas 3D reales con EmbedMolecule + MMFF/UFF."""
     mol, id_map, error = _build_mol_from_graph_payload(Chem, request)
@@ -527,6 +567,7 @@ def _handle_graph_conformer3d_mode(Chem, request: dict[str, Any]) -> dict[str, A
         from rdkit.Chem import AllChem
 
         reverse_map = {rd_idx: atom_id for atom_id, rd_idx in id_map.items()}
+        original_atom_count = int(mol.GetNumAtoms())
         mol_h = Chem.AddHs(mol, addCoords=True)
         params = AllChem.ETKDGv3()
         params.randomSeed = 0xC0FFEE
@@ -558,10 +599,11 @@ def _handle_graph_conformer3d_mode(Chem, request: dict[str, Any]) -> dict[str, A
         for rd_idx, atom_id in reverse_map.items():
             pos = conf.GetAtomPosition(int(rd_idx))
             positions[str(atom_id)] = [float(pos.x), float(pos.y), float(pos.z)]
+        generated = _generated_hydrogen_metadata(mol_h, conf, original_atom_count, reverse_map)
         return {
             "ok": True,
             "positions": positions,
-            "metadata": {"source": "rdkit", "method": method, "energy": energy},
+            "metadata": {"source": "rdkit", "method": method, "energy": energy, **generated},
         }
     except Exception as exc:
         return {"ok": False, "error": "conformer3d_failed", "detail": str(exc)}
@@ -585,6 +627,7 @@ def _handle_graph_optimize3d_mode(Chem, request: dict[str, Any]) -> dict[str, An
         reverse_map = {rd_idx: atom_id for atom_id, rd_idx in id_map.items()}
         initial_coordinates = request.get("coordinates", {})
         used_initial_coordinates = _apply_initial_coordinates(Chem, mol, id_map, initial_coordinates)
+        original_atom_count = int(mol.GetNumAtoms())
         mol_h = Chem.AddHs(mol, addCoords=True)
         if not used_initial_coordinates:
             params = AllChem.ETKDGv3()
@@ -634,6 +677,7 @@ def _handle_graph_optimize3d_mode(Chem, request: dict[str, Any]) -> dict[str, An
         for rd_idx, atom_id in reverse_map.items():
             pos = conf.GetAtomPosition(int(rd_idx))
             positions[str(atom_id)] = [float(pos.x), float(pos.y), float(pos.z)]
+        generated = _generated_hydrogen_metadata(mol_h, conf, original_atom_count, reverse_map)
         return {
             "ok": True,
             "positions": positions,
@@ -646,6 +690,7 @@ def _handle_graph_optimize3d_mode(Chem, request: dict[str, Any]) -> dict[str, An
                 "steps_per_update": steps_per_update,
                 "seed": seed,
                 "used_initial_coordinates": used_initial_coordinates,
+                **generated,
             },
             "frames": frames,
         }
