@@ -16,6 +16,7 @@
 | `ruff check src tests tools packaging --select F401,F811,F821,E722,E741` | Exit 1 por el hallazgo histórico único `F401 math` en `tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py:3`; no corregido. |
 | `QT_QPA_PLATFORM=offscreen timeout 480s pytest -q` | Exit 124 (timeout) a 480s; progreso ≈34%, sin fallo de aserción visible. Log exacto: `/tmp/chemuson-depiction-refinement-baseline/pytest-baseline.log`. |
 | Render existente `tools/visual/render_bond_junction_gallery.py --theme both` | Exit 0. PNG baseline en `/tmp/chemuson-depiction-refinement-baseline/before-existing/`; SHA256 dark `b6f84ef8ae69a91c032051b9912db215a7408a94d95b5fa8b7b5db22dc948889`, light `3c65230cc8b149a2602b2ea132162e8e89976e2cae626c6eadd198cc738c7e83`. |
+| Galería enfocada `tools/visual/render_wedge_double_label_gallery.py --theme both` | Exit 0. PNGs guardados antes del cambio en `/tmp/chemuson-depiction-refinement-baseline/focused-before/`; SHA256 dark `0b0d78a3287978f90c949034b5c593cddc0f2f32f1fd98cf0a9d5329f41dafed`, light `74127166a22e841a56c185a51226041b624c61cc4ab2bd643e257c5decb97544`. Matriz de 15 casos: hash↔doble, carbonilos/labels O en 0°/45°/90°, labels Cl/N/O adjuntos a alqueno, etiquetas en wedge, Haworth pentágono/hexágono. |
 
 ## Primera lectura técnica (hipótesis, no conclusiones)
 

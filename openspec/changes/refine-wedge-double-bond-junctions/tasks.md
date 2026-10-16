@@ -7,11 +7,11 @@
 - [x] 1.4 Leer contratos de unión/label existentes y registrar hipótesis de causa raíz sin parchear.
 
 ## 2. Reproducción y evidencia visual
-- [ ] 2.1 Ampliar galería con hash↔doble y su línea pi próxima, usando la ruta de producción.
-- [ ] 2.2 Añadir O/N/halógenos cortos junto a dobles horizontales, verticales y diagonales; medir centro óptico vs átomo y trazos.
-- [ ] 2.3 Capturar wedge sólido/hash con etiquetas y medir gap desde la silueta real del trazo, incluidas caps.
-- [ ] 2.4 Añadir Haworth pentagonal y hexagonal con aristas bold y wedges sólidos en claro/oscuro.
-- [ ] 2.5 Confirmar cada defecto con comparación base y guardar crops/intermedios bajo `/tmp`.
+- [x] 2.1 Ampliar galería con hash↔doble y su línea pi próxima, usando la ruta de producción.
+- [x] 2.2 Añadir O/N/halógenos cortos junto a dobles horizontales, verticales y diagonales; medir centro óptico vs átomo y trazos.
+- [x] 2.3 Capturar wedge sólido/hash con etiquetas y medir gap desde la silueta real del trazo, incluidas caps.
+- [x] 2.4 Añadir Haworth pentagonal y hexagonal con aristas bold y wedges sólidos en claro/oscuro.
+- [x] 2.5 Confirmar cada defecto con comparación base y guardar crops/intermedios bajo `/tmp`.
 
 ## 3. Correcciones geométricas condicionadas a evidencia
 - [ ] 3.1 Corregir intersección/trim hash↔doble sin confundir sigma con pi ni alterar hash count/orientación.
