@@ -48,6 +48,11 @@ El renderer SHALL usar `QOpenGLWidget`, shaders y buffers Qt (`QOpenGLShaderProg
 - **THEN** el dock muestra un estado de indisponibilidad controlado
 - **AND** el editor 2D, sus documentos y sus acciones permanecen utilizables
 
+#### Scenario: La esfera no oculta los enlaces
+- **GIVEN** una escena con enlaces covalentes C-C o C-H
+- **WHEN** se renderiza como esferas y varillas
+- **THEN** los radios visuales permiten distinguir una parte del conector entre las esferas
+
 ### Requirement: Picking CPU identifica la primitiva visible más cercana
 
 El picking SHALL construir un rayo desde la cámara y probar átomos como esferas y enlaces como cápsulas finitas. SHALL devolver como máximo una selección con tipo (`atom`/`bond`), ID y distancia positiva; SHALL ignorar geometría no finita o degenerada y SHALL escoger la menor distancia válida.

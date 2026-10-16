@@ -35,6 +35,7 @@ El baseline previo a esta especificación queda registrado en `baseline.md`.
 2. El fit usa el aspect ratio real y los radios visuales para contener la esfera de bounds completa bajo perspectiva u ortográfica. La escena inicial se encuadra al conocerse el tamaño del viewport y durante resize mientras el usuario no haya navegado; orbit/pan/zoom desactivan ese auto-fit. El fit explícito siempre vuelve a encuadrar. Los planos near/far se derivan del radio y distancia para no truncar moléculas grandes.
 3. El picking de enlace busca la primera intersección positiva con la superficie de una cápsula finita: cilindro lateral y hemisferios externos, incluidos rayos que empiezan dentro, tangencias y segmentos cortos. Se compara esa distancia de superficie con las esferas de los átomos.
 4. El worker RDKit devuelve coordenadas y enlaces de los hidrógenos añadidos como metadata transitoria; `scene_molecule_from_graph` los agrega a `SceneMolecule3D`. No se asignan IDs al `MolGraph`, no se cambian selecciones/documentos ni se serializa metadata generada en `.cmsn`.
+5. La escala de las esferas debe dejar visible el segmento de varilla en enlaces C-C y C-H; bounds, malla y picking reutilizan la misma escala visual para que la selección coincida con lo renderizado.
 
 ## Archivos afectados
 
