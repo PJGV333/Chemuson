@@ -223,7 +223,7 @@ def _build_report(
         f"- Profile: `{profile_path.name}`; schema `{payload['schema']}` v{payload['version']}; based on `{payload['based_on']}`\n"
         f"- SVG: {svg_status}\n\n"
         "## Working profile\n\n```json\n"
-        f"{json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)}\n``\n\n"
+        f"{json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)}\n```\n\n"
         "## Changed values (Current → Working)\n\n"
         + (
             "\n".join(

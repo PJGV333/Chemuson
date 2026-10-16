@@ -66,6 +66,7 @@ def test_case_export_produces_matched_png_svg_profile_and_provenance(tmp_path) -
     report = (output / "report.md").read_text(encoding="utf-8")
     assert "Renderer source SHA at export" in report
     assert "Git working tree at export" in report
+    assert "}\n```\n\n## Changed values" in report
     assert "A1" in report and "solid_wedge_width_ratio" in report
     if "exported through" in result["svg"]:
         assert (output / "current-A1-dark.svg").is_file()
