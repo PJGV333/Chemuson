@@ -11,6 +11,6 @@
 
 ## 3. Verificación y entrega
 - [x] 3.1 Tests GUI focalizados, preferencias, guardado/cierre, `tests/architecture`, Ruff focal, OpenSpec estricto y `git diff --check`; cada pytest <10 min.
-- [ ] 3.2 Validar el set completo de tests con los shards CI bounded; reconciliar node IDs sin modificar manifiesto si no cambia colección.
-- [ ] 3.3 Commit pequeño y push normal sólo a `fix/beta-final-ui-clean2d`; verificar Actions, SHA remoto y árbol limpio.
-- [ ] 3.4 Dejar aceptación manual del propietario pendiente; no integrar en prep ni publicar tags/releases.
+- [x] 3.2 Validar el set completo (2235 IDs) con los ocho shards CI bounded; reconciliar node IDs y actualizar el manifiesto sólo por los cambios de tests revisados.
+- [x] 3.3 Commit pequeño y push normal sólo a `fix/beta-final-ui-clean2d`; Actions verde, SHA remoto verificado y árbol limpio.
+- [x] 3.4 Dejar aceptación manual del propietario pendiente; no integrar en prep ni publicar tags/releases.

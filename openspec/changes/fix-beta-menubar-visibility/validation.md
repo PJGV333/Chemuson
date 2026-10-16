@@ -28,4 +28,6 @@ La corrección reaprovecha `action_show_menu_bar` y su persistencia existente, c
 
 ## CI/aceptación
 
-Pendiente de push y GitHub Actions por shards. La comprobación manual del propietario sigue pendiente; no integrar en `release/v0.3.0-beta.1-prep`, no modificar `main`, ni publicar tags/releases/paquetes.
+- GitHub Actions run [`38836149649`](https://github.com/PJGV333/Chemuson/actions/runs/38836149649), HEAD de implementación `d4d2f67bd1b4101b9ebd734fb34d096939da46dd`: **success**. Plan, los ocho shards, verificación completa de IDs/JUnit, `windows-smoke` y `flatpak-smoke` pasaron. Shard local más largo en Actions: 4m30s, dentro del límite.
+- Push normal únicamente a `fix/beta-final-ui-clean2d`; no se integró a `release/v0.3.0-beta.1-prep`, no se modificó `main` ni se publicaron tags/releases/paquetes.
+- La comprobación manual del propietario sigue pendiente.
