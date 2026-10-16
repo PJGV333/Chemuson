@@ -69,8 +69,12 @@ def test_case_export_produces_matched_png_svg_profile_and_provenance(tmp_path) -
     assert "}\n```\n\n## Changed values" in report
     assert "A1" in report and "solid_wedge_width_ratio" in report
     if "exported through" in result["svg"]:
-        assert (output / "current-A1-dark.svg").is_file()
-        assert (output / "working-A1-dark.svg").is_file()
+        for svg in (output / "current-A1-dark.svg", output / "working-A1-dark.svg"):
+            assert svg.is_file()
+            assert all(
+                line == line.rstrip(b" \\t")
+                for line in svg.read_bytes().splitlines()
+            )
 
 
 def test_full_contact_sheet_export_is_bounded_and_reproducible(tmp_path) -> None:

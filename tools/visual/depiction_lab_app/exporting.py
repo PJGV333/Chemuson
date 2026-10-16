@@ -94,7 +94,13 @@ def _render_svg(adapter: ProductionCanvasAdapter, path: Path, width: int, height
         Qt.AspectRatioMode.KeepAspectRatio,
     )
     painter.end()
-    return path.is_file() and path.stat().st_size > 0
+    if not path.is_file() or path.stat().st_size == 0:
+        return False
+    # QtSvg emits harmless padding spaces at line ends; normalize for clean diffs
+    # and byte-reproducible checked-in review evidence.
+    svg_lines = path.read_bytes().splitlines()
+    path.write_bytes(b"\n".join(line.rstrip(b" \\t") for line in svg_lines) + b"\n")
+    return path.stat().st_size > 0
 
 
 def render_comparison_sheet(current: QImage, working: QImage, title: str) -> QImage:
