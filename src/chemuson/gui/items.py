@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
     QGraphicsLineItem,
     QStyle,
 )
-from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPainterPath, QPen, QBrush, QPainter, QRadialGradient, QPixmap, QTextDocument
+from PyQt6.QtGui import QColor, QFont, QFontMetrics, QFontMetricsF, QPainterPath, QPen, QBrush, QPainter, QRadialGradient, QPixmap, QTextDocument
 from PyQt6.QtCore import Qt, QRectF, QPointF, QByteArray, QSizeF, QLineF
 
 try:
@@ -246,6 +246,7 @@ class AtomItem(QGraphicsEllipseItem):
         self._label_anchor_override: Optional[str] = None
         self._label_anchor_width: Optional[float] = None
         self._label_anchor_offset = 0.0
+        self._optical_anchor_centering = False
         self._label_offset = QPointF(0.0, 0.0)
         
         self.setPos(atom.x, atom.y)
@@ -286,9 +287,19 @@ class AtomItem(QGraphicsEllipseItem):
         """
         rect = self.label.boundingRect()
         x = -rect.width() / 2
+        y = -rect.height() / 2
         if self._label_anchor_width is not None:
             x = -self._label_anchor_width / 2 - self._label_anchor_offset
-        self.label.setPos(x + self._label_offset.x(), -rect.height() / 2 + self._label_offset.y())
+            if self._optical_anchor_centering:
+                anchor = self._label_anchor_override or self._first_label_token(self._display_label)
+                if anchor:
+                    metrics = QFontMetricsF(self.label.font())
+                    glyph = QPainterPath()
+                    glyph.addText(0.0, metrics.ascent(), self.label.font(), anchor)
+                    ink_rect = glyph.boundingRect()
+                    x = -ink_rect.center().x() - self._label_anchor_offset
+                    y = -ink_rect.center().y()
+        self.label.setPos(x + self._label_offset.x(), y + self._label_offset.y())
         if hasattr(self, "charge_label"):
             self._position_charge_label()
         self._sync_geometry()
@@ -643,6 +654,14 @@ class AtomItem(QGraphicsEllipseItem):
         self._label_anchor_override = anchor
         self._set_label_text(label)
 
+    def set_optical_anchor_centering(self, enabled: bool) -> None:
+        """Use the visible glyph outline as anchor for labels near multiple bonds."""
+        enabled = bool(enabled)
+        if self._optical_anchor_centering == enabled:
+            return
+        self._optical_anchor_centering = enabled
+        self._set_label_text(self._display_label)
+
     def set_label_offset(self, offset: QPointF) -> None:
         """Actualiza desplazamiento de etiqueta.
 
@@ -751,7 +770,8 @@ class AtomItem(QGraphicsEllipseItem):
         if bool(getattr(self.atom, "is_coordination_center", False)):
             anchor = None
         if anchor:
-            metrics = QFontMetrics(self.label.font())
+            metrics_type = QFontMetricsF if self._optical_anchor_centering else QFontMetrics
+            metrics = metrics_type(self.label.font())
             self._label_anchor_width = metrics.horizontalAdvance(anchor)
             self._label_anchor_offset = self._anchor_prefix_width(text, anchor)
         else:
@@ -800,14 +820,15 @@ class AtomItem(QGraphicsEllipseItem):
         if not text:
             return 0.0
         base_font = self.label.font()
-        base_metrics = QFontMetrics(base_font)
+        metrics_type = QFontMetricsF if self._optical_anchor_centering else QFontMetrics
+        base_metrics = metrics_type(base_font)
         base_size = base_font.pointSizeF()
         if base_size <= 0:
             base_size = 10.0
         sub_size = max(base_size - 2.0, 6.0)
         sub_font = QFont(base_font)
         sub_font.setPointSizeF(sub_size)
-        sub_metrics = QFontMetrics(sub_font)
+        sub_metrics = metrics_type(sub_font)
         width = 0.0
         i = 0
         script_mode: Optional[str] = None
@@ -1113,6 +1134,9 @@ class BondItem(QGraphicsPathItem):
         self._symmetric_double = False
         self._wedge_join_start: list[WedgeNeighbor] = []
         self._wedge_join_end: list[WedgeNeighbor] = []
+        self._wedge_join_end_is_cyclic_bold = False
+        self._hashed_double_join_start = False
+        self._hashed_double_join_end = False
         self._secondary_path = QPainterPath()
         self._secondary_pen: Optional[QPen] = None
         self._has_secondary_path = False
@@ -1360,6 +1384,8 @@ class BondItem(QGraphicsPathItem):
         self,
         start_neighbors: list[WedgeNeighbor],
         end_neighbors: list[WedgeNeighbor],
+        *,
+        end_is_cyclic_bold: bool = False,
     ) -> None:
         """Configura contexto de enlaces vecinos para adaptar la cuña.
 
@@ -1397,6 +1423,12 @@ class BondItem(QGraphicsPathItem):
             )
         self._wedge_join_start = cleaned_start
         self._wedge_join_end = cleaned_end
+        self._wedge_join_end_is_cyclic_bold = bool(end_is_cyclic_bold)
+
+    def set_hashed_double_join_ends(self, start: bool, end: bool) -> None:
+        """Enable a bounded terminal hash adjustment at an outward double join."""
+        self._hashed_double_join_start = bool(start)
+        self._hashed_double_join_end = bool(end)
 
     def _adapt_wedge_corner_for_neighbors(
         self,
@@ -1711,6 +1743,8 @@ class BondItem(QGraphicsPathItem):
         wedge_width: float,
     ) -> tuple[tuple[float, float], tuple[float, float]]:
         """Aplica miter en extremo ancho de cuña contra enlaces vecinos."""
+        if self._wedge_join_end_is_cyclic_bold:
+            return base_pos, base_neg
         neighbors = self._wedge_join_end
         if not neighbors:
             return base_pos, base_neg
@@ -2224,6 +2258,9 @@ class BondItem(QGraphicsPathItem):
             # Base adaptation: each side can bend toward a neighbor bond edge.
             base_pos_default = (base_cx + w_nx * half_w, base_cy + w_ny * half_w)
             base_neg_default = (base_cx - w_nx * half_w, base_cy - w_ny * half_w)
+            join_end_neighbors = (
+                [] if self._wedge_join_end_is_cyclic_bold else self._wedge_join_end
+            )
             base_pos = self._adapt_wedge_corner_for_neighbors(
                 base_cx,
                 base_cy,
@@ -2233,7 +2270,7 @@ class BondItem(QGraphicsPathItem):
                 w_ny,
                 1.0,
                 base_pos_default,
-                self._wedge_join_end,
+                join_end_neighbors,
                 stroke_px,
             )
             base_neg = self._adapt_wedge_corner_for_neighbors(
@@ -2245,7 +2282,7 @@ class BondItem(QGraphicsPathItem):
                 w_ny,
                 -1.0,
                 base_neg_default,
-                self._wedge_join_end,
+                join_end_neighbors,
                 stroke_px,
             )
             # Prevent corner inversion around the base axis.
@@ -2254,7 +2291,7 @@ class BondItem(QGraphicsPathItem):
             if pos_proj < neg_proj:
                 base_pos, base_neg = base_neg, base_pos
             # Keep a minimum terminal width while allowing strong integration.
-            end_deg = len(self._wedge_join_end)
+            end_deg = len(join_end_neighbors)
             anchored_corner = 0  # 1 => base_pos locked, -1 => base_neg locked
             single_end_dir: tuple[float, float] | None = None
             if end_deg == 1:
@@ -2357,7 +2394,7 @@ class BondItem(QGraphicsPathItem):
                     base_pos = (base_pos[0] + nux * half_overlay, base_pos[1] + nuy * half_overlay)
                     base_neg = (base_neg[0] + nux * half_overlay, base_neg[1] + nuy * half_overlay)
             end_extension = 0.0
-            if end_deg >= 2 and self._wedge_join_end:
+            if end_deg >= 2 and join_end_neighbors:
                 # Re-anchor each wide-end corner toward the bond on its side so
                 # large terminal width still looks connected, not detached.
                 blend_used = min(WEDGE_MULTI_END_CORNER_BLEND, 0.35)
@@ -2367,7 +2404,7 @@ class BondItem(QGraphicsPathItem):
                 neg_best = -1e9
                 any_best = -1e9
                 any_neighbor = None
-                for neighbor in self._wedge_join_end:
+                for neighbor in join_end_neighbors:
                     nux, nuy, nwidth = neighbor[:3]
                     cross = w_ux * nuy - w_uy * nux
                     dot = w_ux * nux + w_uy * nuy
@@ -2531,7 +2568,31 @@ class BondItem(QGraphicsPathItem):
                 self._style.hash_min_px * stroke_scale,
                 self._style.hash_max_px * stroke_scale,
             )
-            for mark_start, mark_end in marks:
+            mark_length = math.hypot(e2x - e1x, e2y - e1y)
+            terminal_shift = mark_length / max(steps, 1) * 0.25
+            shift_start = (
+                self._hashed_double_join_start
+                and self._label_shrink_start <= 1e-6
+                and self._endpoint_trim_start <= 1e-6
+            )
+            shift_end = (
+                self._hashed_double_join_end
+                and self._label_shrink_end <= 1e-6
+                and self._endpoint_trim_end <= 1e-6
+            )
+            for index, (mark_start, mark_end) in enumerate(marks):
+                shift = 0.0
+                if index == 0 and shift_start:
+                    shift = -terminal_shift
+                elif index == len(marks) - 1 and shift_end:
+                    shift = terminal_shift
+                if shift:
+                    midpoint_x = (mark_start[0] + mark_end[0]) * 0.5 + ux * shift
+                    midpoint_y = (mark_start[1] + mark_end[1]) * 0.5 + uy * shift
+                    half_x = (mark_end[0] - mark_start[0]) * 0.5
+                    half_y = (mark_end[1] - mark_start[1]) * 0.5
+                    mark_start = (midpoint_x - half_x, midpoint_y - half_y)
+                    mark_end = (midpoint_x + half_x, midpoint_y + half_y)
                 path.moveTo(*mark_start)
                 path.lineTo(*mark_end)
             hash_stroke = max(self._style.hash_stroke_px * stroke_scale, stroke_px * 0.85)

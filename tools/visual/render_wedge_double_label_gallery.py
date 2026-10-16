@@ -329,6 +329,36 @@ def render_gallery(theme: str, output: Path) -> QImage:
     return image
 
 
+def compose_comparison(before_dir: Path, after_dir: Path, output: Path) -> None:
+    """Compose equal-scale light/dark before/after panels for owner review."""
+    app = QApplication.instance() or QApplication(sys.argv)
+    image_height = HEIGHT + 44
+    sheet = QImage(2 * WIDTH, 2 * image_height, QImage.Format.Format_ARGB32_Premultiplied)
+    sheet.fill(QColor("#E2E8F0"))
+    painter = QPainter(sheet)
+    painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
+    painter.setFont(QFont("DejaVu Sans", 14, QFont.Weight.DemiBold))
+    for row, theme in enumerate(("light", "dark")):
+        for column, (phase, directory) in enumerate((("BEFORE", before_dir), ("AFTER", after_dir))):
+            image_path = directory / f"wedge-double-labels-{theme}.png"
+            image = QImage(str(image_path))
+            if image.isNull() or image.size().width() != WIDTH or image.size().height() != HEIGHT:
+                painter.end()
+                raise ValueError(f"Missing or incorrectly sized gallery panel: {image_path}")
+            x = column * WIDTH
+            y = row * image_height
+            header_color = QColor("#F1F5F9" if theme == "light" else "#1B263A")
+            painter.fillRect(QRectF(x, y, WIDTH, 44), header_color)
+            painter.setPen(QColor("#0F172A" if theme == "light" else "#F8FAFC"))
+            painter.drawText(x + 18, y + 29, f"{theme.upper()} · {phase}")
+            painter.drawImage(x, y + 44, image)
+    painter.end()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    if not sheet.save(str(output)):
+        raise RuntimeError(f"Could not save comparison sheet: {output}")
+    app.processEvents()
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--theme", choices=("light", "dark", "both"), default="both")
@@ -337,12 +367,20 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=Path("/tmp/chemuson-wedge-double-label-gallery"),
     )
+    parser.add_argument("--compare-before", type=Path)
+    parser.add_argument("--compare-after", type=Path)
+    parser.add_argument("--comparison-output", type=Path)
     args = parser.parse_args(argv)
     themes = ("light", "dark") if args.theme == "both" else (args.theme,)
     for theme in themes:
         path = args.output_dir / f"wedge-double-labels-{theme}.png"
         render_gallery(theme, path)
         print(path)
+    if any((args.compare_before, args.compare_after, args.comparison_output)):
+        if not all((args.compare_before, args.compare_after, args.comparison_output)):
+            parser.error("--compare-before, --compare-after, and --comparison-output must be set together")
+        compose_comparison(args.compare_before, args.compare_after, args.comparison_output)
+        print(args.comparison_output)
     return 0
 
 

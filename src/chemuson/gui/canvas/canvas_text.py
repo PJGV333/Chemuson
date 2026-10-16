@@ -1521,8 +1521,34 @@ class CanvasTextMixin:
             return
         label, anchor, offset = self._build_atom_label(atom)
         item.set_display_label(label, anchor)
+        item.set_optical_anchor_centering(self._label_near_multiple_bond(atom_id))
         item.set_label_offset(offset)
         self._update_bond_label_shrinks({atom_id})
+
+    def _label_near_multiple_bond(self, atom_id: int) -> bool:
+        """Return whether an atom label borders or branches from a multiple bond."""
+        adjacent_atoms: set[int] = set()
+        for bond in self.model.bonds.values():
+            if not bond_is_structural(bond):
+                continue
+            if bond.a1_id == atom_id:
+                adjacent_atoms.add(bond.a2_id)
+            elif bond.a2_id == atom_id:
+                adjacent_atoms.add(bond.a1_id)
+            else:
+                continue
+            effective_order = bond.display_order if bond.display_order is not None else bond.order
+            if effective_order >= 2:
+                return True
+        for bond in self.model.bonds.values():
+            if not bond_is_structural(bond):
+                continue
+            effective_order = bond.display_order if bond.display_order is not None else bond.order
+            if effective_order >= 2 and (
+                bond.a1_id in adjacent_atoms or bond.a2_id in adjacent_atoms
+            ):
+                return True
+        return False
 
     def _assigned_hydrogen_count(self, atom_id: int) -> int:
         """Devuelve H asignados al átomo excluyendo H como nodos separados."""
@@ -2455,9 +2481,12 @@ class CanvasTextMixin:
             extent_start = self._label_projection_extent_for_atom(bond.a1_id, ux, uy)
             extent_end = self._label_projection_extent_for_atom(bond.a2_id, -ux, -uy)
             if bond.style == BondStyle.WEDGE:
-                clearance = 1.5
+                clearance = 0.85
             else:
                 pen_width = max(0.0, float(item.pen().widthF()))
+                effective_order = bond.display_order if bond.display_order is not None else bond.order
+                if effective_order >= 2:
+                    pen_width = max(pen_width, self._bond_render_width(bond))
                 secondary_pen = getattr(item, "_secondary_pen", None)
                 if secondary_pen is not None:
                     pen_width = max(pen_width, float(secondary_pen.widthF()))
@@ -2524,7 +2553,7 @@ class CanvasTextMixin:
         count = max(1, int(item._style.hash_count))
         half_interval_fraction = 0.5 / count
         hash_stroke = max(0.0, float(item.pen().widthF()))
-        visible_gap = hash_stroke * 0.5 + 1.0
+        visible_gap = hash_stroke * 0.5 + 1.5
         start_fixed = max(0.0, float(item._endpoint_trim_start))
         end_fixed = max(0.0, float(item._endpoint_trim_end))
         start_target = None if extent_start is None else extent_start + visible_gap

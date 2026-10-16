@@ -559,6 +559,10 @@ def test_visible_label_clearance_is_tight_without_overlap_across_bond_styles():
         gap = bond_support - label_support
         assert gap >= 0.5, (element, style_name, endpoint, gap)
         assert gap <= 5.0, (element, style_name, endpoint, gap)
+        if style_name == "solid wedge":
+            assert gap == pytest.approx(0.85, abs=0.05), (element, endpoint, gap)
+        elif style_name == "hashed wedge":
+            assert gap + 1e-6 >= 1.5, (element, endpoint, gap)
 
 
 def test_aromatic_double_bold_uses_thin_secondary_pi_line():

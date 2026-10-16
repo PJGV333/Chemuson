@@ -792,7 +792,7 @@ class CanvasStructureMixin:
                     item.set_bond_in_ring(self._bond_in_ring_for_pairs(bond, ring_pairs))
                     item.set_offset_sign(self._bond_offset_sign(bond))
                     self._configure_bond_rendering(bond, item)
-                    self._set_bond_item_join_context(bond, item)
+                    self._set_bond_item_join_context(bond, item, ring_pairs)
                     trim_start = self._bond_endpoint_trim(bond, bond.a1_id)
                     trim_end = self._bond_endpoint_trim(bond, bond.a2_id)
                     item.set_endpoint_trim(trim_start, trim_end)
@@ -809,6 +809,9 @@ class CanvasStructureMixin:
             self.refresh_atom_visibility()
             self.refresh_aromatic_circles()
             self.validate_structure()
+            # Label anchoring/visibility (including validation markers) may
+            # settle during the global refresh; trim bonds from final geometry.
+            self._update_bond_label_shrinks(set(self.atom_items))
         finally:
             self._suspend_numbering_refresh = False
         self.recompute_numbering()
@@ -1837,7 +1840,7 @@ class CanvasStructureMixin:
         item.set_bond_in_ring(self._bond_in_ring_for_pairs(bond, ring_pairs))
         item.set_offset_sign(self._bond_offset_sign(bond))
         self._configure_bond_rendering(bond, item)
-        self._set_bond_item_join_context(bond, item)
+        self._set_bond_item_join_context(bond, item, ring_pairs)
         trim_start = self._bond_endpoint_trim(bond, bond.a1_id)
         trim_end = self._bond_endpoint_trim(bond, bond.a2_id)
         item.set_endpoint_trim(trim_start, trim_end)
@@ -1929,7 +1932,7 @@ class CanvasStructureMixin:
             item.set_bond_in_ring(self._bond_in_ring_for_pairs(bond, ring_pairs))
             item.set_offset_sign(self._bond_offset_sign(bond))
             self._configure_bond_rendering(bond, item)
-            self._set_bond_item_join_context(bond, item)
+            self._set_bond_item_join_context(bond, item, ring_pairs)
             trim_start = self._bond_endpoint_trim(bond, bond.a1_id)
             trim_end = self._bond_endpoint_trim(bond, bond.a2_id)
             item.set_endpoint_trim(trim_start, trim_end)
@@ -2022,18 +2025,103 @@ class CanvasStructureMixin:
             neighbors.append((nux, nuy, nwidth, edge_cx, edge_cy))
         return neighbors
 
-    def _set_bond_item_join_context(self, bond: Bond, item: BondItem) -> None:
+    def _hashed_double_join_ends(self, bond: Bond) -> tuple[bool, bool]:
+        """Detecta dobles que continúan hacia fuera de un extremo de la cuña hash."""
+        if bond.style != BondStyle.HASHED:
+            return False, False
+        atom1 = self.model.get_atom(bond.a1_id)
+        atom2 = self.model.get_atom(bond.a2_id)
+        if atom1 is None or atom2 is None:
+            return False, False
+        dx = atom2.x - atom1.x
+        dy = atom2.y - atom1.y
+        length = math.hypot(dx, dy)
+        if length <= 1e-6:
+            return False, False
+        ux = dx / length
+        uy = dy / length
+        start_dots: list[float] = []
+        end_dots: list[float] = []
+        for neighbor in self.model.bonds.values():
+            effective_order = neighbor.display_order if neighbor.display_order is not None else neighbor.order
+            if neighbor.id == bond.id or effective_order < 2:
+                continue
+            if neighbor.a1_id == bond.a1_id:
+                atom_id = bond.a1_id
+                other_id = neighbor.a2_id
+            elif neighbor.a2_id == bond.a1_id:
+                atom_id = bond.a1_id
+                other_id = neighbor.a1_id
+            elif neighbor.a1_id == bond.a2_id:
+                atom_id = bond.a2_id
+                other_id = neighbor.a2_id
+            elif neighbor.a2_id == bond.a2_id:
+                atom_id = bond.a2_id
+                other_id = neighbor.a1_id
+            else:
+                continue
+            atom = self.model.get_atom(atom_id)
+            other = self.model.get_atom(other_id)
+            if atom is None or other is None:
+                continue
+            ndx = other.x - atom.x
+            ndy = other.y - atom.y
+            nlength = math.hypot(ndx, ndy)
+            if nlength <= 1e-6:
+                continue
+            dot = (ndx / nlength) * ux + (ndy / nlength) * uy
+            (start_dots if atom_id == bond.a1_id else end_dots).append(dot)
+        # A terminal hash bar may move only when every double at that endpoint
+        # leaves the hashed segment instead of running underneath it.
+        start_join = bool(start_dots) and all(dot <= 0.5 for dot in start_dots)
+        end_join = bool(end_dots) and all(dot >= -0.5 for dot in end_dots)
+        return start_join, end_join
+
+    def _is_cyclic_bold_wedge_junction(
+        self,
+        atom_id: int,
+        wedge_bond_id: int,
+        ring_pairs: set[frozenset[int]],
+    ) -> bool:
+        """Identify a wedge base where two ring edges include at least one bold edge."""
+        ring_neighbors = [
+            candidate
+            for candidate in self.model.bonds.values()
+            if candidate.id != wedge_bond_id
+            and atom_id in {candidate.a1_id, candidate.a2_id}
+            and self._bond_in_ring_for_pairs(candidate, ring_pairs)
+        ]
+        return len(ring_neighbors) >= 2 and any(
+            candidate.style == BondStyle.BOLD for candidate in ring_neighbors
+        )
+
+    def _set_bond_item_join_context(
+        self,
+        bond: Bond,
+        item: BondItem,
+        ring_pairs: set[frozenset[int]] | None = None,
+    ) -> None:
         """Inyecta contexto de enlaces vecinos para geometrías dependientes de unión."""
+        if ring_pairs is None:
+            ring_pairs = self._compute_ring_bond_pairs()
         if bond.style != BondStyle.WEDGE:
             item.set_wedge_join_neighbors([], [])
+            item.set_hashed_double_join_ends(*self._hashed_double_join_ends(bond))
             return
+        item.set_hashed_double_join_ends(False, False)
         start_neighbors = self._bond_neighbor_vectors(bond, bond.a1_id)
-        # El extremo ancho de la cuña se integra contra enlaces planos:
-        # - Plain (incluye dobles/aromáticos por order/display_order)
-        # - Bold
-        # Esto permite vértices limpios en uniones cuña->bold.
+        # El extremo ancho de la cuña se integra contra enlaces planos y bold.
         end_neighbors = self._bond_neighbor_vectors(bond, bond.a2_id, simple_only=True)
-        item.set_wedge_join_neighbors(start_neighbors, end_neighbors)
+        cyclic_bold_end = self._is_cyclic_bold_wedge_junction(
+            bond.a2_id,
+            bond.id,
+            ring_pairs,
+        )
+        item.set_wedge_join_neighbors(
+            start_neighbors,
+            end_neighbors,
+            end_is_cyclic_bold=cyclic_bold_end,
+        )
 
     def _bond_endpoint_extend(self, bond: Bond, atom_id: int) -> float:
         """Método auxiliar para  bond endpoint extend.
