@@ -391,26 +391,42 @@ class BlockGraph:
                 )
             )
 
-        for atom_id in sorted(selected):
-            atom = graph.atoms.get(atom_id)
-            if atom is None:
-                continue
-            stereo_bonds = [
-                bond.id
-                for bond in covalent_bonds
-                if atom_id in {bond.a1_id, bond.a2_id} and bond.stereo != BondStereo.NONE
-            ]
-            if atom.stereo_cip or stereo_bonds:
-                blocks.append(
-                    _block(
-                        BlockKind.STEREO_CENTER,
-                        graph,
-                        {atom_id},
-                        "stereo_center",
-                        anchor_atom_ids=(atom_id,),
-                        metadata={"stereo_cip": atom.stereo_cip, "stereo_bond_ids": tuple(stereo_bonds)},
-                    )
+        # A directed wedge/hash describes one depiction center at its origin
+        # (a1_id), not two independent centers at both bond endpoints. Include
+        # boundary bonds whose origin is selected so partial selections retain
+        # the same stereo feature, then merge them with explicit atom CIP data
+        # by atom ID. A visual wedge without CIP remains a layout feature; this
+        # does not assert that every such drawing has an assignable R/S center.
+        stereo_bonds_by_center: dict[int, list[int]] = {}
+        for bond in graph.bonds.values():
+            if (
+                bond.a1_id in selected
+                and bond.stereo != BondStereo.NONE
+                and bond_affects_valence(bond)
+            ):
+                stereo_bonds_by_center.setdefault(bond.a1_id, []).append(bond.id)
+
+        stereo_center_ids = {
+            atom_id
+            for atom_id in selected
+            if (atom := graph.atoms.get(atom_id)) is not None and atom.stereo_cip
+        }
+        stereo_center_ids.update(stereo_bonds_by_center)
+        for atom_id in sorted(stereo_center_ids):
+            atom = graph.atoms[atom_id]
+            blocks.append(
+                _block(
+                    BlockKind.STEREO_CENTER,
+                    graph,
+                    {atom_id},
+                    "stereo_center",
+                    anchor_atom_ids=(atom_id,),
+                    metadata={
+                        "stereo_cip": atom.stereo_cip,
+                        "stereo_bond_ids": tuple(sorted(stereo_bonds_by_center.get(atom_id, ()))),
+                    },
                 )
+            )
 
         for atoms, anchors in _intramolecular_bridges(selected, adjacency, rigid_block_atoms):
             blocks.append(

@@ -22,16 +22,23 @@ cambio de cuña, cruce de un vecino de frontera) se siguen rechazando.
 
 from __future__ import annotations
 
+import copy
+import json
 import math
+import subprocess
+import sys
 
 import pytest
 
 from chemuson.clean2d import (
     assert_clean2d_invariants,
+    classify_clean2d_complexity,
     run_clean2d_engine,
+    smiles_to_molgraph_best_depiction,
     stereo_layout_signature,
 )
-from chemuson.core.model import Bond, BondStyle, MolGraph
+from chemuson.chemio.rdkit_io import molgraph_to_molfile
+from chemuson.core.model import Bond, BondStereo, BondStyle, MolGraph
 
 TARGET = 42.0
 
@@ -207,6 +214,47 @@ def _coords(graph: MolGraph, mapping: dict[int, tuple[float, float]]) -> dict[in
     return full
 
 
+def _independent_rdkit_report(kind: str, structure: str) -> dict[str, object]:
+    """Assign R/S in a fresh RDKit process, independently of graph metadata."""
+    if kind == "molblock":
+        # RDKit 2026 may emit only two header lines; normalize to the standard
+        # three-line V2000 header before parsing independently.
+        lines = structure.splitlines()
+        counts_index = next((i for i, line in enumerate(lines) if "V2000" in line), None)
+        if counts_index is not None and counts_index < 3:
+            lines[counts_index:counts_index] = [""] * (3 - counts_index)
+        structure = "\n".join(lines) + "\n"
+    script = r'''import json, sys
+from rdkit import Chem
+request = json.load(sys.stdin)
+if request["kind"] == "smiles":
+    mol = Chem.MolFromSmiles(request["structure"])
+else:
+    mol = Chem.MolFromMolBlock(request["structure"], sanitize=True, removeHs=False, strictParsing=False)
+assert mol is not None, "RDKit could not parse the reference structure"
+Chem.AssignStereochemistry(mol, cleanIt=True, force=True)
+centers = Chem.FindMolChiralCenters(mol, includeUnassigned=True, useLegacyImplementation=False)
+print(json.dumps({
+    "canonical_smiles": Chem.MolToSmiles(mol, canonical=True, isomericSmiles=True),
+    "centers": [label for _index, label in centers],
+}))'''
+    request = json.dumps({"kind": kind, "structure": structure})
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        input=request,
+        capture_output=True,
+        text=True,
+        timeout=20.0,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    return json.loads(result.stdout)
+
+
+def _independent_graph_report(graph: MolGraph) -> dict[str, object]:
+    return _independent_rdkit_report("molblock", molgraph_to_molfile(graph))
+
+
 # ---------------------------------------------------------------------------
 # 1. Contratos de la firma estereoquímica
 # ---------------------------------------------------------------------------
@@ -372,6 +420,7 @@ def test_partial_selections_never_invert_the_depicted_configuration(selected) ->
     graph = case_tetrahedral_both()
     before = coords_of(graph)
     before_configuration = depicted_configuration(graph, before)
+    before_wedges = wedge_signature(graph)
 
     result = run_clean2d_engine(graph, selected, mode="quick", target_bond_length=TARGET)
 
@@ -380,7 +429,7 @@ def test_partial_selections_never_invert_the_depicted_configuration(selected) ->
     assert result.result_state in {"applied", "no-op", "preserve-only", "failed-controlled"}
     after = result.selected.coords if result.selected is not None else before
     assert depicted_configuration(graph, _coords(graph, after)) == before_configuration
-    assert wedge_signature(graph) == wedge_signature(graph)
+    assert wedge_signature(graph) == before_wedges
     if result.result_state == "applied":
         assert stereo_layout_signature(graph, before, selected) == stereo_layout_signature(
             graph, _coords(graph, after), selected
@@ -390,6 +439,262 @@ def test_partial_selections_never_invert_the_depicted_configuration(selected) ->
             if atom_id not in selected:
                 continue
             assert math.isfinite(x) and math.isfinite(y)
+
+
+def _import_reference_graph(smiles: str) -> MolGraph:
+    return smiles_to_molgraph_best_depiction(smiles, timeout_s=15.0)
+
+
+def _combine_disconnected(graphs: tuple[MolGraph, ...]) -> tuple[MolGraph, tuple[set[int], ...]]:
+    combined = MolGraph()
+    components: list[set[int]] = []
+    next_atom_id = 1
+    for component_index, source in enumerate(graphs):
+        shift_x = float(component_index) * 500.0
+        id_map: dict[int, int] = {}
+        selected_ids: set[int] = set()
+        for atom in source.atoms.values():
+            new_id = next_atom_id
+            next_atom_id += 1
+            id_map[atom.id] = new_id
+            selected_ids.add(new_id)
+            combined.add_atom(
+                atom.element,
+                atom.x + shift_x,
+                atom.y,
+                atom_id=new_id,
+                charge=atom.charge,
+                isotope=atom.isotope,
+                stereo_cip=atom.stereo_cip,
+                explicit_h=atom.explicit_h,
+                is_explicit=atom.is_explicit,
+            )
+        for bond in source.bonds.values():
+            combined.add_bond(
+                id_map[bond.a1_id],
+                id_map[bond.a2_id],
+                order=bond.order,
+                style=bond.style,
+                stereo=bond.stereo,
+                is_aromatic=bond.is_aromatic,
+            )
+        components.append(selected_ids)
+    return combined, tuple(components)
+
+
+def test_real_imported_wedge_is_counted_as_one_stereocenter() -> None:
+    graph = _import_reference_graph("C[C@H](F)CO")
+    independent_reference = _independent_rdkit_report("smiles", "C[C@H](F)CO")
+    assert independent_reference["centers"] == ["S"]
+    assert len([atom for atom in graph.atoms.values() if atom.stereo_cip]) == 1
+    assert sum(bond.stereo != BondStereo.NONE for bond in graph.bonds.values()) == 1
+
+    profile = classify_clean2d_complexity(graph)
+
+    assert profile.stereo_center_count == 1, profile
+    assert profile.block_counts.get("stereo_center", 0) == 1
+    assert profile.reason != "multiple_stereo_centers"
+    result = run_clean2d_engine(graph, None, mode="quick", target_bond_length=TARGET)
+    assert result.selected is not None
+    assert result.selected.metadata.get("complex_preserve_only") is not True
+
+
+@pytest.mark.parametrize("mode", ["quick", "publication", "propose"])
+def test_two_wedge_directions_from_one_atom_are_one_center(mode: str) -> None:
+    graph = _import_reference_graph("C[C@](F)(Cl)Br")
+    center = next(atom.id for atom in graph.atoms.values() if atom.stereo_cip)
+    outgoing = [bond for bond in graph.bonds.values() if bond.a1_id == center]
+    assert len(outgoing) == 4
+    second_direction = next(bond for bond in outgoing if bond.stereo == BondStereo.NONE)
+    second_direction.style = BondStyle.HASHED
+    second_direction.stereo = BondStereo.DOWN
+
+    profile = classify_clean2d_complexity(graph)
+    before = coords_of(graph)
+    before_signature = stereo_layout_signature(graph, before, set(graph.atoms))
+    result = run_clean2d_engine(graph, None, mode=mode, target_bond_length=TARGET)
+
+    assert profile.stereo_center_count == 1, profile
+    assert profile.block_counts.get("stereo_center", 0) == 1
+    assert result.selected is not None
+    assert result.selected.metadata.get("complex_preserve_only") is not True
+    assert stereo_layout_signature(graph, result.selected.coords, set(graph.atoms)) == before_signature
+
+
+def test_distinct_real_stereocenters_still_trigger_preserve_policy() -> None:
+    graph = _import_reference_graph("C[C@H](O)[C@@H](F)Cl")
+    independent_reference = _independent_rdkit_report("smiles", "C[C@H](O)[C@@H](F)Cl")
+    assert len(independent_reference["centers"]) == 2
+    assert all(label in {"R", "S"} for label in independent_reference["centers"])
+
+    profile = classify_clean2d_complexity(graph)
+
+    assert profile.stereo_center_count == 2
+    assert profile.preserve_only
+    assert profile.reason == "multiple_stereo_centers"
+
+
+@pytest.mark.parametrize("mode", ["quick", "publication", "propose"])
+def test_selection_of_one_disconnected_real_molecule_only_targets_its_atoms(mode: str) -> None:
+    first = _import_reference_graph("C[C@H](F)CO")
+    second = _import_reference_graph("CCO")
+    graph, (selected, unselected) = _combine_disconnected((first, second))
+    before = coords_of(graph)
+
+    profile = classify_clean2d_complexity(graph, selected)
+    result = run_clean2d_engine(graph, selected, mode=mode, target_bond_length=TARGET)
+
+    assert profile.stereo_center_count == 1
+    assert result.selected is not None
+    assert result.selected.source != "complex_preserve"
+    assert all(set(candidate.coords) <= selected for candidate in (*result.candidates, *result.rejected))
+    assert unselected.isdisjoint(result.atom_ids)
+    assert all(coords_of(graph)[atom_id] == before[atom_id] for atom_id in unselected)
+
+
+@pytest.mark.parametrize("mode", ["quick", "publication", "propose"])
+def test_partial_selection_containing_real_stereocenter_preserves_boundary(mode: str) -> None:
+    graph = _import_reference_graph("C[C@H](F)CO")
+    center = next(atom.id for atom in graph.atoms.values() if atom.stereo_cip)
+    selected = {center, next(bond.a2_id for bond in graph.bonds.values() if bond.a1_id == center)}
+    before = coords_of(graph)
+    before_wedges = wedge_signature(graph)
+    before_configuration = depicted_configuration(graph, before)
+
+    profile = classify_clean2d_complexity(graph, selected)
+    result = run_clean2d_engine(graph, selected, mode=mode, target_bond_length=TARGET)
+    after = _coords(graph, result.selected.coords if result.selected is not None else {})
+
+    assert profile.stereo_center_count == 1
+    assert result.selected is not None
+    assert depicted_configuration(graph, after) == before_configuration
+    assert wedge_signature(graph) == before_wedges
+    assert all(after[atom_id] == before[atom_id] for atom_id in graph.atoms.keys() - selected)
+
+
+def test_reference_enantiomers_keep_independent_cip_across_clean2d_roundtrip() -> None:
+    sources = ("C[C@H](F)CO", "C[C@@H](F)CO")
+    reports: list[dict[str, dict[str, object]]] = []
+    for smiles in sources:
+        graph = _import_reference_graph(smiles)
+        # Strip cached CIP metadata so the independent RDKit assignment must
+        # come from the represented wedge/hash bond in the MOL round-trip.
+        for atom in graph.atoms.values():
+            atom.stereo_cip = None
+        before_reference = _independent_rdkit_report("smiles", smiles)
+        before_independent = _independent_graph_report(graph)
+        assert before_independent["centers"] == before_reference["centers"]
+
+        before = coords_of(graph)
+        before_wedges = wedge_signature(graph)
+        before_configuration = depicted_configuration(graph, before)
+        by_mode: dict[str, dict[str, object]] = {}
+        for mode in ("quick", "publication", "propose"):
+            result = run_clean2d_engine(graph, None, mode=mode, target_bond_length=TARGET)
+            diagnostics = [
+                (candidate.source, candidate.rejected, candidate.rejection_reason, candidate.stable_rejection_reason)
+                for candidate in (*result.candidates, *result.rejected)
+            ]
+            assert result.selected is not None, diagnostics
+            after_graph = copy.deepcopy(graph)
+            for atom_id, (x, y) in result.selected.coords.items():
+                after_graph.atoms[atom_id].x = x
+                after_graph.atoms[atom_id].y = y
+
+            assert_clean2d_invariants(
+                graph,
+                graph,
+                before,
+                result.selected.coords,
+                atom_ids=set(graph.atoms),
+            )
+            assert wedge_signature(after_graph) == before_wedges
+            assert depicted_configuration(after_graph, coords_of(after_graph)) == before_configuration
+            after_independent = _independent_graph_report(after_graph)
+            assert after_independent["centers"] == before_reference["centers"], (mode, diagnostics)
+            assert after_independent["canonical_smiles"] == before_reference["canonical_smiles"], (
+                mode,
+                diagnostics,
+            )
+            by_mode[mode] = after_independent
+        reports.append(by_mode)
+
+    for mode in ("quick", "publication", "propose"):
+        assert reports[0][mode]["centers"] != reports[1][mode]["centers"]
+        assert reports[0][mode]["canonical_smiles"] != reports[1][mode]["canonical_smiles"]
+
+
+def test_gui_controller_rejects_cached_proposal_that_flips_independent_cip() -> None:
+    from types import SimpleNamespace
+
+    from chemuson.clean2d import clean2d_geometry_hash, run_clean2d_engine
+    from chemuson.gui.controllers.clean2d_controller import Clean2DController
+
+    graph = _import_reference_graph("C[C@H](F)CO")
+    selected = set(graph.atoms)
+    before = coords_of(graph)
+    controller = Clean2DController()
+    before_report = _independent_graph_report(graph)
+    assert before_report["centers"] == ["S"]
+
+    first = run_clean2d_engine(
+        graph,
+        selected,
+        mode="propose",
+        target_bond_length=TARGET,
+        avoid_hashes={clean2d_geometry_hash(graph, before, selected)},
+    )
+    assert first.selected is not None
+    first_graph = copy.deepcopy(graph)
+    for atom_id, (x, y) in first.selected.coords.items():
+        first_graph.atoms[atom_id].x = x
+        first_graph.atoms[atom_id].y = y
+    assert _independent_graph_report(first_graph)["centers"] == ["S"]
+    controller._remember_geometry_hashes(
+        graph,
+        selected,
+        before,
+        coords_of(first_graph),
+    )
+
+    avoid_hashes = controller._avoid_hashes_for_proposal(graph, selected, before)
+    second = run_clean2d_engine(
+        graph,
+        selected,
+        mode="propose",
+        target_bond_length=TARGET,
+        avoid_hashes=avoid_hashes,
+    )
+    assert second.selected is not None
+    unsafe_graph = copy.deepcopy(graph)
+    for atom_id, (x, y) in second.selected.coords.items():
+        unsafe_graph.atoms[atom_id].x = x
+        unsafe_graph.atoms[atom_id].y = y
+    assert _independent_graph_report(unsafe_graph)["centers"] == ["R"]
+    assert stereo_layout_signature(graph, before, selected) == stereo_layout_signature(
+        graph,
+        second.selected.coords,
+        selected,
+    )
+
+    accepted, reason, diagnostics = controller._validate_independent_cip_preservation(
+        SimpleNamespace(model=graph),
+        second.selected.coords,
+        candidate_source=second.selected.source,
+    )
+
+    assert not accepted
+    assert "configuración R/S" in reason
+    assert diagnostics["stable_rejection_reason"] == "stereo-risk"
+    assert diagnostics["expected_cip_by_atom"] == {"2": "S"}
+    assert diagnostics["observed_cip_by_atom"] == {"2": "R"}
+
+
+def test_isolated_wedge_does_not_invent_an_r_s_assignment() -> None:
+    graph = case_single_wedge()
+    independent = _independent_graph_report(graph)
+
+    assert not any(label in {"R", "S"} for label in independent["centers"])
 
 
 # ---------------------------------------------------------------------------
@@ -439,6 +744,78 @@ def test_gui_clean_2d_full_moves_wedge_molecule_and_undo_restores_it() -> None:
             math.hypot(restored[key][0] - before[key][0], restored[key][1] - before[key][1]) < 0.51
             for key in before
         )
+    finally:
+        for index in range(window.tabs.count()):
+            tab_canvas = window._canvas_from_tab_index(index)
+            if tab_canvas is not None:
+                tab_canvas.undo_stack.setClean()
+        window.close()
+        QApplication.processEvents()
+
+
+def test_gui_clean2d_modes_handle_imported_reference_without_false_multiple_centers(
+    isolated_shell_settings, monkeypatch
+) -> None:
+    from PyQt6.QtWidgets import QApplication
+
+    from chemuson.gui.main_window import ChemusonWindow
+
+    monkeypatch.setattr(ChemusonWindow, "_maybe_check_updates_startup", lambda self: None)
+    window = ChemusonWindow()
+    try:
+        references = {
+            "action_clean_2d_full": "Ctrl+K",
+            "action_clean_2d_publication": "Ctrl+Shift+K",
+            "action_clean_2d_propose": "Ctrl+Alt+K",
+        }
+        for action_name, shortcut in references.items():
+            action = getattr(window, action_name)
+            assert action.shortcut().toString() == shortcut
+            canvas = window._create_document_tab(make_current=True)
+            source = _import_reference_graph("C[C@H](F)CO")
+            model = canvas.model
+            model.atoms.clear()
+            model.bonds.clear()
+            for atom in source.atoms.values():
+                model.add_atom(
+                    atom.element,
+                    atom.x,
+                    atom.y,
+                    atom_id=atom.id,
+                    charge=atom.charge,
+                    isotope=atom.isotope,
+                    stereo_cip=atom.stereo_cip,
+                    explicit_h=atom.explicit_h,
+                    is_explicit=atom.is_explicit,
+                )
+            for bond in source.bonds.values():
+                model.add_bond(
+                    bond.a1_id,
+                    bond.a2_id,
+                    order=bond.order,
+                    style=bond.style,
+                    stereo=bond.stereo,
+                    is_aromatic=bond.is_aromatic,
+                )
+            canvas._rebuild_items_from_model()
+            canvas.undo_stack.setClean()
+            before = coords_of(model)
+            before_configuration = depicted_configuration(model, before)
+            before_reference = _independent_graph_report(model)
+            assert before_reference["centers"] == ["S"]
+
+            action.trigger()
+            QApplication.processEvents()
+
+            after = coords_of(model)
+            after_reference = _independent_graph_report(model)
+            assert after_reference["centers"] == before_reference["centers"], action_name
+            assert after_reference["canonical_smiles"] == before_reference["canonical_smiles"], action_name
+            assert depicted_configuration(model, after) == before_configuration, action_name
+            assert window.statusBar().currentMessage() != "Estructura 2D compleja preservada; no se redibujó globalmente", (
+                action_name,
+                window.statusBar().currentMessage(),
+            )
     finally:
         for index in range(window.tabs.count()):
             tab_canvas = window._canvas_from_tab_index(index)

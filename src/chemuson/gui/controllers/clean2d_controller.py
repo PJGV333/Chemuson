@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass, field
 import math
 from typing import Any
@@ -23,7 +24,7 @@ from chemuson.clean2d import (
     stereo_layout_signature,
     structure_preserving_geometry_polish,
 )
-from chemuson.core.model import Bond, bond_affects_valence
+from chemuson.core.model import Bond, BondStereo, bond_affects_valence
 from chemuson.geometry3d import Rotation3D, conformer_3d_for_graph, project_conformer_to_2d
 
 
@@ -371,6 +372,18 @@ class Clean2DController:
                 report=report,
                 details=integrity.diagnostics,
             )
+        stereo_ok, stereo_reason, stereo_diagnostics = self._validate_independent_cip_preservation(
+            canvas,
+            after,
+            candidate_source=label or "clean2d_candidate",
+        )
+        if not stereo_ok:
+            return Clean2DAttempt(
+                rejected=True,
+                message=stereo_reason,
+                report=report,
+                details=stereo_diagnostics,
+            )
 
         from chemuson.gui.commands import MoveAtomsCommand
 
@@ -461,6 +474,13 @@ class Clean2DController:
                     continue
                 if report.mean_displacement < target_len * 0.20:
                     continue
+                stereo_ok, _stereo_reason, _stereo_diagnostics = self._validate_independent_cip_preservation(
+                    canvas,
+                    after,
+                    candidate_source="alternative_conformer",
+                )
+                if not stereo_ok:
+                    continue
 
                 from chemuson.gui.commands import MoveAtomsCommand
 
@@ -529,6 +549,13 @@ class Clean2DController:
             if cyclic and report.mean_displacement > target_len * 1.0:
                 continue
             if report.mean_displacement < target_len * 0.05:
+                continue
+            stereo_ok, _stereo_reason, _stereo_diagnostics = self._validate_independent_cip_preservation(
+                canvas,
+                after,
+                candidate_source="rotatable_reflection",
+            )
+            if not stereo_ok:
                 continue
 
             from chemuson.gui.commands import MoveAtomsCommand
@@ -819,6 +846,19 @@ class Clean2DController:
                 details=integrity.diagnostics,
             )
 
+        stereo_ok, stereo_reason, stereo_diagnostics = self._validate_independent_cip_preservation(
+            window.canvas,
+            after,
+            candidate_source=candidate.source,
+        )
+        if not stereo_ok:
+            return Clean2DAttempt(
+                rejected=True,
+                message=stereo_reason,
+                report=report,
+                details=stereo_diagnostics,
+            )
+
         from chemuson.gui.commands import MoveAtomsCommand
 
         window.canvas.undo_stack.push(MoveAtomsCommand(window.canvas.model, window.canvas, before, changed))
@@ -831,6 +871,116 @@ class Clean2DController:
             report=report,
             details=integrity.diagnostics,
         )
+
+    @staticmethod
+    def _has_visible_directional_stereo(graph: Any) -> bool:
+        directional_styles = {"wedge", "hashed"}
+        directional_stereo = {BondStereo.UP, BondStereo.DOWN}
+        bonds = getattr(graph, "bonds", {})
+        bond_values = bonds.values() if hasattr(bonds, "values") else bonds
+        return any(
+            getattr(getattr(bond, "style", None), "value", getattr(bond, "style", None))
+            in directional_styles
+            or getattr(bond, "stereo", BondStereo.NONE) in directional_stereo
+            for bond in bond_values
+        )
+
+    @staticmethod
+    def _independent_cip_labels(graph: Any, coords: dict[int, tuple[float, float]]) -> tuple[dict[int, str] | None, str]:
+        """Read visible wedge/hash R/S labels in an isolated RDKit worker."""
+        if not Clean2DController._has_visible_directional_stereo(graph):
+            return {}, ""
+
+        try:
+            from chemuson.chemio.rdkit_safe import (
+                molgraph_to_molblock_isolated,
+                run_rdkit_stereo_extract,
+            )
+
+            probe = deepcopy(graph)
+            for atom in probe.atoms.values():
+                # Force assignment from the depiction rather than cached CIP.
+                atom.stereo_cip = None
+            for atom_id, (x, y) in coords.items():
+                if atom_id in probe.atoms:
+                    probe.atoms[atom_id].x = float(x)
+                    probe.atoms[atom_id].y = float(y)
+            molblock, error = molgraph_to_molblock_isolated(probe, timeout_s=6.0)
+            if not molblock:
+                return None, str(error or "empty_molblock")
+            lines = molblock.splitlines()
+            counts_index = next(
+                (index for index, line in enumerate(lines) if "V2000" in line or "V3000" in line),
+                None,
+            )
+            if counts_index is not None and counts_index < 3:
+                lines[counts_index:counts_index] = [""] * (3 - counts_index)
+            normalized_molblock = "\n".join(lines) + "\n"
+            report = run_rdkit_stereo_extract(
+                normalized_molblock,
+                fmt="molblock",
+                timeout_s=6.0,
+            )
+            if not report.get("ok"):
+                return None, str(report.get("error", "stereo_extract_failed"))
+            atom_ids = sorted(probe.atoms)
+            labels: dict[int, str] = {}
+            for entry in report.get("chiral_centers", []):
+                if not isinstance(entry, (list, tuple)) or len(entry) < 2:
+                    continue
+                atom_index = int(entry[0])
+                label = str(entry[1]).strip().upper()
+                if 0 <= atom_index < len(atom_ids) and label in {"R", "S"}:
+                    labels[atom_ids[atom_index]] = label
+            return labels, ""
+        except Exception as exc:
+            return None, str(exc)
+
+    def _validate_independent_cip_preservation(
+        self,
+        canvas: Any,
+        after_coords: dict[int, tuple[float, float]],
+        *,
+        candidate_source: str,
+    ) -> tuple[bool, str, dict[str, Any]]:
+        """Reject GUI candidates that change independently assigned wedge R/S."""
+        graph = canvas.model
+        if not self._has_visible_directional_stereo(graph):
+            return True, "", {}
+        before_coords = self._full_model_coords(canvas)
+        expected, before_error = self._independent_cip_labels(graph, before_coords)
+        # RDKit is optional; the existing geometric/wedge invariants remain the
+        # fail-safe when the isolated worker cannot provide an independent label.
+        if expected is None or not expected:
+            return True, "", {}
+
+        candidate_coords = dict(before_coords)
+        candidate_coords.update(
+            {
+                atom_id: (float(point[0]), float(point[1]))
+                for atom_id, point in after_coords.items()
+                if atom_id in candidate_coords
+            }
+        )
+        observed, after_error = self._independent_cip_labels(graph, candidate_coords)
+        if observed == expected:
+            return True, "", {}
+
+        details: dict[str, Any] = {
+            "candidate_source": candidate_source,
+            "stable_rejection_reason": "stereo-risk",
+            "expected_cip_by_atom": {str(atom_id): label for atom_id, label in expected.items()},
+            "observed_cip_by_atom": (
+                {str(atom_id): label for atom_id, label in observed.items()}
+                if observed is not None
+                else {}
+            ),
+        }
+        if after_error:
+            details["stereo_validation_error"] = after_error
+        if before_error:
+            details["baseline_stereo_validation_error"] = before_error
+        return False, "Limpieza 2D omitida: el candidato cambia la configuración R/S independiente", details
 
     def _run_propose_pass(
         self,
