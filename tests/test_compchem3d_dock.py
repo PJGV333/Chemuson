@@ -449,6 +449,137 @@ def test_3d_builder_respects_selected_double_bond_order() -> None:
         window.close()
 
 
+def test_3d_builder_rejects_incompatible_valence_without_partial_edit() -> None:
+    window = ChemusonWindow()
+    try:
+        canvas = window.canvas
+        center = canvas.model.add_atom("C", 0.0, 0.0, is_explicit=True)
+        hydrogens = [
+            canvas.model.add_atom(
+                "H", float(index + 1), 0.0, is_explicit=True
+            )
+            for index in range(4)
+        ]
+        positions = {center.id: (0.0, 0.0, 0.0)}
+        positions.update(
+            {atom.id: (float(index + 1), 0.0, 0.0) for index, atom in enumerate(hydrogens)}
+        )
+        for hydrogen in hydrogens:
+            canvas.model.add_bond(center.id, hydrogen.id)
+        original_coordinates = CoordinateSet3D(
+            positions, source="test", method="manual"
+        )
+        canvas.set_geometry3d_coordinates(original_coordinates)
+        before_atoms = {
+            atom_id: (atom.element, atom.implicit_h, atom.has_valence_error)
+            for atom_id, atom in canvas.model.atoms.items()
+        }
+        before_bonds = {
+            bond_id: (bond.a1_id, bond.a2_id, bond.order)
+            for bond_id, bond in canvas.model.bonds.items()
+        }
+        before_index = canvas.undo_stack.index()
+        before_count = canvas.undo_stack.count()
+        window._pending_3d_build_anchor_id = center.id
+
+        window._add_3d_atom("C", (2.0, 0.0, 0.0))
+
+        assert set(canvas.model.atoms) == set(before_atoms)
+        assert {
+            atom_id: (atom.element, atom.implicit_h, atom.has_valence_error)
+            for atom_id, atom in canvas.model.atoms.items()
+        } == before_atoms
+        assert {
+            bond_id: (bond.a1_id, bond.a2_id, bond.order)
+            for bond_id, bond in canvas.model.bonds.items()
+        } == before_bonds
+        assert canvas.coordinate_set_3d == original_coordinates
+        assert canvas.undo_stack.index() == before_index
+        assert canvas.undo_stack.count() == before_count
+        assert "valencia" in window.viewport3d_dock.status_label.text().lower()
+    finally:
+        window._close_approved = True
+        window._async_shutdown_complete = True
+        window.close()
+
+
+def test_3d_bond_command_rejects_missing_endpoint_atomically() -> None:
+    from chemuson.gui.commands import AddBondCommand
+
+    window = ChemusonWindow()
+    try:
+        canvas = window.canvas
+        atom = canvas.model.add_atom("C", 0.0, 0.0)
+        coordinates = CoordinateSet3D(
+            {atom.id: (0.0, 0.0, 0.0)}, source="test", method="manual"
+        )
+        canvas.set_geometry3d_coordinates(coordinates)
+        before_atom_ids = set(canvas.model.atoms)
+        before_bond_ids = set(canvas.model.bonds)
+        before_history = (canvas.undo_stack.count(), canvas.undo_stack.index())
+        command = AddBondCommand(canvas.model, canvas, atom.id, atom.id + 100)
+
+        error = None
+        try:
+            command.redo()
+        except Exception as exc:
+            error = exc
+
+        assert set(canvas.model.atoms) == before_atom_ids
+        assert set(canvas.model.bonds) == before_bond_ids
+        assert canvas.coordinate_set_3d == coordinates
+        assert (canvas.undo_stack.count(), canvas.undo_stack.index()) == before_history
+        assert isinstance(error, ValueError)
+        assert "átomo" in str(error).lower()
+    finally:
+        window._close_approved = True
+        window._async_shutdown_complete = True
+        window.close()
+
+
+def test_3d_bond_command_rejects_duplicate_endpoint_pair_atomically() -> None:
+    from chemuson.gui.commands import AddBondCommand
+
+    window = ChemusonWindow()
+    try:
+        canvas = window.canvas
+        first = canvas.model.add_atom("C", 0.0, 0.0)
+        second = canvas.model.add_atom("C", 42.0, 0.0)
+        existing = canvas.model.add_bond(first.id, second.id, order=1)
+        canvas.add_bond_item(existing)
+        coordinates = CoordinateSet3D(
+            {first.id: (0.0, 0.0, 0.0), second.id: (1.5, 0.0, 0.0)},
+            source="test",
+            method="manual",
+        )
+        canvas.set_geometry3d_coordinates(coordinates)
+        before_bonds = {
+            bond_id: (bond.a1_id, bond.a2_id, bond.order)
+            for bond_id, bond in canvas.model.bonds.items()
+        }
+        before_history = (canvas.undo_stack.count(), canvas.undo_stack.index())
+        command = AddBondCommand(canvas.model, canvas, first.id, second.id)
+
+        error = None
+        try:
+            command.redo()
+        except Exception as exc:
+            error = exc
+
+        assert {
+            bond_id: (bond.a1_id, bond.a2_id, bond.order)
+            for bond_id, bond in canvas.model.bonds.items()
+        } == before_bonds
+        assert canvas.coordinate_set_3d == coordinates
+        assert (canvas.undo_stack.count(), canvas.undo_stack.index()) == before_history
+        assert isinstance(error, ValueError)
+        assert "duplicado" in str(error).lower()
+    finally:
+        window._close_approved = True
+        window._async_shutdown_complete = True
+        window.close()
+
+
 @pytest.mark.parametrize(
     ("operation", "atom_ids", "target", "metric"),
     [

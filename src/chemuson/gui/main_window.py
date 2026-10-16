@@ -1396,6 +1396,38 @@ class ChemusonWindow(QMainWindow):
         element, point = request
         self._add_3d_atom(str(element), point)
 
+    def _three_d_build_valence_error(
+        self,
+        element: str,
+        parent_id: int | None,
+        bond_order: int,
+        is_aromatic: bool,
+    ) -> str | None:
+        """Rechaza sólo los errores de valencia que introduciría el enlace 3D."""
+        if parent_id is None:
+            return None
+        before_graph = copy.deepcopy(self.canvas.model)
+        before_issues = before_graph.validate_detailed()
+        candidate_graph = copy.deepcopy(self.canvas.model)
+        new_atom = candidate_graph.add_atom(
+            element,
+            0.0,
+            0.0,
+            is_explicit=True,
+        )
+        candidate_graph.add_bond(
+            parent_id,
+            new_atom.id,
+            order=bond_order,
+            is_aromatic=is_aromatic,
+        )
+        candidate_issues = candidate_graph.validate_detailed()
+        for atom_id, issue in candidate_issues.items():
+            previous = before_issues.get(atom_id)
+            if previous is None or issue.observed_valence > previous.observed_valence + 1.0e-6:
+                return f"Valencia incompatible: {issue.message}"
+        return None
+
     def _add_3d_atom(self, element: str, point: object) -> None:
         from chemuson.gui.commands import AddAtomCommand, AddBondCommand, SetGeometry3DCommand
 
@@ -1450,6 +1482,19 @@ class ChemusonWindow(QMainWindow):
             bond_length = float(getattr(canvas.state, "bond_length", 42.0) or 42.0)
             x = center.x() + new_position[0] * bond_length
             y = center.y() - new_position[1] * bond_length
+
+        if parent_id is not None:
+            valence_error = self._three_d_build_valence_error(
+                element,
+                parent_id,
+                bond_order,
+                is_aromatic,
+            )
+            if valence_error is not None:
+                self.viewport3d_dock.set_status(
+                    f"No se puede construir el átomo: {valence_error}"
+                )
+                return
 
         undo_stack = canvas.undo_stack
         previous_index = undo_stack.index()

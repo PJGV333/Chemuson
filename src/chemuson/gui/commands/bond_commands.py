@@ -135,6 +135,18 @@ class AddBondCommand(QUndoCommand):
 
     def redo(self) -> None:
         """Aplica la creación del enlace y del átomo opcional."""
+        if self._a1_id not in self._model.atoms:
+            raise ValueError(f"El átomo inicial {self._a1_id} no existe.")
+        if self._a2_id is not None:
+            if self._a2_id not in self._model.atoms:
+                raise ValueError(f"El átomo final {self._a2_id} no existe.")
+            if self._a1_id == self._a2_id:
+                raise ValueError("No se puede crear un enlace entre un átomo y sí mismo.")
+            if self._model.find_bond_between(self._a1_id, self._a2_id) is not None:
+                raise ValueError("Ya existe un enlace entre esos átomos; se rechaza el duplicado.")
+        elif self._created_atom_id is not None and self._created_atom_id in self._model.atoms:
+            raise ValueError(f"El átomo que se iba a restaurar {self._created_atom_id} ya existe.")
+
         if self._a2_id is None:
             if self._created_atom_id is None:
                 if self._new_atom_element is None or self._new_atom_pos is None:
