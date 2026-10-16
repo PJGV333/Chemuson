@@ -19,6 +19,15 @@ Salida completa conservada fuera del árbol de producción en:
 - Fecha: 2026-10-15. Rama `feature/chemuson-3d`, `HEAD` igual a `origin/feature/chemuson-3d`; worktree limpio.
 - `python -m compileall src tests tools packaging`: **exit 0**.
 - `pytest --collect-only -q`: **2084 tests collected in 0.43s**, **exit 0**.
-- `timeout 600 pytest -q`: **exit -11** tras 281s, progreso hasta aproximadamente el 62 %, dos `F` visibles al 41 % y 51 %, seguido por `Fatal Python error: Segmentation fault` con worker `concurrent.futures` y frame principal inválido. No se conservan nombres ni trazas de esos dos fallos; ninguno se atribuye a este cambio sin reproducción diferencial.
+- `timeout 600 pytest -q`: **exit -11** tras 281s; se completaron 1296 resultados (**1285 passed, 9 skipped, 2 failed**) antes de `Fatal Python error: Segmentation fault` en worker `concurrent.futures`/frame principal inválido.
+- Los fallos completos fueron `tests/test_clean2d_engine_candidates.py::test_generate_candidates_attempts_rdkit_for_cyclic_graphs` (#847) y `tests/test_compchem3d_dock.py::test_compchem_controller_generates_async_with_fake_backend` (#1074). No se atribuyen a este cambio.
 - Ruff `src tests tools packaging --select F401,F811,F821,E722,E741`: **exit 1**, un `F401` preexistente para `math` en `tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py:3`.
 - Salida completa de esta captura guardada fuera del repositorio en `/home/ccachyavgp/.hermes/cache/scratch/chemuson-viewport-stabilization-baseline-20261015.txt`.
+
+## Comparación tras la estabilización
+
+- `pytest --collect-only -q`: **2102 tests collected**, exit 0.
+- `pytest -q`: **exit 139**; se completaron 1362 resultados (**1353 passed, 7 skipped, 2 failed**) antes del mismo patrón de segfault en worker `concurrent.futures`/frame principal inválido. El proceso se interrumpió antes de ejecutar las pruebas `viewport3d`.
+- Los dos `F` aparecen en los mismos IDs e índices que en la captura pre-cambio (#847 y #1074). El primero también falla ejecutado aisladamente, por una expectativa de origen `rdkit_isolated`; el segundo pasa aisladamente y sólo falla en la suite completa. Se dejaron sin cambios y sin atribución causal.
+- Las pruebas focalizadas de viewport, geometría 3D, CompChem y arquitectura: **154 passed, 1 skipped**. Compilación, OpenSpec estricto y Ruff del alcance: correctos. Ruff global conserva únicamente el `F401` ya documentado.
+- Las capturas reales del viewport con etano y benceno muestran GL listo, escenas de **8/7** y **12/12** átomos/enlaces, respectivamente. El proceso del smoke-test guardó las imágenes pero terminó con `SIGSEGV` durante el apagado Qt/SIP; no se cuenta como ejecución limpia ni se atribuye causalidad al visor sin una reproducción diferencial.
