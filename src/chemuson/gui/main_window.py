@@ -145,6 +145,9 @@ class ChemusonWindow(QMainWindow):
         """Aplica el tema actual a la ventana y a las barras con estilo propio."""
         resolved_theme = resolve_theme_name(self.current_theme)
         apply_theme(self, resolved_theme)
+        viewport_dock = getattr(self, "viewport3d_dock", None)
+        if viewport_dock is not None:
+            viewport_dock.set_theme(resolved_theme)
         set_icon_theme(resolved_theme)
         toolbar_stylesheet = get_tool_palette_stylesheet(resolved_theme)
         for toolbar in (getattr(self, "toolbar", None), getattr(self, "symbols_toolbar", None)):

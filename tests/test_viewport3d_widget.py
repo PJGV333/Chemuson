@@ -97,6 +97,22 @@ def test_main_window_exposes_one_viewport_action_without_side_panel_duplication(
         window.close()
 
 
+def test_main_window_theme_changes_reach_the_viewport_dock(_qapp):
+    window = ChemusonWindow()
+    try:
+        window.current_theme = "dark"
+        window._apply_theme()
+        assert window.viewport3d_dock._theme_name == "dark"
+        assert "#243249" in window.viewport3d_dock.styleSheet()
+
+        window.current_theme = "light"
+        window._apply_theme()
+        assert window.viewport3d_dock._theme_name == "light"
+        assert "#F1F5F9" in window.viewport3d_dock.styleSheet()
+    finally:
+        window.close()
+
+
 class _ContextSignals(QObject):
     aboutToBeDestroyed = pyqtSignal()
 
@@ -140,6 +156,11 @@ def test_context_destruction_releases_renderer_and_allows_reinitialization(monke
             cleaned.append(True)
 
     widget._renderer = RendererStub()
+    scene = SceneMolecule3D(
+        atoms=(SceneAtom3D(1, "C", 0.0, 0.0, 0.0, 1.7, "#404040"),),
+        bonds=(),
+    )
+    widget.set_scene(scene)
     monkeypatch.setattr(widget, "context", lambda: context)
     monkeypatch.setattr(widget, "makeCurrent", lambda: None)
     monkeypatch.setattr(widget, "doneCurrent", lambda: None)
@@ -151,8 +172,10 @@ def test_context_destruction_releases_renderer_and_allows_reinitialization(monke
     assert cleaned == [True]
     assert not widget.gl_ready
     assert widget._mesh_dirty
+    assert widget.scene is scene
     widget.initializeGL()
     assert initialized == [True, True]
+    assert widget.scene is scene
 
 
 def test_hide_and_show_cleanup_renderer_and_reinitialize_same_context(monkeypatch) -> None:
@@ -730,3 +753,82 @@ def test_escape_cancels_an_uncommitted_geometry_drag(monkeypatch, _qapp):
     assert widget._geometry_drag_state is None
     assert cancelled == [True]
     assert commits == []
+
+
+def test_dock_has_no_active_edit_tool_while_in_navigation_mode(_qapp):
+    dock = MolecularViewportDock()
+    try:
+        assert not dock.viewport.edit_mode
+        assert not dock.edit_mode_checkbox.isChecked()
+        assert not any(button.isChecked() for button in dock.tool_buttons.values())
+
+        dock.tool_buttons["measure"].click()
+
+        assert dock.viewport.edit_mode
+        assert dock.edit_mode_checkbox.isChecked()
+        assert dock.tool_buttons["measure"].isChecked()
+        dock.edit_mode_checkbox.setChecked(False)
+        assert not dock.viewport.edit_mode
+        assert not any(button.isChecked() for button in dock.tool_buttons.values())
+    finally:
+        dock.close()
+
+
+def test_viewport_dock_theme_is_scoped_and_reapplies_when_floating(_qapp, monkeypatch):
+    from PyQt6.QtGui import QPalette
+    from PyQt6.QtWidgets import QMainWindow
+    from chemuson.geometry3d import SceneAtom3D, SceneMolecule3D
+    from chemuson.gui.viewport3d.picking import PickResult
+    from chemuson.gui.theme.tokens import get_tokens
+
+    window = QMainWindow()
+    dock = MolecularViewportDock(window)
+    window.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
+    scene = SceneMolecule3D(
+        atoms=(SceneAtom3D(1, "C", 0.0, 0.0, 0.0, 1.7, "#909090"),),
+        bonds=(),
+    )
+    dock.set_scene(scene)
+    dock.viewport.set_edit_mode(True)
+    dock.viewport.set_edit_tool("bond")
+    dock.viewport._set_selection(PickResult("atom", 1, 1.0))
+    dock.viewport.camera.yaw = 0.75
+    applied_themes = []
+    set_theme = dock.set_theme
+
+    def record_theme(theme_name):
+        applied_themes.append(theme_name)
+        set_theme(theme_name)
+
+    monkeypatch.setattr(dock, "set_theme", record_theme)
+
+    try:
+        for theme in ("light", "dark"):
+            dock.set_theme(theme)
+            applied_themes.clear()
+            tokens = get_tokens(theme)
+            stylesheet = dock.styleSheet()
+            assert "QDockWidget#molecularViewportDock" in stylesheet
+            assert "QPushButton:disabled" in stylesheet
+            assert "QComboBox:disabled" in stylesheet
+            assert "QCheckBox::indicator:checked" in stylesheet
+            assert dock.palette().color(QPalette.ColorRole.Window).name().upper() == str(
+                tokens["bg"]
+            ).upper()
+            assert dock.palette().color(QPalette.ColorRole.WindowText).name().upper() == str(
+                tokens["text1"]
+            ).upper()
+            dock.setFloating(True)
+            assert dock.isFloating()
+            dock.setFloating(False)
+            assert not dock.isFloating()
+            assert len(applied_themes) >= 2
+            assert set(applied_themes) == {theme}
+            assert dock.styleSheet() == stylesheet
+            assert dock.viewport.scene is scene
+            assert dock.viewport.edit_mode
+            assert dock.viewport.edit_tool == "bond"
+            assert dock.viewport.selected_atom_id == 1
+            assert dock.viewport.camera.yaw == pytest.approx(0.75)
+    finally:
+        window.close()

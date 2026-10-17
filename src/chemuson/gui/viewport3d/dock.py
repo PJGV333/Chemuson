@@ -20,6 +20,8 @@ from PyQt6.QtWidgets import (
 )
 
 from chemuson.geometry3d import SceneMolecule3D
+from chemuson.gui.theme import build_qpalette, resolve_theme_name
+from chemuson.gui.theme.tokens import get_tokens
 
 from .widget import MolecularViewportWidget
 
@@ -32,6 +34,7 @@ class MolecularViewportDock(QDockWidget):
 
     def __init__(self, parent=None) -> None:
         super().__init__("Visor molecular 3D", parent)
+        self._theme_name = "light"
         self.setObjectName("molecularViewportDock")
         self.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
         self.setMinimumWidth(300)
@@ -80,7 +83,9 @@ class MolecularViewportDock(QDockWidget):
             )
             self.tool_buttons[tool] = button
             tool_row.addWidget(button)
-        self.tool_buttons["move"].setChecked(True)
+        self.tool_button_group.setExclusive(False)
+        self.tool_buttons["move"].setChecked(False)
+        self.tool_button_group.setExclusive(True)
         self.fit_view_button = QToolButton(container)
         self.fit_view_button.setText("Fit")
         self.fit_view_button.setToolTip("Ajustar molécula a la vista (F)")
@@ -127,7 +132,7 @@ class MolecularViewportDock(QDockWidget):
         self.apply_constraint_button.clicked.connect(self._emit_geometry_constraint)
         self.edit_mode_checkbox.toggled.connect(self.viewport.set_edit_mode)
         self.viewport.editToolChanged.connect(self._sync_tool_controls)
-        self.viewport.editModeChanged.connect(self.edit_mode_checkbox.setChecked)
+        self.viewport.editModeChanged.connect(self._sync_edit_mode_controls)
         self.live_mm_checkbox.toggled.connect(self.liveMMToggled.emit)
         self.tool_combo.currentIndexChanged.connect(self._set_edit_tool)
         self.element_combo.currentTextChanged.connect(self.viewport.set_build_element)
@@ -143,6 +148,119 @@ class MolecularViewportDock(QDockWidget):
         layout.addWidget(self.status_label)
         self.setWidget(container)
         self.viewport.statusChanged.connect(self.set_status)
+        self.topLevelChanged.connect(self._on_dock_top_level_changed)
+        self.dockLocationChanged.connect(self._on_dock_location_changed)
+        self.set_theme(self._theme_name)
+        self._sync_edit_mode_controls(self.viewport.edit_mode)
+
+    def set_theme(self, theme_name: str) -> None:
+        """Aplica paleta/QSS del dock sin afectar otros paneles o KDE."""
+        self._theme_name = resolve_theme_name(theme_name)
+        tokens = get_tokens(self._theme_name)
+        self.setPalette(build_qpalette(self._theme_name))
+        self.setAutoFillBackground(True)
+        self.setStyleSheet(
+            """
+            QDockWidget#molecularViewportDock {
+                background-color: %(bg)s;
+                color: %(text1)s;
+            }
+            QDockWidget#molecularViewportDock::title {
+                background-color: %(surface)s;
+                color: %(text1)s;
+                border-bottom: 1px solid %(border)s;
+                padding: 5px 8px;
+            }
+            QDockWidget#molecularViewportDock QLabel {
+                color: %(text1)s;
+                background: transparent;
+            }
+            QDockWidget#molecularViewportDock QCheckBox {
+                color: %(text1)s;
+                background: transparent;
+                spacing: 6px;
+            }
+            QDockWidget#molecularViewportDock QCheckBox:disabled {
+                color: %(text3)s;
+            }
+            QDockWidget#molecularViewportDock QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                background-color: %(surface2)s;
+                border: 1px solid %(borderStrong)s;
+                border-radius: 3px;
+            }
+            QDockWidget#molecularViewportDock QCheckBox::indicator:checked {
+                background-color: %(accent)s;
+                border-color: %(accentStrong)s;
+            }
+            QDockWidget#molecularViewportDock QPushButton,
+            QDockWidget#molecularViewportDock QToolButton,
+            QDockWidget#molecularViewportDock QComboBox,
+            QDockWidget#molecularViewportDock QLineEdit,
+            QDockWidget#molecularViewportDock QDoubleSpinBox {
+                background-color: %(surface2)s;
+                color: %(text1)s;
+                border: 1px solid %(border)s;
+                border-radius: 4px;
+                padding: 4px 6px;
+            }
+            QDockWidget#molecularViewportDock QPushButton:hover,
+            QDockWidget#molecularViewportDock QToolButton:hover,
+            QDockWidget#molecularViewportDock QComboBox:hover {
+                background-color: %(surface3)s;
+                border-color: %(borderStrong)s;
+            }
+            QDockWidget#molecularViewportDock QPushButton:checked,
+            QDockWidget#molecularViewportDock QToolButton:checked {
+                background-color: %(accentSoft)s;
+                border-color: %(accentBorder)s;
+                color: %(accentStrong)s;
+            }
+            QDockWidget#molecularViewportDock QPushButton:disabled,
+            QDockWidget#molecularViewportDock QToolButton:disabled,
+            QDockWidget#molecularViewportDock QComboBox:disabled,
+            QDockWidget#molecularViewportDock QLineEdit:disabled,
+            QDockWidget#molecularViewportDock QDoubleSpinBox:disabled {
+                background-color: %(surface3)s;
+                color: %(text3)s;
+                border-color: %(border)s;
+            }
+            QDockWidget#molecularViewportDock QComboBox QAbstractItemView {
+                background-color: %(surface)s;
+                color: %(text1)s;
+                selection-background-color: %(accentSoft)s;
+                selection-color: %(accentStrong)s;
+            }
+            QDockWidget#molecularViewportDock QToolTip {
+                background-color: %(surface)s;
+                color: %(text1)s;
+                border: 1px solid %(border)s;
+            }
+            """
+            % {key: str(value) for key, value in tokens.items() if isinstance(value, str)}
+        )
+
+    def _on_dock_top_level_changed(self, _floating: bool) -> None:
+        self.set_theme(self._theme_name)
+
+    def _on_dock_location_changed(self, _area: Qt.DockWidgetArea) -> None:
+        self.set_theme(self._theme_name)
+
+    def _clear_active_tool_button(self) -> None:
+        self.tool_button_group.setExclusive(False)
+        for button in self.tool_buttons.values():
+            button.setChecked(False)
+        self.tool_button_group.setExclusive(True)
+
+    def _sync_edit_mode_controls(self, enabled: bool) -> None:
+        self.edit_mode_checkbox.blockSignals(True)
+        self.edit_mode_checkbox.setChecked(bool(enabled))
+        self.edit_mode_checkbox.blockSignals(False)
+        if enabled:
+            self._sync_tool_controls(self.viewport.edit_tool)
+        else:
+            self._clear_active_tool_button()
 
     def _set_advanced_controls_visible(self, visible: bool) -> None:
         self.advanced_controls_panel.setVisible(visible)
@@ -166,6 +284,9 @@ class MolecularViewportDock(QDockWidget):
             self.edit_mode_checkbox.setChecked(True)
 
     def _sync_tool_controls(self, tool: str) -> None:
+        if not self.viewport.edit_mode:
+            self._clear_active_tool_button()
+            return
         index = self.tool_combo.findData(tool)
         if index >= 0 and self.tool_combo.currentIndex() != index:
             self.tool_combo.setCurrentIndex(index)
