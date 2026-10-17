@@ -4,6 +4,12 @@
 
 The exact local template currently imports as a 43-atom, 48-bond MolGraph. It has six supported abbreviations (`CH3` ×2, `OCH3` ×4), and no explicit atom or bond stereochemistry. Expanding abbreviations on a copy yields 47 atoms and 52 bonds. The original graph has aromatic bridge bond 9 (atom 5–11) flagged aromatic while its stored order is single; atom 11 has degree one. `graph_conformer3d_stream` fails in RDKit sanitization with `non-ring atom 10 marked aromatic`; ETKDG is never called, so no coordinates reach scene construction. Clearing only this contradictory aromatic flag on a calculation copy, while retaining single-bond order and expanding the abbreviations, allows ETKDG to return coordinates. A prototype produced 93 scene atoms and a finite mesh, but MMFF did not converge; this is geometric availability, not a claim of minimized chemistry or visual acceptance.
 
+## Post-implementation identity audit
+
+A deeper audit shows that the sanitization failure is a symptom of a malformed user-local graph, not an isolated RDKit aromaticity issue. The MolBlock and its fixture are identical, and import/abbreviation expansion preserve the source connectivity. Source atom 11 duplicates atom 6's 2D coordinates, is terminal, and is connected to atom 5 by the invalid aromatic bridge; the expected ring-closing edge 5–6 is absent. After the current flag normalization, RDKit treats atom 11 as a methyl group, yielding `C39H46N2O6` (47 heavy atoms, 93 total), not the reference `C38H42N2O6` (46 heavy atoms, 88 total). The normalized graph passes ordinary valence checks, so sanitization is not a molecular-identity check. See `identity-audit.md` for counts and the isolated, unapplied comparison.
+
+Do not alter the user's saved MolGraph or claim tetrandrina identity acceptance without explicit authorization to correct the source entry. The narrowly tested hypothetical correction (remove duplicate atom 11 and restore aromatic edge 5–6) matches the stereo-agnostic reference graph, but was not written to the user configuration or fixture.
+
 ## Architecture decisions
 
 1. **Calculation-only molecular normalization.** Reuse `expand_abbreviations_for_calculation` on a defensive graph copy. Detect aromatic edges that are graph bridges. Only a bridge stored with an explicit single-bond order may be demoted from aromatic to single for RDKit calculation; preserve connectivity and all source IDs. Report every expansion/demotion in diagnostics. Leave unknown or ambiguous aromatic assignments as errors rather than guessing. Preserve all specified stereo fields and do not assign missing stereo.
@@ -20,10 +26,10 @@ No `.cmsn` serialization changes, new dependencies, or package ownership changes
 
 ## Commit boundaries
 
-- Commit 1: this validated OpenSpec and baseline.
-- Commit 2: exact local-template diagnostics/normalization and chemistry regression.
-- Commit 3: world-space DrawTool preview, snapping, double-click, and undo tests.
-- Commit 4: Live MM playback/HUD/cancellation and measured frame/animation tests.
-- Commit 5: camera axes/orbit cues and navigation tests.
+- Commit 1: validated OpenSpec and baseline (already committed).
+- Commit 2: calculation-copy aromaticity normalization and original-graph regression (already committed); this fixes RDKit sanitization only, not the local template's chemical identity.
+- Commit 3: world-space DrawTool preview, snapping, double-click, and undo tests (already committed).
+- Commit 4: remaining viewport integration—timed Live MM playback/HUD/cancellation plus camera axes/orbit cues and interaction tests, grouped because these changes share the viewport widget.
+- Commit 5: final identity audit, CachyOS manual acceptance guide, and validation record.
 
-Each feature commit updates tasks and validation. Do not archive the change while GUI acceptance remains pending.
+Do not archive the change while the local-template identity correction and real GUI/OpenGL acceptance remain pending.
