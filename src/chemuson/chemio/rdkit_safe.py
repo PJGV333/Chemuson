@@ -86,7 +86,10 @@ def smiles_to_molgraph_isolated(
         # Import local para evitar ciclos en carga de módulo.
         from chemuson.chemio.rdkit_io import molfile_to_molgraph
 
-        return molfile_to_molgraph(molblock), None
+        graph = molfile_to_molgraph(
+            molblock, stereo_metadata=response.get("metadata", {})
+        )
+        return graph, None
     except Exception as exc:
         return None, str(exc)
 
@@ -426,6 +429,8 @@ def _graph_request_payload(
             {
                 "id": int(atom.id),
                 "element": str(atom.element),
+                "x": float(getattr(atom, "x", 0.0)),
+                "y": float(getattr(atom, "y", 0.0)),
                 "formal_charge": int(getattr(atom, "formal_charge", getattr(atom, "charge", 0)) or 0),
                 "isotope": getattr(atom, "isotope", None),
                 "radical_electrons": int(getattr(atom, "radical_electrons", 0) or 0),
@@ -438,11 +443,13 @@ def _graph_request_payload(
         ],
         "bonds": [
             {
+                "id": int(bond.id),
                 "a1_id": int(bond.a1_id),
                 "a2_id": int(bond.a2_id),
                 "order": int(getattr(bond, "order", 1) or 1),
                 "is_aromatic": bool(getattr(bond, "is_aromatic", False)),
                 "style": str(getattr(getattr(bond, "style", None), "value", getattr(bond, "style", ""))),
+                "stereo": str(getattr(getattr(bond, "stereo", None), "value", getattr(bond, "stereo", ""))),
                 "donor_atom_id": getattr(bond, "donor_atom_id", None),
                 "stereo_ez": getattr(bond, "stereo_ez", None),
                 "stereo_axial": getattr(bond, "stereo_axial", None),

@@ -20,9 +20,20 @@ from chemuson.geometry3d import (
     project_conformer_to_2d,
     scene_molecule_from_graph,
 )
+from chemuson.geometry3d.editing import dihedral_degrees, rotate_atoms_about_axis, set_dihedral
 from chemuson.geometry3d.export_xyz import molgraph_to_xyz
 from chemuson.geometry3d import obabel_backend, rdkit_backend
 from chemuson.chemio.persistence import PersistenceManager
+
+
+def test_carbon_scene_color_has_contrast_for_dark_viewport() -> None:
+    graph = MolGraph()
+    carbon = graph.add_atom("C", 0.0, 0.0)
+    coordinates = CoordinateSet3D({carbon.id: (0.0, 0.0, 0.0)}, "test", "manual")
+
+    scene = scene_molecule_from_graph(graph, coordinates)
+
+    assert scene.atoms[0].color == "#909090"
 
 
 def _ethanol_graph() -> MolGraph:
@@ -374,6 +385,9 @@ def test_rdkit_backend_frames_keep_derived_hydrogens() -> None:
         ("ethanol", "CCO", 3, 2, 6),
         ("butane", "CCCC", 4, 3, 10),
         ("benzene", "c1ccccc1", 6, 6, 6),
+        ("cyclohexane", "C1CCCCC1", 6, 6, 12),
+        ("ethene", "C=C", 2, 1, 4),
+        ("ethyne", "C#C", 2, 1, 2),
     ],
 )
 def test_3d_acceptance_molecules_preserve_graph_and_build_derived_hydrogens(
@@ -412,7 +426,8 @@ def test_3d_acceptance_molecules_preserve_graph_and_build_derived_hydrogens(
     assert len(scene.atoms) == document_atoms + generated_hydrogens
     assert len(scene.bonds) == document_bonds + generated_hydrogens
     assert all(math.isfinite(value) for atom in scene.atoms for value in (atom.x, atom.y, atom.z))
-    assert any(abs(atom.z) > 1.0e-6 for atom in scene.atoms)
+    if name not in {"ethene", "ethyne"}:
+        assert any(abs(atom.z) > 1.0e-6 for atom in scene.atoms)
     assert {atom.id for atom in scene.atoms if not atom.generated} == set(graph.atoms)
     assert sum(atom.generated and atom.element == "H" for atom in scene.atoms) == generated_hydrogens
     assert all(bond.a1_id in {atom.id for atom in scene.atoms} for bond in scene.bonds)
@@ -426,11 +441,112 @@ def test_3d_acceptance_molecules_preserve_graph_and_build_derived_hydrogens(
         bond_id: (bond.a1_id, bond.a2_id, bond.order, bond.is_aromatic)
         for bond_id, bond in graph.bonds.items()
     } == bond_snapshot
+    if name in {"ethane", "ethanol", "butane"}:
+        raw_generated_atoms = coordinates.metadata.get("generated_atoms", [])
+        raw_generated_bonds = coordinates.metadata.get("generated_bonds", [])
+        generated_atoms = raw_generated_atoms if isinstance(raw_generated_atoms, list) else []
+        generated_bonds = raw_generated_bonds if isinstance(raw_generated_bonds, list) else []
+
+        def generated_hydrogen_bond_lengths(scene):
+            scene_positions = {
+                str(atom.id): (atom.x, atom.y, atom.z)
+                for atom in scene.atoms
+            }
+            hydrogen_ids = {str(item["id"]) for item in generated_atoms}
+            lengths = {}
+            for bond in generated_bonds:
+                first_id, second_id = str(bond["a1_id"]), str(bond["a2_id"])
+                if first_id in hydrogen_ids:
+                    hydrogen_id, parent_id = first_id, second_id
+                elif second_id in hydrogen_ids:
+                    hydrogen_id, parent_id = second_id, first_id
+                else:
+                    continue
+                lengths[hydrogen_id] = math.dist(
+                    scene_positions[hydrogen_id], scene_positions[parent_id]
+                )
+            return lengths
+
+        def generated_hydrogen_vectors(scene):
+            scene_positions = {
+                str(atom.id): (atom.x, atom.y, atom.z)
+                for atom in scene.atoms
+            }
+            hydrogen_ids = {str(item["id"]) for item in generated_atoms}
+            vectors: dict[int, list[tuple[float, float, float]]] = {}
+            for bond in generated_bonds:
+                first_id, second_id = str(bond["a1_id"]), str(bond["a2_id"])
+                if first_id in hydrogen_ids:
+                    hydrogen_id, parent_id = first_id, second_id
+                elif second_id in hydrogen_ids:
+                    hydrogen_id, parent_id = second_id, first_id
+                else:
+                    continue
+                hydrogen = scene_positions[hydrogen_id]
+                parent = scene_positions[parent_id]
+                vectors.setdefault(int(parent_id), []).append(
+                    tuple(hydrogen[index] - parent[index] for index in range(3))
+                )
+            return vectors
+
+        if name == "butane":
+            target = dihedral_degrees(coordinates, 1, 2, 3, 4) + 63.0
+            transformed = set_dihedral(graph, coordinates, (1, 2, 3, 4), target)
+        else:
+            transformed = rotate_atoms_about_axis(
+                coordinates, set(graph.atoms), (0.0, 0.0, 0.0), (1.0, 2.0, 3.0), 37.0
+            )
+        transformed_scene = scene_molecule_from_graph(graph, transformed)
+        before_lengths = generated_hydrogen_bond_lengths(scene)
+        after_lengths = generated_hydrogen_bond_lengths(transformed_scene)
+        assert set(after_lengths) == set(before_lengths)
+        assert all(
+            abs(after_lengths[hydrogen_id] - bond_length) < 1.0e-6
+            for hydrogen_id, bond_length in before_lengths.items()
+        )
+        before_vectors = generated_hydrogen_vectors(scene)
+        after_vectors = generated_hydrogen_vectors(transformed_scene)
+        assert set(after_vectors) == set(before_vectors)
+
+        def pairwise_angles(vectors):
+            angles = []
+            for index, first in enumerate(vectors):
+                for second in vectors[index + 1 :]:
+                    denominator = math.sqrt(sum(value * value for value in first)) * math.sqrt(
+                        sum(value * value for value in second)
+                    )
+                    cosine = sum(a * b for a, b in zip(first, second)) / denominator
+                    angles.append(math.degrees(math.acos(max(-1.0, min(1.0, cosine)))))
+            return angles
+
+        moving_parents = {3, 4} if name == "butane" else set(graph.atoms)
+        orientation_changed = False
+        for parent_id, before_parent_vectors in before_vectors.items():
+            after_parent_vectors = after_vectors[parent_id]
+            assert pairwise_angles(after_parent_vectors) == pytest.approx(
+                pairwise_angles(before_parent_vectors), abs=1.0e-5
+            )
+            if parent_id in moving_parents:
+                orientation_changed |= any(
+                    math.dist(before, after) > 1.0e-5
+                    for before, after in zip(before_parent_vectors, after_parent_vectors)
+                )
+            else:
+                assert after_parent_vectors == pytest.approx(before_parent_vectors)
+        assert orientation_changed
     if name == "benzene":
         # The importer stores the aromatic ring as a Kekulé graph (3 single + 3 double).
         assert sum(bond.order == 1 for bond in graph.bonds.values()) == 3
         assert sum(bond.order == 2 for bond in graph.bonds.values()) == 3
         assert all(graph.atom_degree(atom_id) == 2 for atom_id in graph.atoms)
+    elif name == "cyclohexane":
+        assert all(bond.order == 1 and not bond.is_aromatic for bond in graph.bonds.values())
+    elif name == "ethene":
+        assert len(graph.bonds) == 1
+        assert next(iter(graph.bonds.values())).order == 2
+    elif name == "ethyne":
+        assert len(graph.bonds) == 1
+        assert next(iter(graph.bonds.values())).order == 3
     if name == "water":
         oxygen = next(atom for atom in scene.atoms if not atom.generated and atom.element == "O")
         hydrogens = [atom for atom in scene.atoms if atom.generated and atom.element == "H"]

@@ -194,16 +194,31 @@ def chemical_graph_hash(graph: MolGraph) -> str:
         parts.append(
             "A"
             f"{int(atom.id)}:{atom.element}:{int(getattr(atom, 'charge', 0) or 0)}:"
-            f"{getattr(atom, 'isotope', None) or ''}:{int(getattr(atom, 'radical_electrons', 0) or 0)}"
+            f"{getattr(atom, 'isotope', None) or ''}:{int(getattr(atom, 'radical_electrons', 0) or 0)}:"
+            f"{getattr(atom, 'stereo_cip', None) or ''}:{getattr(atom, 'stereo_axial', None) or ''}:"
+            f"{getattr(atom, 'stereo_helical', None) or ''}:{getattr(atom, 'stereo_si_re', None) or ''}"
         )
     for bond in sorted(graph.bonds.values(), key=lambda item: item.id):
         if not bond_affects_valence(bond):
             continue
-        a1, a2 = sorted((int(bond.a1_id), int(bond.a2_id)))
+        a1_id = int(bond.a1_id)
+        a2_id = int(bond.a2_id)
+        style = str(
+            getattr(getattr(bond, "style", None), "value", getattr(bond, "style", ""))
+            or ""
+        )
+        stereo = str(
+            getattr(getattr(bond, "stereo", None), "value", getattr(bond, "stereo", ""))
+            or ""
+        )
+        direction_sensitive = style in {"wedge", "hashed"}
+        a1, a2 = (a1_id, a2_id) if direction_sensitive else sorted((a1_id, a2_id))
         parts.append(
             "B"
             f"{a1}-{a2}:{int(getattr(bond, 'order', 1) or 1)}:"
-            f"{int(bool(getattr(bond, 'is_aromatic', False)))}"
+            f"{int(bool(getattr(bond, 'is_aromatic', False)))}:{style}:{stereo}:"
+            f"{getattr(bond, 'stereo_ez', None) or ''}:{getattr(bond, 'stereo_axial', None) or ''}:"
+            f"{getattr(bond, 'stereo_endo_exo', None) or ''}:{getattr(bond, 'stereo_helical', None) or ''}"
         )
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
 

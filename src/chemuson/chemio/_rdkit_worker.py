@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import sys
 from typing import Any
 
@@ -95,6 +96,13 @@ def _build_mol_from_graph_payload(Chem, request: dict[str, Any]):
             rd_atom.SetProp("_ChemusonStereoHelical", str(atom_data.get("stereo_helical")))
         if atom_data.get("stereo_si_re"):
             rd_atom.SetProp("_ChemusonStereoSiRe", str(atom_data.get("stereo_si_re")))
+        if atom_data.get("stereo_cip"):
+            rd_atom.SetProp("_ChemusonStereoCIP", str(atom_data.get("stereo_cip")))
+        try:
+            rd_atom.SetDoubleProp("_Chemuson2DX", float(atom_data.get("x", 0.0) or 0.0))
+            rd_atom.SetDoubleProp("_Chemuson2DY", float(atom_data.get("y", 0.0) or 0.0))
+        except (TypeError, ValueError):
+            pass
         id_map[atom_id] = rw.AddAtom(rd_atom)
 
     for bond_data in bonds:
@@ -131,6 +139,20 @@ def _build_mol_from_graph_payload(Chem, request: dict[str, Any]):
         elif _bond_priority(Chem, bond_type) > _bond_priority(Chem, rd_bond.GetBondType()):
             rd_bond.SetBondType(bond_type)
         if rd_bond is not None:
+            bond_id = bond_data.get("id")
+            if bond_id is not None:
+                rd_bond.SetProp("_ChemusonBondId", str(int(bond_id)))
+            stereo_ez = str(bond_data.get("stereo_ez", "") or "").strip().upper()
+            if stereo_ez:
+                rd_bond.SetProp("_ChemusonStereoEZ", stereo_ez)
+            style = str(bond_data.get("style", "") or "").lower()
+            stereo = str(bond_data.get("stereo", "") or "").lower()
+            if style == "wavy" or stereo == "either":
+                rd_bond.SetProp("_ChemusonAmbiguousStereo", "ambiguous_bond_mark")
+            elif stereo == "up" or (stereo in {"", "none"} and style == "wedge"):
+                rd_bond.SetBondDir(Chem.BondDir.BEGINWEDGE)
+            elif stereo == "down" or (stereo in {"", "none"} and style == "hashed"):
+                rd_bond.SetBondDir(Chem.BondDir.BEGINDASH)
             if bond_data.get("stereo_axial"):
                 rd_bond.SetProp("_ChemusonStereoAxial", str(bond_data.get("stereo_axial")))
             if bond_data.get("stereo_endo_exo"):
@@ -141,6 +163,259 @@ def _build_mol_from_graph_payload(Chem, request: dict[str, Any]):
             rw.GetAtomWithIdx(id_map[a1_id]).SetIsAromatic(True)
             rw.GetAtomWithIdx(id_map[a2_id]).SetIsAromatic(True)
     return rw.GetMol(), id_map, ""
+
+
+def _infer_wedge_tags_from_2d(Chem, mol, wedge_participants: list[tuple[int, int]]) -> None:
+    """Uses RDKit's molfile parser to interpret drawn wedge/hash directions."""
+    if not wedge_participants or any(
+        not atom.HasProp("_Chemuson2DX") or not atom.HasProp("_Chemuson2DY")
+        for atom in mol.GetAtoms()
+    ):
+        return
+    try:
+        from rdkit.Geometry import Point3D
+
+        candidate = Chem.Mol(mol)
+        conformer = Chem.Conformer(candidate.GetNumAtoms())
+        for atom in candidate.GetAtoms():
+            conformer.SetAtomPosition(
+                int(atom.GetIdx()),
+                Point3D(
+                    float(atom.GetDoubleProp("_Chemuson2DX")),
+                    float(atom.GetDoubleProp("_Chemuson2DY")),
+                    0.0,
+                ),
+            )
+        candidate.AddConformer(conformer, assignId=True)
+        molblock = Chem.MolToMolBlock(candidate)
+        parsed = Chem.MolFromMolBlock(molblock, sanitize=False, removeHs=False)
+        if parsed is None:
+            return
+        Chem.AssignStereochemistry(parsed, cleanIt=True, force=True)
+        participants = {idx for pair in wedge_participants for idx in pair}
+        for rd_idx in participants:
+            parsed_atom = parsed.GetAtomWithIdx(int(rd_idx))
+            if parsed_atom.GetChiralTag() == Chem.ChiralType.CHI_UNSPECIFIED:
+                continue
+            original_atom = mol.GetAtomWithIdx(int(rd_idx))
+            if original_atom.HasProp("_ChemusonStereoCIP"):
+                continue
+            original_atom.SetChiralTag(parsed_atom.GetChiralTag())
+        Chem.AssignStereochemistry(mol, cleanIt=True, force=True)
+    except Exception:
+        return
+
+
+def _apply_documented_tetrahedral_stereo(
+    Chem,
+    mol,
+    id_map: dict[int, int],
+) -> tuple[dict[str, str], str | None]:
+    """Installs explicit CIP labels and wedge/hash stereo on an RDKit molecule."""
+    wedge_participants: list[tuple[int, int]] = []
+    for bond in mol.GetBonds():
+        if bond.HasProp("_ChemusonAmbiguousStereo"):
+            bond_id = bond.GetProp("_ChemusonBondId") if bond.HasProp("_ChemusonBondId") else str(bond.GetIdx())
+            return {}, f"unsupported_stereochemistry:ambiguous_bond:{bond_id}"
+        if bond.GetBondDir() in {Chem.BondDir.BEGINWEDGE, Chem.BondDir.BEGINDASH}:
+            wedge_participants.append(
+                (int(bond.GetBeginAtomIdx()), int(bond.GetEndAtomIdx()))
+            )
+
+    _infer_wedge_tags_from_2d(Chem, mol, wedge_participants)
+    try:
+        Chem.AssignChiralTypesFromBondDirs(mol, replaceExistingTags=True)
+        Chem.AssignStereochemistry(mol, cleanIt=True, force=True)
+    except Exception as exc:
+        return {}, f"unsupported_stereochemistry:wedge_assignment:{exc}"
+
+    wedge_centers: set[int] = set()
+    for first_idx, second_idx in wedge_participants:
+        candidates = [
+            idx
+            for idx in (first_idx, second_idx)
+            if mol.GetAtomWithIdx(idx).HasProp("_ChemusonStereoCIP")
+            or mol.GetAtomWithIdx(idx).GetChiralTag()
+            != Chem.ChiralType.CHI_UNSPECIFIED
+        ]
+        if len(candidates) != 1:
+            return {}, "unsupported_stereochemistry:wedge_center_unresolved"
+        center_idx = candidates[0]
+        center = mol.GetAtomWithIdx(center_idx)
+        label = (
+            center.GetProp("_CIPCode")
+            if center.HasProp("_CIPCode")
+            else center.GetProp("_ChemusonStereoCIP")
+            if center.HasProp("_ChemusonStereoCIP")
+            else ""
+        )
+        if label not in {"R", "S"}:
+            return {}, f"unsupported_stereochemistry:wedge_cip_unavailable:{center_idx}"
+        wedge_centers.add(center_idx)
+
+    expected: dict[str, str] = {}
+    for atom_id, rd_idx in id_map.items():
+        atom = mol.GetAtomWithIdx(int(rd_idx))
+        requested = (
+            atom.GetProp("_ChemusonStereoCIP").strip().upper()
+            if atom.HasProp("_ChemusonStereoCIP")
+            else ""
+        )
+        if requested and requested not in {"R", "S"}:
+            return {}, f"unsupported_stereochemistry:cip:{atom_id}:{requested}"
+        if requested:
+            if atom.GetChiralTag() == Chem.ChiralType.CHI_UNSPECIFIED:
+                selected_tag = None
+                for tag in (
+                    Chem.ChiralType.CHI_TETRAHEDRAL_CW,
+                    Chem.ChiralType.CHI_TETRAHEDRAL_CCW,
+                ):
+                    candidate = Chem.Mol(mol)
+                    candidate.GetAtomWithIdx(int(rd_idx)).SetChiralTag(tag)
+                    Chem.AssignStereochemistry(candidate, cleanIt=True, force=True)
+                    candidate_atom = candidate.GetAtomWithIdx(int(rd_idx))
+                    if candidate_atom.HasProp("_CIPCode") and candidate_atom.GetProp("_CIPCode") == requested:
+                        selected_tag = tag
+                        break
+                if selected_tag is None:
+                    return {}, f"unsupported_stereochemistry:unresolvable_cip:{atom_id}:{requested}"
+                atom.SetChiralTag(selected_tag)
+                Chem.AssignStereochemistry(mol, cleanIt=True, force=True)
+            observed = atom.GetProp("_CIPCode") if atom.HasProp("_CIPCode") else ""
+            if observed != requested:
+                return {}, f"stereochemistry_conflict:atom:{atom_id}:{requested}:{observed or 'unknown'}"
+            expected[str(atom_id)] = requested
+        elif int(rd_idx) in wedge_centers:
+            if atom.GetChiralTag() == Chem.ChiralType.CHI_UNSPECIFIED:
+                return {}, f"unsupported_stereochemistry:wedge_unresolved:{atom_id}"
+            observed = atom.GetProp("_CIPCode") if atom.HasProp("_CIPCode") else ""
+            if observed not in {"R", "S"}:
+                return {}, f"unsupported_stereochemistry:wedge_cip_unavailable:{atom_id}"
+            expected[str(atom_id)] = observed
+    return expected, None
+
+
+def _apply_documented_double_bond_stereo(
+    Chem,
+    mol,
+) -> tuple[dict[str, str], str | None]:
+    """Installs E/Z tags with RDKit's high-priority substituent references."""
+    expected: dict[str, str] = {}
+    try:
+        potential_stereo = list(Chem.FindPotentialStereo(mol))
+    except Exception as exc:
+        return {}, f"unsupported_stereochemistry:double_bond_analysis:{exc}"
+    for bond in mol.GetBonds():
+        if bond.HasProp("_ChemusonAmbiguousStereo"):
+            bond_id = bond.GetProp("_ChemusonBondId") if bond.HasProp("_ChemusonBondId") else str(bond.GetIdx())
+            return {}, f"unsupported_stereochemistry:ambiguous_bond:{bond_id}"
+        if not bond.HasProp("_ChemusonStereoEZ"):
+            continue
+        target = bond.GetProp("_ChemusonStereoEZ").strip().upper()
+        bond_id = bond.GetProp("_ChemusonBondId") if bond.HasProp("_ChemusonBondId") else ""
+        if target not in {"E", "Z"} or not bond_id:
+            return {}, f"unsupported_stereochemistry:invalid_double_bond_label:{bond_id or bond.GetIdx()}"
+        if bond.GetBondType() != Chem.BondType.DOUBLE:
+            return {}, f"unsupported_stereochemistry:ez_on_non_double_bond:{bond_id}"
+        stereo_info = next(
+            (
+                info
+                for info in potential_stereo
+                if int(info.centeredOn) == int(bond.GetIdx())
+                and info.type == Chem.StereoType.Bond_Double
+            ),
+            None,
+        )
+        controlling = list(stereo_info.controllingAtoms) if stereo_info is not None else []
+        if len(controlling) < 4:
+            return {}, f"unsupported_stereochemistry:ez_references_unavailable:{bond_id}"
+        first_ref, second_ref = int(controlling[0]), int(controlling[2])
+        atom_count = int(mol.GetNumAtoms())
+        if not (0 <= first_ref < atom_count and 0 <= second_ref < atom_count):
+            return {}, f"unsupported_stereochemistry:ez_references_unavailable:{bond_id}"
+        try:
+            bond.SetStereoAtoms(first_ref, second_ref)
+            bond.SetStereo(
+                Chem.BondStereo.STEREOE if target == "E" else Chem.BondStereo.STEREOZ
+            )
+        except Exception as exc:
+            return {}, f"unsupported_stereochemistry:ez_assignment:{bond_id}:{exc}"
+        expected[bond_id] = target
+    return expected, None
+
+
+def _stereochemistry_metadata(
+    atom_targets: dict[str, str],
+    bond_targets: dict[str, str],
+) -> dict[str, dict[str, str]]:
+    return {"atoms": dict(atom_targets), "bonds": dict(bond_targets)}
+
+
+def _validate_geometry_stereochemistry(
+    Chem,
+    mol,
+    id_map: dict[int, int],
+    targets: dict[str, dict[str, str]],
+) -> str | None:
+    """Rejects 3D frames that invert documented R/S or E/Z descriptors."""
+    atom_targets = targets.get("atoms", {})
+    bond_targets = targets.get("bonds", {})
+    if not atom_targets and not bond_targets:
+        return None
+    try:
+        observed = Chem.Mol(mol)
+        Chem.AssignStereochemistryFrom3D(observed, replaceExistingTags=True)
+        Chem.AssignStereochemistry(observed, cleanIt=True, force=True)
+    except Exception as exc:
+        return f"stereochemistry_unverifiable:{exc}"
+
+    for raw_atom_id, target in atom_targets.items():
+        atom_id = int(raw_atom_id)
+        rd_idx = id_map.get(atom_id)
+        if rd_idx is None:
+            return f"stereochemistry_unverifiable:atom:{atom_id}"
+        atom = observed.GetAtomWithIdx(int(rd_idx))
+        actual = atom.GetProp("_CIPCode") if atom.HasProp("_CIPCode") else ""
+        if actual != target:
+            return f"stereochemistry_inversion:atom:{atom_id}:{target}:{actual or 'unknown'}"
+
+    if bond_targets:
+        conformer = mol.GetConformer()
+        for bond in mol.GetBonds():
+            if not bond.HasProp("_ChemusonBondId"):
+                continue
+            bond_id = bond.GetProp("_ChemusonBondId")
+            target = bond_targets.get(bond_id)
+            if target is None:
+                continue
+            references = list(bond.GetStereoAtoms())
+            if len(references) != 2:
+                return f"stereochemistry_unverifiable:bond:{bond_id}"
+            begin = conformer.GetAtomPosition(int(bond.GetBeginAtomIdx()))
+            end = conformer.GetAtomPosition(int(bond.GetEndAtomIdx()))
+            first = conformer.GetAtomPosition(int(references[0]))
+            second = conformer.GetAtomPosition(int(references[1]))
+            axis = (float(end.x - begin.x), float(end.y - begin.y), float(end.z - begin.z))
+            first_vec = (float(first.x - begin.x), float(first.y - begin.y), float(first.z - begin.z))
+            second_vec = (float(second.x - end.x), float(second.y - end.y), float(second.z - end.z))
+            axis_sq = sum(value * value for value in axis)
+            if axis_sq <= 1e-12:
+                return f"stereochemistry_unverifiable:bond:{bond_id}"
+            first_scale = sum(a * b for a, b in zip(first_vec, axis)) / axis_sq
+            second_scale = sum(a * b for a, b in zip(second_vec, axis)) / axis_sq
+            first_projected = tuple(a - first_scale * b for a, b in zip(first_vec, axis))
+            second_projected = tuple(a - second_scale * b for a, b in zip(second_vec, axis))
+            dot = sum(a * b for a, b in zip(first_projected, second_projected))
+            magnitude = math.sqrt(
+                sum(value * value for value in first_projected)
+                * sum(value * value for value in second_projected)
+            )
+            if magnitude <= 1e-12 or abs(dot) <= magnitude * 1e-6:
+                return f"stereochemistry_unverifiable:bond:{bond_id}"
+            actual = "Z" if dot > 0 else "E"
+            if actual != target:
+                return f"stereochemistry_inversion:bond:{bond_id}:{target}:{actual}"
+    return None
 
 
 def _stereo_descriptors_for_chain(Chem, mol, id_map: dict[int, int], chain: list[int]) -> list[str]:
@@ -285,19 +560,31 @@ def _handle_text_mode(Chem, request: dict[str, Any]) -> dict[str, Any]:
     Chem.AssignStereochemistry(mol, cleanIt=True, force=True)
     Chem.FindPotentialStereoBonds(mol)
     centers = Chem.FindMolChiralCenters(mol, includeUnassigned=False, useLegacyImplementation=False)
-    bonds = []
+    bonds: list[str] = []
+    double_bond_descriptors: list[dict[str, Any]] = []
     for bond in mol.GetBonds():
         if bond.GetBondType() != Chem.BondType.DOUBLE:
             continue
         stereo = bond.GetStereo()
-        if stereo == Chem.BondStereo.STEREOE:
-            bonds.append("E")
-        elif stereo == Chem.BondStereo.STEREOZ:
-            bonds.append("Z")
+        if stereo in {Chem.BondStereo.STEREOE, Chem.BondStereo.STEREOTRANS}:
+            label = "E"
+        elif stereo in {Chem.BondStereo.STEREOZ, Chem.BondStereo.STEREOCIS}:
+            label = "Z"
+        else:
+            continue
+        bonds.append(label)
+        double_bond_descriptors.append(
+            {
+                "begin_atom_index": int(bond.GetBeginAtomIdx()),
+                "end_atom_index": int(bond.GetEndAtomIdx()),
+                "stereo": label,
+            }
+        )
     return {
         "ok": True,
         "chiral_centers": [[int(idx), str(label)] for idx, label in centers],
         "double_bond_stereo": bonds,
+        "double_bond_descriptors": double_bond_descriptors,
     }
 
 
@@ -411,6 +698,36 @@ def _visual_stereo_metadata(Chem, mol) -> dict[str, Any]:
         centers = Chem.FindMolChiralCenters(mol, includeUnassigned=False, useLegacyImplementation=False)
     except Exception:
         centers = []
+    tetrahedral_centers = [
+        {"atom_index": int(atom_idx), "cip": str(label)}
+        for atom_idx, label in centers
+        if str(label).strip()
+    ]
+    double_bond_stereo: list[dict[str, Any]] = []
+    try:
+        for bond in mol.GetBonds():
+            stereo = bond.GetStereo()
+            if stereo in {
+                Chem.BondStereo.STEREOE,
+                Chem.BondStereo.STEREOTRANS,
+            }:
+                label = "E"
+            elif stereo in {
+                Chem.BondStereo.STEREOZ,
+                Chem.BondStereo.STEREOCIS,
+            }:
+                label = "Z"
+            else:
+                continue
+            double_bond_stereo.append(
+                {
+                    "begin_atom_index": int(bond.GetBeginAtomIdx()),
+                    "end_atom_index": int(bond.GetEndAtomIdx()),
+                    "stereo": label,
+                }
+            )
+    except Exception:
+        double_bond_stereo = []
     wedge_dirs = set()
     try:
         wedge_dirs = {Chem.BondDir.BEGINWEDGE, Chem.BondDir.BEGINDASH}
@@ -427,6 +744,8 @@ def _visual_stereo_metadata(Chem, mol) -> dict[str, Any]:
         "chiral_center_count": len(centers),
         "wedge_bond_count": wedge_count,
         "has_wedged_bonds": wedge_count > 0,
+        "tetrahedral_centers": tetrahedral_centers,
+        "double_bond_stereo": double_bond_stereo,
     }
 
 
@@ -564,11 +883,20 @@ def _handle_graph_conformer3d_mode(Chem, request: dict[str, Any]) -> dict[str, A
         return {"ok": False, "error": "empty_graph"}
     try:
         Chem.SanitizeMol(mol)
+        atom_targets, stereo_error = _apply_documented_tetrahedral_stereo(
+            Chem, mol, id_map
+        )
+        if stereo_error:
+            return {"ok": False, "error": stereo_error}
         from rdkit.Chem import AllChem
 
         reverse_map = {rd_idx: atom_id for atom_id, rd_idx in id_map.items()}
         original_atom_count = int(mol.GetNumAtoms())
         mol_h = Chem.AddHs(mol, addCoords=True)
+        bond_targets, stereo_error = _apply_documented_double_bond_stereo(Chem, mol_h)
+        if stereo_error:
+            return {"ok": False, "error": stereo_error}
+        stereo_targets = {"atoms": atom_targets, "bonds": bond_targets}
         params = AllChem.ETKDGv3()
         params.randomSeed = 0xC0FFEE
         params.useRandomCoords = True
@@ -578,6 +906,11 @@ def _handle_graph_conformer3d_mode(Chem, request: dict[str, Any]) -> dict[str, A
             embed_code = int(AllChem.EmbedMolecule(mol_h, params))
         if embed_code != 0:
             return {"ok": False, "error": "embed_failed", "detail": str(embed_code)}
+        stereo_error = _validate_geometry_stereochemistry(
+            Chem, mol_h, id_map, stereo_targets
+        )
+        if stereo_error:
+            return {"ok": False, "error": stereo_error}
 
         method = "uff"
         energy = None
@@ -594,6 +927,11 @@ def _handle_graph_conformer3d_mode(Chem, request: dict[str, Any]) -> dict[str, A
         except Exception:
             method = "embed-only"
 
+        stereo_error = _validate_geometry_stereochemistry(
+            Chem, mol_h, id_map, stereo_targets
+        )
+        if stereo_error:
+            return {"ok": False, "error": stereo_error}
         conf = mol_h.GetConformer()
         positions: dict[str, list[float]] = {}
         for rd_idx, atom_id in reverse_map.items():
@@ -603,7 +941,13 @@ def _handle_graph_conformer3d_mode(Chem, request: dict[str, Any]) -> dict[str, A
         return {
             "ok": True,
             "positions": positions,
-            "metadata": {"source": "rdkit", "method": method, "energy": energy, **generated},
+            "metadata": {
+                "source": "rdkit",
+                "method": method,
+                "energy": energy,
+                "stereochemistry": _stereochemistry_metadata(atom_targets, bond_targets),
+                **generated,
+            },
         }
     except Exception as exc:
         return {"ok": False, "error": "conformer3d_failed", "detail": str(exc)}
@@ -627,6 +971,11 @@ def _handle_graph_optimize3d_mode(
     seed = int(request.get("seed", 0xC0FFEE) or 0xC0FFEE)
     try:
         Chem.SanitizeMol(mol)
+        atom_targets, stereo_error = _apply_documented_tetrahedral_stereo(
+            Chem, mol, id_map
+        )
+        if stereo_error:
+            return {"ok": False, "error": stereo_error}
         from rdkit.Chem import AllChem
 
         reverse_map = {rd_idx: atom_id for atom_id, rd_idx in id_map.items()}
@@ -634,6 +983,10 @@ def _handle_graph_optimize3d_mode(
         used_initial_coordinates = _apply_initial_coordinates(Chem, mol, id_map, initial_coordinates)
         original_atom_count = int(mol.GetNumAtoms())
         mol_h = Chem.AddHs(mol, addCoords=True)
+        bond_targets, stereo_error = _apply_documented_double_bond_stereo(Chem, mol_h)
+        if stereo_error:
+            return {"ok": False, "error": stereo_error}
+        stereo_targets = {"atoms": atom_targets, "bonds": bond_targets}
         if not used_initial_coordinates:
             params = AllChem.ETKDGv3()
             params.randomSeed = seed
@@ -641,6 +994,11 @@ def _handle_graph_optimize3d_mode(
             embed_code = int(AllChem.EmbedMolecule(mol_h, params))
             if embed_code != 0:
                 return {"ok": False, "error": "embed_failed", "detail": str(embed_code)}
+        stereo_error = _validate_geometry_stereochemistry(
+            Chem, mol_h, id_map, stereo_targets
+        )
+        if stereo_error:
+            return {"ok": False, "error": stereo_error}
 
         method = requested
         ff = None
@@ -679,6 +1037,11 @@ def _handle_graph_optimize3d_mode(
             completed += block
             sequence += 1
             energy = float(ff.CalcEnergy())
+            stereo_error = _validate_geometry_stereochemistry(
+                Chem, mol_h, id_map, stereo_targets
+            )
+            if stereo_error:
+                return {"ok": False, "error": stereo_error}
             conf = mol_h.GetConformer()
             generated = _generated_hydrogen_metadata(mol_h, conf, original_atom_count, reverse_map)
             frame = {
@@ -688,6 +1051,7 @@ def _handle_graph_optimize3d_mode(
                 "forcefield": method,
                 "converged": converged_code == 0,
                 "positions": _positions_for_original_atoms(mol_h, reverse_map),
+                "stereochemistry": _stereochemistry_metadata(atom_targets, bond_targets),
                 **generated,
             }
             if emit_frames:
@@ -717,6 +1081,7 @@ def _handle_graph_optimize3d_mode(
                 "steps_per_update": steps_per_update,
                 "seed": seed,
                 "used_initial_coordinates": used_initial_coordinates,
+                "stereochemistry": _stereochemistry_metadata(atom_targets, bond_targets),
                 **generated,
             },
             "frames": frames,

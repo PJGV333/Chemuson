@@ -1027,7 +1027,7 @@ def _style_and_stereo_from_mol_stereo(stereo_code: int) -> tuple[BondStyle, Bond
         return BondStyle.WEDGE, BondStereo.UP
     if int(stereo_code or 0) == 6:
         return BondStyle.HASHED, BondStereo.DOWN
-    if int(stereo_code or 0) == 4:
+    if int(stereo_code or 0) in {3, 4}:
         return BondStyle.WAVY, BondStereo.EITHER
     return BondStyle.PLAIN, BondStereo.NONE
 
@@ -1157,7 +1157,7 @@ def _molfile_to_molgraph_fallback(molfile: str) -> MolGraph:
         atom = graph.add_atom(symbol, x, y, is_explicit=(symbol != "C"))
         atom_ids.append(atom.id)
 
-    unique_bonds: dict[tuple[int, int], tuple[int, bool, int]] = {}
+    unique_bonds: dict[tuple[int, int], tuple[int, bool, int, int, int]] = {}
     for offset in range(bond_count):
         a1_idx, a2_idx, bond_type, stereo_code = _parse_bond_line(lines[bond_start + offset])
         if not (1 <= a1_idx <= len(atom_ids) and 1 <= a2_idx <= len(atom_ids)):
@@ -1170,9 +1170,9 @@ def _molfile_to_molgraph_fallback(molfile: str) -> MolGraph:
         if previous is None or _fallback_bond_rank(order, aromatic) > _fallback_bond_rank(
             previous[0], previous[1]
         ):
-            unique_bonds[pair] = (order, aromatic, stereo_code)
+            unique_bonds[pair] = (order, aromatic, stereo_code, a1_idx, a2_idx)
 
-    for (a1_idx, a2_idx), (order, aromatic, stereo_code) in sorted(unique_bonds.items()):
+    for _pair, (order, aromatic, stereo_code, a1_idx, a2_idx) in sorted(unique_bonds.items()):
         style, stereo = _style_and_stereo_from_mol_stereo(stereo_code)
         graph.add_bond(
             atom_ids[a1_idx - 1],
@@ -1287,7 +1287,62 @@ def normalize_molblock_header(molfile: str) -> str:
     return "\n".join(lines)
 
 
-def molfile_to_molgraph(molfile: str, *, target_bond_length: float = 40.0) -> MolGraph:
+def _apply_stereo_metadata_to_graph(graph: MolGraph, metadata: object) -> str | None:
+    """Maps isolated-worker stereo descriptors onto stable graph IDs."""
+    if not isinstance(metadata, dict):
+        return None
+    atoms_by_index = [atom for _atom_id, atom in sorted(graph.atoms.items())]
+    for item in metadata.get("tetrahedral_centers", []):
+        if not isinstance(item, dict):
+            continue
+        try:
+            raw_index = item.get("atom_index")
+            raw_label = item.get("cip")
+            if raw_index is None or raw_label is None:
+                return "invalid_stereo_atom_metadata"
+            atom_index = int(raw_index)
+            label = str(raw_label).strip()
+        except (TypeError, ValueError):
+            return "invalid_stereo_atom_metadata"
+        if not 0 <= atom_index < len(atoms_by_index) or not label:
+            return "invalid_stereo_atom_metadata"
+        atoms_by_index[atom_index].stereo_cip = label
+
+    bonds_by_pair = {
+        frozenset((int(bond.a1_id), int(bond.a2_id))): bond
+        for bond in graph.bonds.values()
+    }
+    for item in metadata.get("double_bond_stereo", []):
+        if not isinstance(item, dict):
+            continue
+        try:
+            raw_first = item.get("begin_atom_index")
+            raw_second = item.get("end_atom_index")
+            if raw_first is None or raw_second is None:
+                return "invalid_stereo_bond_metadata"
+            first_index = int(raw_first)
+            second_index = int(raw_second)
+            if not 0 <= first_index < len(atoms_by_index) or not 0 <= second_index < len(atoms_by_index):
+                return "invalid_stereo_bond_metadata"
+            pair = frozenset(
+                (atoms_by_index[first_index].id, atoms_by_index[second_index].id)
+            )
+            label = str(item.get("stereo", "")).strip().upper()
+        except (TypeError, ValueError):
+            return "invalid_stereo_bond_metadata"
+        bond = bonds_by_pair.get(pair)
+        if bond is None or label not in {"E", "Z"}:
+            return "invalid_stereo_bond_metadata"
+        bond.stereo_ez = label
+    return None
+
+
+def molfile_to_molgraph(
+    molfile: str,
+    *,
+    target_bond_length: float = 40.0,
+    stereo_metadata: object | None = None,
+) -> MolGraph:
     """Importa un bloque MOL (V2000) a `MolGraph`.
 
     Args:
@@ -1318,6 +1373,33 @@ def molfile_to_molgraph(molfile: str, *, target_bond_length: float = 40.0) -> Mo
         except Exception:
             raise fallback_error
     _scale_to_default(graph, target_bond_length)
+    has_stereo_marks = any(
+        getattr(getattr(bond, "style", None), "value", getattr(bond, "style", ""))
+        in {BondStyle.WEDGE.value, BondStyle.HASHED.value, BondStyle.WAVY.value}
+        or getattr(getattr(bond, "stereo", None), "value", getattr(bond, "stereo", ""))
+        != BondStereo.NONE.value
+        or bool(getattr(bond, "stereo_ez", None))
+        for bond in graph.bonds.values()
+    )
+    if stereo_metadata is None and has_stereo_marks:
+        try:
+            from chemuson.chemio.rdkit_safe import run_rdkit_stereo_extract
+
+            response = run_rdkit_stereo_extract(normalized, fmt="molblock", timeout_s=8.0)
+            if response.get("ok"):
+                centers = response.get("chiral_centers", [])
+                stereo_metadata = {
+                    "tetrahedral_centers": [
+                        {"atom_index": item[0], "cip": item[1]}
+                        for item in centers
+                        if isinstance(item, (list, tuple)) and len(item) == 2
+                    ],
+                    "double_bond_stereo": response.get("double_bond_descriptors", []),
+                }
+        except Exception:
+            stereo_metadata = None
+    if stereo_metadata is not None:
+        _apply_stereo_metadata_to_graph(graph, stereo_metadata)
     return graph
 
 
