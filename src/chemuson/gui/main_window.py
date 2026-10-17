@@ -1931,6 +1931,21 @@ class ChemusonWindow(QMainWindow):
         element, point = request
         self._add_3d_atom(str(element), point)
 
+    def _on_viewport_build_chain_extension_requested(self, request: object) -> None:
+        if not isinstance(request, (tuple, list)) or len(request) != 2:
+            return
+        if self._pending_3d_build_anchor_id not in self.canvas.model.atoms:
+            self.viewport3d_dock.set_status(
+                "Para extender la cadena, seleccione primero un átomo ancla."
+            )
+            return
+        element, point = request
+        self._add_3d_atom(
+            str(element),
+            point,
+            bond_order_override=(1, False),
+        )
+
     def _three_d_build_valence_error(
         self,
         element: str,
@@ -1963,7 +1978,13 @@ class ChemusonWindow(QMainWindow):
                 return f"Valencia incompatible: {issue.message}"
         return None
 
-    def _add_3d_atom(self, element: str, point: object) -> None:
+    def _add_3d_atom(
+        self,
+        element: str,
+        point: object,
+        *,
+        bond_order_override: tuple[int, bool] | None = None,
+    ) -> None:
         from chemuson.gui.commands import AddAtomCommand, AddBondCommand, SetGeometry3DCommand
 
         canvas = getattr(self, "canvas", None)
@@ -1983,7 +2004,11 @@ class ChemusonWindow(QMainWindow):
         positions = coordset.normalized_positions() if coordset is not None else {}
         parent_id = self._pending_3d_build_anchor_id
         parent = canvas.model.atoms.get(parent_id) if parent_id is not None else None
-        bond_order, is_aromatic = self.viewport3d_dock.selected_bond_order()
+        bond_order, is_aromatic = (
+            bond_order_override
+            if bond_order_override is not None
+            else self.viewport3d_dock.selected_bond_order()
+        )
         bond_length_3d = {1: 1.5, 2: 1.34, 3: 1.20}.get(bond_order, 1.40)
         if is_aromatic:
             bond_length_3d = 1.40

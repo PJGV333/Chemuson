@@ -151,6 +151,7 @@ class MolecularViewportDock(QDockWidget):
         self.live_mm_checkbox.toggled.connect(self.liveMMToggled.emit)
         self.tool_combo.currentIndexChanged.connect(self._set_edit_tool)
         self.element_combo.currentTextChanged.connect(self.viewport.set_build_element)
+        self.bond_order_combo.currentIndexChanged.connect(self._set_build_bond_order)
         self.representation_combo.currentIndexChanged.connect(self._set_representation)
         self.status_label = QLabel("Sin conformero 3D")
         self.status_label.setObjectName("molecularViewportStatus")
@@ -286,6 +287,9 @@ class MolecularViewportDock(QDockWidget):
         self.advanced_controls_panel.setVisible(visible)
         label = "Controles de edición ▾" if visible else "Controles de edición ▸"
         self.advanced_controls_button.setText(label)
+
+    def _set_build_bond_order(self, _index: int) -> None:
+        self.viewport.set_build_bond_order(*self.selected_bond_order())
 
     def _set_representation(self, _index: int) -> None:
         self.viewport.set_representation(str(self.representation_combo.currentData()))

@@ -12,7 +12,7 @@ See `baseline.md`. Baseline focused tests passed (164 passed, 2 skipped); compil
 |---|---|---|---|---|---|
 | OpenSpec gate | baseline captured | pending | baseline pass | baseline pass scoped | `openspec validate ... --strict` valid; `git diff --check` pass |
 | Local template | 340 passed, 1 skipped (chemistry + architecture group) | pass | pass | pass (Python scoped) | OpenSpec strict valid; `git diff --check` pass |
-| Direct 3D drawing | pending | pending | pending | pending | pending |
+| Direct 3D drawing | 371 passed, 1 skipped in integrated viewport/editing group; 5 new direct-draw/alkane/cancel tests passed | pass | pass | pass (Python scoped) | OpenSpec strict valid; `git diff --check` pass; CPU preview mesh only, no visual claim |
 | Live MM playback | pending | pending | pending | pending | pending |
 | Camera navigation | pending | pending | pending | pending | pending |
 

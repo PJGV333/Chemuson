@@ -279,6 +279,9 @@ def assemble_application_shell(self) -> None:
     self.viewport3d_dock.atomElementChangeRequested.connect(
         self._on_viewport_atom_element_change
     )
+    self.viewport3d_dock.viewport.buildElementChangeRequested.connect(
+        self._on_viewport_atom_element_change
+    )
     self.viewport3d_dock.viewport.statusChanged.connect(
         self._on_viewport_render_status
     )
@@ -302,6 +305,9 @@ def assemble_application_shell(self) -> None:
     )
     self.viewport3d_dock.viewport.buildPointRequested.connect(
         self._on_viewport_build_point_requested
+    )
+    self.viewport3d_dock.viewport.buildChainExtensionRequested.connect(
+        self._on_viewport_build_chain_extension_requested
     )
     self.viewport3d_dock.viewport.buildBondRequested.connect(
         self._on_viewport_build_bond_requested

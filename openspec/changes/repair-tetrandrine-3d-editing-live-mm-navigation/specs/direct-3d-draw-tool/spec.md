@@ -24,6 +24,11 @@ The build tool SHALL show a world-space atom sphere and bond while dragging from
 - **THEN** exactly one atom is appended with a single bond to that anchor
 - **AND** Qt's first click does not create an extra mutation
 
+#### Scenario: Double-click without an anchor
+- **GIVEN** no active build anchor
+- **WHEN** the user double-clicks empty space
+- **THEN** the graph and undo history remain unchanged and the viewport explains how to select an anchor
+
 #### Scenario: Cancel preview
 - **GIVEN** an active 3D build drag
 - **WHEN** Escape is pressed before release

@@ -13,12 +13,12 @@
 - [x] Verify ETKDG, scene construction, finite mesh, and the nonconverged-MMFF status are separately reported.
 
 ## 2. Direct 3D drawing — commit 3
-- [ ] Add RED tests for world-space preview geometry, snapping, empty-space creation, and Escape cancellation.
-- [ ] Implement a 3D sphere-and-bond preview excluded from picking/document state.
-- [ ] Keep existing-atom drops bond-only and empty drops atom+bond as one undo action.
-- [ ] Implement and test the double-click rule with no duplicate first-click mutation.
-- [ ] Verify valence rejection, explicit/derived H behavior, and undo/redo.
-- [ ] Verify ethane and butane drawing/editing paths.
+- [x] Add RED tests for world-space preview geometry, snapping, empty-space creation, and Escape cancellation.
+- [x] Implement a 3D sphere-and-bond preview excluded from picking/document state.
+- [x] Keep existing-atom drops bond-only and empty drops atom+bond as one undo action.
+- [x] Implement and test the double-click rule with no duplicate first-click mutation.
+- [x] Verify valence rejection, explicit/derived H behavior, and undo/redo.
+- [x] Verify ethane and butane drawing/editing paths.
 
 ## 3. Live MM playback and telemetry — commit 4
 - [ ] Record baseline worker-frame timing for ethane and butane (captured in `baseline.md`).

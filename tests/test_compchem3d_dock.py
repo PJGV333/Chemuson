@@ -786,6 +786,124 @@ def test_3d_builder_adds_atom_and_bond_as_one_undoable_molecular_edit() -> None:
         window.close()
 
 
+def test_3d_builder_double_click_extends_with_one_single_bond_macro() -> None:
+    window = ChemusonWindow()
+    try:
+        canvas = window.canvas
+        parent = canvas.model.add_atom("C", 10.0, 20.0)
+        original = CoordinateSet3D(
+            {parent.id: (0.0, 0.0, 0.0)}, source="test", method="manual"
+        )
+        canvas.set_geometry3d_coordinates(original)
+        window._pending_3d_build_anchor_id = parent.id
+        window.viewport3d_dock.bond_order_combo.setCurrentIndex(2)
+
+        window._on_viewport_build_chain_extension_requested(("C", (3.0, 0.0, 0.0)))
+
+        assert len(canvas.model.atoms) == 2
+        assert len(canvas.model.bonds) == 1
+        bond = next(iter(canvas.model.bonds.values()))
+        assert (bond.order, bond.is_aromatic) == (1, False)
+        assert canvas.undo_stack.count() == 1
+        built = canvas.coordinate_set_3d
+        assert built is not None
+        added_id = next(atom_id for atom_id in canvas.model.atoms if atom_id != parent.id)
+        assert math.dist(
+            built.normalized_positions()[parent.id],
+            built.normalized_positions()[added_id],
+        ) == pytest.approx(1.5)
+
+        canvas.undo_stack.undo()
+        assert list(canvas.model.atoms) == [parent.id]
+        assert not canvas.model.bonds
+        assert canvas.coordinate_set_3d == original
+    finally:
+        window._close_approved = True
+        window._async_shutdown_complete = True
+        window.close()
+
+@pytest.mark.parametrize(("name", "initial_atom_count"), (("ethane", 1), ("butane", 3)))
+def test_3d_builder_extends_ethane_and_butane_with_single_bonds(name, initial_atom_count):
+    window = ChemusonWindow()
+    try:
+        canvas = window.canvas
+        atom_ids = [
+            canvas.model.add_atom("C", 42.0 * index, 0.0).id
+            for index in range(initial_atom_count)
+        ]
+        for first_id, second_id in zip(atom_ids, atom_ids[1:]):
+            canvas.model.add_bond(first_id, second_id, order=1)
+        original = CoordinateSet3D(
+            {atom_id: (1.5 * index, 0.0, 0.0) for index, atom_id in enumerate(atom_ids)},
+            source="test",
+            method="manual",
+        )
+        canvas.set_geometry3d_coordinates(original)
+        window._pending_3d_build_anchor_id = atom_ids[-1]
+
+        window._on_viewport_build_chain_extension_requested(
+            ("C", (1.5 * initial_atom_count, 0.0, 0.0))
+        )
+
+        assert len(canvas.model.atoms) == initial_atom_count + 1, name
+        assert len(canvas.model.bonds) == initial_atom_count, name
+        assert all(bond.order == 1 and not bond.is_aromatic for bond in canvas.model.bonds.values())
+        assert canvas.undo_stack.count() == 1
+        canvas.undo_stack.undo()
+        assert len(canvas.model.atoms) == initial_atom_count
+        assert len(canvas.model.bonds) == initial_atom_count - 1
+        assert canvas.coordinate_set_3d == original
+    finally:
+        window._close_approved = True
+        window._async_shutdown_complete = True
+        window.close()
+
+
+def test_3d_builder_double_click_without_anchor_is_a_noop() -> None:
+    window = ChemusonWindow()
+    try:
+        canvas = window.canvas
+        before = (canvas.undo_stack.count(), canvas.undo_stack.index())
+
+        window._on_viewport_build_chain_extension_requested(("C", (1.5, 0.0, 0.0)))
+
+        assert not canvas.model.atoms
+        assert not canvas.model.bonds
+        assert (canvas.undo_stack.count(), canvas.undo_stack.index()) == before
+        assert "ancla" in window.viewport3d_dock.status_label.text().lower()
+    finally:
+        window._close_approved = True
+        window._async_shutdown_complete = True
+        window.close()
+
+
+def test_build_tool_element_replacement_is_one_undoable_atom_change() -> None:
+    window = ChemusonWindow()
+    try:
+        canvas = window.canvas
+        first = canvas.model.add_atom("C", 0.0, 0.0)
+        second = canvas.model.add_atom("C", 42.0, 0.0)
+        canvas.model.add_bond(first.id, second.id, order=1)
+        original = CoordinateSet3D(
+            {first.id: (0.0, 0.0, 0.0), second.id: (1.5, 0.0, 0.0)},
+            source="test",
+            method="manual",
+        )
+        canvas.set_geometry3d_coordinates(original)
+
+        window._on_viewport_atom_element_change(first.id, "N")
+
+        assert canvas.model.get_atom(first.id).element == "N"
+        assert canvas.undo_stack.count() == 1
+        canvas.undo_stack.undo()
+        assert canvas.model.get_atom(first.id).element == "C"
+        assert canvas.coordinate_set_3d == original
+    finally:
+        window._close_approved = True
+        window._async_shutdown_complete = True
+        window.close()
+
+
 def test_3d_builder_links_existing_atoms_as_one_undoable_edit() -> None:
     window = ChemusonWindow()
     try:

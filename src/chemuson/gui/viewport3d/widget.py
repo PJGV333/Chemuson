@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any, cast
 
-from PyQt6.QtCore import QPoint, Qt, pyqtSignal
+from PyQt6.QtCore import QPoint, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import (
     QHideEvent,
     QBrush,
@@ -20,8 +20,9 @@ from PyQt6.QtGui import (
     QWheelEvent,
 )
 from PyQt6.QtOpenGLWidgets import QOpenGLWidget
+from PyQt6.QtWidgets import QApplication
 
-from chemuson.geometry3d import SceneMolecule3D
+from chemuson.geometry3d import SceneAtom3D, SceneBond3D, SceneMolecule3D
 from chemuson.geometry3d.editing import angle_degrees, dihedral_degrees, distance
 from chemuson.geometry3d.model import CoordinateSet3D
 
@@ -54,6 +55,23 @@ class _BuildDragState:
     start_position: QPoint
     current_position: QPoint
     moved: bool = False
+
+
+@dataclass(frozen=True)
+class _BuildPreviewState:
+    anchor_atom_id: int
+    anchor_position: tuple[float, float, float]
+    end_position: tuple[float, float, float]
+    element: str
+    target_atom_id: int | None
+
+
+@dataclass(frozen=True)
+class _PendingBuildClick:
+    element: str
+    position: tuple[float, float, float]
+
+
 @dataclass
 class _DerivedHydrogenDragState:
     atom_id: str
@@ -81,8 +99,10 @@ class MolecularViewportWidget(QOpenGLWidget):
     geometryHandlePreviewRequested = pyqtSignal(str, object, float)
     buildCancelled = pyqtSignal()
     buildPointRequested = pyqtSignal(object)
+    buildChainExtensionRequested = pyqtSignal(object)
     buildAnchorSelected = pyqtSignal(object)
     buildBondRequested = pyqtSignal(object)
+    buildElementChangeRequested = pyqtSignal(int, str)
     buildPreviewChanged = pyqtSignal(object)
     derivedHydrogenPreviewChanged = pyqtSignal(object, object, object)
     derivedHydrogenEditRequested = pyqtSignal(object)
@@ -100,11 +120,11 @@ class MolecularViewportWidget(QOpenGLWidget):
         self.setToolTip(
             "Navegación: clic selecciona, arrastre izquierdo orbita, "
             "arrastre derecho desplaza y rueda amplía/reduce. "
-            "Mover: arrastre izquierdo para el plano de pantalla y "
-            "arrastre del botón central para profundidad. "
-            "Geometría: seleccione 2/3/4 átomos en orden y arrastre el handle. "
-            "Ctrl+clic selecciona el fragmento conectado; Shift+clic "
-            "añade o quita átomos de la selección."
+            "Construir: arrastre desde un átomo para formar un enlace 3D; "
+            "doble clic en un átomo sustituye su elemento y doble clic en espacio "
+            "extiende el ancla con un enlace sencillo. Escape cancela. "
+            "Mover: arrastre izquierdo sobre átomo para editarlo; arrastre vacío "
+            "orbita la cámara; botón central mueve en profundidad."
         )
         self.camera = CameraState()
         self.scene = SceneMolecule3D(atoms=(), bonds=(), source="")
@@ -115,6 +135,7 @@ class MolecularViewportWidget(QOpenGLWidget):
         self.edit_tool = "move"
         self.geometry_operation = "bond_length"
         self.build_element = "C"
+        self.build_bond_order = (1, False)
         self.representation = "ball_and_stick"
         self._measure_atom_ids: list[int] = []
         self._renderer = MoleculeRenderer()
@@ -123,7 +144,13 @@ class MolecularViewportWidget(QOpenGLWidget):
         self._geometry_drag_state: _GeometryDragState | None = None
         self._build_drag_state: _BuildDragState | None = None
         self._derived_hydrogen_drag_state: _DerivedHydrogenDragState | None = None
-        self._build_preview: tuple[QPoint, QPoint, str] | None = None
+        self._build_preview: _BuildPreviewState | None = None
+        self._pending_build_click: _PendingBuildClick | None = None
+        self._suppress_next_build_release = False
+        self._build_click_timer = QTimer(self)
+        self._build_click_timer.setSingleShot(True)
+        self._build_click_timer.setInterval(max(1, QApplication.doubleClickInterval()))
+        self._build_click_timer.timeout.connect(self._commit_pending_build_click)
         self._press_hit: PickResult | None = None
         self._gl_ready = False
         self._mesh_dirty = True
@@ -252,7 +279,7 @@ class MolecularViewportWidget(QOpenGLWidget):
         if self._mesh_dirty:
             try:
                 uploaded = self._renderer.upload(
-                    self.scene,
+                    self._scene_with_build_preview(),
                     self.selected_atom_id,
                     self.selected_bond_id,
                     self.representation,
@@ -284,17 +311,6 @@ class MolecularViewportWidget(QOpenGLWidget):
         self._report_scene_display_status(
             "render_requested: escena enviada al renderer OpenGL; aceptación visual pendiente."
         )
-        if self._build_preview is not None:
-            start, end, element = self._build_preview
-            painter = QPainter()
-            if painter.begin(self):
-                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-                painter.setPen(QPen(QColor(95, 205, 245, 220), 2, Qt.PenStyle.DashLine))
-                painter.setBrush(QBrush(QColor(95, 205, 245, 100)))
-                painter.drawLine(start, end)
-                painter.drawEllipse(end, 7, 7)
-                painter.drawText(end + QPoint(9, -8), element)
-                painter.end()
         self._paint_geometry_handle()
 
     def _paint_geometry_handle(self) -> None:
@@ -373,10 +389,154 @@ class MolecularViewportWidget(QOpenGLWidget):
         if self._build_preview is None:
             return
         self._build_preview = None
+        self._mesh_dirty = True
         self.buildPreviewChanged.emit(None)
         self.update()
 
+    def _scene_with_build_preview(self) -> SceneMolecule3D:
+        preview = self._build_preview
+        if preview is None:
+            return self.scene
+        atoms = list(self.scene.atoms)
+        bonds = list(self.scene.bonds)
+        if preview.target_atom_id is not None:
+            target = next(
+                (atom for atom in self.scene.atoms if atom.id == preview.target_atom_id),
+                None,
+            )
+            if target is None:
+                return self.scene
+            preview_atom_id = f"preview-snap:{target.id}"
+            atoms.append(
+                SceneAtom3D(
+                    preview_atom_id,
+                    target.element,
+                    target.x,
+                    target.y,
+                    target.z,
+                    target.radius + 0.08,
+                    "#5FCFF2",
+                    generated=True,
+                    parent_atom_id=(target.id if isinstance(target.id, int) else None),
+                )
+            )
+            has_bond = any(
+                {bond.a1_id, bond.a2_id}
+                == {preview.anchor_atom_id, preview.target_atom_id}
+                for bond in self.scene.bonds
+            )
+            if not has_bond:
+                bonds.append(
+                    SceneBond3D(
+                        "preview-build-bond",
+                        preview.anchor_atom_id,
+                        preview_atom_id,
+                        order=self.build_bond_order[0],
+                        is_aromatic=self.build_bond_order[1],
+                    )
+                )
+        else:
+            preview_atom_id = "preview-build-end"
+            atoms.append(
+                SceneAtom3D(
+                    preview_atom_id,
+                    preview.element,
+                    *preview.end_position,
+                    0.62,
+                    "#5FCFF2",
+                )
+            )
+            bonds.append(
+                SceneBond3D(
+                    "preview-build-bond",
+                    preview.anchor_atom_id,
+                    preview_atom_id,
+                    order=self.build_bond_order[0],
+                    is_aromatic=self.build_bond_order[1],
+                )
+            )
+        return SceneMolecule3D(
+            atoms=tuple(atoms),
+            bonds=tuple(bonds),
+            source=self.scene.source,
+        )
+
+    def _commit_pending_build_click(self) -> None:
+        self._build_click_timer.stop()
+        pending = self._pending_build_click
+        self._pending_build_click = None
+        if pending is not None:
+            self.buildPointRequested.emit((pending.element, pending.position))
+
+    def _cancel_pending_build_click(self) -> None:
+        self._build_click_timer.stop()
+        self._pending_build_click = None
+
+    def _set_pending_build_click(self, element: str, point: tuple[float, float, float]) -> None:
+        self._pending_build_click = _PendingBuildClick(element, point)
+        self._build_click_timer.start()
+
+    def _update_build_preview(self, position: QPoint) -> None:
+        state = self._build_drag_state
+        if state is None:
+            return
+        hit = self._pick_at(position)
+        target_id: int | None = None
+        end_position: tuple[float, float, float] | None = None
+        if (
+            hit is not None
+            and hit.kind == "atom"
+            and isinstance(hit.primitive_id, int)
+            and hit.primitive_id != state.anchor_atom_id
+        ):
+            target = next(
+                (atom for atom in self.scene.atoms if atom.id == hit.primitive_id),
+                None,
+            )
+            if target is not None:
+                target_id = hit.primitive_id
+                end_position = (float(target.x), float(target.y), float(target.z))
+        if end_position is None:
+            try:
+                end_position = self.camera.screen_to_world(
+                    position.x(),
+                    position.y(),
+                    max(1, self.width()),
+                    max(1, self.height()),
+                    plane_point=state.anchor_position,
+                )
+            except ValueError as exc:
+                self.statusChanged.emit(str(exc))
+                return
+        state.current_position = position
+        preview = _BuildPreviewState(
+            state.anchor_atom_id,
+            state.anchor_position,
+            end_position,
+            self.build_element,
+            target_id,
+        )
+        if preview == self._build_preview:
+            return
+        self._build_preview = preview
+        self._mesh_dirty = True
+        self.buildPreviewChanged.emit(preview)
+        self.update()
+
+    def set_build_bond_order(self, order: int, is_aromatic: bool = False) -> None:
+        normalized_order = int(order)
+        if normalized_order not in {1, 2, 3}:
+            raise ValueError(f"Orden de enlace 3D no soportado: {order}")
+        value = (normalized_order, bool(is_aromatic))
+        if value == self.build_bond_order:
+            return
+        self.build_bond_order = value
+        if self._build_preview is not None:
+            self._mesh_dirty = True
+            self.update()
+
     def set_edit_mode(self, enabled: bool) -> None:
+        self._cancel_pending_build_click()
         self.edit_mode = bool(enabled)
         self.editModeChanged.emit(self.edit_mode)
         self._geometry_drag_state = None
@@ -385,6 +545,7 @@ class MolecularViewportWidget(QOpenGLWidget):
         self._dragging = False
 
     def set_edit_tool(self, tool: str) -> None:
+        self._cancel_pending_build_click()
         value = str(tool).strip().lower()
         if value not in {"select", "move", "build", "bond", "measure", "geometry"}:
             raise ValueError(f"Herramienta 3D no soportada: {tool}")
@@ -702,6 +863,8 @@ class MolecularViewportWidget(QOpenGLWidget):
         if a0 is None:
             return
         event = a0
+        if self._pending_build_click is not None:
+            self._commit_pending_build_click()
         self._last_mouse_position = event.position().toPoint()
         self._dragging = False
         self._geometry_drag_state = None
@@ -838,6 +1001,45 @@ class MolecularViewportWidget(QOpenGLWidget):
         self.setFocus()
         event.accept()
 
+    def mouseDoubleClickEvent(self, a0: QMouseEvent | None) -> None:
+        if a0 is None:
+            return
+        event = a0
+        if (
+            self.edit_mode
+            and self.edit_tool in {"build", "bond"}
+            and event.button() == Qt.MouseButton.LeftButton
+        ):
+            position = event.position().toPoint()
+            pending = self._pending_build_click
+            self._cancel_pending_build_click()
+            hit = self._pick_at(position)
+            if hit is not None and hit.kind == "atom" and isinstance(hit.primitive_id, int):
+                self.buildElementChangeRequested.emit(hit.primitive_id, self.build_element)
+            elif self.edit_tool == "build":
+                try:
+                    world_position = (
+                        pending.position
+                        if pending is not None
+                        else self.camera.screen_to_world(
+                            position.x(),
+                            position.y(),
+                            max(1, self.width()),
+                            max(1, self.height()),
+                        )
+                    )
+                except ValueError as exc:
+                    self.statusChanged.emit(str(exc))
+                else:
+                    element = pending.element if pending is not None else self.build_element
+                    self.buildChainExtensionRequested.emit((element, world_position))
+            self._suppress_next_build_release = True
+            self._press_hit = None
+            self._last_mouse_position = None
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
+
     def mouseMoveEvent(self, a0: QMouseEvent | None) -> None:
         if a0 is None:
             return
@@ -860,14 +1062,8 @@ class MolecularViewportWidget(QOpenGLWidget):
                 if abs(total_delta.x()) + abs(total_delta.y()) >= 4:
                     build_state.current_position = current
                     build_state.moved = True
-                    self._build_preview = (
-                        build_state.start_position,
-                        current,
-                        self.build_element,
-                    )
-                    self.buildPreviewChanged.emit(self._build_preview)
+                    self._update_build_preview(current)
                     self._dragging = True
-                    self.update()
             elif abs(delta.x()) + abs(delta.y()) >= 4:
                 self._dragging = True
             self._last_mouse_position = current
@@ -1027,6 +1223,16 @@ class MolecularViewportWidget(QOpenGLWidget):
         if a0 is None:
             return
         event = a0
+        if event.button() == Qt.MouseButton.LeftButton and self._suppress_next_build_release:
+            self._suppress_next_build_release = False
+            self._last_mouse_position = None
+            self._dragging = False
+            self._geometry_drag_state = None
+            self._derived_hydrogen_drag_state = None
+            self._clear_build_preview()
+            self._press_hit = None
+            event.accept()
+            return
         position = event.position().toPoint()
         if event.button() in {Qt.MouseButton.LeftButton, Qt.MouseButton.MiddleButton} and (
             event.button() == Qt.MouseButton.LeftButton
@@ -1080,9 +1286,7 @@ class MolecularViewportWidget(QOpenGLWidget):
                         except ValueError as exc:
                             self.statusChanged.emit(str(exc))
                         else:
-                            self.buildPointRequested.emit(
-                                (self.build_element, world_point)
-                            )
+                            self._set_pending_build_click(self.build_element, world_point)
             elif self.edit_mode and self.edit_tool == "geometry" and (
                 state is not None
                 and state.geometry_operation is not None
@@ -1172,6 +1376,7 @@ class MolecularViewportWidget(QOpenGLWidget):
                 event.accept()
                 return
             if self.edit_mode and self.edit_tool in {"build", "bond"}:
+                self._cancel_pending_build_click()
                 self._press_hit = None
                 self._clear_build_preview()
                 self.buildCancelled.emit()
