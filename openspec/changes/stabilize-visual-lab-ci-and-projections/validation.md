@@ -51,4 +51,8 @@ La baseline completa anterior también registró `tests/test_compchem3d_dock.py:
 
 ## Estado remoto
 
-Aún no se ha publicado esta implementación ni existe una ejecución de GitHub Actions posterior a ella. El push normal solicitado a `feat/molecular-depiction-visual-lab` y la comprobación del SHA remoto quedan pendientes. No se hará merge. El estado de CI remoto y cualquier aceptación estética permanecen **no verificados**.
+Se publicó mediante push normal la rama `feat/molecular-depiction-visual-lab`. El SHA local/remoto confirmado es `9e7e92a5fd5e31168632b79226ae3f9ac4b26da8`; el worktree quedó limpio. No se hizo merge.
+
+GitHub Actions run [`39002887955`](https://github.com/PJGV333/Chemuson/actions/runs/39002887955), sobre ese SHA, **falló**. La planificación, los smoke de Windows/Flatpak y siete de ocho shards pasaron. Shard 5 falló en el mismo nodo basal `tests/test_molecular_assistant_reference_resolution.py::test_ai_success_with_equivalent_nonidentical_smiles_is_verified`: `QSignalSpy.wait(8000)` venció; el shard registró 278 passed, 3 skipped, 1 failed de 282 IDs, todos ejecutados y cronometrados. El verificador final rechazó correctamente la matriz por ese exit 1; no faltó cobertura. Resultado concuerda con la reproducción local limpia sobre el SHA basal `87e298c` y no se corrigió fuera de alcance.
+
+Por tanto, la ejecución remota no está verde, la falla Qt de lifecycle/orden permanece abierta y no se hará merge. Esta evidencia visual tampoco implica aceptación estética del propietario.

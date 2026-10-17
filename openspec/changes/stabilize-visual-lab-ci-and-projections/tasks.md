@@ -23,5 +23,5 @@
 
 ## 5. Validación y publicación
 - [x] 5.1 Ejecutar focales, arquitectura, compileall, Ruff y OpenSpec estricto.
-- [ ] 5.2 Ejecutar/verificar los ocho shards y CI completo en GitHub; corregir sin omitir tests.
-- [ ] 5.3 Completar `validation.md`, commits pequeños, push a la misma rama; confirmar SHA remoto/local y worktree limpio. No hacer merge.
+- [ ] 5.2 Cerrar el fallo basal de lifecycle Qt en un alcance/decisión separado; Actions run `39002887955` confirmó 7/8 shards y el mismo fallo en shard 5, sin omitir IDs.
+- [x] 5.3 Completar `validation.md`, commits pequeños, push a la misma rama; confirmar SHA remoto/local y worktree limpio. No hacer merge.
