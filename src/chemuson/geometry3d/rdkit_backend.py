@@ -518,6 +518,18 @@ def _derived_hydrogen_metadata(payload: dict) -> dict[str, object]:
     }
 
 
+def _event_ints(raw: object) -> tuple[int, ...]:
+    if not isinstance(raw, (tuple, list, set)):
+        return ()
+    values: set[int] = set()
+    for item in raw:
+        try:
+            values.add(int(item))
+        except (TypeError, ValueError, OverflowError):
+            continue
+    return tuple(sorted(values))
+
+
 def _frame_from_event(event: dict, *, source: str) -> OptimizationFrame | None:
     if event.get("event") != "frame":
         return None
@@ -527,6 +539,15 @@ def _frame_from_event(event: dict, *, source: str) -> OptimizationFrame | None:
         return None
     method = str(event.get("forcefield", "rdkit"))
     step = int(event.get("step", event.get("sequence", 0)) or 0)
+    try:
+        max_steps = max(0, int(event.get("max_iters", 0) or 0))
+        steps_per_update = max(0, int(event.get("steps_per_update", 0) or 0))
+        fixed_atom_count = max(0, int(event.get("fixed_atom_count", 0) or 0))
+    except (TypeError, ValueError, OverflowError):
+        max_steps = steps_per_update = fixed_atom_count = 0
+    fixed_atom_ids = _event_ints(event.get("fixed_atom_ids"))
+    raw_constraints = event.get("constraints", {})
+    constraints = dict(raw_constraints) if isinstance(raw_constraints, Mapping) else {}
     return OptimizationFrame(
         step=step,
         coordinates=CoordinateSet3D(
@@ -537,6 +558,13 @@ def _frame_from_event(event: dict, *, source: str) -> OptimizationFrame | None:
             metadata={
                 "forcefield": method,
                 "energy_unit": str(event.get("energy_unit", "kcal/mol")),
+                "step": step,
+                "max_steps": max_steps,
+                "steps_per_update": steps_per_update,
+                "fixed_atom_ids": fixed_atom_ids,
+                "fixed_atom_count": max(fixed_atom_count, len(fixed_atom_ids)),
+                "constraints": constraints,
+                "stereochemistry": event.get("stereochemistry", {}),
                 "frame": True,
                 **_derived_hydrogen_metadata(event),
             },

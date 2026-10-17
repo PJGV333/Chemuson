@@ -20,6 +20,12 @@ from chemuson.geometry3d import (
     project_conformer_to_2d,
     scene_molecule_from_graph,
 )
+from chemuson.geometry3d.model import (
+    VisualFramePlayback,
+    coordinate_sets_interpolatable,
+    interpolate_coordinate_sets,
+    scene_with_coordinates,
+)
 from chemuson.geometry3d.editing import dihedral_degrees, rotate_atoms_about_axis, set_dihedral
 from chemuson.geometry3d.export_xyz import molgraph_to_xyz
 from chemuson.geometry3d import obabel_backend, rdkit_backend
@@ -59,6 +65,132 @@ def _ethane_graph() -> MolGraph:
     second = graph.add_atom("C", 42.0, 0.0)
     graph.add_bond(first.id, second.id, order=1)
     return graph
+
+
+def _mm_snapshot(step: int, offset: float, energy: float, forcefield: str = "MMFF94") -> CoordinateSet3D:
+    return CoordinateSet3D(
+        positions={1: (offset, 0.0, 0.0), 2: (offset + 1.5, 0.0, 0.0)},
+        source="rdkit",
+        method=forcefield,
+        energy=energy,
+        metadata={
+            "forcefield": forcefield,
+            "energy_unit": "kcal/mol",
+            "step": step,
+            "max_steps": 16,
+            "fixed_atom_ids": (1,),
+            "fixed_atom_count": 1,
+            "constraints": {
+                "kind": "fixed_atom_positions",
+                "atom_count": 1,
+                "coordinate_unit": "Å",
+            },
+            "generated_atoms": [
+                {"id": "genH1", "element": "H", "coords": [offset, 1.0, 0.0]}
+            ],
+            "generated_bonds": [
+                {"id": "genB1", "a1_id": 1, "a2_id": "genH1", "order": 1}
+            ],
+        },
+    )
+
+
+def test_live_mm_visual_interpolation_keeps_measured_energy_separate():
+    start = _mm_snapshot(0, 0.0, -1.0)
+    first = _mm_snapshot(8, 1.0, -2.0)
+    final = _mm_snapshot(16, 2.0, -3.0)
+
+    assert coordinate_sets_interpolatable(start, first)
+    visual = interpolate_coordinate_sets(start, first, 0.5)
+    assert visual.positions[1] == pytest.approx((0.5, 0.0, 0.0))
+    generated = visual.metadata.get("generated_atoms")
+    assert isinstance(generated, list) and isinstance(generated[0], dict)
+    assert generated[0]["coords"] == pytest.approx([0.5, 1.0, 0.0])
+    assert visual.energy is None
+    assert visual.metadata["visual_interpolation"] is True
+    assert visual.metadata["visual_interpolation_from_step"] == 0
+    assert visual.metadata["visual_interpolation_to_step"] == 8
+
+    manual_start = CoordinateSet3D(
+        {1: (0.0, 0.0, 0.0), 2: (1.5, 0.0, 0.0)},
+        source="manual",
+        method="build-3d",
+    )
+    assert coordinate_sets_interpolatable(manual_start, first)
+    manual_to_mm = interpolate_coordinate_sets(manual_start, first, 0.5)
+    assert manual_to_mm.positions[1] == pytest.approx((0.5, 0.0, 0.0))
+    manual_generated = manual_to_mm.metadata.get("generated_atoms")
+    assert isinstance(manual_generated, list)
+    assert manual_generated[0]["coords"] == pytest.approx([1.0, 1.0, 0.0])
+
+    playback = VisualFramePlayback(transition_s=0.08)
+    playback.begin(start)
+    assert playback.enqueue(first)
+    assert playback.enqueue(final)
+    playback.finish(final)
+    initial_visual = playback.sample(0.0)
+    assert initial_visual is not None and initial_visual.energy is None
+    middle = playback.sample(0.04)
+    assert middle is not None
+    assert middle.positions[1] == pytest.approx((0.5, 0.0, 0.0))
+    first_snapshot = playback.sample(0.08)
+    assert first_snapshot is not None and first_snapshot.energy == -2.0
+    next_visual = playback.sample(0.081)
+    assert next_visual is not None and next_visual.energy is None
+    next_middle = playback.sample(0.121)
+    assert next_middle is not None
+    assert next_middle.positions[1] == pytest.approx((1.5, 0.0, 0.0))
+    final_snapshot = playback.sample(0.161)
+    assert final_snapshot is not None and final_snapshot.energy == -3.0
+    assert playback.drained
+
+
+def test_live_mm_playback_rejects_incompatible_forcefield_and_cancels_queue():
+    start = _mm_snapshot(0, 0.0, -1.0)
+    target = _mm_snapshot(8, 1.0, -2.0, forcefield="UFF")
+    assert not coordinate_sets_interpolatable(start, target)
+    with pytest.raises(ValueError, match="coordinate_snapshots_incompatible"):
+        interpolate_coordinate_sets(start, target, 0.5)
+
+    playback = VisualFramePlayback(transition_s=0.08, max_pending=2)
+    playback.begin(start)
+    assert not playback.enqueue(target)
+    assert playback.current is target
+    playback.cancel()
+    assert not playback.enabled
+    assert playback.pending_count == 0
+
+
+def test_scene_with_visual_coordinates_updates_render_atoms_without_mutating_source():
+    from chemuson.geometry3d import SceneAtom3D, SceneBond3D, SceneMolecule3D
+
+    scene = SceneMolecule3D(
+        atoms=(
+            SceneAtom3D(1, "C", 0.0, 0.0, 0.0, 1.7, "#909090"),
+            SceneAtom3D(2, "C", 1.5, 0.0, 0.0, 1.7, "#909090"),
+        ),
+        bonds=(SceneBond3D(1, 1, 2),),
+    )
+    visual = interpolate_coordinate_sets(
+        _mm_snapshot(0, 0.0, -1.0),
+        _mm_snapshot(8, 2.0, -2.0),
+        0.5,
+    )
+
+    rendered = scene_with_coordinates(scene, visual)
+
+    assert len(rendered.atoms) == 3
+    assert rendered.atoms[0].x == pytest.approx(1.0)
+    assert rendered.atoms[1].x == pytest.approx(2.5)
+    assert rendered.atoms[2].id == "genH1"
+    assert rendered.atoms[2].x == pytest.approx(1.0)
+    assert len(rendered.bonds) == 2
+    assert rendered.bonds[0] == scene.bonds[0]
+    assert rendered.bonds[1].a2_id == "genH1"
+    assert scene.atoms[0].x == 0.0
+    assert len(scene.atoms) == 2
+    assert visual.energy is None
+
 
 
 def test_conformer_service_propagates_progress_cancel_and_failure_diagnostics(

@@ -12,6 +12,7 @@ from chemuson.gui.main_window import ChemusonWindow
 from chemuson.gui.viewport3d import MolecularViewportDock, MolecularViewportWidget
 from chemuson.gui.viewport3d.mesh import build_scene_mesh
 from chemuson.gui.viewport3d.picking import PickResult
+from chemuson.gui.viewport3d.widget import _BuildPreviewState, project_camera_axes
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -866,6 +867,85 @@ def test_build_double_click_in_empty_space_extends_once_and_escape_cancels_pendi
     assert not widget._build_click_timer.isActive()
 
 
+def test_live_mm_hud_reports_forcefield_energy_delta_steps_constraints_and_no_gradient(_qapp):
+    widget = MolecularViewportWidget()
+    widget.set_live_mm_telemetry(
+        {
+            "forcefield": "MMFF94",
+            "energy": -12.345678,
+            "delta_energy": -0.012345,
+            "energy_unit": "kcal/mol",
+            "step": 24,
+            "max_steps": 240,
+            "fixed_atom_count": 2,
+            "constraints": {"coordinate_unit": "Å"},
+            "visual_interpolating": True,
+        }
+    )
+
+    lines = widget._live_mm_hud_lines()
+
+    assert lines is not None
+    assert lines[0] == "Live MM · MMFF94"
+    assert "E -12.345678 kcal/mol" in lines[1]
+    assert "ΔE (muestras) -0.012345 kcal/mol" in lines[1]
+    assert "Paso 24/240" in lines[2]
+    assert "2 átomos fijos · posiciones Å" in lines[2]
+    assert "gradiente no calculado" in lines[3]
+    assert "Interpolación visual" in lines[3]
+
+
+def test_live_mm_widget_interpolates_scene_but_keeps_snapshot_telemetry(monkeypatch, _qapp):
+    from chemuson.geometry3d import CoordinateSet3D, OptimizationFrame
+
+    widget = MolecularViewportWidget()
+    widget.resize(800, 600)
+    widget.set_scene(
+        SceneMolecule3D(
+            atoms=(
+                SceneAtom3D(1, "C", 0.0, 0.0, 0.0, 1.7, "#404040"),
+                SceneAtom3D(2, "C", 1.5, 0.0, 0.0, 1.7, "#404040"),
+            ),
+            bonds=(SceneBond3D(1, 1, 2),),
+        )
+    )
+    start = CoordinateSet3D(
+        {1: (0.0, 0.0, 0.0), 2: (1.5, 0.0, 0.0)},
+        source="rdkit",
+        method="MMFF94",
+        energy=-1.0,
+        metadata={"forcefield": "MMFF94", "step": 0},
+    )
+    target = CoordinateSet3D(
+        {1: (1.0, 0.0, 0.0), 2: (2.5, 0.0, 0.0)},
+        source="rdkit",
+        method="MMFF94",
+        energy=-2.0,
+        metadata={"forcefield": "MMFF94", "step": 8, "energy_unit": "kcal/mol"},
+    )
+    widget.begin_live_mm_playback(start)
+    widget.set_live_mm_telemetry(
+        {"forcefield": "MMFF94", "energy": -2.0, "delta_energy": -1.0, "energy_unit": "kcal/mol"}
+    )
+    assert widget.enqueue_live_mm_frame(OptimizationFrame(step=8, coordinates=target, energy=-2.0))
+    widget._live_mm_animation_timer.stop()
+    clock = [0.0]
+    monkeypatch.setattr("chemuson.gui.viewport3d.widget.time.monotonic", lambda: clock[0])
+
+    widget._advance_live_mm_playback()
+    clock[0] = 0.04
+    widget._advance_live_mm_playback()
+
+    assert widget.scene.atoms[0].x == pytest.approx(0.5)
+    telemetry = widget.live_mm_telemetry
+    assert telemetry is not None
+    assert telemetry["energy"] == -2.0
+    assert widget.live_mm_playback_stats["ticks"] == 2
+    widget.cancel_live_mm_playback(restore=start)
+    assert not widget.live_mm_playback_enabled
+    assert widget.live_mm_telemetry is None
+    assert widget.scene.atoms[0].x == 0.0
+
 def test_escape_cancels_world_space_build_preview_without_document_mutation(monkeypatch, _qapp):
     widget = MolecularViewportWidget()
     widget.resize(800, 600)
@@ -1391,3 +1471,119 @@ def test_geometry_handle_uses_ordered_selection_and_escape_cancels(_qapp, monkey
 
     assert cancelled == [True]
     assert widget._geometry_drag_state is None
+
+
+def test_orientation_axes_projection_tracks_camera_basis(_qapp):
+    widget = MolecularViewportWidget()
+    initial = project_camera_axes(widget.camera)
+    assert tuple(axis[0] for axis in initial) == ("X", "Y", "Z")
+    for _label, screen_x, screen_y, depth in initial:
+        assert math.sqrt(screen_x**2 + screen_y**2 + depth**2) == pytest.approx(1.0)
+
+    widget.camera.orbit(125.0, -63.0, 800)
+    rotated = project_camera_axes(widget.camera)
+    assert rotated != initial
+    assert tuple(axis[0] for axis in rotated) == ("X", "Y", "Z")
+    for _label, screen_x, screen_y, depth in rotated:
+        assert math.sqrt(screen_x**2 + screen_y**2 + depth**2) == pytest.approx(1.0)
+
+
+def test_empty_space_build_drag_orbits_camera_and_shows_temporary_guide(monkeypatch, _qapp):
+    widget = MolecularViewportWidget()
+    widget.resize(800, 600)
+    widget.set_scene(
+        SceneMolecule3D(
+            atoms=(SceneAtom3D(1, "C", 0.0, 0.0, 0.0, 1.7, "#404040"),),
+            bonds=(),
+        )
+    )
+    widget.set_edit_mode(True)
+    widget.set_edit_tool("build")
+    monkeypatch.setattr("chemuson.gui.viewport3d.widget.pick_scene", lambda *_args: None)
+    points = []
+    statuses = []
+    widget.buildPointRequested.connect(points.append)
+    widget.statusChanged.connect(statuses.append)
+    initial_yaw = widget.camera.yaw
+
+    widget.mousePressEvent(
+        QMouseEvent(QEvent.Type.MouseButtonPress, QPointF(600, 400), Qt.MouseButton.LeftButton,
+                    Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
+    )
+    widget.mouseMoveEvent(
+        QMouseEvent(QEvent.Type.MouseMove, QPointF(650, 430), Qt.MouseButton.NoButton,
+                    Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
+    )
+
+    assert widget.camera.yaw != initial_yaw
+    assert widget._orbit_guide_active
+    assert points == []
+    assert any("Cámara" in status for status in statuses)
+    widget.mouseReleaseEvent(
+        QMouseEvent(QEvent.Type.MouseButtonRelease, QPointF(650, 430), Qt.MouseButton.LeftButton,
+                    Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier)
+    )
+    assert not widget._orbit_guide_active
+    assert widget._pending_build_click is None
+
+
+def test_moving_atom_does_not_show_camera_orbit_guide(monkeypatch, _qapp):
+    widget = MolecularViewportWidget()
+    widget.resize(800, 600)
+    widget.set_scene(
+        SceneMolecule3D(
+            atoms=(SceneAtom3D(1, "C", 0.0, 0.0, 0.0, 1.7, "#404040"),),
+            bonds=(),
+        )
+    )
+    widget.set_edit_mode(True)
+    widget.set_edit_tool("move")
+    monkeypatch.setattr(
+        "chemuson.gui.viewport3d.widget.pick_scene",
+        lambda *_args: PickResult("atom", 1, 1.0),
+    )
+    statuses = []
+    widget.statusChanged.connect(statuses.append)
+    initial_yaw = widget.camera.yaw
+
+    widget.mousePressEvent(
+        QMouseEvent(QEvent.Type.MouseButtonPress, QPointF(400, 300), Qt.MouseButton.LeftButton,
+                    Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
+    )
+    widget.mouseMoveEvent(
+        QMouseEvent(QEvent.Type.MouseMove, QPointF(450, 300), Qt.MouseButton.NoButton,
+                    Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
+    )
+
+    assert not widget._orbit_guide_active
+    assert widget.camera.yaw == initial_yaw
+    assert widget.scene.atoms[0].x != 0.0
+    assert any("Geometría" in status for status in statuses)
+
+
+def test_build_preview_and_orientation_overlays_do_not_enter_pickable_scene(monkeypatch, _qapp):
+    widget = MolecularViewportWidget()
+    widget.resize(800, 600)
+    scene = SceneMolecule3D(
+        atoms=(SceneAtom3D(1, "C", 0.0, 0.0, 0.0, 1.7, "#404040"),),
+        bonds=(),
+    )
+    widget.set_scene(scene)
+    widget._build_preview = _BuildPreviewState(
+        anchor_atom_id=1,
+        anchor_position=(0.0, 0.0, 0.0),
+        end_position=(1.5, 0.0, 0.0),
+        element="C",
+        target_atom_id=None,
+    )
+    picked_scenes = []
+    monkeypatch.setattr(
+        "chemuson.gui.viewport3d.widget.pick_scene",
+        lambda picked_scene, *_args: (picked_scenes.append(picked_scene), None)[1],
+    )
+
+    widget._pick_at(QPoint(400, 300))
+
+    assert widget._scene_with_build_preview() is not scene
+    assert widget.scene is scene
+    assert picked_scenes == [scene]

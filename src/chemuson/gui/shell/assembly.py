@@ -135,6 +135,10 @@ def assemble_application_shell(self) -> None:
     self._geometry3d_sync_timer.timeout.connect(self._start_geometry3d_sync_job)
     self._live_mm_fixed_atom_ids = ()
     self._live_mm_pending = False
+    self._live_mm_energy_job_id = 0
+    self._live_mm_previous_energy = None
+    self._live_mm_pending_result = None
+    self._viewport_geometry_gesture_active = False
     self._compchem3d_controller.frame_ready.connect(self._on_compchem_frame_ready)
     self._compchem3d_controller.job_progress.connect(self._on_compchem_progress)
     self._compchem3d_controller.job_finished.connect(self._on_compchem_job_finished)
@@ -299,6 +303,12 @@ def assemble_application_shell(self) -> None:
     )
     self.viewport3d_dock.viewport.geometryEditCancelled.connect(
         self._on_viewport_geometry_cancelled
+    )
+    self.viewport3d_dock.viewport.geometryEditStarted.connect(
+        self._on_viewport_geometry_edit_started
+    )
+    self.viewport3d_dock.viewport.liveMMPlaybackDrained.connect(
+        self._on_live_mm_playback_drained
     )
     self.viewport3d_dock.viewport.buildCancelled.connect(
         self._on_viewport_build_cancelled

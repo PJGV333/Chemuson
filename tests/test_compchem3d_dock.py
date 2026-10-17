@@ -674,6 +674,121 @@ def test_compchem_discards_frames_after_document_edit() -> None:
         window._async_shutdown_complete = True
         window.close()
 
+def test_live_mm_playback_is_cancelled_on_the_first_geometry_edit(_qapp):
+    window = ChemusonWindow()
+    try:
+        from chemuson.geometry3d import OptimizationFrame
+
+        canvas = window.canvas
+        atom = canvas.model.add_atom("C", 0.0, 0.0)
+        initial = CoordinateSet3D(
+            {atom.id: (0.0, 0.0, 0.0)}, source="test", method="manual"
+        )
+        snapshot = CoordinateSet3D(
+            {atom.id: (0.4, 0.0, 0.0)},
+            source="rdkit",
+            method="MMFF94",
+            energy=-1.0,
+            metadata={"forcefield": "MMFF94", "step": 8},
+        )
+        canvas.set_geometry3d_coordinates(initial)
+        window._compchem_coordset = initial
+        window._compchem_preview_coordset = snapshot
+        viewport = getattr(window, "viewport3d_dock").viewport
+        viewport.set_scene(
+            SceneMolecule3D(
+                atoms=(SceneAtom3D(atom.id, "C", 0.0, 0.0, 0.0, 1.7, "#909090"),),
+                bonds=(),
+            )
+        )
+        viewport.begin_live_mm_playback(initial)
+        assert viewport.enqueue_live_mm_frame(
+            OptimizationFrame(step=8, coordinates=snapshot, energy=-1.0)
+        )
+        viewport._live_mm_animation_timer.stop()
+        job_id = 97
+        window._latest_compchem_job_id = job_id
+        operations = getattr(window, "_compchem_job_operations")
+        snapshots = getattr(window, "_compchem_job_snapshots")
+        operations[job_id] = "optimize"
+        snapshots[job_id] = window._current_compchem_snapshot()
+
+        window._on_viewport_geometry_edit_started()
+
+        assert window._latest_compchem_job_id == 0
+        assert window._compchem_preview_coordset == snapshot
+        assert not viewport.live_mm_playback_enabled
+        assert viewport.live_mm_playback_stats["pending_frames"] == 0
+        assert viewport.scene.atoms[0].x == pytest.approx(0.4)
+    finally:
+        window._close_approved = True
+        window._async_shutdown_complete = True
+        window.close()
+
+def test_live_mm_final_coordinates_publish_only_after_playback_drains(monkeypatch, _qapp):
+    from chemuson.gui.viewport3d import widget as viewport_module
+
+    window = ChemusonWindow()
+    try:
+        canvas = window.canvas
+        atom = canvas.model.add_atom("C", 0.0, 0.0)
+        initial = CoordinateSet3D(
+            {atom.id: (0.0, 0.0, 0.0)}, source="test", method="manual"
+        )
+        final = CoordinateSet3D(
+            {atom.id: (1.0, 0.0, 0.0)},
+            source="rdkit",
+            method="MMFF94",
+            energy=-2.0,
+            metadata={"forcefield": "MMFF94", "energy_unit": "kcal/mol", "step": 8},
+        )
+        canvas.set_geometry3d_coordinates(initial)
+        window._compchem_coordset = initial
+        viewport_dock = getattr(window, "viewport3d_dock")
+        monkeypatch.setattr(viewport_dock, "isVisible", lambda: True)
+        window._refresh_viewport3d_scene()
+        viewport = viewport_dock.viewport
+        viewport.begin_live_mm_playback(initial)
+        assert viewport.enqueue_live_mm_frame(
+            OptimizationFrame(step=8, coordinates=final, energy=-2.0)
+        )
+        viewport._live_mm_animation_timer.stop()
+
+        job_id = 98
+        window._latest_compchem_job_id = job_id
+        getattr(window, "_compchem_job_backends")[job_id] = "rdkit"
+        getattr(window, "_compchem_job_operations")[job_id] = "optimize"
+        snapshot = window._current_compchem_snapshot()
+        getattr(window, "_compchem_job_snapshots")[job_id] = snapshot
+        clock = [0.0]
+        monkeypatch.setattr(viewport_module.time, "monotonic", lambda: clock[0])
+        result = OptimizationResult(
+            coordinates=final,
+            converged=True,
+            energy=-2.0,
+            method="MMFF94",
+            metadata={"energy_unit": "kcal/mol"},
+        )
+
+        window._on_compchem_job_finished(job_id, result)
+
+        assert canvas.coordinate_set_3d == initial
+        assert canvas.undo_stack.count() == 0
+        assert window._live_mm_pending_result is not None
+        clock[0] = 0.0
+        viewport._advance_live_mm_playback()
+        clock[0] = 0.08
+        viewport._advance_live_mm_playback()
+
+        assert canvas.coordinate_set_3d == final
+        assert canvas.undo_stack.count() == 1
+        assert not viewport.live_mm_playback_enabled
+        assert window._live_mm_pending_result is None
+    finally:
+        window._close_approved = True
+        window._async_shutdown_complete = True
+        window.close()
+
 
 def test_compchem_frames_preview_without_committing_to_document(monkeypatch) -> None:
     window = ChemusonWindow()

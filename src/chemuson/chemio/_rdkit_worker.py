@@ -1370,14 +1370,23 @@ def _handle_graph_optimize3d_mode(
         if ff is None:
             return {"ok": False, "error": "forcefield_unavailable"}
         raw_fixed_ids = request.get("fixed_atom_ids", [])
+        fixed_atom_ids: set[int] = set()
         if isinstance(raw_fixed_ids, (list, tuple, set)):
             for raw_atom_id in raw_fixed_ids:
                 try:
-                    rdkit_index = id_map.get(int(raw_atom_id))
+                    atom_id = int(raw_atom_id)
+                    rdkit_index = id_map.get(atom_id)
                 except (TypeError, ValueError):
                     continue
-                if rdkit_index is not None:
+                if rdkit_index is not None and atom_id not in fixed_atom_ids:
                     ff.AddFixedPoint(int(rdkit_index))
+                    fixed_atom_ids.add(atom_id)
+        fixed_ids = sorted(fixed_atom_ids)
+        constraint_summary = {
+            "kind": "fixed_atom_positions",
+            "atom_count": len(fixed_ids),
+            "coordinate_unit": "Å",
+        }
         if emit_frames:
             ff.Initialize()
         frames: list[dict[str, Any]] = []
@@ -1402,6 +1411,11 @@ def _handle_graph_optimize3d_mode(
                 "energy": energy,
                 "energy_unit": "kcal/mol",
                 "forcefield": method,
+                "max_iters": max_iters,
+                "steps_per_update": steps_per_update,
+                "fixed_atom_ids": fixed_ids,
+                "fixed_atom_count": len(fixed_ids),
+                "constraints": constraint_summary,
                 "converged": converged_code == 0,
                 "positions": _positions_for_original_atoms(mol_h, reverse_map),
                 "stereochemistry": _stereochemistry_metadata(atom_targets, bond_targets),
@@ -1432,6 +1446,9 @@ def _handle_graph_optimize3d_mode(
                 "converged": converged_code == 0,
                 "max_iters": max_iters,
                 "steps_per_update": steps_per_update,
+                "fixed_atom_ids": fixed_ids,
+                "fixed_atom_count": len(fixed_ids),
+                "constraints": constraint_summary,
                 "seed": seed,
                 "used_initial_coordinates": used_initial_coordinates,
                 "stereochemistry": _stereochemistry_metadata(atom_targets, bond_targets),

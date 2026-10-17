@@ -10,6 +10,14 @@ from chemuson.chemio import rdkit_safe
 from chemuson.core.model import MolGraph
 
 
+def _ethane() -> tuple[MolGraph, dict[int, tuple[float, float, float]]]:
+    graph = MolGraph()
+    first = graph.add_atom("C", 0.0, 0.0)
+    second = graph.add_atom("C", 40.0, 0.0)
+    graph.add_bond(first.id, second.id, order=1)
+    return graph, {first.id: (0.0, 0.0, 0.0), second.id: (2.5, 0.0, 0.0)}
+
+
 def _butane() -> tuple[MolGraph, dict[int, tuple[float, float, float]]]:
     graph = MolGraph()
     atoms = [graph.add_atom("C", index * 40.0, 0.0) for index in range(4)]
@@ -300,6 +308,53 @@ def test_rdkit_backend_stream_returns_last_frame_and_emits_callbacks():
     assert result.coordinates is not None
     assert result.coordinates.positions == callbacks[-1].coordinates.positions
     assert all(frame.coordinates.positions[1] == initial[1] for frame in callbacks)
+
+
+def test_live_mm_streams_real_energy_and_constraint_telemetry_for_ethane_and_butane():
+    from chemuson.geometry3d import CoordinateSet3D, ForceField, OptimizationSettings
+    from chemuson.geometry3d.rdkit_backend import optimize_stream
+
+    observations = []
+    for name, factory in (("ethane", _ethane), ("butane", _butane)):
+        graph, initial = factory()
+        callbacks = []
+        arrivals = []
+        started = time.perf_counter()
+
+        def on_frame(frame):
+            callbacks.append(frame)
+            arrivals.append(time.perf_counter())
+
+        result = optimize_stream(
+            graph,
+            CoordinateSet3D(initial, source="test", method="manual"),
+            OptimizationSettings(
+                forcefield=ForceField.MMFF94,
+                max_iters=64,
+                steps_per_update=8,
+                timeout_s=20.0,
+                seed=29,
+            ),
+            fixed_atom_ids=(1,),
+            on_frame=on_frame,
+        )
+        elapsed = time.perf_counter() - started
+
+        assert result.ok, (name, result.message)
+        assert callbacks
+        assert result.coordinates is not None
+        assert result.coordinates.positions == callbacks[-1].coordinates.positions
+        assert all(math.isfinite(frame.energy) for frame in callbacks)
+        assert all(frame.coordinates.energy == frame.energy for frame in callbacks)
+        assert all(frame.coordinates.metadata["energy_unit"] == "kcal/mol" for frame in callbacks)
+        assert all(frame.coordinates.metadata["max_steps"] == 64 for frame in callbacks)
+        assert all(frame.coordinates.metadata["fixed_atom_ids"] == (1,) for frame in callbacks)
+        assert all(frame.coordinates.metadata["constraints"]["coordinate_unit"] == "Å" for frame in callbacks)
+        assert [frame.step for frame in callbacks] == sorted(frame.step for frame in callbacks)
+        observations.append((name, len(callbacks), elapsed, tuple(arrivals)))
+
+    assert [name for name, *_ in observations] == ["ethane", "butane"]
+    assert all(frame_count >= 1 for _name, frame_count, _elapsed, _arrivals in observations)
 
 
 def test_worker_stream_times_out_and_terminates_child(tmp_path, monkeypatch):

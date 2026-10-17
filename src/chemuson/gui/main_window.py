@@ -648,6 +648,8 @@ class ChemusonWindow(QMainWindow):
         canvas = getattr(self, "canvas", None)
         if dock is None or canvas is None:
             return
+        if dock.viewport.live_mm_playback_enabled:
+            return
         if canvas.geometry3d_is_stale and self._compchem_preview_coordset is None:
             dock.clear_scene()
             dock.set_status("La topología 2D cambió; regenere la geometría 3D.")
@@ -819,6 +821,10 @@ class ChemusonWindow(QMainWindow):
         self._latest_compchem_job_id = 0
         self._compchem_preview_coordset = None
         self._live_mm_pending = False
+        self._live_mm_pending_result = None
+        viewport = getattr(self, "viewport3d_dock", None)
+        if viewport is not None:
+            viewport.viewport.cancel_live_mm_playback()
         timer = getattr(self, "_live_mm_timer", None)
         if timer is not None:
             timer.stop()
@@ -842,6 +848,16 @@ class ChemusonWindow(QMainWindow):
         canvas = getattr(self, "canvas", None)
         if controller is None or canvas is None:
             return
+        pending_result = self._live_mm_pending_result
+        if (
+            isinstance(pending_result, tuple)
+            and len(pending_result) == 5
+            and not self._compchem_snapshot_matches_current(pending_result[3], canvas)
+        ):
+            self._cancel_live_mm_presentation(
+                preserve_latest_snapshot=False,
+                status_message="Live MM cancelado por edición del documento.",
+            )
         for job_id, snapshot in list(
             getattr(self, "_compchem_job_snapshots", {}).items()
         ):
@@ -1280,6 +1296,13 @@ class ChemusonWindow(QMainWindow):
         dock.set_status(status)
         viewport = getattr(self, "viewport3d_dock", None)
         if viewport is not None:
+            viewport.viewport.cancel_live_mm_playback()
+            if operation == "optimize" and coordset is not None and viewport.isVisible():
+                viewport.viewport.begin_live_mm_playback(coordset)
+        self._live_mm_pending_result = None
+        self._live_mm_energy_job_id = 0
+        self._live_mm_previous_energy = None
+        if viewport is not None:
             viewport.set_status(status)
         controller = getattr(self, "_compchem3d_controller", None)
         if controller is not None:
@@ -1289,8 +1312,13 @@ class ChemusonWindow(QMainWindow):
         if job_id is None:
             dock.set_busy(False)
             dock.set_status("No se pudo iniciar el trabajo 3D.")
+            if viewport is not None:
+                viewport.viewport.cancel_live_mm_playback(restore=coordset)
             return
         self._latest_compchem_job_id = job_id
+        if operation == "optimize":
+            self._live_mm_energy_job_id = int(job_id)
+            self._live_mm_previous_energy = None
         self._compchem_job_backends[job_id] = selected_backend
         self._compchem_job_operations[job_id] = operation
         self._compchem_job_snapshots[job_id] = self._current_compchem_snapshot(canvas)
@@ -1300,6 +1328,75 @@ class ChemusonWindow(QMainWindow):
 
     def _on_compchem_optimize(self) -> None:
         self._start_compchem_job("optimize")
+
+    def _cancel_live_mm_presentation(
+        self,
+        *,
+        preserve_latest_snapshot: bool = False,
+        status_message: str = "Live MM cancelado por cambio geométrico.",
+    ) -> None:
+        timer = getattr(self, "_live_mm_timer", None)
+        timer_was_active = bool(timer is not None and timer.isActive())
+        pending_final = self._live_mm_pending_result is not None
+        if timer is not None:
+            timer.stop()
+        self._live_mm_pending = False
+        self._live_mm_previous_energy = None
+        self._live_mm_energy_job_id = 0
+        self._live_mm_pending_result = None
+        job_id = int(getattr(self, "_latest_compchem_job_id", 0) or 0)
+        operations = getattr(self, "_compchem_job_operations", {})
+        active_job = isinstance(operations, Mapping) and job_id in operations
+        controller = getattr(self, "_compchem3d_controller", None)
+        viewport = getattr(self, "viewport3d_dock", None)
+        playback_active = bool(
+            viewport is not None and viewport.viewport.live_mm_playback_enabled
+        )
+        if not (active_job or playback_active or pending_final or timer_was_active):
+            if viewport is not None and viewport.viewport.live_mm_telemetry is not None:
+                viewport.viewport.set_live_mm_telemetry(None)
+            return
+        if active_job:
+            if controller is not None:
+                controller.cancel_job(job_id)
+            self._latest_compchem_job_id = 0
+            dock = getattr(self, "compchem_dock", None)
+            if dock is not None:
+                dock.set_busy(False)
+                dock.set_status(status_message)
+        elif pending_final:
+            self._latest_compchem_job_id = 0
+        canvas = getattr(self, "canvas", None)
+        if canvas is None:
+            return
+        latest_snapshot = self._compchem_preview_coordset or canvas.coordinate_set_3d
+        restore = latest_snapshot if preserve_latest_snapshot else canvas.coordinate_set_3d
+        self._compchem_coordset = canvas.coordinate_set_3d
+        self._compchem_preview_coordset = latest_snapshot if preserve_latest_snapshot else None
+        if viewport is not None:
+            viewport.viewport.cancel_live_mm_playback(restore=restore)
+            if viewport.isVisible() and status_message:
+                viewport.set_status(status_message)
+
+    def _on_viewport_geometry_edit_started(self) -> None:
+        self._viewport_geometry_gesture_active = True
+        self._cancel_live_mm_presentation(preserve_latest_snapshot=True)
+
+    def _on_live_mm_playback_drained(self) -> None:
+        pending = self._live_mm_pending_result
+        self._live_mm_pending_result = None
+        if not isinstance(pending, tuple) or len(pending) != 5:
+            return
+        job_id, result, backend, snapshot, coordinates = pending
+        if self._shutdown_started or int(job_id) != int(self._latest_compchem_job_id):
+            return
+        if not self._compchem_snapshot_matches_current(snapshot, self.canvas):
+            self._cancel_live_mm_presentation(
+                preserve_latest_snapshot=False,
+                status_message="Live MM cancelado: cambió el documento antes de publicar el resultado.",
+            )
+            return
+        self._publish_compchem_coordinates(coordinates, result, backend, "optimize")
 
     def _on_live_mm_toggled(self, enabled: bool) -> None:
         if self._shutdown_started:
@@ -1320,17 +1417,10 @@ class ChemusonWindow(QMainWindow):
             self._live_mm_fixed_atom_ids = ()
             timer.start(100)
             return
-        self._live_mm_pending = False
-        job_id = int(getattr(self, "_latest_compchem_job_id", 0) or 0)
-        if self._compchem_job_operations.get(job_id) == "optimize":
-            controller = getattr(self, "_compchem3d_controller", None)
-            if controller is not None:
-                controller.cancel_job(job_id)
-        if not self.viewport3d_dock.viewport.geometry_drag_active:
-            self._compchem_preview_coordset = None
-            self._compchem_coordset = self.canvas.coordinate_set_3d
-            if self.viewport3d_dock.isVisible():
-                self._refresh_viewport3d_scene()
+        self._cancel_live_mm_presentation(
+            preserve_latest_snapshot=False,
+            status_message="Live MM detenido.",
+        )
 
     def _start_live_mm_job(self) -> None:
         dock = getattr(self, "viewport3d_dock", None)
@@ -1391,6 +1481,7 @@ class ChemusonWindow(QMainWindow):
             self._clear_geometry_handle_state()
             self.viewport3d_dock.set_status("La geometría 3D no está disponible para editar.")
             return
+        self._cancel_live_mm_presentation(preserve_latest_snapshot=True)
         coordinates = self._compchem_preview_coordset or canvas.coordinate_set_3d
         if not isinstance(coordinates, CoordinateSet3D):
             self._clear_geometry_handle_state()
@@ -1520,7 +1611,7 @@ class ChemusonWindow(QMainWindow):
         self._live_mm_fixed_atom_ids = tuple(sorted(int(atom_id) for atom_id in selected_atom_ids))
         if self.viewport3d_dock.isVisible():
             self._refresh_viewport3d_scene()
-        if self.viewport3d_dock.live_mm_checkbox.isChecked():
+        if self.viewport3d_dock.live_mm_checkbox.isChecked() and not self._viewport_geometry_gesture_active:
             controller = getattr(self, "_compchem3d_controller", None)
             active_job_ids = controller.active_jobs() if controller is not None else []
             if active_job_ids:
@@ -1538,6 +1629,7 @@ class ChemusonWindow(QMainWindow):
         after_positions: object,
         selected_atom_ids: object,
     ) -> None:
+        self._viewport_geometry_gesture_active = False
         canvas = self.canvas
         geometry_operation = self._geometry_handle_operation
         if canvas.geometry3d_is_stale or not isinstance(after_positions, Mapping):
@@ -1578,6 +1670,8 @@ class ChemusonWindow(QMainWindow):
             self._live_mm_timer.start(100)
 
     def _on_viewport_geometry_cancelled(self) -> None:
+        self._viewport_geometry_gesture_active = False
+        self._cancel_live_mm_presentation(preserve_latest_snapshot=False)
         self._live_mm_timer.stop()
         self._live_mm_pending = False
         job_id = int(getattr(self, "_latest_compchem_job_id", 0) or 0)
@@ -1597,13 +1691,16 @@ class ChemusonWindow(QMainWindow):
             self._refresh_viewport3d_scene()
 
     def _on_viewport_build_cancelled(self) -> None:
+        self._viewport_geometry_gesture_active = False
         self._pending_3d_build_anchor_id = None
         self.viewport3d_dock.set_status("Construcción 3D cancelada.")
 
     def _on_viewport_atom_element_change(self, atom_id: int, element: str) -> None:
+        self._viewport_geometry_gesture_active = False
         canvas = getattr(self, "canvas", None)
         if canvas is None:
             return
+        self._cancel_live_mm_presentation(preserve_latest_snapshot=True)
         try:
             normalized_element = str(element).strip().capitalize()
             atom = canvas.model.get_atom(atom_id)
@@ -1654,6 +1751,7 @@ class ChemusonWindow(QMainWindow):
         if canvas is not None and canvas.geometry3d_is_stale:
             self.viewport3d_dock.set_status("La geometría 3D está desactualizada.")
             return
+        self._cancel_live_mm_presentation(preserve_latest_snapshot=True)
         coordset = self._compchem_preview_coordset or getattr(canvas, "coordinate_set_3d", None)
         if canvas is None or coordset is None:
             self.viewport3d_dock.set_status("No hay coordenadas 3D editables.")
@@ -1714,6 +1812,8 @@ class ChemusonWindow(QMainWindow):
     def _on_viewport_build_bond_requested(self, request: object) -> None:
         if not isinstance(request, (tuple, list)) or len(request) != 2:
             return
+        self._viewport_geometry_gesture_active = False
+        self._cancel_live_mm_presentation(preserve_latest_snapshot=True)
         try:
             first_id, second_id = (int(value) for value in request)
         except (TypeError, ValueError, OverflowError):
@@ -1800,6 +1900,8 @@ class ChemusonWindow(QMainWindow):
         if not isinstance(request, (tuple, list)) or len(request) != 3:
             return
         generated_id, raw_parent_id, raw_position = request
+        self._viewport_geometry_gesture_active = False
+        self._cancel_live_mm_presentation(preserve_latest_snapshot=True)
         try:
             parent_id = int(raw_parent_id)
             position = tuple(float(value) for value in raw_position)
@@ -2000,6 +2102,8 @@ class ChemusonWindow(QMainWindow):
         except (TypeError, ValueError) as exc:
             self.viewport3d_dock.set_status(f"No se pudo crear el átomo: {exc}")
             return
+        self._viewport_geometry_gesture_active = False
+        self._cancel_live_mm_presentation(preserve_latest_snapshot=True)
         coordset = self._compchem_preview_coordset or canvas.coordinate_set_3d
         positions = coordset.normalized_positions() if coordset is not None else {}
         parent_id = self._pending_3d_build_anchor_id
@@ -2156,23 +2260,84 @@ class ChemusonWindow(QMainWindow):
         if self._shutdown_started:
             return
         if not self._compchem_job_snapshot_matches(job_id):
+            self._cancel_obsolete_compchem_jobs()
             return
         dock = getattr(self, "compchem_dock", None)
         if dock is not None:
             dock.add_frame(frame)
         coordinates = getattr(frame, "coordinates", None)
-        if coordinates is not None:
-            self._compchem_preview_coordset = coordinates
-            viewport = getattr(self, "viewport3d_dock", None)
-            if viewport is not None and viewport.isVisible():
-                self._refresh_viewport3d_scene()
-                energy = getattr(frame, "energy", None)
-                metadata = getattr(coordinates, "metadata", {}) or {}
-                unit = str(metadata.get("energy_unit") or "kcal/mol")
-                energy_text = "N/D" if energy is None else f"{float(energy):.6f} {unit}"
+        if coordinates is None:
+            return
+        self._compchem_preview_coordset = coordinates
+        viewport = getattr(self, "viewport3d_dock", None)
+        operations = getattr(self, "_compchem_job_operations", {})
+        operation = operations.get(int(job_id)) if isinstance(operations, Mapping) else None
+        if operation == "optimize":
+            if int(job_id) != int(self._live_mm_energy_job_id):
+                self._live_mm_energy_job_id = int(job_id)
+                self._live_mm_previous_energy = None
+            raw_energy = getattr(frame, "energy", None)
+            try:
+                energy = float(raw_energy) if raw_energy is not None else None
+                if energy is not None and not math.isfinite(energy):
+                    energy = None
+            except (TypeError, ValueError, OverflowError):
+                energy = None
+            previous_energy = self._live_mm_previous_energy
+            delta_energy = (
+                energy - previous_energy
+                if energy is not None and previous_energy is not None
+                else None
+            )
+            if energy is not None:
+                self._live_mm_previous_energy = energy
+            metadata = coordinates.metadata if isinstance(coordinates.metadata, Mapping) else {}
+            constraints_raw = metadata.get("constraints", {})
+            constraints = dict(constraints_raw) if isinstance(constraints_raw, Mapping) else {}
+            fixed_atom_ids = metadata.get("fixed_atom_ids", ())
+            fixed_count_raw = metadata.get(
+                "fixed_atom_count",
+                len(fixed_atom_ids)
+                if isinstance(fixed_atom_ids, (tuple, list))
+                else 0,
+            )
+
+            def safe_nonnegative_int(value: object) -> int:
+                if not isinstance(value, (int, float, str)):
+                    return 0
+                try:
+                    return max(0, int(value))
+                except (TypeError, ValueError, OverflowError):
+                    return 0
+
+            telemetry = {
+                "forcefield": str(metadata.get("forcefield", getattr(frame, "method", "RDKit"))),
+                "energy": energy,
+                "delta_energy": delta_energy,
+                "energy_unit": str(metadata.get("energy_unit", "kcal/mol")),
+                "step": safe_nonnegative_int(getattr(frame, "step", 0)),
+                "max_steps": safe_nonnegative_int(metadata.get("max_steps", 0)),
+                "fixed_atom_count": safe_nonnegative_int(fixed_count_raw),
+                "constraints": constraints,
+                "visual_interpolating": False,
+                "gradient_computed": False,
+            }
+            if viewport is not None:
+                viewport.viewport.set_live_mm_telemetry(telemetry)
+                if viewport.isVisible() and viewport.viewport.live_mm_playback_enabled:
+                    accepted = viewport.viewport.enqueue_live_mm_frame(frame)
+                    if not accepted:
+                        telemetry["visual_interpolating"] = False
+                        viewport.viewport.set_live_mm_telemetry(telemetry)
+                elif viewport.isVisible():
+                    self._refresh_viewport3d_scene()
+                energy_text = "N/D" if energy is None else f"{energy:.6f} {telemetry['energy_unit']}"
                 viewport.set_status(
-                    f"Live MM · paso {getattr(frame, 'step', 0)} · E {energy_text}"
+                    f"Live MM · {telemetry['forcefield']} · paso {telemetry['step']}/{telemetry['max_steps']} · E {energy_text}"
                 )
+            return
+        if viewport is not None and viewport.isVisible():
+            self._refresh_viewport3d_scene()
 
     def _on_compchem_job_finished(self, job_id: int, result: object) -> None:
         backend = self._compchem_job_backends.pop(int(job_id), "rdkit")
@@ -2201,6 +2366,7 @@ class ChemusonWindow(QMainWindow):
                 stale_diagnostics
             )
             self._compchem_preview_coordset = None
+            self._live_mm_pending_result = None
             self._compchem_coordset = self.canvas.coordinate_set_3d
             retryable = operation == "generate"
             if dock is not None:
@@ -2211,6 +2377,7 @@ class ChemusonWindow(QMainWindow):
                 dock.set_has_coordinates(self._compchem_coordset is not None)
             viewport = getattr(self, "viewport3d_dock", None)
             if viewport is not None:
+                viewport.viewport.cancel_live_mm_playback(restore=self.canvas.coordinate_set_3d)
                 viewport.set_status(status, retryable=retryable)
                 viewport.status_label.setToolTip(diagnostic_tooltip)
             status_bar = self.statusBar()
@@ -2232,6 +2399,9 @@ class ChemusonWindow(QMainWindow):
             ):
                 dock.set_status("Live MM detenido; el arrastre 3D sigue activo.")
                 return
+            self._live_mm_pending_result = None
+            if operation == "optimize" and viewport is not None:
+                viewport.viewport.cancel_live_mm_playback(restore=self.canvas.coordinate_set_3d)
             self._compchem_preview_coordset = None
             self._compchem_coordset = self.canvas.coordinate_set_3d
             metadata = getattr(result, "metadata", {}) or {}
@@ -2281,7 +2451,41 @@ class ChemusonWindow(QMainWindow):
             if viewport.isVisible():
                 self._refresh_viewport3d_scene()
             return
+        if (
+            operation == "optimize"
+            and viewport is not None
+            and viewport.isVisible()
+            and viewport.viewport.live_mm_playback_enabled
+        ):
+            self._live_mm_pending_result = (
+                int(job_id),
+                result,
+                backend,
+                snapshot,
+                coordinates,
+            )
+            status = "Live MM · reproduciendo interpolación visual; resultado científico pendiente de publicación."
+            dock.set_status(status)
+            viewport.set_status(status)
+            viewport.viewport.finish_live_mm_playback(coordinates)
+            return
+        self._publish_compchem_coordinates(coordinates, result, backend, operation)
+
+    def _publish_compchem_coordinates(
+        self,
+        coordinates: CoordinateSet3D,
+        result: object,
+        backend: str,
+        operation: str | None,
+    ) -> None:
+        viewport = getattr(self, "viewport3d_dock", None)
+        if viewport is not None:
+            viewport.viewport.cancel_live_mm_playback(clear_telemetry=False)
         self._compchem_preview_coordset = None
+        self._compchem_coordset = coordinates
+        dock = getattr(self, "compchem_dock", None)
+        if dock is None:
+            return
         dock.set_retry_available(False)
         from chemuson.gui.commands import SetGeometry3DCommand
 
@@ -2303,7 +2507,11 @@ class ChemusonWindow(QMainWindow):
         if viewport is not None and viewport.isVisible():
             self._refresh_viewport3d_scene()
         if viewport is not None:
-            viewport.set_status("Conformero 3D listo.")
+            viewport.set_status(
+                "Live MM · resultado final aplicado."
+                if operation == "optimize"
+                else "Conformero 3D listo."
+            )
             viewport.status_label.setToolTip(diagnostic_tooltip)
         if operation == "generate" and viewport is not None and viewport.live_mm_checkbox.isChecked():
             self._live_mm_fixed_atom_ids = ()

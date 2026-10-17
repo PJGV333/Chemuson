@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+import math
+import time
 from typing import Any, cast
 
 from PyQt6.QtCore import QPoint, Qt, QTimer, pyqtSignal
@@ -24,13 +26,31 @@ from PyQt6.QtWidgets import QApplication
 
 from chemuson.geometry3d import SceneAtom3D, SceneBond3D, SceneMolecule3D
 from chemuson.geometry3d.editing import angle_degrees, dihedral_degrees, distance
-from chemuson.geometry3d.model import CoordinateSet3D
+from chemuson.geometry3d.model import (
+    CoordinateSet3D,
+    VisualFramePlayback,
+    scene_with_coordinates,
+)
 
 from .camera import CameraProjection, CameraState
-from .geometry import add
+from .geometry import add, dot
 from .renderer import GL_COLOR_BUFFER_BIT, GL_DEPTH_BUFFER_BIT, MoleculeRenderer
 from .mesh import normalize_representation
 from .picking import PickResult, pick_scene
+
+
+def project_camera_axes(camera: CameraState) -> tuple[tuple[str, float, float, float], ...]:
+    """Project positive world axes into the current camera's screen basis."""
+    forward, right, up = camera.basis
+    world_axes = (
+        ("X", (1.0, 0.0, 0.0)),
+        ("Y", (0.0, 1.0, 0.0)),
+        ("Z", (0.0, 0.0, 1.0)),
+    )
+    return tuple(
+        (label, dot(axis, right), -dot(axis, up), dot(axis, forward))
+        for label, axis in world_axes
+    )
 
 
 @dataclass
@@ -95,6 +115,7 @@ class MolecularViewportWidget(QOpenGLWidget):
     geometryPreviewChanged = pyqtSignal(object, object, object)
     geometryEditCommitted = pyqtSignal(object, object, object)
     geometryEditCancelled = pyqtSignal()
+    geometryEditStarted = pyqtSignal()
     geometryHandleStarted = pyqtSignal(str, object)
     geometryHandlePreviewRequested = pyqtSignal(str, object, float)
     buildCancelled = pyqtSignal()
@@ -104,6 +125,7 @@ class MolecularViewportWidget(QOpenGLWidget):
     buildBondRequested = pyqtSignal(object)
     buildElementChangeRequested = pyqtSignal(int, str)
     buildPreviewChanged = pyqtSignal(object)
+    liveMMPlaybackDrained = pyqtSignal()
     derivedHydrogenPreviewChanged = pyqtSignal(object, object, object)
     derivedHydrogenEditRequested = pyqtSignal(object)
 
@@ -141,6 +163,9 @@ class MolecularViewportWidget(QOpenGLWidget):
         self._renderer = MoleculeRenderer()
         self._last_mouse_position: QPoint | None = None
         self._dragging = False
+        self._camera_drag_origin_empty = False
+        self._orbit_guide_active = False
+        self._geometry_edit_notified = False
         self._geometry_drag_state: _GeometryDragState | None = None
         self._build_drag_state: _BuildDragState | None = None
         self._derived_hydrogen_drag_state: _DerivedHydrogenDragState | None = None
@@ -151,6 +176,16 @@ class MolecularViewportWidget(QOpenGLWidget):
         self._build_click_timer.setSingleShot(True)
         self._build_click_timer.setInterval(max(1, QApplication.doubleClickInterval()))
         self._build_click_timer.timeout.connect(self._commit_pending_build_click)
+        self._live_mm_playback = VisualFramePlayback()
+        self._live_mm_playback_enabled = False
+        self._live_mm_telemetry: dict[str, object] | None = None
+        self._live_mm_drained_emitted = False
+        self._live_mm_tick_count = 0
+        self._live_mm_tick_total_s = 0.0
+        self._live_mm_animation_timer = QTimer(self)
+        self._live_mm_animation_timer.setTimerType(Qt.TimerType.PreciseTimer)
+        self._live_mm_animation_timer.setInterval(16)
+        self._live_mm_animation_timer.timeout.connect(self._advance_live_mm_playback)
         self._press_hit: PickResult | None = None
         self._gl_ready = False
         self._mesh_dirty = True
@@ -182,6 +217,153 @@ class MolecularViewportWidget(QOpenGLWidget):
             return
         self._scene_diagnostics["status_message"] = message
         self.statusChanged.emit(message)
+
+    @property
+    def live_mm_playback_enabled(self) -> bool:
+        return self._live_mm_playback_enabled
+
+    @property
+    def live_mm_playback_active(self) -> bool:
+        return self._live_mm_playback.active
+
+    @property
+    def live_mm_playback_stats(self) -> dict[str, float | int]:
+        return {
+            "ticks": self._live_mm_tick_count,
+            "mean_tick_ms": (
+                1000.0 * self._live_mm_tick_total_s / self._live_mm_tick_count
+                if self._live_mm_tick_count
+                else 0.0
+            ),
+            "dropped_frames": self._live_mm_playback.dropped_frames,
+            "pending_frames": self._live_mm_playback.pending_count,
+        }
+
+    @property
+    def live_mm_telemetry(self) -> dict[str, object] | None:
+        return dict(self._live_mm_telemetry) if self._live_mm_telemetry is not None else None
+
+    def begin_live_mm_playback(self, initial: CoordinateSet3D | None) -> None:
+        self._live_mm_animation_timer.stop()
+        self._live_mm_playback.begin(initial)
+        self._live_mm_playback_enabled = True
+        self._live_mm_drained_emitted = False
+        self._live_mm_tick_count = 0
+        self._live_mm_tick_total_s = 0.0
+
+    def enqueue_live_mm_frame(self, frame: object) -> bool:
+        coordinates = getattr(frame, "coordinates", None)
+        if not self._live_mm_playback_enabled or not isinstance(coordinates, CoordinateSet3D):
+            return False
+        accepted = self._live_mm_playback.enqueue(coordinates)
+        if not accepted:
+            self._apply_live_mm_coordinates(coordinates)
+            return False
+        if not self._live_mm_animation_timer.isActive():
+            self._live_mm_animation_timer.start()
+        return True
+
+    def finish_live_mm_playback(self, final: CoordinateSet3D | None) -> None:
+        if not self._live_mm_playback_enabled:
+            self.begin_live_mm_playback(final)
+        self._live_mm_playback.finish(final)
+        if self._live_mm_playback.drained:
+            self._complete_live_mm_playback()
+        elif not self._live_mm_animation_timer.isActive():
+            self._live_mm_animation_timer.start()
+
+    def cancel_live_mm_playback(
+        self,
+        restore: CoordinateSet3D | None = None,
+        *,
+        clear_telemetry: bool = True,
+    ) -> None:
+        self._live_mm_animation_timer.stop()
+        self._live_mm_playback.cancel()
+        self._live_mm_playback_enabled = False
+        self._live_mm_drained_emitted = False
+        if clear_telemetry:
+            self._live_mm_telemetry = None
+        if restore is not None:
+            self._apply_live_mm_coordinates(restore)
+        else:
+            self.update()
+
+    def set_live_mm_telemetry(self, payload: object | None) -> None:
+        self._live_mm_telemetry = dict(payload) if isinstance(payload, dict) else None
+        self.update()
+
+    def _apply_live_mm_coordinates(self, coordinates: CoordinateSet3D) -> None:
+        self.scene = scene_with_coordinates(self.scene, coordinates)
+        self._mesh_dirty = True
+        self.update()
+
+    def _advance_live_mm_playback(self) -> None:
+        started = time.perf_counter()
+        coordinates = self._live_mm_playback.sample(time.monotonic())
+        if coordinates is not None:
+            self._apply_live_mm_coordinates(coordinates)
+        if self._live_mm_telemetry is not None:
+            self._live_mm_telemetry["visual_interpolating"] = self._live_mm_playback.active
+            self._live_mm_telemetry["dropped_frames"] = self._live_mm_playback.dropped_frames
+        self._live_mm_tick_count += 1
+        self._live_mm_tick_total_s += time.perf_counter() - started
+        if self._live_mm_playback.drained:
+            self._complete_live_mm_playback()
+
+    def _complete_live_mm_playback(self) -> None:
+        self._live_mm_animation_timer.stop()
+        self._live_mm_playback_enabled = False
+        if self._live_mm_telemetry is not None:
+            self._live_mm_telemetry["visual_interpolating"] = False
+        self.update()
+        if not self._live_mm_drained_emitted:
+            self._live_mm_drained_emitted = True
+            self.liveMMPlaybackDrained.emit()
+
+    def _notify_geometry_edit_started(self) -> None:
+        if self._geometry_edit_notified:
+            return
+        self._geometry_edit_notified = True
+        self.geometryEditStarted.emit()
+        build_state = self._build_drag_state
+        if build_state is not None:
+            anchor = next(
+                (atom for atom in self.scene.atoms if atom.id == build_state.anchor_atom_id),
+                None,
+            )
+            if anchor is not None:
+                build_state.anchor_position = (
+                    float(anchor.x),
+                    float(anchor.y),
+                    float(anchor.z),
+                )
+        state = self._geometry_drag_state
+        if state is not None:
+            state.before = {
+                int(atom.id): (float(atom.x), float(atom.y), float(atom.z))
+                for atom in self.scene.atoms
+                if isinstance(atom.id, int)
+            }
+            state.latest = dict(state.before)
+            if state.geometry_operation is not None:
+                try:
+                    state.geometry_start_value = self._geometry_measurement(
+                        state.geometry_operation,
+                        state.geometry_atom_ids,
+                    )
+                except (KeyError, ValueError):
+                    state.geometry_start_value = None
+        derived_state = self._derived_hydrogen_drag_state
+        if derived_state is not None:
+            atom = next(
+                (item for item in self.scene.atoms if item.id == derived_state.atom_id),
+                None,
+            )
+            if atom is not None:
+                point = (float(atom.x), float(atom.y), float(atom.z))
+                derived_state.before = point
+                derived_state.latest = point
 
     @property
     def geometry_drag_active(self) -> bool:
@@ -312,6 +494,120 @@ class MolecularViewportWidget(QOpenGLWidget):
             "render_requested: escena enviada al renderer OpenGL; aceptación visual pendiente."
         )
         self._paint_geometry_handle()
+        self._paint_live_mm_hud()
+        self._paint_orientation_axes()
+        self._paint_orbit_guide()
+
+    def _paint_orientation_axes(self) -> None:
+        origin = QPoint(48, max(48, self.height() - 48))
+        painter = QPainter()
+        if not painter.begin(self):
+            return
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(QPen(QColor(170, 185, 198, 180), 1))
+        painter.setBrush(QBrush(QColor(12, 18, 26, 190)))
+        painter.drawEllipse(origin, 41, 41)
+        colors = {"X": QColor(245, 91, 91), "Y": QColor(87, 216, 156), "Z": QColor(93, 169, 246)}
+        length_pixels = 32.0
+        for label, screen_x, screen_y, _depth in project_camera_axes(self.camera):
+            end = QPoint(
+                origin.x() + round(screen_x * length_pixels),
+                origin.y() + round(screen_y * length_pixels),
+            )
+            color = colors[label]
+            painter.setPen(QPen(color, 2))
+            painter.drawLine(origin, end)
+            if end == origin:
+                painter.drawEllipse(origin, 3, 3)
+                label_position = origin + QPoint(7, -7)
+            else:
+                label_position = end + QPoint(4, -3)
+            painter.drawText(label_position, label)
+        painter.end()
+
+    def _paint_orbit_guide(self) -> None:
+        if not self._orbit_guide_active:
+            return
+        center_x, center_y = self.width() // 2, self.height() // 2
+        painter = QPainter()
+        if not painter.begin(self):
+            return
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(QPen(QColor(95, 205, 245, 210), 3))
+        painter.drawArc(center_x - 42, center_y - 42, 84, 84, 20 * 16, 125 * 16)
+        painter.drawArc(center_x - 42, center_y - 42, 84, 84, 200 * 16, 125 * 16)
+        painter.setPen(QPen(QColor(220, 240, 250, 230), 1))
+        painter.drawText(center_x - 48, center_y + 58, "Cámara · orbitar")
+        painter.end()
+
+    def _live_mm_hud_lines(self) -> tuple[str, ...] | None:
+        telemetry = self._live_mm_telemetry
+        if telemetry is None:
+            return None
+        forcefield = str(telemetry.get("forcefield", "RDKit"))
+        unit = str(telemetry.get("energy_unit", "kcal/mol"))
+        energy = telemetry.get("energy")
+        delta_energy = telemetry.get("delta_energy")
+        energy_text = (
+            f"{float(energy):.6f} {unit}"
+            if isinstance(energy, (int, float)) and math.isfinite(float(energy))
+            else "—"
+        )
+        delta_text = (
+            f"{float(delta_energy):+.6f} {unit}"
+            if isinstance(delta_energy, (int, float)) and math.isfinite(float(delta_energy))
+            else "—"
+        )
+
+        def telemetry_int(key: str) -> int:
+            value = telemetry.get(key, 0)
+            if isinstance(value, (int, float, str)):
+                try:
+                    return max(0, int(value))
+                except (TypeError, ValueError, OverflowError):
+                    return 0
+            return 0
+
+        step = telemetry_int("step")
+        max_steps = telemetry_int("max_steps")
+        fixed_count = telemetry_int("fixed_atom_count")
+        constraints = telemetry.get("constraints", {})
+        coordinate_unit = (
+            str(constraints.get("coordinate_unit", "Å"))
+            if isinstance(constraints, dict)
+            else "Å"
+        )
+        restriction_text = (
+            f"{fixed_count} átomos fijos · posiciones {coordinate_unit}"
+            if fixed_count
+            else "Restricciones: ninguna"
+        )
+        interpolation = bool(telemetry.get("visual_interpolating", False))
+        return (
+            f"Live MM · {forcefield}",
+            f"E {energy_text} · ΔE (muestras) {delta_text}",
+            f"Paso {step}/{max_steps} · {restriction_text}",
+            "Interpolación visual · gradiente no calculado"
+            if interpolation
+            else "ΔE entre muestras · gradiente no calculado",
+        )
+
+    def _paint_live_mm_hud(self) -> None:
+        lines = self._live_mm_hud_lines()
+        if lines is None:
+            return
+        width = min(max(300, self.width() - 24), 440)
+        painter = QPainter()
+        if not painter.begin(self):
+            return
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(QPen(QColor(220, 230, 238, 235), 1))
+        painter.setBrush(QBrush(QColor(12, 18, 26, 220)))
+        painter.drawRoundedRect(12, 12, width, 84, 6, 6)
+        painter.setPen(QPen(QColor(240, 245, 250, 245)))
+        for index, line in enumerate(lines):
+            painter.drawText(22, 31 + index * 16, line)
+        painter.end()
 
     def _paint_geometry_handle(self) -> None:
         handle = self._geometry_handle_screen_position()
@@ -354,6 +650,7 @@ class MolecularViewportWidget(QOpenGLWidget):
         *,
         preserve_interaction: bool = False,
     ) -> None:
+        self.cancel_live_mm_playback(clear_telemetry=scene is None)
         self._clear_build_preview()
         self.scene = scene or SceneMolecule3D(atoms=(), bonds=(), source="")
         self._scene_diagnostics = {
@@ -867,8 +1164,11 @@ class MolecularViewportWidget(QOpenGLWidget):
             self._commit_pending_build_click()
         self._last_mouse_position = event.position().toPoint()
         self._dragging = False
+        self._camera_drag_origin_empty = False
+        self._orbit_guide_active = False
         self._geometry_drag_state = None
         self._derived_hydrogen_drag_state = None
+        self._geometry_edit_notified = False
         self._clear_build_preview()
         self._press_hit = None
         left_edit = self.edit_mode and event.button() == Qt.MouseButton.LeftButton
@@ -895,6 +1195,7 @@ class MolecularViewportWidget(QOpenGLWidget):
             else:
                 hit = self._pick_at(position)
                 self._press_hit = hit
+                self._camera_drag_origin_empty = hit is None and event.button() == Qt.MouseButton.LeftButton
             if left_edit and not geometry_handle_started:
                 extend = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
                 if self.edit_tool == "geometry" and not extend:
@@ -998,6 +1299,11 @@ class MolecularViewportWidget(QOpenGLWidget):
                         depth_button=event.button(),
                     )
                     self._mark_manual_navigation()
+        elif event.button() == Qt.MouseButton.LeftButton:
+            position = event.position().toPoint()
+            hit = self._pick_at(position)
+            self._press_hit = hit
+            self._camera_drag_origin_empty = hit is None
         self.setFocus()
         event.accept()
 
@@ -1040,6 +1346,15 @@ class MolecularViewportWidget(QOpenGLWidget):
             return
         super().mouseDoubleClickEvent(event)
 
+    def _orbit_empty_space(self, delta: QPoint) -> None:
+        self.camera.orbit(delta.x(), delta.y(), max(1, self.height()))
+        self._mark_manual_navigation()
+        self._dragging = True
+        if not self._orbit_guide_active:
+            self.statusChanged.emit("Cámara · rotación desde espacio vacío; los átomos no se mueven.")
+        self._orbit_guide_active = True
+        self.update()
+
     def mouseMoveEvent(self, a0: QMouseEvent | None) -> None:
         if a0 is None:
             return
@@ -1060,12 +1375,19 @@ class MolecularViewportWidget(QOpenGLWidget):
             if build_state is not None:
                 total_delta = current - build_state.start_position
                 if abs(total_delta.x()) + abs(total_delta.y()) >= 4:
+                    starting_build_drag = not build_state.moved
                     build_state.current_position = current
                     build_state.moved = True
+                    self._notify_geometry_edit_started()
+                    if starting_build_drag:
+                        self.statusChanged.emit("Construcción 3D · previsualización esfera/enlace.")
                     self._update_build_preview(current)
                     self._dragging = True
             elif abs(delta.x()) + abs(delta.y()) >= 4:
-                self._dragging = True
+                if self._camera_drag_origin_empty:
+                    self._orbit_empty_space(delta)
+                else:
+                    self._dragging = True
             self._last_mouse_position = current
             event.accept()
             return
@@ -1074,7 +1396,11 @@ class MolecularViewportWidget(QOpenGLWidget):
             and self.edit_mode
             and self.edit_tool in {"select", "measure"}
         ):
-            self._dragging = self._dragging or abs(delta.x()) + abs(delta.y()) >= 4
+            if abs(delta.x()) + abs(delta.y()) >= 4:
+                if self._camera_drag_origin_empty:
+                    self._orbit_empty_space(delta)
+                else:
+                    self._dragging = True
             self._last_mouse_position = current
             event.accept()
             return
@@ -1110,6 +1436,10 @@ class MolecularViewportWidget(QOpenGLWidget):
                 except ValueError as exc:
                     self.statusChanged.emit(str(exc))
                     return
+                starting_atom_drag = not derived_state.moved
+                if starting_atom_drag:
+                    self._notify_geometry_edit_started()
+                    self.statusChanged.emit("Geometría · moviendo H derivado con su átomo padre.")
                 latest = add(derived_state.before, world_delta)
                 derived_state.latest = latest
                 derived_state.moved = True
@@ -1133,6 +1463,8 @@ class MolecularViewportWidget(QOpenGLWidget):
         ):
             total_delta = current - state.start_position
             if abs(total_delta.x()) + abs(total_delta.y()) >= 4:
+                if not state.moved:
+                    self._notify_geometry_edit_started()
                 start_value = state.geometry_start_value
                 if start_value is None:
                     self.statusChanged.emit("Handle geométrico sin valor inicial.")
@@ -1192,7 +1524,11 @@ class MolecularViewportWidget(QOpenGLWidget):
             except ValueError as exc:
                 self.statusChanged.emit(str(exc))
                 return
-            positions = dict(state.latest)
+            starting_atom_drag = not state.moved
+            if starting_atom_drag:
+                self._notify_geometry_edit_started()
+                self.statusChanged.emit("Geometría · moviendo átomo/fragmento en 3D.")
+            positions = dict(state.before)
             for atom_id in state.selected_atom_ids:
                 origin = state.before[atom_id]
                 positions[atom_id] = add(origin, world_delta)
@@ -1208,13 +1544,19 @@ class MolecularViewportWidget(QOpenGLWidget):
             return
         self._last_mouse_position = current
         if buttons & Qt.MouseButton.LeftButton:
-            self.camera.orbit(delta.x(), delta.y(), max(1, self.height()))
-            self._mark_manual_navigation()
-            self._dragging = True
+            if self._camera_drag_origin_empty:
+                self._orbit_empty_space(delta)
+            else:
+                self.camera.orbit(delta.x(), delta.y(), max(1, self.height()))
+                self._mark_manual_navigation()
+                self._dragging = True
+                self.statusChanged.emit("Cámara · orbitar; los átomos no se editan.")
         elif buttons & Qt.MouseButton.RightButton:
+            self._orbit_guide_active = False
             self.camera.pan(delta.x(), delta.y(), max(1, self.height()))
             self._mark_manual_navigation()
             self._dragging = True
+            self.statusChanged.emit("Cámara · desplazar.")
         if self._dragging:
             self.update()
         event.accept()
@@ -1225,12 +1567,18 @@ class MolecularViewportWidget(QOpenGLWidget):
         event = a0
         if event.button() == Qt.MouseButton.LeftButton and self._suppress_next_build_release:
             self._suppress_next_build_release = False
+            had_orbit_guide = self._orbit_guide_active
             self._last_mouse_position = None
             self._dragging = False
+            self._camera_drag_origin_empty = False
+            self._orbit_guide_active = False
+            self._geometry_edit_notified = False
             self._geometry_drag_state = None
             self._derived_hydrogen_drag_state = None
             self._clear_build_preview()
             self._press_hit = None
+            if had_orbit_guide:
+                self.update()
             event.accept()
             return
         position = event.position().toPoint()
@@ -1243,6 +1591,7 @@ class MolecularViewportWidget(QOpenGLWidget):
             if self.edit_mode and self.edit_tool in {"build", "bond"}:
                 build_state = self._build_drag_state
                 if build_state is not None and build_state.moved:
+                    build_edit_requested = False
                     hit = self._pick_at(position)
                     if hit is not None and hit.kind == "atom" and isinstance(
                         hit.primitive_id, int
@@ -1251,6 +1600,7 @@ class MolecularViewportWidget(QOpenGLWidget):
                             self.buildBondRequested.emit(
                                 (build_state.anchor_atom_id, hit.primitive_id)
                             )
+                            build_edit_requested = True
                     elif self.edit_tool == "build":
                         try:
                             world_point = self.camera.screen_to_world(
@@ -1267,8 +1617,11 @@ class MolecularViewportWidget(QOpenGLWidget):
                             self.buildPointRequested.emit(
                                 (self.build_element, world_point)
                             )
+                            build_edit_requested = True
                     else:
                         self.statusChanged.emit("La herramienta Enlazar requiere otro átomo.")
+                    if not build_edit_requested:
+                        self.geometryEditCancelled.emit()
                 elif not self._dragging:
                     hit = self._press_hit
                     if hit is not None and hit.kind == "atom" and isinstance(
@@ -1327,10 +1680,16 @@ class MolecularViewportWidget(QOpenGLWidget):
                 self._pick(position)
         self._last_mouse_position = None
         self._dragging = False
+        had_orbit_guide = self._orbit_guide_active
+        self._camera_drag_origin_empty = False
+        self._orbit_guide_active = False
+        self._geometry_edit_notified = False
         self._geometry_drag_state = None
         self._derived_hydrogen_drag_state = None
         self._clear_build_preview()
         self._press_hit = None
+        if had_orbit_guide:
+            self.update()
         event.accept()
 
     def wheelEvent(self, a0: QWheelEvent | None) -> None:
