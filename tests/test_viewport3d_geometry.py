@@ -169,3 +169,61 @@ def test_capsule_pick_handles_short_and_degenerate_segments() -> None:
 
     assert short == pytest.approx(0.75)
     assert degenerate == pytest.approx(0.75)
+
+
+def test_mesh_highlights_picked_derived_hydrogen_by_its_scene_id() -> None:
+    scene = SceneMolecule3D(
+        atoms=(
+            SceneAtom3D(1, "C", 0.0, 0.0, 0.0, 1.7, "#404040"),
+            SceneAtom3D("genH1", "H", 1.0, 0.0, 0.0, 1.2, "#FFFFFF", True, 1),
+        ),
+        bonds=(SceneBond3D("genB1", 1, "genH1"),),
+    )
+
+    mesh = build_scene_mesh(scene, selected_atom_id="genH1")
+    gold_vertices = sum(
+        tuple(mesh.vertices[index + 6 : index + 9]) == (1.0, 0.78, 0.12)
+        for index in range(0, len(mesh.vertices), 9)
+    )
+
+    assert gold_vertices == 20 * 10 * 6
+
+
+def test_mesh_highlights_picked_bond() -> None:
+    scene = SceneMolecule3D(
+        atoms=(
+            SceneAtom3D(1, "C", 0.0, 0.0, 0.0, 0.0, "#404040"),
+            SceneAtom3D(2, "C", 1.5, 0.0, 0.0, 0.0, "#404040"),
+        ),
+        bonds=(SceneBond3D(7, 1, 2),),
+    )
+
+    mesh = build_scene_mesh(scene, selected_bond_id=7)
+    colors = {
+        tuple(mesh.vertices[index + 6 : index + 9])
+        for index in range(0, len(mesh.vertices), 9)
+    }
+
+    assert mesh.vertex_count > 0
+    assert colors == {(1.0, 0.78, 0.12)}
+
+
+def test_mesh_highlights_multiple_selected_atoms_and_their_derived_hydrogens() -> None:
+    scene = SceneMolecule3D(
+        atoms=(
+            SceneAtom3D(1, "C", 0.0, 0.0, 0.0, 1.7, "#404040"),
+            SceneAtom3D(2, "O", 2.0, 0.0, 0.0, 1.52, "#FF0D0D"),
+            SceneAtom3D(
+                "genH1", "H", 0.0, 1.0, 0.0, 1.2, "#FFFFFF", True, 1
+            ),
+        ),
+        bonds=(),
+    )
+
+    mesh = build_scene_mesh(scene, selected_atom_ids=(1, 2))
+    colors = [
+        tuple(mesh.vertices[index + 6 : index + 9])
+        for index in range(0, len(mesh.vertices), 9)
+    ]
+
+    assert colors.count((1.0, 0.78, 0.12)) == 3 * 20 * 10 * 6

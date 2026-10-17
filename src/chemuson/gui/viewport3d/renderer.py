@@ -130,6 +130,7 @@ class MoleculeRenderer:
         selected_atom_id=None,
         selected_bond_id=None,
         representation="ball_and_stick",
+        selected_atom_ids=(),
     ) -> bool:
         if not self._initialized or self._vbo is None or self._vao is None or self._program is None:
             return False
@@ -140,6 +141,7 @@ class MoleculeRenderer:
             selected_atom_id,
             selected_bond_id,
             representation,
+            selected_atom_ids,
         )
         self._vertex_count = mesh.vertex_count
         self._vao.bind()

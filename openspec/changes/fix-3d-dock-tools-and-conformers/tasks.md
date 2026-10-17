@@ -9,11 +9,11 @@
 
 ## Hito B — Interacción y handles
 
-- [ ] B1. Highlight visible de selección de átomo(s), enlace y H derivado; selección múltiple ordenada y selección de fragmento.
-- [ ] B2. Incorporar cambio de elemento seleccionado mediante comando undoable y validar valencia/estructura antes de confirmar.
-- [ ] B3. Desplazamiento de profundidad, transformación de H derivados al mover fragmentos y navegación con modificadores documentados.
-- [ ] B4. Handles guiados undoables de longitud, ángulo y dihedro; rechazar ciclos/casos degenerados y restaurar preview con Escape.
-- [ ] B5. Tests de interacción/señales, valencia, cancelación, undo/redo para etano/etanol/butano; commit local Hito B.
+- [x] B1. Highlight visible de átomos documentales/derivados y enlaces; selección múltiple ordenada y selección de fragmento.
+- [x] B2. Incorporar cambio de elemento seleccionado mediante comando undoable y validar valencia/estructura antes de confirmar; cambio de orden de enlace mediante gesto entre extremos.
+- [x] B3. Desplazamiento en profundidad con Alt+arrastre o botón central; transformar H derivados al mover átomos/fragmentos; navegación con modificadores documentados.
+- [x] B4. Handles undoables de longitud, ángulo y dihedro; rechazar ciclos/geometrías degeneradas y restaurar preview con Escape.
+- [x] B5. Tests de interacción/señales, valencia, cancelación y undo/redo; etano/etanol/butano; commit local Hito B.
 
 ## Hito C — Generación robusta y diagnósticos
 

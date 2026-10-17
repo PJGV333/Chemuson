@@ -125,3 +125,31 @@ def test_screen_world_mapping_matches_perspective_and_orthographic_scale() -> No
         600.0, 500.0, 1000.0, 1000.0, plane_point=(0.0, 0.0, 0.0)
     )
     assert world == pytest.approx((2.0, 0.0, 0.0), abs=1.0e-8)
+
+
+def test_world_to_screen_round_trips_perspective_and_orthographic_points() -> None:
+    point = (2.0, 1.0, 0.0)
+    for projection in (CameraProjection.PERSPECTIVE, CameraProjection.ORTHOGRAPHIC):
+        camera = CameraState(
+            target=(0.0, 0.0, 0.0),
+            distance=10.0,
+            yaw=0.0,
+            pitch=0.0,
+            fov_y_degrees=90.0,
+            ortho_scale=20.0,
+            projection=projection,
+        )
+
+        screen = camera.world_to_screen(point, 1000.0, 1000.0)
+
+        assert screen is not None
+        assert camera.screen_to_world(
+            *screen, 1000.0, 1000.0, plane_point=(0.0, 0.0, 0.0)
+        ) == pytest.approx(point)
+
+
+def test_world_to_screen_rejects_invalid_viewport_and_hides_points_behind_camera() -> None:
+    camera = CameraState(target=(0.0, 0.0, 0.0), distance=10.0, yaw=0.0, pitch=0.0)
+    with pytest.raises(ValueError, match="[Vv]iewport"):
+        camera.world_to_screen((0.0, 0.0, 0.0), 1000.0, 0.0)
+    assert camera.world_to_screen((0.0, 0.0, 20.0), 1000.0, 1000.0) is None

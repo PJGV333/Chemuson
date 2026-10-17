@@ -5,7 +5,8 @@ from __future__ import annotations
 import math
 
 import pytest
-from PyQt6.QtCore import QEventLoop, QTimer
+from PyQt6.QtCore import QEvent, QEventLoop, QPointF, Qt, QTimer
+from PyQt6.QtGui import QKeyEvent, QMouseEvent
 from PyQt6.QtWidgets import QApplication, QFileDialog, QMessageBox
 
 
@@ -670,6 +671,130 @@ def test_3d_builder_respects_selected_double_bond_order() -> None:
         window.close()
 
 
+@pytest.mark.parametrize(
+    ("name", "elements"),
+    (
+        ("ethane", ("C", "C")),
+        ("ethanol", ("C", "C", "O")),
+        ("butane", ("C", "C", "C", "C")),
+    ),
+)
+def test_simple_molecules_can_be_selected_and_moved_without_manual_atom_ids(
+    monkeypatch, name, elements
+) -> None:
+    from chemuson.geometry3d.model import scene_molecule_from_graph
+    from chemuson.gui.viewport3d.picking import PickResult
+
+    window = ChemusonWindow()
+    try:
+        graph = MolGraph()
+        atoms = [
+            graph.add_atom(element, index * 42.0, 0.0)
+            for index, element in enumerate(elements)
+        ]
+        for first, second in zip(atoms, atoms[1:]):
+            graph.add_bond(first.id, second.id)
+        window.canvas.model = graph
+        window.canvas._rebuild_items_from_model()
+        original_positions = {
+            atom.id: (index * 1.5, (index % 2) * 0.2, 0.0)
+            for index, atom in enumerate(atoms)
+        }
+        last = atoms[-1]
+        original = CoordinateSet3D(
+            original_positions,
+            source="test",
+            method="manual",
+            metadata={
+                "generated_atoms": [
+                    {
+                        "id": f"genH-{name}",
+                        "element": "H",
+                        "coords": [original_positions[last.id][0], 1.0, 0.0],
+                    }
+                ],
+                "generated_bonds": [
+                    {
+                        "id": f"genB-{name}",
+                        "a1_id": last.id,
+                        "a2_id": f"genH-{name}",
+                        "order": 1,
+                    }
+                ],
+            },
+        )
+        window.canvas.set_geometry3d_coordinates(original)
+        viewport = window.viewport3d_dock.viewport
+        viewport.resize(1000, 800)
+        viewport.set_scene(scene_molecule_from_graph(graph, original))
+        viewport.set_edit_mode(True)
+        viewport.set_edit_tool("move")
+        monkeypatch.setattr(
+            "chemuson.gui.viewport3d.widget.pick_scene",
+            lambda *_args: PickResult("atom", atoms[0].id, 1.0),
+        )
+        start = QPointF(400.0, 300.0)
+        end = QPointF(460.0, 330.0)
+        viewport.mousePressEvent(
+            QMouseEvent(
+                QEvent.Type.MouseButtonPress,
+                start,
+                Qt.MouseButton.LeftButton,
+                Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.ControlModifier,
+            )
+        )
+        assert set(viewport.selected_atom_ids) == {atom.id for atom in atoms}
+        viewport.mouseMoveEvent(
+            QMouseEvent(
+                QEvent.Type.MouseMove,
+                end,
+                Qt.MouseButton.NoButton,
+                Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.ControlModifier,
+            )
+        )
+        viewport.mouseReleaseEvent(
+            QMouseEvent(
+                QEvent.Type.MouseButtonRelease,
+                end,
+                Qt.MouseButton.LeftButton,
+                Qt.MouseButton.NoButton,
+                Qt.KeyboardModifier.ControlModifier,
+            )
+        )
+
+        updated = window.canvas.coordinate_set_3d
+        assert updated is not None, name
+        deltas = [
+            tuple(
+                updated.positions[atom.id][axis] - original_positions[atom.id][axis]
+                for axis in range(3)
+            )
+            for atom in atoms
+        ]
+        assert all(delta == pytest.approx(deltas[0]) for delta in deltas)
+        generated_atoms = updated.metadata.get("generated_atoms")
+        assert isinstance(generated_atoms, list) and generated_atoms
+        generated = generated_atoms[0]
+        assert isinstance(generated, dict)
+        generated_delta = tuple(
+            generated["coords"][axis] - original.metadata["generated_atoms"][0]["coords"][axis]
+            for axis in range(3)
+        )
+        assert generated_delta == pytest.approx(deltas[0])
+        assert window.canvas.undo_stack.count() == 1
+        window.canvas.undo_stack.undo()
+        assert window.canvas.coordinate_set_3d == original
+        window.canvas.undo_stack.redo()
+        assert window.canvas.coordinate_set_3d == updated
+        window.canvas.undo_stack.setClean()
+    finally:
+        window._close_approved = True
+        window._async_shutdown_complete = True
+        window.close()
+
+
 def test_3d_geometry_preview_keeps_and_moves_derived_hydrogens() -> None:
     from chemuson.geometry3d.model import scene_molecule_from_graph
 
@@ -1149,6 +1274,499 @@ def test_dihedral_edit_preserves_rigid_generated_hydrogen_transform() -> None:
         window.canvas.undo_stack.redo()
         assert window.canvas.coordinate_set_3d == committed
     finally:
+        window._close_approved = True
+        window._async_shutdown_complete = True
+        window.close()
+
+
+@pytest.mark.parametrize(
+    ("operation", "atom_ids", "delta_x", "delta_y", "target"),
+    (
+        ("bond_length", (1, 2), 0.0, -50.0, math.sqrt(2.0) + 0.5),
+        ("bond_angle", (1, 2, 3), 0.0, -20.0, 145.0),
+        ("dihedral", (1, 2, 3, 4), 40.0, 0.0, 110.0),
+    ),
+)
+def test_geometry_handles_adjust_length_angle_and_dihedral(
+    monkeypatch, operation, atom_ids, delta_x, delta_y, target
+) -> None:
+    from chemuson.geometry3d import editing
+    from chemuson.geometry3d.model import scene_molecule_from_graph
+    from chemuson.gui.viewport3d.picking import PickResult
+
+    window = ChemusonWindow()
+    try:
+        graph = MolGraph()
+        for index in range(4):
+            graph.add_atom("C", index * 42.0, 0.0, atom_id=index + 1)
+        for atom_id in range(1, 4):
+            graph.add_bond(atom_id, atom_id + 1)
+        window.canvas.model = graph
+        window.canvas._rebuild_items_from_model()
+        original = CoordinateSet3D(
+            {
+                1: (0.0, 1.0, 0.0),
+                2: (1.0, 0.0, 0.0),
+                3: (2.0, 0.0, 0.0),
+                4: (3.0, 0.0, 1.0),
+            },
+            source="test",
+            method="manual",
+            metadata={
+                "generated_atoms": [
+                    {"id": "genH4", "element": "H", "coords": [3.0, 1.0, 1.0]}
+                ],
+                "generated_bonds": [
+                    {"id": "genB4", "a1_id": 4, "a2_id": "genH4", "order": 1}
+                ],
+            },
+        )
+        if operation == "bond_length":
+            bond = graph.find_bond_between(*atom_ids)
+            assert bond is not None
+            expected = editing.set_bond_length(
+                graph, original, bond.id, target, moving_endpoint_id=atom_ids[-1]
+            )
+        elif operation == "bond_angle":
+            expected = editing.set_bond_angle(
+                graph, original, atom_ids, target, moving_terminal_id=atom_ids[-1]
+            )
+        else:
+            expected = editing.set_dihedral(
+                graph, original, atom_ids, target, moving_endpoint_id=atom_ids[2]
+            )
+        window.canvas.set_geometry3d_coordinates(original)
+        viewport = window.viewport3d_dock.viewport
+        viewport.resize(1000, 800)
+        viewport.set_scene(scene_molecule_from_graph(graph, original))
+        viewport.set_edit_mode(True)
+        viewport.set_edit_tool("geometry")
+        viewport.set_geometry_operation(operation)
+        hit_ids = iter(atom_ids)
+        monkeypatch.setattr(
+            "chemuson.gui.viewport3d.widget.pick_scene",
+            lambda *_args: PickResult("atom", next(hit_ids), 1.0),
+        )
+
+        for index, atom_id in enumerate(atom_ids):
+            point = QPointF(100.0 + index * 30.0, 100.0)
+            modifiers = (
+                Qt.KeyboardModifier.NoModifier
+                if index == 0
+                else Qt.KeyboardModifier.ShiftModifier
+            )
+            viewport.mousePressEvent(
+                QMouseEvent(
+                    QEvent.Type.MouseButtonPress,
+                    point,
+                    Qt.MouseButton.LeftButton,
+                    Qt.MouseButton.LeftButton,
+                    modifiers,
+                )
+            )
+            viewport.mouseReleaseEvent(
+                QMouseEvent(
+                    QEvent.Type.MouseButtonRelease,
+                    point,
+                    Qt.MouseButton.LeftButton,
+                    Qt.MouseButton.NoButton,
+                    modifiers,
+                )
+            )
+
+        handle = viewport._geometry_handle_screen_position()
+        assert handle is not None
+        start = QPointF(handle.x(), handle.y())
+        end = QPointF(handle.x() + delta_x, handle.y() + delta_y)
+        viewport.mousePressEvent(
+            QMouseEvent(
+                QEvent.Type.MouseButtonPress,
+                start,
+                Qt.MouseButton.LeftButton,
+                Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.NoModifier,
+            )
+        )
+        viewport.mouseMoveEvent(
+            QMouseEvent(
+                QEvent.Type.MouseMove,
+                end,
+                Qt.MouseButton.NoButton,
+                Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.NoModifier,
+            )
+        )
+        expected_unit = "Å" if operation == "bond_length" else "°"
+        assert expected_unit in window.viewport3d_dock.status_label.text()
+        viewport.mouseReleaseEvent(
+            QMouseEvent(
+                QEvent.Type.MouseButtonRelease,
+                end,
+                Qt.MouseButton.LeftButton,
+                Qt.MouseButton.NoButton,
+                Qt.KeyboardModifier.NoModifier,
+            )
+        )
+
+        updated = window.canvas.coordinate_set_3d
+        assert updated is not None
+        measure = {
+            "bond_length": editing.distance,
+            "bond_angle": editing.angle_degrees,
+            "dihedral": editing.dihedral_degrees,
+        }[operation]
+        assert measure(updated, *atom_ids) == pytest.approx(target, abs=1.0e-4)
+        actual_hydrogens = updated.metadata.get("generated_atoms")
+        expected_hydrogens = expected.metadata.get("generated_atoms")
+        assert isinstance(actual_hydrogens, list) and actual_hydrogens
+        assert isinstance(expected_hydrogens, list) and expected_hydrogens
+        actual_hydrogen = actual_hydrogens[0]
+        expected_hydrogen = expected_hydrogens[0]
+        assert isinstance(actual_hydrogen, dict)
+        assert isinstance(expected_hydrogen, dict)
+        assert actual_hydrogen["coords"] == pytest.approx(expected_hydrogen["coords"])
+        assert window.canvas.undo_stack.count() == 1
+        window.canvas.undo_stack.setClean()
+    finally:
+        window._close_approved = True
+        window._async_shutdown_complete = True
+        window.close()
+
+
+def test_geometry_handle_rejects_degenerate_bond_without_mutating_coordinates(
+    monkeypatch,
+) -> None:
+    from chemuson.geometry3d.model import scene_molecule_from_graph
+    from chemuson.gui.viewport3d.picking import PickResult
+
+    window = ChemusonWindow()
+    try:
+        graph = MolGraph()
+        graph.add_atom("C", 0.0, 0.0, atom_id=1)
+        graph.add_atom("C", 42.0, 0.0, atom_id=2)
+        graph.add_bond(1, 2)
+        window.canvas.model = graph
+        window.canvas._rebuild_items_from_model()
+        original = CoordinateSet3D(
+            {1: (0.0, 0.0, 0.0), 2: (0.0, 0.0, 0.0)},
+            source="test",
+            method="manual",
+        )
+        window.canvas.set_geometry3d_coordinates(original)
+        viewport = window.viewport3d_dock.viewport
+        viewport.resize(1000, 800)
+        viewport.set_scene(scene_molecule_from_graph(graph, original))
+        viewport.set_edit_mode(True)
+        viewport.set_edit_tool("geometry")
+        viewport.set_geometry_operation("bond_length")
+        hits = iter(
+            (
+                PickResult("atom", 1, 1.0),
+                PickResult("atom", 2, 1.0),
+                None,
+            )
+        )
+        monkeypatch.setattr(
+            "chemuson.gui.viewport3d.widget.pick_scene",
+            lambda *_args: next(hits),
+        )
+        for index, modifiers in (
+            (0, Qt.KeyboardModifier.NoModifier),
+            (1, Qt.KeyboardModifier.ShiftModifier),
+        ):
+            point = QPointF(100.0 + index * 30.0, 100.0)
+            viewport.mousePressEvent(
+                QMouseEvent(
+                    QEvent.Type.MouseButtonPress,
+                    point,
+                    Qt.MouseButton.LeftButton,
+                    Qt.MouseButton.LeftButton,
+                    modifiers,
+                )
+            )
+            viewport.mouseReleaseEvent(
+                QMouseEvent(
+                    QEvent.Type.MouseButtonRelease,
+                    point,
+                    Qt.MouseButton.LeftButton,
+                    Qt.MouseButton.NoButton,
+                    modifiers,
+                )
+            )
+        handle = viewport._geometry_handle_screen_position()
+        assert handle is not None
+        start = QPointF(handle.x(), handle.y())
+        end = QPointF(handle.x(), handle.y() - 20.0)
+        history = (window.canvas.undo_stack.count(), window.canvas.undo_stack.index())
+
+        viewport.mousePressEvent(
+            QMouseEvent(
+                QEvent.Type.MouseButtonPress,
+                start,
+                Qt.MouseButton.LeftButton,
+                Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.NoModifier,
+            )
+        )
+        viewport.mouseMoveEvent(
+            QMouseEvent(
+                QEvent.Type.MouseMove,
+                end,
+                Qt.MouseButton.NoButton,
+                Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.NoModifier,
+            )
+        )
+        viewport.mouseReleaseEvent(
+            QMouseEvent(
+                QEvent.Type.MouseButtonRelease,
+                end,
+                Qt.MouseButton.LeftButton,
+                Qt.MouseButton.NoButton,
+                Qt.KeyboardModifier.NoModifier,
+            )
+        )
+
+        assert not viewport.geometry_drag_active
+        assert window.canvas.coordinate_set_3d == original
+        assert (window.canvas.undo_stack.count(), window.canvas.undo_stack.index()) == history
+        assert "geometría degenerada" in window.viewport3d_dock.status_label.text().lower()
+    finally:
+        window.canvas.undo_stack.setClean()
+        window._close_approved = True
+        window._async_shutdown_complete = True
+        window.close()
+
+
+def test_geometry_handle_rejects_cycle_without_mutating_coordinates(monkeypatch) -> None:
+    from chemuson.geometry3d.model import scene_molecule_from_graph
+
+    window = ChemusonWindow()
+    try:
+        graph = MolGraph()
+        for atom_id, point in enumerate(((0.0, 0.0, 0.0), (1.5, 0.0, 0.0), (0.75, 1.3, 0.0)), 1):
+            graph.add_atom("C", point[0] * 42.0, point[1] * 42.0, atom_id=atom_id)
+        graph.add_bond(1, 2)
+        graph.add_bond(2, 3)
+        graph.add_bond(3, 1)
+        window.canvas.model = graph
+        window.canvas._rebuild_items_from_model()
+        original = CoordinateSet3D(
+            {1: (0.0, 0.0, 0.0), 2: (1.5, 0.0, 0.0), 3: (0.75, 1.3, 0.0)},
+            source="test",
+            method="manual",
+        )
+        window.canvas.set_geometry3d_coordinates(original)
+        viewport = window.viewport3d_dock.viewport
+        viewport.resize(1000, 800)
+        viewport.set_scene(scene_molecule_from_graph(graph, original))
+        viewport.set_edit_mode(True)
+        viewport.set_edit_tool("geometry")
+        viewport.set_geometry_operation("bond_length")
+        from chemuson.gui.viewport3d.picking import PickResult
+
+        hit_ids = iter((1, 2))
+        monkeypatch.setattr(
+            "chemuson.gui.viewport3d.widget.pick_scene",
+            lambda *_args: PickResult("atom", next(hit_ids), 1.0),
+        )
+        for index, modifiers in (
+            (0, Qt.KeyboardModifier.NoModifier),
+            (1, Qt.KeyboardModifier.ShiftModifier),
+        ):
+            point = QPointF(100.0 + index * 30.0, 100.0)
+            viewport.mousePressEvent(
+                QMouseEvent(
+                    QEvent.Type.MouseButtonPress,
+                    point,
+                    Qt.MouseButton.LeftButton,
+                    Qt.MouseButton.LeftButton,
+                    modifiers,
+                )
+            )
+            viewport.mouseReleaseEvent(
+                QMouseEvent(
+                    QEvent.Type.MouseButtonRelease,
+                    point,
+                    Qt.MouseButton.LeftButton,
+                    Qt.MouseButton.NoButton,
+                    modifiers,
+                )
+            )
+        handle = viewport._geometry_handle_screen_position()
+        assert handle is not None
+        start = QPointF(handle.x(), handle.y())
+        end = QPointF(handle.x(), handle.y() - 20.0)
+        viewport.mousePressEvent(
+            QMouseEvent(
+                QEvent.Type.MouseButtonPress,
+                start,
+                Qt.MouseButton.LeftButton,
+                Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.NoModifier,
+            )
+        )
+        viewport.mouseMoveEvent(
+            QMouseEvent(
+                QEvent.Type.MouseMove,
+                end,
+                Qt.MouseButton.NoButton,
+                Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.NoModifier,
+            )
+        )
+        viewport.mouseReleaseEvent(
+            QMouseEvent(
+                QEvent.Type.MouseButtonRelease,
+                end,
+                Qt.MouseButton.LeftButton,
+                Qt.MouseButton.NoButton,
+                Qt.KeyboardModifier.NoModifier,
+            )
+        )
+
+        assert window.canvas.coordinate_set_3d == original
+        assert window.canvas.undo_stack.count() == 0
+        assert "ciclo" in window.viewport3d_dock.status_label.text().lower()
+    finally:
+        window.canvas.undo_stack.setClean()
+        window._close_approved = True
+        window._async_shutdown_complete = True
+        window.close()
+
+
+def test_viewport_geometry_handle_commits_once_and_escape_discards_preview(monkeypatch) -> None:
+    from chemuson.geometry3d import editing
+    from chemuson.geometry3d.model import scene_molecule_from_graph
+    from chemuson.gui.viewport3d.picking import PickResult
+
+    window = ChemusonWindow()
+    try:
+        graph = _chain_graph()
+        window.canvas.model = graph
+        window.canvas._rebuild_items_from_model()
+        original = CoordinateSet3D(
+            {
+                1: (0.0, 0.0, 0.0),
+                2: (1.5, 0.0, 0.0),
+                3: (2.5, 1.0, 0.0),
+            },
+            source="test",
+            method="manual",
+        )
+        window.canvas.set_geometry3d_coordinates(original)
+        viewport = window.viewport3d_dock.viewport
+        viewport.resize(1000, 800)
+        viewport.set_scene(scene_molecule_from_graph(graph, original))
+        viewport.set_edit_mode(True)
+        viewport.set_edit_tool("geometry")
+        viewport.set_geometry_operation("bond_length")
+        hit_ids = iter((1, 2))
+        monkeypatch.setattr(
+            "chemuson.gui.viewport3d.widget.pick_scene",
+            lambda *_args: PickResult("atom", next(hit_ids), 1.0),
+        )
+
+        for atom_index, modifiers in (
+            (0, Qt.KeyboardModifier.NoModifier),
+            (1, Qt.KeyboardModifier.ShiftModifier),
+        ):
+            point = QPointF(100.0 + atom_index * 100.0, 100.0)
+            viewport.mousePressEvent(
+                QMouseEvent(
+                    QEvent.Type.MouseButtonPress,
+                    point,
+                    Qt.MouseButton.LeftButton,
+                    Qt.MouseButton.LeftButton,
+                    modifiers,
+                )
+            )
+            viewport.mouseReleaseEvent(
+                QMouseEvent(
+                    QEvent.Type.MouseButtonRelease,
+                    point,
+                    Qt.MouseButton.LeftButton,
+                    Qt.MouseButton.NoButton,
+                    modifiers,
+                )
+            )
+
+        handle = viewport._geometry_handle_screen_position()
+        assert handle is not None
+        start = QPointF(handle.x(), handle.y())
+        end = QPointF(handle.x(), handle.y() - 50.0)
+        viewport.mousePressEvent(
+            QMouseEvent(
+                QEvent.Type.MouseButtonPress,
+                start,
+                Qt.MouseButton.LeftButton,
+                Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.NoModifier,
+            )
+        )
+        viewport.mouseMoveEvent(
+            QMouseEvent(
+                QEvent.Type.MouseMove,
+                end,
+                Qt.MouseButton.NoButton,
+                Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.NoModifier,
+            )
+        )
+        viewport.mouseReleaseEvent(
+            QMouseEvent(
+                QEvent.Type.MouseButtonRelease,
+                end,
+                Qt.MouseButton.LeftButton,
+                Qt.MouseButton.NoButton,
+                Qt.KeyboardModifier.NoModifier,
+            )
+        )
+
+        committed = window.canvas.coordinate_set_3d
+        assert committed is not None
+        assert editing.distance(committed, 1, 2) == pytest.approx(2.0, abs=1.0e-4)
+        assert window.canvas.undo_stack.count() == 1
+        window.canvas.undo_stack.undo()
+        assert window.canvas.coordinate_set_3d == original
+        window.canvas.undo_stack.redo()
+        assert window.canvas.coordinate_set_3d == committed
+
+        handle = viewport._geometry_handle_screen_position()
+        assert handle is not None
+        start = QPointF(handle.x(), handle.y())
+        end = QPointF(handle.x(), handle.y() - 20.0)
+        viewport.mousePressEvent(
+            QMouseEvent(
+                QEvent.Type.MouseButtonPress,
+                start,
+                Qt.MouseButton.LeftButton,
+                Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.NoModifier,
+            )
+        )
+        viewport.mouseMoveEvent(
+            QMouseEvent(
+                QEvent.Type.MouseMove,
+                end,
+                Qt.MouseButton.NoButton,
+                Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.NoModifier,
+            )
+        )
+        viewport.keyPressEvent(
+            QKeyEvent(
+                QEvent.Type.KeyPress,
+                Qt.Key.Key_Escape,
+                Qt.KeyboardModifier.NoModifier,
+            )
+        )
+
+        assert window.canvas.coordinate_set_3d == committed
+        assert window.canvas.undo_stack.count() == 1
+        assert window._compchem_preview_coordset is None
+    finally:
+        window.canvas.undo_stack.setClean()
         window._close_approved = True
         window._async_shutdown_complete = True
         window.close()

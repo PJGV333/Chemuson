@@ -121,6 +121,9 @@ def assemble_application_shell(self) -> None:
     self._molecular_assistant_transform_jobs: dict[int, object] = {}
     self._compchem_coordset = None
     self._compchem_preview_coordset = None
+    self._geometry_handle_base_canvas = None
+    self._geometry_handle_base_coordset = None
+    self._geometry_handle_operation = None
     self._latest_compchem_job_id = 0
     self._compchem_job_backends: dict[int, str] = {}
     self._compchem_job_operations: dict[int, str] = {}
@@ -271,8 +274,17 @@ def assemble_application_shell(self) -> None:
     self.viewport3d_dock.geometryConstraintRequested.connect(
         self._on_geometry_constraint_requested
     )
+    self.viewport3d_dock.atomElementChangeRequested.connect(
+        self._on_viewport_atom_element_change
+    )
     self.viewport3d_dock.viewport.geometryPreviewChanged.connect(
         self._on_viewport_geometry_preview
+    )
+    self.viewport3d_dock.viewport.geometryHandleStarted.connect(
+        self._on_geometry_handle_started
+    )
+    self.viewport3d_dock.viewport.geometryHandlePreviewRequested.connect(
+        self._on_geometry_handle_preview_requested
     )
     self.viewport3d_dock.viewport.geometryEditCommitted.connect(
         self._on_viewport_geometry_committed

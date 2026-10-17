@@ -31,6 +31,7 @@ class MolecularViewportDock(QDockWidget):
 
     liveMMToggled = pyqtSignal(bool)
     geometryConstraintRequested = pyqtSignal(str, object, float)
+    atomElementChangeRequested = pyqtSignal(int, str)
 
     def __init__(self, parent=None) -> None:
         super().__init__("Visor molecular 3D", parent)
@@ -61,6 +62,7 @@ class MolecularViewportDock(QDockWidget):
         self.tool_combo.addItem("Seleccionar", "select")
         self.tool_combo.addItem("Enlazar átomos", "bond")
         self.tool_combo.addItem("Medir geometría", "measure")
+        self.tool_combo.addItem("Ajustar geometría (handles)", "geometry")
         self.tool_buttons: dict[str, QToolButton] = {}
         self.tool_button_group = QButtonGroup(container)
         self.tool_button_group.setExclusive(True)
@@ -68,9 +70,10 @@ class MolecularViewportDock(QDockWidget):
         for tool, label, shortcut, description in (
             ("select", "Sel", "S", "Seleccionar átomo o enlace"),
             ("build", "Dib", "D", "Dibujar átomos y enlaces"),
-            ("move", "Mov", "M", "Mover átomo o fragmento"),
+            ("move", "Mov", "M", "Mover átomo/fragmento; Alt+arrastrar o botón central desplaza en profundidad"),
             ("bond", "Enl", "B", "Crear o cambiar enlaces"),
             ("measure", "Med", "R", "Medir distancia, ángulo o dihedro"),
+            ("geometry", "Geo", "G", "Ajustar longitud, ángulo o dihedro con handles"),
         ):
             button = QToolButton(container)
             button.setText(label)
@@ -93,6 +96,7 @@ class MolecularViewportDock(QDockWidget):
         tool_row.addWidget(self.fit_view_button)
         self.element_combo = QComboBox()
         self.element_combo.addItems(("C", "N", "O", "F", "P", "S", "Cl", "Br", "I"))
+        self.change_element_button = QPushButton("Cambiar elemento seleccionado")
         self.bond_order_combo = QComboBox()
         self.bond_order_combo.addItem("Sencillo", 1)
         self.bond_order_combo.addItem("Doble", 2)
@@ -108,6 +112,7 @@ class MolecularViewportDock(QDockWidget):
         self.live_forcefield_combo.addItem("UFF", "UFF")
         controls.addRow("Herramienta", self.tool_combo)
         controls.addRow("Elemento nuevo", self.element_combo)
+        controls.addRow(self.change_element_button)
         controls.addRow("Enlace nuevo", self.bond_order_combo)
         controls.addRow("Representación", self.representation_combo)
         controls.addRow("Campo Live MM", self.live_forcefield_combo)
@@ -122,14 +127,23 @@ class MolecularViewportDock(QDockWidget):
         self.target_value.setRange(0.1, 5.0)
         self.target_value.setValue(1.5)
         self.apply_constraint_button = QPushButton("Aplicar geometría")
+        self.geometry_hint_label = QLabel(
+            "Handles: seleccione 2/3/4 átomos en orden con Shift y arrastre el mando."
+        )
+        self.geometry_hint_label.setWordWrap(True)
         controls.addRow("Parámetro", self.constraint_combo)
         controls.addRow("Átomos", self.atom_ids_edit)
         controls.addRow("Objetivo", self.target_value)
         controls.addRow(self.apply_constraint_button)
+        controls.addRow(self.geometry_hint_label)
         self.advanced_controls_panel.setVisible(False)
         self.advanced_controls_button.toggled.connect(self._set_advanced_controls_visible)
         self.constraint_combo.currentIndexChanged.connect(self._update_target_range)
+        self.constraint_combo.currentIndexChanged.connect(self._set_geometry_operation)
         self.apply_constraint_button.clicked.connect(self._emit_geometry_constraint)
+        self.change_element_button.clicked.connect(
+            self._request_selected_atom_element_change
+        )
         self.edit_mode_checkbox.toggled.connect(self.viewport.set_edit_mode)
         self.viewport.editToolChanged.connect(self._sync_tool_controls)
         self.viewport.editModeChanged.connect(self._sync_edit_mode_controls)
@@ -270,6 +284,9 @@ class MolecularViewportDock(QDockWidget):
     def _set_representation(self, _index: int) -> None:
         self.viewport.set_representation(str(self.representation_combo.currentData()))
 
+    def _set_geometry_operation(self, _index: int) -> None:
+        self.viewport.set_geometry_operation(str(self.constraint_combo.currentData()))
+
     def _set_edit_tool(self, _index: int) -> None:
         tool = str(self.tool_combo.currentData())
         self.viewport.set_edit_tool(tool)
@@ -311,6 +328,13 @@ class MolecularViewportDock(QDockWidget):
             self.target_value.setRange(-180.0, 180.0)
             self.target_value.setSingleStep(5.0)
             self.target_value.setValue(180.0)
+
+    def _request_selected_atom_element_change(self) -> None:
+        atom_id = self.viewport.selected_atom_id
+        if not isinstance(atom_id, int):
+            self.set_status("Seleccione un átomo documental para cambiar su elemento.")
+            return
+        self.atomElementChangeRequested.emit(atom_id, self.element_combo.currentText())
 
     def _emit_geometry_constraint(self) -> None:
         try:

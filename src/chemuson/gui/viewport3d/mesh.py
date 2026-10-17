@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
-from typing import Any
+from typing import Any, Sequence
 
 from .geometry import (
     ATOM_RADIUS_SCALE,
@@ -225,8 +225,10 @@ def build_scene_mesh(
     selected_atom_id: int | str | None = None,
     selected_bond_id: int | str | None = None,
     representation: str = "ball_and_stick",
+    selected_atom_ids: Sequence[int] = (),
 ) -> MeshData:
     style = normalize_representation(representation)
+    selected_ids = set(selected_atom_ids)
     output: list[float] = []
     atoms = {atom.id: atom for atom in getattr(scene, "atoms", ())}
     bonds = tuple(getattr(scene, "bonds", ()))
@@ -243,7 +245,15 @@ def build_scene_mesh(
             radius = float(getattr(atom, "radius", 0.0))
         else:
             radius = float(getattr(atom, "radius", 0.0)) * ATOM_RADIUS_SCALE
-        color = _selected_color() if atom.id == selected_atom_id else _color(atom.color)
+        is_selected = (
+            atom.id == selected_atom_id
+            or atom.id in selected_ids
+            or (
+                bool(getattr(atom, "generated", False))
+                and getattr(atom, "parent_atom_id", None) in selected_ids
+            )
+        )
+        color = _selected_color() if is_selected else _color(atom.color)
         _append_sphere(output, center, radius, color)
     for bond in bonds:
         start_atom = atoms.get(bond.a1_id)

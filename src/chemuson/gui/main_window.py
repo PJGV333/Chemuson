@@ -1337,6 +1337,119 @@ class ChemusonWindow(QMainWindow):
         ):
             self._start_live_mm_job()
 
+    def _on_geometry_handle_started(self, operation: str, atom_ids: object) -> None:
+        canvas = getattr(self, "canvas", None)
+        if canvas is None or canvas.geometry3d_is_stale:
+            self._clear_geometry_handle_state()
+            self.viewport3d_dock.set_status("La geometría 3D no está disponible para editar.")
+            return
+        coordinates = self._compchem_preview_coordset or canvas.coordinate_set_3d
+        if not isinstance(coordinates, CoordinateSet3D):
+            self._clear_geometry_handle_state()
+            self.viewport3d_dock.set_status("No hay coordenadas 3D editables.")
+            return
+        try:
+            if not isinstance(atom_ids, (tuple, list)):
+                raise ValueError("La selección de átomos no es válida.")
+            ids = tuple(int(atom_id) for atom_id in atom_ids)
+            expected = {"bond_length": 2, "bond_angle": 3, "dihedral": 4}[operation]
+            if len(ids) != expected or any(atom_id not in canvas.model.atoms for atom_id in ids):
+                raise ValueError("La selección geométrica no coincide con el parámetro elegido.")
+            positions = coordinates.normalized_positions()
+            if any(atom_id not in positions for atom_id in ids):
+                raise ValueError("Faltan coordenadas para los átomos seleccionados.")
+        except (KeyError, TypeError, ValueError) as exc:
+            self._clear_geometry_handle_state()
+            self.viewport3d_dock.set_status(f"Handle geométrico no disponible: {exc}")
+            return
+        self._geometry_handle_base_canvas = canvas
+        self._geometry_handle_base_coordset = coordinates
+        self._geometry_handle_operation = operation
+
+    def _on_geometry_handle_preview_requested(
+        self,
+        operation: str,
+        atom_ids: object,
+        target_value: float,
+    ) -> None:
+        from chemuson.geometry3d import editing
+
+        canvas = getattr(self, "canvas", None)
+        base_canvas = getattr(self, "_geometry_handle_base_canvas", None)
+        original = getattr(self, "_geometry_handle_base_coordset", None)
+        if canvas is None or base_canvas is not canvas or not isinstance(original, CoordinateSet3D):
+            self.viewport3d_dock.set_status("El documento cambió durante el gesto; edición cancelada.")
+            return
+        if canvas.geometry3d_is_stale:
+            self.viewport3d_dock.set_status("La geometría 3D quedó desactualizada durante el gesto.")
+            return
+        try:
+            if not isinstance(atom_ids, (tuple, list)):
+                raise ValueError("La selección de átomos no es válida.")
+            ids = tuple(int(atom_id) for atom_id in atom_ids)
+            if operation != self._geometry_handle_operation:
+                raise ValueError("El parámetro geométrico cambió durante el gesto.")
+            if operation == "bond_length" and len(ids) == 2:
+                bond = canvas.model.find_bond_between(ids[0], ids[1])
+                if bond is None:
+                    raise ValueError("Los átomos no comparten un enlace estructural.")
+                updated = editing.set_bond_length(
+                    canvas.model,
+                    original,
+                    bond.id,
+                    float(target_value),
+                    moving_endpoint_id=ids[1],
+                )
+                measurement = editing.distance(updated, *ids)
+                label = f"Longitud: {measurement:.2f} Å"
+            elif operation == "bond_angle" and len(ids) == 3:
+                updated = editing.set_bond_angle(
+                    canvas.model,
+                    original,
+                    ids,
+                    float(target_value),
+                    moving_terminal_id=ids[2],
+                )
+                measurement = editing.angle_degrees(updated, *ids)
+                label = f"Ángulo: {measurement:.1f}°"
+            elif operation == "dihedral" and len(ids) == 4:
+                updated = editing.set_dihedral(
+                    canvas.model,
+                    original,
+                    ids,
+                    float(target_value),
+                    moving_endpoint_id=ids[2],
+                )
+                measurement = editing.dihedral_degrees(updated, *ids)
+                label = f"Dihedro: {measurement:.1f}°"
+            else:
+                raise ValueError("Seleccione 2, 3 o 4 átomos según la magnitud.")
+            self._compchem_preview_coordset = CoordinateSet3D(
+                positions=updated.normalized_positions(),
+                source="manual",
+                method=f"interactive-geometry:{operation}",
+                energy=updated.energy,
+                metadata=updated.metadata,
+            )
+        except (TypeError, ValueError, KeyError, OverflowError) as exc:
+            detail = str(exc)
+            if detail == "bond_not_bridge":
+                message = "Handle rechazado: el enlace pivote forma parte de un ciclo cerrado."
+            elif detail.startswith("undefined_"):
+                message = f"Handle rechazado: geometría degenerada ({detail})."
+            else:
+                message = f"Handle geométrico no aplicado: {detail}"
+            self.viewport3d_dock.set_status(message)
+            return
+        self._live_mm_fixed_atom_ids = ()
+        self._refresh_viewport3d_scene()
+        self.viewport3d_dock.set_status(label)
+
+    def _clear_geometry_handle_state(self) -> None:
+        self._geometry_handle_base_canvas = None
+        self._geometry_handle_base_coordset = None
+        self._geometry_handle_operation = None
+
     def _on_viewport_geometry_preview(
         self,
         _before: object,
@@ -1377,11 +1490,15 @@ class ChemusonWindow(QMainWindow):
         after_positions: object,
         selected_atom_ids: object,
     ) -> None:
-        if self.canvas.geometry3d_is_stale or not isinstance(after_positions, Mapping):
+        canvas = self.canvas
+        geometry_operation = self._geometry_handle_operation
+        if canvas.geometry3d_is_stale or not isinstance(after_positions, Mapping):
+            self._clear_geometry_handle_state()
             return
         if after_positions == before_positions:
+            self._clear_geometry_handle_state()
             return
-        previous = self._compchem_preview_coordset or self.canvas.coordinate_set_3d
+        previous = self._compchem_preview_coordset or canvas.coordinate_set_3d
         try:
             coordinates = CoordinateSet3D(
                 positions=after_positions,
@@ -1394,13 +1511,20 @@ class ChemusonWindow(QMainWindow):
             return
         from chemuson.gui.commands import SetGeometry3DCommand
 
-        self.canvas.undo_stack.push(
+        canvas.undo_stack.push(
             SetGeometry3DCommand(
-                self.canvas,
+                canvas,
                 coordinates,
-                text="Mover átomo o fragmento 3D",
+                text=(
+                    {
+                        "bond_length": "Ajustar longitud de enlace 3D",
+                        "bond_angle": "Ajustar ángulo 3D",
+                        "dihedral": "Ajustar dihedro 3D",
+                    }.get(geometry_operation or "", "Mover átomo o fragmento 3D")
+                ),
             )
         )
+        self._clear_geometry_handle_state()
         self._live_mm_fixed_atom_ids = ()
         if self.viewport3d_dock.live_mm_checkbox.isChecked():
             self._live_mm_timer.start(100)
@@ -1416,6 +1540,7 @@ class ChemusonWindow(QMainWindow):
             self._latest_compchem_job_id = 0
         self._compchem_preview_coordset = None
         self._compchem_coordset = self.canvas.coordinate_set_3d
+        self._clear_geometry_handle_state()
         dock = getattr(self, "compchem_dock", None)
         if dock is not None:
             dock.set_busy(False)
@@ -1426,6 +1551,47 @@ class ChemusonWindow(QMainWindow):
     def _on_viewport_build_cancelled(self) -> None:
         self._pending_3d_build_anchor_id = None
         self.viewport3d_dock.set_status("Construcción 3D cancelada.")
+
+    def _on_viewport_atom_element_change(self, atom_id: int, element: str) -> None:
+        canvas = getattr(self, "canvas", None)
+        if canvas is None:
+            return
+        try:
+            normalized_element = str(element).strip().capitalize()
+            atom = canvas.model.get_atom(atom_id)
+            old_element = atom.element
+        except (KeyError, TypeError, ValueError):
+            self.viewport3d_dock.set_status("El átomo seleccionado ya no existe.")
+            return
+        if not normalized_element or normalized_element == atom.element:
+            self.viewport3d_dock.set_status("Seleccione un elemento diferente.")
+            return
+
+        before_graph = copy.deepcopy(canvas.model)
+        candidate_graph = copy.deepcopy(canvas.model)
+        try:
+            candidate_graph.update_atom_element(atom_id, normalized_element)
+            before_issues = before_graph.validate_detailed()
+            candidate_issues = candidate_graph.validate_detailed()
+        except (KeyError, TypeError, ValueError) as exc:
+            self.viewport3d_dock.set_status(f"Cambio de elemento inválido: {exc}")
+            return
+        for issue_atom_id, issue in candidate_issues.items():
+            previous = before_issues.get(issue_atom_id)
+            if previous is None or issue.observed_valence > previous.observed_valence + 1.0e-6:
+                self.viewport3d_dock.set_status(
+                    f"El cambio produciría una valencia incompatible: {issue.message}"
+                )
+                return
+
+        from chemuson.gui.commands import ChangeAtomCommand
+
+        canvas.undo_stack.push(
+            ChangeAtomCommand(canvas.model, canvas, atom_id, normalized_element)
+        )
+        self.viewport3d_dock.set_status(
+            f"Átomo {atom_id}: {old_element} → {normalized_element}; cambio undoable."
+        )
 
     def _on_geometry_constraint_requested(
         self,

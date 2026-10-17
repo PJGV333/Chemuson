@@ -159,6 +159,41 @@ class CameraState:
         forward, right, up = self.basis
         return self.eye, forward, right, up
 
+    def world_to_screen(
+        self,
+        position: Vec3,
+        viewport_width: float,
+        viewport_height: float,
+    ) -> tuple[float, float] | None:
+        """Proyecta una posición 3D al viewport; None indica que está fuera de cámara."""
+        values = (*position, viewport_width, viewport_height)
+        if (
+            viewport_width <= 0.0
+            or viewport_height <= 0.0
+            or not all(math.isfinite(float(value)) for value in values)
+        ):
+            raise ValueError("Viewport o posición 3D no válidos")
+        point = (float(position[0]), float(position[1]), float(position[2]))
+        eye, forward, right, up = self.ray_parameters(viewport_width, viewport_height)
+        relative = sub(point, eye)
+        depth = dot(relative, forward)
+        near, far = self.clip_planes()
+        if depth < near or depth > far:
+            return None
+        aspect = float(viewport_width) / float(viewport_height)
+        if self.projection == CameraProjection.ORTHOGRAPHIC:
+            half_height = self.ortho_scale * 0.5
+            ndc_x = dot(relative, right) / (half_height * aspect)
+            ndc_y = dot(relative, up) / half_height
+        else:
+            tangent = math.tan(math.radians(self.fov_y_degrees) * 0.5)
+            ndc_x = dot(relative, right) / (depth * tangent * aspect)
+            ndc_y = dot(relative, up) / (depth * tangent)
+        return (
+            (ndc_x + 1.0) * float(viewport_width) * 0.5,
+            (1.0 - ndc_y) * float(viewport_height) * 0.5,
+        )
+
     def screen_to_world(
         self,
         pixel_x: float,
@@ -253,3 +288,28 @@ class CameraState:
             scale(right, float(delta_x) * units_per_pixel),
             scale(up, -float(delta_y) * units_per_pixel),
         )
+
+    def screen_depth_delta_to_world(
+        self,
+        delta_y: float,
+        viewport_height: float,
+        *,
+        position: Vec3,
+    ) -> Vec3:
+        """Convierte desplazamiento vertical del cursor en profundidad de cámara."""
+        values = (delta_y, viewport_height, *position)
+        if viewport_height <= 0.0 or not all(math.isfinite(float(value)) for value in values):
+            raise ValueError("Viewport o desplazamiento de profundidad no válidos")
+        forward, _right, _up = self.basis
+        if self.projection == CameraProjection.ORTHOGRAPHIC:
+            units_per_pixel = self.ortho_scale / float(viewport_height)
+        else:
+            position3d = (float(position[0]), float(position[1]), float(position[2]))
+            depth = dot(sub(position3d, self.eye), forward)
+            if depth <= 0.0:
+                raise ValueError("El átomo no está delante de la cámara")
+            units_per_pixel = (
+                2.0 * depth * math.tan(math.radians(self.fov_y_degrees) * 0.5)
+                / float(viewport_height)
+            )
+        return scale(forward, float(delta_y) * units_per_pixel)

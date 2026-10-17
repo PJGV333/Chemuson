@@ -26,6 +26,17 @@ El baseline produjo 46 átomos pesados, 52 enlaces, 46 coordenadas documentales,
 - `compileall` → exit 0; Ruff scoped → All checks passed; OpenSpec strict → válido; `git diff --check` → limpio.
 - **No es validación visual GPU/compositor:** no se inició la GUI; la comprobación de legibilidad en KDE y recuperación del contexto real siguen manuales.
 
+## Hito B
+
+- La selección múltiple mantiene orden de pick; la malla resalta átomos, H derivados pickeados y enlaces, y Ctrl selecciona el componente conectado.
+- El cambio de elemento usa `ChangeAtomCommand` con validación de valencia. Construcción/enlace y cambio de orden se validan contra un grafo candidato y se confirman como una sola acción undoable.
+- Movimiento incluye átomos/fragmentos, H derivados y profundidad con Alt+arrastre o botón central; la ayuda contextual documenta los gestos.
+- El dock ofrece handles guiados de longitud, ángulo y dihedro. Las pruebas verifican mediciones en Å/grados, una transacción undoable, Escape, conservación de H derivado y rechazo de enlaces cíclicos/geometría degenerada.
+- La prueba parametrizada de interacción de viewport cubre grafos C–C (etano), C–C–O (etanol) y C–C–C–C (butano), sin entrada manual de IDs.
+- `pytest -q tests/test_viewport3d_camera.py tests/test_viewport3d_geometry.py tests/test_viewport3d_widget.py tests/test_compchem3d_dock.py tests/test_geometry3d_editing.py tests/test_geometry3d_editing_metrics.py` → **102 passed, 1 skipped in 37.73s**.
+- Ruff scoped sobre archivos B → **All checks passed**; `git diff --check` → limpio.
+- **No es aceptación visual:** no se inició GUI; contraste real KDE/OpenGL/compositor permanece pendiente.
+
 ## Pendiente
 
-Los hitos B y C, sus regresiones y commits están pendientes. El documento original tetrandrina no está disponible localmente. No se atribuye el resultado exitoso de PubChem al dibujo 2D real.
+El Hito C, su commit local y regresiones de generación/diagnóstico están pendientes. No se encontró el `.cmsn` original de tetrandrina dibujado por el usuario; la referencia PubChem es una regresión separada y no se atribuye al documento real. La aceptación gráfica manual del Hito A también sigue pendiente por las restricciones de esta campaña.
