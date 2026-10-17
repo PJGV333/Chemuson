@@ -6,15 +6,8 @@ from dataclasses import dataclass
 import math
 
 from .camera import CameraProjection, CameraState
-from .geometry import (
-    ATOM_RADIUS_SCALE,
-    BOND_RADIUS,
-    Ray3D,
-    add,
-    ray_capsule_intersection,
-    ray_sphere_intersection,
-    scale,
-)
+from .geometry import ATOM_RADIUS_SCALE, Ray3D, add, ray_capsule_intersection, ray_sphere_intersection, scale
+from .mesh import bond_lane_layout, bond_lateral_direction
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +62,12 @@ def pick_scene(
 ) -> PickResult | None:
     ray = ray_from_screen(camera, viewport_width, viewport_height, pixel_x, pixel_y)
     atoms = {atom.id: atom for atom in getattr(scene, "atoms", ())}
+    bonds = tuple(getattr(scene, "bonds", ()))
+    adjacency: dict[int | str, list[int | str]] = {atom_id: [] for atom_id in atoms}
+    for bond in bonds:
+        if bond.a1_id in adjacency and bond.a2_id in adjacency:
+            adjacency[bond.a1_id].append(bond.a2_id)
+            adjacency[bond.a2_id].append(bond.a1_id)
     best: PickResult | None = None
 
     def consider(kind: str, primitive_id: int | str, distance: float | None) -> None:
@@ -89,12 +88,30 @@ def pick_scene(
         radius = max(0.0, float(getattr(atom, "radius", 0.0))) * ATOM_RADIUS_SCALE
         consider("atom", atom.id, ray_sphere_intersection(ray, center, radius))
 
-    for bond in getattr(scene, "bonds", ()):
+    for bond in bonds:
         start_atom = atoms.get(bond.a1_id)
         end_atom = atoms.get(bond.a2_id)
         if start_atom is None or end_atom is None:
             continue
         start = (float(start_atom.x), float(start_atom.y), float(start_atom.z))
         end = (float(end_atom.x), float(end_atom.y), float(end_atom.z))
-        consider("bond", bond.id, ray_capsule_intersection(ray, start, end, BOND_RADIUS))
+        lateral = bond_lateral_direction(start, end, bond.a1_id, bond.a2_id, atoms, adjacency)
+        offsets, radius = bond_lane_layout(
+            getattr(bond, "order", 1),
+            bool(getattr(bond, "is_aromatic", False)),
+        )
+        bond_distance = None
+        for offset in offsets:
+            displacement = scale(lateral, offset)
+            lane_distance = ray_capsule_intersection(
+                ray,
+                add(start, displacement),
+                add(end, displacement),
+                radius,
+            )
+            if lane_distance is not None and (
+                bond_distance is None or lane_distance < bond_distance
+            ):
+                bond_distance = lane_distance
+        consider("bond", bond.id, bond_distance)
     return best

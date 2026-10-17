@@ -4,8 +4,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
+from typing import Any
 
-from .geometry import ATOM_RADIUS_SCALE, BOND_RADIUS, Vec3, cross, length, normalize, sub
+from .geometry import (
+    ATOM_RADIUS_SCALE,
+    BOND_RADIUS,
+    Vec3,
+    add,
+    cross,
+    dot,
+    length,
+    normalize,
+    scale,
+    sub,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,15 +145,82 @@ def _append_cylinder(
         _append_triangle(output, start_1, radial_1, end_2, radial_2, start_2, radial_2, color)
 
 
-def build_scene_mesh(scene, selected_atom_id: int | str | None = None, selected_bond_id: int | str | None = None) -> MeshData:
+def bond_lateral_direction(
+    start: Vec3,
+    end: Vec3,
+    start_id: int | str,
+    end_id: int | str,
+    atoms: dict[int | str, Any],
+    adjacency: dict[int | str, list[int | str]],
+) -> Vec3:
+    axis = normalize(sub(end, start))
+    for anchor_id in (start_id, end_id):
+        anchor = atoms[anchor_id]
+        anchor_position = (float(anchor.x), float(anchor.y), float(anchor.z))
+        for neighbor_id in adjacency.get(anchor_id, ()):
+            if neighbor_id in (start_id, end_id):
+                continue
+            neighbor = atoms.get(neighbor_id)
+            if neighbor is None:
+                continue
+            neighbor_position = (float(neighbor.x), float(neighbor.y), float(neighbor.z))
+            neighbor_vector = sub(neighbor_position, anchor_position)
+            projected = sub(neighbor_vector, scale(axis, dot(neighbor_vector, axis)))
+            if length(projected) > 1.0e-9:
+                return normalize(projected)
+    reference = (0.0, 1.0, 0.0) if abs(axis[1]) < 0.9 else (1.0, 0.0, 0.0)
+    return normalize(cross(axis, reference), (1.0, 0.0, 0.0))
+
+
+def bond_lane_layout(order: int, is_aromatic: bool = False) -> tuple[tuple[float, ...], float]:
+    """Devuelve offsets y radio por carril para render y picking coherentes."""
+    try:
+        normalized_order = max(1, min(3, int(order or 1)))
+    except (TypeError, ValueError):
+        normalized_order = 1
+    if is_aromatic:
+        return (-BOND_RADIUS * 0.75, BOND_RADIUS * 0.75), BOND_RADIUS * 0.58
+    if normalized_order == 1:
+        return (0.0,), BOND_RADIUS
+    if normalized_order == 2:
+        return (-BOND_RADIUS * 1.6, BOND_RADIUS * 1.6), BOND_RADIUS
+    return (-BOND_RADIUS * 2.0, 0.0, BOND_RADIUS * 2.0), BOND_RADIUS * 0.82
+
+
+def _append_bond(
+    output: list[float],
+    start: Vec3,
+    end: Vec3,
+    lateral: Vec3,
+    order: int,
+    is_aromatic: bool,
+    color: tuple[float, float, float],
+) -> None:
+    offsets, radius = bond_lane_layout(order, is_aromatic)
+    for offset in offsets:
+        displacement = scale(lateral, offset)
+        _append_cylinder(output, add(start, displacement), add(end, displacement), radius, color)
+
+
+def build_scene_mesh(
+    scene,
+    selected_atom_id: int | str | None = None,
+    selected_bond_id: int | str | None = None,
+) -> MeshData:
     output: list[float] = []
     atoms = {atom.id: atom for atom in getattr(scene, "atoms", ())}
+    bonds = tuple(getattr(scene, "bonds", ()))
+    adjacency: dict[int | str, list[int | str]] = {atom_id: [] for atom_id in atoms}
+    for bond in bonds:
+        if bond.a1_id in adjacency and bond.a2_id in adjacency:
+            adjacency[bond.a1_id].append(bond.a2_id)
+            adjacency[bond.a2_id].append(bond.a1_id)
     for atom in getattr(scene, "atoms", ()):
         center = (float(atom.x), float(atom.y), float(atom.z))
         radius = float(getattr(atom, "radius", 0.0)) * ATOM_RADIUS_SCALE
         color = _selected_color() if atom.id == selected_atom_id else _color(atom.color)
         _append_sphere(output, center, radius, color)
-    for bond in getattr(scene, "bonds", ()):
+    for bond in bonds:
         start_atom = atoms.get(bond.a1_id)
         end_atom = atoms.get(bond.a2_id)
         if start_atom is None or end_atom is None:
@@ -149,5 +228,18 @@ def build_scene_mesh(scene, selected_atom_id: int | str | None = None, selected_
         start = (float(start_atom.x), float(start_atom.y), float(start_atom.z))
         end = (float(end_atom.x), float(end_atom.y), float(end_atom.z))
         color = _selected_color() if bond.id == selected_bond_id else (0.72, 0.72, 0.76)
-        _append_cylinder(output, start, end, BOND_RADIUS, color)
+        lateral = bond_lateral_direction(start, end, bond.a1_id, bond.a2_id, atoms, adjacency)
+        try:
+            order = max(1, min(3, int(getattr(bond, "order", 1) or 1)))
+        except (TypeError, ValueError):
+            order = 1
+        _append_bond(
+            output,
+            start,
+            end,
+            lateral,
+            order,
+            bool(getattr(bond, "is_aromatic", False)),
+            color,
+        )
     return MeshData(tuple(output))

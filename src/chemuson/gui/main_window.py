@@ -1372,7 +1372,7 @@ class ChemusonWindow(QMainWindow):
             positions=updated_positions,
             source="manual",
             method=f"geometry-constraint:{operation}",
-            metadata=translated_generated_hydrogen_metadata(coordset, updated_positions),
+            metadata=updated.metadata,
         )
         self.canvas.undo_stack.push(
             SetGeometry3DCommand(

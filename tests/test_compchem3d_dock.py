@@ -490,6 +490,61 @@ def test_3d_geometry_preview_keeps_and_moves_derived_hydrogens() -> None:
         window.close()
 
 
+def test_cancelled_3d_drag_restores_derived_hydrogen_coordinates() -> None:
+    from chemuson.geometry3d.model import scene_molecule_from_graph
+
+    window = ChemusonWindow()
+    try:
+        canvas = window.canvas
+        carbon = canvas.model.add_atom("C", 0.0, 0.0, is_explicit=True)
+        original = CoordinateSet3D(
+            {carbon.id: (0.0, 0.0, 0.0)},
+            source="test",
+            method="mmff",
+            metadata={
+                "generated_atoms": [
+                    {"id": "genH1", "element": "H", "coords": [1.0, 0.0, 0.0]}
+                ],
+                "generated_bonds": [
+                    {"id": "genB1", "a1_id": carbon.id, "a2_id": "genH1", "order": 1}
+                ],
+            },
+        )
+        canvas.set_geometry3d_coordinates(original)
+        window._on_viewport_geometry_preview(
+            original.positions,
+            {carbon.id: (0.0, 1.0, 0.0)},
+            (carbon.id,),
+        )
+        preview = window._compchem_preview_coordset
+        assert preview is not None
+        preview_scene = scene_molecule_from_graph(canvas.model, preview)
+        preview_hydrogen = next(atom for atom in preview_scene.atoms if atom.generated)
+        assert (preview_hydrogen.x, preview_hydrogen.y, preview_hydrogen.z) == (
+            1.0,
+            1.0,
+            0.0,
+        )
+
+        window._on_viewport_geometry_cancelled()
+
+        assert window._compchem_preview_coordset is None
+        assert canvas.coordinate_set_3d == original
+        restored = canvas.coordinate_set_3d
+        assert restored is not None
+        restored_scene = scene_molecule_from_graph(canvas.model, restored)
+        restored_hydrogen = next(atom for atom in restored_scene.atoms if atom.generated)
+        assert (restored_hydrogen.x, restored_hydrogen.y, restored_hydrogen.z) == (
+            1.0,
+            0.0,
+            0.0,
+        )
+    finally:
+        window._close_approved = True
+        window._async_shutdown_complete = True
+        window.close()
+
+
 def test_3d_builder_rejects_incompatible_valence_without_partial_edit() -> None:
     window = ChemusonWindow()
     try:
@@ -642,24 +697,46 @@ def test_geometry_constraint_controls_are_applied_and_undoable(
             graph.add_bond(first.id, second.id, order=1)
         window.canvas.model = graph
         window.canvas._rebuild_items_from_model()
+        original_positions = {
+            1: (0.0, 0.0, 0.0),
+            2: (1.5, 0.0, 0.0),
+            3: (2.1, 1.2, 0.0),
+            4: (2.8, 1.4, 1.0),
+        }
+        generated_parent_id = {
+            "bond_length": 2,
+            "bond_angle": 3,
+            "dihedral": 4,
+        }[operation]
+        parent_position = original_positions[generated_parent_id]
         original = CoordinateSet3D(
-            {
-                1: (0.0, 0.0, 0.0),
-                2: (1.5, 0.0, 0.0),
-                3: (2.1, 1.2, 0.0),
-                4: (2.8, 1.4, 1.0),
-            },
+            original_positions,
             source="test",
             method="manual",
             metadata={
                 "generated_atoms": [
-                    {"id": "genH2", "element": "H", "coords": [1.5, 1.0, 0.0]}
+                    {
+                        "id": "genH",
+                        "element": "H",
+                        "coords": [parent_position[0], parent_position[1] + 1.0, parent_position[2]],
+                    }
                 ],
                 "generated_bonds": [
-                    {"id": "genB2", "a1_id": 2, "a2_id": "genH2", "order": 1}
+                    {
+                        "id": "genB",
+                        "a1_id": generated_parent_id,
+                        "a2_id": "genH",
+                        "order": 1,
+                    }
                 ],
             },
         )
+        if operation == "bond_length":
+            expected = editing.set_bond_length(graph, original, 1, target)
+        elif operation == "bond_angle":
+            expected = editing.set_bond_angle(graph, original, atom_ids, target)
+        else:
+            expected = editing.set_dihedral(graph, original, atom_ids, target)
         window.canvas.set_geometry3d_coordinates(original)
 
         window._on_geometry_constraint_requested(operation, atom_ids, target)
@@ -671,9 +748,73 @@ def test_geometry_constraint_controls_are_applied_and_undoable(
         assert len(scene_molecule_from_graph(graph, updated).atoms) == 5
         measured = getattr(editing, metric)(updated, *atom_ids)
         assert measured == pytest.approx(target, abs=1.0e-4)
+        actual_generated_atoms = updated.metadata.get("generated_atoms")
+        expected_generated_atoms = expected.metadata.get("generated_atoms")
+        assert isinstance(actual_generated_atoms, list) and actual_generated_atoms
+        assert isinstance(expected_generated_atoms, list) and expected_generated_atoms
+        actual_hydrogen = actual_generated_atoms[0]
+        expected_hydrogen = expected_generated_atoms[0]
+        assert isinstance(actual_hydrogen, dict)
+        assert isinstance(expected_hydrogen, dict)
+        assert actual_hydrogen["coords"] == pytest.approx(expected_hydrogen["coords"])
         assert window.canvas.undo_stack.count() == 1
         window.canvas.undo_stack.undo()
         assert window.canvas.coordinate_set_3d == original
+    finally:
+        window._close_approved = True
+        window._async_shutdown_complete = True
+        window.close()
+
+
+def test_dihedral_edit_preserves_rigid_generated_hydrogen_transform() -> None:
+    from chemuson.geometry3d import editing
+
+    window = ChemusonWindow()
+    try:
+        graph = MolGraph()
+        atoms = [graph.add_atom("C", index * 42.0, 0.0) for index in range(4)]
+        for first, second in zip(atoms, atoms[1:]):
+            graph.add_bond(first.id, second.id, order=1)
+        window.canvas.model = graph
+        window.canvas._rebuild_items_from_model()
+        original = CoordinateSet3D(
+            {
+                1: (0.0, 1.0, 0.0),
+                2: (1.0, 0.0, 0.0),
+                3: (2.0, 0.0, 0.0),
+                4: (3.0, 0.0, 1.0),
+            },
+            source="test",
+            method="manual",
+            metadata={
+                "generated_atoms": [
+                    {"id": "genH4", "element": "H", "coords": [3.0, 1.0, 1.0]}
+                ],
+                "generated_bonds": [
+                    {"id": "genB4", "a1_id": 4, "a2_id": "genH4", "order": 1}
+                ],
+            },
+        )
+        expected = editing.set_dihedral(graph, original, (1, 2, 3, 4), 60.0)
+        window.canvas.set_geometry3d_coordinates(original)
+
+        window._on_geometry_constraint_requested("dihedral", (1, 2, 3, 4), 60.0)
+
+        committed = window.canvas.coordinate_set_3d
+        assert committed is not None
+        assert committed.positions == expected.positions
+        assert committed.metadata["generated_atoms"][0]["coords"] == pytest.approx(
+            expected.metadata["generated_atoms"][0]["coords"]
+        )
+        assert committed.metadata["generated_atoms"][0]["coords"] != pytest.approx(
+            original.metadata["generated_atoms"][0]["coords"]
+        )
+        assert window.canvas.undo_stack.count() == 1
+
+        window.canvas.undo_stack.undo()
+        assert window.canvas.coordinate_set_3d == original
+        window.canvas.undo_stack.redo()
+        assert window.canvas.coordinate_set_3d == committed
     finally:
         window._close_approved = True
         window._async_shutdown_complete = True

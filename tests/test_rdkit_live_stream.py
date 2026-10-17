@@ -122,6 +122,62 @@ def test_rdkit_stream_emits_progressive_butane_frames_with_fixed_atom(forcefield
         assert len(live_scene.bonds) == 13
 
 
+def test_live_mm_after_butane_dihedral_emits_bound_derived_hydrogens():
+    from chemuson.geometry3d import CoordinateSet3D, conformer_3d_for_graph
+    from chemuson.geometry3d.editing import dihedral_degrees, set_dihedral
+    from chemuson.geometry3d.model import scene_molecule_from_graph
+
+    if not rdkit_safe.is_rdkit_worker_available(timeout_s=5.0):
+        pytest.skip("RDKit worker no disponible")
+    graph, _initial_positions = _butane()
+    conformer = conformer_3d_for_graph(graph, timeout_s=20.0, force=True)
+    assert conformer.ok
+    original = conformer.coordinate_set
+    assert original is not None
+    transformed = set_dihedral(graph, original, (1, 2, 3, 4), 60.0)
+    assert dihedral_degrees(transformed, 1, 2, 3, 4) == pytest.approx(60.0, abs=1.0e-5)
+
+    events = list(
+        rdkit_safe.optimize_3d_stream_isolated(
+            graph,
+            coordinates=transformed.normalized_positions(),
+            forcefield="MMFF94",
+            max_iters=20,
+            steps_per_update=4,
+            timeout_s=20.0,
+        )
+    )
+
+    frames = [event for event in events if event.get("event") == "frame"]
+    assert events[-1]["event"] == "done", events[-1]
+    assert frames
+    for event in frames:
+        coordinate_set = CoordinateSet3D(
+            {int(atom_id): tuple(position) for atom_id, position in event["positions"].items()},
+            source="rdkit",
+            method=event["forcefield"],
+            metadata={
+                "generated_atoms": event["generated_atoms"],
+                "generated_bonds": event["generated_bonds"],
+            },
+        )
+        scene = scene_molecule_from_graph(graph, coordinate_set)
+        assert len(scene.atoms) == 14
+        assert len(scene.bonds) == 13
+        positions = {str(atom.id): (atom.x, atom.y, atom.z) for atom in scene.atoms}
+        hydrogen_ids = {str(atom.id) for atom in scene.atoms if atom.generated}
+        assert len(hydrogen_ids) == 10
+        for bond in scene.bonds:
+            first_id, second_id = str(bond.a1_id), str(bond.a2_id)
+            if first_id in hydrogen_ids:
+                hydrogen_id, parent_id = first_id, second_id
+            elif second_id in hydrogen_ids:
+                hydrogen_id, parent_id = second_id, first_id
+            else:
+                continue
+            assert 0.7 <= math.dist(positions[hydrogen_id], positions[parent_id]) <= 1.3
+
+
 def test_rdkit_backend_stream_returns_last_frame_and_emits_callbacks():
     from chemuson.geometry3d import CoordinateSet3D, ForceField, OptimizationSettings
     from chemuson.geometry3d.rdkit_backend import optimize_stream

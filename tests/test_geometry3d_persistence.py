@@ -88,3 +88,36 @@ def test_geometry3d_save_filters_orphan_ids_retained_for_undo():
     payload = PersistenceManager.save_to_dict(canvas)
 
     assert payload["canvas"]["geometry3d"]["positions"] == {str(atom_id): [0.0, 0.0, 0.0]}
+
+
+def test_stereochemistry_labels_survive_cmsn_round_trip(tmp_path):
+    canvas = ChemusonCanvas()
+    first = canvas.model.add_atom("C", 10.0, 20.0, stereo_cip="R")
+    second = canvas.model.add_atom("C", 50.0, 20.0)
+    bond = canvas.model.add_bond(first.id, second.id, order=2, stereo_ez="E")
+
+    path = tmp_path / "stereo.cmsn"
+    PersistenceManager.save_to_file(str(path), canvas)
+    restored = ChemusonCanvas()
+    PersistenceManager.load_from_file(str(path), restored)
+
+    assert restored.model.atoms[first.id].stereo_cip == "R"
+    restored_bond = restored.model.bonds[bond.id]
+    assert restored_bond.stereo_ez == "E"
+
+
+def test_aromaticity_and_multiple_bond_orders_survive_cmsn_round_trip(tmp_path):
+    canvas = ChemusonCanvas()
+    atoms = [canvas.model.add_atom("C", 40.0 * index, 20.0) for index in range(4)]
+    aromatic = canvas.model.add_bond(atoms[0].id, atoms[1].id, order=1, is_aromatic=True)
+    double = canvas.model.add_bond(atoms[1].id, atoms[2].id, order=2)
+    triple = canvas.model.add_bond(atoms[2].id, atoms[3].id, order=3)
+
+    path = tmp_path / "bond-semantics.cmsn"
+    PersistenceManager.save_to_file(str(path), canvas)
+    restored = ChemusonCanvas()
+    PersistenceManager.load_from_file(str(path), restored)
+
+    assert (restored.model.bonds[aromatic.id].order, restored.model.bonds[aromatic.id].is_aromatic) == (1, True)
+    assert restored.model.bonds[double.id].order == 2
+    assert restored.model.bonds[triple.id].order == 3

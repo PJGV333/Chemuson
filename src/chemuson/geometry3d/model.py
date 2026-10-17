@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import math
 from enum import Enum
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 
 class ForceField(str, Enum):
@@ -129,6 +129,87 @@ def translated_generated_hydrogen_metadata(
     }
 
 
+def transformed_generated_hydrogen_metadata(
+    previous: CoordinateSet3D | None,
+    transformed_parent_ids: set[int] | frozenset[int],
+    transform: Callable[[tuple[float, float, float]], tuple[float, float, float]],
+) -> dict[str, object]:
+    """Aplica una transformación rígida a H derivados con su padre movido."""
+    if previous is None:
+        return {}
+    metadata = previous.metadata
+    generated_atoms = metadata.get("generated_atoms", ())
+    generated_bonds = metadata.get("generated_bonds", ())
+    if not isinstance(generated_atoms, list) or not generated_atoms:
+        return {}
+    if not isinstance(generated_bonds, list):
+        generated_bonds = []
+
+    generated_ids = {
+        str(item.get("id"))
+        for item in generated_atoms
+        if isinstance(item, Mapping) and item.get("id") is not None
+    }
+    parent_by_hydrogen: dict[str, int] = {}
+    for bond in generated_bonds:
+        if not isinstance(bond, Mapping):
+            continue
+        first, second = bond.get("a1_id"), bond.get("a2_id")
+        if str(first) in generated_ids:
+            hydrogen_id, raw_parent_id = str(first), second
+        elif str(second) in generated_ids:
+            hydrogen_id, raw_parent_id = str(second), first
+        else:
+            continue
+        try:
+            if raw_parent_id is not None:
+                parent_by_hydrogen[hydrogen_id] = int(raw_parent_id)
+        except (TypeError, ValueError, OverflowError):
+            continue
+
+    transformed: list[dict[str, object]] = []
+    for item in generated_atoms:
+        if not isinstance(item, Mapping):
+            continue
+        transformed_item = dict(item)
+        hydrogen_id = str(item.get("id"))
+        parent_id = parent_by_hydrogen.get(hydrogen_id)
+        raw_position = item.get("coords") or item.get("position")
+        if (
+            parent_id not in transformed_parent_ids
+            or not isinstance(raw_position, (list, tuple))
+            or len(raw_position) != 3
+        ):
+            transformed.append(transformed_item)
+            continue
+        try:
+            position = (
+                float(raw_position[0]),
+                float(raw_position[1]),
+                float(raw_position[2]),
+            )
+            if not all(math.isfinite(value) for value in position):
+                transformed.append(transformed_item)
+                continue
+            raw_new_position = transform(position)
+            new_position = (
+                float(raw_new_position[0]),
+                float(raw_new_position[1]),
+                float(raw_new_position[2]),
+            )
+        except (IndexError, TypeError, ValueError, OverflowError) as exc:
+            raise ValueError("invalid_generated_hydrogen_transform") from exc
+        if not all(math.isfinite(value) for value in new_position):
+            raise ValueError("invalid_generated_hydrogen_transform")
+        transformed_item["coords"] = list(new_position)
+        transformed.append(transformed_item)
+
+    return {
+        "generated_atoms": transformed,
+        "generated_bonds": [dict(item) for item in generated_bonds if isinstance(item, Mapping)],
+    }
+
+
 @dataclass(frozen=True)
 class OptimizationSettings:
     """Parámetros comunes para generación/optimización 3D."""
@@ -191,6 +272,7 @@ class SceneBond3D:
     a1_id: int | str
     a2_id: int | str
     order: int = 1
+    is_aromatic: bool = False
 
 
 @dataclass(frozen=True)
@@ -221,7 +303,7 @@ _VDW_RADII = {
 
 _ELEMENT_COLORS = {
     "H": "#FFFFFF",
-    "C": "#404040",
+    "C": "#909090",
     "N": "#3050F8",
     "O": "#FF0D0D",
     "F": "#90E050",
@@ -285,7 +367,13 @@ def scene_molecule_from_graph(graph, coordinates: CoordinateSet3D) -> SceneMolec
             )
             atom_ids.add(atom_id)
     bonds = list(
-        SceneBond3D(int(bond.id), int(bond.a1_id), int(bond.a2_id), int(getattr(bond, "order", 1) or 1))
+        SceneBond3D(
+            int(bond.id),
+            int(bond.a1_id),
+            int(bond.a2_id),
+            int(getattr(bond, "order", 1) or 1),
+            bool(getattr(bond, "is_aromatic", False)),
+        )
         for bond in sorted(getattr(graph, "bonds", {}).values(), key=lambda item: item.id)
         if int(bond.a1_id) in positions and int(bond.a2_id) in positions
     )
@@ -306,6 +394,14 @@ def scene_molecule_from_graph(graph, coordinates: CoordinateSet3D) -> SceneMolec
                 order = max(1, int(item.get("order", 1) or 1))
             except (TypeError, ValueError):
                 continue
-            bonds.append(SceneBond3D(bond_id, a1_id, a2_id, order))
+            bonds.append(
+                SceneBond3D(
+                    bond_id,
+                    a1_id,
+                    a2_id,
+                    order,
+                    bool(item.get("is_aromatic", False)),
+                )
+            )
             bond_ids.add(bond_id)
     return SceneMolecule3D(atoms=tuple(atoms), bonds=tuple(bonds), source=coordinates.source)

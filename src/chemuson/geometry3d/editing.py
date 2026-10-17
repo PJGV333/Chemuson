@@ -4,7 +4,10 @@ import math
 from collections.abc import Iterable, Sequence
 
 from chemuson.core.model import MolGraph, bond_is_structural
-from chemuson.geometry3d.model import CoordinateSet3D
+from chemuson.geometry3d.model import (
+    CoordinateSet3D,
+    transformed_generated_hydrogen_metadata,
+)
 
 
 Vector3 = tuple[float, float, float]
@@ -29,12 +32,20 @@ def translate_atoms(
     for atom_id in selected:
         x, y, z = positions[atom_id]
         positions[atom_id] = (x + dx, y + dy, z + dz)
+    metadata = dict(coordinates.metadata)
+    metadata.update(
+        transformed_generated_hydrogen_metadata(
+            coordinates,
+            selected,
+            lambda point: (point[0] + dx, point[1] + dy, point[2] + dz),
+        )
+    )
     return CoordinateSet3D(
         positions=positions,
         source=coordinates.source,
         method=coordinates.method,
         energy=None,
-        metadata=dict(coordinates.metadata),
+        metadata=metadata,
     )
 
 
@@ -238,19 +249,27 @@ def rotate_atoms_about_axis(
         raise ValueError(f"missing_coordinates:{','.join(map(str, sorted(missing)))}")
     cosine = math.cos(angle)
     sine = math.sin(angle)
-    for atom_id in selected:
-        relative = _subtract(positions[atom_id], origin)
+
+    def rotate_point(point: Vector3) -> Vector3:
+        relative = _subtract(point, origin)
         rotated = _add(
             _add(_scale(relative, cosine), _scale(_cross(axis, relative), sine)),
             _scale(axis, _dot(axis, relative) * (1.0 - cosine)),
         )
-        positions[atom_id] = _add(origin, rotated)
+        return _add(origin, rotated)
+
+    for atom_id in selected:
+        positions[atom_id] = rotate_point(positions[atom_id])
+    metadata = dict(coordinates.metadata)
+    metadata.update(
+        transformed_generated_hydrogen_metadata(coordinates, selected, rotate_point)
+    )
     return CoordinateSet3D(
         positions=positions,
         source=coordinates.source,
         method=coordinates.method,
         energy=None,
-        metadata=dict(coordinates.metadata),
+        metadata=metadata,
     )
 
 

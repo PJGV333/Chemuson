@@ -4,7 +4,7 @@ import math
 
 import pytest
 
-from chemuson.geometry3d import SceneAtom3D, SceneMolecule3D
+from chemuson.geometry3d import SceneAtom3D, SceneBond3D, SceneMolecule3D
 from chemuson.gui.viewport3d.geometry import (
     ATOM_RADIUS_SCALE,
     Bounds3D,
@@ -51,6 +51,34 @@ def test_mesh_skips_degenerate_bonds_and_has_interleaved_vertices() -> None:
     assert mesh.vertex_count > 0
     assert len(mesh.vertices) % 9 == 0
     assert all(math.isfinite(value) for value in mesh.vertices)
+
+
+def test_mesh_preserves_single_double_triple_and_aromatic_bond_rendering() -> None:
+    atoms = (
+        SceneAtom3D(1, "C", 0.0, 0.0, 0.0, 0.0, "#404040"),
+        SceneAtom3D(2, "C", 1.4, 0.0, 0.0, 0.0, "#404040"),
+        SceneAtom3D(3, "C", 0.0, 1.0, 0.0, 0.0, "#404040"),
+    )
+
+    def mesh_for(order: int, *, aromatic: bool = False):
+        scene = SceneMolecule3D(
+            atoms=atoms,
+            bonds=(SceneBond3D(1, 1, 2, order, aromatic),),
+        )
+        return build_scene_mesh(scene)
+
+    single = mesh_for(1)
+    double = mesh_for(2)
+    triple = mesh_for(3)
+    aromatic = mesh_for(1, aromatic=True)
+
+    assert single.vertex_count < double.vertex_count < triple.vertex_count
+    assert single.vertex_count < aromatic.vertex_count
+    assert aromatic.vertices != double.vertices
+    assert all(
+        math.isfinite(value)
+        for value in (*single.vertices, *double.vertices, *triple.vertices, *aromatic.vertices)
+    )
 
 
 def test_ball_and_stick_radii_leave_room_to_see_carbon_hydrogen_bonds() -> None:
