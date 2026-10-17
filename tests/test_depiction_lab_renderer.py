@@ -55,7 +55,10 @@ def test_gallery_has_twelve_stable_cases_and_marks_geometric_fixture() -> None:
     assert len(set(ids)) == len(ids)
     assert ids == [f"A{index}" for index in range(1, 5)] + [f"B{index}" for index in range(1, 5)] + [f"C{index}" for index in range(1, 5)]
     eligible = [case.case_id for case in CASES if case.editorial_calibration_eligible]
-    assert eligible == ["A1", "A2", "A3", "A4", "B1", "B2", "B3"]
+    assert eligible == ["A1", "A2", "A3", "B1", "B2", "B3"]
+    a4 = next(case for case in CASES if case.case_id == "A4")
+    assert not a4.editorial_calibration_eligible
+    assert "outside the approved AB3 editorial calibration cohort" in a4.editorial_exclusion_reason
     b4 = next(case for case in CASES if case.case_id == "B4")
     assert b4.kind == "geometric-fixture"
     assert not b4.editorial_calibration_eligible

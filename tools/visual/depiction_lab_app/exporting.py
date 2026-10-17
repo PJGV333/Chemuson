@@ -307,7 +307,7 @@ def export_gallery(
                 else (
                     "NON-EDITORIAL · GEOMETRIC FIXTURE · EXCLUDED FROM PRESET SELECTION / STYLE CALIBRATION"
                     if case.case_id == "B4"
-                    else "DIAGNOSTIC ONLY · OUTSIDE APPROVED A1–B3 COHORT"
+                    else "DIAGNOSTIC ONLY · OUTSIDE APPROVED AB3 COHORT"
                 )
             )
             painter.drawText(x + 10, y + 20, f"{case.case_id} · {case.title} · {case.kind}")
@@ -348,7 +348,7 @@ def export_gallery(
         + "\n\n## Editorial calibration eligibility\n\n"
         + "- Eligible selection cases: "
         + ", ".join(f"`{case.case_id}`" for case in CASES if case.editorial_calibration_eligible)
-        + "\n- B4: `geometric fixture`; `non-editorial`; `excluded from preset selection / style calibration`.\n- C-series projection/ring cases are diagnostic only and outside the approved A1–B3 editorial calibration cohort.\n\n## Modified parameters\n\n"
+        + "\n- A4 and B4 are excluded from the approved AB3 cohort. B4: `geometric fixture`; `non-editorial`; `excluded from preset selection / style calibration`.\n- C-series projection/ring cases are diagnostic only and outside the approved editorial calibration cohort (A1, A2, A3, B1, B2, B3).\n\n## Modified parameters\n\n"
         + (
             "\n".join(f"- `{key}`: `{value['current']}` → `{value['working']}`" for key, value in changes.items())
             or "- Working matches Current."

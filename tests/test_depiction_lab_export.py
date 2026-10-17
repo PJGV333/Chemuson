@@ -119,7 +119,8 @@ def test_full_contact_sheet_export_is_bounded_and_reproducible(tmp_path) -> None
         assert f"`{case.case_id}`" in report
     assert "solid_wedge_width_ratio" in report
     assert "B4: `geometric fixture`; `non-editorial`; `excluded from preset selection / style calibration`" in report
-    assert "outside the approved A1–B3 editorial calibration cohort" in report
+    assert "A4 and B4 are excluded from the approved AB3 cohort" in report
+    assert "Eligible selection cases: `A1`, `A2`, `A3`, `B1`, `B2`, `B3`" in report
 
 
 def test_cli_loads_named_editorial_preset_for_reproducible_export(tmp_path) -> None:
@@ -161,4 +162,4 @@ def test_cli_loads_named_editorial_preset_for_reproducible_export(tmp_path) -> N
     assert raw_profile["based_on"] == EDITORIAL_AB3_BASED_ON
     report = (output / "report.md").read_text(encoding="utf-8")
     assert "B4 remains a geometric fixture and is excluded" in report
-    assert "outside the approved A1–B3 editorial calibration cohort" in report
+    assert "outside the approved AB3 editorial calibration cohort" in report

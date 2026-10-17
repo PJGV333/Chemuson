@@ -207,13 +207,16 @@ def _aromatic_chiral_sidechain() -> MolGraph:
     return graph
 
 
-_EDITORIAL_EXCLUSION = "outside the approved A1–B3 editorial calibration cohort"
+_EDITORIAL_EXCLUSION = (
+    "outside the approved AB3 editorial calibration cohort "
+    "(A1, A2, A3, B1, B2, B3)"
+)
 
 CASES: tuple[DepictionCase, ...] = (
     DepictionCase("A1", "Solid wedge · OH label", "A · Wedges and labels", "molecule", "Tetrahedral center with an OH-bearing wedge terminus.", lambda: _chiral_label_wedge("OH", BondStyle.WEDGE), True),
     DepictionCase("A2", "Solid wedge · F label", "A · Wedges and labels", "molecule", "Tetrahedral center with a compact halogen label.", lambda: _chiral_label_wedge("F", BondStyle.WEDGE), True),
     DepictionCase("A3", "Hashed wedge · OH label", "A · Wedges and labels", "molecule", "Tetrahedral center with a hashed OH-bearing substituent.", lambda: _chiral_label_wedge("OH", BondStyle.HASHED), True),
-    DepictionCase("A4", "Tetrahedral center · wedge + hash", "A · Wedges and labels", "molecule", "Four distinct substituents; one solid and one hashed stereobond.", _tetrahedral_pair, True),
+    DepictionCase("A4", "Tetrahedral center · wedge + hash", "A · Wedges and labels", "molecule", "Four distinct substituents; one solid and one hashed stereobond.", _tetrahedral_pair, False, _EDITORIAL_EXCLUSION),
     DepictionCase("B1", "Hashed wedge + double bond", "B · Bond junctions", "molecule", "Tetrahedral stereocenter adjacent to a C=C sigma/pi depiction.", lambda: _stereo_center_next_to_double(BondStyle.HASHED), True),
     DepictionCase("B2", "Solid wedge + double bond", "B · Bond junctions", "molecule", "Tetrahedral stereocenter adjacent to a C=C sigma/pi depiction.", lambda: _stereo_center_next_to_double(BondStyle.WEDGE), True),
     DepictionCase("B3", "Carbonyl · oxygen label", "B · Bond junctions", "molecule", "Acetone carbonyl with the actual O label and neighboring sigma bonds.", _carbonyl_oxygen, True),

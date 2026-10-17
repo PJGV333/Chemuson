@@ -418,7 +418,7 @@ class DepictionLabWindow(QMainWindow):
         layout.addWidget(self.reset_all_button)
         self.editorial_preset_button = QPushButton("Cargar ChemUSON Editorial AB3")
         self.editorial_preset_button.setToolTip(
-            "Carga el perfil experimental aprobado para A1–B3; B4 queda excluido y no cambia los defaults de producción."
+            "Carga el perfil experimental aprobado para A1, A2, A3, B1, B2 y B3; A4/B4 quedan excluidos y no cambia los defaults de producción."
         )
         self.editorial_preset_button.clicked.connect(self._load_editorial_ab3_preset)
         layout.addWidget(self.editorial_preset_button)

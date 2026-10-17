@@ -9,7 +9,8 @@ from .parameters import DepictionStyleParameters
 
 EDITORIAL_AB3_NAME = "ChemUSON Editorial AB3"
 EDITORIAL_AB3_BASED_ON = (
-    "owner-approved valid cases A1–B3; B4 excluded; experimental only; "
+    "owner-approved valid cases A1, A2, A3, B1, B2, B3; "
+    "A4 and B4 excluded; experimental only; "
     "not a production default"
 )
 

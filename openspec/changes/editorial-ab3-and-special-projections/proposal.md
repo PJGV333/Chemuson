@@ -2,7 +2,7 @@
 
 ## Por qué
 
-El propietario aprobó los valores experimentales de depiction derivados del corpus químicamente válido A1–B3, pero aún no deben convertirse en defaults de producción. El laboratorio necesita cargarlos como perfil nombrado y reproducible; B4 debe conservarse como fixture de estrés sin participar en calibración editorial. Además, la plantilla Haworth vigente produce cruces/colisiones y mezcla reglas de proyección con la construcción de grafos en un módulo GUI general.
+El propietario aprobó los valores experimentales de depiction derivados del corpus químicamente válido A1, A2, A3, B1, B2 y B3; A4 y B4 quedan fuera del conjunto AB3, y los valores aún no deben convertirse en defaults de producción. El laboratorio necesita cargarlos como perfil nombrado y reproducible; B4 debe conservarse como fixture de estrés sin participar en calibración editorial. Además, la plantilla Haworth vigente produce cruces/colisiones y mezcla reglas de proyección con la construcción de grafos en un módulo GUI general.
 
 ## Alcance
 
