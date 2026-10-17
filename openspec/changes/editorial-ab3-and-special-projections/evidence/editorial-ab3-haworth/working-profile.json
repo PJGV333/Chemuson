@@ -1,0 +1,23 @@
+{
+  "based_on": "owner-approved valid cases A1, A2, A3, B1, B2, B3; A4 and B4 excluded; experimental only; not a production default",
+  "name": "ChemUSON Editorial AB3",
+  "parameters": {
+    "bold_double_bond_offset_ratio": null,
+    "bond_stroke_ratio": 0.075,
+    "cap_style": "round",
+    "double_bond_inner_trim_ratio": 0.175,
+    "double_bond_offset_ratio": 0.15,
+    "hashed_wedge_count": 9,
+    "hashed_wedge_max_width_ratio": 0.37,
+    "hashed_wedge_min_width_ratio": 0.05,
+    "hashed_wedge_stroke_ratio": 0.055,
+    "hashed_wedge_terminal_shift_ratio": null,
+    "join_style": "round",
+    "label_clearance_ratio": 0.02,
+    "solid_wedge_tip_width_ratio": null,
+    "solid_wedge_width_ratio": 0.45,
+    "triple_bond_offset_ratio": null
+  },
+  "schema": "chemuson.depiction-style",
+  "version": 1
+}
