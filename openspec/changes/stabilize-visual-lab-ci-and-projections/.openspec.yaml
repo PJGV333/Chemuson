@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-10-16
+goal: Stabilize duration-aware pytest shards, fix isolated Visual Lab viewport centering, and preserve explicit projection stereo semantics while refining Haworth geometry without changing production defaults or CMSN serialization.

@@ -1,0 +1,22 @@
+{
+  "assigned_nodeids_sha256": "9b3395778ade3ca3179e3d86fcb64614fe737473623bd2dcfede680d0585c42b",
+  "assigned_test_count": 293,
+  "elapsed_seconds": 47.327,
+  "expected_nodeids_sha256": "a7d09fbaff3bb32248792d66971323636799381e19dab736e52cef3d9e34744f",
+  "junit_error": null,
+  "junit_file": "pytest-shard-1.xml",
+  "junit_matches_assignment": true,
+  "junit_test_count": 293,
+  "last_test_started": "tests/test_wedge_double_label_junctions.py::test_focused_comparison_sheet_keeps_before_after_theme_panels_equal_scale",
+  "launch_error": null,
+  "log_file": "pytest-shard-1.log",
+  "process_exit_code": 0,
+  "schema_version": 1,
+  "shard_count": 8,
+  "shard_index": 1,
+  "signal_name": null,
+  "signal_number": null,
+  "timed_out": false,
+  "timeout_seconds": 300,
+  "total_tests": 2341
+}

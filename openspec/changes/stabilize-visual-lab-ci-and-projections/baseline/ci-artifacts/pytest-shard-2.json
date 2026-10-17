@@ -1,0 +1,22 @@
+{
+  "assigned_nodeids_sha256": "e68b1e65f98be371faf51eecc26f3df4192d105edd4d99d051706d1c63cb3e6d",
+  "assigned_test_count": 293,
+  "elapsed_seconds": 35.954,
+  "expected_nodeids_sha256": "a7d09fbaff3bb32248792d66971323636799381e19dab736e52cef3d9e34744f",
+  "junit_error": null,
+  "junit_file": "pytest-shard-2.xml",
+  "junit_matches_assignment": true,
+  "junit_test_count": 293,
+  "last_test_started": "tests/test_update_policy.py::test_policy_detects_downgrade_replay",
+  "launch_error": null,
+  "log_file": "pytest-shard-2.log",
+  "process_exit_code": 0,
+  "schema_version": 1,
+  "shard_count": 8,
+  "shard_index": 2,
+  "signal_name": null,
+  "signal_number": null,
+  "timed_out": false,
+  "timeout_seconds": 300,
+  "total_tests": 2341
+}

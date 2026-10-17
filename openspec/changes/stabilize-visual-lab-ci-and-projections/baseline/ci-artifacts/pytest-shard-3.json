@@ -1,0 +1,22 @@
+{
+  "assigned_nodeids_sha256": "46ba9c7d3eddae2078f217198af51ca3f97af9b0644963b58d52587f57c02b25",
+  "assigned_test_count": 293,
+  "elapsed_seconds": 302.024,
+  "expected_nodeids_sha256": "a7d09fbaff3bb32248792d66971323636799381e19dab736e52cef3d9e34744f",
+  "junit_error": "JUnit report was not created",
+  "junit_file": "pytest-shard-3.xml",
+  "junit_matches_assignment": false,
+  "junit_test_count": null,
+  "last_test_started": "tests/test_command_palette.py::test_palette_closes_after_execution",
+  "launch_error": null,
+  "log_file": "pytest-shard-3.log",
+  "process_exit_code": -15,
+  "schema_version": 1,
+  "shard_count": 8,
+  "shard_index": 3,
+  "signal_name": "SIGTERM",
+  "signal_number": 15,
+  "timed_out": true,
+  "timeout_seconds": 300,
+  "total_tests": 2341
+}

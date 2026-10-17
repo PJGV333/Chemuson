@@ -1,0 +1,22 @@
+{
+  "assigned_nodeids_sha256": "31a2e485cb1a7a6ca189e66db15f94f07c59f4e16f96ed5ce326e55cb488611f",
+  "assigned_test_count": 292,
+  "elapsed_seconds": 302.041,
+  "expected_nodeids_sha256": "a7d09fbaff3bb32248792d66971323636799381e19dab736e52cef3d9e34744f",
+  "junit_error": "JUnit report was not created",
+  "junit_file": "pytest-shard-5.xml",
+  "junit_matches_assignment": false,
+  "junit_test_count": null,
+  "last_test_started": "tests/test_ui_polish.py::test_dark_text3_meets_aa",
+  "launch_error": null,
+  "log_file": "pytest-shard-5.log",
+  "process_exit_code": -15,
+  "schema_version": 1,
+  "shard_count": 8,
+  "shard_index": 5,
+  "signal_name": "SIGTERM",
+  "signal_number": 15,
+  "timed_out": true,
+  "timeout_seconds": 300,
+  "total_tests": 2341
+}
