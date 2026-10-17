@@ -107,7 +107,7 @@ Como captura baseline obligatoria, se ejecutó una sola vez `timeout 10m pytest 
 
 ## Estabilización ChemUSON-3D, fases 1–4 (2026-10-16)
 
-- Trabajo local en `feature/chemuson-3d`; no se tocó `main`, no se hizo push/merge/PR y no se inició la GUI. El detalle de implementación y validación está en `openspec/changes/stabilize-3d-phase-1-4-integrity/validation.md`.
+- Trabajo local en `feature/chemuson-3d`; no se tocó `main`, no se hizo push/merge/PR y no se inició la GUI. El detalle de implementación y validación está en `openspec/changes/stabilize-3d-phase-1-4-integrity/validation.md` y la guía visual manual en `openspec/changes/stabilize-3d-phase-1-4-integrity/manual-acceptance-cachyos.md`.
 - Regresión focalizada: 143 passed, 1 skipped, 1 deselected (45.32 s) tras excluir un test legado de Tetrandrine. El test exige un wedge/hash para un SMILES sin marcador de configuración; al ejecutar la ruta de importación con `rdkit_io.py` de HEAD se obtuvo 0 wedge/hash y 0 etiquetas. No se alteró la química ni se ocultó el fallo. Solicitud de decisión: corregir el fixture para especificar estereoquímica o actualizar su expectativa para configuración no especificada.
 - El SIGSEGV de cierre de pytest y el de la demo Qt/SIP son dos observaciones separadas; no se encontró causa raíz. No declarar fase 4 plenamente validada: siguen pendientes la regresión que reproduzca el cierre gráfico y la aceptación visual manual.
 - Compileall, Ruff scoped, arquitectura (84 tests), OpenSpec strict (tres cambios) y `git diff --check` pasaron. No se repitió la suite completa por la instrucción de evitar la ejecución SIGSEGV ya conocida.

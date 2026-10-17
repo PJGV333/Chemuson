@@ -19,7 +19,7 @@
 
 ## Evidencia de continuidad y fidelidad química
 
-Las regresiones focalizadas ejercitan transformaciones de geometría con H derivados ligados al átomo padre; cancelación de drag; controles de distancia/ángulo/dihedro; undo/redo; frames Live MM de butano; importación R/S y E/Z; rechazo de geometrías con configuración invertida; marcas estéreo ambiguas; hash químico diferenciado por estéreo; benzene aromático/Kekulé; persistencia `.cmsn`; carriles dobles/triples/aromáticos y picking sincronizado. El test de aceptación de moléculas incluye etano, etanol, butano y moléculas aromáticas/múltiples. Son pruebas automatizadas, no una verificación visual de la aplicación completa.
+Las regresiones focalizadas ejercitan transformaciones de geometría con H derivados ligados al átomo padre; cancelación de drag; controles de distancia/ángulo/dihedro; undo/redo; frames Live MM de butano; importación R/S y E/Z; rechazo de geometrías con configuración invertida; marcas estéreo ambiguas; hash químico diferenciado por estéreo; benzene aromático/Kekulé; persistencia `.cmsn`; carriles dobles/triples/aromáticos y picking sincronizado. Las pruebas negativas rechazan valencia incompatible, endpoint inexistente y enlace duplicado sin edición parcial. El test de aceptación de moléculas incluye etano, etanol, butano y moléculas aromáticas/múltiples. Son pruebas automatizadas, no una verificación visual de la aplicación completa.
 
 ## Costo medido de malla (CPU)
 
@@ -57,4 +57,4 @@ El script de demo provocó anteriormente un SIGSEGV al cerrar; correrlo puede te
 - `9cd14dc` — fidelidad estéreo de ChemIO/RDKit y clave química: `src/chemuson/chemio/_rdkit_worker.py`, `src/chemuson/chemio/rdkit_io.py`, `src/chemuson/chemio/rdkit_safe.py`, `src/chemuson/geometry3d/service.py`, `tests/test_geometry3d_service.py`, `tests/test_geometry3d_stereochemistry.py`, `tests/test_rdkit_io_stereo_import.py`.
 - `13f2e03` — transforms de H derivados, semántica/enlaces de escena, mesh y picking: `src/chemuson/geometry3d/editing.py`, `src/chemuson/geometry3d/model.py`, `src/chemuson/gui/main_window.py`, `src/chemuson/gui/viewport3d/dock.py`, `src/chemuson/gui/viewport3d/mesh.py`, `src/chemuson/gui/viewport3d/picking.py`, `tests/test_compchem3d_dock.py`, `tests/test_geometry3d_aromaticity.py`, `tests/test_geometry3d_editing.py`, `tests/test_geometry3d_persistence.py`, `tests/test_rdkit_live_stream.py`, `tests/test_viewport3d_geometry.py`, `tests/test_viewport3d_picking.py`.
 - `dbeda3d` — ciclo de vida del viewport: `src/chemuson/gui/viewport3d/widget.py`, `tests/test_viewport3d_widget.py`.
-- El commit documental local incluye `AGENT_REPORT.md`, este `validation.md` y `tasks.md`. No se publicaron commits.
+- El commit documental del 2026-10-16 incluye `AGENT_REPORT.md`, este `validation.md`, `manual-acceptance-cachyos.md` y `tasks.md`. No se publicaron commits.
