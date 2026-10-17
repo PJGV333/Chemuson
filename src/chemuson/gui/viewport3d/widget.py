@@ -8,8 +8,12 @@ from typing import Any, cast
 from PyQt6.QtCore import QPoint, Qt, pyqtSignal
 from PyQt6.QtGui import (
     QHideEvent,
+    QBrush,
+    QColor,
     QMouseEvent,
     QOpenGLContext,
+    QPainter,
+    QPen,
     QResizeEvent,
     QShowEvent,
     QSurfaceFormat,
@@ -18,10 +22,13 @@ from PyQt6.QtGui import (
 from PyQt6.QtOpenGLWidgets import QOpenGLWidget
 
 from chemuson.geometry3d import SceneMolecule3D
+from chemuson.geometry3d.editing import angle_degrees, dihedral_degrees, distance
+from chemuson.geometry3d.model import CoordinateSet3D
 
 from .camera import CameraProjection, CameraState
 from .geometry import add
 from .renderer import GL_COLOR_BUFFER_BIT, GL_DEPTH_BUFFER_BIT, MoleculeRenderer
+from .mesh import normalize_representation
 from .picking import PickResult, pick_scene
 
 
@@ -35,18 +42,41 @@ class _GeometryDragState:
     moved: bool = False
 
 
+@dataclass
+class _BuildDragState:
+    anchor_atom_id: int
+    anchor_position: tuple[float, float, float]
+    start_position: QPoint
+    current_position: QPoint
+    moved: bool = False
+@dataclass
+class _DerivedHydrogenDragState:
+    atom_id: str
+    parent_atom_id: int
+    before: tuple[float, float, float]
+    latest: tuple[float, float, float]
+    start_position: QPoint
+    moved: bool = False
+
+
 class MolecularViewportWidget(QOpenGLWidget):
     """Viewport 3D con estado de escena y selección estrictamente local."""
 
     primitiveSelected = pyqtSignal(str, object)
     selectionCleared = pyqtSignal()
     statusChanged = pyqtSignal(str)
+    editModeChanged = pyqtSignal(bool)
+    editToolChanged = pyqtSignal(str)
     geometryPreviewChanged = pyqtSignal(object, object, object)
     geometryEditCommitted = pyqtSignal(object, object, object)
     geometryEditCancelled = pyqtSignal()
     buildCancelled = pyqtSignal()
     buildPointRequested = pyqtSignal(object)
     buildAnchorSelected = pyqtSignal(object)
+    buildBondRequested = pyqtSignal(object)
+    buildPreviewChanged = pyqtSignal(object)
+    derivedHydrogenPreviewChanged = pyqtSignal(object, object, object)
+    derivedHydrogenEditRequested = pyqtSignal(object)
 
     def __init__(self, parent=None) -> None:
         fmt = QSurfaceFormat()
@@ -66,10 +96,15 @@ class MolecularViewportWidget(QOpenGLWidget):
         self.edit_mode = False
         self.edit_tool = "move"
         self.build_element = "C"
+        self.representation = "ball_and_stick"
+        self._measure_atom_ids: list[int] = []
         self._renderer = MoleculeRenderer()
         self._last_mouse_position: QPoint | None = None
         self._dragging = False
         self._geometry_drag_state: _GeometryDragState | None = None
+        self._build_drag_state: _BuildDragState | None = None
+        self._derived_hydrogen_drag_state: _DerivedHydrogenDragState | None = None
+        self._build_preview: tuple[QPoint, QPoint, str] | None = None
         self._press_hit: PickResult | None = None
         self._gl_ready = False
         self._mesh_dirty = True
@@ -158,8 +193,20 @@ class MolecularViewportWidget(QOpenGLWidget):
                 self.scene,
                 self.selected_atom_id,
                 self.selected_bond_id,
+                self.representation,
             )
         self._renderer.render(self.camera, self.width(), self.height())
+        if self._build_preview is not None:
+            start, end, element = self._build_preview
+            painter = QPainter()
+            if painter.begin(self):
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                painter.setPen(QPen(QColor(95, 205, 245, 220), 2, Qt.PenStyle.DashLine))
+                painter.setBrush(QBrush(QColor(95, 205, 245, 100)))
+                painter.drawLine(start, end)
+                painter.drawEllipse(end, 7, 7)
+                painter.drawText(end + QPoint(9, -8), element)
+                painter.end()
 
     def set_scene(
         self,
@@ -167,6 +214,7 @@ class MolecularViewportWidget(QOpenGLWidget):
         *,
         preserve_interaction: bool = False,
     ) -> None:
+        self._clear_build_preview()
         self.scene = scene or SceneMolecule3D(atoms=(), bonds=(), source="")
         if preserve_interaction and self._geometry_drag_state is not None:
             self._geometry_drag_state.latest = {
@@ -179,26 +227,93 @@ class MolecularViewportWidget(QOpenGLWidget):
             self.selected_atom_ids.clear()
             self.selected_bond_id = None
             self._geometry_drag_state = None
+            self._derived_hydrogen_drag_state = None
+            self._measure_atom_ids.clear()
         if self._auto_fit:
             self._fit_scene_to_viewport()
         self._mesh_dirty = True
         self.update()
 
+    def _clear_build_preview(self) -> None:
+        self._build_drag_state = None
+        if self._build_preview is None:
+            return
+        self._build_preview = None
+        self.buildPreviewChanged.emit(None)
+        self.update()
+
     def set_edit_mode(self, enabled: bool) -> None:
         self.edit_mode = bool(enabled)
+        self.editModeChanged.emit(self.edit_mode)
         self._geometry_drag_state = None
+        self._derived_hydrogen_drag_state = None
+        self._clear_build_preview()
         self._dragging = False
 
     def set_edit_tool(self, tool: str) -> None:
         value = str(tool).strip().lower()
-        if value not in {"move", "build"}:
+        if value not in {"select", "move", "build", "bond", "measure"}:
             raise ValueError(f"Herramienta 3D no soportada: {tool}")
         self.edit_tool = value
+        self._measure_atom_ids.clear()
         self._geometry_drag_state = None
+        self._derived_hydrogen_drag_state = None
+        self._clear_build_preview()
         self._dragging = False
+        self.editToolChanged.emit(value)
+
+    def _record_measurement_pick(self, hit: PickResult | None) -> None:
+        if hit is None or hit.kind != "atom" or not isinstance(hit.primitive_id, int):
+            self.statusChanged.emit("Seleccione átomos documentales para medir.")
+            return
+        atom_id = hit.primitive_id
+        if self._measure_atom_ids and self._measure_atom_ids[-1] == atom_id:
+            return
+        self._measure_atom_ids.append(atom_id)
+        if len(self._measure_atom_ids) > 4:
+            self._measure_atom_ids = [atom_id]
+        points = {
+            int(atom.id): (float(atom.x), float(atom.y), float(atom.z))
+            for atom in self.scene.atoms
+            if isinstance(atom.id, int)
+        }
+        coordinates = CoordinateSet3D(points, source="viewport", method="measure")
+        ids = self._measure_atom_ids
+        try:
+            if len(ids) == 1:
+                self.statusChanged.emit(f"Medición: átomo {atom_id} seleccionado.")
+            elif len(ids) == 2:
+                value = distance(coordinates, ids[0], ids[1])
+                self.statusChanged.emit(
+                    f"Distancia {ids[0]}–{ids[1]}: {value:.2f} Å"
+                )
+            elif len(ids) == 3:
+                value = angle_degrees(coordinates, ids[0], ids[1], ids[2])
+                self.statusChanged.emit(
+                    f"Ángulo {ids[0]}–{ids[1]}–{ids[2]}: {value:.1f}°"
+                )
+            else:
+                value = dihedral_degrees(
+                    coordinates, ids[0], ids[1], ids[2], ids[3]
+                )
+                self.statusChanged.emit(
+                    f"Dihedro {ids[0]}–{ids[1]}–{ids[2]}–{ids[3]}: {value:.1f}°"
+                )
+                self._measure_atom_ids.clear()
+        except (KeyError, ValueError) as exc:
+            self._measure_atom_ids.clear()
+            self.statusChanged.emit(f"No se pudo medir la geometría: {exc}")
 
     def set_build_element(self, element: str) -> None:
         self.build_element = str(element).strip().capitalize() or "C"
+
+    def set_representation(self, representation: str) -> None:
+        value = normalize_representation(representation)
+        if value == self.representation:
+            return
+        self.representation = value
+        self._mesh_dirty = True
+        self.update()
 
     def _apply_geometry_positions(
         self, positions: dict[int, tuple[float, float, float]]
@@ -215,6 +330,21 @@ class MolecularViewportWidget(QOpenGLWidget):
             for atom in self.scene.atoms
         )
         self.scene = replace(self.scene, atoms=atoms)
+        self._mesh_dirty = True
+        self.update()
+
+    def _apply_derived_hydrogen_position(
+        self, atom_id: str, position: tuple[float, float, float]
+    ) -> None:
+        self.scene = replace(
+            self.scene,
+            atoms=tuple(
+                replace(atom, x=position[0], y=position[1], z=position[2])
+                if atom.id == atom_id and atom.generated
+                else atom
+                for atom in self.scene.atoms
+            ),
+        )
         self._mesh_dirty = True
         self.update()
 
@@ -323,6 +453,7 @@ class MolecularViewportWidget(QOpenGLWidget):
                 self.height(),
                 position.x(),
                 position.y(),
+                self.representation,
             )
         except ValueError as exc:
             self.statusChanged.emit(str(exc))
@@ -338,6 +469,8 @@ class MolecularViewportWidget(QOpenGLWidget):
         self._last_mouse_position = event.position().toPoint()
         self._dragging = False
         self._geometry_drag_state = None
+        self._derived_hydrogen_drag_state = None
+        self._clear_build_preview()
         self._press_hit = None
         if self.edit_mode and event.button() == Qt.MouseButton.LeftButton:
             position = event.position().toPoint()
@@ -345,6 +478,19 @@ class MolecularViewportWidget(QOpenGLWidget):
             self._press_hit = hit
             extend = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
             self._set_selection(hit, extend=extend)
+            if self.edit_tool in {"build", "bond"} and hit is not None and hit.kind == "atom":
+                anchor_id = hit.primitive_id
+                anchor = next(
+                    (atom for atom in self.scene.atoms if atom.id == anchor_id),
+                    None,
+                )
+                if isinstance(anchor_id, int) and anchor is not None:
+                    self._build_drag_state = _BuildDragState(
+                        anchor_atom_id=anchor_id,
+                        anchor_position=(float(anchor.x), float(anchor.y), float(anchor.z)),
+                        start_position=position,
+                        current_position=position,
+                    )
             if (
                 hit is not None
                 and hit.kind == "atom"
@@ -374,6 +520,33 @@ class MolecularViewportWidget(QOpenGLWidget):
                             start_position=position,
                         )
                         self._mark_manual_navigation()
+            if self.edit_tool == "move" and hit is not None and hit.kind == "atom":
+                derived_atom = next(
+                    (
+                        atom
+                        for atom in self.scene.atoms
+                        if atom.id == hit.primitive_id and atom.generated
+                    ),
+                    None,
+                )
+                if (
+                    derived_atom is not None
+                    and isinstance(derived_atom.id, str)
+                    and derived_atom.parent_atom_id is not None
+                ):
+                    position3d = (
+                        float(derived_atom.x),
+                        float(derived_atom.y),
+                        float(derived_atom.z),
+                    )
+                    self._derived_hydrogen_drag_state = _DerivedHydrogenDragState(
+                        atom_id=derived_atom.id,
+                        parent_atom_id=derived_atom.parent_atom_id,
+                        before=position3d,
+                        latest=position3d,
+                        start_position=position,
+                    )
+                    self._mark_manual_navigation()
         self.setFocus()
         event.accept()
 
@@ -388,6 +561,72 @@ class MolecularViewportWidget(QOpenGLWidget):
         if delta.isNull():
             return
         buttons = event.buttons()
+        if (
+            buttons & Qt.MouseButton.LeftButton
+            and self.edit_mode
+            and self.edit_tool in {"build", "bond"}
+        ):
+            build_state = self._build_drag_state
+            if build_state is not None:
+                total_delta = current - build_state.start_position
+                if abs(total_delta.x()) + abs(total_delta.y()) >= 4:
+                    build_state.current_position = current
+                    build_state.moved = True
+                    self._build_preview = (
+                        build_state.start_position,
+                        current,
+                        self.build_element,
+                    )
+                    self.buildPreviewChanged.emit(self._build_preview)
+                    self._dragging = True
+                    self.update()
+            elif abs(delta.x()) + abs(delta.y()) >= 4:
+                self._dragging = True
+            self._last_mouse_position = current
+            event.accept()
+            return
+        if (
+            buttons & Qt.MouseButton.LeftButton
+            and self.edit_mode
+            and self.edit_tool in {"select", "measure"}
+        ):
+            self._dragging = self._dragging or abs(delta.x()) + abs(delta.y()) >= 4
+            self._last_mouse_position = current
+            event.accept()
+            return
+        derived_state = self._derived_hydrogen_drag_state
+        if (
+            buttons & Qt.MouseButton.LeftButton
+            and self.edit_mode
+            and self.edit_tool == "move"
+            and derived_state is not None
+        ):
+            total_delta = current - derived_state.start_position
+            if abs(total_delta.x()) + abs(total_delta.y()) >= 4:
+                try:
+                    world_delta = self.camera.screen_delta_to_world(
+                        total_delta.x(),
+                        total_delta.y(),
+                        max(1, self.width()),
+                        max(1, self.height()),
+                        position=derived_state.before,
+                    )
+                except ValueError as exc:
+                    self.statusChanged.emit(str(exc))
+                    return
+                latest = add(derived_state.before, world_delta)
+                derived_state.latest = latest
+                derived_state.moved = True
+                self._apply_derived_hydrogen_position(derived_state.atom_id, latest)
+                self.derivedHydrogenPreviewChanged.emit(
+                    derived_state.atom_id,
+                    derived_state.parent_atom_id,
+                    latest,
+                )
+                self._dragging = True
+            self._last_mouse_position = current
+            event.accept()
+            return
         state = self._geometry_drag_state
         if (
             buttons & Qt.MouseButton.LeftButton
@@ -444,26 +683,71 @@ class MolecularViewportWidget(QOpenGLWidget):
         position = event.position().toPoint()
         if event.button() == Qt.MouseButton.LeftButton:
             state = self._geometry_drag_state
-            if self.edit_mode and self.edit_tool == "build" and not self._dragging:
-                hit = self._press_hit
-                if hit is not None and hit.kind == "atom" and isinstance(
-                    hit.primitive_id, int
-                ):
-                    self.buildAnchorSelected.emit(hit.primitive_id)
-                elif hit is None:
-                    try:
-                        world_point = self.camera.screen_to_world(
-                            position.x(),
-                            position.y(),
-                            max(1, self.width()),
-                            max(1, self.height()),
-                        )
-                    except ValueError as exc:
-                        self.statusChanged.emit(str(exc))
+            derived_state = self._derived_hydrogen_drag_state
+            if self.edit_mode and self.edit_tool in {"build", "bond"}:
+                build_state = self._build_drag_state
+                if build_state is not None and build_state.moved:
+                    hit = self._pick_at(position)
+                    if hit is not None and hit.kind == "atom" and isinstance(
+                        hit.primitive_id, int
+                    ):
+                        if hit.primitive_id != build_state.anchor_atom_id:
+                            self.buildBondRequested.emit(
+                                (build_state.anchor_atom_id, hit.primitive_id)
+                            )
+                    elif self.edit_tool == "build":
+                        try:
+                            world_point = self.camera.screen_to_world(
+                                position.x(),
+                                position.y(),
+                                max(1, self.width()),
+                                max(1, self.height()),
+                                plane_point=build_state.anchor_position,
+                            )
+                        except ValueError as exc:
+                            self.statusChanged.emit(str(exc))
+                        else:
+                            self.buildAnchorSelected.emit(build_state.anchor_atom_id)
+                            self.buildPointRequested.emit(
+                                (self.build_element, world_point)
+                            )
                     else:
-                        self.buildPointRequested.emit(
-                            (self.build_element, world_point)
-                        )
+                        self.statusChanged.emit("La herramienta Enlazar requiere otro átomo.")
+                elif not self._dragging:
+                    hit = self._press_hit
+                    if hit is not None and hit.kind == "atom" and isinstance(
+                        hit.primitive_id, int
+                    ):
+                        self.buildAnchorSelected.emit(hit.primitive_id)
+                    elif hit is None and self.edit_tool == "build":
+                        try:
+                            world_point = self.camera.screen_to_world(
+                                position.x(),
+                                position.y(),
+                                max(1, self.width()),
+                                max(1, self.height()),
+                            )
+                        except ValueError as exc:
+                            self.statusChanged.emit(str(exc))
+                        else:
+                            self.buildPointRequested.emit(
+                                (self.build_element, world_point)
+                            )
+            elif self.edit_mode and self.edit_tool == "measure" and not self._dragging:
+                self._record_measurement_pick(self._press_hit)
+            elif (
+                self.edit_mode
+                and self.edit_tool == "move"
+                and derived_state is not None
+                and derived_state.moved
+            ):
+                self.derivedHydrogenEditRequested.emit(
+                    (
+                        derived_state.atom_id,
+                        derived_state.parent_atom_id,
+                        derived_state.latest,
+                    )
+                )
             elif (
                 self.edit_mode
                 and self.edit_tool == "move"
@@ -480,6 +764,8 @@ class MolecularViewportWidget(QOpenGLWidget):
         self._last_mouse_position = None
         self._dragging = False
         self._geometry_drag_state = None
+        self._derived_hydrogen_drag_state = None
+        self._clear_build_preview()
         self._press_hit = None
         event.accept()
 
@@ -497,6 +783,19 @@ class MolecularViewportWidget(QOpenGLWidget):
             return
         event = a0
         if event.key() == Qt.Key.Key_Escape:
+            derived_state = self._derived_hydrogen_drag_state
+            if self.edit_mode and derived_state is not None:
+                self._apply_derived_hydrogen_position(
+                    derived_state.atom_id,
+                    derived_state.before,
+                )
+                self._derived_hydrogen_drag_state = None
+                self._dragging = False
+                self._last_mouse_position = None
+                self._press_hit = None
+                self.geometryEditCancelled.emit()
+                event.accept()
+                return
             state = self._geometry_drag_state
             if self.edit_mode and state is not None:
                 self._apply_geometry_positions(state.before)
@@ -507,9 +806,44 @@ class MolecularViewportWidget(QOpenGLWidget):
                 self.geometryEditCancelled.emit()
                 event.accept()
                 return
-            if self.edit_mode and self.edit_tool == "build":
+            if self.edit_mode and self.edit_tool == "measure":
+                self._measure_atom_ids.clear()
+                self.statusChanged.emit("Medición cancelada.")
+                event.accept()
+                return
+            if self.edit_mode and self.edit_tool in {"build", "bond"}:
                 self._press_hit = None
+                self._clear_build_preview()
                 self.buildCancelled.emit()
+                event.accept()
+                return
+        if event.key() in {Qt.Key.Key_Delete, Qt.Key.Key_Backspace}:
+            selected = next(
+                (
+                    atom
+                    for atom in self.scene.atoms
+                    if atom.id == self.selected_atom_id and atom.generated
+                ),
+                None,
+            )
+            if selected is not None:
+                self.statusChanged.emit(
+                    "No se puede borrar un H derivado; promuévalo como átomo explícito primero."
+                )
+                event.accept()
+                return
+        if event.modifiers() == Qt.KeyboardModifier.NoModifier:
+            shortcut_tools = {
+                Qt.Key.Key_S: "select",
+                Qt.Key.Key_D: "build",
+                Qt.Key.Key_M: "move",
+                Qt.Key.Key_B: "bond",
+                Qt.Key.Key_R: "measure",
+            }
+            tool = shortcut_tools.get(cast(Qt.Key, event.key()))
+            if tool is not None:
+                self.set_edit_mode(True)
+                self.set_edit_tool(tool)
                 event.accept()
                 return
         if event.key() == Qt.Key.Key_F:

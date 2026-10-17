@@ -126,6 +126,10 @@ def assemble_application_shell(self) -> None:
     self._compchem_job_operations: dict[int, str] = {}
     self._compchem_job_snapshots = {}
     self._pending_3d_build_anchor_id = None
+    self._geometry3d_sync_timer = QTimer(self)
+    self._geometry3d_sync_timer.setSingleShot(True)
+    self._geometry3d_sync_timer.setInterval(180)
+    self._geometry3d_sync_timer.timeout.connect(self._start_geometry3d_sync_job)
     self._live_mm_fixed_atom_ids = ()
     self._live_mm_pending = False
     self._compchem3d_controller.frame_ready.connect(self._on_compchem_frame_ready)
@@ -282,8 +286,14 @@ def assemble_application_shell(self) -> None:
     self.viewport3d_dock.viewport.buildPointRequested.connect(
         self._on_viewport_build_point_requested
     )
+    self.viewport3d_dock.viewport.buildBondRequested.connect(
+        self._on_viewport_build_bond_requested
+    )
     self.viewport3d_dock.viewport.buildAnchorSelected.connect(
         self._on_viewport_build_anchor_selected
+    )
+    self.viewport3d_dock.viewport.derivedHydrogenEditRequested.connect(
+        self._on_viewport_derived_hydrogen_edit_requested
     )
     self._live_mm_timer = QTimer(self)
     self._live_mm_timer.setSingleShot(True)

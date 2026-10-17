@@ -75,6 +75,61 @@ def test_pick_double_bond_outer_lane():
     assert hit.primitive_id == 7
 
 
+def test_picking_radius_tracks_space_filling_representation() -> None:
+    scene = SceneMolecule3D(
+        atoms=(SceneAtom3D(1, "C", 0.0, 0.0, 0.0, 1.7, "#404040"),),
+        bonds=(),
+    )
+    camera = CameraState(
+        target=(0.0, 0.0, 0.0),
+        distance=5.0,
+        yaw=0.0,
+        pitch=0.0,
+        projection=CameraProjection.ORTHOGRAPHIC,
+        ortho_scale=10.0,
+    )
+
+    assert pick_scene(scene, camera, 800, 600, 460, 300) is None
+    hit = pick_scene(
+        scene,
+        camera,
+        800,
+        600,
+        460,
+        300,
+        representation="space_filling",
+    )
+    assert hit is not None and hit.primitive_id == 1
+
+
+def test_pick_preserves_generated_hydrogen_identity_and_parent() -> None:
+    scene = SceneMolecule3D(
+        atoms=(
+            SceneAtom3D(1, "C", 8.0, 0.0, 0.0, 1.7, "#404040"),
+            SceneAtom3D(
+                "genH1",
+                "H",
+                0.0,
+                0.0,
+                0.0,
+                1.2,
+                "#FFFFFF",
+                generated=True,
+                parent_atom_id=1,
+            ),
+        ),
+        bonds=(SceneBond3D("genB1", 1, "genH1"),),
+    )
+    camera = CameraState(target=(0.0, 0.0, 0.0), distance=5.0, yaw=0.0, pitch=0.0)
+
+    hit = pick_scene(scene, camera, 800, 600, 400, 300)
+
+    assert hit is not None
+    assert hit.kind == "atom"
+    assert hit.primitive_id == "genH1"
+    assert hit.primitive_id != 1
+
+
 def test_pick_empty_scene_returns_none() -> None:
     camera = CameraState()
     scene = SceneMolecule3D(atoms=(), bonds=())

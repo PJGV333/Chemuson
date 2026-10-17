@@ -31,6 +31,42 @@ def test_viewport_widget_keeps_selection_local() -> None:
     assert not widget.gl_ready
 
 
+def test_delete_key_rejects_derived_hydrogen_without_mutating_scene(_qapp) -> None:
+    widget = MolecularViewportWidget()
+    hydrogen = SceneAtom3D(
+        "genH1",
+        "H",
+        1.0,
+        0.0,
+        0.0,
+        1.2,
+        "#FFFFFF",
+        generated=True,
+        parent_atom_id=1,
+    )
+    scene = SceneMolecule3D(
+        atoms=(SceneAtom3D(1, "C", 0.0, 0.0, 0.0, 1.7, "#404040"), hydrogen),
+        bonds=(SceneBond3D("genB1", 1, "genH1"),),
+    )
+    widget.set_scene(scene)
+    widget.set_edit_mode(True)
+    widget._set_selection(PickResult("atom", "genH1", 1.0))
+    messages = []
+    widget.statusChanged.connect(messages.append)
+
+    widget.keyPressEvent(
+        QKeyEvent(
+            QEvent.Type.KeyPress,
+            Qt.Key.Key_Delete,
+            Qt.KeyboardModifier.NoModifier,
+        )
+    )
+
+    assert widget.scene is scene
+    assert widget.selected_atom_id == "genH1"
+    assert messages and "derivado" in messages[-1].lower()
+
+
 def test_viewport_dock_is_hidden_until_explicitly_opened() -> None:
     dock = MolecularViewportDock()
     assert not dock.isVisible()
@@ -80,7 +116,7 @@ def test_scene_and_selection_defer_gpu_upload_until_paint(monkeypatch) -> None:
     assert calls == []
     assert widget._mesh_dirty
     widget.paintGL()
-    assert calls == [(scene, 1, None)]
+    assert calls == [(scene, 1, None, "ball_and_stick")]
     assert not widget._mesh_dirty
 
 
@@ -324,6 +360,136 @@ def test_control_drag_moves_only_the_connected_fragment(monkeypatch) -> None:
     assert after[3] == before[3]
 
 
+def test_measure_tool_reports_distance_and_angle_from_direct_picks(monkeypatch, _qapp):
+    widget = MolecularViewportWidget()
+    widget.resize(800, 600)
+    widget.set_scene(
+        SceneMolecule3D(
+            atoms=(
+                SceneAtom3D(1, "C", 0.0, 0.0, 0.0, 1.7, "#404040"),
+                SceneAtom3D(2, "C", 1.0, 0.0, 0.0, 1.7, "#404040"),
+                SceneAtom3D(3, "C", 1.0, 1.0, 0.0, 1.7, "#404040"),
+            ),
+            bonds=(SceneBond3D(1, 1, 2), SceneBond3D(2, 2, 3)),
+        )
+    )
+    widget.set_edit_mode(True)
+    widget.set_edit_tool("measure")
+    monkeypatch.setattr(
+        "chemuson.gui.viewport3d.widget.pick_scene",
+        lambda _scene, _camera, _width, _height, x, _y, _representation: PickResult(
+            "atom", 1 if x < 200 else 2 if x < 400 else 3, 1.0
+        ),
+    )
+    statuses = []
+    widget.statusChanged.connect(statuses.append)
+
+    for x in (100, 300, 500):
+        position = QPointF(float(x), 300.0)
+        widget.mousePressEvent(
+            QMouseEvent(
+                QEvent.Type.MouseButtonPress,
+                position,
+                Qt.MouseButton.LeftButton,
+                Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.NoModifier,
+            )
+        )
+        widget.mouseReleaseEvent(
+            QMouseEvent(
+                QEvent.Type.MouseButtonRelease,
+                position,
+                Qt.MouseButton.LeftButton,
+                Qt.MouseButton.NoButton,
+                Qt.KeyboardModifier.NoModifier,
+            )
+        )
+
+    assert any("1.00 Å" in message for message in statuses)
+    assert statuses[-1].endswith("90.0°")
+
+
+def test_bond_tool_does_not_create_an_atom_on_empty_space(monkeypatch, _qapp):
+    widget = MolecularViewportWidget()
+    widget.resize(800, 600)
+    widget.set_scene(
+        SceneMolecule3D(
+            atoms=(SceneAtom3D(1, "C", 0.0, 0.0, 0.0, 1.7, "#404040"),),
+            bonds=(),
+        )
+    )
+    widget.set_edit_mode(True)
+    widget.set_edit_tool("bond")
+    monkeypatch.setattr(
+        "chemuson.gui.viewport3d.widget.pick_scene",
+        lambda _scene, _camera, _width, _height, x, _y, _representation: (
+            PickResult("atom", 1, 1.0) if x < 450 else None
+        ),
+    )
+    point_requests = []
+    bond_requests = []
+    widget.buildPointRequested.connect(point_requests.append)
+    widget.buildBondRequested.connect(bond_requests.append)
+
+    widget.mousePressEvent(
+        QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            QPointF(400.0, 300.0),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+    )
+    widget.mouseMoveEvent(
+        QMouseEvent(
+            QEvent.Type.MouseMove,
+            QPointF(600.0, 300.0),
+            Qt.MouseButton.NoButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+    )
+    widget.mouseReleaseEvent(
+        QMouseEvent(
+            QEvent.Type.MouseButtonRelease,
+            QPointF(600.0, 300.0),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+    )
+
+    assert point_requests == []
+    assert bond_requests == []
+
+
+def test_tool_keyboard_shortcuts_select_measure_mode(_qapp):
+    widget = MolecularViewportWidget()
+    widget.keyPressEvent(
+        QKeyEvent(
+            QEvent.Type.KeyPress,
+            Qt.Key.Key_R,
+            Qt.KeyboardModifier.NoModifier,
+            "r",
+        )
+    )
+    assert widget.edit_mode
+    assert widget.edit_tool == "measure"
+
+
+def test_viewport_dock_exposes_compact_tools_with_shortcut_help(_qapp):
+    dock = MolecularViewportDock()
+    try:
+        assert set(dock.tool_buttons) == {"select", "build", "move", "bond", "measure"}
+        assert all(button.toolTip() for button in dock.tool_buttons.values())
+        assert "R" in dock.tool_buttons["measure"].toolTip()
+        dock.tool_buttons["measure"].click()
+        assert dock.viewport.edit_tool == "measure"
+        assert dock.edit_mode_checkbox.isChecked()
+    finally:
+        dock.close()
+
+
 def test_viewport_dock_exposes_edit_build_live_mm_and_constraint_controls(_qapp):
     from chemuson.gui.viewport3d.dock import MolecularViewportDock
 
@@ -389,6 +555,128 @@ def test_build_tool_emits_a_world_position_for_empty_space_click(monkeypatch, _q
     assert element == "N"
     assert len(position) == 3
     assert all(math.isfinite(value) for value in position)
+
+
+def test_build_drag_from_atom_previews_and_requests_one_bonded_atom(monkeypatch, _qapp):
+    widget = MolecularViewportWidget()
+    widget.resize(800, 600)
+    widget.set_scene(
+        SceneMolecule3D(
+            atoms=(SceneAtom3D(1, "C", 0.0, 0.0, 0.0, 1.7, "#404040"),),
+            bonds=(),
+        )
+    )
+    widget.set_edit_mode(True)
+    widget.set_edit_tool("build")
+    widget.set_build_element("N")
+    monkeypatch.setattr(
+        "chemuson.gui.viewport3d.widget.pick_scene",
+        lambda _scene, _camera, _width, _height, x, _y, _representation: (
+            PickResult("atom", 1, 1.0) if x < 450 else None
+        ),
+    )
+    anchors = []
+    requests = []
+    previews = []
+    widget.buildAnchorSelected.connect(anchors.append)
+    widget.buildPointRequested.connect(requests.append)
+    widget.buildPreviewChanged.connect(previews.append)
+    original_yaw = widget.camera.yaw
+
+    widget.mousePressEvent(
+        QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            QPointF(400.0, 300.0),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+    )
+    widget.mouseMoveEvent(
+        QMouseEvent(
+            QEvent.Type.MouseMove,
+            QPointF(520.0, 320.0),
+            Qt.MouseButton.NoButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+    )
+    assert previews and previews[-1] is not None
+    widget.mouseReleaseEvent(
+        QMouseEvent(
+            QEvent.Type.MouseButtonRelease,
+            QPointF(520.0, 320.0),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+    )
+
+    assert anchors == [1]
+    assert len(requests) == 1
+    assert requests[0][0] == "N"
+    assert len(requests[0][1]) == 3
+    assert widget.camera.yaw == original_yaw
+    assert previews[-1] is None
+
+
+def test_dragging_derived_hydrogen_previews_and_requests_parented_edit(monkeypatch, _qapp):
+    widget = MolecularViewportWidget()
+    widget.resize(800, 600)
+    widget.set_scene(
+        SceneMolecule3D(
+            atoms=(
+                SceneAtom3D(1, "C", 0.0, 0.0, 0.0, 1.7, "#404040"),
+                SceneAtom3D(
+                    "genH1", "H", 1.0, 0.0, 0.0, 1.2, "#FFFFFF",
+                    generated=True, parent_atom_id=1,
+                ),
+            ),
+            bonds=(SceneBond3D("genB1", 1, "genH1"),),
+        )
+    )
+    widget.set_edit_mode(True)
+    monkeypatch.setattr(
+        "chemuson.gui.viewport3d.widget.pick_scene",
+        lambda *_args: PickResult("atom", "genH1", 1.0),
+    )
+    previews = []
+    commits = []
+    widget.derivedHydrogenPreviewChanged.connect(lambda *args: previews.append(args))
+    widget.derivedHydrogenEditRequested.connect(commits.append)
+
+    widget.mousePressEvent(
+        QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            QPointF(400.0, 300.0),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+    )
+    widget.mouseMoveEvent(
+        QMouseEvent(
+            QEvent.Type.MouseMove,
+            QPointF(500.0, 320.0),
+            Qt.MouseButton.NoButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+    )
+    assert previews
+    widget.mouseReleaseEvent(
+        QMouseEvent(
+            QEvent.Type.MouseButtonRelease,
+            QPointF(500.0, 320.0),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+    )
+
+    assert len(commits) == 1
+    assert commits[0][0:2] == ("genH1", 1)
+    assert commits[0][2] != (1.0, 0.0, 0.0)
 
 
 def test_escape_cancels_an_uncommitted_geometry_drag(monkeypatch, _qapp):

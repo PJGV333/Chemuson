@@ -7,7 +7,7 @@ import math
 
 from .camera import CameraProjection, CameraState
 from .geometry import ATOM_RADIUS_SCALE, Ray3D, add, ray_capsule_intersection, ray_sphere_intersection, scale
-from .mesh import bond_lane_layout, bond_lateral_direction
+from .mesh import bond_lane_layout, bond_lateral_direction, normalize_representation
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,7 +59,9 @@ def pick_scene(
     viewport_height: float,
     pixel_x: float,
     pixel_y: float,
+    representation: str = "ball_and_stick",
 ) -> PickResult | None:
+    style = normalize_representation(representation)
     ray = ray_from_screen(camera, viewport_width, viewport_height, pixel_x, pixel_y)
     atoms = {atom.id: atom for atom in getattr(scene, "atoms", ())}
     bonds = tuple(getattr(scene, "bonds", ()))
@@ -85,7 +87,12 @@ def pick_scene(
 
     for atom in getattr(scene, "atoms", ()):
         center = (float(atom.x), float(atom.y), float(atom.z))
-        radius = max(0.0, float(getattr(atom, "radius", 0.0))) * ATOM_RADIUS_SCALE
+        if style == "wireframe":
+            radius = 0.06
+        elif style == "space_filling":
+            radius = max(0.0, float(getattr(atom, "radius", 0.0)))
+        else:
+            radius = max(0.0, float(getattr(atom, "radius", 0.0))) * ATOM_RADIUS_SCALE
         consider("atom", atom.id, ray_sphere_intersection(ray, center, radius))
 
     for bond in bonds:
@@ -99,6 +106,7 @@ def pick_scene(
         offsets, radius = bond_lane_layout(
             getattr(bond, "order", 1),
             bool(getattr(bond, "is_aromatic", False)),
+            style,
         )
         bond_distance = None
         for offset in offsets:

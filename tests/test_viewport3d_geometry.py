@@ -14,6 +14,7 @@ from chemuson.gui.viewport3d.geometry import (
     scene_bounds,
 )
 from chemuson.gui.viewport3d.mesh import build_scene_mesh
+from chemuson.gui.viewport3d import renderer as viewport_renderer
 
 
 def _scene() -> SceneMolecule3D:
@@ -40,6 +41,38 @@ def test_scene_bounds_include_visual_atom_radius() -> None:
     assert bounds.minimum[0] < 0.0
     assert bounds.maximum[0] > 2.0
     assert all(math.isfinite(value) for value in (*bounds.minimum, *bounds.maximum))
+
+
+def test_shader_lighting_uses_view_space_normals_and_key_fill_ambient_specular() -> None:
+    vertex_shader = viewport_renderer._VERTEX_SHADER
+    fragment_shader = viewport_renderer._FRAGMENT_SHADER
+
+    assert "uniform mat4 u_view;" in vertex_shader
+    assert "v_normal = mat3(u_view) * a_normal;" in vertex_shader
+    assert "v_position = view_position.xyz;" in vertex_shader
+    assert "u_ambient_strength" in fragment_shader
+    assert "u_key_strength" in fragment_shader
+    assert "u_fill_strength" in fragment_shader
+    assert "u_specular_strength" in fragment_shader
+
+
+def test_mesh_representations_change_atom_radius_without_changing_identity() -> None:
+    scene = _scene()
+
+    ball_and_stick = build_scene_mesh(scene, representation="ball_and_stick")
+    wireframe = build_scene_mesh(scene, representation="wireframe")
+    space_filling = build_scene_mesh(scene, representation="space_filling")
+
+    def minimum_x(mesh):
+        return min(mesh.vertices[0::9])
+
+    assert minimum_x(wireframe) > minimum_x(ball_and_stick)
+    assert minimum_x(space_filling) < minimum_x(ball_and_stick)
+    assert all(
+        math.isfinite(value)
+        for mesh in (wireframe, ball_and_stick, space_filling)
+        for value in mesh.vertices
+    )
 
 
 def test_mesh_skips_degenerate_bonds_and_has_interleaved_vertices() -> None:

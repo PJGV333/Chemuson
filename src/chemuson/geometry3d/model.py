@@ -262,6 +262,7 @@ class SceneAtom3D:
     radius: float
     color: str
     generated: bool = False
+    parent_atom_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -338,6 +339,30 @@ def scene_molecule_from_graph(graph, coordinates: CoordinateSet3D) -> SceneMolec
         )
     atom_ids = {atom.id for atom in atoms}
     generated_atoms = coordinates.metadata.get("generated_atoms", ()) if hasattr(coordinates, "metadata") else ()
+    generated_bonds = coordinates.metadata.get("generated_bonds", ()) if hasattr(coordinates, "metadata") else ()
+    generated_ids = {
+        str(item.get("id"))
+        for item in generated_atoms
+        if isinstance(item, Mapping) and item.get("id") is not None
+    } if isinstance(generated_atoms, list) else set()
+    generated_parent_ids: dict[str, int] = {}
+    if isinstance(generated_bonds, list):
+        for item in generated_bonds:
+            if not isinstance(item, Mapping):
+                continue
+            first_id, second_id = item.get("a1_id"), item.get("a2_id")
+            for generated_id, candidate_parent in (
+                (str(first_id), second_id),
+                (str(second_id), first_id),
+            ):
+                if generated_id not in generated_ids or candidate_parent is None:
+                    continue
+                try:
+                    parent_id = int(candidate_parent)
+                except (TypeError, ValueError, OverflowError):
+                    continue
+                if parent_id in getattr(graph, "atoms", {}):
+                    generated_parent_ids[generated_id] = parent_id
     if isinstance(generated_atoms, list):
         for item in generated_atoms:
             if not isinstance(item, Mapping):
@@ -363,6 +388,7 @@ def scene_molecule_from_graph(graph, coordinates: CoordinateSet3D) -> SceneMolec
                     radius=float(_VDW_RADII.get(element, 1.20)),
                     color=str(_ELEMENT_COLORS.get(element, "#B0B0B0")),
                     generated=True,
+                    parent_atom_id=generated_parent_ids.get(atom_id),
                 )
             )
             atom_ids.add(atom_id)
@@ -377,7 +403,6 @@ def scene_molecule_from_graph(graph, coordinates: CoordinateSet3D) -> SceneMolec
         for bond in sorted(getattr(graph, "bonds", {}).values(), key=lambda item: item.id)
         if int(bond.a1_id) in positions and int(bond.a2_id) in positions
     )
-    generated_bonds = coordinates.metadata.get("generated_bonds", ()) if hasattr(coordinates, "metadata") else ()
     if isinstance(generated_bonds, list):
         bond_ids = {bond.id for bond in bonds}
         for item in generated_bonds:

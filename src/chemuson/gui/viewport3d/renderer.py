@@ -29,11 +29,15 @@ layout(location = 0) in vec3 a_position;
 layout(location = 1) in vec3 a_normal;
 layout(location = 2) in vec3 a_color;
 uniform mat4 u_mvp;
+uniform mat4 u_view;
 out vec3 v_normal;
 out vec3 v_color;
+out vec3 v_position;
 void main() {
-    v_normal = a_normal;
+    vec4 view_position = u_view * vec4(a_position, 1.0);
+    v_normal = mat3(u_view) * a_normal;
     v_color = a_color;
+    v_position = view_position.xyz;
     gl_Position = u_mvp * vec4(a_position, 1.0);
 }
 """
@@ -41,12 +45,26 @@ void main() {
 _FRAGMENT_SHADER = """#version 410 core
 in vec3 v_normal;
 in vec3 v_color;
+in vec3 v_position;
 out vec4 frag_color;
+uniform vec3 u_key_direction;
+uniform vec3 u_fill_direction;
+uniform float u_ambient_strength;
+uniform float u_key_strength;
+uniform float u_fill_strength;
+uniform float u_specular_strength;
 void main() {
     vec3 normal = normalize(v_normal);
-    vec3 light = normalize(vec3(-0.35, 0.75, 0.55));
-    float diffuse = 0.28 + 0.72 * max(dot(normal, light), 0.0);
-    frag_color = vec4(v_color * diffuse, 1.0);
+    vec3 view_direction = normalize(-v_position);
+    vec3 key_direction = normalize(u_key_direction);
+    vec3 fill_direction = normalize(u_fill_direction);
+    float key = max(dot(normal, key_direction), 0.0);
+    float fill = max(dot(normal, fill_direction), 0.0);
+    vec3 half_vector = normalize(key_direction + view_direction);
+    float specular = pow(max(dot(normal, half_vector), 0.0), 28.0);
+    float diffuse = u_ambient_strength + u_key_strength * key + u_fill_strength * fill;
+    vec3 color = v_color * diffuse + vec3(u_specular_strength * specular);
+    frag_color = vec4(clamp(color, 0.0, 1.0), 1.0);
 }
 """
 
@@ -106,12 +124,23 @@ class MoleculeRenderer:
             self.cleanup()
             return False, f"OpenGL no disponible: {exc}"
 
-    def upload(self, scene, selected_atom_id=None, selected_bond_id=None) -> bool:
+    def upload(
+        self,
+        scene,
+        selected_atom_id=None,
+        selected_bond_id=None,
+        representation="ball_and_stick",
+    ) -> bool:
         if not self._initialized or self._vbo is None or self._vao is None or self._program is None:
             return False
         if QOpenGLContext.currentContext() != self._context:
             return False
-        mesh = build_scene_mesh(scene, selected_atom_id, selected_bond_id)
+        mesh = build_scene_mesh(
+            scene,
+            selected_atom_id,
+            selected_bond_id,
+            representation,
+        )
         self._vertex_count = mesh.vertex_count
         self._vao.bind()
         self._vbo.bind()
@@ -154,6 +183,13 @@ class MoleculeRenderer:
         )
         self._program.bind()
         self._program.setUniformValue("u_mvp", projection * view)
+        self._program.setUniformValue("u_view", view)
+        self._program.setUniformValue("u_key_direction", QVector3D(-0.35, 0.75, 0.55))
+        self._program.setUniformValue("u_fill_direction", QVector3D(0.65, 0.20, 0.50))
+        self._program.setUniformValue("u_ambient_strength", 0.30)
+        self._program.setUniformValue("u_key_strength", 0.58)
+        self._program.setUniformValue("u_fill_strength", 0.18)
+        self._program.setUniformValue("u_specular_strength", 0.16)
         self._vao.bind()
         gl.glDrawArrays(GL_TRIANGLES, 0, self._vertex_count)
         self._vao.release()

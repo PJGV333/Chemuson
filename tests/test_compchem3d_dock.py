@@ -272,6 +272,151 @@ def test_2d_topology_changes_mark_3d_stale_and_undo_restores_it() -> None:
         window.close()
 
 
+def test_open_viewport_debounces_regeneration_after_topology_changes() -> None:
+    class FakeController:
+        def __init__(self):
+            self.started = []
+            self.cancelled = []
+
+        def active_jobs(self):
+            return []
+
+        def cancel_job(self, job_id):
+            self.cancelled.append(job_id)
+            return True
+
+        def start_job(self, graph, spec, coordinates):
+            self.started.append((graph, spec, coordinates))
+            return len(self.started) + 100
+
+    from PyQt6.QtCore import QEventLoop, QTimer
+    from chemuson.gui.commands import AddAtomCommand
+
+    window = ChemusonWindow()
+    try:
+        canvas = window.canvas
+        atom = canvas.model.add_atom("C", 0.0, 0.0)
+        canvas.set_geometry3d_coordinates(
+            CoordinateSet3D({atom.id: (0.0, 0.0, 0.0)}, "test", "manual")
+        )
+        fake = FakeController()
+        window._compchem3d_controller = fake
+        window.viewport3d_dock.isVisible = lambda: True
+        timer = window._geometry3d_sync_timer
+        timer.setInterval(20)
+
+        for element, offset in (("O", 1), ("N", 2)):
+            window.canvas.undo_stack.push(
+                AddAtomCommand(
+                    canvas.model,
+                    canvas,
+                    element,
+                    float(offset * 42),
+                    0.0,
+                    is_explicit=True,
+                )
+            )
+
+        assert canvas.geometry3d_is_stale
+        assert window.viewport3d_dock.status_label.text() == "Actualizando geometría 3D…"
+        loop = QEventLoop()
+        timer.timeout.connect(loop.quit)
+        QTimer.singleShot(100, loop.quit)
+        loop.exec()
+
+        assert len(fake.started) == 1
+        assert len(fake.started[0][0].atoms) == 3
+        assert fake.started[0][1].operation == "generate"
+
+        canvas.undo_stack.undo()
+        canvas.undo_stack.undo()
+        assert not canvas.geometry3d_is_stale
+        assert not timer.isActive()
+
+        canvas.undo_stack.redo()
+        canvas.undo_stack.redo()
+        assert canvas.geometry3d_is_stale
+        assert timer.isActive()
+        redo_loop = QEventLoop()
+        timer.timeout.connect(redo_loop.quit)
+        QTimer.singleShot(100, redo_loop.quit)
+        redo_loop.exec()
+        assert len(fake.started) == 2
+        assert len(fake.started[1][0].atoms) == 3
+    finally:
+        window._geometry3d_sync_timer.stop()
+        window._close_approved = True
+        window._async_shutdown_complete = True
+        window.close()
+
+
+def test_restoring_canvas_does_not_relabel_stale_geometry_as_current() -> None:
+    from chemuson.gui.commands import ChangeAtomCommand
+
+    window = ChemusonWindow()
+    try:
+        canvas = window.canvas
+        atom = canvas.model.add_atom("C", 0.0, 0.0)
+        canvas.set_geometry3d_coordinates(
+            CoordinateSet3D({atom.id: (0.0, 0.0, 0.0)}, "test", "manual")
+        )
+        original_signature = canvas.geometry3d_graph_signature
+        canvas.undo_stack.push(ChangeAtomCommand(canvas.model, canvas, atom.id, "O"))
+        assert canvas.model.get_atom(atom.id).element == "O"
+        assert canvas.geometry3d_is_stale
+
+        window._restore_compchem_state_for_canvas(canvas)
+
+        assert canvas.geometry3d_is_stale
+        assert canvas.geometry3d_graph_signature == original_signature
+    finally:
+        window._close_approved = True
+        window._async_shutdown_complete = True
+        window.close()
+
+
+def test_layout_edit_does_not_invalidate_running_geometry_job() -> None:
+    from chemuson.gui.commands.transform_commands import MoveAtomsCommand
+
+    class FakeController:
+        def __init__(self):
+            self.cancelled = []
+
+        def cancel_job(self, job_id):
+            self.cancelled.append(job_id)
+            return True
+
+    window = ChemusonWindow()
+    try:
+        canvas = window.canvas
+        atom = canvas.model.add_atom("C", 0.0, 0.0)
+        coordinates = CoordinateSet3D(
+            {atom.id: (0.0, 0.0, 0.0)}, source="test", method="manual"
+        )
+        canvas.set_geometry3d_coordinates(coordinates)
+        job_id = 53
+        window._compchem3d_controller = FakeController()
+        window._latest_compchem_job_id = job_id
+        window._compchem_job_operations[job_id] = "generate"
+        window._compchem_job_snapshots[job_id] = window._current_compchem_snapshot(canvas)
+
+        canvas.undo_stack.push(
+            MoveAtomsCommand(
+                canvas.model,
+                canvas,
+                {atom.id: (0.0, 0.0)},
+                {atom.id: (24.0, 12.0)},
+            )
+        )
+
+        assert window._compchem3d_controller.cancelled == []
+        assert window._compchem_job_snapshot_matches(job_id)
+    finally:
+        window._close_approved = True
+        window._async_shutdown_complete = True
+        window.close()
+
+
 def test_compchem_discards_frames_after_document_edit() -> None:
     from chemuson.gui.commands import AddAtomCommand
 
@@ -423,6 +568,82 @@ def test_3d_builder_adds_atom_and_bond_as_one_undoable_molecular_edit() -> None:
         window.close()
 
 
+def test_3d_builder_links_existing_atoms_as_one_undoable_edit() -> None:
+    window = ChemusonWindow()
+    try:
+        canvas = window.canvas
+        first = canvas.model.add_atom("C", 0.0, 0.0)
+        second = canvas.model.add_atom("O", 42.0, 0.0)
+        canvas.set_geometry3d_coordinates(
+            CoordinateSet3D(
+                {first.id: (0.0, 0.0, 0.0), second.id: (1.5, 0.0, 0.0)},
+                source="test",
+                method="manual",
+            )
+        )
+        window.viewport3d_dock.bond_order_combo.setCurrentIndex(0)
+
+        window._on_viewport_build_bond_requested((first.id, second.id))
+
+        assert len(canvas.model.bonds) == 1
+        assert canvas.coordinate_set_3d is not None
+        assert canvas.geometry3d_is_stale
+        assert canvas.undo_stack.count() == 1
+        canvas.undo_stack.undo()
+        assert not canvas.model.bonds
+        assert not canvas.geometry3d_is_stale
+    finally:
+        window._close_approved = True
+        window._async_shutdown_complete = True
+        window.close()
+
+
+def test_3d_builder_updates_existing_bond_order_as_one_undoable_edit() -> None:
+    window = ChemusonWindow()
+    try:
+        canvas = window.canvas
+        first = canvas.model.add_atom("C", 0.0, 0.0)
+        second = canvas.model.add_atom("C", 42.0, 0.0)
+        bond = canvas.model.add_bond(first.id, second.id, order=1)
+        canvas.set_geometry3d_coordinates(
+            CoordinateSet3D(
+                {first.id: (0.0, 0.0, 0.0), second.id: (1.5, 0.0, 0.0)},
+                source="test",
+                method="manual",
+            )
+        )
+        window.viewport3d_dock.bond_order_combo.setCurrentIndex(1)
+
+        window._on_viewport_build_bond_requested((first.id, second.id))
+
+        assert canvas.model.bonds[bond.id].order == 2
+        assert canvas.geometry3d_is_stale
+        assert canvas.undo_stack.count() == 1
+        canvas.undo_stack.undo()
+        assert canvas.model.bonds[bond.id].order == 1
+        assert not canvas.geometry3d_is_stale
+    finally:
+        window._close_approved = True
+        window._async_shutdown_complete = True
+        window.close()
+
+
+def test_3d_viewport_representation_control_updates_mesh_style() -> None:
+    window = ChemusonWindow()
+    try:
+        combo = window.viewport3d_dock.representation_combo
+        index = combo.findData("space_filling")
+        assert index >= 0
+
+        combo.setCurrentIndex(index)
+
+        assert window.viewport3d_dock.viewport.representation == "space_filling"
+    finally:
+        window._close_approved = True
+        window._async_shutdown_complete = True
+        window.close()
+
+
 def test_3d_builder_respects_selected_double_bond_order() -> None:
     window = ChemusonWindow()
     try:
@@ -481,6 +702,7 @@ def test_3d_geometry_preview_keeps_and_moves_derived_hydrogens() -> None:
         assert preview is not None
         scene = scene_molecule_from_graph(canvas.model, preview)
         hydrogen = next(atom for atom in scene.atoms if atom.generated)
+        assert hydrogen.parent_atom_id == carbon.id
         assert len(scene.atoms) == 2
         assert len(scene.bonds) == 1
         assert (hydrogen.x, hydrogen.y, hydrogen.z) == (1.0, 1.0, 0.0)
@@ -488,6 +710,117 @@ def test_3d_geometry_preview_keeps_and_moves_derived_hydrogens() -> None:
         window._close_approved = True
         window._async_shutdown_complete = True
         window.close()
+
+
+def test_dragging_derived_hydrogen_promotes_it_as_one_undoable_edit(monkeypatch) -> None:
+    from chemuson.geometry3d.model import scene_molecule_from_graph
+
+    window = ChemusonWindow()
+    try:
+        canvas = window.canvas
+        carbon = canvas.model.add_atom("C", 0.0, 0.0, is_explicit=True)
+        original = CoordinateSet3D(
+            {carbon.id: (0.0, 0.0, 0.0)},
+            source="test",
+            method="mmff",
+            metadata={
+                "generated_atoms": [
+                    {"id": "genH1", "element": "H", "coords": [1.0, 0.0, 0.0]}
+                ],
+                "generated_bonds": [
+                    {"id": "genB1", "a1_id": carbon.id, "a2_id": "genH1", "order": 1}
+                ],
+            },
+        )
+        canvas.set_geometry3d_coordinates(original)
+        window.viewport3d_dock.live_mm_checkbox.setChecked(True)
+        window._live_mm_timer.stop()
+
+        window._on_viewport_derived_hydrogen_edit_requested(
+            ("genH1", carbon.id, (0.0, 1.0, 0.0))
+        )
+
+        assert len(canvas.model.atoms) == 2
+        hydrogen = next(atom for atom in canvas.model.atoms.values() if atom.element == "H")
+        assert hydrogen.is_explicit
+        assert math.hypot(hydrogen.x - carbon.x, hydrogen.y - carbon.y) == pytest.approx(
+            canvas.state.bond_length
+        )
+        bond = next(iter(canvas.model.bonds.values()))
+        assert {bond.a1_id, bond.a2_id} == {carbon.id, hydrogen.id}
+        coordinates = canvas.coordinate_set_3d
+        assert coordinates is not None
+        assert coordinates.normalized_positions()[hydrogen.id] == (0.0, 1.0, 0.0)
+        assert coordinates.metadata.get("generated_atoms", []) == []
+        assert coordinates.metadata.get("generated_bonds", []) == []
+        assert not canvas.geometry3d_is_stale
+        assert canvas.undo_stack.count() == 1
+
+        canvas.undo_stack.undo()
+        assert list(canvas.model.atoms) == [carbon.id]
+        assert canvas.coordinate_set_3d == original
+        canvas.undo_stack.redo()
+        assert len(canvas.model.atoms) == 2
+        assert canvas.coordinate_set_3d == coordinates
+        assert window._live_mm_fixed_atom_ids == (hydrogen.id,)
+        captured = {}
+        controller = window._compchem3d_controller
+        monkeypatch.setattr(controller, "active_jobs", lambda: [])
+        monkeypatch.setattr(
+            controller,
+            "start_job",
+            lambda graph, spec, coordset: captured.update(
+                graph=graph, spec=spec, coordset=coordset
+            )
+            or 9001,
+        )
+        window._start_live_mm_job()
+        window._live_mm_timer.stop()
+        assert captured["spec"].fixed_atom_ids == (hydrogen.id,)
+        assert captured["coordset"].normalized_positions()[hydrogen.id] == (
+            0.0,
+            1.0,
+            0.0,
+        )
+        from chemuson.chemio.persistence import PersistenceManager
+        from chemuson.gui.canvas import ChemusonCanvas
+
+        payload = PersistenceManager.save_to_dict(canvas)
+        restored = ChemusonCanvas()
+        PersistenceManager.load_from_dict(payload, restored)
+        assert len(restored.model.atoms) == 2
+        assert restored.coordinate_set_3d is not None
+        restored_hydrogen = next(
+            atom for atom in restored.model.atoms.values() if atom.element == "H"
+        )
+        assert restored.coordinate_set_3d.normalized_positions()[restored_hydrogen.id] == (
+            0.0,
+            1.0,
+            0.0,
+        )
+
+        scene = scene_molecule_from_graph(canvas.model, coordinates)
+        assert sum(atom.element == "H" for atom in scene.atoms) == 1
+    finally:
+        window._close_approved = True
+        window._async_shutdown_complete = True
+        window.close()
+
+
+def test_promoted_explicit_hydrogen_is_not_duplicated_by_rdkit() -> None:
+    from chemuson.chemio.rdkit_io import _rdkit_available, molgraph_to_rdkit
+    from chemuson.gui.canvas import ChemusonCanvas
+
+    if not _rdkit_available():
+        pytest.skip("RDKit no disponible en este entorno")
+    canvas = ChemusonCanvas()
+    carbon = canvas.model.add_atom("C", 0.0, 0.0, is_explicit=True)
+    hydrogen = canvas.model.add_atom("H", 40.0, 0.0, is_explicit=True)
+    canvas.model.add_bond(carbon.id, hydrogen.id, order=1)
+
+    rdkit_mol = molgraph_to_rdkit(canvas.model)
+
+    assert rdkit_mol.GetNumAtoms() == 2
 
 
 def test_cancelled_3d_drag_restores_derived_hydrogen_coordinates() -> None:

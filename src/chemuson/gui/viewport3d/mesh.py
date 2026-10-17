@@ -172,8 +172,25 @@ def bond_lateral_direction(
     return normalize(cross(axis, reference), (1.0, 0.0, 0.0))
 
 
-def bond_lane_layout(order: int, is_aromatic: bool = False) -> tuple[tuple[float, ...], float]:
-    """Devuelve offsets y radio por carril para render y picking coherentes."""
+def normalize_representation(value: str) -> str:
+    representation = str(value).strip().lower()
+    if representation not in {"ball_and_stick", "wireframe", "space_filling"}:
+        raise ValueError(f"Representación 3D no soportada: {value}")
+    return representation
+
+
+def bond_lane_layout(
+    order: int,
+    is_aromatic: bool = False,
+    representation: str = "ball_and_stick",
+) -> tuple[tuple[float, ...], float]:
+    """Devuelve carriles coherentes con el estilo usado por malla y picking."""
+    style = normalize_representation(representation)
+    if style == "space_filling":
+        return (0.0,), 0.045
+    if style == "wireframe":
+        offsets, _radius = bond_lane_layout(order, is_aromatic)
+        return offsets, 0.035
     try:
         normalized_order = max(1, min(3, int(order or 1)))
     except (TypeError, ValueError):
@@ -195,8 +212,9 @@ def _append_bond(
     order: int,
     is_aromatic: bool,
     color: tuple[float, float, float],
+    representation: str = "ball_and_stick",
 ) -> None:
-    offsets, radius = bond_lane_layout(order, is_aromatic)
+    offsets, radius = bond_lane_layout(order, is_aromatic, representation)
     for offset in offsets:
         displacement = scale(lateral, offset)
         _append_cylinder(output, add(start, displacement), add(end, displacement), radius, color)
@@ -206,7 +224,9 @@ def build_scene_mesh(
     scene,
     selected_atom_id: int | str | None = None,
     selected_bond_id: int | str | None = None,
+    representation: str = "ball_and_stick",
 ) -> MeshData:
+    style = normalize_representation(representation)
     output: list[float] = []
     atoms = {atom.id: atom for atom in getattr(scene, "atoms", ())}
     bonds = tuple(getattr(scene, "bonds", ()))
@@ -217,7 +237,12 @@ def build_scene_mesh(
             adjacency[bond.a2_id].append(bond.a1_id)
     for atom in getattr(scene, "atoms", ()):
         center = (float(atom.x), float(atom.y), float(atom.z))
-        radius = float(getattr(atom, "radius", 0.0)) * ATOM_RADIUS_SCALE
+        if style == "wireframe":
+            radius = 0.06
+        elif style == "space_filling":
+            radius = float(getattr(atom, "radius", 0.0))
+        else:
+            radius = float(getattr(atom, "radius", 0.0)) * ATOM_RADIUS_SCALE
         color = _selected_color() if atom.id == selected_atom_id else _color(atom.color)
         _append_sphere(output, center, radius, color)
     for bond in bonds:
@@ -241,5 +266,6 @@ def build_scene_mesh(
             order,
             bool(getattr(bond, "is_aromatic", False)),
             color,
+            style,
         )
     return MeshData(tuple(output))

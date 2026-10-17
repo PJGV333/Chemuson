@@ -5,6 +5,7 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
+    QButtonGroup,
     QComboBox,
     QDockWidget,
     QDoubleSpinBox,
@@ -13,6 +14,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -53,6 +55,37 @@ class MolecularViewportDock(QDockWidget):
         self.tool_combo = QComboBox()
         self.tool_combo.addItem("Mover átomo/fragmento", "move")
         self.tool_combo.addItem("Construir molécula", "build")
+        self.tool_combo.addItem("Seleccionar", "select")
+        self.tool_combo.addItem("Enlazar átomos", "bond")
+        self.tool_combo.addItem("Medir geometría", "measure")
+        self.tool_buttons: dict[str, QToolButton] = {}
+        self.tool_button_group = QButtonGroup(container)
+        self.tool_button_group.setExclusive(True)
+        tool_row = QHBoxLayout()
+        for tool, label, shortcut, description in (
+            ("select", "Sel", "S", "Seleccionar átomo o enlace"),
+            ("build", "Dib", "D", "Dibujar átomos y enlaces"),
+            ("move", "Mov", "M", "Mover átomo o fragmento"),
+            ("bond", "Enl", "B", "Crear o cambiar enlaces"),
+            ("measure", "Med", "R", "Medir distancia, ángulo o dihedro"),
+        ):
+            button = QToolButton(container)
+            button.setText(label)
+            button.setCheckable(True)
+            button.setToolTip(f"{description} ({shortcut})")
+            button.setAccessibleName(description)
+            self.tool_button_group.addButton(button)
+            button.clicked.connect(
+                lambda _checked=False, selected=tool: self._activate_tool_button(selected)
+            )
+            self.tool_buttons[tool] = button
+            tool_row.addWidget(button)
+        self.tool_buttons["move"].setChecked(True)
+        self.fit_view_button = QToolButton(container)
+        self.fit_view_button.setText("Fit")
+        self.fit_view_button.setToolTip("Ajustar molécula a la vista (F)")
+        self.fit_view_button.clicked.connect(self.viewport.fit_scene)
+        tool_row.addWidget(self.fit_view_button)
         self.element_combo = QComboBox()
         self.element_combo.addItems(("C", "N", "O", "F", "P", "S", "Cl", "Br", "I"))
         self.bond_order_combo = QComboBox()
@@ -60,6 +93,10 @@ class MolecularViewportDock(QDockWidget):
         self.bond_order_combo.addItem("Doble", 2)
         self.bond_order_combo.addItem("Triple", 3)
         self.bond_order_combo.addItem("Aromático", 4)
+        self.representation_combo = QComboBox()
+        self.representation_combo.addItem("Bolas y varillas", "ball_and_stick")
+        self.representation_combo.addItem("Alambre", "wireframe")
+        self.representation_combo.addItem("Espacio lleno", "space_filling")
         self.live_forcefield_combo = QComboBox()
         self.live_forcefield_combo.addItem("MMFF94", "MMFF94")
         self.live_forcefield_combo.addItem("MMFF94s", "MMFF94s")
@@ -67,6 +104,7 @@ class MolecularViewportDock(QDockWidget):
         controls.addRow("Herramienta", self.tool_combo)
         controls.addRow("Elemento nuevo", self.element_combo)
         controls.addRow("Enlace nuevo", self.bond_order_combo)
+        controls.addRow("Representación", self.representation_combo)
         controls.addRow("Campo Live MM", self.live_forcefield_combo)
         self.constraint_combo = QComboBox()
         self.constraint_combo.addItem("Distancia (Å)", "bond_length")
@@ -88,13 +126,17 @@ class MolecularViewportDock(QDockWidget):
         self.constraint_combo.currentIndexChanged.connect(self._update_target_range)
         self.apply_constraint_button.clicked.connect(self._emit_geometry_constraint)
         self.edit_mode_checkbox.toggled.connect(self.viewport.set_edit_mode)
+        self.viewport.editToolChanged.connect(self._sync_tool_controls)
+        self.viewport.editModeChanged.connect(self.edit_mode_checkbox.setChecked)
         self.live_mm_checkbox.toggled.connect(self.liveMMToggled.emit)
         self.tool_combo.currentIndexChanged.connect(self._set_edit_tool)
         self.element_combo.currentTextChanged.connect(self.viewport.set_build_element)
+        self.representation_combo.currentIndexChanged.connect(self._set_representation)
         self.status_label = QLabel("Sin conformero 3D")
         self.status_label.setObjectName("molecularViewportStatus")
         self.status_label.setWordWrap(True)
         layout.addLayout(edit_row)
+        layout.addLayout(tool_row)
         layout.addWidget(self.advanced_controls_button)
         layout.addWidget(self.advanced_controls_panel)
         layout.addWidget(self.viewport, 1)
@@ -107,11 +149,29 @@ class MolecularViewportDock(QDockWidget):
         label = "Controles de edición ▾" if visible else "Controles de edición ▸"
         self.advanced_controls_button.setText(label)
 
+    def _set_representation(self, _index: int) -> None:
+        self.viewport.set_representation(str(self.representation_combo.currentData()))
+
     def _set_edit_tool(self, _index: int) -> None:
         tool = str(self.tool_combo.currentData())
         self.viewport.set_edit_tool(tool)
-        if tool == "build" and not self.edit_mode_checkbox.isChecked():
+        if not self.edit_mode_checkbox.isChecked():
             self.edit_mode_checkbox.setChecked(True)
+
+    def _activate_tool_button(self, tool: str) -> None:
+        index = self.tool_combo.findData(tool)
+        if index >= 0:
+            self.tool_combo.setCurrentIndex(index)
+        if not self.edit_mode_checkbox.isChecked():
+            self.edit_mode_checkbox.setChecked(True)
+
+    def _sync_tool_controls(self, tool: str) -> None:
+        index = self.tool_combo.findData(tool)
+        if index >= 0 and self.tool_combo.currentIndex() != index:
+            self.tool_combo.setCurrentIndex(index)
+        button = self.tool_buttons.get(tool)
+        if button is not None:
+            button.setChecked(True)
 
     def _update_target_range(self, _index: int) -> None:
         operation = self.constraint_combo.currentData()
