@@ -1,0 +1,23 @@
+{
+  "based_on": "current-renderer",
+  "name": "Working",
+  "parameters": {
+    "bold_double_bond_offset_ratio": null,
+    "bond_stroke_ratio": 0.065,
+    "cap_style": "round",
+    "double_bond_inner_trim_ratio": 0.175,
+    "double_bond_offset_ratio": 0.105,
+    "hashed_wedge_count": 6,
+    "hashed_wedge_max_width_ratio": 0.25,
+    "hashed_wedge_min_width_ratio": 0.05,
+    "hashed_wedge_stroke_ratio": 0.055,
+    "hashed_wedge_terminal_shift_ratio": null,
+    "join_style": "round",
+    "label_clearance_ratio": null,
+    "solid_wedge_tip_width_ratio": null,
+    "solid_wedge_width_ratio": 0.225,
+    "triple_bond_offset_ratio": null
+  },
+  "schema": "chemuson.depiction-style",
+  "version": 1
+}

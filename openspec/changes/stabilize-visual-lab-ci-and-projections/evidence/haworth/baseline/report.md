@@ -1,0 +1,54 @@
+# Depiction Visual Lab — reproduction report
+
+- ChemUSON version: `0.3.0-beta.1`
+- Renderer source SHA at export: `87e298c46535e1dffb0477f36412b3dedc87bd98`
+- Git working tree at export: `clean`
+- Platform: `Linux-7.2.10-1-cachyos-x86_64-with-glibc2.44`
+- Qt / PyQt: `6.11.0` / `6.11.0`
+- Case: `C3` — Haworth sugar template (`template-depiction`)
+- Editorial calibration eligibility: `excluded` — outside the approved AB3 editorial calibration cohort (A1, A2, A3, B1, B2, B3)
+- Approved selection cohort: `A1, A2, A3, B1, B2, B3`. B4 remains a geometric fixture and is excluded from editorial preset selection/style calibration.
+- Theme: `light`; panel: `1200×820`; antialiasing: on
+- Profile: `working-profile.json`; schema `chemuson.depiction-style` v1; based on `current-renderer`
+- SVG: exported through the same QGraphicsScene renderer
+
+## Working profile
+
+```json
+{
+  "based_on": "current-renderer",
+  "name": "Working",
+  "parameters": {
+    "bold_double_bond_offset_ratio": null,
+    "bond_stroke_ratio": 0.065,
+    "cap_style": "round",
+    "double_bond_inner_trim_ratio": 0.175,
+    "double_bond_offset_ratio": 0.105,
+    "hashed_wedge_count": 6,
+    "hashed_wedge_max_width_ratio": 0.25,
+    "hashed_wedge_min_width_ratio": 0.05,
+    "hashed_wedge_stroke_ratio": 0.055,
+    "hashed_wedge_terminal_shift_ratio": null,
+    "join_style": "round",
+    "label_clearance_ratio": null,
+    "solid_wedge_tip_width_ratio": null,
+    "solid_wedge_width_ratio": 0.225,
+    "triple_bond_offset_ratio": null
+  },
+  "schema": "chemuson.depiction-style",
+  "version": 1
+}
+```
+
+## Changed values (Current → Working)
+
+- No differences; Working matches Current.
+
+## Artifact SHA256
+
+- `current-C3-light.png` — SHA256 `ba9782f1641713a9496d4aa42b75a9120f57da920704c866f77be348962fe0ad`
+- `working-C3-light.png` — SHA256 `ba9782f1641713a9496d4aa42b75a9120f57da920704c866f77be348962fe0ad`
+- `comparison-C3-light.png` — SHA256 `6773c78fdf291dc8ea09625777fe942cefa570951836bf0ec50e410240bbcd90`
+- `current-C3-light.svg` — SHA256 `338bca832d7b136b67a388ddfb322076873eceb20d472a7df0b61bba0b5eef3e`
+- `working-C3-light.svg` — SHA256 `338bca832d7b136b67a388ddfb322076873eceb20d472a7df0b61bba0b5eef3e`
+- `working-profile.json` — SHA256 `f1312b81c9b94e9d7bbfe0744a393c47c8f3d2bc1855bb8ad02bee8f9872ae25`

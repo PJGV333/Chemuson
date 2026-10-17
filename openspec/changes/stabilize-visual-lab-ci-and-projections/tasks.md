@@ -19,7 +19,7 @@
 - [x] 4.1 Refinar Haworth canónica para piranosa/furanosa y posiciones por vértice, con validación de parámetros.
 - [x] 4.2 Añadir descriptores tipados Haworth/Fischer/silla y adaptador de instancia seguro sin modificar MolGraph/.cmsn.
 - [x] 4.3 Probar patrones β-D-glucopiranosa, inversión α/β y D/L, convención Fischer, relaciones axial/ecuatoriales/up/down y ausencia de stereo inventado.
-- [ ] 4.4 Validar contactos con el renderer real a varias escalas y generar evidencia visual anterior/nueva a igual escala.
+- [x] 4.4 Validar contactos con el renderer real a varias escalas y generar evidencia visual anterior/nueva a igual escala (sin declarar aceptación estética).
 
 ## 5. Validación y publicación
 - [x] 5.1 Ejecutar focales, arquitectura, compileall, Ruff y OpenSpec estricto.
