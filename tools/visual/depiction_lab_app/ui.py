@@ -38,6 +38,7 @@ from .parameters import (
     DepictionStyleParameters,
     ParameterValidationError,
 )
+from .named_presets import EDITORIAL_AB3, get_named_preset
 from .profiles import (
     ProfileError,
     compare_profiles,
@@ -283,6 +284,7 @@ class DepictionLabWindow(QMainWindow):
         self.current_parameters = DepictionStyleParameters.current()
         self.working_parameters = DepictionStyleParameters.current()
         self.working_name = "Working"
+        self.working_based_on = "current-renderer"
         self.case_id = CASES[0].case_id
         self.theme = "light"
         self.zoom = 1.0
@@ -316,7 +318,10 @@ class DepictionLabWindow(QMainWindow):
         row.addWidget(QLabel("Caso:"))
         self.case_combo = QComboBox()
         for case in CASES:
-            self.case_combo.addItem(f"{case.case_id} · {case.title}", case.case_id)
+            case_label = f"{case.case_id} · {case.title}"
+            if case.case_id == "B4":
+                case_label += " [GEOMETRIC FIXTURE · NON-EDITORIAL · EXCLUDED FROM CALIBRATION]"
+            self.case_combo.addItem(case_label, case.case_id)
         self.case_combo.currentIndexChanged.connect(self._case_selected)
         row.addWidget(self.case_combo, 3)
         row.addWidget(QLabel("Tema:"))
@@ -411,6 +416,12 @@ class DepictionLabWindow(QMainWindow):
         self.reset_all_button = QPushButton("Restablecer todo")
         self.reset_all_button.clicked.connect(self._reset_all)
         layout.addWidget(self.reset_all_button)
+        self.editorial_preset_button = QPushButton("Cargar ChemUSON Editorial AB3")
+        self.editorial_preset_button.setToolTip(
+            "Carga el perfil experimental aprobado para A1–B3; B4 queda excluido y no cambia los defaults de producción."
+        )
+        self.editorial_preset_button.clicked.connect(self._load_editorial_ab3_preset)
+        layout.addWidget(self.editorial_preset_button)
         layout.addWidget(QLabel("Perfil Working:"))
         self.profile_name = QLineEdit("Working")
         self.profile_name.setMaximumWidth(220)
@@ -484,7 +495,19 @@ class DepictionLabWindow(QMainWindow):
         self._apply_views()
         self._connect_scrollbars()
         self._assert_panels_match()
-        self.status.setText(f"Caso {self.case_id} · {len(graph.atoms)} átomos · {len(graph.bonds)} enlaces · grafo intacto.")
+        case = next(item for item in CASES if item.case_id == self.case_id)
+        if case.case_id == "B4":
+            calibration_note = (
+                "geometric fixture; non-editorial; excluded from preset selection / style calibration"
+            )
+        elif case.editorial_calibration_eligible:
+            calibration_note = "editorial calibration sample"
+        else:
+            calibration_note = case.editorial_exclusion_reason or "diagnostic only"
+        self.status.setText(
+            f"Caso {self.case_id} · {len(graph.atoms)} átomos · {len(graph.bonds)} enlaces · "
+            f"grafo intacto · {calibration_note}."
+        )
 
     def _theme_selected(self, index: int) -> None:
         self.theme = str(self.theme_combo.itemData(index))
@@ -527,12 +550,30 @@ class DepictionLabWindow(QMainWindow):
     def _choice_changed(self, key: str, value: str) -> None:
         self._parameter_changed(key, value)
 
+    def _load_editorial_ab3_preset(self) -> None:
+        preset = get_named_preset(EDITORIAL_AB3.name)
+        self.working_name = preset.name
+        self.working_based_on = preset.based_on
+        self.profile_name.setText(preset.name)
+        self.working_parameters = preset.parameters
+        if self.working_panel.adapter is not None:
+            self.working_panel.adapter.apply_parameters(preset.parameters)
+        self._refresh_parameter_controls()
+        self._assert_panels_match()
+        self.status.setText(
+            "Preset experimental ChemUSON Editorial AB3 cargado en Working; "
+            "B4 está excluido de la calibración y los defaults globales no cambian."
+        )
+
     def _reset_parameter(self, key: str) -> None:
         defaults = self.current_parameters.to_mapping()
         self._parameter_changed(key, defaults[key])
         self._refresh_parameter_controls()
 
     def _reset_all(self) -> None:
+        self.working_name = "Working"
+        self.working_based_on = "current-renderer"
+        self.profile_name.setText(self.working_name)
         self.working_parameters = DepictionStyleParameters.current()
         if self.working_panel.adapter is not None:
             self.working_panel.adapter.apply_parameters(self.working_parameters)
@@ -562,7 +603,12 @@ class DepictionLabWindow(QMainWindow):
     def _save_profile(self) -> None:
         try:
             path = profile_directory() / safe_profile_filename(self.working_name)
-            save_profile(path, self.working_parameters, name=self.working_name)
+            save_profile(
+                path,
+                self.working_parameters,
+                name=self.working_name,
+                based_on=self.working_based_on,
+            )
         except (OSError, ProfileError) as exc:
             self.status.setText(f"No se pudo guardar el perfil: {exc}")
             return
@@ -584,6 +630,7 @@ class DepictionLabWindow(QMainWindow):
             QMessageBox.warning(self, "Perfil inválido", str(exc))
             return
         self.working_name = name
+        self.working_based_on = "imported lab profile"
         self.profile_name.setText(name)
         self.working_parameters = parameters
         if self.working_panel.adapter is not None:
@@ -617,6 +664,7 @@ class DepictionLabWindow(QMainWindow):
                 self.working_parameters,
                 theme=self.theme,
                 profile_name=self.working_name,
+                profile_based_on=self.working_based_on,
             )
         except (OSError, RuntimeError, ValueError) as exc:
             QMessageBox.warning(self, "Error de exportación", str(exc))
@@ -636,6 +684,7 @@ class DepictionLabWindow(QMainWindow):
                 self.working_parameters,
                 theme=self.theme,
                 profile_name=self.working_name,
+                profile_based_on=self.working_based_on,
             )
         except (OSError, RuntimeError, ValueError) as exc:
             QMessageBox.warning(self, "Error de exportación", str(exc))

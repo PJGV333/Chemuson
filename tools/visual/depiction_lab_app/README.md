@@ -10,11 +10,22 @@ Desde la raíz del repositorio y el entorno virtual de desarrollo:
 .venv/bin/python tools/visual/depiction_lab.py
 ```
 
-La galería A1–C4 incluye 12 IDs deterministas; B4 está marcado explícitamente como fixture geométrico no molecular. Selecciona un caso, tema, zoom y rotación visual en la barra superior. Los controles se agrupan en trazos/multienlaces, cuñas y etiquetas; cada valor actualiza los `BondItem`/`AtomItem` Working sin reconstruir el canvas. El zoom y los scrollbars se sincronizan. “Diagnóstico” añade centros, endpoints, paths/contornos, bounding boxes y marcas objetivas de intersección; no calcula calidad estética. “Ocultar controles” maximiza los paneles.
+La galería A1–C4 incluye 12 IDs deterministas. A1–B3 forman el conjunto aprobado de selección editorial; C1–C4 son diagnósticos y no amplían ese conjunto. B4 sigue disponible y renderizable como **geometric fixture / non-editorial / excluded from preset selection and style calibration**. La elegibilidad aparece en los metadatos y reportes de galería. Selecciona un caso, tema, zoom y rotación visual en la barra superior. Los controles se agrupan en trazos/multienlaces, cuñas y etiquetas; cada valor actualiza los `BondItem`/`AtomItem` Working sin reconstruir el canvas. El zoom y los scrollbars se sincronizan. “Diagnóstico” añade centros, endpoints, paths/contornos, bounding boxes y marcas objetivas de intersección; no calcula calidad estética. “Ocultar controles” maximiza los paneles.
 
 Los 15 parámetros expuestos son: grosor de trazo; offset y trim interno de dobles; offset bold-double y triple opcionales; anchura máxima y punta opcional de cuña sólida; cantidad, anchos mínimo/máximo, grosor y desplazamiento terminal opcional de hashes; clearance común opcional de etiqueta; terminación y join Qt. Los valores geométricos son dimensionless ratios: offsets/anchuras principales usan la longitud de enlace de referencia (40 scene units); el ancho de punta se refiere al máximo de cuña, el shift hash a su intervalo y el clearance a la longitud del enlace local. El conteo y las opciones son discretos. `null` en los cinco overrides opcionales significa “Auto: cálculo actual”, no cero.
 
 No se exponen factores internos de miter/fork/bifurcación, ancho estrecho contextual de cuña, óptica tipográfica por elemento/dirección, trims de anillos ni orientación sigma/pi: no son controles aislables seguros en esta iteración. La UI documenta estas limitaciones. Los valores Current igualan exactamente `CHEMDOODLE_LIKE`; toda extensión de `DrawingStyle` tiene defaults `None` que conservan la implementación previa.
+
+## Preset editorial experimental AB3
+
+`ChemUSON Editorial AB3` es un preset reutilizable de Working derivado de los casos válidos A1–B3, con valores aprobados por el propietario. Se carga con el botón **Cargar ChemUSON Editorial AB3** o sin editar JSON mediante:
+
+```bash
+.venv/bin/python tools/visual/depiction_lab.py --export-gallery /tmp/chemuson-editorial-ab3 --preset "ChemUSON Editorial AB3"
+.venv/bin/python tools/visual/depiction_lab.py --export-case C3 --output /tmp/chemuson-editorial-ab3-c3 --preset "ChemUSON Editorial AB3"
+```
+
+El preset sólo se aplica a Working cuando se activa explícitamente. `Current`, `CHEMDOODLE_LIKE` y los defaults del editor de producción no cambian. Los bundles conservan el nombre, procedencia y valores exactos del perfil.
 
 ## Perfiles
 
@@ -42,4 +53,4 @@ Prueba de arranque acotada:
 
 ## Invariantes
 
-La rotación es una transformación de `QGraphicsView`; no cambia coordenadas ni `BondStereo`. Los controles no cambian IDs, conectividad, órdenes, aromaticidad, cargas, isótopos, coordenadas o datos estéreo. Los gráficos se crean desde fixtures; no se ejecuta Clean2D. La aceptación estética y cualquier preset editorial futuro pertenecen al propietario. Para promover ajustes se requiere otra propuesta OpenSpec; el laboratorio nunca cambia defaults de producción.
+La rotación es una transformación de `QGraphicsView`; no cambia coordenadas ni `BondStereo`. Los controles no cambian IDs, conectividad, órdenes, aromaticidad, cargas, isótopos, coordenadas o datos estéreo. Los gráficos se crean desde fixtures; no se ejecuta Clean2D. El preset AB3 es experimental y no se promueve a defaults globales. Toda futura promoción requiere otra propuesta OpenSpec y revisión separada; el laboratorio nunca cambia defaults de producción.

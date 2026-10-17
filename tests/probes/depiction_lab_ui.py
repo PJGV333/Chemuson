@@ -12,6 +12,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtWidgets import QApplication
 
+from chemuson.gui.style import CHEMDOODLE_LIKE
+from tools.visual.depiction_lab_app.named_presets import EDITORIAL_AB3, EDITORIAL_AB3_BASED_ON
 from tools.visual.depiction_lab_app.profiles import load_profile, profile_directory, safe_profile_filename
 from tools.visual.depiction_lab_app.scenes import CASES, graph_snapshot
 from tools.visual.depiction_lab_app.ui import DepictionLabWindow
@@ -59,10 +61,22 @@ for index, case in enumerate(CASES):
     window.case_combo.setCurrentIndex(index)
     app.processEvents()
     assert window.case_id == case.case_id
+    if case.case_id == "B4":
+        assert "GEOMETRIC FIXTURE" in window.case_combo.currentText()
+        assert "non-editorial" in window.status.text()
+        assert "excluded from preset selection / style calibration" in window.status.text()
     window._assert_panels_match()
     assert graph_snapshot(window.current_panel.adapter.canvas.model) == graph_snapshot(
         window.working_panel.adapter.canvas.model
     )
+
+window.editorial_preset_button.click()
+app.processEvents()
+assert window.working_parameters == EDITORIAL_AB3.parameters
+assert window.working_based_on == EDITORIAL_AB3_BASED_ON
+assert window.current_panel.adapter.canvas.drawing_style == CHEMDOODLE_LIKE
+assert window.working_panel.adapter.canvas.drawing_style == EDITORIAL_AB3.parameters.to_drawing_style()
+assert "B4 está excluido" in window.status.text()
 
 window.profile_name.setText("visual-lab-probe")
 window._save_profile()
@@ -70,6 +84,7 @@ profile_path = profile_directory() / safe_profile_filename("visual-lab-probe")
 name, restored = load_profile(profile_path)
 assert name == "visual-lab-probe"
 assert restored == window.working_parameters
+assert json.loads(profile_path.read_text(encoding="utf-8"))["based_on"] == EDITORIAL_AB3_BASED_ON
 assert window.status.text().startswith("Perfil guardado")
 
 window.close()

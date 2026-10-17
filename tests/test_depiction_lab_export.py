@@ -118,3 +118,47 @@ def test_full_contact_sheet_export_is_bounded_and_reproducible(tmp_path) -> None
     for case in CASES:
         assert f"`{case.case_id}`" in report
     assert "solid_wedge_width_ratio" in report
+    assert "B4: `geometric fixture`; `non-editorial`; `excluded from preset selection / style calibration`" in report
+    assert "outside the approved A1–B3 editorial calibration cohort" in report
+
+
+def test_cli_loads_named_editorial_preset_for_reproducible_export(tmp_path) -> None:
+    from tools.visual.depiction_lab_app.named_presets import (
+        EDITORIAL_AB3,
+        EDITORIAL_AB3_BASED_ON,
+        EDITORIAL_AB3_NAME,
+    )
+
+    output = tmp_path / "editorial-ab3-case"
+    command = [
+        sys.executable,
+        str(ROOT / "tools/visual/depiction_lab.py"),
+        "--export-case",
+        "C3",
+        "--output",
+        str(output),
+        "--preset",
+        EDITORIAL_AB3_NAME,
+        "--theme",
+        "light",
+    ]
+    result = subprocess.run(
+        command,
+        cwd=ROOT,
+        env=_isolated_env(tmp_path / "editorial-config"),
+        capture_output=True,
+        text=True,
+        timeout=90.0,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["case_id"] == "C3"
+    name, parameters = load_profile(output / "working-profile.json")
+    raw_profile = json.loads((output / "working-profile.json").read_text(encoding="utf-8"))
+    assert name == EDITORIAL_AB3_NAME
+    assert parameters == EDITORIAL_AB3.parameters
+    assert raw_profile["based_on"] == EDITORIAL_AB3_BASED_ON
+    report = (output / "report.md").read_text(encoding="utf-8")
+    assert "B4 remains a geometric fixture and is excluded" in report
+    assert "outside the approved A1–B3 editorial calibration cohort" in report

@@ -167,10 +167,11 @@ def save_profile(
     parameters: DepictionStyleParameters,
     *,
     name: str = "Working",
+    based_on: str = "current-renderer",
 ) -> Path:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    text = encode_profile(parameters, name=name)
+    text = encode_profile(parameters, name=name, based_on=based_on)
     temporary = target.with_name(target.name + ".tmp")
     temporary.write_text(text, encoding="utf-8")
     os.replace(temporary, target)

@@ -131,7 +131,11 @@ def _haworth_graph_with_bold_wedge(ring_size: int) -> MolGraph:
         for bond in graph.bonds.values():
             atom_a = graph.get_atom(bond.a1_id)
             atom_b = graph.get_atom(bond.a2_id)
-            if atom_a.id == ring_atom.id and atom_b.element == "O" and atom_b.x < atom_a.x:
+            if (
+                atom_a.id == ring_atom.id
+                and atom_b.element == "O"
+                and atom_b.group_h_cap == 1
+            ):
                 bond.a1_id, bond.a2_id = atom_b.id, atom_a.id
                 bond.style = BondStyle.WEDGE
                 bond.stereo = BondStereo.UP

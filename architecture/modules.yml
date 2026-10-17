@@ -546,6 +546,7 @@ modules:
   - tool_rail
   - flyout
   - side_panel
+  - projections
   name: gui
   notes: 'GUI importa todos los subsistemas de dominio para orquestación. No implementa
     lógica química pesada. items.py es un módulo individual (no paquete): src/chemuson/gui/items.py
@@ -608,6 +609,7 @@ modules:
   - src/chemuson/gui/template_repository.py
   - src/chemuson/gui/template_service.py
   - src/chemuson/gui/templates.py
+  - src/chemuson/gui/projections/
   - src/chemuson/gui/template_store.py
   - src/chemuson/gui/text_toolbar.py
   - src/chemuson/gui/toolbar.py
@@ -660,6 +662,8 @@ modules:
   - tests/test_template_controller.py
   - tests/test_template_dock.py
   - tests/test_template_browser_service.py
+  - tests/test_special_projection_geometry.py
+  - tests/architecture/test_special_projection_boundary.py
   - tests/test_update_ui_text.py
   - tests/test_text_tool_interaction.py
   - tests/test_label_font_selection.py

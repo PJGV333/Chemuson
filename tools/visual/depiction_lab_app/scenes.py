@@ -18,6 +18,8 @@ class DepictionCase:
     kind: str
     description: str
     build: Callable[[], MolGraph]
+    editorial_calibration_eligible: bool = False
+    editorial_exclusion_reason: str | None = None
 
 
 def _atom(
@@ -205,19 +207,21 @@ def _aromatic_chiral_sidechain() -> MolGraph:
     return graph
 
 
+_EDITORIAL_EXCLUSION = "outside the approved A1–B3 editorial calibration cohort"
+
 CASES: tuple[DepictionCase, ...] = (
-    DepictionCase("A1", "Solid wedge · OH label", "A · Wedges and labels", "molecule", "Tetrahedral center with an OH-bearing wedge terminus.", lambda: _chiral_label_wedge("OH", BondStyle.WEDGE)),
-    DepictionCase("A2", "Solid wedge · F label", "A · Wedges and labels", "molecule", "Tetrahedral center with a compact halogen label.", lambda: _chiral_label_wedge("F", BondStyle.WEDGE)),
-    DepictionCase("A3", "Hashed wedge · OH label", "A · Wedges and labels", "molecule", "Tetrahedral center with a hashed OH-bearing substituent.", lambda: _chiral_label_wedge("OH", BondStyle.HASHED)),
-    DepictionCase("A4", "Tetrahedral center · wedge + hash", "A · Wedges and labels", "molecule", "Four distinct substituents; one solid and one hashed stereobond.", _tetrahedral_pair),
-    DepictionCase("B1", "Hashed wedge + double bond", "B · Bond junctions", "molecule", "Tetrahedral stereocenter adjacent to a C=C sigma/pi depiction.", lambda: _stereo_center_next_to_double(BondStyle.HASHED)),
-    DepictionCase("B2", "Solid wedge + double bond", "B · Bond junctions", "molecule", "Tetrahedral stereocenter adjacent to a C=C sigma/pi depiction.", lambda: _stereo_center_next_to_double(BondStyle.WEDGE)),
-    DepictionCase("B3", "Carbonyl · oxygen label", "B · Bond junctions", "molecule", "Acetone carbonyl with the actual O label and neighboring sigma bonds.", _carbonyl_oxygen),
-    DepictionCase("B4", "Three-way wedge / bold / triple", "B · Bond junctions", "geometric-fixture", "Abstract geometry only: the combined bond orders/styles are not a chemically valid molecule.", _geometric_branch_fixture),
-    DepictionCase("C1", "Cyclopentane · bold lower edges", "C · Rings and projections", "molecule", "Five-membered saturated ring with two visually bold edges.", lambda: _ring(5, (2, 3))),
-    DepictionCase("C2", "Cyclohexane · bold lower edges", "C · Rings and projections", "molecule", "Six-membered saturated ring with two visually bold edges.", lambda: _ring(6, (2, 3))),
-    DepictionCase("C3", "Haworth sugar template", "C · Rings and projections", "template-depiction", "Deterministic existing Haworth template; no additional stereo metadata is invented.", _haworth),
-    DepictionCase("C4", "Aromatic ring · chiral side chain", "C · Rings and projections", "molecule", "Alternating aromatic ring with a tetrahedral fluorinated OH-bearing side chain.", _aromatic_chiral_sidechain),
+    DepictionCase("A1", "Solid wedge · OH label", "A · Wedges and labels", "molecule", "Tetrahedral center with an OH-bearing wedge terminus.", lambda: _chiral_label_wedge("OH", BondStyle.WEDGE), True),
+    DepictionCase("A2", "Solid wedge · F label", "A · Wedges and labels", "molecule", "Tetrahedral center with a compact halogen label.", lambda: _chiral_label_wedge("F", BondStyle.WEDGE), True),
+    DepictionCase("A3", "Hashed wedge · OH label", "A · Wedges and labels", "molecule", "Tetrahedral center with a hashed OH-bearing substituent.", lambda: _chiral_label_wedge("OH", BondStyle.HASHED), True),
+    DepictionCase("A4", "Tetrahedral center · wedge + hash", "A · Wedges and labels", "molecule", "Four distinct substituents; one solid and one hashed stereobond.", _tetrahedral_pair, True),
+    DepictionCase("B1", "Hashed wedge + double bond", "B · Bond junctions", "molecule", "Tetrahedral stereocenter adjacent to a C=C sigma/pi depiction.", lambda: _stereo_center_next_to_double(BondStyle.HASHED), True),
+    DepictionCase("B2", "Solid wedge + double bond", "B · Bond junctions", "molecule", "Tetrahedral stereocenter adjacent to a C=C sigma/pi depiction.", lambda: _stereo_center_next_to_double(BondStyle.WEDGE), True),
+    DepictionCase("B3", "Carbonyl · oxygen label", "B · Bond junctions", "molecule", "Acetone carbonyl with the actual O label and neighboring sigma bonds.", _carbonyl_oxygen, True),
+    DepictionCase("B4", "Three-way wedge / bold / triple", "B · Bond junctions", "geometric-fixture", "Geometric fixture / non-editorial: invalid combined bond-order/style stress case; excluded from preset selection and style calibration.", _geometric_branch_fixture, False, "geometric fixture; non-editorial; excluded from preset selection / style calibration"),
+    DepictionCase("C1", "Cyclopentane · bold lower edges", "C · Rings and projections", "molecule", "Five-membered saturated ring with two visually bold edges.", lambda: _ring(5, (2, 3)), False, _EDITORIAL_EXCLUSION),
+    DepictionCase("C2", "Cyclohexane · bold lower edges", "C · Rings and projections", "molecule", "Six-membered saturated ring with two visually bold edges.", lambda: _ring(6, (2, 3)), False, _EDITORIAL_EXCLUSION),
+    DepictionCase("C3", "Haworth sugar template", "C · Rings and projections", "template-depiction", "Deterministic Haworth projection fixture; diagnostic only and not a source of AB3 calibration values.", _haworth, False, _EDITORIAL_EXCLUSION),
+    DepictionCase("C4", "Aromatic ring · chiral side chain", "C · Rings and projections", "molecule", "Alternating aromatic ring with a tetrahedral fluorinated OH-bearing side chain.", _aromatic_chiral_sidechain, False, _EDITORIAL_EXCLUSION),
 )
 
 CASE_BY_ID = {case.case_id: case for case in CASES}

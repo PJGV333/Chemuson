@@ -21,9 +21,15 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--export-gallery", type=Path, metavar="DIR", help="export a complete side-by-side PNG contact sheet and profile report")
     parser.add_argument("--export-case", metavar="CASE_ID", help="export Current/Working PNG and SVG for one case")
     parser.add_argument("--output", type=Path, default=Path("depiction-lab-evidence"), help="output directory for batch exports")
-    parser.add_argument("--profile", type=Path, help="load a validated Working JSON profile")
+    profile_group = parser.add_mutually_exclusive_group()
+    profile_group.add_argument("--profile", type=Path, help="load a validated Working JSON profile")
+    profile_group.add_argument(
+        "--preset",
+        choices=("ChemUSON Editorial AB3",),
+        help="load a known experimental lab preset without editing JSON",
+    )
     parser.add_argument("--theme", choices=("light", "dark"), default="light")
-    parser.add_argument("--profile-name", default="Working")
+    parser.add_argument("--profile-name", help="override the name recorded in exports")
     return parser
 
 
@@ -44,13 +50,23 @@ def main(argv: list[str] | None = None) -> int:
     from tools.visual.depiction_lab_app.profiles import ProfileError, load_profile
 
     profile = DepictionStyleParameters.current()
-    profile_name = args.profile_name
+    profile_name = args.profile_name or "Working"
+    profile_based_on = "current-renderer"
     if args.profile is not None:
         try:
-            profile_name, profile = load_profile(args.profile)
+            loaded_name, profile = load_profile(args.profile)
+            profile_name = args.profile_name or loaded_name
+            profile_based_on = "imported lab profile"
         except (OSError, ProfileError) as exc:
             print(f"Profile error: {exc}", file=sys.stderr)
             return 2
+    elif args.preset is not None:
+        from tools.visual.depiction_lab_app.named_presets import get_named_preset
+
+        preset = get_named_preset(args.preset)
+        profile = preset.parameters
+        profile_name = args.profile_name or preset.name
+        profile_based_on = preset.based_on
 
     if args.export_gallery:
         from tools.visual.depiction_lab_app.exporting import export_gallery
@@ -61,6 +77,7 @@ def main(argv: list[str] | None = None) -> int:
             profile,
             theme=args.theme,
             profile_name=profile_name,
+            profile_based_on=profile_based_on,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
@@ -75,6 +92,7 @@ def main(argv: list[str] | None = None) -> int:
             profile,
             theme=args.theme,
             profile_name=profile_name,
+            profile_based_on=profile_based_on,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
@@ -82,8 +100,9 @@ def main(argv: list[str] | None = None) -> int:
     from tools.visual.depiction_lab_app.ui import DepictionLabWindow
 
     window = DepictionLabWindow()
-    if args.profile is not None:
+    if args.profile is not None or args.preset is not None:
         window.working_name = profile_name
+        window.working_based_on = profile_based_on
         window.profile_name.setText(profile_name)
         window.working_parameters = profile
         if window.working_panel.adapter is not None:

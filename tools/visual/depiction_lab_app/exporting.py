@@ -127,6 +127,7 @@ def export_case_bundle(
     *,
     theme: str = "light",
     profile_name: str = "Working",
+    profile_based_on: str = "current-renderer",
 ) -> dict[str, Any]:
     """Export a matched Current/Working case and provenance bundle."""
     app = QApplication.instance()
@@ -174,7 +175,8 @@ def export_case_bundle(
 
         profile_path = output / "working-profile.json"
         profile_path.write_text(
-            encode_profile(working, name=profile_name), encoding="utf-8"
+            encode_profile(working, name=profile_name, based_on=profile_based_on),
+            encoding="utf-8",
         )
         generated.append(profile_path)
         report_path = output / "report.md"
@@ -184,6 +186,7 @@ def export_case_bundle(
             working,
             theme=theme,
             profile_name=profile_name,
+            profile_based_on=profile_based_on,
             artifacts=generated,
             svg_status=svg_status,
             profile_path=profile_path,
@@ -209,11 +212,14 @@ def _build_report(
     *,
     theme: str,
     profile_name: str,
+    profile_based_on: str,
     artifacts: list[Path],
     svg_status: str,
     profile_path: Path,
 ) -> str:
-    payload = profile_payload(working, name=profile_name)
+    payload = profile_payload(
+        working, name=profile_name, based_on=profile_based_on
+    )
     hashes = "\n".join(
         f"- `{path.name}` — SHA256 `{_sha256(path)}`" for path in artifacts if path.is_file()
     )
@@ -225,7 +231,10 @@ def _build_report(
         f"- Platform: `{platform.platform()}`\n"
         f"- Qt / PyQt: `{QT_VERSION_STR}` / `{PYQT_VERSION_STR}`\n"
         f"- Case: `{case.case_id}` — {case.title} (`{case.kind}`)\n"
-        f"- Theme: `{theme}`; panel: `{PANEL_SIZE[0]}×{PANEL_SIZE[1]}`; antialiasing: on\n"
+        f"- Editorial calibration eligibility: `{'eligible' if case.editorial_calibration_eligible else 'excluded'}`"
+        + (f" — {case.editorial_exclusion_reason}\n" if case.editorial_exclusion_reason else "\n")
+        + f"- Approved selection cohort: `{', '.join(item.case_id for item in CASES if item.editorial_calibration_eligible)}`. B4 remains a geometric fixture and is excluded from editorial preset selection/style calibration.\n"
+        + f"- Theme: `{theme}`; panel: `{PANEL_SIZE[0]}×{PANEL_SIZE[1]}`; antialiasing: on\n"
         f"- Profile: `{profile_path.name}`; schema `{payload['schema']}` v{payload['version']}; based on `{payload['based_on']}`\n"
         f"- SVG: {svg_status}\n\n"
         "## Working profile\n\n```json\n"
@@ -251,6 +260,7 @@ def export_gallery(
     *,
     theme: str = "light",
     profile_name: str = "Working",
+    profile_based_on: str = "current-renderer",
 ) -> dict[str, Any]:
     """Generate a deterministic side-by-side contact sheet for every case."""
     app = QApplication.instance()
@@ -291,21 +301,35 @@ def export_gallery(
             painter.fillRect(x, y, card_width - 12, card_height, QColor("#F8FAFC"))
             painter.setPen(QColor("#0F172A"))
             painter.setFont(QFont("DejaVu Sans", 11, QFont.Weight.DemiBold))
+            calibration_label = (
+                "EDITORIAL CALIBRATION SAMPLE"
+                if case.editorial_calibration_eligible
+                else (
+                    "NON-EDITORIAL · GEOMETRIC FIXTURE · EXCLUDED FROM PRESET SELECTION / STYLE CALIBRATION"
+                    if case.case_id == "B4"
+                    else "DIAGNOSTIC ONLY · OUTSIDE APPROVED A1–B3 COHORT"
+                )
+            )
             painter.drawText(x + 10, y + 20, f"{case.case_id} · {case.title} · {case.kind}")
             painter.setFont(QFont("DejaVu Sans", 8))
             painter.setPen(QColor("#475569"))
-            painter.drawText(x + 10, y + 34, case.description)
-            painter.drawText(x + 10, y + 52, "CURRENT")
-            painter.drawText(x + 520, y + 52, "WORKING")
-            painter.drawImage(x + 10, y + 58, left_image.scaled(500, 290))
-            painter.drawImage(x + 520, y + 58, right_image.scaled(500, 290))
+            painter.drawText(x + 10, y + 36, case.description)
+            painter.setFont(QFont("DejaVu Sans", 8, QFont.Weight.DemiBold))
+            painter.drawText(x + 10, y + 52, calibration_label)
+            painter.drawText(x + 10, y + 69, "CURRENT")
+            painter.drawText(x + 520, y + 69, "WORKING")
+            painter.drawImage(x + 10, y + 75, left_image.scaled(500, 275))
+            painter.drawImage(x + 520, y + 75, right_image.scaled(500, 275))
     finally:
         painter.end()
 
     contact_path = output / f"contact-sheet-{theme}.png"
     _save_image(sheet, contact_path)
     profile_path = output / "working-profile.json"
-    profile_path.write_text(encode_profile(working, name=profile_name), encoding="utf-8")
+    profile_path.write_text(
+        encode_profile(working, name=profile_name, based_on=profile_based_on),
+        encoding="utf-8",
+    )
     summary_path = output / "report.md"
     changes = current.changed_values(working)
     artifact_hash = _sha256(contact_path)
@@ -317,10 +341,14 @@ def export_gallery(
         f"- Git working tree at export: `{source_worktree_state()}`\n"
         f"- Platform: `{platform.platform()}`; Qt/PyQt `{QT_VERSION_STR}` / `{PYQT_VERSION_STR}`\n"
         f"- Theme: `{theme}`; cases: {len(CASES)}; contact sheet: `{contact_path.name}`\n"
-        f"- Profile: `{profile_path.name}`; based on `current-renderer`\n\n"
+        f"- Profile: `{profile_path.name}`; based on `{profile_based_on}`\n"
+        f"- Editorial selection cohort: `{', '.join(case.case_id for case in CASES if case.editorial_calibration_eligible)}`. B4 is explicitly excluded as a geometric fixture / non-editorial stress test.\n\n"
         "## Cases\n\n"
         + "\n".join(f"- `{case.case_id}` — {case.title} (`{case.kind}`): {case.description}" for case in CASES)
-        + "\n\n## Modified parameters\n\n"
+        + "\n\n## Editorial calibration eligibility\n\n"
+        + "- Eligible selection cases: "
+        + ", ".join(f"`{case.case_id}`" for case in CASES if case.editorial_calibration_eligible)
+        + "\n- B4: `geometric fixture`; `non-editorial`; `excluded from preset selection / style calibration`.\n- C-series projection/ring cases are diagnostic only and outside the approved A1–B3 editorial calibration cohort.\n\n## Modified parameters\n\n"
         + (
             "\n".join(f"- `{key}`: `{value['current']}` → `{value['working']}`" for key, value in changes.items())
             or "- Working matches Current."
