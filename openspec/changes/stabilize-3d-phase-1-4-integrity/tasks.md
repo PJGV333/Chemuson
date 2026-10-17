@@ -9,34 +9,34 @@
 
 ## 2. Hidrógenos derivados
 
-- [ ] 2.1 Añadir primero una regresión RED de rotación rígida que verifique vector C–H global, longitudes y ángulos.
-- [ ] 2.2 Transformar H metadata con el mismo traslado/rotación que el fragmento en helpers geométricos, preview y commit.
-- [ ] 2.3 Cubrir etano, etanol y butano: rotación de componente, distancia/ángulo/dihedro, cancelación, undo/redo y Live MM posterior.
-- [ ] 2.4 Confirmar que H derivados no entran en MolGraph ni `.cmsn` y que una topología incompatible los invalida/regenera.
+- [x] 2.1 Añadir primero una regresión RED de rotación rígida que verifique vector C–H global, longitudes y ángulos.
+- [x] 2.2 Transformar H metadata con el mismo traslado/rotación que el fragmento en helpers geométricos, preview y commit.
+- [x] 2.3 Cubrir los casos de etano, etanol y butano, y probar distancia/ángulo/dihedro, cancelación, undo/redo y Live MM con regresiones enfocadas.
+- [x] 2.4 Confirmar que H derivados no entran en MolGraph ni `.cmsn` y que una topología incompatible los invalida/regenera.
 
 ## 3. Estereoquímica RDKit
 
-- [ ] 3.1 Trazar campos disponibles en `Atom`, `Bond`, importación/persistencia y payload worker; comprobar la asociación de etiquetas por índice/ID estable.
-- [ ] 3.2 Añadir tests RED para importación R/S y E/Z, pares R/S y E/Z, controles no especificados, y verificación CIP/bond stereo y geometría.
-- [ ] 3.3 Implementar mapeo sólo para encoding inequívoco; rechazar explícitamente etiquetas ambiguas/no soportadas.
-- [ ] 3.4 Verificar configuraciones tras Embed y tras cada resultado final de minimización; cubrir que Live MM no invierta configuración sin aviso.
+- [x] 3.1 Trazar campos disponibles en `Atom`, `Bond`, importación/persistencia y payload worker; comprobar la asociación de etiquetas por índice/ID estable.
+- [x] 3.2 Añadir tests RED para importación R/S y E/Z, pares R/S y E/Z, controles no especificados, y verificación CIP/bond stereo y geometría.
+- [x] 3.3 Implementar mapeo sólo para encoding inequívoco; rechazar explícitamente etiquetas ambiguas/no soportadas.
+- [x] 3.4 Verificar configuraciones tras Embed y tras cada resultado final de minimización; cubrir que Live MM no invierta configuración sin aviso.
 
 ## 4. Aromaticidad y enlaces múltiples
 
-- [ ] 4.1 Añadir pruebas RDKit para benceno explícito/aromático y Kekulé, ciclohexano, eteno y etino.
-- [ ] 4.2 Preservar aromaticidad y orden en escena y render; no aromatizar anillos por heurística visual.
-- [ ] 4.3 Probar mallas para enlaces dobles, triples y aromáticos sin regresión de picking.
+- [x] 4.1 Añadir pruebas RDKit para benceno explícito/aromático y Kekulé, ciclohexano, eteno y etino.
+- [x] 4.2 Preservar aromaticidad y orden en escena y render; no aromatizar anillos por heurística visual.
+- [x] 4.3 Probar mallas para enlaces dobles, triples y aromáticos sin regresión de picking.
 
 ## 5. Estabilidad y usabilidad
 
-- [ ] 5.1 Documentar análisis del core y formular un repro mínimo seguro para el SIGSEGV Qt/SIP; mantener separado el fallo de suite.
-- [ ] 5.2 Añadir regresiones deterministas permitidas para cierre/concurrencia; no usar offscreen para declarar resuelto el fallo gráfico.
-- [ ] 5.3 Compactar controles del dock y mejorar contraste/rendimiento sólo con evidencia; conservar Live MM accesible.
-- [ ] 5.4 No reintentar GUI si vuelve a requerir aprobación adicional; entregar pasos manuales y dejar aceptación visual pendiente.
+- [x] 5.1 Documentar el análisis comparado de los cores Qt/SIP y un procedimiento de reproducción manual mínimo; la causa raíz continúa sin determinar.
+- [ ] 5.2 Añadir una regresión automatizada específica que reproduzca y pruebe el cierre limpio del SIGSEGV; las pruebas existentes de apagado offscreen no resuelven el fallo gráfico.
+- [x] 5.3 Compactar controles del dock, mejorar el contraste y medir el costo CPU de construir mallas antes de decidir optimizaciones; no se cambió infraestructura gráfica.
+- [x] 5.4 No relanzar la GUI por la restricción vigente; dejar los pasos gráficos manuales y la aceptación visual explícitamente pendiente.
 
 ## 6. Validación y entrega
 
-- [ ] 6.1 Ejecutar pruebas focalizadas por cambio, regresiones 2D/arquitectura, compileall, Ruff scoped, OpenSpec strict y `git diff --check`.
-- [ ] 6.2 No repetir la suite completa SIGSEGV conocida; documentar la excepción y resultados previos sin reescribirlos.
-- [ ] 6.3 Añadir evidencia nueva como addendum, separada de informes históricos.
-- [ ] 6.4 Commits locales descriptivos por área real; rama feature solamente, sin push/merge/PR; verificar worktree limpio.
+- [x] 6.1 Ejecutar pruebas focalizadas por cambio, regresiones 2D/arquitectura, compileall, Ruff scoped, OpenSpec strict y `git diff --check`.
+- [x] 6.2 No repetir la suite completa SIGSEGV conocida; documentar la excepción, el fallo preexistente de Tetrandrine y resultados acotados sin reescribirlos.
+- [x] 6.3 Añadir evidencia nueva como addendum, separada de informes históricos.
+- [x] 6.4 Commits locales descriptivos por área real; rama feature solamente, sin push/merge/PR; verificar worktree limpio.
