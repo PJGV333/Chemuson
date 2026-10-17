@@ -3,9 +3,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from typing import Any, cast
 
 from PyQt6.QtCore import QPoint, Qt, pyqtSignal
-from PyQt6.QtGui import QMouseEvent, QOpenGLContext, QResizeEvent, QSurfaceFormat, QWheelEvent
+from PyQt6.QtGui import (
+    QHideEvent,
+    QMouseEvent,
+    QOpenGLContext,
+    QResizeEvent,
+    QShowEvent,
+    QSurfaceFormat,
+    QWheelEvent,
+)
 from PyQt6.QtOpenGLWidgets import QOpenGLWidget
 
 from chemuson.geometry3d import SceneMolecule3D
@@ -80,7 +89,11 @@ class MolecularViewportWidget(QOpenGLWidget):
     def initializeGL(self) -> None:
         context = self.context()
         if context is not None and context != self._connected_context:
-            context.aboutToBeDestroyed.connect(self._cleanup_gl)
+            # PyQt's runtime accepts the connection type; its stubs omit it.
+            cast(Any, context.aboutToBeDestroyed).connect(
+                self._cleanup_gl,
+                Qt.ConnectionType.DirectConnection,
+            )
             self._connected_context = context
         self._active_context = context
         ready, message = self._renderer.initialize()
@@ -88,6 +101,30 @@ class MolecularViewportWidget(QOpenGLWidget):
         self.statusChanged.emit(message)
         if ready:
             self._mesh_dirty = True
+
+    def showEvent(self, a0: QShowEvent | None) -> None:
+        if a0 is None:
+            return
+        super().showEvent(a0)
+        if self._gl_ready or self.context() is None:
+            return
+        try:
+            self.makeCurrent()
+            self.initializeGL()
+        except Exception as exc:
+            self.statusChanged.emit(f"No se pudo restaurar el contexto OpenGL: {exc}")
+        finally:
+            try:
+                self.doneCurrent()
+            except Exception as exc:
+                self.statusChanged.emit(f"No se pudo liberar el contexto OpenGL: {exc}")
+
+    def hideEvent(self, a0: QHideEvent | None) -> None:
+        if a0 is None:
+            return
+        if self._active_context is not None:
+            self._cleanup_gl()
+        super().hideEvent(a0)
 
     def _cleanup_gl(self) -> None:
         context = self._active_context

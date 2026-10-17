@@ -4,7 +4,7 @@ import math
 
 import pytest
 from PyQt6.QtCore import QObject, QPoint, QPointF, QEvent, Qt, pyqtSignal
-from PyQt6.QtGui import QKeyEvent, QMouseEvent, QResizeEvent
+from PyQt6.QtGui import QHideEvent, QKeyEvent, QMouseEvent, QResizeEvent, QShowEvent
 from PyQt6.QtWidgets import QApplication
 
 from chemuson.geometry3d import SceneAtom3D, SceneBond3D, SceneMolecule3D
@@ -117,6 +117,40 @@ def test_context_destruction_releases_renderer_and_allows_reinitialization(monke
     assert widget._mesh_dirty
     widget.initializeGL()
     assert initialized == [True, True]
+
+
+def test_hide_and_show_cleanup_renderer_and_reinitialize_same_context(monkeypatch) -> None:
+    widget = MolecularViewportWidget()
+    context = _ContextSignals()
+    initialized = []
+    cleaned = []
+
+    class RendererStub:
+        _gl = None
+
+        def initialize(self):
+            initialized.append(True)
+            return True, "ready"
+
+        def cleanup(self):
+            cleaned.append(True)
+
+    widget._renderer = RendererStub()
+    monkeypatch.setattr(widget, "context", lambda: context)
+    monkeypatch.setattr(widget, "makeCurrent", lambda: None)
+    monkeypatch.setattr(widget, "doneCurrent", lambda: None)
+
+    widget.initializeGL()
+    widget.hideEvent(QHideEvent())
+
+    assert initialized == [True]
+    assert cleaned == [True]
+    assert not widget.gl_ready
+
+    widget.showEvent(QShowEvent())
+
+    assert initialized == [True, True]
+    assert widget.gl_ready
 
 
 def test_failed_renderer_initialization_keeps_widget_unready(monkeypatch) -> None:
@@ -295,6 +329,10 @@ def test_viewport_dock_exposes_edit_build_live_mm_and_constraint_controls(_qapp)
 
     dock = MolecularViewportDock()
     try:
+        assert dock.advanced_controls_button.isCheckable()
+        assert dock.advanced_controls_panel.isHidden()
+        dock.advanced_controls_button.setChecked(True)
+        assert not dock.advanced_controls_panel.isHidden()
         live_values = []
         constraints = []
         dock.liveMMToggled.connect(live_values.append)
