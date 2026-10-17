@@ -127,6 +127,16 @@ class MolecularViewportWidget(QOpenGLWidget):
         self._press_hit: PickResult | None = None
         self._gl_ready = False
         self._mesh_dirty = True
+        self._scene_diagnostics: dict[str, object] = {
+            "stage": "scene_empty",
+            "atom_count": 0,
+            "bond_count": 0,
+            "gl_context_ready": False,
+            "upload_status": "not_requested",
+            "render_status": "not_requested",
+            "error_code": None,
+            "status_message": "",
+        }
         self._auto_fit = True
         self._active_context: QOpenGLContext | None = None
         self._connected_context: QOpenGLContext | None = None
@@ -135,6 +145,16 @@ class MolecularViewportWidget(QOpenGLWidget):
     @property
     def gl_ready(self) -> bool:
         return self._gl_ready
+
+    @property
+    def scene_diagnostics(self) -> dict[str, object]:
+        return dict(self._scene_diagnostics)
+
+    def _report_scene_display_status(self, message: str) -> None:
+        if self._scene_diagnostics.get("status_message") == message:
+            return
+        self._scene_diagnostics["status_message"] = message
+        self.statusChanged.emit(message)
 
     @property
     def geometry_drag_active(self) -> bool:
@@ -152,9 +172,19 @@ class MolecularViewportWidget(QOpenGLWidget):
         self._active_context = context
         ready, message = self._renderer.initialize()
         self._gl_ready = ready
+        self._scene_diagnostics["gl_context_ready"] = ready
         self.statusChanged.emit(message)
         if ready:
             self._mesh_dirty = True
+            if self.scene.atoms:
+                self._scene_diagnostics["upload_status"] = "pending"
+                self._scene_diagnostics["render_status"] = "pending"
+        elif self.scene.atoms:
+            self._scene_diagnostics["upload_status"] = "unavailable"
+            self._scene_diagnostics["error_code"] = "display_failed"
+            self._report_scene_display_status(
+                f"display_failed: no se pudo inicializar OpenGL ({message})"
+            )
 
     def showEvent(self, a0: QShowEvent | None) -> None:
         if a0 is None:
@@ -201,21 +231,59 @@ class MolecularViewportWidget(QOpenGLWidget):
 
     def paintGL(self) -> None:
         if not self._gl_ready:
+            if self.scene.atoms:
+                self._scene_diagnostics["upload_status"] = "unavailable"
+                self._scene_diagnostics["error_code"] = "display_failed"
+                self._report_scene_display_status(
+                    "display_failed: escena preparada, pero el contexto OpenGL no está listo."
+                )
             return
         gl = self._renderer._gl
         if gl is None:
+            if self.scene.atoms:
+                self._scene_diagnostics["upload_status"] = "unavailable"
+                self._scene_diagnostics["error_code"] = "display_failed"
+                self._report_scene_display_status(
+                    "display_failed: renderer OpenGL no disponible para cargar la escena."
+                )
             return
         gl.glClearColor(0.055, 0.065, 0.08, 1.0)
         gl.glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         if self._mesh_dirty:
-            self._mesh_dirty = not self._renderer.upload(
-                self.scene,
-                self.selected_atom_id,
-                self.selected_bond_id,
-                self.representation,
-                self.selected_atom_ids,
+            try:
+                uploaded = self._renderer.upload(
+                    self.scene,
+                    self.selected_atom_id,
+                    self.selected_bond_id,
+                    self.representation,
+                    self.selected_atom_ids,
+                )
+            except Exception as exc:
+                uploaded = False
+                self._scene_diagnostics["upload_error"] = str(exc)
+            self._mesh_dirty = not uploaded
+            if not uploaded:
+                self._scene_diagnostics["upload_status"] = "failed"
+                self._scene_diagnostics["error_code"] = "display_failed"
+                self._report_scene_display_status(
+                    "display_failed: falló la carga de la malla al renderer OpenGL."
+                )
+                return
+            self._scene_diagnostics["upload_status"] = "uploaded"
+        try:
+            self._renderer.render(self.camera, self.width(), self.height())
+        except Exception as exc:
+            self._scene_diagnostics["render_status"] = "failed"
+            self._scene_diagnostics["render_error"] = str(exc)
+            self._scene_diagnostics["error_code"] = "display_failed"
+            self._report_scene_display_status(
+                "display_failed: el renderer no pudo solicitar el dibujo OpenGL."
             )
-        self._renderer.render(self.camera, self.width(), self.height())
+            return
+        self._scene_diagnostics["render_status"] = "requested"
+        self._report_scene_display_status(
+            "render_requested: escena enviada al renderer OpenGL; aceptación visual pendiente."
+        )
         if self._build_preview is not None:
             start, end, element = self._build_preview
             painter = QPainter()
@@ -272,6 +340,16 @@ class MolecularViewportWidget(QOpenGLWidget):
     ) -> None:
         self._clear_build_preview()
         self.scene = scene or SceneMolecule3D(atoms=(), bonds=(), source="")
+        self._scene_diagnostics = {
+            "stage": "scene_ready" if self.scene.atoms else "scene_empty",
+            "atom_count": len(self.scene.atoms),
+            "bond_count": len(self.scene.bonds),
+            "gl_context_ready": self._gl_ready,
+            "upload_status": "pending" if self.scene.atoms else "not_requested",
+            "render_status": "pending" if self.scene.atoms else "not_requested",
+            "error_code": None,
+            "status_message": "",
+        }
         if preserve_interaction and self._geometry_drag_state is not None:
             self._geometry_drag_state.latest = {
                 int(atom.id): (float(atom.x), float(atom.y), float(atom.z))

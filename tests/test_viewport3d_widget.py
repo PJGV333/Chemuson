@@ -74,6 +74,66 @@ def test_viewport_dock_is_hidden_until_explicitly_opened() -> None:
     dock.close()
 
 
+def test_viewport_dock_exposes_retry_only_for_retryable_generation_errors(_qapp):
+    dock = MolecularViewportDock()
+    requested = []
+    dock.retryConformerRequested.connect(lambda: requested.append(True))
+    try:
+        assert dock.retry_button.isHidden()
+        dock.set_status("embed_failed: no geometry", retryable=True)
+        assert not dock.retry_button.isHidden()
+        dock.retry_button.click()
+        assert requested == [True]
+        dock.set_status("Generación 3D lista.")
+        assert dock.retry_button.isHidden()
+    finally:
+        dock.close()
+
+
+def test_viewport_records_scene_upload_and_render_requests_offscreen(_qapp):
+    class FakeGL:
+        def glClearColor(self, *_args):
+            pass
+
+        def glClear(self, *_args):
+            pass
+
+    class FakeRenderer:
+        _gl = FakeGL()
+
+        def __init__(self):
+            self.uploaded_scene = None
+            self.render_requested = False
+
+        def upload(self, scene, *_args):
+            self.uploaded_scene = scene
+            return True
+
+        def render(self, *_args):
+            self.render_requested = True
+
+    widget = MolecularViewportWidget()
+    renderer = FakeRenderer()
+    widget._renderer = renderer
+    widget._gl_ready = True
+    scene = SceneMolecule3D(
+        atoms=(SceneAtom3D(1, "C", 0.0, 0.0, 0.0, 1.7, "#404040"),),
+        bonds=(),
+        source="diagnostic-test",
+    )
+
+    widget.set_scene(scene)
+    widget.paintGL()
+
+    diagnostics = widget.scene_diagnostics
+    assert diagnostics["stage"] == "scene_ready"
+    assert diagnostics["atom_count"] == 1
+    assert diagnostics["upload_status"] == "uploaded"
+    assert diagnostics["render_status"] == "requested"
+    assert renderer.uploaded_scene is scene
+    assert renderer.render_requested
+
+
 def test_main_window_exposes_one_viewport_action_without_side_panel_duplication() -> None:
     window = ChemusonWindow()
     try:

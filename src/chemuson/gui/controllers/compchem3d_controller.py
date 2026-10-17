@@ -32,6 +32,7 @@ class CompChem3DWorker(QObject):
     """Runs 3D generation/optimization away from the UI thread."""
 
     frame_ready = pyqtSignal(int, object)
+    progress_ready = pyqtSignal(int, object)
     finished = pyqtSignal(int, object)
 
     def __init__(
@@ -79,6 +80,8 @@ class CompChem3DWorker(QObject):
             timeout_s=self._spec.settings.timeout_s,
             force=self._spec.force,
             settings=self._spec.settings,
+            cancel_event=self._cancel_event,
+            on_progress=lambda event: self.progress_ready.emit(self._job_id, event),
         )
         coordset = conformer.coordinate_set
         if coordset is None:
@@ -86,16 +89,25 @@ class CompChem3DWorker(QObject):
                 None,
                 method=conformer.method or "rdkit",
                 message=conformer.message or "RDKit no devolvió conformero.",
-                metadata={"cache_state": "miss"},
+                metadata={
+                    "cache_state": "miss",
+                    **dict(conformer.metadata),
+                },
             )
         cache_state = "hit" if conformer.from_cache else "miss"
+        metadata = {
+            **dict(coordset.metadata),
+            **dict(conformer.metadata),
+            "cache_state": cache_state,
+            "cache_key": conformer.cache_key,
+        }
         return OptimizationResult(
             coordset,
-            converged=True,
+            converged=bool(metadata.get("converged", conformer.method != "unoptimized")),
             energy=coordset.energy,
             method=coordset.method,
             message=conformer.message,
-            metadata={"cache_state": cache_state, "cache_key": conformer.cache_key},
+            metadata=metadata,
         )
 
     def _optimize(self) -> OptimizationResult:
@@ -143,6 +155,7 @@ class CompChem3DController(QObject):
 
     job_started = pyqtSignal(int)
     frame_ready = pyqtSignal(int, object)
+    job_progress = pyqtSignal(int, object)
     job_finished = pyqtSignal(int, object)
 
     def __init__(self, parent: QObject | None = None) -> None:
@@ -167,6 +180,7 @@ class CompChem3DController(QObject):
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
         worker.frame_ready.connect(self._relay_frame_ready)
+        worker.progress_ready.connect(self._relay_progress_ready)
         worker.finished.connect(self._record_worker_finished)
         worker.finished.connect(thread.quit)
         worker.finished.connect(worker.deleteLater)
@@ -214,6 +228,10 @@ class CompChem3DController(QObject):
     def _relay_frame_ready(self, job_id: int, frame: object) -> None:
         if not self._shutting_down:
             self.frame_ready.emit(job_id, frame)
+
+    def _relay_progress_ready(self, job_id: int, event: object) -> None:
+        if not self._shutting_down:
+            self.job_progress.emit(job_id, event)
 
     def _record_worker_finished(self, job_id: int, result: Any) -> None:
         if not self._shutting_down:

@@ -642,6 +642,11 @@ class CompChemDock(QDockWidget):
     def set_status(self, text: str) -> None:
         self.status_label.setText(str(text or ""))
 
+    def set_retry_available(self, retryable: bool) -> None:
+        self.btn_generate.setText(
+            "Reintentar generación 3D" if retryable else "Generar conformero 3D"
+        )
+
     def clear_frames(self) -> None:
         self.frame_table.setRowCount(0)
 

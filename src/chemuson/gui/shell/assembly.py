@@ -136,6 +136,7 @@ def assemble_application_shell(self) -> None:
     self._live_mm_fixed_atom_ids = ()
     self._live_mm_pending = False
     self._compchem3d_controller.frame_ready.connect(self._on_compchem_frame_ready)
+    self._compchem3d_controller.job_progress.connect(self._on_compchem_progress)
     self._compchem3d_controller.job_finished.connect(self._on_compchem_job_finished)
 
     # === CENTRAL TABS/CANVAS ===
@@ -271,11 +272,15 @@ def assemble_application_shell(self) -> None:
     self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.viewport3d_dock)
     self.viewport3d_dock.hide()
     self.viewport3d_dock.liveMMToggled.connect(self._on_live_mm_toggled)
+    self.viewport3d_dock.retryConformerRequested.connect(self._on_compchem_generate)
     self.viewport3d_dock.geometryConstraintRequested.connect(
         self._on_geometry_constraint_requested
     )
     self.viewport3d_dock.atomElementChangeRequested.connect(
         self._on_viewport_atom_element_change
+    )
+    self.viewport3d_dock.viewport.statusChanged.connect(
+        self._on_viewport_render_status
     )
     self.viewport3d_dock.viewport.geometryPreviewChanged.connect(
         self._on_viewport_geometry_preview

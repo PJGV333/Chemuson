@@ -1,6 +1,6 @@
 # Validation — fix-3d-dock-tools-and-conformers
 
-**Fecha:** 2026-10-16 (MST, UTC−07:00). **Rama:** `feature/chemuson-3d`.
+**Fecha:** 2026-10-17 (MST, UTC−07:00). **Rama:** `feature/chemuson-3d`.
 
 ## Diagnóstico verificado
 
@@ -37,6 +37,17 @@ El baseline produjo 46 átomos pesados, 52 enlaces, 46 coordenadas documentales,
 - Ruff scoped sobre archivos B → **All checks passed**; `git diff --check` → limpio.
 - **No es aceptación visual:** no se inició GUI; contraste real KDE/OpenGL/compositor permanece pendiente.
 
+## Hito C — implementación y validación sin aceptación visual
+
+- Se mantuvo el contrato `metadata["stereochemistry"] = {"atoms": ..., "bonds": ...}` y se separaron centros potenciales/no asignados en `stereochemistry_diagnostics`; esto conserva compatibilidad con consumidores y pruebas existentes.
+- El worker RDKit aislado registra transiciones reales, tiempos por etapa, conteos/estado químico (carga formal, valencia, aromaticidad y anillos), versión/código de retorno RDKit, semillas/intentos, estado de fuerza de campo y estereoquímica especificada/no asignada. ETKDG prueba hasta cuatro combinaciones finitas con semillas distintas y parámetros macro cíclicos solo cuando hay anillos de tamaño ≥8; valida coordenadas y estereoquímica antes y después de minimizar, y preserva el embedding válido como `unoptimized` ante fallo de minimización.
+- La ruta NDJSON propaga progreso, timeout y cancelación con terminación del proceso aislado; servicio/backend/controlador reenvían diagnóstico y progreso. La UI muestra progreso, error/reintento y descarta resultados obsoletos con código `stale_result`.
+- La escena expone estado `scene_ready`, upload y render solicitados; fallos de construcción o display se identifican como `scene_failed`/`display_failed` y llegan al viewport y al panel CompChem. `render_requested` confirma únicamente que el renderer recibió la solicitud; **no es aceptación visual GPU**.
+- La regresión de referencia PubChem CID 73078 verifica 46 átomos pesados, 52 enlaces, coordenadas finitas y dos centros S, además de agua, etano, etanol, butano, benceno, ciclohexano, eteno, etino y adamantano. El SMILES de referencia no sustituye el `.cmsn` original del usuario.
+- `pytest -q tests/test_rdkit_live_stream.py tests/test_geometry3d_service.py tests/test_geometry3d_stereochemistry.py tests/test_compchem3d_dock.py tests/test_viewport3d_camera.py tests/test_viewport3d_geometry.py tests/test_viewport3d_widget.py tests/test_geometry3d_editing.py tests/test_geometry3d_editing_metrics.py` → **166 passed, 2 skipped in 80.18s**.
+- `pytest -q tests/architecture` → **280 passed in 12.54s**; `compileall` → exit 0; Ruff scoped en archivos del cambio (`F401,F811,F821,E722,E741`) → **All checks passed**; OpenSpec strict → válido; `git diff --check` → limpio.
+- Ruff de repositorio con las reglas baseline sigue con el mismo F401 preexistente y fuera de alcance: `tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py:3` (`import math`). No se repitió la suite completa de pytest por el SIGSEGV Qt/SIP ya observado en baseline.
+
 ## Pendiente
 
-El Hito C, su commit local y regresiones de generación/diagnóstico están pendientes. No se encontró el `.cmsn` original de tetrandrina dibujado por el usuario; la referencia PubChem es una regresión separada y no se atribuye al documento real. La aceptación gráfica manual del Hito A también sigue pendiente por las restricciones de esta campaña.
+No se inició GUI: la aceptación KDE/OpenGL/compositor permanece manual. Tampoco se encontró/probó el `.cmsn` original de tetrandrina; la referencia CID 73078 es una regresión separada y no se atribuye al documento real.

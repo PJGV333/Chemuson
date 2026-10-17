@@ -173,6 +173,78 @@ def conformer_3d_isolated(
     return positions, metadata, None
 
 
+def conformer_3d_stream_isolated(
+    graph,
+    *,
+    forcefield: str = "MMFF94",
+    max_iters: int = 200,
+    seed: int = 0xC0FFEE,
+    timeout_s: float = 20.0,
+    cancel_event: threading.Event | None = None,
+):
+    """Genera conformero y emite etapas verificables desde el worker RDKit aislado."""
+    request = _graph_request_payload(
+        graph=graph,
+        chain_atom_ids=[],
+        mode="graph_conformer3d_stream",
+    )
+    request.update(
+        {
+            "forcefield": str(forcefield or "MMFF94"),
+            "max_iters": int(max_iters or 200),
+            "seed": int(seed),
+        }
+    )
+    started = time.monotonic()
+    last_stage: str | None = None
+    for event in _run_worker_stream(
+        request, timeout_s=timeout_s, cancel_event=cancel_event
+    ):
+        if event.get("event") == "progress":
+            last_stage = str(event.get("stage") or last_stage or "") or None
+        if event.get("event") in {"error", "cancelled"}:
+            diagnostics = event.get("diagnostics")
+            if not isinstance(diagnostics, dict):
+                diagnostics = {
+                    "error_code": event.get("error", event.get("event")),
+                    "stage": event.get("stage") or last_stage or "worker_start",
+                    "detail": event.get("detail", ""),
+                    "graph": _graph_diagnostics(graph),
+                    "timings_s": {"total": max(0.0, time.monotonic() - started)},
+                    "worker": {
+                        key: event[key]
+                        for key in ("returncode", "python_executable", "worker_path")
+                        if event.get(key) is not None
+                    },
+                }
+            yield {**event, "diagnostics": diagnostics}
+            continue
+        yield event
+
+
+def _graph_diagnostics(graph) -> dict[str, Any]:
+    atoms = list(getattr(graph, "atoms", {}).values())
+    bonds = list(getattr(graph, "bonds", {}).values())
+    elements: dict[str, int] = {}
+    for atom in atoms:
+        symbol = str(getattr(atom, "element", "?"))
+        elements[symbol] = elements.get(symbol, 0) + 1
+    return {
+        "atom_count": len(atoms),
+        "bond_count": len(bonds),
+        "element_counts": dict(sorted(elements.items())),
+        "formal_charge": sum(
+            int(getattr(atom, "charge", 0) or 0) for atom in atoms
+        ),
+        "stereocenter_count": sum(
+            bool(getattr(atom, "stereo_cip", None)) for atom in atoms
+        ),
+        "stereo_bond_count": sum(
+            bool(getattr(bond, "stereo_ez", None)) for bond in bonds
+        ),
+    }
+
+
 def optimize_3d_isolated(
     graph,
     *,
@@ -578,6 +650,7 @@ def _run_worker_stream(
     stdout_thread.start()
     stderr_thread.start()
     terminal_event: dict[str, Any] | None = None
+    last_stage: str | None = None
     deadline = time.monotonic() + max(0.01, float(timeout_s))
     try:
         if process.stdin is not None:
@@ -588,12 +661,18 @@ def _run_worker_stream(
         while not stdout_finished:
             if cancel_event is not None and cancel_event.is_set():
                 _terminate_stream_process(process)
-                yield {"event": "cancelled", "ok": False, "error": "cancelled"}
+                cancelled = {"event": "cancelled", "ok": False, "error": "cancelled"}
+                if last_stage is not None:
+                    cancelled["stage"] = last_stage
+                yield cancelled
                 return
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 _terminate_stream_process(process)
-                yield {"event": "error", "ok": False, "error": "timeout"}
+                timed_out = {"event": "error", "ok": False, "error": "timeout"}
+                if last_stage is not None:
+                    timed_out["stage"] = last_stage
+                yield timed_out
                 return
             try:
                 kind, raw_line = messages.get(timeout=min(0.05, remaining))
@@ -612,6 +691,10 @@ def _run_worker_stream(
                 _terminate_stream_process(process)
                 yield {"event": "error", "ok": False, "error": "invalid_worker_payload"}
                 return
+            if payload.get("event") == "progress":
+                reported_stage = payload.get("stage")
+                if reported_stage:
+                    last_stage = str(reported_stage)
             if payload.get("event") in {"done", "error", "cancelled"}:
                 terminal_event = payload
             else:

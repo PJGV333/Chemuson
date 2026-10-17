@@ -26,6 +26,13 @@ from chemuson.geometry3d import obabel_backend, rdkit_backend
 from chemuson.chemio.persistence import PersistenceManager
 
 
+# PubChem CID 73078 reference used here is not the user's original .cmsn.
+_TETRANDRINE_CID_73078_SMILES = (
+    "CN1CCC2=CC(=C3C=C2[C@@H]1CC4=CC=C(C=C4)OC5=C(C=CC(=C5)"
+    "C[C@H]6C7=C(O3)C(=C(C=C7CCN6C)OC)OC)OC)OC"
+)
+
+
 def test_carbon_scene_color_has_contrast_for_dark_viewport() -> None:
     graph = MolGraph()
     carbon = graph.add_atom("C", 0.0, 0.0)
@@ -52,6 +59,77 @@ def _ethane_graph() -> MolGraph:
     second = graph.add_atom("C", 42.0, 0.0)
     graph.add_bond(first.id, second.id, order=1)
     return graph
+
+
+def test_conformer_service_propagates_progress_cancel_and_failure_diagnostics(
+    monkeypatch,
+):
+    import threading
+
+    from chemuson.geometry3d import OptimizationResult, service
+
+    graph = _ethane_graph()
+    cancel_event = threading.Event()
+    progress = []
+    diagnostics = {
+        "error_code": "cancelled",
+        "stage": "embedding",
+        "graph": {"atom_count": 2, "bond_count": 1},
+    }
+
+    def fake_generate(received_graph, _settings, *, cancel_event, on_progress):
+        assert received_graph is graph
+        assert cancel_event is not None
+        on_progress({"event": "progress", "stage": "embedding"})
+        return OptimizationResult(
+            None,
+            method="rdkit",
+            message="cancelled: embedding",
+            metadata={"diagnostics": diagnostics},
+        )
+
+    monkeypatch.setattr(service, "generate_conformer", fake_generate)
+
+    result = service.conformer_3d_for_graph(
+        graph,
+        force=True,
+        cancel_event=cancel_event,
+        on_progress=progress.append,
+    )
+
+    assert not result.ok
+    assert result.message == "cancelled: embedding"
+    assert result.metadata["diagnostics"] == diagnostics
+    assert [event["stage"] for event in progress] == ["embedding"]
+
+
+def test_conformer_cache_key_separates_forcefield_and_seed(monkeypatch):
+    from chemuson.geometry3d import OptimizationResult, service
+
+    graph = _ethane_graph()
+    monkeypatch.setattr(service, "_CONFORMER_CACHE", {})
+
+    def fake_generate(_graph, settings, **_kwargs):
+        coordinates = CoordinateSet3D(
+            {1: (0.0, 0.0, 0.0), 2: (1.5, 0.0, 0.0)},
+            source="rdkit",
+            method=settings.forcefield.value,
+        )
+        return OptimizationResult(coordinates, converged=True, method=coordinates.method)
+
+    monkeypatch.setattr(service, "generate_conformer", fake_generate)
+    first = service.conformer_3d_for_graph(
+        graph,
+        force=True,
+        settings=OptimizationSettings(forcefield=ForceField.MMFF94, seed=11),
+    )
+    second = service.conformer_3d_for_graph(
+        graph,
+        force=True,
+        settings=OptimizationSettings(forcefield=ForceField.UFF, seed=12),
+    )
+
+    assert first.cache_key != second.cache_key
 
 
 def test_coordinate_set_normalizes_positions() -> None:
@@ -118,6 +196,87 @@ def test_scene_molecule3d_includes_generated_atoms_without_mutating_graph() -> N
     assert len(graph.atoms) == 3
     assert len(scene.atoms) == 4
     assert any(atom.generated and atom.element == "H" for atom in scene.atoms)
+
+
+def test_conformer_backend_relays_worker_progress_and_structured_diagnostics(
+    monkeypatch,
+):
+    from chemuson.chemio import rdkit_safe
+
+    graph = _ethane_graph()
+    progress = []
+    diagnostics = {
+        "error_code": None,
+        "stage": "done",
+        "graph": {"atom_count": 2, "bond_count": 1},
+        "timings_s": {"total": 0.25},
+    }
+
+    def fake_stream(_graph, **_kwargs):
+        yield {"event": "progress", "stage": "embedding", "message": "Embedding"}
+        yield {
+            "event": "done",
+            "ok": True,
+            "positions": {"1": [0.0, 0.0, 0.0], "2": [1.5, 0.0, 0.0]},
+            "metadata": {
+                "source": "rdkit",
+                "method": "mmff",
+                "energy": -1.0,
+                "converged": True,
+                "generated_atoms": [],
+                "generated_bonds": [],
+                "diagnostics": diagnostics,
+            },
+            "diagnostics": diagnostics,
+            "message": "",
+        }
+
+    monkeypatch.setattr(rdkit_safe, "conformer_3d_stream_isolated", fake_stream)
+
+    result = rdkit_backend.generate_conformer(
+        graph,
+        OptimizationSettings(forcefield=ForceField.MMFF94),
+        on_progress=progress.append,
+    )
+
+    assert result.ok
+    assert result.coordinates is not None
+    assert result.coordinates.metadata["diagnostics"] == diagnostics
+    assert result.metadata["diagnostics"] == diagnostics
+    assert result.converged
+    assert [event["stage"] for event in progress] == ["embedding"]
+
+
+def test_conformer_backend_keeps_failure_diagnostics_without_coordinates(monkeypatch):
+    from chemuson.chemio import rdkit_safe
+
+    graph = _ethane_graph()
+    diagnostics = {
+        "error_code": "embed_failed",
+        "stage": "embedding",
+        "graph": {"atom_count": 2, "bond_count": 1},
+    }
+
+    def fake_stream(_graph, **_kwargs):
+        yield {
+            "event": "error",
+            "ok": False,
+            "error": "embed_failed",
+            "detail": "all attempts failed",
+            "diagnostics": diagnostics,
+        }
+
+    monkeypatch.setattr(rdkit_safe, "conformer_3d_stream_isolated", fake_stream)
+
+    result = rdkit_backend.generate_conformer(graph)
+
+    assert not result.ok
+    assert result.coordinates is None
+    failure_diagnostics = result.metadata.get("diagnostics")
+    assert isinstance(failure_diagnostics, dict)
+    assert failure_diagnostics.get("error_code") == diagnostics["error_code"]
+    assert failure_diagnostics.get("detail") == "all attempts failed"
+    assert "embed_failed" in result.message
 
 
 def test_generated_conformer_exposes_hydrogen_atoms_and_bonds_without_persisting_them(tmp_path) -> None:
@@ -377,6 +536,39 @@ def test_rdkit_backend_frames_keep_derived_hydrogens() -> None:
     assert len(scene.bonds) == 2
 
 
+def test_conformer_diagnostics_capture_valence_aromaticity_and_unassigned_stereo() -> None:
+    from chemuson.chemio.rdkit_safe import (
+        is_rdkit_worker_available,
+        smiles_to_molgraph_isolated,
+    )
+
+    if not is_rdkit_worker_available(timeout_s=5.0):
+        pytest.skip("RDKit worker no disponible")
+
+    benzene, error = smiles_to_molgraph_isolated("c1ccccc1", timeout_s=8.0)
+    assert benzene is not None, error
+    aromatic_result = conformer_3d_for_graph(benzene, force=True)
+    assert aromatic_result.ok, aromatic_result.message
+    aromatic_diagnostics = aromatic_result.coordinate_set.metadata["diagnostics"]
+    aromatic_graph = aromatic_diagnostics["graph"]
+    assert aromatic_graph["aromatic_atom_count"] == 6
+    assert aromatic_graph["aromatic_bond_count"] == 6
+    assert len(aromatic_graph["atom_states"]) == 6
+    assert all(atom["total_valence"] == 4 for atom in aromatic_graph["atom_states"])
+    assert aromatic_diagnostics["return_code"] == 0
+    assert aromatic_diagnostics["timings_s"]["total"] > 0
+
+    unspecified, error = smiles_to_molgraph_isolated("CC(O)F", timeout_s=8.0)
+    assert unspecified is not None, error
+    unspecified_result = conformer_3d_for_graph(unspecified, force=True)
+    assert unspecified_result.ok, unspecified_result.message
+    stereo_diagnostics = unspecified_result.coordinate_set.metadata["diagnostics"][
+        "stereochemistry_diagnostics"
+    ]
+    assert stereo_diagnostics["unassigned_atom_count"] == 1
+    assert stereo_diagnostics["specified_atoms"] == {}
+
+
 @pytest.mark.parametrize(
     ("name", "smiles", "document_atoms", "document_bonds", "generated_hydrogens"),
     [
@@ -388,6 +580,8 @@ def test_rdkit_backend_frames_keep_derived_hydrogens() -> None:
         ("cyclohexane", "C1CCCCC1", 6, 6, 12),
         ("ethene", "C=C", 2, 1, 4),
         ("ethyne", "C#C", 2, 1, 2),
+        ("adamantane", "C1C2CC3CC1CC(C2)C3", 10, 12, 16),
+        ("tetrandrine", _TETRANDRINE_CID_73078_SMILES, 46, 52, 42),
     ],
 )
 def test_3d_acceptance_molecules_preserve_graph_and_build_derived_hydrogens(
@@ -425,14 +619,34 @@ def test_3d_acceptance_molecules_preserve_graph_and_build_derived_hydrogens(
     assert len(graph.bonds) == document_bonds
     assert len(scene.atoms) == document_atoms + generated_hydrogens
     assert len(scene.bonds) == document_bonds + generated_hydrogens
+    diagnostics = coordinates.metadata["diagnostics"]
+    assert diagnostics["return_code"] == 0
+    assert diagnostics["graph"]["heavy_atom_count"] == document_atoms
+    assert diagnostics["graph"]["atom_count"] == document_atoms
+    assert diagnostics["graph"]["bond_count"] == document_bonds
+    assert diagnostics["stage"] == "done"
+    assert diagnostics["timings_s"]["total"] > 0
+    if name == "benzene":
+        assert diagnostics["graph"]["aromatic_atom_count"] == 6
+        assert diagnostics["graph"]["aromatic_bond_count"] == 6
+    if name == "adamantane":
+        assert diagnostics["graph"]["ring_count"] >= 3
+        assert diagnostics["graph"]["largest_ring_size"] == 6
+        assert diagnostics["macrocycle_used"] is False
+    if name == "tetrandrine":
+        specified_atoms = diagnostics["stereochemistry_diagnostics"]["specified_atoms"]
+        assert len(specified_atoms) == 2
+        assert set(specified_atoms.values()) == {"S"}
+        assert len(coordinates.normalized_positions()) == 46
+        assert diagnostics["graph"]["ring_count"] >= 5
     assert all(math.isfinite(value) for atom in scene.atoms for value in (atom.x, atom.y, atom.z))
-    if name not in {"ethene", "ethyne"}:
+    if name not in {"water", "ethene", "ethyne"}:
         assert any(abs(atom.z) > 1.0e-6 for atom in scene.atoms)
     assert {atom.id for atom in scene.atoms if not atom.generated} == set(graph.atoms)
     assert sum(atom.generated and atom.element == "H" for atom in scene.atoms) == generated_hydrogens
     assert all(bond.a1_id in {atom.id for atom in scene.atoms} for bond in scene.bonds)
     assert all(bond.a2_id in {atom.id for atom in scene.atoms} for bond in scene.bonds)
-    assert result.method in {"mmff", "uff", "embed-only"}
+    assert result.method in {"mmff94", "mmff94s", "uff", "unoptimized"}
     assert {
         atom_id: (atom.element, atom.charge, atom.isotope, atom.stereo_cip, atom.x, atom.y)
         for atom_id, atom in graph.atoms.items()

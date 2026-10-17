@@ -17,12 +17,12 @@
 
 ## Hito C — Generación robusta y diagnósticos
 
-- [ ] C1. Diagnósticos estructurados por etapa/conteos/estereoquímica/tiempos/código RDKit y errores diferenciados en viewport + panel CompChem.
-- [ ] C2. Intentos ETKDG finitos/diferenciados; opción macro ciclo condicionada; validación geométrica/estereoquímica; resultado no optimizado claro ante fallo MMFF/UFF.
-- [ ] C3. Progreso por etapas real, timeout y cancelación del subproceso aislado; descartar resultados obsoletos sin ocultar estado del documento actual.
-- [ ] C4. Regresión auténtica de tetrandrina CID 73078 desde la referencia documentada, además de etano, butano, benceno y otro policíclico; preservar pruebas estéreo/aromaticidad.
-- [ ] C5. Verificar escena 3D preparada y solicitud de upload/render; registrar como no visual si no se inicia GUI.
-- [ ] C6. Ejecuciones focalizadas, arquitectura, Ruff scoped, compileall, OpenSpec strict, `git diff --check`; commit local Hito C y estado Git limpio sin publicar.
+- [x] C1. Diagnósticos estructurados por etapa/conteos/estereoquímica/tiempos/código RDKit y errores diferenciados en viewport + panel CompChem.
+- [x] C2. Intentos ETKDG finitos/diferenciados; opción macro ciclo condicionada; validación geométrica/estereoquímica; resultado no optimizado claro ante fallo MMFF/UFF.
+- [x] C3. Progreso por etapas real, timeout y cancelación del subproceso aislado; descartar resultados obsoletos sin ocultar estado del documento actual.
+- [x] C4. Regresión auténtica de tetrandrina CID 73078 desde la referencia documentada, además de etano, butano, benceno y otro policíclico; preservar pruebas estéreo/aromaticidad.
+- [x] C5. Verificar escena 3D preparada y solicitud de upload/render; registrar como no visual si no se inicia GUI.
+- [x] C6. Ejecuciones focalizadas, arquitectura, Ruff scoped, compileall, OpenSpec strict, `git diff --check`; commit local Hito C y estado Git limpio sin publicar.
 
 ## Aceptación manual separada
 

@@ -30,6 +30,7 @@ class MolecularViewportDock(QDockWidget):
     """Contenedor integrable que no expone el modelo químico al renderer."""
 
     liveMMToggled = pyqtSignal(bool)
+    retryConformerRequested = pyqtSignal()
     geometryConstraintRequested = pyqtSignal(str, object, float)
     atomElementChangeRequested = pyqtSignal(int, str)
 
@@ -154,12 +155,17 @@ class MolecularViewportDock(QDockWidget):
         self.status_label = QLabel("Sin conformero 3D")
         self.status_label.setObjectName("molecularViewportStatus")
         self.status_label.setWordWrap(True)
+        self.retry_button = QPushButton("Reintentar generación 3D")
+        self.retry_button.setObjectName("molecularViewportRetryConformer")
+        self.retry_button.setHidden(True)
+        self.retry_button.clicked.connect(self.retryConformerRequested.emit)
         layout.addLayout(edit_row)
         layout.addLayout(tool_row)
         layout.addWidget(self.advanced_controls_button)
         layout.addWidget(self.advanced_controls_panel)
         layout.addWidget(self.viewport, 1)
         layout.addWidget(self.status_label)
+        layout.addWidget(self.retry_button)
         self.setWidget(container)
         self.viewport.statusChanged.connect(self.set_status)
         self.topLevelChanged.connect(self._on_dock_top_level_changed)
@@ -377,5 +383,6 @@ class MolecularViewportDock(QDockWidget):
     def clear_scene(self) -> None:
         self.set_scene(None)
 
-    def set_status(self, message: str) -> None:
+    def set_status(self, message: str, *, retryable: bool = False) -> None:
         self.status_label.setText(str(message))
+        self.retry_button.setVisible(bool(retryable))

@@ -18,6 +18,8 @@ from chemuson.geometry3d import (
     OptimizationFrame,
     OptimizationResult,
     OptimizationSettings,
+    SceneAtom3D,
+    SceneMolecule3D,
 )
 from chemuson.gui.controllers import CompChem3DController, CompChem3DWorker, CompChemJobSpec
 from chemuson.gui.main_window import ChemusonWindow
@@ -70,6 +72,221 @@ def test_compchem_controller_generates_async_with_fake_backend(monkeypatch) -> N
     assert result.ok
     assert result.coordinates is not None
     assert result.coordinates.source == "fake"
+
+
+def test_compchem_generate_worker_relays_real_generation_stages(monkeypatch) -> None:
+    diagnostics = {
+        "error_code": None,
+        "stage": "done",
+        "graph": {"atom_count": 3, "bond_count": 2},
+        "degradation_code": None,
+    }
+
+    def fake_conformer(_graph, **kwargs):
+        kwargs["on_progress"](
+            {
+                "event": "progress",
+                "stage": "embedding",
+                "message": "Buscando una geometría ETKDG reproducible.",
+                "graph": diagnostics["graph"],
+            }
+        )
+        return Conformer3DResult(
+            {1: (0.0, 0.0, 0.0), 2: (1.5, 0.0, 0.0), 3: (2.8, 0.0, 0.0)},
+            source="rdkit",
+            cache_key="stage-key",
+            method="unoptimized",
+            message="missing_forcefield_parameters: no parameters",
+            metadata={"converged": False, "diagnostics": diagnostics},
+        )
+
+    monkeypatch.setattr(compchem_module, "conformer_3d_for_graph", fake_conformer)
+    worker = CompChem3DWorker(
+        15,
+        _chain_graph(),
+        CompChemJobSpec("generate", "rdkit", OptimizationSettings()),
+    )
+    events = []
+    worker.progress_ready.connect(lambda job_id, event: events.append((job_id, event)))
+    finished = []
+    worker.finished.connect(lambda _job_id, result: finished.append(result))
+
+    worker.run()
+
+    assert len(events) == 1
+    assert events[0][0] == 15
+    assert events[0][1]["stage"] == "embedding"
+    assert finished and finished[0].ok
+    assert finished[0].coordinates.method == "unoptimized"
+    assert not finished[0].converged
+    assert finished[0].metadata["diagnostics"] == diagnostics
+
+
+def test_compchem_generation_failure_displays_diagnostics_and_retries(monkeypatch) -> None:
+    window = ChemusonWindow()
+    try:
+        for element in ("C", "C", "O"):
+            window.canvas.model.add_atom(element, 0.0, 0.0)
+        job_id = 91
+        window._latest_compchem_job_id = job_id
+        window._compchem_job_operations[job_id] = "generate"
+        window._compchem_job_backends[job_id] = "rdkit"
+        window._compchem_job_snapshots[job_id] = window._current_compchem_snapshot()
+        result = OptimizationResult(
+            None,
+            message="RDKit did not embed the graph.",
+            metadata={
+                "diagnostics": {
+                    "error_code": "embedding_failed",
+                    "stage": "embedding",
+                    "return_code": -1,
+                    "timings_s": {"embedding": 0.25},
+                    "stereochemistry": {"specified_atoms": {"1": "S"}},
+                    "graph": {"atom_count": 3, "bond_count": 2},
+                }
+            },
+        )
+        window._on_compchem_job_finished(job_id, result)
+
+        status = window.compchem_dock.status_label.text()
+        assert "embedding_failed" in status
+        assert "embedding" in status
+        assert "3 átomos" in status
+        assert '"return_code": -1' in window.compchem_dock.status_label.toolTip()
+        assert '"stereochemistry"' in window.viewport3d_dock.status_label.toolTip()
+        assert not window.viewport3d_dock.retry_button.isHidden()
+        assert window.compchem_dock.btn_generate.text() == "Reintentar generación 3D"
+
+        starts = []
+        monkeypatch.setattr(
+            window,
+            "_start_compchem_job",
+            lambda operation, **kwargs: starts.append((operation, kwargs)),
+        )
+        window.viewport3d_dock.retry_button.click()
+        window.compchem_dock.btn_generate.click()
+        assert [operation for operation, _kwargs in starts] == ["generate", "generate"]
+    finally:
+        window.close()
+
+
+def test_compchem_discards_stale_result_and_reports_reason() -> None:
+    window = ChemusonWindow()
+    try:
+        canvas = window.canvas
+        atom = canvas.model.add_atom("C", 0.0, 0.0)
+        original = CoordinateSet3D(
+            {atom.id: (0.0, 0.0, 0.0)}, source="test", method="manual"
+        )
+        canvas.set_geometry3d_coordinates(original)
+        job_id = 92
+        window._latest_compchem_job_id = job_id
+        window._compchem_job_operations[job_id] = "generate"
+        window._compchem_job_backends[job_id] = "rdkit"
+        window._compchem_job_snapshots[job_id] = window._current_compchem_snapshot()
+        canvas.model.add_atom("O", 42.0, 0.0)
+
+        window._on_compchem_job_finished(
+            job_id,
+            OptimizationResult(
+                CoordinateSet3D(
+                    {atom.id: (1.0, 0.0, 0.0)}, source="rdkit", method="ETKDGv3"
+                ),
+                converged=True,
+            ),
+        )
+
+        assert canvas.coordinate_set_3d == original
+        assert "stale_result" in window.compchem_dock.status_label.text()
+        assert '"error_code": "stale_result"' in window.compchem_dock.status_label.toolTip()
+        assert not window.viewport3d_dock.retry_button.isHidden()
+    finally:
+        window.close()
+
+
+def test_scene_build_failure_reports_structured_diagnostic(monkeypatch) -> None:
+    window = ChemusonWindow()
+    try:
+        atom = window.canvas.model.add_atom("C", 0.0, 0.0)
+        window._compchem_coordset = CoordinateSet3D(
+            {atom.id: (0.0, 0.0, 0.0)}, source="test", method="manual"
+        )
+
+        def fail_scene(_graph, _coordinates):
+            raise RuntimeError("invalid coordinate mapping")
+
+        monkeypatch.setattr("chemuson.gui.main_window.scene_molecule_from_graph", fail_scene)
+        window._refresh_viewport3d_scene()
+
+        assert "scene_failed" in window.viewport3d_dock.status_label.text()
+        assert '"error_code": "scene_failed"' in window.viewport3d_dock.status_label.toolTip()
+    finally:
+        window.close()
+
+
+def test_viewport_display_failure_reaches_compchem_diagnostics(_qapp):
+    window = ChemusonWindow()
+    try:
+        atom = window.canvas.model.add_atom("C", 0.0, 0.0)
+        widget = window.viewport3d_dock.viewport
+        widget.set_scene(
+            SceneMolecule3D(
+                atoms=(SceneAtom3D(atom.id, "C", 0.0, 0.0, 0.0, 1.7, "#404040"),),
+                bonds=(),
+            )
+        )
+
+        class FakeGL:
+            def glClearColor(self, *_args):
+                pass
+
+            def glClear(self, *_args):
+                pass
+
+        class FailedUploadRenderer:
+            _gl = FakeGL()
+
+            def upload(self, *_args):
+                return False
+
+        widget._renderer = FailedUploadRenderer()
+        widget._gl_ready = True
+        widget.paintGL()
+
+        assert "display_failed" in window.viewport3d_dock.status_label.text()
+        assert "display_failed" in window.compchem_dock.status_label.text()
+        assert '"error_code": "display_failed"' in window.compchem_dock.status_label.toolTip()
+    finally:
+        window.close()
+
+
+def test_compchem_stage_progress_is_visible_in_both_docks() -> None:
+    window = ChemusonWindow()
+    try:
+        for element in ("C", "C", "O"):
+            window.canvas.model.add_atom(element, 0.0, 0.0)
+        job_id = 24
+        window._latest_compchem_job_id = job_id
+        window._compchem_job_operations[job_id] = "generate"
+        window._compchem_job_snapshots[job_id] = window._current_compchem_snapshot()
+
+        window._on_compchem_progress(
+            job_id,
+            {
+                "event": "progress",
+                "stage": "embedding",
+                "message": "Buscando una geometría ETKDG reproducible.",
+                "graph": {"atom_count": 3, "bond_count": 2},
+            },
+        )
+
+        assert "ETKDG" in window.compchem_dock.status_label.text()
+        assert "3 átomos" in window.compchem_dock.status_label.text()
+        assert "ETKDG" in window.viewport3d_dock.status_label.text()
+    finally:
+        window._close_approved = True
+        window._async_shutdown_complete = True
+        window.close()
 
 
 def test_compchem_worker_handles_backend_failure() -> None:

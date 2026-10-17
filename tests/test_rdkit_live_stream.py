@@ -50,7 +50,7 @@ def test_worker_stream_cancels_child_process(tmp_path, monkeypatch):
     worker = tmp_path / "cancel_worker.py"
     worker.write_text(
         "import json, time\n"
-        "print(json.dumps({'event':'frame','sequence':1}), flush=True)\n"
+        "print(json.dumps({'event':'progress','stage':'embedding'}), flush=True)\n"
         "time.sleep(10)\n",
         encoding="utf-8",
     )
@@ -60,13 +60,108 @@ def test_worker_stream_cancels_child_process(tmp_path, monkeypatch):
         {}, timeout_s=15.0, cancel_event=cancel_event
     )
 
-    assert next(events)["event"] == "frame"
+    assert next(events)["stage"] == "embedding"
     started = time.monotonic()
     cancel_event.set()
     cancelled = next(events)
 
     assert cancelled["event"] == "cancelled"
+    assert cancelled["stage"] == "embedding"
     assert time.monotonic() - started < 1.0
+
+
+def test_conformer_stream_reports_real_stage_progress_and_diagnostics():
+    graph, _coordinates = _butane()
+    stream = getattr(rdkit_safe, "conformer_3d_stream_isolated")
+    events = list(stream(graph, timeout_s=20.0, seed=1234))
+
+    progress = [event for event in events if event.get("event") == "progress"]
+    terminal = events[-1]
+    diagnostics = terminal["diagnostics"]
+
+    assert terminal["event"] == "done", terminal
+    assert terminal["ok"] is True
+    assert [event["stage"] for event in progress] == [
+        "payload_received",
+        "sanitization",
+        "hydrogen_stereo",
+        "embedding",
+        "minimization",
+        "geometry_validation",
+        "publication",
+    ]
+    assert all("percent" not in event for event in progress)
+    assert diagnostics["error_code"] is None
+    assert diagnostics["stage"] == "done"
+    assert diagnostics["graph"]["atom_count"] == 4
+    assert diagnostics["graph"]["bond_count"] == 3
+    assert diagnostics["macrocycle_used"] is False
+    assert diagnostics["timings_s"]
+    assert all(value >= 0.0 for value in diagnostics["timings_s"].values())
+    attempts = diagnostics["attempts"]
+    assert attempts
+    assert len({attempt["seed"] for attempt in attempts}) == len(attempts)
+    assert set(terminal["positions"]) == {"1", "2", "3", "4"}
+
+
+def test_conformer_preserves_embedded_geometry_when_forcefields_are_unavailable(
+    monkeypatch,
+):
+    from rdkit import Chem
+    from rdkit.Chem import AllChem
+
+    from chemuson.chemio import _rdkit_worker
+
+    graph, _coordinates = _butane()
+    request = rdkit_safe._graph_request_payload(graph, [], "graph_conformer3d")
+    monkeypatch.setattr(AllChem, "MMFFHasAllMoleculeParams", lambda _mol: False)
+    monkeypatch.setattr(AllChem, "UFFGetMoleculeForceField", lambda _mol: None)
+
+    result = _rdkit_worker._handle_graph_conformer3d_mode(Chem, request)
+
+    assert result["ok"] is True
+    assert set(result["positions"]) == {"1", "2", "3", "4"}
+    assert result["metadata"]["method"] == "unoptimized"
+    assert result["metadata"]["energy"] is None
+    assert result["diagnostics"]["degradation_code"] == "missing_forcefield_parameters"
+
+
+def test_conformer_retries_with_distinct_seeds_and_enables_macrocycle_params(
+    monkeypatch,
+):
+    from rdkit import Chem
+    from rdkit.Chem import AllChem
+
+    from chemuson.chemio import _rdkit_worker
+
+    graph = MolGraph()
+    atoms = [graph.add_atom("C", index * 40.0, 0.0) for index in range(8)]
+    for index, atom in enumerate(atoms):
+        graph.add_bond(atom.id, atoms[(index + 1) % len(atoms)].id)
+    request = rdkit_safe._graph_request_payload(graph, [], "graph_conformer3d")
+    original_embed = AllChem.EmbedMolecule
+    parameters = []
+    calls = 0
+
+    def fail_once(mol, params):
+        nonlocal calls
+        calls += 1
+        parameters.append(params)
+        if calls == 1:
+            return -1
+        return original_embed(mol, params)
+
+    monkeypatch.setattr(AllChem, "EmbedMolecule", fail_once)
+
+    result = _rdkit_worker._handle_graph_conformer3d_mode(Chem, request)
+
+    attempts = result["diagnostics"]["attempts"]
+    assert result["ok"] is True
+    assert result["diagnostics"]["macrocycle_used"] is True
+    assert len(attempts) == 2
+    assert attempts[0]["seed"] != attempts[1]["seed"]
+    assert all(params.useMacrocycleTorsions for params in parameters)
+    assert all(params.useMacrocycle14config for params in parameters)
 
 
 @pytest.mark.parametrize("forcefield", ["MMFF94", "MMFF94s", "UFF"])
@@ -209,13 +304,19 @@ def test_rdkit_backend_stream_returns_last_frame_and_emits_callbacks():
 
 def test_worker_stream_times_out_and_terminates_child(tmp_path, monkeypatch):
     worker = tmp_path / "timeout_worker.py"
-    worker.write_text("import time\ntime.sleep(10)\n", encoding="utf-8")
+    worker.write_text(
+        "import json, time\n"
+        "print(json.dumps({'event':'progress','stage':'minimization'}), flush=True)\n"
+        "time.sleep(10)\n",
+        encoding="utf-8",
+    )
     monkeypatch.setattr(rdkit_safe, "_worker_path", lambda: worker)
     started = time.monotonic()
 
     events = list(rdkit_safe._run_worker_stream({}, timeout_s=0.15))
 
     assert events[-1]["error"] == "timeout"
+    assert events[-1]["stage"] == "minimization"
     assert time.monotonic() - started < 1.0
 
 

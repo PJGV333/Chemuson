@@ -2,33 +2,140 @@ from __future__ import annotations
 
 """Backend RDKit aislado para conformaciones y optimización 3D."""
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 import math
 import threading
+import time
+from typing import Any
 
 from chemuson.core.model import MolGraph
 from chemuson.geometry3d.model import CoordinateSet3D, OptimizationFrame, OptimizationResult, OptimizationSettings
 
 
-def generate_conformer(graph: MolGraph, settings: OptimizationSettings | None = None) -> OptimizationResult:
-    """Genera una conformación 3D con RDKit en subproceso aislado."""
+def generate_conformer(
+    graph: MolGraph,
+    settings: OptimizationSettings | None = None,
+    *,
+    cancel_event: threading.Event | None = None,
+    on_progress: Callable[[Mapping[str, object]], None] | None = None,
+) -> OptimizationResult:
+    """Genera geometría con worker RDKit aislado, etapas y errores trazables."""
     settings = settings or OptimizationSettings()
-    try:
-        from chemuson.chemio.rdkit_safe import conformer_3d_isolated
+    from chemuson.chemio.rdkit_safe import conformer_3d_stream_isolated
 
-        positions, metadata, error = conformer_3d_isolated(graph, timeout_s=settings.timeout_s)
+    started = time.monotonic()
+    terminal: dict[str, Any] | None = None
+    last_stage = "worker_start"
+    try:
+        events = conformer_3d_stream_isolated(
+            graph,
+            forcefield=settings.forcefield.value,
+            max_iters=settings.max_iters,
+            seed=settings.seed,
+            timeout_s=settings.timeout_s,
+            cancel_event=cancel_event,
+        )
+        for event in events:
+            if event.get("event") == "progress":
+                last_stage = str(event.get("stage") or last_stage)
+                if on_progress is not None:
+                    try:
+                        on_progress(dict(event))
+                    except Exception:
+                        pass
+            if event.get("event") in {"done", "error", "cancelled"}:
+                terminal = event
     except Exception as exc:
-        return OptimizationResult(None, method="rdkit", message=str(exc))
-    if error or not positions:
-        return OptimizationResult(None, method="rdkit", message=str(error or "empty_conformer"))
-    coordset = CoordinateSet3D(
+        diagnostics = {
+            "error_code": "worker_failed",
+            "stage": last_stage,
+            "detail": str(exc),
+            "graph": {
+                "atom_count": len(getattr(graph, "atoms", {})),
+                "bond_count": len(getattr(graph, "bonds", {})),
+            },
+            "timings_s": {"total": max(0.0, time.monotonic() - started)},
+        }
+        return OptimizationResult(
+            None,
+            method="rdkit",
+            message=f"worker_failed: {exc}",
+            metadata={"diagnostics": diagnostics},
+        )
+
+    if terminal is None:
+        diagnostics = {
+            "error_code": "missing_terminal_event",
+            "stage": last_stage,
+            "graph": {
+                "atom_count": len(getattr(graph, "atoms", {})),
+                "bond_count": len(getattr(graph, "bonds", {})),
+            },
+            "timings_s": {"total": max(0.0, time.monotonic() - started)},
+        }
+        return OptimizationResult(
+            None,
+            method="rdkit",
+            message="missing_terminal_event",
+            metadata={"diagnostics": diagnostics},
+        )
+
+    raw_diagnostics = terminal.get("diagnostics", {})
+    diagnostics = (
+        dict(raw_diagnostics) if isinstance(raw_diagnostics, Mapping) else {}
+    )
+    error_code = str(terminal.get("error", "") or "")
+    detail = str(terminal.get("detail", "") or "")
+    if terminal.get("event") != "done" or not terminal.get("ok"):
+        diagnostics.setdefault("error_code", error_code or terminal.get("event", "worker_failed"))
+        diagnostics.setdefault("stage", terminal.get("stage") or last_stage)
+        diagnostics.setdefault("detail", detail)
+        message = ": ".join(part for part in (error_code, detail) if part)
+        if not message:
+            message = str(terminal.get("event", "worker_failed"))
+        return OptimizationResult(
+            None,
+            method="rdkit",
+            message=message,
+            metadata={"diagnostics": diagnostics},
+        )
+
+    positions = _event_positions(terminal.get("positions"))
+    if not positions:
+        diagnostics.update(
+            {
+                "error_code": "invalid_positions",
+                "stage": "publication",
+            }
+        )
+        return OptimizationResult(
+            None,
+            method="rdkit",
+            message="invalid_positions",
+            metadata={"diagnostics": diagnostics},
+        )
+    raw_metadata = terminal.get("metadata", {})
+    metadata = dict(raw_metadata) if isinstance(raw_metadata, Mapping) else {}
+    metadata["diagnostics"] = diagnostics
+    energy = _float_or_none(terminal.get("energy", metadata.get("energy")))
+    method = str(terminal.get("method", metadata.get("method", "rdkit")))
+    coordinates = CoordinateSet3D(
         positions=positions,
         source=str(metadata.get("source", "rdkit")),
-        method=str(metadata.get("method", "rdkit")),
-        energy=_float_or_none(metadata.get("energy")),
+        method=method,
+        energy=energy,
         metadata=metadata,
     )
-    return OptimizationResult(coordset, converged=True, energy=coordset.energy, method=coordset.method)
+    message = str(terminal.get("message", "") or "")
+    converged = bool(metadata.get("converged", False))
+    return OptimizationResult(
+        coordinates,
+        converged=converged,
+        energy=energy,
+        method=method,
+        message=message,
+        metadata={**metadata, "diagnostics": diagnostics},
+    )
 
 
 def optimize(

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import sys
+import time
 from typing import Any
 
 try:
@@ -349,6 +350,99 @@ def _stereochemistry_metadata(
     bond_targets: dict[str, str],
 ) -> dict[str, dict[str, str]]:
     return {"atoms": dict(atom_targets), "bonds": dict(bond_targets)}
+
+
+def _conformer_stereochemistry_diagnostics(
+    Chem,
+    mol,
+    id_map: dict[int, int],
+    atom_targets: dict[str, str],
+    bond_targets: dict[str, str],
+) -> dict[str, Any]:
+    """Records specified and unspecified potential stereo without assigning new identity."""
+    id_by_index = {int(index): int(atom_id) for atom_id, index in id_map.items()}
+    labels = {
+        int(index): str(label)
+        for index, label in Chem.FindMolChiralCenters(
+            mol,
+            force=True,
+            includeUnassigned=True,
+            includeCIP=True,
+            useLegacyImplementation=False,
+        )
+    }
+    potential_atoms: list[dict[str, Any]] = []
+    potential_bonds: list[dict[str, Any]] = []
+    for stereo in Chem.FindPotentialStereo(mol):
+        stereo_type = str(stereo.type)
+        specified = str(stereo.specified).lower() == "specified"
+        if stereo_type == "Atom_Tetrahedral":
+            rd_index = int(stereo.centeredOn)
+            atom_id = id_by_index.get(rd_index)
+            if atom_id is not None:
+                potential_atoms.append(
+                    {
+                        "atom_id": atom_id,
+                        "label": labels.get(rd_index, "?"),
+                        "descriptor": str(stereo.descriptor),
+                        "specified": specified,
+                    }
+                )
+        elif stereo_type == "Bond_Double":
+            bond = mol.GetBondWithIdx(int(stereo.centeredOn))
+            bond_id = bond.GetProp("_ChemusonBondId") if bond.HasProp("_ChemusonBondId") else str(bond.GetIdx())
+            potential_bonds.append(
+                {
+                    "bond_id": bond_id,
+                    "descriptor": str(stereo.descriptor),
+                    "specified": specified,
+                }
+            )
+    unassigned_atoms = [item for item in potential_atoms if not item["specified"]]
+    unassigned_bonds = [item for item in potential_bonds if not item["specified"]]
+    return {
+        "atoms": dict(atom_targets),
+        "bonds": dict(bond_targets),
+        "specified_atoms": dict(atom_targets),
+        "specified_bonds": dict(bond_targets),
+        "potential_atom_centers": potential_atoms,
+        "potential_bond_stereo": potential_bonds,
+        "unassigned_atom_count": len(unassigned_atoms),
+        "unassigned_bond_count": len(unassigned_bonds),
+    }
+
+
+def _rdkit_graph_state(Chem, mol, id_map: dict[int, int]) -> dict[str, Any]:
+    """Captures RDKit-recognized connectivity, charge, valence, and aromaticity."""
+    id_by_index = {int(index): int(atom_id) for atom_id, index in id_map.items()}
+    atom_states = [
+        {
+            "atom_id": id_by_index.get(int(atom.GetIdx())),
+            "element": str(atom.GetSymbol()),
+            "formal_charge": int(atom.GetFormalCharge()),
+            "total_valence": int(atom.GetTotalValence()),
+            "aromatic": bool(atom.GetIsAromatic()),
+        }
+        for atom in mol.GetAtoms()
+    ]
+    bond_states = [
+        {
+            "bond_id": bond.GetProp("_ChemusonBondId") if bond.HasProp("_ChemusonBondId") else str(bond.GetIdx()),
+            "atom_ids": [
+                id_by_index.get(int(bond.GetBeginAtomIdx())),
+                id_by_index.get(int(bond.GetEndAtomIdx())),
+            ],
+            "order": float(bond.GetBondTypeAsDouble()),
+            "aromatic": bool(bond.GetIsAromatic()),
+        }
+        for bond in mol.GetBonds()
+    ]
+    return {
+        "aromatic_atom_count": sum(bool(atom["aromatic"]) for atom in atom_states),
+        "aromatic_bond_count": sum(bool(bond["aromatic"]) for bond in bond_states),
+        "atom_states": atom_states,
+        "bond_states": bond_states,
+    }
 
 
 def _validate_geometry_stereochemistry(
@@ -874,83 +968,342 @@ def _generated_hydrogen_metadata(mol, conformer, original_atom_count: int, rever
     return {"generated_atoms": generated_atoms, "generated_bonds": generated_bonds}
 
 
-def _handle_graph_conformer3d_mode(Chem, request: dict[str, Any]) -> dict[str, Any]:
-    """Genera coordenadas 3D reales con EmbedMolecule + MMFF/UFF."""
-    mol, id_map, error = _build_mol_from_graph_payload(Chem, request)
-    if mol is None:
-        return {"ok": False, "error": error or "invalid_graph"}
-    if mol.GetNumAtoms() == 0:
-        return {"ok": False, "error": "empty_graph"}
+def _handle_graph_conformer3d_mode(
+    Chem,
+    request: dict[str, Any],
+    *,
+    emit_progress: bool = False,
+) -> dict[str, Any]:
+    """Genera un conformero con intentos ETKDG acotados y diagnóstico por etapa."""
+    from rdkit import rdBase
+    from rdkit.Chem import AllChem
+
+    started = time.perf_counter()
+    stage_started = started
+    stage = "payload_received"
+    atoms = request.get("atoms", [])
+    bonds = request.get("bonds", [])
+    element_counts: dict[str, int] = {}
+    if isinstance(atoms, list):
+        for atom_data in atoms:
+            if isinstance(atom_data, dict):
+                element = str(atom_data.get("element", "?"))
+                element_counts[element] = element_counts.get(element, 0) + 1
+    diagnostics: dict[str, Any] = {
+        "error_code": None,
+        "degradation_code": None,
+        "stage": stage,
+        "graph": {
+            "atom_count": len(atoms) if isinstance(atoms, list) else 0,
+            "bond_count": len(bonds) if isinstance(bonds, list) else 0,
+            "heavy_atom_count": sum(
+                count for element, count in element_counts.items() if element != "H"
+            ),
+            "element_counts": dict(sorted(element_counts.items())),
+            "formal_charge": sum(
+                int(atom.get("formal_charge", 0) or 0)
+                for atom in atoms
+                if isinstance(atom, dict)
+            ) if isinstance(atoms, list) else 0,
+        },
+        "rdkit": {"version": str(rdBase.rdkitVersion)},
+        "return_code": None,
+        "seed": int(request.get("seed", 0xC0FFEE) or 0xC0FFEE),
+        "macrocycle_used": False,
+        "attempts": [],
+        "timings_s": {},
+    }
+
+    def enter_stage(next_stage: str, message: str, **extra: Any) -> None:
+        nonlocal stage, stage_started
+        now = time.perf_counter()
+        diagnostics["timings_s"][stage] = max(0.0, now - stage_started)
+        stage = next_stage
+        stage_started = now
+        diagnostics["stage"] = stage
+        if emit_progress:
+            _write_worker_event(
+                {
+                    "event": "progress",
+                    "stage": stage,
+                    "message": message,
+                    "graph": diagnostics["graph"],
+                    **extra,
+                }
+            )
+
+    def fail(error_code: str, detail: str = "") -> dict[str, Any]:
+        now = time.perf_counter()
+        diagnostics["timings_s"][stage] = max(0.0, now - stage_started)
+        diagnostics["timings_s"]["total"] = max(0.0, now - started)
+        diagnostics["stage"] = stage
+        diagnostics["error_code"] = error_code
+        diagnostics["detail"] = str(detail or "")
+        return {
+            "ok": False,
+            "error": error_code,
+            "detail": str(detail or ""),
+            "diagnostics": diagnostics,
+        }
+
+    if emit_progress:
+        _write_worker_event(
+            {
+                "event": "progress",
+                "stage": stage,
+                "message": "Payload recibido; preparando grafo químico.",
+                "graph": diagnostics["graph"],
+            }
+        )
+    try:
+        mol, id_map, error = _build_mol_from_graph_payload(Chem, request)
+    except Exception as exc:
+        return fail("invalid_graph", str(exc))
+    if mol is None or not id_map:
+        return fail("invalid_graph", error or "empty_graph")
+
+    enter_stage("sanitization", "Validando valencias y sanitización química.")
     try:
         Chem.SanitizeMol(mol)
-        atom_targets, stereo_error = _apply_documented_tetrahedral_stereo(
-            Chem, mol, id_map
-        )
-        if stereo_error:
-            return {"ok": False, "error": stereo_error}
-        from rdkit.Chem import AllChem
-
-        reverse_map = {rd_idx: atom_id for atom_id, rd_idx in id_map.items()}
-        original_atom_count = int(mol.GetNumAtoms())
-        mol_h = Chem.AddHs(mol, addCoords=True)
-        bond_targets, stereo_error = _apply_documented_double_bond_stereo(Chem, mol_h)
-        if stereo_error:
-            return {"ok": False, "error": stereo_error}
-        stereo_targets = {"atoms": atom_targets, "bonds": bond_targets}
-        params = AllChem.ETKDGv3()
-        params.randomSeed = 0xC0FFEE
-        params.useRandomCoords = True
-        embed_code = int(AllChem.EmbedMolecule(mol_h, params))
-        if embed_code != 0:
-            params.useRandomCoords = True
-            embed_code = int(AllChem.EmbedMolecule(mol_h, params))
-        if embed_code != 0:
-            return {"ok": False, "error": "embed_failed", "detail": str(embed_code)}
-        stereo_error = _validate_geometry_stereochemistry(
-            Chem, mol_h, id_map, stereo_targets
-        )
-        if stereo_error:
-            return {"ok": False, "error": stereo_error}
-
-        method = "uff"
-        energy = None
-        try:
-            if AllChem.MMFFHasAllMoleculeParams(mol_h):
-                props = AllChem.MMFFGetMoleculeProperties(mol_h)
-                ff = AllChem.MMFFGetMoleculeForceField(mol_h, props)
-                method = "mmff"
-            else:
-                ff = AllChem.UFFGetMoleculeForceField(mol_h)
-            if ff is not None:
-                ff.Minimize(maxIts=200)
-                energy = float(ff.CalcEnergy())
-        except Exception:
-            method = "embed-only"
-
-        stereo_error = _validate_geometry_stereochemistry(
-            Chem, mol_h, id_map, stereo_targets
-        )
-        if stereo_error:
-            return {"ok": False, "error": stereo_error}
-        conf = mol_h.GetConformer()
-        positions: dict[str, list[float]] = {}
-        for rd_idx, atom_id in reverse_map.items():
-            pos = conf.GetAtomPosition(int(rd_idx))
-            positions[str(atom_id)] = [float(pos.x), float(pos.y), float(pos.z)]
-        generated = _generated_hydrogen_metadata(mol_h, conf, original_atom_count, reverse_map)
-        return {
-            "ok": True,
-            "positions": positions,
-            "metadata": {
-                "source": "rdkit",
-                "method": method,
-                "energy": energy,
-                "stereochemistry": _stereochemistry_metadata(atom_targets, bond_targets),
-                **generated,
-            },
-        }
     except Exception as exc:
-        return {"ok": False, "error": "conformer3d_failed", "detail": str(exc)}
+        return fail("invalid_graph", f"sanitize_failed:{exc}")
+    if mol.GetNumAtoms() == 0:
+        return fail("invalid_graph", "empty_graph")
+    diagnostics["graph"].update(_rdkit_graph_state(Chem, mol, id_map))
+    ring_sizes = [len(ring) for ring in mol.GetRingInfo().AtomRings()]
+    macrocycle_used = any(size >= 8 for size in ring_sizes)
+    diagnostics["graph"].update(
+        {
+            "ring_count": len(ring_sizes),
+            "largest_ring_size": max(ring_sizes, default=0),
+        }
+    )
+    diagnostics["macrocycle_used"] = macrocycle_used
+
+    enter_stage("hydrogen_stereo", "Añadiendo H derivados y validando estereoquímica.")
+    atom_targets, stereo_error = _apply_documented_tetrahedral_stereo(
+        Chem, mol, id_map
+    )
+    if stereo_error:
+        return fail("unsupported_stereochemistry", stereo_error)
+    reverse_map = {rd_idx: atom_id for atom_id, rd_idx in id_map.items()}
+    original_atom_count = int(mol.GetNumAtoms())
+    try:
+        mol_h = Chem.AddHs(mol, addCoords=True)
+    except Exception as exc:
+        return fail("invalid_graph", f"hydrogen_addition_failed:{exc}")
+    bond_targets, stereo_error = _apply_documented_double_bond_stereo(Chem, mol_h)
+    if stereo_error:
+        return fail("unsupported_stereochemistry", stereo_error)
+    stereo_targets = {"atoms": atom_targets, "bonds": bond_targets}
+    stereo_diagnostics = _conformer_stereochemistry_diagnostics(
+        Chem, mol_h, id_map, atom_targets, bond_targets
+    )
+    diagnostics["stereochemistry"] = _stereochemistry_metadata(
+        atom_targets, bond_targets
+    )
+    diagnostics["stereochemistry_diagnostics"] = {
+        key: value
+        for key, value in stereo_diagnostics.items()
+        if key not in {"atoms", "bonds"}
+    }
+
+    enter_stage("embedding", "Buscando una geometría ETKDG reproducible.")
+    base_seed = abs(int(diagnostics["seed"])) % 2_147_483_646 + 1
+    attempt_limit = 4
+    embedded = False
+    for attempt_index in range(attempt_limit):
+        seed = (base_seed + attempt_index * 104_729 - 1) % 2_147_483_646 + 1
+        random_coords = attempt_index == attempt_limit - 1
+        params = AllChem.ETKDGv3()
+        params.randomSeed = seed
+        params.useRandomCoords = random_coords
+        params.numThreads = 1
+        params.maxIterations = 100
+        if macrocycle_used:
+            params.useMacrocycleTorsions = True
+            params.useMacrocycle14config = True
+        attempt_started = time.perf_counter()
+        attempt_record: dict[str, Any] = {
+            "index": attempt_index + 1,
+            "seed": seed,
+            "random_coords": random_coords,
+            "macrocycle": macrocycle_used,
+        }
+        try:
+            embed_code = int(AllChem.EmbedMolecule(mol_h, params))
+        except Exception as exc:
+            embed_code = -1
+            attempt_record["detail"] = str(exc)
+        attempt_record["return_code"] = embed_code
+        attempt_record["elapsed_s"] = max(0.0, time.perf_counter() - attempt_started)
+        diagnostics["attempts"].append(attempt_record)
+        diagnostics["return_code"] = embed_code
+        if embed_code == 0:
+            embedded = True
+            break
+    if not embedded:
+        return fail(
+            "embed_failed",
+            f"ETKDG agotó {attempt_limit} intentos; último retorno RDKit={diagnostics['return_code']}",
+        )
+    stereo_error = _validate_geometry_stereochemistry(
+        Chem, mol_h, id_map, stereo_targets
+    )
+    if stereo_error:
+        return fail("unsupported_stereochemistry", stereo_error)
+    geometry_error = _validate_conformer_geometry(Chem, mol_h)
+    if geometry_error:
+        return fail("geometry_invalid", geometry_error)
+    embedded_mol = Chem.Mol(mol_h)
+
+    enter_stage("minimization", "Intentando minimización MMFF/UFF.")
+    requested = str(request.get("forcefield", "MMFF94") or "MMFF94").upper()
+    forcefield_attempts = (
+        ("MMFF94S", "UFF") if requested == "MMFF94S"
+        else ("UFF", "MMFF94") if requested == "UFF"
+        else ("MMFF94", "UFF")
+    )
+    selected_forcefield = ""
+    forcefield = None
+    minimization_detail = ""
+    for candidate in forcefield_attempts:
+        try:
+            if candidate.startswith("MMFF"):
+                if not AllChem.MMFFHasAllMoleculeParams(mol_h):
+                    minimization_detail = "missing_mmff_parameters"
+                    continue
+                variant = "MMFF94s" if candidate == "MMFF94S" else "MMFF94"
+                properties = AllChem.MMFFGetMoleculeProperties(
+                    mol_h, mmffVariant=variant
+                )
+                forcefield = AllChem.MMFFGetMoleculeForceField(mol_h, properties)
+                selected_forcefield = variant.lower()
+            else:
+                forcefield = AllChem.UFFGetMoleculeForceField(mol_h)
+                selected_forcefield = "uff"
+            if forcefield is not None:
+                break
+            minimization_detail = "forcefield_unavailable"
+        except Exception as exc:
+            forcefield = None
+            minimization_detail = f"forcefield_setup_failed:{exc}"
+    energy = None
+    method = "unoptimized"
+    degradation_code = "missing_forcefield_parameters"
+    converged = False
+    if forcefield is not None:
+        try:
+            minimize_code = int(
+                forcefield.Minimize(maxIts=max(1, int(request.get("max_iters", 200) or 200)))
+            )
+            candidate_energy = float(forcefield.CalcEnergy())
+            if minimize_code == 0 and math.isfinite(candidate_energy):
+                validation_error = _validate_geometry_stereochemistry(
+                    Chem, mol_h, id_map, stereo_targets
+                ) or _validate_conformer_geometry(Chem, mol_h)
+                if validation_error:
+                    minimization_detail = f"minimized_geometry_invalid:{validation_error}"
+                    mol_h = embedded_mol
+                    degradation_code = "minimization_geometry_invalid"
+                else:
+                    method = selected_forcefield
+                    energy = candidate_energy
+                    converged = True
+                    degradation_code = None
+            else:
+                minimization_detail = (
+                    "minimization_not_converged"
+                    if minimize_code != 0
+                    else "minimization_invalid_energy"
+                )
+                mol_h = embedded_mol
+                degradation_code = minimization_detail
+        except Exception as exc:
+            minimization_detail = f"minimization_failed:{exc}"
+            mol_h = embedded_mol
+            degradation_code = "minimization_failed"
+    if degradation_code:
+        diagnostics["degradation_code"] = degradation_code
+        diagnostics["minimization_detail"] = minimization_detail
+    diagnostics["minimization"] = {
+        "requested_forcefield": requested,
+        "selected_forcefield": selected_forcefield or None,
+        "converged": converged,
+        "energy": energy,
+        "detail": minimization_detail,
+    }
+
+    enter_stage("geometry_validation", "Verificando coordenadas y estereoquímica 3D.")
+    stereo_error = _validate_geometry_stereochemistry(
+        Chem, mol_h, id_map, stereo_targets
+    )
+    geometry_error = stereo_error or _validate_conformer_geometry(Chem, mol_h)
+    if geometry_error:
+        return fail("geometry_invalid", geometry_error)
+    conformer = mol_h.GetConformer()
+    positions: dict[str, list[float]] = {}
+    for rd_idx, atom_id in reverse_map.items():
+        position = conformer.GetAtomPosition(int(rd_idx))
+        positions[str(atom_id)] = [
+            float(position.x),
+            float(position.y),
+            float(position.z),
+        ]
+    generated = _generated_hydrogen_metadata(
+        mol_h, conformer, original_atom_count, reverse_map
+    )
+    enter_stage("publication", "Conformero válido listo para publicar.")
+    now = time.perf_counter()
+    diagnostics["timings_s"][stage] = max(0.0, now - stage_started)
+    diagnostics["timings_s"]["total"] = max(0.0, now - started)
+    diagnostics["stage"] = "done"
+    diagnostics["error_code"] = None
+    metadata = {
+        "source": "rdkit",
+        "method": method,
+        "energy": energy,
+        "energy_unit": "kcal/mol" if energy is not None else None,
+        "converged": converged,
+        "stereochemistry": diagnostics["stereochemistry"],
+        "diagnostics": diagnostics,
+        **generated,
+    }
+    message = (
+        f"{degradation_code}: {minimization_detail}"
+        if degradation_code
+        else ""
+    )
+    return {
+        "ok": True,
+        "positions": positions,
+        "metadata": metadata,
+        "diagnostics": diagnostics,
+        "message": message,
+    }
+
+
+def _validate_conformer_geometry(Chem, mol) -> str | None:
+    """Rejects non-finite, coincident, or implausibly stretched bonded coordinates."""
+    if mol.GetNumConformers() == 0:
+        return "missing_conformer"
+    conformer = mol.GetConformer()
+    for atom_index in range(mol.GetNumAtoms()):
+        position = conformer.GetAtomPosition(atom_index)
+        if not all(math.isfinite(float(value)) for value in (position.x, position.y, position.z)):
+            return f"non_finite_coordinate:{atom_index}"
+    for bond in mol.GetBonds():
+        if bond.GetBondType() == Chem.BondType.DATIVE:
+            continue
+        first = conformer.GetAtomPosition(int(bond.GetBeginAtomIdx()))
+        second = conformer.GetAtomPosition(int(bond.GetEndAtomIdx()))
+        distance = math.dist(
+            (float(first.x), float(first.y), float(first.z)),
+            (float(second.x), float(second.y), float(second.z)),
+        )
+        if not math.isfinite(distance) or distance < 0.2 or distance > 4.0:
+            return f"bond_length_out_of_range:{bond.GetIdx()}:{distance:.6g}"
+    return None
 
 
 def _handle_graph_optimize3d_mode(
@@ -1252,6 +1605,16 @@ def main() -> int:
     if mode == "graph_conformer3d":
         result = _handle_graph_conformer3d_mode(Chem, request)
         sys.stdout.write(json.dumps(result))
+        return 0
+    if mode == "graph_conformer3d_stream":
+        result = _handle_graph_conformer3d_mode(
+            Chem, request, emit_progress=True
+        )
+        terminal_event = {
+            "event": "done" if result.get("ok") else "error",
+            **result,
+        }
+        _write_worker_event(terminal_event)
         return 0
     if mode == "graph_optimize3d":
         result = _handle_graph_optimize3d_mode(Chem, request)

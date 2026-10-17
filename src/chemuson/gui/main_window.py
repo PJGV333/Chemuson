@@ -5,6 +5,7 @@ Compone menús, barras de herramientas, docks y el lienzo central.
 """
 
 from collections.abc import Mapping
+import json
 from PyQt6 import sip
 from PyQt6.QtWidgets import (
     QAbstractSpinBox,
@@ -618,6 +619,26 @@ class ChemusonWindow(QMainWindow):
         dock.clear_scene()
         self._start_compchem_job("generate", backend="rdkit", force=False)
 
+    def _on_viewport_render_status(self, message: str) -> None:
+        status = str(message or "")
+        if not status.startswith(("display_failed:", "render_requested:")):
+            return
+        viewport = getattr(self, "viewport3d_dock", None)
+        compchem_dock = getattr(self, "compchem_dock", None)
+        if viewport is None or compchem_dock is None:
+            return
+        scene_diagnostics = viewport.viewport.scene_diagnostics
+        diagnostic_payload = {
+            "error_code": scene_diagnostics.get("error_code")
+            or status.split(":", 1)[0],
+            "stage": scene_diagnostics.get("stage", "scene_display"),
+            "scene": scene_diagnostics,
+        }
+        compchem_dock.set_status(status)
+        compchem_dock.status_label.setToolTip(
+            self._format_compchem_diagnostic_tooltip(diagnostic_payload)
+        )
+
     def _refresh_viewport3d_scene(self) -> None:
         """Reconstruye la escena 3D sin escribir en el documento activo."""
         dock = getattr(self, "viewport3d_dock", None)
@@ -638,7 +659,29 @@ class ChemusonWindow(QMainWindow):
             scene = scene_molecule_from_graph(canvas.model, coordset)
         except Exception as exc:
             dock.clear_scene()
-            dock.set_status(f"No se pudo preparar la escena 3D: {exc}")
+            diagnostics = {
+                "error_code": "scene_failed",
+                "stage": "scene_construction",
+                "detail": str(exc),
+                "graph": {
+                    "atom_count": len(canvas.model.atoms),
+                    "bond_count": len(canvas.model.bonds),
+                },
+                "document": {
+                    "revision": canvas.document_revision,
+                    "snapshot_current": not canvas.geometry3d_is_stale,
+                },
+            }
+            status = f"scene_failed: no se pudo preparar la escena 3D ({exc})"
+            diagnostic_tooltip = self._format_compchem_diagnostic_tooltip(
+                diagnostics
+            )
+            dock.set_status(status)
+            dock.status_label.setToolTip(diagnostic_tooltip)
+            compchem_dock = getattr(self, "compchem_dock", None)
+            if compchem_dock is not None:
+                compchem_dock.set_status(status)
+                compchem_dock.status_label.setToolTip(diagnostic_tooltip)
             return
         dock.set_scene(
             scene,
@@ -1229,10 +1272,15 @@ class ChemusonWindow(QMainWindow):
         )
         dock.clear_frames()
         dock.set_busy(True)
-        dock.set_status(
+        dock.set_retry_available(False)
+        status = (
             f"{'Generando conformero' if operation == 'generate' else 'Optimizando'} "
             f"({selected_backend}, {settings.forcefield.value})..."
         )
+        dock.set_status(status)
+        viewport = getattr(self, "viewport3d_dock", None)
+        if viewport is not None:
+            viewport.set_status(status)
         controller = getattr(self, "_compchem3d_controller", None)
         if controller is not None:
             for active_job_id in controller.active_jobs():
@@ -2049,6 +2097,36 @@ class ChemusonWindow(QMainWindow):
         self._reset_compchem_state("Regenerando conformero 3D...")
         self._start_compchem_job("generate", backend="rdkit", force=True)
 
+    @staticmethod
+    def _format_compchem_diagnostic_tooltip(payload: object) -> str:
+        if not isinstance(payload, Mapping):
+            return ""
+        return json.dumps(dict(payload), ensure_ascii=False, sort_keys=True, default=str)
+
+    def _on_compchem_progress(self, job_id: int, event: object) -> None:
+        if self._shutdown_started or not self._compchem_job_snapshot_matches(job_id):
+            return
+        if not isinstance(event, Mapping):
+            return
+        if self._compchem_job_operations.get(int(job_id)) != "generate":
+            return
+        stage = str(event.get("stage", "") or "generación")
+        message = str(event.get("message", "") or stage.replace("_", " "))
+        graph = event.get("graph", {})
+        counts = ""
+        if isinstance(graph, Mapping):
+            atom_count = graph.get("atom_count")
+            bond_count = graph.get("bond_count")
+            if atom_count is not None and bond_count is not None:
+                counts = f" · {int(atom_count)} átomos · {int(bond_count)} enlaces"
+        status = f"Generación 3D · {message}{counts}"
+        dock = getattr(self, "compchem_dock", None)
+        if dock is not None:
+            dock.set_status(status)
+        viewport = getattr(self, "viewport3d_dock", None)
+        if viewport is not None:
+            viewport.set_status(status)
+
     def _on_compchem_frame_ready(self, job_id: int, frame: object) -> None:
         if self._shutdown_started:
             return
@@ -2077,11 +2155,42 @@ class ChemusonWindow(QMainWindow):
         snapshot = self._compchem_job_snapshots.pop(int(job_id), None)
         if self._shutdown_started:
             return
-        if (
-            snapshot is None
-            or int(job_id) != int(getattr(self, "_latest_compchem_job_id", 0))
-            or not self._compchem_snapshot_matches_current(snapshot, self.canvas)
-        ):
+        if snapshot is None or int(job_id) != int(getattr(self, "_latest_compchem_job_id", 0)):
+            self._start_pending_live_mm_if_ready()
+            return
+        if not self._compchem_snapshot_matches_current(snapshot, self.canvas):
+            dock = getattr(self, "compchem_dock", None)
+            status = (
+                "stale_result: se descartó la geometría 3D porque cambió el documento; "
+                "el conformero anterior se conserva."
+            )
+            stale_diagnostics = {
+                "error_code": "stale_result",
+                "stage": "publication",
+                "job_id": int(job_id),
+                "expected_document_token": snapshot[0] if isinstance(snapshot, tuple) else None,
+                "current_document_token": self.canvas.document_token,
+                "discarded": True,
+            }
+            diagnostic_tooltip = self._format_compchem_diagnostic_tooltip(
+                stale_diagnostics
+            )
+            self._compchem_preview_coordset = None
+            self._compchem_coordset = self.canvas.coordinate_set_3d
+            retryable = operation == "generate"
+            if dock is not None:
+                dock.set_busy(False)
+                dock.set_status(status)
+                dock.status_label.setToolTip(diagnostic_tooltip)
+                dock.set_retry_available(retryable)
+                dock.set_has_coordinates(self._compchem_coordset is not None)
+            viewport = getattr(self, "viewport3d_dock", None)
+            if viewport is not None:
+                viewport.set_status(status, retryable=retryable)
+                viewport.status_label.setToolTip(diagnostic_tooltip)
+            status_bar = self.statusBar()
+            if status_bar is not None:
+                status_bar.showMessage(status, 10000)
             self._start_pending_live_mm_if_ready()
             return
         dock = getattr(self, "compchem_dock", None)
@@ -2100,12 +2209,37 @@ class ChemusonWindow(QMainWindow):
                 return
             self._compchem_preview_coordset = None
             self._compchem_coordset = self.canvas.coordinate_set_3d
-            message = str(getattr(result, "message", "") or "Backend no disponible o sin coordenadas.")
-            dock.set_status(f"3D no disponible: {message}")
+            metadata = getattr(result, "metadata", {}) or {}
+            diagnostics = metadata.get("diagnostics", {}) if isinstance(metadata, Mapping) else {}
+            diagnostics = diagnostics if isinstance(diagnostics, Mapping) else {}
+            error_code = str(diagnostics.get("error_code", "") or "")
+            stage = str(diagnostics.get("stage", "") or "")
+            message = str(
+                getattr(result, "message", "")
+                or diagnostics.get("message", "")
+                or "Backend no disponible o sin coordenadas."
+            )
+            details = [part for part in (error_code, f"etapa {stage}" if stage else "", message) if part]
+            graph = diagnostics.get("graph", {})
+            counts = ""
+            if isinstance(graph, Mapping):
+                atoms = graph.get("atom_count")
+                bonds = graph.get("bond_count")
+                if atoms is not None and bonds is not None:
+                    counts = f" · {int(atoms)} átomos · {int(bonds)} enlaces"
+            failure_status = f"3D no disponible: {' · '.join(details)}{counts}"
+            retryable = operation == "generate"
+            diagnostic_tooltip = self._format_compchem_diagnostic_tooltip(metadata)
+            dock.set_status(failure_status)
+            dock.status_label.setToolTip(diagnostic_tooltip)
+            dock.set_retry_available(retryable)
             dock.set_has_coordinates(self._compchem_coordset is not None)
             viewport = getattr(self, "viewport3d_dock", None)
             if viewport is not None and viewport.isVisible():
                 self._refresh_viewport3d_scene()
+            if viewport is not None:
+                viewport.set_status(failure_status, retryable=retryable)
+                viewport.status_label.setToolTip(diagnostic_tooltip)
             return
         viewport = getattr(self, "viewport3d_dock", None)
         if (
@@ -2123,6 +2257,7 @@ class ChemusonWindow(QMainWindow):
                 self._refresh_viewport3d_scene()
             return
         self._compchem_preview_coordset = None
+        dock.set_retry_available(False)
         from chemuson.gui.commands import SetGeometry3DCommand
 
         self.canvas.undo_stack.push(
@@ -2134,10 +2269,17 @@ class ChemusonWindow(QMainWindow):
         )
         cache_state = str((getattr(result, "metadata", {}) or {}).get("cache_state", "miss"))
         dock.set_result_summary(result, backend=backend, cache_state=cache_state)
+        diagnostic_tooltip = self._format_compchem_diagnostic_tooltip(
+            getattr(result, "metadata", {})
+        )
+        dock.status_label.setToolTip(diagnostic_tooltip)
         dock.set_has_coordinates(True)
         viewport = getattr(self, "viewport3d_dock", None)
         if viewport is not None and viewport.isVisible():
             self._refresh_viewport3d_scene()
+        if viewport is not None:
+            viewport.set_status("Conformero 3D listo.")
+            viewport.status_label.setToolTip(diagnostic_tooltip)
         if operation == "generate" and viewport is not None and viewport.live_mm_checkbox.isChecked():
             self._live_mm_fixed_atom_ids = ()
             self._live_mm_timer.start(100)
