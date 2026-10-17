@@ -17,7 +17,11 @@ from chemuson.gui.projections import (
 
 
 def build_linear_chain_template(bond_length: float) -> MolGraph:
-    """Build the historical linear Fischer-style glucose template."""
+    """Build the historical render-only Fischer-style glucose graph.
+
+    Use ``build_fischer_geometry(...).to_projection_instance()`` when the
+    horizontal/vertical observer convention must remain available in memory.
+    """
     length = float(bond_length)
     return build_fischer_geometry(
         FischerParameters(
@@ -36,7 +40,8 @@ def build_haworth_template(
     """Build the compatible beta-D-glucose Haworth template.
 
     `anomeric_up` and `bold_front` retain their historical meaning; the returned
-    graph carries no inferred ``BondStereo`` metadata.
+    graph is a rendering-only adapter: it carries neither projection semantics
+    nor inferred ``BondStereo`` metadata.
     """
     return build_haworth_geometry(
         HaworthParameters(
@@ -53,7 +58,11 @@ def build_chair_template(
     anomeric_up: bool = True,
     bold_front: bool = True,
 ) -> MolGraph:
-    """Build the compatible unsubstituted six-carbon chair template."""
+    """Build the compatible render-only six-carbon chair template.
+
+    Axial/equatorial and up/down semantics are available from the typed
+    projection API, not from this legacy ``MolGraph`` adapter.
+    """
     # This argument remains for API compatibility; alpha/beta does not apply to
     # an unsubstituted cyclohexane projection.
     _ = anomeric_up

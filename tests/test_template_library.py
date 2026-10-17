@@ -172,6 +172,21 @@ def test_haworth_template_has_no_label_bond_or_label_label_collisions():
                         atom_id,
                         atom_id in (bond.a1_id, bond.a2_id),
                     )
+            bond_shapes = {
+                bond_id: item.mapToScene(item.shape())
+                for bond_id, item in canvas.bond_items.items()
+            }
+            bonds = list(canvas.model.bonds.values())
+            for index, bond in enumerate(bonds):
+                for other in bonds[index + 1 :]:
+                    if {bond.a1_id, bond.a2_id}.isdisjoint({other.a1_id, other.a2_id}):
+                        assert not bond_shapes[bond.id].intersects(bond_shapes[other.id]), (
+                            "nonbonded Haworth bonds cross",
+                            anomeric_up,
+                            bold_front,
+                            bond.id,
+                            other.id,
+                        )
             after_edges = tuple(
                 (bond.a1_id, bond.a2_id, bond.order, bond.style, bond.is_aromatic)
                 for bond in canvas.model.bonds.values()

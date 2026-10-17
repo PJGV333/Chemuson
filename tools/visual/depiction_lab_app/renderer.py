@@ -19,6 +19,40 @@ PAPER_COLOR = QColor("#FFFFFF")
 THEME_BACKGROUNDS = {"light": QColor("#F1F5F9"), "dark": QColor("#111827")}
 
 
+class _VisualLabCanvas(ChemusonCanvas):
+    """Canvas whose deferred centering targets an isolated lab scene."""
+
+    def __init__(self, parent=None) -> None:
+        self._visual_lab_scene_center = None
+        self._visual_lab_scene_rect = None
+        super().__init__(parent)
+
+    def set_visual_lab_scene_rect(self, rect: QRectF) -> None:
+        self._visual_lab_scene_rect = QRectF(rect)
+        self._visual_lab_scene_center = rect.center()
+
+    def _center_canvas_initial(self) -> None:
+        center = self._visual_lab_scene_center
+        if center is None:
+            super()._center_canvas_initial()
+            return
+        if self.viewport().rect().isEmpty():
+            self._pending_initial_center = True
+            return
+        if self._visual_lab_scene_rect is not None:
+            self.scene.setSceneRect(self._visual_lab_scene_rect)
+        self.centerOn(center)
+        self._update_selection_overlay()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        center = self._visual_lab_scene_center
+        if center is not None and not self.viewport().rect().isEmpty():
+            if self._visual_lab_scene_rect is not None:
+                self.scene.setSceneRect(self._visual_lab_scene_rect)
+            self.centerOn(center)
+
+
 def graph_scene_rect(graph: MolGraph, padding: float = 56.0) -> QRectF:
     if not graph.atoms:
         return QRectF(-padding, -padding, padding * 2, padding * 2)
@@ -59,7 +93,7 @@ class ProductionCanvasAdapter:
             raise RuntimeError("QApplication must exist before creating a depiction canvas")
         copied_graph = clone_graph(graph)
         before = graph_snapshot(copied_graph)
-        canvas = ChemusonCanvas(parent)
+        canvas = _VisualLabCanvas(parent)
         canvas.setInteractive(False)
         canvas.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         canvas.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
@@ -95,6 +129,7 @@ class ProductionCanvasAdapter:
             vars(bond).clear()
             vars(bond).update(state)
         rect = graph_scene_rect(copied_graph)
+        canvas.set_visual_lab_scene_rect(rect)
         canvas.scene.setSceneRect(rect)
         canvas.scene.setBackgroundBrush(QBrush(THEME_BACKGROUNDS[theme]))
         paper = QGraphicsRectItem(rect)
@@ -152,6 +187,7 @@ class ProductionCanvasAdapter:
         transform.rotate(float(angle))
         transform.scale(float(zoom), float(zoom))
         self.canvas.setTransform(transform)
+        self.canvas.scene.setSceneRect(self.scene_rect)
         self.canvas.centerOn(self.scene_rect.center())
 
     def render_image(

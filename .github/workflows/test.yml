@@ -15,6 +15,7 @@ jobs:
       shard-matrix: ${{ steps.create-plan.outputs.shard-matrix }}
       total-tests: ${{ steps.create-plan.outputs.total-tests }}
       distribution: ${{ steps.create-plan.outputs.distribution }}
+      estimated-durations: ${{ steps.create-plan.outputs.estimated-durations }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -54,6 +55,7 @@ jobs:
           python tools/ci_pytest_shards.py plan
           --shards 8
           --expected tests/ci/expected_pytest_nodeids.txt
+          --duration-profile tests/ci/pytest_file_durations.json
           --output "${RUNNER_TEMP}/pytest-plan.json"
           --github-output "${GITHUB_OUTPUT}"
 
@@ -121,9 +123,10 @@ jobs:
           --shard-index "${{ matrix.shard }}"
           --timeout-seconds 300
           --expected tests/ci/expected_pytest_nodeids.txt
+          --duration-profile tests/ci/pytest_file_durations.json
           --output-dir "${RUNNER_TEMP}"
 
-      - name: Upload shard log, JUnit and process report
+      - name: Upload shard log, JUnit, timings and process report
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -132,6 +135,7 @@ jobs:
             ${{ runner.temp }}/pytest-shard-${{ matrix.shard }}.json
             ${{ runner.temp }}/pytest-shard-${{ matrix.shard }}.xml
             ${{ runner.temp }}/pytest-shard-${{ matrix.shard }}.log
+            ${{ runner.temp }}/pytest-shard-${{ matrix.shard }}-timings.jsonl
           if-no-files-found: warn
           retention-days: 7
 
@@ -163,6 +167,7 @@ jobs:
           python tools/ci_pytest_shards.py verify
           --artifacts "${RUNNER_TEMP}/pytest-artifacts"
           --expected tests/ci/expected_pytest_nodeids.txt
+          --duration-profile tests/ci/pytest_file_durations.json
           --shard-count 8
           --plan-status "${{ needs.pytest-plan.result }}"
           --shards-status "${{ needs.pytest-shard.result }}"

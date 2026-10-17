@@ -163,6 +163,14 @@ def test_chair_constructor_exposes_conformation_vectors_and_substituent_policy()
     assert len(ChairParameters().axial_vectors) == len(ChairParameters().equatorial_vectors) == 6
 
 
+def test_chair_rejects_orientation_placement_mismatches_for_the_declared_conformation() -> None:
+    with pytest.raises(ValueError, match="inconsistent"):
+        ChairParameters(
+            conformation="chair_a",
+            substituents=(ChairSubstituent(0, "OH", "down", "axial"),),
+        )
+
+
 def test_legacy_template_entry_points_remain_callable_and_deterministic() -> None:
     haworth = build_haworth_template(40.0, anomeric_up=True, bold_front=True)
     repeated = build_haworth_template(40.0, anomeric_up=True, bold_front=True)

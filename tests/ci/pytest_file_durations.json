@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "fallback_seconds_per_test": 0.2,
+  "source": {
+    "kind": "github-actions",
+    "run_id": "38996089270",
+    "commit": "87e298c46535e1dffb0477f36412b3dedc87bd98",
+    "platform": "ubuntu-24.04 / Python 3.11",
+    "method": "JUnit testcase time for completed shards; elapsed intervals between timestamped test completions for the two timed-out shards; files without observations use the conservative fallback."
+  },
+  "files": {
+    "tests/test_command_palette.py": {"seconds_per_test": 3.34111, "observations": 20, "measurement": "ci_log_interval_partial"},
+    "tests/test_clean2d_baseline_reports.py": {"seconds_per_test": 5.80817, "observations": 15, "measurement": "ci_log_interval"},
+    "tests/test_clean2d_baseline_diff_review_policy.py": {"seconds_per_test": 6.58980, "observations": 11, "measurement": "ci_log_interval"},
+    "tests/test_ui_tool_rail.py": {"seconds_per_test": 1.07338, "observations": 64, "measurement": "junit"},
+    "tests/test_ui_app_bar_tabs.py": {"seconds_per_test": 2.31199, "observations": 24, "measurement": "ci_log_interval"},
+    "tests/test_beta_compact_shell_and_tabs.py": {"seconds_per_test": 1.97318, "observations": 28, "measurement": "ci_log_interval"},
+    "tests/test_ui_polish.py": {"seconds_per_test": 1.34720, "observations": 4, "measurement": "ci_log_interval_partial"},
+    "tests/test_chemname_acceptance.py": {"seconds_per_test": 0.60379, "observations": 76, "measurement": "ci_log_interval"},
+    "tests/test_clean2d_baseline_report_script.py": {"seconds_per_test": 4.96094, "observations": 8, "measurement": "ci_log_interval"},
+    "tests/test_clean2d_wedge_stereo.py": {"seconds_per_test": 1.07868, "observations": 35, "measurement": "junit"},
+    "tests/test_beta_save_shortcut_menu_access.py": {"seconds_per_test": 1.42162, "observations": 20, "measurement": "ci_log_interval"},
+    "tests/test_clean2d_deterministic_baselines.py": {"seconds_per_test": 0.32779, "observations": 86, "measurement": "junit"},
+    "tests/architecture/test_import_boundaries.py": {"seconds_per_test": 0.61361, "observations": 38, "measurement": "junit"},
+    "tests/test_molecular_assistant_transform.py": {"seconds_per_test": 3.91448, "observations": 5, "measurement": "ci_log_interval"},
+    "tests/test_molecular_assistant_ui.py": {"seconds_per_test": 0.72932, "observations": 22, "measurement": "junit"},
+    "tests/test_smiles_stereo_import.py": {"seconds_per_test": 1.17033, "observations": 12, "measurement": "junit"},
+    "tests/test_clean2d_smart_propose.py": {"seconds_per_test": 0.94107, "observations": 13, "measurement": "ci_log_interval"},
+    "tests/test_spectroscopy_dock.py": {"seconds_per_test": 1.94180, "observations": 6, "measurement": "ci_log_interval"},
+    "tests/test_clean2d_regression_corpus.py": {"seconds_per_test": 0.28023, "observations": 35, "measurement": "junit"},
+    "tests/test_name2structure_ui.py": {"seconds_per_test": 2.86623, "observations": 3, "measurement": "ci_log_interval"},
+    "tests/test_branch_rotation_shortcuts.py": {"seconds_per_test": 1.13500, "observations": 7, "measurement": "junit"},
+    "tests/test_semantic_diagram_models.py": {"seconds_per_test": 0.83152, "observations": 9, "measurement": "ci_log_interval"},
+    "tests/test_main_window_tabs.py": {"seconds_per_test": 0.45425, "observations": 16, "measurement": "junit"},
+    "tests/test_side_panel.py": {"seconds_per_test": 0.48440, "observations": 15, "measurement": "junit"},
+    "tests/test_clean2d_geometry_metric_contracts.py": {"seconds_per_test": 0.86138, "observations": 8, "measurement": "junit"},
+    "tests/test_molecular_assistant_reference_resolution.py": {"seconds_per_test": 0.42280, "observations": 15, "measurement": "junit"},
+    "tests/test_molecular_assistant.py": {"seconds_per_test": 0.07131, "observations": 87, "measurement": "junit"},
+    "tests/test_p0_qt_shutdown_subprocess.py": {"seconds_per_test": 2.96800, "observations": 2, "measurement": "junit"},
+    "tests/test_canvas_selection_geometry.py": {"seconds_per_test": 0.36428, "observations": 16, "measurement": "ci_log_interval"},
+    "tests/test_clean2d_simple_aromatic_layout_v1.py": {"seconds_per_test": 0.74342, "observations": 7, "measurement": "ci_log_interval"}
+  }
+}

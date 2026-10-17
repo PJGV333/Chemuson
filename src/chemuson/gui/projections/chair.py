@@ -1,13 +1,14 @@
 """Extensible chair-conformation geometry with axial/equatorial vectors."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import math
 from typing import Literal
 
 from chemuson.core.model import BondStyle
 
 from .common import ProjectionGeometry, projection_atom, projection_bond
+from .semantics import ChairProjectionSemantics, ChairSubstituentSemantics
 
 ChairOrientation = Literal["up", "down"]
 ChairPlacement = Literal["axial", "equatorial"]
@@ -53,6 +54,24 @@ class ChairParameters:
     equatorial_bond_length_ratio: float = 1.0
     substituents: tuple[ChairSubstituent, ...] = ()
 
+    def flipped(self) -> ChairParameters:
+        """Return the opposite chair with axial/equatorial roles exchanged.
+
+        The declared chemical up/down relation is retained; only the
+        conformation and its axial/equatorial projection relation change.
+        """
+        return replace(
+            self,
+            conformation="chair_b" if self.conformation == "chair_a" else "chair_a",
+            substituents=tuple(
+                replace(
+                    item,
+                    placement="equatorial" if item.placement == "axial" else "axial",
+                )
+                for item in self.substituents
+            ),
+        )
+
     def __post_init__(self) -> None:
         if not math.isfinite(self.ring_bond_length) or self.ring_bond_length <= 0.0:
             raise ValueError("ring_bond_length must be finite and positive")
@@ -88,6 +107,17 @@ class ChairParameters:
                 raise ValueError("chair substituent orientation must be 'up' or 'down'")
             if item.placement not in ("axial", "equatorial"):
                 raise ValueError("chair substituent placement must be axial or equatorial")
+            axial_points_up = (item.position % 2 == 0) != (self.conformation == "chair_b")
+            axial_orientation: ChairOrientation = "up" if axial_points_up else "down"
+            expected_orientation = (
+                axial_orientation
+                if item.placement == "axial"
+                else ("down" if axial_orientation == "up" else "up")
+            )
+            if item.orientation != expected_orientation:
+                raise ValueError(
+                    "chair substituent orientation is inconsistent with its conformation and placement"
+                )
 
 
 def _ring_coordinates(config: ChairParameters) -> tuple[tuple[float, float], ...]:
@@ -141,6 +171,7 @@ def build_chair_geometry(parameters: ChairParameters | None = None) -> Projectio
         for index in range(6)
     ]
     mirror = -1.0 if config.conformation == "chair_b" else 1.0
+    semantic_substituents = []
     for substituent in config.substituents:
         vectors = (
             config.axial_vectors
@@ -164,9 +195,24 @@ def build_chair_geometry(parameters: ChairParameters | None = None) -> Projectio
             )
         )
         bonds.append(projection_bond(substituent.position, atom_index))
+        semantic_substituents.append(
+            ChairSubstituentSemantics(
+                ring_position=substituent.position,
+                ring_atom_index=substituent.position,
+                group_atom_index=atom_index,
+                label=substituent.label,
+                orientation=substituent.orientation,
+                placement=substituent.placement,
+            )
+        )
     return ProjectionGeometry(
         family="chair",
         bond_length=config.ring_bond_length,
         atoms=tuple(atoms),
         bonds=tuple(bonds),
+        semantics=ChairProjectionSemantics(
+            conformation=config.conformation,
+            ring_atom_indices=tuple(range(6)),
+            substituents=tuple(semantic_substituents),
+        ),
     )

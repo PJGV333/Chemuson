@@ -28,3 +28,12 @@ Chair projection descriptors SHALL distinguish conformation, axial/equatorial an
 - **WHEN** the chair is flipped
 - **THEN** the new geometry and descriptor state the resulting conformation explicitly
 - **AND** the declared chemical up/down relation is not silently inverted or discarded.
+
+### Requirement: Chair orientation and placement agree with conformation
+The chair geometry SHALL use the alternating axial up/down pattern for the selected conformation, with the equatorial orientation complementary at each numbered carbon. The constructor MUST reject a declared orientation/placement pair that conflicts with that pattern rather than render an inward or contradictory substituent vector.
+
+#### Scenario: Reject an inconsistent chair substituent
+- **GIVEN** a substituent whose up/down orientation conflicts with its axial/equatorial placement at that carbon in the selected chair
+- **WHEN** chair parameters are validated
+- **THEN** construction fails with a clear `ValueError`
+- **AND** no graphical `MolGraph` with the inconsistent substituent is produced.

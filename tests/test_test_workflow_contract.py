@@ -50,6 +50,8 @@ def test_pytest_matrix_executes_every_manifest_id_with_bounded_fail_closed_shard
     assert "tools/ci_pytest_shards.py plan" in plan_step["run"]
     assert "--shards 8" in plan_step["run"]
     assert "tests/ci/expected_pytest_nodeids.txt" in plan_step["run"]
+    assert "tests/ci/pytest_file_durations.json" in plan_step["run"]
+    assert "estimated-durations" in plan_job["outputs"]
     assert plan_job["outputs"]["shard-matrix"].endswith(
         "steps.create-plan.outputs.shard-matrix }}"
     )
@@ -64,11 +66,13 @@ def test_pytest_matrix_executes_every_manifest_id_with_bounded_fail_closed_shard
     )
     assert "tools/ci_pytest_shards.py run" in run_step["run"]
     assert "--timeout-seconds 300" in run_step["run"]
+    assert "tests/ci/pytest_file_durations.json" in run_step["run"]
     assert "matrix.shard" in run_step["run"]
     assert run_step["timeout-minutes"] == "6"
     assert any(
         step.get("if") == "always()"
         and "upload-artifact@v4" in step.get("uses", "")
+        and "timings.jsonl" in step.get("with", {}).get("path", "")
         for step in shard_job["steps"]
     )
     assert summary_job["if"] == "always()"
@@ -84,6 +88,12 @@ def test_pytest_matrix_executes_every_manifest_id_with_bounded_fail_closed_shard
     assert "pytest collection does not match" in tool_text
     assert "missing shard result reports" in tool_text
     assert "external timeout exceeds 300 seconds" in tool_text
+    assert "loads_seconds" in tool_text
+    assert "fallback_seconds_per_test" in tool_text
+    assert "tools.ci_pytest_timing_plugin" in tool_text
+    assert "estimated_duration_seconds" in tool_text
+    duration_profile = (ROOT / "tests/ci/pytest_file_durations.json").read_text(encoding="utf-8")
+    assert '"run_id": "38996089270"' in duration_profile
     assert "--ignore" not in workflow_text + tool_text
     assert "--deselect" not in workflow_text + tool_text
     assert "continue-on-error" not in workflow_text

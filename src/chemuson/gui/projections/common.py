@@ -10,6 +10,13 @@ import math
 
 from chemuson.core.model import BondStyle, MolGraph
 
+from .semantics import (
+    ChairProjectionSemantics,
+    FischerProjectionSemantics,
+    HaworthProjectionSemantics,
+    ProjectionSemantics,
+)
+
 
 @dataclass(frozen=True, slots=True)
 class ProjectionAtom:
@@ -39,6 +46,7 @@ class ProjectionGeometry:
     bond_length: float
     atoms: tuple[ProjectionAtom, ...]
     bonds: tuple[ProjectionBond, ...]
+    semantics: ProjectionSemantics | None = None
 
     def __post_init__(self) -> None:
         if not self.family.strip():
@@ -52,6 +60,19 @@ class ProjectionGeometry:
                 raise ValueError("projection atom labels must not be empty")
             if not math.isfinite(atom.x) or not math.isfinite(atom.y):
                 raise ValueError("projection coordinates must be finite")
+        semantics_type = {
+            "haworth": HaworthProjectionSemantics,
+            "fischer": FischerProjectionSemantics,
+            "chair": ChairProjectionSemantics,
+        }.get(self.family)
+        if self.semantics is not None:
+            if semantics_type is None or not isinstance(self.semantics, semantics_type):
+                raise ValueError(f"projection semantics do not match family {self.family!r}")
+            if any(
+                not 0 <= index < len(self.atoms)
+                for index in self.semantics.referenced_atom_indices
+            ):
+                raise ValueError("projection semantics reference an atom outside the geometry")
         for bond in self.bonds:
             if not (0 <= bond.start < len(self.atoms)):
                 raise ValueError(f"projection bond start index out of range: {bond.start}")
@@ -69,7 +90,11 @@ class ProjectionGeometry:
                 raise ValueError("projection bond style must be a BondStyle")
 
     def to_molgraph(self) -> MolGraph:
-        """Create a fresh molecular graph without adding stereo annotations."""
+        """Create a rendering-only graph without adding projection semantics/stereo.
+
+        Use :meth:`to_projection_instance` when the alpha/beta, Fischer or chair
+        descriptor must remain available alongside the graphical graph.
+        """
         graph = MolGraph()
         atom_ids: list[int] = []
         for atom in self.atoms:
@@ -88,6 +113,23 @@ class ProjectionGeometry:
                 style=bond.style,
             )
         return graph
+
+    def to_projection_instance(self) -> ProjectionInstance:
+        """Create a safe in-memory pair of rendering graph and semantic data."""
+        return ProjectionInstance(self, self.to_molgraph(), self.semantics)
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectionInstance:
+    """Graphical projection plus the typed descriptor that coordinates cannot store."""
+
+    geometry: ProjectionGeometry
+    render_graph: MolGraph
+    semantics: ProjectionSemantics | None
+
+    def __post_init__(self) -> None:
+        if self.semantics != self.geometry.semantics:
+            raise ValueError("projection instance semantics do not match its geometry")
 
 
 def projection_atom(element: str, x: float, y: float, *, explicit: bool | None = None) -> ProjectionAtom:

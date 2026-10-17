@@ -32,7 +32,7 @@ Run: [38996089270](https://github.com/PJGV333/Chemuson/actions/runs/38996089270)
 | 6 | 292 | 73.698 s | PASS |
 | 7 | 292 | 20.137 s | PASS |
 
-Windows, Flatpak y plan de colección terminaron correctamente. `pytest-summary` falló correctamente: detectó que los dos shards no terminaron. Los JSON, logs, JUnit que sí se alcanzó a crear y el plan exacto están versionados en `baseline/ci-artifacts/`; el run enlazado conserva los logs completos.
+Windows, Flatpak y plan de colección terminaron correctamente. `pytest-summary` falló correctamente: detectó que los dos shards no terminaron. Los JSON, logs, JUnit que sí se alcanzó a crear y el plan exacto están versionados en `baseline/ci-artifacts/`; `github-run-full.log.gz` conserva una compresión determinista del log completo descargado (el hash del original y del comprimido están en su README).
 
 ## Diagnóstico de los timeouts
 
@@ -46,7 +46,7 @@ La distribución original asignaba casi el mismo **número** de pruebas por shar
 
 La causa primaria confirmada es **balanceo por cantidad de node IDs, no por duración**, con carga acumulada de archivos Qt/Clean2D particularmente lentos. La ejecución imprimió pruebas progresivamente; el mayor intervalo observado entre resultados consecutivos dentro de los dos jobs incompletos fue ~14.2 s, no hubo pausa prolongada comparable a 120 s ni volcado `faulthandler_timeout=120`. No hay evidencia en estos logs de una única prueba colgada, lock o bloqueo de recursos no liberados. La lentitud se acumula en muchos casos de UI/Qt y pruebas de baseline que completan; no se identificó una regresión dependiente del orden para los shards que expiraron. Un timeout externo mató el proceso al llegar a 300 s, dejando el reporte/JUnit incompleto, no un fallo de aserción. El timeout no se sube en esta propuesta: primero se separan los archivos por pesos medidos y se vuelven a observar los ocho jobs.
 
-El test Qt de CompChem que falla en el `pytest -q` local completo es una condición basal independiente; se reporta por separado y no explica los logs de timeout de Actions.
+El test Qt de CompChem que falla en el `pytest -q` local completo es una condición basal independiente; se reporta por separado y no explica los logs de timeout de Actions. Durante la validación de esta propuesta también se confirmó una falla sensible al orden en `tests/test_molecular_assistant_reference_resolution.py::test_ai_success_with_equivalent_nonidentical_smiles_is_verified`: el nodo pasa aislado y con la familia 3D/Molecular Assistant, pero falla después de ejecutar conjuntamente las suites UI `test_beta_compact_shell_and_tabs.py` y `test_beta_save_shortcut_menu_access.py`. El mismo prefijo ordenado en el worktree limpio del SHA basal `87e298c` reprodujo `69 passed, 1 failed` (79.38 s); no se modificaron el controller ni esas pruebas. Se documenta como falla basal de lifecycle Qt no causada por esta propuesta, y no se oculta ni se descuenta del resultado final.
 
 ## UI y proyecciones antes de cambio
 

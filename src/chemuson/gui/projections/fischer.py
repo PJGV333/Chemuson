@@ -6,6 +6,7 @@ import math
 from typing import Literal
 
 from .common import ProjectionGeometry, projection_atom, projection_bond
+from .semantics import FischerCenterSemantics, FischerProjectionSemantics
 
 Side = Literal["left", "right"]
 
@@ -18,6 +19,7 @@ class FischerParameters:
     horizontal_cross_length: float = 64.0
     canonical_bond_angle_degrees: float = 90.0
     substituent_sides: tuple[Side, ...] = ("right", "left", "right", "right")
+    center_configurations: tuple[Literal["R", "S"] | None, ...] = ()
     top_terminal_group: str = "CHO"
     bottom_terminal_group: str = "CH2OH"
 
@@ -35,6 +37,10 @@ class FischerParameters:
             raise ValueError("canonical_bond_angle_degrees must be between 60 and 120")
         if any(side not in ("left", "right") for side in self.substituent_sides):
             raise ValueError("Fischer substituent sides must be 'left' or 'right'")
+        if self.center_configurations and len(self.center_configurations) != len(self.substituent_sides):
+            raise ValueError("Fischer center_configurations must match the stereocenter count")
+        if any(value not in (None, "R", "S") for value in self.center_configurations):
+            raise ValueError("Fischer center configuration must be R, S or undeclared")
         if not self.top_terminal_group.strip() or not self.bottom_terminal_group.strip():
             raise ValueError("Fischer terminal group labels must not be empty")
 
@@ -62,7 +68,11 @@ def build_fischer_geometry(parameters: FischerParameters | None = None) -> Proje
     theta = math.radians(90.0 - config.canonical_bond_angle_degrees)
     dx_unit = math.cos(theta)
     dy_unit = math.sin(theta)
-    for center_index, side in zip(centers, config.substituent_sides, strict=True):
+    semantic_centers = []
+    configurations = config.center_configurations or (None,) * count
+    for center_number, (center_index, side, absolute_configuration) in enumerate(
+        zip(centers, config.substituent_sides, configurations, strict=True)
+    ):
         center_y = atoms[center_index].y
         oh_sign = -1.0 if side == "left" else 1.0
         for label, sign in (("OH", oh_sign), ("H", -oh_sign)):
@@ -76,10 +86,28 @@ def build_fischer_geometry(parameters: FischerParameters | None = None) -> Proje
                 )
             )
             bonds.append(projection_bond(center_index, substituent_index))
+        first_group_index = count + 2 + center_number * 2
+        second_group_index = first_group_index + 1
+        left_index, right_index = (
+            (first_group_index, second_group_index)
+            if side == "left"
+            else (second_group_index, first_group_index)
+        )
+        semantic_centers.append(
+            FischerCenterSemantics(
+                center_atom_index=center_index,
+                left_atom_index=left_index,
+                right_atom_index=right_index,
+                upper_atom_index=center_index - 1,
+                lower_atom_index=center_index + 1,
+                absolute_configuration=absolute_configuration,
+            )
+        )
 
     return ProjectionGeometry(
         family="fischer",
         bond_length=config.vertical_backbone_length,
         atoms=tuple(atoms),
         bonds=tuple(bonds),
+        semantics=FischerProjectionSemantics(tuple(semantic_centers)),
     )

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import signal
 import subprocess
@@ -19,7 +20,8 @@ from typing import Any, Sequence
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MANIFEST = ROOT / "tests" / "ci" / "expected_pytest_nodeids.txt"
-PLAN_SCHEMA = 1
+DEFAULT_DURATION_PROFILE = ROOT / "tests" / "ci" / "pytest_file_durations.json"
+PLAN_SCHEMA = 2
 DEFAULT_SHARD_COUNT = 8
 MAX_TIMEOUT_SECONDS = 600
 
@@ -110,28 +112,99 @@ def _check_collected_against_manifest(
     return expected
 
 
-def _partition_by_file(nodeids: Sequence[str], shard_count: int) -> list[list[str]]:
+def _load_duration_profile(path: Path) -> tuple[dict[str, Any], str]:
+    try:
+        payload = path.read_bytes()
+        profile = json.loads(payload)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Cannot read duration profile {path}: {exc}") from exc
+    if not isinstance(profile, dict) or profile.get("schema_version") != 1:
+        raise ValueError("duration profile has an unsupported schema")
+    fallback = profile.get("fallback_seconds_per_test")
+    if isinstance(fallback, bool) or not isinstance(fallback, (int, float)):
+        raise ValueError("duration profile fallback must be a number")
+    if not math.isfinite(float(fallback)) or float(fallback) <= 0.0:
+        raise ValueError("duration profile fallback must be finite and positive")
+    files = profile.get("files")
+    if not isinstance(files, dict):
+        raise ValueError("duration profile files must be an object")
+    for file_name, record in files.items():
+        file_path = PurePosixPath(file_name)
+        if (
+            not isinstance(file_name, str)
+            or file_path.is_absolute()
+            or not file_path.as_posix().startswith("tests/")
+            or ".." in file_path.parts
+            or file_path.suffix != ".py"
+        ):
+            raise ValueError(f"invalid test file in duration profile: {file_name!r}")
+        if not isinstance(record, dict):
+            raise ValueError(f"duration record for {file_name} must be an object")
+        seconds = record.get("seconds_per_test")
+        observations = record.get("observations")
+        if (
+            isinstance(seconds, bool)
+            or not isinstance(seconds, (int, float))
+            or not math.isfinite(float(seconds))
+            or float(seconds) <= 0.0
+        ):
+            raise ValueError(f"invalid seconds_per_test for {file_name}")
+        if not isinstance(observations, int) or isinstance(observations, bool) or observations < 1:
+            raise ValueError(f"invalid observation count for {file_name}")
+        if not isinstance(record.get("measurement"), str):
+            raise ValueError(f"missing measurement method for {file_name}")
+    return profile, hashlib.sha256(payload).hexdigest()
+
+
+def _validate_plan_duration_profile(plan: dict[str, Any], path: Path) -> None:
+    _profile, digest = _load_duration_profile(path)
+    expected = plan.get("duration_profile", {}).get("sha256")
+    if digest != expected:
+        raise ValueError(
+            "duration profile does not match the exact profile used to create the plan"
+        )
+
+
+def _partition_by_file(
+    nodeids: Sequence[str], shard_count: int, duration_profile: dict[str, Any]
+) -> tuple[list[list[str]], list[float]]:
     if shard_count < 1:
         raise ValueError("shard count must be positive")
+    fallback = float(duration_profile["fallback_seconds_per_test"])
+    rates = {
+        name: float(record["seconds_per_test"])
+        for name, record in duration_profile["files"].items()
+    }
     by_file: dict[str, list[tuple[int, str]]] = {}
     for ordinal, nodeid in enumerate(nodeids):
         test_file = nodeid.split("::", 1)[0]
         by_file.setdefault(test_file, []).append((ordinal, nodeid))
 
-    loads = [0] * shard_count
+    loads_seconds = [0.0] * shard_count
+    loads_counts = [0] * shard_count
     shards_with_order: list[list[tuple[int, str]]] = [[] for _ in range(shard_count)]
     files = sorted(
         by_file.items(),
-        key=lambda pair: (-len(pair[1]), pair[1][0][0]),
+        key=lambda pair: (
+            -(rates.get(pair[0], fallback) * len(pair[1])),
+            -len(pair[1]),
+            pair[1][0][0],
+            pair[0],
+        ),
     )
-    for _test_file, members in files:
-        shard_index = min(range(shard_count), key=lambda index: (loads[index], index))
+    for test_file, members in files:
+        shard_index = min(
+            range(shard_count),
+            key=lambda index: (loads_seconds[index], loads_counts[index], index),
+        )
         shards_with_order[shard_index].extend(members)
-        loads[shard_index] += len(members)
-    return [
+        loads_seconds[shard_index] += rates.get(test_file, fallback) * len(members)
+        loads_counts[shard_index] += len(members)
+    assignments = [
         [nodeid for _ordinal, nodeid in sorted(members)]
         for members in shards_with_order
     ]
+    return assignments, [round(load, 3) for load in loads_seconds]
 
 
 def _validate_plan(plan: dict[str, Any], expected: Sequence[str]) -> None:
@@ -172,6 +245,29 @@ def _validate_plan(plan: dict[str, Any], expected: Sequence[str]) -> None:
         )
     if plan.get("distribution") != distribution:
         raise ValueError("Shard plan distribution does not match assigned node IDs")
+    duration_profile = plan.get("duration_profile")
+    if (
+        not isinstance(duration_profile, dict)
+        or not isinstance(duration_profile.get("path"), str)
+        or not isinstance(duration_profile.get("sha256"), str)
+        or len(duration_profile["sha256"]) != 64
+        or any(char not in "0123456789abcdef" for char in duration_profile["sha256"])
+    ):
+        raise ValueError("Shard plan has invalid duration profile provenance")
+    estimates = plan.get("estimated_duration_seconds")
+    if not isinstance(estimates, list) or len(estimates) != shard_count:
+        raise ValueError("Shard plan has invalid estimated duration list")
+    for index, estimate in enumerate(estimates):
+        if (
+            isinstance(estimate, bool)
+            or not isinstance(estimate, (int, float))
+            or not math.isfinite(float(estimate))
+            or float(estimate) < 0.0
+        ):
+            raise ValueError(f"Shard {index} has an invalid duration estimate")
+        shard_estimate = shards[index].get("estimated_duration_seconds")
+        if shard_estimate != estimate:
+            raise ValueError(f"Shard {index} duration estimate does not match the plan")
 
 
 def _write_json(path: Path, data: dict[str, Any]) -> None:
@@ -186,15 +282,35 @@ def create_plan(args: argparse.Namespace) -> int:
     manifest_path = args.expected.resolve()
     nodeids = _collect_nodeids()
     expected = _check_collected_against_manifest(nodeids, manifest_path)
-    assignments = _partition_by_file(nodeids, args.shards)
+    duration_profile_path = args.duration_profile.resolve()
+    duration_profile, duration_profile_sha256 = _load_duration_profile(
+        duration_profile_path
+    )
+    assignments, estimated_seconds = _partition_by_file(
+        nodeids, args.shards, duration_profile
+    )
+    try:
+        duration_profile_display = duration_profile_path.relative_to(ROOT).as_posix()
+    except ValueError:
+        duration_profile_display = str(duration_profile_path)
     plan = {
         "schema_version": PLAN_SCHEMA,
         "total_tests": len(nodeids),
         "expected_nodeids_sha256": _digest_nodeids(expected),
+        "duration_profile": {
+            "path": duration_profile_display,
+            "sha256": duration_profile_sha256,
+        },
         "shard_count": args.shards,
         "distribution": [len(shard) for shard in assignments],
+        "estimated_duration_seconds": estimated_seconds,
         "shards": [
-            {"index": index, "count": len(shard), "nodeids": shard}
+            {
+                "index": index,
+                "count": len(shard),
+                "estimated_duration_seconds": estimated_seconds[index],
+                "nodeids": shard,
+            }
             for index, shard in enumerate(assignments)
         ],
     }
@@ -205,6 +321,7 @@ def create_plan(args: argparse.Namespace) -> int:
     print(
         f"pytest collection: {len(nodeids)} node IDs; "
         f"{args.shards} shards; distribution={plan['distribution']}; "
+        f"estimated_seconds={estimated_seconds}; "
         f"sha256={plan['expected_nodeids_sha256']}"
     )
     print(f"plan: {output_path}")
@@ -215,6 +332,11 @@ def create_plan(args: argparse.Namespace) -> int:
             output.write(
                 "distribution="
                 + json.dumps(plan["distribution"], separators=(",", ":"))
+                + "\n"
+            )
+            output.write(
+                "estimated-durations="
+                + json.dumps(estimated_seconds, separators=(",", ":"))
                 + "\n"
             )
     return 0
@@ -313,6 +435,69 @@ def _junit_test_count(path: Path) -> int:
     return sum(1 for _case in root.iter("testcase"))
 
 
+def _read_timing_records(
+    path: Path, assigned: Sequence[str]
+) -> tuple[list[dict[str, Any]], dict[str, float]]:
+    assigned_set = set(assigned)
+    records: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    per_file: defaultdict[str, float] = defaultdict(float)
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    except OSError as exc:
+        raise ValueError(f"cannot read timing artifact {path}: {exc}") from exc
+    for line_number, raw_line in enumerate(lines, 1):
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError as exc:
+            if line_number == len(lines) and not raw_line.endswith(("\n", "\r")):
+                break  # a timeout may interrupt the final record after all flushed lines
+            raise ValueError(f"invalid timing JSON at {path}:{line_number}: {exc}") from exc
+        if not isinstance(record, dict):
+            raise ValueError(f"timing record at {path}:{line_number} is not an object")
+        nodeid = record.get("nodeid")
+        test_file = record.get("test_file")
+        duration = record.get("duration_seconds")
+        if not isinstance(nodeid, str) or nodeid not in assigned_set:
+            raise ValueError(f"timing record has an unassigned node ID: {nodeid!r}")
+        if nodeid in seen:
+            raise ValueError(f"duplicate timing record for {nodeid}")
+        if test_file != nodeid.split("::", 1)[0]:
+            raise ValueError(f"timing record has an inconsistent file for {nodeid}")
+        if (
+            isinstance(duration, bool)
+            or not isinstance(duration, (int, float))
+            or not math.isfinite(float(duration))
+            or float(duration) < 0.0
+        ):
+            raise ValueError(f"timing record has an invalid duration for {nodeid}")
+        if record.get("outcome") not in ("passed", "skipped", "failed"):
+            raise ValueError(f"timing record has an invalid outcome for {nodeid}")
+        phases = record.get("phases")
+        if not isinstance(phases, dict) or not phases:
+            raise ValueError(f"timing record has invalid phases for {nodeid}")
+        phase_durations = []
+        for phase, phase_duration in phases.items():
+            if (
+                not isinstance(phase, str)
+                or isinstance(phase_duration, bool)
+                or not isinstance(phase_duration, (int, float))
+                or not math.isfinite(float(phase_duration))
+                or float(phase_duration) < 0.0
+            ):
+                raise ValueError(f"timing record has an invalid phase for {nodeid}")
+            phase_durations.append(float(phase_duration))
+        if not math.isclose(sum(phase_durations), float(duration), abs_tol=1e-4):
+            raise ValueError(f"timing phase sum does not match total for {nodeid}")
+        seen.add(nodeid)
+        records.append(record)
+        per_file[test_file] += float(duration)
+    return records, {name: round(seconds, 6) for name, seconds in sorted(per_file.items())}
+
+
 def run_shard(args: argparse.Namespace) -> int:
     manifest_path = args.expected.resolve()
     expected = _read_expected_nodeids(manifest_path)
@@ -321,6 +506,7 @@ def run_shard(args: argparse.Namespace) -> int:
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"Cannot read shard plan {args.plan}: {exc}") from exc
     _validate_plan(plan, expected)
+    _validate_plan_duration_profile(plan, args.duration_profile.resolve())
     if not 0 <= args.shard_index < plan["shard_count"]:
         raise ValueError(f"Invalid shard index {args.shard_index}")
     if not 1 <= args.timeout_seconds <= MAX_TIMEOUT_SECONDS:
@@ -334,10 +520,14 @@ def run_shard(args: argparse.Namespace) -> int:
     log_path = output_dir / f"{prefix}.log"
     junit_path = output_dir / f"{prefix}.xml"
     report_path = output_dir / f"{prefix}.json"
+    timing_path = output_dir / f"{prefix}-timings.jsonl"
+    timing_path.write_text("", encoding="utf-8")
     command = [
         sys.executable,
         "-m",
         "pytest",
+        "-p",
+        "tools.ci_pytest_timing_plugin",
         "-vv",
         "-o",
         "faulthandler_timeout=120",
@@ -347,6 +537,7 @@ def run_shard(args: argparse.Namespace) -> int:
     environment = os.environ.copy()
     environment.pop("PYTEST_ADDOPTS", None)
     environment["PYTHONFAULTHANDLER"] = "1"
+    environment["CHEMUSON_PYTEST_TIMING_PATH"] = str(timing_path)
     environment.setdefault("QT_QPA_PLATFORM", "offscreen")
 
     started = time.monotonic()
@@ -432,6 +623,17 @@ def run_shard(args: argparse.Namespace) -> int:
     else:
         junit_error = "JUnit report was not created"
 
+    try:
+        timing_records, file_durations = _read_timing_records(timing_path, nodeids)
+        timing_error = None
+    except ValueError as exc:
+        timing_records = []
+        file_durations = {}
+        timing_error = str(exc)
+    timing_matches_assignment = (
+        Counter(record["nodeid"] for record in timing_records) == Counter(nodeids)
+    )
+
     report = {
         "schema_version": PLAN_SCHEMA,
         "shard_index": args.shard_index,
@@ -440,6 +642,7 @@ def run_shard(args: argparse.Namespace) -> int:
         "expected_nodeids_sha256": plan["expected_nodeids_sha256"],
         "assigned_test_count": len(nodeids),
         "assigned_nodeids_sha256": _digest_nodeids(nodeids),
+        "estimated_duration_seconds": shard["estimated_duration_seconds"],
         "timeout_seconds": args.timeout_seconds,
         "process_exit_code": returncode,
         "timed_out": timed_out,
@@ -452,12 +655,18 @@ def run_shard(args: argparse.Namespace) -> int:
         "junit_test_count": junit_count,
         "junit_matches_assignment": junit_matches_assignment,
         "junit_error": junit_error,
+        "timing_file": timing_path.name,
+        "timed_test_count": len(timing_records),
+        "timing_matches_assignment": timing_matches_assignment,
+        "timing_error": timing_error,
+        "file_durations_seconds": file_durations,
         "log_file": log_path.name,
     }
     _write_json(report_path, report)
     print(
         f"shard {args.shard_index}: exit={returncode}, timeout={timed_out}, "
         f"signal={signal_name}, tests={junit_count}/{len(nodeids)}, "
+        f"timed={len(timing_records)}/{len(nodeids)}, "
         f"elapsed={elapsed:.3f}s, last={last_test['nodeid']}",
         flush=True,
     )
@@ -466,6 +675,8 @@ def run_shard(args: argparse.Namespace) -> int:
         and not timed_out
         and junit_count == len(nodeids)
         and junit_matches_assignment
+        and timing_matches_assignment
+        and timing_error is None
         and launch_error is None
     ) else 1
 
@@ -497,6 +708,7 @@ def verify_results(args: argparse.Namespace) -> int:
         try:
             plan = _load_json(plan_files[0])
             _validate_plan(plan, expected)
+            _validate_plan_duration_profile(plan, args.duration_profile.resolve())
         except ValueError as exc:
             errors.append(str(exc))
             plan = None
@@ -541,6 +753,7 @@ def verify_results(args: argparse.Namespace) -> int:
             f"shard {index}: exit={report.get('process_exit_code')}, "
             f"timeout={report.get('timed_out')}, signal={report.get('signal_name')}, "
             f"tests={report.get('junit_test_count')}/{report.get('assigned_test_count')}, "
+            f"timed={report.get('timed_test_count')}/{report.get('assigned_test_count')}, "
             f"elapsed={report.get('elapsed_seconds')}s, "
             f"last={report.get('last_test_started')}"
         )
@@ -553,6 +766,8 @@ def verify_results(args: argparse.Namespace) -> int:
             errors.append(f"shard {index} assigned test count does not match the plan")
         if report.get("assigned_nodeids_sha256") != _digest_nodeids(assigned):
             errors.append(f"shard {index} assigned node IDs do not match the plan")
+        if report.get("estimated_duration_seconds") != plan["shards"][index]["estimated_duration_seconds"]:
+            errors.append(f"shard {index} estimated duration does not match the plan")
         if report.get("expected_nodeids_sha256") != _digest_nodeids(expected):
             errors.append(f"shard {index} used a different collection manifest")
         if report.get("process_exit_code") != 0:
@@ -598,6 +813,30 @@ def verify_results(args: argparse.Namespace) -> int:
         if report.get("junit_matches_assignment") is not True:
             errors.append(f"shard {index} runner marked its JUnit assignment invalid")
 
+        timing_name = report.get("timing_file")
+        timing_path = path.parent / timing_name if isinstance(timing_name, str) else None
+        if timing_path is None or not timing_path.is_file():
+            errors.append(f"shard {index} timing artifact is missing")
+        else:
+            try:
+                timing_records, file_durations = _read_timing_records(timing_path, assigned)
+            except ValueError as exc:
+                errors.append(f"shard {index} timing parse error: {exc}")
+            else:
+                timed_nodeids = [record["nodeid"] for record in timing_records]
+                if report.get("timed_test_count") != len(timing_records):
+                    errors.append(f"shard {index} timing record count does not match its report")
+                if report.get("timing_matches_assignment") != (
+                    Counter(timed_nodeids) == Counter(assigned)
+                ):
+                    errors.append(f"shard {index} timing coverage does not match its report")
+                if report.get("file_durations_seconds") != file_durations:
+                    errors.append(f"shard {index} per-file timing totals do not match the artifact")
+                if report.get("process_exit_code") == 0 and Counter(timed_nodeids) != Counter(assigned):
+                    errors.append(f"shard {index} successful run has incomplete timing coverage")
+        if report.get("timing_error") is not None:
+            errors.append(f"shard {index} timing error: {report.get('timing_error')}")
+
     if errors:
         print("pytest shard coverage verification FAILED:")
         for error in errors:
@@ -617,6 +856,7 @@ def build_parser() -> argparse.ArgumentParser:
     plan_parser = subparsers.add_parser("plan", help="collect and partition the full suite")
     plan_parser.add_argument("--shards", type=int, default=DEFAULT_SHARD_COUNT)
     plan_parser.add_argument("--expected", type=Path, default=DEFAULT_MANIFEST)
+    plan_parser.add_argument("--duration-profile", type=Path, default=DEFAULT_DURATION_PROFILE)
     plan_parser.add_argument("--output", type=Path, required=True)
     plan_parser.add_argument("--github-output", type=Path)
     plan_parser.set_defaults(handler=create_plan)
@@ -626,12 +866,14 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--shard-index", type=int, required=True)
     run_parser.add_argument("--timeout-seconds", type=int, default=300)
     run_parser.add_argument("--expected", type=Path, default=DEFAULT_MANIFEST)
+    run_parser.add_argument("--duration-profile", type=Path, default=DEFAULT_DURATION_PROFILE)
     run_parser.add_argument("--output-dir", type=Path, required=True)
     run_parser.set_defaults(handler=run_shard)
 
     verify_parser = subparsers.add_parser("verify", help="verify all shard artifacts and outcomes")
     verify_parser.add_argument("--artifacts", type=Path, required=True)
     verify_parser.add_argument("--expected", type=Path, default=DEFAULT_MANIFEST)
+    verify_parser.add_argument("--duration-profile", type=Path, default=DEFAULT_DURATION_PROFILE)
     verify_parser.add_argument("--shard-count", type=int, default=DEFAULT_SHARD_COUNT)
     verify_parser.add_argument("--plan-status", required=True)
     verify_parser.add_argument("--shards-status", required=True)
