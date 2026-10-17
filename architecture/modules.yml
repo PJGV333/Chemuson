@@ -379,7 +379,7 @@ modules:
   - export_xyz
   name: geometry3d
   notes: 'Backends rdkit_backend y obabel_backend son opcionales. rdkit_backend importa
-    rdkit_safe de forma lazy.
+    rdkit_io para expandir etiquetas de grupo y rdkit_safe de forma lazy.
 
     obabel_backend depende de obabel externo (no siempre disponible).
 

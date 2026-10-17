@@ -3,14 +3,14 @@
 ## 0. OpenSpec gate
 - [x] Trace the local tetrandrina template and capture the pre-change baseline.
 - [x] Validate this change with `openspec validate repair-tetrandrine-3d-editing-live-mm-navigation --strict`.
-- [ ] Commit the validated specification separately before production code.
+- [x] Commit the validated specification separately before production code.
 
 ## 1. Tetrandrina calculation and scene publication — commit 2
-- [ ] Add a regression using the exact local template graph and assert the original graph is unchanged.
-- [ ] Expand supported abbreviations only on a calculation copy; preserve source stereo exactly.
-- [ ] Normalize only contradictory aromatic bridge flags with explicit single order and include diagnostics.
-- [ ] Publish coordinates for source atoms, derived abbreviation atoms, and H into a renderable scene.
-- [ ] Verify ETKDG, scene construction, finite mesh, and the nonconverged-MMFF status are separately reported.
+- [x] Add a regression using the exact local template graph and assert the original graph is unchanged.
+- [x] Expand supported abbreviations only on a calculation copy; preserve source stereo exactly.
+- [x] Normalize only contradictory aromatic bridge flags with explicit single order and include diagnostics.
+- [x] Publish coordinates for source atoms, derived abbreviation atoms, and H into a renderable scene.
+- [x] Verify ETKDG, scene construction, finite mesh, and the nonconverged-MMFF status are separately reported.
 
 ## 2. Direct 3D drawing — commit 3
 - [ ] Add RED tests for world-space preview geometry, snapping, empty-space creation, and Escape cancellation.

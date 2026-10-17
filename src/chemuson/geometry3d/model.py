@@ -319,12 +319,20 @@ _ELEMENT_COLORS = {
 def scene_molecule_from_graph(graph, coordinates: CoordinateSet3D) -> SceneMolecule3D:
     """Construye una escena 3D desde ``MolGraph`` y coordenadas asociadas."""
     positions = coordinates.normalized_positions()
+    raw_element_overrides = coordinates.metadata.get("source_element_overrides", {})
+    source_element_overrides: dict[int, str] = {}
+    if isinstance(raw_element_overrides, Mapping):
+        for atom_id, element in raw_element_overrides.items():
+            try:
+                source_element_overrides[int(atom_id)] = str(element)
+            except (TypeError, ValueError, OverflowError):
+                continue
     atoms: list[SceneAtom3D] = []
     for atom in sorted(getattr(graph, "atoms", {}).values(), key=lambda item: item.id):
         pos = positions.get(int(atom.id))
         if pos is None:
             continue
-        element = str(atom.element)
+        element = source_element_overrides.get(int(atom.id), str(atom.element))
         atoms.append(
             SceneAtom3D(
                 id=int(atom.id),

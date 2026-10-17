@@ -3,6 +3,7 @@ from __future__ import annotations
 """Backend RDKit aislado para conformaciones y optimización 3D."""
 
 from collections.abc import Callable, Iterator, Mapping
+from dataclasses import replace
 import math
 import threading
 import time
@@ -10,6 +11,175 @@ from typing import Any
 
 from chemuson.core.model import MolGraph
 from chemuson.geometry3d.model import CoordinateSet3D, OptimizationFrame, OptimizationResult, OptimizationSettings
+
+
+def _prepare_3d_calculation_graph(graph: MolGraph) -> tuple[MolGraph, dict[str, object]]:
+    """Expand known labels and normalize only impossible acyclic aromatic flags on a copy."""
+    from chemuson.chemio.rdkit_io import expand_abbreviations_for_calculation
+
+    calculation_graph = expand_abbreviations_for_calculation(graph)
+    source_atom_ids = set(graph.atoms)
+    expanded_atom_ids = sorted(set(calculation_graph.atoms) - source_atom_ids)
+    aromatic_bridge_bond_ids: list[int] = []
+    for bond in calculation_graph.bonds.values():
+        if not bool(bond.is_aromatic) or _edge_has_alternate_path(
+            calculation_graph, int(bond.id), int(bond.a1_id), int(bond.a2_id)
+        ):
+            continue
+        if math.isclose(float(bond.order), 1.0, rel_tol=0.0, abs_tol=1.0e-8):
+            bond.is_aromatic = False
+            aromatic_bridge_bond_ids.append(int(bond.id))
+
+    source_element_overrides = {
+        str(atom_id): str(atom.element)
+        for atom_id, atom in calculation_graph.atoms.items()
+        if atom_id in source_atom_ids
+        and str(atom.element) != str(graph.atoms[atom_id].element)
+    }
+    preparation: dict[str, object] = {
+        "source_atom_count": len(graph.atoms),
+        "source_bond_count": len(graph.bonds),
+        "calculation_atom_count": len(calculation_graph.atoms),
+        "calculation_bond_count": len(calculation_graph.bonds),
+        "expanded_atom_ids": expanded_atom_ids,
+        "source_element_overrides": source_element_overrides,
+        "aromatic_bridge_bond_ids": sorted(aromatic_bridge_bond_ids),
+        "stereochemistry_inferred": False,
+    }
+    return calculation_graph, preparation
+
+
+def _edge_has_alternate_path(
+    graph: MolGraph, excluded_bond_id: int, start_id: int, target_id: int
+) -> bool:
+    adjacency: dict[int, list[int]] = {}
+    for bond in graph.bonds.values():
+        if int(bond.id) == excluded_bond_id:
+            continue
+        first, second = int(bond.a1_id), int(bond.a2_id)
+        adjacency.setdefault(first, []).append(second)
+        adjacency.setdefault(second, []).append(first)
+    pending = [start_id]
+    visited = {start_id}
+    while pending:
+        current = pending.pop()
+        if current == target_id:
+            return True
+        for neighbor in adjacency.get(current, ()):
+            if neighbor not in visited:
+                visited.add(neighbor)
+                pending.append(neighbor)
+    return False
+
+
+def _nearest_source_atom_id(
+    graph: MolGraph, start_id: int, source_atom_ids: set[int]
+) -> int | None:
+    pending = [start_id]
+    visited = {start_id}
+    while pending:
+        current = pending.pop(0)
+        if current in source_atom_ids:
+            return current
+        neighbors = sorted(
+            int(bond.a2_id) if int(bond.a1_id) == current else int(bond.a1_id)
+            for bond in graph.bonds.values()
+            if current in {int(bond.a1_id), int(bond.a2_id)}
+        )
+        for neighbor in neighbors:
+            if neighbor not in visited:
+                visited.add(neighbor)
+                pending.append(neighbor)
+    return None
+
+
+def _augment_calculation_metadata(
+    source_graph: MolGraph,
+    calculation_graph: MolGraph,
+    positions: dict[int, tuple[float, float, float]],
+    metadata: Mapping[str, object],
+    preparation: Mapping[str, object],
+) -> dict[str, object]:
+    """Attach expanded-only atoms as scene geometry while keeping the document graph intact."""
+    source_atom_ids = set(source_graph.atoms)
+    expanded_atom_ids = sorted(set(calculation_graph.atoms) - source_atom_ids)
+    expanded_id_map = {atom_id: f"calc:{atom_id}" for atom_id in expanded_atom_ids}
+    raw_generated_atoms = metadata.get("generated_atoms")
+    generated_atoms = (
+        [dict(item) for item in raw_generated_atoms if isinstance(item, Mapping)]
+        if isinstance(raw_generated_atoms, list)
+        else []
+    )
+    raw_generated_bonds = metadata.get("generated_bonds")
+    generated_bonds = (
+        [dict(item) for item in raw_generated_bonds if isinstance(item, Mapping)]
+        if isinstance(raw_generated_bonds, list)
+        else []
+    )
+
+    for atom_id in expanded_atom_ids:
+        atom = calculation_graph.atoms[atom_id]
+        coords = positions.get(atom_id)
+        if coords is None:
+            continue
+        parent_id = _nearest_source_atom_id(calculation_graph, atom_id, source_atom_ids)
+        generated_atoms.append(
+            {
+                "id": expanded_id_map[atom_id],
+                "element": str(atom.element),
+                "coords": list(coords),
+                "parent_atom_id": parent_id,
+            }
+        )
+    for bond in calculation_graph.bonds.values():
+        first, second = int(bond.a1_id), int(bond.a2_id)
+        if first not in expanded_id_map and second not in expanded_id_map:
+            continue
+        generated_bonds.append(
+            {
+                "id": f"calc-bond:{int(bond.id)}",
+                "a1_id": expanded_id_map.get(first, first),
+                "a2_id": expanded_id_map.get(second, second),
+                "order": max(1, int(round(float(bond.order)))),
+                "is_aromatic": bool(bond.is_aromatic),
+            }
+        )
+
+    for bond in generated_bonds:
+        for key in ("a1_id", "a2_id"):
+            try:
+                endpoint_id = int(bond.get(key))
+            except (TypeError, ValueError, OverflowError):
+                continue
+            if endpoint_id in expanded_id_map:
+                bond[key] = expanded_id_map[endpoint_id]
+
+    result = dict(metadata)
+    result["generated_atoms"] = generated_atoms
+    result["generated_bonds"] = generated_bonds
+    raw_element_overrides = preparation.get("source_element_overrides", {})
+    result["source_element_overrides"] = (
+        dict(raw_element_overrides) if isinstance(raw_element_overrides, Mapping) else {}
+    )
+    result["template_normalization"] = dict(preparation)
+    diagnostics = result.get("diagnostics")
+    if isinstance(diagnostics, Mapping) and _calculation_graph_was_normalized(preparation):
+        result["diagnostics"] = {
+            **dict(diagnostics),
+            "template_normalization": dict(preparation),
+        }
+    return result
+
+
+def _calculation_graph_was_normalized(preparation: Mapping[str, object]) -> bool:
+    return any(
+        bool(preparation.get(key))
+        for key in (
+            "expanded_atom_ids",
+            "source_element_overrides",
+            "aromatic_bridge_bond_ids",
+        )
+    )
 
 
 def generate_conformer(
@@ -21,6 +191,7 @@ def generate_conformer(
 ) -> OptimizationResult:
     """Genera geometría con worker RDKit aislado, etapas y errores trazables."""
     settings = settings or OptimizationSettings()
+    calculation_graph, preparation = _prepare_3d_calculation_graph(graph)
     from chemuson.chemio.rdkit_safe import conformer_3d_stream_isolated
 
     started = time.monotonic()
@@ -28,7 +199,7 @@ def generate_conformer(
     last_stage = "worker_start"
     try:
         events = conformer_3d_stream_isolated(
-            graph,
+            calculation_graph,
             forcefield=settings.forcefield.value,
             max_iters=settings.max_iters,
             seed=settings.seed,
@@ -85,6 +256,8 @@ def generate_conformer(
         dict(raw_diagnostics) if isinstance(raw_diagnostics, Mapping) else {}
     )
     error_code = str(terminal.get("error", "") or "")
+    if _calculation_graph_was_normalized(preparation):
+        diagnostics.setdefault("template_normalization", dict(preparation))
     detail = str(terminal.get("detail", "") or "")
     if terminal.get("event") != "done" or not terminal.get("ok"):
         diagnostics.setdefault("error_code", error_code or terminal.get("event", "worker_failed"))
@@ -116,6 +289,9 @@ def generate_conformer(
         )
     raw_metadata = terminal.get("metadata", {})
     metadata = dict(raw_metadata) if isinstance(raw_metadata, Mapping) else {}
+    metadata = _augment_calculation_metadata(
+        graph, calculation_graph, positions, metadata, preparation
+    )
     metadata["diagnostics"] = diagnostics
     energy = _float_or_none(terminal.get("energy", metadata.get("energy")))
     method = str(terminal.get("method", metadata.get("method", "rdkit")))
@@ -145,11 +321,12 @@ def optimize(
 ) -> OptimizationResult:
     """Optimiza geometría con UFF/MMFF usando RDKit aislado."""
     settings = settings or OptimizationSettings()
+    calculation_graph, preparation = _prepare_3d_calculation_graph(graph)
     try:
         from chemuson.chemio.rdkit_safe import optimize_3d_isolated
 
         positions, metadata, error = optimize_3d_isolated(
-            graph,
+            calculation_graph,
             coordinates=coordset.normalized_positions() if coordset is not None else None,
             forcefield=settings.forcefield.value,
             max_iters=settings.max_iters,
@@ -161,6 +338,9 @@ def optimize(
         return OptimizationResult(None, method="rdkit", message=str(exc))
     if error or not positions:
         return OptimizationResult(None, method="rdkit", message=str(error or "empty_optimization"))
+    metadata = _augment_calculation_metadata(
+        graph, calculation_graph, positions, metadata, preparation
+    )
     coordset = CoordinateSet3D(
         positions=positions,
         source=str(metadata.get("source", "rdkit")),
@@ -190,10 +370,11 @@ def optimize_iter(
 ) -> Iterator[OptimizationFrame]:
     """Emite cada frame NDJSON recibido mientras RDKit sigue optimizando."""
     settings = settings or OptimizationSettings()
+    calculation_graph, preparation = _prepare_3d_calculation_graph(graph)
     from chemuson.chemio.rdkit_safe import optimize_3d_stream_isolated
 
     events = optimize_3d_stream_isolated(
-        graph,
+        calculation_graph,
         coordinates=coordset.normalized_positions() if coordset is not None else None,
         forcefield=settings.forcefield.value,
         max_iters=settings.max_iters,
@@ -206,7 +387,17 @@ def optimize_iter(
     for event in events:
         frame = _frame_from_event(event, source="rdkit")
         if frame is not None:
-            yield frame
+            frame_metadata = _augment_calculation_metadata(
+                graph,
+                calculation_graph,
+                frame.coordinates.normalized_positions(),
+                frame.coordinates.metadata,
+                preparation,
+            )
+            yield replace(
+                frame,
+                coordinates=replace(frame.coordinates, metadata=frame_metadata),
+            )
         elif event.get("event") in {"error", "cancelled"}:
             error = str(event.get("error", event.get("event", "worker_error")))
             detail = str(event.get("detail", "") or "")
@@ -224,13 +415,14 @@ def optimize_stream(
 ) -> OptimizationResult:
     """Consume el flujo RDKit, notificando frames antes del resultado terminal."""
     settings = settings or OptimizationSettings()
+    calculation_graph, preparation = _prepare_3d_calculation_graph(graph)
     from chemuson.chemio.rdkit_safe import optimize_3d_stream_isolated
 
     frames: list[OptimizationFrame] = []
     terminal: dict | None = None
     try:
         events = optimize_3d_stream_isolated(
-            graph,
+            calculation_graph,
             coordinates=coordset.normalized_positions() if coordset is not None else None,
             forcefield=settings.forcefield.value,
             max_iters=settings.max_iters,
@@ -243,6 +435,17 @@ def optimize_stream(
         for event in events:
             frame = _frame_from_event(event, source="rdkit")
             if frame is not None:
+                frame_metadata = _augment_calculation_metadata(
+                    graph,
+                    calculation_graph,
+                    frame.coordinates.normalized_positions(),
+                    frame.coordinates.metadata,
+                    preparation,
+                )
+                frame = replace(
+                    frame,
+                    coordinates=replace(frame.coordinates, metadata=frame_metadata),
+                )
                 frames.append(frame)
                 if on_frame is not None:
                     on_frame(frame)
@@ -283,6 +486,9 @@ def optimize_stream(
         )
     metadata = terminal.get("metadata", {})
     metadata = dict(metadata) if isinstance(metadata, dict) else {}
+    metadata = _augment_calculation_metadata(
+        graph, calculation_graph, positions, metadata, preparation
+    )
     metadata.setdefault("energy_unit", str(terminal.get("energy_unit", "kcal/mol")))
     metadata.setdefault("forcefield", str(terminal.get("forcefield", terminal.get("method", ""))))
     energy = _float_or_none(terminal.get("energy"))
