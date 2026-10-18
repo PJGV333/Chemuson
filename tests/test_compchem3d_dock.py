@@ -490,6 +490,189 @@ def test_2d_topology_changes_mark_3d_stale_and_undo_restores_it() -> None:
         window.close()
 
 
+def test_expanded_tetrandrina_coordinates_reach_viewport(tmp_path) -> None:
+    from pathlib import Path
+
+    from chemuson.chemio.persistence import PersistenceManager
+    from chemuson.chemio.rdkit_io import molfile_to_molgraph
+    from chemuson.geometry3d.service import conformer_3d_for_graph
+
+    template_path = Path(__file__).parent / "data" / "tetrandrina_local_template_repaired.mol"
+    graph = molfile_to_molgraph(template_path.read_text(encoding="utf-8"))
+    result = conformer_3d_for_graph(
+        graph,
+        force=True,
+        settings=OptimizationSettings(
+            max_iters=80,
+            steps_per_update=10,
+            timeout_s=30.0,
+            seed=173,
+        ),
+    )
+    assert result.ok and result.coordinate_set is not None
+    coordinates = result.coordinate_set
+    normalization = coordinates.metadata.get("template_normalization")
+    generated_atoms = coordinates.metadata.get("generated_atoms")
+    assert isinstance(normalization, dict)
+    assert isinstance(generated_atoms, list)
+    expanded_ids = set(normalization.get("expanded_atom_ids", ()))
+    generated_ids = {
+        int(str(atom["id"]).split(":", 1)[1])
+        for atom in generated_atoms
+        if isinstance(atom, dict)
+        and atom.get("element") != "H"
+        and str(atom.get("id", "")).startswith("calc:")
+    }
+    assert expanded_ids == {43, 44, 45, 46}
+    assert generated_ids == expanded_ids
+    assert set(coordinates.normalized_positions()) == set(graph.atoms) | expanded_ids
+
+    window = ChemusonWindow()
+    restored = None
+    try:
+        canvas = window.canvas
+        canvas.model = graph
+        canvas._rebuild_items_from_model()
+        viewport_dock = getattr(window, "viewport3d_dock")
+        viewport_dock.isVisible = lambda: True
+
+        window._publish_compchem_coordinates(
+            coordinates,
+            result,
+            "rdkit",
+            "generate",
+        )
+
+        assert not canvas.geometry3d_is_stale
+        assert len(viewport_dock.viewport.scene.atoms) == 88
+        assert len(viewport_dock.viewport.scene.bonds) == 94
+
+        # The conformer command must retain its expansion metadata across undo/redo.
+        canvas.undo_stack.undo()
+        assert canvas.coordinate_set_3d is None
+        assert not canvas.geometry3d_is_stale
+        canvas.undo_stack.redo()
+        assert canvas.coordinate_set_3d == coordinates
+        assert window._geometry3d_is_compatible(canvas, coordinates)
+        assert not canvas.geometry3d_is_stale
+
+        # Switching documents must restore the accepted expanded coordinate set.
+        second = window._create_document_tab(make_current=False)
+        window._set_active_canvas(second)
+        assert window._compchem_coordset is None
+        window._set_active_canvas(canvas)
+        assert window._compchem_coordset == coordinates
+        assert window._geometry3d_is_compatible(canvas, coordinates)
+        assert not canvas.geometry3d_is_stale
+        assert len(viewport_dock.viewport.scene.atoms) == 88
+
+        # Opening the dock with compatible expanded positions must not regenerate.
+        started_jobs = []
+        window._start_compchem_job = lambda operation, **kwargs: started_jobs.append(
+            (operation, kwargs)
+        )
+        window._start_geometry3d_sync_job()
+        assert started_jobs == []
+        assert not canvas.geometry3d_is_stale
+
+        # CMSN v1 persists only authored graph positions; that projection stays valid.
+        cmsn_path = tmp_path / "tetrandrina-expanded.cmsn"
+        PersistenceManager.save_to_file(str(cmsn_path), canvas)
+        restored = ChemusonWindow()
+        restored_viewport = getattr(restored, "viewport3d_dock")
+        restored_viewport.isVisible = lambda: True
+        PersistenceManager.load_from_file(str(cmsn_path), restored.canvas)
+
+        restored_coordinates = restored.canvas.coordinate_set_3d
+        assert restored_coordinates is not None
+        assert set(restored_coordinates.normalized_positions()) == set(graph.atoms)
+        assert "template_normalization" not in restored_coordinates.metadata
+        assert restored._geometry3d_is_compatible(restored.canvas, restored_coordinates)
+        assert not restored.canvas.geometry3d_is_stale
+        restored_jobs = []
+        restored._start_compchem_job = lambda operation, **kwargs: restored_jobs.append(
+            (operation, kwargs)
+        )
+        restored._start_geometry3d_sync_job()
+        assert restored_jobs == []
+        assert not restored.canvas.geometry3d_is_stale
+    finally:
+        window.canvas.undo_stack.setClean()
+        window._close_approved = True
+        window._async_shutdown_complete = True
+        window.close()
+        if restored is not None:
+            restored.canvas.undo_stack.setClean()
+            restored._close_approved = True
+            restored._async_shutdown_complete = True
+            restored.close()
+
+
+@pytest.mark.parametrize(
+    ("graph_ids", "position_ids", "metadata"),
+    [
+        pytest.param(
+            {1, 2},
+            {1, 3},
+            {
+                "template_normalization": {"expanded_atom_ids": [3]},
+                "generated_atoms": [{"id": "calc:3", "element": "C"}],
+            },
+            id="missing-source-position",
+        ),
+        pytest.param(
+            {1},
+            {1},
+            {
+                "template_normalization": {"expanded_atom_ids": [2]},
+                "generated_atoms": [{"id": "calc:2", "element": "C"}],
+            },
+            id="missing-declared-expansion-position",
+        ),
+        pytest.param(
+            {1},
+            {1, 2},
+            {},
+            id="undeclared-extra-position",
+        ),
+        pytest.param(
+            {1},
+            {1, 2},
+            {
+                "template_normalization": {"expanded_atom_ids": [2, 2]},
+                "generated_atoms": [{"id": "calc:2", "element": "C"}],
+            },
+            id="duplicate-expansion-declaration",
+        ),
+        pytest.param(
+            {1},
+            {1, 2},
+            {
+                "template_normalization": {"expanded_atom_ids": [2]},
+                "generated_atoms": [{"id": "calc:3", "element": "C"}],
+            },
+            id="inconsistent-expansion-metadata",
+        ),
+    ],
+)
+def test_geometry3d_position_ids_reject_missing_or_undeclared_expansions(
+    graph_ids: set[int],
+    position_ids: set[int],
+    metadata: dict[str, object],
+) -> None:
+    graph = MolGraph()
+    for atom_id in sorted(graph_ids):
+        graph.add_atom("C", float(atom_id), 0.0, atom_id=atom_id)
+    coordset = CoordinateSet3D(
+        {atom_id: (float(atom_id), 0.0, 0.0) for atom_id in position_ids},
+        source="test",
+        method="test",
+        metadata=metadata,
+    )
+
+    assert not ChemusonWindow._geometry3d_position_ids_compatible(graph, coordset)
+
+
 def test_open_viewport_debounces_regeneration_after_topology_changes() -> None:
     class FakeController:
         def __init__(self):

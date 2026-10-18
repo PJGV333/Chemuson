@@ -19,6 +19,10 @@ Repair only the authorized local tetrandrina entry, preserving every other atom,
 - Do not claim a visible render from `render_requested`, offscreen widgets, or mocks. If a real GUI session is not authorized, leave the manual guide and report the visual limitation.
 - No push, merge, or PR.
 
+## Hito A — OpenGL fault isolation and repair
+
+The owner reports that the corrected tetrandrina appears in the 2D canvas while the 3D viewport is black except for the XYZ overlay and `render_requested`. Do not change the repaired graph or template library. Trace the complete path from `main_window.py` publication through `SceneMolecule3D`, CPU mesh, VBO/VAO, shaders, camera matrices/clipping, draw submission, Qt framebuffer, and dock context lifecycle. Add stage-specific diagnostics and regression tests before changing the rendering path. Verify a synthetic molecule and the exact corrected tetrandrina through a real KDE Qt/OpenGL framebuffer readback; a mesh, upload flag, or draw submission alone is not visual acceptance. Preserve a truthful distinction between draw submission and non-background molecular pixels.
+
 ## Delivery
 
-Validate and commit the OpenSpec before the authorized chemistry repair. Keep prior specification, conformer, direct-drawing, and Live MM/navigation work in separate local commits. Add the local template correction with focused regression tests and a separate descriptive commit; commit the identity audit/manual acceptance/validation record separately. Keep this OpenSpec active while real GUI/OpenGL acceptance remains pending; do not push, merge, or open a PR.
+Validate and commit the OpenSpec before the authorized chemistry repair. Keep prior specification, conformer, direct-drawing, and Live MM/navigation work in separate local commits. Add the local template correction with focused regression tests and a separate descriptive commit; commit the identity audit/manual acceptance/validation record separately. Complete Hito A before writing Hito B or Hito C architecture changes. Keep this OpenSpec active until real GUI/OpenGL acceptance is evidenced; do not push, merge, or open a PR.

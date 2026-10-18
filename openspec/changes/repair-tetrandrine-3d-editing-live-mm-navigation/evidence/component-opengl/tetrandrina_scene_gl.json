@@ -1,0 +1,176 @@
+[
+  {
+    "label": "docked",
+    "qpa": "wayland",
+    "logical_size": [
+      1200,
+      677
+    ],
+    "dpr": 1.35,
+    "scene": {
+      "source": "rdkit",
+      "atoms": 88,
+      "bonds": 94
+    },
+    "mesh": {
+      "vertices": 114096,
+      "float_values": 1026864,
+      "all_finite": true
+    },
+    "conformer": {
+      "method": "unoptimized",
+      "energy": null,
+      "minimization": {
+        "requested_forcefield": "MMFF94",
+        "selected_forcefield": "mmff94",
+        "converged": false,
+        "energy": null,
+        "detail": "minimization_not_converged"
+      }
+    },
+    "gpu": {
+      "context_present": true,
+      "context_matches_renderer": true,
+      "gl_viewport": [
+        0,
+        0,
+        1620,
+        914
+      ],
+      "gl_error": 0,
+      "gl_version": "4.6 (Core Profile) Mesa 26.2.4-arch3.1",
+      "vbo_size_bytes": 0,
+      "renderer_vertex_count": 114096
+    },
+    "framebuffer": {
+      "path": "tetrandrina_scene_docked.png",
+      "size": [
+        1620,
+        914
+      ],
+      "non_background_pixels_excluding_axes_roi": 43548,
+      "bounds": [
+        32,
+        288,
+        1034,
+        881
+      ]
+    }
+  },
+  {
+    "label": "floating",
+    "qpa": "wayland",
+    "logical_size": [
+      1198,
+      675
+    ],
+    "dpr": 1.35,
+    "scene": {
+      "source": "rdkit",
+      "atoms": 88,
+      "bonds": 94
+    },
+    "mesh": {
+      "vertices": 114096,
+      "float_values": 1026864,
+      "all_finite": true
+    },
+    "conformer": {
+      "method": "unoptimized",
+      "energy": null,
+      "minimization": {
+        "requested_forcefield": "MMFF94",
+        "selected_forcefield": "mmff94",
+        "converged": false,
+        "energy": null,
+        "detail": "minimization_not_converged"
+      }
+    },
+    "gpu": {
+      "context_present": true,
+      "context_matches_renderer": true,
+      "gl_viewport": [
+        0,
+        0,
+        1617,
+        911
+      ],
+      "gl_error": 0,
+      "gl_version": "4.6 (Core Profile) Mesa 26.2.4-arch3.1",
+      "vbo_size_bytes": 0,
+      "renderer_vertex_count": 114096
+    },
+    "framebuffer": {
+      "path": "tetrandrina_scene_floating.png",
+      "size": [
+        1617,
+        911
+      ],
+      "non_background_pixels_excluding_axes_roi": 41691,
+      "bounds": [
+        33,
+        286,
+        1032,
+        878
+      ]
+    }
+  },
+  {
+    "label": "redocked",
+    "qpa": "wayland",
+    "logical_size": [
+      1200,
+      677
+    ],
+    "dpr": 1.35,
+    "scene": {
+      "source": "rdkit",
+      "atoms": 88,
+      "bonds": 94
+    },
+    "mesh": {
+      "vertices": 114096,
+      "float_values": 1026864,
+      "all_finite": true
+    },
+    "conformer": {
+      "method": "unoptimized",
+      "energy": null,
+      "minimization": {
+        "requested_forcefield": "MMFF94",
+        "selected_forcefield": "mmff94",
+        "converged": false,
+        "energy": null,
+        "detail": "minimization_not_converged"
+      }
+    },
+    "gpu": {
+      "context_present": true,
+      "context_matches_renderer": true,
+      "gl_viewport": [
+        0,
+        0,
+        1620,
+        914
+      ],
+      "gl_error": 0,
+      "gl_version": "4.6 (Core Profile) Mesa 26.2.4-arch3.1",
+      "vbo_size_bytes": 0,
+      "renderer_vertex_count": 114096
+    },
+    "framebuffer": {
+      "path": "tetrandrina_scene_redocked.png",
+      "size": [
+        1620,
+        914
+      ],
+      "non_background_pixels_excluding_axes_roi": 41907,
+      "bounds": [
+        32,
+        288,
+        1034,
+        881
+      ]
+    }
+  }
+]

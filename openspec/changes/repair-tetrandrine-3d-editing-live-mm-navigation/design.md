@@ -34,4 +34,19 @@ No `.cmsn` serialization changes, new dependencies, or package ownership changes
 - Commit 6: completed as `be7eca1` — authorized local-repair fixture, invalid-aromatic-bridge refusal, and focused regression tests. The user configuration and backup remain outside Git.
 - Commit 7: final identity audit and validation evidence for the repaired entry, recorded separately from the code commit while preserving original defect history.
 
-Do not archive the change while real GUI/OpenGL acceptance remains pending.
+## Hito A OpenGL investigation
+
+The baseline confirms a reporting defect but has not yet localized the black pixels. `MoleculeRenderer.render()` returns `None` both when it exits before drawing and after issuing `glDrawArrays`; `paintGL()` currently labels either path `requested`. `upload()` likewise reports `True` without checking that a non-empty payload reached the GPU or that GL reported no errors. Treat these as proven observability gaps, not yet as the physical cause of the black viewport.
+
+Ranked, falsifiable causes to test before changing production code:
+
+1. **Viewport/framebuffer dimensions are zero or stale.** The viewport has no explicit `resizeGL()` implementation and the renderer does not set or report `GL_VIEWPORT`; predict that a real context readback will show a zero or mismatched viewport and that no molecular pixels are produced.
+2. **Camera/frustum excludes the scene.** Predict zero projected atom centers or clipping depths outside near/far; compare the camera matrices, bounds, fit target, distance, and clip planes to the actual scene.
+3. **GPU upload or vertex input is invalid.** Predict a mismatch among CPU vertex count, payload bytes, VBO size, VAO attributes, shader link state, or GL error state.
+4. **Dock context lifecycle invalidates resources.** Predict that floating/re-docking changes the owning context or leaves buffers tied to an old context; compare context identity and repeat a draw after the transition.
+
+Use a small synthetic scene first, then the exact locally corrected tetrandrina graph with finite coordinates. Keep graph identity, conformer generation, scene construction, mesh generation, upload, projection, draw submission, and framebuffer pixel evidence as separate checkpoints. Do not infer chemical failure from the renderer symptom or introduce GPU-instancing/performance redesign in Hito A.
+
+A successful `draw_submitted` state means a draw call was issued without a reported GL error; it is not a claim of visible pixels. Real visibility requires a Qt/OpenGL framebuffer readback with molecular pixels outside painter overlays. The user has authorized a component-level probe, but integrated ChemUSON desktop acceptance is reserved for the user's CachyOS session; do not launch or request another integrated GUI in this task. Isolate configuration writes from the real template library during any future test because `TemplateRepository.load()` normalizes and saves its input on construction.
+
+Do not archive the change until the user's integrated GUI/OpenGL acceptance is recorded.

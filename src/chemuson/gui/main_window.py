@@ -707,7 +707,9 @@ class ChemusonWindow(QMainWindow):
             canvas.geometry3d_graph_signature = self._geometry3d_graph_signature(
                 canvas.model, position_ids
             )
-            canvas.geometry3d_is_stale = position_ids != set(canvas.model.atoms)
+            canvas.geometry3d_is_stale = not self._geometry3d_position_ids_compatible(
+                canvas.model, coordset
+            )
         else:
             return
         dock = getattr(self, "compchem_dock", None)
@@ -796,19 +798,80 @@ class ChemusonWindow(QMainWindow):
         )
         return atoms, bonds
 
+    @staticmethod
+    def _geometry3d_position_ids_compatible(graph, coordset) -> bool:
+        """Accept source atoms plus only explicitly declared calculation expansions."""
+        position_ids = set(coordset.normalized_positions())
+        graph_ids = set(getattr(graph, "atoms", {}))
+        if not graph_ids.issubset(position_ids):
+            return False
+        extra_ids = position_ids - graph_ids
+
+        metadata = getattr(coordset, "metadata", {})
+        if not isinstance(metadata, Mapping):
+            return not extra_ids
+        if "template_normalization" in metadata and not isinstance(
+            metadata["template_normalization"], Mapping
+        ):
+            return False
+
+        normalization = metadata.get("template_normalization", {})
+        has_declared_ids = isinstance(normalization, Mapping) and "expanded_atom_ids" in normalization
+        declared_ids: set[int] = set()
+        if has_declared_ids:
+            raw_ids = normalization["expanded_atom_ids"]
+            if not isinstance(raw_ids, (list, tuple, set, frozenset)):
+                return False
+            if any(type(atom_id) is not int for atom_id in raw_ids):
+                return False
+            declared_ids = set(raw_ids)
+            if len(declared_ids) != len(raw_ids) or declared_ids & graph_ids:
+                return False
+
+        generated_ids: set[int] = set()
+        has_generated_atoms = "generated_atoms" in metadata
+        if has_generated_atoms:
+            generated_atoms = metadata["generated_atoms"]
+            if not isinstance(generated_atoms, list):
+                return False
+            for atom in generated_atoms:
+                if not isinstance(atom, Mapping):
+                    return False
+                if str(atom.get("element", "")) == "H":
+                    continue
+                raw_id = str(atom.get("id", ""))
+                if not raw_id.startswith("calc:"):
+                    continue
+                suffix = raw_id.split(":", 1)[1]
+                if not suffix.isdecimal():
+                    return False
+                generated_id = int(suffix)
+                if generated_id in generated_ids or generated_id in graph_ids:
+                    return False
+                generated_ids.add(generated_id)
+
+        if has_declared_ids and has_generated_atoms and declared_ids != generated_ids:
+            return False
+        allowed_ids = declared_ids if has_declared_ids else generated_ids
+        if not allowed_ids:
+            return not extra_ids
+        return extra_ids == allowed_ids
+
     def _geometry3d_is_compatible(self, canvas, coordset) -> bool:
         if coordset is None:
             canvas.geometry3d_graph_signature = None
             canvas.geometry3d_is_stale = False
             return False
         position_ids = set(coordset.normalized_positions())
-        graph_ids = set(canvas.model.atoms)
         signature = self._geometry3d_graph_signature(canvas.model, position_ids)
         stored = getattr(canvas, "geometry3d_graph_signature", None)
         if stored is None:
             canvas.geometry3d_graph_signature = signature
             stored = signature
-        compatible = position_ids == graph_ids and stored == signature
+        compatible = (
+            self._geometry3d_position_ids_compatible(canvas.model, coordset)
+            and stored == signature
+        )
         canvas.geometry3d_is_stale = not compatible
         return compatible
 

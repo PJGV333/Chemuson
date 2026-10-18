@@ -41,8 +41,39 @@ The final focused tests verify frame order, visual-only interpolation, sample en
 | `openspec validate repair-tetrandrine-3d-editing-live-mm-navigation --strict` | pass |
 | `git diff --check` | pass after final documentation edits |
 | Full test suite | not rerun; historical Qt/SIP SIGSEGV remains open |
-| Real GUI / hardware OpenGL acceptance | not run; remains pending per `manual-test.md` |
+| Qt OpenGL component framebuffer (docked/floating/re-docked) | pass; see `evidence/component-opengl/`; not an integrated ChemUSON acceptance |
+| Integrated ChemUSON GUI/OpenGL acceptance on CachyOS | pending user-run manual acceptance; no integrated GUI was launched |
 | Local tetrandrina identity | repaired and read back; InChI/formula/connectivity verified, stereo not inferred |
 | User-library protection | full backup verified; only selected MolBlock/SMILES values changed; backup and config excluded from Git |
 
-No visual success is inferred from mocks, offscreen widgets, mesh counts, `render_requested`, or OpenGL upload. The local template has no explicit stereochemistry; none is inferred. No push, merge, or PR was performed.
+Component pixel success is based on actual `QOpenGLWidget.grabFramebuffer()` readback plus visual inspection, not mocks, scene-mesh counts, `render_requested`, or upload status. It verifies the viewport component's dock lifecycle only. Integrated ChemUSON application acceptance remains pending. The local template has no explicit stereochemistry; none is inferred. No push, merge, or PR was performed.
+
+## Compatibility closure — expanded coordinate IDs (2026-10-18)
+
+`_geometry3d_position_ids_compatible` now requires every source MolGraph ID. Additional position IDs must match the exact declared calculation expansions, and `template_normalization.expanded_atom_ids` must agree with non-hydrogen `generated_atoms` entries named `calc:<id>` when both sources are present. Missing source positions, missing declared expansion positions, undeclared extras, duplicate declarations, and mismatched metadata are rejected. The repaired tetrandrina calculation declares `43–46` beyond the 42 authored graph IDs; those coordinates remain compatible and publish the 88-atom/94-bond scene.
+
+The focused lifecycle regression verifies publication, geometry-command undo/redo, switching away from and back to the document tab, viewport reopening without a redundant generation job, and a CMSN save/load round trip. CMSN schema v1 persists only authored graph positions and its existing metadata whitelist. The reloaded graph-only projection remains compatible and is not falsely marked stale; the expanded calculation-only scene metadata is not claimed to round-trip.
+
+## Component OpenGL framebuffer evidence
+
+`evidence/component-opengl/` contains the reproducer, machine-readable JSON, and docked/floating/re-docked framebuffer captures. The probe used a real PyQt6 `MolecularViewportWidget` inside a `QMainWindow`/`QDockWidget` on Wayland, generated from the corrected local tetrandrina fixture. It is a component harness, not the ChemUSON main window.
+
+| State | Scene | GL context / version | GL error | Framebuffer molecular pixels outside XYZ ROI |
+|---|---:|---|---:|---:|
+| Docked | 88 atoms / 94 bonds; 114,096 mesh vertices | current renderer context; OpenGL 4.6 Core, Mesa 26.2.4 | 0 | 43,548 |
+| Floating | 88 atoms / 94 bonds; 114,096 mesh vertices | current renderer context; OpenGL 4.6 Core, Mesa 26.2.4 | 0 | 41,691 |
+| Re-docked | 88 atoms / 94 bonds; 114,096 mesh vertices | current renderer context; OpenGL 4.6 Core, Mesa 26.2.4 | 0 | 41,907 |
+
+Visual inspection confirms the molecular structure is present apart from the lower-left XYZ overlay in all three captures. The conformer remains `unoptimized` (`energy=None`, `minimization_not_converged`); this is a rendering check, not a minimization claim. The probe's `QOpenGLBuffer.size()` observation was `0`, so this report does not claim a verified VBO byte size. The framebuffer pixels and context/error observations establish component rendering only; they do not establish integrated application acceptance, fit/orbit behavior, or the user's desktop configuration.
+
+## Closeout checks
+
+- Baseline at `282cd1fdfc157f992030c1e377eabd81e04d3712`: compileall passed; collection passed; four focused compatibility/tab/undo/regen tests passed; scoped Ruff passed.
+- RED check before the compatibility fix: missing declared expansion position failed as expected (`1 failed, 3 passed`).
+- Final focused suites: `tests/test_compchem3d_dock.py`, `tests/test_geometry3d_persistence.py`, and `tests/test_persistence_contract.py` — `69 passed, 1 skipped in 52.33s`.
+- `./.venv/bin/python -m compileall -q src tests tools packaging` — exit 0, no output.
+- Scoped Ruff on `main_window.py`, `test_compchem3d_dock.py`, and the preserved component probe with `F401,F811,F821,E722,E741` — `All checks passed!`.
+- `openspec validate repair-tetrandrine-3d-editing-live-mm-navigation --strict` — valid.
+- `git diff --check` — pass.
+- The preserved `component_probe.py` was executed from the repository; process exit 0 and all three real framebuffer captures were byte-verified against their saved evidence copies.
+- Full pytest was not rerun, consistent with the documented Qt/SIP SIGSEGV constraint and the user's focused scope.

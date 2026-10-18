@@ -28,3 +28,35 @@ ChemUSON SHALL expand supported abbreviations only on a defensive calculation co
 - **WHEN** a scene is constructed
 - **THEN** finite coordinates may be displayed with the nonconvergence diagnostic
 - **AND** the UI does not label the geometry as minimized or visually accepted without real GUI verification
+
+### Requirement: Calculation-expanded coordinate IDs remain exact
+ChemUSON SHALL accept a 3D coordinate set only when it contains every source MolGraph atom and any additional numeric atom IDs exactly match calculation expansions declared by `template_normalization.expanded_atom_ids` or non-hydrogen `generated_atoms` IDs with the `calc:` prefix. When both metadata sources are present, their expansion ID sets SHALL match. Missing source/expanded positions, undeclared extras, duplicate IDs, and inconsistent expansion metadata SHALL be incompatible.
+
+#### Scenario: Tetrandrina expansion is accepted
+- **GIVEN** all 42 source MolGraph positions and the declared calculation IDs 43–46
+- **WHEN** the viewport validates the conformer
+- **THEN** the coordinate set is compatible and the 88-atom/94-bond scene can be published
+
+#### Scenario: Missing or undeclared positions are rejected
+- **GIVEN** a coordinate set is missing any source or declared expansion position, or contains an extra ID with no expansion declaration
+- **WHEN** compatibility is evaluated
+- **THEN** the coordinate set is marked incompatible and is not published as current geometry
+
+#### Scenario: Expansion metadata disagrees
+- **GIVEN** `expanded_atom_ids` and non-hydrogen `calc:` generated-atom IDs declare different sets
+- **WHEN** compatibility is evaluated
+- **THEN** the coordinate set is rejected even if one metadata source matches the coordinate keys
+
+### Requirement: Coordinate compatibility survives document lifecycle transitions
+A compatible expanded coordinate set SHALL remain non-stale through its undo/redo command, document-tab switching, and viewport reopening; these transitions SHALL NOT start redundant geometry generation. CMSN schema version 1 persists the authored-graph position projection only; a restored projection SHALL be validated as source-only geometry, without claiming that calculation-only expansion positions round-trip.
+
+#### Scenario: Expanded conformer is restored after undo/redo and tab switching
+- **GIVEN** a valid tetrandrina conformer with declared calculation expansion IDs
+- **WHEN** its geometry command is undone/redone, another tab is activated, and the original tab is restored
+- **THEN** the expanded coordinate set remains compatible and reopening the viewport does not trigger regeneration
+
+#### Scenario: Persisted source projection is reloaded
+- **GIVEN** a CMSN v1 file saved from a document with calculation-only atom IDs
+- **WHEN** the file is loaded
+- **THEN** the authored graph position projection is compatible and is not falsely marked stale
+- **AND** the UI does not claim that the expanded calculation-only scene was persisted

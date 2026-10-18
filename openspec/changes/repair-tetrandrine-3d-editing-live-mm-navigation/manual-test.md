@@ -2,14 +2,18 @@
 
 ## CachyOS launch
 
-Run this only in an authorized, logged-in desktop session; no real GUI/OpenGL acceptance was performed for this campaign:
+Run this only in an authorized, logged-in desktop session; the component-level framebuffer probe was run, but integrated ChemUSON GUI/OpenGL acceptance remains pending for the user's CachyOS check:
 
 ```sh
 cd /home/ccachyavgp/Documentos/Chemuson-3D
 ./.venv/bin/python -m chemuson
 ```
 
-Use the actual desktop viewport and hardware OpenGL path. Record the app version, OpenGL vendor/renderer, viewport status and screenshots. Do not count mocks, offscreen tests, scene meshes, `render_requested`, or upload success as visible acceptance.
+Use the actual desktop viewport and hardware OpenGL path. Record the app version, OpenGL vendor/renderer, viewport status and screenshots. Do not count mocks, offscreen tests, scene meshes, `render_requested`, or upload success as visible acceptance. Component-only framebuffer captures are preserved under `evidence/component-opengl/`; they do not substitute for this integrated check.
+
+## Component-only Qt/OpenGL evidence
+
+The saved docked, floating, and re-docked images show the tetrandrina molecular scene outside the lower-left XYZ overlay. They were captured by `MolecularViewportWidget` in a small `QMainWindow`/`QDockWidget` component harness using a real Qt OpenGL context and `grabFramebuffer()`. They verify the component's rendering and dock lifecycle, not the ChemUSON main window, its template-loading route, or full desktop acceptance. See `validation.md` for measured context/pixel results and the explicit VBO-size observation.
 
 ## 1. Local tetrandrina identity gate
 
@@ -17,7 +21,7 @@ The local entry has been repaired and read back from `~/.config/Chemuson/templat
 
 The worker produced 46 finite heavy-atom coordinates, but MMFF94 did not converge (`method=unoptimized`, `energy=None`). Treat the geometry as an unoptimized conformer, not a minimized structure. CPU scene/mesh tests are not visual acceptance.
 
-In a fresh, authorized CachyOS desktop session, reopen `Plantillas → Productos naturales → tetrandrina` and confirm the loaded structure, formula, components, connectivity, valences, and absence of invented stereo. Inspect the actual hardware-OpenGL viewport for visible atoms/bonds, fit and rotate it, and verify generated scene atoms do not mutate the authored 2D graph. Record application version, OpenGL vendor/renderer, viewport status, and screenshots. This campaign has **not** verified OpenGL pixels; acceptance remains pending.
+In a fresh, authorized CachyOS desktop session, reopen `Plantillas → Productos naturales → tetrandrina` and confirm the loaded structure, formula, components, connectivity, valences, and absence of invented stereo. Inspect the integrated hardware-OpenGL viewport for visible atoms/bonds, fit and rotate it, verify that floating/re-docking does not black out the scene, and confirm generated scene atoms do not mutate the authored 2D graph. Record application version, OpenGL vendor/renderer, viewport status, and screenshots. The component framebuffer probe already verifies pixels and dock float/re-dock in isolation; integrated application acceptance remains pending for the user and MUST NOT be inferred from that component test.
 
 ## 2. DrawTool and edit history
 1. Open ethane or butane, show the 3D dock, enable 3D editing, and choose `Construir molécula`.

@@ -59,3 +59,28 @@ The local template's first blocking failure is RDKit sanitization, before ETKDG/
 - Worker probe (seed 173, MMFF94, max_iters 80): stage `done`, 46 finite coordinates; minimization did not converge (`method=unoptimized`, `energy=None`), total 0.108235 s. CPU scene: 88 atoms / 94 bonds and finite mesh; this is not OpenGL acceptance.
 - Post-repair focused suite: 48 passed, 1 skipped in 7.55 s. Compileall and scoped Ruff on changed Python files passed. Broad selected Ruff still reports the pre-existing unused `math` import at `tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py:3`. Full pytest was not run because the known Qt/SIP SIGSEGV remains open.
 - Local code commit: `be7eca1` (`fix(geometry3d): reject invalid aromatic bridges`). No push, merge, or PR. Actual GUI/OpenGL acceptance remains pending.
+
+## OpenGL failure baseline before Hito A (2026-10-18)
+
+The user reported that the corrected tetrandrina is visible in the 2D canvas, while the 3D viewport is black except for XYZ axes and `render_requested`. The local library is not modified for this investigation.
+
+- `git status --short` — no output; `git branch --show-current` — `feature/chemuson-3d`; `git status -sb` — `## feature/chemuson-3d...origin/feature/chemuson-3d`.
+- `./.venv/bin/python -m compileall -q src tests tools packaging` — exit 0, no output.
+- `./.venv/bin/python -m pytest --collect-only -q` — exit 0, `2269 tests collected in 0.51s`.
+- Focused baseline `./.venv/bin/python -m pytest -q tests/test_viewport3d_widget.py tests/test_viewport3d_camera.py tests/test_viewport3d_geometry.py tests/test_geometry3d_service.py tests/test_rdkit_live_stream.py tests/test_compchem3d_dock.py tests/test_template_library.py` — `185 passed, 2 skipped in 63.03s`.
+- `./.venv/bin/ruff check src tests tools packaging --select F401,F811,F821,E722,E741 --output-format concise` — exit 1 for the existing `F401` unused `math` import at `tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py:3`.
+- Full `pytest -q` was not rerun because the known Qt/SIP SIGSEGV remains open, consistent with the existing campaign constraint.
+- System capability probe: KDE/Wayland on Linux `7.2.10-1-cachyos`; `glxinfo -B` reports direct rendering on AMD RadeonSI/Mesa `26.2.4`, OpenGL core `4.6`. This is GLX capability only, not evidence about Qt's widget context or rendered pixels.
+- Code inspection confirms a diagnostic false positive: `MoleculeRenderer.render()` returns `None` on several no-draw paths and after issuing `glDrawArrays`; `paintGL()` treats any non-exceptional return as `render_status="requested"`. `upload()` similarly returns `True` without checking uploaded byte size or GL errors. This explains why the reported status is not proof, but does not yet identify why the GPU image is black.
+- No GUI/OpenGL run or pixel capture has been performed yet in this baseline.
+
+## Baseline de cierre de compatibilidad (2026-10-18)
+
+This baseline was captured before adding the negative metadata cases and expanded-coordinate lifecycle assertions. The repository was already on the in-progress Hito A worktree; no prior changes were discarded.
+
+- HEAD: `282cd1fdfc157f992030c1e377eabd81e04d3712` on `feature/chemuson-3d`.
+- `./.venv/bin/python -m compileall -q src tests tools packaging` — exit 0, no output.
+- `./.venv/bin/python -m pytest --collect-only -q` — exit 0.
+- Focused compatibility/tab/undo/regeneration baseline — 4 passed in 3.14 s.
+- `./.venv/bin/ruff check src/chemuson/gui/main_window.py tests/test_compchem3d_dock.py --select F401,F811,F821,E722,E741` — `All checks passed!`.
+- Full `pytest -q` was not run, consistent with the known Qt/SIP SIGSEGV and the focused closure scope.

@@ -42,7 +42,24 @@
 - [x] Run focused chemistry, interaction, animation, cancellation, viewport, and architecture tests.
 - [x] Run compileall, scoped Ruff, OpenSpec strict validation, and `git diff --check`.
 - [x] Do not rerun the full pytest suite while the known SIGSEGV remains open; record this limitation.
-- [x] GUI/OpenGL acceptance was not run; keep `manual-test.md` and report visual acceptance as pending.
+- [x] Component-level Qt/OpenGL framebuffer evidence was captured and visually checked; integrated ChemUSON desktop acceptance remains pending.
 - [x] Keep the user-authorized chemistry repair separate from viewport/interaction commits; no push, merge, or PR.
-- [ ] Obtain user-run CachyOS GUI/OpenGL acceptance; do not claim pixels were verified from worker, mesh, or headless results.
+- [ ] Obtain user-run CachyOS integrated GUI/OpenGL acceptance; do not equate component readback with full-application acceptance.
 - [x] Confirm all implemented work is committed locally on `feature/chemuson-3d`, no push/merge/PR occurred, and Git status is clean after the final documentation commit.
+
+## 6. Hito A — OpenGL fault isolation and repair
+- [x] Capture the current branch/worktree and focused baseline before changes; preserve the known full-suite Qt/SIP SIGSEGV constraint.
+- [ ] Reproduce the reported black tetrandrina viewport in the integrated application; this remains for the user's CachyOS acceptance.
+- [ ] Capture integrated-application pipeline diagnostics for MolGraph/SceneMolecule3D, CPU mesh, VBO/VAO, shader, GL context/errors, viewport, camera, and projected atom bounds.
+- [x] Compare the exact corrected tetrandrina graph with a finite conformer in the real Qt OpenGL viewport component; no connectivity changed.
+- [x] Add compatibility regressions for missing positions, undeclared extras, and inconsistent expansion metadata.
+- [x] Implement the root-cause compatibility fix; component framebuffer pixels are recorded separately from integrated acceptance.
+- [x] Exercise component framebuffer capture through docked, floating, and re-docked states; fit/orbit and integrated acceptance remain manual.
+- [x] Run focused viewport/geometry tests, compileall, scoped Ruff, strict OpenSpec validation, and `git diff --check`; record the known full-suite limitation.
+- [x] Commit Hito A locally as a separate commit; do not push, merge, or open a PR.
+
+## 7. Compatibility closure — calculation-expanded coordinates
+- [x] Reject missing source/expanded positions, undeclared extra IDs, duplicate declarations, and disagreement between template and generated-atom metadata.
+- [x] Verify CMSN v1 source-position projection, geometry command undo/redo, tab switching, and viewport reopening without unnecessary regeneration.
+- [x] Preserve docked/floating/re-docked component OpenGL framebuffer images and machine-readable probe results under `evidence/`.
+- [ ] Leave full ChemUSON integrated acceptance to the user; no integrated ChemUSON window was launched in this task.
