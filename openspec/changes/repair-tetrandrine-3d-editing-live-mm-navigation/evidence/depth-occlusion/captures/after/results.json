@@ -1,0 +1,571 @@
+[
+  {
+    "mode": "after",
+    "baseline_revision": null,
+    "molecule": {
+      "name": "ethane",
+      "seed": 29,
+      "coordinate_sha256": "e4d84c27240fe5ee9b21ca3700c9b72c0b84d687778f68ef7f5167408ad93e2a",
+      "graph_atoms": 2,
+      "graph_bonds": 1,
+      "scene_atoms": 8,
+      "scene_bonds": 7,
+      "elements": {
+        "C": 2,
+        "H": 6
+      },
+      "method": "mmff94",
+      "energy": -4.734365293506259
+    },
+    "captures": [
+      {
+        "state": "docked",
+        "image": "ethane_docked.png",
+        "image_size": [
+          1485,
+          914
+        ],
+        "camera": {
+          "yaw": 0.0,
+          "pitch": 0.25,
+          "target": [
+            3.4218094402405086e-07,
+            -2.555561564587805e-07,
+            -8.937756490468018e-08
+          ],
+          "distance": 8.7791182344588
+        },
+        "context_depth_bits": 24,
+        "render_samples": [
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          },
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          },
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          }
+        ]
+      },
+      {
+        "state": "rotated",
+        "image": "ethane_rotated.png",
+        "image_size": [
+          1485,
+          914
+        ],
+        "camera": {
+          "yaw": -0.2969895566170558,
+          "pitch": 0.3613710837313959,
+          "target": [
+            3.4218094402405086e-07,
+            -2.555561564587805e-07,
+            -8.937756490468018e-08
+          ],
+          "distance": 8.7791182344588
+        },
+        "context_depth_bits": 24,
+        "render_samples": [
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          },
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          },
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          }
+        ]
+      },
+      {
+        "state": "floating",
+        "image": "ethane_floating.png",
+        "image_size": [
+          1482,
+          911
+        ],
+        "camera": {
+          "yaw": -0.2969895566170558,
+          "pitch": 0.3613710837313959,
+          "target": [
+            3.4218094402405086e-07,
+            -2.555561564587805e-07,
+            -8.937756490468018e-08
+          ],
+          "distance": 8.7791182344588
+        },
+        "context_depth_bits": 24,
+        "render_samples": [
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          },
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          },
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          }
+        ]
+      },
+      {
+        "state": "redocked",
+        "image": "ethane_redocked.png",
+        "image_size": [
+          1485,
+          914
+        ],
+        "camera": {
+          "yaw": -0.2969895566170558,
+          "pitch": 0.3613710837313959,
+          "target": [
+            3.4218094402405086e-07,
+            -2.555561564587805e-07,
+            -8.937756490468018e-08
+          ],
+          "distance": 8.7791182344588
+        },
+        "context_depth_bits": 24,
+        "render_samples": [
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          },
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          },
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "mode": "after",
+    "baseline_revision": null,
+    "molecule": {
+      "name": "benzene",
+      "seed": 29,
+      "coordinate_sha256": "960c968472eec18a80e6eb7ad66acaf4130b76c3945cfb21660380a48e7f01c0",
+      "graph_atoms": 6,
+      "graph_bonds": 6,
+      "scene_atoms": 12,
+      "scene_bonds": 12,
+      "elements": {
+        "C": 6,
+        "H": 6
+      },
+      "method": "mmff94",
+      "energy": 16.226966799737873
+    },
+    "captures": [
+      {
+        "state": "docked",
+        "image": "benzene_docked.png",
+        "image_size": [
+          1485,
+          914
+        ],
+        "camera": {
+          "yaw": 0.0,
+          "pitch": 0.25,
+          "target": [
+            -2.524925779567866e-08,
+            -1.1445508873997312e-07,
+            1.380031749764754e-06
+          ],
+          "distance": 13.845055633394546
+        },
+        "context_depth_bits": 24,
+        "render_samples": [
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          },
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          },
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          }
+        ]
+      },
+      {
+        "state": "rotated",
+        "image": "benzene_rotated.png",
+        "image_size": [
+          1485,
+          914
+        ],
+        "camera": {
+          "yaw": -0.2969895566170558,
+          "pitch": 0.3613710837313959,
+          "target": [
+            -2.524925779567866e-08,
+            -1.1445508873997312e-07,
+            1.380031749764754e-06
+          ],
+          "distance": 13.845055633394546
+        },
+        "context_depth_bits": 24,
+        "render_samples": [
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          },
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          },
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          }
+        ]
+      },
+      {
+        "state": "floating",
+        "image": "benzene_floating.png",
+        "image_size": [
+          1482,
+          911
+        ],
+        "camera": {
+          "yaw": -0.2969895566170558,
+          "pitch": 0.3613710837313959,
+          "target": [
+            -2.524925779567866e-08,
+            -1.1445508873997312e-07,
+            1.380031749764754e-06
+          ],
+          "distance": 13.845055633394546
+        },
+        "context_depth_bits": 24,
+        "render_samples": [
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          },
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          },
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          }
+        ]
+      },
+      {
+        "state": "redocked",
+        "image": "benzene_redocked.png",
+        "image_size": [
+          1485,
+          914
+        ],
+        "camera": {
+          "yaw": -0.2969895566170558,
+          "pitch": 0.3613710837313959,
+          "target": [
+            -2.524925779567866e-08,
+            -1.1445508873997312e-07,
+            1.380031749764754e-06
+          ],
+          "distance": 13.845055633394546
+        },
+        "context_depth_bits": 24,
+        "render_samples": [
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          },
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          },
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "mode": "after",
+    "baseline_revision": null,
+    "molecule": {
+      "name": "tetrandrina",
+      "seed": 173,
+      "coordinate_sha256": "4be6b9b87e4e2acdfce7465a2d05c56756a87fcdbd1f16d38c58dd7228946e78",
+      "graph_atoms": 42,
+      "graph_bonds": 48,
+      "scene_atoms": 88,
+      "scene_bonds": 94,
+      "elements": {
+        "C": 38,
+        "N": 2,
+        "O": 6,
+        "H": 42
+      },
+      "method": "unoptimized",
+      "energy": null
+    },
+    "captures": [
+      {
+        "state": "docked",
+        "image": "tetrandrina_docked.png",
+        "image_size": [
+          1485,
+          914
+        ],
+        "camera": {
+          "yaw": 0.0,
+          "pitch": 0.25,
+          "target": [
+            -0.2087369094492968,
+            0.38997006203513074,
+            -0.19986373950731995
+          ],
+          "distance": 37.08671684915083
+        },
+        "context_depth_bits": 24,
+        "render_samples": [
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          },
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          },
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          }
+        ]
+      },
+      {
+        "state": "rotated",
+        "image": "tetrandrina_rotated.png",
+        "image_size": [
+          1485,
+          914
+        ],
+        "camera": {
+          "yaw": -0.2969895566170558,
+          "pitch": 0.3613710837313959,
+          "target": [
+            -0.2087369094492968,
+            0.38997006203513074,
+            -0.19986373950731995
+          ],
+          "distance": 37.08671684915083
+        },
+        "context_depth_bits": 24,
+        "render_samples": [
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          },
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          },
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          }
+        ]
+      },
+      {
+        "state": "floating",
+        "image": "tetrandrina_floating.png",
+        "image_size": [
+          1482,
+          911
+        ],
+        "camera": {
+          "yaw": -0.2969895566170558,
+          "pitch": 0.3613710837313959,
+          "target": [
+            -0.2087369094492968,
+            0.38997006203513074,
+            -0.19986373950731995
+          ],
+          "distance": 37.08671684915083
+        },
+        "context_depth_bits": 24,
+        "render_samples": [
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          },
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          },
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          }
+        ]
+      },
+      {
+        "state": "redocked",
+        "image": "tetrandrina_redocked.png",
+        "image_size": [
+          1485,
+          914
+        ],
+        "camera": {
+          "yaw": -0.2969895566170558,
+          "pitch": 0.3613710837313959,
+          "target": [
+            -0.2087369094492968,
+            0.38997006203513074,
+            -0.19986373950731995
+          ],
+          "distance": 37.08671684915083
+        },
+        "context_depth_bits": 24,
+        "render_samples": [
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          },
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          },
+          {
+            "depth_test": true,
+            "depth_write_mask": true,
+            "depth_func": 513,
+            "depth_buffer_bits": 24,
+            "gl_error_after_draw": 0
+          }
+        ]
+      }
+    ]
+  }
+]

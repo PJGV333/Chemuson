@@ -63,3 +63,12 @@
 - [x] Verify CMSN v1 source-position projection, geometry command undo/redo, tab switching, and viewport reopening without unnecessary regeneration.
 - [x] Preserve docked/floating/re-docked component OpenGL framebuffer images and machine-readable probe results under `evidence/`.
 - [ ] Leave full ChemUSON integrated acceptance to the user; no integrated ChemUSON window was launched in this task.
+
+## 8. Hito B — depth-tested opacity and bond-surface joins
+- [x] Capture the real pre-fix GL depth state and axial occlusion defect after `QPainter` overlays; record the available depth buffer.
+- [x] Restore depth test, depth write mask, depth function, clear depth, and color/depth clear before every molecular frame.
+- [x] Add CPU mesh regressions for single/double/triple/aromatic bond endpoint trimming and preserved lane counts.
+- [x] Add a real multi-frame Qt/OpenGL pixel regression with XYZ, Live MM, orbit and geometry-handle overlays; verify ball-and-stick and space-filling occlusion.
+- [x] Capture and inspect before/after ethane, benzene and tetrandrina images in docked, rotated, floating and re-docked states.
+- [ ] Record the user's integrated ChemUSON acceptance separately; component framebuffer evidence is not full-app acceptance.
+- [x] Commit the implementation and evidence locally on `feature/chemuson-3d`; no push, merge or PR.

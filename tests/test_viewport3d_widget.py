@@ -94,6 +94,18 @@ def test_viewport_dock_exposes_retry_only_for_retryable_generation_errors(_qapp)
 
 def test_viewport_records_scene_upload_and_render_requests_offscreen(_qapp):
     class FakeGL:
+        def glEnable(self, *_args):
+            pass
+
+        def glDepthMask(self, *_args):
+            pass
+
+        def glDepthFunc(self, *_args):
+            pass
+
+        def glClearDepth(self, *_args):
+            pass
+
         def glClearColor(self, *_args):
             pass
 
@@ -183,7 +195,18 @@ def test_scene_and_selection_defer_gpu_upload_until_paint(monkeypatch) -> None:
     widget = MolecularViewportWidget()
     calls = []
     widget._gl_ready = True
-    widget._renderer._gl = type("GL", (), {"glClearColor": lambda *_args: None, "glClear": lambda *_args: None})()
+    widget._renderer._gl = type(
+        "GL",
+        (),
+        {
+            "glEnable": lambda *_args: None,
+            "glDepthMask": lambda *_args: None,
+            "glDepthFunc": lambda *_args: None,
+            "glClearDepth": lambda *_args: None,
+            "glClearColor": lambda *_args: None,
+            "glClear": lambda *_args: None,
+        },
+    )()
     monkeypatch.setattr(widget._renderer, "upload", lambda *args: calls.append(args) or True)
     monkeypatch.setattr(widget._renderer, "render", lambda *_args: None)
     scene = SceneMolecule3D(atoms=(SceneAtom3D(1, "C", 0.0, 0.0, 0.0, 1.7, "#404040"),), bonds=())

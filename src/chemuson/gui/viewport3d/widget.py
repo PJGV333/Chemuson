@@ -34,7 +34,13 @@ from chemuson.geometry3d.model import (
 
 from .camera import CameraProjection, CameraState
 from .geometry import add, dot
-from .renderer import GL_COLOR_BUFFER_BIT, GL_DEPTH_BUFFER_BIT, MoleculeRenderer
+from .renderer import (
+    GL_COLOR_BUFFER_BIT,
+    GL_DEPTH_BUFFER_BIT,
+    GL_DEPTH_TEST,
+    GL_LESS,
+    MoleculeRenderer,
+)
 from .mesh import normalize_representation
 from .picking import PickResult, pick_scene
 
@@ -456,6 +462,10 @@ class MolecularViewportWidget(QOpenGLWidget):
                     "display_failed: renderer OpenGL no disponible para cargar la escena."
                 )
             return
+        gl.glEnable(GL_DEPTH_TEST)
+        gl.glDepthMask(True)
+        gl.glDepthFunc(GL_LESS)
+        gl.glClearDepth(1.0)
         gl.glClearColor(0.055, 0.065, 0.08, 1.0)
         gl.glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         if self._mesh_dirty:

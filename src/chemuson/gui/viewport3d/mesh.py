@@ -204,6 +204,19 @@ def bond_lane_layout(
     return (-BOND_RADIUS * 2.0, 0.0, BOND_RADIUS * 2.0), BOND_RADIUS * 0.82
 
 
+def _bond_surface_trim(atom_radius: float, lane_offset: float, bond_radius: float) -> float:
+    """Trim a bond lane to where its outer edge meets the atom sphere."""
+    radial_extent = abs(lane_offset) + bond_radius
+    if (
+        atom_radius <= radial_extent
+        or atom_radius <= 0.0
+        or not math.isfinite(atom_radius)
+        or not math.isfinite(radial_extent)
+    ):
+        return 0.0
+    return math.sqrt(max(0.0, atom_radius * atom_radius - radial_extent * radial_extent))
+
+
 def _append_bond(
     output: list[float],
     start: Vec3,
@@ -213,11 +226,27 @@ def _append_bond(
     is_aromatic: bool,
     color: tuple[float, float, float],
     representation: str = "ball_and_stick",
+    start_atom_radius: float = 0.0,
+    end_atom_radius: float = 0.0,
 ) -> None:
     offsets, radius = bond_lane_layout(order, is_aromatic, representation)
+    axis = sub(end, start)
+    axis_length = length(axis)
+    if axis_length <= 1.0e-9 or not math.isfinite(axis_length):
+        return
+    direction = scale(axis, 1.0 / axis_length)
     for offset in offsets:
         displacement = scale(lateral, offset)
-        _append_cylinder(output, add(start, displacement), add(end, displacement), radius, color)
+        start_trim = 0.0
+        end_trim = 0.0
+        if representation == "ball_and_stick":
+            start_trim = _bond_surface_trim(start_atom_radius, offset, radius)
+            end_trim = _bond_surface_trim(end_atom_radius, offset, radius)
+        if start_trim + end_trim >= axis_length:
+            continue
+        lane_start = add(add(start, scale(direction, start_trim)), displacement)
+        lane_end = add(sub(end, scale(direction, end_trim)), displacement)
+        _append_cylinder(output, lane_start, lane_end, radius, color)
 
 
 def build_scene_mesh(
@@ -277,5 +306,11 @@ def build_scene_mesh(
             bool(getattr(bond, "is_aromatic", False)),
             color,
             style,
+            float(getattr(start_atom, "radius", 0.0)) * ATOM_RADIUS_SCALE
+            if style == "ball_and_stick"
+            else 0.0,
+            float(getattr(end_atom, "radius", 0.0)) * ATOM_RADIUS_SCALE
+            if style == "ball_and_stick"
+            else 0.0,
         )
     return MeshData(tuple(output))

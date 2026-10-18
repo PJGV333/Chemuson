@@ -237,6 +237,18 @@ def test_viewport_display_failure_reaches_compchem_diagnostics(_qapp):
         )
 
         class FakeGL:
+            def glEnable(self, *_args):
+                pass
+
+            def glDepthMask(self, *_args):
+                pass
+
+            def glDepthFunc(self, *_args):
+                pass
+
+            def glClearDepth(self, *_args):
+                pass
+
             def glClearColor(self, *_args):
                 pass
 

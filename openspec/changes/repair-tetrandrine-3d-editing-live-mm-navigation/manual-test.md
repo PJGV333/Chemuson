@@ -44,3 +44,10 @@ In a fresh, authorized CachyOS desktop session, reopen `Plantillas → Productos
 2. Drag in empty space; verify a transient orbit cue and camera-motion status.
 3. Move an atom in edit mode; verify a distinct atom-motion cue and no orbit indicator.
 4. Confirm overlays do not affect picking, selection, chemistry, or geometry.
+
+## 5. Depth occlusion in the integrated ChemUSON window
+1. Open ethane, benzene, then the repaired tetrandrina through the normal application workflow; switch between `ball_and_stick` and `space_filling`.
+2. Rotate each view and inspect overlap regions: atom spheres must remain opaque and fully hide rear bonds/atoms; ball-and-stick rods must meet sphere surfaces without visible interior stubs. Aromatic and multiple bonds must retain all lanes.
+3. Keep XYZ visible; exercise Live MM and a geometry handle when available, then rotate again so QPainter overlays paint between molecular frames. Confirm the next frame still has correct occlusion.
+4. Float and re-dock the 3D dock. Confirm the scene and depth behavior survive context recreation.
+5. Save integrated-app screenshots and record app version, GL vendor/renderer, depth-buffer size, and observed result. The component captures under `evidence/depth-occlusion/captures/` are not a substitute for this user-run full-app acceptance.

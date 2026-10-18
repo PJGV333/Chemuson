@@ -84,3 +84,17 @@ This baseline was captured before adding the negative metadata cases and expande
 - Focused compatibility/tab/undo/regeneration baseline — 4 passed in 3.14 s.
 - `./.venv/bin/ruff check src/chemuson/gui/main_window.py tests/test_compchem3d_dock.py --select F401,F811,F821,E722,E741` — `All checks passed!`.
 - Full `pytest -q` was not run, consistent with the known Qt/SIP SIGSEGV and the focused closure scope.
+
+## Depth/occlusion baseline (2026-10-18)
+
+Captured on `feature/chemuson-3d` at `74ebc9a` before depth-state or bond-mesh changes; no chemistry or template data was modified.
+
+- `git status --short` — empty; HEAD `74ebc9a fix(viewport3d): validate expanded coordinate compatibility`.
+- `./.venv/bin/python -m compileall -q src tests tools packaging` — exit 0, no output.
+- `./.venv/bin/python -m pytest --collect-only -q` — exit 0, `2275 tests collected in 0.55s`.
+- Focused baseline `./.venv/bin/python -m pytest -q tests/test_viewport3d_widget.py tests/test_viewport3d_geometry.py tests/test_viewport3d_picking.py tests/test_compchem3d_dock.py` — `122 passed, 1 skipped in 51.42s`.
+- Scoped Ruff on viewport renderer/widget/mesh and viewport widget/geometry tests — `All checks passed!`.
+- Broad selected Ruff — exit 1 only for the existing `F401` unused `math` import at `tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py:3`.
+- Full pytest was not rerun due the documented Qt/SIP SIGSEGV and the requested focused scope.
+- Real pre-fix Qt/Wayland probe: at renderer entry, frame 1 had `GL_DEPTH_TEST=True`; frames 2–12 had `False` after actual QPainter overlays. `GL_DEPTH_WRITEMASK=True`, `GL_DEPTH_FUNC=GL_LESS (0x0201)`, and Qt's actual widget context format reported a 24-bit depth buffer. The QOpenGLFunctions `glGetIntegerv(GL_DEPTH_BITS)` binding returned a non-scalar pointer-like value, so it is excluded from evidence.
+- In the known axial two-sphere scene, the real framebuffer shows the center-to-center bond drawn across the foreground sphere; without the bond, the rear blue sphere overwrites the foreground red sphere. This confirms lost depth occlusion by actual pixels, not merely by `GL error=0`. Pre-fix molecular captures are preserved under `evidence/depth-occlusion/captures/before/`.

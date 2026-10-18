@@ -44,3 +44,27 @@ A finite non-empty molecular scene that passes mesh generation, GPU upload, and 
 - **WHEN** its dock is floated, re-docked, or resized
 - **THEN** the owning context and GPU resources are safely recreated or retained
 - **AND** the same scene is uploaded and rendered again without a false success status
+
+### Requirement: Molecular surfaces occlude rear geometry on every frame
+The viewport SHALL restore `GL_DEPTH_TEST` enabled, `GL_DEPTH_WRITEMASK` true, `GL_DEPTH_FUNC` set to `GL_LESS`, and the depth clear value set to 1.0 before clearing and drawing each frame. It SHALL clear the depth buffer every frame and SHALL NOT rely on `QPainter` to preserve OpenGL state. Atom spheres SHALL appear opaque and hide bonds and rear atoms that lie behind their surfaces.
+
+#### Scenario: Painter overlays run between molecular frames
+- **GIVEN** a valid Qt/OpenGL viewport with an available depth buffer and visible XYZ, Live MM, orbit, or geometry-handle overlays
+- **WHEN** several frames are painted and each overlay uses `QPainter` after molecular rendering
+- **THEN** the next molecular draw begins with depth testing enabled, depth writes enabled, and `GL_LESS`
+- **AND** a known bond segment behind a foreground sphere is absent from the framebuffer pixel at that sphere
+
+#### Scenario: Space-filling atoms cover internal bonds
+- **GIVEN** a `space_filling` scene whose atom spheres overlap or lie in front of a bond segment
+- **WHEN** the scene is drawn across consecutive overlay frames
+- **THEN** the spheres completely hide the covered portions of the bonds
+- **AND** camera orbit and dock floating/re-docking preserve the same occlusion
+
+### Requirement: Ball-and-stick rods meet atom surfaces
+In `ball_and_stick`, bond-cylinder endpoints SHALL be trimmed independently to the corresponding atom-sphere surfaces. Multiple and aromatic bonds SHALL retain their existing lane count, offsets, and visual identity.
+
+#### Scenario: Single and multiple bond endpoints
+- **GIVEN** single, double, triple, or aromatic bonds between atoms with visible sphere radii
+- **WHEN** the ball-and-stick mesh is built
+- **THEN** no rod segment extends unnecessarily inside either atom sphere
+- **AND** the lane count, bond order, aromaticity, picking and selection identity remain unchanged

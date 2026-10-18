@@ -76,4 +76,30 @@ Visual inspection confirms the molecular structure is present apart from the low
 - `openspec validate repair-tetrandrine-3d-editing-live-mm-navigation --strict` — valid.
 - `git diff --check` — pass.
 - The preserved `component_probe.py` was executed from the repository; process exit 0 and all three real framebuffer captures were byte-verified against their saved evidence copies.
-- Full pytest was not rerun, consistent with the documented Qt/SIP SIGSEGV constraint and the user's focused scope.
+- Full `pytest -q` was not rerun, consistent with the documented Qt/SIP SIGSEGV constraint and the user's focused scope.
+
+## Depth occlusion and bond surface integration (2026-10-18)
+
+### Reproduction and diagnosis
+- Used a real Qt/OpenGL component on Wayland, not a CPU-only mesh or a `GL error=0` proxy.
+- The pre-fix framebuffer probe loaded `widget.py` and `mesh.py` from baseline revision `74ebc9a`; current code was not modified to produce the baseline.
+
+- On each baseline frame, `GL_DEPTH_TEST` was false before molecular drawing; `GL_DEPTH_WRITEMASK` was true, `GL_DEPTH_FUNC` was `GL_LESS` (513), and the Qt context reported a 24-bit depth buffer. This isolates the lost enable state rather than a missing buffer or write mask.
+- The controlled axial framebuffer visibly shows the center-to-center bond overwriting the foreground sphere. The no-bond control shows the rear sphere overwriting the front sphere. Both images are under `evidence/depth-occlusion/captures/axial/before/`.
+
+### Implementation and regressions
+- `MolecularViewportWidget.paintGL()` restores depth testing, write mask, `GL_LESS`, and clear-depth 1.0 before clearing both color and depth on every frame.
+- Ball-and-stick cylinder lanes are shortened individually to meet each endpoint sphere using the lane offset and bond radius; tests cover single, double, triple, and aromatic lanes. `space_filling` retains its spheres and is verified by real framebuffer pixels.
+- Added fake-state and real Qt/OpenGL regressions. The real test runs repeated frames with orientation axes, Live MM HUD, orbit guide, and geometry handle; it checks state at the molecular draw boundary, front-atom pixel color, rotation, and dock floating/re-docking.
+
+### Final validation
+- Focused functional suites (viewport depth, widget, camera, geometry, picking, geometry service, Live MM stream, CompChem dock, and persistence): `197 passed, 3 skipped in 74.49s`.
+- Real Wayland framebuffer regression with axial occlusion, overlays, camera rotation, and dock cycle: `1 passed in 2.21s`; optional image output was saved under `evidence/depth-occlusion/captures/axial/after/`.
+- `./.venv/bin/python -m compileall -q src tests tools packaging` — exit 0.
+- Scoped Ruff (`F401,F811,F821,E722,E741`) on modified Python sources/tests and the evidence probe — `All checks passed!`.
+- `./.venv/bin/python -m pytest --collect-only -q` — `2281 tests collected in 0.57s`.
+- `openspec validate repair-tetrandrine-3d-editing-live-mm-navigation --strict` — valid after all documentation updates.
+- Real component captures: 12 before and 12 after across ethane, benzene, and tetrandrina (docked, rotated, floating, re-docked). All 36 pre-fix draw samples had depth testing off; all 36 post-fix samples had it on. Both runs reported write mask true, `GL_LESS`, 24 depth bits, and `GL error=0`.
+- Coordinate SHA-256 values, molecular identities, and energies match exactly between before/after runs; tetrandrina was rendered from the unchanged repaired fixture with `method=unoptimized`, without changing chemistry, ETKDG, or its template.
+- Visual inspection of the axial regression and ethane, benzene, and tetrandrina captures confirms opaque atom spheres and no bond overdraw through front surfaces. `GL error=0` alone is not treated as acceptance evidence.
+- Full `pytest -q` remains unrun due the documented Qt/SIP SIGSEGV. The integrated ChemUSON GUI was not launched; user manual acceptance remains pending.
