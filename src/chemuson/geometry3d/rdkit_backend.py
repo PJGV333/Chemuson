@@ -14,7 +14,7 @@ from chemuson.geometry3d.model import CoordinateSet3D, OptimizationFrame, Optimi
 
 
 def _prepare_3d_calculation_graph(graph: MolGraph) -> tuple[MolGraph, dict[str, object]]:
-    """Expand known labels and normalize only impossible acyclic aromatic flags on a copy."""
+    """Expand known labels on a copy and diagnose acyclic aromatic bridge flags."""
     from chemuson.chemio.rdkit_io import expand_abbreviations_for_calculation
 
     calculation_graph = expand_abbreviations_for_calculation(graph)
@@ -22,12 +22,9 @@ def _prepare_3d_calculation_graph(graph: MolGraph) -> tuple[MolGraph, dict[str, 
     expanded_atom_ids = sorted(set(calculation_graph.atoms) - source_atom_ids)
     aromatic_bridge_bond_ids: list[int] = []
     for bond in calculation_graph.bonds.values():
-        if not bool(bond.is_aromatic) or _edge_has_alternate_path(
+        if bool(bond.is_aromatic) and not _edge_has_alternate_path(
             calculation_graph, int(bond.id), int(bond.a1_id), int(bond.a2_id)
         ):
-            continue
-        if math.isclose(float(bond.order), 1.0, rel_tol=0.0, abs_tol=1.0e-8):
-            bond.is_aromatic = False
             aromatic_bridge_bond_ids.append(int(bond.id))
 
     source_element_overrides = {
@@ -43,7 +40,7 @@ def _prepare_3d_calculation_graph(graph: MolGraph) -> tuple[MolGraph, dict[str, 
         "calculation_bond_count": len(calculation_graph.bonds),
         "expanded_atom_ids": expanded_atom_ids,
         "source_element_overrides": source_element_overrides,
-        "aromatic_bridge_bond_ids": sorted(aromatic_bridge_bond_ids),
+        "invalid_aromatic_bridge_bond_ids": sorted(aromatic_bridge_bond_ids),
         "stereochemistry_inferred": False,
     }
     return calculation_graph, preparation
@@ -177,9 +174,57 @@ def _calculation_graph_was_normalized(preparation: Mapping[str, object]) -> bool
         for key in (
             "expanded_atom_ids",
             "source_element_overrides",
-            "aromatic_bridge_bond_ids",
         )
     )
+
+
+def _invalid_aromatic_bridge_diagnostics(
+    graph: MolGraph, preparation: Mapping[str, object]
+) -> dict[str, object] | None:
+    raw_bond_ids = preparation.get("invalid_aromatic_bridge_bond_ids", [])
+    if not isinstance(raw_bond_ids, list) or not raw_bond_ids:
+        return None
+    bridge_ids = sorted(int(bond_id) for bond_id in raw_bond_ids)
+    detail = f"acyclic aromatic bridge bond IDs: {bridge_ids}"
+    return {
+        "error_code": "invalid_aromatic_bridge",
+        "stage": "calculation_graph_validation",
+        "detail": detail,
+        "aromatic_bridge_bond_ids": bridge_ids,
+        "graph": {
+            "atom_count": len(getattr(graph, "atoms", {})),
+            "bond_count": len(getattr(graph, "bonds", {})),
+        },
+        "template_preparation": dict(preparation),
+    }
+
+
+def _invalid_aromatic_bridge_result(
+    graph: MolGraph,
+    preparation: Mapping[str, object],
+    *,
+    method: str = "rdkit",
+    frames: tuple[OptimizationFrame, ...] = (),
+) -> OptimizationResult | None:
+    diagnostics = _invalid_aromatic_bridge_diagnostics(graph, preparation)
+    if diagnostics is None:
+        return None
+    detail = str(diagnostics["detail"])
+    return OptimizationResult(
+        None,
+        method=method,
+        message=f"invalid_aromatic_bridge: {detail}",
+        frames=frames,
+        metadata={"diagnostics": diagnostics},
+    )
+
+
+class InvalidAromaticBridgeError(RuntimeError):
+    """Aromatic bridge flags are invalid before an RDKit worker is started."""
+
+    def __init__(self, diagnostics: Mapping[str, object]) -> None:
+        self.diagnostics = dict(diagnostics)
+        super().__init__(f"invalid_aromatic_bridge: {self.diagnostics.get('detail', '')}")
 
 
 def generate_conformer(
@@ -192,6 +237,9 @@ def generate_conformer(
     """Genera geometría con worker RDKit aislado, etapas y errores trazables."""
     settings = settings or OptimizationSettings()
     calculation_graph, preparation = _prepare_3d_calculation_graph(graph)
+    invalid_result = _invalid_aromatic_bridge_result(graph, preparation)
+    if invalid_result is not None:
+        return invalid_result
     from chemuson.chemio.rdkit_safe import conformer_3d_stream_isolated
 
     started = time.monotonic()
@@ -322,6 +370,9 @@ def optimize(
     """Optimiza geometría con UFF/MMFF usando RDKit aislado."""
     settings = settings or OptimizationSettings()
     calculation_graph, preparation = _prepare_3d_calculation_graph(graph)
+    invalid_result = _invalid_aromatic_bridge_result(graph, preparation)
+    if invalid_result is not None:
+        return invalid_result
     try:
         from chemuson.chemio.rdkit_safe import optimize_3d_isolated
 
@@ -371,6 +422,9 @@ def optimize_iter(
     """Emite cada frame NDJSON recibido mientras RDKit sigue optimizando."""
     settings = settings or OptimizationSettings()
     calculation_graph, preparation = _prepare_3d_calculation_graph(graph)
+    diagnostics = _invalid_aromatic_bridge_diagnostics(graph, preparation)
+    if diagnostics is not None:
+        raise InvalidAromaticBridgeError(diagnostics)
     from chemuson.chemio.rdkit_safe import optimize_3d_stream_isolated
 
     events = optimize_3d_stream_isolated(
@@ -416,6 +470,9 @@ def optimize_stream(
     """Consume el flujo RDKit, notificando frames antes del resultado terminal."""
     settings = settings or OptimizationSettings()
     calculation_graph, preparation = _prepare_3d_calculation_graph(graph)
+    invalid_result = _invalid_aromatic_bridge_result(graph, preparation)
+    if invalid_result is not None:
+        return invalid_result
     from chemuson.chemio.rdkit_safe import optimize_3d_stream_isolated
 
     frames: list[OptimizationFrame] = []
