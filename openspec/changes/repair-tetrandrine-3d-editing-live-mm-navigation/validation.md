@@ -1,20 +1,20 @@
 # Validation report
 
-## Baseline and final focused suite
+## Baseline and focused suites
 
-See `baseline.md` for the captured baseline. The historical full-suite Qt/SIP SIGSEGV remains open, so the full pytest suite was not rerun. The final scoped integrated run was:
+The earlier integrated viewport/interaction suite completed with 458 passed, 2 skipped in 191.72 s before the local-template repair. After the chemistry change, the final focused regression run was:
 
 ```text
-458 passed, 2 skipped in 191.72s
+48 passed, 1 skipped in 7.55s
 ```
 
-It covered local-template/geometry chemistry, service and RDKit live streaming, 3D dock/edit interactions, viewport, camera/geometry/picking, and architecture tests. Compileall passed. OpenSpec strict validation, scoped Ruff on changed Python files, and `git diff --check` are recorded after final documentation changes.
+This run covered aromatic bridge refusal across conformer/optimization/streaming paths, the preserved malformed fixture, corrected tetrandrina identity, RDKit generation/scene output, geometry service behavior, and the local Clean2D tetrandrina regression. The historical full-suite Qt/SIP SIGSEGV remains open, so the full pytest suite was not rerun. Compileall passed; scoped Ruff, strict OpenSpec validation, and `git diff --check` were run after final documentation changes.
 
 ## Chemical identity audit
 
-`identity-audit.md` records the local MolBlock/fixture match, composition, graph and aromaticity comparison. The source graph is malformed before import; import and abbreviation expansion are faithful. The generated 47-heavy-atom / 93-total scene sanitizes only after demoting bridge bond 9 but remains `C39H46N2O6`, not reference tetrandrina `C38H42N2O6`. Atom 11 duplicates atom 6's 2D coordinates, is terminal, and is attached to atom 5 while aromatic closure 5–6 is absent. No source template or fixture was changed. A graph-equivalent candidate was tested only on a disposable RDKit copy and was not applied.
+`identity-audit.md` preserves the original defect evidence and records the authorized repair. The saved entry was reread through `graph_from_template_payload` without loading the write-on-load library: the local graph has 42 atoms/48 bonds and the independent corrected fixture matches its MolBlock. Supported abbreviation expansion yields 46 heavy atoms/52 bonds; the expanded formula is `C38H42N2O6`, with one component, cycle rank 7, 24 aromatic atoms/bonds, and no specified stereochemistry. This matches PubChem CID 73078 connectivity without stereo comparison. The stored SMILES parses to the same formula. A verified full backup was created before atomic JSON replacement; a byte-level comparison confirmed only the selected entry's MolBlock and SMILES string values changed; parsed library data outside those values is identical.
 
-The original conformer probe reported `method=unoptimized`, `energy=None`, `minimization_not_converged`; generation took 0.264745 s and produced a scene of 93 atoms / 98 bonds and a finite 120,384-vertex CPU mesh. This verifies pipeline output for the malformed graph only—not tetrandrina identity and not OpenGL pixels.
+The repaired worker probe used seed 173, MMFF94, and 80 maximum iterations. ETKDG completed with 46 finite heavy-atom coordinates; MMFF94 did not converge (`method=unoptimized`, `energy=None`, `minimization_not_converged`). Scene construction yielded 88 atoms and 94 bonds plus a finite CPU mesh. These results verify chemical/CPU pipeline output only—not minimized geometry or OpenGL pixels. The old 93-atom output and 120,384-vertex CPU mesh remain historical evidence for the malformed graph and are not evidence for the repaired identity or visible rendering.
 
 ## Live MM sequence and telemetry
 
@@ -33,13 +33,16 @@ The final focused tests verify frame order, visual-only interpolation, sample en
 
 | Check | Result |
 |---|---|
-| `pytest` focused integrated run | 458 passed, 2 skipped (191.72 s) |
-| `python -m compileall -q src tests tools packaging` | pass |
-| Ruff on changed Python files | pass |
+| Earlier integrated viewport/interaction suite (before local repair) | 458 passed, 2 skipped (191.72 s) |
+| Post-repair focused chemistry suite | 48 passed, 1 skipped (7.55 s) |
+| `./.venv/bin/python -m compileall -q src tests tools packaging` | pass |
+| Scoped Ruff on `rdkit_backend.py` and `test_geometry3d_aromaticity.py` (`F401,F811,F821,E722,E741`) | pass |
+| Broad Ruff selection over `src tests tools packaging` | exit 1 only for pre-existing `F401` unused `math` at `tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py:3` |
 | `openspec validate repair-tetrandrine-3d-editing-live-mm-navigation --strict` | pass |
-| `git diff --check` and staged diff check | pass |
+| `git diff --check` | pass after final documentation edits |
 | Full test suite | not rerun; historical Qt/SIP SIGSEGV remains open |
-| Real GUI / hardware OpenGL acceptance | not run; manual steps in `manual-test.md` |
-| Local tetrandrina identity | **blocked** pending explicit authorization to correct the user-local template; current scene is not the reference molecule |
+| Real GUI / hardware OpenGL acceptance | not run; remains pending per `manual-test.md` |
+| Local tetrandrina identity | repaired and read back; InChI/formula/connectivity verified, stereo not inferred |
+| User-library protection | full backup verified; only selected MolBlock/SMILES values changed; backup and config excluded from Git |
 
 No visual success is inferred from mocks, offscreen widgets, mesh counts, `render_requested`, or OpenGL upload. The local template has no explicit stereochemistry; none is inferred. No push, merge, or PR was performed.

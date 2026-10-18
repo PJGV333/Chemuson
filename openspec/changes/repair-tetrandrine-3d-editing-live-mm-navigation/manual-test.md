@@ -13,9 +13,11 @@ Use the actual desktop viewport and hardware OpenGL path. Record the app version
 
 ## 1. Local tetrandrina identity gate
 
-The current user-local entry is **not chemically identical** to tetrandrina: its calculation graph is `C39H46N2O6` (47 heavy / 93 total), while the reference is `C38H42N2O6` (46 heavy / 88 total). Do not treat its current scene as a valid tetrandrina render. No user-local model correction was applied.
+The local entry has been repaired and read back from `~/.config/Chemuson/template_library.json`: its expanded identity is `C38H42N2O6` (46 heavy / 88 total), with one connected component and connectivity matching PubChem CID 73078 without stereochemistry. The canonical fallback SMILES was regenerated and round-tripped to the same connectivity. A full backup was verified before the atomic update; only this entry's MolBlock and SMILES fields changed.
 
-Only after the owner explicitly approves and corrects the local MolGraph (duplicate atom 11; restore aromatic closure 5–6 in place of 5–11), reopen `Plantillas → Productos naturales → tetrandrina` and verify formula, components, connectivity, valence, absence of invented stereo, and MMFF convergence status. Then inspect the viewport for actual visible atoms/bonds, fit and rotate it, and confirm generated scene atoms do not mutate the authored 2D graph. The correction described here is a manual acceptance prerequisite, not something this campaign applied.
+The worker produced 46 finite heavy-atom coordinates, but MMFF94 did not converge (`method=unoptimized`, `energy=None`). Treat the geometry as an unoptimized conformer, not a minimized structure. CPU scene/mesh tests are not visual acceptance.
+
+In a fresh, authorized CachyOS desktop session, reopen `Plantillas → Productos naturales → tetrandrina` and confirm the loaded structure, formula, components, connectivity, valences, and absence of invented stereo. Inspect the actual hardware-OpenGL viewport for visible atoms/bonds, fit and rotate it, and verify generated scene atoms do not mutate the authored 2D graph. Record application version, OpenGL vendor/renderer, viewport status, and screenshots. This campaign has **not** verified OpenGL pixels; acceptance remains pending.
 
 ## 2. DrawTool and edit history
 1. Open ethane or butane, show the 3D dock, enable 3D editing, and choose `Construir molécula`.

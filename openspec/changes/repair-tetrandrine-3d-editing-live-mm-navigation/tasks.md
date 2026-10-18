@@ -5,14 +5,15 @@
 - [x] Validate this change with `openspec validate repair-tetrandrine-3d-editing-live-mm-navigation --strict`.
 - [x] Commit the validated specification separately before production code.
 
-## 1. Tetrandrina calculation and scene publication — commit 2
+## 1. Tetrandrina calculation and scene publication — commits 2 and 6
 - [x] Add a regression using the exact local template graph and assert the original graph is unchanged.
 - [x] Expand supported abbreviations only on a calculation copy; preserve source stereo exactly.
-- [x] Normalize only contradictory aromatic bridge flags with explicit single order and include diagnostics; treat this as RDKit sanitization only, not identity repair.
-- [x] Publish coordinates for the imported graph, derived abbreviation atoms, and H into a scene; do not equate scene publication with correct chemical identity.
-- [x] Verify ETKDG, scene construction, finite mesh, and the nonconverged-MMFF status are separately reported.
-- [x] Audit formula, composition, components, connectivity, expansion, aromaticity, and valences against the reference; record the local-template defect in `identity-audit.md` without changing the user's model.
-- [ ] Apply a user-authorized correction to the local template and revalidate its identity; the current 93-atom scene is not tetrandrina acceptance.
+- [x] Audit formula, composition, components, connectivity, expansion, aromaticity, and valences against the reference; record the initial local-template defect.
+- [x] Reject acyclic aromatic bridges with a stage-specific diagnostic; do not silently clear aromatic flags.
+- [x] Preserve the malformed fixture as a rejection regression and add an independent corrected fixture.
+- [x] Apply the authorized 5–11 → 5–6 repair to the one local entry, regenerate SMILES, and verify the 46-heavy/88-total identity.
+- [x] Verify worker ETKDG, finite coordinates, 88-atom/94-bond scene, and explicit MMFF94/UFF convergence status.
+- [x] Create and verify a full user-library backup; atomically replace only the selected MolBlock/SMILES fields and prove all other entries are unchanged.
 
 ## 2. Direct 3D drawing — commit 3
 - [x] Add RED tests for world-space preview geometry, snapping, empty-space creation, and Escape cancellation.
@@ -42,5 +43,6 @@
 - [x] Run compileall, scoped Ruff, OpenSpec strict validation, and `git diff --check`.
 - [x] Do not rerun the full pytest suite while the known SIGSEGV remains open; record this limitation.
 - [x] GUI/OpenGL acceptance was not run; keep `manual-test.md` and report visual acceptance as pending.
-- [ ] Obtain explicit authorization before changing the defective user-local tetrandrina template; identity acceptance remains blocked.
+- [x] Keep the user-authorized chemistry repair separate from viewport/interaction commits; no push, merge, or PR.
+- [ ] Obtain user-run CachyOS GUI/OpenGL acceptance; do not claim pixels were verified from worker, mesh, or headless results.
 - [x] Confirm all implemented work is committed locally on `feature/chemuson-3d`, no push/merge/PR occurred, and Git status is clean after the final documentation commit.

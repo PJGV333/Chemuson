@@ -25,6 +25,18 @@ The app's user-local library was read without instantiating the write-on-load `T
 - Graph diagnosis: aromatic bridge bond ID 9 joins atom IDs 5 and 11; atom 11 has degree 1; stored bond order is single. The flag is internally contradictory because an acyclic bridge cannot be aromatic.
 - Read-only prototype on an expanded copy, demoting only that bridge's aromatic flag while retaining its single order: ETKDG return code 0; embedding 0.218 s; minimization 0.097 s but did not converge; result still carried coordinates. Scene construction yielded 93 atoms and a 120,312-vertex finite mesh. This verifies the chemistry-to-mesh path, not OpenGL visibility.
 
+## Follow-up baseline before the explicitly authorized local-template repair (2026-10-17)
+
+- Branch/HEAD: `feature/chemuson-3d`, `051936c757c311ab369e0c9796d837ea4ec64702`; worktree was clean before this OpenSpec scope update.
+- User-library file: `~/.config/Chemuson/template_library.json`, 10,844 bytes; SHA-256 before repair: `75051c9bc73e92d34bc53f109a123aa909cbf1e47186f8e9f6dd7fafdab5c68d`.
+- Read-only selection found exactly one `Productos naturales / tetrandrina` entry, ID `tpl_f79a6425241340fab69f51e0b9d65870`. No ChemUSON process was running.
+- `./.venv/bin/python -m compileall -q src tests tools packaging` — exit 0, no output.
+- `./.venv/bin/python -m pytest --collect-only -q` — exit 0, 2,265 tests collected in 0.47 s.
+- Focused existing chemistry baseline `./.venv/bin/python -m pytest -q tests/test_geometry3d_aromaticity.py tests/test_geometry3d_service.py tests/test_clean2d_tetrandrina_like_local.py` — 44 passed, 1 skipped in 6.47 s.
+- `./.venv/bin/ruff check src tests tools packaging --select F401,F811,F821,E722,E741` — exit 1 for the pre-existing unused `math` import at `tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py:3`.
+- Full pytest was not run because the repository's documented Qt/SIP SIGSEGV remains open.
+- In-memory chemistry prototype only: the proposed 5–11 → 5–6 correction sanitized to `C38H42N2O6`, 46 heavy atoms, 52 heavy bonds, 1 component, cycle rank 7, 24 aromatic atoms/bonds; its InChI matched the PubChem CID 73078 connectivity with stereochemistry unspecified. No config or tracked production file was changed during this prototype.
+
 ## Live MM worker-frame baseline
 Measured with real RDKit MMFF94 streamed frames from collinear starting coordinates; timestamps are Python consumer receipt times, not display or paint timestamps.
 
@@ -38,3 +50,12 @@ Read-only inspection of `DrawTool` and `AutoOptTool` in the local Avogadro 1.2 s
 
 ## Baseline conclusion
 The local template's first blocking failure is RDKit sanitization, before ETKDG/scene/OpenGL. The Live MM discontinuity is explained by measured sub-frame frame arrivals plus immediate scene refresh. Visual OpenGL acceptance remains untested; `render_requested` is not considered proof of visible output.
+
+## Post-repair verification (2026-10-17)
+
+- Local library entry ID `tpl_f79a6425241340fab69f51e0b9d65870` was changed only in its `molblock` and `smiles` values. Full backup `~/.config/Chemuson/template_library.json.bak-20261017T193637027947-0700` was verified byte-for-byte (10,844 bytes; SHA-256 `75051c9bc73e92d34bc53f109a123aa909cbf1e47186f8e9f6dd7fafdab5c68d`). Updated JSON is 10,778 bytes; SHA-256 `0f34a831b22577c1d954788638cf6950dd53cb2960cbd2c533b31446c474eb14`. All other serialized bytes and parsed library fields/entries were verified unchanged; neither config nor backup is in Git.
+- Target MolGraph: 42 atoms / 48 bonds; expanded copy: 46 heavy atoms / 52 bonds, `C38H42N2O6`, one component, cycle rank 7, 24 aromatic atoms/bonds. InChI matched the CID 73078 connectivity; regenerated stored SMILES round-tripped to the same InChI. No stereo was added.
+- Corrected fixture was derived by a targeted MolBlock record edit: delete atom 11, replace 5–11 with aromatic 5–6, adjust remaining atom-index references, preserve other coordinates/attributes. Historical fixture remains unchanged.
+- Worker probe (seed 173, MMFF94, max_iters 80): stage `done`, 46 finite coordinates; minimization did not converge (`method=unoptimized`, `energy=None`), total 0.108235 s. CPU scene: 88 atoms / 94 bonds and finite mesh; this is not OpenGL acceptance.
+- Post-repair focused suite: 48 passed, 1 skipped in 7.55 s. Compileall and scoped Ruff on changed Python files passed. Broad selected Ruff still reports the pre-existing unused `math` import at `tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py:3`. Full pytest was not run because the known Qt/SIP SIGSEGV remains open.
+- Local code commit: `be7eca1` (`fix(geometry3d): reject invalid aromatic bridges`). No push, merge, or PR. Actual GUI/OpenGL acceptance remains pending.

@@ -1,21 +1,27 @@
 ## ADDED Requirements
 
 ### Requirement: Local templates reach 3D generation without hidden graph mutation
-ChemUSON SHALL calculate conformers from a defensive, diagnostically normalized graph copy, SHALL preserve the authored MolGraph, and SHALL never infer absent stereochemistry. Supported abbreviations SHALL be expanded using the existing declared mappings. A contradictory aromatic bridge SHALL only be represented as its stored single order when that order is explicitly single; ambiguous cases SHALL fail with a stage-specific diagnostic.
+ChemUSON SHALL expand supported abbreviations only on a defensive calculation copy, preserve the authored MolGraph and specified stereochemistry, and never infer absent stereochemistry. ChemUSON SHALL reject any aromatic bond that is a graph bridge with a stage-specific diagnostic rather than silently removing its aromatic flag. Valid aromatic rings SHALL retain their aromaticity.
 
-#### Scenario: Tetrandrina template reaches ETKDG
-- **GIVEN** the exact user-local `Productos naturales / tetrandrina` template has 43 atoms, 48 bonds, supported abbreviations, and aromatic bridge bond 9 with explicit single order
+#### Scenario: Authorized tetrandrina entry matches reference connectivity
+- **GIVEN** the locally saved `Productos naturales / tetrandrina` entry has the authorized repair: remove terminal duplicate atom 11 and replace bond 5–11 with the aromatic closure 5–6
+- **WHEN** the MolBlock is imported and supported `CH3`/`OCH3` groups are expanded on a calculation copy
+- **THEN** the expanded graph has formula `C38H42N2O6`, 46 heavy atoms, 52 heavy-atom bonds, 88 atoms with hydrogens, one component, and cycle rank 7
+- **AND** it has 24 aromatic atoms and 24 aromatic bonds and is connectivity-isomorphic to PubChem CID 73078 ignoring unspecified stereochemistry
+- **AND** all remaining authored 2D coordinates and specified attributes are preserved
+- **AND** no stereochemistry is inferred
+
+#### Scenario: Historical malformed fixture is rejected
+- **GIVEN** the preserved pre-repair fixture contains aromatic bridge bond 9 from atom 5 to terminal atom 11 and lacks aromatic closure 5–6
 - **WHEN** conformer generation begins
-- **THEN** the saved template graph remains byte/field-equivalent and the calculation graph is expanded on a copy
-- **AND** the invalid acyclic aromatic flag is reported and normalized only for RDKit calculation
-- **AND** ETKDG coordinates are published for document atoms and scene-only expanded atoms
-- **AND** no missing atom/bond stereochemistry is assigned
+- **THEN** it fails before RDKit sanitization with a stage-specific invalid-aromatic-bridge diagnostic naming bond 9
+- **AND** no aromatic flag or source connectivity is changed to hide the defect
 
-#### Scenario: Unambiguous aromatic rings remain aromatic
-- **GIVEN** a graph whose aromatic edges participate in cycles and a graph with an aromatic bridge whose stored order is not explicit single
-- **WHEN** calculation normalization runs
-- **THEN** cycle aromaticity is preserved
-- **AND** ambiguous bridge data returns a diagnostic rather than a guessed bond order
+#### Scenario: Corrected local graph reaches ETKDG and scene construction
+- **GIVEN** the repaired local graph passes RDKit sanitization and ETKDG
+- **WHEN** the worker returns finite coordinates
+- **THEN** the scene contains 88 atoms and 94 bonds, including expanded abbreviation atoms and hydrogens
+- **AND** MMFF94/UFF convergence, missing parameters, and unoptimized geometry remain distinctly reported
 
 #### Scenario: Scene publication is distinct from computation
 - **GIVEN** successful ETKDG coordinates but a nonconverged force-field minimization
