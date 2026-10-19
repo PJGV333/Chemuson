@@ -24,10 +24,10 @@ Con sólo clics cortos, los ángulos locales de ambos N y el carbonilo son 120°
 
 - N1 centro `(479.0, 499.0)`. El texto es `NH` a 11 pt: glyph N bbox `(476.9025, 497.4637, 8.375, 10.3125)`; H bbox `(487.7306, 497.4637, 8.375, 10.3125)`. El N se ancla ópticamente al átomo más el offset local `(2.09, 3.62)`; H queda a su derecha.
 - N2 centro `(479.0, 429.7180)`. N bbox `(476.8897, 420.9344, 8.375, 10.3125)`; H bbox `(487.7179, 420.9344, 8.375, 10.3125)`. Offset óptico aproximado `(2.08, -3.63)`.
-- En N1→carbonilo, la proyección actual devuelve `13.320745` de extent + `2.30` de clearance = `15.620745` de recorte. Se cruzó el path real `QGraphicsTextItem.shape()` con un corredor del trazo `BondItem` de anchura `stroke 2.6 + 2×clearance 2.3`; el último punto conflictivo está en `t=7.623205`. Exceso de recorte: `7.997541` unidades.
-- En carbonilo→N2, el extent proyectado es `13.443313` + `2.30` = `15.743313`; el corredor real requiere hasta `7.795145`. Exceso: `7.948168` unidades.
+- En N1→carbonilo, la proyección actual devuelve `13.320745` de extent + `2.30` de clearance = `15.620745` de recorte. Al dilatar el path real `QGraphicsTextItem.shape()` por el clearance de `2.30` y cruzarlo con la línea central, el extremo requerido es `8.203442`; el recorte vigente excede `7.417304` unidades.
+- En carbonilo→N2, el extent proyectado es `13.443313` + `2.30` = `15.743313`; la dilatación/intersección requiere `8.375382`. Exceso: `7.367931` unidades. Para Ar–N1H y N2H–CH3 el nuevo extremo coincide con el recorte actual con diferencias `<0.04`, controlando que la corrección no acorte enlaces por sistema.
 
-La proyección de puntos de glyph es una cota de soporte sobre el eje, no una prueba de que texto y trayectoria se crucen. El NH está desplazado ópticamente hacia el sector libre; puntos laterales/lejanos inflan el recorte incluso cuando el stroke-plus-clearance ya deja de intersectar la forma ocupada. La reproducción confirma un defecto de trimming visual; la geometría del grafo permanece en 40 unidades.
+La proyección de puntos de glyph es una cota de soporte sobre el eje, no la longitud de la línea necesaria para despejar su forma. El NH está desplazado ópticamente hacia el sector libre; puntos laterales/lejanos inflan el recorte aun cuando la trayectoria centralizada, una vez extendida por stroke y clearance, deja de tocar la forma. La dilatación explícita del path seguida de intersección con la línea central da el extremo geométrico requerido. La reproducción confirma un defecto de trimming visual; la geometría del grafo permanece en 40 unidades.
 
 ## Decisiones de diseño por validar
 

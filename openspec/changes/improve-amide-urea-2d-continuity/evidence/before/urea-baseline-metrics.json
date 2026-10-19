@@ -372,13 +372,13 @@
           "intersects": false,
           "max_forward_extent": null
         },
-        "start_ray_intersection_stroke_plus_nominal_clearance": {
+        "start_expanded_label_centerline_extent": {
           "intersects": false,
-          "max_forward_extent": null
+          "max_centerline_extent": null
         },
-        "end_ray_intersection_stroke_plus_nominal_clearance": {
+        "end_expanded_label_centerline_extent": {
           "intersects": false,
-          "max_forward_extent": null
+          "max_centerline_extent": null
         }
       }
     },
@@ -438,13 +438,13 @@
           "intersects": false,
           "max_forward_extent": null
         },
-        "start_ray_intersection_stroke_plus_nominal_clearance": {
+        "start_expanded_label_centerline_extent": {
           "intersects": false,
-          "max_forward_extent": null
+          "max_centerline_extent": null
         },
-        "end_ray_intersection_stroke_plus_nominal_clearance": {
+        "end_expanded_label_centerline_extent": {
           "intersects": false,
-          "max_forward_extent": null
+          "max_centerline_extent": null
         }
       }
     },
@@ -517,13 +517,13 @@
           "intersects": false,
           "max_forward_extent": null
         },
-        "start_ray_intersection_stroke_plus_nominal_clearance": {
+        "start_expanded_label_centerline_extent": {
           "intersects": false,
-          "max_forward_extent": null
+          "max_centerline_extent": null
         },
-        "end_ray_intersection_stroke_plus_nominal_clearance": {
+        "end_expanded_label_centerline_extent": {
           "intersects": false,
-          "max_forward_extent": null
+          "max_centerline_extent": null
         }
       }
     },
@@ -583,13 +583,13 @@
           "intersects": false,
           "max_forward_extent": null
         },
-        "start_ray_intersection_stroke_plus_nominal_clearance": {
+        "start_expanded_label_centerline_extent": {
           "intersects": false,
-          "max_forward_extent": null
+          "max_centerline_extent": null
         },
-        "end_ray_intersection_stroke_plus_nominal_clearance": {
+        "end_expanded_label_centerline_extent": {
           "intersects": false,
-          "max_forward_extent": null
+          "max_centerline_extent": null
         }
       }
     },
@@ -662,13 +662,13 @@
           "intersects": false,
           "max_forward_extent": null
         },
-        "start_ray_intersection_stroke_plus_nominal_clearance": {
+        "start_expanded_label_centerline_extent": {
           "intersects": false,
-          "max_forward_extent": null
+          "max_centerline_extent": null
         },
-        "end_ray_intersection_stroke_plus_nominal_clearance": {
+        "end_expanded_label_centerline_extent": {
           "intersects": false,
-          "max_forward_extent": null
+          "max_centerline_extent": null
         }
       }
     },
@@ -728,13 +728,13 @@
           "intersects": false,
           "max_forward_extent": null
         },
-        "start_ray_intersection_stroke_plus_nominal_clearance": {
+        "start_expanded_label_centerline_extent": {
           "intersects": false,
-          "max_forward_extent": null
+          "max_centerline_extent": null
         },
-        "end_ray_intersection_stroke_plus_nominal_clearance": {
+        "end_expanded_label_centerline_extent": {
           "intersects": false,
-          "max_forward_extent": null
+          "max_centerline_extent": null
         }
       }
     },
@@ -794,13 +794,13 @@
           "intersects": true,
           "max_forward_extent": 3.331875000000025
         },
-        "start_ray_intersection_stroke_plus_nominal_clearance": {
+        "start_expanded_label_centerline_extent": {
           "intersects": false,
-          "max_forward_extent": null
+          "max_centerline_extent": null
         },
-        "end_ray_intersection_stroke_plus_nominal_clearance": {
+        "end_expanded_label_centerline_extent": {
           "intersects": true,
-          "max_forward_extent": 3.331875000000025
+          "max_centerline_extent": 5.631875000000036
         }
       }
     },
@@ -860,13 +860,13 @@
           "intersects": false,
           "max_forward_extent": null
         },
-        "start_ray_intersection_stroke_plus_nominal_clearance": {
+        "start_expanded_label_centerline_extent": {
           "intersects": true,
-          "max_forward_extent": 7.623204565745448
+          "max_centerline_extent": 8.20344158628101
         },
-        "end_ray_intersection_stroke_plus_nominal_clearance": {
+        "end_expanded_label_centerline_extent": {
           "intersects": false,
-          "max_forward_extent": null
+          "max_centerline_extent": null
         }
       }
     },
@@ -939,13 +939,13 @@
           "intersects": true,
           "max_forward_extent": 5.847839493405817
         },
-        "start_ray_intersection_stroke_plus_nominal_clearance": {
+        "start_expanded_label_centerline_extent": {
           "intersects": false,
-          "max_forward_extent": null
+          "max_centerline_extent": null
         },
-        "end_ray_intersection_stroke_plus_nominal_clearance": {
+        "end_expanded_label_centerline_extent": {
           "intersects": true,
-          "max_forward_extent": 5.868481064701608
+          "max_centerline_extent": 8.136310014325431
         }
       }
     },
@@ -1005,13 +1005,13 @@
           "intersects": true,
           "max_forward_extent": 6.467239096951307
         },
-        "start_ray_intersection_stroke_plus_nominal_clearance": {
+        "start_expanded_label_centerline_extent": {
           "intersects": false,
-          "max_forward_extent": null
+          "max_centerline_extent": null
         },
-        "end_ray_intersection_stroke_plus_nominal_clearance": {
+        "end_expanded_label_centerline_extent": {
           "intersects": true,
-          "max_forward_extent": 7.795144716087482
+          "max_centerline_extent": 8.375381736623044
         }
       }
     },
@@ -1071,13 +1071,13 @@
           "intersects": false,
           "max_forward_extent": null
         },
-        "start_ray_intersection_stroke_plus_nominal_clearance": {
+        "start_expanded_label_centerline_extent": {
           "intersects": true,
-          "max_forward_extent": 3.3701157063893845
+          "max_centerline_extent": 5.644825223439233
         },
-        "end_ray_intersection_stroke_plus_nominal_clearance": {
+        "end_expanded_label_centerline_extent": {
           "intersects": false,
-          "max_forward_extent": null
+          "max_centerline_extent": null
         }
       }
     }
@@ -1139,13 +1139,13 @@
           "intersects": true,
           "max_forward_extent": 3.331875000000025
         },
-        "start_ray_intersection_stroke_plus_nominal_clearance": {
+        "start_expanded_label_centerline_extent": {
           "intersects": false,
-          "max_forward_extent": null
+          "max_centerline_extent": null
         },
-        "end_ray_intersection_stroke_plus_nominal_clearance": {
+        "end_expanded_label_centerline_extent": {
           "intersects": true,
-          "max_forward_extent": 3.331875000000025
+          "max_centerline_extent": 5.631875000000036
         }
       }
     },
@@ -1205,13 +1205,13 @@
           "intersects": false,
           "max_forward_extent": null
         },
-        "start_ray_intersection_stroke_plus_nominal_clearance": {
+        "start_expanded_label_centerline_extent": {
           "intersects": true,
-          "max_forward_extent": 7.623204565745448
+          "max_centerline_extent": 8.20344158628101
         },
-        "end_ray_intersection_stroke_plus_nominal_clearance": {
+        "end_expanded_label_centerline_extent": {
           "intersects": false,
-          "max_forward_extent": null
+          "max_centerline_extent": null
         }
       }
     },
@@ -1284,13 +1284,13 @@
           "intersects": true,
           "max_forward_extent": 5.847839493405817
         },
-        "start_ray_intersection_stroke_plus_nominal_clearance": {
+        "start_expanded_label_centerline_extent": {
           "intersects": false,
-          "max_forward_extent": null
+          "max_centerline_extent": null
         },
-        "end_ray_intersection_stroke_plus_nominal_clearance": {
+        "end_expanded_label_centerline_extent": {
           "intersects": true,
-          "max_forward_extent": 5.868481064701608
+          "max_centerline_extent": 8.136310014325431
         }
       }
     },
@@ -1350,13 +1350,13 @@
           "intersects": false,
           "max_forward_extent": null
         },
-        "start_ray_intersection_stroke_plus_nominal_clearance": {
+        "start_expanded_label_centerline_extent": {
           "intersects": true,
-          "max_forward_extent": 3.3701157063893845
+          "max_centerline_extent": 5.644825223439233
         },
-        "end_ray_intersection_stroke_plus_nominal_clearance": {
+        "end_expanded_label_centerline_extent": {
           "intersects": false,
-          "max_forward_extent": null
+          "max_centerline_extent": null
         }
       }
     }

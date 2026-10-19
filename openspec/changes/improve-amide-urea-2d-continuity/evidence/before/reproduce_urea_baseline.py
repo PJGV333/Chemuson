@@ -176,6 +176,31 @@ def label_ray_hit(atom_id: int, ux: float, uy: float, width: float) -> dict:
     return {"intersects": not hit.isEmpty(), "max_forward_extent": max(projections) if projections else None}
 
 
+def expanded_label_ray_hit(atom_id: int, ux: float, uy: float, radius: float) -> dict:
+    atom = canvas.model.get_atom(atom_id)
+    item = canvas.atom_items.get(atom_id)
+    if item is None or not item.label.isVisible():
+        return {"intersects": False, "max_centerline_extent": None}
+    text_path = item.label.mapToScene(item.label.shape())
+    expander = QPainterPathStroker()
+    expander.setWidth(max(0.0, 2.0 * radius))
+    expander.setCapStyle(Qt.PenCapStyle.RoundCap)
+    expander.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+    expanded = text_path.united(expander.createStroke(text_path))
+    ray = QPainterPath()
+    ray.moveTo(atom.x, atom.y)
+    ray.lineTo(atom.x + ux * canvas.state.bond_length, atom.y + uy * canvas.state.bond_length)
+    ray_stroker = QPainterPathStroker()
+    ray_stroker.setWidth(0.01)
+    hit = expanded.intersected(ray_stroker.createStroke(ray))
+    projections = [
+        (point.x() - atom.x) * ux + (point.y() - atom.y) * uy
+        for polygon in hit.toSubpathPolygons()
+        for point in polygon
+    ]
+    return {"intersects": not hit.isEmpty(), "max_centerline_extent": max(projections) if projections else None}
+
+
 def bond_geometry(bond) -> dict:
     a1 = canvas.model.get_atom(bond.a1_id)
     a2 = canvas.model.get_atom(bond.a2_id)
@@ -226,8 +251,8 @@ def bond_geometry(bond) -> dict:
             "end_ray_intersection_stroke_1px": label_ray_hit(bond.a2_id, -ux, -uy, 1.0),
             "start_ray_intersection_actual_stroke": label_ray_hit(bond.a1_id, ux, uy, stroke_width),
             "end_ray_intersection_actual_stroke": label_ray_hit(bond.a2_id, -ux, -uy, stroke_width),
-            "start_ray_intersection_stroke_plus_nominal_clearance": label_ray_hit(bond.a1_id, ux, uy, stroke_width + 2.0 * clearance),
-            "end_ray_intersection_stroke_plus_nominal_clearance": label_ray_hit(bond.a2_id, -ux, -uy, stroke_width + 2.0 * clearance),
+            "start_expanded_label_centerline_extent": expanded_label_ray_hit(bond.a1_id, ux, uy, clearance),
+            "end_expanded_label_centerline_extent": expanded_label_ray_hit(bond.a2_id, -ux, -uy, clearance),
         },
     }
 

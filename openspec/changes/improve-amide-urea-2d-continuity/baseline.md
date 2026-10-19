@@ -34,7 +34,7 @@ La separación de centros nunca se reduce para resolver el defecto. Los trims de
 - N1: centro `(479.000, 499.000)`; label `NH` 11 pt; N bbox escena `(476.9025,497.4637,8.375,10.3125)`; H `(487.7306,497.4637,8.375,10.3125)`.
 - N2: centro `(479.000,429.718)`; N bbox `(476.8897,420.9344,8.375,10.3125)`; H `(487.7179,420.9344,8.375,10.3125)`.
 - Anchaje óptico actual: el centro del glyph N queda en el centro del átomo más el offset del grupo; el H inline se ordena al lado de N. El reporte JSON conserva posiciones de label/glyph completos.
-- N1→C: proyección actual `13.320745` + clearance `2.30` = trim `15.620745`; pero al cruzar el `shape()` real con el corredor de stroke 2.6 + 2×clearance 2.3 la extensión de intersección termina en `7.623205` (exceso `7.997540`).
-- C→N2: proyección `13.443313` + `2.30` = `15.743313`; corredor real hasta `7.795145` (exceso `7.948168`).
+- N1→C: proyección actual `13.320745` + clearance `2.30` = trim `15.620745`; al dilatar el `shape()` real por 2.30 y cruzar con la línea central, el extremo correcto es `8.203442` (exceso `7.417304`).
+- C→N2: proyección `13.443313` + `2.30` = `15.743313`; dilatación/intersección hasta `8.375382` (exceso `7.367931`). Ar–N1H requiere 5.631875 y N2H–CH3 5.644825, casi idénticos a los trims actuales 5.631875 y 5.679473.
 
-La causa se clasifica como **recorte visual excesivo por proyección sin intersección**, no error de coordenadas. El N óptico y el H visible están desplazados localmente; no deben compensarse moviendo centros ni acortando la referencia de 40. La orientación del caso mínimo ya es trigonal, pero falta comprobar/encapsular la clasificación química para los casos de amidas/ureas y contrastarla con aminas/aromáticos.
+La causa se clasifica como **recorte visual excesivo por proyección**, no error de coordenadas. El N óptico y el H visible están desplazados localmente; no deben compensarse moviendo centros ni acortando la referencia de 40. La orientación del caso mínimo ya es trigonal, pero falta comprobar/encapsular la clasificación química para los casos de amidas/ureas y contrastarla con aminas/aromáticos.
