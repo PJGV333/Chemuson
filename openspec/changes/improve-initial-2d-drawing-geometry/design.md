@@ -19,19 +19,19 @@
 | Operación | Regla de geometría 2D | Interacción preservada |
 |---|---|---|
 | Enlace sp3 nuevo por sugerencia/clic corto | Direcciones vecinas a 120° respecto de enlaces existentes; seleccionar la alternativa libre con menor colisión | No interpreta el punto de liberación cercano como una orientación explícita |
-| Arrastre dirigido | El cursor expresa orientación; `fixed_angles`, `angle_step_deg`, `fixed_lengths`, `Alt` y `Shift` conservan su flujo actual | No autoajustar globalmente una parte ya dibujada |
+| Arrastre dirigido | Conservar el umbral y flujo actual: el arrastre libre sigue el ángulo del cursor; el modo asistido aplica el snap vigente. `fixed_lengths`, `Alt` y `Shift` no cambian | No autoajustar globalmente una parte ya dibujada |
 | Cadena libre/asistida | Longitudes uniformes y zigzag con giro de trayectoria ±60° (ángulo interno 120°); la primera orientación sigue al cursor/snap existente | `Alt`/`fixed_angles` mantienen el control actual del zigzag |
 | Centro sp2/carbonilo | Distribución trigonal de 120° según enlaces existentes y espacio libre | Conserva orden de enlace y conectividad |
 | Centro sp | Direcciones lineales de 180° | Sólo cuando la inferencia actual lo clasifica sp |
 | Anillo regular n=3/4/5/6 | Polígono regular con ángulos internos 60°/90°/108°/120° y lados iguales | En anclaje a enlace, la arista existente fija el lado y no se mueven sus extremos |
 | Benceno exocíclico | La sugerencia corta usa la bisectriz radial exterior del vértice sp2 (120° local) | El arrastre explícito sigue pudiendo elegir otra orientación |
 
-La constante 109.5° permanecerá nombrada como referencia tetraédrica y no será la regla de colocación esqueletal plana. Se centraliza el valor 120° de dibujo 2D en `geom.py` para evitar duplicar heurísticas. El paso de rejilla no se cambia. Para el clic corto automático se omite sólo el snap a ejes globales, ya que el gesto carece de dirección expresada; el arrastre y demás call-sites conservan el snap.
+La constante 109.5° permanecerá nombrada como referencia tetraédrica y se conservará como valor por defecto de compatibilidad de `candidate_directions_deg`; esto evita cambiar el fallback de Clean2D, la reorganización explícita y otros consumidores existentes. El flujo interactivo de enlaces suministra la nueva constante 120° esqueletal planar. El paso de rejilla no se cambia. En el clic corto automático se omite sólo el snap a ejes globales, ya que el gesto carece de dirección expresada; arrastre libre y ajuste asistido conservan sus ramas/snap actuales.
 
 ## Implementación mínima
 
 - Añadir una constante explícita para ángulo esqueletal sp3 2D; usarla en generación de candidatos, estado de zigzag y cadena libre.
-- Hacer explícito en la selección de candidatos si hay intención angular del cursor. El endpoint automático usa ángulos relativos locales sin rejilla absoluta; el arrastre no cambia.
+- Hacer explícito en la selección de candidatos si hay intención angular del cursor. El endpoint automático usa ángulos relativos locales sin rejilla absoluta; el arrastre libre que supera el umbral sigue su cursor y el resto del ajuste asistido no cambia.
 - En el release, no ejecutar el fallback de hit-test de enlace sobre el mismo átomo que inició un clic corto. El hit-test directo de un clic en enlace permanece intacto.
 - No modificar `_compute_ring_vertices` ni `BondItem` salvo que una nueva prueba numérica/pixel demuestre una falla separada. La regularidad del polígono se verifica antes y después.
 - Preview y commit usan el mismo helper; los comandos existentes permanecen undoables/deterministas. Sólo se agregan coordenadas nuevas, no se realinean vecinos.

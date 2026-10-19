@@ -8,16 +8,16 @@
 - [x] A.5 Validar OpenSpec estricto antes de modificar producción.
 
 ## B. Geometría de colocación
-- [ ] B.1 Centralizar regla esqueletal sp3 2D de 120° sin cambiar la referencia tetraédrica 109.5° ni el paso global.
-- [ ] B.2 Aplicar 120° a cadena acíclica libre y sugerencias automáticas locales para sp3; preservar 120° sp2/180° sp y anillos regulares por tamaño.
-- [ ] B.3 Hacer que una sugerencia por clic corto respete geometría local aun con estructura rotada; conservar snap de arrastre explícito.
-- [ ] B.4 Corregir resolución del release para que un clic corto sobre átomo existente no se confunda con la arista vecina.
-- [ ] B.5 Verificar que anillos existentes, aromaticidad, dobles, etiquetas y representación editorial no cambian.
+- [x] B.1 Centralizar regla esqueletal sp3 2D de 120° sin cambiar la referencia tetraédrica 109.5° ni el paso global.
+- [x] B.2 Aplicar 120° a cadena acíclica libre y sugerencias automáticas locales para sp3; preservar 120° sp2/180° sp y anillos regulares por tamaño.
+- [x] B.3 Hacer que una sugerencia por clic corto respete geometría local aun con estructura rotada; conservar snap de arrastre explícito.
+- [x] B.4 Corregir resolución del release para que un clic corto sobre átomo existente no se confunda con la arista vecina.
+- [x] B.5 Verificar que anillos existentes, aromaticidad, dobles, etiquetas y representación editorial no cambian.
 
 ## C. Regresiones y validación
-- [ ] C.1 Añadir pruebas numéricas de anillos 3–6, transformaciones rígidas, longitudes, ángulos y cierre.
-- [ ] C.2 Añadir QTests de benceno sustituido, clic corto, arrastre, preview/commit, carbono carbonílico y cadena completa.
-- [ ] C.3 Cubrir colisiones, `Alt`/`Shift`, ángulo/paso/longitud fijos, aromaticidad, Undo/Redo y persistencia.
-- [ ] C.4 Renderizar evidencia antes/después con renderer actual a 1×/1.25× y temas disponibles; mantener revisión visual manual separada.
-- [ ] C.5 Ejecutar familias de tests de dibujo, Visual Lab/proyecciones, arquitectura, persistencia, compileall, Ruff scoped, OpenSpec estricto y `git diff --check` con límites.
-- [ ] C.6 Completar tabla de métricas, fallos basales/nuevos y pasos de prueba en CachyOS; entregar commits locales sin push/merge/PR/tag.
+- [x] C.1 Añadir pruebas numéricas de anillos 3–6, transformaciones rígidas, longitudes, ángulos y cierre.
+- [x] C.2 Añadir QTests de benceno sustituido, clic corto, arrastre, preview/commit, carbono carbonílico y cadena completa.
+- [x] C.3 Cubrir colisiones, `Alt`/`Shift`, ángulo/paso/longitud fijos, aromaticidad, Undo/Redo y persistencia.
+- [x] C.4 Renderizar evidencia antes/después con renderer actual a 1×/1.25× y temas disponibles; mantener revisión visual manual separada.
+- [x] C.5 Ejecutar familias de tests de dibujo, Visual Lab/proyecciones, arquitectura, persistencia, compileall, Ruff scoped, OpenSpec estricto y `git diff --check` con límites.
+- [x] C.6 Completar tabla de métricas, fallos basales/nuevos y pasos de prueba en CachyOS; entregar commits locales sin push/merge/PR/tag (revisión estética manual pendiente).
