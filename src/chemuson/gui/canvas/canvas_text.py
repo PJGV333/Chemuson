@@ -4,7 +4,17 @@ import math
 from typing import Iterable, Optional
 
 from PyQt6.QtCore import QPointF, Qt
-from PyQt6.QtGui import QBrush, QColor, QFont, QPen, QTextCharFormat, QTextCursor, QTextOption
+from PyQt6.QtGui import (
+    QBrush,
+    QColor,
+    QFont,
+    QPainterPath,
+    QPainterPathStroker,
+    QPen,
+    QTextCharFormat,
+    QTextCursor,
+    QTextOption,
+)
 from PyQt6.QtWidgets import QGraphicsLineItem, QGraphicsTextItem, QInputDialog
 
 from chemuson.core.model import SIMPLE_HYDROGEN_GROUP_LABELS, BondStyle, bond_is_structural
@@ -2449,17 +2459,7 @@ class CanvasTextMixin:
         return float(self.state.bond_length)
 
     def _update_bond_label_shrinks(self, atom_ids: set[int]) -> None:
-        """Método auxiliar para  update bond label shrinks.
-
-        Args:
-            atom_ids: Descripción del parámetro.
-
-        Returns:
-            Resultado de la operación o None.
-
-        Side Effects:
-            Puede modificar el estado interno o la escena.
-        """
+        """Actualiza el recorte sin alterar estilos ni anclajes existentes."""
         for bond in self.model.bonds.values():
             if bond.a1_id not in atom_ids and bond.a2_id not in atom_ids:
                 continue
@@ -2478,8 +2478,6 @@ class CanvasTextMixin:
                 continue
             ux = dx / length
             uy = dy / length
-            extent_start = self._label_projection_extent_for_atom(bond.a1_id, ux, uy)
-            extent_end = self._label_projection_extent_for_atom(bond.a2_id, -ux, -uy)
             clearance_ratio = self.drawing_style.label_clearance_ratio
             if clearance_ratio is not None:
                 clearance = max(0.0, float(clearance_ratio)) * length
@@ -2494,8 +2492,30 @@ class CanvasTextMixin:
                 if secondary_pen is not None:
                     pen_width = max(pen_width, float(secondary_pen.widthF()))
                 clearance = max(1.0, pen_width * 0.5 + 1.0)
+
+            extent_start = self._label_projection_extent_for_atom(bond.a1_id, ux, uy)
+            extent_end = self._label_projection_extent_for_atom(bond.a2_id, -ux, -uy)
             shrink_start = 0.0 if extent_start is None else extent_start + clearance
             shrink_end = 0.0 if extent_end is None else extent_end + clearance
+
+            # Sólo enlaces simples plain a NH de amida/urea usan la forma
+            # expandida; estereo y multienlaces conservan su contrato previo.
+            if (
+                bond.style == BondStyle.PLAIN
+                and bond.order == 1
+                and not bond.is_aromatic
+            ):
+                if self._uses_amide_nh_label(bond.a1_id):
+                    path_extent = self._label_path_intersection_extent_for_atom(
+                        bond.a1_id, ux, uy, clearance
+                    )
+                    shrink_start = 0.0 if path_extent is None else path_extent
+                if self._uses_amide_nh_label(bond.a2_id):
+                    path_extent = self._label_path_intersection_extent_for_atom(
+                        bond.a2_id, -ux, -uy, clearance
+                    )
+                    shrink_end = 0.0 if path_extent is None else path_extent
+
             if bond.style == BondStyle.HASHED:
                 shrink_start, shrink_end = self._hashed_label_shrinks(
                     item,
@@ -2516,7 +2536,7 @@ class CanvasTextMixin:
         ux: float,
         uy: float,
     ) -> float | None:
-        """Project visible atom-label geometry onto a bond ray."""
+        """Proyecta el path visible del label/charge sobre el rayo del enlace."""
         atom = self.model.atoms.get(atom_id)
         item = self.atom_items.get(atom_id)
         if atom is None:
@@ -2544,9 +2564,77 @@ class CanvasTextMixin:
                 for point in polygon:
                     projection = (point.x() - atom.x) * ux + (point.y() - atom.y) * uy
                     extent = projection if extent is None else max(extent, projection)
-        if extent is None:
-            return None
         return extent
+
+    def _uses_amide_nh_label(self, atom_id: int) -> bool:
+        atom = self.model.atoms.get(atom_id)
+        if atom is None or atom.element != "N":
+            return False
+        if self._nitrogen_geometry_context(atom_id) not in {"amide", "urea"}:
+            return False
+        return self._implicit_hydrogen_count(atom_id, atom.element) > 0
+
+    def _label_path_intersection_extent_for_atom(
+        self,
+        atom_id: int,
+        ux: float,
+        uy: float,
+        clearance: float,
+    ) -> float | None:
+        """Interseca el rayo con la forma real de label/charge expandida."""
+        atom = self.model.atoms.get(atom_id)
+        item = self.atom_items.get(atom_id)
+        if atom is None or item is None or math.hypot(ux, uy) <= 1e-9:
+            return None
+        label_path = QPainterPath()
+        for glyph in (item.label, item.charge_label):
+            if not glyph.isVisible():
+                continue
+            glyph_path = glyph.mapToScene(glyph.shape())
+            if not glyph_path.isEmpty():
+                label_path = label_path.united(glyph_path)
+        if label_path.isEmpty():
+            return None
+
+        clearance = max(0.0, float(clearance))
+        if clearance > 0.0:
+            expander = QPainterPathStroker()
+            expander.setWidth(clearance * 2.0)
+            expander.setCapStyle(Qt.PenCapStyle.RoundCap)
+            expander.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            label_path = label_path.united(expander.createStroke(label_path))
+        forward_extent = max(
+            (
+                (point.x() - atom.x) * ux + (point.y() - atom.y) * uy
+                for polygon in label_path.toSubpathPolygons()
+                for point in polygon
+            ),
+            default=0.0,
+        )
+        ray_length = max(1.0, forward_extent + 1.0)
+        ray = QPainterPath()
+        ray.moveTo(atom.x, atom.y)
+        ray.lineTo(
+            atom.x + ux * ray_length,
+            atom.y + uy * ray_length,
+        )
+        ray_stroker = QPainterPathStroker()
+        ray_stroker.setWidth(0.001)
+        ray_stroker.setCapStyle(Qt.PenCapStyle.FlatCap)
+        intersection = label_path.intersected(ray_stroker.createStroke(ray))
+        if intersection.isEmpty():
+            return None
+        return max(
+            0.0,
+            max(
+                (
+                    (point.x() - atom.x) * ux + (point.y() - atom.y) * uy
+                    for polygon in intersection.toSubpathPolygons()
+                    for point in polygon
+                ),
+                default=0.0,
+            ),
+        )
 
     def _hashed_label_shrinks(
         self,

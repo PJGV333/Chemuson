@@ -5,7 +5,7 @@ from typing import Iterable, Optional
 
 from PyQt6.QtCore import QPointF, Qt
 
-from chemuson.core.model import bond_is_structural
+from chemuson.core.model import bond_affects_valence, bond_is_structural
 from chemuson.gui.geom import (
     SP3_SKELETAL_ANGLE_2D_DEG,
     angle_deg,
@@ -49,6 +49,87 @@ class CanvasBondGeometryMixin:
             angles.append(angle_deg(p0, p1))
         return angles
 
+    def _nitrogen_geometry_context(self, atom_id: int) -> str | None:
+        """Classifica N por conectividade covalente, ordens e aromaticidade."""
+        atom = self.model.get_atom(atom_id)
+        if atom is None or atom.element != "N":
+            return None
+        if bool(getattr(atom, "is_coordination_center", False)):
+            return "coordination"
+
+        bonds = [
+            bond
+            for bond in self.model.bonds.values()
+            if bond_affects_valence(bond) and atom_id in (bond.a1_id, bond.a2_id)
+        ]
+        if int(getattr(atom, "formal_charge", 0) or 0) != 0:
+            return "other"
+        if len(bonds) > 3:
+            return "other"
+        if any(bond.is_aromatic for bond in bonds):
+            return "aromatic"
+
+        carbonyl_carbons: set[int] = set()
+        for bond in bonds:
+            if bond.order != 1 or bond.is_aromatic:
+                continue
+            neighbor_id = bond.a2_id if bond.a1_id == atom_id else bond.a1_id
+            neighbor = self.model.get_atom(neighbor_id)
+            if neighbor is None or neighbor.element != "C":
+                continue
+            has_carbonyl = False
+            for candidate in self.model.bonds.values():
+                if (
+                    candidate.a1_id != neighbor_id
+                    and candidate.a2_id != neighbor_id
+                ) or not bond_affects_valence(candidate):
+                    continue
+                hetero_id = (
+                    candidate.a2_id
+                    if candidate.a1_id == neighbor_id
+                    else candidate.a1_id
+                )
+                hetero = self.model.get_atom(hetero_id)
+                if (
+                    candidate.order >= 2
+                    and not candidate.is_aromatic
+                    and hetero is not None
+                    and hetero.element in {"O", "S"}
+                ):
+                    has_carbonyl = True
+                    break
+            if has_carbonyl:
+                carbonyl_carbons.add(neighbor_id)
+
+        for carbonyl_id in carbonyl_carbons:
+            attached_nitrogens = 0
+            for candidate in self.model.bonds.values():
+                if (
+                    candidate.a1_id != carbonyl_id
+                    and candidate.a2_id != carbonyl_id
+                ):
+                    continue
+                if (
+                    candidate.order != 1
+                    or candidate.is_aromatic
+                    or not bond_affects_valence(candidate)
+                ):
+                    continue
+                neighbor_id = candidate.a2_id if candidate.a1_id == carbonyl_id else candidate.a1_id
+                neighbor = self.model.get_atom(neighbor_id)
+                if neighbor is not None and neighbor.element == "N":
+                    attached_nitrogens += 1
+            if attached_nitrogens >= 2:
+                return "urea"
+            return "amide"
+
+        for bond in bonds:
+            neighbor_id = bond.a2_id if bond.a1_id == atom_id else bond.a1_id
+            neighbor = self.model.get_atom(neighbor_id)
+            if neighbor is not None and neighbor.element not in {"C", "H"}:
+                return "other"
+        return "amine"
+
     def _bond_geometry(self, anchor_id: int, bond_order: int, is_aromatic: bool) -> str:
         has_triple = bond_order >= 3
         has_double = bond_order == 2 or is_aromatic
@@ -64,6 +145,9 @@ class CanvasBondGeometryMixin:
         if has_triple:
             return "sp"
         if has_double:
+            return "sp2"
+        nitrogen_context = self._nitrogen_geometry_context(anchor_id)
+        if nitrogen_context in {"amide", "urea", "aromatic"}:
             return "sp2"
         return "sp3"
 
