@@ -302,7 +302,7 @@ class CanvasToolsRingsChainsMixin:
         # La herramienta de cadena siempre debe zigzaguear (si ángulos fijos están activos),
         # incluso cuando el ancla está en centros sp2/aromáticos.
         zigzag = not use_alt and self.state.fixed_angles
-        sp3_angle = self._sp3_display_angle_deg()
+        sp3_angle = self._sp3_skeletal_angle_deg()
         zigzag_turn = 180.0 - sp3_angle
         turn_pref = ((raw_angle - first_angle + 180.0) % 360.0) - 180.0
         zigzag_sign = 1.0 if turn_pref >= 0.0 else -1.0

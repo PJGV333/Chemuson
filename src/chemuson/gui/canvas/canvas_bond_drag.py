@@ -292,7 +292,9 @@ class CanvasBondDragMixin:
                     self._apply_bond_style(overlapping_bond)
                 self._cancel_drag()
                 return
-            bond_hit = self._get_bond_at(self._last_scene_pos)
+            bond_hit = None
+            if not (use_default and anchor_id is not None):
+                bond_hit = self._get_bond_at(self._last_scene_pos)
             if bond_hit is not None:
                 if self.state.active_bond_mode == "increment" and not self.state.active_bond_aromatic:
                     self._cycle_bond_order(bond_hit)

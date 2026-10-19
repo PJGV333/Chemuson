@@ -12,6 +12,7 @@ from PyQt6.QtCore import QPointF
 
 
 SP3_BOND_ANGLE_DEG = 109.5
+SP3_SKELETAL_ANGLE_2D_DEG = 120.0
 
 
 def angle_deg(p0: QPointF, p1: QPointF) -> float:
@@ -129,6 +130,8 @@ def candidate_directions_deg(
     geometry: str,
     existing_angles_deg: Iterable[float],
     base_angle_deg: float,
+    *,
+    sp3_angle_deg: float = SP3_BOND_ANGLE_DEG,
 ) -> list[float]:
     """Genera direcciones candidatas según la geometría.
 
@@ -136,6 +139,7 @@ def candidate_directions_deg(
         geometry: Tipo de geometría ("sp", "sp2", "sp3").
         existing_angles_deg: Ángulos ya ocupados por enlaces existentes.
         base_angle_deg: Ángulo base sugerido por el cursor.
+        sp3_angle_deg: Separación usada al proponer vecinos sp3.
 
     Returns:
         Lista de ángulos candidatos (grados).
@@ -145,8 +149,8 @@ def candidate_directions_deg(
         if angles:
             candidates = []
             for base in angles:
-                candidates.append(normalize_angle_deg(base + SP3_BOND_ANGLE_DEG))
-                candidates.append(normalize_angle_deg(base - SP3_BOND_ANGLE_DEG))
+                candidates.append(normalize_angle_deg(base + sp3_angle_deg))
+                candidates.append(normalize_angle_deg(base - sp3_angle_deg))
             seen = set()
             deduped = []
             for cand in candidates:

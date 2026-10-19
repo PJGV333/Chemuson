@@ -4,7 +4,11 @@ import math
 from typing import Iterable, List, Optional
 
 from chemuson.core.model import BondStyle, bond_is_structural
-from chemuson.gui.geom import SP3_BOND_ANGLE_DEG, snap_angle_deg
+from chemuson.gui.geom import (
+    SP3_BOND_ANGLE_DEG,
+    SP3_SKELETAL_ANGLE_2D_DEG,
+    snap_angle_deg,
+)
 
 from .canvas_constants import BOND_LAST_ANGLE_TOLERANCE_DEG
 
@@ -91,8 +95,8 @@ class CanvasBondStateMixin:
         if self.state.fixed_angles:
             step_deg = self._angle_snap_step_deg()
             if step_deg > 0:
-                return math.radians(snap_angle_deg(SP3_BOND_ANGLE_DEG, step_deg))
-        return math.radians(self._sp3_display_angle_deg())
+                return math.radians(snap_angle_deg(SP3_SKELETAL_ANGLE_2D_DEG, step_deg))
+        return math.radians(self._sp3_skeletal_angle_deg())
 
     def _get_anchor_bond_angles(self, anchor_id: int) -> List[float]:
         angles = []
@@ -149,7 +153,12 @@ class CanvasBondStateMixin:
         return deduped
 
     def _sp3_display_angle_deg(self) -> float:
+        """Return the tetrahedral reference retained for legacy geometry paths."""
         return SP3_BOND_ANGLE_DEG
+
+    def _sp3_skeletal_angle_deg(self) -> float:
+        """Return the editorial planar sp3 angle used for new 2D drawings."""
+        return SP3_SKELETAL_ANGLE_2D_DEG
 
     def _current_bond_geometry(self) -> tuple[int, bool]:
         order = self.state.active_bond_order
@@ -191,7 +200,7 @@ class CanvasBondStateMixin:
         step = (
             self._bond_environment_step(anchor_id)
             if anchor_id is not None
-            else math.radians(self._sp3_display_angle_deg())
+            else math.radians(self._sp3_skeletal_angle_deg())
         )
         if step < math.pi:
             self._bond_zigzag_sign *= -1

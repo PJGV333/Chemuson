@@ -7,6 +7,7 @@ from PyQt6.QtCore import QPointF, Qt
 
 from chemuson.core.model import bond_is_structural
 from chemuson.gui.geom import (
+    SP3_SKELETAL_ANGLE_2D_DEG,
     angle_deg,
     angle_distance_deg,
     candidate_directions_deg,
@@ -187,6 +188,7 @@ class CanvasBondGeometryMixin:
         length: float,
         apply_collisions: bool = True,
         allow_length_boost: bool = True,
+        apply_angle_grid: bool = True,
     ) -> tuple[float, float]:
         existing_angles = self._get_anchor_bond_angles_deg(anchor_id) if anchor_id else []
         geometry = (
@@ -198,8 +200,13 @@ class CanvasBondGeometryMixin:
         if sp3_exact_mode:
             candidates = self._sp3_congested_directions_deg(existing_angles)
         else:
-            candidates = candidate_directions_deg(geometry, existing_angles, mouse_angle_deg)
-            if self.state.fixed_angles:
+            candidates = candidate_directions_deg(
+                geometry,
+                existing_angles,
+                mouse_angle_deg,
+                sp3_angle_deg=SP3_SKELETAL_ANGLE_2D_DEG,
+            )
+            if self.state.fixed_angles and apply_angle_grid:
                 candidates = self._snap_angles_to_grid(candidates)
         occupied_tolerance = (
             SP3_OCCUPIED_TOLERANCE_DEG if sp3_exact_mode else ANGLE_OCCUPIED_TOLERANCE_DEG
@@ -209,17 +216,22 @@ class CanvasBondGeometryMixin:
             if sp3_exact_mode:
                 candidates = self._sp3_congested_directions_deg(existing_angles)
             if not candidates:
-                candidates = candidate_directions_deg(geometry, [], mouse_angle_deg)
-                if self.state.fixed_angles and not sp3_exact_mode:
+                candidates = candidate_directions_deg(
+                    geometry,
+                    [],
+                    mouse_angle_deg,
+                    sp3_angle_deg=SP3_SKELETAL_ANGLE_2D_DEG,
+                )
+                if self.state.fixed_angles and not sp3_exact_mode and apply_angle_grid:
                     candidates = self._snap_angles_to_grid(candidates)
 
         preferred: list[float] = []
         if geometry == "sp3" and anchor_id is not None:
             incoming = self._incoming_angle_deg(anchor_id)
             if incoming is not None:
-                sp3_angle = self._sp3_display_angle_deg()
+                sp3_angle = self._sp3_skeletal_angle_deg()
                 preferred = [(incoming + sp3_angle) % 360.0, (incoming - sp3_angle) % 360.0]
-                if self.state.fixed_angles and not sp3_exact_mode:
+                if self.state.fixed_angles and not sp3_exact_mode and apply_angle_grid:
                     preferred = self._snap_angles_to_grid(preferred)
 
         if not apply_collisions:
@@ -325,6 +337,7 @@ class CanvasBondGeometryMixin:
             self.state.bond_length,
             apply_collisions=True,
             allow_length_boost=False,
+            apply_angle_grid=False,
         )
         p1 = endpoint_from_angle_len(anchor, theta, final_length)
         snap_id = closest_atom(p1, self._interactive_atom_candidates(), ATOM_HIT_RADIUS)
