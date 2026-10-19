@@ -1,0 +1,1043 @@
+{
+  "structure": "Ar-NH-C(=O)-NH-CH3",
+  "path_atom_ids": [
+    1,
+    7,
+    8,
+    9,
+    10,
+    11
+  ],
+  "gesture_events": {
+    "ring": "QTest press/move/release ring tool",
+    "Ar-N": {
+      "type": "short click",
+      "preview_end": [
+        479.0,
+        499.0
+      ],
+      "committed": [
+        479.0,
+        499.0
+      ]
+    },
+    "N-C": {
+      "type": "short click",
+      "preview_end": [
+        499.0,
+        464.3589838486225
+      ],
+      "committed": [
+        499.0,
+        464.3589838486225
+      ]
+    },
+    "C-O": {
+      "type": "directed drag",
+      "atom_id": 9
+    },
+    "C-N": {
+      "type": "short click",
+      "preview_end": [
+        479.0,
+        429.71796769724494
+      ],
+      "committed": [
+        479.0,
+        429.71796769724494
+      ]
+    },
+    "N-CH3": {
+      "type": "directed drag",
+      "atom_id": 11
+    }
+  },
+  "atoms": [
+    {
+      "id": 1,
+      "element": "C",
+      "x": 439.0,
+      "y": 499.0,
+      "implicit_h": 0,
+      "degree": 3,
+      "label": null
+    },
+    {
+      "id": 2,
+      "element": "C",
+      "x": 419.0,
+      "y": 464.3589838486225,
+      "implicit_h": 1,
+      "degree": 2,
+      "label": null
+    },
+    {
+      "id": 3,
+      "element": "C",
+      "x": 379.0,
+      "y": 464.3589838486224,
+      "implicit_h": 1,
+      "degree": 2,
+      "label": null
+    },
+    {
+      "id": 4,
+      "element": "C",
+      "x": 359.0,
+      "y": 499.0,
+      "implicit_h": 1,
+      "degree": 2,
+      "label": null
+    },
+    {
+      "id": 5,
+      "element": "C",
+      "x": 379.0,
+      "y": 533.6410161513776,
+      "implicit_h": 1,
+      "degree": 2,
+      "label": null
+    },
+    {
+      "id": 6,
+      "element": "C",
+      "x": 419.0,
+      "y": 533.6410161513776,
+      "implicit_h": 1,
+      "degree": 2,
+      "label": null
+    },
+    {
+      "id": 7,
+      "element": "N",
+      "x": 479.0,
+      "y": 499.0,
+      "implicit_h": 1,
+      "degree": 2,
+      "label": {
+        "text": "NH",
+        "atom_center": [
+          479.0,
+          499.0
+        ],
+        "label_item_origin_scene": [
+          475.668125,
+          494.19811118781894
+        ],
+        "label_bounding_rect_local": [
+          0.0,
+          0.0,
+          21.65625,
+          17.0
+        ],
+        "glyphs": {
+          "N": [
+            {
+              "layout_cursor_x": [
+                0.0,
+                10.828125
+              ],
+              "font_point_size": 11.0,
+              "scene_bbox": [
+                476.9025,
+                497.46373618781894,
+                8.375,
+                10.3125
+              ],
+              "scene_center": [
+                481.09,
+                502.61998618781894
+              ]
+            }
+          ],
+          "H": [
+            {
+              "layout_cursor_x": [
+                10.828125,
+                21.65625
+              ],
+              "font_point_size": 11.0,
+              "scene_bbox": [
+                487.730625,
+                497.46373618781894,
+                8.375,
+                10.3125
+              ],
+              "scene_center": [
+                491.918125,
+                502.61998618781894
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 8,
+      "element": "C",
+      "x": 499.0,
+      "y": 464.3589838486225,
+      "implicit_h": 0,
+      "degree": 3,
+      "label": null
+    },
+    {
+      "id": 9,
+      "element": "O",
+      "x": 539.0,
+      "y": 464.3589838486225,
+      "implicit_h": 0,
+      "degree": 1,
+      "label": {
+        "text": "O",
+        "atom_center": [
+          539.0,
+          464.3589838486225
+        ],
+        "label_item_origin_scene": [
+          533.1640625,
+          455.9449213486225
+        ],
+        "label_bounding_rect_local": [
+          0.0,
+          0.0,
+          11.65625,
+          17.0
+        ],
+        "glyphs": {
+          "O": [
+            {
+              "layout_cursor_x": [
+                0.0,
+                11.65625
+              ],
+              "font_point_size": 11.0,
+              "scene_bbox": [
+                533.8828125,
+                459.0542963486225,
+                10.234375,
+                10.609375
+              ],
+              "scene_center": [
+                539.0,
+                464.3589838486225
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 10,
+      "element": "N",
+      "x": 479.0,
+      "y": 429.71796769724494,
+      "implicit_h": 1,
+      "degree": 2,
+      "label": {
+        "text": "NH",
+        "atom_center": [
+          479.0,
+          429.71796769724494
+        ],
+        "label_item_origin_scene": [
+          475.668125,
+          417.676106509426
+        ],
+        "label_bounding_rect_local": [
+          0.0,
+          0.0,
+          21.65625,
+          17.0
+        ],
+        "glyphs": {
+          "N": [
+            {
+              "layout_cursor_x": [
+                0.0,
+                10.828125
+              ],
+              "font_point_size": 11.0,
+              "scene_bbox": [
+                476.9025,
+                420.941731509426,
+                8.375,
+                10.3125
+              ],
+              "scene_center": [
+                481.09,
+                426.097981509426
+              ]
+            }
+          ],
+          "H": [
+            {
+              "layout_cursor_x": [
+                10.828125,
+                21.65625
+              ],
+              "font_point_size": 11.0,
+              "scene_bbox": [
+                487.730625,
+                420.941731509426,
+                8.375,
+                10.3125
+              ],
+              "scene_center": [
+                491.918125,
+                426.097981509426
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 11,
+      "element": "C",
+      "x": 439.0,
+      "y": 429.71796769724494,
+      "implicit_h": 3,
+      "degree": 1,
+      "label": null
+    }
+  ],
+  "bonds": [
+    {
+      "id": 1,
+      "a1": 1,
+      "a2": 2,
+      "elements": [
+        "C",
+        "C"
+      ],
+      "order": 2,
+      "aromatic": true,
+      "center_distance": 39.999999999999986,
+      "reference_length": 40.0,
+      "direction_deg": 120.0,
+      "trim_start_label": 0.0,
+      "trim_end_label": 0.0,
+      "trim_start_endpoint": 0.0,
+      "trim_end_endpoint": 0.0,
+      "trim_start_total": 0.0,
+      "trim_end_total": 0.0,
+      "main_path_subpaths": [
+        {
+          "points": [
+            [
+              439.0,
+              499.0
+            ],
+            [
+              419.0,
+              464.3589838486225
+            ]
+          ],
+          "visible_path_length": 39.999999999999986
+        },
+        {
+          "points": [
+            [
+              431.86269330410533,
+              495.03782217350897
+            ],
+            [
+              418.86269330410533,
+              472.52116167511355
+            ]
+          ],
+          "visible_path_length": 26.000000000000018
+        }
+      ],
+      "secondary_path_subpaths": [],
+      "trim_projections": {
+        "start_label_extent": null,
+        "end_label_extent": null
+      }
+    },
+    {
+      "id": 2,
+      "a1": 2,
+      "a2": 3,
+      "elements": [
+        "C",
+        "C"
+      ],
+      "order": 1,
+      "aromatic": true,
+      "center_distance": 40.0,
+      "reference_length": 40.0,
+      "direction_deg": 179.9999999999999,
+      "trim_start_label": 0.0,
+      "trim_end_label": 0.0,
+      "trim_start_endpoint": 0.0,
+      "trim_end_endpoint": 0.0,
+      "trim_start_total": 0.0,
+      "trim_end_total": 0.0,
+      "main_path_subpaths": [
+        {
+          "points": [
+            [
+              419.0,
+              464.3589838486225
+            ],
+            [
+              379.0,
+              464.3589838486224
+            ]
+          ],
+          "visible_path_length": 40.0
+        }
+      ],
+      "secondary_path_subpaths": [],
+      "trim_projections": {
+        "start_label_extent": null,
+        "end_label_extent": null
+      }
+    },
+    {
+      "id": 3,
+      "a1": 3,
+      "a2": 4,
+      "elements": [
+        "C",
+        "C"
+      ],
+      "order": 2,
+      "aromatic": true,
+      "center_distance": 40.000000000000036,
+      "reference_length": 40.0,
+      "direction_deg": 240.00000000000003,
+      "trim_start_label": 0.0,
+      "trim_end_label": 0.0,
+      "trim_start_endpoint": 0.0,
+      "trim_end_endpoint": 0.0,
+      "trim_start_total": 0.0,
+      "trim_end_total": 0.0,
+      "main_path_subpaths": [
+        {
+          "points": [
+            [
+              379.0,
+              464.3589838486224
+            ],
+            [
+              359.0,
+              499.0
+            ]
+          ],
+          "visible_path_length": 40.000000000000036
+        },
+        {
+          "points": [
+            [
+              379.13730669589467,
+              472.5211616751135
+            ],
+            [
+              366.13730669589467,
+              495.03782217350897
+            ]
+          ],
+          "visible_path_length": 26.000000000000068
+        }
+      ],
+      "secondary_path_subpaths": [],
+      "trim_projections": {
+        "start_label_extent": null,
+        "end_label_extent": null
+      }
+    },
+    {
+      "id": 4,
+      "a1": 4,
+      "a2": 5,
+      "elements": [
+        "C",
+        "C"
+      ],
+      "order": 1,
+      "aromatic": true,
+      "center_distance": 40.000000000000036,
+      "reference_length": 40.0,
+      "direction_deg": 299.99999999999994,
+      "trim_start_label": 0.0,
+      "trim_end_label": 0.0,
+      "trim_start_endpoint": 0.0,
+      "trim_end_endpoint": 0.0,
+      "trim_start_total": 0.0,
+      "trim_end_total": 0.0,
+      "main_path_subpaths": [
+        {
+          "points": [
+            [
+              359.0,
+              499.0
+            ],
+            [
+              379.0,
+              533.6410161513776
+            ]
+          ],
+          "visible_path_length": 40.000000000000036
+        }
+      ],
+      "secondary_path_subpaths": [],
+      "trim_projections": {
+        "start_label_extent": null,
+        "end_label_extent": null
+      }
+    },
+    {
+      "id": 5,
+      "a1": 5,
+      "a2": 6,
+      "elements": [
+        "C",
+        "C"
+      ],
+      "order": 2,
+      "aromatic": true,
+      "center_distance": 40.0,
+      "reference_length": 40.0,
+      "direction_deg": 0.0,
+      "trim_start_label": 0.0,
+      "trim_end_label": 0.0,
+      "trim_start_endpoint": 0.0,
+      "trim_end_endpoint": 0.0,
+      "trim_start_total": 0.0,
+      "trim_end_total": 0.0,
+      "main_path_subpaths": [
+        {
+          "points": [
+            [
+              379.0,
+              533.6410161513776
+            ],
+            [
+              419.0,
+              533.6410161513776
+            ]
+          ],
+          "visible_path_length": 40.0
+        },
+        {
+          "points": [
+            [
+              386.0,
+              529.4410161513775
+            ],
+            [
+              412.0,
+              529.4410161513775
+            ]
+          ],
+          "visible_path_length": 26.0
+        }
+      ],
+      "secondary_path_subpaths": [],
+      "trim_projections": {
+        "start_label_extent": null,
+        "end_label_extent": null
+      }
+    },
+    {
+      "id": 6,
+      "a1": 6,
+      "a2": 1,
+      "elements": [
+        "C",
+        "C"
+      ],
+      "order": 1,
+      "aromatic": true,
+      "center_distance": 40.000000000000036,
+      "reference_length": 40.0,
+      "direction_deg": 60.00000000000006,
+      "trim_start_label": 0.0,
+      "trim_end_label": 0.0,
+      "trim_start_endpoint": 0.0,
+      "trim_end_endpoint": 0.0,
+      "trim_start_total": 0.0,
+      "trim_end_total": 0.0,
+      "main_path_subpaths": [
+        {
+          "points": [
+            [
+              419.0,
+              533.6410161513776
+            ],
+            [
+              439.0,
+              499.0
+            ]
+          ],
+          "visible_path_length": 40.000000000000036
+        }
+      ],
+      "secondary_path_subpaths": [],
+      "trim_projections": {
+        "start_label_extent": null,
+        "end_label_extent": null
+      }
+    },
+    {
+      "id": 7,
+      "a1": 1,
+      "a2": 7,
+      "elements": [
+        "C",
+        "N"
+      ],
+      "order": 1,
+      "aromatic": false,
+      "center_distance": 40.0,
+      "reference_length": 40.0,
+      "direction_deg": 0.0,
+      "trim_start_label": 0.0,
+      "trim_end_label": 5.631875000000025,
+      "trim_start_endpoint": 0.0,
+      "trim_end_endpoint": 0.0,
+      "trim_start_total": 0.0,
+      "trim_end_total": 5.631875000000025,
+      "main_path_subpaths": [
+        {
+          "points": [
+            [
+              439.0,
+              499.0
+            ],
+            [
+              473.36812499999996,
+              499.0
+            ]
+          ],
+          "visible_path_length": 34.368124999999964
+        }
+      ],
+      "secondary_path_subpaths": [],
+      "trim_projections": {
+        "start_label_extent": null,
+        "end_label_extent": 3.331875000000025
+      }
+    },
+    {
+      "id": 8,
+      "a1": 7,
+      "a2": 8,
+      "elements": [
+        "N",
+        "C"
+      ],
+      "order": 1,
+      "aromatic": false,
+      "center_distance": 39.999999999999986,
+      "reference_length": 40.0,
+      "direction_deg": 60.0,
+      "trim_start_label": 15.620745197497072,
+      "trim_end_label": 0.0,
+      "trim_start_endpoint": 0.0,
+      "trim_end_endpoint": 0.0,
+      "trim_start_total": 15.620745197497072,
+      "trim_end_total": 0.0,
+      "main_path_subpaths": [
+        {
+          "points": [
+            [
+              486.81037259874853,
+              485.4720378329238
+            ],
+            [
+              499.0,
+              464.3589838486225
+            ]
+          ],
+          "visible_path_length": 24.37925480250292
+        }
+      ],
+      "secondary_path_subpaths": [],
+      "trim_projections": {
+        "start_label_extent": 13.320745197497072,
+        "end_label_extent": null
+      }
+    },
+    {
+      "id": 9,
+      "a1": 8,
+      "a2": 9,
+      "elements": [
+        "C",
+        "O"
+      ],
+      "order": 2,
+      "aromatic": false,
+      "center_distance": 40.0,
+      "reference_length": 40.0,
+      "direction_deg": 0.0,
+      "trim_start_label": 0.0,
+      "trim_end_label": 8.128125,
+      "trim_start_endpoint": 0.0,
+      "trim_end_endpoint": 0.0,
+      "trim_start_total": 0.0,
+      "trim_end_total": 8.128125,
+      "main_path_subpaths": [
+        {
+          "points": [
+            [
+              499.0,
+              466.4589838486225
+            ],
+            [
+              530.871875,
+              466.4589838486225
+            ]
+          ],
+          "visible_path_length": 31.871875000000045
+        },
+        {
+          "points": [
+            [
+              499.0,
+              462.25898384862245
+            ],
+            [
+              530.871875,
+              462.25898384862245
+            ]
+          ],
+          "visible_path_length": 31.871875000000045
+        }
+      ],
+      "secondary_path_subpaths": [],
+      "trim_projections": {
+        "start_label_extent": null,
+        "end_label_extent": 5.8359375
+      }
+    },
+    {
+      "id": 10,
+      "a1": 8,
+      "a2": 10,
+      "elements": [
+        "C",
+        "N"
+      ],
+      "order": 1,
+      "aromatic": false,
+      "center_distance": 39.999999999999986,
+      "reference_length": 40.0,
+      "direction_deg": 120.0,
+      "trim_start_label": 0.0,
+      "trim_end_label": 15.756061666838391,
+      "trim_start_endpoint": 0.0,
+      "trim_end_endpoint": 0.0,
+      "trim_start_total": 0.0,
+      "trim_end_total": 15.756061666838391,
+      "main_path_subpaths": [
+        {
+          "points": [
+            [
+              499.0,
+              464.3589838486225
+            ],
+            [
+              486.8780308334192,
+              443.36311736432117
+            ]
+          ],
+          "visible_path_length": 24.243938333161605
+        }
+      ],
+      "secondary_path_subpaths": [],
+      "trim_projections": {
+        "start_label_extent": null,
+        "end_label_extent": 13.45606166683839
+      }
+    },
+    {
+      "id": 11,
+      "a1": 10,
+      "a2": 11,
+      "elements": [
+        "N",
+        "C"
+      ],
+      "order": 1,
+      "aromatic": false,
+      "center_distance": 40.0,
+      "reference_length": 40.0,
+      "direction_deg": 180.0,
+      "trim_start_label": 5.631875000000025,
+      "trim_end_label": 0.0,
+      "trim_start_endpoint": 0.0,
+      "trim_end_endpoint": 0.0,
+      "trim_start_total": 5.631875000000025,
+      "trim_end_total": 0.0,
+      "main_path_subpaths": [
+        {
+          "points": [
+            [
+              473.36812499999996,
+              429.71796769724494
+            ],
+            [
+              439.0,
+              429.71796769724494
+            ]
+          ],
+          "visible_path_length": 34.368124999999964
+        }
+      ],
+      "secondary_path_subpaths": [],
+      "trim_projections": {
+        "start_label_extent": 3.331875000000025,
+        "end_label_extent": null
+      }
+    }
+  ],
+  "reference_path_bonds": [
+    {
+      "id": 7,
+      "a1": 1,
+      "a2": 7,
+      "elements": [
+        "C",
+        "N"
+      ],
+      "order": 1,
+      "aromatic": false,
+      "center_distance": 40.0,
+      "reference_length": 40.0,
+      "direction_deg": 0.0,
+      "trim_start_label": 0.0,
+      "trim_end_label": 5.631875000000025,
+      "trim_start_endpoint": 0.0,
+      "trim_end_endpoint": 0.0,
+      "trim_start_total": 0.0,
+      "trim_end_total": 5.631875000000025,
+      "main_path_subpaths": [
+        {
+          "points": [
+            [
+              439.0,
+              499.0
+            ],
+            [
+              473.36812499999996,
+              499.0
+            ]
+          ],
+          "visible_path_length": 34.368124999999964
+        }
+      ],
+      "secondary_path_subpaths": [],
+      "trim_projections": {
+        "start_label_extent": null,
+        "end_label_extent": 3.331875000000025
+      }
+    },
+    {
+      "id": 8,
+      "a1": 7,
+      "a2": 8,
+      "elements": [
+        "N",
+        "C"
+      ],
+      "order": 1,
+      "aromatic": false,
+      "center_distance": 39.999999999999986,
+      "reference_length": 40.0,
+      "direction_deg": 60.0,
+      "trim_start_label": 15.620745197497072,
+      "trim_end_label": 0.0,
+      "trim_start_endpoint": 0.0,
+      "trim_end_endpoint": 0.0,
+      "trim_start_total": 15.620745197497072,
+      "trim_end_total": 0.0,
+      "main_path_subpaths": [
+        {
+          "points": [
+            [
+              486.81037259874853,
+              485.4720378329238
+            ],
+            [
+              499.0,
+              464.3589838486225
+            ]
+          ],
+          "visible_path_length": 24.37925480250292
+        }
+      ],
+      "secondary_path_subpaths": [],
+      "trim_projections": {
+        "start_label_extent": 13.320745197497072,
+        "end_label_extent": null
+      }
+    },
+    {
+      "id": 9,
+      "a1": 8,
+      "a2": 9,
+      "elements": [
+        "C",
+        "O"
+      ],
+      "order": 2,
+      "aromatic": false,
+      "center_distance": 40.0,
+      "reference_length": 40.0,
+      "direction_deg": 0.0,
+      "trim_start_label": 0.0,
+      "trim_end_label": 8.128125,
+      "trim_start_endpoint": 0.0,
+      "trim_end_endpoint": 0.0,
+      "trim_start_total": 0.0,
+      "trim_end_total": 8.128125,
+      "main_path_subpaths": [
+        {
+          "points": [
+            [
+              499.0,
+              466.4589838486225
+            ],
+            [
+              530.871875,
+              466.4589838486225
+            ]
+          ],
+          "visible_path_length": 31.871875000000045
+        },
+        {
+          "points": [
+            [
+              499.0,
+              462.25898384862245
+            ],
+            [
+              530.871875,
+              462.25898384862245
+            ]
+          ],
+          "visible_path_length": 31.871875000000045
+        }
+      ],
+      "secondary_path_subpaths": [],
+      "trim_projections": {
+        "start_label_extent": null,
+        "end_label_extent": 5.8359375
+      }
+    },
+    {
+      "id": 11,
+      "a1": 10,
+      "a2": 11,
+      "elements": [
+        "N",
+        "C"
+      ],
+      "order": 1,
+      "aromatic": false,
+      "center_distance": 40.0,
+      "reference_length": 40.0,
+      "direction_deg": 180.0,
+      "trim_start_label": 5.631875000000025,
+      "trim_end_label": 0.0,
+      "trim_start_endpoint": 0.0,
+      "trim_end_endpoint": 0.0,
+      "trim_start_total": 5.631875000000025,
+      "trim_end_total": 0.0,
+      "main_path_subpaths": [
+        {
+          "points": [
+            [
+              473.36812499999996,
+              429.71796769724494
+            ],
+            [
+              439.0,
+              429.71796769724494
+            ]
+          ],
+          "visible_path_length": 34.368124999999964
+        }
+      ],
+      "secondary_path_subpaths": [],
+      "trim_projections": {
+        "start_label_extent": 3.331875000000025,
+        "end_label_extent": null
+      }
+    }
+  ],
+  "angles": {
+    "1": [
+      {
+        "neighbors": [
+          2,
+          6
+        ],
+        "angle_deg": 120.00000000000003
+      },
+      {
+        "neighbors": [
+          2,
+          7
+        ],
+        "angle_deg": 120.0
+      },
+      {
+        "neighbors": [
+          6,
+          7
+        ],
+        "angle_deg": 120.0
+      }
+    ],
+    "7": [
+      {
+        "neighbors": [
+          1,
+          8
+        ],
+        "angle_deg": 120.0
+      }
+    ],
+    "8": [
+      {
+        "neighbors": [
+          7,
+          9
+        ],
+        "angle_deg": 120.0
+      },
+      {
+        "neighbors": [
+          7,
+          10
+        ],
+        "angle_deg": 120.0
+      },
+      {
+        "neighbors": [
+          9,
+          10
+        ],
+        "angle_deg": 120.0
+      }
+    ],
+    "9": [],
+    "10": [
+      {
+        "neighbors": [
+          8,
+          11
+        ],
+        "angle_deg": 120.0
+      }
+    ],
+    "11": []
+  }
+}
+exit=0

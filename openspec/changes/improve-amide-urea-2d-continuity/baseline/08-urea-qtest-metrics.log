@@ -1,0 +1,1433 @@
+{
+  "structure": "Ar-NH-C(=O)-NH-CH3",
+  "path_atom_ids": [
+    1,
+    7,
+    8,
+    9,
+    10,
+    11
+  ],
+  "gesture_events": {
+    "ring": "QTest press/move/release ring tool",
+    "Ar-N": {
+      "type": "short click",
+      "preview_end": [
+        479.0,
+        499.0
+      ],
+      "committed": [
+        479.0,
+        499.0
+      ]
+    },
+    "N-C": {
+      "type": "short click",
+      "preview_end": [
+        499.0,
+        464.3589838486225
+      ],
+      "committed": [
+        499.0,
+        464.3589838486225
+      ]
+    },
+    "C-O": {
+      "type": "directed drag",
+      "atom_id": 9
+    },
+    "C-N": {
+      "type": "short click",
+      "preview_end": [
+        479.0,
+        429.71796769724494
+      ],
+      "committed": [
+        479.0,
+        429.71796769724494
+      ]
+    },
+    "N-CH3": {
+      "type": "directed drag",
+      "atom_id": 11
+    }
+  },
+  "atoms": [
+    {
+      "id": 1,
+      "element": "C",
+      "x": 439.0,
+      "y": 499.0,
+      "implicit_h": 0,
+      "degree": 3,
+      "label": null
+    },
+    {
+      "id": 2,
+      "element": "C",
+      "x": 419.0,
+      "y": 464.3589838486225,
+      "implicit_h": 1,
+      "degree": 2,
+      "label": null
+    },
+    {
+      "id": 3,
+      "element": "C",
+      "x": 379.0,
+      "y": 464.3589838486224,
+      "implicit_h": 1,
+      "degree": 2,
+      "label": null
+    },
+    {
+      "id": 4,
+      "element": "C",
+      "x": 359.0,
+      "y": 499.0,
+      "implicit_h": 1,
+      "degree": 2,
+      "label": null
+    },
+    {
+      "id": 5,
+      "element": "C",
+      "x": 379.0,
+      "y": 533.6410161513776,
+      "implicit_h": 1,
+      "degree": 2,
+      "label": null
+    },
+    {
+      "id": 6,
+      "element": "C",
+      "x": 419.0,
+      "y": 533.6410161513776,
+      "implicit_h": 1,
+      "degree": 2,
+      "label": null
+    },
+    {
+      "id": 7,
+      "element": "N",
+      "x": 479.0,
+      "y": 499.0,
+      "implicit_h": 1,
+      "degree": 2,
+      "label": {
+        "text": "NH",
+        "atom_center": [
+          479.0,
+          499.0
+        ],
+        "label_item_origin_scene": [
+          475.668125,
+          494.19811118781894
+        ],
+        "label_bounding_rect_local": [
+          0.0,
+          0.0,
+          21.65625,
+          17.0
+        ],
+        "glyphs": {
+          "N": [
+            {
+              "layout_cursor_x": [
+                0.0,
+                10.828125
+              ],
+              "font_point_size": 11.0,
+              "scene_bbox": [
+                476.9025,
+                497.46373618781894,
+                8.375,
+                10.3125
+              ],
+              "scene_center": [
+                481.09,
+                502.61998618781894
+              ]
+            }
+          ],
+          "H": [
+            {
+              "layout_cursor_x": [
+                10.828125,
+                21.65625
+              ],
+              "font_point_size": 11.0,
+              "scene_bbox": [
+                487.730625,
+                497.46373618781894,
+                8.375,
+                10.3125
+              ],
+              "scene_center": [
+                491.918125,
+                502.61998618781894
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 8,
+      "element": "C",
+      "x": 499.0,
+      "y": 464.3589838486225,
+      "implicit_h": 0,
+      "degree": 3,
+      "label": null
+    },
+    {
+      "id": 9,
+      "element": "O",
+      "x": 538.9983892297573,
+      "y": 464.00001445601254,
+      "implicit_h": 0,
+      "degree": 1,
+      "label": {
+        "text": "O",
+        "atom_center": [
+          538.9983892297573,
+          464.00001445601254
+        ],
+        "label_item_origin_scene": [
+          533.1624517297573,
+          455.58595195601254
+        ],
+        "label_bounding_rect_local": [
+          0.0,
+          0.0,
+          11.65625,
+          17.0
+        ],
+        "glyphs": {
+          "O": [
+            {
+              "layout_cursor_x": [
+                0.0,
+                11.65625
+              ],
+              "font_point_size": 11.0,
+              "scene_bbox": [
+                533.8812017297573,
+                458.69532695601254,
+                10.234375,
+                10.609375
+              ],
+              "scene_center": [
+                538.9983892297573,
+                464.00001445601254
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 10,
+      "element": "N",
+      "x": 479.0,
+      "y": 429.71796769724494,
+      "implicit_h": 1,
+      "degree": 2,
+      "label": {
+        "text": "NH",
+        "atom_center": [
+          479.0,
+          429.71796769724494
+        ],
+        "label_item_origin_scene": [
+          475.65535033759363,
+          417.6687610475527
+        ],
+        "label_bounding_rect_local": [
+          0.0,
+          0.0,
+          21.65625,
+          17.0
+        ],
+        "glyphs": {
+          "N": [
+            {
+              "layout_cursor_x": [
+                0.0,
+                10.828125
+              ],
+              "font_point_size": 11.0,
+              "scene_bbox": [
+                476.88972533759363,
+                420.9343860475527,
+                8.375,
+                10.3125
+              ],
+              "scene_center": [
+                481.07722533759363,
+                426.0906360475527
+              ]
+            }
+          ],
+          "H": [
+            {
+              "layout_cursor_x": [
+                10.828125,
+                21.65625
+              ],
+              "font_point_size": 11.0,
+              "scene_bbox": [
+                487.71785033759363,
+                420.9343860475527,
+                8.375,
+                10.3125
+              ],
+              "scene_center": [
+                491.90535033759363,
+                426.0906360475527
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 11,
+      "element": "C",
+      "x": 439.00099424067696,
+      "y": 429.9999929898003,
+      "implicit_h": 3,
+      "degree": 1,
+      "label": null
+    }
+  ],
+  "bonds": [
+    {
+      "id": 1,
+      "a1": 1,
+      "a2": 2,
+      "elements": [
+        "C",
+        "C"
+      ],
+      "order": 2,
+      "aromatic": true,
+      "center_distance": 39.999999999999986,
+      "reference_length": 40.0,
+      "direction_deg": 120.0,
+      "render_stroke_width": 2.6,
+      "nominal_clearance": 2.3,
+      "trim_start_label": 0.0,
+      "trim_end_label": 0.0,
+      "trim_start_endpoint": 0.0,
+      "trim_end_endpoint": 0.0,
+      "trim_start_total": 0.0,
+      "trim_end_total": 0.0,
+      "main_path_subpaths": [
+        {
+          "points": [
+            [
+              439.0,
+              499.0
+            ],
+            [
+              419.0,
+              464.3589838486225
+            ]
+          ],
+          "visible_path_length": 39.999999999999986
+        },
+        {
+          "points": [
+            [
+              431.86269330410533,
+              495.03782217350897
+            ],
+            [
+              418.86269330410533,
+              472.52116167511355
+            ]
+          ],
+          "visible_path_length": 26.000000000000018
+        }
+      ],
+      "secondary_path_subpaths": [],
+      "trim_projections": {
+        "start_label_extent": null,
+        "end_label_extent": null,
+        "start_ray_intersection_stroke_1px": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_stroke_1px": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "start_ray_intersection_actual_stroke": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_actual_stroke": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "start_ray_intersection_stroke_plus_nominal_clearance": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_stroke_plus_nominal_clearance": {
+          "intersects": false,
+          "max_forward_extent": null
+        }
+      }
+    },
+    {
+      "id": 2,
+      "a1": 2,
+      "a2": 3,
+      "elements": [
+        "C",
+        "C"
+      ],
+      "order": 1,
+      "aromatic": true,
+      "center_distance": 40.0,
+      "reference_length": 40.0,
+      "direction_deg": 179.9999999999999,
+      "render_stroke_width": 2.6,
+      "nominal_clearance": 2.3,
+      "trim_start_label": 0.0,
+      "trim_end_label": 0.0,
+      "trim_start_endpoint": 0.0,
+      "trim_end_endpoint": 0.0,
+      "trim_start_total": 0.0,
+      "trim_end_total": 0.0,
+      "main_path_subpaths": [
+        {
+          "points": [
+            [
+              419.0,
+              464.3589838486225
+            ],
+            [
+              379.0,
+              464.3589838486224
+            ]
+          ],
+          "visible_path_length": 40.0
+        }
+      ],
+      "secondary_path_subpaths": [],
+      "trim_projections": {
+        "start_label_extent": null,
+        "end_label_extent": null,
+        "start_ray_intersection_stroke_1px": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_stroke_1px": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "start_ray_intersection_actual_stroke": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_actual_stroke": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "start_ray_intersection_stroke_plus_nominal_clearance": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_stroke_plus_nominal_clearance": {
+          "intersects": false,
+          "max_forward_extent": null
+        }
+      }
+    },
+    {
+      "id": 3,
+      "a1": 3,
+      "a2": 4,
+      "elements": [
+        "C",
+        "C"
+      ],
+      "order": 2,
+      "aromatic": true,
+      "center_distance": 40.000000000000036,
+      "reference_length": 40.0,
+      "direction_deg": 240.00000000000003,
+      "render_stroke_width": 2.6,
+      "nominal_clearance": 2.3,
+      "trim_start_label": 0.0,
+      "trim_end_label": 0.0,
+      "trim_start_endpoint": 0.0,
+      "trim_end_endpoint": 0.0,
+      "trim_start_total": 0.0,
+      "trim_end_total": 0.0,
+      "main_path_subpaths": [
+        {
+          "points": [
+            [
+              379.0,
+              464.3589838486224
+            ],
+            [
+              359.0,
+              499.0
+            ]
+          ],
+          "visible_path_length": 40.000000000000036
+        },
+        {
+          "points": [
+            [
+              379.13730669589467,
+              472.5211616751135
+            ],
+            [
+              366.13730669589467,
+              495.03782217350897
+            ]
+          ],
+          "visible_path_length": 26.000000000000068
+        }
+      ],
+      "secondary_path_subpaths": [],
+      "trim_projections": {
+        "start_label_extent": null,
+        "end_label_extent": null,
+        "start_ray_intersection_stroke_1px": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_stroke_1px": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "start_ray_intersection_actual_stroke": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_actual_stroke": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "start_ray_intersection_stroke_plus_nominal_clearance": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_stroke_plus_nominal_clearance": {
+          "intersects": false,
+          "max_forward_extent": null
+        }
+      }
+    },
+    {
+      "id": 4,
+      "a1": 4,
+      "a2": 5,
+      "elements": [
+        "C",
+        "C"
+      ],
+      "order": 1,
+      "aromatic": true,
+      "center_distance": 40.000000000000036,
+      "reference_length": 40.0,
+      "direction_deg": 299.99999999999994,
+      "render_stroke_width": 2.6,
+      "nominal_clearance": 2.3,
+      "trim_start_label": 0.0,
+      "trim_end_label": 0.0,
+      "trim_start_endpoint": 0.0,
+      "trim_end_endpoint": 0.0,
+      "trim_start_total": 0.0,
+      "trim_end_total": 0.0,
+      "main_path_subpaths": [
+        {
+          "points": [
+            [
+              359.0,
+              499.0
+            ],
+            [
+              379.0,
+              533.6410161513776
+            ]
+          ],
+          "visible_path_length": 40.000000000000036
+        }
+      ],
+      "secondary_path_subpaths": [],
+      "trim_projections": {
+        "start_label_extent": null,
+        "end_label_extent": null,
+        "start_ray_intersection_stroke_1px": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_stroke_1px": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "start_ray_intersection_actual_stroke": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_actual_stroke": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "start_ray_intersection_stroke_plus_nominal_clearance": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_stroke_plus_nominal_clearance": {
+          "intersects": false,
+          "max_forward_extent": null
+        }
+      }
+    },
+    {
+      "id": 5,
+      "a1": 5,
+      "a2": 6,
+      "elements": [
+        "C",
+        "C"
+      ],
+      "order": 2,
+      "aromatic": true,
+      "center_distance": 40.0,
+      "reference_length": 40.0,
+      "direction_deg": 0.0,
+      "render_stroke_width": 2.6,
+      "nominal_clearance": 2.3,
+      "trim_start_label": 0.0,
+      "trim_end_label": 0.0,
+      "trim_start_endpoint": 0.0,
+      "trim_end_endpoint": 0.0,
+      "trim_start_total": 0.0,
+      "trim_end_total": 0.0,
+      "main_path_subpaths": [
+        {
+          "points": [
+            [
+              379.0,
+              533.6410161513776
+            ],
+            [
+              419.0,
+              533.6410161513776
+            ]
+          ],
+          "visible_path_length": 40.0
+        },
+        {
+          "points": [
+            [
+              386.0,
+              529.4410161513775
+            ],
+            [
+              412.0,
+              529.4410161513775
+            ]
+          ],
+          "visible_path_length": 26.0
+        }
+      ],
+      "secondary_path_subpaths": [],
+      "trim_projections": {
+        "start_label_extent": null,
+        "end_label_extent": null,
+        "start_ray_intersection_stroke_1px": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_stroke_1px": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "start_ray_intersection_actual_stroke": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_actual_stroke": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "start_ray_intersection_stroke_plus_nominal_clearance": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_stroke_plus_nominal_clearance": {
+          "intersects": false,
+          "max_forward_extent": null
+        }
+      }
+    },
+    {
+      "id": 6,
+      "a1": 6,
+      "a2": 1,
+      "elements": [
+        "C",
+        "C"
+      ],
+      "order": 1,
+      "aromatic": true,
+      "center_distance": 40.000000000000036,
+      "reference_length": 40.0,
+      "direction_deg": 60.00000000000006,
+      "render_stroke_width": 2.6,
+      "nominal_clearance": 2.3,
+      "trim_start_label": 0.0,
+      "trim_end_label": 0.0,
+      "trim_start_endpoint": 0.0,
+      "trim_end_endpoint": 0.0,
+      "trim_start_total": 0.0,
+      "trim_end_total": 0.0,
+      "main_path_subpaths": [
+        {
+          "points": [
+            [
+              419.0,
+              533.6410161513776
+            ],
+            [
+              439.0,
+              499.0
+            ]
+          ],
+          "visible_path_length": 40.000000000000036
+        }
+      ],
+      "secondary_path_subpaths": [],
+      "trim_projections": {
+        "start_label_extent": null,
+        "end_label_extent": null,
+        "start_ray_intersection_stroke_1px": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_stroke_1px": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "start_ray_intersection_actual_stroke": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_actual_stroke": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "start_ray_intersection_stroke_plus_nominal_clearance": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_stroke_plus_nominal_clearance": {
+          "intersects": false,
+          "max_forward_extent": null
+        }
+      }
+    },
+    {
+      "id": 7,
+      "a1": 1,
+      "a2": 7,
+      "elements": [
+        "C",
+        "N"
+      ],
+      "order": 1,
+      "aromatic": false,
+      "center_distance": 40.0,
+      "reference_length": 40.0,
+      "direction_deg": 0.0,
+      "render_stroke_width": 2.6,
+      "nominal_clearance": 2.3,
+      "trim_start_label": 0.0,
+      "trim_end_label": 5.631875000000025,
+      "trim_start_endpoint": 0.0,
+      "trim_end_endpoint": 0.0,
+      "trim_start_total": 0.0,
+      "trim_end_total": 5.631875000000025,
+      "main_path_subpaths": [
+        {
+          "points": [
+            [
+              439.0,
+              499.0
+            ],
+            [
+              473.36812499999996,
+              499.0
+            ]
+          ],
+          "visible_path_length": 34.368124999999964
+        }
+      ],
+      "secondary_path_subpaths": [],
+      "trim_projections": {
+        "start_label_extent": null,
+        "end_label_extent": 3.331875000000025,
+        "start_ray_intersection_stroke_1px": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_stroke_1px": {
+          "intersects": true,
+          "max_forward_extent": 3.331875000000025
+        },
+        "start_ray_intersection_actual_stroke": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_actual_stroke": {
+          "intersects": true,
+          "max_forward_extent": 3.331875000000025
+        },
+        "start_ray_intersection_stroke_plus_nominal_clearance": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_stroke_plus_nominal_clearance": {
+          "intersects": true,
+          "max_forward_extent": 3.331875000000025
+        }
+      }
+    },
+    {
+      "id": 8,
+      "a1": 7,
+      "a2": 8,
+      "elements": [
+        "N",
+        "C"
+      ],
+      "order": 1,
+      "aromatic": false,
+      "center_distance": 39.999999999999986,
+      "reference_length": 40.0,
+      "direction_deg": 60.0,
+      "render_stroke_width": 2.6,
+      "nominal_clearance": 2.3,
+      "trim_start_label": 15.620745197497072,
+      "trim_end_label": 0.0,
+      "trim_start_endpoint": 0.0,
+      "trim_end_endpoint": 0.0,
+      "trim_start_total": 15.620745197497072,
+      "trim_end_total": 0.0,
+      "main_path_subpaths": [
+        {
+          "points": [
+            [
+              486.81037259874853,
+              485.4720378329238
+            ],
+            [
+              499.0,
+              464.3589838486225
+            ]
+          ],
+          "visible_path_length": 24.37925480250292
+        }
+      ],
+      "secondary_path_subpaths": [],
+      "trim_projections": {
+        "start_label_extent": 13.320745197497072,
+        "end_label_extent": null,
+        "start_ray_intersection_stroke_1px": {
+          "intersects": true,
+          "max_forward_extent": 5.833418731257575
+        },
+        "end_ray_intersection_stroke_1px": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "start_ray_intersection_actual_stroke": {
+          "intersects": true,
+          "max_forward_extent": 6.2952989466092735
+        },
+        "end_ray_intersection_actual_stroke": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "start_ray_intersection_stroke_plus_nominal_clearance": {
+          "intersects": true,
+          "max_forward_extent": 7.623204565745448
+        },
+        "end_ray_intersection_stroke_plus_nominal_clearance": {
+          "intersects": false,
+          "max_forward_extent": null
+        }
+      }
+    },
+    {
+      "id": 9,
+      "a1": 8,
+      "a2": 9,
+      "elements": [
+        "C",
+        "O"
+      ],
+      "order": 2,
+      "aromatic": false,
+      "center_distance": 39.999999999999964,
+      "reference_length": 40.0,
+      "direction_deg": 0.5141926813439,
+      "render_stroke_width": 2.6,
+      "nominal_clearance": 2.3,
+      "trim_start_label": 0.0,
+      "trim_end_label": 8.204942524976037,
+      "trim_start_endpoint": 0.0,
+      "trim_end_endpoint": 0.0,
+      "trim_start_total": 0.0,
+      "trim_end_total": 8.204942524976037,
+      "main_path_subpaths": [
+        {
+          "points": [
+            [
+              499.01884589311203,
+              466.45889928318473
+            ],
+            [
+              530.8126230048249,
+              466.17356297143954
+            ]
+          ],
+          "visible_path_length": 31.79505747502397
+        },
+        {
+          "points": [
+            [
+              498.98115410688797,
+              462.2590684140602
+            ],
+            [
+              530.7749312186008,
+              461.973732102315
+            ]
+          ],
+          "visible_path_length": 31.79505747502397
+        }
+      ],
+      "secondary_path_subpaths": [],
+      "trim_projections": {
+        "start_label_extent": null,
+        "end_label_extent": 5.912754710372474,
+        "start_ray_intersection_stroke_1px": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_stroke_1px": {
+          "intersects": true,
+          "max_forward_extent": 5.840659816433368
+        },
+        "start_ray_intersection_actual_stroke": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_actual_stroke": {
+          "intersects": true,
+          "max_forward_extent": 5.847839493405817
+        },
+        "start_ray_intersection_stroke_plus_nominal_clearance": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_stroke_plus_nominal_clearance": {
+          "intersects": true,
+          "max_forward_extent": 5.868481064701608
+        }
+      }
+    },
+    {
+      "id": 10,
+      "a1": 8,
+      "a2": 10,
+      "elements": [
+        "C",
+        "N"
+      ],
+      "order": 1,
+      "aromatic": false,
+      "center_distance": 39.999999999999986,
+      "reference_length": 40.0,
+      "direction_deg": 120.0,
+      "render_stroke_width": 2.6,
+      "nominal_clearance": 2.3,
+      "trim_start_label": 0.0,
+      "trim_end_label": 15.743312979050426,
+      "trim_start_endpoint": 0.0,
+      "trim_end_endpoint": 0.0,
+      "trim_start_total": 0.0,
+      "trim_end_total": 15.743312979050426,
+      "main_path_subpaths": [
+        {
+          "points": [
+            [
+              499.0,
+              464.3589838486225
+            ],
+            [
+              486.8716564895252,
+              443.35207667683187
+            ]
+          ],
+          "visible_path_length": 24.25668702094957
+        }
+      ],
+      "secondary_path_subpaths": [],
+      "trim_projections": {
+        "start_label_extent": null,
+        "end_label_extent": 13.443312979050425,
+        "start_ray_intersection_stroke_1px": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_stroke_1px": {
+          "intersects": true,
+          "max_forward_extent": 6.005358881599609
+        },
+        "start_ray_intersection_actual_stroke": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_actual_stroke": {
+          "intersects": true,
+          "max_forward_extent": 6.467239096951307
+        },
+        "start_ray_intersection_stroke_plus_nominal_clearance": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_stroke_plus_nominal_clearance": {
+          "intersects": true,
+          "max_forward_extent": 7.795144716087482
+        }
+      }
+    },
+    {
+      "id": 11,
+      "a1": 10,
+      "a2": 11,
+      "elements": [
+        "N",
+        "C"
+      ],
+      "order": 1,
+      "aromatic": false,
+      "center_distance": 39.999999999999986,
+      "reference_length": 40.0,
+      "direction_deg": 180.403974821558,
+      "render_stroke_width": 2.6,
+      "nominal_clearance": 2.3,
+      "trim_start_label": 5.679472751312799,
+      "trim_end_label": 0.0,
+      "trim_start_endpoint": 0.0,
+      "trim_end_endpoint": 0.0,
+      "trim_start_total": 5.679472751312799,
+      "trim_end_total": 0.0,
+      "main_path_subpaths": [
+        {
+          "points": [
+            [
+              473.32066841775804,
+              429.7580115713512
+            ],
+            [
+              439.00099424067696,
+              429.9999929898003
+            ]
+          ],
+          "visible_path_length": 34.320527248687206
+        }
+      ],
+      "secondary_path_subpaths": [],
+      "trim_projections": {
+        "start_label_extent": 3.3794727513128,
+        "end_label_extent": null,
+        "start_ray_intersection_stroke_1px": {
+          "intersects": true,
+          "max_forward_extent": 3.3482582029258667
+        },
+        "end_ray_intersection_stroke_1px": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "start_ray_intersection_actual_stroke": {
+          "intersects": true,
+          "max_forward_extent": 3.3538988489809687
+        },
+        "end_ray_intersection_actual_stroke": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "start_ray_intersection_stroke_plus_nominal_clearance": {
+          "intersects": true,
+          "max_forward_extent": 3.3701157063893845
+        },
+        "end_ray_intersection_stroke_plus_nominal_clearance": {
+          "intersects": false,
+          "max_forward_extent": null
+        }
+      }
+    }
+  ],
+  "reference_path_bonds": [
+    {
+      "id": 7,
+      "a1": 1,
+      "a2": 7,
+      "elements": [
+        "C",
+        "N"
+      ],
+      "order": 1,
+      "aromatic": false,
+      "center_distance": 40.0,
+      "reference_length": 40.0,
+      "direction_deg": 0.0,
+      "render_stroke_width": 2.6,
+      "nominal_clearance": 2.3,
+      "trim_start_label": 0.0,
+      "trim_end_label": 5.631875000000025,
+      "trim_start_endpoint": 0.0,
+      "trim_end_endpoint": 0.0,
+      "trim_start_total": 0.0,
+      "trim_end_total": 5.631875000000025,
+      "main_path_subpaths": [
+        {
+          "points": [
+            [
+              439.0,
+              499.0
+            ],
+            [
+              473.36812499999996,
+              499.0
+            ]
+          ],
+          "visible_path_length": 34.368124999999964
+        }
+      ],
+      "secondary_path_subpaths": [],
+      "trim_projections": {
+        "start_label_extent": null,
+        "end_label_extent": 3.331875000000025,
+        "start_ray_intersection_stroke_1px": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_stroke_1px": {
+          "intersects": true,
+          "max_forward_extent": 3.331875000000025
+        },
+        "start_ray_intersection_actual_stroke": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_actual_stroke": {
+          "intersects": true,
+          "max_forward_extent": 3.331875000000025
+        },
+        "start_ray_intersection_stroke_plus_nominal_clearance": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_stroke_plus_nominal_clearance": {
+          "intersects": true,
+          "max_forward_extent": 3.331875000000025
+        }
+      }
+    },
+    {
+      "id": 8,
+      "a1": 7,
+      "a2": 8,
+      "elements": [
+        "N",
+        "C"
+      ],
+      "order": 1,
+      "aromatic": false,
+      "center_distance": 39.999999999999986,
+      "reference_length": 40.0,
+      "direction_deg": 60.0,
+      "render_stroke_width": 2.6,
+      "nominal_clearance": 2.3,
+      "trim_start_label": 15.620745197497072,
+      "trim_end_label": 0.0,
+      "trim_start_endpoint": 0.0,
+      "trim_end_endpoint": 0.0,
+      "trim_start_total": 15.620745197497072,
+      "trim_end_total": 0.0,
+      "main_path_subpaths": [
+        {
+          "points": [
+            [
+              486.81037259874853,
+              485.4720378329238
+            ],
+            [
+              499.0,
+              464.3589838486225
+            ]
+          ],
+          "visible_path_length": 24.37925480250292
+        }
+      ],
+      "secondary_path_subpaths": [],
+      "trim_projections": {
+        "start_label_extent": 13.320745197497072,
+        "end_label_extent": null,
+        "start_ray_intersection_stroke_1px": {
+          "intersects": true,
+          "max_forward_extent": 5.833418731257575
+        },
+        "end_ray_intersection_stroke_1px": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "start_ray_intersection_actual_stroke": {
+          "intersects": true,
+          "max_forward_extent": 6.2952989466092735
+        },
+        "end_ray_intersection_actual_stroke": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "start_ray_intersection_stroke_plus_nominal_clearance": {
+          "intersects": true,
+          "max_forward_extent": 7.623204565745448
+        },
+        "end_ray_intersection_stroke_plus_nominal_clearance": {
+          "intersects": false,
+          "max_forward_extent": null
+        }
+      }
+    },
+    {
+      "id": 9,
+      "a1": 8,
+      "a2": 9,
+      "elements": [
+        "C",
+        "O"
+      ],
+      "order": 2,
+      "aromatic": false,
+      "center_distance": 39.999999999999964,
+      "reference_length": 40.0,
+      "direction_deg": 0.5141926813439,
+      "render_stroke_width": 2.6,
+      "nominal_clearance": 2.3,
+      "trim_start_label": 0.0,
+      "trim_end_label": 8.204942524976037,
+      "trim_start_endpoint": 0.0,
+      "trim_end_endpoint": 0.0,
+      "trim_start_total": 0.0,
+      "trim_end_total": 8.204942524976037,
+      "main_path_subpaths": [
+        {
+          "points": [
+            [
+              499.01884589311203,
+              466.45889928318473
+            ],
+            [
+              530.8126230048249,
+              466.17356297143954
+            ]
+          ],
+          "visible_path_length": 31.79505747502397
+        },
+        {
+          "points": [
+            [
+              498.98115410688797,
+              462.2590684140602
+            ],
+            [
+              530.7749312186008,
+              461.973732102315
+            ]
+          ],
+          "visible_path_length": 31.79505747502397
+        }
+      ],
+      "secondary_path_subpaths": [],
+      "trim_projections": {
+        "start_label_extent": null,
+        "end_label_extent": 5.912754710372474,
+        "start_ray_intersection_stroke_1px": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_stroke_1px": {
+          "intersects": true,
+          "max_forward_extent": 5.840659816433368
+        },
+        "start_ray_intersection_actual_stroke": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_actual_stroke": {
+          "intersects": true,
+          "max_forward_extent": 5.847839493405817
+        },
+        "start_ray_intersection_stroke_plus_nominal_clearance": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_stroke_plus_nominal_clearance": {
+          "intersects": true,
+          "max_forward_extent": 5.868481064701608
+        }
+      }
+    },
+    {
+      "id": 11,
+      "a1": 10,
+      "a2": 11,
+      "elements": [
+        "N",
+        "C"
+      ],
+      "order": 1,
+      "aromatic": false,
+      "center_distance": 39.999999999999986,
+      "reference_length": 40.0,
+      "direction_deg": 180.403974821558,
+      "render_stroke_width": 2.6,
+      "nominal_clearance": 2.3,
+      "trim_start_label": 5.679472751312799,
+      "trim_end_label": 0.0,
+      "trim_start_endpoint": 0.0,
+      "trim_end_endpoint": 0.0,
+      "trim_start_total": 5.679472751312799,
+      "trim_end_total": 0.0,
+      "main_path_subpaths": [
+        {
+          "points": [
+            [
+              473.32066841775804,
+              429.7580115713512
+            ],
+            [
+              439.00099424067696,
+              429.9999929898003
+            ]
+          ],
+          "visible_path_length": 34.320527248687206
+        }
+      ],
+      "secondary_path_subpaths": [],
+      "trim_projections": {
+        "start_label_extent": 3.3794727513128,
+        "end_label_extent": null,
+        "start_ray_intersection_stroke_1px": {
+          "intersects": true,
+          "max_forward_extent": 3.3482582029258667
+        },
+        "end_ray_intersection_stroke_1px": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "start_ray_intersection_actual_stroke": {
+          "intersects": true,
+          "max_forward_extent": 3.3538988489809687
+        },
+        "end_ray_intersection_actual_stroke": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "start_ray_intersection_stroke_plus_nominal_clearance": {
+          "intersects": true,
+          "max_forward_extent": 3.3701157063893845
+        },
+        "end_ray_intersection_stroke_plus_nominal_clearance": {
+          "intersects": false,
+          "max_forward_extent": null
+        }
+      }
+    }
+  ],
+  "angles": {
+    "1": [
+      {
+        "neighbors": [
+          2,
+          6
+        ],
+        "angle_deg": 120.00000000000003
+      },
+      {
+        "neighbors": [
+          2,
+          7
+        ],
+        "angle_deg": 120.0
+      },
+      {
+        "neighbors": [
+          6,
+          7
+        ],
+        "angle_deg": 120.0
+      }
+    ],
+    "7": [
+      {
+        "neighbors": [
+          1,
+          8
+        ],
+        "angle_deg": 120.0
+      }
+    ],
+    "8": [
+      {
+        "neighbors": [
+          7,
+          9
+        ],
+        "angle_deg": 120.5141926813439
+      },
+      {
+        "neighbors": [
+          7,
+          10
+        ],
+        "angle_deg": 120.0
+      },
+      {
+        "neighbors": [
+          9,
+          10
+        ],
+        "angle_deg": 119.4858073186561
+      }
+    ],
+    "9": [],
+    "10": [
+      {
+        "neighbors": [
+          8,
+          11
+        ],
+        "angle_deg": 119.596025178442
+      }
+    ],
+    "11": []
+  }
+}
+exit=0

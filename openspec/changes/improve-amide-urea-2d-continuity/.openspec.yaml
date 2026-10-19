@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-10-19
+goal: Keep graph-aware planar amide/urea placement at reference bond lengths and trim visible bonds only to the actual occupied atom-label glyphs, without changing Clean2D or established depiction styles.
