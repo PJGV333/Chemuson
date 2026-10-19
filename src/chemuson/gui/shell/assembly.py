@@ -60,6 +60,7 @@ from chemuson.gui.template_library import TemplateLibrary
 from chemuson.gui.text_toolbar import TextFormatToolbar
 from chemuson.gui.tool_rail import ToolRail, ToolShortcutDispatcher
 from chemuson.gui.toolbar import ChemusonToolbar, SymbolPaletteToolbar
+from chemuson.gui.viewport3d import MolecularViewportDock
 from chemuson.platform.settings import application_settings
 from chemuson.version import get_app_version
 
@@ -120,10 +121,27 @@ def assemble_application_shell(self) -> None:
     self._molecular_assistant_identity_results: dict[int, object] = {}
     self._molecular_assistant_transform_jobs: dict[int, object] = {}
     self._compchem_coordset = None
+    self._compchem_preview_coordset = None
+    self._geometry_handle_base_canvas = None
+    self._geometry_handle_base_coordset = None
+    self._geometry_handle_operation = None
     self._latest_compchem_job_id = 0
     self._compchem_job_backends: dict[int, str] = {}
     self._compchem_job_operations: dict[int, str] = {}
+    self._compchem_job_snapshots = {}
+    self._pending_3d_build_anchor_id = None
+    self._geometry3d_sync_timer = QTimer(self)
+    self._geometry3d_sync_timer.setSingleShot(True)
+    self._geometry3d_sync_timer.setInterval(180)
+    self._geometry3d_sync_timer.timeout.connect(self._start_geometry3d_sync_job)
+    self._live_mm_fixed_atom_ids = ()
+    self._live_mm_pending = False
+    self._live_mm_energy_job_id = 0
+    self._live_mm_previous_energy = None
+    self._live_mm_pending_result = None
+    self._viewport_geometry_gesture_active = False
     self._compchem3d_controller.frame_ready.connect(self._on_compchem_frame_ready)
+    self._compchem3d_controller.job_progress.connect(self._on_compchem_progress)
     self._compchem3d_controller.job_finished.connect(self._on_compchem_job_finished)
 
     # === CENTRAL TABS/CANVAS ===
@@ -263,6 +281,71 @@ def assemble_application_shell(self) -> None:
     self.compchem_dock.reset_requested.connect(self._on_compchem_reset)
     self.compchem_dock.export_xyz_requested.connect(self._on_compchem_export_xyz)
     self.compchem_dock.export_input_requested.connect(self._on_compchem_export_input)
+
+    self.viewport3d_dock = MolecularViewportDock(self)
+    self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.viewport3d_dock)
+    self.viewport3d_dock.hide()
+    self.viewport3d_dock.liveMMToggled.connect(self._on_live_mm_toggled)
+    self.viewport3d_dock.retryConformerRequested.connect(self._on_compchem_generate)
+    self.viewport3d_dock.geometryConstraintRequested.connect(
+        self._on_geometry_constraint_requested
+    )
+    self.viewport3d_dock.atomElementChangeRequested.connect(
+        self._on_viewport_atom_element_change
+    )
+    self.viewport3d_dock.viewport.buildElementChangeRequested.connect(
+        self._on_viewport_atom_element_change
+    )
+    self.viewport3d_dock.viewport.statusChanged.connect(
+        self._on_viewport_render_status
+    )
+    self.viewport3d_dock.viewport.geometryPreviewChanged.connect(
+        self._on_viewport_geometry_preview
+    )
+    self.viewport3d_dock.viewport.geometryHandleStarted.connect(
+        self._on_geometry_handle_started
+    )
+    self.viewport3d_dock.viewport.geometryHandlePreviewRequested.connect(
+        self._on_geometry_handle_preview_requested
+    )
+    self.viewport3d_dock.viewport.geometryEditCommitted.connect(
+        self._on_viewport_geometry_committed
+    )
+    self.viewport3d_dock.viewport.geometryEditCancelled.connect(
+        self._on_viewport_geometry_cancelled
+    )
+    self.viewport3d_dock.viewport.geometryEditStarted.connect(
+        self._on_viewport_geometry_edit_started
+    )
+    self.viewport3d_dock.viewport.liveMMPlaybackDrained.connect(
+        self._on_live_mm_playback_drained
+    )
+    self.viewport3d_dock.viewport.buildCancelled.connect(
+        self._on_viewport_build_cancelled
+    )
+    self.viewport3d_dock.viewport.buildPointRequested.connect(
+        self._on_viewport_build_point_requested
+    )
+    self.viewport3d_dock.viewport.buildChainExtensionRequested.connect(
+        self._on_viewport_build_chain_extension_requested
+    )
+    self.viewport3d_dock.viewport.buildBondRequested.connect(
+        self._on_viewport_build_bond_requested
+    )
+    self.viewport3d_dock.viewport.buildAnchorSelected.connect(
+        self._on_viewport_build_anchor_selected
+    )
+    self.viewport3d_dock.viewport.derivedHydrogenEditRequested.connect(
+        self._on_viewport_derived_hydrogen_edit_requested
+    )
+    self._live_mm_timer = QTimer(self)
+    self._live_mm_timer.setSingleShot(True)
+    self._live_mm_timer.setInterval(100)
+    self._live_mm_timer.timeout.connect(self._start_live_mm_job)
+    self.action_toggle_viewport3d = self.viewport3d_dock.toggleViewAction()
+    assert self.action_toggle_viewport3d is not None
+    self.action_toggle_viewport3d.setText("Visor molecular 3D")
+    self.viewport3d_dock.visibilityChanged.connect(self._on_viewport3d_visibility_changed)
 
     self._properties_update_timer = QTimer(self)
     self._properties_update_timer.setSingleShot(True)

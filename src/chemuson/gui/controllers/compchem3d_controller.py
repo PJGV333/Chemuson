@@ -3,6 +3,7 @@ from __future__ import annotations
 """Async controller for the 3D / CompChem dock."""
 
 from dataclasses import dataclass
+import threading
 from typing import Any
 
 from PyQt6.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
@@ -10,7 +11,6 @@ from PyQt6.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
 from chemuson.core.model import MolGraph
 from chemuson.geometry3d import (
     CoordinateSet3D,
-    OptimizationFrame,
     OptimizationResult,
     OptimizationSettings,
     conformer_3d_for_graph,
@@ -25,12 +25,14 @@ class CompChemJobSpec:
     backend: str
     settings: OptimizationSettings
     force: bool = False
+    fixed_atom_ids: tuple[int, ...] = ()
 
 
 class CompChem3DWorker(QObject):
     """Runs 3D generation/optimization away from the UI thread."""
 
     frame_ready = pyqtSignal(int, object)
+    progress_ready = pyqtSignal(int, object)
     finished = pyqtSignal(int, object)
 
     def __init__(
@@ -45,6 +47,11 @@ class CompChem3DWorker(QObject):
         self._graph = graph
         self._spec = spec
         self._coordset = coordset
+        self._cancel_event = threading.Event()
+
+    def cancel(self) -> None:
+        """Solicita cancelación cooperativa del proceso RDKit de Live MM."""
+        self._cancel_event.set()
 
     @pyqtSlot()
     def run(self) -> None:
@@ -73,6 +80,8 @@ class CompChem3DWorker(QObject):
             timeout_s=self._spec.settings.timeout_s,
             force=self._spec.force,
             settings=self._spec.settings,
+            cancel_event=self._cancel_event,
+            on_progress=lambda event: self.progress_ready.emit(self._job_id, event),
         )
         coordset = conformer.coordinate_set
         if coordset is None:
@@ -80,16 +89,25 @@ class CompChem3DWorker(QObject):
                 None,
                 method=conformer.method or "rdkit",
                 message=conformer.message or "RDKit no devolvió conformero.",
-                metadata={"cache_state": "miss"},
+                metadata={
+                    "cache_state": "miss",
+                    **dict(conformer.metadata),
+                },
             )
         cache_state = "hit" if conformer.from_cache else "miss"
+        metadata = {
+            **dict(coordset.metadata),
+            **dict(conformer.metadata),
+            "cache_state": cache_state,
+            "cache_key": conformer.cache_key,
+        }
         return OptimizationResult(
             coordset,
-            converged=True,
+            converged=bool(metadata.get("converged", conformer.method != "unoptimized")),
             energy=coordset.energy,
             method=coordset.method,
             message=conformer.message,
-            metadata={"cache_state": cache_state, "cache_key": conformer.cache_key},
+            metadata=metadata,
         )
 
     def _optimize(self) -> OptimizationResult:
@@ -111,22 +129,14 @@ class CompChem3DWorker(QObject):
 
         from chemuson.geometry3d import rdkit_backend
 
-        frames: list[OptimizationFrame] = []
-        for frame in rdkit_backend.optimize_iter(self._graph, self._coordset, self._spec.settings):
-            frames.append(frame)
-            self.frame_ready.emit(self._job_id, frame)
-        if frames:
-            last = frames[-1]
-            return OptimizationResult(
-                last.coordinates,
-                converged=last.converged,
-                energy=last.energy,
-                method=last.coordinates.method,
-                message=last.message,
-                frames=tuple(frames),
-                metadata={"cache_state": "miss"},
-            )
-        result = rdkit_backend.optimize(self._graph, self._coordset, self._spec.settings)
+        result = rdkit_backend.optimize_stream(
+            self._graph,
+            self._coordset,
+            self._spec.settings,
+            fixed_atom_ids=self._spec.fixed_atom_ids,
+            cancel_event=self._cancel_event,
+            on_frame=lambda frame: self.frame_ready.emit(self._job_id, frame),
+        )
         metadata = dict(getattr(result, "metadata", {}) or {})
         metadata.setdefault("cache_state", "miss")
         return OptimizationResult(
@@ -145,6 +155,7 @@ class CompChem3DController(QObject):
 
     job_started = pyqtSignal(int)
     frame_ready = pyqtSignal(int, object)
+    job_progress = pyqtSignal(int, object)
     job_finished = pyqtSignal(int, object)
 
     def __init__(self, parent: QObject | None = None) -> None:
@@ -169,6 +180,7 @@ class CompChem3DController(QObject):
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
         worker.frame_ready.connect(self._relay_frame_ready)
+        worker.progress_ready.connect(self._relay_progress_ready)
         worker.finished.connect(self._record_worker_finished)
         worker.finished.connect(thread.quit)
         worker.finished.connect(worker.deleteLater)
@@ -195,12 +207,31 @@ class CompChem3DController(QObject):
         if self._shutting_down:
             return
         self._shutting_down = True
-        for thread, _worker in self._jobs.values():
+        for thread, worker in self._jobs.values():
             thread.requestInterruption()
+            cancel = getattr(worker, "cancel", None)
+            if callable(cancel):
+                cancel()
+
+    def cancel_job(self, job_id: int) -> bool:
+        """Cancela una optimización RDKit activa sin bloquear el hilo GUI."""
+        job = self._jobs.get(int(job_id))
+        if job is None:
+            return False
+        _thread, worker = job
+        cancel = getattr(worker, "cancel", None)
+        if not callable(cancel):
+            return False
+        cancel()
+        return True
 
     def _relay_frame_ready(self, job_id: int, frame: object) -> None:
         if not self._shutting_down:
             self.frame_ready.emit(job_id, frame)
+
+    def _relay_progress_ready(self, job_id: int, event: object) -> None:
+        if not self._shutting_down:
+            self.job_progress.emit(job_id, event)
 
     def _record_worker_finished(self, job_id: int, result: Any) -> None:
         if not self._shutting_down:

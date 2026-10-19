@@ -19,6 +19,7 @@ from chemuson.chemname import NameOptions, iupac_name
 from chemuson.chemname.molview import MolView
 from chemuson.chemname.rings import find_rings_simple, ring_bonds
 from chemuson.core.model import Bond, BondStereo, BondStyle, MolGraph, normalize_opacity
+from chemuson.geometry3d.model import CoordinateSet3D
 from chemuson.gui.commands import (
     AddAtomCommand,
     AddBondCommand,
@@ -319,6 +320,116 @@ def _analysis_build_text_for_worker(graph: MolGraph, mode: str, opts: NameOption
     return "\n".join(lines)
 
 class CanvasStructureMixin:
+    def _geometry3d_persistence_payload(self) -> dict | None:
+        coordinates = getattr(self, "coordinate_set_3d", None)
+        model = getattr(self, "model", None)
+        if not isinstance(coordinates, CoordinateSet3D) or model is None:
+            return None
+        try:
+            raw_positions = coordinates.normalized_positions()
+        except (TypeError, ValueError, IndexError):
+            return None
+        positions: dict[str, list[float]] = {}
+        for atom_id in sorted(model.atoms):
+            point = raw_positions.get(atom_id)
+            if point is None or len(point) != 3 or not all(math.isfinite(value) for value in point):
+                continue
+            positions[str(atom_id)] = [float(point[0]), float(point[1]), float(point[2])]
+        if not positions:
+            return None
+
+        energy = coordinates.energy
+        if energy is not None:
+            try:
+                energy = float(energy)
+            except (TypeError, ValueError):
+                energy = None
+            if energy is not None and not math.isfinite(energy):
+                energy = None
+        metadata = {}
+        for key in ("forcefield", "energy_unit", "optimization_steps", "converged"):
+            value = coordinates.metadata.get(key)
+            if isinstance(value, (str, bool, int)):
+                metadata[key] = value
+            elif isinstance(value, float) and math.isfinite(value):
+                metadata[key] = value
+        return {
+            "schema_version": 1,
+            "source": str(coordinates.source),
+            "method": str(coordinates.method),
+            "energy": energy,
+            "positions": positions,
+            "metadata": metadata,
+        }
+
+    def _restore_geometry3d(self, data: dict) -> None:
+        raw = data.get("geometry3d")
+        setattr(self, "geometry3d_load_error", None)
+        model = getattr(self, "model", None)
+        setter = getattr(self, "set_geometry3d_coordinates", None)
+        if model is None or not callable(setter):
+            return
+        if raw is None:
+            setter(None)
+            return
+        try:
+            if not isinstance(raw, dict):
+                raise ValueError("invalid_geometry3d")
+            schema_version = raw.get("schema_version")
+            if type(schema_version) is not int or schema_version != 1:
+                raise ValueError("invalid_geometry3d")
+            raw_positions = raw.get("positions")
+            if not isinstance(raw_positions, dict) or not raw_positions:
+                raise ValueError("invalid_geometry3d")
+            positions: dict[int, tuple[float, float, float]] = {}
+            for raw_atom_id, raw_point in raw_positions.items():
+                atom_id = int(raw_atom_id)
+                if atom_id not in model.atoms or atom_id in positions:
+                    raise ValueError("invalid_geometry3d")
+                if not isinstance(raw_point, (list, tuple)) or len(raw_point) != 3:
+                    raise ValueError("invalid_geometry3d")
+                point = tuple(float(component) for component in raw_point)
+                if not all(math.isfinite(component) for component in point):
+                    raise ValueError("invalid_geometry3d")
+                positions[atom_id] = (point[0], point[1], point[2])
+            source = raw.get("source", "")
+            method = raw.get("method", "")
+            if not isinstance(source, str) or not isinstance(method, str):
+                raise ValueError("invalid_geometry3d")
+            energy_raw = raw.get("energy")
+            if energy_raw is None:
+                energy = None
+            elif isinstance(energy_raw, bool):
+                raise ValueError("invalid_geometry3d")
+            else:
+                energy = float(energy_raw)
+                if not math.isfinite(energy):
+                    raise ValueError("invalid_geometry3d")
+            raw_metadata = raw.get("metadata", {})
+            if not isinstance(raw_metadata, dict):
+                raise ValueError("invalid_geometry3d")
+            metadata = {
+                key: value
+                for key, value in raw_metadata.items()
+                if key in {"forcefield", "energy_unit", "optimization_steps", "converged"}
+                and isinstance(value, (str, bool, int, float))
+                and (not isinstance(value, float) or math.isfinite(value))
+            }
+        except (TypeError, ValueError, OverflowError):
+            setattr(self, "geometry3d_load_error", "invalid_geometry3d")
+            setter(None)
+            return
+
+        setter(
+            CoordinateSet3D(
+                positions=positions,
+                source=source,
+                method=method,
+                energy=energy,
+                metadata=metadata,
+            )
+        )
+
     def get_persistence_data(self) -> dict:
         """Collects canvas settings and non-structural items for serialization."""
         data = {
@@ -356,6 +467,9 @@ class CanvasStructureMixin:
                 str(atom_id): anchor for atom_id, anchor in self._group_anchor_overrides.items()
             },
         }
+        geometry3d = self._geometry3d_persistence_payload()
+        if geometry3d is not None:
+            data["geometry3d"] = geometry3d
 
         for item in self.scene.items():
             parent_item = item.parentItem()
@@ -486,6 +600,7 @@ class CanvasStructureMixin:
         self.state.canvas_opacity = normalize_opacity(settings.get("canvas_opacity", 1.0))
         self.name_advanced_enabled = bool(settings.get("name_advanced_enabled", True))
         self.name_rdkit_isolated = bool(settings.get("name_rdkit_isolated", True))
+        self._restore_geometry3d(data)
 
         self._group_anchor_overrides = {
             int(atom_id): anchor

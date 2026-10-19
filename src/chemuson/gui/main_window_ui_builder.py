@@ -496,9 +496,11 @@ class MainWindowUiBuilder:
                 canvas_size_menu.addSeparator()
             else:
                 canvas_size_menu.addAction(action)
-
         palette_menu = view_menu.addMenu("Paletas")
         palette_menu.addAction(window.symbols_toolbar.toggleViewAction())
+        view_menu.addSeparator()
+        view_menu.addAction(window.action_toggle_viewport3d)
+        view_menu.addSeparator()
 
         panels_menu = view_menu.addMenu("Paneles")
         window.action_toggle_side_panel = panels_menu.addAction("Panel lateral")

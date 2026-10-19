@@ -6,6 +6,7 @@ from PyQt6.QtCore import QPointF, QRectF
 from PyQt6.QtGui import QUndoCommand
 
 from chemuson.core.model import MolGraph
+from chemuson.geometry3d.model import CoordinateSet3D
 
 from ._shared import (
     _atom_degree,
@@ -551,3 +552,26 @@ class DeleteSelectionCommand(QUndoCommand):
             if restored_atom is not None:
                 restored_atom.implicit_h = atom.implicit_h
                 restored_atom.has_valence_error = atom.has_valence_error
+
+
+class SetGeometry3DCommand(QUndoCommand):
+    """Aplica un snapshot 3D como una sola acción undoable."""
+
+    def __init__(
+        self,
+        view,
+        coordinates: CoordinateSet3D | None,
+        text: str = "Edit 3D geometry",
+    ) -> None:
+        super().__init__(text)
+        self._view = view
+        self._before = getattr(view, "coordinate_set_3d", None)
+        self._after = coordinates
+
+    def redo(self) -> None:
+        """Instala la geometría resultante del gesto/operación."""
+        self._view.set_geometry3d_coordinates(self._after)
+
+    def undo(self) -> None:
+        """Restaura exactamente el snapshot previo del documento."""
+        self._view.set_geometry3d_coordinates(self._before)

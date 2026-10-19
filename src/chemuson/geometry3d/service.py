@@ -2,11 +2,12 @@ from __future__ import annotations
 
 """Pipeline híbrido para conformaciones 3D reales y proyección 2D."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from concurrent.futures import Future, ThreadPoolExecutor
 import hashlib
 import math
-from typing import Iterable, Mapping
+import threading
+from typing import Callable, Iterable, Mapping
 
 from chemuson.core.model import MolGraph, bond_affects_valence
 from chemuson.geometry3d.model import CoordinateSet3D, OptimizationSettings
@@ -24,6 +25,7 @@ class Conformer3DResult:
     energy: float | None = None
     message: str = ""
     from_cache: bool = False
+    metadata: Mapping[str, object] = field(default_factory=dict)
 
     @property
     def coordinate_set(self) -> CoordinateSet3D | None:
@@ -35,7 +37,12 @@ class Conformer3DResult:
             source=self.source,
             method=self.method,
             energy=self.energy,
-            metadata={"cache_key": self.cache_key, "from_cache": self.from_cache, "message": self.message},
+            metadata={
+                **dict(self.metadata),
+                "cache_key": self.cache_key,
+                "from_cache": self.from_cache,
+                "message": self.message,
+            },
         )
 
     @property
@@ -74,7 +81,25 @@ class ProjectedAtom3D:
 
 _CONFORMER_CACHE: dict[str, Conformer3DResult] = {}
 _MAX_CACHE_SIZE = 128
+
+
+def _conformer_cache_key(
+    graph: MolGraph,
+    settings: OptimizationSettings,
+) -> str:
+    payload = "|".join(
+        (
+            chemical_graph_hash(graph),
+            str(settings.forcefield.value),
+            str(int(settings.max_iters)),
+            str(int(settings.seed)),
+        )
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 _EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="chemuson-3d")
+
 
 
 def conformer_3d_for_graph(
@@ -83,12 +108,40 @@ def conformer_3d_for_graph(
     timeout_s: float = 8.0,
     force: bool = False,
     settings: OptimizationSettings | None = None,
+    cancel_event: threading.Event | None = None,
+    on_progress: Callable[[Mapping[str, object]], None] | None = None,
 ) -> Conformer3DResult:
-    """Genera coordenadas 3D reales mediante backend RDKit aislado con cache."""
-    cache_key = chemical_graph_hash(graph)
+    """Genera coordenadas RDKit en worker aislado y conserva diagnóstico completo."""
+    settings = settings or OptimizationSettings(timeout_s=timeout_s)
+    cache_key = _conformer_cache_key(graph, settings)
+    if cancel_event is not None and cancel_event.is_set():
+        diagnostics = {
+            "error_code": "cancelled",
+            "stage": "worker_start",
+            "graph": {
+                "atom_count": len(getattr(graph, "atoms", {})),
+                "bond_count": len(getattr(graph, "bonds", {})),
+            },
+        }
+        return Conformer3DResult(
+            {},
+            "rdkit",
+            cache_key,
+            message="cancelled: before worker start",
+            metadata={"diagnostics": diagnostics},
+        )
     if not force:
         cached = _CONFORMER_CACHE.get(cache_key)
         if cached is not None:
+            if on_progress is not None:
+                on_progress(
+                    {
+                        "event": "progress",
+                        "stage": "cache",
+                        "message": "Conformero recuperado de caché.",
+                        "cache": "hit",
+                    }
+                )
             return Conformer3DResult(
                 atom_positions=dict(cached.atom_positions),
                 source=cached.source,
@@ -97,12 +150,24 @@ def conformer_3d_for_graph(
                 energy=cached.energy,
                 message=cached.message,
                 from_cache=True,
+                metadata=dict(cached.metadata),
             )
 
-    settings = settings or OptimizationSettings(timeout_s=timeout_s)
-    opt_result = generate_conformer(graph, settings)
+    opt_result = generate_conformer(
+        graph,
+        settings,
+        cancel_event=cancel_event,
+        on_progress=on_progress,
+    )
     if not opt_result.ok or opt_result.coordinates is None:
-        return Conformer3DResult({}, "rdkit", cache_key, method=opt_result.method or "rdkit", message=opt_result.message)
+        return Conformer3DResult(
+            {},
+            "rdkit",
+            cache_key,
+            method=opt_result.method or "rdkit",
+            message=opt_result.message or "RDKit no devolvió conformero.",
+            metadata=dict(opt_result.metadata),
+        )
 
     result = Conformer3DResult(
         atom_positions=opt_result.coordinates.normalized_positions(),
@@ -111,6 +176,10 @@ def conformer_3d_for_graph(
         method=opt_result.coordinates.method,
         energy=opt_result.coordinates.energy,
         message=opt_result.message,
+        metadata={
+            **dict(opt_result.coordinates.metadata),
+            **dict(opt_result.metadata),
+        },
     )
     _store_cache(cache_key, result)
     return result
@@ -122,14 +191,18 @@ def conformer_3d_for_graph_async(
     timeout_s: float = 8.0,
     force: bool = False,
     settings: OptimizationSettings | None = None,
+    cancel_event: threading.Event | None = None,
+    on_progress: Callable[[Mapping[str, object]], None] | None = None,
 ) -> Future[Conformer3DResult]:
-    """Programa generación 3D fuera del hilo de UI y devuelve un ``Future``."""
+    """Programa generación 3D fuera del hilo UI y devuelve un ``Future``."""
     return _EXECUTOR.submit(
         conformer_3d_for_graph,
         graph,
         timeout_s=timeout_s,
         force=force,
         settings=settings,
+        cancel_event=cancel_event,
+        on_progress=on_progress,
     )
 
 
@@ -186,16 +259,31 @@ def chemical_graph_hash(graph: MolGraph) -> str:
         parts.append(
             "A"
             f"{int(atom.id)}:{atom.element}:{int(getattr(atom, 'charge', 0) or 0)}:"
-            f"{getattr(atom, 'isotope', None) or ''}:{int(getattr(atom, 'radical_electrons', 0) or 0)}"
+            f"{getattr(atom, 'isotope', None) or ''}:{int(getattr(atom, 'radical_electrons', 0) or 0)}:"
+            f"{getattr(atom, 'stereo_cip', None) or ''}:{getattr(atom, 'stereo_axial', None) or ''}:"
+            f"{getattr(atom, 'stereo_helical', None) or ''}:{getattr(atom, 'stereo_si_re', None) or ''}"
         )
     for bond in sorted(graph.bonds.values(), key=lambda item: item.id):
         if not bond_affects_valence(bond):
             continue
-        a1, a2 = sorted((int(bond.a1_id), int(bond.a2_id)))
+        a1_id = int(bond.a1_id)
+        a2_id = int(bond.a2_id)
+        style = str(
+            getattr(getattr(bond, "style", None), "value", getattr(bond, "style", ""))
+            or ""
+        )
+        stereo = str(
+            getattr(getattr(bond, "stereo", None), "value", getattr(bond, "stereo", ""))
+            or ""
+        )
+        direction_sensitive = style in {"wedge", "hashed"}
+        a1, a2 = (a1_id, a2_id) if direction_sensitive else sorted((a1_id, a2_id))
         parts.append(
             "B"
             f"{a1}-{a2}:{int(getattr(bond, 'order', 1) or 1)}:"
-            f"{int(bool(getattr(bond, 'is_aromatic', False)))}"
+            f"{int(bool(getattr(bond, 'is_aromatic', False)))}:{style}:{stereo}:"
+            f"{getattr(bond, 'stereo_ez', None) or ''}:{getattr(bond, 'stereo_axial', None) or ''}:"
+            f"{getattr(bond, 'stereo_endo_exo', None) or ''}:{getattr(bond, 'stereo_helical', None) or ''}"
         )
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
 

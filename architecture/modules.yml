@@ -384,7 +384,7 @@ modules:
   - export_xyz
   name: geometry3d
   notes: 'Backends rdkit_backend y obabel_backend son opcionales. rdkit_backend importa
-    rdkit_safe de forma lazy.
+    rdkit_io para expandir etiquetas de grupo y rdkit_safe de forma lazy.
 
     obabel_backend depende de obabel externo (no siempre disponible).
 
@@ -418,7 +418,10 @@ modules:
   - M01
   temporary_exceptions: []
   tests:
+  - tests/test_geometry3d_editing.py
+  - tests/test_geometry3d_editing_metrics.py
   - tests/test_geometry3d_service.py
+  - tests/test_rdkit_live_stream.py
   title: Servicios 3D
 - circular_dependencies: []
   current_dependencies:
@@ -547,6 +550,7 @@ modules:
   - flyout
   - side_panel
   - projections
+  - viewport3d
   name: gui
   notes: 'GUI importa todos los subsistemas de dominio para orquestación. No implementa
     lógica química pesada. items.py es un módulo individual (no paquete): src/chemuson/gui/items.py
@@ -572,7 +576,10 @@ modules:
     en un QStackedWidget, sin duplicar contenido ni registrarlas para docking clásico;
     el menú Ver y la visibilidad se delegan en su API pública. Las preferencias
     active_tab/visible usan M21; QStatusBar conserva showMessage e indicadores
-    IUPAC/carga.'
+    IUPAC/carga. El subpaquete gui/viewport3d contiene un visor 3D aislado
+    basado en PyQt6/OpenGL que consume escenas M05 sin mutar MolGraph ni el
+    documento; su dock es independiente del SidePanel y no añade una página
+    duplicada.'
   paths:
   - src/chemuson/gui/__init__.py
   - src/chemuson/gui/app_bar.py
@@ -615,6 +622,7 @@ modules:
   - src/chemuson/gui/toolbar.py
   - src/chemuson/gui/tool_rail.py
   - src/chemuson/gui/flyout.py
+  - src/chemuson/gui/viewport3d/
   - src/chemuson/gui/wedge_geometry.py
   - src/chemuson/gui/bond_junctions.py
   - src/chemuson/gui/actions/
@@ -652,6 +660,12 @@ modules:
   - tests/test_dimensions_scaling.py
   - tests/test_document_controller.py
   - tests/test_compchem3d_dock.py
+  - tests/test_geometry3d_commands.py
+  - tests/test_geometry3d_persistence.py
+  - tests/test_viewport3d_geometry.py
+  - tests/test_viewport3d_camera.py
+  - tests/test_viewport3d_picking.py
+  - tests/test_viewport3d_widget.py
   - tests/test_spectroscopy_dock.py
   - tests/test_validation_dock.py
   - tests/architecture/test_main_window_background_workers.py
@@ -859,6 +873,7 @@ modules:
 - circular_dependencies: []
   current_dependencies:
   - M00
+  - M05
   - M08
   entry_points: []
   forbidden_dependencies: []
@@ -918,6 +933,7 @@ modules:
   - TransformImageItemsCommand
   - ScaleArrowItemsCommand
   - ScaleBracketItemsCommand
+  - SetGeometry3DCommand
   - DeleteSelectionCommand
   responsibility: 'Comandos undo/redo para el canvas: operaciones atómicas sobre átomos,
     enlaces, texto y diagramas.'

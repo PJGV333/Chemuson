@@ -1228,7 +1228,7 @@ def _style_and_stereo_from_mol_stereo(stereo_code: int) -> tuple[BondStyle, Bond
         return BondStyle.WEDGE, BondStereo.UP
     if int(stereo_code or 0) == 6:
         return BondStyle.HASHED, BondStereo.DOWN
-    if int(stereo_code or 0) == 4:
+    if int(stereo_code or 0) in {3, 4}:
         return BondStyle.WAVY, BondStereo.EITHER
     return BondStyle.PLAIN, BondStereo.NONE
 
