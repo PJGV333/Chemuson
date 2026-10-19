@@ -1,0 +1,7 @@
+Auditoría cuantitativa basal (SHA `3e0ef606edb90929c1fb32dddcd5385fabcc5d82`, host PyQt6; cálculo en coordenadas de escena):
+
+- `SP3_BOND_ANGLE_DEG = 109.5`; con un vecino a 180° y `fixed_angles=False`, `_compute_default_bond_endpoint` devuelve 289.5° (separación local 109.5°).
+- Cadena libre del canvas con cuatro segmentos, `fixed_angles=True`, eje cursor 0°: ángulos internos `[109.5, 109.5, 109.5]`.
+- Benceno libre rotado 17°, con `fixed_angles=True`, `angle_step_deg=30`: centro radial de vértice 17°, sugerencia automática 0°, error radial 17°; separaciones con sus dos aristas `[137°, 103°]`.
+- Benceno generado en el canvas: clic corto en un vértice aromático resuelve un enlace adyacente bajo el átomo; antes/después se mantienen `(6 átomos, 6 enlaces)` y el stack mantiene su estado basal, sin el séptimo átomo/enlace pedido.
+- Verificación visual separada: el modelo del benceno contiene seis vértices/distancias regulares; `BondItem.update_positions()` consume posiciones y sólo produce paths/offsets/trims. Los artefactos `benzene-isolated-*.png` enseñan los offsets de líneas pi internos, no cambios en el polígono.
