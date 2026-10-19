@@ -152,7 +152,13 @@ app.processEvents()
 atoms = list(canvas.model.atoms.values())
 bonds = list(canvas.model.bonds.values())
 path_ids = [ring_anchor.id, n1, carbonyl, oxygen, n2, methyl]
-path_pairs = list(zip(path_ids, path_ids[1:]))
+path_pairs = [
+    (ring_anchor.id, n1),
+    (n1, carbonyl),
+    (carbonyl, oxygen),
+    (carbonyl, n2),
+    (n2, methyl),
+]
 
 
 def label_ray_hit(atom_id: int, ux: float, uy: float, width: float) -> dict:

@@ -33,13 +33,13 @@ La proyección de puntos de glyph es una cota de soporte sobre el eje, no la lon
 
 1. La geometría automática consulta topología/órdenes reales: carbonilo `C=O` unido por enlace simple al N indica amida; dos N unidos al mismo carbonilo indican urea. Enlace/aromaticidad del propio N y coordinaciones se evalúan primero/por separado. No inspeccionar `item.label`, `NH` ni `NH2` para clasificar química.
 2. Para N amida/urea y el carbonilo, elegir candidatos locales trigonal-planos ~120° que mantengan las coordenadas previas, las colisiones evitables y la longitud de referencia (40). No reubicar la estructura para mejorar texto. Amina primaria/secundaria/terciaria, N aromático y coordinado conservan sus reglas salvo caso medido.
-3. Para recortar, intersectar la trayectoria del enlace ensanchada por medio trazo + margen óptico con el path real visible de etiqueta/carga. Convertir el extremo de intersección en una distancia longitudinal acotada; respetar estereotipos, estilos `BondItem`, clearance de perfiles y cap/junction actual. Si no hay intersección, no aplicar trim por la mera proyección del bbox.
+3. Corregir sólo el enlace simple, plano y no aromático que termina en `NH`/`NH2` de una amida/urea neutra: dilatar la forma visible label/charge por el clearance vigente e intersectarla con la línea central. Usar ese extremo geométrico en vez del soporte proyectado remoto. Dobles/triples, enlaces aromáticos, otros labels/N, wedges, hashes y estilos Bold conservan el trimming previo; así se evita alterar junctions y renderer editorial.
 4. `AtomItem` conserva el anclaje óptico del token del elemento; sólo tocarlo si mediciones de glyph N/H prueban un desplazamiento distinto de su offset local aprobado.
 5. Preview y commit consultan el mismo candidato. El arrastre explícito mantiene la dirección del cursor; el trim no altera `MolGraph`.
 
 ## Riesgos y pruebas
 
-- La intersección Qt debe excluir cruces entre líneas pi secundarias y el glyph que no les corresponden, sin tocar dobles/aromáticos/estereo.
+- El cambio queda fuera de estilos estereo/multienlace; una regresión de coverage asegura que el gating continúe acotado.
 - Márgenes cero/inadecuados pueden solapar el glyph; márgenes grandes vuelven a acortar el trazo. Medir gap y recorte por separado.
-- Contexto incompleto antes de que se dibuje el carbonilo puede clasificar un N de forma prematura; probar los gestos en cada orden y la actualización tras completar el grupo.
-- Matriz: urea, N,N′-dimetilurea, N-metil-N′-(4-nitrofenil)urea, acetanilida, amida secundaria, aminas primarias/secundarias/terciarias, N aromáticos y carbonos con N/NH/NH2, orientación múltiple; preview/commit, undo/redo, CMSN, zoom/DPR, claro/oscuro. Añadir controles de benceno de la campaña anterior.
+- Contexto incompleto antes de que se dibuje el carbonilo puede clasificar un N de forma prematura; probar el urea/amida por eventos y verificar actualización al completar C=O.
+- Matriz: `Ar–NH–C(=O)–NH–CH3`, acetanilida, aminas primarias/secundarias/terciarias, N aromáticos, coordinación/carga/valencia alta y labels NH/NH2 en direcciones múltiples; preview/commit, undo/redo, CMSN, zoom/DPR y temas. Mantener controles de anillo aromático.

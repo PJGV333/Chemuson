@@ -1295,6 +1295,72 @@
       }
     },
     {
+      "id": 10,
+      "a1": 8,
+      "a2": 10,
+      "elements": [
+        "C",
+        "N"
+      ],
+      "order": 1,
+      "aromatic": false,
+      "center_distance": 39.999999999999986,
+      "reference_length": 40.0,
+      "direction_deg": 120.0,
+      "render_stroke_width": 2.6,
+      "nominal_clearance": 2.3,
+      "trim_start_label": 0.0,
+      "trim_end_label": 15.743312979050426,
+      "trim_start_endpoint": 0.0,
+      "trim_end_endpoint": 0.0,
+      "trim_start_total": 0.0,
+      "trim_end_total": 15.743312979050426,
+      "main_path_subpaths": [
+        {
+          "points": [
+            [
+              499.0,
+              464.3589838486225
+            ],
+            [
+              486.8716564895252,
+              443.35207667683187
+            ]
+          ],
+          "visible_path_length": 24.25668702094957
+        }
+      ],
+      "secondary_path_subpaths": [],
+      "trim_projections": {
+        "start_label_extent": null,
+        "end_label_extent": 13.443312979050425,
+        "start_ray_intersection_stroke_1px": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_stroke_1px": {
+          "intersects": true,
+          "max_forward_extent": 6.005358881599609
+        },
+        "start_ray_intersection_actual_stroke": {
+          "intersects": false,
+          "max_forward_extent": null
+        },
+        "end_ray_intersection_actual_stroke": {
+          "intersects": true,
+          "max_forward_extent": 6.467239096951307
+        },
+        "start_expanded_label_centerline_extent": {
+          "intersects": false,
+          "max_centerline_extent": null
+        },
+        "end_expanded_label_centerline_extent": {
+          "intersects": true,
+          "max_centerline_extent": 8.375381736623044
+        }
+      }
+    },
+    {
       "id": 11,
       "a1": 10,
       "a2": 11,

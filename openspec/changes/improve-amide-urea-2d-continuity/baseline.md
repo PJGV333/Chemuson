@@ -13,7 +13,7 @@ La rama es `fix/initial-2d-geometry-beta1`, HEAD previo `ef241d4a06434fe719a1d36
 | `ruff check src tests tools packaging --select F401,F811,F821,E722,E741` | Exit 1 por el F401 histórico `math` en `tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py:3`; no se modifica. |
 | `pytest -q tests/test_functional_group_hydrogen_adjustment.py tests/test_sp3_bond_placement.py tests/test_canvas_drawing_edges.py tests/test_wedge_geometry.py tests/test_wedge_double_label_junctions.py tests/test_persistence_contract.py tests/test_depiction_lab_renderer.py tests/test_depiction_lab_parameters.py` | 90 passed en 2.18 s. |
 
-Logs exactos: `baseline/01-git-status.log` a `baseline/05-ruff.log`, `baseline/06-pytest-first-failure.log.gz` (gzip del stdout exacto; conserva los espacios finales de traceback), y `baseline/07`–`09`. El JSON/QImage before proviene de eventos `QTest` y está en `evidence/before/`.
+Logs exactos: `baseline/01-git-status.log` a `baseline/05-ruff.log`, `baseline/06-pytest-first-failure.log.gz` (gzip del stdout exacto; conserva los espacios finales de traceback), y `baseline/07`–`09`. El JSON/QImage before proviene de eventos `QTest` y está en `evidence/before/`. Se confirmó la reproducción ejecutando el script contra el snapshot de código previo `db996cef` en un worktree detached temporal; el JSON coincidió byte por byte y el worktree fue eliminado.
 
 ## Reproducción de `Ar–NH–C(=O)–NH–CH3`
 
