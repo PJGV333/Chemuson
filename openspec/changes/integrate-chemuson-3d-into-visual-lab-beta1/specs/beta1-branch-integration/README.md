@@ -1,0 +1,1 @@
+Este directorio contiene el contrato de aceptación de la integración local Beta 1. La fuente normativa es `spec.md`.
