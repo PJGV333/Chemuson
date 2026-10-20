@@ -137,7 +137,20 @@ def test_side_panel_hosts_the_original_docks_without_duplicate_pages(window) -> 
     QApplication.processEvents()
     assert 336 <= panel.width() <= 340
     assert panel.stack.count() == len(docks) == 7
-    assert len(window.findChildren(QDockWidget)) == 7
+    # Siete docks incrustados en el panel lateral + el dock del visor 3D, que
+    # ``add-interactive-3d-molecular-viewport`` define como QDockWidget
+    # independiente (anclado a la derecha y oculto por defecto) sin alterar el
+    # SidePanel de siete docks. Sigue sin haber copias duplicadas.
+    all_docks = window.findChildren(QDockWidget)
+    assert len(all_docks) == 8
+    assert [
+        dock for dock in all_docks if dock not in set(docks.values())
+    ] == [window.viewport3d_dock]
+    assert (
+        window.dockWidgetArea(window.viewport3d_dock)
+        == Qt.DockWidgetArea.RightDockWidgetArea
+    )
+    assert window.viewport3d_dock.isHidden()
 
     for key, dock in docks.items():
         assert panel.page_widget(key) is dock

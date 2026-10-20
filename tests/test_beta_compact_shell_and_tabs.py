@@ -330,6 +330,10 @@ def test_view_menu_submenus_reuse_actions_and_remove_obsolete_auxiliary_option(
         if action.isVisible() and not action.isSeparator()
     ]
     assert visible[0] is shell.action_show_menu_bar
+    # Ocho filas: las siete del compactado de ``fix-beta-menubar-visibility``
+    # más «Visor molecular 3D», exigida por
+    # ``add-interactive-3d-molecular-viewport`` (``Ver → Visor molecular 3D``,
+    # única entrada basada en la acción de visibilidad del dock).
     assert [action.text() for action in visible] == [
         "Mostrar barra de herramientas",
         "Visualización",
@@ -337,9 +341,26 @@ def test_view_menu_submenus_reuse_actions_and_remove_obsolete_auxiliary_option(
         "Numeración",
         "Tamaño de lienzo",
         "Paletas",
+        "Visor molecular 3D",
         "Paneles",
     ]
     assert not hasattr(shell, "action_show_main_toolbar_aux")
+    # La fila 3D reutiliza el ``toggleViewAction()`` del dock: una sola
+    # instancia, checkable, sin duplicarse al compartirse con la hamburguesa.
+    action_3d = shell.action_toggle_viewport3d
+    assert action_3d is shell.viewport3d_dock.toggleViewAction()
+    assert action_3d in visible
+    assert shell.view_menu.actions().count(action_3d) == 1
+    assert sum(a.text() == action_3d.text() for a in shell.view_menu.actions()) == 1
+    assert action_3d.isCheckable()
+    assert not action_3d.isChecked()
+    action_3d.trigger()
+    QApplication.processEvents()
+    assert not shell.viewport3d_dock.isHidden()
+    action_3d.trigger()
+    QApplication.processEvents()
+    assert shell.viewport3d_dock.isHidden()
+    assert not action_3d.isChecked()
     assert menus["Visualización"].actions() == [
         shell.action_show_carbons,
         shell.action_show_hydrogens,
