@@ -1530,8 +1530,19 @@ class CanvasTextMixin:
         if item is None or atom is None:
             return
         label, anchor, offset = self._build_atom_label(atom)
+        separated_nh = (
+            atom.element == "N"
+            and not atom.charge
+            and not bool(getattr(atom, "is_coordination_center", False))
+            and label in {"NH", "HN", "NH2", "H2N"}
+        )
+        item.set_optical_anchor_centering(
+            self._label_near_multiple_bond(atom_id) or separated_nh
+        )
         item.set_display_label(label, anchor)
-        item.set_optical_anchor_centering(self._label_near_multiple_bond(atom_id))
+        item.set_implicit_hydrogen_position(
+            self._choose_implicit_hydrogen_position(atom_id) if separated_nh else None
+        )
         item.set_label_offset(offset)
         self._update_bond_label_shrinks({atom_id})
 
@@ -1559,6 +1570,98 @@ class CanvasTextMixin:
             ):
                 return True
         return False
+
+    def _choose_implicit_hydrogen_position(self, atom_id: int) -> str:
+        """Choose a cardinal H position using open sectors and visible collisions."""
+        item = self.atom_items.get(atom_id)
+        atom = self.model.atoms.get(atom_id)
+        if item is None or atom is None or not item._implicit_hydrogen_text:
+            return "right"
+
+        candidates = ("right", "left", "above", "below")
+        candidate_angles = {"right": 0.0, "below": 90.0, "left": 180.0, "above": 270.0}
+        neighbor_angles: list[float] = []
+        sum_x = 0.0
+        sum_y = 0.0
+        for bond in self.model.bonds.values():
+            if not bond_is_structural(bond):
+                continue
+            if bond.a1_id == atom_id:
+                other_id = bond.a2_id
+            elif bond.a2_id == atom_id:
+                other_id = bond.a1_id
+            else:
+                continue
+            other = self.model.atoms.get(other_id)
+            if other is None or other.element == "H":
+                continue
+            dx, dy = other.x - atom.x, other.y - atom.y
+            length = math.hypot(dx, dy)
+            if length <= 1e-6:
+                continue
+            ux, uy = dx / length, dy / length
+            neighbor_angles.append((math.degrees(math.atan2(uy, ux)) + 360.0) % 360.0)
+            sum_x += ux
+            sum_y += uy
+
+        open_x, open_y = -sum_x, -sum_y
+        open_length = math.hypot(open_x, open_y)
+        open_angle = (
+            (math.degrees(math.atan2(open_y, open_x)) + 360.0) % 360.0
+            if open_length > 1e-3
+            else None
+        )
+        clearance = max(1.0, float(self.drawing_style.stroke_px) * 0.5)
+        ranked: list[tuple[int, float, int, str]] = []
+        for index, position in enumerate(candidates):
+            local_rect = item.implicit_hydrogen_candidate_rect(position)
+            scene_rect = item.mapRectToScene(local_rect).adjusted(
+                -clearance, -clearance, clearance, clearance
+            )
+            occupied = QPainterPath()
+            occupied.addRect(scene_rect)
+            collisions = 0
+
+            for bond in self.model.bonds.values():
+                if not bond_is_structural(bond):
+                    continue
+                first = self.model.atoms.get(bond.a1_id)
+                second = self.model.atoms.get(bond.a2_id)
+                if first is None or second is None:
+                    continue
+                centerline = QPainterPath()
+                centerline.moveTo(first.x, first.y)
+                centerline.lineTo(second.x, second.y)
+                stroker = QPainterPathStroker()
+                stroker.setWidth(float(self.drawing_style.stroke_px) + 2.0 * clearance)
+                stroker.setCapStyle(Qt.PenCapStyle.RoundCap)
+                if occupied.intersects(stroker.createStroke(centerline)):
+                    collisions += 1
+
+            for other_id, other_item in self.atom_items.items():
+                if other_id == atom_id or not other_item.label.isVisible():
+                    continue
+                label_path = other_item.label.mapToScene(other_item.label.shape())
+                if occupied.intersects(label_path):
+                    collisions += 1
+                charge = other_item.charge_label
+                if charge.isVisible() and occupied.intersects(charge.mapToScene(charge.shape())):
+                    collisions += 1
+
+            candidate_angle = candidate_angles[position]
+            if open_angle is not None:
+                direction_cost = angle_distance_deg(candidate_angle, open_angle)
+            elif neighbor_angles:
+                # For an ambiguous/open linear junction, maximize clearance from bonds.
+                direction_cost = -min(
+                    angle_distance_deg(candidate_angle, bond_angle)
+                    for bond_angle in neighbor_angles
+                )
+            else:
+                direction_cost = 0.0
+            ranked.append((collisions, direction_cost, index, position))
+
+        return min(ranked)[-1] if ranked else "right"
 
     def _assigned_hydrogen_count(self, atom_id: int) -> int:
         """Devuelve H asignados al átomo excluyendo H como nodos separados."""
@@ -1976,6 +2079,14 @@ class CanvasTextMixin:
         atom = self.model.get_atom(atom_id)
         if atom is None:
             return QPointF(0.0, 0.0)
+        display_element = self._resolved_display_element(atom)
+        if (
+            display_element == "N"
+            and not atom.charge
+            and not bool(getattr(atom, "is_coordination_center", False))
+            and self._inline_label_hydrogen_count(atom_id, display_element) > 0
+        ):
+            return QPointF(0.0, 0.0)
         base_offset = self._base_label_offset(atom_id)
         extra_offset = self._custom_bond_length_label_offset(atom_id, base_offset=base_offset)
         return base_offset + extra_offset
@@ -1987,6 +2098,13 @@ class CanvasTextMixin:
             return QPointF(0.0, 0.0)
         display_element = self._resolved_display_element(atom)
         total_h = self._inline_label_hydrogen_count(atom_id, display_element)
+        if (
+            display_element == "N"
+            and not atom.charge
+            and not bool(getattr(atom, "is_coordination_center", False))
+            and total_h > 0
+        ):
+            return QPointF(0.0, 0.0)
         if (
             display_element in ELEMENT_SYMBOLS
             and display_element not in {"C", "H"}

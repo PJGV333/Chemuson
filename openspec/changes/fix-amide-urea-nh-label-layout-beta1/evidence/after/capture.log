@@ -1,0 +1,157 @@
+Mouse event "MouseRelease" not accepted by receiving widget
+Mouse event "MouseRelease" not accepted by receiving widget
+{
+  "urea": {
+    "7": {
+      "text": "NH",
+      "center": [
+        479.0,
+        499.0
+      ],
+      "label_rect": [
+        474.8125,
+        493.84375,
+        8.3828125,
+        25.140625
+      ],
+      "glyph_rects": {
+        "N": [
+          474.8125,
+          493.84375,
+          8.375,
+          10.3125
+        ],
+        "H": [
+          474.8203125,
+          508.671875,
+          8.375,
+          10.3125
+        ]
+      },
+      "hydrogen_position": "below",
+      "hydrogen_rotation": 0.0
+    },
+    "10": {
+      "text": "NH",
+      "center": [
+        479.0,
+        429.71796769724494
+      ],
+      "label_rect": [
+        474.8125,
+        409.57734269724494,
+        8.3828125,
+        25.296875
+      ],
+      "glyph_rects": {
+        "N": [
+          474.8125,
+          424.56171769724494,
+          8.375,
+          10.3125
+        ],
+        "H": [
+          474.8203125,
+          409.57734269724494,
+          8.375,
+          10.3125
+        ]
+      },
+      "hydrogen_position": "above",
+      "hydrogen_rotation": 0.0
+    }
+  },
+  "acetanilide": {
+    "7": {
+      "text": "NH",
+      "center": [
+        479.0,
+        499.0
+      ],
+      "label_rect": [
+        474.8125,
+        493.84375,
+        8.3828125,
+        25.140625
+      ],
+      "glyph_rects": {
+        "N": [
+          474.8125,
+          493.84375,
+          8.375,
+          10.3125
+        ],
+        "H": [
+          474.8203125,
+          508.671875,
+          8.375,
+          10.3125
+        ]
+      },
+      "hydrogen_position": "below",
+      "hydrogen_rotation": 0.0
+    }
+  },
+  "primary-amine": {
+    "1": {
+      "text": "H2N",
+      "center": [
+        399.0,
+        499.0
+      ],
+      "label_rect": [
+        378.53125,
+        493.765625,
+        24.65625,
+        10.390625
+      ],
+      "glyph_rects": {
+        "N": [
+          394.8125,
+          493.84375,
+          8.375,
+          10.3125
+        ],
+        "H": [
+          378.53125,
+          493.765625,
+          8.375,
+          10.3125
+        ]
+      },
+      "hydrogen_position": "left",
+      "hydrogen_rotation": 0.0
+    }
+  },
+  "secondary-amine": {
+    "1": {
+      "text": "HN",
+      "center": [
+        399.0,
+        499.0
+      ],
+      "label_rect": [
+        394.8125,
+        478.859375,
+        8.3828125,
+        25.296875
+      ],
+      "glyph_rects": {
+        "N": [
+          394.8125,
+          493.84375,
+          8.375,
+          10.3125
+        ],
+        "H": [
+          394.8203125,
+          478.859375,
+          8.375,
+          10.3125
+        ]
+      },
+      "hydrogen_position": "above",
+      "hydrogen_rotation": 0.0
+    }
+  }
+}

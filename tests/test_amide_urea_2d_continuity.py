@@ -4,7 +4,7 @@ import math
 
 import pytest
 from PyQt6.QtCore import QPointF, QRectF, Qt
-from PyQt6.QtGui import QImage, QPainter
+from PyQt6.QtGui import QImage, QPainter, QPainterPath
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication
 
@@ -318,7 +318,7 @@ def test_amide_nh_trimming_uses_glyph_intersection_not_projection() -> None:
         n_carbonyl._label_shrink_start + n_carbonyl._label_shrink_end,
         carbonyl_n._label_shrink_start + carbonyl_n._label_shrink_end,
     ]
-    assert amide_trims == pytest.approx([8.2034, 8.3754], abs=0.12)
+    assert amide_trims == pytest.approx([8.5645, 8.5645], abs=0.12)
     assert _bond_path_length(n_carbonyl) > 31.0
     assert _bond_path_length(carbonyl_n) > 31.0
     for atom_id, bond_item in (
@@ -330,10 +330,10 @@ def test_amide_nh_trimming_uses_glyph_intersection_not_projection() -> None:
         bond_path = bond_item.mapToScene(bond_item.shape())
         assert not bond_path.intersects(label_path)
     assert aryl_n._label_shrink_start + aryl_n._label_shrink_end == pytest.approx(
-        5.6319, abs=0.08
+        6.4875, abs=0.08
     )
     assert n_methyl._label_shrink_start + n_methyl._label_shrink_end == pytest.approx(
-        5.6448, abs=0.12
+        6.4875, abs=0.12
     )
     assert _graph_snapshot(canvas) == snapshot
 
@@ -356,20 +356,32 @@ def test_qtest_urea_undo_redo_and_cmsn_roundtrip_preserve_graph(tmp_path) -> Non
     canvas = ChemusonCanvas()
     ids = _draw_reference_urea(canvas)
     expected = _graph_snapshot(canvas)
+    expected_h_positions = {
+        atom_id: canvas.atom_items[atom_id].implicit_hydrogen_position
+        for atom_id in (ids["n_aryl"], ids["n_urea"])
+    }
 
     canvas.undo_stack.undo()
     assert ids["methyl"] not in canvas.model.atoms
     canvas.undo_stack.redo()
     assert _graph_snapshot(canvas) == expected
+    assert {
+        atom_id: canvas.atom_items[atom_id].implicit_hydrogen_position
+        for atom_id in expected_h_positions
+    } == expected_h_positions
 
     path = tmp_path / "amide-urea.cmsn"
     PersistenceManager.save_to_file(str(path), canvas)
     restored = ChemusonCanvas()
     PersistenceManager.load_from_file(str(path), restored)
     assert _graph_snapshot(restored) == expected
+    assert {
+        atom_id: restored.atom_items[atom_id].implicit_hydrogen_position
+        for atom_id in expected_h_positions
+    } == expected_h_positions
     restored_n_carbonyl = _bond_item(restored, ids["n_aryl"], ids["carbonyl"])
     assert restored_n_carbonyl._label_shrink_start + restored_n_carbonyl._label_shrink_end == pytest.approx(
-        8.2034, abs=0.12
+        8.5645, abs=0.12
     )
 
 
@@ -390,7 +402,7 @@ def test_amide_label_clearance_is_stable_across_zoom_dpr_and_theme(
 
     item = _bond_item(canvas, ids["n_aryl"], ids["carbonyl"])
     shrink = item._label_shrink_start + item._label_shrink_end
-    assert shrink == pytest.approx(8.2034, abs=0.12)
+    assert shrink == pytest.approx(8.5645, abs=0.12)
 
     image = QImage(500, 360, QImage.Format.Format_ARGB32_Premultiplied)
     image.setDevicePixelRatio(dpr)
@@ -486,6 +498,7 @@ def test_qtest_acetanilide_amide_keeps_trigonal_carbonyl_and_nitrogen() -> None:
         for angle in carbonyl_angles[1:]
     ] == pytest.approx([120.0, 120.0], abs=1e-6)
 
+    _assert_nh_glyph_geometry(canvas, nitrogen, "below")
     n_c = _bond_item(canvas, nitrogen, carbonyl)
     assert n_c._label_shrink_start + n_c._label_shrink_end < 10.0
     assert _bond_path_length(n_c) > 30.0
@@ -530,3 +543,149 @@ def test_qtest_aniline_and_aromatic_ring_are_unchanged_controls() -> None:
         atom_id: (canvas.model.get_atom(atom_id).x, canvas.model.get_atom(atom_id).y)
         for atom_id in ring_coordinates
     } == ring_coordinates
+
+
+def _first_glyph_scene_rect(text_item) -> QRectF:
+    block = text_item.document().begin()
+    line = block.layout().lineForTextPosition(0)
+    assert line.isValid()
+    x = line.cursorToX(0)
+    if isinstance(x, tuple):
+        x = x[0]
+    cursor = text_item.textCursor()
+    cursor.setPosition(0)
+    cursor.setPosition(1, cursor.MoveMode.KeepAnchor)
+    path = QPainterPath()
+    block_rect = text_item.document().documentLayout().blockBoundingRect(block)
+    path.addText(
+        block_rect.x() + line.position().x() + float(x),
+        block_rect.y() + line.position().y()
+        + line.ascent(),
+        cursor.charFormat().font(),
+        block.text()[0],
+    )
+    return text_item.mapToScene(path).boundingRect()
+
+
+def _assert_nh_glyph_geometry(canvas: ChemusonCanvas, atom_id: int, position: str) -> None:
+    atom = canvas.model.get_atom(atom_id)
+    atom_item = canvas.atom_items[atom_id]
+    n_rect = _first_glyph_scene_rect(atom_item.label)
+    h_rect = _first_glyph_scene_rect(atom_item.implicit_hydrogen_label)
+    assert atom_item.implicit_hydrogen_position == position
+    assert atom_item.label.isVisible()
+    assert atom_item.implicit_hydrogen_label.isVisible()
+    assert atom_item.implicit_hydrogen_label.rotation() == pytest.approx(0.0)
+    assert n_rect.width() >= 5.0 and n_rect.height() >= 8.0
+    assert h_rect.width() >= 5.0 and h_rect.height() >= 8.0
+    n_cursor = atom_item.label.textCursor()
+    n_cursor.setPosition(0)
+    n_cursor.setPosition(1, n_cursor.MoveMode.KeepAnchor)
+    h_cursor = atom_item.implicit_hydrogen_label.textCursor()
+    h_cursor.setPosition(0)
+    h_cursor.setPosition(1, h_cursor.MoveMode.KeepAnchor)
+    assert n_cursor.charFormat().foreground().color().name() == "#3050f8"
+    assert h_cursor.charFormat().foreground().color().name() == "#000000"
+    assert n_rect.center().x() == pytest.approx(atom.x, abs=0.1)
+    assert n_rect.center().y() == pytest.approx(atom.y, abs=0.1)
+    assert not n_rect.intersects(h_rect)
+    union_rect = atom_item.label.mapToScene(atom_item.label.shape()).boundingRect()
+    assert union_rect.contains(n_rect)
+    assert union_rect.contains(h_rect)
+    if position == "below":
+        assert h_rect.top() - n_rect.bottom() >= 1.0
+    elif position == "above":
+        assert n_rect.top() - h_rect.bottom() >= 1.0
+    elif position == "right":
+        assert h_rect.left() - n_rect.right() >= 1.0
+    else:
+        assert n_rect.left() - h_rect.right() >= 1.0
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_qtest_urea_places_hydrogens_outside_bond_sectors_and_keeps_clearance(
+    theme: str,
+) -> None:
+    canvas = ChemusonCanvas()
+    ids = _draw_reference_urea(canvas)
+    assert apply_theme(canvas, theme) == theme
+    _assert_nh_glyph_geometry(canvas, ids["n_aryl"], "below")
+    _assert_nh_glyph_geometry(canvas, ids["n_urea"], "above")
+
+    for nitrogen_id in (ids["n_aryl"], ids["n_urea"]):
+        label_path = canvas.atom_items[nitrogen_id].label.mapToScene(
+            canvas.atom_items[nitrogen_id].label.shape()
+        )
+        for bond in canvas.model.bonds.values():
+            if nitrogen_id not in (bond.a1_id, bond.a2_id):
+                continue
+            bond_item = canvas.bond_items[bond.id]
+            assert not label_path.intersects(bond_item.mapToScene(bond_item.shape()))
+        for other_id, other_item in canvas.atom_items.items():
+            if other_id == nitrogen_id or not other_item.label.isVisible():
+                continue
+            other_path = other_item.label.mapToScene(other_item.label.shape())
+            assert not label_path.intersects(other_path)
+
+    distances = [
+        math.hypot(
+            canvas.model.get_atom(bond.a2_id).x - canvas.model.get_atom(bond.a1_id).x,
+            canvas.model.get_atom(bond.a2_id).y - canvas.model.get_atom(bond.a1_id).y,
+        )
+        for bond in canvas.model.bonds.values()
+    ]
+    assert distances == pytest.approx([40.0] * len(distances), abs=1e-7)
+
+
+@pytest.mark.parametrize(
+    ("degree", "expected_hydrogens", "expected_position"),
+    [(1, 2, "left"), (2, 1, "above")],
+    ids=("primary-amine", "secondary-amine"),
+)
+def test_qtest_amine_nh_glyphs_reposition_without_moving_the_nitrogen(
+    degree: int, expected_hydrogens: int, expected_position: str
+) -> None:
+    canvas = ChemusonCanvas()
+    _show_canvas(canvas)
+    canvas.set_current_tool("tool_atom")
+    canvas.state.default_element = "N"
+    center = canvas.mapToScene(canvas.viewport().rect().center())
+    pos = canvas.mapFromScene(center)
+    before = set(canvas.model.atoms)
+    QTest.mousePress(canvas.viewport(), Qt.MouseButton.LeftButton, pos=pos)
+    QTest.mouseRelease(canvas.viewport(), Qt.MouseButton.LeftButton, pos=pos)
+    QApplication.processEvents()
+    nitrogen_ids = set(canvas.model.atoms) - before
+    assert len(nitrogen_ids) == 1
+    nitrogen_id = nitrogen_ids.pop()
+
+    for _ in range(degree):
+        _short_bond(canvas, nitrogen_id, "C")
+    nitrogen = canvas.model.get_atom(nitrogen_id)
+    assert canvas.model.implicit_h_count(nitrogen_id) == expected_hydrogens
+    expected_label = "H2N" if degree == 1 else "HN"
+    assert canvas._build_atom_label(nitrogen)[0] == expected_label
+    item = canvas.atom_items[nitrogen_id]
+    assert item.implicit_hydrogen_position == expected_position
+    _assert_nh_glyph_geometry(canvas, nitrogen_id, expected_position)
+    assert (nitrogen.x, nitrogen.y) == pytest.approx((center.x(), center.y()), abs=1e-7)
+
+
+def test_qtest_primary_amine_suffix_h2_label_places_hydrogen_on_free_side() -> None:
+    canvas = ChemusonCanvas()
+    _show_canvas(canvas)
+    canvas.set_current_tool("tool_atom")
+    canvas.state.default_element = "N"
+    center = canvas.mapToScene(canvas.viewport().rect().center())
+    pos = canvas.mapFromScene(center)
+    QTest.mousePress(canvas.viewport(), Qt.MouseButton.LeftButton, pos=pos)
+    QTest.mouseRelease(canvas.viewport(), Qt.MouseButton.LeftButton, pos=pos)
+    QApplication.processEvents()
+    nitrogen_id = next(iter(canvas.model.atoms))
+
+    _directed_bond(canvas, nitrogen_id, "C", 180.0)
+
+    assert canvas._build_atom_label(canvas.model.get_atom(nitrogen_id))[0] == "NH2"
+    _assert_nh_glyph_geometry(canvas, nitrogen_id, "right")
+    nitrogen = canvas.model.get_atom(nitrogen_id)
+    assert (nitrogen.x, nitrogen.y) == pytest.approx((center.x(), center.y()), abs=1e-7)

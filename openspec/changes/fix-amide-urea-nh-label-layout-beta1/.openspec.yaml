@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-10-21
+goal: Reposition only the visual hydrogen glyph in NH/HN/NH2 labels around a nitrogen atom using neighboring bonds and available space, while preserving the nitrogen anchor, graph coordinates, bond geometry, and the existing amide/urea clearance fix.

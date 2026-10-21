@@ -109,8 +109,13 @@ def test_nh_label_offsets_out_of_crowded_vertex_in_amide_like_geometry() -> None
     atom = canvas.model.get_atom(target_id)
     _label, _anchor, offset = canvas._build_atom_label(atom)
 
-    assert offset.y() > 2.5
-    assert abs(offset.x()) + abs(offset.y()) > 3.0
+    assert offset.isNull()
+    assert canvas.atom_items[target_id].implicit_hydrogen_position in {
+        "right",
+        "left",
+        "above",
+        "below",
+    }
 
 
 @pytest.mark.parametrize(("shorthand", "element"), [("OH", "O"), ("SH", "S")])

@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
     QGraphicsLineItem,
     QStyle,
 )
-from PyQt6.QtGui import QColor, QFont, QFontMetrics, QFontMetricsF, QPainterPath, QPen, QBrush, QPainter, QRadialGradient, QPixmap, QTextDocument
+from PyQt6.QtGui import QColor, QFont, QFontMetrics, QFontMetricsF, QPainterPath, QPen, QBrush, QPainter, QRadialGradient, QPixmap, QTextCharFormat, QTextDocument
 from PyQt6.QtCore import Qt, QRectF, QPointF, QByteArray, QSizeF, QLineF
 
 try:
@@ -195,6 +195,81 @@ def _build_wavy_path(
     return path
 
 
+def _visible_text_glyph_path(item: QGraphicsTextItem) -> QPainterPath:
+    """Build actual glyph outlines from a rich-text item's positioned characters."""
+    document = item.document()
+    block = document.begin()
+    layout = block.layout()
+    if not block.isValid() or layout is None or layout.lineCount() == 0:
+        return QPainterPath()
+    block_rect = document.documentLayout().blockBoundingRect(block)
+    text = block.text()
+    path = QPainterPath()
+    cursor = item.textCursor()
+    for index, char in enumerate(text):
+        line = layout.lineForTextPosition(index)
+        if not line.isValid():
+            continue
+        x = line.cursorToX(index)
+        if isinstance(x, tuple):
+            x = x[0]
+        cursor.setPosition(block.position() + index)
+        cursor.setPosition(block.position() + index + 1, cursor.MoveMode.KeepAnchor)
+        char_format = cursor.charFormat()
+        font = char_format.font()
+        baseline = block_rect.y() + line.position().y() + line.ascent()
+        base_ascent = QFontMetricsF(item.font()).ascent()
+        glyph_ascent = QFontMetricsF(font).ascent()
+        vertical_alignment = char_format.verticalAlignment()
+        baseline_shift = max(0.0, base_ascent - glyph_ascent) * 0.75
+        if vertical_alignment == QTextCharFormat.VerticalAlignment.AlignSubScript:
+            baseline += baseline_shift
+        elif vertical_alignment == QTextCharFormat.VerticalAlignment.AlignSuperScript:
+            baseline -= baseline_shift
+        path.addText(
+            block_rect.x() + line.position().x() + float(x),
+            baseline,
+            font,
+            char,
+        )
+    return path
+
+
+class _AtomLabelTextItem(QGraphicsTextItem):
+    """Text item whose occupied shape also includes a separately placed H glyph."""
+
+    def __init__(self, parent: QGraphicsItem) -> None:
+        super().__init__("", parent)
+        self._logical_text = ""
+        self._hydrogen_item: QGraphicsTextItem | None = None
+
+    def set_logical_text(self, text: str) -> None:
+        self._logical_text = text
+
+    def set_hydrogen_item(self, item: QGraphicsTextItem) -> None:
+        self.prepareGeometryChange()
+        self._hydrogen_item = item
+        self.update()
+
+    def toPlainText(self) -> str:
+        return self._logical_text or super().toPlainText()
+
+    def boundingRect(self) -> QRectF:
+        bounds = super().boundingRect()
+        hydrogen = self._hydrogen_item
+        if hydrogen is not None and hydrogen.isVisible():
+            bounds = bounds.united(self.mapRectFromItem(hydrogen, hydrogen.boundingRect()))
+        return bounds
+
+    def shape(self) -> QPainterPath:
+        hydrogen = self._hydrogen_item
+        if hydrogen is None or not hydrogen.isVisible():
+            return super().shape()
+        occupied = _visible_text_glyph_path(self)
+        occupied.addPath(self.mapFromItem(hydrogen, _visible_text_glyph_path(hydrogen)))
+        return occupied
+
+
 class AtomItem(QGraphicsEllipseItem):
     """Elemento gráfico que representa un átomo (con ocultación implícita)."""
     
@@ -252,10 +327,17 @@ class AtomItem(QGraphicsEllipseItem):
         self.setPos(atom.x, atom.y)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
         
-        # Create text label
-        self.label = QGraphicsTextItem("", self)
+        # Keep the element label anchored independently from its implicit H glyph.
         base_font = label_font or QFont("Arial", 10, QFont.Weight.Bold)
+        self._implicit_hydrogen_position = "right"
+        self._implicit_hydrogen_text = ""
+        self._implicit_hydrogen_label = QGraphicsTextItem("", self)
+        self._implicit_hydrogen_label.setFont(base_font)
+        self._implicit_hydrogen_label.document().setDocumentMargin(0)
+        self._implicit_hydrogen_label.setVisible(False)
+        self.label = _AtomLabelTextItem(self)
         self.label.setFont(base_font)
+        self.label.set_hydrogen_item(self._implicit_hydrogen_label)
         self._user_underline = base_font.underline()
         self.label.document().setDocumentMargin(0)
         self._set_label_text(self._display_label)
@@ -468,10 +550,12 @@ class AtomItem(QGraphicsEllipseItem):
             else:
                 self.setPen(QPen(Qt.PenStyle.NoPen))
             self.label.setVisible(False)
+            self._implicit_hydrogen_label.setVisible(False)
             self._sync_geometry()
             return
 
         self.label.setVisible(True)
+        self._implicit_hydrogen_label.setVisible(bool(self._implicit_hydrogen_text))
         self._apply_normal_style()
         self._sync_geometry()
     
@@ -662,6 +746,63 @@ class AtomItem(QGraphicsEllipseItem):
         self._optical_anchor_centering = enabled
         self._set_label_text(self._display_label)
 
+    @property
+    def implicit_hydrogen_position(self) -> str | None:
+        return self._implicit_hydrogen_position if self._implicit_hydrogen_text else None
+
+    @property
+    def implicit_hydrogen_label(self) -> QGraphicsTextItem:
+        return self._implicit_hydrogen_label
+
+    def implicit_hydrogen_candidate_rect(self, position: str) -> QRectF:
+        """Return the H/H2 glyph bounds at a candidate cardinal position."""
+        if not self._implicit_hydrogen_text:
+            return QRectF()
+        current_position = self._implicit_hydrogen_position
+        self._implicit_hydrogen_position = position
+        top_left = self._implicit_hydrogen_top_left()
+        self._implicit_hydrogen_position = current_position
+        return self._implicit_hydrogen_label.boundingRect().translated(top_left)
+
+    def set_implicit_hydrogen_position(self, position: str | None) -> None:
+        """Place the H glyph around N without moving or rotating the N glyph."""
+        if position not in {"right", "left", "above", "below"}:
+            position = "right"
+        if self._implicit_hydrogen_position == position and self._implicit_hydrogen_text:
+            return
+        self.label.prepareGeometryChange()
+        self._implicit_hydrogen_position = position
+        if self._implicit_hydrogen_text:
+            self._implicit_hydrogen_label.setRotation(0.0)
+            self._implicit_hydrogen_label.setPos(self._implicit_hydrogen_top_left())
+            self._position_charge_label()
+        self.label.update()
+        self._sync_geometry()
+
+    def _implicit_hydrogen_top_left(self) -> QPointF:
+        """Calculate H placement from the visible N and H glyph bounds."""
+        metrics = QFontMetricsF(self.label.font())
+        n_path = QPainterPath()
+        n_path.addText(0.0, metrics.ascent(), self.label.font(), "N")
+        n_rect = n_path.boundingRect().translated(self.label.pos())
+        h_rect = self._implicit_hydrogen_label.boundingRect()
+        gap = max(1.25, float(self._style.stroke_px) * 0.45)
+        center_x = n_rect.center().x()
+        center_y = n_rect.center().y()
+        if self._implicit_hydrogen_position == "left":
+            x = n_rect.left() - gap - h_rect.width()
+            y = center_y - h_rect.height() * 0.5
+        elif self._implicit_hydrogen_position == "above":
+            x = center_x - h_rect.width() * 0.5
+            y = n_rect.top() - gap - h_rect.height()
+        elif self._implicit_hydrogen_position == "below":
+            x = center_x - h_rect.width() * 0.5
+            y = n_rect.bottom() + gap
+        else:
+            x = n_rect.right() + gap
+            y = center_y - h_rect.height() * 0.5
+        return QPointF(x - h_rect.left(), y - h_rect.top())
+
     def set_label_offset(self, offset: QPointF) -> None:
         """Actualiza desplazamiento de etiqueta.
 
@@ -753,36 +894,58 @@ class AtomItem(QGraphicsEllipseItem):
         self.set_charge(self._charge)
 
     def _set_label_text(self, text: str) -> None:
-        """Establece el texto de la etiqueta.
+        """Set the logical label and render N/H as separately positioned glyphs."""
+        self.label.prepareGeometryChange()
+        rendered_text = text
+        hydrogen_text = ""
+        if (
+            self.element == "N"
+            and not int(getattr(self.atom, "charge", 0) or 0)
+            and not bool(getattr(self.atom, "is_coordination_center", False))
+        ):
+            hydrogen_text = {"NH": "H", "HN": "H", "NH2": "H2", "H2N": "H2"}.get(text, "")
+            if hydrogen_text:
+                rendered_text = "N"
 
-        Args:
-            text: Texto a mostrar.
-
-        Returns:
-            None.
-
-        Side Effects:
-            Modifica el estado del item o la escena.
-        """
-        anchor = self._label_anchor_override or self._first_label_token(text)
-        # Para centros de coordinación (esfera), la etiqueta debe quedar
-        # centrada geométricamente en el centro de la esfera.
+        self._implicit_hydrogen_text = hydrogen_text
+        self.label.set_logical_text(text)
+        anchor = self._label_anchor_override or self._first_label_token(rendered_text)
         if bool(getattr(self.atom, "is_coordination_center", False)):
             anchor = None
         if anchor:
             metrics_type = QFontMetricsF if self._optical_anchor_centering else QFontMetrics
             metrics = metrics_type(self.label.font())
             self._label_anchor_width = metrics.horizontalAdvance(anchor)
-            self._label_anchor_offset = self._anchor_prefix_width(text, anchor)
+            self._label_anchor_offset = self._anchor_prefix_width(rendered_text, anchor)
         else:
             self._label_anchor_width = None
             self._label_anchor_offset = 0.0
-        html = self._format_label_html(text)
+
+        html = self._format_label_html(rendered_text)
         if html:
             self.label.setHtml(html)
         else:
-            self.label.setPlainText(text)
+            self.label.setPlainText(rendered_text)
+
+        hydrogen_label = self._implicit_hydrogen_label
+        hydrogen_label.setFont(self.label.font())
+        if hydrogen_text:
+            hydrogen_html = self._format_label_html(hydrogen_text)
+            if hydrogen_html:
+                hydrogen_label.setHtml(hydrogen_html)
+            else:
+                hydrogen_label.setPlainText(hydrogen_text)
+            hydrogen_label.setRotation(0.0)
+            hydrogen_label.setVisible(self.label.isVisible())
+        else:
+            hydrogen_label.setPlainText("")
+            hydrogen_label.setVisible(False)
+
         self._center_label()
+        if hydrogen_text:
+            hydrogen_label.setPos(self._implicit_hydrogen_top_left())
+            self._position_charge_label()
+        self._sync_geometry()
 
     def _anchor_prefix_width(self, text: str, anchor: str) -> float:
         """Calcula el ancho del prefijo antes del ancla.
