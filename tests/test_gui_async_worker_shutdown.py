@@ -146,6 +146,7 @@ def test_close_waits_for_all_descendant_worker_families_and_suppresses_late_ui(
 
     class HeldCompChemWorker(QObject):
         frame_ready = pyqtSignal(int, object)
+        progress_ready = pyqtSignal(int, object)
         finished = pyqtSignal(int, object)
 
         def __init__(self, job_id, graph, spec, coordset=None):

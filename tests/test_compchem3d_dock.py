@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import threading
 
 import pytest
 from PyQt6.QtCore import QEvent, QEventLoop, QPointF, Qt, QTimer
@@ -106,6 +107,60 @@ def test_compchem_controller_generates_async_with_fake_backend(monkeypatch) -> N
     assert result.ok
     assert result.coordinates is not None
     assert result.coordinates.source == "fake"
+
+
+def test_compchem_worker_stops_its_thread_without_main_event_loop(monkeypatch) -> None:
+    graph = _chain_graph()
+    backend_entered = threading.Event()
+    release_backend = threading.Event()
+    worker_finished = threading.Event()
+
+    def fake_conformer(_graph, **_kwargs):
+        backend_entered.set()
+        assert release_backend.wait(2.0)
+        return Conformer3DResult(
+            {1: (0.0, 0.0, 0.0), 2: (1.0, 0.0, 0.0), 3: (2.0, 0.0, 0.0)},
+            source="fake",
+            cache_key="thread-quit-key",
+            method="UFF",
+            energy=-1.25,
+        )
+
+    monkeypatch.setattr(compchem_module, "conformer_3d_for_graph", fake_conformer)
+    controller = CompChem3DController()
+    job_id = controller.start_job(
+        graph,
+        CompChemJobSpec(
+            "generate", "rdkit", OptimizationSettings(forcefield=ForceField.UFF)
+        ),
+    )
+    assert job_id is not None
+    thread, worker = controller._jobs[job_id]
+    worker.finished.connect(
+        lambda *_args: worker_finished.set(),
+        Qt.ConnectionType.DirectConnection,
+    )
+
+    try:
+        assert backend_entered.wait(2.0)
+        release_backend.set()
+        assert worker_finished.wait(2.0)
+        assert thread.wait(1000), (
+            "CompChem QThread depended on the GUI event loop to process quit; "
+            f"active_jobs={controller.active_jobs()}, "
+            f"pending_results={tuple(controller._pending_results)}"
+        )
+        QApplication.processEvents()
+        assert controller.active_jobs() == ()
+        assert controller._pending_results == {}
+    finally:
+        release_backend.set()
+        if thread.isRunning():
+            QApplication.processEvents()
+            thread.wait(2000)
+        QApplication.processEvents()
+        controller.deleteLater()
+        QApplication.processEvents()
 
 
 def test_compchem_generate_worker_relays_real_generation_stages(monkeypatch) -> None:

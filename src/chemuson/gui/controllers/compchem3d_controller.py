@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import threading
 from typing import Any
 
-from PyQt6.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import QObject, QThread, Qt, pyqtSignal, pyqtSlot
 
 from chemuson.core.model import MolGraph
 from chemuson.geometry3d import (
@@ -182,7 +182,9 @@ class CompChem3DController(QObject):
         worker.frame_ready.connect(self._relay_frame_ready)
         worker.progress_ready.connect(self._relay_progress_ready)
         worker.finished.connect(self._record_worker_finished)
-        worker.finished.connect(thread.quit)
+        # QThread.quit is thread-safe; quit from the worker thread so shutdown
+        # does not depend on the GUI event loop processing a queued quit call.
+        worker.finished.connect(thread.quit, Qt.ConnectionType.DirectConnection)
         worker.finished.connect(worker.deleteLater)
         thread.finished.connect(lambda job_id=job_id: self._on_thread_finished(job_id))
         thread.finished.connect(thread.deleteLater)

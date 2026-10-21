@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-10-21
+goal: Stabilize the existing ChemUSON 0.3.0-beta.1 candidate by diagnosing exact pytest/Qt failures, validating the existing eight-shard CI and packaging paths, and recording artifact-backed acceptance without feature work or publication.
