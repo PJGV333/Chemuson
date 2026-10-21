@@ -1,0 +1,275 @@
+{
+  "energy_palette": {
+    "image": "energy-palette-light.png",
+    "menu_size": [
+      217,
+      321
+    ],
+    "screen_available": [
+      1600,
+      830
+    ],
+    "screen_dpr": 1.0,
+    "platform": "xcb",
+    "font_family": "Sans Serif",
+    "font_pixel_size": -1,
+    "unicode_glyph_coverage": {
+      "₂": true,
+      "⁻": true,
+      "²": true,
+      "⁴": true,
+      "⁵": true,
+      "⁶": true,
+      "⁸": true
+    },
+    "minimum_text_width_px": 183.0,
+    "actions": [
+      {
+        "text": "Electronic Diagrams",
+        "rect": [
+          9,
+          238,
+          199,
+          35
+        ],
+        "text_advance_px": 112.0,
+        "width_margin_px": 87.0,
+        "has_submenu": true
+      },
+      {
+        "text": "Electronic Diagram Presets",
+        "rect": [
+          9,
+          273,
+          199,
+          35
+        ],
+        "text_advance_px": 151.0,
+        "width_margin_px": 48.0,
+        "has_submenu": true
+      }
+    ]
+  },
+  "molecular_orbitals": {
+    "image": "mo-presets-light.png",
+    "menu_size": [
+      100,
+      271
+    ],
+    "screen_available": [
+      1600,
+      830
+    ],
+    "screen_dpr": 1.0,
+    "platform": "xcb",
+    "font_family": "Sans Serif",
+    "font_pixel_size": -1,
+    "unicode_glyph_coverage": {
+      "₂": true,
+      "⁻": true,
+      "²": true,
+      "⁴": true,
+      "⁵": true,
+      "⁶": true,
+      "⁸": true
+    },
+    "minimum_text_width_px": 66.0,
+    "actions": [
+      {
+        "text": "B2",
+        "rect": [
+          9,
+          13,
+          82,
+          35
+        ],
+        "text_advance_px": 15.0,
+        "width_margin_px": 67.0,
+        "has_submenu": false
+      },
+      {
+        "text": "C2",
+        "rect": [
+          9,
+          48,
+          82,
+          35
+        ],
+        "text_advance_px": 14.0,
+        "width_margin_px": 68.0,
+        "has_submenu": false
+      },
+      {
+        "text": "N2",
+        "rect": [
+          9,
+          83,
+          82,
+          35
+        ],
+        "text_advance_px": 16.0,
+        "width_margin_px": 66.0,
+        "has_submenu": false
+      },
+      {
+        "text": "O2",
+        "rect": [
+          9,
+          118,
+          82,
+          35
+        ],
+        "text_advance_px": 16.0,
+        "width_margin_px": 66.0,
+        "has_submenu": false
+      },
+      {
+        "text": "F2",
+        "rect": [
+          9,
+          153,
+          82,
+          35
+        ],
+        "text_advance_px": 13.0,
+        "width_margin_px": 69.0,
+        "has_submenu": false
+      },
+      {
+        "text": "O2-",
+        "rect": [
+          9,
+          188,
+          82,
+          35
+        ],
+        "text_advance_px": 20.0,
+        "width_margin_px": 62.0,
+        "has_submenu": false
+      },
+      {
+        "text": "O2^2-",
+        "rect": [
+          9,
+          223,
+          82,
+          35
+        ],
+        "text_advance_px": 34.0,
+        "width_margin_px": 48.0,
+        "has_submenu": false
+      }
+    ]
+  },
+  "ligand_field": {
+    "image": "ligand-presets-light.png",
+    "menu_size": [
+      202,
+      271
+    ],
+    "screen_available": [
+      1600,
+      830
+    ],
+    "screen_dpr": 1.0,
+    "platform": "xcb",
+    "font_family": "Sans Serif",
+    "font_pixel_size": -1,
+    "unicode_glyph_coverage": {
+      "₂": true,
+      "⁻": true,
+      "²": true,
+      "⁴": true,
+      "⁵": true,
+      "⁶": true,
+      "⁸": true
+    },
+    "minimum_text_width_px": 167.0,
+    "actions": [
+      {
+        "text": "d4 octahedral high spin",
+        "rect": [
+          9,
+          13,
+          184,
+          35
+        ],
+        "text_advance_px": 133.0,
+        "width_margin_px": 51.0,
+        "has_submenu": false
+      },
+      {
+        "text": "d4 octahedral low spin",
+        "rect": [
+          9,
+          48,
+          184,
+          35
+        ],
+        "text_advance_px": 127.0,
+        "width_margin_px": 57.0,
+        "has_submenu": false
+      },
+      {
+        "text": "d5 octahedral high spin",
+        "rect": [
+          9,
+          83,
+          184,
+          35
+        ],
+        "text_advance_px": 133.0,
+        "width_margin_px": 51.0,
+        "has_submenu": false
+      },
+      {
+        "text": "d6 octahedral high spin",
+        "rect": [
+          9,
+          118,
+          184,
+          35
+        ],
+        "text_advance_px": 133.0,
+        "width_margin_px": 51.0,
+        "has_submenu": false
+      },
+      {
+        "text": "d6 octahedral low spin",
+        "rect": [
+          9,
+          153,
+          184,
+          35
+        ],
+        "text_advance_px": 127.0,
+        "width_margin_px": 57.0,
+        "has_submenu": false
+      },
+      {
+        "text": "d8 square planar",
+        "rect": [
+          9,
+          188,
+          184,
+          35
+        ],
+        "text_advance_px": 95.0,
+        "width_margin_px": 89.0,
+        "has_submenu": false
+      },
+      {
+        "text": "d5 tetrahedral high spin",
+        "rect": [
+          9,
+          223,
+          184,
+          35
+        ],
+        "text_advance_px": 135.0,
+        "width_margin_px": 49.0,
+        "has_submenu": false
+      }
+    ]
+  }
+}

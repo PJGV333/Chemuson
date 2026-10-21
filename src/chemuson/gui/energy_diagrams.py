@@ -163,8 +163,33 @@ def energy_diagram_preset(kind: str) -> EnergyDiagramPreset:
 
 
 def energy_diagram_display_name(kind: str) -> str:
-    """Etiqueta legible para UI."""
+    """Nombre ASCII estable usado fuera de los menús de presentación."""
     return energy_diagram_preset(kind).display_name
+
+
+_ENERGY_DIAGRAM_MENU_LABELS: dict[str, str] = {
+    "hybrid_sp": "Híbrido sp",
+    "hybrid_sp2": "Híbrido sp²",
+    "hybrid_sp3": "Híbrido sp³",
+    "levels_aufbau": "Niveles de energía",
+}
+
+_ENERGY_DIAGRAM_PALETTE_GLYPHS: dict[str, str] = {
+    "hybrid_sp2": "sp²",
+    "hybrid_sp3": "sp³",
+}
+
+
+def energy_diagram_menu_label(kind: str) -> str:
+    """Etiqueta tipográfica exclusiva de los menús de presets."""
+    preset = energy_diagram_preset(kind)
+    return _ENERGY_DIAGRAM_MENU_LABELS.get(kind, preset.display_name)
+
+
+def energy_diagram_palette_glyph(kind: str) -> str:
+    """Glifo de menú para la paleta, sin cambiar la etiqueta del diagrama."""
+    preset = energy_diagram_preset(kind)
+    return _ENERGY_DIAGRAM_PALETTE_GLYPHS.get(kind, preset.label)
 
 
 def energy_diagram_family(kind: str) -> str:

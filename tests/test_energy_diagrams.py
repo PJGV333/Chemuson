@@ -12,7 +12,11 @@ from PyQt6.QtWidgets import QApplication
 from chemuson.gui.canvas import ChemusonCanvas
 from chemuson.gui.energy_diagrams import (
     ENERGY_DIAGRAM_MENU_ORDER,
+    ENERGY_DIAGRAM_PRESETS,
+    default_energy_label,
     energy_diagram_display_name,
+    energy_diagram_menu_label,
+    energy_diagram_palette_glyph,
     energy_diagram_tool_id,
 )
 from chemuson.gui.main_window import ChemusonWindow
@@ -138,17 +142,33 @@ def test_custom_energy_row_and_legacy_presets_are_supported() -> None:
 def test_energy_diagram_toolbar_selection_updates_active_canvas() -> None:
     window = ChemusonWindow()
     try:
-        tool_id = energy_diagram_tool_id("hybrid_sp2")
+        kind = "hybrid_sp3"
+        tool_id = energy_diagram_tool_id(kind)
         window.symbols_toolbar._select_energy_diagram_tool(tool_id)
 
         assert window._current_tool_id == tool_id
         assert window.canvas.current_tool == "tool_energy_diagram"
-        assert window.canvas.state.active_energy_diagram_kind == "hybrid_sp2"
+        assert window.canvas.state.active_energy_diagram_kind == kind
         assert window.symbols_toolbar.energy_diagram_action.isChecked() is True
-        assert (
-            window.symbols_toolbar.energy_diagram_action.toolTip()
-            == energy_diagram_display_name("hybrid_sp2")
-        )
+        assert window.symbols_toolbar.energy_diagram_action.toolTip() == "Híbrido sp³"
+        assert energy_diagram_display_name(kind) == "Hibrido sp3"
+        assert energy_diagram_menu_label(kind) == "Híbrido sp³"
+        assert energy_diagram_palette_glyph(kind) == "sp³"
+        assert ENERGY_DIAGRAM_PRESETS[kind].display_name == "Hibrido sp3"
+        assert ENERGY_DIAGRAM_PRESETS[kind].label == "sp3"
+        assert default_energy_label(kind) == "sp3"
+        assert [energy_diagram_menu_label(menu_kind) for menu_kind in ENERGY_DIAGRAM_MENU_ORDER] == [
+            "Subnivel s",
+            "Nivel personalizable",
+            "Subnivel p",
+            "Subnivel d",
+            "Subnivel f",
+            "Híbrido sp",
+            "Híbrido sp²",
+            "Híbrido sp³",
+        ]
+        assert energy_diagram_menu_label("levels_aufbau") == "Niveles de energía"
+        assert energy_diagram_menu_label("mo_2s_2p") == "Orbital molecular 2s/2p"
     finally:
         window.canvas.undo_stack.clear()
         window.canvas.undo_stack.setClean()

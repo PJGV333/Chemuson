@@ -121,9 +121,35 @@ DIAGRAM_PRESETS = {
 }
 
 
+_DIAGRAM_PRESET_MENU_LABELS: dict[str, str] = {
+    "mo:B2": "B₂",
+    "mo:C2": "C₂",
+    "mo:N2": "N₂",
+    "mo:O2": "O₂",
+    "mo:F2": "F₂",
+    "mo:O2-": "O₂⁻",
+    "mo:O2^2-": "O₂²⁻",
+    "ligand_field:d4_octahedral_high": "d⁴ octahedral high spin",
+    "ligand_field:d4_octahedral_low": "d⁴ octahedral low spin",
+    "ligand_field:d5_octahedral_high": "d⁵ octahedral high spin",
+    "ligand_field:d6_octahedral_high": "d⁶ octahedral high spin",
+    "ligand_field:d6_octahedral_low": "d⁶ octahedral low spin",
+    "ligand_field:d8_square_planar": "d⁸ square planar",
+    "ligand_field:d5_tetrahedral_high": "d⁵ tetrahedral high spin",
+}
+
+
 def get_diagram_preset(name: str):
     """Devuelve un descriptor de preset por nombre estable."""
     return DIAGRAM_PRESETS.get(str(name or "").strip())
+
+
+def diagram_preset_menu_label(name: str) -> str:
+    """Devuelve el texto tipográfico de menú sin alterar el preset ni su ID."""
+    preset = get_diagram_preset(name)
+    if preset is None:
+        return str(name or "").strip()
+    return _DIAGRAM_PRESET_MENU_LABELS.get(preset.name, preset.display_name)
 
 
 def list_atomic_presets() -> list[AtomicDiagramPreset]:

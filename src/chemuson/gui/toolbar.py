@@ -36,12 +36,14 @@ from chemuson.gui.energy_diagrams import (
     ENERGY_DIAGRAM_MENU_ORDER,
     ENERGY_DIAGRAM_PRESETS,
     energy_diagram_default_style_payload,
-    energy_diagram_display_name,
+    energy_diagram_menu_label,
+    energy_diagram_palette_glyph,
     energy_diagram_family,
     energy_diagram_kind_from_tool_id,
     energy_diagram_tool_id,
 )
 from chemuson.gui.diagram_presets import (
+    diagram_preset_menu_label,
     list_atomic_presets,
     list_ligand_field_presets,
     list_molecular_orbital_presets,
@@ -941,7 +943,7 @@ class SymbolPaletteToolbar(QToolBar):
                     if energy_diagram_family(kind) == "levels"
                     else draw_molecular_orbital_icon()
                     if energy_diagram_family(kind) == "mo"
-                    else draw_glyph_icon(ENERGY_DIAGRAM_PRESETS[kind].label)
+                    else draw_glyph_icon(energy_diagram_palette_glyph(kind))
                     if (
                         energy_diagram_family(kind) == "row"
                         and kind != "custom_level"
@@ -959,7 +961,7 @@ class SymbolPaletteToolbar(QToolBar):
                         ),
                     )
                 ),
-                energy_diagram_display_name(kind),
+                energy_diagram_menu_label(kind),
             )
             for kind in ENERGY_DIAGRAM_MENU_ORDER
         }
@@ -1248,7 +1250,7 @@ class SymbolPaletteToolbar(QToolBar):
         presets_menu = menu.addMenu("Electronic Diagram Presets")
         atomic_presets_menu = presets_menu.addMenu("Atomic Presets")
         for preset in list_atomic_presets():
-            action = QAction(preset.display_name, self)
+            action = QAction(diagram_preset_menu_label(preset.name), self)
             action.triggered.connect(
                 lambda _checked=False, preset_name=preset.name: self.electronic_diagram_preset_requested.emit(
                     preset_name
@@ -1257,7 +1259,7 @@ class SymbolPaletteToolbar(QToolBar):
             atomic_presets_menu.addAction(action)
         mo_presets_menu = presets_menu.addMenu("Diatomic MO Presets")
         for preset in list_molecular_orbital_presets():
-            action = QAction(preset.display_name, self)
+            action = QAction(diagram_preset_menu_label(preset.name), self)
             action.triggered.connect(
                 lambda _checked=False, preset_name=preset.name: self.electronic_diagram_preset_requested.emit(
                     preset_name
@@ -1266,7 +1268,7 @@ class SymbolPaletteToolbar(QToolBar):
             mo_presets_menu.addAction(action)
         ligand_presets_menu = presets_menu.addMenu("Ligand Field Presets")
         for preset in list_ligand_field_presets():
-            action = QAction(preset.display_name, self)
+            action = QAction(diagram_preset_menu_label(preset.name), self)
             action.triggered.connect(
                 lambda _checked=False, preset_name=preset.name: self.electronic_diagram_preset_requested.emit(
                     preset_name
@@ -1470,7 +1472,7 @@ class SymbolPaletteToolbar(QToolBar):
                     if energy_diagram_family(kind) == "levels"
                     else draw_molecular_orbital_icon()
                     if energy_diagram_family(kind) == "mo"
-                    else draw_glyph_icon(ENERGY_DIAGRAM_PRESETS[kind].label)
+                    else draw_glyph_icon(energy_diagram_palette_glyph(kind))
                     if (
                         energy_diagram_family(kind) == "row"
                         and kind != "custom_level"
@@ -1488,7 +1490,7 @@ class SymbolPaletteToolbar(QToolBar):
                         ),
                     )
                 ),
-                energy_diagram_display_name(kind),
+                energy_diagram_menu_label(kind),
             )
             for kind in ENERGY_DIAGRAM_MENU_ORDER
         }

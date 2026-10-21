@@ -24,8 +24,8 @@ Cubre (contra la ventana real, offscreen):
 from __future__ import annotations
 
 import pytest
-from PyQt6.QtCore import QCoreApplication, QEvent, QPointF, Qt
-from PyQt6.QtGui import QKeyEvent, QMouseEvent, QShortcut
+from PyQt6.QtCore import QCoreApplication, QEvent, QPoint, QPointF, Qt
+from PyQt6.QtGui import QKeyEvent, QMouseEvent, QRawFont, QShortcut
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import (
     QApplication,
@@ -36,7 +36,7 @@ from PyQt6.QtWidgets import (
 
 from chemuson.gui.energy_diagrams import (
     ENERGY_DIAGRAM_MENU_ORDER,
-    energy_diagram_display_name,
+    energy_diagram_menu_label,
     energy_diagram_tool_id,
 )
 from chemuson.gui.items import EnergyDiagramItem, TextAnnotationItem
@@ -913,9 +913,9 @@ def test_energy_diagram_end_to_end_from_rail_flyout():
         flyout = win.tool_rail.open_flyout("energy")
         assert flyout is not None
         assert flyout.isVisible()
-        kind = "hybrid_sp2"
-        cell = _flyout_cell_by_tooltip(flyout, energy_diagram_display_name(kind))
-        assert cell is not None, "El flyout debe exponer la celda hybrid_sp2"
+        kind = "hybrid_sp3"
+        cell = _flyout_cell_by_tooltip(flyout, energy_diagram_menu_label(kind))
+        assert cell is not None, "El flyout debe exponer la celda hybrid_sp3"
         QTest.mouseClick(cell, Qt.MouseButton.LeftButton)
         QApplication.processEvents()
         assert win._current_tool_id == energy_diagram_tool_id(kind)
@@ -926,10 +926,13 @@ def test_energy_diagram_end_to_end_from_rail_flyout():
         before = len(
             [item for item in win.canvas.scene.items() if isinstance(item, EnergyDiagramItem)]
         )
-        win.canvas._insert_energy_diagram_item(QPointF(150.0, 150.0))
+        item = win.canvas._insert_energy_diagram_item(QPointF(150.0, 150.0))
         after = len(
             [item for item in win.canvas.scene.items() if isinstance(item, EnergyDiagramItem)]
         )
+        assert item is not None
+        assert item.kind() == "hybrid_sp3"
+        assert item.box_count() == 4
         assert after == before + 1
         win.canvas.undo_stack.undo()
         assert (
@@ -996,57 +999,94 @@ def test_bracket_cell_click_selects_bracket_tool():
 
 
 def test_energy_submenus_and_presets_connected():
-    """Los submenús de energía (diagramas electrónicos y presets) conservan
-    su wiring original: la acción del botón emite ``tool_changed``; las
-    QActions de los submenús están conectadas a las señales de solicitud y
-    esas señales tienen el handler de la ventana (sin disparar los diálogos
-    modales: se verifica la conexión, no la ejecución). El flyout de energía
-    expone los dos submenús como botones de pie."""
+    """Los submenús conservan IDs/señales y muestran notación legible en
+    temas claro/oscuro, con métricas Qt suficientes para no recortar glifos."""
     from chemuson.gui.main_window import ChemusonWindow
 
     win = ChemusonWindow()
     win.show()
     QApplication.processEvents()
     try:
-        # Botón (acción) a nivel de toolbar: emite la herramienta actual.
         win.symbols_toolbar.energy_diagram_action.trigger()
         QApplication.processEvents()
         assert win.canvas.current_tool == "tool_energy_diagram"
 
-        # Submenús vivos dentro del menú de energía.
         menu = win.symbols_toolbar.energy_diagram_button.menu()
         submenus = [action.menu() for action in menu.actions() if action.menu() is not None]
         assert len(submenus) == 2, "Faltan los submenús de energía"
         electronic_menu, presets_menu = submenus
-
-        # Wiring a nivel de toolbar: la QAction emite la señal de solicitud.
         atomic_action = electronic_menu.actions()[0]
         assert atomic_action.receivers(atomic_action.triggered) > 0
         toolbar = win.symbols_toolbar
         assert toolbar.receivers(toolbar.atomic_diagram_requested) >= 1
         assert toolbar.receivers(toolbar.diatomic_mo_diagram_requested) >= 1
         assert toolbar.receivers(toolbar.ligand_field_diagram_requested) >= 1
+        assert toolbar.receivers(toolbar.electronic_diagram_preset_requested) >= 1
 
-        # Wiring a nivel de ventana: el handler existe (señal con receptores).
-        assert win.symbols_toolbar.receivers(win.symbols_toolbar.atomic_diagram_requested) >= 1
-        assert (
-            win.symbols_toolbar.receivers(
-                win.symbols_toolbar.electronic_diagram_preset_requested
-            )
-            >= 1
-        )
-
-        # Presets: tres submenús, cada QAction conectada.
-        preset_submenus = [
-            action.menu() for action in presets_menu.actions() if action.menu() is not None
+        expected_mo_labels = ["B₂", "C₂", "N₂", "O₂", "F₂", "O₂⁻", "O₂²⁻"]
+        expected_ligand_labels = [
+            "d⁴ octahedral high spin",
+            "d⁴ octahedral low spin",
+            "d⁵ octahedral high spin",
+            "d⁶ octahedral high spin",
+            "d⁶ octahedral low spin",
+            "d⁸ square planar",
+            "d⁵ tetrahedral high spin",
         ]
-        assert len(preset_submenus) == 3, "Faltan los submenús de presets"
-        for preset_menu in preset_submenus:
-            assert len(preset_menu.actions()) > 0
-            for action in preset_menu.actions():
-                assert action.receivers(action.triggered) > 0
 
-        # El flyout de energía expone los dos submenús como botones de pie.
+        def _preset_menus():
+            root = win.symbols_toolbar.energy_diagram_button.menu()
+            parent = next(
+                action.menu()
+                for action in root.actions()
+                if action.text() == "Electronic Diagram Presets" and action.menu() is not None
+            )
+            return (
+                next(
+                    action.menu()
+                    for action in parent.actions()
+                    if action.text() == "Diatomic MO Presets" and action.menu() is not None
+                ),
+                next(
+                    action.menu()
+                    for action in parent.actions()
+                    if action.text() == "Ligand Field Presets" and action.menu() is not None
+                ),
+            )
+
+        for theme_name in ("light", "dark"):
+            win.current_theme = theme_name
+            win._apply_theme()
+            mo_menu, ligand_menu = _preset_menus()
+            assert [action.text() for action in mo_menu.actions()] == expected_mo_labels
+            assert [action.text() for action in ligand_menu.actions()] == expected_ligand_labels
+            for preset_menu in (mo_menu, ligand_menu):
+                for action in preset_menu.actions():
+                    assert action.receivers(action.triggered) > 0
+                preset_menu.adjustSize()
+                preset_menu.popup(QPoint(40, 40))
+                QApplication.processEvents()
+                for action in preset_menu.actions():
+                    text_width = preset_menu.fontMetrics().horizontalAdvance(action.text())
+                    assert preset_menu.actionGeometry(action).width() >= text_width + 20
+                preset_menu.hide()
+            assert all(
+                QRawFont.fromFont(mo_menu.font()).supportsCharacter(char)
+                for char in "₂⁻²"
+            )
+            assert all(
+                QRawFont.fromFont(ligand_menu.font()).supportsCharacter(char)
+                for char in "⁴⁵⁶⁸"
+            )
+
+        # La acción Unicode conserva/emite el ID ASCII que identifica el preset.
+        emitted: list[str] = []
+        toolbar.electronic_diagram_preset_requested.connect(emitted.append)
+        mo_menu, _ligand_menu = _preset_menus()
+        peroxo_action = next(action for action in mo_menu.actions() if action.text() == "O₂²⁻")
+        peroxo_action.trigger()
+        assert emitted == ["mo:O2^2-"]
+
         flyout = win.tool_rail.open_flyout("energy")
         assert flyout is not None
         assert len(flyout._foot_buttons) == 2

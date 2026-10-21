@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-10-21
+goal: Improve only the visible chemical and scientific notation in energy-diagram menus and tooltips while preserving stable preset IDs, scientific diagram data, and persisted documents.

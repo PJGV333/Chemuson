@@ -1,0 +1,294 @@
+{
+  "energy_palette": {
+    "image": "energy-palette-light.png",
+    "menu_size": [
+      217,
+      321
+    ],
+    "screen_available": [
+      1600,
+      830
+    ],
+    "screen_dpr": 1.0,
+    "platform": "xcb",
+    "font_family": "Sans Serif",
+    "font_pixel_size": -1,
+    "unicode_glyph_coverage": {
+      "₂": true,
+      "⁻": true,
+      "²": true,
+      "³": true,
+      "⁴": true,
+      "⁵": true,
+      "⁶": true,
+      "⁸": true
+    },
+    "minimum_text_width_px": 183.0,
+    "actions": [
+      {
+        "text": "Electronic Diagrams",
+        "rect": [
+          9,
+          238,
+          199,
+          35
+        ],
+        "text_advance_px": 112.0,
+        "width_margin_px": 87.0,
+        "text_fits_with_margin": true,
+        "has_submenu": true
+      },
+      {
+        "text": "Electronic Diagram Presets",
+        "rect": [
+          9,
+          273,
+          199,
+          35
+        ],
+        "text_advance_px": 151.0,
+        "width_margin_px": 48.0,
+        "text_fits_with_margin": true,
+        "has_submenu": true
+      }
+    ]
+  },
+  "molecular_orbitals": {
+    "image": "mo-presets-light.png",
+    "menu_size": [
+      88,
+      271
+    ],
+    "screen_available": [
+      1600,
+      830
+    ],
+    "screen_dpr": 1.0,
+    "platform": "xcb",
+    "font_family": "Sans Serif",
+    "font_pixel_size": -1,
+    "unicode_glyph_coverage": {
+      "₂": true,
+      "⁻": true,
+      "²": true,
+      "³": true,
+      "⁴": true,
+      "⁵": true,
+      "⁶": true,
+      "⁸": true
+    },
+    "minimum_text_width_px": 54.0,
+    "actions": [
+      {
+        "text": "B₂",
+        "rect": [
+          9,
+          13,
+          70,
+          35
+        ],
+        "text_advance_px": 12.0,
+        "width_margin_px": 58.0,
+        "text_fits_with_margin": true,
+        "has_submenu": false
+      },
+      {
+        "text": "C₂",
+        "rect": [
+          9,
+          48,
+          70,
+          35
+        ],
+        "text_advance_px": 12.0,
+        "width_margin_px": 58.0,
+        "text_fits_with_margin": true,
+        "has_submenu": false
+      },
+      {
+        "text": "N₂",
+        "rect": [
+          9,
+          83,
+          70,
+          35
+        ],
+        "text_advance_px": 13.0,
+        "width_margin_px": 57.0,
+        "text_fits_with_margin": true,
+        "has_submenu": false
+      },
+      {
+        "text": "O₂",
+        "rect": [
+          9,
+          118,
+          70,
+          35
+        ],
+        "text_advance_px": 14.0,
+        "width_margin_px": 56.0,
+        "text_fits_with_margin": true,
+        "has_submenu": false
+      },
+      {
+        "text": "F₂",
+        "rect": [
+          9,
+          153,
+          70,
+          35
+        ],
+        "text_advance_px": 10.0,
+        "width_margin_px": 60.0,
+        "text_fits_with_margin": true,
+        "has_submenu": false
+      },
+      {
+        "text": "O₂⁻",
+        "rect": [
+          9,
+          188,
+          70,
+          35
+        ],
+        "text_advance_px": 18.0,
+        "width_margin_px": 52.0,
+        "text_fits_with_margin": true,
+        "has_submenu": false
+      },
+      {
+        "text": "O₂²⁻",
+        "rect": [
+          9,
+          223,
+          70,
+          35
+        ],
+        "text_advance_px": 22.0,
+        "width_margin_px": 48.0,
+        "text_fits_with_margin": true,
+        "has_submenu": false
+      }
+    ]
+  },
+  "ligand_field": {
+    "image": "ligand-presets-light.png",
+    "menu_size": [
+      199,
+      271
+    ],
+    "screen_available": [
+      1600,
+      830
+    ],
+    "screen_dpr": 1.0,
+    "platform": "xcb",
+    "font_family": "Sans Serif",
+    "font_pixel_size": -1,
+    "unicode_glyph_coverage": {
+      "₂": true,
+      "⁻": true,
+      "²": true,
+      "³": true,
+      "⁴": true,
+      "⁵": true,
+      "⁶": true,
+      "⁸": true
+    },
+    "minimum_text_width_px": 165.0,
+    "actions": [
+      {
+        "text": "d⁴ octahedral high spin",
+        "rect": [
+          9,
+          13,
+          181,
+          35
+        ],
+        "text_advance_px": 130.0,
+        "width_margin_px": 51.0,
+        "text_fits_with_margin": true,
+        "has_submenu": false
+      },
+      {
+        "text": "d⁴ octahedral low spin",
+        "rect": [
+          9,
+          48,
+          181,
+          35
+        ],
+        "text_advance_px": 124.0,
+        "width_margin_px": 57.0,
+        "text_fits_with_margin": true,
+        "has_submenu": false
+      },
+      {
+        "text": "d⁵ octahedral high spin",
+        "rect": [
+          9,
+          83,
+          181,
+          35
+        ],
+        "text_advance_px": 130.0,
+        "width_margin_px": 51.0,
+        "text_fits_with_margin": true,
+        "has_submenu": false
+      },
+      {
+        "text": "d⁶ octahedral high spin",
+        "rect": [
+          9,
+          118,
+          181,
+          35
+        ],
+        "text_advance_px": 130.0,
+        "width_margin_px": 51.0,
+        "text_fits_with_margin": true,
+        "has_submenu": false
+      },
+      {
+        "text": "d⁶ octahedral low spin",
+        "rect": [
+          9,
+          153,
+          181,
+          35
+        ],
+        "text_advance_px": 124.0,
+        "width_margin_px": 57.0,
+        "text_fits_with_margin": true,
+        "has_submenu": false
+      },
+      {
+        "text": "d⁸ square planar",
+        "rect": [
+          9,
+          188,
+          181,
+          35
+        ],
+        "text_advance_px": 93.0,
+        "width_margin_px": 88.0,
+        "text_fits_with_margin": true,
+        "has_submenu": false
+      },
+      {
+        "text": "d⁵ tetrahedral high spin",
+        "rect": [
+          9,
+          223,
+          181,
+          35
+        ],
+        "text_advance_px": 133.0,
+        "width_margin_px": 48.0,
+        "text_fits_with_margin": true,
+        "has_submenu": false
+      }
+    ]
+  }
+}

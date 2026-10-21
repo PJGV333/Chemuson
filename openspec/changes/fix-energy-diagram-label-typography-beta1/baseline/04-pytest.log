@@ -1,0 +1,1 @@
+NOT RUN: monolithic pytest -q intentionally omitted; the beta OpenSpec records the 600-second baseline timeout and the three known baseline Qt/SIP failures.
