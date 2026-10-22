@@ -551,6 +551,7 @@ modules:
   - side_panel
   - projections
   - viewport3d
+  - packaged_graphics_smoke
   name: gui
   notes: 'GUI importa todos los subsistemas de dominio para orquestación. No implementa
     lógica química pesada. items.py es un módulo individual (no paquete): src/chemuson/gui/items.py
@@ -598,6 +599,7 @@ modules:
   - src/chemuson/gui/geom.py
   - src/chemuson/gui/icons.py
   - src/chemuson/gui/main_window.py
+  - src/chemuson/gui/packaged_graphics_smoke.py
   - src/chemuson/gui/main_window_ui_builder.py
   - src/chemuson/gui/numbering.py
   - src/chemuson/gui/orbitals.py

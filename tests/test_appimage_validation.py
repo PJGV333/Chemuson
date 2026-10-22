@@ -15,6 +15,10 @@ sys.path.insert(0, str(RELEASE_DIR))
 
 import validate_appimage  # noqa: E402
 
+PYINSTALLER_DIR = ROOT / "packaging" / "pyinstaller"
+sys.path.insert(0, str(PYINSTALLER_DIR))
+import runtime_filter  # noqa: E402
+
 
 def _elf_header(*, marker: bytes = b"AI\x02", machine: int = 62, elf_class: int = 2) -> bytes:
     header = bytearray(64)
@@ -100,6 +104,10 @@ def test_preview_and_release_workflows_build_and_validate_same_type2_package() -
     assert "_validate_frozen_rdkit_worker" in appimage_validator
     assert "validate_packaged_rdkit_worker.py" in appimage_validator
     assert "_validate_frozen_chemname" in appimage_validator
+    assert "_validate_frozen_graphics" in appimage_validator
+    assert '"xvfb-run"' in appimage_validator
+    assert '"GALLIUM_DRIVER": "llvmpipe"' in appimage_validator
+    assert '"QT_QPA_PLATFORM": "xcb"' in appimage_validator
     assert "validate_packaged_chemname.py" in appimage_validator
     assert "--build-type preview" in preview_text
     assert "--build-type release" in release_text
@@ -123,6 +131,67 @@ def test_release_validator_requires_type2_and_zsync_without_changing_asset_name(
 def test_appdir_requires_launcher_desktop_icon_and_appstream(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="AppDir is missing"):
         validate_appimage._validate_appdir(tmp_path, version="0.3.0-beta.1")
+
+
+def test_pyinstaller_host_runtime_filter_removes_only_host_owned_abis() -> None:
+    entries = [
+        ("libstdc++.so.6", "/build/lib/libstdc++.so.6", "BINARY"),
+        ("libfontconfig.so.1", "/build/lib/libfontconfig.so.1", "BINARY"),
+        ("libfreetype.so.6", "/build/lib/libfreetype.so.6", "BINARY"),
+        ("rdkit.libs/libboost.so.1", "/build/rdkit/libboost.so.1", "BINARY"),
+        ("libGL.so.1", "/usr/lib/libGL.so.1", "BINARY"),
+        ("libgcc_s.so.1", "/build/lib/libgcc_s.so.1", "BINARY"),
+    ]
+
+    removed = runtime_filter.exclude_host_runtime_binaries(entries)
+
+    assert set(removed) == {
+        "libstdc++.so.6",
+        "libfontconfig.so.1",
+        "libfreetype.so.6",
+    }
+    assert [entry[0] for entry in entries] == [
+        "rdkit.libs/libboost.so.1",
+        "libGL.so.1",
+        "libgcc_s.so.1",
+    ]
+
+
+def test_chemname_archive_inventory_ignores_non_mol_package_files() -> None:
+    names = {
+        "chemuson/chemname/templates/__init__.py",
+        "chemuson/chemname/templates/simple/benzene.mol",
+    }
+
+    assert validate_appimage._packaged_chemname_templates(names) == {
+        "chemuson/chemname/templates/simple/benzene.mol"
+    }
+
+
+def test_pyinstaller_archive_policy_rejects_bundled_host_runtime_abis() -> None:
+    with pytest.raises(ValueError, match=r"host-owned C\+\+/font runtimes"):
+        validate_appimage._validate_host_runtime_library_policy(
+            {
+                "pyqt6/qt6/lib/libstdc++.so.6",
+                "libfontconfig.so.1",
+                "libfreetype.so.6.20.1",
+            }
+        )
+
+    validate_appimage._validate_host_runtime_library_policy(
+        {"libGL.so.1", "libgcc_s.so.1", "rdkit.libs/libboost.so.1"}
+    )
+
+
+def test_pyinstaller_spec_filters_host_runtime_after_analysis_before_exe() -> None:
+    spec = (ROOT / "chemuson.spec").read_text(encoding="utf-8")
+    analysis = spec.index("a = Analysis(")
+    filtering = spec.index("EXCLUDED_HOST_RUNTIME_BINARIES = exclude_host_runtime_binaries(a.binaries)")
+    executable = spec.index("exe = EXE(")
+
+    assert "from runtime_filter import exclude_host_runtime_binaries" in spec
+    assert analysis < filtering < executable
+    assert "a.binaries,\n    a.datas," in spec
 
 
 def test_release_gate_checks_appimage_packaging_contracts() -> None:

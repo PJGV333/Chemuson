@@ -60,6 +60,39 @@ def _run(args: list[str], *, cwd: Path, env: dict[str, str], timeout: int) -> su
         raise ValueError(f"AppImage validation command failed: {args[0]}: {details}") from exc
 
 
+_HOST_RUNTIME_LIBRARY_PREFIXES = (
+    "libstdc++.so",
+    "libfontconfig.so",
+    "libfreetype.so",
+)
+
+
+def _validate_host_runtime_library_policy(names: set[str]) -> None:
+    """Reject desktop integration ABIs that must resolve from the host system."""
+    bundled = sorted(
+        {
+            Path(str(name).replace("\\", "/")).name
+            for name in names
+            if Path(str(name).replace("\\", "/")).name.startswith(
+                _HOST_RUNTIME_LIBRARY_PREFIXES
+            )
+        }
+    )
+    if bundled:
+        raise ValueError(
+            "PyInstaller CArchive must not bundle host-owned C++/font runtimes: "
+            + ", ".join(bundled)
+        )
+
+
+def _packaged_chemname_templates(names: set[str]) -> set[str]:
+    return {
+        name
+        for name in names
+        if "/chemuson/chemname/templates/" in f"/{name}" and name.endswith(".mol")
+    }
+
+
 def _validate_pyinstaller_resources(executable: Path) -> None:
     try:
         from PyInstaller.archive.readers import CArchiveReader
@@ -71,6 +104,7 @@ def _validate_pyinstaller_resources(executable: Path) -> None:
     except Exception as exc:
         raise ValueError("Could not inspect the bundled PyInstaller CArchive.") from exc
 
+    _validate_host_runtime_library_policy(names)
     if not any(name.startswith(("pyqt6/qtcore.", "pyqt6.qtcore")) for name in names):
         raise ValueError("PyInstaller CArchive does not contain the PyQt6 QtCore module.")
     if not any(name.startswith(("pyqt6/qtwidgets.", "pyqt6.qtwidgets")) for name in names):
@@ -101,9 +135,7 @@ def _validate_pyinstaller_resources(executable: Path) -> None:
         "chemuson/chemname/templates/special/cholestane_core.mol",
         "chemuson/chemname/templates/special/d_ribose.mol",
     }
-    packaged_templates = {
-        name for name in names if "/chemuson/chemname/templates/" in f"/{name}"
-    }
+    packaged_templates = _packaged_chemname_templates(names)
     if packaged_templates != expected_templates:
         raise ValueError(
             "PyInstaller CArchive must contain exactly the nine ChemName MOL templates; "
@@ -289,6 +321,113 @@ def _headless_startup_smoke(apprun: Path, *, scratch: Path) -> None:
     print("Headless launch stayed alive for 12s; this is not interactive GUI acceptance.")
 
 
+def _validate_frozen_graphics(
+    executable: Path,
+    *,
+    cwd: Path,
+    scratch: Path,
+    env: dict[str, str],
+) -> dict[str, object]:
+    """Run a real XCB/GLX editor+renderer smoke in Xvfb with llvmpipe."""
+    xvfb_run = shutil.which("xvfb-run")
+    if not xvfb_run:
+        raise ValueError("xvfb-run is required for the real AppImage graphics smoke.")
+
+    home = scratch / "graphics-smoke-home"
+    config = home / ".config"
+    data = home / ".local/share"
+    cache = home / ".cache"
+    for directory in (home, config, data, cache):
+        directory.mkdir(parents=True, exist_ok=True)
+    report_path = scratch / "graphics-smoke.json"
+    screenshot_path = scratch / "graphics-smoke.png"
+    smoke_env = env.copy()
+    smoke_env.update(
+        {
+            "HOME": str(home),
+            "XDG_CONFIG_HOME": str(config),
+            "XDG_DATA_HOME": str(data),
+            "XDG_CACHE_HOME": str(cache),
+            "QT_QPA_PLATFORM": "xcb",
+            "QT_OPENGL": "desktop",
+            "LIBGL_ALWAYS_SOFTWARE": "1",
+            "GALLIUM_DRIVER": "llvmpipe",
+            "CHEMUSON_GRAPHICS_PACKAGED_SMOKE": "1",
+        }
+    )
+    for key in (
+        "APPIMAGE",
+        "APPDIR",
+        "LD_PRELOAD",
+        "LD_LIBRARY_PATH",
+        "QT_PLUGIN_PATH",
+        "QT_QPA_PLATFORM_PLUGIN_PATH",
+    ):
+        smoke_env.pop(key, None)
+
+    result = _run(
+        [
+            xvfb_run,
+            "-a",
+            "-s",
+            "-screen 0 1280x900x24 +extension GLX +render -noreset",
+            str(executable),
+            "--graphics-packaged-smoke-test",
+            "--graphics-smoke-report",
+            str(report_path),
+            "--graphics-smoke-screenshot",
+            str(screenshot_path),
+        ],
+        cwd=cwd,
+        env=smoke_env,
+        timeout=180,
+    )
+    (scratch / "graphics-smoke.log").write_text(
+        result.stdout + result.stderr,
+        encoding="utf-8",
+    )
+    try:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError("Frozen AppImage did not produce a valid graphics-smoke report.") from exc
+    if not isinstance(report, dict) or report.get("ok") is not True:
+        raise ValueError(f"Frozen AppImage failed the real graphics smoke: {report!r}")
+    if report.get("qpa") != "xcb":
+        raise ValueError("Graphics smoke did not use the xcb platform plugin.")
+    context = report.get("context")
+    if not isinstance(context, dict) or context.get("profile") != "core":
+        raise ValueError("Graphics smoke did not obtain the required OpenGL Core context.")
+    version = context.get("version")
+    if not isinstance(version, list) or tuple(version) < (4, 1):
+        raise ValueError(f"Graphics smoke requires OpenGL 4.1 Core; got {version!r}.")
+    renderer = str(context.get("renderer", "")).lower()
+    if "llvmpipe" not in renderer:
+        raise ValueError(f"Graphics smoke must use Mesa llvmpipe; got {renderer!r}.")
+    canvas = report.get("canvas_2d")
+    if not isinstance(canvas, dict) or canvas.get("changed_samples", 0) < 8:
+        raise ValueError("Graphics smoke did not visibly render the 2D canvas fixture.")
+    scenes = report.get("rendered_scenes")
+    if not isinstance(scenes, list) or [scene.get("name") for scene in scenes] != ["simple", "complex"]:
+        raise ValueError("Graphics smoke did not render both simple and complex 3D fixtures.")
+    if any(
+        scene.get("changed_samples", 0) < 8
+        or scene.get("vertices", 0) <= 0
+        or scene.get("diagnostics", {}).get("render_status") != "requested"
+        for scene in scenes
+    ):
+        raise ValueError("Graphics smoke produced an empty or non-rendered 3D fixture.")
+    if report.get("dock_closed_cleanly") is not True or report.get("window_closed_cleanly") is not True:
+        raise ValueError("Graphics smoke did not close the 3D dock and main window cleanly.")
+    if not screenshot_path.is_file() or screenshot_path.stat().st_size < 10_000:
+        raise ValueError("Graphics smoke did not save a nonempty main-window screenshot.")
+    report["screenshot_bytes"] = screenshot_path.stat().st_size
+    print(
+        "Frozen AppImage real GUI smoke passed: xcb, visible 2D canvas, "
+        f"OpenGL {version[0]}.{version[1]} Core / llvmpipe, two rendered 3D scenes."
+    )
+    return report
+
+
 def _expected_update_info(owner: str, repo: str, channel: str, appimage_name: str) -> str:
     track = "prerelease" if channel == "beta" else "latest"
     return f"gh-releases-zsync|{owner}|{repo}|{track}|{appimage_name}.zsync"
@@ -329,6 +468,12 @@ def validate_appimage(
         icon_report = _validate_frozen_icons(executable, cwd=scratch, env=environment)
         rdkit_report = _validate_frozen_rdkit_worker(executable, cwd=scratch, env=environment)
         chemname_report = _validate_frozen_chemname(executable, cwd=scratch, env=environment)
+        graphics_report = _validate_frozen_graphics(
+            executable,
+            cwd=scratch,
+            scratch=scratch,
+            env=environment,
+        )
         version_result = _run(
             [str(apprun), "--version"], cwd=scratch, env=environment, timeout=90
         )
@@ -389,6 +534,7 @@ def validate_appimage(
         "icon_smoke": icon_report,
         "rdkit_worker_smoke": rdkit_report,
         "chemname_smoke": chemname_report,
+        "graphics_smoke": graphics_report,
     }
 
 

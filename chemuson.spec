@@ -1,10 +1,14 @@
 """PyInstaller spec para Chemuson con recolección automática de Qt/RDKit."""
 
 from pathlib import Path
+import sys
 
 from PyInstaller.utils.hooks import collect_all, collect_dynamic_libs
 
 PROJECT_ROOT = Path(SPECPATH).resolve()
+sys.path.insert(0, str(PROJECT_ROOT / "packaging" / "pyinstaller"))
+from runtime_filter import exclude_host_runtime_binaries  # noqa: E402
+
 STATIC_ICON_DIR = PROJECT_ROOT / "src" / "chemuson" / "gui" / "theme" / "icons"
 STATIC_ICON_FILES = sorted(STATIC_ICON_DIR.glob("i-*.svg"))
 if len(STATIC_ICON_FILES) != 69 or any(path.stat().st_size == 0 for path in STATIC_ICON_FILES):
@@ -71,6 +75,7 @@ hiddenimports = sorted(
             "chemuson.chemio._rdkit_worker",
             "chemuson.chemio.rdkit_packaged_smoke",
             "chemuson.chemname.packaged_smoke",
+            "chemuson.gui.packaged_graphics_smoke",
             "rdkit",
             "rdkit.Chem.AllChem",
             "rdkit.Chem.rdchem",
@@ -92,6 +97,11 @@ a = Analysis(
     runtime_hooks=["packaging/pyinstaller/rthook_qt.py"],
     noarchive=False,
 )
+# Mesa, Fontconfig, and FreeType are host integrations. Keeping these runtime
+# ABIs bundled can shadow newer system versions required by the active driver
+# or host font configuration. Filter after Analysis, which recursively adds
+# transitive dependencies to the binary TOC.
+EXCLUDED_HOST_RUNTIME_BINARIES = exclude_host_runtime_binaries(a.binaries)
 
 pyz = PYZ(a.pure)
 

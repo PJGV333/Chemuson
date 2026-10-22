@@ -25,6 +25,9 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--rdkit-smoke-report", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--chemname-packaged-smoke-test", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--chemname-smoke-report", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--graphics-packaged-smoke-test", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--graphics-smoke-report", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--graphics-smoke-screenshot", type=Path, help=argparse.SUPPRESS)
     return parser
 
 
@@ -117,6 +120,38 @@ def main() -> int:
             }
         try:
             args.chemname_smoke_report.write_text(
+                json.dumps(report, sort_keys=True), encoding="utf-8"
+            )
+        except OSError:
+            return 1
+        return 0 if report.get("ok") is True else 1
+    if args.graphics_packaged_smoke_test:
+        if (
+            not getattr(sys, "frozen", False)
+            or os.environ.get("CHEMUSON_GRAPHICS_PACKAGED_SMOKE") != "1"
+        ):
+            parser.error("--graphics-packaged-smoke-test is reserved for AppImage package validation.")
+        if args.graphics_smoke_report is None or args.graphics_smoke_screenshot is None:
+            parser.error(
+                "--graphics-smoke-report and --graphics-smoke-screenshot are required "
+                "for packaged graphics validation."
+            )
+        try:
+            from chemuson.gui.packaged_graphics_smoke import run_packaged_graphics_smoke
+
+            report = run_packaged_graphics_smoke(
+                screenshot_path=args.graphics_smoke_screenshot
+            )
+        except Exception as exc:
+            report = {
+                "ok": False,
+                "error": "packaged_graphics_smoke_failed",
+                "exception_type": type(exc).__name__,
+                "detail": str(exc),
+            }
+        try:
+            args.graphics_smoke_report.parent.mkdir(parents=True, exist_ok=True)
+            args.graphics_smoke_report.write_text(
                 json.dumps(report, sort_keys=True), encoding="utf-8"
             )
         except OSError:

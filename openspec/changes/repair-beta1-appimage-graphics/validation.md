@@ -43,10 +43,31 @@ Pruebas A/B de una variable:
 
 Evidencia conservada bajo `/tmp/chemuson-appimage-gl-repair-78b0139/`: `original-xcb-ld/` (exit `-6` y trace fatal), `ab-clean-env/` (Wayland sin `LD_LIBRARY_PATH`), `ab-host-libstdc-xcb-window/` y `ab-host-desktop-libs/` (screenshots de ventana XCB), `ab-host-font-libs-only/` (Fontconfig arreglado pero GL sigue abortando), `bundled-font-libs/` (copias exactas del bundle/maps/versiones) y `venv-wayland/`, `venv-gl-reference/`. El AppImage original mantiene SHA-256 `5559e28117d576b1b52249dc395aa42abd48b9cbc4bb2f84c483efdf8a643ea1`.
 
-## Corrección / validación
+## Corrección y verificación local (2026-10-22)
 
-Pendiente. Actualizar con hipótesis probadas, cambios, tests, re-build exacto, capturas GUI, resultado de visor 3D y límites manuales antes de cerrar.
+### Solución implementada
 
-## Dictamen provisional
+- `packaging/pyinstaller/runtime_filter.py` elimina de la tabla binaria de PyInstaller las SONAME `libstdc++.so.*`, `libfontconfig.so.*` y `libfreetype.so.*`. `chemuson.spec` ejecuta el filtro después de `Analysis` (incluidas dependencias transitivas) y antes de construir el EXE. No elimina Qt, RDKit, libgcc, Mesa, GL/EGL/GLX ni el renderer.
+- `packaging/release/validate_appimage.py` rechaza esos SONAME en el CArchive y conserva los gates de iconos, RDKit, ChemName y startup offscreen; además exige una prueba gráfica XCB real con timeout de 180 s, contexto OpenGL Core ≥4.1, renderer llvmpipe, píxeles 2D y 3D, captura de ventana y cierre limpio.
+- `src/chemuson/gui/packaged_graphics_smoke.py` usa la ventana/canvas reales, dibuja C-C-O con la herramienta de enlaces, abre el dock 3D, genera fixtures RDKit simple/complejo, comprueba framebuffer y cierra dock/ventana después del apagado de workers. La captura no es una aceptación manual.
+- `build-preview.yml` instala `xvfb`, `xauth`, Mesa DRI, Fontconfig y FreeType para que el gate ejecute `xcb` sobre Xvfb/llvmpipe en el runner. Se registró el módulo GUI existente en `architecture/modules.yml`. Se añadieron regresiones del filtro/validador y una corrección al inventario ChemName: el CArchive contiene `templates/__init__.py` como dato adicional, por lo que el inventario contractual cuenta sólo recursos `.mol` y no falsamente ese archivo Python.
 
-**NO-GO para publicación.** La reproducción Wayland no muestra ventana. No se ha modificado producción ni se ha generado candidato corregido. La rama RC defectuosa permanece intacta.
+### Pruebas realizadas
+
+- Smoke fuente con `chem/bin/python`, `DISPLAY=:0`, `QT_QPA_PLATFORM=xcb`, `LIBGL_ALWAYS_SOFTWARE=1`, `GALLIUM_DRIVER=llvmpipe`: PASS. Ventana visible, canvas 2D (3 átomos/2 enlaces, 684 muestras modificadas), contexto OpenGL 4.6 Core/llvmpipe, escena simple (9 átomos, 11.376 vértices, 4.703 muestras) y compleja (24 átomos, 31.464 vértices, 4.862 muestras), dock/ventana cerrados sin SIGABRT. Captura: `/tmp/chemuson-appimage-gl-repair-78b0139/source-graphics-smoke-v9/window.png` (95 KB), verificada visualmente.
+- PyInstaller local 6.22.3 produjo un EXE de prueba de 321 MB con `chem/bin/python` 3.14. `_validate_pyinstaller_resources` inspeccionó el CArchive real y pasó módulos Qt, 69 SVG, nueve MOL y ausencia de los tres ABI host. El reporte `graphics-smoke.json` del binario congelado pasó y la captura muestra 2D y el modelo 3D complejo: `/tmp/chemuson-appimage-gl-repair-78b0139/frozen-build-py314/validation/graphics-smoke.png` (97 KB). Reporte/logs en el mismo directorio.
+- La invocación local de `_validate_frozen_graphics` usó un wrapper `xvfb-run` temporal que mantuvo el `DISPLAY=:0` existente. Esto valida CLI congelado, CArchive, XCB, software Mesa y lógica del validador, pero **no** equivale a Xvfb real. En este host no hay `xvfb-run`, `Xvfb` ni `appimagetool`; por ello no se construyó un AppImage nuevo ni se probó el comando oficial end-to-end. Build Preview instalará Xvfb en CI.
+- Verificación final agrupada: `chem/bin/python -m pytest -q tests/test_appimage_validation.py tests/test_linux_distribution_scripts.py tests/test_viewport3d_widget.py tests/architecture/test_import_boundaries.py tests/architecture/test_module_catalog.py tests/test_ci_pytest_shards.py tests/test_test_workflow_contract.py`: **159 passed**.
+- Se actualizó `tests/ci/expected_pytest_nodeids.txt` para los seis tests nuevos. El plan real de colección (`tools/ci_pytest_shards.py plan --shards 8 ...`) coincide exactamente con **2.604 IDs**, ocho shards, estimación máxima 208,144 s; el hash del plan es `f71bbf819fcbfb90066f3bf0a9f61a6006e5eff605f2df9bf10e4693f94a6030`.
+- `chem/bin/python -m compileall -q src tests tools packaging`, Ruff focal (`F401,F811,F821,E722,E741` en archivos Python afectados), `openspec validate repair-beta1-appimage-graphics --strict` y `git diff --check`: PASS.
+- No se repitió la suite completa ni ningún shard que hubiese agotado su límite; se usa el baseline #39782991976 y política de shards ya documentados.
+
+### Límites de entrega y aceptación
+
+- El EXE PyInstaller es una verificación de paquete local, construido con Python 3.14 en CachyOS; no representa el build oficial Ubuntu 22.04/Python 3.11 ni un artefacto AppImage con provenance. No se ha creado Build Preview para el SHA corregido.
+- No se repitió la prueba del candidato exacto en KDE/Wayland, no se generó el AppImage corregido y no hay Xvfb real local. La prueba software XCB/llvmpipe es automatizada y no sustituye la instalación ni aceptación del propietario.
+- Se preservaron el AppImage original (SHA-256 `5559e28117d576b1b52249dc395aa42abd48b9cbc4bb2f84c483efdf8a643ea1`) y las referencias `main`, `release/v0.3.0-beta.1-prep` y `release/v0.3.0-beta.1-rc-prep`; no se hizo merge, PR, tag, Release ni publicación. `docs/release/manual-acceptance-0.3.0.md` permanece intacto; ítems no probados siguen `NOT TESTED`.
+
+## Dictamen
+
+**NO-GO para publicación.** La corrección de ABI y el smoke gráfico source/frozen en XCB+llvmpipe pasan localmente; quedan pendientes el AppImage exacto con provenance, el gate ejecutado realmente bajo Xvfb/runner, la repetición Wayland del candidato y la aceptación manual P0/P1.

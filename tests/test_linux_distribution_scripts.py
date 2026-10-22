@@ -76,6 +76,34 @@ def _load_flatpak_validate_module():
     return module
 
 
+def _load_pyinstaller_runtime_filter_module():
+    script_path = (
+        Path(__file__).resolve().parent.parent
+        / "packaging"
+        / "pyinstaller"
+        / "runtime_filter.py"
+    )
+    spec = importlib.util.spec_from_file_location("pyinstaller_runtime_filter", script_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_appimage_validate_module():
+    script_path = (
+        Path(__file__).resolve().parent.parent
+        / "packaging"
+        / "release"
+        / "validate_appimage.py"
+    )
+    spec = importlib.util.spec_from_file_location("validate_appimage", script_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def _write_fake_appimagetool(tmp_path: Path) -> Path:
     tool = tmp_path / "fake-appimagetool"
     tool.write_text(
@@ -505,6 +533,41 @@ def test_preview_flatpak_refuses_public_remote_and_signing_credentials(tmp_path)
     assert result.returncode == 2
     assert "cannot use public remote URLs or signing credentials" in result.stderr
     assert not output_dir.exists()
+
+
+def test_pyinstaller_spec_filters_host_owned_cpp_and_font_runtime_binaries() -> None:
+    module = _load_pyinstaller_runtime_filter_module()
+    binaries = [
+        ("/usr/lib/libstdc++.so.6", "libstdc++.so.6", "BINARY"),
+        ("/usr/lib/libfontconfig.so.1", "libfontconfig.so.1", "BINARY"),
+        ("/usr/lib/libfreetype.so.6", "libfreetype.so.6", "BINARY"),
+        ("/qt/lib/libQt6Gui.so.6", "PyQt6/Qt6/lib/libQt6Gui.so.6", "BINARY"),
+        ("/rdkit/libRDKitGraphMol.so", "rdkit/libRDKitGraphMol.so", "BINARY"),
+    ]
+
+    removed = module.exclude_host_runtime_binaries(binaries)
+
+    assert removed == (
+        "libstdc++.so.6",
+        "libfontconfig.so.1",
+        "libfreetype.so.6",
+    )
+    assert [entry[1] for entry in binaries] == [
+        "PyQt6/Qt6/lib/libQt6Gui.so.6",
+        "rdkit/libRDKitGraphMol.so",
+    ]
+
+
+def test_appimage_archive_policy_rejects_bundled_host_runtime_libraries() -> None:
+    module = _load_appimage_validate_module()
+    module._validate_host_runtime_library_policy(
+        {"PyQt6/Qt6/plugins/platforms/libqxcb.so", "rdkit/libRDKitGraphMol.so"}
+    )
+
+    with pytest.raises(ValueError, match="host-owned C\\+\\+/font runtimes"):
+        module._validate_host_runtime_library_policy(
+            {"libstdc++.so.6", "PyQt6/Qt6/lib/libfreetype.so.6"}
+        )
 
 
 def test_build_appimage_rejects_mismatched_channel(tmp_path) -> None:
