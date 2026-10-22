@@ -15,6 +15,7 @@ from rdkit.Chem import AllChem
 from chemuson.core.model import MolGraph
 from chemuson.geometry3d import CoordinateSet3D, SceneMolecule3D, scene_molecule_from_graph
 from chemuson.gui.main_window import ChemusonWindow
+from chemuson.gui.viewport3d.mesh import build_scene_mesh
 
 
 _SIMPLE_SMILES = "CCO"
@@ -297,12 +298,40 @@ def run_packaged_graphics_smoke(*, screenshot_path: Path) -> dict[str, object]:
                     ),
                     description=f"OpenGL upload/render of the {label} molecule",
                 )
+                vertices_before_capture = viewport._renderer._vertex_count
                 framebuffer = viewport.grabFramebuffer()
+                vertices_after_capture = viewport._renderer._vertex_count
                 changed = _changed_pixel_samples(empty_frame, framebuffer)
-                if framebuffer.isNull() or viewport._renderer._vertex_count <= 0 or changed < 8:
+                if framebuffer.isNull() or vertices_after_capture <= 0 or changed < 8:
+                    scene_with_preview = viewport._scene_with_build_preview()
+                    try:
+                        cpu_mesh_vertices = build_scene_mesh(
+                            scene_with_preview,
+                            viewport.selected_atom_id,
+                            viewport.selected_bond_id,
+                            viewport.representation,
+                            viewport.selected_atom_ids,
+                        ).vertex_count
+                        cpu_mesh_error = None
+                    except Exception as exc:
+                        cpu_mesh_vertices = None
+                        cpu_mesh_error = f"{type(exc).__name__}: {exc}"
+                    context = viewport.context()
+                    context_valid = context.isValid() if context is not None else False
+                    atom_sample = [
+                        (atom.id, atom.element, atom.radius, atom.x, atom.y, atom.z)
+                        for atom in scene.atoms[:3]
+                    ]
                     raise RuntimeError(
                         f"The {label} molecule did not produce visible OpenGL geometry "
-                        f"(changed_samples={changed}, vertices={viewport._renderer._vertex_count})."
+                        f"(changed_samples={changed}, vertices={vertices_after_capture}, "
+                        f"vertices_before_capture={vertices_before_capture}, "
+                        f"cpu_mesh_vertices={cpu_mesh_vertices}, cpu_mesh_error={cpu_mesh_error!r}, "
+                        f"scene_atoms={len(scene.atoms)}, scene_bonds={len(scene.bonds)}, "
+                        f"atom_sample={atom_sample!r}, diagnostics={viewport.scene_diagnostics!r}, "
+                        f"gl_ready={viewport.gl_ready}, renderer_initialized="
+                        f"{viewport._renderer.initialized}, mesh_dirty={viewport._mesh_dirty}, "
+                        f"context_valid={context_valid}, context_report={context_report!r})."
                     )
                 rendered_scenes.append(
                     {
