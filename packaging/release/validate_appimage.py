@@ -349,6 +349,7 @@ def _validate_frozen_graphics(
             "XDG_DATA_HOME": str(data),
             "XDG_CACHE_HOME": str(cache),
             "QT_QPA_PLATFORM": "xcb",
+            "QT_DEBUG_PLUGINS": "1",
             "QT_OPENGL": "desktop",
             "LIBGL_ALWAYS_SOFTWARE": "1",
             "GALLIUM_DRIVER": "llvmpipe",
@@ -365,23 +366,34 @@ def _validate_frozen_graphics(
     ):
         smoke_env.pop(key, None)
 
-    result = _run(
-        [
-            xvfb_run,
-            "-a",
-            "-s",
-            "-screen 0 1280x900x24 +extension GLX +render -noreset",
-            str(executable),
-            "--graphics-packaged-smoke-test",
-            "--graphics-smoke-report",
-            str(report_path),
-            "--graphics-smoke-screenshot",
-            str(screenshot_path),
-        ],
-        cwd=cwd,
-        env=smoke_env,
-        timeout=180,
-    )
+    try:
+        result = _run(
+            [
+                xvfb_run,
+                "-a",
+                "-s",
+                "-screen 0 1280x900x24 +extension GLX +render -noreset",
+                str(executable),
+                "--graphics-packaged-smoke-test",
+                "--graphics-smoke-report",
+                str(report_path),
+                "--graphics-smoke-screenshot",
+                str(screenshot_path),
+            ],
+            cwd=cwd,
+            env=smoke_env,
+            timeout=180,
+        )
+    except ValueError as exc:
+        try:
+            failed_report = json.loads(report_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as report_error:
+            raise ValueError(
+                f"{exc}; could not read graphics-smoke report: {report_error}"
+            ) from exc
+        raise ValueError(
+            f"Frozen AppImage graphics smoke exited unsuccessfully; report={failed_report!r}; {exc}"
+        ) from exc
     (scratch / "graphics-smoke.log").write_text(
         result.stdout + result.stderr,
         encoding="utf-8",

@@ -133,6 +133,26 @@ def test_appdir_requires_launcher_desktop_icon_and_appstream(tmp_path: Path) -> 
         validate_appimage._validate_appdir(tmp_path, version="0.3.0-beta.1")
 
 
+def test_graphics_smoke_failure_reports_packaged_process_diagnostic(tmp_path: Path, monkeypatch) -> None:
+    def fail_with_report(args, *, cwd, env, timeout):
+        report_path = Path(args[args.index("--graphics-smoke-report") + 1])
+        report_path.write_text(
+            '{"ok": false, "detail": "fixture-diagnostic"}', encoding="utf-8"
+        )
+        raise ValueError("simulated packaged process exit")
+
+    monkeypatch.setattr(validate_appimage.shutil, "which", lambda _name: "/usr/bin/xvfb-run")
+    monkeypatch.setattr(validate_appimage, "_run", fail_with_report)
+
+    with pytest.raises(ValueError, match="fixture-diagnostic"):
+        validate_appimage._validate_frozen_graphics(
+            executable=tmp_path / "Chemuson",
+            cwd=tmp_path,
+            scratch=tmp_path,
+            env={},
+        )
+
+
 def test_pyinstaller_host_runtime_filter_removes_only_host_owned_abis() -> None:
     entries = [
         ("libstdc++.so.6", "/build/lib/libstdc++.so.6", "BINARY"),
