@@ -12,17 +12,17 @@
 
 ## B. Auditoría de distribución
 - [x] B.1 Revisar workflows/scripts/validadores existentes y documentar la diferencia entre el Build Preview Type 2 auténtico y las menciones históricas al ejecutable renombrado.
-- [ ] B.2 Validar un Build Preview nuevo de Windows portable, Inno Setup, AppImage Type 2 y Flatpak para el mismo SHA candidato. El run #39679607716 generó los cuatro formatos, pero su SHA `61f7647b…` no es el actual `f0151cf…`; no se acepta como set del candidato.
-- [ ] B.3 La auditoría por formato de #39679607716 verificó hashes/provenance, Type 2/extracción, 69 SVG, ChemName/RDKit/3D y recursos Flatpak. Se mantiene pendiente para el candidato exacto porque entre ambos SHAs cambió `src/chemuson/gui/controllers/compchem3d_controller.py`; Inno no se instaló y Flatpak sólo se importó/inspeccionó en repositorio OSTree temporal.
-- [x] B.4 Registrar el set exacto `f0151cf…` como **NOT BUILT** y las verificaciones locales/visuales inaccesibles como **NOT TESTED**, sin inferir PASS de otro SHA.
+- [x] B.2 Validar Build Preview nuevo para los cuatro paquetes, todos del SHA exacto `a38fa8045c858f8ff4b6002950f57e50292aea81`, rama remota `release/v0.3.0-beta.1-rc-prep`; Actions #39789295451 completó prepare, Windows portable/installer, AppImage Type 2, Flatpak y reporte con `success`, `publication=false`.
+- [x] B.3 Verificar manifests, provenance/checksum de los cuatro paquetes, plataforma/versión, AppImage Type 2/extracción, 69 SVG, ChemName/RDKit/3D y Flatpak. Los smoke automatizados y las inspecciones están en `validation.md`; Inno no se instaló, ni se instaló Flatpak en el host. Esas pruebas de instalación/GUI permanecen NOT TESTED.
+- [x] B.4 Registrar artifact IDs, SHA-256, provenance y resultados. Las cuatro descargas de Actions son los paquetes candidatos exactos; los artefactos históricos de `61f7647b…` no se usan como candidatos. Los entornos/instalaciones no ejecutados siguen **NOT TESTED**.
 
 ## C. Aceptación química y gráfica
 - [x] C.1 Mantener sin cambios la matriz existente `docs/release/manual-acceptance-0.3.0.md`; no elevar resultados manuales ni prioridades sin evidencia identificable.
 - [x] C.2 La matriz automatizada incluida en CI #39782991976 pasó: 417/417 tests relacionados con Clean2D; 19/19 amida/urea, 14/14 MOL P0, 12/12 importación estereoquímica SMILES, 13/13 Live MM stream, 5/5 proyección estereoquímica, 58/59 CompChem 3D, 35/36 geometry service y 71/76 casos ChemName acceptance. Los skips y límites quedan desglosados en `validation.md`; no equivale a aceptación manual universal.
 - [x] C.3 Separar smoke automatizado, inspección estática y aceptación manual. La prueba Qt/OpenGL real, Windows interactivo, instalación y validación gráfica de los paquetes exactos se registran NOT TESTED.
-- [ ] C.4 Ejecutar aceptación de los cuatro paquetes exactos sólo cuando existan artifacts con el SHA candidato y el owner pueda probarlos; mantener P0/P1 pendientes.
+- [ ] C.4 Ejecutar aceptación manual P0/P1 en los cuatro paquetes exactos de `a38fa804…` disponibles en Actions #39789295451, cuando el owner tenga acceso a Windows y CachyOS; registrar los resultados observados en la matriz existente sin inferir PASS de smoke automático.
 
 ## D. Preparación de publicación
-- [ ] D.1 Se actualizan notas, OpenSpec y guía preview con SHAs, runs, artifact IDs y hashes. La matriz `manual-acceptance-0.3.0.md` queda deliberadamente intacta por instrucción del owner; por ello esta tarea documental completa permanece abierta.
-- [x] D.2 Dictamen final: **NO-GO** para publicación; CI verde registrado, pero faltan builds exactos `f0151cf…`, aceptación manual P0/P1 y un margen de CI confiable. Advertencias y bloqueos en `validation.md`.
-- [x] D.3 No se hizo merge, worktree, tag, Release, PR ni cambio a canales públicos/`main`/`gh-pages`; cualquier actualización se limita a la rama autorizada de estabilización.
+- [x] D.1 Actualizar notas, OpenSpec y guía preview con SHAs, runs, artifact IDs, hashes y pasos de aceptación. La matriz `manual-acceptance-0.3.0.md` queda deliberadamente intacta; los resultados manuales pendientes no se modifican.
+- [x] D.2 Dictamen: **candidata lista para aceptación manual; NO-GO para publicación**. Build Preview exacto `a38fa804…` está completo; aceptación manual P0/P1 y validación instalada/gráfica siguen pendientes. CI del código tiene riesgo de margen estrecho; detalles y evidencia en `validation.md`.
+- [x] D.3 No se hizo merge, worktree adicional, tag, Release, PR ni cambio a canales públicos/`main`/`gh-pages`. Se creó únicamente la referencia remota RC permitida para Build Preview, exacta al SHA candidato; HEAD activo intacto. No se integró código en otra rama.
