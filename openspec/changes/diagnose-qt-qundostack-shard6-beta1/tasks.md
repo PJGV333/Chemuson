@@ -25,4 +25,4 @@
 - [x] D.3 Aplicar en snapshot la entrega inicial del evento al QObject objetivo; el mismo shard termina 349/349, 341 passed, 8 skipped, JUnit/timings completos.
 - [x] D.4 Aplicar receiver-scoping a helpers de lifecycle y probes Qt equivalentes, sin tocar producción y manteniendo las aserciones.
 - [x] D.5 Ejecutar focales y matriz local completa: 2.598 IDs, 2.576 passed, 22 skipped, cero fallos; ocho JUnit/timings completos, máximo 177.566 s (<300 s).
-- [x] D.6 Ejecutar y registrar Actions sobre el SHA publicado `5ca26395`: run #39723284720 success; 2.598/2.598 IDs/JUnit, 2.576 passed, 22 skipped, cero fallos/errors/timeouts; shard 5 completó 349/349 en 247.689 s y shard 7 fue el máximo con 293.063 s (<300 s). Windows y Flatpak smoke también pasaron.
+- [ ] D.6 Mantener CI remoto fail-closed: #39723284720 sobre SHA de código `5ca26395` sí pasó completo, pero el follow-up #39724355063 sobre `a67c9152` agotó el límite en shards 5/7 (sin SIGABRT ni JUnit completo). No hay todavía una ejecución completa verde en el HEAD más reciente; no atribuir esos timeouts al fix Qt sin evidencia.

@@ -83,7 +83,7 @@ Perfil validado: `tests/ci/pytest_file_durations.json`, SHA-256 `d2d7db19a9e651d
 
 Se ejecutaron secuencialmente los ocho shards con límite del runner existente de 300 s: `[72.072,144.049,84.579,81.085,100.477,152.034,65.211,177.566]` s. Resultado **2.576 passed, 22 skipped, 0 failed, 0 errors**; JUnit y timings 2.598/2.598; verifier confirma ocho shards completos. El máximo fue 177.566 s. El manifiesto/hash `b2cb90fd…7248f` no cambió. No hubo skips/xfails nuevos ni expansión de timeout.
 
-Los archivos de salida completos se preservaron fuera del repositorio bajo `/tmp/chemuson-beta1-readiness-3f800c7/`; ver manifiesto SHA-256 al final del addendum remoto siguiente. Los snapshots temporales fuente se retiraron después de preservar los logs/reportes.
+Los archivos de salida completos se preservaron fuera del repositorio bajo `/tmp/chemuson-beta1-readiness-3f800c7/`. El manifiesto raíz `EVIDENCE-MANIFEST.sha256` cubre 360 archivos (SHA-256 `61046269db7c8bd4f53a648eebd809f84deebdc96d62a2ac5a93d0a333f3475a`). Los snapshots temporales fuente se retiraron después de preservar los logs/reportes.
 
 ## Addendum — run Actions posterior al receiver-scoping (2026-10-22)
 
@@ -92,3 +92,7 @@ El run histórico descrito arriba (`39697199469`) queda supersedido para el SHA 
 El plan/JUnit/timings cubrieron exactamente **2.598/2.598 IDs**: **2.576 passed, 22 skipped, 0 failed/errors/timeouts**. El shard 5, cuya secuencia local había expuesto el SIGABRT en el cierre de Molecular Assistant, completó sus 349 asignaciones en 247.689 s: 341 passed y 8 skipped, JUnit/timings completos, exit 0. El shard 7 fue el más lento con 293.063 s, dentro del timeout existente de 300 s. No se aumentó el límite ni se alteraron aserciones o skips.
 
 Esto cierra la validación remota del diagnóstico/fix de los helpers Qt y del perfil CI para este SHA. El margen del shard 7 es de sólo 6.937 s y se conserva como riesgo operativo. **No es aceptación manual ni aprobación de publicación**: siguen pendientes auditoría de los cuatro formatos y ejecución de `docs/release/manual-acceptance-0.3.0.md`. El dictamen de beta continúa **NO-GO**; sin merge, tag, Release o publicación.
+
+## Addendum — follow-up CI (2026-10-22)
+
+Aunque Actions #39723284720 sobre SHA `5ca26395` completó la matriz y ambos smoke jobs, el follow-up #39724355063 sobre `a67c9152` terminó incompleto por timeouts en shards 5 y 7 (302.047 s / 302.071 s, SIGTERM, JUnit ausente en ambos). Entre los IDs que sí terminaron no se reportaron fallos; el summary job rechazó correctamente la cobertura incompleta. La ejecución previa sigue siendo evidencia verde para el SHA de código `5ca26395`, pero no se debe extrapolar como PASS del HEAD remoto actual. Estos timeouts no reprodujeron el SIGABRT `QUndoStack` que corrige este cambio y no se les atribuye esa causa. El receiver-scoping permanece validado; el diagnóstico de shard 5 continúa cerrado, mientras CI general/perfil quedan bloqueados para investigación separada. **NO-GO**; no se aumentó timeout, no se hizo merge, tag ni Release.
