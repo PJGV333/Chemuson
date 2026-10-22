@@ -109,7 +109,7 @@ Los checks automatizados del run (iconos, ChemName, RDKit/3D, AppImage y Flatpak
 
 El run usó exactamente `release/v0.3.0-beta.1-graphics-rc-prep`, SHA `fa51c896992c2d72d01ebf03deca316d2cce175d`, versión `0.3.0-beta.1`, `publication=false`. Windows portable/installer y Flatpak pasaron, pero AppImage falló en el smoke gráfico Xvfb/XCB. Aunque el CArchive y los smokes de iconos, RDKit y ChemName pasaron, Qt no pudo inicializar el plugin `xcb`; el build no llegó al manifest/upload. El AppImage efímero tuvo digest `47042dbc20e59fe6f9b4bb5753796b4552637b5fc7178d0f2e45d1b79053c28a`, pero no tiene artifact ID ni enlace descargable y **no debe usarse para aceptación**. El reporte del run declara `complete=false`; sigue siendo NO-GO para aceptar/publicar.
 
-Cuando haya un artifact AppImage de un Build Preview completo: descarga el ZIP `chemuson-preview-linux-appimage`, extráelo en Dolphin, clic derecho al `.AppImage` → **Propiedades → Permisos → Es ejecutable**, cierra Propiedades y haz doble clic; si KDE pregunta, elige **Ejecutar**. Prueba el archivo exacto cuyo SHA y provenance constan en el artifact. Para este run no hay archivo que abrir; los casos manuales de la matriz permanecen `NOT TESTED`.
+Para ese run fallido no hay archivo que abrir; no uses su digest temporal. En un artifact de preview completo, descarga el ZIP `chemuson-preview-linux-appimage`, verifica el SHA/provenance, extráelo en Dolphin, clic derecho al `.AppImage` → **Propiedades → Permisos → Es ejecutable**, cierra Propiedades y haz doble clic; si KDE pregunta, elige **Ejecutar**. Los casos manuales de la matriz siguen `NOT TESTED` hasta ejecutar y documentar el paquete exacto.
 
 El incidente Flatpak se investigó aparte: `test` run #39809759478 fue cancelado mientras apt descargaba 123 paquetes/99 MB durante el límite existente de 10 min. En #39848401263 la instalación tardó cerca de 38 min y luego Flatpak pasó; no se atribuye a código funcional ni se aumentaron timeouts.
 
@@ -119,4 +119,15 @@ El intento posterior usó la misma ref RC en el SHA `7b1c450321567fbe4903393ee53
 
 La causa se identificó como una carrera del harness: dibujar la fixture 2D activa un timer de sincronización 3D de 180 ms que reemplazaba la escena inyectada por el test. El smoke ya detiene ese timer y suprime el scheduling automático sólo en su ventana de prueba. El binario congelado local pasó bajo Xvfb/Mesa 23.2.1 para escenas simple y compleja, pero esto no sustituye un Build Preview correcto ni la aceptación manual. **Inicio, editor 2D, Clean2D, visor 3D y cierre en CachyOS siguen `NOT TESTED`.**
 
-Cuando exista un artifact AppImage de un Build Preview completo, verifica su SHA/provenance y usa el flujo de Dolphin de arriba. No uses archivos temporales ni hashes de logs de jobs fallidos para aceptación. No se creó tag, Release, merge, PR ni publicación.
+El AppImage corregido del Build Preview #39869114647 está disponible en la sección siguiente. No uses los archivos temporales ni hashes de logs de jobs fallidos de los intentos anteriores para aceptación. No se creó tag, Release, merge, PR ni publicación.
+
+## AppImage corregido listo para aceptación manual — Build Preview #39869114647
+
+Build Preview [#39869114647](https://github.com/PJGV333/Chemuson/actions/runs/39869114647) completó todos los gates (`complete=true`, `publication=false`) desde `release/v0.3.0-beta.1-graphics-rc-prep`, SHA `7c7a02c51c2af5d32b320839b77d544a0271af1c`, versión `0.3.0-beta.1`.
+
+- **Descarga:** [AppImage artifact 12465108715](https://github.com/PJGV333/Chemuson/actions/runs/39869114647/artifacts/12465108715)
+- **Archivo:** `Chemuson-v0.3.0-beta.1-preview-7c7a02c5-linux-x86_64.AppImage` — AppImage Type 2 (`AI\x02`), 175.350.976 bytes.
+- **SHA-256:** `6f9e8205820c8662fca316fb9312590d2236ab29d6ba93a5ad6689922c26619e`. El manifest `checksums.sha256` y `preview-provenance.json` descargados fueron verificados contra el archivo; el reporte [12465103049](https://github.com/PJGV333/Chemuson/actions/runs/39869114647/artifacts/12465103049) declara `success` para source, Windows, AppImage y Flatpak.
+- **Gate gráfico CI:** XCB/Xvfb + Mesa 23.2.1 llvmpipe; OpenGL 4.5 Core; canvas 2D visible; escenas simple (11.376 vértices) y compleja (31.464); ventana/dock cerraron limpiamente. El artifact descargado además se extrajo sin FUSE, `AppRun --version` devolvió `0.3.0-beta.1` y el smoke gráfico local pasó sobre Xvfb/Mesa 26.
+
+El paquete ya está disponible para probar en CachyOS/KDE siguiendo los pasos de arriba. El smoke automatizado y la extracción local no son aceptación del propietario: inicio interactivo, editor 2D, Clean2D, visor, cierre y demás filas permanecen `NOT TESTED` hasta registrar la ejecución con este SHA.
