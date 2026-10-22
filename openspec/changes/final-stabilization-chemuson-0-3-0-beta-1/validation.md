@@ -101,3 +101,72 @@ A partir de los promedios por archivo del run completo #39723284720 y los timing
 La matriz local con ese perfil experimental también fue incompleta: shards 0,1,3–7 pasaron; shard 2 agotó 300 s (302.018 s, 365/388 timings, exit -15/SIGTERM, sin JUnit), con último node iniciado `tests/test_ui_theme_foundation.py::TestApplyTheme::test_apply_theme_on_application`. Ese nodo pasó aislado (1/1) y el archivo completo pasó (28/28), así que la causa de la condición orden-dependiente no queda clasificada. No se repitió el shard exacto ni se movió el test para ocultar el resultado. El candidato no se conservó en el árbol de trabajo; queda archivado junto con plan, logs, timing files, lista de IDs incompletos y generador en `/tmp/chemuson-beta1-readiness-3f800c7/profile-rebalance-baseline/` y `local-rebalanced-profile/`.
 
 **Estado:** no aceptar el perfil experimental ni declarar CI verde para HEAD `a67c9152`. Se requiere una decisión para diagnosticar por separado el orden Qt que acaba en `test_apply_theme_on_application` antes de otra redistribución; no tocar producción, aserciones, skips/xfails ni el límite de 300 s. Publicación beta continúa **NO-GO**; no se hizo merge, PR, tag, Release ni publicación.
+
+## Addendum — registro oficial CI #422 y auditoría de distribución (2026-10-22)
+
+### CI del SHA estabilizado
+
+El run que el owner identifica como **CI #422** corresponde al GitHub Actions run [#39782991976](https://github.com/PJGV333/Chemuson/actions/runs/39782991976), workflow `test`, evento `push`, rama `stabilize/v0.3.0-beta.1`, SHA exacto `f0151cf09a7200acc53cb6b371105e79fd3cac1d`. Conclusión `success`; duración de pared 6:25. `pytest-plan`, ocho shards, `pytest-summary`, `windows-smoke` y `flatpak-smoke` terminaron correctamente. Estos dos smoke jobs no compilan ni instalan el set de cuatro paquetes.
+
+El plan asignó 2.598 node IDs una sola vez, hash del manifiesto `b2cb90fdc74a1c2417885557f9391f12924235c3043d2e1a73fee0340027248f`, perfil `d2d7db19a9e651d59170d2548dadd8b551623ab4468d99391a29939feea5341e`. Los JSON por shard, JUnit y timings se descargaron; cada JUnit/timing coincide con su asignación, sin duplicados ni IDs ausentes.
+
+| Shard | IDs/JUnit/timings | Passed | Skipped | Failed/errors | Tiempo pytest |
+|---:|---:|---:|---:|---:|---:|
+| 0 | 257/257/257 | 256 | 1 | 0/0 | 99.329 s |
+| 1 | 371/371/371 | 371 | 0 | 0/0 | 299.398 s |
+| 2 | 353/353/353 | 349 | 4 | 0/0 | 140.088 s |
+| 3 | 261/261/261 | 261 | 0 | 0/0 | 161.943 s |
+| 4 | 316/316/316 | 310 | 6 | 0/0 | 189.076 s |
+| 5 | 349/349/349 | 341 | 8 | 0/0 | 209.207 s |
+| 6 | 296/296/296 | 293 | 3 | 0/0 | 75.786 s |
+| 7 | 395/395/395 | 395 | 0 | 0/0 | 289.271 s |
+| **Total** | **2.598/2.598/2.598** | **2.576** | **22** | **0/0** | — |
+
+El shard 1 quedó a **0.602 s** del límite externo de 300 s. Esto es una ejecución completa válida, pero no una demostración estadística de estabilidad. El run anterior [#39724355063](https://github.com/PJGV333/Chemuson/actions/runs/39724355063) sobre `a67c9152` —SHA previo cuya diferencia posterior a este run es documental— tuvo timeout en shards 5 y 7 a ~302 s. No se aumentó el límite, no se aceptó el perfil experimental `fdb58a09…` y no se omitieron pruebas.
+
+La matriz automatizada incluyó, entre otros: `tests/test_amide_urea_2d_continuity.py` 19/19; MOL P0 14/14; importación estéreo SMILES 12/12; dibujo en bordes 6/6; `drag_move_undo` 3/3; Live MM stream 13/13; proyección estereoquímica 5/5; CompChem 3D 58/59 (un skip RDKit); servicio geometry3D 35/36 (un skip Open Babel); contratos de worker RDKit empaquetado 8/8 (no ejecutan los artifacts del preview); SVG 41/41; tema 28/28; ChemName acceptance 71/76. `clean2d_tetrandrine_like_local` pasó 5/5; los smokes candidatos de block-unwrap y scaffold tuvieron 1 y 2 skips geométricos respectivamente. El run también ejercitó el corpus general Clean2D, edición 2D, guardado, undo/redo, 3D y tests de UI dentro de los otros shards. Estos números describen tests fuente/automatizados en pytest, no revisión química independiente ni aceptación gráfica manual.
+
+Los 22 skips JUnit del run (razón literal resumida) fueron:
+
+- Qt/OpenGL no disponible: `tests/test_viewport3d_depth_occlusion.py::test_real_viewport_occludes_bonds_with_depth_after_qpainter_overlays` (requiere sesión autorizada Qt/OpenGL).
+- Geometría heurística no activada: `tests/test_block_unwrap_depiction.py::test_tetrandrine_import_generates_block_unwrap_candidate` (no se detectó donut); `tests/test_scaffold_depiction.py::test_tetrandrine_best_depiction_not_forced_to_single_strategy` y `::test_vancomycin_best_depiction_has_scaffold_candidate` (RDKit no produjo candidato scaffold).
+- RDKit no disponible en los tests de entorno: `tests/test_rdkit_strict_validation.py::{test_coordination_bond_is_exported_as_dative,test_strict_validation_accepts_tetramethylammonium,test_strict_validation_rejects_overvalent_neutral_carbon}`; `tests/test_chemname_pr27.py::{test_stereochemistry_e_2_butene,test_stereochemistry_lactic_acid}`; `tests/test_rdkit_roundtrip.py::{test_duplicate_bonds_do_not_crash_rdkit_conversion,test_molgraph_roundtrip_smiles,test_pseudoatoms_use_dummy_atoms_in_rdkit_conversion,test_smiles_import_regression_for_naphthyl_urea}`; `tests/test_compchem3d_dock.py::test_promoted_explicit_hydrogen_is_not_duplicated_by_rdkit`; `tests/test_stereo_advanced.py::{test_allene_axial_best_effort,test_biaryl_atropisomeric_best_effort}`.
+- Casos ChemName con `worker_error:invalid_input`: `tests/test_chemname_acceptance.py::test_acceptance_case[smiles_triazole_123]`, `[smiles_triazole_124]`, `[smiles_tetrazole]`, `[smiles_benzotriazole]`, `[smiles_nickel_tetracarbonyl]`.
+- Open Babel opcional ausente: `tests/test_geometry3d_service.py::test_obabel_backend_degrades_or_runs`.
+
+Ninguno de esos skips se cambió por esta tarea. La aceptación P0/P1 manual, OpenGL real y ejecución en Windows instalado siguen separadas.
+
+### Cuatro artefactos Build Preview existentes — SHA no candidato
+
+Se descargó e inspeccionó el Build Preview [#39679607716](https://github.com/PJGV333/Chemuson/actions/runs/39679607716). Su reporte es `complete=true`, los cuatro jobs `success`, `publication=false`, versión `0.3.0-beta.1`, pero **el source SHA es `61f7647b683db3eca19ea06e5ec82ab2897d640a`**, de `release/v0.3.0-beta.1-prep`, no el SHA de estabilización `f0151cf…`. Artifact IDs, tamaños y hashes SHA-256 calculados localmente:
+
+| Formato | Artifact Actions | Archivo | Bytes | SHA-256 del paquete | SHA-256 de provenance | SHA-256 del ZIP Actions |
+|---|---:|---|---:|---|---|---|
+| Windows portable | [12383692156](https://github.com/PJGV333/Chemuson/actions/runs/39679607716/artifacts/12383692156) | `Chemuson-v0.3.0-beta.1-preview-61f7647b-windows-x86_64-portable.exe` | 133,250,798 | `178e27bf444ef088a9386a79c36349640c7fb1c7f96b4d7451d4024f5a1169a2` | `a18dfeee9c30ab398e41e76db644fdd910a59008fe650010bd9364b691310d9f` | `b38501e8dc25a3d15e111c164938f603c3e2c97f0cf9cbaa2d994454a8c07dd2` |
+| Windows Inno Setup | [12383775788](https://github.com/PJGV333/Chemuson/actions/runs/39679607716/artifacts/12383775788) | `Chemuson-v0.3.0-beta.1-preview-61f7647b-windows-x86_64-setup.exe` | 134,386,949 | `cfedeaf05d65c9a27193736f80562ec2a50c15e86bcfaef1404a89f5a344c113` | `aedbab3d5dabdf04096fa0bb0767126b758e28d82cbe95af56d896400d87e624` | `460a5b514bb12451d9dcdd6e2a3f8280c7a73a9a141bcbf112ad6679e0036af5` |
+| Linux AppImage Type 2 | [12384370204](https://github.com/PJGV333/Chemuson/actions/runs/39679607716/artifacts/12384370204) | `Chemuson-v0.3.0-beta.1-preview-61f7647b-linux-x86_64.AppImage` | 176,645,312 | `07f5cb0639336c0c120fc2671537ff645db66bbb49d735a030731182379e7a0f` | `6ce5a4b3075a4450a76e3437670e34f842a843b8bf9dbc4ce9b12be8d3207c0c` | `9ccbffe659314ee1d419662eef0a1033c96048f383e99d2c5b97f062e9ca7f3b` |
+| Linux Flatpak | [12384500783](https://github.com/PJGV333/Chemuson/actions/runs/39679607716/artifacts/12384500783) | `Chemuson-v0.3.0-beta.1-preview-61f7647b-linux-x86_64.flatpak` | 110,085,312 | `4fe0d0a94989f45cb92751651d3b12d0ccd9251a5ce17ad4d4876fdf526b7f26` | `1d2a1f2c4f2b778058ee5c5721d50c432305f33e613b6eb5b6fc11020422729c` | `c602081942d9eb3a3825fcda8e1bde03baed7c63d17afdbe8e739905eab89f3f` |
+
+Los cuatro hashes internos y tamaños coinciden con `checksums.sha256` y `preview-provenance.json` de su grupo. El reporte está en artifact [12384141020](https://github.com/PJGV333/Chemuson/actions/runs/39679607716/artifacts/12384141020). Las ZIP SHA-256 se tomaron del log de subida Actions; los paquetes no son un set para el SHA estabilizado actual.
+
+**Windows portable — inspección estática y smoke automatizado:** el PE es x86-64 GUI. El runner Windows ejecutó icon smoke en tema claro/oscuro y DPR 2: 69/69 SVG con píxeles visibles y 11 controles esenciales. El smoke congelado RDKit verificó `rdchem`, `rdMolDescriptors` y `rdDistGeom` dentro de `_MEIPASS`, logP -0.0014, TPSA 20.23, HBD/HBA 1, SMILES `CCO` y conformero 3D; parent sin módulos RDKit/GUI. ChemName comprobó 9/9 templates y 6/6 nombres frente a Python. No es una sesión gráfica/manual del propietario.
+
+**Windows Inno Setup — build, no instalación:** el log registra compilación Inno Setup 6.7.1 exitosa en 21.078 s, incluyendo el `dist/Chemuson.exe` validado y marker; setup tiene stub PE GUI x86 (payload portable x64). No se instaló, actualizó, desinstaló ni se inspeccionó en Windows interactivo. Las pruebas locales `7z` no reconocen el contenedor Inno; esto no invalida el build del runner, pero deja inspección/ejecución nativa manual pendiente.
+
+**Linux AppImage — Type 2 y bundle smoke automatizados:** inspección local confirmó ELF64 x86-64 y marker `AI\x02`; el paquete se extrajo mediante `--appimage-extract` sin FUSE, `AppRun --version` devolvió `0.3.0-beta.1`, y los sidecars públicos `.updateinfo`, `.update.json`, `.zsync` están ausentes como corresponde al preview. El job remoto ejecutó `validate_appimage.py` completo con éxito: AppDir, desktop/AppStream, PyInstaller resources, 69 SVG, ChemName 9/9 + 6/6, RDKit/extensiones/descriptores/SMILES/3D y headless launch. El intento local del validator terminó en `Could not inspect the bundled PyInstaller CArchive` porque el intérprete anfitrión carece del lector PyInstaller; no se altera el resultado remoto y no se declara validación CArchive local.
+
+**Linux Flatpak — import/recursos, sin instalación en la sesión:** el log de Build Preview construyó el bundle y ejecutó ChemName smoke con `/app/lib/python3.13/site-packages`: 9/9 recursos y 6/6 controles. Se importó además el bundle descargado a un repositorio OSTree temporal local; ref `app/io.github.PJGV333.Chemuson/x86_64/preview-61f7647b`, commit `afb42bae27f70875651ad11abb09055e08c32ac3b8a3ca757e2a02853a3a002d`, y checkout en modo user encontró los nueve `.mol`. No se instaló en perfil usuario/sistema, no se añadió remoto ni se inició GUI Flatpak.
+
+### Identidad del candidato, límites y dictamen
+
+El Actions run #39782991976 es el test workflow y **no generó paquetes**. El último Build Preview descargado (#39679607716) corresponde a SHA `61f7647b…`. `git diff 61f7647b… f0151cf… -- src/chemuson packaging chemuson.spec` muestra un cambio de producción en `src/chemuson/gui/controllers/compchem3d_controller.py` (fix de salida de QThread); por tanto, esos binarios no pueden presentarse como reproducibles desde el nuevo SHA.
+
+`build-preview.yml` sólo acepta push de `release/**-prep` o dispatch cuya validación requiere ese patrón. El HEAD actual está en `stabilize/v0.3.0-beta.1`. No se creó una rama puente, no se cambió el filtro, no se usó un ref ajeno y no se lanzó un preview inválido. Para construir cuatro artefactos con provenance exacta hace falta una ruta/ref autorizado por el owner que respete el contrato; hasta entonces, los cuatro paquetes del SHA `f0151cf…` son **NOT BUILT**. El preview anterior sirve como evidencia histórica de sus propios paquetes, no como entrega candidata.
+
+La matriz `docs/release/manual-acceptance-0.3.0.md` no se modificó. Los casos gráficos/químicos que carecen de observación identificable permanecen `NOT TESTED`; los resultados manuales previos se conservan sin ampliarlos. No hubo instalación Windows/Flatpak, aceptación gráfica interactiva, sesión OpenGL, ni validación manual del propietario. Los smoke automatizados y el import OSTree temporal no cambian esos estados.
+
+**Dictamen: NO-GO para tag/publicación beta.** Bloqueos: (1) faltan cuatro builds del SHA candidato exacto, (2) aceptación manual P0/P1 sigue pendiente, (3) CI verde #39782991976 tiene un shard con sólo 0.602 s de margen y el run previo del mismo código funcional tuvo timeouts 5/7, (4) las pruebas locales del validator PyInstaller completo no están disponibles. No se creó tag/Release, merge/PR, no se tocó `main`, `gh-pages` ni canales públicos.
+
+### Verificación del registro
+
+Tras actualizar documentación: `openspec validate final-stabilization-chemuson-0-3-0-beta-1 --strict` válido; `python -m compileall -q src tests tools packaging` y `git diff --check` pasan. `ruff check src tests tools packaging --select F401,F811,F821,E722,E741` conserva el único F401 basal `math` sin usar en `tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py:3`; no se modificó código ni se amplió el alcance para corregirlo. Se verificó que `docs/release/manual-acceptance-0.3.0.md` no tiene diff.
