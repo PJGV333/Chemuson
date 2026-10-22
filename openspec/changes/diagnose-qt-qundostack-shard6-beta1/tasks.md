@@ -15,6 +15,6 @@
 ## C. Cierre
 - [x] C.1 Focal UI/workflow 42 passed; A/B ordenado green en ambos snapshots; shard 6 actual completo PASS.
 - [x] C.2 Ejecutar los ocho shards secuencialmente; verifier confirma JUnit/timings/IDs exactos.
-- [ ] C.3 Verificar Windows smoke y Flatpak smoke en Actions sobre SHA final.
-- [ ] C.4 Registrar evidencia y dictamen; suite completa verde es condición de cierre.
+- [x] C.3 En Actions sobre SHA final, `windows-smoke` y `flatpak-smoke` PASS; el workflow global sigue fallido por timeouts en shards 5 y 6.
+- [x] C.4 Registrar evidencia y dictamen **NO-GO**: el SIGABRT queda corregido, pero la matriz remota completa no alcanzó cobertura/JUnit por los timeouts.
 - [x] C.5 No hacer merge, tag, Release ni publicación; trabajar sólo en `stabilize/v0.3.0-beta.1`.
