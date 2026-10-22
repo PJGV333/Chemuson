@@ -5,8 +5,8 @@
 - [x] A.2 Capturar baseline antes de editar y registrar limitaciones del intérprete local.
 - [x] A.3 Descargar plan, JUnit, logs, timings y reportes de los ocho shards del run `39679607676`; reconciliar conteos y fallos exactos.
 - [x] A.4 Actualizar el doble `HeldCompChemWorker` con `progress_ready`; el test de cierre alcanza y pasa sus aserciones.
-- [x] A.5 Diagnosticar y corregir el acoplamiento de `thread.quit` al event loop GUI con una regresión red/green; conservar el timeout de 3 s. Pendiente confirmar en CI nuevo SHA.
-- [x] A.6 Ejecutar pruebas focalizadas y los ocho shards: el SIGABRT anterior de shard 6 y el recién expuesto de shard 5 se reprodujeron y corrigieron como aislamiento de DeferredDelete en tests; matriz local final 2.598 IDs, 2.576 passed, 22 skipped, cero fallos, JUnit/timings exactos, máximo 177.566 s. El Actions previo sigue siendo rojo; nuevo run queda pendiente tras push.
+- [x] A.5 Diagnosticar y corregir el acoplamiento de `thread.quit` al event loop GUI con una regresión red/green; conservar el timeout de 3 s. Confirmado en Actions del SHA publicado `5ca26395`.
+- [x] A.6 Ejecutar pruebas focalizadas y los ocho shards: el SIGABRT anterior de shard 6 y el recién expuesto de shard 5 se reprodujeron y corrigieron como aislamiento de DeferredDelete en tests; matriz local final 2.598 IDs, 2.576 passed, 22 skipped, cero fallos, JUnit/timings exactos, máximo 177.566 s. Actions #39723284720 sobre `5ca26395` pasó plan, los ocho shards, resumen y smoke Windows/Flatpak; 2.598/2.598 JUnit, máximo 293.063 s (<300 s).
 - [x] A.7 OpenSpec estricto, arquitectura incluida en la matriz (283 tests), compileall, Ruff (sólo F401 basal) y `git diff --check` verificados.
 - [x] A.8 Actualizar el perfil de duraciones con mediciones trazables de Actions #39697199469/#39679607676/#38996089270; comprobar 253 archivos, fallback 0.2 s/test y plan exacto determinista. Ocho shards locales confirman todos los tiempos <300 s; no se amplió timeout ni se cambió manifiesto.
 

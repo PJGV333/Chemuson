@@ -58,4 +58,27 @@ Se diagnosticó el SIGABRT que introdujo el perfil candidato al reasignar lifecy
 
 El perfil local se mantiene: fue reconstruido desde métricas de Actions documentadas, cubre exactamente 253 archivos y usa fallback 0.2 s/test. Los contratos pasan **10/10**. El plan de ocho shards balancea carga estimada en ~207.84 s por shard. Matriz secuencial final: **2.598/2.598 IDs, 2.576 passed, 22 skipped, 0 failed/errors**, JUnit/timings exactos; wall time individual máximo **177.566 s < 300 s**. Se preservan orden, manifiesto, timeout y aserciones.
 
-Este estado es **verde local únicamente**. Actions #39697199469 sigue fallido por timeouts históricos en shards 5/6 y corresponde al SHA anterior; debe generarse/verificarse un run del nuevo SHA tras push. Los builds de los cuatro paquetes y aceptación manual continúan pendientes; la publicación sigue **NO-GO**. Evidencia cruda y artifacts temporales se moverán a `/tmp` fuera del repositorio al cerrar esta tarea.
+Este estado se registró antes del push y queda supersedido respecto al CI por el addendum del 2026-10-22. Los builds de los cuatro paquetes y la aceptación manual continúan pendientes; la publicación permanece **NO-GO**.
+
+## Addendum — Actions remoto de la revisión final (2026-10-22)
+
+Se publicaron mediante push normal, sólo a `stabilize/v0.3.0-beta.1`, los commits `9ced6c341f673e7e1512d6ba9e1afb97f327543c` (receiver-scoping de `DeferredDelete` en tests/probes Qt) y `5ca26395a125acbabb38573d38c0605504b57cb2` (perfil CI derivado de timings y contratos). El SHA remoto de la rama quedó en `5ca26395`; `main` y `release/v0.3.0-beta.1-prep` no se modificaron.
+
+Actions [#39723284720](https://github.com/PJGV333/Chemuson/actions/runs/39723284720), ejecutado sobre el SHA exacto `5ca26395a125acbabb38573d38c0605504b57cb2`, terminó **success**. `pytest-plan`, los ocho shards, `pytest-summary`, `windows-smoke` y `flatpak-smoke` aprobaron. El plan conservó 2.598 IDs y el hash esperado `b2cb90fdc74a1c2417885557f9391f12924235c3043d2e1a73fee0340027248f`; cada asignación coincide con JUnit y timings y se ejecutó exactamente una vez.
+
+| Shard | IDs/JUnit | Passed | Skipped | Tiempo de pytest |
+|---:|---:|---:|---:|---:|
+| 0 | 257/257 | 256 | 1 | 114.959 s |
+| 1 | 371/371 | 371 | 0 | 198.091 s |
+| 2 | 353/353 | 349 | 4 | 186.283 s |
+| 3 | 261/261 | 261 | 0 | 99.836 s |
+| 4 | 316/316 | 310 | 6 | 167.885 s |
+| 5 | 349/349 | 341 | 8 | 247.689 s |
+| 6 | 296/296 | 293 | 3 | 117.191 s |
+| 7 | 395/395 | 395 | 0 | 293.063 s |
+
+Total: **2.576 passed, 22 skipped, 0 failed, 0 errors**, JUnit y timings **2.598/2.598**, ningún timeout ni señal. El shard más lento quedó 6.937 s por debajo del límite existente de 300 s. Aunque CI aprobó, el margen es estrecho; se conserva el límite y el perfil sin cambios y se registra como riesgo de capacidad para la siguiente ejecución, no como motivo para ocultar/relajar pruebas.
+
+Los artifacts remotos descargados y la evidencia local preservada (265 archivos de evidencia, más el manifiesto) están fuera del worktree en `/tmp/chemuson-beta1-readiness-3f800c7/`; `EVIDENCE-MANIFEST.sha256` verifica el bundle completo (SHA-256 del manifiesto `eca50f0180fd03e573f86d1369be016a5056e90fa620a2f70c22d95c2512c0d2`). Los snapshots temporales fuente se retiraron tras preservar los logs y reportes. El diff previo se conserva en `/tmp/chemuson-beta1-pre-diagnostic-3f800c7.patch` (SHA-256 `47a8a5e1f3aadcfe3735034ecf0aec9501d183cba74a0c7899f10a56d6019083`).
+
+Este PASS acredita CI automatizado del SHA publicado, no auditoría/instalación de cuatro paquetes ni aceptación manual. `docs/release/manual-acceptance-0.3.0.md` permanece intacto; los casos sin observación siguen `NOT TESTED`. Por tanto, el dictamen de beta permanece **NO-GO para publicación** hasta completar la auditoría de distribución y la aceptación pendiente; no hubo merge, PR, tag, Release ni publicación.
