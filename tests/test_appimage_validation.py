@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -131,6 +132,24 @@ def test_release_validator_requires_type2_and_zsync_without_changing_asset_name(
 def test_appdir_requires_launcher_desktop_icon_and_appstream(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="AppDir is missing"):
         validate_appimage._validate_appdir(tmp_path, version="0.3.0-beta.1")
+
+
+def test_graphics_smoke_disables_background_geometry_generation() -> None:
+    from chemuson.gui.packaged_graphics_smoke import _disable_background_geometry_generation
+
+    class _Timer:
+        stopped = False
+
+        def stop(self) -> None:
+            self.stopped = True
+
+    timer = _Timer()
+    window = SimpleNamespace(_geometry3d_sync_timer=timer)
+
+    _disable_background_geometry_generation(window)
+
+    assert timer.stopped is True
+    assert window._schedule_geometry3d_sync() is None
 
 
 def test_graphics_smoke_failure_reports_packaged_process_diagnostic(tmp_path: Path, monkeypatch) -> None:

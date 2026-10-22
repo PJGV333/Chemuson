@@ -24,6 +24,8 @@ Añadir un validador que lance el binario del AppImage extraído bajo una sesió
 
 La sesión KDE Wayland de este host está disponible y debe utilizarse para el before/after real. Para XWayland, ejecutar la misma GUI sobre `DISPLAY` con `QT_QPA_PLATFORM=xcb`; no inferir X11 a partir de tests Qt offscreen.
 
+El harness dibuja primero la fixture 2D y luego inyecta sus propias escenas 3D. Dibujar modifica el documento y puede programar el timer de sincronización 3D de 180 ms de la ventana; ese trabajo asíncrono puede reemplazar la fixture durante las aserciones. Para aislar el contrato gráfico probado, el smoke detiene ese timer y suprime sólo el scheduling de generación automática en la instancia de prueba. No se cambia el comportamiento de la ventana ni la lógica de generación 3D de la aplicación.
+
 ## Límites
 
 Los warnings Fontconfig pueden ser reales pero no necesariamente la causa de la ventana invisible. Un startup Xvfb/llvmpipe es evidencia de integración gráfica automatizada, no de drivers AMD/Wayland reales. La evaluación final debe declarar ambos niveles y no confundirlos.

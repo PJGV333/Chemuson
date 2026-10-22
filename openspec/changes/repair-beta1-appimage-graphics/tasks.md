@@ -19,14 +19,14 @@
 - [x] 3.4 Añadir regresiones focalizadas de filtrado ABI del host y validación fail-closed del archive, sin alterar química ni serialización.
 
 ## 4. Validación de paquete y GUI
-- [x] 4.1 Añadir al validador AppImage un startup de plataforma gráfica real con xcb+Xvfb+Mesa software/llvmpipe (no `offscreen`), captura de ventana visible, timeout y comprobación de cierre/no SIGABRT; mantener gates offscreen previos. El gate quedó implementado y Build Preview #398484 lo ejecutó con Xvfb real, pero el plugin `xcb` falló al inicializar; el smoke no pasa todavía.
+- [x] 4.1 Añadir al validador AppImage un startup de plataforma gráfica real con xcb+Xvfb+Mesa software/llvmpipe (no `offscreen`), captura de ventana visible, timeout y comprobación de cierre/no SIGABRT; mantener gates offscreen previos. Build Preview #398678 confirmó inicialización XCB y contexto OpenGL 4.5 Core/llvmpipe bajo Mesa 23.2.1; identificó una carrera del harness, separada del runtime del paquete, ahora suprimida sólo en la instancia de smoke.
 - [x] 4.2 Añadir cobertura de renderer que abra/cierre el dock 3D y renderice moléculas simple y compleja con OpenGL/Mesa; demostrar iluminación y renderizado no degradados en el smoke software local.
-- [ ] 4.3 Bloqueada: el runner generó Type 2 (`SHA-256` log `47042dbc20e59fe6f9b4bb5753796b4552637b5fc7178d0f2e45d1b79053c28a`), CArchive pasó, pero la validación gráfica `xcb` falló antes de provenance/checksum/upload; no hay artifact AppImage descargable.
+- [ ] 4.3 Pendiente de rerun oficial sobre el harness corregido: Build Preview #39867831993, SHA `7b1c450321567fbe4903393ee530be87caee102c`, generó un AppImage Type 2 efímero y el contexto XCB/OpenGL fue válido, pero el render de la escena compleja quedó vacío antes de provenance/checksum/upload. Diagnóstico: el timer de sincronización 3D de la fixture 2D reemplazaba asíncronamente las escenas inyectadas. El harness ahora detiene el timer y bloquea el scheduling; la prueba congelada local con Xvfb/Mesa 23.2.1 pasa, pero aún no hay artifact AppImage descargable.
 - [ ] 4.4 Reprobar original/candidato corregido en Wayland KDE real, XWayland y modo Mesa software, con evidencia visible antes/después y cierre limpio.
-- [x] 4.5 Ejecutar pruebas focalizadas, arquitectura si aplica, OpenSpec estricto, compileall, Ruff y diff-check. No repetir suite/shard exacto que excedió límites; documentar excepciones.
+- [x] 4.5 Ejecutar pruebas focalizadas, arquitectura si aplica, OpenSpec estricto, compileall, Ruff y diff-check. No repetir suite/shard exacto que excedió límites; documentar excepciones. En el SHA diagnóstico `7b1c450`, Actions #39867829904 verificó 2.606/2.606 node IDs: 2.584 passed, 22 skipped, 0 fallos; el test nuevo del harness se añade a la colección 2.607 y requiere su propio run CI.
 
 ## 5. Entrega
 - [x] 5.1 Actualizar OpenSpec/AGENT_REPORT con archivos, causa, bibliotecas/procedencia, pruebas y limitaciones.
-- [x] 5.2 Ejecutar Build Preview oficial desde el ref autorizado exacto `release/v0.3.0-beta.1-graphics-rc-prep`/`fa51c896…`; run #398484 validó `publication=false` y no movió la RC anterior. El run quedó incompleto por el fallo gráfico AppImage; no equivale a generar/entregar el paquete.
-- [x] 5.3 Commit(s) pequeños y push normal únicamente a `fix/beta1-appimage-graphics`; verificar remoto y árbol limpio.
+- [x] 5.2 Ejecutar Build Preview oficial desde el ref `release/v0.3.0-beta.1-graphics-rc-prep`; #398484 (`fa51c896…`) falló al cargar XCB; #39867831993 (`7b1c450…`, `publication=false`) ya inicializó XCB pero falló por la carrera del harness. Ninguno produjo artifact AppImage.
+- [ ] 5.3 Commit pequeño y push normal únicamente a `fix/beta1-appimage-graphics`, actualizar el ref RC autorizado al mismo SHA y verificar remoto/árbol limpio; después ejecutar Build Preview y workflow de tests sobre ese SHA.
 - [x] 5.4 Sin merge, PR, tag, GitHub Release o publicación. NO-GO se mantiene hasta aceptación del propietario en el AppImage exacto.

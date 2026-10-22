@@ -226,6 +226,21 @@ def _close_window_menus(window: ChemusonWindow, app: QApplication) -> None:
     app.processEvents()
 
 
+def _disable_background_geometry_generation(window: ChemusonWindow) -> None:
+    """Keep the 2D fixture's delayed conformer job from replacing smoke scenes."""
+    timer = getattr(window, "_geometry3d_sync_timer", None)
+    if timer is not None:
+        timer.stop()
+    # This smoke injects its own RDKit scenes after drawing in 2D. The real
+    # window's debounce timer would otherwise start a document conformer job and
+    # replace those fixtures asynchronously while the OpenGL assertions run.
+    setattr(window, "_schedule_geometry3d_sync", _no_op_geometry3d_sync)
+
+
+def _no_op_geometry3d_sync() -> None:
+    return None
+
+
 def run_packaged_graphics_smoke(*, screenshot_path: Path) -> dict[str, object]:
     """Show the real editor, draw 2D content, and render/close the 3D dock."""
     app = QApplication.instance() or QApplication([])
@@ -237,6 +252,7 @@ def run_packaged_graphics_smoke(*, screenshot_path: Path) -> dict[str, object]:
     settings.sync()
 
     window = ChemusonWindow()
+    _disable_background_geometry_generation(window)
     dock = window.viewport3d_dock
     viewport = dock.viewport
     window.resize(1280, 860)

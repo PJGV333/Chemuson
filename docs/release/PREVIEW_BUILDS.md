@@ -112,3 +112,11 @@ El run usó exactamente `release/v0.3.0-beta.1-graphics-rc-prep`, SHA `fa51c8969
 Cuando haya un artifact AppImage de un Build Preview completo: descarga el ZIP `chemuson-preview-linux-appimage`, extráelo en Dolphin, clic derecho al `.AppImage` → **Propiedades → Permisos → Es ejecutable**, cierra Propiedades y haz doble clic; si KDE pregunta, elige **Ejecutar**. Prueba el archivo exacto cuyo SHA y provenance constan en el artifact. Para este run no hay archivo que abrir; los casos manuales de la matriz permanecen `NOT TESTED`.
 
 El incidente Flatpak se investigó aparte: `test` run #39809759478 fue cancelado mientras apt descargaba 123 paquetes/99 MB durante el límite existente de 10 min. En #39848401263 la instalación tardó cerca de 38 min y luego Flatpak pasó; no se atribuye a código funcional ni se aumentaron timeouts.
+
+## Seguimiento graphics RC — Build Preview #39867831993 (2026-10-22)
+
+El intento posterior usó la misma ref RC en el SHA `7b1c450321567fbe4903393ee530be87caee102c`, versión `0.3.0-beta.1`, `publication=false`. Source validation, Windows portable/installer y Flatpak pasaron. AppImage Type 2 y sus gates de CArchive, iconos, RDKit/3D worker y ChemName pasaron; XCB inició y creó OpenGL 4.5 Core/llvmpipe con Mesa 23.2.1. El gate falló después, cuando la escena compleja quedó vacía mientras el input contenía 24 átomos y 25 enlaces. El reporte mostró renderer/scene con 0 vértices; el run terminó antes de provenance/checksums/upload. **No hay artifact AppImage ni enlace descargable**; el run declara `complete=false` y no sirve para aceptación manual.
+
+La causa se identificó como una carrera del harness: dibujar la fixture 2D activa un timer de sincronización 3D de 180 ms que reemplazaba la escena inyectada por el test. El smoke ya detiene ese timer y suprime el scheduling automático sólo en su ventana de prueba. El binario congelado local pasó bajo Xvfb/Mesa 23.2.1 para escenas simple y compleja, pero esto no sustituye un Build Preview correcto ni la aceptación manual. **Inicio, editor 2D, Clean2D, visor 3D y cierre en CachyOS siguen `NOT TESTED`.**
+
+Cuando exista un artifact AppImage de un Build Preview completo, verifica su SHA/provenance y usa el flujo de Dolphin de arriba. No uses archivos temporales ni hashes de logs de jobs fallidos para aceptación. No se creó tag, Release, merge, PR ni publicación.
