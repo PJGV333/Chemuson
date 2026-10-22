@@ -24,6 +24,16 @@ La comparación en snapshots limpios de base y candidato, mismo Python 3.11.15/P
 
 Editar sólo `tests/test_ui_polish.py`: enviar el DeferredDelete al `overlay` exacto, no a `None`, y documentar que no se deben procesar deletes ajenos en esta prueba. Así se conserva la afirmación que prueba (el overlay se destruye) sin consumir el backlog de otros widgets. No cambiar `src/chemuson/gui/tab_manager.py`, el planner, asserts funcionales, skips ni timeouts.
 
+## Diagnóstico añadido — shard 5, cierre de Molecular Assistant
+
+La secuencia de shard 5 (349 IDs, perfil candidato) se ejecutó en snapshots aislados de `git archive` de HEAD `3f800c715ee937d9ac72385d8189bb9d96902ea3` y una variante con receiver específico. Se confirmó `chemuson.__file__` dentro de cada snapshot y se mantuvieron el mismo runtime Python 3.14.8 / pytest 9.1.1 / PyQt6 6.11.0 / Qt 6.11.2 / RDKit 2026.03.6 y `QT_QPA_PLATFORM=offscreen`.
+
+- Base, helper original: exit -6/SIGABRT tras 272 timings; el test iniciado en índice 272 fue `test_unstarted_dialog_close_and_window_close_leave_no_registry_entries`; JUnit ausente, 93.597 s. El stack nativo atraviesa `_process_qt_deletes`, `QUndoStack::~QUndoStack` y `cleanChanged`.
+- Receiver-scoped: el mismo shard/orden termina 341 passed, 8 skipped, 349/349 JUnit y timings, exit 0 en 151.017 s. En el checkout se repite el shard completo a 151.145 s; el archivo lifecycle pasa 9/9.
+- Causa confirmada para este aborto: `_process_qt_deletes()` vaciaba con receiver `None` el DeferredDelete global al verificar una destrucción local, forzando la destrucción de QUndoStack/árboles QWidget no poseídos por el diálogo bajo prueba. La corrección entrega el evento directamente al diálogo/canvas/ventana objetivo y después procesa eventos ordinarios. No cambia producción ni aserciones de destrucción/registros/trabajadores.
+- Un primer experimento pasó `QCoreApplication.processEvents()` antes de usar el receiver y produjo `RuntimeError: wrapped C/C++ object ... has been deleted`: el primer bombeo ya había destruido el diálogo. El helper final entrega primero el DeferredDelete al receiver y sólo después llama `processEvents()`.
+- Las llamadas equivalentes en `tests/probes/p0_shutdown_workflow.py` y `tests/probes/p0_open_mol.py` pertenecen a procesos Qt secundarios independientes; se inspeccionaron y se limitaron también a widget/canvas/ventana exactos. Sus pruebas focales terminan 16/16. No se modificó código de aplicación ni otras suites indiscriminadamente.
+
 ## Verificación
 
 Una corrección sólo se acepta si el test de regresión falla en el caso basal pertinente, pasa después, la secuencia previamente abortante termina con JUnit y timings completos, los ocho shards pasan con cobertura exacta, y Windows/Flatpak smoke pasan en Actions para el SHA final. Los resultados automáticos no son aceptación manual.

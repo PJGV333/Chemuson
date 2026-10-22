@@ -45,7 +45,7 @@ def _window() -> tuple[QApplication, ChemusonWindow]:
 
 def _deferred_delete(app: QApplication, widget) -> None:
     widget.deleteLater()
-    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    QCoreApplication.sendPostedEvents(widget, QEvent.Type.DeferredDelete)
     app.processEvents()
 
 
@@ -108,7 +108,7 @@ def main() -> int:
     if scenario == "canvas-delete":
         canvas_ref = canvas
         assert window._close_canvas_tab(canvas_ref)
-        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        QCoreApplication.sendPostedEvents(canvas_ref, QEvent.Type.DeferredDelete)
         app.processEvents()
         assert sip.isdeleted(canvas_ref)
         canvas = window.canvas

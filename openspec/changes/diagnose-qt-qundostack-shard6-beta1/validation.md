@@ -64,3 +64,23 @@ El fix del SIGABRT está validado por red/green A/B, por la matriz local complet
 La suite monolítica no se repitió: su baseline agotó el límite externo de 480 s sin resumen. La auditoría de los cuatro paquetes y la evidencia de aceptación manual siguen pendientes. `docs/release/manual-acceptance-0.3.0.md` se conserva y los casos sin evidencia continúan `NOT TESTED`.
 
 Estado de preparación beta: **NO-GO** hasta resolver mediante alcance/decisión autorizada los timeouts de Actions y completar distribución/aceptación. No merge, tag, Release ni publicación.
+
+## Addendum — SIGABRT de shard 5 y perfil actualizado (2026-10-21)
+
+### Red/green ordenado
+
+Antes de editar, el estado Git fue `stabilize/v0.3.0-beta.1` en `3f800c715ee937d9ac72385d8189bb9d96902ea3`; los tres cambios pendientes del perfil/contratos se conservaron y su diff se respaldó en `/tmp/chemuson-beta1-pre-diagnostic-3f800c7.patch` (SHA-256 `47a8a5e1f3aadcfe3735034ecf0aec9501d183cba74a0c7899f10a56d6019083`). El área `.tmp-beta1-readiness/` se inspeccionó y retuvo durante el diagnóstico.
+
+Se ejecutó exactamente la asignación/orden de 349 IDs del shard 5 del plan candidato en snapshot base de `git archive` de `3f800c7`. Base sin fix: **SIGABRT/exit -6**, 272 timings, JUnit ausente, 93.597 s; último node iniciado `tests/test_molecular_assistant_lifecycle.py::test_unstarted_dialog_close_and_window_close_leave_no_registry_entries`. El stack nativo atraviesa `_process_qt_deletes`, `QUndoStack::~QUndoStack` y `cleanChanged`. `chemuson.__file__` quedó confirmado dentro del snapshot.
+
+La variante corrigió únicamente el receiver de limpieza en tests. El mismo snapshot/orden completó **341 passed, 8 skipped**, 349/349 JUnit y timings, exit 0 en 151.017 s. El archivo lifecycle completó 9/9 en 3.95 s. En el checkout el shard 5 repitió 349/349 en 151.145 s; tras limitar también los probes equivalentes, los focales fueron: lifecycle + `test_ui_polish.py` **47 passed**, interoperabilidad MOL + shutdown subprocess **16 passed**.
+
+Causa confirmada: `_process_qt_deletes()` vaciaba globalmente `DeferredDelete` de objetos Qt ajenos en un proceso que comparte QApplication. La función final requiere el receiver, envía el evento directamente antes de `processEvents()` y así conserva las aserciones existentes de destrucción, registros vacíos, cierre y workers. El primer experimento que llamaba `processEvents()` antes del envío scoped dio `RuntimeError` porque Qt ya había destruido el diálogo; se corrigió el orden del helper, no se debilitó ninguna aserción. Las llamadas de `tests/probes/p0_shutdown_workflow.py` y `tests/probes/p0_open_mol.py` se inspeccionaron y también apuntan al objeto específico; sus pruebas corrieron en subprocess dedicados. No se modificó producción.
+
+### Validación final: perfil candidato + Qt
+
+Perfil validado: `tests/ci/pytest_file_durations.json`, SHA-256 `d2d7db19a9e651d59170d2548dadd8b551623ab4468d99391a29939feea5341e`; procede de Actions #39697199469 (`8c28d47c`), con #39679607676 y #38996089270 como suplementarios. Tiene cobertura exacta de los 253 archivos del manifiesto, fallback 0.2 s/test. Los contratos del perfil/workflow: **10 passed**. Plan reproducible: 2.598 IDs, distribución `[257,371,353,261,316,349,296,395]`, carga estimada ≈207.84 s/shard.
+
+Se ejecutaron secuencialmente los ocho shards con límite del runner existente de 300 s: `[72.072,144.049,84.579,81.085,100.477,152.034,65.211,177.566]` s. Resultado **2.576 passed, 22 skipped, 0 failed, 0 errors**; JUnit y timings 2.598/2.598; verifier confirma ocho shards completos. El máximo fue 177.566 s. El manifiesto/hash `b2cb90fd…7248f` no cambió. No hubo skips/xfails nuevos ni expansión de timeout.
+
+Los archivos de salida completos permanecen temporalmente en `.tmp-beta1-readiness/local-final-qt-scoped/` hasta el cierre Git; el directorio temporal global se moverá fuera del repositorio después de preservar el bundle. Este red/green confirma la causa local, pero el Actions remoto nuevo aún debe ejecutarse sobre el SHA después del push; los runs previos #39697199469 y #39679607676 no son verde para esta revisión.

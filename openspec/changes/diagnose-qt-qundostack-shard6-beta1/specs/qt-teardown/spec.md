@@ -20,6 +20,17 @@ Una prueba que fuerza la entrega de `DeferredDelete` para verificar la destrucci
 - **THEN** su cleanup no fuerza la destrucción de esos objetos ajenos
 - **AND** el shard alcanza JUnit/timings completos sin SIGABRT por `QUndoStack::~QUndoStack`.
 
+#### Scenario: Molecular-assistant dialog lifecycle flushes its own deferred delete
+- **WHEN** `test_molecular_assistant_lifecycle.py` verifica el cierre/destrucción de un diálogo o ventana
+- **THEN** `_process_qt_deletes` recibe ese diálogo/ventana como receiver y despacha su `DeferredDelete` antes de bombear eventos ordinarios
+- **AND** se conservan las aserciones de `sip.isdeleted`, registros vacíos, cierre de ventana y ausencia de workers residuales
+- **AND** no se entregan deletes pendientes de QUndoStack u otros widgets creados por tests previos.
+
+#### Scenario: Isolated Qt probes delete the object under test
+- **WHEN** un probe de shutdown/interoperabilidad llama `deleteLater()` sobre un widget, canvas o ventana concreto
+- **THEN** `sendPostedEvents` recibe ese mismo QObject
+- **AND** la limpieza no consume deletes ajenos aun si el probe se ejecuta dentro de un proceso dedicado.
+
 ### Requirement: Ordered reproduction distinguishes source regressions from test-order effects
 
 La suite SHALL comprobar el mismo orden de IDs en snapshots del SHA base y del SHA candidato, con igual plataforma/runtime y sin worktrees permanentes. El análisis MUST registrar ejecución parcial/crash y MUST NOT cambiar skips/timeouts para producir PASS.

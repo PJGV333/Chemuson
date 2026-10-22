@@ -24,9 +24,9 @@ def _isolated_config_home(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
 
 
-def _process_qt_deletes() -> None:
-    QCoreApplication.processEvents()
-    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+def _process_qt_deletes(receiver) -> None:
+    # Dispatch only this owner’s deferred delete; never drain another test’s Qt objects.
+    QCoreApplication.sendPostedEvents(receiver, QEvent.Type.DeferredDelete)
     QCoreApplication.processEvents()
 
 
@@ -102,7 +102,7 @@ def _assert_empty_registries(window: ChemusonWindow) -> None:
 def _close_window(window: ChemusonWindow) -> None:
     if not sip.isdeleted(window):
         window.close()
-        _process_qt_deletes()
+        _process_qt_deletes(window)
 
 
 def _close_and_wait(window: ChemusonWindow) -> None:
@@ -110,7 +110,7 @@ def _close_and_wait(window: ChemusonWindow) -> None:
     if not accepted:
         assert window._shutdown_started
         assert _wait_for(lambda: window._async_shutdown_complete)
-    _process_qt_deletes()
+    _process_qt_deletes(window)
     assert not window.isVisible()
 
 
@@ -119,7 +119,7 @@ def test_unstarted_dialog_close_and_window_close_leave_no_registry_entries():
     try:
         dialog = _open_assistant(window)
         dialog.close()
-        _process_qt_deletes()
+        _process_qt_deletes(dialog)
 
         assert sip.isdeleted(dialog)
         _assert_empty_registries(window)
@@ -144,7 +144,7 @@ def test_pending_dialog_close_abandons_job_and_ignores_late_worker_result():
         assert started.wait(timeout=2.0)
 
         dialog.close()
-        _process_qt_deletes()
+        _process_qt_deletes(dialog)
         assert sip.isdeleted(dialog)
         _assert_empty_registries(window)
         assert job_id in window._molecular_assistant_controller.active_jobs()
@@ -176,7 +176,7 @@ def test_deleted_qobject_is_removed_before_shutdown_without_close_call():
         assert started.wait(timeout=2.0)
 
         dialog.deleteLater()
-        _process_qt_deletes()
+        _process_qt_deletes(dialog)
         assert sip.isdeleted(dialog)
         assert job_id not in window._molecular_assistant_dialogs
         assert job_id in window._molecular_assistant_controller._abandoned_jobs
@@ -191,7 +191,7 @@ def test_deleted_qobject_is_removed_before_shutdown_without_close_call():
         _assert_empty_registries(window)
         release.set()
         assert _wait_for(lambda: window._async_shutdown_complete)
-        _process_qt_deletes()
+        _process_qt_deletes(window)
         assert not window.isVisible()
     finally:
         release.set()
@@ -208,7 +208,7 @@ def test_completed_preview_close_removes_result_identity_and_dialog_state():
         window._molecular_assistant_identity_results[job_id] = object()
 
         dialog.close()
-        _process_qt_deletes()
+        _process_qt_deletes(dialog)
 
         assert sip.isdeleted(dialog)
         _assert_empty_registries(window)
@@ -225,7 +225,7 @@ def test_accept_and_delete_on_close_clean_job_before_application_close():
         assert _wait_for(lambda: job_id in window._molecular_assistant_results)
 
         dialog.insert_button.click()
-        _process_qt_deletes()
+        _process_qt_deletes(dialog)
 
         assert sip.isdeleted(dialog)
         assert job_id not in window._molecular_assistant_dialogs
@@ -245,7 +245,7 @@ def test_repeated_unstarted_open_close_does_not_accumulate_jobs():
         for _ in range(5):
             dialog = _open_assistant(window)
             dialog.close()
-            _process_qt_deletes()
+            _process_qt_deletes(dialog)
             assert sip.isdeleted(dialog)
             _assert_empty_registries(window)
         assert window.close()
@@ -281,7 +281,7 @@ def test_transform_dialog_close_removes_transform_context():
         assert job_id in window._molecular_assistant_transform_jobs
 
         dialog.close()
-        _process_qt_deletes()
+        _process_qt_deletes(dialog)
         assert sip.isdeleted(dialog)
         _assert_empty_registries(window)
         release.set()
@@ -322,7 +322,7 @@ def test_failed_job_can_retry_with_a_new_id_without_stale_registry_state():
         assert _wait_for(lambda: second_job_id in window._molecular_assistant_results)
         assert window._molecular_assistant_dialogs[second_job_id][0] is dialog
         dialog.close()
-        _process_qt_deletes()
+        _process_qt_deletes(dialog)
         assert sip.isdeleted(dialog)
         _assert_empty_registries(window)
         assert window.close()
@@ -350,7 +350,7 @@ def test_window_shutdown_with_live_dialog_and_worker_waits_safely():
         _assert_empty_registries(window)
         release.set()
         assert _wait_for(lambda: window._async_shutdown_complete)
-        _process_qt_deletes()
+        _process_qt_deletes(window)
         assert sip.isdeleted(dialog)
         assert not window._molecular_assistant_controller.active_jobs()
         assert not window.isVisible()

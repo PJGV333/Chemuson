@@ -11,3 +11,7 @@ Comparar el comportamiento de la secuencia exacta afectada entre el commit base 
 ## Fuera de alcance
 
 No tocar química, Clean2D, ChemName, persistencia `.cmsn`, representación gráfica, test acceptance manual o empaquetado. No añadir skips/xfails, no ampliar límites, no mover pruebas para esconder una falla, no crear worktrees permanentes, no mergear con la rama beta, ni crear tag/Release/publicación.
+
+## Addendum — incidente de shard 5 (2026-10-21)
+
+La redistribución candidata expuso otro SIGABRT en `tests/test_molecular_assistant_lifecycle.py::test_unstarted_dialog_close_and_window_close_leave_no_registry_entries`. Se autoriza comparar el mismo plan ordenado de shard 5 en el HEAD `3f800c7` y una variante que entregue `DeferredDelete` únicamente al QObject que cada caso va a destruir. Si el red/green se confirma, se permite acotar los helpers Qt de pruebas equivalentes; no se amplía a código de producción ni a una refactorización general.

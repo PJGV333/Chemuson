@@ -94,11 +94,11 @@ def main() -> int:
     assert _wait_for_window_close(window), "window close did not finish before timeout"
     assert not any(thread.isRunning() for thread in window.findChildren(QThread))
     canvas.deleteLater()
-    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    QCoreApplication.sendPostedEvents(canvas, QEvent.Type.DeferredDelete)
     app.processEvents()
     assert sip.isdeleted(canvas)
     window.deleteLater()
-    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    QCoreApplication.sendPostedEvents(window, QEvent.Type.DeferredDelete)
     app.processEvents()
     assert sip.isdeleted(window)
     print(
