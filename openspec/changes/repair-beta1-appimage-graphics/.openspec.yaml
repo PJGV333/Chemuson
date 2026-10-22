@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-10-22
+goal: Build and validate an exact-SHA preview AppImage that starts visibly on
+  real Wayland and compatible X11/XWayland without weakening the OpenGL viewer.

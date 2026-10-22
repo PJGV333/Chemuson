@@ -1,0 +1,32 @@
+# Tareas — reparar el AppImage beta.1
+
+## 1. Baseline y OpenSpec
+- [x] 1.1 Capturar estado/HEAD/refs, compileall, colección del intérprete `chem/bin`, Ruff focal y límites de la suite; registrar la incompatibilidad del `pytest` de sistema que carece de RDKit.
+- [x] 1.2 Preservar SHA/tamaño del AppImage original y copia del log entregado; reproducirlo sin cambiar sus bytes.
+- [x] 1.3 Completar causa/procedencia/historial en `validation.md`; actualizar `design.md` con evidencia antes de tocar producción.
+
+## 2. Reproducción y diagnóstico dinámico
+- [x] 2.1 Reproducir startup original en KDE/Wayland real y XWayland con logs, estado de PID y captura; distinguir salida involuntaria de terminación de prueba.
+- [x] 2.2 Extraer AppImage a `/tmp`, revisar `AppRun`, plugins QPA, dependencias ELF/SONAME/versiones, PyInstaller archive y rutas temporales de bibliotecas.
+- [x] 2.3 Capturar `LD_DEBUG=libs,versions`, `QT_DEBUG_PLUGINS`, `/proc/<pid>/maps`, entorno, `readelf -d/-V` y `ldd` sobre binario/plugins/bibliotecas sospechosas; comparar la app `.venv` en el mismo host.
+- [x] 2.4 Demostrar o descartar separadamente conflicto libGL/libEGL/libGLX/GLVND/Mesa/DRM, dependencia ausente, procedencia/incompatibilidad de plugins, inicialización prematura del visor/QRhi y errores Fontconfig/FreeType.
+- [x] 2.5 Documentar la causa raíz y una prueba A/B controlada que cambie una sola condición; si la causa no se demuestra, no modificar producción por conjetura.
+
+## 3. Reparación mínima
+- [ ] 3.1 Implementar sólo la solución respaldada por las trazas. No cambiar el stack del host, los archivos de configuración del usuario, los drivers ni deshabilitar OpenGL/3D.
+- [ ] 3.2 Mantener el editor 2D independiente de inicialización 3D no solicitada, sólo si se demuestra que la creación del visor bloquea la ventana.
+- [ ] 3.3 Investigar/mitigar Fontconfig independientemente; no silenciar advertencias ni reemplazar config del sistema sin causa demostrada.
+- [ ] 3.4 Añadir regresiones focalizadas de selección de backend/carga de bibliotecas/inicialización, sin alterar química ni serialización.
+
+## 4. Validación de paquete y GUI
+- [ ] 4.1 Añadir al validador AppImage un startup de plataforma gráfica real con xcb+Xvfb+Mesa software/llvmpipe (no `offscreen`), captura de ventana visible, timeout y comprobación de cierre/no SIGABRT; mantener gates offscreen previos.
+- [ ] 4.2 Añadir cobertura de renderer que abra/cierre el dock 3D y renderice moléculas simple y compleja con OpenGL/Mesa; demostrar iluminación y renderizado no degradados.
+- [ ] 4.3 Construir AppImage exacto desde la rama con el script y validadores existentes; inspeccionar ELF, plugins, dependencias, provenance/checksum y resolver todas las rutas requeridas.
+- [ ] 4.4 Reprobar original/candidato corregido en Wayland KDE real, XWayland y modo Mesa software, con evidencia visible antes/después y cierre limpio.
+- [ ] 4.5 Ejecutar pruebas focalizadas, arquitectura si aplica, OpenSpec estricto, compileall, Ruff y diff-check. No repetir suite/shard exacto que excedió límites; documentar excepciones.
+
+## 5. Entrega
+- [ ] 5.1 Actualizar OpenSpec/AGENT_REPORT con archivos, causa, bibliotecas/procedencia, pruebas y limitaciones.
+- [ ] 5.2 Crear Build Preview sólo desde un ref `release/**-prep` autorizado que apunte al SHA corregido; mantener `publication=false` y no cambiar `release/v0.3.0-beta.1-rc-prep`.
+- [ ] 5.3 Commit(s) pequeños y push normal únicamente a `fix/beta1-appimage-graphics`; verificar remoto y árbol limpio.
+- [ ] 5.4 Sin merge, PR, tag, GitHub Release o publicación. NO-GO se mantiene hasta aceptación del propietario en el AppImage exacto.
