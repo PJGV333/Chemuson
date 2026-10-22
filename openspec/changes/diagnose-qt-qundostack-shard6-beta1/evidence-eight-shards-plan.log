@@ -1,0 +1,2 @@
+pytest collection: 2598 node IDs; 8 shards; distribution=[248, 243, 327, 362, 449, 268, 373, 328]; estimated_seconds=[151.406, 151.451, 151.556, 151.424, 151.478, 151.591, 151.576, 151.556]; sha256=b2cb90fdc74a1c2417885557f9391f12924235c3043d2e1a73fee0340027248f
+plan: /home/ccachyavgp/Documentos/ChemUSON/.tmp-qt-shard6-fix-run/pytest-plan.json

@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-10-21
+goal: Diagnose the reproducible shard-6 SIGABRT at QUndoStack cleanChanged in the beta stabilization branch, compare the exact ordered test sequence against base 61f7647b, and apply only a proven minimal fix.

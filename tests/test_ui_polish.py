@@ -652,7 +652,9 @@ def test_onboarding_close_releases_overlay(_qapp, _isolated_config_home):
 
     overlay.request_close()
     QApplication.processEvents()
-    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    # Flush only this overlay; a global DeferredDelete flush also destroys
+    # unrelated Qt objects left pending by earlier tests in a shard.
+    QApplication.sendPostedEvents(overlay, QEvent.Type.DeferredDelete)
     QApplication.processEvents()
 
     assert sip.isdeleted(overlay)

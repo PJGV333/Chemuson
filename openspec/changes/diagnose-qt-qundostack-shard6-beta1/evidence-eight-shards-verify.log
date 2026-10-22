@@ -1,0 +1,9 @@
+shard 0: exit=0, timeout=False, signal=None, tests=248/248, timed=248/248, elapsed=87.662s, last=tests/test_version_metadata.py::test_cli_version_flag_prints_version
+shard 1: exit=0, timeout=False, signal=None, tests=243/243, timed=243/243, elapsed=77.634s, last=tests/test_viewport3d_depth_occlusion.py::test_real_viewport_occludes_bonds_with_depth_after_qpainter_overlays
+shard 2: exit=0, timeout=False, signal=None, tests=327/327, timed=327/327, elapsed=68.128s, last=tests/test_wedge_double_label_junctions.py::test_focused_comparison_sheet_keeps_before_after_theme_panels_equal_scale
+shard 3: exit=0, timeout=False, signal=None, tests=362/362, timed=362/362, elapsed=86.17s, last=tests/test_update_semver.py::test_parse_semver_rejects_invalid_values
+shard 4: exit=0, timeout=False, signal=None, tests=449/449, timed=449/449, elapsed=60.666s, last=tests/test_wedge_geometry.py::test_aromatic_double_bold_uses_thin_secondary_pi_line
+shard 5: exit=0, timeout=False, signal=None, tests=268/268, timed=268/268, elapsed=179.352s, last=tests/test_viewport3d_geometry.py::test_mesh_highlights_multiple_selected_atoms_and_their_derived_hydrogens
+shard 6: exit=0, timeout=False, signal=None, tests=373/373, timed=373/373, elapsed=207.851s, last=tests/test_update_portable.py::test_write_portable_update_script_for_windows_escapes_batch_values
+shard 7: exit=0, timeout=False, signal=None, tests=328/328, timed=328/328, elapsed=68.897s, last=tests/test_viewport3d_picking.py::test_pick_empty_scene_returns_none
+pytest shard coverage verified: 2598 unique node IDs, 8 complete successful shards
