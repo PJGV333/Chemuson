@@ -163,7 +163,7 @@ jobs:
       - name: Install Qt runtime libraries
         run: |
           sudo apt-get update
-          sudo apt-get install -y appstream curl desktop-file-utils libegl1 libgl1 libopengl0 libxkbcommon-x11-0 libxcb-cursor0 libfontconfig1 libfreetype6 libgl1-mesa-dri xauth xvfb
+          sudo apt-get install -y appstream curl desktop-file-utils libegl1 libgl1 libopengl0 libxkbcommon-x11-0 libxcb-cursor0 libxcb-keysyms1 libxcb-icccm4 libxcb-shape0 libfontconfig1 libfreetype6 libgl1-mesa-dri xauth xvfb
 
       - name: Verify exact source identity
         run: >-
@@ -184,6 +184,9 @@ jobs:
           python packaging/release/validate_packaged_icons.py --executable dist/Chemuson
           python packaging/release/validate_packaged_rdkit_worker.py --executable dist/Chemuson
           python packaging/release/validate_packaged_chemname.py --executable dist/Chemuson
+
+      - name: Diagnose Qt xcb plugin loader before AppImage graphics smoke
+        run: python packaging/release/diagnose_qt_xcb.py
 
       - name: Build preview portable package without updater metadata
         run: |

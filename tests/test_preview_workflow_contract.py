@@ -115,6 +115,42 @@ def test_four_preview_artifact_groups_require_existing_nonempty_packages() -> No
     assert "--files" in text
 
 
+def test_preview_and_release_appimage_builds_preflight_qt_xcb_loader() -> None:
+    preview_text, preview = _workflow()
+    release_text = RELEASE_PATH.read_text(encoding="utf-8")
+    release = yaml.load(release_text, Loader=yaml.BaseLoader)
+    runtime_packages = (
+        "libxcb-keysyms1",
+        "libxcb-icccm4",
+        "libxcb-shape0",
+        "xauth",
+        "xvfb",
+    )
+    for workflow_text, job_name, install_name in (
+        (preview_text, "build_linux_appimage", "Install Qt runtime libraries"),
+        (release_text, "build_linux", "Install AppImage and Qt runtime tools"),
+    ):
+        workflow = preview if job_name == "build_linux_appimage" else release
+        steps = workflow["jobs"][job_name]["steps"]
+        install_step = next(step for step in steps if step.get("name") == install_name)
+        assert all(package in install_step["run"] for package in runtime_packages)
+        diagnostic_index = next(
+            index for index, step in enumerate(steps)
+            if step.get("name") == "Diagnose Qt xcb plugin loader before AppImage graphics smoke"
+        )
+        validation_index = next(
+            index for index, step in enumerate(steps)
+            if "validate_appimage.py" in step.get("run", "")
+        )
+        assert diagnostic_index < validation_index
+        assert "diagnose_qt_xcb.py" in steps[diagnostic_index]["run"]
+        assert "validate_appimage.py" in workflow_text
+
+    diagnostic = (ROOT / "packaging/release/diagnose_qt_xcb.py").read_text(encoding="utf-8")
+    for required in ("readelf", "ldd", "QT_DEBUG_PLUGINS", "LD_DEBUG", "xvfb-run", "platform=xcb"):
+        assert required in diagnostic
+
+
 def test_preview_metadata_uses_canonical_version_and_official_workflow_stays_separate() -> None:
     text, _workflow_data = _workflow()
     helper = (ROOT / "packaging/release/preview_build.py").read_text(encoding="utf-8")
