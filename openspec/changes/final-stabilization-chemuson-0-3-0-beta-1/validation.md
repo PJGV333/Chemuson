@@ -51,3 +51,11 @@ La ejecución local Python 3.14 tuvo 20 skips: coincide en estos motivos salvo q
 - `docs/release/manual-acceptance-0.3.0.md` no se alteró ni se convirtió en PASS. Sin artifacts identificados y observación manual autorizada, los casos gráficos/químicos y Windows/OpenGL permanecen según su estado previo (NOT TESTED donde no hay evidencia).
 - **Dictamen: NO-GO / bloqueado.** CI remoto continúa rojo en el SHA base; matriz local actual aborta reproduciblemente en Qt teardown; faltan run remoto y cuatro builds exactos, además de aceptación manual. No cambiar estos estados sin decisión del propietario sobre el aborto `QUndoStack` y evidencia nueva.
 - Ningún push, commit, tag, Release, PR, preview, actualización de canal ni cambio a `main`/`gh-pages` fue realizado.
+
+## Addendum — Qt shard 5 + perfil medido (2026-10-21)
+
+Se diagnosticó el SIGABRT que introdujo el perfil candidato al reasignar lifecycle a shard 5. Red/green del mismo plan de 349 IDs sobre snapshot base `3f800c7`: antes, exit -6 tras 272 timings y JUnit ausente en `test_unstarted_dialog_close_and_window_close_leave_no_registry_entries`; después de limitar `DeferredDelete` al QObject exacto, 341 passed + 8 skipped, JUnit/timings completos y exit 0. La causa fue el flush global `sendPostedEvents(None, DeferredDelete)` en el helper de lifecycle; no se tocó producción. También se inspeccionaron y acotaron los probes Qt equivalentes, preservando todas las aserciones.
+
+El perfil local se mantiene: fue reconstruido desde métricas de Actions documentadas, cubre exactamente 253 archivos y usa fallback 0.2 s/test. Los contratos pasan **10/10**. El plan de ocho shards balancea carga estimada en ~207.84 s por shard. Matriz secuencial final: **2.598/2.598 IDs, 2.576 passed, 22 skipped, 0 failed/errors**, JUnit/timings exactos; wall time individual máximo **177.566 s < 300 s**. Se preservan orden, manifiesto, timeout y aserciones.
+
+Este estado es **verde local únicamente**. Actions #39697199469 sigue fallido por timeouts históricos en shards 5/6 y corresponde al SHA anterior; debe generarse/verificarse un run del nuevo SHA tras push. Los builds de los cuatro paquetes y aceptación manual continúan pendientes; la publicación sigue **NO-GO**. Evidencia cruda y artifacts temporales se moverán a `/tmp` fuera del repositorio al cerrar esta tarea.

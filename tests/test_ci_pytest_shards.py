@@ -17,10 +17,29 @@ from tools.ci_pytest_shards import (
 def test_duration_profile_is_pinned_to_the_timeout_baseline() -> None:
     profile, digest = _load_duration_profile(DEFAULT_DURATION_PROFILE)
 
-    assert profile["source"]["run_id"] == "38996089270"
-    assert profile["source"]["commit"].startswith("87e298c")
+    assert profile["source"]["run_id"] == "39697199469"
+    assert profile["source"]["commit"] == "8c28d47c0518f4ca40619839ae3504df8cf87096"
+    assert profile["source"]["supplemental_run_ids"] == [
+        "39679607676",
+        "38996089270",
+    ]
+    assert profile["fallback_seconds_per_test"] == 0.2
     assert len(digest) == 64
+
+    manifest_files = {
+        nodeid.split("::", 1)[0]
+        for nodeid in (Path(__file__).parent / "ci/expected_pytest_nodeids.txt")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    }
+    assert set(profile["files"]) == manifest_files
+    assert len(profile["files"]) == 253
     assert profile["files"]["tests/test_clean2d_baseline_reports.py"]["seconds_per_test"] > 5.0
+    assert profile["files"]["tests/test_beta_save_shortcut_menu_access.py"]["seconds_per_test"] > 4.64
+    assert profile["files"]["tests/test_ui_polish.py"]["seconds_per_test"] > 2.98
+    assert profile["files"]["tests/test_ui_svg_icons.py"]["seconds_per_test"] > 1.21
+    assert profile["files"]["tests/test_beta_save_shortcut_menu_access.py"]["observations"] == 40
+    assert profile["files"]["tests/test_ui_polish.py"]["observations"] == 76
 
 
 def test_weighted_lpt_is_deterministic_and_keeps_each_file_indivisible() -> None:

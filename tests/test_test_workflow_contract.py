@@ -93,7 +93,11 @@ def test_pytest_matrix_executes_every_manifest_id_with_bounded_fail_closed_shard
     assert "tools.ci_pytest_timing_plugin" in tool_text
     assert "estimated_duration_seconds" in tool_text
     duration_profile = (ROOT / "tests/ci/pytest_file_durations.json").read_text(encoding="utf-8")
-    assert '"run_id": "38996089270"' in duration_profile
+    assert '"run_id": "39697199469"' in duration_profile
+    assert '"commit": "8c28d47c0518f4ca40619839ae3504df8cf87096"' in duration_profile
+    assert '"supplemental_run_ids"' in duration_profile
+    assert '"39679607676"' in duration_profile
+    assert '"38996089270"' in duration_profile
     assert "--ignore" not in workflow_text + tool_text
     assert "--deselect" not in workflow_text + tool_text
     assert "continue-on-error" not in workflow_text

@@ -1,43 +1,1282 @@
 {
-  "schema_version": 1,
   "fallback_seconds_per_test": 0.2,
-  "source": {
-    "kind": "github-actions",
-    "run_id": "38996089270",
-    "commit": "87e298c46535e1dffb0477f36412b3dedc87bd98",
-    "platform": "ubuntu-24.04 / Python 3.11",
-    "method": "JUnit testcase time for completed shards; elapsed intervals between timestamped test completions for the two timed-out shards; files without observations use the conservative fallback."
-  },
   "files": {
-    "tests/test_command_palette.py": {"seconds_per_test": 3.34111, "observations": 20, "measurement": "ci_log_interval_partial"},
-    "tests/test_clean2d_baseline_reports.py": {"seconds_per_test": 5.80817, "observations": 15, "measurement": "ci_log_interval"},
-    "tests/test_clean2d_baseline_diff_review_policy.py": {"seconds_per_test": 6.58980, "observations": 11, "measurement": "ci_log_interval"},
-    "tests/test_ui_tool_rail.py": {"seconds_per_test": 1.07338, "observations": 64, "measurement": "junit"},
-    "tests/test_ui_app_bar_tabs.py": {"seconds_per_test": 2.31199, "observations": 24, "measurement": "ci_log_interval"},
-    "tests/test_beta_compact_shell_and_tabs.py": {"seconds_per_test": 1.97318, "observations": 28, "measurement": "ci_log_interval"},
-    "tests/test_ui_polish.py": {"seconds_per_test": 1.34720, "observations": 4, "measurement": "ci_log_interval_partial"},
-    "tests/test_chemname_acceptance.py": {"seconds_per_test": 0.60379, "observations": 76, "measurement": "ci_log_interval"},
-    "tests/test_clean2d_baseline_report_script.py": {"seconds_per_test": 4.96094, "observations": 8, "measurement": "ci_log_interval"},
-    "tests/test_clean2d_wedge_stereo.py": {"seconds_per_test": 1.07868, "observations": 35, "measurement": "junit"},
-    "tests/test_beta_save_shortcut_menu_access.py": {"seconds_per_test": 1.42162, "observations": 20, "measurement": "ci_log_interval"},
-    "tests/test_clean2d_deterministic_baselines.py": {"seconds_per_test": 0.32779, "observations": 86, "measurement": "junit"},
-    "tests/architecture/test_import_boundaries.py": {"seconds_per_test": 0.61361, "observations": 38, "measurement": "junit"},
-    "tests/test_molecular_assistant_transform.py": {"seconds_per_test": 3.91448, "observations": 5, "measurement": "ci_log_interval"},
-    "tests/test_molecular_assistant_ui.py": {"seconds_per_test": 0.72932, "observations": 22, "measurement": "junit"},
-    "tests/test_smiles_stereo_import.py": {"seconds_per_test": 1.17033, "observations": 12, "measurement": "junit"},
-    "tests/test_clean2d_smart_propose.py": {"seconds_per_test": 0.94107, "observations": 13, "measurement": "ci_log_interval"},
-    "tests/test_spectroscopy_dock.py": {"seconds_per_test": 1.94180, "observations": 6, "measurement": "ci_log_interval"},
-    "tests/test_clean2d_regression_corpus.py": {"seconds_per_test": 0.28023, "observations": 35, "measurement": "junit"},
-    "tests/test_name2structure_ui.py": {"seconds_per_test": 2.86623, "observations": 3, "measurement": "ci_log_interval"},
-    "tests/test_branch_rotation_shortcuts.py": {"seconds_per_test": 1.13500, "observations": 7, "measurement": "junit"},
-    "tests/test_semantic_diagram_models.py": {"seconds_per_test": 0.83152, "observations": 9, "measurement": "ci_log_interval"},
-    "tests/test_main_window_tabs.py": {"seconds_per_test": 0.45425, "observations": 16, "measurement": "junit"},
-    "tests/test_side_panel.py": {"seconds_per_test": 0.48440, "observations": 15, "measurement": "junit"},
-    "tests/test_clean2d_geometry_metric_contracts.py": {"seconds_per_test": 0.86138, "observations": 8, "measurement": "junit"},
-    "tests/test_molecular_assistant_reference_resolution.py": {"seconds_per_test": 0.42280, "observations": 15, "measurement": "junit"},
-    "tests/test_molecular_assistant.py": {"seconds_per_test": 0.07131, "observations": 87, "measurement": "junit"},
-    "tests/test_p0_qt_shutdown_subprocess.py": {"seconds_per_test": 2.96800, "observations": 2, "measurement": "junit"},
-    "tests/test_canvas_selection_geometry.py": {"seconds_per_test": 0.36428, "observations": 16, "measurement": "ci_log_interval"},
-    "tests/test_clean2d_simple_aromatic_layout_v1.py": {"seconds_per_test": 0.74342, "observations": 7, "measurement": "ci_log_interval"}
+    "tests/architecture/test_application_shell.py": {
+      "measurement": "max_ci_mean",
+      "observations": 8,
+      "seconds_per_test": 0.05566
+    },
+    "tests/architecture/test_canvas_selection_bounds.py": {
+      "measurement": "max_ci_mean",
+      "observations": 36,
+      "seconds_per_test": 0.03794
+    },
+    "tests/architecture/test_canvas_selection_clipboard.py": {
+      "measurement": "max_ci_mean",
+      "observations": 10,
+      "seconds_per_test": 0.0465
+    },
+    "tests/architecture/test_canvas_selection_geometry.py": {
+      "measurement": "max_ci_mean",
+      "observations": 8,
+      "seconds_per_test": 0.04908
+    },
+    "tests/architecture/test_canvas_selection_hit_testing.py": {
+      "measurement": "max_ci_mean",
+      "observations": 10,
+      "seconds_per_test": 0.03144
+    },
+    "tests/architecture/test_canvas_selection_overlay.py": {
+      "measurement": "max_ci_mean",
+      "observations": 10,
+      "seconds_per_test": 0.04532
+    },
+    "tests/architecture/test_composition_root_audit.py": {
+      "measurement": "max_ci_mean",
+      "observations": 4,
+      "seconds_per_test": 0.04141
+    },
+    "tests/architecture/test_domain_module_boundary_audit.py": {
+      "measurement": "max_ci_mean",
+      "observations": 4,
+      "seconds_per_test": 0.04238
+    },
+    "tests/architecture/test_editor2d_selection_ownership.py": {
+      "measurement": "max_ci_mean",
+      "observations": 16,
+      "seconds_per_test": 0.06051
+    },
+    "tests/architecture/test_exceptions_no_growth.py": {
+      "measurement": "max_ci_mean",
+      "observations": 64,
+      "seconds_per_test": 0.01946
+    },
+    "tests/architecture/test_import_boundaries.py": {
+      "measurement": "max_ci_mean",
+      "observations": 76,
+      "seconds_per_test": 0.61361
+    },
+    "tests/architecture/test_main_window_background_workers.py": {
+      "measurement": "max_ci_mean",
+      "observations": 6,
+      "seconds_per_test": 0.02655
+    },
+    "tests/architecture/test_main_window_clean2d_geometry.py": {
+      "measurement": "max_ci_mean",
+      "observations": 8,
+      "seconds_per_test": 0.04458
+    },
+    "tests/architecture/test_module_catalog.py": {
+      "measurement": "max_ci_mean",
+      "observations": 92,
+      "seconds_per_test": 0.06745
+    },
+    "tests/architecture/test_molecular_assistant_boundary.py": {
+      "measurement": "max_ci_mean",
+      "observations": 16,
+      "seconds_per_test": 0.09747
+    },
+    "tests/architecture/test_molecular_assistant_ui_boundary.py": {
+      "measurement": "max_ci_mean",
+      "observations": 6,
+      "seconds_per_test": 0.052
+    },
+    "tests/architecture/test_no_tools_in_src.py": {
+      "measurement": "max_ci_mean",
+      "observations": 100,
+      "seconds_per_test": 0.03767
+    },
+    "tests/architecture/test_operational_resilience_audit.py": {
+      "measurement": "max_ci_mean",
+      "observations": 2,
+      "seconds_per_test": 0.0135
+    },
+    "tests/architecture/test_platform_settings_boundary.py": {
+      "measurement": "max_ci_mean",
+      "observations": 8,
+      "seconds_per_test": 0.06622
+    },
+    "tests/architecture/test_public_api_exists.py": {
+      "measurement": "max_ci_mean",
+      "observations": 64,
+      "seconds_per_test": 0.02574
+    },
+    "tests/architecture/test_recovery_boundary.py": {
+      "measurement": "max_ci_mean",
+      "observations": 4,
+      "seconds_per_test": 0.10953
+    },
+    "tests/architecture/test_resilience_boundary.py": {
+      "measurement": "max_ci_mean",
+      "observations": 4,
+      "seconds_per_test": 0.01122
+    },
+    "tests/architecture/test_special_projection_boundary.py": {
+      "measurement": "max_ci_mean",
+      "observations": 6,
+      "seconds_per_test": 0.05702
+    },
+    "tests/architecture/test_update_boundary_audit.py": {
+      "measurement": "max_ci_mean",
+      "observations": 4,
+      "seconds_per_test": 0.04968
+    },
+    "tests/test_ai_assistant_integration.py": {
+      "measurement": "max_ci_mean",
+      "observations": 4,
+      "seconds_per_test": 0.01663
+    },
+    "tests/test_ai_clean2d_evaluation.py": {
+      "measurement": "max_ci_mean",
+      "observations": 18,
+      "seconds_per_test": 0.04083
+    },
+    "tests/test_amide_urea_2d_continuity.py": {
+      "measurement": "max_ci_mean",
+      "observations": 38,
+      "seconds_per_test": 0.15305
+    },
+    "tests/test_appimage_validation.py": {
+      "measurement": "max_ci_mean",
+      "observations": 14,
+      "seconds_per_test": 0.01739
+    },
+    "tests/test_application_startup_non_qt.py": {
+      "measurement": "max_ci_mean",
+      "observations": 22,
+      "seconds_per_test": 0.05982
+    },
+    "tests/test_aromatic_circle_display.py": {
+      "measurement": "max_ci_mean",
+      "observations": 18,
+      "seconds_per_test": 0.06065
+    },
+    "tests/test_aromatic_nitrogen_regression.py": {
+      "measurement": "max_ci_mean",
+      "observations": 2,
+      "seconds_per_test": 0.05739
+    },
+    "tests/test_arrow_thickness_shortcut.py": {
+      "measurement": "max_ci_mean",
+      "observations": 8,
+      "seconds_per_test": 0.03427
+    },
+    "tests/test_atom_visibility.py": {
+      "measurement": "max_ci_mean",
+      "observations": 12,
+      "seconds_per_test": 0.14845
+    },
+    "tests/test_atomic_diagram_builder.py": {
+      "measurement": "max_ci_mean",
+      "observations": 6,
+      "seconds_per_test": 0.01158
+    },
+    "tests/test_atomic_species_diagram_builder.py": {
+      "measurement": "max_ci_mean",
+      "observations": 8,
+      "seconds_per_test": 0.01339
+    },
+    "tests/test_autosave_manager.py": {
+      "measurement": "max_ci_mean",
+      "observations": 42,
+      "seconds_per_test": 0.02328
+    },
+    "tests/test_baseline_exception_catalog.py": {
+      "measurement": "max_ci_mean",
+      "observations": 6,
+      "seconds_per_test": 0.01293
+    },
+    "tests/test_beta_compact_shell_and_tabs.py": {
+      "measurement": "max_ci_mean",
+      "observations": 56,
+      "seconds_per_test": 2.29018
+    },
+    "tests/test_beta_save_shortcut_menu_access.py": {
+      "measurement": "max_ci_mean",
+      "observations": 40,
+      "seconds_per_test": 4.64128
+    },
+    "tests/test_block_unwrap_depiction.py": {
+      "measurement": "max_ci_mean",
+      "observations": 12,
+      "seconds_per_test": 0.23356
+    },
+    "tests/test_bond_junctions.py": {
+      "measurement": "max_ci_mean",
+      "observations": 58,
+      "seconds_per_test": 0.14627
+    },
+    "tests/test_bond_length_and_rotation_drag.py": {
+      "measurement": "max_ci_mean",
+      "observations": 8,
+      "seconds_per_test": 0.02675
+    },
+    "tests/test_bracket_draw_rect.py": {
+      "measurement": "max_ci_mean",
+      "observations": 44,
+      "seconds_per_test": 0.01324
+    },
+    "tests/test_branch_reorientation.py": {
+      "measurement": "max_ci_mean",
+      "observations": 8,
+      "seconds_per_test": 0.14463
+    },
+    "tests/test_branch_rotation_shortcuts.py": {
+      "measurement": "max_ci_mean",
+      "observations": 14,
+      "seconds_per_test": 1.135
+    },
+    "tests/test_branding.py": {
+      "measurement": "max_ci_mean",
+      "observations": 10,
+      "seconds_per_test": 0.01351
+    },
+    "tests/test_canvas_drawing_edges.py": {
+      "measurement": "max_ci_mean",
+      "observations": 12,
+      "seconds_per_test": 1.28609
+    },
+    "tests/test_canvas_opacity.py": {
+      "measurement": "max_ci_mean",
+      "observations": 6,
+      "seconds_per_test": 2.37182
+    },
+    "tests/test_canvas_performance_paths.py": {
+      "measurement": "max_ci_mean",
+      "observations": 6,
+      "seconds_per_test": 0.72864
+    },
+    "tests/test_canvas_selection_bounds.py": {
+      "measurement": "max_ci_mean",
+      "observations": 58,
+      "seconds_per_test": 1.09679
+    },
+    "tests/test_canvas_selection_clipboard_policy.py": {
+      "measurement": "max_ci_mean",
+      "observations": 8,
+      "seconds_per_test": 1.09896
+    },
+    "tests/test_canvas_selection_geometry.py": {
+      "measurement": "max_ci_mean",
+      "observations": 32,
+      "seconds_per_test": 0.36428
+    },
+    "tests/test_canvas_selection_hit_testing.py": {
+      "measurement": "max_ci_mean",
+      "observations": 16,
+      "seconds_per_test": 0.70574
+    },
+    "tests/test_canvas_selection_overlay.py": {
+      "measurement": "max_ci_mean",
+      "observations": 16,
+      "seconds_per_test": 0.01373
+    },
+    "tests/test_chain_tool_zigzag.py": {
+      "measurement": "max_ci_mean",
+      "observations": 6,
+      "seconds_per_test": 0.01408
+    },
+    "tests/test_chemcalc_formula.py": {
+      "measurement": "max_ci_mean",
+      "observations": 6,
+      "seconds_per_test": 0.01348
+    },
+    "tests/test_chemname_acceptance.py": {
+      "measurement": "max_ci_mean",
+      "observations": 152,
+      "seconds_per_test": 0.60379
+    },
+    "tests/test_chemname_coordination.py": {
+      "measurement": "max_ci_mean",
+      "observations": 6,
+      "seconds_per_test": 0.014
+    },
+    "tests/test_chemname_core.py": {
+      "measurement": "max_ci_mean",
+      "observations": 6,
+      "seconds_per_test": 0.01286
+    },
+    "tests/test_chemname_packaged_smoke.py": {
+      "measurement": "max_ci_mean",
+      "observations": 10,
+      "seconds_per_test": 0.46744
+    },
+    "tests/test_chemname_pr10.py": {
+      "measurement": "max_ci_mean",
+      "observations": 4,
+      "seconds_per_test": 0.01556
+    },
+    "tests/test_chemname_pr11.py": {
+      "measurement": "max_ci_mean",
+      "observations": 12,
+      "seconds_per_test": 0.0162
+    },
+    "tests/test_chemname_pr12_regression.py": {
+      "measurement": "max_ci_mean",
+      "observations": 4,
+      "seconds_per_test": 0.91448
+    },
+    "tests/test_chemname_pr13.py": {
+      "measurement": "max_ci_mean",
+      "observations": 12,
+      "seconds_per_test": 0.02934
+    },
+    "tests/test_chemname_pr14.py": {
+      "measurement": "max_ci_mean",
+      "observations": 12,
+      "seconds_per_test": 1.12053
+    },
+    "tests/test_chemname_pr15.py": {
+      "measurement": "max_ci_mean",
+      "observations": 8,
+      "seconds_per_test": 0.72544
+    },
+    "tests/test_chemname_pr16.py": {
+      "measurement": "max_ci_mean",
+      "observations": 6,
+      "seconds_per_test": 0.02913
+    },
+    "tests/test_chemname_pr17.py": {
+      "measurement": "max_ci_mean",
+      "observations": 6,
+      "seconds_per_test": 1.4884
+    },
+    "tests/test_chemname_pr18.py": {
+      "measurement": "max_ci_mean",
+      "observations": 6,
+      "seconds_per_test": 0.84179
+    },
+    "tests/test_chemname_pr19.py": {
+      "measurement": "max_ci_mean",
+      "observations": 6,
+      "seconds_per_test": 0.01519
+    },
+    "tests/test_chemname_pr2.py": {
+      "measurement": "max_ci_mean",
+      "observations": 4,
+      "seconds_per_test": 0.01339
+    },
+    "tests/test_chemname_pr20.py": {
+      "measurement": "max_ci_mean",
+      "observations": 8,
+      "seconds_per_test": 0.01529
+    },
+    "tests/test_chemname_pr21.py": {
+      "measurement": "max_ci_mean",
+      "observations": 12,
+      "seconds_per_test": 0.71571
+    },
+    "tests/test_chemname_pr22.py": {
+      "measurement": "max_ci_mean",
+      "observations": 10,
+      "seconds_per_test": 0.26108
+    },
+    "tests/test_chemname_pr23.py": {
+      "measurement": "max_ci_mean",
+      "observations": 8,
+      "seconds_per_test": 0.35681
+    },
+    "tests/test_chemname_pr24.py": {
+      "measurement": "max_ci_mean",
+      "observations": 10,
+      "seconds_per_test": 1.32222
+    },
+    "tests/test_chemname_pr25.py": {
+      "measurement": "max_ci_mean",
+      "observations": 6,
+      "seconds_per_test": 0.01343
+    },
+    "tests/test_chemname_pr26.py": {
+      "measurement": "max_ci_mean",
+      "observations": 18,
+      "seconds_per_test": 0.01562
+    },
+    "tests/test_chemname_pr27.py": {
+      "measurement": "max_ci_mean",
+      "observations": 30,
+      "seconds_per_test": 0.10664
+    },
+    "tests/test_chemname_pr28.py": {
+      "measurement": "max_ci_mean",
+      "observations": 28,
+      "seconds_per_test": 0.20506
+    },
+    "tests/test_chemname_pr3.py": {
+      "measurement": "max_ci_mean",
+      "observations": 2,
+      "seconds_per_test": 0.01392
+    },
+    "tests/test_chemname_pr4.py": {
+      "measurement": "max_ci_mean",
+      "observations": 6,
+      "seconds_per_test": 0.37761
+    },
+    "tests/test_chemname_pr7.py": {
+      "measurement": "max_ci_mean",
+      "observations": 12,
+      "seconds_per_test": 0.35494
+    },
+    "tests/test_chemname_pr8.py": {
+      "measurement": "max_ci_mean",
+      "observations": 8,
+      "seconds_per_test": 0.01339
+    },
+    "tests/test_chemname_pr9.py": {
+      "measurement": "max_ci_mean",
+      "observations": 6,
+      "seconds_per_test": 0.01345
+    },
+    "tests/test_chemname_special.py": {
+      "measurement": "max_ci_mean",
+      "observations": 14,
+      "seconds_per_test": 0.06513
+    },
+    "tests/test_chemname_special_templates.py": {
+      "measurement": "max_ci_mean",
+      "observations": 4,
+      "seconds_per_test": 0.01447
+    },
+    "tests/test_ci_pytest_shards.py": {
+      "measurement": "max_ci_mean",
+      "observations": 12,
+      "seconds_per_test": 0.01353
+    },
+    "tests/test_clean2d_aromatic_mixed.py": {
+      "measurement": "max_ci_mean",
+      "observations": 22,
+      "seconds_per_test": 1.37587
+    },
+    "tests/test_clean2d_baseline_diff_review_policy.py": {
+      "measurement": "max_ci_mean",
+      "observations": 22,
+      "seconds_per_test": 6.76764
+    },
+    "tests/test_clean2d_baseline_report_script.py": {
+      "measurement": "max_ci_mean",
+      "observations": 16,
+      "seconds_per_test": 4.96094
+    },
+    "tests/test_clean2d_baseline_reports.py": {
+      "measurement": "max_ci_mean",
+      "observations": 30,
+      "seconds_per_test": 5.80817
+    },
+    "tests/test_clean2d_complex_policy.py": {
+      "measurement": "max_ci_mean",
+      "observations": 10,
+      "seconds_per_test": 0.74429
+    },
+    "tests/test_clean2d_complex_preserve.py": {
+      "measurement": "max_ci_mean",
+      "observations": 12,
+      "seconds_per_test": 0.06981
+    },
+    "tests/test_clean2d_conformer_propose.py": {
+      "measurement": "max_ci_mean",
+      "observations": 4,
+      "seconds_per_test": 0.74628
+    },
+    "tests/test_clean2d_contract_reporting.py": {
+      "measurement": "max_ci_mean",
+      "observations": 8,
+      "seconds_per_test": 0.01292
+    },
+    "tests/test_clean2d_debug_snapshots.py": {
+      "measurement": "max_ci_mean",
+      "observations": 18,
+      "seconds_per_test": 0.19122
+    },
+    "tests/test_clean2d_deterministic_baselines.py": {
+      "measurement": "max_ci_mean",
+      "observations": 172,
+      "seconds_per_test": 0.32779
+    },
+    "tests/test_clean2d_diff_blocking_policy.py": {
+      "measurement": "max_ci_mean",
+      "observations": 20,
+      "seconds_per_test": 0.01389
+    },
+    "tests/test_clean2d_engine_candidates.py": {
+      "measurement": "max_ci_mean",
+      "observations": 12,
+      "seconds_per_test": 0.16106
+    },
+    "tests/test_clean2d_fused_aromatic_preserve_repair_v1.py": {
+      "measurement": "max_ci_mean",
+      "observations": 12,
+      "seconds_per_test": 0.08071
+    },
+    "tests/test_clean2d_geometry_metric_contracts.py": {
+      "measurement": "max_ci_mean",
+      "observations": 16,
+      "seconds_per_test": 1.12832
+    },
+    "tests/test_clean2d_invariants.py": {
+      "measurement": "max_ci_mean",
+      "observations": 8,
+      "seconds_per_test": 0.01917
+    },
+    "tests/test_clean2d_local_graph_cleaner.py": {
+      "measurement": "max_ci_mean",
+      "observations": 10,
+      "seconds_per_test": 0.19133
+    },
+    "tests/test_clean2d_monosubstituted_aromatic_layout_v1.py": {
+      "measurement": "max_ci_mean",
+      "observations": 18,
+      "seconds_per_test": 1.60073
+    },
+    "tests/test_clean2d_multilayer_constraints.py": {
+      "measurement": "max_ci_mean",
+      "observations": 10,
+      "seconds_per_test": 0.23484
+    },
+    "tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py": {
+      "measurement": "max_ci_mean",
+      "observations": 4,
+      "seconds_per_test": 1.98639
+    },
+    "tests/test_clean2d_quality_reporting.py": {
+      "measurement": "max_ci_mean",
+      "observations": 28,
+      "seconds_per_test": 0.01701
+    },
+    "tests/test_clean2d_regression_corpus.py": {
+      "measurement": "max_ci_mean",
+      "observations": 70,
+      "seconds_per_test": 0.37719
+    },
+    "tests/test_clean2d_safety.py": {
+      "measurement": "max_ci_mean",
+      "observations": 94,
+      "seconds_per_test": 0.02534
+    },
+    "tests/test_clean2d_selection_bond_integrity.py": {
+      "measurement": "max_ci_mean",
+      "observations": 8,
+      "seconds_per_test": 0.03353
+    },
+    "tests/test_clean2d_simple_aromatic_layout_v1.py": {
+      "measurement": "max_ci_mean",
+      "observations": 14,
+      "seconds_per_test": 0.74342
+    },
+    "tests/test_clean2d_smart_propose.py": {
+      "measurement": "max_ci_mean",
+      "observations": 26,
+      "seconds_per_test": 0.94107
+    },
+    "tests/test_clean2d_terminal_rings.py": {
+      "measurement": "max_ci_mean",
+      "observations": 8,
+      "seconds_per_test": 1.35866
+    },
+    "tests/test_clean2d_tetrandrine_like_local.py": {
+      "measurement": "max_ci_mean",
+      "observations": 10,
+      "seconds_per_test": 0.08216
+    },
+    "tests/test_clean2d_v2.py": {
+      "measurement": "max_ci_mean",
+      "observations": 12,
+      "seconds_per_test": 0.02935
+    },
+    "tests/test_clean2d_wedge_stereo.py": {
+      "measurement": "max_ci_mean",
+      "observations": 70,
+      "seconds_per_test": 1.07868
+    },
+    "tests/test_clean_2d_fallback_chain_geometry.py": {
+      "measurement": "max_ci_mean",
+      "observations": 2,
+      "seconds_per_test": 0.01548
+    },
+    "tests/test_clean_2d_h_projection.py": {
+      "measurement": "max_ci_mean",
+      "observations": 4,
+      "seconds_per_test": 0.69982
+    },
+    "tests/test_clean_2d_no_bond_crossings.py": {
+      "measurement": "max_ci_mean",
+      "observations": 4,
+      "seconds_per_test": 0.02176
+    },
+    "tests/test_clean_2d_scaling.py": {
+      "measurement": "max_ci_mean",
+      "observations": 12,
+      "seconds_per_test": 1.10002
+    },
+    "tests/test_clean_2d_strategy.py": {
+      "measurement": "max_ci_mean",
+      "observations": 4,
+      "seconds_per_test": 0.01134
+    },
+    "tests/test_clipboard_structure_copy.py": {
+      "measurement": "max_ci_mean",
+      "observations": 4,
+      "seconds_per_test": 0.03454
+    },
+    "tests/test_cml_io.py": {
+      "measurement": "max_ci_mean",
+      "observations": 10,
+      "seconds_per_test": 0.07043
+    },
+    "tests/test_command_palette.py": {
+      "measurement": "max_ci_mean",
+      "observations": 54,
+      "seconds_per_test": 3.34111
+    },
+    "tests/test_compchem3d_dock.py": {
+      "measurement": "max_ci_mean",
+      "observations": 117,
+      "seconds_per_test": 1.4129
+    },
+    "tests/test_compchem_exporters.py": {
+      "measurement": "max_ci_mean",
+      "observations": 6,
+      "seconds_per_test": 0.01824
+    },
+    "tests/test_coordination_persistence.py": {
+      "measurement": "max_ci_mean",
+      "observations": 10,
+      "seconds_per_test": 0.01934
+    },
+    "tests/test_coordination_sphere_radius.py": {
+      "measurement": "max_ci_mean",
+      "observations": 2,
+      "seconds_per_test": 0.0174
+    },
+    "tests/test_core_model.py": {
+      "measurement": "max_ci_mean",
+      "observations": 44,
+      "seconds_per_test": 0.01517
+    },
+    "tests/test_depiction_lab_export.py": {
+      "measurement": "max_ci_mean",
+      "observations": 6,
+      "seconds_per_test": 0.99192
+    },
+    "tests/test_depiction_lab_parameters.py": {
+      "measurement": "max_ci_mean",
+      "observations": 12,
+      "seconds_per_test": 0.69112
+    },
+    "tests/test_depiction_lab_renderer.py": {
+      "measurement": "max_ci_mean",
+      "observations": 62,
+      "seconds_per_test": 0.51038
+    },
+    "tests/test_depiction_lab_ui.py": {
+      "measurement": "max_ci_mean",
+      "observations": 6,
+      "seconds_per_test": 4.57418
+    },
+    "tests/test_diagram_presets.py": {
+      "measurement": "max_ci_mean",
+      "observations": 8,
+      "seconds_per_test": 0.67156
+    },
+    "tests/test_dimensions_scaling.py": {
+      "measurement": "max_ci_mean",
+      "observations": 6,
+      "seconds_per_test": 0.75836
+    },
+    "tests/test_document_controller.py": {
+      "measurement": "max_ci_mean",
+      "observations": 12,
+      "seconds_per_test": 0.01352
+    },
+    "tests/test_double_bond_orientation_toggle.py": {
+      "measurement": "max_ci_mean",
+      "observations": 8,
+      "seconds_per_test": 0.01869
+    },
+    "tests/test_double_bond_vertex_rendering.py": {
+      "measurement": "max_ci_mean",
+      "observations": 6,
+      "seconds_per_test": 0.01943
+    },
+    "tests/test_drag_move_undo.py": {
+      "measurement": "max_ci_mean",
+      "observations": 6,
+      "seconds_per_test": 0.05887
+    },
+    "tests/test_editorial_depiction_preset.py": {
+      "measurement": "max_ci_mean",
+      "observations": 6,
+      "seconds_per_test": 0.01265
+    },
+    "tests/test_elemental_analysis.py": {
+      "measurement": "max_ci_mean",
+      "observations": 50,
+      "seconds_per_test": 0.45768
+    },
+    "tests/test_energy_diagrams.py": {
+      "measurement": "max_ci_mean",
+      "observations": 14,
+      "seconds_per_test": 0.07629
+    },
+    "tests/test_export_rendering.py": {
+      "measurement": "max_ci_mean",
+      "observations": 6,
+      "seconds_per_test": 0.04145
+    },
+    "tests/test_fragment_pivot_rotation.py": {
+      "measurement": "max_ci_mean",
+      "observations": 8,
+      "seconds_per_test": 0.03599
+    },
+    "tests/test_fragment_pivot_rotation_ui.py": {
+      "measurement": "max_ci_mean",
+      "observations": 4,
+      "seconds_per_test": 0.37041
+    },
+    "tests/test_functional_group_hydrogen_adjustment.py": {
+      "measurement": "max_ci_mean",
+      "observations": 26,
+      "seconds_per_test": 0.02972
+    },
+    "tests/test_geometry3d_aromaticity.py": {
+      "measurement": "max_ci_mean",
+      "observations": 16,
+      "seconds_per_test": 0.33426
+    },
+    "tests/test_geometry3d_commands.py": {
+      "measurement": "max_ci_mean",
+      "observations": 6,
+      "seconds_per_test": 0.02529
+    },
+    "tests/test_geometry3d_editing.py": {
+      "measurement": "max_ci_mean",
+      "observations": 8,
+      "seconds_per_test": 0.01216
+    },
+    "tests/test_geometry3d_editing_metrics.py": {
+      "measurement": "max_ci_mean",
+      "observations": 8,
+      "seconds_per_test": 0.02583
+    },
+    "tests/test_geometry3d_persistence.py": {
+      "measurement": "max_ci_mean",
+      "observations": 12,
+      "seconds_per_test": 0.02579
+    },
+    "tests/test_geometry3d_service.py": {
+      "measurement": "max_ci_mean",
+      "observations": 72,
+      "seconds_per_test": 0.27395
+    },
+    "tests/test_geometry3d_stereochemistry.py": {
+      "measurement": "max_ci_mean",
+      "observations": 24,
+      "seconds_per_test": 0.47111
+    },
+    "tests/test_gui_async_worker_shutdown.py": {
+      "measurement": "max_ci_mean",
+      "observations": 4,
+      "seconds_per_test": 0.57248
+    },
+    "tests/test_gui_clean2d_geometry.py": {
+      "measurement": "max_ci_mean",
+      "observations": 12,
+      "seconds_per_test": 0.01549
+    },
+    "tests/test_haworth_renderer_geometry.py": {
+      "measurement": "max_ci_mean",
+      "observations": 4,
+      "seconds_per_test": 1.19419
+    },
+    "tests/test_image_clipboard_persistence.py": {
+      "measurement": "max_ci_mean",
+      "observations": 18,
+      "seconds_per_test": 0.76444
+    },
+    "tests/test_implicit_h_substitution.py": {
+      "measurement": "max_ci_mean",
+      "observations": 2,
+      "seconds_per_test": 0.03659
+    },
+    "tests/test_initial_2d_drawing_geometry.py": {
+      "measurement": "max_ci_mean",
+      "observations": 22,
+      "seconds_per_test": 0.79615
+    },
+    "tests/test_interaction_bond_semantics.py": {
+      "measurement": "max_ci_mean",
+      "observations": 2,
+      "seconds_per_test": 0.06245
+    },
+    "tests/test_iupac_ui.py": {
+      "measurement": "max_ci_mean",
+      "observations": 10,
+      "seconds_per_test": 2.02318
+    },
+    "tests/test_label_font_selection.py": {
+      "measurement": "max_ci_mean",
+      "observations": 6,
+      "seconds_per_test": 0.56966
+    },
+    "tests/test_ligand_field_builder.py": {
+      "measurement": "max_ci_mean",
+      "observations": 4,
+      "seconds_per_test": 1.08074
+    },
+    "tests/test_line_length_tools.py": {
+      "measurement": "max_ci_mean",
+      "observations": 4,
+      "seconds_per_test": 0.70908
+    },
+    "tests/test_linux_distribution_scripts.py": {
+      "measurement": "max_ci_mean",
+      "observations": 17,
+      "seconds_per_test": 1.11726
+    },
+    "tests/test_main_window_tabs.py": {
+      "measurement": "max_ci_mean",
+      "observations": 32,
+      "seconds_per_test": 0.73394
+    },
+    "tests/test_markush_polymer.py": {
+      "measurement": "max_ci_mean",
+      "observations": 18,
+      "seconds_per_test": 0.11113
+    },
+    "tests/test_mo_diagram_builder.py": {
+      "measurement": "max_ci_mean",
+      "observations": 4,
+      "seconds_per_test": 0.10582
+    },
+    "tests/test_mol_interoperability_p0.py": {
+      "measurement": "max_ci_mean",
+      "observations": 28,
+      "seconds_per_test": 0.81027
+    },
+    "tests/test_molblock_normalization.py": {
+      "measurement": "max_ci_mean",
+      "observations": 16,
+      "seconds_per_test": 0.0132
+    },
+    "tests/test_molecular_assistant.py": {
+      "measurement": "max_ci_mean",
+      "observations": 174,
+      "seconds_per_test": 0.07131
+    },
+    "tests/test_molecular_assistant_lifecycle.py": {
+      "measurement": "max_ci_mean",
+      "observations": 18,
+      "seconds_per_test": 0.493
+    },
+    "tests/test_molecular_assistant_recovery.py": {
+      "measurement": "max_ci_mean",
+      "observations": 36,
+      "seconds_per_test": 0.02572
+    },
+    "tests/test_molecular_assistant_reference_resolution.py": {
+      "measurement": "max_ci_mean",
+      "observations": 30,
+      "seconds_per_test": 0.59282
+    },
+    "tests/test_molecular_assistant_transform.py": {
+      "measurement": "max_ci_mean",
+      "observations": 10,
+      "seconds_per_test": 3.91448
+    },
+    "tests/test_molecular_assistant_ui.py": {
+      "measurement": "max_ci_mean",
+      "observations": 22,
+      "seconds_per_test": 1.2487
+    },
+    "tests/test_molecular_identity_ui_policy.py": {
+      "measurement": "max_ci_mean",
+      "observations": 12,
+      "seconds_per_test": 0.03146
+    },
+    "tests/test_molecular_identity_verification.py": {
+      "measurement": "max_ci_mean",
+      "observations": 20,
+      "seconds_per_test": 0.94857
+    },
+    "tests/test_molecular_view.py": {
+      "measurement": "max_ci_mean",
+      "observations": 18,
+      "seconds_per_test": 0.01786
+    },
+    "tests/test_multilayer_chemical_graph.py": {
+      "measurement": "max_ci_mean",
+      "observations": 5,
+      "seconds_per_test": 0.05058
+    },
+    "tests/test_name2structure_service.py": {
+      "measurement": "max_ci_mean",
+      "observations": 26,
+      "seconds_per_test": 0.03163
+    },
+    "tests/test_name2structure_ui.py": {
+      "measurement": "max_ci_mean",
+      "observations": 3,
+      "seconds_per_test": 2.86623
+    },
+    "tests/test_numbering.py": {
+      "measurement": "max_ci_mean",
+      "observations": 10,
+      "seconds_per_test": 0.4522
+    },
+    "tests/test_orbital_palette.py": {
+      "measurement": "max_ci_mean",
+      "observations": 14,
+      "seconds_per_test": 0.10877
+    },
+    "tests/test_p0_qt_shutdown_subprocess.py": {
+      "measurement": "max_ci_mean",
+      "observations": 4,
+      "seconds_per_test": 4.34574
+    },
+    "tests/test_packaged_chemname_smoke.py": {
+      "measurement": "max_ci_mean",
+      "observations": 4,
+      "seconds_per_test": 2.01071
+    },
+    "tests/test_packaged_icon_smoke.py": {
+      "measurement": "max_ci_mean",
+      "observations": 10,
+      "seconds_per_test": 0.06627
+    },
+    "tests/test_paste_selection_behavior.py": {
+      "measurement": "max_ci_mean",
+      "observations": 4,
+      "seconds_per_test": 0.03046
+    },
+    "tests/test_persistence_contract.py": {
+      "measurement": "max_ci_mean",
+      "observations": 12,
+      "seconds_per_test": 0.0394
+    },
+    "tests/test_plate_items.py": {
+      "measurement": "max_ci_mean",
+      "observations": 164,
+      "seconds_per_test": 0.10571
+    },
+    "tests/test_platform_settings.py": {
+      "measurement": "max_ci_mean",
+      "observations": 26,
+      "seconds_per_test": 0.03981
+    },
+    "tests/test_preview_build.py": {
+      "measurement": "max_ci_mean",
+      "observations": 8,
+      "seconds_per_test": 0.05487
+    },
+    "tests/test_preview_workflow_contract.py": {
+      "measurement": "max_ci_mean",
+      "observations": 12,
+      "seconds_per_test": 0.55708
+    },
+    "tests/test_projection_renderer_geometry.py": {
+      "measurement": "max_ci_mean",
+      "observations": 4,
+      "seconds_per_test": 1.82788
+    },
+    "tests/test_projection_stereochemistry_contract.py": {
+      "measurement": "max_ci_mean",
+      "observations": 10,
+      "seconds_per_test": 0.01518
+    },
+    "tests/test_rdkit_descriptors.py": {
+      "measurement": "max_ci_mean",
+      "observations": 2,
+      "seconds_per_test": 0.71045
+    },
+    "tests/test_rdkit_io_stereo_import.py": {
+      "measurement": "max_ci_mean",
+      "observations": 4,
+      "seconds_per_test": 0.16008
+    },
+    "tests/test_rdkit_live_stream.py": {
+      "measurement": "max_ci_mean",
+      "observations": 26,
+      "seconds_per_test": 0.77551
+    },
+    "tests/test_rdkit_packaged_worker.py": {
+      "measurement": "max_ci_mean",
+      "observations": 16,
+      "seconds_per_test": 0.15841
+    },
+    "tests/test_rdkit_roundtrip.py": {
+      "measurement": "max_ci_mean",
+      "observations": 30,
+      "seconds_per_test": 0.02005
+    },
+    "tests/test_rdkit_smoke.py": {
+      "measurement": "max_ci_mean",
+      "observations": 14,
+      "seconds_per_test": 0.16567
+    },
+    "tests/test_rdkit_strict_validation.py": {
+      "measurement": "max_ci_mean",
+      "observations": 3,
+      "seconds_per_test": 0.06092
+    },
+    "tests/test_recovery_policy.py": {
+      "measurement": "max_ci_mean",
+      "observations": 4,
+      "seconds_per_test": 0.54756
+    },
+    "tests/test_release_artifacts.py": {
+      "measurement": "max_ci_mean",
+      "observations": 6,
+      "seconds_per_test": 0.05817
+    },
+    "tests/test_release_tag_validation.py": {
+      "measurement": "max_ci_mean",
+      "observations": 17,
+      "seconds_per_test": 0.09426
+    },
+    "tests/test_release_version_script.py": {
+      "measurement": "max_ci_mean",
+      "observations": 8,
+      "seconds_per_test": 0.54997
+    },
+    "tests/test_release_workflow_contract.py": {
+      "measurement": "max_ci_mean",
+      "observations": 14,
+      "seconds_per_test": 0.05845
+    },
+    "tests/test_scaffold_depiction.py": {
+      "measurement": "max_ci_mean",
+      "observations": 10,
+      "seconds_per_test": 0.43335
+    },
+    "tests/test_selection_tightness.py": {
+      "measurement": "max_ci_mean",
+      "observations": 14,
+      "seconds_per_test": 0.49062
+    },
+    "tests/test_semantic_diagram_editing.py": {
+      "measurement": "max_ci_mean",
+      "observations": 6,
+      "seconds_per_test": 0.4906
+    },
+    "tests/test_semantic_diagram_models.py": {
+      "measurement": "max_ci_mean",
+      "observations": 18,
+      "seconds_per_test": 0.83152
+    },
+    "tests/test_side_panel.py": {
+      "measurement": "max_ci_mean",
+      "observations": 15,
+      "seconds_per_test": 0.7813
+    },
+    "tests/test_smiles_depiction_candidates.py": {
+      "measurement": "max_ci_mean",
+      "observations": 20,
+      "seconds_per_test": 0.23882
+    },
+    "tests/test_smiles_import_isolated.py": {
+      "measurement": "max_ci_mean",
+      "observations": 10,
+      "seconds_per_test": 0.10536
+    },
+    "tests/test_smiles_stereo_import.py": {
+      "measurement": "max_ci_mean",
+      "observations": 24,
+      "seconds_per_test": 1.65102
+    },
+    "tests/test_sp3_bond_placement.py": {
+      "measurement": "max_ci_mean",
+      "observations": 12,
+      "seconds_per_test": 0.4846
+    },
+    "tests/test_special_projection_geometry.py": {
+      "measurement": "max_ci_mean",
+      "observations": 18,
+      "seconds_per_test": 0.0396
+    },
+    "tests/test_spectroscopy_dock.py": {
+      "measurement": "max_ci_mean",
+      "observations": 12,
+      "seconds_per_test": 1.9418
+    },
+    "tests/test_spectroscopy_service.py": {
+      "measurement": "max_ci_mean",
+      "observations": 14,
+      "seconds_per_test": 0.01571
+    },
+    "tests/test_stereo_advanced.py": {
+      "measurement": "max_ci_mean",
+      "observations": 14,
+      "seconds_per_test": 0.02014
+    },
+    "tests/test_superatoms_abbreviations.py": {
+      "measurement": "max_ci_mean",
+      "observations": 12,
+      "seconds_per_test": 0.01849
+    },
+    "tests/test_template_browser_service.py": {
+      "measurement": "max_ci_mean",
+      "observations": 16,
+      "seconds_per_test": 0.56028
+    },
+    "tests/test_template_controller.py": {
+      "measurement": "max_ci_mean",
+      "observations": 4,
+      "seconds_per_test": 0.05451
+    },
+    "tests/test_template_dock.py": {
+      "measurement": "max_ci_mean",
+      "observations": 6,
+      "seconds_per_test": 0.0211
+    },
+    "tests/test_template_insertion_mode.py": {
+      "measurement": "max_ci_mean",
+      "observations": 1,
+      "seconds_per_test": 0.06513
+    },
+    "tests/test_template_library.py": {
+      "measurement": "max_ci_mean",
+      "observations": 38,
+      "seconds_per_test": 0.57097
+    },
+    "tests/test_test_workflow_contract.py": {
+      "measurement": "max_ci_mean",
+      "observations": 8,
+      "seconds_per_test": 0.53548
+    },
+    "tests/test_text_tool_interaction.py": {
+      "measurement": "max_ci_mean",
+      "observations": 26,
+      "seconds_per_test": 0.18063
+    },
+    "tests/test_ui_app_bar_tabs.py": {
+      "measurement": "max_ci_mean",
+      "observations": 48,
+      "seconds_per_test": 2.31199
+    },
+    "tests/test_ui_icon_provider_hidpi.py": {
+      "measurement": "max_ci_mean",
+      "observations": 52,
+      "seconds_per_test": 0.11307
+    },
+    "tests/test_ui_polish.py": {
+      "measurement": "max_ci_mean",
+      "observations": 76,
+      "seconds_per_test": 2.98331
+    },
+    "tests/test_ui_svg_icons.py": {
+      "measurement": "max_ci_mean",
+      "observations": 56,
+      "seconds_per_test": 1.21828
+    },
+    "tests/test_ui_theme_foundation.py": {
+      "measurement": "max_ci_mean",
+      "observations": 56,
+      "seconds_per_test": 0.30679
+    },
+    "tests/test_ui_tool_rail.py": {
+      "measurement": "max_ci_mean",
+      "observations": 128,
+      "seconds_per_test": 1.59077
+    },
+    "tests/test_update_core.py": {
+      "measurement": "max_ci_mean",
+      "observations": 18,
+      "seconds_per_test": 0.112
+    },
+    "tests/test_update_policy.py": {
+      "measurement": "max_ci_mean",
+      "observations": 10,
+      "seconds_per_test": 0.15996
+    },
+    "tests/test_update_portable.py": {
+      "measurement": "max_ci_mean",
+      "observations": 5,
+      "seconds_per_test": 0.40907
+    },
+    "tests/test_update_provider.py": {
+      "measurement": "max_ci_mean",
+      "observations": 8,
+      "seconds_per_test": 0.04959
+    },
+    "tests/test_update_security.py": {
+      "measurement": "max_ci_mean",
+      "observations": 6,
+      "seconds_per_test": 0.03213
+    },
+    "tests/test_update_semver.py": {
+      "measurement": "max_ci_mean",
+      "observations": 8,
+      "seconds_per_test": 0.68019
+    },
+    "tests/test_update_telemetry.py": {
+      "measurement": "max_ci_mean",
+      "observations": 2,
+      "seconds_per_test": 0.05397
+    },
+    "tests/test_update_ui_text.py": {
+      "measurement": "max_ci_mean",
+      "observations": 5,
+      "seconds_per_test": 0.05727
+    },
+    "tests/test_update_windows.py": {
+      "measurement": "max_ci_mean",
+      "observations": 10,
+      "seconds_per_test": 0.53373
+    },
+    "tests/test_validation_dock.py": {
+      "measurement": "max_ci_mean",
+      "observations": 14,
+      "seconds_per_test": 1.72058
+    },
+    "tests/test_version_metadata.py": {
+      "measurement": "max_ci_mean",
+      "observations": 4,
+      "seconds_per_test": 0.53614
+    },
+    "tests/test_viewport3d_camera.py": {
+      "measurement": "max_ci_mean",
+      "observations": 20,
+      "seconds_per_test": 0.19574
+    },
+    "tests/test_viewport3d_depth_occlusion.py": {
+      "measurement": "max_ci_mean",
+      "observations": 12,
+      "seconds_per_test": 0.0209
+    },
+    "tests/test_viewport3d_geometry.py": {
+      "measurement": "max_ci_mean",
+      "observations": 16,
+      "seconds_per_test": 0.01938
+    },
+    "tests/test_viewport3d_picking.py": {
+      "measurement": "max_ci_mean",
+      "observations": 14,
+      "seconds_per_test": 0.10568
+    },
+    "tests/test_viewport3d_widget.py": {
+      "measurement": "max_ci_mean",
+      "observations": 84,
+      "seconds_per_test": 0.48142
+    },
+    "tests/test_wedge_double_label_junctions.py": {
+      "measurement": "max_ci_mean",
+      "observations": 20,
+      "seconds_per_test": 0.31602
+    },
+    "tests/test_wedge_geometry.py": {
+      "measurement": "max_ci_mean",
+      "observations": 24,
+      "seconds_per_test": 0.44203
+    }
+  },
+  "schema_version": 1,
+  "source": {
+    "commit": "8c28d47c0518f4ca40619839ae3504df8cf87096",
+    "kind": "github-actions",
+    "method": "Per file, seconds_per_test is the maximum per-run mean from timing JSONL in Actions runs 39679607676 (complete assignments) and 39697199469 (all completed cases; shards 5/6 partial), retaining any higher rate from the prior pinned profile 38996089270. observations counts recorded test timings in the two recent Actions runs; unobserved current-suite files use the unchanged 0.2-second fallback. Partial samples are explicitly not a complete validation result.",
+    "platform": "ubuntu-24.04 / Python 3.11",
+    "run_id": "39697199469",
+    "supplemental_run_ids": [
+      "39679607676",
+      "38996089270"
+    ]
   }
 }
