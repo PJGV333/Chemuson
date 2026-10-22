@@ -104,3 +104,11 @@ Este addendum reemplaza la evaluación anterior de candidata sin paquetes exacto
 3. En ambos, prueba inicio/cierre, dibujo de etanol/benceno/amida, guardar y reabrir `.cmsn`, undo/redo, ChemName, descriptores RDKit, iconos en tema claro/oscuro y DPI. Registra portable y setup como ejecuciones distintas, cada una con artifact ID, SHA, versión de Windows, resultado y evidencia.
 
 Los checks automatizados del run (iconos, ChemName, RDKit/3D, AppImage y Flatpak) no son aceptación de instalación ni GUI del propietario. Mantén las filas manuales sin evidencia en `docs/release/manual-acceptance-0.3.0.md` como `NOT TESTED`; no marques PASS hasta completar y documentar esa ejecución exacta. No se creó tag, Release, merge, PR ni publicación.
+
+## Intento graphics RC — Build Preview #39848401263 (2026-10-22)
+
+El run usó exactamente `release/v0.3.0-beta.1-graphics-rc-prep`, SHA `fa51c896992c2d72d01ebf03deca316d2cce175d`, versión `0.3.0-beta.1`, `publication=false`. Windows portable/installer y Flatpak pasaron, pero AppImage falló en el smoke gráfico Xvfb/XCB. Aunque el CArchive y los smokes de iconos, RDKit y ChemName pasaron, Qt no pudo inicializar el plugin `xcb`; el build no llegó al manifest/upload. El AppImage efímero tuvo digest `47042dbc20e59fe6f9b4bb5753796b4552637b5fc7178d0f2e45d1b79053c28a`, pero no tiene artifact ID ni enlace descargable y **no debe usarse para aceptación**. El reporte del run declara `complete=false`; sigue siendo NO-GO para aceptar/publicar.
+
+Cuando haya un artifact AppImage de un Build Preview completo: descarga el ZIP `chemuson-preview-linux-appimage`, extráelo en Dolphin, clic derecho al `.AppImage` → **Propiedades → Permisos → Es ejecutable**, cierra Propiedades y haz doble clic; si KDE pregunta, elige **Ejecutar**. Prueba el archivo exacto cuyo SHA y provenance constan en el artifact. Para este run no hay archivo que abrir; los casos manuales de la matriz permanecen `NOT TESTED`.
+
+El incidente Flatpak se investigó aparte: `test` run #39809759478 fue cancelado mientras apt descargaba 123 paquetes/99 MB durante el límite existente de 10 min. En #39848401263 la instalación tardó cerca de 38 min y luego Flatpak pasó; no se atribuye a código funcional ni se aumentaron timeouts.

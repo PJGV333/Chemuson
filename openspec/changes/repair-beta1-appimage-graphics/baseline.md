@@ -34,3 +34,12 @@ Fecha: 2026-10-22. Repositorio `/home/ccachyavgp/Documentos/ChemUSON`.
 Sin cambiar el AppImage original ni el host, se completó la inspección dinámica antes de editar producción. El detalle de rutas, versiones, A/B y sus límites está en `validation.md` y `design.md`. Conclusión confirmada: conflicto entre Mesa del host (requiere `GLIBCXX_3.4.32`) y `libstdc++` congelado (máximo `3.4.30`); Fontconfig/FreeType congelados (2.13.1/2.11.1) generan una segunda incompatibilidad de sintaxis con configuración CachyOS moderna. La causa principal fue reproducida en Wayland/XWayland y atribuida con preload A/B; se actualiza el plan de reparación antes de cambiar código.
 
 El entorno contiene `LD_LIBRARY_PATH=/home/ccachyavgp/Aplicaciones/Orca_QC` duplicado, pero retirarlo no cambia el fallo. La reproducción original XCB exit `-6` es espontánea y separada de las pruebas donde la terminación SIGTERM se hizo deliberadamente. Los logs/screenshot/maps/copias exactas del runtime están en `/tmp/chemuson-appimage-gl-repair-78b0139/`; su SHA-256 se recopilará al cerrar el cambio.
+
+## Baseline de validación final del paquete (2026-10-22)
+
+- HEAD local y `origin/fix/beta1-appimage-graphics`: `fa51c896992c2d72d01ebf03deca316d2cce175d`; worktree limpio antes de iniciar. Se confirmó además que el remoto `fix/beta1-appimage-graphics` apunta exactamente a ese SHA.
+- `python -m compileall src tests tools packaging`: exit 0.
+- `pytest --collect-only -q`: exit 0, 2.604 tests collected in 0.79s.
+- `pytest -q`: el comando excedió el límite externo de 720s; la última salida mostró progreso de 41%, sin resumen final. No se atribuye PASS ni fallo de tests; no se repitió monolíticamente.
+- `ruff check src tests tools packaging --select F401,F811,F821,E722,E741`: exit 1 por el F401 basal `math` en `tests/test_clean2d_para_disubstituted_aromatic_layout_v1.py:3`; sin otros hallazgos.
+- Salida exacta capturada en `/tmp/chemuson-beta1-graphics-final-baseline/exact-output.txt` (SHA-256 `8184301ffb1a33f6c6eb378f4c152afe3d7f869b548a94fd1e3cbb77913909ad`). La captura incluye status, compileall, colección, progreso parcial del agregado y salida Ruff; el timeout lo informó la herramienta a los 720s.
