@@ -49,6 +49,8 @@ Los cuatro artifacts se descargaron; `sha256sum -c checksums.sha256` pasó para 
 
 Estas comprobaciones acreditan empaquetado/procedencia, no instalación, portal ni aceptación GUI manual. Los casos P0/P1 del propietario siguen `NOT TESTED`; no se eleva ninguna fila por los smokes automatizados.
 
+Tras registrar run/artifacts en OpenSpec y notas de aceptación: OpenSpec estricto PASS; `python -m compileall -q src tests tools packaging` PASS; pruebas focalizadas de contratos Flatpak/distribución/preview/AppImage/RDKit/ChemName: **58 passed in 3.23s**; `git diff --check` PASS. No se ejecutó la suite completa ni `test.yml`.
+
 ## Riesgos, aceptación y decisión
 
 - **P1 pendiente:** el propietario debe instalar y ejecutar los cuatro artefactos exactos. Para Flatpak, especialmente probar abrir/guardar un `.cmsn` fuera de los directorios de estado y reabrirlo mediante el portal sin permiso global al home.
