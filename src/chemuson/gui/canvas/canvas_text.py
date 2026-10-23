@@ -1536,12 +1536,21 @@ class CanvasTextMixin:
             and not bool(getattr(atom, "is_coordination_center", False))
             and label in {"NH", "HN", "NH2", "H2N"}
         )
+        # Las aminas ordinarias muestran NH/H2N/HN horizontales; el apilado
+        # vertical (above/below) queda reservado a contextos conjugados con
+        # contrato visual (amidas, ureas) y a los casos existentes aromáticos.
+        allow_vertical_h = (
+            separated_nh
+            and self._nitrogen_geometry_context(atom_id) != "amine"
+        )
         item.set_optical_anchor_centering(
             self._label_near_multiple_bond(atom_id) or separated_nh
         )
         item.set_display_label(label, anchor)
         item.set_implicit_hydrogen_position(
-            self._choose_implicit_hydrogen_position(atom_id) if separated_nh else None
+            self._choose_implicit_hydrogen_position(atom_id, allow_vertical_h)
+            if separated_nh
+            else None
         )
         item.set_label_offset(offset)
         self._update_bond_label_shrinks({atom_id})
@@ -1571,14 +1580,33 @@ class CanvasTextMixin:
                 return True
         return False
 
-    def _choose_implicit_hydrogen_position(self, atom_id: int) -> str:
-        """Choose a cardinal H position using open sectors and visible collisions."""
+    def _choose_implicit_hydrogen_position(
+        self, atom_id: int, allow_vertical: bool = True
+    ) -> str:
+        """Choose a cardinal H position using open sectors and visible collisions.
+
+        Args:
+            atom_id: átomo N cuyo glifo H se reubica.
+            allow_vertical: si también se consideran above/below; False
+                restringe a horizontales (aminas ordinarias, NH2/H2N/NH sin
+                apilado vertical).
+
+        Returns:
+            Posición cardinal elegida.
+
+        Side Effects:
+            Ninguno además de la lectura del estado.
+        """
         item = self.atom_items.get(atom_id)
         atom = self.model.atoms.get(atom_id)
         if item is None or atom is None or not item._implicit_hydrogen_text:
             return "right"
 
-        candidates = ("right", "left", "above", "below")
+        candidates = (
+            ("right", "left", "above", "below")
+            if allow_vertical
+            else ("right", "left")
+        )
         candidate_angles = {"right": 0.0, "below": 90.0, "left": 180.0, "above": 270.0}
         neighbor_angles: list[float] = []
         sum_x = 0.0

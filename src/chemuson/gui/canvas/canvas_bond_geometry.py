@@ -130,6 +130,33 @@ class CanvasBondGeometryMixin:
                 return "other"
         return "amine"
 
+    def _nitrogen_context_dependent_refresh_ids(
+        self, endpoint_a_id: int, endpoint_b_id: int
+    ) -> list[int]:
+        """N adyacentes a los extremos de un enlace cuyo contexto puede cambiar.
+
+        Al crear, actualizar o eliminar un enlace, la clasificación
+        amida/urea/amina de los N unidos a esos extremos puede variar sin
+        que se refresquen sus etiquetas; estos IDs complementan el refresco
+        de los propios extremos.
+        """
+        affected: list[int] = []
+        for endpoint_id in (endpoint_a_id, endpoint_b_id):
+            for other_bond in self.model.bonds.values():
+                if not bond_affects_valence(other_bond):
+                    continue
+                if endpoint_id not in (other_bond.a1_id, other_bond.a2_id):
+                    continue
+                other_id = (
+                    other_bond.a2_id
+                    if other_bond.a1_id == endpoint_id
+                    else other_bond.a1_id
+                )
+                other_atom = self.model.get_atom(other_id)
+                if other_atom is not None and other_atom.element == "N":
+                    affected.append(other_id)
+        return list(dict.fromkeys(affected))
+
     def _bond_geometry(self, anchor_id: int, bond_order: int, is_aromatic: bool) -> str:
         has_triple = bond_order >= 3
         has_double = bond_order == 2 or is_aromatic

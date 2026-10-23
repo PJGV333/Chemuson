@@ -1968,6 +1968,10 @@ class CanvasStructureMixin:
         self.bond_items[bond.id] = item
         self._refresh_atom_label(bond.a1_id)
         self._refresh_atom_label(bond.a2_id)
+        for nitrogen_id in self._nitrogen_context_dependent_refresh_ids(
+            bond.a1_id, bond.a2_id
+        ):
+            self._refresh_atom_label(nitrogen_id)
         self._refresh_bond_ring_flags(ring_pairs)
         self.recompute_numbering()
 
@@ -2060,6 +2064,10 @@ class CanvasStructureMixin:
         self._refresh_bond_ring_flags(ring_pairs if item is not None else None)
         self._refresh_atom_label(bond.a1_id)
         self._refresh_atom_label(bond.a2_id)
+        for nitrogen_id in self._nitrogen_context_dependent_refresh_ids(
+            bond.a1_id, bond.a2_id
+        ):
+            self._refresh_atom_label(nitrogen_id)
 
     def _bond_render_width(self, bond: Bond) -> float:
         """Método auxiliar para  bond render width.
@@ -2388,6 +2396,8 @@ class CanvasStructureMixin:
             self.scene.removeItem(item)
             self._refresh_atom_label(a1_id)
             self._refresh_atom_label(a2_id)
+            for nitrogen_id in self._nitrogen_context_dependent_refresh_ids(a1_id, a2_id):
+                self._refresh_atom_label(nitrogen_id)
         self._refresh_bond_ring_flags()
         self.recompute_numbering()
 
