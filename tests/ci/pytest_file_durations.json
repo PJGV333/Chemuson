@@ -136,6 +136,11 @@
       "observations": 38,
       "seconds_per_test": 0.15305
     },
+    "tests/test_amine_label_orientation.py": {
+      "measurement": "local_mean",
+      "observations": 1,
+      "seconds_per_test": 0.05
+    },
     "tests/test_appimage_validation.py": {
       "measurement": "max_ci_mean",
       "observations": 14,

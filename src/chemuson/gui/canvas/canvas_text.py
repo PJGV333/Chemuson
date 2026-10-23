@@ -1536,12 +1536,17 @@ class CanvasTextMixin:
             and not bool(getattr(atom, "is_coordination_center", False))
             and label in {"NH", "HN", "NH2", "H2N"}
         )
-        # Las aminas ordinarias muestran NH/H2N/HN horizontales; el apilado
-        # vertical (above/below) queda reservado a contextos conjugados con
-        # contrato visual (amidas, ureas) y a los casos existentes aromáticos.
+        # Las aminas primarias (NH2/H2N) muestran el glifo H horizontal para
+        # no apilar "H2" sobre/bajo el N. Las etiquetas de amina secundaria
+        # (NH/HN) siguen el sector abierto en las cuatro direcciones, como el
+        # resto de contextos: forzarlas a left/right infla el recorte del
+        # enlace adyacente y la cadena parece acortarse junto a la etiqueta.
         allow_vertical_h = (
             separated_nh
-            and self._nitrogen_geometry_context(atom_id) != "amine"
+            and (
+                self._nitrogen_geometry_context(atom_id) != "amine"
+                or label in {"NH", "HN"}
+            )
         )
         item.set_optical_anchor_centering(
             self._label_near_multiple_bond(atom_id) or separated_nh
@@ -1588,8 +1593,8 @@ class CanvasTextMixin:
         Args:
             atom_id: átomo N cuyo glifo H se reubica.
             allow_vertical: si también se consideran above/below; False
-                restringe a horizontales (aminas ordinarias, NH2/H2N/NH sin
-                apilado vertical).
+                restringe a horizontales (aminas primarias NH2/H2N sin
+                apilado vertical del glifo H₂).
 
         Returns:
             Posición cardinal elegida.

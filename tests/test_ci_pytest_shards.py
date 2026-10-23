@@ -33,7 +33,7 @@ def test_duration_profile_is_pinned_to_the_timeout_baseline() -> None:
         .splitlines()
     }
     assert set(profile["files"]) == manifest_files
-    assert len(profile["files"]) == 253
+    assert len(profile["files"]) == 254
     assert profile["files"]["tests/test_clean2d_baseline_reports.py"]["seconds_per_test"] > 5.0
     assert profile["files"]["tests/test_beta_save_shortcut_menu_access.py"]["seconds_per_test"] > 4.64
     assert profile["files"]["tests/test_ui_polish.py"]["seconds_per_test"] > 2.98

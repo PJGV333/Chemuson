@@ -639,7 +639,7 @@ def test_qtest_urea_places_hydrogens_outside_bond_sectors_and_keeps_clearance(
 
 @pytest.mark.parametrize(
     ("degree", "expected_hydrogens", "expected_position"),
-    [(1, 2, "left"), (2, 1, "left")],
+    [(1, 2, "left"), (2, 1, "above")],
     ids=("primary-amine", "secondary-amine"),
 )
 def test_qtest_amine_nh_glyphs_reposition_without_moving_the_nitrogen(
