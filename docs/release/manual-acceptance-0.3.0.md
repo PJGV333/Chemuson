@@ -201,6 +201,8 @@ Estas limitaciones son conocidas y no deben confundirse con defectos bloqueantes
 
 Para declarar un caso finalizado, reemplazar `NOT TESTED`, añadir SHA del artifact, entorno, tester, resultado observado y enlace a evidencia. Los fallos históricos del test harness Qt no son equivalentes a un crash reproducido de la aplicación empaquetada, y tampoco se consideran cerrados por no reproducirse en una prueba aislada. Stable requiere aprobación del propietario y cero P0/P1 atribuibles al candidato.
 
+> **Nota (2026-10-23):** la aceptación de arriba se hizo sobre el AppImage de diagnóstico (`6a6342f9…`). Los cuatro paquetes de la beta integrada en `stabilize/v0.3.0-beta.1` (SHA `7d935669300053ee222fc664444bc00a37e558c9`, run [#39881978237](https://github.com/PJGV333/Chemuson/actions/runs/39881978237), hashes en `PREVIEW_BUILDS.md`) son los artefactos indicados para completar el retest del resto de la matriz.
+
 ## Aceptación manual inicial del propietario — 2026-10-22 (build de diagnóstico)
 
 - Artefacto aceptado: `Chemuson-v0.3.0-beta.1-diagnostic-6a6342f9-linux-x86_64.AppImage`, SHA-256 `3ecd83bcf098b955e9386b2c8cb63100619e7e2094042829cba40d320233da04`, source SHA `6a6342f93dfd4a3d1d5ad706aea1fbaeef36e9fe` (rama `fix/beta1-appimage-graphics`), build local de diagnóstico en CachyOS, `publication=false`. Manifiestos: `dist-appimage-diagnostic/diagnostic-provenance.json` y `checksums.sha256`.
