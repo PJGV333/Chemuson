@@ -25,4 +25,12 @@
 ## D. Preparación de publicación
 - [x] D.1 Actualizar notas, OpenSpec y guía preview con SHAs, runs, artifact IDs, hashes y pasos de aceptación. La matriz `manual-acceptance-0.3.0.md` queda deliberadamente intacta; los resultados manuales pendientes no se modifican.
 - [x] D.2 Dictamen: **candidata lista para aceptación manual; NO-GO para publicación**. Build Preview exacto `a38fa804…` está completo; aceptación manual P0/P1 y validación instalada/gráfica siguen pendientes. CI del código tiene riesgo de margen estrecho; detalles y evidencia en `validation.md`.
-- [x] D.3 No se hizo merge, worktree adicional, tag, Release, PR ni cambio a canales públicos/`main`/`gh-pages`. Se creó únicamente la referencia remota RC permitida para Build Preview, exacta al SHA candidato; HEAD activo intacto. No se integró código en otra rama.
+- [x] D.3 En el cierre original no se hizo merge, worktree adicional, tag, Release, PR ni cambio a canales públicos/`main`/`gh-pages`; ese estado se conserva como registro histórico. La autorización posterior del propietario se registra en el addendum de esta campaña.
+
+## E. Integración final y preparación pública autorizadas (2026-10-23)
+- [x] E.1 Confirmar fetch, árbol limpio, ancestro `61f7647b…`, cero divergencia y 29 commits de estabilización por delante; fast-forward-only desde `61f7647b…` hasta `d808070f…` y push normal de `release/v0.3.0-beta.1-prep`. `main` intacta.
+- [x] E.2 Baseline proporcional, arquitectura, compileall, colecta, Ruff focal y 220 pruebas de seguridad/archivo/worker/release/version metadata; no ejecutar pytest masivo conforme a la política posterior.
+- [x] E.3 Revisar flujos de archivo/proceso/AI/update, dependencias, permisos GitHub y matriz P0/P1; preparar cuerpo público curado y vincularlo en `release.yml` sin cambiar permisos, gates, canales ni lógica de publicación.
+- [ ] E.4 Build Preview oficial de los cuatro paquetes desde la SHA final posterior al commit documental; verificar jobs, SHA común, provenance, checksums, recursos, ChemName/RDKit y smoke 2D→3D real.
+- [ ] E.5 Aceptación manual esencial del propietario en Windows portable/setup, AppImage y Flatpak para los paquetes exactos; completar la matriz existente sin promover estados por evidencia de diagnóstico.
+- [ ] E.6 Configurar/verificar protección externa `v*` y entornos de publicación `beta`/`flatpak-beta`; no crear tag hasta que estén habilitados y la matriz P0/P1 permita GO.

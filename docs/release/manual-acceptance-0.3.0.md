@@ -215,3 +215,15 @@ Para declarar un caso finalizado, reemplazar `NOT TESTED`, añadir SHA del artif
 - Aceptación del propietario sobre la corrección de colocación del H implícito en aminas ordinarias (`fix/primary-amine-label-orientation-beta1`, OpenSpec `fix-primary-amine-label-orientation-beta1`), revisada mediante las capturas comparativas claro/oscuro de `openspec/changes/fix-primary-amine-label-orientation-beta1/evidence/` (before/after de la reproducción 1,1-diamino-3-fenilpropan-2-ona, cadenas zigzag, poliamina lineal, N-metilanilina y controles amida/urea/amonio).
 - **ACEPTADO visualmente por el propietario** el resultado combinado de ambas revisiones: primarias `NH₂`/`H₂N` horizontales sin apilado del subíndice; secundarias `NH`/`HN` en el sector abierto con los dos trazos N–C adyacentes simétricos (longitud visual coherente en el dibujo normal, sin depender de Clean2D). Los comportamientos intencionales de amidas, ureas y contextos análogos quedan declarados conservados.
 - Integración autorizada por el propietario: fast-forward de `stabilize/v0.3.0-beta.1` desde `33ed5223` hasta `0768a670` (cuatro commits de la campaña conservados íntegros). Manifiesto CI en 2.624 node IDs; sin recompilación de paquetes en este registro; sin cambios en `main`, sin tag ni Release. La aceptación visual de esta campaña no reabre ni modifica ninguna otra fila de la matriz, que permanece en su estado histórico.
+
+## Retest corto de la candidata final — pendiente
+
+Los registros visuales de diagnóstico y la campaña de aminas no acreditan los binarios finales. Usa únicamente los cuatro artifacts del Build Preview oficial correspondiente al SHA que aparece en cada `preview-provenance.json`; confirma que los cuatro SHA coincidan y verifica cada `checksums.sha256`. Mantén cada resultado en `NOT TESTED` hasta observar ese paquete exacto.
+
+1. **Windows portable:** comprobar arranque/salida; dibujar una molécula pequeña y un anillo; Undo/Redo; guardar `.cmsn`, cerrar y reabrir; importar etanol desde SMILES y un MOL de prueba; revisar etiquetas de aminas y descriptores RDKit.
+2. **Windows Inno Setup:** en VM/perfil desechable, instalar, abrir, comprobar versión, cerrar y desinstalar. No sobrescribir una instalación de trabajo.
+3. **AppImage Type 2 (CachyOS):** comprobar checksum, `--version`, abrir desde el escritorio o `AppRun`; dibujo 2D, guardado/reapertura, importación, conformero 3D real y cierre limpio.
+4. **Flatpak:** instalar sólo el bundle local en perfil de usuario aislado; abrir, repetir dibujo, guardado/reapertura e importación, probar 3D y cerrar/desinstalar. No añadir un remoto público.
+5. En al menos un paquete, cerrar mientras el worker 3D está activo y confirmar cierre limpio. Si hay corrupción, pérdida de datos, identidad estéreo cambiada o crash reproducible, marcar `FAIL` y detener la aceptación.
+
+Para cada ejecución anota run/artifact ID, SHA completo, checksum, sistema/versión, tester, pasos observados y evidencia no sensible. No se exige completar casos P2 cosméticos antes de beta; sí resolver o autorizar explícitamente cualquier P0/P1 esencial. La falta de ejecución sigue siendo `NOT TESTED`.

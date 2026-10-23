@@ -59,7 +59,7 @@ def test_only_publication_jobs_have_write_permission_and_are_explicit() -> None:
 
 
 def test_existing_release_build_and_flatpak_publication_checks_remain() -> None:
-    text, _workflow_data = _workflow()
+    text, workflow = _workflow()
     for required in (
         "validate_release_tag.py",
         "validate_release_artifacts.py",
@@ -73,6 +73,14 @@ def test_existing_release_build_and_flatpak_publication_checks_remain() -> None:
         "fail_on_unmatched_files: true",
     ):
         assert required in text
+    release_step = next(
+        step
+        for step in workflow["jobs"]["release"]["steps"]
+        if step.get("uses", "").startswith("softprops/action-gh-release@")
+    )
+    assert release_step["with"]["body_path"] == "docs/release/0.3.0-beta.1-public.md"
+    assert release_step["with"]["generate_release_notes"] == "false"
+    assert (ROOT / release_step["with"]["body_path"]).is_file()
     assert "set_version.py" not in text
     assert "target_commitish:" not in text
 

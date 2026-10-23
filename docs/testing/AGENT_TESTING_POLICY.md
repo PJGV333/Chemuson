@@ -101,3 +101,24 @@ git diff --check                                       # higiene de diffs
   y no se reescriben.
 - Limpiar una salida no afecta al código de producción: basta con borrar el
   directorio de salida correspondiente.
+
+## Conflicto documental con `AGENTS.md` — propuesta de reconciliación
+
+`AGENTS.md` §1.2/§1.3 todavía prescribe `pytest -q` completo como baseline y al
+final de cada tarea. Esta política posterior (2026-10-22) conserva toda la
+colección, pero establece que la suite masiva es extraordinaria y no obligatoria
+en cada cambio; `test.yml` sólo se ejecuta mediante `workflow_dispatch`.
+
+Para campañas ordinarias rige el flujo proporcional de esta política y la
+solicitud concreta del propietario: colecta, compileall, arquitectura y pruebas
+focalizadas según alcance; el workflow completo no se dispara automáticamente.
+No se borran tests, no se altera el manifiesto y siguen fail-closed los gates de
+`test.yml` y los checks acotados de `release.yml`. Una auditoría completa se
+realiza sólo cuando el riesgo o una autorización explícita la justifique.
+
+**Propuesta, no cambio normativo:** en una revisión documental futura, alinear
+`AGENTS.md` §1.2/§1.3 con esta separación. Mantener captura de Git, compileall,
+colecta y Ruff en baseline; ejecutar siempre arquitectura y tests focalizados;
+reservar la suite completa para auditoría extraordinaria aprobada. Hasta que el
+propietario apruebe esa reconciliación, no modificar ni reinterpretar
+silenciosamente requisitos críticos de ninguno de los dos documentos.

@@ -28,3 +28,13 @@ No agregar funcionalidades, rediseñar la GUI, cambiar Clean2D, modelos o algori
 4. Los cuatro paquetes, cuando exista una ejecución autorizada para el nuevo SHA, se verifican por separado con checksum/provenance; las comprobaciones automatizadas no se presentan como aceptación manual.
 5. La matriz/manual, notas y guías reflejan sólo resultados trazables. Windows nativo, instalación, OpenGL visual u otros entornos no disponibles figuran NOT TESTED.
 6. No se publica ni se afirma estabilidad sin evidencia. La decisión final identifica bloqueos P0/P1, advertencias, artefactos y pruebas pendientes.
+
+## Addendum de autorización del propietario — integración de release
+
+En la continuación del 2026-10-23 el propietario autorizó explícitamente integrar
+`stabilize/v0.3.0-beta.1` en `release/v0.3.0-beta.1-prep` mediante
+`git merge --ff-only` y push normal, preparar notas públicas e iniciar el Build
+Preview oficial. Esta autorización supersede únicamente la restricción previa
+de no integrar. No autoriza tag/Release mientras falte aceptación humana o haya
+controles de publicación pendientes; no amplía el alcance funcional ni permite
+force-push, cambiar `main`, alterar canales o eludir validadores.

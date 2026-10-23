@@ -523,7 +523,8 @@ jobs:
             release-dist/*
           draft: false
           prerelease: ${{ steps.vars.outputs.channel == 'beta' }}
-          generate_release_notes: true
+          body_path: docs/release/0.3.0-beta.1-public.md
+          generate_release_notes: false
 
   publish_flatpak_remote:
     needs: [release_gate, release, build_flatpak]

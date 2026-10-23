@@ -27,3 +27,14 @@ La baseline está en `baseline.md`. El SHA inicial esperado coincide con HEAD. E
 - Una matriz local de 2.598 IDs, ejecutada serialmente en Python 3.14.8, tuvo siete shards verdes y shard 6 abortó a 144.659 s (308/373 timings; 65 sin ejecutar). El mismo shard, repetido una vez en otro directorio, abortó igual en el mismo test. El verifier rechaza la matriz. El monolítico basal de 8 min había expirado sin resumen.
 - Sin un nuevo run Actions/preview en el SHA estabilizado no se puede declarar CI remoto verde ni validar cuatro binarios nuevos. Sin Windows/OpenGL interactivo no se afirma aceptación de esos entornos. El aborto local bloquea la decisión final hasta diagnóstico/decisión del owner.
 - Los históricos que llaman incorrectamente AppImage al ejecutable se corrigen con nota explícita de documento histórico; no se reescriben resultados como si fueran Type 2.
+
+## Addendum — alcance autorizado de cierre público (2026-10-23)
+
+El propietario autorizó de forma expresa integrar la rama de estabilización en
+la rama prep por fast-forward-only, push normal, preparar el cuerpo público de
+la beta y generar el preview oficial desde la SHA final. Se conserva el freeze
+de funcionalidades. La autorización no elimina gates ni equivale a aceptación
+de paquetes: tag, GitHub Release y despliegue Flatpak siguen condicionados a
+aceptación P0/P1 exacta y protección/configuración externa de publicación.
+La reconciliación entre `AGENTS.md` y la política de pruebas se documenta como
+propuesta separada, sin ejecutar la suite masiva ni cambiar sus controles.
