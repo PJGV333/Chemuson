@@ -10,25 +10,39 @@ el H₂ de un grupo amino **apilado sobre el N** y el del otro amino **apilado b
 incluidas las aminas ordinarias, y la jerarquía de colisiones elige arriba/abajo cuando
 el sector libre lo favorece. El contrato existente en
 `tests/test_amide_urea_2d_continuity.py` incluso codificaba `above` para una amina
-secundaria. Las aminas ordinarias deben leerse como `NH₂`/`H₂N`/`NH` horizontales.
+secundaria. Los grupos `NH₂`/`H₂N` deben leerse horizontales, sin apilar el subíndice.
+
+**Revisión 2 (mismo cambio):** la restricción inicial a `left`/`right` para todo el
+contexto `amine` introdujo otra regresión visual — en cadenas con aminas secundarias
+(`-NH-`) el glifo `H` en horizontal sobre la cadena **inflaba el recorte del enlace
+adyacente** y los trazos N–C se veían desproporcionadamente cortos junto a la
+etiqueta (medido en un zigzag simétrico: 31.5 px dibujados a un lado frente a 22.1 px
+al otro). Las secundarias deben seguir la geometría local (sector abierto).
 
 ## Alcance
 
-- Restringir la estrategia vertical (`above`/`below`) del glifo H implícito a los
-  contextos nitrogenados con contrato visual propio: `amide`, `urea` y `aromatic`
-  (además de `other` para no alterar comportamiento no contratado).
 - Para el contexto `amine` (definido por conectividad y órdenes de enlace en
-  `_nitrogen_geometry_context`, no por proximidad geométrica) limitar los candidatos
-  de `_choose_implicit_hydrogen_position` a `left`/`right`.
+  `_nitrogen_geometry_context`, no por proximidad geométrica): las etiquetas
+  primarias `NH2`/`H2N` limitan sus candidatos a `left`/`right` (sin apilar `H₂`
+  sobre/bajo el N); las etiquetas secundarias `NH`/`HN` conservan los cuatro
+  candidatos ordenados por colisiones y sector abierto, lo que mantiene
+  simétricos los recortes de los enlaces adyacentes de la cadena.
+- Los contextos `amide`, `urea`, `aromatic` y `other` conservan la estrategia de
+  `fix-amide-urea-nh-label-layout-beta1` sin ningún cambio.
 - Refrescar la reposición del H cuando cambia un enlace **vecino** que altera la
   clasificación del N (p. ej. dibujar `C=O` sobre el carbono ya unido al N): los N
   adyacentes a los extremos del enlace modificado se refrescan en
   `add_bond_item`/`update_bond_item`/`remove_bond_item`.
-- Actualizar el contrato de amina secundaria en
-  `tests/test_amide_urea_2d_continuity.py` (de `above` a horizontal) y añadir
-  `tests/test_amine_label_orientation.py` con los casos etilamina, anilina,
-  dietilamina, la reproducción exacta del dicetona diamino, controles de acetamida,
-  urea y amonio cargado, más refrescos tras edición/undo-redo/arrastre/cambio de tema.
+- Mantener el contrato de amina secundaria de `tests/test_amide_urea_2d_continuity.py`
+  en sector abierto (`above`) y añadir `tests/test_amine_label_orientation.py` con
+  etilamina, anilina, dietilamina, la reproducción exacta del dicetona diamino,
+  cadena zigzag con longitudes de enlace simétricas, poliamina lineal,
+  N-metilanilina, controles de acetamida, urea y amonio cargado, más refrescos tras
+  edición/undo-redo/arrastre/cambio de tema.
+- Registrar los nuevos node IDs en `tests/ci/expected_pytest_nodeids.txt` y la nueva
+  entrada de `tests/ci/pytest_file_durations.json` (contador fijado 253 → 254 en
+  `tests/test_ci_pytest_shards.py`) para mantener el manifiesto consistente con la
+  colección.
 
 ## Invariantes / fuera de alcance
 

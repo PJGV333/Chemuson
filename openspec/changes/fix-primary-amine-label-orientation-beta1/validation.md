@@ -46,3 +46,31 @@ El nuevo test afirma longitudes de enlace 40 ± 1e-7 en la reproducción complet
 glifo H para amonio cargado, y horizontalidad estable tras añadir enlace, undo, redo,
 arrastre con undo y cambio de tema. El recorte de enlaces se ejercita indirectamente
 en las aserciones de no-solape entre forma del glifo H y `shape()` de los enlaces.
+
+## Validación de la Revisión 2
+
+- Reproducción cuantitativa (`evidence/diagnose_chains.py`, Qt offscreen, carbonos
+  implícitos como en el dibujo normal):
+  - antes: zigzag simétrico con N central → `hpos=right`, trazos N–C 31.5 px vs
+    22.1 px (trim 8.5 vs 17.9); poliamina lineal y N-metilanilina con el H del
+    secundario sobre el sector de un enlace;
+  - después: `hpos=above`/`below` según sector abierto; trazos N–C 31.5 px vs
+    31.5 px (trim 8.5/8.5); terminales `H2N`/`NH2` sin cambios.
+- Tests dirigidos: `tests/test_amine_label_orientation.py` (14 node IDs),
+  `test_amide_urea_2d_continuity.py`, `test_functional_group_hydrogen_adjustment.py`,
+  `test_aromatic_nitrogen_regression.py`, `test_implicit_h_substitution.py`,
+  `test_drag_move_undo.py`, `test_selection_tightness.py` → **57 passed**;
+  batería de geometría/enlaces/modelo (`test_initial_2d_drawing_geometry.py`,
+  `test_sp3_bond_placement.py`, `test_core_model.py`,
+  `test_multilayer_chemical_graph.py`) → **44 passed**. No se ejecutó la suite
+  completa (≈2.6 k node IDs) por instrucción del propietario.
+- Manifiesto CI: `update-expected --confirm` → 2624 node IDs;
+  `pytest_file_durations.json` +1 archivo (254); contador fijado 253→254 en
+  `tests/test_ci_pytest_shards.py` → 6 passed;
+  `tools/ci_pytest_shards.py plan` → exit 0, 8 shards, distribución 2624.
+- `compileall` src+tests PASS; Ruff focal sobre los archivos tocados PASS;
+  `openspec validate fix-primary-amine-label-orientation-beta1 --strict` PASS;
+  `git diff --check` limpio.
+- Capturas `evidence/chain_light|chain_dark` (antes/después) de zigzag, V de
+  dietales, segmento horizontal, poliamina y N-metilanilina. No sustituyen la
+  revisión visual en el AppImage nativo.

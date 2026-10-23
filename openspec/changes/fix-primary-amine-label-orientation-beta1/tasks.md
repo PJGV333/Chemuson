@@ -35,3 +35,17 @@
       (pasan aislados antes y después del cambio); ver `validation.md`.
 - [x] D.3 Commits y push normal a la rama de fix; sin merge a `stabilize/v0.3.0-beta.1`
       (revisión visual pendiente del propietario); sin paquetes nuevos.
+
+## E. Revisión 2 — secundarias en cadena
+- [x] E.1 Diagnosticar la regresión visual de la regla horizontal para `NH`/`HN`
+      (trim asimétrico 8.5 vs 17.9 px; trazos 31.5 vs 22.1 px) y capturar `before`.
+- [x] E.2 Ajustar `allow_vertical_h`: solo `NH2`/`H2N` del contexto `amine` se
+      mantienen horizontales; `NH`/`HN` siguen el sector abierto con la jerarquía
+      existente.
+- [x] E.3 Extender `tests/test_amine_label_orientation.py` (cadena zigzag con
+      longitudes dibujadas simétricas, poliamina lineal, N-metilanilina) y devolver
+      el contrato `secondary-amine` a sector abierto.
+- [x] E.4 Registrar node IDs (2610→2624) y perfil de duraciones (253→254) con
+      `tools/ci_pytest_shards.py update-expected --confirm`; `plan` y
+      `tests/test_ci_pytest_shards.py` en verde.
+- [x] E.5 Capturas comparativas claro/oscuro de los casos de cadena en `evidence/`.

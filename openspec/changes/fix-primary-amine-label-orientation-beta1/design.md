@@ -69,3 +69,40 @@ el contrato de acetanilida/urea dibujados fuera de orden regresaba.
 Suite dirigida completa de suites de etiquetas/H/enlaces (≈249 tests en subconjuntos
 `grep`-dirigidos), diagnóstico offscreen con posiciones reales de glifos y capturas
 claro/oscuro en `evidence/`. Ver `validation.md`.
+
+## Revisión 2 — secundarias en cadena y percepción de longitud
+
+**Regresión de la regla inicial.** Restringir todo el contexto `amine` a
+`left`/`right` colocaba el glifo `H` de una amina secundaria `-NH-` de cadena
+**sobre el eje de la cadena**, dentro del sector de uno de sus dos enlaces. El
+recorte por etiqueta (`_update_bond_label_shrink`) usa la forma visible completa
+del label, que incluye el glifo H; al extenderse el H hacia el enlace, el trim de
+ese extremo crecía de ~8.5 px a ~17.9 px y el trazo dibujado pasaba de 31.5 px a
+22.1 px en un zigzag simétrico de enlaces de 40 unidades. El otro N–C conservaba
+31.5 px: la cadena se veía desproporcionada junto a la etiqueta. Clean2D (Ctrl+K)
+reubica el N y enmascara parcialmente el efecto, pero el dibujo normal nacía mal.
+
+**Heurística final (localizada, misma función).** En `_refresh_atom_label` el
+flag `allow_vertical_h` del contexto `amine` depende ahora de la etiqueta:
+`NH2`/`H2N` (una sola conexión, el apilado vertical del subíndice es el defecto
+original) se mantienen horizontales; `NH`/`HN` (dos conexiones, la geometría
+local define el sector libre) recuperan los cuatro candidatos. La jerarquía de
+`_choose_implicit_hydrogen_position` ya prioriza correctamente para secundarias:
+0 colisiones primero y, entre empates, menor `direction_cost` respecto al sector
+abierto `-Σ u(enlaces)`, lo que sitúa el H fuera del abanico de enlaces y deja
+simétricos los trims de ambos N–C. No se añadieron puntuaciones nuevas: la
+regla anterior era el único cambio y resultó excesiva.
+
+**Contrato revocado.** El valor `left` del parámetro `secondary-amine` de
+`test_qtest_amine_nh_glyphs_reposition_without_moving_the_nitrogen` vuelve a
+`above` (sector abierto del V dibujado por la herramienta). Los nuevos tests de
+cadena miden la longitud dibujada real de los dos N–C adyacentes (path del item
+de enlace) y exigen igualdad ±0.5 px.
+
+**Manifiesto CI.** Los node IDs de `tests/test_amine_label_orientation.py` (14)
+quedaron sin registrar en la revisión 1; ahora `update-expected --confirm` lleva
+el manifiesto de 2610 a 2624 y `tests/ci/pytest_file_durations.json` recibe la
+entrada del archivo (`local_mean`, 0.05 s/test, conservador frente a 0.37 s/14
+tests medidos en local). El contador fijado de archivos del perfil en
+`tests/test_ci_pytest_shards.py` pasa de 253 a 254 y `plan` vuelve a salir 0 con
+8 shards.
