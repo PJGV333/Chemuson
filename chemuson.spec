@@ -76,6 +76,7 @@ hiddenimports = sorted(
             "chemuson.chemio.rdkit_packaged_smoke",
             "chemuson.chemname.packaged_smoke",
             "chemuson.gui.packaged_graphics_smoke",
+            "chemuson.geometry3d.flow_smoke",
             "rdkit",
             "rdkit.Chem.AllChem",
             "rdkit.Chem.rdchem",

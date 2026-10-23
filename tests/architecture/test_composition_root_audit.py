@@ -21,8 +21,9 @@ def test_bootstrap_catalog_tracks_private_packaging_smoke_dependencies() -> None
     catalog = yaml.safe_load((ROOT / "architecture" / "modules.yml").read_text())
     bootstrap = next(module for module in catalog["modules"] if module["id"] == "M19")
     assert bootstrap["paths"] == ["src/chemuson/__main__.py", "src/chemuson/app/"]
-    expected_dependencies = {"M01", "M04", "M08", "M18", "M22"}
+    expected_dependencies = {"M01", "M04", "M05", "M08", "M18", "M22"}
     assert set(bootstrap["current_dependencies"]) == expected_dependencies
     assert set(bootstrap["target_dependencies"]) == expected_dependencies
     assert "privado" in bootstrap["notes"]
     assert "M04" in bootstrap["notes"]
+    assert "M05" in bootstrap["notes"]

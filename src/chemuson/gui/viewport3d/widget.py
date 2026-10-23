@@ -500,9 +500,10 @@ class MolecularViewportWidget(QOpenGLWidget):
             )
             return
         self._scene_diagnostics["render_status"] = "requested"
-        self._report_scene_display_status(
-            "render_requested: escena enviada al renderer OpenGL; aceptación visual pendiente."
-        )
+        if self.scene.atoms:
+            self._report_scene_display_status(
+                "render_requested: escena enviada al renderer OpenGL; aceptación visual pendiente."
+            )
         self._paint_geometry_handle()
         self._paint_live_mm_hud()
         self._paint_orientation_axes()

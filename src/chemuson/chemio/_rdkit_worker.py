@@ -1666,9 +1666,15 @@ def _handle_graph_optimize3d_mode(
         return {"ok": False, "error": "optimize3d_failed", "detail": str(exc)}
 
 
+_EVENT_STREAM: TextIO | None = None
+
+
 def _write_worker_event(event: dict[str, Any]) -> None:
-    sys.stdout.write(json.dumps(event, separators=(",", ":")) + "\n")
-    sys.stdout.flush()
+    # En modo congelado el canal interno pasa un archivo de respuesta; los
+    # eventos NDJSON deben escribirse ahí y no en stdout del proceso.
+    stream = _EVENT_STREAM if _EVENT_STREAM is not None else sys.stdout
+    stream.write(json.dumps(event, separators=(",", ":")) + "\n")
+    stream.flush()
 
 
 def _apply_initial_coordinates(Chem, mol, id_map: dict[int, int], coordinates: Any) -> bool:
@@ -1787,6 +1793,8 @@ def main(stdin: TextIO | None = None, stdout: TextIO | None = None) -> int:
     """Process one JSON request, optionally using explicit file streams when frozen."""
     input_stream = stdin if stdin is not None else sys.stdin
     output_stream = stdout if stdout is not None else sys.stdout
+    global _EVENT_STREAM
+    _EVENT_STREAM = output_stream
     if input_stream is None or output_stream is None:
         return _fail("worker_stdio_unavailable", output=output_stream)
     try:

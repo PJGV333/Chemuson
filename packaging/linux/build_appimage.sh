@@ -37,6 +37,14 @@ if [[ "${BUILD_TYPE}" == "preview" ]]; then
     --version "${VERSION}" --git-sha "${SOURCE_SHA}" \
     --source-branch "${SOURCE_BRANCH}" >/dev/null
   APPIMAGE_NAME="Chemuson-v${VERSION}-preview-${SOURCE_SHA:0:8}-linux-x86_64.AppImage"
+elif [[ "${BUILD_TYPE}" == "diagnostic" ]]; then
+  # Variante de diagnóstico: pipeline completo de empaquetado con controles de
+  # integridad (versión canónica, SHA exacto, worktree limpio) pero sin canal
+  # de publicación ni actualizador. Nunca debe tratarse como distribución.
+  python "${ROOT_DIR}/packaging/release/diagnostic_build.py" verify \
+    --version "${VERSION}" --git-sha "${SOURCE_SHA}" \
+    --source-branch "${SOURCE_BRANCH}" >/dev/null
+  APPIMAGE_NAME="Chemuson-v${VERSION}-diagnostic-${SOURCE_SHA:0:8}-linux-x86_64.AppImage"
 elif [[ "${BUILD_TYPE}" == "release" ]]; then
   python "${ROOT_DIR}/packaging/release/release_policy.py" \
     --version "${VERSION}" --channel "${CHANNEL}" --tag "${TAG}" >/dev/null

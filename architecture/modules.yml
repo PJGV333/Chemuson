@@ -382,6 +382,7 @@ modules:
   - obabel_backend
   - cache
   - export_xyz
+  - flow_smoke
   name: geometry3d
   notes: 'Backends rdkit_backend y obabel_backend son opcionales. rdkit_backend importa
     rdkit_io para expandir etiquetas de grupo y rdkit_safe de forma lazy.
@@ -1231,6 +1232,7 @@ modules:
   - M22
   - M01
   - M04
+  - M05
   entry_points:
   - chemuson
   - python -m chemuson
@@ -1244,7 +1246,8 @@ modules:
   public_api:
   - main
   responsibility: Punto de entrada CLI, parsing inicial, despacho del worker RDKit
-    congelado y del ChemName smoke de empaquetado, y arranque diferido de la GUI.
+    congelado y de los smokes de validación de empaquetado, y arranque diferido de
+    la GUI.
   risk_level: medium
   status: stable
   target_dependencies:
@@ -1253,7 +1256,11 @@ modules:
   - M22
   - M01
   - M04
-  notes: La dependencia M04 se usa sólo en el modo privado de smoke de empaquetado; el arranque normal continúa sin importar ChemName desde el entry point.
+  - M05
+  notes: La dependencia M04 se usa sólo en el modo privado de smoke de empaquetado;
+    M05 se usa sólo en el modo privado de verificación de flujo geométrico empaquetado;
+    el arranque normal continúa sin importar ChemName ni la verificación de flujo
+    desde el entry point.
   temporary_exceptions: []
   tests:
   - tests/test_application_startup_non_qt.py

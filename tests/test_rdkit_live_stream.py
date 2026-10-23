@@ -8,6 +8,9 @@ import pytest
 
 from chemuson.chemio import rdkit_safe
 from chemuson.core.model import MolGraph
+import json
+import subprocess
+import sys
 
 
 def _ethane() -> tuple[MolGraph, dict[int, tuple[float, float, float]]]:
@@ -391,3 +394,102 @@ def test_worker_stream_reports_nonzero_exit_after_progress(tmp_path, monkeypatch
     assert events[-1]["event"] == "error"
     assert events[-1]["error"] == "worker_exit_code"
     assert events[-1]["returncode"] == 7
+
+
+def test_frozen_worker_stream_relays_events_from_response_file(tmp_path, monkeypatch):
+    fake_exe = tmp_path / "fake_frozen_exe.py"
+    fake_exe.write_text(
+        "import json, sys, time\n"
+        "request_path, response_path = sys.argv[1], sys.argv[2]\n"
+        "payload = json.load(open(request_path))\n"
+        "assert payload[\"mode\"] == \"graph_conformer3d_stream\"\n"
+        "with open(response_path, \"w\", encoding=\"utf-8\") as stream:\n"
+        "    for stage in (\"payload_received\", \"embedding\"):\n"
+        "        stream.write(json.dumps({\"event\": \"progress\", \"stage\": stage}) + \"\\n\")\n"
+        "        stream.flush()\n"
+        "        time.sleep(0.05)\n"
+        "    stream.write(json.dumps({\"event\": \"done\", \"ok\": True, \"positions\": {}}) + \"\\n\")\n"
+        "    stream.flush()\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(rdkit_safe.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(rdkit_safe.sys, "executable", str(sys.executable))
+    original_popen = subprocess.Popen
+    monkeypatch.setattr(
+        rdkit_safe.subprocess,
+        "_original_Popen",
+        original_popen,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        rdkit_safe.subprocess,
+        "Popen",
+        lambda command, **kwargs: rdkit_safe.subprocess._original_Popen(
+            [sys.executable, str(fake_exe), *command[2:]], **kwargs
+        ),
+    )
+
+    events = list(
+        rdkit_safe._run_worker_stream({"mode": "graph_conformer3d_stream"}, timeout_s=10.0)
+    )
+
+    stages = [event["stage"] for event in events if event.get("event") == "progress"]
+    assert stages == ["payload_received", "embedding"]
+    assert events[-1]["event"] == "done"
+
+
+def test_frozen_worker_stream_reports_nonzero_exit_without_events(tmp_path, monkeypatch):
+    fake_exe = tmp_path / "fake_frozen_exe.py"
+    fake_exe.write_text(
+        "import sys\n"
+        "sys.stderr.write('unrecognized arguments: /x/_rdkit_worker.py\\n')\n"
+        "raise SystemExit(2)\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(rdkit_safe.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(rdkit_safe.sys, "executable", str(sys.executable))
+    original_popen = subprocess.Popen
+    monkeypatch.setattr(
+        rdkit_safe.subprocess,
+        "_original_Popen",
+        original_popen,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        rdkit_safe.subprocess,
+        "Popen",
+        lambda command, **kwargs: rdkit_safe.subprocess._original_Popen(
+            [sys.executable, str(fake_exe), *command[2:]], **kwargs
+        ),
+    )
+
+    events = list(
+        rdkit_safe._run_worker_stream({"mode": "graph_conformer3d_stream"}, timeout_s=10.0)
+    )
+
+    assert [event["error"] for event in events if event.get("event") == "error"] == [
+        "worker_exit_code"
+    ]
+    assert events[-1]["returncode"] == 2
+    assert "unrecognized arguments" in events[-1]["detail"]
+
+
+def test_worker_stream_events_follow_explicit_output_stream(capsys):
+    from chemuson.chemio import _rdkit_worker
+    from chemuson.chemio.rdkit_safe import _graph_request_payload
+    from io import StringIO
+
+    graph, _coordinates = _ethane()
+    request = _graph_request_payload(graph=graph, chain_atom_ids=[], mode="graph_conformer3d_stream")
+    output = StringIO()
+
+    returncode = _rdkit_worker.main(StringIO(json.dumps(request)), output)
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert returncode == 0
+    lines = [json.loads(line) for line in output.getvalue().splitlines() if line.strip()]
+    assert lines
+    assert lines[-1]["event"] == "done"
+    assert lines[-1]["ok"] is True
+    assert lines[0]["event"] == "progress"

@@ -235,6 +235,33 @@ def _validate_frozen_rdkit_worker(
     return report
 
 
+def _validate_frozen_geometry_flow(
+    executable: Path, *, cwd: Path, env: dict[str, str]
+) -> dict[str, object]:
+    environment = dict(env)
+    environment["CHEMUSON_GEOMETRY_FLOW_SMOKE"] = "1"
+    report_path = cwd / "geometry-flow-report.json"
+    _run(
+        [
+            str(executable),
+            "--geometry-flow-smoke-test",
+            "--geometry-flow-smoke-report",
+            str(report_path),
+        ],
+        cwd=cwd,
+        env=environment,
+        timeout=180,
+    )
+    try:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError("Frozen geometry flow validation produced no JSON report.") from exc
+    if not isinstance(report, dict) or report.get("ok") is not True:
+        raise ValueError(f"Frozen AppImage failed the normal 2D->3D conformer flow: {report!r}")
+    print("Frozen AppImage normal 2D->3D conformer flow smoke passed.")
+    return report
+
+
 def _validate_frozen_chemname(
     executable: Path, *, cwd: Path, env: dict[str, str]
 ) -> dict[str, object]:
@@ -456,8 +483,13 @@ def validate_appimage(
     owner: str = "PJGV333",
     repo: str = "Chemuson",
 ) -> dict[str, object]:
-    if build_type not in {"preview", "release"}:
+    if build_type not in {"preview", "diagnostic", "release"}:
         raise ValueError(f"Unsupported AppImage build type: {build_type!r}")
+    if build_type == "diagnostic" and "diagnostic" not in appimage.name.lower():
+        raise ValueError(
+            "Diagnostic AppImage name must carry the 'diagnostic' marker so it "
+            "can never impersonate a release artifact."
+        )
     normalized_sha = str(source_sha or "").strip().lower()
     if not _SHA_RE.fullmatch(normalized_sha):
         raise ValueError("AppImage source provenance requires a full Git SHA.")
@@ -486,6 +518,9 @@ def validate_appimage(
             scratch=scratch,
             env=environment,
         )
+        geometry_flow_report = _validate_frozen_geometry_flow(
+            executable, cwd=scratch, env=environment
+        )
         version_result = _run(
             [str(apprun), "--version"], cwd=scratch, env=environment, timeout=90
         )
@@ -502,10 +537,20 @@ def validate_appimage(
         zsync_path = Path(f"{appimage}.zsync")
         if build_type == "preview":
             if embedded_update_info:
-                raise ValueError("Preview AppImage must not embed public updater information.")
+                raise ValueError(
+                    "Preview AppImage must not embed public updater information."
+                )
             for sidecar in (updateinfo_path, update_json_path, zsync_path):
                 if sidecar.exists():
                     raise ValueError(f"Preview AppImage has forbidden public updater sidecar: {sidecar.name}")
+        elif build_type == "diagnostic":
+            if embedded_update_info:
+                raise ValueError(
+                    "Diagnostic AppImage must not embed public updater information."
+                )
+            for sidecar in (updateinfo_path, update_json_path, zsync_path):
+                if sidecar.exists():
+                    raise ValueError(f"Diagnostic AppImage has forbidden public updater sidecar: {sidecar.name}")
         else:
             if channel not in {"beta", "stable"} or not tag:
                 raise ValueError("Release AppImage requires a validated channel and tag.")
@@ -547,6 +592,7 @@ def validate_appimage(
         "rdkit_worker_smoke": rdkit_report,
         "chemname_smoke": chemname_report,
         "graphics_smoke": graphics_report,
+        "geometry_flow_smoke": geometry_flow_report,
     }
 
 
@@ -556,7 +602,7 @@ def main() -> None:
     parser.add_argument("--header-only", action="store_true")
     parser.add_argument("--version")
     parser.add_argument("--source-sha")
-    parser.add_argument("--build-type", choices=("preview", "release"))
+    parser.add_argument("--build-type", choices=("preview", "diagnostic", "release"))
     parser.add_argument("--channel", default="")
     parser.add_argument("--tag", default="")
     parser.add_argument("--owner", default="PJGV333")

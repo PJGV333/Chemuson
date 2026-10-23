@@ -759,6 +759,12 @@ def _run_worker_stream(
         yield {"event": "cancelled", "ok": False, "error": "cancelled"}
         return
 
+    if bool(getattr(sys, "frozen", False)):
+        yield from _run_worker_stream_frozen(
+            request, timeout_s=timeout_s, cancel_event=cancel_event
+        )
+        return
+
     worker = _worker_path()
     command = [sys.executable, str(worker)]
     try:
@@ -898,6 +904,212 @@ def _run_worker_stream(
                     pass
         stdout_thread.join(timeout=0.25)
         stderr_thread.join(timeout=0.25)
+
+
+def _run_worker_stream_frozen(
+    request: dict[str, Any],
+    *,
+    timeout_s: float,
+    cancel_event: threading.Event | None = None,
+):
+    """Transmite eventos NDJSON del worker interno congelado vía archivo de respuesta.
+
+    En una aplicación congelada ``sys.executable`` es el propio binario, por lo
+    que el worker se relanza en modo interno (``--chemuson-internal-rdkit-worker``)
+    y el flujo NDJSON se lee del archivo de respuesta en lugar de stdout.
+    """
+    base = {
+        "python_executable": sys.executable,
+        "worker_path": "frozen:chemuson.chemio._rdkit_worker",
+    }
+    if cancel_event is not None and cancel_event.is_set():
+        yield {"event": "cancelled", "ok": False, "error": "cancelled", **base}
+        return
+
+    with tempfile.TemporaryDirectory(prefix="chemuson-rdkit-stream-") as temporary:
+        root = Path(temporary)
+        request_path = root / "request.json"
+        response_path = root / "response.json"
+        request_path.write_text(json.dumps(request), encoding="utf-8")
+        environment = os.environ.copy()
+        environment["CHEMUSON_INTERNAL_RDKIT_WORKER"] = "1"
+        options: dict[str, Any] = {}
+        if os.name == "nt":
+            options["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        try:
+            process = subprocess.Popen(
+                [
+                    sys.executable,
+                    "--chemuson-internal-rdkit-worker",
+                    str(request_path),
+                    str(response_path),
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                env=environment,
+                **options,
+            )
+        except Exception as exc:
+            yield {
+                "event": "error",
+                "ok": False,
+                "error": "worker_start_failed",
+                "detail": str(exc),
+                **base,
+            }
+            return
+
+        messages: queue.Queue[tuple[str, str | None]] = queue.Queue()
+        stderr_parts: list[str] = []
+
+        def read_stderr() -> None:
+            retained = 0
+            try:
+                if process.stderr is not None:
+                    for line in process.stderr:
+                        if retained < 8192:
+                            stderr_parts.append(line)
+                            retained += len(line)
+            except (OSError, ValueError):
+                return
+
+        stderr_thread = threading.Thread(target=read_stderr, daemon=True)
+        stderr_thread.start()
+
+        def tail_response_file() -> None:
+            stream = None
+            try:
+                while True:
+                    if stream is None:
+                        try:
+                            stream = response_path.open(
+                                "r", encoding="utf-8", errors="replace"
+                            )
+                        except FileNotFoundError:
+                            if process.poll() is not None:
+                                break
+                            time.sleep(0.02)
+                            continue
+                    line = stream.readline()
+                    if line:
+                        messages.put(("line", line))
+                        continue
+                    if process.poll() is not None:
+                        # Drenado final: el proceso ya terminó y descargó su
+                        # búfer; capturar cualquier resto sin-newline.
+                        try:
+                            rest = stream.read()
+                        except OSError:
+                            rest = ""
+                        if rest:
+                            if not rest.endswith("\n"):
+                                rest += "\n"
+                            messages.put(("line", rest))
+                        break
+                    time.sleep(0.02)
+            finally:
+                if stream is not None:
+                    try:
+                        stream.close()
+                    except OSError:
+                        pass
+                messages.put(("stream_end", None))
+
+        tail_thread = threading.Thread(target=tail_response_file, daemon=True)
+        tail_thread.start()
+
+        terminal_event: dict[str, Any] | None = None
+        last_stage: str | None = None
+        deadline = time.monotonic() + max(0.01, float(timeout_s))
+        stream_finished = False
+        while not stream_finished:
+            if cancel_event is not None and cancel_event.is_set():
+                _terminate_stream_process(process)
+                cancelled = {"event": "cancelled", "ok": False, "error": "cancelled", **base}
+                if last_stage is not None:
+                    cancelled["stage"] = last_stage
+                yield cancelled
+                return
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                _terminate_stream_process(process)
+                timed_out = {"event": "error", "ok": False, "error": "timeout", **base}
+                if last_stage is not None:
+                    timed_out["stage"] = last_stage
+                yield timed_out
+                return
+            try:
+                kind, raw_line = messages.get(timeout=min(0.05, remaining))
+            except queue.Empty:
+                continue
+            if kind == "stream_end":
+                stream_finished = True
+                continue
+            try:
+                payload = json.loads(raw_line or "")
+            except (TypeError, json.JSONDecodeError):
+                _terminate_stream_process(process)
+                yield {"event": "error", "ok": False, "error": "invalid_worker_json", **base}
+                return
+            if not isinstance(payload, dict):
+                _terminate_stream_process(process)
+                yield {"event": "error", "ok": False, "error": "invalid_worker_payload", **base}
+                return
+            if payload.get("ok") is False and payload.get("event") is None and "error" in payload:
+                payload = {"event": "error", **payload}
+            if payload.get("event") == "progress":
+                reported_stage = payload.get("stage")
+                if reported_stage:
+                    last_stage = str(reported_stage)
+            if payload.get("event") in {"done", "error", "cancelled"}:
+                terminal_event = payload
+            else:
+                yield payload
+
+        remaining = max(0.0, deadline - time.monotonic())
+        try:
+            returncode = process.wait(timeout=remaining)
+        except subprocess.TimeoutExpired:
+            _terminate_stream_process(process)
+            yield {"event": "error", "ok": False, "error": "timeout", **base}
+            return
+        if process.poll() is None:
+            _terminate_stream_process(process)
+        for pipe in (process.stdout, process.stderr):
+            if pipe is not None:
+                try:
+                    pipe.close()
+                except (OSError, ValueError):
+                    pass
+        stderr_thread.join(timeout=0.25)
+        tail_thread.join(timeout=0.25)
+        if returncode != 0:
+            detail = "".join(stderr_parts).strip()[-4000:]
+            error = "worker_exit_signal" if returncode < 0 else "worker_exit_code"
+            yield {
+                "event": "error",
+                "ok": False,
+                "error": error,
+                "returncode": int(returncode),
+                "detail": detail,
+                **base,
+            }
+            return
+        if terminal_event is None:
+            detail = "".join(stderr_parts).strip()[-4000:]
+            yield {
+                "event": "error",
+                "ok": False,
+                "error": "missing_terminal_event",
+                "detail": detail,
+                **base,
+            }
+            return
+        yield terminal_event
 
 
 def _terminate_stream_process(process: subprocess.Popen[str]) -> None:

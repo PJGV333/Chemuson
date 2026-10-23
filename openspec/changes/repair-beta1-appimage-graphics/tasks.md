@@ -30,3 +30,14 @@
 - [x] 5.2 Build Preview oficial #39869114647 desde `release/v0.3.0-beta.1-graphics-rc-prep`, source SHA exacto `7c7a02c51c2af5d32b320839b77d544a0271af1c`; reporte completo/success, AppImage, Windows y Flatpak PASS, `publication=false`. Los intentos #398484 y #398678 permanecen como evidencia histórica de fallos ya corregidos.
 - [x] 5.3 Commit `7c7a02c51c2af5d32b320839b77d544a0271af1c` y push normal sólo a `fix/beta1-appimage-graphics` y al ref RC creado/permitido `release/v0.3.0-beta.1-graphics-rc-prep`; ambos apuntaron al SHA exacto del paquete. Refs de release preexistentes intactas.
 - [x] 5.4 Sin merge, PR, tag, GitHub Release o publicación. NO-GO se mantiene hasta aceptación del propietario en el AppImage exacto.
+
+## 6. Causa raíz del visor 3D vacío en el AppImage (flujo normal 2D→3D)
+
+- [x] 6.1 Reproducir el mismo escenario en fuente y binario congelado (dibujar 2D → solicitar 3D por el flujo normal del servicio) y clasificar la falla: R1 fuente ok=true; R2 worker de flujo continuo congelado exit 2 por argv inválidos; R3 modo interno no-stream ya funcionaba (RDKit empaquetado sano); R4 eventos NDJSON iban a stdout en vez del archivo de respuesta. Causa: transporte de flujo continuo congelado roto + enmascaramiento de estado en `paintGL`.
+- [x] 6.2 Corregir solo el transporte/empaquetado: `_EVENT_STREAM` en `_rdkit_worker.py`, rama `_run_worker_stream_frozen` en `rdkit_safe.py`, guardado de `render_requested` a escenas no vacías en `viewport3d/widget.py`. Sin cambios químicos ni de serialización.
+- [x] 6.3 Smoke de flujo normal congelado end-to-end (`geometry3d/flow_smoke.py` + flag oculto), catalogado en OpenSpec/arquitectura; validadores de paquete lo ejecutan y exigen `ok=true`.
+- [x] 6.4 Variante de build de diagnóstico separada de la distribución pública: `packaging/release/diagnostic_build.py` + `BUILD_TYPE=diagnostic`; conserva integridad, provenance y SHA-256; nunca publica ni actualiza; nombre marcado; validador fail-closed lo verifica.
+- [x] 6.5 Pruebas focalizadas de regresión: 3 pruebas nuevas de worker congelado en `tests/test_rdkit_live_stream.py` (relay ordenado de eventos, salida distinta de cero sin eventos, enrute al flujo de salida explícito); suites focales y arquitectura en verde.
+- [ ] 6.6 Rebuild PyInstaller limpio sin artefactos ni cachés previos y validadores empaquetados (iconos, RDKit worker, ChemName, flujo geométrico) sobre el binario nuevo.
+- [ ] 6.7 AppImage de diagnóstico real Type 2 en CachyOS vía `build_appimage.sh` `BUILD_TYPE=diagnostic`, validación completa con geometría 3D del flujo normal y manifiesto de provenance + SHA-256.
+- [ ] 6.8 Aceptación funcional separada del build: flujo normal 2D→conformero→3D desde el AppImage extraído y desde Dolphin en KDE; aceptación visual final del propietario.

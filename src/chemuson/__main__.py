@@ -28,6 +28,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--graphics-packaged-smoke-test", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--graphics-smoke-report", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--graphics-smoke-screenshot", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--geometry-flow-smoke-test", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--geometry-flow-smoke-report", type=Path, help=argparse.SUPPRESS)
     return parser
 
 
@@ -152,6 +154,35 @@ def main() -> int:
         try:
             args.graphics_smoke_report.parent.mkdir(parents=True, exist_ok=True)
             args.graphics_smoke_report.write_text(
+                json.dumps(report, sort_keys=True), encoding="utf-8"
+            )
+        except OSError:
+            return 1
+        return 0 if report.get("ok") is True else 1
+    if args.geometry_flow_smoke_test:
+        if (
+            not getattr(sys, "frozen", False)
+            or os.environ.get("CHEMUSON_GEOMETRY_FLOW_SMOKE") != "1"
+        ):
+            parser.error("--geometry-flow-smoke-test is reserved for AppImage package validation.")
+        if args.geometry_flow_smoke_report is None:
+            parser.error(
+                "--geometry-flow-smoke-report is required for packaged geometry flow validation."
+            )
+        try:
+            from chemuson.geometry3d.flow_smoke import run_smoke as run_geometry_flow_smoke
+
+            report = run_geometry_flow_smoke()
+        except Exception as exc:
+            report = {
+                "ok": False,
+                "error": "geometry_flow_smoke_failed",
+                "exception_type": type(exc).__name__,
+                "detail": str(exc),
+            }
+        try:
+            args.geometry_flow_smoke_report.parent.mkdir(parents=True, exist_ok=True)
+            args.geometry_flow_smoke_report.write_text(
                 json.dumps(report, sort_keys=True), encoding="utf-8"
             )
         except OSError:
