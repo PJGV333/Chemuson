@@ -8,6 +8,10 @@ dist/
 build/
 dist-appimage/
 dist-flatpak/
+dist-appimage-*/
+dist-preview*/
+dist-flatpak-preview/
+**/pyinstaller-work/
 .flatpak-builder/
 *.spec
 !chemuson.spec

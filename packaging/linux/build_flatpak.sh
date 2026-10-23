@@ -6,7 +6,12 @@ set -euo pipefail
 VERSION="${1:?missing VERSION}"
 CHANNEL="${2:-stable}"
 BRANCH="${CHANNEL}"
-OUT_DIR="${3:-dist-flatpak}"
+# CHEMUSON_OUTPUT_DIR redirige la salida fuera del árbol de código fuente.
+if [[ -n "${CHEMUSON_OUTPUT_DIR:-}" ]]; then
+  OUT_DIR="${3:-${CHEMUSON_OUTPUT_DIR}/dist-flatpak}"
+else
+  OUT_DIR="${3:-dist-flatpak}"
+fi
 MANIFEST_PATH="${4:-packaging/flatpak/io.github.PJGV333.Chemuson.yml}"
 BUILD_TYPE="${5:-release}"
 SOURCE_SHA="${6:-}"

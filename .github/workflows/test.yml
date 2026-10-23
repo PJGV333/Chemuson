@@ -1,9 +1,11 @@
 name: test
 
+# Auditoría extraordinaria: la suite completa (8 shards) se ejecuta SOLO de forma
+# manual via workflow_dispatch. El desarrollo diario usa pruebas focalizadas
+# locales (ver docs/testing/AGENT_TESTING_POLICY.md); GitHub Actions se reserva
+# para construir paquetes validados (Build Preview), no para repetir la suite.
 on:
-  push:
-    branches: ["**"]
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   pytest-plan:

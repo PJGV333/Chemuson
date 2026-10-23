@@ -5,8 +5,16 @@ set -euo pipefail
 # El nombre oficial y el contrato de AppImageUpdate permanecen estables.
 
 VERSION="${1:?missing VERSION}"
-DIST_DIR="${2:-dist}"
-OUT_DIR="${3:-dist-appimage}"
+# CHEMUSON_OUTPUT_DIR redirige las salidas de build fuera del árbol de código
+# fuente cuando está definida (dist/ y dist-appimage/ cuelgan de ella); los
+# argumentos posicionales tienen prioridad.
+if [[ -n "${CHEMUSON_OUTPUT_DIR:-}" ]]; then
+  DIST_DIR="${2:-${CHEMUSON_OUTPUT_DIR}/dist}"
+  OUT_DIR="${3:-${CHEMUSON_OUTPUT_DIR}/dist-appimage}"
+else
+  DIST_DIR="${2:-dist}"
+  OUT_DIR="${3:-dist-appimage}"
+fi
 OWNER="${4:-PJGV333}"
 REPO="${5:-Chemuson}"
 CHANNEL="${6:-stable}"

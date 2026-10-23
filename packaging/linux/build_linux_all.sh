@@ -12,9 +12,12 @@ CHANNEL="${2:-stable}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 VENV_DIR="${VENV_DIR:-${ROOT_DIR}/.venv}"
-DIST_DIR="${DIST_DIR:-${ROOT_DIR}/dist}"
-APPIMAGE_OUT_DIR="${APPIMAGE_OUT_DIR:-${ROOT_DIR}/dist-appimage}"
-FLATPAK_OUT_DIR="${FLATPAK_OUT_DIR:-${ROOT_DIR}/dist-flatpak}"
+# CHEMUSON_OUTPUT_DIR (opcional) reubica TODAS las salidas de build fuera del
+# repositorio; las variables específicas tienen prioridad.
+CHEMUSON_OUTPUT_DIR="${CHEMUSON_OUTPUT_DIR:-${ROOT_DIR}}"
+DIST_DIR="${DIST_DIR:-${CHEMUSON_OUTPUT_DIR}/dist}"
+APPIMAGE_OUT_DIR="${APPIMAGE_OUT_DIR:-${CHEMUSON_OUTPUT_DIR}/dist-appimage}"
+FLATPAK_OUT_DIR="${FLATPAK_OUT_DIR:-${CHEMUSON_OUTPUT_DIR}/dist-flatpak}"
 OWNER="${OWNER:-PJGV333}"
 REPO="${REPO:-Chemuson}"
 TAG="${TAG:-v${VERSION}}"
@@ -64,7 +67,7 @@ python -m pip install -r requirements.txt
 python -m pip install pyinstaller
 
 echo "[1/5] Building portable Linux binary with PyInstaller"
-pyinstaller --clean --noconfirm chemuson.spec
+pyinstaller --clean --noconfirm --distpath "${DIST_DIR}" --workpath "${DIST_DIR}/pyinstaller-work" chemuson.spec
 
 echo "[2/5] Building Linux portable executable (.AppImage suffix) + updater metadata"
 bash "${APPIMAGE_SCRIPT}" \

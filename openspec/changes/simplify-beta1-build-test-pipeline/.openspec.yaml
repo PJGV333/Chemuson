@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-10-22
+goal: Simplify automated testing so package builds do not run the full pytest
+  suite, while preserving every existing test and all integrity controls.
