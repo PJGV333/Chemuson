@@ -1,5 +1,4 @@
 PyQt6
 numpy
-Pillow
 rdkit
 certifi

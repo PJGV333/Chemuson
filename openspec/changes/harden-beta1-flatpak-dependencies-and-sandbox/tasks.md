@@ -1,0 +1,24 @@
+# Tareas — dependencias y sandbox de beta.1
+
+## A. Auditoría y baseline
+- [x] A.1 Confirmar HEAD/árbol limpio, remotos y nueva rama aislada desde `08a90c199f526639453a8ae8b82da957a1458d08`.
+- [x] A.2 Capturar compileall, colecta, Ruff y status previos a cambios; no ejecutar la suite completa.
+- [x] A.3 Auditar imports/usos de Pillow, APIs Qt de imagen y rutas Flatpak; consultar OSV para Pillow 12.0.0, 12.3.0 y 13.0.0.
+- [x] A.4 Comprobar QImage, `rdMolDraw2D` y tests de persistencia de imágenes con PIL bloqueado.
+
+## B. Cambio acotado
+- [x] B.1 Eliminar Pillow de dependencias runtime/manifiesto y corregir documentación/tests de dependencia.
+- [x] B.2 Sustituir el permiso global de home por permisos de datos/configuración ChemUSON; conservar y explicar el permiso de red.
+- [x] B.3 Añadir contrato Flatpak/dependencias sin añadir comportamiento químico ni cambiar la suite completa.
+- [x] B.4 Registrar riesgos residuales y estados de aceptación exacta como pendientes; conservar los gates de publicación.
+
+## C. Verificación
+- [x] C.1 Ejecutar tests focalizados de dependencia, imagen, manifiesto, distribución, ChemName/RDKit y smoke 2D→3D apropiado.
+- [x] C.2 Ejecutar compileall, OpenSpec estricto, Ruff focal y `git diff --check`; no disparar `test.yml`.
+- [ ] C.3 Validar el manifiesto Flatpak y revisar diff/estado; commit/push normal sólo en la rama aislada.
+- [ ] C.4 Ejecutar un Build Preview manual de cuatro formatos desde SHA final; comprobar jobs, `publication=false`, hashes, provenance, recursos, RDKit/ChemName y smoke 2D→3D.
+- [ ] C.5 Anotar resultados exactos y artefactos en OpenSpec/notas/matriz sin convertir smoke en aceptación manual.
+
+## D. Dictamen
+- [ ] D.1 Verificar que `main` y release-prep no se modificaron, y que no hay tag/Release/publicación.
+- [ ] D.2 Dictaminar GO/NO-GO; no crear tag mientras falte aceptación P0/P1, validación Flatpak interactiva o controles de publicación.

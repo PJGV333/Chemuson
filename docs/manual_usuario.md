@@ -25,7 +25,7 @@ A diferencia de los editores moleculares convencionales que se limitan a represe
 * **PyQt6:** Biblioteca de interfaz gráfica para la renderización del lienzo vectorial interactivo.
 * **RDKit:** Kit de desarrollo químico imprescindible para cálculos de estereoquímica avanzada (percepción de quiralidad R/S, quiralidad axial, geometría E/Z), validación de valencias y round-trip de formatos químicos standard.
 * **NumPy:** Utilizado en cálculos matriciales para transformaciones afines y rotaciones espaciales en el lienzo.
-* **Pillow (PIL):** Soporte para renderizado y manipulación de anotaciones con imágenes.
+* **Imágenes y anotaciones:** el renderizado y la persistencia de imágenes usan las APIs de imagen integradas en PyQt6/Qt (`QImage`/`QPixmap`); no requieren Pillow.
 * **Certifi:** Gestión segura de certificados SSL para el módulo de actualizaciones automáticas integradas.
 
 ### Instrucciones de Instalación para Desarrollo

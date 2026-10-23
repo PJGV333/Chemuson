@@ -97,3 +97,10 @@ def test_flatpak_manifest_smokes_the_installed_package_data_from_app() -> None:
     assert "pip3 install --prefix=/app --no-build-isolation --no-deps ." in manifest
     assert "packaged_smoke import run_smoke" in manifest
     assert "expected_package_root='/app'" in manifest
+
+    finish_args = manifest.split("finish-args:", 1)[1].split("cleanup:", 1)[0]
+    assert "  - --share=network" in finish_args
+    assert "  - --filesystem=home\n" not in finish_args
+    assert "  - --filesystem=home/.chemuson:create" in finish_args
+    assert "  - --filesystem=home/.config/Chemuson:create" in finish_args
+    assert "pillow" not in manifest.lower()

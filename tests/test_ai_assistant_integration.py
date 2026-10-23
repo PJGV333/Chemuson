@@ -24,7 +24,7 @@ def test_requirements_matches_pyproject_runtime_dependencies():
         for value in re.findall(r'"([^"]+)"', dependency_block.group(1))
     }
     assert _requirements(ROOT / "requirements.txt") == declared
-    assert "pillow" in declared
+    assert "pillow" not in declared
 
 
 def test_development_requirements_are_separate_and_readme_documents_fresh_checkout():
