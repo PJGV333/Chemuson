@@ -38,6 +38,6 @@
 - [x] 6.3 Smoke de flujo normal congelado end-to-end (`geometry3d/flow_smoke.py` + flag oculto), catalogado en OpenSpec/arquitectura; validadores de paquete lo ejecutan y exigen `ok=true`.
 - [x] 6.4 Variante de build de diagnóstico separada de la distribución pública: `packaging/release/diagnostic_build.py` + `BUILD_TYPE=diagnostic`; conserva integridad, provenance y SHA-256; nunca publica ni actualiza; nombre marcado; validador fail-closed lo verifica.
 - [x] 6.5 Pruebas focalizadas de regresión: 3 pruebas nuevas de worker congelado en `tests/test_rdkit_live_stream.py` (relay ordenado de eventos, salida distinta de cero sin eventos, enrute al flujo de salida explícito); suites focales y arquitectura en verde.
-- [ ] 6.6 Rebuild PyInstaller limpio sin artefactos ni cachés previos y validadores empaquetados (iconos, RDKit worker, ChemName, flujo geométrico) sobre el binario nuevo.
-- [ ] 6.7 AppImage de diagnóstico real Type 2 en CachyOS vía `build_appimage.sh` `BUILD_TYPE=diagnostic`, validación completa con geometría 3D del flujo normal y manifiesto de provenance + SHA-256.
+- [x] 6.6 Rebuild PyInstaller limpio sin artefactos ni cachés previos y validadores empaquetados (iconos, RDKit worker, ChemName, flujo geométrico) sobre el binario nuevo.
+- [x] 6.7 AppImage de diagnóstico real Type 2 en CachyOS vía `build_appimage.sh` `BUILD_TYPE=diagnostic`, validación completa con geometría 3D del flujo normal y manifiesto de provenance + SHA-256.
 - [ ] 6.8 Aceptación funcional separada del build: flujo normal 2D→conformero→3D desde el AppImage extraído y desde Dolphin en KDE; aceptación visual final del propietario.

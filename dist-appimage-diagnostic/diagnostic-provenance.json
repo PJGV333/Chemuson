@@ -1,0 +1,28 @@
+{
+  "artifacts": {
+    "Chemuson-v0.3.0-beta.1-diagnostic-6a6342f9-linux-x86_64.AppImage": {
+      "sha256": "3ecd83bcf098b955e9386b2c8cb63100619e7e2094042829cba40d320233da04",
+      "size_bytes": 334189760
+    }
+  },
+  "build_status": "success",
+  "build_time_utc": "2026-10-23T00:20:33.406887+00:00",
+  "build_type": "diagnostic",
+  "checks": {},
+  "distribution": "none",
+  "git_sha": "6a6342f93dfd4a3d1d5ad706aea1fbaeef36e9fe",
+  "not_for_publication": true,
+  "operating_system": {
+    "machine": "x86_64",
+    "platform": "CachyOS Linux (Arch-based, x86_64)",
+    "release": "7.2.10-1-cachyos",
+    "runner_arch": "",
+    "runner_image": "",
+    "runner_image_version": "",
+    "runner_os": "",
+    "system": "Linux"
+  },
+  "publication": false,
+  "source_branch": "fix/beta1-appimage-graphics",
+  "version": "0.3.0-beta.1"
+}
