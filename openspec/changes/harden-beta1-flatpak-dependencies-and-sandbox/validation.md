@@ -2,7 +2,7 @@
 
 ## Implementación actual
 
-La eliminación de Pillow y el estrechamiento del permiso Flatpak están implementados en la rama aislada `release/v0.3.0-beta.1-security-prep`. El SHA final todavía no existe (cambios no comprometidos). `release/v0.3.0-beta.1-prep` y `main` no se han movido.
+La eliminación de Pillow como dependencia directa, exclusión de recursos PyInstaller y estrechamiento del permiso Flatpak están implementados en la rama aislada `release/v0.3.0-beta.1-security-prep`, commit `e4710b938f0096ff2d02f35010117bb9a6ed8286`. El push fue normal y limitado a esa rama; `release/v0.3.0-beta.1-prep` (`08a90c199f526639453a8ae8b82da957a1458d08`) y `main` (`f0fde603371255902bf0e630ca1ce032b8f16ad3`) no se movieron.
 
 Pillow fue eliminado como dependencia directa de `pyproject.toml`/`requirements.txt` y del módulo wheel Flatpak. La inspección del preview #39899351520 detectó que la metadata de RDKit aún lo resolvía transitivamente en el entorno PyInstaller y que sus CArchive contenían recursos Pillow; por eso este follow-up añade `excludes=["PIL"]` a `chemuson.spec` y una comprobación fail-closed de recursos `PIL`/`Pillow` en `validate_packaged_rdkit_worker.py`. No se fija wheel sustituto: el runtime de ChemUSON no usa PIL (QImage/QPixmap; `rdMolDraw2D` importa con PIL bloqueado). El paquete Flatpak usa RDKit `--no-deps` y su árbol no contiene la distribución top-level Pillow. La dependencia transitoria de build se distingue explícitamente de lo distribuido.
 
@@ -32,9 +32,22 @@ Para cerrar el hallazgo, el nuevo CArchive validator inspecciona cada ejecutable
 - `compileall src tests tools packaging`: PASS; colección **2.630 node IDs**, planificador de 8 shards válido (estima ~208.7 s por shard). Ruff focal con las reglas F401/F811/F821/E722/E741: PASS. OpenSpec estricto y `git diff --check`: PASS.
 - PyInstaller local (CachyOS, Python 3.14, PyInstaller 6.22.3) produjo un ejecutable temporal con **0** entradas top-level `PIL`/`Pillow`; `validate_packaged_rdkit_worker.py` pasó sobre ese binario congelado (worker nativo, descriptors, SMILES y MMFF94 3D). El build local emitió advertencias de Qt/ldd del host; el paquete no sustituye Build Preview CI.
 
-## Build Preview y artefactos exactos
+## Build Preview y artefactos exactos — #39900808044
 
-Pendiente: ejecutar el Build Preview del SHA con la exclusión PyInstaller. El run debe entregar Windows portable, Windows installer, AppImage Type 2 y Flatpak, `publication=false`, hashes/provenance concordantes y validación RDKit/ChemName, con **cero** entradas Pillow en CArchive y sin el paquete top-level en Flatpak. Verificar el smoke 2D→3D congelado de AppImage y controles empaquetados; no atribuirlos a aceptación manual.
+Build Preview [#39900808044](https://github.com/PJGV333/Chemuson/actions/runs/39900808044) se ejecutó por push del commit e4710b93 y terminó `success` en source validation, Windows portable/installer, AppImage Type 2, Flatpak y reporte. `preview-build-report.json` (artifact [12478957557](https://github.com/PJGV333/Chemuson/actions/runs/39900808044/artifacts/12478957557)) declara `complete=true`, `publication=false`, versión `0.3.0-beta.1`, rama `release/v0.3.0-beta.1-security-prep` y SHA completo `e4710b938f0096ff2d02f35010117bb9a6ed8286`.
+
+| Formato | Artifact ID | Archivo | Tamaño (bytes) | SHA-256 |
+|---|---:|---|---:|---|
+| Windows portable | [12479081901](https://github.com/PJGV333/Chemuson/actions/runs/39900808044/artifacts/12479081901) | `Chemuson-v0.3.0-beta.1-preview-e4710b93-windows-x86_64-portable.exe` | 127027888 | `d107a43dadb64c137dafb6e0278cc38118e2b911559c411654034ca458846754` |
+| Windows installer | [12478962316](https://github.com/PJGV333/Chemuson/actions/runs/39900808044/artifacts/12478962316) | `Chemuson-v0.3.0-beta.1-preview-e4710b93-windows-x86_64-setup.exe` | 128133031 | `9859c922b2be0707a38afdb3c2d316b8d7125a0c516c6d4dc25e57d9e3c58f64` |
+| AppImage Type 2 | [12478253483](https://github.com/PJGV333/Chemuson/actions/runs/39900808044/artifacts/12478253483) | `Chemuson-v0.3.0-beta.1-preview-e4710b93-linux-x86_64.AppImage` | 169608384 | `4abb85948b3c4eccd41d51340cded2469cf7e8b5a3d04ce5eca1bbfc53009169` |
+| Flatpak | [12478758199](https://github.com/PJGV333/Chemuson/actions/runs/39900808044/artifacts/12478758199) | `Chemuson-v0.3.0-beta.1-preview-e4710b93-linux-x86_64.flatpak` | 104897448 | `828faf67f74496040594fa396530be0c1e2af92271b9eb9f6ab226e45d2556c3` |
+
+Los cuatro artifacts se descargaron; `sha256sum -c checksums.sha256` pasó para cada paquete y su `preview-provenance.json`. Hash, tamaño, versión, source SHA, rama y `publication=false` coinciden entre archivo y provenance. El run registra Pillow 13.0.0 transitivo de RDKit en los entornos Windows y Linux PyInstaller; la consulta OSV del 2026-10-23 no reportó advisories para esa versión.
+
+**Auditoría de recursos descargados:** el CArchive Windows portable y el ejecutable `usr/bin/Chemuson` extraído del AppImage Type 2 tienen **0 entradas** top-level `PIL`/`Pillow` al pasar por `_pillow_archive_entries`; los logs Windows/AppImage también reportan `pillow_archive_entries: []`. El bundle Flatpak se importó a un repo OSTree temporal y su árbol carece de `site-packages/PIL` y `Pillow-*.dist-info`; permanece `rdkit/sping/PIL`, que son recursos legacy de RDKit. El manifiesto conserva sólo permisos scoped de home más `--share=network`; no se concedió permiso total. La build CI valida 9/9 plantillas y 6/6 casos ChemName en Flatpak, y 9/9 + 6/6 en AppImage; Windows valida ChemName y worker RDKit. AppImage también pasó los smokes de iconos, RDKit worker, flujo 2D→3D congelado y checks Type 2/ausencia de sidecars públicos.
+
+Estas comprobaciones acreditan empaquetado/procedencia, no instalación, portal ni aceptación GUI manual. Los casos P0/P1 del propietario siguen `NOT TESTED`; no se eleva ninguna fila por los smokes automatizados.
 
 ## Riesgos, aceptación y decisión
 
