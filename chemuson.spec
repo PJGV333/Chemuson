@@ -96,6 +96,8 @@ a = Analysis(
     datas=datas,
     hiddenimports=hiddenimports,
     runtime_hooks=["packaging/pyinstaller/rthook_qt.py"],
+    # RDKit's wheel declares Pillow transitively; ChemUSON does not use PIL.
+    excludes=["PIL"],
     noarchive=False,
 )
 # Mesa, Fontconfig, and FreeType are host integrations. Keeping these runtime

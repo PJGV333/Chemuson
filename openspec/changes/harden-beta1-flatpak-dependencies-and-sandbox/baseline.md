@@ -58,3 +58,10 @@ Found 1 error.
 ## Permisos observados antes de cambios
 
 El manifiesto Flatpak concede `--share=network` y `--filesystem=home`. Las rutas directas encontradas para estado son `~/.chemuson` (autosave, crash/update logs/caches, name2structure cache, rollback/downloads) y `~/.config/Chemuson` (biblioteca de plantillas y fallback de configuración). Se usa `QFileDialog` para flujos de selección/guardado; retest portal sin permiso general de home queda pendiente.
+
+## Baseline de follow-up: auditoría de paquetes congelados — 2026-10-23
+
+- En `35f5888cd92f0048b0e2c15c97534952682d830d`, rama `release/v0.3.0-beta.1-security-prep`, `git status --short` estaba vacío antes de extender la exclusión. Focus baseline: `chem/bin/python -m pytest -q tests/test_rdkit_packaged_worker.py tests/test_chemname_packaged_smoke.py tests/test_release_workflow_contract.py` → **20 passed in 2.35s**. Pytest completo no se ejecutó.
+- Se descargaron los artifacts del Build Preview #39899351520 (source SHA `35f5888c…`) e inspeccionaron los CArchive PyInstaller reales: Windows portable tenía 5 entradas `PIL/*`; AppImage tenía las mismas 5 extensiones más 13 bibliotecas `pillow.libs/*`. El install log de Windows confirma resolución transitiva Pillow 13.0.0 desde RDKit.
+- El Flatpak se importó a un OSTree temporal y se inspeccionó el árbol `/app`: no existe el directorio top-level `site-packages/PIL` ni metadata `Pillow-*.dist-info`; sí existen stubs/recursos legacy `rdkit/sping/PIL`, que no son la distribución Pillow.
+- El artifact preview previo pasa sus smokes funcionales, pero no satisface la ausencia de recursos Pillow en los paquetes congelados; se conserva como histórico. La solución de follow-up agrega exclusión PyInstaller y lectura fail-closed del CArchive.

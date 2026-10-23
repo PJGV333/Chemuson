@@ -83,6 +83,23 @@ def _assert_isolated_gui_import_probe(code: str) -> None:
     assert result.returncode == 0, result.stderr or result.stdout
 
 
+@pytest.mark.parametrize(
+    ("entry", "expected"),
+    [
+        (r"PIL\_imaging.cp311-win_amd64.pyd", True),
+        ("PIL/_imaging.cpython-311-x86_64-linux-gnu.so", True),
+        ("Pillow-13.0.0.dist-info/METADATA", True),
+        ("rdkit/sping/PIL/__init__.py", False),
+        ("PyQt6/uic/Compiler/indenter.py", False),
+        ("chemuson/gui/image.py", False),
+    ],
+)
+def test_pillow_archive_entry_detection_is_scoped_to_top_level_package(
+    entry: str, expected: bool
+) -> None:
+    assert packaged_validator._is_pillow_archive_entry(entry) is expected
+
+
 def test_smoke_allows_qt_runtime_hooks_without_a_gui_application() -> None:
     _assert_isolated_gui_import_probe(
         """
@@ -261,8 +278,18 @@ def test_frozen_package_validator_accepts_only_complete_smoke_report(
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(packaged_validator.subprocess, "run", fake_run)
-    assert packaged_validator.validate(executable)["ok"] is True
+    monkeypatch.setattr(packaged_validator, "_pillow_archive_entries", lambda _path: [])
+    assert packaged_validator.validate(executable)["pillow_archive_entries"] == []
 
+    monkeypatch.setattr(
+        packaged_validator,
+        "_pillow_archive_entries",
+        lambda _path: [r"PIL\_imaging.cp311-win_amd64.pyd"],
+    )
+    with pytest.raises(ValueError, match="contains Pillow resources"):
+        packaged_validator.validate(executable)
+
+    monkeypatch.setattr(packaged_validator, "_pillow_archive_entries", lambda _path: [])
     report["worker_diagnostics"]["native_extensions"]["rdkit.Chem.rdchem"]["inside_bundle"] = False
     with pytest.raises(ValueError, match="outside the executable bundle"):
         packaged_validator._validate_report(report, executable)

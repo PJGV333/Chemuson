@@ -18,6 +18,25 @@ def _require(condition: bool, message: str) -> None:
         raise ValueError(message)
 
 
+def _is_pillow_archive_entry(name: str) -> bool:
+    normalized = name.replace("\\", "/").lstrip("./").casefold()
+    top_level = normalized.split("/", 1)[0].split(".", 1)[0]
+    return top_level == "pil" or top_level.startswith("pillow")
+
+
+def _pillow_archive_entries(executable: Path) -> list[str]:
+    try:
+        from PyInstaller.archive.readers import CArchiveReader
+
+        return sorted(
+            str(name)
+            for name in CArchiveReader(str(executable)).toc
+            if _is_pillow_archive_entry(str(name))
+        )
+    except Exception as exc:
+        raise ValueError("Could not inspect the frozen executable for Pillow resources.") from exc
+
+
 def _validate_report(report: dict[str, Any], executable: Path) -> None:
     _require(report.get("ok") is True, f"Frozen RDKit smoke reported failure: {report.get('failures') or report.get('error')}")
     _require(report.get("frozen") is True, "Smoke process did not report a frozen executable.")
@@ -137,6 +156,12 @@ def validate(executable: Path, *, timeout: int = 120) -> dict[str, Any]:
                 f"parent GUI before={report.get('parent_gui_before')!r}, "
                 f"after={report.get('parent_gui_after')!r}"
             )
+        pillow_entries = _pillow_archive_entries(executable)
+        _require(
+            not pillow_entries,
+            "Frozen executable contains Pillow resources: " + ", ".join(pillow_entries),
+        )
+        report["pillow_archive_entries"] = pillow_entries
         _validate_report(report, executable)
         return report
 

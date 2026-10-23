@@ -1,13 +1,21 @@
 ## ADDED Requirements
 
-### Requirement: Runtime image dependencies are necessary and Pillow-free
+### Requirement: Unused Pillow is not directly declared or shipped in application packages
 
-The ChemUSON runtime dependency declaration and official package manifests SHALL NOT include Pillow unless a shipped runtime path imports or calls PIL. Qt-native image annotations/rendering and RDKit's native `rdMolDraw2D` path MUST remain usable without PIL.
+ChemUSON SHALL NOT directly declare Pillow or install a Pillow module in its Flatpak manifest unless a shipped runtime path imports or calls PIL. RDKit's PyPI metadata currently pulls Pillow transitively in standard source/PyInstaller build environments; each release candidate MUST record and advisory-check that resolved version. The Windows and Linux PyInstaller CArchives MUST exclude top-level `PIL`/`Pillow` resources, and the Flatpak app tree MUST NOT contain top-level `site-packages/PIL` or Pillow distribution metadata (RDKit's own `rdkit/sping/PIL` compatibility resources are not the Pillow distribution). Qt-native image annotations/rendering and RDKit's native `rdMolDraw2D` path MUST remain usable without PIL.
 
 #### Scenario: Image annotations and native RDKit drawing do not require Pillow
 - **WHEN** Pillow/PIL imports are unavailable
-- **THEN** Qt `QImage` annotation clipboard/persistence behavior and the `rdMolDraw2D` native module remain available
-- **AND** the runtime requirements and Flatpak manifest do not install Pillow.
+- **THEN** Qt `QImage` annotation clipboard/persistence behavior and the `rdMolDraw2D` native module remain available.
+
+#### Scenario: RDKit transitively resolves Pillow in a frozen build environment
+- **WHEN** a Windows or Linux PyInstaller package is built from the standard RDKit dependency metadata
+- **THEN** the exact resolved Pillow version is checked against current advisories
+- **AND** the frozen CArchive validation rejects top-level `PIL`/`Pillow` entries.
+
+#### Scenario: Flatpak uses the pinned RDKit wheel without dependency resolution
+- **WHEN** the Flatpak app tree is inspected after building
+- **THEN** no top-level `site-packages/PIL` package or Pillow distribution metadata is present.
 
 ### Requirement: Flatpak filesystem access is limited to ChemUSON-owned state
 

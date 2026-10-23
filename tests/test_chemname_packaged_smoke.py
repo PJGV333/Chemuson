@@ -84,6 +84,7 @@ def test_pyinstaller_spec_requires_and_collects_all_nine_templates() -> None:
     assert '"chemuson/chemname/templates/{path.parent.name}"' in spec
     assert 'datas = datas_c + datas_chemname_templates + datas_icons + datas_qt' in spec
     assert '"chemuson.chemname.packaged_smoke"' in spec
+    assert 'excludes=["PIL"]' in spec
 
 
 def test_flatpak_manifest_smokes_the_installed_package_data_from_app() -> None:

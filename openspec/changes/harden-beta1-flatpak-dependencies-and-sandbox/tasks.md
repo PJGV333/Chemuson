@@ -7,7 +7,7 @@
 - [x] A.4 Comprobar QImage, `rdMolDraw2D` y tests de persistencia de imágenes con PIL bloqueado.
 
 ## B. Cambio acotado
-- [x] B.1 Eliminar Pillow de dependencias runtime/manifiesto y corregir documentación/tests de dependencia.
+- [x] B.1 Eliminar Pillow como dependencia directa/módulo Flatpak, excluir recursos PIL transitivos de PyInstaller y añadir validación CArchive; corregir documentación/tests.
 - [x] B.2 Sustituir el permiso global de home por permisos de datos/configuración ChemUSON; conservar y explicar el permiso de red.
 - [x] B.3 Añadir contrato Flatpak/dependencias sin añadir comportamiento químico ni cambiar la suite completa.
 - [x] B.4 Registrar riesgos residuales y estados de aceptación exacta como pendientes; conservar los gates de publicación.
@@ -16,7 +16,7 @@
 - [x] C.1 Ejecutar tests focalizados de dependencia, imagen, manifiesto, distribución, ChemName/RDKit y smoke 2D→3D apropiado.
 - [x] C.2 Ejecutar compileall, OpenSpec estricto, Ruff focal y `git diff --check`; no disparar `test.yml`.
 - [ ] C.3 Validar el manifiesto Flatpak y revisar diff/estado; commit/push normal sólo en la rama aislada.
-- [ ] C.4 Ejecutar un Build Preview manual de cuatro formatos desde SHA final; comprobar jobs, `publication=false`, hashes, provenance, recursos, RDKit/ChemName y smoke 2D→3D.
+- [ ] C.4 Ejecutar un Build Preview manual de cuatro formatos desde SHA final; comprobar jobs, `publication=false`, hashes, provenance, ausencia de recursos top-level PIL en CArchive/Flatpak, RDKit/ChemName y smoke 2D→3D.
 - [ ] C.5 Anotar resultados exactos y artefactos en OpenSpec/notas/matriz sin convertir smoke en aceptación manual.
 
 ## D. Dictamen
