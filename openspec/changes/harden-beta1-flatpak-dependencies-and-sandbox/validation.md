@@ -57,4 +57,10 @@ Tras registrar run/artifacts en OpenSpec y notas de aceptación: OpenSpec estric
 - El permiso de red Flatpak sigue siendo general; habilita conectividad para endpoints configurados y resolución externa opt-in. Usar esas funciones transmite datos al proveedor/destino elegido; la política de red no limita destinos ni sustituye consentimiento.
 - P0 de persistencia/estereoquímica/cierre y otros P1 de la matriz manual siguen sin aceptación exacta.
 - Protección `v*` y environments `beta`/`flatpak-beta` continúan pendientes según la auditoría previa; revalidar antes de un tag.
-- Sin tag, GitHub Release ni despliegue público. Dictamen: **NO-GO** hasta completar los retests y controles externos.
+- Sin tag, GitHub Release ni despliegue público al 2026-10-23. Dictamen histórico: **NO-GO** hasta completar los retests y controles externos.
+
+## Addendum — integración y autorización de publicación posterior (2026-10-24)
+
+La rama de seguridad se integró localmente a `release/v0.3.0-beta.1-prep` por fast-forward-only después de comprobar cuatro commits ahead y cero behind. El propietario autorizó la publicación de esta versión como prerelease beta y aportó observaciones manuales limitadas por formato; la matriz contiene alcance exacto y falta de artifact/SHA de esas observaciones. No se convierten otras funciones ni artifacts anteriores en PASS.
+
+El Build Preview #39900808044 (`e4710b938f0096ff2d02f35010117bb9a6ed8286`) sigue siendo evidencia válida sólo de su propio SHA y no se reutilizará como paquete oficial. La publicación queda sujeta a Build Preview del SHA documental definitivo, tests focales y validación oficial de provenance/checksums/sidecars. Se configuró ruleset `v*` activo y environments `beta`/`flatpak-beta`; la evidencia y límites de estas protecciones están en `openspec/changes/final-stabilization-chemuson-0-3-0-beta-1/validation.md`. No hay tag/Release aún.

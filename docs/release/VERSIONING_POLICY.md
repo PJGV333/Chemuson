@@ -16,7 +16,7 @@ Formato: `MAJOR.MINOR.PATCH[-prerelease]`.
 - Mientras `MAJOR=0`, correcciones compatibles incrementan `PATCH`; una línea de funcionalidad aditiva incrementa `MINOR`. Cambios incompatibles también incrementan `MINOR` hasta que el propietario apruebe explícitamente `1.0.0`.
 - El desarrollo puede usar `X.Y.Z-dev`.
 - Secuencia de prepublicación: `X.Y.Z-beta.N`, opcionalmente `X.Y.Z-rc.N`, y después `X.Y.Z` estable. `N` es positivo y monotónico: una beta rechazada se corrige con la siguiente numeración (`beta.2`), nunca se reutiliza `beta.1`.
-- La campaña actual prepara el valor canónico `0.3.0-beta.1`; a la fecha de este documento no ha creado `v0.3.0-beta.1` ni una GitHub Release.
+- La campaña prepara el valor canónico `0.3.0-beta.1`. El estado del tag y la GitHub Release se registra en el cierre de publicación de `docs/release/0.3.0-beta.1.md`; no reutilizar ni mover un tag ya publicado.
 
 ## Tags y canales oficiales
 
@@ -25,14 +25,14 @@ Formato: `MAJOR.MINOR.PATCH[-prerelease]`.
 - Tag, `_version.py`, entrada AppStream vigente, SHA del evento y SHA checkout deben coincidir. Un tag malformado, borrado, ya publicado, con metadatos distintos o sin respuesta verificable de GitHub bloquea el pipeline.
 - No se seleccionan versión y canal en inputs independientes; el canal se deriva del tag.
 - Nunca mover, borrar, volver a crear ni sobrescribir un tag/release ya publicado. Una corrección usa una versión posterior. Stable `0.3.0` requiere aprobación de aceptación; una regresión estable requiere `0.3.1`.
-- Los tags `v*` deben estar protegidos mediante ruleset de GitHub, con creación/actualización/borrado restringidos a mantenedores autorizados. La configuración remota debe ser verificada por el propietario; el workflow no prueba que el ruleset exista.
+- Los tags `v*` deben estar protegidos mediante ruleset de GitHub, con creación/actualización/borrado restringidos a mantenedores autorizados. Para la publicación beta.1 se verificó el ruleset activo `Protect official version tags v*` (ID `25801369`); sólo el usuario propietario `PJGV333` tiene bypass para la publicación autorizada. El workflow no prueba que el ruleset exista.
 
 ## Pipeline y permisos
 
 1. El workflow oficial se dispara por push de tag `v*`, valida tag/SHA/version y consulta que no exista ya una Release.
 2. Un gate acotado corre sobre ese SHA; los builders verifican el mismo SHA. No se consideran suficientes los resultados de otra ejecución de rama/PR.
 3. El artefacto contiene SHA-256 y procedencia (versión, tag, canal, SHA fuente). HMAC y GPG son opcionales si no hay secretos y se describen como opcionales.
-4. `contents: read` es el permiso por defecto. Sólo el job de Release y el job posterior que publica el remoto Flatpak reciben `contents: write`; se deben proteger los environments `beta`, `stable`, `flatpak-beta` y `flatpak-stable` y limitar secretos a los jobs que los requieren.
+4. `contents: read` es el permiso por defecto. Sólo el job de Release y el job posterior que publica el remoto Flatpak reciben `contents: write`; proteger los environments de publicación con reviewers y políticas de refs permitidas. Para beta.1, `beta` y `flatpak-beta` están configurados con reviewer propietario, patrón de tag `v*-beta.*` y `can_admins_bypass=false`; el reviewer puede aprobar su propio deploy (`prevent_self_review=false`). Los canales stable no forman parte de este lanzamiento.
 5. Flatpak estable y beta mantienen rutas separadas. No promover/renombrar un artefacto beta como stable.
 6. El workflow de preview está separado: permisos de sólo lectura, artifacts con retención temporal en Actions, sin tag, Release, `gh-pages`, canal público, firmas de publicación ni manifiesto visible para el updater.
 

@@ -47,6 +47,10 @@ ChemUSON tiene ya una línea 0.3.0, builds Windows/Linux/Flatpak, canales beta/s
 
 El updater conserva sus contratos actuales; estos cambios no cambian canales, rutas ni formatos. La corrección RDKit se limita al protocolo de lanzamiento/diagnóstico del worker, a su verificación de empaquetado y al mensaje de fallo del panel; no altera algoritmos químicos, Clean2D ni persistencia `.cmsn`.
 
+## Addendum de autorización del propietario — cierre público (2026-10-24)
+
+El propietario autoriza ahora la publicación de `0.3.0-beta.1` mediante `release.yml` como prerelease, una vez satisfechos los controles obligatorios. Esto supersede el no-go de publicación de la fase de preparación, pero no promueve stable ni cambia la política fail-closed. La aceptación manual comunicada es limitada a las funciones/plataformas registradas en `docs/release/manual-acceptance-0.3.0.md`; no se atribuye PASS a las áreas no observadas ni a un artifact cuyo SHA/ID no fue comunicado.
+
 ## Impact
 
 Afecta `.github/workflows/release.yml`, `.github/workflows/build-preview.yml`, `.github/workflows/test.yml`, scripts y AppDir de `packaging/linux/`, validadores de `packaging/release/`, `_version.py`, AppStream/Inno metadata, tests de release/versionado/preview/AppImage/CI, `docs/release/`, documentación Linux, README y OpenSpec. No añade dependencias runtime, no toca química, Clean2D, `.cmsn`, `gh-pages` ni canales publicados. No crea tag ni GitHub Release; los previews sólo suben artefactos a la ejecución de Actions.

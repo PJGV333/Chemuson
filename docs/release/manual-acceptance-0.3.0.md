@@ -1,13 +1,13 @@
 # Matriz de aceptación manual — ChemUSON 0.3.0-beta.1
 
-> **Candidata vigente para retest — NO aceptada manualmente:** Build Preview [#39900808044](https://github.com/PJGV333/Chemuson/actions/runs/39900808044), rama `release/v0.3.0-beta.1-security-prep`, source SHA `e4710b938f0096ff2d02f35010117bb9a6ed8286`, versión `0.3.0-beta.1`, `complete=true`, `publication=false`. Artifacts y SHA-256 verificados contra `checksums.sha256` y provenance:
+> **Último Build Preview con procedencia verificada (histórico; no es la Release oficial):** #39900808044, rama `release/v0.3.0-beta.1-security-prep`, source SHA `e4710b938f0096ff2d02f35010117bb9a6ed8286`, versión `0.3.0-beta.1`, `complete=true`, `publication=false`. Artifacts y SHA-256 verificados contra `checksums.sha256` y provenance:
 > - Windows portable [artifact 12479081901](https://github.com/PJGV333/Chemuson/actions/runs/39900808044/artifacts/12479081901), `Chemuson-v0.3.0-beta.1-preview-e4710b93-windows-x86_64-portable.exe`, SHA-256 `d107a43dadb64c137dafb6e0278cc38118e2b911559c411654034ca458846754`.
 > - Windows setup [artifact 12478962316](https://github.com/PJGV333/Chemuson/actions/runs/39900808044/artifacts/12478962316), `Chemuson-v0.3.0-beta.1-preview-e4710b93-windows-x86_64-setup.exe`, SHA-256 `9859c922b2be0707a38afdb3c2d316b8d7125a0c516c6d4dc25e57d9e3c58f64`.
 > - AppImage Type 2 [artifact 12478253483](https://github.com/PJGV333/Chemuson/actions/runs/39900808044/artifacts/12478253483), `Chemuson-v0.3.0-beta.1-preview-e4710b93-linux-x86_64.AppImage`, SHA-256 `4abb85948b3c4eccd41d51340cded2469cf7e8b5a3d04ce5eca1bbfc53009169`.
 > - Flatpak [artifact 12478758199](https://github.com/PJGV333/Chemuson/actions/runs/39900808044/artifacts/12478758199), `Chemuson-v0.3.0-beta.1-preview-e4710b93-linux-x86_64.flatpak`, SHA-256 `828faf67f74496040594fa396530be0c1e2af92271b9eb9f6ab226e45d2556c3`.
 > - Report [artifact 12478957557](https://github.com/PJGV333/Chemuson/actions/runs/39900808044/artifacts/12478957557).
 >
-> El CArchive descargado de Windows portable y AppImage tiene cero entradas top-level `PIL`/`Pillow`; el árbol Flatpak no contiene `site-packages/PIL` ni metadata Pillow (los recursos `rdkit/sping/PIL` son internos de RDKit). Pillow 13.0.0 aún se resuelve transitivamente en el entorno PyInstaller por metadata de RDKit, pero no se distribuye en esos paquetes y OSV no reportó advisories para esa versión en la consulta del 2026-10-23. Los smokes automáticos pasaron; el propietario no ha probado estos artifacts. Esta es la referencia exacta para los retests abiertos salvo filas rotuladas explícitamente como históricas; la aceptación manual pendiente sigue `NOT TESTED`, y la matriz distingue los checks automáticos de los del propietario.
+> El CArchive descargado de Windows portable y AppImage tiene cero entradas top-level `PIL`/`Pillow`; el árbol Flatpak no contiene `site-packages/PIL` ni metadata Pillow (los recursos `rdkit/sping/PIL` son internos de RDKit). Pillow 13.0.0 aún se resuelve transitivamente en el entorno PyInstaller por metadata de RDKit, pero no se distribuye en esos paquetes y OSV no reportó advisories para esa versión en la consulta del 2026-10-23. Los smokes automáticos pasaron. El propietario informó posteriormente una evaluación manual limitada de los cuatro formatos descrita abajo, pero no identificó run/artifact/SHA; por ello no se atribuye ese resultado a estos artifacts concretos ni al SHA de la Release. Los retests restantes continúan `NOT TESTED`, y la matriz distingue checks automáticos de la observación del propietario.
 >
 > **Preview anterior (histórico, no candidato vigente):** Build Preview [#39899351520](https://github.com/PJGV333/Chemuson/actions/runs/39899351520), SHA `35f5888cd92f0048b0e2c15c97534952682d830d`. Se detectaron cinco extensiones `PIL/*` en cada CArchive Windows/AppImage; queda supersedido por #39900808044 y no debe usarse para retest de la exclusión.
 >
@@ -19,11 +19,21 @@
 >
 > **P1 — ChemName MOL templates omitted from frozen packages — FAILED — Blocks beta acceptance.** Los CArchive reales de Windows portable y AppImage del run `37855524295` carecían de los nueve `.mol` necesarios; no se observó un defecto de reglas de nomenclatura. El Build Preview vigente [#39900808044](https://github.com/PJGV333/Chemuson/actions/runs/39900808044), SHA `e4710b938f0096ff2d02f35010117bb9a6ed8286`, valida 9/9 templates y 6/6 controles ChemName en Windows portable/AppImage/Flatpak, comparados con Python. El retest manual del propietario sobre esos artifacts exactos sigue pendiente.
 
-> **Observaciones manuales del propietario — alcance limitado, sin trazabilidad completa:** el 2026-10-08 informó que en un “segundo Build Preview” se recuperaron iconos en Windows portable y AppImage Linux, funcionaban ambos temas, abría la ventana, permitía dibujo/selección y el Inspector mostraba la selección. No dio run/artifact ID, SHA, entorno ni capturas; por eso no se atribuye a los paquetes actuales ni cambia el fallo histórico. El 2026-10-14 aprobó visualmente la corrección de SideTabRow: las cinco pestañas aparecen completas desde que se abre el panel. Tampoco se registraron artifact SHA, plataforma, tema/DPI ni evidencia adjunta. Es un PASS visual limitado del síntoma, no una aceptación de instalación ni del comportamiento completo en el preview actual.
+> **Aceptación manual limitada informada por el propietario — 2026-10-24:**
+> - **Linux AppImage:** editor 2D y visor 3D funcionales.
+> - **Linux Flatpak:** editor 2D, visor 3D y Live MM/MMFF94 funcionales.
+> - **Windows portable:** editor 2D, visor 3D y Live MM/MMFF94 funcionales.
+> - **Windows installer:** aplicación instalada y ejecutada; documento molecular complejo abierto y visualizado en 2D/3D.
+>
+> El mensaje de aceptación no incluyó Action run/artifact IDs, SHA, checksums, versiones exactas del sistema operativo ni capturas. Se conserva como observación directa del propietario, pero no puede vincularse de forma verificable a #39900808044 ni a los paquetes que se construirán desde el tag. Este PASS está limitado estrictamente a las operaciones enumeradas. **No** acredita Clean2D, guardado/reapertura, persistencia/Undo/Redo, import/export, ChemName, propiedades/descriptores RDKit, asistente, espectros, diagramas, acceso por portal Flatpak, actualización, cierre bajo carga, ni otros escenarios químicos, visuales o de seguridad. Esas filas conservan su estado.
+>
+> La autorización explícita del 2026-10-24 permite publicar esta versión como beta prerelease; no convierte los fallos históricos en PASS, no amplía la aceptación anterior y no autoriza declarar estabilidad.
+>
+> **Observaciones manuales anteriores del propietario — alcance limitado, sin trazabilidad completa:** el 2026-10-08 informó que en un “segundo Build Preview” se recuperaron iconos en Windows portable y AppImage Linux, funcionaban ambos temas, abría la ventana, permitía dibujo/selección y el Inspector mostraba la selección. No dio run/artifact ID, SHA, entorno ni capturas; por eso no se atribuye a los paquetes actuales ni cambia el fallo histórico. El 2026-10-14 aprobó visualmente la corrección de SideTabRow: las cinco pestañas aparecen completas desde que se abre el panel. Tampoco se registraron artifact SHA, plataforma, tema/DPI ni evidencia adjunta. Es un PASS visual limitado del síntoma, no una aceptación de instalación ni del comportamiento completo en el preview actual.
 >
 > **DATA-11 — PASS manual limitado:** el propietario confirmó un round-trip MOL en ChemUSON de `(2S)-2-fluoropropan-1-ol` (`C[C@H](F)CO`), conservando estructura y estereoquímica representada. No se generaliza a otras moléculas quirales, aminoácidos, E/Z ni otros recorridos. No se proporcionó aquí SHA del paquete ni adjunto verificable del MOL; los demás casos siguen `NOT TESTED`.
 >
-> Las filas históricas ya iniciadas conservan su estado. Los casos nuevos empiezan en `NOT TESTED`; la matriz no acredita aceptación hasta completar pruebas con paquetes instalados y SHA identificables. La evidencia manual se separa de los resultados automatizados.
+> Las filas históricas ya iniciadas conservan su estado. Los casos nuevos empiezan en `NOT TESTED`; la evidencia manual se separa de los resultados automatizados. La autorización del propietario permite publicar la beta en el alcance limitado registrado, pero la falta de SHA/artifact IDs no acredita resultados para los paquetes oficiales exactos ni completa la matriz.
 
 ## Registro de ejecución
 
@@ -178,7 +188,7 @@ Resultado permitido por caso: `PASS`, `FAIL`, `BLOCKED` o `NOT TESTED`. Registra
 | UI-FAIL-WIN-01 | Windows portable, Actions run `37826597134` | En tema claro y oscuro, botones de barra lateral y controles superiores aparecen sin numerosos iconos; C/T/esfera y otros símbolos sí aparecen. Ventana y bienvenida abren, versión `0.3.0-beta.1`. | P1 | **FAILED — P1 blocks beta acceptance** — propietario |
 | UI-FAIL-LINUX-01 | Linux portable del run `37826597134` (binario PyInstaller renombrado, no Type 2) | En tema claro y oscuro faltan numerosos iconos de barras de dibujo, herramientas y controles superiores. | P1 | **FAILED — P1 blocks beta acceptance** — propietario |
 
-Estos defectos confirman la baseline del primer candidato, no el estado de los paquetes corregidos. El propietario informó después un resultado visual positivo limitado sobre un segundo preview, pero sin identificador/hash que lo vincule a los artifacts. UI-07/UI-08 continúan `NOT TESTED` para los archivos exactos del Build Preview vigente #39900808044 hasta su retest manual.
+Estos defectos confirman la baseline de los paquetes observados y no se reescriben como PASS. La evaluación del 2026-10-24 reporta editor/visor funcionales en Linux y Windows, pero no aporta identidad de artefacto ni observación explícita de iconos/temas; por ello no cierra UI-07/UI-08 para #39900808044 ni para la Release oficial.
 
 ## Correcciones UI/identidad pendientes de retest
 
@@ -206,7 +216,7 @@ Estas limitaciones son conocidas y no deben confundirse con defectos bloqueantes
 
 - **P0:** pérdida/corrupción química o `.cmsn`, exposición de credenciales, canal/update público alterado por preview, no arranque en plataformas soportadas, identidad química crítica incorrecta. Bloquea beta/stable hasta resolver.
 - **P1:** flujo esencial roto, crash reproducible de app empaquetada, instalación/actualización incorrecta, datos no reversibles o limitación de privacidad. En general bloquea stable; cualquier excepción beta requiere decisión explícita del propietario y riesgo acotado.
-- **Regla específica de esta campaña:** los P1 confirmados (iconos ausentes, fallo RDKit empaquetado y templates ChemName ausentes) bloquean la aceptación y publicación beta hasta que el propietario reteste los paquetes corregidos en Windows y Linux, registre resultados por formato y decida cualquier incidencia. Los smokes automatizados no satisfacen el gate manual; estado actual `BETA PUBLICATION: BLOCKED — AWAITING MANUAL RETEST`.
+- **Cierre beta autorizado por el propietario (2026-10-24):** la evaluación manual reportada tiene sólo el alcance enumerado al inicio y carece de trazabilidad de artifact; los casos no observados permanecen `NOT TESTED` y los fallos históricos permanecen históricos. Esta autorización permite publicar como prerelease beta, pero no declara completa la matriz, no demuestra ausencia de todos los defectos P1 y no autoriza promoción a stable.
 - **P2:** defecto no crítico con workaround claro. Puede aceptarse sólo con decisión del propietario y seguimiento.
 - **P3:** cosmético/menor. Registrar; aceptación requiere decisión explícita para stable.
 
@@ -229,7 +239,7 @@ Para declarar un caso finalizado, reemplazar `NOT TESTED`, añadir SHA del artif
 
 ## Retest corto de la candidata final — pendiente
 
-Los registros visuales de diagnóstico y la campaña de aminas no acreditan los binarios finales. Usa únicamente los cuatro artifacts del Build Preview oficial correspondiente al SHA que aparece en cada `preview-provenance.json`; confirma que los cuatro SHA coincidan y verifica cada `checksums.sha256`. Mantén cada resultado en `NOT TESTED` hasta observar ese paquete exacto.
+Los registros visuales de diagnóstico y la aceptación limitada de arriba no identifican los binarios finales. Para verificar el build final, usa sólo los cuatro paquetes adjuntos a la GitHub Release y su `build-provenance.json`/`checksums.txt`; los cuatro deben apuntar al SHA completo del tag. La evaluación ya informada no se reasigna a esos paquetes sin evidencia de identidad, y los casos no enumerados conservan `NOT TESTED`.
 
 1. **Windows portable:** comprobar arranque/salida; dibujar una molécula pequeña y un anillo; Undo/Redo; guardar `.cmsn`, cerrar y reabrir; importar etanol desde SMILES y un MOL de prueba; revisar etiquetas de aminas y descriptores RDKit.
 2. **Windows Inno Setup:** en VM/perfil desechable, instalar, abrir, comprobar versión, cerrar y desinstalar. No sobrescribir una instalación de trabajo.

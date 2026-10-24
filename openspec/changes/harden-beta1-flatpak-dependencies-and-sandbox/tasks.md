@@ -19,6 +19,11 @@
 - [x] C.4 Ejecutar Build Preview de cuatro formatos desde SHA `e4710b938f0096ff2d02f35010117bb9a6ed8286`; comprobar jobs, `publication=false`, hashes, provenance, ausencia de recursos top-level PIL en CArchive/Flatpak, RDKit/ChemName y smoke 2D→3D.
 - [x] C.5 Anotar resultados exactos y artefactos en OpenSpec/notas/matriz sin convertir smoke en aceptación manual.
 
-## D. Dictamen
-- [x] D.1 Verificar que `main` y release-prep no se modificaron, y que no hay tag/Release/publicación.
-- [x] D.2 Dictaminar **NO-GO**; no crear tag mientras falte aceptación P0/P1, validación Flatpak interactiva o controles de publicación.
+## D. Dictamen histórico al cerrar el cambio de seguridad (2026-10-23)
+- [x] D.1 Verificar que `main` y release-prep no se modificaron, y que no había tag/Release/publicación en ese cierre.
+- [x] D.2 Dictaminar **NO-GO en ese momento**; no crear tag mientras faltara aceptación/validación interactiva o controles de publicación.
+
+## E. Integración autorizada posterior (2026-10-24)
+- [x] E.1 Integrar los cuatro commits de esta rama en `release/v0.3.0-beta.1-prep` mediante fast-forward-only; mantener preservados los hashes originales.
+- [x] E.2 Registrar la aceptación manual limitada y la autorización posterior del propietario sin reasignar PASS a funciones no verificadas ni a artefactos de SHA desconocido.
+- [ ] E.3 Verificar Build Preview y paquete oficial generados desde el SHA definitivo; no reutilizar #39900808044 ni otro SHA anterior.

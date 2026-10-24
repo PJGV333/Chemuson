@@ -71,9 +71,13 @@ See `proposal.md` for motivation. Current state and baseline are in `baseline.md
 1. Use `set_version.py` on this branch to set the canonical beta version and AppStream entry; preserve old metadata/tags/assets.
 2. Validate all release policy/unit tests, strict OpenSpec, package config and bounded CI-equivalent gates.
 3. Push this preparation branch only. Owner reviews and later decides whether to merge/tag; no release operation occurs here.
-4. For future publication, owner creates a protected tag on the reviewed commit; tag-only workflow validates and builds the exact SHA. A failure before publication leaves no version released. A failure after partial publication blocks promotion; use a higher version for recovery.
+4. For publication, the authorized owner creates a protected tag on the reviewed commit; tag-only workflow validates and builds the exact SHA. A failure before publication leaves no version released. A failure after partial publication blocks promotion; use a higher version for recovery.
 5. Stable promotion is a separate reviewed stable tag with separately protected environment/channel. Beta artifacts are never relabeled stable.
 
 ## Open Questions
 
 None. GitHub environment/ruleset configuration is an explicit external prerequisite and is not changed by this branch.
+
+## Addendum — owner authorization for public beta closure (2026-10-24)
+
+The original non-goal of creating a tag/Release described the preparation phase. The owner has now explicitly authorized publishing `v0.3.0-beta.1` as a **pre-release** after exact-SHA package, security, sidecar and workflow gates pass. This does not authorize stable promotion, does not waive validators, does not convert untested cases to PASS, and does not allow reusing artifacts from an earlier SHA. The tag ruleset and beta deployment environments are repository settings and have been configured/read back; publication still uses the existing tag-only `release.yml` and bounded gate.
