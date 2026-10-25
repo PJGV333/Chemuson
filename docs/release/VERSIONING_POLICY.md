@@ -16,7 +16,7 @@ Formato: `MAJOR.MINOR.PATCH[-prerelease]`.
 - Mientras `MAJOR=0`, correcciones compatibles incrementan `PATCH`; una línea de funcionalidad aditiva incrementa `MINOR`. Cambios incompatibles también incrementan `MINOR` hasta que el propietario apruebe explícitamente `1.0.0`.
 - El desarrollo puede usar `X.Y.Z-dev`.
 - Secuencia de prepublicación: `X.Y.Z-beta.N`, opcionalmente `X.Y.Z-rc.N`, y después `X.Y.Z` estable. `N` es positivo y monotónico: una beta rechazada se corrige con la siguiente numeración (`beta.2`), nunca se reutiliza `beta.1`.
-- La campaña preparó `0.3.0-beta.1`, pero su workflow tag-only no se ejecutó y no existe una GitHub Release. El tag anotado y su commit se preservan; no se reutilizan ni mueven. La recuperación prepara `0.3.0-beta.2` en `docs/release/0.3.0-beta.2.md`; el tag beta.2 requiere confirmación explícita del propietario.
+- La campaña preparó `0.3.0-beta.1`, pero su workflow tag-only no se ejecutó (`[skip ci]`). El push de `0.3.0-beta.2` sí inició el workflow oficial, que falló cerrado en el preflight del gate por un defecto de rutas en el validador; tampoco existe GitHub Release de beta.2. Los tags anotados y sus commits se preservan; no se reutilizan ni mueven. La recuperación prepara `0.3.0-beta.3` en `docs/release/0.3.0-beta.3.md`; el tag beta.3 requiere confirmación explícita del propietario tras revisar la evidencia del ensayo del preflight ejecutado en GitHub Actions.
 
 ## Tags y canales oficiales
 

@@ -1,4 +1,4 @@
 """Fuente única de versión de Chemuson."""
 
 # Mantener este valor como fuente canónica para app, CLI y empaquetado.
-__version__ = "0.3.0-beta.2"
+__version__ = "0.3.0-beta.3"

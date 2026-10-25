@@ -1,0 +1,1 @@
+NOT RUN: pytest -q (full suite omitted by explicit task constraint; bounded/focused tests only).

@@ -78,7 +78,7 @@ def test_existing_release_build_and_flatpak_publication_checks_remain() -> None:
         for step in workflow["jobs"]["release"]["steps"]
         if step.get("uses", "").startswith("softprops/action-gh-release@")
     )
-    assert release_step["with"]["body_path"] == "docs/release/0.3.0-beta.2-public.md"
+    assert release_step["with"]["body_path"] == "docs/release/0.3.0-beta.3-public.md"
     assert release_step["with"]["generate_release_notes"] == "false"
     assert (ROOT / release_step["with"]["body_path"]).is_file()
     assert "set_version.py" not in text
