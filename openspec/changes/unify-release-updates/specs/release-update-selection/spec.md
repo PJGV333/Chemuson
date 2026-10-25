@@ -64,3 +64,10 @@ The official tag-only workflow SHALL build and publish from one validated versio
 - **WHEN** the official workflow prepares the GitHub Release
 - **THEN** it SHALL use the public notes file corresponding to that SemVer without a version-specific workflow edit
 - **AND** it SHALL preserve existing gates, permissions, package checks, checksums, provenance and platform update mechanisms
+
+#### Scenario: Diagnostic build on the primary or feature branch
+
+- **GIVEN** a clean checkout whose exact source SHA and canonical version match
+- **WHEN** a diagnostic build is requested from `main`, `feature/*` or `fix/*`
+- **THEN** diagnostic identity validation SHALL accept the branch without publishing a tag, Release or update metadata
+- **AND** release-preparation branches SHALL continue to use the separate Preview path

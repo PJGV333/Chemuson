@@ -19,7 +19,7 @@
 
 ## Integración documental desde main
 
-`origin/main` está una confirmación documental por encima del merge-base común `f0fde603371255902bf0e630ca1ce032b8f16ad3`; el commit `0f8fd6d7` sólo toca README/manuales y ya describe beta.3. La rama parte del tag/HEAD beta.3 `01652e1c9e79945a050f3733adc307b47866b7bb`. Para preparar la integración futura sin traer ni descartar código, se integrará de manera explícita el cambio documental de `main` en esta rama, se revisará cada archivo resultante y se registrarán el merge-base y los commits. No habrá merge a `main`.
+`origin/main` está una confirmación documental por encima del merge-base común `f0fde603371255902bf0e630ca1ce032b8f16ad3`; el commit `0f8fd6d7` sólo toca README/manuales y ya describe beta.3. La rama parte del tag/HEAD beta.3 `01652e1c9e79945a050f3733adc307b47866b7bb`. Para preparar la integración futura sin traer ni descartar código, se integró explícitamente el cambio documental de `main` en esta rama, se revisó cada archivo resultante y se registraron el merge-base y los commits. Se conservaron textos, enlaces y estructura visible; sólo se normalizaron los saltos Markdown con `<br>` explícitos para que el diff-check no falle. No habrá merge a `main`.
 
 ## Riesgos y pruebas
 

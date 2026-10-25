@@ -12,6 +12,7 @@ import pytest
 RELEASE_DIR = Path(__file__).resolve().parent.parent / "packaging" / "release"
 sys.path.insert(0, str(RELEASE_DIR))
 
+import diagnostic_build  # noqa: E402
 import preview_build  # noqa: E402
 
 
@@ -54,6 +55,25 @@ def test_preview_identity_requires_exact_sha_version_and_preparation_branch(tmp_
         source_branch="release/v0.3.0-beta.1-prep",
         repo_root=tmp_path,
     ) == sha
+    assert diagnostic_build.validate_diagnostic_identity(
+        version=version,
+        git_sha=sha,
+        source_branch="feature/unified-release-updates",
+        repo_root=tmp_path,
+    ) == sha
+    assert diagnostic_build.validate_diagnostic_identity(
+        version=version,
+        git_sha=sha,
+        source_branch="main",
+        repo_root=tmp_path,
+    ) == sha
+    with pytest.raises(ValueError, match="must not run from release"):
+        diagnostic_build.validate_diagnostic_identity(
+            version=version,
+            git_sha=sha,
+            source_branch="release/v0.3.0-beta.1-prep",
+            repo_root=tmp_path,
+        )
 
     with pytest.raises(ValueError, match="differs from canonical"):
         preview_build.validate_preview_identity(

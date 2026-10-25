@@ -80,6 +80,75 @@ def test_check_for_updates_blocks_downgrade_replay() -> None:
     assert "downgrade" in result.reason.lower() or "replay" in result.reason.lower()
 
 
+def test_beta_channel_offers_newer_beta_then_reviewed_final() -> None:
+    beta_settings = UpdateSettings(enabled=True, channel=UpdateChannel.BETA)
+    beta_release = _make_release("0.3.0-beta.3")
+    beta_core = AutoUpdateCore(_FakeProvider(beta_release), beta_settings)
+    beta_result = beta_core.check_for_updates(
+        current_version="0.3.0-beta.2", platform_tag="windows-x86_64"
+    )
+    assert beta_result.available is True
+    assert beta_result.latest_version == "0.3.0-beta.3"
+
+    final_release = _make_release("0.3.0")
+    final_core = AutoUpdateCore(
+        _FakeProvider(final_release),
+        UpdateSettings(enabled=True, channel=UpdateChannel.BETA),
+    )
+    final_result = final_core.check_for_updates(
+        current_version="0.3.0-beta.3", platform_tag="windows-x86_64"
+    )
+    assert final_result.available is True
+    assert final_result.latest_version == "0.3.0"
+
+
+def test_check_for_updates_does_not_offer_older_release_or_missing_asset() -> None:
+    older_release = _make_release("0.3.0-beta.2")
+    older_core = AutoUpdateCore(
+        _FakeProvider(older_release),
+        UpdateSettings(enabled=True, channel=UpdateChannel.BETA),
+    )
+    older = older_core.check_for_updates(
+        current_version="0.3.0-beta.3", platform_tag="windows-x86_64"
+    )
+    assert older.available is False
+
+    release_without_assets = _make_release("0.3.0-beta.4")
+    release_without_assets.assets.clear()
+    no_asset_core = AutoUpdateCore(
+        _FakeProvider(release_without_assets),
+        UpdateSettings(enabled=True, channel=UpdateChannel.BETA),
+    )
+    no_asset = no_asset_core.check_for_updates(
+        current_version="0.3.0-beta.3", platform_tag="windows-x86_64"
+    )
+    assert no_asset.available is False
+    assert "no hay asset compatible" in no_asset.reason.lower()
+
+
+def test_verify_download_rejects_checksum_mismatch(tmp_path) -> None:
+    artifact_path = tmp_path / "update.bin"
+    artifact_path.write_bytes(b"actual payload")
+    checksum_path = tmp_path / "update.bin.sha256"
+    checksum_path.write_text(f"{hashlib.sha256(b'other payload').hexdigest()}  update.bin\n", encoding="utf-8")
+
+    release = _make_release("1.5.0")
+    candidate = UpdateCandidate(release=release, artifact=release.assets[0])
+    downloaded = DownloadedUpdate(
+        candidate=candidate,
+        artifact_path=str(artifact_path),
+        checksum_path=str(checksum_path),
+    )
+    core = AutoUpdateCore(
+        provider=_FakeProvider(release),
+        settings=UpdateSettings(enabled=True, require_sha256=True),
+    )
+
+    result = core.verify_download(downloaded)
+    assert result.ok is False
+    assert "no coincide" in result.reason.lower()
+
+
 def test_verify_download_with_sha256_and_hmac_signature(tmp_path) -> None:
     artifact_path = tmp_path / "update.bin"
     artifact_bytes = b"chemuson-update"

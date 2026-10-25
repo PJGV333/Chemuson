@@ -27,7 +27,7 @@ _VERSION_RE = re.compile(
 )
 _SHA_RE = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$", re.IGNORECASE)
 _DIAGNOSTIC_BRANCH_RE = re.compile(
-    r"^(?:ai|chore|docs|feat|fix|hotfix|integration|investigation|spike|stabilize)/[A-Za-z0-9._/-]+$"
+    r"^(?:main|(?:ai|chore|docs|feat|feature|fix|hotfix|integration|investigation|spike|stabilize)/[A-Za-z0-9._/-]+)$"
 )
 _RELEASE_BRANCH_RE = re.compile(r"^release/")
 
@@ -102,8 +102,8 @@ def validate_diagnostic_identity(
         )
     if not _DIAGNOSTIC_BRANCH_RE.fullmatch(branch):
         raise ValueError(
-            "Diagnostic builds are restricted to ai/, chore/, docs/, feat/, fix/, "
-            "hotfix/, integration/, investigation/, spike/ or stabilize/ branches."
+            "Diagnostic builds are restricted to main or ai/, chore/, docs/, feat/, "
+            "feature/, fix/, hotfix/, integration/, investigation/, spike/ or stabilize/ branches."
         )
     return normalized_sha
 

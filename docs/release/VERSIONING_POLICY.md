@@ -9,6 +9,12 @@ Esta política aplica a compilaciones oficiales y canales `beta`/`stable`. Una c
 - `packaging/release/set_version.py` sirve para preparar un commit de versión y sus metadatos; el CI oficial **no** modifica archivos fuente durante la compilación.
 - Los builders de Windows, Linux y Flatpak deben empaquetar el mismo commit y la misma versión.
 
+## Línea de desarrollo
+
+- `main` es la línea principal de integración. `fix/*`, `feature/*` y `release/*-prep` son ramas temporales; no se mantienen líneas beta y estable en paralelo.
+- Se permite excepcionalmente una rama correctiva temporal para una versión antigua cuando sea necesario mantenerla; después se integra explícitamente a `main`.
+- Las ramas de preparación se basan en el candidato exacto. Antes de integrar ramas divergentes, verificar merge-base, commits exclusivos y diff; no forzar merges automáticos ni descartar cambios documentales ya publicados en `main`.
+
 ## SemVer con MAJOR 0
 
 Formato: `MAJOR.MINOR.PATCH[-prerelease]`.
@@ -20,8 +26,9 @@ Formato: `MAJOR.MINOR.PATCH[-prerelease]`.
 
 ## Tags y canales oficiales
 
-- El único disparador oficial es un tag SemVer `vX.Y.Z`, `vX.Y.Z-beta.N` o `vX.Y.Z-rc.N`.
-- `vX.Y.Z` se publica únicamente en `stable`. `beta.N` y `rc.N` se publican únicamente como prerelease en el canal `beta`.
+- El único publicador oficial es `.github/workflows/release.yml`, activado por un tag SemVer `vX.Y.Z`, `vX.Y.Z-beta.N` o `vX.Y.Z-rc.N`. No hay un workflow de publicación independiente para beta y otro para stable.
+- `vX.Y.Z` se publica como release final en `stable`. `beta.N` y `rc.N` se publican como prerelease en el canal `beta`; ese metadato de GitHub acompaña al SemVer, pero no sustituye la identidad ni la comparación SemVer del actualizador.
+- Las notas públicas siguen `docs/release/<version>-public.md`; el workflow único carga el archivo correspondiente a la versión validada. Un archivo ausente bloquea la publicación.
 - Tag, `_version.py`, entrada AppStream vigente, SHA del evento y SHA checkout deben coincidir. Un tag malformado, borrado, ya publicado, con metadatos distintos o sin respuesta verificable de GitHub bloquea el pipeline.
 - No se seleccionan versión y canal en inputs independientes; el canal se deriva del tag.
 - Nunca mover, borrar, volver a crear ni sobrescribir un tag/release ya publicado. Una corrección usa una versión posterior. Stable `0.3.0` requiere aprobación de aceptación; una regresión estable requiere `0.3.1`.
@@ -34,7 +41,18 @@ Formato: `MAJOR.MINOR.PATCH[-prerelease]`.
 3. El artefacto contiene SHA-256 y procedencia (versión, tag, canal, SHA fuente). HMAC y GPG son opcionales si no hay secretos y se describen como opcionales.
 4. `contents: read` es el permiso por defecto. Sólo el job de Release y el job posterior que publica el remoto Flatpak reciben `contents: write`; proteger los environments de publicación con reviewers y políticas de refs permitidas. Para beta.1, `beta` y `flatpak-beta` están configurados con reviewer propietario, patrón de tag `v*-beta.*` y `can_admins_bypass=false`; el reviewer puede aprobar su propio deploy (`prevent_self_review=false`). Los canales stable no forman parte de este lanzamiento.
 5. Flatpak estable y beta mantienen rutas separadas. No promover/renombrar un artefacto beta como stable.
-6. El workflow de preview está separado: permisos de sólo lectura, artifacts con retención temporal en Actions, sin tag, Release, `gh-pages`, canal público, firmas de publicación ni manifiesto visible para el updater.
+6. El workflow de preview está separado: permisos de sólo lectura, artifacts con retención temporal en Actions, sin tag, Release, `gh-pages`, canal público, firmas de publicación ni manifiesto visible para el updater. Las compilaciones de diagnóstico también permanecen fuera de publicación.
+
+## Actualizador y compatibilidad de canales
+
+- El actualizador integrado considera identidad oficial únicamente un tag `v<SemVer>` válido y ordena releases por precedencia SemVer; `published_at`, el título y el booleano GitHub `prerelease` no deciden cuál release es más nueva ni si el SemVer es estable.
+- Una instalación con preferencia `stable` sólo recibe versiones finales más nuevas. Una instalación que optó por `beta` puede recibir betas/RC más nuevas y graduar a una versión final posterior. Las preferencias persistidas y la protección contra downgrade se conservan.
+- Los canales instalados no se eliminan en esta simplificación: AppImageUpdate sigue usando `latest` para stable y `prerelease` para beta; los remotos/ramas Flatpak `stable` y `beta` y su actualización con `flatpak update` permanecen; Windows conserva la selección de instalador o portable según el tipo de instalación. Flatpak no consulta el updater interno.
+- Los manifests publicados se conservan por compatibilidad mientras no se haya demostrado que no exista consumidor anterior. Descargas siguen sujetas a asset de plataforma y SHA-256/provenance; previews no son fuente de actualización.
+
+## Latest y beta.3
+
+GitHub normalmente reserva el distintivo **Latest** para releases que no son prerelease. No cambiar el atributo `prerelease` de `v0.3.0-beta.3`: AppImageUpdate, rastreo beta de Windows, preferencias de clientes y remotos Flatpak son contratos separados y no se promueven cambiando sólo el metadato de GitHub. Mientras la siguiente versión final no se publique, README y enlaces oficiales deben señalar la beta recomendada y explicar que sigue siendo preliminar. No renombrar ni reconstruir tags, Release o paquetes existentes.
 
 ## Beta → estable y recuperación
 

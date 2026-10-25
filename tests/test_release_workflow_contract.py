@@ -78,9 +78,17 @@ def test_existing_release_build_and_flatpak_publication_checks_remain() -> None:
         for step in workflow["jobs"]["release"]["steps"]
         if step.get("uses", "").startswith("softprops/action-gh-release@")
     )
-    assert release_step["with"]["body_path"] == "docs/release/0.3.0-beta.3-public.md"
+    assert release_step["with"]["body_path"] == (
+        "docs/release/${{ steps.vars.outputs.version }}-public.md"
+    )
     assert release_step["with"]["generate_release_notes"] == "false"
-    assert (ROOT / release_step["with"]["body_path"]).is_file()
+    version_source = (ROOT / "src/chemuson/_version.py").read_text(encoding="utf-8")
+    canonical_version = next(
+        line.split('"')[1]
+        for line in version_source.splitlines()
+        if line.startswith("__version__ = ")
+    )
+    assert (ROOT / "docs/release" / f"{canonical_version}-public.md").is_file()
     assert "set_version.py" not in text
     assert "target_commitish:" not in text
 

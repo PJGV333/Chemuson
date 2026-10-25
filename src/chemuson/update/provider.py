@@ -9,11 +9,12 @@ import re
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from functools import cmp_to_key
 from pathlib import Path
 from typing import Any, Optional
 from urllib.request import Request, urlopen
 
-from chemuson.update.semver import parse_semver
+from chemuson.update.semver import channel_accepts_version, compare_versions, parse_semver
 from chemuson.update.types import (
     ReleaseAsset,
     ReleaseInfo,
@@ -21,7 +22,6 @@ from chemuson.update.types import (
     coerce_update_channel,
 )
 
-_ASSET_VERSION_RE = re.compile(r"v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)")
 _OWNER_REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
@@ -52,22 +52,15 @@ def detect_platform_tag() -> str:
     return f"{sys_name}-{arch}"
 
 
-def _version_from_tag_or_name(tag_name: str, name: str = "") -> str:
-    """Extrae versión semántica desde tag o nombre de release."""
-    for raw in (tag_name, name):
-        if not raw:
-            continue
-        try:
-            return parse_semver(raw).normalized()
-        except ValueError:
-            pass
-        match = _ASSET_VERSION_RE.search(raw)
-        if match:
-            try:
-                return parse_semver(match.group(1)).normalized()
-            except ValueError:
-                continue
-    return ""
+def _version_from_tag(tag_name: str) -> str:
+    """Acepta sólo la versión SemVer del tag oficial; el título no es identidad."""
+    raw = str(tag_name or "").strip()
+    if not raw.startswith("v"):
+        return ""
+    try:
+        return parse_semver(raw).normalized()
+    except ValueError:
+        return ""
 
 
 def _asset_rules_for_platform(platform_tag: str) -> AssetMatchRules:
@@ -298,7 +291,7 @@ class GitHubReleasesProvider:
     def parse_release(self, payload: dict[str, Any]) -> Optional[ReleaseInfo]:
         """Convierte payload de API en `ReleaseInfo`."""
         tag_name = str(payload.get("tag_name") or "").strip()
-        version = _version_from_tag_or_name(tag_name, str(payload.get("name") or ""))
+        version = _version_from_tag(tag_name)
         if not version:
             return None
         assets = self._parse_assets(list(payload.get("assets") or []))
@@ -322,23 +315,19 @@ class GitHubReleasesProvider:
             if parsed is not None:
                 releases.append(parsed)
 
-        def _key(release: ReleaseInfo) -> datetime:
-            raw = (release.published_at or "").replace("Z", "+00:00")
-            try:
-                return datetime.fromisoformat(raw)
-            except Exception:
-                return datetime.min
-
-        releases.sort(key=_key, reverse=True)
+        releases.sort(
+            key=cmp_to_key(
+                lambda left, right: compare_versions(right.version, left.version)
+            )
+        )
         return releases
 
     def latest_for_channel(self, channel: UpdateChannel | str) -> Optional[ReleaseInfo]:
         """Obtiene release candidata según canal `stable`/`beta`."""
         ch = coerce_update_channel(channel)
         for release in self.list_releases():
-            if ch == UpdateChannel.STABLE and release.prerelease:
-                continue
-            return release
+            if channel_accepts_version(ch, release.version):
+                return release
         return None
 
     def find_platform_asset(

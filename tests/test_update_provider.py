@@ -3,6 +3,7 @@
 import json
 from datetime import datetime, timedelta, timezone
 
+import pytest
 
 from chemuson.update.provider import GitHubReleasesProvider
 from chemuson.update.types import UpdateChannel
@@ -74,6 +75,81 @@ def test_latest_release_selection_by_channel(monkeypatch) -> None:
     assert stable.version == "1.1.4"
     assert beta is not None
     assert beta.version == "1.2.0-beta.2"
+
+
+def test_release_selection_uses_semver_not_date_or_prerelease_flag(monkeypatch) -> None:
+    provider = GitHubReleasesProvider("PJGV333", "Chemuson")
+    payload = [
+        {
+            "tag_name": "v1.1.0",
+            "name": "Chemuson 1.1.0",
+            "prerelease": False,
+            "published_at": "2030-01-01T00:00:00Z",
+            "assets": [],
+        },
+        {
+            "tag_name": "v1.2.0",
+            "name": "Chemuson 1.2.0",
+            "prerelease": True,
+            "published_at": "2025-01-01T00:00:00Z",
+            "assets": [],
+        },
+        {
+            "tag_name": "v1.3.0-beta.3",
+            "name": "Chemuson 1.3.0-beta.3",
+            "prerelease": False,
+            "published_at": "2040-01-01T00:00:00Z",
+            "assets": [],
+        },
+        {
+            "tag_name": "v1.3.0-beta.10",
+            "name": "Chemuson 1.3.0-beta.10",
+            "prerelease": False,
+            "published_at": "2020-01-01T00:00:00Z",
+            "assets": [],
+        },
+    ]
+    monkeypatch.setattr(provider, "fetch_releases_payload", lambda: payload)
+
+    releases = provider.list_releases()
+    stable = provider.latest_for_channel(UpdateChannel.STABLE)
+    beta = provider.latest_for_channel(UpdateChannel.BETA)
+
+    assert [release.version for release in releases] == [
+        "1.3.0-beta.10",
+        "1.3.0-beta.3",
+        "1.2.0",
+        "1.1.0",
+    ]
+    assert stable is not None and stable.version == "1.2.0"
+    assert beta is not None and beta.version == "1.3.0-beta.10"
+
+
+def test_provider_does_not_infer_version_from_release_title(monkeypatch) -> None:
+    provider = GitHubReleasesProvider("PJGV333", "Chemuson")
+    payload = [
+        {
+            "tag_name": "release-current",
+            "name": "Chemuson 9.9.9",
+            "prerelease": False,
+            "assets": [],
+        },
+        {
+            "tag_name": "v1.2.0-beta..1",
+            "name": "Chemuson 1.2.0-beta.1",
+            "prerelease": False,
+            "assets": [],
+        },
+        {
+            "tag_name": "1.2.3",
+            "name": "Chemuson 1.2.3",
+            "prerelease": False,
+            "assets": [],
+        },
+    ]
+    monkeypatch.setattr(provider, "fetch_releases_payload", lambda: payload)
+
+    assert provider.list_releases() == []
 
 
 def test_asset_parser_picks_platform_and_links_sidecars(monkeypatch) -> None:
@@ -202,6 +278,23 @@ def test_provider_can_disable_cache_fallback(monkeypatch, tmp_path) -> None:
     except OSError:
         pass
     assert provider.last_fetch_source == "error"
+
+
+def test_network_failure_without_cache_never_selects_a_release(monkeypatch, tmp_path) -> None:
+    provider = GitHubReleasesProvider(
+        "PJGV333",
+        "Chemuson",
+        cache_dir=str(tmp_path),
+        allow_cached_fallback=False,
+    )
+
+    def _raise(_url):
+        raise OSError("offline")
+
+    monkeypatch.setattr(provider, "_read_json", _raise)
+
+    with pytest.raises(OSError, match="offline"):
+        provider.latest_for_channel(UpdateChannel.BETA)
 
 
 def test_provider_rejects_insecure_api_base() -> None:

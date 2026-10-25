@@ -40,3 +40,22 @@ def test_parse_semver_rejects_invalid_values() -> None:
     with pytest.raises(ValueError):
         parse_semver("abc")
 
+
+@pytest.mark.parametrize(
+    "value",
+    (
+        "1.0.0-alpha..1",
+        "1.0.0-alpha.01",
+        "1.0.0-01",
+        "1.0.0+build..metadata",
+        "١.0.0",
+    ),
+)
+def test_parse_semver_rejects_empty_identifiers_and_prerelease_leading_zeroes(value) -> None:
+    with pytest.raises(ValueError):
+        parse_semver(value)
+
+
+def test_parse_semver_allows_leading_zeroes_in_build_metadata() -> None:
+    assert parse_semver("1.0.0+build.01").normalized() == "1.0.0+build.01"
+

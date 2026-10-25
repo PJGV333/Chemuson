@@ -11,9 +11,9 @@ from chemuson.update.types import UpdateChannel, coerce_update_channel
 
 _SEMVER_RE = re.compile(
     r"^(?P<prefix>v)?"
-    r"(?P<major>0|[1-9]\d*)\."
-    r"(?P<minor>0|[1-9]\d*)\."
-    r"(?P<patch>0|[1-9]\d*)"
+    r"(?P<major>0|[1-9][0-9]*)\."
+    r"(?P<minor>0|[1-9][0-9]*)\."
+    r"(?P<patch>0|[1-9][0-9]*)"
     r"(?:-(?P<prerelease>[0-9A-Za-z.-]+))?"
     r"(?:\+(?P<build>[0-9A-Za-z.-]+))?$"
 )
@@ -50,14 +50,28 @@ def parse_semver(value: str) -> SemVer:
     match = _SEMVER_RE.match(raw)
     if not match:
         raise ValueError(f"Versión SemVer inválida: {value!r}")
-    prerelease_raw = match.group("prerelease") or ""
-    prerelease = tuple(part for part in prerelease_raw.split(".") if part) if prerelease_raw else ()
+    prerelease_raw = match.group("prerelease")
+    prerelease: tuple[str, ...] = ()
+    if prerelease_raw is not None:
+        prerelease = tuple(prerelease_raw.split("."))
+        if any(not part for part in prerelease):
+            raise ValueError(f"Versión SemVer inválida: {value!r}")
+        if any(
+            _is_numeric_identifier(part) and len(part) > 1 and part.startswith("0")
+            for part in prerelease
+        ):
+            raise ValueError(f"Versión SemVer inválida: {value!r}")
+
+    build_raw = match.group("build")
+    if build_raw is not None and any(not part for part in build_raw.split(".")):
+        raise ValueError(f"Versión SemVer inválida: {value!r}")
+
     return SemVer(
         major=int(match.group("major")),
         minor=int(match.group("minor")),
         patch=int(match.group("patch")),
         prerelease=prerelease,
-        build=match.group("build") or "",
+        build=build_raw or "",
     )
 
 

@@ -23,4 +23,4 @@ La publicación oficial ya usa un único workflow tag-only, pero la selección d
 
 ## Módulos probables
 
-`src/chemuson/update/semver.py`, `src/chemuson/update/provider.py`, `tests/test_update_*.py`, contratos de `release.yml`, `.github/workflows/release.yml`, `docs/release/VERSIONING_POLICY.md` y el OpenSpec de esta campaña. Se preservarán literalmente las páginas de beta.3 publicadas en `origin/main`.
+`src/chemuson/update/semver.py`, `src/chemuson/update/provider.py`, `tests/test_update_*.py`, contratos de `release.yml`, `.github/workflows/release.yml`, `docs/release/VERSIONING_POLICY.md` y el OpenSpec de esta campaña. Se conservarán las páginas de beta.3 publicadas en `origin/main`, con normalización mínima de saltos Markdown para que `git diff --check` pase.

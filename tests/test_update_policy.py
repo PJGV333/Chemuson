@@ -53,3 +53,12 @@ def test_policy_detects_downgrade_replay() -> None:
     assert is_downgrade_suspected("1.4.0", "1.5.0") is True
     assert is_downgrade_suspected("1.5.0", "1.5.0") is False
     assert is_downgrade_suspected("1.6.0", "1.5.0") is False
+
+
+def test_policy_never_offers_equal_or_older_versions() -> None:
+    for candidate in ("1.0.0", "0.9.9"):
+        assert can_offer_update(
+            channel="stable",
+            current_version="1.0.0",
+            candidate_version=candidate,
+        ) is False
