@@ -27,4 +27,8 @@
 
 ## Publicación de rama y cierre
 
-Pendiente de registrar tras el commit final y push normal de esta rama: commit(s) de implementación, SHA local/remoto, URL de rama y confirmación de árbol limpio. No activar workflow de Release ni hacer merge a `main`.
+- Se publicó por push normal `refactor/unified-release-updates`; GitHub devolvió `https://github.com/PJGV333/Chemuson/pull/new/refactor/unified-release-updates`. No se creó PR.
+- Commit de implementación verificado: `ad9c3ed196bb63df78c3af9de7fdd513eb210b97`. Después del push, `HEAD` y `origin/refactor/unified-release-updates` coincidían en ese SHA y `git status -sb` mostró únicamente el tracking limpio.
+- El commit documental de `main` quedó como segundo padre del merge de preparación; `origin/main` continúa en `0f8fd6d7847756bad81da6ee62cb81332b1f4cd9` y no recibió cambios de esta campaña.
+- `v0.3.0-beta.3` continúa apuntando en GitHub al commit `01652e1c9e79945a050f3733adc307b47866b7bb` (tag objeto `69da3ab3e0c122da1dc8dc6e706d95eb7f9f8f9b`). No se crearon tags ni se ejecutó workflow de publicación.
+- Se detuvo antes de merge a `main`, sin activar `release.yml`. Cualquier commit documental de cierre posterior es sólo el registro de esta verificación; el SHA exacto final de la rama se informa en la entrega.

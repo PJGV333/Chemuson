@@ -8,5 +8,5 @@
 - [x] Hacer dinámica la ruta versionada de release notes en el único workflow oficial y actualizar el contract estático.
 - [x] Actualizar la política de versionado con rama `main`, canales legacy conservados, SemVer autoritativo, assets/notes, Latest y estrategia para beta.3.
 - [x] Ejecutar únicamente pruebas focalizadas, validación workflow/OpenSpec, compileall, Ruff focal y diff-check; no ejecutar la suite completa.
-- [ ] Registrar validación final, commits y SHA; publicar sólo la rama de trabajo y dejar el árbol limpio.
-- [ ] Detenerse antes de merge a `main`; no crear tags, cambiar la Release beta.3 ni publicar paquetes.
+- [x] Registrar validación final, commits y SHA; publicar sólo la rama de trabajo y dejar el árbol limpio.
+- [x] Detenerse antes de merge a `main`; no crear tags, cambiar la Release beta.3 ni publicar paquetes.
