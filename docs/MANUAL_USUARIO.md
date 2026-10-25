@@ -1,12 +1,15 @@
 # Manual de usuario de ChemUSON
 
-**Documento:** manual de usuario de la interfaz gráfica  
-**Aplicación:** ChemUSON  
-**Estado del proyecto:** preparación de beta (`0.3.0-beta.1`, no publicada)<br>
-**Revisión del manual:** 8 de octubre de 2026<br>
-**Código auditado:** rama `release/v0.3.0-beta.1-prep`; aceptación de paquetes pendiente de retest manual.
+**Aplicación:** ChemUSON · **Idioma:** español<br>
+**Versión pública de referencia:** [0.3.0-beta.3](https://github.com/PJGV333/Chemuson/releases/tag/v0.3.0-beta.3) (25 de octubre de 2026)<br>
+**Actualización de instalación y orientación inicial:** 25 de octubre de 2026<br>
+**Base de la descripción detallada de la interfaz:** auditoría del 2 de octubre de 2026 (revisión original en `140a080c336515650bbeea0a4e6ead67a9999b23`).
 
-> ChemUSON es un editor molecular 2D orientado a docencia, investigación y comunicación científica. Este manual describe la interfaz realmente implementada en la revisión indicada. Algunas etiquetas aún aparecen en inglés y el menú **Reacción** contiene por ahora únicamente una entrada deshabilitada, **Próximamente**.
+> **Alcance de la actualización:** las instrucciones de descarga e instalación señalan los paquetes públicos de beta.3. Los capítulos detallados de herramientas y menús proceden de la auditoría anterior y **no han sido revalidados íntegramente** contra cada paquete beta.3; algunas denominaciones o controles pueden diferir. Para obtener el código que corresponde a la beta publicada, consulta [el tag `v0.3.0-beta.3`](https://github.com/PJGV333/Chemuson/tree/v0.3.0-beta.3), no la rama de desarrollo `main`.
+>
+> ChemUSON es una aplicación libre para representar y analizar estructuras moleculares en actividades de docencia e investigación. Esta beta es experimental: guarda copias de tus documentos importantes y verifica los resultados químicos antes de utilizarlos en trabajos científicos.
+
+[**Descargas oficiales**](https://github.com/PJGV333/Chemuson/releases/tag/v0.3.0-beta.3) · [**Página principal en español**](../README.md) · [**English overview**](../README.en.md)
 
 ---
 
@@ -22,8 +25,8 @@
 8. [Menú Reacción](#8-menú-reacción)
 9. [Menú Ayuda](#9-menú-ayuda)
 10. [Barra de aplicación](#10-barra-de-aplicación)
-11. [ToolRail: herramientas de dibujo](#11-toolrail-herramientas-de-dibujo)
-12. [ToolRail: herramientas de anotación y símbolos](#12-toolrail-herramientas-de-anotación-y-símbolos)
+11. [Barra lateral: herramientas de dibujo](#11-barra-lateral-herramientas-de-dibujo)
+12. [Barra lateral: anotaciones y símbolos](#12-barra-lateral-anotaciones-y-símbolos)
 13. [Barra de formato de texto](#13-barra-de-formato-de-texto)
 14. [Selección, transformación y navegación](#14-selección-transformación-y-navegación)
 15. [Dibujo de átomos, enlaces, anillos y cadenas](#15-dibujo-de-átomos-enlaces-anillos-y-cadenas)
@@ -45,54 +48,71 @@
 
 ## 1. Instalación y ejecución
 
+La **versión pública más reciente es ChemUSON 0.3.0-beta.3**. Es una versión preliminar, no una edición estable. La anterior versión `v0.2.5` conserva en GitHub la etiqueta «Latest» porque la plataforma reserva ese distintivo para las versiones no preliminares.
+
+Descarga desde [GitHub Releases](https://github.com/PJGV333/Chemuson/releases/tag/v0.3.0-beta.3). Los archivos oficiales se identifican con la versión `0.3.0-beta.3` y tienen [sumas SHA-256 publicadas](https://github.com/PJGV333/Chemuson/releases/download/v0.3.0-beta.3/checksums.txt).
+
+| Sistema | Opción | Enlace |
+| --- | --- | --- |
+| Windows de 64 bits | Instalador | [`Chemuson-v0.3.0-beta.3-windows-x86_64-setup.exe`](https://github.com/PJGV333/Chemuson/releases/download/v0.3.0-beta.3/Chemuson-v0.3.0-beta.3-windows-x86_64-setup.exe) |
+| Windows de 64 bits | Portable | [`Chemuson-v0.3.0-beta.3-windows-x86_64-portable.exe`](https://github.com/PJGV333/Chemuson/releases/download/v0.3.0-beta.3/Chemuson-v0.3.0-beta.3-windows-x86_64-portable.exe) |
+| Linux de 64 bits | AppImage Type 2 | [`Chemuson-v0.3.0-beta.3-linux-x86_64.AppImage`](https://github.com/PJGV333/Chemuson/releases/download/v0.3.0-beta.3/Chemuson-v0.3.0-beta.3-linux-x86_64.AppImage) |
+| Linux de 64 bits | Flatpak | [`Chemuson-v0.3.0-beta.3-linux-x86_64.flatpak`](https://github.com/PJGV333/Chemuson/releases/download/v0.3.0-beta.3/Chemuson-v0.3.0-beta.3-linux-x86_64.flatpak) |
+
 ### 1.1 Linux mediante Flatpak
 
-Instalación estable para el usuario actual:
+Si Flatpak no está instalado, incorpóralo mediante el gestor de paquetes de tu distribución. Por ejemplo, en Arch Linux o CachyOS:
 
 ```bash
 sudo pacman -S flatpak
-flatpak --user remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-flatpak install --user https://pjgv333.github.io/Chemuson/flatpak/stable/Chemuson-stable.flatpakref
-flatpak run io.github.PJGV333.Chemuson
 ```
 
-Canal beta:
+Instala ChemUSON desde el **canal beta oficial**, que registra el remoto para recibir actualizaciones:
 
 ```bash
 flatpak install --user https://pjgv333.github.io/Chemuson/flatpak/beta/Chemuson-beta.flatpakref
+flatpak run io.github.PJGV333.Chemuson
 ```
 
-Actualización de una instalación Flatpak:
+Para actualizar los paquetes instalados:
 
 ```bash
 flatpak update
 ```
 
+Si la instalación requiere dependencias del entorno KDE o de Flathub, sigue las instrucciones de Flatpak de tu distribución. La rama estable del remoto puede no contener todavía la nueva beta.
+
 ### 1.2 Linux mediante AppImage
 
+El archivo publicado para beta.3 **sí es un AppImage Type 2**. Descárgalo y, en la carpeta correspondiente, ejecuta:
+
 ```bash
-chmod +x Chemuson-vX.Y.Z-linux-x86_64.AppImage
-./Chemuson-vX.Y.Z-linux-x86_64.AppImage
+chmod +x Chemuson-v0.3.0-beta.3-linux-x86_64.AppImage
+./Chemuson-v0.3.0-beta.3-linux-x86_64.AppImage
 ```
+
+No necesitas instalar ChemUSON en el sistema para usar esta modalidad. Si aparece un problema gráfico, anota la distribución, el tipo de sesión (Wayland/X11), la tarjeta gráfica y los mensajes de terminal antes de [reportarlo](https://github.com/PJGV333/Chemuson/issues).
 
 ### 1.3 Windows
 
-ChemUSON puede distribuirse como ejecutable portable o mediante instalador. Abra el archivo correspondiente desde el Explorador de archivos. El actualizador de una instalación completa puede aplicar un nuevo instalador al cerrar la aplicación.
+**Instalador:** descarga `Chemuson-v0.3.0-beta.3-windows-x86_64-setup.exe` y ejecútalo desde el Explorador de archivos. Completa el asistente de instalación.
+
+**Portable:** descarga `Chemuson-v0.3.0-beta.3-windows-x86_64-portable.exe` y ejecútalo sin instalarlo. La versión portable no requiere ejecutar el instalador.
+
+Utiliza únicamente fuentes de descarga oficiales y comprueba las sumas SHA-256 cuando necesites verificar la integridad.
 
 ### 1.4 Entorno de desarrollo
 
-```bash
-python3 -m venv chemuson
-./chemuson/bin/pip install -r requirements.txt
-./chemuson/bin/pip install -e .
-./chemuson/bin/chemuson
-```
-
-Consultar la versión desde terminal:
+El procedimiento siguiente sirve para trabajar con el código fuente; **no es necesario para los usuarios de paquetes oficiales**:
 
 ```bash
-chemuson --version
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -e .
+python -m pip install -r requirements-dev.txt
 ```
+
+En Windows activa `.venv\Scripts\activate`; en fish utiliza `source .venv/bin/activate.fish`. Para trabajar específicamente sobre la versión pública, selecciona el tag `v0.3.0-beta.3` antes de instalar desde el código.
 
 ---
 
@@ -101,22 +121,22 @@ chemuson --version
 La ventana principal se divide en estas zonas:
 
 - **Barra de aplicación:** menú (hamburguesa/`Alt`), marca y versión, pestañas de documento, píldora **Buscar o ejecutar...** (`Ctrl+P`), Deshacer/Rehacer, tema y preferencias.
-- **Rail de herramientas (izquierda):** selección, enlaces, cadenas, anillos, elementos, centros de coordinación, rotación 3D precisa y herramientas de anotación/símbolos; cada botón abre un *flyout* con sus variantes.
+- **Barra lateral de herramientas (izquierda):** selección, enlaces, cadenas, anillos, elementos, centros de coordinación, rotación 3D precisa y herramientas de anotación/símbolos; cada botón abre un menú desplegable con sus variantes.
 - **Panel lateral (derecha):** pestañas **Inspector**, **Validación**, **Propiedades**, **Plantillas**, **Apariencia** (y, según el caso, Espectros y 3D/CompChem).
 - **Barra de formato de texto:** fuente, tamaño, estilos, alineación, color y opacidad.
 - **Lienzo:** área de dibujo, selección y manipulación.
 - **Barra de estado:** informa la herramienta activa y, cuando procede, el nombre químico calculado o `N/D`.
 
-El tema (claro u oscuro) se alterna desde el botón de tema de la barra de aplicación. En la primera ejecución, un breve **onboarding** guía por el rail, el lienzo y el panel lateral (puede descartarse con «No volver a mostrar»).
+El tema (claro u oscuro) se alterna desde el botón de tema de la barra de aplicación. En la primera ejecución, un breve **recorrido inicial** guía por la barra de herramientas, el lienzo y el panel lateral (puede descartarse con «No volver a mostrar»).
 
-Los paneles laterales se muestran u ocultan desde **Ver** (back-compatibilidad). Capturas de referencia de la interfaz moderna: [`docs/ui-modernization/after/`](ui-modernization/after/README.md).
+Los paneles laterales se muestran u ocultan desde **Ver** (compatibilidad con versiones anteriores). Capturas de referencia de la interfaz moderna: [`docs/ui-modernization/after/`](ui-modernization/after/README.md).
 
 ---
 
 ## 3. Flujo básico de trabajo
 
 1. Cree un documento con **Archivo > Nuevo** (`Ctrl+N`).
-2. Elija una herramienta en el rail (izquierda).
+2. Elija una herramienta en la barra lateral (izquierda).
 3. Dibuje en el lienzo mediante clic, arrastre o la secuencia indicada por cada herramienta.
 4. Regrese a **Seleccionar** para mover, escalar, rotar o editar objetos.
 5. Revise la estructura con **Estructura > Validar valencias** (`Ctrl+Shift+V`).
@@ -205,7 +225,7 @@ Los paneles laterales se muestran u ocultan desde **Ver** (back-compatibilidad).
 | **Zoom +** | `Ctrl++` estándar | Aumenta la escala del lienzo. |
 | **Zoom -** | `Ctrl+-` estándar | Reduce la escala. |
 | **Zoom 100%** | `Ctrl+0` | Restablece el zoom. |
-| **Mostrar copiar/zoom en barra de herramientas** | - | Añade o retira esos botones auxiliares; Nuevo/Abrir/Guardar/Pegar están en la AppBar. |
+| **Mostrar copiar/pegar/zoom en barra superior** | - | Añade o retira esos botones auxiliares de la barra superior. |
 | **Reglas** | - | Muestra u oculta reglas horizontal y vertical. |
 | **Cuadrícula** | - | Muestra u oculta la cuadrícula del lienzo. |
 
@@ -238,7 +258,7 @@ Presets disponibles:
 
 ### 6.5 Paneles y barras
 
-El panel lateral (derecha) expone sus vistas como **pestañas**: **Inspector**, **Validación**, **Propiedades**, **Plantillas**, **Apariencia** (y, según el caso, Espectros y 3D/CompChem). Desde **Ver** se puede alternar la visibilidad del panel y de sus vistas (back-compatibilidad con el flujo anterior):
+El panel lateral (derecha) expone sus vistas como **pestañas**: **Inspector**, **Validación**, **Propiedades**, **Plantillas**, **Apariencia** (y, según el caso, Espectros y 3D/CompChem). Desde **Ver** se puede alternar la visibilidad del panel y de sus vistas (compatibilidad con versiones anteriores con el flujo anterior):
 
 - Plantillas.
 - Inspector.
@@ -315,7 +335,7 @@ En esta revisión, el menú contiene únicamente **Próximamente**, deshabilitad
 
 - **Guía rápida...:** abre la introducción breve integrada.
 - **Buscar actualizaciones...:** consulta el canal configurado.
-- **Acerca de ChemUSON...:** muestra versión e información del proyecto.
+- **Acerca de Chemuson...:** muestra versión e información del proyecto.
 
 Ruta rápida: para ejecutar cualquier comando sin recorrer los menús, use la **paleta de comandos** (`Ctrl+P` o la píldora **Buscar o ejecutar...**; ver §10.1).
 
@@ -343,9 +363,9 @@ Nota: `Ctrl+K`, `Ctrl+Shift+K` y `Ctrl+Alt+K` son los atajos de **Clean2D** (qui
 
 ---
 
-## 11. ToolRail: herramientas de dibujo
+## 11. Barra lateral: herramientas de dibujo
 
-El **rail de herramientas** (izquierda) reúne las herramientas de dibujo. Cada botón expone un *flyout* con sus variantes; seleccione la herramienta y aplíquela en el lienzo.
+El **barra lateral de herramientas** (izquierda) reúne las herramientas de dibujo. Cada botón expone un menú desplegable con sus variantes; seleccione la herramienta y aplíquela en el lienzo.
 
 ### 11.1 Selección
 
@@ -408,9 +428,9 @@ Selecciona una estructura o un punto de referencia y abre el control de rotació
 
 ---
 
-## 12. ToolRail: herramientas de anotación y símbolos
+## 12. Barra lateral: anotaciones y símbolos
 
-En el mismo **rail de herramientas** se accede a las herramientas de anotación y símbolos científicos. Cada botón expone un *flyout* con sus variantes.
+En el mismo **barra lateral de herramientas** se accede a las herramientas de anotación y símbolos científicos. Cada botón expone un menú desplegable con sus variantes.
 
 ### 12.1 Texto
 
