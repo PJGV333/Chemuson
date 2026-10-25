@@ -129,13 +129,13 @@
 - [x] 17.5 Update release notes, manual acceptance and validation records with exact SHA, runs/artifacts, limited owner approvals and pending manual blockers.
 - [ ] 17.6 Owner retests current artifacts against remaining P0/P1 cases (data/close stability, install/setup, icons, RDKit, ChemName); record exact SHA, environment and evidence. Do not use automation as manual PASS.
 - [x] 17.7 Verify/configure protected `v*` tag ruleset and required beta GitHub environments (completed 2026-10-24; ruleset and environment IDs/effective policies recorded in the 2026-10-24 validation addendum).
-- [x] 17.8 Obtain explicit final owner authorization to create `v0.3.0-beta.1` and a GitHub prerelease (provided 2026-10-24); tag creation remains gated on final SHA package build and validation.
+- [x] 17.8 Obtain explicit final owner authorization for a GitHub prerelease (provided 2026-10-24); after the exact-SHA preview, the tag was pushed but the tag-triggered `release.yml` was suppressed by `[skip ci]`. Recovery is blocked pending owner decision; do not rewrite the tag.
 
 ## 18. Public beta closure authorized by owner (2026-10-24)
 - [x] 18.1 Verify `release/v0.3.0-beta.1-security-prep` is exactly four commits ahead/zero behind prep and integrate it with `git merge --ff-only`, preserving a local checkpoint.
 - [x] 18.2 Record only the manual evidence explicitly reported by the owner for Linux AppImage, Linux Flatpak, Windows portable and Windows installer; preserve untested areas and note missing artifact/run/SHA traceability.
 - [x] 18.3 Audit the current Python 3.11 resolver set against OSV and record Dependabot/Code Scanning availability honestly; no critical advisory found in the resolved 12 distributions.
 - [x] 18.4 Configure and read back the active `v*` ruleset and beta/flatpak-beta environments; retain workflow least-privilege settings and the existing sidecar validators.
-- [ ] 18.5 Commit/push the final docs+AppStream date update to prep, run Build Preview on that exact source SHA, and verify all four package checksums/provenance and security/package gates.
+- [x] 18.5 Commit/push final docs+AppStream date update (`85fa4ed2bd0afe1d31953440228fb73a69b54e7e`), run Build Preview #40144590463 and verify all four package checksums/provenance and security/package gates.
 - [x] 18.6 Run bounded release/version/update-sidecar workflow tests (**103 passed**) and strict OpenSpec; do not execute the full pytest suite.
-- [ ] 18.7 From the verified final SHA, create the protected official tag, complete `release.yml` as prerelease, verify four official assets/hashes/metadata and Flatpak publication, then record public URLs and clean Git state.
+- [ ] 18.7 **BLOCKED after tag creation:** `v0.3.0-beta.1` points to the verified SHA, but `[skip ci]` suppressed the push-triggered `release.yml`; manual dispatch is unavailable (HTTP 422). Do not move/delete/recreate the tag. No prerelease, official assets or Flatpak publication; owner decision required.

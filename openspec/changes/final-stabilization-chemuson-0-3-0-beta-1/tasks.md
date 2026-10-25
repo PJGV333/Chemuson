@@ -31,15 +31,15 @@
 - [x] E.1 Confirmar fetch, árbol limpio, ancestro `61f7647b…`, cero divergencia y 29 commits de estabilización por delante; fast-forward-only desde `61f7647b…` hasta `d808070f…` y push normal de `release/v0.3.0-beta.1-prep`. `main` intacta.
 - [x] E.2 Baseline proporcional, arquitectura, compileall, colecta, Ruff focal y 220 pruebas de seguridad/archivo/worker/release/version metadata; no ejecutar pytest masivo conforme a la política posterior.
 - [x] E.3 Revisar flujos de archivo/proceso/AI/update, dependencias, permisos GitHub y matriz P0/P1; preparar cuerpo público curado y vincularlo en `release.yml` sin cambiar permisos, gates, canales ni lógica de publicación.
-- [ ] E.4 Build Preview oficial de los cuatro paquetes desde la SHA documental final; verificar jobs, SHA común, provenance, checksums, recursos, ChemName/RDKit y smoke 2D→3D real.
+- [x] E.4 Build Preview #40144590463 de los cuatro paquetes desde `85fa4ed2bd0afe1d31953440228fb73a69b54e7e`; verificar jobs, SHA común, provenance/checksums, exclusión Pillow, ChemName/RDKit y smoke real AppImage 2D→3D (detalles en validation.md).
 - [ ] E.5 Completar los casos P0/P1 restantes en artifacts identificables; la aceptación limitada reportada el 2026-10-24 se documenta sin atribuirla a un SHA concreto ni promover casos no observados.
-- [x] E.6 Configurar/verificar protección externa `v*` y entornos de publicación `beta`/`flatpak-beta` (completado 2026-10-24; evidencia y límites en el addendum de `validation.md`). La creación del tag permanece pendiente de los gates exactos del candidato final.
+- [x] E.6 Configurar/verificar protección externa `v*` y entornos `beta`/`flatpak-beta` (completado 2026-10-24; evidencia y límites en `validation.md`). El tag se creó tras el Build Preview; el workflow Release quedó bloqueado por el skip marker documentado.
 
 ## F. Cierre público autorizado (2026-10-24)
 - [x] F.1 Integrar por `git merge --ff-only` los cuatro commits de `release/v0.3.0-beta.1-security-prep`; documentar el alcance manual comunicado por el propietario sin adjudicar PASS a funciones no mencionadas.
 - [x] F.2 Ejecutar auditoría OSV sobre la resolución actual Python 3.11 de los paquetes de build; cero advisories en 12 distribuciones. Dependabot/Code Scanning deshabilitados/no disponibles se informan como limitación, no como PASS.
 - [x] F.3 Configurar ruleset activo para creación/actualización/borrado de `v*` y reviewer/ref policy `v*-beta.*` en `beta` y `flatpak-beta`; mantener permiso Actions predeterminado read.
-- [ ] F.4 Publicar la integración/documentación y construir Build Preview de los cuatro paquetes desde el SHA documental final; verificar artefactos, provenance, checksums, exclusión Pillow y gates funcionales.
+- [x] F.4 Publicar la integración/documentación y verificar Build Preview #40144590463 para SHA `85fa4ed2bd0afe1d31953440228fb73a69b54e7e`: cuatro paquetes, provenance/checksums, exclusión Pillow y gates funcionales automatizados.
 - [x] F.5 Revisar tests focales de versión, workflow de release, sidecars AppImage/zsync, manifest/provenance y OpenSpec strict (**103 passed**, 2026-10-24); no ejecutar pytest completo.
-- [ ] F.6 Cuando los gates exactos estén satisfechos, crear `v0.3.0-beta.1`, ejecutar `release.yml` como prerelease y comprobar cada paquete, checksum, metadato y publicación Flatpak contra el SHA etiquetado.
-- [ ] F.7 Registrar resultados finales sin alterar la identidad SHA de los paquetes/tag; confirmar enlaces públicos, estado del workflow y árbol Git limpio.
+- [ ] F.6 **BLOQUEADO:** el tag `v0.3.0-beta.1` apunta al SHA validado `85fa4ed2…`, pero el commit contiene `[skip ci]`; no apareció run de `release.yml` y el workflow no admite `workflow_dispatch` (API 422). No mover/borrar/recrear el tag; no hay Release/paquetes oficiales/Flatpak remoto. Requiere decisión del propietario sobre recuperación sin debilitar los gates.
+- [ ] F.7 **BLOQUEADO:** resultados/hashes del preview y workflow ausente están registrados; no existen enlaces de Release ni assets oficiales para verificar. El commit documental de bloqueo deja la rama limpia sin alterar el tag SHA.
