@@ -14,7 +14,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 RELEASE_DIR = Path(__file__).resolve().parent
-REPO_ROOT = RELEASE_DIR.parents[2]
+REPO_ROOT = RELEASE_DIR.parents[1]  # packaging/release -> repository root of the checkout
 if str(RELEASE_DIR) not in sys.path:
     sys.path.insert(0, str(RELEASE_DIR))
 
