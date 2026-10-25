@@ -41,6 +41,233 @@ jobs:
         id: identity
         run: python packaging/release/preview_build.py prepare
 
+  preflight_rehearsal:
+    name: Release preflight rehearsal (non-publishing)
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      PREVIEW_VERSION: ${{ needs.prepare.outputs.version }}
+      PREVIEW_SHA: ${{ needs.prepare.outputs.sha }}
+    steps:
+      - name: Checkout exact candidate commit with full history
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Fail closed if the candidate tag already exists on the remote
+        run: |
+          set -euo pipefail
+          if [ -n "$(git ls-remote --tags origin "refs/tags/v${PREVIEW_VERSION}")" ]; then
+            echo "ERROR: refs/tags/v${PREVIEW_VERSION} already exists on origin; the rehearsal must not run against a published tag." >&2
+            exit 1
+          fi
+
+      - name: Create temporary annotated tag inside this runner only
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${PREVIEW_VERSION}" -m "ChemUSON release preflight rehearsal; temporary, never published" "${PREVIEW_SHA}"
+          test "$(git rev-parse "refs/tags/v${PREVIEW_VERSION}^{commit}")" = "${PREVIEW_SHA}"
+
+      - name: Run the real release preflight under a simulated tag event
+        env:
+          RELEASE_PREFLIGHT_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="v${PREVIEW_VERSION}"
+          EVENT_PATH="${RUNNER_TEMP}/rehearsal-tag-event.json"
+          OUTPUT_FILE="${RUNNER_TEMP}/rehearsal-preflight-outputs.txt"
+          : > "${OUTPUT_FILE}"
+          printf '{"ref":"refs/tags/%s","ref_type":"tag","deleted":false}\n' "${TAG}" > "${EVENT_PATH}"
+          export GITHUB_REF_NAME="${TAG}"
+          export GITHUB_REF_TYPE="tag"
+          export GITHUB_SHA="${PREVIEW_SHA}"
+          export GITHUB_EVENT_PATH="${EVENT_PATH}"
+          export GITHUB_OUTPUT="${OUTPUT_FILE}"
+          python - <<'PY'
+          import subprocess
+          import sys
+
+          sys.path.insert(0, "packaging/release")
+          import validate_release_tag
+
+          toplevel = subprocess.run(
+              ["git", "rev-parse", "--show-toplevel"],
+              check=True,
+              capture_output=True,
+              text=True,
+          ).stdout.strip()
+          if str(validate_release_tag.REPO_ROOT) != toplevel:
+              raise SystemExit(
+                  f"REPO_ROOT {validate_release_tag.REPO_ROOT} differs from git toplevel {toplevel}"
+              )
+          print(f"Path resolution check: REPO_ROOT == git toplevel == {toplevel}")
+          PY
+          python packaging/release/validate_release_tag.py
+          test -s "${OUTPUT_FILE}"
+          cat "${OUTPUT_FILE}"
+
+      - name: Verify preflight outputs match the candidate identity
+        run: |
+          set -euo pipefail
+          OUTPUT_FILE="${RUNNER_TEMP}/rehearsal-preflight-outputs.txt"
+          case "${PREVIEW_VERSION}" in
+            *-beta.*|*-rc.*) EXPECTED_CHANNEL="beta" ;;
+            *) EXPECTED_CHANNEL="stable" ;;
+          esac
+          grep -qxF "tag=v${PREVIEW_VERSION}" "${OUTPUT_FILE}"
+          grep -qxF "version=${PREVIEW_VERSION}" "${OUTPUT_FILE}"
+          grep -qxF "channel=${EXPECTED_CHANNEL}" "${OUTPUT_FILE}"
+          grep -qxF "sha=${PREVIEW_SHA}" "${OUTPUT_FILE}"
+          {
+            echo "## Release preflight rehearsal (non-publishing)"
+            echo ""
+            echo "- Validator: \`packaging/release/validate_release_tag.py\` (exact official code)"
+            echo "- Temporary annotated tag: \`v${PREVIEW_VERSION}\` created and deleted inside this runner only"
+            echo "- Simulated tag event: ref, ref_type, event file, GITHUB_SHA and GITHUB_OUTPUT"
+            echo "- GitHub lookup token: repository \`github.token\` with \`contents: read\`"
+            echo "- Preflight exit code: **0**; outputs tag/version/channel/sha matched"
+            echo "- Official tag published by this rehearsal: **never**"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Delete the temporary local tag
+        if: always()
+        run: |
+          set -euo pipefail
+          git tag -d "v${PREVIEW_VERSION}"
+          test -z "$(git tag -l "v${PREVIEW_VERSION}")"
+          test -z "$(git ls-remote --tags origin "refs/tags/v${PREVIEW_VERSION}")"
+
+  release_gate_rehearsal:
+    name: Release gate bounded checks rehearsal
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - name: Checkout exact candidate commit with full history
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Qt runtime and test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libdbus-1-3 libegl1 libgl1 libopengl0 libxkbcommon-x11-0 libxcb-cursor0
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+          pip install -e .
+
+      - name: Validate exact baseline exception catalog
+        run: python packaging/release/validate_baseline_exceptions.py
+
+      - name: Run Python ChemName acceptance
+        run: python tools/chemname_acceptance.py --quiet --report "$RUNNER_TEMP/chemname-source-acceptance.json"
+
+      - name: Compile source, tests and packaging tools
+        run: python -m compileall -q src tests tools packaging
+
+      - name: Run scoped release Ruff checks
+        run: >-
+          ruff check packaging/release/release_policy.py
+          packaging/release/validate_release_tag.py
+          packaging/release/validate_release_artifacts.py
+          packaging/release/validate_baseline_exceptions.py
+          packaging/release/preview_build.py
+          packaging/release/write_build_provenance.py
+          packaging/release/generate_channel_manifest.py
+          tests/test_release_tag_validation.py
+          tests/test_release_artifacts.py
+          tests/test_baseline_exception_catalog.py
+          tests/test_preview_build.py
+          tests/test_preview_workflow_contract.py
+          tests/test_release_workflow_contract.py
+          tests/test_test_workflow_contract.py
+          tests/test_appimage_validation.py
+          tests/test_linux_distribution_scripts.py
+          tests/test_packaged_icon_smoke.py
+          packaging/release/validate_appimage.py
+          packaging/release/validate_packaged_icons.py
+          packaging/release/validate_packaged_rdkit_worker.py
+          packaging/release/validate_packaged_chemname.py
+          tests/test_packaged_chemname_smoke.py
+          tests/test_chemname_packaged_smoke.py
+          tests/test_rdkit_packaged_worker.py
+          tests/test_rdkit_descriptors.py
+          tests/test_application_startup_non_qt.py
+          tests/test_ui_polish.py
+          tests/test_smiles_import_isolated.py
+          src/chemuson/__main__.py
+          src/chemuson/chemio/rdkit_safe.py
+          src/chemuson/chemio/rdkit_packaged_smoke.py
+          src/chemuson/chemio/_rdkit_worker.py
+          src/chemuson/chemio/rdkit_io.py
+          src/chemuson/gui/main_window.py
+          --select F401,F811,F821,E722,E741
+
+      - name: Run architecture tests on validated tag SHA
+        run: timeout 5m python -m pytest -q tests/architecture
+
+      - name: Run bounded release, version, packaging and workflow contracts
+        run: >-
+          timeout 8m python -m pytest -q
+          tests/test_release_version_script.py
+          tests/test_version_metadata.py
+          tests/test_update_semver.py
+          tests/test_update_policy.py
+          tests/test_update_core.py
+          tests/test_update_provider.py
+          tests/test_update_security.py
+          tests/test_update_portable.py
+          tests/test_update_windows.py
+          tests/test_update_telemetry.py
+          tests/test_update_ui_text.py
+          tests/test_release_tag_validation.py
+          tests/test_release_artifacts.py
+          tests/test_baseline_exception_catalog.py
+          tests/test_preview_build.py
+          tests/test_preview_workflow_contract.py
+          tests/test_release_workflow_contract.py
+          tests/test_test_workflow_contract.py
+          tests/test_appimage_validation.py
+          tests/test_linux_distribution_scripts.py
+          tests/test_packaged_icon_smoke.py
+          tests/test_rdkit_packaged_worker.py
+          tests/test_rdkit_descriptors.py
+          tests/test_application_startup_non_qt.py
+          tests/test_smiles_import_isolated.py
+          tests/test_ui_polish.py
+
+      - name: Write gate rehearsal summary
+        run: |
+          {
+            echo "## Release gate bounded checks rehearsal"
+            echo ""
+            echo "- Mirrors every bounded step of the official \`release_gate\` job after its preflight"
+            echo "- Same runner (\`ubuntu-latest\`), Python 3.11, Qt runtime packages, editable install"
+            echo "- Commands asserted byte-for-byte against \`release.yml\` by static contracts"
+            echo "- No publication step executed: the tag preflight itself is covered by the rehearsal job"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   build_windows:
     name: Windows portable and installer
     needs: prepare
@@ -284,7 +511,7 @@ jobs:
   preview_report:
     name: Preview build report
     if: always()
-    needs: [prepare, build_windows, build_linux_appimage, build_linux_flatpak]
+    needs: [prepare, preflight_rehearsal, release_gate_rehearsal, build_windows, build_linux_appimage, build_linux_flatpak]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -293,6 +520,8 @@ jobs:
       - name: Write per-platform status report
         env:
           PREPARE_STATUS: ${{ needs.prepare.result }}
+          PREFLIGHT_REHEARSAL_STATUS: ${{ needs.preflight_rehearsal.result }}
+          GATE_REHEARSAL_STATUS: ${{ needs.release_gate_rehearsal.result }}
           WINDOWS_STATUS: ${{ needs.build_windows.result }}
           APPIMAGE_STATUS: ${{ needs.build_linux_appimage.result }}
           FLATPAK_STATUS: ${{ needs.build_linux_flatpak.result }}
@@ -310,6 +539,8 @@ jobs:
 
           statuses = {
               "source_validation": os.environ["PREPARE_STATUS"],
+              "release_preflight_rehearsal": os.environ["PREFLIGHT_REHEARSAL_STATUS"],
+              "release_gate_bounded_rehearsal": os.environ["GATE_REHEARSAL_STATUS"],
               "windows_portable_and_installer": os.environ["WINDOWS_STATUS"],
               "linux_appimage_portable": os.environ["APPIMAGE_STATUS"],
               "linux_flatpak": os.environ["FLATPAK_STATUS"],

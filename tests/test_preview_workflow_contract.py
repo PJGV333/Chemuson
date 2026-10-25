@@ -52,11 +52,9 @@ def test_preview_has_no_release_tag_gh_pages_or_public_channel_operations() -> N
         "gh release",
         "gh-pages",
         "git push",
-        "git tag",
-        "refs/tags/",
-        "generate_channel_manifest.py",
-        "generate_flatpak_pages_index.py",
-        "generate_flatpak_remote_files.py",
+        "python packaging/release/generate_channel_manifest.py",
+        "python packaging/release/generate_flatpak_pages_index.py",
+        "python packaging/release/generate_flatpak_remote_files.py",
         "stable.json",
         "beta.json",
         "flatpak/stable/",
@@ -86,7 +84,13 @@ def test_all_build_jobs_use_the_prevalidated_event_sha_and_version() -> None:
     text, workflow = _workflow()
     jobs = workflow["jobs"]
     assert jobs["prepare"]["steps"][0]["with"]["ref"] == "${{ github.sha }}"
-    for name in ("build_windows", "build_linux_appimage", "build_linux_flatpak"):
+    for name in (
+        "preflight_rehearsal",
+        "release_gate_rehearsal",
+        "build_windows",
+        "build_linux_appimage",
+        "build_linux_flatpak",
+    ):
         job = jobs[name]
         assert job["needs"] == "prepare"
         checkout = job["steps"][0]
@@ -95,6 +99,108 @@ def test_all_build_jobs_use_the_prevalidated_event_sha_and_version() -> None:
     assert "preview_build.py prepare" in text
     assert "needs.prepare.outputs.version" in text
     assert "needs.prepare.outputs.branch" in text
+
+
+def _normalize(run: str) -> str:
+    return " ".join(str(run).split())
+
+
+def test_preflight_rehearsal_replays_the_official_validator_fail_closed() -> None:
+    text, workflow = _workflow()
+    job = workflow["jobs"]["preflight_rehearsal"]
+    assert job["runs-on"] == "ubuntu-latest"
+    assert job["permissions"] == {"contents": "read"}
+    steps = job["steps"]
+    checkout = steps[0]
+    assert checkout["with"]["fetch-depth"] == "0"
+    python_setup = next(step for step in steps if step.get("name") == "Setup Python")
+    assert python_setup["with"]["python-version"] == "3.11"
+
+    run_bodies = [_normalize(step.get("run", "")) for step in steps]
+    joined = "\n".join(run_bodies)
+
+    # The rehearsal must run the exact official validator, never a reimplementation.
+    assert "python packaging/release/validate_release_tag.py" in joined
+    # It must first prove the remote tag is absent, then simulate a tag event fully.
+    assert 'git ls-remote --tags origin "refs/tags/v${PREVIEW_VERSION}"' in joined
+    assert '"ref_type":"tag","deleted":false' in joined
+    assert 'export GITHUB_REF_NAME="${TAG}"' in joined
+    assert 'export GITHUB_REF_TYPE="tag"' in joined
+    assert 'export GITHUB_SHA="${PREVIEW_SHA}"' in joined
+    assert 'export GITHUB_EVENT_PATH="${EVENT_PATH}"' in joined
+    assert 'export GITHUB_OUTPUT="${OUTPUT_FILE}"' in joined
+    assert "validate_release_tag.REPO_ROOT" in joined
+    assert '"git", "rev-parse", "--show-toplevel"' in joined
+    # It must use an authorized read-only token and enforce exit code and outputs.
+    preflight_step = next(
+        step for step in steps if "validate_release_tag.py" in step.get("run", "")
+    )
+    assert preflight_step["env"]["RELEASE_PREFLIGHT_TOKEN"] == "${{ github.token }}"
+    assert "set -euo pipefail" in preflight_step["run"]
+    verify = next(step for step in steps if "match the candidate identity" in step.get("name", ""))
+    assert f'grep -qxF "tag=v' in verify["run"]
+    assert 'grep -qxF "version=${PREVIEW_VERSION}"' in verify["run"]
+    assert 'grep -qxF "channel=' in verify["run"]
+    assert 'grep -qxF "sha=${PREVIEW_SHA}"' in verify["run"]
+    # Local-only annotated tag: created for the exact SHA and always deleted afterwards.
+    assert 'git tag -a "v${PREVIEW_VERSION}"' in joined
+    cleanup = steps[-1]
+    assert cleanup["if"] == "always()"
+    assert 'git tag -d "v${PREVIEW_VERSION}"' in cleanup["run"]
+    assert 'test -z "$(git tag -l "v${PREVIEW_VERSION}")"' in cleanup["run"]
+    assert "git push" not in text
+
+
+def test_release_gate_rehearsal_mirrors_official_gate_commands_exactly() -> None:
+    _text, preview = _workflow()
+    release_text = RELEASE_PATH.read_text(encoding="utf-8")
+    release = yaml.load(release_text, Loader=yaml.BaseLoader)
+    gate_steps = {
+        step.get("name"): step for step in release["jobs"]["release_gate"]["steps"]
+    }
+    rehearsal_steps = {
+        step.get("name"): step
+        for step in preview["jobs"]["release_gate_rehearsal"]["steps"]
+    }
+    mirrored = (
+        "Setup Python",
+        "Install Qt runtime and test dependencies",
+        "Validate exact baseline exception catalog",
+        "Run Python ChemName acceptance",
+        "Compile source, tests and packaging tools",
+        "Run scoped release Ruff checks",
+        "Run architecture tests on validated tag SHA",
+        "Run bounded release, version, packaging and workflow contracts",
+    )
+    for name in mirrored:
+        assert name in rehearsal_steps, f"gate rehearsal is missing step: {name}"
+        assert _normalize(rehearsal_steps[name].get("run", "")) == _normalize(
+            gate_steps[name].get("run", "")
+        ), f"gate rehearsal step differs from official gate: {name}"
+    assert (
+        rehearsal_steps["Setup Python"]["with"]["python-version"]
+        == gate_steps["Setup Python"]["with"]["python-version"]
+    )
+    assert preview["jobs"]["release_gate_rehearsal"]["env"]["QT_QPA_PLATFORM"] == "offscreen"
+    assert preview["jobs"]["release_gate_rehearsal"]["permissions"] == {"contents": "read"}
+    assert "environment" not in preview["jobs"]["release_gate_rehearsal"]
+
+
+def test_preview_report_gates_every_rehearsal_and_build() -> None:
+    _text, workflow = _workflow()
+    report = workflow["jobs"]["preview_report"]
+    assert report["needs"] == [
+        "prepare",
+        "preflight_rehearsal",
+        "release_gate_rehearsal",
+        "build_windows",
+        "build_linux_appimage",
+        "build_linux_flatpak",
+    ]
+    step_run = report["steps"][0]["run"]
+    for key in ("release_preflight_rehearsal", "release_gate_bounded_rehearsal"):
+        assert f'"{key}"' in step_run
+    assert 'all(value == "success" for value in statuses.values())' in step_run
 
 
 def test_four_preview_artifact_groups_require_existing_nonempty_packages() -> None:
