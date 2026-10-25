@@ -130,4 +130,4 @@ def test_main_window_shows_chemname_and_approved_about_copy(monkeypatch) -> None
         "ChemUSON es un editor molecular libre y de código abierto para crear, editar, "
         "visualizar y analizar estructuras químicas, diagramas y anotaciones científicas."
     ) in captured["text"]
-    assert window.windowTitle() == "ChemUSON 0.3.0-beta.1 — Editor Molecular Libre"
+    assert window.windowTitle() == "ChemUSON 0.3.0-beta.2 — Editor Molecular Libre"

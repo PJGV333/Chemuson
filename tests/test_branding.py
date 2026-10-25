@@ -66,7 +66,7 @@ def test_package_import_settings_update_and_project_ids_remain_compatible() -> N
     appimage_validator = _text("packaging/release/validate_appimage.py")
     pages_index = _text("packaging/release/generate_flatpak_pages_index.py")
 
-    assert '__version__ = "0.3.0-beta.1"' in version
+    assert '__version__ = "0.3.0-beta.2"' in version
     assert re.search(r"(?m)^name\s*=\s*['\"]chemuson['\"]", pyproject)
     assert 'QSettings("Chemuson", "Chemuson")' in settings
     assert 'app.setApplicationName("Chemuson")' in bootstrap

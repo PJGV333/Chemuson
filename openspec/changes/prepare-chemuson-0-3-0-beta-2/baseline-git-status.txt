@@ -1,0 +1,4 @@
+branch: release/v0.3.0-beta.2-prep
+HEAD: aa2e91c98cf1a16e8299e881955b1614edb2e18d
+git status --short:
+?? openspec/changes/prepare-chemuson-0-3-0-beta-2/

@@ -5,7 +5,7 @@
 ## Opción A — Desde GitHub
 
 1. Abrir el repositorio → **Actions** → **Build Preview**.
-2. Si aparece **Run workflow**, elegir la rama `release/v0.3.0-beta.1-prep` (o la rama de preparación correspondiente). La versión se obtiene de `src/chemuson/_version.py`; no se escribe manualmente.
+2. Si aparece **Run workflow**, elegir la rama `release/v0.3.0-beta.2-prep` (o la rama de preparación correspondiente). La versión se obtiene de `src/chemuson/_version.py`; no se escribe manualmente.
 3. Ejecutar el workflow y esperar a que la validación de rama/SHA y los tres jobs de paquetes terminen.
 4. Windows y Linux ejecutan `validate_packaged_icons.py` y `validate_packaged_rdkit_worker.py` sobre el ejecutable PyInstaller real antes de subirlo. El gate RDKit comprueba que el CArchive no contenga recursos top-level `PIL`/`Pillow`, además de imports nativos dentro del bundle, descriptores conocidos de etanol, SMILES de entrada/canónico y conformero 3D mediante el worker aislado; no admite skip. La metadata de RDKit puede resolver Pillow transitivamente en el entorno de build, pero el spec excluye esos recursos del paquete. En Linux, el job construye AppImage Type 2 y `validate_appimage.py` repite ambos smokes sobre el ejecutable extraído del paquete, además del smoke esencial de flujo real 2D→3D con el worker RDKit congelado (`geometry_flow_smoke`), que exige `ok=true` con posiciones y energía reales. Estos gates automatizados no sustituyen la aceptación manual del propietario.
 5. Revisar el resumen final. El run sólo es completo si Windows portable/installer, Linux AppImage Type 2 y Linux Flatpak muestran `success`.
@@ -27,8 +27,8 @@ Desde la simplificación de la pipeline, `test.yml` ya no se dispara automática
 Un agente sólo debe iniciar un run si el propietario autorizó la acción y GitHub informa que el workflow ya está disponible. Primero comprobar `gh auth status` y que la sesión tenga permiso de ejecutar workflows; no asumir que Luna tiene credenciales. Sin autorización, detenerse y dejar los paquetes como `NOT BUILT`.
 
 ```bash
-gh workflow run build-preview.yml --ref release/v0.3.0-beta.1-prep
-gh run list --workflow build-preview.yml --branch release/v0.3.0-beta.1-prep --limit 5
+gh workflow run build-preview.yml --ref release/v0.3.0-beta.2-prep
+gh run list --workflow build-preview.yml --branch release/v0.3.0-beta.2-prep --limit 5
 gh run view <run-id> --web
 gh run download <run-id> --dir "chemuson-preview-<run-id>"
 ```
@@ -50,7 +50,7 @@ Probar cada paquete por separado en una VM/perfil limpio y registrar resultado, 
 
 ### P0 — ejecutar primero; cualquier fallo bloquea
 
-1. Antes de abrir, comprobar `preview-provenance.json`, versión `0.3.0-beta.1`, SHA y `checksums.sha256`; AppImage debe ser Type 2 extraíble. Probar Windows portable e installer, AppImage y Flatpak local por separado, sin modificar canales públicos.
+1. Antes de abrir, comprobar `preview-provenance.json`, versión del candidato (actualmente `0.3.0-beta.2`), SHA y `checksums.sha256`; AppImage debe ser Type 2 extraíble. Probar Windows portable e installer, AppImage y Flatpak local por separado, sin modificar canales públicos.
 2. Arranque, apertura y cierre repetidos; verificar versión/marca, iconos, menús y herramientas esenciales. Windows/Linux: temas claro y oscuro. Registrar `START-01/05/06`, `UI-07/08` y `BRANDING-001` según corresponda.
 3. Dibujar átomos/enlaces/anillos, verificar valencias/conectividad y Undo/Redo; guardar copia `.cmsn`, cerrar, reabrir y comparar estructura/propiedades. Usar `DRAW-*`, `DATA-01/12`.
 4. Importar/exportar SMILES y MOL/SDF; validar conectividad, fórmula, carga y **identidad** tras cada paso (un SMILES sintácticamente válido no prueba identidad). Ejecutar explícitamente `DATA-11` para enantiómeros y E/Z; la pérdida estéreo silenciosa es P0.
