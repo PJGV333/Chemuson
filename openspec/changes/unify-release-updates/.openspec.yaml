@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-10-25
+goal: Unificar la selección de releases del actualizador mediante SemVer y preparar una ruta única de publicación sin romper los canales beta/estable ya instalados.
