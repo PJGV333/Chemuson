@@ -236,13 +236,49 @@ class RdkitRoundtripTest(unittest.TestCase):
     def test_smiles_import_regression_for_naphthyl_urea(self):
         from rdkit import Chem
 
+        from rdkit.Chem import rdMolDescriptors
+
         smiles = "O=C(NCCCl)Nc1cccc2ccccc12"
-        expected = Chem.MolToSmiles(Chem.MolFromSmiles(smiles), canonical=True)
+        expected_mol = Chem.MolFromSmiles(smiles)
+        self.assertIsNotNone(expected_mol)
+        expected = Chem.MolToSmiles(expected_mol, canonical=True, isomericSmiles=True)
 
         graph = smiles_to_molgraph(smiles)
 
         self.assertGreater(len(graph.atoms), 0)
-        self.assertEqual(molgraph_to_smiles(graph), expected)
+        exported_smiles = molgraph_to_smiles(graph)
+        roundtrip_mol = Chem.MolFromSmiles(exported_smiles)
+        self.assertIsNotNone(roundtrip_mol, exported_smiles)
+
+        # Export may choose an equivalent Kekule form instead of the same aromatic
+        # spelling. Compare chemistry, not one SMILES serialization.
+        self.assertEqual(
+            Chem.MolToSmiles(roundtrip_mol, canonical=True, isomericSmiles=True),
+            expected,
+        )
+        self.assertEqual(
+            rdMolDescriptors.CalcMolFormula(roundtrip_mol),
+            rdMolDescriptors.CalcMolFormula(expected_mol),
+        )
+        self.assertEqual(Chem.GetFormalCharge(roundtrip_mol), Chem.GetFormalCharge(expected_mol))
+
+        def atom_signature(mol):
+            return sorted(
+                (
+                    atom.GetAtomicNum(),
+                    atom.GetFormalCharge(),
+                    atom.GetIsotope(),
+                    atom.GetTotalNumHs(includeNeighbors=True),
+                    atom.GetIsAromatic(),
+                )
+                for atom in mol.GetAtoms()
+            )
+
+        def bond_signature(mol):
+            return sorted((bond.GetBondTypeAsDouble(), bond.GetIsAromatic()) for bond in mol.GetBonds())
+
+        self.assertEqual(atom_signature(roundtrip_mol), atom_signature(expected_mol))
+        self.assertEqual(bond_signature(roundtrip_mol), bond_signature(expected_mol))
 
     @unittest.skipIf(not RDKit_AVAILABLE, "RDKit no disponible")
     def test_duplicate_bonds_do_not_crash_rdkit_conversion(self):
