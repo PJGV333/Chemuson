@@ -1,4 +1,7 @@
-# Manual de Usuario de ChemUSON
+# Manual de usuario de ChemUSON — referencia técnica histórica
+
+> **Aviso documental (25 de octubre de 2026):** esta es una **guía técnica histórica** de ChemUSON, centrada en herramientas de edición 2D y perspectiva seudotridimensional. Puede describir opciones o atajos que hayan cambiado. Para instalar la versión pública `0.3.0-beta.3` y consultar las instrucciones generales vigentes, utiliza el [manual principal en español](MANUAL_USUARIO.md) y la [página de descargas oficiales](https://github.com/PJGV333/Chemuson/releases/tag/v0.3.0-beta.3). Se conserva el texto técnico original como referencia; no constituye una auditoría completa de beta.3.
+
 *Editor Molecular 2D Avanzado con Capacidad de Perspectiva Pseudo-3D*
 
 ---

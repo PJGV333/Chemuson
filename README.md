@@ -1,240 +1,100 @@
 # ChemUSON
 
-**ChemUSON** es un editor molecular 2D libre y de código abierto, orientado a la docencia, la investigación y la comunicación científica en química. El proyecto se desarrolla activamente con el propósito de ofrecer una herramienta accesible, moderna y útil para el dibujo, análisis y exportación de estructuras químicas en entornos académicos y de investigación.
+**Editor molecular libre para la docencia y la investigación química.**  
+Desarrollado en el **Grupo de Química Supramolecular de la Universidad de Sonora, México**.
 
-**Autores:** Pedro Jancarlo Gomez Vega*, José Octavio Juárez Sánchez, Alondra Karolina Montaño Preciado, Ramón Moreno Corral, Felipe Medrano Valenzuela, David Octavio Corona Martínez y Karen L. Ochoa Lara*
+**Idioma:** Español · [Read this page in English](README.en.md)
 
-**Afiliación:** Grupo de Química Supramolecular, Universidad de Sonora
+ChemUSON es una aplicación de código abierto para **dibujar, visualizar, analizar y comunicar estructuras químicas**. Integra un editor 2D, visualización molecular 3D y herramientas de apoyo para química computacional, nomenclatura y exportación de figuras.
 
-\* Autores de correspondencia
-
-## Estado del proyecto
-
-> **Proyecto en construcción.**
+> **Versión pública más reciente: [ChemUSON 0.3.0-beta.3](https://github.com/PJGV333/Chemuson/releases/tag/v0.3.0-beta.3)** (25 de octubre de 2026). Es una **versión preliminar**: puede contener errores o funciones incompletas. La última versión etiquetada como estable es [v0.2.5](https://github.com/PJGV333/Chemuson/releases/tag/v0.2.5), anterior a esta beta.
 >
-> Chemuson está en desarrollo activo. Las funciones, formatos y resultados pueden cambiar mientras el proyecto madura.
->
-> Estado de octubre de 2026: esta rama de preparación usa `0.3.0-beta.1` en `src/chemuson/_version.py` como fuente canónica. **No implica tag, GitHub Release ni publicación de canales.** Los paquetes Actions de prueba, si se generan, son artifacts temporales no disponibles en el updater. Consulta [la política de versionado](docs/release/VERSIONING_POLICY.md) y [la guía de previews](docs/release/PREVIEW_BUILDS.md).
+> Para obtener **el código exacto de la beta publicada**, consulta [su etiqueta](https://github.com/PJGV333/Chemuson/tree/v0.3.0-beta.3). La rama `main` puede estar en una etapa diferente de desarrollo.
 
-## ¿Qué hace Chemuson?
+## Descargar ChemUSON
 
-Chemuson permite dibujar estructuras químicas 2D, analizarlas y exportarlas en formatos comunes para trabajo académico y de investigación.
+| Sistema | Modalidad | Descarga oficial |
+| --- | --- | --- |
+| Windows (64 bits) | Instalador | [Descargar `.exe`](https://github.com/PJGV333/Chemuson/releases/download/v0.3.0-beta.3/Chemuson-v0.3.0-beta.3-windows-x86_64-setup.exe) |
+| Windows (64 bits) | Portable, sin instalación | [Descargar `.exe`](https://github.com/PJGV333/Chemuson/releases/download/v0.3.0-beta.3/Chemuson-v0.3.0-beta.3-windows-x86_64-portable.exe) |
+| Linux (64 bits) | AppImage Type 2 | [Descargar `.AppImage`](https://github.com/PJGV333/Chemuson/releases/download/v0.3.0-beta.3/Chemuson-v0.3.0-beta.3-linux-x86_64.AppImage) |
+| Linux (64 bits) | Flatpak | [Descargar `.flatpak`](https://github.com/PJGV333/Chemuson/releases/download/v0.3.0-beta.3/Chemuson-v0.3.0-beta.3-linux-x86_64.flatpak) |
 
-Capacidades actuales (resumen):
-- Editor gráfico 2D con herramientas para átomos, enlaces, anillos, cadenas y anotaciones.
-- Soporte de estilos de enlace (simple, doble, triple, aromático, cuña, punteado, coordinativo, etc.).
-- Limpieza geométrica (`Limpiar 2D`) y opciones visuales (hidrógenos, carbonos, aromáticos como círculo, rejilla/reglas).
-- Orientación inteligente de dobles enlaces en anillos (línea pi hacia dentro por defecto) con inversión manual mediante `Ctrl+Alt+Rueda`.
-- Numeración visual no destructiva (átomos, estructuras o ambos), configurable para exportación.
-- Importación y exportación química: `SMILES`, `Molfile` y archivos propios `.cmsn`.
-- Autosave automático con backups rotativos por documento y recuperación de sesiones al iniciar.
-- Exportación gráfica: `PNG`, `SVG`, `PDF`.
-- Herramientas de análisis integradas: nombre, fórmula, masa exacta, peso molecular, `m/z` y análisis elemental.
-- Dock de propiedades químicas con fórmula, masas, análisis elemental, issues de valencia y descriptores RDKit aislados (`logP`, TPSA, HBD/HBA, enlaces rotables y alertas Lipinski) sin bloquear la UI.
-- Validación química interactiva con reporte exportable, navegación de issues y correcciones undoables cuando la acción es determinista.
-- Dock **3D / CompChem** para generar conformeros, optimizar con RDKit aislado u Open Babel opcional, proyectar a 2D con confirmación/undo y exportar XYZ/inputs ORCA, Gaussian y NWChem.
-- Dock de espectros MVP para predicciones heurísticas de ^1H NMR, ^13C NMR y MS con fuente, confianza, copia/exportación de tablas y selección pico↔átomo.
-- Motor de nomenclatura **IUPAC-lite** para un subconjunto de estructuras orgánicas.
-- Campo de estado en UI: **Nombre IUPAC** del documento activo (degradación a `N/D` sin crash).
-- Preferencias de nomenclatura: `Nombre avanzado (fase 4/6)` y `Usar RDKit aislado`.
-- Conversión Nombre→Estructura con fuentes offline/PubChem, caché y ejecución en worker.
-- Biblioteca de plantillas (incluye base predefinida + categorías de usuario importables/exportables).
+Para Linux, también está disponible el [canal beta de Flatpak](https://pjgv333.github.io/Chemuson/flatpak/beta/Chemuson-beta.flatpakref), que permite recibir actualizaciones mediante el remoto publicado. No se requiere una cuenta de GitHub para descargar los archivos de una versión pública.
 
-## Autosave y recuperación
+[**Ver todos los archivos de la versión, sus notas y sumas SHA-256**](https://github.com/PJGV333/Chemuson/releases/tag/v0.3.0-beta.3) · [**Consultar las sumas SHA-256**](https://github.com/PJGV333/Chemuson/releases/download/v0.3.0-beta.3/checksums.txt)
 
-- Chemuson guarda autosaves automáticamente cada ~2 minutos y también después de unos segundos de inactividad cuando hay cambios.
-- Al iniciar, si existen autosaves pendientes, aparece un diálogo para **recuperar** o **descartar** cada sesión.
-- Al guardar manualmente, se limpian autosaves obsoletos del documento y se conserva un respaldo rotativo reciente.
+### Instalación rápida
 
-Rutas locales de trabajo:
-- Autosaves: `~/.chemuson/autosave/`
-- Autosaves archivados tras recuperar/descartar: `~/.chemuson/autosave/old/`
-- Logs de crash: `~/.chemuson/crash_logs/crash_YYYYMMDD_HHMMSS.txt`
+**Windows:** ejecuta el instalador descargado o abre el ejecutable portable.
 
-## Fortalezas
-
-- Arquitectura modular (núcleo químico, GUI, nomenclatura, IO y persistencia separados).
-- Integración con RDKit mediante workers/subprocesos para tareas pesadas o propensas a fallos nativos, además de rutas de respaldo internas.
-- Cobertura de pruebas amplia para una base en evolución (800+ pruebas y skips controlados para backends opcionales).
-- Orientado a uso docente y de laboratorio con enfoque práctico de dibujo y análisis rápido.
-
-## Debilidades y límites actuales
-
-- El motor de nombres es **IUPAC-lite**: no cubre toda la nomenclatura IUPAC ni todos los sistemas cíclicos/fusionados.
-- Algunas rutas de cálculo/exportación usan subconjuntos de elementos o aproximaciones, según el caso.
-- Las predicciones espectrales son heurísticas/estimadas y no sustituyen datos experimentales.
-- La generación/optimización 3D depende de RDKit aislado; Open Babel solo se usa si el ejecutable `obabel` está disponible.
-- No hay soporte CDXML, MRV ni PDB todavía.
-- Al ser un proyecto en construcción, puede haber cambios de comportamiento entre versiones.
-- No sustituye herramientas de validación química regulatoria o flujos de producción validados.
-
-## Alcance de IUPAC-lite (actual)
-
-Incluye soporte para:
-- Cadenas lineales y algunas insaturaciones.
-- Sustituyentes comunes (halógenos, alquilos simples, algunos grupos funcionales).
-- Cicloalcanos simples, benceno y heteroaromáticos ampliados (incluye triazoles/tetrazol, oxazoles/isoxazoles, diazinas, oxazina).
-- Algunos sistemas aromáticos fusionados (por ejemplo: naftaleno, antraceno, fenantreno, pireno; y casos concretos heterofusionados como benzotriazol).
-- Carbonilos aromáticos tipo quinona (`benzene-1,4-dione`, `naphthalene-1,4-dione`, `naphthalene-1,2-dione`).
-- Grupos funcionales adicionales (thiol, sulfoxide/sulfone/sulfonic acid/sulfonate, azido, peroxy).
-- Cargas/isótopos/radicales básicos en modelo y round-trip (`formal_charge`, `isotope`, `radical_electrons`).
-- Coordinación (experimental, MVP): carbonyl, ammine, aqua, halo, cyano, η5-cyclopentadienyl, con estado de oxidación y `cis/trans` básico.
-- Plantillas especiales (MVP): carbohidratos seleccionados (`alpha/beta-d-glucopyranose`, `beta-d-fructofuranose`, `d-ribose`) y esteroides (`androstane`, `cholestane`), con sustitución simple (`hydroxy/oxo/amino`).
-- Estereoquímica avanzada best-effort: `M/P`, `R_a/S_a`, `endo/exo`, `si/re` (si hay anotación confiable o soporte RDKit).
-
-Limitaciones relevantes:
-- Cobertura parcial en anillos fusionados complejos.
-- Cobertura parcial en heterociclos fuera del subconjunto soportado.
-- Casos con múltiples grupos funcionales y escenarios avanzados aún no completamente soportados.
-- No cubre todo Blue Book; se prioriza estabilidad y degradación segura a `N/D` cuando procede.
-- Para estereoquímica vía RDKit se recomienda modo aislado en subproceso (ver [docs/rdkit.md](docs/rdkit.md)).
-- Descripción detallada del motor: [docs/chemname.md](docs/chemname.md).
-
-## Stack técnico
-
-- **GUI**: PyQt6
-- **Química**: RDKit aislado para tareas de cálculo/conversión, Open Babel opcional para optimización 3D, motores internos para validación, Clean2D y heurísticas.
-- **Lenguaje**: Python 3.10+
-
-### Clean2D Quality Reporting
-
-Clean2D exposes lightweight reporting helpers in `chemuson.clean2d.quality_reporting` for stable diagnostics in tests and controller/reporting surfaces. The normalized `score` in this contract is reporting-only; it must not change Clean2D layout algorithms, candidate ranking, candidate selection, geometry, RDKit/CoordGen behavior, MolGraph, or canvas behavior.
-
-## Distribución por plataforma
-
-Formatos soportados (estrategia híbrida):
-
-- **Windows**
-  - Portable: `Chemuson-vX.Y.Z-windows-x86_64-portable.exe`
-  - Instalador: `Chemuson-vX.Y.Z-windows-x86_64-setup.exe`
-- **Linux**
-  - Portable PyInstaller: `Chemuson-vX.Y.Z-linux-x86_64.AppImage` (sufijo histórico; no es AppImage Type 2).
-  - Instalable recomendado: **Flatpak** (canal oficial con remoto actualizable)
-
-Convención de nombres en release:
-
-- `Chemuson-v<version>-windows-x86_64-portable.exe`
-- `Chemuson-v<version>-windows-x86_64-setup.exe`
-- `Chemuson-v<version>-linux-x86_64.AppImage`
-
-### Windows: instalador oficial + portable
-
-- Se mantiene el `.exe` portable actual.
-- Instalador oficial elegido: **Inno Setup** (balancea simplicidad operativa, soporte de modo silencioso para updater y convivencia con portable).
-- Documento técnico y comandos completos: [docs/windows-distribution.md](docs/windows-distribution.md)
-
-Build local rápido en Windows (PowerShell):
-
-```powershell
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-pip install pyinstaller
-pyinstaller --clean --noconfirm chemuson.spec
-$env:CHEMUSON_VERSION = "<version>"
-& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "packaging\windows\Chemuson.iss"
-```
-
-### Linux: Flatpak principal + ejecutable portable
-
-- Canal instalable principal: **Flatpak** (`.flatpak`).
-- Portable: ejecutable PyInstaller con sufijo histórico `.AppImage`; no es contenedor AppImage Type 2.
-- Documento técnico y comandos completos: [docs/linux-distribution.md](docs/linux-distribution.md)
-
-Instalacion rapida Flatpak estable (Arch/CachyOS, usuario final):
+**Linux, AppImage:** concede permiso de ejecución y ábrelo desde el entorno gráfico o la terminal:
 
 ```bash
-sudo pacman -S flatpak
-flatpak --user remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-flatpak install --user https://pjgv333.github.io/Chemuson/flatpak/stable/Chemuson-stable.flatpakref
-flatpak run io.github.PJGV333.Chemuson
+chmod +x Chemuson-v0.3.0-beta.3-linux-x86_64.AppImage
+./Chemuson-v0.3.0-beta.3-linux-x86_64.AppImage
 ```
 
-Fallback con `.flatpakrepo`:
-
-```bash
-flatpak remote-add --user --if-not-exists --from chemuson-stable https://pjgv333.github.io/Chemuson/flatpak/stable/Chemuson-stable.flatpakrepo
-flatpak install --user chemuson-stable io.github.PJGV333.Chemuson//stable
-flatpak run io.github.PJGV333.Chemuson
-```
-
-Canal beta:
+**Linux, Flatpak:** instala desde el remoto beta oficial:
 
 ```bash
 flatpak install --user https://pjgv333.github.io/Chemuson/flatpak/beta/Chemuson-beta.flatpakref
+flatpak run io.github.PJGV333.Chemuson
 ```
 
-Notas:
-- El indice real de canales publicados vive en `https://pjgv333.github.io/Chemuson/` y solo enlaza canales que ya existen en `gh-pages`.
-- Si `stable` todavia no aparece ahi, el remoto estable aun no ha sido sembrado; usa `beta` temporalmente o publica primero una release estable.
-- La ruta recomendada es `.flatpakref` porque registra el remoto oficial para que `flatpak update` reciba futuras versiones.
+Consulta el [manual de usuario](docs/MANUAL_USUARIO.md) para instrucciones detalladas, uso de herramientas y solución de problemas.
 
-Ejecución portable Linux (sufijo histórico `.AppImage`):
+## ¿Qué puedes hacer con ChemUSON?
 
-```bash
-chmod +x Chemuson-vX.Y.Z-linux-x86_64.AppImage
-./Chemuson-vX.Y.Z-linux-x86_64.AppImage
-```
+- **Edición molecular 2D:** dibujar átomos, enlaces, anillos, cadenas, anotaciones, flechas y representaciones estereoquímicas.
+- **Mejora de diagramas:** utilizar **Limpiar 2D** para reorganizar estructuras y preparar figuras para clases, informes y publicaciones.
+- **Visualización molecular 3D:** generar conformeros, explorar geometría molecular y utilizar funciones de mecánica molecular basadas en RDKit.
+- **Análisis químico:** consultar fórmula, masa molecular, masa exacta, análisis elemental y descriptores disponibles.
+- **Nomenclatura y conversión:** utilizar herramientas de nomenclatura de alcance parcial (**IUPAC-lite**) y flujos de nombre a estructura.
+- **Diagramación científica:** trabajar con orbitales, diagramas de energía y otras anotaciones de laboratorio.
+- **Archivos y exportación:** guardar documentos editables `.cmsn`, intercambiar estructuras compatibles mediante SMILES/Molfile y exportar figuras a PNG, SVG o PDF.
+- **Recuperación de trabajo:** disponer de guardado automático y mecanismos de recuperación de sesiones.
 
-## Actualización automática (MVP)
+Las funciones avanzadas pueden depender del formato de entrada, el tipo de estructura, la plataforma o las dependencias disponibles.
 
-- Se añadió núcleo de update en `src/chemuson/update/`.
-- Fuente de versión única: `src/chemuson/_version.py`.
-- Política de versión: SemVer de app. Ramas de desarrollo/preparación usan `_version.py` como fuente canónica; la release oficial sólo acepta tags protegidos que coincidan con esa fuente y sus metadatos. Consulta [VERSIONING_POLICY.md](docs/release/VERSIONING_POLICY.md).
-- Canales soportados: `stable` y `beta`.
-- Verificación de integridad:
-  - hash SHA-256 (`.sha256`),
-  - firma (`.sig`, MVP con HMAC-SHA256; preparado para ampliar a Ed25519).
-- Rollback básico: si falla reemplazo de binario, se restaura backup local.
-- En Windows instalado, el updater prioriza el asset `setup.exe` y lo aplica al cierre de la app.
-- En Flatpak se deshabilita update in-app y se delega al remoto oficial publicado para `flatpak update`.
-- Fallback seguro: si GitHub no responde, se usa caché local reciente de releases (si existe).
-- Telemetría local mínima del updater (sin datos sensibles): `~/.chemuson/update_logs/events.jsonl`.
+## ChemUSON en imágenes
 
-Preferencias persistentes de actualización (en `QSettings`):
+Las siguientes son **capturas de referencia de la interfaz**, conservadas en la documentación de modernización visual. Pueden diferir en algunos detalles de la versión beta publicada.
 
-- `update/enabled`
-- `update/channel`
-- `update/mode` (`notify` / `silent`)
-- `update/check_interval_hours`
-- `update/last_check_iso`
+| Tema claro | Tema oscuro |
+| --- | --- |
+| ![Interfaz de ChemUSON en tema claro](docs/ui-modernization/after/main-light-1440x900.png) | ![Interfaz de ChemUSON en tema oscuro](docs/ui-modernization/after/main-dark-1440x900.png) |
 
-En GUI: `Editar -> Preferencias -> Actualizaciones`.
-Chequeo manual: `Ayuda -> Buscar actualizaciones...`.
+[Ver más capturas de la interfaz](docs/ui-modernization/after/README.md).
 
-En CLI:
+## Primeros pasos
 
-```bash
-chemuson --version
-```
+1. Abre ChemUSON y crea un documento con **Archivo → Nuevo**.
+2. Selecciona herramientas de enlace, átomo o anillo en la barra lateral izquierda.
+3. Dibuja una molécula en el lienzo; usa **Seleccionar** para manipular sus componentes.
+4. Cuando lo necesites, aplica **Limpiar 2D** (`Ctrl+K`).
+5. Abre el visor 3D para explorar la geometría de una estructura compatible.
+6. Guarda el documento (`Ctrl+S`) en formato `.cmsn` o exporta una figura.
 
-## Migración sin romper portable actual
+**Guías:** [Manual de usuario](docs/MANUAL_USUARIO.md) · [Nomenclatura ChemName](docs/chemname.md) · [Química computacional 3D](docs/geometry3d_compchem.md)
 
-- El flujo portable actual **se mantiene**.
-- Puedes seguir abriendo Chemuson con los ejecutables portables sin instalar; el archivo Linux `.AppImage`-named es PyInstaller, no Type 2.
-- Si migras a instalador en Windows, conserva tus archivos de trabajo (`.cmsn`) y configuración local.
-- Los mecanismos nuevos de update no eliminan compatibilidad con releases portables existentes.
+## Alcance y limitaciones
 
-## CI/CD Windows (resumen)
+ChemUSON está en desarrollo activo. Su motor IUPAC-lite **no cubre toda la nomenclatura IUPAC**; algunas estructuras complejas, coordinaciones y asignaciones estereoquímicas pueden quedar fuera de su alcance. Las predicciones espectrales disponibles son orientativas y **no sustituyen mediciones experimentales**. Conviene verificar independientemente los resultados antes de utilizarlos en decisiones científicas relevantes.
 
-- `test.yml` incluye smoke tests de updater/build de instalador en Windows.
-- `release.yml` publica portable + setup y deja firma Authenticode preparada con secretos:
-  - `WINDOWS_CODESIGN_CERT_BASE64`
-  - `WINDOWS_CODESIGN_CERT_PASSWORD`
-  - `WINDOWS_CODESIGN_TIMESTAMP_URL` (opcional)
-- Limitación conocida: CI no ejecuta instalación real sobre el runner; se simulan pasos críticos y se valida compilación de setup.
+Esta beta no constituye una validación regulatoria ni una garantía de ausencia de errores. Si encuentras un problema reproducible, puedes [abrir una incidencia](https://github.com/PJGV333/Chemuson/issues) con la versión, el sistema operativo y los pasos para reproducirlo, evitando compartir datos personales o confidenciales.
 
-## CI/CD Linux (resumen)
+## Tecnologías utilizadas
 
-- `release.yml` construye y publica:
-  - `Chemuson-vX.Y.Z-linux-x86_64.flatpak`
-  - `Chemuson-vX.Y.Z-linux-x86_64.AppImage`
-- `test.yml` valida manifiesto Flatpak con job `flatpak-smoke`.
-- El workflow oficial genera sidecars de metadata de update (`.updateinfo` y `.update.json`) y `.zsync` cuando está disponible. Los previews de Actions omiten esos sidecars y no modifican el updater.
-- [PREVIEW_BUILDS.md](docs/release/PREVIEW_BUILDS.md) explica cómo descargar los paquetes de prueba desde Actions; la compilación preview no equivale a una publicación.
+- **Interfaz gráfica:** Python y PyQt6.
+- **Herramientas químicas:** RDKit ejecutado en procesos aislados, Open Babel opcional y módulos internos de validación y geometría.
+- **Distribución:** instalador y ejecutable portable para Windows; AppImage Type 2 y Flatpak para Linux.
 
-## Instalación para desarrollo
+Los detalles de arquitectura, diagnóstico de calidad de Clean2D, contratos de pruebas y preparación de paquetes están en la [documentación técnica](docs/architecture.md), la [guía de desarrollo](docs/distribution-plan.md) y las [instrucciones de distribución](docs/release/PREVIEW_BUILDS.md).
 
-En un checkout nuevo, crea un entorno virtual con el nombre que prefieras e instala ChemUSON en modo editable. `pyproject.toml` declara las dependencias de runtime; `requirements-dev.txt` añade solo herramientas de desarrollo y pruebas:
+### Para desarrolladores
+
+Con Python 3.10 o posterior, en un entorno virtual:
 
 ```bash
 python -m venv .venv
@@ -243,12 +103,18 @@ python -m pip install -e .
 python -m pip install -r requirements-dev.txt
 ```
 
-En fish, activa el entorno con `source .venv/bin/activate.fish`. También puedes usar `requirements.txt` para instalar explícitamente las dependencias de runtime. Open Babel es opcional y, si se necesita para optimización 3D, se instala como ejecutable del sistema (`obabel`); no es una dependencia Python obligatoria.
+En Windows activa `.venv\Scripts\activate`; en fish usa `source .venv/bin/activate.fish`. El código fuente que corresponde a un paquete concreto se identifica por la etiqueta de su versión.
 
-## Ejecución
+## Origen del proyecto y autores
 
-Desde el entorno virtual, con el paquete instalado en modo editable:
+ChemUSON nace del trabajo del **Grupo de Química Supramolecular de la Universidad de Sonora (México)**, con el propósito de contribuir a la enseñanza, investigación y comunicación de la química mediante herramientas libres. Su desarrollo busca hacer más accesible la representación y el análisis molecular, sin sustituir el juicio científico.
 
-```bash
-./chemuson/bin/chemuson
-```
+**Autores:** Pedro Jancarlo Gomez Vega*, José Octavio Juárez Sánchez, Alondra Karolina Montaño Preciado, Ramón Moreno Corral, Felipe Medrano Valenzuela, David Octavio Corona Martínez y Karen L. Ochoa Lara*.
+
+\* Autores de correspondencia.
+
+**Licencia:** [AGPL-3.0](LICENSE). Se agradecen informes de errores, propuestas y contribuciones a través de [Issues](https://github.com/PJGV333/Chemuson/issues) y [Pull Requests](https://github.com/PJGV333/Chemuson/pulls).
+
+---
+
+**ChemUSON — Universidad de Sonora, México.** · [English version](README.en.md)
