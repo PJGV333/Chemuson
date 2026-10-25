@@ -1,6 +1,6 @@
 # Política de pruebas y compilación de ChemUSON
 
-Fecha: 2026-10-22. Esta política separa tres actividades distintas y **no elimina
+Fecha: 2026-10-22; reconciliada con AGENTS.md el 2026-10-25. Esta política separa tres actividades distintas y **no elimina
 ninguna prueba existente**: la colección completa de `tests/` se conserva como
 herramienta para los agentes y para auditorías extraordinarias.
 
@@ -102,23 +102,14 @@ git diff --check                                       # higiene de diffs
 - Limpiar una salida no afecta al código de producción: basta con borrar el
   directorio de salida correspondiente.
 
-## Conflicto documental con `AGENTS.md` — propuesta de reconciliación
+## Reconciliación normativa con `AGENTS.md` (2026-10-25)
 
-`AGENTS.md` §1.2/§1.3 todavía prescribe `pytest -q` completo como baseline y al
-final de cada tarea. Esta política posterior (2026-10-22) conserva toda la
-colección, pero establece que la suite masiva es extraordinaria y no obligatoria
-en cada cambio; `test.yml` sólo se ejecuta mediante `workflow_dispatch`.
+La armonización de `AGENTS.md` §1.2 y §1.3 fue **aprobada por el propietario** y queda aplicada en esta revisión. Ambos documentos prescriben ahora el mismo procedimiento:
 
-Para campañas ordinarias rige el flujo proporcional de esta política y la
-solicitud concreta del propietario: colecta, compileall, arquitectura y pruebas
-focalizadas según alcance; el workflow completo no se dispara automáticamente.
-No se borran tests, no se altera el manifiesto y siguen fail-closed los gates de
-`test.yml` y los checks acotados de `release.yml`. Una auditoría completa se
-realiza sólo cuando el riesgo o una autorización explícita la justifique.
+- Baseline y verificaciones proporcionales al alcance, con `git status --short`, SHA, `compileall`, arquitectura y Ruff focal cuando se modifique código. En cambios exclusivamente documentales, comprobar documentación, referencias y `git diff --check`.
+- `pytest --collect-only -q` y el manifiesto de node IDs se verifican cuando cambian la colección, los tests o el plan de shards, no indiscriminadamente en cambios de documentación.
+- Tests relevantes y controles acotados durante el desarrollo; la suite completa se reserva a auditoría extraordinaria justificada por el riesgo/alcance y **autorizada expresamente por el propietario**.
+- No eliminar, desactivar ni debilitar pruebas. `test.yml` sigue disponible por `workflow_dispatch`. Builds y Release conservan sus gates fail-closed, checksums, proveniencia y smoke de 2D→3D.
+- Una prueba omitida por entorno, un warning de baseline o un fallo histórico **no equivalen a PASS**. Registrar comandos, entorno, SHA y resultados reales.
 
-**Propuesta, no cambio normativo:** en una revisión documental futura, alinear
-`AGENTS.md` §1.2/§1.3 con esta separación. Mantener captura de Git, compileall,
-colecta y Ruff en baseline; ejecutar siempre arquitectura y tests focalizados;
-reservar la suite completa para auditoría extraordinaria aprobada. Hasta que el
-propietario apruebe esa reconciliación, no modificar ni reinterpretar
-silenciosamente requisitos críticos de ninguno de los dos documentos.
+Esta revisión sólo aclara reglas de trabajo; no cambia código, workflows, límites, manifiestos ni resultados históricos de pruebas.

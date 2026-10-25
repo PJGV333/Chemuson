@@ -7,11 +7,13 @@ Developed by the **Supramolecular Chemistry Group at the University of Sonora, M
 
 ChemUSON is an open-source desktop application to **draw, visualize, analyze and communicate chemical structures**. It combines a 2D editor, a molecular 3D viewer, and supporting tools for computational chemistry, nomenclature and scientific figures.
 
-> **Newest public release: [ChemUSON 0.3.0-beta.3](https://github.com/PJGV333/Chemuson/releases/tag/v0.3.0-beta.3)** (October 25, 2026). It is a **pre-release** and may contain bugs and incomplete functionality. The last release classified as stable is the older [v0.2.5](https://github.com/PJGV333/Chemuson/releases/tag/v0.2.5).
+> **RECOMMENDED DOWNLOAD — [ChemUSON 0.3.0-beta.3](https://github.com/PJGV333/Chemuson/releases/tag/v0.3.0-beta.3)** (October 25, 2026). This is the **newest public release and the recommended version to evaluate ChemUSON** on Windows and Linux. Its principal features have been manually accepted, but this is still a **beta**: bugs and incomplete functions may remain. Back up your work and independently verify scientific results.
 >
-> To view **the exact source code of the published beta**, use [its version tag](https://github.com/PJGV333/Chemuson/tree/v0.3.0-beta.3). The `main` branch may represent a different development stage.
+> **Why does GitHub label [v0.2.5](https://github.com/PJGV333/Chemuson/releases/tag/v0.2.5) as “Latest”?** GitHub reserves that label for non-prerelease releases. v0.2.5 is the last release *classified* as stable, **not the currently recommended download**. Preserving beta.3's prerelease status maintains compatibility with existing update channels.
+>
+> For **the exact source of beta.3**, use [its tag](https://github.com/PJGV333/Chemuson/tree/v0.3.0-beta.3). `main` is the active development branch and may advance beyond the published release.
 
-## Download ChemUSON
+## Download ChemUSON 0.3.0-beta.3 — recommended
 
 | Platform | Package | Official download |
 | --- | --- | --- |
