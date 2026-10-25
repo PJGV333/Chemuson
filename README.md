@@ -7,11 +7,13 @@ Desarrollado en el **Grupo de Química Supramolecular de la Universidad de Sonor
 
 ChemUSON es una aplicación de código abierto para **dibujar, visualizar, analizar y comunicar estructuras químicas**. Integra un editor 2D, visualización molecular 3D y herramientas de apoyo para química computacional, nomenclatura y exportación de figuras.
 
-> **Versión pública más reciente: [ChemUSON 0.3.0-beta.3](https://github.com/PJGV333/Chemuson/releases/tag/v0.3.0-beta.3)** (25 de octubre de 2026). Es una **versión preliminar**: puede contener errores o funciones incompletas. La última versión etiquetada como estable es [v0.2.5](https://github.com/PJGV333/Chemuson/releases/tag/v0.2.5), anterior a esta beta.
+> **DESCARGA RECOMENDADA — [ChemUSON 0.3.0-beta.3](https://github.com/PJGV333/Chemuson/releases/tag/v0.3.0-beta.3)** (25 de octubre de 2026). Es la **versión pública más reciente y recomendada para evaluar ChemUSON** en Windows y Linux. Ha sido objeto de aceptación funcional manual, pero continúa siendo una **beta**: pueden existir errores y funciones incompletas. Conserva copias de tu trabajo y verifica los resultados científicos.
 >
-> Para obtener **el código exacto de la beta publicada**, consulta [su etiqueta](https://github.com/PJGV333/Chemuson/tree/v0.3.0-beta.3). La rama `main` puede estar en una etapa diferente de desarrollo.
+> **¿Por qué GitHub muestra «Latest» junto a [v0.2.5](https://github.com/PJGV333/Chemuson/releases/tag/v0.2.5)?** Porque GitHub reserva esa etiqueta para versiones no preliminares. `v0.2.5` es la última release clasificada como estable, **no nuestra descarga recomendada actual**. Mantener la clasificación beta.3 protege la compatibilidad de los canales de actualización existentes.
+>
+> Para obtener el **código exacto de beta.3**, consulta [su etiqueta](https://github.com/PJGV333/Chemuson/tree/v0.3.0-beta.3). `main` es la línea de desarrollo y puede avanzar más allá del código publicado.
 
-## Descargar ChemUSON
+## Descargar ChemUSON 0.3.0-beta.3 — recomendada
 
 | Sistema | Modalidad | Descarga oficial |
 | --- | --- | --- |
