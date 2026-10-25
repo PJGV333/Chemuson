@@ -4,9 +4,9 @@ mode=archive-z2
 indexed-deltas=true
 
 [flatpak]
-title=Chemuson (beta)
-comment=Canal oficial Flatpak de Chemuson (beta).
-description=Repositorio oficial Flatpak de Chemuson para el canal beta.
+title=ChemUSON (beta)
+comment=Canal oficial Flatpak de ChemUSON (beta).
+description=Repositorio oficial Flatpak de ChemUSON para el canal beta.
 homepage=https://github.com/PJGV333/Chemuson
-icon=https://PJGV333.github.io/Chemuson/flatpak/icon.svg
+icon=https://pjgv333.github.io/Chemuson/flatpak/icon.svg
 default-branch=beta
