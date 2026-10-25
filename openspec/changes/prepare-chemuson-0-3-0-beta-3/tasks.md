@@ -8,7 +8,8 @@
 - [x] Cambiar versión canónica/AppStream a `0.3.0-beta.3` con `set_version.py`; crear notas `0.3.0-beta.3-public.md` y documento interno; apuntar `body_path` del workflow a las notas beta.3; actualizar contratos literales de versión.
 - [x] Actualizar `VERSIONING_POLICY.md` y `PREVIEW_BUILDS.md` (recuperación beta.3 y ensayos de preflight).
 - [x] Ejecutar validaciones focales locales (contracts de workflows, tests de tag, versionado, artefacts, baseline exceptions, ChemName, compileall, Ruff acotado) sin suite masiva.
-- [ ] Publicar la rama de preparación y ejecutar el Build Preview oficial desde el SHA candidato exacto.
-- [ ] Verificar: ensayo del preflight aprobado en Actions (exit 0, salidas correctas, tag temporal borrado), ensayo del gate aprobado, cuatro paquetes construidos, checksums/provenance coincidentes, un único SHA fuente, sin errores de versionado ni rutas, repositorio limpio.
-- [ ] Descargar los artifacts del Build Preview y validar SHA-256/provenance localmente contra los manifests.
+- [x] Publicar la rama de preparación y ejecutar el Build Preview oficial desde el SHA candidato exacto.
+- [x] Verificar: ensayo del preflight aprobado en Actions (exit 0, salidas correctas, tag temporal borrado), ensayo del gate aprobado, cuatro paquetes construidos, checksums/provenance coincidentes, un único SHA fuente, sin errores de versionado ni rutas, repositorio limpio (run 40162819727 sobre `b16ccbcbc…`; evidencia en `validation.md`).
+- [x] Descargar los artifacts del Build Preview y validar SHA-256/provenance localmente contra los manifests.
+- [ ] Confirmar el Build Preview verde disparado por el commit final de documentación (SHA definitivo del candidato), con la misma evidencia de ensayos, cuatro paquetes y SHA único.
 - [ ] Informar al propietario el SHA completo, el enlace del run y la evidencia del ensayo; no crear `v0.3.0-beta.3` sin su confirmación explícita.

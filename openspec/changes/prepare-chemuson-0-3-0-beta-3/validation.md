@@ -37,6 +37,30 @@
 - `release.yml` sigue siendo exclusivamente `push.tags: v*`; su preflight conserva parseo estricto de tag, triple identidad SHA (evento/tag/checkout), metadata canónica+AppStream y consulta fail-closed de Release existente. La corrección no debilita ninguna de estas validaciones.
 - `preview_report` exige `success` en `release_preflight_rehearsal` y `release_gate_bounded_rehearsal` además de los tres builds: sin ensayos verdes, el Build Preview no es apto para publicación.
 
-## Resultado candidato
+## Resultado candidato (Build Preview 40162819727, SHA b16ccbcbc31781dc7f90e6d991844cf556023750)
 
-Pendiente al capturar esta versión del documento: empujar `release/v0.3.0-beta.3-prep`, ejecutar el Build Preview oficial y documentar aquí el run (ensayos verdes con exit code 0 y salidas exactas, tag temporal borrado, cuatro paquetes, provenance/checksums, SHA único). La creación del tag `v0.3.0-beta.3` queda pendiente de la confirmación explícita del propietario. No se ejecutó pytest completo.
+Run oficial `Build Preview` push-disparado por la rama: https://github.com/PJGV333/Chemuson/actions/runs/40162819727 — conclusión `success`; los 7 jobs en verde (`Validate preview source`, ambos ensayos, los 3 builds y `Preview build report`).
+
+### Ensayo real del preflight en el runner (evidencia literal del log del job `Release preflight rehearsal (non-publishing)`)
+
+- `Path resolution check: REPO_ROOT == git toplevel == /home/runner/work/Chemuson/Chemuson` — la constante corregida coincide con la raíz Git del runner; el mismo script que falló en beta.2 (exit 128 fuera del repo) ahora resuelve correctamente.
+- El validador oficial ejecutado bajo evento de tag simulado terminó con exit code 0 y printing final: `Validated v0.3.0-beta.3 (beta) at b16ccbcbc31781dc7f90e6d991844cf556023750; no existing release.` (la consulta de inexistencia de Release usó `github.token` de lectura y devolvió 404).
+- Salidas exactas del validador (`GITHUB_OUTPUT`): `tag=v0.3.0-beta.3`, `version=0.3.0-beta.3`, `channel=beta`, `sha=b16ccbcbc31781dc7f90e6d991844cf556023750`; el paso `Verify preflight outputs match the candidate identity` las cotejó con `grep -qxF`.
+- Ciclo del tag anotado temporal solo en el runner: guardas `git ls-remote` (inexistencia en remoto antes y después), `git tag -a` local sobre el SHA candidato, y limpieza incondicional: `Deleted tag 'v0.3.0-beta.3' (was 5329f86d)` (objeto anotado, distinto del commit). Nunca se ejecutó ningún push; el tag oficial `v0.3.0-beta.3` sigue sin existir.
+
+### Ensayo de los checks acotados del gate (`Release gate bounded checks rehearsal`)
+
+Comandos byte a byte idénticos a `release.yml` (contract verificado): instalación Qt/requirements/-e ., catálogo de excecciones, ChemName acceptance, `compileall`, Ruff acotado → `All checks passed!`, arquitectura acotada → `283 passed in 22.63s`, contracts acotados → `208 passed in 28.91s` (incluye las 9 regresiones nuevas del preflight).
+
+### Paquetes y provenance (artifacts descargados y verificados localmente)
+
+- Grupos: `chemuson-preview-windows-portable`, `chemuson-preview-windows-installer`, `chemuson-preview-linux-appimage`, `chemuson-preview-linux-flatpak` + `chemuson-preview-build-report`.
+- `sha256sum -c` de los 4 paquetes y sus provenance: todas las sumas coinciden.
+- Los cuatro `preview-provenance.json` reportan `0.3.0-beta.3`, `git_sha=b16ccbcbc31781dc7f90e6d991844cf556023750` (único SHA fuente), `build_status: success`, `publication: false`.
+- `preview-build-report.json`: `complete: true`; estados `success` en `source_validation`, `release_preflight_rehearsal`, `release_gate_bounded_rehearsal`, `windows_portable_and_installer`, `linux_appimage_portable`, `linux_flatpak`.
+
+Sin errores de versionado ni rutas en ningún job. Sin suite masiva de pytest. Tags `v0.3.0-beta.1`/`v0.3.0-beta.2` y sus commits permanecen intactos; no se creó `v0.3.0-beta.3` ni GitHub Release. La creación del tag queda pendiente de la confirmación explícita del propietario.
+
+### Actualización final de evidencia (SHA definitivo)
+
+Este documento se actualizó y se empujó como commit final de la rama; el push re-disparó el Build Preview oficial sobre ese SHA definitivo, repitiendo el ensayo completo del preflight (run registrado en `tasks.md`/informed final). El SHA definitivo para el tag es el HEAD verde resultante de esa ejecución.
