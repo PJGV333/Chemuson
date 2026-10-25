@@ -13,20 +13,22 @@ Todo trabajo comienza leyendo la especificación OpenSpec activa. El agente **de
 - `tasks.md`: Para identificar las tareas específicas a realizar.
 - `specs/*.md`: Para entender los contratos técnicos detallados.
 
-### 1.2 Captura de Baseline
-Antes de tocar el código, el agente debe registrar el estado actual del repositorio para permitir la comparación posterior.
-- **Comandos de baseline**:
-  - `git status --short`
-  - `python -m compileall src tests tools packaging`
-  - `pytest --collect-only -q`
-  - `pytest -q`
-  - `ruff check src tests tools packaging --select F401,F811,F821,E722,E741`
-- **Registro**: Guardar la salida exacta en `AGENT_REPORT.md` o en el archivo `baseline.md` del cambio OpenSpec correspondiente.
+### 1.2 Captura de baseline proporcional al alcance
+Antes de modificar código, pruebas, empaquetado o documentación, registrar `git status --short`, rama, HEAD y las verificaciones relevantes **antes** del cambio para poder comparar resultados. Aplicar la [política de pruebas y compilación](docs/testing/AGENT_TESTING_POLICY.md), que forma parte de este protocolo.
 
-### 1.3 Ejecución y Verificación
-- **Focalización**: Los cambios deben ser quirúrgicos y limitarse al alcance del OpenSpec.
-- **Pruebas**: Después de cada modificación, ejecutar los tests relevantes. Al finalizar la tarea, ejecutar la suite completa.
-- **Integridad**: Si los tests existentes fallan, el agente debe investigar la causa y, si es una regresión, corregirla o documentar la excepción en el catálogo si es parte del diseño.
+- **Código Python y empaquetado:** baseline con `python -m compileall src tests tools packaging`, pruebas focalizadas del área modificada y `tests/architecture/` cuando cambie código de producción o dependencias; Ruff focal sobre los archivos pertinentes.
+- **Colección de pruebas:** usar `pytest --collect-only -q` y verificar el manifiesto de node IDs cuando el cambio afecte tests, su colección, parametrización o distribución. No es necesario repetir esa colección para una corrección puramente documental.
+- **Documentación solamente:** comprobar rutas, enlaces, coherencia de los contratos descritos y `git diff --check`; no ejecutar pytest/compileall de forma innecesaria.
+- **Errores históricos:** registrar el baseline real e identificar las excepciones existentes; no declararlas PASS, ocultarlas ni alterar evidencias antiguas.
+- **Registro:** guardar comandos, resultados, entorno y SHA exacto en `AGENT_REPORT.md` o en el `baseline.md` / `validation.md` del OpenSpec correspondiente. No atribuir a CI resultados obtenidos localmente.
+
+**La suite completa `pytest -q` no forma parte del baseline obligatorio para cambios ordinarios.** Se conserva íntegra y está disponible para auditoría extraordinaria, justificada por el riesgo/alcance y autorizada expresamente por el propietario. El workflow `test.yml` permanece manual (`workflow_dispatch`), con sus validaciones fail-closed.
+
+### 1.3 Ejecución y verificación
+- **Focalización:** los cambios deben ser quirúrgicos y limitarse al alcance de la tarea y del OpenSpec cuando corresponda.
+- **Pruebas:** después de cada modificación, ejecutar las pruebas relevantes; al finalizar, repetir los controles focalizados necesarios y `git diff --check`. No ejecutar automáticamente la suite completa de ~2.600 pruebas.
+- **Integridad:** investigar los fallos nuevos; corregir regresiones o registrar una excepción legítima sin rebajar aserciones ni modificar catálogos para obtener un falso PASS.
+- **Gates oficiales:** no desactivar controles de identidad, procedencia, seguridad, checksum ni smokes acotados de los workflows de publicación. Construir un paquete no requiere incluir `tests/` en el ejecutable ni ejecutar el suite completo durante su compilación.
 
 ## 2. Reglas de Integridad Arquitectónica
 
