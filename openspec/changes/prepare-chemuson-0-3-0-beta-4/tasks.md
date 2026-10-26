@@ -38,3 +38,7 @@
 - [x] Revisar `build_flatpak.sh`: `build-update-repo` y `build-bundle` ahora pasan por `run_phase`,
   que mide la fase y traduce el corte por reloj (124) en un diagnóstico explícito manteniendo el
   código de salida. Verificado con mock de fases lentas (límite 1 s) y con la ruta feliz.
+- [x] Ensayar el job completo de Flatpak ejecutando en orden los `run:` reales del workflow con las
+  herramientas simuladas: preparación, identidad exacta del SHA, bundle nombrado, manifiesto de
+  procedencia con `version: 0.3.0-beta.4` y checksum SHA-256 coincidente. Los resúmenes de fases se
+  escriben en `$GITHUB_STEP_SUMMARY`.
