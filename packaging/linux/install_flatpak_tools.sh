@@ -81,10 +81,10 @@ done
 # banda puede tardar decenas de minutos sin devolver un error. Con Timeout bajo,
 # apt agota el intento en segundos y el orden del mirror list decide el fallback.
 APT_OPTS=(
-  "-oAcquire::Retries=${ACQUIRE_RETRIES}"
-  "-oAcquire::http::Timeout=${ACQUIRE_TIMEOUT}"
-  "-oAcquire::https::Timeout=${ACQUIRE_TIMEOUT}"
-  "-oAcquire::ForceIPv4=true"
+  "-o" "Acquire::Retries=${ACQUIRE_RETRIES}"
+  "-o" "Acquire::http::Timeout=${ACQUIRE_TIMEOUT}"
+  "-o" "Acquire::https::Timeout=${ACQUIRE_TIMEOUT}"
+  "-o" "Acquire::ForceIPv4=true"
 )
 
 OS_ID="${CHEMUSON_APT_OS_ID:-$(. /etc/os-release && printf '%s' "${ID:-}")}"
