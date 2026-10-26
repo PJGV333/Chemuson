@@ -33,6 +33,12 @@
 - Flatpak actualiza por el remoto/rama instalado (`flatpak update`), no por el updater integrado; beta.4 conserva la rama beta y el bundle preview sigue aislado.
 - Proteger el downgrade y exigir checksum/provenance se mantiene sin cambios.
 
+## Revisión del gate de arranque no Qt
+
+El propietario reportó que el Build Preview #40371397035, desde SHA `32ea9f05045a771874ec5e525e301bf855e8e9f6`, falló `tests/test_application_startup_non_qt.py::test_startup_success_order`: el test extrae `run_app()` mediante AST y su namespace simulado no incluía `_application_icon_path`/`QIcon`; la captura secundaria falló también porque faltaba `crash_reporter.write_crash_log`. La API pública del run devolvió HTTP 504 en el entorno, por lo que el diagnóstico del run se registra como aportado por el propietario; el nodo sí se reprodujo localmente en el SHA base.
+
+La corrección es exclusivamente del harness: inyectar un path temporal existente, fake `QIcon` no nulo, y mocks de `setWindowIcon` que comprueban el mismo icon object en QApplication y ventana. Preservar la lista exacta de eventos de arranque, añadir caso de recurso ausente (`FileNotFoundError` → crash log → QMessageBox, sin cargar icono/crear ventana) y mantener intactos los tests de errores genéricos de arranque. Al agregar un node ID nuevo, regenerar y revisar explícitamente `tests/ci/expected_pytest_nodeids.txt` y verificar la colección completa; no ejecutar la suite completa.
+
 ## Validación y publicación
 
 - Tests focales existentes para branding, iconos, packaging, release/version y updater; compileall, Ruff focal, arquitectura, contratos estrictos OpenSpec y `git diff --check`. Colección/manifiesto node IDs sólo si la lista de tests cambia.

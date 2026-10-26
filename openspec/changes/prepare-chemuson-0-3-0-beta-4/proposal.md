@@ -15,6 +15,7 @@ La rama `main` estaba sincronizada con `origin/main` en `9c171a8267d632e9bd91439
 - Auditar SemVer, selección por canal, preferencias persistidas, Windows, AppImageUpdate, Flatpak, downgrade e integridad. Corregir el updater sólo ante una regresión demostrable.
 - Añadir Jesús David Albino-Espíndola a las dos listas documentales de autores, sin asterisco ni cambios de acceso técnico.
 - Preparar versión canónica `0.3.0-beta.4`, metadatos AppStream y notas públicas bilingües (español antes de inglés) que destaquen identidad visual y mantenimiento, no capacidades científicas heredadas.
+- Corregir, sólo en pruebas, el harness AST de `run_app()` tras el fallo de `test_startup_success_order` en el Build Preview #40371397035: simular `QIcon`, la ruta del recurso y su asignación a la aplicación/ventana; probar además el error de icono ausente sin alterar los contratos de manejo de fallos.
 - Validar de forma focalizada y preparar el Build Preview oficial con cuatro paquetes desde un SHA único cuando haya acceso autorizado a GitHub.
 
 ## Fuera de alcance y protecciones

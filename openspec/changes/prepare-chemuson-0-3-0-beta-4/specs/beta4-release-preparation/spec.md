@@ -86,6 +86,24 @@ Official AppImage metadata SHALL use `latest` for the stable track and `latest-a
 - **AND** documentation tells beta.3 AppImage users to install the new package manually
 - **AND** beta.4 and later use the supported selector without altering user preferences.
 
+### Requirement: The non-Qt startup harness models application icon initialization
+
+The AST-isolated `run_app()` tests SHALL provide mocks for each runtime name used by the startup flow, including the icon path resolver, `QIcon`, application/window icon assignment, and crash-log reporting. Success tests SHALL keep the startup-order assertions strict and verify the same non-null icon reaches both the application and main window. A missing icon SHALL be reported through the existing startup error contract without constructing the main window. Production startup and error-handling behavior SHALL NOT be changed to accommodate the test harness.
+
+#### Scenario: Startup loads and assigns the bundled logo
+- **GIVEN** a temporary icon resource exists and the fake `QIcon` reports non-null
+- **WHEN** `run_app()` starts in the AST-isolated harness
+- **THEN** the icon path is resolved, loaded, and assigned to QApplication before window construction
+- **AND** the identical icon object is assigned to the main window before autosave checks/show/event loop
+- **AND** the existing startup event order remains asserted
+
+#### Scenario: Missing icon follows existing startup error handling
+- **GIVEN** the resolved icon path does not exist
+- **WHEN** `run_app()` reaches logo initialization
+- **THEN** it raises the expected `FileNotFoundError` internally and does not construct QIcon or the main window
+- **AND** it writes the crash log and shows the existing critical startup message when QApplication exists
+- **AND** existing generic startup failure tests and their reporting contracts remain intact
+
 ### Requirement: Author listing recognizes the additional author without access changes
 
 The Spanish and English project author lists SHALL add Jesús David Albino-Espíndola after the existing authors, with no corresponding-author asterisk. The existing author names, order and asterisks SHALL remain intact.

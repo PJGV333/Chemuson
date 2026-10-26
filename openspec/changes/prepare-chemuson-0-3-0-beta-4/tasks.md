@@ -14,6 +14,9 @@
 - [x] Actualizar la versión canónica/AppStream a `0.3.0-beta.4` y crear notas públicas bilingües, mantenimiento/logotipo solamente.
 - [x] Ejecutar validaciones focales y `openspec validate prepare-chemuson-0-3-0-beta-4 --strict`; actualizar `validation.md` con comandos y SHA exacto.
 - [x] Crear commits descriptivos para la implementación y el registro de validación.
-- [ ] Publicar la rama y abrir/revisar PR cuando haya una sesión remota autenticada; `gh auth status` no muestra sesión en este entorno.
+- [x] Reproducir localmente el fallo de `test_startup_success_order` reportado en Build Preview #40371397035 sobre el SHA `32ea9f05045a771874ec5e525e301bf855e8e9f6`.
+- [x] Alinear el harness no Qt con la carga/asignación de icono y verificar el error de recurso ausente, manteniendo intacta la producción y los contratos de errores de inicio.
+- [x] Añadir sólo el nuevo node ID al manifiesto y verificar su colección; se registran 22 node IDs adicionales preexistentes fuera del manifiesto y no se incorporan por quedar fuera del alcance. Ejecutar tests focales y contratos de branding en el SHA corregido.
+- [ ] Publicar la rama corregida y abrir/revisar PR mediante el flujo protegido; el entorno gh no muestra sesión autenticada.
 - [ ] Ejecutar Build Preview oficial sobre SHA único; verificar preflight, checksums, provenance y los cuatro paquetes. No confundir pruebas locales con Actions.
 - [ ] Integrar respetando branch protection únicamente si puede hacerse por el flujo aprobado; dejar el tag sin crear y presentar evidencia para aceptación final del propietario.

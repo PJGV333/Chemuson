@@ -205,8 +205,23 @@ class _ExitObserved(Exception):
         self.code = code
 
 
-def test_startup_success_order() -> None:
+def test_startup_success_order(tmp_path: Path) -> None:
     events: list[Any] = []
+    icon_path = tmp_path / "chemuson-icon-512.png"
+    icon_path.write_bytes(b"test image resource")
+    loaded_icons: list[Any] = []
+
+    class FakeIcon:
+        def __init__(self, path: str) -> None:
+            assert path == str(icon_path)
+            assert Path(path).is_file()
+            self.path = path
+            loaded_icons.append(self)
+            events.append(("load_icon", path))
+
+        def isNull(self) -> bool:
+            events.append("check_icon_loaded")
+            return False
 
     class FakeApplication:
         _instance: FakeApplication | None = None
@@ -228,6 +243,9 @@ def test_startup_success_order() -> None:
         def setApplicationVersion(self, version: str) -> None:
             events.append(("set_version", version))
 
+        def setWindowIcon(self, icon: FakeIcon) -> None:
+            events.append(("set_application_icon", icon))
+
         def exec(self) -> int:
             events.append("event_loop")
             return 23
@@ -235,6 +253,9 @@ def test_startup_success_order() -> None:
     class FakeWindow:
         def __init__(self) -> None:
             events.append("create_window")
+
+        def setWindowIcon(self, icon: FakeIcon) -> None:
+            events.append(("set_window_icon", icon))
 
         @staticmethod
         def check_autosaves(window: FakeWindow) -> None:
@@ -246,9 +267,16 @@ def test_startup_success_order() -> None:
     namespace = {
         "QApplication": FakeApplication,
         "ChemusonWindow": FakeWindow,
-        "QMessageBox": SimpleNamespace(),
+        "QIcon": FakeIcon,
+        "QMessageBox": SimpleNamespace(
+            critical=lambda *args: events.append(("critical", args))
+        ),
+        "_application_icon_path": lambda: events.append("resolve_icon_path")
+        or icon_path,
         "crash_reporter": SimpleNamespace(
-            install=lambda: events.append("install_crash_reporter")
+            install=lambda: events.append("install_crash_reporter"),
+            write_crash_log=lambda exc: events.append(("write_log", str(exc)))
+            or tmp_path / "unexpected-crash.log",
         ),
         "get_app_version": lambda: "1.2.3",
         "sys": SimpleNamespace(
@@ -268,10 +296,103 @@ def test_startup_success_order() -> None:
         ("set_name", "Chemuson"),
         ("set_display_name", "ChemUSON"),
         ("set_version", "1.2.3"),
+        "resolve_icon_path",
+        ("load_icon", str(icon_path)),
+        "check_icon_loaded",
+        ("set_application_icon", ANY),
         "create_window",
+        ("set_window_icon", ANY),
         ("check_autosaves", ANY),
         "show_window",
         "event_loop",
+    ]
+    assert len(loaded_icons) == 1
+    assert events[8][1] is loaded_icons[0]
+    assert events[10][1] is loaded_icons[0]
+
+
+def test_startup_missing_application_icon_is_reported(tmp_path: Path) -> None:
+    events: list[Any] = []
+    missing_icon = tmp_path / "missing-chemuson-icon.png"
+    crash_log = tmp_path / "startup-crash.log"
+
+    class FakeApplication:
+        _instance: FakeApplication | None = None
+
+        def __init__(self, argv: list[str]) -> None:
+            type(self)._instance = self
+            events.append(("create_application", argv))
+
+        @classmethod
+        def instance(cls) -> FakeApplication | None:
+            return cls._instance
+
+        def setApplicationName(self, name: str) -> None:
+            events.append(("set_name", name))
+
+        def setApplicationDisplayName(self, name: str) -> None:
+            events.append(("set_display_name", name))
+
+        def setApplicationVersion(self, version: str) -> None:
+            events.append(("set_version", version))
+
+    class FakeIcon:
+        def __init__(self, path: str) -> None:
+            events.append(("unexpected_icon_load", path))
+
+    class FakeWindow:
+        def __init__(self) -> None:
+            events.append("unexpected_window_creation")
+
+    def write_crash_log(exc: Exception) -> Path:
+        events.append(("write_crash_log", type(exc).__name__, str(exc)))
+        return crash_log
+
+    namespace = {
+        "QApplication": FakeApplication,
+        "ChemusonWindow": FakeWindow,
+        "QIcon": FakeIcon,
+        "QMessageBox": SimpleNamespace(
+            critical=lambda *args: events.append(("critical", args))
+        ),
+        "_application_icon_path": lambda: events.append("resolve_icon_path")
+        or missing_icon,
+        "crash_reporter": SimpleNamespace(
+            install=lambda: events.append("install_crash_reporter"),
+            write_crash_log=write_crash_log,
+        ),
+        "get_app_version": lambda: "1.2.3",
+        "sys": SimpleNamespace(
+            argv=["chemuson"],
+            stderr=SimpleNamespace(write=lambda text: events.append(("stderr", text))),
+            exit=lambda code: events.append(("exit", code)),
+        ),
+    }
+    run_app = _load_run_app(namespace)
+
+    run_app()
+
+    assert events == [
+        "install_crash_reporter",
+        ("create_application", ["chemuson"]),
+        ("set_name", "Chemuson"),
+        ("set_display_name", "ChemUSON"),
+        ("set_version", "1.2.3"),
+        "resolve_icon_path",
+        (
+            "write_crash_log",
+            "FileNotFoundError",
+            f"ChemUSON application icon is missing: {missing_icon}",
+        ),
+        (
+            "critical",
+            (
+                None,
+                "ChemUSON - Error crítico",
+                f"No se pudo iniciar la aplicación.\n"
+                f"Se guardó un reporte en:\n{crash_log}",
+            ),
+        ),
     ]
 
 
