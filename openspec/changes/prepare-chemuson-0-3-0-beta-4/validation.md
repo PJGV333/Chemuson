@@ -71,7 +71,9 @@ Próximo paso: habilitar una sesión GitHub autenticada para push normal, abrir/
 - Comparación del mismo job en runs previos: #40371397035 preparación 37 min 24 s y job completo 41 min 28 s; #40163508452 0,52/3,70 min; #40162819727 0,43/4,18; #40156368359 0,67/4,00; #40144590463 0,48/4,52; #39900808044 0,32/4,68; #39881978237 0,35/4,80; #39679607716 0,67/5,02. En el run cancelado, el paso apt del job AppImage tardó 22 s y el del gate 28 s: no hubo caída general de apt.
 - Contexto externo: los runners fijan `mirror+file:/etc/apt/apt-mirrors.txt` con `azure.archive.ubuntu.com` prioridad 1; los cierres grandes se estrangulan en ese nodo sin error (actions/runner-images #14823, #14594, #12949). El propio repo ya registró 123 paquetes/99 MB y ~38 min para el job Flatpak de `test.yml`. Los logs del run no son descargables sin permisos de administración (`Must have admin rights`), por lo que el detalle de la URL lenta no se afirma.
 
-### Cambio implementado (commit `5274c2e6e332eaab7ce00463c9dfe86a19fdebad`)
+### Cambio implementado
+
+Commits locales `5274c2e6e332eaab7ce00463c9dfe86a19fdebad` (preparación, workflows, builder y contratos) y `f9c72514…` (pasar las opciones `-o` de apt como argumentos separados, tras verificar en el arnés que el formalismo `-oKey=Value` quedaba como un solo token). HEAD local de la rama tras el registro: `f9c72514…`.
 
 Archivos: `.github/workflows/build-preview.yml`, `.github/workflows/release.yml`, `packaging/linux/build_flatpak.sh`, `packaging/flatpak/toolchain.lock` (nuevo), `packaging/linux/install_flatpak_tools.sh` (nuevo), `tests/test_flatpak_toolchain_preparation.py` (nuevo), `tests/ci/expected_pytest_nodeids.txt`, `docs/release/PREVIEW_BUILDS.md` y los cuatro artefactos OpenSpec del cambio.
 
