@@ -167,24 +167,30 @@ def test_lock_file_pins_tools_runtime_and_job_image() -> None:
     assert "gnupg" in lock["apt_release_packages"]
 
 
+def _install_step(job: dict) -> dict:
+    steps = _steps(job)
+    return steps[_step_index(steps, "install_flatpak_tools.sh")]
+
+
 def test_preview_flatpak_job_uses_bounded_cached_preparation() -> None:
     workflow = _yaml(PREVIEW_PATH)
     job = workflow["jobs"]["build_linux_flatpak"]
     assert job["runs-on"] == "ubuntu-24.04"
     assert job["timeout-minutes"] == "45"
     assert job["permissions"] == {"contents": "read"}
-    assert job["env"]["CHEMUSON_FLATPAK_APT_CACHE_DIR"] == "${{ runner.temp }}/chemuson-flatpak-apt"
     steps = _steps(job)
     assert steps[0]["uses"].startswith("actions/checkout@")
-    install = _step_index(steps, "install_flatpak_tools.sh")
+    install = _install_step(job)
+    install_index = _step_index(steps, "install_flatpak_tools.sh")
     cache = _step_index(steps, CACHE_ACTION)
-    assert 0 < cache < install, "the package cache must be restored before installing"
+    assert 0 < cache < install_index, "the package cache must be restored before installing"
+    assert install["env"]["CHEMUSON_FLATPAK_APT_PACKAGES"] == "flatpak flatpak-builder ostree"
+    assert install["env"]["CHEMUSON_FLATPAK_APT_CACHE_DIR"] == "${{ runner.temp }}/chemuson-flatpak-apt"
     cache_with = steps[cache]["with"]
-    assert cache_with["path"] == job["env"]["CHEMUSON_FLATPAK_APT_CACHE_DIR"]
+    assert cache_with["path"] == install["env"]["CHEMUSON_FLATPAK_APT_CACHE_DIR"]
     assert "hashFiles('packaging/flatpak/toolchain.lock')" in cache_with["key"]
     assert "restore-keys" in cache_with
-    run_body = steps[install]["run"]
-    assert run_body.strip() == "bash packaging/linux/install_flatpak_tools.sh"
+    assert install["run"].strip() == "bash packaging/linux/install_flatpak_tools.sh"
     assert "sudo apt-get install -y flatpak" not in PREVIEW_PATH.read_text(encoding="utf-8")
 
 
@@ -201,15 +207,37 @@ def test_release_flatpak_jobs_use_the_same_preparation() -> None:
         (build, "flatpak flatpak-builder gnupg ostree"),
         (publish, "ostree gnupg"),
     ):
-        assert job["env"]["CHEMUSON_FLATPAK_APT_PACKAGES"] == packages
+        install = _install_step(job)
+        assert install["env"]["CHEMUSON_FLATPAK_APT_PACKAGES"] == packages
         steps = _steps(job)
-        install = _step_index(steps, "install_flatpak_tools.sh")
         cache = _step_index(steps, CACHE_ACTION)
-        assert 0 < cache < install
-        assert steps[cache]["with"]["path"] == job["env"]["CHEMUSON_FLATPAK_APT_CACHE_DIR"]
+        assert 0 < cache < _step_index(steps, "install_flatpak_tools.sh")
+        assert steps[cache]["with"]["path"] == install["env"]["CHEMUSON_FLATPAK_APT_CACHE_DIR"]
     text = RELEASE_PATH.read_text(encoding="utf-8")
     assert "sudo apt-get install -y flatpak" not in text
     assert "sudo apt-get install -y ostree" not in text
+
+
+def test_job_level_env_never_uses_the_runner_context() -> None:
+    """GitHub rejects `${{ runner.* }}` in job-level env; it is a step context.
+
+    A rejected workflow file produces a run with zero jobs and the file path as
+    its name, which silently prevents any package from being built. The same
+    parser rejects any expression inside a step `uses:` reference.
+    """
+    step_only_contexts = ("runner.", "steps.", "job.", "env.", "inputs.")
+    for path in (PREVIEW_PATH, RELEASE_PATH, ROOT / ".github/workflows/test.yml"):
+        workflow = _yaml(path)
+        for job_name, job in workflow["jobs"].items():
+            env = job.get("env")
+            if isinstance(env, dict):
+                for key, value in env.items():
+                    for context in step_only_contexts:
+                        assert context not in str(value), f"{path.name}:{job_name}.env.{key}"
+            for step in _steps(job):
+                reference = step.get("uses")
+                if reference is not None:
+                    assert "${{" not in str(reference), f"{path.name}:{job_name} uses: {reference}"
 
 
 def test_release_safety_controls_stay_reachable() -> None:

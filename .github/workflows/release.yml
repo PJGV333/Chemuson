@@ -315,9 +315,6 @@ jobs:
       contents: read
     environment:
       name: ${{ needs.release_gate.outputs.channel }}
-    env:
-      CHEMUSON_FLATPAK_APT_PACKAGES: flatpak flatpak-builder gnupg ostree
-      CHEMUSON_FLATPAK_APT_CACHE_DIR: ${{ runner.temp }}/chemuson-flatpak-apt
     steps:
       - name: Checkout validated source SHA
         uses: actions/checkout@v4
@@ -358,6 +355,10 @@ jobs:
             flatpak-apt-v1-release-
 
       - name: Install Flatpak toolchain
+        env:
+          # El contexto `runner` solo es valido a nivel de paso, no de job.
+          CHEMUSON_FLATPAK_APT_PACKAGES: flatpak flatpak-builder gnupg ostree
+          CHEMUSON_FLATPAK_APT_CACHE_DIR: ${{ runner.temp }}/chemuson-flatpak-apt
         run: bash packaging/linux/install_flatpak_tools.sh
 
       - name: Import Flatpak signing key (optional)
@@ -552,9 +553,6 @@ jobs:
       contents: write
     environment:
       name: flatpak-${{ needs.release_gate.outputs.channel }}
-    env:
-      CHEMUSON_FLATPAK_APT_PACKAGES: ostree gnupg
-      CHEMUSON_FLATPAK_APT_CACHE_DIR: ${{ runner.temp }}/chemuson-flatpak-apt
     steps:
       - name: Checkout validated source SHA
         uses: actions/checkout@v4
@@ -610,6 +608,10 @@ jobs:
             flatpak-apt-v1-publish-
 
       - name: Install OSTree verification tools
+        env:
+          # El contexto `runner` solo es valido a nivel de paso, no de job.
+          CHEMUSON_FLATPAK_APT_PACKAGES: ostree gnupg
+          CHEMUSON_FLATPAK_APT_CACHE_DIR: ${{ runner.temp }}/chemuson-flatpak-apt
         run: bash packaging/linux/install_flatpak_tools.sh
 
       - name: Validate downloaded Flatpak remote payload

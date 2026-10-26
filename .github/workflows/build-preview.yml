@@ -465,8 +465,6 @@ jobs:
       PREVIEW_SHA: ${{ needs.prepare.outputs.sha }}
       PREVIEW_SHORT_SHA: ${{ needs.prepare.outputs.short_sha }}
       PREVIEW_BRANCH: ${{ needs.prepare.outputs.branch }}
-      CHEMUSON_FLATPAK_APT_PACKAGES: flatpak flatpak-builder ostree
-      CHEMUSON_FLATPAK_APT_CACHE_DIR: ${{ runner.temp }}/chemuson-flatpak-apt
     steps:
       - name: Checkout validated source commit
         uses: actions/checkout@v4
@@ -489,6 +487,10 @@ jobs:
             flatpak-apt-v1-preview-
 
       - name: Install Flatpak build tools
+        env:
+          # El contexto `runner` solo es valido a nivel de paso, no de job.
+          CHEMUSON_FLATPAK_APT_PACKAGES: flatpak flatpak-builder ostree
+          CHEMUSON_FLATPAK_APT_CACHE_DIR: ${{ runner.temp }}/chemuson-flatpak-apt
         run: bash packaging/linux/install_flatpak_tools.sh
 
       - name: Verify exact source identity
