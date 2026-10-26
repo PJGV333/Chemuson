@@ -31,3 +31,7 @@
 - [x] Corregir el rechazo del parser tras el primer push (`Unrecognized named-value: 'runner'` en `env` de job, runs #40/#14 con 0 jobs): mover `runner.temp` al `env` del paso, añadir un verificador local de contextos por campo y un contrato que rechaza contextos de paso en `env` de job y expresiones en `uses:`.
 - [x] Endurecer la preparación cuando `/etc/apt/apt-mirrors.txt` del runner no es escribible: verificar la reescritura, replegar el stanza principal a un origen oficial directo y fallar cerrado si tampoco se puede escribir la lista de fuentes (escenario I del arnés).
 - [x] Añadir un plazo global de preparación de 900 s (`prep_deadline_seconds` en el lockfile): cada fase usa el mínimo entre su límite y lo que resta del plazo, con fallo cerrado explícito al agotarse (escenarios J y K del arnés) y `total` medido desde el inicio del paso.
+- [x] Revisar el diff de la reparación y corregir tres defectos propios: contadores de caché que
+  contaban copias fallidas (ahora verifican el destino y avisan con `0/N`), la fase de descarga que
+  podía continuar sin presupuesto restante (ahora falla cerrado por plazo) y la ausencia de
+  `DPkg::Lock::Timeout` frente a un runner con apt bloqueado. Escenario L del arnés y contratos.

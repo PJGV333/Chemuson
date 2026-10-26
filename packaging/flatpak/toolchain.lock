@@ -40,6 +40,7 @@ apt_download_timeout_seconds=600
 apt_install_timeout_seconds=300
 apt_acquire_retries=2
 apt_acquire_timeout_seconds=20
+apt_lock_timeout_seconds=60
 # Plazo global de toda la preparacion (filiales de fase incluidos).
 # 900 s dejan margen para el empaquetado dentro de timeout-minutes: 45
 # (limite del builder: 1500 s) y son 20x la preparacion historica en frio.

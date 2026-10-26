@@ -70,7 +70,8 @@ DOWNLOAD_TIMEOUT="$(lock_value apt_download_timeout_seconds)"
 INSTALL_TIMEOUT="$(lock_value apt_install_timeout_seconds)"
 ACQUIRE_RETRIES="$(lock_value apt_acquire_retries)"
 ACQUIRE_TIMEOUT="$(lock_value apt_acquire_timeout_seconds)"
-for numeric in PROBE_SECONDS UPDATE_TIMEOUT DOWNLOAD_TIMEOUT INSTALL_TIMEOUT ACQUIRE_RETRIES ACQUIRE_TIMEOUT; do
+LOCK_TIMEOUT="$(lock_value apt_lock_timeout_seconds)"
+for numeric in PROBE_SECONDS UPDATE_TIMEOUT DOWNLOAD_TIMEOUT INSTALL_TIMEOUT ACQUIRE_RETRIES ACQUIRE_TIMEOUT LOCK_TIMEOUT; do
   if [[ ! "${!numeric}" =~ ^[0-9]+$ ]]; then
     echo "ERROR: invalid numeric value for ${numeric}: '${!numeric}'" >&2
     exit 2
@@ -85,6 +86,9 @@ APT_OPTS=(
   "-o" "Acquire::http::Timeout=${ACQUIRE_TIMEOUT}"
   "-o" "Acquire::https::Timeout=${ACQUIRE_TIMEOUT}"
   "-o" "Acquire::ForceIPv4=true"
+  # Un runner puede estar actualizando en segundo plano; DPkg::Lock::Timeout
+  # evita el "Could not get lock" inmediato sin desproteger la instalacion.
+  "-o" "DPkg::Lock::Timeout=${LOCK_TIMEOUT}"
 )
 
 OS_ID="${CHEMUSON_APT_OS_ID:-$(. /etc/os-release && printf '%s' "${ID:-}")}"
@@ -252,13 +256,18 @@ log "apt origin selected: ${CURRENT_SCHEME}://${CURRENT_HOST}/ubuntu/ (fastest o
 
 # --- 2. Indexes: acotados y con un unico rebote de mirror --------------------
 stage_cached_debs() {
-  local staged=0 deb
+  local staged=0 deb target
   ${SUDO} install -d -m 0755 "${APT_ARCHIVES}" 2>/dev/null || true
   shopt -s nullglob
   for deb in "${CACHE_DIR}"/*.deb; do
+    target="${APT_ARCHIVES}/$(basename "${deb}")"
     ${SUDO} cp -f "${deb}" "${APT_ARCHIVES}/" 2>/dev/null || true
-    ${SUDO} chmod 0644 "${APT_ARCHIVES}/$(basename "${deb}")" 2>/dev/null || true
-    staged=$(( staged + 1 ))
+    ${SUDO} chmod 0644 "${target}" 2>/dev/null || true
+    # Contar solo lo que realmente quedo disponible para apt: un contador
+    # optimista daria una evidencia falsa en el resumen del paso.
+    if [[ -f "${target}" ]]; then
+      staged=$(( staged + 1 ))
+    fi
   done
   shopt -u nullglob
   printf '%s' "${staged}"
@@ -292,13 +301,13 @@ if [[ "${apt_update_ok}" != true ]]; then
 fi
 
 # --- 3. Descargar una sola vez; la instalacion posterior es offline ---------
+LAST_DOWNLOAD_LIMIT=0
 attempt_download() {
-  local limit
-  limit="$(phase_limit "${DOWNLOAD_TIMEOUT}")"
-  if (( limit <= 0 )); then
+  LAST_DOWNLOAD_LIMIT="$(phase_limit "${DOWNLOAD_TIMEOUT}")"
+  if (( LAST_DOWNLOAD_LIMIT <= 0 )); then
     return 1
   fi
-  timeout "${limit}" ${SUDO} apt-get "${APT_OPTS[@]}" install --yes --download-only "${PACKAGES[@]}"
+  timeout "${LAST_DOWNLOAD_LIMIT}" ${SUDO} apt-get "${APT_OPTS[@]}" install --yes --download-only "${PACKAGES[@]}"
 }
 
 DOWNLOAD_T0="$(now_s)"
@@ -309,7 +318,7 @@ fi
 if attempt_download; then
   download_ok=true
 else
-  log "WARNING: bounded package download failed after ${DOWNLOAD_TIMEOUT}s on ${CURRENT_HOST}; failing over to the next official mirror."
+  log "WARNING: bounded package download failed after ${LAST_DOWNLOAD_LIMIT}s on ${CURRENT_HOST}; failing over to the next official mirror."
   if [[ "${#ORDERED_PROBES[@]}" -gt 1 && "${ORIGIN_MODE}" != "unchanged" ]]; then
     apply_origin 1
     if attempt_download; then
@@ -318,21 +327,32 @@ else
   fi
 fi
 download_seconds="$(elapsed "${DOWNLOAD_T0}")"
+if [[ "${download_ok}" != true && "$(budget_left)" -le 0 ]]; then
+  deadline_exhausted "the package download"
+fi
 
 # Publicar los .deb realmente descargados para que `actions/cache` los reutilice
 # en el siguiente run; apt los volvera a verificar contra el indice firmado.
 PUBLISHED_DEBS=0
+CANDIDATE_DEBS=0
 shopt -s nullglob
 for deb in "${APT_ARCHIVES}"/*.deb "${APT_ARCHIVES}"/partial/*.deb; do
   if [[ ! -f "${deb}" ]]; then
     continue
   fi
+  CANDIDATE_DEBS=$(( CANDIDATE_DEBS + 1 ))
+  dest="${CACHE_DIR}/$(basename "${deb}")"
   ${SUDO} cp -f "${deb}" "${CACHE_DIR}/" 2>/dev/null || true
-  ${SUDO} chmod 0644 "${CACHE_DIR}/$(basename "${deb}")" 2>/dev/null || true
-  PUBLISHED_DEBS=$(( PUBLISHED_DEBS + 1 ))
+  ${SUDO} chmod 0644 "${dest}" 2>/dev/null || true
+  if [[ -f "${dest}" ]]; then
+    PUBLISHED_DEBS=$(( PUBLISHED_DEBS + 1 ))
+  fi
 done
 shopt -u nullglob
-log "cached .deb archives published for reuse: ${PUBLISHED_DEBS}"
+if [[ "${CANDIDATE_DEBS}" -gt 0 && "${PUBLISHED_DEBS}" -eq 0 ]]; then
+  log "WARNING: ${CANDIDATE_DEBS} downloaded archives could not be published to ${CACHE_DIR}; the next run will start with a cold cache."
+fi
+log "cached .deb archives published for reuse: ${PUBLISHED_DEBS}/${CANDIDATE_DEBS}"
 
 INSTALL_T0="$(now_s)"
 install_ok=false

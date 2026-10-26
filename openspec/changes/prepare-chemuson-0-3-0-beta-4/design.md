@@ -98,12 +98,16 @@ Decisión de diseño (respeta el orden de preferencia del propietario):
    y lo que resta del plazo, así que la preparación no puede superar la mitad del presupuesto
    del job ni aunque los dos rebotes tarden. Si aun así se excede el límite, el job falla
    cerrado indicando la fase y el reporte del preview sigue marcando el Flatpak como no exitoso.
+   Se fija además `DPkg::Lock::Timeout` (60 s) para el caso real de un runner actualizando
+   en segundo plano, y el resumen publica `cached .deb archives published for reuse: N/M`, con
+   aviso cuando ningún `.deb` pudo publicarse, para que la evidencia de la caché nunca sea
+   optimista.
 
 Riesgos de regresión y mitigación: el script escribe en `/etc/apt` del runner efímero, no en
 el repositorio; se probó contra un arnés local con apt/curl/dpkg simulados en once escenarios
 (espejos sanos, nodo estrangulado, rebote de update, rebote de descarga, caché cálida,
 descarga fallida, paquetes de publicación, lista de mirrors no escribible, fallo cerrado,
-plazo global agotado y update colgado cortado a los 2 s) y contra los cuatro orígenes
+plazo global agotado, update colgado cortado a los 2 s y caché de `.deb` no escribible) y contra los cuatro orígenes
 reales para verificar la forma de la sonda. `build_flatpak.sh` sólo gana guardas de tiempo y
 registro de fases: el manifiesto, los `sha256` pinneados, el smoke ChemName empaquetado, el
 branch `preview-<sha>`, el nombre del bundle y las validaciones OSTree/GPG no cambian. Los

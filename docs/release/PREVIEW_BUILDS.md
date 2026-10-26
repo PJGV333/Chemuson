@@ -220,6 +220,10 @@ Contrato actual de preparación (jobs `build_linux_flatpak`, `build_flatpak` y
 - `packaging/linux/build_flatpak.sh` acota `flatpak-builder` (1500 s),
   `build-update-repo` (300 s) y `build-bundle` (300 s), y registra los tiempos por fase en
   el resumen del paso; si se agota la fase se reporta la causa en lugar de consumir el job.
+- El resumen del paso publica `cached .deb archives published for reuse: N/M`; solo cuenta los
+  `.deb` realmente escritos en la caché y avisa cuando ninguno pudo publicarse, para que la
+  evidencia de reutilización no sea optimista. Se fija `DPkg::Lock::Timeout` (60 s) para el
+  caso real de un runner con apt bloqueado por una actualización en segundo plano.
 - `timeout-minutes` se conserva (45 min en los jobs de empaquetado, 25 min en el de
   publicación): el control pasa a estar dentro de cada fase, no inflando el presupuesto.
 

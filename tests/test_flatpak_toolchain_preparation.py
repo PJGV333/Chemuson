@@ -112,10 +112,17 @@ def test_installer_bounds_every_network_phase() -> None:
         "Acquire::https::Timeout",
         'timeout "${UPDATE_LIMIT}"',
         'timeout "${INSTALL_LIMIT}"',
-        'timeout "${limit}"',
+        'timeout "${LAST_DOWNLOAD_LIMIT}"',
+        'DPkg::Lock::Timeout=',
         "--max-time",
     ):
         assert required in text
+    # Los contadores del resumen solo cuentan copias comprobadas: una evidencia
+    # optimista de la cache haria parecer reutilizable lo que no se publico.
+    assert 'if [[ -f "${target}" ]]' in text
+    assert 'if [[ -f "${dest}" ]]' in text
+    assert "could not be published to ${CACHE_DIR}" in text
+    assert 'if [[ "${download_ok}" != true && "$(budget_left)" -le 0 ]]' in text
     # Ninguna fase puede usar su limite bruto: todas pasan por el plazo global,
     # de lo contrario dos rebotes lentos consumirian el presupuesto del job.
     for bypass in (
@@ -134,6 +141,7 @@ def test_installer_bounds_every_network_phase() -> None:
         "apt_install_timeout_seconds",
         "apt_acquire_retries",
         "apt_acquire_timeout_seconds",
+        "apt_lock_timeout_seconds",
         "prep_deadline_seconds",
     ):
         assert lock[key].isdigit(), f"missing numeric bound: {key}"
