@@ -157,3 +157,34 @@ No se tocaron: código de la aplicación, Clean2D, visor 3D, RDKit, ChemName, as
 - La caché de `.deb` se restaura por prefijo (`restore-keys`), asi que este primer run fue frio (0,55 min de preparacion); el siguiente push medira la caché caliente.
 - Verificacion de contenido de los paquetes aun pendiente de credenciales: la descarga sin sesion falla (`401` en la API, `404` en la URL web). Herramienta local lista (`objects` OSTree indexados por SHA-256 de contenido): el SVG empaquetado `packaging/flatpak/io.github.PJGV333.Chemuson.svg` en beta.4 vale `c7d017240cd89050…` y en beta.3 valia `23cad7927c43088f…`, y `assets/branding/logo_ChemUSON.svg` comparte el hash de beta.4, de modo que la presencia de ese objeto en el bundle prueba el logotipo nuevo.
 - Consecuencia inmediata del fix del parser: el run anterior (#40) tuvo 0 jobs porque GitHub rechazo el archivo; este run si creo los 7 jobs, lo que confirma la correccion de los contextos de paso.
+
+## Reproduccion local de los controles de identidad y del contrato de paquetes
+
+Ejecutado en un worktree detached exacto en `08f90ee2` para que las guardas de
+SHA coincidan con el candidato publicado (`git worktree add --detach`).
+
+- `python packaging/release/preview_build.py prepare` con el entorno del job
+  `Validate preview source` (`GITHUB_REF_TYPE=branch`, `GITHUB_REF_NAME=release/v0.3.0-beta.4-prep`,
+  `GITHUB_SHA=08f90ee2…`): salida `Prepared preview 0.3.0-beta.4 …` y outputs
+  `branch`, `sha=08f90ee2…`, `short_sha=08f90ee2`, `version=0.3.0-beta.4`.
+  La guarda falla cerrado si el SHA esperado no es el del checkout: con el HEAD
+  local (dos commits de documentacion por delante) aborta con
+  `Checked-out preview source does not match the expected Git SHA`.
+- Contrato de los cuatro paquetes del preview, con los nombres exactos que generan
+  los jobs y contenido sintetico: `manifest --output-dir …` produce
+  `checksums.sha256` que pasa `sha256sum -c` (4/4) y `preview-provenance.json`
+  con `version: 0.3.0-beta.4`, `git_sha: 08f90ee2…`, `build_type: preview`,
+  `publication: false`. Nombres:
+  `Chemuson-v0.3.0-beta.4-preview-08f90ee2-windows-x86_64-portable.exe`,
+  `…-windows-x86_64-setup.exe`, `…-linux-x86_64.AppImage`, `…-linux-x86_64.flatpak`.
+- El manifiesto tambien falla cerrado si la salida queda fuera del repositorio
+  (`Preview artifacts must be staged inside the checked-out repository`).
+- Estas pruebas verifican el contrato de nombres/checksums/procedencia, no el
+  contenido de los paquetes que genero Actions: esa verificacion requiere
+  descargar los artefactos del run `40397595176`, y la descarga anonymous devuelve
+  `401` en la API y `404` en la URL web; los resumenes de paso tampoco son
+  accesibles sin sesion (la pagina publica del job solo expone los nombres).
+- Referencia para verificar el logotipo dentro del bundle: el SVG empaquetado en el
+  candidato (`packaging/flatpak/io.github.PJGV333.Chemuson.svg`, 2.326.332 B) vale
+  `c7d017240cd890502157c7d3…` y es idéntico a `assets/branding/logo_ChemUSON.svg`;
+  en `v0.3.0-beta.3` el mismo archivo valia `23cad7927c43088f…`.
