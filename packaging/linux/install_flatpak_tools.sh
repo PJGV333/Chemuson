@@ -143,26 +143,37 @@ write_mirror_list_from() {
     scheme="${entry##* }"
     line+="${scheme}://${host}/ubuntu/	priority:$(( index - start + 1 ))"$'\n'
   done
-  printf '%s' "${line}" | ${SUDO} tee "${MIRROR_LIST}" >/dev/null
+  # El fallo de escritura no aborta: apply_origin comprueba el resultado y
+  # cambia al modo URIs: directas sobre un origen oficial sondeado.
+  printf '%s' "${line}" | ${SUDO} tee "${MIRROR_LIST}" >/dev/null || true
 }
 
 rewrite_sources_uri() {
   # Solo se reescriben las lineas URIs: cuyo host ya es un mirror oficial
   # admitido; las firmas (Signed-By) y los demas repositorios no se tocan.
-  local host="$1" scheme="$2" allowed
+  local host="$1" scheme="$2" direct="${3:-0}" allowed
   allowed="$(printf '%s|' "${ALLOWED_HOSTS[@]}" | sed 's/|$//')"
   local updated
-  updated="$(${SUDO} awk -v host="${host}" -v scheme="${scheme}" -v allowed="${allowed}" '
+  if ! updated="$(${SUDO} awk -v host="${host}" -v scheme="${scheme}" -v direct="${direct}" -v allowed="${allowed}" '
     /^URIs:/ {
       # Las actualizaciones de seguridad quedan en el archivo dedicado de
       # Canonical salvo que ese sea justamente el origen seleccionado.
       if ($2 ~ /security\.ubuntu\.com/ && host != "security.ubuntu.com") { print; next }
+      # Fallback: si el runner declara mirror+file: y ese archivo no se pudo
+      # reescribir, se apunta el stanza principal a un origen oficial sondeado.
+      if (direct && $2 ~ /^mirror\+file:/) { $2 = scheme "://" host "/ubuntu/"; print; next }
       if ($2 ~ "://(" allowed ")") { $2 = scheme "://" host "/ubuntu/"; print; next }
       print; next
     }
     { print }
-  ' "${SOURCES_FILE}")"
-  printf '%s\n' "${updated}" | ${SUDO} tee "${SOURCES_FILE}" >/dev/null
+  ' "${SOURCES_FILE}")"; then
+    echo "ERROR: could not read ${SOURCES_FILE}; refusing to install from an unverified origin." >&2
+    exit 3
+  fi
+  if ! printf '%s\n' "${updated}" | ${SUDO} tee "${SOURCES_FILE}" >/dev/null; then
+    echo "ERROR: ${SOURCES_FILE} is not writable; refusing to install from an unverified origin." >&2
+    exit 3
+  fi
 }
 
 CURRENT_HOST=""
@@ -185,8 +196,18 @@ apply_origin() {
   CURRENT_HOST="${entry%% *}"
   CURRENT_SCHEME="${entry##* }"
   case "${ORIGIN_MODE}" in
-    mirror-list) write_mirror_list_from "${index}" ;;
+    mirror-list)
+      write_mirror_list_from "${index}"
+      # Confirmar que la reescritura tuvo efecto: sin esa comprobacion el job
+      # seguiria dependiendo del nodo asignado al mirror list del runner.
+      if ! head -n 1 "${MIRROR_LIST}" 2>/dev/null | grep -q "://${CURRENT_HOST}/"; then
+        log "WARNING: ${MIRROR_LIST} is not writable; pinning the main stanza to the selected official origin instead."
+        ORIGIN_MODE="sources-direct"
+        rewrite_sources_uri "${CURRENT_HOST}" "${CURRENT_SCHEME}" 1
+      fi
+      ;;
     sources-uri) rewrite_sources_uri "${CURRENT_HOST}" "${CURRENT_SCHEME}" ;;
+    sources-direct) rewrite_sources_uri "${CURRENT_HOST}" "${CURRENT_SCHEME}" 1 ;;
     *) ;;
   esac
   log "apt origin applied: ${CURRENT_SCHEME}://${CURRENT_HOST}/ubuntu/ through ${ORIGIN_MODE}"

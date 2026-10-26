@@ -83,7 +83,11 @@ Decisión de diseño (respeta el orden de preferencia del propietario):
 4. Origen y reintentos: `packaging/linux/install_flatpak_tools.sh` sondea los cuatro
    orígenes oficiales de Ubuntu y reordena el `mirror+file` del runner (o la línea `URIs:`
    del stanza principal, preservando `Signed-By` y el stanza `noble-security`), con rebote
-   al siguiente origen si el elegido falla. Se fijan `Acquire::Retries`, timeouts HTTP/HTTPS
+   al siguiente origen si el elegido falla. Se fija que la reescritura del `mirror+file`
+   tenga efecto real: si `/etc/apt/apt-mirrors.txt` del runner no es escribible, el stanza
+   principal se apunta directamente al origen oficial sondeado y, si tampoco se puede
+   escribir la lista de fuentes, el job falla cerrado en vez de quedarse en el nodo asignado.
+   Se fijan `Acquire::Retries`, timeouts HTTP/HTTPS
    y `ForceIPv4`, y cada fase corre bajo `timeout`.
 5. Timeouts: no se aumenta ningún `timeout-minutes` (45 min en los jobs de empaquetado,
    25 min en la publicación Flatpak). El control queda dentro de las fases: 300 s para
@@ -93,12 +97,13 @@ Decisión de diseño (respeta el orden de preferencia del propietario):
    reporte del preview sigue marcando el Flatpak como no exitoso.
 
 Riesgos de regresión y mitigación: el script escribe en `/etc/apt` del runner efímero, no en
-el repositorio; se probó contra un arnés local con apt/curl/dpkg simulados en ocho escenarios
+el repositorio; se probó contra un arnés local con apt/curl/dpkg simulados en nueve escenarios
 (espejos sanos, nodo estrangulado, rebote de update, rebote de descarga, caché cálida,
-descarga fallida, paquetes de publicación y fallo cerrado) y contra los cuatro orígenes
+descarga fallida, paquetes de publicación, lista de mirrors no escribible y fallo cerrado) y contra los cuatro orígenes
 reales para verificar la forma de la sonda. `build_flatpak.sh` sólo gana guardas de tiempo y
 registro de fases: el manifiesto, los `sha256` pinneados, el smoke ChemName empaquetado, el
 branch `preview-<sha>`, el nombre del bundle y las validaciones OSTree/GPG no cambian. Los
-contratos estáticos nuevos (`tests/test_flatpak_toolchain_preparation.py`, 11 node IDs)
+contratos estáticos nuevos (`tests/test_flatpak_toolchain_preparation.py`, 13 node IDs)
 verifican que no se debilita la firma, que las fases están acotadas, que el empaquetado
-científico sigue pinneado y que la caché se restaura antes de instalar.
+científico sigue pinneado, que la caché se restaura antes de instalar y que los workflows no
+usan contextos de paso (`runner`, `steps`) donde el parser de Actions los rechaza.

@@ -138,6 +138,23 @@ def test_installer_only_reaches_official_ubuntu_archives() -> None:
     assert hosts <= OFFICIAL_APT_HOSTS | {"dl.flathub.org"}, hosts
 
 
+def test_installer_verifies_the_origin_files_it_changes() -> None:
+    """An origin rewrite that silently fails would leave the throttled mirror.
+
+    The runner points apt at its own `/etc/apt/apt-mirrors.txt`. If that file is
+    not writable the script must say so and pin the main stanza of the deb822
+    sources file to a probed official origin, while leaving the security stanza
+    and every Signed-By entry untouched.
+    """
+    text = INSTALLER.read_text(encoding="utf-8")
+    assert 'head -n 1 "${MIRROR_LIST}"' in text
+    assert "sources-direct" in text
+    assert "if (direct && $2 ~ /^mirror\\+file:/)" in text
+    assert 'is not writable; refusing to install from an unverified origin.' in text
+    assert 'if ($2 ~ /security\\.ubuntu\\.com/ && host != "security.ubuntu.com") { print; next }' in text
+    assert "Signed-By" in text
+
+
 def test_installer_fails_closed_and_reports_timings() -> None:
     text = INSTALLER.read_text(encoding="utf-8")
     for required in (
