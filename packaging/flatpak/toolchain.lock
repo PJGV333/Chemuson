@@ -1,0 +1,52 @@
+# Herramientas del anfitrión para empaquetar el Flatpak de ChemUSON.
+#
+# Este archivo es la entrada estable de la preparación del entorno en GitHub
+# Actions: `packaging/linux/install_flatpak_tools.sh` lo lee para saber qué
+# instalar, contra qué mirrors oficiales puede cambiar de origen y qué versiones
+# mínimas acepta; además su hash estabiliza la clave de la caché de paquetes.
+#
+# No reemplaza a apt como fuente de paquetes: apt sigue descargando e instalando
+# los .deb y verifica cada archivo contra el índice firmado de Ubuntu.
+schema=1
+runner_image=ubuntu-24.04
+
+apt_packages=flatpak flatpak-builder ostree
+apt_release_packages=flatpak flatpak-builder gnupg ostree
+apt_publication_packages=ostree gnupg
+
+# Unicos origenes de paquetes admitidos (archivos oficiales del archivo de
+# Ubuntu). Nunca se añaden PPA, repositorios de terceros ni claves foraneas.
+allowed_apt_hosts=azure.archive.ubuntu.com archive.ubuntu.com security.ubuntu.com us.archive.ubuntu.com
+
+# Versiones minimas admitidas en el anfitrion. Ubuntu 24.04 publica flatpak
+# 1.14.6, flatpak-builder 1.4.2 y ostree 2024.5; los minimos son conservadores y
+# solo detectan un entorno gravemente incompleto.
+min_flatpak=1.12.0
+min_flatpak-builder=1.4.0
+min_ostree=2023.6
+min_gnupg=2.4.0
+
+# Versiones de referencia observadas en una preparacion correcta del runner
+# (informativas: se registran en el resumen del paso, no bloquean la build).
+reference_flatpak=1.14.6-1ubuntu0.1
+reference_flatpak_builder=1.4.2-1build2
+reference_ostree=2024.5-1build2
+
+# Limites de tiempo de cada fase de red, en segundos. Un mirror degradado hace
+# failover o falla de forma cerrada; no consume el presupuesto del job.
+apt_mirror_probe_seconds=6
+apt_update_timeout_seconds=300
+apt_download_timeout_seconds=600
+apt_install_timeout_seconds=300
+apt_acquire_retries=2
+apt_acquire_timeout_seconds=20
+
+# Directorio de la caché de .deb verificada, relativo al HOME del runner.
+apt_cache_dir=.cache/chemuson-flatpak-apt
+
+# Entradas del manifiesto Flatpak que ya verifican su sha256 en el build.
+manifest=packaging/flatpak/io.github.PJGV333.Chemuson.yml
+runtime=org.kde.Platform
+runtime_version=6.10
+sdk=org.kde.Sdk
+runtime_repo=https://dl.flathub.org/repo/flathub.flatpakrepo

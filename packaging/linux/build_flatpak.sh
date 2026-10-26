@@ -20,6 +20,17 @@ APP_ID="${APP_ID:-io.github.PJGV333.Chemuson}"
 ARCH="${ARCH:-x86_64}"
 RUNTIME_REPO="${CHEMUSON_FLATPAK_RUNTIME_REPO:-https://dl.flathub.org/repo/flathub.flatpakrepo}"
 
+# Limites de tiempo por fase. El empaquetado descarga el runtime/SDK de Flathub
+# y las ruedas pinneadas del manifiesto; si ese origen se degrada, es mejor
+# agotar la fase y reportar la causa que consumir el presupuesto completo del job
+# sin dejar artefacto ni diagnostico. Los valores por defecto cubren con holgura
+# los ~4 min historicos del empaquetado.
+BUILDER_TIMEOUT_SECONDS="${CHEMUSON_FLATPAK_BUILDER_TIMEOUT_SECONDS:-1500}"
+REPO_UPDATE_TIMEOUT_SECONDS="${CHEMUSON_FLATPAK_REPO_UPDATE_TIMEOUT_SECONDS:-300}"
+BUNDLE_TIMEOUT_SECONDS="${CHEMUSON_FLATPAK_BUNDLE_TIMEOUT_SECONDS:-300}"
+
+phase_seconds() { printf '%s' "$(( $(date +%s) - $1 ))"; }
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 if [[ "${BUILD_TYPE}" == "preview" ]]; then
@@ -129,13 +140,18 @@ if [[ -n "${REPO_GPG_HOMEDIR}" ]]; then
 fi
 
 set +e
-flatpak-builder "${BUILDER_ARGS[@]}" "${BUILD_DIR}" "${MANIFEST_PATH}" \
+BUILDER_T0="$(date +%s)"
+timeout "${BUILDER_TIMEOUT_SECONDS}" flatpak-builder "${BUILDER_ARGS[@]}" "${BUILD_DIR}" "${MANIFEST_PATH}" \
   2>&1 | tee "${BUILD_LOG}"
 FLATPAK_BUILDER_EXIT="${PIPESTATUS[0]}"
+BUILDER_SECONDS="$(phase_seconds "${BUILDER_T0}")"
 set -e
 
 if [[ "${FLATPAK_BUILDER_EXIT}" -ne 0 ]]; then
-  if grep -Eq "Could not resolve hostname|Temporary failure in name resolution|Name or service not known|Unable to load summary from remote" "${BUILD_LOG}"; then
+  if [[ "${FLATPAK_BUILDER_EXIT}" -eq 124 ]]; then
+    echo "ERROR: flatpak-builder exceeded its ${BUILDER_TIMEOUT_SECONDS}s wall-clock limit after ${BUILDER_SECONDS}s." >&2
+    echo "Hint: the Flathub runtime/SDK or the pinned wheel sources are being served too slowly. Inspect network egress before retrying." >&2
+  elif grep -Eq "Could not resolve hostname|Temporary failure in name resolution|Name or service not known|Unable to load summary from remote" "${BUILD_LOG}"; then
     echo "ERROR: Flatpak build failed due to network/DNS or sandbox egress restrictions." >&2
     echo "Hint: verify internet access from flatpak-builder sandbox and flathub reachability." >&2
   elif grep -Eq "No matching distribution found|Could not find a version that satisfies the requirement|ModuleNotFoundError: No module named|ERROR: .*pip.*failed" "${BUILD_LOG}"; then
@@ -167,7 +183,9 @@ fi
 if [[ -n "${REPO_GPG_HOMEDIR}" ]]; then
   UPDATE_REPO_ARGS+=("--gpg-homedir=${REPO_GPG_HOMEDIR}")
 fi
-flatpak build-update-repo "${UPDATE_REPO_ARGS[@]}" "${REPO_DIR}"
+REPO_UPDATE_T0="$(date +%s)"
+timeout "${REPO_UPDATE_TIMEOUT_SECONDS}" flatpak build-update-repo "${UPDATE_REPO_ARGS[@]}" "${REPO_DIR}"
+REPO_UPDATE_SECONDS="$(phase_seconds "${REPO_UPDATE_T0}")"
 
 sign_unsigned_ostree_refs
 
@@ -192,7 +210,9 @@ fi
 if [[ -n "${REPO_PUBLIC_KEY_FILE}" ]]; then
   BUNDLE_ARGS+=("--gpg-keys=${REPO_PUBLIC_KEY_FILE}")
 fi
-flatpak build-bundle "${BUNDLE_ARGS[@]}" "${REPO_DIR}" "${BUNDLE_PATH}" "${APP_ID}" "${BRANCH}"
+BUNDLE_T0="$(date +%s)"
+timeout "${BUNDLE_TIMEOUT_SECONDS}" flatpak build-bundle "${BUNDLE_ARGS[@]}" "${REPO_DIR}" "${BUNDLE_PATH}" "${APP_ID}" "${BRANCH}"
+BUNDLE_SECONDS="$(phase_seconds "${BUNDLE_T0}")"
 rm -f "${BUILD_LOG}"
 
 if [[ -n "${REPO_URL}" ]]; then
@@ -231,3 +251,16 @@ if [[ ! -s "${REPO_DIR}/config" ]] || [[ ! -s "${REPO_DIR}/summary" ]]; then
 fi
 
 echo "Built ${BUNDLE_PATH}"
+echo "Flatpak packaging timings (s): builder=${BUILDER_SECONDS} repo_update=${REPO_UPDATE_SECONDS} bundle=${BUNDLE_SECONDS} packaging_total=$(( BUILDER_SECONDS + REPO_UPDATE_SECONDS + BUNDLE_SECONDS ))"
+
+if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+  {
+    printf '### Flatpak packaging phases\n\n'
+    printf -- '- bundle: `%s`\n- branch: `%s`  arch: `%s`\n' "${BUNDLE_PATH}" "${BRANCH}" "${ARCH}"
+    printf -- '| phase | seconds | limit |\n| --- | --- | --- |\n'
+    printf '| flatpak-builder | %s | %s |\n| build-update-repo | %s | %s |\n| build-bundle | %s | %s |\n' \
+      "${BUILDER_SECONDS}" "${BUILDER_TIMEOUT_SECONDS}" \
+      "${REPO_UPDATE_SECONDS}" "${REPO_UPDATE_TIMEOUT_SECONDS}" \
+      "${BUNDLE_SECONDS}" "${BUNDLE_TIMEOUT_SECONDS}"
+  } >> "${GITHUB_STEP_SUMMARY}"
+fi

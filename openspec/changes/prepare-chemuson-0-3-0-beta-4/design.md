@@ -45,3 +45,60 @@ La corrección es exclusivamente del harness: inyectar un path temporal existent
 - Validar recursos en source y PyInstaller, AppStream, scripts, metadatos y smoke esencial de apertura/editor 2D/flujo 2D→3D en los entornos disponibles. Las pruebas visuales de Windows y temas en paquetes exactos corresponden al propietario.
 - Build Preview oficial requerido: Windows portable, Windows installer, Linux AppImage Type 2 y Flatpak, mismo SHA con checksums/provenance. No llamar “preview exitoso” sin run oficial completo y revisar los cuatro artifacts.
 - Detener antes del tag. No hay publicación accidental ni modificación de distribución.
+
+## Reparación de la preparación del entorno Flatpak (bloqueo de Build Preview)
+
+Build Preview #40375931525 (SHA `670a7670235ec1f8833cb03c7d2475bbf5a2589f`) canceló
+`Linux Flatpak bundle` por `timeout-minutes: 45`. La API pública de Actions registró los
+tiempos por paso: `Install Flatpak build tools` 43 min 59 s y `Build local Flatpak bundle
+only` sólo 2 min 24 s antes de la cancelación. El mismo par de pasos en los runs correctos
+de beta.1–beta.3 tardó 0,3–0,7 min de preparación y 3,7–5,0 min de empaquetado, y en el
+run inmediatamente anterior (#40371397035) la preparación ya había subido a 37 min 24 s
+con el job terminando en 41 min 28 s. La conclusión es que el empaquetado no cambió; la
+preparación del anfitrión sí.
+
+Causa raíz externa, no de ChemUSON: el cierre `flatpak flatpak-builder ostree` baja ~99 MB
+en ~123 paquetes. En los runners de GitHub el origen apt se resuelve por
+`mirror+file:/etc/apt/apt-mirrors.txt` con `azure.archive.ubuntu.com` en prioridad 1; si el
+nodo asignado estrangula el enlace, apt sigue en ese origen y la descarga avanza a decenas
+de kB/s sin error. Está documentado upstream (actions/runner-images #14823, #14594,
+#12949) y ya ocurrió en el job Flatpak de `test.yml` (123 paquetes/99 MB; ~38 min). El
+`apt-get` del job AppImage del mismo run tardó 22 s, lo que confirma que no fue una caída
+general de apt sino el enlazado lento del origen asignado a ese runner.
+
+Decisión de diseño (respeta el orden de preferencia del propietario):
+
+1. Entorno determinista: los jobs Flatpak quedan en `runs-on: ubuntu-24.04` en lugar de
+   `ubuntu-latest`. Hoy apuntan a la misma imagen, pero la preparación queda anclada a la
+   base sobre la que está medida; una migración futura de `-latest` no cambia la release.
+2. Herramientas: se conserva apt como única fuente, con los paquetes del cierre y sus
+   dependencias funcionales intactas. No se usa una imagen externa ni acciones de terceros
+   de procedencia dudosa; la única acción nueva es `actions/cache`, oficial de GitHub, fijada
+   al commit `55cc8345863c7cc4c66a329aec7e433d2d1c52a9` (etiqueta `v6.1.0`).
+3. Caché segura: `packaging/flatpak/toolchain.lock` fija paquetes, versiones mínimas,
+   mirrors oficiales permitidos y límites; su hash alimenta la clave de la caché de `.deb`.
+   La instalación posterior usa `--no-download`, de modo que apt verifica cada archivo
+   contra el índice firmado antes de instalarlo; un archivo obsoleto o alterado se vuelve a
+   descargar. No se cachan índices ni repositorios de terceros.
+4. Origen y reintentos: `packaging/linux/install_flatpak_tools.sh` sondea los cuatro
+   orígenes oficiales de Ubuntu y reordena el `mirror+file` del runner (o la línea `URIs:`
+   del stanza principal, preservando `Signed-By` y el stanza `noble-security`), con rebote
+   al siguiente origen si el elegido falla. Se fijan `Acquire::Retries`, timeouts HTTP/HTTPS
+   y `ForceIPv4`, y cada fase corre bajo `timeout`.
+5. Timeouts: no se aumenta ningún `timeout-minutes` (45 min en los jobs de empaquetado,
+   25 min en la publicación Flatpak). El control queda dentro de las fases: 300 s para
+   `apt-get update`, 600 s para la descarga acotada, 300 s para la instalación offline y,
+   en `build_flatpak.sh`, 1500/300/300 s para builder/repo/bundle con salida 124 traducida a
+   un diagnóstico explícito. Si aun así se excede el límite, el job falla cerrado y el
+   reporte del preview sigue marcando el Flatpak como no exitoso.
+
+Riesgos de regresión y mitigación: el script escribe en `/etc/apt` del runner efímero, no en
+el repositorio; se probó contra un arnés local con apt/curl/dpkg simulados en ocho escenarios
+(espejos sanos, nodo estrangulado, rebote de update, rebote de descarga, caché cálida,
+descarga fallida, paquetes de publicación y fallo cerrado) y contra los cuatro orígenes
+reales para verificar la forma de la sonda. `build_flatpak.sh` sólo gana guardas de tiempo y
+registro de fases: el manifiesto, los `sha256` pinneados, el smoke ChemName empaquetado, el
+branch `preview-<sha>`, el nombre del bundle y las validaciones OSTree/GPG no cambian. Los
+contratos estáticos nuevos (`tests/test_flatpak_toolchain_preparation.py`, 11 node IDs)
+verifican que no se debilita la firma, que las fases están acotadas, que el empaquetado
+científico sigue pinneado y que la caché se restaura antes de instalar.

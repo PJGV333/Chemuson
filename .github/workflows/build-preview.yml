@@ -204,6 +204,7 @@ jobs:
           tests/test_test_workflow_contract.py
           tests/test_appimage_validation.py
           tests/test_linux_distribution_scripts.py
+          tests/test_flatpak_toolchain_preparation.py
           tests/test_packaged_icon_smoke.py
           packaging/release/validate_appimage.py
           packaging/release/validate_packaged_icons.py
@@ -250,6 +251,7 @@ jobs:
           tests/test_test_workflow_contract.py
           tests/test_appimage_validation.py
           tests/test_linux_distribution_scripts.py
+          tests/test_flatpak_toolchain_preparation.py
           tests/test_packaged_icon_smoke.py
           tests/test_rdkit_packaged_worker.py
           tests/test_rdkit_descriptors.py
@@ -450,7 +452,11 @@ jobs:
   build_linux_flatpak:
     name: Linux Flatpak bundle
     needs: prepare
-    runs-on: ubuntu-latest
+    # Imagen fijada: el cierre del toolchain Flatpak y el comportamiento de apt
+    # quedan medidos sobre Ubuntu 24.04; `ubuntu-latest` podría cambiar de base.
+    runs-on: ubuntu-24.04
+    # Presupuesto sin cambios: la preparación queda acotada dentro del paso y
+    # el empaquetado real historico ocupa alrededor de 4 min.
     timeout-minutes: 45
     permissions:
       contents: read
@@ -459,6 +465,8 @@ jobs:
       PREVIEW_SHA: ${{ needs.prepare.outputs.sha }}
       PREVIEW_SHORT_SHA: ${{ needs.prepare.outputs.short_sha }}
       PREVIEW_BRANCH: ${{ needs.prepare.outputs.branch }}
+      CHEMUSON_FLATPAK_APT_PACKAGES: flatpak flatpak-builder ostree
+      CHEMUSON_FLATPAK_APT_CACHE_DIR: ${{ runner.temp }}/chemuson-flatpak-apt
     steps:
       - name: Checkout validated source commit
         uses: actions/checkout@v4
@@ -471,10 +479,17 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Restore verified Flatpak toolchain package cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # actions/cache v6.1.0, accion oficial de GitHub
+        with:
+          path: ${{ runner.temp }}/chemuson-flatpak-apt
+          key: flatpak-apt-v1-preview-${{ hashFiles('packaging/flatpak/toolchain.lock') }}-${{ github.run_id }}
+          restore-keys: |
+            flatpak-apt-v1-preview-${{ hashFiles('packaging/flatpak/toolchain.lock') }}-
+            flatpak-apt-v1-preview-
+
       - name: Install Flatpak build tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y flatpak flatpak-builder ostree
+        run: bash packaging/linux/install_flatpak_tools.sh
 
       - name: Verify exact source identity
         run: >-

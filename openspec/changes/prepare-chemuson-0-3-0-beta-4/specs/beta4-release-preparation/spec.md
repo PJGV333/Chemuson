@@ -113,3 +113,36 @@ The Spanish and English project author lists SHALL add Jesús David Albino-Espí
 - **WHEN** the new name is incorporated
 - **THEN** both language versions contain the same author order and corresponding-author markers
 - **AND** no GitHub collaborator, member or permission is invited or changed
+
+### Requirement: Flatpak host toolchain preparation is bounded, cached and origin-verified
+
+The Flatpak packaging jobs SHALL prepare their host toolchain through a shared, documented
+procedure that selects a healthy official Ubuntu package origin, bounds every network phase
+with an explicit wall-clock limit, reuses a package cache only after apt verifies each
+archive against the current signed index, and records the measured preparation and packaging
+times. Increasing a job `timeout-minutes` SHALL NOT be used as the fix, and third-party
+repositories or unsigned package sources SHALL NOT be introduced.
+
+#### Scenario: Degraded assigned mirror no longer consumes the job
+- **GIVEN** a GitHub-hosted runner whose priority-1 Ubuntu mirror is throttled
+- **WHEN** the Flatpak job prepares `flatpak`, `flatpak-builder` and `ostree`
+- **THEN** the preparation probes the official origins listed in the lock file, uses the fastest healthy one and fails over to the next if it fails
+- **AND** each phase ends within its configured limit or the job fails closed with the phase and limit in the error
+
+#### Scenario: Warm package cache cannot introduce stale or tampered archives
+- **GIVEN** a previous run published its downloaded `.deb` archives to the Actions cache
+- **WHEN** a later Flatpak job restores that cache and installs
+- **THEN** apt installs with `--no-download` so every archive is verified against the signed index hashes
+- **AND** any missing, outdated or mismatched archive is re-fetched from an official origin instead of being installed
+
+#### Scenario: Packaging phases report real timings and stay bounded
+- **GIVEN** the Flatpak bundle build downloads the pinned runtime and wheel sources
+- **WHEN** `flatpak-builder`, `build-update-repo` or `build-bundle` runs
+- **THEN** each phase is limited by a wall-clock timeout and its elapsed seconds are reported in the step summary
+- **AND** an exhausted phase reports the phase name and its limit rather than letting the job be cancelled without a cause
+
+#### Scenario: Scientific packaging and release safety stay unchanged
+- **GIVEN** the preparation repair touches workflows and host tooling only
+- **WHEN** the packaging contracts are checked
+- **THEN** the Flatpak manifest keeps its runtime pin, the five sha256-pinned wheel sources, the packaged ChemName smoke, desktop/metainfo/icon installation and sandbox permissions
+- **AND** exact-SHA verification, checksums, provenance, GPG/OSTree metadata checks, Pages verification and fail-closed preview reporting remain active

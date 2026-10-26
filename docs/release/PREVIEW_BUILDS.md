@@ -178,3 +178,46 @@ Artifacts del preview #40144590463, todos con provenance SHA `85fa4ed2bd0afe1d31
 - Report [12580505627](https://github.com/PJGV333/Chemuson/actions/runs/40144590463/artifacts/12580505627), `complete=true`.
 
 Windows/AppImage `pillow_archive_entries=[]`; AppImage real GUI/2D→3D, icon, ChemName and RDKit checks passed. OSTree checkout of the exact Flatpak contained no `site-packages/PIL`, Pillow package or metadata. **Bloqueo de publicación:** el tag `v0.3.0-beta.1` apunta al SHA verificado, pero el commit lleva `[skip ci]`; no se disparó `release.yml` tag-only y `workflow_dispatch` falla HTTP 422. No se moverá ni recreará el tag; faltan GitHub Release, assets/sidecars oficiales y publicación Flatpak. Consultar el addendum final de `AGENT_REPORT.md`/OpenSpec; requiere decisión de recuperación del propietario.
+
+## Preparación determinista del entorno Flatpak (beta.4, 2026-10-26)
+
+Build Preview #40375931525 (SHA `670a7670235ec1f8833cb03c7d2475bbf5a2589f`) canceló
+`Linux Flatpak bundle` a los 45 min. La API pública de Actions muestra el motivo: el
+paso `Install Flatpak build tools` duró **43 min 59 s** y dejó sólo 2 min 24 s para el
+empaquetado, que necesita ~4 min. En los runs previos del mismo job ese mismo paso tardó
+**0,3–0,7 min** (beta.1–beta.3: 0,32/0,35/0,43/0,48/0,52/0,67 min).
+
+No es una regresión de ChemUSON: `apt-get install -y flatpak flatpak-builder ostree`
+descarga ~99 MB en ~123 paquetes. En los runners alojados por GitHub el origen apt es
+`mirror+file:/etc/apt/apt-mirrors.txt` con `azure.archive.ubuntu.com` como prioridad 1;
+cuando ese nodo está degradado, apt permanece en él y baja a ~60 kB/s sin devolver error
+(conocido upstream en actions/runner-images [#14823](https://github.com/actions/runner-images/issues/14823),
+[#14594](https://github.com/actions/runner-images/issues/14594) y
+[#12949](https://github.com/actions/runner-images/issues/12949)). El mismo incidente ya
+está registrado arriba para el job Flatpak de `test.yml`.
+
+Contrato actual de preparación (jobs `build_linux_flatpak`, `build_flatpak` y
+`publish_flatpak_remote`):
+
+- `packaging/linux/install_flatpak_tools.sh` sustituye al `apt-get` suelto y
+  `packaging/flatpak/toolchain.lock` fija imagen del runner, paquetes, versiones mínimas
+  admitidas, mirrors oficiales permitidos y límites de tiempo por fase.
+- Sondea los cuatro orígenes oficiales de Ubuntu (6 s cada uno), elige el más rápido y
+  reordena el `mirror+file` del runner; si el elegido falla, rebota al siguiente. Nunca se
+  usan repositorios de terceros ni se desactiva la verificación de firmas.
+- Descarga acotada (`--download-only`), publica los `.deb` en
+  `${{ runner.temp }}/chemuson-flatpak-apt` y **instala sin red** con `--no-download`; la
+  siguiente ejecución restaura esa caché con `actions/cache` (clave derivada del hash del
+  lockfile). apt vuelve a verificar cada `.deb` contra el índice firmado, así que una
+  caché obsoleta o alterada se vuelve a descargar en lugar de instalarse.
+- `packaging/linux/build_flatpak.sh` acota `flatpak-builder` (1500 s),
+  `build-update-repo` (300 s) y `build-bundle` (300 s), y registra los tiempos por fase en
+  el resumen del paso; si se agota la fase se reporta la causa en lugar de consumir el job.
+- `timeout-minutes` se conserva (45 min en los jobs de empaquetado, 25 min en el de
+  publicación): el control pasa a estar dentro de cada fase, no inflando el presupuesto.
+
+El script imprime `Flatpak toolchain preparation timings (s): probe=… update=… download=…
+install=… verify=… total=…` y el builder `Flatpak packaging timings (s): builder=…
+repo_update=… bundle=… packaging_total=…`; con eso se comparan preparaciones reales sin
+adjudicar resultados locales a Actions. Los contratos estáticos de este comportamiento
+viven en `tests/test_flatpak_toolchain_preparation.py`.
