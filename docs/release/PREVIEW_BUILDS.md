@@ -232,3 +232,28 @@ install=… verify=… total=… deadline=…` y el builder `Flatpak packaging t
 repo_update=… bundle=… packaging_total=…`; con eso se comparan preparaciones reales sin
 adjudicar resultados locales a Actions. Los contratos estáticos de este comportamiento
 viven en `tests/test_flatpak_toolchain_preparation.py`.
+
+### Resultados medidos en Actions (beta.4, 2026-10-26)
+
+Tres ejecuciones verdes del Build Preview con el contrato anterior, todas con los 7 jobs
+en `success` y `timeout-minutes: 45` sin cambiar:
+
+| run | SHA | `Install Flatpak build tools` | preparación (fases) | empaquetado (fases) |
+| --- | --- | --- | --- | --- |
+| #41 `40397595176` | `08f90ee2` | 0,55 min | `probe=7 update=7 download=4 install=12 verify=0 total=32` | `builder=139 repo_update=0 bundle=162 total=301` |
+| #42 `40399880083` | `8d0fff77` | 0,47 min | `probe=7 update=6 download=1 install=10 verify=0 total=28` | `builder=134 repo_update=0 bundle=140 total=274` |
+| #44 `40402002343` | `8acacf52` | 0,43 min | `probe=8 update=4 download=1 install=9 verify=0 total=26` | `builder=129 repo_update=0 bundle=124 total=253` |
+
+Como referencia, en la cancelación original el mismo paso tardó **43 min 59 s** y el
+empaquetado quedó abortado a los 2 min 24 s. En #41 la caché estaba fría y se guardaron
+98.956.656 B (123 `.deb` publicados, `published for reuse: 123/123`); en #42 y #44 la
+caché se restauró por prefijo (`Cache restored from key: flatpak-apt-v1-preview-…`) y la
+fase de descarga bajó de 4 s a 1 s. El origen elegido en las tres fue
+`https://us.archive.ubuntu.com/ubuntu/`, después de sondear `azure.archive.ubuntu.com`
+a 6084 ms en #41: exactamente el nodo que habia que evitar.
+
+Los cuatro paquetes del run #41 se descargaron y verificaron: `sha256sum -c` coincide
+sobre cada paquete y sobre su propio `preview-provenance.json`, los cuatro declaran
+`git_sha: 08f90ee2…` y `version: 0.3.0-beta.4`, y el bundle Flatpak contiene el SVG
+`share/icons/hicolor/scalable/apps/io.github.PJGV333.Chemuson.svg` idéntico byte a byte
+al logotipo nuevo (`c7d017240cd89050…`), no el de beta.3 (`23cad7927c43088f…`).

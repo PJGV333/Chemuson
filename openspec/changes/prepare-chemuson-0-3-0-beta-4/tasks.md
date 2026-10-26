@@ -45,3 +45,9 @@
 - [x] Publicar la rama y obtener el Build Preview #41 (`40397595176`) sobre `08f90ee2` con 7/7 jobs en verde:
   `Install Flatpak build tools` 0,55 min y `Build local Flatpak bundle only` 5,03 min, job completo 5,78 min
   con `timeout-minutes: 45` intacto. Cinco artefactos del mismo SHA generados.
+- [x] Verificar los cuatro artefactos del run verde: SHA-256 cruzado con `checksums.sha256` y
+  `preview-provenance.json`, mismo SHA en los cuatro, `version: 0.3.0-beta.4`, y logotipo nuevo
+  idéntico byte a byte dentro del bundle Flatpak (abierto con `flatpak`/`ostree` en un entorno
+  aislado y borrado despues). Runs #41, #42 y #44 con 7/7 jobs en verde y preparacion de 32/28/26 s.
+- [x] Abrir el PR contra `main` (#12) con el alcance y la evidencia; no fusionarlo y no crear la
+  etiqueta `v0.3.0-beta.4` hasta la aceptacion del propietario.
