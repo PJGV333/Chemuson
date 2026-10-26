@@ -68,6 +68,24 @@ The canonical version SHALL be `0.3.0-beta.4`, with matching AppStream release m
 - **AND** no tag, Release or public update channel is created
 - **AND** tag creation remains pending explicit owner acceptance
 
+### Requirement: AppImageUpdate release tracks use selectors supported by AppImageUpdate
+
+Official AppImage metadata SHALL use `latest` for the stable track and `latest-all` for the beta track. It SHALL NOT use `prerelease` as a track value: AppImageUpdate treats unrecognized values as literal GitHub tags. `latest-all` preserves the established beta-to-final graduation behavior and includes releases independently of the GitHub `prerelease` flag. Existing published artifacts SHALL NOT be rewritten.
+
+#### Scenario: Release track mapping is validated
+- **GIVEN** a stable or beta AppImage release build
+- **WHEN** the builder and release validators produce/check update information
+- **THEN** stable uses `gh-releases-zsync|owner|repo|latest|asset.zsync`
+- **AND** beta uses `gh-releases-zsync|owner|repo|latest-all|asset.zsync`
+- **AND** the update JSON, sidecar, and embedded AppImage value match exactly
+
+#### Scenario: Historical beta.3 remains immutable
+- **GIVEN** beta.3 embeds the unsupported literal `prerelease` track
+- **WHEN** beta.4 fixes the builder contract
+- **THEN** beta.3 assets and tag remain unchanged
+- **AND** documentation tells beta.3 AppImage users to install the new package manually
+- **AND** beta.4 and later use the supported selector without altering user preferences.
+
 ### Requirement: Author listing recognizes the additional author without access changes
 
 The Spanish and English project author lists SHALL add Jesús David Albino-Espíndola after the existing authors, with no corresponding-author asterisk. The existing author names, order and asterisks SHALL remain intact.

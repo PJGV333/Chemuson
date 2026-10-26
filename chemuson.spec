@@ -10,6 +10,10 @@ sys.path.insert(0, str(PROJECT_ROOT / "packaging" / "pyinstaller"))
 from runtime_filter import exclude_host_runtime_binaries  # noqa: E402
 
 STATIC_ICON_DIR = PROJECT_ROOT / "src" / "chemuson" / "gui" / "theme" / "icons"
+APP_BRANDING_ICON = (
+    PROJECT_ROOT / "src" / "chemuson" / "assets" / "branding" / "chemuson-icon-512.png"
+)
+WINDOWS_BRANDING_ICON = PROJECT_ROOT / "assets" / "branding" / "chemuson.ico"
 STATIC_ICON_FILES = sorted(STATIC_ICON_DIR.glob("i-*.svg"))
 if len(STATIC_ICON_FILES) != 69 or any(path.stat().st_size == 0 for path in STATIC_ICON_FILES):
     raise SystemExit(
@@ -18,6 +22,10 @@ if len(STATIC_ICON_FILES) != 69 or any(path.stat().st_size == 0 for path in STAT
     )
 if not (STATIC_ICON_DIR / "LICENSE.txt").is_file():
     raise SystemExit(f"ChemUSON static icon license is missing: {STATIC_ICON_DIR}")
+if not APP_BRANDING_ICON.is_file() or APP_BRANDING_ICON.stat().st_size == 0:
+    raise SystemExit(f"ChemUSON project logo resource is missing: {APP_BRANDING_ICON}")
+if not WINDOWS_BRANDING_ICON.is_file() or WINDOWS_BRANDING_ICON.stat().st_size == 0:
+    raise SystemExit(f"ChemUSON Windows icon resource is missing: {WINDOWS_BRANDING_ICON}")
 
 datas_c, binaries_c, hidden_c = collect_all("chemuson")
 # These entries are enumerated explicitly below, even when collect_all can see
@@ -26,13 +34,18 @@ datas_c = [
     (source, destination)
     for source, destination in datas_c
     if not destination.replace(chr(92), "/").startswith(
-        ("chemuson/gui/theme/icons/", "chemuson/chemname/templates/")
+        (
+            "chemuson/gui/theme/icons/",
+            "chemuson/chemname/templates/",
+            "chemuson/assets/branding/",
+        )
     )
 ]
 datas_icons = [
     (str(path), "chemuson/gui/theme/icons") for path in STATIC_ICON_FILES
 ]
 datas_icons.append((str(STATIC_ICON_DIR / "LICENSE.txt"), "chemuson/gui/theme/icons"))
+datas_branding = [(str(APP_BRANDING_ICON), "chemuson/assets/branding")]
 CHEMNAME_TEMPLATE_DIR = PROJECT_ROOT / "src" / "chemuson" / "chemname" / "templates"
 EXPECTED_CHEMNAME_TEMPLATES = {
     "fused/pyrene_cas.mol",
@@ -63,7 +76,7 @@ datas_chemname_templates = [
 datas_qt, binaries_qt, hidden_qt = collect_all("PyQt6")
 binaries_rdkit = collect_dynamic_libs("rdkit")
 
-datas = datas_c + datas_chemname_templates + datas_icons + datas_qt
+datas = datas_c + datas_chemname_templates + datas_icons + datas_branding + datas_qt
 binaries = binaries_c + binaries_qt + binaries_rdkit
 hiddenimports = sorted(
     set(
@@ -120,4 +133,5 @@ exe = EXE(
     strip=False,
     upx=False,
     disable_windowed_traceback=False,
+    icon=str(WINDOWS_BRANDING_ICON) if sys.platform == "win32" else None,
 )

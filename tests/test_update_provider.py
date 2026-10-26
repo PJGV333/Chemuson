@@ -81,30 +81,23 @@ def test_release_selection_uses_semver_not_date_or_prerelease_flag(monkeypatch) 
     provider = GitHubReleasesProvider("PJGV333", "Chemuson")
     payload = [
         {
-            "tag_name": "v1.1.0",
-            "name": "Chemuson 1.1.0",
+            "tag_name": "v0.2.5",
+            "name": "Chemuson 0.2.5",
             "prerelease": False,
             "published_at": "2030-01-01T00:00:00Z",
             "assets": [],
         },
         {
-            "tag_name": "v1.2.0",
-            "name": "Chemuson 1.2.0",
-            "prerelease": True,
-            "published_at": "2025-01-01T00:00:00Z",
-            "assets": [],
-        },
-        {
-            "tag_name": "v1.3.0-beta.3",
-            "name": "Chemuson 1.3.0-beta.3",
+            "tag_name": "v0.3.0-beta.3",
+            "name": "Chemuson 0.3.0-beta.3",
             "prerelease": False,
             "published_at": "2040-01-01T00:00:00Z",
             "assets": [],
         },
         {
-            "tag_name": "v1.3.0-beta.10",
-            "name": "Chemuson 1.3.0-beta.10",
-            "prerelease": False,
+            "tag_name": "v0.3.0-beta.4",
+            "name": "Chemuson 0.3.0-beta.4",
+            "prerelease": True,
             "published_at": "2020-01-01T00:00:00Z",
             "assets": [],
         },
@@ -116,13 +109,12 @@ def test_release_selection_uses_semver_not_date_or_prerelease_flag(monkeypatch) 
     beta = provider.latest_for_channel(UpdateChannel.BETA)
 
     assert [release.version for release in releases] == [
-        "1.3.0-beta.10",
-        "1.3.0-beta.3",
-        "1.2.0",
-        "1.1.0",
+        "0.3.0-beta.4",
+        "0.3.0-beta.3",
+        "0.2.5",
     ]
-    assert stable is not None and stable.version == "1.2.0"
-    assert beta is not None and beta.version == "1.3.0-beta.10"
+    assert stable is not None and stable.version == "0.2.5"
+    assert beta is not None and beta.version == "0.3.0-beta.4"
 
 
 def test_provider_does_not_infer_version_from_release_title(monkeypatch) -> None:

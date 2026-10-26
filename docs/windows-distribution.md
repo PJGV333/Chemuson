@@ -29,13 +29,18 @@ Ambos se publican en paralelo en cada release.
 
 ## Build local (Windows)
 
-PowerShell:
+PowerShell (los paquetes y el work directory se escriben fuera del checkout):
 
 ```powershell
+$env:CHEMUSON_OUTPUT_DIR = "$HOME\Compilaciones\ChemUSON"
+New-Item -ItemType Directory -Force -Path $env:CHEMUSON_OUTPUT_DIR | Out-Null
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 pip install pyinstaller
-pyinstaller --clean --noconfirm chemuson.spec
+pyinstaller --clean --noconfirm `
+  --distpath "$env:CHEMUSON_OUTPUT_DIR\dist" `
+  --workpath "$env:CHEMUSON_OUTPUT_DIR\build\chemuson" `
+  chemuson.spec
 ```
 
 Generar instalador:
@@ -45,9 +50,11 @@ $env:CHEMUSON_VERSION = "<version>"
 & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "packaging\windows\Chemuson.iss"
 ```
 
-Salida esperada:
-- `dist\Chemuson.exe` (portable)
-- `dist-installer\Chemuson-v<version>-windows-x86_64-setup.exe` (instalador)
+Con `CHEMUSON_OUTPUT_DIR`, tanto el ejecutable fuente como el instalador se leen/escriben fuera del checkout:
+- `$env:CHEMUSON_OUTPUT_DIR\dist\Chemuson.exe` (portable)
+- `$env:CHEMUSON_OUTPUT_DIR\dist-installer\Chemuson-v<version>-windows-x86_64-setup.exe` (instalador)
+
+Sin la variable se conservan los paths históricos `dist\` y `dist-installer\`, compatibles con Actions.
 
 ## Firma Authenticode (pipeline preparada)
 

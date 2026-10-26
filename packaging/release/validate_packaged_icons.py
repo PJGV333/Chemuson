@@ -88,6 +88,11 @@ def validate_executable(executable: Path, *, timeout: int = 120) -> dict[str, An
         expected_icons_dir = meipass / "chemuson/gui/theme/icons"
         if Path(report.get("icons_dir", "")).resolve() != expected_icons_dir:
             raise ValueError("Frozen SVG path does not match the recorded sys._MEIPASS directory.")
+        expected_branding_icon = (
+            meipass / "chemuson/assets/branding/chemuson-icon-512.png"
+        )
+        if Path(report.get("branding_icon_file", "")).resolve() != expected_branding_icon:
+            raise ValueError("Frozen project logo path does not match sys._MEIPASS.")
         if not Path(report.get("icon_provider_file", "")).resolve().is_relative_to(meipass):
             raise ValueError("Frozen IconProvider.__file__ is outside sys._MEIPASS.")
         if not Path(report.get("qt_svg_module", "")).resolve().is_relative_to(meipass):
@@ -102,6 +107,8 @@ def validate_executable(executable: Path, *, timeout: int = 120) -> dict[str, An
                 or values.get("static_icons_with_visible_pixels") != EXPECTED_SVG_COUNT
             ):
                 raise ValueError(f"Not all 69 static SVGs rendered visible pixels in {theme} theme.")
+            if values.get("branding_logo_pixels", 0) <= 0:
+                raise ValueError(f"The ChemUSON project logo is blank in {theme} theme.")
             for name in EXPECTED_ESSENTIAL_ICONS:
                 if values.get(f"essential:{name}", 0) <= 0:
                     raise ValueError(f"Essential {name!r} icon is blank in {theme} theme.")

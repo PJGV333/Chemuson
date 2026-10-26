@@ -4,6 +4,7 @@
 #define MyAppVersion GetEnv("CHEMUSON_VERSION")
 #define MyAppPublisher "ChemUSON"
 #define MyAppExeName "Chemuson.exe"
+#define BuildOutputRoot GetEnv("CHEMUSON_OUTPUT_DIR")
 #if MyAppVersion == ""
   #error "CHEMUSON_VERSION must be set explicitly before compiling the installer."
 #endif
@@ -18,17 +19,26 @@ AppMutex=ChemusonMainMutex
 DefaultDirName={autopf}\Chemuson
 DefaultGroupName=ChemUSON
 DisableProgramGroupPage=yes
+#if BuildOutputRoot == ""
 OutputDir=..\..\dist-installer
+#else
+OutputDir={#BuildOutputRoot}\dist-installer
+#endif
 OutputBaseFilename=Chemuson-v{#MyAppVersion}-windows-x86_64-setup
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=..\..\assets\branding\chemuson.ico
 
 [Languages]
 Name: "spanish"; MessagesFile: "compiler:Languages\\Spanish.isl"
 
 [Files]
+#if BuildOutputRoot == ""
 Source: "..\\..\\dist\\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+#else
+Source: "{#BuildOutputRoot}\\dist\\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+#endif
 Source: "chemuson-installed.marker"; DestDir: "{app}"; DestName: ".chemuson-installed"; Flags: ignoreversion
 
 [Icons]

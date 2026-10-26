@@ -5,6 +5,9 @@
 **Actualización de instalación y orientación inicial:** 25 de octubre de 2026<br>
 **Base de la descripción detallada de la interfaz:** auditoría del 2 de octubre de 2026 (revisión original en `140a080c336515650bbeea0a4e6ead67a9999b23`).
 
+<p align="center"><img src="../assets/branding/logo_ChemUSON.png" alt="Emblema del proyecto ChemUSON" width="280"></p>
+<p align="center"><sub>Identidad visual del proyecto ChemUSON; no es un escudo institucional oficial.</sub></p>
+
 > **Alcance de la actualización:** las instrucciones de descarga e instalación señalan los paquetes públicos de beta.3. Los capítulos detallados de herramientas y menús proceden de la auditoría anterior y **no han sido revalidados íntegramente** contra cada paquete beta.3; algunas denominaciones o controles pueden diferir. Para obtener el código que corresponde a la beta publicada, consulta [el tag `v0.3.0-beta.3`](https://github.com/PJGV333/Chemuson/tree/v0.3.0-beta.3), no la rama de desarrollo `main`.
 >
 > ChemUSON es una aplicación libre para representar y analizar estructuras moleculares en actividades de docencia e investigación. Esta beta es experimental: guarda copias de tus documentos importantes y verifica los resultados químicos antes de utilizarlos en trabajos científicos.
@@ -48,7 +51,7 @@
 
 ## 1. Instalación y ejecución
 
-La **versión pública más reciente es ChemUSON 0.3.0-beta.3**. Es una versión preliminar, no una edición estable. La anterior versión `v0.2.5` conserva en GitHub la etiqueta «Latest» porque la plataforma reserva ese distintivo para las versiones no preliminares.
+La **versión pública más reciente es ChemUSON 0.3.0-beta.3**. Es una versión preliminar, no una edición estable. GitHub muestra beta.3 como **Latest** porque el propietario cambió excepcionalmente su metadato a `prerelease=false`; esto no altera el SemVer del tag ni establece una política para futuras betas. El workflow oficial clasifica normalmente las betas como prereleases.
 
 Descarga desde [GitHub Releases](https://github.com/PJGV333/Chemuson/releases/tag/v0.3.0-beta.3). Los archivos oficiales se identifican con la versión `0.3.0-beta.3` y tienen [sumas SHA-256 publicadas](https://github.com/PJGV333/Chemuson/releases/download/v0.3.0-beta.3/checksums.txt).
 

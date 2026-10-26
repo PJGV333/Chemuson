@@ -1,7 +1,10 @@
 """Regression tests for visible ChemUSON branding and stable technical IDs."""
 from __future__ import annotations
 
+import base64
+import hashlib
 import re
+import struct
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -40,6 +43,9 @@ def test_linux_launchers_and_appstream_present_official_name() -> None:
     assert "Comment=ChemUSON —" in appimage_desktop
     assert metainfo.findtext("name") == "ChemUSON"
     assert metainfo.findtext("id") == "io.github.PJGV333.Chemuson"
+    assert metainfo.findtext("icon") == "io.github.PJGV333.Chemuson"
+    assert metainfo.find("icon").attrib["type"] == "stock"
+    assert metainfo.findtext("categories/category") == "Science"
 
 
 def test_windows_installer_display_name_changes_without_changing_upgrade_identity() -> None:
@@ -52,6 +58,11 @@ def test_windows_installer_display_name_changes_without_changing_upgrade_identit
     assert '#define MyAppExeName "Chemuson.exe"' in installer
     assert r"DefaultDirName={autopf}\Chemuson" in installer
     assert "OutputBaseFilename=Chemuson-v{#MyAppVersion}-windows-x86_64-setup" in installer
+    assert 'SetupIconFile=..\\..\\assets\\branding\\chemuson.ico' in installer
+    assert '#define BuildOutputRoot GetEnv("CHEMUSON_OUTPUT_DIR")' in installer
+    assert '#if BuildOutputRoot == ""' in installer
+    assert 'OutputDir={#BuildOutputRoot}\\dist-installer' in installer
+    assert 'Source: "{#BuildOutputRoot}\\\\dist\\\\{#MyAppExeName}"' in installer
 
 
 def test_package_import_settings_update_and_project_ids_remain_compatible() -> None:
@@ -66,7 +77,7 @@ def test_package_import_settings_update_and_project_ids_remain_compatible() -> N
     appimage_validator = _text("packaging/release/validate_appimage.py")
     pages_index = _text("packaging/release/generate_flatpak_pages_index.py")
 
-    assert '__version__ = "0.3.0-beta.3"' in version
+    assert '__version__ = "0.3.0-beta.4"' in version
     assert re.search(r"(?m)^name\s*=\s*['\"]chemuson['\"]", pyproject)
     assert 'QSettings("Chemuson", "Chemuson")' in settings
     assert 'app.setApplicationName("Chemuson")' in bootstrap
@@ -79,6 +90,34 @@ def test_package_import_settings_update_and_project_ids_remain_compatible() -> N
     assert 'entry.get("Name") != "ChemUSON"' in appimage_validator
     assert "<title>ChemUSON Flatpak</title>" in pages_index
     assert 'default="Chemuson"' in pages_index
+
+    branding = ROOT / "assets/branding"
+    master = (branding / "logo_ChemUSON.png").read_bytes()
+    assert hashlib.sha256(master).hexdigest() == (
+        "aab2600d2d46d87dba9dcea4266ae89ee4bbceafef0b05892b10713c310e29e6"
+    )
+    assert master[:8] == bytes.fromhex("89504e470d0a1a0a")
+    assert struct.unpack(">II", master[16:24]) == (1254, 1254)
+    svg = ET.parse(branding / "logo_ChemUSON.svg").getroot()
+    embedded_png = svg.find("{http://www.w3.org/2000/svg}image").attrib[
+        "{http://www.w3.org/1999/xlink}href"
+    ]
+    assert hashlib.sha256(base64.b64decode(embedded_png.split(",", 1)[1])).hexdigest() == (
+        "aab2600d2d46d87dba9dcea4266ae89ee4bbceafef0b05892b10713c310e29e6"
+    )
+    for size in (16, 24, 32, 48, 64, 128, 256, 512, 1024):
+        icon_png = (branding / f"chemuson-icon-{size}.png").read_bytes()
+        assert icon_png[:8] == bytes.fromhex("89504e470d0a1a0a")
+        assert struct.unpack(">II", icon_png[16:24]) == (size, size)
+    ico = (branding / "chemuson.ico").read_bytes()
+    assert ico[:4] == bytes.fromhex("00000100")
+    assert struct.unpack("<H", ico[4:6])[0] == 7
+    assert (ROOT / "src/chemuson/assets/branding/chemuson-icon-512.png").read_bytes() == (
+        (branding / "chemuson-icon-512.png").read_bytes()
+    )
+    bootstrap = _text("src/chemuson/app/bootstrap.py")
+    assert "app.setWindowIcon(app_icon)" in bootstrap
+    assert "window.setWindowIcon(app_icon)" in bootstrap
 
 
 def test_flatpak_remote_display_title_is_brand_but_remote_names_stay_stable() -> None:

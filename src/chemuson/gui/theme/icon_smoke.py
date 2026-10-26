@@ -83,6 +83,10 @@ def _tool_button_ink_difference(image: QImage, baseline: QImage) -> int:
 
 def _runtime_paths() -> dict[str, str | None]:
     icon_directory = DEFAULT_ICONS_DIR.resolve()
+    package_root = Path(__file__).resolve().parents[2]
+    branding_icon_file = (
+        package_root / "assets" / "branding" / "chemuson-icon-512.png"
+    ).resolve()
     provider_file = Path(
         sys.modules["chemuson.gui.theme.icon_provider"].__file__
     ).resolve()
@@ -106,9 +110,18 @@ def _runtime_paths() -> dict[str, str | None]:
         qt_svg_file = Path(QtSvg.__file__).resolve()
         if not qt_svg_file.is_relative_to(meipass):
             raise RuntimeError(f"PyQt6.QtSvg is not loaded from sys._MEIPASS: {qt_svg_file}.")
+        expected_branding_icon = (
+            meipass / "chemuson/assets/branding/chemuson-icon-512.png"
+        )
+        if branding_icon_file != expected_branding_icon:
+            raise RuntimeError(
+                "Branding icon path does not resolve under sys._MEIPASS: "
+                f"expected {expected_branding_icon}, got {branding_icon_file}."
+            )
 
     return {
         "icons_dir": str(icon_directory),
+        "branding_icon_file": str(branding_icon_file),
         "icon_provider_file": str(provider_file),
         "meipass": str(meipass) if meipass is not None else None,
         "qt_svg_module": str(Path(QtSvg.__file__).resolve()),
@@ -133,14 +146,30 @@ def run_icon_smoke_test() -> dict[str, object]:
     if any(not path.is_file() or path.stat().st_size == 0 for path in svg_files):
         raise RuntimeError("At least one packaged SVG icon is missing or empty.")
 
+    branding_icon_file = Path(paths["branding_icon_file"] or "")
+    if not branding_icon_file.is_file() or branding_icon_file.stat().st_size == 0:
+        raise RuntimeError(f"Packaged ChemUSON branding icon is missing: {branding_icon_file}.")
+    branding_icon = QIcon(str(branding_icon_file))
+    if branding_icon.isNull():
+        raise RuntimeError(f"Qt could not load the ChemUSON branding icon: {branding_icon_file}.")
+
     provider = IconProvider(dpr=1.0, icons_dir=icon_directory)
     theme_results: dict[str, dict[str, int]] = {}
     essential_signatures: dict[str, dict[str, frozenset[int]]] = {}
+    branding_signatures: dict[str, frozenset[int]] = {}
 
     try:
         for theme in ("light", "dark"):
             icon_facade.set_icon_theme(theme)
             tint = icon_facade.icon_foreground_color()
+            branding_signature, branding_pixel_count = _raster_signature(
+                branding_icon, 128
+            )
+            if not branding_signature or branding_pixel_count == 0:
+                raise RuntimeError(
+                    f"The ChemUSON branding icon rendered blank in {theme} theme."
+                )
+            branding_signatures[theme] = branding_signature
             static_counts: dict[str, int] = {}
             for path in svg_files:
                 icon_name = path.stem.removeprefix("i-")
@@ -186,6 +215,7 @@ def run_icon_smoke_test() -> dict[str, object]:
                     )
                 toolbar_counts[name] = changed_pixels
             theme_results[theme] = {
+                "branding_logo_pixels": branding_pixel_count,
                 "static_svg_count": len(static_counts),
                 "static_icons_with_visible_pixels": sum(
                     count > 0 for count in static_counts.values()
@@ -194,6 +224,8 @@ def run_icon_smoke_test() -> dict[str, object]:
                 **{f"toolbar:{name}": count for name, count in toolbar_counts.items()},
             }
 
+        if branding_signatures["light"] != branding_signatures["dark"]:
+            raise RuntimeError("The project logo raster changed between light and dark themes.")
         for name in (
             "pointer/select",
             "single bond",

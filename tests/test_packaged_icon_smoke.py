@@ -22,7 +22,9 @@ def test_source_smoke_renders_all_static_and_essential_icons() -> None:
     assert report["static_svg_count"] == 69
     assert set(report["themes"]) == {"light", "dark"}
     assert report["hidpi_dpr"] == 2.0
+    assert Path(report["branding_icon_file"]).is_file()
     for theme in report["themes"].values():
+        assert theme["branding_logo_pixels"] > 0
         assert theme["static_icons_with_visible_pixels"] == 69
         assert theme["static_svg_count"] == 69
         assert all(
@@ -54,7 +56,9 @@ def test_pyinstaller_spec_explicitly_places_all_static_icons_under_package_path(
     assert 'STATIC_ICON_DIR = PROJECT_ROOT / "src" / "chemuson" / "gui" / "theme" / "icons"' in spec
     assert 'len(STATIC_ICON_FILES) != 69' in spec
     assert '(str(path), "chemuson/gui/theme/icons") for path in STATIC_ICON_FILES' in spec
-    assert 'datas = datas_c + datas_chemname_templates + datas_icons + datas_qt' in spec
+    assert 'datas_branding = [(str(APP_BRANDING_ICON), "chemuson/assets/branding")]' in spec
+    assert 'datas = datas_c + datas_chemname_templates + datas_icons + datas_branding + datas_qt' in spec
+    assert 'icon=str(WINDOWS_BRANDING_ICON) if sys.platform == "win32" else None' in spec
 
 
 def test_preview_and_release_gate_frozen_icon_smokes_on_both_platforms() -> None:

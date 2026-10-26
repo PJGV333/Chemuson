@@ -468,7 +468,7 @@ def _validate_frozen_graphics(
 
 
 def _expected_update_info(owner: str, repo: str, channel: str, appimage_name: str) -> str:
-    track = "prerelease" if channel == "beta" else "latest"
+    track = "latest-all" if channel == "beta" else "latest"
     return f"gh-releases-zsync|{owner}|{repo}|{track}|{appimage_name}.zsync"
 
 

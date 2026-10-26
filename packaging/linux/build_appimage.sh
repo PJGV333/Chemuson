@@ -113,7 +113,9 @@ fi
 if [[ "${BUILD_TYPE}" == "release" ]]; then
   UPDATE_TRACK="latest"
   if [[ "${CHANNEL}" == "beta" ]]; then
-    UPDATE_TRACK="prerelease"
+    # AppImageUpdate supports latest-all (all GitHub release types); `prerelease`
+    # is treated as a literal tag and `latest-pre` would not graduate to stable.
+    UPDATE_TRACK="latest-all"
   fi
   UPDATE_INFO="gh-releases-zsync|${OWNER}|${REPO}|${UPDATE_TRACK}|${APPIMAGE_NAME}.zsync"
   ARCH=x86_64 "${APPIMAGETOOL}" --updateinformation "${UPDATE_INFO}" "${APPDIR}" "${APPIMAGE_PATH}"

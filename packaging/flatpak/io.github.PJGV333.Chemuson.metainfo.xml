@@ -10,6 +10,10 @@
     </p>
   </description>
   <launchable type="desktop-id">io.github.PJGV333.Chemuson.desktop</launchable>
+  <icon type="stock">io.github.PJGV333.Chemuson</icon>
+  <categories>
+    <category>Science</category>
+  </categories>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>AGPL-3.0-only</project_license>
   <developer id="io.github.pjgv333">
@@ -18,6 +22,7 @@
   <url type="homepage">https://github.com/PJGV333/Chemuson</url>
   <url type="bugtracker">https://github.com/PJGV333/Chemuson/issues</url>
   <releases>
+    <release version="0.3.0-beta.4" date="2026-10-26" />
     <release version="0.3.0-beta.3" date="2026-10-25" />
     <release version="0.3.0-beta.2" date="2026-10-25" />
     <release version="0.3.0-beta.1" date="2026-10-24" />

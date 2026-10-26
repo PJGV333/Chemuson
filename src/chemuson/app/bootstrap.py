@@ -3,12 +3,24 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
+from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
 from chemuson.gui.main_window import ChemusonWindow
 from chemuson.resilience import crash_reporter
 from chemuson.version import get_app_version
+
+
+def _application_icon_path() -> Path:
+    """Return the project logo bundled beside the ChemUSON package."""
+    return (
+        Path(__file__).resolve().parents[1]
+        / "assets"
+        / "branding"
+        / "chemuson-icon-512.png"
+    )
 
 
 def run_app() -> None:
@@ -19,7 +31,15 @@ def run_app() -> None:
         app.setApplicationName("Chemuson")
         app.setApplicationDisplayName("ChemUSON")
         app.setApplicationVersion(get_app_version())
+        icon_path = _application_icon_path()
+        if not icon_path.is_file():
+            raise FileNotFoundError(f"ChemUSON application icon is missing: {icon_path}")
+        app_icon = QIcon(str(icon_path))
+        if app_icon.isNull():
+            raise RuntimeError(f"ChemUSON application icon could not be loaded: {icon_path}")
+        app.setWindowIcon(app_icon)
         window = ChemusonWindow()
+        window.setWindowIcon(app_icon)
         ChemusonWindow.check_autosaves(window)
         window.show()
         exit_code = app.exec()

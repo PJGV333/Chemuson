@@ -53,7 +53,7 @@ def validate_release_artifacts(
     validate_type2_header(appimage_path)
     update_path = root / f"Chemuson-v{version}-linux-x86_64.AppImage.update.json"
     update = json.loads(update_path.read_text(encoding="utf-8"))
-    update_track = "prerelease" if channel == "beta" else "latest"
+    update_track = "latest-all" if channel == "beta" else "latest"
     expected_update_information = (
         f"gh-releases-zsync|PJGV333|Chemuson|{update_track}|{appimage_path.name}.zsync"
     )

@@ -5,11 +5,14 @@ Developed by the **Supramolecular Chemistry Group at the University of Sonora, M
 
 **Language:** [Español (página principal)](README.md) · English
 
+<p align="center"><img src="assets/branding/logo_ChemUSON.png" alt="ChemUSON project emblem" width="300"></p>
+<p align="center"><sub>Visual identity of the ChemUSON project; it is not an official University of Sonora seal.</sub></p>
+
 ChemUSON is an open-source desktop application to **draw, visualize, analyze and communicate chemical structures**. It combines a 2D editor, a molecular 3D viewer, and supporting tools for computational chemistry, nomenclature and scientific figures.
 
-> **RECOMMENDED DOWNLOAD — [ChemUSON 0.3.0-beta.3](https://github.com/PJGV333/Chemuson/releases/tag/v0.3.0-beta.3)** (October 25, 2026). This is the **newest public release and the recommended version to evaluate ChemUSON** on Windows and Linux. Its principal features have been manually accepted, but this is still a **beta**: bugs and incomplete functions may remain. Back up your work and independently verify scientific results.
+> **RECOMMENDED DOWNLOAD — [ChemUSON 0.3.0-beta.3](https://github.com/PJGV333/Chemuson/releases/tag/v0.3.0-beta.3)** (October 25, 2026). This is the **newest public release and the recommended version to evaluate ChemUSON** on Windows and Linux. Available manual observations are limited and do not constitute package-specific acceptance of each beta.3 artifact. This is still a **beta**: bugs and incomplete functions may remain. Back up your work and independently verify scientific results.
 >
-> **Why does GitHub label [v0.2.5](https://github.com/PJGV333/Chemuson/releases/tag/v0.2.5) as “Latest”?** GitHub reserves that label for non-prerelease releases. v0.2.5 is the last release *classified* as stable, **not the currently recommended download**. Preserving beta.3's prerelease status maintains compatibility with existing update channels.
+> **Why does GitHub label beta.3 “Latest”?** At the owner's exceptional manual decision, this Release has GitHub metadata `prerelease=false`. That does not turn the `v0.3.0-beta.3` tag into a stable version or change its SemVer precedence or the integrated updater's preferences. This is not a policy for future betas: the official workflow normally marks beta versions as prereleases.
 >
 > For **the exact source of beta.3**, use [its tag](https://github.com/PJGV333/Chemuson/tree/v0.3.0-beta.3). `main` is the active development branch and may advance beyond the published release.
 
@@ -111,7 +114,7 @@ On Windows activate `.venv\Scripts\activate`; with fish use `source .venv/bin/ac
 
 ChemUSON originates from the **Supramolecular Chemistry Group, University of Sonora (Mexico)**. The project seeks to make molecular representation and analysis more accessible for chemical education, research and communication, while retaining the central role of scientific judgment.
 
-**Authors:** Pedro Jancarlo Gomez Vega*, José Octavio Juárez Sánchez, Alondra Karolina Montaño Preciado, Ramón Moreno Corral, Felipe Medrano Valenzuela, David Octavio Corona Martínez, and Karen L. Ochoa Lara*.
+**Authors:** Pedro Jancarlo Gomez Vega*, José Octavio Juárez Sánchez, Alondra Karolina Montaño Preciado, Ramón Moreno Corral, Felipe Medrano Valenzuela, David Octavio Corona Martínez, Karen L. Ochoa Lara*, and Jesús David Albino-Espíndola.
 
 \* Corresponding authors.
 

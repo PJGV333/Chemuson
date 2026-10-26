@@ -23,6 +23,7 @@ Fecha: 2026-10-08
 
 - Flatpak bundle: `Chemuson-vX.Y.Z-linux-x86_64.flatpak`
 - AppImage Type 2: `Chemuson-vX.Y.Z-linux-x86_64.AppImage`.
+- Metadatos AppImageUpdate: el canal `stable` usa el selector GitHub `latest`; el canal `beta` usa `latest-all`, para permitir que una instalación beta alcance una release final posterior. `prerelease` no es un selector especial de AppImageUpdate y no debe usarse como tal.
 - Sidecars del updater oficial (no se generan para previews):
   - `Chemuson-vX.Y.Z-linux-x86_64.AppImage.updateinfo`
   - `Chemuson-vX.Y.Z-linux-x86_64.AppImage.update.json`
@@ -88,20 +89,25 @@ chmod +x Chemuson-vX.Y.Z-linux-x86_64.AppImage
 Requiere `curl`, `desktop-file-utils`, `appstream` (`appstreamcli`) y las dependencias Qt del runner. `zsyncmake` se reutiliza desde el AppImageKit `appimagetool` oficial pinneado. El helper verifica el SHA-256 del asset, su commit/versión y falla si la descarga cambia. No requiere ni instala `linuxdeploy`: PyInstaller ya contiene el bundle de PyQt6/RDKit y `appimagetool` empaqueta ese AppDir.
 
 ```bash
-pyinstaller --clean --noconfirm chemuson.spec
-python packaging/release/validate_packaged_icons.py --executable dist/Chemuson
-python packaging/release/validate_packaged_rdkit_worker.py --executable dist/Chemuson
+export CHEMUSON_OUTPUT_DIR="${CHEMUSON_OUTPUT_DIR:-${HOME}/Compilaciones/ChemUSON}"
+mkdir -p "${CHEMUSON_OUTPUT_DIR}"
+pyinstaller --clean --noconfirm \
+  --distpath "${CHEMUSON_OUTPUT_DIR}/dist" \
+  --workpath "${CHEMUSON_OUTPUT_DIR}/dist/pyinstaller-work" \
+  chemuson.spec
+python packaging/release/validate_packaged_icons.py --executable "${CHEMUSON_OUTPUT_DIR}/dist/Chemuson"
+python packaging/release/validate_packaged_rdkit_worker.py --executable "${CHEMUSON_OUTPUT_DIR}/dist/Chemuson"
 bash packaging/linux/build_appimage.sh \
   "<version>" \
-  "dist" \
-  "dist-appimage" \
+  "${CHEMUSON_OUTPUT_DIR}/dist" \
+  "${CHEMUSON_OUTPUT_DIR}/dist-appimage" \
   "PJGV333" \
   "Chemuson" \
   "stable" \
   "v<version>" \
   "$(git rev-parse HEAD)"
 python packaging/release/validate_appimage.py \
-  --appimage "dist-appimage/Chemuson-v<version>-linux-x86_64.AppImage" \
+  --appimage "${CHEMUSON_OUTPUT_DIR}/dist-appimage/Chemuson-v<version>-linux-x86_64.AppImage" \
   --version "<version>" --source-sha "$(git rev-parse HEAD)" \
   --build-type release --channel stable --tag "v<version>"
 ```
@@ -111,10 +117,11 @@ python packaging/release/validate_appimage.py \
 Requiere `flatpak` y `flatpak-builder`.
 
 ```bash
+export CHEMUSON_OUTPUT_DIR="${CHEMUSON_OUTPUT_DIR:-${HOME}/Compilaciones/ChemUSON}"
 bash packaging/linux/build_flatpak.sh \
   "<version>" \
   "stable" \
-  "dist-flatpak" \
+  "${CHEMUSON_OUTPUT_DIR}/dist-flatpak" \
   "packaging/flatpak/io.github.PJGV333.Chemuson.yml"
 ```
 

@@ -416,6 +416,12 @@ def test_generate_flatpak_pages_index_only_links_existing_channels(tmp_path) -> 
 
 def test_build_appimage_script_embeds_existing_update_information(tmp_path) -> None:
     repo_root = Path(__file__).resolve().parent.parent
+    linux_builder = (repo_root / "packaging/linux/build_linux_all.sh").read_text(encoding="utf-8")
+    assert 'CHEMUSON_OUTPUT_DIR="${CHEMUSON_OUTPUT_DIR:-${ROOT_DIR}}"' in linux_builder
+    assert 'VENV_DIR="${VENV_DIR:-${CHEMUSON_OUTPUT_DIR}/.venv}"' in linux_builder
+    assert 'DIST_DIR="${DIST_DIR:-${CHEMUSON_OUTPUT_DIR}/dist}"' in linux_builder
+    assert 'APPIMAGE_OUT_DIR="${APPIMAGE_OUT_DIR:-${CHEMUSON_OUTPUT_DIR}/dist-appimage}"' in linux_builder
+    assert 'FLATPAK_OUT_DIR="${FLATPAK_OUT_DIR:-${CHEMUSON_OUTPUT_DIR}/dist-flatpak}"' in linux_builder
     script_path = repo_root / "packaging" / "linux" / "build_appimage.sh"
     dist_dir = tmp_path / "dist"
     out_dir = tmp_path / "dist-appimage"
@@ -451,7 +457,7 @@ def test_build_appimage_script_embeds_existing_update_information(tmp_path) -> N
     assert appimage.read_bytes()[8:11] == b"AI\x02"
     assert os.access(appimage, os.X_OK)
     update_information = (
-        "gh-releases-zsync|PJGV333|Chemuson|prerelease|"
+        "gh-releases-zsync|PJGV333|Chemuson|latest-all|"
         "Chemuson-v1.2.3-beta.1-linux-x86_64.AppImage.zsync"
     )
     assert updateinfo.read_text(encoding="utf-8").strip() == update_information

@@ -5,11 +5,14 @@ Desarrollado en el **Grupo de Química Supramolecular de la Universidad de Sonor
 
 **Idioma:** Español · [Read this page in English](README.en.md)
 
+<p align="center"><img src="assets/branding/logo_ChemUSON.png" alt="Emblema del proyecto ChemUSON" width="300"></p>
+<p align="center"><sub>Identidad visual del proyecto ChemUSON; no es un escudo institucional oficial.</sub></p>
+
 ChemUSON es una aplicación de código abierto para **dibujar, visualizar, analizar y comunicar estructuras químicas**. Integra un editor 2D, visualización molecular 3D y herramientas de apoyo para química computacional, nomenclatura y exportación de figuras.
 
-> **DESCARGA RECOMENDADA — [ChemUSON 0.3.0-beta.3](https://github.com/PJGV333/Chemuson/releases/tag/v0.3.0-beta.3)** (25 de octubre de 2026). Es la **versión pública más reciente y recomendada para evaluar ChemUSON** en Windows y Linux. Ha sido objeto de aceptación funcional manual, pero continúa siendo una **beta**: pueden existir errores y funciones incompletas. Conserva copias de tu trabajo y verifica los resultados científicos.
+> **DESCARGA RECOMENDADA — [ChemUSON 0.3.0-beta.3](https://github.com/PJGV333/Chemuson/releases/tag/v0.3.0-beta.3)** (25 de octubre de 2026). Es la **versión pública más reciente y recomendada para evaluar ChemUSON** en Windows y Linux. Las observaciones manuales disponibles son limitadas y no constituyen aceptación individual de cada paquete beta.3. Continúa siendo una **beta**: pueden existir errores y funciones incompletas. Conserva copias de tu trabajo y verifica los resultados científicos.
 >
-> **¿Por qué GitHub muestra «Latest» junto a [v0.2.5](https://github.com/PJGV333/Chemuson/releases/tag/v0.2.5)?** Porque GitHub reserva esa etiqueta para versiones no preliminares. `v0.2.5` es la última release clasificada como estable, **no nuestra descarga recomendada actual**. Mantener la clasificación beta.3 protege la compatibilidad de los canales de actualización existentes.
+> **¿Por qué GitHub muestra «Latest» junto a beta.3?** El propietario cambió manualmente, de forma excepcional, el metadato de esa Release a `prerelease=false`. Esto no convierte el tag `v0.3.0-beta.3` en una versión estable ni cambia su precedencia SemVer o las preferencias del actualizador integrado. No es una política para futuras betas: el workflow oficial clasifica normalmente las versiones beta como prereleases.
 >
 > Para obtener el **código exacto de beta.3**, consulta [su etiqueta](https://github.com/PJGV333/Chemuson/tree/v0.3.0-beta.3). `main` es la línea de desarrollo y puede avanzar más allá del código publicado.
 
@@ -111,7 +114,7 @@ En Windows activa `.venv\Scripts\activate`; en fish usa `source .venv/bin/activa
 
 ChemUSON nace del trabajo del **Grupo de Química Supramolecular de la Universidad de Sonora (México)**, con el propósito de contribuir a la enseñanza, investigación y comunicación de la química mediante herramientas libres. Su desarrollo busca hacer más accesible la representación y el análisis molecular, sin sustituir el juicio científico.
 
-**Autores:** Pedro Jancarlo Gomez Vega*, José Octavio Juárez Sánchez, Alondra Karolina Montaño Preciado, Ramón Moreno Corral, Felipe Medrano Valenzuela, David Octavio Corona Martínez y Karen L. Ochoa Lara*.
+**Autores:** Pedro Jancarlo Gomez Vega*, José Octavio Juárez Sánchez, Alondra Karolina Montaño Preciado, Ramón Moreno Corral, Felipe Medrano Valenzuela, David Octavio Corona Martínez, Karen L. Ochoa Lara* y Jesús David Albino-Espíndola.
 
 \* Autores de correspondencia.
 

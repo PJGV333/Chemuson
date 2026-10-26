@@ -11,10 +11,10 @@ VERSION="${1:?missing VERSION (e.g. 0.3.0-beta.1)}"
 CHANNEL="${2:-stable}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-VENV_DIR="${VENV_DIR:-${ROOT_DIR}/.venv}"
 # CHEMUSON_OUTPUT_DIR (opcional) reubica TODAS las salidas de build fuera del
 # repositorio; las variables específicas tienen prioridad.
 CHEMUSON_OUTPUT_DIR="${CHEMUSON_OUTPUT_DIR:-${ROOT_DIR}}"
+VENV_DIR="${VENV_DIR:-${CHEMUSON_OUTPUT_DIR}/.venv}"
 DIST_DIR="${DIST_DIR:-${CHEMUSON_OUTPUT_DIR}/dist}"
 APPIMAGE_OUT_DIR="${APPIMAGE_OUT_DIR:-${CHEMUSON_OUTPUT_DIR}/dist-appimage}"
 FLATPAK_OUT_DIR="${FLATPAK_OUT_DIR:-${CHEMUSON_OUTPUT_DIR}/dist-flatpak}"

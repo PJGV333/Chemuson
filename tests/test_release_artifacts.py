@@ -30,7 +30,7 @@ def _make_release_dir(root: Path, *, version: str = "0.3.0-beta.1", channel: str
     tag = f"v{version}"
     sha = "a" * 40
     appimage_name = f"Chemuson-v{version}-linux-x86_64.AppImage"
-    update_track = "prerelease" if channel == "beta" else "latest"
+    update_track = "latest-all" if channel == "beta" else "latest"
     update_information = f"gh-releases-zsync|PJGV333|Chemuson|{update_track}|{appimage_name}.zsync"
     names = [
         f"Chemuson-v{version}-windows-x86_64-portable.exe",
@@ -95,6 +95,11 @@ def test_build_provenance_and_release_artifact_set_match_exact_release(tmp_path)
     record = json.loads((tmp_path / "build-provenance.json").read_text(encoding="utf-8"))
     assert record["tag"] == tag
     assert record["source_sha"] == sha
+    updateinfo = (tmp_path / f"Chemuson-v{version}-linux-x86_64.AppImage.updateinfo").read_text(encoding="utf-8")
+    assert updateinfo == (
+        "gh-releases-zsync|PJGV333|Chemuson|latest-all|"
+        f"Chemuson-v{version}-linux-x86_64.AppImage.zsync\n"
+    )
 
 
 def test_artifact_validator_rejects_channel_metadata_mismatch(tmp_path) -> None:

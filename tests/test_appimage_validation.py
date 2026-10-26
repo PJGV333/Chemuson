@@ -121,12 +121,15 @@ def test_preview_and_release_workflows_build_and_validate_same_type2_package() -
 
 def test_release_validator_requires_type2_and_zsync_without_changing_asset_name() -> None:
     validator = (ROOT / "packaging/release/validate_release_artifacts.py").read_text(encoding="utf-8")
+    appimage_validator = (ROOT / "packaging/release/validate_appimage.py").read_text(encoding="utf-8")
     builder = (ROOT / "packaging/linux/build_appimage.sh").read_text(encoding="utf-8")
     assert "validate_type2_header(appimage_path)" in validator
     assert 'AppImage.zsync' in validator
     assert 'Chemuson-v${VERSION}-linux-x86_64.AppImage' in builder
     assert 'gh-releases-zsync|${OWNER}|${REPO}|${UPDATE_TRACK}|' in builder
-    assert 'appimage_update_information' in builder
+    assert 'UPDATE_TRACK="latest-all"' in builder
+    assert 'update_track = "latest-all" if channel == "beta" else "latest"' in validator
+    assert 'track = "latest-all" if channel == "beta" else "latest"' in appimage_validator
 
 
 def test_appdir_requires_launcher_desktop_icon_and_appstream(tmp_path: Path) -> None:
