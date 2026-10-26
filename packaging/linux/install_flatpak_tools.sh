@@ -99,6 +99,40 @@ now_s() { date +%s; }
 elapsed() { printf '%s' "$(( $(now_s) - $1 ))"; }
 log() { printf '%s\n' "$*"; }
 
+# Plazo global de preparacion: ninguna suma de fases puede acercarse al
+# presupuesto del job, de modo que un origen degradado se agota a si mismo y
+# deja tiempo suficiente para el empaquetado (4-6 min historicos).
+START_TS="$(now_s)"
+PREP_DEADLINE="${CHEMUSON_FLATPAK_PREP_DEADLINE_SECONDS:-$(lock_value prep_deadline_seconds)}"
+PREP_DEADLINE="${PREP_DEADLINE:-900}"
+DEADLINE_TS=$(( START_TS + PREP_DEADLINE ))
+
+budget_left() {
+  local left=$(( DEADLINE_TS - $(now_s) ))
+  if (( left < 0 )); then
+    left=0
+  fi
+  printf '%s' "${left}"
+}
+
+# Limite real de una fase: el menor valor entre su propio limite y lo que queda
+# del plazo global. Devuelve 0 cuando el plazo ya se agoto.
+phase_limit() {
+  local limit="$1" left
+  left="$(budget_left)"
+  if (( limit < left )); then
+    printf '%s' "${limit}"
+  else
+    printf '%s' "${left}"
+  fi
+}
+
+deadline_exhausted() {
+  echo "ERROR: the ${PREP_DEADLINE}s preparation deadline was exhausted before ${1}; aborting so the job keeps its packaging budget (elapsed $(elapsed "${START_TS}")s)." >&2
+  log "Flatpak toolchain preparation timings (s): probe=${probe_seconds:-0} update=${update_seconds:-0} download=${download_seconds:-0} install=${install_seconds:-0}"
+  exit 4
+}
+
 probe_host() {
   local host="$1" scheme url
   for scheme in https http; do
@@ -235,13 +269,18 @@ log "cached .deb archives staged for apt verification: ${STAGED_DEBS}"
 
 UPDATE_T0="$(now_s)"
 apt_update_ok=false
-if timeout "${UPDATE_TIMEOUT}" ${SUDO} apt-get "${APT_OPTS[@]}" update -qq; then
+UPDATE_LIMIT="$(phase_limit "${UPDATE_TIMEOUT}")"
+if (( UPDATE_LIMIT <= 0 )); then
+  deadline_exhausted "apt-get update"
+fi
+if timeout "${UPDATE_LIMIT}" ${SUDO} apt-get "${APT_OPTS[@]}" update -qq; then
   apt_update_ok=true
 else
-  log "WARNING: apt-get update exceeded ${UPDATE_TIMEOUT}s or failed on ${CURRENT_HOST}; failing over to the next official mirror."
+  log "WARNING: apt-get update exceeded ${UPDATE_LIMIT}s or failed on ${CURRENT_HOST}; failing over to the next official mirror."
   if [[ "${#ORDERED_PROBES[@]}" -gt 1 && "${ORIGIN_MODE}" != "unchanged" ]]; then
     apply_origin 1
-    if timeout "${UPDATE_TIMEOUT}" ${SUDO} apt-get "${APT_OPTS[@]}" update -qq; then
+    UPDATE_LIMIT="$(phase_limit "${UPDATE_TIMEOUT}")"
+    if (( UPDATE_LIMIT > 0 )) && timeout "${UPDATE_LIMIT}" ${SUDO} apt-get "${APT_OPTS[@]}" update -qq; then
       apt_update_ok=true
     fi
   fi
@@ -254,11 +293,19 @@ fi
 
 # --- 3. Descargar una sola vez; la instalacion posterior es offline ---------
 attempt_download() {
-  timeout "${DOWNLOAD_TIMEOUT}" ${SUDO} apt-get "${APT_OPTS[@]}" install --yes --download-only "${PACKAGES[@]}"
+  local limit
+  limit="$(phase_limit "${DOWNLOAD_TIMEOUT}")"
+  if (( limit <= 0 )); then
+    return 1
+  fi
+  timeout "${limit}" ${SUDO} apt-get "${APT_OPTS[@]}" install --yes --download-only "${PACKAGES[@]}"
 }
 
 DOWNLOAD_T0="$(now_s)"
 download_ok=false
+if (( $(phase_limit "${DOWNLOAD_TIMEOUT}") <= 0 )); then
+  deadline_exhausted "the package download"
+fi
 if attempt_download; then
   download_ok=true
 else
@@ -289,11 +336,16 @@ log "cached .deb archives published for reuse: ${PUBLISHED_DEBS}"
 
 INSTALL_T0="$(now_s)"
 install_ok=false
-if timeout "${INSTALL_TIMEOUT}" ${SUDO} apt-get "${APT_OPTS[@]}" install --yes --no-download "${PACKAGES[@]}"; then
+INSTALL_LIMIT="$(phase_limit "${INSTALL_TIMEOUT}")"
+if (( INSTALL_LIMIT <= 0 )); then
+  deadline_exhausted "the offline toolchain install"
+fi
+if timeout "${INSTALL_LIMIT}" ${SUDO} apt-get "${APT_OPTS[@]}" install --yes --no-download "${PACKAGES[@]}"; then
   install_ok=true
 else
   log "offline install from verified archives was incomplete; retrying with a bounded online install."
-  if timeout "${INSTALL_TIMEOUT}" ${SUDO} apt-get "${APT_OPTS[@]}" install --yes "${PACKAGES[@]}"; then
+  INSTALL_LIMIT="$(phase_limit "${INSTALL_TIMEOUT}")"
+  if (( INSTALL_LIMIT > 0 )) && timeout "${INSTALL_LIMIT}" ${SUDO} apt-get "${APT_OPTS[@]}" install --yes "${PACKAGES[@]}"; then
     install_ok=true
   fi
 fi
@@ -345,14 +397,15 @@ for pkg in "${PACKAGES[@]}"; do
 done
 verify_seconds="$(elapsed "${VERIFY_T0}")"
 
-TOTAL_SECONDS=$(( update_seconds + download_seconds + install_seconds + verify_seconds ))
+TOTAL_SECONDS="$(elapsed "${START_TS}")"
 log "Flatpak toolchain ready: ${TOOL_REPORT[*]}"
-log "Flatpak toolchain preparation timings (s): probe=${probe_seconds} update=${update_seconds} download=${download_seconds} install=${install_seconds} verify=${verify_seconds} total=${TOTAL_SECONDS}"
+log "Flatpak toolchain preparation timings (s): probe=${probe_seconds} update=${update_seconds} download=${download_seconds} install=${install_seconds} verify=${verify_seconds} total=${TOTAL_SECONDS} deadline=${PREP_DEADLINE}"
 
 if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
   {
     printf '### Flatpak toolchain preparation\n\n'
     printf -- '- apt origin used: `%s://%s/ubuntu/` (probe %s s, mode %s)\n' "${CURRENT_SCHEME}" "${CURRENT_HOST}" "${probe_seconds}" "${ORIGIN_MODE}"
+    printf -- '- preparation deadline: `%s` s (per-phase limits: update %s s, download %s s, install %s s)\n' "${PREP_DEADLINE}" "${UPDATE_TIMEOUT}" "${DOWNLOAD_TIMEOUT}" "${INSTALL_TIMEOUT}"
     printf -- '- cached .deb staged / published: `%s` / `%s`\n' "${STAGED_DEBS}" "${PUBLISHED_DEBS}"
     printf -- '- packages: %s\n' "${TOOL_REPORT[*]}"
     printf -- '| phase | seconds |\n| --- | --- |\n'

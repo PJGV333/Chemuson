@@ -118,7 +118,8 @@ The Spanish and English project author lists SHALL add Jesús David Albino-Espí
 
 The Flatpak packaging jobs SHALL prepare their host toolchain through a shared, documented
 procedure that selects a healthy official Ubuntu package origin, bounds every network phase
-with an explicit wall-clock limit, reuses a package cache only after apt verifies each
+with an explicit wall-clock limit inside a single shared preparation deadline smaller than
+the job budget, reuses a package cache only after apt verifies each
 archive against the current signed index, and records the measured preparation and packaging
 times. Increasing a job `timeout-minutes` SHALL NOT be used as the fix, and third-party
 repositories or unsigned package sources SHALL NOT be introduced.
@@ -128,6 +129,12 @@ repositories or unsigned package sources SHALL NOT be introduced.
 - **WHEN** the Flatpak job prepares `flatpak`, `flatpak-builder` and `ostree`
 - **THEN** the preparation probes the official origins listed in the lock file, uses the fastest healthy one and fails over to the next if it fails
 - **AND** each phase ends within its configured limit or the job fails closed with the phase and limit in the error
+
+#### Scenario: Preparation cannot consume the packaging budget
+- **GIVEN** a runner where both mirror failover attempts are slow
+- **WHEN** the preparation phases run
+- **THEN** each phase timeout is the smaller of its own limit and the time left in the shared preparation deadline
+- **AND** exhausting that deadline fails the step closed naming the phase, instead of leaving the job to be cancelled without a cause
 
 #### Scenario: Warm package cache cannot introduce stale or tampered archives
 - **GIVEN** a previous run published its downloaded `.deb` archives to the Actions cache

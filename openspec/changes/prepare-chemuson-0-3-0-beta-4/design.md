@@ -93,13 +93,17 @@ Decisión de diseño (respeta el orden de preferencia del propietario):
    25 min en la publicación Flatpak). El control queda dentro de las fases: 300 s para
    `apt-get update`, 600 s para la descarga acotada, 300 s para la instalación offline y,
    en `build_flatpak.sh`, 1500/300/300 s para builder/repo/bundle con salida 124 traducida a
-   un diagnóstico explícito. Si aun así se excede el límite, el job falla cerrado y el
-   reporte del preview sigue marcando el Flatpak como no exitoso.
+   un diagnóstico explícito. Todas las fases del preparador comparten además un plazo global
+   de 900 s (`prep_deadline_seconds`): cada límite efectivo es el mínimo entre el de la fase
+   y lo que resta del plazo, así que la preparación no puede superar la mitad del presupuesto
+   del job ni aunque los dos rebotes tarden. Si aun así se excede el límite, el job falla
+   cerrado indicando la fase y el reporte del preview sigue marcando el Flatpak como no exitoso.
 
 Riesgos de regresión y mitigación: el script escribe en `/etc/apt` del runner efímero, no en
-el repositorio; se probó contra un arnés local con apt/curl/dpkg simulados en nueve escenarios
+el repositorio; se probó contra un arnés local con apt/curl/dpkg simulados en once escenarios
 (espejos sanos, nodo estrangulado, rebote de update, rebote de descarga, caché cálida,
-descarga fallida, paquetes de publicación, lista de mirrors no escribible y fallo cerrado) y contra los cuatro orígenes
+descarga fallida, paquetes de publicación, lista de mirrors no escribible, fallo cerrado,
+plazo global agotado y update colgado cortado a los 2 s) y contra los cuatro orígenes
 reales para verificar la forma de la sonda. `build_flatpak.sh` sólo gana guardas de tiempo y
 registro de fases: el manifiesto, los `sha256` pinneados, el smoke ChemName empaquetado, el
 branch `preview-<sha>`, el nombre del bundle y las validaciones OSTree/GPG no cambian. Los

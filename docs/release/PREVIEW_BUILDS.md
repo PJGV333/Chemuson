@@ -203,13 +203,20 @@ Contrato actual de preparación (jobs `build_linux_flatpak`, `build_flatpak` y
   `packaging/flatpak/toolchain.lock` fija imagen del runner, paquetes, versiones mínimas
   admitidas, mirrors oficiales permitidos y límites de tiempo por fase.
 - Sondea los cuatro orígenes oficiales de Ubuntu (6 s cada uno), elige el más rápido y
-  reordena el `mirror+file` del runner; si el elegido falla, rebota al siguiente. Nunca se
-  usan repositorios de terceros ni se desactiva la verificación de firmas.
+  reordena el `mirror+file` del runner; si el elegido falla, rebota al siguiente. Verifica
+  que la reescritura tuvo efecto: si `/etc/apt/apt-mirrors.txt` no es escribible fija la
+  línea `URIs:` del stanza principal en el origen sondeado, y si tampoco se puede escribir
+  la lista de fuentes el paso falla cerrado. Nunca se usan repositorios de terceros ni se
+  desactiva la verificación de firmas.
 - Descarga acotada (`--download-only`), publica los `.deb` en
   `${{ runner.temp }}/chemuson-flatpak-apt` y **instala sin red** con `--no-download`; la
   siguiente ejecución restaura esa caché con `actions/cache` (clave derivada del hash del
   lockfile). apt vuelve a verificar cada `.deb` contra el índice firmado, así que una
   caché obsoleta o alterada se vuelve a descargar en lugar de instalarse.
+- Todas las fases comparten un plazo global de preparación de 900 s
+  (`prep_deadline_seconds` en el lockfile): cada `timeout` es el mínimo entre el límite de
+  la fase y lo que resta del plazo, de modo que dos rebotes lentos no puedan consumir el
+  presupuesto del job. Al agotarse, el paso falla cerrado indicando la fase y lo que resta.
 - `packaging/linux/build_flatpak.sh` acota `flatpak-builder` (1500 s),
   `build-update-repo` (300 s) y `build-bundle` (300 s), y registra los tiempos por fase en
   el resumen del paso; si se agota la fase se reporta la causa en lugar de consumir el job.
@@ -217,7 +224,7 @@ Contrato actual de preparación (jobs `build_linux_flatpak`, `build_flatpak` y
   publicación): el control pasa a estar dentro de cada fase, no inflando el presupuesto.
 
 El script imprime `Flatpak toolchain preparation timings (s): probe=… update=… download=…
-install=… verify=… total=…` y el builder `Flatpak packaging timings (s): builder=…
+install=… verify=… total=… deadline=…` y el builder `Flatpak packaging timings (s): builder=…
 repo_update=… bundle=… packaging_total=…`; con eso se comparan preparaciones reales sin
 adjudicar resultados locales a Actions. Los contratos estáticos de este comportamiento
 viven en `tests/test_flatpak_toolchain_preparation.py`.

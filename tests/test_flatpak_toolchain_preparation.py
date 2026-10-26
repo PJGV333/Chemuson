@@ -110,11 +110,21 @@ def test_installer_bounds_every_network_phase() -> None:
         "Acquire::Retries",
         "Acquire::http::Timeout",
         "Acquire::https::Timeout",
+        'timeout "${UPDATE_LIMIT}"',
+        'timeout "${INSTALL_LIMIT}"',
+        'timeout "${limit}"',
+        "--max-time",
+    ):
+        assert required in text
+    # Ninguna fase puede usar su limite bruto: todas pasan por el plazo global,
+    # de lo contrario dos rebotes lentos consumirian el presupuesto del job.
+    for bypass in (
         'timeout "${UPDATE_TIMEOUT}"',
         'timeout "${DOWNLOAD_TIMEOUT}"',
         'timeout "${INSTALL_TIMEOUT}"',
-        "--max-time",
     ):
+        assert bypass not in text, f"phase limit escapes the preparation deadline: {bypass}"
+    for required in ("phase_limit", "budget_left", "deadline_exhausted", "PREP_DEADLINE"):
         assert required in text
     lock = _lock_values()
     for key in (
@@ -124,9 +134,11 @@ def test_installer_bounds_every_network_phase() -> None:
         "apt_install_timeout_seconds",
         "apt_acquire_retries",
         "apt_acquire_timeout_seconds",
+        "prep_deadline_seconds",
     ):
         assert lock[key].isdigit(), f"missing numeric bound: {key}"
         assert int(lock[key]) > 0
+    assert int(lock["prep_deadline_seconds"]) < 45 * 60 // 2
 
 
 def test_installer_only_reaches_official_ubuntu_archives() -> None:
