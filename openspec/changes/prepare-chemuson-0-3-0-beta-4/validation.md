@@ -61,3 +61,42 @@ No hay ejecutables o paquetes trackeados en las rutas limpiadas; los tags/releas
 - Aceptación manual del propietario sobre los paquetes exactos del SHA corregido: pendiente.
 
 Próximo paso: habilitar una sesión GitHub autenticada para push normal, abrir/revisar PR y ejecutar Build Preview oficial en un SHA único. No integrar si un gate falla o falta un artifact/provenance/checksum. La creación del tag permanece bloqueada hasta revisar los cuatro paquetes y confirmar su aceptación explícita.
+
+## Reparación del timeout Flatpak — preparación del entorno (2026-10-26)
+
+### Baseline antes del cambio
+
+- Rama `release/v0.3.0-beta.4-prep`, HEAD `670a7670235ec1f8833cb03c7d2475bbf5a2589f`, `git status --short` vacío y sincronizado con `origin/release/v0.3.0-beta.4-prep` (mismo SHA en la rama remota).
+- Evidencia pública de Actions (API, sin sesión): run #40375931525 `cancelled`; job `Linux Flatpak bundle` pasos `Install Flatpak build tools` 18:26:17Z→19:10:16Z (43 min 59 s), `Verify exact source identity` correcto, `Build local Flatpak bundle only` 19:10:16Z→19:12:40Z (2 min 24 s) `cancelled`, upload `skipped`; `Preview build report` `failure` (fail-closed).
+- Comparación del mismo job en runs previos: #40371397035 preparación 37 min 24 s y job completo 41 min 28 s; #40163508452 0,52/3,70 min; #40162819727 0,43/4,18; #40156368359 0,67/4,00; #40144590463 0,48/4,52; #39900808044 0,32/4,68; #39881978237 0,35/4,80; #39679607716 0,67/5,02. En el run cancelado, el paso apt del job AppImage tardó 22 s y el del gate 28 s: no hubo caída general de apt.
+- Contexto externo: los runners fijan `mirror+file:/etc/apt/apt-mirrors.txt` con `azure.archive.ubuntu.com` prioridad 1; los cierres grandes se estrangulan en ese nodo sin error (actions/runner-images #14823, #14594, #12949). El propio repo ya registró 123 paquetes/99 MB y ~38 min para el job Flatpak de `test.yml`. Los logs del run no son descargables sin permisos de administración (`Must have admin rights`), por lo que el detalle de la URL lenta no se afirma.
+
+### Cambio implementado (commit `5274c2e6e332eaab7ce00463c9dfe86a19fdebad`)
+
+Archivos: `.github/workflows/build-preview.yml`, `.github/workflows/release.yml`, `packaging/linux/build_flatpak.sh`, `packaging/flatpak/toolchain.lock` (nuevo), `packaging/linux/install_flatpak_tools.sh` (nuevo), `tests/test_flatpak_toolchain_preparation.py` (nuevo), `tests/ci/expected_pytest_nodeids.txt`, `docs/release/PREVIEW_BUILDS.md` y los cuatro artefactos OpenSpec del cambio.
+
+No se tocaron: código de la aplicación, Clean2D, visor 3D, RDKit, ChemName, asistente, persistencia, logo, política del actualizador, manifiesto Flatpak (runtime `org.kde.Platform` 6.10, cinco ruedas con `sha256`, smoke empaquetado, permisos), ni los controles de release (verificación de SHA, checksums, provenance, metadata OSTree/GPG, Pages, gates del reporte). Ningún `timeout-minutes` se aumentó.
+
+### Validaciones locales ejecutadas en `5274c2e6`
+
+- `.venv/bin/python` 3.14.8, pytest 9.1.1, OpenSpec CLI instalado localmente.
+- YAML parseado con PyYAML (`BaseLoader`): build-preview 7 jobs, release 6 jobs, test 5 jobs. No hay `actionlint` en el equipo.
+- `bash -n packaging/linux/build_flatpak.sh` y `bash -n packaging/linux/install_flatpak_tools.sh`: PASS.
+- `pytest -q` focal (contracts preview/release/test-workflow, linux distribution scripts, appimage validation, preview build, release artifacts, tag validation, branding, packaged icon smoke, flatpak toolchain): **100 passed**.
+- `pytest -q tests/architecture`: **283 passed**.
+- `python -m compileall src tests tools packaging`: PASS. Ruff focal (`F401,F811,F821,E722,E741`) sobre el test nuevo: PASS.
+- `openspec validate prepare-chemuson-0-3-0-beta-4 --strict`: valid.
+- `git diff --check 670a7670..5274c2e6`: sin avisos; `git status --short` limpio tras el commit.
+- Colección completa sin ejecutar tests: 2.664 node IDs; el manifiesto queda en 2.642 (2.631 + los 11 nuevos). La diferencia de 22 node IDs preexistentes se conserva documentada y no se rebaselinea.
+
+### Arnés del preparador y del empaquetador
+
+- Arnés local con `apt-get`, `curl` y `dpkg-query` simulados (fuera del repositorio, en `/tmp/fp-harness`) sobre el script real: ocho escenarios PASS — espejos sanos con instalación offline, nodo azure estrangulado excluido de la selección, rebote de `apt-get update` al segundo origen, rebote de la descarga acotada, caché cálida reutilizada, descarga fallida con repliegue acotado, paquetes de publicación (`ostree gnupg`) y fallo cerrado con `exit 3` cuando ningún origen oficial responde. En el modo `URIs:` directas la reescritura cambia sólo el stanza principal y conserva `Signed-By` y `noble-security`.
+- Sonda real contra los cuatro orígenes: `azure.archive.ubuntu.com` responde sólo por HTTP (200), los otros tres por HTTPS; la sonda del script cubre ambos esquemas.
+- Mock-run de `build_flatpak.sh` en modo preview con `flatpak`/`flatpak-builder` simulados: bundle `Chemuson-v0.3.0-beta.4-preview-670a7670-linux-x86_64.flatpak`, resumen de fases escrito y salida 0. Con `CHEMUSON_FLATPAK_BUILDER_TIMEOUT_SECONDS=1` devuelve 124 con el diagnóstico específico; con `CHEMUSON_FLATPAK_REPO_URL` definido sigue fallando cerrado (`exit 2`) porque un preview no puede usar remoto público.
+
+### Pendiente de evidencia en GitHub
+
+- `git push origin release/v0.3.0-beta.4-prep` vuelve a fallar sin credenciales (`could not read Username for 'https://github.com'`, `GIT_TERMINAL_PROMPT=0`); `gh auth status` sigue sin sesión. El commit `5274c2e6` permanece local y la rama remota continúa en `670a7670`.
+- Por tanto el nuevo Build Preview todavía no existe: no se declara ninguna mejora de tiempos medida en Actions hasta comparar los pasos `Install Flatpak build tools` y `Build local Flatpak bundle only` del run nuevo contra los 43 min 59 s y 2 min 24 s del run cancelado.
+- Los cuatro paquetes del candidato corregido siguen **NOT BUILT**: no hay artifact, checksum ni provenance que revisar, y la aceptación manual del logotipo en paquetes congelados continúa pendiente.
