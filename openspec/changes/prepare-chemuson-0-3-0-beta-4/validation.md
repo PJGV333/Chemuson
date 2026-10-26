@@ -259,3 +259,16 @@ usuario tiene 0 referencias de Chemuson):
 - El log del job muestra el humo de ChemName ejecutado contra el arbol empaquetado:
   `"ok": true` con ethanol/benzene/acetamide/ethane/cyclohexane/unsupported_element
   en `pass` y las plantillas `.mol` verificadas por SHA-256 en `/app`.
+
+## Run #42: la cache de paquetes funciona en CI (cachefria y calientefria)
+
+Run `40399880083` (Build Preview #42) sobre `8d0fff77`, 7/7 jobs en verde.
+
+- `Cache restored from key: flatpak-apt-v1-preview-1e325240…-40397595176`: acierto
+  por prefijo `restore-keys` sobre la cache guardada por el run anterior (99 MB).
+- Preparacion: `probe=7 update=6 download=1 install=10 verify=0 total=28`
+  (28 s; la fase de descarga baja de 4 s a 1 s gracias a los `.deb` restaurados).
+- `cached .deb archives published for reuse: 123/123` y guardado nuevo con clave
+  `flatpak-apt-v1-preview-1e325240…-40399880083`.
+- Empaquetado: `builder=134 repo_update=0 bundle=140 packaging_total=274` (4,57 min).
+- Origen elegido de nuevo `https://us.archive.ubuntu.com/ubuntu/`.
