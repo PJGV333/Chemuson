@@ -188,3 +188,27 @@ SHA coincidan con el candidato publicado (`git worktree add --detach`).
   candidato (`packaging/flatpak/io.github.PJGV333.Chemuson.svg`, 2.326.332 B) vale
   `c7d017240cd890502157c7d3…` y es idéntico a `assets/branding/logo_ChemUSON.svg`;
   en `v0.3.0-beta.3` el mismo archivo valia `23cad7927c43088f…`.
+
+## Logs reales del job Flatpak del run #41 (prueba de la reparacion)
+
+Extraidos con `gh run view 40397595176 --log --job 121834716716`:
+
+- Sonda de origenes oficiales: `azure.archive.ubuntu.com OK in 6084 ms (http)`,
+  `archive.ubuntu.com OK in 689 ms`, `security.ubuntu.com OK in 691 ms`,
+  `us.archive.ubuntu.com OK in 202 ms` -> `apt origin selected:
+  https://us.archive.ubuntu.com/ubuntu/ (fastest of 4 healthy official mirrors)`.
+  Es el caso exacto que provoco la cancelacion: el nodo prioridad 1 estaba lento y
+  el script eligio un espejo oficial sano.
+- Tiempos de preparacion declarados por el propio script:
+  `probe=7 update=7 download=4 install=12 verify=0 total=32 deadline=900`
+  (32 s frente a los 43 min 59 s del run cancelado).
+- `cached .deb archives published for reuse: 123/123`, y el guardado de la cache
+  ocup6 `98.956.656` B con clave
+  `flatpak-apt-v1-preview-1e325240f9c956e5a22d2fa261ed9a30269171fc3770fd400b47624df77a9601-40397595176`
+  (99 MB y 123 paquetes: coincide con el cierre historico que atasco al nodo throttled).
+- Versiones verificadas contra el lockfile: `flatpak=1.14.6-1ubuntu0.1`,
+  `flatpak-builder=1.4.2-1build2`, `ostree=2024.5-1build2`.
+- Empaquetado real: `builder=139 repo_update=0 bundle=162 packaging_total=301`
+  (5,02 min) y `Built dist-flatpak-preview/Chemuson-v0.3.0-beta.4-preview-08f90ee2-linux-x86_64.flatpak`.
+- El primer run con la cache nueva la encontro ausente (`Cache not found for input keys: …`),
+  como se esperaba; el guardado posterior deja el prefijo disponible para los siguientes runs.
