@@ -212,3 +212,50 @@ Extraidos con `gh run view 40397595176 --log --job 121834716716`:
   (5,02 min) y `Built dist-flatpak-preview/Chemuson-v0.3.0-beta.4-preview-08f90ee2-linux-x86_64.flatpak`.
 - El primer run con la cache nueva la encontro ausente (`Cache not found for input keys: …`),
   como se esperaba; el guardado posterior deja el prefijo disponible para los siguientes runs.
+
+## Verificacion de los cuatro artefactos del run #41 (descarga con sesion)
+
+Descarga con `gh run download 40397595176` en `/tmp/paquetes41`. Los cuatro
+paquetes comparten el SHA `08f90ee22c78cc451d7e7b363dc891f673c10f18` y la
+`version: 0.3.0-beta.4` en su procedencia, con `build_type: preview` y
+`publication: false`.
+
+| paquete | SHA-256 verificado con `sha256sum -c` | tamano | runner |
+| --- | --- | --- | --- |
+| `Chemuson-v0.3.0-beta.4-preview-08f90ee2-linux-x86_64.flatpak` | `c8a9272edb4af9c2…` coincide | 106.918.304 B | ubuntu24 `20261023.334.3` |
+| `Chemuson-v0.3.0-beta.4-preview-08f90ee2-linux-x86_64.AppImage` | coincide con `checksums.sha256` | 171.550.885 B | ubuntu24 |
+| `Chemuson-v0.3.0-beta.4-preview-08f90ee2-windows-x86_64-portable.exe` | `259dc6cc856ea6c1…` coincide | 127.457.809 B | win25-vs2026 `20261021.278.1` |
+| `Chemuson-v0.3.0-beta.4-preview-08f90ee2-windows-x86_64-setup.exe` | `d0fdb240cecbce48…` coincide | 128.826.659 B | win25-vs2026 |
+
+En cada artefacto el `preview-provenance.json` tambien esta listado en
+`checksums.sha256` y su suma coincide, de modo que el par paquete+procedencia
+queda atado por SHA-256.
+
+## Contenido real del bundle Flatpak (prueba byte a byte)
+
+El bundle se abrio con la herramienta oficial en un entorno aislado
+(`XDG_DATA_HOME=/tmp/fp-verify/data`, despues borrado; la instalacion Flatpak del
+usuario no se modifico: `flatpak list --user` no muestra Chemuson y el repo del
+usuario tiene 0 referencias de Chemuson):
+
+- Ref OSTree del bundle: `app/io.github.PJGV333.Chemuson/x86_64/preview-08f90ee2`,
+  commit `7888014cb3e3b560c010c04fd4b14daceab08e30f3060bbea56378897c77b85b`,
+  ContentChecksum `da9b53a82726ec8cebec51e4a744e00305b89046684f5a9ea11d30c7dca34bb2`,
+  fecha 2026-10-26 20:42:37 UTC.
+- Logotipo nuevo: `/files/share/icons/hicolor/scalable/apps/io.github.PJGV333.Chemuson.svg`
+  vale `c7d017240cd890502157c7d32cfbb1ea673f7ebf65b3651fef27fa7dc46e2d2f`, identico
+  byte a byte (`cmp`) al SVG del candidato; el SVG de `v0.3.0-beta.3` valia
+  `23cad7927c43088f7a01ae50bdf0a26dc5f15238cc157aa18228f5316afddb9e` y no es el que
+  esta dentro. El PNG nuevo `/files/.../chemuson/assets/branding/chemuson-icon-512.png`
+  coincide con el del repositorio (`d131782bfc04a9dc…`).
+- Version declarada dentro del paquete: `_version.py` empaquetado contiene
+  `__version__ = "0.3.0-beta.4"` y existe `chemuson-0.3.0b4.dist-info`; el metainfo
+  empaquetado declara `<release version="0.3.0-beta.4" date="2026-10-26" />`.
+- Componentes cientificos intactos en `/app/lib/python3.13/site-packages`:
+  `rdkit` 2025.9.5 (+`rdkit.libs`, `rdkit-stubs`), `numpy` 2.3.2 (+`numpy.libs`),
+  `PyQt6` 6.10.0 con `pyqt6_qt6` 6.10.0 y `pyqt6_sip` 13.10.2, y los modulos
+  `chemuson/clean2d` (16 entradas), `chemuson/chemname` (21), `chemuson/gui` (58),
+  `chemuson/chemio` (9).
+- El log del job muestra el humo de ChemName ejecutado contra el arbol empaquetado:
+  `"ok": true` con ethanol/benzene/acetamide/ethane/cyclohexane/unsupported_element
+  en `pass` y las plantillas `.mol` verificadas por SHA-256 en `/app`.
