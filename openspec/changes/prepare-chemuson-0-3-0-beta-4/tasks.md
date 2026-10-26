@@ -42,3 +42,6 @@
   herramientas simuladas: preparación, identidad exacta del SHA, bundle nombrado, manifiesto de
   procedencia con `version: 0.3.0-beta.4` y checksum SHA-256 coincidente. Los resúmenes de fases se
   escriben en `$GITHUB_STEP_SUMMARY`.
+- [x] Publicar la rama y obtener el Build Preview #41 (`40397595176`) sobre `08f90ee2` con 7/7 jobs en verde:
+  `Install Flatpak build tools` 0,55 min y `Build local Flatpak bundle only` 5,03 min, job completo 5,78 min
+  con `timeout-minutes: 45` intacto. Cinco artefactos del mismo SHA generados.

@@ -140,3 +140,20 @@ No se tocaron: código de la aplicación, Clean2D, visor 3D, RDKit, ChemName, as
 - Script local (`/tmp/rehearse_flatpak_job.sh`) que extrae del `build-preview.yml` real los cuerpos `run:` de los pasos 3-5 y los ejecuta en orden con `apt-get`/`curl`/`dpkg-query` y `flatpak`/`flatpak-builder`/`ostree` simulados, respetando el `env` declarado en el propio workflow (`CHEMUSON_FLATPAK_APT_PACKAGES`, `CHEMUSON_FLATPAK_APT_CACHE_DIR` bajo `runner.temp`) y la ruta de la caché del paso 2.
 - Resultado: paso 3 `exit 0` (origen oficial sano, `published for reuse: 3/3`, instalación offline, versiones verificadas), paso 4 `exit 0` (`Verified preview source 08f90ee2…`), paso 5 `exit 0` con bundle `Chemuson-v0.3.0-beta.4-preview-08f90ee2-linux-x86_64.flatpak`, rama OSTree `preview-08f90ee2` y `Validated and checksummed 1 preview package(s)`. El `preview-provenance.json` generado registra `version: 0.3.0-beta.4`, `git_sha` único, `build_type: preview`, `publication: false`, y su `sha256` coincide con el `sha256sum` calculado aparte sobre el bundle.
 - El primer intento del ensayo falló con `Flatpak repo metadata was not generated correctly` porque un stub de versión del arnés tapaba al generador de metadatos del repo: no es un defecto del producto, pero confirma que la guarda de metadatos OSTree falla cerrado cuando el repositorio no quedó bien generado. También se comprobó que la verificación de versiones aborta con `could not read the version of flatpak` si la CLI no responde (`exit 4`).
+
+## Evidencia en GitHub Actions: Build Preview #41 en verde (2026-10-26 20:39–20:45Z)
+
+- Run `40397595176` (Build Preview #41) sobre `08f90ee22c78cc451d7e7b363dc891f673c10f18`, disparado por push a `release/v0.3.0-beta.4-prep`. **7/7 jobs en `success`**: `Validate preview source`, `Linux Flatpak bundle`, `Windows portable and installer`, `Linux AppImage Type 2`, `Release preflight rehearsal (non-publishing)`, `Release gate bounded checks rehearsal` y `Preview build report`.
+- Job `Linux Flatpak bundle` completo en **5,78 min** dentro de `timeout-minutes: 45` (sin cambiar):
+  | paso | duracion |
+  | --- | --- |
+  | Restore verified Flatpak toolchain package cache | 0,00 min (cachefria) |
+  | Install Flatpak build tools | **0,55 min** |
+  | Verify exact source identity | 0,00 min |
+  | Build local Flatpak bundle only | 5,03 min |
+  | Upload Linux Flatpak preview | 0,07 min |
+- Comparativa con el run cancelado #39 (`670a7670`): `Install Flatpak build tools` 43 min 59 s y `Build local Flatpak bundle only` cancelado a los 2 min 24 s. La preparacion bajo de 43 min 59 s a 0,55 min (48x) y el empaquetado vuelve a su rango historico (3,7-5,0 min). El run #38 habia quedado en 37 min 24 s de preparacion.
+- Artefactos del run (todos del mismo SHA `08f90ee2`), con tamano y caducidad 2026-11-09: `chemuson-preview-windows-portable` 126.174.095 B, `chemuson-preview-windows-installer` 128.360.242 B, `chemuson-preview-linux-appimage` 171.550.885 B, `chemuson-preview-linux-flatpak` 106.949.974 B y `chemuson-preview-build-report` 461 B.
+- La caché de `.deb` se restaura por prefijo (`restore-keys`), asi que este primer run fue frio (0,55 min de preparacion); el siguiente push medira la caché caliente.
+- Verificacion de contenido de los paquetes aun pendiente de credenciales: la descarga sin sesion falla (`401` en la API, `404` en la URL web). Herramienta local lista (`objects` OSTree indexados por SHA-256 de contenido): el SVG empaquetado `packaging/flatpak/io.github.PJGV333.Chemuson.svg` en beta.4 vale `c7d017240cd89050…` y en beta.3 valia `23cad7927c43088f…`, y `assets/branding/logo_ChemUSON.svg` comparte el hash de beta.4, de modo que la presencia de ese objeto en el bundle prueba el logotipo nuevo.
+- Consecuencia inmediata del fix del parser: el run anterior (#40) tuvo 0 jobs porque GitHub rechazo el archivo; este run si creo los 7 jobs, lo que confirma la correccion de los contextos de paso.
