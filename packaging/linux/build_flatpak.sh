@@ -31,6 +31,28 @@ BUNDLE_TIMEOUT_SECONDS="${CHEMUSON_FLATPAK_BUNDLE_TIMEOUT_SECONDS:-300}"
 
 phase_seconds() { printf '%s' "$(( $(date +%s) - $1 ))"; }
 
+# Ejecuta una fase acotada y traduce el corte por reloj (124) en un diagnostico
+# concreto; sin esto, un `build-update-repo` o `build-bundle` lento terminaba
+# con un codigo de salida sin causa aparente.
+run_phase() {
+  local label="$1" limit="$2" seconds_var="$3" t0 rc
+  shift 3
+  t0="$(date +%s)"
+  set +e
+  timeout "${limit}" "$@"
+  rc=$?
+  set -e
+  printf -v "${seconds_var}" '%s' "$(phase_seconds "${t0}")"
+  if [[ "${rc}" -ne 0 ]]; then
+    if [[ "${rc}" -eq 124 ]]; then
+      echo "ERROR: ${label} exceeded its ${limit}s wall-clock limit after $(phase_seconds "${t0}")s." >&2
+    else
+      echo "ERROR: ${label} failed (exit ${rc})." >&2
+    fi
+    exit "${rc}"
+  fi
+}
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 if [[ "${BUILD_TYPE}" == "preview" ]]; then
@@ -183,9 +205,8 @@ fi
 if [[ -n "${REPO_GPG_HOMEDIR}" ]]; then
   UPDATE_REPO_ARGS+=("--gpg-homedir=${REPO_GPG_HOMEDIR}")
 fi
-REPO_UPDATE_T0="$(date +%s)"
-timeout "${REPO_UPDATE_TIMEOUT_SECONDS}" flatpak build-update-repo "${UPDATE_REPO_ARGS[@]}" "${REPO_DIR}"
-REPO_UPDATE_SECONDS="$(phase_seconds "${REPO_UPDATE_T0}")"
+run_phase "build-update-repo" "${REPO_UPDATE_TIMEOUT_SECONDS}" REPO_UPDATE_SECONDS \
+  flatpak build-update-repo "${UPDATE_REPO_ARGS[@]}" "${REPO_DIR}"
 
 sign_unsigned_ostree_refs
 
@@ -210,9 +231,8 @@ fi
 if [[ -n "${REPO_PUBLIC_KEY_FILE}" ]]; then
   BUNDLE_ARGS+=("--gpg-keys=${REPO_PUBLIC_KEY_FILE}")
 fi
-BUNDLE_T0="$(date +%s)"
-timeout "${BUNDLE_TIMEOUT_SECONDS}" flatpak build-bundle "${BUNDLE_ARGS[@]}" "${REPO_DIR}" "${BUNDLE_PATH}" "${APP_ID}" "${BRANCH}"
-BUNDLE_SECONDS="$(phase_seconds "${BUNDLE_T0}")"
+run_phase "build-bundle" "${BUNDLE_TIMEOUT_SECONDS}" BUNDLE_SECONDS \
+  flatpak build-bundle "${BUNDLE_ARGS[@]}" "${REPO_DIR}" "${BUNDLE_PATH}" "${APP_ID}" "${BRANCH}"
 rm -f "${BUILD_LOG}"
 
 if [[ -n "${REPO_URL}" ]]; then

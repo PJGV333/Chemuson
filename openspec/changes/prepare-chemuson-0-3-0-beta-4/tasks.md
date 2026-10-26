@@ -35,3 +35,6 @@
   contaban copias fallidas (ahora verifican el destino y avisan con `0/N`), la fase de descarga que
   podía continuar sin presupuesto restante (ahora falla cerrado por plazo) y la ausencia de
   `DPkg::Lock::Timeout` frente a un runner con apt bloqueado. Escenario L del arnés y contratos.
+- [x] Revisar `build_flatpak.sh`: `build-update-repo` y `build-bundle` ahora pasan por `run_phase`,
+  que mide la fase y traduce el corte por reloj (124) en un diagnóstico explícito manteniendo el
+  código de salida. Verificado con mock de fases lentas (límite 1 s) y con la ruta feliz.
