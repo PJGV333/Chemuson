@@ -12,7 +12,8 @@
 - [x] Probar contratos focales de SemVer, selección de canal/preferencias, metadatos, Windows, Flatpak, downgrade e integridad; auditar AppImageUpdate upstream y corregir el selector beta inválido (`prerelease` literal) a `latest-all` para nuevos paquetes. El ejecutable AppImageUpdate no está instalado; no se afirma un smoke dinámico. beta.3 y preferencias permanecen inalteradas.
 - [x] Añadir Jesús David Albino-Espíndola después de los autores actuales, sin asterisco ni cambio de permisos.
 - [x] Actualizar la versión canónica/AppStream a `0.3.0-beta.4` y crear notas públicas bilingües, mantenimiento/logotipo solamente.
-- [ ] Ejecutar validaciones focales y `openspec validate prepare-chemuson-0-3-0-beta-4 --strict`; actualizar `validation.md` con comandos y SHA exacto.
-- [ ] Commit(s) descriptivos. Publicar rama y abrir/revisar PR si la sesión remota está autenticada y disponible.
+- [x] Ejecutar validaciones focales y `openspec validate prepare-chemuson-0-3-0-beta-4 --strict`; actualizar `validation.md` con comandos y SHA exacto.
+- [x] Crear commits descriptivos para la implementación y el registro de validación.
+- [ ] Publicar la rama y abrir/revisar PR cuando haya una sesión remota autenticada; `gh auth status` no muestra sesión en este entorno.
 - [ ] Ejecutar Build Preview oficial sobre SHA único; verificar preflight, checksums, provenance y los cuatro paquetes. No confundir pruebas locales con Actions.
 - [ ] Integrar respetando branch protection únicamente si puede hacerse por el flujo aprobado; dejar el tag sin crear y presentar evidencia para aceptación final del propietario.
