@@ -146,3 +146,9 @@ repositories or unsigned package sources SHALL NOT be introduced.
 - **WHEN** the packaging contracts are checked
 - **THEN** the Flatpak manifest keeps its runtime pin, the five sha256-pinned wheel sources, the packaged ChemName smoke, desktop/metainfo/icon installation and sandbox permissions
 - **AND** exact-SHA verification, checksums, provenance, GPG/OSTree metadata checks, Pages verification and fail-closed preview reporting remain active
+
+#### Scenario: A rejected workflow file cannot silently stop all packaging
+- **GIVEN** the Flatpak preparation needs the runner temporary directory
+- **WHEN** the preview and release workflows declare it
+- **THEN** it is declared only in step scope (`with:` or step `env:`), because GitHub rejects step-only contexts such as `runner` inside job-level `env`
+- **AND** a contract test fails if a job-level `env` references a step-only context or if a step `uses:` contains an expression, since a rejected file yields a run with zero jobs and no packages
