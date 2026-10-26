@@ -42,11 +42,22 @@ Se conservaron los dos manifests trackeados de `dist-appimage-diagnostic/`, byte
 
 No hay ejecutables o paquetes trackeados en las rutas limpiadas; los tags/releases beta.1–beta.3 se dejaron intactos.
 
+## Corrección del gate de inicio no Qt — revisión adicional
+
+- Baseline de esta revisión: rama `release/v0.3.0-beta.4-prep`, SHA `32ea9f05045a771874ec5e525e301bf855e8e9f6`, árbol limpio y sincronizado con `origin/release/v0.3.0-beta.4-prep`.
+- El propietario reportó Build Preview #40371397035 sobre ese SHA: `Release gate bounded checks rehearsal`, 220 passed y 1 failed en `test_startup_success_order`. La API pública del run respondió HTTP 504 al intentar consultar sus detalles; el estado del run citado se atribuye al reporte del propietario.
+- Reproducción local pre-cambio: `pytest -q tests/test_application_startup_non_qt.py::test_startup_success_order` falló con el `NameError: _application_icon_path` reportado y el `AttributeError` secundario por `write_crash_log` ausente. La colección del archivo tenía 11 node IDs; los contratos de branding/iconos previos pasaron (10 tests).
+- Corrección sólo en tests: commit candidato `2a629aac1355d96f8885c6ccdc05c7e1136d00d5`. No se modificó código de producción. El harness ahora inyecta el path existente, `QIcon` no nulo, `QApplication.setWindowIcon`, `window.setWindowIcon`, `QMessageBox` y `crash_reporter.write_crash_log`; la aserción sigue comprobando el orden completo y que el mismo icon object llegue a ambos.
+- Se añadió un caso de archivo ausente: verifica `FileNotFoundError`, reporte en crash log y mensaje crítico existente, sin construir icono ni ventana. Los tests previos de fallo de arranque genérico permanecen intactos.
+- En `2a629aac...`: `.venv/bin/python -m compileall src tests tools packaging` PASS; `.venv/bin/python -m pytest -q tests/test_application_startup_non_qt.py tests/test_branding.py tests/test_packaged_icon_smoke.py` PASS — 22 tests; Ruff focal en esos tres archivos PASS; OpenSpec strict y `git diff --check` PASS.
+- La colección completa (sin ejecutar tests) encontró 2,653 node IDs. El manifiesto previo contenía 2,630. Se agregó únicamente el nuevo node ID: el manifiesto final contiene 2,631; la comparación detecta 22 node IDs adicionales de archivos preexistentes ajenos a este cambio. No se añadieron para ocultar o rebaselinear deuda fuera de alcance, y no se ejecutó el suite masivo. Esa discrepancia preexistente queda documentada; el preview gate ejecuta su lista bounded explícita, no el plan de shards de `test.yml`.
+
 ## Preview y aceptación
 
-- `gh auth status`: sin sesión autenticada. No se hizo push, PR ni dispatch de GitHub Actions.
-- PyInstaller, `flatpak-builder`, `appimagetool` y `appimageupdatetool` no están disponibles localmente. **Los cuatro grupos oficiales de paquetes preview — Windows portable, Windows installer, AppImage Type 2 y Flatpak — están NOT BUILT.** Las comprobaciones estáticas/locales no se reportan como compilaciones.
-- No se modificaron permisos, tags, Releases, canales ni `gh-pages`; no se creó `v0.3.0-beta.4` ni Release.
-- Aceptación manual visual/funcional de los paquetes exactos: pendiente del propietario.
+- `gh auth status`: sin sesión autenticada. `git push --dry-run origin release/v0.3.0-beta.4-prep` falló antes de cualquier escritura con `could not read Username for 'https://github.com'`. La rama remota continúa en el SHA base `32ea9f05045a771874ec5e525e301bf855e8e9f6`; el commit corregido `2a629aac1355d96f8885c6ccdc05c7e1136d00d5` permanece local. No se abrió PR ni se hizo merge.
+- El intento de consultar por API el run #40371397035 recibió HTTP 504; el estado del nuevo código no está verificado en GitHub Actions. No hay un Build Preview nuevo ni URL de run que reportar.
+- PyInstaller, `flatpak-builder`, `appimagetool` y `appimageupdatetool` no están disponibles localmente. **Los cuatro grupos de paquetes corregidos — Windows portable, Windows installer, AppImage Type 2 y Flatpak — están NOT BUILT.** Las comprobaciones estáticas/locales no se reportan como compilaciones.
+- No se modificaron permisos, tags históricos, Releases, canales ni `gh-pages`; no se creó `v0.3.0-beta.4` ni Release. Beta.4 permanece identificada como beta y beta.3 conserva su clasificación excepcional.
+- Aceptación manual del propietario sobre los paquetes exactos del SHA corregido: pendiente.
 
-El siguiente paso autorizado es publicar la rama conforme a las protecciones del repositorio, ejecutar Build Preview oficial y revisar conjuntamente provenance, checksums y los cuatro artifacts. La creación del tag permanece bloqueada hasta aceptación explícita del propietario.
+Próximo paso: habilitar una sesión GitHub autenticada para push normal, abrir/revisar PR y ejecutar Build Preview oficial en un SHA único. No integrar si un gate falla o falta un artifact/provenance/checksum. La creación del tag permanece bloqueada hasta revisar los cuatro paquetes y confirmar su aceptación explícita.
