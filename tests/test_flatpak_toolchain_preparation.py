@@ -83,7 +83,11 @@ def test_installer_exists_and_is_valid_bash() -> None:
     if bash is None:  # pragma: no cover - runners and dev shells always ship bash
         return
     result = subprocess.run(
-        [bash, "-n", str(INSTALLER)], capture_output=True, text=True, timeout=60
+        [bash, "-n", str(INSTALLER)],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
     )
     assert result.returncode == 0, result.stderr
 
