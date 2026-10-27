@@ -77,9 +77,11 @@ Decisión de diseño (respeta el orden de preferencia del propietario):
    al commit `55cc8345863c7cc4c66a329aec7e433d2d1c52a9` (etiqueta `v6.1.0`).
 3. Caché segura: `packaging/flatpak/toolchain.lock` fija paquetes, versiones mínimas,
    mirrors oficiales permitidos y límites; su hash alimenta la clave de la caché de `.deb`.
-   La instalación posterior usa `--no-download`, de modo que apt verifica cada archivo
-   contra el índice firmado antes de instalarlo; un archivo obsoleto o alterado se vuelve a
-   descargar. No se cachan índices ni repositorios de terceros.
+   Tras actualizar los índices autenticados, cada archivo restaurado se copia a un archivo
+   privado propiedad de root y se compara su SHA-256 y nombre con el registro de paquete
+   de `apt-cache dumpavail`. Apt no verifica necesariamente un archivo completo existente:
+   `--no-download` por sí solo no proporciona esa garantía. Los archivos que no coinciden
+   se descartan y apt los descarga; no se cachan índices ni repositorios de terceros.
 4. Origen y reintentos: `packaging/linux/install_flatpak_tools.sh` sondea los cuatro
    orígenes oficiales de Ubuntu y reordena el `mirror+file` del runner (o la línea `URIs:`
    del stanza principal, preservando `Signed-By` y el stanza `noble-security`), con rebote
@@ -88,7 +90,9 @@ Decisión de diseño (respeta el orden de preferencia del propietario):
    principal se apunta directamente al origen oficial sondeado y, si tampoco se puede
    escribir la lista de fuentes, el job falla cerrado en vez de quedarse en el nodo asignado.
    Se fijan `Acquire::Retries`, timeouts HTTP/HTTPS
-   y `ForceIPv4`, y cada fase corre bajo `timeout`.
+   y `ForceIPv4`, y cada fase corre bajo `timeout`. Al cambiar de mirror se actualizan
+   los índices sin tolerar errores y se comprueba que los destinos incluyan el origen
+   seleccionado antes de volver a validar la caché y reintentar la descarga.
 5. Timeouts: no se aumenta ningún `timeout-minutes` (45 min en los jobs de empaquetado,
    25 min en la publicación Flatpak). El control queda dentro de las fases: 300 s para
    `apt-get update`, 600 s para la descarga acotada, 300 s para la instalación offline y,

@@ -211,8 +211,11 @@ Contrato actual de preparación (jobs `build_linux_flatpak`, `build_flatpak` y
 - Descarga acotada (`--download-only`), publica los `.deb` en
   `${{ runner.temp }}/chemuson-flatpak-apt` y **instala sin red** con `--no-download`; la
   siguiente ejecución restaura esa caché con `actions/cache` (clave derivada del hash del
-  lockfile). apt vuelve a verificar cada `.deb` contra el índice firmado, así que una
-  caché obsoleta o alterada se vuelve a descargar en lugar de instalarse.
+  lockfile). Tras actualizar los índices autenticados, el preparador copia cada `.deb` a
+  un archivo privado de root y compara su nombre y SHA-256 con los registros de APT antes
+  de reutilizarlo. Una caché obsoleta o alterada se descarta y se descarga de nuevo; apt
+  no garantiza esa verificación para archivos completos ya presentes. Si cambia el mirror,
+  el preparador actualiza los índices y confirma el destino antes de reintentar.
 - Todas las fases comparten un plazo global de preparación de 900 s
   (`prep_deadline_seconds` en el lockfile): cada `timeout` es el mínimo entre el límite de
   la fase y lo que resta del plazo, de modo que dos rebotes lentos no puedan consumir el

@@ -50,3 +50,11 @@ Comandos ejecutados: `git status --short --ignored -- <rutas>`, `git ls-files <r
 - API `/releases/latest`: también devuelve beta.3; actualmente tiene el distintivo GitHub **Latest** por la excepción manual del propietario.
 - El asset publicado `.AppImage.updateinfo` conserva `gh-releases-zsync|PJGV333|Chemuson|prerelease|Chemuson-v0.3.0-beta.3-linux-x86_64.AppImage.zsync`.
 - La herramienta `appimageupdatetool`/`appimageupdate` no está instalada localmente; no se afirma ejecución dinámica. Revisión estática del upstream `AppImageCommunity/AppImageUpdate` en commit `a211784dfc746fdb6d8d32d6bb39add451c1ddeb`, archivo `src/updateinformation/GithubReleasesZsyncUpdateInformation.cpp`: reconoce `latest`, `latest-pre` y `latest-all`; cualquier otro valor se concatena como tag en `/releases/tags/<valor>`. Por lo tanto, el `prerelease` literal actual no es un selector válido. `latest-all` recorre releases de cualquier clasificación; `latest-pre` filtra `prerelease=true`. Para beta, `latest-all` es coherente con la política existente de permitir graduación a final y con beta.3 etiquetada manualmente `prerelease=false`.
+
+## Baseline de seguridad P1/P2
+
+- Rama `release/v0.3.0-beta.4-prep`, HEAD y remoto `a95cf44969c938fabe10eca78450b515b2bcfa74`; `origin/main` `9c171a8267d632e9bd914392680c316c28fe5e87`; árbol limpio y checkpoint `checkpoint/beta4-before-security-a95cf449`.
+- Entorno local CachyOS Linux, Python 3.14.8, pytest 9.1.1, Ruff 0.17.1; sin `apt-get` local, por lo que el arnés simula apt y el runner Ubuntu debe comprobar la integración real.
+- `python -m pytest tests/test_flatpak_toolchain_preparation.py tests/test_preview_workflow_contract.py tests/test_release_workflow_contract.py tests/test_linux_distribution_scripts.py tests/architecture -q`: 325 aprobadas.
+- `python -m compileall -q src tests tools packaging`, `ruff check tests/test_flatpak_toolchain_preparation.py --select F401,F811,F821,E722,E741`, `bash -n packaging/linux/install_flatpak_tools.sh packaging/linux/build_flatpak.sh`, `openspec validate prepare-chemuson-0-3-0-beta-4 --strict` y `git diff --check`: correctos.
+- `python -m pytest --collect-only -q`: 2666 node IDs; manifiesto 2644, 22 discrepancias preexistentes ya documentadas y ninguna entrada del manifiesto ausente de la colección. No se ejecutó la suite masiva.

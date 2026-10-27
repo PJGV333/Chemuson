@@ -51,3 +51,11 @@
   aislado y borrado despues). Runs #41, #42 y #44 con 7/7 jobs en verde y preparacion de 32/28/26 s.
 - [x] Abrir el PR contra `main` (#12) con el alcance y la evidencia; no fusionarlo y no crear la
   etiqueta `v0.3.0-beta.4` hasta la aceptacion del propietario.
+
+## Cierre de seguridad autorizado posteriormente
+
+- [x] Corregir P1: archivo privado de apt, verificación SHA-256 y nombre contra registros autenticados antes de reutilizar la caché, descarga de reemplazo y fallo cerrado.
+- [x] Corregir P2: al cambiar de mirror, actualizar índices sin tolerar errores y verificar el origen antes de volver a descargar.
+- [x] Añadir regresiones de caché auténtica, alteración del mismo tamaño, identidad distinta, failover, fallo de mirrors, origen incorrecto y hashes ausentes; conservar las 22 discrepancias históricas del manifiesto.
+- [ ] Publicar correcciones, solicitar nueva revisión Codex y documentar respuesta a los hilos P1/P2.
+- [ ] Validar Build Preview definitivo y sus cuatro paquetes en el SHA exacto; integrar y publicar únicamente si todos los controles autorizados pasan.

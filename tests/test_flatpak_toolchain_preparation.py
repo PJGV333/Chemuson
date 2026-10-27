@@ -11,11 +11,15 @@ inputs untouched.
 
 from __future__ import annotations
 
+import hashlib
+import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -341,3 +345,118 @@ def test_scientific_packaging_inputs_remain_pinned() -> None:
         "chemuson.chemname.packaged_smoke",
     ):
         assert required in manifest
+
+
+@pytest.mark.parametrize("scenario", ["authentic", "tampered", "wrong_identity", "failover", "no_mirror", "wrong_origin", "missing_hashes"])
+def test_installer_authenticated_cache_and_mirror_recovery(tmp_path: Path, scenario: str) -> None:
+    """Exercise the real installer with isolated, deterministic APT commands."""
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    archives = tmp_path / "archives"
+    sources = tmp_path / "ubuntu.sources"
+    sources.write_text("Types: deb\nURIs: https://a.example/ubuntu/\nSuites: noble\nSigned-By: /key\n")
+    good = b"authentic-deb-content"
+    bad = b"X" + good[1:]
+    assert len(bad) == len(good) and bad != good
+    (cache / "flatpak_1_amd64.deb").write_bytes(bad if scenario in ("tampered", "wrong_identity") else good)
+    digest = hashlib.sha256(good).hexdigest()
+    log = tmp_path / "calls"
+    fake = fake_bin / "fake"
+    fake.write_text(
+        f"#!{sys.executable}\n"
+        + r'''import os, pathlib, sys, time
+name = pathlib.Path(sys.argv[0]).name
+args = sys.argv[1:]
+root = pathlib.Path(os.environ['TEST_ROOT'])
+scenario = os.environ['TEST_SCENARIO']
+sources = (root / 'ubuntu.sources').read_text()
+host = 'b.example' if 'b.example' in sources else 'a.example'
+with (root / 'calls').open('a') as out:
+    out.write(name + ' ' + host + ' ' + ' '.join(args) + '\n')
+if name == 'curl':
+    if 'b.example' in args[-1]: time.sleep(0.05)
+    sys.exit(0)
+if name == 'apt-cache':
+    if scenario == 'missing_hashes': sys.exit(0)
+    print('Package: flatpak\nFilename: pool/f/flatpak/flatpak_1_amd64.deb\nSHA256: ' + os.environ['TEST_HASH'] + '\n')
+    print('Package: other\nFilename: pool/o/other/other_1_amd64.deb\nSHA256: ' + os.environ['TEST_OTHER_HASH'] + '\n')
+    sys.exit(0)
+if name == 'apt-get':
+    if 'update' in args:
+        if scenario == 'no_mirror' and host == 'b.example': sys.exit(1)
+        (root / 'updated').write_text(host)
+        sys.exit(0)
+    if 'indextargets' in args:
+        print('https://' + ('wrong.example' if scenario == 'wrong_origin' else host) + '/ubuntu/dists/noble/main/binary-amd64/Packages')
+        sys.exit(0)
+    archive = next(a.split('=', 1)[1] for a in args if a.startswith('Dir::Cache::archives='))
+    package = pathlib.Path(archive) / 'flatpak_1_amd64.deb'
+    assert (root / 'updated').read_text() == host, 'download without current indexes'
+    if '--download-only' in args:
+        if scenario in ('failover', 'no_mirror') and host == 'a.example': sys.exit(1)
+        if not package.exists():
+            package.write_bytes(b'authentic-deb-content')
+            (root / 'downloaded').write_text(host)
+        sys.exit(0)
+    if '--no-download' in args:
+        assert package.read_bytes() == b'authentic-deb-content', 'unverified package reached install'
+        (root / 'installed').write_text(host)
+        sys.exit(0)
+    sys.exit(7)
+if name == 'dpkg-query':
+    print('1.15.0')
+    sys.exit(0)
+if name == 'flatpak':
+    print('Flatpak 1.15.0')
+    sys.exit(0)
+sys.exit(8)
+''',
+        encoding="utf-8",
+    )
+    fake.chmod(0o755)
+    for name in ("curl", "apt-cache", "apt-get", "dpkg-query", "flatpak"):
+        (fake_bin / name).symlink_to(fake)
+    env = os.environ | {
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "CHEMUSON_APT_SUDO": "",
+        "CHEMUSON_APT_SOURCES_FILE": str(sources),
+        "CHEMUSON_APT_ARCHIVES_DIR": str(archives),
+        "CHEMUSON_FLATPAK_APT_CACHE_DIR": str(cache),
+        "CHEMUSON_FLATPAK_APT_ALLOWED_HOSTS": "a.example b.example",
+        "CHEMUSON_FLATPAK_APT_PACKAGES": "flatpak",
+        "CHEMUSON_APT_OS_ID": "ubuntu",
+        "CHEMUSON_APT_OS_CODENAME": "noble",
+        "TEST_ROOT": str(tmp_path),
+        "TEST_SCENARIO": scenario,
+        "TEST_HASH": digest,
+        "TEST_OTHER_HASH": hashlib.sha256(bad).hexdigest(),
+    }
+    result = subprocess.run(["bash", str(INSTALLER)], env=env, capture_output=True, text=True, timeout=30, check=False)
+    calls = log.read_text()
+    if scenario in ("no_mirror", "wrong_origin", "missing_hashes"):
+        assert result.returncode != 0, result.stdout + result.stderr
+        assert not (tmp_path / "installed").exists()
+        if scenario != "missing_hashes":
+            assert "apt-get b.example" in calls and "update --error-on=any" in calls
+        if scenario == "wrong_origin":
+            assert "indexes do not identify the selected origin" in result.stderr
+        if scenario == "missing_hashes":
+            assert "contain no SHA-256 package hashes" in result.stderr
+        return
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (tmp_path / "installed").exists()
+    if scenario == "authentic":
+        assert not (tmp_path / "downloaded").exists(), "authentic cached bytes must be reused"
+        assert "verified and staged: 1" in result.stdout
+    if scenario in ("tampered", "wrong_identity"):
+        assert "failed authenticated SHA-256 verification" in result.stderr
+        assert (tmp_path / "downloaded").exists()
+        assert (cache / "flatpak_1_amd64.deb").read_bytes() == good
+    if scenario == "failover":
+        assert (tmp_path / "installed").read_text() == "b.example"
+        lines = calls.splitlines()
+        second_update = next(i for i, line in enumerate(lines) if line.startswith("apt-get b.example") and " update " in line)
+        second_download = next(i for i, line in enumerate(lines) if line.startswith("apt-get b.example") and "--download-only" in line)
+        assert second_update < second_download

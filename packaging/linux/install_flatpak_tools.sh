@@ -16,10 +16,9 @@ set -euo pipefail
 # Reglas de seguridad e integridad conservadas:
 #   * apt sigue siendo la única fuente de paquetes; sólo se admiten los mirrors
 #     oficiales listados en el lockfile. No se añaden PPA ni repos externos.
-#   * nunca se desactiva la verificación de firmas: el índice firmado sigue
-#     aplicando y apt comprueba el hash de cada .deb antes de instalarlo.
-#   * la caché de .deb se reutiliza a través de apt (`--no-download`), así que
-#     un archivo obsoleto o alterado simplemente se vuelve a descargar.
+#   * nunca se desactiva la verificación de firmas. Los .deb restaurados se
+#     comprueban por SHA-256 contra los indices autenticados antes de ponerlos
+#     en un archivo privado de apt; los restantes los descarga apt.
 #   * cada fase de red tiene un límite de tiempo explícito y el script falla de
 #     forma cerrada si ninguna fuente oficial responde.
 #
@@ -216,6 +215,7 @@ rewrite_sources_uri() {
 
 CURRENT_HOST=""
 CURRENT_SCHEME=""
+CURRENT_INDEX=0
 ORIGIN_MODE="unchanged"
 if [[ -r "${SOURCES_FILE}" ]] && grep -q "mirror+file:" "${SOURCES_FILE}"; then
   # El runner usa mirror+file: reordenar prioridades es la via menos invasiva.
@@ -230,6 +230,7 @@ fi
 
 apply_origin() {
   local index="$1" entry
+  CURRENT_INDEX="${index}"
   entry="$(probe_entry "${ORDERED_PROBES[index]}")"
   CURRENT_HOST="${entry%% *}"
   CURRENT_SCHEME="${entry##* }"
@@ -254,27 +255,88 @@ apply_origin() {
 apply_origin 0
 log "apt origin selected: ${CURRENT_SCHEME}://${CURRENT_HOST}/ubuntu/ (fastest of ${#PROBES[@]} healthy official mirrors)"
 
-# --- 2. Indexes: acotados y con un unico rebote de mirror --------------------
+# --- 2. Indices autenticados y archivo privado de apt -----------------------
+# Nunca reutilizar el archivo global del runner: apt puede aceptar un .deb ya
+# existente sin volver a calcular su hash. El directorio privado pertenece a
+# root, por lo que la copia comprobada no puede cambiar antes de la instalacion.
+${SUDO} install -d -m 0755 "${APT_ARCHIVES}"
+PRIVATE_ARCHIVES="$(${SUDO} mktemp -d "${APT_ARCHIVES}/chemuson.XXXXXXXX")"
+${SUDO} chmod 0755 "${PRIVATE_ARCHIVES}"
+cleanup_archives() { ${SUDO} rm -rf -- "${PRIVATE_ARCHIVES}"; }
+trap cleanup_archives EXIT
+APT_OPTS+=("-o" "Dir::Cache::archives=${PRIVATE_ARCHIVES}/")
+
+update_indexes() {
+  local targets expected
+  UPDATE_LIMIT="$(phase_limit "${UPDATE_TIMEOUT}")"
+  (( UPDATE_LIMIT > 0 )) || return 1
+  # Por defecto apt puede terminar con exito aun si reutiliza indices antiguos.
+  timeout "${UPDATE_LIMIT}" ${SUDO} apt-get "${APT_OPTS[@]}" update --error-on=any -qq || return 1
+  UPDATE_LIMIT="$(phase_limit "${UPDATE_TIMEOUT}")"
+  (( UPDATE_LIMIT > 0 )) || return 1
+  targets="$(timeout "${UPDATE_LIMIT}" ${SUDO} apt-get "${APT_OPTS[@]}" indextargets --format '$(URI)')" || return 1
+  case "${ORIGIN_MODE}" in
+    mirror-list) expected="mirror+file:${MIRROR_LIST}" ;;
+    sources-uri|sources-direct) expected="${CURRENT_SCHEME}://${CURRENT_HOST}/ubuntu/" ;;
+    *) return 1 ;;
+  esac
+  [[ "${targets}" == *"${expected}"* ]] || {
+    echo "ERROR: updated APT indexes do not identify the selected origin ${expected}." >&2
+    return 1
+  }
+}
+
 stage_cached_debs() {
-  local staged=0 deb target
-  ${SUDO} install -d -m 0755 "${APT_ARCHIVES}" 2>/dev/null || true
+  local staged=0 deb target candidate digest limit hashes="${PRIVATE_ARCHIVES}/authenticated-sha256"
+  limit="$(phase_limit "${UPDATE_TIMEOUT}")"
+  (( limit > 0 )) || return 1
+  # apt-cache obtiene los registros de los indices que apt-secure acaba de
+  # autenticar. Solo aceptamos SHA256 completos, nunca nombre o tamano.
+  if ! timeout "${limit}" ${SUDO} apt-cache dumpavail | awk -v RS='' '
+    {
+      name=""; hash=""
+      count=split($0, lines, "\n")
+      for (i=1; i<=count; i++) {
+        if (lines[i] ~ /^Filename: /) { name=lines[i]; sub(/^Filename: /, "", name); sub(/^.*\//, "", name) }
+        if (lines[i] ~ /^SHA256: /) { hash=lines[i]; sub(/^SHA256: /, "", hash) }
+      }
+      if (name ~ /^[a-zA-Z0-9.+_~%:-]+[.]deb$/ && hash ~ /^[0-9a-f]+$/ && length(hash) == 64)
+        print name, hash
+    }
+  ' | ${SUDO} tee "${hashes}" >/dev/null; then
+    echo "ERROR: cannot read authenticated APT package hashes." >&2
+    return 1
+  fi
+  if ! ${SUDO} test -s "${hashes}"; then
+    echo "ERROR: authenticated APT indexes contain no SHA-256 package hashes." >&2
+    return 1
+  fi
   shopt -s nullglob
   for deb in "${CACHE_DIR}"/*.deb; do
-    target="${APT_ARCHIVES}/$(basename "${deb}")"
-    ${SUDO} cp -f "${deb}" "${APT_ARCHIVES}/" 2>/dev/null || true
-    ${SUDO} chmod 0644 "${target}" 2>/dev/null || true
-    # Contar solo lo que realmente quedo disponible para apt: un contador
-    # optimista daria una evidencia falsa en el resumen del paso.
-    if [[ -f "${target}" ]]; then
-      staged=$(( staged + 1 ))
+    target="${PRIVATE_ARCHIVES}/$(basename "${deb}")"
+    candidate="${PRIVATE_ARCHIVES}/candidate.deb"
+    if ! ${SUDO} cp -L -- "${deb}" "${candidate}"; then
+      echo "WARNING: could not restore cached archive ${deb}; downloading it instead." >&2
+      continue
+    fi
+    limit="$(phase_limit "${DOWNLOAD_TIMEOUT}")"
+    (( limit > 0 )) || return 1
+    digest="$(timeout "${limit}" ${SUDO} sha256sum "${candidate}")" || return 1
+    digest="${digest%% *}"
+    if ${SUDO} grep -Fxq -- "$(basename "${deb}") ${digest}" "${hashes}"; then
+      ${SUDO} chmod 0644 "${candidate}"
+      ${SUDO} mv -f -- "${candidate}" "${target}"
+      if [[ -f "${target}" ]]; then
+        staged=$(( staged + 1 ))
+      fi
+    else
+      echo "WARNING: cached archive ${deb} failed authenticated SHA-256 verification; discarding it." >&2
+      ${SUDO} rm -f -- "${candidate}" "${deb}"
     fi
   done
   shopt -u nullglob
   printf '%s' "${staged}"
 }
-
-STAGED_DEBS="$(stage_cached_debs)"
-log "cached .deb archives staged for apt verification: ${STAGED_DEBS}"
 
 UPDATE_T0="$(now_s)"
 apt_update_ok=false
@@ -282,14 +344,14 @@ UPDATE_LIMIT="$(phase_limit "${UPDATE_TIMEOUT}")"
 if (( UPDATE_LIMIT <= 0 )); then
   deadline_exhausted "apt-get update"
 fi
-if timeout "${UPDATE_LIMIT}" ${SUDO} apt-get "${APT_OPTS[@]}" update -qq; then
+if update_indexes; then
   apt_update_ok=true
 else
   log "WARNING: apt-get update exceeded ${UPDATE_LIMIT}s or failed on ${CURRENT_HOST}; failing over to the next official mirror."
   if [[ "${#ORDERED_PROBES[@]}" -gt 1 && "${ORIGIN_MODE}" != "unchanged" ]]; then
     apply_origin 1
     UPDATE_LIMIT="$(phase_limit "${UPDATE_TIMEOUT}")"
-    if (( UPDATE_LIMIT > 0 )) && timeout "${UPDATE_LIMIT}" ${SUDO} apt-get "${APT_OPTS[@]}" update -qq; then
+    if (( UPDATE_LIMIT > 0 )) && update_indexes; then
       apt_update_ok=true
     fi
   fi
@@ -299,6 +361,9 @@ if [[ "${apt_update_ok}" != true ]]; then
   echo "ERROR: apt-get update could not complete from the official Ubuntu mirrors within ${UPDATE_TIMEOUT}s each (elapsed ${update_seconds}s)." >&2
   exit 3
 fi
+
+STAGED_DEBS="$(stage_cached_debs)" || exit 3
+log "cached .deb archives verified and staged: ${STAGED_DEBS}"
 
 # --- 3. Descargar una sola vez; la instalacion posterior es offline ---------
 LAST_DOWNLOAD_LIMIT=0
@@ -319,10 +384,16 @@ if attempt_download; then
   download_ok=true
 else
   log "WARNING: bounded package download failed after ${LAST_DOWNLOAD_LIMIT}s on ${CURRENT_HOST}; failing over to the next official mirror."
-  if [[ "${#ORDERED_PROBES[@]}" -gt 1 && "${ORIGIN_MODE}" != "unchanged" ]]; then
-    apply_origin 1
-    if attempt_download; then
-      download_ok=true
+  if (( CURRENT_INDEX + 1 < ${#ORDERED_PROBES[@]} )) && [[ "${ORIGIN_MODE}" != "unchanged" ]]; then
+    apply_origin "$(( CURRENT_INDEX + 1 ))"
+    # La URI es parte de la identidad del indice de apt. No reutilizar indices
+    # del origen anterior ni archivos validados solo contra esos indices.
+    if update_indexes; then
+      ${SUDO} find "${PRIVATE_ARCHIVES}" -maxdepth 1 -name '*.deb' -delete
+      STAGED_DEBS="$(stage_cached_debs)" || exit 3
+      if attempt_download; then
+        download_ok=true
+      fi
     fi
   fi
 fi
@@ -331,12 +402,16 @@ if [[ "${download_ok}" != true && "$(budget_left)" -le 0 ]]; then
   deadline_exhausted "the package download"
 fi
 
-# Publicar los .deb realmente descargados para que `actions/cache` los reutilice
-# en el siguiente run; apt los volvera a verificar contra el indice firmado.
+if [[ "${download_ok}" != true ]]; then
+  echo "ERROR: package download failed on the available official origins; refusing installation." >&2
+  exit 4
+fi
+
+# Solo publicar archivos completos; los parciales no son paquetes verificados.
 PUBLISHED_DEBS=0
 CANDIDATE_DEBS=0
 shopt -s nullglob
-for deb in "${APT_ARCHIVES}"/*.deb "${APT_ARCHIVES}"/partial/*.deb; do
+for deb in "${PRIVATE_ARCHIVES}"/*.deb; do
   if [[ ! -f "${deb}" ]]; then
     continue
   fi
@@ -362,12 +437,6 @@ if (( INSTALL_LIMIT <= 0 )); then
 fi
 if timeout "${INSTALL_LIMIT}" ${SUDO} apt-get "${APT_OPTS[@]}" install --yes --no-download "${PACKAGES[@]}"; then
   install_ok=true
-else
-  log "offline install from verified archives was incomplete; retrying with a bounded online install."
-  INSTALL_LIMIT="$(phase_limit "${INSTALL_TIMEOUT}")"
-  if (( INSTALL_LIMIT > 0 )) && timeout "${INSTALL_LIMIT}" ${SUDO} apt-get "${APT_OPTS[@]}" install --yes "${PACKAGES[@]}"; then
-    install_ok=true
-  fi
 fi
 install_seconds="$(elapsed "${INSTALL_T0}")"
 if [[ "${install_ok}" != true ]]; then

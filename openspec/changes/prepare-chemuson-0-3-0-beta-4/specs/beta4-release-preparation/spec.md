@@ -139,8 +139,15 @@ repositories or unsigned package sources SHALL NOT be introduced.
 #### Scenario: Warm package cache cannot introduce stale or tampered archives
 - **GIVEN** a previous run published its downloaded `.deb` archives to the Actions cache
 - **WHEN** a later Flatpak job restores that cache and installs
-- **THEN** apt installs with `--no-download` so every archive is verified against the signed index hashes
-- **AND** any missing, outdated or mismatched archive is re-fetched from an official origin instead of being installed
+- **THEN** each restored archive is copied into a root-owned private archive and its SHA-256 and archive filename are matched to the authenticated APT package records before it can be used
+- **AND** any missing, outdated or mismatched archive is re-fetched by apt from an official origin instead of being installed
+- **AND** installation uses `--no-download` only after successful authenticated acquisition; an existing apt archive is never trusted solely by filename or size
+
+#### Scenario: The package download switches its mirror
+- **GIVEN** the selected origin fails after its indexes were fetched
+- **WHEN** preparation selects an allowed fallback
+- **THEN** apt refreshes its indexes without tolerating acquisition errors and the selected origin is present in its index targets before download is retried
+- **AND** the shared deadline remains in force and a failed refresh or download prevents installation
 
 #### Scenario: Packaging phases report real timings and stay bounded
 - **GIVEN** the Flatpak bundle build downloads the pinned runtime and wheel sources
