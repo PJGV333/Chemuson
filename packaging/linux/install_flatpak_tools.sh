@@ -290,25 +290,17 @@ stage_cached_debs() {
   local staged=0 deb target candidate digest limit hashes="${PRIVATE_ARCHIVES}/authenticated-sha256"
   limit="$(phase_limit "${UPDATE_TIMEOUT}")"
   (( limit > 0 )) || return 1
-  # apt-cache obtiene los registros de los indices que apt-secure acaba de
-  # autenticar. Solo aceptamos SHA256 completos, nunca nombre o tamano.
-  if ! timeout "${limit}" ${SUDO} apt-cache dumpavail | awk -v RS='' '
-    {
-      name=""; hash=""
-      count=split($0, lines, "\n")
-      for (i=1; i<=count; i++) {
-        if (lines[i] ~ /^Filename: /) { name=lines[i]; sub(/^Filename: /, "", name); sub(/^.*\//, "", name) }
-        if (lines[i] ~ /^SHA256: /) { hash=lines[i]; sub(/^SHA256: /, "", hash) }
-      }
-      if (name ~ /^[a-zA-Z0-9.+_~%:-]+[.]deb$/ && hash ~ /^[0-9a-f]+$/ && length(hash) == 64)
-        print name, hash
+  # El plan de adquisicion de apt vincula nombre y SHA-256 al paquete y
+  # version realmente seleccionados, no a cualquier registro con igual nombre.
+  # ForceHash evita el MD5 que apt suele imprimir por compatibilidad.
+  if ! timeout "${limit}" ${SUDO} apt-get "${APT_OPTS[@]}" -o Acquire::ForceHash=SHA256 --print-uris install --yes --download-only "${PACKAGES[@]}" | awk '
+    /^\047/ {
+      hash=$4; sub(/^SHA256:/, "", hash)
+      if ($2 !~ /^[a-zA-Z0-9.+_~%:-]+[.]deb$/ || $4 !~ /^SHA256:/ || hash !~ /^[0-9a-f]+$/ || length(hash) != 64) exit 1
+      print $2, hash
     }
   ' | ${SUDO} tee "${hashes}" >/dev/null; then
-    echo "ERROR: cannot read authenticated APT package hashes." >&2
-    return 1
-  fi
-  if ! ${SUDO} test -s "${hashes}"; then
-    echo "ERROR: authenticated APT indexes contain no SHA-256 package hashes." >&2
+    echo "ERROR: cannot obtain authenticated SHA-256 acquisition plan from APT." >&2
     return 1
   fi
   shopt -s nullglob

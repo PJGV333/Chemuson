@@ -79,7 +79,8 @@ Decisión de diseño (respeta el orden de preferencia del propietario):
    mirrors oficiales permitidos y límites; su hash alimenta la clave de la caché de `.deb`.
    Tras actualizar los índices autenticados, cada archivo restaurado se copia a un archivo
    privado propiedad de root y se compara su SHA-256 y nombre con el registro de paquete
-   de `apt-cache dumpavail`. Apt no verifica necesariamente un archivo completo existente:
+   del plan `apt-get --print-uris` con `Acquire::ForceHash=SHA256`, vinculado a las
+   versiones realmente seleccionadas. Apt no verifica necesariamente un archivo completo existente:
    `--no-download` por sí solo no proporciona esa garantía. Los archivos que no coinciden
    se descartan y apt los descarga; no se cachan índices ni repositorios de terceros.
 4. Origen y reintentos: `packaging/linux/install_flatpak_tools.sh` sondea los cuatro

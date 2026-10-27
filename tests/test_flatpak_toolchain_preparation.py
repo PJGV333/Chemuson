@@ -378,11 +378,6 @@ with (root / 'calls').open('a') as out:
 if name == 'curl':
     if 'b.example' in args[-1]: time.sleep(0.05)
     sys.exit(0)
-if name == 'apt-cache':
-    if scenario == 'missing_hashes': sys.exit(0)
-    print('Package: flatpak\nFilename: pool/f/flatpak/flatpak_1_amd64.deb\nSHA256: ' + os.environ['TEST_HASH'] + '\n')
-    print('Package: other\nFilename: pool/o/other/other_1_amd64.deb\nSHA256: ' + os.environ['TEST_OTHER_HASH'] + '\n')
-    sys.exit(0)
 if name == 'apt-get':
     if 'update' in args:
         if scenario == 'no_mirror' and host == 'b.example': sys.exit(1)
@@ -390,6 +385,12 @@ if name == 'apt-get':
         sys.exit(0)
     if 'indextargets' in args:
         print('https://' + ('wrong.example' if scenario == 'wrong_origin' else host) + '/ubuntu/dists/noble/main/binary-amd64/Packages')
+        sys.exit(0)
+    if '--print-uris' in args:
+        assert 'Acquire::ForceHash=SHA256' in args
+        h = 'MD5Sum:deadbeef' if scenario == 'missing_hashes' else 'SHA256:' + os.environ['TEST_HASH']
+        print("'https://" + host + "/ubuntu/pool/flatpak.deb' flatpak_1_amd64.deb 21 " + h)
+        print("'https://" + host + "/ubuntu/pool/other.deb' other_1_amd64.deb 21 SHA256:" + os.environ['TEST_OTHER_HASH'])
         sys.exit(0)
     archive = next(a.split('=', 1)[1] for a in args if a.startswith('Dir::Cache::archives='))
     package = pathlib.Path(archive) / 'flatpak_1_amd64.deb'
@@ -416,7 +417,7 @@ sys.exit(8)
         encoding="utf-8",
     )
     fake.chmod(0o755)
-    for name in ("curl", "apt-cache", "apt-get", "dpkg-query", "flatpak"):
+    for name in ("curl", "apt-get", "dpkg-query", "flatpak"):
         (fake_bin / name).symlink_to(fake)
     env = os.environ | {
         "PATH": f"{fake_bin}:{os.environ['PATH']}",
@@ -443,7 +444,7 @@ sys.exit(8)
         if scenario == "wrong_origin":
             assert "indexes do not identify the selected origin" in result.stderr
         if scenario == "missing_hashes":
-            assert "contain no SHA-256 package hashes" in result.stderr
+            assert "cannot obtain authenticated SHA-256 acquisition plan" in result.stderr
         return
     assert result.returncode == 0, result.stdout + result.stderr
     assert (tmp_path / "installed").exists()
