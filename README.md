@@ -114,7 +114,7 @@ En Windows activa `.venv\Scripts\activate`; en fish usa `source .venv/bin/activa
 
 ChemUSON nace del trabajo del **Grupo de Química Supramolecular de la Universidad de Sonora (México)**, con el propósito de contribuir a la enseñanza, investigación y comunicación de la química mediante herramientas libres. Su desarrollo busca hacer más accesible la representación y el análisis molecular, sin sustituir el juicio científico.
 
-**Autores:** Pedro Jancarlo Gomez Vega*, José Octavio Juárez Sánchez, Alondra Karolina Montaño Preciado, Ramón Moreno Corral, Felipe Medrano Valenzuela, David Octavio Corona Martínez, Karen L. Ochoa Lara* y Jesús David Albino-Espíndola.
+**Autores:** Pedro Jancarlo Gomez Vega*, José Octavio Juárez Sánchez, Alondra Karolina Montaño Preciado, Jesús David Albino-Espíndola, Ramón Moreno Corral, Felipe Medrano Valenzuela, David Octavio Corona Martínez, Karen L. Ochoa Lara*.
 
 \* Autores de correspondencia.
 
