@@ -10,24 +10,24 @@ Developed by the **Supramolecular Chemistry Group at the University of Sonora, M
 
 ChemUSON is an open-source desktop application to **draw, visualize, analyze and communicate chemical structures**. It combines a 2D editor, a molecular 3D viewer, and supporting tools for computational chemistry, nomenclature and scientific figures.
 
-> **RECOMMENDED DOWNLOAD — [ChemUSON 0.3.0-beta.3](https://github.com/PJGV333/Chemuson/releases/tag/v0.3.0-beta.3)** (October 25, 2026). This is the **newest public release and the recommended version to evaluate ChemUSON** on Windows and Linux. Available manual observations are limited and do not constitute package-specific acceptance of each beta.3 artifact. This is still a **beta**: bugs and incomplete functions may remain. Back up your work and independently verify scientific results.
+> **RECOMMENDED DOWNLOAD — [ChemUSON 0.3.0-beta.4](https://github.com/PJGV333/Chemuson/releases/tag/v0.3.0-beta.4)** (October 27, 2026). This is the **newest public release and the recommended version to evaluate ChemUSON** on Windows and Linux. Packages have passed automated checks, but not exhaustive manual acceptance testing on every platform. This is still a **beta**: bugs and incomplete functions may remain. Back up your work and independently verify scientific results.
 >
-> **Why does GitHub label beta.3 “Latest”?** At the owner's exceptional manual decision, this Release has GitHub metadata `prerelease=false`. That does not turn the `v0.3.0-beta.3` tag into a stable version or change its SemVer precedence or the integrated updater's preferences. This is not a policy for future betas: the official workflow normally marks beta versions as prereleases.
+> **Why is it labeled “Latest” although it is a beta?** At the owner's decision, beta.4 is the featured public download on GitHub. GitHub's `Latest` badge and `prerelease=false` metadata **do not make it a stable release**: its SemVer version remains `0.3.0-beta.4`. The release workflow may initially mark future betas as prereleases; GitHub's badge does not change SemVer precedence or the updater's policy.
 >
-> For **the exact source of beta.3**, use [its tag](https://github.com/PJGV333/Chemuson/tree/v0.3.0-beta.3). `main` is the active development branch and may advance beyond the published release.
+> For **the exact source of beta.4**, use [its tag](https://github.com/PJGV333/Chemuson/tree/v0.3.0-beta.4). `main` is the active development branch and may advance beyond the published release. [Beta.3 remains available in the release history](https://github.com/PJGV333/Chemuson/releases/tag/v0.3.0-beta.3).
 
-## Download ChemUSON 0.3.0-beta.3 — recommended
+## Download ChemUSON 0.3.0-beta.4 — recommended
 
 | Platform | Package | Official download |
 | --- | --- | --- |
-| Windows (64-bit) | Installer | [Download `.exe`](https://github.com/PJGV333/Chemuson/releases/download/v0.3.0-beta.3/Chemuson-v0.3.0-beta.3-windows-x86_64-setup.exe) |
-| Windows (64-bit) | Portable application | [Download `.exe`](https://github.com/PJGV333/Chemuson/releases/download/v0.3.0-beta.3/Chemuson-v0.3.0-beta.3-windows-x86_64-portable.exe) |
-| Linux (64-bit) | AppImage Type 2 | [Download `.AppImage`](https://github.com/PJGV333/Chemuson/releases/download/v0.3.0-beta.3/Chemuson-v0.3.0-beta.3-linux-x86_64.AppImage) |
-| Linux (64-bit) | Flatpak | [Download `.flatpak`](https://github.com/PJGV333/Chemuson/releases/download/v0.3.0-beta.3/Chemuson-v0.3.0-beta.3-linux-x86_64.flatpak) |
+| Windows (64-bit) | Installer | [Download `.exe`](https://github.com/PJGV333/Chemuson/releases/download/v0.3.0-beta.4/Chemuson-v0.3.0-beta.4-windows-x86_64-setup.exe) |
+| Windows (64-bit) | Portable application | [Download `.exe`](https://github.com/PJGV333/Chemuson/releases/download/v0.3.0-beta.4/Chemuson-v0.3.0-beta.4-windows-x86_64-portable.exe) |
+| Linux (64-bit) | AppImage Type 2 | [Download `.AppImage`](https://github.com/PJGV333/Chemuson/releases/download/v0.3.0-beta.4/Chemuson-v0.3.0-beta.4-linux-x86_64.AppImage) |
+| Linux (64-bit) | Flatpak | [Download `.flatpak`](https://github.com/PJGV333/Chemuson/releases/download/v0.3.0-beta.4/Chemuson-v0.3.0-beta.4-linux-x86_64.flatpak) |
 
 Linux users can also [install through the published Flatpak beta channel](https://pjgv333.github.io/Chemuson/flatpak/beta/Chemuson-beta.flatpakref) to receive repository-based updates. A GitHub account is not needed to download public release files.
 
-[**All release assets and notes**](https://github.com/PJGV333/Chemuson/releases/tag/v0.3.0-beta.3) · [**SHA-256 checksums**](https://github.com/PJGV333/Chemuson/releases/download/v0.3.0-beta.3/checksums.txt)
+[**All release assets and notes**](https://github.com/PJGV333/Chemuson/releases/tag/v0.3.0-beta.4) · [**SHA-256 checksums**](https://github.com/PJGV333/Chemuson/releases/download/v0.3.0-beta.4/checksums.txt)
 
 ### Quick installation
 
@@ -36,8 +36,8 @@ Linux users can also [install through the published Flatpak beta channel](https:
 **Linux AppImage:** grant execute permission and run:
 
 ```bash
-chmod +x Chemuson-v0.3.0-beta.3-linux-x86_64.AppImage
-./Chemuson-v0.3.0-beta.3-linux-x86_64.AppImage
+chmod +x Chemuson-v0.3.0-beta.4-linux-x86_64.AppImage
+./Chemuson-v0.3.0-beta.4-linux-x86_64.AppImage
 ```
 
 **Linux Flatpak:** install from the official beta repository:
