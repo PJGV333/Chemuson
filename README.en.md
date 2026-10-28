@@ -8,6 +8,8 @@ Developed by the **Supramolecular Chemistry Group at the University of Sonora, M
 <p align="center"><img src="assets/branding/logo_ChemUSON.png" alt="ChemUSON project emblem" width="300"></p>
 <p align="center"><sub>Visual identity of the ChemUSON project; it is not an official University of Sonora seal.</sub></p>
 
+**📘 User documentation:** [**Open the illustrated ChemUSON 0.3.0-beta.4 user manual (Spanish)**](docs/MANUAL_USUARIO.md) · [Download the latest public release](https://github.com/PJGV333/Chemuson/releases/tag/v0.3.0-beta.4)
+
 ChemUSON is an open-source desktop application to **draw, visualize, analyze and communicate chemical structures**. It combines a 2D editor, a molecular 3D viewer, and supporting tools for computational chemistry, nomenclature and scientific figures.
 
 > **RECOMMENDED DOWNLOAD — [ChemUSON 0.3.0-beta.4](https://github.com/PJGV333/Chemuson/releases/tag/v0.3.0-beta.4)** (October 27, 2026). This is the **newest public release and the recommended version to evaluate ChemUSON** on Windows and Linux. Packages have passed automated checks, but not exhaustive manual acceptance testing on every platform. This is still a **beta**: bugs and incomplete functions may remain. Back up your work and independently verify scientific results.
