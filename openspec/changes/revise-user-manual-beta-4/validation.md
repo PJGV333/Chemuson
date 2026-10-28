@@ -22,6 +22,17 @@ Cambio puramente documental: conforme a `docs/testing/AGENT_TESTING_POLICY.md` y
 | Política de PDF | `find . -name '*.pdf'` no devuelve archivos en el repositorio y no se añadió, reemplazó ni subió ningún PDF. El manual enlaza Markdown. |
 | Alcance del árbol modificado | Solo `docs/MANUAL_USUARIO.md`, `docs/manual_usuario.md`, `docs/manual-figures/` y `openspec/changes/revise-user-manual-beta-4/`. Sin cambios en `src/`, `tests/`, `packaging/`, `.github/`, `architecture/modules.yml` ni tags. |
 
+## Pasadas cruzadas adicionales (segunda revisión)
+
+| Comprobación | Resultado |
+|---|---|
+| Las **55 rutas de menú** mencionadas en el manual, contrastadas con el volcado de la interfaz (`menus.txt`, `rail.txt`, `shortcuts.txt`) | Todas resueltas; no queda ninguna ruta inventada. |
+| Barrido inverso: **229 elementos** de la interfaz enumerados en los volcados y buscados en el manual | 45 sin mención literal, revisados uno a uno: variantes agrupadas (Anillo 4–12, glifos de orbital, tamaños de papel) o nombres ingleses ya citados. |
+| Huecos reales detectados por ese barrido y **documentados en esta revisión** | Barra de formato de texto contextual (fuente, tamaño 6–144, B/I/U, sub/superíndice, alineación, color, `Op %`); **Color de etiquetas ▸ Por elemento / Negro**; las seis entradas de **Ver → Numeración**; **Grosor de enlace/flecha/corchete** y **Longitud de lineas** con sus etiquetas literales; **Atomic Presets**, **Diatomic MO Presets** y **Ligand Field Presets**. |
+| Etiquetas literales del menú contextual verificadas en `canvas_context_menu.py` | **Incrementar (+1)** / **Disminuir (-1)**, **Diagrama de energia**, **Diagrama electrónico**, **Editar lóbulo ▸**, **Tamano** / **Pequena**, **Distribuir ligandos alrededor**. |
+| Inventario de figuras de la sección 22 regenerado desde las leyendas del cuerpo | 37 filas frente a 37 figuras, **0 desajustes** de número, archivo o descripción. |
+| Atajos del manual contrastados con el volcado de `QShortcut`/`QAction` | Coinciden, incluidas las excepciones declaradas (`Ctrl++` compartido con superíndice, `Ctrl+Q` sin atajo, `Ctrl+A`/`Ctrl+E` gestionados en el lienzo). |
+
 ## Ensayo de las capturas
 
 `docs/manual-figures/capturar_figuras.py` vuelve a generar el conjunto completo desde el repositorio:

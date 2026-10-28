@@ -60,6 +60,8 @@
 
 ### D. Omisiones del manual anterior
 
+Sin documentación de: **barra de formato de texto** que aparece con la herramienta Texto o un texto seleccionado (fuente, tamaño 6–144, B/I/U, `x₂`/`x²`, alineación, **Color de texto**, `Op %`, con la regla de que la opacidad sin selección afecta a todo el lienzo); **Color de etiquetas ▸ Por elemento / Negro** en la barra de simbología; las seis entradas de **Ver → Numeración**; **Grosor de enlace/flecha/corchete** y **Longitud de lineas**; y los submenúes **Atomic Presets / Diatomic MO Presets / Ligand Field Presets**.
+
 Sin documentación de: submenú **Copiar como**, **Redimensionar selección...**, Grosor de trazo, **Ver → Visualización** completo, **Numeración**, **Tamaño de lienzo**, **Paletas**, gestos de creación de enlaces/cadenas/anillos, atajos numéricos, resultados del análisis como texto en el lienzo, política de guardado automático (120 s + 8 s, 5 copias), centros de recuperación con tres pestañas, y la distinción entre pegado de SMILES, Molfile e imagen.
 
 ## Decisiones de documentación

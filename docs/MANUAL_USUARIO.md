@@ -484,6 +484,8 @@ Los cambios se aplican **al texto que está escribiendo** y, si ya tiene objetos
 
 Los textos creados son objetos del documento: se seleccionan, mueven, copian y eliminan como cualquier otro, y puede editarlos de nuevo con doble clic.
 
+**Color de las etiquetas de los átomos.** Desde la barra flotante de simbología (**Ver → Paletas → Simbolismos químicos**), el botón **Texto** incluye el submenú **Color de etiquetas ▸** con dos opciones excluyentes: **Por elemento** (por defecto: oxígeno en rojo, nitrógeno en azul, etc.) y **Negro**, útil para impresiones y publicaciones en blanco y negro. Afecta a todas las etiquetas de átomo del documento y es reversible.
+
 > **Dos avisos.** `Ctrl++` está registrado a la vez por **Zoom +** y por el **superíndice**: en el lienzo gana el zoom, así que use `Ctrl+Shift+=` o la barra de formato. Y el cuadro **Op %** de la barra de formato **sin nada seleccionado afecta a todo el lienzo**; aplíquelo solo sobre la selección concreta.
 
 ### 7.2 Corchetes y marcos

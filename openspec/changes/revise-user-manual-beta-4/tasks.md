@@ -20,4 +20,7 @@
 - [x] 4.1 Validar rutas de imagen, anclas, correlación imagen↔leyenda y consecutividad de figuras.
 - [x] 4.2 `git diff --check` y comprobación de que los README siguen enlazando al manual principal.
 - [x] 4.3 `openspec validate revise-user-manual-beta-4 --strict`.
+- [x] 4.4 Pasada cruzada de las 55 rutas de menú citadas contra los volcados de la interfaz.
+- [x] 4.5 Barrido inverso de los 229 elementos de la interfaz para detectar funciones sin documentar; las cuatro lagunas halladas se documentan.
+- [x] 4.6 Regeneración y verificación del inventario de figuras (37/37, cero desajustes).
 - [ ] 5.1 Revisión editorial del propietario en la PR; el cambio no se combina sin aprobación expresa del propietario.
