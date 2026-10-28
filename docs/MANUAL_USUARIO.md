@@ -1,18 +1,18 @@
 # Manual de usuario de ChemUSON
 
 **Aplicación:** ChemUSON · **Idioma:** español<br>
-**Versión pública de referencia:** [0.3.0-beta.3](https://github.com/PJGV333/Chemuson/releases/tag/v0.3.0-beta.3) (25 de octubre de 2026)<br>
-**Actualización de instalación y orientación inicial:** 25 de octubre de 2026<br>
+**Versión pública de referencia:** [0.3.0-beta.4](https://github.com/PJGV333/Chemuson/releases/tag/v0.3.0-beta.4) (publicada en octubre de 2026)<br>
+**Revisión de versión, instalación y guía visual:** 28 de octubre de 2026<br>
 **Base de la descripción detallada de la interfaz:** auditoría del 2 de octubre de 2026 (revisión original en `140a080c336515650bbeea0a4e6ead67a9999b23`).
 
 <p align="center"><img src="../assets/branding/logo_ChemUSON.png" alt="Emblema del proyecto ChemUSON" width="280"></p>
 <p align="center"><sub>Identidad visual del proyecto ChemUSON; no es un escudo institucional oficial.</sub></p>
 
-> **Alcance de la actualización:** las instrucciones de descarga e instalación señalan los paquetes públicos de beta.3. Los capítulos detallados de herramientas y menús proceden de la auditoría anterior y **no han sido revalidados íntegramente** contra cada paquete beta.3; algunas denominaciones o controles pueden diferir. Para obtener el código que corresponde a la beta publicada, consulta [el tag `v0.3.0-beta.3`](https://github.com/PJGV333/Chemuson/tree/v0.3.0-beta.3), no la rama de desarrollo `main`.
+> **Alcance de la actualización:** las instrucciones de descarga e instalación señalan los paquetes públicos de beta.3. Los capítulos detallados de herramientas y menús proceden de la auditoría anterior y **no han sido revalidados íntegramente** contra cada paquete beta.3; algunas denominaciones o controles pueden diferir. Para obtener el código que corresponde a la beta publicada, consulta [el tag `v0.3.0-beta.4`](https://github.com/PJGV333/Chemuson/tree/v0.3.0-beta.4), no la rama de desarrollo `main`.
 >
 > ChemUSON es una aplicación libre para representar y analizar estructuras moleculares en actividades de docencia e investigación. Esta beta es experimental: guarda copias de tus documentos importantes y verifica los resultados químicos antes de utilizarlos en trabajos científicos.
 
-[**Descargas oficiales**](https://github.com/PJGV333/Chemuson/releases/tag/v0.3.0-beta.3) · [**Página principal en español**](../README.md) · [**English overview**](../README.en.md)
+[**Descargas oficiales**](https://github.com/PJGV333/Chemuson/releases/tag/v0.3.0-beta.4) · [**Página principal en español**](../README.md) · [**English overview**](../README.en.md)
 
 ---
 
@@ -51,16 +51,16 @@
 
 ## 1. Instalación y ejecución
 
-La **versión pública más reciente es ChemUSON 0.3.0-beta.3**. Es una versión preliminar, no una edición estable. GitHub muestra beta.3 como **Latest** porque el propietario cambió excepcionalmente su metadato a `prerelease=false`; esto no altera el SemVer del tag ni establece una política para futuras betas. El workflow oficial clasifica normalmente las betas como prereleases.
+La **versión pública más reciente es ChemUSON 0.3.0-beta.4**. Es una versión preliminar, no una edición estable. GitHub muestra beta.3 como **Latest** porque el propietario cambió excepcionalmente su metadato a `prerelease=false`; esto no altera el SemVer del tag ni establece una política para futuras betas. El workflow oficial clasifica normalmente las betas como prereleases.
 
-Descarga desde [GitHub Releases](https://github.com/PJGV333/Chemuson/releases/tag/v0.3.0-beta.3). Los archivos oficiales se identifican con la versión `0.3.0-beta.3` y tienen [sumas SHA-256 publicadas](https://github.com/PJGV333/Chemuson/releases/download/v0.3.0-beta.3/checksums.txt).
+Descarga desde [GitHub Releases](https://github.com/PJGV333/Chemuson/releases/tag/v0.3.0-beta.4). Los archivos oficiales se identifican con la versión `0.3.0-beta.4` y tienen [sumas SHA-256 publicadas](https://github.com/PJGV333/Chemuson/releases/download/v0.3.0-beta.4/checksums.txt).
 
 | Sistema | Opción | Enlace |
 | --- | --- | --- |
-| Windows de 64 bits | Instalador | [`Chemuson-v0.3.0-beta.3-windows-x86_64-setup.exe`](https://github.com/PJGV333/Chemuson/releases/download/v0.3.0-beta.3/Chemuson-v0.3.0-beta.3-windows-x86_64-setup.exe) |
-| Windows de 64 bits | Portable | [`Chemuson-v0.3.0-beta.3-windows-x86_64-portable.exe`](https://github.com/PJGV333/Chemuson/releases/download/v0.3.0-beta.3/Chemuson-v0.3.0-beta.3-windows-x86_64-portable.exe) |
-| Linux de 64 bits | AppImage Type 2 | [`Chemuson-v0.3.0-beta.3-linux-x86_64.AppImage`](https://github.com/PJGV333/Chemuson/releases/download/v0.3.0-beta.3/Chemuson-v0.3.0-beta.3-linux-x86_64.AppImage) |
-| Linux de 64 bits | Flatpak | [`Chemuson-v0.3.0-beta.3-linux-x86_64.flatpak`](https://github.com/PJGV333/Chemuson/releases/download/v0.3.0-beta.3/Chemuson-v0.3.0-beta.3-linux-x86_64.flatpak) |
+| Windows de 64 bits | Instalador | [`Chemuson-v0.3.0-beta.4-windows-x86_64-setup.exe`](https://github.com/PJGV333/Chemuson/releases/download/v0.3.0-beta.4/Chemuson-v0.3.0-beta.4-windows-x86_64-setup.exe) |
+| Windows de 64 bits | Portable | [`Chemuson-v0.3.0-beta.4-windows-x86_64-portable.exe`](https://github.com/PJGV333/Chemuson/releases/download/v0.3.0-beta.4/Chemuson-v0.3.0-beta.4-windows-x86_64-portable.exe) |
+| Linux de 64 bits | AppImage Type 2 | [`Chemuson-v0.3.0-beta.4-linux-x86_64.AppImage`](https://github.com/PJGV333/Chemuson/releases/download/v0.3.0-beta.4/Chemuson-v0.3.0-beta.4-linux-x86_64.AppImage) |
+| Linux de 64 bits | Flatpak | [`Chemuson-v0.3.0-beta.4-linux-x86_64.flatpak`](https://github.com/PJGV333/Chemuson/releases/download/v0.3.0-beta.4/Chemuson-v0.3.0-beta.4-linux-x86_64.flatpak) |
 
 ### 1.1 Linux mediante Flatpak
 
@@ -90,17 +90,17 @@ Si la instalación requiere dependencias del entorno KDE o de Flathub, sigue las
 El archivo publicado para beta.3 **sí es un AppImage Type 2**. Descárgalo y, en la carpeta correspondiente, ejecuta:
 
 ```bash
-chmod +x Chemuson-v0.3.0-beta.3-linux-x86_64.AppImage
-./Chemuson-v0.3.0-beta.3-linux-x86_64.AppImage
+chmod +x Chemuson-v0.3.0-beta.4-linux-x86_64.AppImage
+./Chemuson-v0.3.0-beta.4-linux-x86_64.AppImage
 ```
 
 No necesitas instalar ChemUSON en el sistema para usar esta modalidad. Si aparece un problema gráfico, anota la distribución, el tipo de sesión (Wayland/X11), la tarjeta gráfica y los mensajes de terminal antes de [reportarlo](https://github.com/PJGV333/Chemuson/issues).
 
 ### 1.3 Windows
 
-**Instalador:** descarga `Chemuson-v0.3.0-beta.3-windows-x86_64-setup.exe` y ejecútalo desde el Explorador de archivos. Completa el asistente de instalación.
+**Instalador:** descarga `Chemuson-v0.3.0-beta.4-windows-x86_64-setup.exe` y ejecútalo desde el Explorador de archivos. Completa el asistente de instalación.
 
-**Portable:** descarga `Chemuson-v0.3.0-beta.3-windows-x86_64-portable.exe` y ejecútalo sin instalarlo. La versión portable no requiere ejecutar el instalador.
+**Portable:** descarga `Chemuson-v0.3.0-beta.4-windows-x86_64-portable.exe` y ejecútalo sin instalarlo. La versión portable no requiere ejecutar el instalador.
 
 Utiliza únicamente fuentes de descarga oficiales y comprueba las sumas SHA-256 cuando necesites verificar la integridad.
 
@@ -115,7 +115,7 @@ python -m pip install -e .
 python -m pip install -r requirements-dev.txt
 ```
 
-En Windows activa `.venv\Scripts\activate`; en fish utiliza `source .venv/bin/activate.fish`. Para trabajar específicamente sobre la versión pública, selecciona el tag `v0.3.0-beta.3` antes de instalar desde el código.
+En Windows activa `.venv\Scripts\activate`; en fish utiliza `source .venv/bin/activate.fish`. Para trabajar específicamente sobre la versión pública, selecciona el tag `v0.3.0-beta.4` antes de instalar desde el código.
 
 ---
 
@@ -134,7 +134,27 @@ El tema (claro u oscuro) se alterna desde el botón de tema de la barra de aplic
 
 Los paneles laterales se muestran u ocultan desde **Ver** (compatibilidad con versiones anteriores). Capturas de referencia de la interfaz moderna: [`docs/ui-modernization/after/`](ui-modernization/after/README.md).
 
+### Guía visual de la interfaz (capturas de referencia)
+
+Las siguientes son imágenes auténticas de una etapa documentada del desarrollo de ChemUSON. Pueden existir pequeñas diferencias con el ejecutable beta.4; no son una certificación de su funcionamiento.
+
+![ChemUSON: interfaz en tema claro](ui-modernization/after/main-light-1440x900.png)
+
+*Figura 1. Ventana principal en tema claro.*
+
+![ChemUSON: interfaz en tema oscuro](ui-modernization/after/main-dark-1440x900.png)
+
+*Figura 2. Ventana principal en tema oscuro.*
+
+![Herramientas de la barra lateral](ui-modernization/after/toolrail-flyout.png)
+
+*Figura 3. Herramientas desplegables de la barra lateral.*
+
 ---
+
+![Paleta de comandos](ui-modernization/after/command-palette.png)
+
+*Figura 4. La paleta de comandos se abre con Ctrl+P.*
 
 ## 3. Flujo básico de trabajo
 
@@ -274,6 +294,10 @@ El panel lateral (derecha) expone sus vistas como **pestañas**: **Inspector**, 
 ---
 
 ## 7. Menú Estructura
+
+![Ejemplos de unión de enlaces 2D](visual/bond-junctions-before-after.png)
+
+*Figura 5. Comparación de trazado 2D durante el desarrollo; no corresponde a una prueba nueva de beta.4.*
 
 ### 7.1 Limpieza y conformación 2D
 
@@ -649,6 +673,10 @@ La operación participa en deshacer/rehacer.
 
 ---
 
+![Enlaces y etiquetas estereoquímicas](visual/wedge-double-labels-before-after.png)
+
+*Figura 7. Ejemplo de enlaces y etiquetas en una comparativa de la evolución visual del software.*
+
 ## 16. Flechas, corchetes, símbolos, orbitales y diagramas
 
 ### 16.1 Restricción y ajuste de flechas
@@ -695,6 +723,10 @@ El objeto de gel admite carriles y bandas. La escala vertical puede representar 
 ---
 
 ## 18. Paneles laterales
+
+![Panel de plantillas](ui-modernization/after/sidepanel-templates.png)
+
+*Figura 6. Panel de plantillas de ChemUSON.*
 
 ### 18.1 Plantillas
 
@@ -1145,6 +1177,14 @@ Seleccione únicamente ese doble enlace y use `Ctrl+Alt+Rueda`.
 Mantenga `Alt` mientras coloca el extremo para desactivar el ajuste automático.
 
 ---
+
+## Identificación editorial y alcance
+
+- **Versión documentada:** 0.3.0-beta.4.
+- **Fecha de revisión:** 28 de octubre de 2026.
+- **Institución de origen:** Grupo de Química Supramolecular, Universidad de Sonora, México.
+- **Imágenes:** capturas y comparaciones técnicas genuinas del propio proyecto, tomadas de etapas documentadas anteriores. Pueden diferir de beta.4.
+- **Advertencia:** el logotipo de ChemUSON es una identidad del proyecto, no el escudo oficial de la institución.
 
 ## Nota de mantenimiento
 
