@@ -851,9 +851,9 @@ Tres detalles prácticos, comprobados en 0.3.0-beta.4:
 
 ![Vista Validación](manual-figures/42-panel-validacion.png)
 
-*Figura 33. Vista **Validación** tras ejecutar **Estructura → Validar valencias** (`Ctrl+Shift+V`). Columnas: **Afectado**, **Sev.**, **Código**, **Valencia**, **Mensaje** y **Sugerencia**.*
+*Figura 33. Vista **Validación** después de validar el benceno de la Figura 1: no hay errores, por eso el área aparece vacía con el aviso «Sin errores de valencia». Los botones **Validar**, **Anterior** y **Siguiente** revisan y recorren los avisos.*
 
-Ejecute **Estructura → Validar valencias** (`Ctrl+Shift+V`) y recorra los avisos con `F8` / `Shift+F8`. Cada fila indica el átomo o enlace afectado, la severidad, el código interno, la valencia observada y el mensaje. Cuando la aplicación dispone de una corrección segura, aparece un selector con la opción y el botón **Aplicar corrección**; cuando no la hay, la fila solo informa y la corrección es manual.
+Ejecute **Estructura → Validar valencias** (`Ctrl+Shift+V`) o el botón **Validar** de la propia vista, y recorra los avisos con `F8` / `Shift+F8` o con **Anterior** y **Siguiente**. Si hay problemas, la vista se llena con una tabla de seis columnas: **Afectado**, **Sev.**, **Código**, **Valencia**, **Mensaje** y **Sugerencia**. Cada fila indica el átomo o enlace afectado, la severidad, el código interno, la valencia observada y el mensaje. Cuando la aplicación dispone de una corrección segura, aparece un selector con la opción y el botón **Aplicar corrección**; cuando no la hay, la fila solo informa y la corrección es manual.
 
 ChemUSON **no cambia la química por sí solo**: no añade ni elimina hidrógenos ni modifica enlaces sin que usted lo confirme.
 
@@ -861,19 +861,27 @@ ChemUSON **no cambia la química por sí solo**: no añade ni elimina hidrógeno
 
 ![Vista Propiedades](manual-figures/41-panel-propiedades.png)
 
-*Figura 34. Vista **Propiedades** de una estructura: fórmula, masa, recuento de átomos, cargas, insaturaciones y descriptores de donadores/aceptores de enlaces de hidrógeno (HBD/HBA).*
+*Figura 34. Vista **Propiedades** del benceno de la Figura 1. La tabla tiene dos columnas, **Propiedad** y **Valor**.*
 
-La vista resume el documento: fórmula, masa molar, masa exacta, número de átomos y enlaces, carga total, anillos, insaturaciones y recuentos HBD/HBA. El botón **Copiar propiedades** copia la tabla **al portapapeles en formato de columnas separadas por tabuladores**; no genera ningún archivo. Péguela en una hoja de cálculo si necesita ordenarla.
+La vista resume el documento en once filas: **Fórmula**, **Masa exacta**, **Peso molecular**, **Carga total**, **Átomos**, **Enlaces**, **Issues de valencia**, **Análisis elemental**, **¹H NMR est.**, **¹³C NMR est.** y **MS est.** Las cuatro últimas son un resumen de una sola línea de lo que calculan las vistas de análisis y espectroscopía. El botón **Copiar propiedades** copia la tabla **al portapapeles en formato de columnas separadas por tabuladores**; no genera ningún archivo. Péguela en una hoja de cálculo si necesita ordenarla.
 
 ### 14.5 Espectroscopía orientativa
 
 ![Vista Espectroscopía con predicción estimada](manual-figures/45-panel-espectroscopia.png)
 
-*Figura 35. Vista **Espectroscopía** con una predicción estimada de un anillo aromático: pestañas **¹H NMR**, **¹³C NMR** y **MS**, columnas **δ ppm**, **Int.**, **Entorno** y **Conf.**, y los botones **Copiar tabla** y **Exportar tabla...*. La cabecera indica el método (`heuristic-v1`) y la **confianza global** del cálculo.*
+*Figura 35. Vista **Espectroscopía** con la predicción estimada del benceno. La cabecera indica el método y la confianza global del cálculo; debajo hay pestañas **¹H NMR**, **¹³C NMR** y **MS**, y los botones **Copiar tabla** y **Exportar tabla...***
 
-Abra **Ver → Paneles → Espectroscopía**. La predicción **se calcula sola** al cambiar la estructura: no hay botón «Analizar». Aparecen tres pestañas, **¹H NMR**, **¹³C NMR** y **MS**, cada una con una tabla de señales; bajo las tablas puede copiarlas al portapapeles o exportarlas a un archivo.
+Abra **Ver → Paneles → Espectroscopía**. La predicción **se calcula sola** al cambiar la estructura: no hay botón «Analizar». Aparecen tres pestañas con estas columnas:
 
-> **Lea esto antes de usarlas.** Las predicciones son **heurísticas** (`heuristic-v1`): ChemUSON asigna rangos típicos de desplazamiento químico a partir del entorno inmediato del núcleo y muestra una **confianza** orientativa (en torno a 0,4 con la versión instalada). No sustituyen a un simulador espectroscópico ni, desde luego, a un espectro experimental. No las use para asignar estructuras en un trabajo científico sin contraste experimental.
+| Pestaña | Columnas |
+|---|---|
+| **¹H NMR** | **δ ppm**, **Int.**, **Entorno**, **Conf.**, **Átomo** |
+| **¹³C NMR** | **δ ppm**, **Entorno**, **Conf.**, **Átomo** |
+| **MS** | **m/z**, **Int. %**, **Pico**, **Conf.** |
+
+Bajo las tablas puede copiarlas al portapapeles (**Copiar tabla**) o exportarlas a un archivo (**Exportar tabla...**).
+
+> **Lea esto antes de usarlas.** Las predicciones son **heurísticas** (`heuristic-v1`): ChemUSON asigna rangos típicos de desplazamiento químico a partir del entorno inmediato del núcleo y muestra una **confianza** orientativa (0,60 en el ejemplo de la Figura 35; el valor cambia según la estructura). No sustituyen a un simulador espectroscópico ni, desde luego, a un espectro experimental. No las use para asignar estructuras en un trabajo científico sin contraste experimental.
 
 ### 14.6 Nombre a estructura (con aviso de privacidad)
 
