@@ -532,7 +532,7 @@ La herramienta **Símbolos** (sin atajo de tecla) ofrece doce glifos: **Carga po
 
 *Figura 19. Ejemplo con la herramienta **Símbolos**: nitrógeno con carga formal positiva, oxígeno con carga parcial negativa y dos pares de electrones, y carga parcial positiva sobre el hidrógeno unido al carbono.*
 
-Para ajustar cargas sin glifos, use el menú contextual del átomo: **Carga formal → +1 / −1 / Establecer... / Restablecer a 0 / No implícitos** ([capítulo 11](#11-menú-contextual)).
+Para ajustar cargas sin glifos, use el menú contextual del átomo: **Carga formal → Incrementar (+1) / Disminuir (-1) / Establecer... / Restablecer a 0 / No implícitos** ([capítulo 11](#11-menú-contextual)).
 
 ### 7.5 Barra de simbología alternativa
 
@@ -720,12 +720,12 @@ Todas las entradas de **Análisis** escriben el resultado **como texto dentro de
 
 | Objeto bajo el puntero | Entradas propias del menú contextual |
 |---|---|
-| Átomo | **Carga formal ▸** (+1 / −1 / Establecer... / Restablecer a 0 / No implícitos), **Activar esfera de coordinación**, **Estilo de esfera ▸**. |
+| Átomo | **Carga formal ▸** (Incrementar (+1), Disminuir (-1), Establecer..., Restablecer a 0, **No implícitos**), **Activar esfera de coordinación**, **Estilo de esfera ▸**. |
 | Enlace | **Reordenar rama ▸**, **Color de enlace…**, **Elegir átomo de unión…**, **Convertir a enlace coordinativo**. |
 | Flecha o línea | **Grosor de flecha**, **Longitud de líneas** (solo en variantes de línea). |
 | Corchete o marco | **Grosor de corchete**. |
 | Diagrama de energía | **Diagrama de energía ▸** (cambiar tipo) y **Editar diagrama electrónico…**. |
-| Orbital | **Orbital ▸**, incluida la entrada **Editar lóbulo**. |
+| Orbital | **Orbital ▸**: **Color de orbital...**, **Restablecer color de orbital**, **Opacidad de orbital...** y, sobre un orbital concreto, el submenú **Editar lóbulo ▸** (**Color por lóbulo...**, **Opacidad por lóbulo...**, **Mover lóbulo...**, **Restablecer estilo de lóbulo**). |
 | Texto | **Editar texto**, **Fuente**, **Color** y **Eliminar**. |
 | Mancha de placa | **Cambiar color…**, **Opacidad**, **Tamaño**, **Mostrar/Ocultar Rf**, **Set Rf…**, **Eliminar mancha**. |
 
