@@ -23,4 +23,9 @@
 - [x] 4.4 Pasada cruzada de las 55 rutas de menú citadas contra los volcados de la interfaz.
 - [x] 4.5 Barrido inverso de los 229 elementos de la interfaz para detectar funciones sin documentar; las cuatro lagunas halladas se documentan.
 - [x] 4.6 Regeneración y verificación del inventario de figuras (37/37, cero desajustes).
-- [ ] 5.1 Revisión editorial del propietario en la PR; el cambio no se combina sin aprobación expresa del propietario.
+## 5. Entrega
+
+- [x] 5.1 Publicar la rama `docs/manual-usuario-beta4-campana` y abrir la PR hacia `main` (**#13**), sin combinarla.
+- [x] 5.2 Entregar el informe de campaña en español con los once apartados solicitados, incluidos los inventarios de ilustraciones y de funciones no verificables.
+- [ ] 5.3 Revisión editorial del propietario en la PR: el cambio no se combina sin aprobación expresa.
+- [ ] 5.4 Campaña posterior, fuera de este alcance: aprobación del Markdown y generación del PDF definitivo.
