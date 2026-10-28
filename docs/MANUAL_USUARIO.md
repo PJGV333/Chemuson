@@ -462,15 +462,29 @@ Al activarla con una estructura seleccionada se abre el cuadro **Rotación 3D pr
 
 La herramienta **Texto** (`T`) abre una paleta con nueve controles: **Fuente de etiquetas…**, **Tamaño…**, **Negrita** (`Ctrl+B`), **Cursiva** (`Ctrl+I`), **Subrayado** (`Ctrl+U`), **Subíndice…** (`Ctrl+=`), **Superíndice…** (`Ctrl+Shift+=`), **Aumentar tamaño** y **Reducir tamaño**.
 
+Al activar la herramienta **Texto** —o al seleccionar un objeto de texto ya creado— aparece además una **barra de formato de texto** bajo la barra superior. No es una barra fija: solo se muestra en contexto de texto. Ofrece:
+
+| Control | Detalle |
+|---|---|
+| Cuadro de **fuente** | Lista de las fuentes instaladas en el sistema. |
+| Cuadro de **tamaño** | De 6 a 144 pt. |
+| **B**, **I**, **U** | Negrita, cursiva y subrayado (`Ctrl+B`, `Ctrl+I`, `Ctrl+U`). |
+| **x₂** / **x²** | Subíndice (`Ctrl+=`) y superíndice (`Ctrl+Shift+=`). Son conmutables: activar uno desactiva el otro. |
+| Alineación | **Alinear a la izquierda**, **Centrar**, **Justificar**. |
+| **Color de texto** | Abre el selector de color. |
+| **Op …%** | Opacidad de 0 a 100 % en pasos de 5. |
+
+Los cambios se aplican **al texto que está escribiendo** y, si ya tiene objetos de texto seleccionados, **a esos objetos**; además quedan como formato por defecto para los textos siguientes. Todo es deshacible con `Ctrl+Z`.
+
 **Cómo usarla:**
 
 1. Elija la herramienta **Texto** y haga clic en el punto del lienzo donde empezar.
 2. Escriba; pulse `Enter` para confirmar o `Esc` para descartar.
-3. Para crear un subíndice o superíndice, seleccione antes el texto dentro de la caja de edición y aplique el control correspondiente (por ejemplo, en «H₂O» seleccione el «2»).
+3. Para crear un subíndice o superíndice dentro de una misma etiqueta (por ejemplo, el «2» de «H₂O»), seleccione ese fragmento en la caja de edición y pulse **x₂** o **x²** en la barra de formato.
 
 Los textos creados son objetos del documento: se seleccionan, mueven, copian y eliminan como cualquier otro, y puede editarlos de nuevo con doble clic.
 
-> **Nota sobre un atajo.** `Ctrl++` está asignado a **Zoom +** en el lienzo, de modo que el aumento de tamaño del texto solo es fiable desde la paleta o desde el menú. Use **Reducir tamaño** y **Aumentar tamaño** de la paleta para evitar ambigüedades.
+> **Dos avisos.** `Ctrl++` está registrado a la vez por **Zoom +** y por el **superíndice**: en el lienzo gana el zoom, así que use `Ctrl+Shift+=` o la barra de formato. Y el cuadro **Op %** de la barra de formato **sin nada seleccionado afecta a todo el lienzo**; aplíquelo solo sobre la selección concreta.
 
 ### 7.2 Corchetes y marcos
 
@@ -686,7 +700,7 @@ El clic derecho **no muestra siempre el mismo menú**: las entradas dependen del
 
 ![Menú contextual sobre un átomo](manual-figures/30-contextual-atomo.png)
 
-*Figura 26. Clic derecho sobre un átomo: **Cortar**, **Copiar**, **Pegar**, **Eliminar**, **Carga formal ▸**, **Activar esfera de coordinación** y **Análisis ▸**.*
+*Figura 26. Clic derecho sobre un átomo: **Cortar**, **Copiar**, **Pegar**, **Eliminar**, **Carga formal ▸*, **Activar esfera de coordinación** y **Análisis ▸**.*
 
 Las entradas **Reordenar rama**, **Color de enlace…** y **Elegir átomo de unión…** aparecen además cuando el átomo pertenece a una cadena con ramas.
 
@@ -720,14 +734,15 @@ Todas las entradas de **Análisis** escriben el resultado **como texto dentro de
 
 | Objeto bajo el puntero | Entradas propias del menú contextual |
 |---|---|
-| Átomo | **Carga formal ▸** (Incrementar (+1), Disminuir (-1), Establecer..., Restablecer a 0, **No implícitos**), **Activar esfera de coordinación**, **Estilo de esfera ▸**. |
+| Átomo | **Carga formal ▸* (Incrementar (+1), Disminuir (-1), Establecer..., Restablecer a 0, **No implícitos**), **Activar esfera de coordinación**, **Estilo de esfera ▸**. Si el átomo es un centro de coordinación con varios ligandos, aparece **Distribuir ligandos alrededor**. |
 | Enlace | **Reordenar rama ▸**, **Color de enlace…**, **Elegir átomo de unión…**, **Convertir a enlace coordinativo**. |
-| Flecha o línea | **Grosor de flecha**, **Longitud de líneas** (solo en variantes de línea). |
-| Corchete o marco | **Grosor de corchete**. |
-| Diagrama de energía | **Diagrama de energía ▸** (cambiar tipo) y **Editar diagrama electrónico…**. |
+| Flecha o línea | **Grosor de enlace/flecha/corchete ▸** (**Incrementar grosor**, **Disminuir grosor**, **Restablecer grosor**) y, con líneas o flechas, **Longitud de lineas ▸** (**Igualar longitudes** / **Igualar a la linea activa**, **Establecer longitud...**). |
+| Corchete o marco | El mismo submenú **Grosor de enlace/flecha/corchete ▸**. |
+| Diagrama de energía | **Diagrama de energia ▸**: **Etiqueta...**, **Posición de etiqueta ▸** (**Izquierda**, **Derecha**), **Numero de cajas...** (sobre filas), **Ocupación electrónica...** y el submenú **Estilo ▸** (colores de contorno, relleno, etiqueta y flechas ↑/↓, fondo, contorno y base de cajas, **Restablecer estilo**). |
+| Diagrama electrónico (MO, subniveles, campo de ligandos) | **Diagrama electrónico ▸**: **Edit Electronic Diagram...**, **Mostrar resumen inferior**, **Editar título...** y, según el diagrama, **Editar etiqueta de nivel...** y **Editar etiqueta de carril...**. |
 | Orbital | **Orbital ▸**: **Color de orbital...**, **Restablecer color de orbital**, **Opacidad de orbital...** y, sobre un orbital concreto, el submenú **Editar lóbulo ▸** (**Color por lóbulo...**, **Opacidad por lóbulo...**, **Mover lóbulo...**, **Restablecer estilo de lóbulo**). |
-| Texto | **Editar texto**, **Fuente**, **Color** y **Eliminar**. |
-| Mancha de placa | **Cambiar color…**, **Opacidad**, **Tamaño**, **Mostrar/Ocultar Rf**, **Set Rf…**, **Eliminar mancha**. |
+| Texto | Sin entradas propias: se edita con **doble clic** y se formatea con la barra de contexto de texto ([7.1](#71-texto-y-etiquetas)). |
+| Mancha de placa | **Cambiar color...**, **Opacidad ▸**, **Tamano ▸**, **Mostrar Rf** / **Ocultar Rf**, **Set Rf...**, **Eliminar mancha** ([9.2](#92-editar-manchas-y-bandas)). |
 
 > **Cuidado con una diferencia real.** En el menú contextual, **Análisis → Análisis elemental** inserta una tabla de texto en el lienzo; el cuadro de diálogo interactivo de análisis elemental solo está en **Estructura → Análisis → Análisis elemental...**.
 
@@ -915,7 +930,9 @@ Active **Ver → Visor molecular 3D** para abrir el visor tridimensional del doc
 
 La geometría tridimensional parte del dibujo 2D y se aproxima con campos de fuerza; **no es el resultado de un cálculo cuántico**. Para eso use **CompChem** y un motor externo.
 
-> **Sin captura de este visor.** El visor tridimensional se dibuja con OpenGL y no pudo capturarse de forma fiable en el entorno sin pantalla usado para este manual. Por eso el capítulo no incluye una figura del visor: prefieren no incluir una imagen que no sea una captura auténtica del producto.
+> **Sin captura de este visor.** El visor tridimensional se dibuja con OpenGL y no pudo capturarse de forma fiable en el entorno sin pantalla usado para este manual. Por eso el capítulo no incluye una figura del visor: preferimos no incluir una imagen que no sea una captura auténtica del producto.
+
+> **Otros dos huecos de ilustración.** La paleta de la herramienta **Texto** y la **barra de formato de texto** que aparece al escribir ([7.1](#71-texto-y-etiquetas)) tampoco tienen figura en esta edición: se describen en texto con sus controles y atajos, y quedarán pendientes de una captura en una revisión posterior.
 
 Para geometría y energías calculadas, use el panel **CompChem** con un motor externo instalado en su equipo.
 
@@ -1283,43 +1300,43 @@ Todas las figuras de este manual son **capturas auténticas de ChemUSON 0.3.0-be
 
 | Fig. | Archivo | Contenido |
 |---|---|---|
-| 1 | `01-ventana-tema-claro.png` | Ventana principal de ChemUSON 0.3.0-beta.4 en tema claro, con un ciclohexano recién dibujado y |
-| 2 | `02-ventana-tema-oscuro.png` | La misma ventana en tema oscuro. El tema se cambia con el botón de la barra superior o en Prefe |
-| 3 | `47-paleta-comandos.png` | Paleta de comandos abierta con `Ctrl+P`. Escriba una palabra (por ejemplo «limpiar», «plantilla |
-| 4 | `05-menu-editar.png` | Menú Editar de ChemUSON 0.3.0-beta.4, con el submenú Copiar como y la entrada Rotar |
-| 5 | `08-menu-ver-paneles.png` | Ver → Paneles en 0.3.0-beta.4. Las siete vistas del panel lateral se activan desde aquí; |
-| 6 | `03-menu-estructura.png` | Menú Estructura de ChemUSON 0.3.0-beta.4 tal como aparece en la versión publicada: limpieza |
-| 7 | `09-menu-estructura-plantillas.png` | Estructura → Plantillas en 0.3.0-beta.4: categorías con sus plantillas y las acciones de bi |
-| 8 | `04-menu-ayuda.png` | Menú Ayuda en 0.3.0-beta.4: Guía rápida..., Buscar actualizaciones... y Acerca de |
-| 9 | `25-canvas-ordenes-enlace.png` | Órdenes de enlace creados con la herramienta Enlaces: sencillo, doble y triple. Cambiar el |
-| 10 | `26-canvas-estilos-enlace.png` | Estilos de la paleta de Enlaces aplicados sobre una cadena: plano, grueso (*bold*), *wedge* |
-| 11 | `11-flyout-atomos.png` | Paleta ÁTOMOS del rail (segundo clic sobre el botón o tecla `C`). Las diez casillas son e |
-| 12 | `06-menu-editar-rotar.png` | Editar → Rotar en 0.3.0-beta.4. Los cuatro primeros comandos actúan sobre la selección; los |
-| 13 | `07-menu-rotar-fragmento-pivote.png` | Editar → Rotar → Fragmento con pivote. Las entradas de giro permanecen atenuadas hasta que |
-| 14 | `10-flyout-seleccion.png` | Paleta SELECCIÓN del rail: Seleccionar, Seleccion libre y Rotación 3D precisa.* |
-| 15 | `13-flyout-corchetes.png` | Paleta CORCHETES del rail (tecla `G`).* |
-| 16 | `12-flyout-flechas.png` | Paleta FLECHAS del rail (tecla `N`), con sus dieciséis variantes.* |
-| 17 | `20-canvas-flechas-corchetes.png` | Ejemplo de anotaciones sobre un ciclohexano: corchete [ ], flecha directa, equilibrio, retr |
-| 18 | `14-flyout-simbolos.png` | Paleta SÍMBOLOS del rail.* |
-| 19 | `22-canvas-simbolos-cargas.png` | Ejemplo con la herramienta Símbolos: nitrógeno con carga formal positiva, oxígeno con carga |
-| 20 | `16-flyout-energia.png` | Paleta DIAGRAMAS DE ENERGÍA del rail (tecla `E`). En la parte inferior aparecen dos submenú |
-| 21 | `23-canvas-diagramas-energia.png` | Diagramas creados con la herramienta Energía: subniveles `s`, `p`, `d` y `f`, nivel persona |
-| 22 | `17-flyout-orbitales.png` | Paleta ORBITALES del rail (tecla `O`). Los nombres son los que muestra la propia aplicación |
-| 23 | `24-canvas-orbitales.png` | Doce glifos de la paleta de Orbitales: `s` en contorno y sombreado, `p` sombreado y sólido, |
-| 24 | `15-flyout-placas.png` | Paleta PLACAS del rail: Placa TLC y Gel de Electroforesis.* |
-| 25 | `21-canvas-placas.png` | Placa TLC (izquierda) y gel de electroforesis (derecha) insertados con la herramienta Placas* |
-| 26 | `30-contextual-atomo.png` | Clic derecho sobre un átomo: Cortar, Copiar, Pegar, Eliminar, Carga formal ▸* |
-| 27 | `31-contextual-enlace.png` | Clic derecho sobre un enlace: además de las acciones básicas ofrece Reordenar rama ▸ (con * |
-| 28 | `34-contextual-seleccion.png` | Con varios objetos seleccionados se añade Redimensionar selección... y Grosor de enlace/f |
-| 29 | `32-contextual-lienzo-vacio.png` | Sin objeto bajo el puntero, el menú se reduce a Pegar, Seleccionar todo y Análisis ▸* |
-| 30 | `33-contextual-analisis-submenu.png` | Análisis en el menú contextual de 0.3.0-beta.4. Incluye Nombre (IUPAC), que no aparece |
-| 31 | `40-panel-inspector.png` | Vista Inspector con un átomo seleccionado. Es una vista de solo lectura: para editar, use e |
-| 32 | `43-panel-plantillas.png` | Vista Plantillas del panel lateral con la biblioteca de fábrica: categorías Aromáticos, |
-| 33 | `42-panel-validacion.png` | Vista Validación tras ejecutar Estructura → Validar valencias (`Ctrl+Shift+V`). Columna |
-| 34 | `41-panel-propiedades.png` | Vista Propiedades de una estructura: fórmula, masa, recuento de átomos, cargas, insaturacio |
-| 35 | `45-panel-espectroscopia.png` | Vista Espectroscopía con una predicción estimada de un anillo aromático: pestañas ¹H NMR* |
-| 36 | `46-panel-compchem.png` | Vista CompChem recién abierta: selectores Backend y Campo de fuerza, indicador de e |
-| 37 | `44-panel-apariencia.png` | Vista Apariencia del panel lateral: ajustes de representación propios del documento abierto |
+| 1 | `01-ventana-tema-claro.png` | Ventana principal de ChemUSON 0.3.0-beta.4 en tema claro, con un ciclohexano recién dibujado y e |
+| 2 | `02-ventana-tema-oscuro.png` | La misma ventana en tema oscuro. El tema se cambia con el botón de media luna de la barra superi |
+| 3 | `47-paleta-comandos.png` | Paleta de comandos abierta con Ctrl+P. Escriba una palabra (por ejemplo «limpiar», «plantilla» o |
+| 4 | `05-menu-editar.png` | Menú Editar de ChemUSON 0.3.0-beta.4, con el submenú Copiar como y la entrada Rotar. |
+| 5 | `08-menu-ver-paneles.png` | Ver → Paneles en 0.3.0-beta.4. Las siete vistas del panel lateral se activan desde aquí; Panel l |
+| 6 | `03-menu-estructura.png` | Menú Estructura de ChemUSON 0.3.0-beta.4 tal como aparece en la versión publicada: limpieza 2D, |
+| 7 | `09-menu-estructura-plantillas.png` | Estructura → Plantillas en 0.3.0-beta.4: categorías con sus plantillas y las acciones de bibliot |
+| 8 | `04-menu-ayuda.png` | Menú Ayuda en 0.3.0-beta.4: Guía rápida..., Buscar actualizaciones... y Acerca de ChemUSON.... |
+| 9 | `25-canvas-ordenes-enlace.png` | Órdenes de enlace creados con la herramienta Enlaces: sencillo, doble y triple. Cambiar el orden |
+| 10 | `26-canvas-estilos-enlace.png` | Estilos de la paleta de Enlaces aplicados sobre una cadena: plano, grueso (bold), wedge, wedge h |
+| 11 | `11-flyout-atomos.png` | Paleta ÁTOMOS del rail (segundo clic sobre el botón o tecla C). Las diez casillas son elementos |
+| 12 | `06-menu-editar-rotar.png` | Editar → Rotar en 0.3.0-beta.4. Los cuatro primeros comandos actúan sobre la selección; los sigu |
+| 13 | `07-menu-rotar-fragmento-pivote.png` | Editar → Rotar → Fragmento con pivote. Las entradas de giro permanecen atenuadas hasta que se de |
+| 14 | `10-flyout-seleccion.png` | Paleta SELECCIÓN del rail: Seleccionar, Seleccion libre y Rotación 3D precisa. |
+| 15 | `13-flyout-corchetes.png` | Paleta CORCHETES del rail (tecla G). |
+| 16 | `12-flyout-flechas.png` | Paleta FLECHAS del rail (tecla N), con sus dieciséis variantes. |
+| 17 | `20-canvas-flechas-corchetes.png` | Ejemplo de anotaciones sobre un ciclohexano: corchete [ ], flecha directa, equilibrio, retrosínt |
+| 18 | `14-flyout-simbolos.png` | Paleta SÍMBOLOS del rail. |
+| 19 | `22-canvas-simbolos-cargas.png` | Ejemplo con la herramienta Símbolos: nitrógeno con carga formal positiva, oxígeno con carga parc |
+| 20 | `16-flyout-energia.png` | Paleta DIAGRAMAS DE ENERGÍA del rail (tecla E). En la parte inferior aparecen dos submenúes adic |
+| 21 | `23-canvas-diagramas-energia.png` | Diagramas creados con la herramienta Energía: subniveles s, p, d y f, nivel personalizable e híb |
+| 22 | `17-flyout-orbitales.png` | Paleta ORBITALES del rail (tecla O). Los nombres son los que muestra la propia aplicación. |
+| 23 | `24-canvas-orbitales.png` | Doce glifos de la paleta de Orbitales: s en contorno y sombreado, p sombreado y sólido, d sombre |
+| 24 | `15-flyout-placas.png` | Paleta PLACAS del rail: Placa TLC y Gel de Electroforesis. |
+| 25 | `21-canvas-placas.png` | Placa TLC (izquierda) y gel de electroforesis (derecha) insertados con la herramienta Placas. La |
+| 26 | `30-contextual-atomo.png` | Clic derecho sobre un átomo: Cortar, Copiar, Pegar, Eliminar, Carga formal ▸, Activar esfera de |
+| 27 | `31-contextual-enlace.png` | Clic derecho sobre un enlace: además de las acciones básicas ofrece Reordenar rama ▸ (con Girar |
+| 28 | `34-contextual-seleccion.png` | Con varios objetos seleccionados se añade Redimensionar selección... y Grosor de enlace/flecha/c |
+| 29 | `32-contextual-lienzo-vacio.png` | Sin objeto bajo el puntero, el menú se reduce a Pegar, Seleccionar todo y Análisis ▸ (las entrad |
+| 30 | `33-contextual-analisis-submenu.png` | Análisis en el menú contextual de 0.3.0-beta.4. Incluye Nombre (IUPAC), que no aparece en el men |
+| 31 | `40-panel-inspector.png` | Vista Inspector con un átomo seleccionado. Es una vista de solo lectura: para editar, use el lie |
+| 32 | `43-panel-plantillas.png` | Vista Plantillas del panel lateral con la biblioteca de fábrica: categorías Aromáticos, Heteroci |
+| 33 | `42-panel-validacion.png` | Vista Validación después de validar el benceno de la Figura 1: no hay errores, por eso el área a |
+| 34 | `41-panel-propiedades.png` | Vista Propiedades del benceno de la Figura 1. La tabla tiene dos columnas, Propiedad y Valor. |
+| 35 | `45-panel-espectroscopia.png` | Vista Espectroscopía con la predicción estimada del benceno. La cabecera indica el método y la c |
+| 36 | `46-panel-compchem.png` | Vista CompChem recién abierta: selectores Backend y Campo de fuerza, indicador de estado, tabla |
+| 37 | `44-panel-apariencia.png` | Vista Apariencia del panel lateral: ajustes de representación propios del documento abierto. |
 
 **Cambios respecto a la ilustración anterior de este manual.** Se retiraron del manual las dos láminas comparativas del laboratorio de dibujo (`docs/visual/bond-junctions-before-after.png` y `docs/visual/wedge-double-labels-before-after.png`). Son **galerías de pruebas internas** generadas por `tools/visual/render_bond_junction_gallery.py` y `tools/visual/render_wedge_double_label_gallery.py`, útiles como evidencia de desarrollo pero no como material didáctico. Se conservan en el repositorio porque varios cambios de `openspec/changes/` las citan como evidencia; simplemente han dejado de formar parte del manual de usuario. Su contenido se sustituye por las figuras 9 y 10, que muestran los mismos elementos dibujados en el lienzo.
 
