@@ -658,9 +658,9 @@ Cambiar el color o eliminar una mancha **no se puede deshacer**; mover una manch
 | Acción | Cómo |
 |---|---|
 | Seleccionar un objeto | Clic con la herramienta **Seleccionar** (`V`). |
-| Sumar o quitar objetos | `Shift` + clic. |
+| Sumar o quitar objetos | `Shift` + clic o `Ctrl` + clic sobre cada objeto (alterna su estado). |
 | Selección rectangular | Arrastre sobre zona vacía. |
-| Selección libre | Herramienta **Seleccion libre** (segundo clic sobre el botón Seleccionar). |
+| Selección libre (lazo) | Herramienta **Seleccion libre** (segundo clic sobre el botón Seleccionar), o bien `Ctrl` + arrastre sobre zona vacía con la herramienta **Seleccionar** activa. |
 | Seleccionar todo | `Ctrl+A` o `Ctrl+E`, o el menú contextual. |
 | Cancelar selección | Clic en zona vacía o `Esc`. |
 
@@ -669,7 +669,7 @@ Cambiar el color o eliminar una mancha **no se puede deshacer**; mover una manch
 - **Arrastrar** la selección la desplaza.
 - **Flechas del teclado:** desplazan 1 px; con `Shift`, 10 px.
 - **Redimensionar selección...** (`Ctrl+Alt+S`): cuadro con factores numéricos.
-- **Duplicar** (`Ctrl+D`) y **Eliminar** (`Supr`).
+- **Duplicar** (`Ctrl+D`) y **Eliminar** (`Supr` o `Retroceso`).
 
 > **Nota de edición.** En 0.3.0-beta.4 no hay ordenación ni alineación automática de objetos en la barra de herramientas: la alineación se hace con el cursor y la cuadrícula (**Ver → Visualización → Cuadrícula**).
 
@@ -688,6 +688,7 @@ Cambiar el color o eliminar una mancha **no se puede deshacer**; mover una manch
 |---|---|
 | Acercar / alejar | Rueda del ratón, o `Ctrl++` / `Ctrl+-` / `Ctrl+0`. |
 | Desplazar | Botón central del ratón, `Espacio` + arrastre, o `Shift` + rueda (horizontal). |
+| Invertir la orientación de un doble enlace seleccionado | `Ctrl+Alt` + rueda del ratón. |
 | Reglas y cuadrícula | **Ver → Visualización → Reglas / Cuadrícula**. |
 | Cambiar el tamaño del papel | **Ver → Tamaño de lienzo**. |
 | Saltar al siguiente error de valencia | `F8` / `Shift+F8`. |
