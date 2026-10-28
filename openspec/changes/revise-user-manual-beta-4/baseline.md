@@ -32,6 +32,8 @@
 | A8 | §16/§17/§18 describiendo flujos propios para paneles, placas y plantillas | Contenido duplicado de §7.4, §12, §13 y §22; las capturas enlazadas eran de `docs/ui-modernization/`, previas a `0.3.0-beta.4`. |
 | A9 | §15.4 «matrices comparativas de representación geométrica» | Eran galerías de pruebas internas de desarrollo (`tools/visual/render_*_gallery.py`), no material didáctico. |
 
+| A10 | (autoregresión detectada en la segunda pasada de esta campaña) «ChemUSON no instala nada por sí solo: la descarga y la instalación son manuales» | Falso en parte: en AppImage/portable descarga y **sustituye el binario al cerrar** tras verificarlo y con copia de seguridad y rollback básico; en Windows de instalador **ejecuta el instalador oficial en silencio al cerrar**; solo en Flatpak está desactivado y remite a `flatpak update io.github.PJGV333.Chemuson`. Corregido en 18.3. |
+
 ### B. Duplicaciones internas
 
 | # | Duplicación | Decisión |

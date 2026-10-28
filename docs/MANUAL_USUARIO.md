@@ -282,7 +282,7 @@ En 0.3.0-beta.4 el menú **Reacción** contiene una única entrada, **Próximame
 | Comando | Función |
 |---|---|
 | **Guía rápida...** | Abre el recorrido de bienvenida de tres pasos (rail, lienzo y panel lateral). |
-| **Buscar actualizaciones...** | Comprueba si hay una versión nueva del programa. |
+| **Buscar actualizaciones...** | Comprueba si hay una versión nueva del programa. Cómo se aplica depende del tipo de instalación ([18.3](#183-buscar-actualizaciones)). |
 | **Acerca de ChemUSON...** | Muestra la versión instalada y los créditos. |
 
 ### Manual de usuario en línea
@@ -1068,7 +1068,7 @@ Abralas con **Editar → Preferencias...** o con el botón de la barra superior.
 |---|---|
 | **General** | Casillas **Mostrar carbonos implícitos**, **Mostrar hidrógenos implícitos** y **Aromáticos como círculos**. |
 | **Apariencia** | **Bordes de enlace**: **Redondeados** o **Rectos**. |
-| **Actualizaciones** | Casilla para activar las actualizaciones, **Canal** (**Estable** o **Beta**) y **Modo de aplicación** (**Notificar antes de aplicar** o **Preparar en silencio cuando sea posible**). |
+| **Actualizaciones** | Un resumen del comportamiento del actualizador, la casilla **«Buscar actualizaciones cuando esta edición lo permita»**, **Canal** (**Estable** o **Beta**) y **Modo de aplicación** (**Notificar antes de aplicar** o **Preparar en silencio cuando sea posible**). |
 | **RDKit** | Casillas **Nombre avanzado (fase 4/6)** y **Usar RDKit aislado**. |
 
 Dos aclaraciones verificadas:
@@ -1087,7 +1087,17 @@ Use el botón de tema de la barra superior (alternancia rápida) o **Preferencia
 
 ### 18.3 Buscar actualizaciones
 
-**Ayuda → Buscar actualizaciones...** consulta si hay una versión nueva del programa y enlaza con la página de descargas. ChemUSON no instala nada por sí solo: la descarga y la instalación son manuales.
+**Ayuda → Buscar actualizaciones...** comprueba si hay una versión más nueva en el canal que usted tenga seleccionado (**Estable** o **Beta**, en **Preferencias → Actualizaciones**) y se lo indica. Lo que ocurre después **depende de cómo instaló ChemUSON**, y en algunos casos el programa sí aplica la actualización:
+
+| Instalación | Comportamiento comprobado en 0.3.0-beta.4 |
+|---|---|
+| **AppImage (Linux)** y **ejecutable portable (Windows)** | ChemUSON descarga la actualización y, **al cerrar la aplicación**, sustituye el binario actual. Antes de sustituirlo **verifica** el archivo descargado y **guarda una copia de seguridad** del binario; si la verificación falla muestra «No se reemplazará binario no verificado» y no toca nada, y si el reemplazo falla intenta restaurar la copia (mecanismo básico de rollback). Si no tiene permisos para escribir donde está el ejecutable, avisa y no aplica nada. |
+| **Instalador de Windows** | Descarga el instalador oficial y lo **ejecuta en silencio al cerrar ChemUSON**. El cuadro de diálogo lo advierte con estas palabras: «Esta edición no usa auto-update real. ChemUSON descargará el instalador oficial y lo ejecutará en silencio al cerrar.» Después ofrece cerrar el programa en ese momento. |
+| **Flatpak** | La actualización integrada está **desactivada**: el programa le indica que use `flatpak update io.github.PJGV333.Chemuson`. |
+
+Con el modo **Preparar en silencio cuando sea posible** y las comprobaciones automáticas activadas, la preparación se encola sin preguntarle; con **Notificar antes de aplicar** siempre se le pide confirmación.
+
+> **Guarde antes de aceptar.** Aplicar una actualización cierra ChemUSON. Guarde el documento (o confíe en el guardado automático, [capítulo 17](#17-guardado-automático-y-recuperación)) antes de confirmar.
 
 ---
 
