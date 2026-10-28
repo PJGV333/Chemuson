@@ -98,7 +98,7 @@ La interfaz se organiza en seis zonas:
 
 ![La misma ventana en tema oscuro](manual-figures/02-ventana-tema-oscuro.png)
 
-*Figura 2. La misma ventana en tema oscuro. El tema se cambia con el botón de la barra superior o en Preferencias → Apariencia.*
+*Figura 2. La misma ventana en tema oscuro. El tema se cambia con el botón de media luna de la barra superior.*
 
 ### 2.1 Rail de herramientas
 
@@ -132,11 +132,11 @@ En la barra de estado se indica siempre la herramienta activa.
 
 ## 3. Primer dibujo: flujo básico
 
-El ejercicio siguiente muestra el ciclo completo de trabajo con una molécula pequeña, el **2-propanol**.
+El ejercicio siguiente muestra el ciclo completo de trabajo con una molécula pequeña, el **1-propanol**.
 
 1. **Cree un documento** con `Ctrl+N`.
 2. **Dibuje el esqueleto.** Con la herramienta **Enlaces** activa (tecla `B`), arrastre desde un punto vacío del lienzo hacia la derecha: se crea un átomo de carbono y un enlace. Suelte cuando el enlace tenga la dirección deseada; repita el arrastre desde el último átomo para añadir el siguiente enlace. Los ángulos se ajustan automáticamente a las direcciones habituales de dibujo.
-3. **Añada el oxígeno.**Active la herramienta **Átomos** (`C`) y, en su paleta, elija `O`. Haga clic sobre el extremo derecho de la cadena: ese átomo pasa a ser oxígeno.
+3. **Añada el oxígeno.** Active la herramienta **Átomos** (`C`) y, en su paleta, elija `O`. Haga clic sobre el extremo derecho de la cadena: ese átomo pasa a ser oxígeno.
 4. **Limpie el dibujo.** Pulse `Ctrl+K` (**Estructura → Limpiar 2D (1 paso)**). El esquema se ordena: longitudes uniformes, ángulos normales y anillos regulares. Véase [Limpieza 2D](#441-limpieza-y-conformación-2d).
 5. **Compruebe la química.** Active **Ver → Paneles → Inspector** para ver lo que hay bajo la selección y **Validación** para revisar valencias. Ejecute **Estructura → Análisis → Fórmula química**: el resultado se escribe como texto en el lienzo (véase [Análisis químico](#14-análisis-químico-nomenclatura-y-validación)).
 6. **Guarde.** `Ctrl+S` guarda en el formato propio `.cmsn`, que conserva todos los objetos del documento.
@@ -967,7 +967,7 @@ Estado real en 0.3.0-beta.4:
 
 Puntos comprobados en 0.3.0-beta.4 que conviene conocer:
 
-- **`.sdf` no se puede abrir.** El diálogo de apertura rechaza explícitamente ese formato. Si trabaja con una biblioteca `.sdf`, conviértala primero a `.mol` o `.cml` con otra herramienta.
+- **`.sdf` no está soportado.** Al intentar abrirlo o exportarlo, ChemUSON muestra «SDF multi-registro no está soportado; abre un archivo MOL (.mol)». Trabaje con un `.mol` o `.cml` por estructura.
 - **Arrastrar y soltar archivos sobre la ventana no está disponible.** Use **Archivo → Abrir**.
 - El diálogo **Abrir archivo(s)** permite seleccionar **varios archivos a la vez**: cada uno se abre en su propia pestaña.
 - Guardar **sobrescribe** el archivo actual sin copia de seguridad propia; los respaldos automáticos se gestionan aparte ([capítulo 17](#17-guardado-automático-y-recuperación)).
@@ -1244,7 +1244,7 @@ Active **Ver → Numeración → Incluir numeración en exportación** antes de 
 
 ### Falta RDKit
 
-Fórmula, masa y limpieza 2D funcionan sin RDKit. SMILES, InChI, Molfile y la geometría 3D mejorada lo necesitan; el diálogo **Preferencias → RDKit** informa de su estado.
+Fórmula, masa, análisis elemental y limpieza 2D funcionan con la lógica interna del programa, sin RDKit. Las funciones que lo necesitan (SMILES, InChI, Molfile, geometría 3D y ciertos descriptores) lo indican cuando fallan. La pestaña **Preferencias → RDKit** ofrece **Nombre avanzado (fase 4/6)** y **Usar RDKit aislado**.
 
 ---
 
