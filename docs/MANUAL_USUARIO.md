@@ -1124,7 +1124,7 @@ Todos los atajos listados son los que la propia interfaz de 0.3.0-beta.4 muestra
 | `Ctrl+Z` / `Ctrl+Y` | Deshacer / Rehacer |
 | `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | Copiar / Cortar / Pegar |
 | `Ctrl+D` | Duplicar selección |
-| `Supr` | Eliminar selección |
+| `Supr` o `Retroceso` | Eliminar selección |
 | `Ctrl+A` · `Ctrl+E` | Seleccionar todo |
 | `Ctrl+Alt+S` | Redimensionar selección... |
 | `Flechas` / `Shift` + `Flechas` | Desplazar 1 px / 10 px |
@@ -1152,7 +1152,7 @@ Todos los atajos listados son los que la propia interfaz de 0.3.0-beta.4 muestra
 | `Ctrl+Shift+=` | Superíndice |
 | `Ctrl+Shift+↑` / `↓` / `0` | Grosor de trazo mayor / menor / normal |
 
-> **Cochetes, símbolos y placas no tienen tecla asignada**: ábralos con segundo clic o clic derecho sobre su botón del rail.
+> **Corchetes, símbolos y placas no tienen tecla asignada**: ábralos con segundo clic o clic derecho sobre su botón del rail.
 > **`Ctrl++`** está reservado a **Zoom +**; el aumento de tamaño de fuente desde la paleta es la vía segura.
 
 ### 19.4 Estructura y análisis
@@ -1178,6 +1178,7 @@ Todos los atajos listados son los que la propia interfaz de 0.3.0-beta.4 muestra
 | `Espacio` + arrastre | Desplazar el lienzo |
 | Rueda del ratón | Zoom |
 | `Shift` + rueda | Desplazamiento horizontal |
+| `Ctrl+Alt` + rueda | Invertir la orientación de un doble enlace seleccionado |
 
 ---
 
