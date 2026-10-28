@@ -71,7 +71,7 @@ En algunas distribuciones el arranque directo desde el gestor de archivos no est
 
 ### 1.3 Primera apertura
 
-Al abrir ChemUSON por primera vez aparece un **recorrido de bienvenida** con cinco pasos que localiza el rail de herramientas, el lienzo, la barra superior y los paneles. Puede saltarlo con `Esc`; no se mostrará de nuevo.
+En la primera apertura aparece un **recorrido de bienvenida** de tres pasos —**Rail de herramientas**, **Lienzo** y **Panel lateral**— con botones **Anterior**, **Siguiente** y **Cerrar**. Al completarlo no vuelve a mostrarse; puede abrirlo cuando quiera desde **Ayuda → Guía rápida...**.
 
 Si no se muestra ningún documento, cree uno con `Ctrl+N` (**Archivo → Nuevo**).
 
@@ -281,7 +281,7 @@ En 0.3.0-beta.4 el menú **Reacción** contiene una única entrada, **Próximame
 
 | Comando | Función |
 |---|---|
-| **Guía rápida...** | Abre el recorrido de bienvenida por cinco pantallas (se puede volver a abrir desde aquí). |
+| **Guía rápida...** | Abre el recorrido de bienvenida de tres pasos (rail, lienzo y panel lateral). |
 | **Buscar actualizaciones...** | Comprueba si hay una versión nueva del programa. |
 | **Acerca de ChemUSON...** | Muestra la versión instalada y los créditos. |
 
