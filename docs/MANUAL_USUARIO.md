@@ -49,12 +49,12 @@ La **versión pública más reciente es ChemUSON 0.3.0-beta.4**. Es una versión
 
 ### 1.1 Dónde descargar
 
-| Plataforma | Paquete |
+| Plataforma | Archivos publicados en la [release v0.3.0-beta.4](https://github.com/PJGV333/Chemuson/releases/tag/v0.3.0-beta.4) |
 |---|---|
-| Linux (x86-64) | **AppImage** y **Flatpak** en la [página de la release](https://github.com/PJGV333/Chemuson/releases/tag/v0.3.0-beta.4) |
-| Windows | Instalador `.exe` en la misma página |
+| Linux x86-64 | `Chemuson-v0.3.0-beta.4-linux-x86_64.AppImage` · `Chemuson-v0.3.0-beta.4-linux-x86_64.flatpak` · `Chemuson-beta.flatpakref` (canal beta para recibir actualizaciones) |
+| Windows x86-64 | `Chemuson-v0.3.0-beta.4-windows-x86_64-setup.exe` (instalador) y `Chemuson-v0.3.0-beta.4-windows-x86_64-portable.exe` (sin instalación) |
 
-Cada release publica un archivo `checksums.txt`. Antes de instalar, compruebe la suma:
+Cada release publica `checksums.txt` y un `.sha256` por archivo. Antes de instalar, compruebe las sumas:
 
 ```bash
 sha256sum --check checksums.txt
@@ -63,8 +63,8 @@ sha256sum --check checksums.txt
 ### 1.2 Ejecutar el AppImage en Linux
 
 ```bash
-chmod +x ChemUSON-0.3.0-beta.4-x86_64.AppImage
-./ChemUSON-0.3.0-beta.4-x86_64.AppImage
+chmod +x Chemuson-v0.3.0-beta.4-linux-x86_64.AppImage
+./Chemuson-v0.3.0-beta.4-linux-x86_64.AppImage
 ```
 
 En algunas distribuciones el arranque directo desde el gestor de archivos no está permitido por permisos; use el terminal o una herramienta de integración de AppImage.
