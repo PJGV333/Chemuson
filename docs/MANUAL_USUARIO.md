@@ -189,7 +189,7 @@ Al guardar se ofrecen **ChemUSON (`.cmsn`)** y **CML (`.cml`)**. El formato prop
 | **Mostrar barra de herramientas** | Muestra u oculta la barra de menús de la ventana. |
 | **Visualización → Mostrar carbonos / Mostrar hidrógenos / Aromáticos como círculos / Dimensiones del dibujo... / Reglas / Cuadrícula** | Cambia cómo se representa la estructura. Con «Mostrar carbonos» desactivado, los vértices sin etiqueta se interpretan como carbono; es el modo habitual en química orgánica. «Dimensiones del dibujo…» fija la longitud de enlace y otros tamaños. |
 | **Zoom → Zoom + / Zoom - / Zoom 100%** | `Ctrl++`, `Ctrl+-`, `Ctrl+0`. |
-| **Numeración** | Muestra etiquetas numéricas sobre átomos, estructuras o ambos, las recalcula y decide si se incluyen en las exportaciones. |
+| **Numeración** | Submenú con **Mostrar numeración**, **Numerar átomos** (activado por defecto), **Numerar estructuras**, **Numerar ambos**, **Recalcular numeración** e **Incluir numeración en exportación**. |
 | **Tamaño de lienzo** | Carta, A4 y A3 en vertical y horizontal, y **Personalizado...**. |
 | **Paletas → Simbolismos químicos** | Muestra u oculta la barra flotante de simbología. |
 | **Visor molecular 3D** | Activa el panel independiente de visualización tridimensional. |
@@ -521,7 +521,7 @@ La herramienta **Flechas** (`N`) contiene dieciséis variantes, agrupadas en cua
 - **Tres clics** para las flechas curvas: origen, extremo y un tercer punto que define la curvatura.
 - `Shift` mientras se dibuja restringe las líneas rectas a múltiplos de 45°; en las curvas invierte el signo de la curvatura.
 - `Alt` desactiva el imán a los extremos de enlaces y átomos cuando quiere una posición libre.
-- Con una flecha seleccionada, el menú contextual ofrece **Grosor de flecha** y, en las variantes de línea, **Longitud de líneas**.
+- Con una flecha o una línea seleccionada, el menú contextual ofrece **Grosor de enlace/flecha/corchete ▸** y el submenú **Longitud de lineas ▸** (**Igualar longitudes** con dos o más líneas, **Establecer longitud...**). El grosor también se ajusta con `Ctrl+Shift+↑`, `Ctrl+Shift+↓` y `Ctrl+Shift+0` ([4.2](#42-editar)).
 
 ![Flechas y corchetes colocados junto a una estructura](manual-figures/20-canvas-flechas-corchetes.png)
 
@@ -571,9 +571,9 @@ La herramienta **Energía** (`E`) ofrece ocho preset en su paleta: **Subnivel s*
 **Submenúes de la misma paleta.**
 
 - **Electronic Diagrams** abre tres constructores: **Atomic diagram...** (niveles de un elemento), **Diatomic MO diagram...** (orbitales moleculares de una diatómica) y **Ligand field diagram...** (desdoblamiento del campo de ligandos). Los cuadros se muestran en inglés.
-- **Electronic Diagram Presets** ofrece modelos ya construidos (niveles atómicos, diagramas de orbitales moleculares y campos de ligandos) listos para colocar en el lienzo.
+- **Electronic Diagram Presets** despliega **Atomic Presets**, **Diatomic MO Presets** y **Ligand Field Presets**, con modelos ya construidos listos para colocar en el lienzo. Todos los nombres de estos dos submenúes aparecen en inglés en la interfaz.
 
-Al seleccionar un diagrama, el menú contextual ofrece el submenú **Diagrama de energía** para cambiar su tipo; para ajustar niveles y etiquetas use **Editar → Edit Electronic Diagram...**.
+Al seleccionar un diagrama, el menú contextual ofrece el submenú **Diagrama de energia** (**Etiqueta...**, **Posición de etiqueta**, **Numero de cajas...**, **Ocupación electrónica...**, **Estilo**) y, en los diagramas electrónicos, el submenú **Diagrama electrónico** con **Edit Electronic Diagram...**, **Mostrar resumen inferior** y **Editar título...** ([11.6](#116-objeto-por-objeto)).
 
 ![Ocho diagramas de energía insertados desde la paleta del rail](manual-figures/23-canvas-diagramas-energia.png)
 
