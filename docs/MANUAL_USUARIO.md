@@ -1322,43 +1322,43 @@ Todas las figuras de este manual son **capturas auténticas de ChemUSON 0.3.0-be
 
 | Fig. | Archivo | Contenido |
 |---|---|---|
-| 1 | `01-ventana-tema-claro.png` | Ventana principal en tema claro con un anillo de seis carbonos y el panel Inspector. |
-| 2 | `02-ventana-tema-oscuro.png` | La misma ventana en tema oscuro. El tema se cambia con el botón de media luna de la barra superi |
-| 3 | `47-paleta-comandos.png` | Paleta de comandos abierta con Ctrl+P. Escriba una palabra (por ejemplo «limpiar», «plantilla» o |
-| 4 | `05-menu-editar.png` | Menú Editar de ChemUSON 0.3.0-beta.4, con el submenú Copiar como y la entrada Rotar. |
-| 5 | `08-menu-ver-paneles.png` | Ver → Paneles en 0.3.0-beta.4. Las siete vistas del panel lateral se activan desde aquí; Panel l |
-| 6 | `03-menu-estructura.png` | Menú Estructura de ChemUSON 0.3.0-beta.4 tal como aparece en la versión publicada: limpieza 2D, |
-| 7 | `09-menu-estructura-plantillas.png` | Estructura → Plantillas en 0.3.0-beta.4: categorías con sus plantillas y las acciones de bibliot |
-| 8 | `04-menu-ayuda.png` | Menú Ayuda en 0.3.0-beta.4: Guía rápida..., Buscar actualizaciones... y Acerca de ChemUSON.... |
-| 9 | `25-canvas-ordenes-enlace.png` | Órdenes de enlace creados con la herramienta Enlaces: sencillo, doble y triple. Cambiar el orden |
-| 10 | `26-canvas-estilos-enlace.png` | Estilos de la paleta de Enlaces aplicados sobre una cadena: plano, grueso (bold), wedge, wedge h |
-| 11 | `11-flyout-atomos.png` | Paleta ÁTOMOS del rail (segundo clic sobre el botón o tecla C). Las diez casillas son elementos |
-| 12 | `06-menu-editar-rotar.png` | Editar → Rotar en 0.3.0-beta.4. Los cuatro primeros comandos actúan sobre la selección; los sigu |
-| 13 | `07-menu-rotar-fragmento-pivote.png` | Editar → Rotar → Fragmento con pivote. Las entradas de giro permanecen atenuadas hasta que se de |
-| 14 | `10-flyout-seleccion.png` | Paleta SELECCIÓN del rail: Seleccionar, Seleccion libre y Rotación 3D precisa. |
-| 15 | `13-flyout-corchetes.png` | Paleta CORCHETES del rail (tecla G). |
-| 16 | `12-flyout-flechas.png` | Paleta FLECHAS del rail (tecla N), con sus dieciséis variantes. |
-| 17 | `20-canvas-flechas-corchetes.png` | Ejemplo de anotaciones sobre un ciclohexano: corchete [ ], flecha directa, equilibrio, retrosínt |
-| 18 | `14-flyout-simbolos.png` | Paleta SÍMBOLOS del rail. |
-| 19 | `22-canvas-simbolos-cargas.png` | Ejemplo con la herramienta Símbolos: nitrógeno con carga formal positiva, oxígeno con carga parc |
-| 20 | `16-flyout-energia.png` | Paleta DIAGRAMAS DE ENERGÍA del rail (tecla E). En la parte inferior aparecen dos submenúes adic |
-| 21 | `23-canvas-diagramas-energia.png` | Diagramas creados con la herramienta Energía: subniveles s, p, d y f, nivel personalizable e híb |
-| 22 | `17-flyout-orbitales.png` | Paleta ORBITALES del rail (tecla O). Los nombres son los que muestra la propia aplicación. |
-| 23 | `24-canvas-orbitales.png` | Doce glifos de la paleta de Orbitales: s en contorno y sombreado, p sombreado y sólido, d sombre |
-| 24 | `15-flyout-placas.png` | Paleta PLACAS del rail: Placa TLC y Gel de Electroforesis. |
-| 25 | `21-canvas-placas.png` | Ejemplo didáctico de TLC con tres valores de Rf y gel con cinco bandas. |
-| 26 | `30-contextual-atomo.png` | Clic derecho sobre un átomo: Cortar, Copiar, Pegar, Eliminar, Carga formal ▸, Activar esfera de |
-| 27 | `31-contextual-enlace.png` | Clic derecho sobre un enlace: además de las acciones básicas ofrece Reordenar rama ▸ (con Girar |
-| 28 | `34-contextual-seleccion.png` | Con varios objetos seleccionados se añade Redimensionar selección... y Grosor de enlace/flecha/c |
-| 29 | `32-contextual-lienzo-vacio.png` | Sin objeto bajo el puntero, el menú se reduce a Pegar, Seleccionar todo y Análisis ▸ (las entrad |
-| 30 | `33-contextual-analisis-submenu.png` | Análisis en el menú contextual de 0.3.0-beta.4. Incluye Nombre (IUPAC), que no aparece en el men |
-| 31 | `40-panel-inspector.png` | Vista Inspector con un átomo seleccionado. Es una vista de solo lectura: para editar, use el lie |
-| 32 | `43-panel-plantillas.png` | Vista Plantillas del panel lateral con la biblioteca de fábrica: categorías Aromáticos, Heteroci |
-| 33 | `42-panel-validacion.png` | Vista Validación después de validar el benceno de la Figura 1: no hay errores, por eso el área a |
-| 34 | `41-panel-propiedades.png` | Vista Propiedades del benceno de la Figura 1. La tabla tiene dos columnas, Propiedad y Valor. |
-| 35 | `45-panel-espectroscopia.png` | Vista Espectroscopía con la predicción estimada del benceno. La cabecera indica el método y la c |
-| 36 | `46-panel-compchem.png` | Vista CompChem recién abierta: selectores Backend y Campo de fuerza, indicador de estado, tabla |
-| 37 | `44-panel-apariencia.png` | Vista Apariencia del panel lateral: ajustes de representación propios del documento abierto. |
+| 1 | `01-ventana-tema-claro.png` | Ventana principal en tema claro: lienzo, barra de herramientas y panel lateral. |
+| 2 | `02-ventana-tema-oscuro.png` | Ventana principal en tema oscuro. |
+| 3 | `47-paleta-comandos.png` | Paleta de comandos y búsqueda rápida (`Ctrl+P`). |
+| 4 | `05-menu-editar.png` | Menú Editar y acceso a las transformaciones. |
+| 5 | `08-menu-ver-paneles.png` | Submenú Ver → Paneles para mostrar u ocultar vistas. |
+| 6 | `03-menu-estructura.png` | Menú Estructura y acciones disponibles en beta.4. |
+| 7 | `09-menu-estructura-plantillas.png` | Submenú Estructura → Plantillas. |
+| 8 | `04-menu-ayuda.png` | Menú Ayuda tal como aparece en beta.4. |
+| 9 | `25-canvas-ordenes-enlace.png` | Ejemplos de enlaces sencillos, dobles y triples. |
+| 10 | `26-canvas-estilos-enlace.png` | Ejemplos de estilos gráficos de enlaces. |
+| 11 | `11-flyout-atomos.png` | Paleta de Átomos del rail. |
+| 12 | `06-menu-editar-rotar.png` | Submenú Editar → Rotar. |
+| 13 | `07-menu-rotar-fragmento-pivote.png` | Opciones de rotación de fragmentos con pivote. |
+| 14 | `10-flyout-seleccion.png` | Paleta de Selección y herramienta de rotación 3D precisa. |
+| 15 | `13-flyout-corchetes.png` | Paleta de Corchetes. |
+| 16 | `12-flyout-flechas.png` | Paleta de Flechas y sus variantes. |
+| 17 | `20-canvas-flechas-corchetes.png` | Anotaciones de flechas, líneas y corchetes sobre un ciclohexano. |
+| 18 | `14-flyout-simbolos.png` | Paleta de Símbolos químicos. |
+| 19 | `22-canvas-simbolos-cargas.png` | Ejemplos de cargas y anotaciones químicas. |
+| 20 | `16-flyout-energia.png` | Paleta de Diagramas de energía. |
+| 21 | `23-canvas-diagramas-energia.png` | Ejemplos de diagramas energéticos y subniveles. |
+| 22 | `17-flyout-orbitales.png` | Paleta de Orbitales. |
+| 23 | `24-canvas-orbitales.png` | Ejemplos de glifos de orbitales. |
+| 24 | `15-flyout-placas.png` | Paleta de Placas TLC y geles. |
+| 25 | `21-canvas-placas.png` | Placa TLC con Rf 0,25/0,55/0,80 y gel ilustrativo de cinco bandas. |
+| 26 | `30-contextual-atomo.png` | Menú contextual sobre un átomo. |
+| 27 | `31-contextual-enlace.png` | Menú contextual sobre un enlace. |
+| 28 | `34-contextual-seleccion.png` | Menú contextual con varios objetos seleccionados. |
+| 29 | `32-contextual-lienzo-vacio.png` | Menú contextual sobre el lienzo vacío. |
+| 30 | `33-contextual-analisis-submenu.png` | Submenú Análisis del menú contextual. |
+| 31 | `40-panel-inspector.png` | Panel Inspector con datos del objeto seleccionado. |
+| 32 | `43-panel-plantillas.png` | Panel Plantillas y biblioteca de estructuras. |
+| 33 | `42-panel-validacion.png` | Panel Validación de estructuras. |
+| 34 | `41-panel-propiedades.png` | Panel Propiedades químicas. |
+| 35 | `45-panel-espectroscopia.png` | Panel Espectroscopía y resultados estimados. |
+| 36 | `46-panel-compchem.png` | Panel CompChem y sus opciones de cálculo. |
+| 37 | `44-panel-apariencia.png` | Panel Apariencia y opciones visuales. |
 
 **Cambios respecto a la ilustración anterior de este manual.** Se retiraron del manual las dos láminas comparativas del laboratorio de dibujo (`docs/visual/bond-junctions-before-after.png` y `docs/visual/wedge-double-labels-before-after.png`). Son **galerías de pruebas internas** generadas por `tools/visual/render_bond_junction_gallery.py` y `tools/visual/render_wedge_double_label_gallery.py`, útiles como evidencia de desarrollo pero no como material didáctico. Se conservan en el repositorio porque varios cambios de `openspec/changes/` las citan como evidencia; simplemente han dejado de formar parte del manual de usuario. Su contenido se sustituye por las figuras 9 y 10, que muestran los mismos elementos dibujados en el lienzo.
 
