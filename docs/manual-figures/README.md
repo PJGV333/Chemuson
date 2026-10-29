@@ -34,43 +34,43 @@ Las figuras 17 y 25 se corrigieron en la microcampaña: el ciclo de la figura 17
 
 | Archivo | Figura del manual | Contenido |
 |---|---|---|
-| `01-ventana-tema-claro.png` | Figura 1 | Ventana principal de ChemUSON 0.3.0-beta.4 en tema claro, con un ciclo |
-| `02-ventana-tema-oscuro.png` | Figura 2 | La misma ventana en tema oscuro. El tema se cambia con el botón de la |
-| `47-paleta-comandos.png` | Figura 3 | Paleta de comandos abierta con `Ctrl+P`. Escriba una palabra (por ejem |
-| `05-menu-editar.png` | Figura 4 | Menú |
-| `08-menu-ver-paneles.png` | Figura 5 |  |
-| `03-menu-estructura.png` | Figura 6 | Menú |
-| `09-menu-estructura-plantillas.png` | Figura 7 |  |
-| `04-menu-ayuda.png` | Figura 8 | Menú |
-| `25-canvas-ordenes-enlace.png` | Figura 9 | Órdenes de enlace creados con la herramienta |
-| `26-canvas-estilos-enlace.png` | Figura 10 | Estilos de la paleta de |
-| `11-flyout-atomos.png` | Figura 11 | Paleta |
-| `06-menu-editar-rotar.png` | Figura 12 |  |
-| `07-menu-rotar-fragmento-pivote.png` | Figura 13 |  |
-| `10-flyout-seleccion.png` | Figura 14 | Paleta |
-| `13-flyout-corchetes.png` | Figura 15 | Paleta |
-| `12-flyout-flechas.png` | Figura 16 | Paleta |
-| `20-canvas-flechas-corchetes.png` | Figura 17 | Ejemplo de anotaciones sobre un ciclohexano: corchete |
-| `14-flyout-simbolos.png` | Figura 18 | Paleta |
-| `22-canvas-simbolos-cargas.png` | Figura 19 | Ejemplo con la herramienta |
-| `16-flyout-energia.png` | Figura 20 | Paleta |
-| `23-canvas-diagramas-energia.png` | Figura 21 | Diagramas creados con la herramienta |
-| `17-flyout-orbitales.png` | Figura 22 | Paleta |
-| `24-canvas-orbitales.png` | Figura 23 | Doce glifos de la paleta de |
-| `15-flyout-placas.png` | Figura 24 | Paleta |
-| `21-canvas-placas.png` | Figura 25 | Placa TLC (izquierda) y gel de electroforesis (derecha) insertados con |
-| `30-contextual-atomo.png` | Figura 26 | Clic derecho sobre un átomo: |
-| `31-contextual-enlace.png` | Figura 27 | Clic derecho sobre un enlace: además de las acciones básicas ofrece |
-| `34-contextual-seleccion.png` | Figura 28 | Con varios objetos seleccionados se añade |
-| `32-contextual-lienzo-vacio.png` | Figura 29 | Sin objeto bajo el puntero, el menú se reduce a |
-| `33-contextual-analisis-submenu.png` | Figura 30 |  |
-| `40-panel-inspector.png` | Figura 31 | Vista |
-| `43-panel-plantillas.png` | Figura 32 | Vista |
-| `42-panel-validacion.png` | Figura 33 | Vista |
-| `41-panel-propiedades.png` | Figura 34 | Vista |
-| `45-panel-espectroscopia.png` | Figura 35 | Vista |
-| `46-panel-compchem.png` | Figura 36 | Vista |
-| `44-panel-apariencia.png` | Figura 37 | Vista |
+| `01-ventana-tema-claro.png` | Figura 1 | Ventana principal en tema claro: lienzo, barra de herramientas y panel lateral. |
+| `02-ventana-tema-oscuro.png` | Figura 2 | Ventana principal en tema oscuro. |
+| `47-paleta-comandos.png` | Figura 3 | Paleta de comandos y búsqueda rápida (`Ctrl+P`). |
+| `05-menu-editar.png` | Figura 4 | Menú Editar y acceso a las transformaciones. |
+| `08-menu-ver-paneles.png` | Figura 5 | Submenú Ver → Paneles para mostrar u ocultar vistas. |
+| `03-menu-estructura.png` | Figura 6 | Menú Estructura y acciones disponibles en beta.4. |
+| `09-menu-estructura-plantillas.png` | Figura 7 | Submenú Estructura → Plantillas. |
+| `04-menu-ayuda.png` | Figura 8 | Menú Ayuda tal como aparece en beta.4. |
+| `25-canvas-ordenes-enlace.png` | Figura 9 | Ejemplos de enlaces sencillos, dobles y triples. |
+| `26-canvas-estilos-enlace.png` | Figura 10 | Ejemplos de estilos gráficos de enlaces. |
+| `11-flyout-atomos.png` | Figura 11 | Paleta de Átomos del rail. |
+| `06-menu-editar-rotar.png` | Figura 12 | Submenú Editar → Rotar. |
+| `07-menu-rotar-fragmento-pivote.png` | Figura 13 | Opciones de rotación de fragmentos con pivote. |
+| `10-flyout-seleccion.png` | Figura 14 | Paleta de Selección y herramienta de rotación 3D precisa. |
+| `13-flyout-corchetes.png` | Figura 15 | Paleta de Corchetes. |
+| `12-flyout-flechas.png` | Figura 16 | Paleta de Flechas y sus variantes. |
+| `20-canvas-flechas-corchetes.png` | Figura 17 | Anotaciones de flechas, líneas y corchetes sobre un ciclohexano. |
+| `14-flyout-simbolos.png` | Figura 18 | Paleta de Símbolos químicos. |
+| `22-canvas-simbolos-cargas.png` | Figura 19 | Ejemplos de cargas y anotaciones químicas. |
+| `16-flyout-energia.png` | Figura 20 | Paleta de Diagramas de energía. |
+| `23-canvas-diagramas-energia.png` | Figura 21 | Ejemplos de diagramas energéticos y subniveles. |
+| `17-flyout-orbitales.png` | Figura 22 | Paleta de Orbitales. |
+| `24-canvas-orbitales.png` | Figura 23 | Ejemplos de glifos de orbitales. |
+| `15-flyout-placas.png` | Figura 24 | Paleta de Placas TLC y geles. |
+| `21-canvas-placas.png` | Figura 25 | Placa TLC con Rf 0,25/0,55/0,80 y gel ilustrativo de cinco bandas. |
+| `30-contextual-atomo.png` | Figura 26 | Menú contextual sobre un átomo. |
+| `31-contextual-enlace.png` | Figura 27 | Menú contextual sobre un enlace. |
+| `34-contextual-seleccion.png` | Figura 28 | Menú contextual con varios objetos seleccionados. |
+| `32-contextual-lienzo-vacio.png` | Figura 29 | Menú contextual sobre el lienzo vacío. |
+| `33-contextual-analisis-submenu.png` | Figura 30 | Submenú Análisis del menú contextual. |
+| `40-panel-inspector.png` | Figura 31 | Panel Inspector con datos del objeto seleccionado. |
+| `43-panel-plantillas.png` | Figura 32 | Panel Plantillas y biblioteca de estructuras. |
+| `42-panel-validacion.png` | Figura 33 | Panel Validación de estructuras. |
+| `41-panel-propiedades.png` | Figura 34 | Panel Propiedades químicas. |
+| `45-panel-espectroscopia.png` | Figura 35 | Panel Espectroscopía y resultados estimados. |
+| `46-panel-compchem.png` | Figura 36 | Panel CompChem y sus opciones de cálculo. |
+| `44-panel-apariencia.png` | Figura 37 | Panel Apariencia y opciones visuales. |
 
 ## Convención de nombres
 
