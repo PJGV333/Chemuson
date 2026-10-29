@@ -348,7 +348,7 @@ Once celdas: **Benceno** (aromático de seis) y **Anillo 3** a **Anillo 12**, ad
 
 **Atajo con cifras.** Puntero sobre un átomo y `Shift` + `3`…`9` inserta directamente el anillo pedido.
 
-### 5.5 Herramienta Átomos (selección de elemento)
+### 5.5 Herramienta Átomos
 
 **Nombre en la interfaz:** la categoría del rail se llama **Átomos** (atajo `C`), mientras que el botón puede mostrar el mensaje **Elemento C**, **Elemento N**, etc., según el símbolo activo. Al introducir un símbolo por teclado se abre el diálogo **Elemento**, con los campos «Símbolo del elemento o grupo funcional» y «Átomo de unión». Son dos nombres de partes de una misma función, no herramientas distintas.
 
