@@ -276,6 +276,30 @@ def grupo_paneles():
     ):
         W.side_panel.show_page(page)
         pump(14)
+        if page == "spectroscopy":
+            # La barra lateral estándar (~340 px) oculta columnas y botones.
+            # Ensanchar SOLO la captura de documentación; nunca la app.
+            W._central_splitter.setSizes([520, 780])
+            pump(24)
+            if W.side_panel.width() < 650:
+                REPORT.append(
+                    f"FALLO {name}: panel demasiado estrecho "
+                    f"({W.side_panel.width()} px; mínimo 650 px)"
+                )
+                continue
+            # Confirmar que caben las 5 columnas y ambos botones.
+            dock = W.spectroscopy_dock
+            visible_width = dock.proton_table.viewport().width()
+            header_width = dock.proton_table.horizontalHeader().length()
+            buttons = (dock.btn_copy_table, dock.btn_export_table)
+            if header_width > visible_width + 2 or any(
+                not button.isVisible() for button in buttons
+            ):
+                REPORT.append(
+                    f"FALLO {name}: columnas o controles fuera del panel "
+                    f"(tabla {header_width}/{visible_width} px)"
+                )
+                continue
         save(W.side_panel.grab(), name)
     # Paleta de comandos abierta.
     W.action_command_palette.trigger()
