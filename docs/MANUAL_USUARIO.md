@@ -350,7 +350,7 @@ Once celdas: **Benceno** (aromático de seis) y **Anillo 3** a **Anillo 12**, ad
 
 ### 5.5 Herramienta Átomos
 
-**Nombre en la interfaz:** la categoría del rail se llama **Átomos** (atajo `C`), mientras que el botón puede mostrar el mensaje **Elemento C**, **Elemento N**, etc., según el símbolo activo. Al introducir un símbolo por teclado se abre el diálogo **Elemento**, con los campos «Símbolo del elemento o grupo funcional» y «Átomo de unión». Son dos nombres de partes de una misma función, no herramientas distintas.
+**Nombres en la interfaz:** la categoría del rail se llama **Átomos** (tecla `C` cuando no hay un átomo único seleccionado); el mensaje emergente del botón puede decir **Elemento C**, **Elemento N**, etc., según el símbolo activo. Si hay **exactamente un átomo seleccionado** y se teclea una letra en el lienzo, aparece el diálogo **Elemento**, que contiene «Símbolo del elemento o grupo funcional» y «Átomo de unión». Son dos partes de la misma funcionalidad, no herramientas distintas.
 
 La paleta tiene diez celdas rápidas —`C`, `N`, `O`, `S`, `P`, `F`, `Cl`, `Br`, `I`, `H`— y la acción **Tabla periódica...**, que abre el selector completo de elementos.
 
@@ -366,7 +366,7 @@ La paleta tiene diez celdas rápidas —`C`, `N`, `O`, `S`, `P`, `F`, `Cl`, `Br`
 | Un átomo ya dibujado | Cambia ese átomo al elemento elegido. |
 | Un hidrógeno implícito mostrado sobre un átomo | Sustituye ese hidrógeno por el elemento elegido (el átomo pasa a ser ese elemento). |
 
-Si prefiere teclear, active la categoría **Átomos** y escriba un símbolo (`C`, `Na`, `Ca`, `Br`…) con el foco en el lienzo. Cuando se abra el diálogo **Elemento**, confirme el símbolo y, si corresponde, el átomo de unión; la tecla `C` usada como atajo por sí sola **no inserta automáticamente un carbono**. Con **Seleccionar** también puede introducir el símbolo sobre un átomo seleccionado.
+**Para editar un átomo con el teclado**, seleccione **exactamente un átomo** (sin enlaces seleccionados), mantenga el foco en el lienzo y pulse una letra. Se abre **Elemento**: allí puede escribir el símbolo completo (`C`, `Na`, `Ca`, `Br`…) y, si procede, indicar el átomo de unión antes de confirmar. **Para crear un átomo nuevo**, seleccione el elemento en la paleta **Átomos** y haga clic en un espacio vacío. La tecla `C`, cuando no hay un átomo individual seleccionado, activa la categoría; **no crea automáticamente un carbono**.
 
 > **Aclaremos un malentendido habitual.** Las letras `C`, `N`, `O`, `S`, `P`, `Cl`, `Br`, `I` y `H` que se ven en la paleta **no son accesos directos de teclado**: son casillas que se pulsen con el ratón. Con el lienzo enfocado, la tecla `C` activa la herramienta **Átomos** y `N` activa **Flechas**; no introducen elementos. En 0.3.0-beta.4 no existe una función para elegir elementos con una sola tecla.
 
@@ -1241,7 +1241,7 @@ Pase el puntero sobre los botones del rail: el mensaje emergente indica la herra
 
 ### Escribo `C` y no se inserta un carbono
 
-Con el lienzo enfocado, `C` activa la categoría **Átomos** del rail, pero **no inserta por sí sola un carbono**. Para cambiar un elemento, elija su casilla en la paleta y haga clic en el átomo. Si escribe un símbolo, ChemUSON puede abrir el diálogo **Elemento** (como en la interfaz real); confirme el símbolo allí. **Átomos** es el nombre de la categoría del rail; **Elemento** es el título del diálogo y aparece también en el mensaje del botón con el símbolo activo. Consulte [5.5](#55-herramienta-átomos).
+`C` **no inserta automáticamente un carbono**. Sin un átomo individual seleccionado, sirve para activar **Átomos**, la categoría del rail. Con **exactamente un átomo seleccionado** y el lienzo enfocado, al teclear `C` (u otra letra) se abre el diálogo **Elemento** para cambiar su símbolo; esto explica la ventana que aparece en ese caso. Para crear un átomo nuevo, elija `C` en la paleta **Átomos** y haga clic en una zona vacía. Consulte [5.5](#55-herramienta-átomos).
 
 ### `Ctrl+K` no cambia nada
 
