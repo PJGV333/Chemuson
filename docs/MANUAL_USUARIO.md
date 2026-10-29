@@ -136,7 +136,7 @@ El ejercicio siguiente muestra el ciclo completo de trabajo con una molécula pe
 
 1. **Cree un documento** con `Ctrl+N`.
 2. **Dibuje tres carbonos consecutivos.** Con **Enlaces** activa (`B`), arrastre desde un punto vacío para crear el primer enlace entre dos carbonos. Arrastre desde uno de sus extremos para añadir un tercer carbono. Compruebe que hay tres carbonos en cadena.
-3. **Añada el oxígeno sin sustituir un carbono.** Arrastre otro enlace desde un carbono terminal hacia un punto vacío: se crea un nuevo átomo. Active **Átomos** (`C`), elija `O` en su paleta y haga clic en ese nuevo átomo para convertirlo en oxígeno. La estructura es **CH₃–CH₂–CH₂–OH**.
+3. **Añada el oxígeno sin sustituir un carbono.** Arrastre otro enlace desde un carbono terminal hacia un punto vacío: se crea un nuevo átomo. Active la categoría **Átomos** del rail (`C`), seleccione `O` en su paleta y haga clic en el nuevo átomo para convertirlo en oxígeno. También puede introducir el símbolo mediante el diálogo **Elemento** (véase [5.5](#55-herramienta-átomos)). La estructura es **CH₃–CH₂–CH₂–OH**.
 4. **Limpie el dibujo.** Pulse `Ctrl+K` (**Estructura → Limpiar 2D (1 paso)**). Véase [Limpieza 2D](#441-limpieza-y-conformación-2d).
 5. **Compruebe la química.** Ejecute **Estructura → Análisis → Fórmula química** y verifique que sea **C₃H₈O**. Confirme también que el grupo hidroxilo está unido a un carbono terminal. El resultado se escribe como texto en el lienzo; use **Ver → Paneles → Validación** para revisar valencias (véase [Análisis químico](#14-análisis-químico-nomenclatura-y-validación)).
 6. **Guarde.** `Ctrl+S` guarda en el formato propio `.cmsn`, que conserva todos los objetos del documento.
@@ -348,7 +348,9 @@ Once celdas: **Benceno** (aromático de seis) y **Anillo 3** a **Anillo 12**, ad
 
 **Atajo con cifras.** Puntero sobre un átomo y `Shift` + `3`…`9` inserta directamente el anillo pedido.
 
-### 5.5 Herramienta Átomos
+### 5.5 Herramienta Átomos (selección de elemento)
+
+**Nombre en la interfaz:** la categoría del rail se llama **Átomos** (atajo `C`), mientras que el botón puede mostrar el mensaje **Elemento C**, **Elemento N**, etc., según el símbolo activo. Al introducir un símbolo por teclado se abre el diálogo **Elemento**, con los campos «Símbolo del elemento o grupo funcional» y «Átomo de unión». Son dos nombres de partes de una misma función, no herramientas distintas.
 
 La paleta tiene diez celdas rápidas —`C`, `N`, `O`, `S`, `P`, `F`, `Cl`, `Br`, `I`, `H`— y la acción **Tabla periódica...**, que abre el selector completo de elementos.
 
@@ -364,7 +366,7 @@ La paleta tiene diez celdas rápidas —`C`, `N`, `O`, `S`, `P`, `F`, `Cl`, `Br`
 | Un átomo ya dibujado | Cambia ese átomo al elemento elegido. |
 | Un hidrógeno implícito mostrado sobre un átomo | Sustituye ese hidrógeno por el elemento elegido (el átomo pasa a ser ese elemento). |
 
-Si prefiere teclear, active la herramienta **Átomos**, escriba el símbolo (`Na`, `Ca`, `Br`…) sobre el lienzo y confirme: ChemUSON interpreta el texto como elemento. Con la herramienta **Seleccionar** puede escribir el símbolo directamente sobre un átomo seleccionado.
+Si prefiere teclear, active la categoría **Átomos** y escriba un símbolo (`C`, `Na`, `Ca`, `Br`…) con el foco en el lienzo. Cuando se abra el diálogo **Elemento**, confirme el símbolo y, si corresponde, el átomo de unión; la tecla `C` usada como atajo por sí sola **no inserta automáticamente un carbono**. Con **Seleccionar** también puede introducir el símbolo sobre un átomo seleccionado.
 
 > **Aclaremos un malentendido habitual.** Las letras `C`, `N`, `O`, `S`, `P`, `Cl`, `Br`, `I` y `H` que se ven en la paleta **no son accesos directos de teclado**: son casillas que se pulsen con el ratón. Con el lienzo enfocado, la tecla `C` activa la herramienta **Átomos** y `N` activa **Flechas**; no introducen elementos. En 0.3.0-beta.4 no existe una función para elegir elementos con una sola tecla.
 
@@ -1239,7 +1241,7 @@ Pase el puntero sobre los botones del rail: el mensaje emergente indica la herra
 
 ### Escribo `C` y no se inserta un carbono
 
-Con el lienzo enfocado, `C` activa la herramienta **Átomos**. Para cambiar un elemento: elija la casilla del elemento en la paleta y haga clic sobre el átomo, o escriba el símbolo con la herramienta **Átomos** activa. Consulte [5.5](#55-herramienta-átomos).
+Con el lienzo enfocado, `C` activa la categoría **Átomos** del rail, pero **no inserta por sí sola un carbono**. Para cambiar un elemento, elija su casilla en la paleta y haga clic en el átomo. Si escribe un símbolo, ChemUSON puede abrir el diálogo **Elemento** (como en la interfaz real); confirme el símbolo allí. **Átomos** es el nombre de la categoría del rail; **Elemento** es el título del diálogo y aparece también en el mensaje del botón con el símbolo activo. Consulte [5.5](#55-herramienta-átomos).
 
 ### `Ctrl+K` no cambia nada
 
