@@ -59,7 +59,9 @@ Cambio puramente documental: conforme a `docs/testing/AGENT_TESTING_POLICY.md` y
 QT_QPA_PLATFORM=offscreen python docs/manual-figures/capturar_figuras.py ventana menu flyout contenido contextual paneles
 ```
 
-Resultado: 31 capturas `OK` y ninguna `FALLO`. Las dos entradas duplicadas que produjo una primera versión del script (`33-contextual-analisis.png` y una segunda copia de la paleta de comandos) se eliminaron del script y del árbol.
+Historial de la primera revisión: se documentaron 31 capturas `OK` y ninguna `FALLO`, antes de la microcampaña. Aquella versión todavía omitía imágenes de contenido y del submenú Análisis. Las entradas duplicadas (`33-contextual-analisis.png` y una segunda copia de la paleta de comandos) se habían eliminado.
+
+**Validación vigente tras la microcampaña:** la ejecución con los seis grupos en un directorio temporal genera **37 de 37 PNG** con código de salida 0 y sin `FALLO`; la variante `fig flechas` genera los siete archivos de contenido. Se cotejó cada imagen del inventario con las leyendas del manual. El índice de figuras del capítulo 22 y el inventario de `docs/manual-figures/README.md` se completaron editorialmente para eliminar descripciones truncadas, sin modificar PNG adicionales.
 
 ## Huecos declarados
 
