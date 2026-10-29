@@ -889,7 +889,7 @@ La vista resume el documento en once filas: **Fórmula**, **Masa exacta**, **Pes
 
 ![Vista Espectroscopía con predicción estimada](manual-figures/45-panel-espectroscopia.png)
 
-*Figura 35. Vista **Espectroscopía** con la predicción estimada del benceno. La cabecera indica el método y la confianza global del cálculo; debajo hay pestañas **¹H NMR**, **¹³C NMR** y **MS**, y los botones **Copiar tabla** y **Exportar tabla...***
+*Figura 35. Vista **Espectroscopía** con una predicción orientativa para el 1-benciloctano. La cabecera indica el método y la confianza global del cálculo; debajo hay pestañas **¹H NMR**, **¹³C NMR** y **MS**, y los botones **Copiar tabla** y **Exportar tabla...***
 
 Abra **Ver → Paneles → Espectroscopía**. La predicción **se calcula sola** al cambiar la estructura: no hay botón «Analizar». Aparecen tres pestañas con estas columnas:
 
