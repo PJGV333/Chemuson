@@ -28,6 +28,27 @@ El script muestra `OK nombre.png anchoxalto` por captura y devuelve un código d
 
 Grupos disponibles: `ventana` (ventana completa), `menu` (menús de la barra), `flyout` (paletas del rail), `contenido` (objetos del lienzo), `contextual` (menú del clic derecho) y `paneles` (vistas del panel lateral). Los nombres de grupos no se interpretan como filtros de figuras. Para ejecutar una figura registrada individualmente use `python docs/manual-figures/capturar_figuras.py fig flechas` (este registro genera los siete archivos 20–26). `fig` sin nombre ejecuta todos los registros individuales; nombres desconocidos causan error.
 
+### Recaptura pendiente: figura 35 (panel Espectroscopía)
+
+La captura inicial `45-panel-espectroscopia.png` (panel lateral de ~340 px)
+recorta las columnas de la derecha y parte de los controles. El generador
+ahora amplía **solo durante la captura** el divisor del panel a un ancho
+suficiente y comprueba la visibilidad de las cinco columnas y ambos botones.
+La imagen ya versionada **no se sustituye hasta ejecutar y revisar**:
+
+```bash
+mkdir -p /tmp/chemuson-panel-figures
+CHEMUSON_OUT=/tmp/chemuson-panel-figures QT_QPA_PLATFORM=offscreen \
+  chem/bin/python docs/manual-figures/capturar_figuras.py paneles
+```
+
+Si `chem/bin/python` no existe en el entorno, use el intérprete real con PyQt6.
+Inspeccione `/tmp/chemuson-panel-figures/45-panel-espectroscopia.png`: la
+cabecera, las cinco columnas (incluida **Átomo**) y **Copiar tabla** /
+**Exportar tabla...** deben verse sin recortes. Solo después copie el PNG
+validado sobre el archivo versionado y compruebe los enlaces del manual.
+**No declarar lista la figura 35 ni integrar el PR hasta completar este paso.**
+
 Las figuras 17 y 25 se corrigieron en la microcampaña: el ciclo de la figura 17 es no aromático; la figura 25 usa posiciones locales de carril para tres manchas de ejemplo y cinco bandas reales. Los valores son ilustrativos, no experimentales.
 
 ## Índice de archivos
