@@ -77,7 +77,9 @@ def save(pm, name):
         REPORT.append(line)
         print(line, flush=True)
         return
-    pm.save(os.path.join(OUT, name))
+    if not pm.save(os.path.join(OUT, name)):
+        REPORT.append(f"FALLO {name}: no se pudo guardar")
+        return
     line = f"OK    {name}  {pm.width()}x{pm.height()}"
     REPORT.append(line)
     print(line, flush=True)
@@ -148,6 +150,7 @@ def grab_region(name, x, y, w, h, scale=1.4):
     rect = QRectF(x, y, w, h)
     CANVAS.setSceneRect(rect)
     CANVAS.fitInView(rect, Qt.AspectRatioMode.KeepAspectRatio)
+    CANVAS.centerOn(rect.center())
     pump(8)
     tl = CANVAS.mapFromScene(rect.topLeft())
     br = CANVAS.mapFromScene(rect.bottomRight())
@@ -284,10 +287,9 @@ def grupo_paneles():
         REPORT.append("FALLO 47-paleta-comandos.png: sin objeto command_palette")
 
 
-def grupo_fig():
-    wanted = sys.argv[2:]
+def grupo_fig(wanted=None):
     for name, fn in FIGS.items():
-        if not wanted or name in wanted:
+        if wanted is None or name in wanted:
             print(f"-- figura {name}", flush=True)
             fn()
 
@@ -300,17 +302,17 @@ def grupo_contenido():
 def _fig_flechas():
     # Flechas y corchetes junto a una estructura pequena.
     new_window(width=1100, height=760)
-    draw_ring(170.0, 210.0, 44.0)
+    draw_ring(170.0, 210.0, 44.0, aromatic=False)
     CANVAS.add_arrow_item(QPointF(300, 140), QPointF(450, 140), "forward")
     CANVAS.add_arrow_item(QPointF(300, 190), QPointF(450, 190), "equilibrium")
     CANVAS.add_arrow_item(QPointF(300, 240), QPointF(450, 240), "retrosynthetic")
     CANVAS.add_arrow_item(QPointF(300, 290), QPointF(450, 290), "line")
     CANVAS.add_arrow_item(QPointF(300, 340), QPointF(450, 340), "line_dashed")
     CANVAS.add_arrow_item(QPointF(300, 390), QPointF(450, 390), "both")
-    CANVAS.add_arrow_item(QPointF(540, 130), QPointF(660, 260), "curved", 0.6)
-    CANVAS.add_arrow_item(QPointF(700, 130), QPointF(820, 260), "curved_fishhook", -0.6)
+    CANVAS.add_arrow_item(QPointF(490, 130), QPointF(600, 260), "curved", 0.6)
+    CANVAS.add_arrow_item(QPointF(630, 130), QPointF(740, 260), "curved_fishhook", -0.6)
     CANVAS.add_bracket_item(QRectF(120, 155, 105, 110), "[]")
-    grab_region("20-canvas-flechas-corchetes.png", 60, 60, 800, 340)
+    grab_region("20-canvas-flechas-corchetes.png", 55, 70, 740, 390)
 
     # Placas: TLC y gel de electroforesis (valores por defecto del dialogo).
     reset_canvas()
@@ -321,27 +323,24 @@ def _fig_flechas():
     CANVAS._insert_tlc_plate_item(QPointF(300, 250))
     CANVAS._insert_gel_electrophoresis_item(QPointF(620, 250))
     pump(12)
-    # Distribuir manchas y bandas a distinto Rf (equivale a "Set Rf..." del
-    # menu contextual) para una figura representativa.
-    rf_values = [0.25, 0.55, 0.8, 0.4, 0.65]
-    n = 0
-    for item in list(CANVAS.scene.items()):
-        lane = getattr(item, "lane_ref", None)
-        if lane is None or not hasattr(lane, "baseline_y"):
-            continue
-        dist_total = lane.baseline_y() - lane.solvent_front_y()
-        if dist_total == 0:
-            continue
-        rf = rf_values[n % len(rf_values)]
-        n += 1
-        item.setY(lane.scenePos().y() + lane.baseline_y() - rf * dist_total)
-        if hasattr(item, "_show_rf_label"):
-            item._show_rf_label = True
+    # Las posiciones de manchas y bandas son locales al carril, no a la escena.
+    from chemuson.gui.plate_items import GelElectrophoresisItem, TLCPlateItem
+
+    plates = [item for item in CANVAS.scene.items() if isinstance(item, TLCPlateItem)]
+    gels = [item for item in CANVAS.scene.items() if isinstance(item, GelElectrophoresisItem)]
+    if len(plates) != 1 or len(gels) != 1:
+        raise RuntimeError("No se encontraron la placa TLC y el gel esperados")
+    for lane, rf in zip(plates[0].lane_items, (0.25, 0.55, 0.80, 0.40, 0.65)):
+        for spot, _ in lane.rf_labels:
+            spot.setY(lane.baseline_y() - rf * (lane.baseline_y() - lane.solvent_front_y()))
+            spot._show_rf_label = True
         lane.update_rf_labels()
+    for lane, distance in zip(gels[0].lane_items, (35, 65, 95, 125, 155)):
+        for band, _ in lane.bands:
+            band.setY(lane.well_y() + distance)
     CANVAS.scene.clearSelection()
     pump(8)
-    CANVAS.centerOn(0, 0)
-    grab_region("21-canvas-placas.png", 0, 0, 1100, 700)
+    grab_region("21-canvas-placas.png", 210, 200, 780, 420)
 
     print("-- simbolos", flush=True)
     # Simbolos quimicos sobre una estructura sencilla (morfolino).
@@ -481,7 +480,9 @@ def grupo_contextual():
 
     context_shot("30-contextual-atomo.png", atom_item.pos(), atom_item)
     context_shot("31-contextual-enlace.png", bond_item.pos(), bond_item)
-    context_shot("32-contextual-lienzo-vacio.png", QPointF(120, 120), None)
+    context_shot("32-contextual-lienzo-vacio.png", QPointF(120, 120), None, with_sub=True)
+    if not any("33-contextual-analisis-submenu.png" in entry for entry in REPORT):
+        REPORT.append("FALLO 33-contextual-analisis-submenu.png: submenú ausente")
     for aid in ids[:3]:
         CANVAS.atom_items[aid.id].setSelected(True)
     CANVAS._sync_selection_from_scene()
@@ -501,8 +502,6 @@ def main():
     ps.application_settings = factory
     asm.application_settings = factory
 
-    APP = QApplication([])
-    groups = set(sys.argv[1:])
     all_groups = {
         "ventana": grupo_ventana,
         "menu": grupo_menu,
@@ -510,14 +509,47 @@ def main():
         "contenido": grupo_contenido,
         "contextual": grupo_contextual,
         "paneles": grupo_paneles,
-        "fig": grupo_fig,
     }
-    for key, fn in all_groups.items():
-        if not groups or key in groups:
-            print(f"### {key}", flush=True)
-            fn()
+    args = sys.argv[1:]
+    if args and args[0] == "fig":
+        wanted = args[1:]
+        unknown = set(wanted) - FIGS.keys()
+        if unknown:
+            print(f"Figuras desconocidas: {', '.join(sorted(unknown))}", file=sys.stderr)
+            return 2
+        groups = []
+    else:
+        unknown = set(args) - all_groups.keys()
+        if unknown:
+            print(f"Grupos desconocidos: {', '.join(sorted(unknown))}", file=sys.stderr)
+            return 2
+        wanted = None
+        groups = args or list(all_groups)
+    APP = QApplication([])
+    if args and args[0] == "fig":
+        grupo_fig(wanted or None)
+    else:
+        for key, fn in all_groups.items():
+            if key in groups:
+                print(f"### {key}", flush=True)
+                fn()
+        if set(groups) == set(all_groups):
+            expected = set(os.listdir(os.path.dirname(os.path.abspath(__file__))))
+            expected = {name for name in expected if name.endswith('.png')}
+            generated = {entry.split()[1] for entry in REPORT if entry.startswith('OK')}
+            for name in sorted(expected - generated):
+                REPORT.append(f"FALLO {name}: figura esperada no generada")
+    if (args and args[0] == "fig") or (
+        "contenido" in groups and not {"contextual", "paneles"} & set(groups)
+    ):
+        # Cerrar la ventana de contenido antes de terminar evita que Qt destruya
+        # las anotaciones pendientes durante la finalización del intérprete.
+        new_window()
+    if W is not None:
+        W.close()
+        pump(10)
     print("\n".join(REPORT))
-    return 0
+    return int(any(entry.startswith("FALLO") for entry in REPORT))
 
 
 if __name__ == "__main__":

@@ -23,6 +23,15 @@
 - [x] 4.4 Pasada cruzada de las 55 rutas de menú citadas contra los volcados de la interfaz.
 - [x] 4.5 Barrido inverso de los 229 elementos de la interfaz para detectar funciones sin documentar; las cuatro lagunas halladas se documentan.
 - [x] 4.6 Regeneración y verificación del inventario de figuras (37/37, cero desajustes).
+## Microcampaña de revisión del PR #13
+
+- [x] Precisar la privacidad de los proveedores IA y las referencias químicas.
+- [x] Corregir y contrastar la conectividad del ejercicio de 1-propanol.
+- [x] Reparar la selección de grupos y la captura del submenú; comprobar el inventario completo y la selección individual.
+- [x] Corregir el encuadre de flechas y corchetes y los ejemplos TLC/gel con objetos auténticos.
+- [x] Contrastar los hallazgos previos del AppImage y del actualizador, los enlaces, las figuras y la versión funcional.
+- [ ] Aprobación editorial del propietario y resolución de los hilos del PR tras revisar la evidencia.
+
 ## 5. Entrega
 
 - [x] 5.1 Publicar la rama `docs/manual-usuario-beta4-campana` y abrir la PR hacia `main` (**#13**), sin combinarla.

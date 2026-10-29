@@ -83,7 +83,7 @@ Si no se muestra ningún documento, cree uno con `Ctrl+N` (**Archivo → Nuevo**
 
 ![Ventana principal de ChemUSON 0.3.0-beta.4 con el panel Inspector abierto](manual-figures/01-ventana-tema-claro.png)
 
-*Figura 1. Ventana principal de ChemUSON 0.3.0-beta.4 en tema claro, con un ciclohexano recién dibujado y el panel lateral en la pestaña **Inspector**. La barra superior muestra el documento «Sin título», el buscador «Buscar o ejecutar…» y los botones de deshacer/rehacer, tema y preferencias.*
+*Figura 1. Ventana principal de ChemUSON 0.3.0-beta.4 en tema claro, con un anillo de seis carbonos recién dibujado y el panel lateral en la pestaña **Inspector**. La barra superior muestra el documento «Sin título», el buscador «Buscar o ejecutar…» y los botones de deshacer/rehacer, tema y preferencias.*
 
 La interfaz se organiza en seis zonas:
 
@@ -135,10 +135,10 @@ En la barra de estado se indica siempre la herramienta activa.
 El ejercicio siguiente muestra el ciclo completo de trabajo con una molécula pequeña, el **1-propanol**.
 
 1. **Cree un documento** con `Ctrl+N`.
-2. **Dibuje el esqueleto.** Con la herramienta **Enlaces** activa (tecla `B`), arrastre desde un punto vacío del lienzo hacia la derecha: se crea un átomo de carbono y un enlace. Suelte cuando el enlace tenga la dirección deseada; repita el arrastre desde el último átomo para añadir el siguiente enlace. Los ángulos se ajustan automáticamente a las direcciones habituales de dibujo.
-3. **Añada el oxígeno.** Active la herramienta **Átomos** (`C`) y, en su paleta, elija `O`. Haga clic sobre el extremo derecho de la cadena: ese átomo pasa a ser oxígeno.
-4. **Limpie el dibujo.** Pulse `Ctrl+K` (**Estructura → Limpiar 2D (1 paso)**). El esquema se ordena: longitudes uniformes, ángulos normales y anillos regulares. Véase [Limpieza 2D](#441-limpieza-y-conformación-2d).
-5. **Compruebe la química.** Active **Ver → Paneles → Inspector** para ver lo que hay bajo la selección y **Validación** para revisar valencias. Ejecute **Estructura → Análisis → Fórmula química**: el resultado se escribe como texto en el lienzo (véase [Análisis químico](#14-análisis-químico-nomenclatura-y-validación)).
+2. **Dibuje tres carbonos consecutivos.** Con **Enlaces** activa (`B`), arrastre desde un punto vacío para crear el primer enlace entre dos carbonos. Arrastre desde uno de sus extremos para añadir un tercer carbono. Compruebe que hay tres carbonos en cadena.
+3. **Añada el oxígeno sin sustituir un carbono.** Arrastre otro enlace desde un carbono terminal hacia un punto vacío: se crea un nuevo átomo. Active **Átomos** (`C`), elija `O` en su paleta y haga clic en ese nuevo átomo para convertirlo en oxígeno. La estructura es **CH₃–CH₂–CH₂–OH**.
+4. **Limpie el dibujo.** Pulse `Ctrl+K` (**Estructura → Limpiar 2D (1 paso)**). Véase [Limpieza 2D](#441-limpieza-y-conformación-2d).
+5. **Compruebe la química.** Ejecute **Estructura → Análisis → Fórmula química** y verifique que sea **C₃H₈O**. Confirme también que el grupo hidroxilo está unido a un carbono terminal. El resultado se escribe como texto en el lienzo; use **Ver → Paneles → Validación** para revisar valencias (véase [Análisis químico](#14-análisis-químico-nomenclatura-y-validación)).
 6. **Guarde.** `Ctrl+S` guarda en el formato propio `.cmsn`, que conserva todos los objetos del documento.
 
 > **Si un átomo queda con valencia incorrecta**, el panel **Validación** lo lista y permite saltar a él con `F8`.
@@ -645,7 +645,7 @@ Cambiar el color o eliminar una mancha **no se puede deshacer**; mover una manch
 
 ![Placa TLC y gel de electroforesis con Rf distintos](manual-figures/21-canvas-placas.png)
 
-*Figura 25. Placa TLC (izquierda) y gel de electroforesis (derecha) insertados con la herramienta **Placas**. Las manchas de la placa se han colocado en Rf 0,25 / 0,55 / 0,80 con **Set Rf...**; el gel muestra cinco pozos con sus bandas y la escala en unidades de distancia.*
+*Figura 25. Ejemplo didáctico, no experimental: placa TLC (izquierda), con manchas en Rf 0,25 / 0,55 / 0,80, y gel de electroforesis (derecha), con cinco pozos y bandas a distintas alturas. Las escalas muestran Rf y distancia, respectivamente.*
 
 > **Advertencia de uso.** Estos objetos son material gráfico para comunicar un resultado. ChemUSON no analiza imágenes de cromatografía ni calcula Rf a partir de una fotografía: el valor que usted escriba es el que se muestra.
 
@@ -945,7 +945,7 @@ Para geometría y energías calculadas, use el panel **CompChem** con un motor e
 
 *Figura 36. Vista **CompChem** recién abierta: selectores **Backend** y **Campo de fuerza**, indicador de estado, tabla de seguimiento y los seis botones de trabajo geométrico y de exportación.*
 
-Abra **Ver → Paneles → CompChem**. La vista prepara geometrí­a y archivos de entrada:
+Abra **Ver → Paneles → CompChem**. La vista prepara geometría y archivos de entrada:
 
 | Control | Función |
 |---|---|
@@ -971,9 +971,17 @@ El propio cuadro del asistente reúne la configuración y la petición. Sus grup
 | Grupo | Controles |
 |---|---|
 | Petición | **Descripción** y, en el modo de dibujo, **Método de resolución**: **IA + referencia**, **Solo IA** o **Referencia química**. |
-| **Referencias químicas** | Casilla **Permitir referencias químicas externas (PubChem)**. Sin marcar, solo se consultan referencias locales y la caché; **Solo IA** nunca accede a la red. |
+| **Referencias químicas** | Casilla **Permitir referencias químicas externas (PubChem)**. Sin marcar, las referencias químicas se limitan a fuentes locales y caché; esta opción no controla la conexión del proveedor IA. |
 | **Proveedor IA** | **Proveedor** (**OpenAI-compatible (personalizado)**, **OpenAI**, **LM Studio**, **llama.cpp server**), **Endpoint base**, **Modelo** y la clave del proveedor. |
 | **Opciones avanzadas** | **Timeout (s)** (60 por defecto), **Máximo de tokens de salida** (4096 por defecto) y **Solicitar salida JSON estructurada si el endpoint la admite**. |
+
+Los métodos de dibujo se distinguen así:
+
+- **Solo IA** utiliza el proveedor configurado, que puede ser local o remoto.
+- **Referencia química** consulta las fuentes químicas permitidas por la configuración, sin llamar al modelo.
+- **IA + referencia** combina ambos mecanismos cuando corresponde; la consulta de referencia depende de que se reconozca una petición de molécula por nombre.
+
+> **Privacidad de la investigación.** Deshabilitar PubChem no impide que un proveedor remoto de IA reciba la descripción y, en una transformación, información de la estructura seleccionada. Si trabaja con estructuras inéditas, confidenciales o sujetas a restricciones de divulgación, revise el endpoint, las políticas del proveedor y las autorizaciones antes de enviar datos. Un proveedor puede evitar enviar la descripción a servicios externos solo si realmente se ejecuta localmente y no utiliza servicios remotos.
 
 Estado real en 0.3.0-beta.4:
 
@@ -1006,7 +1014,7 @@ Con `Ctrl+V`:
 
 | Contenido del portapapeles | Comportamiento |
 |---|---|
-| Seleccionión previa de ChemUSON | Se pegan todos los objetos (átomos, enlaces, textos, flechas…). |
+| Selección previa de ChemUSON | Se pegan todos los objetos (átomos, enlaces, textos, flechas…). |
 | Texto SMILES | Se interpreta **únicamente como SMILES** y se construye la estructura. |
 | Molfile con formato interno de ChemUSON | Se importa como estructura (es lo que produce **Editar → Copiar como → Molfile**). |
 | Ruta de archivo copiada en el gestor de archivos | Se inserta el archivo de imagen referido. |
@@ -1063,7 +1071,7 @@ El guardado automático **no sustituye** a `Ctrl+S`: no guarda en su archivo y s
 
 ### 18.1 Preferencias
 
-Abralas con **Editar → Preferencias...** o con el botón de la barra superior. El diálogo tiene cuatro pestañas:
+Ábralas con **Editar → Preferencias...** o con el botón de la barra superior. El diálogo tiene cuatro pestañas:
 
 | Pestaña | Controles que muestra |
 |---|---|
@@ -1084,7 +1092,7 @@ Dos aclaraciones verificadas:
 
 ### 18.2 Cambiar el tema
 
-Use el botón de tema de la barra superior (alternancia rápida) o **Preferencias → Apariencia** para fijarlo. Ambas ventanas se muestran en las figuras 1 y 2.
+Use el botón de tema de la barra superior para alternar entre claro y oscuro. Ambos temas se muestran en las figuras 1 y 2.
 
 ### 18.3 Buscar actualizaciones
 
@@ -1314,7 +1322,7 @@ Todas las figuras de este manual son **capturas auténticas de ChemUSON 0.3.0-be
 
 | Fig. | Archivo | Contenido |
 |---|---|---|
-| 1 | `01-ventana-tema-claro.png` | Ventana principal de ChemUSON 0.3.0-beta.4 en tema claro, con un ciclohexano recién dibujado y e |
+| 1 | `01-ventana-tema-claro.png` | Ventana principal en tema claro con un anillo de seis carbonos y el panel Inspector. |
 | 2 | `02-ventana-tema-oscuro.png` | La misma ventana en tema oscuro. El tema se cambia con el botón de media luna de la barra superi |
 | 3 | `47-paleta-comandos.png` | Paleta de comandos abierta con Ctrl+P. Escriba una palabra (por ejemplo «limpiar», «plantilla» o |
 | 4 | `05-menu-editar.png` | Menú Editar de ChemUSON 0.3.0-beta.4, con el submenú Copiar como y la entrada Rotar. |
@@ -1338,7 +1346,7 @@ Todas las figuras de este manual son **capturas auténticas de ChemUSON 0.3.0-be
 | 22 | `17-flyout-orbitales.png` | Paleta ORBITALES del rail (tecla O). Los nombres son los que muestra la propia aplicación. |
 | 23 | `24-canvas-orbitales.png` | Doce glifos de la paleta de Orbitales: s en contorno y sombreado, p sombreado y sólido, d sombre |
 | 24 | `15-flyout-placas.png` | Paleta PLACAS del rail: Placa TLC y Gel de Electroforesis. |
-| 25 | `21-canvas-placas.png` | Placa TLC (izquierda) y gel de electroforesis (derecha) insertados con la herramienta Placas. La |
+| 25 | `21-canvas-placas.png` | Ejemplo didáctico de TLC con tres valores de Rf y gel con cinco bandas. |
 | 26 | `30-contextual-atomo.png` | Clic derecho sobre un átomo: Cortar, Copiar, Pegar, Eliminar, Carga formal ▸, Activar esfera de |
 | 27 | `31-contextual-enlace.png` | Clic derecho sobre un enlace: además de las acciones básicas ofrece Reordenar rama ▸ (con Girar |
 | 28 | `34-contextual-seleccion.png` | Con varios objetos seleccionados se añade Redimensionar selección... y Grosor de enlace/flecha/c |

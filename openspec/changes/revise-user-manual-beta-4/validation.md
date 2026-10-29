@@ -8,6 +8,24 @@ Cambio puramente documental: conforme a `docs/testing/AGENT_TESTING_POLICY.md` y
 - Referencia funcional del contenido: tag `v0.3.0-beta.4` (sin diferencias en `src/` respecto a `main`).
 - Las capturas se generaron ejecutando la aplicación con `QT_QPA_PLATFORM=offscreen` y PyQt6 sobre Python 3.14.
 
+## Baseline de microcampaña (antes de modificar)
+
+- Rama `docs/manual-usuario-beta4-campana`, HEAD y PR #13 `4699bea0ccb4a8d296e9afdfa719262706548627`; `git status --short` vacío. Referencias remotas actualizadas con `git fetch origin --prune`.
+- Linux, Python 3.14.8, PyQt6 disponible; tag `v0.3.0-beta.4` = `514b2013ba7406d3a03b6e613d0ad471f2684a39`; `git diff v0.3.0-beta.4 HEAD -- src` vacío.
+- `python -m compileall -q src tests tools packaging`: éxito; `ruff check docs/manual-figures/capturar_figuras.py --select F401,F811,F821,E722,E741`: éxito; `openspec validate revise-user-manual-beta-4 --strict`: éxito; `git diff --check`: limpio.
+- Comando documentado de captura con `CHEMUSON_OUT` temporal: salida 0 pero solo **29/37** PNG. Faltan 20–26 por selección de grupo y 33 por no solicitar el submenú; no se informó error. Evidencia local: `/tmp/chemuson-manual-baseline.log`.
+- Los cinco hilos de Codex estaban abiertos; nombre del AppImage y actualización por plataforma ya se corrigieron en commits previos. No se ejecutó pytest masivo.
+
+## Validación de la microcampaña
+
+- **Alcance:** manual, generador documental, dos PNG y registros OpenSpec; ningún cambio en producción o dependencias. El HEAD base de esta validación es `4699bea0ccb4a8d296e9afdfa719262706548627`, con los cambios de microcampaña en el árbol de trabajo.
+- **Cinco hallazgos:** privacidad y generador corregidos aquí; el ejercicio previo de 2-propanol se había sustituido por 1-propanol en `8f534285` pero aún omitía el cuarto átomo, corregido aquí; AppImage coincide con la lista de assets de la release y fue corregido en `89c93660`; actualizaciones por plataforma se corrigieron en `71e113f2`.
+- **Interfaz:** prueba Qt offscreen con tres arrastres y selección del oxígeno mediante `set_active_element`: cuatro átomos C–C–C–O y tres enlaces simples; `chem/bin/python` (RDKit 2026.03.6) devolvió SMILES `CCCO`. El atajo `Ctrl+K` se contrastó en `src/chemuson/gui/actions/structure_actions.py`. Una primera prueba con Python del sistema obtuvo la misma conectividad pero el worker informó `rdkit_unavailable` porque ese intérprete no tiene RDKit; no se presenta como PASS.
+- **Generador:** `QT_QPA_PLATFORM=offscreen CHEMUSON_OUT=/tmp/chemuson-verify-all python docs/manual-figures/capturar_figuras.py ventana menu flyout contenido contextual paneles` terminó con salida 0, **37/37 PNG**, sin `FALLO`. Los dos PNG modificados coinciden con la regeneración temporal. `fig flechas` genera siete PNG con salida 0; nombres de grupo o figura desconocidos devuelven 2. El script previo también reproducía SIGSEGV al finalizar `fig flechas` en este entorno; la nueva ventana de cierre evita esa destrucción tardía de Qt sin tocar la aplicación.
+- **Revisión visual:** hojas de contacto de los 37 PNG y lectura a tamaño real de figuras 17 y 25: flechas completas; manchas TLC 0,25/0,55/0,80 y cinco bandas reales visibles. Las escenas se generan con objetos de beta.4; el gel es ilustrativo. No se reemplazaron otros PNG. Las figuras de paneles mantienen espacio vacío y texto pequeño inherentes a las capturas originales; conviene revisarlas en la maquetación institucional posterior.
+- **Validación documental local:** 22 capítulos, 37 imágenes/leyendas consecutivas, 37 filas de inventario correspondientes, 82 enlaces revisados para rutas y anclas locales, ambos README enlazan al manual; `openspec validate revise-user-manual-beta-4 --strict`, Ruff focal y `git diff --check` sin errores. El nombre del AppImage se cotejó con los assets publicados de `v0.3.0-beta.4` mediante `gh api`.
+- **Limitaciones editoriales:** las descripciones de varias filas de los dos índices de figuras heredados están truncadas; las leyendas completas junto a cada imagen son la referencia. No se inspeccionó el renderizado en escritorio/HiDPI ni se generó PDF. El propietario debe revisar y aprobar el Markdown antes del merge.
+
 ## Comprobaciones y resultados
 
 | Comprobación | Resultado |

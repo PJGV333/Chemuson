@@ -22,9 +22,13 @@ QT_QPA_PLATFORM=offscreen python docs/manual-figures/capturar_figuras.py \
   ventana menu flyout contenido contextual paneles
 ```
 
-El script escribe los archivos en esta misma carpeta y muestra por consola una línea `OK nombre.png anchoxalto` por cada captura. Si una paleta o un menú cambian, la captura correspondiente simplemente no se genera y el script lo avisa.
+Para no sobrescribir las capturas existentes, establezca `CHEMUSON_OUT` en un directorio temporal vacío antes de ejecutar el comando. Para usar otro checkout del código de beta.4, indique su ruta en `CHEMUSON_REPO`. Sin estas variables se usa el repositorio y la carpeta actuales.
 
-Grupos disponibles: `ventana` (ventana completa), `menu` (menús de la barra), `flyout` (paletas del rail), `contenido` (objetos del lienzo), `contextual` (menú del clic derecho) y `paneles` (vistas del panel lateral).
+El script muestra `OK nombre.png anchoxalto` por captura y devuelve un código distinto de cero ante errores registrados. Al pedir todos los grupos comprueba además que se produzcan todos los PNG del inventario versionado (actualmente 37). Compare las imágenes antes de reemplazarlas: las diferencias de fuentes, plataforma o Qt pueden alterar las capturas.
+
+Grupos disponibles: `ventana` (ventana completa), `menu` (menús de la barra), `flyout` (paletas del rail), `contenido` (objetos del lienzo), `contextual` (menú del clic derecho) y `paneles` (vistas del panel lateral). Los nombres de grupos no se interpretan como filtros de figuras. Para ejecutar una figura registrada individualmente use `python docs/manual-figures/capturar_figuras.py fig flechas` (este registro genera los siete archivos 20–26). `fig` sin nombre ejecuta todos los registros individuales; nombres desconocidos causan error.
+
+Las figuras 17 y 25 se corrigieron en la microcampaña: el ciclo de la figura 17 es no aromático; la figura 25 usa posiciones locales de carril para tres manchas de ejemplo y cinco bandas reales. Los valores son ilustrativos, no experimentales.
 
 ## Índice de archivos
 
